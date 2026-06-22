@@ -1,0 +1,1248 @@
+async function loadOpsAdmin(force = false) {
+  if (opsAdminCache.loading) return;
+  const now = Date.now();
+  if (!force && opsAdminCache.loaded && now - opsAdminLastAutoLoadAt < 8000) return;
+  opsAdminCache.loading = true;
+  opsAdminLastAutoLoadAt = now;
+  if (!opsAdminCache.loaded) {
+    if (typeof isStaffEmailsActive === 'function' && isStaffEmailsActive()) renderStaffEmailsPage();
+    else if (typeof isStaffUtilityActive === 'function' && isStaffUtilityActive()) renderStaffUtilityPage();
+    else renderOpsAdmin();
+  }
+  try {
+    const centerId = encodeURIComponent(getActiveOpsCenterId());
+    const range = state.view === 'admin'
+      ? getAdminPeriodRange()
+      : { startDate: state.currentDate || todayStr(), endDate: state.currentDate || todayStr() };
+    const startDate = encodeURIComponent(range.startDate);
+    const endDate = encodeURIComponent(range.endDate);
+    const simDate = encodeURIComponent(getSimulationDate());
+    const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload, simulationPayload] = await Promise.all([
+      apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${centerId}&limit=500`),
+      apiRequest(`${API_ENDPOINTS.ops}?action=emailSamples`),
+      apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerId}&limit=80`),
+      apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerId}&limit=80`),
+      apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerId}&startDate=${startDate}&endDate=${endDate}`),
+      apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerId}&date=${simDate}`)
+    ]);
+    opsAdminCache = {
+      communications: communicationsPayload.communications || [],
+      samples: samplesPayload.samples || [],
+      suggestions: suggestionsPayload.suggestions || [],
+      events: eventsPayload.events || [],
+      agentStack: agentStackPayload || null,
+      simulation: simulationPayload || null,
+      loaded: true,
+      loading: false,
+      lastLoadedAt: new Date().toISOString()
+    };
+    if (typeof isStaffEmailsActive === 'function' && isStaffEmailsActive()) renderStaffEmailsPage();
+    else if (typeof isStaffUtilityActive === 'function' && isStaffUtilityActive()) renderStaffUtilityPage();
+    else renderOpsAdmin();
+  } catch (error) {
+    opsAdminCache.loading = false;
+    if (typeof isStaffEmailsActive === 'function' && isStaffEmailsActive()) renderStaffEmailsPage(error.message || 'Console Ops indisponible.');
+    else if (typeof isStaffUtilityActive === 'function' && isStaffUtilityActive()) renderStaffUtilityPage();
+    else renderOpsAdmin(error.message || 'Console Ops indisponible.');
+  }
+}
+
+function renderOpsStats(communications = []) {
+  const queued = communications.filter(item => item.status === 'queued').length;
+  const sent = communications.filter(item => item.status === 'sent' || item.status === 'delivered').length;
+  const failed = communications.filter(item => item.status === 'failed').length;
+  const review = communications.filter(item => item.templateId === 'staff_review_request').length;
+  return `
+    <div class="ops-grid">
+      <div class="ops-stat"><div class="k">En file</div><div class="v">${queued}</div></div>
+      <div class="ops-stat"><div class="k">Envoyés</div><div class="v">${sent}</div></div>
+      <div class="ops-stat"><div class="k">À corriger</div><div class="v">${failed}</div></div>
+      <div class="ops-stat"><div class="k">Validations</div><div class="v">${review}</div></div>
+    </div>`;
+}
+
+function getVisibleOpsCommunications(list = opsAdminCache.communications || []) {
+  return list.filter(item => item.templateId !== 'sms_future_reminder' && item.channel !== 'phone_note' && !item.payload?.smsDeferred);
+}
+
+function renderOpsCommunications() {
+  const communications = getVisibleOpsCommunications();
+  if (!communications.length) {
+    return `<div class="empty-state"><div class="e-title">Aucun mail en file</div><div class="e-sub">Les confirmations, rappels et validations apparaîtront ici dès qu’une réservation sera créée.</div></div>`;
+  }
+  return `${renderOpsStats(communications)}
+    <div class="ops-list">
+      ${communications.map((item, index) => `
+        <div class="ops-row">
+          <div>
+            <span class="ops-pill ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span>
+            <div class="meta" style="margin-top:7px;">${escapeHtml(formatOpsTimestamp(item.scheduledAt || item.createdAt))}</div>
+          </div>
+          <div>
+            <div class="title">${escapeHtml(item.subject || getOpsTemplateLabel(item.templateId))}</div>
+            <div class="meta">${escapeHtml(getOpsTemplateLabel(item.templateId))} • ${escapeHtml(item.channel || 'email')}</div>
+          </div>
+          <div class="meta">
+            ${escapeHtml(item.recipient || 'Destinataire manquant')}<br>
+            ${item.lastError ? `<span class="ops-error">${escapeHtml(item.lastError)}</span>` : `${Number(item.attempts || 0)} tentative(s)`}
+          </div>
+          <button class="ops-mini-btn" onclick="previewOpsEmail(${index}, 'communication-visible')">Voir</button>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function renderOpsSamples() {
+  const samples = opsAdminCache.samples || [];
+  return `<div class="ops-list">
+    ${samples.map((sample, index) => `
+      <div class="ops-row template">
+        <div>
+          <span class="ops-pill">${escapeHtml(getOpsTemplateLabel(sample.templateId))}</span>
+          <div class="meta" style="margin-top:7px;">Prévisualisation officielle</div>
+        </div>
+        <div>
+          <div class="title">${escapeHtml(sample.subject)}</div>
+          <div class="meta">${escapeHtml(sample.preheader || 'Template email Fun Galaxy')}</div>
+        </div>
+        <button class="ops-mini-btn" onclick="previewOpsEmail(${index}, 'sample')">Prévisualiser</button>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function renderOpsSuggestions() {
+  const suggestions = opsAdminCache.suggestions || [];
+  if (!suggestions.length) {
+    return `<div class="empty-state"><div class="e-title">Aucune anomalie active</div><div class="e-sub">Les agents ajouteront ici les retards récurrents, créneaux risqués et ajustements proposés.</div></div>`;
+  }
+  return `<div class="ops-list">
+    ${suggestions.map(item => {
+      const payload = item.payload || {};
+      return `
+        <div class="ops-row">
+          <div>
+            <span class="ops-pill ${escapeHtml(item.severity)}">${escapeHtml(item.severity || 'info')}</span>
+            <div class="meta" style="margin-top:7px;">Confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div>
+          </div>
+          <div>
+            <div class="title">${escapeHtml(payload.title || item.suggestionType || 'Suggestion agent')}</div>
+            <div class="meta">${escapeHtml(item.agentId || 'agent')} • ${escapeHtml(item.status || 'pending')}</div>
+          </div>
+          <div class="meta">${escapeHtml(payload.recommendation || payload.reason || payload.message || 'À examiner par le staff.')}</div>
+          <span class="ops-pill">Live</span>
+        </div>`;
+    }).join('')}
+  </div>`;
+}
+
+const OPS_AGENT_DEPARTMENT_LABELS = {
+  direction: 'Direction',
+  operations: 'Operations',
+  customer: 'Relation client',
+  risk_quality: 'Qualite & securite',
+  product_market: 'Produit & marche'
+};
+
+const OPS_AGENT_DEPARTMENT_ORDER = ['operations', 'customer', 'direction', 'risk_quality', 'product_market'];
+
+const OPS_AGENT_WORK_TRIGGERS = {
+  'executive-director-agent': 'Travaille quand la direction ouvre Stack IA, lance l’orchestrateur ou demande une lecture multi-centres.',
+  'orchestrator-agent': 'Travaille a chaque actualisation Ops: il lit reservations, mails, evenements et suggestions avant de router les agents.',
+  'planning-manager-agent': 'Travaille a chaque recherche de disponibilite, creation staff, simulation ou controle de conflit.',
+  'bowling-capacity-agent': 'Travaille quand une piste est reservee, deplacee, prolongee ou quand une formule utilise du Bowling.',
+  'laser-capacity-agent': 'Travaille quand une session Laser est reservee, partagee, deplacee ou quand il reste des parties a placer.',
+  'rush-floor-agent': 'Travaille pendant la journee terrain: arrivees proches, retards, groupes incomplets, paiements et consignes staff.',
+  'delay-agent': 'Travaille quand un retard ou incident peut impacter les créneaux suivants.',
+  'communication-manager-agent': 'Travaille quand une reservation doit recevoir confirmation, rappel, correction ou relance.',
+  'crm-followup-agent': 'Travaille en lecture sur les clients existants; les relances automatiques attendent un CRM branche.',
+  'director-agent': 'Travaille sur les vues Direction, exports, rapports et comparaisons par centre/periode.',
+  'finance-admin-agent': 'Travaille quand la direction consulte les montants, acomptes, exports compta et ecarts de caisse.',
+  'learning-agent': 'Travaille quand des evenements terrain ou simulations donnent assez de donnees pour proposer une regle.',
+  'qa-redteam-agent': 'Travaille avant deploiement et pendant les simulations rush pour casser le systeme avant les vrais clients.',
+  'security-agent': 'Travaille en controle: secrets, permissions, prompt injection et actions dangereuses restent sous garde-fous.',
+  'research-agent': 'Travaille sur veille marche, concurrents, UX, prix, integrations et opportunites produit.',
+  'integration-manager-agent': 'Travaille quand une cle, un connecteur, un cron ou un service externe doit etre verifie.'
+};
+
+const OPS_AGENT_RUNTIME_MAP = {
+  'planning-manager-agent': 'planning-agent',
+  'rush-floor-agent': 'rush-agent',
+  'delay-agent': 'delay-agent',
+  'communication-manager-agent': 'communication-agent',
+  'learning-agent': 'learning-agent',
+  'director-agent': 'director-agent',
+  'qa-redteam-agent': 'qa-redteam-agent'
+};
+
+function getOpsAgentActivation(agent = {}, activations = []) {
+  const directIds = new Set([agent.id, agent.runtimeAgentId, OPS_AGENT_RUNTIME_MAP[agent.id]].filter(Boolean));
+  return activations.find(item => directIds.has(item.id) || directIds.has(item.agentId)) || null;
+}
+
+function getOpsAgentActivity(agent = {}, activations = [], orchestration = {}) {
+  const activation = getOpsAgentActivation(agent, activations);
+  const runtimeStatus = agent.runtimeStatus || agent.mode || 'planned';
+  const feeds = orchestration?.continuousLearning?.dataFeeds || [];
+  const dataCount = feeds.reduce((sum, feed) => sum + Number(feed.count || 0), 0);
+  const executiveSyntheticActivation = agent.id === 'executive-director-agent' && (activation || dataCount || (orchestration?.activations || []).length);
+  const effectiveActivation = activation || (executiveSyntheticActivation
+    ? {
+      mode: 'active',
+      reason: 'Centralise les donnees, arbitre les priorites et route les agents utiles.',
+      tool: 'run_orchestrator'
+    }
+    : null);
+  const live = ['active', 'live', 'partial', 'standby', 'collect', 'monitor'].includes(runtimeStatus)
+    || ['active', 'live', 'partial', 'collect', 'monitor'].includes(effectiveActivation?.mode || '');
+  const executable = agent.executable !== false;
+  const statusLabel = effectiveActivation?.mode === 'active'
+    ? 'Travaille maintenant'
+    : effectiveActivation?.mode === 'collect'
+      ? 'Collecte les donnees'
+      : effectiveActivation?.mode === 'monitor'
+        ? 'Surveillance'
+        : runtimeStatus === 'live'
+          ? 'Actif'
+          : runtimeStatus === 'partial'
+            ? 'Actif supervise'
+            : runtimeStatus === 'standby'
+              ? 'Actif encadre'
+              : executable
+                ? 'Disponible'
+                : 'Lecture seule';
+  const statusClass = effectiveActivation?.mode === 'active'
+    ? 'working'
+    : effectiveActivation?.mode === 'monitor' || effectiveActivation?.mode === 'collect'
+      ? 'watching'
+      : live && executable
+        ? 'ready'
+        : 'standby';
+  return {
+    activation: effectiveActivation,
+    live,
+    executable,
+    statusLabel,
+    statusClass,
+    headline: effectiveActivation?.reason || agent.mission || 'Agent repertorie dans l’ecosysteme.',
+    workTrigger: OPS_AGENT_WORK_TRIGGERS[agent.id] || 'Travaille quand son domaine est touche par une reservation, un signal ou un rapport.',
+    dataLabel: dataCount ? `${dataCount} lignes/signalements disponibles sur cette periode` : 'Attend les donnees du centre et du planning.',
+    currentTool: effectiveActivation?.tool || (agent.tools || [])[0] || 'lecture',
+    nextAction: effectiveActivation?.nextAction || (agent.guardrails || [])[0] || 'Surveillance sans action externe directe.'
+  };
+}
+
+function getSelectedOpsAgent(agents = [], activations = []) {
+  if (!agents.length) return null;
+  const selected = agents.find(agent => agent.id === selectedOpsAgentId);
+  if (selected) return selected;
+  const active = agents.find(agent => getOpsAgentActivation(agent, activations)?.mode === 'active');
+  selectedOpsAgentId = (active || agents[0]).id;
+  return active || agents[0];
+}
+
+function selectOpsAgent(agentId) {
+  selectedOpsAgentId = agentId || '';
+  if (state.view === 'admin') {
+    renderAdminDashboard();
+  } else {
+    renderOpsAdmin();
+  }
+}
+
+function renderOpsAgentNode(agent, selectedAgent, activity) {
+  const selected = selectedAgent?.id === agent.id;
+  const tools = (agent.tools || []).slice(0, 2).join(' • ');
+  return `
+    <button class="ai-org-node ${escapeHtml(activity.statusClass)}${selected ? ' selected' : ''}" type="button" onclick="selectOpsAgent('${escapeJsString(agent.id)}')">
+      <span class="ai-agent-avatar"><span></span></span>
+      <span class="ai-agent-body">
+        <span class="ai-agent-kicker">${escapeHtml(OPS_AGENT_DEPARTMENT_LABELS[agent.department] || agent.department || 'Agent')}</span>
+        <strong>${escapeHtml(agent.title || agent.id)}</strong>
+        <small>${escapeHtml(activity.statusLabel)}</small>
+        <em>${escapeHtml(tools || activity.currentTool)}</em>
+      </span>
+      <span class="ai-agent-state" aria-hidden="true"></span>
+    </button>`;
+}
+
+function buildOpsAgentOrgTree(ecosystem, agents = []) {
+  const topAgent = agents.find(agent => agent.id === 'executive-director-agent') || agents[0];
+  const nodes = new Map();
+  const children = new Map();
+  const addChild = (parentId, childId) => {
+    if (!parentId || !childId || parentId === childId) return;
+    if (!children.has(parentId)) children.set(parentId, []);
+    if (!children.get(parentId).includes(childId)) children.get(parentId).push(childId);
+  };
+
+  agents.forEach(agent => {
+    nodes.set(agent.id, { kind: 'agent', id: agent.id, order: Number(agent.order || 99), agent });
+  });
+
+  (ecosystem.hierarchy || []).forEach(node => {
+    if (node.id === 'executive-director') return;
+    nodes.set(node.id, {
+      kind: 'manager',
+      id: node.id,
+      order: Number(node.order || 50),
+      title: node.title,
+      role: node.role,
+      reportsTo: node.reportsTo
+    });
+  });
+
+  (ecosystem.hierarchy || []).forEach(node => {
+    if (node.id === 'executive-director') return;
+    const parent = node.reportsTo === 'executive-director' ? topAgent.id : node.reportsTo;
+    addChild(nodes.has(parent) ? parent : topAgent.id, node.id);
+  });
+
+  agents.forEach(agent => {
+    if (agent.id === topAgent.id) return;
+    let parent = agent.reportsTo || topAgent.id;
+    if (parent === 'executive-director') parent = topAgent.id;
+    if (!nodes.has(parent)) parent = topAgent.id;
+    addChild(parent, agent.id);
+  });
+
+  return { rootId: topAgent.id, nodes, children };
+}
+
+function renderOpsManagerNode(node, childCount = 0) {
+  return `
+    <div class="ai-manager-node">
+      <span>Manager IA</span>
+      <strong>${escapeHtml(node.title || node.id)}</strong>
+      <small>${escapeHtml(node.role || 'Coordonne les agents de son pole.')}</small>
+      <em>${Number(childCount || 0)} agent(s)</em>
+    </div>`;
+}
+
+function renderOpsOrgBranch(nodeId, tree, selectedAgent, activations, orchestration) {
+  const node = tree.nodes.get(nodeId);
+  if (!node) return '';
+  const childIds = [...(tree.children.get(nodeId) || [])].sort((leftId, rightId) => {
+    const left = tree.nodes.get(leftId);
+    const right = tree.nodes.get(rightId);
+    return Number(left?.order || 99) - Number(right?.order || 99);
+  });
+  const nodeMarkup = node.kind === 'agent'
+    ? renderOpsAgentNode(node.agent, selectedAgent, getOpsAgentActivity(node.agent, activations, orchestration))
+    : renderOpsManagerNode(node, childIds.length);
+  return `
+    <li class="${node.kind === 'manager' ? 'manager-branch' : 'agent-branch'}">
+      ${nodeMarkup}
+      ${childIds.length ? `<ul>${childIds.map(childId => renderOpsOrgBranch(childId, tree, selectedAgent, activations, orchestration)).join('')}</ul>` : ''}
+    </li>`;
+}
+
+function renderOpsCompactAgentPyramid(ecosystem, agents = [], selectedAgent, activations = [], orchestration = {}) {
+  const topAgent = agents.find(agent => agent.id === 'executive-director-agent') || agents[0];
+  const topActivity = getOpsAgentActivity(topAgent, activations, orchestration);
+  const hierarchy = ecosystem.hierarchy || [];
+  const managerById = Object.fromEntries(hierarchy.map(node => [node.id, node]));
+  const groups = [
+    {
+      id: 'direction-core',
+      title: 'Direction centrale',
+      role: 'Orchestration, reporting, finance et decisions multi-centres.',
+      department: 'direction',
+      agents: agents.filter(agent => agent.department === 'direction' && agent.id !== topAgent.id)
+    },
+    {
+      ...(managerById['ops-director'] || {}),
+      id: 'ops-director',
+      department: 'operations',
+      agents: agents.filter(agent => agent.department === 'operations')
+    },
+    {
+      ...(managerById['customer-director'] || {}),
+      id: 'customer-director',
+      department: 'customer',
+      agents: agents.filter(agent => agent.department === 'customer')
+    },
+    {
+      ...(managerById['risk-director'] || {}),
+      id: 'risk-director',
+      department: 'risk_quality',
+      agents: agents.filter(agent => agent.department === 'risk_quality')
+    },
+    {
+      ...(managerById['growth-director'] || {}),
+      id: 'growth-director',
+      department: 'product_market',
+      agents: agents.filter(agent => agent.department === 'product_market')
+    }
+  ].map(group => ({
+    ...group,
+    title: group.title || OPS_AGENT_DEPARTMENT_LABELS[group.department] || group.id,
+    role: group.role || 'Coordonne les agents de son pole.',
+    agents: [...(group.agents || [])].sort((a, b) => Number(a.order || 99) - Number(b.order || 99))
+  }));
+
+  return `
+    <div class="ai-compact-pyramid">
+      <div class="ai-compact-root">
+        ${renderOpsAgentNode(topAgent, selectedAgent, topActivity)}
+      </div>
+      <div class="ai-compact-spine"></div>
+      <div class="ai-compact-manager-grid">
+        ${groups.map(group => `
+          <section class="ai-compact-manager">
+            ${renderOpsManagerNode(group, group.agents.length)}
+            <div class="ai-compact-link"></div>
+            <div class="ai-compact-agents">
+              ${group.agents.map(agent => renderOpsAgentNode(agent, selectedAgent, getOpsAgentActivity(agent, activations, orchestration))).join('')}
+            </div>
+          </section>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function renderOpsAgentDetail(agent, activity, connectors = []) {
+  if (!agent) return '';
+  const relatedConnectors = connectors.filter(connector => {
+    const haystack = `${agent.tools?.join(' ') || ''} ${agent.permissions?.join(' ') || ''} ${agent.mission || ''}`.toLowerCase();
+    return haystack.includes(connector.id) || haystack.includes(String(connector.label || '').split(' ')[0].toLowerCase());
+  }).slice(0, 4);
+  const connectorList = relatedConnectors.length ? relatedConnectors : connectors.slice(0, 3);
+  return `
+    <aside class="ai-detail-panel">
+      <div class="ai-detail-head">
+        <div>
+          <span class="ops-eyebrow">${escapeHtml(OPS_AGENT_DEPARTMENT_LABELS[agent.department] || agent.department || 'Agent')}</span>
+          <h3>${escapeHtml(agent.title || agent.id)}</h3>
+          <p>${escapeHtml(agent.mission || '')}</p>
+        </div>
+        <span class="ai-detail-status ${escapeHtml(activity.statusClass)}"><i></i>${escapeHtml(activity.statusLabel)}</span>
+      </div>
+      <div class="ai-detail-section primary">
+        <span>Activite actuelle</span>
+        <strong>${escapeHtml(activity.headline)}</strong>
+      </div>
+      <div class="ai-detail-grid">
+        <div class="ai-detail-section">
+          <span>Quand il travaille</span>
+          <p>${escapeHtml(activity.workTrigger)}</p>
+        </div>
+        <div class="ai-detail-section">
+          <span>Donnees lues</span>
+          <p>${escapeHtml(activity.dataLabel)}</p>
+        </div>
+        <div class="ai-detail-section">
+          <span>Outils</span>
+          <p>${escapeHtml((agent.tools || []).join(' • ') || activity.currentTool)}</p>
+        </div>
+        <div class="ai-detail-section">
+          <span>Permissions</span>
+          <p>${escapeHtml((agent.permissions || []).join(' • ') || 'Lecture uniquement')}</p>
+        </div>
+      </div>
+      <div class="ai-detail-section">
+        <span>Garde-fous</span>
+        <ul>${(agent.guardrails || ['Aucune action sensible sans regle claire.']).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+      </div>
+      <div class="ai-detail-section">
+        <span>Connecteurs utiles</span>
+        <div class="ai-connector-strip">
+          ${connectorList.map(connector => {
+            const connectorState = connector.configured ? 'connecte' : ['blocked', 'degraded'].includes(connector.status) ? 'a configurer' : 'prevu';
+            return `<b class="${escapeHtml(connector.status || '')}">${escapeHtml(connector.label || connector.id)} <small>${escapeHtml(connectorState)}</small></b>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="ai-detail-section">
+        <span>Prochaine decision</span>
+        <p>${escapeHtml(activity.nextAction)}</p>
+      </div>
+    </aside>`;
+}
+
+function buildOpsLiveProblems(ecosystem, agents, activations, orchestration, connectors) {
+  const problems = [];
+  const footprint = orchestration?.footprint || {};
+  const backlog = orchestration?.continuousLearning?.actions || ecosystem?.implementationBacklog || [];
+  const blockingConnectors = (connectors || []).filter(connector => ['blocked', 'degraded'].includes(connector.status) || connector.configured === false);
+  const inactiveCritical = agents.filter(agent => {
+    const activity = getOpsAgentActivity(agent, activations, orchestration);
+    return ['executive-director-agent', 'orchestrator-agent', 'planning-manager-agent'].includes(agent.id)
+      && activity.statusClass === 'standby';
+  });
+
+  if (blockingConnectors.length) {
+    problems.push({
+      level: 'warning',
+      title: 'Connecteur à surveiller',
+      text: blockingConnectors.slice(0, 3).map(item => item.label || item.id).join(', '),
+    });
+  }
+  if (inactiveCritical.length) {
+    problems.push({
+      level: 'high',
+      title: 'Agent critique pas assez actif',
+      text: inactiveCritical.slice(0, 2).map(item => item.title || item.id).join(', '),
+    });
+  }
+  if (backlog.length) {
+    const first = backlog[0];
+    problems.push({
+      level: first.priority === 'P0' ? 'high' : 'info',
+      title: first.title || first.id || 'Amélioration détectée',
+      text: first.reason || (first.steps || []).slice(0, 2).join(' • ') || 'Suggestion agent prête à examiner.',
+    });
+  }
+  if (!Number(footprint.reservations || 0) && !Number(footprint.communications || 0) && !Number(footprint.events || 0)) {
+    problems.push({
+      level: 'info',
+      title: 'Peu de données sur la période',
+      text: 'Les agents restent actifs, mais ils ont besoin de réservations, mails ou événements pour apprendre vraiment.',
+    });
+  }
+  if (!problems.length) {
+    problems.push({
+      level: 'ok',
+      title: 'Aucun blocage majeur',
+      text: 'Les agents lisent les données disponibles et gardent les garde-fous actifs.',
+    });
+  }
+  return problems.slice(0, 4);
+}
+
+function renderOpsAgentLiveBoard(ecosystem, agents, selectedAgent, activations, orchestration, connectors = []) {
+  const problems = buildOpsLiveProblems(ecosystem, agents, activations, orchestration, connectors);
+  const footprint = orchestration?.footprint || {};
+  const agentRows = agents.map(agent => {
+    const activity = getOpsAgentActivity(agent, activations, orchestration);
+    const selected = selectedAgent?.id === agent.id;
+    return `
+      <button type="button" class="ai-live-agent ${selected ? 'selected' : ''}" onclick="selectOpsAgent('${escapeJsString(agent.id)}')">
+        <span class="ai-live-dot ${escapeHtml(activity.statusClass)}"></span>
+        <span>
+          <strong>${escapeHtml(agent.title || agent.id)}</strong>
+          <small>${escapeHtml(activity.headline)}</small>
+        </span>
+        <em>${escapeHtml(activity.currentTool || 'lecture')}</em>
+      </button>`;
+  }).join('');
+  const workingCount = agents.filter(agent => getOpsAgentActivity(agent, activations, orchestration).statusClass === 'working').length;
+  const watchedRows = [
+    `${Number(footprint.reservations || 0)} réservation(s)`,
+    `${Number(footprint.communications || 0)} mail(s)`,
+    `${Number(footprint.events || 0)} événement(s)`,
+    `${Number(activations.length || 0)} signal(aux) agents`,
+  ];
+
+  return `
+    <section class="ai-live-board">
+      <div class="ai-live-summary">
+        <div>
+          <span class="ops-eyebrow">Analyse instantanée</span>
+          <h3>Problèmes et activité agents</h3>
+          <p>Lecture en direct des signaux utiles: ce qui bloque, qui travaille, et quelle décision doit suivre.</p>
+        </div>
+        <div class="ai-live-kpis">
+          <span><strong>${workingCount}</strong> actifs</span>
+          <span><strong>${connectors.filter(item => item.configured).length}</strong> connectés</span>
+          <span><strong>${watchedRows.length}</strong> flux lus</span>
+        </div>
+      </div>
+      <div class="ai-problem-grid">
+        ${problems.map(problem => `
+          <article class="ai-problem-card ${escapeHtml(problem.level)}">
+            <span>${escapeHtml(problem.level === 'high' ? 'Critique' : problem.level === 'warning' ? 'Attention' : problem.level === 'ok' ? 'OK' : 'Info')}</span>
+            <strong>${escapeHtml(problem.title)}</strong>
+            <p>${escapeHtml(problem.text)}</p>
+          </article>
+        `).join('')}
+      </div>
+      <div class="ai-live-columns">
+        <div class="ai-live-activity">
+          <div class="ai-live-column-head">
+            <strong>Agents en temps réel</strong>
+            <small>${agents.length} rôles surveillés</small>
+          </div>
+          <div class="ai-agent-activity-grid">${agentRows}</div>
+        </div>
+        <div class="ai-live-activity compact">
+          <div class="ai-live-column-head">
+            <strong>Données lues maintenant</strong>
+            <small>Base réelle + simulation</small>
+          </div>
+          ${watchedRows.map(row => `<div class="ai-live-data-row">${escapeHtml(row)}</div>`).join('')}
+          <div class="ai-live-next">
+            <span>Prochaine décision</span>
+            <strong>${escapeHtml(getOpsAgentActivity(selectedAgent, activations, orchestration).nextAction || 'Continuer la surveillance.')}</strong>
+          </div>
+        </div>
+      </div>
+    </section>`;
+}
+
+function renderOpsAgentEcosystem(ecosystem, activations = [], orchestration = {}) {
+  if (!ecosystem?.agents?.length) return '';
+  const agents = [...ecosystem.agents].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+  const connectors = ecosystem.connectors || [];
+  const selectedAgent = getSelectedOpsAgent(agents, activations);
+
+  return `
+    <section class="ai-org-shell">
+      <div class="ai-org-toolbar">
+        <div>
+          <span class="ops-eyebrow">Entreprise IA</span>
+          <h3>Super Agent Team</h3>
+          <p>${escapeHtml(ecosystem.mission || 'Ecosysteme IA Fun Galaxy.')}</p>
+        </div>
+        <div class="ai-org-metrics">
+          <span><strong>${Number(ecosystem.summary?.agents || agents.length)}</strong> agents</span>
+          <span><strong>${Number(ecosystem.summary?.connectedConnectors || 0)}/${Number(ecosystem.summary?.connectors || connectors.length)}</strong> connecteurs</span>
+          <span><strong>${activations.length}</strong> signaux live</span>
+        </div>
+      </div>
+      <div class="ai-org-layout">
+        <div class="ai-org-canvas" aria-label="Organigramme IA Fun Galaxy">
+          ${renderOpsCompactAgentPyramid(ecosystem, agents, selectedAgent, activations, orchestration)}
+        </div>
+        ${renderOpsAgentLiveBoard(ecosystem, agents, selectedAgent, activations, orchestration, connectors)}
+      </div>
+    </section>`;
+}
+
+function renderOpsAgentStack() {
+  const payload = opsAdminCache.agentStack || adminDashboardCache.agentStack;
+  const stack = payload?.stack || null;
+  const orchestration = payload?.orchestration || null;
+  const ecosystem = payload?.ecosystem || null;
+  if (!stack) {
+    return `<div class="empty-state"><div class="e-title">Stack IA indisponible</div><div class="e-sub">Le registre agents/skills sera affiche ici apres actualisation.</div></div>`;
+  }
+  const audit = payload.audit || {};
+  const activations = orchestration?.activations || [];
+  const runtimeAgents = activations.filter(item => item.mode === 'active' && item.executable !== false);
+  const monitorAgents = activations.filter(item => item.mode === 'monitor' || item.mode === 'collect');
+  const footprint = orchestration?.footprint || {};
+  const backlog = orchestration?.continuousLearning?.actions || stack.nextActions || stack.implementationBacklog || [];
+  const agentUsage = orchestration?.agentUsage || (stack.agents || []).map(agent => ({
+    ...agent,
+    runtimeUse: agent.status === 'live' ? 'runtime' : agent.status === 'new' ? 'disponible' : 'lecture',
+    reason: agent.mission,
+  }));
+  return `
+    <div class="ops-grid">
+      <div class="ops-stat"><div class="k">Agents runtime</div><div class="v">${runtimeAgents.length}</div></div>
+      <div class="ops-stat"><div class="k">Surveillance</div><div class="v">${monitorAgents.length}</div></div>
+      <div class="ops-stat"><div class="k">Données lues</div><div class="v">${Number(footprint.reservations || 0) + Number(footprint.communications || 0) + Number(footprint.events || 0)}</div></div>
+      <div class="ops-stat"><div class="k">Audit</div><div class="v">${audit.ok ? 'OK' : '!'}</div></div>
+    </div>
+    ${ecosystem ? renderOpsAgentEcosystem(ecosystem, activations, orchestration) : ''}
+    <div class="ops-list">
+      ${(orchestration?.continuousLearning?.dataFeeds || []).map(feed => `
+        <div class="ops-row template">
+          <div><span class="ops-pill ${escapeHtml(feed.status || '')}">${escapeHtml(feed.status || 'data')}</span></div>
+          <div><div class="title">${escapeHtml(feed.id || 'data')}</div><div class="meta">${escapeHtml(feed.use || '')}</div></div>
+          <span class="ops-pill">${Number(feed.count || 0)}</span>
+        </div>
+      `).join('')}
+      ${(stack.recommendations || []).slice(0, 3).map(item => `
+        <div class="ops-row template">
+          <div><span class="ops-pill">Principe</span></div>
+          <div><div class="title">${escapeHtml(item)}</div><div class="meta">Regle d'architecture IA Fun Galaxy</div></div>
+          <span class="ops-pill">Actif</span>
+        </div>
+      `).join('')}
+      ${(!ecosystem ? agentUsage : []).map(agent => `
+        <div class="ops-row">
+          <div>
+            <span class="ops-pill ${escapeHtml(agent.runtimeUse || agent.status || '')}">${escapeHtml(agent.runtimeUse || agent.status || 'roadmap')}</span>
+            <div class="meta" style="margin-top:7px;">${escapeHtml(agent.status || 'catalogue')}</div>
+          </div>
+          <div>
+            <div class="title">${escapeHtml(agent.label || agent.id)}</div>
+            <div class="meta">${escapeHtml((agent.skills || []).slice(0, 4).join(' • ') || agent.id)}</div>
+          </div>
+          <div class="meta">${escapeHtml(agent.reason || agent.mission || '')}</div>
+          <span class="ops-pill">${escapeHtml(agent.executable ? (agent.useful === false ? 'repos' : 'handler') : 'catalogue')}</span>
+        </div>
+      `).join('')}
+      ${backlog.slice(0, 5).map(item => `
+        <div class="ops-row template">
+          <div><span class="ops-pill ${escapeHtml(item.status || '')}">${escapeHtml(item.priority || 'P')}</span></div>
+          <div><div class="title">${escapeHtml(item.title || item.id)}</div><div class="meta">${escapeHtml(item.reason || (item.steps || []).slice(0, 3).join(' • '))}</div></div>
+          <span class="ops-pill">${escapeHtml(item.safeAutomation || item.status || 'ready')}</span>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function renderOpsEvents() {
+  const events = opsAdminCache.events || [];
+  if (!events.length) {
+    return `<div class="empty-state"><div class="e-title">Journal encore vide</div><div class="e-sub">Les retards, no-shows, incidents bowling/laser et corrections staff alimenteront l’apprentissage ici.</div></div>`;
+  }
+  return `<div class="ops-list">
+    ${events.map(item => `
+      <div class="ops-row">
+        <div>
+          <span class="ops-pill">${escapeHtml(item.eventType || 'event')}</span>
+          <div class="meta" style="margin-top:7px;">${escapeHtml(formatOpsTimestamp(item.createdAt))}</div>
+        </div>
+        <div>
+          <div class="title">${escapeHtml(item.activityType || 'Opération')}</div>
+          <div class="meta">${escapeHtml(item.reasonId || 'Signal terrain')}</div>
+        </div>
+        <div class="meta">${escapeHtml(`${item.plannedStart || '--:--'} → ${item.actualEnd || item.actualStart || '--:--'} • ${item.actualMinutes || item.plannedMinutes || 0} min`)}</div>
+        <span class="ops-pill">${escapeHtml(item.centerId || 'centre')}</span>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function getSimulationDate() {
+  return state.view === 'admin' ? (state.adminDate || todayStr()) : (state.currentDate || todayStr());
+}
+
+function storeOpsSimulationPayload(payload) {
+  opsAdminCache = {
+    ...opsAdminCache,
+    simulation: payload,
+    loaded: opsAdminCache.loaded || Boolean(payload),
+    loading: false,
+  };
+  adminDashboardCache = {
+    ...adminDashboardCache,
+    simulation: payload,
+  };
+  try {
+    const key = getAdminOpsCacheKey(getActiveOpsCenterId());
+    if (adminOpsCacheByCenter[key]) {
+      adminOpsCacheByCenter[key] = { ...adminOpsCacheByCenter[key], simulation: payload };
+    }
+  } catch (error) {}
+}
+
+function getOpsSimulationPayload() {
+  return opsAdminCache.simulation || adminDashboardCache.simulation || null;
+}
+
+function renderOpsSimulationStats(stats = {}, run = null) {
+  const progress = run?.totalSteps ? Math.round((Number(run.stepIndex || 0) / Number(run.totalSteps || 1)) * 100) : 0;
+  const alternatives = Number(stats.alternativesOffered || 0);
+  const hardRefusals = Number(stats.hardRefusals || 0);
+  return `
+    <div class="ops-grid">
+      <div class="ops-stat"><div class="k">Progression</div><div class="v">${run ? `${progress}%` : '--'}</div></div>
+      <div class="ops-stat"><div class="k">Réservations créées</div><div class="v">${Number(stats.created || 0)}</div></div>
+      <div class="ops-stat"><div class="k">Alternatives proposées</div><div class="v">${alternatives}</div></div>
+      <div class="ops-stat"><div class="k">Refus sans solution</div><div class="v">${hardRefusals}</div></div>
+      <div class="ops-stat"><div class="k">Retards joués</div><div class="v">${Number(stats.delays || 0)}</div></div>
+      <div class="ops-stat"><div class="k">Mails simulés</div><div class="v">${Number(stats.mailsDrafted || 0)}</div></div>
+      <div class="ops-stat"><div class="k">Actions jouées</div><div class="v">${Number(run?.stepIndex || 0)}</div></div>
+      <div class="ops-stat"><div class="k">Erreurs moteur</div><div class="v">${Number(stats.errors || 0)}</div></div>
+    </div>`;
+}
+
+function buildOpsTrainingReport(payload = {}) {
+  const run = payload?.run || null;
+  const stats = payload?.stats || run?.payload?.stats || {};
+  const logs = payload?.logs || [];
+  const communications = payload?.communications || [];
+  const reservations = payload?.snapshot?.reservations || [];
+  const progress = run?.totalSteps ? Math.round((Number(run.stepIndex || 0) / Number(run.totalSteps || 1)) * 100) : 0;
+  const errors = Number(stats.errors || 0);
+  const refused = Number(stats.refused || 0);
+  const alternatives = Number(stats.alternativesOffered || 0);
+  const hardRefusals = Number(stats.hardRefusals || Math.max(0, refused - alternatives));
+  const rescuedRefusals = Number(stats.rescuedRefusals || alternatives);
+  const created = Number(stats.created || reservations.length || 0);
+  const delays = Number(stats.delays || 0);
+  const mails = Number(stats.mailsDrafted || communications.length || 0);
+  const orchestrations = Number(stats.orchestrations || logs.filter(log => log.agentId === 'orchestrator-agent').length || 0);
+  const finishedBonus = run?.status === 'finished' ? 8 : 0;
+  const coverageScore = Math.min(35, Math.round(progress * .22)
+    + (Number(stats.plannedBowling || 0) ? 3 : 0)
+    + (Number(stats.plannedLaser || 0) ? 3 : 0)
+    + (Number(stats.plannedFormulas || 0) ? 4 : 0)
+    + (delays ? 3 : 0));
+  const score = Math.max(0, Math.min(100, 58 + coverageScore + finishedBonus - errors * 18 - hardRefusals * 5 - Math.max(0, refused - alternatives - created) * 1));
+  const agents = logs.reduce((acc, log) => {
+    const id = log.agentId || 'agent';
+    acc[id] = (acc[id] || 0) + 1;
+    return acc;
+  }, {});
+  const agentMeters = Object.entries(agents)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 8);
+  const cases = [
+    {
+      title: 'Charge multi-jours',
+      ok: Number(stats.daysCovered || 0) >= 7,
+      detail: `${Number(stats.daysCovered || 0)} jour(s) couverts, ${Number(stats.plannedSteps || 0)} actions prevues.`
+    },
+    {
+      title: 'Mix Bowling / Laser / Formules',
+      ok: Number(stats.plannedBowling || 0) && Number(stats.plannedLaser || 0) && Number(stats.plannedFormulas || 0),
+      detail: `${Number(stats.plannedBowling || 0)} bowling, ${Number(stats.plannedLaser || 0)} laser, ${Number(stats.plannedFormulas || 0)} formules.`
+    },
+    {
+      title: 'Retards et incidents',
+      ok: delays > 0,
+      detail: `${delays} retard(s) joues, ${Number(stats.events || 0)} evenement(s) terrain.`
+    },
+    {
+      title: 'Communication client',
+      ok: mails > 0,
+      detail: `${mails} mail(s) simules, aucun envoi vers vrais clients.`
+    },
+    {
+      title: 'Orchestrateur',
+      ok: orchestrations > 0,
+      detail: `${orchestrations} lecture(s) orchestration / direction.`
+    },
+    {
+      title: 'Alternatives aux refus',
+      ok: alternatives > 0 || refused === 0,
+      danger: hardRefusals > 0,
+      detail: `${alternatives} proposition(s), ${hardRefusals} refus sans solution.`
+    },
+    {
+      title: 'Robustesse moteur',
+      ok: errors === 0,
+      danger: errors > 0,
+      detail: errors ? `${errors} erreur(s) technique(s) a corriger.` : 'Aucune erreur moteur detectee.'
+    }
+  ];
+  const nextActions = [];
+  if (!run) nextActions.push('Lancer un rush accelere pour creer une base visible.');
+  if (progress < 100 && run) nextActions.push('Jouer toute la simulation pour obtenir un score complet.');
+  if (!delays) nextActions.push('Ajouter ou jouer des retards pour entrainer le Delay Agent.');
+  if (!mails) nextActions.push('Verifier que les mails simules sont generes dans le run.');
+  if (hardRefusals) nextActions.push('Analyser les refus sans solution et elargir les alternatives proposees.');
+  if (errors) nextActions.push('Ouvrir les logs rouges: seules les erreurs sans alternative doivent rester critiques.');
+  if (!nextActions.length) nextActions.push('Comparer ce run avec un prochain rush pour voir si les decisions s ameliorent.');
+  return {
+    score,
+    progress,
+    created,
+    refused,
+    alternatives,
+    hardRefusals,
+    rescuedRefusals,
+    delays,
+    mails,
+    errors,
+    agentMeters,
+    cases,
+    nextActions,
+  };
+}
+
+function renderOpsTrainingLab(payload = {}) {
+  const report = buildOpsTrainingReport(payload);
+  const maxAgentCount = Math.max(1, ...report.agentMeters.map(([, count]) => count));
+  return `
+    <div class="ops-training-board">
+      <div class="ops-training-card">
+        <span class="ops-pill">Training Lab IA</span>
+        <h3>Banc d'essai visible</h3>
+        <p>On n'entraine pas un modele en secret: on fait tourner des scenarios, on mesure les erreurs, on journalise les decisions, puis les agents proposent des corrections approuvables.</p>
+        <div class="ops-training-score">
+          <strong>${report.score}</strong>
+          <small>/100 robustesse actuelle</small>
+        </div>
+        <div class="ops-sim-progress"><span style="width:${report.progress}%"></span></div>
+        <p>${report.created} reservation(s) creees, ${report.alternatives} alternative(s), ${report.hardRefusals} refus sans solution, ${report.delays} retard(s), ${report.errors} erreur(s) technique(s).</p>
+        <div class="ops-sim-actions">
+          <button class="ops-admin-btn primary" onclick="startOpsSimulation()">Nouveau test complet</button>
+          <button class="ops-admin-btn" onclick="fastForwardOpsSimulation()">Jouer tout</button>
+          <button class="ops-admin-btn" onclick="stepOpsSimulation(40)">Stress +40</button>
+        </div>
+      </div>
+      <div class="ops-training-card">
+        <span class="ops-pill">Couverture</span>
+        <h3>Ce qui est teste</h3>
+        <div class="ops-training-matrix">
+          ${report.cases.map(test => `<div class="ops-training-case ${test.danger ? 'danger' : test.ok ? 'ok' : 'warn'}">
+            <strong>${escapeHtml(test.title)}</strong>
+            <span>${escapeHtml(test.detail)}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div class="ops-training-card">
+        <span class="ops-pill">Agents</span>
+        <h3>Qui travaille pendant le test</h3>
+        <div class="ops-agent-meters">
+          ${report.agentMeters.length ? report.agentMeters.map(([agentId, count]) => `
+            <div class="ops-agent-meter">
+              <strong>${escapeHtml(agentId)}</strong>
+              <span class="bar"><i style="--value:${Math.round((count / maxAgentCount) * 100)}%"></i></span>
+              <span>${count}</span>
+            </div>
+          `).join('') : `<p>Aucun agent journalise pour le moment. Lance ou avance une simulation.</p>`}
+        </div>
+      </div>
+      <div class="ops-training-card">
+        <span class="ops-pill">Amelioration</span>
+        <h3>Prochaines corrections</h3>
+        <div class="ops-sim-timeline">
+          ${report.nextActions.map(action => `<div class="ops-sim-timeline-item"><strong>Action</strong><span>${escapeHtml(action)}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderOpsSimulation() {
+  const payload = getOpsSimulationPayload();
+  const run = payload?.run || null;
+  const stats = payload?.stats || run?.payload?.stats || {};
+  const logs = payload?.logs || [];
+  const timeline = run?.payload?.timeline || [];
+  const progress = run?.totalSteps ? Math.round((Number(run.stepIndex || 0) / Number(run.totalSteps || 1)) * 100) : 0;
+  const status = run?.status || 'idle';
+  const safety = run?.payload?.safety || 'isolated_simulation_no_real_dispatch';
+  const safetyLabel = safety === 'isolated_simulation_no_real_dispatch' || safety === 'simulation_only_no_real_dispatch'
+    ? 'Simulation isolée, aucun vrai message envoyé.'
+    : safety;
+
+  if (!payload && opsAdminCache.loading) {
+    return `<div class="empty-state"><div class="e-title">Chargement simulation</div><div class="e-sub">Lecture du dernier rush accéléré.</div></div>`;
+  }
+
+  const statusLabel = status === 'running' ? 'en cours' : status === 'finished' ? 'terminée' : status === 'failed' ? 'erreur' : 'prête';
+  const primaryAction = run?.status === 'running'
+    ? `<button class="ops-admin-btn primary" onclick="stepOpsSimulation(8)">Avancer 8 actions</button>`
+    : `<button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer rush accéléré</button>`;
+  const autoAction = run?.status === 'running'
+    ? `<button class="ops-admin-btn" onclick="${opsSimulationAutoRunning ? 'stopOpsSimulationAuto()' : 'resumeOpsSimulationAuto()'}">${opsSimulationAutoRunning ? 'Pause auto' : 'Lecture auto'}</button>`
+    : '';
+
+  return `
+    <div class="ops-sim-hero">
+      <div class="ops-sim-card">
+        <span class="ops-pill ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
+        <h3>Simulation rush terrain</h3>
+        <p>Agents client + staff, réservations bowling/laser/formules, retards, refus limites, mails brouillons et logs de décision. Tout est marqué simulation et ne part pas aux vrais clients.</p>
+        <div class="ops-sim-progress"><span style="width:${progress}%"></span></div>
+        <p>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions • vitesse x${Number(run.speedFactor || 0)} • ${escapeHtml(run.simDate || '')}` : `Aucun run actif pour ${escapeHtml(getSimulationDate())}.`}</p>
+        <div class="ops-sim-actions">
+          ${primaryAction}
+          ${autoAction}
+          <button class="ops-admin-btn" onclick="stepOpsSimulation(24)">Burst 24</button>
+          <button class="ops-admin-btn" onclick="fastForwardOpsSimulation()">Jouer tout</button>
+          <button class="ops-admin-btn" onclick="resetOpsSimulation()">Reset simulation</button>
+        </div>
+      </div>
+      <div class="ops-sim-card">
+        <span class="ops-pill">Pilote terrain</span>
+        <h3>Ce que ça prouve</h3>
+        <p>${escapeHtml(run?.payload?.fieldPilot?.mission || 'Le système doit montrer si l’algo aide le staff au lieu de rajouter une couche.')}</p>
+        <p style="margin-top:8px;">Sécurité: ${escapeHtml(safetyLabel)} Le canal mobile reste prêt côté code, mais il est masqué tant qu’aucun fournisseur n’est branché.</p>
+      </div>
+    </div>
+    ${renderOpsSimulationStats(stats, run)}
+    ${renderOpsTrainingLab(payload || {})}
+    <div class="ops-sim-hero">
+      <div class="ops-sim-card">
+        <h3>Timeline accélérée</h3>
+        <div class="ops-sim-timeline">
+          ${timeline.length ? timeline.slice(-12).reverse().map(item => `
+            <div class="ops-sim-timeline-item">
+              <strong>${escapeHtml(item.label || item.kind || 'Action')}</strong>
+              <span>${escapeHtml(`${item.kind || 'event'} • minute ${item.minute ?? '--'} • ${item.detail || ''}`)}</span>
+            </div>
+          `).join('') : `<p>Aucune action jouée pour le moment.</p>`}
+        </div>
+      </div>
+      <div class="ops-sim-card">
+        <h3>Derniers logs de décision</h3>
+        <div>
+          ${logs.length ? logs.slice(0, 12).map(log => `
+            <div class="ops-sim-log">
+              <div><span class="ops-pill ${escapeHtml(log.severity || '')}">${escapeHtml(log.severity || 'info')}</span><div class="meta">${escapeHtml(formatOpsTimestamp(log.createdAt))}</div></div>
+              <div><strong>${escapeHtml(log.decisionType || 'decision')}</strong><div class="meta">${escapeHtml(log.payload?.summary || log.payload?.error || log.payload?.action || log.payload?.reason || 'Décision journalisée.')}</div></div>
+              <div class="meta">${escapeHtml(log.agentId || 'agent')}<br>${log.reservationId ? `Réservation #${escapeHtml(log.reservationId)}` : 'Run global'}</div>
+            </div>
+          `).join('') : `<p>Aucun log pour l’instant.</p>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadOpsSimulationStatus(render = true) {
+  try {
+    const centerId = encodeURIComponent(getActiveOpsCenterId());
+    const date = encodeURIComponent(getSimulationDate());
+    const payload = await apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerId}&date=${date}`);
+    storeOpsSimulationPayload(payload);
+    if (render) renderOpsAdmin();
+    return payload;
+  } catch (error) {
+    if (render) toast(error.message || 'Simulation indisponible.');
+    return null;
+  }
+}
+
+async function startOpsSimulation() {
+  try {
+    stopOpsSimulationAuto(false);
+    const payload = await apiRequest(API_ENDPOINTS.simulation, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'start',
+        centerId: getActiveOpsCenterId(),
+        date: getSimulationDate(),
+        speedFactor: 96,
+        resetExisting: true,
+      })
+    });
+    storeOpsSimulationPayload(payload);
+    state.staffResourceView = 'all';
+    save();
+    renderOpsAdmin();
+    toast('Simulation rush lancée.');
+    opsSimulationAutoRunning = true;
+    await stepOpsSimulation(12, true);
+  } catch (error) {
+    toast(error.message || 'Impossible de lancer la simulation.');
+  }
+}
+
+function stopOpsSimulationAuto(render = true) {
+  opsSimulationAutoRunning = false;
+  clearTimeout(opsSimulationAutoTimer);
+  opsSimulationAutoTimer = null;
+  if (render) renderOpsAdmin();
+}
+
+function resumeOpsSimulationAuto() {
+  const run = getOpsSimulationPayload()?.run;
+  if (!run || run.status !== 'running') {
+    toast('Aucune simulation en cours.');
+    return;
+  }
+  opsSimulationAutoRunning = true;
+  renderOpsAdmin();
+  scheduleOpsSimulationLoop();
+}
+
+function scheduleOpsSimulationLoop() {
+  clearTimeout(opsSimulationAutoTimer);
+  if (!opsSimulationAutoRunning) return;
+  opsSimulationAutoTimer = setTimeout(() => {
+    stepOpsSimulation(12, true);
+  }, 450);
+}
+
+async function stepOpsSimulation(batchSize = 8, auto = false) {
+  const current = getOpsSimulationPayload();
+  const run = current?.run;
+  if (!run?.id || run.status !== 'running') {
+    if (!auto) toast('Lance une simulation avant de jouer les étapes.');
+    stopOpsSimulationAuto();
+    return;
+  }
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.simulation, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'step',
+        centerId: getActiveOpsCenterId(),
+        date: run.simDate || getSimulationDate(),
+        runId: run.id,
+        batchSize,
+      })
+    });
+    storeOpsSimulationPayload(payload);
+    renderOpsAdmin();
+    if (state.view === 'staff') {
+      await syncDateReservations(payload.run?.simDate || run.simDate || getSimulationDate(), { silent: true });
+    }
+    const nextRun = payload.run;
+    if (Date.now() - opsSimulationLastDashboardRefreshAt > 2500) {
+      opsSimulationLastDashboardRefreshAt = Date.now();
+      loadAdminDashboard(true);
+    }
+    if (nextRun?.status === 'running' && opsSimulationAutoRunning) {
+      scheduleOpsSimulationLoop();
+    } else {
+      stopOpsSimulationAuto(false);
+      if (!auto) toast('Simulation terminée.');
+      renderOpsAdmin();
+      loadAdminDashboard(true);
+    }
+  } catch (error) {
+    stopOpsSimulationAuto(false);
+    toast(error.message || 'Étape simulation impossible.');
+    renderOpsAdmin();
+  }
+}
+
+async function fastForwardOpsSimulation() {
+  const current = getOpsSimulationPayload();
+  const run = current?.run;
+  if (!run?.id) {
+    toast('Lance une simulation avant de jouer tout le test.');
+    return;
+  }
+  try {
+    stopOpsSimulationAuto(false);
+    const payload = await apiRequest(API_ENDPOINTS.simulation, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'fastForward',
+        centerId: getActiveOpsCenterId(),
+        date: run.simDate || getSimulationDate(),
+        runId: run.id,
+        batchSize: 40,
+      })
+    });
+    storeOpsSimulationPayload(payload);
+    renderOpsAdmin();
+    await loadAdminDashboard(true);
+    toast('Test IA complet joue.');
+  } catch (error) {
+    toast(error.message || 'Impossible de jouer tout le test.');
+  }
+}
+
+async function resetOpsSimulation() {
+  try {
+    stopOpsSimulationAuto(false);
+    const payload = await apiRequest(API_ENDPOINTS.simulation, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'reset',
+        centerId: getActiveOpsCenterId(),
+      })
+    });
+    storeOpsSimulationPayload(payload);
+    renderOpsAdmin();
+    await loadAdminDashboard(true);
+    toast('Données de simulation nettoyées.');
+  } catch (error) {
+    toast(error.message || 'Reset simulation impossible.');
+  }
+}
+
+function renderOpsAdmin(errorMessage = '') {
+  const panel = document.getElementById('opsAdminContent');
+  if (!panel) return;
+  const activeTab = state.opsPanelTab || 'communications';
+  ['Communications', 'Samples', 'Suggestions', 'Stack', 'Events', 'Simulation'].forEach(name => {
+    const button = document.getElementById(`opsTab${name}`);
+    if (button) button.classList.toggle('active', activeTab === name.toLowerCase());
+  });
+  if (!opsAdminCache.loaded && opsAdminCache.loading) {
+    panel.innerHTML = `<div class="empty-state"><div class="e-title">Chargement discret</div><div class="e-sub">La console prépare les mails, les modèles et les signaux agents.</div></div>`;
+    return;
+  }
+  if (errorMessage) {
+    panel.innerHTML = `<div class="empty-state"><div class="e-title">Console Ops indisponible</div><div class="e-sub">${escapeHtml(errorMessage)}</div></div>`;
+    return;
+  }
+  const updatedAt = opsAdminCache.lastLoadedAt ? `<div class="ops-refresh-note">Actualisé ${escapeHtml(formatOpsTimestamp(opsAdminCache.lastLoadedAt))}</div>` : '';
+  const content = activeTab === 'samples'
+    ? renderOpsSamples()
+    : activeTab === 'suggestions'
+      ? renderOpsSuggestions()
+      : activeTab === 'stack'
+        ? renderOpsAgentStack()
+        : activeTab === 'events'
+          ? renderOpsEvents()
+          : activeTab === 'simulation'
+            ? renderOpsSimulation()
+            : renderOpsCommunications();
+  panel.innerHTML = `${updatedAt}${content}`;
+}
+
+function previewOpsEmail(index, type = 'sample') {
+  const source = type === 'communication-visible'
+    ? getVisibleOpsCommunications()
+    : type === 'communication' ? opsAdminCache.communications : opsAdminCache.samples;
+  const item = source[index];
+  if (!item) return;
+  const html = item.html || item.body || `<pre>${escapeHtml(item.textBody || item.subject || '')}</pre>`;
+  const title = item.subject || getOpsTemplateLabel(item.templateId);
+  let overlay = document.getElementById('emailPreviewOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'emailPreviewOverlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.className = 'email-preview-overlay';
+  overlay.innerHTML = `
+    <div class="email-preview-card">
+      <div class="email-preview-head">
+        <strong>${escapeHtml(title)}</strong>
+        <button class="close-btn" onclick="closeEmailPreview()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <iframe class="email-preview-frame" sandbox="" srcdoc="${escapeHtml(html)}"></iframe>
+    </div>`;
+}
+
+function closeEmailPreview() {
+  const overlay = document.getElementById('emailPreviewOverlay');
+  if (overlay) overlay.remove();
+}
+
+async function dispatchOpsEmails() {
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'dispatchDue', limit: 25 })
+    });
+    if (state.view === 'admin') await loadAdminDashboard(true);
+    else await loadOpsAdmin(true);
+    toast(`${payload.checked || 0} message(s) vérifié(s) dans la file.`);
+  } catch (error) {
+    toast(error.message || 'Envoi des mails impossible.');
+  }
+}
+
+(function exposeOpsConsole(global) {
+  if (!global) return;
+  global.PinlaneOpsConsole = {
+    loadOpsAdmin,
+    renderOpsStats,
+    getVisibleOpsCommunications,
+    renderOpsCommunications,
+    renderOpsSamples,
+    renderOpsSuggestions,
+    getOpsAgentActivation,
+    getOpsAgentActivity,
+    getSelectedOpsAgent,
+    selectOpsAgent,
+    renderOpsAgentNode,
+    buildOpsAgentOrgTree,
+    renderOpsManagerNode,
+    renderOpsOrgBranch,
+    renderOpsCompactAgentPyramid,
+    renderOpsAgentDetail,
+    buildOpsLiveProblems,
+    renderOpsAgentLiveBoard,
+    renderOpsAgentEcosystem,
+    renderOpsAgentStack,
+    renderOpsEvents,
+    getSimulationDate,
+    storeOpsSimulationPayload,
+    getOpsSimulationPayload,
+    renderOpsSimulationStats,
+    buildOpsTrainingReport,
+    renderOpsTrainingLab,
+    renderOpsSimulation,
+    loadOpsSimulationStatus,
+    startOpsSimulation,
+    stopOpsSimulationAuto,
+    resumeOpsSimulationAuto,
+    scheduleOpsSimulationLoop,
+    stepOpsSimulation,
+    fastForwardOpsSimulation,
+    resetOpsSimulation,
+    renderOpsAdmin,
+    previewOpsEmail,
+    closeEmailPreview,
+    dispatchOpsEmails,
+  };
+})(typeof window !== 'undefined' ? window : globalThis);

@@ -1,0 +1,28 @@
+{
+  "scripts": {
+    "db:migrate": "node scripts/run-db-migrations.js",
+    "db:migrate:plan": "node scripts/run-db-migrations.js --plan",
+    "test:browser-modules": "node scripts/run-browser-module-tests.js",
+    "test:e2e": "node scripts/run-webapp-smoke-tests.js",
+    "test:ops": "node scripts/run-ops-tests.js",
+    "test:security-config": "node scripts/run-security-config-tests.js",
+    "test:agent-stack": "node scripts/run-agent-stack-tests.js",
+    "test:agent-orchestration": "node scripts/run-agent-orchestration-tests.js",
+    "test:marketing-agents": "node scripts/run-marketing-agent-tests.js",
+    "test:simulation": "node scripts/run-simulation-tests.js",
+    "test:quality": "node scripts/run-quality-audit.js",
+    "test:ops:stress": "node scripts/run-ops-stress.js",
+    "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
+    "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",
+    "test:ops:all": "npm run test:ops && npm run test:security-config && npm run test:browser-modules && npm run test:agent-stack && npm run test:agent-orchestration && npm run test:marketing-agents && npm run test:simulation && npm run test:ops:stress && npm run test:quality",
+    "worker:ops": "node workers/ops-worker.js",
+    "worker:once": "node workers/ops-worker.js --once"
+  },
+  "dependencies": {
+    "@vercel/functions": "^2.2.13",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.0"
+  }
+}

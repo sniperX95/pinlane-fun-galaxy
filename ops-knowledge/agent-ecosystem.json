@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-26",
+  "mission": "Faire tourner Fun Galaxy Ops comme une equipe IA: surveiller, proposer, communiquer, tester et aider la direction, sans donner a l'IA le droit d'inventer une disponibilite.",
+  "operatingModel": {
+    "humanEffortTarget": "Le fondateur ne doit intervenir que pour fournir les cles externes et valider les actions sensibles.",
+    "automationPolicy": "Automatiser lecture, analyse, brouillons, tests, rapports et relances simples. Garder validation humaine sur annulation, modification critique, regle planning et message sensible.",
+    "sourceOfTruth": "Postgres + moteur planning déterministe. Les agents lisent et proposent, le moteur tranche les disponibilités.",
+    "defaultCadence": "Orchestrateur en actualisation admin + cron quotidien. Rush board live a chaque rafraichissement staff."
+  },
+  "hierarchy": [
+    {
+      "id": "executive-director",
+      "title": "Directeur executif IA",
+      "reportsTo": null,
+      "order": 1,
+      "role": "Donne la priorite business, arbitre les agents et decide quoi remonter a la direction."
+    },
+    {
+      "id": "ops-director",
+      "title": "Directeur operations",
+      "reportsTo": "executive-director",
+      "order": 2,
+      "role": "Pilote planning, rush terrain, retards, Bowling, Laser Game et formules."
+    },
+    {
+      "id": "customer-director",
+      "title": "Directeur relation client",
+      "reportsTo": "executive-director",
+      "order": 3,
+      "role": "Gere confirmations, rappels, relances, erreurs mails et ton humain."
+    },
+    {
+      "id": "growth-director",
+      "title": "Directeur produit et marche",
+      "reportsTo": "executive-director",
+      "order": 4,
+      "role": "Analyse concurrents, UX, offres, opportunites et positionnement commercial."
+    },
+    {
+      "id": "risk-director",
+      "title": "Directeur risque et qualite",
+      "reportsTo": "executive-director",
+      "order": 5,
+      "role": "Controle securite, red team, tests, logs, gouvernance et limites d'autonomie."
+    }
+  ],
+  "agents": [
+    {
+      "id": "executive-director-agent",
+      "title": "Executive Director Agent",
+      "department": "direction",
+      "reportsTo": null,
+      "order": 1,
+      "mode": "orchestrates",
+      "runtime": "planned_llm",
+      "mission": "Lit tout le contexte, choisit les priorites et delegue aux managers IA.",
+      "tools": ["read_admin_range", "read_agent_stack", "run_orchestrator", "create_direction_summary"],
+      "permissions": ["read_all_centers", "create_suggestion", "request_human_approval"],
+      "guardrails": ["Ne modifie pas les réservations.", "Ne valide pas les disponibilités.", "Ne cache pas les risques."]
+    },
+    {
+      "id": "orchestrator-agent",
+      "title": "Chef d'orchestre IA",
+      "department": "direction",
+      "reportsTo": "executive-director-agent",
+      "order": 2,
+      "mode": "live",
+      "runtime": "deterministic",
+      "mission": "Route les agents selon les donnees reelles, les mails, les evenements et les risques.",
+      "tools": ["read_reservations", "read_communications", "read_events", "read_suggestions"],
+      "permissions": ["read_center", "create_suggestion"],
+      "guardrails": ["Analyse seulement.", "Persist suggestions dedupees.", "Aucune action externe directe."]
+    },
+    {
+      "id": "planning-manager-agent",
+      "title": "Planning Manager Agent",
+      "department": "operations",
+      "reportsTo": "ops-director",
+      "order": 3,
+      "mode": "live",
+      "runtime": "deterministic",
+      "mission": "Verifie que Bowling, Laser et Formules tiennent vraiment dans les capacites.",
+      "tools": ["plan_reservation", "simulate_availability", "validate_resources"],
+      "permissions": ["read_center", "read_reservations", "propose_plan"],
+      "guardrails": ["Le moteur planning est obligatoire.", "Un conflit bloque.", "Pas de slot client impossible."]
+    },
+    {
+      "id": "bowling-capacity-agent",
+      "title": "Bowling Capacity Agent",
+      "department": "operations",
+      "reportsTo": "planning-manager-agent",
+      "order": 4,
+      "mode": "live",
+      "runtime": "deterministic",
+      "mission": "Surveille pistes, capacite par piste, durees speciales et drag and drop staff.",
+      "tools": ["read_lane_status", "validate_lane_move", "allocate_lanes"],
+      "permissions": ["read_lanes", "propose_lane_move"],
+      "guardrails": ["Ne force pas 7 joueurs par piste en public.", "Respecte maintenance.", "Trace chaque deplacement staff."]
+    },
+    {
+      "id": "laser-capacity-agent",
+      "title": "Laser Capacity Agent",
+      "department": "operations",
+      "reportsTo": "planning-manager-agent",
+      "order": 5,
+      "mode": "live",
+      "runtime": "deterministic",
+      "mission": "Gere armes, sessions partagees, parties restantes et groupes multi-vagues.",
+      "tools": ["read_laser_sessions", "validate_laser_capacity", "suggest_laser_join"],
+      "permissions": ["read_laser", "propose_laser_move"],
+      "guardrails": ["30 armes max.", "Sessions partagees explicites.", "Les parties restantes restent visibles."]
+    },
+    {
+      "id": "rush-floor-agent",
+      "title": "Rush Floor Agent",
+      "department": "operations",
+      "reportsTo": "ops-director",
+      "order": 6,
+      "mode": "partial",
+      "runtime": "deterministic_plus_rules",
+      "mission": "Dit au staff quoi surveiller maintenant: arrivees, retards, laser incomplet, paiements, consignes.",
+      "tools": ["read_staff_state", "read_events", "create_staff_alert"],
+      "permissions": ["read_center", "create_alert"],
+      "guardrails": ["Alerte sans paniquer.", "Priorise actions terrain courtes.", "Pas de message client automatique sans regle."]
+    },
+    {
+      "id": "delay-agent",
+      "title": "Retard Manager Agent",
+      "department": "operations",
+      "reportsTo": "rush-floor-agent",
+      "order": 7,
+      "mode": "live",
+      "runtime": "deterministic",
+      "mission": "Analyse l'impact des retards et propose absorption ou escalade.",
+      "tools": ["analyze_delay", "read_ops_plan", "create_suggestion"],
+      "permissions": ["read_reservations", "create_suggestion"],
+      "guardrails": ["Ne deplace rien seul.", "Escalade si autre client touche.", "Log obligatoire."]
+    },
+    {
+      "id": "communication-manager-agent",
+      "title": "Communication Manager Agent",
+      "department": "customer",
+      "reportsTo": "customer-director",
+      "order": 8,
+      "mode": "live",
+      "runtime": "deterministic_templates",
+      "mission": "Prepare confirmations, rappels, erreurs et messages client au ton humain.",
+      "tools": ["enqueue_email", "dispatch_due_emails", "draft_customer_message"],
+      "permissions": ["read_reservation", "send_email_when_rule_allows"],
+      "guardrails": ["Pas de SMS tant que fournisseur absent.", "Pas de promesse si risque staff_review.", "Mail simple, pas marketing lourd."]
+    },
+    {
+      "id": "crm-followup-agent",
+      "title": "CRM Follow-up Agent",
+      "department": "customer",
+      "reportsTo": "communication-manager-agent",
+      "order": 9,
+      "mode": "planned",
+      "runtime": "needs_crm_connector",
+      "mission": "Relance no-show, anniversaires, groupes ecoles et clients recurrents.",
+      "tools": ["read_customer_history", "draft_followup", "create_segment"],
+      "permissions": ["read_customers", "create_draft"],
+      "guardrails": ["Consentement requis.", "Pas de spam.", "Segmentation explicable."]
+    },
+    {
+      "id": "director-agent",
+      "title": "Direction Intelligence Agent",
+      "department": "direction",
+      "reportsTo": "executive-director-agent",
+      "order": 10,
+      "mode": "live",
+      "runtime": "deterministic",
+      "mission": "Resume chiffre, occupation, risques, mails, agents et comparaisons multi-centres.",
+      "tools": ["read_admin_range", "export_excel", "export_report"],
+      "permissions": ["read_all_centers", "create_report"],
+      "guardrails": ["Ne melange pas les centres.", "Mentionne les erreurs.", "Donnees telechargeables."]
+    },
+    {
+      "id": "finance-admin-agent",
+      "title": "Finance Admin Agent",
+      "department": "direction",
+      "reportsTo": "director-agent",
+      "order": 11,
+      "mode": "partial",
+      "runtime": "deterministic_exports",
+      "mission": "Prepare exports compta, montants prevus, payes, acomptes et ecarts.",
+      "tools": ["export_excel", "read_payments", "flag_missing_payment"],
+      "permissions": ["read_finance", "create_report"],
+      "guardrails": ["Pas de paiement Stripe pour le moment.", "Ne marque pas paye sans action staff.", "Trace les corrections."]
+    },
+    {
+      "id": "learning-agent",
+      "title": "Learning Agent",
+      "department": "risk_quality",
+      "reportsTo": "risk-director",
+      "order": 12,
+      "mode": "live",
+      "runtime": "deterministic_statistics",
+      "mission": "Transforme les durees reelles et incidents en suggestions approuvables.",
+      "tools": ["read_ops_events", "build_learning_suggestions"],
+      "permissions": ["read_events", "create_suggestion"],
+      "guardrails": ["Jamais d'application automatique des regles.", "Besoin de volume de donnees.", "Suggestions par centre."]
+    },
+    {
+      "id": "qa-redteam-agent",
+      "title": "QA Red Team Agent",
+      "department": "risk_quality",
+      "reportsTo": "risk-director",
+      "order": 13,
+      "mode": "partial",
+      "runtime": "scripts",
+      "mission": "Genere les pires scenarios et empeche les regressions avant deploiement.",
+      "tools": ["run_ops_tests", "run_stress_tests", "run_simulation_tests", "promptfoo_later"],
+      "permissions": ["run_tests", "create_quality_report"],
+      "guardrails": ["Mode sandbox pour creations.", "Pas de vraies reservations client.", "Bloque les regressions critiques."]
+    },
+    {
+      "id": "security-agent",
+      "title": "Security Governance Agent",
+      "department": "risk_quality",
+      "reportsTo": "risk-director",
+      "order": 14,
+      "mode": "planned",
+      "runtime": "needs_llm_eval_stack",
+      "mission": "Controle prompt injection, fuite donnees, excessive agency et permissions outils.",
+      "tools": ["audit_agent_tools", "redteam_prompts", "scan_sensitive_actions"],
+      "permissions": ["read_agent_config", "create_blocking_finding"],
+      "guardrails": ["Aucune cle secrete affichee.", "Actions sensibles bloquees par defaut.", "Rapport securite avant autonomie."]
+    },
+    {
+      "id": "research-agent",
+      "title": "Research Manager Agent",
+      "department": "product_market",
+      "reportsTo": "growth-director",
+      "order": 15,
+      "mode": "planned",
+      "runtime": "needs_web_research_workflow",
+      "mission": "Surveille concurrents, frameworks IA, FEC software et opportunites marche.",
+      "tools": ["web_search", "crawl_competitor", "create_product_brief"],
+      "permissions": ["read_public_web", "create_backlog_item"],
+      "guardrails": ["Sources obligatoires.", "Pas de copie illegale.", "Transformer en decisions produit."]
+    },
+    {
+      "id": "integration-manager-agent",
+      "title": "Integration Manager Agent",
+      "department": "product_market",
+      "reportsTo": "growth-director",
+      "order": 16,
+      "mode": "partial",
+      "runtime": "connector_registry",
+      "mission": "Connecte Resend, Vercel, DB, cron, plus tard WhatsApp/SMS/CRM quand les cles existent.",
+      "tools": ["check_env", "check_connector_status", "prepare_connector"],
+      "permissions": ["read_config_status", "create_connector_task"],
+      "guardrails": ["Ne stocke jamais de secret dans l'UI.", "Affiche seulement configured/missing.", "Demande cle uniquement si indispensable."]
+    }
+  ],
+  "connectors": [
+    {
+      "id": "postgres",
+      "label": "Postgres / Neon",
+      "category": "data",
+      "requiredEnv": ["DATABASE_URL"],
+      "statusIfMissing": "blocked",
+      "use": "Source de verite reservations, events, mails, decisions."
+    },
+    {
+      "id": "resend",
+      "label": "Resend",
+      "category": "communication",
+      "requiredEnv": ["RESEND_API_KEY", "RESEND_FROM"],
+      "statusIfMissing": "degraded",
+      "use": "Confirmations, rappels et relances email."
+    },
+    {
+      "id": "vercel-cron",
+      "label": "Vercel Cron",
+      "category": "automation",
+      "requiredEnv": ["CRON_SECRET"],
+      "statusIfMissing": "degraded",
+      "use": "Dispatch mails et orchestrateur en fond."
+    },
+    {
+      "id": "openai-or-ai-gateway",
+      "label": "OpenAI / Vercel AI Gateway",
+      "category": "ai",
+      "requiredAnyEnv": ["OPENAI_API_KEY", "VERCEL_OIDC_TOKEN", "AI_GATEWAY_API_KEY"],
+      "statusIfMissing": "planned",
+      "use": "Brouillons intelligents, recherche, red team, directeur IA."
+    },
+    {
+      "id": "sms",
+      "label": "SMS / WhatsApp",
+      "category": "communication",
+      "requiredAnyEnv": ["TWILIO_ACCOUNT_SID", "WHATSAPP_TOKEN"],
+      "statusIfMissing": "standby",
+      "use": "Rappels courts plus tard. Cache dans l'UI tant que non configure."
+    },
+    {
+      "id": "n8n-or-zapier",
+      "label": "n8n / Zapier",
+      "category": "automation",
+      "requiredAnyEnv": ["N8N_WEBHOOK_URL", "ZAPIER_WEBHOOK_URL"],
+      "statusIfMissing": "optional",
+      "use": "Automations externes non critiques: Sheets, CRM, reporting."
+    }
+  ],
+  "executionOrder": [
+    "executive-director-agent",
+    "orchestrator-agent",
+    "planning-manager-agent",
+    "bowling-capacity-agent",
+    "laser-capacity-agent",
+    "rush-floor-agent",
+    "delay-agent",
+    "communication-manager-agent",
+    "director-agent",
+    "learning-agent",
+    "qa-redteam-agent",
+    "security-agent",
+    "research-agent",
+    "integration-manager-agent"
+  ]
+}

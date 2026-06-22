@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "risk": {
+    "levels": [
+      { "id": "low", "maxScore": 29 },
+      { "id": "medium", "maxScore": 59 },
+      { "id": "high", "maxScore": 84 },
+      { "id": "critical", "maxScore": 100 }
+    ],
+    "baseFormulaRisk": 10,
+    "baseBowlingRisk": 5,
+    "libramontLaserRisk": 20,
+    "laserTwoGamesRisk": 15,
+    "largeGroupRiskAtPax": 12,
+    "largeGroupRisk": 15,
+    "veryLargeGroupRiskAtPax": 18,
+    "veryLargeGroupRisk": 25,
+    "oneLaneSeventhRisk": 12,
+    "customerUncertainArrivalRisk": 15,
+    "weekendRisk": 10
+  },
+  "buffers": {
+    "low": 5,
+    "medium": 10,
+    "high": 20,
+    "critical": 30
+  },
+  "scenarioGeneration": {
+    "slotStepMinutes": 15,
+    "maxScenarios": 6,
+    "sameDayLeadMinutes": 15,
+    "defaultPauseMinutes": 0,
+    "allowedPauseMinutes": [0, 10, 15, 20, 30],
+    "preferLaserEarlyForLibramontWhenGroupComplete": true,
+    "preferBowlingBeforeLaserWhenArrivalUncertain": true,
+    "preferSoftActivitiesAsShockAbsorbers": true
+  },
+  "delayReasons": [
+    { "id": "late_customer", "label": "Client en retard", "defaultMinutes": 10, "risk": 15 },
+    { "id": "incomplete_group", "label": "Groupe incomplet", "defaultMinutes": 15, "risk": 20 },
+    { "id": "bar_queue", "label": "Groupe au bar / boissons", "defaultMinutes": 10, "risk": 10 },
+    { "id": "bowling_bug", "label": "Bug bowling", "defaultMinutes": 10, "risk": 20 },
+    { "id": "laser_bug", "label": "Bug laser", "defaultMinutes": 15, "risk": 25 },
+    { "id": "briefing_delay", "label": "Briefing plus long", "defaultMinutes": 8, "risk": 10 },
+    { "id": "group_slow", "label": "Groupe lent", "defaultMinutes": 10, "risk": 10 }
+  ],
+  "learning": {
+    "minSamplesForSuggestion": 8,
+    "minDeltaMinutesForSuggestion": 5,
+    "maxAutoAdjustmentMinutes": 0,
+    "requiresHumanApproval": true,
+    "confidenceThresholdForStrongSuggestion": 0.75
+  }
+}

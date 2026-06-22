@@ -1,0 +1,1467 @@
+/*
+  Final product skin.
+  Loaded last on purpose: this neutralizes the older neon/AI-looking layer
+  without changing product logic or DOM contracts.
+*/
+:root {
+  --bg: #05070b;
+  --bg-2: #0a0e14;
+  --bg-3: #111821;
+  --card: rgba(16, 21, 29, .98);
+  --card-2: rgba(12, 17, 24, .98);
+  --border: rgba(174, 186, 202, .16);
+  --border-hover: rgba(190, 202, 218, .30);
+  --purple: #8fa1bc;
+  --purple-soft: #7e8fa9;
+  --purple-dark: #63738d;
+  --teal: #87aaa5;
+  --teal-dark: #6f8f8b;
+  --success: #72b48f;
+  --amber: #c69b56;
+  --red: #d37b74;
+  --text: #f4f7fb;
+  --text-2: rgba(228, 234, 243, .78);
+  --text-3: rgba(176, 187, 202, .58);
+  --panel-start: rgba(143, 161, 188, .045);
+  --panel-end: rgba(135, 170, 165, .035);
+  --shadow-soft: 0 1px 0 rgba(255,255,255,.04) inset, 0 22px 42px rgba(0,0,0,.18);
+  --shadow-card: 0 1px 0 rgba(255,255,255,.035) inset;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 22px;
+}
+
+body.staff-mode.staff-light {
+  --bg: #f4f6f8;
+  --bg-2: #eef2f5;
+  --bg-3: #e4e9ee;
+  --card: rgba(255,255,255,.96);
+  --card-2: rgba(248,250,252,.98);
+  --border: rgba(24, 35, 52, .12);
+  --border-hover: rgba(24, 35, 52, .26);
+  --purple: #5b6d88;
+  --purple-soft: #667992;
+  --purple-dark: #36465d;
+  --teal: #557f7b;
+  --teal-dark: #466d69;
+  --success: #277a57;
+  --amber: #93691f;
+  --red: #aa504c;
+  --text: #141a23;
+  --text-2: rgba(20, 26, 35, .76);
+  --text-3: rgba(78, 91, 110, .62);
+  --panel-start: rgba(91, 109, 136, .035);
+  --panel-end: rgba(85, 127, 123, .035);
+  --shadow-soft: 0 1px 0 rgba(255,255,255,.7) inset, 0 14px 30px rgba(25,35,50,.08);
+  --shadow-card: 0 1px 0 rgba(255,255,255,.8) inset;
+}
+
+html,
+body {
+  background: #05070b !important;
+  color: var(--text) !important;
+}
+
+body.staff-mode.staff-light {
+  background: #f4f6f8 !important;
+  color: var(--text) !important;
+}
+
+body::before,
+body::after,
+.client-wrap::before,
+.client-wrap::after,
+.dash-kpi::after,
+.dash-card::after,
+.kpi::before,
+.kpi::after,
+.staff-resource-tab::before,
+.staff-resource-tab::after,
+.btn-primary::after,
+.total-box::before,
+.formule-card::before {
+  opacity: 0 !important;
+  display: none !important;
+}
+
+::selection {
+  background: rgba(143, 161, 188, .55) !important;
+  color: #fff !important;
+}
+
+* {
+  text-shadow: none !important;
+}
+
+svg,
+button,
+a,
+input,
+select,
+textarea,
+.booking,
+.slot,
+.dur-pill,
+.formule-card,
+.clients-table-row,
+.reservations-day,
+.laser-session-slot {
+  transition-duration: 140ms !important;
+  transition-timing-function: cubic-bezier(.2, 0, 0, 1) !important;
+}
+
+header,
+.auth-overlay {
+  background: rgba(5, 7, 11, .96) !important;
+  border-color: var(--border) !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+.auth-overlay {
+  background: rgba(5, 7, 11, .92) !important;
+}
+
+.auth-card,
+.client-demo-access,
+.site-auth-action,
+.location-select,
+nav,
+.nav-link,
+.admin-pin-bar,
+.modal,
+.edit-modal,
+.quick-booking,
+.quick-booking-modal {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+  backdrop-filter: none !important;
+}
+
+.auth-logo-dot,
+.success-icon,
+.dash-live-dot,
+.live-dot {
+  background: var(--success) !important;
+  box-shadow: 0 0 0 3px rgba(114, 180, 143, .10) !important;
+}
+
+.logo-wrap .logo ellipse,
+.ops-brand-mark svg,
+.ops-avatar,
+.client-avatar,
+.client-profile-avatar {
+  filter: none !important;
+}
+
+.logo-wrap .logo tspan {
+  fill: #9da9bd !important;
+}
+
+/* Shared controls */
+.btn-primary,
+.dash-new-btn,
+.clients-action-btn.primary,
+.reservations-action.primary,
+.btn-new,
+.ops-admin-btn.primary,
+.quick-submit,
+.quick-booking .primary,
+.admin-export-button.primary,
+.admin-control.primary,
+.staff-action-primary {
+  background: #eef2f6 !important;
+  color: #080c12 !important;
+  border: 1px solid #eef2f6 !important;
+  box-shadow: none !important;
+  border-radius: 10px !important;
+}
+
+.btn-primary:hover:not(:disabled),
+.dash-new-btn:hover,
+.clients-action-btn.primary:hover,
+.reservations-action.primary:hover,
+.btn-new:hover,
+.ops-admin-btn.primary:hover,
+.quick-submit:hover,
+.admin-export-button.primary:hover,
+.admin-control.primary:hover {
+  background: #ffffff !important;
+  color: #05070b !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,.18) !important;
+}
+
+.btn-primary:active:not(:disabled),
+.dash-new-btn:active,
+.clients-action-btn.primary:active,
+.reservations-action.primary:active,
+.btn-new:active,
+.ops-admin-btn.primary:active {
+  transform: translateY(0) scale(.99) !important;
+}
+
+body.staff-mode .btn-new,
+body.staff-mode .dash-new-btn,
+body.staff-mode .clients-action-btn.primary,
+body.staff-mode .reservations-action.primary,
+body.staff-mode:not(.admin-mode) .btn-new,
+body.staff-mode:not(.admin-mode) .dash-new-btn,
+body.staff-mode:not(.staff-light):not(.admin-mode) .btn-new,
+body.staff-mode:not(.staff-light):not(.admin-mode) .dash-new-btn,
+body.admin-mode .btn-new,
+body.admin-mode .dash-new-btn,
+body.admin-mode .admin-export-button.primary,
+body.admin-mode .admin-control.primary,
+body.client-mode .btn-primary,
+body.client-mode .flow-btn,
+body.client-mode .pay-btn {
+  background: #eef2f6 !important;
+  color: #080c12 !important;
+  -webkit-text-fill-color: #080c12 !important;
+  border-color: #eef2f6 !important;
+  box-shadow: none !important;
+}
+
+body.staff-mode .btn-new:hover,
+body.staff-mode .dash-new-btn:hover,
+body.staff-mode .clients-action-btn.primary:hover,
+body.staff-mode .reservations-action.primary:hover,
+body.staff-mode:not(.admin-mode) .btn-new:hover,
+body.staff-mode:not(.admin-mode) .dash-new-btn:hover,
+body.staff-mode:not(.staff-light):not(.admin-mode) .btn-new:hover,
+body.staff-mode:not(.staff-light):not(.admin-mode) .dash-new-btn:hover,
+body.admin-mode .btn-new:hover,
+body.admin-mode .dash-new-btn:hover,
+body.client-mode .btn-primary:hover,
+body.client-mode .flow-btn:hover,
+body.client-mode .pay-btn:hover {
+  background: #ffffff !important;
+  color: #05070b !important;
+  -webkit-text-fill-color: #05070b !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,.18) !important;
+}
+
+body.staff-mode .view-switch,
+body.admin-mode .view-switch,
+body.staff-mode .staff-theme-btn,
+body.admin-mode .admin-tabs button,
+body.admin-mode .admin-period-tabs button,
+body.admin-mode .ops-cockpit-tab {
+  background: rgba(13, 18, 26, .88) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+body.staff-mode .view-switch button.active,
+body.admin-mode .view-switch button.active,
+body.staff-mode .staff-theme-btn.active,
+body.staff-mode:not(.admin-mode) .staff-theme-btn.active,
+body.staff-mode:not(.admin-mode) #staffThemeDark,
+body.staff-mode:not(.admin-mode) #staffThemeLight,
+body.admin-mode .admin-tabs button.active,
+body.admin-mode .admin-period-tabs button.active,
+body.admin-mode .ops-cockpit-tab.active {
+  background: rgba(143, 161, 188, .16) !important;
+  color: #eef2f6 !important;
+  -webkit-text-fill-color: #eef2f6 !important;
+  border-color: rgba(190, 202, 218, .18) !important;
+  box-shadow: none !important;
+}
+
+.btn-secondary,
+.seg-btn,
+.dur-pill,
+.formule-card,
+.slot,
+.booking-alt-option,
+.dash-date-control,
+.dash-period-btn,
+.dash-card-head button,
+.clients-action-btn,
+.clients-top-search,
+.clients-panel-search,
+.clients-toolbar button,
+.clients-table-footer button,
+.client-history-button,
+.reservations-select,
+.reservations-action,
+.reservations-month-nav,
+.reservations-pill-group button,
+.reservations-day-detail-head button,
+.ops-admin-btn,
+.ops-tab,
+.ops-mini-btn,
+.resource-filter-btn,
+.planning-toggle,
+.planning-more-btn,
+.planning-search-inline input,
+.modal-tabs,
+.modal-tabs .tab,
+.edit-actions .btn-secondary,
+.edit-actions .btn-primary,
+input,
+select,
+textarea,
+.input {
+  background: rgba(13, 18, 26, .88) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body.staff-mode.staff-light .btn-secondary,
+body.staff-mode.staff-light .seg-btn,
+body.staff-mode.staff-light .dur-pill,
+body.staff-mode.staff-light .formule-card,
+body.staff-mode.staff-light .slot,
+body.staff-mode.staff-light .booking-alt-option,
+body.staff-mode.staff-light .dash-date-control,
+body.staff-mode.staff-light .dash-period-btn,
+body.staff-mode.staff-light .dash-card-head button,
+body.staff-mode.staff-light .clients-action-btn,
+body.staff-mode.staff-light .clients-top-search,
+body.staff-mode.staff-light .clients-panel-search,
+body.staff-mode.staff-light .clients-toolbar button,
+body.staff-mode.staff-light .clients-table-footer button,
+body.staff-mode.staff-light .client-history-button,
+body.staff-mode.staff-light .reservations-select,
+body.staff-mode.staff-light .reservations-action,
+body.staff-mode.staff-light .reservations-month-nav,
+body.staff-mode.staff-light .reservations-pill-group button,
+body.staff-mode.staff-light .reservations-day-detail-head button,
+body.staff-mode.staff-light .ops-admin-btn,
+body.staff-mode.staff-light .ops-tab,
+body.staff-mode.staff-light .ops-mini-btn,
+body.staff-mode.staff-light input,
+body.staff-mode.staff-light select,
+body.staff-mode.staff-light textarea,
+body.staff-mode.staff-light .input {
+  background: rgba(255,255,255,.86) !important;
+  color: var(--text) !important;
+}
+
+.btn-secondary:hover,
+.seg-btn:hover,
+.dur-pill:hover,
+.formule-card:hover:not(.disabled),
+.slot:hover,
+.booking-alt-option:hover,
+.dash-date-control:hover,
+.dash-period-btn:hover,
+.dash-card-head button:hover,
+.clients-action-btn:hover,
+.clients-toolbar button:hover,
+.clients-table-footer button:hover,
+.client-history-button:hover,
+.reservations-action:hover,
+.reservations-month-nav button:hover,
+.reservations-pill-group button:hover,
+.ops-admin-btn:hover,
+.ops-tab:hover,
+.ops-mini-btn:hover,
+.resource-filter-btn:hover,
+.planning-toggle:hover,
+.planning-more-btn:hover {
+  background: rgba(20, 27, 38, .96) !important;
+  border-color: var(--border-hover) !important;
+  color: #fff !important;
+  transform: translateY(-1px) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.input:focus,
+.clients-top-search:focus-within,
+.clients-panel-search:focus-within,
+.planning-search-inline input:focus {
+  border-color: rgba(190, 202, 218, .55) !important;
+  box-shadow: 0 0 0 3px rgba(143, 161, 188, .14) !important;
+  outline: none !important;
+}
+
+.seg-btn.active,
+.dur-pill.active,
+.slot.selected,
+.formule-card.active,
+.modal-tabs .tab.active,
+.ops-tab.active,
+.reservations-pill-group button.active,
+.clients-tabs button.active,
+.clients-toolbar button.active,
+.clients-action-btn.active,
+.staff-resource-tab.active,
+.dash-period-btn.active {
+  background: rgba(238, 242, 246, .96) !important;
+  color: #080c12 !important;
+  border-color: rgba(238, 242, 246, .96) !important;
+  box-shadow: none !important;
+}
+
+.seg-btn.active *,
+.dur-pill.active *,
+.slot.selected *,
+.formule-card.active *,
+.staff-resource-tab.active * {
+  color: #080c12 !important;
+}
+
+/* Client reservation */
+body.client-mode {
+  background:
+    linear-gradient(180deg, rgba(5,7,11,1) 0%, rgba(7,10,15,1) 100%) !important;
+}
+
+.client-mode main,
+.client-mode #clientView,
+.client-mode .client-wrap {
+  background: transparent !important;
+}
+
+.client-mode .client-wrap {
+  max-width: 1180px !important;
+}
+
+.client-mode .step,
+.client-mode .card,
+.client-mode .summary-panel,
+.client-mode .booking-summary,
+.client-mode .time-info,
+.client-mode .allocation-box,
+.client-mode .info-block,
+.client-mode .alert,
+.client-mode .info-box,
+.client-mode .total-box,
+.client-mode .success-wrap,
+.client-mode .booking-alternatives,
+.client-mode .booking-alt-option,
+.client-mode .formula-program-panel,
+.client-mode .formula-step-card {
+  background: rgba(16, 21, 29, .96) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+  backdrop-filter: none !important;
+}
+
+.client-mode .card:hover,
+.client-mode .step:hover,
+.client-mode .formule-card:hover:not(.disabled),
+.client-mode .slot:hover,
+.client-mode .dur-pill:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset !important;
+}
+
+.client-mode .card-icon,
+.client-mode .section-icon,
+.client-mode #step1 .date-picker-trigger,
+.dash-icon,
+.clients-kpi-icon,
+.reservations-kpi-icon {
+  background: rgba(143, 161, 188, .12) !important;
+  color: #c7d2e4 !important;
+  border: 1px solid rgba(190, 202, 218, .14) !important;
+  box-shadow: none !important;
+}
+
+.client-mode .card-icon.teal,
+.client-mode .section-icon.teal {
+  background: rgba(135, 170, 165, .12) !important;
+  color: #b9d4d0 !important;
+}
+
+.client-mode .open-hours,
+.client-mode .schedule-hint .open,
+.client-mode .price,
+.client-mode .slot-price,
+.client-mode .total-price,
+.client-mode .dur-pill .price,
+.client-mode .slot-free,
+.client-mode .slot-plan b,
+.client-mode .recap-value.accent,
+.client-mode .recap-value.teal {
+  color: #b9d4d0 !important;
+}
+
+.client-mode .formule-price,
+.client-mode .formule-tag,
+.client-mode .badge-best {
+  color: #cfb47b !important;
+  background: rgba(198, 155, 86, .10) !important;
+  border-color: rgba(198, 155, 86, .24) !important;
+}
+
+.client-mode .pax-alert,
+.client-mode .pax-alert.warning {
+  background: rgba(198, 155, 86, .10) !important;
+  border-color: rgba(198, 155, 86, .22) !important;
+  color: #ead8af !important;
+}
+
+.client-mode .alert {
+  color: #d7dee8 !important;
+}
+
+.client-mode .formule-card.disabled,
+.client-mode .slot.disabled {
+  opacity: .46 !important;
+  filter: grayscale(.15) !important;
+}
+
+body.client-mode #step1 .seg-btn.active,
+body.client-mode #step1 > .card:nth-of-type(2) .seg-btn.active,
+body.client-mode #step1 > .card:nth-of-type(2) .seg-btn.active:hover,
+body.client-mode .formula-mode-card.active,
+body.client-mode .formula-order-btn.active,
+body.client-mode .formula-route-step.active,
+body.client-mode .preference-grid button.active,
+body.client-mode .preference-option.active,
+body.client-mode .dur-pill.active,
+body.client-mode .laser-option.active,
+body.client-mode .activity-time-card.active,
+body.client-mode .formula-order-item.active,
+body.client-mode .slot.selected,
+body.client-mode .slot.active,
+body.client-mode #bowlingBlock .dur-pill.active,
+body.client-mode #laserBlock .dur-pill.active,
+body.client-mode #formuleBlock .formule-card.active {
+  background: #eef2f6 !important;
+  color: #080c12 !important;
+  -webkit-text-fill-color: #080c12 !important;
+  border-color: #eef2f6 !important;
+  box-shadow: none !important;
+}
+
+body.client-mode #step1 .seg-btn.active *,
+body.client-mode .formula-mode-card.active *,
+body.client-mode .formula-order-btn.active *,
+body.client-mode .formula-route-step.active *,
+body.client-mode .preference-grid button.active *,
+body.client-mode .preference-option.active *,
+body.client-mode .dur-pill.active *,
+body.client-mode .laser-option.active *,
+body.client-mode .activity-time-card.active *,
+body.client-mode .formula-order-item.active *,
+body.client-mode .slot.selected *,
+body.client-mode .slot.active *,
+body.client-mode #bowlingBlock .dur-pill.active .price,
+body.client-mode #laserBlock .dur-pill.active .price,
+body.client-mode #formuleBlock .formule-card.active * {
+  color: #080c12 !important;
+  -webkit-text-fill-color: #080c12 !important;
+}
+
+body.client-mode #step1 .pax-alert,
+body.client-mode #paxAlert > div,
+body.client-mode .allocation-box {
+  background: rgba(198, 155, 86, .10) !important;
+  border-color: rgba(198, 155, 86, .24) !important;
+  color: #ead8af !important;
+}
+
+.client-mode .progress-step.active .progress-index,
+.client-mode .progress-step.done .progress-index {
+  background: #eef2f6 !important;
+  color: #080c12 !important;
+}
+
+/* Staff and admin shell */
+body.staff-mode,
+body.admin-mode {
+  background: #05070b !important;
+}
+
+body.staff-mode.staff-light,
+body.admin-mode.staff-light {
+  background: #f4f6f8 !important;
+}
+
+body.staff-mode .app-shell,
+body.admin-mode .app-shell,
+body.staff-mode main,
+body.admin-mode main,
+body.staff-mode #staffView,
+body.admin-mode #adminView {
+  background: transparent !important;
+}
+
+.ops-sidebar,
+body.staff-mode .ops-sidebar,
+body.admin-mode .ops-sidebar {
+  background: #070a0f !important;
+  border-color: rgba(174, 186, 202, .14) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body.staff-mode.staff-light .ops-sidebar,
+body.admin-mode.staff-light .ops-sidebar {
+  background: #ffffff !important;
+  border-color: rgba(24, 35, 52, .12) !important;
+}
+
+.ops-brand-mark {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.ops-nav-link,
+.ops-center-select,
+.ops-user-card,
+.ops-sub-link {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.ops-center-select,
+.ops-user-card {
+  background: rgba(13, 18, 26, .72) !important;
+  border-color: var(--border) !important;
+}
+
+body.staff-mode.staff-light .ops-center-select,
+body.staff-mode.staff-light .ops-user-card,
+body.admin-mode.staff-light .ops-center-select,
+body.admin-mode.staff-light .ops-user-card {
+  background: rgba(247,249,252,.9) !important;
+}
+
+.ops-nav-link.active,
+.ops-sub-link.active,
+.fgx-menu-item.active,
+.fgx-menu-subitem.active,
+.fgx-menu-group.active .fgx-menu-item-parent {
+  background: rgba(143, 161, 188, .12) !important;
+  color: #f7f9fc !important;
+  -webkit-text-fill-color: #f7f9fc !important;
+  border-color: rgba(190, 202, 218, .16) !important;
+  box-shadow: none !important;
+}
+
+body.staff-mode.staff-light .ops-nav-link.active,
+body.staff-mode.staff-light .ops-sub-link.active,
+body.admin-mode.staff-light .ops-nav-link.active,
+body.admin-mode.staff-light .ops-sub-link.active,
+body.staff-mode.staff-light .fgx-menu-item.active,
+body.staff-mode.staff-light .fgx-menu-subitem.active,
+body.staff-mode.staff-light .fgx-menu-group.active .fgx-menu-item-parent,
+body.admin-mode.staff-light .fgx-menu-item.active,
+body.admin-mode.staff-light .fgx-menu-subitem.active,
+body.admin-mode.staff-light .fgx-menu-group.active .fgx-menu-item-parent {
+  color: #101720 !important;
+  -webkit-text-fill-color: #101720 !important;
+  background: rgba(91, 109, 136, .10) !important;
+}
+
+.fgx-menu-subitem.active::after,
+.fgx-menu-item.active::after {
+  background: #8fa1bc !important;
+  width: 2px !important;
+}
+
+.fgx-menu-item.active .fgx-menu-icon,
+.fgx-menu-subitem.active span:first-child,
+.view-switch button.active,
+.staff-theme-btn.active,
+.admin-tabs button.active,
+.admin-period-tabs button.active,
+.ops-cockpit-tab.active {
+  color: #d9e2ef !important;
+  -webkit-text-fill-color: #d9e2ef !important;
+}
+
+.ops-avatar {
+  background: #eef2f6 !important;
+  color: #111720 !important;
+}
+
+.staff-head,
+.kpi,
+.table-box,
+.planning-box,
+.planning-head,
+.planning-grid-wrap,
+.planning-grid,
+.hour-col,
+.lane-col,
+.hour-header,
+.lane-header,
+.staff-resource-tabs,
+.staff-resource-tab,
+.dash-kpi,
+.dash-card,
+.dash-status-strip,
+.clients-kpi,
+.clients-table-panel,
+.client-profile-panel,
+.clients-filter-panel,
+.reservations-hero,
+.reservations-kpi,
+.reservations-calendar-panel,
+.reservations-day-detail,
+.ops-admin-box,
+.ops-stat,
+.ops-row,
+.ops-sim-card,
+.admin-card,
+.admin-panel,
+.admin-hero,
+.admin-kpi,
+.admin-export-card,
+.ai-agent-card,
+.ai-agent-detail-card,
+.ai-stack-panel,
+.quick-booking-section,
+.quick-summary-card {
+  background: rgba(16, 21, 29, .96) !important;
+  border-color: var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+  backdrop-filter: none !important;
+}
+
+body.staff-mode.staff-light .staff-head,
+body.staff-mode.staff-light .kpi,
+body.staff-mode.staff-light .table-box,
+body.staff-mode.staff-light .planning-box,
+body.staff-mode.staff-light .planning-head,
+body.staff-mode.staff-light .planning-grid-wrap,
+body.staff-mode.staff-light .planning-grid,
+body.staff-mode.staff-light .hour-col,
+body.staff-mode.staff-light .lane-col,
+body.staff-mode.staff-light .hour-header,
+body.staff-mode.staff-light .lane-header,
+body.staff-mode.staff-light .staff-resource-tabs,
+body.staff-mode.staff-light .staff-resource-tab,
+body.staff-mode.staff-light .dash-kpi,
+body.staff-mode.staff-light .dash-card,
+body.staff-mode.staff-light .dash-status-strip,
+body.staff-mode.staff-light .clients-kpi,
+body.staff-mode.staff-light .clients-table-panel,
+body.staff-mode.staff-light .client-profile-panel,
+body.staff-mode.staff-light .clients-filter-panel,
+body.staff-mode.staff-light .reservations-hero,
+body.staff-mode.staff-light .reservations-kpi,
+body.staff-mode.staff-light .reservations-calendar-panel,
+body.staff-mode.staff-light .reservations-day-detail,
+body.staff-mode.staff-light .ops-admin-box,
+body.staff-mode.staff-light .ops-stat,
+body.staff-mode.staff-light .ops-row,
+body.staff-mode.staff-light .ops-sim-card,
+body.staff-mode.staff-light .admin-card,
+body.staff-mode.staff-light .admin-panel,
+body.staff-mode.staff-light .admin-hero,
+body.staff-mode.staff-light .admin-kpi,
+body.staff-mode.staff-light .admin-export-card {
+  background: rgba(255,255,255,.96) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.dash-kpi.purple .dash-icon,
+.clients-kpi.purple .clients-kpi-icon,
+.clients-kpi.violet .clients-kpi-icon,
+.reservations-kpi.purple .reservations-kpi-icon {
+  background: rgba(143, 161, 188, .12) !important;
+  color: #cbd6e8 !important;
+}
+
+.dash-kpi.blue .dash-icon,
+.clients-kpi.blue .clients-kpi-icon,
+.reservations-kpi.blue .reservations-kpi-icon {
+  background: rgba(111, 143, 184, .12) !important;
+  color: #b7c8df !important;
+}
+
+.dash-kpi.green .dash-icon,
+.clients-kpi.green .clients-kpi-icon,
+.reservations-kpi.green .reservations-kpi-icon {
+  background: rgba(114, 180, 143, .12) !important;
+  color: #b7d9c7 !important;
+}
+
+.dash-kpi.orange .dash-icon,
+.clients-kpi.amber .clients-kpi-icon,
+.reservations-kpi.amber .reservations-kpi-icon {
+  background: rgba(198, 155, 86, .12) !important;
+  color: #dbc493 !important;
+}
+
+.dash-spark,
+.clients-spark,
+.reservations-kpi .dash-spark {
+  color: #8fa1bc !important;
+  filter: none !important;
+  opacity: .72 !important;
+}
+
+.dash-spark.blue,
+.clients-spark.blue {
+  color: #7891b1 !important;
+}
+
+.dash-spark.green,
+.reservations-kpi.green .dash-spark {
+  color: #72b48f !important;
+}
+
+.dash-spark.orange,
+.reservations-kpi.amber .dash-spark {
+  color: #c69b56 !important;
+}
+
+.staff-head h1,
+.dash-hero h1,
+.clients-hero h1,
+.reservations-hero h1,
+.ops-admin-head h2,
+.admin-title,
+.card-title {
+  color: var(--text) !important;
+  letter-spacing: -.015em !important;
+}
+
+.staff-head .sub,
+.dash-hero p,
+.clients-hero p,
+.reservations-hero p,
+.ops-admin-head p,
+.card-desc,
+.kpi .hint,
+.dash-kpi small,
+.clients-kpi small,
+.reservations-kpi-copy small {
+  color: var(--text-3) !important;
+}
+
+.kpi.accent,
+.dash-kpi,
+.clients-kpi,
+.reservations-kpi {
+  background: rgba(16, 21, 29, .96) !important;
+}
+
+.kpi .tag-ok,
+.dash-kpi small b,
+.clients-kpi small,
+.reservations-kpi-copy small b {
+  color: #9bc7ad !important;
+  background: transparent !important;
+}
+
+body.staff-mode.staff-light .kpi.accent,
+body.staff-mode.staff-light .dash-kpi,
+body.staff-mode.staff-light .clients-kpi,
+body.staff-mode.staff-light .reservations-kpi {
+  background: #fff !important;
+}
+
+/* Planning and status colors */
+.slot-cell,
+.hour-cell,
+.reservations-day,
+.laser-session-slot,
+.laser-session-card,
+.laser-session-empty,
+.laser-capacity-card {
+  background: rgba(8, 12, 18, .70) !important;
+  border-color: rgba(174, 186, 202, .12) !important;
+}
+
+.slot-cell.half,
+.hour-cell.minor {
+  border-color: rgba(174, 186, 202, .08) !important;
+}
+
+.slot-cell.clickable:hover,
+.slot-cell.is-drop-target,
+.laser-session-slot.is-drop-target {
+  background: rgba(143, 161, 188, .12) !important;
+  border-color: rgba(190, 202, 218, .32) !important;
+  box-shadow: inset 0 0 0 1px rgba(190, 202, 218, .24) !important;
+}
+
+.slot-cell.is-drop-target.invalid,
+.laser-session-slot.is-drop-target.invalid {
+  background: rgba(211, 123, 116, .12) !important;
+  border-color: rgba(211, 123, 116, .36) !important;
+}
+
+.booking,
+body.staff-mode:not(.staff-light):not(.admin-mode) .booking {
+  background: rgba(18, 25, 35, .96) !important;
+  color: #eaf0f7 !important;
+  border: 1px solid rgba(141, 157, 178, .32) !important;
+  box-shadow: none !important;
+}
+
+.booking:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.20) !important;
+}
+
+.booking.conf,
+body.staff-mode:not(.staff-light):not(.admin-mode) .booking.conf,
+.laser-session-card.direct {
+  background: rgba(18, 28, 44, .96) !important;
+  border-color: rgba(111, 143, 184, .44) !important;
+  color: #dce8f7 !important;
+}
+
+.booking.arr,
+body.staff-mode:not(.staff-light):not(.admin-mode) .booking.arr {
+  background: rgba(43, 32, 18, .96) !important;
+  border-color: rgba(198, 155, 86, .46) !important;
+  color: #f0dec0 !important;
+}
+
+.booking.paid,
+body.staff-mode:not(.staff-light):not(.admin-mode) .booking.paid {
+  background: rgba(16, 35, 27, .96) !important;
+  border-color: rgba(114, 180, 143, .42) !important;
+  color: #d8f0e2 !important;
+}
+
+.booking.is-formula,
+body.staff-mode:not(.staff-light):not(.admin-mode) .booking.is-formula,
+.booking.laser-formula,
+.laser-session-card.formula,
+.reservations-detail-row.complete {
+  background: rgba(39, 29, 13, .96) !important;
+  border-color: rgba(198, 155, 86, .48) !important;
+  color: #f0dec0 !important;
+}
+
+.booking.laser-direct,
+.laser-session-card.laser,
+.reservations-detail-row.laser {
+  background: rgba(18, 28, 44, .96) !important;
+  border-color: rgba(111, 143, 184, .42) !important;
+}
+
+.booking .b-tag,
+.booking.paid .b-tag,
+.client-status,
+.reservations-detail-row .status,
+.ops-pill,
+.status-pill,
+.badge,
+.resource-badge,
+.session-badge,
+.laser-session-card .tag {
+  background: rgba(238, 242, 246, .08) !important;
+  color: #dbe4ef !important;
+  border: 1px solid rgba(238, 242, 246, .14) !important;
+  box-shadow: none !important;
+}
+
+.ops-pill.sent,
+.ops-pill.finished,
+.client-status.active,
+.reservations-detail-row .status.paid,
+.status-paid,
+.badge-paid {
+  color: #bfe0cc !important;
+  border-color: rgba(114, 180, 143, .30) !important;
+  background: rgba(114, 180, 143, .10) !important;
+}
+
+.ops-pill.queued,
+.ops-pill.running,
+.ops-pill.medium,
+.status-arrived,
+.badge-arrived {
+  color: #ead4a6 !important;
+  border-color: rgba(198, 155, 86, .30) !important;
+  background: rgba(198, 155, 86, .10) !important;
+}
+
+.ops-pill.failed,
+.ops-pill.high,
+.status-danger,
+.badge-danger {
+  color: #efc0bc !important;
+  border-color: rgba(211, 123, 116, .30) !important;
+  background: rgba(211, 123, 116, .10) !important;
+}
+
+.resource-strip-actions .dot.conf,
+.reservations-legend .laser,
+.reservations-day-line.laser span {
+  background: #6f8fb8 !important;
+}
+
+.resource-strip-actions .dot.arr,
+.reservations-legend .complete,
+.reservations-day-line.complete span {
+  background: #c69b56 !important;
+}
+
+.resource-strip-actions .dot.paid,
+.reservations-legend .bowling,
+.reservations-day-line.bowling span {
+  background: #72b48f !important;
+}
+
+.resource-strip-actions span,
+.reservations-legend span {
+  color: var(--text-3) !important;
+}
+
+/* Clients and reservations pages */
+.clients-table-row.selected {
+  background: rgba(143, 161, 188, .10) !important;
+  box-shadow: inset 2px 0 0 rgba(143, 161, 188, .55) !important;
+  border-top-color: rgba(190, 202, 218, .16) !important;
+}
+
+.clients-table-row:hover,
+.reservations-day:hover,
+.reservations-detail-row:hover {
+  background: rgba(255,255,255,.035) !important;
+}
+
+.client-avatar,
+.client-profile-avatar {
+  background: #222b38 !important;
+  color: #eef2f6 !important;
+  border: 1px solid rgba(190, 202, 218, .16) !important;
+}
+
+.client-status.loyal {
+  color: #d0d9e8 !important;
+  background: rgba(143, 161, 188, .14) !important;
+}
+
+.client-status.new {
+  color: #b7c8df !important;
+  background: rgba(111, 143, 184, .13) !important;
+}
+
+.client-status.inactive {
+  color: #b5bfcd !important;
+  background: rgba(174, 186, 202, .10) !important;
+}
+
+.clients-tabs button.active::after,
+.reservations-pill-group button.active::after {
+  background: rgba(143, 161, 188, .75) !important;
+}
+
+.reservations-day.selected {
+  background: rgba(143, 161, 188, .10) !important;
+  border-color: rgba(190, 202, 218, .32) !important;
+}
+
+.reservations-day-line.bowling,
+.reservations-day-line.laser,
+.reservations-day-line.complete {
+  background: rgba(255,255,255,.035) !important;
+}
+
+/* Ops/admin/AI stack */
+.ops-sim-progress,
+.ops-sim-progress span,
+.laser-session-card .capacity-bar,
+.laser-session-card .capacity-fill,
+.booking-capacity-bar,
+.capacity-fill,
+.progress-bar,
+.progress-fill {
+  box-shadow: none !important;
+}
+
+.ops-sim-progress,
+.laser-session-card .capacity-bar,
+.booking-capacity-bar,
+.progress-bar {
+  background: rgba(238, 242, 246, .08) !important;
+}
+
+.ops-sim-progress span,
+.laser-session-card .capacity-fill,
+.capacity-fill,
+.progress-fill {
+  background: #8fa1bc !important;
+}
+
+.ai-agent-card.active,
+.ai-agent-card.is-active,
+.ai-agent-card.working,
+.ai-agent-node.active,
+.ai-agent-node.working {
+  background: rgba(18, 28, 44, .96) !important;
+  border-color: rgba(111, 143, 184, .45) !important;
+  box-shadow: none !important;
+}
+
+.ai-agent-card.idle,
+.ai-agent-node.idle {
+  opacity: .78 !important;
+}
+
+.admin-table,
+.admin-table table,
+.admin-data-table,
+.direction-table,
+.export-table {
+  background: rgba(16, 21, 29, .96) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.admin-table th,
+.admin-table td,
+.direction-table th,
+.direction-table td,
+.export-table th,
+.export-table td {
+  border-color: rgba(174, 186, 202, .12) !important;
+}
+
+body.staff-mode.staff-light .admin-table,
+body.staff-mode.staff-light .admin-table table,
+body.staff-mode.staff-light .admin-data-table,
+body.staff-mode.staff-light .direction-table,
+body.staff-mode.staff-light .export-table {
+  background: #fff !important;
+  color: var(--text) !important;
+}
+
+/* Typography and legibility */
+.booking-name,
+.booking-meta,
+.booking-range,
+.booking-extra,
+.clients-table-head,
+.clients-table-row,
+.reservations-day,
+.reservations-detail-row,
+.dash-kpi,
+.kpi,
+.table-box,
+.ops-row,
+.admin-card {
+  font-variant-numeric: tabular-nums !important;
+}
+
+.booking-name,
+.client-cell strong,
+.client-main strong,
+.reservations-detail-row .main strong,
+.dash-kpi strong,
+.clients-kpi strong,
+.reservations-kpi-copy strong {
+  color: var(--text) !important;
+}
+
+.booking-meta,
+.booking-range,
+.booking-extra,
+.client-cell small,
+.client-main small,
+.reservations-detail-row .main em,
+.reservations-detail-row .resource,
+.reservations-detail-row .players {
+  color: var(--text-3) !important;
+}
+
+/* Keep hidden things hidden after broad selectors. */
+.hidden,
+[hidden] {
+  display: none !important;
+}
+
+/* Bowling planning rescue pass.
+   Keep the sober skin, but protect the dense timeline from broad card/badge rules. */
+body.staff-mode:not(.admin-mode) .staff-resource-tab::before {
+  content: "" !important;
+  display: block !important;
+  opacity: 1 !important;
+  position: absolute !important;
+  left: 28px !important;
+  top: 22px !important;
+  width: 30px !important;
+  height: 30px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: #9ba8bd !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  -webkit-mask-repeat: no-repeat !important;
+  mask-repeat: no-repeat !important;
+  -webkit-mask-position: center !important;
+  mask-position: center !important;
+  -webkit-mask-size: contain !important;
+  mask-size: contain !important;
+  transform: none !important;
+}
+
+body.staff-mode:not(.admin-mode) .staff-resource-tab:nth-child(1)::before {
+  background-color: #a58cff !important;
+  -webkit-mask-image: url("./bowling-pins-pinhead.svg") !important;
+  mask-image: url("./bowling-pins-pinhead.svg") !important;
+}
+
+body.staff-mode:not(.admin-mode) .staff-resource-tab:nth-child(2)::before {
+  background-color: #9ba8bd !important;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='27' height='27' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='12' cy='12' r='8.2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4.2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='1.4' fill='black'/%3E%3Cpath d='M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+  mask-image: url("data:image/svg+xml,%3Csvg width='27' height='27' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='12' cy='12' r='8.2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='4.2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='1.4' fill='black'/%3E%3Cpath d='M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+body.staff-mode:not(.admin-mode) .staff-resource-tab:nth-child(3)::before {
+  background-color: #8aa7a1 !important;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg width='27' height='27' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 6.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM21 6.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM14.5 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z' fill='black'/%3E%3Cpath d='M8 7h8M6.8 8.5l4 7M17.2 8.5l-4 7' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+  mask-image: url("data:image/svg+xml,%3Csvg width='27' height='27' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 6.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM21 6.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM14.5 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z' fill='black'/%3E%3Cpath d='M8 7h8M6.8 8.5l4 7M17.2 8.5l-4 7' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+}
+
+body.staff-mode:not(.admin-mode) .staff-resource-tab::after {
+  display: block !important;
+  opacity: 1 !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking {
+  left: 5px !important;
+  right: 5px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 2px !important;
+  padding: 6px 8px !important;
+  border-radius: 7px !important;
+  overflow: hidden !important;
+  box-shadow: inset 2px 0 0 currentColor !important;
+  transform: none !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box .hour-header,
+body.staff-mode:not(.admin-mode) .planning-box .lane-header {
+  height: var(--planning-header-h) !important;
+  min-height: var(--planning-header-h) !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking:hover {
+  transform: none !important;
+  z-index: 20 !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking-name {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: #f6f8fc !important;
+  -webkit-text-fill-color: #f6f8fc !important;
+  font-size: 10.5px !important;
+  line-height: 1.08 !important;
+  font-weight: 800 !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking-meta {
+  margin-top: auto !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: rgba(229, 235, 245, .76) !important;
+  -webkit-text-fill-color: rgba(229, 235, 245, .76) !important;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  opacity: 1 !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking .reservation-tags span {
+  min-height: 15px !important;
+  max-height: 15px !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  font-size: 7.5px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking .reservation-tags {
+  display: none !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking.booking-snug,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:40px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:39px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:38px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:37px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:36px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:35px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:34px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:33px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:32px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:31px"] {
+  gap: 1px !important;
+  padding: 4px 7px !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking.booking-snug .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:40px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:39px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:38px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:37px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:36px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:35px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:34px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:33px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:32px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:31px"] .reservation-tags {
+  display: none !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking.booking-mini,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:30px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:29px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:28px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:27px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:26px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:25px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:24px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:23px"],
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:22px"] {
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: 2px 7px !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking.booking-mini .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking.booking-mini .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking.booking-mini .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:30px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:30px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:30px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:29px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:29px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:29px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:28px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:28px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:28px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:27px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:27px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:27px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:26px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:26px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:26px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:25px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:25px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:25px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:24px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:24px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:24px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:23px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:23px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:23px"] .reservation-tags,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:22px"] .b-tag,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:22px"] .booking-meta,
+body.staff-mode:not(.admin-mode) .planning-box:not(.expanded) .booking[style*="height:22px"] .reservation-tags {
+  display: none !important;
+}
+
+body.staff-mode:not(.admin-mode) .planning-box.expanded .booking {
+  padding: 8px 10px !important;
+  gap: 4px !important;
+  border-radius: 8px !important;
+  box-shadow: inset 3px 0 0 currentColor !important;
+}
+
+.staff-action-popover {
+  position: fixed;
+  z-index: 4000;
+  width: 232px;
+  padding: 8px;
+  border: 1px solid rgba(145, 161, 181, .24);
+  border-radius: 10px;
+  background: #0d1219;
+  color: #eef3fb;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .42);
+}
+
+.staff-action-popover-title {
+  padding: 6px 8px 8px;
+  color: rgba(226, 234, 246, .64);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.staff-action-popover button {
+  width: 100%;
+  min-height: 34px;
+  margin: 1px 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #eef3fb;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.staff-action-popover button:hover,
+.staff-action-popover button.active {
+  border-color: rgba(125, 155, 195, .34);
+  background: rgba(125, 155, 195, .13);
+}
+
+body.staff-mode .client-tab-body {
+  margin-top: 14px;
+}
+
+body.staff-mode .client-note-field {
+  display: grid;
+  gap: 8px;
+  color: rgba(226, 234, 246, .72);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+body.staff-mode .client-note-field textarea {
+  min-height: 118px;
+  resize: vertical;
+  border: 1px solid rgba(145, 161, 181, .24);
+  border-radius: 10px;
+  background: rgba(5, 10, 16, .72);
+  color: #eef3fb;
+  padding: 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+body.staff-mode .client-preferences-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+body.staff-mode .client-preferences-list button {
+  min-height: 38px;
+  border: 1px solid rgba(145, 161, 181, .24);
+  border-radius: 9px;
+  background: rgba(5, 10, 16, .54);
+  color: rgba(238, 243, 251, .78);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+body.staff-mode .client-preferences-list button.active {
+  border-color: rgba(117, 139, 255, .58);
+  background: rgba(117, 139, 255, .16);
+  color: #f7f9ff;
+}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72" role="img" aria-label="Pinlane">
+  <g fill="none" stroke="#D8CFBD" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M36 9c-6.2 0-9.9 4.8-9.9 10.2 0 4.8 3.6 9.2 3.6 14.4 0 6.9-8.1 12.1-8.1 21.6 0 5 5.8 8.7 14.4 8.7s14.4-3.7 14.4-8.7c0-9.5-8.1-14.7-8.1-21.6 0-5.2 3.6-9.6 3.6-14.4C45.9 13.8 42.2 9 36 9Z" stroke-width="3.4"/>
+    <path d="M14.2 54.6V29.4l11.3-7.1" stroke-width="3.2"/>
+    <path d="M57.8 54.6V29.4l-11.3-7.1" stroke-width="3.2"/>
+    <path d="M20.7 54.6V41.4" stroke-width="3"/>
+    <path d="M26.7 54.6V36.8" stroke-width="3"/>
+    <path d="M45.3 54.6V36.8" stroke-width="3"/>
+    <path d="M51.3 54.6V41.4" stroke-width="3"/>
+  </g>
+  <circle cx="36" cy="49.5" r="9.7" fill="#F1EEE8"/>
+  <circle cx="32.4" cy="46.3" r="1.9" fill="#0B0D10"/>
+  <circle cx="39.5" cy="46.3" r="1.9" fill="#0B0D10"/>
+  <circle cx="36.1" cy="52.6" r="1.9" fill="#0B0D10"/>
+</svg>

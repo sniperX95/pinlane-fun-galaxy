@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-25",
+  "positioning": "Fun Galaxy Ops Booking doit se comporter comme un poste de controle multi-activites: vendre simplement cote client, verrouiller les ressources critiques cote moteur, et donner au staff des decisions immediates.",
+  "sources": [
+    {
+      "id": "wakesys-fec",
+      "name": "Wakesys FEC",
+      "url": "https://www.wakesys.com/fec",
+      "signal": "Multi-attraction booking, party packages, waivers, checkout mobile, capacites par zone."
+    },
+    {
+      "id": "roller",
+      "name": "ROLLER",
+      "url": "https://www.roller.software/",
+      "signal": "Guest experience platform: online bookings, waivers, POS, reminders and venue management."
+    },
+    {
+      "id": "centeredge-events",
+      "name": "CenterEdge Advantage Events",
+      "url": "https://centeredgesoftware.com/products/advantage-events/event-bookings/",
+      "signal": "Event planning, deposits, event reports, task reminders and group booking operations."
+    },
+    {
+      "id": "funbutler-laser",
+      "name": "Funbutler Laser Tag",
+      "url": "https://funbutler.com/booking-system-for-laser-tag-and-laser-games/",
+      "signal": "Laser sessions with live arena capacity, packages, extra rounds and group logic."
+    },
+    {
+      "id": "lane-bowling",
+      "name": "Lane bowling platform",
+      "url": "https://lanetickets.com/",
+      "signal": "Lane capacity, waitlists, party package builder, deposits and automatic confirmations."
+    },
+    {
+      "id": "booked-it-fec",
+      "name": "Booked it FEC",
+      "url": "https://booked.it/industries/family-entertainment-centres/",
+      "signal": "Capacity limits per activity or zone, deposits, party extras and open API."
+    },
+    {
+      "id": "tildei",
+      "name": "Tildei",
+      "url": "https://www.tildei.com/",
+      "signal": "AI customer assistant pattern: answer questions, qualify demand, route complex cases."
+    },
+    {
+      "id": "bookingflow-ai",
+      "name": "BookingFlow AI",
+      "url": "https://bookingflowai.com/",
+      "signal": "AI booking assistant and follow-up flow for service businesses."
+    }
+  ],
+  "patterns": [
+    {
+      "id": "integrated_capacity_ledger",
+      "label": "Inventaire unique de capacite",
+      "competitors": ["Wakesys", "ROLLER", "CenterEdge", "Booked it"],
+      "observedTechnique": "Une reservation web, staff ou walk-in lit la meme capacite. Les ressources critiques ne sont jamais vendues dans deux calendriers separes.",
+      "implementedAs": ["evaluateConflicts", "opsPlan.resourceBlocks", "reservation database conflict checks"],
+      "status": "live"
+    },
+    {
+      "id": "entitlement_based_booking",
+      "label": "Packages en engagements fixes + avantages libres",
+      "competitors": ["Wakesys", "CenterEdge", "Lane", "Funbutler"],
+      "observedTechnique": "Le client achete une formule simple, mais le systeme separe ce qui bloque une ressource horaire et ce qui reste flexible sur place.",
+      "implementedAs": ["opsPlan.entitlements.fixedCommitments", "opsPlan.entitlements.flexibleEntitlements", "customerCommitment"],
+      "status": "live"
+    },
+    {
+      "id": "shock_absorber_routing",
+      "label": "Activites libres comme amortisseur de retard",
+      "competitors": ["Wakesys", "FEC operators", "CenterEdge"],
+      "observedTechnique": "Les attractions autonomes ou soft-capacity servent a absorber les retards entre Bowling, Laser Game et tables.",
+      "implementedAs": ["generateOrders shock absorber variants", "marketIntelligence.qualitySignals"],
+      "status": "live"
+    },
+    {
+      "id": "shared_session_capacity",
+      "label": "Laser partage lisible",
+      "competitors": ["Funbutler", "PlaceFull", "Booked it"],
+      "observedTechnique": "Le Laser Game se remplit comme une session: le client voit que d'autres joueurs peuvent rejoindre tant que la capacite reste disponible.",
+      "implementedAs": ["laserSharing", "laser_arena remainingWeapons", "customerCommitment"],
+      "status": "live"
+    },
+    {
+      "id": "guest_commitment_ladder",
+      "label": "Engagement client progressif",
+      "competitors": ["ROLLER", "CenterEdge", "Lane", "Booked it"],
+      "observedTechnique": "Confirmation, rappel, conditions d'arrivee et paiement/depot reduisent les no-shows sans forcer un contact humain permanent.",
+      "implementedAs": ["communicationAgent.reminders", "communicationAgent.commitmentModel", "opsPlan.customerCommitment"],
+      "status": "live"
+    },
+    {
+      "id": "operator_control_tower",
+      "label": "Control tower multi-centres",
+      "competitors": ["ROLLER", "CenterEdge", "Semnox", "Apex Timing"],
+      "observedTechnique": "Direction et staff disposent de vues differentes: terrain pour executer, direction pour comparer, exporter et piloter.",
+      "implementedAs": ["director dashboard", "exports", "director-agent", "orchestrator-agent"],
+      "status": "live"
+    },
+    {
+      "id": "ai_as_supervisor_not_source_of_truth",
+      "label": "IA superviseur, moteur deterministe source de verite",
+      "competitors": ["Tildei", "BookingFlow AI", "modern SaaS AI assistants"],
+      "observedTechnique": "L'IA aide a expliquer, relancer et detecter les risques. Elle ne remplace pas les contraintes physiques.",
+      "implementedAs": ["agent guardrails", "planning-agent deterministic plan", "learning-agent suggestions only"],
+      "status": "live"
+    }
+  ],
+  "implementationRules": [
+    "Ne jamais copier du code, une marque ou un visuel concurrent.",
+    "Les conflits bowling, laser, table et horaires restent bloques par le moteur deterministe.",
+    "Les agents IA peuvent conseiller, expliquer, relancer et auditer, mais pas outrepasser la capacite.",
+    "Chaque scenario recommande doit exposer pourquoi il tient: ressources fixes, entitlements libres, risques, prochaines actions staff.",
+    "L'apprentissage ajuste uniquement par suggestion approuvable tant qu'il n'y a pas assez de donnees terrain."
+  ]
+}

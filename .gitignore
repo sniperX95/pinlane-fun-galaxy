@@ -1,0 +1,38 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies, caches, and build output
+node_modules/
+.npm-cache/
+.playwright-cli/
+.turbo/
+dist/
+build/
+.next/
+coverage/
+
+# Vercel local state and CLI auth
+.vercel/
+.vercel-cli/
+
+# Generated diagnostics and local artifacts
+artifacts/
+output/
+tmp/
+.agents/
+audit-*.png
+*-audit-*.png
+*-quality.png
+*-upgrade.png
+/*.png
+docs/verification-*.png
+fetched.err
+fetched.out
+*.log
+*.out
+*.err
+
+# Local crawler state
+.firecrawl/

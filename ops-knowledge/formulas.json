@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "formulas": [
+    {
+      "id": "f1",
+      "name": "FORMULE 1",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 26, "oldValue": 34 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "bowling", "count": 1, "durationMinutes": 60, "critical": true },
+        { "activityId": "laser_game", "count": 1, "critical": true },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 30 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f2",
+      "name": "FORMULE 2",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 30, "oldValue": 45 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "required_when_laser_busy",
+      "steps": [
+        { "activityId": "minigolf_blacklight", "count": 1 },
+        { "activityId": "laser_game", "count": 2, "critical": true },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 30 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f3",
+      "name": "FORMULE 3",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 28, "oldValue": 34 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "minigolf_blacklight", "count": 1 },
+        { "activityId": "bowling", "count": 1, "durationMinutes": 60, "critical": true },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 30 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f4",
+      "name": "FORMULE 4",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 39, "oldValue": 48 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "required",
+      "steps": [
+        { "activityId": "minigolf_blacklight", "count": 1 },
+        { "activityId": "bowling", "count": 1, "durationMinutes": 60, "critical": true },
+        { "activityId": "laser_game", "count": 2, "critical": true },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f5",
+      "name": "FORMULE 5",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 26, "oldValue": 32 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "required_when_laser_busy",
+      "steps": [
+        { "activityId": "laser_game", "count": 2, "critical": true },
+        { "activityId": "minigolf_blacklight", "count": 1 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f6",
+      "name": "FORMULE 6",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 18, "oldValue": 20 },
+      "notDuringHolidays": true,
+      "orderPolicy": "fixed_window",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "party_table", "count": 1, "durationMinutes": 120 },
+        { "activityId": "playground", "count": 1 },
+        { "activityId": "arcade_credit", "count": 1, "label": "8 EUR arcade par enfant", "resourceType": "bar_service_then_autonomous", "durationMinutes": 3 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f7",
+      "name": "FORMULE 7",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 24, "oldValue": 30 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "party_table", "count": 1, "durationMinutes": 120 },
+        { "activityId": "playground", "count": 1 },
+        { "activityId": "minigolf_blacklight", "count": 1 },
+        { "activityId": "arcade_credit", "count": 1, "label": "8 EUR arcade par enfant", "resourceType": "bar_service_then_autonomous", "durationMinutes": 3 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "f8",
+      "name": "FORMULE 8",
+      "family": "Anniversaire",
+      "minPax": 6,
+      "price": { "type": "per_pax", "value": 28, "oldValue": 37 },
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "party_table", "count": 1, "durationMinutes": 120 },
+        { "activityId": "playground", "count": 1 },
+        { "activityId": "minigolf_blacklight", "count": 1 },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 30 },
+        { "activityId": "service_drinks", "count": 2, "label": "2 cruches boissons", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "bts",
+      "name": "BACK TO SCHOOL/WORK",
+      "family": "Speciale",
+      "minPax": 4,
+      "price": { "type": "per_pax", "value": 20, "oldValue": 50 },
+      "notDuringHolidays": true,
+      "validDays": [0, 2, 3, 4],
+      "timeLimit": { "min": "18:00", "max": "22:00" },
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "bowling", "count": 1, "durationMinutes": 60, "critical": true },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 60 }
+      ]
+    },
+    {
+      "id": "mm",
+      "name": "MATIN MALIN",
+      "family": "Speciale",
+      "minPax": 1,
+      "price": { "type": "per_pax", "value": 25, "oldValue": 90 },
+      "notDuringHolidays": true,
+      "timeLimit": { "max": "12:00" },
+      "orderPolicy": "open_window",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 90 },
+        { "activityId": "laser_game", "count": 2, "critical": true }
+      ]
+    },
+    {
+      "id": "css",
+      "name": "CRAZY STUDENT STRIKE",
+      "family": "Speciale",
+      "minPax": 1,
+      "price": { "type": "per_lane", "value": 55 },
+      "validDays": [2],
+      "orderPolicy": "fixed",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "bowling", "count": 1, "durationMinutes": 60, "critical": true },
+        { "activityId": "service_drinks", "count": 1, "label": "1 metre de biere", "resourceType": "bar_service", "durationMinutes": 5 }
+      ]
+    },
+    {
+      "id": "kfd",
+      "name": "KIDS FUN DAY",
+      "family": "Speciale",
+      "minPax": 1,
+      "price": { "type": "per_pax", "value": 30 },
+      "validDays": [3],
+      "timeLimit": { "min": "12:00", "max": "17:00" },
+      "notDuringHolidays": true,
+      "orderPolicy": "open_window",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "playground", "count": 1, "durationMinutes": 300 },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 300 }
+      ]
+    },
+    {
+      "id": "hlg",
+      "name": "HAPPY LASER AND GAME",
+      "family": "Speciale",
+      "minPax": 1,
+      "price": { "type": "per_pax", "value": 20 },
+      "validDays": [4],
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 30 },
+        { "activityId": "laser_game", "count": 1, "critical": true },
+        { "activityId": "service_drinks", "count": 1, "label": "1 boisson", "resourceType": "bar_service", "durationMinutes": 3 }
+      ]
+    },
+    {
+      "id": "ffm",
+      "name": "FUN FRIDAY MADNESS",
+      "family": "Speciale",
+      "minPax": 1,
+      "price": { "type": "per_pax", "value": 30 },
+      "validDays": [5],
+      "notDuringHolidays": true,
+      "orderPolicy": "flexible",
+      "humanValidation": "recommended",
+      "steps": [
+        { "activityId": "bowling", "count": 1, "durationMinutes": 60, "critical": true },
+        { "activityId": "laser_game", "count": 1, "critical": true },
+        { "activityId": "arcade_time", "count": 1, "durationMinutes": 30 },
+        { "activityId": "service_drinks", "count": 1, "label": "1 boisson", "resourceType": "bar_service", "durationMinutes": 3 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,343 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-20",
+  "productContext": {
+    "name": "Fun Galaxy Ops Booking",
+    "goal": "Automatiser les reservations Bowling, Laser Game et formules tout en gardant un planning explicable, auditable et prudent.",
+    "principles": [
+      "Le planning critique reste deterministe avant d'etre generatif.",
+      "Les agents IA proposent et expliquent; les conflits ressources bloquent.",
+      "L'apprentissage est base sur des evenements terrain valides, jamais sur une impression libre.",
+      "Chaque action risquee doit laisser une trace exploitable par direction.",
+      "La veille concurrentielle sert a renforcer les contraintes produit: capacite unique, packages multi-activites, engagement client et control tower."
+    ]
+  },
+  "sources": [
+    {
+      "id": "openai-agents-sdk",
+      "title": "OpenAI Agents SDK",
+      "url": "https://developers.openai.com/api/docs/guides/agents",
+      "useFor": "Agents specialises, outils, handoffs, guardrails, traces et evals quand on active un vrai LLM serveur."
+    },
+    {
+      "id": "vercel-ai-sdk-tool-loop",
+      "title": "Vercel AI SDK ToolLoopAgent",
+      "url": "https://ai-sdk.dev/docs/reference/ai-sdk-core/tool-loop-agent",
+      "useFor": "Agents TypeScript multi-etapes dans l'ecosysteme Vercel, avec tool calling et streaming."
+    },
+    {
+      "id": "langgraph-persistence",
+      "title": "LangGraph persistence",
+      "url": "https://docs.langchain.com/oss/python/langgraph/persistence",
+      "useFor": "Workflows avec checkpoints, reprise, human-in-the-loop et memoire conversationnelle."
+    },
+    {
+      "id": "promptfoo-redteam",
+      "title": "Promptfoo red teaming",
+      "url": "https://www.promptfoo.dev/docs/red-team/quickstart/",
+      "useFor": "Tests adversariaux, prompt injection, fuites de donnees, politiques et CI."
+    },
+    {
+      "id": "owasp-genai",
+      "title": "OWASP Gen AI Security Project",
+      "url": "https://genai.owasp.org/",
+      "useFor": "Menaces LLM/agentic AI, gouvernance securite, controles et red teaming."
+    },
+    {
+      "id": "nist-ai-rmf",
+      "title": "NIST AI Risk Management Framework + GenAI Profile",
+      "url": "https://www.nist.gov/itl/ai-risk-management-framework",
+      "useFor": "Cadre de risque IA, priorisation, audit, responsabilite et mise en production."
+    },
+    {
+      "id": "autogen-agentchat",
+      "title": "Microsoft AutoGen AgentChat",
+      "url": "https://microsoft.github.io/autogen/stable/user-guide/agentchat-user-guide/index.html",
+      "useFor": "Multi-agent graph, swarm, selectors et workflows de recherche/analyse avancee."
+    },
+    {
+      "id": "codex-agent-skills",
+      "title": "Codex Agent Skills",
+      "url": "https://developers.openai.com/codex/skills",
+      "useFor": "Formaliser des workflows reutilisables pour Codex: design, verification, securite, exports, scraping."
+    },
+    {
+      "id": "wakesys-fec",
+      "title": "Wakesys FEC booking",
+      "url": "https://www.wakesys.com/fec",
+      "useFor": "Benchmark multi-attraction: bowling, laser tag, arcade, mini golf, packages, waivers et checkout unique."
+    },
+    {
+      "id": "centeredge-events",
+      "title": "CenterEdge Advantage Events",
+      "url": "https://centeredgesoftware.com/products/advantage-events/event-bookings/",
+      "useFor": "Benchmark event planning: deposits, rappels, rapports, relation client et operations anniversaire."
+    },
+    {
+      "id": "funbutler-laser",
+      "title": "Funbutler Laser Tag",
+      "url": "https://funbutler.com/booking-system-for-laser-tag-and-laser-games/",
+      "useFor": "Benchmark laser: capacite live, sessions partagees, rounds supplementaires et groupes."
+    },
+    {
+      "id": "lane-bowling",
+      "title": "Lane bowling platform",
+      "url": "https://lanetickets.com/",
+      "useFor": "Benchmark bowling: gestion pistes, waitlist, packages anniversaire, deposits et confirmations."
+    }
+  ],
+  "selectedStack": [
+    {
+      "id": "deterministic-core",
+      "label": "Moteur planning deterministe",
+      "status": "live",
+      "priority": 1,
+      "why": "Réservation Bowling/Laser doit être correcte avant toute génération IA. C'est la source de vérité pour disponibilités, conflits et capacités."
+    },
+    {
+      "id": "ops-agent-registry",
+      "label": "Registre agents + skills",
+      "status": "live",
+      "priority": 1,
+      "why": "Permet de savoir quels agents existent, ce qu'ils peuvent faire, leurs garde-fous et les prochaines integrations."
+    },
+    {
+      "id": "competitive-playbook",
+      "label": "Playbook concurrentiel operationnel",
+      "status": "live",
+      "priority": 1,
+      "why": "Transforme les techniques des meilleurs FEC software en regles de planning, communications et pilotage staff."
+    },
+    {
+      "id": "openai-agents-sdk",
+      "label": "OpenAI Agents SDK",
+      "status": "planned",
+      "priority": 2,
+      "why": "Disponible en preparation pour les brouillons intelligents, la recherche documentaire, les handoffs et les traces quand une cle API/AI Gateway sera proprement configuree."
+    },
+    {
+      "id": "vercel-ai-sdk",
+      "label": "Vercel AI SDK / AI Gateway",
+      "status": "planned",
+      "priority": 2,
+      "why": "Le projet est deja sur Vercel; AI Gateway donnerait routage modele, suivi couts et integration serveur TypeScript."
+    },
+    {
+      "id": "promptfoo-redteam",
+      "label": "Promptfoo red team",
+      "status": "planned",
+      "priority": 2,
+      "why": "Necessaire avant un agent public capable de lire/ecrire: injection, fuite de donnees, abus outil, couts et erreurs metier."
+    },
+    {
+      "id": "langgraph-or-workflow",
+      "label": "LangGraph ou Vercel Workflow",
+      "status": "later",
+      "priority": 3,
+      "why": "Utile pour workflows longs et reprises, mais le besoin immediat est surtout email, planning, audit et red team."
+    }
+  ],
+  "agents": [
+    {
+      "id": "orchestrator-agent",
+      "label": "Chef d'orchestre IA",
+      "status": "live",
+      "category": "orchestration",
+      "priority": 1,
+      "mission": "Lire les donnees du site, choisir quels agents activer, prioriser les risques et organiser l'amelioration continue.",
+      "skills": ["agent-routing", "data-health-checks", "continuous-learning-loop", "priority-arbitration", "safe-escalation"],
+      "guardrails": [
+        "Ne modifie jamais le planning, les prix ou les mails directement.",
+        "Declenche les agents en mode analyse, proposition ou alerte selon le risque.",
+        "L'apprentissage automatique reste limite aux suggestions tracables et approuvables."
+      ],
+      "nextUpgrades": ["CorrelationId par reservation", "Mode shadow pour nouveaux agents", "Tableau de bord qualite IA par centre"]
+    },
+    {
+      "id": "planning-agent",
+      "label": "Agent Planning",
+      "status": "live",
+      "category": "operations",
+      "priority": 1,
+      "mission": "Calculer les scenarios Bowling/Laser/Formules compatibles avec capacites, horaires, groupes, retards et ressources critiques.",
+      "skills": ["capacity-planning", "constraint-solving", "resource-conflict-detection", "risk-scoring", "explainable-scenarios"],
+      "guardrails": [
+        "Aucun conflit bowling/laser/table ne peut etre confirme automatiquement.",
+        "Les dates passees et horaires hors ouverture sont bloques.",
+        "Le mode formule ne valide que les heures Bowling/Laser compatibles."
+      ],
+      "nextUpgrades": ["Ajouter simulation Monte Carlo retard", "Comparer scenarios par satisfaction client", "Tracer chaque choix de scenario"]
+    },
+    {
+      "id": "delay-agent",
+      "label": "Agent Retard",
+      "status": "live",
+      "category": "operations",
+      "priority": 1,
+      "mission": "Evaluer l'impact d'un retard terrain et proposer absorption, decalage ou alerte staff.",
+      "skills": ["delay-impact-analysis", "resource-replanning", "staff-alerting"],
+      "guardrails": ["Ne deplace jamais une reservation sans trace.", "Alerte quand un decalage touche un autre client."],
+      "nextUpgrades": ["Notifications client automatiques", "Simulation impact multi-centres"]
+    },
+    {
+      "id": "communication-agent",
+      "label": "Agent Communication",
+      "status": "live",
+      "category": "customer",
+      "priority": 1,
+      "mission": "Preparer confirmations, rappels et messages humains sans surcharger le design email.",
+      "skills": ["human-email-copy", "reservation-summary", "laser-disclaimer", "reminder-scheduling"],
+      "guardrails": ["Ne promet pas une formule si validation staff requise.", "Rappelle l'avance necessaire pour formules avec laser."],
+      "nextUpgrades": ["Variantes ton humain par centre", "SMS lorsque fournisseur choisi", "Relance no-show"]
+    },
+    {
+      "id": "learning-agent",
+      "label": "Agent Apprentissage",
+      "status": "live",
+      "category": "learning",
+      "priority": 1,
+      "mission": "Transformer les evenements terrain en suggestions de duree, buffer et risque par centre.",
+      "skills": ["event-learning", "duration-drift-detection", "center-specific-suggestions"],
+      "guardrails": ["Aucune modification automatique des durees critiques.", "Suggestions separees par centre.", "Besoin d'approbation direction pour appliquer."],
+      "nextUpgrades": ["Dataset golden reservations", "Evaluation mensuelle automatique", "Mode shadow avant activation"]
+    },
+    {
+      "id": "director-agent",
+      "label": "Agent Direction",
+      "status": "live",
+      "category": "admin",
+      "priority": 1,
+      "mission": "Resumer reservations, revenus, risques, mails et alertes par centre ou periode.",
+      "skills": ["multi-center-summary", "kpi-analysis", "risk-surfacing", "export-explanation"],
+      "guardrails": ["Ne melange pas les centres.", "Affiche les risques au lieu de les masquer."],
+      "nextUpgrades": ["Comparaisons semaine/mois", "Insights business automatiques", "Export direction signe"]
+    },
+    {
+      "id": "security-agent",
+      "label": "Agent Securite",
+      "status": "new",
+      "category": "security",
+      "priority": 1,
+      "mission": "Controler les risques IA: prompt injection, excessive agency, fuite donnees, actions sensibles et consommation non bornee.",
+      "skills": ["owasp-llm-mapping", "sensitive-action-review", "redteam-scenarios", "policy-checks"],
+      "guardrails": [
+        "Toute action destructive ou externe doit etre classee sensible.",
+        "Les donnees client ne servent jamais a entrainer un modele externe sans accord explicite.",
+        "Les sorties IA qui modifient planning, mail ou prix passent par validation schema."
+      ],
+      "nextUpgrades": ["Promptfoo CI", "Journal des decisions IA", "Tests injection indirecte via contenu centre"]
+    },
+    {
+      "id": "research-agent",
+      "label": "Agent Recherche",
+      "status": "new",
+      "category": "product",
+      "priority": 2,
+      "mission": "Surveiller frameworks, concurrents, bonnes pratiques agents et opportunites produit bowling/loisirs.",
+      "skills": ["web-research", "source-ranking", "competitor-analysis", "implementation-briefs"],
+      "guardrails": ["Toujours citer les sources.", "Ne pas remplacer la verite metier du centre par du marketing externe."],
+      "nextUpgrades": ["Veille mensuelle", "Comparatif concurrents", "Backlog automatiquement priorise"]
+    },
+    {
+      "id": "qa-redteam-agent",
+      "label": "Agent QA / Red Team",
+      "status": "new",
+      "category": "quality",
+      "priority": 1,
+      "mission": "Generer et executer des cas limites: gros groupes, dates passees, formules impossibles, horaires critiques, injections et couts.",
+      "skills": ["scenario-generation", "boundary-testing", "security-redteam", "regression-testing"],
+      "guardrails": ["Les tests prod ne creent pas de vraies reservations sans mode sandbox.", "Les attaques restent dans les endpoints de test."],
+      "nextUpgrades": ["Promptfoo", "Tests navigateur nocturnes", "Rapport qualite direction"]
+    },
+    {
+      "id": "design-agent",
+      "label": "Agent Design Produit",
+      "status": "new",
+      "category": "product",
+      "priority": 2,
+      "mission": "Maintenir un design simple, lisible, non generique et coherent avec Fun Galaxy sans casser les workflows staff.",
+      "skills": ["ui-audit", "accessibility-checks", "copy-cleanup", "visual-consistency"],
+      "guardrails": ["Ne pas sacrifier la lisibilite pour un effet visuel.", "Verifier les textes et boutons apres changement."],
+      "nextUpgrades": ["Snapshots visuels Playwright", "Checklist mobile/staff/public"]
+    }
+  ],
+  "skillPacks": [
+    {
+      "id": "planning-reliability",
+      "label": "Planning fiable",
+      "priority": 1,
+      "recommendedTools": ["custom-ops-engine", "OpenAI Agents SDK guardrails", "Vercel Workflow later"],
+      "appliesTo": ["planning-agent", "delay-agent"],
+      "definition": "Contraintes ressources, simulations, buffers, explications et blocage automatique des scenarios dangereux."
+    },
+    {
+      "id": "communications-human",
+      "label": "Communication humaine",
+      "priority": 1,
+      "recommendedTools": ["Resend", "OpenAI structured drafts later", "cron dispatch"],
+      "appliesTo": ["communication-agent"],
+      "definition": "Mails simples, humains, personnalises, rappels et relances avec ton centre."
+    },
+    {
+      "id": "security-governance",
+      "label": "Securite IA",
+      "priority": 1,
+      "recommendedTools": ["OWASP GenAI", "NIST AI RMF", "Promptfoo"],
+      "appliesTo": ["security-agent", "qa-redteam-agent"],
+      "definition": "Menaces LLM/agentic, donnees sensibles, permissions outil, couts, logs et tests rouges."
+    },
+    {
+      "id": "observability-evals",
+      "label": "Observabilite et evals",
+      "priority": 1,
+      "recommendedTools": ["OpenAI traces", "LangSmith or OpenTelemetry later", "local ops events"],
+      "appliesTo": ["learning-agent", "director-agent", "qa-redteam-agent"],
+      "definition": "Chaque decision importante doit etre rejouable, mesuree et comparable avant de remplacer un agent."
+    },
+    {
+      "id": "codex-product-skills",
+      "label": "Skills Codex projet",
+      "priority": 2,
+      "recommendedTools": ["design-taste-frontend", "redesign-existing-projects", "vercel verification", "browser", "spreadsheets"],
+      "appliesTo": ["design-agent", "research-agent", "director-agent"],
+      "definition": "Workflows reutilisables pour design, verification navigateur, exports, documents et veille."
+    }
+  ],
+  "implementationBacklog": [
+    {
+      "id": "enable-llm-drafts",
+      "priority": "P1",
+      "status": "blocked_by_ai_gateway_or_openai_key",
+      "title": "Activer brouillons IA controles",
+      "steps": ["Configurer AI Gateway ou OPENAI_API_KEY", "Limiter l'agent aux drafts", "Valider sortie JSON", "Tracer cout et decision"]
+    },
+    {
+      "id": "promptfoo-redteam-ci",
+      "priority": "P1",
+      "status": "ready",
+      "title": "Ajouter red team IA en CI",
+      "steps": ["Installer promptfoo", "Cibler endpoints sandbox", "Tester injection/fuite/excessive agency", "Bloquer deploy si regression critique"]
+    },
+    {
+      "id": "agent-tracing",
+      "priority": "P1",
+      "status": "partial",
+      "title": "Tracer decisions agents",
+      "steps": ["Conserver ops events", "Ajouter correlationId reservation", "Ajouter decision log par agent", "Exporter rapport direction"]
+    },
+    {
+      "id": "durable-workflows",
+      "priority": "P2",
+      "status": "planned",
+      "title": "Workflows durables emails/retards",
+      "steps": ["Evaluer Vercel Workflow", "Rejouer dispatch email", "Ajouter retries nommes", "Pause/resume pour validations humaines exceptionnelles"]
+    },
+    {
+      "id": "project-codex-skills",
+      "priority": "P2",
+      "status": "ready",
+      "title": "Creer skills Codex dedies Fun Galaxy",
+      "steps": ["skill planning audit", "skill design QA", "skill security review", "skill export pro"]
+    }
+  ]
+}

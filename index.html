@@ -1,0 +1,560 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pinlane — Fun Galaxy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Montserrat:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/app-shell.css">
+<link rel="stylesheet" href="./assets/staff-dashboard.css">
+<link rel="stylesheet" href="./assets/staff-clients.css">
+<link rel="stylesheet" href="./assets/staff-reservations.css">
+<link rel="stylesheet" href="./assets/staff-pricing.css">
+<link rel="stylesheet" href="./assets/staff-emails.css">
+<link rel="stylesheet" href="./assets/staff-campaigns.css">
+<link rel="stylesheet" href="./assets/pro-sober-theme.css">
+<link rel="stylesheet" href="./assets/staff-menu.css">
+<link rel="stylesheet" href="./assets/production-hardening.css">
+<link rel="stylesheet" href="./assets/premium-finish.css">
+<link rel="stylesheet" href="./assets/promptly-product-theme.css">
+<link rel="stylesheet" href="./assets/app-final-guard.css">
+<script src="./assets/storage-adapter.js"></script>
+<script src="./assets/staff-auth-session.js"></script>
+<script src="./assets/api-client.js"></script>
+<script src="./assets/booking-core.js"></script>
+<script src="./assets/admin-console.js"></script>
+<script src="./assets/ops-console.js"></script>
+<script defer src="./assets/staff-menu.js"></script>
+<script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
+</head>
+<body class="client-mode">
+<header>
+  <div class="logo-wrap" onclick="setView('client')">
+    <svg class="logo" viewBox="0 0 220 90" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#5ec8c8"/>
+          <stop offset="50%" stop-color="#9c2d8f"/>
+          <stop offset="100%" stop-color="#5ec8c8"/>
+        </linearGradient>
+      </defs>
+      <text x="6" y="40" font-family="Poppins, sans-serif" font-weight="800" font-size="34" fill="#fff">fun</text>
+      <text x="6" y="72" font-family="Poppins, sans-serif" font-weight="800" font-size="34" fill="#fff">gala<tspan fill="#9c2d8f">x</tspan>y</text>
+      <ellipse cx="140" cy="42" rx="70" ry="20" stroke="url(#ring)" stroke-width="4" fill="none" transform="rotate(-18 140 42)"/>
+      <circle cx="195" cy="22" r="9" fill="#fff"/>
+      <circle cx="191" cy="19" r="1.5" fill="#000"/>
+      <circle cx="198" cy="20" r="1.5" fill="#000"/>
+      <circle cx="195" cy="25" r="1.5" fill="#000"/>
+      <text x="20" y="88" font-family="Poppins, sans-serif" font-weight="400" font-size="8" fill="#9c2d8f" letter-spacing="1">bowling, games &amp; more</text>
+    </svg>
+  </div>
+
+  <aside class="ops-sidebar" data-staff-menu-root aria-label="Navigation staff"></aside>
+
+  <div class="location-select" id="locSelect" style="display:none">
+    Libramont
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+  </div>
+
+  <nav id="nav">
+    <a class="nav-link" href="https://fungalaxy.be/activites/" target="_blank" rel="noopener">Activités</a>
+    <a class="nav-link" href="https://fungalaxy.be/evenements/" target="_blank" rel="noopener">Événements</a>
+    <a class="nav-link" href="https://fungalaxy.be/formules/" target="_blank" rel="noopener">Formules</a>
+    <a class="nav-link" href="https://fungalaxy.be/contact/" target="_blank" rel="noopener">Contact</a>
+  </nav>
+
+  <div style="display:flex;gap:12px;align-items:center;">
+    <div class="view-switch">
+      <button id="btnClient" class="active" onclick="setView('client')">Réserver</button>
+      <button id="btnStaff" onclick="setView('staff')">Staff</button>
+      <button id="btnAdmin" onclick="setView('admin')">Direction</button>
+    </div>
+  </div>
+</header>
+
+<button id="logoutBtn" class="site-auth-action hidden" onclick="logout()">Déconnexion</button>
+<button id="clientDemoAccess" class="client-demo-access" onclick="openSaasAccess('staff')">Accès SaaS</button>
+
+<div id="authOverlay" class="auth-overlay hidden">
+  <div class="auth-card auth-card-single scale-in">
+    <section class="auth-form-panel" aria-label="Connexion Pinlane">
+      <div class="auth-shell-head">
+        <img class="auth-brand-logo" src="./assets/brand/pinlane-source.png" alt="Pinlane">
+        <span class="auth-client-pill">Client : Fun Galaxy Centre</span>
+      </div>
+      <div class="auth-kicker">Accès sécurisé</div>
+      <h2>Connexion</h2>
+      <p>Entrez le code attribué à votre rôle. Pinlane ouvre automatiquement le centre, les permissions et les données autorisées.</p>
+      <form class="auth-form" onsubmit="submitLogin(event)">
+        <div class="auth-field">
+          <label for="loginUser">Organisation ou centre</label>
+          <input id="loginUser" class="auth-input" autocomplete="username" placeholder="Fun Galaxy Centre">
+        </div>
+        <div class="auth-field">
+          <label for="loginPass">Code d'accès</label>
+          <input id="loginPass" class="auth-input" type="password" autocomplete="one-time-code" required>
+        </div>
+        <div id="authError" class="auth-error"></div>
+        <button type="submit" class="btn-primary">Se connecter</button>
+      </form>
+      <div class="auth-note">Client actif : Fun Galaxy Centre. Les rôles staff, manager, direction et propriétaire plateforme sont vérifiés côté serveur.</div>
+    </section>
+  </div>
+</div>
+
+<main>
+  <div id="clientView">
+    <div class="client-wrap">
+      <div class="hero-title slide-up">
+        <div class="hero-kicker">Réservation en ligne</div>
+        <h1>Réservez en <span class="accent">moins d'une minute</span></h1>
+        <p>Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie à Libramont.</p>
+      </div>
+
+      <div class="progress">
+        <div class="progress-step" id="pd1">
+          <span class="progress-index">1</span>
+          <span class="progress-label">Activité</span>
+        </div>
+        <div class="progress-step" id="pd2">
+          <span class="progress-index">2</span>
+          <span class="progress-label">Créneau</span>
+        </div>
+        <div class="progress-step" id="pd3">
+          <span class="progress-index">3</span>
+          <span class="progress-label">Contact</span>
+        </div>
+        <div class="progress-step" id="pd4">
+          <span class="progress-index">4</span>
+          <span class="progress-label">Valider</span>
+        </div>
+        <div class="progress-step" id="pd5">
+          <span class="progress-index">5</span>
+          <span class="progress-label">Confirmé</span>
+        </div>
+      </div>
+
+      <div id="alertBox"></div>
+
+      <div id="step1" class="step">
+        <div class="card slide-up">
+          <div class="card-head">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Date et joueurs</div>
+              <div class="card-desc">Quand venez-vous et combien êtes-vous ?</div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label class="lbl">Date</label>
+              <div class="date-input-wrap">
+                <input type="date" id="fDate" class="input" />
+                <button type="button" class="date-picker-trigger" aria-label="Choisir une date" onclick="(() => { const el = document.getElementById('fDate'); if (!el) return; if (el.showPicker) el.showPicker(); else el.focus(); })()">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </button>
+              </div>
+              <div class="schedule-hint" id="schedHint"></div>
+            </div>
+            <div>
+              <label class="lbl">Nombre de joueurs</label>
+              <input type="number" id="fPax" min="1" max="120" value="4" class="input" placeholder="Ex: 4"/>
+              <div id="paxAlert"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card slide-up">
+          <div class="card-head">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Que souhaitez-vous faire ?</div>
+              <div class="card-desc">Bowling, Laser Game ou formule complète</div>
+            </div>
+          </div>
+          <div class="segmented">
+            <button class="seg-btn active" id="segBowling" onclick="setType('bowling')">Bowling Simple</button>
+            <button class="seg-btn" id="segLaser" onclick="setType('laser')">Laser Game</button>
+            <button class="seg-btn" id="segFormule" onclick="setType('formule')">Nos Formules</button>
+          </div>
+        </div>
+
+        <div class="card slide-up" id="bowlingBlock">
+          <div class="card-head">
+            <div class="card-icon teal">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Durée de jeu</div>
+              <div class="card-desc">Choisissez combien de temps vous jouez (par piste)</div>
+            </div>
+          </div>
+          <div class="grid-4" id="durGrid"></div>
+        </div>
+
+        <div class="card slide-up hidden" id="laserBlock">
+          <div class="card-head">
+            <div class="card-icon teal">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M8 21h8"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Laser Game</div>
+              <div class="card-desc">Réservez une session. Briefing inclus, partage possible selon l'affluence.</div>
+            </div>
+          </div>
+          <div class="grid-3 laser-option-grid" id="laserGrid"></div>
+          <div class="laser-note">Une session peut être complétée avec d'autres joueurs. Le planning affiche l'heure de lancement réelle.</div>
+        </div>
+
+        <div class="card slide-up hidden" id="formuleBlock">
+          <div class="card-head">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Choix de la Formule</div>
+              <div class="card-desc">Les formules s'adaptent à votre date et au nombre de joueurs</div>
+            </div>
+          </div>
+          <div class="formule-grid" id="formuleGrid"></div>
+          <div class="formula-preferences hidden" id="formulaPrefs">
+            <div class="formula-pref-head">
+              <label class="lbl">Organisation de la formule</label>
+              <div class="formula-pref-note" id="formulaPreferenceNote"></div>
+            </div>
+            <div class="preference-grid" id="formulaOrderOptions"></div>
+          </div>
+        </div>
+
+        <button class="btn-primary slide-up" id="btnStep1" onclick="goStep2()">
+          Vérifier les disponibilités
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+
+      <div id="step2" class="step hidden">
+        <div class="card slide-right">
+          <div class="card-head" style="justify-content:space-between;">
+            <div style="display:flex;gap:16px;">
+              <div class="card-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <div class="card-title" id="slotTitle">Horaire disponible</div>
+                <div class="card-desc" id="slotDate"></div>
+              </div>
+            </div>
+          </div>
+          <div id="formTimeLimit"></div>
+          <div id="slotList"></div>
+        </div>
+        <button class="btn-secondary" id="btnStep2Back" onclick="goStep(1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          Retour
+        </button>
+      </div>
+
+      <div id="step3" class="step hidden">
+        <div class="card slide-right">
+          <div class="card-head">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Vos coordonnées</div>
+              <div class="card-desc">Pour recevoir la confirmation</div>
+            </div>
+          </div>
+          <div class="grid-2 contact-grid">
+            <div>
+              <label class="lbl">Prénom &amp; Nom *</label>
+              <input id="fName" class="input" placeholder="Marie Dupont" required />
+            </div>
+            <div>
+              <label class="lbl">Téléphone *</label>
+              <input id="fPhone" type="tel" class="input" placeholder="+32 470 00 00 00" required />
+            </div>
+            <div style="grid-column:1/-1;">
+              <label class="lbl">Email *</label>
+              <input id="fEmail" type="email" class="input" placeholder="marie@email.com" required/>
+            </div>
+          </div>
+          <div class="info-box" style="margin-top:22px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <div>Confirmation envoyée par email. Paiement sur place.</div>
+          </div>
+          <div class="step-actions">
+            <button class="btn-secondary" onclick="goStep(2)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Retour
+            </button>
+            <button class="btn-primary" style="flex:1" onclick="goStep4()">Voir le récapitulatif</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="step4" class="step hidden">
+        <div class="card slide-right">
+          <div class="card-head">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div>
+              <div class="card-title">Récapitulatif</div>
+              <div class="card-desc">Vérifiez avant de confirmer</div>
+            </div>
+          </div>
+          <div id="recapList"></div>
+          <div class="total-box">
+            <div>
+              <div style="font-weight:700;">Total estimé</div>
+              <div style="font-size:12px;color:var(--text-3);">À régler sur place</div>
+            </div>
+            <div class="total-amount" id="recapTotal">0€</div>
+          </div>
+          <div style="display:flex;gap:14px;margin-top:24px;">
+            <button class="btn-secondary" id="btnStep4Back" onclick="goStep(3)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Retour
+            </button>
+            <button class="btn-primary" id="btnConfirmBooking" style="flex:1" onclick="confirmBooking()">
+              Confirmer la réservation
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="step5" class="step hidden">
+        <div class="success-wrap scale-in">
+          <div class="success-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <h2>C'est validé !</h2>
+          <p class="sub">À très vite, <b id="successName" style="color:#fff;"></b>.</p>
+
+          <div class="confetti-hint" id="successHint">
+            <strong>Pour un maximum de fun</strong>
+            <p id="successDetails"></p>
+          </div>
+
+          <button class="btn-secondary" onclick="resetBooking()" style="margin-top:14px;">Faire une autre réservation</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="staffView" class="hidden">
+    <div class="staff-wrap">
+      <div id="staffDashboardPage" class="staff-dashboard-page hidden"></div>
+      <div id="staffClientsPage" class="staff-clients-page hidden"></div>
+      <div id="staffReservationsPage" class="staff-reservations-page hidden"></div>
+      <div id="staffPricingPage" class="staff-pricing-page hidden"></div>
+      <div id="staffEmailsPage" class="staff-emails-page hidden"></div>
+      <div id="staffCampaignsPage" class="staff-campaigns-page hidden"></div>
+      <div id="staffUtilityPage" class="staff-utility-page hidden"></div>
+
+      <div class="staff-head">
+        <div>
+          <h1>Planning du jour</h1>
+          <div class="sub" id="staffDateLabel"></div>
+        </div>
+        <div class="staff-head-actions">
+          <div class="date-nav">
+            <button id="staffPrevDateBtn" aria-label="Jour precedent" onclick="shiftDate(-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <span id="staffDateShort" class="staff-date-label" onclick="openStaffDatePicker()" title="Choisir une date"></span>
+            <input id="staffDatePicker" class="staff-date-input" type="date" onchange="setStaffDateFromPicker(this.value)" aria-label="Choisir une date">
+            <button id="staffNextDateBtn" aria-label="Jour suivant" onclick="shiftDate(1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
+          <div class="staff-theme-switch">
+            <button id="staffThemeDark" class="staff-theme-btn" onclick="setStaffTheme('dark')" aria-label="Activer le theme sombre">Sombre</button>
+            <button id="staffThemeLight" class="staff-theme-btn" onclick="setStaffTheme('light')" aria-label="Activer le theme clair">Clair</button>
+          </div>
+          <button class="btn-new" onclick="openQuickBook()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Réservation rapide
+          </button>
+        </div>
+      </div>
+
+      <div class="kpi-grid stagger">
+        <div class="kpi">
+          <div class="label">Réservations aujourd'hui</div>
+          <div class="value" id="kpiRes">0</div>
+          <div class="hint">sessions</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Joueurs prévus</div>
+          <div class="value" id="kpiPax">0</div>
+          <div class="hint">personnes</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Chiffre d'affaires</div>
+          <div class="value" id="kpiRev">0€</div>
+          <div class="tag-ok" id="kpiCollected">0€ validés</div>
+        </div>
+        <div class="kpi accent">
+          <div class="label">Taux d'occupation</div>
+          <div class="value" id="kpiOcc">0%</div>
+          <div class="hint">des créneaux</div>
+        </div>
+      </div>
+
+      <div class="staff-resource-tabs">
+        <button class="staff-resource-tab" id="staffTabBowling" onclick="setStaffResourceView('bowling')">
+          <span>
+            <span class="main">Planning Bowling</span>
+            <span class="sub">8 pistes</span>
+          </span>
+          <span id="staffBowlingCount">0</span>
+        </button>
+        <button class="staff-resource-tab" id="staffTabLaser" onclick="setStaffResourceView('laser')">
+          <span>
+            <span class="main">Planning Laser Game</span>
+            <span class="sub">2 zones</span>
+          </span>
+          <span id="staffLaserCount">0</span>
+        </button>
+        <button class="staff-resource-tab" id="staffTabAll" onclick="setStaffResourceView('all')">
+          <span>
+            <span class="main">Planning Complet</span>
+            <span class="sub">Bowling + Laser</span>
+          </span>
+          <span id="staffAllCount">0</span>
+        </button>
+        <div class="resource-strip-actions">
+          <span><i class="dot conf"></i>Confirmé</span>
+          <span><i class="dot arr"></i>Arrivé</span>
+          <span><i class="dot paid"></i>Payé</span>
+          <button type="button" class="resource-filter-btn" onclick="togglePlanningFilterMenu(event)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>
+            Filtres
+          </button>
+        </div>
+      </div>
+
+      <div class="planning-box" id="planningBox">
+        <div class="planning-head">
+          <div class="planning-title-stack">
+            <h2>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              Planning 8 pistes
+            </h2>
+            <div class="planning-sub" id="planningSub"></div>
+          </div>
+          <div class="planning-actions">
+            <div class="planning-search-inline">
+              <input id="planningSearchInput" placeholder="Rechercher..." oninput="document.getElementById('searchInput').value=this.value; state.searchTerm=this.value; renderTable();">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <button class="planning-more-btn" type="button" aria-label="Plus d'options" onclick="togglePlanningActionsMenu(event)">•••</button>
+            <div class="legend">
+              <span><div class="dot conf"></div> Confirmé</span>
+              <span><div class="dot arr"></div> Arrivé</span>
+              <span><div class="dot paid"></div> Payé</span>
+            </div>
+            <button class="planning-toggle" id="planningToggle" onclick="togglePlanningExpanded()">Agrandir</button>
+          </div>
+        </div>
+        <div class="planning-grid-wrap" id="planningGridWrap"></div>
+      </div>
+
+      <div class="planning-box laser-planning-box" id="laserPlanningBox">
+        <div class="planning-head">
+          <div class="planning-title-stack">
+            <h2>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M8 21h8"/></svg>
+              Planning Laser Game
+            </h2>
+            <div class="planning-sub" id="laserPlanningSub"></div>
+          </div>
+          <div class="planning-actions">
+            <div class="legend">
+              <span><div class="dot conf"></div> Direct</span>
+              <span><div class="dot arr"></div> Formule</span>
+              <span><div class="dot paid"></div> Session partagée</span>
+            </div>
+          </div>
+        </div>
+        <div class="planning-grid-wrap laser-grid-wrap" id="laserPlanningGridWrap"></div>
+      </div>
+
+      <div class="table-box">
+        <div class="table-head">
+          <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span id="tableTitleText">Réservations</span> <span class="count-badge" id="tableCount">0</span>
+          </h2>
+          <div class="search-wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="searchInput" placeholder="Rechercher un client, téléphone..."/>
+          </div>
+        </div>
+        <div class="res-list" id="resList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="adminView" class="hidden">
+    <div class="admin-shell">
+      <div class="admin-hero">
+        <div class="admin-brand">
+          <img class="admin-platform-logo" src="./assets/brand/pinlane-source.png" alt="" aria-hidden="true">
+          <div>
+            <div class="admin-eyebrow">Pinlane Platform</div>
+            <h1 id="adminHeroTitle">Console CEO</h1>
+            <p id="adminHeroSub">Pilotage multi-clients, centres, réservations, communications, agents et exports.</p>
+          </div>
+        </div>
+        <div class="admin-actions">
+          <div class="admin-date-nav">
+            <button onclick="shiftAdminDate(-1)" aria-label="Jour précédent">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <input id="adminDateInput" type="date" onchange="setAdminDate(this.value)">
+            <button onclick="shiftAdminDate(1)" aria-label="Jour suivant">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <button class="admin-btn" onclick="loadAdminDashboard(true)">Actualiser</button>
+          <button class="admin-btn" onclick="exportAdminExcel()">Excel compta</button>
+          <button class="admin-btn primary" onclick="exportAdminReport()">Rapport exécutif</button>
+        </div>
+      </div>
+
+      <div class="admin-center-grid" id="adminCenterGrid"></div>
+
+      <div class="admin-period-tabs">
+        <button id="adminPeriodDay" onclick="setAdminPeriod('day')">Jour</button>
+        <button id="adminPeriodWeek" onclick="setAdminPeriod('week')">Semaine</button>
+        <button id="adminPeriodMonth" onclick="setAdminPeriod('month')">Mois</button>
+        <button id="adminPeriodYear" onclick="setAdminPeriod('year')">Année</button>
+      </div>
+
+      <div class="admin-tabs">
+        <button id="adminTabOverview" onclick="setAdminTab('overview')">Vue période</button>
+        <button id="adminTabReservations" onclick="setAdminTab('reservations')">Réservations</button>
+        <button id="adminTabClients" onclick="setAdminTab('clients')">Clients</button>
+        <button id="adminTabOps" onclick="setAdminTab('ops')">Mails & agents</button>
+        <button id="adminTabExports" onclick="setAdminTab('exports')">Exports</button>
+      </div>
+
+      <div id="adminContent"></div>
+    </div>
+  </div>
+</main>
+
+<div id="posOverlay" class="pos-overlay hidden"></div>
+<div id="quickBookOverlay" class="hidden"></div>
+<div id="toast" class="hidden"></div>
+
+<script src="./assets/app-main.js"></script>
+</body>
+</html>
+

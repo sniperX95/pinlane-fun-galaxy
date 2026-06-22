@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Réservation Fun Galaxy</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a12;
+      --panel: #11162a;
+      --panel-2: #171f37;
+      --line: rgba(255,255,255,0.1);
+      --text: #f5f7ff;
+      --muted: #9aa6ca;
+      --accent: #7c5cff;
+      --accent-2: #24d4c3;
+      --danger: #ff6f7d;
+      --ok: #44d17a;
+      --shadow: 0 18px 46px rgba(0,0,0,0.35);
+      font-family: Inter, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, rgba(124,92,255,0.18), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(36,212,195,0.14), transparent 25%),
+        var(--bg);
+      color: var(--text);
+    }
+
+    .shell {
+      width: min(980px, calc(100% - 24px));
+      margin: 24px auto;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(10,14,26,0.88);
+      box-shadow: var(--shadow);
+    }
+
+    .hero { display: grid; gap: 10px; margin-bottom: 24px; }
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      padding: 6px 10px;
+      border: 1px solid rgba(124,92,255,0.35);
+      border-radius: 999px;
+      color: #d7ceff;
+      background: rgba(124,92,255,0.12);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 40px); line-height: 1.05; }
+    .subtitle { color: var(--muted); font-size: 15px; max-width: 680px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      padding: 18px;
+    }
+
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 17px;
+    }
+
+    .section {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input, select, textarea, button {
+      font: inherit;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 12px 13px;
+      outline: none;
+    }
+
+    textarea { min-height: 92px; resize: vertical; }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(124,92,255,0.72);
+      box-shadow: 0 0 0 4px rgba(124,92,255,0.18);
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .segmented button,
+    .slot-list button,
+    .duration-list button,
+    .formula-card {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      cursor: pointer;
+      transition: 0.18s ease;
+    }
+
+    .segmented button {
+      padding: 12px;
+      font-weight: 700;
+    }
+
+    .segmented button.active,
+    .slot-list button.active,
+    .duration-list button.active,
+    .formula-card.active {
+      border-color: rgba(124,92,255,0.8);
+      background: rgba(124,92,255,0.18);
+      box-shadow: 0 12px 24px rgba(124,92,255,0.16);
+    }
+
+    .duration-list,
+    .slot-list,
+    .formula-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .duration-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .duration-list button {
+      text-align: left;
+      padding: 14px;
+    }
+
+    .duration-list .price,
+    .slot-meta,
+    .formula-meta,
+    .helper,
+    .empty {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .slot-list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .slot-list button {
+      padding: 14px 12px;
+      display: grid;
+      gap: 4px;
+      text-align: left;
+    }
+
+    .formula-card {
+      padding: 14px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .formula-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      font-weight: 700;
+    }
+
+    .formula-price {
+      color: #d7ceff;
+      white-space: nowrap;
+    }
+
+    .formula-meta {
+      line-height: 1.45;
+    }
+
+    .pill {
+      display: inline-flex;
+      width: fit-content;
+      padding: 5px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(36,212,195,0.14);
+      color: #baf8f1;
+    }
+
+    .notice {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .notice.warn {
+      border-color: rgba(255,111,125,0.35);
+      background: rgba(255,111,125,0.08);
+      color: #ffd5da;
+    }
+
+    .summary {
+      display: grid;
+      gap: 12px;
+      position: sticky;
+      top: 18px;
+    }
+
+    .summary-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(124,92,255,0.12), rgba(255,255,255,0.02));
+    }
+
+    .summary-total {
+      font-size: 34px;
+      font-weight: 800;
+      margin: 4px 0 16px;
+    }
+
+    .summary-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .summary-item strong { color: var(--text); }
+
+    .cta {
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, var(--accent), #9071ff);
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 18px 40px rgba(124,92,255,0.28);
+    }
+
+    .cta[disabled] {
+      cursor: not-allowed;
+      opacity: 0.55;
+      box-shadow: none;
+    }
+
+    .success {
+      display: none;
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(68,209,122,0.4);
+      background: rgba(68,209,122,0.12);
+      color: #d8ffe6;
+      line-height: 1.5;
+    }
+
+    .tiny { font-size: 12px; color: var(--muted); }
+
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr; }
+      .summary { position: static; }
+      .slot-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .shell { width: min(100% - 16px, 980px); padding: 16px; margin: 8px auto; }
+      .row,
+      .duration-list,
+      .slot-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero">
+      <div class="eyebrow">Fun Galaxy</div>
+      <h1>Réservation en ligne</h1>
+      <div class="subtitle">Choisis ton type de réservation, ton créneau, puis envoie la demande. Tout remonte directement dans l'espace staff central.</div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="section">
+          <h2>1. Votre réservation</h2>
+          <div class="segmented">
+            <button type="button" id="typeBowling">Bowling</button>
+            <button type="button" id="typeFormule">Formule</button>
+          </div>
+          <div class="row">
+            <label>
+              Date
+              <input type="date" id="bookingDate" />
+            </label>
+            <label>
+              Joueurs
+              <input type="number" id="bookingPax" min="1" max="48" step="1" value="4" />
+            </label>
+          </div>
+          <div class="notice" id="laneNotice"></div>
+        </div>
+
+        <div class="section" id="durationSection">
+          <h2>2. Duree</h2>
+          <div class="duration-list" id="durationList"></div>
+        </div>
+
+        <div class="section" id="formulaSection" style="display:none;">
+          <h2>2. Formule</h2>
+          <div class="formula-list" id="formulaList"></div>
+        </div>
+
+        <div class="section">
+          <h2>3. Créneaux disponibles</h2>
+          <div class="notice" id="availabilityNotice">Sélectionne une date pour charger les disponibilités.</div>
+          <div class="slot-list" id="slotList"></div>
+        </div>
+
+        <div class="section">
+          <h2>4. Vos coordonnées</h2>
+          <div class="row">
+            <label>
+              Nom et prenom
+              <input type="text" id="contactName" placeholder="Ex. Sarah Dupont" />
+            </label>
+            <label>
+              Telephone
+              <input type="tel" id="contactPhone" placeholder="Ex. 0470 00 00 00" />
+            </label>
+          </div>
+          <label>
+            Email
+            <input type="email" id="contactEmail" placeholder="Ex. sarah@email.com" />
+          </label>
+          <label>
+            Note
+            <textarea id="contactNotes" placeholder="Anniversaire, demande speciale, info utile..."></textarea>
+          </label>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="summary-card">
+          <div class="tiny">Resume</div>
+          <div class="summary-total" id="summaryTotal">0EUR</div>
+          <div class="summary-list" id="summaryList"></div>
+        </div>
+
+        <button class="cta" id="submitButton" type="button">Envoyer la réservation</button>
+        <div class="success" id="successBox"></div>
+        <div class="tiny">En validant, la demande est enregistree dans la base centrale utilisee par le staff.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      meta: null,
+      type: 'bowling',
+      duration: 1,
+      formuleId: '',
+      availability: null,
+      selectedSlot: null,
+      loadingAvailability: false,
+    };
+
+    const elements = {
+      bookingDate: document.getElementById('bookingDate'),
+      bookingPax: document.getElementById('bookingPax'),
+      typeBowling: document.getElementById('typeBowling'),
+      typeFormule: document.getElementById('typeFormule'),
+      durationSection: document.getElementById('durationSection'),
+      formulaSection: document.getElementById('formulaSection'),
+      durationList: document.getElementById('durationList'),
+      formulaList: document.getElementById('formulaList'),
+      slotList: document.getElementById('slotList'),
+      availabilityNotice: document.getElementById('availabilityNotice'),
+      laneNotice: document.getElementById('laneNotice'),
+      summaryList: document.getElementById('summaryList'),
+      summaryTotal: document.getElementById('summaryTotal'),
+      submitButton: document.getElementById('submitButton'),
+      successBox: document.getElementById('successBox'),
+      contactName: document.getElementById('contactName'),
+      contactPhone: document.getElementById('contactPhone'),
+      contactEmail: document.getElementById('contactEmail'),
+      contactNotes: document.getElementById('contactNotes'),
+    };
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.message || 'Erreur serveur.');
+      }
+      return payload;
+    }
+
+    function formatDuration(value) {
+      const minutes = Math.round(Number(value || 0) * 60);
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      if (hours && rest) return `${hours}h${String(rest).padStart(2, '0')}`;
+      if (hours) return `${hours}h`;
+      return `${rest} min`;
+    }
+
+    function setType(nextType) {
+      state.type = nextType === 'formule' ? 'formule' : 'bowling';
+      if (state.type === 'bowling') {
+        state.formuleId = '';
+      }
+      state.selectedSlot = null;
+      elements.typeBowling.classList.toggle('active', state.type === 'bowling');
+      elements.typeFormule.classList.toggle('active', state.type === 'formule');
+      elements.durationSection.style.display = state.type === 'bowling' ? '' : 'none';
+      elements.formulaSection.style.display = state.type === 'formule' ? '' : 'none';
+      renderDurationOptions();
+      renderFormulaOptions();
+      refreshLaneNotice();
+      loadAvailability();
+      renderSummary();
+    }
+
+    function getPax() {
+      return Math.max(1, Number(elements.bookingPax.value || 1));
+    }
+
+    function getLaneCount() {
+      if (!state.availability) return 0;
+      return Number(state.availability.laneCount || 0);
+    }
+
+    function refreshLaneNotice() {
+      const pax = getPax();
+      const laneCount = Math.max(1, Math.ceil(pax / 6));
+      if (state.type === 'bowling') {
+        elements.laneNotice.textContent = pax > 6
+          ? `${pax} joueurs demandent ${laneCount} pistes cote a cote.`
+          : `Maximum 6 joueurs par piste.`;
+      } else {
+        elements.laneNotice.textContent = "Les formules avec bowling reservent automatiquement le bon nombre de pistes.";
+      }
+    }
+
+    function renderDurationOptions() {
+      if (!state.meta) return;
+      elements.durationList.innerHTML = state.meta.durationOptions.map((item) => `
+        <button type="button" class="${state.duration === item.value ? 'active' : ''}" data-duration="${item.value}">
+          <strong>${item.label}</strong>
+          <div class="price">${item.price}EUR / piste</div>
+        </button>
+      `).join('');
+      elements.durationList.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.duration = Number(button.dataset.duration);
+          state.selectedSlot = null;
+          renderDurationOptions();
+          loadAvailability();
+          renderSummary();
+        });
+      });
+    }
+
+    function formulaStatus(formule) {
+      const pax = getPax();
+      if (pax < formule.minPax) return `Minimum ${formule.minPax} personnes`;
+      if (formule.validDays && formule.validDays.length) return 'Disponibilite selon jour choisi';
+      if (formule.noHolidays) return 'Hors vacances et jours feries';
+      return 'Disponible selon créneaux';
+    }
+
+    function renderFormulaOptions() {
+      if (!state.meta) return;
+      elements.formulaList.innerHTML = state.meta.formules.map((formule) => `
+        <button type="button" class="formula-card ${state.formuleId === formule.id ? 'active' : ''}" data-formule="${formule.id}">
+          <div class="formula-title">
+            <span>${formule.name}</span>
+            <span class="formula-price">${formule.price}EUR/${formule.type === 'per_lane' ? 'piste' : 'pers'}</span>
+          </div>
+          <div class="formula-meta">${(formule.desc || []).join(' • ')}</div>
+          <div class="pill">${formulaStatus(formule)}</div>
+        </button>
+      `).join('');
+      elements.formulaList.querySelectorAll('.formula-card').forEach((button) => {
+        button.addEventListener('click', () => {
+          state.formuleId = button.dataset.formule;
+          state.selectedSlot = null;
+          renderFormulaOptions();
+          loadAvailability();
+          renderSummary();
+        });
+      });
+    }
+
+    function renderSlots() {
+      const availability = state.availability;
+      if (!availability) {
+        elements.slotList.innerHTML = '';
+        return;
+      }
+
+      if (!availability.slots || !availability.slots.length) {
+        elements.slotList.innerHTML = '<div class="empty">Aucun créneau disponible pour le moment.</div>';
+        return;
+      }
+
+      elements.slotList.innerHTML = availability.slots.map((slot) => `
+        <button type="button" class="${state.selectedSlot && state.selectedSlot.time === slot.time ? 'active' : ''}" data-time="${slot.time}">
+          <strong>${slot.time}</strong>
+          <div class="slot-meta">${availability.requiresLanes ? `${slot.freeCount} pistes libres` : 'Formule sans piste'}<\/div>
+        </button>
+      `).join('');
+
+      elements.slotList.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', () => {
+          const slot = availability.slots.find((item) => item.time === button.dataset.time);
+          state.selectedSlot = slot || null;
+          renderSlots();
+          renderSummary();
+        });
+      });
+    }
+
+    function setAvailabilityNotice(message, warning = false) {
+      elements.availabilityNotice.textContent = message;
+      elements.availabilityNotice.classList.toggle('warn', warning);
+    }
+
+    async function loadAvailability() {
+      if (!state.meta) return;
+      if (state.type === 'formule' && !state.formuleId) {
+        state.availability = null;
+        state.selectedSlot = null;
+        setAvailabilityNotice('Choisis une formule pour afficher les créneaux.');
+        renderSlots();
+        renderSummary();
+        return;
+      }
+
+      state.loadingAvailability = true;
+      state.selectedSlot = null;
+      setAvailabilityNotice('Chargement des disponibilités...');
+      renderSlots();
+
+      try {
+        const params = new URLSearchParams({
+          date: elements.bookingDate.value,
+          pax: String(getPax()),
+          type: state.type,
+        });
+        if (state.type === 'bowling') params.set('duration', String(state.duration));
+        if (state.type === 'formule') params.set('formuleId', state.formuleId);
+
+        const availability = await api(`/api/public-availability?${params.toString()}`);
+        state.availability = availability;
+        if (availability.message) {
+          setAvailabilityNotice(availability.message, !availability.slots.length);
+        } else {
+          const label = availability.requiresLanes
+            ? `${availability.laneCount} piste${availability.laneCount > 1 ? 's' : ''} reservee${availability.laneCount > 1 ? 's' : ''}`
+            : 'Réservation sans piste';
+          setAvailabilityNotice(`${label} • duree totale ${formatDuration(availability.totalDuration)}`);
+        }
+      } catch (error) {
+        state.availability = null;
+        setAvailabilityNotice(error.message || 'Impossible de charger les disponibilités.', true);
+      } finally {
+        state.loadingAvailability = false;
+        renderSlots();
+        renderSummary();
+      }
+    }
+
+    function renderSummary() {
+      const availability = state.availability;
+      const slot = state.selectedSlot;
+      const label = state.type === 'formule' && state.meta
+        ? (state.meta.formules.find((item) => item.id === state.formuleId)?.name || 'Formule')
+        : 'Bowling Classique';
+
+      const rows = [
+        ['Type', label],
+        ['Date', elements.bookingDate.value || '-'],
+        ['Joueurs', String(getPax())],
+        ['Horaire', slot ? slot.time : 'À sélectionner'],
+      ];
+
+      if (availability) {
+        rows.push(['Duree', formatDuration(availability.totalDuration)]);
+        if (availability.requiresLanes) {
+          rows.push(['Pistes', `${availability.laneCount}`]);
+        }
+      }
+
+      elements.summaryList.innerHTML = rows.map(([name, value]) => `
+        <div class="summary-item"><span>${name}</span><strong>${value}</strong></div>
+      `).join('');
+
+      const total = availability ? Number(availability.price || 0) : 0;
+      elements.summaryTotal.textContent = `${total}EUR`;
+      elements.submitButton.disabled = !availability || !slot || state.loadingAvailability;
+    }
+
+    async function submitReservation() {
+      elements.successBox.style.display = 'none';
+      const availability = state.availability;
+      const slot = state.selectedSlot;
+      const name = elements.contactName.value.trim();
+      const phone = elements.contactPhone.value.trim();
+      const email = elements.contactEmail.value.trim();
+      const notes = elements.contactNotes.value.trim();
+
+      if (!availability || !slot) {
+        setAvailabilityNotice('Choisis un créneau avant de valider.', true);
+        return;
+      }
+      if (!name || !phone) {
+        setAvailabilityNotice('Le nom et le telephone sont obligatoires.', true);
+        return;
+      }
+
+      const payload = {
+        channel: 'public',
+        name,
+        phone,
+        email,
+        notes,
+        date: elements.bookingDate.value,
+        startTime: slot.time,
+        duration: availability.duration,
+        totalDuration: availability.totalDuration,
+        laneCount: availability.laneCount,
+        requiresLanes: availability.requiresLanes,
+        pax: getPax(),
+        status: 'pending',
+        basePrice: availability.price,
+        price: availability.price,
+        type: state.type,
+        formuleId: state.type === 'formule' ? state.formuleId : '',
+        label: availability.label,
+        lanes: slot.lanes || [],
+        extras: [],
+      };
+
+      try {
+        elements.submitButton.disabled = true;
+        elements.submitButton.textContent = 'Envoi en cours...';
+        const response = await api('/api/public-reservations', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        const lanes = (response.reservation?.lanes || []).join(' & ');
+        const laneText = availability.requiresLanes && lanes ? ` Pistes attribuees : ${lanes}.` : '';
+        elements.successBox.innerHTML = `Réservation bien envoyée. Horaire retenu : <strong>${slot.time}</strong>.${laneText}`;
+        elements.successBox.style.display = 'block';
+        elements.contactName.value = '';
+        elements.contactPhone.value = '';
+        elements.contactEmail.value = '';
+        elements.contactNotes.value = '';
+        await loadAvailability();
+      } catch (error) {
+        setAvailabilityNotice(error.message || "Impossible d'envoyer la réservation.", true);
+      } finally {
+        elements.submitButton.textContent = 'Envoyer la réservation';
+        renderSummary();
+      }
+    }
+
+    async function init() {
+      const meta = await api('/api/public-booking-meta');
+      state.meta = meta;
+      elements.bookingDate.min = meta.today;
+      elements.bookingDate.value = meta.today;
+      elements.typeBowling.addEventListener('click', () => setType('bowling'));
+      elements.typeFormule.addEventListener('click', () => setType('formule'));
+      elements.bookingDate.addEventListener('change', loadAvailability);
+      elements.bookingPax.addEventListener('input', () => {
+        refreshLaneNotice();
+        loadAvailability();
+      });
+      elements.submitButton.addEventListener('click', submitReservation);
+      renderDurationOptions();
+      renderFormulaOptions();
+      refreshLaneNotice();
+      setType('bowling');
+    }
+
+    init().catch((error) => {
+      setAvailabilityNotice(error.message || 'Chargement impossible.', true);
+    });
+  </script>
+</body>
+</html>

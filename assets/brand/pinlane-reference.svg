@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" role="img" aria-label="Pinlane">
+  <defs>
+    <radialGradient id="pinlaneBg" cx="50%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#16191d"/>
+      <stop offset="56%" stop-color="#0b0e12"/>
+      <stop offset="100%" stop-color="#050609"/>
+    </radialGradient>
+    <linearGradient id="pinlaneMetal" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#f2eadb"/>
+      <stop offset="38%" stop-color="#c9bda8"/>
+      <stop offset="68%" stop-color="#f3efe8"/>
+      <stop offset="100%" stop-color="#9f9586"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <rect width="1254" height="1254" fill="url(#pinlaneBg)"/>
+  <g filter="url(#softShadow)">
+    <g transform="translate(0 -8)" fill="none" stroke="url(#pinlaneMetal)" stroke-linecap="square" stroke-linejoin="miter">
+      <path d="M627 316c-42 0-66 32-66 70 0 30 20 59 20 91 0 45-63 91-63 167 0 47 45 77 109 77s109-30 109-77c0-76-63-122-63-167 0-32 20-61 20-91 0-38-24-70-66-70Z" stroke-width="16"/>
+      <path d="M459 641V455l98-60" stroke-width="14"/>
+      <path d="M795 641V455l-98-60" stroke-width="14"/>
+      <path d="M493 677V548" stroke-width="12"/>
+      <path d="M524 677V520" stroke-width="12"/>
+      <path d="M554 677V482" stroke-width="12"/>
+      <path d="M700 677V482" stroke-width="12"/>
+      <path d="M730 677V520" stroke-width="12"/>
+      <path d="M761 677V548" stroke-width="12"/>
+    </g>
+    <circle cx="627" cy="634" r="66" fill="#ececea"/>
+    <circle cx="596" cy="598" r="11" fill="#08090b"/>
+    <circle cx="647" cy="598" r="11" fill="#08090b"/>
+    <circle cx="627" cy="654" r="11" fill="#08090b"/>
+  </g>
+  <text x="627" y="871" text-anchor="middle" fill="#e9e8e6" font-family="Inter, Aptos, Segoe UI, Arial, sans-serif" font-size="86" font-weight="340" letter-spacing="42">PINLANE</text>
+</svg>

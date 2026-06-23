@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/agent-orchestrator",
       "schedule": "15 8 * * *"
+    },
+    {
+      "path": "/api/cron/ops-jobs",
+      "schedule": "*/5 * * * *"
     }
   ],
   "rewrites": [
@@ -18,6 +22,10 @@
     {
       "source": "/api/cron/agent-orchestrator",
       "destination": "/api/cron?action=agent-orchestrator"
+    },
+    {
+      "source": "/api/cron/ops-jobs",
+      "destination": "/api/cron?action=ops-jobs"
     }
   ],
   "headers": [

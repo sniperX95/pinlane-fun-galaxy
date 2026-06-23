@@ -3960,3 +3960,169 @@ body.staff-mode.staff-light:not(.admin-mode) .staff-utility-page .utility-overvi
     border-top: 1px solid rgba(226, 232, 240, .08) !important;
   }
 }
+
+/* Production visual guard: bowling planning must fit the staff viewport.
+   Older theme layers forced a 1216px grid, which clipped lane 8 and made
+   compact reservations look broken on normal laptop widths. */
+body.staff-mode:not(.admin-mode) #planningGridWrap,
+body.staff-mode:not(.admin-mode) #planningGridWrap * {
+  box-sizing: border-box !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .planning-grid {
+  display: flex !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  background: #05070c !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .hour-col {
+  width: var(--planning-hour-col, 54px) !important;
+  min-width: var(--planning-hour-col, 54px) !important;
+  max-width: var(--planning-hour-col, 54px) !important;
+  flex: 0 0 var(--planning-hour-col, 54px) !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .lanes-row {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: calc(100% - var(--planning-hour-col, 54px)) !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .lane-col {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .hour-header,
+body.staff-mode:not(.admin-mode) #planningGridWrap .lane-header {
+  height: var(--planning-header-h, 38px) !important;
+  min-height: var(--planning-header-h, 38px) !important;
+  max-height: var(--planning-header-h, 38px) !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .lane-header {
+  gap: 6px !important;
+  padding: 0 30px 0 12px !important;
+  overflow: hidden !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .lane-header .pl,
+body.staff-mode:not(.admin-mode) #planningGridWrap .lane-header .num {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .slot-cell,
+body.staff-mode:not(.admin-mode) #planningGridWrap .hour-cell {
+  height: calc(var(--planning-hour-h, 48px) / 2) !important;
+  min-height: calc(var(--planning-hour-h, 48px) / 2) !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking {
+  left: 4px !important;
+  right: 4px !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 8px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  gap: 3px !important;
+  padding: 7px 8px !important;
+  border-radius: 7px !important;
+  line-height: 1.15 !important;
+  overflow: hidden !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking-name {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 12px !important;
+  font-size: 11px !important;
+  line-height: 1.18 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking-meta,
+body.staff-mode:not(.admin-mode) #planningGridWrap .b-tag {
+  display: block !important;
+  max-width: 100% !important;
+  min-height: 11px !important;
+  line-height: 1.15 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking-meta {
+  margin-top: auto !important;
+  font-size: 10px !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-snug {
+  gap: 1px !important;
+  padding: 4px 7px !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-snug .booking-name {
+  min-height: 11px !important;
+  font-size: 10px !important;
+  line-height: 1.1 !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-snug .b-tag,
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-snug .reservation-tags {
+  display: none !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-snug .booking-meta {
+  min-height: 10px !important;
+  font-size: 9px !important;
+  line-height: 1.08 !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-mini {
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: 3px 7px !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-mini .booking-name {
+  min-height: 11px !important;
+  font-size: 10px !important;
+  line-height: 1.1 !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-mini .b-tag,
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-mini .booking-meta,
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-mini .reservation-tags {
+  display: none !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .current-line {
+  left: var(--planning-hour-col, 54px) !important;
+  right: 0 !important;
+  max-width: calc(100% - var(--planning-hour-col, 54px)) !important;
+}
+
+body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .planning-grid,
+body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .hour-col,
+body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .lane-col,
+body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .hour-header,
+body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .lane-header {
+  background: #fbfbfa !important;
+}

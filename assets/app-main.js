@@ -9427,7 +9427,7 @@ function renderPlanning() {
       if (r.status === 'paid') cls = 'paid';
       const compactClass = state.staffPlanningExpanded
         ? (height < 92 ? ' booking-compact' : '')
-        : (height <= 30 ? ' booking-mini' : height <= 40 ? ' booking-snug' : '');
+        : (height <= 30 ? ' booking-mini' : height <= 52 ? ' booking-snug' : '');
       bkHtml += `<div class="booking ${cls}${compactClass} ${getReservationHighlightClasses(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         <div class="booking-name">${r.name}</div>
         <div class="b-tag">${getReservationLabel(r)}</div>

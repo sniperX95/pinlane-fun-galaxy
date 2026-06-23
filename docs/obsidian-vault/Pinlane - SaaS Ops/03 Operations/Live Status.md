@@ -1,6 +1,6 @@
 # Live Status
 
-Derniere synchronisation: 23/06/2026 22:41:49
+Derniere synchronisation: 24/06/2026 00:39:47
 
 ## Verdict rapide
 
@@ -10,7 +10,7 @@ Derniere synchronisation: 23/06/2026 22:41:49
 | Vercel | Inspect OK |
 | Railway | Connecte |
 | Worker ops | SUCCESS |
-| Git | Propre |
+| Git | Changements locaux |
 | Tests | OK |
 
 ## Liens
@@ -31,9 +31,12 @@ status=200; length=30314
 ## Git
 
 ```text
-working tree clean
+M assets/app-final-guard.css
+ M assets/app-main.js
+ M package.json
+?? scripts/run-visual-qa.js
 
-a5e81af Connect Obsidian ops sync
+b1cc8d5 Connect Obsidian ops sync
 294b0aa Add Pinlane Obsidian knowledge vault
 f4a30fe Use Vercel-compatible ops cron
 df23ccc Add ops jobs cron fallback

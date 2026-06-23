@@ -13,6 +13,7 @@
     "test:marketing-agents": "node scripts/run-marketing-agent-tests.js",
     "test:simulation": "node scripts/run-simulation-tests.js",
     "test:quality": "node scripts/run-quality-audit.js",
+    "test:visual": "node scripts/run-visual-qa.js",
     "test:ops:stress": "node scripts/run-ops-stress.js",
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
     "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",

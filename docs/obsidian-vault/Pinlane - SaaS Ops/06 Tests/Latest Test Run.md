@@ -1,6 +1,6 @@
 # Latest Test Run
 
-Derniere synchronisation: 23/06/2026 22:41:49
+Derniere synchronisation: 24/06/2026 00:39:47
 
 ## Commande
 
@@ -63,7 +63,7 @@ Marketing agent tests passed.
 > test:ops:stress
 > node scripts/run-ops-stress.js
 
-ops-stress-ok iterations=5000 accepted=957 refused=4043 formula=2836 bowling=1333 laser=831 highOrCritical=371
+ops-stress-ok iterations=5000 accepted=958 refused=4042 formula=2836 bowling=1333 laser=831 highOrCritical=369
 
 > test:quality
 > node scripts/run-quality-audit.js

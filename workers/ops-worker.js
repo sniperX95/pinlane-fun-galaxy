@@ -1,4 +1,8 @@
-const { runAgentOrchestratorCron, runDispatchCommunicationsCron } = require('../lib/cron-tasks');
+const {
+  runAgentOrchestratorCron,
+  runDispatchCommunicationsCron,
+  runOpsJobsCron,
+} = require('../lib/cron-tasks');
 const { getPool } = require('../lib/database');
 
 const once = process.argv.includes('--once');
@@ -80,6 +84,18 @@ function buildTasks() {
       running: false,
       run: () => runDispatchCommunicationsCron({
         limit: envNumber('OPS_WORKER_COMMUNICATION_LIMIT', 50, { min: 1, max: 100 }),
+      }),
+    });
+  }
+
+  if (envBool('OPS_WORKER_RUN_JOBS', true)) {
+    tasks.push({
+      name: 'jobs',
+      intervalMs: envNumber('OPS_WORKER_JOBS_INTERVAL_MS', 30_000, { min: 5_000 }),
+      lastRunAt: 0,
+      running: false,
+      run: () => runOpsJobsCron({
+        limit: envNumber('OPS_WORKER_JOBS_LIMIT', 25, { min: 1, max: 100 }),
       }),
     });
   }

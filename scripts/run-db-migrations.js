@@ -25,6 +25,11 @@ const MIGRATIONS = [
     file: 'database/communications-worker-schema.sql',
     description: 'Worker-safe communication queue for Railway and frequent dispatch',
   },
+  {
+    id: '0005_ops_automation',
+    file: 'database/ops-automation-schema.sql',
+    description: 'Durable ops jobs, worker health, and delay incident tracking',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -2,6 +2,7 @@ const { sendError, sendJson } = require('../lib/http');
 const {
   runAgentOrchestratorCron,
   runDispatchCommunicationsCron,
+  runOpsJobsCron,
 } = require('../lib/cron-tasks');
 
 function isAuthorized(req) {
@@ -38,6 +39,12 @@ module.exports = async (req, res) => {
     if (action === 'dispatch-communications') {
       sendJson(res, 200, await runDispatchCommunicationsCron({
         limit: requestUrl.searchParams.get('limit') || 50,
+      }));
+      return;
+    }
+    if (action === 'ops-jobs') {
+      sendJson(res, 200, await runOpsJobsCron({
+        limit: requestUrl.searchParams.get('limit') || 25,
       }));
       return;
     }

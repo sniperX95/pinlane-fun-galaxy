@@ -1,5 +1,8 @@
 const {
+  createDelayIncident,
+  createOpsJob,
   createOpsEvent,
+  getOpsHealth,
   listCommunications,
   listAgentSuggestions,
   listOpsEvents,
@@ -25,6 +28,7 @@ const {
   enqueueDelayCommunications,
   enqueueReservationCommunications,
 } = require('../lib/ops-communications');
+const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge } = require('../lib/ops-knowledge');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
@@ -103,6 +107,15 @@ async function handleGet(req, res) {
       limit: Number(url.searchParams.get('limit') || 100),
     });
     sendJson(res, 200, { ok: true, centerId, communications });
+    return;
+  }
+
+  if (action === 'health') {
+    const health = await getOpsHealth({
+      centerId,
+      limit: Number(url.searchParams.get('limit') || 20),
+    });
+    sendJson(res, 200, { ok: true, health });
     return;
   }
 
@@ -188,16 +201,29 @@ async function handlePost(req, res) {
         throw new Error('Reservation manquante pour appliquer le retard.');
       }
       if (!impact.canApply) {
-        await enqueueDelayCommunications(
+        const communications = await enqueueDelayCommunications(
           { ...reservation, id: reservationId, centerId: reservation.centerId || body.centerId || 'libramont' },
           impact,
           body.options || {},
         );
+        await createDelayIncident({
+          centerId: reservation.centerId || body.centerId || 'libramont',
+          reservationId,
+          delayMinutes: impact.delayMinutes || body.delayMinutes || 0,
+          reason: impact.reason || body.reason || 'retard signale',
+          status: 'needs_staff',
+          previousStartTime: impact.previousStartTime || reservation.startTime || '',
+          proposedStartTime: impact.proposedStartTime || '',
+          impact,
+          communications: { queued: communications.map((item) => item.id) },
+          idempotencyKey: `delay:${reservationId}:${impact.delayMinutes || body.delayMinutes || 0}:${impact.proposedStartTime || 'none'}`,
+        }).catch(() => null);
         sendJson(res, 409, {
           ok: false,
           contextWarning: context.warning || null,
           ...result,
           applied: false,
+          communications,
           message: 'Retard non applicable automatiquement. Choisir une alternative proposee.',
         });
         return;
@@ -231,6 +257,18 @@ async function handlePost(req, res) {
         },
       }).catch(() => null);
       const communications = await enqueueDelayCommunications(updatedReservation, impact, body.options || {});
+      await createDelayIncident({
+        centerId: updatedReservation.centerId,
+        reservationId: updatedReservation.id,
+        delayMinutes: impact.delayMinutes || body.delayMinutes || 0,
+        reason: impact.reason || body.reason || 'retard signale',
+        status: 'applied',
+        previousStartTime: impact.previousStartTime || reservation.startTime || '',
+        proposedStartTime: impact.proposedStartTime || updatedReservation.startTime || '',
+        impact,
+        communications: { queued: communications.map((item) => item.id) },
+        idempotencyKey: `delay:${updatedReservation.id}:${impact.delayMinutes || body.delayMinutes || 0}:${impact.proposedStartTime || updatedReservation.startTime}`,
+      }).catch(() => null);
       const dispatch = body.dispatch === false ? null : await dispatchDueCommunications({ limit: 10 });
       sendJson(res, 200, {
         ok: true,
@@ -255,14 +293,27 @@ async function handlePost(req, res) {
 
   if (action === 'enqueueReservation') {
     if (!body.reservation) throw new Error('Reservation manquante.');
+    const jobs = await enqueueReservationAutomation(body.reservation, body.options || {});
     const communications = await enqueueReservationCommunications(body.reservation, body.options || {});
-    sendJson(res, 200, { ok: true, action, communications });
+    sendJson(res, 200, { ok: true, action, jobs, communications });
     return;
   }
 
   if (action === 'dispatchDue') {
     const result = await dispatchDueCommunications({ limit: body.limit || 25 });
     sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
+  if (action === 'processJobs') {
+    const result = await processDueOpsJobs({ limit: body.limit || 25 });
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
+  if (action === 'enqueueJob') {
+    const job = await createOpsJob(body.job || body);
+    sendJson(res, 201, { ok: true, action, job });
     return;
   }
 
@@ -329,11 +380,13 @@ async function handlePost(req, res) {
 function getRequiredOpsPermission(method, action) {
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
+    if (action === 'health') return ['dashboard.view', 'ai.ops'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     return 'ai.ops';
   }
   if (['communicationDraft'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue'].includes(action)) return 'emails.send';
+  if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';
   if (['plan', 'delay'].includes(action)) return ['planning.view', 'ai.ops'];
   return 'ai.ops';
 }

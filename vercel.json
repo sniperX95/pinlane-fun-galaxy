@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/ops-jobs",
-      "schedule": "*/5 * * * *"
+      "schedule": "30 8 * * *"
     }
   ],
   "rewrites": [

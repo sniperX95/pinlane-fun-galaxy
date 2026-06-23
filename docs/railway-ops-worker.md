@@ -22,10 +22,12 @@ Railway doit servir de moteur de fond, pas remplacer le site public.
 Obligatoires:
 
 - `DATABASE_URL`
-- `DATABASE_SSL=true`
+- `DATABASE_SSL=no-verify` pour Railway Postgres, car le proxy SSL Railway utilise un certificat interne.
 - `RESEND_API_KEY`
 - `RESEND_FROM`
 - `STAFF_REVIEW_EMAIL`
+- `PLATFORM_OWNER_CODE`
+- `STAFF_AUTH_SECRET`
 
 Recommandees:
 
@@ -50,11 +52,18 @@ Optionnelles plus tard:
 ## Deploiement Railway
 
 1. Connecter le repo GitHub dans Railway.
-2. Choisir un service Node/Nixpacks.
-3. Start command: `npm run worker:ops`.
+2. Choisir un service Node/Railpack.
+3. Garder `railway.json` dans le repo: il definit `npm run worker:ops` comme commande de demarrage.
 4. Ajouter les variables ci-dessus.
-5. Lancer `npm run db:migrate` une fois avant ou pendant le premier deploy.
+5. Lancer `npm run db:migrate` une fois via le proxy TCP Postgres Railway, avec `DATABASE_SSL=no-verify`.
 6. Verifier les logs Railway: les lignes doivent afficher `communications:ok` puis `agents:ok`.
+
+## Installation actuelle
+
+- Projet Railway: `PINLANE FUN GALAXY`.
+- Service worker: `ops-worker`, source GitHub `sniperX95/pinelane-fun-galaxy`, branche `main`.
+- Base: `Postgres`, volume persistant Railway.
+- Le worker tourne en continu et lit la meme base que les API.
 
 ## Important
 

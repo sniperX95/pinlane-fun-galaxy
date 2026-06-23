@@ -2,6 +2,8 @@
   "scripts": {
     "db:migrate": "node scripts/run-db-migrations.js",
     "db:migrate:plan": "node scripts/run-db-migrations.js --plan",
+    "obsidian:sync": "node scripts/sync-obsidian-ops.js",
+    "obsidian:sync:tests": "node scripts/sync-obsidian-ops.js --with-tests",
     "test:browser-modules": "node scripts/run-browser-module-tests.js",
     "test:e2e": "node scripts/run-webapp-smoke-tests.js",
     "test:ops": "node scripts/run-ops-tests.js",

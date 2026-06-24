@@ -1,6 +1,6 @@
 # Command Center
 
-Derniere synchronisation: 24/06/2026 00:39:47
+Derniere synchronisation: 24/06/2026 04:04:08
 
 ## Ouvrir vite
 
@@ -25,7 +25,7 @@ git status --short
 ## Etat express
 
 - Site public: OK
-- Railway worker: SUCCESS
+- Railway worker: unknown
 - Tests: OK
 - Git: changements locaux
 

@@ -1,6 +1,6 @@
 # Obsidian Sync
 
-Derniere synchronisation: 24/06/2026 00:39:47
+Derniere synchronisation: 24/06/2026 04:04:08
 
 Cette note documente le pont operationnel entre Codex, Obsidian, Railway, Vercel, GitHub et les tests.
 

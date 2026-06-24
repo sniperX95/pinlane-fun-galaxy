@@ -1,21 +1,21 @@
 # Railway Health
 
-Derniere synchronisation: 24/06/2026 00:39:47
+Derniere synchronisation: 24/06/2026 04:04:08
 
 ## Projet
 
 - Projet: PINLANE FUN GALAXY
 - Environnement: production
-- Worker deployment: 3925d093-6c1a-4ebf-8db8-0aac6dd2878c
-- Worker status: SUCCESS
-- Worker date: 2026-06-23T20:44:01.114Z
+- Worker deployment: -
+- Worker status: -
+- Worker date: -
 
 ## Services
 
 | Service | Deployment | Instance | Commit / ID |
 | --- | --- | --- | --- |
 | Postgres | SUCCESS | RUNNING | 597e3db7-9063-4e8e-8d2b-24367b50dbe4 |
-| ops-worker | SUCCESS | RUNNING | b1cc8d54793c5ac69bfc58ea29f0d150c2fcfd36 |
+| ops-worker | SUCCESS | RUNNING | c0219f25dab3701510d6ac60fc60703a481e7260 |
 
 ## Variables critiques presentes
 
@@ -33,26 +33,26 @@ Derniere synchronisation: 24/06/2026 00:39:47
 ## Derniers logs worker
 
 ```text
-2026-06-23T22:33:31.410315720Z jobs:ok
-2026-06-23T22:33:51.401569139Z communications:ok
-2026-06-23T22:33:55.249338995Z jobs:ok
-2026-06-23T22:34:34.771193215Z jobs:ok
-2026-06-23T22:34:54.772591345Z communications:ok
-2026-06-23T22:34:58.706877843Z jobs:ok
-2026-06-23T22:35:38.272980939Z jobs:ok
-2026-06-23T22:35:58.270616595Z communications:ok
-2026-06-23T22:36:03.217979426Z jobs:ok
-2026-06-23T22:36:42.746419168Z jobs:ok
-2026-06-23T22:36:50.801414960Z communications:ok
-2026-06-23T22:37:10.802902374Z jobs:ok
-2026-06-23T22:37:40.805073806Z jobs:ok
-2026-06-23T22:38:00.387568285Z communications:ok
-2026-06-23T22:38:09.003643754Z jobs:ok
-2026-06-23T22:38:39.026053721Z agents:ok
-2026-06-23T22:38:40.038457481Z jobs:ok
-2026-06-23T22:38:59.644765250Z communications:ok
-2026-06-23T22:39:19.650303212Z jobs:ok
-2026-06-23T22:39:49.648007077Z jobs:ok
+2026-06-24T02:00:51.536925196Z > worker:ops
+2026-06-24T02:00:51.536930366Z > node workers/ops-worker.js
+2026-06-24T02:00:51.536934976Z
+2026-06-24T02:00:51.536938996Z loop:start
+2026-06-24T02:00:52.054024044Z Starting Container
+2026-06-24T02:00:53.085722486Z jobs:ok
+2026-06-24T02:00:53.085726956Z communications:ok
+2026-06-24T02:01:33.082958800Z jobs:ok
+2026-06-24T02:02:03.083156745Z communications:ok
+2026-06-24T02:02:03.083161255Z jobs:ok
+2026-06-24T02:02:03.083165445Z agents:ok
+2026-06-24T02:02:33.136481301Z jobs:ok
+2026-06-24T02:03:03.106233186Z communications:ok
+2026-06-24T02:03:03.106235516Z jobs:ok
+2026-06-24T02:03:33.127060098Z jobs:ok
+2026-06-24T02:04:03.131904096Z communications:ok
+2026-06-24T02:04:03.131907726Z jobs:ok
+2026-06-24T02:04:43.144212035Z jobs:ok
+2026-06-24T02:05:03.144447300Z communications:ok
+2026-06-24T02:05:05.373125209Z jobs:ok
 ```
 
 ## Erreur brute si besoin

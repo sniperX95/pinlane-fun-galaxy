@@ -4146,3 +4146,44 @@ body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .hour-header,
 body.staff-mode.staff-light:not(.admin-mode) #planningGridWrap .lane-header {
   background: #fbfbfa !important;
 }
+
+/* Planning cards legibility pass.
+   Keep the dense operator grid compact, but avoid fake-broken text clipping on
+   normal-height bookings. Tiny 30min blocks stay single-line by design. */
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking:not(.booking-mini):not(.booking-snug) {
+  gap: 4px !important;
+  padding: 7px 9px !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking:not(.booking-mini):not(.booking-snug) .booking-name {
+  display: block !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  -webkit-line-clamp: unset !important;
+  -webkit-box-orient: unset !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.15 !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking:not(.booking-mini):not(.booking-snug) .booking-meta {
+  width: 100% !important;
+  margin-top: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking:not(.booking-mini):not(.booking-snug) .b-tag,
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking:not(.booking-mini):not(.booking-snug) .reservation-tags span {
+  max-width: 100% !important;
+}
+
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-snug .booking-name,
+body.staff-mode:not(.admin-mode) #planningGridWrap .booking.booking-mini .booking-name {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}

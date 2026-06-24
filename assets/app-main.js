@@ -9428,8 +9428,10 @@ function renderPlanning() {
       const compactClass = state.staffPlanningExpanded
         ? (height < 92 ? ' booking-compact' : '')
         : (height <= 30 ? ' booking-mini' : height <= 52 ? ' booking-snug' : '');
+      const displayName = getPlanningBookingDisplayName(r);
+      const fullName = String(r.name || 'Client');
       bkHtml += `<div class="booking ${cls}${compactClass} ${getReservationHighlightClasses(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
-        <div class="booking-name">${r.name}</div>
+        <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
         <div class="b-tag">${getReservationLabel(r)}</div>
         ${renderReservationTags(r)}
         <div class="booking-meta">${r.pax}j • ${formatDurationLabel(item.window.duration)}</div>
@@ -9457,6 +9459,22 @@ function renderPlanning() {
       </div>
       <div class="lanes-row">${lanesHtml}</div>
     </div>`;
+}
+
+function getPlanningBookingDisplayName(reservation) {
+  const fullName = String(reservation?.name || 'Client').trim();
+  if (fullName.length <= 18) return fullName;
+  const id = fullName.match(/#\d+\b/)?.[0] || '';
+  const activityMatch = fullName.match(/\s+(?:formule|bowling|laser(?: game)?)(?:\s|$)/i);
+  let base = activityMatch ? fullName.slice(0, activityMatch.index).trim() : fullName;
+  if (!base) base = fullName;
+  base = base.replace(/^Anniversaire\b/i, 'Anniv.');
+  let candidate = id && !base.includes(id) ? `${base} ${id}` : base;
+  if (candidate.length <= 18) return candidate;
+  const firstWord = base.split(/\s+/).filter(Boolean)[0] || base;
+  candidate = id ? `${firstWord} ${id}` : firstWord;
+  if (candidate.length <= 18) return candidate;
+  return id ? `${firstWord.slice(0, 10)} ${id}` : firstWord.slice(0, 18);
 }
 
 function renderLaserPlanning() {

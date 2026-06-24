@@ -422,11 +422,12 @@ body.staff-mode .staff-permission-toggle small {
    but these KPI icons and sparklines are functional scan cues on the planning page. */
 body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi {
   position: relative !important;
-  min-height: 116px !important;
-  padding: 22px 96px 20px 82px !important;
+  min-height: 128px !important;
+  padding: 24px 104px 22px 82px !important;
   overflow: hidden !important;
   text-align: left !important;
   font-variant-numeric: tabular-nums !important;
+  align-content: center !important;
 }
 
 body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi:nth-child(1) {
@@ -497,6 +498,25 @@ body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi::after {
 body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi {
   padding-left: 74px !important;
   padding-right: 112px !important;
+}
+
+body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi .label,
+body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi .value,
+body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi .hint,
+body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi .tag-ok {
+  position: relative !important;
+  z-index: 1 !important;
+  max-width: 100% !important;
+}
+
+body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi .hint,
+body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi .tag-ok {
+  display: block !important;
+  min-height: 18px !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  line-height: 1.25 !important;
 }
 
 /* Reservations page: calmer B2B calendar, less generated/card-heavy. */

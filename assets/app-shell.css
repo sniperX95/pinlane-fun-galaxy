@@ -20560,3 +20560,465 @@ body.admin-mode .ops-review-alt span {
     flex-wrap: wrap;
   }
 }
+
+/* Simulation Ops cockpit, clearer control surface */
+body.admin-mode .ops-sim-hero {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr) !important;
+  gap: 14px !important;
+  align-items: stretch !important;
+}
+
+body.admin-mode .ops-sim-card {
+  border-radius: 14px !important;
+  background: rgba(12, 17, 24, .98) !important;
+  border: 1px solid rgba(126, 142, 164, .2) !important;
+  box-shadow: 0 12px 32px rgba(2, 4, 8, .18) !important;
+}
+
+body.admin-mode .ops-sim-card h3,
+body.admin-mode .ops-sim-comm-head h3 {
+  text-wrap: balance !important;
+}
+
+body.admin-mode .ops-sim-overline {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(157, 171, 190, .9);
+  font-family: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+body.admin-mode .ops-sim-command-map {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+body.admin-mode .ops-sim-command-link {
+  min-height: 92px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(126, 142, 164, .18);
+  border-radius: 12px;
+  background: rgba(9, 13, 19, .86);
+  color: inherit;
+  text-decoration: none;
+  transition-property: border-color, background-color, transform;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(.2, 0, 0, 1);
+}
+
+body.admin-mode .ops-sim-command-link:hover {
+  border-color: rgba(184, 173, 155, .46);
+  background: rgba(13, 18, 25, .94);
+}
+
+body.admin-mode .ops-sim-command-link:active {
+  transform: translateY(1px);
+}
+
+body.admin-mode .ops-sim-command-link span {
+  color: rgba(154, 167, 184, .92);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+body.admin-mode .ops-sim-command-link strong {
+  color: rgba(244, 247, 251, .97);
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+body.admin-mode .ops-sim-command-link small {
+  color: rgba(154, 167, 184, .88);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+body.admin-mode .ops-sim-control-panel {
+  margin: 16px 0 14px;
+  padding: 14px;
+  border: 1px solid rgba(126, 142, 164, .2);
+  border-radius: 14px;
+  background: rgba(5, 9, 14, .72);
+}
+
+body.admin-mode #ops-sim-load-control,
+body.admin-mode #ops-sim-run-stats,
+body.admin-mode #ops-sim-staff-reviews,
+body.admin-mode #ops-sim-mail-console,
+body.admin-mode #ops-sim-training-lab,
+body.admin-mode #ops-sim-agent-logs {
+  scroll-margin-top: 18px;
+}
+
+body.admin-mode #ops-sim-load-control:target,
+body.admin-mode #ops-sim-run-stats:target,
+body.admin-mode #ops-sim-staff-reviews:target,
+body.admin-mode #ops-sim-mail-console:target,
+body.admin-mode #ops-sim-training-lab:target,
+body.admin-mode #ops-sim-agent-logs:target {
+  outline: 1px solid rgba(184, 173, 155, .62);
+  outline-offset: 3px;
+}
+
+body.admin-mode .ops-sim-control-head,
+body.admin-mode .ops-sim-control-foot,
+body.admin-mode .ops-sim-comm-head,
+body.admin-mode .ops-sim-comm-actions,
+body.admin-mode .ops-sim-comm-summary {
+  display: flex;
+  align-items: center;
+}
+
+body.admin-mode .ops-sim-control-head,
+body.admin-mode .ops-sim-comm-head {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+body.admin-mode .ops-sim-control-head h4 {
+  margin: 0;
+  color: rgba(244, 247, 251, .96);
+  font-size: 16px;
+  font-weight: 780;
+  line-height: 1.15;
+}
+
+body.admin-mode .ops-sim-control-head p,
+body.admin-mode .ops-sim-control-foot,
+body.admin-mode .ops-sim-comm-head p {
+  margin: 4px 0 0;
+  color: rgba(154, 167, 184, .94);
+  font-size: 12px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+body.admin-mode .ops-sim-profile-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin: 14px 0 10px !important;
+}
+
+body.admin-mode .ops-sim-profile {
+  min-height: 118px !important;
+  padding: 12px !important;
+  border-radius: 10px !important;
+  background: rgba(9, 13, 19, .72) !important;
+  border-color: rgba(126, 142, 164, .22) !important;
+  box-shadow: inset 0 1px 0 rgba(244, 247, 251, .03) !important;
+  transform: none !important;
+  transition-property: border-color, background-color, box-shadow, color !important;
+  transition-duration: 160ms !important;
+  transition-timing-function: cubic-bezier(.2, 0, 0, 1) !important;
+}
+
+body.admin-mode .ops-sim-profile:hover {
+  background: rgba(14, 19, 27, .9) !important;
+  border-color: rgba(184, 173, 155, .38) !important;
+}
+
+body.admin-mode .ops-sim-profile.active {
+  background: rgba(184, 173, 155, .09) !important;
+  border-color: rgba(184, 173, 155, .64) !important;
+  box-shadow: 0 0 0 1px rgba(184, 173, 155, .1) inset !important;
+}
+
+body.admin-mode .ops-sim-profile-index {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 22px;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 7px;
+  background: rgba(244, 247, 251, .06);
+  color: rgba(212, 221, 233, .9);
+  font-family: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+body.admin-mode .ops-sim-profile em {
+  margin-top: auto;
+  color: rgba(184, 173, 155, .95);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+body.admin-mode .ops-sim-control-foot {
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(126, 142, 164, .14);
+}
+
+body.admin-mode .ops-link-btn {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: rgba(244, 247, 251, .95);
+  font-size: 12px;
+  font-weight: 760;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(184, 173, 155, .45);
+  text-underline-offset: 4px;
+  transition-property: color, text-decoration-color;
+  transition-duration: 160ms;
+}
+
+body.admin-mode .ops-link-btn:hover {
+  color: rgba(184, 173, 155, 1);
+  text-decoration-color: rgba(184, 173, 155, .9);
+}
+
+body.admin-mode .ops-sim-scoreboard {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 14px;
+  margin: 14px 0;
+}
+
+body.admin-mode .ops-sim-score-main,
+body.admin-mode .ops-sim-score,
+body.admin-mode .ops-sim-comm-board {
+  border: 1px solid rgba(126, 142, 164, .2);
+  background: rgba(10, 14, 20, .92);
+  border-radius: 14px;
+}
+
+body.admin-mode .ops-sim-score-main {
+  padding: 16px;
+}
+
+body.admin-mode .ops-sim-score-main strong {
+  display: block;
+  color: rgba(244, 247, 251, .98);
+  font-size: 42px;
+  font-weight: 820;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+body.admin-mode .ops-sim-score-main > span:last-of-type,
+body.admin-mode .ops-sim-score small {
+  color: rgba(154, 167, 184, .9);
+  font-size: 12px;
+}
+
+body.admin-mode .ops-sim-score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+body.admin-mode .ops-sim-score {
+  min-height: 92px;
+  padding: 14px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+}
+
+body.admin-mode .ops-sim-score span {
+  color: rgba(154, 167, 184, .9);
+  font-size: 11px;
+  font-weight: 720;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+body.admin-mode .ops-sim-score strong {
+  color: rgba(244, 247, 251, .98);
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+}
+
+body.admin-mode .ops-sim-score.attention {
+  border-color: rgba(217, 154, 43, .38);
+  background: rgba(217, 154, 43, .08);
+}
+
+body.admin-mode .ops-sim-score.danger {
+  border-color: rgba(227, 109, 103, .38);
+  background: rgba(227, 109, 103, .08);
+}
+
+body.admin-mode .ops-sim-review-board {
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, .8fr) !important;
+  gap: 14px !important;
+  margin: 14px 0 !important;
+}
+
+body.admin-mode .ops-review-item {
+  border-radius: 12px !important;
+  background: rgba(8, 12, 18, .78) !important;
+  border-color: rgba(126, 142, 164, .2) !important;
+}
+
+body.admin-mode .ops-review-actions .ops-admin-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+body.admin-mode .ops-review-alt {
+  min-width: min(230px, 100%) !important;
+  border-radius: 10px !important;
+  background: rgba(13, 18, 25, .92) !important;
+}
+
+body.admin-mode .ops-sim-comm-board {
+  margin: 14px 0;
+  padding: 16px;
+}
+
+body.admin-mode .ops-sim-comm-actions {
+  gap: 10px;
+}
+
+body.admin-mode .ops-sim-comm-actions span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: rgba(244, 247, 251, .06);
+  color: rgba(214, 223, 235, .94);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+body.admin-mode .ops-sim-comm-summary {
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+body.admin-mode .ops-sim-comm-summary span {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid rgba(126, 142, 164, .16);
+  border-radius: 8px;
+  color: rgba(154, 167, 184, .95);
+  font-size: 12px;
+}
+
+body.admin-mode .ops-sim-comm-summary strong {
+  color: rgba(244, 247, 251, .96);
+  font-variant-numeric: tabular-nums;
+}
+
+body.admin-mode .ops-sim-comm-list {
+  display: grid;
+  gap: 8px;
+}
+
+body.admin-mode .ops-sim-comm-row {
+  appearance: none;
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 92px minmax(220px, 1.2fr) minmax(160px, .8fr) minmax(170px, .8fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(126, 142, 164, .14);
+  border-radius: 10px;
+  background: rgba(5, 8, 12, .62);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition-property: border-color, background-color;
+  transition-duration: 160ms;
+}
+
+body.admin-mode .ops-sim-comm-row:hover {
+  border-color: rgba(184, 173, 155, .36);
+  background: rgba(13, 18, 25, .84);
+}
+
+body.admin-mode .ops-sim-comm-row strong {
+  color: rgba(244, 247, 251, .96);
+  font-size: 13px;
+  font-weight: 740;
+}
+
+body.admin-mode .ops-sim-comm-row span:not(.ops-pill),
+body.admin-mode .ops-sim-comm-row small {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(154, 167, 184, .9);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.admin-mode .ops-sim-empty {
+  min-height: 88px;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  border: 1px dashed rgba(126, 142, 164, .22);
+  border-radius: 12px;
+  color: rgba(154, 167, 184, .9);
+  text-align: center;
+}
+
+body.admin-mode .ops-training-board {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+body.admin-mode .ops-admin-btn:active,
+body.admin-mode .ops-sim-profile:active,
+body.admin-mode .ops-sim-comm-row:active,
+body.admin-mode .ops-review-alt:active {
+  transform: translateY(1px) !important;
+}
+
+@media (max-width: 1320px) {
+  body.admin-mode .ops-sim-profile-row,
+  body.admin-mode .ops-sim-score-grid,
+  body.admin-mode .ops-sim-command-map {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  body.admin-mode .ops-sim-scoreboard,
+  body.admin-mode .ops-sim-hero,
+  body.admin-mode .ops-sim-review-board {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 860px) {
+  body.admin-mode .ops-sim-control-head,
+  body.admin-mode .ops-sim-control-foot,
+  body.admin-mode .ops-sim-comm-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  body.admin-mode .ops-sim-profile-row,
+  body.admin-mode .ops-sim-score-grid,
+  body.admin-mode .ops-sim-command-map {
+    grid-template-columns: 1fr !important;
+  }
+
+  body.admin-mode .ops-sim-comm-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -744,17 +744,125 @@ function setOpsSimulationScenario(value) {
   renderOpsAdmin();
 }
 
+async function startOpsSimulationScenario(value) {
+  state.opsSimulationScenario = value || 'normal';
+  save();
+  await startOpsSimulation();
+}
+
+function getOpsSimulationProfileTone(profileId) {
+  const tones = {
+    quiet: {
+      badge: 'Niveau 1',
+      objective: 'Jour calme, environ 10 demandes.',
+      proof: 'Verifie que le moteur ne surjoue pas les alertes.'
+    },
+    normal: {
+      badge: 'Niveau 2',
+      objective: 'Jour normal, charge realiste.',
+      proof: 'Controle les emails, les formules et les validations utiles.'
+    },
+    rush: {
+      badge: 'Niveau 3',
+      objective: 'Rush fort, beaucoup de groupes.',
+      proof: 'Teste les retards, alternatives et conflits bowling/laser.'
+    },
+    max: {
+      badge: 'Niveau 4',
+      objective: 'Stress maximum, saturation volontaire.',
+      proof: 'Pousse le moteur jusqu aux limites pour trouver les failles.'
+    },
+  };
+  return tones[profileId] || tones.normal;
+}
+
 function renderOpsSimulationProfilePicker() {
   const active = getOpsSimulationScenario();
+  const profiles = getOpsSimulationProfiles();
+  const activeProfile = profiles.find(profile => profile.id === active) || profiles[0] || {};
   return `
-    <div class="ops-sim-profile-row">
-      ${getOpsSimulationProfiles().map(profile => `
-        <button class="ops-sim-profile ${profile.id === active ? 'active' : ''}" onclick="setOpsSimulationScenario('${escapeHtml(profile.id)}')">
-          <strong>${escapeHtml(profile.label || profile.id)}</strong>
-          <span>${escapeHtml(profile.description || '')}</span>
-        </button>
+    <section id="ops-sim-load-control" class="ops-sim-control-panel" aria-label="Niveau de charge simulation">
+      <div class="ops-sim-control-head">
+        <div>
+          <span class="ops-sim-overline">Niveau de charge</span>
+          <h4>${escapeHtml(activeProfile.label || 'Journee normale')}</h4>
+          <p>${escapeHtml(getOpsSimulationProfileTone(active).objective)}</p>
+        </div>
+        <button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer ce niveau</button>
+      </div>
+      <div class="ops-sim-profile-row">
+        ${profiles.map(profile => {
+          const tone = getOpsSimulationProfileTone(profile.id);
+          const isActive = profile.id === active;
+          const bookingLimit = profile.bookingLimit === 'max' ? 'max' : `${profile.bookingLimit || '--'} resa`;
+          return `
+            <button class="ops-sim-profile ${isActive ? 'active' : ''}" onclick="setOpsSimulationScenario('${escapeHtml(profile.id)}')" aria-pressed="${isActive ? 'true' : 'false'}">
+              <span class="ops-sim-profile-index">${escapeHtml(tone.badge)}</span>
+              <strong>${escapeHtml(profile.label || profile.id)}</strong>
+              <span>${escapeHtml(profile.description || tone.proof)}</span>
+              <em>${escapeHtml(bookingLimit)} · ${Number(profile.dayLimit || 1)} jour(s)</em>
+            </button>`;
+        }).join('')}
+      </div>
+      <div class="ops-sim-control-foot">
+        <span>Ce choix controle combien de reservations, refus, retards, emails et validations staff seront joues.</span>
+        <button class="ops-link-btn" onclick="startOpsSimulationScenario('${escapeHtml(active)}')">Redemarrer avec ce niveau</button>
+      </div>
+    </section>`;
+}
+
+function renderOpsSimulationCommandMap(stats = {}, payload = {}) {
+  const run = payload?.run || null;
+  const reviews = run?.payload?.staffReviews || [];
+  const pendingReviews = reviews.filter(review => review.status === 'pending').length;
+  const communications = Array.isArray(payload.communications) ? payload.communications : [];
+  const queued = communications.filter(item => item.status === 'queued').length;
+  const failed = communications.filter(item => item.status === 'failed').length;
+  const logs = payload?.logs || [];
+  const hardRefusals = Number(stats.hardRefusals || 0);
+  const alternatives = Number(stats.alternativesOffered || 0);
+  const items = [
+    {
+      href: '#ops-sim-load-control',
+      label: 'Charge',
+      value: getOpsSimulationProfiles().find(item => item.id === getOpsSimulationScenario())?.label || 'Niveau',
+      detail: 'Choisir vide, normal, rush ou stress max.'
+    },
+    {
+      href: '#ops-sim-staff-reviews',
+      label: 'Validation staff',
+      value: `${pendingReviews} à traiter`,
+      detail: 'OK staff, proposer une alternative ou refuser.'
+    },
+    {
+      href: '#ops-sim-run-stats',
+      label: 'Refus',
+      value: hardRefusals ? `${hardRefusals} sans solution` : `${alternatives} alternatives`,
+      detail: 'Voir si le moteur propose une vraie issue.'
+    },
+    {
+      href: '#ops-sim-mail-console',
+      label: 'Emails',
+      value: `${queued} en file`,
+      detail: failed ? `${failed} erreur(s) à corriger.` : 'Prévisualiser les mails du run.'
+    },
+    {
+      href: '#ops-sim-agent-logs',
+      label: 'Agents & logs',
+      value: `${logs.length} logs`,
+      detail: 'Lire qui agit et pourquoi.'
+    },
+  ];
+  return `
+    <nav class="ops-sim-command-map" aria-label="Raccourcis simulation">
+      ${items.map(item => `
+        <a class="ops-sim-command-link" href="${escapeHtml(item.href)}">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+          <small>${escapeHtml(item.detail)}</small>
+        </a>
       `).join('')}
-    </div>`;
+    </nav>`;
 }
 
 function renderOpsSimulationStats(stats = {}, run = null) {
@@ -775,6 +883,35 @@ function renderOpsSimulationStats(stats = {}, run = null) {
     </div>`;
 }
 
+function renderOpsSimulationStatsPanel(stats = {}, run = null) {
+  const progress = run?.totalSteps ? Math.round((Number(run.stepIndex || 0) / Number(run.totalSteps || 1)) * 100) : 0;
+  const created = Number(stats.created || 0);
+  const alternatives = Number(stats.alternativesOffered || 0);
+  const hardRefusals = Number(stats.hardRefusals || 0);
+  const pendingReviews = Number(stats.staffReviewsPending || 0);
+  const doneReviews = Number(stats.staffReviewsApproved || 0) + Number(stats.staffReviewsRejected || 0) + Number(stats.staffReviewsAlternativesSent || 0);
+  const mails = Number(stats.mailsDrafted || 0);
+  const errors = Number(stats.errors || 0);
+  const delays = Number(stats.delays || 0);
+  return `
+    <section id="ops-sim-run-stats" class="ops-sim-scoreboard" aria-label="Etat du run simulation">
+      <div class="ops-sim-score-main">
+        <span class="ops-sim-overline">Etat du run</span>
+        <strong>${run ? `${progress}%` : '--'}</strong>
+        <span>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions jouees` : 'Aucun test lance'}</span>
+        <div class="ops-sim-progress"><span style="width:${progress}%"></span></div>
+      </div>
+      <div class="ops-sim-score-grid">
+        <div class="ops-sim-score"><span>Reservations creees</span><strong>${created}</strong></div>
+        <div class="ops-sim-score ${pendingReviews ? 'attention' : ''}"><span>A valider staff</span><strong>${pendingReviews}</strong><small>${doneReviews} traitees</small></div>
+        <div class="ops-sim-score"><span>Alternatives proposees</span><strong>${alternatives}</strong></div>
+        <div class="ops-sim-score ${hardRefusals ? 'danger' : ''}"><span>Refus sans solution</span><strong>${hardRefusals}</strong></div>
+        <div class="ops-sim-score"><span>Emails du run</span><strong>${mails}</strong></div>
+        <div class="ops-sim-score ${errors ? 'danger' : ''}"><span>Erreurs moteur</span><strong>${errors}</strong><small>${delays} retard(s)</small></div>
+      </div>
+    </section>`;
+}
+
 function renderOpsSimulationReviews(payload = {}) {
   const run = payload?.run || null;
   const reviews = run?.payload?.staffReviews || [];
@@ -782,7 +919,7 @@ function renderOpsSimulationReviews(payload = {}) {
   const resolved = reviews.filter(review => review.status !== 'pending').slice(-6).reverse();
   if (!reviews.length) {
     return `
-      <div class="ops-sim-review-board">
+      <div id="ops-sim-staff-reviews" class="ops-sim-review-board">
         <div class="ops-sim-card">
           <span class="ops-pill">Validation staff</span>
           <h3>Aucune décision en attente</h3>
@@ -818,7 +955,7 @@ function renderOpsSimulationReviews(payload = {}) {
   };
 
   return `
-    <div class="ops-sim-review-board">
+    <div id="ops-sim-staff-reviews" class="ops-sim-review-board">
       <div class="ops-sim-card">
         <div class="ops-review-head">
           <div>
@@ -845,6 +982,50 @@ function renderOpsSimulationReviews(payload = {}) {
         </div>
       </div>
     </div>`;
+}
+
+function renderOpsSimulationCommunications(payload = {}) {
+  const communications = Array.isArray(payload.communications) ? payload.communications : [];
+  const visible = communications.slice(0, 10);
+  const queued = communications.filter(item => item.status === 'queued').length;
+  const sent = communications.filter(item => item.status === 'sent' || item.status === 'delivered').length;
+  const failed = communications.filter(item => item.status === 'failed').length;
+  const drafts = communications.filter(item => item.status === 'draft').length;
+  return `
+    <section id="ops-sim-mail-console" class="ops-sim-comm-board">
+      <div class="ops-sim-comm-head">
+        <div>
+          <span class="ops-sim-overline">Emails du run</span>
+          <h3>Communication simulee et file d'envoi</h3>
+          <p>Les messages crees par la simulation apparaissent ici. Les faux clients ne recoivent rien; les decisions staff peuvent partir vers la boite test/staff configuree.</p>
+        </div>
+        <div class="ops-sim-comm-actions">
+          <span>${queued} en file</span>
+          <button class="ops-admin-btn" onclick="typeof dispatchOpsEmails === 'function' ? dispatchOpsEmails() : toast('File email indisponible sur cette page.')">Envoyer la file</button>
+        </div>
+      </div>
+      <div class="ops-sim-comm-summary">
+        <span><strong>${communications.length}</strong> total</span>
+        <span><strong>${drafts}</strong> brouillon</span>
+        <span><strong>${queued}</strong> en file</span>
+        <span><strong>${sent}</strong> envoyes</span>
+        <span><strong>${failed}</strong> erreur</span>
+      </div>
+      <div class="ops-sim-comm-list">
+        ${visible.length ? visible.map((item, index) => `
+          <button class="ops-sim-comm-row" onclick="previewOpsEmail(${index}, 'simulation')">
+            <span class="ops-pill ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'draft')}</span>
+            <strong>${escapeHtml(item.subject || getOpsTemplateLabel(item.templateId))}</strong>
+            <span>${escapeHtml(item.recipient || item.payload?.safeRecipient || 'destinataire test non configure')}</span>
+            <small>${escapeHtml(getOpsTemplateLabel(item.templateId))} · ${escapeHtml(formatOpsTimestamp(item.scheduledAt || item.createdAt))}</small>
+          </button>
+        `).join('') : `
+          <div class="ops-sim-empty">
+            <strong>Aucun email cree</strong>
+            <span>Lance un niveau puis avance la simulation. Les confirmations, rappels, refus et alternatives apparaitront ici.</span>
+          </div>`}
+      </div>
+    </section>`;
 }
 
 function buildOpsTrainingReport(payload = {}) {
@@ -946,7 +1127,7 @@ function renderOpsTrainingLab(payload = {}) {
   const report = buildOpsTrainingReport(payload);
   const maxAgentCount = Math.max(1, ...report.agentMeters.map(([, count]) => count));
   return `
-    <div class="ops-training-board">
+    <div id="ops-sim-training-lab" class="ops-training-board">
       <div class="ops-training-card">
         <span class="ops-pill">Training Lab IA</span>
         <h3>Banc d'essai visible</h3>
@@ -1046,10 +1227,12 @@ function renderOpsSimulation() {
         <p style="margin-top:8px;">Sécurité: ${escapeHtml(safetyLabel)} Le canal mobile reste prêt côté code, mais il est masqué tant qu’aucun fournisseur n’est branché.</p>
       </div>
     </div>
-    ${renderOpsSimulationStats(stats, run)}
-    ${renderOpsTrainingLab(payload || {})}
+    ${renderOpsSimulationCommandMap(stats, payload || {})}
+    ${renderOpsSimulationStatsPanel(stats, run)}
     ${renderOpsSimulationReviews(payload || {})}
-    <div class="ops-sim-hero">
+    ${renderOpsSimulationCommunications(payload || {})}
+    ${renderOpsTrainingLab(payload || {})}
+    <div id="ops-sim-agent-logs" class="ops-sim-hero">
       <div class="ops-sim-card">
         <h3>Timeline accélérée</h3>
         <div class="ops-sim-timeline">
@@ -1300,7 +1483,9 @@ function renderOpsAdmin(errorMessage = '') {
 function previewOpsEmail(index, type = 'sample') {
   const source = type === 'communication-visible'
     ? getVisibleOpsCommunications()
-    : type === 'communication' ? opsAdminCache.communications : opsAdminCache.samples;
+    : type === 'simulation'
+      ? (getOpsSimulationPayload()?.communications || [])
+      : type === 'communication' ? opsAdminCache.communications : opsAdminCache.samples;
   const item = source[index];
   if (!item) return;
   const html = item.html || item.body || `<pre>${escapeHtml(item.textBody || item.subject || '')}</pre>`;
@@ -1373,9 +1558,14 @@ async function dispatchOpsEmails() {
     getOpsSimulationProfiles,
     getOpsSimulationScenario,
     setOpsSimulationScenario,
+    startOpsSimulationScenario,
+    getOpsSimulationProfileTone,
     renderOpsSimulationProfilePicker,
+    renderOpsSimulationCommandMap,
     renderOpsSimulationStats,
+    renderOpsSimulationStatsPanel,
     renderOpsSimulationReviews,
+    renderOpsSimulationCommunications,
     buildOpsTrainingReport,
     renderOpsTrainingLab,
     renderOpsSimulation,

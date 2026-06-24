@@ -1,5 +1,6 @@
 const {
   getSimulationStatus,
+  reviewSimulationDecision,
   resetSimulation,
   startSimulation,
   stepSimulation,
@@ -64,12 +65,12 @@ async function handlePost(req, res, providedBody = null) {
   if (action === 'fastForward') {
     let latest = await getSimulationStatus({ centerId, date, runId: body.runId || '' });
     let guard = 0;
-    while (latest.run?.status === 'running' && guard < 40) {
+    while (latest.run?.status === 'running' && guard < 80) {
       latest = await stepSimulation({
         centerId,
         date,
         runId: latest.run.id,
-        batchSize: body.batchSize || 20,
+        batchSize: body.batchSize || 40,
       });
       guard += 1;
     }
@@ -79,6 +80,19 @@ async function handlePost(req, res, providedBody = null) {
 
   if (action === 'reset') {
     sendJson(res, 200, await resetSimulation({ centerId, runId: body.runId || '' }));
+    return;
+  }
+
+  if (action === 'review') {
+    const payload = await reviewSimulationDecision({
+      centerId,
+      date,
+      runId: body.runId,
+      reviewId: body.reviewId,
+      decision: body.decision,
+      alternativeIndex: body.alternativeIndex,
+    });
+    sendJson(res, 200, payload);
     return;
   }
 

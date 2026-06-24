@@ -56,6 +56,31 @@ function runPlanShapeTest() {
   assert(bookingSteps.some((step) => String(step.pressure || '').includes('expected_guardrail')), 'cas garde-fou attendu manquant');
 }
 
+function runScenarioProfileTest() {
+  const base = { centerId: 'libramont', date: '2026-05-20' };
+  const quiet = buildSimulationPlanPreview({ ...base, scenario: 'quiet' });
+  const normal = buildSimulationPlanPreview({ ...base, scenario: 'normal' });
+  const rush = buildSimulationPlanPreview({ ...base, scenario: 'rush' });
+  const max = buildSimulationPlanPreview({ ...base, scenario: 'max' });
+
+  const bookingCount = (preview) => preview.steps.filter((step) => step.type === 'booking').length;
+  const bookingTypes = (preview) => new Set(preview.steps.filter((step) => step.type === 'booking').map((step) => step.body.type));
+
+  assert.strictEqual(quiet.profile.id, 'quiet', 'profil quiet non resolu');
+  assert.strictEqual(normal.profile.id, 'normal', 'profil normal non resolu');
+  assert.strictEqual(rush.profile.id, 'rush', 'profil rush non resolu');
+  assert.strictEqual(max.profile.id, 'max', 'profil max non resolu');
+  assert(bookingCount(quiet) >= 10 && bookingCount(quiet) <= 12, 'profil quasi vide doit rester autour de 10 reservations');
+  assert(bookingCount(normal) > bookingCount(quiet), 'profil normal doit etre plus charge que quiet');
+  assert(bookingCount(rush) > bookingCount(normal), 'profil rush doit etre plus charge que normal');
+  assert(bookingCount(max) > bookingCount(rush), 'profil max doit couvrir le stress complet');
+  ['bowling', 'laser', 'formule'].forEach((type) => {
+    assert(bookingTypes(quiet).has(type), `profil quiet doit garder le type ${type}`);
+    assert(bookingTypes(normal).has(type), `profil normal doit garder le type ${type}`);
+    assert(bookingTypes(rush).has(type), `profil rush doit garder le type ${type}`);
+  });
+}
+
 function runPlanningSmoke(iterationsCount) {
   const dates = Array.from({ length: 14 }, (_, index) => addDays('2026-05-20', index));
   const types = ['bowling', 'laser', 'formule'];
@@ -91,12 +116,14 @@ function runPlanningSmoke(iterationsCount) {
 }
 
 runPlanShapeTest();
+runScenarioProfileTest();
 runPlanningSmoke(iterations);
 
 console.log(JSON.stringify({
   ok: true,
   checks: {
     simulationPlanShape: 'ok',
+    simulationProfiles: 'ok',
     planningSmokeIterations: iterations,
   },
 }, null, 2));

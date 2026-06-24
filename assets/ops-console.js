@@ -725,20 +725,125 @@ function getOpsSimulationPayload() {
   return opsAdminCache.simulation || adminDashboardCache.simulation || null;
 }
 
+function getOpsSimulationProfiles() {
+  return getOpsSimulationPayload()?.profiles || [
+    { id: 'quiet', label: 'Quasi vide', description: '10 demandes environ' },
+    { id: 'normal', label: 'Journee normale', description: 'Charge realiste' },
+    { id: 'rush', label: 'Rush fort', description: 'Grosse journee' },
+    { id: 'max', label: 'Stress maximum', description: 'Tout le scenario' },
+  ];
+}
+
+function getOpsSimulationScenario() {
+  return state.opsSimulationScenario || getOpsSimulationPayload()?.run?.payload?.scenario || 'normal';
+}
+
+function setOpsSimulationScenario(value) {
+  state.opsSimulationScenario = value || 'normal';
+  save();
+  renderOpsAdmin();
+}
+
+function renderOpsSimulationProfilePicker() {
+  const active = getOpsSimulationScenario();
+  return `
+    <div class="ops-sim-profile-row">
+      ${getOpsSimulationProfiles().map(profile => `
+        <button class="ops-sim-profile ${profile.id === active ? 'active' : ''}" onclick="setOpsSimulationScenario('${escapeHtml(profile.id)}')">
+          <strong>${escapeHtml(profile.label || profile.id)}</strong>
+          <span>${escapeHtml(profile.description || '')}</span>
+        </button>
+      `).join('')}
+    </div>`;
+}
+
 function renderOpsSimulationStats(stats = {}, run = null) {
   const progress = run?.totalSteps ? Math.round((Number(run.stepIndex || 0) / Number(run.totalSteps || 1)) * 100) : 0;
   const alternatives = Number(stats.alternativesOffered || 0);
   const hardRefusals = Number(stats.hardRefusals || 0);
+  const pendingReviews = Number(stats.staffReviewsPending || 0);
   return `
     <div class="ops-grid">
       <div class="ops-stat"><div class="k">Progression</div><div class="v">${run ? `${progress}%` : '--'}</div></div>
       <div class="ops-stat"><div class="k">Réservations créées</div><div class="v">${Number(stats.created || 0)}</div></div>
+      <div class="ops-stat"><div class="k">A valider staff</div><div class="v">${pendingReviews}</div></div>
       <div class="ops-stat"><div class="k">Alternatives proposées</div><div class="v">${alternatives}</div></div>
       <div class="ops-stat"><div class="k">Refus sans solution</div><div class="v">${hardRefusals}</div></div>
       <div class="ops-stat"><div class="k">Retards joués</div><div class="v">${Number(stats.delays || 0)}</div></div>
       <div class="ops-stat"><div class="k">Mails simulés</div><div class="v">${Number(stats.mailsDrafted || 0)}</div></div>
-      <div class="ops-stat"><div class="k">Actions jouées</div><div class="v">${Number(run?.stepIndex || 0)}</div></div>
       <div class="ops-stat"><div class="k">Erreurs moteur</div><div class="v">${Number(stats.errors || 0)}</div></div>
+    </div>`;
+}
+
+function renderOpsSimulationReviews(payload = {}) {
+  const run = payload?.run || null;
+  const reviews = run?.payload?.staffReviews || [];
+  const pending = reviews.filter(review => review.status === 'pending').slice(0, 8);
+  const resolved = reviews.filter(review => review.status !== 'pending').slice(-6).reverse();
+  if (!reviews.length) {
+    return `
+      <div class="ops-sim-review-board">
+        <div class="ops-sim-card">
+          <span class="ops-pill">Validation staff</span>
+          <h3>Aucune décision en attente</h3>
+          <p>Les demandes risquées, les conflits et les refus sans solution apparaîtront ici avec des actions claires.</p>
+        </div>
+      </div>`;
+  }
+
+  const renderReview = (review) => {
+    const alternatives = Array.isArray(review.alternatives) ? review.alternatives.slice(0, 3) : [];
+    const canApprove = review.type === 'staff_review' && review.reservationId;
+    return `
+      <div class="ops-review-item ${escapeHtml(review.risk || '')}">
+        <div class="ops-review-main">
+          <span class="ops-pill ${escapeHtml(review.risk || '')}">${escapeHtml(review.type || 'review')}</span>
+          <strong>${escapeHtml(review.title || 'Décision staff')}</strong>
+          <p>${escapeHtml(review.summary || review.reason || '')}</p>
+          ${alternatives.length ? `<div class="ops-review-alt-list">
+            ${alternatives.map((alternative, index) => `
+              <button class="ops-review-alt" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','send_alternatives',${index})">
+                <strong>${escapeHtml(alternative.summary || `${alternative.date || ''} ${alternative.startTime || ''}`)}</strong>
+                <span>${escapeHtml(alternative.reason || alternative.recommendation || 'Alternative compatible')}</span>
+              </button>
+            `).join('')}
+          </div>` : ''}
+        </div>
+        <div class="ops-review-actions">
+          ${canApprove ? `<button class="ops-admin-btn primary" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','approve')">OK staff</button>` : ''}
+          ${alternatives.length ? `<button class="ops-admin-btn" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','send_alternatives',0)">Proposer</button>` : ''}
+          <button class="ops-admin-btn" onclick="reviewOpsSimulation('${escapeHtml(review.id)}','reject')">Refuser proprement</button>
+        </div>
+      </div>`;
+  };
+
+  return `
+    <div class="ops-sim-review-board">
+      <div class="ops-sim-card">
+        <div class="ops-review-head">
+          <div>
+            <span class="ops-pill">Staff control</span>
+            <h3>Décisions à valider</h3>
+            <p>Quand le moteur voit un risque, il propose une action staff au lieu de bloquer en silence.</p>
+          </div>
+          <strong>${pending.length} en attente</strong>
+        </div>
+        <div class="ops-review-list">
+          ${pending.length ? pending.map(renderReview).join('') : '<p>Aucune décision staff en attente.</p>'}
+        </div>
+      </div>
+      <div class="ops-sim-card">
+        <span class="ops-pill">Historique</span>
+        <h3>Dernières décisions</h3>
+        <div class="ops-sim-timeline">
+          ${resolved.length ? resolved.map(review => `
+            <div class="ops-sim-timeline-item">
+              <strong>${escapeHtml(review.title || review.id)}</strong>
+              <span>${escapeHtml(`${review.status} - ${review.decision || review.recommendation || ''}`)}</span>
+            </div>
+          `).join('') : '<p>Aucune décision traitée pour le moment.</p>'}
+        </div>
+      </div>
     </div>`;
 }
 
@@ -853,9 +958,9 @@ function renderOpsTrainingLab(payload = {}) {
         <div class="ops-sim-progress"><span style="width:${report.progress}%"></span></div>
         <p>${report.created} reservation(s) creees, ${report.alternatives} alternative(s), ${report.hardRefusals} refus sans solution, ${report.delays} retard(s), ${report.errors} erreur(s) technique(s).</p>
         <div class="ops-sim-actions">
-          <button class="ops-admin-btn primary" onclick="startOpsSimulation()">Nouveau test complet</button>
+          <button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer le niveau</button>
           <button class="ops-admin-btn" onclick="fastForwardOpsSimulation()">Jouer tout</button>
-          <button class="ops-admin-btn" onclick="stepOpsSimulation(40)">Stress +40</button>
+          <button class="ops-admin-btn" onclick="stepOpsSimulation(60)">Stress +60</button>
         </div>
       </div>
       <div class="ops-training-card">
@@ -900,6 +1005,7 @@ function renderOpsSimulation() {
   const progress = run?.totalSteps ? Math.round((Number(run.stepIndex || 0) / Number(run.totalSteps || 1)) * 100) : 0;
   const status = run?.status || 'idle';
   const safety = run?.payload?.safety || 'isolated_simulation_no_real_dispatch';
+  const profile = run?.payload?.profile || getOpsSimulationProfiles().find(item => item.id === getOpsSimulationScenario()) || null;
   const safetyLabel = safety === 'isolated_simulation_no_real_dispatch' || safety === 'simulation_only_no_real_dispatch'
     ? 'Simulation isolée, aucun vrai message envoyé.'
     : safety;
@@ -910,8 +1016,8 @@ function renderOpsSimulation() {
 
   const statusLabel = status === 'running' ? 'en cours' : status === 'finished' ? 'terminée' : status === 'failed' ? 'erreur' : 'prête';
   const primaryAction = run?.status === 'running'
-    ? `<button class="ops-admin-btn primary" onclick="stepOpsSimulation(8)">Avancer 8 actions</button>`
-    : `<button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer rush accéléré</button>`;
+    ? `<button class="ops-admin-btn primary" onclick="stepOpsSimulation(12)">Avancer 12 actions</button>`
+    : `<button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer le niveau</button>`;
   const autoAction = run?.status === 'running'
     ? `<button class="ops-admin-btn" onclick="${opsSimulationAutoRunning ? 'stopOpsSimulationAuto()' : 'resumeOpsSimulationAuto()'}">${opsSimulationAutoRunning ? 'Pause auto' : 'Lecture auto'}</button>`
     : '';
@@ -922,8 +1028,9 @@ function renderOpsSimulation() {
         <span class="ops-pill ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
         <h3>Simulation rush terrain</h3>
         <p>Agents client + staff, réservations bowling/laser/formules, retards, refus limites, mails brouillons et logs de décision. Tout est marqué simulation et ne part pas aux vrais clients.</p>
+        ${renderOpsSimulationProfilePicker()}
         <div class="ops-sim-progress"><span style="width:${progress}%"></span></div>
-        <p>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions • vitesse x${Number(run.speedFactor || 0)} • ${escapeHtml(run.simDate || '')}` : `Aucun run actif pour ${escapeHtml(getSimulationDate())}.`}</p>
+        <p>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions • ${escapeHtml(profile?.label || run.payload?.scenario || 'scenario')} • vitesse x${Number(run.speedFactor || 0)} • ${escapeHtml(run.simDate || '')}` : `Aucun run actif pour ${escapeHtml(getSimulationDate())}.`}</p>
         <div class="ops-sim-actions">
           ${primaryAction}
           ${autoAction}
@@ -941,6 +1048,7 @@ function renderOpsSimulation() {
     </div>
     ${renderOpsSimulationStats(stats, run)}
     ${renderOpsTrainingLab(payload || {})}
+    ${renderOpsSimulationReviews(payload || {})}
     <div class="ops-sim-hero">
       <div class="ops-sim-card">
         <h3>Timeline accélérée</h3>
@@ -991,6 +1099,7 @@ async function startOpsSimulation() {
         action: 'start',
         centerId: getActiveOpsCenterId(),
         date: getSimulationDate(),
+        scenario: getOpsSimulationScenario(),
         speedFactor: 96,
         resetExisting: true,
       })
@@ -999,9 +1108,9 @@ async function startOpsSimulation() {
     state.staffResourceView = 'all';
     save();
     renderOpsAdmin();
-    toast('Simulation rush lancée.');
+    toast('Simulation lancee.');
     opsSimulationAutoRunning = true;
-    await stepOpsSimulation(12, true);
+    await stepOpsSimulation(Number(payload.run?.payload?.profile?.startBatch || 36), true);
   } catch (error) {
     toast(error.message || 'Impossible de lancer la simulation.');
   }
@@ -1029,7 +1138,7 @@ function scheduleOpsSimulationLoop() {
   clearTimeout(opsSimulationAutoTimer);
   if (!opsSimulationAutoRunning) return;
   opsSimulationAutoTimer = setTimeout(() => {
-    stepOpsSimulation(12, true);
+    stepOpsSimulation(24, true);
   }, 450);
 }
 
@@ -1093,7 +1202,7 @@ async function fastForwardOpsSimulation() {
         centerId: getActiveOpsCenterId(),
         date: run.simDate || getSimulationDate(),
         runId: run.id,
-        batchSize: 40,
+        batchSize: 80,
       })
     });
     storeOpsSimulationPayload(payload);
@@ -1121,6 +1230,39 @@ async function resetOpsSimulation() {
     toast('Données de simulation nettoyées.');
   } catch (error) {
     toast(error.message || 'Reset simulation impossible.');
+  }
+}
+
+async function reviewOpsSimulation(reviewId, decision, alternativeIndex = 0) {
+  const current = getOpsSimulationPayload();
+  const run = current?.run;
+  if (!run?.id) {
+    toast('Lance une simulation avant de valider.');
+    return;
+  }
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.simulation, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'review',
+        centerId: getActiveOpsCenterId(),
+        date: run.simDate || getSimulationDate(),
+        runId: run.id,
+        reviewId,
+        decision,
+        alternativeIndex,
+      })
+    });
+    storeOpsSimulationPayload(payload);
+    renderOpsAdmin();
+    await loadAdminDashboard(true);
+    toast(decision === 'approve'
+      ? 'Validation staff appliquee.'
+      : decision === 'send_alternatives'
+        ? 'Alternative ajoutee a la file mail.'
+        : 'Refus propre ajoute a la file mail.');
+  } catch (error) {
+    toast(error.message || 'Decision simulation impossible.');
   }
 }
 
@@ -1228,7 +1370,12 @@ async function dispatchOpsEmails() {
     getSimulationDate,
     storeOpsSimulationPayload,
     getOpsSimulationPayload,
+    getOpsSimulationProfiles,
+    getOpsSimulationScenario,
+    setOpsSimulationScenario,
+    renderOpsSimulationProfilePicker,
     renderOpsSimulationStats,
+    renderOpsSimulationReviews,
     buildOpsTrainingReport,
     renderOpsTrainingLab,
     renderOpsSimulation,
@@ -1240,6 +1387,7 @@ async function dispatchOpsEmails() {
     stepOpsSimulation,
     fastForwardOpsSimulation,
     resetOpsSimulation,
+    reviewOpsSimulation,
     renderOpsAdmin,
     previewOpsEmail,
     closeEmailPreview,

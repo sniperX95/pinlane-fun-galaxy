@@ -20396,3 +20396,167 @@ body.staff-mode:not(.staff-light):not(.admin-mode) .booking.is-formula {
     transition-duration: .001ms !important;
   }
 }
+
+body.admin-mode .ops-sim-profile-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+
+body.admin-mode .ops-sim-profile {
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, .18);
+  background: rgba(15, 23, 42, .26);
+  color: rgba(226, 232, 240, .78);
+  border-radius: 14px;
+  padding: 12px 14px;
+  text-align: left;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+body.admin-mode .ops-sim-profile strong {
+  color: rgba(248, 250, 252, .96);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+body.admin-mode .ops-sim-profile span {
+  color: rgba(148, 163, 184, .88);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+body.admin-mode .ops-sim-profile:hover,
+body.admin-mode .ops-sim-profile.active {
+  border-color: rgba(148, 163, 184, .42);
+  background: rgba(30, 41, 59, .5);
+  transform: translateY(-1px);
+}
+
+body.admin-mode .ops-sim-review-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, .8fr);
+  gap: 14px;
+  margin: 14px 0;
+}
+
+body.admin-mode .ops-review-head,
+body.admin-mode .ops-review-item,
+body.admin-mode .ops-review-actions,
+body.admin-mode .ops-review-alt-list {
+  display: flex;
+}
+
+body.admin-mode .ops-review-head {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+body.admin-mode .ops-review-head > strong {
+  color: rgba(248, 250, 252, .94);
+  border: 1px solid rgba(148, 163, 184, .2);
+  border-radius: 999px;
+  padding: 8px 11px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+body.admin-mode .ops-review-list {
+  display: grid;
+  gap: 10px;
+}
+
+body.admin-mode .ops-review-item {
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(148, 163, 184, .16);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(2, 6, 23, .22);
+}
+
+body.admin-mode .ops-review-item.high,
+body.admin-mode .ops-review-item.critical {
+  border-color: rgba(248, 113, 113, .32);
+  background: rgba(127, 29, 29, .1);
+}
+
+body.admin-mode .ops-review-main {
+  min-width: 0;
+}
+
+body.admin-mode .ops-review-main strong {
+  display: block;
+  margin-top: 8px;
+  color: rgba(248, 250, 252, .96);
+  font-size: 14px;
+}
+
+body.admin-mode .ops-review-main p {
+  margin: 5px 0 0;
+  color: rgba(203, 213, 225, .74);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body.admin-mode .ops-review-actions {
+  flex: 0 0 180px;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+body.admin-mode .ops-review-alt-list {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+body.admin-mode .ops-review-alt {
+  border: 1px solid rgba(148, 163, 184, .18);
+  background: rgba(15, 23, 42, .36);
+  color: rgba(226, 232, 240, .88);
+  border-radius: 12px;
+  padding: 9px 11px;
+  text-align: left;
+  min-width: 180px;
+  max-width: 260px;
+}
+
+body.admin-mode .ops-review-alt strong {
+  margin: 0;
+  font-size: 12px;
+}
+
+body.admin-mode .ops-review-alt span {
+  display: block;
+  margin-top: 3px;
+  color: rgba(148, 163, 184, .86);
+  font-size: 11px;
+}
+
+@media (max-width: 1180px) {
+  body.admin-mode .ops-sim-profile-row,
+  body.admin-mode .ops-sim-review-board {
+    grid-template-columns: 1fr;
+  }
+
+  body.admin-mode .ops-review-item {
+    flex-direction: column;
+  }
+
+  body.admin-mode .ops-review-actions {
+    flex: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

@@ -9,6 +9,25 @@ let bowlingPointerDrag = null;
 let bowlingDragDropTarget = null;
 let bowlingDragPreviewEls = [];
 let bowlingDragSuppressClickUntil = 0;
+let bowlingDragSaveSeq = 0;
+const bowlingDragLatestSeqByReservation = {};
+const pendingReservationWriteIds = new Set();
+
+function getReservationWriteKey(id) {
+  return String(Number(id));
+}
+
+function markReservationWritePending(id) {
+  pendingReservationWriteIds.add(getReservationWriteKey(id));
+}
+
+function clearReservationWritePending(id) {
+  pendingReservationWriteIds.delete(getReservationWriteKey(id));
+}
+
+function isReservationWritePending(id) {
+  return pendingReservationWriteIds.has(getReservationWriteKey(id));
+}
 
 function scrollLaserDragBy(deltaY) {
   const activeWrap = bowlingPointerDrag
@@ -248,7 +267,17 @@ function getBowlingDragTargetPlan(target) {
   if (!slotCheck.ok) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: slotCheck.message };
   }
-  const lanes = getTargetBowlingLanes(requiredCount, targetLane, reservation.date, startTime, duration, reservation.id, currentLanes, bowlingPointerDrag.sourceLane);
+  const lanes = getTargetBowlingLanes(
+    requiredCount,
+    targetLane,
+    reservation.date,
+    startTime,
+    duration,
+    reservation.id,
+    currentLanes,
+    bowlingPointerDrag.sourceLane,
+    Boolean(bowlingPointerDrag.splitLane)
+  );
   if (!lanes || lanes.length < requiredCount) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: `${requiredCount} piste${requiredCount > 1 ? 's' : ''} indisponible${requiredCount > 1 ? 's' : ''}` };
   }
@@ -296,19 +325,30 @@ function renderBowlingDragPreview(target) {
   });
 }
 
-function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, duration, ignoreId, currentLanes = [], sourceLane = null) {
+function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, duration, ignoreId, currentLanes = [], sourceLane = null, splitLane = false) {
   const occupied = getOccupiedLanes(date, startTime, duration, ignoreId);
   const isAvailable = lane => lane >= 1 && lane <= TOTAL_LANES && state.laneStatuses[lane] !== 'maintenance' && !occupied.has(lane);
   const target = Number(targetLane);
   const count = Math.max(1, Number(requiredCount || 1));
   if (count === 1) return isAvailable(target) ? [target] : null;
 
-  const current = [...new Set((currentLanes || []).map(Number).filter(lane => lane >= 1 && lane <= TOTAL_LANES))];
+  const current = [...new Set((currentLanes || []).map(Number).filter(lane => lane >= 1 && lane <= TOTAL_LANES))].sort((a, b) => a - b);
   const source = Number(sourceLane);
   if (current.length >= count && Number.isFinite(source) && current.includes(source)) {
-    const replaced = current.map(lane => lane === source ? target : lane);
-    const candidate = [...new Set(replaced)].sort((a, b) => a - b);
-    if (candidate.length === count && candidate.every(isAvailable)) return candidate;
+    if (splitLane) {
+      const replaced = current.map(lane => lane === source ? target : lane);
+      const candidate = [...new Set(replaced)].sort((a, b) => a - b);
+      if (candidate.length === count && candidate.every(isAvailable)) return candidate;
+    } else {
+      const preservedOffsets = current.slice(0, count).map(lane => lane - source);
+      const candidate = [...new Set(preservedOffsets.map(offset => target + offset))].sort((a, b) => a - b);
+      if (candidate.length === count && candidate.every(isAvailable)) return candidate;
+
+      const sourceIndex = Math.max(0, current.slice(0, count).indexOf(source));
+      const firstLane = Math.max(1, Math.min(TOTAL_LANES - count + 1, target - sourceIndex));
+      const compactCandidate = Array.from({ length: count }, (_, idx) => firstLane + idx);
+      if (compactCandidate.includes(target) && compactCandidate.every(isAvailable)) return compactCandidate;
+    }
   }
 
   const available = [];
@@ -361,7 +401,7 @@ function moveBowlingOpsPlan(reservation, targetStart, targetLanes, duration) {
   };
 }
 
-async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourceLaneValue = null, sourceStartValue = null) {
+async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourceLaneValue = null, sourceStartValue = null, splitLane = false) {
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
   if (!reservation) return;
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
@@ -375,7 +415,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     toast(slotCheck.message);
     return;
   }
-  const lanes = getTargetBowlingLanes(requiredCount, targetLane, reservation.date, startTime, duration, reservation.id, currentLanes, sourceLane);
+  const lanes = getTargetBowlingLanes(requiredCount, targetLane, reservation.date, startTime, duration, reservation.id, currentLanes, sourceLane, splitLane);
   if (!lanes || lanes.length < requiredCount) {
     toast(`Impossible de placer ${requiredCount} piste${requiredCount > 1 ? 's' : ''} ici.`);
     return;
@@ -394,6 +434,14 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     opsPlan: movedOpsPlan
   };
   const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
+  const requestKey = Number(reservation.id);
+  const requestSeq = ++bowlingDragSaveSeq;
+  bowlingDragLatestSeqByReservation[requestKey] = requestSeq;
+  const isLatestRequest = () => bowlingDragLatestSeqByReservation[requestKey] === requestSeq;
+  const clearLatestRequest = () => {
+    if (isLatestRequest()) delete bowlingDragLatestSeqByReservation[requestKey];
+  };
+  markReservationWritePending(requestKey);
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
@@ -405,13 +453,18 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
         allowPastStart: true
       }))
     });
+    if (!isLatestRequest()) return;
     upsertReservationInState(payload.reservation);
     save();
     renderStaffData();
     toast(`Bowling déplacé à ${formatClockDisplay(Number(targetStart))} piste${lanes.length > 1 ? 's' : ''} ${lanes.join(', ')}`);
   } catch (error) {
+    if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
     toast(error.message || 'Impossible de déplacer cette réservation bowling.');
+  } finally {
+    if (isLatestRequest()) clearReservationWritePending(requestKey);
+    clearLatestRequest();
   }
 }
 
@@ -430,10 +483,14 @@ function createBowlingDragGhost(sourceEl, event) {
   ghost.style.transform = `translate3d(${event.clientX + 14}px, ${event.clientY + 14}px, 0)`;
   const label = reservation ? getReservationLabel(reservation) : 'Bowling';
   const lanes = reservation?.lanes?.length ? `Pistes ${reservation.lanes.join(', ')}` : 'Affectation libre';
+  const sourceWindow = reservation ? getBowlingDragSourceWindow(reservation, bowlingPointerDrag?.sourceLane, bowlingPointerDrag?.sourceStart) : null;
+  const isMultiLane = (sourceWindow?.lanes?.length || reservation?.lanes?.length || 0) > 1;
+  const dragMode = isMultiLane ? (bowlingPointerDrag?.splitLane ? 'Piste seule' : 'Groupe de pistes') : lanes;
   ghost.innerHTML = `
     <strong>${escapeHtml(reservation?.name || 'Réservation')}</strong>
     <span>${escapeHtml(label)}</span>
-    <small>${escapeHtml(lanes)}</small>
+    <small>${escapeHtml(dragMode)}</small>
+    ${isMultiLane ? '<small>Shift/Ctrl : piste seule</small>' : ''}
   `;
   document.body.appendChild(ghost);
   return ghost;
@@ -493,7 +550,14 @@ function onBowlingPointerUp(event) {
     toast('Déposez la carte sur une cellule piste/heure.');
     return;
   }
-  scheduleBowlingDrag(drag.reservationId, Number(target.dataset.bowlingDropLane), Number(target.dataset.bowlingDropStart), drag.sourceLane, drag.sourceStart);
+  scheduleBowlingDrag(
+    drag.reservationId,
+    Number(target.dataset.bowlingDropLane),
+    Number(target.dataset.bowlingDropStart),
+    drag.sourceLane,
+    drag.sourceStart,
+    Boolean(drag.splitLane)
+  );
 }
 
 function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null, sourceStart = null) {
@@ -503,6 +567,7 @@ function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null,
     reservationId,
     sourceLane,
     sourceStart,
+    splitLane: event.shiftKey || event.altKey || event.ctrlKey || event.metaKey,
     sourceEl: event.currentTarget,
     startX: event.clientX,
     startY: event.clientY,
@@ -891,7 +956,14 @@ function sortReservations(list = []) {
 
 function replaceReservationsForDate(dateStr, reservations) {
   const others = state.reservations.filter(r => r.date !== dateStr);
-  state.reservations = sortReservations([...others, ...reservations]);
+  const pendingLocal = state.reservations.filter(r => r.date === dateStr && isReservationWritePending(r.id));
+  if (!pendingLocal.length) {
+    state.reservations = sortReservations([...others, ...reservations]);
+    return;
+  }
+  const pendingIds = new Set(pendingLocal.map(r => Number(r.id)));
+  const remoteWithoutPending = (reservations || []).filter(r => !pendingIds.has(Number(r.id)));
+  state.reservations = sortReservations([...others, ...remoteWithoutPending, ...pendingLocal]);
 }
 
 function upsertReservationInState(reservation) {

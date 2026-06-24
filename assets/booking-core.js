@@ -795,6 +795,9 @@ function checkManualLaserPassPlacement(reservation, passIndex, targetStart, targ
   return { ok: true, blocks: candidateBlocks };
 }
 
+let laserPassSaveSeq = 0;
+const laserPassLatestSeqByReservation = {};
+
 function updateLaserPassPlan(opsPlan, reservation) {
   const totalGames = getLaserGameCountForReservation(reservation);
   if (totalGames <= 1) return opsPlan;
@@ -846,6 +849,14 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     allowPastStart: true,
     opsPlan: nextOpsPlan
   };
+  const requestKey = Number(reservation.id);
+  const requestSeq = ++laserPassSaveSeq;
+  laserPassLatestSeqByReservation[requestKey] = requestSeq;
+  const isLatestRequest = () => laserPassLatestSeqByReservation[requestKey] === requestSeq;
+  const clearLatestRequest = () => {
+    if (isLatestRequest()) delete laserPassLatestSeqByReservation[requestKey];
+  };
+  if (typeof markReservationWritePending === 'function') markReservationWritePending(requestKey);
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
@@ -857,13 +868,18 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
         allowPastStart: true
       }))
     });
+    if (!isLatestRequest()) return;
     upsertReservationInState(payload.reservation);
     save();
     renderStaffData();
     toast(`Partie ${passIndex} placée à ${formatClockDisplay(targetStart)}`);
   } catch (error) {
+    if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
     toast(error.message || 'Impossible de placer cette partie Laser Game.');
+  } finally {
+    if (isLatestRequest() && typeof clearReservationWritePending === 'function') clearReservationWritePending(requestKey);
+    clearLatestRequest();
   }
 }
 

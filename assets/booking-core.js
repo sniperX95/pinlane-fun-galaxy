@@ -830,8 +830,13 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
   if (!reservation) return;
   const placement = checkManualLaserPassPlacement(reservation, passIndex, targetStart, targetEnd);
   if (!placement.ok) {
-    toast(placement.message);
+    if (typeof showPlanningMoveNotice === 'function') {
+      showPlanningMoveNotice('Laser Game bloque', placement.message, 'warning');
+    } else {
+      toast(placement.message);
+    }
     return;
+    toast(placement.message);
   }
   const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
   const nextOpsPlan = updateLaserPassPlan({
@@ -869,6 +874,7 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
       }))
     });
     if (!isLatestRequest()) return;
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
     upsertReservationInState(payload.reservation);
     save();
     renderStaffData();
@@ -876,6 +882,12 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
+    if (typeof showPlanningMoveNotice === 'function') {
+      showPlanningMoveNotice('Deplacement Laser annule', error.message || 'Impossible de placer cette partie Laser Game.', 'warning');
+    } else {
+      toast(error.message || 'Impossible de placer cette partie Laser Game.');
+    }
+    return;
     toast(error.message || 'Impossible de placer cette partie Laser Game.');
   } finally {
     if (isLatestRequest() && typeof clearReservationWritePending === 'function') clearReservationWritePending(requestKey);

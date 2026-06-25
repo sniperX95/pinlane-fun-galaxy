@@ -1,6 +1,8 @@
 (function () {
   const PLATFORM_MARK_SRC = './assets/brand/pinlane-source.png';
   const COLLAPSE_KEY = 'fgx:staff-menu-collapsed';
+  const GROUPS_KEY = 'fgx:staff-menu-groups';
+  const DEFAULT_OPEN_GROUPS = { planning: true, field: false, activities: false };
   const PLATFORM_BRAND = {
     name: 'Pinlane',
     subtitle: 'Venue Operating System',
@@ -30,6 +32,7 @@
     }
   ];
   let menuDocumentEventsBound = false;
+  let menuGroupOpenState = null;
 
   const icons = {
     dashboard: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/></svg>',
@@ -215,6 +218,47 @@
     } catch (error) {}
   }
 
+  function readMenuGroupState() {
+    if (menuGroupOpenState) return menuGroupOpenState;
+    try {
+      const raw = localStorage.getItem(GROUPS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      menuGroupOpenState = { ...DEFAULT_OPEN_GROUPS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+    } catch (error) {
+      menuGroupOpenState = { ...DEFAULT_OPEN_GROUPS };
+    }
+    return menuGroupOpenState;
+  }
+
+  function persistMenuGroupState(next) {
+    menuGroupOpenState = { ...DEFAULT_OPEN_GROUPS, ...(next || {}) };
+    try {
+      localStorage.setItem(GROUPS_KEY, JSON.stringify(menuGroupOpenState));
+    } catch (error) {}
+  }
+
+  function isMenuGroupOpen(key) {
+    return !!readMenuGroupState()[key];
+  }
+
+  function setMenuGroupOpen(key, open) {
+    if (!key) return;
+    persistMenuGroupState({ ...readMenuGroupState(), [key]: !!open });
+  }
+
+  function applyMenuGroupOpen(button, open) {
+    if (!button) return;
+    const group = button.closest('.fgx-menu-group');
+    const subnav = group?.querySelector('.fgx-menu-subnav');
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    group?.classList.toggle('is-open', open);
+    group?.classList.toggle('is-collapsed', !open);
+    if (subnav) {
+      subnav.setAttribute('aria-hidden', open ? 'false' : 'true');
+      subnav.dataset.state = open ? 'open' : 'closed';
+    }
+  }
+
   function applyMenuCollapsed() {
     const collapsed = readCollapsed();
     document.body.classList.toggle('staff-menu-collapsed', collapsed);
@@ -244,6 +288,7 @@
 
   function itemMarkup(item) {
     if (item.children) {
+      const open = isMenuGroupOpen(item.key);
       const children = item.children.map(child => `
         <button type="button" class="fgx-menu-subitem" title="${escapeHtml(child.label)}" data-fgx-menu-key="${escapeHtml(child.key)}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''}>
           <span class="fgx-menu-subitem-mark" aria-hidden="true"></span>
@@ -251,13 +296,13 @@
         </button>
       `).join('');
       return `
-        <div class="fgx-menu-group" data-fgx-group="${escapeHtml(item.key)}">
-          <button type="button" class="fgx-menu-item fgx-menu-item-parent" title="${escapeHtml(item.label)}" data-fgx-menu-key="${escapeHtml(item.key)}">
+        <div class="fgx-menu-group ${open ? 'is-open' : 'is-collapsed'}" data-fgx-group="${escapeHtml(item.key)}">
+          <button type="button" class="fgx-menu-item fgx-menu-item-parent" title="${escapeHtml(item.label)}" data-fgx-menu-toggle="${escapeHtml(item.key)}" aria-expanded="${open ? 'true' : 'false'}">
             <span class="fgx-menu-icon">${icons[item.icon] || ''}</span>
             <span class="fgx-menu-label">${escapeHtml(item.label)}</span>
-            <span class="fgx-menu-chevron" aria-hidden="true"></span>
+            <span class="fgx-menu-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M6 4l4 4-4 4"/></svg></span>
           </button>
-          <div class="fgx-menu-subnav">${children}</div>
+          <div class="fgx-menu-subnav" aria-hidden="${open ? 'false' : 'true'}" data-state="${open ? 'open' : 'closed'}">${children}</div>
         </div>
       `;
     }
@@ -275,7 +320,7 @@
     const root = document.querySelector('[data-staff-menu-root]');
     if (!root) return;
     root.querySelectorAll('.fgx-menu-popover').forEach(popover => popover.remove());
-    root.querySelectorAll('[aria-expanded="true"]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+    root.querySelectorAll('[data-fgx-center-menu][aria-expanded="true"], [data-fgx-account-menu][aria-expanded="true"]').forEach(button => button.setAttribute('aria-expanded', 'false'));
   }
 
   function positionPopover(popover, anchor, kind) {
@@ -483,7 +528,7 @@
       <button type="button" class="fgx-menu-center" data-fgx-center-menu aria-haspopup="menu" aria-expanded="false" title="Changer de centre">
         <span class="fgx-center-dot">${icons.center}</span>
         <span class="fgx-menu-label">${escapeHtml(displayName)}</span>
-        <span class="fgx-menu-chevron" aria-hidden="true"></span>
+        <span class="fgx-menu-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M6 4l4 4-4 4"/></svg></span>
       </button>
 
       <nav class="fgx-menu-nav" aria-label="Navigation op\u00e9rationnelle">
@@ -503,7 +548,7 @@
     if (!root.dataset.fgxMenuBound) {
       root.addEventListener('click', handleMenuClick);
       root.addEventListener('keydown', event => {
-        const interactive = event.target.closest('[data-fgx-menu-key], [data-fgx-menu-collapse], [data-fgx-center-menu], [data-fgx-account-menu], [data-fgx-center-option], [data-fgx-menu-action]');
+        const interactive = event.target.closest('[data-fgx-menu-key], [data-fgx-menu-toggle], [data-fgx-menu-collapse], [data-fgx-center-menu], [data-fgx-account-menu], [data-fgx-center-option], [data-fgx-menu-action]');
         if ((event.key === 'Enter' || event.key === ' ') && interactive) {
           event.preventDefault();
           handleMenuClick(event);
@@ -576,6 +621,18 @@
       return;
     }
 
+    const groupToggle = event.target.closest('[data-fgx-menu-toggle]');
+    if (groupToggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenuPopover();
+      const key = groupToggle.dataset.fgxMenuToggle;
+      const nextOpen = groupToggle.getAttribute('aria-expanded') !== 'true';
+      setMenuGroupOpen(key, nextOpen);
+      applyMenuGroupOpen(groupToggle, nextOpen);
+      return;
+    }
+
     const target = event.target.closest('[data-fgx-menu-key]');
     if (!target) return;
     event.stopPropagation();
@@ -583,6 +640,7 @@
     const key = target.dataset.fgxMenuKey;
     const resource = target.dataset.opsResource;
     if (resource) {
+      setMenuGroupOpen('planning', true);
       if (typeof canUseStaffPage === 'function' && !canUseStaffPage('planning')) {
         if (typeof toast === 'function') toast('Accès planning non autorisé.');
         return;
@@ -612,6 +670,8 @@
       syncStaffMenuState();
       return;
     }
+    if (['arrivals', 'sessions', 'events'].includes(key)) setMenuGroupOpen('field', true);
+    if (['prices', 'lanes', 'laserGame', 'offers'].includes(key)) setMenuGroupOpen('activities', true);
     setMenuPage(key);
     if (key === 'dashboard') {
       if (typeof setView === 'function') setView('staff');
@@ -763,15 +823,21 @@
     const directStaffPageActive = view === 'staff' && directStaffPages.includes(page);
 
     root.querySelectorAll('[data-fgx-menu-key]').forEach(item => item.classList.remove('active'));
+    root.querySelectorAll('[data-fgx-menu-toggle]').forEach(item => item.classList.remove('active'));
     root.querySelectorAll('[data-ops-resource]').forEach(item => {
       item.classList.toggle('active', planningActive && item.dataset.opsResource === resource);
     });
 
     root.querySelector('[data-fgx-menu-key="dashboard"]')?.classList.toggle('active', dashboardActive);
-    root.querySelector('[data-fgx-menu-key="planning"]')?.classList.toggle('active', planningActive);
+    root.querySelector('[data-fgx-menu-toggle="planning"]')?.classList.toggle('active', planningActive);
+    root.querySelector('[data-fgx-menu-toggle="field"]')?.classList.toggle('active', fieldActive);
+    root.querySelector('[data-fgx-menu-toggle="activities"]')?.classList.toggle('active', activitiesActive);
     root.querySelector('[data-fgx-group="planning"]')?.classList.toggle('active', planningActive);
     root.querySelector('[data-fgx-group="field"]')?.classList.toggle('active', fieldActive);
     root.querySelector('[data-fgx-group="activities"]')?.classList.toggle('active', activitiesActive);
+    root.querySelectorAll('[data-fgx-menu-toggle]').forEach(button => {
+      applyMenuGroupOpen(button, isMenuGroupOpen(button.dataset.fgxMenuToggle));
+    });
 
     if (directStaffPageActive) {
       root.querySelector(`[data-fgx-menu-key="${page}"]`)?.classList.add('active');

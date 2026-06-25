@@ -12,6 +12,40 @@ let bowlingDragSuppressClickUntil = 0;
 let bowlingDragSaveSeq = 0;
 const bowlingDragLatestSeqByReservation = {};
 const pendingReservationWriteIds = new Set();
+let planningMoveNoticeTimer = null;
+
+function showPlanningMoveNotice(title, message = '', tone = 'warning') {
+  if (typeof document === 'undefined') return;
+  let notice = document.getElementById('planningMoveNotice');
+  if (!notice) {
+    notice = document.createElement('div');
+    notice.id = 'planningMoveNotice';
+    notice.setAttribute('role', 'status');
+    notice.setAttribute('aria-live', 'polite');
+    document.body.appendChild(notice);
+  }
+
+  notice.className = `planning-move-notice ${tone || 'warning'}`;
+  notice.innerHTML = `
+    <span class="planning-move-notice-dot" aria-hidden="true"></span>
+    <span class="planning-move-notice-copy">
+      <strong>${escapeHtml(title || 'Planning')}</strong>
+      ${message ? `<small>${escapeHtml(message)}</small>` : ''}
+    </span>
+  `;
+  notice.classList.remove('is-visible');
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => notice.classList.add('is-visible'));
+  } else {
+    notice.classList.add('is-visible');
+  }
+  clearTimeout(planningMoveNoticeTimer);
+  planningMoveNoticeTimer = setTimeout(() => {
+    notice.classList.remove('is-visible');
+  }, tone === 'success' ? 1900 : 3600);
+}
+
+window.showPlanningMoveNotice = showPlanningMoveNotice;
 
 function getReservationWriteKey(id) {
   return String(Number(id));
@@ -163,6 +197,8 @@ function onLaserPointerUp(event) {
   const target = getLaserDropTargetFromPoint(event.clientX, event.clientY) || laserDragDropTarget;
   clearLaserDragDropTarget();
   if (!target) {
+    showPlanningMoveNotice('Aucun lancement choisi', 'Deposez la carte sur une ligne Laser Game disponible.', 'warning');
+    return;
     toast('Déposez la carte sur un lancement Laser Game.');
     return;
   }
@@ -412,15 +448,23 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
-    toast(slotCheck.message);
+    showPlanningMoveNotice('Deplacement impossible', slotCheck.message || 'Ce creneau ne peut pas etre utilise.', 'warning');
     return;
   }
   const lanes = getTargetBowlingLanes(requiredCount, targetLane, reservation.date, startTime, duration, reservation.id, currentLanes, sourceLane, splitLane);
   if (!lanes || lanes.length < requiredCount) {
-    toast(`Impossible de placer ${requiredCount} piste${requiredCount > 1 ? 's' : ''} ici.`);
+    showPlanningMoveNotice(
+      'Conflit de pistes',
+      `Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} libre${requiredCount > 1 ? 's' : ''} sur ce creneau.`,
+      'warning'
+    );
     return;
   }
   const movedOpsPlan = moveBowlingOpsPlan(reservation, targetStart, lanes, duration);
+  if (lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan).length) {
+    showPlanningMoveNotice('Conflit detecte', 'Une autre reservation occupe deja cette piste ou cet horaire.', 'warning');
+    return;
+  }
   if (lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan).length) {
     toast('Conflit détecté avec une autre réservation bowling.');
     return;
@@ -454,6 +498,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
       }))
     });
     if (!isLatestRequest()) return;
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
     upsertReservationInState(payload.reservation);
     save();
     renderStaffData();
@@ -461,6 +506,8 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
+    showPlanningMoveNotice('Deplacement annule', error.message || 'Le serveur a refuse ce placement.', 'warning');
+    return;
     toast(error.message || 'Impossible de déplacer cette réservation bowling.');
   } finally {
     if (isLatestRequest()) clearReservationWritePending(requestKey);
@@ -547,6 +594,8 @@ function onBowlingPointerUp(event) {
   const target = getBowlingDropTargetFromPoint(event.clientX, event.clientY) || bowlingDragDropTarget;
   clearBowlingDragDropTarget();
   if (!target) {
+    showPlanningMoveNotice('Aucun creneau choisi', 'Deposez la carte sur une cellule piste/heure disponible.', 'warning');
+    return;
     toast('Déposez la carte sur une cellule piste/heure.');
     return;
   }

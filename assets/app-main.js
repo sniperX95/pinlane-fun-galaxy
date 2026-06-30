@@ -4264,7 +4264,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <div class="dash-card-head"><h2>Alertes & notifications</h2><button type="button" onclick="openStaffDashboardAlerts()">Voir toutes</button></div>
         <div class="dash-alerts">${renderStaffDashboardAlerts(metrics)}</div>
       </article>
-      <article class="dash-card">
+      <article class="dash-card dash-revenue-card">
         <div class="dash-card-head"><h2>Revenus</h2><button type="button" onclick="openStaffDashboardRevenue()">7 derniers jours</button></div>
         <div class="dash-revenue-head"><strong>${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendText)} vs période précédente</small></div>
         ${renderStaffDashboardRevenue(metrics)}

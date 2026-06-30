@@ -56,6 +56,7 @@ function mergeAdminOpsIntoDashboard(base, opsCache = null) {
     events: ops.events || base.events || [],
     samples: ops.samples || base.samples || [],
     agentStack: ops.agentStack || base.agentStack || null,
+    opsHealth: ops.opsHealth || base.opsHealth || null,
     simulation: ops.simulation || base.simulation || null,
     lastLoadedAt: ops.lastLoadedAt || base.lastLoadedAt || ''
   };
@@ -85,6 +86,31 @@ function getAdminResourceText(reservation) {
   }
   return parts.join(' | ') || 'Hors ressource critique';
 }
+
+async function copyAdminSummary() {
+  const text = JSON.stringify(getAdminExportPayload().metrics, null, 2);
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      if (!copied) throw new Error('Clipboard indisponible.');
+    }
+    toast('Résumé copié.');
+  } catch (error) {
+    toast("Copie impossible. Réessaie depuis un navigateur autorisé.");
+  }
+}
+
+window.copyAdminSummary = copyAdminSummary;
 
 function getAdminResourceHtml(reservation) {
   const plan = reservation?.opsPlan;
@@ -694,6 +720,221 @@ function buildAdminInsights(metrics, center) {
   return insights;
 }
 
+function countAdminHealthStatus(source = {}, names = []) {
+  if (!source || typeof source !== 'object') return 0;
+  return names.reduce((sum, name) => sum + Number(source[name] || 0), 0);
+}
+
+function getAdminHealthCommunications() {
+  const health = adminDashboardCache.opsHealth || opsAdminCache.opsHealth || {};
+  const visible = getVisibleOpsCommunications(adminDashboardCache.communications || []);
+  const statusCounts = health.communications || {};
+  return {
+    sent: countAdminHealthStatus(statusCounts, ['sent', 'delivered']) || visible.filter(item => item.status === 'sent' || item.status === 'delivered').length,
+    queued: countAdminHealthStatus(statusCounts, ['queued', 'pending', 'draft', 'retry']) || visible.filter(item => ['queued', 'pending', 'draft', 'retry'].includes(item.status)).length,
+    failed: countAdminHealthStatus(statusCounts, ['failed', 'error']) || visible.filter(item => item.status === 'failed' || item.status === 'error').length,
+    total: visible.length || Object.values(statusCounts).reduce((sum, value) => sum + Number(value || 0), 0)
+  };
+}
+
+function findAdminBowlingConflicts(reservations = []) {
+  const byLane = new Map();
+  reservations
+    .filter(reservation => reservation.status !== 'cancelled')
+    .forEach(reservation => {
+      getBowlingWindowsFromReservation(reservation).forEach(window => {
+        const lanes = (window.lanes || reservation.lanes || []).map(Number).filter(Boolean);
+        lanes.forEach(lane => {
+          if (!byLane.has(lane)) byLane.set(lane, []);
+          byLane.get(lane).push({
+            lane,
+            start: Number(window.start),
+            end: Number(window.end),
+            name: reservation.name || 'Client'
+          });
+        });
+      });
+    });
+
+  const conflicts = [];
+  byLane.forEach(items => {
+    items
+      .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end))
+      .sort((left, right) => left.start - right.start || left.end - right.end)
+      .forEach((item, index, sorted) => {
+        const previous = sorted[index - 1];
+        if (previous && item.start < previous.end) {
+          conflicts.push({ lane: item.lane, current: item, previous });
+        }
+      });
+  });
+  return conflicts;
+}
+
+function findAdminLaserIssues(reservations = [], center = getAdminCenter()) {
+  const laser = center.resources?.laser || {};
+  const weaponCount = Number(laser.weaponCount || LASER_GAME_MAX_PLAYERS || 30);
+  const parallelLaunches = Number(laser.parallelLaunches || 1);
+  const capacity = Math.max(1, weaponCount * Math.max(1, parallelLaunches));
+  const buckets = new Map();
+  const missing = [];
+  reservations
+    .filter(reservation => reservation.status !== 'cancelled')
+    .forEach(reservation => {
+      const windows = getLaserWindowsFromReservation(reservation);
+      const expectedLaser = reservation.type === 'laser' || getLaserGameCountForReservation(reservation) > 0;
+      if (expectedLaser && !windows.length) missing.push(reservation);
+      windows.forEach(window => {
+        const key = `${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
+        if (!buckets.has(key)) buckets.set(key, { key, players: 0, groups: 0 });
+        const bucket = buckets.get(key);
+        bucket.players += Number(window.players || reservation.pax || 0);
+        bucket.groups += 1;
+      });
+    });
+  const overCapacity = [...buckets.values()].filter(bucket => bucket.players > capacity);
+  return { missing, overCapacity, buckets: [...buckets.values()], capacity };
+}
+
+function findAdminReservationIssues(reservations = []) {
+  const active = reservations.filter(reservation => reservation.status !== 'cancelled');
+  const missingContact = active.filter(reservation => !String(reservation.phone || '').trim() && !String(reservation.email || '').trim());
+  const missingResource = active.filter(reservation => {
+    const needsBowling = reservation.type === 'bowling' || reservation.type === 'formule' || reservation.formuleId;
+    const needsLaser = reservation.type === 'laser' || getLaserGameCountForReservation(reservation) > 0;
+    const hasBowling = !needsBowling || getBowlingWindowsFromReservation(reservation).length > 0;
+    const hasLaser = !needsLaser || getLaserWindowsFromReservation(reservation).length > 0;
+    return !hasBowling || !hasLaser;
+  });
+  const staffReview = active.filter(reservation => (
+    reservation.validationStatus === 'staff_review'
+    || reservation.riskLevel === 'high'
+    || reservation.riskLevel === 'critical'
+  ));
+  return { missingContact, missingResource, staffReview };
+}
+
+function getAdminDelayHealth() {
+  const health = adminDashboardCache.opsHealth || opsAdminCache.opsHealth || {};
+  const incidents = Array.isArray(health.delayIncidents) ? health.delayIncidents : [];
+  const open = incidents.filter(item => !['applied', 'resolved', 'closed', 'cancelled'].includes(item.status));
+  const applied = incidents.filter(item => item.status === 'applied' || item.appliedAt);
+  const withoutCommunication = incidents.filter(item => {
+    const communications = item.communications;
+    if (Array.isArray(communications)) return communications.length === 0;
+    if (communications && typeof communications === 'object') return !Object.keys(communications).length;
+    return false;
+  });
+  return { incidents, open, applied, withoutCommunication };
+}
+
+function getAdminHealthLevel(status) {
+  return {
+    ok: 'OK',
+    warn: 'A surveiller',
+    danger: 'Action',
+    unknown: 'Lecture'
+  }[status] || 'Lecture';
+}
+
+function buildAdminOperationalChecks(snapshot = { reservations: [] }, metrics = {}, center = getAdminCenter()) {
+  const reservations = snapshot.reservations || [];
+  const mails = getAdminHealthCommunications();
+  const bowlingConflicts = findAdminBowlingConflicts(reservations);
+  const laserIssues = findAdminLaserIssues(reservations, center);
+  const reservationIssues = findAdminReservationIssues(reservations);
+  const delayHealth = getAdminDelayHealth();
+  const opsHealth = adminDashboardCache.opsHealth || opsAdminCache.opsHealth;
+
+  return [
+    {
+      key: 'mails',
+      title: 'Mails et relances',
+      status: !opsHealth && !mails.total ? 'unknown' : mails.failed ? 'danger' : mails.queued ? 'warn' : 'ok',
+      value: mails.total ? `${mails.sent}/${mails.total}` : '0',
+      detail: mails.failed
+        ? `${mails.failed} echec(s) a corriger avant le rush.`
+        : mails.queued
+          ? `${mails.queued} communication(s) en file ou brouillon.`
+          : 'Confirmations et relances sans erreur active.',
+    },
+    {
+      key: 'bowling',
+      title: 'Planning bowling',
+      status: bowlingConflicts.length ? 'danger' : metrics.bowlingWindows ? 'ok' : 'unknown',
+      value: `${metrics.bowlingWindows || 0} bloc(s)`,
+      detail: bowlingConflicts.length
+        ? `${bowlingConflicts.length} conflit(s) piste detecte(s).`
+        : 'Pistes et horaires sans chevauchement detecte.',
+    },
+    {
+      key: 'laser',
+      title: 'Planning Laser Game',
+      status: laserIssues.overCapacity.length ? 'danger' : laserIssues.missing.length ? 'warn' : metrics.laserLaunches ? 'ok' : 'unknown',
+      value: `${metrics.laserLaunches || 0} lancement(s)`,
+      detail: laserIssues.overCapacity.length
+        ? `${laserIssues.overCapacity.length} session(s) au-dessus de ${laserIssues.capacity} joueurs.`
+        : laserIssues.missing.length
+          ? `${laserIssues.missing.length} reservation(s) laser sans horaire critique.`
+          : 'Sessions laser et capacite coherentes.',
+    },
+    {
+      key: 'reservations',
+      title: 'Reservations',
+      status: reservationIssues.missingResource.length ? 'danger' : (reservationIssues.staffReview.length || reservationIssues.missingContact.length) ? 'warn' : 'ok',
+      value: `${metrics.reservations || 0} active(s)`,
+      detail: reservationIssues.missingResource.length
+        ? `${reservationIssues.missingResource.length} reservation(s) sans ressource complete.`
+        : reservationIssues.staffReview.length
+          ? `${reservationIssues.staffReview.length} reservation(s) a verifier par le staff.`
+          : reservationIssues.missingContact.length
+            ? `${reservationIssues.missingContact.length} fiche(s) client a completer.`
+            : 'Donnees client, ressources et statuts exploitables.',
+    },
+    {
+      key: 'delays',
+      title: 'Retards et messages',
+      status: delayHealth.open.length ? 'warn' : delayHealth.withoutCommunication.length ? 'warn' : 'ok',
+      value: `${delayHealth.applied.length}/${delayHealth.incidents.length}`,
+      detail: delayHealth.open.length
+        ? `${delayHealth.open.length} retard(s) a arbitrer avant envoi.`
+        : delayHealth.withoutCommunication.length
+          ? `${delayHealth.withoutCommunication.length} retard(s) sans trace de message.`
+          : 'Decalages appliques sans incident ouvert.',
+    }
+  ];
+}
+
+function renderAdminOperationalHealth(snapshot, metrics, center) {
+  const checks = buildAdminOperationalChecks(snapshot, metrics, center);
+  const generatedAt = adminDashboardCache.opsHealth?.generatedAt || opsAdminCache.opsHealth?.generatedAt || adminDashboardCache.lastLoadedAt;
+  const hasIssue = checks.some(item => item.status === 'danger' || item.status === 'warn');
+  return `<div class="admin-panel admin-health-panel">
+    <div class="admin-section-title admin-health-head">
+      <div>
+        <h2>Verifications continues</h2>
+        <p>Mails, bowling, laser, reservations et retards controles sur les donnees actives.</p>
+      </div>
+      <span class="admin-health-summary ${hasIssue ? 'warn' : 'ok'}">
+        <span class="admin-health-dot ${hasIssue ? 'warn' : 'ok'}"></span>
+        ${hasIssue ? 'A surveiller' : 'Tout est stable'}
+      </span>
+    </div>
+    <div class="admin-health-grid">
+      ${checks.map(item => `<article class="admin-health-card ${escapeHtml(item.status)}">
+        <div class="admin-health-card-top">
+          <span class="admin-health-dot ${escapeHtml(item.status)}"></span>
+          <strong>${escapeHtml(item.title)}</strong>
+          <em>${escapeHtml(getAdminHealthLevel(item.status))}</em>
+        </div>
+        <div class="admin-health-value">${escapeHtml(item.value)}</div>
+        <p>${escapeHtml(item.detail)}</p>
+      </article>`).join('')}
+    </div>
+    <div class="admin-health-foot">Derniere verification: ${escapeHtml(formatOpsTimestamp(generatedAt))}. Actualisation automatique quand Direction reste ouverte.</div>
+  </div>`;
+}
+
 function buildAdminCockpitItems(reservations = []) {
   const active = reservations
     .filter(reservation => reservation.status !== 'cancelled')
@@ -1173,6 +1414,7 @@ function renderAdminOverview() {
         <div class="admin-kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div><div class="s">${metrics.laserLaunches} lancement(s) · ${metrics.laserPlayers} passages</div></div>
       </div>
     </div>
+    ${renderAdminOperationalHealth(snapshot, metrics, center)}
     ${renderAdminCockpit(metrics, center, snapshot.reservations || [], marketMetrics)}
     ${renderAdminCompetitiveBenchmark(metrics, marketMetrics)}
     <div class="admin-dashboard-grid">
@@ -1355,7 +1597,7 @@ function renderAdminExports() {
       </div>
       <div class="admin-export-card">
         <div><h3>Résumé du jour</h3><p>${metrics.reservations} réservation(s), ${metrics.players} joueurs, ${formatMoney(metrics.revenue)} prévu, ${metrics.failedMails} mail(s) en échec.</p></div>
-        <button class="admin-btn" onclick="navigator.clipboard?.writeText(JSON.stringify(getAdminExportPayload().metrics, null, 2)); toast('Résumé copié.')">Copier le résumé</button>
+        <button class="admin-btn" onclick="copyAdminSummary()">Copier le résumé</button>
       </div>
     </div>
   </div>`;
@@ -1435,12 +1677,13 @@ async function loadAdminOpsForCenter(centerId = state.adminCenterId || 'libramon
     const startDate = encodeURIComponent(range.startDate);
     const endDate = encodeURIComponent(range.endDate);
     const simDate = encodeURIComponent(state.adminDate || range.startDate);
-    const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload, simulationPayload] = await Promise.all([
+    const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload, healthPayload, simulationPayload] = await Promise.all([
       apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${centerQuery}&limit=180`),
       apiRequest(`${API_ENDPOINTS.ops}?action=emailSamples`),
       apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerQuery}&limit=120`),
       apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerQuery}&limit=160`),
       apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerQuery}&startDate=${startDate}&endDate=${endDate}`),
+      apiRequest(`${API_ENDPOINTS.ops}?action=health&centerId=${centerQuery}&limit=40`),
       apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerQuery}&date=${simDate}`)
     ]);
     const ops = {
@@ -1449,6 +1692,7 @@ async function loadAdminOpsForCenter(centerId = state.adminCenterId || 'libramon
       suggestions: suggestionsPayload.suggestions || [],
       events: eventsPayload.events || [],
       agentStack: agentStackPayload || null,
+      opsHealth: healthPayload.health || null,
       simulation: simulationPayload || null,
       loaded: true,
       loading: false,
@@ -1492,6 +1736,7 @@ function prefetchAdminPeriodSnapshots(centerId = state.adminCenterId || 'libramo
           suggestions: [],
           events: [],
           samples: [],
+          opsHealth: snapshotPayload.opsHealth || null,
           lastLoadedAt: new Date().toISOString()
         };
       })
@@ -1547,6 +1792,7 @@ async function loadAdminDashboard(force = false) {
     events: keepCurrentData ? adminDashboardCache.events : [],
     samples: keepCurrentData ? adminDashboardCache.samples : [],
     agentStack: keepCurrentData ? adminDashboardCache.agentStack : null,
+    opsHealth: keepCurrentData ? adminDashboardCache.opsHealth : null,
     simulation: keepCurrentData ? adminDashboardCache.simulation : null,
     lastLoadedAt: keepCurrentData ? adminDashboardCache.lastLoadedAt : ''
   }, cachedOps);
@@ -1574,6 +1820,7 @@ async function loadAdminDashboard(force = false) {
       suggestions: [],
       events: [],
       samples: [],
+      opsHealth: snapshotPayload.opsHealth || adminDashboardCache.opsHealth || null,
       simulation: adminDashboardCache.simulation || null,
       lastLoadedAt: new Date().toISOString()
     };
@@ -1640,6 +1887,19 @@ function setOpsTab(tab) {
   if (state.opsPanelTab === 'simulation') loadOpsSimulationStatus();
 }
 
+function startAdminHealthAutoRefresh() {
+  if (typeof window === 'undefined' || window.__pinlaneAdminHealthTimer) return;
+  const intervalFn = typeof window.setInterval === 'function'
+    ? window.setInterval.bind(window)
+    : (typeof setInterval === 'function' ? setInterval : null);
+  if (!intervalFn) return;
+  window.__pinlaneAdminHealthTimer = intervalFn(() => {
+    if (state.view !== 'admin') return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    loadAdminOpsForCenter(state.adminCenterId || 'libramont', true, adminLoadRequestId);
+  }, 45000);
+}
+
 (function exposeAdminConsole(global) {
   if (!global) return;
   global.PinlaneAdminConsole = {
@@ -1674,6 +1934,14 @@ function setOpsTab(tab) {
     exportAdminReport,
     buildAdminMetrics,
     buildAdminInsights,
+    countAdminHealthStatus,
+    getAdminHealthCommunications,
+    findAdminBowlingConflicts,
+    findAdminLaserIssues,
+    findAdminReservationIssues,
+    getAdminDelayHealth,
+    buildAdminOperationalChecks,
+    renderAdminOperationalHealth,
     buildAdminCockpitItems,
     getAdminCockpitMode,
     setAdminCockpitMode,
@@ -1706,4 +1974,5 @@ function setOpsTab(tab) {
     setAdminTab,
     setOpsTab,
   };
+  startAdminHealthAutoRefresh();
 })(typeof window !== 'undefined' ? window : globalThis);

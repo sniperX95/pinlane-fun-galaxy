@@ -10,9 +10,10 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
-    const session = await requireStaffPermission(req, res, ['planning.drag', 'settings.manage'], { centerId: body.centerId || body.center_id });
+    const centerId = body.centerId || body.center_id || 'libramont';
+    const session = await requireStaffPermission(req, res, ['planning.drag', 'settings.manage'], { centerId });
     if (!session) return;
-    const lane = await updateLaneStatus(body.lane, body.status);
+    const lane = await updateLaneStatus(body.lane, body.status, centerId);
     sendJson(res, 200, { ok: true, lane });
   } catch (error) {
     sendError(res, error.statusCode || 400, error.message || 'Impossible de mettre a jour la piste.');

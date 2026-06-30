@@ -3,6 +3,7 @@ const { communicationAgent, delayAgent, learningAgent, planningAgent } = require
 const { getRequiredLaneCount } = require('../lib/ops-engine');
 const { buildMessage, normalizePhoneForSms } = require('../lib/ops-communications');
 const { getCenter, loadOpsKnowledge } = require('../lib/ops-knowledge');
+const database = require('../lib/database');
 const {
   FORMULES,
   getFormuleAvailability,
@@ -11,6 +12,9 @@ const {
   todayStr,
 } = require('../lib/booking-config');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
+
+const publicAvailabilityPath = require.resolve('../api/public-availability');
+const reservationOpsPath = require.resolve('../lib/reservation-ops');
 
 function toIsoDate(date) {
   const year = date.getFullYear();
@@ -603,24 +607,211 @@ function testRequestTypeGuardrails() {
   assert.strictEqual(laserPlan.plan.laserGames, 1);
 }
 
-testCompetitivePlaybookLoaded();
-testLaneRules();
-testFormulaPlanning();
-testFormulaPreferredTimes();
-testLaserConflict();
-testStandaloneLaserPlanning();
-testStandaloneLaserCapacityBlock();
-testStandaloneLaserExactRemainingCapacity();
-testStandaloneLaserSplitGroup();
-testShockAbsorberRouting();
-testDelayAgent();
-testDelayAgentAbsorbableShift();
-testDelayAgentFallbackPlanFromReservation();
-testDelayAgentProposesAlternativesWhenBlocked();
-testDelayEmailTemplate();
-testLearningAgent();
-testPhoneNormalization();
-testCommunicationCommitmentModel();
-testRequestTypeGuardrails();
+function testLaserGameCountSurvivesRequestNormalization() {
+  [2, 3].forEach((laserGames) => {
+    const expectedDuration = laserGames === 2 ? 1 : 1.5;
+    const request = normalizeReservationRequest({
+      type: 'laser',
+      date: TEST_DATE,
+      startTime: '15:00',
+      pax: 7,
+      duration: 0.5,
+      laserGames,
+    }, { channel: 'public' });
 
-console.log('ops-tests-ok');
+    assert.strictEqual(request.type, 'laser');
+    assert.strictEqual(request.formuleId, '');
+    assert.strictEqual(request.laserGames, laserGames);
+    assert.strictEqual(request.games, laserGames);
+    assert.strictEqual(request.gameCount, laserGames);
+    assert.strictEqual(request.duration, expectedDuration);
+    assert.strictEqual(request.totalDuration, expectedDuration);
+
+    const plan = planningAgent(request, { reservations: [], laneStatuses: {} });
+    assert.strictEqual(plan.ok, true, `${laserGames} laser games should remain plannable`);
+    assert.strictEqual(plan.plan.laserGames, laserGames);
+    assert.strictEqual(plan.plan.recommended.laserPassPlan.totalGames, laserGames);
+  });
+}
+
+function testStaffLaserGameCountSurvivesOpsPreparationShape() {
+  const request = normalizeReservationRequest({
+    channel: 'staff',
+    type: 'laser',
+    date: TEST_DATE,
+    startTime: '16:00',
+    pax: 9,
+    duration: 0.5,
+    laserGames: 3,
+    label: 'Laser Game',
+  }, { channel: 'staff' });
+  const plan = planningAgent(request, { reservations: [], laneStatuses: {} });
+
+  assert.strictEqual(request.duration, 1.5);
+  assert.strictEqual(request.laserGames, 3);
+  assert.strictEqual(plan.plan.laserGames, 3);
+  assert.strictEqual(plan.plan.recommended.laserPassPlan.totalGames, 3);
+  assert.strictEqual(plan.plan.recommended.laserPassPlan.remainingGames, 2);
+}
+
+function makeMockResponse(req) {
+  let body = '';
+  return {
+    req,
+    statusCode: 200,
+    headers: {},
+    setHeader(key, value) {
+      this.headers[key.toLowerCase()] = value;
+    },
+    end(chunk = '') {
+      body += chunk;
+    },
+    json() {
+      return JSON.parse(body || '{}');
+    },
+  };
+}
+
+async function testPrepareReservationOpsPersistsLaserGamesInOpsPlan() {
+  const originalReadStaffState = database.readStaffState;
+  database.readStaffState = async () => ({ reservations: [], laneStatuses: {} });
+  delete require.cache[reservationOpsPath];
+  const { prepareReservationOps } = require('../lib/reservation-ops');
+
+  try {
+    const ops = await prepareReservationOps({
+      channel: 'staff',
+      type: 'laser',
+      date: TEST_DATE,
+      startTime: '16:30',
+      pax: 9,
+      duration: 0.5,
+      laserGames: 3,
+      label: 'Laser Game',
+    }, 'staff');
+
+    assert.strictEqual(ops.opsPlan.laserGames, 3);
+    assert.strictEqual(ops.opsPlan.games, 3);
+    assert.strictEqual(ops.opsPlan.laserPassPlan.totalGames, 3);
+  } finally {
+    database.readStaffState = originalReadStaffState;
+    delete require.cache[reservationOpsPath];
+  }
+}
+
+async function invokePublicAvailability(query, snapshot) {
+  const originalReadAvailabilitySnapshot = database.readAvailabilitySnapshot;
+  database.readAvailabilitySnapshot = async () => snapshot;
+  delete require.cache[publicAvailabilityPath];
+  const handler = require('../api/public-availability');
+  const req = {
+    method: 'GET',
+    url: `/api/public-availability?${query.toString()}`,
+    headers: { host: 'localhost' },
+  };
+  const res = makeMockResponse(req);
+
+  try {
+    await handler(req, res);
+    return { statusCode: res.statusCode, payload: res.json() };
+  } finally {
+    database.readAvailabilitySnapshot = originalReadAvailabilitySnapshot;
+    delete require.cache[publicAvailabilityPath];
+  }
+}
+
+async function testPublicLaserAvailabilityUsesLaserGamesAndExactRemainingCapacity() {
+  const existingPlan = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'laser',
+    pax: 23,
+    startTime: '15:00',
+    duration: 0.5,
+    laserGames: 1,
+  }, { reservations: [], laneStatuses: {} }).plan.recommended;
+  const snapshot = {
+    reservations: [{
+      id: 42,
+      centerId: 'libramont',
+      type: 'laser',
+      date: TEST_DATE,
+      startTime: '15:00',
+      duration: 0.5,
+      totalDuration: 0.5,
+      pax: 23,
+      lanes: [],
+      opsPlan: existingPlan,
+    }],
+    laneStatuses: {},
+  };
+
+  const acceptedQuery = new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'laser',
+    pax: '7',
+    laserGames: '3',
+  });
+  const accepted = await invokePublicAvailability(acceptedQuery, snapshot);
+  assert.strictEqual(accepted.statusCode, 200);
+  assert.strictEqual(accepted.payload.duration, 1.5, 'laserGames=3 should drive duration when duration is absent');
+  assert.strictEqual(accepted.payload.totalDuration, 1.5);
+  assert.strictEqual(accepted.payload.label, '3 parties Laser Game');
+  assert.ok(
+    accepted.payload.slots.some((slot) => slot.freeCount === 0 && slot.maxSessionPlayers === 30),
+    '7 players should be offered when exactly 7 laser places remain',
+  );
+
+  const refusedQuery = new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'laser',
+    pax: '8',
+    laserGames: '3',
+  });
+  const refused = await invokePublicAvailability(refusedQuery, snapshot);
+  assert.strictEqual(refused.statusCode, 200);
+  assert.strictEqual(refused.payload.duration, 1.5);
+  assert.ok(
+    refused.payload.slots.every((slot) => slot.maxSessionPlayers <= 30),
+    'availability must not expose a slot above exact remaining laser capacity',
+  );
+  assert.ok(
+    !refused.payload.slots.some((slot) => slot.time === accepted.payload.slots.find((item) => item.maxSessionPlayers === 30)?.time),
+    '8 players must not join the already 23-player laser session',
+  );
+}
+
+async function main() {
+  testCompetitivePlaybookLoaded();
+  testLaneRules();
+  testFormulaPlanning();
+  testFormulaPreferredTimes();
+  testLaserConflict();
+  testStandaloneLaserPlanning();
+  testStandaloneLaserCapacityBlock();
+  testStandaloneLaserExactRemainingCapacity();
+  testStandaloneLaserSplitGroup();
+  testShockAbsorberRouting();
+  testDelayAgent();
+  testDelayAgentAbsorbableShift();
+  testDelayAgentFallbackPlanFromReservation();
+  testDelayAgentProposesAlternativesWhenBlocked();
+  testDelayEmailTemplate();
+  testLearningAgent();
+  testPhoneNormalization();
+  testCommunicationCommitmentModel();
+  testRequestTypeGuardrails();
+  testLaserGameCountSurvivesRequestNormalization();
+  testStaffLaserGameCountSurvivesOpsPreparationShape();
+  await testPrepareReservationOpsPersistsLaserGamesInOpsPlan();
+  await testPublicLaserAvailabilityUsesLaserGamesAndExactRemainingCapacity();
+
+  console.log('ops-tests-ok');
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -836,7 +836,6 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
       toast(placement.message);
     }
     return;
-    toast(placement.message);
   }
   const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
   const nextOpsPlan = updateLaserPassPlan({
@@ -867,7 +866,7 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
       method: 'PATCH',
       body: JSON.stringify(buildReservationApiPayload(updated, {
-        skipReplan: true,
+        skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
         laneCount: 0,
         requiresLanes: false,
         allowPastStart: true
@@ -888,7 +887,6 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
       toast(error.message || 'Impossible de placer cette partie Laser Game.');
     }
     return;
-    toast(error.message || 'Impossible de placer cette partie Laser Game.');
   } finally {
     if (isLatestRequest() && typeof clearReservationWritePending === 'function') clearReservationWritePending(requestKey);
     clearLatestRequest();

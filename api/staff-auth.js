@@ -1,8 +1,11 @@
 const {
   createMember,
+  createEmergencyAccessControl,
+  createEmergencyOwnerSession,
   createRole,
   STAFF_SESSION_COOKIE,
   getStaffSessionFromRequest,
+  isStaffAuthStorageError,
   listAccessControl,
   loginStaffByCode,
   logoutStaff,
@@ -14,6 +17,7 @@ const {
   toggleMemberStatus,
   updateMemberRole,
   updateRolePermissions,
+  publicStorageErrorMessage,
 } = require('../lib/staff-auth');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 
@@ -61,6 +65,7 @@ function publicSession(session) {
   if (!session) return null;
   return {
     cookieBacked: true,
+    emergency: Boolean(session.emergency),
     centerId: session.centerId,
     expiresAt: session.expiresAt,
     member: session.member,
@@ -84,7 +89,15 @@ async function sendSessionSnapshot(req, res, centerId, session = null, extra = {
     return;
   }
   const canManageUsers = activeSession.permissions.includes('users.manage') || activeSession.role?.locked;
-  const accessControl = canManageUsers ? await listAccessControl(centerId || activeSession.centerId) : null;
+  let accessControl = null;
+  if (canManageUsers) {
+    try {
+      accessControl = await listAccessControl(centerId || activeSession.centerId);
+    } catch (error) {
+      if (!activeSession.emergency || !isStaffAuthStorageError(error)) throw error;
+      accessControl = createEmergencyAccessControl(centerId || activeSession.centerId);
+    }
+  }
   sendJson(res, 200, {
     ok: true,
     authenticated: true,
@@ -120,11 +133,19 @@ module.exports = async (req, res) => {
     const centerId = getCenterId(req, body);
 
     if (action === 'login') {
-      const payload = await loginStaffByCode({
-        centerId,
-        code: body.code || body.password || '',
-        fingerprint: getRequestFingerprint(req),
-      });
+      const loginCode = body.code || body.password || '';
+      let payload;
+      try {
+        payload = await loginStaffByCode({
+          centerId,
+          code: loginCode,
+          fingerprint: getRequestFingerprint(req),
+        });
+      } catch (error) {
+        if (!isStaffAuthStorageError(error)) throw error;
+        payload = createEmergencyOwnerSession({ centerId, code: loginCode });
+        if (!payload) throw error;
+      }
       setStaffSessionCookie(req, res, payload.session?.token, payload.session?.expiresAt);
       sendJson(res, 200, {
         ok: true,
@@ -212,6 +233,7 @@ module.exports = async (req, res) => {
     if (error.retryAfterSeconds) {
       res.setHeader('Retry-After', String(error.retryAfterSeconds));
     }
-    sendError(res, error.statusCode || 400, error.message || 'Authentification staff impossible.');
+    const isStorageError = isStaffAuthStorageError(error);
+    sendError(res, isStorageError ? 503 : (error.statusCode || 400), isStorageError ? publicStorageErrorMessage() : (error.message || 'Authentification staff impossible.'));
   }
 };

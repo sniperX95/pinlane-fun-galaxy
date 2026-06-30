@@ -38,6 +38,16 @@ function readBlockHour(block, key, fallback = 0) {
   return fallback;
 }
 
+function getLaserOptionFromRequest(url, fallbackDuration = 0.5) {
+  const requestedGames = Number(url.searchParams.get('laserGames') || url.searchParams.get('games') || url.searchParams.get('gameCount') || 0);
+  if (requestedGames >= 1) {
+    const normalizedGames = Math.max(1, Math.min(3, Math.trunc(requestedGames)));
+    const option = LASER_GAME_OPTIONS.find((item) => Number(item.games) === normalizedGames);
+    if (option) return option;
+  }
+  return LASER_GAME_OPTIONS.find((item) => Number(item.value) === Number(fallbackDuration)) || LASER_GAME_OPTIONS[0];
+}
+
 function laneWindowsFromReservation(reservation) {
   const blocks = Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : [];
   const planned = blocks
@@ -620,7 +630,7 @@ module.exports = async (req, res) => {
     const type = rawType === 'formule' ? 'formule' : rawType === 'laser' ? 'laser' : 'bowling';
     const pax = Math.max(1, Number(url.searchParams.get('pax') || 1));
     const formuleId = String(url.searchParams.get('formuleId') || '');
-    const requestedDuration = Number(url.searchParams.get('duration') || 1);
+    const requestedDuration = Number(url.searchParams.get('duration') || (type === 'laser' ? 0.5 : 1));
     const formule = FORMULES.find((item) => item.id === formuleId) || null;
     const firstActivityId = String(url.searchParams.get('firstActivityId') || '');
     const preferredBowlingTime = String(url.searchParams.get('preferredBowlingTime') || '');
@@ -700,7 +710,7 @@ module.exports = async (req, res) => {
     }
 
     const snapshot = await readAvailabilitySnapshot(date, centerId);
-    const laserOption = LASER_GAME_OPTIONS.find((item) => Number(item.value) === requestedDuration) || LASER_GAME_OPTIONS[0];
+    const laserOption = getLaserOptionFromRequest(url, requestedDuration);
     const duration = type === 'formule' ? getFormuleLaneDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
     const totalDuration = type === 'formule' ? getFormuleTotalDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
     const laneCount = getRequiredLaneCount(type, pax, formuleId);
@@ -919,6 +929,7 @@ module.exports = async (req, res) => {
           laneCount: 0,
           requiresLanes: false,
           label: `${laserOption.label} Laser Game`,
+          laserGames: laserOption.games,
           snapshot,
         },
       );
@@ -932,6 +943,7 @@ module.exports = async (req, res) => {
         price: getBasePrice(type, duration, 0, pax, ''),
         requiresLanes: false,
         label: `${laserOption.label} Laser Game`,
+        laserGames: laserOption.games,
         message: slots.length ? '' : 'Aucun départ Laser Game disponible pour ces critères.',
       });
       return;

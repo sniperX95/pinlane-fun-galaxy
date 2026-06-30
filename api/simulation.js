@@ -18,10 +18,18 @@ function getQuery(req) {
   return new URL(req.url, `https://${req.headers.host || 'localhost'}`).searchParams;
 }
 
-async function handleGet(req, res) {
+function normalizeCenterId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function resolveEffectiveCenterId(session, requestedCenterId = '') {
+  return normalizeCenterId(requestedCenterId || session?.authorizedCenterId || session?.centerId || 'libramont');
+}
+
+async function handleGet(req, res, options = {}) {
   const query = getQuery(req);
   const action = getAction(req);
-  const centerId = query.get('centerId') || 'libramont';
+  const centerId = options.centerId || normalizeCenterId(query.get('centerId') || '') || 'libramont';
   const date = query.get('date') || todayStr();
   const runId = query.get('runId') || '';
 
@@ -33,10 +41,10 @@ async function handleGet(req, res) {
   sendError(res, 400, 'Action simulation GET inconnue.');
 }
 
-async function handlePost(req, res, providedBody = null) {
+async function handlePost(req, res, providedBody = null, options = {}) {
   const body = providedBody || await readJson(req);
   const action = getAction(req, body);
-  const centerId = body.centerId || 'libramont';
+  const centerId = options.centerId || normalizeCenterId(body.centerId || body.center_id || '') || 'libramont';
   const date = body.date || todayStr();
 
   if (action === 'start') {
@@ -45,7 +53,7 @@ async function handlePost(req, res, providedBody = null) {
       date,
       scenario: body.scenario,
       speedFactor: body.speedFactor,
-      resetExisting: body.resetExisting !== false,
+      resetExisting: body.resetExisting === true,
     });
     sendJson(res, 201, payload);
     return;
@@ -79,7 +87,11 @@ async function handlePost(req, res, providedBody = null) {
   }
 
   if (action === 'reset') {
-    sendJson(res, 200, await resetSimulation({ centerId, runId: body.runId || '' }));
+    sendJson(res, 200, await resetSimulation({
+      centerId,
+      runId: body.runId || '',
+      confirmResetAll: body.confirmResetAll === true,
+    }));
     return;
   }
 
@@ -111,16 +123,18 @@ module.exports = async (req, res) => {
   try {
     if (req.method === 'GET') {
       const query = getQuery(req);
-      const session = await requireStaffPermission(req, res, 'ai.ops', { centerId: query.get('centerId') || '' });
+      const requestedCenterId = normalizeCenterId(query.get('centerId') || '');
+      const session = await requireStaffPermission(req, res, 'ai.ops', { centerId: requestedCenterId });
       if (!session) return;
-      await handleGet(req, res);
+      await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId) });
       return;
     }
     if (req.method === 'POST') {
       const body = await readJson(req);
-      const session = await requireStaffPermission(req, res, 'ai.ops', { centerId: body.centerId || body.center_id || '' });
+      const requestedCenterId = normalizeCenterId(body.centerId || body.center_id || '');
+      const session = await requireStaffPermission(req, res, 'ai.ops', { centerId: requestedCenterId });
       if (!session) return;
-      await handlePost(req, res, body);
+      await handlePost(req, res, body, { centerId: resolveEffectiveCenterId(session, requestedCenterId) });
       return;
     }
     sendError(res, 405, 'Méthode non autorisée.');

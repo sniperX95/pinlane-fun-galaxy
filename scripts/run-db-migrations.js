@@ -30,6 +30,11 @@ const MIGRATIONS = [
     file: 'database/ops-automation-schema.sql',
     description: 'Durable ops jobs, worker health, and delay incident tracking',
   },
+  {
+    id: '0006_center_lane_statuses',
+    file: 'database/center-lane-statuses-schema.sql',
+    description: 'Scope lane statuses per center',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -20,6 +20,10 @@ function getCenterIds(centerId = 'libramont') {
     .map((center) => center.id);
 }
 
+function normalizeCenterId(value, fallback = 'libramont') {
+  return String(value || fallback).trim().toLowerCase();
+}
+
 async function statusForCenters(centerIds) {
   const results = await Promise.all(centerIds.map((centerId) => getMarketingAgentStatus({ centerId })));
   return {
@@ -30,7 +34,8 @@ async function statusForCenters(centerIds) {
 }
 
 async function runForCenters(body = {}) {
-  const centerIds = getCenterIds(body.centerId || 'all');
+  const requestedCenterId = normalizeCenterId(body.centerId || body.center_id, 'libramont');
+  const centerIds = getCenterIds(requestedCenterId);
   const results = [];
   for (const centerId of centerIds) {
     results.push(await runMarketingAgentCycle({
@@ -64,7 +69,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
       const action = getAction(req);
-      const centerId = requestUrl.searchParams.get('centerId') || 'libramont';
+      const centerId = normalizeCenterId(requestUrl.searchParams.get('centerId'), 'libramont');
       const permissionCenterId = centerId === 'all' ? '' : centerId;
       const session = await requireStaffPermission(req, res, ['campaigns.manage', 'marketing.agents'], { centerId: permissionCenterId });
       if (!session) return;
@@ -77,11 +82,7 @@ module.exports = async (req, res) => {
         return;
       }
       if (action === 'run') {
-        sendJson(res, 200, await runForCenters({
-          centerId,
-          objective: requestUrl.searchParams.get('objective') || '',
-          runType: 'manual-get',
-        }));
+        sendError(res, 405, 'Lancement agents marketing reserve au POST.');
         return;
       }
       sendError(res, 400, 'Action marketing inconnue.');
@@ -91,20 +92,21 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const body = await readJson(req);
       const action = getAction(req, body);
-      const permissionCenterId = body.centerId === 'all' ? '' : (body.centerId || body.center_id || '');
+      const centerId = normalizeCenterId(body.centerId || body.center_id, 'libramont');
+      const permissionCenterId = centerId === 'all' ? '' : centerId;
       const session = await requireStaffPermission(req, res, ['campaigns.manage', 'marketing.agents'], { centerId: permissionCenterId });
       if (!session) return;
-      if (body.centerId === 'all' && !sessionHasPermission(session, 'centers.switch')) {
+      if (centerId === 'all' && !sessionHasPermission(session, 'centers.switch')) {
         sendError(res, 403, 'Acces multi-centres insuffisant.');
         return;
       }
       if (action === 'run') {
-        sendJson(res, 200, await runForCenters(body));
+        sendJson(res, 200, await runForCenters({ ...body, centerId }));
         return;
       }
       if (action === 'feedback') {
-        const feedback = await recordMarketingFeedback(body);
-        const status = await statusForCenters(getCenterIds(body.centerId || 'libramont'));
+        const feedback = await recordMarketingFeedback({ ...body, centerId });
+        const status = await statusForCenters(getCenterIds(centerId));
         sendJson(res, 201, { ok: true, feedback, ...status });
         return;
       }

@@ -1,4 +1,4 @@
-const { readAdminRangeState } = require('../lib/database');
+const { getOpsHealth, readAdminRangeState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 
@@ -21,6 +21,16 @@ module.exports = async (req, res) => {
       return;
     }
     const snapshot = await readAdminRangeState(startDate, endDate, centerId);
+    let opsHealth = null;
+    try {
+      opsHealth = await getOpsHealth({ centerId, limit: 40 });
+    } catch (opsError) {
+      opsHealth = {
+        unavailable: true,
+        error: opsError.message || 'Ops health unavailable',
+        generatedAt: new Date().toISOString(),
+      };
+    }
     const requestRevision = req.headers['if-none-match'];
     if (requestRevision && requestRevision === snapshot.revision) {
       res.statusCode = 304;
@@ -29,7 +39,7 @@ module.exports = async (req, res) => {
       return;
     }
     res.setHeader('ETag', snapshot.revision);
-    sendJson(res, 200, { ok: true, ...snapshot });
+    sendJson(res, 200, { ok: true, ...snapshot, opsHealth });
   } catch (error) {
     sendError(res, 500, error.message || 'Impossible de charger les donnees direction.');
   }

@@ -189,6 +189,7 @@ async function installQaApi(page) {
     });
 
     const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+    window.__PINLANE_QA_ADMIN_RANGE_CALLS__ = [];
     window.fetch = async (input, init = {}) => {
       const rawUrl = typeof input === 'string' ? input : input?.url || '';
       const url = new URL(rawUrl, window.location.origin);
@@ -219,6 +220,17 @@ async function installQaApi(page) {
 
       if (url.pathname === '/api/public-availability') {
         return jsonResponse({ ok: true, slots: [] });
+      }
+
+      if (url.pathname === '/api/admin-range') {
+        window.__PINLANE_QA_ADMIN_RANGE_CALLS__.push(url.href);
+        return jsonResponse({
+          ok: true,
+          reservations: [],
+          emails: [],
+          agentEvents: [],
+          centerId: url.searchParams.get('centerId') || 'libramont',
+        });
       }
 
       return nativeFetch(input, init);
@@ -285,6 +297,10 @@ async function collectIssues(page, scopeLabel) {
       '.auth-card',
       '.reservations-calendar',
       '.reservations-day',
+      '.events-workspace',
+      '.event-row',
+      '.events-now-card',
+      '.events-day-digest',
     ].join(',');
 
     document.querySelectorAll(watched).forEach((el) => {
@@ -379,6 +395,24 @@ async function main() {
     await renderStaffPage(page, 'reservations');
     await screenshot(page, 'staff-reservations-stress');
     issues.push(...await collectIssues(page, 'staff-reservations'));
+
+    const adminRangeBeforeEvents = await page.evaluate(() => (
+      Array.isArray(window.__PINLANE_QA_ADMIN_RANGE_CALLS__)
+        ? window.__PINLANE_QA_ADMIN_RANGE_CALLS__.length
+        : 0
+    ));
+    await renderStaffPage(page, 'events');
+    await screenshot(page, 'staff-events-stress');
+    issues.push(...await collectIssues(page, 'staff-events'));
+    const adminRangeAfterEvents = await page.evaluate(() => (
+      Array.isArray(window.__PINLANE_QA_ADMIN_RANGE_CALLS__)
+        ? window.__PINLANE_QA_ADMIN_RANGE_CALLS__.length
+        : 0
+    ));
+    assert(
+      adminRangeAfterEvents === adminRangeBeforeEvents,
+      'La page Evenements ne doit pas declencher /api/admin-range.'
+    );
 
     const blockingConsoleErrors = consoleErrors.filter((entry) => (
       !/favicon|net::ERR_ABORTED|Failed to load resource|Not found/i.test(entry)

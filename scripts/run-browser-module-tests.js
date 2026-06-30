@@ -133,6 +133,26 @@ async function main() {
   assert.strictEqual(payload.credentials, 'same-origin');
   assert.strictEqual(unauthorizedCalled, false);
 
+  const staffMenuSource = fs.readFileSync(path.join(root, 'assets', 'staff-menu.js'), 'utf8');
+  assert(staffMenuSource.includes('GROUP_DEFAULT_TARGETS'), 'staff menu collapsed group targets are missing');
+  assert(staffMenuSource.includes("planning: 'planning'"), 'planning group does not have a collapsed fallback target');
+  assert(staffMenuSource.includes("field: 'arrivals'"), 'field group does not have a collapsed fallback target');
+  assert(staffMenuSource.includes("activities: 'prices'"), 'activities group does not have a collapsed fallback target');
+  assert(/function\s+navigateMenuGroup/.test(staffMenuSource), 'collapsed parent navigation helper is missing');
+  assert(/measureMenuSubnavHeight/.test(staffMenuSource), 'staff menu subnav animation is not height-measured');
+  assert(/applyMenuGroupOpen\(groupToggle,\s*nextOpen,\s*\{\s*animate:\s*true\s*\}\)/.test(staffMenuSource), 'group toggles do not request animated state changes');
+  assert(staffMenuSource.includes('FGX_STAFF_MENU_GROUP_TARGETS'), 'staff menu group targets are not exposed for diagnostics');
+
+  const staffMenuCss = fs.readFileSync(path.join(root, 'assets', 'staff-menu.css'), 'utf8');
+  assert(
+    /ops-sidebar\[data-staff-menu-root\][\s\S]{0,260}\.fgx-menu-subnav[\s\S]{0,260}display:\s*none\s*!important/.test(staffMenuCss),
+    'collapsed staff menu must hide subnavs so parent buttons remain the only collapsed affordance'
+  );
+  assert(
+    /transition-property:\s*max-height,\s*opacity,\s*transform,\s*margin,\s*padding,\s*border-color,\s*visibility/.test(staffMenuCss),
+    'staff menu group animation must transition only the changed properties'
+  );
+
   apiSandbox.fetch = async () => ({
     ok: false,
     status: 401,

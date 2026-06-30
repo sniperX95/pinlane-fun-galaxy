@@ -117,7 +117,7 @@
 
     .segmented {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
 
@@ -326,6 +326,7 @@
           <h2>1. Votre réservation</h2>
           <div class="segmented">
             <button type="button" id="typeBowling">Bowling</button>
+            <button type="button" id="typeLaser">Laser Game</button>
             <button type="button" id="typeFormule">Formule</button>
           </div>
           <div class="row">
@@ -387,7 +388,7 @@
           <div class="summary-list" id="summaryList"></div>
         </div>
 
-        <button class="cta" id="submitButton" type="button">Envoyer la réservation</button>
+        <button class="cta" id="submitButton" type="button" disabled>Envoyer la réservation</button>
         <div class="success" id="successBox"></div>
         <div class="tiny">En validant, la demande est enregistree dans la base centrale utilisee par le staff.</div>
       </div>
@@ -395,6 +396,12 @@
   </div>
 
   <script>
+    const PUBLIC_LASER_OPTIONS = [
+      { games: 1, value: 0.5, label: '1 partie', price: 10 },
+      { games: 2, value: 1, label: '2 parties', price: 18 },
+      { games: 3, value: 1.5, label: '3 parties', price: 25 },
+    ];
+
     const state = {
       meta: null,
       type: 'bowling',
@@ -409,6 +416,7 @@
       bookingDate: document.getElementById('bookingDate'),
       bookingPax: document.getElementById('bookingPax'),
       typeBowling: document.getElementById('typeBowling'),
+      typeLaser: document.getElementById('typeLaser'),
       typeFormule: document.getElementById('typeFormule'),
       durationSection: document.getElementById('durationSection'),
       formulaSection: document.getElementById('formulaSection'),
@@ -426,6 +434,8 @@
       contactEmail: document.getElementById('contactEmail'),
       contactNotes: document.getElementById('contactNotes'),
     };
+
+    elements.submitButton.disabled = true;
 
     async function api(url, options = {}) {
       const response = await fetch(url, {
@@ -451,15 +461,36 @@
       return `${rest} min`;
     }
 
+    function getLaserOptions() {
+      return state.meta?.laserOptions || PUBLIC_LASER_OPTIONS;
+    }
+
+    function getDurationOptions() {
+      return state.type === 'laser' ? getLaserOptions() : state.meta.durationOptions;
+    }
+
+    function getSelectedLaserOption() {
+      return getLaserOptions().find((item) => Number(item.value) === Number(state.duration)) || getLaserOptions()[0];
+    }
+
+    function ensureDurationForType() {
+      const options = getDurationOptions();
+      if (!options.some((item) => Number(item.value) === Number(state.duration))) {
+        state.duration = Number(options[0]?.value || 1);
+      }
+    }
+
     function setType(nextType) {
-      state.type = nextType === 'formule' ? 'formule' : 'bowling';
-      if (state.type === 'bowling') {
+      state.type = nextType === 'formule' ? 'formule' : nextType === 'laser' ? 'laser' : 'bowling';
+      if (state.type !== 'formule') {
         state.formuleId = '';
       }
+      ensureDurationForType();
       state.selectedSlot = null;
       elements.typeBowling.classList.toggle('active', state.type === 'bowling');
+      elements.typeLaser.classList.toggle('active', state.type === 'laser');
       elements.typeFormule.classList.toggle('active', state.type === 'formule');
-      elements.durationSection.style.display = state.type === 'bowling' ? '' : 'none';
+      elements.durationSection.style.display = state.type === 'formule' ? 'none' : '';
       elements.formulaSection.style.display = state.type === 'formule' ? '' : 'none';
       renderDurationOptions();
       renderFormulaOptions();
@@ -484,6 +515,8 @@
         elements.laneNotice.textContent = pax > 6
           ? `${pax} joueurs demandent ${laneCount} pistes cote a cote.`
           : `Maximum 6 joueurs par piste.`;
+      } else if (state.type === 'laser') {
+        elements.laneNotice.textContent = "Le Laser Game utilise les places restantes de l'arene, sans piste bowling.";
       } else {
         elements.laneNotice.textContent = "Les formules avec bowling reservent automatiquement le bon nombre de pistes.";
       }
@@ -491,10 +524,12 @@
 
     function renderDurationOptions() {
       if (!state.meta) return;
-      elements.durationList.innerHTML = state.meta.durationOptions.map((item) => `
+      const options = getDurationOptions();
+      const priceUnit = state.type === 'laser' ? 'pers' : 'piste';
+      elements.durationList.innerHTML = options.map((item) => `
         <button type="button" class="${state.duration === item.value ? 'active' : ''}" data-duration="${item.value}">
           <strong>${item.label}</strong>
-          <div class="price">${item.price}EUR / piste</div>
+          <div class="price">${item.price}EUR / ${priceUnit}</div>
         </button>
       `).join('');
       elements.durationList.querySelectorAll('button').forEach((button) => {
@@ -539,6 +574,12 @@
       });
     }
 
+    function slotMeta(slot, availability) {
+      if (availability.requiresLanes) return `${slot.freeCount} pistes libres`;
+      if (state.type === 'laser') return `${Number(slot.freeCount || 0)} places restantes`;
+      return 'Formule sans piste';
+    }
+
     function renderSlots() {
       const availability = state.availability;
       if (!availability) {
@@ -554,7 +595,7 @@
       elements.slotList.innerHTML = availability.slots.map((slot) => `
         <button type="button" class="${state.selectedSlot && state.selectedSlot.time === slot.time ? 'active' : ''}" data-time="${slot.time}">
           <strong>${slot.time}</strong>
-          <div class="slot-meta">${availability.requiresLanes ? `${slot.freeCount} pistes libres` : 'Formule sans piste'}<\/div>
+          <div class="slot-meta">${slotMeta(slot, availability)}<\/div>
         </button>
       `).join('');
 
@@ -595,7 +636,8 @@
           pax: String(getPax()),
           type: state.type,
         });
-        if (state.type === 'bowling') params.set('duration', String(state.duration));
+        if (state.type !== 'formule') params.set('duration', String(state.duration));
+        if (state.type === 'laser') params.set('laserGames', String(getSelectedLaserOption().games));
         if (state.type === 'formule') params.set('formuleId', state.formuleId);
 
         const availability = await api(`/api/public-availability?${params.toString()}`);
@@ -605,7 +647,7 @@
         } else {
           const label = availability.requiresLanes
             ? `${availability.laneCount} piste${availability.laneCount > 1 ? 's' : ''} reservee${availability.laneCount > 1 ? 's' : ''}`
-            : 'Réservation sans piste';
+            : state.type === 'laser' ? availability.label : 'Réservation sans piste';
           setAvailabilityNotice(`${label} • duree totale ${formatDuration(availability.totalDuration)}`);
         }
       } catch (error) {
@@ -623,6 +665,8 @@
       const slot = state.selectedSlot;
       const label = state.type === 'formule' && state.meta
         ? (state.meta.formules.find((item) => item.id === state.formuleId)?.name || 'Formule')
+        : state.type === 'laser'
+          ? `${getSelectedLaserOption().label} Laser Game`
         : 'Bowling Classique';
 
       const rows = [
@@ -684,6 +728,8 @@
         price: availability.price,
         type: state.type,
         formuleId: state.type === 'formule' ? state.formuleId : '',
+        laserGames: state.type === 'laser' ? getSelectedLaserOption().games : 0,
+        games: state.type === 'laser' ? getSelectedLaserOption().games : 0,
         label: availability.label,
         lanes: slot.lanes || [],
         extras: [],
@@ -720,6 +766,7 @@
       elements.bookingDate.min = meta.today;
       elements.bookingDate.value = meta.today;
       elements.typeBowling.addEventListener('click', () => setType('bowling'));
+      elements.typeLaser.addEventListener('click', () => setType('laser'));
       elements.typeFormule.addEventListener('click', () => setType('formule'));
       elements.bookingDate.addEventListener('change', loadAvailability);
       elements.bookingPax.addEventListener('input', () => {

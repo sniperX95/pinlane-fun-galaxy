@@ -1,12 +1,106 @@
-const { createOpsEvent, createReservation, deleteReservation, updateReservation } = require('../lib/database');
+const {
+  cancelReservationCommunications,
+  cancelReservationOpsJobs,
+  createOpsEvent,
+  createReservation,
+  deleteReservation,
+  getReservationById,
+  updateReservation,
+} = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
+const { enqueueReservationCommunications } = require('../lib/ops-communications');
+const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { requireStaffPermission } = require('../lib/staff-auth');
 
+const REPLAN_FIELDS = [
+  'date',
+  'startTime',
+  'duration',
+  'totalDuration',
+  'pax',
+  'type',
+  'formuleId',
+  'formulaId',
+  'lanes',
+  'laneCount',
+  'requiresLanes',
+  'preference',
+  'laserGames',
+  'games',
+  'gameCount',
+];
+
+const AUTOMATION_REFRESH_FIELDS = [
+  ...REPLAN_FIELDS,
+  'centerId',
+  'center_id',
+  'email',
+  'phone',
+  'status',
+  'validationStatus',
+  'validation_status',
+  'opsPlan',
+  'ops_plan',
+];
+
+function createHttpError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function hasAnyField(body = {}, fields = []) {
+  return fields.some((field) => Object.prototype.hasOwnProperty.call(body || {}, field));
+}
+
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes'].includes(key));
+}
+
+function isFormulaPatch(body = {}) {
+  return body.type === 'formule' || Boolean(body.formuleId || body.formulaId);
+}
+
+async function cancelPendingAutomation(reservation, reason) {
+  if (!reservation?.id) return { communications: 0, jobs: 0 };
+  const [communications, jobs] = await Promise.all([
+    cancelReservationCommunications({
+      reservationId: reservation.id,
+      centerId: reservation.centerId || 'libramont',
+      reason,
+    }),
+    cancelReservationOpsJobs({
+      reservationId: reservation.id,
+      centerId: reservation.centerId || 'libramont',
+      reason,
+    }),
+  ]);
+  return { communications: communications.length, jobs: jobs.length };
+}
+
+async function refreshReservationAutomation(current, reservation, options = {}) {
+  const cancelled = await cancelPendingAutomation(current, options.reason || 'reservation_updated');
+  if (reservation.centerId && current.centerId && reservation.centerId !== current.centerId) {
+    const movedCleanup = await cancelPendingAutomation(reservation, options.reason || 'reservation_updated');
+    cancelled.communications += movedCleanup.communications;
+    cancelled.jobs += movedCleanup.jobs;
+  }
+
+  if (reservation.status === 'cancelled') {
+    return { ...cancelled, refreshed: false };
+  }
+
+  await Promise.all([
+    enqueueReservationAutomation(reservation).catch(() => []),
+    enqueueReservationCommunications(reservation, {
+      validationMode: reservation.validationStatus || options.validationMode,
+    }).catch(() => []),
+  ]);
+
+  return { ...cancelled, refreshed: true };
 }
 
 module.exports = async (req, res) => {
@@ -41,36 +135,40 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PATCH') {
       const body = await readJson(req);
+      if (!body.id) throw createHttpError('Reservation manquante.', 400);
+
+      const current = await getReservationById(body.id);
+      if (!current) throw createHttpError('Reservation introuvable.', 404);
+
+      const requestedCenterId = body.centerId || body.center_id || current.centerId || 'libramont';
       const permission = patchNeedsOnlyStatus(body) ? ['reservations.status', 'reservations.edit'] : 'reservations.edit';
-      const session = await requireStaffPermission(req, res, permission, { centerId: body.centerId || body.center_id });
+      const session = await requireStaffPermission(req, res, permission, { centerId: current.centerId || 'libramont' });
       if (!session) return;
-      const shouldReplan = !body.skipReplan && [
-        'date',
-        'startTime',
-        'duration',
-        'totalDuration',
-        'pax',
-        'type',
-        'formuleId',
-        'formulaId',
-        'lanes',
-        'laneCount',
-        'requiresLanes',
-        'preference',
-        'laserGames',
-        'games',
-        'gameCount',
-      ].some((field) => Object.prototype.hasOwnProperty.call(body || {}, field));
+
+      if (requestedCenterId !== (current.centerId || 'libramont')) {
+        const switchSession = await requireStaffPermission(req, res, 'centers.switch', { centerId: requestedCenterId });
+        if (!switchSession) return;
+      }
+
+      const patch = {
+        ...body,
+        centerId: requestedCenterId,
+      };
+      const shouldReplan = (!patch.skipReplan || isFormulaPatch(patch)) && hasAnyField(patch, REPLAN_FIELDS);
       const ops = shouldReplan
-        ? await prepareReservationOps(body, 'staff', { ignoreReservationId: Number(body.id) })
+        ? await prepareReservationOps(patch, 'staff', { ignoreReservationId: Number(patch.id) })
         : {};
       const reservation = await updateReservation({
-        ...body,
+        ...patch,
         ...ops,
-        channel: body.channel || 'staff',
+        channel: patch.channel || current.channel || 'staff',
       });
+      const automation = hasAnyField(patch, AUTOMATION_REFRESH_FIELDS)
+        ? await refreshReservationAutomation(current, reservation, { reason: 'reservation_updated' })
+        : { communications: 0, jobs: 0, refreshed: false };
+
       await createOpsEvent({
-        centerId: reservation.centerId || 'libramont',
+        centerId: reservation.centerId || current.centerId || 'libramont',
         reservationId: reservation.id,
         formulaId: reservation.formuleId || '',
         eventType: 'reservation_updated',
@@ -78,28 +176,33 @@ module.exports = async (req, res) => {
           status: reservation.status,
           validationStatus: reservation.validationStatus,
           fields: Object.keys(body || {}),
+          automation,
         },
       }).catch(() => null);
-      sendJson(res, 200, { ok: true, reservation });
+      sendJson(res, 200, { ok: true, reservation, automation });
       return;
     }
 
     if (req.method === 'DELETE') {
       const body = await readJson(req);
-      const session = await requireStaffPermission(req, res, 'reservations.cancel', { centerId: body.centerId || body.center_id });
+      if (!body.id) throw createHttpError('Reservation manquante.', 400);
+      const current = await getReservationById(body.id);
+      if (!current) throw createHttpError('Reservation introuvable.', 404);
+      const session = await requireStaffPermission(req, res, 'reservations.cancel', { centerId: current.centerId || 'libramont' });
       if (!session) return;
+      const automation = await cancelPendingAutomation(current, 'reservation_deleted');
       await deleteReservation(body.id);
       await createOpsEvent({
-        centerId: body.centerId || 'libramont',
-        reservationId: body.id,
+        centerId: current.centerId || 'libramont',
+        reservationId: current.id,
         eventType: 'reservation_deleted',
-        payload: { source: 'staff' },
+        payload: { source: 'staff', automation },
       }).catch(() => null);
-      sendJson(res, 200, { ok: true });
+      sendJson(res, 200, { ok: true, automation });
       return;
     }
 
-    sendError(res, 405, 'Méthode non autorisée.');
+    sendError(res, 405, 'Methode non autorisee.');
   } catch (error) {
     sendError(res, error.statusCode || 400, error.message || 'Operation reservation impossible.');
   }

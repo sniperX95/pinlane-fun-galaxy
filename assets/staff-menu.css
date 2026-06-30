@@ -24,7 +24,7 @@ body.admin-mode .ops-sidebar {
   z-index: 70 !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 10px !important;
+  gap: 8px !important;
   padding: 14px 12px 12px !important;
   background: transparent !important;
   border-right: 1px solid rgba(255, 255, 255, .08) !important;
@@ -165,7 +165,7 @@ body.staff-menu-collapsed .staff-wrap {
   top: 8px;
   width: 21px;
   height: 9px;
-  border: 1.8px solid #7c6df2;
+  border: 1.8px solid rgba(238, 232, 221, .72);
   border-radius: 999px;
   transform: rotate(-28deg);
 }
@@ -266,9 +266,9 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
   min-height: 40px;
   display: grid;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, .09);
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: rgba(255, 255, 255, .025);
+  background: transparent;
   color: #ededed;
   text-align: left;
   cursor: pointer;
@@ -290,8 +290,8 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
 .fgx-menu-center:focus-visible,
 .fgx-menu-account:hover,
 .fgx-menu-account:focus-visible {
-  background: rgba(255, 255, 255, .05);
-  border-color: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .04);
+  border-color: rgba(255, 255, 255, .10);
 }
 
 .fgx-center-dot {
@@ -313,14 +313,13 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
 }
 
 .fgx-menu-chevron {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   display: grid;
   place-items: center;
   color: #858585;
-  border-radius: 6px;
-  transition-property: color, background-color;
+  transition-property: color;
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(.2, 0, 0, 1);
 }
@@ -374,7 +373,7 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
 
 .fgx-menu-section {
   flex: 0 0 auto;
-  padding: 5px 0;
+  padding: 2px 0;
   background: transparent !important;
 }
 
@@ -383,7 +382,7 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
 }
 
 .fgx-menu-section-title {
-  padding: 8px 8px 6px;
+  padding: 5px 8px 4px;
   color: rgba(229, 231, 235, .48);
   font-size: 10px;
   line-height: 1;
@@ -429,11 +428,15 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
 }
 
 .fgx-menu-item-parent {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) 18px;
+  align-items: center;
   padding-right: 8px;
 }
 
 .fgx-menu-item-parent .fgx-menu-chevron {
-  margin-left: auto;
+  justify-self: end;
+  margin-left: 0;
 }
 
 .fgx-menu-subitem {
@@ -469,24 +472,19 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 7px;
-  bottom: 7px;
-  width: 2px;
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
   border-radius: 999px;
-  background: #ffffff;
-  opacity: .92;
+  background: rgba(238, 232, 221, .76);
+  opacity: 1;
   z-index: 2;
 }
 
 .fgx-menu-item.active::after,
 .fgx-menu-subitem.active::after,
 .fgx-menu-group.active .fgx-menu-item-parent::after {
-  content: "";
-  position: absolute;
-  inset: 2px 0 2px 0;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, .055);
-  z-index: 0;
+  display: none;
 }
 
 .fgx-menu-icon {
@@ -503,10 +501,10 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
 
 .fgx-menu-subnav {
   display: grid;
-  gap: 2px;
-  margin: 2px 0 6px 20px;
-  padding: 2px 0 2px 9px;
-  border-left: 1px solid rgba(255, 255, 255, .09);
+  gap: 1px;
+  margin: 1px 0 4px 15px;
+  padding: 1px 0 1px 8px;
+  border-left: 1px solid rgba(238, 232, 221, .10);
   max-height: 190px;
   overflow: hidden;
   opacity: 1;
@@ -514,7 +512,7 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
   visibility: visible;
   pointer-events: auto;
   transition-property: max-height, opacity, transform, margin, padding, border-color, visibility;
-  transition-duration: 220ms, 150ms, 220ms, 220ms, 220ms, 220ms, 0ms;
+  transition-duration: 210ms, 140ms, 210ms, 210ms, 210ms, 210ms, 0ms;
   transition-delay: 0ms, 30ms, 0ms, 0ms, 0ms, 0ms, 0ms;
   transition-timing-function: cubic-bezier(.2, 0, 0, 1);
 }
@@ -598,9 +596,10 @@ body.staff-menu-collapsed .fgx-menu-collapse::before {
   height: 32px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
-  background: #6d40f2;
-  color: #fafafa;
+  border-radius: 8px;
+  background: #151a22;
+  color: #f1eee7;
+  box-shadow: inset 0 0 0 1px rgba(238, 232, 221, .10);
   font-size: 11px;
   font-weight: 720;
   letter-spacing: 0;
@@ -689,6 +688,78 @@ body.staff-menu-collapsed .fgx-menu-account {
 
 body.staff-menu-collapsed .fgx-menu-avatar {
   margin: 0 auto;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-nav,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-nav {
+  gap: 0 !important;
+  padding-block: 1px 7px !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-section,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-section {
+  display: grid !important;
+  gap: 1px !important;
+  margin-top: 0 !important;
+  padding-block: 1px !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-section + .fgx-menu-section,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-section + .fgx-menu-section {
+  margin-top: 4px !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-section-title,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-section-title {
+  margin: 0 0 2px !important;
+  padding: 3px 8px 2px !important;
+  line-height: 1.08 !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-item,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-item {
+  min-height: 34px !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-item-parent,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-item-parent {
+  grid-template-columns: 16px minmax(0, 1fr) 20px !important;
+  column-gap: 9px !important;
+  padding-right: 7px !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-chevron,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-chevron {
+  width: 20px !important;
+  height: 20px !important;
+  justify-self: end !important;
+  display: grid !important;
+  place-items: center !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-subnav,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-subnav {
+  margin: 1px 0 4px 12px !important;
+  padding: 1px 0 1px 8px !important;
+  border-left-color: rgba(238, 232, 221, .075) !important;
+}
+
+body.staff-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-subitem,
+body.admin-mode:not(.staff-menu-collapsed) .ops-sidebar[data-staff-menu-root] .fgx-menu-subitem {
+  min-height: 30px !important;
+  padding-left: 10px !important;
+}
+
+body.staff-mode.staff-menu-collapsed .ops-sidebar[data-staff-menu-root] .fgx-menu-subnav,
+body.admin-mode.staff-menu-collapsed .ops-sidebar[data-staff-menu-root] .fgx-menu-subnav,
+body.staff-menu-collapsed .ops-sidebar[data-staff-menu-root] .fgx-menu-subnav {
+  display: none !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
 }
 
 .fgx-menu-popover {

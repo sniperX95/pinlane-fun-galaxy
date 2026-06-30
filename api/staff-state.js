@@ -1,6 +1,22 @@
 const { readStaffState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
-const { requireStaffPermission } = require('../lib/staff-auth');
+const { isStaffAuthStorageError, requireStaffPermission } = require('../lib/staff-auth');
+
+function buildOfflineStaffState(date, centerId, error) {
+  return {
+    ok: true,
+    degraded: true,
+    storageUnavailable: true,
+    storageMessage: 'Donnees temps reel temporairement indisponibles. Mode secours actif.',
+    storageError: error?.message || 'Base indisponible.',
+    date,
+    centerId,
+    reservations: [],
+    laneStatuses: [],
+    revision: `degraded:${centerId}:${date}`,
+    syncedAt: new Date().toISOString(),
+  };
+}
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
@@ -30,6 +46,18 @@ module.exports = async (req, res) => {
     res.setHeader('ETag', snapshot.revision);
     sendJson(res, 200, { ok: true, ...snapshot });
   } catch (error) {
+    if (isStaffAuthStorageError(error)) {
+      const requestUrl = new URL(req.url, 'http://localhost');
+      const date = requestUrl.searchParams.get('date');
+      const centerId = requestUrl.searchParams.get('centerId') || 'libramont';
+      if (date) {
+        const snapshot = buildOfflineStaffState(date, centerId, error);
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
+        res.setHeader('ETag', snapshot.revision);
+        sendJson(res, 200, snapshot);
+        return;
+      }
+    }
     sendError(res, 500, error.message || 'Impossible de charger les donnees staff.');
   }
 };

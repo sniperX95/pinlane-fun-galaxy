@@ -2,7 +2,12 @@
   const PLATFORM_MARK_SRC = './assets/brand/pinlane-source.png';
   const COLLAPSE_KEY = 'fgx:staff-menu-collapsed';
   const GROUPS_KEY = 'fgx:staff-menu-groups';
-  const DEFAULT_OPEN_GROUPS = { planning: true, field: false, activities: false };
+  const DEFAULT_OPEN_GROUPS = { planning: false, field: false, activities: false };
+  const GROUP_DEFAULT_TARGETS = {
+    planning: 'planning',
+    field: 'arrivals',
+    activities: 'prices'
+  };
   const PLATFORM_BRAND = {
     name: 'Pinlane',
     subtitle: 'Venue Operating System',
@@ -246,16 +251,78 @@
     persistMenuGroupState({ ...readMenuGroupState(), [key]: !!open });
   }
 
-  function applyMenuGroupOpen(button, open) {
+  function getMenuGroupDefaultTarget(key) {
+    return GROUP_DEFAULT_TARGETS[key] || key;
+  }
+
+  function getMenuSubnavId(key) {
+    return `fgx-menu-subnav-${String(key || 'group').replace(/[^a-z0-9_-]/gi, '-')}`;
+  }
+
+  function nextMenuFrame(callback) {
+    const frame = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : fn => setTimeout(fn, 16);
+    frame(callback);
+  }
+
+  function setSubnavMaxHeight(subnav, value) {
+    if (!subnav) return;
+    subnav.style.setProperty('max-height', value, 'important');
+  }
+
+  function measureMenuSubnavHeight(subnav) {
+    if (!subnav) return 0;
+    const previousMaxHeight = subnav.style.getPropertyValue('max-height');
+    const previousPriority = subnav.style.getPropertyPriority('max-height');
+    setSubnavMaxHeight(subnav, 'none');
+    const height = Math.ceil(subnav.scrollHeight || 0);
+    if (previousMaxHeight) {
+      subnav.style.setProperty('max-height', previousMaxHeight, previousPriority || '');
+    } else {
+      subnav.style.removeProperty('max-height');
+    }
+    return height;
+  }
+
+  function getSubnavRenderedHeight(subnav) {
+    if (!subnav) return 0;
+    const rect = typeof subnav.getBoundingClientRect === 'function'
+      ? subnav.getBoundingClientRect()
+      : null;
+    return Math.ceil(rect?.height || subnav.offsetHeight || subnav.scrollHeight || 0);
+  }
+
+  function applyMenuGroupOpen(button, open, options = {}) {
     if (!button) return;
     const group = button.closest('.fgx-menu-group');
     const subnav = group?.querySelector('.fgx-menu-subnav');
+    const wasOpen = button.getAttribute('aria-expanded') === 'true';
+    const animate = options.animate !== false;
+    const startHeight = subnav && wasOpen ? getSubnavRenderedHeight(subnav) : 0;
     button.setAttribute('aria-expanded', open ? 'true' : 'false');
     group?.classList.toggle('is-open', open);
     group?.classList.toggle('is-collapsed', !open);
     if (subnav) {
+      if (!open && subnav.contains(document.activeElement)) button.focus();
       subnav.setAttribute('aria-hidden', open ? 'false' : 'true');
       subnav.dataset.state = open ? 'open' : 'closed';
+      if (open) {
+        if (animate && !wasOpen) setSubnavMaxHeight(subnav, '0px');
+        nextMenuFrame(() => {
+          setSubnavMaxHeight(subnav, `${measureMenuSubnavHeight(subnav)}px`);
+        });
+      } else {
+        if (animate && wasOpen) {
+          setSubnavMaxHeight(subnav, `${startHeight}px`);
+          subnav.getBoundingClientRect();
+        }
+        nextMenuFrame(() => setSubnavMaxHeight(subnav, '0px'));
+      }
+      const canFocusSubitems = open && !readCollapsed();
+      subnav.querySelectorAll('.fgx-menu-subitem').forEach(item => {
+        item.tabIndex = canFocusSubitems ? 0 : -1;
+      });
     }
   }
 
@@ -269,12 +336,14 @@
     if (button) {
       button.setAttribute('aria-label', collapsed ? 'Ouvrir le menu' : 'R\u00e9duire le menu');
       button.setAttribute('title', collapsed ? 'Ouvrir le menu' : 'R\u00e9duire le menu');
+      button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
     }
   }
 
   function toggleMenuCollapsed() {
     persistCollapsed(!readCollapsed());
     applyMenuCollapsed();
+    syncStaffMenuState();
   }
 
   function sectionMarkup(section) {
@@ -289,20 +358,21 @@
   function itemMarkup(item) {
     if (item.children) {
       const open = isMenuGroupOpen(item.key);
+      const subnavId = getMenuSubnavId(item.key);
       const children = item.children.map(child => `
-        <button type="button" class="fgx-menu-subitem" title="${escapeHtml(child.label)}" data-fgx-menu-key="${escapeHtml(child.key)}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''}>
+        <button type="button" class="fgx-menu-subitem" title="${escapeHtml(child.label)}" data-fgx-menu-key="${escapeHtml(child.key)}" tabindex="${open ? '0' : '-1'}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''}>
           <span class="fgx-menu-subitem-mark" aria-hidden="true"></span>
           <span class="fgx-menu-label">${escapeHtml(child.label)}</span>
         </button>
       `).join('');
       return `
         <div class="fgx-menu-group ${open ? 'is-open' : 'is-collapsed'}" data-fgx-group="${escapeHtml(item.key)}">
-          <button type="button" class="fgx-menu-item fgx-menu-item-parent" title="${escapeHtml(item.label)}" data-fgx-menu-toggle="${escapeHtml(item.key)}" aria-expanded="${open ? 'true' : 'false'}">
+          <button type="button" class="fgx-menu-item fgx-menu-item-parent" title="${escapeHtml(item.label)}" data-fgx-menu-toggle="${escapeHtml(item.key)}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${subnavId}">
             <span class="fgx-menu-icon">${icons[item.icon] || ''}</span>
             <span class="fgx-menu-label">${escapeHtml(item.label)}</span>
             <span class="fgx-menu-chevron" aria-hidden="true"><svg viewBox="0 0 16 16" focusable="false"><path d="M6 4l4 4-4 4"/></svg></span>
           </button>
-          <div class="fgx-menu-subnav" aria-hidden="${open ? 'false' : 'true'}" data-state="${open ? 'open' : 'closed'}">${children}</div>
+          <div id="${subnavId}" class="fgx-menu-subnav" aria-hidden="${open ? 'false' : 'true'}" data-state="${open ? 'open' : 'closed'}">${children}</div>
         </div>
       `;
     }
@@ -386,26 +456,11 @@
     const accessSummary = getAccessSummary();
     const themeSummary = getThemeSummary();
     openMenuPopover('account', anchor, `
-      <div class="fgx-account-summary" role="presentation">
-        <span>Session active</span>
+      <div class="fgx-account-summary compact" role="presentation">
+        <span>Compte</span>
         <strong>${escapeHtml(displayName)}</strong>
         <small>${escapeHtml(roleLabel)} · ${escapeHtml(accessSummary)}</small>
       </div>
-      <div class="fgx-menu-popover-title">Actions rapides</div>
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="center" role="menuitem">
-        <span class="fgx-menu-option-icon">${icons.center}</span>
-        <span>
-          <strong>Changer de centre</strong>
-          <small>Libramont, Gembloux ou Ciney</small>
-        </span>
-      </button>
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="direction" role="menuitem">
-        <span class="fgx-menu-option-icon">${icons.dashboard}</span>
-        <span>
-          <strong>Direction</strong>
-          <small>Vue multi-centres</small>
-        </span>
-      </button>
       <button type="button" class="fgx-menu-option" data-fgx-menu-action="users" role="menuitem">
         <span class="fgx-menu-option-icon">${icons.users}</span>
         <span>
@@ -418,6 +473,13 @@
         <span>
           <strong>Établissement</strong>
           <small>Centre, horaires et capacité</small>
+        </span>
+      </button>
+      <button type="button" class="fgx-menu-option" data-fgx-menu-action="settings" role="menuitem">
+        <span class="fgx-menu-option-icon">${icons.settings}</span>
+        <span>
+          <strong>Pr&eacute;f&eacute;rences</strong>
+          <small>Poste staff et exports</small>
         </span>
       </button>
       <button type="button" class="fgx-menu-option" data-fgx-menu-action="theme" role="menuitem">
@@ -627,9 +689,13 @@
       event.stopPropagation();
       closeMenuPopover();
       const key = groupToggle.dataset.fgxMenuToggle;
+      if (readCollapsed()) {
+        navigateMenuGroup(key);
+        return;
+      }
       const nextOpen = groupToggle.getAttribute('aria-expanded') !== 'true';
       setMenuGroupOpen(key, nextOpen);
-      applyMenuGroupOpen(groupToggle, nextOpen);
+      applyMenuGroupOpen(groupToggle, nextOpen, { animate: true });
       return;
     }
 
@@ -655,6 +721,13 @@
     navigateMenu(key);
   }
 
+  function navigateMenuGroup(key) {
+    if (!key) return;
+    setMenuGroupOpen(key, true);
+    navigateMenu(getMenuGroupDefaultTarget(key));
+    syncStaffMenuState();
+  }
+
   function navigateMenu(key) {
     if (key === 'field') {
       navigateMenu('arrivals');
@@ -678,6 +751,7 @@
       return;
     }
     if (key === 'planning') {
+      setMenuGroupOpen('planning', true);
       if (typeof setView === 'function') setView('staff');
       if (typeof setStaffResourceView === 'function') {
         const current = typeof state !== 'undefined' ? state.staffResourceView || 'bowling' : 'bowling';
@@ -836,7 +910,7 @@
     root.querySelector('[data-fgx-group="field"]')?.classList.toggle('active', fieldActive);
     root.querySelector('[data-fgx-group="activities"]')?.classList.toggle('active', activitiesActive);
     root.querySelectorAll('[data-fgx-menu-toggle]').forEach(button => {
-      applyMenuGroupOpen(button, isMenuGroupOpen(button.dataset.fgxMenuToggle));
+      applyMenuGroupOpen(button, isMenuGroupOpen(button.dataset.fgxMenuToggle), { animate: false });
     });
 
     if (directStaffPageActive) {
@@ -850,10 +924,12 @@
 
   window.syncStaffMenuState = syncStaffMenuState;
   window.FGX_STAFF_MENU = menuSections;
+  window.FGX_STAFF_MENU_GROUP_TARGETS = GROUP_DEFAULT_TARGETS;
   window.toggleStaffMenuCollapsed = toggleMenuCollapsed;
   window.setStaffMenuCollapsed = collapsed => {
     persistCollapsed(!!collapsed);
     applyMenuCollapsed();
+    syncStaffMenuState();
   };
 
   if (document.readyState === 'loading') {

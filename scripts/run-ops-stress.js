@@ -1,9 +1,16 @@
 const assert = require('assert');
 const { communicationAgent, delayAgent, learningAgent, planningAgent } = require('../lib/ops-agents');
 const { getRequiredLaneCount, timeToMinutes } = require('../lib/ops-engine');
-const { buildEmailSamples, buildMessage, emailShell, normalizePhoneForSms } = require('../lib/ops-communications');
-const { getSchedule, todayStr } = require('../lib/booking-config');
+const {
+  buildEmailSamples,
+  buildMessage,
+  emailShell,
+  normalizePhoneForSms,
+  __test: communicationsTest,
+} = require('../lib/ops-communications');
+const { getSchedule, isHolidayScheduleDate, todayStr } = require('../lib/booking-config');
 const { loadOpsKnowledge } = require('../lib/ops-knowledge');
+const { normalizeReservationRequest } = require('../lib/reservation-request');
 
 function readIterations() {
   const arg = process.argv.find((item) => item.startsWith('--iterations='));
@@ -38,6 +45,19 @@ function nextOpenDate(offsetDays = 7) {
     if (getSchedule(date)) return date;
   }
   throw new Error('No future open date found for guardrail tests.');
+}
+
+function dayOfWeek(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0)).getUTCDay();
+}
+
+function nextOpenNonHolidayDate(offsetDays = 7, predicate = () => true) {
+  for (let offset = offsetDays; offset < offsetDays + 370; offset += 1) {
+    const date = addDays(todayStr(), offset);
+    if (getSchedule(date) && !isHolidayScheduleDate(date) && predicate(dayOfWeek(date))) return date;
+  }
+  throw new Error('No compatible future non-holiday open date found for guardrail tests.');
 }
 
 function minutesToTime(minutes) {
@@ -162,6 +182,8 @@ function validatePlanResult(result, input, context, knowledge) {
 
 function runFixedGuardrailTests(knowledge) {
   const futureOpenDate = nextOpenDate(7);
+  const formulaGuardDate = nextOpenNonHolidayDate(7);
+  const invalidFfmDate = nextOpenNonHolidayDate(7, (day) => day !== 5);
   const pastDate = addDays(todayStr(), -1);
   const past = planningAgent({
     centerId: 'libramont',
@@ -200,7 +222,7 @@ function runFixedGuardrailTests(knowledge) {
 
   const tooSmall = planningAgent({
     centerId: 'libramont',
-    date: '2026-05-20',
+    date: formulaGuardDate,
     type: 'formule',
     formuleId: 'f4',
     pax: 3,
@@ -210,7 +232,7 @@ function runFixedGuardrailTests(knowledge) {
 
   const invalidDay = planningAgent({
     centerId: 'libramont',
-    date: '2026-05-20',
+    date: invalidFfmDate,
     type: 'formule',
     formuleId: 'ffm',
     pax: 6,
@@ -232,7 +254,7 @@ function runFixedGuardrailTests(knowledge) {
 
   const hugeLaserFormula = planningAgent({
     centerId: 'libramont',
-    date: futureOpenDate,
+    date: formulaGuardDate,
     type: 'formule',
     formuleId: 'f5',
     pax: 31,
@@ -249,6 +271,42 @@ function runFixedGuardrailTests(knowledge) {
     channel: 'email',
   });
   assert.ok(communication.body.includes('15 minutes'), 'formula communication must mention early arrival');
+
+  const publicRequest = normalizeReservationRequest({
+    centerId: 'libramont',
+    channel: 'staff',
+    status: 'paid',
+    paymentMethod: 'card',
+    validationStatus: 'confirmed',
+    date: futureOpenDate,
+    type: 'bowling',
+    pax: 7,
+    startTime: '14:00',
+    duration: 1,
+    basePrice: 1,
+    price: 1,
+  }, { channel: 'public' });
+  assert.strictEqual(publicRequest.channel, 'public', 'public request must force public channel');
+  assert.strictEqual(publicRequest.status, 'pending', 'public request must not impose reservation status');
+  assert.strictEqual(publicRequest.paymentMethod, null, 'public request must not impose payment method');
+  assert.strictEqual(publicRequest.validationStatus, '', 'public request must not impose validation status');
+  assert.strictEqual(publicRequest.basePrice, 78, 'public bowling base price must be server-computed');
+  assert.strictEqual(publicRequest.price, 78, 'public bowling price must be server-computed');
+
+  assert.strictEqual(communicationsTest.isSimulationCommunication({
+    status: 'queued',
+    payload: { simulation: true, simulationRunId: 'sim_test' },
+  }), true, 'simulation payload must be detected before dispatch');
+  assert.strictEqual(communicationsTest.isSimulationCommunication({
+    status: 'queued',
+    idempotencyKey: 'simulation:run:reservation:email',
+    payload: {},
+  }), true, 'simulation idempotency key must be detected before dispatch');
+  assert.strictEqual(communicationsTest.isSimulationCommunication({
+    status: 'queued',
+    idempotencyKey: 'reservation:normal:email',
+    payload: { textBody: 'normal' },
+  }), false, 'normal communication must remain dispatchable');
 
   const phoneSamples = [
     ['0470 12 34 56', '+32470123456'],

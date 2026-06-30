@@ -12803,6 +12803,165 @@ body.admin-mode .admin-insight span {
   -webkit-text-fill-color: currentColor !important;
 }
 
+body.admin-mode .admin-health-panel {
+  overflow: hidden !important;
+}
+
+body.admin-mode .admin-health-head {
+  align-items: center !important;
+}
+
+body.admin-mode .admin-health-summary {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-height: 36px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--admin-line) !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.025) !important;
+  color: var(--admin-muted) !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  white-space: nowrap !important;
+}
+
+body.admin-mode .admin-health-summary.ok {
+  color: #9fcfb1 !important;
+}
+
+body.admin-mode .admin-health-summary.warn {
+  color: #e4c37d !important;
+}
+
+body.admin-mode .admin-health-grid {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  padding: 18px !important;
+}
+
+body.admin-mode .admin-health-card {
+  min-height: 142px !important;
+  padding: 16px !important;
+  border: 1px solid var(--admin-line) !important;
+  border-radius: 14px !important;
+  background: #10161d !important;
+  color: var(--admin-text) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  box-shadow: none !important;
+}
+
+body.admin-mode .admin-health-card.ok {
+  border-color: rgba(108,166,125,.32) !important;
+  background: #10161d !important;
+}
+
+body.admin-mode .admin-health-card.warn {
+  border-color: rgba(218,174,89,.38) !important;
+  background: #10161d !important;
+}
+
+body.admin-mode .admin-health-card.danger {
+  border-color: rgba(215,123,114,.45) !important;
+  background: #10161d !important;
+}
+
+body.admin-mode .admin-health-card.unknown {
+  border-color: rgba(144,163,184,.24) !important;
+}
+
+body.admin-mode .admin-health-card-top {
+  display: grid !important;
+  grid-template-columns: 10px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+body.admin-mode .admin-health-card-top strong {
+  color: var(--admin-text) !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+  font-weight: 850 !important;
+  min-width: 0 !important;
+}
+
+body.admin-mode .admin-health-card-top em {
+  color: var(--admin-muted) !important;
+  font-style: normal !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+body.admin-mode .admin-health-value {
+  color: var(--admin-text) !important;
+  font-size: 24px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  letter-spacing: -.035em !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+body.admin-mode .admin-health-card p {
+  margin: 0 !important;
+  color: var(--admin-muted) !important;
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  font-weight: 560 !important;
+}
+
+body.admin-mode .admin-health-dot {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 999px !important;
+  display: inline-block !important;
+  background: #8a97a8 !important;
+  box-shadow: 0 0 0 3px rgba(138,151,168,.12) !important;
+}
+
+body.admin-mode .admin-health-dot.ok {
+  background: #6ca67d !important;
+  box-shadow: 0 0 0 3px rgba(108,166,125,.14) !important;
+}
+
+body.admin-mode .admin-health-dot.warn {
+  background: #d5a94d !important;
+  box-shadow: 0 0 0 3px rgba(213,169,77,.16) !important;
+}
+
+body.admin-mode .admin-health-dot.danger {
+  background: #d77b72 !important;
+  box-shadow: 0 0 0 3px rgba(215,123,114,.16) !important;
+}
+
+body.admin-mode .admin-health-foot {
+  padding: 0 18px 18px !important;
+  color: var(--admin-soft) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+@media (max-width: 1280px) {
+  body.admin-mode .admin-health-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 820px) {
+  body.admin-mode .admin-health-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  body.admin-mode .admin-health-head {
+    align-items: flex-start !important;
+  }
+}
+
 body.admin-mode .ops-cockpit {
   margin: 0 !important;
 }

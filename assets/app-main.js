@@ -199,8 +199,6 @@ function onLaserPointerUp(event) {
   if (!target) {
     showPlanningMoveNotice('Aucun lancement choisi', 'Deposez la carte sur une ligne Laser Game disponible.', 'warning');
     return;
-    toast('Déposez la carte sur un lancement Laser Game.');
-    return;
   }
   const targetStart = Number(target.dataset.laserDropStart);
   const targetEnd = target.dataset.laserDropEnd ? Number(target.dataset.laserDropEnd) : null;
@@ -405,6 +403,28 @@ function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, durat
     .sort((a, b) => a - b);
 }
 
+function summarizePlanTimes(resourceBlocks = []) {
+  const timed = resourceBlocks
+    .map(block => ({
+      block,
+      start: getBowlingBlockMinutes(block, 'start'),
+      end: getBowlingBlockMinutes(block, 'end')
+    }))
+    .filter(item => Number.isFinite(item.start) && Number.isFinite(item.end) && item.end > item.start);
+  if (!timed.length) return {};
+  const start = Math.min(...timed.map(item => item.start));
+  const end = Math.max(...timed.map(item => item.end));
+  const bowling = timed.find(item => item.block.resourceType === 'bowling_lane');
+  const laser = timed.find(item => item.block.resourceType === 'laser_arena');
+  return {
+    startTime: minuteIntToTime(start),
+    endTime: minuteIntToTime(end),
+    totalMinutes: end - start,
+    firstBowlingTime: bowling?.block?.startTime || (bowling ? minuteIntToTime(bowling.start) : ''),
+    firstLaserTime: laser?.block?.startTime || (laser ? minuteIntToTime(laser.start) : '')
+  };
+}
+
 function moveBowlingOpsPlan(reservation, targetStart, targetLanes, duration) {
   if (!Array.isArray(reservation.opsPlan?.resourceBlocks)) return reservation.opsPlan || null;
   const targetStartMinutes = hourToMinuteInt(targetStart);
@@ -429,11 +449,15 @@ function moveBowlingOpsPlan(reservation, targetStart, targetLanes, duration) {
       lanes: step.resourceType === 'bowling_lane' ? targetLanes : step.lanes,
     };
   };
+  const timeline = Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline.map(moveStep) : reservation.opsPlan.timeline;
+  const resourceBlocks = reservation.opsPlan.resourceBlocks.map(moveStep);
+  const planTimes = summarizePlanTimes(resourceBlocks);
   return {
     ...reservation.opsPlan,
+    ...planTimes,
     assignedLanes: targetLanes,
-    timeline: Array.isArray(reservation.opsPlan.timeline) ? reservation.opsPlan.timeline.map(moveStep) : reservation.opsPlan.timeline,
-    resourceBlocks: reservation.opsPlan.resourceBlocks.map(moveStep),
+    timeline,
+    resourceBlocks,
   };
 }
 
@@ -465,10 +489,6 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     showPlanningMoveNotice('Conflit detecte', 'Une autre reservation occupe deja cette piste ou cet horaire.', 'warning');
     return;
   }
-  if (lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan).length) {
-    toast('Conflit détecté avec une autre réservation bowling.');
-    return;
-  }
   const shouldMoveReservationStart = reservation.type === 'bowling' || !Array.isArray(reservation.opsPlan?.resourceBlocks);
   const updated = {
     ...reservation,
@@ -491,7 +511,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
       method: 'PATCH',
       body: JSON.stringify(buildReservationApiPayload(updated, {
-        skipReplan: true,
+        skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
         laneCount: requiredCount,
         requiresLanes: true,
         allowPastStart: true
@@ -508,7 +528,6 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     applyOptimisticReservation(previous, { preserveEditState: true });
     showPlanningMoveNotice('Deplacement annule', error.message || 'Le serveur a refuse ce placement.', 'warning');
     return;
-    toast(error.message || 'Impossible de déplacer cette réservation bowling.');
   } finally {
     if (isLatestRequest()) clearReservationWritePending(requestKey);
     clearLatestRequest();
@@ -595,8 +614,6 @@ function onBowlingPointerUp(event) {
   clearBowlingDragDropTarget();
   if (!target) {
     showPlanningMoveNotice('Aucun creneau choisi', 'Deposez la carte sur une cellule piste/heure disponible.', 'warning');
-    return;
-    toast('Déposez la carte sur une cellule piste/heure.');
     return;
   }
   scheduleBowlingDrag(
@@ -937,6 +954,7 @@ let opsAdminCache = {
   suggestions: [],
   events: [],
   agentStack: null,
+  opsHealth: null,
   simulation: null,
   loaded: false,
   loading: false,
@@ -966,6 +984,7 @@ let adminDashboardCache = {
   events: [],
   samples: [],
   agentStack: null,
+  opsHealth: null,
   simulation: null,
   lastLoadedAt: ''
 };
@@ -1606,6 +1625,30 @@ let isAuthenticated = false;
 let slotFetchRequestId = 0;
 let slotLoading = false;
 let bookingSubmitBusy = false;
+const STAFF_MENU_PAGES = [
+  'dashboard',
+  'planning',
+  'reservations',
+  'sessions',
+  'arrivals',
+  'events',
+  'clients',
+  'groups',
+  'contacts',
+  'lanes',
+  'prices',
+  'laserGame',
+  'offers',
+  'emails',
+  'campaigns',
+  'establishment',
+  'users',
+  'settings'
+];
+function normalizeStaffMenuPage(page) {
+  const key = String(page || 'planning').trim();
+  return STAFF_MENU_PAGES.includes(key) ? key : 'planning';
+}
 state.staffPlanningExpanded = !!state.staffPlanningExpanded;
 state.staffResourceView = ['all', 'bowling', 'laser'].includes(state.staffResourceView) ? state.staffResourceView : 'bowling';
 try {
@@ -1629,7 +1672,7 @@ state.adminDate = state.adminDate || todayStr();
 state.adminPeriod = ['day', 'week', 'month', 'year'].includes(state.adminPeriod) ? state.adminPeriod : 'day';
 state.adminTab = state.adminTab || 'overview';
 state.adminCockpitMode = ['today', 'bowling', 'laser', 'direction'].includes(state.adminCockpitMode) ? state.adminCockpitMode : 'today';
-state.staffMenuPage = ['dashboard', 'planning', 'reservations', 'sessions', 'arrivals', 'events', 'clients', 'groups', 'contacts', 'lanes', 'prices', 'laserGame', 'offers', 'emails', 'campaigns', 'establishment', 'users', 'settings'].includes(state.staffMenuPage) ? state.staffMenuPage : 'planning';
+state.staffMenuPage = normalizeStaffMenuPage(state.staffMenuPage);
 state.staffClientSegment = ['all', 'loyal', 'groups', 'birthdays'].includes(state.staffClientSegment) ? state.staffClientSegment : 'all';
 state.staffClientStatusFilter = ['all', 'active', 'inactive', 'new', 'loyal'].includes(state.staffClientStatusFilter) ? state.staffClientStatusFilter : 'all';
 state.staffClientQuery = state.staffClientQuery || '';
@@ -1777,8 +1820,11 @@ function canUseStaffPermission(permission) {
 
 function canUseStaffPage(page) {
   if (!hasSavedAuth()) return false;
-  const required = STAFF_PAGE_PERMISSION_MAP[page || 'planning'];
-  if (!required) return true;
+  const rawPage = String(page || 'planning').trim();
+  const cleanPage = normalizeStaffMenuPage(rawPage);
+  if (cleanPage !== rawPage) return false;
+  const required = STAFF_PAGE_PERMISSION_MAP[cleanPage];
+  if (!required) return false;
   return canUseStaffPermission(required);
 }
 
@@ -1876,6 +1922,14 @@ function initAuthMotion() {
 
 initAuthMotion();
 
+function getFriendlyLoginErrorMessage(loginError) {
+  const message = String(loginError?.message || '').toLowerCase();
+  if (message.includes('data transfer quota') || (message.includes('quota') && message.includes('exceeded'))) {
+    return 'Base de donnees temporairement limitee. Reessayez avec le code proprietaire ou relancez apres migration/upgrade.';
+  }
+  return loginError?.message || 'Code incorrect.';
+}
+
 async function submitLogin(ev) {
   ev.preventDefault();
   const error = document.getElementById('authError');
@@ -1914,7 +1968,7 @@ async function submitLogin(ev) {
     toast('Connexion Pinlane active.');
   } catch (loginError) {
     clearStaffAuthSession();
-    if (error) error.textContent = loginError.message || 'Code incorrect.';
+    if (error) error.textContent = getFriendlyLoginErrorMessage(loginError);
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -1990,6 +2044,27 @@ function setView(v) {
   else document.body.style.overflow = '';
   scheduleRemoteSync();
   save();
+}
+
+function syncRouteFromHash() {
+  const before = [
+    state.view,
+    state.staffMenuPage,
+    state.staffResourceView,
+    state.adminTab
+  ].join('|');
+  applyInitialRouteFromHash();
+  const after = [
+    state.view,
+    state.staffMenuPage,
+    state.staffResourceView,
+    state.adminTab
+  ].join('|');
+  if (before === after) return;
+  closePos();
+  closeQuickBook();
+  setView(state.view);
+  applyAuthState();
 }
 
 function initClient() {
@@ -3409,7 +3484,7 @@ function resetBooking() {
 }
 
 function getStaffMenuPage() {
-  return state.staffMenuPage === 'dashboard' ? 'dashboard' : state.staffMenuPage || 'planning';
+  return normalizeStaffMenuPage(state.staffMenuPage);
 }
 
 function isStaffDashboardActive() {
@@ -4135,11 +4210,20 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
 }
 
 function openStaffMenuPage(page, resource = '') {
-  if (page && !canUseStaffPage(page)) {
+  const requestedPage = String(page || 'dashboard').trim();
+  const cleanPage = normalizeStaffMenuPage(requestedPage);
+  if (cleanPage !== requestedPage) {
+    if (typeof showPlanningMoveNotice === 'function') {
+      showPlanningMoveNotice('Page indisponible', 'Cette section n existe pas encore dans le back-office. Ouverture du planning.', 'warning');
+    } else {
+      toast('Section indisponible.');
+    }
+  }
+  if (!canUseStaffPage(cleanPage)) {
     toast('Accès non autorisé pour ce rôle.');
     return;
   }
-  state.staffMenuPage = page || 'dashboard';
+  state.staffMenuPage = cleanPage;
   if (resource) state.staffResourceView = resource;
   setStaffRouteHash(state.staffMenuPage, resource || state.staffResourceView);
   save();
@@ -4647,33 +4731,156 @@ function renderStaffUtilityContactLedger(rows = []) {
   </div>`;
 }
 
-function renderStaffUtilityEventsBoard(rows = []) {
-  if (!rows.length) {
-    return `<div class="utility-empty"><strong>Aucun événement détecté</strong><span>Les formules, anniversaires, groupes scolaires et entreprises seront listés ici avec leurs contraintes.</span></div>`;
-  }
-  return `<div class="utility-event-board">
-    ${rows.map(reservation => {
-      const blocks = reservation.opsPlan?.resourceBlocks || [];
-      const commitments = blocks.length
-        ? blocks.slice(0, 3).map(block => `${block.resourceType === 'laser_arena' ? 'Laser' : 'Bowling'} ${block.startTime || formatClockDisplay(block.start)}`).join(' · ')
-        : getStaffUtilityResourceSummary(reservation);
-      return `<article class="utility-event-card ${escapeHtml(getStaffReservationActivityType(reservation))}">
-        <div class="utility-event-top"><strong>${escapeHtml(reservation.name || 'Groupe')}</strong><span>${escapeHtml(getStaffUtilityRiskLabel(reservation))}</span></div>
-        <p>${escapeHtml(getReservationLabel(reservation))}</p>
-        <dl>
-          <div><dt>Heure</dt><dd>${escapeHtml(getStaffUtilityStartLabel(reservation))}</dd></div>
-          <div><dt>Joueurs</dt><dd>${Number(reservation.pax || 0)}</dd></div>
-          <div><dt>Ressources</dt><dd>${escapeHtml(commitments)}</dd></div>
-        </dl>
-        <footer>
-          ${renderStaffUtilityAction('Ouvrir dossier', `openStaffReservationDetail(${staffClientJs(reservation.id)})`)}
-          ${renderStaffUtilityAction('Marquer arrivé', `setReservationStatusDirect(${staffClientJs(reservation.id)}, 'arrived', event)`, 'success')}
-        </footer>
-      </article>`;
-    }).join('')}
-  </div>`;
+function getStaffEventKind(reservation) {
+  const text = formulaActivityToken(`${reservation.name || ''} ${getReservationLabel(reservation) || ''}`);
+  if (reservation.type === 'formule' || reservation.formuleId) return 'Formule';
+  if (text.includes('anniversaire')) return 'Anniversaire';
+  if (text.includes('ecole') || text.includes('college') || text.includes('saint')) return 'École';
+  if (text.includes('entreprise') || text.includes('team') || text.includes('afterwork') || text.includes('garage')) return 'Entreprise';
+  if (Number(reservation.pax || 0) >= 16) return 'Grand groupe';
+  return 'Groupe';
 }
 
+function getStaffEventSignal(reservation) {
+  const status = reservation.status || 'confirmed';
+  const pax = Number(reservation.pax || 0);
+  const laserCount = getLaserWindowsFromReservation(reservation).length;
+  const bowlingCount = getBowlingWindowsFromReservation(reservation).length;
+  if (status === 'arrived') return { label: 'Sur place', tone: 'success' };
+  if (status === 'paid') return { label: 'Payé', tone: 'success' };
+  if (pax >= 16 || bowlingCount > 2) return { label: 'À surveiller', tone: 'warning' };
+  if (reservation.type === 'formule' || reservation.formuleId) return { label: 'Timing formule', tone: 'info' };
+  if (laserCount > 1) return { label: 'Multi laser', tone: 'info' };
+  return { label: 'Prévu', tone: 'neutral' };
+}
+
+function getStaffEventResources(reservation) {
+  const windows = getStaffResourceWindows(reservation, 'all');
+  if (!windows.length) return getReservationLabel(reservation);
+  return windows.map(window => {
+    if (window.resourceType === 'laser_arena') {
+      const players = Number(window.players || reservation.pax || 0);
+      return `Laser ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)} (${players}j)`;
+    }
+    const lanes = window.lanes || reservation.lanes || [];
+    const laneLabel = lanes.length > 1 ? `pistes ${lanes.join(', ')}` : lanes.length ? `piste ${lanes[0]}` : 'piste auto';
+    return `Bowling ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)} (${laneLabel})`;
+  }).join(' | ');
+}
+
+function renderStaffUtilityEventsBoard(rows = []) {
+  if (!rows.length) {
+    return `<div class="events-empty-state">
+      <strong>Aucun dossier sensible sur cette date.</strong>
+      <span>Les anniversaires, formules, grands groupes, ecoles et entreprises apparaitront ici avec les actions terrain utiles.</span>
+      <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Creer une formule</button>
+    </div>`;
+  }
+
+  const sortedRows = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
+  const nextReservation = sortedRows[0];
+  const formulaCount = sortedRows.filter(reservation => reservation.type === 'formule' || reservation.formuleId).length;
+  const totalPlayers = sortedRows.reduce((sum, reservation) => sum + Number(reservation.pax || 0), 0);
+  const watchRows = sortedRows
+    .filter(reservation => {
+      const signal = getStaffEventSignal(reservation);
+      return signal.tone === 'warning' || signal.tone === 'info' || Number(reservation.pax || 0) >= 16;
+    })
+    .slice(0, 5);
+
+  return `<div class="events-workspace">
+    <section class="events-command-bar">
+      <article class="events-now-card">
+        <span class="events-kicker">Prochaine action</span>
+        <div>
+          <strong>${escapeHtml(getStaffUtilityStartLabel(nextReservation))} - ${escapeHtml(nextReservation.name || 'Groupe')}</strong>
+          <p>${escapeHtml(getStaffEventKind(nextReservation))} - ${Number(nextReservation.pax || 0)} joueurs - ${escapeHtml(getReservationLabel(nextReservation))}</p>
+        </div>
+        <div class="events-now-actions">
+          ${renderStaffUtilityAction('Ouvrir dossier', `openStaffReservationDetail(${staffClientJs(nextReservation.id)})`)}
+          ${nextReservation.status === 'arrived'
+            ? renderStaffUtilityAction('Encaisser', `setReservationStatusDirect(${staffClientJs(nextReservation.id)}, 'paid', event)`, 'success')
+            : renderStaffUtilityAction('Marquer arrive', `setReservationStatusDirect(${staffClientJs(nextReservation.id)}, 'arrived', event)`, 'success')}
+        </div>
+      </article>
+      <div class="events-day-digest" aria-label="Resume evenements">
+        <span><b>${sortedRows.length}</b> dossiers</span>
+        <span><b>${formulaCount}</b> formules</span>
+        <span><b>${totalPlayers}</b> joueurs</span>
+        <span><b>${watchRows.length}</b> a surveiller</span>
+      </div>
+    </section>
+
+    <div class="events-layout">
+      <section class="events-agenda">
+        <div class="events-section-head">
+          <div>
+            <h3>File du jour</h3>
+            <p>Traiter les dossiers dans cet ordre, avec les ressources deja reservees.</p>
+          </div>
+          <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Ajouter</button>
+        </div>
+        <div class="events-timeline">
+          ${sortedRows.map(reservation => {
+            const id = staffClientJs(reservation.id);
+            const signal = getStaffEventSignal(reservation);
+            const kind = getStaffEventKind(reservation);
+            const activity = getStaffReservationActivityType(reservation);
+            const resources = getStaffEventResources(reservation);
+            const resourceParts = String(resources || '').split(' | ').filter(Boolean);
+            return `<article class="event-row event-${escapeHtml(activity)} tone-${escapeHtml(signal.tone)}">
+              <div class="event-time">
+                <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
+                <span>${escapeHtml(kind)}</span>
+              </div>
+              <div class="event-main">
+                <div class="event-title-line">
+                  <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
+                  <span>${escapeHtml(signal.label)}</span>
+                </div>
+                <p>${escapeHtml(getReservationLabel(reservation))}</p>
+                <div class="event-meta">
+                  <span>${Number(reservation.pax || 0)} joueurs</span>
+                  <span>${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
+                  <span>${formatMoney(Number(reservation.price || 0))}</span>
+                </div>
+              </div>
+              <div class="event-resource" title="${escapeHtml(resources)}">
+                ${resourceParts.slice(0, 2).map(part => `<span>${escapeHtml(part)}</span>`).join('')}
+                ${resourceParts.length > 2 ? `<em>+${resourceParts.length - 2}</em>` : ''}
+              </div>
+              <div class="event-actions">
+                ${renderStaffUtilityAction('Ouvrir', `openStaffReservationDetail(${id})`)}
+                ${reservation.status === 'arrived'
+                  ? renderStaffUtilityAction('Encaisser', `setReservationStatusDirect(${id}, 'paid', event)`, 'success')
+                  : renderStaffUtilityAction('Arrive', `setReservationStatusDirect(${id}, 'arrived', event)`, 'success')}
+              </div>
+            </article>`;
+          }).join('')}
+        </div>
+      </section>
+
+      <aside class="events-side">
+        <section>
+          <h3>A surveiller</h3>
+          ${watchRows.length ? watchRows.map(reservation => {
+            const signal = getStaffEventSignal(reservation);
+            return `<button type="button" class="event-watch-line tone-${escapeHtml(signal.tone)}" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">
+              <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
+              <span>${escapeHtml(getStaffUtilityStartLabel(reservation))} - ${escapeHtml(signal.label)}</span>
+            </button>`;
+          }).join('') : '<p>Aucun point critique detecte.</p>'}
+        </section>
+        <section>
+          <h3>Actions terrain</h3>
+          <button type="button" onclick="openStaffMenuPage('arrivals')">Ouvrir les arrivees</button>
+          <button type="button" onclick="openStaffPlanningResource('all')">Voir planning complet</button>
+          <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Nouvelle formule</button>
+        </section>
+      </aside>
+    </div>
+  </div>`;
+}
 function renderStaffUtilityLaneGrid(reservations = getStaffUtilityReservations()) {
   const bowlingWindows = reservations.flatMap(reservation => getBowlingWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
   return `<div class="utility-lane-console">
@@ -5352,9 +5559,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'events',
-      eyebrow: 'Groupes',
+      eyebrow: 'Terrain',
       title: 'Événements',
-      subtitle: 'Anniversaires, groupes, écoles, entreprises et formules à risque.',
+      subtitle: 'Les dossiers qui demandent une attention staff avant ou pendant le passage.',
+      panelSubtitle: `${eventRows.length} dossier${eventRows.length > 1 ? 's' : ''} sensible${eventRows.length > 1 ? 's' : ''} · trié par heure · données réelles`,
       kpis: [
         ['Événements', eventRows.length, 'détectés sur la date'],
         ['Joueurs', eventRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'participants'],
@@ -5535,6 +5743,8 @@ function renderStaffUtilityPage() {
   if (!root) return;
   const model = getStaffUtilityPageModel();
   const dateLabel = parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const overviewPages = new Set(['users', 'establishment', 'settings']);
+  const archivePages = new Set(['groups', 'contacts']);
   root.className = `staff-utility-page utility-page-${escapeHtml(model.page)} utility-layout-${escapeHtml(model.layout || 'default')}`;
   root.innerHTML = `
     <section class="utility-hero">
@@ -5549,7 +5759,7 @@ function renderStaffUtilityPage() {
         ${model.primaryAction ? `<button type="button" class="primary" onclick="${model.primaryAction}">${escapeHtml(model.primaryLabel)}</button>` : ''}
       </div>
     </section>
-    ${renderStaffUtilityOverview(model)}
+    ${overviewPages.has(model.page) ? renderStaffUtilityOverview(model) : ''}
     <section class="utility-panel">
       <div class="utility-panel-head">
         <div>
@@ -5561,8 +5771,7 @@ function renderStaffUtilityPage() {
       ${model.body}
     </section>
   `;
-  ensureStaffClientData();
-  ensureStaffReservationsData();
+  if (archivePages.has(model.page)) ensureStaffClientData();
   if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) loadOpsAdmin(false);
 }
 
@@ -7626,8 +7835,8 @@ function legacyRenderStaffClientsPage() {
 function getStaffClientRange() {
   const anchor = state.currentDate || todayStr();
   return {
-    startDate: addDays(anchor, -365),
-    endDate: addDays(anchor, 365)
+    startDate: addDays(anchor, -120),
+    endDate: addDays(anchor, 120)
   };
 }
 
@@ -8685,7 +8894,6 @@ function renderStaffReservationsPage() {
           <button type="button" aria-label="Mois suivant" onclick="shiftStaffReservationsMonth(1)">›</button>
         </div>
         <button type="button" class="reservations-action" onclick="refreshStaffReservations()">Actualiser</button>
-        <button type="button" class="reservations-action reservations-action-filter" onclick="setStaffReservationsActivityFilter('all')">${renderStaffClientIcon('filter')}Filtres</button>
         <button type="button" class="reservations-action primary" onclick="openStaffReservationsQuick()">+ Nouvelle réservation</button>
       </div>
     </section>
@@ -9343,6 +9551,19 @@ function renderOpsPlanInsightBlock(reservation) {
 }
 
 function renderStaffShell(dayReservations = todaysReservations()) {
+  const normalizedPage = normalizeStaffMenuPage(state.staffMenuPage);
+  if (state.staffMenuPage !== normalizedPage) {
+    state.staffMenuPage = normalizedPage;
+    save();
+  }
+  const setPageVisibility = (id, active) => {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.classList.toggle('hidden', !active);
+    element.setAttribute('aria-hidden', active ? 'false' : 'true');
+    if (active) element.removeAttribute('inert');
+    else element.setAttribute('inert', '');
+  };
   const dashboardActive = isStaffDashboardActive();
   const reservationsActive = isStaffReservationsActive();
   const clientsActive = isStaffClientsActive();
@@ -9350,20 +9571,13 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const emailsActive = isStaffEmailsActive();
   const campaignsActive = isStaffCampaignsActive();
   const utilityActive = isStaffUtilityActive();
-  const dashboardPage = document.getElementById('staffDashboardPage');
-  if (dashboardPage) dashboardPage.classList.toggle('hidden', !dashboardActive);
-  const reservationsPage = document.getElementById('staffReservationsPage');
-  if (reservationsPage) reservationsPage.classList.toggle('hidden', !reservationsActive);
-  const clientsPage = document.getElementById('staffClientsPage');
-  if (clientsPage) clientsPage.classList.toggle('hidden', !clientsActive);
-  const pricingPage = document.getElementById('staffPricingPage');
-  if (pricingPage) pricingPage.classList.toggle('hidden', !pricingActive);
-  const emailsPage = document.getElementById('staffEmailsPage');
-  if (emailsPage) emailsPage.classList.toggle('hidden', !emailsActive);
-  const campaignsPage = document.getElementById('staffCampaignsPage');
-  if (campaignsPage) campaignsPage.classList.toggle('hidden', !campaignsActive);
-  const utilityPage = document.getElementById('staffUtilityPage');
-  if (utilityPage) utilityPage.classList.toggle('hidden', !utilityActive);
+  setPageVisibility('staffDashboardPage', dashboardActive);
+  setPageVisibility('staffReservationsPage', reservationsActive);
+  setPageVisibility('staffClientsPage', clientsActive);
+  setPageVisibility('staffPricingPage', pricingActive);
+  setPageVisibility('staffEmailsPage', emailsActive);
+  setPageVisibility('staffCampaignsPage', campaignsActive);
+  setPageVisibility('staffUtilityPage', utilityActive);
   ['.staff-head', '.kpi-grid', '.staff-resource-tabs', '#planningBox', '#laserPlanningBox', '.table-box'].forEach(selector => {
     document.querySelectorAll(`#staffView ${selector}`).forEach(element => element.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive));
   });
@@ -9480,6 +9694,30 @@ function renderPlanning() {
   const planningBox = document.getElementById('planningBox');
   const config = getPlanningWindow(state.currentDate);
   if (config.closed) {
+    const closedReservations = getPlanningVisibleReservations('bowling')
+      .filter(r => getBowlingWindowsFromReservation(r).length > 0);
+    if (closedReservations.length) {
+      const rows = closedReservations.slice(0, 8).map(reservation => {
+        const windows = getBowlingWindowsFromReservation(reservation);
+        const resources = windows.map(window => {
+          const lanes = window.lanes?.length ? `piste${window.lanes.length > 1 ? 's' : ''} ${window.lanes.join(', ')}` : 'piste auto';
+          return `${lanes} ${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}`;
+        }).join(' · ');
+        return `<button type="button" class="closed-planning-row" onclick="openPos(${staffClientJs(reservation.id)})">
+          <span><strong>${escapeHtml(getPlanningBookingDisplayName(reservation))}</strong><small>${escapeHtml(getReservationLabel(reservation))}</small></span>
+          <span>${Number(reservation.pax || 0)}j</span>
+          <span>${escapeHtml(resources)}</span>
+        </button>`;
+      }).join('');
+      wrap.innerHTML = `<div class="planning-closed-exception">
+        <div>
+          <strong>Centre fermé, réservations existantes</strong>
+          <span>Ces dossiers restent visibles pour contrôle staff. Aucune nouvelle disponibilité publique ne sera proposée.</span>
+        </div>
+        <div class="closed-planning-list">${rows}</div>
+      </div>`;
+      return;
+    }
     wrap.innerHTML = `<div class="empty-state"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 15h8"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg><div class="e-title">Centre fermé ce jour</div><div class="e-sub">Le planning reprend automatiquement aux prochaines heures d'ouverture.</div></div>`;
     return;
   }
@@ -9584,18 +9822,18 @@ function renderPlanning() {
 
 function getPlanningBookingDisplayName(reservation) {
   const fullName = String(reservation?.name || 'Client').trim();
-  if (fullName.length <= 18) return fullName;
+  if (fullName.length <= 26) return fullName;
   const id = fullName.match(/#\d+\b/)?.[0] || '';
   const activityMatch = fullName.match(/\s+(?:formule|bowling|laser(?: game)?)(?:\s|$)/i);
   let base = activityMatch ? fullName.slice(0, activityMatch.index).trim() : fullName;
   if (!base) base = fullName;
   base = base.replace(/^Anniversaire\b/i, 'Anniv.');
   let candidate = id && !base.includes(id) ? `${base} ${id}` : base;
-  if (candidate.length <= 18) return candidate;
+  if (candidate.length <= 26) return candidate;
   const firstWord = base.split(/\s+/).filter(Boolean)[0] || base;
   candidate = id ? `${firstWord} ${id}` : firstWord;
-  if (candidate.length <= 18) return candidate;
-  return id ? `${firstWord.slice(0, 10)} ${id}` : firstWord.slice(0, 18);
+  if (candidate.length <= 24) return candidate;
+  return id ? `${firstWord.slice(0, 14)} ${id}` : firstWord.slice(0, 24);
 }
 
 function renderLaserPlanning() {
@@ -11329,10 +11567,15 @@ function applyInitialRouteFromHash() {
     if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
   }
   if (view === 'admin') {
-    const allowedAdminTabs = ['period', 'reservations', 'ops', 'exports'];
-    if (allowedAdminTabs.includes(page)) state.adminTab = page;
+    const adminPageAliases = { period: 'overview' };
+    const normalizedAdminTab = adminPageAliases[page] || page;
+    const allowedAdminTabs = ['overview', 'reservations', 'clients', 'ops', 'exports'];
+    if (allowedAdminTabs.includes(normalizedAdminTab)) state.adminTab = normalizedAdminTab;
   }
 }
+
+window.addEventListener('hashchange', syncRouteFromHash);
+window.addEventListener('popstate', syncRouteFromHash);
 
 document.getElementById('posOverlay').addEventListener('click', e => {
   if (e.target.id === 'posOverlay') closePos();

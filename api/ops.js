@@ -1,7 +1,10 @@
 const {
+  cancelReservationCommunications,
+  cancelReservationOpsJobs,
   createDelayIncident,
   createOpsJob,
   createOpsEvent,
+  getReservationById,
   getOpsHealth,
   listCommunications,
   listAgentSuggestions,
@@ -58,15 +61,62 @@ async function buildContext(body) {
   }
 }
 
+function createHttpError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function normalizeCenterId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getBodyCenterId(body = {}) {
+  return normalizeCenterId(
+    body.centerId
+    || body.center_id
+    || body.reservation?.centerId
+    || body.reservation?.center_id
+    || body.job?.centerId
+    || body.job?.center_id
+    || body.event?.centerId
+    || body.event?.center_id
+    || body.context?.centerId
+    || '',
+  );
+}
+
+function resolveEffectiveCenterId(session, requestedCenterId = '') {
+  return normalizeCenterId(requestedCenterId || session?.authorizedCenterId || session?.centerId || 'libramont');
+}
+
+function centerScope(centerId) {
+  return centerId === 'all' ? '' : centerId;
+}
+
+function withCenter(body = {}, centerId = 'libramont') {
+  const next = { ...body, centerId };
+  if (body.reservation && typeof body.reservation === 'object') {
+    next.reservation = { ...body.reservation, centerId };
+  }
+  if (body.job && typeof body.job === 'object') {
+    next.job = { ...body.job, centerId };
+  }
+  if (body.event && typeof body.event === 'object') {
+    next.event = { ...body.event, centerId };
+  }
+  return next;
+}
+
 function getAction(req, body = {}) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   return body.action || url.searchParams.get('action') || 'knowledge';
 }
 
-async function handleGet(req, res) {
+async function handleGet(req, res, options = {}) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const action = getAction(req);
-  const centerId = url.searchParams.get('centerId') || 'libramont';
+  const centerId = options.centerId || normalizeCenterId(url.searchParams.get('centerId') || '') || 'libramont';
   const startDate = url.searchParams.get('startDate') || url.searchParams.get('date') || '';
   const endDate = url.searchParams.get('endDate') || startDate || '';
 
@@ -181,42 +231,75 @@ async function handleGet(req, res) {
 
 async function handlePost(req, res) {
   const body = arguments.length >= 3 ? arguments[2] : await readJson(req);
+  const options = arguments.length >= 4 ? arguments[3] : {};
   const action = getAction(req, body);
+  const centerId = options.centerId || normalizeCenterId(body.centerId || body.center_id || '') || 'libramont';
+  const scopedCenterId = centerScope(centerId);
+  const requireConcreteCenter = (label = action) => {
+    if (!scopedCenterId) {
+      throw createHttpError(`Action ${label} refusée: choisissez un centre précis.`, 400);
+    }
+    return scopedCenterId;
+  };
 
   if (action === 'plan') {
-    const context = await buildContext(body);
-    const result = planningAgent(body, context);
+    requireConcreteCenter('planification');
+    const scopedBody = withCenter(body, centerId);
+    const context = await buildContext(scopedBody);
+    const result = planningAgent(scopedBody, context);
     sendJson(res, 200, { ok: true, contextWarning: context.warning || null, ...result });
     return;
   }
 
   if (action === 'delay') {
-    const context = await buildContext(body);
-    const result = delayAgent(body, context);
-    if (body.applyDelay || body.apply) {
-      const reservation = body.reservation || {};
-      const impact = result.impact || {};
-      const reservationId = reservation.id || body.reservationId || body.id;
+    requireConcreteCenter('retard');
+    const applyDelay = Boolean(body.applyDelay || body.apply);
+    let effectiveBody = withCenter(body, centerId);
+    let currentReservation = null;
+
+    if (applyDelay) {
+      const reservationId = body.reservation?.id || body.reservationId || body.id;
       if (!reservationId) {
-        throw new Error('Reservation manquante pour appliquer le retard.');
+        throw createHttpError('Reservation manquante pour appliquer le retard.', 400);
       }
+      currentReservation = await getReservationById(reservationId);
+      if (!currentReservation) {
+        throw createHttpError('Reservation introuvable.', 404);
+      }
+      const editSession = await requireStaffPermission(req, res, ['reservations.edit', 'planning.drag'], {
+        centerId: currentReservation.centerId || 'libramont',
+      });
+      if (!editSession) return;
+      effectiveBody = {
+        ...body,
+        centerId: currentReservation.centerId || 'libramont',
+        date: currentReservation.date || body.date,
+        reservation: currentReservation,
+      };
+    }
+
+    const context = await buildContext(effectiveBody);
+    const result = delayAgent(effectiveBody, context);
+    if (applyDelay) {
+      const reservation = currentReservation;
+      const impact = result.impact || {};
       if (!impact.canApply) {
         const communications = await enqueueDelayCommunications(
-          { ...reservation, id: reservationId, centerId: reservation.centerId || body.centerId || 'libramont' },
+          { ...reservation, centerId: reservation.centerId || effectiveBody.centerId || 'libramont' },
           impact,
-          body.options || {},
+          effectiveBody.options || {},
         );
         await createDelayIncident({
-          centerId: reservation.centerId || body.centerId || 'libramont',
-          reservationId,
-          delayMinutes: impact.delayMinutes || body.delayMinutes || 0,
-          reason: impact.reason || body.reason || 'retard signale',
+          centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
+          reservationId: reservation.id,
+          delayMinutes: impact.delayMinutes || effectiveBody.delayMinutes || 0,
+          reason: impact.reason || effectiveBody.reason || 'retard signale',
           status: 'needs_staff',
           previousStartTime: impact.previousStartTime || reservation.startTime || '',
           proposedStartTime: impact.proposedStartTime || '',
           impact,
           communications: { queued: communications.map((item) => item.id) },
-          idempotencyKey: `delay:${reservationId}:${impact.delayMinutes || body.delayMinutes || 0}:${impact.proposedStartTime || 'none'}`,
+          idempotencyKey: `delay:${reservation.id}:${impact.delayMinutes || effectiveBody.delayMinutes || 0}:${impact.proposedStartTime || 'none'}`,
         }).catch(() => null);
         sendJson(res, 409, {
           ok: false,
@@ -232,17 +315,29 @@ async function handlePost(req, res) {
       const shiftedPlan = impact.shiftedPlan || {};
       const updatedReservation = await updateReservation({
         ...reservation,
-        id: reservationId,
-        centerId: reservation.centerId || body.centerId || 'libramont',
-        date: reservation.date || body.date,
+        id: reservation.id,
+        centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
+        date: reservation.date || effectiveBody.date,
         startTime: impact.proposedStartTime || reservation.startTime,
         lanes: shiftedPlan.assignedLanes || reservation.lanes || [],
         opsPlan: shiftedPlan,
         notes: [
           reservation.notes || '',
-          `Retard applique +${impact.delayMinutes || body.delayMinutes || 0} min (${impact.reason || body.reason || 'retard signale'}).`,
+          `Retard applique +${impact.delayMinutes || effectiveBody.delayMinutes || 0} min (${impact.reason || effectiveBody.reason || 'retard signale'}).`,
         ].filter(Boolean).join('\n'),
       });
+      await Promise.all([
+        cancelReservationCommunications({
+          reservationId: reservation.id,
+          centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
+          reason: 'delay_applied',
+        }),
+        cancelReservationOpsJobs({
+          reservationId: reservation.id,
+          centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
+          reason: 'delay_applied',
+        }),
+      ]);
       await createOpsEvent({
         centerId: updatedReservation.centerId,
         reservationId: updatedReservation.id,
@@ -256,20 +351,28 @@ async function handlePost(req, res) {
           conflicts: impact.conflicts || [],
         },
       }).catch(() => null);
-      const communications = await enqueueDelayCommunications(updatedReservation, impact, body.options || {});
+      await Promise.all([
+        enqueueReservationAutomation(updatedReservation).catch(() => []),
+        enqueueReservationCommunications(updatedReservation, {
+          validationMode: updatedReservation.validationStatus,
+        }).catch(() => []),
+      ]);
+      const communications = await enqueueDelayCommunications(updatedReservation, impact, effectiveBody.options || {});
       await createDelayIncident({
         centerId: updatedReservation.centerId,
         reservationId: updatedReservation.id,
-        delayMinutes: impact.delayMinutes || body.delayMinutes || 0,
-        reason: impact.reason || body.reason || 'retard signale',
+        delayMinutes: impact.delayMinutes || effectiveBody.delayMinutes || 0,
+        reason: impact.reason || effectiveBody.reason || 'retard signale',
         status: 'applied',
         previousStartTime: impact.previousStartTime || reservation.startTime || '',
         proposedStartTime: impact.proposedStartTime || updatedReservation.startTime || '',
         impact,
         communications: { queued: communications.map((item) => item.id) },
-        idempotencyKey: `delay:${updatedReservation.id}:${impact.delayMinutes || body.delayMinutes || 0}:${impact.proposedStartTime || updatedReservation.startTime}`,
+        idempotencyKey: `delay:${updatedReservation.id}:${impact.delayMinutes || effectiveBody.delayMinutes || 0}:${impact.proposedStartTime || updatedReservation.startTime}`,
       }).catch(() => null);
-      const dispatch = body.dispatch === false ? null : await dispatchDueCommunications({ limit: 10 });
+      const dispatch = effectiveBody.dispatch === false
+        ? null
+        : await dispatchDueCommunications({ limit: 10, centerId: updatedReservation.centerId, reservationId: updatedReservation.id });
       sendJson(res, 200, {
         ok: true,
         contextWarning: context.warning || null,
@@ -292,33 +395,38 @@ async function handlePost(req, res) {
   }
 
   if (action === 'enqueueReservation') {
+    const concreteCenterId = requireConcreteCenter('file réservation');
     if (!body.reservation) throw new Error('Reservation manquante.');
-    const jobs = await enqueueReservationAutomation(body.reservation, body.options || {});
-    const communications = await enqueueReservationCommunications(body.reservation, body.options || {});
+    const reservation = { ...body.reservation, centerId: concreteCenterId || body.reservation.centerId || 'libramont' };
+    const jobs = await enqueueReservationAutomation(reservation, body.options || {});
+    const communications = await enqueueReservationCommunications(reservation, body.options || {});
     sendJson(res, 200, { ok: true, action, jobs, communications });
     return;
   }
 
   if (action === 'dispatchDue') {
-    const result = await dispatchDueCommunications({ limit: body.limit || 25 });
+    const result = await dispatchDueCommunications({ limit: body.limit || 25, centerId: scopedCenterId });
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }
 
   if (action === 'processJobs') {
-    const result = await processDueOpsJobs({ limit: body.limit || 25 });
+    const result = await processDueOpsJobs({ limit: body.limit || 25, centerId: scopedCenterId });
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }
 
   if (action === 'enqueueJob') {
-    const job = await createOpsJob(body.job || body);
+    const concreteCenterId = requireConcreteCenter('job');
+    const jobPayload = body.job ? { ...body.job, centerId: concreteCenterId || body.job.centerId || 'libramont' } : withCenter(body, concreteCenterId);
+    const job = await createOpsJob(jobPayload);
     sendJson(res, 201, { ok: true, action, job });
     return;
   }
 
   if (action === 'event') {
-    const event = await createOpsEvent(body);
+    const concreteCenterId = requireConcreteCenter('événement');
+    const event = await createOpsEvent(withCenter(body, concreteCenterId));
     let learning = null;
     if (body.runLearning !== false) {
       const events = await listOpsEvents({ centerId: event.centerId, limit: 1000 });
@@ -359,7 +467,7 @@ async function handlePost(req, res) {
     const result = body.context
       ? { ok: true, orchestration: orchestratorAgent(body.context), savedSuggestions: 0 }
       : await runOrchestratorForCenter({
-        centerId: body.centerId || 'libramont',
+        centerId: requireConcreteCenter('orchestration'),
         startDate: body.startDate,
         endDate: body.endDate,
         persist: body.persist !== false,
@@ -404,21 +512,24 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const action = getAction(req);
       const requestUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+      const requestedCenterId = normalizeCenterId(requestUrl.searchParams.get('centerId') || '');
       const session = await requireStaffPermission(req, res, getRequiredOpsPermission('GET', action), {
-        centerId: requestUrl.searchParams.get('centerId') || '',
+        centerId: requestedCenterId,
       });
       if (!session) return;
-      await handleGet(req, res);
+      await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId) });
       return;
     }
     if (req.method === 'POST') {
       const body = await readJson(req);
       const action = getAction(req, body);
+      const requestedCenterId = getBodyCenterId(body);
       const session = await requireStaffPermission(req, res, getRequiredOpsPermission('POST', action), {
-        centerId: body.centerId || body.center_id || '',
+        centerId: requestedCenterId,
       });
       if (!session) return;
-      await handlePost(req, res, body);
+      const effectiveCenterId = resolveEffectiveCenterId(session, requestedCenterId);
+      await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId });
       return;
     }
     sendError(res, 405, 'Méthode non autorisée.');

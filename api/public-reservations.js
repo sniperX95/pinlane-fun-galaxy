@@ -41,7 +41,7 @@ module.exports = async (req, res) => {
     const reservation = await createReservation({
       ...request,
       ...ops,
-      channel: request.channel || 'public',
+      channel: 'public',
     });
     const postCreate = await afterReservationCreated(reservation, request);
     sendJson(res, 201, {

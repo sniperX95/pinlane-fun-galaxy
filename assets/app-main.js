@@ -3551,7 +3551,13 @@ function renderDashboardIcon(name) {
     users: '<path d="M8.5 11.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path><path d="M3.5 19c.7-3.4 2.6-5.2 5-5.2s4.3 1.8 5 5.2"></path><path d="M16 11a2.5 2.5 0 1 0 0-5"></path><path d="M17 14c1.9.5 3.1 2 3.5 5"></path>',
     euro: '<path d="M17.5 6.5A6 6 0 1 0 18 17"></path><path d="M5 10h8M5 14h8"></path>',
     activity: '<path d="M9 5h6v4H9zM6 14h12v5H6z"></path><path d="M12 9v5M8 14v-2h8v2"></path>',
-    date: '<rect x="5" y="5" width="14" height="14" rx="2"></rect><path d="M8 3v4M16 3v4M5 10h14"></path>'
+    date: '<rect x="5" y="5" width="14" height="14" rx="2"></rect><path d="M8 3v4M16 3v4M5 10h14"></path>',
+    lanes: '<path d="M7 4h3l1 16H6L7 4Z"></path><path d="M14 4h3l1 16h-5l1-16Z"></path>',
+    prep: '<path d="M5 17h14"></path><path d="M8 17V8a4 4 0 0 1 8 0v9"></path><path d="M10 11h4"></path>',
+    play: '<path d="M8 5v14l11-7-11-7Z"></path>',
+    check: '<path d="M20 6 9 17l-5-5"></path>',
+    laser: '<path d="M12 5v14"></path><path d="M5 12h14"></path><path d="m7 7 10 10M17 7 7 17"></path>',
+    wrench: '<path d="M14.5 5.5a4 4 0 0 0 4 4L9 19l-4-4 9.5-9.5Z"></path>'
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.calendar}</svg>`;
 }
@@ -3589,6 +3595,15 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const currentIndex = days.length - 1;
   const previousRevenue = revenueSeries.slice(0, currentIndex).reduce((sum, value) => sum + value, 0);
   const revenueTrend = previousRevenue ? Math.round(((revenue - (previousRevenue / Math.max(currentIndex, 1))) / (previousRevenue / Math.max(currentIndex, 1))) * 100) : 0;
+  const previousDate = addDays(state.currentDate, -1);
+  const previousActiveReservations = state.reservations.filter(reservation => reservation.date === previousDate && reservation.status !== 'cancelled');
+  const previousPlanningWindow = getPlanningWindow(previousDate);
+  const previousOpenHours = previousPlanningWindow.closed ? 0 : Math.max(previousPlanningWindow.close - previousPlanningWindow.open, 0);
+  const previousBowlingWindows = previousActiveReservations.flatMap(reservation => getBowlingWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
+  const previousRevenueToday = previousActiveReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
+  const previousPlayers = previousActiveReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
+  const previousLaneHours = previousBowlingWindows.reduce((sum, window) => sum + ((Number(window.duration) || 0) * Math.max((window.lanes || []).length, 1)), 0);
+  const previousOccupancy = (TOTAL_LANES * previousOpenHours) ? Math.round((previousLaneHours / (TOTAL_LANES * previousOpenHours)) * 100) : 0;
   return {
     activeReservations,
     bowlingWindows,
@@ -3605,15 +3620,29 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     laneUsage,
     revenueSeries,
     revenueTrend,
+    previousReservationsCount: previousActiveReservations.length,
+    previousRevenueToday,
+    previousPlayers,
+    previousOccupancy,
     planningWindow
   };
+}
+
+function formatDashboardTrend(current, previous) {
+  const currentValue = Number(current) || 0;
+  const previousValue = Number(previous) || 0;
+  if (!previousValue) return currentValue ? '+100%' : '0%';
+  const delta = Math.round(((currentValue - previousValue) / previousValue) * 100);
+  return `${delta > 0 ? '+' : ''}${delta}%`;
 }
 
 function renderStaffDashboardHourly(metrics) {
   const { planningWindow, bowlingWindows } = metrics;
   if (planningWindow.closed) return `<div class="dash-empty">Centre fermé sur cette date.</div>`;
+  const startHour = Math.floor(planningWindow.open);
+  const endHour = Math.ceil(planningWindow.close);
   const hours = [];
-  for (let hour = planningWindow.open; hour < planningWindow.close; hour++) {
+  for (let hour = startHour; hour <= endHour; hour++) {
     const bucket = { hour, confirmed: 0, arrived: 0, paid: 0 };
     bowlingWindows.forEach(window => {
       const overlap = Math.max(0, Math.min(hour + 1, window.end) - Math.max(hour, window.start));
@@ -3623,36 +3652,55 @@ function renderStaffDashboardHourly(metrics) {
       else if (window.reservation.status === 'arrived') bucket.arrived += value;
       else bucket.confirmed += value;
     });
+    bucket.total = bucket.confirmed + bucket.arrived + bucket.paid;
     hours.push(bucket);
   }
-  const max = Math.max(...hours.map(hour => hour.confirmed + hour.arrived + hour.paid), TOTAL_LANES, 1);
-  return `<div class="dash-bars" aria-label="Occupations par heure">
-    ${hours.map((hour, index) => {
-      const confirmed = Math.round((hour.confirmed / max) * 100);
-      const arrived = Math.round((hour.arrived / max) * 100);
-      const paid = Math.round((hour.paid / max) * 100);
-      const showLabel = index % 2 === 0 || index === hours.length - 1;
-      return `<div class="dash-bar-col">
-        <div class="dash-bar">
-          <span class="paid" style="height:${paid}%"></span>
-          <span class="arrived" style="height:${arrived}%"></span>
-          <span class="confirmed" style="height:${confirmed}%"></span>
-        </div>
-        <small>${showLabel ? `${String(Math.floor(hour.hour)).padStart(2, '0')}h` : ''}</small>
-      </div>`;
-    }).join('')}
+  const chart = { width: 620, height: 238, left: 42, right: 16, top: 18, bottom: 34 };
+  const innerWidth = chart.width - chart.left - chart.right;
+  const innerHeight = chart.height - chart.top - chart.bottom;
+  const max = Math.max(...hours.map(hour => hour.total), TOTAL_LANES, 1);
+  const xFor = index => chart.left + (hours.length <= 1 ? 0 : (index / (hours.length - 1)) * innerWidth);
+  const yFor = value => chart.top + innerHeight - ((value / max) * innerHeight);
+  const pointsFor = key => hours.map((hour, index) => `${xFor(index).toFixed(1)},${yFor(hour[key]).toFixed(1)}`).join(' ');
+  const peak = hours.reduce((best, hour, index) => hour.total > best.total ? { ...hour, index } : best, { total: -1, index: 0 });
+  const peakX = xFor(peak.index || 0);
+  const peakY = yFor(Math.max(peak.total || 0, 0));
+  const peakPercent = Math.min(100, Math.round(((peak.total || 0) / Math.max(TOTAL_LANES, 1)) * 100));
+  const xLabels = hours.map((hour, index) => {
+    const show = index === 0 || index === hours.length - 1 || Math.floor(hour.hour) % 2 === 0;
+    return show ? `<text x="${xFor(index).toFixed(1)}" y="${chart.height - 7}" text-anchor="middle">${String(Math.floor(hour.hour)).padStart(2, '0')}h</text>` : '';
+  }).join('');
+  const yTicks = [100, 75, 50, 25, 0].map(percent => {
+    const y = chart.top + innerHeight - ((percent / 100) * innerHeight);
+    return `<g class="dash-line-grid"><line x1="${chart.left}" x2="${chart.width - chart.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line><text x="4" y="${(y + 4).toFixed(1)}">${percent}%</text></g>`;
+  }).join('');
+  return `<div class="dash-line-chart" aria-label="Occupations par heure">
+    <svg viewBox="0 0 ${chart.width} ${chart.height}" preserveAspectRatio="none" aria-hidden="true">
+      ${yTicks}
+      <polyline class="confirmed" points="${pointsFor('confirmed')}"></polyline>
+      <polyline class="arrived" points="${pointsFor('arrived')}"></polyline>
+      <polyline class="paid" points="${pointsFor('paid')}"></polyline>
+      ${peak.total > 0 ? `<line class="dash-line-marker" x1="${peakX.toFixed(1)}" x2="${peakX.toFixed(1)}" y1="${chart.top}" y2="${chart.height - chart.bottom}"></line>
+        <circle class="dash-line-point" cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="5"></circle>
+        <g class="dash-line-badge">
+          <rect x="${Math.max(chart.left, Math.min(peakX - 18, chart.width - chart.right - 42)).toFixed(1)}" y="${Math.max(6, peakY - 35).toFixed(1)}" width="44" height="24" rx="8"></rect>
+          <text x="${Math.max(chart.left + 22, Math.min(peakX + 4, chart.width - chart.right - 20)).toFixed(1)}" y="${Math.max(22, peakY - 18).toFixed(1)}" text-anchor="middle">${peakPercent}%</text>
+        </g>` : ''}
+      <g class="dash-line-x">${xLabels}</g>
+    </svg>
   </div>`;
 }
 
 function renderStaffDashboardActivity(metrics) {
-  const total = Math.max(metrics.activeReservations.length, 1);
-  const bowlingPct = Math.round((metrics.bowlingOnly / total) * 100);
-  const laserPct = Math.round((metrics.laserOnly / total) * 100);
-  const completePct = Math.max(0, 100 - bowlingPct - laserPct);
+  const totalCount = metrics.activeReservations.length;
+  const total = Math.max(totalCount, 1);
+  const bowlingPct = totalCount ? Math.round((metrics.bowlingOnly / total) * 100) : 0;
+  const laserPct = totalCount ? Math.round((metrics.laserOnly / total) * 100) : 0;
+  const completePct = totalCount ? Math.max(0, 100 - bowlingPct - laserPct) : 0;
   return `<div class="dash-donut-wrap">
     <div class="dash-donut" style="--bowling:${bowlingPct};--laser:${laserPct};--complete:${completePct};">
       <strong>${metrics.activeReservations.length}</strong>
-      <span>réservations</span>
+      <span>réservations aujourd'hui</span>
     </div>
     <div class="dash-activity-list">
       <div><i class="bowling"></i><span>Bowling</span><strong>${metrics.bowlingOnly}</strong><small>${bowlingPct}%</small></div>
@@ -3665,10 +3713,11 @@ function renderStaffDashboardActivity(metrics) {
 function renderStaffDashboardTopLanes(metrics) {
   const sortMode = state.dashboardLaneSort === 'low' ? 'low' : 'high';
   const items = [...metrics.laneUsage].sort((left, right) => sortMode === 'low' ? left.value - right.value : right.value - left.value);
-  const max = Math.max(...items.map(item => item.value), 1);
+  const openHours = metrics.planningWindow.closed ? 0 : Math.max(metrics.planningWindow.close - metrics.planningWindow.open, 1);
   return items.slice(0, 5).map(item => {
-    const percent = Math.round((item.value / max) * 100);
+    const percent = Math.min(100, Math.round((item.value / openHours) * 100));
     return `<div class="dash-lane-row">
+      <small>${item.lane}</small>
       <strong>Piste ${item.lane}</strong>
       <span><i style="width:${percent}%"></i></span>
       <em>${percent}%</em>
@@ -3702,19 +3751,18 @@ function renderStaffDashboardAlerts(metrics) {
 
 function renderStaffDashboardRevenue(metrics) {
   const max = Math.max(...metrics.revenueSeries, 1);
-  const points = metrics.revenueSeries.map((value, index) => {
-    const x = 18 + index * 44;
-    const y = 142 - ((value / max) * 96);
-    return `${x},${y}`;
-  }).join(' ');
-  const area = `18,152 ${points} ${18 + (metrics.revenueSeries.length - 1) * 44},152`;
-  return `<div class="dash-revenue-chart">
-    <svg viewBox="0 0 300 165" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points="${points}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
-      <polygon points="${area}" fill="currentColor" opacity=".11"></polygon>
-    </svg>
-    <div class="dash-revenue-labels">
-      ${metrics.revenueSeries.map((_, index) => `<span>${index === 0 ? 'J-6' : index === metrics.revenueSeries.length - 1 ? 'auj.' : ''}</span>`).join('')}
+  const days = Array.from({ length: 7 }, (_, index) => addDays(state.currentDate, index - 6));
+  return `<div class="dash-revenue-bars" aria-label="Revenus des sept derniers jours">
+    <div class="dash-revenue-scale"><span>3k €</span><span>2k €</span><span>1k €</span><span>0 €</span></div>
+    <div class="dash-revenue-bar-grid">
+      ${metrics.revenueSeries.map((value, index) => {
+        const height = Math.max(6, Math.round((value / max) * 100));
+        const label = parseLocalDate(days[index]).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', '');
+        return `<div class="dash-revenue-bar">
+          <span style="height:${height}%"></span>
+          <small>${escapeHtml(label)}</small>
+        </div>`;
+      }).join('')}
     </div>
   </div>`;
 }
@@ -4139,9 +4187,14 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   if (!root) return;
   const metrics = getStaffDashboardMetrics(dayReservations);
   const d = parseLocalDate(state.currentDate);
-  const dateLong = d.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const dateShort = d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
+  const formattedDate = dateShort.charAt(0).toUpperCase() + dateShort.slice(1);
   const revenueTrendText = metrics.revenueTrend > 0 ? `+${metrics.revenueTrend}%` : `${metrics.revenueTrend}%`;
+  const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.previousReservationsCount);
+  const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
+  const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
+  const availableLanes = TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
+  const totalPeriodRevenue = metrics.revenueSeries.reduce((sum, value) => sum + value, 0);
   root.innerHTML = `
     <section class="dash-hero">
       <div>
@@ -4150,7 +4203,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </div>
       <div class="dash-actions">
         <div class="dash-date-control">
-          <span>${escapeHtml(dateShort.charAt(0).toUpperCase() + dateShort.slice(1))}</span>
+          <span>${escapeHtml(formattedDate)}</span>
           <button type="button" onclick="openStaffDatePicker()" aria-label="Choisir une date">${renderDashboardIcon('date')}</button>
           <input id="dashboardDatePicker" class="dash-date-input" type="date" onchange="setStaffDateFromPicker(this.value)" aria-label="Choisir une date">
         </div>
@@ -4160,10 +4213,30 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     </section>
 
     <section class="dash-kpis">
-      <article class="dash-kpi purple"><div class="dash-icon">${renderDashboardIcon('calendar')}</div><div><span>Réservations aujourd'hui</span><strong>${metrics.activeReservations.length}</strong><small>sessions piste</small></div>${renderDashboardSpark([3, 8, 5, 12, 6, 9, metrics.activeReservations.length], 'purple')}</article>
-      <article class="dash-kpi blue"><div class="dash-icon">${renderDashboardIcon('users')}</div><div><span>Joueurs aujourd'hui</span><strong>${metrics.players}</strong><small>personnes</small></div>${renderDashboardSpark([12, 20, 16, 24, 19, 28, metrics.players], 'blue')}</article>
-      <article class="dash-kpi green"><div class="dash-icon">${renderDashboardIcon('euro')}</div><div><span>Chiffre d'affaires</span><strong>${formatMoney(metrics.revenue)}</strong><small>${formatMoney(metrics.collected)} validés <b>${escapeHtml(revenueTrendText)}</b></small></div>${renderDashboardSpark(metrics.revenueSeries, 'green')}</article>
-      <article class="dash-kpi orange"><div class="dash-icon">${renderDashboardIcon('activity')}</div><div><span>Taux d'occupation</span><strong>${metrics.occupancy}%</strong><small>${TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length} pistes disponibles</small></div>${renderDashboardSpark([22, 35, 28, 48, 31, 55, metrics.occupancy], 'orange')}</article>
+      <article class="dash-kpi purple">
+        <div class="dash-icon">${renderDashboardIcon('calendar')}</div>
+        <div class="dash-kpi-copy"><span>Réservations aujourd'hui</span><strong>${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
+        <div class="dash-kpi-trend"><strong>${escapeHtml(reservationTrendText)}</strong><span>vs hier</span></div>
+        ${renderDashboardSpark([metrics.previousReservationsCount, Math.max(0, metrics.activeReservations.length - 3), metrics.activeReservations.length, metrics.upcoming.length, metrics.activeNow.length, metrics.activeReservations.length], 'purple')}
+      </article>
+      <article class="dash-kpi blue">
+        <div class="dash-icon">${renderDashboardIcon('users')}</div>
+        <div class="dash-kpi-copy"><span>Joueurs aujourd'hui</span><strong>${metrics.players}</strong><small>personnes</small></div>
+        <div class="dash-kpi-trend"><strong>${escapeHtml(playerTrendText)}</strong><span>vs hier</span></div>
+        ${renderDashboardSpark([metrics.previousPlayers, Math.max(0, metrics.players - 12), metrics.players, metrics.players * .72, metrics.players * .9, metrics.players], 'blue')}
+      </article>
+      <article class="dash-kpi green">
+        <div class="dash-icon">${renderDashboardIcon('euro')}</div>
+        <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong>${formatMoney(metrics.revenue)}</strong><small>${formatMoney(metrics.collected)} validés aujourd'hui</small></div>
+        <div class="dash-kpi-trend"><strong>${escapeHtml(revenueTrendText)}</strong><span>vs hier</span></div>
+        ${renderDashboardSpark(metrics.revenueSeries, 'green')}
+      </article>
+      <article class="dash-kpi orange">
+        <div class="dash-icon">${renderDashboardIcon('activity')}</div>
+        <div class="dash-kpi-copy"><span>Taux d'occupation</span><strong>${metrics.occupancy}%</strong><small>${availableLanes} pistes disponibles</small></div>
+        <div class="dash-kpi-trend"><strong>${escapeHtml(occupancyTrendText)}</strong><span>vs hier</span></div>
+        ${renderDashboardSpark([metrics.previousOccupancy, Math.max(0, metrics.occupancy - 14), metrics.occupancy * .82, metrics.occupancy, metrics.occupancy * .76, metrics.occupancy], 'orange')}
+      </article>
     </section>
 
     <section class="dash-grid-main">
@@ -4193,18 +4266,18 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
       <article class="dash-card">
         <div class="dash-card-head"><h2>Revenus</h2><button type="button" onclick="openStaffDashboardRevenue()">7 derniers jours</button></div>
-        <div class="dash-revenue-head"><strong>${formatMoney(metrics.revenue + metrics.revenueSeries.slice(0, -1).reduce((sum, value) => sum + value, 0))}</strong><span>Total</span><small>${escapeHtml(revenueTrendText)} vs période précédente</small></div>
+        <div class="dash-revenue-head"><strong>${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendText)} vs période précédente</small></div>
         ${renderStaffDashboardRevenue(metrics)}
       </article>
     </section>
 
     <section class="dash-status-strip">
-      <div><span>▣</span><small>Pistes disponibles</small><strong>${TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length} / ${TOTAL_LANES}</strong></div>
-      <div><span>▤</span><small>En préparation</small><strong>${metrics.upcoming.length} session${metrics.upcoming.length > 1 ? 's' : ''}</strong></div>
-      <div><span>◴</span><small>En cours</small><strong>${metrics.activeNow.length} session${metrics.activeNow.length > 1 ? 's' : ''}</strong></div>
-      <div><span>✓</span><small>Terminées</small><strong>${metrics.activeReservations.filter(r => r.status === 'paid').length} sessions</strong></div>
-      <div><span>♢</span><small>Laser disponibles</small><strong>${LASER_GAME_PARALLEL_LAUNCHES} / ${LASER_GAME_PARALLEL_LAUNCHES}</strong></div>
-      <div><span>⚙</span><small>Maintenance</small><strong>${Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length}</strong></div>
+      <div><span>${renderDashboardIcon('lanes')}</span><small>Pistes disponibles</small><strong>${availableLanes} / ${TOTAL_LANES}</strong><em>${TOTAL_LANES ? Math.round((availableLanes / TOTAL_LANES) * 100) : 0}%</em></div>
+      <div><span>${renderDashboardIcon('prep')}</span><small>En préparation</small><strong>${metrics.upcoming.length} session${metrics.upcoming.length > 1 ? 's' : ''}</strong></div>
+      <div><span>${renderDashboardIcon('play')}</span><small>En cours</small><strong>${metrics.activeNow.length} session${metrics.activeNow.length > 1 ? 's' : ''}</strong></div>
+      <div><span>${renderDashboardIcon('check')}</span><small>Terminées</small><strong>${metrics.activeReservations.filter(r => r.status === 'paid').length} sessions</strong></div>
+      <div><span>${renderDashboardIcon('laser')}</span><small>Lasers disponibles</small><strong>${LASER_GAME_PARALLEL_LAUNCHES} / ${LASER_GAME_PARALLEL_LAUNCHES}</strong></div>
+      <div><span>${renderDashboardIcon('wrench')}</span><small>Maintenance</small><strong>${Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length}</strong></div>
     </section>
   `;
 }

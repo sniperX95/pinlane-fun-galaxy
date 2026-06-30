@@ -301,6 +301,9 @@ async function collectIssues(page, scopeLabel) {
       '.event-row',
       '.events-now-card',
       '.events-day-digest',
+      '.dash-kpi',
+      '.dash-card',
+      '.dash-status-strip',
     ].join(',');
 
     document.querySelectorAll(watched).forEach((el) => {
@@ -384,6 +387,13 @@ async function main() {
     const lockedOverlayCount = await page.locator('#authOverlay:not(.hidden)').count();
     assert(!lockedOverlayCount, 'QA locale bloquee sur l ecran de connexion staff.');
 
+    await page.waitForTimeout(700);
+
+    await renderStaffPage(page, 'dashboard');
+    await screenshot(page, 'staff-dashboard-reference');
+    issues.push(...await collectIssues(page, 'staff-dashboard'));
+
+    await renderStaffPage(page, 'planning');
     await page.waitForTimeout(700);
     await screenshot(page, 'staff-planning-stress');
     issues.push(...await collectIssues(page, 'staff-planning'));

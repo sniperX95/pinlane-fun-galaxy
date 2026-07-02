@@ -1615,7 +1615,13 @@ function loadState() {
     staffCampaignDraft: null,
     marketingCampaigns: [],
     staffMenuCollapsed: false,
-    staffMenuPage: 'planning'
+    staffMenuPage: 'planning',
+    staffGroupQuery: '',
+    staffGroupType: 'all',
+    staffGroupStatus: 'all',
+    staffGroupDate: 'upcoming',
+    staffGroupSize: 'all',
+    staffGroupTab: 'all'
   };
 }
 
@@ -1679,6 +1685,12 @@ state.staffClientQuery = state.staffClientQuery || '';
 state.staffSelectedClientId = state.staffSelectedClientId || '';
 state.staffClientFiltersOpen = !!state.staffClientFiltersOpen;
 state.staffClientCompact = !!state.staffClientCompact;
+state.staffGroupQuery = state.staffGroupQuery || '';
+state.staffGroupType = ['all', 'bowling', 'laser', 'complete', 'formule'].includes(state.staffGroupType) ? state.staffGroupType : 'all';
+state.staffGroupStatus = ['all', 'pending', 'confirmed', 'arrived', 'paid'].includes(state.staffGroupStatus) ? state.staffGroupStatus : 'all';
+state.staffGroupDate = ['upcoming', 'today', 'week', 'all'].includes(state.staffGroupDate) ? state.staffGroupDate : 'upcoming';
+state.staffGroupSize = ['all', 'small', 'medium', 'large', 'xl'].includes(state.staffGroupSize) ? state.staffGroupSize : 'all';
+state.staffGroupTab = ['all', 'birthdays', 'regular', 'business', 'followup'].includes(state.staffGroupTab) ? state.staffGroupTab : 'all';
 state.staffReservationsMonth = /^\d{4}-\d{2}$/.test(state.staffReservationsMonth || '') ? state.staffReservationsMonth : getMonthKey(state.currentDate || todayStr());
 state.staffReservationActivityFilter = ['all', 'bowling', 'laser', 'complete', 'event'].includes(state.staffReservationActivityFilter) ? state.staffReservationActivityFilter : 'all';
 state.staffReservationsSelectedDate = state.staffReservationsSelectedDate || state.currentDate || todayStr();
@@ -3726,7 +3738,7 @@ function renderStaffDashboardTopLanes(metrics) {
 }
 
 function renderStaffDashboardArrivals(metrics) {
-  const rows = metrics.upcoming.slice(0, 5);
+  const rows = metrics.upcoming.slice(0, 3);
   if (!rows.length) return `<div class="dash-empty">Aucune arrivée à venir sur cette date.</div>`;
   return rows.map(reservation => {
     const lanes = getBowlingWindowsFromReservation(reservation)[0]?.lanes || reservation.lanes || [];
@@ -4781,8 +4793,371 @@ function renderStaffGroupWorkspace(rows = []) {
   </div>`;
 }
 
+function setStaffGroupFilter(key, value) {
+  const allowed = {
+    type: ['all', 'bowling', 'laser', 'complete', 'formule'],
+    status: ['all', 'pending', 'confirmed', 'arrived', 'paid'],
+    date: ['upcoming', 'today', 'week', 'all'],
+    size: ['all', 'small', 'medium', 'large', 'xl'],
+    tab: ['all', 'birthdays', 'regular', 'business', 'followup']
+  };
+  if (key === 'query') {
+    state.staffGroupQuery = value || '';
+  } else if (allowed[key]) {
+    state[`staffGroup${key.charAt(0).toUpperCase()}${key.slice(1)}`] = allowed[key].includes(value) ? value : 'all';
+  }
+  save();
+  renderStaffUtilityPage();
+}
+
+let staffGroupQueryTimer = null;
+function setStaffGroupQuery(value) {
+  state.staffGroupQuery = value || '';
+  clearTimeout(staffGroupQueryTimer);
+  staffGroupQueryTimer = setTimeout(() => {
+    save();
+    renderStaffUtilityPage();
+  }, 90);
+}
+
+function resetStaffGroupFilters() {
+  state.staffGroupQuery = '';
+  state.staffGroupType = 'all';
+  state.staffGroupStatus = 'all';
+  state.staffGroupDate = 'upcoming';
+  state.staffGroupSize = 'all';
+  state.staffGroupTab = 'all';
+  save();
+  renderStaffUtilityPage();
+}
+
+function getStaffGroupActivityKey(row = {}, reservation = null) {
+  const current = reservation || getStaffGroupNextReservation(row) || row.lastBooking || {};
+  const activity = getStaffReservationActivityType(current);
+  if (current.type === 'formule' || current.formuleId || Number(row.formulas || 0) > 0) return 'formule';
+  if (activity === 'complete') return 'complete';
+  if (activity === 'laser' || current.type === 'laser') return 'laser';
+  return 'bowling';
+}
+
+function getStaffGroupActivityLabel(key = 'bowling', reservation = null) {
+  if (key === 'laser') return 'Laser Game';
+  if (key === 'complete') return 'Complet';
+  if (key === 'formule') return reservation?.formuleId || reservation?.type === 'formule' ? getReservationLabel(reservation) : 'Formule';
+  return 'Bowling';
+}
+
+function getStaffGroupStatusKey(reservation = {}) {
+  return ['pending', 'confirmed', 'arrived', 'paid'].includes(reservation.status) ? reservation.status : 'confirmed';
+}
+
+function getStaffGroupSizeKey(row = {}, reservation = null) {
+  const pax = Number(reservation?.pax || row.maxPax || row.players || 0);
+  if (pax >= 60) return 'xl';
+  if (pax >= 30) return 'large';
+  if (pax >= 12) return 'medium';
+  return 'small';
+}
+
+function isStaffGroupBusiness(row = {}) {
+  const text = formulaActivityToken(`${row.name || ''} ${(row.tags || []).join(' ')}`);
+  return /entreprise|team|garage|sa|ecole|college|association|club|comite|bureau/.test(text);
+}
+
+function needsStaffGroupFollowup(row = {}, reservation = null) {
+  const current = reservation || getStaffGroupNextReservation(row) || {};
+  if (!row.phone || !row.email) return true;
+  if (row.hasBirthday) return true;
+  if (Number(row.formulas || 0) > 0) return true;
+  if (!current.id || current.status === 'pending') return true;
+  return false;
+}
+
+function getStaffGroupFollowupReason(row = {}, reservation = null) {
+  const current = reservation || getStaffGroupNextReservation(row) || {};
+  if (!row.phone || !row.email) return { label: 'Coordonnees incompletes', action: 'Completer' };
+  if (row.hasBirthday) return { label: 'Anniversaire a confirmer', action: 'Relancer' };
+  if (Number(row.formulas || 0) > 0) return { label: 'Formule a preparer', action: 'Preparer' };
+  if (!current.id) return { label: 'Aucune prochaine visite', action: 'Planifier' };
+  return { label: 'Suivi commercial', action: 'Relancer' };
+}
+
+function getFilteredStaffGroupRows(rows = []) {
+  const query = String(state.staffGroupQuery || '').trim().toLowerCase();
+  const type = state.staffGroupType || 'all';
+  const status = state.staffGroupStatus || 'all';
+  const dateFilter = state.staffGroupDate || 'upcoming';
+  const size = state.staffGroupSize || 'all';
+  const tab = state.staffGroupTab || 'all';
+  const today = todayStr();
+  const weekEnd = addDays(today, 7);
+  return rows.filter(row => {
+    const reservation = getStaffGroupNextReservation(row) || {};
+    const activity = getStaffGroupActivityKey(row, reservation);
+    const text = `${row.name || ''} ${row.email || ''} ${row.phone || ''} ${(row.tags || []).join(' ')} ${getStaffGroupKind(row)} ${getReservationLabel(reservation) || ''}`.toLowerCase();
+    if (query && !text.includes(query)) return false;
+    if (type !== 'all' && activity !== type) return false;
+    if (status !== 'all' && getStaffGroupStatusKey(reservation) !== status) return false;
+    if (size !== 'all' && getStaffGroupSizeKey(row, reservation) !== size) return false;
+    if (dateFilter === 'upcoming' && reservation.date && String(reservation.date) < today) return false;
+    if (dateFilter === 'today' && reservation.date !== today) return false;
+    if (dateFilter === 'week' && (!reservation.date || String(reservation.date) < today || String(reservation.date) > weekEnd)) return false;
+    if (tab === 'birthdays' && !row.hasBirthday) return false;
+    if (tab === 'regular' && Number(row.reservations || 0) < 2) return false;
+    if (tab === 'business' && !isStaffGroupBusiness(row)) return false;
+    if (tab === 'followup' && !needsStaffGroupFollowup(row, reservation)) return false;
+    return true;
+  });
+}
+
+function renderStaffGroupStatusBadge(reservation = {}) {
+  const status = getStaffGroupStatusKey(reservation);
+  const labels = {
+    pending: 'En attente',
+    confirmed: 'Reservation confirmee',
+    arrived: 'Arrive',
+    paid: 'Paye'
+  };
+  return `<span class="groups-status groups-status-${escapeHtml(status)}">${escapeHtml(labels[status] || 'Confirme')}</span>`;
+}
+
+function renderStaffGroupTypeBadge(key = 'bowling', label = '') {
+  const cleanKey = ['bowling', 'laser', 'complete', 'formule'].includes(key) ? key : 'bowling';
+  return `<span class="groups-type groups-type-${escapeHtml(cleanKey)}">${escapeHtml(label || getStaffGroupActivityLabel(cleanKey))}</span>`;
+}
+
+function getStaffGroupProfileAction(row = {}, action = 'client') {
+  if (!row.id) return 'toast("Profil indisponible.")';
+  if (action === 'book') return `openStaffClientBooking(${staffClientJs(row.id)})`;
+  return `openStaffMenuPage('clients'); selectStaffClient(${staffClientJs(row.id)})`;
+}
+
+function getStaffGroupContactAction(row = {}) {
+  if (row.email) return `window.location.href=${staffClientJs(`mailto:${row.email}`)}`;
+  if (row.phone) return `window.location.href=${staffClientJs(`tel:${row.phone}`)}`;
+  return getStaffGroupProfileAction(row, 'client');
+}
+
+function getStaffGroupReservationAction(reservation = {}, row = {}) {
+  if (reservation.id) return `openStaffReservationDetail(${staffClientJs(reservation.id)})`;
+  return getStaffGroupProfileAction(row, 'client');
+}
+
+function renderStaffGroupActionButton(label, action, variant = '') {
+  return `<button type="button" class="groups-action ${escapeHtml(variant)}" onclick="${action}">${escapeHtml(label)}</button>`;
+}
+
+function renderStaffGroupToolbar(allRows = [], filteredRows = [], agenda = [], followUps = []) {
+  const query = escapeHtml(state.staffGroupQuery || '');
+  const select = (key, label, options) => `<label class="groups-select"><span>${escapeHtml(label)}</span><select onchange="setStaffGroupFilter('${escapeHtml(key)}', this.value)">
+    ${options.map(option => `<option value="${escapeHtml(option.value)}" ${state[`staffGroup${key.charAt(0).toUpperCase()}${key.slice(1)}`] === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+  </select></label>`;
+  const tab = (id, label, count) => `<button type="button" class="${state.staffGroupTab === id ? 'active' : ''}" onclick="setStaffGroupFilter('tab', '${escapeHtml(id)}')">${escapeHtml(label)}<span>${Number(count || 0)}</span></button>`;
+  const birthdays = allRows.filter(row => row.hasBirthday).length;
+  const regular = allRows.filter(row => Number(row.reservations || 0) >= 2).length;
+  const business = allRows.filter(isStaffGroupBusiness).length;
+  return `<section class="groups-toolbar-card">
+    <div class="groups-toolbar-main">
+      <label class="groups-search">${renderStaffClientIcon('search')}<input value="${query}" placeholder="Rechercher un groupe, contact, entreprise..." oninput="setStaffGroupQuery(this.value)"></label>
+      ${select('type', 'Type', [
+        { value: 'all', label: 'Tous types' },
+        { value: 'bowling', label: 'Bowling' },
+        { value: 'laser', label: 'Laser Game' },
+        { value: 'complete', label: 'Complet' },
+        { value: 'formule', label: 'Formules' }
+      ])}
+      ${select('status', 'Statut', [
+        { value: 'all', label: 'Tous statuts' },
+        { value: 'confirmed', label: 'Confirmes' },
+        { value: 'arrived', label: 'Arrives' },
+        { value: 'paid', label: 'Payes' },
+        { value: 'pending', label: 'En attente' }
+      ])}
+      ${select('date', 'Date', [
+        { value: 'upcoming', label: 'A venir' },
+        { value: 'today', label: 'Aujourd hui' },
+        { value: 'week', label: '7 jours' },
+        { value: 'all', label: 'Tout' }
+      ])}
+      ${select('size', 'Taille', [
+        { value: 'all', label: 'Toutes tailles' },
+        { value: 'small', label: '1-11 pers.' },
+        { value: 'medium', label: '12-29 pers.' },
+        { value: 'large', label: '30-59 pers.' },
+        { value: 'xl', label: '60+ pers.' }
+      ])}
+    </div>
+    <div class="groups-tabs">
+      ${tab('all', 'Tous', allRows.length)}
+      ${tab('birthdays', 'Anniversaires', birthdays)}
+      ${tab('regular', 'Groupes reguliers', regular)}
+      ${tab('business', 'Entreprises', business)}
+      ${tab('followup', 'A relancer', followUps.length)}
+    </div>
+    <div class="groups-metrics-strip">
+      <span>${renderStaffClientIcon('users')}<strong>${filteredRows.length}</strong> profils</span>
+      <span>${renderStaffClientIcon('user')}<strong>${filteredRows.reduce((sum, row) => sum + Number(row.players || 0), 0)}</strong> joueurs cumules</span>
+      <span>${renderStaffClientIcon('clock')}<strong>${agenda.length}</strong> passages a venir</span>
+      <span>${renderStaffClientIcon('refresh')}<strong>${followUps.length}</strong> relances utiles</span>
+    </div>
+  </section>`;
+}
+
+function renderStaffGroupSelected(item = {}) {
+  const row = item.row || {};
+  const reservation = item.reservation || getStaffGroupNextReservation(row) || {};
+  const activityKey = getStaffGroupActivityKey(row, reservation);
+  const reservationDate = reservation.date ? `${formatStaffGroupReservationDate(reservation)} · ${getStaffUtilityStartLabel(reservation)}` : 'A planifier';
+  const pax = Number(reservation.pax || row.maxPax || row.players || 0);
+  const value = Number(row.spent || reservation.price || 0);
+  return `<section class="groups-selected-card">
+    <div class="groups-selected-header">
+      <span class="groups-avatar groups-avatar-${escapeHtml(row.avatarTone || 'violet')}">${escapeHtml(row.initials || getStaffClientInitials(row.name || 'Groupe'))}</span>
+      <div>
+        <div class="groups-selected-title">
+          <h2>${escapeHtml(row.name || reservation.name || 'Groupe')}</h2>
+          ${renderStaffGroupStatusBadge(reservation)}
+        </div>
+        <p>${escapeHtml(getStaffGroupKind(row))} · ${Number(row.players || pax || 0)} joueur(s) cumules</p>
+      </div>
+    </div>
+    <div class="groups-selected-grid">
+      <div><span>Prochaine visite</span><strong>${escapeHtml(reservationDate)}</strong></div>
+      <div><span>Activite</span><strong>${escapeHtml(getStaffGroupActivityLabel(activityKey, reservation))}</strong></div>
+      <div><span>Contact</span><strong>${escapeHtml(getStaffGroupContact(row))}</strong></div>
+      <div><span>Taille du groupe</span><strong>${escapeHtml(pax ? `${pax} personnes` : `${Number(row.players || 0)} cumules`)}</strong></div>
+      <div><span>Valeur potentielle</span><strong>${formatMoney(value)}</strong></div>
+    </div>
+    <div class="groups-selected-actions">
+      ${renderStaffGroupActionButton('Voir reservation', getStaffGroupReservationAction(reservation, row), 'primary')}
+      ${renderStaffGroupActionButton('Modifier', getStaffGroupReservationAction(reservation, row))}
+      ${renderStaffGroupActionButton('Contacter', getStaffGroupContactAction(row))}
+      ${renderStaffGroupActionButton('Plus', getStaffGroupProfileAction(row, 'client'), 'icon')}
+    </div>
+  </section>`;
+}
+
+function renderStaffGroupAgendaPanel(agenda = []) {
+  const rows = agenda.slice(0, 5);
+  return `<section class="groups-side-card">
+    <div class="groups-side-head"><h3>Agenda groupes</h3><button type="button" onclick="setStaffGroupFilter('date', 'all')">Voir tout</button></div>
+    <div class="groups-agenda-list">
+      ${rows.length ? rows.map(({ row, reservation }) => {
+        const activity = getStaffGroupActivityKey(row, reservation);
+        return `<button type="button" class="groups-agenda-item" onclick="${getStaffGroupReservationAction(reservation, row)}">
+          <span>${escapeHtml(reservation.date ? formatStaffGroupReservationDate(reservation) : '--')}</span>
+          <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
+          <em>${escapeHtml(row.name || reservation.name || 'Groupe')}</em>
+          ${renderStaffGroupTypeBadge(activity, getStaffGroupActivityLabel(activity, reservation))}
+          <small>${Number(reservation.pax || row.maxPax || 0)} pers.</small>
+        </button>`;
+      }).join('') : `<div class="groups-empty-note">Aucun passage groupe a venir.</div>`}
+    </div>
+  </section>`;
+}
+
+function renderStaffGroupActionsPanel(followUps = []) {
+  const rows = followUps.slice(0, 4);
+  return `<section class="groups-side-card">
+    <div class="groups-side-head"><h3>Actions recommandees</h3><button type="button" onclick="setStaffGroupFilter('tab', 'followup')">Voir tout</button></div>
+    <div class="groups-action-list">
+      ${rows.length ? rows.map(({ row, reservation }) => {
+        const reason = getStaffGroupFollowupReason(row, reservation);
+        const activity = getStaffGroupActivityKey(row, reservation);
+        return `<article class="groups-action-item">
+          <span class="groups-action-icon groups-action-${escapeHtml(activity)}">${renderStaffClientIcon(activity === 'laser' ? 'clock' : activity === 'formule' ? 'star' : 'users')}</span>
+          <div><strong>${escapeHtml(reason.label)}</strong><small>${escapeHtml(row.name || 'Groupe')} · ${escapeHtml(reservation?.date ? formatStaffGroupReservationDate(reservation) : 'sans date')}</small></div>
+          <button type="button" onclick="${getStaffGroupProfileAction(row, reason.action === 'Planifier' ? 'book' : 'client')}">${escapeHtml(reason.action)}</button>
+        </article>`;
+      }).join('') : `<div class="groups-empty-note">Aucune relance prioritaire.</div>`}
+    </div>
+  </section>`;
+}
+
+function renderStaffGroupTable(rows = []) {
+  return `<section class="groups-ledger-card">
+    <div class="groups-ledger-head">
+      <div><h3>Profils exploitables</h3><p>${rows.length} resultat${rows.length > 1 ? 's' : ''}</p></div>
+      <button type="button" onclick="resetStaffGroupFilters()">Réinitialiser</button>
+    </div>
+    <div class="groups-ledger">
+      <div class="groups-ledger-row groups-ledger-row-head"><span>Profil</span><span>Prochaine visite</span><span>Activite</span><span>Taille</span><span>Statut</span><span>Valeur</span><span>Actions</span></div>
+      ${rows.length ? rows.slice(0, 12).map(row => {
+        const reservation = getStaffGroupNextReservation(row) || {};
+        const activity = getStaffGroupActivityKey(row, reservation);
+        const date = reservation.date ? `${formatStaffGroupReservationDate(reservation)} ${getStaffUtilityStartLabel(reservation)}` : 'A planifier';
+        return `<article class="groups-ledger-row">
+          <div class="groups-profile-cell"><span class="groups-avatar small">${escapeHtml(row.initials || getStaffClientInitials(row.name || 'Groupe'))}</span><div><strong>${escapeHtml(row.name || 'Groupe')}</strong><small>${escapeHtml(row.phone || row.email || 'Coordonnees a completer')}</small></div></div>
+          <span class="groups-date-cell">${escapeHtml(date)}</span>
+          <span>${renderStaffGroupTypeBadge(activity, getStaffGroupActivityLabel(activity, reservation))}</span>
+          <span>${Number(reservation.pax || row.maxPax || row.players || 0)} pers.</span>
+          <span>${renderStaffGroupStatusBadge(reservation)}</span>
+          <strong>${formatMoney(row.spent || reservation.price || 0)}</strong>
+          <span class="groups-row-actions">
+            <button type="button" onclick="${getStaffGroupProfileAction(row, 'client')}" aria-label="Voir ${escapeHtml(row.name || 'groupe')}">${renderStaffClientIcon('user')}</button>
+            <button type="button" onclick="${getStaffGroupContactAction(row)}" aria-label="Contacter ${escapeHtml(row.name || 'groupe')}">${renderStaffClientIcon('mail')}</button>
+            <button type="button" onclick="${getStaffGroupReservationAction(reservation, row)}" aria-label="Ouvrir reservation">${renderStaffClientIcon('columns')}</button>
+          </span>
+        </article>`;
+      }).join('') : `<div class="groups-empty-note">Aucun groupe ne correspond aux filtres.</div>`}
+    </div>
+    ${rows.length > 12 ? `<button type="button" class="groups-show-more" onclick="setStaffGroupFilter('date', 'all')">Voir tous les profils</button>` : ''}
+  </section>`;
+}
+
+function renderStaffGroupWorkspaceV2(rows = []) {
+  if (!rows.length) {
+    const loading = !!staffClientDataCache.loading;
+    const error = staffClientDataCache.error || '';
+    return `<div class="groups-page">
+      <section class="groups-empty-state">
+        <span>${loading ? 'Synchronisation' : error ? 'Lecture impossible' : 'Aucun groupe'}</span>
+        <h2>${loading ? 'Chargement des profils groupes' : error ? 'Donnees groupes indisponibles' : 'Aucun groupe repere pour le moment'}</h2>
+        <p>${loading ? 'Pinlane lit les reservations reelles du centre pour consolider anniversaires, ecoles, entreprises et gros volumes.' : error || 'Les profils apparaitront automatiquement quand une reservation contient un gros groupe, une formule ou un anniversaire.'}</p>
+        <div>
+          ${renderStaffGroupActionButton('Nouvelle reservation groupe', "openQuickBook({ date: state.currentDate, type: 'formule' })", 'primary')}
+          ${renderStaffGroupActionButton('Actualiser', 'loadStaffClientData(true)')}
+        </div>
+      </section>
+    </div>`;
+  }
+
+  const allRows = [...rows].sort((left, right) => {
+    const leftNext = getStaffGroupNextReservation(left);
+    const rightNext = getStaffGroupNextReservation(right);
+    const leftKey = `${leftNext?.date || '9999-12-31'} ${leftNext?.startTime || '23:59'}`;
+    const rightKey = `${rightNext?.date || '9999-12-31'} ${rightNext?.startTime || '23:59'}`;
+    const dateDelta = leftKey.localeCompare(rightKey);
+    if (dateDelta) return dateDelta;
+    return Number(right.spent || 0) - Number(left.spent || 0);
+  });
+  const filteredRows = getFilteredStaffGroupRows(allRows);
+  const agenda = getStaffGroupAgenda(filteredRows.length ? filteredRows : allRows);
+  const followUps = (filteredRows.length ? filteredRows : allRows)
+    .map(row => ({ row, reservation: getStaffGroupNextReservation(row) || {} }))
+    .filter(item => needsStaffGroupFollowup(item.row, item.reservation));
+  const focusItem = agenda[0] || {
+    row: filteredRows[0] || allRows[0],
+    reservation: getStaffGroupNextReservation(filteredRows[0] || allRows[0]) || {}
+  };
+
+  return `<div class="groups-page">
+    ${renderStaffGroupToolbar(allRows, filteredRows, agenda, followUps)}
+    <div class="groups-main-layout">
+      <div class="groups-primary-stack">
+        ${renderStaffGroupSelected(focusItem)}
+        ${renderStaffGroupTable(filteredRows)}
+      </div>
+      <aside class="groups-side-stack">
+        ${renderStaffGroupAgendaPanel(agenda)}
+        ${renderStaffGroupActionsPanel(followUps)}
+      </aside>
+    </div>
+  </div>`;
+}
+
 function renderStaffUtilityGroupBoard(rows = []) {
-  return renderStaffGroupWorkspace(rows);
+  return renderStaffGroupWorkspaceV2(rows);
 }
 
 function renderStaffUtilityContactLedger(rows = []) {
@@ -5649,10 +6024,11 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     return {
       ...base,
       layout: 'groups',
-      eyebrow: 'Clients',
+      eyebrow: 'Groupes & anniversaires',
       title: 'Groupes & anniversaires',
-      subtitle: 'Profils réels repérés par volume, formules ou libellés anniversaire.',
+      subtitle: 'Suivi operationnel des groupes, anniversaires, entreprises et actions commerciales.',
       panelSubtitle: `${groupRows.length} profil${groupRows.length > 1 ? 's' : ''} consolidé${groupRows.length > 1 ? 's' : ''} · ${groupRows.reduce((sum, row) => sum + Number(row.players || 0), 0)} joueur(s) cumulés · suivi groupes prêt terrain`,
+      hidePanelHead: true,
       kpis: [
         ['Groupes', groupRows.length, 'profils actifs'],
         ['Joueurs cumulés', groupRows.reduce((sum, row) => sum + Number(row.players || 0), 0), 'historique'],
@@ -5816,15 +6192,25 @@ function renderStaffUtilityPage() {
   if (!root) return;
   const model = getStaffUtilityPageModel();
   const dateLabel = parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const heroSubtitle = model.hidePanelHead
+    ? escapeHtml(model.subtitle)
+    : `${escapeHtml(model.subtitle)} · ${escapeHtml(dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1))}`;
   const overviewPages = new Set(['users', 'establishment', 'settings']);
   const archivePages = new Set(['groups', 'contacts']);
+  const panelHead = model.hidePanelHead ? '' : `<div class="utility-panel-head">
+        <div>
+          <h2>${escapeHtml(model.title)}</h2>
+          <p>${escapeHtml(model.panelSubtitle || getStaffUtilitySyncLabel())}</p>
+        </div>
+        <button type="button" onclick="renderStaffUtilityPage()">Rafraîchir</button>
+      </div>`;
   root.className = `staff-utility-page utility-page-${escapeHtml(model.page)} utility-layout-${escapeHtml(model.layout || 'default')}`;
   root.innerHTML = `
     <section class="utility-hero">
       <div>
         <span>${escapeHtml(model.eyebrow)}</span>
         <h1>${escapeHtml(model.title)}</h1>
-        <p>${escapeHtml(model.subtitle)} · ${escapeHtml(dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1))}</p>
+        <p>${heroSubtitle}</p>
       </div>
       <div class="utility-actions">
         <button type="button" onclick="openStaffDatePicker()">Changer date</button>
@@ -5833,14 +6219,8 @@ function renderStaffUtilityPage() {
       </div>
     </section>
     ${overviewPages.has(model.page) ? renderStaffUtilityOverview(model) : ''}
-    <section class="utility-panel">
-      <div class="utility-panel-head">
-        <div>
-          <h2>${escapeHtml(model.title)}</h2>
-          <p>${escapeHtml(model.panelSubtitle || getStaffUtilitySyncLabel())}</p>
-        </div>
-        <button type="button" onclick="renderStaffUtilityPage()">Rafraîchir</button>
-      </div>
+    <section class="utility-panel ${model.hidePanelHead ? 'utility-panel-flat' : ''}">
+      ${panelHead}
       ${model.body}
     </section>
   `;

@@ -304,6 +304,11 @@ async function collectIssues(page, scopeLabel) {
       '.dash-kpi',
       '.dash-card',
       '.dash-status-strip',
+      '.groups-page',
+      '.groups-toolbar-card',
+      '.groups-selected-card',
+      '.groups-ledger-row',
+      '.groups-side-card',
     ].join(',');
 
     document.querySelectorAll(watched).forEach((el) => {
@@ -401,6 +406,10 @@ async function main() {
     await renderStaffPage(page, 'clients');
     await screenshot(page, 'staff-clients-stress');
     issues.push(...await collectIssues(page, 'staff-clients'));
+
+    await renderStaffPage(page, 'groups');
+    await screenshot(page, 'staff-groups-stress');
+    issues.push(...await collectIssues(page, 'staff-groups'));
 
     await renderStaffPage(page, 'reservations');
     await screenshot(page, 'staff-reservations-stress');

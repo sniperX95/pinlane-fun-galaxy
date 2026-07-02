@@ -50,7 +50,7 @@ function addWarn(message) {
 }
 
 const index = read('index.html');
-const appShell = read(path.join('assets', 'app-shell.css'));
+const staffCss = read(path.join('assets', 'pinlane-staff.css'));
 const appMain = read(path.join('assets', 'app-main.js'));
 const bookingCore = read(path.join('assets', 'booking-core.js'));
 const adminConsole = read(path.join('assets', 'admin-console.js'));
@@ -59,10 +59,10 @@ const storageAdapter = read(path.join('assets', 'storage-adapter.js'));
 const staffAuthSession = read(path.join('assets', 'staff-auth-session.js'));
 const apiClient = read(path.join('assets', 'api-client.js'));
 
-if (!/assets\/app-shell\.css/.test(index) || !/assets\/app-main\.js/.test(index)) {
-  addFail('index.html must stay a thin shell that loads assets/app-shell.css and assets/app-main.js.');
+if (!/assets\/pinlane\.css/.test(index) || !/assets\/app-main\.js/.test(index)) {
+  addFail('index.html must stay a thin shell that loads assets/pinlane.css and assets/app-main.js.');
 }
-if (/<style[^>]*>[\s\S]{200,}<\/style>/i.test(index) || /<script(?![^>]*\bsrc=)[^>]*>[\s\S]{200,}<\/script>/i.test(index)) {
+if (/<style[^>]*>(?:(?!<\/style>)[\s\S]){200,}<\/style>/i.test(index) || /<script(?![^>]*\bsrc=)[^>]*>(?:(?!<\/script>)[\s\S]){200,}<\/script>/i.test(index)) {
   addFail('index.html must not contain large inline CSS or JavaScript blocks.');
 }
 if (!/assets\/booking-core\.js/.test(index) || !/PinlaneBookingCore/.test(bookingCore)) {
@@ -183,8 +183,8 @@ if (!/function\s+apiRequest[\s\S]{0,500}window\.location\.origin/.test(appMain))
   addFail('apiRequest must resolve relative API URLs against window.location.origin.');
 }
 
-if (!/body\.staff-mode\s+#logoutBtn,\s*body\.admin-mode\s+#logoutBtn\s*\{[\s\S]{0,500}display:\s*none\s*!important[\s\S]{0,500}top:\s*auto\s*!important[\s\S]{0,500}bottom:\s*auto\s*!important/.test(appShell)) {
-  addFail('Global logout button must be hidden and position-reset in staff/admin mode.');
+if (!/body\.staff-mode\s+#logoutBtn,\s*body\.admin-mode\s+#logoutBtn\s*\{[\s\S]{0,500}display:\s*none\s*!important[\s\S]{0,500}top:\s*auto\s*!important[\s\S]{0,500}bottom:\s*auto\s*!important/.test(staffCss)) {
+  addFail('Global logout button must be hidden and position-reset in staff/admin mode (assets/pinlane-staff.css).');
 }
 
 const staffMenu = read(path.join('assets', 'staff-menu.js'));
@@ -194,22 +194,56 @@ if (!/data-fgx-menu-action="logout"/.test(staffMenu) || !/typeof\s+logout\s*===\
 
 const stylesheetLinks = [...index.matchAll(/<link\s+rel=["']stylesheet["']\s+href=["']([^"']+\.css)(?:\?[^"']*)?["']\s*>/gi)]
   .map((match) => match[1]);
-if (stylesheetLinks.at(-1) !== './assets/pinlane-design-system.css') {
-  addFail('assets/pinlane-design-system.css must be the final stylesheet loaded by index.html.');
-}
-if (!stylesheetLinks.includes('./assets/app-final-guard.css')) {
-  addFail('assets/app-final-guard.css must stay loaded by index.html.');
+const expectedStylesheets = ['./assets/pinlane.css', './assets/pinlane-staff.css', './assets/pinlane-client.css'];
+if (JSON.stringify(stylesheetLinks) !== JSON.stringify(expectedStylesheets)) {
+  addFail('index.html must load exactly pinlane.css, pinlane-staff.css, pinlane-client.css in that order (DESIGN.md §8).');
 }
 
-const finalGuard = read(path.join('assets', 'app-final-guard.css'));
-if (!/body\.staff-mode\s+#logoutBtn,\s*body\.admin-mode\s+#logoutBtn[\s\S]{0,420}visibility:\s*hidden\s*!important[\s\S]{0,420}pointer-events:\s*none\s*!important/.test(finalGuard)) {
-  addFail('Final guard must hard-hide the global logout button in staff/admin mode.');
+if (!/body\.staff-mode\s+#logoutBtn,\s*body\.admin-mode\s+#logoutBtn[\s\S]{0,420}visibility:\s*hidden\s*!important[\s\S]{0,420}pointer-events:\s*none\s*!important/.test(staffCss)) {
+  addFail('Staff layer must hard-hide the global logout button in staff/admin mode.');
 }
-if (!/\.fgx-menu-popover\s*\{[\s\S]{0,520}max-height:\s*min\(420px,\s*calc\(100dvh - 96px\)\)\s*!important[\s\S]{0,520}overflow:\s*auto\s*!important/.test(finalGuard)) {
-  addFail('Final guard must constrain staff menu popovers to prevent oversized overlays.');
+if (!/\.fgx-menu-popover\s*\{[\s\S]{0,520}max-height:\s*min\(420px,\s*calc\(100dvh - 96px\)\)\s*!important[\s\S]{0,520}overflow:\s*auto\s*!important/.test(staffCss)) {
+  addFail('Staff layer must constrain staff menu popovers to prevent oversized overlays.');
 }
-if (!/body\.staff-mode\s+main,\s*body\.admin-mode\s+main\s*\{[\s\S]{0,360}width:\s*calc\(100vw - var\(--fgx-sidebar-width\)\)\s*!important[\s\S]{0,360}margin-left:\s*var\(--fgx-sidebar-width\)\s*!important/.test(finalGuard)) {
-  addFail('Final guard must keep staff/admin main content inside the viewport beside the sidebar.');
+if (!/body\.staff-mode\s+main,\s*body\.admin-mode\s+main\s*\{[\s\S]{0,360}width:\s*calc\(100vw - var\(--fgx-sidebar-width\)\)\s*!important[\s\S]{0,360}margin-left:\s*var\(--fgx-sidebar-width\)\s*!important/.test(staffCss)) {
+  addFail('Staff layer must keep staff/admin main content inside the viewport beside the sidebar.');
+}
+
+const obsoleteStylesheets = [
+  'app-shell.css',
+  'staff-dashboard.css',
+  'staff-clients.css',
+  'staff-reservations.css',
+  'staff-pricing.css',
+  'staff-emails.css',
+  'staff-campaigns.css',
+  'pro-sober-theme.css',
+  'staff-menu.css',
+  'production-hardening.css',
+  'premium-finish.css',
+  'promptly-product-theme.css',
+  'app-final-guard.css',
+  'pinlane-kiss-refactor.css',
+  'pinlane-v2.css',
+  'pinlane-design-system.css',
+];
+for (const sheet of obsoleteStylesheets) {
+  if (fs.existsSync(path.join(root, 'assets', sheet))) {
+    addFail(`Obsolete legacy stylesheet must be deleted: assets/${sheet}`);
+  }
+}
+for (const page of ['index.html', 'public-form.html', 'pro.html', 'direction.html']) {
+  const html = read(page);
+  if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html)) {
+    addFail(`${page} must not load remote Google Fonts; Geist is self-hosted (DESIGN.md §4).`);
+  }
+}
+/* Le branding tenant (logos SVG inline dans le HTML) garde ses couleurs ; seule l'UI est tokenisée. */
+for (const file of productionFiles()) {
+  if (!/\.css$/i.test(file)) continue;
+  if (/#b8ad9b|#b356ad|#5ec8c8/i.test(read(file))) {
+    addFail(`Legacy palette value (platinum/magenta/teal) found in ${file}; use DESIGN.md v2 tokens.`);
+  }
 }
 
 const vercelIgnore = read('.vercelignore');

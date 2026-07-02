@@ -143,13 +143,14 @@ async function main() {
   assert(/applyMenuGroupOpen\(groupToggle,\s*nextOpen,\s*\{\s*animate:\s*true\s*\}\)/.test(staffMenuSource), 'group toggles do not request animated state changes');
   assert(staffMenuSource.includes('FGX_STAFF_MENU_GROUP_TARGETS'), 'staff menu group targets are not exposed for diagnostics');
 
-  const staffMenuCss = fs.readFileSync(path.join(root, 'assets', 'staff-menu.css'), 'utf8');
+  const staffMenuCss = fs.readFileSync(path.join(root, 'assets', 'pinlane-staff.css'), 'utf8');
   assert(
-    /ops-sidebar\[data-staff-menu-root\][\s\S]{0,260}\.fgx-menu-subnav[\s\S]{0,260}display:\s*none\s*!important/.test(staffMenuCss),
+    /body\.staff-menu-collapsed[\s\S]{0,600}\.fgx-menu-subnav\s*\{\s*display:\s*none/.test(staffMenuCss),
     'collapsed staff menu must hide subnavs so parent buttons remain the only collapsed affordance'
   );
   assert(
-    /transition-property:\s*max-height,\s*opacity,\s*transform,\s*margin,\s*padding,\s*border-color,\s*visibility/.test(staffMenuCss),
+    /\.fgx-menu-subnav\s*\{[\s\S]{0,600}transition:\s*max-height[\s\S]{0,200}opacity[\s\S]{0,200}margin/.test(staffMenuCss)
+      && !/\.fgx-menu-subnav\s*\{[\s\S]{0,600}transition:\s*all/.test(staffMenuCss),
     'staff menu group animation must transition only the changed properties'
   );
 

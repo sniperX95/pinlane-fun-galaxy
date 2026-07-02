@@ -69,12 +69,16 @@
       const span = Math.max(max - min, 1);
       const px = (i) => (i / (series.length - 1)) * (w - 4) + 2;
       const py = (v) => h - 5 - ((v - min) / span) * (h - 12);
+      const accent = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#0070f3').trim();
+      const rgb = /^#([0-9a-f]{6})$/i.test(accent)
+        ? [parseInt(accent.slice(1, 3), 16), parseInt(accent.slice(3, 5), 16), parseInt(accent.slice(5, 7), 16)]
+        : [0, 112, 243];
       const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, 'rgba(184, 173, 155, 0.28)');
-      grad.addColorStop(1, 'rgba(184, 173, 155, 0)');
+      grad.addColorStop(0, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.28)`);
+      grad.addColorStop(1, `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0)`);
       ctx.beginPath();
       series.forEach((v, i) => (i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v))));
-      ctx.strokeStyle = 'rgba(205, 196, 180, 0.95)';
+      ctx.strokeStyle = accent;
       ctx.lineWidth = 1.6;
       ctx.lineJoin = 'round';
       ctx.stroke();

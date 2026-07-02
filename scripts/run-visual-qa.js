@@ -222,6 +222,24 @@ async function installQaApi(page) {
         return jsonResponse({ ok: true, slots: [] });
       }
 
+      if (url.pathname === '/api/ops') {
+        return jsonResponse({
+          ok: true,
+          communications: [],
+          samples: [],
+          suggestions: [],
+          events: [],
+          ecosystem: null,
+          agents: [],
+          activations: [],
+          orchestration: {},
+        });
+      }
+
+      if (url.pathname === '/api/simulation') {
+        return jsonResponse({ ok: true, run: null, communications: [], stats: {}, logs: [] });
+      }
+
       if (url.pathname === '/api/admin-range') {
         window.__PINLANE_QA_ADMIN_RANGE_CALLS__.push(url.href);
         return jsonResponse({
@@ -309,6 +327,26 @@ async function collectIssues(page, scopeLabel) {
       '.groups-selected-card',
       '.groups-ledger-row',
       '.groups-side-card',
+      '.admin-shell',
+      '.admin-hero',
+      '.admin-center-card',
+      '.admin-kpi',
+      '.admin-panel',
+      '.admin-table-wrap',
+      '.admin-insight',
+      '.admin-platform-card',
+      '.admin-health-card',
+      '.admin-benchmark-card',
+      '.ops-row',
+      '.ops-stat',
+      '.ops-review-item',
+      '.ops-review-alt',
+      '.ops-sim-profile',
+      '.ops-sim-command-link',
+      '.ops-sim-comm-row',
+      '.ops-sim-card',
+      '.ai-live-agent',
+      '.ai-problem-card',
     ].join(',');
 
     document.querySelectorAll(watched).forEach((el) => {
@@ -455,6 +493,36 @@ async function main() {
       adminRangeAfterEvents === adminRangeBeforeEvents,
       'La page Evenements ne doit pas declencher /api/admin-range.'
     );
+
+    // Vue Direction (console CEO) — overview + chaque onglet + sous-onglets ops.
+    // Le mock renvoie peu de données admin : on valide surtout la structure
+    // (pas d'overflow, pas de texte qui se chevauche) sur Mails & agents / Simulation.
+    await page.evaluate(() => setView('admin'));
+    await page.locator('#adminView:not(.hidden)').waitFor({ timeout: 10000 });
+    await page.waitForTimeout(900);
+    await screenshot(page, 'direction-overview');
+    issues.push(...await collectIssues(page, 'direction-overview'));
+
+    for (const adminTab of ['overview', 'reservations', 'clients', 'ops', 'exports']) {
+      await page.evaluate((tab) => setAdminTab(tab), adminTab);
+      await page.waitForTimeout(650);
+      await screenshot(page, `direction-${adminTab}`);
+      issues.push(...await collectIssues(page, `direction-${adminTab}`));
+    }
+
+    // Sous-onglets du panneau ops (le drame historique se concentre ici)
+    await page.evaluate(() => setAdminTab('ops'));
+    await page.waitForTimeout(500);
+    for (const opsTab of ['communications', 'samples', 'suggestions', 'stack', 'events', 'simulation']) {
+      await page.evaluate((tab) => setOpsTab(tab), opsTab);
+      await page.waitForTimeout(750);
+      await screenshot(page, `direction-ops-${opsTab}`);
+      issues.push(...await collectIssues(page, `direction-ops-${opsTab}`));
+    }
+
+    // Retour console staff pour la suite du parcours QA
+    await page.evaluate(() => setView('staff'));
+    await page.waitForTimeout(500);
 
     // Navigation staff → client via le popover du compte (regression: on doit
     // toujours pouvoir quitter la console pour revenir au site de réservation).

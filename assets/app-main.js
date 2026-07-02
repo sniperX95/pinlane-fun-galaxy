@@ -5011,32 +5011,42 @@ function renderStaffGroupSelected(item = {}) {
   const row = item.row || {};
   const reservation = item.reservation || getStaffGroupNextReservation(row) || {};
   const activityKey = getStaffGroupActivityKey(row, reservation);
-  const reservationDate = reservation.date ? `${formatStaffGroupReservationDate(reservation)} · ${getStaffUtilityStartLabel(reservation)}` : 'A planifier';
+  const hasReservation = !!reservation.id;
+  const reservationDate = reservation.date ? `${formatStaffGroupReservationDate(reservation)} · ${getStaffUtilityStartLabel(reservation)}` : 'À planifier';
   const pax = Number(reservation.pax || row.maxPax || row.players || 0);
+  const players = Number(row.players || pax || 0);
   const value = Number(row.spent || reservation.price || 0);
+  const phone = row.phone || '';
+  const email = row.email || '';
+  const contactChips = [
+    phone ? `<a class="groups-contact-chip" href="tel:${escapeHtml(phone)}">${renderStaffClientIcon('phone')}<span>${escapeHtml(phone)}</span></a>` : '',
+    email ? `<a class="groups-contact-chip" href="mailto:${escapeHtml(email)}" title="${escapeHtml(email)}">${renderStaffClientIcon('mail')}<span class="groups-contact-email">${escapeHtml(email)}</span></a>` : ''
+  ].filter(Boolean).join('');
   return `<section class="groups-selected-card">
     <div class="groups-selected-header">
-      <span class="groups-avatar groups-avatar-${escapeHtml(row.avatarTone || 'violet')}">${escapeHtml(row.initials || getStaffClientInitials(row.name || 'Groupe'))}</span>
-      <div>
+      <span class="groups-avatar">${escapeHtml(row.initials || getStaffClientInitials(row.name || 'Groupe'))}</span>
+      <div class="groups-selected-ident">
         <div class="groups-selected-title">
           <h2>${escapeHtml(row.name || reservation.name || 'Groupe')}</h2>
           ${renderStaffGroupStatusBadge(reservation)}
+          ${renderStaffGroupTypeBadge(activityKey, getStaffGroupActivityLabel(activityKey, reservation))}
         </div>
-        <p>${escapeHtml(getStaffGroupKind(row))} · ${Number(row.players || pax || 0)} joueur(s) cumules</p>
+        <p>${escapeHtml(getStaffGroupKind(row))} · ${players} joueur(s) cumulés</p>
       </div>
     </div>
     <div class="groups-selected-grid">
       <div><span>Prochaine visite</span><strong>${escapeHtml(reservationDate)}</strong></div>
-      <div><span>Activite</span><strong>${escapeHtml(getStaffGroupActivityLabel(activityKey, reservation))}</strong></div>
-      <div><span>Contact</span><strong>${escapeHtml(getStaffGroupContact(row))}</strong></div>
-      <div><span>Taille du groupe</span><strong>${escapeHtml(pax ? `${pax} personnes` : `${Number(row.players || 0)} cumules`)}</strong></div>
-      <div><span>Valeur potentielle</span><strong>${formatMoney(value)}</strong></div>
+      <div><span>Taille du groupe</span><strong class="num">${escapeHtml(pax ? `${pax} pers.` : `${players} cumulés`)}</strong></div>
+      <div><span>Valeur ${hasReservation ? 'réservation' : 'potentielle'}</span><strong class="num">${formatMoney(value)}</strong></div>
+    </div>
+    <div class="groups-selected-contact">
+      ${contactChips || `<span class="groups-contact-empty">Coordonnées à compléter</span>`}
     </div>
     <div class="groups-selected-actions">
-      ${renderStaffGroupActionButton('Voir reservation', getStaffGroupReservationAction(reservation, row), 'primary')}
-      ${renderStaffGroupActionButton('Modifier', getStaffGroupReservationAction(reservation, row))}
-      ${renderStaffGroupActionButton('Contacter', getStaffGroupContactAction(row))}
-      ${renderStaffGroupActionButton('Plus', getStaffGroupProfileAction(row, 'client'), 'icon')}
+      ${hasReservation
+        ? renderStaffGroupActionButton('Voir la réservation', `openStaffReservationDetail(${staffClientJs(reservation.id)})`, 'primary')
+        : renderStaffGroupActionButton('Planifier une visite', getStaffGroupProfileAction(row, 'book'), 'primary')}
+      ${renderStaffGroupActionButton('Fiche client', getStaffGroupProfileAction(row, 'client'))}
     </div>
   </section>`;
 }

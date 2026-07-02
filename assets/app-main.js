@@ -5583,9 +5583,11 @@ function renderStaffUtilityEstablishment() {
       </div>
       <div class="establishment-center-list">
         ${centers.map(c => `<button type="button" class="establishment-center-chip ${c.id === center.id ? 'active' : ''}" onclick="selectEstablishmentCenter('${escapeJsString(c.id)}')">
-          <strong>${escapeHtml(c.name)}</strong>
-          <span class="establishment-status establishment-status-${escapeHtml(c.status)}">${escapeHtml(statusLabels[c.status] || c.status)}</span>
-          <small>${Number(c.resources?.bowling?.laneCount || 0)} pistes · ${Number(c.resources?.laser?.weaponCount || 0)} armes</small>
+          <span class="establishment-chip-top">
+            <strong>${escapeHtml(c.name)}</strong>
+            <span class="establishment-status establishment-status-${escapeHtml(c.status)}">${escapeHtml(statusLabels[c.status] || c.status)}</span>
+          </span>
+          <small>${Number(c.resources?.bowling?.laneCount || 0)} pistes · ${Number(c.resources?.laser?.weaponCount || 0)} armes laser</small>
         </button>`).join('')}
         ${canEdit ? `<div class="establishment-add">
           <span>Ajouter un centre</span>
@@ -6337,17 +6339,11 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       layout: 'establishment',
       eyebrow: 'Paramètres',
       title: 'Établissement',
-      subtitle: 'Configuration centre, horaires, capacités et ressources.',
-      primaryLabel: 'Direction',
+      subtitle: 'Configuration des centres lue par le moteur.',
+      hidePanelHead: true,
+      hideDateAction: true,
+      primaryLabel: 'Ouvrir la direction',
       primaryAction: "setView('admin'); setAdminTab('overview')",
-      secondaryLabel: 'Actualiser Ops',
-      secondaryAction: 'loadOpsAdmin(true)',
-      kpis: [
-        ['Centre actif', getAdminCenter(getActiveOpsCenterId())?.name || 'Libramont', 'scope staff'],
-        ['Pistes', TOTAL_LANES, 'bowling'],
-        ['Laser', LASER_GAME_MAX_PLAYERS, 'armes disponibles'],
-        ['Ouverture', getPlanningWindow(state.currentDate).label, 'date affichée']
-      ],
       body: renderStaffUtilityEstablishment()
     };
   }
@@ -6408,7 +6404,7 @@ function renderStaffUtilityPage() {
   const heroSubtitle = model.hidePanelHead
     ? escapeHtml(model.subtitle)
     : `${escapeHtml(model.subtitle)} · ${escapeHtml(dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1))}`;
-  const overviewPages = new Set(['users', 'establishment', 'settings']);
+  const overviewPages = new Set(['users', 'settings']);
   const archivePages = new Set(['groups', 'contacts']);
   const panelHead = model.hidePanelHead ? '' : `<div class="utility-panel-head">
         <div>
@@ -6426,7 +6422,7 @@ function renderStaffUtilityPage() {
         <p>${heroSubtitle}</p>
       </div>
       <div class="utility-actions">
-        <button type="button" onclick="openStaffDatePicker()">Changer date</button>
+        ${model.hideDateAction ? '' : `<button type="button" onclick="openStaffDatePicker()">Changer date</button>`}
         ${model.secondaryAction ? `<button type="button" onclick="${model.secondaryAction}">${escapeHtml(model.secondaryLabel)}</button>` : ''}
         ${model.primaryAction ? `<button type="button" class="primary" onclick="${model.primaryAction}">${escapeHtml(model.primaryLabel)}</button>` : ''}
       </div>

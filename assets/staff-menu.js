@@ -1,5 +1,5 @@
 (function () {
-  const PLATFORM_MARK_SRC = './assets/brand/pinlane-source.png';
+  const PLATFORM_MARK_SRC = './assets/brand/pinlane-mark.svg';
   const COLLAPSE_KEY = 'fgx:staff-menu-collapsed';
   const GROUPS_KEY = 'fgx:staff-menu-groups';
   const DEFAULT_OPEN_GROUPS = { planning: false, field: false, activities: false };

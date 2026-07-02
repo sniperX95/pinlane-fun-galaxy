@@ -40,6 +40,11 @@ const MIGRATIONS = [
     file: 'database/pilot-leads-schema.sql',
     description: 'Pilot lead capture from the marketing landing',
   },
+  {
+    id: '0008_tenant_integrity',
+    file: 'database/tenant-integrity-schema.sql',
+    description: 'Foreign keys from center_id columns to centers(id)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

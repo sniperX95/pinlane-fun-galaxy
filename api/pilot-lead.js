@@ -1,5 +1,6 @@
 const { getPool } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
+const { enforceRateLimit } = require('../lib/rate-limit');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,6 +20,10 @@ module.exports = async (req, res) => {
 
   if (req.method !== 'POST') {
     sendError(res, 405, 'Méthode non autorisée.');
+    return;
+  }
+
+  if (enforceRateLimit(req, res, { scope: 'pilot-lead', limit: 5, windowMs: 600_000 })) {
     return;
   }
 

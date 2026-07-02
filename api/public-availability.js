@@ -18,6 +18,7 @@ const {
 } = require('../lib/booking-config');
 const { readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
 const { sendError, sendJson, setCors } = require('../lib/http');
+const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
 const { getActivity, getCenter, getFormula } = require('../lib/ops-knowledge');
 
@@ -619,6 +620,10 @@ module.exports = async (req, res) => {
 
   if (req.method !== 'GET') {
     sendError(res, 405, 'Méthode non autorisée.');
+    return;
+  }
+
+  if (enforceRateLimit(req, res, { scope: 'public-availability', limit: 60, windowMs: 60_000 })) {
     return;
   }
 

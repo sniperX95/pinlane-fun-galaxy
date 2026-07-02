@@ -3,6 +3,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
+const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
   setCors(res);
@@ -15,6 +16,10 @@ module.exports = async (req, res) => {
 
   if (req.method !== 'POST') {
     sendError(res, 405, 'Méthode non autorisée.');
+    return;
+  }
+
+  if (enforceRateLimit(req, res, { scope: 'public-reservations', limit: 10, windowMs: 60_000 })) {
     return;
   }
 

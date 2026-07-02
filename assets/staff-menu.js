@@ -489,6 +489,13 @@
           <small>${escapeHtml(themeSummary)}</small>
         </span>
       </button>
+      <button type="button" class="fgx-menu-option" data-fgx-menu-action="client" role="menuitem">
+        <span class="fgx-menu-option-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16l-1-4H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg></span>
+        <span>
+          <strong>Espace client</strong>
+          <small>Site de r&eacute;servation public</small>
+        </span>
+      </button>
       <button type="button" class="fgx-menu-option danger" data-fgx-menu-action="logout" role="menuitem">
         <span class="fgx-menu-option-icon">${icons.arrivals}</span>
         <span>
@@ -547,6 +554,10 @@
         return;
       }
       if (typeof setView === 'function') setView('admin');
+      return;
+    }
+    if (action === 'client') {
+      if (typeof setView === 'function') setView('client');
       return;
     }
     if (action === 'users' || action === 'settings' || action === 'establishment') {

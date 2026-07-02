@@ -456,6 +456,16 @@ async function main() {
       'La page Evenements ne doit pas declencher /api/admin-range.'
     );
 
+    // Navigation staff → client via le popover du compte (regression: on doit
+    // toujours pouvoir quitter la console pour revenir au site de réservation).
+    await renderStaffPage(page, 'dashboard');
+    await page.locator('[data-fgx-account-menu]').first().click();
+    await page.waitForTimeout(250);
+    await page.locator('[data-fgx-menu-action="client"]').first().click();
+    await page.waitForTimeout(400);
+    const backToClient = await page.locator('#clientView:not(.hidden)').count();
+    assert(backToClient === 1, 'Le popover compte staff doit permettre de revenir à l espace client.');
+
     // Vue client (desktop) — parcours de réservation
     await page.evaluate(() => setView('client'));
     await page.waitForTimeout(700);

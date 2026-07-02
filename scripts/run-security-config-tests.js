@@ -44,7 +44,15 @@ function assertThrowsMessage(fn, pattern, label) {
 }
 
 try {
+  // Secure by default: a dev environment without the explicit opt-in flag must
+  // NOT enable fallbacks or hand out the demo codes.
   resetEnv({ NODE_ENV: 'development' });
+  assert.strictEqual(staffAuth.isProductionRuntime(), false);
+  assert.strictEqual(staffAuth.allowDevelopmentFallbacks(), false, 'dev fallbacks must be opt-in');
+  assertThrowsMessage(() => staffAuth.getPlatformOwnerCode(), /manquant/i, 'owner code needs opt-in or real secret');
+
+  // Explicit opt-in re-enables the local demo codes.
+  resetEnv({ NODE_ENV: 'development', ALLOW_INSECURE_STAFF_CODES: 'true' });
   assert.strictEqual(staffAuth.isProductionRuntime(), false);
   assert.strictEqual(staffAuth.allowDevelopmentFallbacks(), true);
   assert.strictEqual(staffAuth.getDirectionCode(), 'SESSION-DIRECTION');

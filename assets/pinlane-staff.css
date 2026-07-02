@@ -3730,29 +3730,66 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 /* ----------------------------------------------------------------------------
    13. CAMPAGNES — agent ops + brouillon centre (rendus dans la page pv2)
    -------------------------------------------------------------------------- */
-.campaign-agent-ops, .campaign-agent-grid { display: grid; gap: var(--space-3); }
-.campaign-agent-ops { padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
-.campaign-agent-ops-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
-.campaign-agent-ops-head h3, .campaign-agent-ops-head h2 { font-size: 15px; }
-.campaign-agent-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.campaign-agent-ops { display: grid; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.campaign-agent-ops-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
+.campaign-agent-ops-head h3, .campaign-agent-ops-head h2 { font-size: 16px; margin-top: 2px; }
+.campaign-agent-ops-head p { color: var(--muted); font-size: 12px; margin-top: 4px; max-width: 60ch; }
+.campaigns-eyebrow { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
 
-.campaign-agent-brief, .campaign-agent-brief-simple, .campaign-agent-summary, .campaign-agent-body {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  color: var(--muted);
+.campaign-agent-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.campaign-agent-actions > span { color: var(--muted); font-size: 12px; }
+.campaign-agent-actions button {
+  min-height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: background-color var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
+.campaign-agent-actions button:hover { background: var(--subtle); }
+.campaign-agent-actions button.primary { background: var(--text); border-color: var(--text); color: var(--surface); }
+.campaign-agent-actions button.primary:hover { opacity: 0.88; background: var(--text); }
+.campaign-agent-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.campaign-agent-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
-.campaign-agent-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--success); flex: none; }
+/* Bandeau de synthèse (Centres / Scripts / Signaux / Autonomie) */
+.campaign-agent-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
+.campaign-agent-summary > div { display: grid; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); }
+.campaign-agent-summary small { color: var(--muted); font-size: 11px; }
+.campaign-agent-summary strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 600; color: var(--text); line-height: 1.1; }
+.campaign-agent-summary span { color: var(--faint); font-size: 11px; }
+
 .campaign-agent-alert { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--warning-soft); color: var(--warning); font-size: 12px; }
-.campaign-agent-blocker { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); font-size: 12px; }
-.campaign-agent-problems { display: grid; gap: 4px; }
-.campaign-agent-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* Brief agent (chemin legacy renderStaffCampaignDraft, survie) */
+.campaign-agent-brief { display: flex; gap: 10px; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); font-size: 12px; color: var(--muted); }
+.campaign-agent-brief > span svg { width: 16px; height: 16px; color: var(--muted); }
+.campaign-agent-brief strong { display: block; color: var(--text); font-size: 13px; font-weight: 600; }
+.campaign-agent-brief small { color: var(--faint); font-size: 11px; }
+
+/* Corps : cartes d'agents + panneau des blocages */
+.campaign-agent-body { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr); gap: var(--space-3); align-items: start; }
+.campaign-agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); }
+
+/* Carte d'un agent (article.campaign-agent-status) */
+.campaign-agent-status { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); font-size: 12px; color: var(--muted); }
+.campaign-agent-status > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.campaign-agent-status strong { color: var(--text); font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-agent-status small { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-agent-status b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 600; color: var(--text); }
+.campaign-agent-status p { color: var(--text); font-size: 12px; }
+.campaign-agent-status em { font-style: normal; color: var(--muted); font-size: 11px; }
+.campaign-agent-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--success); flex: none; }
+
+.campaign-agent-problems { display: grid; gap: 8px; align-content: start; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); }
+.campaign-agent-problems h3 { font-size: 13px; }
+.campaign-agent-problems > div { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.campaign-agent-problems > div strong { color: var(--text); font-size: 12px; font-weight: 600; }
+.campaign-agent-problems > div span { color: var(--text); font-size: 12px; }
+.campaign-agent-problems > div p { color: var(--muted); font-size: 11px; }
+.campaign-agent-problems > p { color: var(--muted); font-size: 12px; }
+.campaign-agent-problems > small { color: var(--faint); font-size: 11px; }
+.campaign-agent-blocker { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger); font-size: 12px; }
+.campaign-agent-blocker.medium { background: var(--warning-soft); color: var(--warning); }
+.campaign-agent-blocker strong { font-weight: 600; }
+
+/* Draft prêt à copier (par centre) */
 .campaign-center-draft {
   display: grid;
   gap: var(--space-2);
@@ -3765,8 +3802,40 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 .campaign-center-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.campaign-center-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.campaign-center-head h3 { color: var(--text); font-size: 14px; margin-top: 1px; }
+.campaign-center-head button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface);
+  color: var(--text); font-family: var(--font-ui); font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.campaign-center-head button:hover { background: var(--subtle); }
+.campaign-center-head button svg { width: 13px; height: 13px; }
+
+.campaign-center-draft textarea {
+  width: 100%; min-height: 150px; padding: 10px 12px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+  font-family: var(--font-ui); font-size: 13px; line-height: 1.55; resize: vertical;
+}
+.campaign-center-draft textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.campaign-center-tools { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.campaign-center-tools > span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.campaign-center-tools > span svg { width: 13px; height: 13px; color: var(--success); }
+
+.campaign-tone-pills { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.campaign-tone-pills button {
+  min-height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-full);
+  background: var(--surface); color: var(--muted); font-family: var(--font-ui); font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.campaign-tone-pills button:hover { background: var(--subtle); color: var(--text); border-color: var(--faint); }
+
 .campaign-safe-strip { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--subtle); color: var(--muted); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .campaign-agent-body { grid-template-columns: 1fr; }
+}
 
 /* ----------------------------------------------------------------------------
    14. LEGACY FALLBACK — renderers app-main historiques (clients / réservations /

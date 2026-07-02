@@ -17,6 +17,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/pilot-lead",
+      "destination": "/api/public-booking-meta"
+    },
+    {
       "source": "/api/cron/dispatch-communications",
       "destination": "/api/cron?action=dispatch-communications"
     },

@@ -415,6 +415,18 @@ async function main() {
     await screenshot(page, 'staff-reservations-stress');
     issues.push(...await collectIssues(page, 'staff-reservations'));
 
+    await renderStaffPage(page, 'emails');
+    await screenshot(page, 'staff-emails-stress');
+    issues.push(...await collectIssues(page, 'staff-emails'));
+
+    await renderStaffPage(page, 'campaigns');
+    await screenshot(page, 'staff-campaigns-stress');
+    issues.push(...await collectIssues(page, 'staff-campaigns'));
+
+    await renderStaffPage(page, 'prices');
+    await screenshot(page, 'staff-pricing-stress');
+    issues.push(...await collectIssues(page, 'staff-pricing'));
+
     const adminRangeBeforeEvents = await page.evaluate(() => (
       Array.isArray(window.__PINLANE_QA_ADMIN_RANGE_CALLS__)
         ? window.__PINLANE_QA_ADMIN_RANGE_CALLS__.length

@@ -52,6 +52,10 @@ Copier `.env.example` vers `.env` puis remplir:
   - accepte du JSON
   - gere la reservation centrale
 
+- `POST /api/pilot-lead`
+  - capture les demandes de pilote du formulaire de la landing `pro.html`
+  - stocke le lead en base (`pilot_leads`), remplace l'ancien mailto
+
 - `GET /api/public-booking-meta`
   - retourne les formules et les durees cote public
 

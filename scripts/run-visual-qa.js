@@ -494,6 +494,14 @@ async function main() {
     await page.waitForTimeout(500);
     await screenshot(page, 'staff-establishment');
     issues.push(...await collectIssues(page, 'staff-establishment'));
+    // Mode édition (clic sur Modifier)
+    const editBtn = page.locator('.establishment-editor-actions button', { hasText: 'Modifier' });
+    if (await editBtn.count()) {
+      await editBtn.first().click();
+      await page.waitForTimeout(300);
+      await screenshot(page, 'staff-establishment-edit');
+      issues.push(...await collectIssues(page, 'staff-establishment-edit'));
+    }
 
     // Passe thème clair sur les écrans clés (le système v2 est bi-thème)
     await page.evaluate(() => setStaffTheme('light'));

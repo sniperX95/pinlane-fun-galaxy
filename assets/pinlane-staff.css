@@ -3027,6 +3027,26 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-activity.on { border-color: var(--accent); background: var(--accent-soft); }
 .establishment-activity input { width: 15px; height: 15px; flex: none; }
 
+/* Statut à côté du titre de l'éditeur */
+.establishment-editor-head h2 { display: inline-flex; align-items: center; gap: 10px; }
+.establishment-editor-head h2 .establishment-status { font-size: 11px; }
+
+/* Vue lecture (avant clic sur Modifier) */
+.establishment-readview { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); align-items: start; }
+.establishment-read-card { display: grid; gap: 8px; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); align-content: start; }
+.establishment-read-card h3 { font-size: 13px; font-weight: 600; }
+.establishment-hours-read, .establishment-activities-read { grid-column: 1 / -1; }
+.establishment-kv { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.establishment-kv:last-child { border-bottom: 0; }
+.establishment-kv > span { color: var(--muted); }
+.establishment-kv > strong { font-weight: 600; text-align: right; }
+.establishment-kv .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.establishment-hours-read .establishment-kv { max-width: 340px; }
+.establishment-closed-tag { color: var(--muted); font-weight: 500; }
+.establishment-read-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.establishment-read-tags span { padding: 3px 10px; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--surface); font-size: 12px; }
+.establishment-read-empty { color: var(--muted); font-size: 13px; }
+
 @media (max-width: 720px) {
   .estab-day-row { grid-template-columns: 1fr auto; grid-auto-rows: auto; row-gap: 6px; }
   .estab-day-row input[type='time'] { grid-column: 1 / -1; }

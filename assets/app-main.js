@@ -5468,7 +5468,19 @@ function getEstablishmentCenter() {
 
 function selectEstablishmentCenter(id) {
   state.establishmentCenterId = id;
+  state.establishmentEditing = false;
   save();
+  renderStaffUtilityPage();
+}
+
+function startEstablishmentEdit() {
+  if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
+  state.establishmentEditing = true;
+  renderStaffUtilityPage();
+}
+
+function cancelEstablishmentEdit() {
+  state.establishmentEditing = false;
   renderStaffUtilityPage();
 }
 
@@ -5513,6 +5525,7 @@ async function submitCenterConfig(centerId) {
     }
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenterConfig', centerId, config }) });
     toast('Configuration du centre enregistrée.');
+    state.establishmentEditing = false;
     await loadStaffCenterConfig(true);
   } catch (error) {
     toast(error?.message || 'Enregistrement impossible.');
@@ -5572,14 +5585,14 @@ function renderStaffUtilityEstablishment() {
   const center = getEstablishmentCenter();
   if (!center) return `<div class="establishment-page"><div class="establishment-loading">Aucun centre.</div></div>`;
   const canEdit = canUseStaffPermission('settings.manage');
+  const editing = canEdit && !!state.establishmentEditing;
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
   const statusLabels = { active: 'Actif', planned: 'Prévu', closed: 'Archivé' };
-  const disabled = canEdit ? '' : 'disabled';
   return `<div class="establishment-page">
     <section class="establishment-selector">
       <div class="establishment-selector-head">
-        <div><h2>Centres</h2><p>${centers.length} centre${centers.length > 1 ? 's' : ''} · configuration lue par le moteur</p></div>
+        <div><h2>Centres</h2><p>${centers.length} centre${centers.length > 1 ? 's' : ''} · sélectionne un centre pour voir ou modifier sa configuration</p></div>
       </div>
       <div class="establishment-center-list">
         ${centers.map(c => `<button type="button" class="establishment-center-chip ${c.id === center.id ? 'active' : ''}" onclick="selectEstablishmentCenter('${escapeJsString(c.id)}')">
@@ -5602,22 +5615,27 @@ function renderStaffUtilityEstablishment() {
       <div class="establishment-editor-head">
         <div>
           <span class="establishment-eyebrow">Configuration centre</span>
-          <h2>${escapeHtml(center.name)}</h2>
+          <h2>${escapeHtml(center.name)} <span class="establishment-status establishment-status-${escapeHtml(center.status)}">${escapeHtml(statusLabels[center.status] || center.status)}</span></h2>
         </div>
-        ${canEdit ? `<div class="establishment-editor-actions">
-          <button type="button" class="btn btn-primary" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
-          ${center.status !== 'closed'
-            ? `<button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'closed')">Archiver</button>`
-            : `<button type="button" class="btn btn-secondary btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'active')">Réactiver</button>`}
-        </div>` : `<span class="establishment-readonly">Lecture seule — édition réservée à la direction.</span>`}
+        <div class="establishment-editor-actions">
+          ${editing
+            ? `<button type="button" class="btn btn-primary" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
+               <button type="button" class="btn btn-ghost btn-sm" onclick="cancelEstablishmentEdit()">Annuler</button>`
+            : canEdit
+              ? `<button type="button" class="btn btn-primary" onclick="startEstablishmentEdit()">Modifier</button>
+                 ${center.status !== 'closed'
+                   ? `<button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'closed')">Archiver</button>`
+                   : `<button type="button" class="btn btn-secondary btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'active')">Réactiver</button>`}`
+              : `<span class="establishment-readonly">Lecture seule — édition réservée à la direction.</span>`}
+        </div>
       </div>
 
-      <div class="establishment-grid">
+      ${editing ? `<div class="establishment-grid">
         <fieldset class="establishment-card">
           <legend>Identité</legend>
-          <div class="field"><label for="estab-name">Nom du centre</label><input id="estab-name" value="${escapeHtml(center.name)}" ${disabled}></div>
+          <div class="field"><label for="estab-name">Nom du centre</label><input id="estab-name" value="${escapeHtml(center.name)}"></div>
           <div class="field"><label for="estab-status">Statut</label>
-            <select id="estab-status" ${disabled}>
+            <select id="estab-status">
               <option value="active" ${center.status === 'active' ? 'selected' : ''}>Actif</option>
               <option value="planned" ${center.status === 'planned' ? 'selected' : ''}>Prévu</option>
               <option value="closed" ${center.status === 'closed' ? 'selected' : ''}>Archivé</option>
@@ -5627,15 +5645,15 @@ function renderStaffUtilityEstablishment() {
 
         <fieldset class="establishment-card">
           <legend>Bowling</legend>
-          <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}" ${disabled}></div>
-          <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}" ${disabled}></div>
-          <div class="field"><label for="estab-emergencyCap">Joueurs max / piste (secours)</label><input type="number" id="estab-emergencyCap" min="1" max="15" value="${Number(bowling.emergencyCapacityPerLane || 7)}" ${disabled}></div>
+          <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}"></div>
+          <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}"></div>
+          <div class="field"><label for="estab-emergencyCap">Joueurs max / piste (secours)</label><input type="number" id="estab-emergencyCap" min="1" max="15" value="${Number(bowling.emergencyCapacityPerLane || 7)}"></div>
         </fieldset>
 
         <fieldset class="establishment-card">
           <legend>Laser Game</legend>
-          <div class="field"><label for="estab-weaponCount">Nombre d'armes</label><input type="number" id="estab-weaponCount" min="0" max="200" value="${Number(laser.weaponCount || 0)}" ${disabled}></div>
-          <div class="field"><label for="estab-launches">Lancements parallèles</label><input type="number" id="estab-launches" min="1" max="20" value="${Number(laser.parallelLaunches || 1)}" ${disabled}></div>
+          <div class="field"><label for="estab-weaponCount">Nombre d'armes</label><input type="number" id="estab-weaponCount" min="0" max="200" value="${Number(laser.weaponCount || 0)}"></div>
+          <div class="field"><label for="estab-launches">Lancements parallèles</label><input type="number" id="estab-launches" min="1" max="20" value="${Number(laser.parallelLaunches || 1)}"></div>
         </fieldset>
 
         <fieldset class="establishment-card establishment-hours">
@@ -5647,13 +5665,52 @@ function renderStaffUtilityEstablishment() {
           <legend>Activités disponibles</legend>
           <div class="establishment-activity-grid">
             ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
-              <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} ${disabled} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+              <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
               <span>${escapeHtml(activity.label)}</span>
             </label>`).join('')}
           </div>
         </fieldset>
-      </div>
+      </div>` : renderEstablishmentReadView(center)}
     </section>
+  </div>`;
+}
+
+function renderEstablishmentReadView(center) {
+  const bowling = center.resources?.bowling || {};
+  const laser = center.resources?.laser || {};
+  const regular = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule.regular || {} : {};
+  const activities = (staffCenterConfigCache.activities || []);
+  const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
+  const kv = (label, value) => `<div class="establishment-kv"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
+  const num = (v) => `<span class="num">${escapeHtml(String(v))}</span>`;
+  return `<div class="establishment-readview">
+    <div class="establishment-read-card">
+      <h3>Bowling</h3>
+      ${kv('Pistes', num(Number(bowling.laneCount || 0)))}
+      ${kv('Joueurs confort / piste', num(Number(bowling.normalCapacityPerLane || 0)))}
+      ${kv('Joueurs max / piste (secours)', num(Number(bowling.emergencyCapacityPerLane || 0)))}
+    </div>
+    <div class="establishment-read-card">
+      <h3>Laser Game</h3>
+      ${kv('Armes disponibles', num(Number(laser.weaponCount || 0)))}
+      ${kv('Lancements parallèles', num(Number(laser.parallelLaunches || 0)))}
+    </div>
+    <div class="establishment-read-card establishment-hours-read">
+      <h3>Horaires d'ouverture</h3>
+      ${ESTABLISHMENT_DAYS.map(([key, label]) => {
+        const slot = regular[key];
+        const value = slot && slot.open && slot.close
+          ? `<span class="num">${escapeHtml(slot.open)}</span> → <span class="num">${escapeHtml(slot.close)}</span>`
+          : '<span class="establishment-closed-tag">Fermé</span>';
+        return kv(label, value);
+      }).join('')}
+    </div>
+    <div class="establishment-read-card establishment-activities-read">
+      <h3>Activités disponibles</h3>
+      ${enabled.length
+        ? `<div class="establishment-read-tags">${enabled.map(activity => `<span>${escapeHtml(activity.label)}</span>`).join('')}</div>`
+        : '<p class="establishment-read-empty">Aucune activité activée.</p>'}
+    </div>
   </div>`;
 }
 

@@ -427,6 +427,17 @@ async function main() {
     await screenshot(page, 'staff-pricing-stress');
     issues.push(...await collectIssues(page, 'staff-pricing'));
 
+    // Passe thème clair sur les écrans clés (le système v2 est bi-thème)
+    await page.evaluate(() => setStaffTheme('light'));
+    await page.waitForTimeout(400);
+    for (const lightPage of ['dashboard', 'planning', 'reservations', 'clients']) {
+      await renderStaffPage(page, lightPage);
+      await screenshot(page, `staff-${lightPage}-light`);
+      issues.push(...await collectIssues(page, `staff-${lightPage}-light`));
+    }
+    await page.evaluate(() => setStaffTheme('dark'));
+    await page.waitForTimeout(400);
+
     const adminRangeBeforeEvents = await page.evaluate(() => (
       Array.isArray(window.__PINLANE_QA_ADMIN_RANGE_CALLS__)
         ? window.__PINLANE_QA_ADMIN_RANGE_CALLS__.length
@@ -444,6 +455,58 @@ async function main() {
       adminRangeAfterEvents === adminRangeBeforeEvents,
       'La page Evenements ne doit pas declencher /api/admin-range.'
     );
+
+    // Vue client (desktop) — parcours de réservation
+    await page.evaluate(() => setView('client'));
+    await page.waitForTimeout(700);
+    await screenshot(page, 'client-booking-desktop');
+    issues.push(...await collectIssues(page, 'client-booking-desktop'));
+
+    // Passe mobile (390×844) : staff clés + parcours client
+    const mobilePage = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+    });
+    mobilePage.on('pageerror', (error) => pageErrors.push(`mobile: ${error.message}`));
+    await installQaApi(mobilePage);
+    await waitForApp(mobilePage);
+    await seedStressDay(mobilePage);
+    for (const mobileStaffPage of ['dashboard', 'planning', 'reservations', 'groups']) {
+      await renderStaffPage(mobilePage, mobileStaffPage);
+      await screenshot(mobilePage, `staff-${mobileStaffPage}-mobile`);
+      issues.push(...await collectIssues(mobilePage, `staff-${mobileStaffPage}-mobile`));
+    }
+    await mobilePage.evaluate(() => setView('client'));
+    await mobilePage.waitForTimeout(700);
+    await screenshot(mobilePage, 'client-booking-mobile');
+    issues.push(...await collectIssues(mobilePage, 'client-booking-mobile'));
+    await mobilePage.close();
+
+    // Pages autonomes : screenshots + overflow (pas d'assertions console — hors app)
+    const standalonePages = [
+      ['public-form', '/public-form.html'],
+      ['direction', '/direction.html'],
+      ['pro-landing', '/pro.html'],
+    ];
+    for (const [name, route] of standalonePages) {
+      for (const [suffix, viewport] of [['desktop', { width: 1440, height: 920 }], ['mobile', { width: 390, height: 844 }]]) {
+        const standalone = await browser.newPage({ viewport, deviceScaleFactor: suffix === 'mobile' ? 2 : 1 });
+        await installQaApi(standalone);
+        await standalone.goto(`${BASE_URL}${route}`, { waitUntil: 'networkidle', timeout: 45000 });
+        await standalone.waitForTimeout(600);
+        // Le screenshot fullPage ne scrolle pas : l'IntersectionObserver du reveal
+        // ne se déclenche jamais sous le fold — on force l'état final.
+        await standalone.evaluate(() => {
+          document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
+        });
+        await standalone.waitForTimeout(300);
+        await screenshot(standalone, `${name}-${suffix}`);
+        issues.push(...await collectIssues(standalone, `${name}-${suffix}`));
+        await standalone.close();
+      }
+    }
 
     const blockingConsoleErrors = consoleErrors.filter((entry) => (
       !/favicon|net::ERR_ABORTED|Failed to load resource|Not found/i.test(entry)

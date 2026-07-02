@@ -1723,6 +1723,10 @@ function save() {
 function applyStaffTheme() {
   const isLight = state.staffTheme === 'light';
   document.body.classList.toggle('staff-light', isLight);
+  if (state.view === 'staff' || state.view === 'admin') {
+    document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+    try { localStorage.setItem('pinlane-theme', isLight ? 'light' : 'dark'); } catch (error) {}
+  }
   const darkBtn = document.getElementById('staffThemeDark');
   const lightBtn = document.getElementById('staffThemeLight');
   if (darkBtn) darkBtn.classList.toggle('active', !isLight);

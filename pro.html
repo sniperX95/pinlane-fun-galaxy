@@ -8,9 +8,14 @@
       name="description"
       content="Pinlane aide les centres bowling et loisirs a vendre uniquement les reservations qui peuvent vraiment tenir: pistes, Laser Game, formules, retards, mails et direction multi-centres."
     />
-    <meta name="theme-color" content="#06070a" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <script>try{var t=localStorage.getItem('pinlane-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+    <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./assets/brand/pinlane-logo.svg" as="image" type="image/svg+xml" />
-    <link rel="stylesheet" href="./assets/pinlane-landing.css" />
+    <link rel="stylesheet" href="./assets/pinlane.css?v=geist-v2" />
+    <link rel="stylesheet" href="./assets/pinlane-landing.css?v=geist-v2" />
   </head>
   <body>
     <a class="skip-link" href="#main">Aller au contenu</a>
@@ -27,14 +32,12 @@
         </nav>
         <div class="nav-actions">
           <a class="nav-link-muted" href="/">Reservation client</a>
-          <a class="button button-primary" href="#pilote">Planifier un pilote</a>
+          <a class="btn btn-primary" href="#pilote">Planifier un pilote</a>
         </div>
       </header>
 
       <main id="main">
         <section class="hero" aria-labelledby="hero-title">
-          <div class="hero-grid" aria-hidden="true"></div>
-          <div class="hero-aura" aria-hidden="true"></div>
           <div class="container hero-inner">
             <p class="hero-pill reveal">
               <span></span>
@@ -48,8 +51,8 @@
               pour vendre seulement ce que l'exploitation peut vraiment honorer.
             </p>
             <div class="hero-actions reveal" style="--delay: 210ms">
-              <a class="button button-primary" href="#pilote">Demander une demo</a>
-              <a class="button button-secondary" href="/?v=pinlane-landing">Voir le parcours client</a>
+              <a class="btn btn-lg btn-primary" href="#pilote">Demander une demo</a>
+              <a class="btn btn-lg btn-secondary" href="/?v=pinlane-landing">Voir le parcours client</a>
             </div>
             <div class="hero-proof reveal" style="--delay: 280ms" aria-label="Capacites principales">
               <span>Bowling + Laser Game</span>
@@ -233,7 +236,8 @@
         </section>
 
         <section class="section pilot" id="pilote">
-          <div class="container pilot-card reveal">
+          <div class="container">
+            <div class="pilot-card reveal">
             <div class="pilot-copy">
               <p class="eyebrow">Pilote commercial</p>
               <h2>Testez Pinlane sur une vraie semaine d'exploitation.</h2>
@@ -250,11 +254,11 @@
             <form class="pilot-form" id="pilotForm">
               <label>
                 Centre
-                <input name="centre" autocomplete="organization" placeholder="Nom du centre" required />
+                <input name="centre" type="text" autocomplete="organization" placeholder="Nom du centre" required />
               </label>
               <label>
                 Contact
-                <input name="contact" autocomplete="name" placeholder="Votre nom" required />
+                <input name="contact" type="text" autocomplete="name" placeholder="Votre nom" required />
               </label>
               <label>
                 Email
@@ -269,9 +273,10 @@
                   <option>Tout le systeme</option>
                 </select>
               </label>
-              <button class="button button-primary" type="submit">Preparer la demande</button>
+              <button class="btn btn-primary" type="submit">Preparer la demande</button>
               <p id="formStatus" class="form-status" role="status" aria-live="polite"></p>
             </form>
+            </div>
           </div>
         </section>
       </main>

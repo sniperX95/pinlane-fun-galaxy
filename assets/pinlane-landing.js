@@ -1,12 +1,7 @@
 (function () {
-  const root = document.documentElement;
-
-  function updateSpotlight(event) {
-    root.style.setProperty('--spot-x', `${event.clientX}px`);
-    root.style.setProperty('--spot-y', `${event.clientY}px`);
-  }
-
-  window.addEventListener('pointermove', updateSpotlight, { passive: true });
+  // Active les animations reveal uniquement quand le JS tourne :
+  // sans cette classe, le CSS laisse tout le contenu visible (no-JS safe).
+  document.documentElement.classList.add('js');
 
   const reveals = Array.from(document.querySelectorAll('.reveal'));
   if ('IntersectionObserver' in window) {

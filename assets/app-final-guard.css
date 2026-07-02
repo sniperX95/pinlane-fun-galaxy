@@ -431,10 +431,10 @@ body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi {
 }
 
 body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi:nth-child(1) {
-  --pinlane-kpi-accent: #8b5cf6;
-  --pinlane-kpi-soft: rgba(139, 92, 246, .14);
-  --pinlane-kpi-icon: url("data:image/svg+xml,%3Csvg width='22' height='22' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='4' y='5' width='16' height='15' rx='2.4' stroke='%238b5cf6' stroke-width='2'/%3E%3Cpath d='M8 3.5V7M16 3.5V7M4.5 10H19.5M8 14H10M14 14H16' stroke='%238b5cf6' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
-  --pinlane-kpi-spark: url("data:image/svg+xml,%3Csvg width='96' height='38' viewBox='0 0 96 38' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 29C12 10 18 28 25 19C33 8 40 27 48 21C56 15 58 3 66 10C73 16 76 31 84 18C89 10 92 9 94 7' stroke='%238b5cf6' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --pinlane-kpi-accent: #b8ad9b;
+  --pinlane-kpi-soft: rgba(184, 173, 155, .14);
+  --pinlane-kpi-icon: url("data:image/svg+xml,%3Csvg width='22' height='22' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='4' y='5' width='16' height='15' rx='2.4' stroke='%23b8ae9a' stroke-width='2'/%3E%3Cpath d='M8 3.5V7M16 3.5V7M4.5 10H19.5M8 14H10M14 14H16' stroke='%23b8ae9a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+  --pinlane-kpi-spark: url("data:image/svg+xml,%3Csvg width='96' height='38' viewBox='0 0 96 38' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 29C12 10 18 28 25 19C33 8 40 27 48 21C56 15 58 3 66 10C73 16 76 31 84 18C89 10 92 9 94 7' stroke='%23b8ae9a' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 body.staff-mode:not(.admin-mode) #staffView .kpi-grid .kpi:nth-child(2) {
@@ -3625,7 +3625,7 @@ body.staff-mode:not(.admin-mode) #staffView .staff-resource-tab .sub {
 
 body.staff-mode:not(.admin-mode) #staffView .staff-resource-tab.active {
   background: rgba(255, 255, 255, .026) !important;
-  border-color: rgba(165, 154, 238, .28) !important;
+  border-color: rgba(210, 202, 188, .28) !important;
 }
 
 body.staff-mode:not(.admin-mode) #staffView .staff-resource-tab.active::after {
@@ -4356,8 +4356,8 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page {
   --dash-text: #f4f7fb;
   --dash-muted: #9aa5b6;
   --dash-faint: #6f7a8c;
-  --dash-purple: #7a4dff;
-  --dash-purple-soft: rgba(122, 77, 255, .16);
+  --dash-purple: #b8ad9b;
+  --dash-purple-soft: rgba(184, 173, 155, .16);
   --dash-blue: #4e7bff;
   --dash-blue-soft: rgba(78, 123, 255, .14);
   --dash-green: #31bd7b;
@@ -4491,10 +4491,10 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-new-btn {
 }
 
 body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-new-btn {
-  border-color: rgba(130, 92, 255, .75) !important;
-  background: linear-gradient(180deg, #8157ff, #6337ed) !important;
+  border-color: rgba(196, 186, 169, .75) !important;
+  background: linear-gradient(180deg, #bab09c, #a6987e) !important;
   color: #f7f4ff !important;
-  box-shadow: 0 16px 45px rgba(98, 55, 237, .25) !important;
+  box-shadow: 0 16px 45px rgba(169, 159, 142, .25) !important;
 }
 
 body.staff-mode:not(.admin-mode) .staff-dashboard-page button:active {
@@ -4553,7 +4553,7 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-icon svg {
 }
 
 body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-kpi.purple .dash-icon {
-  color: #a782ff !important;
+  color: #ccc4b5 !important;
   background: var(--dash-purple-soft) !important;
 }
 
@@ -4905,7 +4905,7 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-lane-row i {
   display: block !important;
   height: 100% !important;
   border-radius: inherit !important;
-  background: linear-gradient(90deg, #6d4ff0, #a46cff) !important;
+  background: linear-gradient(90deg, #b1a58e, #c3b9a8) !important;
 }
 
 body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-arrivals,
@@ -4950,7 +4950,7 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-arrival-row em {
   justify-self: end !important;
   border-radius: 999px !important;
   padding: 4px 8px !important;
-  background: rgba(122, 77, 255, .18) !important;
+  background: rgba(184, 173, 155, .18) !important;
   color: #d6c9ff !important;
   font-size: 10px !important;
   font-style: normal !important;
@@ -4985,7 +4985,7 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-alert-row button {
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
-  color: #a78bff !important;
+  color: #cfc8bb !important;
   font-size: 12px !important;
   font-weight: 720 !important;
   box-shadow: none !important;
@@ -5067,8 +5067,8 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-revenue-bar span {
   align-self: end !important;
   min-height: 6px !important;
   border-radius: 4px 4px 0 0 !important;
-  background: linear-gradient(180deg, #9b6cff, #5d37ce) !important;
-  box-shadow: 0 -10px 30px rgba(122, 77, 255, .16) !important;
+  background: linear-gradient(180deg, #c3b9a8, #99896c) !important;
+  box-shadow: 0 -10px 30px rgba(184, 173, 155, .16) !important;
 }
 
 body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-revenue-bar small {
@@ -5122,8 +5122,8 @@ body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-status-strip span {
   border-radius: 9px !important;
   display: grid !important;
   place-items: center !important;
-  color: #a98cff !important;
-  background: rgba(122, 77, 255, .16) !important;
+  color: #d0c9bb !important;
+  background: rgba(184, 173, 155, .16) !important;
 }
 
 body.staff-mode:not(.admin-mode) .staff-dashboard-page .dash-status-strip svg {
@@ -5214,7 +5214,7 @@ body.staff-mode:not(.admin-mode) .utility-layout-groups {
   --groups-text: rgba(244, 247, 251, .96);
   --groups-muted: rgba(169, 180, 196, .76);
   --groups-faint: rgba(169, 180, 196, .48);
-  --groups-accent: #8b5cf6;
+  --groups-accent: #b8ad9b;
   --groups-green: #62c987;
   --groups-blue: #71a7ff;
   --groups-amber: #cfa052;
@@ -5534,8 +5534,8 @@ body.staff-mode:not(.admin-mode) .groups-avatar {
   display: grid !important;
   place-items: center !important;
   color: var(--groups-text) !important;
-  background: rgba(139, 92, 246, .16) !important;
-  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, .36) !important;
+  background: rgba(184, 173, 155, .16) !important;
+  box-shadow: inset 0 0 0 1px rgba(184, 173, 155, .36) !important;
   font-size: 20px !important;
   font-weight: 730 !important;
 }
@@ -5683,8 +5683,8 @@ body.staff-mode:not(.admin-mode) .groups-type-bowling {
 }
 
 body.staff-mode:not(.admin-mode) .groups-type-laser {
-  color: #b69cff !important;
-  background: rgba(139, 92, 246, .1) !important;
+  color: #d6d0c5 !important;
+  background: rgba(184, 173, 155, .1) !important;
 }
 
 body.staff-mode:not(.admin-mode) .groups-type-formule,
@@ -5904,7 +5904,7 @@ body.staff-mode:not(.admin-mode) .groups-action-icon {
   border-radius: 8px !important;
   display: grid !important;
   place-items: center !important;
-  background: rgba(139, 92, 246, .12) !important;
+  background: rgba(184, 173, 155, .12) !important;
   color: #cdbbff !important;
 }
 

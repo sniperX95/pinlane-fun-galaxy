@@ -229,9 +229,8 @@ async function handleGet(req, res, options = {}) {
   sendError(res, 400, 'Action Ops GET inconnue.');
 }
 
-async function handlePost(req, res) {
-  const body = arguments.length >= 3 ? arguments[2] : await readJson(req);
-  const options = arguments.length >= 4 ? arguments[3] : {};
+async function handlePost(req, res, providedBody = null, options = {}) {
+  const body = providedBody || (await readJson(req));
   const action = getAction(req, body);
   const centerId = options.centerId || normalizeCenterId(body.centerId || body.center_id || '') || 'libramont';
   const scopedCenterId = centerScope(centerId);

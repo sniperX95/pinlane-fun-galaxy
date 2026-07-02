@@ -198,7 +198,7 @@
 }
 
 .pricing-kpi.violet .pricing-kpi-media {
-  background: linear-gradient(145deg, rgba(136, 101, 255, .22), rgba(136, 101, 255, .035)), #0e151e;
+  background: linear-gradient(145deg, rgba(196, 186, 169, .22), rgba(196, 186, 169, .035)), #0e151e;
 }
 
 .pricing-kpi.blue .pricing-kpi-media {
@@ -397,7 +397,7 @@
 }
 
 .pricing-row.special .pricing-row-visual {
-  background: linear-gradient(145deg, rgba(154, 130, 255, .17), rgba(154, 130, 255, .025)), #0e151e;
+  background: linear-gradient(145deg, rgba(205, 196, 180, .17), rgba(205, 196, 180, .025)), #0e151e;
 }
 
 .pricing-row strong,
@@ -484,7 +484,7 @@
 .pricing-row.special .pricing-row-main small em,
 .pricing-row.special .pricing-row-tags-inline em:first-child,
 .pricing-row.special .pricing-tags em:first-child {
-  color: #c4b8ff;
+  color: #e2ddd5;
 }
 
 .pricing-detail {

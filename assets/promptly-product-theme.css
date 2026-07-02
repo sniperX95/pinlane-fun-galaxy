@@ -17,13 +17,13 @@
   --pp-text-2: rgba(232, 238, 247, .76);
   --pp-text-3: rgba(164, 176, 194, .62);
   --pp-text-4: rgba(126, 139, 160, .48);
-  --pp-accent: #7557ff;
-  --pp-accent-2: #9b87ff;
+  --pp-accent: #b8ad9b;
+  --pp-accent-2: #cdc4b4;
   --pp-blue: #4f7dff;
   --pp-green: #22b676;
   --pp-amber: #d88b24;
   --pp-red: #e26d66;
-  --pp-violet-bg: rgba(117, 87, 255, .12);
+  --pp-violet-bg: rgba(184, 173, 155, .12);
   --pp-blue-bg: rgba(79, 125, 255, .12);
   --pp-green-bg: rgba(34, 182, 118, .10);
   --pp-amber-bg: rgba(216, 139, 36, .10);
@@ -58,7 +58,7 @@ body.admin-mode {
   --fgx-sidebar-width: 252px;
   background:
     radial-gradient(980px 620px at 20% -18%, rgba(73, 104, 255, .055), transparent 62%),
-    radial-gradient(720px 520px at 100% 8%, rgba(117, 87, 255, .045), transparent 58%),
+    radial-gradient(720px 520px at 100% 8%, rgba(184, 173, 155, .045), transparent 58%),
     var(--pp-bg) !important;
   color: var(--pp-text) !important;
   overflow-x: clip !important;
@@ -94,7 +94,7 @@ body.admin-mode * {
 
 body.staff-mode ::selection,
 body.admin-mode ::selection {
-  background: rgba(117, 87, 255, .34) !important;
+  background: rgba(184, 173, 155, .34) !important;
   color: #fff !important;
 }
 
@@ -126,7 +126,7 @@ body.staff-mode input:focus-visible,
 body.admin-mode input:focus-visible,
 body.staff-mode select:focus-visible,
 body.admin-mode select:focus-visible {
-  outline: 2px solid rgba(155, 135, 255, .72) !important;
+  outline: 2px solid rgba(205, 196, 180, .72) !important;
   outline-offset: 2px !important;
 }
 
@@ -340,8 +340,8 @@ body.admin-mode .hidden {
 
 .fgx-menu-badge,
 .fgx-menu-avatar {
-  background: rgba(117, 87, 255, .12) !important;
-  border: 1px solid rgba(155, 135, 255, .24) !important;
+  background: rgba(184, 173, 155, .12) !important;
+  border: 1px solid rgba(205, 196, 180, .24) !important;
   color: #f7f4ff !important;
   -webkit-text-fill-color: #f7f4ff !important;
   box-shadow: none !important;
@@ -564,7 +564,7 @@ body.staff-mode .campaign-metric > span {
 body.staff-mode .purple .dash-icon,
 body.staff-mode .violet .clients-kpi-icon,
 body.staff-mode .reservations-kpi.violet .reservations-kpi-icon {
-  color: #a996ff !important;
+  color: #d4cdc1 !important;
   background: var(--pp-violet-bg) !important;
 }
 
@@ -684,11 +684,11 @@ body.staff-mode .reservations-filter.active,
 body.staff-mode .pricing-tab.active,
 body.staff-mode .email-tab.active,
 body.staff-mode .campaign-tab.active {
-  background: rgba(117, 87, 255, .11) !important;
-  border-color: rgba(117, 87, 255, .24) !important;
+  background: rgba(184, 173, 155, .11) !important;
+  border-color: rgba(184, 173, 155, .24) !important;
   color: var(--pp-text) !important;
   -webkit-text-fill-color: var(--pp-text) !important;
-  box-shadow: inset 0 -1px 0 rgba(155, 135, 255, .44) !important;
+  box-shadow: inset 0 -1px 0 rgba(205, 196, 180, .44) !important;
 }
 
 /* Forms and search */
@@ -720,8 +720,8 @@ body.staff-mode textarea:focus,
 body.admin-mode input:focus,
 body.admin-mode select:focus,
 body.admin-mode textarea:focus {
-  border-color: rgba(155, 135, 255, .52) !important;
-  box-shadow: 0 0 0 3px rgba(117, 87, 255, .13) !important;
+  border-color: rgba(205, 196, 180, .52) !important;
+  box-shadow: 0 0 0 3px rgba(184, 173, 155, .13) !important;
 }
 
 /* Tables */
@@ -955,9 +955,9 @@ body.staff-mode .fgx-menu-subitem.active,
 body.admin-mode .fgx-menu-subitem.active,
 body.staff-mode .fgx-menu-group.active .fgx-menu-item-parent,
 body.admin-mode .fgx-menu-group.active .fgx-menu-item-parent {
-  border-color: rgba(117, 87, 255, .18) !important;
-  background: rgba(117, 87, 255, .12) !important;
-  box-shadow: inset 2px 0 0 rgba(155, 135, 255, .92) !important;
+  border-color: rgba(184, 173, 155, .18) !important;
+  background: rgba(184, 173, 155, .12) !important;
+  box-shadow: inset 2px 0 0 rgba(205, 196, 180, .92) !important;
   color: #fff !important;
   -webkit-text-fill-color: #fff !important;
 }

@@ -6,15 +6,16 @@
   <title>Réservation Fun Galaxy</title>
   <style>
     :root {
+      /* Fun Galaxy tenant brand: magenta + teal from the venue's own identity. */
       color-scheme: dark;
-      --bg: #080a12;
-      --panel: #11162a;
-      --panel-2: #171f37;
+      --bg: #0a0810;
+      --panel: #151020;
+      --panel-2: #1d1630;
       --line: rgba(255,255,255,0.1);
-      --text: #f5f7ff;
-      --muted: #9aa6ca;
-      --accent: #7c5cff;
-      --accent-2: #24d4c3;
+      --text: #f7f5fb;
+      --muted: #a89fc0;
+      --accent: #b356ad;
+      --accent-2: #5ec8c8;
       --danger: #ff6f7d;
       --ok: #44d17a;
       --shadow: 0 18px 46px rgba(0,0,0,0.35);
@@ -25,8 +26,8 @@
     body {
       margin: 0;
       background:
-        radial-gradient(circle at top right, rgba(124,92,255,0.18), transparent 28%),
-        radial-gradient(circle at bottom left, rgba(36,212,195,0.14), transparent 25%),
+        radial-gradient(circle at top right, rgba(156,45,143,0.16), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(94,200,200,0.12), transparent 25%),
         var(--bg);
       color: var(--text);
     }
@@ -46,10 +47,10 @@
       display: inline-flex;
       width: fit-content;
       padding: 6px 10px;
-      border: 1px solid rgba(124,92,255,0.35);
+      border: 1px solid rgba(179,86,173,0.35);
       border-radius: 999px;
-      color: #d7ceff;
-      background: rgba(124,92,255,0.12);
+      color: #ecd3ea;
+      background: rgba(179,86,173,0.12);
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
@@ -111,8 +112,8 @@
 
     textarea { min-height: 92px; resize: vertical; }
     input:focus, select:focus, textarea:focus {
-      border-color: rgba(124,92,255,0.72);
-      box-shadow: 0 0 0 4px rgba(124,92,255,0.18);
+      border-color: rgba(179,86,173,0.72);
+      box-shadow: 0 0 0 4px rgba(179,86,173,0.18);
     }
 
     .segmented {
@@ -142,9 +143,9 @@
     .slot-list button.active,
     .duration-list button.active,
     .formula-card.active {
-      border-color: rgba(124,92,255,0.8);
-      background: rgba(124,92,255,0.18);
-      box-shadow: 0 12px 24px rgba(124,92,255,0.16);
+      border-color: rgba(179,86,173,0.8);
+      background: rgba(179,86,173,0.18);
+      box-shadow: 0 12px 24px rgba(179,86,173,0.16);
     }
 
     .duration-list,
@@ -198,7 +199,7 @@
     }
 
     .formula-price {
-      color: #d7ceff;
+      color: #ecd3ea;
       white-space: nowrap;
     }
 
@@ -244,7 +245,7 @@
       border: 1px solid var(--line);
       border-radius: 16px;
       padding: 18px;
-      background: linear-gradient(180deg, rgba(124,92,255,0.12), rgba(255,255,255,0.02));
+      background: linear-gradient(180deg, rgba(179,86,173,0.12), rgba(255,255,255,0.02));
     }
 
     .summary-total {
@@ -273,11 +274,11 @@
       border: 0;
       border-radius: 14px;
       padding: 14px 16px;
-      background: linear-gradient(135deg, var(--accent), #9071ff);
+      background: linear-gradient(135deg, var(--accent), #8a3f86);
       color: white;
       font-weight: 800;
       cursor: pointer;
-      box-shadow: 0 18px 40px rgba(124,92,255,0.28);
+      box-shadow: 0 18px 40px rgba(179,86,173,0.28);
     }
 
     .cta[disabled] {
@@ -343,7 +344,7 @@
         </div>
 
         <div class="section" id="durationSection">
-          <h2>2. Duree</h2>
+          <h2>2. Durée</h2>
           <div class="duration-list" id="durationList"></div>
         </div>
 
@@ -384,7 +385,7 @@
       <div class="summary">
         <div class="summary-card">
           <div class="tiny">Resume</div>
-          <div class="summary-total" id="summaryTotal">0EUR</div>
+          <div class="summary-total" id="summaryTotal">0 €</div>
           <div class="summary-list" id="summaryList"></div>
         </div>
 
@@ -529,7 +530,7 @@
       elements.durationList.innerHTML = options.map((item) => `
         <button type="button" class="${state.duration === item.value ? 'active' : ''}" data-duration="${item.value}">
           <strong>${item.label}</strong>
-          <div class="price">${item.price}EUR / ${priceUnit}</div>
+          <div class="price">${item.price} € / ${priceUnit}</div>
         </button>
       `).join('');
       elements.durationList.querySelectorAll('button').forEach((button) => {
@@ -557,7 +558,7 @@
         <button type="button" class="formula-card ${state.formuleId === formule.id ? 'active' : ''}" data-formule="${formule.id}">
           <div class="formula-title">
             <span>${formule.name}</span>
-            <span class="formula-price">${formule.price}EUR/${formule.type === 'per_lane' ? 'piste' : 'pers'}</span>
+            <span class="formula-price">${formule.price} €/${formule.type === 'per_lane' ? 'piste' : 'pers'}</span>
           </div>
           <div class="formula-meta">${(formule.desc || []).join(' • ')}</div>
           <div class="pill">${formulaStatus(formule)}</div>
@@ -677,7 +678,7 @@
       ];
 
       if (availability) {
-        rows.push(['Duree', formatDuration(availability.totalDuration)]);
+        rows.push(['Durée', formatDuration(availability.totalDuration)]);
         if (availability.requiresLanes) {
           rows.push(['Pistes', `${availability.laneCount}`]);
         }
@@ -688,7 +689,7 @@
       `).join('');
 
       const total = availability ? Number(availability.price || 0) : 0;
-      elements.summaryTotal.textContent = `${total}EUR`;
+      elements.summaryTotal.textContent = `${total} €`;
       elements.submitButton.disabled = !availability || !slot || state.loadingAvailability;
     }
 
@@ -706,7 +707,7 @@
         return;
       }
       if (!name || !phone) {
-        setAvailabilityNotice('Le nom et le telephone sont obligatoires.', true);
+        setAvailabilityNotice('Le nom et le téléphone sont obligatoires.', true);
         return;
       }
 

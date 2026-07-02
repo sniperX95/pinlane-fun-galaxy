@@ -1202,7 +1202,7 @@ body.staff-mode:not(.admin-mode) .staff-resource-tab::before {
 }
 
 body.staff-mode:not(.admin-mode) .staff-resource-tab:nth-child(1)::before {
-  background-color: #a58cff !important;
+  background-color: #d0c9bb !important;
   -webkit-mask-image: url("./bowling-pins-pinhead.svg") !important;
   mask-image: url("./bowling-pins-pinhead.svg") !important;
 }

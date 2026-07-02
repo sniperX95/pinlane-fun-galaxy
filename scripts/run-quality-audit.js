@@ -192,10 +192,13 @@ if (!/data-fgx-menu-action="logout"/.test(staffMenu) || !/typeof\s+logout\s*===\
   addFail('Staff menu account popover must expose a working logout action.');
 }
 
-const stylesheetLinks = [...index.matchAll(/<link\s+rel=["']stylesheet["']\s+href=["']([^"']+\.css)["']\s*>/gi)]
+const stylesheetLinks = [...index.matchAll(/<link\s+rel=["']stylesheet["']\s+href=["']([^"']+\.css)(?:\?[^"']*)?["']\s*>/gi)]
   .map((match) => match[1]);
-if (stylesheetLinks.at(-1) !== './assets/app-final-guard.css') {
-  addFail('assets/app-final-guard.css must be the final stylesheet loaded by index.html.');
+if (stylesheetLinks.at(-1) !== './assets/pinlane-design-system.css') {
+  addFail('assets/pinlane-design-system.css must be the final stylesheet loaded by index.html.');
+}
+if (!stylesheetLinks.includes('./assets/app-final-guard.css')) {
+  addFail('assets/app-final-guard.css must stay loaded by index.html.');
 }
 
 const finalGuard = read(path.join('assets', 'app-final-guard.css'));

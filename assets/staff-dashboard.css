@@ -132,9 +132,9 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
 .dash-new-btn {
   min-width: 178px;
   padding: 0 18px;
-  border-color: rgba(124, 88, 255, .58);
-  background: #5d36ff;
-  box-shadow: 0 12px 26px rgba(93, 54, 255, .22);
+  border-color: rgba(184, 173, 155, .58);
+  background: #ada088;
+  box-shadow: 0 12px 26px rgba(179, 168, 150, .22);
 }
 
 .dash-date-control:hover,
@@ -145,7 +145,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
 }
 
 .dash-new-btn:hover {
-  background: #6845ff;
+  background: #b3a791;
 }
 
 .dash-date-control:active,
@@ -216,7 +216,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   stroke-linejoin: round;
 }
 
-.dash-kpi.purple .dash-icon { background: rgba(123, 48, 255, .22); color: #8d54ff; }
+.dash-kpi.purple .dash-icon { background: rgba(184, 173, 155, .22); color: #b9ae9a; }
 .dash-kpi.blue .dash-icon { background: rgba(37, 99, 235, .19); color: #3f78ff; }
 .dash-kpi.green .dash-icon { background: rgba(5, 150, 105, .18); color: #19c98a; }
 .dash-kpi.orange .dash-icon { background: rgba(217, 119, 6, .18); color: #e88a10; }
@@ -268,7 +268,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   filter: drop-shadow(0 0 10px currentColor);
 }
 
-.dash-spark.purple { color: #6b2cff; }
+.dash-spark.purple { color: #a89b83; }
 .dash-spark.blue { color: #245dff; }
 .dash-spark.green { color: #08a66a; }
 .dash-spark.orange { color: #d77805; }
@@ -357,7 +357,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
 }
 
 .dash-chart-legend .confirmed,
-.dash-activity-list .bowling { background: #6b2cff; }
+.dash-activity-list .bowling { background: #a89b83; }
 .dash-chart-legend .arrived { background: #d77805; }
 .dash-chart-legend .paid,
 .dash-activity-list .laser { background: #12a36e; }
@@ -397,7 +397,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   display: block;
 }
 
-.dash-bar .confirmed { background: linear-gradient(180deg, #7c36ff, #4a16aa); }
+.dash-bar .confirmed { background: linear-gradient(180deg, #ada088, #4a16aa); }
 .dash-bar .arrived { background: linear-gradient(180deg, #e8840d, #7a3d06); }
 .dash-bar .paid { background: linear-gradient(180deg, #16bf7f, #096c48); }
 
@@ -427,7 +427,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   border-radius: 999px;
   background:
     radial-gradient(circle, #0b101b 0 52%, transparent 53%),
-    conic-gradient(#6b2cff 0 calc(var(--bowling) * 1%), #12a36e calc(var(--bowling) * 1%) calc((var(--bowling) + var(--laser)) * 1%), #1e5bff calc((var(--bowling) + var(--laser)) * 1%) 100%);
+    conic-gradient(#a89b83 0 calc(var(--bowling) * 1%), #12a36e calc(var(--bowling) * 1%) calc((var(--bowling) + var(--laser)) * 1%), #1e5bff calc((var(--bowling) + var(--laser)) * 1%) 100%);
 }
 
 .dash-donut strong {
@@ -501,11 +501,11 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: #832cff;
+  background: #a89b83;
 }
 
 .dash-lane-row em {
-  color: #ad5cff;
+  color: #bcb29f;
   font-style: normal;
   font-size: 13px;
   font-weight: 800;
@@ -583,7 +583,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
 }
 
 .dash-alert-row span {
-  color: #6b2cff;
+  color: #a89b83;
   font-weight: 900;
 }
 
@@ -644,7 +644,7 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   z-index: 1;
   height: 108px;
   margin-top: 4px;
-  color: #6b2cff;
+  color: #a89b83;
 }
 
 .dash-revenue-chart svg {
@@ -694,8 +694,8 @@ body.staff-mode:not(.admin-mode) #staffView .table-box.hidden {
   display: grid;
   place-items: center;
   border-radius: 999px;
-  color: #7d65ff;
-  background: rgba(124, 88, 255, .12);
+  color: #c0b6a4;
+  background: rgba(184, 173, 155, .12);
 }
 
 .dash-status-strip small {

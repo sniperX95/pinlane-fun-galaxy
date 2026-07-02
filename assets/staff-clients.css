@@ -147,15 +147,15 @@ body.staff-mode:not(.admin-mode) .clients-panel-search input {
 
 body.staff-mode:not(.admin-mode) .clients-action-btn.primary {
   min-width: 160px;
-  border-color: rgba(110, 74, 255, .72) !important;
-  background: #5d36ff !important;
+  border-color: rgba(184, 173, 155, .72) !important;
+  background: #ada088 !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
-  box-shadow: 0 12px 28px rgba(93, 54, 255, .24) !important;
+  box-shadow: 0 12px 28px rgba(179, 168, 150, .24) !important;
 }
 
 body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
-  background: #6845ff;
+  background: #b3a791;
 }
 
 .clients-kpis {
@@ -207,9 +207,9 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   stroke-linejoin: round;
 }
 
-.clients-kpi.purple .clients-kpi-icon { background: rgba(123, 48, 255, .21); color: #8d54ff; }
+.clients-kpi.purple .clients-kpi-icon { background: rgba(184, 173, 155, .21); color: #b9ae9a; }
 .clients-kpi.blue .clients-kpi-icon { background: rgba(37, 99, 235, .19); color: #3f78ff; }
-.clients-kpi.violet .clients-kpi-icon { background: rgba(123, 48, 255, .17); color: #8d54ff; }
+.clients-kpi.violet .clients-kpi-icon { background: rgba(184, 173, 155, .17); color: #b9ae9a; }
 .clients-kpi.amber .clients-kpi-icon { background: rgba(217, 119, 6, .16); color: #f0a020; }
 
 .clients-kpi span,
@@ -253,9 +253,9 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   height: 42px;
   align-self: end;
   justify-self: end;
-  color: #6c34ff;
+  color: #ac9f87;
   opacity: .96;
-  filter: drop-shadow(0 0 10px rgba(108, 52, 255, .2));
+  filter: drop-shadow(0 0 10px rgba(184, 173, 155, .2));
 }
 
 .clients-spark.blue {
@@ -311,7 +311,7 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   right: 0;
   bottom: 0;
   height: 2px;
-  background: #6f3cff;
+  background: #afa38c;
 }
 
 .clients-tabs em {
@@ -320,8 +320,8 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
-  background: rgba(114, 77, 255, .15);
-  color: #b7a5ff;
+  background: rgba(184, 173, 155, .15);
+  color: #dad4ca;
   font-size: 11px;
   font-style: normal;
   font-weight: 790;
@@ -407,7 +407,7 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
 .clients-table-row.selected {
   border-top-color: rgba(91, 119, 255, .16);
   background: linear-gradient(90deg, rgba(35, 78, 176, .22), rgba(35, 78, 176, .045) 72%, transparent);
-  box-shadow: inset 2px 0 0 #7a42ff;
+  box-shadow: inset 2px 0 0 #b2a68f;
 }
 
 .clients-table-row:hover {
@@ -468,7 +468,7 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
 .client-avatar.violet,
 .client-profile-avatar.violet,
 .client-avatar.purple,
-.client-profile-avatar.purple { background: linear-gradient(135deg, #5d36ff, #a11df6); }
+.client-profile-avatar.purple { background: linear-gradient(135deg, #ada088, #9f9074); }
 .client-avatar.orange,
 .client-profile-avatar.orange { background: linear-gradient(135deg, #ff8a00, #c46b00); }
 .client-avatar.blue,
@@ -490,7 +490,7 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   font-weight: 760;
 }
 
-.client-status.loyal { color: #c5a6ff; background: rgba(124, 58, 237, .18); }
+.client-status.loyal { color: #dbd5ca; background: rgba(184, 173, 155, .18); }
 .client-status.active { color: #69e0a6; background: rgba(16, 185, 129, .13); }
 .client-status.new { color: #89bcff; background: rgba(37, 99, 235, .17); }
 .client-status.inactive { color: #b4bcc8; background: rgba(148, 163, 184, .12); }
@@ -544,9 +544,9 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
 }
 
 .clients-table-footer button.active {
-  border-color: rgba(118, 74, 255, .72);
+  border-color: rgba(184, 173, 155, .72);
   color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgba(118, 74, 255, .34);
+  box-shadow: inset 0 0 0 1px rgba(184, 173, 155, .34);
 }
 
 .client-profile-panel {
@@ -604,8 +604,8 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   place-items: center;
   border-radius: 999px;
   padding: 0 10px;
-  background: rgba(124, 58, 237, .2);
-  color: #c7adff;
+  background: rgba(184, 173, 155, .2);
+  color: #ddd8cf;
   font-size: 11px;
   font-weight: 760;
 }
@@ -690,7 +690,7 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
 .client-panel-title button {
   border: 0;
   background: transparent;
-  color: #7a5cff;
+  color: #bcb29f;
   font: inherit;
   font-size: 12px;
   font-weight: 780;
@@ -762,7 +762,7 @@ body.staff-mode:not(.admin-mode) .clients-action-btn.primary:hover {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: #6f3cff;
+  background: #afa38c;
 }
 
 .client-history-list {

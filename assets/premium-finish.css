@@ -19,7 +19,7 @@
   --pf-faint: rgba(137, 148, 164, .46);
   --pf-action: #f0f2f5;
   --pf-action-text: #090b0f;
-  --pf-accent: #7d78d8;
+  --pf-accent: #b8ad9b;
   --pf-accent-soft: rgba(125, 120, 216, .12);
   --pf-blue: #7990c6;
   --pf-green: #619b76;
@@ -134,7 +134,7 @@ body.client-mode small {
 body.staff-mode ::selection,
 body.admin-mode ::selection,
 body.client-mode ::selection {
-  background: rgba(139, 123, 246, .34) !important;
+  background: rgba(184, 173, 155, .34) !important;
   color: var(--pf-text) !important;
 }
 
@@ -173,7 +173,7 @@ body.client-mode select:focus-visible,
 body.staff-mode textarea:focus-visible,
 body.admin-mode textarea:focus-visible,
 body.client-mode textarea:focus-visible {
-  outline: 2px solid rgba(139, 123, 246, .72) !important;
+  outline: 2px solid rgba(184, 173, 155, .72) !important;
   outline-offset: 2px !important;
 }
 
@@ -481,8 +481,8 @@ body.staff-mode .purple .clients-kpi-icon,
 body.staff-mode .violet .clients-kpi-icon,
 body.staff-mode .reservations-kpi-icon,
 body.staff-mode .pricing-kpi.violet .pricing-kpi-media {
-  color: #a79cff !important;
-  background: rgba(139, 123, 246, .12) !important;
+  color: #d6d0c5 !important;
+  background: rgba(184, 173, 155, .12) !important;
 }
 
 body.staff-mode .blue .dash-icon,
@@ -815,8 +815,8 @@ body.admin-mode select:focus,
 body.staff-mode textarea:focus,
 body.admin-mode textarea:focus {
   background: rgba(242, 245, 248, .055) !important;
-  border-color: rgba(139, 123, 246, .52) !important;
-  box-shadow: 0 0 0 3px rgba(139, 123, 246, .12) !important;
+  border-color: rgba(184, 173, 155, .52) !important;
+  box-shadow: 0 0 0 3px rgba(184, 173, 155, .12) !important;
 }
 
 /* Tables and lists */
@@ -861,8 +861,8 @@ body.staff-mode .clients-table-row.active,
 body.staff-mode .email-row.active,
 body.staff-mode .campaign-row.active,
 body.admin-mode .admin-center-card.active {
-  background: rgba(139, 123, 246, .075) !important;
-  border-color: rgba(139, 123, 246, .25) !important;
+  background: rgba(184, 173, 155, .075) !important;
+  border-color: rgba(184, 173, 155, .25) !important;
 }
 
 /* Planning */
@@ -886,7 +886,7 @@ body.staff-mode .staff-resource-tab.active {
   color: var(--pf-text) !important;
   background: rgba(242, 245, 248, .045) !important;
   border-color: var(--pf-line) !important;
-  box-shadow: inset 0 -1px 0 rgba(139, 123, 246, .52) !important;
+  box-shadow: inset 0 -1px 0 rgba(184, 173, 155, .52) !important;
 }
 
 body.staff-mode .planning-grid,
@@ -3053,7 +3053,7 @@ body .auth-orbit-mark::before {
   top: 15px !important;
   width: 28px !important;
   height: 13px !important;
-  border: 2px solid #7c6df2 !important;
+  border: 2px solid #b8ad9b !important;
   border-radius: 999px !important;
   transform: rotate(-28deg) !important;
 }
@@ -3207,8 +3207,8 @@ body .auth-input {
 
 body .auth-input:focus {
   outline: none !important;
-  border-color: rgba(124, 109, 242, .78) !important;
-  box-shadow: 0 0 0 3px rgba(124, 109, 242, .18) !important;
+  border-color: rgba(184, 173, 155, .78) !important;
+  box-shadow: 0 0 0 3px rgba(184, 173, 155, .18) !important;
 }
 
 body .auth-form .btn-primary {
@@ -3249,7 +3249,7 @@ body.admin-mode .admin-platform-logo::before {
   position: absolute !important;
   width: 39px !important;
   height: 17px !important;
-  border: 2.2px solid #7c6df2 !important;
+  border: 2.2px solid #b8ad9b !important;
   border-radius: 999px !important;
   transform: rotate(-28deg) !important;
 }

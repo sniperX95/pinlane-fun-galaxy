@@ -8,7 +8,7 @@
   --res-text: #f7f9fc;
   --res-muted: #9ba7b8;
   --res-faint: #687386;
-  --res-purple: #6d4cff;
+  --res-purple: #b6aa95;
   --res-blue: #326dff;
   --res-green: #28b981;
   --res-amber: #d58b19;
@@ -195,7 +195,7 @@
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: rgba(109, 76, 255, .16);
+  background: rgba(184, 173, 155, .16);
   color: var(--res-purple);
 }
 
@@ -314,8 +314,8 @@
 
 .reservations-pill-group button.active {
   color: #f3f6fb;
-  background: rgba(109, 76, 255, .28);
-  border-color: rgba(109, 76, 255, .58);
+  background: rgba(184, 173, 155, .28);
+  border-color: rgba(184, 173, 155, .58);
 }
 
 .reservations-legend {
@@ -402,9 +402,9 @@
 }
 
 .reservations-day.selected {
-  outline: 1px solid rgba(109, 76, 255, .82);
+  outline: 1px solid rgba(184, 173, 155, .82);
   outline-offset: -1px;
-  background: rgba(109, 76, 255, .08);
+  background: rgba(184, 173, 155, .08);
 }
 
 .reservations-day.today .reservations-day-head strong {
@@ -482,8 +482,8 @@
 }
 
 .reservations-day-line.complete {
-  color: #b797ff;
-  background: rgba(109, 76, 255, .1);
+  color: #d4cec2;
+  background: rgba(184, 173, 155, .1);
 }
 
 .reservations-day-empty {
@@ -614,7 +614,7 @@
 }
 
 .reservations-detail-row.complete {
-  box-shadow: inset 0 0 0 1px rgba(109, 76, 255, .16);
+  box-shadow: inset 0 0 0 1px rgba(184, 173, 155, .16);
 }
 
 .reservations-detail-row .time,

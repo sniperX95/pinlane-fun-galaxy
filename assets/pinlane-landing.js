@@ -49,21 +49,40 @@
   const pilotForm = document.getElementById('pilotForm');
   const formStatus = document.getElementById('formStatus');
   if (pilotForm) {
-    pilotForm.addEventListener('submit', (event) => {
+    const submitButton = pilotForm.querySelector('button[type="submit"]');
+    pilotForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const data = new FormData(pilotForm);
-      const centre = String(data.get('centre') || '').trim();
-      const contact = String(data.get('contact') || '').trim();
-      const email = String(data.get('email') || '').trim();
-      const priority = String(data.get('priority') || '').trim();
-      const subject = encodeURIComponent(`Demo Pinlane - ${centre || 'centre loisirs'}`);
-      const body = encodeURIComponent(
-        `Bonjour,\n\nJe veux preparer un pilote Pinlane.\n\nCentre: ${centre}\nContact: ${contact}\nEmail: ${email}\nPriorite: ${priority}\n\nMerci.`
-      );
-      if (formStatus) {
-        formStatus.textContent = 'Demande preparee. Votre application mail va s ouvrir.';
+      const payload = {
+        centre: String(data.get('centre') || '').trim(),
+        contact: String(data.get('contact') || '').trim(),
+        email: String(data.get('email') || '').trim(),
+        priority: String(data.get('priority') || '').trim()
+      };
+
+      if (submitButton) submitButton.disabled = true;
+      if (formStatus) formStatus.textContent = 'Envoi de la demande...';
+
+      try {
+        const response = await fetch('/api/pilot-lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result.ok) {
+          pilotForm.reset();
+          if (formStatus) formStatus.textContent = 'Demande envoyee. L equipe Pinlane revient vers vous rapidement.';
+        } else {
+          if (formStatus) {
+            formStatus.textContent = result.message || 'Envoi impossible pour le moment, reessayez.';
+          }
+        }
+      } catch (error) {
+        if (formStatus) formStatus.textContent = 'Envoi impossible pour le moment, reessayez.';
+      } finally {
+        if (submitButton) submitButton.disabled = false;
       }
-      window.location.href = `mailto:movsarbis.06@gmail.com?subject=${subject}&body=${body}`;
     });
   }
 })();

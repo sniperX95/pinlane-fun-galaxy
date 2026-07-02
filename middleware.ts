@@ -72,6 +72,7 @@ export default function middleware(request: Request) {
     '/api/admin-range',
     '/api/marketing-agents',
     '/api/ops',
+    '/api/pilot-lead',
     '/api/simulation',
     '/api/staff-auth',
     '/api/staff-lanes',

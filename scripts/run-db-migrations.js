@@ -35,6 +35,11 @@ const MIGRATIONS = [
     file: 'database/center-lane-statuses-schema.sql',
     description: 'Scope lane statuses per center',
   },
+  {
+    id: '0007_pilot_leads',
+    file: 'database/pilot-leads-schema.sql',
+    description: 'Pilot lead capture from the marketing landing',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -5430,28 +5430,227 @@ function renderStaffUtilityOffers() {
   </div>`;
 }
 
+let staffCenterConfigCache = { loaded: false, loading: false, error: '', centers: [], activities: [] };
+
+const ESTABLISHMENT_DAYS = [
+  ['1', 'Lundi'], ['2', 'Mardi'], ['3', 'Mercredi'], ['4', 'Jeudi'],
+  ['5', 'Vendredi'], ['6', 'Samedi'], ['0', 'Dimanche']
+];
+
+async function loadStaffCenterConfig(force = false) {
+  if (staffCenterConfigCache.loading) return;
+  if (staffCenterConfigCache.loaded && !force) return;
+  if (!canUseStaffPermission('settings.manage') && !canUseStaffPermission('direction.view')) return;
+  staffCenterConfigCache.loading = true;
+  if (force) staffCenterConfigCache.error = '';
+  try {
+    const response = await apiRequest(`${API_ENDPOINTS.ops}?action=centerConfig&centerId=${encodeURIComponent(getCurrentStaffCenterId())}`);
+    staffCenterConfigCache = {
+      loaded: true,
+      loading: false,
+      error: '',
+      centers: Array.isArray(response.centers) ? response.centers : [],
+      activities: Array.isArray(response.activities) ? response.activities : []
+    };
+  } catch (error) {
+    staffCenterConfigCache.loading = false;
+    staffCenterConfigCache.loaded = true;
+    staffCenterConfigCache.error = error?.message || 'Lecture configuration impossible.';
+  }
+  if (state.view === 'staff' && getStaffMenuPage() === 'establishment') renderStaffUtilityPage();
+}
+
+function getEstablishmentCenter() {
+  const centers = staffCenterConfigCache.centers || [];
+  if (!centers.length) return null;
+  return centers.find(center => center.id === state.establishmentCenterId) || centers[0];
+}
+
+function selectEstablishmentCenter(id) {
+  state.establishmentCenterId = id;
+  save();
+  renderStaffUtilityPage();
+}
+
+function establishmentInputValue(id, fallback = '') {
+  const el = document.getElementById(id);
+  return el ? el.value : fallback;
+}
+
+async function submitCenterConfig(centerId) {
+  if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
+  const regular = {};
+  ESTABLISHMENT_DAYS.forEach(([key]) => {
+    const open = establishmentInputValue(`estab-day-${key}-open`);
+    const close = establishmentInputValue(`estab-day-${key}-close`);
+    const closed = document.getElementById(`estab-day-${key}-closed`)?.checked;
+    regular[key] = closed || !open || !close ? null : { open, close };
+  });
+  const activityAvailability = {};
+  (staffCenterConfigCache.activities || []).forEach(activity => {
+    activityAvailability[activity.id] = !!document.getElementById(`estab-act-${activity.id}`)?.checked;
+  });
+  const config = {
+    status: establishmentInputValue('estab-status', 'active'),
+    resources: {
+      bowling: {
+        laneCount: Number(establishmentInputValue('estab-laneCount', 8)),
+        normalCapacityPerLane: Number(establishmentInputValue('estab-normalCap', 6)),
+        emergencyCapacityPerLane: Number(establishmentInputValue('estab-emergencyCap', 7))
+      },
+      laser: {
+        weaponCount: Number(establishmentInputValue('estab-weaponCount', 30)),
+        parallelLaunches: Number(establishmentInputValue('estab-launches', 1))
+      }
+    },
+    defaultSchedule: { regular },
+    activityAvailability
+  };
+  const name = establishmentInputValue('estab-name').trim();
+  try {
+    if (name) {
+      await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenter', center: { id: centerId, name, status: config.status } }) });
+    }
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenterConfig', centerId, config }) });
+    toast('Configuration du centre enregistrée.');
+    await loadStaffCenterConfig(true);
+  } catch (error) {
+    toast(error?.message || 'Enregistrement impossible.');
+  }
+}
+
+async function submitNewCenter() {
+  if (!canUseStaffPermission('settings.manage')) { toast('Ajout réservé à la direction.'); return; }
+  const id = establishmentInputValue('estab-new-id').trim().toLowerCase();
+  const name = establishmentInputValue('estab-new-name').trim();
+  if (!id || !name) { toast('Identifiant et nom requis.'); return; }
+  try {
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenter', center: { id, name, status: 'planned' } }) });
+    toast(`Centre « ${name} » ajouté.`);
+    state.establishmentCenterId = id;
+    save();
+    await loadStaffCenterConfig(true);
+  } catch (error) {
+    toast(error?.message || 'Ajout impossible.');
+  }
+}
+
+async function setEstablishmentCenterStatus(centerId, status) {
+  if (!canUseStaffPermission('settings.manage')) { toast('Action réservée à la direction.'); return; }
+  try {
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'setCenterStatus', centerId, status }) });
+    toast(status === 'closed' ? 'Centre archivé.' : 'Statut mis à jour.');
+    await loadStaffCenterConfig(true);
+  } catch (error) {
+    toast(error?.message || 'Changement de statut impossible.');
+  }
+}
+
+function renderEstablishmentDayRow(center, key, label) {
+  const slot = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule.regular?.[key] : null;
+  const closed = !slot;
+  return `<div class="estab-day-row">
+    <span class="estab-day-label">${escapeHtml(label)}</span>
+    <label class="estab-day-closed"><input type="checkbox" id="estab-day-${key}-closed" ${closed ? 'checked' : ''} onchange="const r=this.closest('.estab-day-row');r.querySelectorAll('input[type=time]').forEach(i=>i.disabled=this.checked)"> Fermé</label>
+    <input type="time" id="estab-day-${key}-open" value="${escapeHtml(slot?.open || '14:00')}" ${closed ? 'disabled' : ''} aria-label="Ouverture ${escapeHtml(label)}">
+    <span class="estab-day-sep">→</span>
+    <input type="time" id="estab-day-${key}-close" value="${escapeHtml(slot?.close || '22:00')}" ${closed ? 'disabled' : ''} aria-label="Fermeture ${escapeHtml(label)}">
+  </div>`;
+}
+
 function renderStaffUtilityEstablishment() {
-  const centers = getAdminCenters();
-  const activeId = getActiveOpsCenterId();
-  const planningWindow = getPlanningWindow(state.currentDate);
-  return `<div class="utility-establishment">
-    <section class="utility-center-grid">
-    ${centers.map(center => `<article class="utility-center-card ${center.id === activeId ? 'active' : ''}">
-      <span>${escapeHtml(center.status || (center.id === activeId ? 'actif' : 'centre'))}</span>
-      <strong>${escapeHtml(center.name || center.label || center.id)}</strong>
-      <small>${escapeHtml([center.bowling ? `${center.bowling.laneCount || 8} pistes` : '', center.laser ? `${center.laser.weaponCount || 30} armes laser` : ''].filter(Boolean).join(' · '))}</small>
-      <button type="button" onclick="state.adminCenterId='${escapeJsString(center.id)}'; save(); setView('admin'); setAdminTab('overview');">Ouvrir direction</button>
-    </article>`).join('')}
+  if (!staffCenterConfigCache.loaded && !staffCenterConfigCache.loading) {
+    setTimeout(() => loadStaffCenterConfig(false), 0);
+  }
+  if (!staffCenterConfigCache.loaded || staffCenterConfigCache.loading) {
+    return `<div class="establishment-page"><div class="establishment-loading">Lecture de la configuration des centres…</div></div>`;
+  }
+  if (staffCenterConfigCache.error) {
+    return `<div class="establishment-page"><div class="establishment-error"><strong>Configuration indisponible</strong><span>${escapeHtml(staffCenterConfigCache.error)}</span><button type="button" class="btn btn-secondary btn-sm" onclick="loadStaffCenterConfig(true)">Réessayer</button></div></div>`;
+  }
+  const centers = staffCenterConfigCache.centers;
+  const center = getEstablishmentCenter();
+  if (!center) return `<div class="establishment-page"><div class="establishment-loading">Aucun centre.</div></div>`;
+  const canEdit = canUseStaffPermission('settings.manage');
+  const bowling = center.resources?.bowling || {};
+  const laser = center.resources?.laser || {};
+  const statusLabels = { active: 'Actif', planned: 'Prévu', closed: 'Archivé' };
+  const disabled = canEdit ? '' : 'disabled';
+  return `<div class="establishment-page">
+    <section class="establishment-selector">
+      <div class="establishment-selector-head">
+        <div><h2>Centres</h2><p>${centers.length} centre${centers.length > 1 ? 's' : ''} · configuration lue par le moteur</p></div>
+      </div>
+      <div class="establishment-center-list">
+        ${centers.map(c => `<button type="button" class="establishment-center-chip ${c.id === center.id ? 'active' : ''}" onclick="selectEstablishmentCenter('${escapeJsString(c.id)}')">
+          <strong>${escapeHtml(c.name)}</strong>
+          <span class="establishment-status establishment-status-${escapeHtml(c.status)}">${escapeHtml(statusLabels[c.status] || c.status)}</span>
+          <small>${Number(c.resources?.bowling?.laneCount || 0)} pistes · ${Number(c.resources?.laser?.weaponCount || 0)} armes</small>
+        </button>`).join('')}
+        ${canEdit ? `<div class="establishment-add">
+          <span>Ajouter un centre</span>
+          <input id="estab-new-id" placeholder="slug (ex: namur)" autocomplete="off">
+          <input id="estab-new-name" placeholder="Nom (ex: Fun Galaxy Namur)" autocomplete="off">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="submitNewCenter()">Ajouter</button>
+        </div>` : ''}
+      </div>
     </section>
-    <article class="utility-center-card focus">
-      <span>Horaires ${escapeHtml(state.currentDate)}</span>
-      <strong>${escapeHtml(planningWindow.closed ? 'Fermé' : planningWindow.label)}</strong>
-      <small>${TOTAL_LANES} pistes · ${LASER_GAME_MAX_PLAYERS} armes · ${LASER_GAME_PARALLEL_LAUNCHES} lancement(s)</small>
-    </article>
-    <section class="utility-policy-list">
-      <div><strong>Bowling</strong><span>${TOTAL_LANES} pistes, ${MAX_PER_LANE} joueurs confort par piste.</span></div>
-      <div><strong>Laser Game</strong><span>${LASER_GAME_MAX_PLAYERS} armes, ${LASER_GAME_PARALLEL_LAUNCHES} lancement actif à Libramont.</span></div>
-      <div><strong>Planning</strong><span>La direction multi-centres reste dans l’espace Direction.</span></div>
+
+    <section class="establishment-editor" aria-label="Configuration ${escapeHtml(center.name)}">
+      <div class="establishment-editor-head">
+        <div>
+          <span class="establishment-eyebrow">Configuration centre</span>
+          <h2>${escapeHtml(center.name)}</h2>
+        </div>
+        ${canEdit ? `<div class="establishment-editor-actions">
+          <button type="button" class="btn btn-primary" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
+          ${center.status !== 'closed'
+            ? `<button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'closed')">Archiver</button>`
+            : `<button type="button" class="btn btn-secondary btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'active')">Réactiver</button>`}
+        </div>` : `<span class="establishment-readonly">Lecture seule — édition réservée à la direction.</span>`}
+      </div>
+
+      <div class="establishment-grid">
+        <fieldset class="establishment-card">
+          <legend>Identité</legend>
+          <div class="field"><label for="estab-name">Nom du centre</label><input id="estab-name" value="${escapeHtml(center.name)}" ${disabled}></div>
+          <div class="field"><label for="estab-status">Statut</label>
+            <select id="estab-status" ${disabled}>
+              <option value="active" ${center.status === 'active' ? 'selected' : ''}>Actif</option>
+              <option value="planned" ${center.status === 'planned' ? 'selected' : ''}>Prévu</option>
+              <option value="closed" ${center.status === 'closed' ? 'selected' : ''}>Archivé</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset class="establishment-card">
+          <legend>Bowling</legend>
+          <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}" ${disabled}></div>
+          <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}" ${disabled}></div>
+          <div class="field"><label for="estab-emergencyCap">Joueurs max / piste (secours)</label><input type="number" id="estab-emergencyCap" min="1" max="15" value="${Number(bowling.emergencyCapacityPerLane || 7)}" ${disabled}></div>
+        </fieldset>
+
+        <fieldset class="establishment-card">
+          <legend>Laser Game</legend>
+          <div class="field"><label for="estab-weaponCount">Nombre d'armes</label><input type="number" id="estab-weaponCount" min="0" max="200" value="${Number(laser.weaponCount || 0)}" ${disabled}></div>
+          <div class="field"><label for="estab-launches">Lancements parallèles</label><input type="number" id="estab-launches" min="1" max="20" value="${Number(laser.parallelLaunches || 1)}" ${disabled}></div>
+        </fieldset>
+
+        <fieldset class="establishment-card establishment-hours">
+          <legend>Horaires d'ouverture</legend>
+          ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label)).join('')}
+        </fieldset>
+
+        <fieldset class="establishment-card establishment-activities">
+          <legend>Activités disponibles</legend>
+          <div class="establishment-activity-grid">
+            ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
+              <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} ${disabled} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+              <span>${escapeHtml(activity.label)}</span>
+            </label>`).join('')}
+          </div>
+        </fieldset>
+      </div>
     </section>
   </div>`;
 }

@@ -32,7 +32,14 @@ const {
   enqueueReservationCommunications,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
-const { loadOpsKnowledge } = require('../lib/ops-knowledge');
+const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const {
+  listCenterConfigs,
+  saveCenterConfigOverride,
+  upsertCenter,
+  setCenterStatus,
+} = require('../lib/center-config');
+const { getPool } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 
@@ -174,6 +181,25 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  if (action === 'centerConfig') {
+    const session = await requireStaffPermission(req, res, ['settings.manage', 'direction.view'], { centerId });
+    if (!session) return;
+    const pool = getPool();
+    try {
+      await refreshCenterOverrides(pool, { force: true });
+    } catch (error) {
+      // Fall back to file baseline if the refresh fails.
+    }
+    const centers = await listCenterConfigs(pool);
+    const knowledge = loadOpsKnowledge();
+    const activities = (knowledge.activities || []).map((activity) => ({
+      id: activity.id,
+      label: activity.label || activity.name || activity.id,
+    }));
+    sendJson(res, 200, { ok: true, centers, activities });
+    return;
+  }
+
   if (action === 'agentStack') {
     let context = { centerId };
     if (startDate && endDate) {
@@ -247,6 +273,53 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const context = await buildContext(scopedBody);
     const result = planningAgent(scopedBody, context);
     sendJson(res, 200, { ok: true, contextWarning: context.warning || null, ...result });
+    return;
+  }
+
+  if (action === 'saveCenterConfig') {
+    const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId });
+    if (!session) return;
+    const targetCenter = requireConcreteCenter('configuration centre');
+    const pool = getPool();
+    let config;
+    try {
+      config = await saveCenterConfigOverride(pool, targetCenter, body.config || {});
+    } catch (error) {
+      throw createHttpError(error.message || 'Configuration centre invalide.', 400);
+    }
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, centerId: targetCenter, config });
+    return;
+  }
+
+  if (action === 'saveCenter') {
+    const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId: 'all' });
+    if (!session) return;
+    const pool = getPool();
+    let center;
+    try {
+      center = await upsertCenter(pool, body.center || {});
+    } catch (error) {
+      throw createHttpError(error.message || 'Centre invalide.', 400);
+    }
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, center });
+    return;
+  }
+
+  if (action === 'setCenterStatus') {
+    const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId });
+    if (!session) return;
+    const targetCenter = requireConcreteCenter('statut centre');
+    const pool = getPool();
+    let center;
+    try {
+      center = await setCenterStatus(pool, targetCenter, body.status);
+    } catch (error) {
+      throw createHttpError(error.message || 'Statut centre invalide.', 400);
+    }
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, center });
     return;
   }
 

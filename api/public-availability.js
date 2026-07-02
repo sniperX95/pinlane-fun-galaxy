@@ -16,11 +16,11 @@ const {
   todayStr,
   TOTAL_LANES,
 } = require('../lib/booking-config');
-const { readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
+const { getPool, readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
 const { sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
-const { getActivity, getCenter, getFormula } = require('../lib/ops-knowledge');
+const { getActivity, getCenter, getFormula, refreshCenterOverrides } = require('../lib/ops-knowledge');
 
 const LASER_ARENA_MINUTES = 25;
 const FORMULA_ARRIVAL_MINUTES = 5;
@@ -216,7 +216,7 @@ function getFormulaActivityCandidates({ activityId, formulaDoc, formula, pax, sn
     .map((start) => {
       if (start < minStartMinute || start + duration > closeMinute) return null;
       if (activityId === 'bowling') {
-        const lanes = allocateLanes(laneCount, snapshot.reservations, laneStatuses, numToTime(start / 60), duration / 60);
+        const lanes = allocateLanes(laneCount, snapshot.reservations, laneStatuses, numToTime(start / 60), duration / 60, Number(center.resources?.bowling?.laneCount) || TOTAL_LANES);
         if (!lanes) return null;
         return { activityId, start, end: start + duration, lanes, players: pax };
       }
@@ -436,10 +436,19 @@ function buildFlexibleFormulaSlots({ centerId, date, formula, formulaDoc, pax, s
     .map((scenario) => toFormulaSlot(scenario, snapshot, getFormuleLaneDuration(formula)));
 }
 
-function getFreeCount(reservations, laneStatuses, startTime, duration) {
+function centerLaneBound(centerId) {
+  try {
+    const value = Number(getCenter(centerId || 'libramont')?.resources?.bowling?.laneCount);
+    return Number.isFinite(value) && value > 0 ? value : TOTAL_LANES;
+  } catch (error) {
+    return TOTAL_LANES;
+  }
+}
+
+function getFreeCount(reservations, laneStatuses, startTime, duration, laneCount = TOTAL_LANES) {
   const occupied = getOccupiedLanes(reservations, startTime, duration);
   let count = 0;
-  for (let lane = 1; lane <= TOTAL_LANES; lane += 1) {
+  for (let lane = 1; lane <= laneCount; lane += 1) {
     if (!occupied.has(lane) && laneStatuses[lane] !== 'maintenance') {
       count += 1;
     }
@@ -447,13 +456,13 @@ function getFreeCount(reservations, laneStatuses, startTime, duration) {
   return count;
 }
 
-function allocateLanes(requiredCount, reservations, laneStatuses, startTime, duration) {
+function allocateLanes(requiredCount, reservations, laneStatuses, startTime, duration, laneCount = TOTAL_LANES) {
   if (!requiredCount) return [];
 
   const occupied = getOccupiedLanes(reservations, startTime, duration);
   const available = [];
 
-  for (let lane = 1; lane <= TOTAL_LANES; lane += 1) {
+  for (let lane = 1; lane <= laneCount; lane += 1) {
     if (!occupied.has(lane) && laneStatuses[lane] !== 'maintenance') {
       available.push(lane);
     }
@@ -511,7 +520,7 @@ function toFormulaSlot(scenario, snapshot, duration) {
   return {
     time: scenario.startTime,
     lanes: scenario.assignedLanes || [],
-    freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, laneStart, laneDuration),
+    freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, laneStart, laneDuration, centerLaneBound(snapshot.centerId)),
     opsPlan: {
       startTime: scenario.startTime,
       endTime: scenario.endTime,
@@ -631,6 +640,20 @@ module.exports = async (req, res) => {
     const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
     const date = String(url.searchParams.get('date') || '');
     const centerId = String(url.searchParams.get('centerId') || 'libramont');
+    // Reflect the latest per-center config edits (cached ~30s). Fails soft on a
+    // DB outage: the file baseline is used so availability never breaks.
+    try {
+      await refreshCenterOverrides(getPool());
+    } catch (error) {
+      // Ignore: fall back to the file baseline.
+    }
+    let centerBowlingConfig = null;
+    try {
+      centerBowlingConfig = getCenter(centerId)?.resources?.bowling || null;
+    } catch (error) {
+      centerBowlingConfig = null;
+    }
+    const centerLaneCount = Number(centerBowlingConfig?.laneCount) || TOTAL_LANES;
     const rawType = String(url.searchParams.get('type') || 'bowling');
     const type = rawType === 'formule' ? 'formule' : rawType === 'laser' ? 'laser' : 'bowling';
     const pax = Math.max(1, Number(url.searchParams.get('pax') || 1));
@@ -702,10 +725,10 @@ module.exports = async (req, res) => {
           ok: true,
           date,
           slots: [],
-          laneCount: getRequiredLaneCount(type, pax, formuleId),
+          laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
           duration: getFormuleLaneDuration(formule),
           totalDuration: getFormuleTotalDuration(formule),
-          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId), pax, formuleId),
+          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId),
           requiresLanes: reservationNeedsLanes(type, formuleId),
           label: formule.name,
           message: availability.message,
@@ -718,7 +741,7 @@ module.exports = async (req, res) => {
     const laserOption = getLaserOptionFromRequest(url, requestedDuration);
     const duration = type === 'formule' ? getFormuleLaneDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
     const totalDuration = type === 'formule' ? getFormuleTotalDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
-    const laneCount = getRequiredLaneCount(type, pax, formuleId);
+    const laneCount = getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig);
     const requiresLanes = reservationNeedsLanes(type, formuleId);
     let minTime = schedule.open;
     let maxTime = schedule.close - totalDuration;
@@ -958,14 +981,14 @@ module.exports = async (req, res) => {
     for (let value = minTime; value <= maxTime; value += 0.5) {
       const startTime = numToTime(value);
       const lanes = requiresLanes
-        ? allocateLanes(laneCount, snapshot.reservations, snapshot.laneStatuses, startTime, duration)
+        ? allocateLanes(laneCount, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount)
         : [];
 
       if (!requiresLanes || lanes !== null) {
         slots.push({
           time: startTime,
           lanes: lanes || [],
-          freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, startTime, duration),
+          freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount),
         });
       }
     }

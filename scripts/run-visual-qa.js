@@ -223,6 +223,31 @@ async function installQaApi(page) {
       }
 
       if (url.pathname === '/api/ops') {
+        const opsAction = url.searchParams.get('action');
+        if (opsAction === 'centerConfig') {
+          const mkCenter = (id, name, status, laneCount, weaponCount, launches) => ({
+            id, name, status, timezone: 'Europe/Brussels',
+            resources: {
+              bowling: { laneCount, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, forceExtraLaneAtPax: 8, preferAdjacentLanes: true },
+              laser: { weaponCount, parallelLaunches: launches, canSplitGroupsCleanly: launches > 1, requiresCompleteGroupBeforeLaunch: launches === 1, riskLevel: 'managed' },
+            },
+            defaultSchedule: { regular: { '1': null, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' }, '0': { open: '10:00', close: '22:00' } } },
+            activityAvailability: { bowling: true, laser_game: true, minigolf_blacklight: true, golf_oclock: status !== 'active', arcade_time: true, playground: true },
+          });
+          return jsonResponse({
+            ok: true,
+            centers: [
+              mkCenter('libramont', 'Fun Galaxy Libramont', 'active', 8, 30, 1),
+              mkCenter('gembloux', 'Fun Galaxy Gembloux', 'active', 8, 30, 3),
+              mkCenter('ciney', 'Fun Galaxy Ciney', 'planned', 8, 30, 1),
+            ],
+            activities: [
+              { id: 'bowling', label: 'Bowling' }, { id: 'laser_game', label: 'Laser Game' },
+              { id: 'minigolf_blacklight', label: 'Minigolf Blacklight' }, { id: 'golf_oclock', label: "Golf o'Clock" },
+              { id: 'arcade_time', label: 'Arcade' }, { id: 'playground', label: 'Plaine de jeux' },
+            ],
+          });
+        }
         return jsonResponse({
           ok: true,
           communications: [],
@@ -464,6 +489,11 @@ async function main() {
     await renderStaffPage(page, 'prices');
     await screenshot(page, 'staff-pricing-stress');
     issues.push(...await collectIssues(page, 'staff-pricing'));
+
+    await renderStaffPage(page, 'establishment');
+    await page.waitForTimeout(500);
+    await screenshot(page, 'staff-establishment');
+    issues.push(...await collectIssues(page, 'staff-establishment'));
 
     // Passe thème clair sur les écrans clés (le système v2 est bi-thème)
     await page.evaluate(() => setStaffTheme('light'));

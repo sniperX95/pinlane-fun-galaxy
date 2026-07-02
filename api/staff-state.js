@@ -1,5 +1,6 @@
-const { readStaffState } = require('../lib/database');
+const { getPool, readStaffState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
+const { refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { isStaffAuthStorageError, requireStaffPermission } = require('../lib/staff-auth');
 
 function buildOfflineStaffState(date, centerId, error) {
@@ -34,6 +35,13 @@ module.exports = async (req, res) => {
     if (!date) {
       sendError(res, 400, 'Date manquante.');
       return;
+    }
+    // Reflète les éditions de config centre (cache ~30s, fail-soft) avant de
+    // lire l'état : le moteur (getCenter) doit voir la config à jour.
+    try {
+      await refreshCenterOverrides(getPool());
+    } catch (error) {
+      // Fallback silencieux sur la baseline fichier.
     }
     const snapshot = await readStaffState(date, centerId);
     const requestRevision = req.headers['if-none-match'];

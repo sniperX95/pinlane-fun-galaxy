@@ -1549,15 +1549,17 @@ function scheduleRemoteSync() {
       scheduleRemoteSync();
       return;
     }
+    // Le mode client (parcours public) n'a pas de session staff : il ne doit
+    // PAS interroger les endpoints protégés (staff-state → 401). Ses créneaux
+    // sont chargés à la demande via public-availability. On arrête donc la
+    // boucle de sync ; setView() la relance quand on passe en staff/admin.
+    if (state.view === 'client') return;
     if ((state.view === 'staff' || state.view === 'admin') && !hasSavedAuth()) {
       scheduleRemoteSync();
       return;
     }
     if (state.view === 'admin') await loadAdminDashboard(true);
-    else {
-      const targetDate = state.view === 'staff' ? state.currentDate : state.booking.date;
-      await syncDateReservations(targetDate, { silent: true, skipRender: state.view !== 'staff' });
-    }
+    else await syncDateReservations(state.currentDate, { silent: true });
     scheduleRemoteSync();
   }, delay);
 }

@@ -3824,35 +3824,64 @@ function renderStaffDashboardHourly(metrics) {
   const chart = { width: 620, height: 238, left: 42, right: 16, top: 18, bottom: 34 };
   const innerWidth = chart.width - chart.left - chart.right;
   const innerHeight = chart.height - chart.top - chart.bottom;
-  const max = Math.max(...hours.map(hour => hour.total), TOTAL_LANES, 1);
+  const plotBottom = chart.height - chart.bottom;
+  const lanes = Math.max(TOTAL_LANES, 1);
+  const toPercent = value => Math.max(0, Math.min(100, (value / lanes) * 100));
   const xFor = index => chart.left + (hours.length <= 1 ? 0 : (index / (hours.length - 1)) * innerWidth);
-  const yFor = value => chart.top + innerHeight - ((value / max) * innerHeight);
-  const pointsFor = key => hours.map((hour, index) => `${xFor(index).toFixed(1)},${yFor(hour[key]).toFixed(1)}`).join(' ');
+  const yFor = percent => chart.top + innerHeight - ((Math.max(0, Math.min(100, percent)) / 100) * innerHeight);
+  const seriesMeta = [
+    { key: 'confirmed', cls: 'confirmed', name: 'Confirmé' },
+    { key: 'arrived', cls: 'arrived', name: 'Arrivé' },
+    { key: 'paid', cls: 'paid', name: 'Payé' }
+  ];
+  const pointsFor = key => hours.map((hour, index) => `${xFor(index).toFixed(1)},${yFor(toPercent(hour[key])).toFixed(1)}`).join(' ');
   const peak = hours.reduce((best, hour, index) => hour.total > best.total ? { ...hour, index } : best, { total: -1, index: 0 });
   const peakX = xFor(peak.index || 0);
-  const peakY = yFor(Math.max(peak.total || 0, 0));
-  const peakPercent = Math.min(100, Math.round(((peak.total || 0) / Math.max(TOTAL_LANES, 1)) * 100));
+  const peakPercent = Math.round(toPercent(peak.total || 0));
+  const peakY = yFor(peakPercent);
   const xLabels = hours.map((hour, index) => {
     const show = index === 0 || index === hours.length - 1 || Math.floor(hour.hour) % 2 === 0;
     return show ? `<text x="${xFor(index).toFixed(1)}" y="${chart.height - 7}" text-anchor="middle">${String(Math.floor(hour.hour)).padStart(2, '0')}h</text>` : '';
   }).join('');
   const yTicks = [100, 75, 50, 25, 0].map(percent => {
-    const y = chart.top + innerHeight - ((percent / 100) * innerHeight);
+    const y = yFor(percent);
     return `<g class="dash-line-grid"><line x1="${chart.left}" x2="${chart.width - chart.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line><text x="4" y="${(y + 4).toFixed(1)}">${percent}%</text></g>`;
   }).join('');
-  return `<div class="dash-line-chart" aria-label="Occupations par heure">
-    <svg viewBox="0 0 ${chart.width} ${chart.height}" preserveAspectRatio="none" aria-hidden="true">
+  const chartData = {
+    w: chart.width,
+    h: chart.height,
+    top: chart.top,
+    bottom: plotBottom,
+    pts: hours.map((hour, index) => ({
+      x: Number(xFor(index).toFixed(1)),
+      label: `${String(Math.floor(hour.hour)).padStart(2, '0')}h`,
+      s: seriesMeta.map(meta => ({
+        n: meta.name,
+        c: meta.cls,
+        v: Math.round(toPercent(hour[meta.key])),
+        y: Number(yFor(toPercent(hour[meta.key])).toFixed(1))
+      }))
+    }))
+  };
+  return `<div class="dash-line-chart" aria-label="Occupations par heure" data-hourly-chart="${escapeHtml(JSON.stringify(chartData))}">
+    <svg viewBox="0 0 ${chart.width} ${chart.height}" role="img" aria-hidden="true">
       ${yTicks}
       <polyline class="confirmed" points="${pointsFor('confirmed')}"></polyline>
       <polyline class="arrived" points="${pointsFor('arrived')}"></polyline>
       <polyline class="paid" points="${pointsFor('paid')}"></polyline>
-      ${peak.total > 0 ? `<line class="dash-line-marker" x1="${peakX.toFixed(1)}" x2="${peakX.toFixed(1)}" y1="${chart.top}" y2="${chart.height - chart.bottom}"></line>
+      ${peak.total > 0 ? `<line class="dash-line-marker" x1="${peakX.toFixed(1)}" x2="${peakX.toFixed(1)}" y1="${chart.top}" y2="${plotBottom.toFixed(1)}"></line>
         <circle class="dash-line-point" cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="5"></circle>
         <g class="dash-line-badge">
           <rect x="${Math.max(chart.left, Math.min(peakX - 18, chart.width - chart.right - 42)).toFixed(1)}" y="${Math.max(6, peakY - 35).toFixed(1)}" width="44" height="24" rx="8"></rect>
           <text x="${Math.max(chart.left + 22, Math.min(peakX + 4, chart.width - chart.right - 20)).toFixed(1)}" y="${Math.max(22, peakY - 18).toFixed(1)}" text-anchor="middle">${peakPercent}%</text>
         </g>` : ''}
       <g class="dash-line-x">${xLabels}</g>
+      <g class="dash-line-cursor" aria-hidden="true" style="display:none;">
+        <line x1="0" x2="0" y1="${chart.top}" y2="${plotBottom.toFixed(1)}"></line>
+        <circle class="confirmed" r="4"></circle>
+        <circle class="arrived" r="4"></circle>
+        <circle class="paid" r="4"></circle>
+      </g>
     </svg>
   </div>`;
 }
@@ -3915,19 +3944,54 @@ function renderStaffDashboardAlerts(metrics) {
   </div>`).join('');
 }
 
+function niceRevenueScale(rawMax) {
+  const value = Math.max(Number(rawMax) || 0, 100);
+  const target = 4;
+  const rough = value / target;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough)));
+  const candidates = [1, 2, 2.5, 5, 10];
+  let step = 10 * pow;
+  for (const candidate of candidates) {
+    if (candidate * pow >= rough) { step = candidate * pow; break; }
+  }
+  const max = Math.max(step, Math.ceil(value / step) * step);
+  return { max, step };
+}
+
+function formatMoneyShort(value) {
+  const amount = Math.round(Number(value) || 0);
+  if (Math.abs(amount) >= 1000) {
+    const k = amount / 1000;
+    const text = Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',');
+    return `${text}k €`;
+  }
+  return `${amount} €`;
+}
+
 function renderStaffDashboardRevenue(metrics) {
-  const max = Math.max(...metrics.revenueSeries, 1);
+  const rawMax = Math.max(...metrics.revenueSeries, 0);
+  const { max: axisMax, step } = niceRevenueScale(rawMax);
   const days = Array.from({ length: 7 }, (_, index) => addDays(state.currentDate, index - 6));
-  return `<div class="dash-revenue-bars" aria-label="Revenus des sept derniers jours">
-    <div class="dash-revenue-scale"><span>3k €</span><span>2k €</span><span>1k €</span><span>0 €</span></div>
+  const ticks = [];
+  for (let value = axisMax; value > -step / 2; value -= step) ticks.push(Math.max(0, Math.round(value)));
+  const bars = metrics.revenueSeries.map((value, index) => {
+    const date = parseLocalDate(days[index]);
+    return {
+      amount: Math.round(Number(value) || 0),
+      short: date.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', ''),
+      full: date.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }).replace('.', '')
+    };
+  });
+  const barsData = JSON.stringify(bars.map(bar => ({ f: bar.full, a: bar.amount })));
+  return `<div class="dash-revenue-bars" aria-label="Revenus des sept derniers jours" data-revenue-bars="${escapeHtml(barsData)}">
+    <div class="dash-revenue-scale">${ticks.map(tick => `<span>${escapeHtml(formatMoneyShort(tick))}</span>`).join('')}</div>
     <div class="dash-revenue-bar-grid">
-      ${metrics.revenueSeries.map((value, index) => {
-        const height = Math.max(6, Math.round((value / max) * 100));
-        const label = parseLocalDate(days[index]).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', '');
-        return `<div class="dash-revenue-bar">
+      ${bars.map((bar, index) => {
+        const height = bar.amount > 0 ? Math.max(3, Math.round((bar.amount / axisMax) * 100)) : 0;
+        return `<button type="button" class="dash-revenue-bar" data-index="${index}" aria-label="${escapeHtml(`${bar.full} : ${formatMoney(bar.amount)}`)}">
           <span style="height:${height}%"></span>
-          <small>${escapeHtml(label)}</small>
-        </div>`;
+          <small>${escapeHtml(bar.short)}</small>
+        </button>`;
       }).join('')}
     </div>
   </div>`;
@@ -4446,6 +4510,104 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       <div><span>${renderDashboardIcon('wrench')}</span><small>Maintenance</small><strong>${Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length}</strong></div>
     </section>
   `;
+  setupStaffDashboardCharts();
+}
+
+function setupStaffDashboardCharts() {
+  const root = document.getElementById('staffDashboardPage');
+  if (!root) return;
+  const hourly = root.querySelector('.dash-line-chart[data-hourly-chart]');
+  if (hourly) setupHourlyChartInteraction(hourly);
+  const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');
+  if (revenue) setupRevenueChartInteraction(revenue);
+}
+
+function setupHourlyChartInteraction(container) {
+  let data;
+  try { data = JSON.parse(container.dataset.hourlyChart || '{}'); } catch (_) { return; }
+  const points = Array.isArray(data.pts) ? data.pts : [];
+  const svg = container.querySelector('svg');
+  const cursor = container.querySelector('.dash-line-cursor');
+  if (!points.length || !svg || !cursor) return;
+  const cursorLine = cursor.querySelector('line');
+  const cursorDots = Array.from(cursor.querySelectorAll('circle'));
+  const tip = document.createElement('div');
+  tip.className = 'dash-chart-tip';
+  tip.setAttribute('role', 'status');
+  tip.hidden = true;
+  container.appendChild(tip);
+  let frame = null;
+  let pendingX = null;
+  const hide = () => { cursor.style.display = 'none'; tip.hidden = true; };
+  const render = clientX => {
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const svgX = ((clientX - rect.left) / rect.width) * data.w;
+    let nearest = points[0];
+    let bestDist = Infinity;
+    points.forEach(point => {
+      const dist = Math.abs(point.x - svgX);
+      if (dist < bestDist) { bestDist = dist; nearest = point; }
+    });
+    cursor.style.display = '';
+    cursorLine.setAttribute('x1', nearest.x);
+    cursorLine.setAttribute('x2', nearest.x);
+    nearest.s.forEach((series, index) => {
+      const dot = cursorDots[index];
+      if (!dot) return;
+      dot.setAttribute('cx', nearest.x);
+      dot.setAttribute('cy', series.y);
+    });
+    tip.innerHTML = `<strong>${escapeHtml(nearest.label)}</strong>${nearest.s.map(series => `<span class="dash-chart-tip-row"><i class="${escapeHtml(series.c)}"></i>${escapeHtml(series.n)}<b>${series.v}%</b></span>`).join('')}`;
+    tip.hidden = false;
+    const contRect = container.getBoundingClientRect();
+    const pxX = (nearest.x / data.w) * contRect.width;
+    const left = Math.max(4, Math.min(pxX - tip.offsetWidth / 2, contRect.width - tip.offsetWidth - 4));
+    tip.style.left = `${left}px`;
+    tip.style.top = `${(data.top / data.h) * contRect.height}px`;
+  };
+  const schedule = clientX => {
+    pendingX = clientX;
+    if (frame) return;
+    frame = requestAnimationFrame(() => { frame = null; if (pendingX != null) render(pendingX); });
+  };
+  svg.addEventListener('pointermove', event => schedule(event.clientX));
+  svg.addEventListener('pointerdown', event => schedule(event.clientX));
+  svg.addEventListener('pointerleave', hide);
+  svg.addEventListener('pointercancel', hide);
+}
+
+function setupRevenueChartInteraction(container) {
+  let bars;
+  try { bars = JSON.parse(container.dataset.revenueBars || '[]'); } catch (_) { return; }
+  const barEls = Array.from(container.querySelectorAll('.dash-revenue-bar'));
+  if (!bars.length || !barEls.length) return;
+  const tip = document.createElement('div');
+  tip.className = 'dash-chart-tip dash-chart-tip-bar';
+  tip.setAttribute('role', 'status');
+  tip.hidden = true;
+  container.appendChild(tip);
+  const hide = () => { tip.hidden = true; barEls.forEach(el => el.classList.remove('is-active')); };
+  const show = index => {
+    const info = bars[index];
+    const el = barEls[index];
+    if (!info || !el) return;
+    barEls.forEach(other => other.classList.toggle('is-active', other === el));
+    tip.innerHTML = `<strong>${escapeHtml(info.f)}</strong><b>${escapeHtml(formatMoney(info.a))}</b>`;
+    tip.hidden = false;
+    const contRect = container.getBoundingClientRect();
+    const barRect = el.getBoundingClientRect();
+    const centerX = barRect.left - contRect.left + barRect.width / 2;
+    const left = Math.max(4, Math.min(centerX - tip.offsetWidth / 2, contRect.width - tip.offsetWidth - 4));
+    tip.style.left = `${left}px`;
+    tip.style.top = `${Math.max(0, (barRect.top - contRect.top) - tip.offsetHeight - 6)}px`;
+  };
+  barEls.forEach((el, index) => {
+    el.addEventListener('pointerenter', () => show(index));
+    el.addEventListener('focus', () => show(index));
+    el.addEventListener('blur', hide);
+  });
+  container.addEventListener('pointerleave', hide);
 }
 
 function openStaffMenuPage(page, resource = '') {

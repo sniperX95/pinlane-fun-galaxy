@@ -65,6 +65,7 @@ function mergeAdminOpsIntoDashboard(base, opsCache = null) {
 function getAdminStatusLabel(status = '') {
   return {
     pending: 'Confirmé',
+    confirmed: 'Confirmé',
     arrived: 'Arrivé',
     paid: 'Payé',
     cancelled: 'Annulé',
@@ -122,7 +123,7 @@ function getAdminResourceHtml(reservation) {
   const sub = [
     fixed.length ? `Fixe: ${fixed.join(' · ')}` : '',
     flexible.length ? `Libre: ${flexible.join(' · ')}` : '',
-    Number.isFinite(quality) ? `Qualite ${Math.round(quality)}/100` : '',
+    Number.isFinite(quality) ? `Qualité ${Math.round(quality)}/100` : '',
   ].filter(Boolean);
   return `<div class="admin-plan-cell">
     <div class="admin-plan-main">${escapeHtml(resourceText)}</div>
@@ -831,7 +832,7 @@ function getAdminDelayHealth() {
 function getAdminHealthLevel(status) {
   return {
     ok: 'OK',
-    warn: 'A surveiller',
+    warn: 'À surveiller',
     danger: 'Action',
     unknown: 'Lecture'
   }[status] || 'Lecture';
@@ -853,7 +854,7 @@ function buildAdminOperationalChecks(snapshot = { reservations: [] }, metrics = 
       status: !opsHealth && !mails.total ? 'unknown' : mails.failed ? 'danger' : mails.queued ? 'warn' : 'ok',
       value: mails.total ? `${mails.sent}/${mails.total}` : '0',
       detail: mails.failed
-        ? `${mails.failed} echec(s) a corriger avant le rush.`
+        ? `${mails.failed} échec(s) à corriger avant le rush.`
         : mails.queued
           ? `${mails.queued} communication(s) en file ou brouillon.`
           : 'Confirmations et relances sans erreur active.',
@@ -864,8 +865,8 @@ function buildAdminOperationalChecks(snapshot = { reservations: [] }, metrics = 
       status: bowlingConflicts.length ? 'danger' : metrics.bowlingWindows ? 'ok' : 'unknown',
       value: `${metrics.bowlingWindows || 0} bloc(s)`,
       detail: bowlingConflicts.length
-        ? `${bowlingConflicts.length} conflit(s) piste detecte(s).`
-        : 'Pistes et horaires sans chevauchement detecte.',
+        ? `${bowlingConflicts.length} conflit(s) piste détecté(s).`
+        : 'Pistes et horaires sans chevauchement détecté.',
     },
     {
       key: 'laser',
@@ -875,21 +876,21 @@ function buildAdminOperationalChecks(snapshot = { reservations: [] }, metrics = 
       detail: laserIssues.overCapacity.length
         ? `${laserIssues.overCapacity.length} session(s) au-dessus de ${laserIssues.capacity} joueurs.`
         : laserIssues.missing.length
-          ? `${laserIssues.missing.length} reservation(s) laser sans horaire critique.`
-          : 'Sessions laser et capacite coherentes.',
+          ? `${laserIssues.missing.length} réservation(s) laser sans horaire critique.`
+          : 'Sessions laser et capacité cohérentes.',
     },
     {
       key: 'reservations',
-      title: 'Reservations',
+      title: 'Réservations',
       status: reservationIssues.missingResource.length ? 'danger' : (reservationIssues.staffReview.length || reservationIssues.missingContact.length) ? 'warn' : 'ok',
       value: `${metrics.reservations || 0} active(s)`,
       detail: reservationIssues.missingResource.length
-        ? `${reservationIssues.missingResource.length} reservation(s) sans ressource complete.`
+        ? `${reservationIssues.missingResource.length} réservation(s) sans ressource complète.`
         : reservationIssues.staffReview.length
-          ? `${reservationIssues.staffReview.length} reservation(s) a verifier par le staff.`
+          ? `${reservationIssues.staffReview.length} réservation(s) à vérifier par le staff.`
           : reservationIssues.missingContact.length
-            ? `${reservationIssues.missingContact.length} fiche(s) client a completer.`
-            : 'Donnees client, ressources et statuts exploitables.',
+            ? `${reservationIssues.missingContact.length} fiche(s) client à compléter.`
+            : 'Données client, ressources et statuts exploitables.',
     },
     {
       key: 'delays',
@@ -897,10 +898,10 @@ function buildAdminOperationalChecks(snapshot = { reservations: [] }, metrics = 
       status: delayHealth.open.length ? 'warn' : delayHealth.withoutCommunication.length ? 'warn' : 'ok',
       value: `${delayHealth.applied.length}/${delayHealth.incidents.length}`,
       detail: delayHealth.open.length
-        ? `${delayHealth.open.length} retard(s) a arbitrer avant envoi.`
+        ? `${delayHealth.open.length} retard(s) à arbitrer avant envoi.`
         : delayHealth.withoutCommunication.length
           ? `${delayHealth.withoutCommunication.length} retard(s) sans trace de message.`
-          : 'Decalages appliques sans incident ouvert.',
+          : 'Décalages appliqués sans incident ouvert.',
     }
   ];
 }
@@ -912,15 +913,15 @@ function renderAdminOperationalHealth(snapshot, metrics, center) {
   return `<div class="admin-panel admin-health-panel">
     <div class="admin-section-title admin-health-head">
       <div>
-        <h2>Verifications continues</h2>
-        <p>Mails, bowling, laser, reservations et retards controles sur les donnees actives.</p>
+        <h2>Vérifications continues</h2>
+        <p>Mails, bowling, laser, réservations et retards contrôlés sur les données actives.</p>
       </div>
       <span class="admin-health-summary ${hasIssue ? 'warn' : 'ok'}">
         <span class="admin-health-dot ${hasIssue ? 'warn' : 'ok'}"></span>
-        ${hasIssue ? 'A surveiller' : 'Tout est stable'}
+        ${hasIssue ? 'À surveiller' : 'Tout est stable'}
       </span>
     </div>
-    <div class="admin-health-grid">
+    ${hasIssue ? `<div class="admin-health-grid">
       ${checks.map(item => `<article class="admin-health-card ${escapeHtml(item.status)}">
         <div class="admin-health-card-top">
           <span class="admin-health-dot ${escapeHtml(item.status)}"></span>
@@ -930,8 +931,8 @@ function renderAdminOperationalHealth(snapshot, metrics, center) {
         <div class="admin-health-value">${escapeHtml(item.value)}</div>
         <p>${escapeHtml(item.detail)}</p>
       </article>`).join('')}
-    </div>
-    <div class="admin-health-foot">Derniere verification: ${escapeHtml(formatOpsTimestamp(generatedAt))}. Actualisation automatique quand Direction reste ouverte.</div>
+    </div>` : `<p class="admin-health-clear">Mails, plannings bowling/laser, réservations et retards passent tous les contrôles. Le détail réapparaît dès qu'un point mérite une lecture.</p>`}
+    <div class="admin-health-foot">Dernière vérification: ${escapeHtml(formatOpsTimestamp(generatedAt))}. Actualisation automatique quand Direction reste ouverte.</div>
   </div>`;
 }
 
@@ -1130,7 +1131,6 @@ function renderAdminCockpit(metrics, center, reservations = [], marketMetrics = 
   const rows = buildAdminCockpitRows(items);
   const decision = buildAdminCockpitDecision(metrics, center, marketMetrics);
   const actions = buildAdminCockpitActions(reservations, metrics);
-  const agent = getAdminCockpitAgentSnapshot();
   const mailTotal = metrics.sentMails + metrics.queuedMails + metrics.failedMails;
   const mailHealth = mailTotal ? ((metrics.sentMails / mailTotal) * 100) : 100;
   const tabLabels = [
@@ -1189,88 +1189,9 @@ function renderAdminCockpit(metrics, center, reservations = [], marketMetrics = 
           <span class="value">${actions.length} action${actions.length > 1 ? 's' : ''}</span>
           <ul>${actions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul>
         </div>
-        <div class="ops-cockpit-card">
-          <span class="label">Agent IA</span>
-          <div class="ops-cockpit-agent">
-            <div class="agent-meta">
-              <strong>${agent.hasStack ? `${agent.activeCount} agent(s) actifs` : 'Chargement agent'}</strong>
-              <span>${escapeHtml(agent.hasStack ? `${agent.label} · ${agent.dataRead} données lues` : 'Architecture ops en attente d’actualisation')}</span>
-            </div>
-            <button class="ops-cockpit-run" onclick="runAdminOrchestratorNow()">Relancer</button>
-          </div>
-        </div>
       </aside>
     </div>
   </section>`;
-}
-
-function renderAdminCompetitiveBenchmark(metrics = {}, marketMetrics = {}) {
-  const mailTotal = Number(metrics.sentMails || 0) + Number(metrics.queuedMails || 0) + Number(metrics.failedMails || 0);
-  const activeStandards = [
-    metrics.reservations >= 0,
-    Number(metrics.bowlingCapacity || 0) > 0,
-    Number(metrics.laserCapacity || 0) > 0,
-    Number(marketMetrics.withPlan || 0) >= 0,
-    mailTotal >= 0,
-    Number(marketMetrics.guestTracked || 0) >= 0,
-    true,
-  ].filter(Boolean).length;
-  const items = [
-    {
-      title: 'Inventaire temps réel',
-      status: 'Actif',
-      text: 'Client, staff et direction lisent les mêmes capacités bowling, laser, formules et centres.',
-    },
-    {
-      title: 'Sessions laser partagées',
-      status: Number(metrics.laserCapacity || 0) > 0 ? 'Actif' : 'Prêt',
-      text: 'Le planning suit les passages, les places restantes et les groupes pouvant partager une session.',
-    },
-    {
-      title: 'Formules multi-ressources',
-      status: Number(metrics.formulaCount || 0) ? 'Actif' : 'Prêt',
-      text: 'Les formules sont séparées en engagements fixes et avantages flexibles pour absorber les pauses.',
-    },
-    {
-      title: 'Communication contextualisée',
-      status: mailTotal ? 'Actif' : 'Prêt',
-      text: 'Confirmation, rappels et alertes utilisent le contexte réel de la réservation et du centre.',
-    },
-    {
-      title: 'CRM & engagement client',
-      status: 'Actif',
-      text: 'Acompte, consignes laser, check-in, upsells et historique client sont suivis par réservation.',
-    },
-    {
-      title: 'Direction & exports BI',
-      status: 'Actif',
-      text: 'Lecture jour, semaine, mois, année, exports propres et comparaison entre centres.',
-    },
-    {
-      title: 'Caisse, acomptes et consignes',
-      status: 'Terrain',
-      text: 'Suivi interne opérationnel: acompte, check-in, consignes Laser Game et actions comptoir sans dépendre d’un prestataire externe.',
-    },
-  ];
-  return `<div class="admin-panel admin-benchmark-panel">
-    <div class="admin-section-title">
-      <div>
-        <h2>Maturité marché</h2>
-        <p>Lecture inspirée des standards ROLLER, Clubspeed, VenueSumo, RocketRez et QubicaAMF.</p>
-      </div>
-      <div class="admin-benchmark-score">
-        <strong>${activeStandards}/7</strong>
-        <span>standards déjà couverts</span>
-      </div>
-    </div>
-    <div class="admin-benchmark-grid">
-      ${items.map(item => `<article class="admin-benchmark-card ${escapeHtml(item.status.toLowerCase())}">
-        <span class="admin-benchmark-status">${escapeHtml(item.status)}</span>
-        <strong>${escapeHtml(item.title)}</strong>
-        <p>${escapeHtml(item.text)}</p>
-      </article>`).join('')}
-    </div>
-  </div>`;
 }
 
 async function runAdminOrchestratorNow() {
@@ -1345,8 +1266,8 @@ function renderAdminHeader() {
   const heroSub = document.getElementById('adminHeroSub');
   if (heroSub) {
     heroSub.textContent = state.staffMenuPage === 'establishment'
-      ? `Client Fun Galaxy • ${center.name} • configuration, ressources, données opérationnelles et cockpit du centre.`
-      : `Client Fun Galaxy • ${center.name} • ${formatAdminPeriodLabel(range)} • pilotage réservations, communications, agents et exports.`;
+      ? `${center.name} • configuration, ressources et données opérationnelles du centre.`
+      : `${center.name} • ${formatAdminPeriodLabel(range)} • réservations, communications, agents et exports.`;
   }
   ['Day', 'Week', 'Month', 'Year'].forEach(name => {
     const button = document.getElementById(`adminPeriod${name}`);
@@ -1358,37 +1279,6 @@ function renderAdminHeader() {
   });
 }
 
-function renderAdminPlatformSummary(snapshot = { reservations: [] }, metrics = {}) {
-  const centers = getAdminCenters();
-  const activeCenters = centers.filter(center => (center.status || 'active') === 'active').length;
-  const totalReservations = Number(metrics.reservations || 0);
-  const totalMails = Number(metrics.sentMails || 0) + Number(metrics.queuedMails || 0) + Number(metrics.failedMails || 0);
-  const agent = getAdminCockpitAgentSnapshot();
-  const tenantCount = 1;
-  return `<div class="admin-platform-strip" aria-label="Vue propriétaire plateforme">
-    <div class="admin-platform-card">
-      <div class="k">Clients SaaS</div>
-      <div class="v">${tenantCount}</div>
-      <div class="s">Fun Galaxy est le client actif de la plateforme Pinlane.</div>
-    </div>
-    <div class="admin-platform-card">
-      <div class="k">Centres gérés</div>
-      <div class="v">${activeCenters}/${centers.length}</div>
-      <div class="s">Centres actifs et prévus disponibles dans le sélecteur.</div>
-    </div>
-    <div class="admin-platform-card">
-      <div class="k">Volume période</div>
-      <div class="v">${totalReservations}</div>
-      <div class="s">Réservations réelles chargées sur la période ouverte.</div>
-    </div>
-    <div class="admin-platform-card">
-      <div class="k">Ops connectées</div>
-      <div class="v">${agent.activeCount || 0}</div>
-      <div class="s">${totalMails} communication(s) et signaux agents disponibles.</div>
-    </div>
-  </div>`;
-}
-
 function renderAdminOverview() {
   const snapshot = adminDashboardCache.snapshot || { reservations: [] };
   const center = getAdminCenter();
@@ -1396,8 +1286,6 @@ function renderAdminOverview() {
   const marketMetrics = buildAdminMarketMetrics(snapshot.reservations || []);
   const insights = buildAdminInsights(metrics, center);
   return `
-    <div class="admin-client-context">Pinlane Platform · Client actif: Fun Galaxy</div>
-    ${renderAdminPlatformSummary(snapshot, metrics)}
     <div class="admin-panel">
       <div class="admin-section-title">
         <div>
@@ -1414,24 +1302,7 @@ function renderAdminOverview() {
         <div class="admin-kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div><div class="s">${metrics.laserLaunches} lancement(s) · ${metrics.laserPlayers} passages</div></div>
       </div>
     </div>
-    ${renderAdminOperationalHealth(snapshot, metrics, center)}
-    ${renderAdminCockpit(metrics, center, snapshot.reservations || [], marketMetrics)}
-    ${renderAdminCompetitiveBenchmark(metrics, marketMetrics)}
     <div class="admin-dashboard-grid">
-      <div class="admin-panel">
-        <div class="admin-section-title">
-          <div>
-            <h2>Ressources critiques</h2>
-            <p>Capacité bowling, laser, formules et communications à surveiller.</p>
-          </div>
-        </div>
-        <div class="admin-resource-grid">
-          <div class="admin-resource-card"><div class="k">Bowling classique</div><div class="v">${metrics.directBowling} direct(s)</div><div class="s">${metrics.bowlingWindows} bloc(s) piste, formules incluses.</div></div>
-          <div class="admin-resource-card"><div class="k">Laser Game</div><div class="v">${metrics.directLaser} direct(s)</div><div class="s">${metrics.laserLaunches} bloc(s), capacité ${center.resources?.laser?.weaponCount || 0} armes.</div></div>
-          <div class="admin-resource-card"><div class="k">Formules</div><div class="v">${metrics.formulaCount}</div><div class="s">Réservations combinant plusieurs activités ou contraintes.</div></div>
-          <div class="admin-resource-card"><div class="k">Mails</div><div class="v">${metrics.sentMails}/${metrics.queuedMails + metrics.sentMails + metrics.failedMails}</div><div class="s">${metrics.queuedMails} en file · ${metrics.failedMails} à corriger.</div></div>
-        </div>
-      </div>
       <div class="admin-panel">
         <div class="admin-section-title">
           <div>
@@ -1443,35 +1314,24 @@ function renderAdminOverview() {
           ${insights.map(item => `<div class="admin-insight ${escapeHtml(item.level)}"><span class="dot"></span><div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.text)}</span></div></div>`).join('')}
         </div>
       </div>
+      ${renderAdminOperationalHealth(snapshot, metrics, center)}
     </div>
-    <div class="admin-panel">
-      <div class="admin-section-title">
-        <div>
-          <h2>Engagements opérationnels</h2>
-          <p>Ce que le moteur a verrouillé: ressources fixes, marges libres et points de vigilance.</p>
-        </div>
-      </div>
-      <div class="admin-market-grid">
-        <div class="admin-market-card"><div class="k">Plans enrichis</div><div class="v">${marketMetrics.withPlan}</div><div class="s">Réservations avec engagements détaillés.</div></div>
-        <div class="admin-market-card"><div class="k">Engagements fixes</div><div class="v">${marketMetrics.fixed}</div><div class="s">Bowling, Laser ou tables réellement bloqués.</div></div>
-        <div class="admin-market-card"><div class="k">Activités libres</div><div class="v">${marketMetrics.flexible}</div><div class="s">Éléments utilisables comme marge terrain.</div></div>
-        <div class="admin-market-card"><div class="k">Suivi client</div><div class="v">${marketMetrics.guestTracked}</div><div class="s">${marketMetrics.depositsOpen} acompte(s) · ${marketMetrics.waiversOpen} consigne(s) à terminer.</div></div>
-        <div class="admin-market-card"><div class="k">Qualité moyenne</div><div class="v">${marketMetrics.avgQuality === null ? '--' : `${marketMetrics.avgQuality}/100`}</div><div class="s">${marketMetrics.warningCount} alerte(s) · ${marketMetrics.checklistCount} point(s) staff.</div></div>
-      </div>
-    </div>
+    ${renderAdminCockpit(metrics, center, snapshot.reservations || [], marketMetrics)}
     ${renderAdminReservationsTable((snapshot.reservations || []).slice(0, 10), 'Réservations clés', 'Les premières lignes exploitables pour la direction.')}
   `;
 }
 
 function renderAdminReservationsTable(reservations = [], title = 'Réservations du jour', subtitle = 'Toutes les lignes exploitables par la direction.') {
-  const rows = reservations.filter(reservation => reservation.status !== 'cancelled');
+  const rows = reservations
+    .filter(reservation => reservation.status !== 'cancelled')
+    .slice()
+    .sort((left, right) => `${left.date || ''} ${left.startTime || ''}`.localeCompare(`${right.date || ''} ${right.startTime || ''}`));
   return `<div class="admin-panel">
     <div class="admin-section-title">
       <div>
         <h2>${escapeHtml(title)}</h2>
         <p>${escapeHtml(subtitle)}</p>
       </div>
-      <button class="admin-btn" onclick="exportAdminExcel()">Télécharger Excel</button>
     </div>
     ${rows.length ? `<div class="admin-table-wrap"><table class="admin-table">
       <thead><tr><th>Heure</th><th>Client</th><th>Offre</th><th>Ressources</th><th>Engagement</th><th>Statut</th><th>Montant</th><th>Risque</th></tr></thead>
@@ -1479,6 +1339,18 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
         ${rows.map(reservation => {
           const isFormula = reservation.type === 'formule' || reservation.formuleId;
           const isLaser = reservation.type === 'laser';
+          const risk = String(reservation.riskLevel || '').toLowerCase();
+          const needsReview = reservation.validationStatus === 'staff_review';
+          const riskTone = risk === 'critical' ? 'danger' : (risk === 'high' || risk === 'warning' || needsReview) ? 'warn' : '';
+          const riskLabel = risk === 'critical'
+            ? 'Critique'
+            : risk === 'high'
+              ? 'Élevé'
+              : risk === 'warning'
+                ? 'À surveiller'
+                : needsReview
+                  ? 'Validation staff'
+                  : 'Normal';
           return `<tr>
             <td><strong>${escapeHtml(reservation.startTime || '--:--')}</strong><br>${escapeHtml(formatDurationLabel(reservation.totalDuration || reservation.duration || 0))}</td>
             <td><strong>${escapeHtml(reservation.name || 'Client')}</strong><br>${escapeHtml(reservation.phone || '')}</td>
@@ -1487,7 +1359,7 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
             <td>${renderAdminGuestOpsCell(reservation)}</td>
             <td><span class="admin-pill ${escapeHtml(reservation.status || 'pending')}">${escapeHtml(getAdminStatusLabel(reservation.status))}</span></td>
             <td><strong>${formatMoney(reservation.price)}</strong><br>${escapeHtml(reservation.paymentMethod || 'Sur place')}</td>
-            <td>${escapeHtml(reservation.riskLevel || reservation.validationStatus || 'normal')}</td>
+            <td><span class="admin-pill ${riskTone}">${escapeHtml(riskLabel)}</span></td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -1503,30 +1375,18 @@ function renderAdminClients() {
   const vipCount = profiles.filter(profile => profile.segment === 'VIP').length;
   const groupCount = profiles.filter(profile => profile.segment === 'Groupe').length;
   const openActions = profiles.filter(profile => profile.depositsOpen || profile.waiversOpen).length;
-  const featureCards = [
-    ['CRM opérationnel', 'Historique par téléphone/email, segment automatique et action suivante.'],
-    ['Acompte terrain', 'Suivi manuel fiable pour groupes, formules et réservations à risque.'],
-    ['Consignes Laser', 'Les groupes laser ressortent avant lancement pour éviter l’oubli comptoir.'],
-    ['Upsells staff', 'Ajout rapide de cruches, jetons et tapas depuis la fiche réservation.'],
-    ['Check-in code', 'Référence courte par réservation pour accélérer l’arrivée client.'],
-    ['Exports enrichis', 'Les statuts client partent aussi dans Excel, rapport et archive JSON.'],
-  ];
   return `<div class="admin-panel">
     <div class="admin-section-title">
       <div>
         <h2>Clientèle & engagement</h2>
         <p>CRM léger, suivi acompte, consignes laser, check-in et prochaines actions commerciales.</p>
       </div>
-      <button class="admin-btn" onclick="exportAdminExcel()">Exporter CRM</button>
     </div>
     <div class="admin-client-grid">
       <div class="admin-client-kpi"><div class="k">Clients uniques</div><div class="v">${profiles.length}</div><div class="s">sur la période sélectionnée</div></div>
       <div class="admin-client-kpi"><div class="k">Valeur suivie</div><div class="v">${formatMoney(totalRevenue)}</div><div class="s">CA rattaché aux profils</div></div>
       <div class="admin-client-kpi"><div class="k">Profils forts</div><div class="v">${vipCount + groupCount}</div><div class="s">${vipCount} VIP · ${groupCount} groupes</div></div>
       <div class="admin-client-kpi"><div class="k">Actions ouvertes</div><div class="v">${openActions}</div><div class="s">acompte ou consignes à terminer</div></div>
-    </div>
-    <div class="admin-feature-grid">
-      ${featureCards.map(([title, text]) => `<div class="admin-feature-card"><div class="k">Standard marché</div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(text)}</p></div>`).join('')}
     </div>
     ${profiles.length ? `<div class="admin-table-wrap"><table class="admin-table">
       <thead><tr><th>Client</th><th>Segment</th><th>Historique</th><th>Valeur</th><th>Engagement</th><th>Action suivante</th></tr></thead>
@@ -1535,7 +1395,7 @@ function renderAdminClients() {
           <td><strong>${escapeHtml(profile.name)}</strong><br>${escapeHtml(profile.phone || profile.email || 'Contact incomplet')}</td>
           <td><span class="admin-pill">${escapeHtml(profile.segment)}</span></td>
           <td>${profile.visits} visite(s)<br>${profile.players} joueur(s) · ${profile.formulas} formule(s)</td>
-          <td><strong>${formatMoney(profile.revenue)}</strong><br>Dernière: ${escapeHtml(profile.lastDate || '--')}</td>
+          <td><strong>${formatMoney(profile.revenue)}</strong><br>Dernière : ${escapeHtml(profile.lastDate && profile.lastDate !== '--' ? new Date(profile.lastDate).toLocaleDateString('fr-BE') : '--')}</td>
           <td><div class="engagement-cell">
             <span class="guest-chip ${profile.depositsOpen ? 'warn' : 'ok'}">${profile.depositsOpen ? `${profile.depositsOpen} acompte` : 'Acompte OK'}</span>
             <span class="guest-chip ${profile.waiversOpen ? 'warn' : 'ok'}">${profile.waiversOpen ? `${profile.waiversOpen} consigne` : 'Consignes OK'}</span>
@@ -1585,14 +1445,14 @@ function renderAdminExports() {
     <div class="admin-export-grid">
       <div class="admin-export-card">
         <div><h3>Excel compta multi-feuilles</h3><p>Synthèse, réservations, compta, bowling, laser, mails et agents dans un classeur Excel propre.</p></div>
-        <button class="admin-btn primary" onclick="exportAdminExcel()">Télécharger</button>
+        <button class="admin-btn" onclick="exportAdminExcel()">Télécharger</button>
       </div>
       <div class="admin-export-card">
         <div><h3>Rapport direction blanc</h3><p>Document HTML professionnel avec logo, KPIs, signaux et aperçu des réservations. Imprimable en PDF.</p></div>
-        <button class="admin-btn primary" onclick="exportAdminReport()">Télécharger</button>
+        <button class="admin-btn" onclick="exportAdminReport()">Télécharger</button>
       </div>
       <div class="admin-export-card">
-        <div><h3>Archive JSON complète</h3><p>Snapshot technique complet: métriques, réservations, mails, agents, événements et connaissance centre.</p></div>
+        <div><h3>Archive JSON complète</h3><p>Snapshot technique complet : métriques, réservations, mails, agents, événements et connaissance centre.</p></div>
         <button class="admin-btn" onclick="exportAdminJson()">Télécharger</button>
       </div>
       <div class="admin-export-card">
@@ -1952,11 +1812,9 @@ function startAdminHealthAutoRefresh() {
     getAdminCockpitAgentSnapshot,
     renderAdminCockpitMetricBar,
     renderAdminCockpit,
-    renderAdminCompetitiveBenchmark,
     runAdminOrchestratorNow,
     renderAdminCenterGrid,
     renderAdminHeader,
-    renderAdminPlatformSummary,
     renderAdminOverview,
     renderAdminReservationsTable,
     renderAdminClients,

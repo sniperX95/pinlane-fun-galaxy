@@ -195,13 +195,86 @@ async function installQaApi(page) {
       const url = new URL(rawUrl, window.location.origin);
 
       if (url.pathname === '/api/staff-auth') {
+        // Jeu réaliste calqué sur la shape attendue par ensureStaffAccessControl
+        // (roles: id/name/code/summary/description/tone/permissions/accessCode/
+        // updatedAt/locked · members: id/name/contact/roleId/status/code/lastSeen).
+        const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
         return jsonResponse({
           ok: true,
           authenticated: true,
           session: qaSession,
           accessControl: {
-            roles: [],
-            members: [],
+            selectedRoleId: 'manager',
+            selectedMemberId: 'member-rachel',
+            roles: [
+              {
+                id: 'direction',
+                name: 'Direction',
+                code: 'DI',
+                summary: 'Contrôle total multi-centres',
+                description: 'Pour Rachel, Seb ou un administrateur responsable du produit.',
+                tone: 'admin',
+                accessCode: 'FG-24-DIRQ',
+                updatedAt: minutesAgo(1440),
+                locked: true,
+              },
+              {
+                id: 'manager',
+                name: 'Manager',
+                code: 'MA',
+                summary: 'Opérations, clients et caisse',
+                description: 'Pour gérer une journée complète sans toucher à la sécurité.',
+                tone: 'manager',
+                accessCode: 'FG-24-MGRQ',
+                updatedAt: minutesAgo(320),
+                permissions: [
+                  'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag',
+                  'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'reservations.quick',
+                  'clients.view', 'clients.edit', 'payments.view', 'payments.markPaid', 'exports.download', 'emails.view',
+                ],
+              },
+              {
+                id: 'staff-bar',
+                name: 'Staff bar',
+                code: 'ST',
+                summary: 'Accueil et rush terrain',
+                description: 'Pour voir les arrivées, créer vite, encaisser et clôturer.',
+                tone: 'staff',
+                accessCode: 'FG-24-BARQ',
+                updatedAt: minutesAgo(95),
+                permissions: [
+                  'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser',
+                  'reservations.view', 'reservations.create', 'reservations.status', 'reservations.quick',
+                  'clients.view', 'payments.view', 'payments.markPaid',
+                ],
+              },
+              {
+                id: 'marketing',
+                name: 'Marketing',
+                code: 'MK',
+                summary: 'Campagnes et communication',
+                description: 'Pour préparer les contenus, emails et audiences locales.',
+                tone: 'marketing',
+                accessCode: 'FG-24-MKTQ',
+                updatedAt: minutesAgo(2880),
+                permissions: [
+                  'dashboard.view', 'clients.view', 'emails.view', 'emails.send',
+                  'campaigns.manage', 'marketing.agents', 'reports.export',
+                ],
+              },
+            ],
+            members: [
+              { id: 'member-rachel', name: 'Rachel Fontaine', contact: 'rachel@fungalaxy.be', roleId: 'direction', status: 'active', code: 'FG-24-RCHL', lastSeen: minutesAgo(25) },
+              { id: 'member-seb', name: 'Sébastien Charlier', contact: '+32 470 55 12 34', roleId: 'manager', status: 'active', code: 'FG-24-SEBC', lastSeen: minutesAgo(180) },
+              { id: 'member-noa', name: 'Noa Willems', contact: 'noa.bar@fungalaxy.be', roleId: 'staff-bar', status: 'blocked', code: 'FG-24-NOAW', lastSeen: minutesAgo(60 * 24 * 8) },
+              { id: 'member-lena', name: 'Léna Dubois', contact: 'lena.mkt@fungalaxy.be', roleId: 'marketing', status: 'pending', code: 'FG-24-LENA', lastSeen: null },
+              { id: 'member-max', name: 'Maxime Georis', contact: 'Badge interne 07', roleId: 'staff-bar', status: 'active', code: 'FG-24-MAXG', lastSeen: minutesAgo(12) },
+            ],
+            events: [
+              { id: 1, label: 'Code du rôle Manager régénéré', at: minutesAgo(45) },
+              { id: 2, label: 'Accès de Noa Willems bloqué', at: minutesAgo(60 * 26) },
+              { id: 3, label: 'Léna Dubois invitée sur Marketing', at: minutesAgo(60 * 30) },
+            ],
             permissions: qaSession.permissions,
           },
         });
@@ -267,9 +340,10 @@ async function installQaApi(page) {
 
       if (url.pathname === '/api/admin-range') {
         window.__PINLANE_QA_ADMIN_RANGE_CALLS__.push(url.href);
+        const rangeDate = url.searchParams.get('startDate') || new Date().toISOString().slice(0, 10);
         return jsonResponse({
           ok: true,
-          reservations: [],
+          reservations: buildReservations(rangeDate),
           emails: [],
           agentEvents: [],
           centerId: url.searchParams.get('centerId') || 'libramont',
@@ -359,9 +433,7 @@ async function collectIssues(page, scopeLabel) {
       '.admin-panel',
       '.admin-table-wrap',
       '.admin-insight',
-      '.admin-platform-card',
       '.admin-health-card',
-      '.admin-benchmark-card',
       '.ops-row',
       '.ops-stat',
       '.ops-review-item',
@@ -372,6 +444,11 @@ async function collectIssues(page, scopeLabel) {
       '.ops-sim-card',
       '.ai-live-agent',
       '.ai-problem-card',
+      '.staff-role-pill',
+      '.staff-member-card',
+      '.staff-code-card',
+      '.staff-access-summary',
+      '.establishment-read-card',
     ].join(',');
 
     document.querySelectorAll(watched).forEach((el) => {
@@ -501,12 +578,33 @@ async function main() {
       await page.waitForTimeout(300);
       await screenshot(page, 'staff-establishment-edit');
       issues.push(...await collectIssues(page, 'staff-establishment-edit'));
+      // Retour vue lecture pour que la passe light capture la vue par défaut
+      const cancelBtn = page.locator('.establishment-editor-actions button', { hasText: 'Annuler' });
+      if (await cancelBtn.count()) {
+        await cancelBtn.first().click();
+        await page.waitForTimeout(250);
+      }
     }
+
+    // Équipe & accès (page users) : rail rôles / éditeur permissions / panneau membres
+    await renderStaffPage(page, 'users');
+    await page.waitForTimeout(400);
+    await screenshot(page, 'staff-users');
+    issues.push(...await collectIssues(page, 'staff-users'));
+
+    // Modale « Créer rôle » : ouverture, capture, fermeture Escape
+    await page.locator('.utility-actions button', { hasText: 'Créer rôle' }).first().click();
+    await page.locator('#staffAccessModalOverlay').waitFor({ timeout: 5000 });
+    await screenshot(page, 'staff-users-modal');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+    const modalStillOpen = await page.locator('#staffAccessModalOverlay').count();
+    assert(!modalStillOpen, 'La modale de création d accès doit se fermer avec Escape.');
 
     // Passe thème clair sur les écrans clés (le système v2 est bi-thème)
     await page.evaluate(() => setStaffTheme('light'));
     await page.waitForTimeout(400);
-    for (const lightPage of ['dashboard', 'planning', 'reservations', 'clients']) {
+    for (const lightPage of ['dashboard', 'planning', 'reservations', 'clients', 'users', 'establishment']) {
       await renderStaffPage(page, lightPage);
       await screenshot(page, `staff-${lightPage}-light`);
       issues.push(...await collectIssues(page, `staff-${lightPage}-light`));
@@ -589,7 +687,7 @@ async function main() {
     await installQaApi(mobilePage);
     await waitForApp(mobilePage);
     await seedStressDay(mobilePage);
-    for (const mobileStaffPage of ['dashboard', 'planning', 'reservations', 'groups']) {
+    for (const mobileStaffPage of ['dashboard', 'planning', 'reservations', 'groups', 'users']) {
       await renderStaffPage(mobilePage, mobileStaffPage);
       await screenshot(mobilePage, `staff-${mobileStaffPage}-mobile`);
       issues.push(...await collectIssues(mobilePage, `staff-${mobileStaffPage}-mobile`));
@@ -598,6 +696,14 @@ async function main() {
     await mobilePage.waitForTimeout(700);
     await screenshot(mobilePage, 'client-booking-mobile');
     issues.push(...await collectIssues(mobilePage, 'client-booking-mobile'));
+
+    // Console Direction (#adminView) en mobile — l'ancienne capture "direction-mobile"
+    // ne couvrait que la page legacy direction.html.
+    await mobilePage.evaluate(() => setView('admin'));
+    await mobilePage.locator('#adminView:not(.hidden)').waitFor({ timeout: 10000 });
+    await mobilePage.waitForTimeout(900);
+    await screenshot(mobilePage, 'direction-overview-mobile');
+    issues.push(...await collectIssues(mobilePage, 'direction-overview-mobile'));
     await mobilePage.close();
 
     // Pages autonomes : screenshots + overflow (pas d'assertions console — hors app)

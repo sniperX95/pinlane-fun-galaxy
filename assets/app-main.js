@@ -4401,17 +4401,17 @@ function getStaffUtilityOverviewText(model, kpis) {
   const third = kpis[2] || [];
   const fourth = kpis[3] || [];
   const texts = {
-    sessions: `Priorite aux lignes ouvertes: ${first[1] || 0} en cours, ${second[1] || 0} non cloturees.`,
-    arrivals: `Le staff voit directement qui arrive, qui est deja sur place et ce qu'il reste a encaisser.`,
-    events: `Anniversaires, ecoles, entreprises et formules restent visibles sans transformer la page en mur de cartes.`,
-    groups: `${first[1] || 0} profils actifs, ${second[1] || 0} joueurs cumules et ${fourth[1] || '0€'} d'historique groupe.`,
-    contacts: `Une lecture propre pour retrouver les fiches, completer les coordonnees et relancer sans bruit.`,
-    lanes: `Les pistes, la maintenance et les reservations bowling sont regroupees autour de l'action terrain.`,
-    laserGame: `Les lancements, passages et capacites restent separes du bowling pour eviter les mauvaises lectures.`,
-    offers: `Les offres utiles au comptoir restent lisibles: prix, formules, usages et exports.`,
+    sessions: `Priorité aux lignes ouvertes : ${first[1] || 0} en cours, ${second[1] || 0} non clôturées.`,
+    arrivals: `Le staff voit directement qui arrive, qui est déjà sur place et ce qu'il reste à encaisser.`,
+    events: `Anniversaires, écoles, entreprises et formules restent visibles sans transformer la page en mur de cartes.`,
+    groups: `${first[1] || 0} profils actifs, ${second[1] || 0} joueurs cumulés et ${fourth[1] || '0€'} d'historique groupe.`,
+    contacts: `Une lecture propre pour retrouver les fiches, compléter les coordonnées et relancer sans bruit.`,
+    lanes: `Les pistes, la maintenance et les réservations bowling sont regroupées autour de l'action terrain.`,
+    laserGame: `Les lancements, passages et capacités restent séparés du bowling pour éviter les mauvaises lectures.`,
+    offers: `Les offres utiles au comptoir restent lisibles : prix, formules, usages et exports.`,
     establishment: `Configuration centre, ressources et horaires dans une lecture courte pour la direction.`,
-    users: `Roles, membres et codes d'acces restent controles sans melanger les permissions avec le planning.`,
-    settings: `Preferences locales, exports et outils de maintenance du poste staff.`,
+    users: `Rôles, membres et codes d'accès restent contrôlés sans mélanger les permissions avec le planning.`,
+    settings: `Préférences locales, exports et outils de maintenance du poste staff.`,
   };
   return texts[model.page] || `${first[0] || 'Signal'}: ${first[1] || 0}. ${third[0] || 'Suivi'}: ${third[1] || 0}.`;
 }
@@ -4425,7 +4425,7 @@ function renderStaffUtilityOverview(model) {
   const narrative = getStaffUtilityOverviewText(model, kpis);
   const statusLabel = model.page === 'groups' ? 'Suivi groupe'
     : model.page === 'laserGame' ? 'Laser'
-      : model.page === 'users' ? 'Permissions'
+      : model.page === 'users' ? 'Accès'
         : model.eyebrow || 'Lecture';
 
   return `<section class="utility-overview utility-overview-${escapeHtml(model.page || 'default')}">
@@ -5494,7 +5494,9 @@ async function submitCenterConfig(centerId) {
   const regular = {};
   ESTABLISHMENT_DAYS.forEach(([key]) => {
     const open = establishmentInputValue(`estab-day-${key}-open`);
-    const close = establishmentInputValue(`estab-day-${key}-close`);
+    let close = establishmentInputValue(`estab-day-${key}-close`);
+    // 00:00 saisi comme heure de fermeture = minuit → stocké 24:00 (format moteur).
+    if (close === '00:00') close = '24:00';
     const closed = document.getElementById(`estab-day-${key}-closed`)?.checked;
     regular[key] = closed || !open || !close ? null : { open, close };
   });
@@ -5562,12 +5564,15 @@ async function setEstablishmentCenterStatus(centerId, status) {
 function renderEstablishmentDayRow(center, key, label) {
   const slot = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule.regular?.[key] : null;
   const closed = !slot;
+  // input[type=time] ne sait pas représenter « 24:00 » (minuit fin de journée) :
+  // on l'affiche 00:00 et submitCenterConfig le re-stocke en 24:00.
+  const closeValue = slot?.close === '24:00' ? '00:00' : (slot?.close || '22:00');
   return `<div class="estab-day-row">
     <span class="estab-day-label">${escapeHtml(label)}</span>
-    <label class="estab-day-closed"><input type="checkbox" id="estab-day-${key}-closed" ${closed ? 'checked' : ''} onchange="const r=this.closest('.estab-day-row');r.querySelectorAll('input[type=time]').forEach(i=>i.disabled=this.checked)"> Fermé</label>
+    <label class="estab-day-closed"><input type="checkbox" class="estab-check" id="estab-day-${key}-closed" ${closed ? 'checked' : ''} onchange="const r=this.closest('.estab-day-row');r.querySelectorAll('input[type=time]').forEach(i=>i.disabled=this.checked)"><span class="estab-check-box" aria-hidden="true"></span> Fermé</label>
     <input type="time" id="estab-day-${key}-open" value="${escapeHtml(slot?.open || '14:00')}" ${closed ? 'disabled' : ''} aria-label="Ouverture ${escapeHtml(label)}">
     <span class="estab-day-sep">→</span>
-    <input type="time" id="estab-day-${key}-close" value="${escapeHtml(slot?.close || '22:00')}" ${closed ? 'disabled' : ''} aria-label="Fermeture ${escapeHtml(label)}">
+    <input type="time" id="estab-day-${key}-close" value="${escapeHtml(closeValue)}" ${closed ? 'disabled' : ''} aria-label="Fermeture ${escapeHtml(label)} (00:00 = minuit)">
   </div>`;
 }
 
@@ -5604,8 +5609,8 @@ function renderStaffUtilityEstablishment() {
         </button>`).join('')}
         ${canEdit ? `<div class="establishment-add">
           <span>Ajouter un centre</span>
-          <input id="estab-new-id" placeholder="slug (ex: namur)" autocomplete="off">
-          <input id="estab-new-name" placeholder="Nom (ex: Fun Galaxy Namur)" autocomplete="off">
+          <input type="text" id="estab-new-id" placeholder="Identifiant (ex : namur)" autocomplete="off">
+          <input type="text" id="estab-new-name" placeholder="Nom du centre" autocomplete="off">
           <button type="button" class="btn btn-secondary btn-sm" onclick="submitNewCenter()">Ajouter</button>
         </div>` : ''}
       </div>
@@ -5633,7 +5638,7 @@ function renderStaffUtilityEstablishment() {
       ${editing ? `<div class="establishment-grid">
         <fieldset class="establishment-card">
           <legend>Identité</legend>
-          <div class="field"><label for="estab-name">Nom du centre</label><input id="estab-name" value="${escapeHtml(center.name)}"></div>
+          <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
           <div class="field"><label for="estab-status">Statut</label>
             <select id="estab-status">
               <option value="active" ${center.status === 'active' ? 'selected' : ''}>Actif</option>
@@ -5684,26 +5689,33 @@ function renderEstablishmentReadView(center) {
   const kv = (label, value) => `<div class="establishment-kv"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
   const num = (v) => `<span class="num">${escapeHtml(String(v))}</span>`;
   return `<div class="establishment-readview">
-    <div class="establishment-read-card">
-      <h3>Bowling</h3>
-      ${kv('Pistes', num(Number(bowling.laneCount || 0)))}
-      ${kv('Joueurs confort / piste', num(Number(bowling.normalCapacityPerLane || 0)))}
-      ${kv('Joueurs max / piste (secours)', num(Number(bowling.emergencyCapacityPerLane || 0)))}
-    </div>
-    <div class="establishment-read-card">
-      <h3>Laser Game</h3>
-      ${kv('Armes disponibles', num(Number(laser.weaponCount || 0)))}
-      ${kv('Lancements parallèles', num(Number(laser.parallelLaunches || 0)))}
+    <div class="establishment-read-card establishment-resources-read">
+      <h3>Ressources</h3>
+      <div class="establishment-resources-cols">
+        <div class="establishment-resource-col">
+          <h4>Bowling</h4>
+          ${kv('Pistes', num(Number(bowling.laneCount || 0)))}
+          ${kv('Joueurs confort / piste', num(Number(bowling.normalCapacityPerLane || 0)))}
+          ${kv('Joueurs max / piste (secours)', num(Number(bowling.emergencyCapacityPerLane || 0)))}
+        </div>
+        <div class="establishment-resource-col">
+          <h4>Laser Game</h4>
+          ${kv('Armes disponibles', num(Number(laser.weaponCount || 0)))}
+          ${kv('Lancements parallèles', num(Number(laser.parallelLaunches || 0)))}
+        </div>
+      </div>
     </div>
     <div class="establishment-read-card establishment-hours-read">
       <h3>Horaires d'ouverture</h3>
-      ${ESTABLISHMENT_DAYS.map(([key, label]) => {
-        const slot = regular[key];
-        const value = slot && slot.open && slot.close
-          ? `<span class="num">${escapeHtml(slot.open)}</span> → <span class="num">${escapeHtml(slot.close)}</span>`
-          : '<span class="establishment-closed-tag">Fermé</span>';
-        return kv(label, value);
-      }).join('')}
+      <div class="establishment-hours-grid">
+        ${ESTABLISHMENT_DAYS.map(([key, label]) => {
+          const slot = regular[key];
+          const value = slot && slot.open && slot.close
+            ? `<span class="num">${escapeHtml(slot.open)}</span> → <span class="num">${escapeHtml(slot.close)}</span>`
+            : '<span class="establishment-closed-tag">Fermé</span>';
+          return kv(label, value);
+        }).join('')}
+      </div>
     </div>
     <div class="establishment-read-card establishment-activities-read">
       <h3>Activités disponibles</h3>
@@ -6010,26 +6022,83 @@ async function setStaffRolePreset(roleId, presetId) {
   await runStaffAuthAction('setRolePreset', { roleId, presetId }, 'Preset appliqué.');
 }
 
-async function createStaffCustomRole() {
-  const name = prompt('Nom du rôle, par exemple Responsable anniversaire');
-  if (!name || !name.trim()) return;
-  await runStaffAuthAction('createRole', {
-    name: name.trim(),
-    permissions: ['dashboard.view', 'reservations.view']
-  }, 'Rôle créé.');
+function closeStaffAccessModal() {
+  const overlay = document.getElementById('staffAccessModalOverlay');
+  if (overlay) overlay.remove();
+  document.removeEventListener('keydown', handleStaffAccessModalKeydown, true);
 }
 
-async function createStaffMember() {
+function handleStaffAccessModalKeydown(event) {
+  if (event.key !== 'Escape') return;
+  event.stopPropagation();
+  closeStaffAccessModal();
+}
+
+function openStaffAccessModal(kind) {
+  closeStaffAccessModal();
   const access = ensureStaffAccessControl();
   const selectedRole = getStaffAccessRole(access.selectedRoleId);
-  const name = prompt('Nom du membre staff');
-  if (!name || !name.trim()) return;
-  const contact = prompt('Email, téléphone ou identifiant interne') || '';
+  const isRole = kind === 'role';
+  const overlay = document.createElement('div');
+  overlay.id = 'staffAccessModalOverlay';
+  overlay.className = 'overlay-backdrop staff-access-modal-overlay';
+  overlay.innerHTML = `
+    <form class="modal-surface staff-access-modal" role="dialog" aria-modal="true" aria-labelledby="staffAccessModalTitle" onsubmit="submitStaffAccessModal(event, '${isRole ? 'role' : 'member'}')">
+      <div>
+        <h3 id="staffAccessModalTitle">${isRole ? 'Créer un rôle' : 'Créer un accès staff'}</h3>
+        <p>${isRole
+          ? 'Le rôle démarre avec Dashboard et Réservations, puis s’affine permission par permission.'
+          : `Le membre reçoit le rôle « ${escapeHtml(selectedRole.name)} » et un code d’accès personnel.`}</p>
+      </div>
+      <div class="field">
+        <label for="staffAccessModalName">${isRole ? 'Nom du rôle' : 'Nom du membre'}</label>
+        <input id="staffAccessModalName" type="text" required autocomplete="off" placeholder="${isRole ? 'Ex : Responsable anniversaires' : 'Ex : Camille Dupont'}">
+      </div>
+      ${isRole ? '' : `<div class="field">
+        <label for="staffAccessModalContact">Contact — email, téléphone ou identifiant interne</label>
+        <input id="staffAccessModalContact" type="text" autocomplete="off" placeholder="Ex : camille@fungalaxy.be">
+      </div>`}
+      <div class="staff-access-modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeStaffAccessModal()">Annuler</button>
+        <button type="submit" class="btn btn-primary">${isRole ? 'Créer le rôle' : 'Créer l’accès'}</button>
+      </div>
+    </form>`;
+  overlay.addEventListener('mousedown', event => {
+    if (event.target === overlay) closeStaffAccessModal();
+  });
+  document.addEventListener('keydown', handleStaffAccessModalKeydown, true);
+  document.body.appendChild(overlay);
+  overlay.querySelector('#staffAccessModalName')?.focus({ preventScroll: true });
+}
+
+async function submitStaffAccessModal(event, kind) {
+  event.preventDefault();
+  const name = String(document.getElementById('staffAccessModalName')?.value || '').trim();
+  if (!name) return;
+  const contact = String(document.getElementById('staffAccessModalContact')?.value || '').trim();
+  closeStaffAccessModal();
+  if (kind === 'role') {
+    await runStaffAuthAction('createRole', {
+      name,
+      permissions: ['dashboard.view', 'reservations.view']
+    }, 'Rôle créé.');
+    return;
+  }
+  const access = ensureStaffAccessControl();
+  const selectedRole = getStaffAccessRole(access.selectedRoleId);
   await runStaffAuthAction('createMember', {
-    name: name.trim(),
-    contact: contact.trim(),
+    name,
+    contact,
     roleId: selectedRole.id
   }, 'Accès staff créé.');
+}
+
+function createStaffCustomRole() {
+  openStaffAccessModal('role');
+}
+
+function createStaffMember() {
+  openStaffAccessModal('member');
 }
 
 async function updateStaffMemberRole(memberId, roleId) {
@@ -6080,6 +6149,27 @@ function getStaffRoleAccessiblePages(roleId) {
   return pages.map(([label, permission]) => ({ label, permission, allowed: permissions.has(permission) }));
 }
 
+const staffPermissionGroupOpenState = {};
+let staffAccessCodeRevealed = false;
+
+function toggleStaffAccessCodeVisibility() {
+  staffAccessCodeRevealed = !staffAccessCodeRevealed;
+  renderStaffUtilityPage();
+}
+
+function maskStaffAccessCode(code) {
+  return String(code || '')
+    .split('-')
+    .map((part, index) => (index === 0 ? part : '•'.repeat(Math.max(part.length, 2))))
+    .join('-');
+}
+
+const STAFF_MEMBER_STATUS_META = {
+  active: ['Actif', 'badge-success'],
+  blocked: ['Bloqué', 'badge-danger'],
+  pending: ['En attente', 'badge-warning']
+};
+
 function renderStaffUtilityUsers() {
   const access = ensureStaffAccessControl();
   const selectedRole = getStaffAccessRole(access.selectedRoleId);
@@ -6087,32 +6177,27 @@ function renderStaffUtilityUsers() {
   const allPermissions = getStaffPermissionKeys();
   const activeMembers = access.members.filter(member => member.status === 'active');
   const accessiblePages = getStaffRoleAccessiblePages(selectedRole.id);
+  const rawAccessCode = String(selectedRole.accessCode || '');
+  const codeAlreadyMasked = rawAccessCode.includes('••');
+  const displayedCode = rawAccessCode
+    ? (staffAccessCodeRevealed || codeAlreadyMasked ? rawAccessCode : maskStaffAccessCode(rawAccessCode))
+    : 'À générer';
   return `<div class="staff-access-console">
-    <section class="staff-access-intro">
-      <div>
-        <span>Contrôle des accès</span>
-        <h3>Rôles, codes et permissions staff</h3>
-        <p>Chaque rôle définit exactement ce qu’un poste peut ouvrir. Les presets couvrent Direction, Manager, Staff bar, Marketing et Technique, puis tout reste modifiable permission par permission.</p>
-      </div>
-      <div class="staff-access-actions">
-        <button type="button" onclick="createStaffCustomRole()">Créer un rôle</button>
-        <button type="button" onclick="createStaffMember()" class="primary">Créer accès staff</button>
-      </div>
-    </section>
-
     <section class="staff-access-grid">
       <aside class="staff-role-rail" aria-label="Rôles staff">
         ${access.roles.map(role => {
           const count = (role.permissions || []).length;
           const activeCount = access.members.filter(member => member.roleId === role.id && member.status === 'active').length;
-          return `<button type="button" class="staff-role-pill ${role.id === selectedRole.id ? 'active' : ''} tone-${escapeHtml(role.tone || 'custom')}" onclick='setStaffAccessSelectedRole(${staffClientJs(role.id)})'>
+          return `<button type="button" class="staff-role-pill ${role.id === selectedRole.id ? 'active' : ''} tone-${escapeHtml(role.tone || 'custom')}" onclick='setStaffAccessSelectedRole(${staffClientJs(role.id)})' ${role.id === selectedRole.id ? 'aria-current="true"' : ''}>
             <span class="staff-person-icon" aria-hidden="true">${escapeHtml(role.code || role.name.slice(0, 2).toUpperCase())}</span>
-            <span>
+            <span class="staff-role-pill-copy">
               <strong>${escapeHtml(role.name)}</strong>
-              <small>${escapeHtml(role.summary || '')}</small>
+              <small>${escapeHtml(role.summary || 'Rôle personnalisé')}</small>
             </span>
-            <em>${count}/${allPermissions.length}</em>
-            <b>${activeCount} actif${activeCount > 1 ? 's' : ''}</b>
+            <span class="staff-role-pill-meta">
+              <em>${count}/${allPermissions.length}</em>
+              <b>${activeCount} actif${activeCount > 1 ? 's' : ''}</b>
+            </span>
           </button>`;
         }).join('')}
       </aside>
@@ -6129,38 +6214,44 @@ function renderStaffUtilityUsers() {
           </div>
           <div class="staff-code-card">
             <span>Code d’accès rôle</span>
-            <strong>${escapeHtml(selectedRole.accessCode || 'À générer')}</strong>
+            <strong>${escapeHtml(displayedCode)}</strong>
             <div>
-              <button type="button" onclick='copyStaffAccessCode(${staffClientJs(selectedRole.accessCode || '')})'>Copier</button>
-              <button type="button" onclick='regenerateStaffAccessCode(${staffClientJs(selectedRole.id)})'>Régénérer</button>
+              ${rawAccessCode && !codeAlreadyMasked ? `<button type="button" class="btn btn-secondary btn-sm" aria-pressed="${staffAccessCodeRevealed ? 'true' : 'false'}" onclick="toggleStaffAccessCodeVisibility()">${staffAccessCodeRevealed ? 'Masquer' : 'Afficher'}</button>` : ''}
+              <button type="button" class="btn btn-secondary btn-sm" onclick='copyStaffAccessCode(${staffClientJs(rawAccessCode)})'>Copier</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick='regenerateStaffAccessCode(${staffClientJs(selectedRole.id)})'>Régénérer</button>
             </div>
           </div>
         </div>
 
         <div class="staff-preset-strip">
-          ${STAFF_ROLE_PRESETS.map(preset => `<button type="button" ${selectedRole.id === 'direction' ? 'disabled' : ''} onclick='setStaffRolePreset(${staffClientJs(selectedRole.id)}, ${staffClientJs(preset.id)})'>
+          <span class="staff-preset-kicker">Appliquer un preset</span>
+          ${STAFF_ROLE_PRESETS.map(preset => `<button type="button" class="staff-preset-btn" ${selectedRole.id === 'direction' ? 'disabled' : ''} onclick='setStaffRolePreset(${staffClientJs(selectedRole.id)}, ${staffClientJs(preset.id)})'>
             ${escapeHtml(preset.name)}
           </button>`).join('')}
         </div>
 
         <div class="staff-permission-groups">
-          ${STAFF_PERMISSION_GROUPS.map(group => `<article class="staff-permission-group">
-            <div class="staff-permission-group-head">
+          ${STAFF_PERMISSION_GROUPS.map((group, groupIndex) => {
+            const grantedCount = group.permissions.filter(permission => selectedPermissions.has(permission[0])).length;
+            const isOpen = staffPermissionGroupOpenState[group.id] ?? groupIndex < 2;
+            return `<details class="staff-permission-group" ${isOpen ? 'open' : ''} ontoggle='staffPermissionGroupOpenState[${staffClientJs(group.id)}] = this.open'>
+            <summary class="staff-permission-group-head">
               <div><strong>${escapeHtml(group.title)}</strong><span>${escapeHtml(group.description)}</span></div>
-              <em>${group.permissions.filter(permission => selectedPermissions.has(permission[0])).length}/${group.permissions.length}</em>
-            </div>
-            <div>
+              <em>${grantedCount}/${group.permissions.length}</em>
+            </summary>
+            <div class="staff-permission-list">
               ${group.permissions.map(([key, label]) => {
                 const checked = selectedPermissions.has(key);
                 return `<label class="staff-permission-toggle ${checked ? 'is-on' : ''}">
-                  <input type="checkbox" ${checked ? 'checked' : ''} ${selectedRole.id === 'direction' ? 'disabled' : ''} onchange='toggleStaffRolePermission(${staffClientJs(selectedRole.id)}, ${staffClientJs(key)}, this.checked)'>
-                  <span></span>
+                  <input type="checkbox" class="visually-hidden" ${checked ? 'checked' : ''} ${selectedRole.id === 'direction' ? 'disabled' : ''} onchange='toggleStaffRolePermission(${staffClientJs(selectedRole.id)}, ${staffClientJs(key)}, this.checked)'>
+                  <span class="staff-toggle-track" aria-hidden="true"></span>
                   <b>${escapeHtml(label)}</b>
                   <small>${checked ? 'Autorisé' : 'Bloqué'}</small>
                 </label>`;
               }).join('')}
             </div>
-          </article>`).join('')}
+          </details>`;
+          }).join('')}
         </div>
       </section>
 
@@ -6174,22 +6265,26 @@ function renderStaffUtilityUsers() {
         <section class="staff-member-panel">
           <div class="staff-member-head">
             <div><strong>Membres</strong><small>${activeMembers.length} actif${activeMembers.length > 1 ? 's' : ''} · ${access.members.length} total</small></div>
-            <button type="button" onclick="createStaffMember()">Ajouter</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="createStaffMember()">Ajouter</button>
           </div>
           <div class="staff-member-list">
             ${access.members.map(member => {
               const role = getStaffAccessRole(member.roleId);
-              return `<article class="staff-member-card ${member.status}">
-                <div>
-                  <span class="staff-person-icon">${escapeHtml(getStaffClientInitials(member.name || role.name))}</span>
+              const [statusLabel, statusBadge] = STAFF_MEMBER_STATUS_META[member.status] || ['Statut inconnu', 'badge-neutral'];
+              const lastSeenLabel = member.lastSeen ? `Vu ${formatOpsTimestamp(member.lastSeen)}` : 'Jamais connecté';
+              return `<article class="staff-member-card ${escapeHtml(member.status || 'active')}">
+                <div class="staff-member-top">
+                  <span class="staff-person-icon tone-${escapeHtml(role.tone || 'custom')}">${escapeHtml(getStaffClientInitials(member.name || role.name))}</span>
                   <div><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.contact || member.code || 'Code interne')}</small></div>
+                  <span class="badge ${statusBadge}">${statusLabel}</span>
                 </div>
-                <select onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
+                <span class="staff-member-last-seen">${escapeHtml(lastSeenLabel)}</span>
+                <select aria-label="Rôle de ${escapeHtml(member.name)}" onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
                   ${access.roles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('')}
                 </select>
                 <footer>
-                  <button type="button" onclick='copyStaffAccessCode(${staffClientJs(member.code || '')})'>${escapeHtml(member.code || 'Copier code')}</button>
-                  <button type="button" onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
+                  <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffAccessCode(${staffClientJs(member.code || '')})'>${escapeHtml(member.code || 'Copier code')}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
                 </footer>
               </article>`;
             }).join('')}
@@ -6417,6 +6512,8 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       eyebrow: 'Paramètres',
       title: 'Utilisateurs',
       subtitle: 'Rôles, codes d’accès et permissions opérationnelles du centre.',
+      hidePanelHead: true,
+      hideDateAction: true,
       primaryLabel: 'Créer accès staff',
       primaryAction: 'createStaffMember()',
       secondaryLabel: 'Créer rôle',
@@ -6424,7 +6521,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       kpis: [
         ['Rôles', access.roles.length, 'presets + personnalisés'],
         ['Staff actif', activeMembers, `${pendingMembers} en attente`],
-        ['Permissions', `${selectedPermissionCount}/${permissionTotal}`, selectedRole.name],
+        ['Permissions du rôle', `${selectedPermissionCount}/${permissionTotal}`, selectedRole.name],
         ['Codes actifs', access.roles.filter(role => role.accessCode).length + access.members.filter(member => member.code).length, 'rôles et membres']
       ],
       body: renderStaffUtilityUsers()

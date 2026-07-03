@@ -94,6 +94,9 @@ function renderOpsCommunications() {
 
 function renderOpsSamples() {
   const samples = opsAdminCache.samples || [];
+  if (!samples.length) {
+    return `<div class="empty-state"><div class="e-title">Aucun modèle chargé</div><div class="e-sub">Les modèles d'emails (confirmation, rappel, validation) apparaîtront ici après actualisation.</div></div>`;
+  }
   return `<div class="ops-list">
     ${samples.map((sample, index) => `
       <div class="ops-row template">
@@ -138,31 +141,31 @@ function renderOpsSuggestions() {
 
 const OPS_AGENT_DEPARTMENT_LABELS = {
   direction: 'Direction',
-  operations: 'Operations',
+  operations: 'Opérations',
   customer: 'Relation client',
-  risk_quality: 'Qualite & securite',
-  product_market: 'Produit & marche'
+  risk_quality: 'Qualité & sécurité',
+  product_market: 'Produit & marché'
 };
 
 const OPS_AGENT_DEPARTMENT_ORDER = ['operations', 'customer', 'direction', 'risk_quality', 'product_market'];
 
 const OPS_AGENT_WORK_TRIGGERS = {
   'executive-director-agent': 'Travaille quand la direction ouvre Stack IA, lance l’orchestrateur ou demande une lecture multi-centres.',
-  'orchestrator-agent': 'Travaille a chaque actualisation Ops: il lit reservations, mails, evenements et suggestions avant de router les agents.',
-  'planning-manager-agent': 'Travaille a chaque recherche de disponibilite, creation staff, simulation ou controle de conflit.',
-  'bowling-capacity-agent': 'Travaille quand une piste est reservee, deplacee, prolongee ou quand une formule utilise du Bowling.',
-  'laser-capacity-agent': 'Travaille quand une session Laser est reservee, partagee, deplacee ou quand il reste des parties a placer.',
-  'rush-floor-agent': 'Travaille pendant la journee terrain: arrivees proches, retards, groupes incomplets, paiements et consignes staff.',
+  'orchestrator-agent': 'Travaille à chaque actualisation Ops: il lit réservations, mails, événements et suggestions avant de router les agents.',
+  'planning-manager-agent': 'Travaille à chaque recherche de disponibilité, création staff, simulation ou contrôle de conflit.',
+  'bowling-capacity-agent': 'Travaille quand une piste est réservée, déplacée, prolongée ou quand une formule utilise du Bowling.',
+  'laser-capacity-agent': 'Travaille quand une session Laser est réservée, partagée, déplacée ou quand il reste des parties à placer.',
+  'rush-floor-agent': 'Travaille pendant la journée terrain: arrivées proches, retards, groupes incomplets, paiements et consignes staff.',
   'delay-agent': 'Travaille quand un retard ou incident peut impacter les créneaux suivants.',
-  'communication-manager-agent': 'Travaille quand une reservation doit recevoir confirmation, rappel, correction ou relance.',
-  'crm-followup-agent': 'Travaille en lecture sur les clients existants; les relances automatiques attendent un CRM branche.',
-  'director-agent': 'Travaille sur les vues Direction, exports, rapports et comparaisons par centre/periode.',
-  'finance-admin-agent': 'Travaille quand la direction consulte les montants, acomptes, exports compta et ecarts de caisse.',
-  'learning-agent': 'Travaille quand des evenements terrain ou simulations donnent assez de donnees pour proposer une regle.',
-  'qa-redteam-agent': 'Travaille avant deploiement et pendant les simulations rush pour casser le systeme avant les vrais clients.',
-  'security-agent': 'Travaille en controle: secrets, permissions, prompt injection et actions dangereuses restent sous garde-fous.',
-  'research-agent': 'Travaille sur veille marche, concurrents, UX, prix, integrations et opportunites produit.',
-  'integration-manager-agent': 'Travaille quand une cle, un connecteur, un cron ou un service externe doit etre verifie.'
+  'communication-manager-agent': 'Travaille quand une réservation doit recevoir confirmation, rappel, correction ou relance.',
+  'crm-followup-agent': 'Travaille en lecture sur les clients existants; les relances automatiques attendent un CRM branché.',
+  'director-agent': 'Travaille sur les vues Direction, exports, rapports et comparaisons par centre/période.',
+  'finance-admin-agent': 'Travaille quand la direction consulte les montants, acomptes, exports compta et écarts de caisse.',
+  'learning-agent': 'Travaille quand des événements terrain ou simulations donnent assez de données pour proposer une règle.',
+  'qa-redteam-agent': 'Travaille avant déploiement et pendant les simulations rush pour casser le système avant les vrais clients.',
+  'security-agent': 'Travaille en contrôle: secrets, permissions, prompt injection et actions dangereuses restent sous garde-fous.',
+  'research-agent': 'Travaille sur veille marché, concurrents, UX, prix, intégrations et opportunités produit.',
+  'integration-manager-agent': 'Travaille quand une clé, un connecteur, un cron ou un service externe doit être vérifié.'
 };
 
 const OPS_AGENT_RUNTIME_MAP = {
@@ -189,7 +192,7 @@ function getOpsAgentActivity(agent = {}, activations = [], orchestration = {}) {
   const effectiveActivation = activation || (executiveSyntheticActivation
     ? {
       mode: 'active',
-      reason: 'Centralise les donnees, arbitre les priorites et route les agents utiles.',
+      reason: 'Centralise les données, arbitre les priorités et route les agents utiles.',
       tool: 'run_orchestrator'
     }
     : null);
@@ -199,15 +202,15 @@ function getOpsAgentActivity(agent = {}, activations = [], orchestration = {}) {
   const statusLabel = effectiveActivation?.mode === 'active'
     ? 'Travaille maintenant'
     : effectiveActivation?.mode === 'collect'
-      ? 'Collecte les donnees'
+      ? 'Collecte les données'
       : effectiveActivation?.mode === 'monitor'
         ? 'Surveillance'
         : runtimeStatus === 'live'
           ? 'Actif'
           : runtimeStatus === 'partial'
-            ? 'Actif supervise'
+            ? 'Actif supervisé'
             : runtimeStatus === 'standby'
-              ? 'Actif encadre'
+              ? 'Actif encadré'
               : executable
                 ? 'Disponible'
                 : 'Lecture seule';
@@ -224,9 +227,9 @@ function getOpsAgentActivity(agent = {}, activations = [], orchestration = {}) {
     executable,
     statusLabel,
     statusClass,
-    headline: effectiveActivation?.reason || agent.mission || 'Agent repertorie dans l’ecosysteme.',
-    workTrigger: OPS_AGENT_WORK_TRIGGERS[agent.id] || 'Travaille quand son domaine est touche par une reservation, un signal ou un rapport.',
-    dataLabel: dataCount ? `${dataCount} lignes/signalements disponibles sur cette periode` : 'Attend les donnees du centre et du planning.',
+    headline: effectiveActivation?.reason || agent.mission || 'Agent répertorié dans l’écosystème.',
+    workTrigger: OPS_AGENT_WORK_TRIGGERS[agent.id] || 'Travaille quand son domaine est touché par une réservation, un signal ou un rapport.',
+    dataLabel: dataCount ? `${dataCount} lignes/signalements disponibles sur cette période` : 'Attend les données du centre et du planning.',
     currentTool: effectiveActivation?.tool || (agent.tools || [])[0] || 'lecture',
     nextAction: effectiveActivation?.nextAction || (agent.guardrails || [])[0] || 'Surveillance sans action externe directe.'
   };
@@ -314,7 +317,7 @@ function renderOpsManagerNode(node, childCount = 0) {
     <div class="ai-manager-node">
       <span>Manager IA</span>
       <strong>${escapeHtml(node.title || node.id)}</strong>
-      <small>${escapeHtml(node.role || 'Coordonne les agents de son pole.')}</small>
+      <small>${escapeHtml(node.role || 'Coordonne les agents de son pôle.')}</small>
       <em>${Number(childCount || 0)} agent(s)</em>
     </div>`;
 }
@@ -377,7 +380,7 @@ function renderOpsCompactAgentPyramid(ecosystem, agents = [], selectedAgent, act
   ].map(group => ({
     ...group,
     title: group.title || OPS_AGENT_DEPARTMENT_LABELS[group.department] || group.id,
-    role: group.role || 'Coordonne les agents de son pole.',
+    role: group.role || 'Coordonne les agents de son pôle.',
     agents: [...(group.agents || [])].sort((a, b) => Number(a.order || 99) - Number(b.order || 99))
   }));
 
@@ -419,7 +422,7 @@ function renderOpsAgentDetail(agent, activity, connectors = []) {
         <span class="ai-detail-status ${escapeHtml(activity.statusClass)}"><i></i>${escapeHtml(activity.statusLabel)}</span>
       </div>
       <div class="ai-detail-section primary">
-        <span>Activite actuelle</span>
+        <span>Activité actuelle</span>
         <strong>${escapeHtml(activity.headline)}</strong>
       </div>
       <div class="ai-detail-grid">
@@ -428,7 +431,7 @@ function renderOpsAgentDetail(agent, activity, connectors = []) {
           <p>${escapeHtml(activity.workTrigger)}</p>
         </div>
         <div class="ai-detail-section">
-          <span>Donnees lues</span>
+          <span>Données lues</span>
           <p>${escapeHtml(activity.dataLabel)}</p>
         </div>
         <div class="ai-detail-section">
@@ -442,19 +445,19 @@ function renderOpsAgentDetail(agent, activity, connectors = []) {
       </div>
       <div class="ai-detail-section">
         <span>Garde-fous</span>
-        <ul>${(agent.guardrails || ['Aucune action sensible sans regle claire.']).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+        <ul>${(agent.guardrails || ['Aucune action sensible sans règle claire.']).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
       </div>
       <div class="ai-detail-section">
         <span>Connecteurs utiles</span>
         <div class="ai-connector-strip">
           ${connectorList.map(connector => {
-            const connectorState = connector.configured ? 'connecte' : ['blocked', 'degraded'].includes(connector.status) ? 'a configurer' : 'prevu';
+            const connectorState = connector.configured ? 'connecté' : ['blocked', 'degraded'].includes(connector.status) ? 'à configurer' : 'prévu';
             return `<b class="${escapeHtml(connector.status || '')}">${escapeHtml(connector.label || connector.id)} <small>${escapeHtml(connectorState)}</small></b>`;
           }).join('')}
         </div>
       </div>
       <div class="ai-detail-section">
-        <span>Prochaine decision</span>
+        <span>Prochaine décision</span>
         <p>${escapeHtml(activity.nextAction)}</p>
       </div>
     </aside>`;
@@ -592,7 +595,7 @@ function renderOpsAgentEcosystem(ecosystem, activations = [], orchestration = {}
         <div>
           <span class="ops-eyebrow">Entreprise IA</span>
           <h3>Super Agent Team</h3>
-          <p>${escapeHtml(ecosystem.mission || 'Ecosysteme IA Fun Galaxy.')}</p>
+          <p>${escapeHtml(ecosystem.mission || 'Écosystème IA Fun Galaxy.')}</p>
         </div>
         <div class="ai-org-metrics">
           <span><strong>${Number(ecosystem.summary?.agents || agents.length)}</strong> agents</span>
@@ -614,8 +617,17 @@ function renderOpsAgentStack() {
   const stack = payload?.stack || null;
   const orchestration = payload?.orchestration || null;
   const ecosystem = payload?.ecosystem || null;
+  const stackHead = `
+    <div class="ops-admin-head">
+      <div>
+        <div class="ops-eyebrow">Stack IA</div>
+        <h3>Agents, orchestration et signaux</h3>
+        <p>Lecture en direct du registre agents/skills sur la période ouverte.</p>
+      </div>
+      <button class="ops-admin-btn primary" onclick="runAdminOrchestratorNow()">Relancer l’orchestrateur</button>
+    </div>`;
   if (!stack) {
-    return `<div class="empty-state"><div class="e-title">Stack IA indisponible</div><div class="e-sub">Le registre agents/skills sera affiche ici apres actualisation.</div></div>`;
+    return `${stackHead}<div class="empty-state"><div class="e-title">Stack IA indisponible</div><div class="e-sub">Aucun agent enregistré pour le moment. Lancez « Analyser maintenant » pour peupler le registre.</div></div>`;
   }
   const audit = payload.audit || {};
   const activations = orchestration?.activations || [];
@@ -629,6 +641,7 @@ function renderOpsAgentStack() {
     reason: agent.mission,
   }));
   return `
+    ${stackHead}
     <div class="ops-grid">
       <div class="ops-stat"><div class="k">Agents runtime</div><div class="v">${runtimeAgents.length}</div></div>
       <div class="ops-stat"><div class="k">Surveillance</div><div class="v">${monitorAgents.length}</div></div>
@@ -647,7 +660,7 @@ function renderOpsAgentStack() {
       ${(stack.recommendations || []).slice(0, 3).map(item => `
         <div class="ops-row template">
           <div><span class="ops-pill">Principe</span></div>
-          <div><div class="title">${escapeHtml(item)}</div><div class="meta">Regle d'architecture IA Fun Galaxy</div></div>
+          <div><div class="title">${escapeHtml(item)}</div><div class="meta">Règle d'architecture IA Fun Galaxy</div></div>
           <span class="ops-pill">Actif</span>
         </div>
       `).join('')}
@@ -728,9 +741,9 @@ function getOpsSimulationPayload() {
 function getOpsSimulationProfiles() {
   return getOpsSimulationPayload()?.profiles || [
     { id: 'quiet', label: 'Quasi vide', description: '10 demandes environ' },
-    { id: 'normal', label: 'Journee normale', description: 'Charge realiste' },
-    { id: 'rush', label: 'Rush fort', description: 'Grosse journee' },
-    { id: 'max', label: 'Stress maximum', description: 'Tout le scenario' },
+    { id: 'normal', label: 'Journée normale', description: 'Charge réaliste' },
+    { id: 'rush', label: 'Rush fort', description: 'Grosse journée' },
+    { id: 'max', label: 'Stress maximum', description: 'Tout le scénario' },
   ];
 }
 
@@ -755,12 +768,12 @@ function getOpsSimulationProfileTone(profileId) {
     quiet: {
       badge: 'Niveau 1',
       objective: 'Jour calme, environ 10 demandes.',
-      proof: 'Verifie que le moteur ne surjoue pas les alertes.'
+      proof: 'Vérifie que le moteur ne surjoue pas les alertes.'
     },
     normal: {
       badge: 'Niveau 2',
-      objective: 'Jour normal, charge realiste.',
-      proof: 'Controle les emails, les formules et les validations utiles.'
+      objective: 'Jour normal, charge réaliste.',
+      proof: 'Contrôle les emails, les formules et les validations utiles.'
     },
     rush: {
       badge: 'Niveau 3',
@@ -770,7 +783,7 @@ function getOpsSimulationProfileTone(profileId) {
     max: {
       badge: 'Niveau 4',
       objective: 'Stress maximum, saturation volontaire.',
-      proof: 'Pousse le moteur jusqu aux limites pour trouver les failles.'
+      proof: 'Pousse le moteur jusqu’aux limites pour trouver les failles.'
     },
   };
   return tones[profileId] || tones.normal;
@@ -785,7 +798,7 @@ function renderOpsSimulationProfilePicker() {
       <div class="ops-sim-control-head">
         <div>
           <span class="ops-sim-overline">Niveau de charge</span>
-          <h4>${escapeHtml(activeProfile.label || 'Journee normale')}</h4>
+          <h4>${escapeHtml(activeProfile.label || 'Journée normale')}</h4>
           <p>${escapeHtml(getOpsSimulationProfileTone(active).objective)}</p>
         </div>
         <button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer ce niveau</button>
@@ -805,8 +818,7 @@ function renderOpsSimulationProfilePicker() {
         }).join('')}
       </div>
       <div class="ops-sim-control-foot">
-        <span>Ce choix controle combien de reservations, refus, retards, emails et validations staff seront joues.</span>
-        <button class="ops-link-btn" onclick="startOpsSimulationScenario('${escapeHtml(active)}')">Redemarrer avec ce niveau</button>
+        <span>Ce choix contrôle combien de réservations, refus, retards, emails et validations staff seront joués.</span>
       </div>
     </section>`;
 }
@@ -894,17 +906,17 @@ function renderOpsSimulationStatsPanel(stats = {}, run = null) {
   const errors = Number(stats.errors || 0);
   const delays = Number(stats.delays || 0);
   return `
-    <section id="ops-sim-run-stats" class="ops-sim-scoreboard" aria-label="Etat du run simulation">
+    <section id="ops-sim-run-stats" class="ops-sim-scoreboard" aria-label="État du run simulation">
       <div class="ops-sim-score-main">
-        <span class="ops-sim-overline">Etat du run</span>
+        <span class="ops-sim-overline">État du run</span>
         <strong>${run ? `${progress}%` : '--'}</strong>
-        <span>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions jouees` : 'Aucun test lance'}</span>
+        <span>${run ? `${Number(run.stepIndex || 0)} / ${Number(run.totalSteps || 0)} actions jouées` : 'Aucun test lancé'}</span>
         <div class="ops-sim-progress"><span style="width:${progress}%"></span></div>
       </div>
       <div class="ops-sim-score-grid">
-        <div class="ops-sim-score"><span>Reservations creees</span><strong>${created}</strong></div>
-        <div class="ops-sim-score ${pendingReviews ? 'attention' : ''}"><span>A valider staff</span><strong>${pendingReviews}</strong><small>${doneReviews} traitees</small></div>
-        <div class="ops-sim-score"><span>Alternatives proposees</span><strong>${alternatives}</strong></div>
+        <div class="ops-sim-score"><span>Réservations créées</span><strong>${created}</strong></div>
+        <div class="ops-sim-score ${pendingReviews ? 'attention' : ''}"><span>À valider staff</span><strong>${pendingReviews}</strong><small>${doneReviews} traitées</small></div>
+        <div class="ops-sim-score"><span>Alternatives proposées</span><strong>${alternatives}</strong></div>
         <div class="ops-sim-score ${hardRefusals ? 'danger' : ''}"><span>Refus sans solution</span><strong>${hardRefusals}</strong></div>
         <div class="ops-sim-score"><span>Emails du run</span><strong>${mails}</strong></div>
         <div class="ops-sim-score ${errors ? 'danger' : ''}"><span>Erreurs moteur</span><strong>${errors}</strong><small>${delays} retard(s)</small></div>
@@ -996,8 +1008,8 @@ function renderOpsSimulationCommunications(payload = {}) {
       <div class="ops-sim-comm-head">
         <div>
           <span class="ops-sim-overline">Emails du run</span>
-          <h3>Communication simulee et file d'envoi</h3>
-          <p>Les messages crees par la simulation apparaissent ici. Les faux clients ne recoivent rien; les decisions staff peuvent partir vers la boite test/staff configuree.</p>
+          <h3>Communication simulée et file d'envoi</h3>
+          <p>Les messages créés par la simulation apparaissent ici. Les faux clients ne reçoivent rien; les décisions staff peuvent partir vers la boîte test/staff configurée.</p>
         </div>
         <div class="ops-sim-comm-actions">
           <span>${queued} en file</span>
@@ -1008,7 +1020,7 @@ function renderOpsSimulationCommunications(payload = {}) {
         <span><strong>${communications.length}</strong> total</span>
         <span><strong>${drafts}</strong> brouillon</span>
         <span><strong>${queued}</strong> en file</span>
-        <span><strong>${sent}</strong> envoyes</span>
+        <span><strong>${sent}</strong> envoyés</span>
         <span><strong>${failed}</strong> erreur</span>
       </div>
       <div class="ops-sim-comm-list">
@@ -1016,13 +1028,13 @@ function renderOpsSimulationCommunications(payload = {}) {
           <button class="ops-sim-comm-row" onclick="previewOpsEmail(${index}, 'simulation')">
             <span class="ops-pill ${escapeHtml(item.status || '')}">${escapeHtml(item.status || 'draft')}</span>
             <strong>${escapeHtml(item.subject || getOpsTemplateLabel(item.templateId))}</strong>
-            <span>${escapeHtml(item.recipient || item.payload?.safeRecipient || 'destinataire test non configure')}</span>
+            <span>${escapeHtml(item.recipient || item.payload?.safeRecipient || 'destinataire test non configuré')}</span>
             <small>${escapeHtml(getOpsTemplateLabel(item.templateId))} · ${escapeHtml(formatOpsTimestamp(item.scheduledAt || item.createdAt))}</small>
           </button>
         `).join('') : `
           <div class="ops-sim-empty">
-            <strong>Aucun email cree</strong>
-            <span>Lance un niveau puis avance la simulation. Les confirmations, rappels, refus et alternatives apparaitront ici.</span>
+            <strong>Aucun email créé</strong>
+            <span>Lance un niveau puis avance la simulation. Les confirmations, rappels, refus et alternatives apparaîtront ici.</span>
           </div>`}
       </div>
     </section>`;
@@ -1063,7 +1075,7 @@ function buildOpsTrainingReport(payload = {}) {
     {
       title: 'Charge multi-jours',
       ok: Number(stats.daysCovered || 0) >= 7,
-      detail: `${Number(stats.daysCovered || 0)} jour(s) couverts, ${Number(stats.plannedSteps || 0)} actions prevues.`
+      detail: `${Number(stats.daysCovered || 0)} jour(s) couverts, ${Number(stats.plannedSteps || 0)} actions prévues.`
     },
     {
       title: 'Mix Bowling / Laser / Formules',
@@ -1073,12 +1085,12 @@ function buildOpsTrainingReport(payload = {}) {
     {
       title: 'Retards et incidents',
       ok: delays > 0,
-      detail: `${delays} retard(s) joues, ${Number(stats.events || 0)} evenement(s) terrain.`
+      detail: `${delays} retard(s) joués, ${Number(stats.events || 0)} événement(s) terrain.`
     },
     {
       title: 'Communication client',
       ok: mails > 0,
-      detail: `${mails} mail(s) simules, aucun envoi vers vrais clients.`
+      detail: `${mails} mail(s) simulés, aucun envoi vers vrais clients.`
     },
     {
       title: 'Orchestrateur',
@@ -1095,17 +1107,17 @@ function buildOpsTrainingReport(payload = {}) {
       title: 'Robustesse moteur',
       ok: errors === 0,
       danger: errors > 0,
-      detail: errors ? `${errors} erreur(s) technique(s) a corriger.` : 'Aucune erreur moteur detectee.'
+      detail: errors ? `${errors} erreur(s) technique(s) à corriger.` : 'Aucune erreur moteur détectée.'
     }
   ];
   const nextActions = [];
-  if (!run) nextActions.push('Lancer un rush accelere pour creer une base visible.');
+  if (!run) nextActions.push('Lancer un rush accéléré pour créer une base visible.');
   if (progress < 100 && run) nextActions.push('Jouer toute la simulation pour obtenir un score complet.');
-  if (!delays) nextActions.push('Ajouter ou jouer des retards pour entrainer le Delay Agent.');
-  if (!mails) nextActions.push('Verifier que les mails simules sont generes dans le run.');
-  if (hardRefusals) nextActions.push('Analyser les refus sans solution et elargir les alternatives proposees.');
+  if (!delays) nextActions.push('Ajouter ou jouer des retards pour entraîner le Delay Agent.');
+  if (!mails) nextActions.push('Vérifier que les mails simulés sont générés dans le run.');
+  if (hardRefusals) nextActions.push('Analyser les refus sans solution et élargir les alternatives proposées.');
   if (errors) nextActions.push('Ouvrir les logs rouges: seules les erreurs sans alternative doivent rester critiques.');
-  if (!nextActions.length) nextActions.push('Comparer ce run avec un prochain rush pour voir si les decisions s ameliorent.');
+  if (!nextActions.length) nextActions.push('Comparer ce run avec un prochain rush pour voir si les décisions s’améliorent.');
   return {
     score,
     progress,
@@ -1131,22 +1143,17 @@ function renderOpsTrainingLab(payload = {}) {
       <div class="ops-training-card">
         <span class="ops-pill">Training Lab IA</span>
         <h3>Banc d'essai visible</h3>
-        <p>On n'entraine pas un modele en secret: on fait tourner des scenarios, on mesure les erreurs, on journalise les decisions, puis les agents proposent des corrections approuvables.</p>
+        <p>On n'entraîne pas un modèle en secret : on fait tourner des scénarios, on mesure les erreurs, on journalise les décisions, puis les agents proposent des corrections approuvables.</p>
         <div class="ops-training-score">
           <strong>${report.score}</strong>
           <small>/100 robustesse actuelle</small>
         </div>
         <div class="ops-sim-progress"><span style="width:${report.progress}%"></span></div>
-        <p>${report.created} reservation(s) creees, ${report.alternatives} alternative(s), ${report.hardRefusals} refus sans solution, ${report.delays} retard(s), ${report.errors} erreur(s) technique(s).</p>
-        <div class="ops-sim-actions">
-          <button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer le niveau</button>
-          <button class="ops-admin-btn" onclick="fastForwardOpsSimulation()">Jouer tout</button>
-          <button class="ops-admin-btn" onclick="stepOpsSimulation(60)">Stress +60</button>
-        </div>
+        <p>${report.created} réservation(s) créées, ${report.alternatives} alternative(s), ${report.hardRefusals} refus sans solution, ${report.delays} retard(s), ${report.errors} erreur(s) technique(s).</p>
       </div>
       <div class="ops-training-card">
         <span class="ops-pill">Couverture</span>
-        <h3>Ce qui est teste</h3>
+        <h3>Ce qui est testé</h3>
         <div class="ops-training-matrix">
           ${report.cases.map(test => `<div class="ops-training-case ${test.danger ? 'danger' : test.ok ? 'ok' : 'warn'}">
             <strong>${escapeHtml(test.title)}</strong>
@@ -1160,15 +1167,17 @@ function renderOpsTrainingLab(payload = {}) {
         <div class="ops-agent-meters">
           ${report.agentMeters.length ? report.agentMeters.map(([agentId, count]) => `
             <div class="ops-agent-meter">
-              <strong>${escapeHtml(agentId)}</strong>
+              <div class="ops-agent-meter-head">
+                <strong>${escapeHtml(agentId)}</strong>
+                <span>${count}</span>
+              </div>
               <span class="bar"><i style="--value:${Math.round((count / maxAgentCount) * 100)}%"></i></span>
-              <span>${count}</span>
             </div>
-          `).join('') : `<p>Aucun agent journalise pour le moment. Lance ou avance une simulation.</p>`}
+          `).join('') : `<p>Aucun agent journalisé pour le moment. Lance ou avance une simulation.</p>`}
         </div>
       </div>
       <div class="ops-training-card">
-        <span class="ops-pill">Amelioration</span>
+        <span class="ops-pill">Amélioration</span>
         <h3>Prochaines corrections</h3>
         <div class="ops-sim-timeline">
           ${report.nextActions.map(action => `<div class="ops-sim-timeline-item"><strong>Action</strong><span>${escapeHtml(action)}</span></div>`).join('')}
@@ -1195,7 +1204,7 @@ function renderOpsSimulation() {
     return `<div class="empty-state"><div class="e-title">Chargement simulation</div><div class="e-sub">Lecture du dernier rush accéléré.</div></div>`;
   }
 
-  const statusLabel = status === 'running' ? 'en cours' : status === 'finished' ? 'terminée' : status === 'failed' ? 'erreur' : 'prête';
+  const statusLabel = status === 'running' ? 'En cours' : status === 'finished' ? 'Terminée' : status === 'failed' ? 'Erreur' : 'Prête';
   const primaryAction = run?.status === 'running'
     ? `<button class="ops-admin-btn primary" onclick="stepOpsSimulation(12)">Avancer 12 actions</button>`
     : `<button class="ops-admin-btn primary" onclick="startOpsSimulation()">Lancer le niveau</button>`;
@@ -1224,7 +1233,7 @@ function renderOpsSimulation() {
         <span class="ops-pill">Pilote terrain</span>
         <h3>Ce que ça prouve</h3>
         <p>${escapeHtml(run?.payload?.fieldPilot?.mission || 'Le système doit montrer si l’algo aide le staff au lieu de rajouter une couche.')}</p>
-        <p style="margin-top:8px;">Sécurité: ${escapeHtml(safetyLabel)} Le canal mobile reste prêt côté code, mais il est masqué tant qu’aucun fournisseur n’est branché.</p>
+        <p style="margin-top:8px;">Sécurité : ${escapeHtml(safetyLabel)} Le canal mobile reste prêt côté code, mais il est masqué tant qu’aucun fournisseur n’est branché.</p>
       </div>
     </div>
     ${renderOpsSimulationCommandMap(stats, payload || {})}
@@ -1291,7 +1300,7 @@ async function startOpsSimulation() {
     state.staffResourceView = 'all';
     save();
     renderOpsAdmin();
-    toast('Simulation lancee.');
+    toast('Simulation lancée.');
     opsSimulationAutoRunning = true;
     await stepOpsSimulation(Number(payload.run?.payload?.profile?.startBatch || 36), true);
   } catch (error) {
@@ -1391,7 +1400,7 @@ async function fastForwardOpsSimulation() {
     storeOpsSimulationPayload(payload);
     renderOpsAdmin();
     await loadAdminDashboard(true);
-    toast('Test IA complet joue.');
+    toast('Test IA complet joué.');
   } catch (error) {
     toast(error.message || 'Impossible de jouer tout le test.');
   }
@@ -1440,12 +1449,12 @@ async function reviewOpsSimulation(reviewId, decision, alternativeIndex = 0) {
     renderOpsAdmin();
     await loadAdminDashboard(true);
     toast(decision === 'approve'
-      ? 'Validation staff appliquee.'
+      ? 'Validation staff appliquée.'
       : decision === 'send_alternatives'
-        ? 'Alternative ajoutee a la file mail.'
-        : 'Refus propre ajoute a la file mail.');
+        ? 'Alternative ajoutée à la file mail.'
+        : 'Refus propre ajouté à la file mail.');
   } catch (error) {
-    toast(error.message || 'Decision simulation impossible.');
+    toast(error.message || 'Décision simulation impossible.');
   }
 }
 

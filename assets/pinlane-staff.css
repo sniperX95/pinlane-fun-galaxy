@@ -1036,14 +1036,18 @@ input.dash-date-input {
   --planning-hour-col: 54px;
 }
 
+/* Plein écran RÉEL : bord à bord, par-dessus la sidebar (z-index 70) et le
+   header, aucune marge ni rayon. Comme un vrai fullscreen au comptoir. */
 .planning-box.expanded:not(.hidden) {
   position: fixed;
-  inset: 10px;
-  z-index: 320;
+  inset: 0;
+  z-index: 400;
   margin: 0;
+  border: 0;
+  border-radius: 0;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-overlay); /* surface flottante */
+  box-shadow: none;
   --planning-hour-h: 52px;
   --planning-header-h: 46px;
   --planning-lane-w: 158px;
@@ -1194,6 +1198,61 @@ input.dash-date-input {
 .planning-box.expanded .laser-session-sub { font-size: 13px; }
 .planning-box.expanded .laser-group-main strong { font-size: 14px; }
 .planning-box.expanded .laser-group-main small { font-size: 12px; }
+
+/* ----------------------------------------------------------------------------
+   4c. LASER PLEIN ÉCRAN — 2 ZONES
+   Zone permanente « Parties à placer » (colonne fixe à gauche, ne défile jamais
+   hors écran) + zone principale = timeline des lancements (scrollable).
+   -------------------------------------------------------------------------- */
+.laser-planning-box.expanded .planning-grid-wrap {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr); /* ligne = hauteur exacte du wrap */
+  overflow: hidden; /* la zone défilante, c'est la timeline, pas le wrap */
+}
+
+/* Colonne 1 : file des parties à placer, toujours visible, scroll interne. */
+.laser-planning-box.expanded .laser-pass-queue {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: var(--space-3);
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  border-bottom: 0;
+  border-right: 1px solid var(--line);
+  padding: 18px 18px 20px;
+}
+
+.laser-planning-box.expanded .laser-pass-queue-copy strong { font-size: 15px; }
+.laser-planning-box.expanded .laser-pass-queue-copy span { font-size: 13px; }
+
+/* Cartes empilées verticalement, pleine largeur, faciles à attraper au drag. */
+.laser-planning-box.expanded .laser-pass-list { flex-direction: column; flex-wrap: nowrap; gap: 10px; }
+.laser-planning-box.expanded .laser-pass-card { width: 100%; padding: 12px 14px; }
+.laser-planning-box.expanded .laser-pass-name { font-size: 15px; }
+.laser-planning-box.expanded .laser-pass-meta { font-size: 12px; }
+.laser-planning-box.expanded .laser-pass-origin { font-size: 12px; }
+
+/* Colonne 2 : timeline des lancements, seule zone qui défile verticalement. */
+.laser-planning-box.expanded .laser-agenda {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  min-width: 0;
+}
+
+/* File vide (aucune partie à placer) : reste rassurante et lisible. */
+.laser-pass-empty {
+  padding: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.laser-pass-queue.is-empty { background: var(--surface); }
 
 .hour-col {
   width: var(--planning-hour-col);

@@ -10205,10 +10205,37 @@ function renderStaff() {
   renderTable();
 }
 
+// Recalcule la hauteur de ligne bowling / le layout laser quand la fenêtre change
+// de taille en plein écran. Attaché uniquement pendant le plein écran, détaché à
+// la fermeture pour éviter toute fuite d'écouteur.
+let planningFullscreenResizeHandler = null;
+
+function attachPlanningFullscreenResize() {
+  if (planningFullscreenResizeHandler) return;
+  let raf = 0;
+  planningFullscreenResizeHandler = () => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (state.staffPlanningExpanded) renderPlanning();
+      else if (state.staffLaserPlanningExpanded) renderLaserPlanning();
+    });
+  };
+  window.addEventListener('resize', planningFullscreenResizeHandler);
+}
+
+function detachPlanningFullscreenResize() {
+  if (!planningFullscreenResizeHandler) return;
+  window.removeEventListener('resize', planningFullscreenResizeHandler);
+  planningFullscreenResizeHandler = null;
+}
+
 function togglePlanningExpanded() {
   const next = !state.staffPlanningExpanded;
   state.staffPlanningExpanded = next;
   state.staffLaserPlanningExpanded = false;
+  if (next) attachPlanningFullscreenResize();
+  else detachPlanningFullscreenResize();
   save();
   renderStaff();
 }
@@ -10217,6 +10244,8 @@ function toggleLaserPlanningExpanded() {
   const next = !state.staffLaserPlanningExpanded;
   state.staffLaserPlanningExpanded = next;
   state.staffPlanningExpanded = false;
+  if (next) attachPlanningFullscreenResize();
+  else detachPlanningFullscreenResize();
   save();
   renderStaff();
 }
@@ -10225,6 +10254,7 @@ function collapseStaffPlanningFullscreen() {
   if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded) return false;
   state.staffPlanningExpanded = false;
   state.staffLaserPlanningExpanded = false;
+  detachPlanningFullscreenResize();
   save();
   renderStaff();
   return true;
@@ -10820,11 +10850,21 @@ function renderPlanning() {
   let HH = state.staffPlanningExpanded ? 52 : 48;
   let HEADER_H = state.staffPlanningExpanded ? 46 : 38;
   if (state.staffPlanningExpanded) {
-    const availableHeight = wrap.clientHeight || 0;
-    if (availableHeight > 0) {
-      const computedHeight = Math.floor((availableHeight - HEADER_H - 6) / totalHours);
-      HH = Math.max(58, computedHeight);
-    }
+    // Plein écran comptoir : toutes les heures d'ouverture doivent tenir d'une
+    // traite, sans scroll vertical. La hauteur de ligne n'est donc PAS fixe :
+    // on la calcule pour remplir la hauteur disponible.
+    // Hauteur totale de la grille = HEADER_H (ligne d'en-tête pistes)
+    //   + totalHours * HH (les heures pleines)
+    //   + HH/2 (la cellule de fin) => facteur (totalHours + 0.5).
+    // On retire une marge de sécurité pour l'éventuelle scrollbar horizontale
+    // (pistes larges) afin de ne jamais déborder verticalement.
+    const MIN_HOUR_H = 34;
+    const SCROLLBAR_SAFETY = 14;
+    const availableHeight = wrap.clientHeight
+      || (window.innerHeight - HEADER_H - 64);
+    const usableHeight = availableHeight - HEADER_H - SCROLLBAR_SAFETY;
+    const computedHeight = Math.floor(usableHeight / (totalHours + 0.5));
+    HH = Math.max(MIN_HOUR_H, computedHeight);
   }
   if (planningBox) {
     planningBox.style.setProperty('--planning-header-h', `${HEADER_H}px`);
@@ -10971,24 +11011,31 @@ function renderLaserPlanning() {
     if (!sessionsBySlot.has(slotIndex)) sessionsBySlot.set(slotIndex, []);
     sessionsBySlot.get(slotIndex).push(session);
   });
-  const pendingQueueHtml = pendingPasses.length ? `
-    <div class="laser-pass-queue" aria-label="Parties Laser Game à placer">
+  // La file « Parties à placer » est TOUJOURS rendue en plein écran (zone
+  // permanente) pour ne jamais oublier une partie ; en mode réduit elle
+  // n'apparaît que s'il reste des parties à placer.
+  const showPassQueue = pendingPasses.length > 0 || state.staffLaserPlanningExpanded;
+  const passListHtml = pendingPasses.length
+    ? pendingPasses.map(pass => {
+        const reservation = pass.reservation;
+        const scheduled = getLaserWindowsFromReservation(reservation)
+          .filter(window => Number(window.countIndex || 1) === 1)
+          .sort((a, b) => a.start - b.start)[0];
+        return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${pass.countIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette partie">
+          <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
+          <span class="laser-pass-meta">Partie ${pass.countIndex}/${pass.totalGames} • ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
+          <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
+        </button>`;
+      }).join('')
+    : `<div class="laser-pass-empty">Aucune partie en attente. Toutes les parties sont placées.</div>`;
+  const pendingQueueHtml = showPassQueue ? `
+    <div class="laser-pass-queue${pendingPasses.length ? '' : ' is-empty'}" aria-label="Parties Laser Game à placer">
       <div class="laser-pass-queue-copy">
-        <strong>Parties restantes</strong>
+        <strong>Parties à placer${pendingPasses.length ? ` • ${pendingPasses.length}` : ''}</strong>
         <span>Glissez une carte sur un lancement disponible ou partagé.</span>
       </div>
       <div class="laser-pass-list">
-        ${pendingPasses.map(pass => {
-          const reservation = pass.reservation;
-          const scheduled = getLaserWindowsFromReservation(reservation)
-            .filter(window => Number(window.countIndex || 1) === 1)
-            .sort((a, b) => a.start - b.start)[0];
-          return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${pass.countIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette partie">
-            <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
-            <span class="laser-pass-meta">Partie ${pass.countIndex}/${pass.totalGames} • ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
-            <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
-          </button>`;
-        }).join('')}
+        ${passListHtml}
       </div>
     </div>` : '';
 

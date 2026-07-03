@@ -489,6 +489,7 @@ function buildAdminExcelXml(payload) {
 }
 
 function exportAdminExcel() {
+  if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement — patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const xml = buildAdminExcelXml(payload);
   const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
@@ -633,6 +634,7 @@ function buildFunGalaxyReportHtml(payload) {
 }
 
 function exportAdminReport() {
+  if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement — patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const html = buildFunGalaxyReportHtml(payload);
   downloadTextFile(`FunGalaxy_${payload.center.id}_${payload.period.startDate}_${payload.period.endDate}_rapport_direction.html`, html, 'text/html;charset=utf-8');

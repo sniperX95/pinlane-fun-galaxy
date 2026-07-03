@@ -2262,7 +2262,7 @@ body.client-mode .location-select {
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
 }
 
 body.client-mode #nav {

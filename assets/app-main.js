@@ -3315,6 +3315,10 @@ function goStep4() {
   const phone = document.getElementById('fPhone').value.trim();
   const email = document.getElementById('fEmail').value.trim();
   if (!name || !phone || !email) { showAlert('Nom, téléphone et email requis pour envoyer la confirmation.'); return; }
+  if (name.length < 2) { showAlert('Merci d\'indiquer votre nom complet.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showAlert('Adresse email invalide — vérifiez-la pour recevoir votre confirmation.'); return; }
+  const phoneDigits = phone.replace(/[^0-9]/g, '');
+  if (phoneDigits.length < 8 || phoneDigits.length > 15) { showAlert('Numéro de téléphone invalide.'); return; }
   state.booking.name = name;
   state.booking.phone = phone;
   state.booking.email = email;

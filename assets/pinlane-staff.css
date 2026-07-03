@@ -1133,6 +1133,68 @@ input.dash-date-input {
 .planning-grid { display: flex; width: 100%; min-width: 760px; position: relative; }
 .planning-box.expanded .planning-grid { min-height: 100%; }
 
+/* ----------------------------------------------------------------------------
+   4b. MODE PLEIN ÉCRAN — comptoir grand écran
+   Typographie agrandie pour une lecture nette à distance, en-têtes collants,
+   bouton fermer explicite. S'applique aussi bien au bowling qu'au laser.
+   -------------------------------------------------------------------------- */
+.planning-box.expanded .planning-head { padding: 16px 24px; }
+.planning-box.expanded .planning-head h2 { font-size: 19px; }
+.planning-box.expanded .planning-sub { font-size: 13px; }
+
+/* Bouton fermer bien visible en plein écran */
+.planning-box.expanded .planning-toggle {
+  height: 38px;
+  padding: 0 18px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.planning-box.expanded .planning-toggle:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+
+/* Bowling : cellules et cartes plus lisibles */
+.planning-box.expanded .hour-header { font-size: 13px; }
+.planning-box.expanded .hour-cell { font-size: 13px; }
+.planning-box.expanded .hour-cell.minor { font-size: 12px; }
+.planning-box.expanded .lane-header .pl { font-size: 12px; }
+.planning-box.expanded .lane-header .num { font-size: 16px; }
+.planning-box.expanded .booking-name { font-size: 15px; }
+.planning-box.expanded .booking .b-tag { font-size: 12px; }
+.planning-box.expanded .booking-meta { font-size: 12px; }
+.planning-box.expanded .reservation-tag { font-size: 11px; }
+
+/* Laser : l'agenda occupe toute la largeur et grossit en plein écran */
+.planning-box.expanded .laser-agenda { min-width: 100%; }
+.planning-box.expanded .laser-agenda-header,
+.planning-box.expanded .laser-agenda-row {
+  grid-template-columns: 116px minmax(560px, 1fr) 150px;
+}
+.planning-box.expanded .laser-agenda-row { min-height: 92px; }
+.planning-box.expanded .laser-agenda-header { font-size: 13px; }
+/* En-tête laser collant en haut + colonne heure collante à gauche pour le repérage */
+.planning-box.expanded .laser-agenda-header > div:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: var(--surface);
+}
+.planning-box.expanded .laser-agenda-time {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--surface);
+}
+.planning-box.expanded .laser-agenda-row.is-half .laser-agenda-time { background: var(--page); }
+.planning-box.expanded .laser-agenda-time strong,
+.planning-box.expanded .laser-agenda-capacity strong { font-size: 15px; }
+.planning-box.expanded .laser-agenda-time span,
+.planning-box.expanded .laser-agenda-capacity span { font-size: 12px; }
+.planning-box.expanded .laser-session-title { font-size: 15px; }
+.planning-box.expanded .laser-session-sub { font-size: 13px; }
+.planning-box.expanded .laser-group-main strong { font-size: 14px; }
+.planning-box.expanded .laser-group-main small { font-size: 12px; }
+
 .hour-col {
   width: var(--planning-hour-col);
   flex-shrink: 0;

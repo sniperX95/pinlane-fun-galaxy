@@ -1738,6 +1738,7 @@ function loadState() {
     editState: null,
     availableSlots: [],
     staffPlanningExpanded: false,
+    staffLaserPlanningExpanded: false,
     staffResourceView: 'bowling',
     staffStatusFilter: 'all',
     staffTheme: 'dark',
@@ -1801,6 +1802,7 @@ function normalizeStaffMenuPage(page) {
   return STAFF_MENU_PAGES.includes(key) ? key : 'planning';
 }
 state.staffPlanningExpanded = !!state.staffPlanningExpanded;
+state.staffLaserPlanningExpanded = !!state.staffLaserPlanningExpanded;
 state.staffResourceView = ['all', 'bowling', 'laser'].includes(state.staffResourceView) ? state.staffResourceView : 'bowling';
 try {
   const staffViewMigrationKey = `${STORAGE_KEY}:staff-resource-view-bowling-v4`;
@@ -2034,7 +2036,7 @@ function applyAuthState() {
   const logoutBtn = document.getElementById('logoutBtn');
   if (overlay) overlay.classList.toggle('hidden', !locked);
   if (logoutBtn) logoutBtn.classList.toggle('hidden', !hasSavedAuth());
-  if (!locked) document.body.style.overflow = state.view === 'staff' && state.staffPlanningExpanded ? 'hidden' : '';
+  if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
 }
 
 function openSaasAccess(target = 'staff') {
@@ -10191,9 +10193,12 @@ function renderStaff() {
   const planningBox = document.getElementById('planningBox');
   const laserPlanningBox = document.getElementById('laserPlanningBox');
   if (planningBox) planningBox.classList.toggle('expanded', !!state.staffPlanningExpanded);
+  if (laserPlanningBox) laserPlanningBox.classList.toggle('expanded', !!state.staffLaserPlanningExpanded);
   const planningToggle = document.getElementById('planningToggle');
   if (planningToggle) planningToggle.textContent = state.staffPlanningExpanded ? 'Réduire' : 'Agrandir';
-  document.body.style.overflow = state.view === 'staff' && state.staffPlanningExpanded ? 'hidden' : '';
+  const laserPlanningToggle = document.getElementById('laserPlanningToggle');
+  if (laserPlanningToggle) laserPlanningToggle.textContent = state.staffLaserPlanningExpanded ? 'Réduire' : 'Agrandir';
+  document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
   renderKpis();
   renderPlanning();
   renderLaserPlanning();
@@ -10201,9 +10206,28 @@ function renderStaff() {
 }
 
 function togglePlanningExpanded() {
-  state.staffPlanningExpanded = !state.staffPlanningExpanded;
+  const next = !state.staffPlanningExpanded;
+  state.staffPlanningExpanded = next;
+  state.staffLaserPlanningExpanded = false;
   save();
   renderStaff();
+}
+
+function toggleLaserPlanningExpanded() {
+  const next = !state.staffLaserPlanningExpanded;
+  state.staffLaserPlanningExpanded = next;
+  state.staffPlanningExpanded = false;
+  save();
+  renderStaff();
+}
+
+function collapseStaffPlanningFullscreen() {
+  if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded) return false;
+  state.staffPlanningExpanded = false;
+  state.staffLaserPlanningExpanded = false;
+  save();
+  renderStaff();
+  return true;
 }
 
 function setStaffStatusFilter(filter) {
@@ -10755,6 +10779,10 @@ function renderKpis() {
 function renderPlanning() {
   const wrap = document.getElementById('planningGridWrap');
   const planningBox = document.getElementById('planningBox');
+  // Le re-render (polling 4s / 60s) reconstruit innerHTML et remet le scroll à 0.
+  // On mémorise la position pour ne pas faire sauter la vue en mode plein écran.
+  const prevScrollTop = wrap ? wrap.scrollTop : 0;
+  const prevScrollLeft = wrap ? wrap.scrollLeft : 0;
   const config = getPlanningWindow(state.currentDate);
   if (config.closed) {
     const closedReservations = getPlanningVisibleReservations('bowling')
@@ -10881,6 +10909,8 @@ function renderPlanning() {
       </div>
       <div class="lanes-row">${lanesHtml}</div>
     </div>`;
+  wrap.scrollTop = prevScrollTop;
+  wrap.scrollLeft = prevScrollLeft;
 }
 
 function getPlanningBookingDisplayName(reservation) {
@@ -10903,6 +10933,9 @@ function renderLaserPlanning() {
   const wrap = document.getElementById('laserPlanningGridWrap');
   const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
+  // Préserve le scroll (heures + horizontal) entre deux re-renders du polling.
+  const prevScrollTop = wrap.scrollTop;
+  const prevScrollLeft = wrap.scrollLeft;
   const config = getPlanningWindow(state.currentDate);
   if (config.closed) {
     wrap.innerHTML = `<div class="empty-state"><div class="e-title">Laser fermé ce jour</div><div class="e-sub">Aucun lancement possible sur cette date.</div></div>`;
@@ -11066,6 +11099,8 @@ function renderLaserPlanning() {
       </div>
       <div class="laser-agenda-body">${rowsHtml}</div>
     </div>`;
+  wrap.scrollTop = prevScrollTop;
+  wrap.scrollLeft = prevScrollLeft;
 }
 
 async function toggleMaint(i, ev) {
@@ -12696,3 +12731,12 @@ setInterval(() => {
     renderLaserPlanning();
   }
 }, 60000);
+
+// Échap ferme le mode plein écran du planning (bowling ou laser).
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (state.view !== 'staff') return;
+  if (collapseStaffPlanningFullscreen()) {
+    event.preventDefault();
+  }
+});

@@ -11,6 +11,8 @@ let bowlingDragPreviewEls = [];
 let bowlingDragSuppressClickUntil = 0;
 let bowlingDragSaveSeq = 0;
 const bowlingDragLatestSeqByReservation = {};
+let statusSaveSeq = 0;
+const statusSaveLatestSeqByReservation = {};
 const pendingReservationWriteIds = new Set();
 let planningMoveNoticeTimer = null;
 
@@ -51,12 +53,114 @@ function getReservationWriteKey(id) {
   return String(Number(id));
 }
 
+// Registre des mutations optimistes en attente : id -> { fields, expected,
+// signatures, deadline }. Il protège UNIQUEMENT les champs modifiés localement
+// (statut, ou géométrie drag-drop lanes/startTime/opsPlan) contre l'écrasement
+// par un snapshot serveur en retard (cohérence éventuelle de /api/staff-state).
+// La protection tombe dès que le serveur reflète la valeur attendue, ou après un
+// délai de grâce (garde-fou anti-blocage si le serveur diverge réellement).
+const PENDING_MUTATION_GRACE_MS = 9000;
+const pendingReservationMutations = new Map();
+// Mutations réellement en vol (requête PATCH non résolue) : id -> Map<field, sig>.
+// Sert à éviter le double-envoi pour un même couple (réservation, champ).
+const reservationInFlightMutations = new Map();
+
+function reservationFieldSignature(reservation, field) {
+  if (!reservation) return undefined;
+  switch (field) {
+    case 'status':
+      return String(reservation.status || '');
+    case 'paymentMethod':
+      return String(reservation.paymentMethod || '');
+    case 'startTime':
+      return String(reservation.startTime || '');
+    case 'lanes':
+      return (reservation.lanes || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b).join(',');
+    case 'opsPlan':
+      return JSON.stringify((reservation.opsPlan?.resourceBlocks || []).map(block => [
+        block.resourceType,
+        block.startTime,
+        block.endTime,
+        (block.lanes || []).map(Number),
+        block.players
+      ]));
+    default:
+      return JSON.stringify(reservation[field] ?? null);
+  }
+}
+
+function cloneReservationField(reservation, field) {
+  const value = reservation ? reservation[field] : undefined;
+  if (Array.isArray(value)) return value.slice();
+  return value;
+}
+
+function markReservationMutation(id, reservation, fields) {
+  const key = getReservationWriteKey(id);
+  const expected = {};
+  const signatures = {};
+  fields.forEach(field => {
+    expected[field] = cloneReservationField(reservation, field);
+    signatures[field] = reservationFieldSignature(reservation, field);
+  });
+  pendingReservationMutations.set(key, {
+    fields: fields.slice(),
+    expected,
+    signatures,
+    deadline: Date.now() + PENDING_MUTATION_GRACE_MS
+  });
+  pendingReservationWriteIds.add(key);
+}
+
+function clearReservationMutation(id) {
+  const key = getReservationWriteKey(id);
+  pendingReservationMutations.delete(key);
+  pendingReservationWriteIds.delete(key);
+}
+
+function reservationMatchesMutation(reservation, entry) {
+  return entry.fields.every(field => reservationFieldSignature(reservation, field) === entry.signatures[field]);
+}
+
+function applyExpectedMutationFields(serverReservation, entry) {
+  const merged = { ...serverReservation };
+  entry.fields.forEach(field => {
+    merged[field] = Array.isArray(entry.expected[field]) ? entry.expected[field].slice() : entry.expected[field];
+  });
+  return merged;
+}
+
+function isReservationMutationInFlight(id, field, signature) {
+  const fields = reservationInFlightMutations.get(getReservationWriteKey(id));
+  return !!fields && fields.get(field) === signature;
+}
+
+function setReservationMutationInFlight(id, field, signature) {
+  const key = getReservationWriteKey(id);
+  let fields = reservationInFlightMutations.get(key);
+  if (!fields) {
+    fields = new Map();
+    reservationInFlightMutations.set(key, fields);
+  }
+  fields.set(field, signature);
+}
+
+function clearReservationMutationInFlight(id, field) {
+  const key = getReservationWriteKey(id);
+  const fields = reservationInFlightMutations.get(key);
+  if (!fields) return;
+  fields.delete(field);
+  if (!fields.size) reservationInFlightMutations.delete(key);
+}
+
+// Compat : anciennes API basées sur un simple Set d'ids. Le registre riche
+// ci-dessus reste la source de vérité pour la fusion de snapshot.
 function markReservationWritePending(id) {
   pendingReservationWriteIds.add(getReservationWriteKey(id));
 }
 
 function clearReservationWritePending(id) {
-  pendingReservationWriteIds.delete(getReservationWriteKey(id));
+  clearReservationMutation(id);
 }
 
 function isReservationWritePending(id) {
@@ -505,7 +609,8 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const clearLatestRequest = () => {
     if (isLatestRequest()) delete bowlingDragLatestSeqByReservation[requestKey];
   };
-  markReservationWritePending(requestKey);
+  const moveFields = ['startTime', 'lanes', 'opsPlan'];
+  markReservationMutation(requestKey, updated, moveFields);
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
@@ -520,16 +625,19 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     if (!isLatestRequest()) return;
     if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
     upsertReservationInState(payload.reservation);
+    // Protection maintenue sur la position confirmée : le poll staff-state peut
+    // encore renvoyer l'ancienne position (cohérence éventuelle) → pas de flicker.
+    markReservationMutation(requestKey, payload.reservation, moveFields);
     save();
     renderStaffData();
     toast(`Bowling déplacé à ${formatClockDisplay(Number(targetStart))} piste${lanes.length > 1 ? 's' : ''} ${lanes.join(', ')}`);
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
+    clearReservationMutation(requestKey);
     showPlanningMoveNotice('Deplacement annule', error.message || 'Le serveur a refuse ce placement.', 'warning');
     return;
   } finally {
-    if (isLatestRequest()) clearReservationWritePending(requestKey);
     clearLatestRequest();
   }
 }
@@ -1024,14 +1132,45 @@ function sortReservations(list = []) {
 
 function replaceReservationsForDate(dateStr, reservations) {
   const others = state.reservations.filter(r => r.date !== dateStr);
-  const pendingLocal = state.reservations.filter(r => r.date === dateStr && isReservationWritePending(r.id));
-  if (!pendingLocal.length) {
-    state.reservations = sortReservations([...others, ...reservations]);
+  const serverList = reservations || [];
+  if (!pendingReservationMutations.size) {
+    state.reservations = sortReservations([...others, ...serverList]);
     return;
   }
-  const pendingIds = new Set(pendingLocal.map(r => Number(r.id)));
-  const remoteWithoutPending = (reservations || []).filter(r => !pendingIds.has(Number(r.id)));
-  state.reservations = sortReservations([...others, ...remoteWithoutPending, ...pendingLocal]);
+  const now = Date.now();
+  const serverKeys = new Set(serverList.map(r => getReservationWriteKey(r.id)));
+  // 1) Fusion champ par champ : pour chaque résa du snapshot serveur qui a une
+  //    mutation en attente, on protège UNIQUEMENT les champs mutés localement
+  //    tant que le serveur n'a pas confirmé la valeur attendue (ou tant que le
+  //    délai de grâce n'est pas dépassé). Les autres champs (donc les
+  //    changements faits par un autre poste) passent normalement.
+  const merged = serverList.map(serverReservation => {
+    const key = getReservationWriteKey(serverReservation.id);
+    const entry = pendingReservationMutations.get(key);
+    if (!entry) return serverReservation;
+    if (reservationMatchesMutation(serverReservation, entry) || now >= entry.deadline) {
+      pendingReservationMutations.delete(key);
+      pendingReservationWriteIds.delete(key);
+      return serverReservation;
+    }
+    return applyExpectedMutationFields(serverReservation, entry);
+  });
+  // 2) Résas absentes du snapshot serveur (création/déplacement pas encore visible)
+  //    mais avec une mutation en attente : on conserve la version locale.
+  const pendingMissing = state.reservations.filter(r => {
+    if (r.date !== dateStr) return false;
+    const key = getReservationWriteKey(r.id);
+    if (serverKeys.has(key)) return false;
+    const entry = pendingReservationMutations.get(key);
+    if (!entry) return false;
+    if (now >= entry.deadline) {
+      pendingReservationMutations.delete(key);
+      pendingReservationWriteIds.delete(key);
+      return false;
+    }
+    return true;
+  });
+  state.reservations = sortReservations([...others, ...merged, ...pendingMissing]);
 }
 
 function upsertReservationInState(reservation) {
@@ -11115,17 +11254,32 @@ function setReservationStatusDirect(id, status, ev) {
     toast('Réservation introuvable.');
     return;
   }
+  // Anti double-envoi : même statut déjà en vol → on ignore. La résa affiche
+  // déjà la valeur voulue (optimiste), inutile de re-PATCH.
+  if (isReservationMutationInFlight(id, 'status', status)) return;
   const nextReservation = {
     ...current,
     status,
     paymentMethod: status === 'paid' ? (current.paymentMethod || 'Comptoir') : current.paymentMethod
   };
+  const requestKey = Number(id);
+  const requestSeq = ++statusSaveSeq;
+  statusSaveLatestSeqByReservation[requestKey] = requestSeq;
+  const isLatestRequest = () => statusSaveLatestSeqByReservation[requestKey] === requestSeq;
+  // Protège le statut optimiste contre l'écrasement par un poll serveur en retard.
+  markReservationMutation(id, nextReservation, ['status', 'paymentMethod']);
+  setReservationMutationInFlight(id, 'status', status);
   applyOptimisticReservation(nextReservation, { preserveEditState: true });
   apiRequest(API_ENDPOINTS.staffReservations, {
     method: 'PATCH',
     body: JSON.stringify(buildReservationApiPayload(nextReservation))
   }).then(payload => {
+    if (!isLatestRequest()) return;
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    // Ré-ancre la protection sur la valeur confirmée par le serveur et repousse
+    // le délai de grâce : les lectures (staff-state) peuvent encore être en
+    // retard sur l'écriture qui vient d'être committée.
+    markReservationMutation(id, payload.reservation, ['status', 'paymentMethod']);
     const labels = {
       pending: 'Réservation marquée comme confirmée',
       arrived: 'Client marqué comme arrivé',
@@ -11133,8 +11287,13 @@ function setReservationStatusDirect(id, status, ev) {
     };
     toast(labels[status] || 'Statut mis à jour');
   }).catch(error => {
+    if (!isLatestRequest()) return;
     applyOptimisticReservation(current, { preserveEditState: true });
+    clearReservationMutation(id);
     toast(error.message || 'Impossible de mettre à jour le statut.');
+  }).finally(() => {
+    clearReservationMutationInFlight(id, 'status');
+    if (isLatestRequest()) delete statusSaveLatestSeqByReservation[requestKey];
   });
   return;
   state.reservations = state.reservations.map(r => {

@@ -2346,7 +2346,9 @@ body.staff-mode.laser-dragging * { user-select: none; }
   font-size: 12px;
 }
 
-.dash-alert-row p { color: var(--text); line-height: 1.35; }
+.dash-alert-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dash-alert-copy strong { color: var(--text); font-size: 12px; font-weight: 600; }
+.dash-alert-row p { color: var(--text-2); line-height: 1.35; }
 
 .dash-alert-row button {
   min-height: 26px;

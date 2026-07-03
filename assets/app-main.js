@@ -1790,7 +1790,6 @@ const STAFF_MENU_PAGES = [
   'lanes',
   'prices',
   'laserGame',
-  'offers',
   'emails',
   'campaigns',
   'establishment',
@@ -1897,7 +1896,6 @@ const STAFF_PAGE_PERMISSION_MAP = {
   lanes: ['planning.bowling', 'settings.manage'],
   prices: ['pricing.manage'],
   laserGame: ['planning.laser', 'settings.manage'],
-  offers: ['pricing.manage'],
   emails: ['emails.view'],
   campaigns: ['campaigns.manage', 'marketing.agents'],
   establishment: ['settings.manage', 'direction.view'],
@@ -3681,7 +3679,6 @@ const STAFF_UTILITY_MENU_PAGES = [
   'contacts',
   'lanes',
   'laserGame',
-  'offers',
   'establishment',
   'users',
   'settings'
@@ -3937,9 +3934,15 @@ function renderStaffDashboardArrivals(metrics) {
 
 function renderStaffDashboardAlerts(metrics) {
   const alerts = getStaffDashboardAlertDefinitions(metrics);
+  if (!alerts.length) {
+    return `<div class="dash-alert-row info">
+      <span class="dash-alert-dot info" aria-hidden="true"></span>
+      <div class="dash-alert-copy"><strong>Tout est à jour</strong><p>Aucune alerte : paiements, laser et pistes sont sous contrôle.</p></div>
+    </div>`;
+  }
   return alerts.slice(0, 4).map(alert => `<div class="dash-alert-row ${escapeHtml(alert.kind)}">
     <span class="dash-alert-dot ${escapeHtml(alert.kind)}" aria-hidden="true"></span>
-    <p>${escapeHtml(alert.text)}</p>
+    <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
     <button type="button" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">Voir</button>
   </div>`).join('');
 }
@@ -4026,28 +4029,33 @@ function openStaffDashboardSection(section) {
   }
 }
 
-function getStaffDashboardAlertDefinitions(metrics, includeFillers = true) {
+function getStaffDashboardAlertDefinitions(metrics) {
   const alerts = [];
   const unpaidRows = metrics.activeReservations.filter(reservation => reservation.status !== 'paid');
   if (unpaidRows.length) {
+    const outstanding = unpaidRows.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
+    const onSite = unpaidRows.filter(reservation => reservation.status === 'arrived').length;
     alerts.push({
       kind: 'payment',
-      title: 'Paiement et suivi',
-      text: `${unpaidRows.length} réservation${unpaidRows.length > 1 ? 's' : ''} à encaisser ou suivre`,
+      title: 'Paiement à encaisser',
+      text: `${unpaidRows.length} réservation${unpaidRows.length > 1 ? 's' : ''} non payée${unpaidRows.length > 1 ? 's' : ''} · ${formatMoney(outstanding)}${onSite ? ` · ${onSite} déjà sur place` : ''}`,
       rows: unpaidRows,
-      action: 'Encaisser ou clôturer les réservations ouvertes.'
+      action: onSite
+        ? `Encaisser en priorité les ${onSite} client${onSite > 1 ? 's' : ''} déjà sur place, puis clôturer les réservations restantes.`
+        : 'Encaisser ou clôturer les réservations restées ouvertes.'
     });
   }
   const lateLaserWindows = metrics.laserWindows.filter(window => window.end > metrics.planningWindow.close);
   if (lateLaserWindows.length) {
     const rows = [...new Map(lateLaserWindows.map(window => [window.reservation.id, window.reservation])).values()];
+    const closeLabel = formatClockDisplay(metrics.planningWindow.close);
     alerts.push({
       kind: 'warning',
-      title: 'Laser hors plage',
-      text: `${lateLaserWindows.length} session${lateLaserWindows.length > 1 ? 's' : ''} laser dépasse l'horaire`,
+      title: 'Laser après fermeture',
+      text: `${rows.length} réservation${rows.length > 1 ? 's' : ''} laser se termine${rows.length > 1 ? 'nt' : ''} après ${closeLabel}`,
       rows,
       windows: lateLaserWindows,
-      action: 'Vérifier le lancement laser et prévenir le staff si le centre ferme bientôt.'
+      action: `Ces sessions dépassent l'heure de fermeture (${closeLabel}) : vérifier le lancement laser ou décaler le créneau.`
     });
   }
   const maintenanceLanes = Object.entries(state.laneStatuses || {})
@@ -4056,33 +4064,26 @@ function getStaffDashboardAlertDefinitions(metrics, includeFillers = true) {
   if (maintenanceLanes.length) {
     alerts.push({
       kind: 'maintenance',
-      title: 'Maintenance pistes',
-      text: `${maintenanceLanes.length} piste${maintenanceLanes.length > 1 ? 's' : ''} en maintenance`,
+      title: 'Pistes en maintenance',
+      text: `Piste${maintenanceLanes.length > 1 ? 's' : ''} ${maintenanceLanes.join(', ')} bloquée${maintenanceLanes.length > 1 ? 's' : ''}`,
       lanes: maintenanceLanes,
       rows: [],
-      action: 'Garder ces pistes bloquées tant que le responsable terrain ne les libère pas.'
+      action: 'Garder ces pistes bloquées tant que le responsable terrain ne les a pas libérées.'
     });
   }
-  const formulaRows = metrics.activeReservations.filter(reservation => reservation.type === 'formule' || reservation.formuleId);
-  if (formulaRows.length) {
+  const comboRows = metrics.activeReservations.filter(reservation =>
+    (reservation.type === 'formule' || reservation.formuleId)
+    && reservation.status !== 'paid'
+    && getBowlingWindowsFromReservation(reservation).length
+    && getLaserWindowsFromReservation(reservation).length);
+  if (comboRows.length) {
     alerts.push({
       kind: 'formula',
-      title: 'Formules à surveiller',
-      text: `${formulaRows.length} formule${formulaRows.length > 1 ? 's' : ''} à suivre côté timing`,
-      rows: formulaRows,
-      action: 'Surveiller les enchaînements bowling et laser, surtout les groupes en retard.'
+      title: 'Formules à enchaîner',
+      text: `${comboRows.length} formule${comboRows.length > 1 ? 's' : ''} bowling + laser à cadencer aujourd'hui`,
+      rows: comboRows,
+      action: 'Surveiller le passage bowling → laser pour éviter les retards de groupe.'
     });
-  }
-  if (includeFillers) {
-    while (alerts.length < 4) {
-      alerts.push({
-        kind: 'info',
-        title: 'Aucun signal critique',
-        text: 'Aucun signal critique supplémentaire',
-        rows: [],
-        action: 'Le dashboard reste en surveillance.'
-      });
-    }
   }
   return alerts;
 }
@@ -4156,16 +4157,20 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   const openReservations = "closeStaffDashboardDetail(); openStaffDashboardSection('reservations');";
   const openDirection = "closeStaffDashboardDetail(); setView('admin'); setAdminTab('overview');";
   if (type === 'alerts') {
-    const alerts = getStaffDashboardAlertDefinitions(metrics, false);
+    const alerts = getStaffDashboardAlertDefinitions(metrics);
     const visibleAlerts = kind ? alerts.filter(alert => alert.kind === kind) : alerts;
+    const outstanding = Math.max(0, metrics.revenue - metrics.collected);
+    const onSiteUnpaid = metrics.activeReservations.filter(r => r.status === 'arrived').length;
     return {
       eyebrow: 'Pilotage terrain',
       title: kind ? (visibleAlerts[0]?.title || 'Signal dashboard') : 'Alertes et notifications',
-      subtitle: `${visibleAlerts.length || 0} signal${visibleAlerts.length > 1 ? 'aux' : ''} à vérifier`,
+      subtitle: visibleAlerts.length
+        ? `${visibleAlerts.length} signal${visibleAlerts.length > 1 ? 'aux' : ''} à traiter`
+        : 'Tout est à jour, rien à traiter',
       stats: [
-        { label: 'Alertes', value: String(alerts.length), note: alerts.length ? 'à contrôler' : 'aucune critique' },
-        { label: 'Formules', value: String(metrics.activeReservations.filter(r => r.type === 'formule' || r.formuleId).length), note: 'timing sensible' },
-        { label: 'Ouvertes', value: String(unpaidCount), note: 'non payées' }
+        { label: 'Alertes actives', value: String(alerts.length), note: alerts.length ? 'à traiter maintenant' : 'rien à signaler' },
+        { label: 'À encaisser', value: formatMoney(outstanding), note: `${unpaidCount} réservation${unpaidCount > 1 ? 's' : ''} ouverte${unpaidCount > 1 ? 's' : ''}` },
+        { label: 'Sur place', value: String(onSiteUnpaid), note: 'clients à servir' }
       ],
       body: renderStaffDashboardAlertsDetail(visibleAlerts),
       actions: [
@@ -4699,7 +4704,6 @@ function getStaffUtilityOverviewTitle(model) {
     contacts: 'Carnet exploitable',
     lanes: 'Etat des pistes',
     laserGame: 'Lecture Laser Game',
-    offers: 'Catalogue actif',
     establishment: 'Centre connecte',
     users: 'Controle des acces',
     settings: 'Poste staff'
@@ -4720,7 +4724,6 @@ function getStaffUtilityOverviewText(model, kpis) {
     contacts: `Une lecture propre pour retrouver les fiches, compléter les coordonnées et relancer sans bruit.`,
     lanes: `Les pistes, la maintenance et les réservations bowling sont regroupées autour de l'action terrain.`,
     laserGame: `Les lancements, passages et capacités restent séparés du bowling pour éviter les mauvaises lectures.`,
-    offers: `Les offres utiles au comptoir restent lisibles : prix, formules, usages et exports.`,
     establishment: `Configuration centre, ressources et horaires dans une lecture courte pour la direction.`,
     users: `Rôles, membres et codes d'accès restent contrôlés sans mélanger les permissions avec le planning.`,
     settings: `Préférences locales, exports et outils de maintenance du poste staff.`,
@@ -5723,22 +5726,6 @@ function renderStaffUtilityLaserSessions(reservations = getStaffUtilityReservati
           : `<span class="utility-state-note">Session complète, aucun ajout possible.</span>`}
       </article>`;
     }).join('')}
-  </div>`;
-}
-
-function renderStaffUtilityOffers() {
-  const rows = getPricingRows().sort((left, right) => Number(right.count || 0) - Number(left.count || 0)).slice(0, 14);
-  return `<div class="utility-offer-market">
-    ${rows.map(row => `<article class="utility-offer ${escapeHtml(row.tone || row.type)}">
-      <img src="${escapeHtml(row.asset)}" alt="">
-      <div>
-        <span>${escapeHtml(getPricingTypeLabel(row.type))}</span>
-        <strong>${escapeHtml(row.title)}</strong>
-        <small>${escapeHtml(getPricingPriceLabel(row))}</small>
-      </div>
-      <p>${escapeHtml(row.description || row.availability || '')}</p>
-      <footer><b>${Number(row.count || 0)} vente${Number(row.count || 0) > 1 ? 's' : ''}</b><button type="button" onclick="openStaffPricingBooking('${escapeJsString(row.id)}')">Réserver</button></footer>
-    </article>`).join('')}
   </div>`;
 }
 
@@ -6774,27 +6761,6 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
         ['Capacité', `${LASER_GAME_MAX_PLAYERS}`, 'armes par lancement']
       ],
       body: renderStaffUtilityLaserSessions(reservations)
-    };
-  }
-  if (page === 'offers') {
-    const rows = getPricingRows();
-    return {
-      ...base,
-      layout: 'offers',
-      eyebrow: 'Offres',
-      title: 'Offres & cartes',
-      subtitle: 'Catalogue commercial réel, usages et accès réservation.',
-      primaryLabel: 'Voir tarifs',
-      primaryAction: "openStaffMenuPage('prices')",
-      secondaryLabel: 'Exporter tarifs',
-      secondaryAction: 'exportStaffPricingCsv()',
-      kpis: [
-        ['Offres', rows.length, 'bowling, laser, formules'],
-        ['Formules', rows.filter(row => row.type === 'formula' || row.type === 'special').length, 'actives'],
-        ['Ventes', rows.reduce((sum, row) => sum + Number(row.count || 0), 0), 'historique'],
-        ['CA offres', formatMoney(rows.reduce((sum, row) => sum + Number(row.revenue || 0), 0)), 'historique']
-      ],
-      body: renderStaffUtilityOffers()
     };
   }
   if (page === 'establishment') {
@@ -10575,109 +10541,6 @@ function renderAdminGuestOpsCell(reservation) {
   return `<div class="engagement-cell">${chips.map(chip => `<span class="guest-chip ${escapeHtml(chip.cls)}">${escapeHtml(chip.label)}</span>`).join('')}</div>`;
 }
 
-function buildReservationGuestOpsPatch(reservation, patch = {}) {
-  const current = getReservationGuestOps(reservation);
-  const stored = getReservationCommercialStore(reservation);
-  return {
-    ...(reservation.opsPlan || {}),
-    guestOps: {
-      ...stored,
-      depositRequired: current.depositRequired,
-      depositAmount: current.depositAmount,
-      waiverRequired: current.waiverRequired,
-      checkInCode: current.checkInCode,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    },
-  };
-}
-
-async function updateReservationGuestOps(id, patch = {}, ev) {
-  if (ev) ev.stopPropagation();
-  const current = state.reservations.find(item => Number(item.id) === Number(id));
-  if (!current) return;
-  const updated = {
-    ...current,
-    opsPlan: buildReservationGuestOpsPatch(current, patch),
-  };
-  applyOptimisticReservation(updated, { preserveEditState: true });
-  try {
-    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
-      method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated, {
-        skipReplan: true,
-        allowPastStart: true,
-      }))
-    });
-    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
-    toast('Engagement client mis à jour');
-  } catch (error) {
-    applyOptimisticReservation(current, { preserveEditState: true });
-    toast(error.message || 'Impossible de sauvegarder le suivi client.');
-  }
-}
-
-function copyReservationClientMessage(id, ev) {
-  if (ev) ev.stopPropagation();
-  const reservation = state.reservations.find(item => Number(item.id) === Number(id));
-  if (!reservation) return;
-  const guest = getReservationGuestOps(reservation);
-  const laserText = guest.waiverRequired
-    ? 'Le Laser Game peut être complété avec d’autres joueurs selon l’affluence.'
-    : '';
-  const message = [
-    `Bonjour ${reservation.name || ''},`,
-    `Votre réservation Fun Galaxy est prévue le ${reservation.date} à ${reservation.startTime}.`,
-    `Référence arrivée: ${guest.checkInCode}.`,
-    guest.depositRequired && !guest.depositPaid ? `Acompte à prévoir: ${guest.depositAmount}€.` : '',
-    laserText,
-    'Merci de prévoir une arrivée 10 à 15 minutes avant l’horaire.',
-  ].filter(Boolean).join('\n');
-  navigator.clipboard?.writeText(message).then(() => toast('Message client copié')).catch(() => toast(message));
-}
-
-function getGuestOpsSummaryText(reservation) {
-  const guest = getReservationGuestOps(reservation);
-  return guest.missing.length
-    ? `À sécuriser: ${guest.missing.join(', ')}`
-    : `Prêt terrain (${guest.readinessScore}%)`;
-}
-
-function renderGuestEngagementPanel(reservation) {
-  const guest = getReservationGuestOps(reservation);
-  const upsells = UPSELL_CATALOG.slice(0, 4);
-  return `<div class="info-block">
-    <div class="info-label">Engagement client</div>
-    <div class="guest-engagement-grid">
-      <div class="guest-action-card">
-        <div class="k">Acompte</div>
-        <div class="v">${guest.depositRequired ? `${guest.depositAmount}€` : 'Non requis'}</div>
-        <div class="s">${guest.depositRequired ? (guest.depositPaid ? 'Acompte marqué comme reçu.' : 'À sécuriser pour les groupes/formules.') : 'Réservation simple sans acompte obligatoire.'}</div>
-        ${guest.depositRequired ? `<button type="button" onclick="updateReservationGuestOps(${reservation.id}, { depositPaid: ${guest.depositPaid ? 'false' : 'true'} }, event)">${guest.depositPaid ? 'Marquer non reçu' : 'Acompte reçu'}</button>` : `<button type="button" onclick="updateReservationGuestOps(${reservation.id}, { depositRequired: true, depositAmount: 50 }, event)">Exiger 50€</button>`}
-      </div>
-      <div class="guest-action-card">
-        <div class="k">Consignes</div>
-        <div class="v">${guest.waiverRequired ? 'Laser' : 'Standard'}</div>
-        <div class="s">${guest.waiverRequired ? (guest.waiverDone ? 'Consignes / décharge validées.' : 'À valider avant lancement laser.') : 'Aucune consigne laser requise.'}</div>
-        ${guest.waiverRequired
-          ? `<button type="button" onclick="updateReservationGuestOps(${reservation.id}, { waiverDone: ${guest.waiverDone ? 'false' : 'true'} }, event)">${guest.waiverDone ? 'À refaire' : 'Valider consignes'}</button>`
-          : `<button type="button" onclick="updateReservationGuestOps(${reservation.id}, { waiverRequired: true, waiverDone: false }, event)">Exiger consignes</button>`}
-      </div>
-      <div class="guest-action-card">
-        <div class="k">Check-in</div>
-        <div class="v">${escapeHtml(guest.checkInCode)}</div>
-        <div class="s">${guest.checkInDone ? 'Client déjà traité au comptoir.' : 'Code court à demander à l’arrivée.'}</div>
-        <button type="button" onclick="updateReservationGuestOps(${reservation.id}, { checkInDone: ${guest.checkInDone ? 'false' : 'true'} }, event)">${guest.checkInDone ? 'Retirer check-in' : 'Check-in OK'}</button>
-      </div>
-    </div>
-    <div class="guest-upsell-row">
-      ${upsells.map(item => `<button type="button" onclick="addExtra('${escapeHtml(item.id)}')">+ ${escapeHtml(item.name)} ${Number(item.price || 0)}€</button>`).join('')}
-      <button type="button" class="guest-copy-btn" onclick="copyReservationClientMessage(${reservation.id}, event)">Copier message client</button>
-    </div>
-    <div style="margin-top:10px;color:var(--text-3);font-size:12px;line-height:1.45;">${escapeHtml(getGuestOpsSummaryText(reservation))}</div>
-  </div>`;
-}
-
 function getOpsPlanFixedCommitments(plan) {
   return Array.isArray(plan?.entitlements?.fixedCommitments) ? plan.entitlements.fixedCommitments : [];
 }
@@ -11667,7 +11530,6 @@ function renderPosDetails(r) {
         <button type="button" class="delay-chip" onclick="applyReservationDelay(${r.id}, 15, event)">+15 min</button>
       </div>
     </div>
-    ${renderGuestEngagementPanel(r)}
     <div class="info-block">
       <div class="info-label">Contact client</div>
       <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span style="font-weight:600;">${r.phone || 'Non renseigné'}</span></div>
@@ -12805,7 +12667,7 @@ function applyInitialRouteFromHash() {
   const normalizedPage = staffPageAliases[page] || page;
   if (['client', 'staff', 'admin'].includes(view)) state.view = view;
   if (view === 'staff') {
-    const allowedPages = ['dashboard', 'planning', 'reservations', 'sessions', 'arrivals', 'events', 'clients', 'groups', 'contacts', 'lanes', 'prices', 'laserGame', 'offers', 'emails', 'campaigns', 'establishment', 'users', 'settings'];
+    const allowedPages = ['dashboard', 'planning', 'reservations', 'sessions', 'arrivals', 'events', 'clients', 'groups', 'contacts', 'lanes', 'prices', 'laserGame', 'emails', 'campaigns', 'establishment', 'users', 'settings'];
     if (allowedPages.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
     if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
   }

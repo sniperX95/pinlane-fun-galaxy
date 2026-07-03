@@ -108,8 +108,7 @@
           children: [
             { key: 'prices', label: 'Tarifs & formules' },
             { key: 'lanes', label: 'Pistes bowling' },
-            { key: 'laserGame', label: 'Laser Game' },
-            { key: 'offers', label: 'Offres & cartes' }
+            { key: 'laserGame', label: 'Laser Game' }
           ]
         },
         { key: 'users', label: 'Équipe & accès', icon: 'users' },
@@ -755,7 +754,7 @@
       return;
     }
     if (['arrivals', 'sessions', 'events'].includes(key)) setMenuGroupOpen('field', true);
-    if (['prices', 'lanes', 'laserGame', 'offers'].includes(key)) setMenuGroupOpen('activities', true);
+    if (['prices', 'lanes', 'laserGame'].includes(key)) setMenuGroupOpen('activities', true);
     setMenuPage(key);
     if (key === 'dashboard') {
       if (typeof setView === 'function') setView('staff');
@@ -856,12 +855,6 @@
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }
-    if (key === 'offers') {
-      setMenuPage('offers');
-      if (typeof setView === 'function') setView('staff');
-      if (typeof renderStaff === 'function') renderStaff();
-      return;
-    }
     if (key === 'users' || key === 'settings') {
       setMenuPage(key);
       if (typeof setView === 'function') setView('staff');
@@ -886,7 +879,7 @@
     const dashboardActive = view === 'staff' && page === 'dashboard';
     const planningActive = view === 'staff' && page === 'planning' && ['all', 'bowling', 'laser'].includes(resource);
     const fieldActive = view === 'staff' && ['arrivals', 'sessions', 'events'].includes(page);
-    const activitiesActive = view === 'staff' && ['prices', 'lanes', 'laserGame', 'offers'].includes(page);
+    const activitiesActive = view === 'staff' && ['prices', 'lanes', 'laserGame'].includes(page);
     const directStaffPages = [
       'reservations',
       'sessions',
@@ -898,7 +891,6 @@
       'lanes',
       'prices',
       'laserGame',
-      'offers',
       'emails',
       'campaigns',
       'establishment',

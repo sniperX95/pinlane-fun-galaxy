@@ -1012,6 +1012,23 @@ input.dash-date-input {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-overlay);
   font-size: 13px;
+  /* Caché par défaut + JAMAIS bloquant : un toast informatif ne doit pas
+     intercepter les clics (sinon il « bloque » le coin de l'écran une fois
+     affiché). .is-visible pilote l'apparition ; le retrait de la classe après
+     le délai le masque réellement. */
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.planning-move-notice.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planning-move-notice { transition: none; }
 }
 
 .planning-move-notice-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: var(--radius-full); background: var(--accent); flex: none; }

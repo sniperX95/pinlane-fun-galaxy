@@ -1345,9 +1345,14 @@ async function apiRequest(url, options = {}) {
 }
 
 function getRemoteSyncBaseDelay() {
-  if (state.view === 'staff') return 1200;
-  if (state.view === 'admin') return 12000;
-  return 15000;
+  // Cadence de synchro serveur. Volontairement modérée : chaque tick interroge
+  // la base (staff-state). À 1,2 s on générait ~72k requêtes/jour/onglet et on
+  // saturait le quota de transfert Neon. 4 s reste largement temps réel pour un
+  // planning (les requêtes conditionnelles renvoient 304 quasi vide si rien n'a
+  // changé), tout en divisant la charge par ~3.
+  if (state.view === 'staff') return 4000;
+  if (state.view === 'admin') return 20000;
+  return 20000;
 }
 
 function getRemoteSyncDelay() {

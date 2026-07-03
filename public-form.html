@@ -137,19 +137,36 @@
 
     elements.submitButton.disabled = true;
 
+    // Message client propre : on n'affiche jamais une erreur technique brute
+    // (infra, anglais…). Seul un message de notre API ({ ok:false, message })
+    // est montré tel quel.
+    function friendlyStatusMessage(status) {
+      if (status === 429) return 'Site momentanément très sollicité. Réessayez dans quelques instants.';
+      if (status >= 500 || status === 0) return 'Le service est temporairement indisponible. Réessayez dans un instant.';
+      if (status === 404) return 'Ressource introuvable.';
+      return 'Une erreur est survenue. Réessayez.';
+    }
     async function api(url, options = {}) {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(options.headers || {}),
-        },
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false) {
-        throw new Error(payload.message || 'Erreur serveur.');
+      let response;
+      try {
+        response = await fetch(url, {
+          ...options,
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        });
+      } catch (networkError) {
+        throw new Error('Connexion impossible. Vérifiez votre connexion internet et réessayez.');
       }
-      return payload;
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json')
+        ? await response.json().catch(() => null)
+        : null;
+      if (!response.ok || (payload && payload.ok === false)) {
+        const ourMessage = payload && payload.ok === false && typeof payload.message === 'string' && payload.message.trim()
+          ? payload.message
+          : friendlyStatusMessage(response.status);
+        throw new Error(ourMessage);
+      }
+      return payload || {};
     }
 
     function formatDuration(value) {

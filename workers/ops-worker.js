@@ -50,12 +50,28 @@ function summarizeResult(result) {
   };
 }
 
+function taskDidWork(result) {
+  if (!result || typeof result !== 'object') return false;
+  const counts = [
+    Array.isArray(result.results) ? result.results.length : 0,
+    Number(result.processed || 0),
+    Number(result.dispatched || 0),
+    Number(result.sent || 0),
+    Number(result.enqueued || 0),
+    Number(result.updated || 0),
+    Number(result.deleted || 0),
+  ];
+  return counts.some((n) => n > 0);
+}
+
 async function runTask(task) {
   if (task.running) return;
   task.running = true;
   const startedAt = Date.now();
+  let hadWork = false;
   try {
     const result = await task.run();
+    hadWork = taskDidWork(result);
     log('info', `${task.name}:ok`, {
       task: task.name,
       durationMs: Date.now() - startedAt,
@@ -71,7 +87,44 @@ async function runTask(task) {
   } finally {
     task.lastRunAt = Date.now();
     task.running = false;
+    // Backoff adaptatif : du travail réel remet l'intervalle au minimum (réactif) ;
+    // rien à faire (ou tâche de fond) l'allonge jusqu'à maxIdle → Neon dort → 0 $.
+    const base = task.baseIntervalMs || task.intervalMs;
+    const maxIdle = task.maxIdleIntervalMs || base;
+    if (hadWork && !task.alwaysBackoff) {
+      task.intervalMs = base;
+    } else {
+      task.intervalMs = Math.min(maxIdle, Math.round((task.intervalMs || base) * 1.8));
+    }
   }
+}
+
+// Rétention automatique des logs ops : évite que les tables de logs grossissent
+// à l'infini (elles étaient montées à ~20k lignes). Ne touche PAS aux données
+// métier (réservations, membres, config). S'exécute rarement (toutes les ~6 h).
+const OPS_LOG_RETENTION_DAYS = envNumber('OPS_WORKER_LOG_RETENTION_DAYS', 7, { min: 2, max: 90 });
+const OPS_LOG_TABLES = [
+  ['ops_worker_runs', 'started_at'],
+  ['marketing_agent_runs', 'created_at'],
+  ['ops_decision_logs', 'created_at'],
+  ['ops_events', 'created_at'],
+  ['ops_agent_suggestions', 'created_at'],
+];
+async function pruneOpsLogs() {
+  const pool = getPool();
+  let deleted = 0;
+  for (const [table, col] of OPS_LOG_TABLES) {
+    try {
+      const res = await pool.query(
+        `delete from ${table} where ${col} < now() - ($1 || ' days')::interval`,
+        [String(OPS_LOG_RETENTION_DAYS)],
+      );
+      deleted += res.rowCount || 0;
+    } catch (error) {
+      // table absente / colonne différente : on ignore, la rétention est best-effort.
+    }
+  }
+  return { ok: true, action: 'pruneOpsLogs', deleted };
 }
 
 function buildTasks() {
@@ -79,7 +132,8 @@ function buildTasks() {
   if (envBool('OPS_WORKER_RUN_COMMUNICATIONS', true)) {
     tasks.push({
       name: 'communications',
-      intervalMs: envNumber('OPS_WORKER_COMMUNICATION_INTERVAL_MS', 60_000, { min: 10_000 }),
+      baseIntervalMs: envNumber('OPS_WORKER_COMMUNICATION_INTERVAL_MS', 60_000, { min: 10_000 }),
+      maxIdleIntervalMs: envNumber('OPS_WORKER_COMMUNICATION_MAX_IDLE_MS', 600_000, { min: 60_000 }),
       lastRunAt: 0,
       running: false,
       run: () => runDispatchCommunicationsCron({
@@ -91,7 +145,8 @@ function buildTasks() {
   if (envBool('OPS_WORKER_RUN_JOBS', true)) {
     tasks.push({
       name: 'jobs',
-      intervalMs: envNumber('OPS_WORKER_JOBS_INTERVAL_MS', 30_000, { min: 5_000 }),
+      baseIntervalMs: envNumber('OPS_WORKER_JOBS_INTERVAL_MS', 30_000, { min: 5_000 }),
+      maxIdleIntervalMs: envNumber('OPS_WORKER_JOBS_MAX_IDLE_MS', 600_000, { min: 60_000 }),
       lastRunAt: 0,
       running: false,
       run: () => runOpsJobsCron({
@@ -103,15 +158,32 @@ function buildTasks() {
   if (envBool('OPS_WORKER_RUN_AGENTS', true)) {
     tasks.push({
       name: 'agents',
-      intervalMs: envNumber('OPS_WORKER_AGENT_INTERVAL_MS', 15 * 60_000, { min: 60_000 }),
+      baseIntervalMs: envNumber('OPS_WORKER_AGENT_INTERVAL_MS', 15 * 60_000, { min: 60_000 }),
+      maxIdleIntervalMs: envNumber('OPS_WORKER_AGENT_MAX_IDLE_MS', 30 * 60_000, { min: 5 * 60_000 }),
       lastRunAt: 0,
       running: false,
+      // L'orchestrateur « travaille » toujours en apparence : on le laisse
+      // reculer jusqu'à son max pour ne pas garder la base éveillée pour rien.
+      alwaysBackoff: true,
       run: () => runAgentOrchestratorCron({
         days: envNumber('OPS_WORKER_AGENT_DAYS', 30, { min: 1, max: 365 }),
       }),
     });
   }
 
+  tasks.push({
+    name: 'prune-logs',
+    baseIntervalMs: envNumber('OPS_WORKER_PRUNE_INTERVAL_MS', 6 * 60 * 60_000, { min: 60 * 60_000 }),
+    maxIdleIntervalMs: envNumber('OPS_WORKER_PRUNE_INTERVAL_MS', 6 * 60 * 60_000, { min: 60 * 60_000 }),
+    lastRunAt: Date.now(), // pas au démarrage : laisse le worker se lancer d'abord
+    running: false,
+    alwaysBackoff: true,
+    run: () => pruneOpsLogs(),
+  });
+
+  // Intervalle effectif = base au départ ; ajusté dynamiquement (backoff quand
+  // rien à faire) pour laisser Neon se mettre en veille et ne rien facturer.
+  tasks.forEach((task) => { task.intervalMs = task.baseIntervalMs; });
   return tasks;
 }
 

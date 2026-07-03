@@ -204,6 +204,17 @@ module.exports = async (req, res) => {
 
     sendError(res, 405, 'Methode non autorisee.');
   } catch (error) {
-    sendError(res, error.statusCode || 400, error.message || 'Operation reservation impossible.');
+    // On montre les messages métier (français, contrôlés : "Aucune piste
+    // disponible", "Ce créneau vient de changer"…) car le staff en a besoin.
+    // On masque UNIQUEMENT les erreurs d'infrastructure (Postgres/Neon/réseau)
+    // qui ne doivent jamais fuir à l'écran, et on les log.
+    const raw = String((error && error.message) || '');
+    const isInfra = !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+    if (isInfra) {
+      console.error('[staff-reservations] échec', error && (error.stack || raw || error));
+      sendError(res, 503, 'Opération réservation impossible pour le moment. Réessayez.');
+      return;
+    }
+    sendError(res, (error && error.statusCode) || 400, raw);
   }
 };

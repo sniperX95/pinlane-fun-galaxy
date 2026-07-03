@@ -3348,8 +3348,8 @@ function renderRecap() {
   document.getElementById('recapTotal').textContent = total + '€';
   const dateLabel = parseLocalDate(b.date).toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long' });
   document.getElementById('recapList').innerHTML = `
-    <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${b.name}</span></div>
-    <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${b.phone}</span></div>
+    <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${escapeHtml(b.name)}</span></div>
+    <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
     <div class="recap-item"><span class="recap-label">Date</span><span class="recap-value">${dateLabel}</span></div>
     <div class="recap-item"><span class="recap-label">Horaire</span><span class="recap-value accent">${b.startTime} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${b.duration}h</small></span></div>
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
@@ -10907,7 +10907,7 @@ function renderReservationRow(r) {
     </div>
     <div class="res-row-main">
       <div class="res-row-top">
-        <span class="res-row-name">${r.name}</span>
+        <span class="res-row-name">${escapeHtml(r.name)}</span>
         <span class="type-badge ${isFormule ? 'formule' : isLaser ? 'laser' : 'bowling'}">
           ${isFormule ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>' : isLaser ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' : '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="14" cy="10" r="1.2" fill="currentColor"/></svg>'}
           ${typeLabel}
@@ -11176,7 +11176,7 @@ function legacyRenderPos() {
       <div class="pos-head">
         <div class="pos-head-top">
           <div>
-            <h3>${r.name}</h3>
+            <h3>${escapeHtml(r.name)}</h3>
           </div>
           <button class="close-btn" onclick="closePos()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

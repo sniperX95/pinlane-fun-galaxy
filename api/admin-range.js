@@ -25,9 +25,10 @@ module.exports = async (req, res) => {
     try {
       opsHealth = await getOpsHealth({ centerId, limit: 40 });
     } catch (opsError) {
+      console.error('[admin-range] ops health indisponible', opsError && (opsError.stack || opsError.message || opsError));
       opsHealth = {
         unavailable: true,
-        error: opsError.message || 'Ops health unavailable',
+        error: 'Indicateurs ops momentanément indisponibles.',
         generatedAt: new Date().toISOString(),
       };
     }
@@ -41,6 +42,9 @@ module.exports = async (req, res) => {
     res.setHeader('ETag', snapshot.revision);
     sendJson(res, 200, { ok: true, ...snapshot, opsHealth });
   } catch (error) {
-    sendError(res, 500, error.message || 'Impossible de charger les donnees direction.');
+    // Jamais de message technique brut à l'écran (ex : "tuple concurrently
+    // updated"). Détail en logs, message propre côté client.
+    console.error('[admin-range] échec', error && (error.stack || error.message || error));
+    sendError(res, 503, 'Données direction momentanément indisponibles. Réessayez dans un instant.');
   }
 };

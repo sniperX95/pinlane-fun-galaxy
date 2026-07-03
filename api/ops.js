@@ -68,10 +68,22 @@ async function buildContext(body) {
   }
 }
 
-function createHttpError(message, statusCode = 400) {
+function createHttpError(message, statusCode = 400, expose = true) {
   const error = new Error(message);
   error.statusCode = statusCode;
+  error.expose = expose; // message sûr à montrer au client (français, contrôlé)
   return error;
+}
+
+// Message affichable au client : seulement si l'erreur est intentionnelle
+// (validation métier marquée expose). Sinon (panne DB/upstream…) → générique,
+// et le détail technique part en logs.
+function safeUserMessage(error, fallback = 'Service momentanément indisponible. Réessayez dans un instant.') {
+  if (error && error.expose === true && typeof error.message === 'string' && error.message.trim()) {
+    return error.message;
+  }
+  console.error('[ops] erreur non exposée', error && (error.stack || error.message || error));
+  return fallback;
 }
 
 function normalizeCenterId(value) {
@@ -285,7 +297,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     try {
       config = await saveCenterConfigOverride(pool, targetCenter, body.config || {});
     } catch (error) {
-      throw createHttpError(error.message || 'Configuration centre invalide.', 400);
+      throw createHttpError(safeUserMessage(error, 'Enregistrement de la configuration impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
     await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, centerId: targetCenter, config });
@@ -300,7 +312,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     try {
       center = await upsertCenter(pool, body.center || {});
     } catch (error) {
-      throw createHttpError(error.message || 'Centre invalide.', 400);
+      throw createHttpError(safeUserMessage(error, 'Enregistrement du centre impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
     await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, center });
@@ -316,7 +328,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     try {
       center = await setCenterStatus(pool, targetCenter, body.status);
     } catch (error) {
-      throw createHttpError(error.message || 'Statut centre invalide.', 400);
+      throw createHttpError(safeUserMessage(error, 'Changement de statut impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
     await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, center });
@@ -606,6 +618,7 @@ module.exports = async (req, res) => {
     }
     sendError(res, 405, 'Méthode non autorisée.');
   } catch (error) {
-    sendError(res, error.statusCode || 400, error.message || 'Operation Ops impossible.');
+    const status = error && error.expose === true ? (error.statusCode || 400) : (error && error.statusCode >= 500 ? error.statusCode : 503);
+    sendError(res, status, safeUserMessage(error, 'Opération impossible pour le moment. Réessayez dans un instant.'));
   }
 };

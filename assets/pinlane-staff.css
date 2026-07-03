@@ -1053,6 +1053,19 @@ input.dash-date-input {
   --planning-hour-col: 54px;
 }
 
+/* Les cellules du planning affichent des données, elles ne sont JAMAIS du texte
+   à saisir. Cliquer dans une case plaçait un curseur de texte (trait blanc
+   clignotant « comme pour écrire »). On coupe la sélection de texte et on rend
+   le caret transparent sur toute la grille — sans impacter le drag-drop ni les
+   clics (ce sont des events pointeur, indépendants de user-select). Aucun champ
+   de saisie ne vit dans ces conteneurs, donc rien de légitime n'est masqué. */
+.planning-grid-wrap,
+.laser-pass-queue {
+  -webkit-user-select: none;
+  user-select: none;
+  caret-color: transparent;
+}
+
 /* Plein écran RÉEL : bord à bord, par-dessus la sidebar (z-index 70) et le
    header, aucune marge ni rayon. Comme un vrai fullscreen au comptoir. */
 .planning-box.expanded:not(.hidden) {

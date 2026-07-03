@@ -39,6 +39,42 @@
     return url;
   }
 
+  // Message utilisateur propre selon le code HTTP. On NE montre JAMAIS un
+  // message technique brut (erreur d'infrastructure Vercel, trace Postgres,
+  // anglais…) : seul un message issu de NOTRE API (enveloppe { ok:false,
+  // message }, rédigé en français) est affiché tel quel.
+  function friendlyMessageForStatus(status) {
+    if (status === 401) return 'Session expirée. Reconnectez-vous pour continuer.';
+    if (status === 403) return "Vous n'avez pas l'autorisation pour cette action.";
+    if (status === 404) return 'Élément introuvable ou déjà supprimé.';
+    if (status === 408 || status === 504) return 'Le serveur a mis trop de temps à répondre. Réessayez.';
+    if (status === 429) return 'Service momentanément surchargé. Réessayez dans quelques instants.';
+    if (status >= 500 || status === 0) return 'Service temporairement indisponible. Réessayez dans un instant.';
+    return 'Une erreur est survenue. Réessayez.';
+  }
+
+  function isOurApiError(payload) {
+    // Notre API renvoie toujours { ok:false, message:'…' } en cas d'erreur.
+    // Les pages d'erreur plateforme (Vercel) n'ont pas cette forme.
+    return Boolean(
+      payload
+        && typeof payload === 'object'
+        && payload.ok === false
+        && typeof payload.message === 'string'
+        && payload.message.trim(),
+    );
+  }
+
+  function buildError(userMessage, { status = 0, payload = null, url = '', technical = '' } = {}) {
+    const error = new Error(userMessage);
+    error.userFacing = true;
+    error.status = status;
+    error.payload = payload;
+    error.url = url;
+    error.technical = technical || userMessage;
+    return error;
+  }
+
   async function request(url, options = {}, config = {}) {
     const requestUrl = resolveRequestUrl(url, config.origin || window.location.origin);
     const baseHeaders = {
@@ -47,24 +83,58 @@
     };
     const token = typeof config.getSessionToken === 'function' ? config.getSessionToken() : '';
     const headers = isProtectedStaffApi(url) ? staffAuthHeaders(baseHeaders, token) : baseHeaders;
-    const response = await fetch(requestUrl, {
-      ...options,
-      cache: 'no-store',
-      credentials: 'same-origin',
-      headers,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.ok === false) {
+
+    let response;
+    try {
+      response = await fetch(requestUrl, {
+        ...options,
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers,
+      });
+    } catch (networkError) {
+      // fetch rejette = hors-ligne, DNS, CORS, coupure réseau.
+      console.warn('[api] réseau', requestUrl, networkError);
+      throw buildError('Connexion au serveur impossible. Vérifiez votre connexion et réessayez.', {
+        url: requestUrl,
+        technical: networkError && networkError.message,
+      });
+    }
+
+    const contentType = (response.headers && typeof response.headers.get === 'function'
+      ? response.headers.get('content-type')
+      : '') || '';
+    // Pas de content-type JSON explicite → on tente quand même de parser (certains
+    // runtimes/tests omettent l'en-tête) ; échec silencieux → payload null.
+    const payload = contentType.includes('application/json') || !contentType
+      ? await response.json().catch(() => null)
+      : null;
+
+    if (!response.ok || (payload && payload.ok === false)) {
       if (response.status === 401 && isProtectedStaffApi(url) && typeof config.onUnauthorized === 'function') {
         config.onUnauthorized();
       }
-      const error = new Error(payload.message || 'Erreur serveur.');
-      error.payload = payload;
-      error.status = response.status;
-      error.url = requestUrl;
-      throw error;
+      // Message brut connu (utile en console pour debug, jamais affiché tel quel
+      // sauf s'il provient de notre propre API).
+      let rawDetail = payload && typeof payload === 'object'
+        ? (payload.message || (payload.error && payload.error.message) || '')
+        : '';
+      if (!rawDetail && typeof response.clone === 'function' && typeof response.text === 'function') {
+        rawDetail = (await response.clone().text().catch(() => '')).slice(0, 300);
+      }
+      if (rawDetail) console.warn('[api]', response.status, requestUrl, rawDetail);
+
+      const userMessage = isOurApiError(payload)
+        ? payload.message
+        : friendlyMessageForStatus(response.status);
+      throw buildError(userMessage, {
+        status: response.status,
+        payload,
+        url: requestUrl,
+        technical: rawDetail,
+      });
     }
-    return payload;
+    return payload || {};
   }
 
   window.PinlaneApiClient = {

@@ -323,7 +323,7 @@
         </div>
         <div style="display:grid;gap:8px">
           <button type="button" class="pv2-btn primary" style="justify-content:center" onclick="openStaffClientBooking('${escJs(selected.id)}')">Nouvelle réservation</button>
-          ${selected.email ? `<button type="button" class="pv2-btn" style="justify-content:center" onclick="window.location.href='mailto:${escJs(selected.email)}'">Envoyer un email</button>` : ''}
+          ${selected.email ? `<button type="button" class="pv2-btn" style="justify-content:center" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">Envoyer un email</button>` : ''}
         </div>
       </div>` : '<div class="pv2-empty"><strong>Aucun profil</strong>Sélectionnez un client dans la liste.</div>';
 

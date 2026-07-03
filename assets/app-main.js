@@ -4231,7 +4231,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       <div class="dash-actions">
         <div class="dash-date-control">
           <span>${escapeHtml(formattedDate)}</span>
-          <button type="button" onclick="openStaffDatePicker()" aria-label="Choisir une date">${renderDashboardIcon('date')}</button>
+          <button type="button" onclick="openStaffDatePicker(event)" aria-label="Choisir une date">${renderDashboardIcon('date')}</button>
           <input id="dashboardDatePicker" class="dash-date-input" type="date" onchange="setStaffDateFromPicker(this.value)" aria-label="Choisir une date">
         </div>
         <button type="button" class="dash-period-btn" onclick="setStaffToday()">Aujourd'hui</button>
@@ -4948,7 +4948,7 @@ function getStaffGroupProfileAction(row = {}, action = 'client') {
 }
 
 function getStaffGroupContactAction(row = {}) {
-  if (row.email) return `window.location.href=${staffClientJs(`mailto:${row.email}`)}`;
+  if (row.email) return `composeStaffClientEmail(${staffClientJs(row.email)}, ${staffClientJs(row.name || '')})`;
   if (row.phone) return `window.location.href=${staffClientJs(`tel:${row.phone}`)}`;
   return getStaffGroupProfileAction(row, 'client');
 }
@@ -6587,7 +6587,7 @@ function renderStaffUtilityPage() {
         <p>${heroSubtitle}</p>
       </div>
       <div class="utility-actions">
-        ${model.hideDateAction ? '' : `<button type="button" onclick="openStaffDatePicker()">Changer date</button>`}
+        ${model.hideDateAction ? '' : `<button type="button" onclick="openStaffDatePicker(event)">Changer date</button>`}
         ${model.secondaryAction ? `<button type="button" onclick="${model.secondaryAction}">${escapeHtml(model.secondaryLabel)}</button>` : ''}
         ${model.primaryAction ? `<button type="button" class="primary" onclick="${model.primaryAction}">${escapeHtml(model.primaryLabel)}</button>` : ''}
       </div>
@@ -8349,7 +8349,11 @@ function getStaffClientInitials(name = '') {
 }
 
 function staffClientJs(value) {
-  return JSON.stringify(String(value || '')).replace(/</g, '\\u003c');
+  // escapeHtml sur le littéral JSON : sans ça les guillemets doubles de
+  // JSON.stringify cassent l'attribut onclick="..." (double quotes) et le
+  // handler devient un no-op silencieux (boutons fantômes Terrain/Groupes).
+  // Encodé en entités, l'argument est valable dans onclick="" comme onclick=''.
+  return escapeHtml(JSON.stringify(String(value || '')).replace(/</g, '\\u003c'));
 }
 
 function renderStaffClientIcon(name) {
@@ -9089,6 +9093,34 @@ function openStaffClientBooking(id = '') {
   });
 }
 
+// Prépare un email client : ouvre le client mail par défaut avec objet/corps
+// pré-remplis via une ancre (plus fiable que location.href) ET donne un retour
+// visible (toast + copie de l'adresse) pour que le bouton ne soit jamais inerte
+// quand aucun handler mailto n'est configuré.
+function composeStaffClientEmail(email = '', name = '') {
+  const address = String(email || '').trim();
+  if (!address) {
+    toast('Aucune adresse email pour ce client.');
+    return;
+  }
+  const subject = `Fun Galaxy — ${name ? name : 'votre réservation'}`;
+  const body = `Bonjour ${name || ''},\n\n`;
+  const href = `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const link = document.createElement('a');
+  link.href = href;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(address)
+      .then(() => toast(`Email prêt · ${address} copié`))
+      .catch(() => toast(`Préparation email · ${address}`));
+  } else {
+    toast(`Préparation email · ${address}`);
+  }
+}
+
 function getStaffClientDetailTab() {
   return ['history', 'notes', 'preferences'].includes(state.staffClientDetailTab) ? state.staffClientDetailTab : 'history';
 }
@@ -9809,9 +9841,32 @@ function openStaffReservationsQuick(type = 'bowling') {
   });
 }
 
+// Recherche une réservation par id dans TOUTES les sources chargées, pas
+// seulement la source de la page Réservations. Indispensable depuis Terrain
+// et Groupes où la résa provient du cache clients (historique) et pas de
+// state.reservations. Comparaison en String : les ids d'état sont numériques
+// alors que les onclick passent des chaînes.
+function findStaffReservationById(id) {
+  if (id == null || id === '') return null;
+  const key = String(id);
+  const local = (state.reservations || []).find(item => item && String(item.id) === key);
+  if (local) return local;
+  const sources = [];
+  if (typeof getStaffClientSourceReservations === 'function') sources.push(getStaffClientSourceReservations());
+  if (typeof getStaffReservationsSourceReservations === 'function') sources.push(getStaffReservationsSourceReservations());
+  for (const list of sources) {
+    const match = (list || []).find(item => item && String(item.id) === key);
+    if (match) return match;
+  }
+  return null;
+}
+
 function openStaffReservationDetail(id) {
-  const reservation = getStaffReservationsSourceReservations().find(item => String(item.id) === String(id));
-  if (!reservation) return;
+  const reservation = findStaffReservationById(id);
+  if (!reservation) {
+    toast('Réservation introuvable ou non chargée.');
+    return;
+  }
   upsertReservationInState(reservation);
   state.currentDate = reservation.date || state.currentDate;
   state.selectedRes = reservation;
@@ -10000,11 +10055,28 @@ function setStaffResourceView(view) {
   renderStaff();
 }
 
-function openStaffDatePicker() {
+function openStaffDatePicker(ev) {
   const picker = document.getElementById(isStaffDashboardActive() ? 'dashboardDatePicker' : 'staffDatePicker') || document.getElementById('staffDatePicker');
   if (!picker) return;
   picker.value = state.currentDate;
   picker.removeAttribute('min');
+  // Le picker natif vit dans .staff-head, masquée (display:none) sur les pages
+  // Terrain — showPicker l'ancre alors au coin haut-gauche. On le déplace sous
+  // le bouton déclencheur pour que le calendrier s'ouvre au bon endroit.
+  const trigger = ev && (ev.currentTarget || ev.target);
+  const rect = trigger && typeof trigger.getBoundingClientRect === 'function' ? trigger.getBoundingClientRect() : null;
+  if (rect) {
+    if (picker.parentElement !== document.body) document.body.appendChild(picker);
+    picker.style.position = 'fixed';
+    picker.style.left = `${Math.round(rect.left)}px`;
+    picker.style.top = `${Math.round(rect.bottom + 4)}px`;
+    picker.style.width = '1px';
+    picker.style.height = '1px';
+    picker.style.margin = '0';
+    picker.style.opacity = '0';
+    picker.style.pointerEvents = 'none';
+    picker.style.zIndex = '1';
+  }
   try {
     if (typeof picker.showPicker === 'function') {
       picker.showPicker();
@@ -11027,8 +11099,22 @@ function quickAction(id, status) {
 
 function setReservationStatusDirect(id, status, ev) {
   if (ev) ev.stopPropagation();
-  const current = state.reservations.find(r => r.id === id);
-  if (!current) return;
+  const key = String(id);
+  let current = state.reservations.find(r => String(r.id) === key);
+  if (!current) {
+    // Depuis Terrain/Groupes la résa peut ne pas être dans state.reservations
+    // (autre date/source). On la récupère et on l'injecte pour que la mise à
+    // jour optimiste et le re-render fonctionnent.
+    const external = findStaffReservationById(id);
+    if (external) {
+      upsertReservationInState(external);
+      current = state.reservations.find(r => String(r.id) === key) || external;
+    }
+  }
+  if (!current) {
+    toast('Réservation introuvable.');
+    return;
+  }
   const nextReservation = {
     ...current,
     status,
@@ -11080,8 +11166,11 @@ function quickPay(id) {
 async function cancelRes(id, ev) {
   if (ev) ev.stopPropagation();
   if (!confirm('Annuler cette réservation ?')) return;
-  const current = state.reservations.find(r => r.id === id);
-  if (!current) return;
+  const current = state.reservations.find(r => String(r.id) === String(id)) || findStaffReservationById(id);
+  if (!current) {
+    toast('Réservation introuvable.');
+    return;
+  }
   applyOptimisticReservation({ ...current, status: 'cancelled' }, { preserveEditState: true });
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
@@ -11126,9 +11215,15 @@ function editRes(id, ev) {
 }
 
 function openPos(id) {
-  state.selectedRes = state.reservations.find(r => r.id === id);
+  const reservation = findStaffReservationById(id);
+  if (!reservation) {
+    toast('Réservation introuvable ou non chargée.');
+    return;
+  }
+  upsertReservationInState(reservation);
+  state.selectedRes = reservation;
   state.activeTab = 'details';
-  state.editState = { ...state.selectedRes, lanesStr: (state.selectedRes.lanes || []).join(', ') };
+  state.editState = { ...reservation, lanesStr: (reservation.lanes || []).join(', ') };
   renderPos();
 }
 

@@ -490,7 +490,45 @@
     'a-renforcer': { label: 'À renforcer', tone: 'amber' },
     opportunite: { label: 'Opportunité', tone: 'blue' },
   };
+  const AUDIENCE_LABELS = {
+    particulier: 'Familles & particuliers',
+    entreprise: 'Entreprises',
+    ecole: 'Écoles & clubs',
+    public: 'Grand public',
+  };
   const campaignClipboard = new Map();
+
+  // La voix de marque est un objet {person, energy, ...} : on en tire une chaîne
+  // lisible (jamais « [object Object] »).
+  function voiceText(voice) {
+    if (!voice) return '';
+    if (typeof voice === 'string') return voice;
+    return [voice.person, voice.energy].filter(Boolean).join(', ');
+  }
+
+  // Détail du score qualité pour l'infobulle : rappelle les critères réels de
+  // scoreDraft et, si disponible, la note obtenue par critère.
+  function scoreTitle(evaluation) {
+    const checks = Array.isArray(evaluation && evaluation.checks) ? evaluation.checks : [];
+    const header = 'Score qualité du texte, noté sur : accroche, CTA, preuve, longueur, ton.';
+    if (!checks.length) return header;
+    const lines = checks.map((c) => `• ${c.label} : ${Math.round(Number(c.score) || 0)}/100`);
+    return `${header}\n${lines.join('\n')}`;
+  }
+
+  // Signaux réels de la période (réservations/joueurs), reconstitués depuis le
+  // dernier run persisté qui les porte. Sert à labelliser « c'est TA data ».
+  function centerSignals(center) {
+    const runs = (center && center.runs) || [];
+    return runs.map((r) => r && r.payload && r.payload.signals).find(Boolean) || null;
+  }
+
+  function dataProvenanceLabel(signals) {
+    if (signals && Number(signals.reservationCount) > 0) {
+      return `Basé sur tes ${Number(signals.reservationCount)} réservation(s) et ${Number(signals.players) || 0} joueur(s) réels sur la période.`;
+    }
+    return 'Aucune réservation sur la période : ces pistes s’appuient sur l’ADN de marque et le calendrier type (exemples honnêtes, pas de fausse data).';
+  }
 
   function ci(name) {
     const paths = {
@@ -564,21 +602,27 @@
     const pct = Math.round((done / total) * 100);
     let streak = 0;
     for (const m of list) { if (m.status === 'done') streak += 1; else break; }
+    const ready = Number(summary.ready) || 0;
+    const review = Number(summary.review) || 0;
+    // Tout est dérivé de données réelles : jalons validés du parcours +
+    // contenus prêts/à relire (issus des scores qualité réels).
     const level = done;
     const tier = CAMPAIGN_TIERS[Math.min(level, CAMPAIGN_TIERS.length - 1)];
-    const xp = done * 100 + summary.ready * 20 + summary.review * 8;
+    const xp = done * 100 + ready * 20 + review * 8;
     const next = list.find((m) => m.status !== 'done') || null;
-    return { total: list.length, done, pct, streak, level, tier, xp, next };
-  }
-
-  function groupDraftsByOccasion(drafts) {
-    const map = new Map();
-    drafts.forEach((d) => {
-      const key = d.occasionLabel || d.occasion || 'Général';
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(d);
-    });
-    return [...map.entries()];
+    return {
+      total: list.length,
+      done,
+      pct,
+      streak,
+      level,
+      tier,
+      xp,
+      next,
+      levelExplain: `Niveau = jalons du parcours validés (${done} sur ${list.length}).`,
+      xpExplain: `XP = 100 par jalon validé + 20 par contenu prêt + 8 par contenu à relire (${done}×100 + ${ready}×20 + ${review}×8).`,
+      streakExplain: 'Jalons = étapes validées d’affilée depuis le début du parcours.',
+    };
   }
 
   function renderMissionPath(missions, progress) {
@@ -599,20 +643,26 @@
     return `<ol class="pv2-mission-path">${nodes}</ol>`;
   }
 
-  function renderDraftCard(draft, occasionKey) {
+  function renderDraftCard(draft) {
     const c = draft.content || {};
     const body = c.body || draft.body || '';
-    const score = Number(draft.evaluation && draft.evaluation.score) || 0;
-    const clipKey = `${draft.centerId || ''}:${draft.platform || ''}:${occasionKey}`;
+    const evaluation = draft.evaluation || {};
+    const score = Number(evaluation.score) || 0;
+    const occLabel = draft.occasionLabel || draft.occasion || 'Général';
+    const audienceLabel = AUDIENCE_LABELS[draft.audience] || draft.audience || 'Grand public';
+    const clipKey = `${draft.centerId || ''}:${draft.platform || ''}:${draft.occasion || ''}`;
     campaignClipboard.set(clipKey, [c.hook, '', body, '', c.cta].filter((x) => x != null && x !== '').join('\n').trim());
     const benefits = (c.benefits || []).slice(0, 5);
     return `<article class="pv2-camp-draft">
+      <div class="pv2-camp-draft-occ">
+        <strong>${esc(occLabel)}</strong>
+        <span>${esc(audienceLabel)}</span>
+      </div>
       <header class="pv2-camp-draft-head">
         <div class="pv2-camp-badges">
           <span class="pv2-chip accent">${ci('channel')}${esc(channelLabel(draft.platform))}</span>
-          <span class="pv2-chip">${esc(draft.audience || 'public')}</span>
         </div>
-        <span class="pv2-camp-score ${scoreTone(score)}" title="Score qualité"><em>${score}</em><small>/100</small></span>
+        <span class="pv2-camp-score ${scoreTone(score)}" title="${esc(scoreTitle(evaluation))}"><em>${score}</em><small>/100</small></span>
       </header>
       ${c.hook ? `<p class="pv2-camp-hook">${esc(c.hook)}</p>` : ''}
       ${body ? `<div class="pv2-camp-text">${esc(body)}</div>` : ''}
@@ -626,7 +676,7 @@
     </article>`;
   }
 
-  function renderStrategyBoard(strategy) {
+  function renderStrategyBoard(strategy, dataLabel) {
     const gaps = (strategy.gapAnalysis || []).slice().sort((a, b) => (a.priority || 9) - (b.priority || 9)).slice(0, 4);
     const cal = (strategy.editorialCalendar || []).slice(0, 6);
     const improvements = (strategy.contentImprovements || []).slice(0, 4);
@@ -634,6 +684,7 @@
 
     const gapCard = `<article class="pv2-camp-card">
       <div class="pv2-camp-card-head">${ci('target')}<h3>Ce qu'il manque</h3></div>
+      <p class="pv2-camp-card-sub">Occasions pas encore travaillées vs. ta demande réelle.</p>
       <ul class="pv2-camp-list">${gaps.map((g) => {
         const meta = GAP_META[g.status] || { label: g.status, tone: 'blue' };
         return `<li>
@@ -646,6 +697,7 @@
 
     const calCard = `<article class="pv2-camp-card">
       <div class="pv2-camp-card-head">${ci('calendar')}<h3>Calendrier éditorial</h3></div>
+      <p class="pv2-camp-card-sub">Quoi publier, quel jour, sur quel canal.</p>
       <ul class="pv2-camp-cal">${cal.map((c) => `<li>
         <span class="pv2-camp-cal-slot">${esc(c.slot)}</span>
         <div class="pv2-camp-cal-body">
@@ -658,6 +710,7 @@
 
     const impCard = `<article class="pv2-camp-card">
       <div class="pv2-camp-card-head">${ci('wrench')}<h3>Améliorations concrètes</h3></div>
+      <p class="pv2-camp-card-sub">Points faibles détectés sur les scripts générés.</p>
       ${improvements.length
         ? `<ul class="pv2-camp-list">${improvements.map((im) => `<li>
             <div class="pv2-camp-list-top"><strong>${esc(im.area || '')}</strong><span class="pv2-camp-score ${scoreTone(im.score)}"><em>${Number(im.score) || 0}</em></span></div>
@@ -670,6 +723,7 @@
 
     const prioCard = `<article class="pv2-camp-card">
       <div class="pv2-camp-card-head">${ci('flag')}<h3>Priorités</h3></div>
+      <p class="pv2-camp-card-sub">Par quoi commencer cette semaine.</p>
       ${priorities.length
         ? `<ol class="pv2-camp-prio">${priorities.map((p) => `<li>
             <span class="pv2-camp-rank">${Number(p.rank) || 0}</span>
@@ -679,7 +733,10 @@
     </article>`;
 
     return `<section class="pv2-panel pv2-camp-strategy">
-      <div class="pv2-panel-head"><h2>Conseil d'agence</h2><small>stratégie actionnable</small></div>
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Conseil d'agence</h2><p class="pv2-panel-sub">Ce qu'il faut travailler en priorité, déduit de tes réservations. ${esc(dataLabel || '')}</p></div>
+        <small>stratégie actionnable</small>
+      </div>
       <div class="pv2-panel-body"><div class="pv2-camp-board">${gapCard}${calCard}${impCard}${prioCard}</div></div>
     </section>`;
   }
@@ -688,18 +745,23 @@
     const list = Array.isArray(agents) ? agents : [];
     if (!list.length) return '';
     return `<section class="pv2-panel">
-      <div class="pv2-panel-head"><h2>Votre équipe d'agents</h2><small>${list.length} agent(s)</small></div>
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Comment chaque canal est rédigé</h2><p class="pv2-panel-sub">Un rédacteur spécialisé par réseau : il écrit le texte puis l'auto-évalue sur les mêmes critères qualité. C'est ce qui produit le score de chaque carte ci-dessus.</p></div>
+        <small>${list.length} canal(aux)</small>
+      </div>
       <div class="pv2-panel-body"><div class="pv2-camp-agents">${list.map((a) => {
         const known = a.score != null;
         const score = known ? Math.round(Number(a.score) || 0) : '--';
+        const criteria = Number(a.criteriaChecked || 0);
+        const mode = a.generationMode === 'openai' ? 'IA + contrôle' : 'règles + contrôle';
         return `<article class="pv2-camp-agent">
           <div class="pv2-camp-agent-top">
-            <span class="pv2-camp-agent-dot ${a.connected ? 'on' : ''}" aria-hidden="true"></span>
-            <strong>${esc(a.label || a.platform)}</strong>
-            <span class="pv2-camp-score ${known ? scoreTone(a.score) : ''}"><em>${esc(String(score))}</em></span>
+            <span class="pv2-camp-agent-dot ${a.connected ? 'on' : ''}" aria-hidden="true" title="${a.connected ? 'Canal officiel connecté (publication possible)' : 'Brouillon interne (pas encore connecté)'}"></span>
+            <strong>${esc(channelLabel(a.platform))}</strong>
+            <span class="pv2-camp-score ${known ? scoreTone(a.score) : ''}" title="Score qualité du dernier script rédigé pour ce canal."><em>${esc(String(score))}</em>${known ? '<small>/100</small>' : ''}</span>
           </div>
-          <p>${esc(a.currentWork || a.mission || 'Surveillance active.')}</p>
-          <small>${esc(channelLabel(a.platform))} · ${a.connected ? 'Connecté' : 'Interne'}</small>
+          <p>${esc(a.currentWork || a.mission || 'Analyse des données du centre.')}</p>
+          <small>${esc(mode)} · ${criteria} critère(s) vérifié(s) · ${a.connected ? 'canal connecté' : 'brouillon interne'}</small>
         </article>`;
       }).join('')}</div></div>
     </section>`;
@@ -785,10 +847,11 @@
     const drafts = centerDrafts(center);
     const summary = centerSummary(drafts);
     const progress = campaignProgress(missions, summary);
-    const draftGroups = groupDraftsByOccasion(drafts);
+    const signals = centerSignals(center);
+    const dataLabel = dataProvenanceLabel(signals);
+    const occasionsCount = new Set(drafts.map((d) => d.occasion || d.occasionLabel).filter(Boolean)).size;
 
     const rating = brand.proof && brand.proof.rating != null ? brand.proof.rating : '';
-    const ratingLabel = brand.proof && brand.proof.ratingLabel ? brand.proof.ratingLabel : '';
     const diff = (brand.differentiators || []).slice(0, 3);
 
     const centerSeg = centers.length > 1
@@ -799,7 +862,7 @@
       <div class="pv2-camp-brand">
         <div class="pv2-camp-brand-top">
           <h2>${esc(brand.name || centerName(center))}</h2>
-          ${rating !== '' ? `<span class="pv2-camp-rating">${ci('star')}<b>${esc(String(rating))}</b>${ratingLabel ? `<small>${esc(ratingLabel)}</small>` : ''}</span>` : ''}
+          ${rating !== '' ? `<span class="pv2-camp-rating" title="Note Google réelle de Fun Galaxy (avis clients).">${ci('star')}<b>${esc(String(rating))}</b><small>note Google réelle</small></span>` : ''}
         </div>
         ${brand.tagline ? `<p class="pv2-camp-tagline">${esc(brand.tagline)}</p>` : ''}
         ${strategy.positioning ? `<p class="pv2-camp-positioning">${esc(strategy.positioning)}</p>` : ''}
@@ -807,22 +870,24 @@
       </div>
       <div class="pv2-camp-level">
         <div class="pv2-level-head">
-          <span class="pv2-level-ring" style="--p:${progress.pct}"><b>${progress.level}</b><small>/ ${progress.total}</small></span>
+          <span class="pv2-level-ring" style="--p:${progress.pct}" title="${esc(progress.levelExplain)}"><b>${progress.level}</b><small>/ ${progress.total}</small></span>
           <div class="pv2-level-meta">
             <strong>Niveau ${progress.level} · ${esc(progress.tier)}</strong>
-            <span>${progress.xp} XP</span>
-            <span class="pv2-streak">${ci('flame')}<b>${progress.streak}</b> jalon(s) d'affilée</span>
+            <span title="${esc(progress.xpExplain)}">${progress.xp} XP</span>
+            <span class="pv2-streak" title="${esc(progress.streakExplain)}">${ci('flame')}<b>${progress.streak}</b> jalon(s) d'affilée</span>
+            <span class="pv2-level-note">${esc(progress.levelExplain)}</span>
           </div>
         </div>
         <div class="pv2-xpbar" role="progressbar" aria-valuenow="${progress.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progression du parcours marketing">
           <span class="pv2-xpbar-fill" style="transform:scaleX(${progress.pct / 100})"></span>
         </div>
         <div class="pv2-camp-counters">
-          <span class="pv2-camp-count"><b>${summary.averageScore}</b><small>score moyen</small></span>
-          <span class="pv2-camp-count green"><b>${summary.ready}</b><small>prêt(s)</small></span>
-          <span class="pv2-camp-count amber"><b>${summary.review}</b><small>à relire</small></span>
-          <span class="pv2-camp-count red"><b>${summary.blocked}</b><small>bloqué(s)</small></span>
+          <span class="pv2-camp-count" title="Moyenne des scores qualité des ${drafts.length} contenu(s) généré(s)."><b>${summary.averageScore}</b><small>score moyen</small></span>
+          <span class="pv2-camp-count green" title="Contenu prêt = score ≥ 85 (utilisable après relecture rapide)."><b>${summary.ready}</b><small>prêt(s)</small></span>
+          <span class="pv2-camp-count amber" title="À relire = score 70 à 84 (bon, mais à peaufiner avant publication)."><b>${summary.review}</b><small>à relire</small></span>
+          <span class="pv2-camp-count red" title="Bloqué = contient une promesse interdite (dispo ou session garantie) à corriger."><b>${summary.blocked}</b><small>bloqué(s)</small></span>
         </div>
+        <p class="pv2-camp-counters-note">Compteurs calculés sur les ${drafts.length} contenu(s) · score = accroche, CTA, preuve, longueur, ton.</p>
         ${progress.next
           ? `<div class="pv2-camp-next"><span class="pv2-camp-next-ico">${ci('bolt')}</span><div><small>Pour monter de niveau</small><strong>${esc(progress.next.label)}</strong><p>${esc(progress.next.detail || '')}</p></div></div>`
           : `<div class="pv2-camp-next done"><span class="pv2-camp-next-ico">${ci('check')}</span><div><strong>Parcours complet</strong><p>Tous les jalons sont validés sur ce centre.</p></div></div>`}
@@ -830,19 +895,22 @@
     </section>`;
 
     const contents = `<article class="pv2-panel">
-      <div class="pv2-panel-head"><h2>Contenus prêts à publier</h2><small>${drafts.length} script(s)</small></div>
-      <div class="pv2-panel-body pv2-camp-contents">
-        ${draftGroups.length
-          ? draftGroups.map(([occ, items]) => `<div class="pv2-camp-occasion">
-              <div class="pv2-camp-occasion-head"><h3>${esc(occ)}</h3><span>${items.length}</span></div>
-              <div class="pv2-camp-draft-grid">${items.map((d) => renderDraftCard(d, occ)).join('')}</div>
-            </div>`).join('')
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Contenus prêts à publier</h2><p class="pv2-panel-sub">Un script par canal et par occasion, écrit sur les vraies activités du centre et prêt à copier-coller.</p></div>
+        <small>${drafts.length} script(s) · ${occasionsCount} occasion(s)</small>
+      </div>
+      <div class="pv2-panel-body">
+        ${drafts.length
+          ? `<div class="pv2-camp-draft-grid">${drafts.map((d) => renderDraftCard(d)).join('')}</div>`
           : '<div class="pv2-empty"><strong>Pas encore de contenu</strong>Cliquez sur Analyser pour générer les scripts prêts à l’emploi.</div>'}
       </div>
     </article>`;
 
     const rail = `<aside class="pv2-panel pv2-camp-rail">
-      <div class="pv2-panel-head"><h2>Parcours de missions</h2><small>${progress.done}/${progress.total}</small></div>
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Parcours de missions</h2><p class="pv2-panel-sub">Les étapes pour passer d'une analyse à des contenus publiables.</p></div>
+        <small>${progress.done}/${progress.total}</small>
+      </div>
       <div class="pv2-panel-body">${renderMissionPath(missions, progress)}</div>
     </aside>`;
 
@@ -850,7 +918,7 @@
       ${bar({
         crumb: 'Clients & Marketing / Studio',
         title: 'Campagnes',
-        sub: `Parcours marketing factuel · ${esc(centerName(center))}${brand.voice ? ` · voix ${esc(brand.voice)}` : ''} · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
+        sub: `Parcours marketing factuel · ${esc(centerName(center))}${voiceText(brand.voice) ? ` · voix ${esc(voiceText(brand.voice))}` : ''} · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
         actions,
       })}
       ${centerSeg}
@@ -859,7 +927,7 @@
         ${contents}
         ${rail}
       </section>
-      ${renderStrategyBoard(strategy)}
+      ${renderStrategyBoard(strategy, dataLabel)}
       ${renderCampAgents(agents)}
     </div>`;
     mount(root, 'campaigns');

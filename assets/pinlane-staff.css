@@ -5138,7 +5138,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   display: inline-grid; place-items: center;
   background: var(--subtle); color: var(--muted);
 }
-.pv2-camp-draft-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); }
+.pv2-camp-draft-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-3); align-content: start; }
+.pv2-camp-draft-occ { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.pv2-camp-draft-occ strong { font-size: 12.5px; letter-spacing: -0.01em; color: var(--text); }
+.pv2-camp-draft-occ span { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); font-weight: 600; }
 .pv2-camp-draft {
   display: flex; flex-direction: column; gap: var(--space-3);
   padding: var(--space-4);
@@ -5212,6 +5215,15 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-camp-agent-dot.on { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent); }
 .pv2-camp-agent p { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .pv2-camp-agent small { font-size: 11px; color: var(--faint); }
+.pv2-camp-agent .pv2-camp-score small { font-size: 9px; }
+
+/* -- Micro-explications : sous-titres de section + légendes des chiffres -- */
+.pv2-panel-head.has-sub { align-items: flex-start; }
+.pv2-panel-head.has-sub > div { min-width: 0; }
+.pv2-panel-sub { margin-top: 3px; font-size: 12px; font-weight: 400; color: var(--muted); line-height: 1.4; max-width: 72ch; }
+.pv2-level-note { font-size: 11px; color: var(--faint); line-height: 1.4; margin-top: 2px; }
+.pv2-camp-counters-note { font-size: 11px; color: var(--faint); line-height: 1.4; }
+.pv2-camp-card-sub { font-size: 11.5px; color: var(--muted); line-height: 1.4; margin: -2px 0 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .pv2-xpbar-fill, .pv2-camp-draft { transition: none; }

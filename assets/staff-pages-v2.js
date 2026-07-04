@@ -477,8 +477,233 @@
   };
 
   /* ==========================================================================
-     CAMPAGNES — generator studio
+     CAMPAGNES — parcours gamifié « agence marketing » (style Duolingo)
+     Consomme le moteur marketing-agents (brand / strategy / missions / drafts /
+     summary / agents) exposé PAR CENTRE via staffMarketingAgentsCache.status.
+     Aucune donnée inventée : tout vient du collecteur backend.
      ======================================================================== */
+
+  const CAMPAIGN_TIERS = ['Découverte', 'Éveil', 'En rythme', 'Maîtrise', 'Expert', 'Virtuose', 'Légende'];
+  const CHANNEL_LABELS = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', linkedin: 'LinkedIn', email: 'Email' };
+  const GAP_META = {
+    couvert: { label: 'Couvert', tone: 'green' },
+    'a-renforcer': { label: 'À renforcer', tone: 'amber' },
+    opportunite: { label: 'Opportunité', tone: 'blue' },
+  };
+  const campaignClipboard = new Map();
+
+  function ci(name) {
+    const paths = {
+      check: '<path d="M20 6 9 17l-5-5"/>',
+      bolt: '<path d="M13 2 3 14h7l-1 8 10-12h-7z"/>',
+      alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+      lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+      copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+      flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+      star: '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
+      refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+      channel: '<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>',
+      calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+      target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+      wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.8-.7-.7-2.8z"/>',
+      flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+    };
+    return `<svg class="pv2-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
+  }
+
+  const channelLabel = (p) => CHANNEL_LABELS[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Canal');
+  const scoreTone = (score) => (Number(score) >= 85 ? 'green' : Number(score) >= 70 ? 'amber' : 'red');
+  const missionStateLabel = (st) => (st === 'done' ? 'Fait' : st === 'active' ? 'En cours' : st === 'attention' ? 'À surveiller' : 'À faire');
+
+  function marketingCenters() {
+    const status = typeof staffMarketingAgentsCache !== 'undefined' ? staffMarketingAgentsCache.status : null;
+    return Array.isArray(status && status.centers) ? status.centers : [];
+  }
+
+  function activeMarketingCenter(centers) {
+    const wanted = state.staffCampaignCenterId || state.adminCenterId || 'libramont';
+    return centers.find((c) => c.centerId === wanted) || centers[0] || null;
+  }
+
+  function centerName(center) {
+    const fromDraft = (center && center.runs || []).map((r) => r.payload && r.payload.centerName).find(Boolean);
+    if (fromDraft) return fromDraft;
+    const id = (center && center.centerId) || '';
+    return id ? id.charAt(0).toUpperCase() + id.slice(1) : 'Centre';
+  }
+
+  // Reconstitue les drafts prêts à afficher depuis les runs persistés (le dernier
+  // run par plateforme), le status ne les expose pas à plat.
+  function centerDrafts(center) {
+    const seen = new Set();
+    const out = [];
+    ((center && center.runs) || []).forEach((run) => {
+      const d = run && run.payload;
+      if (!d || !d.platform || seen.has(d.platform)) return;
+      seen.add(d.platform);
+      out.push(d);
+    });
+    return out;
+  }
+
+  function centerSummary(drafts) {
+    const sc = (d) => Number(d && d.evaluation && d.evaluation.score) || 0;
+    const scores = drafts.map(sc).filter(Boolean);
+    return {
+      averageScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
+      ready: drafts.filter((d) => sc(d) >= 85).length,
+      review: drafts.filter((d) => sc(d) >= 70 && sc(d) < 85).length,
+      blocked: drafts.filter((d) => d.evaluation && d.evaluation.blocked).length,
+    };
+  }
+
+  function campaignProgress(missions, summary) {
+    const list = Array.isArray(missions) ? missions : [];
+    const total = list.length || 1;
+    const done = list.filter((m) => m.status === 'done').length;
+    const pct = Math.round((done / total) * 100);
+    let streak = 0;
+    for (const m of list) { if (m.status === 'done') streak += 1; else break; }
+    const level = done;
+    const tier = CAMPAIGN_TIERS[Math.min(level, CAMPAIGN_TIERS.length - 1)];
+    const xp = done * 100 + summary.ready * 20 + summary.review * 8;
+    const next = list.find((m) => m.status !== 'done') || null;
+    return { total: list.length, done, pct, streak, level, tier, xp, next };
+  }
+
+  function groupDraftsByOccasion(drafts) {
+    const map = new Map();
+    drafts.forEach((d) => {
+      const key = d.occasionLabel || d.occasion || 'Général';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(d);
+    });
+    return [...map.entries()];
+  }
+
+  function renderMissionPath(missions, progress) {
+    const list = Array.isArray(missions) ? missions : [];
+    const nodes = list.map((m, i) => {
+      const st = ['done', 'active', 'attention', 'todo'].includes(m.status) ? m.status : 'todo';
+      const icon = st === 'done' ? ci('check') : st === 'active' ? ci('bolt') : st === 'attention' ? ci('alert') : ci('lock');
+      const last = i === list.length - 1;
+      return `<li class="pv2-mission ${st}" ${st === 'active' ? 'aria-current="step"' : ''}>
+        <span class="pv2-mission-node" aria-hidden="true">${icon}</span>
+        ${last ? '' : '<span class="pv2-mission-link" aria-hidden="true"></span>'}
+        <div class="pv2-mission-body">
+          <div class="pv2-mission-top"><strong>${esc(m.label)}</strong><span class="pv2-mission-state">${esc(missionStateLabel(st))}</span></div>
+          <p>${esc(m.detail || '')}</p>
+        </div>
+      </li>`;
+    }).join('');
+    return `<ol class="pv2-mission-path">${nodes}</ol>`;
+  }
+
+  function renderDraftCard(draft, occasionKey) {
+    const c = draft.content || {};
+    const body = c.body || draft.body || '';
+    const score = Number(draft.evaluation && draft.evaluation.score) || 0;
+    const clipKey = `${draft.centerId || ''}:${draft.platform || ''}:${occasionKey}`;
+    campaignClipboard.set(clipKey, [c.hook, '', body, '', c.cta].filter((x) => x != null && x !== '').join('\n').trim());
+    const benefits = (c.benefits || []).slice(0, 5);
+    return `<article class="pv2-camp-draft">
+      <header class="pv2-camp-draft-head">
+        <div class="pv2-camp-badges">
+          <span class="pv2-chip accent">${ci('channel')}${esc(channelLabel(draft.platform))}</span>
+          <span class="pv2-chip">${esc(draft.audience || 'public')}</span>
+        </div>
+        <span class="pv2-camp-score ${scoreTone(score)}" title="Score qualité"><em>${score}</em><small>/100</small></span>
+      </header>
+      ${c.hook ? `<p class="pv2-camp-hook">${esc(c.hook)}</p>` : ''}
+      ${body ? `<div class="pv2-camp-text">${esc(body)}</div>` : ''}
+      ${benefits.length ? `<ul class="pv2-camp-benefits">${benefits.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+      ${c.proof ? `<p class="pv2-camp-proof">${ci('star')}<span>${esc(c.proof)}</span></p>` : ''}
+      ${c.urgency ? `<p class="pv2-camp-urgency">${ci('alert')}<span>${esc(c.urgency)}</span></p>` : ''}
+      <div class="pv2-camp-draft-foot">
+        ${c.cta ? `<span class="pv2-camp-cta">${esc(c.cta)}</span>` : '<span></span>'}
+        <button type="button" class="pv2-btn" onclick="pv2CopyDraft('${escJs(clipKey)}')">${ci('copy')}Copier</button>
+      </div>
+    </article>`;
+  }
+
+  function renderStrategyBoard(strategy) {
+    const gaps = (strategy.gapAnalysis || []).slice().sort((a, b) => (a.priority || 9) - (b.priority || 9)).slice(0, 4);
+    const cal = (strategy.editorialCalendar || []).slice(0, 6);
+    const improvements = (strategy.contentImprovements || []).slice(0, 4);
+    const priorities = (strategy.priorities || []).slice(0, 4);
+
+    const gapCard = `<article class="pv2-camp-card">
+      <div class="pv2-camp-card-head">${ci('target')}<h3>Ce qu'il manque</h3></div>
+      <ul class="pv2-camp-list">${gaps.map((g) => {
+        const meta = GAP_META[g.status] || { label: g.status, tone: 'blue' };
+        return `<li>
+          <div class="pv2-camp-list-top"><strong>${esc(g.label)}</strong><span class="pv2-chip ${meta.tone}">${esc(meta.label)}</span></div>
+          <p>${esc(g.insight || '')}</p>
+          <small>${esc(g.recommendation || '')}</small>
+        </li>`;
+      }).join('')}</ul>
+    </article>`;
+
+    const calCard = `<article class="pv2-camp-card">
+      <div class="pv2-camp-card-head">${ci('calendar')}<h3>Calendrier éditorial</h3></div>
+      <ul class="pv2-camp-cal">${cal.map((c) => `<li>
+        <span class="pv2-camp-cal-slot">${esc(c.slot)}</span>
+        <div class="pv2-camp-cal-body">
+          <strong>${esc(c.occasionLabel || '')}</strong>
+          ${c.angle ? `<p>${esc(c.angle)}</p>` : ''}
+          <div class="pv2-camp-cal-ch">${(c.channels || []).map((ch) => `<span class="pv2-chip">${esc(channelLabel(ch))}</span>`).join('')}</div>
+        </div>
+      </li>`).join('')}</ul>
+    </article>`;
+
+    const impCard = `<article class="pv2-camp-card">
+      <div class="pv2-camp-card-head">${ci('wrench')}<h3>Améliorations concrètes</h3></div>
+      ${improvements.length
+        ? `<ul class="pv2-camp-list">${improvements.map((im) => `<li>
+            <div class="pv2-camp-list-top"><strong>${esc(im.area || '')}</strong><span class="pv2-camp-score ${scoreTone(im.score)}"><em>${Number(im.score) || 0}</em></span></div>
+            <p>${esc(im.issue || '')}</p>
+            <small>${esc(im.fix || '')}</small>
+            <span class="pv2-chip accent">${esc(channelLabel(im.platform))}</span>
+          </li>`).join('')}</ul>`
+        : '<div class="pv2-empty"><strong>Rien à corriger</strong>Tous les scripts passent le contrôle qualité.</div>'}
+    </article>`;
+
+    const prioCard = `<article class="pv2-camp-card">
+      <div class="pv2-camp-card-head">${ci('flag')}<h3>Priorités</h3></div>
+      ${priorities.length
+        ? `<ol class="pv2-camp-prio">${priorities.map((p) => `<li>
+            <span class="pv2-camp-rank">${Number(p.rank) || 0}</span>
+            <div><strong>${esc(p.action || '')}</strong><p>${esc(p.impact || '')}</p></div>
+          </li>`).join('')}</ol>`
+        : '<div class="pv2-empty"><strong>Aucune priorité</strong>Lancez une analyse pour établir le plan.</div>'}
+    </article>`;
+
+    return `<section class="pv2-panel pv2-camp-strategy">
+      <div class="pv2-panel-head"><h2>Conseil d'agence</h2><small>stratégie actionnable</small></div>
+      <div class="pv2-panel-body"><div class="pv2-camp-board">${gapCard}${calCard}${impCard}${prioCard}</div></div>
+    </section>`;
+  }
+
+  function renderCampAgents(agents) {
+    const list = Array.isArray(agents) ? agents : [];
+    if (!list.length) return '';
+    return `<section class="pv2-panel">
+      <div class="pv2-panel-head"><h2>Votre équipe d'agents</h2><small>${list.length} agent(s)</small></div>
+      <div class="pv2-panel-body"><div class="pv2-camp-agents">${list.map((a) => {
+        const known = a.score != null;
+        const score = known ? Math.round(Number(a.score) || 0) : '--';
+        return `<article class="pv2-camp-agent">
+          <div class="pv2-camp-agent-top">
+            <span class="pv2-camp-agent-dot ${a.connected ? 'on' : ''}" aria-hidden="true"></span>
+            <strong>${esc(a.label || a.platform)}</strong>
+            <span class="pv2-camp-score ${known ? scoreTone(a.score) : ''}"><em>${esc(String(score))}</em></span>
+          </div>
+          <p>${esc(a.currentWork || a.mission || 'Surveillance active.')}</p>
+          <small>${esc(channelLabel(a.platform))} · ${a.connected ? 'Connecté' : 'Interne'}</small>
+        </article>`;
+      }).join('')}</div></div>
+    </section>`;
+  }
 
   window.pv2SelectCampaignIdea = function (id) {
     state.staffCampaignSelectedId = id;
@@ -493,70 +718,149 @@
     renderStaffCampaignsPage();
   };
 
+  window.pv2SetCampaignCenter = function (centerId) {
+    state.staffCampaignCenterId = centerId;
+    save();
+    renderStaffCampaignsPage();
+  };
+
+  window.pv2CopyDraft = function (key) {
+    const text = campaignClipboard.get(key);
+    if (!text) { if (typeof toast === 'function') toast('Contenu indisponible.'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => (typeof toast === 'function' ? toast('Contenu copié.') : null))
+        .catch(() => (typeof toast === 'function' ? toast('Copie indisponible.') : null));
+    } else if (typeof toast === 'function') {
+      toast('Copie indisponible.');
+    }
+  };
+
   window.renderStaffCampaignsPage = function () {
     const root = document.getElementById('staffCampaignsPage');
     if (!root) return;
-    const snapshot = getStaffCampaignSnapshot();
-    const ideas = buildStaffCampaignIdeas(snapshot);
-    if (!state.staffCampaignSelectedId && ideas[0]) state.staffCampaignSelectedId = ideas[0].id;
-    const selected = getSelectedStaffCampaignIdea();
-    const draft = normalizeStaffCampaignDraft(state.staffCampaignDraft, selected);
-    const channel = getStaffCampaignChannel();
-    const agent = getStaffCampaignAgent(channel);
-    const saved = state.marketingCampaigns || [];
 
-    const channels = ['facebook', 'instagram', 'tiktok', 'linkedin', 'email'];
-    const variants = Array.isArray(draft?.variants) ? draft.variants : [];
+    // Charge le moteur marketing au premier affichage (idempotent, cache 45 s).
+    if (typeof loadStaffMarketingAgents === 'function' && typeof staffMarketingAgentsCache !== 'undefined'
+        && !staffMarketingAgentsCache.loaded && !staffMarketingAgentsCache.loading) {
+      setTimeout(() => loadStaffMarketingAgents(), 0);
+    }
+
+    const cache = typeof staffMarketingAgentsCache !== 'undefined' ? staffMarketingAgentsCache : {};
+    const loading = Boolean(cache.loading);
+    const running = Boolean(cache.running);
+    const error = cache.error || '';
+    const updatedAt = cache.lastLoadedAt && typeof formatOpsTimestamp === 'function'
+      ? formatOpsTimestamp(cache.lastLoadedAt)
+      : (cache.lastLoadedAt || 'jamais');
+
+    const centers = marketingCenters();
+    const center = activeMarketingCenter(centers);
+
+    const actions = `
+      <button type="button" class="pv2-btn" onclick="loadStaffMarketingAgents(true)">${ci('refresh')}Actualiser</button>
+      <button type="button" class="pv2-btn" onclick="exportStaffCampaignsCsv()">Exporter</button>
+      <button type="button" class="pv2-btn primary" onclick="runStaffMarketingAgents()" ${running ? 'disabled' : ''}>${ci('bolt')}${running ? 'Analyse…' : 'Analyser'}</button>`;
+
+    if (!center) {
+      root.innerHTML = `<div class="pv2-shell">
+        ${bar({
+          crumb: 'Clients & Marketing / Studio',
+          title: 'Campagnes',
+          sub: `Parcours marketing factuel · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
+          actions,
+        })}
+        <section class="pv2-panel"><div class="pv2-panel-body">
+          <div class="pv2-empty"><strong>${loading ? 'Chargement du moteur marketing…' : 'Aucune donnée marketing'}</strong>${loading ? 'Lecture des données réelles du centre.' : 'Lancez une analyse pour générer le parcours et les contenus prêts à publier.'}</div>
+        </div></section>
+      </div>`;
+      mount(root, 'campaigns');
+      return;
+    }
+
+    const brand = center.brand || {};
+    const strategy = center.strategy || {};
+    const missions = center.missions || [];
+    const agents = center.agents || [];
+    const drafts = centerDrafts(center);
+    const summary = centerSummary(drafts);
+    const progress = campaignProgress(missions, summary);
+    const draftGroups = groupDraftsByOccasion(drafts);
+
+    const rating = brand.proof && brand.proof.rating != null ? brand.proof.rating : '';
+    const ratingLabel = brand.proof && brand.proof.ratingLabel ? brand.proof.ratingLabel : '';
+    const diff = (brand.differentiators || []).slice(0, 3);
+
+    const centerSeg = centers.length > 1
+      ? seg(centers.map((c) => ({ key: c.centerId, label: centerName(c), active: c.centerId === center.centerId })), 'pv2SetCampaignCenter')
+      : '';
+
+    const hero = `<section class="pv2-camp-hero">
+      <div class="pv2-camp-brand">
+        <div class="pv2-camp-brand-top">
+          <h2>${esc(brand.name || centerName(center))}</h2>
+          ${rating !== '' ? `<span class="pv2-camp-rating">${ci('star')}<b>${esc(String(rating))}</b>${ratingLabel ? `<small>${esc(ratingLabel)}</small>` : ''}</span>` : ''}
+        </div>
+        ${brand.tagline ? `<p class="pv2-camp-tagline">${esc(brand.tagline)}</p>` : ''}
+        ${strategy.positioning ? `<p class="pv2-camp-positioning">${esc(strategy.positioning)}</p>` : ''}
+        ${diff.length ? `<div class="pv2-camp-diff">${diff.map((d) => `<span class="pv2-chip">${esc(d)}</span>`).join('')}</div>` : ''}
+      </div>
+      <div class="pv2-camp-level">
+        <div class="pv2-level-head">
+          <span class="pv2-level-ring" style="--p:${progress.pct}"><b>${progress.level}</b><small>/ ${progress.total}</small></span>
+          <div class="pv2-level-meta">
+            <strong>Niveau ${progress.level} · ${esc(progress.tier)}</strong>
+            <span>${progress.xp} XP</span>
+            <span class="pv2-streak">${ci('flame')}<b>${progress.streak}</b> jalon(s) d'affilée</span>
+          </div>
+        </div>
+        <div class="pv2-xpbar" role="progressbar" aria-valuenow="${progress.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progression du parcours marketing">
+          <span class="pv2-xpbar-fill" style="transform:scaleX(${progress.pct / 100})"></span>
+        </div>
+        <div class="pv2-camp-counters">
+          <span class="pv2-camp-count"><b>${summary.averageScore}</b><small>score moyen</small></span>
+          <span class="pv2-camp-count green"><b>${summary.ready}</b><small>prêt(s)</small></span>
+          <span class="pv2-camp-count amber"><b>${summary.review}</b><small>à relire</small></span>
+          <span class="pv2-camp-count red"><b>${summary.blocked}</b><small>bloqué(s)</small></span>
+        </div>
+        ${progress.next
+          ? `<div class="pv2-camp-next"><span class="pv2-camp-next-ico">${ci('bolt')}</span><div><small>Pour monter de niveau</small><strong>${esc(progress.next.label)}</strong><p>${esc(progress.next.detail || '')}</p></div></div>`
+          : `<div class="pv2-camp-next done"><span class="pv2-camp-next-ico">${ci('check')}</span><div><strong>Parcours complet</strong><p>Tous les jalons sont validés sur ce centre.</p></div></div>`}
+      </div>
+    </section>`;
+
+    const contents = `<article class="pv2-panel">
+      <div class="pv2-panel-head"><h2>Contenus prêts à publier</h2><small>${drafts.length} script(s)</small></div>
+      <div class="pv2-panel-body pv2-camp-contents">
+        ${draftGroups.length
+          ? draftGroups.map(([occ, items]) => `<div class="pv2-camp-occasion">
+              <div class="pv2-camp-occasion-head"><h3>${esc(occ)}</h3><span>${items.length}</span></div>
+              <div class="pv2-camp-draft-grid">${items.map((d) => renderDraftCard(d, occ)).join('')}</div>
+            </div>`).join('')
+          : '<div class="pv2-empty"><strong>Pas encore de contenu</strong>Cliquez sur Analyser pour générer les scripts prêts à l’emploi.</div>'}
+      </div>
+    </article>`;
+
+    const rail = `<aside class="pv2-panel pv2-camp-rail">
+      <div class="pv2-panel-head"><h2>Parcours de missions</h2><small>${progress.done}/${progress.total}</small></div>
+      <div class="pv2-panel-body">${renderMissionPath(missions, progress)}</div>
+    </aside>`;
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
         crumb: 'Clients & Marketing / Studio',
         title: 'Campagnes',
-        sub: `Générateur factuel — activités réelles uniquement, aucune offre inventée · agent ${esc(agent.name || agent.label || channel)}`,
-        actions: `
-          <button type="button" class="pv2-btn" onclick="seedStaffCampaignWeek()">Planifier la semaine</button>
-          <button type="button" class="pv2-btn" onclick="exportStaffCampaignsCsv()">Exporter</button>
-          <button type="button" class="pv2-btn primary" onclick="generateStaffCampaignDraft()">Générer</button>`,
+        sub: `Parcours marketing factuel · ${esc(centerName(center))}${brand.voice ? ` · voix ${esc(brand.voice)}` : ''} · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
+        actions,
       })}
-
-      <section class="pv2-stats">
-        ${stat({ label: 'Angles détectés', count: ideas.length, foot: 'depuis les réservations réelles' })}
-        ${stat({ label: 'Campagnes sauvées', count: saved.length, foot: 'historique local' })}
-        ${stat({ label: 'Groupes repérés', count: (snapshot.groups || []).length, foot: 'source anniversaires' })}
-        ${stat({ label: 'Jours calmes', count: (snapshot.quietDays || []).length, foot: 'à remplir en priorité' })}
+      ${centerSeg}
+      ${hero}
+      <section class="pv2-split pv2-camp-split">
+        ${contents}
+        ${rail}
       </section>
-
-      ${seg(channels.map((c) => ({ key: c, label: c.charAt(0).toUpperCase() + c.slice(1), active: channel === c })), 'pv2SetCampaignChannel')}
-
-      <section class="pv2-split" style="grid-template-columns:minmax(280px,0.8fr) minmax(0,1.4fr)">
-        <article class="pv2-panel">
-          <div class="pv2-panel-head"><h2>Angles proposés</h2><small>score de pertinence</small></div>
-          <div class="pv2-panel-body pv2-ideas">
-            ${ideas.map((idea) => `<button type="button" class="pv2-idea ${selected && idea.id === selected.id ? 'selected' : ''}" onclick="pv2SelectCampaignIdea('${escJs(idea.id)}')">
-              <div class="pv2-idea-top"><strong>${esc(idea.title)}</strong><span class="pv2-idea-score">${Number(idea.score) || 0}</span></div>
-              <p>${esc(idea.segment || '')} · ${esc(idea.source || '')}</p>
-            </button>`).join('')}
-          </div>
-        </article>
-        <article class="pv2-panel">
-          <div class="pv2-panel-head">
-            <h2>${esc(selected?.title || 'Publication')}</h2>
-            <small>${esc(selected?.cta || '')}</small>
-          </div>
-          <div class="pv2-panel-body" style="display:grid;gap:12px">
-            ${selected ? `<div class="pv2-kv">
-              <div><dt>Promesse</dt><dd style="text-align:left;white-space:normal">${esc(selected.promise || '')}</dd></div>
-              <div><dt>Angle</dt><dd style="text-align:left;white-space:normal">${esc(selected.angle || '')}</dd></div>
-            </div>` : ''}
-            ${variants.length
-              ? variants.map((variant) => (typeof renderStaffCampaignCenterDraft === 'function' ? renderStaffCampaignCenterDraft(variant) : '')).join('')
-              : '<div class="pv2-empty"><strong>Pas encore de texte</strong>Cliquez sur Générer pour produire les versions Libramont et Gembloux.</div>'}
-            ${variants.length ? `<button type="button" class="pv2-btn" style="justify-content:center" onclick="saveStaffCampaignFromCurrent()">Sauvegarder cette campagne</button>` : ''}
-          </div>
-        </article>
-      </section>
-
-      ${typeof renderStaffMarketingAgentOps === 'function' ? renderStaffMarketingAgentOps() : ''}
+      ${renderStrategyBoard(strategy)}
+      ${renderCampAgents(agents)}
     </div>`;
     mount(root, 'campaigns');
   };

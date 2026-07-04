@@ -2407,51 +2407,107 @@ body.client-mode .client-demo-access.hidden {
    (setView() ne pose `client-mode` que sur la vue publique ; ces scopes ne
    matchent ni body.staff-mode, ni body.admin-mode, ni body.direction).
 
-   Méthode : on RE-DÉFINIT les tokens de couleur dans le scope client → --accent,
-   --page, --surface… pointent vers l'univers Fun Galaxy (fond noir, magenta
-   signature, teal secondaire) au lieu du bleu SaaS, sans toucher pinlane.css.
-   Fun Galaxy est dark par nature : ce scope force le rendu sombre quel que soit
-   `data-theme`, avec `color-scheme: dark` pour les contrôles natifs.
+   Direction artistique calquée sur le vrai site fungalaxy.be :
+     • Fond NOIR PUR, texte BLANC dominant. Le noir est la scène.
+     • Violet signature #944292 = ACCENT parcimonieux : mot-accent des titres,
+       remplissage des boutons, états actifs. Jamais en fond de page.
+     • Teal/cyan #00acad = UNIQUEMENT le HALO lumineux rétro autour des boutons
+       pilule (glow + fine bordure claire), signature « néon » du site.
+     • Titres = display condensé gras MAJUSCULE (Anton, self-hosted, équivalent
+       libre de la « Korolev » propriétaire). Corps = Montserrat (self-hosted).
+     • Effet rétro « contour » (lettres transparentes + trait blanc) réservé à
+       un grand titre de section (écran de confirmation).
 
-   Tous les hex de marque vivent UNIQUEMENT dans cette déclaration de variables ;
-   les règles ne réutilisent que des var() (contrainte run-quality-audit.js).
-   Contrastes vérifiés AA : blanc sur #944292 = 6.08:1 (fills) ; texte magenta
-   clair #cf74c9 sur fond sombre ≈ 6:1 ; teal #00acad porte du texte page (noir).
+   Méthode tokens : tous les hex de marque + le halo vivent UNIQUEMENT dans la
+   déclaration de variables `--fgx-*` ci-dessous ; les règles ne consomment que
+   des var() (contrainte run-quality-audit.js).
+   Contraste AA vérifié : blanc #fff sur violet #944292 = 6.08:1 ; noir #000 sur
+   blanc #fff = 21:1 ; texte violet clair #c77fc2 sur noir ≈ 6.9:1 ; mot-accent
+   violet #944292 réservé au display large (seuil AA large 3:1).
    ========================================================================== */
+
+/* --- Polices self-hostées (OFL), scope client uniquement ------------------ */
+@font-face {
+  font-family: 'Anton';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/anton-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/montserrat-latin-600.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/montserrat-latin-700.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('./fonts/montserrat-latin-800.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 body.client-mode,
 body.public-form {
-  /* -- Marque Fun Galaxy ------------------------------------------------- */
-  --fgx-magenta: #944292;          /* magenta signature (fills, texte blanc) */
-  --fgx-magenta-text: #cf74c9;     /* magenta clair : texte/accents sur sombre */
-  --fgx-teal: #00acad;             /* teal secondaire */
-  --fgx-teal-soft: #67baac;        /* teal doux */
-  --fgx-teal-text: #2fd0d1;        /* teal clair : texte/icônes sur sombre */
-  --fgx-grad: linear-gradient(120deg, #944292 0%, #00acad 100%);
-  --fgx-grad-soft: linear-gradient(120deg, rgba(148, 66, 146, 0.20) 0%, rgba(0, 172, 173, 0.14) 100%);
-  --fgx-teal-soft-bg: rgba(0, 172, 173, 0.15);
-  --fgx-glow: 0 8px 24px rgba(148, 66, 146, 0.38);
+  /* -- Marque Fun Galaxy (SEULE source des hex de marque + halo) ---------- */
+  --fgx-violet: #944292;           /* violet signature : fills boutons/actifs */
+  --fgx-violet-strong: #a94fa5;    /* violet hover (plus clair) */
+  --fgx-violet-text: #c77fc2;      /* violet clair : petits textes accent AA  */
+  --fgx-white: #ffffff;            /* boutons spéciaux « Réserver » (fond)    */
+  --fgx-black: #000000;            /* texte sur boutons blancs                */
 
-  /* -- Neutres sombres (fond noir, texte blanc, rampe teintée magenta) --- */
+  /* Halo rétro teal/cyan : fine bordure claire + lueur néon (var() only) --- */
+  --fgx-halo:
+    0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 0 12px rgba(0, 172, 173, 0.55),
+    0 0 26px rgba(0, 172, 173, 0.38),
+    0 0 46px rgba(64, 224, 224, 0.22);
+  --fgx-halo-strong:
+    0 0 0 1px rgba(255, 255, 255, 0.78),
+    0 0 16px rgba(0, 172, 173, 0.72),
+    0 0 34px rgba(0, 172, 173, 0.50),
+    0 0 64px rgba(64, 224, 224, 0.32);
+  --fgx-halo-ring: 0 0 0 1px rgba(255, 255, 255, 0.40), 0 0 14px rgba(0, 172, 173, 0.30);
+
+  /* -- Polices : display condensé (Anton) + corps (Montserrat) ------------ */
+  --fgx-display: 'Anton', 'Bebas Neue', 'Arial Narrow', system-ui, sans-serif;
+  --font-ui: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* -- Neutres : NOIR PUR + rampe grise neutre (aucune teinte violette) --- */
   --page: #000000;
-  --surface: #100a13;
-  --raised: #180f1c;
-  --subtle: #1f1424;
-  --line: #2c1f31;
-  --line-strong: #43314a;
+  --surface: #0d0d0f;
+  --raised: #141416;
+  --subtle: #1a1a1d;
+  --line: #262629;
+  --line-strong: #3b3b40;
   --text: #ffffff;
-  --muted: #b9a7be;
-  --faint: #8b7a90;
+  --muted: #b6b6bb;
+  --faint: #86868c;
 
-  /* -- Accent = magenta signature (fills : sélection, CTA, états actifs) -- */
-  --accent: #944292;
-  --accent-strong: #b45cb0;
+  /* -- Accent = violet signature (fills : sélection, CTA, états actifs) ---- */
+  --accent: var(--fgx-violet);
+  --accent-strong: var(--fgx-violet-strong);
   --accent-soft: rgba(148, 66, 146, 0.22);
   --accent-contrast: #ffffff;
 
   --tenant-accent: var(--accent);
   --tenant-accent-soft: var(--accent-soft);
 
-  /* -- Statuts sur fond sombre ; info = teal Fun Galaxy ------------------ */
+  /* -- Statuts sur fond noir ---------------------------------------------- */
   --success: #3dd68c;
   --success-soft: rgba(61, 214, 140, 0.16);
   --warning: #f5a623;
@@ -2461,58 +2517,67 @@ body.public-form {
   --info: #2fd0d1;
   --info-soft: rgba(0, 172, 173, 0.18);
 
-  /* -- Profondeur sombre ------------------------------------------------- */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.55);
-  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.65);
-  --backdrop: rgba(0, 0, 0, 0.72);
+  /* -- Profondeur noire ---------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.6);
+  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.7);
+  --backdrop: rgba(0, 0, 0, 0.74);
 
   color-scheme: dark;
 }
 
-/* --- Aura néon (dégradés CSS, zéro image : CSP self-contained + perf) ----- */
+/* --- Fond NOIR PUR : pas de dégradé violet en page (DA fungalaxy.be) ------ */
 #clientView {
-  position: relative;
-  background:
-    radial-gradient(900px 420px at 50% -60px, rgba(148, 66, 146, 0.20), transparent 70%),
-    radial-gradient(760px 380px at 92% 40px, rgba(0, 172, 173, 0.11), transparent 65%);
+  background: var(--page);
 }
 
 body.public-form {
-  background:
-    radial-gradient(1000px 460px at 50% -80px, rgba(148, 66, 146, 0.18), transparent 70%),
-    radial-gradient(820px 420px at 100% 0, rgba(0, 172, 173, 0.10), transparent 65%),
-    var(--page);
-  background-attachment: fixed;
+  background: var(--page);
 }
 
-/* --- Header public : logo Fun Galaxy sur fond noir, onglet actif magenta -- */
+/* --- Header public : onglet actif = violet plein -------------------------- */
 body.client-mode .view-switch button.active {
   background: var(--accent);
   color: var(--accent-contrast);
   box-shadow: none;
 }
 
-/* --- Titres display : MAJUSCULES, gras, 2e segment magenta ---------------- */
+/* --- Titres display : Anton condensé, MAJUSCULES -------------------------- */
+#clientView .hero-title h1,
+#clientView .card-title,
+#clientView .success-wrap h2,
+.public-form h1,
+.public-form h2 {
+  font-family: var(--fgx-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
 #clientView .hero-kicker {
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-weight: 600;
-  color: var(--fgx-magenta-text);
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  color: var(--fgx-violet-text);
 }
 
 #clientView .hero-title h1 {
-  text-transform: uppercase;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  line-height: 1.06;
+  font-size: clamp(30px, 6.2vw, 46px);
+  line-height: 0.98;
+  letter-spacing: 0.005em;
 }
 
+/* Mot-accent violet du titre (display large → AA large 3:1) --------------- */
 #clientView .hero-title h1 .accent {
-  color: var(--fgx-magenta-text);
+  color: var(--fgx-violet);
 }
 
-/* --- Stepper : étape active magenta (glow), étape faite teal -------------- */
+#clientView .card-title {
+  font-size: clamp(17px, 3.4vw, 21px);
+  letter-spacing: 0.02em;
+}
+
+/* --- Stepper : étape active violet, étape faite violet plein -------------- */
 #clientView .progress-step.active .progress-index {
   background: var(--accent);
   border-color: var(--accent);
@@ -2521,119 +2586,175 @@ body.client-mode .view-switch button.active {
 }
 
 #clientView .progress-step.done .progress-index {
-  background: var(--fgx-teal);
-  border-color: var(--fgx-teal);
-  color: var(--page);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
 }
 
 #clientView .progress-step.done .progress-label {
   color: var(--text);
 }
 
-/* --- Cartes : profondeur douce + icônes énergiques (magenta / teal) ------- */
+/* --- Cartes : surface noire neutre, icônes violet clair ------------------- */
 #clientView .card {
   box-shadow: var(--shadow-sm);
 }
 
-#clientView .card-icon {
-  background: var(--fgx-grad-soft);
-  border: 1px solid var(--line-strong);
-  color: var(--fgx-magenta-text);
-}
-
+#clientView .card-icon,
 #clientView .card-icon.teal {
-  background: var(--fgx-teal-soft-bg);
+  background: var(--accent-soft);
   border: 1px solid var(--line-strong);
-  color: var(--fgx-teal-text);
+  color: var(--fgx-violet-text);
 }
 
-/* --- Sélecteurs d'activité : fill magenta + glow sur l'état actif --------- */
+/* --- Sélecteurs d'activité : fill violet + fin halo sur l'état actif ------ */
 #clientView .seg-btn.active,
 #clientView .dur-pill.active,
 #clientView .slot.active,
 #clientView .formula-time-choice.active {
-  box-shadow: var(--fgx-glow);
+  box-shadow: var(--fgx-halo-ring);
 }
 
-/* --- Cartes formule sélectionnées : bordure magenta + ring + fond dégradé - */
+/* --- Cartes formule sélectionnées : bordure + ring violet ----------------- */
 #clientView .formule-card.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--fgx-glow);
-  background: var(--fgx-grad-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md);
+  background: var(--accent-soft);
 }
 
-/* --- Textes accentués sur fond sombre : magenta clair (contraste AA) ------ */
+/* --- Petits textes accentués : violet clair (contraste AA) ---------------- */
 #clientView .formula-mode-kicker,
 #clientView .formula-plan-count,
 #clientView .recap-value.accent,
 #clientView .formula-route-step.done small {
-  color: var(--fgx-magenta-text);
+  color: var(--fgx-violet-text);
 }
 
-/* --- Boutons PILULE : primaire magenta plein, secondaire contour ---------- */
+/* ==========================================================================
+   BOUTONS PILULE À HALO RÉTRO — signature Fun Galaxy
+   Variante (a) primaire : fond violet plein + texte blanc + halo teal.
+   Variante (b) spéciale  : fond blanc + texte noir + halo teal (action clé
+   « Réserver » = confirmation finale index + envoi public-form).
+   ========================================================================== */
 #clientView .btn-primary,
 #clientView .btn-secondary {
   border-radius: var(--radius-full);
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
+/* (a) Primaire — violet plein, halo teal */
 #clientView .btn-primary {
   background: var(--accent);
-  border-color: var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--accent-contrast);
-  box-shadow: var(--fgx-glow);
+  box-shadow: var(--fgx-halo);
 }
 
 #clientView .btn-primary:hover {
   background: var(--accent-strong);
-  border-color: var(--accent-strong);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: var(--fgx-halo-strong);
   opacity: 1;
 }
 
+/* (b) Spéciale — action clé « Réserver » : fond blanc, texte noir, halo teal */
+#clientView #btnConfirmBooking.btn-primary {
+  background: var(--fgx-white);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: var(--fgx-black);
+  box-shadow: var(--fgx-halo);
+}
+
+#clientView #btnConfirmBooking.btn-primary:hover {
+  background: var(--fgx-white);
+  color: var(--fgx-black);
+  box-shadow: var(--fgx-halo-strong);
+}
+
+/* Secondaire (Retour) : pilule sobre, contour, sans halo criard */
 #clientView .btn-secondary {
   background: transparent;
-  border-color: var(--line-strong);
+  border: 1px solid var(--line-strong);
   color: var(--text);
+  box-shadow: none;
 }
 
 #clientView .btn-secondary:hover {
   background: var(--subtle);
-  border-color: var(--accent);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
-/* --- Confirmation : pastille magenta signature (blanc sur magenta = AA) --- */
+/* --- Confirmation : pastille violet signature + halo teal ----------------- */
 #clientView .success-icon {
   background: var(--accent);
-  border: 1px solid var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: var(--accent-contrast);
-  box-shadow: var(--fgx-glow);
+  box-shadow: var(--fgx-halo);
+}
+
+/* --- Titre CONTOUR rétro (transparent + trait blanc) : écran de confirmation
+   Grand titre display, effet « outline » sobre et lisible (trait #fff sur
+   noir → pixels visibles 21:1). Un seul grand titre concerné. ------------- */
+#clientView #step5 .success-wrap h2 {
+  font-size: clamp(34px, 8vw, 58px);
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1.6px var(--fgx-white);
+  text-stroke: 1.6px var(--fgx-white);
 }
 
 /* ============================================================================
    6bis. SKIN FUN GALAXY — public-form.html (body.public-form)
    ========================================================================== */
 .public-form h1 {
-  text-transform: uppercase;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: clamp(30px, 6vw, 44px);
+  line-height: 1;
 }
 
 .public-form .eyebrow {
-  color: var(--fgx-magenta-text);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  color: var(--fgx-violet-text);
 }
 
+/* CTA « Envoyer la réservation » = action clé → variante (b) blanc + halo */
 .public-form .cta {
   border-radius: var(--radius-full);
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 600;
-  box-shadow: var(--fgx-glow);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--fgx-white);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: var(--fgx-black);
+  box-shadow: var(--fgx-halo);
 }
 
 .public-form .cta:hover {
   opacity: 1;
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
+  background: var(--fgx-white);
+  color: var(--fgx-black);
+  box-shadow: var(--fgx-halo-strong);
+}
+
+.public-form .cta:disabled {
+  background: var(--subtle);
+  border-color: var(--line-strong);
+  color: var(--faint);
+  box-shadow: none;
+}
+
+/* Segmented (Bowling/Laser/Formule) & créneaux : actif violet + fin halo --- */
+.public-form .segmented button.active,
+.public-form .slot-list button.active,
+.public-form .duration-list button.active,
+.public-form .formula-card.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--fgx-halo-ring);
 }

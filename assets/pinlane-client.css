@@ -2398,3 +2398,242 @@ body.client-mode .client-demo-access.hidden {
     display: none;
   }
 }
+
+/* ============================================================================
+   6. SKIN FUN GALAXY — identité du client final (fungalaxy.be)
+   ----------------------------------------------------------------------------
+   Portée STRICTE : surfaces publiques `body.client-mode` (index.html #clientView
+   + header public) et `body.public-form`. N'affecte JAMAIS staff/admin/direction
+   (setView() ne pose `client-mode` que sur la vue publique ; ces scopes ne
+   matchent ni body.staff-mode, ni body.admin-mode, ni body.direction).
+
+   Méthode : on RE-DÉFINIT les tokens de couleur dans le scope client → --accent,
+   --page, --surface… pointent vers l'univers Fun Galaxy (fond noir, magenta
+   signature, teal secondaire) au lieu du bleu SaaS, sans toucher pinlane.css.
+   Fun Galaxy est dark par nature : ce scope force le rendu sombre quel que soit
+   `data-theme`, avec `color-scheme: dark` pour les contrôles natifs.
+
+   Tous les hex de marque vivent UNIQUEMENT dans cette déclaration de variables ;
+   les règles ne réutilisent que des var() (contrainte run-quality-audit.js).
+   Contrastes vérifiés AA : blanc sur #944292 = 6.08:1 (fills) ; texte magenta
+   clair #cf74c9 sur fond sombre ≈ 6:1 ; teal #00acad porte du texte page (noir).
+   ========================================================================== */
+body.client-mode,
+body.public-form {
+  /* -- Marque Fun Galaxy ------------------------------------------------- */
+  --fgx-magenta: #944292;          /* magenta signature (fills, texte blanc) */
+  --fgx-magenta-text: #cf74c9;     /* magenta clair : texte/accents sur sombre */
+  --fgx-teal: #00acad;             /* teal secondaire */
+  --fgx-teal-soft: #67baac;        /* teal doux */
+  --fgx-teal-text: #2fd0d1;        /* teal clair : texte/icônes sur sombre */
+  --fgx-grad: linear-gradient(120deg, #944292 0%, #00acad 100%);
+  --fgx-grad-soft: linear-gradient(120deg, rgba(148, 66, 146, 0.20) 0%, rgba(0, 172, 173, 0.14) 100%);
+  --fgx-teal-soft-bg: rgba(0, 172, 173, 0.15);
+  --fgx-glow: 0 8px 24px rgba(148, 66, 146, 0.38);
+
+  /* -- Neutres sombres (fond noir, texte blanc, rampe teintée magenta) --- */
+  --page: #000000;
+  --surface: #100a13;
+  --raised: #180f1c;
+  --subtle: #1f1424;
+  --line: #2c1f31;
+  --line-strong: #43314a;
+  --text: #ffffff;
+  --muted: #b9a7be;
+  --faint: #8b7a90;
+
+  /* -- Accent = magenta signature (fills : sélection, CTA, états actifs) -- */
+  --accent: #944292;
+  --accent-strong: #b45cb0;
+  --accent-soft: rgba(148, 66, 146, 0.22);
+  --accent-contrast: #ffffff;
+
+  --tenant-accent: var(--accent);
+  --tenant-accent-soft: var(--accent-soft);
+
+  /* -- Statuts sur fond sombre ; info = teal Fun Galaxy ------------------ */
+  --success: #3dd68c;
+  --success-soft: rgba(61, 214, 140, 0.16);
+  --warning: #f5a623;
+  --warning-soft: rgba(245, 166, 35, 0.16);
+  --danger: #f76d6d;
+  --danger-soft: rgba(247, 109, 109, 0.16);
+  --info: #2fd0d1;
+  --info-soft: rgba(0, 172, 173, 0.18);
+
+  /* -- Profondeur sombre ------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.65);
+  --backdrop: rgba(0, 0, 0, 0.72);
+
+  color-scheme: dark;
+}
+
+/* --- Aura néon (dégradés CSS, zéro image : CSP self-contained + perf) ----- */
+#clientView {
+  position: relative;
+  background:
+    radial-gradient(900px 420px at 50% -60px, rgba(148, 66, 146, 0.20), transparent 70%),
+    radial-gradient(760px 380px at 92% 40px, rgba(0, 172, 173, 0.11), transparent 65%);
+}
+
+body.public-form {
+  background:
+    radial-gradient(1000px 460px at 50% -80px, rgba(148, 66, 146, 0.18), transparent 70%),
+    radial-gradient(820px 420px at 100% 0, rgba(0, 172, 173, 0.10), transparent 65%),
+    var(--page);
+  background-attachment: fixed;
+}
+
+/* --- Header public : logo Fun Galaxy sur fond noir, onglet actif magenta -- */
+body.client-mode .view-switch button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: none;
+}
+
+/* --- Titres display : MAJUSCULES, gras, 2e segment magenta ---------------- */
+#clientView .hero-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: var(--fgx-magenta-text);
+}
+
+#clientView .hero-title h1 {
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.06;
+}
+
+#clientView .hero-title h1 .accent {
+  color: var(--fgx-magenta-text);
+}
+
+/* --- Stepper : étape active magenta (glow), étape faite teal -------------- */
+#clientView .progress-step.active .progress-index {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+#clientView .progress-step.done .progress-index {
+  background: var(--fgx-teal);
+  border-color: var(--fgx-teal);
+  color: var(--page);
+}
+
+#clientView .progress-step.done .progress-label {
+  color: var(--text);
+}
+
+/* --- Cartes : profondeur douce + icônes énergiques (magenta / teal) ------- */
+#clientView .card {
+  box-shadow: var(--shadow-sm);
+}
+
+#clientView .card-icon {
+  background: var(--fgx-grad-soft);
+  border: 1px solid var(--line-strong);
+  color: var(--fgx-magenta-text);
+}
+
+#clientView .card-icon.teal {
+  background: var(--fgx-teal-soft-bg);
+  border: 1px solid var(--line-strong);
+  color: var(--fgx-teal-text);
+}
+
+/* --- Sélecteurs d'activité : fill magenta + glow sur l'état actif --------- */
+#clientView .seg-btn.active,
+#clientView .dur-pill.active,
+#clientView .slot.active,
+#clientView .formula-time-choice.active {
+  box-shadow: var(--fgx-glow);
+}
+
+/* --- Cartes formule sélectionnées : bordure magenta + ring + fond dégradé - */
+#clientView .formule-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--fgx-glow);
+  background: var(--fgx-grad-soft);
+}
+
+/* --- Textes accentués sur fond sombre : magenta clair (contraste AA) ------ */
+#clientView .formula-mode-kicker,
+#clientView .formula-plan-count,
+#clientView .recap-value.accent,
+#clientView .formula-route-step.done small {
+  color: var(--fgx-magenta-text);
+}
+
+/* --- Boutons PILULE : primaire magenta plein, secondaire contour ---------- */
+#clientView .btn-primary,
+#clientView .btn-secondary {
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+#clientView .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--fgx-glow);
+}
+
+#clientView .btn-primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  opacity: 1;
+}
+
+#clientView .btn-secondary {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+#clientView .btn-secondary:hover {
+  background: var(--subtle);
+  border-color: var(--accent);
+}
+
+/* --- Confirmation : pastille magenta signature (blanc sur magenta = AA) --- */
+#clientView .success-icon {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--fgx-glow);
+}
+
+/* ============================================================================
+   6bis. SKIN FUN GALAXY — public-form.html (body.public-form)
+   ========================================================================== */
+.public-form h1 {
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.public-form .eyebrow {
+  color: var(--fgx-magenta-text);
+}
+
+.public-form .cta {
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  box-shadow: var(--fgx-glow);
+}
+
+.public-form .cta:hover {
+  opacity: 1;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}

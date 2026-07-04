@@ -36,18 +36,17 @@ async function statusForCenters(centerIds) {
 async function runForCenters(body = {}) {
   const requestedCenterId = normalizeCenterId(body.centerId || body.center_id, 'libramont');
   const centerIds = getCenterIds(requestedCenterId);
-  const results = [];
-  for (const centerId of centerIds) {
-    results.push(await runMarketingAgentCycle({
-      centerId,
-      startDate: body.startDate,
-      endDate: body.endDate,
-      objective: body.objective,
-      brief: body.brief,
-      persist: body.persist !== false,
-      runType: body.runType || 'manual',
-    }));
-  }
+  // Parallèle (au lieu de séquentiel) : les centres actifs sont indépendants ;
+  // évite d'additionner les temps de cycle et de dépasser le timeout de la fonction.
+  const results = await Promise.all(centerIds.map((centerId) => runMarketingAgentCycle({
+    centerId,
+    startDate: body.startDate,
+    endDate: body.endDate,
+    objective: body.objective,
+    brief: body.brief,
+    persist: body.persist !== false,
+    runType: body.runType || 'manual',
+  })));
   return {
     ok: true,
     action: 'run',

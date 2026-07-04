@@ -3,7 +3,7 @@
   "version": 2,
   "functions": {
     "api/marketing-agents.js": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "crons": [

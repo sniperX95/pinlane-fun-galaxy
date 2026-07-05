@@ -82,7 +82,12 @@ export default function middleware(request: Request) {
     '/pro.html',
   ]);
 
-  if (publicPaths.has(pathname) || pathname.startsWith('/assets/')) {
+  if (
+    publicPaths.has(pathname)
+    || pathname.startsWith('/assets/')
+    || pathname === '/menu'
+    || pathname.startsWith('/menu/')
+  ) {
     return next();
   }
 

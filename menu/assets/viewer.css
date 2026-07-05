@@ -1,4 +1,4 @@
-/* Fun Galaxy — carte digitale. Minimal, zoom natif du navigateur, zéro chrome superflu. */
+/* Fun Galaxy — carte digitale. Minimal, zoom natif du navigateur, contrôles sobres et pro. */
 @font-face{font-family:'Anton';src:url('./fonts/anton-latin.woff2') format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-600.woff2') format('woff2');font-weight:600;font-display:swap}
 @font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-700.woff2') format('woff2');font-weight:700;font-display:swap}
@@ -7,16 +7,13 @@
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
-  font-family:'Montserrat',system-ui,sans-serif;
-  color:#f3f4fb;
+  font-family:'Montserrat',system-ui,sans-serif;color:#f3f4fb;
   background:
     radial-gradient(120% 80% at 20% -10%, rgba(76,46,104,.16), transparent 55%),
     radial-gradient(120% 80% at 85% 5%, rgba(24,90,104,.12), transparent 55%),
     #05060d;
-  -webkit-font-smoothing:antialiased;
-  min-height:100vh;
+  -webkit-font-smoothing:antialiased;min-height:100vh;
 }
-/* Petites étoiles discrètes (statiques, zéro JS) */
 body::before{
   content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
   background-image:
@@ -28,31 +25,57 @@ body::before{
     radial-gradient(1px 1px at 64% 88%, rgba(210,200,255,.4), transparent),
     radial-gradient(1px 1px at 10% 58%, rgba(255,255,255,.35), transparent);
 }
-
-/* Verrouille le scroll tant que l'écran d'entrée est affiché */
 body.pre{overflow:hidden;height:100vh}
 
-/* ---------- La carte (flux normal, zoom natif du navigateur) ---------- */
-.pages{position:relative;z-index:1;padding-bottom:env(safe-area-inset-bottom)}
+/* ---------- La carte (flux normal, zoom natif : pincer comme une photo) ---------- */
+.pages{position:relative;z-index:1;padding-bottom:calc(88px + env(safe-area-inset-bottom))}
 .page{display:block;width:100%;height:auto}
 .page + .page{margin-top:10px}
+body.pre .nav,body.pre .back{opacity:0;pointer-events:none}
 
-/* Retour discret, fixé */
+/* Retour — pastille sobre en haut à gauche */
 .back{
-  position:fixed;top:calc(env(safe-area-inset-top) + 12px);left:12px;z-index:5;
-  width:42px;height:42px;display:flex;align-items:center;justify-content:center;
-  color:#fff;font-size:22px;line-height:1;text-decoration:none;
-  background:rgba(10,12,22,.55);border:1px solid rgba(255,255,255,.14);
-  border-radius:50%;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
-  transition:background .2s ease,transform .15s ease;
+  position:fixed;top:calc(env(safe-area-inset-top) + 14px);left:14px;z-index:6;
+  width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+  color:#fff;text-decoration:none;
+  background:rgba(9,11,20,.66);border:1px solid rgba(255,255,255,.14);
+  border-radius:14px;-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);
+  box-shadow:0 6px 20px rgba(0,0,0,.35);
+  transition:opacity .35s ease,background .2s ease,transform .12s ease;
 }
-.back:active{transform:scale(.94)}
-.back:hover{background:rgba(20,24,40,.7)}
+.back svg{width:20px;height:20px}
+.back:active{transform:scale(.93)}
+.back:hover{background:rgba(18,22,38,.8)}
+
+/* Recto / Verso — contrôle segmenté (iOS-like), centré, net, pro */
+.nav{
+  position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);z-index:6;
+  display:flex;padding:4px;width:min(260px,72vw);
+  background:rgba(9,11,20,.7);border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;-webkit-backdrop-filter:blur(16px) saturate(1.2);backdrop-filter:blur(16px) saturate(1.2);
+  box-shadow:0 12px 34px rgba(0,0,0,.45);
+  transition:opacity .35s ease;
+}
+.nav__thumb{
+  position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);
+  border-radius:12px;background:#f4f5fb;
+  box-shadow:0 2px 8px rgba(0,0,0,.28);
+  transition:transform .28s cubic-bezier(.34,.01,.2,1);
+}
+.nav[data-face="1"] .nav__thumb{transform:translateX(100%)}
+.nav__btn{
+  position:relative;z-index:1;flex:1;appearance:none;border:0;background:transparent;
+  font-family:'Montserrat';font-weight:700;font-size:13px;letter-spacing:.1em;text-transform:uppercase;
+  color:#c7cadf;min-height:40px;border-radius:12px;cursor:pointer;
+  transition:color .24s ease;
+}
+.nav__btn[aria-current="true"]{color:#0a0b14}
+.nav__btn:focus-visible{outline:2px solid #67baac;outline-offset:3px}
 
 /* ---------- Écran d'entrée (overlay au-dessus) ---------- */
 .entry{
-  position:fixed;inset:0;z-index:100;
-  display:flex;align-items:center;justify-content:center;
+  position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
   padding:32px 26px calc(40px + env(safe-area-inset-bottom));
   background:
     radial-gradient(120% 80% at 20% -10%, rgba(76,46,104,.20), transparent 55%),
@@ -61,25 +84,19 @@ body.pre{overflow:hidden;height:100vh}
   transition:opacity .5s ease;
 }
 body:not(.pre) .entry{opacity:0;pointer-events:none}
-
 .entry__inner{position:relative;text-align:center;max-width:440px;width:100%}
-.entry__logo{width:min(74%,300px);height:auto;display:block;margin:0 auto 26px;
-  filter:drop-shadow(0 8px 30px rgba(0,0,0,.5))}
-.entry__center{
-  margin:0 0 30px;font-family:'Montserrat';font-weight:700;font-size:13px;
-  letter-spacing:.42em;text-transform:uppercase;color:#c9cbe0;
-}
+.entry__logo{width:min(74%,300px);height:auto;display:block;margin:0 auto 26px;filter:drop-shadow(0 8px 30px rgba(0,0,0,.5))}
+.entry__center{margin:0 0 30px;font-weight:700;font-size:13px;letter-spacing:.42em;text-transform:uppercase;color:#c9cbe0}
 .btn-card{
-  font-family:'Montserrat';font-weight:700;font-size:15px;letter-spacing:.06em;
-  color:#fff;background:rgba(255,255,255,.05);
-  border:1px solid rgba(255,255,255,.22);border-radius:999px;
+  font-weight:700;font-size:15px;letter-spacing:.06em;color:#fff;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.22);border-radius:14px;
   padding:15px 40px;min-height:52px;cursor:pointer;
-  transition:background .2s ease,border-color .2s ease,transform .15s ease;
+  transition:background .2s ease,border-color .2s ease,transform .13s ease;
 }
 .btn-card:hover{background:rgba(255,255,255,.09);border-color:rgba(103,186,172,.6)}
 .btn-card:active{transform:scale(.97)}
 .btn-card:focus-visible{outline:2px solid #67baac;outline-offset:3px}
 
 @media (prefers-reduced-motion:reduce){
-  .entry,.back,.btn-card{transition:none}
+  .entry,.back,.btn-card,.nav__thumb,.nav__btn{transition:none}
 }

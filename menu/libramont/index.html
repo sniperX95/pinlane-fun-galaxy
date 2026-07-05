@@ -14,10 +14,18 @@
 <body class="pre">
   <!-- La carte : deux pages empilées, zoom natif (pincer comme une photo) -->
   <div class="pages">
-    <a class="back" id="backBtn" href="#" aria-label="Retour">&#8592;</a>
+    <a class="back" id="backBtn" href="#" aria-label="Retour à l'accueil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
     <img class="page" src="./carte-1.jpg" alt="Carte Fun Galaxy Libramont — recto" width="2645" height="3742" decoding="async">
     <img class="page" src="./carte-2.jpg" alt="Carte Fun Galaxy Libramont — verso" width="2645" height="3742" loading="lazy" decoding="async">
   </div>
+
+  <nav class="nav" id="nav" data-face="0" aria-label="Recto ou verso">
+    <span class="nav__thumb" aria-hidden="true"></span>
+    <button type="button" class="nav__btn" aria-current="true">Recto</button>
+    <button type="button" class="nav__btn" aria-current="false">Verso</button>
+  </nav>
 
   <!-- Écran d'entrée -->
   <main class="entry">

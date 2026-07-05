@@ -23,7 +23,7 @@
       <span class="card-head__center">Libramont</span>
     </header>
     <div class="stage" id="stage">
-      <div class="frame">
+      <div class="frame" id="frame" tabindex="0" role="button" aria-label="Agrandir la carte en plein écran">
         <img class="page" id="cardImg"
              src="./carte-1.jpg" data-recto="./carte-1.jpg" data-verso="./carte-2.jpg"
              data-alt-base="Carte Fun Galaxy Libramont" alt="Carte Fun Galaxy Libramont — recto"
@@ -55,6 +55,17 @@
       </button>
     </div>
   </main>
+
+  <!-- Plein écran carte -->
+  <div class="fs" id="fs" hidden aria-hidden="true" role="dialog" aria-label="Carte en plein écran">
+    <img class="fs__img" id="fsImg" alt="" decoding="async">
+    <button type="button" class="fs__close" id="fsClose" aria-label="Fermer le plein écran">&#10005;</button>
+    <nav class="seg fs__seg" id="fsSeg" data-face="0" aria-label="Recto ou verso">
+      <span class="seg__thumb" aria-hidden="true"></span>
+      <button type="button" class="seg__btn" aria-current="true">Recto</button>
+      <button type="button" class="seg__btn" aria-current="false">Verso</button>
+    </nav>
+  </div>
 
   <!-- Flash cinématique -->
   <div class="flash-el" aria-hidden="true"></div>

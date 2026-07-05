@@ -15,6 +15,12 @@
   var imgFx = byId('cardImgFx');
   var canvas = byId('space');
   var btns = seg ? seg.querySelectorAll('.seg__btn') : [];
+  var frameEl = document.querySelector('.frame');
+  var fs = byId('fs');
+  var fsImg = byId('fsImg');
+  var fsClose = byId('fsClose');
+  var fsSeg = byId('fsSeg');
+  var fsBtns = fsSeg ? fsSeg.querySelectorAll('.seg__btn') : [];
 
   /* ============================================================
      1) MOTEUR DE FOND SPATIAL (canvas, rAF unique)
@@ -219,6 +225,9 @@
   var verso = imgBase ? imgBase.getAttribute('data-verso') : '';
   var altBase = imgBase ? imgBase.getAttribute('data-alt-base') : '';
 
+  function srcFor(i) { return i === 1 ? verso : recto; }
+  function altFor(i) { return altBase + (i === 1 ? ' — verso' : ' — recto'); }
+
   function crossfadeTo(src, alt) {
     if (!imgFx || !imgBase) { if (imgBase) { imgBase.src = src; imgBase.alt = alt; } return; }
     var done = function () {
@@ -237,14 +246,20 @@
     imgFx.src = src;
   }
 
+  function syncSeg(i) {
+    if (seg) seg.setAttribute('data-face', String(i));
+    for (var a = 0; a < btns.length; a++) btns[a].setAttribute('aria-current', a === i ? 'true' : 'false');
+    if (fsSeg) fsSeg.setAttribute('data-face', String(i));
+    for (var b = 0; b < fsBtns.length; b++) fsBtns[b].setAttribute('aria-current', b === i ? 'true' : 'false');
+  }
+
   function setFace(i, animate) {
     i = i ? 1 : 0;
-    if (seg) seg.setAttribute('data-face', String(i));
-    for (var k = 0; k < btns.length; k++) btns[k].setAttribute('aria-current', k === i ? 'true' : 'false');
-    var src = i === 1 ? verso : recto;
-    var alt = altBase + (i === 1 ? ' — verso' : ' — recto');
+    syncSeg(i);
+    var src = srcFor(i), alt = altFor(i);
     if (i !== face && animate) crossfadeTo(src, alt);
     else if (imgBase) { imgBase.src = src; imgBase.alt = alt; }
+    if (fsImg) { fsImg.src = src; fsImg.alt = alt; }
     face = i;
     if (stage) stage.scrollTop = 0;
   }
@@ -252,6 +267,53 @@
   for (var k = 0; k < btns.length; k++) (function (i) {
     btns[i].addEventListener('click', function () { setFace(i, true); });
   })(k);
+  for (var kf = 0; kf < fsBtns.length; kf++) (function (i) {
+    fsBtns[i].addEventListener('click', function () { setFace(i, true); });
+  })(kf);
+
+  /* Plein écran carte : tap -> overlay contain, zoom natif (pincer), ✕/tap pour fermer */
+  var fsClosing = false;
+  function openFs() {
+    if (!fs) return;
+    if (fsImg) { fsImg.src = srcFor(face); fsImg.alt = altFor(face); }
+    fsClosing = false;
+    fs.hidden = false;
+    fs.setAttribute('aria-hidden', 'false');
+    void fs.offsetWidth;                       // reflow -> transition d'ouverture
+    fs.classList.add('is-open');
+    if (fsClose) fsClose.focus();
+  }
+  function finishClose() {
+    if (!fs) return;
+    fs.hidden = true;
+    fs.setAttribute('aria-hidden', 'true');
+    fsClosing = false;
+    if (frameEl) frameEl.focus();
+  }
+  function closeFs() {
+    if (!fs || fs.hidden || fsClosing) return;
+    fsClosing = true;
+    fs.classList.remove('is-open');
+    if (reduce) finishClose();
+  }
+  if (fs) {
+    fs.addEventListener('transitionend', function (e) {
+      if (fsClosing && e.target === fs && e.propertyName === 'opacity') finishClose();
+    });
+    fs.addEventListener('click', function (e) {
+      if (e.target === fs || e.target === fsImg) closeFs();   // tap fond/carte ferme ; pincer = zoom natif
+    });
+  }
+  if (frameEl) {
+    frameEl.addEventListener('click', openFs);
+    frameEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); openFs(); }
+    });
+  }
+  if (fsClose) fsClose.addEventListener('click', closeFs);
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Escape' || e.key === 'Esc') && fs && !fs.hidden) closeFs();
+  });
 
   /* ============================================================
      3) TRANSITION CINÉMATIQUE entrée -> carte

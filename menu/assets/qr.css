@@ -1,0 +1,49 @@
+/* Fun Galaxy — chevalet QR (à imprimer). Clair, pro, print-ready. */
+@font-face{font-family:'Anton';src:url('./fonts/anton-latin.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-600.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-700.woff2') format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-800.woff2') format('woff2');font-weight:800;font-display:swap}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Montserrat',system-ui,sans-serif;color:#241833;
+  background:#efe9df;-webkit-font-smoothing:antialiased;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:26px 18px;
+}
+.tent{
+  width:min(430px,94vw);background:#fffdf9;border:1px solid rgba(36,24,51,.07);
+  border-radius:26px;overflow:hidden;text-align:center;
+  box-shadow:0 24px 60px rgba(36,24,51,.16);
+}
+.tent__top{height:7px;background:linear-gradient(90deg,#944292 0%,#7b53a3 45%,#67baac 100%)}
+.tent__body{padding:36px 32px 40px}
+.tent__logo{width:min(70%,236px);height:auto;display:block;margin:0 auto 24px}
+.tent__eyebrow{
+  margin:0 0 8px;font-weight:700;font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:#9a8fa8;
+}
+.tent__title{
+  margin:0 0 8px;font-family:'Anton',sans-serif;font-weight:400;
+  font-size:clamp(34px,10vw,44px);letter-spacing:.01em;line-height:.98;color:#241833;text-transform:uppercase;
+}
+.tent__sub{margin:0 auto 26px;max-width:24ch;font-size:14px;line-height:1.5;color:#5f5769}
+.qr{
+  width:min(76%,272px);margin:0 auto;padding:16px;background:#fff;
+  border:1px solid rgba(36,24,51,.1);border-radius:22px;
+  box-shadow:0 8px 22px rgba(36,24,51,.1);
+}
+.qr img{display:block;width:100%;height:auto}
+.tent__center{
+  margin-top:24px;display:inline-block;font-weight:700;font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+  color:#6c458a;padding:9px 20px;border:1px solid rgba(108,69,138,.3);border-radius:999px;
+}
+.tent__foot{margin:18px 0 0;font-size:12.5px;letter-spacing:.02em;color:#9a92a5}
+
+/* Impression : fond blanc, pas d'ombres, économe en encre */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;padding:0;min-height:auto}
+  .tent{box-shadow:none;border:1px solid #e3ddd2;width:100%;max-width:150mm}
+  .qr{box-shadow:none}
+}

@@ -2,34 +2,26 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#05070f">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fun Galaxy — Libramont · QR carte</title>
-  <meta name="description" content="Scannez le QR code pour découvrir la carte de Fun Galaxy Libramont.">
+  <meta name="description" content="Scannez pour découvrir la carte de Fun Galaxy Libramont.">
   <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
-  <link rel="stylesheet" href="../assets/viewer.css">
+  <link rel="stylesheet" href="../assets/qr.css">
 </head>
 <body>
-  <canvas class="stars" aria-hidden="true"></canvas>
-
-  <main class="qr-page">
-    <div class="qr-card">
-      <img class="qr-card__logo" src="../assets/logo-fun-galaxy.svg"
-           alt="Fun Galaxy" width="230" height="156">
-      <p class="qr-card__center">Libramont</p>
-      <p class="qr-card__lead">Scannez pour découvrir notre carte</p>
-      <p class="qr-card__sub">Bar &amp; Snacks</p>
-
-      <div class="qr-frame">
-        <img src="./qr-libramont.svg" alt="QR code vers la carte Fun Galaxy Libramont"
-             width="260" height="260">
+  <div class="tent">
+    <div class="tent__top"></div>
+    <div class="tent__body">
+      <img class="tent__logo" src="../assets/logo-fun-galaxy-dark.svg" alt="Fun Galaxy" width="236" height="160">
+      <p class="tent__eyebrow">Bar &amp; Snacks</p>
+      <h1 class="tent__title">La carte</h1>
+      <p class="tent__sub">Scannez le code avec l'appareil photo de votre téléphone pour la découvrir.</p>
+      <div class="qr">
+        <img src="./qr-libramont.png" alt="QR code vers la carte Fun Galaxy Libramont" width="1170" height="1170">
       </div>
-
-      <p class="qr-card__hint">Pointez l'appareil photo vers le code</p>
-      <p class="qr-card__url">www.mngfunglxy.com/menu/libramont</p>
+      <span class="tent__center">Libramont</span>
+      <p class="tent__foot">mngfunglxy.com/menu/libramont</p>
     </div>
-  </main>
-
-  <script src="../assets/viewer.js"></script>
+  </div>
 </body>
 </html>

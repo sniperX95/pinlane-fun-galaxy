@@ -22,7 +22,7 @@ body{
 
 /* Barre de contrôle SOUS la carte (jamais par-dessus) */
 .bar{
-  flex:none;display:flex;align-items:center;gap:12px;
+  flex:none;display:flex;align-items:center;justify-content:center;
   padding:12px 14px calc(12px + env(safe-area-inset-bottom));
   background:#0a0c16;border-top:1px solid rgba(255,255,255,.09);
   box-shadow:0 -8px 24px rgba(0,0,0,.4);
@@ -38,7 +38,7 @@ body{
 .back:hover{background:rgba(255,255,255,.1)}
 
 .seg{
-  position:relative;flex:1;display:flex;padding:4px;height:46px;
+  position:relative;flex:none;width:min(340px,86vw);display:flex;padding:4px;height:48px;
   background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:13px;
 }
 .seg__thumb{

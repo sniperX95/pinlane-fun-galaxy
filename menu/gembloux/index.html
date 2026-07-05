@@ -2,75 +2,31 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
-  <meta name="theme-color" content="#05070f">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#05060d">
   <title>Fun Galaxy — Gembloux · La carte</title>
-  <meta name="description" content="Découvrez la carte bar & snacks de Fun Galaxy Gembloux.">
+  <meta name="description" content="La carte bar & snacks de Fun Galaxy Gembloux.">
   <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
   <link rel="preload" href="../assets/fonts/montserrat-latin-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./carte-1.jpg" as="image">
   <link rel="stylesheet" href="../assets/viewer.css">
 </head>
-<body>
-  <canvas class="stars" aria-hidden="true"></canvas>
+<body class="pre">
+  <!-- La carte : deux pages empilées, zoom natif (pincer comme une photo) -->
+  <div class="pages">
+    <a class="back" id="backBtn" href="#" aria-label="Retour">&#8592;</a>
+    <img class="page" src="./carte-1.jpg" alt="Carte Fun Galaxy Gembloux — recto" width="2645" height="3742" decoding="async">
+    <img class="page" src="./carte-2.jpg" alt="Carte Fun Galaxy Gembloux — verso" width="2645" height="3742" loading="lazy" decoding="async">
+  </div>
 
   <!-- Écran d'entrée -->
   <main class="entry">
     <div class="entry__inner">
-      <img class="entry__logo" src="../assets/logo-fun-galaxy.svg"
-           alt="Fun Galaxy" width="300" height="203">
+      <img class="entry__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="300" height="203">
       <p class="entry__center">Gembloux</p>
       <button type="button" class="btn-card" id="openCard">Voir la carte</button>
     </div>
   </main>
-
-  <!-- Voile de transition galactique -->
-  <div class="nebula" aria-hidden="true"></div>
-
-  <!-- Visionneuse -->
-  <section class="viewer" id="viewer" hidden aria-label="Carte Fun Galaxy Gembloux">
-    <div class="viewer__topbar">
-      <button type="button" class="icon-btn" id="backBtn" aria-label="Retour à l'accueil">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M15 18l-6-6 6-6"/>
-        </svg>
-        <span>Retour</span>
-      </button>
-      <img class="viewer__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="44" height="30">
-    </div>
-
-    <div class="viewer__stage" id="stage">
-      <div class="viewer__slide" id="slide">
-        <img class="viewer__img" id="carteImg" alt="Carte Fun Galaxy — recto"
-             data-recto="./carte-1.jpg" data-verso="./carte-2.jpg"
-             decoding="async">
-      </div>
-    </div>
-
-    <div class="viewer__hint" id="hint" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/>
-      </svg>
-      <span>Double-tap ou pincez pour zoomer</span>
-    </div>
-
-    <div class="viewer__controls">
-      <div class="faces" id="faces" data-face="0" role="tablist" aria-label="Recto ou verso">
-        <span class="faces__thumb" aria-hidden="true"></span>
-        <button type="button" class="faces__btn" role="tab" aria-selected="true">Recto</button>
-        <button type="button" class="faces__btn" role="tab" aria-selected="false">Verso</button>
-      </div>
-      <button type="button" class="icon-btn reset-btn" id="resetBtn" aria-label="Réinitialiser le zoom">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>
-        </svg>
-        <span>Recadrer</span>
-      </button>
-    </div>
-  </section>
 
   <script src="../assets/viewer.js"></script>
 </body>

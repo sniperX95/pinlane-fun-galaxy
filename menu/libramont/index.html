@@ -12,27 +12,35 @@
   <link rel="stylesheet" href="../assets/viewer.css">
 </head>
 <body class="pre">
-  <!-- La carte : deux pages empilées, zoom natif (pincer comme une photo) -->
-  <div class="pages">
-    <a class="back" id="backBtn" href="#" aria-label="Retour à l'accueil">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-    </a>
-    <img class="page" src="./carte-1.jpg" alt="Carte Fun Galaxy Libramont — recto" width="2645" height="3742" decoding="async">
-    <img class="page" src="./carte-2.jpg" alt="Carte Fun Galaxy Libramont — verso" width="2645" height="3742" loading="lazy" decoding="async">
+  <!-- Visionneuse : la carte (une page à la fois), barre de contrôle en dessous -->
+  <div class="viewer">
+    <div class="stage" id="stage">
+      <img class="page" id="cardImg"
+           src="./carte-1.jpg" data-recto="./carte-1.jpg" data-verso="./carte-2.jpg"
+           data-alt-base="Carte Fun Galaxy Libramont" alt="Carte Fun Galaxy Libramont — recto"
+           width="2645" height="3742" decoding="async">
+    </div>
+    <div class="bar">
+      <a class="back" id="backBtn" href="#" aria-label="Retour à l'accueil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+      <nav class="seg" id="seg" data-face="0" aria-label="Recto ou verso">
+        <span class="seg__thumb" aria-hidden="true"></span>
+        <button type="button" class="seg__btn" aria-current="true">Recto</button>
+        <button type="button" class="seg__btn" aria-current="false">Verso</button>
+      </nav>
+    </div>
   </div>
-
-  <nav class="nav" id="nav" data-face="0" aria-label="Recto ou verso">
-    <span class="nav__thumb" aria-hidden="true"></span>
-    <button type="button" class="nav__btn" aria-current="true">Recto</button>
-    <button type="button" class="nav__btn" aria-current="false">Verso</button>
-  </nav>
 
   <!-- Écran d'entrée -->
   <main class="entry">
     <div class="entry__inner">
-      <img class="entry__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="300" height="203">
+      <img class="entry__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="320" height="217">
       <p class="entry__center">Libramont</p>
-      <button type="button" class="btn-card" id="openCard">Voir la carte</button>
+      <button type="button" class="btn-card" id="openCard">
+        Voir la carte
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
     </div>
   </main>
 

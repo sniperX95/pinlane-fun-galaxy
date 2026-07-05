@@ -1,0 +1,549 @@
+/* ===========================================================================
+   Fun Galaxy — carte digitale
+   Style : galactique sobre, premium, hôtellerie haut de gamme.
+   Bleu nuit très sombre + petites étoiles discrètes.
+   Accents violet #944292 / teal #67baac en fils très fins, jamais de néon.
+   =========================================================================== */
+
+/* ---------- Fonts (self-host) ---------- */
+@font-face {
+  font-family: "Anton";
+  src: url("./fonts/anton-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url("./fonts/montserrat-latin-600.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url("./fonts/montserrat-latin-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url("./fonts/montserrat-latin-800.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- Tokens ---------- */
+:root {
+  --bg-0: #05070f;          /* fond le plus sombre */
+  --bg-1: #0a0f21;          /* bleu nuit */
+  --bg-2: #101733;          /* halo central discret */
+  --ink: #f4f6fc;           /* texte principal */
+  --ink-soft: #b8c0d8;      /* texte secondaire */
+  --ink-faint: #8791ac;     /* texte très discret */
+  --violet: #944292;
+  --teal: #67baac;
+  --line: rgba(255, 255, 255, 0.14);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --glass: rgba(16, 22, 44, 0.62);
+  --z-stars: 0;
+  --z-content: 10;
+  --z-nebula: 30;
+  --z-ui: 40;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+
+/* ---------- Reset léger ---------- */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  font-family: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(140% 100% at 50% 8%, var(--bg-2) 0%, var(--bg-1) 42%, var(--bg-0) 100%);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+img { max-width: 100%; display: block; }
+button { font-family: inherit; }
+/* l'attribut hidden doit l'emporter sur les display: des composants */
+[hidden] { display: none !important; }
+
+/* ---------- Ciel étoilé ---------- */
+.stars {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: var(--z-stars);
+  pointer-events: none;
+  transform: scale(1);
+  transform-origin: 50% 42%;
+  transition: transform 900ms cubic-bezier(.22, .61, .36, 1);
+  will-change: transform, opacity;
+}
+/* respiration très lente et à peine perceptible */
+@media (prefers-reduced-motion: no-preference) {
+  .stars { animation: sky-breathe 14s ease-in-out infinite; }
+}
+@keyframes sky-breathe {
+  0%, 100% { opacity: .92; }
+  50%      { opacity: 1; }
+}
+
+/* ---------- Écran d'entrée ---------- */
+.entry {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-content);
+  display: grid;
+  place-items: center;
+  padding:
+    calc(var(--safe-t) + 6vh) calc(var(--safe-r) + 24px)
+    calc(var(--safe-b) + 6vh) calc(var(--safe-l) + 24px);
+  text-align: center;
+  transition: opacity 640ms ease, transform 720ms cubic-bezier(.22, .61, .36, 1);
+  will-change: opacity, transform;
+}
+.entry__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(22px, 5vh, 40px);
+  max-width: 460px;
+  width: 100%;
+}
+.entry__logo {
+  width: min(70vw, 300px);
+  height: auto;
+  filter: drop-shadow(0 8px 30px rgba(148, 66, 146, 0.14));
+  animation: rise-in 900ms cubic-bezier(.22, .61, .36, 1) both;
+}
+.entry__center {
+  margin: 0;
+  font-weight: 600;
+  font-size: clamp(13px, 3.4vw, 16px);
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-left: 0.42em; /* compense le letter-spacing pour centrer */
+  animation: rise-in 900ms cubic-bezier(.22, .61, .36, 1) both;
+  animation-delay: 90ms;
+}
+.entry__center::before,
+.entry__center::after {
+  content: "";
+  display: inline-block;
+  width: 26px;
+  height: 1px;
+  vertical-align: middle;
+  margin: 0 0.7em 0.18em;
+  background: linear-gradient(90deg, transparent, var(--line));
+}
+.entry__center::after { background: linear-gradient(90deg, var(--line), transparent); }
+
+/* Bouton pilule sobre — fin liseré, aucun néon */
+.btn-card {
+  --btn-line: rgba(255, 255, 255, 0.22);
+  appearance: none;
+  border: 1px solid var(--btn-line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 15px 30px;
+  min-height: 52px;
+  border-radius: 999px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .35s ease, background-color .35s ease,
+              transform .35s cubic-bezier(.22, .61, .36, 1), opacity .4s ease;
+  animation: rise-in 900ms cubic-bezier(.22, .61, .36, 1) both;
+  animation-delay: 220ms;
+}
+.btn-card::before { /* fil d'accent extrêmement discret */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg,
+      rgba(103, 186, 172, 0.0) 20%,
+      rgba(103, 186, 172, 0.5) 50%,
+      rgba(148, 66, 146, 0.5) 62%,
+      rgba(148, 66, 146, 0.0) 88%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity .4s ease;
+}
+.btn-card:hover,
+.btn-card:focus-visible {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+.btn-card:hover::before,
+.btn-card:focus-visible::before { opacity: 1; }
+.btn-card:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.btn-card:active { transform: translateY(0) scale(.985); }
+
+/* ---------- Transition galactique (voile de nébuleuse) ---------- */
+.nebula {
+  position: fixed;
+  inset: -30% -20%;
+  z-index: var(--z-nebula);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-60%) scale(1.1);
+  background:
+    radial-gradient(42% 60% at 32% 50%, rgba(148, 66, 146, 0.26), transparent 70%),
+    radial-gradient(38% 55% at 60% 46%, rgba(103, 186, 172, 0.20), transparent 72%);
+  filter: blur(6px);
+  will-change: transform, opacity;
+}
+
+/* États de transition, pilotés par le JS */
+body.is-leaving .entry {
+  opacity: 0;
+  transform: scale(1.05);
+  pointer-events: none;
+}
+body.is-leaving .stars { transform: scale(1.14); }
+body.is-leaving .nebula { animation: nebula-sweep 860ms ease-in-out forwards; }
+
+@keyframes nebula-sweep {
+  0%   { opacity: 0;   transform: translateX(-60%) scale(1.10); }
+  45%  { opacity: 1; }
+  100% { opacity: 0;   transform: translateX(55%)  scale(1.18); }
+}
+
+/* Retour vers l'entrée */
+body.is-returning .stars { transform: scale(1); }
+
+/* ---------- Visionneuse de carte ---------- */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-content);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 560ms ease, visibility 560ms ease;
+}
+.viewer.is-open { opacity: 1; visibility: visible; }
+
+/* Barre haute : logo + retour */
+.viewer__topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding:
+    calc(var(--safe-t) + 12px) calc(var(--safe-r) + 14px)
+    12px calc(var(--safe-l) + 14px);
+  background: linear-gradient(180deg, rgba(5, 7, 15, 0.66), rgba(5, 7, 15, 0));
+  pointer-events: none;
+}
+.viewer__topbar > * { pointer-events: auto; }
+.viewer__logo { height: 30px; width: auto; opacity: 0.92; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color .3s ease, background-color .3s ease, transform .2s ease;
+}
+.icon-btn svg { width: 17px; height: 17px; flex: none; }
+.icon-btn:hover,
+.icon-btn:focus-visible { border-color: rgba(255,255,255,0.34); background: rgba(22,30,58,0.8); }
+.icon-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.icon-btn:active { transform: scale(.96); }
+
+/* Scène de zoom/pan */
+.viewer__stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;               /* on gère nous-mêmes les gestes */
+  cursor: grab;
+  contain: layout paint;
+}
+.viewer__stage.is-grabbing { cursor: grabbing; }
+
+.viewer__slide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transform: translate3d(0, 0, 0) scale(1);
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.viewer__img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  border-radius: 6px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  transition: opacity 320ms ease;
+}
+.viewer__img.is-swapping { opacity: 0; }
+
+/* Barre basse : onglets recto/verso + reset */
+.viewer__controls {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding:
+    16px calc(var(--safe-r) + 16px)
+    calc(var(--safe-b) + 16px) calc(var(--safe-l) + 16px);
+  background: linear-gradient(0deg, rgba(5, 7, 15, 0.72), rgba(5, 7, 15, 0));
+  pointer-events: none;
+}
+.viewer__controls > * { pointer-events: auto; }
+
+/* Segmented control recto / verso */
+.faces {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(12px);
+          backdrop-filter: blur(12px);
+  position: relative;
+}
+.faces__thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(103,186,172,0.22), rgba(148,66,146,0.22));
+  border: 1px solid rgba(255,255,255,0.12);
+  transition: transform 340ms cubic-bezier(.22, .61, .36, 1);
+  will-change: transform;
+}
+.faces[data-face="1"] .faces__thumb { transform: translateX(100%); }
+.faces__btn {
+  position: relative;
+  z-index: 1;
+  min-width: 96px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color .3s ease;
+}
+.faces__btn[aria-selected="true"] { color: var(--ink); }
+.faces__btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 999px; }
+
+.reset-btn { display: none; }
+.reset-btn.is-visible { display: inline-flex; }
+
+/* Indice discret (double-tap pour zoomer) */
+.viewer__hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-b) + 88px);
+  transform: translateX(-50%);
+  z-index: var(--z-ui);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: rgba(10, 15, 33, 0.5);
+  -webkit-backdrop-filter: blur(8px);
+          backdrop-filter: blur(8px);
+  color: var(--ink-faint);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+.viewer__hint.is-visible { opacity: 1; }
+.viewer__hint svg { width: 15px; height: 15px; opacity: .8; }
+
+/* ---------- Animations ---------- */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .stars { animation: none; transition: none; }
+  .entry, .entry__logo, .entry__center, .btn-card { animation: none; transition: opacity .3s ease; }
+  body.is-leaving .stars,
+  body.is-returning .stars { transform: none; }
+  body.is-leaving .nebula { animation: none; opacity: 0; }
+  body.is-leaving .entry { transform: none; }
+  .faces__thumb { transition: none; }
+  .viewer__slide { transition: none; }
+}
+
+/* ============================ Page QR (impression) ======================== */
+.qr-page {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-content);
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding:
+    calc(var(--safe-t) + 20px) calc(var(--safe-r) + 20px)
+    calc(var(--safe-b) + 20px) calc(var(--safe-l) + 20px);
+}
+.qr-card {
+  width: min(92vw, 420px);
+  padding: 40px 34px 34px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(19, 26, 52, 0.72), rgba(9, 13, 28, 0.72));
+  -webkit-backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+.qr-card__logo { width: min(58vw, 230px); height: auto; }
+.qr-card__center {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-left: 0.4em;
+}
+.qr-card__lead {
+  margin: 0;
+  font-weight: 700;
+  font-size: clamp(18px, 5vw, 22px);
+  line-height: 1.35;
+  color: var(--ink);
+}
+.qr-card__sub {
+  margin: -8px 0 0;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+}
+.qr-frame {
+  padding: 18px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+}
+.qr-frame img,
+.qr-frame svg {
+  display: block;
+  width: min(64vw, 260px);
+  height: auto;
+}
+.qr-card__hint {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.qr-card__url {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--teal);
+  word-break: break-all;
+}
+
+/* Impression : fond blanc, QR noir, économe en encre */
+@media print {
+  @page { size: A4 portrait; margin: 16mm; }
+  html, body {
+    height: auto;
+    overflow: visible;
+    background: #ffffff !important;
+    color: #111 !important;
+  }
+  .stars, .nebula { display: none !important; }
+  .qr-page { position: static; display: block; padding: 0; }
+  .qr-card {
+    width: 100%;
+    max-width: 150mm;
+    margin: 0 auto;
+    border: 1px solid #d8d8d8;
+    background: #ffffff !important;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+    color: #111;
+    break-inside: avoid;
+  }
+  .qr-card__logo { filter: none; }
+  /* Le logo Fun Galaxy est blanc : sur fond blanc on l'assombrit proprement */
+  .qr-card__logo { -webkit-filter: invert(1) brightness(0.15); filter: invert(1) brightness(0.15); }
+  .qr-card__center { color: #333; }
+  .qr-card__lead { color: #111; }
+  .qr-card__sub, .qr-card__hint { color: #555; }
+  .qr-frame { box-shadow: none; padding: 8px; }
+  .qr-card__url { color: #333; }
+}

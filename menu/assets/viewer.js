@@ -28,11 +28,16 @@
   var Space = (function () {
     if (!canvas) return null;
     var ctx = canvas.getContext('2d');
-    var W = 0, H = 0, DPR = 1, cx = 0, cy = 0, diag = 1;
+    var W = 0, H = 0, DPR = 1, cx = 0, cy = 0, diag = 1, bgGrad = null;
     var stars = [], nebulae = [], shooters = [];
     var running = false, rafId = 0, last = 0, nextShoot = 1200;
     var warp = 0, warpTarget = 0;      // 0 = calme, 1 = hyperespace
-    var STAR_N = 150;
+    // Budget adaptatif : tél. peu puissants (<=4 cœurs / <=4 Go) => densité un cran plus basse (dégradation gracieuse, look quasi identique)
+    var lowPower = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+                   (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    var DPR_CAP = lowPower ? 1.35 : 1.5;   // mobile : jamais au-delà de 1.5 device px (2 = trop lourd)
+    var STAR_N = lowPower ? 66 : 90;       // (était 150) -40% env., densité visuellement proche
+    var MAX_PARTS = lowPower ? 190 : 240;  // plafond dur de particules de désintégration
     var parts = [];                    // particules de désintégration du logo
     var logoImg = new Image(), logoReady = false, logoPts = null;
     (function () {
@@ -59,11 +64,16 @@
     function rand(a, b) { return a + Math.random() * (b - a); }
 
     function resize() {
-      DPR = Math.min(window.devicePixelRatio || 1, 2);
+      DPR = Math.min(window.devicePixelRatio || 1, DPR_CAP);
       W = canvas.clientWidth; H = canvas.clientHeight;
       canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       cx = W / 2; cy = H * 0.44; diag = Math.sqrt(W * W + H * H);
+      // Dégradé de fond mis en cache : dépend seulement de cx/cy/diag (constants entre resize) -> évite un createRadialGradient par frame
+      bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, diag * 0.7);
+      bgGrad.addColorStop(0, '#0b0b1e');
+      bgGrad.addColorStop(0.5, '#070713');
+      bgGrad.addColorStop(1, '#04040c');
       buildStars(); buildNebulae();
     }
 
@@ -128,12 +138,8 @@
       last = t;
       warp += (warpTarget - warp) * Math.min(0.07 * dt, 1);
 
-      // fond dégradé (base opaque)
-      var bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, diag * 0.7);
-      bg.addColorStop(0, '#0b0b1e');
-      bg.addColorStop(0.5, '#070713');
-      bg.addColorStop(1, '#04040c');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      // fond dégradé (base opaque) — gradient mis en cache
+      ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
 
       drawNebulae();
 
@@ -220,10 +226,8 @@
     }
 
     function drawStatic() {
-      // rendu unique (mouvement réduit / onglet caché)
-      var bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, diag * 0.7);
-      bg.addColorStop(0, '#0b0b1e'); bg.addColorStop(0.5, '#070713'); bg.addColorStop(1, '#04040c');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      // rendu unique (mouvement réduit / onglet caché) — gradient mis en cache
+      ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
       drawNebulae();
       ctx.globalCompositeOperation = 'lighter';
       for (var i = 0; i < stars.length; i++) {
@@ -238,7 +242,9 @@
       // éclate le logo en particules à sa silhouette (coords écran = coords canvas)
       if (!logoReady || !logoPts || !rect) return;
       var lcx = rect.left + rect.width / 2, lcy = rect.top + rect.height / 2;
-      for (var i = 0; i < logoPts.length; i++) {
+      // plafond dur : on échantillonne les points du logo par pas pour ne jamais dépasser MAX_PARTS (répartition spatiale conservée)
+      var stride = Math.max(1, Math.ceil(logoPts.length / MAX_PARTS));
+      for (var i = 0; i < logoPts.length; i += stride) {
         var p = logoPts[i];
         var px = rect.left + p.u * rect.width, py = rect.top + p.v * rect.height;
         var ox = px - lcx, oy = py - lcy, od = Math.hypot(ox, oy) || 1;   // direction radiale (explosion vers l'extérieur)

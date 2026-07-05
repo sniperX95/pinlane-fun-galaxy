@@ -69,6 +69,7 @@ body.pre .viewer{opacity:0;pointer-events:none}
   padding:1px;
   background:linear-gradient(150deg,rgba(103,186,172,.55),rgba(148,66,146,.35) 45%,transparent 70%);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   -webkit-mask-composite:xor;mask-composite:exclude;
   opacity:.7;
 }
@@ -104,17 +105,18 @@ body.pre .viewer{opacity:0;pointer-events:none}
 .seg__btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 
 /* ============ PLEIN ÉCRAN CARTE (tap sur la carte) ============ */
-/* Overlay edge-to-edge : la carte la plus grande possible (contain), zoom natif (pincer). */
+/* Colonne : [zone haute réservée au ✕] / [image flex:1 contain] / [barre Recto/Verso dans le flux].
+   La carte tient ENTIÈREMENT dans l'espace restant -> la barre ne chevauche jamais la carte. Zoom natif (pincer). */
 .fs{
-  position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
-  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 56px) 0 calc(env(safe-area-inset-bottom) + 6px);
   background:rgba(3,4,10,.94);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
   opacity:0;transition:opacity .3s ease;
 }
 .fs[hidden]{display:none}
 .fs.is-open{opacity:1}
 .fs__img{
-  max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;
+  flex:1 1 auto;min-height:0;width:100%;max-width:100%;object-fit:contain;display:block;
   cursor:zoom-out;
   transform:scale(.965);transition:transform .32s cubic-bezier(.2,.7,.2,1);
 }
@@ -129,8 +131,7 @@ body.pre .viewer{opacity:0;pointer-events:none}
 }
 .fs__close:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 .fs__seg{
-  position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));
-  transform:translateX(-50%);z-index:2;width:min(300px,72vw);
+  flex:none;align-self:center;z-index:2;width:min(300px,72vw);margin-top:14px;
 }
 
 /* ============ ÉCRAN D'ENTRÉE ============ */
@@ -160,10 +161,12 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
 }
 .entry__shine{
   position:absolute;inset:0;pointer-events:none;opacity:0;
+  /* Reflet vitré masqué à la silhouette du logo. Préfixes -webkit-mask* OBLIGATOIRES pour iOS Safari (sinon le mask disparaît). */
   -webkit-mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
           mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
   background:linear-gradient(100deg,transparent 36%,rgba(255,255,255,.30) 44%,rgba(255,255,255,1) 50%,rgba(255,255,255,.30) 56%,transparent 64%);
   background-size:280% 100%;background-position:135% 0;
+  will-change:background-position,opacity;   /* balayage composité, pas de reflow */
   animation:idleShine 8s ease-in-out 2.5s infinite;
 }
 

@@ -1,115 +1,208 @@
-/* Fun Galaxy — carte digitale. Une page à la fois, barre de contrôle SOUS la carte, zoom natif. */
+/* Fun Galaxy — carte digitale premium & cinématique.
+   Fond spatial vivant en <canvas>, transition Netflix-like, carte encadrée. Zoom NATIF. */
 @font-face{font-family:'Anton';src:url('./fonts/anton-latin.woff2') format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-600.woff2') format('woff2');font-weight:600;font-display:swap}
 @font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-700.woff2') format('woff2');font-weight:700;font-display:swap}
 @font-face{font-family:'Montserrat';src:url('./fonts/montserrat-latin-800.woff2') format('woff2');font-weight:800;font-display:swap}
 
+:root{
+  --bg:#05060d;
+  --teal:#67baac;
+  --violet:#944292;
+  --ink:#f3f4fb;
+  --line:rgba(255,255,255,.10);
+}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}
 body{
-  font-family:'Montserrat',system-ui,sans-serif;color:#f3f4fb;background:#05060d;
+  font-family:'Montserrat',system-ui,sans-serif;color:var(--ink);background:var(--bg);
   -webkit-font-smoothing:antialiased;overscroll-behavior:none;
 }
 
-/* ============ VISIONNEUSE : carte (haut) + barre de contrôle (bas) ============ */
-.viewer{position:fixed;inset:0;z-index:1;display:flex;flex-direction:column;background:#05060d}
+/* ============ FOND SPATIAL PARTAGÉ (canvas) ============ */
+.space{
+  position:fixed;inset:0;z-index:0;display:block;width:100%;height:100%;
+  background:var(--bg);
+}
+
+/* ============ VISIONNEUSE : en-tête + carte encadrée + barre ============ */
+.viewer{
+  position:fixed;inset:0;z-index:1;display:flex;flex-direction:column;background:transparent;
+  opacity:1;transition:opacity .6s ease;
+}
+body.pre .viewer{opacity:0;pointer-events:none}
+
+/* En-tête soigné (logo + centre), avec espace au-dessus (safe-area iOS) */
+.card-head{
+  flex:none;display:flex;flex-direction:column;align-items:center;gap:9px;
+  padding:calc(20px + env(safe-area-inset-top)) 18px 14px;
+  text-align:center;
+}
+.card-head__logo{
+  width:min(140px,42vw);height:auto;display:block;
+  filter:drop-shadow(0 6px 20px rgba(148,66,146,.42));
+}
+.card-head__center{
+  position:relative;font-weight:700;font-size:11px;letter-spacing:.42em;
+  text-transform:uppercase;color:#d6d8ec;padding-bottom:9px;
+}
+.card-head__center::after{
+  content:'';position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+  width:52px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--teal),var(--violet),transparent);
+}
+
+/* Zone carte : scroll interne, carte centrée dans un cadre élégant */
 .stage{
   flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;
   display:flex;justify-content:center;align-items:flex-start;
-  background:radial-gradient(120% 60% at 50% 0%, #0c0f1e, #05060d 70%);
+  padding:4px 16px 18px;
+}
+.frame{
+  position:relative;width:100%;max-width:520px;border-radius:20px;overflow:hidden;
+  background:#0a0c16;border:1px solid rgba(255,255,255,.12);
+  box-shadow:
+    0 24px 60px rgba(0,0,0,.55),
+    0 2px 0 rgba(255,255,255,.05) inset,
+    0 0 0 1px rgba(103,186,172,.06);
+}
+.frame::after{ /* liseré dégradé subtil */
+  content:'';position:absolute;inset:0;border-radius:20px;pointer-events:none;
+  padding:1px;
+  background:linear-gradient(150deg,rgba(103,186,172,.55),rgba(148,66,146,.35) 45%,transparent 70%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+  opacity:.7;
 }
 .page{display:block;width:100%;height:auto}
+.page--fx{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  opacity:0;transition:opacity .5s ease;will-change:opacity;
+}
 
-/* Barre de contrôle SOUS la carte (jamais par-dessus) */
+/* Barre de contrôle SOUS la carte (segment Recto/Verso) */
 .bar{
   flex:none;display:flex;align-items:center;justify-content:center;
-  padding:12px 14px calc(12px + env(safe-area-inset-bottom));
-  background:#0a0c16;border-top:1px solid rgba(255,255,255,.09);
-  box-shadow:0 -8px 24px rgba(0,0,0,.4);
+  padding:12px 14px calc(14px + env(safe-area-inset-bottom));
 }
-.back{
-  flex:none;width:46px;height:46px;display:flex;align-items:center;justify-content:center;
-  color:#dfe1f0;text-decoration:none;background:rgba(255,255,255,.05);
-  border:1px solid rgba(255,255,255,.12);border-radius:13px;
-  transition:background .2s ease,transform .12s ease;
-}
-.back svg{width:20px;height:20px}
-.back:active{transform:scale(.93)}
-.back:hover{background:rgba(255,255,255,.1)}
-
 .seg{
   position:relative;flex:none;width:min(340px,86vw);display:flex;padding:4px;height:48px;
-  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:13px;
+  background:rgba(16,18,30,.72);border:1px solid rgba(255,255,255,.12);border-radius:14px;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:0 10px 30px rgba(0,0,0,.4);
 }
 .seg__thumb{
   position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);
-  border-radius:10px;background:#f4f5fb;box-shadow:0 2px 8px rgba(0,0,0,.3);
-  transition:transform .28s cubic-bezier(.34,.01,.2,1);
+  border-radius:11px;background:#f4f5fb;box-shadow:0 2px 10px rgba(0,0,0,.35);
+  transition:transform .3s cubic-bezier(.34,.01,.2,1);
 }
 .seg[data-face="1"] .seg__thumb{transform:translateX(100%)}
 .seg__btn{
   position:relative;z-index:1;flex:1;appearance:none;border:0;background:transparent;
   font-family:'Montserrat';font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase;
-  color:#c7cadf;border-radius:10px;cursor:pointer;transition:color .24s ease;
+  color:#c7cadf;border-radius:11px;cursor:pointer;transition:color .24s ease;min-height:40px;
 }
 .seg__btn[aria-current="true"]{color:#0a0b14}
-.seg__btn:focus-visible{outline:2px solid #67baac;outline-offset:2px}
+.seg__btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 
-body.pre .viewer{opacity:0;pointer-events:none}
-
-/* ============ ÉCRAN D'ENTRÉE — thème galactique plus riche ============ */
+/* ============ ÉCRAN D'ENTRÉE ============ */
 .entry{
   position:fixed;inset:0;z-index:100;overflow:hidden;
   display:flex;align-items:center;justify-content:center;
   padding:34px 26px calc(46px + env(safe-area-inset-bottom));
-  background:
-    radial-gradient(90% 60% at 50% 18%, #16112e 0%, #0a0a1c 42%, #04040c 100%);
   transition:opacity .55s ease;
+  /* vignette légère par-dessus le canvas, laisse voir les étoiles au centre */
+  background:radial-gradient(120% 90% at 50% 42%, transparent 40%, rgba(4,4,12,.55) 100%);
 }
 body:not(.pre) .entry{opacity:0;pointer-events:none}
-/* Bande de galaxie (nébuleuse diagonale) */
-.entry::before{
-  content:'';position:absolute;inset:-20% -10%;pointer-events:none;
-  background:
-    radial-gradient(38% 26% at 70% 30%, rgba(148,66,146,.34), transparent 70%),
-    radial-gradient(46% 30% at 28% 66%, rgba(64,150,150,.22), transparent 72%),
-    radial-gradient(30% 20% at 52% 48%, rgba(120,90,190,.20), transparent 70%);
-  filter:blur(30px);transform:rotate(-16deg);opacity:.9;
-}
-/* Étoiles multi-couches */
-.entry::after{
-  content:'';position:absolute;inset:0;pointer-events:none;
-  background-image:
-    radial-gradient(1.6px 1.6px at 12% 22%, #fff, transparent),
-    radial-gradient(1.4px 1.4px at 82% 16%, rgba(210,225,255,.95), transparent),
-    radial-gradient(1.5px 1.5px at 68% 74%, #fff, transparent),
-    radial-gradient(1.3px 1.3px at 24% 82%, rgba(200,240,240,.9), transparent),
-    radial-gradient(2px 2px at 46% 30%, rgba(255,255,255,.95), transparent),
-    radial-gradient(1px 1px at 34% 46%, rgba(255,255,255,.7), transparent),
-    radial-gradient(1px 1px at 60% 40%, rgba(210,200,255,.7), transparent),
-    radial-gradient(1px 1px at 90% 62%, rgba(255,255,255,.7), transparent),
-    radial-gradient(.9px .9px at 16% 60%, rgba(255,255,255,.6), transparent),
-    radial-gradient(1.2px 1.2px at 78% 88%, rgba(255,255,255,.7), transparent);
-}
 .entry__inner{position:relative;z-index:2;text-align:center;max-width:460px;width:100%}
-.entry__logo{width:min(80%,320px);height:auto;display:block;margin:0 auto 28px;
-  filter:drop-shadow(0 10px 40px rgba(120,70,150,.5))}
-.entry__center{margin:0 0 34px;font-weight:700;font-size:12.5px;letter-spacing:.5em;text-transform:uppercase;color:#c9cbe0}
-.entry__center::before,.entry__center::after{content:'';display:inline-block;width:22px;height:1px;vertical-align:middle;margin:0 12px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5))}
+
+/* Logo + halo + shine (masqué à la silhouette) */
+.entry__logo-wrap{position:relative;display:inline-block;margin:0 auto 30px;isolation:isolate}
+.entry__halo{
+  position:absolute;left:50%;top:50%;width:150%;height:150%;
+  transform:translate(-50%,-50%);z-index:-1;pointer-events:none;
+  background:radial-gradient(circle at 50% 50%,rgba(148,66,146,.42),rgba(103,186,172,.14) 45%,transparent 68%);
+  filter:blur(6px);opacity:.85;animation:halo 6s ease-in-out infinite;
+}
+.entry__logo{
+  position:relative;width:min(80%,320px);height:auto;display:block;margin:0 auto;
+  filter:drop-shadow(0 12px 40px rgba(120,70,150,.45));
+  animation:breathe 6s ease-in-out infinite;transform-origin:center;
+}
+.entry__shine{
+  position:absolute;inset:0;pointer-events:none;opacity:0;
+  -webkit-mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
+          mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
+  background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.92) 50%,transparent 58%);
+  background-size:300% 100%;background-position:130% 0;
+  animation:idleShine 8s ease-in-out 2.5s infinite;
+}
+
+.entry__center{
+  margin:0 0 36px;font-weight:700;font-size:12.5px;letter-spacing:.5em;
+  text-transform:uppercase;color:#c9cbe0;transition:opacity .25s ease,transform .25s ease;
+}
+.entry__center::before,.entry__center::after{
+  content:'';display:inline-block;width:22px;height:1px;vertical-align:middle;margin:0 12px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5));
+}
 .entry__center::after{background:linear-gradient(90deg,rgba(255,255,255,.5),transparent)}
 
-/* Bouton d'entrée — plus affirmé, moins "générique" */
+/* Bouton "Voir la carte" — soigné, shimmer au repos, soulèvement au survol */
 .btn-card{
+  position:relative;overflow:hidden;isolation:isolate;
   display:inline-flex;align-items:center;gap:12px;
   font-family:'Montserrat';font-weight:800;font-size:14px;letter-spacing:.14em;text-transform:uppercase;
   color:#06121a;background:linear-gradient(135deg,#7fded0,#67baac 55%,#5aa79b);
-  border:0;border-radius:14px;padding:17px 34px;min-height:56px;cursor:pointer;
-  box-shadow:0 10px 30px rgba(64,150,150,.28), inset 0 1px 0 rgba(255,255,255,.4);
-  transition:transform .14s ease,box-shadow .2s ease,filter .2s ease;
+  border:0;border-radius:15px;padding:18px 34px;min-height:56px;min-width:44px;cursor:pointer;
+  box-shadow:0 12px 30px rgba(64,150,150,.30),0 0 0 rgba(103,186,172,.5),inset 0 1px 0 rgba(255,255,255,.45);
+  transition:transform .16s ease,box-shadow .24s ease,filter .2s ease,opacity .25s ease;
+  animation:btnGlow 3.4s ease-in-out infinite;
 }
-.btn-card svg{width:18px;height:18px}
-.btn-card:hover{filter:brightness(1.05);box-shadow:0 14px 38px rgba(64,150,150,.36)}
-.btn-card:active{transform:translateY(1px) scale(.98)}
+.btn-card::before{ /* shimmer qui traverse au repos */
+  content:'';position:absolute;top:0;left:0;width:60%;height:100%;pointer-events:none;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.55),transparent);
+  transform:translateX(-180%) skewX(-18deg);
+  animation:btnShimmer 4.6s ease-in-out 1.2s infinite;
+}
+.btn-card svg{width:18px;height:18px;position:relative}
+.btn-card:hover{filter:brightness(1.05);transform:translateY(-2px);box-shadow:0 18px 40px rgba(64,150,150,.42),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-card:active{transform:translateY(0) scale(.98)}
 .btn-card:focus-visible{outline:2px solid #fff;outline-offset:3px}
 
-@media (prefers-reduced-motion:reduce){.entry,.btn-card,.seg__thumb,.seg__btn,.back{transition:none}}
+/* ============ TRANSITION CINÉMATIQUE ============ */
+/* étape 1 : nom + bouton s'effacent vite */
+body.go .entry__center,body.go .btn-card{opacity:0;transform:translateY(10px) scale(.96);pointer-events:none}
+/* étape 2 : le logo joue son intro (grossit) + shine reveal + halo bloom */
+body.go .entry__logo{animation:reveal 1s cubic-bezier(.2,.7,.2,1) forwards}
+body.go .entry__halo{animation:bloom 1s ease forwards}
+body.go .entry__shine{animation:sweep .95s ease-in-out forwards}
+/* étape 3 : l'entrée se fond (le star-warp est géré par le canvas) */
+body.warp .entry{opacity:0}
+
+/* Flash lumineux au débouché */
+.flash-el{
+  position:fixed;inset:0;z-index:120;pointer-events:none;opacity:0;
+  transition:opacity .4s ease;
+  background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.92),rgba(206,214,255,.30) 38%,transparent 68%);
+}
+body.flash .flash-el{opacity:1}
+
+/* ============ KEYFRAMES ============ */
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+@keyframes halo{0%,100%{opacity:.7;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.06)}}
+@keyframes idleShine{0%,72%{background-position:130% 0;opacity:0}80%{opacity:.5}88%{opacity:.5}100%{background-position:-40% 0;opacity:0}}
+@keyframes btnGlow{0%,100%{box-shadow:0 12px 30px rgba(64,150,150,.30),0 0 0 0 rgba(127,222,208,.0),inset 0 1px 0 rgba(255,255,255,.45)}50%{box-shadow:0 12px 34px rgba(64,150,150,.40),0 0 26px 2px rgba(127,222,208,.22),inset 0 1px 0 rgba(255,255,255,.5)}}
+@keyframes btnShimmer{0%{transform:translateX(-180%) skewX(-18deg)}45%,100%{transform:translateX(320%) skewX(-18deg)}}
+@keyframes reveal{0%{transform:scale(1)}55%{transform:scale(1.16)}100%{transform:scale(1.26)}}
+@keyframes bloom{0%{opacity:.85;transform:translate(-50%,-50%) scale(1)}60%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}100%{opacity:1;transform:translate(-50%,-50%) scale(1.9)}}
+@keyframes sweep{0%{background-position:130% 0;opacity:0}22%{opacity:.95}80%{opacity:.95}100%{background-position:-50% 0;opacity:0}}
+
+/* ============ ACCESSIBILITÉ / MOUVEMENT RÉDUIT ============ */
+@media (prefers-reduced-motion:reduce){
+  .entry__logo,.entry__halo,.entry__shine,.btn-card,.btn-card::before{animation:none!important}
+  .entry,.viewer,.seg__thumb,.seg__btn,.page--fx{transition-duration:.2s}
+  body.go .entry__logo,body.go .entry__halo,body.go .entry__shine{animation:none!important}
+  .flash-el{display:none}
+}

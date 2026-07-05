@@ -8,17 +8,28 @@
   <meta name="description" content="La carte bar & snacks de Fun Galaxy Gembloux.">
   <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
   <link rel="preload" href="../assets/fonts/montserrat-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/logo-fun-galaxy.svg" as="image">
   <link rel="preload" href="./carte-1.jpg" as="image">
   <link rel="stylesheet" href="../assets/viewer.css">
 </head>
 <body class="pre">
-  <!-- Visionneuse : la carte (une page à la fois), barre de contrôle en dessous -->
-  <div class="viewer">
+  <!-- Fond spatial vivant (partagé entrée + carte) -->
+  <canvas class="space" id="space" aria-hidden="true"></canvas>
+
+  <!-- Visionneuse : en-tête + carte encadrée + barre de contrôle -->
+  <div class="viewer" id="viewer">
+    <header class="card-head">
+      <img class="card-head__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="140" height="95">
+      <span class="card-head__center">Gembloux</span>
+    </header>
     <div class="stage" id="stage">
-      <img class="page" id="cardImg"
-           src="./carte-1.jpg" data-recto="./carte-1.jpg" data-verso="./carte-2.jpg"
-           data-alt-base="Carte Fun Galaxy Gembloux" alt="Carte Fun Galaxy Gembloux — recto"
-           width="2645" height="3742" decoding="async">
+      <div class="frame">
+        <img class="page" id="cardImg"
+             src="./carte-1.jpg" data-recto="./carte-1.jpg" data-verso="./carte-2.jpg"
+             data-alt-base="Carte Fun Galaxy Gembloux" alt="Carte Fun Galaxy Gembloux — recto"
+             width="2645" height="3742" decoding="async">
+        <img class="page page--fx" id="cardImgFx" alt="" aria-hidden="true" decoding="async">
+      </div>
     </div>
     <div class="bar">
       <nav class="seg" id="seg" data-face="0" aria-label="Recto ou verso">
@@ -30,9 +41,13 @@
   </div>
 
   <!-- Écran d'entrée -->
-  <main class="entry">
+  <main class="entry" id="entry">
     <div class="entry__inner">
-      <img class="entry__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="320" height="217">
+      <div class="entry__logo-wrap">
+        <span class="entry__halo" aria-hidden="true"></span>
+        <img class="entry__logo" src="../assets/logo-fun-galaxy.svg" alt="Fun Galaxy" width="320" height="217">
+        <span class="entry__shine" aria-hidden="true"></span>
+      </div>
       <p class="entry__center">Gembloux</p>
       <button type="button" class="btn-card" id="openCard">
         Voir la carte
@@ -40,6 +55,9 @@
       </button>
     </div>
   </main>
+
+  <!-- Flash cinématique -->
+  <div class="flash-el" aria-hidden="true"></div>
 
   <script src="../assets/viewer.js"></script>
 </body>

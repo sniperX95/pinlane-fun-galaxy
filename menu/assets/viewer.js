@@ -33,6 +33,28 @@
     var running = false, rafId = 0, last = 0, nextShoot = 1200;
     var warp = 0, warpTarget = 0;      // 0 = calme, 1 = hyperespace
     var STAR_N = 150;
+    var parts = [];                    // particules de désintégration du logo
+    var logoImg = new Image(), logoReady = false, logoPts = null;
+    (function () {
+      var el = document.querySelector('.entry__logo');
+      if (!el) return;
+      logoImg.onload = function () {
+        try {
+          var ow = 100, ratio = (logoImg.naturalHeight / logoImg.naturalWidth) || (217 / 320);
+          var oh = Math.max(1, Math.round(ow * ratio));
+          var oc = document.createElement('canvas'); oc.width = ow; oc.height = oh;
+          var octx = oc.getContext('2d');
+          octx.drawImage(logoImg, 0, 0, ow, oh);
+          var d = octx.getImageData(0, 0, ow, oh).data, pts = [];
+          for (var y = 0; y < oh; y += 2) for (var x = 0; x < ow; x += 2) {
+            var idx = (y * ow + x) * 4;
+            if (d[idx + 3] > 45) pts.push({ u: x / ow, v: y / oh, r: d[idx], g: d[idx + 1], b: d[idx + 2] });
+          }
+          logoPts = pts; logoReady = pts.length > 0;
+        } catch (e) { logoReady = false; }
+      };
+      logoImg.src = el.currentSrc || el.src;
+    })();
 
     function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -169,6 +191,26 @@
         ctx.fillStyle = 'rgba(255,255,255,' + (0.9 * fade) + ')';
         ctx.beginPath(); ctx.arc(sh.x, sh.y, 1.6, 0, 6.283); ctx.fill();
       }
+
+      // particules de désintégration du logo -> aspirées dans le star-warp
+      for (var pk = parts.length - 1; pk >= 0; pk--) {
+        var pp = parts[pk];
+        if (pp.delay > 0) { pp.delay -= dt; continue; }   // dissolution progressive (gauche -> droite)
+        pp.life += dt;
+        var pdx = pp.x - cx, pdy = pp.y - cy;
+        var pex = (0.045 + 0.16 * warp) * dt;             // expansion radiale (puff puis star-warp)
+        var pnx = pp.x + pdx * pex + pp.vx * dt;
+        var pny = pp.y + pdy * pex + pp.vy * dt;
+        var pf = 1 - pp.life / pp.max;
+        if (pf <= 0 || pnx < -60 || pnx > W + 60 || pny < -60 || pny > H + 60) { parts.splice(pk, 1); continue; }
+        var pa = Math.min(pf * (0.85 + warp * 0.4), 1);
+        ctx.strokeStyle = 'rgba(' + pp.col[0] + ',' + pp.col[1] + ',' + pp.col[2] + ',' + pa + ')';
+        ctx.lineWidth = 1 + warp * 0.8;
+        ctx.beginPath(); ctx.moveTo(pp.x, pp.y); ctx.lineTo(pnx, pny); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,' + (pa * 0.7) + ')';   // petite tête brillante
+        ctx.fillRect(pnx - 0.6, pny - 0.6, 1.2, 1.2);
+        pp.x = pnx; pp.y = pny;
+      }
       ctx.globalCompositeOperation = 'source-over';
 
       // avancer les phases de nébuleuses
@@ -192,6 +234,26 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    function disintegrate(rect) {
+      // éclate le logo en particules à sa silhouette (coords écran = coords canvas)
+      if (!logoReady || !logoPts || !rect) return;
+      var lcx = rect.left + rect.width / 2, lcy = rect.top + rect.height / 2;
+      for (var i = 0; i < logoPts.length; i++) {
+        var p = logoPts[i];
+        var px = rect.left + p.u * rect.width, py = rect.top + p.v * rect.height;
+        var ox = px - lcx, oy = py - lcy, od = Math.hypot(ox, oy) || 1;   // direction radiale (explosion vers l'extérieur)
+        parts.push({
+          x: px, y: py,
+          vx: ox / od * rand(0.7, 1.8) + rand(-0.35, 0.35),
+          vy: oy / od * rand(0.7, 1.8) + rand(-0.35, 0.35),
+          col: [p.r, p.g, p.b],
+          life: 0, max: rand(52, 88),
+          delay: p.u * 7 + rand(0, 4)                // balayage de dissolution gauche -> droite
+        });
+      }
+    }
+    function resetFx() { parts.length = 0; }
+
     function start() {
       if (running) return;
       running = true; last = 0; rafId = requestAnimationFrame(frame);
@@ -213,7 +275,8 @@
 
     return {
       warpTo: function (v) { warpTarget = v; },
-      start: start, stop: stop
+      start: start, stop: stop,
+      disintegrate: disintegrate, reset: resetFx
     };
   })();
 
@@ -333,26 +396,33 @@
       body.classList.remove('pre');
       return;
     }
-    body.classList.add('go');                   // nom+bouton out, logo reveal, halo bloom, shine
-    at(480, function () { Space.warpTo(1); body.classList.add('warp'); });  // star-warp + entrée se fond
-    at(820, function () { body.classList.add('flash'); });                  // flash lumineux
-    at(1050, function () { body.classList.remove('pre'); });                // débouché sur la carte
-    at(1180, function () { Space.warpTo(0); });                             // décélération de l'hyperespace
-    at(1250, function () { body.classList.remove('flash'); });
-    at(1780, function () { body.classList.remove('go', 'warp'); });         // nettoyage
+    body.classList.add('go');                   // nom+bouton out, logo apparaît, halo bloom, balayage vitré
+    // (a) 0->0.85s le logo monte/grossit  (b) 0.5->1.7s le reflet vitré le balaie lentement  (c) 1.7->1.85s maintien brillant
+    at(1850, function () {                       // (d) DÉSINTÉGRATION : le logo explose en particules (puff visible)
+      var el = document.querySelector('.entry__logo');
+      Space.disintegrate(el ? el.getBoundingClientRect() : null);
+      body.classList.add('dissolve');
+    });
+    at(2150, function () { Space.warpTo(1); body.classList.add('warp'); }); // (e) les particules sont aspirées dans l'hyperespace, l'entrée se fond
+    at(2480, function () { body.classList.add('flash'); });  // flash doux
+    at(2680, function () { body.classList.remove('pre'); }); // (f) débouché fluide sur la carte
+    at(2860, function () { Space.warpTo(0); });              // décélération de l'hyperespace
+    at(3000, function () { body.classList.remove('flash'); });
+    at(3480, function () { body.classList.remove('go', 'warp', 'dissolve'); Space.reset(); }); // nettoyage
   }
 
   function toEntry() {
     clearTimers();
     Space && Space.warpTo(0);
-    body.classList.remove('go', 'warp', 'flash');
+    Space && Space.reset();
+    body.classList.remove('go', 'warp', 'flash', 'dissolve');
     body.classList.add('pre');
   }
 
   if (open) open.addEventListener('click', toCard);
 
   window.addEventListener('popstate', function () {
-    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'warp', 'flash'); }
+    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'warp', 'flash', 'dissolve'); Space && Space.reset(); }
     else toEntry();
   });
 

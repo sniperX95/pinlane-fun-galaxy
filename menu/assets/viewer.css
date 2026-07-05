@@ -162,8 +162,8 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
   position:absolute;inset:0;pointer-events:none;opacity:0;
   -webkit-mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
           mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
-  background:linear-gradient(105deg,transparent 42%,rgba(255,255,255,.92) 50%,transparent 58%);
-  background-size:300% 100%;background-position:130% 0;
+  background:linear-gradient(100deg,transparent 36%,rgba(255,255,255,.30) 44%,rgba(255,255,255,1) 50%,rgba(255,255,255,.30) 56%,transparent 64%);
+  background-size:280% 100%;background-position:135% 0;
   animation:idleShine 8s ease-in-out 2.5s infinite;
 }
 
@@ -199,21 +199,25 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
 .btn-card:active{transform:translateY(0) scale(.98)}
 .btn-card:focus-visible{outline:2px solid #fff;outline-offset:3px}
 
-/* ============ TRANSITION CINÉMATIQUE ============ */
-/* étape 1 : nom + bouton s'effacent vite */
-body.go .entry__center,body.go .btn-card{opacity:0;transform:translateY(10px) scale(.96);pointer-events:none}
-/* étape 2 : le logo joue son intro (grossit) + shine reveal + halo bloom */
-body.go .entry__logo{animation:reveal 1s cubic-bezier(.2,.7,.2,1) forwards}
-body.go .entry__halo{animation:bloom 1s ease forwards}
-body.go .entry__shine{animation:sweep .95s ease-in-out forwards}
-/* étape 3 : l'entrée se fond (le star-warp est géré par le canvas) */
+/* ============ TRANSITION CINÉMATIQUE (ralentie & narrée) ============ */
+/* étape 1 : nom + bouton s'effacent en douceur */
+body.go .entry__center,body.go .btn-card{opacity:0;transform:translateY(10px) scale(.96);pointer-events:none;transition:opacity .4s ease,transform .4s ease}
+/* étape 2 : le logo apparaît/monte puis se maintient, halo qui gonfle lentement */
+body.go .entry__logo{animation:reveal 1.9s cubic-bezier(.2,.7,.2,1) forwards}
+body.go .entry__halo{animation:bloom 2s ease forwards}
+/* étape 3 : BALAYAGE VITRÉ — lent, large et bien lisible, il traverse le logo */
+body.go .entry__shine{animation:sweep 1.2s cubic-bezier(.45,0,.2,1) .5s forwards}
+/* étape 4 : DÉSINTÉGRATION — le logo se dissout pendant que les particules jaillissent vers le warp */
+body.dissolve .entry__logo{animation:dissolve .62s ease-in forwards}
+body.dissolve .entry__halo{animation:haloOut .62s ease-in forwards}
+/* étape 5 : l'entrée se fond (le star-warp est géré par le canvas) */
 body.warp .entry{opacity:0}
 
-/* Flash lumineux au débouché */
+/* Flash lumineux DOUX au débouché */
 .flash-el{
   position:fixed;inset:0;z-index:120;pointer-events:none;opacity:0;
-  transition:opacity .4s ease;
-  background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.92),rgba(206,214,255,.30) 38%,transparent 68%);
+  transition:opacity .5s ease;
+  background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.72),rgba(206,214,255,.22) 40%,transparent 72%);
 }
 body.flash .flash-el{opacity:1}
 
@@ -223,15 +227,18 @@ body.flash .flash-el{opacity:1}
 @keyframes idleShine{0%,72%{background-position:130% 0;opacity:0}80%{opacity:.5}88%{opacity:.5}100%{background-position:-40% 0;opacity:0}}
 @keyframes btnGlow{0%,100%{box-shadow:0 12px 30px rgba(64,150,150,.30),0 0 0 0 rgba(127,222,208,.0),inset 0 1px 0 rgba(255,255,255,.45)}50%{box-shadow:0 12px 34px rgba(64,150,150,.40),0 0 26px 2px rgba(127,222,208,.22),inset 0 1px 0 rgba(255,255,255,.5)}}
 @keyframes btnShimmer{0%{transform:translateX(-180%) skewX(-18deg)}45%,100%{transform:translateX(320%) skewX(-18deg)}}
-@keyframes reveal{0%{transform:scale(1)}55%{transform:scale(1.16)}100%{transform:scale(1.26)}}
-@keyframes bloom{0%{opacity:.85;transform:translate(-50%,-50%) scale(1)}60%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}100%{opacity:1;transform:translate(-50%,-50%) scale(1.9)}}
-@keyframes sweep{0%{background-position:130% 0;opacity:0}22%{opacity:.95}80%{opacity:.95}100%{background-position:-50% 0;opacity:0}}
+@keyframes reveal{0%{transform:translateY(6px) scale(1)}45%{transform:translateY(0) scale(1.12)}100%{transform:translateY(0) scale(1.14)}}
+@keyframes bloom{0%{opacity:.85;transform:translate(-50%,-50%) scale(1)}55%{opacity:1;transform:translate(-50%,-50%) scale(1.55)}100%{opacity:1;transform:translate(-50%,-50%) scale(1.85)}}
+@keyframes sweep{0%{background-position:135% 0;opacity:0}14%{opacity:1}50%{opacity:1}86%{opacity:1}100%{background-position:-55% 0;opacity:0}}
+@keyframes dissolve{0%{opacity:1;transform:translateY(0) scale(1.14)}100%{opacity:0;transform:translateY(-6px) scale(1.3)}}
+@keyframes haloOut{0%{opacity:1;transform:translate(-50%,-50%) scale(1.85)}100%{opacity:0;transform:translate(-50%,-50%) scale(2.4)}}
 
 /* ============ ACCESSIBILITÉ / MOUVEMENT RÉDUIT ============ */
 @media (prefers-reduced-motion:reduce){
   .entry__logo,.entry__halo,.entry__shine,.btn-card,.btn-card::before{animation:none!important}
   .entry,.viewer,.seg__thumb,.seg__btn,.page--fx{transition-duration:.2s}
-  body.go .entry__logo,body.go .entry__halo,body.go .entry__shine{animation:none!important}
+  body.go .entry__logo,body.go .entry__halo,body.go .entry__shine,
+  body.dissolve .entry__logo,body.dissolve .entry__halo{animation:none!important}
   .flash-el{display:none}
   .fs,.fs__img{transition-duration:.12s}
 }

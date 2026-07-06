@@ -71,10 +71,11 @@
 
     function rand(a, b) { return a + Math.random() * (b - a); }
 
-    // Échantillonneur cubic-bezier(.45,.05,.72,.5) (Newton-Raphson) — MÊME courbe que dive3d.
-    // Verrouille la vitesse du warp sur la plongée CSS (l'ancien pow(1.7) déviait jusqu'à ~0.06 en milieu de courbe).
+    // Échantillonneur cubic-bezier(.45,.08,.7,.45) (Newton-Raphson) — MÊME courbe que dive3d.
+    // Pente initiale NON nulle (.08/.45) : la plongée démarre avec la vitesse résiduelle du settle de l'envol
+    // (le rebond devient l'aspiration, jamais d'arrêt), puis sortie très raide (rush).
     var warpEase = (function () {
-      var x1 = 0.45, y1 = 0.05, x2 = 0.72, y2 = 0.5;
+      var x1 = 0.45, y1 = 0.08, x2 = 0.7, y2 = 0.45;
       function bez(t, a, b) { var A = 1 - 3 * b + 3 * a, B = 3 * b - 6 * a, C = 3 * a; return ((A * t + B) * t + C) * t; }
       function slope(t, a, b) { var A = 1 - 3 * b + 3 * a, B = 3 * b - 6 * a, C = 3 * a; return (3 * A * t + 2 * B) * t + C; }
       return function (x) {
@@ -190,7 +191,7 @@
       if (warpRamping) {                       // montée pilotée par le temps -> accélération (p²) verrouillée sur le zoom
         if (warpRampT0 < 0) warpRampT0 = t;
         var wp = (t - warpRampT0) / warpRampDur; if (wp > 1) wp = 1;
-        warp = warpEase(wp);                    // ÉCHANTILLONNAGE EXACT de cubic-bezier(.45,.05,.72,.5) -> phase-lock parfait avec dive3d
+        warp = warpEase(wp);                    // ÉCHANTILLONNAGE EXACT de cubic-bezier(.45,.08,.7,.45) -> phase-lock parfait avec dive3d
         if (focalDrift) {                        // le FOYER du warp suit la sphère (recentrage dive-dx/dy) sur la MÊME courbe
           fx = fx0 + (fx1 - fx0) * warp; fy = fy0 + (fy1 - fy0) * warp;
         }
@@ -620,25 +621,24 @@
     return { rect: rect, x: rect.left + PLANET_FX * rect.width, y: rect.top + PLANET_FY * rect.height };
   }
 
-  /* SÉQUENCE — une chaîne CAUSALE, chaque beat déclenche le suivant :
-     B0    0-350   la scène se vide : nom+bouton s'effacent, le logo s'avance (scale 1->1.06).
-     B1  220-870   le REFLET vitré balaye G->D et ATTERRIT sur la balle de golf (il ne sort pas du cadre : il s'y absorbe).
-     B2  880-1380  IGNITION : LA balle de golf du logo (golfball.svg, mêmes tracés/alvéoles) devient une sphère 3D
-                   (pop overshoot) qui respire ; les lettres baissent à 80% ; push lent 1.06->1.14 (elle prend vie).
-     B3 1380-2180  ENVOL : la balle S'ARRACHE du logo et vient SE CENTRER plein cadre. Trajectoire COURBE
-                   (kick d'anticipation vers le haut-extérieur, swoop, léger overshoot, settle) portée par
-                   2 wrappers X/Y aux easings différents ; SPIN des alvéoles (texture séparée : l'ombrage ne
-                   tourne pas -> elle ROULE) ; grossissement 1 -> ~5x (elle devient LE sujet, centre écran) ;
-                   derrière elle le logo SE DÉSAGRÈGE en éclats et recule/s'efface. Micro-pause à la pose
-                   (respiration ballLive) : elle nous fait face... puis on entre dedans.
-     B4 2300-3200  PLONGÉE : translateZ à travers la balle CENTRÉE, tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) —
-                   warp étoiles même fenêtre, FOYER = CENTRE ÉCRAN, cœur blanc = on perce la surface.
-     B5 3200-3860  HYPERESPACE : on est DANS le champ d'étoiles, écran ENTIER — boost warp 1->1.35. Des POINTS
-                   d'étoiles foncent vers nous depuis le CENTRE (accélération radiale ∝ distance, grossissement
-                   en approchant, queue ≤ 6px), flux doublé par MIROIR central + 2e nappe recyclée express +
-                   lueur du débouché. ~660ms ressenties, budget d'étoiles INCHANGÉ.
-     B6 3860-4510  DÉBOUCHÉ : whiteout radial centré sur le point de fuite (centre), pic ~3977 = on crève le tunnel.
-     B7 3975-4630  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
+  /* SÉQUENCE — une chaîne CAUSALE resserrée : AUCUNE pause, chaque beat MORD sur le suivant (~2,94s clic->carte).
+     B0    0-280   la scène se vide : nom+bouton s'effacent, le logo s'avance (scale 1->1.06).
+     B1   90-690   le REFLET vitré balaye G->D et ATTERRIT sur la balle de golf (cœur posé ~590), puis laisse
+                   une BRAISE ~100ms qui s'éteint PENDANT l'ignition (la lumière est absorbée, pas coupée).
+     B2  560-1020  IGNITION (mord la fin du glint) : la balle du logo devient une sphère 3D (pop overshoot +
+                   flash-braise du halo) ; les lettres baissent à 80% ; push lent 1.06->1.14 (anticipation).
+     B3  980-1640  ENVOL (mord la fin du push) : la balle S'ARRACHE et vient SE CENTRER plein cadre. Arc courbe
+                   (kick d'anticipation, fronde, hook-in) sur 2 wrappers X/Y ; STRETCH dans le sens du mouvement
+                   en plein vol puis SQUASH à l'arrivée (masse réelle) ; SPIN des alvéoles (texture seule : elle
+                   ROULE) ; grossissement 1 -> ~5x ; derrière elle le logo SE DÉSAGRÈGE en éclats. Le settle se
+                   termine en LÉGER REBOND OUVERT (x1.035) : il N'EST PAS amorti — c'est l'élan de la plongée.
+     B4 1640-2490  PLONGÉE immédiate : dive3d reprend EXACTEMENT le rebond (0% = scale x1.035 -> aspiration),
+                   translateZ à travers la balle, une seule courbe cubic-bezier(.45,.08,.7,.45) à pente initiale
+                   non nulle — warp étoiles même fenêtre (850ms), FOYER = CENTRE ÉCRAN, cœur blanc = on perce.
+     B5 2490-2939  HYPERESPACE : boost warp 1->1.35, plein écran. Points d'étoiles depuis le CENTRE (accélération
+                   radiale ∝ distance, queue ≤ 6px), flux doublé par MIROIR + 2e nappe recyclée + lueur du débouché.
+     B6 2840-3390  DÉBOUCHÉ : whiteout radial (pic ~2939 = 4ms après la pose de la carte : raccord au frame près).
+     B7 2935-3630  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
   function runIntro() {
     clearTimers();
     if (reduce || !Space) {                     // simple fondu court (aucun warp / zoom / dispersion)
@@ -649,8 +649,9 @@
     var ballSize = 0, tcx = window.innerWidth / 2, tcy = Math.round(window.innerHeight * 0.46);
     body.classList.add('go');                   // B0 + B1 : la scène se vide, le glint voyage vers la balle
 
-    // B2 — IGNITION (le glint vient de se poser sur la balle : elle s'allume et prend vie)
-    at(880, function () {
+    // B2 — IGNITION (le cœur du glint touche la balle ~590 : la sphère naît SOUS la braise, 30ms avant le contact
+    //      elle est encore quasi invisible -> lecture « le glint l'allume », zéro attente)
+    at(560, function () {
       var p = planetPoint();
       if (p) {
         Space.setWarpOrigin(p.x, p.y);           // le foyer du warp = la balle (recentré à la plongée)
@@ -666,9 +667,11 @@
       body.classList.add('arm');                 // ignite (sphère) + push lent (anticipation) + lettres à 80%
     });
 
-    // B3 — ENVOL : la balle s'arrache du logo et vient se centrer (arc + spin + grow) ;
-    //              le logo se désagrège en éclats et s'efface derrière elle (elle devient le sujet unique).
-    at(1380, function () {
+    // B3 — ENVOL (mord la fin du push, ~40ms avant sa fin : l'anticipation se rompt en plein élan) :
+    //      la balle s'arrache du logo et vient se centrer (arc + spin + grow + stretch/squash) ;
+    //      le logo se désagrège en éclats et s'efface derrière elle. NB : l'origine des transforms du wrap
+    //      = le point balle -> le mordre en plein push ne fausse AUCUNE mesure (le point ne bouge jamais).
+    at(980, function () {
       var p = planetPoint();
       tcx = window.innerWidth / 2; tcy = Math.round(window.innerHeight * 0.46);   // où la balle se pose (centre optique)
       if (p) {
@@ -695,27 +698,28 @@
       body.classList.add('travel');
     });
 
-    // B4 — PLONGÉE (elle est centrée, plein cadre, elle respire : on entre dedans — une seule horloge, une seule courbe)
-    at(2300, function () {
-      Space.setWarpOrigin(tcx, tcy);             // FOYER du warp = centre écran (là où la balle s'est posée)
+    // B4 — PLONGÉE IMMÉDIATE (1640 = fin exacte de l'envol : ballGrow finit en rebond OUVERT x1.035 et
+    //      dive3d reprend ce rebond à son 0% -> la balle ne pose JAMAIS, le settle EST l'élan de l'aspiration)
+    at(1640, function () {
+      Space.setWarpOrigin(tcx, tcy);             // FOYER du warp = centre écran (là où la balle arrive)
       body.classList.add('zoom');
-      Space.warpRamp(900);                       // même fenêtre + même courbe que dive3d (.9s)
+      Space.warpRamp(850);                       // même fenêtre + même courbe que dive3d (.85s)
     });
 
     // B5 — HYPERESPACE : la balle est franchie (fin du dive), l'écran ENTIER est le couloir.
-    // Boost 1 -> 1.35 (approche exponentielle ~450ms = montée en vitesse PUIS pic tenu) : traînées ~2x plus
-    // longues (∝ warp²), plus lumineuses, doublées par miroir. ~660ms ressenties avant le débouché.
-    at(3200, function () { Space.warpTo(1.35); });
+    // Boost 1 -> 1.35 (approche exponentielle ~230ms de constante = montée en vitesse PUIS pic tenu) :
+    // traînées plus longues/lumineuses, doublées par miroir. ~450ms ressenties avant le pic du débouché.
+    at(2490, function () { Space.warpTo(1.35); });
 
-    // B6 — DÉBOUCHÉ : pic du whiteout (montée 18% de .65s ≈ 117ms) à ~3977 = 2ms après la pose de la carte
-    at(3860, function () { body.classList.add('flash'); });
-    at(3975, function () {                       // B7 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
+    // B6 — DÉBOUCHÉ : pic du whiteout (montée 18% de .55s ≈ 99ms) à ~2939 = 4ms après la pose de la carte
+    at(2840, function () { body.classList.add('flash'); });
+    at(2935, function () {                       // B7 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
       body.classList.remove('pre');
       body.classList.add('land');
     });
-    at(4110, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le débouché (vitesse résiduelle)
-    at(4510, function () { body.classList.remove('flash'); });
-    at(4800, function () {                       // nettoyage
+    at(3050, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le débouché (vitesse résiduelle)
+    at(3390, function () { body.classList.remove('flash'); });
+    at(3700, function () {                       // nettoyage (landSettle fini à ~3535)
       body.classList.remove('go', 'arm', 'travel', 'zoom', 'land');
       Space.reset();
       if (scene) scene.style.display = 'none';

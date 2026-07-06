@@ -2,6 +2,7 @@ const { DURATION_OPTIONS, FORMULES, todayStr } = require('../lib/booking-config'
 const { getPool } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
+const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
 
 // This function serves two public surfaces to stay under the Vercel Hobby
 // 12-function limit:
@@ -87,10 +88,38 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // Config publique du centre (horaires staff, regime vacances/feries, offres
+  // activees) pour que l'affichage client reflete la meme verite que le moteur.
+  // Fail-soft : sans DB ou centre inconnu, le client retombe sur la grille locale.
+  const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+  const centerId = String(url.searchParams.get('centerId') || 'libramont');
+  try {
+    await refreshCenterOverrides(getPool());
+  } catch (error) {
+    // Baseline fichier conservee.
+  }
+  let center = null;
+  try {
+    center = getCenter(centerId) || null;
+  } catch (error) {
+    center = null;
+  }
+
   sendJson(res, 200, {
     ok: true,
     today: todayStr(),
     durationOptions: DURATION_OPTIONS,
     formules: FORMULES,
+    center: center
+      ? {
+        id: center.id,
+        status: center.status || 'active',
+        defaultSchedule: center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : null,
+        holidaySettings: center.holidaySettings && typeof center.holidaySettings === 'object'
+          ? center.holidaySettings
+          : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] },
+        offerAvailability: center.offerAvailability && typeof center.offerAvailability === 'object' ? center.offerAvailability : {},
+      }
+      : null,
   });
 };

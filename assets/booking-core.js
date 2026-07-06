@@ -147,20 +147,36 @@ function addDays(dateStr, delta) {
   return toLocalDateStr(d);
 }
 
+// Conges scolaires FWB verifies (enseignement.be). kind: 'summer' = grandes
+// vacances, 'short' = petits conges. Miroir de lib/booking-config.js.
 const WALLONIA_SCHOOL_HOLIDAYS = [
-  { start: '2025-10-20', end: '2025-11-02', label: 'Conge d\'automne' },
-  { start: '2025-12-22', end: '2026-01-04', label: 'Vacances d\'hiver' },
-  { start: '2026-02-16', end: '2026-03-01', label: 'Conge de detente' },
-  { start: '2026-04-27', end: '2026-05-10', label: 'Vacances de printemps' },
-  { start: '2026-07-04', end: '2026-08-23', label: 'Vacances d\'ete' },
-  { start: '2026-10-19', end: '2026-11-01', label: 'Conge d\'automne' },
-  { start: '2026-12-21', end: '2027-01-03', label: 'Vacances d\'hiver' },
-  { start: '2027-02-22', end: '2027-03-07', label: 'Conge de detente' },
-  { start: '2027-04-26', end: '2027-05-09', label: 'Vacances de printemps' },
-  { start: '2027-07-03', end: '2027-08-22', label: 'Vacances d\'ete' }
+  { start: '2025-10-20', end: '2025-11-02', label: 'Conge d\'automne', kind: 'short' },
+  { start: '2025-12-22', end: '2026-01-04', label: 'Vacances d\'hiver', kind: 'short' },
+  { start: '2026-02-16', end: '2026-03-01', label: 'Conge de detente', kind: 'short' },
+  { start: '2026-04-27', end: '2026-05-10', label: 'Vacances de printemps', kind: 'short' },
+  { start: '2026-07-04', end: '2026-08-23', label: 'Vacances d\'ete', kind: 'summer' },
+  { start: '2026-10-19', end: '2026-11-01', label: 'Conge d\'automne', kind: 'short' },
+  { start: '2026-12-21', end: '2027-01-03', label: 'Vacances d\'hiver', kind: 'short' },
+  { start: '2027-02-22', end: '2027-03-07', label: 'Conge de detente', kind: 'short' },
+  { start: '2027-04-26', end: '2027-05-09', label: 'Vacances de printemps', kind: 'short' },
+  { start: '2027-07-03', end: '2027-08-22', label: 'Vacances d\'ete', kind: 'summer' }
 ];
 const BELGIAN_PUBLIC_HOLIDAY_CACHE = new Map();
 const BUSINESS_TIME_ZONE = 'Europe/Brussels';
+
+// Config centre (horaires staff, regime vacances/feries, offres) poussee par
+// /api/public-booking-meta ou par la config staff. Null = grille historique.
+const HOLIDAY_PERIOD_TYPES = ['public', 'school_short', 'school_summer', 'manual'];
+const DEFAULT_FORMULA_BLOCKED_PERIODS = ['public', 'school_short', 'manual'];
+let centerScheduleConfig = null;
+
+function setCenterScheduleConfig(config) {
+  centerScheduleConfig = config && typeof config === 'object' ? config : null;
+}
+
+function getCenterScheduleConfig() {
+  return centerScheduleConfig;
+}
 
 function getBusinessNowParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -261,17 +277,62 @@ function getBelgianPublicHoliday(dateStr) {
 function getWalloniaSchoolHoliday(dateStr) {
   return WALLONIA_SCHOOL_HOLIDAYS.find(range => isDateWithinRange(dateStr, range.start, range.end)) || null;
 }
+function getManualHolidayOverride(dateStr) {
+  const settings = centerScheduleConfig?.holidaySettings;
+  if (!settings || typeof settings !== 'object') return null;
+  const overrides = Array.isArray(settings.overrides) ? settings.overrides : [];
+  const found = overrides.find(item => item && item.date === dateStr && (item.mode === 'holiday' || item.mode === 'normal'));
+  return found ? found.mode : null;
+}
 function getSpecialOpeningContext(dateStr, manualHolidayOverride = false) {
   const schoolHoliday = getWalloniaSchoolHoliday(dateStr);
   const publicHoliday = getBelgianPublicHoliday(dateStr);
+  const autoDetected = Boolean(schoolHoliday || publicHoliday);
+  const settings = centerScheduleConfig?.holidaySettings;
+  const override = getManualHolidayOverride(dateStr);
+  const autoApplyEnabled = !settings || settings.enabled !== false;
+  const active = Boolean(
+    manualHolidayOverride
+    || override === 'holiday'
+    || (override !== 'normal' && autoApplyEnabled && autoDetected)
+  );
+  let periodType = null;
+  if (active) {
+    if (publicHoliday) periodType = 'public';
+    else if (schoolHoliday) periodType = schoolHoliday.kind === 'summer' ? 'school_summer' : 'school_short';
+    else periodType = 'manual';
+  }
   return {
-    active: Boolean(manualHolidayOverride || schoolHoliday || publicHoliday),
+    active,
+    periodType,
+    override,
+    autoDetected,
     schoolHoliday,
-    publicHoliday
+    publicHoliday,
+    label: publicHoliday || (schoolHoliday ? schoolHoliday.label : '') || (active ? 'Jour special' : '')
   };
 }
 function isHolidayScheduleDate(dateStr, manualHolidayOverride = false) {
   return getSpecialOpeningContext(dateStr, manualHolidayOverride).active;
+}
+function getFormulaBlockedPeriods() {
+  const settings = centerScheduleConfig?.holidaySettings;
+  const configured = settings && Array.isArray(settings.formulaBlockedPeriods) ? settings.formulaBlockedPeriods : null;
+  if (!configured) return DEFAULT_FORMULA_BLOCKED_PERIODS;
+  return configured.filter(value => HOLIDAY_PERIOD_TYPES.includes(value));
+}
+// Regle metier : formules "noHolidays" bloquees feries + petits conges + jours
+// forces, mais accessibles pendant les grandes vacances d'ete (configurable).
+function isFormulaBlockedDate(dateStr, manualHolidayOverride = false) {
+  const context = getSpecialOpeningContext(dateStr, manualHolidayOverride);
+  if (!context.active || !context.periodType) return false;
+  return getFormulaBlockedPeriods().includes(context.periodType);
+}
+// Offre activee/desactivee par le staff (Etablissement > Offres & formules).
+function isOfferEnabled(formuleId) {
+  const availability = centerScheduleConfig?.offerAvailability;
+  if (!availability || typeof availability !== 'object') return true;
+  return availability[formuleId] !== false;
 }
 function getReservationLabel(res) {
   if (res.label) return res.label;
@@ -551,9 +612,9 @@ function getBookingTotalDuration(booking) {
 
 function legacyGetFormuleAvailability(formule, dateStr, pax, startTime = '') {
   const day = parseLocalDate(dateStr).getDay();
-  const holiday = isHolidayScheduleDate(dateStr, state.isHolidayMode);
+  if (!isOfferEnabled(formule.id)) return { ok: false, message: 'Offre momentanément indisponible' };
   if (pax < formule.minPax) return { ok: false, message: `Min. ${formule.minPax} personnes` };
-  if (formule.noHolidays && holiday) return { ok: false, message: 'Indisponible vacances/fériés' };
+  if (formule.noHolidays && isFormulaBlockedDate(dateStr, state.isHolidayMode)) return { ok: false, message: 'Indisponible vacances/fériés' };
   if (formule.validDays && !formule.validDays.includes(day)) return { ok: false, message: 'Indisponible ce jour' };
   if (startTime && formule.timeLimit) {
     const start = timeToNum(startTime);
@@ -575,10 +636,39 @@ function validateSlotWindow(dateStr, startTime, duration, options = {}) {
   return { ok: true };
 }
 
+function formatScheduleHour(value) {
+  if (Number(value) >= 24) return 'Minuit';
+  const h = Math.floor(Number(value));
+  const m = Math.round((Number(value) - h) * 60);
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+}
+function buildScheduleLabel(open, close) {
+  return `${formatScheduleHour(open)} - ${formatScheduleHour(close)}`;
+}
+// Lit un jour dans un bloc configure ({'0'..'6': {open, close}|null}).
+// undefined = jour non configure (fallback grille historique), null = ferme.
+function scheduleFromConfigBlock(block, day) {
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return undefined;
+  const key = String(day);
+  if (!(key in block)) return undefined;
+  const slot = block[key];
+  if (!slot || !slot.open || !slot.close) return null;
+  const open = timeToNum(slot.open);
+  const close = timeToNum(slot.close);
+  if (!(close > open)) return null;
+  return { open, close, label: buildScheduleLabel(open, close) };
+}
 function getSchedule(dateStr, manualHolidayOverride = false) {
   const d = parseLocalDate(dateStr);
   const day = d.getDay();
-  if (isHolidayScheduleDate(dateStr, manualHolidayOverride)) {
+  const holidayActive = isHolidayScheduleDate(dateStr, manualHolidayOverride);
+  const blocks = centerScheduleConfig?.defaultSchedule;
+  if (blocks && typeof blocks === 'object') {
+    const holidaySlot = holidayActive ? scheduleFromConfigBlock(blocks.holiday, day) : undefined;
+    const resolved = holidaySlot !== undefined ? holidaySlot : scheduleFromConfigBlock(blocks.regular, day);
+    if (resolved !== undefined) return resolved;
+  }
+  if (holidayActive) {
     if (day === 5 || day === 6) return { open: 10, close: 24, label: '10h - Minuit' };
     return { open: 10, close: 22, label: '10h - 22h' };
   }
@@ -935,6 +1025,10 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     getWalloniaSchoolHoliday,
     getSpecialOpeningContext,
     isHolidayScheduleDate,
+    isFormulaBlockedDate,
+    isOfferEnabled,
+    setCenterScheduleConfig,
+    getCenterScheduleConfig,
     getReservationLabel,
     reservationNeedsLanes,
     getRequiredLaneCount,

@@ -7,6 +7,7 @@ const {
   getFormuleAvailability,
   getFormuleLaneDuration,
   getFormuleTotalDuration,
+  getHolidayContext,
   getRequiredLaneCount,
   getSchedule,
   numToTime,
@@ -647,12 +648,13 @@ module.exports = async (req, res) => {
     } catch (error) {
       // Ignore: fall back to the file baseline.
     }
-    let centerBowlingConfig = null;
+    let centerDoc = null;
     try {
-      centerBowlingConfig = getCenter(centerId)?.resources?.bowling || null;
+      centerDoc = getCenter(centerId) || null;
     } catch (error) {
-      centerBowlingConfig = null;
+      centerDoc = null;
     }
+    const centerBowlingConfig = centerDoc?.resources?.bowling || null;
     const centerLaneCount = Number(centerBowlingConfig?.laneCount) || TOTAL_LANES;
     const rawType = String(url.searchParams.get('type') || 'bowling');
     const type = rawType === 'formule' ? 'formule' : rawType === 'laser' ? 'laser' : 'bowling';
@@ -681,10 +683,25 @@ module.exports = async (req, res) => {
       throw new Error('Date manquante.');
     }
 
+    // Horaires + contexte vacances/feries resolus avec la config du centre
+    // (grille staff, overrides ponctuels). Renvoyes au client pour que
+    // l'affichage "Ouvert 10h - 22h" reflete la meme verite que le serveur.
+    const holidayContext = getHolidayContext(date, centerDoc);
+    const schedule = getSchedule(date, centerDoc);
+    const scheduleMeta = {
+      schedule: schedule ? { open: schedule.open, close: schedule.close, label: schedule.label } : null,
+      holiday: {
+        active: holidayContext.active,
+        periodType: holidayContext.periodType,
+        label: holidayContext.label,
+      },
+    };
+
     if (date < todayStr()) {
       sendJson(res, 200, {
         ok: true,
         date,
+        ...scheduleMeta,
         slots: [],
         laneCount: 0,
         duration: 0,
@@ -701,11 +718,11 @@ module.exports = async (req, res) => {
       throw new Error('Formule invalide.');
     }
 
-    const schedule = getSchedule(date);
     if (!schedule) {
       sendJson(res, 200, {
         ok: true,
         date,
+        ...scheduleMeta,
         slots: [],
         laneCount: 0,
         duration: 0,
@@ -719,11 +736,12 @@ module.exports = async (req, res) => {
     }
 
     if (type === 'formule') {
-      const availability = getFormuleAvailability(formule, date, pax);
+      const availability = getFormuleAvailability(formule, date, pax, '', centerDoc);
       if (!availability.ok) {
         sendJson(res, 200, {
           ok: true,
           date,
+          ...scheduleMeta,
           slots: [],
           laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
           duration: getFormuleLaneDuration(formule),
@@ -790,6 +808,7 @@ module.exports = async (req, res) => {
           sendJson(res, 200, {
             ok: true,
             date,
+            ...scheduleMeta,
             slots: guardedFlexibleSlots,
             laneCount,
             duration,
@@ -804,6 +823,7 @@ module.exports = async (req, res) => {
         sendJson(res, 200, {
           ok: true,
           date,
+          ...scheduleMeta,
           slots: [],
           laneCount,
           duration,
@@ -888,6 +908,7 @@ module.exports = async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         date,
+        ...scheduleMeta,
         slots: guardedSlots,
         laneCount,
         duration,
@@ -964,6 +985,7 @@ module.exports = async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         date,
+        ...scheduleMeta,
         slots,
         laneCount: 0,
         duration,
@@ -996,6 +1018,7 @@ module.exports = async (req, res) => {
     sendJson(res, 200, {
       ok: true,
       date,
+      ...scheduleMeta,
       slots,
       laneCount,
       duration,

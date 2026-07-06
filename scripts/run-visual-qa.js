@@ -295,6 +295,25 @@ async function installQaApi(page) {
         return jsonResponse({ ok: true, slots: [] });
       }
 
+      if (url.pathname === '/api/public-booking-meta') {
+        return jsonResponse({
+          ok: true,
+          today: new Date().toISOString().slice(0, 10),
+          durationOptions: [],
+          formules: [],
+          center: {
+            id: 'libramont',
+            status: 'active',
+            defaultSchedule: {
+              regular: { '1': null, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' }, '0': { open: '10:00', close: '22:00' } },
+              holiday: { '1': { open: '10:00', close: '22:00' }, '2': { open: '10:00', close: '22:00' }, '3': { open: '10:00', close: '22:00' }, '4': { open: '10:00', close: '22:00' }, '5': { open: '10:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' }, '0': { open: '10:00', close: '22:00' } },
+            },
+            holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] },
+            offerAvailability: {},
+          },
+        });
+      }
+
       if (url.pathname === '/api/ops') {
         const opsAction = url.searchParams.get('action');
         if (opsAction === 'centerConfig') {
@@ -304,7 +323,16 @@ async function installQaApi(page) {
               bowling: { laneCount, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, forceExtraLaneAtPax: 8, preferAdjacentLanes: true },
               laser: { weaponCount, parallelLaunches: launches, canSplitGroupsCleanly: launches > 1, requiresCompleteGroupBeforeLaunch: launches === 1, riskLevel: 'managed' },
             },
-            defaultSchedule: { regular: { '1': null, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' }, '0': { open: '10:00', close: '22:00' } } },
+            defaultSchedule: {
+              regular: { '1': null, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' }, '0': { open: '10:00', close: '22:00' } },
+              holiday: { '1': { open: '10:00', close: '22:00' }, '2': { open: '10:00', close: '22:00' }, '3': { open: '10:00', close: '22:00' }, '4': { open: '10:00', close: '22:00' }, '5': { open: '10:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' }, '0': { open: '10:00', close: '22:00' } },
+            },
+            holidaySettings: {
+              enabled: true,
+              overrides: [{ date: '2026-09-14', mode: 'holiday' }],
+              formulaBlockedPeriods: ['public', 'school_short', 'manual'],
+            },
+            offerAvailability: { f6: false },
             activityAvailability: { bowling: true, laser_game: true, minigolf_blacklight: true, golf_oclock: status !== 'active', arcade_time: true, playground: true },
           });
           return jsonResponse({
@@ -676,6 +704,204 @@ async function main() {
     await screenshot(page, 'client-booking-desktop');
     issues.push(...await collectIssues(page, 'client-booking-desktop'));
 
+    // ------------------------------------------------------------------
+    // Chantier 1 — icônes du popover compte staff visibles (dark + light)
+    // ------------------------------------------------------------------
+    await page.evaluate(() => setView('staff'));
+    await renderStaffPage(page, 'dashboard');
+    await page.locator('[data-fgx-account-menu]').first().click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'chantier1-account-menu-dark');
+    const accountIconStyle = await page.evaluate(() => {
+      const svg = document.querySelector('.fgx-menu-option-icon svg');
+      if (!svg) return null;
+      const style = window.getComputedStyle(svg);
+      return { fill: style.fill, stroke: style.stroke };
+    });
+    assert(accountIconStyle, 'Le popover compte doit contenir des icônes SVG.');
+    assert(accountIconStyle.fill === 'none', `Icônes popover compte : fill doit être none (reçu ${accountIconStyle && accountIconStyle.fill}).`);
+    assert(accountIconStyle.stroke && accountIconStyle.stroke !== 'none', 'Icônes popover compte : stroke currentColor requis.');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await page.evaluate(() => setStaffTheme('light'));
+    await page.waitForTimeout(300);
+    await page.locator('[data-fgx-account-menu]').first().click();
+    await page.waitForTimeout(300);
+    await screenshot(page, 'chantier1-account-menu-light');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => setStaffTheme('dark'));
+    await page.waitForTimeout(200);
+
+    // ------------------------------------------------------------------
+    // Chantier 2 — champ date client : une seule icône calendrier
+    // ------------------------------------------------------------------
+    await page.evaluate(() => setView('client'));
+    await page.waitForTimeout(500);
+    // getComputedStyle ne reflète pas ce pseudo-élément UA : on prouve le
+    // masquage par diff de rendu avec un clone hors .date-input-wrap (où la
+    // règle ne s'applique pas, donc indicateur natif visible).
+    const withRuleShot = await page.locator('#fDate').screenshot();
+    await page.evaluate(() => {
+      const source = document.getElementById('fDate');
+      const rect = source.getBoundingClientRect();
+      const clone = source.cloneNode();
+      clone.id = 'fDateNativeProbe';
+      clone.style.cssText = `position:fixed;top:8px;left:8px;z-index:99999;width:${rect.width}px;height:${rect.height}px;`;
+      document.body.appendChild(clone);
+    });
+    const withoutRuleShot = await page.locator('#fDateNativeProbe').screenshot();
+    await page.evaluate(() => document.getElementById('fDateNativeProbe').remove());
+    assert(!withRuleShot.equals(withoutRuleShot), 'L indicateur calendrier natif doit être masqué dans .date-input-wrap (rendu identique au clone non stylé).');
+    await page.locator('.date-input-wrap').first().screenshot({ path: path.join(OUT_DIR, 'chantier2-date-field.png') });
+
+    // ------------------------------------------------------------------
+    // Chantier 3 — section formules compacte + règle vacances par période
+    // ------------------------------------------------------------------
+    await page.evaluate(() => {
+      setType('formule');
+      state.booking.pax = 8;
+      document.getElementById('fPax').value = 8;
+      renderFormules();
+    });
+    await page.waitForTimeout(300);
+    const offerHidden = await page.evaluate(() => !document.querySelector('#estab-offer-f6') && !Array.from(document.querySelectorAll('#formuleGrid .formule-name')).some(el => el.textContent.includes('FORMULE 6')));
+    assert(offerHidden, 'Une offre désactivée par le staff (f6) doit disparaître de l espace client.');
+    await screenshot(page, 'chantier3-formules-normal');
+    issues.push(...await collectIssues(page, 'chantier3-formules'));
+    // Date pendant le congé d'automne : bannière famille + cartes désactivées
+    await page.evaluate(() => {
+      state.booking.date = '2026-10-26';
+      document.getElementById('fDate').value = '2026-10-26';
+      updateSchedHint();
+      renderFormules();
+    });
+    await page.waitForTimeout(250);
+    const autumnState = await page.evaluate(() => ({
+      groupAlert: Boolean(document.querySelector('.formule-group-alert')),
+      f1Disabled: Array.from(document.querySelectorAll('#formuleGrid .formule-row')).some(row => row.textContent.includes('FORMULE 1') && row.classList.contains('disabled')),
+      repeatedNote: Array.from(document.querySelectorAll('#formuleGrid .formule-row')).filter(row => row.textContent.includes('Non valable durant')).length,
+    }));
+    assert(autumnState.groupAlert, 'Congé d automne : la bannière famille vacances/férié doit apparaître.');
+    assert(autumnState.f1Disabled, 'Congé d automne : les formules anniversaires doivent être désactivées.');
+    assert(autumnState.repeatedNote === 0, 'La mention vacances ne doit plus être répétée sur chaque carte.');
+    await screenshot(page, 'chantier3-formules-autumn-blocked');
+    // Date pendant les grandes vacances : formules anniversaires accessibles
+    await page.evaluate(() => {
+      state.booking.date = '2026-07-15';
+      document.getElementById('fDate').value = '2026-07-15';
+      updateSchedHint();
+      renderFormules();
+    });
+    await page.waitForTimeout(250);
+    const summerState = await page.evaluate(() => ({
+      groupAlert: Boolean(document.querySelector('.formule-group-alert')),
+      f1Enabled: Array.from(document.querySelectorAll('#formuleGrid .formule-row')).some(row => row.textContent.includes('FORMULE 1') && !row.classList.contains('disabled')),
+      schedHint: document.getElementById('schedHint').textContent,
+    }));
+    assert(!summerState.groupAlert, 'Grandes vacances : pas de blocage des formules anniversaires.');
+    assert(summerState.f1Enabled, 'Grandes vacances : FORMULE 1 doit rester réservable.');
+    assert(/Vacances d'ete|Ouvert/.test(summerState.schedHint), 'Le hint horaires doit refléter la période.');
+    await screenshot(page, 'chantier3-formules-summer-open');
+
+    // ------------------------------------------------------------------
+    // Chantier 4 — état de chargement/vide des créneaux
+    // ------------------------------------------------------------------
+    await page.evaluate(() => {
+      goStep(2);
+      slotLoading = true;
+      state.availableSlots = [];
+      renderSlots(null);
+    });
+    await page.waitForTimeout(250);
+    const loadingState = await page.evaluate(() => ({
+      spinner: Boolean(document.querySelector('#slotList .slot-spinner')),
+      skeleton: document.querySelectorAll('#slotList .slot-skeleton').length,
+      bigClock: Boolean(document.querySelector('#slotList svg[width="40"]')),
+    }));
+    assert(loadingState.spinner, 'État loading créneaux : spinner requis.');
+    assert(loadingState.skeleton >= 4, 'État loading créneaux : grille squelette requise.');
+    assert(!loadingState.bigClock, 'La grosse horloge flottante ne doit plus exister.');
+    await screenshot(page, 'chantier4-slots-loading');
+    await page.evaluate(() => {
+      slotLoading = false;
+      state.availableSlots = [];
+      renderSlots(null);
+    });
+    await page.waitForTimeout(200);
+    const emptyState = await page.evaluate(() => Boolean(document.querySelector('#slotList .slot-state-empty')));
+    assert(emptyState, 'État vide créneaux : message structuré requis.');
+    await screenshot(page, 'chantier4-slots-empty');
+    await page.evaluate(() => goStep(1));
+
+    // ------------------------------------------------------------------
+    // Chantier 6 — les horaires alternatifs disparaissent au changement de contexte
+    // ------------------------------------------------------------------
+    await page.evaluate(() => {
+      showBookingAlternatives('Ce créneau ne tient plus.', [
+        { date: '2026-07-16', startTime: '15:00', summary: 'Bowling 15:00 · piste 2', validationStatus: 'confirmed' },
+        { date: '2026-07-16', startTime: '17:30', summary: 'Bowling 17:30 · piste 4', validationStatus: 'confirmed' },
+      ]);
+    });
+    await page.waitForTimeout(200);
+    assert(await page.locator('#alertBox .booking-alternatives').count() === 1, 'Les alternatives doivent s afficher.');
+    await screenshot(page, 'chantier6-alternatives-visible');
+    await page.evaluate(() => {
+      const input = document.getElementById('fDate');
+      input.value = '2026-07-17';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(200);
+    assert(await page.locator('#alertBox .booking-alternatives').count() === 0, 'Changer de date doit purger les alternatives.');
+    await page.evaluate(() => {
+      showBookingAlternatives('Test reset', [{ date: '2026-07-16', startTime: '15:00', summary: 'Bowling 15:00', validationStatus: 'confirmed' }]);
+      resetBooking();
+    });
+    await page.waitForTimeout(200);
+    assert(await page.locator('#alertBox .booking-alternatives').count() === 0, 'resetBooking doit purger les alternatives.');
+    await screenshot(page, 'chantier6-alternatives-cleared');
+
+    // ------------------------------------------------------------------
+    // Chantier 5 — Établissement : horaires vacances, exceptions, offres
+    // ------------------------------------------------------------------
+    await page.evaluate(() => setView('staff'));
+    await renderStaffPage(page, 'establishment');
+    await page.waitForTimeout(500);
+    const readViewState = await page.evaluate(() => ({
+      holidayCards: Array.from(document.querySelectorAll('.establishment-read-card h3')).map(el => el.textContent.trim()),
+    }));
+    assert(readViewState.holidayCards.some(title => /vacances/i.test(title)), 'Vue lecture Établissement : carte horaires vacances requise.');
+    assert(readViewState.holidayCards.some(title => /Offres/i.test(title)), 'Vue lecture Établissement : carte offres requise.');
+    await screenshot(page, 'chantier5-establishment-read');
+    const editBtn2 = page.locator('.establishment-editor-actions button', { hasText: 'Modifier' });
+    if (await editBtn2.count()) {
+      await editBtn2.first().click();
+      await page.waitForTimeout(300);
+      const editState = await page.evaluate(() => ({
+        holidayToggle: Boolean(document.getElementById('estab-holiday-enabled')),
+        holidayRows: document.querySelectorAll('[id^="estab-hday-"][id$="-open"]').length,
+        periodChecks: ['estab-fbp-public', 'estab-fbp-short', 'estab-fbp-summer'].every(id => document.getElementById(id)),
+        overrideForm: Boolean(document.getElementById('estab-override-date')),
+        overrideChip: Boolean(document.querySelector('.estab-override-chip')),
+        offerToggles: document.querySelectorAll('[id^="estab-offer-"]').length,
+        f6Off: document.getElementById('estab-offer-f6') && !document.getElementById('estab-offer-f6').checked,
+      }));
+      assert(editState.holidayToggle, 'Éditeur : toggle horaires vacances requis.');
+      assert(editState.holidayRows === 7, 'Éditeur : 7 jours d horaires vacances requis.');
+      assert(editState.periodChecks, 'Éditeur : cases par type de période requises.');
+      assert(editState.overrideForm && editState.overrideChip, 'Éditeur : gestion des exceptions ponctuelles requise.');
+      assert(editState.offerToggles >= 10, 'Éditeur : toggles d offres requis.');
+      assert(editState.f6Off, 'Éditeur : l offre f6 désactivée doit apparaître décochée.');
+      await screenshot(page, 'chantier5-establishment-edit');
+      issues.push(...await collectIssues(page, 'chantier5-establishment-edit'));
+      const cancelBtn2 = page.locator('.establishment-editor-actions button', { hasText: 'Annuler' });
+      if (await cancelBtn2.count()) {
+        await cancelBtn2.first().click();
+        await page.waitForTimeout(250);
+      }
+    }
+    await page.evaluate(() => setView('client'));
+    await page.waitForTimeout(400);
+
     // Passe mobile (390×844) : staff clés + parcours client
     const mobilePage = await browser.newPage({
       viewport: { width: 390, height: 844 },
@@ -696,6 +922,17 @@ async function main() {
     await mobilePage.waitForTimeout(700);
     await screenshot(mobilePage, 'client-booking-mobile');
     issues.push(...await collectIssues(mobilePage, 'client-booking-mobile'));
+
+    // Chantier 3 (mobile) : liste des formules compacte sur 390px
+    await mobilePage.evaluate(() => {
+      setType('formule');
+      state.booking.pax = 8;
+      document.getElementById('fPax').value = 8;
+      renderFormules();
+    });
+    await mobilePage.waitForTimeout(300);
+    await screenshot(mobilePage, 'chantier3-formules-mobile');
+    issues.push(...await collectIssues(mobilePage, 'chantier3-formules-mobile'));
 
     // Console Direction (#adminView) en mobile — l'ancienne capture "direction-mobile"
     // ne couvrait que la page legacy direction.html.

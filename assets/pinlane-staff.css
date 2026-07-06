@@ -563,6 +563,20 @@ body.staff-menu-collapsed .fgx-menu-popover {
   padding: 5px;
 }
 
+/* Icônes au trait du popover compte : sans cette règle, les <path> héritent du
+   fill noir SVG par défaut = invisibles sur fond sombre. Même pattern que
+   .fgx-menu-icon svg (thème via currentColor). */
+.fgx-menu-option-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .fgx-menu-option:has(.fgx-menu-option-icon) { grid-template-columns: 26px minmax(0, 1fr); }
 
 .fgx-menu-option:hover,
@@ -3295,6 +3309,57 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-read-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .establishment-read-tags span { padding: 3px 10px; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--surface); font-size: 12px; }
 .establishment-read-empty { color: var(--muted); font-size: 13px; }
+.establishment-read-hint { color: var(--muted); font-size: 12px; }
+
+/* Horaires vacances & fériés + centre de contrôle des offres */
+.establishment-toggle {
+  display: flex; align-items: flex-start; gap: 8px;
+  color: var(--text); font-size: 12.5px; line-height: 1.45; cursor: pointer;
+}
+.establishment-toggle .estab-check-box { margin-top: 1px; }
+.establishment-toggle input {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}
+.establishment-toggle input:checked + .estab-check-box { background: var(--accent); border-color: var(--accent); }
+.establishment-toggle input:checked + .estab-check-box::after { opacity: 1; }
+.establishment-toggle input:focus-visible + .estab-check-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+.establishment-holiday-hours .establishment-toggle { margin-bottom: var(--space-2); }
+
+.estab-subsection { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.estab-subsection h4 { font-size: 12px; font-weight: 600; color: var(--muted); }
+.estab-period-grid { display: grid; gap: 6px; }
+.estab-card-hint { color: var(--muted); font-size: 12px; margin-bottom: var(--space-2); }
+
+.estab-override-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.estab-override-form input[type='date'] { height: 34px; max-width: 160px; }
+.estab-override-form input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.55; }
+[data-theme='dark'] .estab-override-form input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }
+.estab-override-form select { height: 34px; max-width: 240px; }
+.estab-overrides-list { display: flex; flex-direction: column; gap: 6px; }
+.estab-overrides-empty { color: var(--muted); font-size: 12px; }
+.estab-override-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); font-size: 12px;
+}
+.estab-override-chip .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 600; }
+.estab-override-chip.is-holiday span:nth-child(2) { color: var(--warning); }
+.estab-override-chip.is-normal span:nth-child(2) { color: var(--success); }
+.estab-override-remove {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px; margin-left: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.estab-override-remove:hover { border-color: var(--danger); color: var(--danger); }
+
+.estab-offer-group { margin-top: var(--space-2); display: grid; gap: 8px; }
+.estab-offer-group h4 { font-size: 12px; font-weight: 600; color: var(--muted); }
 
 @media (max-width: 720px) {
   .estab-day-row { grid-template-columns: 1fr auto; grid-auto-rows: auto; row-gap: 6px; }

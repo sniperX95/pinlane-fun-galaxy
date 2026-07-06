@@ -1040,6 +1040,7 @@ const STORAGE_KEY = 'funGalaxy_v4';
 const AUTH_KEY = 'funGalaxy_auth_v1';
 const API_ENDPOINTS = window.PinlaneApiClient?.endpoints || {
   publicReservations: '/api/public-reservations',
+  publicBookingMeta: '/api/public-booking-meta',
   staffReservations: '/api/staff-reservations',
   staffState: '/api/staff-state',
   publicAvailability: '/api/public-availability',
@@ -2262,6 +2263,7 @@ function initClient() {
     } else {
       state.booking.date = nextDate;
     }
+    clearBookingAlternatives();
     state.booking.formuleId = '';
     state.booking.startTime = '';
     state.booking.totalDuration = state.booking.type === 'laser'
@@ -2279,6 +2281,7 @@ function initClient() {
   });
   document.getElementById('fPax').addEventListener('input', e => {
     state.booking.pax = Number(e.target.value) || 1;
+    clearBookingAlternatives();
     state.booking.formuleId = '';
     state.booking.startTime = '';
     state.booking.totalDuration = state.booking.type === 'laser'
@@ -2336,12 +2339,13 @@ function setLaserDuration(v) {
 
 function updateSchedHint() {
   const sch = getSchedule(state.booking.date, state.isHolidayMode);
+  const context = getSpecialOpeningContext(state.booking.date, state.isHolidayMode);
   const el = document.getElementById('schedHint');
   if (isPastBusinessDate(state.booking.date)) {
     el.innerHTML = '<span class="closed">Date passée - réservations terminées</span>';
   }
   else if (!sch) el.innerHTML = '<span class="closed">Fermé ce jour</span>';
-  else el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>`;
+  else el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>${context.active && context.label ? `<span class="sched-holiday">${escapeHtml(context.label)}</span>` : ''}`;
 }
 
 function updatePaxAlert() {
@@ -2409,6 +2413,7 @@ function setType(t) {
   state.booking.type = type;
   syncBookingTypeUi();
   clearCurrentBookingChoice();
+  clearBookingAlternatives();
   if (type === 'bowling') {
     state.booking.formuleId = '';
     if (!DURATION_OPTIONS.some(option => Number(option.value) === Number(state.booking.duration))) {
@@ -2766,59 +2771,9 @@ function setFormulaPause(minutes) {
   save();
 }
 
-function legacyRenderFormules() {
-  const grid = document.getElementById('formuleGrid');
-  const pax = Number(state.booking.pax) || 0;
-  const day = parseLocalDate(state.booking.date).getDay();
-  const holiday = isHolidayScheduleDate(state.booking.date, state.isHolidayMode);
-  const daysMap = { 0:'dimanche', 1:'lundi', 2:'mardi', 3:'mercredi', 4:'jeudi', 5:'vendredi', 6:'samedi' };
-  const formatDays = arr => {
-    if (!arr || !arr.length) return '';
-    if (arr.length === 1) return `Uniquement le ${daysMap[arr[0]]}`;
-    if (arr.length === 7) return 'Tous les jours';
-    const names = arr.map(d => daysMap[d]);
-    const last = names.pop();
-    return `Dispo : ${names.join(', ')} et ${last}`;
-  };
-  const formatTime = lim => {
-    if (!lim) return '';
-    if (lim.min && lim.max) return `Valable entre ${lim.min}h et ${lim.max}h`;
-    if (lim.max) return `Valable avant ${lim.max}h`;
-    if (lim.min) return `Valable dès ${lim.min}h`;
-    return '';
-  };
-
-  const processed = FORMULES.map(f => {
-    const availability = getFormuleAvailability(f, state.booking.date, pax);
-    const validDay = !f.validDays || f.validDays.includes(day);
-    let status = 'Disponible';
-    let cls = 'ok';
-    if (!validDay) { status = formatDays(f.validDays); cls = 'warn'; }
-    else if (f.noHolidays && holiday) { status = 'Pas pendant vacances/jours fériés'; cls = 'warn'; }
-    else if (pax < f.minPax) { status = `Min. ${f.minPax} personnes (vous : ${pax})`; cls = 'warn'; }
-    else if (f.timeLimit) { status = `Disponible • ${formatTime(f.timeLimit)}`; }
-    return { ...f, available: availability.ok, status, cls };
-  }).sort((a, b) => a.available === b.available ? 0 : a.available ? -1 : 1);
-
-  grid.innerHTML = processed.map(f => `
-    <button type="button" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
-      ${f.best ? '<div class="badge-best">Best deal</div>' : ''}
-      <div class="formule-price">${f.price}€/${f.type === 'per_lane' ? 'piste' : 'pers'}</div>
-      ${f.family ? `<div class="formule-family">${f.family}</div>` : ''}
-      <div class="formule-head">
-        <div class="formule-name">${f.name}</div>
-      </div>
-      <ul class="formule-list">${f.desc.map(d => `<li>${d}</li>`).join('')}</ul>
-      ${f.notes?.length ? `<div class="formule-notes">${f.notes.map(note => `<p>${note}</p>`).join('')}</div>` : ''}
-      ${f.timeLimit ? `<div class="formule-tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ${f.timeLimit.min && f.timeLimit.max ? `${f.timeLimit.min}h-${f.timeLimit.max}h` : f.timeLimit.max ? `avant ${f.timeLimit.max}h` : `dès ${f.timeLimit.min}h`}</div>` : ''}
-      <div class="formule-status ${f.cls}">${f.status}</div>
-    </button>
-  `).join('');
-  renderFormulaPreferences();
-}
-
 function selectFormule(id) {
   state.booking.formuleId = id;
+  clearBookingAlternatives();
   state.booking.startTime = '';
   state.booking.preference = createDefaultFormulaPreference();
   state.booking.opsPlan = null;
@@ -2847,6 +2802,16 @@ function showAlert(msg) {
   const el = document.getElementById('alertBox');
   el.innerHTML = `<div class="alert shake"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg}</div>`;
   setTimeout(() => { el.innerHTML = ''; }, 4500);
+}
+
+// Purge la proposition d'horaires alternatifs (état + DOM). Appelée dès que le
+// contexte de réservation change : nouvelle recherche, reset, changement de
+// date/joueurs/activité/formule, réservation confirmée. Sans ça, la carte
+// d'alternatives restait affichée indéfiniment dans #alertBox.
+function clearBookingAlternatives() {
+  if (state.booking) state.booking.alternatives = [];
+  const el = document.getElementById('alertBox');
+  if (el && el.querySelector('.booking-alternatives')) el.innerHTML = '';
 }
 
 function showBookingAlternatives(message, alternatives = []) {
@@ -2953,6 +2918,7 @@ async function goStep2() {
 
 async function fetchSlots(options = {}) {
   const requestId = ++slotFetchRequestId;
+  if (!options.keepAlternatives) clearBookingAlternatives();
   const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
   if (options.showLoading !== false) {
     slotLoading = true;
@@ -3389,11 +3355,28 @@ function renderSlots(formule) {
 
   const list = document.getElementById('slotList');
   if (slotLoading) {
-    list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-3);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><div style="color:var(--text-2)">Recherche des cr\u00e9neaux disponibles...</div></div>`;
+    // \u00c9tat de chargement stable : bandeau discret + grille squelette de la
+    // m\u00eame taille que les futurs cr\u00e9neaux (pas de saut de layout, pas de
+    // grosse horloge flottante).
+    list.innerHTML = `
+      <div class="slot-state slot-state-loading" role="status" aria-live="polite">
+        <span class="slot-spinner" aria-hidden="true"></span>
+        <span>Recherche des cr\u00e9neaux disponibles\u2026</span>
+      </div>
+      <div class="slot-grid slot-grid-skeleton" aria-hidden="true">
+        ${Array.from({ length: 8 }, () => '<div class="slot slot-skeleton"><span class="slot-skeleton-line"></span><span class="slot-skeleton-line short"></span></div>').join('')}
+      </div>`;
     return;
   }
   if (!state.availableSlots.length) {
-    list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-3);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div style="color:var(--text-2)">Aucun créneau disponible pour vos critères.</div></div>`;
+    list.innerHTML = `
+      <div class="slot-state slot-state-empty" role="status">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <strong>Aucun créneau disponible</strong>
+          <span>Essayez une autre date, un autre horaire ou un groupe plus petit.</span>
+        </div>
+      </div>`;
     return;
   }
   const isFormula = Boolean(formule);
@@ -3407,7 +3390,14 @@ function renderSlots(formule) {
     : state.availableSlots.map((slot, index) => ({ slot, index }));
   const formulaTimePicker = renderFormulaTimePicker(formule, slotsToRender.length);
   if (!slotsToRender.length) {
-    list.innerHTML = `${formulaTimePicker}<div style="text-align:center;padding:40px;color:var(--text-3);"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div style="color:var(--text-2)">Aucun scénario compatible avec ces heures.</div></div>`;
+    list.innerHTML = `${formulaTimePicker}
+      <div class="slot-state slot-state-empty" role="status">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <strong>Aucun scénario compatible avec ces heures</strong>
+          <span>Ajustez les horaires choisis ou laissez l'agent proposer un programme.</span>
+        </div>
+      </div>`;
     return;
   }
   list.innerHTML = `${formulaTimePicker}<div class="slot-grid stagger ${isFormula ? 'formula-plan-grid' : ''}">${slotsToRender.map(({ slot: s, index: i }) => `
@@ -3599,6 +3589,7 @@ async function confirmBooking() {
     save();
     allocated = payload.reservation.lanes || allocated;
     state.booking.opsResult = payload.ops || null;
+    clearBookingAlternatives();
   } catch (error) {
     goStep(2);
     await fetchSlots({ showLoading: true });
@@ -3626,6 +3617,7 @@ async function confirmBooking() {
 }
 
 function resetBooking() {
+  clearBookingAlternatives();
   state.booking = {
     name:'', phone:'', email:'', pax:4,
     date: todayStr(),
@@ -5753,6 +5745,16 @@ async function loadStaffCenterConfig(force = false) {
       centers: Array.isArray(response.centers) ? response.centers : [],
       activities: Array.isArray(response.activities) ? response.activities : []
     };
+    // Pousse la config fraîche (horaires, vacances/fériés, offres) dans
+    // booking-core : planning staff et espace client la reflètent sans délai.
+    const currentCenter = staffCenterConfigCache.centers.find(center => center.id === getCurrentStaffCenterId());
+    if (currentCenter && typeof setCenterScheduleConfig === 'function') {
+      setCenterScheduleConfig(currentCenter);
+      if (state.view === 'client') {
+        updateSchedHint();
+        renderFormules();
+      }
+    }
   } catch (error) {
     staffCenterConfigCache.loading = false;
     staffCenterConfigCache.loaded = true;
@@ -5774,15 +5776,64 @@ function selectEstablishmentCenter(id) {
   renderStaffUtilityPage();
 }
 
+// Brouillon des overrides ponctuels (jour forcé vacances/normal) pendant
+// l'édition : manipulé en direct dans le DOM pour ne pas perdre les autres
+// champs non sauvegardés à chaque ajout/retrait.
+let establishmentHolidayOverridesDraft = [];
+
 function startEstablishmentEdit() {
   if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
+  const center = getEstablishmentCenter();
+  establishmentHolidayOverridesDraft = (center?.holidaySettings?.overrides || [])
+    .filter(item => item && item.date && (item.mode === 'holiday' || item.mode === 'normal'))
+    .map(item => ({ date: item.date, mode: item.mode }));
   state.establishmentEditing = true;
   renderStaffUtilityPage();
 }
 
 function cancelEstablishmentEdit() {
   state.establishmentEditing = false;
+  establishmentHolidayOverridesDraft = [];
   renderStaffUtilityPage();
+}
+
+function renderEstablishmentOverridesList() {
+  if (!establishmentHolidayOverridesDraft.length) {
+    return '<p class="estab-overrides-empty">Aucun jour forcé. Le calendrier belge (fériés + congés FWB) s’applique automatiquement.</p>';
+  }
+  return establishmentHolidayOverridesDraft
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .map(item => `<div class="estab-override-chip ${item.mode === 'holiday' ? 'is-holiday' : 'is-normal'}">
+      <span class="num">${escapeHtml(item.date)}</span>
+      <span>${item.mode === 'holiday' ? 'Forcé vacances/férié' : 'Forcé horaires normaux'}</span>
+      <button type="button" class="estab-override-remove" aria-label="Retirer l'exception du ${escapeHtml(item.date)}" onclick="removeEstablishmentHolidayOverride('${escapeJsString(item.date)}')">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`)
+    .join('');
+}
+
+function refreshEstablishmentOverridesList() {
+  const list = document.getElementById('estabHolidayOverridesList');
+  if (list) list.innerHTML = renderEstablishmentOverridesList();
+}
+
+function addEstablishmentHolidayOverride() {
+  const dateInput = document.getElementById('estab-override-date');
+  const modeInput = document.getElementById('estab-override-mode');
+  const date = String(dateInput?.value || '').trim();
+  const mode = modeInput?.value === 'normal' ? 'normal' : 'holiday';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('Choisissez une date valide.'); return; }
+  establishmentHolidayOverridesDraft = establishmentHolidayOverridesDraft.filter(item => item.date !== date);
+  establishmentHolidayOverridesDraft.push({ date, mode });
+  if (dateInput) dateInput.value = '';
+  refreshEstablishmentOverridesList();
+}
+
+function removeEstablishmentHolidayOverride(date) {
+  establishmentHolidayOverridesDraft = establishmentHolidayOverridesDraft.filter(item => item.date !== date);
+  refreshEstablishmentOverridesList();
 }
 
 function establishmentInputValue(id, fallback = '') {
@@ -5790,21 +5841,37 @@ function establishmentInputValue(id, fallback = '') {
   return el ? el.value : fallback;
 }
 
-async function submitCenterConfig(centerId) {
-  if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
-  const regular = {};
+function collectEstablishmentScheduleBlock(prefix) {
+  const block = {};
   ESTABLISHMENT_DAYS.forEach(([key]) => {
-    const open = establishmentInputValue(`estab-day-${key}-open`);
-    let close = establishmentInputValue(`estab-day-${key}-close`);
+    const open = establishmentInputValue(`${prefix}-${key}-open`);
+    let close = establishmentInputValue(`${prefix}-${key}-close`);
     // 00:00 saisi comme heure de fermeture = minuit → stocké 24:00 (format moteur).
     if (close === '00:00') close = '24:00';
-    const closed = document.getElementById(`estab-day-${key}-closed`)?.checked;
-    regular[key] = closed || !open || !close ? null : { open, close };
+    const closed = document.getElementById(`${prefix}-${key}-closed`)?.checked;
+    block[key] = closed || !open || !close ? null : { open, close };
   });
+  return block;
+}
+
+async function submitCenterConfig(centerId) {
+  if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
+  const regular = collectEstablishmentScheduleBlock('estab-day');
+  const holiday = collectEstablishmentScheduleBlock('estab-hday');
   const activityAvailability = {};
   (staffCenterConfigCache.activities || []).forEach(activity => {
     activityAvailability[activity.id] = !!document.getElementById(`estab-act-${activity.id}`)?.checked;
   });
+  // Panneau « Offres & formules » : map générique offerId -> booléen,
+  // appliquée aussi côté serveur (une formule décochée n'est plus réservable).
+  const offerAvailability = {};
+  FORMULES.forEach(formule => {
+    offerAvailability[formule.id] = !!document.getElementById(`estab-offer-${formule.id}`)?.checked;
+  });
+  const formulaBlockedPeriods = ['manual'];
+  if (document.getElementById('estab-fbp-public')?.checked) formulaBlockedPeriods.push('public');
+  if (document.getElementById('estab-fbp-short')?.checked) formulaBlockedPeriods.push('school_short');
+  if (document.getElementById('estab-fbp-summer')?.checked) formulaBlockedPeriods.push('school_summer');
   const config = {
     status: establishmentInputValue('estab-status', 'active'),
     resources: {
@@ -5818,7 +5885,13 @@ async function submitCenterConfig(centerId) {
         parallelLaunches: Number(establishmentInputValue('estab-launches', 1))
       }
     },
-    defaultSchedule: { regular },
+    defaultSchedule: { regular, holiday },
+    holidaySettings: {
+      enabled: !!document.getElementById('estab-holiday-enabled')?.checked,
+      overrides: establishmentHolidayOverridesDraft.map(item => ({ date: item.date, mode: item.mode })),
+      formulaBlockedPeriods
+    },
+    offerAvailability,
     activityAvailability
   };
   const name = establishmentInputValue('estab-name').trim();
@@ -5829,6 +5902,7 @@ async function submitCenterConfig(centerId) {
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenterConfig', centerId, config }) });
     toast('Configuration du centre enregistrée.');
     state.establishmentEditing = false;
+    establishmentHolidayOverridesDraft = [];
     await loadStaffCenterConfig(true);
   } catch (error) {
     toast(error?.message || 'Enregistrement impossible.');
@@ -5862,18 +5936,20 @@ async function setEstablishmentCenterStatus(centerId, status) {
   }
 }
 
-function renderEstablishmentDayRow(center, key, label) {
-  const slot = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule.regular?.[key] : null;
+function renderEstablishmentDayRow(center, key, label, block = 'regular', prefix = 'estab-day') {
+  const schedule = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : null;
+  const slot = schedule?.[block]?.[key] || null;
   const closed = !slot;
   // input[type=time] ne sait pas représenter « 24:00 » (minuit fin de journée) :
   // on l'affiche 00:00 et submitCenterConfig le re-stocke en 24:00.
   const closeValue = slot?.close === '24:00' ? '00:00' : (slot?.close || '22:00');
+  const defaultOpen = block === 'holiday' ? '10:00' : '14:00';
   return `<div class="estab-day-row">
     <span class="estab-day-label">${escapeHtml(label)}</span>
-    <label class="estab-day-closed"><input type="checkbox" class="estab-check" id="estab-day-${key}-closed" ${closed ? 'checked' : ''} onchange="const r=this.closest('.estab-day-row');r.querySelectorAll('input[type=time]').forEach(i=>i.disabled=this.checked)"><span class="estab-check-box" aria-hidden="true"></span> Fermé</label>
-    <input type="time" id="estab-day-${key}-open" value="${escapeHtml(slot?.open || '14:00')}" ${closed ? 'disabled' : ''} aria-label="Ouverture ${escapeHtml(label)}">
+    <label class="estab-day-closed"><input type="checkbox" class="estab-check" id="${prefix}-${key}-closed" ${closed ? 'checked' : ''} onchange="const r=this.closest('.estab-day-row');r.querySelectorAll('input[type=time]').forEach(i=>i.disabled=this.checked)"><span class="estab-check-box" aria-hidden="true"></span> Fermé</label>
+    <input type="time" id="${prefix}-${key}-open" value="${escapeHtml(slot?.open || defaultOpen)}" ${closed ? 'disabled' : ''} aria-label="Ouverture ${escapeHtml(label)}">
     <span class="estab-day-sep">→</span>
-    <input type="time" id="estab-day-${key}-close" value="${escapeHtml(closeValue)}" ${closed ? 'disabled' : ''} aria-label="Fermeture ${escapeHtml(label)} (00:00 = minuit)">
+    <input type="time" id="${prefix}-${key}-close" value="${escapeHtml(closeValue)}" ${closed ? 'disabled' : ''} aria-label="Fermeture ${escapeHtml(label)} (00:00 = minuit)">
   </div>`;
 }
 
@@ -5894,6 +5970,12 @@ function renderStaffUtilityEstablishment() {
   const editing = canEdit && !!state.establishmentEditing;
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
+  const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
+    ? center.holidaySettings
+    : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] };
+  const blockedPeriods = Array.isArray(holidaySettings.formulaBlockedPeriods)
+    ? holidaySettings.formulaBlockedPeriods
+    : ['public', 'school_short', 'manual'];
   const statusLabels = { active: 'Actif', planned: 'Prévu', closed: 'Archivé' };
   return `<div class="establishment-page">
     <section class="establishment-selector">
@@ -5963,8 +6045,65 @@ function renderStaffUtilityEstablishment() {
         </fieldset>
 
         <fieldset class="establishment-card establishment-hours">
-          <legend>Horaires d'ouverture</legend>
+          <legend>Horaires normaux</legend>
           ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label)).join('')}
+        </fieldset>
+
+        <fieldset class="establishment-card establishment-hours establishment-holiday-hours">
+          <legend>Horaires vacances &amp; fériés</legend>
+          <label class="establishment-toggle">
+            <input type="checkbox" id="estab-holiday-enabled" ${holidaySettings.enabled !== false ? 'checked' : ''}>
+            <span class="estab-check-box" aria-hidden="true"></span>
+            <span>Appliquer automatiquement ces horaires les jours fériés belges et pendant les congés scolaires FWB</span>
+          </label>
+          ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label, 'holiday', 'estab-hday')).join('')}
+          <div class="estab-subsection">
+            <h4>Formules « non valables vacances/fériés » bloquées pendant :</h4>
+            <div class="estab-period-grid">
+              <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-public" ${blockedPeriods.includes('public') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Jours fériés</span></label>
+              <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-short" ${blockedPeriods.includes('school_short') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Petits congés (automne, hiver, détente, printemps)</span></label>
+              <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-summer" ${blockedPeriods.includes('school_summer') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Grandes vacances (juillet-août)</span></label>
+            </div>
+          </div>
+          <div class="estab-subsection">
+            <h4>Exceptions ponctuelles (jour forcé)</h4>
+            <div class="estab-override-form">
+              <input type="date" id="estab-override-date" aria-label="Date de l'exception">
+              <select id="estab-override-mode" aria-label="Type d'exception">
+                <option value="holiday">Traiter comme vacances/férié</option>
+                <option value="normal">Traiter comme jour normal</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentHolidayOverride()">Ajouter</button>
+            </div>
+            <div id="estabHolidayOverridesList" class="estab-overrides-list">${renderEstablishmentOverridesList()}</div>
+          </div>
+        </fieldset>
+
+        <fieldset class="establishment-card establishment-offers">
+          <legend>Offres &amp; formules</legend>
+          <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
+          ${(() => {
+            const families = [];
+            FORMULES.forEach(formule => {
+              const familyName = formule.family || 'Formules';
+              let group = families.find(item => item.name === familyName);
+              if (!group) { group = { name: familyName, items: [] }; families.push(group); }
+              group.items.push(formule);
+            });
+            return families.map(group => `
+              <div class="estab-offer-group">
+                <h4>${escapeHtml(group.name)}</h4>
+                <div class="establishment-activity-grid">
+                  ${group.items.map(formule => {
+                    const enabled = center.offerAvailability?.[formule.id] !== false;
+                    return `<label class="establishment-activity ${enabled ? 'on' : ''}">
+                      <input type="checkbox" id="estab-offer-${escapeHtml(formule.id)}" ${enabled ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+                      <span>${escapeHtml(formule.name)} · ${Number(formule.price)}€/${formule.type === 'per_lane' ? 'piste' : 'pers.'}</span>
+                    </label>`;
+                  }).join('')}
+                </div>
+              </div>`).join('');
+          })()}
         </fieldset>
 
         <fieldset class="establishment-card establishment-activities">
@@ -5984,11 +6123,30 @@ function renderStaffUtilityEstablishment() {
 function renderEstablishmentReadView(center) {
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
-  const regular = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule.regular || {} : {};
+  const schedule = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : {};
+  const regular = schedule.regular || {};
+  const holiday = schedule.holiday || {};
+  const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
+    ? center.holidaySettings
+    : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] };
+  const blockedPeriods = Array.isArray(holidaySettings.formulaBlockedPeriods)
+    ? holidaySettings.formulaBlockedPeriods
+    : ['public', 'school_short', 'manual'];
+  const periodLabels = { public: 'jours fériés', school_short: 'petits congés', school_summer: 'grandes vacances' };
+  const blockedLabel = ['public', 'school_short', 'school_summer'].filter(key => blockedPeriods.includes(key)).map(key => periodLabels[key]);
+  const overrides = Array.isArray(holidaySettings.overrides) ? holidaySettings.overrides : [];
   const activities = (staffCenterConfigCache.activities || []);
   const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
+  const disabledOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] === false);
   const kv = (label, value) => `<div class="establishment-kv"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
   const num = (v) => `<span class="num">${escapeHtml(String(v))}</span>`;
+  const hoursGrid = (block) => ESTABLISHMENT_DAYS.map(([key, label]) => {
+    const slot = block[key];
+    const value = slot && slot.open && slot.close
+      ? `<span class="num">${escapeHtml(slot.open)}</span> → <span class="num">${escapeHtml(slot.close)}</span>`
+      : '<span class="establishment-closed-tag">Fermé</span>';
+    return kv(label, value);
+  }).join('');
   return `<div class="establishment-readview">
     <div class="establishment-read-card establishment-resources-read">
       <h3>Ressources</h3>
@@ -6007,16 +6165,23 @@ function renderEstablishmentReadView(center) {
       </div>
     </div>
     <div class="establishment-read-card establishment-hours-read">
-      <h3>Horaires d'ouverture</h3>
-      <div class="establishment-hours-grid">
-        ${ESTABLISHMENT_DAYS.map(([key, label]) => {
-          const slot = regular[key];
-          const value = slot && slot.open && slot.close
-            ? `<span class="num">${escapeHtml(slot.open)}</span> → <span class="num">${escapeHtml(slot.close)}</span>`
-            : '<span class="establishment-closed-tag">Fermé</span>';
-          return kv(label, value);
-        }).join('')}
-      </div>
+      <h3>Horaires normaux</h3>
+      <div class="establishment-hours-grid">${hoursGrid(regular)}</div>
+    </div>
+    <div class="establishment-read-card establishment-hours-read">
+      <h3>Horaires vacances &amp; fériés</h3>
+      <p class="establishment-read-hint">${holidaySettings.enabled !== false
+        ? 'Appliqués automatiquement les fériés belges et congés scolaires FWB.'
+        : 'Application automatique désactivée — uniquement via les exceptions ponctuelles.'}</p>
+      <div class="establishment-hours-grid">${hoursGrid(holiday)}</div>
+      ${kv('Formules anniversaires bloquées', blockedLabel.length ? escapeHtml(blockedLabel.join(', ')) : 'jamais')}
+      ${overrides.length ? `<div class="establishment-read-tags">${overrides.map(item => `<span>${escapeHtml(item.date)} · ${item.mode === 'holiday' ? 'vacances/férié' : 'jour normal'}</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="establishment-read-card establishment-activities-read">
+      <h3>Offres &amp; formules</h3>
+      ${disabledOffers.length
+        ? `<p class="establishment-read-hint">Désactivées : </p><div class="establishment-read-tags">${disabledOffers.map(formule => `<span>${escapeHtml(formule.name)}</span>`).join('')}</div>`
+        : '<p class="establishment-read-empty">Toutes les offres sont actives côté client.</p>'}
     </div>
     <div class="establishment-read-card establishment-activities-read">
       <h3>Activités disponibles</h3>
@@ -12614,9 +12779,9 @@ function getFormuleAvailability(formule, dateStr, pax, startTime = '') {
   const day = parseLocalDate(dateStr).getDay();
   const schedule = getSchedule(dateStr, state.isHolidayMode);
   const totalDuration = getFormuleTotalDuration(formule);
-  const holiday = isHolidayScheduleDate(dateStr, state.isHolidayMode);
+  if (!isOfferEnabled(formule.id)) return { ok: false, message: 'Offre momentanément indisponible' };
   if (pax < formule.minPax) return { ok: false, message: `Min. ${formule.minPax} personnes` };
-  if (formule.noHolidays && holiday) return { ok: false, message: 'Indisponible vacances/fériés' };
+  if (formule.noHolidays && isFormulaBlockedDate(dateStr, state.isHolidayMode)) return { ok: false, message: 'Indisponible vacances/fériés' };
   if (formule.validDays && !formule.validDays.includes(day)) return { ok: false, message: 'Indisponible ce jour' };
   if (!schedule) return { ok: false, message: 'Centre fermé ce jour' };
   if (startTime && formule.timeLimit) {
@@ -12638,7 +12803,7 @@ function renderFormules() {
   const grid = document.getElementById('formuleGrid');
   const pax = Number(state.booking.pax) || 0;
   const day = parseLocalDate(state.booking.date).getDay();
-  const holiday = isHolidayScheduleDate(state.booking.date, state.isHolidayMode);
+  const blockedToday = isFormulaBlockedDate(state.booking.date, state.isHolidayMode);
   const daysMap = { 0:'dimanche', 1:'lundi', 2:'mardi', 3:'mercredi', 4:'jeudi', 5:'vendredi', 6:'samedi' };
   const formatDays = arr => {
     if (!arr || !arr.length) return '';
@@ -12650,39 +12815,94 @@ function renderFormules() {
   };
   const formatTime = lim => {
     if (!lim) return '';
-    if (lim.min && lim.max) return `Valable entre ${lim.min}h et ${lim.max}h`;
-    if (lim.max) return `Valable avant ${lim.max}h`;
-    if (lim.min) return `Valable dès ${lim.min}h`;
+    if (lim.min && lim.max) return `De ${lim.min}h à ${lim.max}h`;
+    if (lim.max) return `Avant ${lim.max}h`;
+    if (lim.min) return `Dès ${lim.min}h`;
     return '';
   };
 
-  const processed = FORMULES.map(f => {
+  // Les offres désactivées par le staff (Établissement) sont masquées côté client.
+  const processed = FORMULES.filter(f => isOfferEnabled(f.id)).map(f => {
     const availability = getFormuleAvailability(f, state.booking.date, pax);
     const validDay = !f.validDays || f.validDays.includes(day);
-    let status = 'Disponible';
+    let status = '';
     let cls = 'ok';
     if (!validDay) { status = formatDays(f.validDays); cls = 'warn'; }
-    else if (f.noHolidays && holiday) { status = 'Pas pendant vacances/jours fériés'; cls = 'warn'; }
+    else if (f.noHolidays && blockedToday) { status = 'Indisponible à cette date (vacances/férié)'; cls = 'warn'; }
     else if (pax < f.minPax) { status = `Min. ${f.minPax} personnes (vous : ${pax})`; cls = 'warn'; }
     else if (!availability.ok) { status = availability.message; cls = 'warn'; }
-    else if (f.timeLimit) { status = `Disponible • ${formatTime(f.timeLimit)}`; }
     return { ...f, available: availability.ok, status, cls };
-  }).sort((a, b) => a.available === b.available ? 0 : a.available ? -1 : 1);
+  });
 
-  grid.innerHTML = processed.map(f => `
-    <button type="button" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
-      ${f.best ? '<div class="badge-best">Best deal</div>' : ''}
-      <div class="formule-price">${f.price}€/${f.type === 'per_lane' ? 'piste' : 'pers'}</div>
-      ${f.family ? `<div class="formule-family">${f.family}</div>` : ''}
-      <div class="formule-head">
-        <div class="formule-name">${f.name}</div>
+  // Regroupement par famille : les mentions communes à toute la famille sont
+  // factorisées une seule fois dans l'en-tête au lieu d'être répétées par carte.
+  const families = [];
+  processed.forEach(f => {
+    const familyName = f.family || 'Formules';
+    let group = families.find(g => g.name === familyName);
+    if (!group) { group = { name: familyName, items: [] }; families.push(group); }
+    group.items.push(f);
+  });
+
+  // Date en grandes vacances : les formules « noHolidays » restent ouvertes
+  // (exception été) — on l'affiche explicitement pour lever l'ambiguïté.
+  const dateContext = getSpecialOpeningContext(state.booking.date, state.isHolidayMode);
+  const summerOpen = dateContext.active && dateContext.periodType === 'school_summer' && !blockedToday;
+
+  grid.innerHTML = families.map(group => {
+    const sharedNotes = (group.items[0].notes || []).filter(note =>
+      group.items.length > 1 && group.items.every(item => (item.notes || []).includes(note)));
+    const groupBlocked = blockedToday && group.items.length > 1 && group.items.every(item => item.noHolidays);
+    const groupSummerOpen = summerOpen && group.items.length > 1 && group.items.every(item => item.noHolidays);
+    return `
+    <section class="formule-group">
+      <header class="formule-group-head">
+        <h3>${group.name}</h3>
+        ${sharedNotes.length ? `<p class="formule-group-notes">${sharedNotes.join(' · ')}</p>` : ''}
+        ${groupSummerOpen ? '<p class="formule-group-info">Exception grandes vacances : ces formules sont bien disponibles à la date choisie.</p>' : ''}
+      </header>
+      ${groupBlocked ? `<div class="formule-group-alert" role="status">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>Ces formules ne sont pas disponibles à la date choisie (vacances scolaires ou jour férié). Choisissez une autre date pour les réserver.</span>
+      </div>` : ''}
+      <div class="formule-rows">
+        ${group.items.map(f => {
+          // Notes propres à la carte, en version compacte (la phrase longue
+          // « Non valable durant... » reste réservée à l'en-tête de famille).
+          const uniqueNotes = (f.notes || [])
+            .filter(note => !sharedNotes.includes(note))
+            .map(note => note.replace(/^Non valable durant les vacances scolaires et jours fériés$/i, 'Hors vacances scolaires et fériés'));
+          const meta = [...new Set([
+            ...uniqueNotes,
+            f.timeLimit ? formatTime(f.timeLimit) : ''
+          ].filter(Boolean))];
+          // Le motif « vacances/férié » est déjà annoncé une seule fois au
+          // niveau de la famille : pas de redite par carte.
+          const rowStatus = groupBlocked && f.noHolidays ? '' : f.status;
+          return `
+        <button type="button" class="formule-row ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
+          <span class="formule-row-check" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <span class="formule-row-main">
+            <span class="formule-row-title">
+              <span class="formule-name">${f.name}</span>
+              ${f.best ? '<span class="badge-best">Best deal</span>' : ''}
+            </span>
+            <span class="formule-row-desc">${f.desc.join(' · ')}</span>
+            ${meta.length ? `<span class="formule-row-meta">${meta.join(' · ')}</span>` : ''}
+            ${rowStatus ? `<span class="formule-row-status ${f.cls}">${rowStatus}</span>` : ''}
+          </span>
+          <span class="formule-row-price">
+            ${f.oldPrice ? `<s>${f.oldPrice}€</s>` : ''}
+            <strong>${f.price}€</strong>
+            <small>/ ${f.type === 'per_lane' ? 'piste' : 'pers.'}</small>
+          </span>
+        </button>`;
+        }).join('')}
       </div>
-      <ul class="formule-list">${f.desc.map(d => `<li>${d}</li>`).join('')}</ul>
-      ${f.notes?.length ? `<div class="formule-notes">${f.notes.map(note => `<p>${note}</p>`).join('')}</div>` : ''}
-      ${f.timeLimit ? `<div class="formule-tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ${f.timeLimit.min && f.timeLimit.max ? `${f.timeLimit.min}h-${f.timeLimit.max}h` : f.timeLimit.max ? `avant ${f.timeLimit.max}h` : `dès ${f.timeLimit.min}h`}</div>` : ''}
-      <div class="formule-status ${f.cls}">${f.status}</div>
-    </button>
-  `).join('');
+    </section>`;
+  }).join('');
   renderFormulaPreferences();
 }
 
@@ -12718,10 +12938,30 @@ function renderPos() {
   `;
 }
 
+// Recupere la config publique du centre (horaires staff, vacances/feries,
+// offres activees) et la pousse dans booking-core pour que l'affichage client
+// (hint "Ouvert...", formules) reflete la meme verite que le serveur.
+// Fail-soft : sans reponse, la grille locale historique reste utilisee.
+async function loadCenterScheduleConfig() {
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.publicBookingMeta || '/api/public-booking-meta'}?centerId=${encodeURIComponent(getCurrentStaffCenterId ? getCurrentStaffCenterId() : 'libramont')}`, { method: 'GET' });
+    if (payload?.center && typeof setCenterScheduleConfig === 'function') {
+      setCenterScheduleConfig(payload.center);
+      if (state.view === 'client') {
+        updateSchedHint();
+        renderFormules();
+      }
+    }
+  } catch (error) {
+    // Grille locale conservee.
+  }
+}
+
 async function bootstrapApp() {
   isAuthenticated = hasSavedAuth();
   applyInitialRouteFromHash();
   initClient();
+  loadCenterScheduleConfig();
   if (isAuthenticated) {
     await loadStaffAuthSession({ silent: true });
     await syncDateReservations(state.booking.date, { silent: true, skipRender: true });

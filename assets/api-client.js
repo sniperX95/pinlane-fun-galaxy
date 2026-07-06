@@ -1,6 +1,7 @@
 (function () {
   const endpoints = Object.freeze({
     publicReservations: '/api/public-reservations',
+    publicBookingMeta: '/api/public-booking-meta',
     staffReservations: '/api/staff-reservations',
     staffState: '/api/staff-state',
     publicAvailability: '/api/public-availability',

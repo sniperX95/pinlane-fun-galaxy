@@ -259,38 +259,32 @@ body.zoom .entry{opacity:0;transition:opacity .6s ease .45s}
 .fxparts{
   position:fixed;inset:0;z-index:135;display:none;pointer-events:none;width:100%;height:100%;
 }
-/* La SPHÈRE = LA BALLE DE GOLF DU LOGO (golfball.svg : tracés extraits tels quels de logo-fun-galaxy.svg,
-   alvéoles incluses). Dessous, un dégradé sphérique sombre remplit l'intérieur (dans le logo il est ajouré :
-   ici il devient la surface à l'ombre -> balle SOLIDE qu'on peut traverser) + halo brand.
-   Taille/position posées en JS (pile sur la balle du logo). */
+/* La SPHÈRE = LA BALLE DE GOLF DU LOGO, FIDÈLE (golfball.svg : tracés #fff extraits tels quels de
+   logo-fun-galaxy.svg — la balle y est BLANCHE, les alvéoles sont AJOURÉES). Dessous, un fond aubergine
+   sombre (#2d1436 -> #241833, la teinte que les alvéoles ont dans le logo posé sur la page) remplit les
+   alvéoles -> balle SOLIDE qu'on peut traverser. Halo d'ignition BLANC (il ne teinte pas la balle).
+   AUCUN anneau : on plonge dans une balle de golf, point. Taille/position posées en JS. */
 .planet3d{
   position:absolute;left:0;top:0;border-radius:50%;opacity:0;
   transform-origin:center center;
   -webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0);
   background:
     url(golfball.svg) center/contain no-repeat,
-    radial-gradient(circle at 34% 30%,#3a4070 0%,#242a52 45%,#141833 75%,#0a0c20 100%);
+    radial-gradient(circle at 34% 30%,#38204a 0%,#2d1436 52%,#241833 82%,#1b1028 100%);
   box-shadow:
-    0 0 22px 5px rgba(103,186,172,.55),
-    0 0 64px 14px rgba(148,66,146,.38),
-    inset -6px -8px 18px rgba(10,12,40,.55);
+    0 0 20px 5px rgba(255,255,255,.34),
+    0 0 60px 16px rgba(190,200,235,.16);
   will-change:transform,opacity;
   backface-visibility:hidden;-webkit-backface-visibility:hidden;
+}
+.planet3d::before{ /* ombrage sphérique DISCRET et neutre (teinte alvéole, ni teal ni violet) : la balle reste blanche */
+  content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 34% 30%,rgba(36,24,51,0) 48%,rgba(36,24,51,.16) 74%,rgba(36,24,51,.38) 100%);
 }
 .planet3d__spec{ /* reflet spéculaire doux côté lumière (même éclairage que le dessin : haut-gauche) */
   position:absolute;left:16%;top:10%;width:38%;height:34%;border-radius:50%;pointer-events:none;
   background:radial-gradient(circle at 42% 42%,rgba(255,255,255,.55),rgba(255,255,255,0) 70%);
   -webkit-filter:blur(2px);filter:blur(2px);
-}
-.planet3d__ring{ /* anneau incliné : dégradé teal->violet->teal = le swoosh du logo (continuité de matière) */
-  position:absolute;left:50%;top:50%;width:198%;height:58%;pointer-events:none;
-  border-radius:50%;padding:2px;
-  background:linear-gradient(100deg,rgba(103,186,172,.85),rgba(148,66,146,.9) 50%,rgba(103,186,172,.85));
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-          mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;
-  -webkit-transform:translate(-50%,-50%) rotate(-20deg);transform:translate(-50%,-50%) rotate(-20deg);
-  box-shadow:0 0 12px rgba(148,66,146,.45);
 }
 /* CŒUR de la sphère : gonfle (scale .2 -> 9) et blanchit -> vend l'ENTRÉE DANS la planète, raccord direct au whiteout */
 .planet3d__core{
@@ -300,20 +294,10 @@ body.zoom .entry{opacity:0;transition:opacity .6s ease .45s}
   background:radial-gradient(circle at 50% 50%,#ffffff 0%,#eafff8 26%,#8fe8dc 55%,rgba(103,186,172,0) 100%);
   mix-blend-mode:screen;will-change:transform,opacity;
 }
-/* STRIES radiales de vitesse plaquées sur la sphère (motion blur perçu pendant la traversée) */
-.planet3d::after{
-  content:'';position:absolute;inset:-45%;border-radius:50%;pointer-events:none;opacity:0;
-  background:repeating-conic-gradient(from 0deg at 50% 50%,
-    rgba(255,255,255,0) 0deg,rgba(206,220,255,.28) 1.4deg,rgba(255,255,255,0) 4deg);
-  -webkit-mask:radial-gradient(circle,transparent 28%,#000 52%,transparent 100%);
-          mask:radial-gradient(circle,transparent 28%,#000 52%,transparent 100%);
-  will-change:transform,opacity;
-}
 /* PLONGÉE : perspective(620) + translateZ(1050) + scale(4.2 overshoot) + rotateX/Y + motion blur, MÊME courbe ease-in que le warp.
-   --dive-dx/--dive-dy (JS) recentrent la planète vers le milieu de l'écran pendant la descente (le foyer du warp suit, en JS).
-   L'intérieur du couloir = anneaux concentriques CANVAS émis du même foyer (un seul vocabulaire, zéro paroi CSS lourde). */
+   --dive-dx/--dive-dy (JS) recentrent la balle vers le milieu de l'écran pendant la descente (le foyer du warp suit, en JS).
+   La traversée = STARFIELD de points CANVAS émis du même foyer (un seul vocabulaire, zéro strie/anneau CSS). */
 body.zoom .planet3d{animation:dive3d 1s cubic-bezier(.45,.05,.72,.5) forwards}
-body.zoom .planet3d::after{animation:planetStreak 1s cubic-bezier(.45,.05,.72,.5) forwards}
 body.zoom .planet3d__core{animation:coreExpand 1s cubic-bezier(.45,.05,.72,.5) forwards}
 
 /* Flash lumineux au DÉBOUCHÉ de l'hyperespace (au-dessus de tout) — déclenché à 3060ms, pic ~3177ms
@@ -379,11 +363,7 @@ body.land .bar{animation:landBar .5s cubic-bezier(.16,1,.3,1) .18s both}
 @keyframes coreExpand{0%{opacity:0;-webkit-transform:translate(-50%,-50%) scale(.2);transform:translate(-50%,-50%) scale(.2)}
   60%{opacity:1}
   100%{opacity:1;-webkit-transform:translate(-50%,-50%) scale(6.5);transform:translate(-50%,-50%) scale(6.5)}}
-/* Stries de vitesse sur la sphère : s'ouvrent et s'intensifient pendant la traversée */
-@keyframes planetStreak{0%{opacity:0;-webkit-transform:scale(.6);transform:scale(.6)}
-  55%{opacity:.6}
-  100%{opacity:.95;-webkit-transform:scale(3.2);transform:scale(3.2)}}
-/* Whiteout : montée ~117ms (18% de .65s) -> pic à ~3177ms (sortie du couloir d'hyperespace) puis fond sur la carte */
+/* Whiteout : montée ~117ms (18% de .65s) -> pic à ~3177ms (sortie du champ d'étoiles) puis fond sur la carte */
 @keyframes flashPulse{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
 @keyframes haloDive{0%{opacity:.9;transform:translate(-50%,-50%) scale(1.6)}100%{opacity:0;transform:translate(-50%,-50%) scale(4)}}
 /* B5 — arrivée : settle de la carte + assemblage décalé header/barre (follow-through) */
@@ -398,7 +378,7 @@ body.land .bar{animation:landBar .5s cubic-bezier(.16,1,.3,1) .18s both}
   body.go .entry__logo-wrap,body.go .entry__halo,body.go .entry__shine,body.go .entry__shine::before,
   body.arm .entry__logo-wrap,body.arm .planet3d,
   body.zoom .entry__logo-wrap,body.zoom .entry__halo,body.zoom .planet3d,
-  body.zoom .planet3d::after,body.zoom .planet3d__core,
+  body.zoom .planet3d__core,
   body.land .viewer,body.land .card-head,body.land .bar{animation:none!important}
   .flash-el,.scene3d,.fxparts{display:none!important}
   .fs,.fs__img{transition-duration:.12s}

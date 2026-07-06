@@ -42,14 +42,9 @@
     var STAR_N = lowPower ? 66 : 90;       // (était 150) -40% env., densité visuellement proche — INCHANGÉ au repos
     var MAX_PARTS = lowPower ? 240 : 800;  // shatter DENSE façon « N » : éclats = quads qui tumble (transitoire, ~1s ; lowPower bridé)
     var parts = [];                    // particules de désintégration du logo (rendues sur l'OVERLAY, devant la sphère)
-    // Stries de tunnel ÉPHÉMÈRES : pool recyclé, actif UNIQUEMENT pendant le dive (warp>0.3) -> tunnel plein, 0 coût au calme
+    // Étoiles de FLUX éphémères : pool recyclé, actif UNIQUEMENT pendant le dive (warp>0.3) -> starfield dense, 0 coût au calme
     var STREAK_N = lowPower ? 90 : 220;
     var streaks = [];
-    // ANNEAUX de TUNNEL : cercles concentriques qui jaillissent de la planète (throat) et rushent AU-DELÀ de la caméra.
-    // Pool pré-alloué (jamais d'allocation par frame), actif UNIQUEMENT au pic du dive (warp>0.5) -> vraie géométrie
-    // d'intérieur pendant ~300ms (on TRAVERSE la surface), 0 coût au calme.
-    var RING_N = lowPower ? 6 : 9;
-    var rings = [], ringAcc = 0;
     // Overlay dédié aux fragments : canvas transparent plein écran (z135), au-dessus de .scene3d (z130), sous .flash-el (z140)
     var fxCanvas = null, fctx = null, fW = 0, fH = 0, fxDirty = false;
     var logoImg = new Image(), logoReady = false, logoPts = null;
@@ -76,7 +71,7 @@
 
     function rand(a, b) { return a + Math.random() * (b - a); }
 
-    // Échantillonneur cubic-bezier(.45,.05,.72,.5) (Newton-Raphson) — MÊME courbe que dive3d/planetStreak.
+    // Échantillonneur cubic-bezier(.45,.05,.72,.5) (Newton-Raphson) — MÊME courbe que dive3d.
     // Verrouille la vitesse du warp sur la plongée CSS (l'ancien pow(1.7) déviait jusqu'à ~0.06 en milieu de courbe).
     var warpEase = (function () {
       var x1 = 0.45, y1 = 0.05, x2 = 0.72, y2 = 0.5;
@@ -105,7 +100,7 @@
       bgGrad.addColorStop(0, '#0b0b1e');
       bgGrad.addColorStop(0.5, '#070713');
       bgGrad.addColorStop(1, '#04040c');
-      buildStars(); buildNebulae(); sizeFxCanvas(); initStreaks(); initRings();
+      buildStars(); buildNebulae(); sizeFxCanvas(); initStreaks();
     }
 
     // Overlay fragments : créé paresseusement (jamais en mouvement réduit), dimensionné au viewport * DPR
@@ -131,11 +126,6 @@
     function spawnStreak(s) {
       var an = rand(0, Math.PI * 2), rr = rand(3, 26);
       s.ux = Math.cos(an); s.uy = Math.sin(an); s.d = rr; s.a = rand(0.4, 0.95); s.active = true;
-    }
-    function initRings() {
-      if (rings.length === RING_N) { for (var i = 0; i < RING_N; i++) rings[i].active = false; return; }
-      rings = [];
-      for (var j = 0; j < RING_N; j++) rings.push({ r: 0, active: false });
     }
 
     function buildStars() {
@@ -222,35 +212,33 @@
       for (var i = 0; i < stars.length; i++) {
         var s = stars[i];
         if (warping) {
-          // HYPERESPACE : la tête accélère radialement depuis la planète, la TRAÎNÉE s'ALLONGE avec le warp
-          // (longueur ∝ warp² et ∝ distance au focal) — plus de vitesse SANS ajouter d'étoiles.
+          // STARFIELD 3D (écran de veille Windows / Star Fox) : des POINTS d'étoiles foncent vers nous —
+          // accélération radiale ∝ distance (perspective : plus près = plus vite), léger GROSSISSEMENT en
+          // approchant, queue de mouvement ≤ 6px (lisibilité de la vitesse, PAS une traînée), puis recyclage
+          // IMMÉDIAT près du foyer dès la sortie d'écran -> flux dense et continu SANS étoile de plus.
           var dx = s.x - fx, dy = s.y - fy;
           var d = Math.sqrt(dx * dx + dy * dy) || 0.0001;
-          var ux = dx / d, uy = dy / d;            // direction radiale unitaire (planète -> extérieur)
-          var k = 0.135 * warp * dt;               // accélération de la tête
-          var nx = s.x + dx * k, ny = s.y + dy * k;
+          var ux = dx / d, uy = dy / d;            // direction radiale unitaire (balle -> extérieur)
+          var sp = (d * 0.135 + 0.5) * warp * dt;  // vitesse de la tête : ∝ distance (+0.5 : le centre ne stagne pas)
+          var nx = s.x + ux * sp, ny = s.y + uy * sp;
           var edge = d / (diag * 0.5); if (edge > 1) edge = 1;
-          // traînée HYPERESPACE FRANC : ~720px au pic (≈155% de la demi-diagonale d'un 390x844) -> les stries filent
-          // de la planète jusqu'aux bords ; base relevée (0.42) pour que même les stries mi-écran soient longues. 0 étoile de +.
-          var L = (6 + warp * warp * 720) * (0.42 + 0.58 * edge);
-          var tx = nx - ux * L, ty = ny - uy * L;  // la queue pointe vers le focal
-          // BLOOM : 2 strokes par étoile -> halo bleuté doux + cœur blanc chaud (stries Netflix avec noyau brillant)
-          var haloW = s.r * (0.55 + warp * 1.8);
-          ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(nx, ny);
-          ctx.strokeStyle = 'rgba(200,214,255,' + Math.min(s.a * (0.32 + warp * 0.95), 1) + ')';
-          ctx.lineWidth = haloW; ctx.stroke();                       // halo doux
-          ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(s.a * (0.28 + warp * 0.9), 1) + ')';
-          ctx.lineWidth = haloW * 0.35; ctx.stroke();                // cœur chaud (même path, plus fin, blanc pur)
-          if (boost) {                             // MIROIR au pic : chaque traînée dupliquée par symétrie centrale
-            // -> densité perçue x2 SANS étoile de plus (1 stroke par étoile, transitoire ~800ms)
-            ctx.strokeStyle = 'rgba(200,214,255,' + Math.min(s.a * 0.7 * (0.32 + warp * 0.95), 1) + ')';
-            ctx.lineWidth = haloW * 0.8;
-            ctx.beginPath(); ctx.moveTo(fx * 2 - tx, fy * 2 - ty); ctx.lineTo(fx * 2 - nx, fy * 2 - ny); ctx.stroke();
+          // taille perspective : petite au fond (près du foyer), jusqu'à ~3x en approchant du bord
+          var pr = s.r * (0.55 + edge * 1.9) * (0.85 + warp * 0.3);
+          var L = 2 + sp * 0.12; if (L > 6) L = 6; // queue TRÈS courte, plafonnée à 6px
+          var al = Math.min(s.a * (0.30 + warp * 0.75) * (0.35 + 0.65 * edge), 1);
+          // 1 stroke à bouts ronds = point + micro-queue (capsule) : lecture « étoile », coût d'un seul tracé
+          ctx.strokeStyle = 'rgba(255,255,255,' + al + ')';
+          ctx.lineWidth = pr * 2;
+          ctx.beginPath(); ctx.moveTo(nx - ux * L, ny - uy * L); ctx.lineTo(nx, ny); ctx.stroke();
+          if (boost) {                             // MIROIR au pic : chaque étoile dupliquée par symétrie centrale
+            // -> densité du flux x2 SANS étoile de plus (1 tracé par étoile, transitoire ~800ms)
+            ctx.strokeStyle = 'rgba(210,222,255,' + (al * 0.7) + ')';
+            ctx.lineWidth = pr * 1.7;
+            ctx.beginPath(); ctx.moveTo(fx * 2 - nx + ux * L, fy * 2 - ny + uy * L); ctx.lineTo(fx * 2 - nx, fy * 2 - ny); ctx.stroke();
           }
           s.x = nx; s.y = ny;
-          var d2 = (nx - fx) * (nx - fx) + (ny - fy) * (ny - fy);
-          if (d2 > diag * diag * 0.52) {           // recyclage plus TARD -> la tête parcourt ~72% de la diagonale avant reset (trace plus longue et franche)
-            var an = rand(0, Math.PI * 2), rr = rand(6, 46);
+          if (nx < -12 || nx > W + 12 || ny < -12 || ny > H + 12) {   // recyclage RAPIDE au foyer -> densité du flux
+            var an = rand(0, Math.PI * 2), rr = rand(2, 36);
             s.x = fx + Math.cos(an) * rr; s.y = fy + Math.sin(an) * rr;
           }
         } else {
@@ -267,51 +255,26 @@
         }
       }
 
-      // STRIES DE TUNNEL éphémères : densifient l'hyperespace PENDANT le dive uniquement (émises du focal = la planète), recyclées
+      // ÉTOILES DE FLUX éphémères : 2e nappe de POINTS émise du foyer PENDANT le dive uniquement — densifie le
+      // starfield (recyclage express dès la sortie d'écran), mêmes règles que les étoiles : point + queue ≤ 6px.
       if (warp > 0.3) {
+        ctx.lineCap = 'round';
         for (var q = 0; q < streaks.length; q++) {
           var st = streaks[q];
           if (!st.active) { if (Math.random() < 0.5) spawnStreak(st); else continue; }
-          st.d += (st.d * 0.13 + 0.8) * warp * dt;         // accélération radiale (whip)
+          var stsp = (st.d * 0.135 + 0.6) * warp * dt;       // accélération radiale (perspective)
+          st.d += stsp;
           var hx = fx + st.ux * st.d, hy = fy + st.uy * st.d;
+          if (hx < -12 || hx > W + 12 || hy < -12 || hy > H + 12) { st.active = false; continue; }  // recyclage immédiat
           var sedge = st.d / (diag * 0.5); if (sedge > 1) sedge = 1;
-          var sL = (8 + warp * warp * 560) * (0.34 + 0.66 * sedge);   // stries de tunnel ALLONGÉES (~570px) -> couloir franc
-          ctx.strokeStyle = 'rgba(206,220,255,' + Math.min(st.a * (0.2 + warp * 0.85), 1) * (1 - sedge * 0.4) + ')';
-          ctx.lineWidth = 0.6 + warp * 1.2;
-          ctx.beginPath(); ctx.moveTo(hx - st.ux * sL, hy - st.uy * sL); ctx.lineTo(hx, hy); ctx.stroke();
-          if (st.d > diag * 0.72) st.active = false;        // recyclage plus tard -> strie plus longue avant reset
+          var spr = (0.5 + sedge * 1.8) * (0.85 + warp * 0.3);        // grossissement en approchant
+          var stL = 2 + stsp * 0.12; if (stL > 6) stL = 6;            // micro-queue plafonnée à 6px
+          ctx.strokeStyle = 'rgba(226,234,255,' + Math.min(st.a * (0.25 + warp * 0.75), 1) * (0.35 + 0.65 * sedge) + ')';
+          ctx.lineWidth = spr * 2;
+          ctx.beginPath(); ctx.moveTo(hx - st.ux * stL, hy - st.uy * stL); ctx.lineTo(hx, hy); ctx.stroke();
         }
       } else if (streaks.length) {
         for (var qz = 0; qz < streaks.length; qz++) streaks[qz].active = false;
-      }
-
-      // ANNEAUX DE TUNNEL : au PIC du dive, des cercles concentriques JAILLISSENT de la planète (fx,fy) et rushent vers/au-delà
-      // de la caméra -> vraie GÉOMÉTRIE D'INTÉRIEUR (on perce la surface et on traverse le couloir), façon intro Netflix.
-      // Actif seulement warp>0.5 (~300ms au pic), pool recyclé, additif -> 0 coût au calme.
-      if (warp > 0.5) {
-        ringAcc += dt;
-        if (ringAcc >= 3.0) {                                // cadence d'émission -> flux concentrique continu (pas un flash unique)
-          ringAcc = 0;
-          for (var rg = 0; rg < rings.length; rg++) if (!rings[rg].active) { rings[rg].r = rand(5, 15); rings[rg].active = true; break; }
-        }
-        for (var rk = 0; rk < rings.length; rk++) {
-          var rn = rings[rk];
-          if (!rn.active) continue;
-          rn.r += (rn.r * 0.12 + 2.6) * warp * dt;           // accélération radiale (perspective : plus près = plus vite = rush vers la caméra)
-          var rprog = rn.r / (diag * 0.6);                   // 0 = throat (planète)  ->  1+ = dépasse le plan caméra
-          if (rprog >= 1.12) { rn.active = false; continue; }
-          var ra = (rprog < 0.16 ? rprog / 0.16 : 1) * (1 - Math.max(0, (rprog - 0.7) / 0.42)); // fade-in throat + fade-out bord
-          if (ra <= 0) continue;
-          var rlw = 1.2 + rprog * 5.5;                       // paroi qui s'épaissit en approchant (perspective) -> lecture « couloir »
-          ctx.strokeStyle = 'rgba(206,220,255,' + (0.5 * ra * (0.5 + 0.5 * warp)) + ')';
-          ctx.lineWidth = rlw; ctx.beginPath(); ctx.arc(fx, fy, rn.r, 0, 6.283); ctx.stroke();
-          // liseré brand (teal/violet alterné) accolé -> anneaux structurés, pas de simples cercles plats
-          ctx.strokeStyle = (rk % 2 ? 'rgba(148,66,146,' : 'rgba(103,186,172,') + (0.34 * ra * warp) + ')';
-          ctx.lineWidth = rlw * 0.5; ctx.beginPath(); ctx.arc(fx, fy, rn.r * 1.02, 0, 6.283); ctx.stroke();
-        }
-      } else if (rings.length) {
-        for (var rz = 0; rz < rings.length; rz++) rings[rz].active = false;
-        ringAcc = 0;
       }
 
       // LUEUR DU DÉBOUCHÉ : point de fuite lumineux au foyer pendant le rush (la lumière au bout du tunnel,
@@ -326,11 +289,11 @@
         ctx.beginPath(); ctx.arc(fx, fy, glr, 0, 6.283); ctx.fill();
       }
 
-      // étoiles filantes (désactivées en warp)
+      // étoiles filantes (désactivées ET purgées en warp : une filante de 120-220px pendant le rush = une « ligne »)
       if (!warping) {
         nextShoot -= dt * 16.67;
         if (nextShoot <= 0) { spawnShooter(); nextShoot = rand(2500, 5000); }
-      }
+      } else if (shooters.length) shooters.length = 0;
       for (var j = shooters.length - 1; j >= 0; j--) {
         var sh = shooters[j];
         sh.life += dt; sh.x += sh.vx * dt; sh.y += sh.vy * dt;
@@ -456,7 +419,6 @@
       parts.length = 0; fx = cx; fy = cy; warpRamping = false; warpRampT0 = -1; focalDrift = false;
       salvoRect = null; salvo2Done = true;
       for (var i = 0; i < streaks.length; i++) streaks[i].active = false;
-      for (var ri = 0; ri < rings.length; ri++) rings[ri].active = false; ringAcc = 0;
       if (fctx) { fctx.clearRect(0, 0, fW, fH); fxDirty = false; }
       if (fxCanvas) fxCanvas.style.display = 'none';
     }
@@ -614,19 +576,19 @@
   // jusqu'au pic du push (1.06 -> 1.14 = +7.5%) : la balle 3D remplace EXACTEMENT la balle dessinée.
   var BALL_W = (55.4 / 522.9) * 1.10;
 
-  // --- Scène 3D « plongée dans la planète » : sphère radiale + anneau, créée dynamiquement
-  //     (le HTML des 2 centres reste inchangé). perspective + translateZ = vraie profondeur (pas un aplat). ---
+  // --- Scène 3D « plongée dans la balle » : LA balle de golf du logo, seule — SANS anneau ni décor
+  //     (on plonge dans une balle de golf, point). Créée dynamiquement (le HTML des 2 centres reste
+  //     inchangé). perspective + translateZ = vraie profondeur (pas un aplat). ---
   var scene = null, planetEl = null;
   function buildScene() {
     if (scene || reduce) return;
     scene = document.createElement('div'); scene.className = 'scene3d'; scene.setAttribute('aria-hidden', 'true');
     planetEl = document.createElement('div'); planetEl.className = 'planet3d';
-    var ring = document.createElement('span'); ring.className = 'planet3d__ring';
     var spec = document.createElement('span'); spec.className = 'planet3d__spec';
     var core = document.createElement('span'); core.className = 'planet3d__core';  // cœur qui gonfle -> ENTRÉE dans la sphère -> raccord whiteout
-    planetEl.appendChild(ring); planetEl.appendChild(spec); planetEl.appendChild(core);
-    // (les parois de tunnel CSS ont été SUPPRIMÉES : un seul vocabulaire d'intérieur — anneaux concentriques canvas,
-    //  émis du même foyer que le warp -> lecture claire + gros gain GPU sur mobiles faibles)
+    planetEl.appendChild(spec); planetEl.appendChild(core);
+    // (un seul vocabulaire de traversée : le STARFIELD de points canvas émis du même foyer que la balle
+    //  -> lecture claire + gros gain GPU sur mobiles faibles, aucune paroi/anneau CSS)
     scene.appendChild(planetEl);
     document.body.appendChild(scene);
   }
@@ -658,9 +620,10 @@
      B3 1360-2360  PLONGÉE : tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) — la balle translateZ à travers le plan
                    caméra, warp étoiles (même fenêtre, foyer qui DÉRIVE balle->centre avec la sphère), les lettres
                    se disloquent en éclats balayés, cœur blanc = on perce la surface de la balle.
-     B4 2360-3160  HYPERESPACE : on est DANS le couloir, écran ENTIER — boost warp 1->1.35 (montée puis pic ~500 km/h),
-                   traînées ∝ warp² (~1300px au pic) doublées par MIROIR central, anneaux + lueur du débouché.
-                   ~800ms ressenties, budget d'étoiles INCHANGÉ (longueur/luminosité/miroir, pas de particules en plus).
+     B4 2360-3160  HYPERESPACE : on est DANS le champ d'étoiles, écran ENTIER — boost warp 1->1.35. Des POINTS
+                   d'étoiles foncent vers nous (accélération radiale ∝ distance, grossissement en approchant,
+                   queue ≤ 6px), flux doublé par MIROIR central + 2e nappe recyclée express + lueur du débouché.
+                   ~800ms ressenties, budget d'étoiles INCHANGÉ (recyclage rapide, pas de particules en plus).
      B5 3060-3710  DÉBOUCHÉ : whiteout radial centré sur le point de fuite, pic ~3177 = on crève le bout du tunnel.
      B6 3175-3830  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
   function runIntro() {

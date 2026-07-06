@@ -169,6 +169,16 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
   will-change:background-position,opacity;   /* balayage composité, pas de reflow */
   animation:idleShine 8s ease-in-out 2.5s infinite;
 }
+/* Lueur « portail » calée sur la petite planète du logo (71.6% / 16.3% = balle de golf au-dessus du « xy »).
+   Invisible au repos ; se charge en continu pendant l'intro puis éclate au warp. GPU (transform/opacity), aucun coût canvas. */
+.entry__logo-wrap::after{
+  content:'';position:absolute;left:71.6%;top:16.3%;width:34%;height:50%;
+  transform:translate(-50%,-50%) scale(.5);transform-origin:center;
+  pointer-events:none;z-index:1;opacity:0;
+  background:radial-gradient(circle at 50% 50%,rgba(255,247,220,.95),rgba(255,214,150,.55) 32%,rgba(148,66,146,.28) 56%,transparent 72%);
+  mix-blend-mode:screen;filter:blur(1.5px);
+  will-change:transform,opacity;
+}
 
 .entry__center{
   margin:0 0 36px;font-weight:700;font-size:12.5px;letter-spacing:.5em;
@@ -205,11 +215,14 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
 /* ============ TRANSITION CINÉMATIQUE (ralentie & narrée) ============ */
 /* étape 1 : nom + bouton s'effacent en douceur */
 body.go .entry__center,body.go .btn-card{opacity:0;transform:translateY(10px) scale(.96);pointer-events:none;transition:opacity .4s ease,transform .4s ease}
-/* étape 2 : le logo apparaît/monte puis se maintient, halo qui gonfle lentement */
-body.go .entry__logo{animation:reveal 1.9s cubic-bezier(.2,.7,.2,1) forwards}
-body.go .entry__halo{animation:bloom 2s ease forwards}
-/* étape 3 : BALAYAGE VITRÉ — lent, large et bien lisible, il traverse le logo */
-body.go .entry__shine{animation:sweep 1.2s cubic-bezier(.45,0,.2,1) .5s forwards}
+/* étape 2 : le logo apparaît puis CONTINUE de grossir jusqu'à la désintégration (aucun temps mort), halo qui gonfle */
+body.go .entry__logo{animation:reveal 1.25s cubic-bezier(.2,.7,.2,1) forwards}
+body.go .entry__halo{animation:bloom 1.3s ease forwards}
+/* étape 3 : BALAYAGE VITRÉ — démarre quasi tout de suite et occupe presque toute la durée d'affichage */
+body.go .entry__shine{animation:sweep 1.18s cubic-bezier(.45,0,.2,1) .04s forwards}
+/* étape 3bis : MONTÉE CONTINUE — la planète du logo se charge/s'illumine progressivement (rien de statique) */
+body.go .entry__logo-wrap::after{animation:portalCharge 1.25s ease-in forwards}
+body.dissolve .entry__logo-wrap::after{animation:portalFlare .6s ease-out forwards}
 /* étape 4 : DÉSINTÉGRATION — le logo se dissout pendant que les particules jaillissent vers le warp */
 body.dissolve .entry__logo{animation:dissolve .62s ease-in forwards}
 body.dissolve .entry__halo{animation:haloOut .62s ease-in forwards}
@@ -234,11 +247,15 @@ body.flash .flash-el{opacity:1}
 @keyframes bloom{0%{opacity:.85;transform:translate(-50%,-50%) scale(1)}55%{opacity:1;transform:translate(-50%,-50%) scale(1.55)}100%{opacity:1;transform:translate(-50%,-50%) scale(1.85)}}
 @keyframes sweep{0%{background-position:135% 0;opacity:0}14%{opacity:1}50%{opacity:1}86%{opacity:1}100%{background-position:-55% 0;opacity:0}}
 @keyframes dissolve{0%{opacity:1;transform:translateY(0) scale(1.14)}100%{opacity:0;transform:translateY(-6px) scale(1.3)}}
+/* montée continue de la lueur planète (aucun temps mort), puis flash/agrandissement au warp (« on entre dedans ») */
+@keyframes portalCharge{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}35%{opacity:.5}100%{opacity:.92;transform:translate(-50%,-50%) scale(1)}}
+@keyframes portalFlare{0%{opacity:.92;transform:translate(-50%,-50%) scale(1)}45%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}100%{opacity:0;transform:translate(-50%,-50%) scale(2.3)}}
 @keyframes haloOut{0%{opacity:1;transform:translate(-50%,-50%) scale(1.85)}100%{opacity:0;transform:translate(-50%,-50%) scale(2.4)}}
 
 /* ============ ACCESSIBILITÉ / MOUVEMENT RÉDUIT ============ */
 @media (prefers-reduced-motion:reduce){
   .entry__logo,.entry__halo,.entry__shine,.btn-card,.btn-card::before{animation:none!important}
+  .entry__logo-wrap::after{display:none!important}
   .entry,.viewer,.seg__thumb,.seg__btn,.page--fx{transition-duration:.2s}
   body.go .entry__logo,body.go .entry__halo,body.go .entry__shine,
   body.dissolve .entry__logo,body.dissolve .entry__halo{animation:none!important}

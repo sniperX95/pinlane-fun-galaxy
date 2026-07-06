@@ -29,6 +29,7 @@
     if (!canvas) return null;
     var ctx = canvas.getContext('2d');
     var W = 0, H = 0, DPR = 1, cx = 0, cy = 0, diag = 1, bgGrad = null;
+    var fx = 0, fy = 0;                 // point focal du star-warp (défaut = centre ; recentré sur la planète du logo à l'intro)
     var stars = [], nebulae = [], shooters = [];
     var running = false, rafId = 0, last = 0, nextShoot = 1200;
     var warp = 0, warpTarget = 0;      // 0 = calme, 1 = hyperespace
@@ -69,6 +70,7 @@
       canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       cx = W / 2; cy = H * 0.44; diag = Math.sqrt(W * W + H * H);
+      fx = cx; fy = cy;                  // point focal par défaut (ré-fixé sur la planète juste avant le warp)
       // Dégradé de fond mis en cache : dépend seulement de cx/cy/diag (constants entre resize) -> évite un createRadialGradient par frame
       bgGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, diag * 0.7);
       bgGrad.addColorStop(0, '#0b0b1e');
@@ -149,17 +151,17 @@
       for (var i = 0; i < stars.length; i++) {
         var s = stars[i];
         if (warping) {
-          var dx = s.x - cx, dy = s.y - cy;
+          var dx = s.x - fx, dy = s.y - fy;        // les traînées filent depuis le point focal (planète du logo)
           var k = 0.16 * warp * dt;
           var nx = s.x + dx * k, ny = s.y + dy * k;
           ctx.strokeStyle = 'rgba(200,214,255,' + Math.min(s.a * (0.4 + warp), 1) + ')';
           ctx.lineWidth = s.r * (0.8 + warp);
           ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(nx, ny); ctx.stroke();
           s.x = nx; s.y = ny;
-          var d2 = (nx - cx) * (nx - cx) + (ny - cy) * (ny - cy);
-          if (d2 > diag * diag * 0.28) {           // recyclage : ré-émission près du centre
+          var d2 = (nx - fx) * (nx - fx) + (ny - fy) * (ny - fy);
+          if (d2 > diag * diag * 0.28) {           // recyclage : ré-émission près du point focal (la planète = le portail)
             var an = rand(0, Math.PI * 2), rr = rand(6, 46);
-            s.x = cx + Math.cos(an) * rr; s.y = cy + Math.sin(an) * rr;
+            s.x = fx + Math.cos(an) * rr; s.y = fy + Math.sin(an) * rr;
           }
         } else {
           s.x += s.vx * dt; s.y += s.vy * dt; s.tw += s.tws * dt;
@@ -203,7 +205,7 @@
         var pp = parts[pk];
         if (pp.delay > 0) { pp.delay -= dt; continue; }   // dissolution progressive (gauche -> droite)
         pp.life += dt;
-        var pdx = pp.x - cx, pdy = pp.y - cy;
+        var pdx = pp.x - fx, pdy = pp.y - fy;             // expansion depuis la planète (les particules jaillissent de LÀ)
         var pex = (0.045 + 0.16 * warp) * dt;             // expansion radiale (puff puis star-warp)
         var pnx = pp.x + pdx * pex + pp.vx * dt;
         var pny = pp.y + pdy * pex + pp.vy * dt;
@@ -258,7 +260,11 @@
         });
       }
     }
-    function resetFx() { parts.length = 0; }
+    function resetFx() { parts.length = 0; fx = cx; fy = cy; }
+    // recentre le point focal du star-warp/désintégration (coords écran = coords canvas)
+    function setWarpOrigin(x, y) {
+      if (typeof x === 'number' && typeof y === 'number' && isFinite(x) && isFinite(y)) { fx = x; fy = y; }
+    }
 
     function start() {
       if (running) return;
@@ -282,7 +288,7 @@
     return {
       warpTo: function (v) { warpTarget = v; },
       start: start, stop: stop,
-      disintegrate: disintegrate, reset: resetFx
+      disintegrate: disintegrate, reset: resetFx, setWarpOrigin: setWarpOrigin
     };
   })();
 
@@ -387,6 +393,10 @@
   /* ============================================================
      3) TRANSITION CINÉMATIQUE entrée -> carte
      ============================================================ */
+  // Position NORMALISÉE de la planète (balle de golf + anneau, au-dessus du « xy ») dans la boîte du logo.
+  // Mesurée sur le SVG rendu (centroïde des pixels clairs de la balle) — cohérent avec .entry__logo-wrap::after (CSS).
+  var PLANET_FX = 0.716, PLANET_FY = 0.163;
+
   var timers = [];
   function clearTimers() { for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]); timers = []; }
   function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
@@ -403,18 +413,22 @@
       return;
     }
     body.classList.add('go');                   // nom+bouton out, logo apparaît, halo bloom, balayage vitré
-    // (a) 0->0.85s le logo monte/grossit  (b) 0.5->1.7s le reflet vitré le balaie lentement  (c) 1.7->1.85s maintien brillant
-    at(1850, function () {                       // (d) DÉSINTÉGRATION : le logo explose en particules (puff visible)
+    // (a) 0->1.15s le logo monte/grossit  (b) 0.18->1.18s le reflet vitré le balaie  (c) enchaîne direct, sans temps mort
+    at(1250, function () {                       // (d) DÉSINTÉGRATION : le logo explose en particules (juste après le reflet)
       var el = document.querySelector('.entry__logo');
-      Space.disintegrate(el ? el.getBoundingClientRect() : null);
+      var rect = el ? el.getBoundingClientRect() : null;
+      if (rect) {                                // point focal = la petite planète du logo (au-dessus du « xy »)
+        Space.setWarpOrigin(rect.left + PLANET_FX * rect.width, rect.top + PLANET_FY * rect.height);
+      }
+      Space.disintegrate(rect);
       body.classList.add('dissolve');
     });
-    at(2150, function () { Space.warpTo(1); body.classList.add('warp'); }); // (e) les particules sont aspirées dans l'hyperespace, l'entrée se fond
-    at(2480, function () { body.classList.add('flash'); });  // flash doux
-    at(2680, function () { body.classList.remove('pre'); }); // (f) débouché fluide sur la carte
-    at(2860, function () { Space.warpTo(0); });              // décélération de l'hyperespace
-    at(3000, function () { body.classList.remove('flash'); });
-    at(3480, function () { body.classList.remove('go', 'warp', 'dissolve'); Space.reset(); }); // nettoyage
+    at(1520, function () { Space.warpTo(1); body.classList.add('warp'); }); // (e) les particules sont aspirées dans l'hyperespace, l'entrée se fond
+    at(1780, function () { body.classList.add('flash'); });  // flash doux
+    at(1980, function () { body.classList.remove('pre'); }); // (f) débouché fluide sur la carte
+    at(2150, function () { Space.warpTo(0); });              // décélération de l'hyperespace
+    at(2300, function () { body.classList.remove('flash'); });
+    at(2750, function () { body.classList.remove('go', 'warp', 'dissolve'); Space.reset(); }); // nettoyage
   }
 
   function toEntry() {

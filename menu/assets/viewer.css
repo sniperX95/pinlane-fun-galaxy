@@ -159,25 +159,30 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
   filter:drop-shadow(0 12px 40px rgba(120,70,150,.45));
   animation:breathe 6s ease-in-out infinite;transform-origin:center;
 }
+/* Reflet « verre » : conteneur masqué à la silhouette du logo (préfixes -webkit-mask* OBLIGATOIRES iOS).
+   Le glint lui-même est le ::before — une bande FINE qui translate G->D (transform = GPU, aucun reflow). */
 .entry__shine{
-  position:absolute;inset:0;pointer-events:none;opacity:0;
-  /* Reflet vitré masqué à la silhouette du logo. Préfixes -webkit-mask* OBLIGATOIRES pour iOS Safari (sinon le mask disparaît). */
+  position:absolute;inset:0;pointer-events:none;opacity:0;z-index:1;overflow:hidden;
   -webkit-mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
           mask:url(logo-fun-galaxy.svg) center/contain no-repeat;
-  background:linear-gradient(100deg,transparent 36%,rgba(255,255,255,.30) 44%,rgba(255,255,255,1) 50%,rgba(255,255,255,.30) 56%,transparent 64%);
-  background-size:280% 100%;background-position:135% 0;
-  will-change:background-position,opacity;   /* balayage composité, pas de reflow */
-  animation:idleShine 8s ease-in-out 2.5s infinite;
+  will-change:opacity;
+  animation:idleShineWrap 9s ease-in-out 3s infinite;
 }
-/* Lueur « portail » calée sur la petite planète du logo (71.6% / 16.3% = balle de golf au-dessus du « xy »).
-   Invisible au repos ; se charge en continu pendant l'intro puis éclate au warp. GPU (transform/opacity), aucun coût canvas. */
-.entry__logo-wrap::after{
-  content:'';position:absolute;left:71.6%;top:16.3%;width:34%;height:50%;
-  transform:translate(-50%,-50%) scale(.5);transform-origin:center;
-  pointer-events:none;z-index:1;opacity:0;
-  background:radial-gradient(circle at 50% 50%,rgba(255,247,220,.95),rgba(255,214,150,.55) 32%,rgba(148,66,146,.28) 56%,transparent 72%);
-  mix-blend-mode:screen;filter:blur(1.5px);
-  will-change:transform,opacity;
+.entry__shine::before{
+  content:'';position:absolute;top:-22%;bottom:-22%;left:0;width:100%;
+  /* cœur très brillant + léger double-glint, bords doux -> bande ~12-16% de large sur le logo */
+  background:linear-gradient(90deg,
+    transparent 34%,
+    rgba(255,255,255,.32) 41%,
+    rgba(255,255,255,.92) 45.5%,
+    #fff 47.5%,
+    rgba(255,255,255,.5) 50.5%,
+    rgba(255,255,255,.85) 54%,
+    rgba(255,255,255,.28) 58%,
+    transparent 66%);
+  transform:translateX(-125%) skewX(-18deg);
+  will-change:transform;
+  animation:idleGlint 9s ease-in-out 3s infinite;
 }
 
 .entry__center{
@@ -212,53 +217,51 @@ body:not(.pre) .entry{opacity:0;pointer-events:none}
 .btn-card:active{transform:translateY(0) scale(.98)}
 .btn-card:focus-visible{outline:2px solid #fff;outline-offset:3px}
 
-/* ============ TRANSITION CINÉMATIQUE (ralentie & narrée) ============ */
+/* ============ TRANSITION CINÉMATIQUE (reflet vitré -> zoom dans la planète) ============ */
 /* étape 1 : nom + bouton s'effacent en douceur */
 body.go .entry__center,body.go .btn-card{opacity:0;transform:translateY(10px) scale(.96);pointer-events:none;transition:opacity .4s ease,transform .4s ease}
-/* étape 2 : le logo apparaît puis CONTINUE de grossir jusqu'à la désintégration (aucun temps mort), halo qui gonfle */
-body.go .entry__logo{animation:reveal 1.25s cubic-bezier(.2,.7,.2,1) forwards}
-body.go .entry__halo{animation:bloom 1.3s ease forwards}
-/* étape 3 : BALAYAGE VITRÉ — démarre quasi tout de suite et occupe presque toute la durée d'affichage */
-body.go .entry__shine{animation:sweep 1.18s cubic-bezier(.45,0,.2,1) .04s forwards}
-/* étape 3bis : MONTÉE CONTINUE — la planète du logo se charge/s'illumine progressivement (rien de statique) */
-body.go .entry__logo-wrap::after{animation:portalCharge 1.25s ease-in forwards}
-body.dissolve .entry__logo-wrap::after{animation:portalFlare .6s ease-out forwards}
-/* étape 4 : DÉSINTÉGRATION — le logo se dissout pendant que les particules jaillissent vers le warp */
-body.dissolve .entry__logo{animation:dissolve .62s ease-in forwards}
-body.dissolve .entry__halo{animation:haloOut .62s ease-in forwards}
-/* étape 5 : l'entrée se fond (le star-warp est géré par le canvas) */
-body.warp .entry{opacity:0}
+/* étape 2 : le logo apparaît et se cale — origine = la planète, pour que le zoom qui suit ne saute pas */
+body.go .entry__logo{transform-origin:71.6% 16.3%;animation:reveal .7s cubic-bezier(.2,.7,.2,1) forwards}
+body.go .entry__halo{animation:bloom 1s ease forwards}
+/* étape 3 : REFLET VITRÉ — glint fin qui glisse GAUCHE -> DROITE, masqué à la silhouette (savouré ~1s) */
+body.go .entry__shine{animation:shineFade 1s ease-in-out .18s forwards}
+body.go .entry__shine::before{animation:shineSweep 1s cubic-bezier(.42,0,.24,1) .18s forwards}
+/* étape 4 : ZOOM DANS LA PLANÈTE — la caméra plonge (scale, origine PILE sur la planète) EN MÊME TEMPS que le star-warp */
+body.zoom .entry__logo{animation:dive 1s cubic-bezier(.5,.05,.75,.55) forwards}
+body.zoom .entry__halo{animation:haloDive 1s ease-in forwards}
 
 /* Flash lumineux DOUX au débouché */
 .flash-el{
   position:fixed;inset:0;z-index:120;pointer-events:none;opacity:0;
-  transition:opacity .5s ease;
-  background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.72),rgba(206,214,255,.22) 40%,transparent 72%);
+  transition:opacity .4s ease;
+  /* centré sur la planète (var. posées en JS au moment du zoom) -> « on passe à travers » la planète */
+  background:radial-gradient(circle at var(--flash-x,50%) var(--flash-y,45%),rgba(255,255,255,.75),rgba(206,214,255,.24) 40%,transparent 72%);
 }
 body.flash .flash-el{opacity:1}
 
 /* ============ KEYFRAMES ============ */
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
 @keyframes halo{0%,100%{opacity:.7;transform:translate(-50%,-50%) scale(1)}50%{opacity:1;transform:translate(-50%,-50%) scale(1.06)}}
-@keyframes idleShine{0%,72%{background-position:130% 0;opacity:0}80%{opacity:.5}88%{opacity:.5}100%{background-position:-40% 0;opacity:0}}
+/* Reflet au repos : glint discret qui traverse brièvement toutes les ~9s (vie sans distraction) */
+@keyframes idleShineWrap{0%,3%{opacity:0}7%{opacity:.4}12%{opacity:.4}16%,100%{opacity:0}}
+@keyframes idleGlint{0%{transform:translateX(-125%) skewX(-18deg)}16%,100%{transform:translateX(125%) skewX(-18deg)}}
 @keyframes btnGlow{0%,100%{box-shadow:0 12px 30px rgba(64,150,150,.30),0 0 0 0 rgba(127,222,208,.0),inset 0 1px 0 rgba(255,255,255,.45)}50%{box-shadow:0 12px 34px rgba(64,150,150,.40),0 0 26px 2px rgba(127,222,208,.22),inset 0 1px 0 rgba(255,255,255,.5)}}
 @keyframes btnShimmer{0%{transform:translateX(-180%) skewX(-18deg)}45%,100%{transform:translateX(320%) skewX(-18deg)}}
-@keyframes reveal{0%{transform:translateY(6px) scale(1)}45%{transform:translateY(0) scale(1.12)}100%{transform:translateY(0) scale(1.14)}}
+@keyframes reveal{0%{transform:scale(1)}60%{transform:scale(1.16)}100%{transform:scale(1.14)}}
 @keyframes bloom{0%{opacity:.85;transform:translate(-50%,-50%) scale(1)}55%{opacity:1;transform:translate(-50%,-50%) scale(1.55)}100%{opacity:1;transform:translate(-50%,-50%) scale(1.85)}}
-@keyframes sweep{0%{background-position:135% 0;opacity:0}14%{opacity:1}50%{opacity:1}86%{opacity:1}100%{background-position:-55% 0;opacity:0}}
-@keyframes dissolve{0%{opacity:1;transform:translateY(0) scale(1.14)}100%{opacity:0;transform:translateY(-6px) scale(1.3)}}
-/* montée continue de la lueur planète (aucun temps mort), puis flash/agrandissement au warp (« on entre dedans ») */
-@keyframes portalCharge{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}35%{opacity:.5}100%{opacity:.92;transform:translate(-50%,-50%) scale(1)}}
-@keyframes portalFlare{0%{opacity:.92;transform:translate(-50%,-50%) scale(1)}45%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}100%{opacity:0;transform:translate(-50%,-50%) scale(2.3)}}
-@keyframes haloOut{0%{opacity:1;transform:translate(-50%,-50%) scale(1.85)}100%{opacity:0;transform:translate(-50%,-50%) scale(2.4)}}
+/* Reflet vitré (intro) : glint fin qui glisse G->D + fondu d'entrée/sortie */
+@keyframes shineSweep{0%{transform:translateX(-125%) skewX(-18deg)}100%{transform:translateX(125%) skewX(-18deg)}}
+@keyframes shineFade{0%{opacity:0}12%{opacity:1}82%{opacity:1}100%{opacity:0}}
+/* Zoom « on plonge dans la planète » (origine = planète, réglée sur .entry__logo) + halo qui s'ouvre */
+@keyframes dive{0%{transform:scale(1.14);opacity:1}55%{opacity:1}100%{transform:scale(12);opacity:0}}
+@keyframes haloDive{0%{opacity:.9;transform:translate(-50%,-50%) scale(1.6)}100%{opacity:0;transform:translate(-50%,-50%) scale(4)}}
 
 /* ============ ACCESSIBILITÉ / MOUVEMENT RÉDUIT ============ */
 @media (prefers-reduced-motion:reduce){
-  .entry__logo,.entry__halo,.entry__shine,.btn-card,.btn-card::before{animation:none!important}
-  .entry__logo-wrap::after{display:none!important}
+  .entry__logo,.entry__halo,.entry__shine,.entry__shine::before,.btn-card,.btn-card::before{animation:none!important}
   .entry,.viewer,.seg__thumb,.seg__btn,.page--fx{transition-duration:.2s}
-  body.go .entry__logo,body.go .entry__halo,body.go .entry__shine,
-  body.dissolve .entry__logo,body.dissolve .entry__halo{animation:none!important}
+  body.go .entry__logo,body.go .entry__halo,body.go .entry__shine,body.go .entry__shine::before,
+  body.zoom .entry__logo,body.zoom .entry__halo{animation:none!important}
   .flash-el{display:none}
   .fs,.fs__img{transition-duration:.12s}
 }

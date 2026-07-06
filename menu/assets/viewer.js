@@ -33,6 +33,7 @@
     var stars = [], nebulae = [], shooters = [];
     var running = false, rafId = 0, last = 0, nextShoot = 1200;
     var warp = 0, warpTarget = 0;      // 0 = calme, 1 = hyperespace
+    var warpRamping = false, warpRampDur = 900, warpRampT0 = -1;  // montée ACCÉLÉRÉE (ease-in) synchronisée au zoom
     // Budget adaptatif : tél. peu puissants (<=4 cœurs / <=4 Go) => densité un cran plus basse (dégradation gracieuse, look quasi identique)
     var lowPower = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
                    (navigator.deviceMemory && navigator.deviceMemory <= 4);
@@ -138,7 +139,14 @@
       if (!running) return;
       var dt = last ? Math.min((t - last) / 16.67, 3) : 1;
       last = t;
-      warp += (warpTarget - warp) * Math.min(0.07 * dt, 1);
+      if (warpRamping) {                       // montée pilotée par le temps -> accélération (p²) verrouillée sur le zoom
+        if (warpRampT0 < 0) warpRampT0 = t;
+        var wp = (t - warpRampT0) / warpRampDur; if (wp > 1) wp = 1;
+        warp = wp * wp;                         // ease-in : étoiles lentes au départ puis whip vers le pic
+        if (wp >= 1) { warpRamping = false; warpTarget = 1; }
+      } else {
+        warp += (warpTarget - warp) * Math.min(0.07 * dt, 1);   // décélération douce (retour au calme)
+      }
 
       // fond dégradé (base opaque) — gradient mis en cache
       ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
@@ -260,7 +268,7 @@
         });
       }
     }
-    function resetFx() { parts.length = 0; fx = cx; fy = cy; }
+    function resetFx() { parts.length = 0; fx = cx; fy = cy; warpRamping = false; warpRampT0 = -1; }
     // recentre le point focal du star-warp/désintégration (coords écran = coords canvas)
     function setWarpOrigin(x, y) {
       if (typeof x === 'number' && typeof y === 'number' && isFinite(x) && isFinite(y)) { fx = x; fy = y; }
@@ -286,7 +294,9 @@
     });
 
     return {
-      warpTo: function (v) { warpTarget = v; },
+      warpTo: function (v) { if (v <= 0) { warpRamping = false; } warpTarget = v; },
+      // démarre la montée accélérée du star-warp sur `dur` ms (verrouillée sur la même fenêtre que le zoom CSS)
+      warpRamp: function (dur) { warpRamping = true; warpRampDur = Math.max(1, dur || 900); warpRampT0 = -1; warpTarget = 1; },
       start: start, stop: stop,
       disintegrate: disintegrate, reset: resetFx, setWarpOrigin: setWarpOrigin
     };
@@ -412,37 +422,40 @@
       body.classList.remove('pre');
       return;
     }
-    body.classList.add('go');                   // nom+bouton out, logo apparaît, halo bloom, balayage vitré
-    // (a) 0->1.15s le logo monte/grossit  (b) 0.18->1.18s le reflet vitré le balaie  (c) enchaîne direct, sans temps mort
-    at(1250, function () {                       // (d) DÉSINTÉGRATION : le logo explose en particules (juste après le reflet)
+    body.classList.add('go');                   // (a) nom+bouton out, logo apparaît/se cale  (b) reflet vitré fin glisse G->D (~1s, savouré)
+    // (c) enchaînement DIRECT, sans temps mort : on plonge dans la planète + les étoiles filent, tout accélère ensemble
+    at(1250, function () {
       var el = document.querySelector('.entry__logo');
       var rect = el ? el.getBoundingClientRect() : null;
-      if (rect) {                                // point focal = la petite planète du logo (au-dessus du « xy »)
-        Space.setWarpOrigin(rect.left + PLANET_FX * rect.width, rect.top + PLANET_FY * rect.height);
+      if (rect) {                                // point de la planète (balle de golf au-dessus du « xy ») en coords écran
+        var px = rect.left + PLANET_FX * rect.width;
+        var py = rect.top + PLANET_FY * rect.height;
+        Space.setWarpOrigin(px, py);             // les étoiles filent PILE depuis la planète
+        body.style.setProperty('--flash-x', px + 'px');   // le flash « on passe à travers » est centré sur la planète
+        body.style.setProperty('--flash-y', py + 'px');
       }
-      Space.disintegrate(rect);
-      body.classList.add('dissolve');
+      body.classList.add('zoom');                // ZOOM : la caméra plonge dans la planète (scale, origine = planète)
+      Space.warpRamp(1000);                      // star-warp accéléré sur la MÊME fenêtre/courbe que le zoom
     });
-    at(1520, function () { Space.warpTo(1); body.classList.add('warp'); }); // (e) les particules sont aspirées dans l'hyperespace, l'entrée se fond
-    at(1780, function () { body.classList.add('flash'); });  // flash doux
-    at(1980, function () { body.classList.remove('pre'); }); // (f) débouché fluide sur la carte
-    at(2150, function () { Space.warpTo(0); });              // décélération de l'hyperespace
-    at(2300, function () { body.classList.remove('flash'); });
-    at(2750, function () { body.classList.remove('go', 'warp', 'dissolve'); Space.reset(); }); // nettoyage
+    at(2080, function () { body.classList.add('flash'); });  // (d) pic : flash doux « on passe à travers »
+    at(2200, function () { body.classList.remove('pre'); }); // (e) débouché fluide sur la carte
+    at(2380, function () { Space.warpTo(0); });              // décélération de l'hyperespace
+    at(2560, function () { body.classList.remove('flash'); });
+    at(3000, function () { body.classList.remove('go', 'zoom', 'warp'); Space.reset(); }); // nettoyage
   }
 
   function toEntry() {
     clearTimers();
     Space && Space.warpTo(0);
     Space && Space.reset();
-    body.classList.remove('go', 'warp', 'flash', 'dissolve');
+    body.classList.remove('go', 'zoom', 'warp', 'flash', 'dissolve');
     body.classList.add('pre');
   }
 
   if (open) open.addEventListener('click', toCard);
 
   window.addEventListener('popstate', function () {
-    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'warp', 'flash', 'dissolve'); Space && Space.reset(); }
+    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'zoom', 'warp', 'flash', 'dissolve'); Space && Space.reset(); }
     else toEntry();
   });
 

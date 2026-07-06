@@ -578,18 +578,26 @@
 
   // --- Scène 3D « plongée dans la balle » : LA balle de golf du logo, seule — SANS anneau ni décor
   //     (on plonge dans une balle de golf, point). Créée dynamiquement (le HTML des 2 centres reste
-  //     inchangé). perspective + translateZ = vraie profondeur (pas un aplat). ---
-  var scene = null, planetEl = null;
+  //     inchangé). perspective + translateZ = vraie profondeur (pas un aplat).
+  //     Structure : .ball-x > .ball-y > .planet3d — les DEUX wrappers portent l'arc X/Y de l'ENVOL
+  //     (profils d'easing différents -> vraie trajectoire COURBE, GPU only), la balle porte scale/dive,
+  //     et .planet3d__tex porte la texture golfball SEULE -> les alvéoles tournent SANS entraîner
+  //     l'ombrage ni le spéculaire (l'éclairage reste fixe = lecture « sphère qui roule »). ---
+  var scene = null, planetEl = null, ballXEl = null, ballYEl = null;
   function buildScene() {
     if (scene || reduce) return;
     scene = document.createElement('div'); scene.className = 'scene3d'; scene.setAttribute('aria-hidden', 'true');
+    ballXEl = document.createElement('div'); ballXEl.className = 'ball-x';
+    ballYEl = document.createElement('div'); ballYEl.className = 'ball-y';
     planetEl = document.createElement('div'); planetEl.className = 'planet3d';
+    var tex = document.createElement('span'); tex.className = 'planet3d__tex';   // alvéoles (spin indépendant)
     var spec = document.createElement('span'); spec.className = 'planet3d__spec';
     var core = document.createElement('span'); core.className = 'planet3d__core';  // cœur qui gonfle -> ENTRÉE dans la sphère -> raccord whiteout
-    planetEl.appendChild(spec); planetEl.appendChild(core);
+    planetEl.appendChild(tex); planetEl.appendChild(spec); planetEl.appendChild(core);
     // (un seul vocabulaire de traversée : le STARFIELD de points canvas émis du même foyer que la balle
     //  -> lecture claire + gros gain GPU sur mobiles faibles, aucune paroi/anneau CSS)
-    scene.appendChild(planetEl);
+    ballYEl.appendChild(planetEl); ballXEl.appendChild(ballYEl);
+    scene.appendChild(ballXEl);
     document.body.appendChild(scene);
   }
 
@@ -615,17 +623,22 @@
   /* SÉQUENCE — une chaîne CAUSALE, chaque beat déclenche le suivant :
      B0    0-350   la scène se vide : nom+bouton s'effacent, le logo s'avance (scale 1->1.06).
      B1  220-870   le REFLET vitré balaye G->D et ATTERRIT sur la balle de golf (il ne sort pas du cadre : il s'y absorbe).
-     B2  880-1360  IGNITION : LA balle de golf du logo (golfball.svg, mêmes tracés/alvéoles) devient une sphère 3D
-                   (pop overshoot) qui respire ; les lettres baissent à 80% ; push lent 1.06->1.14 (elle nous attire).
-     B3 1360-2360  PLONGÉE : tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) — la balle translateZ à travers le plan
-                   caméra, warp étoiles (même fenêtre, foyer qui DÉRIVE balle->centre avec la sphère), les lettres
-                   se disloquent en éclats balayés, cœur blanc = on perce la surface de la balle.
-     B4 2360-3160  HYPERESPACE : on est DANS le champ d'étoiles, écran ENTIER — boost warp 1->1.35. Des POINTS
-                   d'étoiles foncent vers nous (accélération radiale ∝ distance, grossissement en approchant,
-                   queue ≤ 6px), flux doublé par MIROIR central + 2e nappe recyclée express + lueur du débouché.
-                   ~800ms ressenties, budget d'étoiles INCHANGÉ (recyclage rapide, pas de particules en plus).
-     B5 3060-3710  DÉBOUCHÉ : whiteout radial centré sur le point de fuite, pic ~3177 = on crève le bout du tunnel.
-     B6 3175-3830  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
+     B2  880-1380  IGNITION : LA balle de golf du logo (golfball.svg, mêmes tracés/alvéoles) devient une sphère 3D
+                   (pop overshoot) qui respire ; les lettres baissent à 80% ; push lent 1.06->1.14 (elle prend vie).
+     B3 1380-2180  ENVOL : la balle S'ARRACHE du logo et vient SE CENTRER plein cadre. Trajectoire COURBE
+                   (kick d'anticipation vers le haut-extérieur, swoop, léger overshoot, settle) portée par
+                   2 wrappers X/Y aux easings différents ; SPIN des alvéoles (texture séparée : l'ombrage ne
+                   tourne pas -> elle ROULE) ; grossissement 1 -> ~5x (elle devient LE sujet, centre écran) ;
+                   derrière elle le logo SE DÉSAGRÈGE en éclats et recule/s'efface. Micro-pause à la pose
+                   (respiration ballLive) : elle nous fait face... puis on entre dedans.
+     B4 2300-3200  PLONGÉE : translateZ à travers la balle CENTRÉE, tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) —
+                   warp étoiles même fenêtre, FOYER = CENTRE ÉCRAN, cœur blanc = on perce la surface.
+     B5 3200-3860  HYPERESPACE : on est DANS le champ d'étoiles, écran ENTIER — boost warp 1->1.35. Des POINTS
+                   d'étoiles foncent vers nous depuis le CENTRE (accélération radiale ∝ distance, grossissement
+                   en approchant, queue ≤ 6px), flux doublé par MIROIR central + 2e nappe recyclée express +
+                   lueur du débouché. ~660ms ressenties, budget d'étoiles INCHANGÉ.
+     B6 3860-4510  DÉBOUCHÉ : whiteout radial centré sur le point de fuite (centre), pic ~3977 = on crève le tunnel.
+     B7 3975-4630  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
   function runIntro() {
     clearTimers();
     if (reduce || !Space) {                     // simple fondu court (aucun warp / zoom / dispersion)
@@ -633,58 +646,77 @@
       return;
     }
     buildScene();
-    body.classList.add('go');                   // B0 + B1 : la scène se vide, le glint voyage vers la planète
+    var ballSize = 0, tcx = window.innerWidth / 2, tcy = Math.round(window.innerHeight * 0.46);
+    body.classList.add('go');                   // B0 + B1 : la scène se vide, le glint voyage vers la balle
 
-    // B2 — IGNITION (le glint vient de se poser sur la planète : elle s'allume et nous attire)
+    // B2 — IGNITION (le glint vient de se poser sur la balle : elle s'allume et prend vie)
     at(880, function () {
       var p = planetPoint();
       if (p) {
-        Space.setWarpOrigin(p.x, p.y);           // le foyer du warp = la balle, fixé dès maintenant
+        Space.setWarpOrigin(p.x, p.y);           // le foyer du warp = la balle (recentré à la plongée)
         if (scene && planetEl) {
           // balle 3D = MÊME dessin, MÊME taille (+10% pour couvrir le dessin plat jusqu'au pic du push 1.14)
-          var size = Math.max(22, Math.round(p.rect.width * BALL_W));
-          planetEl.style.width = size + 'px'; planetEl.style.height = size + 'px';
-          planetEl.style.left = (p.x - size / 2) + 'px';
-          planetEl.style.top = (p.y - size / 2) + 'px';
+          ballSize = Math.max(22, Math.round(p.rect.width * BALL_W));
+          planetEl.style.width = ballSize + 'px'; planetEl.style.height = ballSize + 'px';
+          planetEl.style.left = (p.x - ballSize / 2) + 'px';
+          planetEl.style.top = (p.y - ballSize / 2) + 'px';
           scene.style.display = 'block';
         }
       }
       body.classList.add('arm');                 // ignite (sphère) + push lent (anticipation) + lettres à 80%
     });
 
-    // B3 — PLONGÉE (l'attraction gagne : on tombe dedans ; une seule horloge, une seule courbe)
-    at(1360, function () {
+    // B3 — ENVOL : la balle s'arrache du logo et vient se centrer (arc + spin + grow) ;
+    //              le logo se désagrège en éclats et s'efface derrière elle (elle devient le sujet unique).
+    at(1380, function () {
       var p = planetPoint();
-      var tcx = window.innerWidth / 2, tcy = window.innerHeight * 0.46;   // où la sphère arrive à la fin du dive
+      tcx = window.innerWidth / 2; tcy = Math.round(window.innerHeight * 0.46);   // où la balle se pose (centre optique)
       if (p) {
-        Space.setWarpOrigin(p.x, p.y);
-        Space.disintegrate(p.rect, p.x, p.y, p.rect.width * 0.15);        // les lettres partent en éclats (planète préservée)
-        if (planetEl) {
-          planetEl.style.setProperty('--dive-dx', (tcx - p.x) + 'px');    // recentrage pendant la descente
-          planetEl.style.setProperty('--dive-dy', (tcy - p.y) + 'px');
+        Space.disintegrate(p.rect, p.x, p.y, p.rect.width * 0.15);   // le départ BRISE le logo (balle préservée)
+        var dx = tcx - p.x, dy = tcy - p.y, dist = Math.hypot(dx, dy) || 1;
+        // KICK de l'arc (point de passage à ~30% du vol) : recul le long du voyage (anticipation) +
+        // forte composante PERPENDICULAIRE à la corde (côté extérieur écran) + biais vers le haut ->
+        // vraie boucle en fronde, JAMAIS colinéaire au trajet. Bornés (petits/grands écrans).
+        var ux = dx / dist, uy = dy / dist;                        // direction du voyage
+        var px2 = -uy, py2 = ux;                                   // perpendiculaire...
+        if (px2 * (p.x - tcx) < 0) { px2 = -px2; py2 = -py2; }     // ...orientée vers l'extérieur (côté de la balle)
+        var k1 = Math.min(26, dist * 0.18);                        // recul (anticipation)
+        var k2 = Math.max(30, Math.min(64, dist * 0.5));           // ampleur de la fronde (courbure)
+        var kx = -ux * k1 + px2 * k2, ky = -uy * k1 + py2 * k2 - 24;
+        if (ballXEl) { ballXEl.style.setProperty('--tx', dx + 'px'); ballXEl.style.setProperty('--kx', kx.toFixed(1) + 'px'); }
+        if (ballYEl) { ballYEl.style.setProperty('--ty', dy + 'px'); ballYEl.style.setProperty('--ky', ky.toFixed(1) + 'px'); }
+        if (planetEl && ballSize) {              // plein cadre : diamètre final ≈ 46% du petit côté
+          var grow = (Math.min(window.innerWidth, window.innerHeight) * 0.46) / ballSize;
+          planetEl.style.setProperty('--grow', grow.toFixed(3));
         }
       }
-      body.style.setProperty('--flash-x', tcx + 'px');                    // le whiteout éclate LÀ où la sphère termine
+      body.style.setProperty('--flash-x', tcx + 'px');               // le whiteout éclatera LÀ où la balle se pose
       body.style.setProperty('--flash-y', tcy + 'px');
-      body.classList.add('zoom');
-      Space.warpRamp(1000, tcx, tcy);            // même fenêtre + même courbe que dive3d, foyer qui suit la sphère
+      body.classList.add('travel');
     });
 
-    // B4 — HYPERESPACE : la balle est franchie (fin du dive), l'écran ENTIER est le couloir.
-    // Boost 1 -> 1.35 (approche exponentielle ~450ms = montée en vitesse PUIS pic tenu) : traînées ~2x plus
-    // longues (∝ warp²), plus lumineuses, doublées par miroir. ~800ms ressenties avant le débouché.
-    at(2360, function () { Space.warpTo(1.35); });
+    // B4 — PLONGÉE (elle est centrée, plein cadre, elle respire : on entre dedans — une seule horloge, une seule courbe)
+    at(2300, function () {
+      Space.setWarpOrigin(tcx, tcy);             // FOYER du warp = centre écran (là où la balle s'est posée)
+      body.classList.add('zoom');
+      Space.warpRamp(900);                       // même fenêtre + même courbe que dive3d (.9s)
+    });
 
-    // B5 — DÉBOUCHÉ : pic du whiteout (montée 18% de .65s ≈ 117ms) à ~3177 = 2ms après la pose de la carte
-    at(3060, function () { body.classList.add('flash'); });
-    at(3175, function () {                       // B6 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
+    // B5 — HYPERESPACE : la balle est franchie (fin du dive), l'écran ENTIER est le couloir.
+    // Boost 1 -> 1.35 (approche exponentielle ~450ms = montée en vitesse PUIS pic tenu) : traînées ~2x plus
+    // longues (∝ warp²), plus lumineuses, doublées par miroir. ~660ms ressenties avant le débouché.
+    at(3200, function () { Space.warpTo(1.35); });
+
+    // B6 — DÉBOUCHÉ : pic du whiteout (montée 18% de .65s ≈ 117ms) à ~3977 = 2ms après la pose de la carte
+    at(3860, function () { body.classList.add('flash'); });
+    at(3975, function () {                       // B7 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
       body.classList.remove('pre');
       body.classList.add('land');
     });
-    at(3310, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le débouché (vitesse résiduelle)
-    at(3710, function () { body.classList.remove('flash'); });
-    at(4010, function () {                       // nettoyage
-      body.classList.remove('go', 'arm', 'zoom', 'land');
+    at(4110, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le débouché (vitesse résiduelle)
+    at(4510, function () { body.classList.remove('flash'); });
+    at(4800, function () {                       // nettoyage
+      body.classList.remove('go', 'arm', 'travel', 'zoom', 'land');
       Space.reset();
       if (scene) scene.style.display = 'none';
     });
@@ -694,7 +726,7 @@
     clearTimers();
     Space && Space.warpTo(0);
     Space && Space.reset();
-    body.classList.remove('go', 'arm', 'zoom', 'warp', 'flash', 'dissolve', 'land');
+    body.classList.remove('go', 'arm', 'travel', 'zoom', 'warp', 'flash', 'dissolve', 'land');
     if (scene) scene.style.display = 'none';
     body.classList.add('pre');
   }
@@ -702,7 +734,7 @@
   if (open) open.addEventListener('click', toCard);
 
   window.addEventListener('popstate', function () {
-    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'arm', 'zoom', 'warp', 'flash', 'dissolve', 'land'); Space && Space.reset(); if (scene) scene.style.display = 'none'; }
+    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'arm', 'travel', 'zoom', 'warp', 'flash', 'dissolve', 'land'); Space && Space.reset(); if (scene) scene.style.display = 'none'; }
     else toEntry();
   });
 

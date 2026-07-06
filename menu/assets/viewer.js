@@ -45,6 +45,9 @@
     // Étoiles de FLUX éphémères : pool recyclé, actif UNIQUEMENT pendant le dive (warp>0.3) -> starfield dense, 0 coût au calme
     var STREAK_N = lowPower ? 90 : 220;
     var streaks = [];
+    // Mode GL : l'intro WebGL (intro-gl.js) rend les étoiles 3D volumétriques -> le canvas 2D garde
+    // le fond calme (nébuleuses + étoiles au repos) et les ÉCLATS, mais coupe son star-warp plat.
+    var glStars = false;
     // Overlay dédié aux fragments : canvas transparent plein écran (z135), au-dessus de .scene3d (z130), sous .flash-el (z140)
     var fxCanvas = null, fctx = null, fW = 0, fH = 0, fxDirty = false;
     var logoImg = new Image(), logoReady = false, logoPts = null;
@@ -205,8 +208,9 @@
 
       drawNebulae();
 
-      // étoiles
-      var warping = warp > 0.02;
+      // étoiles (en mode GL : toujours calmes — le starfield 3D est rendu par le canvas WebGL au-dessus)
+      var calm = warp <= 0.02;
+      var warping = !calm && !glStars;
       var boost = warp > 1.02;                  // segment HYPERESPACE (warpTarget 1.35 après le franchissement de la balle)
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
@@ -258,7 +262,7 @@
 
       // ÉTOILES DE FLUX éphémères : 2e nappe de POINTS émise du foyer PENDANT le dive uniquement — densifie le
       // starfield (recyclage express dès la sortie d'écran), mêmes règles que les étoiles : point + queue ≤ 6px.
-      if (warp > 0.3) {
+      if (warp > 0.3 && !glStars) {
         ctx.lineCap = 'round';
         for (var q = 0; q < streaks.length; q++) {
           var st = streaks[q];
@@ -280,7 +284,7 @@
 
       // LUEUR DU DÉBOUCHÉ : point de fuite lumineux au foyer pendant le rush (la lumière au bout du tunnel,
       // que le whiteout de sortie vient crever) — 1 gradient/frame, uniquement warp>0.45, 0 coût au calme
-      if (warp > 0.45) {
+      if (warp > 0.45 && !glStars) {
         var glr = 40 + warp * 90;
         var gl = ctx.createRadialGradient(fx, fy, 0, fx, fy, glr);
         gl.addColorStop(0, 'rgba(255,255,255,' + (0.30 * Math.min(warp, 1.35)) + ')');
@@ -291,7 +295,7 @@
       }
 
       // étoiles filantes (désactivées ET purgées en warp : une filante de 120-220px pendant le rush = une « ligne »)
-      if (!warping) {
+      if (calm) {
         nextShoot -= dt * 16.67;
         if (nextShoot <= 0) { spawnShooter(); nextShoot = rand(2500, 5000); }
       } else if (shooters.length) shooters.length = 0;
@@ -464,7 +468,9 @@
         } else focalDrift = false;
       },
       start: start, stop: stop,
-      disintegrate: disintegrate, reset: resetFx, setWarpOrigin: setWarpOrigin
+      disintegrate: disintegrate, reset: resetFx, setWarpOrigin: setWarpOrigin,
+      // mode GL : coupe le star-warp 2D (le WebGL rend les étoiles 3D), garde fond calme + éclats
+      setGLMode: function (on) { glStars = !!on; }
     };
   })();
 
@@ -639,11 +645,24 @@
                    radiale ∝ distance, queue ≤ 6px), flux doublé par MIROIR + 2e nappe recyclée + lueur du débouché.
      B6 2840-3390  DÉBOUCHÉ : whiteout radial (pic ~2939 = 4ms après la pose de la carte : raccord au frame près).
      B7 2935-3630  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
+  var currentIntro = null;                      // intro WebGL en cours (contexte libéré à la fin)
+  function disposeIntro() {
+    if (currentIntro) { currentIntro.dispose(); currentIntro = null; }
+    if (Space) Space.setGLMode(false);
+  }
+
   function runIntro() {
     clearTimers();
+    disposeIntro();
     if (reduce || !Space) {                     // simple fondu court (aucun warp / zoom / dispersion)
       body.classList.remove('pre');
       return;
+    }
+    // VOIE ROYALE : intro 3D WebGL (vraie sphère éclairée + starfield volumétrique + bloom).
+    // createIntro() rend null si le GL n'est pas dispo -> on retombe sur la séquence CSS/canvas ci-dessous.
+    if (window.FGIntroGL && window.FGIntroGL.available) {
+      var gli = window.FGIntroGL.createIntro();
+      if (gli) { currentIntro = gli; runIntroGL(gli); return; }
     }
     buildScene();
     var ballSize = 0, tcx = window.innerWidth / 2, tcy = Math.round(window.innerHeight * 0.46);
@@ -726,8 +745,90 @@
     });
   }
 
+  /* SÉQUENCE WebGL — MÊME storyboard, MÊMES beats (B0..B7), exécution vraie 3D :
+     - la balle est une sphère GL éclairée (normal map d'alvéoles, key/rim lights, spéculaire) qui
+       naît PILE sur la balle du logo (projection écran->monde au pixel), s'ARRACHE en physique de
+       springs (anticipation, fronde, masse, squash/stretch, rolling) et vient se centrer ;
+     - la plongée est un TRAVELLING caméra DANS la balle (translation z + FOV qui s'ouvre + roulis),
+       tunnel intérieur lumineux, puis hyperespace de POINTS 3D (taille ∝ profondeur, scintillement) ;
+     - bloom post-process aux moments lumineux (ignition, rush, whiteout) ;
+     - timeline UNIQUE dans le rAF du moteur GL (cues), temps injectable (seek) pour vérification.
+     Le canvas 2D garde le fond calme + les ÉCLATS du logo (overlay z135, devant la sphère z130). */
+  function runIntroGL(intro) {
+    Space.setGLMode(true);
+    var ballSize = 0, tcx = window.innerWidth / 2, tcy = Math.round(window.innerHeight * 0.46);
+    function cleanup() {
+      body.classList.remove('go', 'arm', 'travel', 'zoom', 'land');
+      Space.reset();
+      Space.setGLMode(false);
+      intro.dispose();                           // libère le contexte GL : plus AUCUN coût sur la carte
+      if (currentIntro === intro) currentIntro = null;
+    }
+    intro.onContextLost = function () {          // le GPU lâche en plein vol -> on pose la carte proprement
+      clearTimers();
+      body.classList.remove('pre');
+      body.classList.remove('go', 'arm', 'travel', 'zoom', 'flash', 'land');
+      Space.reset(); Space.setGLMode(false);
+      if (currentIntro === intro) currentIntro = null;
+    };
+    intro._resetHook = function () {             // seek() de test : repartir d'un état DOM propre
+      body.classList.remove('go', 'arm', 'travel', 'zoom', 'flash', 'land');
+      body.classList.add('pre');
+      Space.reset();
+    };
+    // B0 + B1 : la scène se vide, le glint voyage vers la balle (DOM/CSS, inchangé)
+    intro.cue(0, function () { body.classList.add('go'); });
+    // B2 : IGNITION — la sphère GL naît sous la braise du glint, pop physique (spring overshoot)
+    intro.cue(560, function () {
+      var p = planetPoint();
+      if (p) {
+        Space.setWarpOrigin(p.x, p.y);
+        ballSize = Math.max(22, Math.round(p.rect.width * BALL_W));
+        intro.ignite(p.x, p.y, ballSize);
+      }
+      body.classList.add('arm');
+    });
+    // B2.5 : ANTICIPATION — la masse se charge (petit recul physique avant l'arrachement)
+    intro.cue(900, function () {
+      var p = planetPoint();
+      if (p) {
+        var dx = (window.innerWidth / 2) - p.x, dy = Math.round(window.innerHeight * 0.46) - p.y;
+        var d = Math.hypot(dx, dy) || 1;
+        intro.anticipate(dx / d, dy / d);
+      }
+    });
+    // B3 : ENVOL — spring sous-amorti vers le centre + kick fronde ; le logo se désagrège derrière
+    intro.cue(980, function () {
+      var p = planetPoint();
+      tcx = window.innerWidth / 2; tcy = Math.round(window.innerHeight * 0.46);
+      if (p) Space.disintegrate(p.rect, p.x, p.y, p.rect.width * 0.15);
+      intro.launch(tcx, tcy, Math.min(window.innerWidth, window.innerHeight) * 0.46);
+      body.style.setProperty('--flash-x', tcx + 'px');
+      body.style.setProperty('--flash-y', tcy + 'px');
+      body.classList.add('travel');
+    });
+    // B4 : PLONGÉE — travelling caméra dans la balle ; le ramp 2D reste piloté (éclats synchro)
+    intro.cue(1640, function () {
+      Space.setWarpOrigin(tcx, tcy);
+      Space.warpRamp(850);
+      intro.dive();
+    });
+    // B5 : HYPERESPACE — boost du flux d'étoiles 3D
+    intro.cue(2490, function () { Space.warpTo(1.35); intro.hyper(); });
+    // B6 : DÉBOUCHÉ — whiteout DOM + inondation bloom GL (pic ~2939)
+    intro.cue(2840, function () { body.classList.add('flash'); intro.flood(); });
+    // B7 : ARRIVÉE — carte posée sous le blanc plein, le GL a fini son travail
+    intro.cue(2935, function () { body.classList.remove('pre'); body.classList.add('land'); });
+    intro.cue(2950, function () { intro.hide(); });
+    intro.cue(3050, function () { Space.warpTo(0); });
+    intro.cue(3390, function () { body.classList.remove('flash'); });
+    intro.cue(3700, cleanup);
+    intro.start();
+  }
+
   function toEntry() {
     clearTimers();
+    disposeIntro();
     Space && Space.warpTo(0);
     Space && Space.reset();
     body.classList.remove('go', 'arm', 'travel', 'zoom', 'warp', 'flash', 'dissolve', 'land');
@@ -738,7 +839,7 @@
   if (open) open.addEventListener('click', toCard);
 
   window.addEventListener('popstate', function () {
-    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'arm', 'travel', 'zoom', 'warp', 'flash', 'dissolve', 'land'); Space && Space.reset(); if (scene) scene.style.display = 'none'; }
+    if (location.hash === '#carte') { clearTimers(); disposeIntro(); body.classList.remove('pre', 'go', 'arm', 'travel', 'zoom', 'warp', 'flash', 'dissolve', 'land'); Space && Space.reset(); if (scene) scene.style.display = 'none'; }
     else toEntry();
   });
 

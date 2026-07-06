@@ -31,6 +31,9 @@ body{
   opacity:1;transition:opacity .6s ease;
 }
 body.pre .viewer{opacity:0;pointer-events:none}
+/* RACCORD NET : pendant le flash, la carte apparaît INSTANTANÉMENT (transition coupée) sous le blanc plein ;
+   seul le whiteout décline (flashPulse) -> aucun ghosting 600ms, atterrissage franc façon « N ». */
+body.flash .viewer{transition:none}
 
 /* En-tête COMPACT et discret (logo + centre en ligne) — libère l'espace pour la carte */
 .card-head{
@@ -226,18 +229,106 @@ body.go .entry__halo{animation:bloom 1s ease forwards}
 /* étape 3 : REFLET VITRÉ — glint fin qui glisse GAUCHE -> DROITE, masqué à la silhouette (savouré ~1s) */
 body.go .entry__shine{animation:shineFade 1s ease-in-out .18s forwards}
 body.go .entry__shine::before{animation:shineSweep 1s cubic-bezier(.42,0,.24,1) .18s forwards}
-/* étape 4 : ZOOM DANS LA PLANÈTE — la caméra plonge (scale, origine PILE sur la planète) EN MÊME TEMPS que le star-warp */
-body.zoom .entry__logo{animation:dive 1s cubic-bezier(.5,.05,.75,.55) forwards}
+/* étape 4 : PLONGÉE 3D DANS LA PLANÈTE — le mot « fun galaxy » se disloque (particules canvas) pendant qu'on entre dans la sphère */
+body.zoom .entry__logo{animation:logoDisperse .5s ease-in forwards}
 body.zoom .entry__halo{animation:haloDive 1s ease-in forwards}
 
-/* Flash lumineux DOUX au débouché */
-.flash-el{
-  position:fixed;inset:0;z-index:120;pointer-events:none;opacity:0;
-  transition:opacity .4s ease;
-  /* centré sur la planète (var. posées en JS au moment du zoom) -> « on passe à travers » la planète */
-  background:radial-gradient(circle at var(--flash-x,50%) var(--flash-y,45%),rgba(255,255,255,.75),rgba(206,214,255,.24) 40%,transparent 72%);
+/* ---- Scène 3D : perspective COURTE (620px) -> la surface de la sphère FRANCHIT le plan caméra (vraie traversée, pas un aplat) ---- */
+.scene3d{
+  position:fixed;inset:0;z-index:130;display:none;pointer-events:none;
+  -webkit-perspective:620px;perspective:620px;
+  -webkit-perspective-origin:50% 46%;perspective-origin:50% 46%;
+  -webkit-transform-style:preserve-3d;transform-style:preserve-3d;
 }
-body.flash .flash-el{opacity:1}
+/* Overlay dédié aux ÉCLATS : canvas transparent plein écran, DEVANT la sphère (z130), SOUS le flash (z140), rendu additif */
+.fxparts{
+  position:fixed;inset:0;z-index:135;display:none;pointer-events:none;width:100%;height:100%;
+}
+/* La SPHÈRE : dégradé radial (highlight spéculaire décentré -> lecture 3D d'une sphère) + halo brand.
+   Taille/position posées en JS (pile sur la planète du logo). */
+.planet3d{
+  position:absolute;left:0;top:0;border-radius:50%;opacity:0;
+  transform-origin:center center;
+  -webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0);
+  background:
+    radial-gradient(circle at 34% 30%,
+      #ffffff 0%,#eafff8 6%,#9bece0 20%,#67baac 40%,#3f8a8f 60%,#3a2f66 82%,#171a40 100%);
+  box-shadow:
+    0 0 22px 5px rgba(103,186,172,.55),
+    0 0 64px 14px rgba(148,66,146,.38),
+    inset -6px -8px 18px rgba(10,12,40,.55);
+  will-change:transform,opacity;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;
+}
+.planet3d__spec{ /* reflet spéculaire brillant (vend la sphéricité) */
+  position:absolute;left:20%;top:13%;width:34%;height:30%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 42% 42%,rgba(255,255,255,.95),rgba(255,255,255,0) 70%);
+  -webkit-filter:blur(1px);filter:blur(1px);
+}
+.planet3d__ring{ /* anneau incliné autour de la planète */
+  position:absolute;left:50%;top:50%;width:198%;height:58%;pointer-events:none;
+  border-radius:50%;border:2px solid rgba(198,226,255,.5);
+  -webkit-transform:translate(-50%,-50%) rotate(-20deg);transform:translate(-50%,-50%) rotate(-20deg);
+  box-shadow:0 0 12px rgba(148,66,146,.45),inset 0 0 8px rgba(103,186,172,.35);
+}
+/* CŒUR de la sphère : gonfle (scale .2 -> 9) et blanchit -> vend l'ENTRÉE DANS la planète, raccord direct au whiteout */
+.planet3d__core{
+  position:absolute;left:50%;top:50%;width:82%;height:82%;pointer-events:none;opacity:0;
+  border-radius:50%;
+  -webkit-transform:translate(-50%,-50%) scale(.2);transform:translate(-50%,-50%) scale(.2);
+  background:radial-gradient(circle at 50% 50%,#ffffff 0%,#eafff8 26%,#8fe8dc 55%,rgba(103,186,172,0) 100%);
+  mix-blend-mode:screen;will-change:transform,opacity;
+}
+/* STRIES radiales de vitesse plaquées sur la sphère (motion blur perçu pendant la traversée) */
+.planet3d::after{
+  content:'';position:absolute;inset:-45%;border-radius:50%;pointer-events:none;opacity:0;
+  background:repeating-conic-gradient(from 0deg at 50% 50%,
+    rgba(255,255,255,0) 0deg,rgba(206,220,255,.28) 1.4deg,rgba(255,255,255,0) 4deg);
+  -webkit-mask:radial-gradient(circle,transparent 28%,#000 52%,transparent 100%);
+          mask:radial-gradient(circle,transparent 28%,#000 52%,transparent 100%);
+  will-change:transform,opacity;
+}
+/* ---- TUNNEL 3D : parois structurées qui défilent (géométrie intérieure façon « N » Netflix) ----
+   2e couche preserve-3d DERRIÈRE la sphère, MÊME perspective (620). translateZ far->near : les parois
+   FRANCHISSENT le plan caméra (620) et défilent past -> on voit des parois, pas un cœur blanc plat. */
+.planet3d__tunnel{
+  position:fixed;left:50%;top:46%;width:100vmax;height:100vmax;pointer-events:none;opacity:0;
+  border-radius:50%;--trot:0deg;
+  -webkit-transform:translate(-50%,-50%) translateZ(-1100px) rotateZ(var(--trot));transform:translate(-50%,-50%) translateZ(-1100px) rotateZ(var(--trot));
+  background:
+    repeating-conic-gradient(from 0deg at 50% 50%,
+      rgba(103,186,172,0) 0deg,rgba(148,66,146,.5) 2deg,rgba(206,220,255,.62) 3deg,rgba(103,186,172,0) 6deg),
+    repeating-radial-gradient(circle at 50% 50%,
+      rgba(206,220,255,0) 0,rgba(206,220,255,.24) 2px,rgba(206,220,255,0) 5px,rgba(206,220,255,0) 52px);
+  -webkit-mask:radial-gradient(circle at 50% 50%,transparent 12%,#000 34%,#000 70%,transparent 92%);
+          mask:radial-gradient(circle at 50% 50%,transparent 12%,#000 34%,#000 70%,transparent 92%);
+  will-change:transform,opacity;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+}
+/* 3 parois EMPILÉES : rotation de base décalée (0/24/48deg) + phases décalées (-.33s/-.66s sur le MÊME tunnelDive)
+   -> à tout instant du dive au moins une paroi traverse la caméra = couloir CONTINU (pas un flash unique). */
+.planet3d__tunnel--2{--trot:24deg}
+.planet3d__tunnel--3{--trot:48deg}
+/* PLONGÉE : perspective(620) + translateZ(1050) + scale(4.2 overshoot) + rotateX/Y + motion blur, MÊME courbe ease-in que le warp.
+   --dive-dx/--dive-dy (JS) recentrent la planète vers le milieu de l'écran pendant la descente. */
+body.zoom .planet3d{animation:dive3d 1s cubic-bezier(.45,.05,.72,.5) forwards}
+body.zoom .planet3d::after{animation:planetStreak 1s cubic-bezier(.45,.05,.72,.5) forwards}
+body.zoom .planet3d__core{animation:coreExpand 1s cubic-bezier(.45,.05,.72,.5) forwards}
+body.zoom .planet3d__tunnel{animation:tunnelDive 1s cubic-bezier(.45,.05,.72,.5) forwards}
+body.zoom .planet3d__tunnel--2{-webkit-animation-delay:-.33s;animation-delay:-.33s}
+body.zoom .planet3d__tunnel--3{-webkit-animation-delay:-.66s;animation-delay:-.66s}
+
+/* Flash lumineux au débouché (au-dessus de tout) — PIC synchronisé sur la fin de dive3d (montée 120ms -> pic ~2230ms) */
+.flash-el{
+  position:fixed;inset:0;z-index:140;pointer-events:none;opacity:0;
+  /* centré sur la planète (var. posées en JS au moment du zoom) -> « on passe à travers » la planète */
+  background:radial-gradient(circle at var(--flash-x,50%) var(--flash-y,45%),rgba(255,255,255,.92),rgba(206,214,255,.34) 42%,transparent 74%);
+}
+/* Aberration chromatique : copies teal/violet décalées ~2px (screen) -> punch-through énergique, pas un blanc plat.
+   Les pseudos héritent de l'opacité animée du parent (.flash-el) -> pulsent avec le flash. */
+.flash-el::before,.flash-el::after{content:'';position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen}
+.flash-el::before{background:radial-gradient(circle at calc(var(--flash-x,50%) + 2px) var(--flash-y,45%),rgba(103,186,172,.6),rgba(103,186,172,0) 58%)}
+.flash-el::after{background:radial-gradient(circle at calc(var(--flash-x,50%) - 2px) var(--flash-y,45%),rgba(148,66,146,.55),rgba(148,66,146,0) 58%)}
+body.flash .flash-el{animation:flashPulse .65s ease-out forwards}
 
 /* ============ KEYFRAMES ============ */
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
@@ -252,8 +343,39 @@ body.flash .flash-el{opacity:1}
 /* Reflet vitré (intro) : glint fin qui glisse G->D + fondu d'entrée/sortie */
 @keyframes shineSweep{0%{transform:translateX(-125%) skewX(-18deg)}100%{transform:translateX(125%) skewX(-18deg)}}
 @keyframes shineFade{0%{opacity:0}12%{opacity:1}82%{opacity:1}100%{opacity:0}}
-/* Zoom « on plonge dans la planète » (origine = planète, réglée sur .entry__logo) + halo qui s'ouvre */
-@keyframes dive{0%{transform:scale(1.14);opacity:1}55%{opacity:1}100%{transform:scale(12);opacity:0}}
+/* Le mot « fun galaxy » se disloque : le logo s'efface vite pendant que les éclats canvas s'éparpillent */
+@keyframes logoDisperse{0%{opacity:1;transform:scale(1.14)}35%{opacity:.4}100%{opacity:0;transform:scale(1.2)}}
+/* PLONGÉE 3D : la surface FRANCHIT le plan caméra (translateZ 1050 > perspective 620), overshoot de scale + motion blur */
+@keyframes dive3d{
+  0%{opacity:0;-webkit-filter:blur(0);filter:blur(0);
+    -webkit-transform:translate3d(0,0,0) scale(1) rotateX(0) rotateY(0) rotateZ(0);transform:translate3d(0,0,0) scale(1) rotateX(0) rotateY(0) rotateZ(0)}
+  12%{opacity:1}
+  82%{opacity:1}
+  88%{-webkit-filter:blur(3px);filter:blur(3px);
+    -webkit-transform:translate3d(calc(var(--dive-dx,0px) * .9),calc(var(--dive-dy,0px) * .9),930px) scale(4.5) rotateX(-20deg) rotateY(14deg) rotateZ(7deg);
+            transform:translate3d(calc(var(--dive-dx,0px) * .9),calc(var(--dive-dy,0px) * .9),930px) scale(4.5) rotateX(-20deg) rotateY(14deg) rotateZ(7deg)}
+  100%{opacity:0;-webkit-filter:blur(6px);filter:blur(6px);
+    -webkit-transform:translate3d(var(--dive-dx,0px),var(--dive-dy,0px),1050px) scale(4.2) rotateX(-22deg) rotateY(16deg) rotateZ(8deg);
+            transform:translate3d(var(--dive-dx,0px),var(--dive-dy,0px),1050px) scale(4.2) rotateX(-22deg) rotateY(16deg) rotateZ(8deg)}
+}
+/* Cœur qui gonfle -> ENTRÉE dans la sphère puis whiteout */
+@keyframes coreExpand{0%{opacity:0;-webkit-transform:translate(-50%,-50%) scale(.2);transform:translate(-50%,-50%) scale(.2)}
+  60%{opacity:1}
+  100%{opacity:1;-webkit-transform:translate(-50%,-50%) scale(9);transform:translate(-50%,-50%) scale(9)}}
+/* Stries de vitesse sur la sphère : s'ouvrent et s'intensifient pendant la traversée */
+@keyframes planetStreak{0%{opacity:0;-webkit-transform:scale(.6);transform:scale(.6)}
+  55%{opacity:.6}
+  100%{opacity:.95;-webkit-transform:scale(3.2);transform:scale(3.2)}}
+/* Tunnel : parois structurées qui FRANCHISSENT vraiment la caméra (translateZ -1100 -> 1000, perspective 620 traversée
+   à op>0) et RESTENT visibles jusqu'à 90% -> couloir soutenu façon « N ». --trot = rotation de base par couche. */
+@keyframes tunnelDive{
+  0%{opacity:0;-webkit-transform:translate(-50%,-50%) translateZ(-1100px) rotateZ(var(--trot,0deg));transform:translate(-50%,-50%) translateZ(-1100px) rotateZ(var(--trot,0deg))}
+  18%{opacity:.9}
+  60%{opacity:.9;-webkit-transform:translate(-50%,-50%) translateZ(360px) rotateZ(calc(var(--trot,0deg) + 40deg));transform:translate(-50%,-50%) translateZ(360px) rotateZ(calc(var(--trot,0deg) + 40deg))}
+  90%{opacity:.9;-webkit-transform:translate(-50%,-50%) translateZ(760px) rotateZ(calc(var(--trot,0deg) + 58deg));transform:translate(-50%,-50%) translateZ(760px) rotateZ(calc(var(--trot,0deg) + 58deg))}
+  100%{opacity:0;-webkit-transform:translate(-50%,-50%) translateZ(1000px) rotateZ(calc(var(--trot,0deg) + 66deg));transform:translate(-50%,-50%) translateZ(1000px) rotateZ(calc(var(--trot,0deg) + 66deg))}}
+/* Whiteout : montée 120ms (0->1 sur ~18% de .65s) culmine ~2230ms puis fond sur la carte */
+@keyframes flashPulse{0%{opacity:0}18%{opacity:1}100%{opacity:0}}
 @keyframes haloDive{0%{opacity:.9;transform:translate(-50%,-50%) scale(1.6)}100%{opacity:0;transform:translate(-50%,-50%) scale(4)}}
 
 /* ============ ACCESSIBILITÉ / MOUVEMENT RÉDUIT ============ */
@@ -261,7 +383,9 @@ body.flash .flash-el{opacity:1}
   .entry__logo,.entry__halo,.entry__shine,.entry__shine::before,.btn-card,.btn-card::before{animation:none!important}
   .entry,.viewer,.seg__thumb,.seg__btn,.page--fx{transition-duration:.2s}
   body.go .entry__logo,body.go .entry__halo,body.go .entry__shine,body.go .entry__shine::before,
-  body.zoom .entry__logo,body.zoom .entry__halo{animation:none!important}
-  .flash-el{display:none}
+  body.zoom .entry__logo,body.zoom .entry__halo,body.zoom .planet3d,
+  body.zoom .planet3d::after,body.zoom .planet3d__core,
+  body.zoom .planet3d__tunnel,body.zoom .planet3d__tunnel--2,body.zoom .planet3d__tunnel--3{animation:none!important}
+  .flash-el,.scene3d,.fxparts{display:none!important}
   .fs,.fs__img{transition-duration:.12s}
 }

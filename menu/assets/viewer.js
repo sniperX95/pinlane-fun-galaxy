@@ -216,6 +216,7 @@
 
       // étoiles
       var warping = warp > 0.02;
+      var boost = warp > 1.02;                  // segment HYPERESPACE (warpTarget 1.35 après le franchissement de la balle)
       ctx.globalCompositeOperation = 'lighter';
       ctx.lineCap = 'round';
       for (var i = 0; i < stars.length; i++) {
@@ -240,6 +241,12 @@
           ctx.lineWidth = haloW; ctx.stroke();                       // halo doux
           ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(s.a * (0.28 + warp * 0.9), 1) + ')';
           ctx.lineWidth = haloW * 0.35; ctx.stroke();                // cœur chaud (même path, plus fin, blanc pur)
+          if (boost) {                             // MIROIR au pic : chaque traînée dupliquée par symétrie centrale
+            // -> densité perçue x2 SANS étoile de plus (1 stroke par étoile, transitoire ~800ms)
+            ctx.strokeStyle = 'rgba(200,214,255,' + Math.min(s.a * 0.7 * (0.32 + warp * 0.95), 1) + ')';
+            ctx.lineWidth = haloW * 0.8;
+            ctx.beginPath(); ctx.moveTo(fx * 2 - tx, fy * 2 - ty); ctx.lineTo(fx * 2 - nx, fy * 2 - ny); ctx.stroke();
+          }
           s.x = nx; s.y = ny;
           var d2 = (nx - fx) * (nx - fx) + (ny - fy) * (ny - fy);
           if (d2 > diag * diag * 0.52) {           // recyclage plus TARD -> la tête parcourt ~72% de la diagonale avant reset (trace plus longue et franche)
@@ -305,6 +312,18 @@
       } else if (rings.length) {
         for (var rz = 0; rz < rings.length; rz++) rings[rz].active = false;
         ringAcc = 0;
+      }
+
+      // LUEUR DU DÉBOUCHÉ : point de fuite lumineux au foyer pendant le rush (la lumière au bout du tunnel,
+      // que le whiteout de sortie vient crever) — 1 gradient/frame, uniquement warp>0.45, 0 coût au calme
+      if (warp > 0.45) {
+        var glr = 40 + warp * 90;
+        var gl = ctx.createRadialGradient(fx, fy, 0, fx, fy, glr);
+        gl.addColorStop(0, 'rgba(255,255,255,' + (0.30 * Math.min(warp, 1.35)) + ')');
+        gl.addColorStop(0.4, 'rgba(206,220,255,' + (0.14 * Math.min(warp, 1.35)) + ')');
+        gl.addColorStop(1, 'rgba(206,220,255,0)');
+        ctx.fillStyle = gl;
+        ctx.beginPath(); ctx.arc(fx, fy, glr, 0, 6.283); ctx.fill();
       }
 
       // étoiles filantes (désactivées en warp)
@@ -466,7 +485,13 @@
     });
 
     return {
-      warpTo: function (v) { if (v <= 0) { warpRamping = false; focalDrift = false; } warpTarget = v; },
+      // v peut dépasser 1 (BOOST hyperespace : traînées ∝ warp² -> plus longues/lumineuses, 0 étoile de plus).
+      // Coupe toujours le ramp (sinon sa dernière frame écraserait warpTarget) ; si le foyer dérivait, il est posé à destination.
+      warpTo: function (v) {
+        if (warpRamping) { warpRamping = false; if (focalDrift) { fx = fx1; fy = fy1; } }
+        focalDrift = false;
+        warpTarget = v;
+      },
       // démarre la montée accélérée du star-warp sur `dur` ms (verrouillée sur la même fenêtre que le zoom CSS).
       // (tx,ty) optionnels : le FOYER dérive de sa position actuelle vers (tx,ty) sur la même courbe -> cohérent avec le recentrage de la sphère
       warpRamp: function (dur, tx, ty) {
@@ -581,9 +606,13 @@
   /* ============================================================
      3) TRANSITION CINÉMATIQUE entrée -> carte
      ============================================================ */
-  // Position NORMALISÉE de la planète (balle de golf + anneau, au-dessus du « xy ») dans la boîte du logo.
-  // Mesurée sur le SVG rendu (centroïde des pixels clairs de la balle) — cohérent avec .entry__logo-wrap::after (CSS).
-  var PLANET_FX = 0.716, PLANET_FY = 0.163;
+  // Position NORMALISÉE du CENTRE de la balle de golf (au-dessus du « xy ») dans la boîte du logo.
+  // = centre exact de la bbox du disque dans le SVG (getBBox : 341.02..396.42 x 38.93..94.17 de 522.9x354.3)
+  // — cohérent avec transform-origin 70.52%/18.78% du wrap (CSS) et avec le viewBox de golfball.svg.
+  var PLANET_FX = 0.7052, PLANET_FY = 0.1878;
+  // Diamètre de la balle / largeur du logo (55.4/522.9), majoré de 10% pour couvrir le dessin plat
+  // jusqu'au pic du push (1.06 -> 1.14 = +7.5%) : la balle 3D remplace EXACTEMENT la balle dessinée.
+  var BALL_W = (55.4 / 522.9) * 1.10;
 
   // --- Scène 3D « plongée dans la planète » : sphère radiale + anneau, créée dynamiquement
   //     (le HTML des 2 centres reste inchangé). perspective + translateZ = vraie profondeur (pas un aplat). ---
@@ -611,8 +640,8 @@
     runIntro();
   }
 
-  // Point planète (balle de golf au-dessus du « xy ») en coords écran, à l'instant T (le wrap est scalé pendant l'intro,
-  // getBoundingClientRect reflète le transform -> toujours juste). L'origine de TOUS les transforms = ce point (71.6%/16.3%),
+  // Point balle (centre du disque au-dessus du « xy ») en coords écran, à l'instant T (le wrap est scalé pendant l'intro,
+  // getBoundingClientRect reflète le transform -> toujours juste). L'origine de TOUS les transforms = ce point (70.52%/18.78%),
   // donc il ne bouge pas entre les phases : mesurer à l'ignition puis à la plongée donne le même point.
   function planetPoint() {
     var el = document.querySelector('.entry__logo');
@@ -623,14 +652,17 @@
 
   /* SÉQUENCE — une chaîne CAUSALE, chaque beat déclenche le suivant :
      B0    0-350   la scène se vide : nom+bouton s'effacent, le logo s'avance (scale 1->1.06).
-     B1  220-870   le REFLET vitré balaye G->D et ATTERRIT sur la planète (il ne sort pas du cadre : il s'y absorbe).
-     B2  880-1360  IGNITION : le dessin de planète devient une SPHÈRE 3D (pop overshoot) qui respire ; les lettres
-                   baissent à 80% ; push lent 1.06->1.14 (anticipation : la planète nous attire).
-     B3 1360-2360  PLONGÉE : tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) — sphère translateZ à travers le plan
-                   caméra, warp étoiles (même fenêtre, foyer qui DÉRIVE planète->centre avec la sphère), les lettres
-                   se disloquent en éclats balayés (elles ne survivent pas à la vitesse), cœur blanc = on perce la surface.
-     B4 2230-2880  TRAVERSÉE : whiteout radial centré sur le point d'impact RÉEL (centre écran), pic ~2347 = fin du dive.
-     B5 2345-3000  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
+     B1  220-870   le REFLET vitré balaye G->D et ATTERRIT sur la balle de golf (il ne sort pas du cadre : il s'y absorbe).
+     B2  880-1360  IGNITION : LA balle de golf du logo (golfball.svg, mêmes tracés/alvéoles) devient une sphère 3D
+                   (pop overshoot) qui respire ; les lettres baissent à 80% ; push lent 1.06->1.14 (elle nous attire).
+     B3 1360-2360  PLONGÉE : tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) — la balle translateZ à travers le plan
+                   caméra, warp étoiles (même fenêtre, foyer qui DÉRIVE balle->centre avec la sphère), les lettres
+                   se disloquent en éclats balayés, cœur blanc = on perce la surface de la balle.
+     B4 2360-3160  HYPERESPACE : on est DANS le couloir, écran ENTIER — boost warp 1->1.35 (montée puis pic ~500 km/h),
+                   traînées ∝ warp² (~1300px au pic) doublées par MIROIR central, anneaux + lueur du débouché.
+                   ~800ms ressenties, budget d'étoiles INCHANGÉ (longueur/luminosité/miroir, pas de particules en plus).
+     B5 3060-3710  DÉBOUCHÉ : whiteout radial centré sur le point de fuite, pic ~3177 = on crève le bout du tunnel.
+     B6 3175-3830  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
   function runIntro() {
     clearTimers();
     if (reduce || !Space) {                     // simple fondu court (aucun warp / zoom / dispersion)
@@ -644,10 +676,10 @@
     at(880, function () {
       var p = planetPoint();
       if (p) {
-        Space.setWarpOrigin(p.x, p.y);           // le foyer du warp = la planète, fixé dès maintenant
+        Space.setWarpOrigin(p.x, p.y);           // le foyer du warp = la balle, fixé dès maintenant
         if (scene && planetEl) {
-          // sphère dimensionnée pour couvrir le dessin au PIC du push (scale 1.14) -> l'aplat ne dépasse jamais
-          var size = Math.max(22, Math.round(p.rect.width * 0.162));
+          // balle 3D = MÊME dessin, MÊME taille (+10% pour couvrir le dessin plat jusqu'au pic du push 1.14)
+          var size = Math.max(22, Math.round(p.rect.width * BALL_W));
           planetEl.style.width = size + 'px'; planetEl.style.height = size + 'px';
           planetEl.style.left = (p.x - size / 2) + 'px';
           planetEl.style.top = (p.y - size / 2) + 'px';
@@ -675,15 +707,20 @@
       Space.warpRamp(1000, tcx, tcy);            // même fenêtre + même courbe que dive3d, foyer qui suit la sphère
     });
 
-    // B4 — TRAVERSÉE : pic du whiteout (montée 18% de .65s ≈ 117ms) à ~2347 = 13ms avant la fin du dive (2360)
-    at(2230, function () { body.classList.add('flash'); });
-    at(2345, function () {                       // B5 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
+    // B4 — HYPERESPACE : la balle est franchie (fin du dive), l'écran ENTIER est le couloir.
+    // Boost 1 -> 1.35 (approche exponentielle ~450ms = montée en vitesse PUIS pic tenu) : traînées ~2x plus
+    // longues (∝ warp²), plus lumineuses, doublées par miroir. ~800ms ressenties avant le débouché.
+    at(2360, function () { Space.warpTo(1.35); });
+
+    // B5 — DÉBOUCHÉ : pic du whiteout (montée 18% de .65s ≈ 117ms) à ~3177 = 2ms après la pose de la carte
+    at(3060, function () { body.classList.add('flash'); });
+    at(3175, function () {                       // B6 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
       body.classList.remove('pre');
       body.classList.add('land');
     });
-    at(2480, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le pic
-    at(2880, function () { body.classList.remove('flash'); });
-    at(3180, function () {                       // nettoyage
+    at(3310, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le débouché (vitesse résiduelle)
+    at(3710, function () { body.classList.remove('flash'); });
+    at(4010, function () {                       // nettoyage
       body.classList.remove('go', 'arm', 'zoom', 'land');
       Space.reset();
       if (scene) scene.style.display = 'none';

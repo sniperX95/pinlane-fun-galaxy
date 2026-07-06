@@ -34,6 +34,7 @@
     var running = false, rafId = 0, last = 0, nextShoot = 1200;
     var warp = 0, warpTarget = 0;      // 0 = calme, 1 = hyperespace
     var warpRamping = false, warpRampDur = 900, warpRampT0 = -1;  // montée ACCÉLÉRÉE (ease-in) synchronisée au zoom
+    var fx0 = 0, fy0 = 0, fx1 = 0, fy1 = 0, focalDrift = false;   // dérive du point focal pendant le ramp (planète -> centre écran), MÊME courbe que dive3d
     // Budget adaptatif : tél. peu puissants (<=4 cœurs / <=4 Go) => densité un cran plus basse (dégradation gracieuse, look quasi identique)
     var lowPower = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
                    (navigator.deviceMemory && navigator.deviceMemory <= 4);
@@ -200,7 +201,10 @@
         if (warpRampT0 < 0) warpRampT0 = t;
         var wp = (t - warpRampT0) / warpRampDur; if (wp > 1) wp = 1;
         warp = warpEase(wp);                    // ÉCHANTILLONNAGE EXACT de cubic-bezier(.45,.05,.72,.5) -> phase-lock parfait avec dive3d
-        if (wp >= 1) { warpRamping = false; warpTarget = 1; }
+        if (focalDrift) {                        // le FOYER du warp suit la sphère (recentrage dive-dx/dy) sur la MÊME courbe
+          fx = fx0 + (fx1 - fx0) * warp; fy = fy0 + (fy1 - fy0) * warp;
+        }
+        if (wp >= 1) { warpRamping = false; warpTarget = 1; if (focalDrift) { fx = fx1; fy = fy1; focalDrift = false; } }
       } else {
         warp += (warpTarget - warp) * Math.min(0.07 * dt, 1);   // décélération douce (retour au calme)
       }
@@ -430,7 +434,7 @@
       emitParts(rect, skipX, skipY, skipR, Math.round(MAX_PARTS * 0.62));
     }
     function resetFx() {
-      parts.length = 0; fx = cx; fy = cy; warpRamping = false; warpRampT0 = -1;
+      parts.length = 0; fx = cx; fy = cy; warpRamping = false; warpRampT0 = -1; focalDrift = false;
       salvoRect = null; salvo2Done = true;
       for (var i = 0; i < streaks.length; i++) streaks[i].active = false;
       for (var ri = 0; ri < rings.length; ri++) rings[ri].active = false; ringAcc = 0;
@@ -462,9 +466,15 @@
     });
 
     return {
-      warpTo: function (v) { if (v <= 0) { warpRamping = false; } warpTarget = v; },
-      // démarre la montée accélérée du star-warp sur `dur` ms (verrouillée sur la même fenêtre que le zoom CSS)
-      warpRamp: function (dur) { warpRamping = true; warpRampDur = Math.max(1, dur || 900); warpRampT0 = -1; warpTarget = 1; },
+      warpTo: function (v) { if (v <= 0) { warpRamping = false; focalDrift = false; } warpTarget = v; },
+      // démarre la montée accélérée du star-warp sur `dur` ms (verrouillée sur la même fenêtre que le zoom CSS).
+      // (tx,ty) optionnels : le FOYER dérive de sa position actuelle vers (tx,ty) sur la même courbe -> cohérent avec le recentrage de la sphère
+      warpRamp: function (dur, tx, ty) {
+        warpRamping = true; warpRampDur = Math.max(1, dur || 900); warpRampT0 = -1; warpTarget = 1;
+        if (typeof tx === 'number' && typeof ty === 'number' && isFinite(tx) && isFinite(ty)) {
+          fx0 = fx; fy0 = fy; fx1 = tx; fy1 = ty; focalDrift = true;
+        } else focalDrift = false;
+      },
       start: start, stop: stop,
       disintegrate: disintegrate, reset: resetFx, setWarpOrigin: setWarpOrigin
     };
@@ -586,12 +596,8 @@
     var spec = document.createElement('span'); spec.className = 'planet3d__spec';
     var core = document.createElement('span'); core.className = 'planet3d__core';  // cœur qui gonfle -> ENTRÉE dans la sphère -> raccord whiteout
     planetEl.appendChild(ring); planetEl.appendChild(spec); planetEl.appendChild(core);
-    // 3 parois de TUNNEL empilées (rotation base + phases décalées via CSS) -> couloir soutenu façon « N »
-    for (var ti = 1; ti <= 3; ti++) {
-      var tunnel = document.createElement('div');
-      tunnel.className = 'planet3d__tunnel' + (ti > 1 ? ' planet3d__tunnel--' + ti : '');
-      scene.appendChild(tunnel);                // DERRIÈRE la sphère, même perspective (620) -> franchit le plan caméra
-    }
+    // (les parois de tunnel CSS ont été SUPPRIMÉES : un seul vocabulaire d'intérieur — anneaux concentriques canvas,
+    //  émis du même foyer que le warp -> lecture claire + gros gain GPU sur mobiles faibles)
     scene.appendChild(planetEl);
     document.body.appendChild(scene);
   }
@@ -605,6 +611,26 @@
     runIntro();
   }
 
+  // Point planète (balle de golf au-dessus du « xy ») en coords écran, à l'instant T (le wrap est scalé pendant l'intro,
+  // getBoundingClientRect reflète le transform -> toujours juste). L'origine de TOUS les transforms = ce point (71.6%/16.3%),
+  // donc il ne bouge pas entre les phases : mesurer à l'ignition puis à la plongée donne le même point.
+  function planetPoint() {
+    var el = document.querySelector('.entry__logo');
+    var rect = el ? el.getBoundingClientRect() : null;
+    if (!rect || !rect.width) return null;
+    return { rect: rect, x: rect.left + PLANET_FX * rect.width, y: rect.top + PLANET_FY * rect.height };
+  }
+
+  /* SÉQUENCE — une chaîne CAUSALE, chaque beat déclenche le suivant :
+     B0    0-350   la scène se vide : nom+bouton s'effacent, le logo s'avance (scale 1->1.06).
+     B1  220-870   le REFLET vitré balaye G->D et ATTERRIT sur la planète (il ne sort pas du cadre : il s'y absorbe).
+     B2  880-1360  IGNITION : le dessin de planète devient une SPHÈRE 3D (pop overshoot) qui respire ; les lettres
+                   baissent à 80% ; push lent 1.06->1.14 (anticipation : la planète nous attire).
+     B3 1360-2360  PLONGÉE : tout sur UNE courbe (cubic-bezier(.45,.05,.72,.5)) — sphère translateZ à travers le plan
+                   caméra, warp étoiles (même fenêtre, foyer qui DÉRIVE planète->centre avec la sphère), les lettres
+                   se disloquent en éclats balayés (elles ne survivent pas à la vitesse), cœur blanc = on perce la surface.
+     B4 2230-2880  TRAVERSÉE : whiteout radial centré sur le point d'impact RÉEL (centre écran), pic ~2347 = fin du dive.
+     B5 2345-3000  ARRIVÉE : la carte se pose (settle 1.035->1), header descend, barre monte (follow-through). */
   function runIntro() {
     clearTimers();
     if (reduce || !Space) {                     // simple fondu court (aucun warp / zoom / dispersion)
@@ -612,40 +638,53 @@
       return;
     }
     buildScene();
-    body.classList.add('go');                   // (a) nom+bouton out, logo apparaît/se cale  (b) reflet vitré fin glisse G->D (~1s, savouré)
-    // (c) enchaînement DIRECT, sans temps mort : plongée 3D dans la planète + hyperespace + dispersion, tout sur la MÊME courbe (ease-in)
-    at(1250, function () {
-      var el = document.querySelector('.entry__logo');
-      var rect = el ? el.getBoundingClientRect() : null;
-      if (rect) {                                // point de la planète (balle de golf au-dessus du « xy ») en coords écran
-        var px = rect.left + PLANET_FX * rect.width;
-        var py = rect.top + PLANET_FY * rect.height;
-        var pR = rect.width * 0.13;
-        Space.setWarpOrigin(px, py);             // les traînées d'étoiles filent PILE depuis la planète
-        Space.disintegrate(rect, px, py, pR);    // DISPERSION façon « N » : le mot « fun galaxy » se fragmente (planète préservée)
-        body.style.setProperty('--flash-x', px + 'px');   // le flash « on passe à travers » est centré sur la planète
-        body.style.setProperty('--flash-y', py + 'px');
-        if (scene && planetEl) {                 // place la SPHÈRE 3D pile sur la planète, puis on plonge dedans (translateZ)
-          var size = Math.max(22, Math.round(rect.width * 0.15));
+    body.classList.add('go');                   // B0 + B1 : la scène se vide, le glint voyage vers la planète
+
+    // B2 — IGNITION (le glint vient de se poser sur la planète : elle s'allume et nous attire)
+    at(880, function () {
+      var p = planetPoint();
+      if (p) {
+        Space.setWarpOrigin(p.x, p.y);           // le foyer du warp = la planète, fixé dès maintenant
+        if (scene && planetEl) {
+          // sphère dimensionnée pour couvrir le dessin au PIC du push (scale 1.14) -> l'aplat ne dépasse jamais
+          var size = Math.max(22, Math.round(p.rect.width * 0.162));
           planetEl.style.width = size + 'px'; planetEl.style.height = size + 'px';
-          planetEl.style.left = (px - size / 2) + 'px';
-          planetEl.style.top = (py - size / 2) + 'px';
-          var tcx = window.innerWidth / 2, tcy = window.innerHeight * 0.46;  // recentrage pendant la plongée
-          planetEl.style.setProperty('--dive-dx', (tcx - px) + 'px');
-          planetEl.style.setProperty('--dive-dy', (tcy - py) + 'px');
+          planetEl.style.left = (p.x - size / 2) + 'px';
+          planetEl.style.top = (p.y - size / 2) + 'px';
           scene.style.display = 'block';
         }
       }
-      body.classList.add('zoom');                // PLONGÉE 3D : perspective + translateZ + rotate (origine = planète) EN MÊME TEMPS que le warp
-      Space.warpRamp(1000);                      // star-warp accéléré sur la MÊME fenêtre/courbe que la plongée
+      body.classList.add('arm');                 // ignite (sphère) + push lent (anticipation) + lettres à 80%
     });
-    // (d) RACCORD SANS POP : le PIC du whiteout (flashPulse, montée 120ms) culmine à ~2230ms = PILE quand dive3d atteint 100% (fin 2250)
-    at(2110, function () { body.classList.add('flash'); });  // flash démarre -> pic d'opacité (flashPulse 18%) à ~2227
-    at(2227, function () { body.classList.remove('pre'); });  // (e) carte révélée SOUS le whiteout PLEIN, cut net (transition coupée) -> seul le flash décline
-    at(2360, function () { Space.warpTo(0); });               // décélération de l'hyperespace après le pic
-    at(2760, function () { body.classList.remove('flash'); });// le flash se fond sur la carte
-    at(3050, function () {                                     // nettoyage
-      body.classList.remove('go', 'zoom', 'warp');
+
+    // B3 — PLONGÉE (l'attraction gagne : on tombe dedans ; une seule horloge, une seule courbe)
+    at(1360, function () {
+      var p = planetPoint();
+      var tcx = window.innerWidth / 2, tcy = window.innerHeight * 0.46;   // où la sphère arrive à la fin du dive
+      if (p) {
+        Space.setWarpOrigin(p.x, p.y);
+        Space.disintegrate(p.rect, p.x, p.y, p.rect.width * 0.15);        // les lettres partent en éclats (planète préservée)
+        if (planetEl) {
+          planetEl.style.setProperty('--dive-dx', (tcx - p.x) + 'px');    // recentrage pendant la descente
+          planetEl.style.setProperty('--dive-dy', (tcy - p.y) + 'px');
+        }
+      }
+      body.style.setProperty('--flash-x', tcx + 'px');                    // le whiteout éclate LÀ où la sphère termine
+      body.style.setProperty('--flash-y', tcy + 'px');
+      body.classList.add('zoom');
+      Space.warpRamp(1000, tcx, tcy);            // même fenêtre + même courbe que dive3d, foyer qui suit la sphère
+    });
+
+    // B4 — TRAVERSÉE : pic du whiteout (montée 18% de .65s ≈ 117ms) à ~2347 = 13ms avant la fin du dive (2360)
+    at(2230, function () { body.classList.add('flash'); });
+    at(2345, function () {                       // B5 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
+      body.classList.remove('pre');
+      body.classList.add('land');
+    });
+    at(2480, function () { Space.warpTo(0); });  // décélération de l'hyperespace après le pic
+    at(2880, function () { body.classList.remove('flash'); });
+    at(3180, function () {                       // nettoyage
+      body.classList.remove('go', 'arm', 'zoom', 'land');
       Space.reset();
       if (scene) scene.style.display = 'none';
     });
@@ -655,7 +694,7 @@
     clearTimers();
     Space && Space.warpTo(0);
     Space && Space.reset();
-    body.classList.remove('go', 'zoom', 'warp', 'flash', 'dissolve');
+    body.classList.remove('go', 'arm', 'zoom', 'warp', 'flash', 'dissolve', 'land');
     if (scene) scene.style.display = 'none';
     body.classList.add('pre');
   }
@@ -663,7 +702,7 @@
   if (open) open.addEventListener('click', toCard);
 
   window.addEventListener('popstate', function () {
-    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'zoom', 'warp', 'flash', 'dissolve'); Space && Space.reset(); if (scene) scene.style.display = 'none'; }
+    if (location.hash === '#carte') { clearTimers(); body.classList.remove('pre', 'go', 'arm', 'zoom', 'warp', 'flash', 'dissolve', 'land'); Space && Space.reset(); if (scene) scene.style.display = 'none'; }
     else toEntry();
   });
 

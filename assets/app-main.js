@@ -11985,6 +11985,31 @@ async function pay(method) {
   }
 }
 
+// Contexte d'ouverture de la réservation rapide : ce que le point d'entrée
+// SAIT déjà (activité, date, heure, piste, client...) est considéré « acquis »
+// — affiché en rappel, jamais redemandé — et la modale ne pose que les
+// questions restantes. Dérivé du prefill brut pour ne pas toucher aux
+// dizaines de points d'appel existants.
+function deriveQuickBookContext(prefill = {}) {
+  const known = [];
+  if (prefill.name) known.push('client');
+  if (prefill.type) known.push('type');
+  if (prefill.date) known.push('date');
+  if (prefill.startTime) known.push('startTime');
+  if (Array.isArray(prefill.lanes) && prefill.lanes.length) known.push('lanes');
+  if (prefill.duration) known.push('duration');
+  if (prefill.formuleId) known.push('formule');
+  let source = 'generic';
+  if (prefill.context) source = prefill.context;
+  else if (Array.isArray(prefill.lanes) && prefill.lanes.length) source = 'planning-bowling';
+  else if (prefill.lockStartTime) source = 'laser-session';
+  else if (prefill.type === 'laser' && prefill.startTime) source = 'laser-slot';
+  else if (prefill.type === 'formule') source = 'groupe';
+  else if (prefill.name) source = 'client';
+  else if (prefill.type) source = 'activite';
+  return { source, known };
+}
+
 function createQuickBookState(prefill = {}) {
   return {
     name: prefill.name || '',
@@ -12003,6 +12028,9 @@ function createQuickBookState(prefill = {}) {
     pastStartDate: prefill.pastStartDate || prefill.date || state.currentDate || todayStr(),
     pastStartTime: prefill.pastStartTime || prefill.startTime || '',
     lockStartTime: Boolean(prefill.lockStartTime),
+    context: deriveQuickBookContext(prefill),
+    unlocked: {},
+    moreOpen: false,
     error: '',
     payNow: false
   };
@@ -12022,7 +12050,14 @@ function openQuickBook(prefill = {}) {
 }
 
 function quickFromCell(lane, startTime) {
-  openQuickBook({ date: state.currentDate, startTime: numToTime(startTime) });
+  // Case du planning bowling : la piste, la date et l'heure sont déjà connues
+  // — la modale ne redemande que le client, les joueurs et la durée.
+  openQuickBook({
+    date: state.currentDate,
+    startTime: numToTime(startTime),
+    type: 'bowling',
+    lanes: Number(lane) ? [Number(lane)] : []
+  });
 }
 
 function closeQuickBook() {
@@ -12280,6 +12315,61 @@ function getQuickBookSummary() {
   return { total, detail };
 }
 
+// Un champ « acquis » par le contexte reste modifiable : le rappel propose un
+// lien discret qui rouvre le contrôle correspondant (zéro perte de capacité).
+function quickFieldKnown(field) {
+  if (!quickBookState) return false;
+  return quickBookState.context.known.includes(field) && !quickBookState.unlocked[field];
+}
+
+function unlockQuickField(field) {
+  if (!quickBookState) return;
+  quickBookState.unlocked[field] = true;
+  // Les contrôles avancés (pistes, créneaux) vivent dans « Plus d'options ».
+  if (field === 'lanes') quickBookState.moreOpen = true;
+  renderQuickBook();
+}
+
+function toggleQuickBookMore() {
+  if (!quickBookState) return;
+  quickBookState.moreOpen = !quickBookState.moreOpen;
+  renderQuickBook();
+}
+
+function formatQuickBookDateLabel(dateStr) {
+  try {
+    return new Intl.DateTimeFormat('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }).format(parseLocalDate(dateStr));
+  } catch (error) {
+    return dateStr;
+  }
+}
+
+// Titre + tonalité par contexte : la popup « parle » l'endroit d'où elle vient.
+function getQuickBookHeader(formule) {
+  const s = quickBookState;
+  const src = s.context.source;
+  if (src === 'planning-bowling') {
+    const laneText = s.lanes.length ? `la piste ${s.lanes.join(' & ')}` : 'le bowling';
+    return { eyebrow: 'Planning bowling', title: `Réserver ${laneText}${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Créneau repris du planning — il ne reste que le client à compléter.' };
+  }
+  if (src === 'laser-session') {
+    return { eyebrow: 'Laser Game', title: `Rejoindre le lancement${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Le groupe complète une session existante — départ verrouillé.' };
+  }
+  if (src === 'laser-slot' || (src === 'activite' && s.type === 'laser')) {
+    return { eyebrow: 'Laser Game', title: `Nouvelle session laser${quickFieldKnown('startTime') && s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Session laser depuis le planning des lancements.' };
+  }
+  if (src === 'groupe' || (src === 'activite' && s.type === 'formule')) {
+    return { eyebrow: 'Groupes & anniversaires', title: 'Réservation groupe · anniversaire', sub: 'Choisissez la formule, le reste suit.' };
+  }
+  if (src === 'client') {
+    return { eyebrow: 'Fiche client', title: `Réserver pour ${s.name || 'ce client'}`, sub: 'Coordonnées reprises de la fiche — choisissez le créneau.' };
+  }
+  if (src === 'activite') {
+    return { eyebrow: 'Staff Booking', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
+  }
+  return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: 'L’essentiel d’abord — le détail vit dans « Plus d’options ».' };
+}
+
 function renderQuickBook() {
   if (!quickBookState) return;
   const overlay = document.getElementById('quickBookOverlay');
@@ -12347,24 +12437,257 @@ function renderQuickBook() {
         ? `Sélection manuelle - ${quickBookState.lanes.join(' - ')}`
         : 'Sélection manuelle en attente';
 
+  const header = getQuickBookHeader(formule);
+  const showClient = !quickFieldKnown('client');
+  const showType = !quickFieldKnown('type');
+  const showDate = !quickFieldKnown('date');
+  const showTime = !quickFieldKnown('startTime');
+  const durationEssential = !quickFieldKnown('duration') && (
+    quickBookState.type === 'laser'
+    || (quickBookState.type === 'bowling' && (quickFieldKnown('type') || quickFieldKnown('startTime') || quickFieldKnown('lanes')))
+  );
+  const showFormuleGrid = quickBookState.type === 'formule' && (!quickFieldKnown('formule') || !formule);
+  const manualLanesShort = needsLanes && !quickBookState.autoAssign && quickBookState.lanes.length < requiredCount;
+
+  // Rappel des acquis du contexte : affichés, jamais redemandés, modifiables.
+  const chips = [];
+  if (!showClient) chips.push({ k: 'Client', v: `${escapeHtml(quickBookState.name)} · ${escapeHtml(quickBookState.phone)}`, field: 'client' });
+  if (!showType) chips.push({ k: 'Activité', v: quickBookState.type === 'laser' ? 'Laser Game' : escapeHtml(typeLabel), field: 'type' });
+  if (!showDate) chips.push({ k: 'Date', v: formatQuickBookDateLabel(quickBookState.date), field: 'date' });
+  if (!showTime) chips.push({ k: 'Départ', v: quickBookState.startTime || '--:--', field: quickBookState.lockStartTime ? '' : 'startTime', lock: quickBookState.lockStartTime });
+  if (quickFieldKnown('lanes')) chips.push({ k: quickBookState.lanes.length > 1 ? 'Pistes' : 'Piste', v: quickBookState.lanes.join(' · ') || 'Auto', field: 'lanes' });
+  if (!durationEssential && quickFieldKnown('duration')) chips.push({ k: 'Durée', v: quickBookState.type === 'laser' ? getLaserOption(quickBookState.duration).label : formatDurationLabel(quickBookState.duration), field: 'duration' });
+  if (quickBookState.type === 'formule' && quickFieldKnown('formule') && formule) chips.push({ k: 'Formule', v: escapeHtml(formule.name), field: 'formule' });
+
+  const contextStripHtml = chips.length ? `
+    <div class="qb-context-strip">
+      ${chips.map(chip => `
+        <div class="qb-context-chip">
+          <div><div class="k">${chip.k}</div><div class="v">${chip.v}</div></div>
+          ${chip.lock ? '<span class="qb-chip-lock">Verrouillé</span>' : chip.field ? `<button type="button" class="qb-chip-edit" onclick="unlockQuickField('${chip.field}')">Modifier</button>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  // Cellules essentielles restantes (date/heure/joueurs) selon le contexte.
+  const essentialCells = [];
+  if (showDate) essentialCells.push(`
+    <div>
+      <label class="qb-mini-label">Date</label>
+      <input class="qb-input" type="date" value="${quickBookState.date}" oninput="quickBookState.date=this.value; renderQuickBook()">
+    </div>`);
+  if (showTime) essentialCells.push(`
+    <div>
+      <label class="qb-mini-label">Heure</label>
+      <input class="qb-input" type="time" step="1800" value="${quickBookState.startTime}" oninput="quickBookState.startTime=this.value; renderQuickBook()">
+    </div>`);
+  essentialCells.push(`
+    <div>
+      <label class="qb-mini-label">Joueurs</label>
+      <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="quickBookState.pax=Math.max(1, Number(this.value)||1); syncQuickBookDuration(); renderQuickBook()">
+    </div>`);
+
+  const essentialActions = [];
+  if (showTime && firstSlot && !quickBookState.lockStartTime && (!selectedSlot || firstSlot.time !== quickBookState.startTime)) {
+    essentialActions.push(`<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">Premier créneau ${firstSlot.time}</button>`);
+  }
+  if (manualLanesShort && suggestedLanes.length) {
+    essentialActions.push(`<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Compléter les pistes (${suggestedLanes.join(' - ')})</button>`);
+  }
+
+  // Ligne d'état compacte : la synthèse dispo/pistes/sessions sans les 3 cartes.
+  const statusParts = [];
+  if (schedule) statusParts.push(`Ouvert ${schedule.label}`);
+  if (quickBookState.type === 'laser') {
+    statusParts.push(laneNeedLabel);
+    if (selectedSlot) statusParts.push(getLaserSlotAfterText(selectedSlot, quickBookState.pax));
+    if (selectedSlot && (selectedSlot.sharedSession || selectedSlot.mayShareSession)) statusParts.push('Session partagée possible selon l’affluence');
+  } else if (needsLanes) {
+    statusParts.push(laneNeedLabel);
+    statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` — pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
+    if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste(s) libre(s)`);
+  } else if (quickBookState.type === 'formule' && formule) {
+    statusParts.push('Sans piste de bowling');
+  }
+
+  const formuleGridHtml = showFormuleGrid ? `
+    <div style="margin-top:12px;">
+      <label class="qb-mini-label">Formules disponibles</label>
+      <div class="qb-formule-grid">
+        ${formuleChoices.map(item => {
+          const timeWindow = item.timeLimit
+            ? item.timeLimit.min && item.timeLimit.max
+              ? `${item.timeLimit.min}h-${item.timeLimit.max}h`
+              : item.timeLimit.max
+                ? `avant ${item.timeLimit.max}h`
+                : `des ${item.timeLimit.min}h`
+            : item.validDays
+              ? `${item.validDays.length} jour(s)`
+              : 'Libre';
+          const isActive = quickBookState.formuleId === item.id;
+          const locked = !item.available && !isActive;
+          return `
+            <button class="qb-formule-card ${isActive ? 'active' : ''} ${item.available ? '' : 'unavailable'}" onclick="setQuickFormule('${item.id}')" ${locked ? 'disabled' : ''}>
+              <div class="qb-formule-top">
+                <div class="qb-formule-name">${item.name}</div>
+                <div class="qb-formule-price">${item.price}EUR/${item.type === 'per_lane' ? 'piste' : 'pers'}</div>
+              </div>
+              <div class="qb-formule-sub">${item.family} - ${timeWindow}</div>
+              <div class="qb-formule-status">
+                <span class="qb-status-pill ${item.available ? 'ok' : 'no'}">${item.available ? 'Dispo' : 'Bloquée'}</span>
+                <span class="qb-inline-note">${item.available ? item.desc[0] : item.reason}</span>
+              </div>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  const durationEssentialHtml = durationEssential
+    ? quickBookState.type === 'laser'
+      ? `
+        <div style="margin-top:12px;">
+          <label class="qb-mini-label">Parties</label>
+          <div class="qb-dur-grid laser">
+            ${LASER_GAME_OPTIONS.map(opt => `<button class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}
+          </div>
+        </div>`
+      : `
+        <div style="margin-top:12px;">
+          <label class="qb-mini-label">Durée</label>
+          <div class="qb-dur-grid">
+            ${DURATION_OPTIONS.map(opt => `<button class="qb-dur-btn ${quickBookState.duration === opt.value ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}</button>`).join('')}
+          </div>
+        </div>`
+    : '';
+
+  // « Plus d'options » : toutes les capacités avancées restent là, repliées.
+  const advancedHtml = quickBookState.moreOpen ? `
+    <div class="qb-block">
+      <div class="blk-label">Créneaux et disponibilité</div>
+      <div class="qb-snapshot-row">
+        <div class="qb-snapshot">
+          <div class="k">Ouverture</div>
+          <div class="v">${schedule ? schedule.label : 'Fermé'}</div>
+          <div class="t">${schedule ? 'Lecture directe des horaires du centre' : 'Aucune réservation possible sur cette date'}</div>
+        </div>
+        <div class="qb-snapshot">
+          <div class="k">Créneau</div>
+          <div class="v">${quickBookState.startTime || '--:--'}</div>
+          <div class="t">${selectedSlotLabel}</div>
+        </div>
+        <div class="qb-snapshot">
+          <div class="k">Affectation</div>
+          <div class="v">${laneNeedLabel}</div>
+          <div class="t">${laneSelectionLabel}</div>
+        </div>
+      </div>
+      <div class="qb-slot-head" style="margin-top:12px;">
+        <label class="qb-mini-label" style="margin-bottom:0;">Créneaux disponibles</label>
+        <div class="qb-section-note">${quickBookState.type === 'laser' ? (selectedSlot ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : `${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''} à planifier`) : needsLanes ? `${Math.max(freeCount, 0)} piste(s) libre(s) sur le créneau choisi` : 'Sélection rapide de l’heure de départ'}</div>
+      </div>
+      ${availableSlots.length ? `
+        <div class="qb-slot-strip">
+          ${availableSlots.slice(0, 8).map(slot => `
+            <button class="qb-slot-chip ${slot.selected ? 'active' : ''} ${quickBookState.lockStartTime ? 'locked' : ''}" ${quickBookState.lockStartTime ? 'disabled aria-disabled="true"' : `onclick="setQuickStartTime('${slot.time}')"`}>
+              <span class="time">${slot.time}</span>
+              <span class="sub">${quickBookState.type === 'laser' ? getLaserSlotCapacityText(slot, quickBookState.pax) : needsLanes ? `${slot.freeCount} piste(s) libre(s)` : 'disponible'}</span>
+              <span class="lanes">${slot.selected ? (quickBookState.lockStartTime ? 'Lancement verrouillé' : 'Sélectionné') : quickBookState.type === 'laser' && slot.sharedSession ? 'Rejoindre session' : 'Choisir ce départ'}</span>
+            </button>
+          `).join('')}
+        </div>
+      ` : `
+        <div class="qb-empty-note">Aucun créneau automatique avec ces critères. Changez la date, l'heure, le nombre de joueurs ou la formule.</div>
+      `}
+    </div>
+
+    <div class="qb-block">
+      <div class="blk-label">Durée et pistes</div>
+      ${quickBookState.type === 'formule' && !formule ? `
+        <div class="qb-warn">Sélectionnez d'abord une formule pour voir la logique de durée et de pistes.</div>
+      ` : quickBookState.type === 'laser' ? `
+        ${durationEssential ? '' : `
+        <div class="qb-dur-grid laser" style="margin-bottom:12px;">
+          ${LASER_GAME_OPTIONS.map(opt => `<button class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}
+        </div>`}
+        <div class="qb-lane-focus laser-focus">
+          <div>
+            <div class="qb-lane-focus-title">Arène Laser Game</div>
+            <div class="qb-lane-focus-sub">${selectedSlot ? `${getLaserSlotAfterText(selectedSlot, quickBookState.pax)}${selectedSlot.sharedSession ? ' • session déjà partagée' : ''}` : 'Choisissez un départ disponible'}</div>
+          </div>
+          <div class="qb-action-stack">
+            ${firstSlot && !quickBookState.lockStartTime ? `<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">Premier départ ${firstSlot.time}</button>` : ''}
+          </div>
+        </div>
+        <div class="qb-warn">Prévenir le client : une session Laser Game peut être complétée avec d'autres joueurs selon l'affluence.</div>
+      ` : needsLanes ? `
+        <div class="qb-dur-grid" style="margin-bottom:12px;">
+          ${DURATION_OPTIONS.map(opt => `<button class="qb-dur-btn ${quickBookState.duration === opt.value ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}</button>`).join('')}
+        </div>
+        ${quickBookState.type === 'formule' && formule ? `<div class="qb-warn" style="margin-bottom:12px;">Durée liée à la formule ${formule.name}.</div>` : ''}
+        <div class="qb-lane-focus">
+          <div>
+            <div class="qb-lane-focus-title">${laneNeedLabel}</div>
+            <div class="qb-lane-focus-sub">${laneSuggestionLabel}</div>
+          </div>
+          <div class="qb-action-stack">
+            ${quickBookState.startTime && suggestedLanes.length ? `<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Appliquer ${suggestedLanes.join(' - ')}</button>` : ''}
+            <button class="qb-ghost-btn" onclick="setQuickAutoAssign()">Mode auto</button>
+          </div>
+        </div>
+        <div class="qb-lane-grid">
+          <button class="qb-lane-btn auto ${quickBookState.autoAssign ? 'active' : ''}" onclick="setQuickAutoAssign()">Auto</button>
+          ${Array.from({ length: TOTAL_LANES }, (_, idx) => idx + 1).map(lane => {
+            const busy = occupied.has(lane);
+            const maint = state.laneStatuses[lane] === 'maintenance';
+            const active = !quickBookState.autoAssign && quickBookState.lanes.includes(lane);
+            const suggested = quickBookState.autoAssign && suggestedLanes.includes(lane);
+            const cls = `${active ? 'active' : ''} ${busy ? 'busy' : ''} ${maint ? 'maint' : ''} ${suggested ? 'suggested' : ''}`.trim();
+            const action = busy || maint ? '' : `onclick="toggleQuickLane(${lane})"`;
+            const disabledAttr = busy || maint ? 'disabled aria-disabled="true"' : '';
+            return `<button class="qb-lane-btn ${cls}" ${disabledAttr} ${action}>${lane}</button>`;
+          }).join('')}
+        </div>
+        <div class="qb-lane-footer">
+          <div class="qb-lane-selection">${laneSelectionLabel}</div>
+          <div class="schedule-hint">${quickBookState.autoAssign ? `<span class="open">${autoLaneMessage}</span>` : `<span class="${quickBookState.lanes.length >= requiredCount ? 'open' : 'closed'}">${autoLaneMessage}</span>`}</div>
+        </div>
+      ` : `
+        <div class="qb-warn">Cette formule ne nécessite pas de piste de bowling.</div>
+      `}
+    </div>
+
+    <div class="qb-block">
+      <div class="blk-label">Client — détail</div>
+      <div>
+        <label class="qb-mini-label">Email</label>
+        <input class="qb-input" type="email" value="${quickBookState.email}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
+      </div>
+    </div>
+  ` : '';
+
   overlay.classList.remove('hidden');
   overlay.className = 'qb-overlay';
   overlay.innerHTML = `
-    <div class="qb-modal">
+    <div class="qb-modal qb-context-${quickBookState.context.source}">
       <div class="qb-head">
         <div>
-          <div class="ticket-id">Staff Booking</div>
-          <h3>Réservation rapide</h3>
-          <div class="sub">Création manuelle depuis le planning ou la liste</div>
+          <div class="ticket-id">${header.eyebrow}</div>
+          <h3>${header.title}</h3>
+          <div class="sub">${header.sub}</div>
         </div>
         <button class="close-btn" onclick="closeQuickBook()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="qb-body">
+        ${contextStripHtml}
         <div class="qb-block">
+          ${showClient ? `
           <div class="blk-label">Client</div>
-          <div class="qb-row three">
+          <div class="qb-row two">
             <div>
               <label class="qb-mini-label">Nom</label>
               <input class="qb-input" value="${quickBookState.name}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
@@ -12373,168 +12696,33 @@ function renderQuickBook() {
               <label class="qb-mini-label">Téléphone</label>
               <input class="qb-input" value="${quickBookState.phone}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this.value)" placeholder="+32 470 00 00 00">
             </div>
-            <div>
-              <label class="qb-mini-label">Email</label>
-              <input class="qb-input" type="email" value="${quickBookState.email}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
-            </div>
           </div>
-        </div>
-
-        <div class="qb-block">
-          <div class="blk-label">Réservation</div>
+          ` : ''}
+          ${showType ? `
+          <div class="blk-label" ${showClient ? 'style="margin-top:12px;"' : ''}>Activité</div>
           <div class="qb-type-row">
             <button class="qb-type-btn ${quickBookState.type === 'bowling' ? 'active' : ''}" onclick="setQuickType('bowling')">Bowling</button>
             <button class="qb-type-btn ${quickBookState.type === 'laser' ? 'active' : ''}" onclick="setQuickType('laser')">Laser</button>
             <button class="qb-type-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>
           </div>
-          <div class="qb-snapshot-row">
-            <div class="qb-snapshot">
-              <div class="k">Ouverture</div>
-              <div class="v">${schedule ? schedule.label : 'Fermé'}</div>
-              <div class="t">${schedule ? 'Lecture directe des horaires du centre' : 'Aucune réservation possible sur cette date'}</div>
-            </div>
-            <div class="qb-snapshot">
-              <div class="k">Créneau</div>
-              <div class="v">${quickBookState.startTime || '--:--'}</div>
-              <div class="t">${selectedSlotLabel}</div>
-            </div>
-            <div class="qb-snapshot">
-              <div class="k">Affectation</div>
-              <div class="v">${laneNeedLabel}</div>
-              <div class="t">${laneSelectionLabel}</div>
-            </div>
-          </div>
-          <div class="qb-row three">
-            <div>
-              <label class="qb-mini-label">Date</label>
-              <input class="qb-input" type="date" value="${quickBookState.date}" oninput="quickBookState.date=this.value; renderQuickBook()">
-            </div>
-            <div>
-              <label class="qb-mini-label">Heure</label>
-              <input class="qb-input" type="time" step="1800" value="${quickBookState.startTime}" oninput="quickBookState.startTime=this.value; renderQuickBook()">
-            </div>
-            <div>
-              <label class="qb-mini-label">Joueurs</label>
-              <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="quickBookState.pax=Math.max(1, Number(this.value)||1); syncQuickBookDuration(); renderQuickBook()">
-            </div>
-          </div>
-          <div class="qb-inline-actions" style="margin-top:12px;">
-            ${firstSlot ? `<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">${quickBookState.lockStartTime ? 'Lancement sélectionné' : 'Premier créneau'} ${firstSlot.time}</button>` : ''}
-            ${quickBookState.startTime && needsLanes && suggestedLanes.length ? `<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Prendre la suggestion ${suggestedLanes.join(' - ')}</button>` : ''}
-            ${needsLanes ? `<button class="qb-ghost-btn" onclick="setQuickAutoAssign()">Attribution auto</button>` : ''}
-          </div>
-          <div class="qb-section-note" style="margin-top:8px;">${typeLabel}</div>
-          ${quickBookState.type === 'formule' ? `
-            <div style="margin-top:12px;">
-              <label class="qb-mini-label">Formules disponibles</label>
-              <div class="qb-formule-grid">
-                ${formuleChoices.map(item => {
-                  const timeWindow = item.timeLimit
-                    ? item.timeLimit.min && item.timeLimit.max
-                      ? `${item.timeLimit.min}h-${item.timeLimit.max}h`
-                      : item.timeLimit.max
-                        ? `avant ${item.timeLimit.max}h`
-                        : `des ${item.timeLimit.min}h`
-                    : item.validDays
-                      ? `${item.validDays.length} jour(s)`
-                      : 'Libre';
-                  const isActive = quickBookState.formuleId === item.id;
-                  const locked = !item.available && !isActive;
-                  return `
-                    <button class="qb-formule-card ${isActive ? 'active' : ''} ${item.available ? '' : 'unavailable'}" onclick="setQuickFormule('${item.id}')" ${locked ? 'disabled' : ''}>
-                      <div class="qb-formule-top">
-                        <div class="qb-formule-name">${item.name}</div>
-                        <div class="qb-formule-price">${item.price}EUR/${item.type === 'per_lane' ? 'piste' : 'pers'}</div>
-                      </div>
-                      <div class="qb-formule-sub">${item.family} - ${timeWindow}</div>
-                      <div class="qb-formule-status">
-                        <span class="qb-status-pill ${item.available ? 'ok' : 'no'}">${item.available ? 'Dispo' : 'Bloquée'}</span>
-                        <span class="qb-inline-note">${item.available ? item.desc[0] : item.reason}</span>
-                      </div>
-                    </button>
-                  `;
-                }).join('')}
-              </div>
-            </div>
           ` : ''}
-          <div style="margin-top:12px;">
-            <div class="qb-slot-head">
-              <label class="qb-mini-label" style="margin-bottom:0;">Créneaux disponibles</label>
-              <div class="qb-section-note">${quickBookState.type === 'laser' ? (selectedSlot ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : `${getLaserWaveCount(quickBookState.pax)} session${getLaserWaveCount(quickBookState.pax) > 1 ? 's' : ''} à planifier`) : needsLanes ? `${Math.max(freeCount, 0)} piste(s) libre(s) sur le créneau choisi` : 'Sélection rapide de l’heure de départ'}</div>
-            </div>
-            ${availableSlots.length ? `
-              <div class="qb-slot-strip">
-                ${availableSlots.slice(0, 8).map(slot => `
-                  <button class="qb-slot-chip ${slot.selected ? 'active' : ''} ${quickBookState.lockStartTime ? 'locked' : ''}" ${quickBookState.lockStartTime ? 'disabled aria-disabled="true"' : `onclick="setQuickStartTime('${slot.time}')"`}>
-                    <span class="time">${slot.time}</span>
-                    <span class="sub">${quickBookState.type === 'laser' ? getLaserSlotCapacityText(slot, quickBookState.pax) : needsLanes ? `${slot.freeCount} piste(s) libre(s)` : 'disponible'}</span>
-                    <span class="lanes">${slot.selected ? (quickBookState.lockStartTime ? 'Lancement verrouillé' : 'Sélectionné') : quickBookState.type === 'laser' && slot.sharedSession ? 'Rejoindre session' : 'Choisir ce départ'}</span>
-                  </button>
-                `).join('')}
-              </div>
-            ` : `
-              <div class="qb-empty-note">Aucun créneau automatique avec ces critères. Changez la date, l'heure, le nombre de joueurs ou la formule.</div>
-            `}
+          <div class="qb-row auto" ${showClient || showType ? 'style="margin-top:12px;"' : ''}>
+            ${essentialCells.join('')}
           </div>
-        </div>
-
-        <div class="qb-block">
-          <div class="blk-label">Durée et pistes</div>
-          ${quickBookState.type === 'formule' && !formule ? `
-            <div class="qb-warn">Sélectionnez d'abord une formule pour voir la logique de durée et de pistes.</div>
-          ` : quickBookState.type === 'laser' ? `
-            <div class="qb-dur-grid laser" style="margin-bottom:12px;">
-              ${LASER_GAME_OPTIONS.map(opt => `<button class="qb-dur-btn ${Number(quickBookState.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}<small>${opt.price}€/pers</small></button>`).join('')}
-            </div>
-            <div class="qb-lane-focus laser-focus">
-              <div>
-                <div class="qb-lane-focus-title">Arène Laser Game</div>
-                <div class="qb-lane-focus-sub">${selectedSlot ? `${getLaserSlotAfterText(selectedSlot, quickBookState.pax)}${selectedSlot.sharedSession ? ' • session déjà partagée' : ''}` : 'Choisissez un départ disponible'}</div>
-              </div>
-              <div class="qb-action-stack">
-                ${firstSlot ? `<button class="qb-ghost-btn" onclick="setQuickStartTime('${firstSlot.time}')">${quickBookState.lockStartTime ? 'Départ fixé' : 'Premier départ'} ${firstSlot.time}</button>` : ''}
-              </div>
-            </div>
-            <div class="qb-warn">Prévenir le client : une session Laser Game peut être complétée avec d'autres joueurs selon l'affluence.</div>
-          ` : needsLanes ? `
-            <div class="qb-dur-grid" style="margin-bottom:12px;">
-              ${DURATION_OPTIONS.map(opt => `<button class="qb-dur-btn ${quickBookState.duration === opt.value ? 'active' : ''}" onclick="setQuickDuration(${opt.value})">${opt.label}</button>`).join('')}
-            </div>
-            ${quickBookState.type === 'formule' && formule ? `<div class="qb-warn" style="margin-bottom:12px;">Durée liée à la formule ${formule.name}.</div>` : ''}
-            <div class="qb-lane-focus">
-              <div>
-                <div class="qb-lane-focus-title">${laneNeedLabel}</div>
-                <div class="qb-lane-focus-sub">${laneSuggestionLabel}</div>
-              </div>
-              <div class="qb-action-stack">
-                ${quickBookState.startTime && suggestedLanes.length ? `<button class="qb-ghost-btn" onclick="applyQuickSuggestedLanes()">Appliquer ${suggestedLanes.join(' - ')}</button>` : ''}
-                <button class="qb-ghost-btn" onclick="setQuickAutoAssign()">Mode auto</button>
-              </div>
-            </div>
-            <div class="qb-lane-grid">
-              <button class="qb-lane-btn auto ${quickBookState.autoAssign ? 'active' : ''}" onclick="setQuickAutoAssign()">Auto</button>
-              ${Array.from({ length: TOTAL_LANES }, (_, idx) => idx + 1).map(lane => {
-                const busy = occupied.has(lane);
-                const maint = state.laneStatuses[lane] === 'maintenance';
-                const active = !quickBookState.autoAssign && quickBookState.lanes.includes(lane);
-                const suggested = quickBookState.autoAssign && suggestedLanes.includes(lane);
-                const cls = `${active ? 'active' : ''} ${busy ? 'busy' : ''} ${maint ? 'maint' : ''} ${suggested ? 'suggested' : ''}`.trim();
-                const action = busy || maint ? '' : `onclick="toggleQuickLane(${lane})"`;
-                const disabledAttr = busy || maint ? 'disabled aria-disabled="true"' : '';
-                return `<button class="qb-lane-btn ${cls}" ${disabledAttr} ${action}>${lane}</button>`;
-              }).join('')}
-            </div>
-            <div class="qb-lane-footer">
-              <div class="qb-lane-selection">${laneSelectionLabel}</div>
-              <div class="schedule-hint">${quickBookState.autoAssign ? `<span class="open">${autoLaneMessage}</span>` : `<span class="${quickBookState.lanes.length >= requiredCount ? 'open' : 'closed'}">${autoLaneMessage}</span>`}</div>
-            </div>
-          ` : `
-            <div class="qb-warn">Cette formule ne nécessite pas de piste de bowling.</div>
-          `}
+          ${durationEssentialHtml}
+          ${formuleGridHtml}
+          ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
+          ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
         </div>
 
         ${warning ? `<div class="qb-warn">${warning}</div>` : ''}
         ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
+
+        <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
+          ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options — créneaux, pistes, durée, email'}
+        </button>
+
+        ${advancedHtml}
 
         <div class="qb-summary">
           <div>

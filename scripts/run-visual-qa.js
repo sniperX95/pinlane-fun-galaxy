@@ -295,6 +295,13 @@ async function installQaApi(page) {
         return jsonResponse({ ok: true, slots: [] });
       }
 
+      if (url.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'POST') {
+        const body = JSON.parse(init.body || '{}');
+        window.__PINLANE_QA_RES_POSTS__ = window.__PINLANE_QA_RES_POSTS__ || [];
+        window.__PINLANE_QA_RES_POSTS__.push(body);
+        return jsonResponse({ ok: true, reservation: { ...body, id: 9990 } });
+      }
+
       if (url.pathname === '/api/public-booking-meta') {
         return jsonResponse({
           ok: true,
@@ -977,6 +984,173 @@ async function main() {
         await page.waitForTimeout(250);
       }
     }
+    await page.evaluate(() => setView('client'));
+    await page.waitForTimeout(400);
+
+    // ------------------------------------------------------------------
+    // Réservation rapide contextuelle — UNE base + variantes par point
+    // d'entrée : le contexte pré-remplit ET élague (jamais redemander ce
+    // qui est déjà su), l'avancé vit replié dans « Plus d'options ».
+    // ------------------------------------------------------------------
+    await page.evaluate(() => {
+      setView('staff');
+      // Samedi à venir : horaires garantis ouverts, pas de dépendance au jour du run.
+      const target = new Date();
+      target.setDate(target.getDate() + ((6 - target.getDay() + 7) % 7 || 7));
+      const iso = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+      state.currentDate = iso;
+      state.staffMenuPage = 'planning';
+      state.reservations = window.__PINLANE_QA_RESERVATIONS__(iso);
+      save();
+      renderStaff();
+    });
+    await page.waitForTimeout(500);
+
+    const readQuickBook = () => page.evaluate(() => {
+      const modal = document.querySelector('.qb-modal');
+      if (!modal) return null;
+      const visible = (el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      };
+      return {
+        title: modal.querySelector('h3')?.textContent.trim() || '',
+        eyebrow: modal.querySelector('.ticket-id')?.textContent.trim() || '',
+        interactive: Array.from(modal.querySelectorAll('button, input, select, textarea')).filter(visible).length,
+        chips: Array.from(modal.querySelectorAll('.qb-context-chip .k')).map((el) => el.textContent.trim()),
+        chipValues: Array.from(modal.querySelectorAll('.qb-context-chip .v')).map((el) => el.textContent.trim()),
+        hasTypeRow: Boolean(modal.querySelector('.qb-type-row')),
+        hasDateInput: Boolean(modal.querySelector('input[type="date"]')),
+        hasTimeInput: Boolean(modal.querySelector('input[type="time"]')),
+        hasPaxInput: Boolean(modal.querySelector('input[type="number"]')),
+        hasNameInput: Boolean(modal.querySelector('input[placeholder="Marie Dupont"]')),
+        hasEmailInput: Boolean(modal.querySelector('input[type="email"]')),
+        hasSlotStrip: Boolean(modal.querySelector('.qb-slot-strip')),
+        hasLaneGrid: Boolean(modal.querySelector('.qb-lane-grid')),
+        hasFormuleGrid: Boolean(modal.querySelector('.qb-formule-grid')),
+        durBtns: modal.querySelectorAll('.qb-dur-btn').length,
+        moreToggle: Boolean(modal.querySelector('.qb-more-toggle')),
+        lockChip: Boolean(modal.querySelector('.qb-chip-lock')),
+        state: {
+          type: quickBookState.type,
+          date: quickBookState.date,
+          startTime: quickBookState.startTime,
+          lanes: [...quickBookState.lanes],
+          autoAssign: quickBookState.autoAssign,
+          lockStartTime: quickBookState.lockStartTime,
+          name: quickBookState.name,
+        },
+      };
+    });
+
+    // 1) Base générique (bouton « Réservation rapide ») : 2 temps, moitié
+    // d'éléments visibles minimum par rapport à l'ancienne modale (38).
+    await page.evaluate(() => openQuickBook());
+    await page.waitForTimeout(300);
+    const qbGeneric = await readQuickBook();
+    assert(qbGeneric, 'Réservation rapide générique : la modale doit s ouvrir.');
+    assert(qbGeneric.title === 'Réservation rapide', `Générique : titre attendu « Réservation rapide » (reçu ${qbGeneric.title}).`);
+    assert(qbGeneric.interactive <= 19, `Générique : max 19 éléments interactifs visibles à l ouverture — moitié de l ancienne modale (reçu ${qbGeneric.interactive}).`);
+    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput, 'Générique : les essentiels (activité, date, heure, joueurs, contact) doivent être visibles.');
+    assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasEmailInput, 'Générique : créneaux, pistes et email doivent être repliés à l ouverture.');
+    assert(qbGeneric.moreToggle, 'Générique : le bouton « Plus d options » est requis.');
+    await screenshot(page, 'quickbook-generic');
+    issues.push(...await collectIssues(page, 'quickbook-generic'));
+    // Zéro perte de capacité : l'avancé replié rouvre tout.
+    await page.evaluate(() => toggleQuickBookMore());
+    await page.waitForTimeout(250);
+    const qbGenericMore = await readQuickBook();
+    assert(qbGenericMore.hasSlotStrip && qbGenericMore.hasLaneGrid && qbGenericMore.hasEmailInput && qbGenericMore.durBtns >= 4, 'Générique déplié : créneaux, grille pistes, durée et email doivent réapparaître.');
+    await screenshot(page, 'quickbook-generic-more');
+    issues.push(...await collectIssues(page, 'quickbook-generic-more'));
+    await page.evaluate(() => closeQuickBook());
+
+    // 2) Case du planning bowling : piste + date + heure acquises, jamais redemandées.
+    await page.evaluate(() => quickFromCell(7, 15));
+    await page.waitForTimeout(300);
+    const qbCell = await readQuickBook();
+    assert(/piste 7/.test(qbCell.title) && /15:00/.test(qbCell.title), `Case planning : titre contextuel « Réserver la piste 7 · 15:00 » attendu (reçu ${qbCell.title}).`);
+    assert(!qbCell.hasTypeRow && !qbCell.hasDateInput && !qbCell.hasTimeInput, 'Case planning : activité, date et heure sont acquises — ne pas les redemander.');
+    assert(qbCell.chips.includes('Piste') && qbCell.chips.includes('Départ') && qbCell.chips.includes('Date'), 'Case planning : les acquis doivent être rappelés en chips.');
+    assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
+    assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client, joueurs, durée.');
+    assert(qbCell.interactive <= 19, `Case planning : la variante doit rester compacte (reçu ${qbCell.interactive}).`);
+    await screenshot(page, 'quickbook-bowling-cell');
+    issues.push(...await collectIssues(page, 'quickbook-bowling-cell'));
+    // « Modifier » sur un acquis rouvre le contrôle (capacité préservée).
+    await page.evaluate(() => unlockQuickField('startTime'));
+    await page.waitForTimeout(250);
+    const qbCellUnlocked = await readQuickBook();
+    assert(qbCellUnlocked.hasTimeInput, 'Case planning : « Modifier » sur le départ doit rouvrir le champ heure.');
+    // Soumission : payload identique au contrat existant (channel staff, pistes, statuts).
+    await page.evaluate(() => { window.__PINLANE_QA_RES_POSTS__ = []; });
+    await page.evaluate(async () => {
+      quickBookState.name = 'QA Contexte';
+      quickBookState.phone = '+32 470 11 22 33';
+      await saveQuickBook();
+    });
+    await page.waitForTimeout(400);
+    const qbPost = await page.evaluate(() => (window.__PINLANE_QA_RES_POSTS__ || [])[0] || null);
+    assert(qbPost, 'Case planning : la création doit poster sur /api/staff-reservations.');
+    assert(qbPost.type === 'bowling' && qbPost.startTime === '15:00' && Array.isArray(qbPost.lanes) && qbPost.lanes.length === 1 && Number(qbPost.lanes[0]) === 7, `Case planning : payload préservé (type/heure/piste) — reçu ${JSON.stringify({ type: qbPost.type, startTime: qbPost.startTime, lanes: qbPost.lanes })}.`);
+    assert(qbPost.channel === 'staff' && qbPost.status === 'pending' && qbPost.requiresLanes === true && Number(qbPost.laneCount) === 1, 'Case planning : contrat API inchangé (channel, status, laneCount, requiresLanes).');
+    assert(Number(qbPost.price) === Number(qbPost.basePrice) && Number(qbPost.pax) === 4 && Number(qbPost.duration) === 1, 'Case planning : montants et durée inchangés par défaut.');
+    const qbClosedAfterSave = await page.evaluate(() => document.getElementById('quickBookOverlay').classList.contains('hidden') || !document.querySelector('.qb-modal'));
+    assert(qbClosedAfterSave, 'Case planning : la modale doit se fermer après création.');
+
+    // 3) Créneau vide du planning laser : départ + activité acquis.
+    await page.evaluate(() => openQuickBook({ date: state.currentDate, startTime: '16:00', type: 'laser' }));
+    await page.waitForTimeout(300);
+    const qbLaser = await readQuickBook();
+    assert(/Nouvelle session laser/.test(qbLaser.title) && /16:00/.test(qbLaser.title), `Laser : titre contextuel attendu (reçu ${qbLaser.title}).`);
+    assert(!qbLaser.hasTypeRow && !qbLaser.hasTimeInput && !qbLaser.hasDateInput, 'Laser : activité, date et départ sont acquis.');
+    assert(qbLaser.durBtns === 3 && !qbLaser.hasLaneGrid, 'Laser : le choix des parties (1/2/3) est l essentiel, pas les pistes.');
+    assert(qbLaser.interactive <= 16, `Laser : variante compacte requise (reçu ${qbLaser.interactive}).`);
+    await screenshot(page, 'quickbook-laser-slot');
+    issues.push(...await collectIssues(page, 'quickbook-laser-slot'));
+    await page.evaluate(() => closeQuickBook());
+
+    // 4) Rejoindre un lancement laser existant : départ verrouillé.
+    await page.evaluate(() => openQuickBookForLaserSession(18, 12));
+    await page.waitForTimeout(300);
+    const qbJoin = await readQuickBook();
+    assert(/Rejoindre le lancement/.test(qbJoin.title), `Lancement laser : titre « Rejoindre le lancement » attendu (reçu ${qbJoin.title}).`);
+    assert(qbJoin.state.lockStartTime === true && qbJoin.lockChip, 'Lancement laser : le départ doit être affiché verrouillé.');
+    assert(!qbJoin.hasTimeInput && !qbJoin.hasTypeRow, 'Lancement laser : ni heure ni activité à redemander.');
+    assert(qbJoin.interactive <= 13, `Lancement laser : variante minimale requise (reçu ${qbJoin.interactive}).`);
+    await screenshot(page, 'quickbook-laser-session');
+    issues.push(...await collectIssues(page, 'quickbook-laser-session'));
+    await page.evaluate(() => closeQuickBook());
+
+    // 5) Groupes & anniversaires : orientée formule.
+    await page.evaluate(() => openQuickBook({ date: state.currentDate, type: 'formule' }));
+    await page.waitForTimeout(300);
+    const qbGroup = await readQuickBook();
+    assert(/groupe/i.test(qbGroup.title) && /anniversaire/i.test(qbGroup.title), `Groupes : titre orienté groupe/anniversaire attendu (reçu ${qbGroup.title}).`);
+    assert(qbGroup.hasFormuleGrid && !qbGroup.hasTypeRow && !qbGroup.hasLaneGrid, 'Groupes : le choix de formule est central, pistes et type repliés.');
+    assert(qbGroup.interactive < 26, `Groupes : moins d éléments que l ancienne modale (reçu ${qbGroup.interactive}).`);
+    await screenshot(page, 'quickbook-groupe');
+    issues.push(...await collectIssues(page, 'quickbook-groupe'));
+    await page.evaluate(() => closeQuickBook());
+
+    // 6) Fiche client : coordonnées acquises, jamais resaisies.
+    await page.evaluate(() => openQuickBook({ name: 'Marie Dupont', phone: '+32 470 00 00 01', email: 'marie@example.test', date: state.currentDate, type: 'bowling' }));
+    await page.waitForTimeout(300);
+    const qbClient = await readQuickBook();
+    assert(/Marie Dupont/.test(qbClient.title), `Fiche client : titre nominatif attendu (reçu ${qbClient.title}).`);
+    assert(!qbClient.hasNameInput && qbClient.chips.includes('Client'), 'Fiche client : le client acquis est rappelé, pas resaisi.');
+    assert(qbClient.hasTimeInput && qbClient.hasPaxInput, 'Fiche client : il reste l heure et les joueurs.');
+    await screenshot(page, 'quickbook-client');
+    issues.push(...await collectIssues(page, 'quickbook-client'));
+    // Thème clair : la variante contextuelle est bi-thème.
+    await page.evaluate(() => setStaffTheme('light'));
+    await page.waitForTimeout(300);
+    await screenshot(page, 'quickbook-client-light');
+    issues.push(...await collectIssues(page, 'quickbook-client-light'));
+    await page.evaluate(() => { closeQuickBook(); setStaffTheme('dark'); });
+    await page.waitForTimeout(200);
+
     await page.evaluate(() => setView('client'));
     await page.waitForTimeout(400);
 

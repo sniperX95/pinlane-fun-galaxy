@@ -5961,6 +5961,60 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .qb-empty-note { padding: var(--space-3); border: 1px dashed var(--line-strong); border-radius: var(--radius-md); color: var(--muted); font-size: 12px; text-align: center; }
 
+/* Variantes contextuelles : rappel des acquis (jamais redemandés) */
+.qb-row.two { grid-template-columns: 1.2fr 1fr; }
+.qb-row.auto { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+
+.qb-context-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.qb-context-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--page);
+}
+
+.qb-context-chip .k { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); }
+.qb-context-chip .v { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.qb-chip-edit {
+  border: none;
+  background: transparent;
+  padding: 2px 0 0;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.qb-chip-edit:hover { text-decoration: underline; }
+.qb-chip-lock { font-size: 10px; color: var(--faint); align-self: flex-end; padding-bottom: 2px; }
+
+.qb-status-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.qb-status-line span + span::before { content: '·'; margin-right: 14px; color: var(--faint); }
+
+.qb-more-toggle {
+  width: 100%;
+  min-height: 34px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.qb-more-toggle:hover { background: var(--subtle); color: var(--text); }
+.qb-more-toggle[aria-expanded="true"] { color: var(--text); }
+
 .qb-dur-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
 
 .qb-dur-btn {

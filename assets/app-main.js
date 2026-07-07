@@ -3037,14 +3037,15 @@ function getFormulaSlotOrderKey(slot) {
   return timeToNum(bowlingTime) <= timeToNum(laserTime) ? 'bowling' : 'laser_game';
 }
 
-// --- Picker formule « heure d'arrivée d'abord » -----------------------------
+// --- Picker formule « heure de début d'abord » ------------------------------
 // Le client ne compare pas des dizaines d'enchaînements : il choisit UNE heure
-// d'arrivée (chips scannables), puis voit LE programme composé pour cette
-// arrivée (timeline Réservé / Libre). S'il existe plusieurs variantes pour la
-// même arrivée (heures de laser/bowling différentes), un choix secondaire
-// compact propose au plus 3 options espacées. Fonctionne pour les deux modes :
-// « Fun Galaxy organise » et « Je choisis » (les créneaux serveur respectent
-// alors l'ordre d'activités demandé).
+// (chips scannables) = l'heure EXACTE de début de sa première activité, puis
+// voit LE programme composé (timeline Réservé / Libre) avec, en premier point,
+// l'« Arrivée conseillée » 10 minutes avant pour l'accueil. S'il existe
+// plusieurs variantes pour la même heure (heures de laser/bowling différentes),
+// un choix secondaire compact propose au plus 3 options espacées. Fonctionne
+// pour les deux modes : « Fun Galaxy organise » et « Je choisis » (les créneaux
+// serveur respectent alors l'ordre d'activités demandé).
 let formulaArrivalChoice = '';
 let formulaVariantKey = '';
 
@@ -3114,22 +3115,31 @@ function renderFormulaProgramTimeline(slot) {
   if (!plan) return '';
   const timeline = Array.isArray(plan.timeline) ? plan.timeline : [];
   const rows = [];
+  // L'heure choisie = début exact de la première activité. L'arrivée conseillée
+  // (accueil) est 10 min AVANT : elle vient du serveur (arrivalTime), avec le
+  // bloc bar_service de la timeline en secours.
+  const arrivalTime = plan.arrivalTime
+    || timeline.find(step => step.type === 'service' && step.resourceType === 'bar_service')?.startTime
+    || '';
+  const arrivalMinutes = Number(plan.arrivalMinutes || 10);
   rows.push(`
     <div class="ftl-row">
       <span class="ftl-dot arrival" aria-hidden="true"></span>
-      <span class="ftl-time">${escapeHtml(plan.startTime || slot.time)}</span>
-      <span class="ftl-copy"><strong>Arrivée &amp; accueil</strong></span>
+      <span class="ftl-time">${escapeHtml(arrivalTime || plan.startTime || slot.time)}</span>
+      <span class="ftl-copy"><strong>Arrivée conseillée</strong><span class="ftl-badge free">Accueil ${arrivalMinutes} min avant</span></span>
     </div>`);
   timeline
     .filter(step => step.type === 'activity' && step.activityId && step.activityId !== 'service_drinks')
-    .forEach((step) => {
+    .forEach((step, index) => {
       const reserved = Boolean(step.critical) || ['bowling_lane', 'laser_arena', 'party_table'].includes(step.resourceType || '');
+      const firstBadge = index === 0 ? '<span class="ftl-badge reserved">Première activité — heure choisie</span>' : '';
       rows.push(`
         <div class="ftl-row">
           <span class="ftl-dot ${reserved ? 'reserved' : 'free'}" aria-hidden="true"></span>
           <span class="ftl-time">${escapeHtml(step.startTime || '')}<small>${escapeHtml(step.endTime || '')}</small></span>
           <span class="ftl-copy">
             <strong>${escapeHtml(step.label || step.activityId)}</strong>
+            ${firstBadge}
             <span class="ftl-badge ${reserved ? 'reserved' : 'free'}">${reserved ? 'Réservé pour vous' : 'Libre, à votre rythme'}</span>
           </span>
         </div>`);
@@ -3141,7 +3151,7 @@ function renderFormulaProgramTimeline(slot) {
       <span class="ftl-copy"><strong>Fin du programme</strong></span>
     </div>`);
 
-  const footNotes = [];
+  const footNotes = [`Présentez-vous ${arrivalMinutes} minutes avant pour l'accueil : votre première activité démarre à l'heure choisie`];
   const drinks = [...new Set(timeline.filter(step => step.activityId === 'service_drinks').map(step => step.label).filter(Boolean))];
   if (drinks.length) footNotes.push(`Inclus au bar : ${drinks.join(' · ')}`);
   const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
@@ -3181,8 +3191,8 @@ function renderFormulaArrivalPicker(formule) {
   return `
     <div class="formula-arrival-picker">
       <div class="formula-arrival-head">
-        <strong>Choisissez votre heure d'arrivée</strong>
-        <span>Programme complet d'environ ${escapeHtml(formatDurationLabel(getFormuleTotalDuration(formule)))}${isManual ? ' · votre ordre d’activités est respecté' : ''} — le détail s'affiche après votre choix.</span>
+        <strong>Choisissez l'heure de votre première activité</strong>
+        <span>Votre programme démarre pile à l'heure choisie — présentez-vous 10 minutes avant pour l'accueil. Programme complet d'environ ${escapeHtml(formatDurationLabel(getFormuleTotalDuration(formule)))}${isManual ? ' · votre ordre d’activités est respecté' : ''} — le détail s'affiche après votre choix.</span>
       </div>
       <div class="formula-arrival-grid">${chips}</div>
       ${activeGroup ? `
@@ -3348,7 +3358,8 @@ function renderRecap() {
     <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${escapeHtml(b.name)}</span></div>
     <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
     <div class="recap-item"><span class="recap-label">Date</span><span class="recap-value">${dateLabel}</span></div>
-    <div class="recap-item"><span class="recap-label">Horaire</span><span class="recap-value accent">${b.startTime} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${b.duration}h</small></span></div>
+    <div class="recap-item"><span class="recap-label">${formule ? 'Première activité' : 'Horaire'}</span><span class="recap-value accent">${b.startTime} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• ${b.duration}h</small></span></div>
+    ${formule && b.opsPlan?.arrivalTime ? `<div class="recap-item"><span class="recap-label">Arrivée conseillée</span><span class="recap-value">${escapeHtml(b.opsPlan.arrivalTime)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• accueil ${Number(b.opsPlan.arrivalMinutes || 10)} min avant</small></span></div>` : ''}
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
     ${showLanes ? `<div class="recap-item"><span class="recap-label">Piste${b.allocatedLanes.length > 1 ? 's' : ''} assignée${b.allocatedLanes.length > 1 ? 's' : ''}</span><span class="recap-value teal">${b.allocatedLanes.join(' & ')}</span></div>` : ''}
     ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game • ${laserOption.label}</span></div>` : ''}
@@ -3475,7 +3486,10 @@ async function confirmBooking() {
     : 'Votre réservation est enregistrée. Le mail de confirmation arrive dans quelques minutes.';
   const laserWaveCount = isLaser ? Number(b.opsPlan?.laserSharing?.waveCount || getLaserWaveCount(b.pax)) : 1;
   const laserLine = isLaser ? ` ${laserWaveCount > 1 ? `Votre groupe est réparti sur ${laserWaveCount} sessions Laser. ` : ''}La session Laser Game peut être complétée avec d’autres joueurs selon l’affluence.` : '';
-  document.getElementById('successDetails').innerHTML = `${confirmationText} Départ prévu à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}. Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
+  const arrivalLine = b.type === 'formule' && b.opsPlan?.arrivalTime
+    ? ` Présentez-vous <b>${Number(b.opsPlan.arrivalMinutes || 10)} minutes avant</b> pour l'accueil (arrivée conseillée <b>${escapeHtml(b.opsPlan.arrivalTime)}</b>).`
+    : '';
+  document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${arrivalLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
   releaseBookingSubmit();
   goStep(5);
 }

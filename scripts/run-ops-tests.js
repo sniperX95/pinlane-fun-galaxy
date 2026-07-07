@@ -783,6 +783,199 @@ async function testPublicLaserAvailabilityUsesLaserGamesAndExactRemainingCapacit
   );
 }
 
+function toMinutes(time) {
+  const [hours, minutes] = String(time || '0:00').split(':').map(Number);
+  return (Number(hours) || 0) * 60 + (Number(minutes) || 0);
+}
+
+// Règle métier 1 : l'heure choisie = début EXACT de la première activité, avec
+// l'accueil ancré 10 minutes avant (sans décaler les ressources).
+function testFormulaChosenTimeIsExactFirstActivityStart() {
+  const result = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'formule',
+    formuleId: 'f1',
+    pax: 10,
+    startTime: '15:00',
+  }, { reservations: [], laneStatuses: {} });
+
+  assert.strictEqual(result.ok, true, 'formula at 15:00 must be plannable');
+  const recommended = result.plan.recommended;
+  assert.strictEqual(recommended.startTime, '15:00', 'scenario startTime must equal the chosen time');
+  const firstActivity = recommended.timeline.find((step) => step.type === 'activity');
+  assert.strictEqual(firstActivity.startTime, '15:00', 'first activity must start exactly at the chosen time');
+  assert.strictEqual(recommended.arrivalMinutes, 10, 'arrival window must be the fixed 10 minutes');
+  assert.strictEqual(recommended.arrivalTime, '14:50', 'advised arrival must be 10 minutes before the first activity');
+  const arrival = recommended.timeline[0];
+  assert.strictEqual(arrival.resourceType, 'bar_service', 'timeline must open with the arrival block');
+  assert.strictEqual(arrival.startTime, '14:50');
+  assert.strictEqual(arrival.endTime, '15:00');
+  recommended.resourceBlocks.forEach((block) => {
+    assert.ok(toMinutes(block.startTime) >= toMinutes('15:00'), 'arrival must never shift resource blocks before the chosen time');
+  });
+  assert.ok(
+    recommended.customerCommitment.some((line) => /présentez-vous 10 minutes avant/i.test(line)),
+    'customer commitment must carry the "come 10 minutes early" notice',
+  );
+
+  const scenarios = result.plan.scenarios.filter((scenario) => scenario.ok);
+  scenarios.forEach((scenario) => {
+    assert.strictEqual(scenario.startTime, '15:00', 'every scenario for a requested time must start exactly at it');
+  });
+}
+
+// Règle métier 2 : le bowling ne démarre qu'à :00/:30, dans TOUS les scénarios
+// composés (y compris quand le bowling n'est pas la première activité).
+function testFormulaBowlingSnapsToHalfHourGrid() {
+  const result = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'formule',
+    formuleId: 'f1',
+    pax: 10,
+    startTime: '15:15',
+  }, { reservations: [], laneStatuses: {} });
+
+  result.plan.scenarios.forEach((scenario) => {
+    assert.strictEqual(scenario.startTime, '15:15', 'a 15:15 start is allowed only when the first activity is not bowling');
+    const firstActivity = scenario.timeline.find((step) => step.type === 'activity');
+    assert.notStrictEqual(firstActivity.activityId, 'bowling', 'bowling can never open a program off the :00/:30 grid');
+    scenario.resourceBlocks
+      .filter((block) => block.resourceType === 'bowling_lane')
+      .forEach((block) => {
+        assert.strictEqual(toMinutes(block.startTime) % 30, 0, `bowling must start on :00/:30, got ${block.startTime}`);
+      });
+  });
+}
+
+function testBowlingClassicRefusesOffGridStart() {
+  const refused = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'bowling',
+    pax: 4,
+    startTime: '15:15',
+    duration: 1,
+  }, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(refused.ok, false, 'classic bowling must refuse a 15:15 start');
+  assert.ok(/heures pleines ou demies/i.test(refused.plan.reason || ''), 'refusal reason must explain the :00/:30 grid');
+
+  const accepted = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'bowling',
+    pax: 4,
+    startTime: '15:30',
+    duration: 1,
+  }, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(accepted.ok, true, 'classic bowling must accept a 15:30 start');
+}
+
+// Garde serveur à la réservation : un programme dont le bowling n'est pas sur
+// :00/:30 est REFUSÉ (pas seulement jamais proposé), même payload forgé.
+function testReservationValidationRefusesOffGridBowling() {
+  const baseBowling = {
+    centerId: 'libramont',
+    channel: 'public',
+    name: 'Client Grille',
+    phone: '+32470000000',
+    date: TEST_DATE,
+    duration: 1,
+    lanes: [],
+    pax: 4,
+    type: 'bowling',
+    label: 'Bowling Classique',
+    laneCount: 1,
+    requiresLanes: true,
+  };
+  assert.throws(
+    () => database.validateReservationResources({ ...baseBowling, startTime: '15:15' }, [], {}),
+    /heures pleines ou demies/i,
+    'off-grid classic bowling must be refused at validation',
+  );
+  const ok = database.validateReservationResources({ ...baseBowling, startTime: '15:30' }, [], {});
+  assert.strictEqual(ok.ok, true, 'on-grid classic bowling must pass validation');
+
+  assert.throws(
+    () => database.validateReservationResources({
+      ...baseBowling,
+      type: 'formule',
+      formuleId: 'f1',
+      label: 'FORMULE 1',
+      startTime: '15:00',
+      lanes: [1],
+      opsPlan: {
+        resourceBlocks: [
+          { resourceType: 'bowling_lane', startTime: '15:15', endTime: '16:15', lanes: [1] },
+        ],
+      },
+    }, [], {}),
+    /heures pleines ou demies/i,
+    'a forged formula program with an off-grid bowling block must be refused',
+  );
+}
+
+// Parcours public complet (mode auto + mode « Je choisis ») via l'API de
+// disponibilité : chips = début exact de la première activité, bowling :00/:30.
+async function testPublicFormulaAvailabilityNewSemantics(query, { expectFirstActivity } = {}) {
+  const response = await invokePublicAvailability(query, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(response.statusCode, 200);
+  const slots = response.payload.slots || [];
+  assert.ok(slots.length >= 3, 'formula availability should propose several programs');
+
+  slots.forEach((slot) => {
+    const plan = slot.opsPlan || {};
+    const activities = (plan.timeline || []).filter((step) => step.type === 'activity');
+    assert.ok(activities.length, 'each slot must expose its program timeline');
+    assert.strictEqual(
+      activities[0].startTime,
+      slot.time,
+      `chip ${slot.time} must equal the exact start of the first activity (got ${activities[0].startTime})`,
+    );
+    if (expectFirstActivity) {
+      assert.strictEqual(activities[0].activityId, expectFirstActivity, 'custom order must be respected');
+    }
+    assert.strictEqual(toMinutes(slot.time) - toMinutes(plan.arrivalTime), 10, 'advised arrival must be 10 minutes before the chip');
+    const arrival = (plan.timeline || [])[0];
+    assert.strictEqual(arrival.resourceType, 'bar_service', 'timeline must open with the arrival block');
+    assert.strictEqual(arrival.endTime, slot.time, 'arrival block must end exactly at the chosen time');
+    (plan.resourceBlocks || [])
+      .filter((block) => block.resourceType === 'bowling_lane')
+      .forEach((block) => {
+        assert.strictEqual(toMinutes(block.startTime) % 30, 0, `bowling must start on :00/:30, got ${block.startTime} (slot ${slot.time})`);
+      });
+  });
+  return slots;
+}
+
+async function testPublicFormulaAvailabilityAutoMode() {
+  const slots = await testPublicFormulaAvailabilityNewSemantics(new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'formule',
+    formuleId: 'f1',
+    pax: '10',
+  }));
+  // f1 démarre au bowling en mode auto : toutes les chips doivent être :00/:30.
+  slots
+    .filter((slot) => (slot.opsPlan.timeline || []).find((step) => step.type === 'activity')?.activityId === 'bowling')
+    .forEach((slot) => {
+      assert.strictEqual(toMinutes(slot.time) % 30, 0, `bowling-first chip must be on :00/:30, got ${slot.time}`);
+    });
+}
+
+async function testPublicFormulaAvailabilityManualOrder() {
+  await testPublicFormulaAvailabilityNewSemantics(new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'formule',
+    formuleId: 'f1',
+    pax: '10',
+    activityOrder: 'laser_game,bowling,arcade_time',
+  }), { expectFirstActivity: 'laser_game' });
+}
+
 async function main() {
   testCompetitivePlaybookLoaded();
   testLaneRules();
@@ -805,8 +998,14 @@ async function main() {
   testRequestTypeGuardrails();
   testLaserGameCountSurvivesRequestNormalization();
   testStaffLaserGameCountSurvivesOpsPreparationShape();
+  testFormulaChosenTimeIsExactFirstActivityStart();
+  testFormulaBowlingSnapsToHalfHourGrid();
+  testBowlingClassicRefusesOffGridStart();
+  testReservationValidationRefusesOffGridBowling();
   await testPrepareReservationOpsPersistsLaserGamesInOpsPlan();
   await testPublicLaserAvailabilityUsesLaserGamesAndExactRemainingCapacity();
+  await testPublicFormulaAvailabilityAutoMode();
+  await testPublicFormulaAvailabilityManualOrder();
 
   console.log('ops-tests-ok');
 }

@@ -24,9 +24,15 @@ const { planningAgent } = require('../lib/ops-agents');
 const { getActivity, getCenter, getFormula, refreshCenterOverrides } = require('../lib/ops-knowledge');
 
 const LASER_ARENA_MINUTES = 25;
-const FORMULA_ARRIVAL_MINUTES = 5;
+// Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
+// client est l'heure exacte de début de sa première activité, l'accueil se
+// fait 10 minutes avant (aligné sur lib/ops-engine.js).
+const FORMULA_ARRIVAL_MINUTES = 10;
 const FORMULA_TRANSITION_MINUTES = 5;
 const FLEXIBLE_SLOT_STEP_MINUTES = 15;
+// Règle métier : le bowling ne démarre qu'aux heures pleines ou demies
+// (15:00, 15:30 — jamais 15:15 ni 15:45).
+const BOWLING_GRID_MINUTES = 30;
 
 function overlap(startA, durationA, startB, durationB) {
   return startA < startB + durationB && startB < startA + durationA;
@@ -108,11 +114,12 @@ function getFormulaFallbackLaserWindows(reservation) {
   if (!games) return [];
 
   const players = Math.max(1, Number(reservation.pax || 1));
-  const arrivalMinutes = players >= 12 ? 10 : 5;
   const bowlingWindows = laneWindowsFromReservation(reservation);
+  // reservation.startTime = début exact de la première activité (l'accueil se
+  // fait avant) : sans bowling planifié, le premier laser part à cette heure.
   const firstLaserStart = bowlingWindows.length
     ? Math.round(Math.max(...bowlingWindows.map((window) => window.start + window.duration)) * 60) + FORMULA_TRANSITION_MINUTES
-    : Math.round(timeToNum(reservation.startTime) * 60) + arrivalMinutes;
+    : Math.round(timeToNum(reservation.startTime) * 60);
   let cursor = Math.max(0, firstLaserStart);
   const windows = [];
 
@@ -213,6 +220,11 @@ function getFormulaActivityCandidates({ activityId, formulaDoc, formula, pax, sn
       ])].sort((left, right) => left - right);
     }
   }
+  if (activityId === 'bowling') {
+    // Alignement bowling :00/:30 — appliqué aussi à une heure préférée envoyée
+    // par le client : le serveur ne propose jamais un départ de piste hors grille.
+    candidates = candidates.filter((start) => start % BOWLING_GRID_MINUTES === 0);
+  }
   return candidates
     .map((start) => {
       if (start < minStartMinute || start + duration > closeMinute) return null;
@@ -252,11 +264,11 @@ function getFormulaActivityCandidates({ activityId, formulaDoc, formula, pax, sn
 
 function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected, openMinute = 0 }) {
   const selectedByActivity = new Map(selected.map((item) => [item.activityId, item]));
-  // L'accueil est ancré avant la PREMIÈRE activité de l'ordre demandé, pas avant
-  // la première activité horodatée : si le client place des activités libres
-  // (minigolf, arcades…) avant un bloc fixe, elles doivent tenir entre l'arrivée
-  // et ce bloc. Sans ce décalage, le curseur dépassait l'heure fixe choisie et
-  // tous les scénarios de l'ordre personnalisé étaient rejetés à tort.
+  // La PREMIÈRE activité de l'ordre demandé (même libre : minigolf, arcades…)
+  // démarre à l'heure « client » exacte ; l'accueil est ancré 10 minutes AVANT
+  // cette première activité et ne décale aucune réservation de ressource. Si le
+  // client place des activités libres avant un bloc fixe, elles doivent tenir
+  // entre la première activité et ce bloc.
   const firstFixedIndex = order.findIndex((activityId) => selectedByActivity.has(activityId));
   if (firstFixedIndex < 0) return null;
   let preOffsetMinutes = 0;
@@ -264,20 +276,21 @@ function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order,
     preOffsetMinutes += getFormulaStepDurationMinutes(formulaDoc, formula, order[index]) + FORMULA_TRANSITION_MINUTES;
   }
   const firstFixedStart = selectedByActivity.get(order[firstFixedIndex]).start;
-  const planStart = firstFixedStart - preOffsetMinutes - FORMULA_ARRIVAL_MINUTES;
-  if (planStart < openMinute) return null;
+  const programStart = firstFixedStart - preOffsetMinutes;
+  const arrivalStart = programStart - FORMULA_ARRIVAL_MINUTES;
+  // L'accueil doit tenir dans les horaires d'ouverture.
+  if (arrivalStart < openMinute) return null;
 
-  let cursor = planStart;
+  let cursor = programStart;
   const timeline = [{
     type: 'service',
-    label: 'Accueil / vérification groupe',
+    label: 'Arrivée & accueil',
     resourceType: 'bar_service',
-    start: cursor,
-    end: cursor + FORMULA_ARRIVAL_MINUTES,
-    startTime: numToTime(cursor / 60),
-    endTime: numToTime((cursor + FORMULA_ARRIVAL_MINUTES) / 60),
+    start: arrivalStart,
+    end: programStart,
+    startTime: numToTime(arrivalStart / 60),
+    endTime: numToTime(programStart / 60),
   }];
-  cursor += FORMULA_ARRIVAL_MINUTES;
   const resourceBlocks = [];
 
   for (const activityId of order) {
@@ -287,6 +300,9 @@ function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order,
     const duration = getFormulaStepDurationMinutes(formulaDoc, formula, activityId);
     const start = fixed ? fixed.start : cursor;
     if (start < cursor) return null;
+    // Défense en profondeur : jamais de départ bowling hors grille :00/:30,
+    // même si un candidat forgé passait le filtre amont.
+    if (activityId === 'bowling' && start % BOWLING_GRID_MINUTES !== 0) return null;
     const end = fixed ? fixed.end : start + duration;
     const step = {
       type: 'activity',
@@ -346,11 +362,16 @@ function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order,
   }));
   return {
     ok: true,
-    start: timeline[0].start,
+    // start = début exact de la première activité (heure « client ») ;
+    // l'accueil recommandé vit avant, exposé via arrivalTime/arrivalMinutes.
+    start: programStart,
     end: cursor,
-    startTime: timeline[0].startTime,
+    startTime: numToTime(programStart / 60),
     endTime: numToTime(cursor / 60),
-    totalMinutes: cursor - timeline[0].start,
+    totalMinutes: cursor - programStart,
+    arrivalStart,
+    arrivalTime: numToTime(arrivalStart / 60),
+    arrivalMinutes: FORMULA_ARRIVAL_MINUTES,
     bufferMinutes: 0,
     risk: { level: center.id === 'libramont' && laserBlock ? 'medium' : 'low', score: laserBlock ? 35 : 15, reasons: [] },
     staffSummary: [
@@ -372,6 +393,7 @@ function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order,
       laserCount > 1 ? { title: `${laserCount - 1} partie(s) Laser restante(s) à placer par le staff si le client veut une pause.` } : null,
     ].filter(Boolean),
     customerCommitment: [
+      `Votre première activité démarre à ${numToTime(programStart / 60)} : présentez-vous ${FORMULA_ARRIVAL_MINUTES} minutes avant pour l'accueil (${numToTime(arrivalStart / 60)}).`,
       'Vos horaires choisis sont enregistrés. Les activités sans horaire fixe restent libres sur place.',
       laserBlock ? 'Le Laser Game peut être complété avec d’autres joueurs selon l’affluence.' : '',
     ].filter(Boolean),
@@ -547,6 +569,8 @@ function toFormulaSlot(scenario, snapshot, duration) {
       startTime: scenario.startTime,
       endTime: scenario.endTime,
       totalMinutes: scenario.totalMinutes,
+      arrivalTime: scenario.arrivalTime || null,
+      arrivalMinutes: scenario.arrivalMinutes || null,
       bufferMinutes: scenario.bufferMinutes,
       risk: scenario.risk,
       staffSummary: scenario.staffSummary,
@@ -586,6 +610,8 @@ function toLaserSlot(scenario, pax) {
       startTime: scenario.startTime,
       endTime: scenario.endTime,
       totalMinutes: scenario.totalMinutes,
+      arrivalTime: scenario.arrivalTime || null,
+      arrivalMinutes: scenario.arrivalMinutes || null,
       bufferMinutes: scenario.bufferMinutes,
       risk: scenario.risk,
       staffSummary: scenario.staffSummary,
@@ -1024,6 +1050,9 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // Bowling classique : départs uniquement aux heures pleines ou demies
+    // (grille :00/:30) — on recale la borne basse si la config l'a désalignée.
+    minTime = Math.ceil(minTime * 2) / 2;
     const slots = [];
     for (let value = minTime; value <= maxTime; value += 0.5) {
       const startTime = numToTime(value);

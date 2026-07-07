@@ -834,6 +834,84 @@ async function main() {
     await page.evaluate(() => goStep(1));
 
     // ------------------------------------------------------------------
+    // Picker formule — nouvelles règles métier : l'heure choisie est le début
+    // EXACT de la première activité (chips), l'« Arrivée conseillée » est
+    // affichée 10 min avant, et le bowling ne démarre qu'à :00/:30.
+    // ------------------------------------------------------------------
+    await page.evaluate(() => {
+      const makeFormulaSlot = (time, arrivalTime, endTime, bowling, laser) => ({
+        time,
+        lanes: [1, 2],
+        freeCount: 6,
+        opsPlan: {
+          startTime: time,
+          endTime,
+          totalMinutes: 125,
+          arrivalTime,
+          arrivalMinutes: 10,
+          bufferMinutes: 0,
+          risk: { level: 'low', score: 15, reasons: [] },
+          staffSummary: `Bowling ${bowling.start}-${bowling.end} | Laser ${laser.start}-${laser.end}`,
+          assignedLanes: [1, 2],
+          timeline: [
+            { type: 'service', label: 'Arrivée & accueil', resourceType: 'bar_service', startTime: arrivalTime, endTime: time },
+            { type: 'activity', activityId: 'bowling', label: 'Bowling', resourceType: 'bowling_lane', critical: true, startTime: bowling.start, endTime: bowling.end },
+            { type: 'service', label: 'Transition', resourceType: 'transition', startTime: bowling.end, endTime: laser.start },
+            { type: 'activity', activityId: 'laser_game', label: 'Laser Game', resourceType: 'laser_arena', critical: true, startTime: laser.start, endTime: laser.end },
+            { type: 'activity', activityId: 'arcade_time', label: 'Arcades', resourceType: 'soft_capacity', startTime: laser.end, endTime },
+          ],
+          resourceBlocks: [
+            { resourceType: 'bowling_lane', startTime: bowling.start, endTime: bowling.end, lanes: [1, 2] },
+            { resourceType: 'laser_arena', startTime: laser.start, endTime: laser.end, players: 8 },
+          ],
+          firstBowlingTime: bowling.start,
+          firstLaserTime: laser.start,
+          customerCommitment: [`Votre première activité démarre à ${time} : présentez-vous 10 minutes avant pour l'accueil (${arrivalTime}).`],
+        },
+      });
+      state.booking.type = 'formule';
+      state.booking.formuleId = 'f1';
+      state.booking.preference = createDefaultFormulaPreference();
+      goStep(2);
+      slotLoading = false;
+      state.availableSlots = [
+        makeFormulaSlot('15:00', '14:50', '17:05', { start: '15:00', end: '16:00' }, { start: '16:05', end: '16:30' }),
+        makeFormulaSlot('15:30', '15:20', '17:35', { start: '15:30', end: '16:30' }, { start: '16:35', end: '17:00' }),
+      ];
+      resetFormulaProgramChoice();
+      renderSlots(FORMULES.find(f => f.id === 'f1'));
+    });
+    await page.waitForTimeout(250);
+    const pickerState = await page.evaluate(() => ({
+      head: document.querySelector('.formula-arrival-head')?.textContent || '',
+      chips: Array.from(document.querySelectorAll('.formula-arrival-chip')).map(el => el.textContent.trim()),
+    }));
+    assert(pickerState.chips.length === 2, 'Picker formule : les chips d heures doivent être rendues.');
+    assert(pickerState.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), `Formule avec bowling : toutes les chips doivent être :00/:30 (reçu ${pickerState.chips.join(', ')}).`);
+    assert(/première activité/i.test(pickerState.head), 'Picker formule : l en-tête doit annoncer l heure de la première activité.');
+    assert(/10 minutes avant/i.test(pickerState.head), 'Picker formule : la mention « présentez-vous 10 minutes avant » doit être visible.');
+    await page.evaluate(() => setFormulaArrivalChoice('15:00'));
+    await page.waitForTimeout(250);
+    const programState = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.formula-timeline .ftl-row')).map(row => row.textContent.replace(/\s+/g, ' ').trim());
+      return {
+        rows,
+        note: document.querySelector('.formula-timeline-note')?.textContent || '',
+      };
+    });
+    assert(/Arrivée conseillée/.test(programState.rows[0] || ''), 'Timeline formule : premier point = « Arrivée conseillée ».');
+    assert(/14:50/.test(programState.rows[0] || ''), 'Timeline formule : l arrivée conseillée doit être 10 min avant l heure choisie (14:50).');
+    assert(/15:00/.test(programState.rows[1] || '') && /Première activité/.test(programState.rows[1] || ''), 'Timeline formule : la première activité doit démarrer à l heure choisie exacte (15:00).');
+    assert(/Présentez-vous 10 minutes avant/i.test(programState.note), 'Timeline formule : mention « Présentez-vous 10 minutes avant » requise.');
+    await screenshot(page, 'formula-picker-first-activity-semantics');
+    issues.push(...await collectIssues(page, 'formula-picker-first-activity'));
+    await page.evaluate(() => {
+      state.availableSlots = [];
+      resetFormulaProgramChoice();
+      goStep(1);
+    });
+
+    // ------------------------------------------------------------------
     // Chantier 6 — les horaires alternatifs disparaissent au changement de contexte
     // ------------------------------------------------------------------
     await page.evaluate(() => {

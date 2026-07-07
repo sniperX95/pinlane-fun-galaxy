@@ -866,6 +866,26 @@ function allocateLanes(n, date, startTime, duration, ignoreId) {
   return avail.slice(0, n);
 }
 
+// Alloue N pistes libres en GARDANT les pistes déjà choisies (« graines »),
+// puis complète avec les pistes libres restantes. Sert quand un groupe déborde
+// de la piste pré-remplie depuis une case du planning : l'extension inclut
+// toujours la piste cliquée.
+function allocateLanesIncludingSeed(n, seedLanes, date, startTime, duration, ignoreId) {
+  if (n <= 0) return [];
+  const occ = getOccupiedLanes(date, startTime, duration, ignoreId);
+  const isFree = (l) => l >= 1 && l <= TOTAL_LANES && !occ.has(l) && state.laneStatuses[l] !== 'maintenance';
+  const avail = [];
+  for (let i = 1; i <= TOTAL_LANES; i++) if (isFree(i)) avail.push(i);
+  if (avail.length < n) return null;
+  const result = [...new Set((seedLanes || []).map(Number))].filter(isFree).slice(0, n);
+  const chosen = new Set(result);
+  for (const lane of avail) {
+    if (result.length >= n) break;
+    if (!chosen.has(lane)) { result.push(lane); chosen.add(lane); }
+  }
+  return result.length >= n ? result.sort((a, b) => a - b) : null;
+}
+
 function getBowlingCandidateWindows(startTime, duration, lanes, opsPlan = null) {
   const fallbackStart = typeof startTime === 'string' ? timeToNum(startTime) : Number(startTime || 0);
   const fallbackDuration = Number(duration || 0);
@@ -924,13 +944,44 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
   let ok = true;
   let message = '';
 
+  const normalizeKey = value => Math.round(Number(value) * 60);
+  const laserWindowsForDate = () => state.reservations
+    .filter(r => r.id !== ignoreId && r.date === date && r.status !== 'cancelled')
+    .flatMap(getLaserWindowsFromReservation);
+
   for (const candidate of candidateWindows) {
-    const overlapping = state.reservations
-      .filter(r => r.id !== ignoreId && r.date === date && r.status !== 'cancelled')
-      .flatMap(getLaserWindowsFromReservation)
+    const overlappingWindows = laserWindowsForDate()
       .filter(window => overlap(candidate.start, candidate.duration, window.start, window.duration));
-    const normalizeKey = value => Math.round(Number(value) * 60);
-    const sessionKey = `${normalizeKey(candidate.start)}-${normalizeKey(candidate.end)}`;
+
+    // Le serveur (ops-engine.findJoinableLaserSession) fusionne une nouvelle
+    // demande avec une session laser existante compatible — capacité libre et
+    // depart/fin a +/-15 min. On reproduit cette logique cote modale, sinon une
+    // session partageable (ex. 18/30 joueurs) etait comptee comme un 2e
+    // lancement parallele et affichee « complet » alors qu'il reste des places.
+    const candidateStartMin = normalizeKey(candidate.start);
+    const candidateEndMin = normalizeKey(candidate.end);
+    const sessions = new Map();
+    overlappingWindows.forEach(window => {
+      const key = `${normalizeKey(window.start)}-${normalizeKey(window.end)}`;
+      const entry = sessions.get(key) || { start: window.start, end: window.end, players: 0 };
+      entry.players += Number(window.players || window.reservation?.pax || 0);
+      sessions.set(key, entry);
+    });
+    const joinable = [...sessions.values()]
+      .filter(session =>
+        session.players + Number(candidate.players || 0) <= LASER_GAME_MAX_PLAYERS
+        && Math.abs(normalizeKey(session.start) - candidateStartMin) <= 15
+        && Math.abs(normalizeKey(session.end) - candidateEndMin) <= 15)
+      .sort((a, b) => Math.abs(normalizeKey(a.start) - candidateStartMin) - Math.abs(normalizeKey(b.start) - candidateStartMin))[0] || null;
+
+    const effStart = joinable ? joinable.start : candidate.start;
+    const effEnd = joinable ? joinable.end : candidate.end;
+    const effDuration = joinable ? Math.max(0, effEnd - effStart) : candidate.duration;
+    const overlapping = joinable
+      ? laserWindowsForDate().filter(window => overlap(effStart, effDuration, window.start, window.duration))
+      : overlappingWindows;
+
+    const sessionKey = `${normalizeKey(effStart)}-${normalizeKey(effEnd)}`;
     const sessionKeys = new Set(overlapping.map(window => `${normalizeKey(window.start)}-${normalizeKey(window.end)}`));
     const joinsExistingSession = sessionKeys.has(sessionKey);
     const launchCount = sessionKeys.size + (joinsExistingSession ? 0 : 1);
@@ -12217,7 +12268,8 @@ function createQuickBookState(prefill = {}) {
     unlocked: {},
     moreOpen: false,
     error: '',
-    payNow: false
+    payNow: false,
+    submitting: false
   };
 }
 
@@ -12231,6 +12283,7 @@ function openQuickBook(prefill = {}) {
     }
   }
   syncQuickBookDuration();
+  reconcileQuickLaneSelection();
   renderQuickBook();
 }
 
@@ -12266,6 +12319,32 @@ function syncQuickBookDuration() {
   } else {
     quickBookState.totalDuration = quickBookState.duration;
   }
+}
+
+// Quand le nombre de joueurs exige plus de pistes que la sélection contextuelle
+// (une piste pré-remplie depuis une case du planning), on étend AUTOMATIQUEMENT
+// la sélection à N pistes disponibles en gardant la piste cliquée. L'extension
+// ne s'applique que si le groupe déborde (N > 1 et sélection incomplète) — les
+// petits groupes (1 piste) gardent leur piste pré-remplie, et une sélection
+// manuelle déjà complète n'est jamais modifiée.
+function reconcileQuickLaneSelection() {
+  if (!quickBookState || quickBookState.autoAssign) return;
+  if (!reservationNeedsLanes(quickBookState.type, quickBookState.formuleId)) return;
+  if (!quickBookState.startTime) return;
+  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const current = quickBookState.lanes || [];
+  if (requiredCount <= 1) return;
+  if (current.length === 0 || current.length >= requiredCount) return;
+  const extended = allocateLanesIncludingSeed(requiredCount, current, quickBookState.date, quickBookState.startTime, quickBookState.duration);
+  if (extended && extended.length >= requiredCount) quickBookState.lanes = extended;
+}
+
+function setQuickPax(value) {
+  if (!quickBookState) return;
+  quickBookState.pax = Math.max(1, Number(value) || 1);
+  syncQuickBookDuration();
+  reconcileQuickLaneSelection();
+  renderQuickBook();
 }
 
 function setQuickType(type) {
@@ -12311,10 +12390,17 @@ function onQuickPhoneInput(value) {
   quickBookState.phone = value;
 }
 
-function onQuickPhoneBlur(value) {
+function onQuickPhoneBlur(elOrValue) {
   if (!quickBookState) return;
+  const el = elOrValue && typeof elOrValue === 'object' ? elOrValue : null;
+  const value = el ? el.value : elOrValue;
   quickBookState.phone = normalizePhoneInput(value);
-  renderQuickBook();
+  // Pas de re-render complet ici : le clic sur « Créer la réservation »
+  // déclenche d'abord le blur du téléphone. Un renderQuickBook() reconstruirait
+  // la modale (innerHTML) et détruirait le bouton avant que le clic n'atterrisse
+  // — d'où le fameux « il faut cliquer deux fois ». On reflète juste la valeur
+  // normalisée dans le champ, sans reconstruire le DOM.
+  if (el) el.value = quickBookState.phone;
 }
 
 function getQuickBookFormulaChoices() {
@@ -12462,7 +12548,11 @@ function setQuickStartTime(time) {
 function applyQuickSuggestedLanes() {
   if (!quickBookState || !quickBookState.startTime) return;
   const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
-  const suggested = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration);
+  // Garde la piste déjà choisie (case du planning) et complète jusqu'à N.
+  const seed = quickBookState.autoAssign ? [] : (quickBookState.lanes || []);
+  const suggested = seed.length
+    ? allocateLanesIncludingSeed(requiredCount, seed, quickBookState.date, quickBookState.startTime, quickBookState.duration)
+    : allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration);
   if (!suggested || !suggested.length) return;
   quickBookState.autoAssign = false;
   quickBookState.lanes = suggested;
@@ -12670,7 +12760,7 @@ function renderQuickBook() {
   essentialCells.push(`
     <div>
       <label class="qb-mini-label">Joueurs</label>
-      <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="quickBookState.pax=Math.max(1, Number(this.value)||1); syncQuickBookDuration(); renderQuickBook()">
+      <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="setQuickPax(this.value)">
     </div>`);
 
   const essentialActions = [];
@@ -12879,7 +12969,7 @@ function renderQuickBook() {
             </div>
             <div>
               <label class="qb-mini-label">Téléphone</label>
-              <input class="qb-input" value="${quickBookState.phone}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this.value)" placeholder="+32 470 00 00 00">
+              <input class="qb-input" value="${quickBookState.phone}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
             </div>
           </div>
           ` : ''}
@@ -12926,12 +13016,23 @@ function renderQuickBook() {
 }
 
 async function saveQuickBook() {
-  if (!quickBookState) return;
+  // Anti double-submit : un seul envoi en vol. Le garde couvre aussi la fenêtre
+  // asynchrone (syncDateReservations/POST) — un 2e clic pendant l'envoi est ignoré.
+  if (!quickBookState || quickBookState.submitting) return;
+  quickBookState.submitting = true;
   quickBookState.error = '';
+  const saveBtn = document.querySelector('#quickBookOverlay .qb-btn-save');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.setAttribute('aria-busy', 'true');
+    saveBtn.textContent = 'Création…';
+  }
   const name = quickBookState.name.trim();
   const phone = normalizePhoneInput(quickBookState.phone);
   quickBookState.phone = phone;
   const failQuickBook = (message) => {
+    // Ré-active le bouton (le re-render reconstruit « Créer la réservation »).
+    quickBookState.submitting = false;
     quickBookState.error = message;
     renderQuickBook();
     toast(message);

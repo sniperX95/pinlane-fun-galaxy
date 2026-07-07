@@ -2972,3 +2972,194 @@ body.client-mode .view-switch button.active {
   color: var(--accent-contrast);
   box-shadow: var(--fgx-halo-ring);
 }
+
+/* --- Picker formule « heure d'arrivée d'abord » --------------------------- */
+#clientView .formula-arrival-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+#clientView .formula-arrival-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+#clientView .formula-arrival-head strong {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--text);
+}
+#clientView .formula-arrival-head span {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+#clientView .formula-arrival-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: var(--space-2);
+}
+#clientView .formula-arrival-chip {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#clientView .formula-arrival-chip:hover {
+  border-color: var(--accent);
+}
+#clientView .formula-arrival-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+#clientView .formula-arrival-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#clientView .formula-arrival-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--subtle);
+}
+#clientView .formula-program-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+#clientView .formula-variant-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+#clientView .formula-variant-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+#clientView .formula-variant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+#clientView .formula-variant-chip {
+  min-height: 40px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#clientView .formula-variant-chip:hover { border-color: var(--accent); }
+#clientView .formula-variant-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Timeline du programme */
+#clientView .formula-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+#clientView .ftl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px 84px 1fr;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+#clientView .ftl-row::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 14px;
+  bottom: calc(-1 * var(--space-3));
+  width: 2px;
+  background: var(--line);
+}
+#clientView .ftl-row:last-child::before { display: none; }
+#clientView .ftl-dot {
+  position: relative;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--line-strong);
+  background: var(--surface);
+  align-self: start;
+}
+#clientView .ftl-dot.arrival { border-color: var(--accent); background: var(--accent); }
+#clientView .ftl-dot.reserved { border-color: var(--accent); }
+#clientView .ftl-dot.free { border-color: var(--success); }
+#clientView .ftl-dot.end { border-color: var(--line-strong); background: var(--line-strong); }
+#clientView .ftl-time {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+#clientView .ftl-time small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--subtle);
+}
+#clientView .ftl-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text);
+}
+#clientView .ftl-badge {
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+}
+#clientView .ftl-badge.reserved { background: var(--accent-soft); color: var(--text); }
+#clientView .ftl-badge.free { background: var(--success-soft); color: var(--success); }
+#clientView .formula-timeline-note {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+#clientView .formula-plan-confirm { width: 100%; }
+#clientView .formula-order-fallback-btn {
+  margin-top: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#clientView .formula-order-fallback-btn:hover { border-color: var(--accent); }

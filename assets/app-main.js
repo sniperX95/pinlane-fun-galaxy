@@ -11574,12 +11574,17 @@ function renderPosDetails(r) {
       </div>
     </div>
     <div class="info-block delay-control-block">
-      <div class="info-label">Retard terrain</div>
-      <div class="delay-control-copy">Le moteur teste le planning avant de modifier la reservation. Si c'est tenable, il decale et prepare l'email client.</div>
+      <div class="info-label">Retard client</div>
+      <div class="delay-control-copy">Le moteur calcule l'impact sur les réservations suivantes et propose la meilleure option (autre piste, ou décalage minimal). Rien ne bouge sans votre validation, et les clients ne sont prévenus que si vous le demandez.</div>
       <div class="delay-control-actions">
-        <button type="button" class="delay-chip" onclick="applyReservationDelay(${r.id}, 5, event)">+5 min</button>
-        <button type="button" class="delay-chip" onclick="applyReservationDelay(${r.id}, 10, event)">+10 min</button>
-        <button type="button" class="delay-chip" onclick="applyReservationDelay(${r.id}, 15, event)">+15 min</button>
+        <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 5, event)">+5 min</button>
+        <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 10, event)">+10 min</button>
+        <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 15, event)">+15 min</button>
+        ${getLateArrivalMinutes(r) > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${r.id}, ${getLateArrivalMinutes(r)}, event)">Arrivé maintenant (+${getLateArrivalMinutes(r)} min)</button>` : ''}
+      </div>
+      <div class="delay-custom-row">
+        <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Minutes" inputmode="numeric" onclick="event.stopPropagation()">
+        <button type="button" class="delay-chip" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
       </div>
     </div>
     <div class="info-block">
@@ -11597,60 +11602,281 @@ function renderPosDetails(r) {
   </div>`;
 }
 
-function summarizeDelayAlternatives(alternatives = []) {
-  return alternatives
-    .slice(0, 3)
-    .map((alternative) => {
-      const parts = [alternative.startTime].filter(Boolean);
-      if (alternative.assignedLanes?.length) parts.push(`pistes ${alternative.assignedLanes.join(', ')}`);
-      if (alternative.laser?.length) parts.push(`laser ${alternative.laser.map(item => item.startTime).filter(Boolean).join(', ')}`);
-      return parts.join(' - ');
-    })
-    .filter(Boolean)
-    .join(' / ');
+// === Gestion des retards (staff) ============================================
+// Flux en 3 temps, jamais automatique :
+// 1. openDelayImpact → le serveur calcule le plan d'impact (preview) ;
+// 2. applyDelayPlan → le staff valide UNE stratégie, application atomique ;
+// 3. étape « Prévenir les clients ? » → emails uniquement pour les clients
+//    cochés, sur clic explicite. « Ne pas prévenir » est toujours possible.
+let delayFlowState = null;
+
+function getLateArrivalMinutes(r) {
+  if (!r || r.date !== todayStr()) return 0;
+  const late = Math.round(currentTimeDecimal() * 60) - Math.round(timeToNum(r.startTime) * 60);
+  return late >= 1 && late <= 240 ? late : 0;
 }
 
-async function applyReservationDelay(id, delayMinutes, ev) {
+function openDelayImpactCustom(id, ev) {
+  const input = document.getElementById('delayCustomMinutes');
+  const minutes = input ? Number(input.value) : 0;
+  if (!minutes || minutes < 1) {
+    toast('Indiquez le retard en minutes avant d\'analyser.');
+    if (ev) ev.stopPropagation();
+    return;
+  }
+  openDelayImpact(id, minutes, ev);
+}
+
+async function openDelayImpact(id, delayMinutes, ev) {
   if (ev) ev.stopPropagation();
   const reservation = state.reservations.find(item => Number(item.id) === Number(id));
   if (!reservation) return;
-  const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
-  toast(`Analyse retard +${delayMinutes} min...`);
+  const minutes = Math.max(1, Math.min(240, Math.round(Number(delayMinutes) || 0)));
+  delayFlowState = {
+    step: 'loading',
+    reservationId: Number(id),
+    reservationName: reservation.name || '',
+    centerId: reservation.centerId || state.currentCenterId || 'libramont',
+    delayMinutes: minutes,
+    impact: null,
+    selectedStrategyId: '',
+    notifyChecked: {},
+    applyResult: null,
+    busy: false
+  };
+  renderDelayModal();
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
       body: JSON.stringify({
-        action: 'delay',
-        applyDelay: true,
-        centerId: reservation.centerId || state.currentCenterId || 'libramont',
-        date: reservation.date || state.currentDate,
-        delayMinutes,
-        reasonId: 'late_arrival',
-        reservation,
-        plan: reservation.opsPlan || null,
-        context: {
-          reservations: state.reservations,
-          laneStatuses: state.laneStatuses || {},
-        },
-      }),
+        action: 'delayImpact',
+        centerId: delayFlowState.centerId,
+        reservationId: Number(id),
+        delayMinutes: minutes,
+        reasonId: 'late_customer'
+      })
     });
-    if (payload.reservation) {
-      upsertReservationInState(payload.reservation);
-      state.selectedRes = payload.reservation;
-      state.editState = { ...payload.reservation, lanesStr: (payload.reservation.lanes || []).join(', ') };
-      save();
-      renderStaffData();
-      renderPos();
-      toast(`Retard +${delayMinutes} min applique. Client notifie si email disponible.`);
+    if (!delayFlowState || delayFlowState.reservationId !== Number(id)) return;
+    delayFlowState.step = 'preview';
+    delayFlowState.impact = payload.impact || null;
+    delayFlowState.selectedStrategyId = payload.impact?.recommendedStrategyId || '';
+    renderDelayModal();
+  } catch (error) {
+    closeDelayModal();
+    toast(error.message || 'Analyse du retard impossible pour le moment.');
+  }
+}
+
+function selectDelayStrategy(strategyId) {
+  if (!delayFlowState || delayFlowState.step !== 'preview') return;
+  const strategy = (delayFlowState.impact?.strategies || []).find(item => item.id === strategyId && item.feasible);
+  if (!strategy) return;
+  delayFlowState.selectedStrategyId = strategyId;
+  renderDelayModal();
+}
+
+function toggleDelayNotifyClient(reservationId) {
+  if (!delayFlowState || delayFlowState.step !== 'notify') return;
+  const key = Number(reservationId);
+  delayFlowState.notifyChecked[key] = !delayFlowState.notifyChecked[key];
+  renderDelayModal();
+}
+
+function closeDelayModal() {
+  delayFlowState = null;
+  const overlay = document.getElementById('delayOverlay');
+  overlay.classList.add('hidden');
+  overlay.innerHTML = '';
+}
+
+async function applyDelayPlan() {
+  if (!delayFlowState || delayFlowState.busy || delayFlowState.step !== 'preview') return;
+  const strategy = (delayFlowState.impact?.strategies || []).find(item => item.id === delayFlowState.selectedStrategyId && item.feasible);
+  if (!strategy) {
+    toast('Choisissez une option applicable avant de valider.');
+    return;
+  }
+  delayFlowState.busy = true;
+  renderDelayModal();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'delayApply',
+        centerId: delayFlowState.centerId,
+        reservationId: delayFlowState.reservationId,
+        delayMinutes: delayFlowState.delayMinutes,
+        reasonId: 'late_customer',
+        strategyId: delayFlowState.selectedStrategyId
+      })
+    });
+    (payload.reservations || []).forEach(item => upsertReservationInState(item));
+    if (state.selectedRes) {
+      const fresh = (payload.reservations || []).find(item => Number(item.id) === Number(state.selectedRes.id));
+      if (fresh) {
+        state.selectedRes = fresh;
+        state.editState = { ...fresh, lanesStr: (fresh.lanes || []).join(', ') };
+      }
+    }
+    save();
+    renderStaffData();
+    renderPos();
+    delayFlowState.busy = false;
+    delayFlowState.applyResult = payload;
+    const candidates = payload.notifications?.candidates || [];
+    if (!candidates.length) {
+      closeDelayModal();
+      toast('Plan de retard appliqué. Aucun client avec email à prévenir.');
       return;
     }
-    const alternatives = summarizeDelayAlternatives(payload.impact?.alternatives || payload.alternatives || []);
-    toast(alternatives ? `Retard bloque. Alternatives: ${alternatives}` : 'Retard bloque: aucune alternative automatique fiable.');
+    delayFlowState.step = 'notify';
+    delayFlowState.notifyChecked = {};
+    candidates.forEach(candidate => { delayFlowState.notifyChecked[Number(candidate.reservationId)] = true; });
+    renderDelayModal();
   } catch (error) {
-    applyOptimisticReservation(previous, { preserveEditState: true });
-    const details = summarizeDelayAlternatives(error?.payload?.impact?.alternatives || error?.payload?.alternatives || []);
-    toast(details ? `Retard non applicable. Alternatives: ${details}` : (error.message || 'Impossible d appliquer ce retard.'));
+    if (delayFlowState) {
+      delayFlowState.busy = false;
+      renderDelayModal();
+    }
+    toast(error.message || 'Application du plan de retard impossible.');
   }
+}
+
+function skipDelayNotifications() {
+  closeDelayModal();
+  toast('Plan de retard appliqué. Aucun client prévenu.');
+}
+
+async function sendDelayNotifications() {
+  if (!delayFlowState || delayFlowState.busy || delayFlowState.step !== 'notify') return;
+  const candidates = delayFlowState.applyResult?.notifications?.candidates || [];
+  const selectedIds = candidates
+    .map(candidate => Number(candidate.reservationId))
+    .filter(id => delayFlowState.notifyChecked[id]);
+  if (!selectedIds.length) {
+    skipDelayNotifications();
+    return;
+  }
+  delayFlowState.busy = true;
+  renderDelayModal();
+  try {
+    await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'delayNotify',
+        centerId: delayFlowState.centerId,
+        incidentId: delayFlowState.applyResult?.incidentId || null,
+        reservationIds: selectedIds,
+        channels: ['email']
+      })
+    });
+    closeDelayModal();
+    toast(`${selectedIds.length} email(s) de retard envoyé(s).`);
+  } catch (error) {
+    if (delayFlowState) {
+      delayFlowState.busy = false;
+      renderDelayModal();
+    }
+    toast(error.message || 'Envoi des emails impossible pour le moment.');
+  }
+}
+
+function renderDelayPlanRows(changes = []) {
+  if (!changes.length) return '<div class="delay-plan-empty">Aucune réservation modifiée.</div>';
+  return changes.map(change => `
+    <div class="delay-plan-row ${change.kind === 'delayed' ? 'is-delayed' : ''}">
+      <div class="delay-plan-name">${escapeHtml(change.name)}${change.kind === 'delayed' ? ' <span class="delay-plan-tag">retardée</span>' : ''}</div>
+      <div class="delay-plan-summary">${escapeHtml(change.summary || 'aucune incidence')}</div>
+    </div>
+  `).join('');
+}
+
+function renderDelayModal() {
+  const overlay = document.getElementById('delayOverlay');
+  if (!delayFlowState) {
+    overlay.classList.add('hidden');
+    overlay.innerHTML = '';
+    return;
+  }
+  const flow = delayFlowState;
+  const impact = flow.impact;
+  let body = '';
+  let footer = '';
+
+  if (flow.step === 'loading') {
+    body = '<div class="delay-loading">Analyse de l\'impact sur le planning...</div>';
+    footer = '<button type="button" class="delay-btn" onclick="closeDelayModal()">Annuler</button>';
+  } else if (flow.step === 'preview' && impact) {
+    const strategies = impact.strategies || [];
+    const selected = strategies.find(item => item.id === flow.selectedStrategyId) || null;
+    const downstream = impact.downstreamConflicts || [];
+    const strategyOptions = strategies.map(strategy => `
+      <label class="delay-strategy ${strategy.feasible ? '' : 'is-disabled'} ${flow.selectedStrategyId === strategy.id ? 'is-selected' : ''}">
+        <input type="radio" name="delayStrategyChoice" ${strategy.feasible ? '' : 'disabled'} ${flow.selectedStrategyId === strategy.id ? 'checked' : ''} onchange="selectDelayStrategy('${strategy.id}')">
+        <span class="delay-strategy-body">
+          <span class="delay-strategy-head"><strong>${escapeHtml(strategy.label)}</strong>${strategy.id === impact.recommendedStrategyId && strategy.feasible ? '<span class="delay-strategy-reco">Recommandé</span>' : ''}</span>
+          <span class="delay-strategy-desc">${escapeHtml(strategy.feasible ? strategy.description : (strategy.reasonIfNot || 'Indisponible sur ce planning.'))}</span>
+        </span>
+      </label>
+    `).join('');
+    const warnings = (selected?.warnings || []).map(warning => `<div class="delay-warning">${escapeHtml(warning)}</div>`).join('');
+    body = `
+      <div class="delay-context">
+        <span>${escapeHtml(impact.previousStartTime)} devient <strong>${escapeHtml(impact.proposedStartTime)}</strong></span>
+        <span>${downstream.length ? `${downstream.length} réservation(s) en conflit en aval` : 'Aucune réservation en conflit en aval'}</span>
+      </div>
+      ${strategies.length > 1 ? `<div class="delay-section-title">Options (par ordre de préférence)</div><div class="delay-strategy-list">${strategyOptions}</div>` : ''}
+      <div class="delay-section-title">Plan d'impact</div>
+      <div class="delay-plan-list">${renderDelayPlanRows(selected?.changes || [])}</div>
+      ${warnings}
+      <div class="delay-confirm-note">Rien n'est appliqué sans votre validation. Les clients ne seront prévenus qu'à l'étape suivante, si vous le demandez.</div>
+    `;
+    footer = `
+      <button type="button" class="delay-btn" onclick="closeDelayModal()">Annuler</button>
+      <button type="button" class="delay-btn delay-btn-primary" ${selected && selected.feasible && !flow.busy ? '' : 'disabled'} onclick="applyDelayPlan()">${flow.busy ? 'Application...' : 'Appliquer ce plan'}</button>
+    `;
+  } else if (flow.step === 'notify') {
+    const candidates = flow.applyResult?.notifications?.candidates || [];
+    const checkedCount = candidates.filter(candidate => flow.notifyChecked[Number(candidate.reservationId)]).length;
+    body = `
+      <div class="delay-applied-banner">Plan appliqué. ${escapeHtml(flow.applyResult?.strategyLabel || '')}</div>
+      <div class="delay-section-title">Prévenir les clients ?</div>
+      <div class="delay-notify-intro">Un email courtois part uniquement aux clients cochés, quand vous cliquez sur « Envoyer les emails ». Rien n'est envoyé automatiquement.</div>
+      <div class="delay-notify-list">
+        ${candidates.map(candidate => `
+          <label class="delay-notify-row">
+            <input type="checkbox" ${flow.notifyChecked[Number(candidate.reservationId)] ? 'checked' : ''} onchange="toggleDelayNotifyClient(${Number(candidate.reservationId)})">
+            <span class="delay-notify-body">
+              <span class="delay-notify-name">${escapeHtml(candidate.name)}</span>
+              <span class="delay-notify-summary">${escapeHtml(candidate.summary || '')}</span>
+              <span class="delay-notify-email">${escapeHtml(candidate.email)}</span>
+            </span>
+          </label>
+        `).join('')}
+      </div>
+    `;
+    footer = `
+      <button type="button" class="delay-btn" ${flow.busy ? 'disabled' : ''} onclick="skipDelayNotifications()">Ne pas prévenir</button>
+      <button type="button" class="delay-btn delay-btn-primary" ${flow.busy || !checkedCount ? 'disabled' : ''} onclick="sendDelayNotifications()">${flow.busy ? 'Envoi...' : `Envoyer les emails (${checkedCount})`}</button>
+    `;
+  }
+
+  overlay.className = 'delay-overlay';
+  overlay.innerHTML = `
+    <div class="delay-modal" role="dialog" aria-modal="true" aria-label="Gestion du retard">
+      <div class="delay-modal-head">
+        <div>
+          <h3>Retard +${flow.delayMinutes} min</h3>
+          <p>${escapeHtml(flow.reservationName)}</p>
+        </div>
+        <button type="button" class="close-btn" onclick="closeDelayModal()" aria-label="Fermer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="delay-modal-body">${body}</div>
+      <div class="delay-modal-foot">${footer}</div>
+    </div>
+  `;
 }
 
 function renderPosCaisse(r) {
@@ -13012,6 +13238,9 @@ document.getElementById('posOverlay').addEventListener('click', e => {
   if (e.target.id === 'posOverlay') closePos();
 });
 
+document.getElementById('delayOverlay').addEventListener('click', e => {
+  if (e.target.id === 'delayOverlay') closeDelayModal();
+});
 document.getElementById('quickBookOverlay').addEventListener('click', e => {
   if (e.target.id === 'quickBookOverlay') closeQuickBook();
 });
@@ -13026,6 +13255,11 @@ setInterval(() => {
 // Échap ferme le mode plein écran du planning (bowling ou laser).
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+  if (delayFlowState) {
+    closeDelayModal();
+    event.preventDefault();
+    return;
+  }
   if (state.view !== 'staff') return;
   if (collapseStaffPlanningFullscreen()) {
     event.preventDefault();

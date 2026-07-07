@@ -1,7 +1,12 @@
 const assert = require('assert');
 const { communicationAgent, delayAgent, learningAgent, planningAgent } = require('../lib/ops-agents');
-const { getRequiredLaneCount } = require('../lib/ops-engine');
-const { buildMessage, normalizePhoneForSms } = require('../lib/ops-communications');
+const { computeDelayImpact, getRequiredLaneCount } = require('../lib/ops-engine');
+const {
+  buildDelayChangeMessage,
+  buildMessage,
+  listDelayNotificationChannels,
+  normalizePhoneForSms,
+} = require('../lib/ops-communications');
 const { getCenter, loadOpsKnowledge } = require('../lib/ops-knowledge');
 const database = require('../lib/database');
 const {
@@ -549,6 +554,230 @@ function testDelayAgentProposesAlternativesWhenBlocked() {
   assert.strictEqual(delay.impact.canApply, false);
   assert.ok(delay.impact.alternatives.length >= 1, 'blocked delay should propose feasible alternatives');
   assert.ok(delay.impact.actions.some((action) => /alternative/i.test(action)));
+}
+
+// === Moteur d'impact retard (cascade + alternatives) ========================
+function delayImpactBaseReservations() {
+  return {
+    delayed: {
+      id: 1, name: 'Groupe Retarde', email: 'retarde@example.test', date: TEST_DATE,
+      startTime: '14:00', duration: 1, pax: 6, type: 'bowling', lanes: [1], status: 'pending',
+    },
+    downstream: {
+      id: 2, name: 'Groupe Suivant', email: 'suivant@example.test', date: TEST_DATE,
+      startTime: '15:00', duration: 1, pax: 6, type: 'bowling', lanes: [1], status: 'pending',
+    },
+  };
+}
+
+// Préférence n°1 : la résa RETARDÉE change de piste, personne d'autre ne bouge.
+function testDelayImpactPrefersRelocatingDelayed() {
+  const { delayed, downstream } = delayImpactBaseReservations();
+  const impact = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 15, reasonId: 'late_customer', reservationId: 1 },
+    { reservations: [delayed, downstream], laneStatuses: {} },
+  );
+
+  assert.strictEqual(impact.status, 'conflicts', 'lane 1 collision must be detected before applying anything');
+  assert.strictEqual(impact.recommendedStrategyId, 'relocate_delayed', 'moving the DELAYED group to a free lane must be the first choice');
+  assert.deepStrictEqual(impact.strategies.map((strategy) => strategy.id), ['relocate_delayed', 'relocate_downstream', 'cascade'], 'strategies keep the business preference order');
+  const relocation = impact.strategies[0];
+  assert.strictEqual(relocation.feasible, true);
+  assert.strictEqual(relocation.changes.length, 1, 'only the delayed reservation moves');
+  const change = relocation.changes[0];
+  assert.strictEqual(change.newStartTime, '14:15');
+  assert.strictEqual(change.laneChanged, true, 'the delayed group takes another free lane');
+  assert.ok(!change.newLanes.includes(1), 'the conflicting lane is released');
+  assert.strictEqual(impact.confirmation.required, true, 'staff must validate before anything is applied');
+  assert.strictEqual(impact.notifications.automatic, false, 'no notification is ever automatic');
+  assert.strictEqual(impact.notifications.requiresExplicitConfirmation, true);
+}
+
+// Préférence n°2 : si la retardée ne peut pas bouger de piste, les résas
+// SUIVANTES changent de piste en gardant leur heure.
+function testDelayImpactRelocatesDownstreamWhenDelayedIsStuck() {
+  const { delayed, downstream } = delayImpactBaseReservations();
+  // Pistes 2-8 occupées de 13:30 à 15:00 : impossible de reloger la retardée
+  // (sa fenêtre décalée 14:15-15:15 chevauche), mais la suivante (15:00) peut
+  // passer sur une piste libérée à 15:00.
+  const blockers = Array.from({ length: 7 }, (_, index) => ({
+    id: 100 + index, name: `Bloqueur ${index + 2}`, date: TEST_DATE, startTime: '13:30',
+    duration: 1.5, pax: 6, type: 'bowling', lanes: [index + 2], status: 'pending',
+  }));
+  const impact = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 15, reservationId: 1 },
+    { reservations: [delayed, downstream, ...blockers], laneStatuses: {} },
+  );
+
+  const relocateDelayed = impact.strategies.find((strategy) => strategy.id === 'relocate_delayed');
+  assert.strictEqual(relocateDelayed.feasible, false, 'no free lane exists for the delayed group on its shifted window');
+  assert.strictEqual(impact.recommendedStrategyId, 'relocate_downstream');
+  const relocateDownstream = impact.strategies.find((strategy) => strategy.id === 'relocate_downstream');
+  assert.strictEqual(relocateDownstream.feasible, true);
+  const downstreamChange = relocateDownstream.changes.find((change) => change.reservationId === 2);
+  assert.strictEqual(downstreamChange.kind, 'relocate');
+  assert.strictEqual(downstreamChange.newStartTime, '15:00', 'downstream keeps its time and only changes lane');
+  assert.strictEqual(downstreamChange.laneChanged, true);
+  assert.ok(/heure inchangée/.test(downstreamChange.summary), 'staff summary must say the time is unchanged');
+}
+
+// Préférence n°3 : cascade MINIMALE — chaque résa aval décalée du strict
+// nécessaire, un trou de planning absorbe une partie du retard.
+function testDelayImpactCascadeUsesMinimalShift() {
+  const { delayed, downstream } = delayImpactBaseReservations();
+  const gapDownstream = { ...downstream, startTime: '15:30' };
+  const maintenance = { 2: 'maintenance', 3: 'maintenance', 4: 'maintenance', 5: 'maintenance', 6: 'maintenance', 7: 'maintenance', 8: 'maintenance' };
+  const impact = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 45, reservationId: 1 },
+    { reservations: [delayed, gapDownstream], laneStatuses: maintenance },
+  );
+
+  assert.strictEqual(impact.recommendedStrategyId, 'cascade', 'with every other lane in maintenance only the cascade remains');
+  const cascade = impact.strategies.find((strategy) => strategy.id === 'cascade');
+  assert.strictEqual(cascade.feasible, true);
+  const delayedChange = cascade.changes.find((change) => change.reservationId === 1);
+  const downstreamChange = cascade.changes.find((change) => change.reservationId === 2);
+  assert.strictEqual(delayedChange.newStartTime, '14:45');
+  assert.strictEqual(downstreamChange.newStartTime, '15:45', 'the 30 min gap absorbs part of the 45 min delay');
+  assert.strictEqual(downstreamChange.shiftMinutes, 15, 'downstream is shifted by the strict minimum, not the full delay');
+}
+
+// Formule : un retard sur l'ancre bowling recale le programme — la table suit
+// l'arrivée, les ancres aval ne glissent QUE si nécessaire.
+function testDelayImpactFormulaProgramRecomputed() {
+  const planned = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'formule',
+    formuleId: 'f1',
+    pax: 10,
+    preference: { preferredTimes: { bowling: '15:00', laser_game: '16:30' } },
+  }, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(planned.ok, true);
+  const reservation = {
+    id: 30, name: 'Anniversaire Formule', email: 'formule@example.test', date: TEST_DATE,
+    startTime: '15:00', duration: 1, totalDuration: 2.5, pax: 10, type: 'formule', formuleId: 'f1',
+    lanes: planned.plan.recommended.assignedLanes, status: 'pending', opsPlan: planned.plan.recommended,
+  };
+
+  // Retard court : le trou avant le laser absorbe tout, l'ancre laser ne bouge pas.
+  const small = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 15, reservationId: 30 },
+    { reservations: [reservation], laneStatuses: {} },
+  );
+  assert.strictEqual(small.status, 'no_conflict');
+  const smallPlan = small.strategies[0].changes[0].update.opsPlan;
+  const smallBowling = smallPlan.resourceBlocks.find((block) => block.resourceType === 'bowling_lane');
+  const smallLaser = smallPlan.resourceBlocks.find((block) => block.resourceType === 'laser_arena');
+  assert.strictEqual(smallBowling.startTime, '15:15', 'the delayed bowling anchor slides by the delay');
+  assert.strictEqual(smallLaser.startTime, '16:30', 'the laser anchor stays: the gap absorbs the delay');
+  assert.strictEqual(small.strategies[0].changes[0].update.startTime, '15:15');
+
+  // Retard long : l'ancre laser aval glisse du minimum nécessaire.
+  const large = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 90, reservationId: 30 },
+    { reservations: [reservation], laneStatuses: {} },
+  );
+  const largePlan = large.strategies[0].changes[0].update.opsPlan;
+  const largeBowling = largePlan.resourceBlocks.find((block) => block.resourceType === 'bowling_lane');
+  const largeLaser = largePlan.resourceBlocks.find((block) => block.resourceType === 'laser_arena');
+  assert.strictEqual(largeBowling.startTime, '16:30');
+  assert.strictEqual(largeLaser.startTime, '17:35', 'the laser anchor slides just enough (bowling end + transition)');
+
+  // Formule table (f7) : la table suit l'arrivée décalée.
+  const tablePlanned = planningAgent({
+    centerId: 'libramont', date: TEST_DATE, type: 'formule', formuleId: 'f7', pax: 8, startTime: '15:00',
+  }, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(tablePlanned.ok, true);
+  const tableReservation = {
+    id: 31, name: 'Anniversaire Table', date: TEST_DATE, startTime: '15:00', duration: 2.5, pax: 8,
+    type: 'formule', formuleId: 'f7', lanes: [], status: 'pending', opsPlan: tablePlanned.plan.recommended,
+  };
+  const tableImpact = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 20, reservationId: 31 },
+    { reservations: [tableReservation], laneStatuses: {} },
+  );
+  const shiftedTable = tableImpact.strategies[0].changes[0].update.opsPlan.resourceBlocks
+    .find((block) => block.resourceType === 'party_table');
+  assert.strictEqual(shiftedTable.startTime, '15:10', 'the table follows the shifted arrival (14:50 + 20)');
+}
+
+// Fin de journée : si la cascade dépasse la fermeture, le preview le signale
+// et le choix reste au staff (rien n'est bloqué silencieusement).
+function testDelayImpactFlagsClosingOverrun() {
+  const schedule = getSchedule(TEST_DATE);
+  const closeMinutes = Math.round(schedule.close * 60);
+  const toTime = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  const lateReservation = {
+    id: 40, name: 'Groupe Tardif', email: 'tardif@example.test', date: TEST_DATE,
+    startTime: toTime(closeMinutes - 60), duration: 1, pax: 6, type: 'bowling', lanes: [1], status: 'pending',
+  };
+  const impact = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 30, reservationId: 40 },
+    { reservations: [lateReservation], laneStatuses: {} },
+  );
+  const strategy = impact.strategies.find((item) => item.feasible);
+  assert.ok(strategy, 'the shift itself stays possible: the staff decides');
+  const change = strategy.changes[0];
+  assert.strictEqual(change.overClosingMinutes, 30, 'the closing overrun must be measured');
+  assert.ok(strategy.warnings.some((warning) => /fermeture/.test(warning)), 'the preview must flag the closing overrun');
+  assert.strictEqual(impact.closingTime, toTime(closeMinutes));
+}
+
+// Laser : les autres groupes d'un lancement partagé ne bougent pas, et la
+// résa retardée rejoint un lancement compatible plutôt que de tout décaler.
+function testDelayImpactLaserSharedSession() {
+  const delayedLaser = {
+    id: 50, name: 'Laser Retarde', email: 'laser@example.test', date: TEST_DATE,
+    startTime: '15:00', duration: 0.5, pax: 6, type: 'laser', lanes: [], status: 'pending',
+  };
+  const sameSession = {
+    id: 51, name: 'Laser Partage', date: TEST_DATE,
+    startTime: '15:00', duration: 0.5, pax: 10, type: 'laser', lanes: [], status: 'pending',
+  };
+  const nextSession = {
+    id: 52, name: 'Laser Suivant', date: TEST_DATE,
+    startTime: '15:30', duration: 0.5, pax: 8, type: 'laser', lanes: [], status: 'pending',
+  };
+  const impact = computeDelayImpact(
+    { centerId: 'libramont', date: TEST_DATE, delayMinutes: 15, reservationId: 50 },
+    { reservations: [delayedLaser, sameSession, nextSession], laneStatuses: {} },
+  );
+
+  assert.ok(impact.warnings.some((warning) => /partagé/.test(warning)), 'the shared launch must be flagged: other groups stay on time');
+  assert.strictEqual(impact.recommendedStrategyId, 'relocate_delayed', 'joining the compatible next launch beats cascading everyone');
+  const relocation = impact.strategies.find((strategy) => strategy.id === 'relocate_delayed');
+  assert.strictEqual(relocation.feasible, true);
+  assert.strictEqual(relocation.changes.length, 1, 'nobody else moves');
+  assert.ok(/rejoint le lancement laser de 15:30/.test(relocation.changes[0].summary), 'the delayed group joins the 15:30 launch');
+}
+
+// Canal de notification : email actif, SMS prévu mais inactif, et le message
+// par client couvre décalage ET changement de piste.
+function testDelayNotificationChannelsAndMessages() {
+  const channels = listDelayNotificationChannels();
+  const email = channels.find((channel) => channel.id === 'email');
+  const sms = channels.find((channel) => channel.id === 'sms');
+  assert.ok(email && email.available, 'email channel must be available');
+  assert.ok(sms && sms.available === false, 'sms channel exists but stays inactive without provider config');
+
+  const reservation = {
+    id: 2, centerId: 'libramont', name: 'Groupe Suivant', email: 'suivant@example.test',
+    date: TEST_DATE, startTime: '15:15', pax: 6, type: 'bowling', label: 'Bowling classique',
+  };
+  const shifted = buildDelayChangeMessage({
+    reservation,
+    change: { kind: 'shift', previousStartTime: '15:00', newStartTime: '15:15', shiftMinutes: 15, previousLanes: [1], newLanes: [1], laneChanged: false },
+  });
+  assert.ok(shifted.body.includes('15:00') && shifted.body.includes('15:15'), 'the shift email states old and new time');
+  assert.ok(shifted.body.includes('reste bien confirmée'), 'the email stays reassuring');
+
+  const relocated = buildDelayChangeMessage({
+    reservation,
+    change: { kind: 'relocate', previousStartTime: '15:00', newStartTime: '15:00', shiftMinutes: 0, previousLanes: [1], newLanes: [5], laneChanged: true },
+  });
+  assert.ok(/piste 5/.test(relocated.body), 'the lane-change email names the new lane');
+  assert.ok(!/décalé de/.test(relocated.body), 'a pure lane change never announces a time shift');
 }
 
 function testDelayEmailTemplate() {
@@ -1215,6 +1444,13 @@ async function main() {
   testDelayAgentAbsorbableShift();
   testDelayAgentFallbackPlanFromReservation();
   testDelayAgentProposesAlternativesWhenBlocked();
+  testDelayImpactPrefersRelocatingDelayed();
+  testDelayImpactRelocatesDownstreamWhenDelayedIsStuck();
+  testDelayImpactCascadeUsesMinimalShift();
+  testDelayImpactFormulaProgramRecomputed();
+  testDelayImpactFlagsClosingOverrun();
+  testDelayImpactLaserSharedSession();
+  testDelayNotificationChannelsAndMessages();
   testDelayEmailTemplate();
   testLearningAgent();
   testPhoneNormalization();

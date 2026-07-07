@@ -1,9 +1,11 @@
 const {
+  applyReservationScheduleUpdates,
   cancelReservationCommunications,
   cancelReservationOpsJobs,
   createDelayIncident,
   createOpsJob,
   createOpsEvent,
+  getDelayIncidentById,
   getReservationById,
   getOpsHealth,
   listCommunications,
@@ -12,8 +14,8 @@ const {
   readAdminRangeState,
   readStaffState,
   saveAgentSuggestions,
-  updateReservation,
 } = require('../lib/database');
+const { computeDelayImpact } = require('../lib/ops-engine');
 const {
   architectureAgent,
   communicationAgent,
@@ -28,8 +30,9 @@ const { runOrchestratorForCenter } = require('../lib/orchestrator-runner');
 const {
   buildEmailSamples,
   dispatchDueCommunications,
-  enqueueDelayCommunications,
+  enqueueDelayChangeCommunications,
   enqueueReservationCommunications,
+  listDelayNotificationChannels,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -336,139 +339,238 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   }
 
   if (action === 'delay') {
+    // Analyse legacy mono-réservation (agents, simulation). L'application d'un
+    // retard passe désormais par delayImpact → delayApply → delayNotify :
+    // preview obligatoire, application atomique, notifications sur demande.
     requireConcreteCenter('retard');
-    const applyDelay = Boolean(body.applyDelay || body.apply);
-    let effectiveBody = withCenter(body, centerId);
-    let currentReservation = null;
-
-    if (applyDelay) {
-      const reservationId = body.reservation?.id || body.reservationId || body.id;
-      if (!reservationId) {
-        throw createHttpError('Reservation manquante pour appliquer le retard.', 400);
-      }
-      currentReservation = await getReservationById(reservationId);
-      if (!currentReservation) {
-        throw createHttpError('Reservation introuvable.', 404);
-      }
-      const editSession = await requireStaffPermission(req, res, ['reservations.edit', 'planning.drag'], {
-        centerId: currentReservation.centerId || 'libramont',
-      });
-      if (!editSession) return;
-      effectiveBody = {
-        ...body,
-        centerId: currentReservation.centerId || 'libramont',
-        date: currentReservation.date || body.date,
-        reservation: currentReservation,
-      };
-    }
-
+    const effectiveBody = withCenter(body, centerId);
     const context = await buildContext(effectiveBody);
     const result = delayAgent(effectiveBody, context);
-    if (applyDelay) {
-      const reservation = currentReservation;
-      const impact = result.impact || {};
-      if (!impact.canApply) {
-        const communications = await enqueueDelayCommunications(
-          { ...reservation, centerId: reservation.centerId || effectiveBody.centerId || 'libramont' },
-          impact,
-          effectiveBody.options || {},
-        );
-        await createDelayIncident({
-          centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
-          reservationId: reservation.id,
-          delayMinutes: impact.delayMinutes || effectiveBody.delayMinutes || 0,
-          reason: impact.reason || effectiveBody.reason || 'retard signale',
-          status: 'needs_staff',
-          previousStartTime: impact.previousStartTime || reservation.startTime || '',
-          proposedStartTime: impact.proposedStartTime || '',
-          impact,
-          communications: { queued: communications.map((item) => item.id) },
-          idempotencyKey: `delay:${reservation.id}:${impact.delayMinutes || effectiveBody.delayMinutes || 0}:${impact.proposedStartTime || 'none'}`,
-        }).catch(() => null);
-        sendJson(res, 409, {
-          ok: false,
-          contextWarning: context.warning || null,
-          ...result,
-          applied: false,
-          communications,
-          message: 'Retard non applicable automatiquement. Choisir une alternative proposee.',
-        });
-        return;
-      }
+    sendJson(res, 200, { ok: true, contextWarning: context.warning || null, ...result });
+    return;
+  }
 
-      const shiftedPlan = impact.shiftedPlan || {};
-      const updatedReservation = await updateReservation({
-        ...reservation,
-        id: reservation.id,
-        centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
-        date: reservation.date || effectiveBody.date,
-        startTime: impact.proposedStartTime || reservation.startTime,
-        lanes: shiftedPlan.assignedLanes || reservation.lanes || [],
-        opsPlan: shiftedPlan,
-        notes: [
-          reservation.notes || '',
-          `Retard applique +${impact.delayMinutes || effectiveBody.delayMinutes || 0} min (${impact.reason || effectiveBody.reason || 'retard signale'}).`,
-        ].filter(Boolean).join('\n'),
-      });
-      await Promise.all([
-        cancelReservationCommunications({
-          reservationId: reservation.id,
-          centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
-          reason: 'delay_applied',
-        }),
-        cancelReservationOpsJobs({
-          reservationId: reservation.id,
-          centerId: reservation.centerId || effectiveBody.centerId || 'libramont',
-          reason: 'delay_applied',
-        }),
-      ]);
-      await createOpsEvent({
-        centerId: updatedReservation.centerId,
-        reservationId: updatedReservation.id,
-        eventType: 'delay_applied',
-        severity: impact.severity === 'needs_staff_decision' ? 'warning' : 'info',
-        payload: {
-          previousStartTime: impact.previousStartTime,
-          proposedStartTime: impact.proposedStartTime,
-          delayMinutes: impact.delayMinutes,
-          reason: impact.reason,
-          conflicts: impact.conflicts || [],
+  if (action === 'delayImpact') {
+    requireConcreteCenter('retard');
+    const reservationId = Number(body.reservationId || body.reservation?.id || body.id || 0);
+    if (!reservationId) throw createHttpError('Réservation manquante pour analyser le retard.', 400);
+    const reservation = await getReservationById(reservationId);
+    if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    const context = await buildContext({
+      ...body,
+      centerId: reservation.centerId || centerId,
+      date: reservation.date,
+    });
+    const impact = computeDelayImpact({
+      centerId: reservation.centerId || centerId,
+      date: reservation.date,
+      reservationId,
+      reservation: context.reservations?.some((item) => Number(item.id) === reservationId) ? undefined : reservation,
+      delayMinutes: body.delayMinutes,
+      reasonId: body.reasonId || 'late_customer',
+    }, context);
+    sendJson(res, 200, {
+      ok: true,
+      contextWarning: context.warning || null,
+      impact: {
+        ...impact,
+        notifications: {
+          ...impact.notifications,
+          channels: listDelayNotificationChannels(),
         },
-      }).catch(() => null);
-      await Promise.all([
-        enqueueReservationAutomation(updatedReservation).catch(() => []),
-        enqueueReservationCommunications(updatedReservation, {
-          validationMode: updatedReservation.validationStatus,
-        }).catch(() => []),
-      ]);
-      const communications = await enqueueDelayCommunications(updatedReservation, impact, effectiveBody.options || {});
-      await createDelayIncident({
-        centerId: updatedReservation.centerId,
-        reservationId: updatedReservation.id,
-        delayMinutes: impact.delayMinutes || effectiveBody.delayMinutes || 0,
-        reason: impact.reason || effectiveBody.reason || 'retard signale',
-        status: 'applied',
-        previousStartTime: impact.previousStartTime || reservation.startTime || '',
-        proposedStartTime: impact.proposedStartTime || updatedReservation.startTime || '',
+      },
+    });
+    return;
+  }
+
+  if (action === 'delayApply') {
+    requireConcreteCenter('retard');
+    const reservationId = Number(body.reservationId || body.reservation?.id || body.id || 0);
+    if (!reservationId) throw createHttpError('Réservation manquante pour appliquer le retard.', 400);
+    const reservation = await getReservationById(reservationId);
+    if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    const editSession = await requireStaffPermission(req, res, ['reservations.edit', 'planning.drag'], {
+      centerId: reservation.centerId || 'libramont',
+    });
+    if (!editSession) return;
+
+    // Serveur = source de vérité : l'impact est RECALCULÉ ici, jamais repris
+    // du client. Le staff choisit seulement la stratégie parmi les faisables.
+    const effectiveCenter = reservation.centerId || centerId || 'libramont';
+    const context = await buildContext({ centerId: effectiveCenter, date: reservation.date });
+    const impact = computeDelayImpact({
+      centerId: effectiveCenter,
+      date: reservation.date,
+      reservationId,
+      delayMinutes: body.delayMinutes,
+      reasonId: body.reasonId || 'late_customer',
+    }, context);
+    const strategyId = body.strategyId || impact.recommendedStrategyId;
+    const strategy = (impact.strategies || []).find((item) => item.id === strategyId && item.feasible);
+    if (!strategy) {
+      sendJson(res, 409, {
+        ok: false,
+        applied: false,
         impact,
-        communications: { queued: communications.map((item) => item.id) },
-        idempotencyKey: `delay:${updatedReservation.id}:${impact.delayMinutes || effectiveBody.delayMinutes || 0}:${impact.proposedStartTime || updatedReservation.startTime}`,
-      }).catch(() => null);
-      const dispatch = effectiveBody.dispatch === false
-        ? null
-        : await dispatchDueCommunications({ limit: 10, centerId: updatedReservation.centerId, reservationId: updatedReservation.id });
-      sendJson(res, 200, {
-        ok: true,
-        contextWarning: context.warning || null,
-        ...result,
-        applied: true,
-        reservation: updatedReservation,
-        communications,
-        dispatch,
+        message: 'Ce plan de retard n\'est plus applicable : le planning a changé, relancez l\'analyse.',
       });
       return;
     }
-    sendJson(res, 200, { ok: true, contextWarning: context.warning || null, ...result });
+
+    const staffMember = editSession.member?.name || editSession.member?.id || 'staff';
+    const updates = strategy.changes.map((change) => ({
+      id: change.reservationId,
+      startTime: change.update.startTime,
+      lanes: change.update.lanes,
+      opsPlan: change.update.opsPlan,
+      noteAppend: change.kind === 'delayed'
+        ? `Retard +${impact.delayMinutes} min appliqué (${impact.reason}) — ${strategy.label} — par ${staffMember}.`
+        : change.kind === 'relocate'
+          ? `Changement de piste (${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}) suite au retard de « ${impact.reservationName} » — par ${staffMember}.`
+          : `Décalage de ${change.shiftMinutes} min suite au retard de « ${impact.reservationName} » — par ${staffMember}.`,
+    }));
+
+    const updatedReservations = await applyReservationScheduleUpdates({
+      centerId: effectiveCenter,
+      date: reservation.date,
+      updates,
+    });
+
+    const publicChanges = strategy.changes.map(({ update, ...rest }) => rest);
+    const incident = await createDelayIncident({
+      centerId: effectiveCenter,
+      reservationId,
+      delayMinutes: impact.delayMinutes,
+      reason: impact.reason,
+      status: 'applied',
+      previousStartTime: impact.previousStartTime,
+      proposedStartTime: impact.proposedStartTime,
+      impact: {
+        strategyId: strategy.id,
+        strategyLabel: strategy.label,
+        warnings: strategy.warnings || [],
+        changes: publicChanges,
+        appliedBy: staffMember,
+      },
+      communications: { queued: [] },
+      idempotencyKey: `delayplan:${reservationId}:${impact.delayMinutes}:${impact.proposedStartTime}:${strategy.id}`,
+    }).catch(() => null);
+
+    for (const change of strategy.changes) {
+      const updated = updatedReservations.find((item) => Number(item.id) === change.reservationId);
+      // Les communications déjà en file (rappels avec l'ancienne heure) sont
+      // annulées ; l'automatisation interne est reprogrammée ; le rappel J-2
+      // est régénéré avec la bonne heure. AUCUN email de retard n'est mis en
+      // file ici : l'étape « Prévenir les clients ? » reste explicite.
+      await Promise.all([
+        cancelReservationCommunications({ reservationId: change.reservationId, centerId: effectiveCenter, reason: 'delay_plan_applied' }),
+        cancelReservationOpsJobs({ reservationId: change.reservationId, centerId: effectiveCenter, reason: 'delay_plan_applied' }),
+      ]).catch(() => null);
+      if (updated) {
+        await enqueueReservationAutomation(updated).catch(() => []);
+        await enqueueReservationCommunications(updated, { templatesOnly: ['reminder_48h'] }).catch(() => []);
+      }
+      await createOpsEvent({
+        centerId: effectiveCenter,
+        reservationId: change.reservationId,
+        eventType: change.kind === 'delayed' ? 'delay_applied' : 'delay_cascade_applied',
+        severity: change.overClosingMinutes ? 'warning' : 'info',
+        payload: {
+          incidentId: incident?.id || null,
+          strategyId: strategy.id,
+          kind: change.kind,
+          previousStartTime: change.previousStartTime,
+          newStartTime: change.newStartTime,
+          shiftMinutes: change.shiftMinutes,
+          previousLanes: change.previousLanes,
+          newLanes: change.newLanes,
+          reason: impact.reason,
+          appliedBy: staffMember,
+        },
+        runLearning: false,
+      }).catch(() => null);
+    }
+
+    sendJson(res, 200, {
+      ok: true,
+      applied: true,
+      incidentId: incident?.id || null,
+      strategyId: strategy.id,
+      strategyLabel: strategy.label,
+      delayMinutes: impact.delayMinutes,
+      reason: impact.reason,
+      changes: publicChanges,
+      warnings: strategy.warnings || [],
+      reservations: updatedReservations,
+      notifications: {
+        automatic: false,
+        requiresExplicitConfirmation: true,
+        channels: listDelayNotificationChannels(),
+        candidates: publicChanges
+          .filter((change) => change.hasEmail)
+          .map((change) => ({
+            reservationId: change.reservationId,
+            name: change.name,
+            email: change.email,
+            summary: change.summary,
+            kind: change.kind,
+          })),
+      },
+    });
+    return;
+  }
+
+  if (action === 'delayNotify') {
+    requireConcreteCenter('retard');
+    const notifySession = await requireStaffPermission(req, res, ['emails.send', 'reservations.edit'], { centerId });
+    if (!notifySession) return;
+    const incidentId = Number(body.incidentId || 0);
+    if (!incidentId) throw createHttpError('Incident retard manquant pour notifier les clients.', 400);
+    const incident = await getDelayIncidentById(incidentId);
+    if (!incident) throw createHttpError('Incident retard introuvable.', 404);
+    const changes = Array.isArray(incident.impact?.changes) ? incident.impact.changes : [];
+    const requestedIds = Array.isArray(body.reservationIds) ? body.reservationIds.map(Number) : [];
+    if (!requestedIds.length) throw createHttpError('Aucun client sélectionné pour la notification.', 400);
+    const channels = Array.isArray(body.channels) && body.channels.length ? body.channels : ['email'];
+
+    const queued = [];
+    const dispatched = [];
+    for (const requestedId of requestedIds) {
+      const change = changes.find((item) => Number(item.reservationId) === requestedId);
+      if (!change) continue;
+      const target = await getReservationById(requestedId);
+      if (!target) continue;
+      const created = await enqueueDelayChangeCommunications({
+        reservation: target,
+        change,
+        incidentId,
+        channels,
+      });
+      queued.push(...created.map((item) => ({ id: item.id, reservationId: requestedId, channel: item.channel, status: item.status })));
+      if (created.length) {
+        const dispatch = await dispatchDueCommunications({
+          limit: 10,
+          centerId: incident.centerId,
+          reservationId: requestedId,
+        }).catch(() => null);
+        if (dispatch) dispatched.push({ reservationId: requestedId, ...dispatch });
+      }
+    }
+
+    await createOpsEvent({
+      centerId: incident.centerId,
+      reservationId: incident.reservationId,
+      eventType: 'delay_clients_notified',
+      payload: {
+        incidentId,
+        reservationIds: requestedIds,
+        channels,
+        queued: queued.map((item) => item.id),
+      },
+      runLearning: false,
+    }).catch(() => null);
+
+    sendJson(res, 200, { ok: true, incidentId, queued, dispatched });
     return;
   }
 
@@ -579,7 +681,7 @@ function getRequiredOpsPermission(method, action) {
   if (['communicationDraft'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue'].includes(action)) return 'emails.send';
   if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';
-  if (['plan', 'delay'].includes(action)) return ['planning.view', 'ai.ops'];
+  if (['plan', 'delay', 'delayImpact', 'delayApply', 'delayNotify'].includes(action)) return ['planning.view', 'ai.ops'];
   return 'ai.ops';
 }
 

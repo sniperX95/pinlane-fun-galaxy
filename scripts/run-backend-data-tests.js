@@ -98,6 +98,17 @@ function makeFakePg({ reservations = [], laneStatuses = [] } = {}) {
         return { rows, rowCount: rows.length };
       }
 
+      if (/update\s+reservations/i.test(text) && /start_time\s*=\s*\$2/i.test(text) && params.length === 5) {
+        const row = state.reservations.find((reservation) => Number(reservation.id) === Number(params[0]));
+        if (!row) return { rows: [], rowCount: 0 };
+        row.start_time = params[1];
+        row.lanes = params[2];
+        row.ops_plan = params[3] ? JSON.parse(params[3]) : null;
+        row.notes = params[4];
+        row.updated_at = new Date();
+        return { rows: [row], rowCount: 1 };
+      }
+
       if (/from\s+lane_statuses/i.test(text)) {
         const requestedCenter = params[0];
         const rows = state.laneStatuses.filter((laneStatus) =>
@@ -252,10 +263,67 @@ async function testLaneStatusesAreScopedByCenter() {
   });
 }
 
+// Plan de retard : les décalages en cascade (heures + pistes + plans) partent
+// dans UNE transaction et sont validés sur l'état FINAL — un update séquentiel
+// échouerait sur l'état transitoire (A décalé sur le créneau que B occupe
+// encore). Vérifie aussi qu'un plan périmé est refusé AVANT toute écriture.
+async function testApplyReservationScheduleUpdatesIsAtomic() {
+  const date = findFutureOpenDate();
+  const rows = [
+    reservationRow({ id: 1, name: 'Groupe Retarde', startTime: '14:00', lanes: [1], date }),
+    reservationRow({ id: 2, name: 'Groupe Suivant', startTime: '15:00', lanes: [1], date }),
+  ];
+
+  await withFakeDatabase({ reservations: rows.map((row) => ({ ...row })) }, async (database, state) => {
+    const updated = await database.applyReservationScheduleUpdates({
+      centerId: 'libramont',
+      date,
+      updates: [
+        { id: 1, startTime: '14:15', lanes: [1], noteAppend: 'Retard +15 min applique.' },
+        { id: 2, startTime: '15:15', lanes: [1], noteAppend: 'Decale de 15 min suite retard.' },
+      ],
+    });
+
+    assert.strictEqual(updated.length, 2, 'les deux reservations doivent etre mises a jour en un seul appel');
+    assert.strictEqual(updated.find((item) => item.id === 1).startTime, '14:15');
+    assert.strictEqual(updated.find((item) => item.id === 2).startTime, '15:15');
+    assert.ok(updated.find((item) => item.id === 1).notes.includes('Retard +15 min'), 'la trace audit doit etre ajoutee aux notes');
+
+    const queries = state.queries.map((query) => query.sql);
+    const beginIndex = queries.findIndex((sql) => /^begin$/i.test(sql.trim()));
+    const commitIndex = queries.findIndex((sql) => /^commit$/i.test(sql.trim()));
+    const updateIndexes = state.queries
+      .map((query, index) => (/update\s+reservations/i.test(query.sql) ? index : -1))
+      .filter((index) => index >= 0);
+    assert.ok(beginIndex >= 0 && commitIndex > beginIndex, 'les updates doivent vivre dans une transaction');
+    assert.ok(updateIndexes.every((index) => index > beginIndex && index < commitIndex), 'chaque update doit etre dans la transaction');
+    assert.ok(queries.some((sql) => /pg_advisory_xact_lock/i.test(sql)), 'la date doit etre verrouillee pendant l application');
+  });
+
+  // Plan périmé : la validation d'état final refuse AVANT toute écriture.
+  await withFakeDatabase({ reservations: rows.map((row) => ({ ...row })) }, async (database, state) => {
+    await assert.rejects(
+      () => database.applyReservationScheduleUpdates({
+        centerId: 'libramont',
+        date,
+        updates: [{ id: 1, startTime: '15:00', lanes: [1] }],
+      }),
+      /planning vient de changer/i,
+      'un plan qui recouvre une reservation non deplacee doit etre refuse',
+    );
+    assert.ok(
+      !state.queries.some((query) => /update\s+reservations/i.test(query.sql)),
+      'aucune ecriture ne doit partir quand le plan est refuse',
+    );
+    assert.strictEqual(state.reservations.find((row) => Number(row.id) === 1).start_time, '14:00', 'la reservation reste intacte');
+  });
+}
+
 (async () => {
   await testSimulationResetKeepsRealDecisionLogs();
   await testStaffPlanningIgnoresCancelledReservations();
   await testLaneStatusesAreScopedByCenter();
+  await testApplyReservationScheduleUpdatesIsAtomic();
   console.log('backend-data-tests-ok');
 })().catch((error) => {
   console.error(error);

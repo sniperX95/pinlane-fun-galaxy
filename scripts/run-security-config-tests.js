@@ -152,8 +152,13 @@ try {
   const opsSource = readProjectFile('api/ops.js');
   assert.match(
     opsSource,
-    /currentReservation\s*=\s*await getReservationById\(reservationId\)/,
-    'delay apply must reload the real reservation',
+    /const reservation\s*=\s*await getReservationById\(reservationId\)/,
+    'delay impact/apply must reload the real reservation',
+  );
+  assert.match(
+    opsSource,
+    /const impact\s*=\s*computeDelayImpact\(\{[\s\S]{0,200}reservationId,[\s\S]{0,200}\}, context\);\s*const strategyId/,
+    'delay apply must recompute the impact server-side, never trust a client-provided plan',
   );
   assert.match(
     opsSource,

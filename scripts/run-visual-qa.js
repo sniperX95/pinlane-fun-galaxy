@@ -496,6 +496,162 @@ async function installQaApi(page) {
         });
       }
 
+      if (url.pathname === '/api/ops' && String(init.method || 'GET').toUpperCase() === 'POST') {
+        let opsBody = {};
+        try { opsBody = JSON.parse(init.body || '{}'); } catch (error) { opsBody = {}; }
+        if (['delayImpact', 'delayApply', 'delayNotify'].includes(opsBody.action)) {
+          window.__PINLANE_QA_DELAY_POSTS__ = window.__PINLANE_QA_DELAY_POSTS__ || [];
+          window.__PINLANE_QA_DELAY_POSTS__.push(opsBody);
+
+          const delayedChange = (lanes, laneChanged, summary) => ({
+            reservationId: 9001,
+            name: 'Anniversaire Lina Formule texte tres long #9001',
+            email: 'lina@example.test',
+            hasEmail: true,
+            kind: 'delayed',
+            previousStartTime: '14:00',
+            newStartTime: '14:15',
+            shiftMinutes: 15,
+            previousLanes: [1],
+            newLanes: lanes,
+            laneChanged,
+            moves: [{ label: 'Bowling', previousStartTime: '14:00', newStartTime: '14:15', shiftMinutes: 15 }],
+            overClosingMinutes: 0,
+            summary,
+          });
+          const downstreamChange = {
+            reservationId: 9002,
+            name: 'Famille Lambert Bowling trente minutes #9002',
+            email: 'lambert@example.test',
+            hasEmail: true,
+            kind: 'shift',
+            previousStartTime: '14:30',
+            newStartTime: '14:45',
+            shiftMinutes: 15,
+            previousLanes: [2],
+            newLanes: [2],
+            laneChanged: false,
+            moves: [{ label: 'Bowling', previousStartTime: '14:30', newStartTime: '14:45', shiftMinutes: 15 }],
+            overClosingMinutes: 0,
+            summary: 'Bowling 14:30 vers 14:45 · reste piste 2',
+          };
+          const cascadeChanges = [
+            delayedChange([1], false, 'Bowling 14:00 vers 14:15 · reste piste 1'),
+            downstreamChange,
+          ];
+          const notifyCandidates = cascadeChanges.map((change) => ({
+            reservationId: change.reservationId,
+            name: change.name,
+            email: change.email,
+            summary: change.summary,
+            kind: change.kind,
+          }));
+
+          if (opsBody.action === 'delayImpact') {
+            return jsonResponse({
+              ok: true,
+              impact: {
+                ok: true,
+                status: 'conflicts',
+                delayMinutes: opsBody.delayMinutes || 15,
+                reason: 'Client en retard',
+                reservationId: 9001,
+                reservationName: 'Anniversaire Lina Formule texte tres long #9001',
+                previousStartTime: '14:00',
+                proposedStartTime: '14:15',
+                closingTime: '23:00',
+                downstreamConflicts: [{ reservationId: 9002, name: 'Famille Lambert Bowling trente minutes #9002', neededShiftMinutes: 15, kinds: ['bowling'] }],
+                strategies: [
+                  {
+                    id: 'relocate_delayed',
+                    label: 'Changer la réservation retardée de piste',
+                    description: 'Le groupe retardé glisse sur une autre piste : aucune autre réservation ne bouge.',
+                    feasible: true,
+                    reasonIfNot: '',
+                    changes: [delayedChange([3], true, 'Bowling 14:00 vers 14:15 · passe piste 1 vers 3')],
+                    warnings: [],
+                    impactedCount: 0,
+                  },
+                  {
+                    id: 'relocate_downstream',
+                    label: 'Déplacer les réservations suivantes de piste',
+                    description: 'Les réservations suivantes gardent leur heure et changent seulement de piste.',
+                    feasible: false,
+                    reasonIfNot: 'Pas assez de pistes libres pour re-router les réservations suivantes.',
+                    changes: [],
+                    warnings: [],
+                    impactedCount: 0,
+                  },
+                  {
+                    id: 'cascade',
+                    label: 'Décaler les réservations suivantes',
+                    description: 'Chaque réservation aval est décalée du minimum nécessaire.',
+                    feasible: true,
+                    reasonIfNot: '',
+                    changes: cascadeChanges,
+                    warnings: ['Famille Lambert Bowling trente minutes #9002 dépasse la fermeture de 5 min (fin 23:05).'],
+                    impactedCount: 1,
+                  },
+                ],
+                recommendedStrategyId: 'relocate_delayed',
+                confirmation: { required: true, label: 'Le staff valide le plan avant toute application.' },
+                notifications: {
+                  automatic: false,
+                  requiresExplicitConfirmation: true,
+                  channels: [
+                    { id: 'email', label: 'Email', available: true },
+                    { id: 'sms', label: 'SMS', available: false },
+                  ],
+                  candidates: notifyCandidates,
+                },
+                warnings: [],
+              },
+            });
+          }
+
+          if (opsBody.action === 'delayApply') {
+            const date = new Date().toISOString().slice(0, 10);
+            const seeded = window.__PINLANE_QA_RESERVATIONS__ ? window.__PINLANE_QA_RESERVATIONS__(date) : [];
+            const updated = seeded
+              .filter((reservation) => [9001, 9002].includes(Number(reservation.id)))
+              .map((reservation) => ({
+                ...reservation,
+                startTime: Number(reservation.id) === 9001 ? '14:15' : '14:45',
+              }));
+            return jsonResponse({
+              ok: true,
+              applied: true,
+              incidentId: 777,
+              strategyId: opsBody.strategyId || 'cascade',
+              strategyLabel: opsBody.strategyId === 'relocate_delayed'
+                ? 'Changer la réservation retardée de piste'
+                : 'Décaler les réservations suivantes',
+              delayMinutes: opsBody.delayMinutes || 15,
+              reason: 'Client en retard',
+              changes: cascadeChanges,
+              warnings: [],
+              reservations: updated,
+              notifications: {
+                automatic: false,
+                requiresExplicitConfirmation: true,
+                channels: [
+                  { id: 'email', label: 'Email', available: true },
+                  { id: 'sms', label: 'SMS', available: false },
+                ],
+                candidates: notifyCandidates,
+              },
+            });
+          }
+
+          return jsonResponse({
+            ok: true,
+            incidentId: 777,
+            queued: (opsBody.reservationIds || []).map((reservationId, index) => ({ id: 9100 + index, reservationId, channel: 'email', status: 'queued' })),
+            dispatched: [],
+          });
+        }
+      }
+
       if (url.pathname === '/api/ops') {
         const opsAction = url.searchParams.get('action');
         if (opsAction === 'centerConfig') {
@@ -654,6 +810,11 @@ async function collectIssues(page, scopeLabel) {
       '.ops-sim-card',
       '.ai-live-agent',
       '.ai-problem-card',
+      '.delay-modal-head',
+      '.delay-strategy',
+      '.delay-plan-row',
+      '.delay-notify-row',
+      '.delay-warning',
       '.staff-role-pill',
       '.staff-member-card',
       '.staff-code-card',
@@ -1420,6 +1581,113 @@ async function main() {
     await screenshot(page, 'quickbook-client-light');
     issues.push(...await collectIssues(page, 'quickbook-client-light'));
     await page.evaluate(() => { closeQuickBook(); setStaffTheme('dark'); });
+    await page.waitForTimeout(200);
+
+    // ------------------------------------------------------------------
+    // Gestion des retards — preview d'impact AVANT application, choix de
+    // stratégie, puis étape « Prévenir les clients ? » jamais automatique.
+    // ------------------------------------------------------------------
+    await renderStaffPage(page, 'planning');
+    await page.evaluate(() => { window.__PINLANE_QA_DELAY_POSTS__ = []; });
+    await page.evaluate(() => openDelayImpact(9001, 15));
+    await page.locator('.delay-modal .delay-strategy').first().waitFor({ timeout: 5000 });
+    const delayPreviewState = await page.evaluate(() => ({
+      strategies: document.querySelectorAll('.delay-strategy').length,
+      disabledStrategies: document.querySelectorAll('.delay-strategy.is-disabled').length,
+      recommended: Boolean(document.querySelector('.delay-strategy-reco')),
+      planRows: document.querySelectorAll('.delay-plan-row').length,
+      applyEnabled: Boolean(document.querySelector('.delay-btn-primary')) && !document.querySelector('.delay-btn-primary').disabled,
+      posts: window.__PINLANE_QA_DELAY_POSTS__.map((post) => post.action),
+      confirmNote: document.querySelector('.delay-confirm-note')?.textContent || '',
+    }));
+    assert(delayPreviewState.strategies === 3, `Retard : les 3 stratégies doivent être listées (reçu ${delayPreviewState.strategies}).`);
+    assert(delayPreviewState.disabledStrategies === 1, 'Retard : une stratégie infaisable doit apparaître grisée avec sa raison.');
+    assert(delayPreviewState.recommended, 'Retard : la stratégie recommandée doit être marquée.');
+    assert(delayPreviewState.planRows >= 1, 'Retard : le plan d impact doit lister les réservations modifiées.');
+    assert(delayPreviewState.applyEnabled, 'Retard : le bouton « Appliquer ce plan » doit être actif sur la stratégie recommandée.');
+    assert(delayPreviewState.posts.join(',') === 'delayImpact', 'Retard : le preview ne doit déclencher AUCUNE application ni notification.');
+    assert(/validation/i.test(delayPreviewState.confirmNote), 'Retard : le preview doit rappeler que rien ne bouge sans validation staff.');
+    await screenshot(page, 'delay-impact-preview');
+    issues.push(...await collectIssues(page, 'delay-impact-preview'));
+
+    // Choix d'une autre stratégie (cascade) : plan multi-réservations + alerte fermeture.
+    await page.evaluate(() => selectDelayStrategy('cascade'));
+    await page.waitForTimeout(250);
+    const delayCascadeState = await page.evaluate(() => ({
+      planRows: document.querySelectorAll('.delay-plan-row').length,
+      warning: document.querySelector('.delay-warning')?.textContent || '',
+      delayedTag: Boolean(document.querySelector('.delay-plan-row.is-delayed .delay-plan-tag')),
+    }));
+    assert(delayCascadeState.planRows === 2, 'Retard cascade : les deux réservations modifiées doivent être listées.');
+    assert(/fermeture/.test(delayCascadeState.warning), 'Retard cascade : le dépassement de fermeture doit être signalé.');
+    assert(delayCascadeState.delayedTag, 'Retard : la réservation retardée doit être identifiable dans le plan.');
+    await screenshot(page, 'delay-impact-preview-cascade');
+    issues.push(...await collectIssues(page, 'delay-impact-preview-cascade'));
+
+    // Application -> étape notification : tout coché par défaut, envoi UNIQUEMENT sur clic.
+    await page.evaluate(() => applyDelayPlan());
+    await page.locator('.delay-notify-row').first().waitFor({ timeout: 5000 });
+    const delayNotifyState = await page.evaluate(() => ({
+      rows: document.querySelectorAll('.delay-notify-row').length,
+      checked: document.querySelectorAll('.delay-notify-row input:checked').length,
+      sendLabel: document.querySelector('.delay-btn-primary')?.textContent.trim() || '',
+      skipButton: Array.from(document.querySelectorAll('.delay-btn')).some((el) => /Ne pas prévenir/.test(el.textContent)),
+      posts: window.__PINLANE_QA_DELAY_POSTS__.map((post) => post.action),
+    }));
+    assert(delayNotifyState.rows === 2, 'Notification retard : chaque client impacté avec email doit être listé.');
+    assert(delayNotifyState.checked === 2, 'Notification retard : tout doit être coché par défaut.');
+    assert(/Envoyer les emails \(2\)/.test(delayNotifyState.sendLabel), `Notification retard : bouton d envoi explicite requis (reçu ${delayNotifyState.sendLabel}).`);
+    assert(delayNotifyState.skipButton, 'Notification retard : « Ne pas prévenir » doit toujours être possible.');
+    assert(!delayNotifyState.posts.includes('delayNotify'), 'Notification retard : AUCUN envoi ne doit partir sans clic explicite.');
+    await screenshot(page, 'delay-notify-step');
+    issues.push(...await collectIssues(page, 'delay-notify-step'));
+
+    // Décocher un client ajuste le compteur ; « Ne pas prévenir » n envoie rien.
+    await page.evaluate(() => toggleDelayNotifyClient(9002));
+    await page.waitForTimeout(200);
+    const delayPartialState = await page.evaluate(() => ({
+      sendLabel: document.querySelector('.delay-btn-primary')?.textContent.trim() || '',
+    }));
+    assert(/Envoyer les emails \(1\)/.test(delayPartialState.sendLabel), 'Notification retard : le compteur doit suivre les cases cochées.');
+    await page.evaluate(() => skipDelayNotifications());
+    await page.waitForTimeout(200);
+    const delaySkippedState = await page.evaluate(() => ({
+      overlayHidden: document.getElementById('delayOverlay').classList.contains('hidden'),
+      posts: window.__PINLANE_QA_DELAY_POSTS__.map((post) => post.action),
+    }));
+    assert(delaySkippedState.overlayHidden, 'Retard : « Ne pas prévenir » doit fermer la modale.');
+    assert(delaySkippedState.posts.join(',') === 'delayImpact,delayApply', 'Retard : après « Ne pas prévenir », aucun delayNotify ne doit être parti.');
+
+    // Second passage : envoi explicite -> delayNotify avec les clients cochés.
+    await page.evaluate(() => openDelayImpact(9001, 15));
+    await page.locator('.delay-modal .delay-strategy').first().waitFor({ timeout: 5000 });
+    await page.evaluate(() => applyDelayPlan());
+    await page.locator('.delay-notify-row').first().waitFor({ timeout: 5000 });
+    await page.evaluate(() => sendDelayNotifications());
+    await page.waitForTimeout(300);
+    const delaySentState = await page.evaluate(() => {
+      const posts = window.__PINLANE_QA_DELAY_POSTS__;
+      const notify = posts.filter((post) => post.action === 'delayNotify');
+      return {
+        overlayHidden: document.getElementById('delayOverlay').classList.contains('hidden'),
+        notifyCount: notify.length,
+        lastNotify: notify[notify.length - 1] || null,
+      };
+    });
+    assert(delaySentState.notifyCount === 1, 'Retard : l envoi explicite doit déclencher exactement un delayNotify.');
+    assert(delaySentState.lastNotify && delaySentState.lastNotify.incidentId === 777, 'Retard : delayNotify doit cibler l incident appliqué.');
+    assert(JSON.stringify(delaySentState.lastNotify.reservationIds) === JSON.stringify([9001, 9002]), 'Retard : delayNotify doit porter les clients cochés.');
+    assert(JSON.stringify(delaySentState.lastNotify.channels) === JSON.stringify(['email']), 'Retard : canal email explicite (SMS prévu mais inactif).');
+    assert(delaySentState.overlayHidden, 'Retard : la modale se ferme après envoi.');
+
+    // Passe thème clair sur le preview retard (système bi-thème).
+    await page.evaluate(() => setStaffTheme('light'));
+    await page.waitForTimeout(250);
+    await page.evaluate(() => openDelayImpact(9001, 15));
+    await page.locator('.delay-modal .delay-strategy').first().waitFor({ timeout: 5000 });
+    await screenshot(page, 'delay-impact-preview-light');
+    issues.push(...await collectIssues(page, 'delay-impact-preview-light'));
+    await page.evaluate(() => { closeDelayModal(); setStaffTheme('dark'); });
     await page.waitForTimeout(200);
 
     await page.evaluate(() => setView('client'));

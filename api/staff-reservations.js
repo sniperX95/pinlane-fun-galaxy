@@ -109,7 +109,7 @@ module.exports = async (req, res) => {
       const body = await readJson(req);
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
-      const request = normalizeReservationRequest(body, { channel: 'staff' });
+      const request = normalizeReservationRequest(body, { channel: 'staff', requireEmail: true });
       const ops = await prepareReservationOps(request, 'staff');
       const reservation = await createReservation({
         ...request,

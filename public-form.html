@@ -72,8 +72,8 @@
             </label>
           </div>
           <label>
-            Email
-            <input type="email" id="contactEmail" placeholder="Ex. sarah@email.com" />
+            Email <span aria-hidden="true">*</span>
+            <input type="email" id="contactEmail" placeholder="Ex. sarah@email.com" required />
           </label>
           <label>
             Note
@@ -425,6 +425,10 @@
       }
       if (!name || !phone) {
         setAvailabilityNotice('Le nom et le téléphone sont obligatoires.', true);
+        return;
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setAvailabilityNotice('Un email valide est obligatoire pour recevoir la confirmation.', true);
         return;
       }
 

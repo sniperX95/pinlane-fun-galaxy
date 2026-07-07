@@ -79,7 +79,19 @@ async function installApi(page) {
       if (url.pathname === '/api/staff-state') {
         const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
         const laneStatuses = Array.from({ length: 8 }).reduce((acc, _, i) => { acc[i + 1] = 'active'; return acc; }, {});
-        return jsonResponse({ ok: true, revision: `r-${date}`, reservations: [], laneStatuses, centerId: 'libramont' });
+        const extra = window.__EXTRA_RES__ || [];
+        const revision = `r-${date}-${window.__STATE_REV__ || 0}`;
+        const headers = init.headers || {};
+        const inm = headers['If-None-Match'] || headers['if-none-match'] || '';
+        // Poll différentiel : rien n'a changé => 304 CORPS VIDE (poids ~0 octet).
+        if (inm && inm === revision) {
+          window.__LAST_STATE_BYTES__ = 0;
+          return new Response('', { status: 304, headers: { etag: revision } });
+        }
+        const bodyObj = { ok: true, revision, reservations: extra, laneStatuses, centerId: 'libramont' };
+        const body = JSON.stringify(bodyObj);
+        window.__LAST_STATE_BYTES__ = body.length;
+        return new Response(body, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: revision } });
       }
       if (url.pathname === '/api/staff-reservations' && method === 'POST') {
         const body = JSON.parse(init.body || '{}');
@@ -198,6 +210,7 @@ async function main() {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true });
       quickBookState.name = 'Client Test';
       quickBookState.phone = '+32470111222';
+      quickBookState.email = 'client@test.com';
       renderQuickBook();
       // focus le champ téléphone : son blur déclenchait un re-render qui détruisait
       // le bouton avant l'arrivée du clic (le fameux « cliquer 2 fois »).
@@ -217,11 +230,135 @@ async function main() {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [2], allowPastStart: true });
       quickBookState.name = 'Client Double';
       quickBookState.phone = '+32470999888';
+      quickBookState.email = 'double@test.com';
       const p1 = saveQuickBook();
       const p2 = saveQuickBook(); // doit être ignoré (submitting)
       return Promise.all([p1, p2]).then(() => window.__RES_POSTS__.length);
     }, { date: TEST_DATE });
     assert(doubleSubmit === 1, `2 saveQuickBook() concurrents → 1 seul POST (obtenu ${doubleSubmit})`);
+
+    // ============ CHANTIER 1 — recherche planning en direct + effacement ============
+    console.log('\n[CHANTIER 1] Recherche planning : filtre à la frappe + effacement ré-affiche tout');
+    const search = await page.evaluate(({ date }) => {
+      state.view = 'staff';
+      state.staffMenuPage = 'planning';
+      state.staffResourceView = 'all';
+      state.currentDate = date;
+      state.searchTerm = '';
+      state.reservations = [
+        { id: 601, date, status: 'confirmed', type: 'bowling', pax: 4, startTime: '16:00', duration: 1, lanes: [1], name: 'Alice Martin', phone: '+32470111111', email: 'alice@x.com' },
+        { id: 602, date, status: 'confirmed', type: 'bowling', pax: 4, startTime: '18:00', duration: 1, lanes: [3], name: 'Bob Durand', phone: '+32470222222', email: 'bob@x.com' },
+      ];
+      renderStaffData();
+      const countBookings = () => document.querySelectorAll('#planningGridWrap .booking').length;
+      const initial = countBookings();
+      // 1) Frappe : filtre EN DIRECT le planning (pas seulement la liste).
+      applyStaffSearch('Alice', { immediate: true });
+      const afterType = countBookings();
+      const planningInputVal = document.getElementById('planningSearchInput').value;
+      const listInputVal = document.getElementById('searchInput').value;
+      // 2) Effacement : le planning se re-remplit immédiatement (bug « vide »).
+      applyStaffSearch('', { immediate: true });
+      const afterClear = countBookings();
+      // 3) Recherche téléphone.
+      applyStaffSearch('222222', { immediate: true });
+      const afterPhone = countBookings();
+      applyStaffSearch('', { immediate: true });
+      return { initial, afterType, afterClear, afterPhone, planningInputVal, listInputVal };
+    }, { date: TEST_DATE });
+    assert(search.initial === 2, `planning affiche les 2 réservations au départ (obtenu ${search.initial})`);
+    assert(search.afterType === 1, `taper « Alice » filtre le planning EN DIRECT → 1 booking (obtenu ${search.afterType})`);
+    assert(search.planningInputVal === 'Alice' && search.listInputVal === 'Alice', 'les champs de recherche jumeaux (planning + liste) restent synchronisés');
+    assert(search.afterClear === 2, `EFFACER la recherche ré-affiche TOUT le planning immédiatement (obtenu ${search.afterClear}, bug « vide » corrigé)`);
+    assert(search.afterPhone === 1, `recherche par téléphone « 222222 » filtre aussi le planning (obtenu ${search.afterPhone})`);
+
+    // ============ CHANTIER 2 — synchro live différentielle sobre ============
+    console.log('\n[CHANTIER 2] Poll différentiel : une résa serveur apparaît sans action + tick 304 minuscule');
+    const live = await page.evaluate(async ({ date }) => {
+      state.view = 'staff';
+      state.staffMenuPage = 'planning';
+      state.staffResourceView = 'all';
+      state.currentDate = date;
+      state.reservations = [];
+      window.__EXTRA_RES__ = [];
+      // Révision unique : neutralise un éventuel poll de fond (4 s) qui aurait déjà
+      // mis en cache une révision → on garantit un vrai chargement complet ici.
+      window.__STATE_REV__ = 'load-' + Date.now();
+      renderStaffData();
+      // Premier sync : charge l'état (révision fraîche), planning vide.
+      await syncDateReservations(date, { silent: true });
+      const before = document.querySelectorAll('#planningGridWrap .booking').length;
+      const bytesFullLoad = window.__LAST_STATE_BYTES__;
+      // Tick SANS changement : le serveur renvoie 304 (corps vide, poids ~0).
+      const changedNoop = await syncDateReservations(date, { silent: true });
+      const bytesNoop = window.__LAST_STATE_BYTES__;
+      // Une résa est prise EN LIGNE (autre poste / parcours public) côté serveur.
+      window.__EXTRA_RES__ = [{ id: 701, date, status: 'confirmed', type: 'bowling', pax: 4, startTime: '16:00', duration: 1, lanes: [2], name: 'Résa En Ligne', phone: '+32470333333', email: 'online@x.com' }];
+      window.__STATE_REV__ = 'changed-' + Date.now();
+      // Prochain tick du poll : elle apparaît SANS aucune action utilisateur.
+      const changed = await syncDateReservations(date, { silent: true });
+      const after = document.querySelectorAll('#planningGridWrap .booking').length;
+      const inStore = state.reservations.some((r) => Number(r.id) === 701);
+      return { before, bytesFullLoad, changedNoop, bytesNoop, changed, after, inStore };
+    }, { date: TEST_DATE });
+    assert(live.before === 0, `planning vide avant la réservation en ligne (obtenu ${live.before})`);
+    assert(live.changedNoop === false && live.bytesNoop === 0, `tick sans changement = 304 corps vide (0 octet, obtenu ${live.bytesNoop})`);
+    assert(live.bytesFullLoad > live.bytesNoop, `un tick « rien changé » (${live.bytesNoop}o) est bien plus léger qu'un chargement complet (${live.bytesFullLoad}o)`);
+    assert(live.changed === true && live.inStore, 'la résa prise EN LIGNE entre dans le store au tick suivant, sans action');
+    assert(live.after === 1, `la résa en ligne apparaît sur le planning sans rechargement (obtenu ${live.after})`);
+
+    // ============ CHANTIER 3 — email obligatoire (front) ============
+    console.log('\n[CHANTIER 3] Email obligatoire à la création staff (front)');
+    const emailFront = await page.evaluate(async ({ date }) => {
+      const attempt = async (email) => {
+        window.__RES_POSTS__ = [];
+        openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true });
+        quickBookState.name = 'Client Sans Mail';
+        quickBookState.phone = '+32470444444';
+        quickBookState.email = email;
+        await saveQuickBook();
+        return { posts: window.__RES_POSTS__.length, error: quickBookState ? quickBookState.error : '' };
+      };
+      const noEmail = await attempt('');
+      const badEmail = await attempt('pas-un-email');
+      const goodEmail = await attempt('client@test.com');
+      return { noEmail, badEmail, goodEmail };
+    }, { date: TEST_DATE });
+    assert(emailFront.noEmail.posts === 0 && /email requis/i.test(emailFront.noEmail.error), `sans email : aucun POST + message clair ("${emailFront.noEmail.error}")`);
+    assert(emailFront.badEmail.posts === 0 && /email invalide/i.test(emailFront.badEmail.error), `email mal formé : refusé + message ("${emailFront.badEmail.error}")`);
+    assert(emailFront.goodEmail.posts === 1, `email valide : la réservation part (1 POST, obtenu ${emailFront.goodEmail.posts})`);
+
+    // ============ CHANTIER 4 — « Plus d'options » repensé + email en essentiel ============
+    console.log('\n[CHANTIER 4] Plus d\'options structuré + email remonté en champ essentiel');
+    const options = await page.evaluate(({ date }) => {
+      openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
+      quickBookState.moreOpen = false;
+      renderQuickBook();
+      const modal = document.querySelector('#quickBookOverlay .qb-modal');
+      const toggle = document.querySelector('.qb-more-toggle');
+      // Bloc essentiel = tout ce qui précède le bouton « Plus d'options ».
+      const essentialHtml = modal.innerHTML.split(toggle.outerHTML)[0];
+      const emailInEssential = /type="email"[^>]*required/i.test(essentialHtml);
+      const toggleLabel = toggle.textContent.trim();
+      quickBookState.moreOpen = true;
+      renderQuickBook();
+      const blockLabels = [...document.querySelectorAll('#quickBookOverlay .blk-label')].map((el) => el.textContent.trim());
+      const helps = [...document.querySelectorAll('#quickBookOverlay .qb-block-help')].map((el) => el.textContent.trim());
+      // Région « avancée » = tout ce qui suit le bouton « Plus d'options ».
+      const toggle2 = document.querySelector('.qb-more-toggle');
+      const advancedRegion = document.querySelector('#quickBookOverlay .qb-modal').innerHTML.split(toggle2.outerHTML)[1] || '';
+      const advancedHasEmail = /type="email"/i.test(advancedRegion);
+      const hasNotesTextarea = Boolean(document.querySelector('#quickBookOverlay textarea'));
+      return { emailInEssential, toggleLabel, blockLabels, helps, advancedHasEmail, hasNotesTextarea };
+    }, { date: TEST_DATE });
+    assert(options.emailInEssential, 'l\'email est un champ ESSENTIEL requis (hors « Plus d\'options »)');
+    assert(!/email/i.test(options.toggleLabel), `le libellé du repli ne mentionne plus « email » ("${options.toggleLabel}")`);
+    assert(options.blockLabels.some((l) => /Créneau & disponibilité/i.test(l)), `section « Créneau & disponibilité » présente (${options.blockLabels.join(' | ')})`);
+    assert(options.blockLabels.some((l) => /Durée & pistes/i.test(l)), 'section « Durée & pistes » présente et étiquetée');
+    assert(options.blockLabels.some((l) => /Notes internes/i.test(l)), 'section « Notes internes » présente et étiquetée');
+    assert(options.helps.length >= 3, `chaque section porte une aide courte (${options.helps.length} aides)`);
+    assert(!options.advancedHasEmail, 'l\'email n\'est plus noyé dans « Plus d\'options »');
+    assert(options.hasNotesTextarea, 'les notes internes sont saisissables dans « Plus d\'options »');
 
     assert(pageErrors.length === 0, `aucune erreur JS pendant le test (${pageErrors.join(' | ') || 'RAS'})`);
     console.log('\nreservation-bugs-test-ok');

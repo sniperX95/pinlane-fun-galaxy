@@ -1772,6 +1772,13 @@ function scheduleRemoteSync() {
       scheduleRemoteSync();
       return;
     }
+    // Onglet caché : on ne consomme AUCUN data transfer Neon (le timer reste armé
+    // mais ne fait pas d'aller-retour). Au retour, le handler visibilitychange
+    // déclenche un fetch différentiel immédiat (If-None-Match => 304 vide si RAS).
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      scheduleRemoteSync();
+      return;
+    }
     // Le mode client (parcours public) n'a pas de session staff : il ne doit
     // PAS interroger les endpoints protégés (staff-state → 401). Ses créneaux
     // sont chargés à la demande via public-availability. On arrête donc la
@@ -10334,6 +10341,36 @@ function getPlanningVisibleReservations(view = getStaffResourceView()) {
   return reservations;
 }
 
+// Recherche planning/liste unifiée. Root cause du bug : les champs de recherche
+// n'appelaient que renderTable() — le PLANNING (grille) et le planning Laser ne
+// se re-filtraient jamais à la frappe (il fallait recharger), et l'effacement ne
+// re-remplissait pas la grille (elle restait figée). On centralise ici : un seul
+// state.searchTerm, on synchronise les champs jumeaux (bowling/laser/liste) sans
+// voler le focus, puis on re-render planning + planning laser + liste. Débounce
+// léger pour rester fluide à la frappe ; effacement = ré-affichage immédiat.
+let staffSearchDebounceTimer = null;
+function applyStaffSearch(value, opts = {}) {
+  state.searchTerm = value;
+  ['searchInput', 'planningSearchInput', 'laserPlanningSearchInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el !== document.activeElement && el.value !== value) el.value = value;
+  });
+  const run = () => {
+    save();
+    if (state.view !== 'staff') return;
+    renderPlanning();
+    renderLaserPlanning();
+    renderTable();
+  };
+  clearTimeout(staffSearchDebounceTimer);
+  // Effacer (champ vide) = ré-affichage instantané du planning complet, sans délai.
+  if (opts.immediate || !String(value || '').trim()) {
+    run();
+    return;
+  }
+  staffSearchDebounceTimer = setTimeout(run, 120);
+}
+
 function closeStaffFloatingMenus() {
   document.querySelectorAll('.staff-action-popover').forEach(menu => menu.remove());
 }
@@ -10799,7 +10836,9 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const planningSub = document.getElementById('planningSub');
   if (planningSub) planningSub.textContent = `${bowlingReservations.length} réservation${bowlingReservations.length > 1 ? 's' : ''} bowling • ${bowlingPlayers} joueurs • ${planningWindow.closed ? 'centre fermé' : planningWindow.label}`;
   const planningSearchInput = document.getElementById('planningSearchInput');
-  if (planningSearchInput) planningSearchInput.value = state.searchTerm || '';
+  if (planningSearchInput && planningSearchInput !== document.activeElement) planningSearchInput.value = state.searchTerm || '';
+  const laserPlanningSearchInput = document.getElementById('laserPlanningSearchInput');
+  if (laserPlanningSearchInput && laserPlanningSearchInput !== document.activeElement) laserPlanningSearchInput.value = state.searchTerm || '';
   document.getElementById('staffTabAll')?.classList.toggle('active', view === 'all');
   document.getElementById('staffTabBowling')?.classList.toggle('active', view === 'bowling');
   document.getElementById('staffTabLaser')?.classList.toggle('active', view === 'laser');
@@ -12246,11 +12285,19 @@ function deriveQuickBookContext(prefill = {}) {
   return { source, known };
 }
 
+// Email obligatoire côté staff (confirmations/rappels partent par mail). Format
+// simple mais robuste : une @ entourée de texte sans espace, un point dans le
+// domaine. Réutilisé par renderQuickBook (champ essentiel) et saveQuickBook.
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
 function createQuickBookState(prefill = {}) {
   return {
     name: prefill.name || '',
     phone: prefill.phone ? normalizePhoneInput(prefill.phone) : '+32 ',
     email: prefill.email || '',
+    notes: prefill.notes || '',
     date: prefill.date || state.currentDate || todayStr(),
     startTime: prefill.startTime || '',
     pax: prefill.pax || 4,
@@ -12723,6 +12770,16 @@ function renderQuickBook() {
   );
   const showFormuleGrid = quickBookState.type === 'formule' && (!quickFieldKnown('formule') || !formule);
   const manualLanesShort = needsLanes && !quickBookState.autoAssign && quickBookState.lanes.length < requiredCount;
+  // Email = champ ESSENTIEL requis (comme nom/tél). On le montre dans le bloc
+  // client quand celui-ci est saisi ; s'il est déjà connu mais sans email valide,
+  // on affiche un mini-bloc dédié pour ne jamais bloquer la création plus tard.
+  const emailValid = isValidEmail(quickBookState.email);
+  const emailInputHtml = `
+    <div>
+      <label class="qb-mini-label">Email <span class="qb-req">obligatoire</span></label>
+      <input class="qb-input ${quickBookState.email && !emailValid ? 'qb-input-invalid' : ''}" type="email" required value="${escapeHtml(quickBookState.email)}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
+      ${quickBookState.email && !emailValid ? '<div class="qb-field-note danger">Format email invalide.</div>' : '<div class="qb-field-note">Sert aux confirmations et rappels automatiques.</div>'}
+    </div>`;
 
   // Rappel des acquis du contexte : affichés, jamais redemandés, modifiables.
   const chips = [];
@@ -12841,7 +12898,8 @@ function renderQuickBook() {
   // « Plus d'options » : toutes les capacités avancées restent là, repliées.
   const advancedHtml = quickBookState.moreOpen ? `
     <div class="qb-block">
-      <div class="blk-label">Créneaux et disponibilité</div>
+      <div class="blk-label">Créneau &amp; disponibilité</div>
+      <div class="qb-block-help">Horaires du centre, choix du départ et pistes libres en temps réel.</div>
       <div class="qb-snapshot-row">
         <div class="qb-snapshot">
           <div class="k">Ouverture</div>
@@ -12879,7 +12937,8 @@ function renderQuickBook() {
     </div>
 
     <div class="qb-block">
-      <div class="blk-label">Durée et pistes</div>
+      <div class="blk-label">Durée &amp; pistes</div>
+      <div class="qb-block-help">Durée de jeu et affectation des pistes (auto ou sélection manuelle).</div>
       ${quickBookState.type === 'formule' && !formule ? `
         <div class="qb-warn">Sélectionnez d'abord une formule pour voir la logique de durée et de pistes.</div>
       ` : quickBookState.type === 'laser' ? `
@@ -12935,11 +12994,9 @@ function renderQuickBook() {
     </div>
 
     <div class="qb-block">
-      <div class="blk-label">Client — détail</div>
-      <div>
-        <label class="qb-mini-label">Email</label>
-        <input class="qb-input" type="email" value="${quickBookState.email}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
-      </div>
+      <div class="blk-label">Notes internes</div>
+      <div class="qb-block-help">Visible par le staff uniquement — jamais envoyé au client.</div>
+      <textarea class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. anniversaire, gâteau à prévoir, paiement à l'arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
     </div>
   ` : '';
 
@@ -12964,13 +13021,21 @@ function renderQuickBook() {
           <div class="blk-label">Client</div>
           <div class="qb-row two">
             <div>
-              <label class="qb-mini-label">Nom</label>
+              <label class="qb-mini-label">Nom <span class="qb-req">obligatoire</span></label>
               <input class="qb-input" value="${quickBookState.name}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
             </div>
             <div>
-              <label class="qb-mini-label">Téléphone</label>
+              <label class="qb-mini-label">Téléphone <span class="qb-req">obligatoire</span></label>
               <input class="qb-input" value="${quickBookState.phone}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
             </div>
+          </div>
+          <div class="qb-row" style="margin-top:12px;">
+            ${emailInputHtml}
+          </div>
+          ` : !emailValid ? `
+          <div class="blk-label">Contact client — email requis</div>
+          <div class="qb-row">
+            ${emailInputHtml}
           </div>
           ` : ''}
           ${showType ? `
@@ -12994,7 +13059,7 @@ function renderQuickBook() {
         ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
 
         <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
-          ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options — créneaux, pistes, durée, email'}
+          ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options — créneau, pistes, durée, notes'}
         </button>
 
         ${advancedHtml}
@@ -13037,7 +13102,11 @@ async function saveQuickBook() {
     renderQuickBook();
     toast(message);
   };
+  const email = quickBookState.email.trim();
+  quickBookState.email = email;
   if (!name || !phone) { failQuickBook('Nom et téléphone requis.'); return; }
+  if (!email) { failQuickBook('Email requis pour la réservation.'); return; }
+  if (!isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }
   if (!quickBookState.startTime) { failQuickBook('Choisissez une heure.'); return; }
   const formule = quickBookState.type === 'formule' ? FORMULES.find(x => x.id === quickBookState.formuleId) : null;
   if (quickBookState.type === 'formule' && !formule) { failQuickBook('Sélectionnez une formule.'); return; }
@@ -13079,7 +13148,8 @@ async function saveQuickBook() {
   const reservation = {
     name,
     phone,
-    email: quickBookState.email.trim(),
+    email,
+    notes: (quickBookState.notes || '').trim(),
     date: quickBookState.date,
     startTime: quickBookState.startTime,
     duration,
@@ -13131,8 +13201,7 @@ function toast(msg) {
 
 document.addEventListener('input', e => {
   if (e.target.id === 'searchInput') {
-    state.searchTerm = e.target.value;
-    renderTable();
+    applyStaffSearch(e.target.value);
   }
 });
 

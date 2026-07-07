@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
-    request = normalizeReservationRequest(body, { channel: 'public' });
+    request = normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
     const ops = await prepareReservationOps(request, 'public');
     if (ops.blockOnlineConfirmation) {
       const alternatives = await findReservationAlternatives(request, {

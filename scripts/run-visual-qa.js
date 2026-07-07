@@ -1458,6 +1458,7 @@ async function main() {
         hasPaxInput: Boolean(modal.querySelector('input[type="number"]')),
         hasNameInput: Boolean(modal.querySelector('input[placeholder="Marie Dupont"]')),
         hasEmailInput: Boolean(modal.querySelector('input[type="email"]')),
+        hasNotesTextarea: Boolean(modal.querySelector('textarea')),
         hasSlotStrip: Boolean(modal.querySelector('.qb-slot-strip')),
         hasLaneGrid: Boolean(modal.querySelector('.qb-lane-grid')),
         hasFormuleGrid: Boolean(modal.querySelector('.qb-formule-grid')),
@@ -1483,9 +1484,9 @@ async function main() {
     const qbGeneric = await readQuickBook();
     assert(qbGeneric, 'Réservation rapide générique : la modale doit s ouvrir.');
     assert(qbGeneric.title === 'Réservation rapide', `Générique : titre attendu « Réservation rapide » (reçu ${qbGeneric.title}).`);
-    assert(qbGeneric.interactive <= 19, `Générique : max 19 éléments interactifs visibles à l ouverture — moitié de l ancienne modale (reçu ${qbGeneric.interactive}).`);
-    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput, 'Générique : les essentiels (activité, date, heure, joueurs, contact) doivent être visibles.');
-    assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasEmailInput, 'Générique : créneaux, pistes et email doivent être repliés à l ouverture.');
+    assert(qbGeneric.interactive <= 20, `Générique : max 20 éléments interactifs visibles à l ouverture — proche de la moitié de l ancienne modale (reçu ${qbGeneric.interactive}).`);
+    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles — email désormais requis à côté du contact.');
+    assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea, 'Générique : créneaux, pistes et notes internes doivent être repliés à l ouverture (email reste essentiel, visible).');
     assert(qbGeneric.moreToggle, 'Générique : le bouton « Plus d options » est requis.');
     await screenshot(page, 'quickbook-generic');
     issues.push(...await collectIssues(page, 'quickbook-generic'));
@@ -1493,7 +1494,7 @@ async function main() {
     await page.evaluate(() => toggleQuickBookMore());
     await page.waitForTimeout(250);
     const qbGenericMore = await readQuickBook();
-    assert(qbGenericMore.hasSlotStrip && qbGenericMore.hasLaneGrid && qbGenericMore.hasEmailInput && qbGenericMore.durBtns >= 4, 'Générique déplié : créneaux, grille pistes, durée et email doivent réapparaître.');
+    assert(qbGenericMore.hasSlotStrip && qbGenericMore.hasLaneGrid && qbGenericMore.hasNotesTextarea && qbGenericMore.durBtns >= 4, 'Générique déplié : créneaux, grille pistes, durée et notes internes doivent réapparaître.');
     await screenshot(page, 'quickbook-generic-more');
     issues.push(...await collectIssues(page, 'quickbook-generic-more'));
     await page.evaluate(() => closeQuickBook());
@@ -1506,8 +1507,8 @@ async function main() {
     assert(!qbCell.hasTypeRow && !qbCell.hasDateInput && !qbCell.hasTimeInput, 'Case planning : activité, date et heure sont acquises — ne pas les redemander.');
     assert(qbCell.chips.includes('Piste') && qbCell.chips.includes('Départ') && qbCell.chips.includes('Date'), 'Case planning : les acquis doivent être rappelés en chips.');
     assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
-    assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client, joueurs, durée.');
-    assert(qbCell.interactive <= 19, `Case planning : la variante doit rester compacte (reçu ${qbCell.interactive}).`);
+    assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasEmailInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client (nom, téléphone, email requis), joueurs, durée.');
+    assert(qbCell.interactive <= 20, `Case planning : la variante doit rester compacte (reçu ${qbCell.interactive}).`);
     await screenshot(page, 'quickbook-bowling-cell');
     issues.push(...await collectIssues(page, 'quickbook-bowling-cell'));
     // « Modifier » sur un acquis rouvre le contrôle (capacité préservée).
@@ -1520,6 +1521,7 @@ async function main() {
     await page.evaluate(async () => {
       quickBookState.name = 'QA Contexte';
       quickBookState.phone = '+32 470 11 22 33';
+      quickBookState.email = 'qa.contexte@example.test';
       await saveQuickBook();
     });
     await page.waitForTimeout(400);

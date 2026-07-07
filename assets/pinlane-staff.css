@@ -6047,6 +6047,26 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   font-size: 13px;
 }
 
+.qb-input-invalid { border-color: var(--danger); background: var(--danger-soft); }
+.qb-textarea { height: auto; min-height: 52px; padding: 8px 10px; line-height: 1.4; resize: vertical; }
+
+/* Marqueur « obligatoire » discret à côté d'un label (nom/tél/email). */
+.qb-req {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--danger);
+  vertical-align: middle;
+}
+
+/* Aide courte sous un champ ou un titre de section « Plus d'options ». */
+.qb-field-note { margin-top: 4px; font-size: 11px; color: var(--muted); }
+.qb-field-note.danger { color: var(--danger); }
+.qb-block-help { margin: -2px 0 10px; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+
 .qb-type-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
 
 .qb-type-btn {

@@ -1057,6 +1057,15 @@ let remoteSyncFailureCount = 0;
 let remoteSyncPausedUntil = 0;
 let remoteSyncLastFailure = '';
 let staffRevisionByDate = {};
+// Horodatage du dernier sync serveur réussi par (centre, date) : évite de
+// re-payer un aller-retour staff-state quand la donnée vient d'être polléé.
+let staffSyncAtByDate = {};
+
+function isDateSyncFresh(dateStr, maxAgeMs = 10000) {
+  const key = `${encodeURIComponent(getCurrentStaffCenterId())}:${dateStr}`;
+  const at = staffSyncAtByDate[key] || 0;
+  return at > 0 && (Date.now() - at) <= maxAgeMs;
+}
 let opsAdminCache = {
   communications: [],
   samples: [],
@@ -1178,10 +1187,31 @@ function upsertReservationInState(reservation) {
   const next = state.reservations.filter(r => r.id !== reservation.id);
   next.push(reservation);
   state.reservations = sortReservations(next);
+  syncReservationIntoMonthCache(reservation);
 }
 
 function removeReservationFromState(id) {
   state.reservations = state.reservations.filter(r => r.id !== id);
+  removeReservationFromMonthCache(id);
+}
+
+// Store partagé : les pages qui lisent le cache mensuel (Réservations v2,
+// Utilitaires, Clients) reflètent IMMÉDIATEMENT chaque mutation locale au lieu
+// d'attendre le bouton « Actualiser » — indispensable pour les suppressions,
+// que le merge par id ne peut pas faire disparaître du cache.
+function syncReservationIntoMonthCache(reservation) {
+  if (!staffReservationsDataCache.loaded || !reservation) return;
+  const rows = (staffReservationsDataCache.reservations || []).filter(r => String(r.id) !== String(reservation.id));
+  rows.push(reservation);
+  staffReservationsDataCache = { ...staffReservationsDataCache, reservations: rows };
+}
+
+function removeReservationFromMonthCache(id) {
+  if (!staffReservationsDataCache.loaded) return;
+  staffReservationsDataCache = {
+    ...staffReservationsDataCache,
+    reservations: (staffReservationsDataCache.reservations || []).filter(r => String(r.id) !== String(id))
+  };
 }
 
 function hydrateSelectedReservation() {
@@ -1650,6 +1680,7 @@ async function syncDateReservations(dateStr, opts = {}) {
       headers: syncHeaders
     });
     if (response.status === 304) {
+      staffSyncAtByDate[revisionKey] = Date.now();
       markRemoteSyncSuccess();
       return false;
     }
@@ -1662,6 +1693,7 @@ async function syncDateReservations(dateStr, opts = {}) {
     const nextRevision = response.headers.get('ETag') || payload.revision || '';
     const changed = nextRevision !== knownRevision;
     staffRevisionByDate[revisionKey] = nextRevision;
+    staffSyncAtByDate[revisionKey] = Date.now();
     replaceReservationsForDate(dateStr, payload.reservations || []);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
     hydrateSelectedReservation();
@@ -12909,7 +12941,12 @@ async function saveQuickBook() {
   const formule = quickBookState.type === 'formule' ? FORMULES.find(x => x.id === quickBookState.formuleId) : null;
   if (quickBookState.type === 'formule' && !formule) { failQuickBook('Sélectionnez une formule.'); return; }
 
-  await syncDateReservations(quickBookState.date, { silent: true, skipRender: true });
+  // Pas d'aller-retour réseau superflu sur le chemin de création : le poll
+  // (4 s) garde la date courante fraîche. On ne re-synchronise ici que si la
+  // donnée locale est vieille (> 10 s) — le serveur re-valide de toute façon.
+  if (!isDateSyncFresh(quickBookState.date)) {
+    await syncDateReservations(quickBookState.date, { silent: true, skipRender: true });
+  }
   syncQuickBookDuration();
   const duration = Number(quickBookState.duration);
   const totalDuration = Number(quickBookState.totalDuration || duration);
@@ -12969,6 +13006,10 @@ async function saveQuickBook() {
       }))
     });
     upsertReservationInState(payload.reservation);
+    // Protège la création contre un snapshot staff-state parti AVANT le commit
+    // serveur et appliqué APRÈS : sans cette entrée, replaceReservationsForDate
+    // retirerait la résa fraîchement créée (flicker) jusqu'au poll suivant.
+    markReservationMutation(payload.reservation.id, payload.reservation, ['status', 'startTime', 'lanes']);
     save();
     closeQuickBook();
     renderStaff();
@@ -13205,6 +13246,17 @@ async function bootstrapApp() {
 }
 
 bootstrapApp();
+
+// Fraîcheur multi-postes sobre : au retour sur l'onglet (changement de poste,
+// réveil de tablette), une synchro différentielle immédiate au lieu d'attendre
+// le prochain tick du poll. Coût quasi nul : If-None-Match => 304 vide si rien
+// n'a changé côté serveur.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if ((state.view === 'staff' || state.view === 'admin') && hasSavedAuth()) {
+    syncDateReservations(state.currentDate, { silent: true });
+  }
+});
 
 function applyInitialRouteFromHash() {
   const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();

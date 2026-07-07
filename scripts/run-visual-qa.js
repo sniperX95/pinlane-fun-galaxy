@@ -778,8 +778,8 @@ async function main() {
     await page.waitForTimeout(250);
     const autumnState = await page.evaluate(() => ({
       groupAlert: Boolean(document.querySelector('.formule-group-alert')),
-      f1Disabled: Array.from(document.querySelectorAll('#formuleGrid .formule-row')).some(row => row.textContent.includes('FORMULE 1') && row.classList.contains('disabled')),
-      repeatedNote: Array.from(document.querySelectorAll('#formuleGrid .formule-row')).filter(row => row.textContent.includes('Non valable durant')).length,
+      f1Disabled: Array.from(document.querySelectorAll('#formuleGrid .formule-card')).some(row => row.textContent.includes('FORMULE 1') && row.classList.contains('disabled')),
+      repeatedNote: Array.from(document.querySelectorAll('#formuleGrid .formule-card')).filter(row => row.textContent.includes('Non valable durant')).length,
     }));
     assert(autumnState.groupAlert, 'Congé d automne : la bannière famille vacances/férié doit apparaître.');
     assert(autumnState.f1Disabled, 'Congé d automne : les formules anniversaires doivent être désactivées.');
@@ -795,7 +795,7 @@ async function main() {
     await page.waitForTimeout(250);
     const summerState = await page.evaluate(() => ({
       groupAlert: Boolean(document.querySelector('.formule-group-alert')),
-      f1Enabled: Array.from(document.querySelectorAll('#formuleGrid .formule-row')).some(row => row.textContent.includes('FORMULE 1') && !row.classList.contains('disabled')),
+      f1Enabled: Array.from(document.querySelectorAll('#formuleGrid .formule-card')).some(row => row.textContent.includes('FORMULE 1') && !row.classList.contains('disabled')),
       schedHint: document.getElementById('schedHint').textContent,
     }));
     assert(!summerState.groupAlert, 'Grandes vacances : pas de blocage des formules anniversaires.');

@@ -250,12 +250,24 @@ function getFormulaActivityCandidates({ activityId, formulaDoc, formula, pax, sn
     .filter(Boolean);
 }
 
-function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected }) {
+function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected, openMinute = 0 }) {
   const selectedByActivity = new Map(selected.map((item) => [item.activityId, item]));
-  const firstSelected = selected.reduce((min, item) => Math.min(min, item.start), Infinity);
-  if (!Number.isFinite(firstSelected)) return null;
+  // L'accueil est ancré avant la PREMIÈRE activité de l'ordre demandé, pas avant
+  // la première activité horodatée : si le client place des activités libres
+  // (minigolf, arcades…) avant un bloc fixe, elles doivent tenir entre l'arrivée
+  // et ce bloc. Sans ce décalage, le curseur dépassait l'heure fixe choisie et
+  // tous les scénarios de l'ordre personnalisé étaient rejetés à tort.
+  const firstFixedIndex = order.findIndex((activityId) => selectedByActivity.has(activityId));
+  if (firstFixedIndex < 0) return null;
+  let preOffsetMinutes = 0;
+  for (let index = 0; index < firstFixedIndex; index += 1) {
+    preOffsetMinutes += getFormulaStepDurationMinutes(formulaDoc, formula, order[index]) + FORMULA_TRANSITION_MINUTES;
+  }
+  const firstFixedStart = selectedByActivity.get(order[firstFixedIndex]).start;
+  const planStart = firstFixedStart - preOffsetMinutes - FORMULA_ARRIVAL_MINUTES;
+  if (planStart < openMinute) return null;
 
-  let cursor = Math.max(0, firstSelected - FORMULA_ARRIVAL_MINUTES);
+  let cursor = planStart;
   const timeline = [{
     type: 'service',
     label: 'Accueil / vérification groupe',
@@ -409,19 +421,28 @@ function buildFlexibleFormulaSlots({ centerId, date, formula, formulaDoc, pax, s
   });
   if (timedOrder.some((activityId) => !candidates[activityId]?.length)) return [];
 
+  // Cap PAR heure de départ de la première activité horodatée (et non global) :
+  // un plafond global tronquait l'exploration et faisait disparaître toutes les
+  // heures d'arrivée tardives quand le produit cartésien était large.
+  const MAX_SCENARIOS_TOTAL = 240;
+  const MAX_VARIANTS_PER_FIRST_START = 6;
   const selected = [];
   const scenarios = [];
+  let variantsForCurrentFirst = 0;
   const walk = (index) => {
-    if (scenarios.length >= 180) return;
+    if (scenarios.length >= MAX_SCENARIOS_TOTAL) return;
+    if (index > 0 && variantsForCurrentFirst >= MAX_VARIANTS_PER_FIRST_START) return;
     if (index >= timedOrder.length) {
-      const scenario = buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected: [...selected] });
+      const scenario = buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected: [...selected], openMinute });
       if (!scenario) return;
       if (scenario.end > closeMinute) return;
       scenarios.push(scenario);
+      variantsForCurrentFirst += 1;
       return;
     }
     const activityId = timedOrder[index];
     candidates[activityId].forEach((candidate) => {
+      if (index === 0) variantsForCurrentFirst = 0;
       selected.push(candidate);
       walk(index + 1);
       selected.pop();
@@ -775,7 +796,11 @@ module.exports = async (req, res) => {
 
     if (type === 'formule') {
       const formulaDoc = getFormula(formuleId);
-      const hasManualFormulaChoice = activityOrder.length > 0 || Object.values(preferredTimes || {}).some(Boolean);
+      // Sans activité horodatée (bowling/laser/table), l'ordre personnalisé n'a
+      // aucune contrainte de créneau : on retombe sur le compositeur automatique
+      // plutôt que de renvoyer à tort « aucune combinaison ».
+      const hasManualFormulaChoice = (activityOrder.length > 0 || Object.values(preferredTimes || {}).some(Boolean))
+        && getFormulaTimedActivityOrder(formulaDoc, activityOrder).length > 0;
       if (hasManualFormulaChoice) {
         const flexibleSlots = buildFlexibleFormulaSlots({
           centerId,

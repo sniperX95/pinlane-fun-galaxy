@@ -2630,7 +2630,7 @@ function renderFormulaPreferences() {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   const isManual = preference.formulaMode === 'manual';
   noteEl.textContent = isManual
-    ? 'Vous choisissez l’ordre, puis les heures compatibles activité par activité.'
+    ? 'Vous choisissez l’ordre ; à l’étape suivante, choisissez une heure d’arrivée qui le respecte.'
     : 'Les boissons et cruches restent libres sur place.';
   const path = order.map((activityId, index) => `
     ${index > 0 ? '<span>puis</span>' : ''}
@@ -2677,7 +2677,7 @@ function renderFormulaPreferences() {
       <span>OK</span>
       <div>
         <strong>Le système garde la formule flexible.</strong>
-        <small>À l’étape suivante, vous verrez les meilleurs programmes disponibles et vous pourrez choisir celui qui vous convient.</small>
+        <small>À l’étape suivante, choisissez simplement votre heure d’arrivée : le programme complet s’affiche automatiquement.</small>
       </div>
     </div>`}`;
 }
@@ -2744,6 +2744,7 @@ function setFormulaPlanningMode(mode) {
   });
   state.booking.startTime = '';
   state.booking.opsPlan = null;
+  resetFormulaProgramChoice();
   renderFormulaPreferences();
   renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
   save();
@@ -2954,7 +2955,7 @@ async function fetchSlots(options = {}) {
     if (requestId !== slotFetchRequestId) return;
 
     state.availableSlots = filterPastSlotsForDate(payload.slots || [], state.booking.date);
-    reconcileFormulaPreferredTimes(formule);
+    resetFormulaProgramChoice();
     state.booking.laneCount = Number(payload.laneCount || 0);
     state.booking.duration = Number(payload.duration || state.booking.duration || 0);
     state.booking.totalDuration = state.booking.type === 'laser'
@@ -2983,94 +2984,6 @@ function describeSlotPlan(plan) {
   return bits.join(' • ');
 }
 
-function uniquePlanTimes(items = []) {
-  return [...new Set(items.map(item => item.startTime).filter(Boolean))];
-}
-
-function compactPlanTimes(items = []) {
-  const times = uniquePlanTimes(items);
-  if (!times.length) return '';
-  if (times.length <= 2) return times.join(' / ');
-  return `${times[0]} + ${times.length - 1} départs`;
-}
-
-function summarizePlanEntitlements(plan) {
-  const entitlements = plan?.entitlements || {};
-  const fixed = Array.isArray(entitlements.fixedCommitments) ? entitlements.fixedCommitments : [];
-  const flexible = Array.isArray(entitlements.flexibleEntitlements) ? entitlements.flexibleEntitlements : [];
-  const fixedLabels = fixed
-    .map(item => {
-      const label = item.type === 'bowling' ? 'Bowling' : item.type === 'laser_game' ? 'Laser' : item.label;
-      return item.startTime ? `${label} ${item.startTime}` : label;
-    })
-    .filter(Boolean);
-  const flexibleLabels = [...new Set(flexible.map(item => item.label || item.type).filter(Boolean))];
-  return {
-    fixed,
-    flexible,
-    fixedText: fixedLabels.length ? fixedLabels.slice(0, 3).join(' · ') : '',
-    flexibleText: flexibleLabels.length ? flexibleLabels.slice(0, 3).join(' · ') : '',
-  };
-}
-
-function renderFormulaCommitment(plan) {
-  const summary = summarizePlanEntitlements(plan);
-  const rows = [];
-  if (summary.fixedText) rows.push(`<span class="formula-commitment-row"><b>Réservé</b><span>${escapeHtml(summary.fixedText)}</span></span>`);
-  if (summary.flexibleText) rows.push(`<span class="formula-commitment-row"><b>Libre sur place</b><span>${escapeHtml(summary.flexibleText)}</span></span>`);
-  const note = Array.isArray(plan?.customerCommitment) && plan.customerCommitment.length
-    ? `<span class="formula-customer-note">${escapeHtml(plan.customerCommitment[0])}</span>`
-    : '';
-  if (!rows.length && !note) return '';
-  return `<span class="formula-commitment">${rows.join('')}${note}</span>`;
-}
-
-function renderFormulaSlotPlan(slot) {
-  const plan = slot?.opsPlan;
-  if (!plan) return '';
-  const timeline = Array.isArray(plan.timeline) ? plan.timeline : [];
-  const bowlingItems = timeline.filter(item => item.activityId === 'bowling');
-  const laserItems = timeline.filter(item => item.activityId === 'laser_game');
-  const routeItems = [];
-  if (bowlingItems.length) {
-    const first = bowlingItems[0];
-    routeItems.push({
-      id: 'bowling',
-      label: 'Bowling',
-      start: timeToNum(first.startTime),
-      value: `${first.startTime}-${first.endTime}`,
-    });
-  }
-  if (laserItems.length) {
-    routeItems.push({
-      id: 'laser_game',
-      label: 'Laser Game',
-      start: Math.min(...laserItems.map(item => timeToNum(item.startTime))),
-      value: compactPlanTimes(laserItems),
-    });
-  }
-  routeItems.sort((left, right) => left.start - right.start);
-  const meta = [];
-  if (plan.endTime) meta.push(`Fin ${plan.endTime}`);
-  const sharing = plan.laserSharing;
-  if (sharing?.splitGroup) meta.push(`${sharing.waveCount || 1} départs Laser`);
-  else if (sharing?.mayShare) meta.push('Laser partageable');
-  const route = routeItems.length
-    ? routeItems.map((item, index) => `
-        <span class="formula-route-item ${escapeHtml(item.id)}">
-          <small>${escapeHtml(item.label)}</small>
-          <strong>${escapeHtml(item.value)}</strong>
-        </span>
-        ${index < routeItems.length - 1 ? '<span class="formula-route-arrow">→</span>' : ''}
-      `).join('')
-    : `<span class="formula-route-item"><small>Plan</small><strong>${escapeHtml(describeSlotPlan(plan) || slot.time)}</strong></span>`;
-  return `<span class="slot-plan">
-    <span class="formula-route">${route}</span>
-    ${meta.length ? `<span class="formula-plan-meta">${escapeHtml(meta.join(' • '))}</span>` : ''}
-    ${renderFormulaCommitment(plan)}
-  </span>`;
-}
-
 function getFormulaSlotActivityTime(slot, activityId) {
   const plan = slot?.opsPlan || {};
   if (activityId === 'bowling' && plan.firstBowlingTime) return plan.firstBowlingTime;
@@ -3084,15 +2997,6 @@ function getFormulaSlotActivityTimes(slot, activityId) {
     .filter(step => step.activityId === activityId)
     .map(step => step.startTime)
     .filter(Boolean);
-}
-
-function getFormulaSlotActivityTimeLabel(slot, activityId) {
-  const items = (slot?.opsPlan?.timeline || []).filter(step => step.activityId === activityId);
-  if (!items.length) return '';
-  if (activityId === 'laser_game') return compactPlanTimes(items);
-  const first = items[0];
-  if (first.endTime && ['bowling', 'party_table'].includes(activityId)) return `${first.startTime}-${first.endTime}`;
-  return first.startTime || '';
 }
 
 function getFormulaSlotActivitySequence(slot, formule) {
@@ -3118,60 +3022,12 @@ function slotMatchesFormulaPreferredTimes(slot, preferredTimes = {}) {
   });
 }
 
-function getFormulaTimeOptions(slots, activityId) {
-  return [...new Set((slots || []).map(slot => getFormulaSlotActivityTime(slot, activityId)).filter(Boolean))]
-    .sort((left, right) => timeToNum(left) - timeToNum(right));
-}
-
 function slotMatchesFormulaTimeFilters(slot, formule) {
   if (!formule) return true;
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   if (preference.formulaMode !== 'manual') return true;
   if (!slotMatchesFormulaActivityOrder(slot, formule)) return false;
-  const orderFilter = preference.orderFilter || 'all';
-  if (['bowling', 'laser_game'].includes(orderFilter) && getFormulaSlotOrderKey(slot) !== orderFilter) return false;
   return slotMatchesFormulaPreferredTimes(slot, preference.preferredTimes || {});
-}
-
-function reconcileFormulaPreferredTimes(formule) {
-  if (!formule) return;
-  state.booking.preference = createDefaultFormulaPreference(state.booking.preference || {});
-  if (state.booking.preference.formulaMode !== 'manual') return;
-  const preferred = state.booking.preference.preferredTimes || {};
-  getFormulaTimedActivityOrder(formule).forEach((activityId) => {
-    const times = getFormulaTimeOptions(state.availableSlots, activityId);
-    if (preferred[activityId] && !times.includes(preferred[activityId])) preferred[activityId] = '';
-  });
-  state.booking.preference.preferredTimes = preferred;
-}
-
-function setFormulaPreferredTime(activityId, value) {
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
-  const displayOrder = formule ? getFormulaActivityOrder(formule) : [];
-  const order = formule ? getFormulaTimedActivityOrder(formule) : [];
-  const safeActivity = order.includes(activityId) ? activityId : activityId === 'laser_game' ? 'laser_game' : 'bowling';
-  const activityIndex = order.indexOf(safeActivity);
-  const previousTimes = state.booking.preference?.preferredTimes || {};
-  const nextTimes = {};
-  order.forEach((id, index) => {
-    if (index < activityIndex && previousTimes[id]) nextTimes[id] = previousTimes[id];
-  });
-  if (value) nextTimes[safeActivity] = value;
-  state.booking.preference = createDefaultFormulaPreference({
-    ...(state.booking.preference || {}),
-    formulaMode: 'manual',
-    activityOrder: displayOrder,
-    firstActivityId: displayOrder[0] || safeActivity,
-    preferredTimes: nextTimes,
-  });
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
-  renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
-  save();
-}
-
-function editFormulaActivityTime(activityId) {
-  setFormulaPreferredTime(activityId, '');
 }
 
 function getFormulaSlotOrderKey(slot) {
@@ -3181,149 +3037,184 @@ function getFormulaSlotOrderKey(slot) {
   return timeToNum(bowlingTime) <= timeToNum(laserTime) ? 'bowling' : 'laser_game';
 }
 
-function setFormulaOrderFilter(order) {
-  const safeOrder = ['bowling', 'laser_game'].includes(order) ? order : 'all';
-  state.booking.preference = createDefaultFormulaPreference({
-    ...(state.booking.preference || {}),
-    formulaMode: 'manual',
-    firstActivityId: safeOrder === 'all' ? '' : safeOrder,
-    orderFilter: safeOrder,
-    preferredTimes: { bowling: '', laser_game: '' },
+// --- Picker formule « heure d'arrivée d'abord » -----------------------------
+// Le client ne compare pas des dizaines d'enchaînements : il choisit UNE heure
+// d'arrivée (chips scannables), puis voit LE programme composé pour cette
+// arrivée (timeline Réservé / Libre). S'il existe plusieurs variantes pour la
+// même arrivée (heures de laser/bowling différentes), un choix secondaire
+// compact propose au plus 3 options espacées. Fonctionne pour les deux modes :
+// « Fun Galaxy organise » et « Je choisis » (les créneaux serveur respectent
+// alors l'ordre d'activités demandé).
+let formulaArrivalChoice = '';
+let formulaVariantKey = '';
+
+function resetFormulaProgramChoice() {
+  formulaArrivalChoice = '';
+  formulaVariantKey = '';
+}
+
+function getFormulaSlotVariantKey(slot, formule) {
+  return getFormulaTimedActivityOrder(formule)
+    .map(activityId => `${activityId}:${getFormulaSlotActivityTimes(slot, activityId).join('+')}`)
+    .join('|') || `end:${slot?.opsPlan?.endTime || slot.time}`;
+}
+
+function getFormulaVariantLabel(slot, formule) {
+  const shortLabels = { bowling: 'Bowling', laser_game: 'Laser', party_table: 'Table' };
+  const bits = getFormulaTimedActivityOrder(formule)
+    .map(activityId => {
+      const time = getFormulaSlotActivityTime(slot, activityId);
+      return time ? `${shortLabels[activityId] || activityId} ${time}` : '';
+    })
+    .filter(Boolean);
+  return bits.join(' · ') || `Fin ${slot?.opsPlan?.endTime || ''}`.trim();
+}
+
+function getFormulaArrivalGroups(formule) {
+  const groups = new Map();
+  (state.availableSlots || []).forEach((slot, index) => {
+    if (!slotMatchesFormulaTimeFilters(slot, formule)) return;
+    const variantKey = getFormulaSlotVariantKey(slot, formule);
+    if (!groups.has(slot.time)) groups.set(slot.time, new Map());
+    const variants = groups.get(slot.time);
+    if (!variants.has(variantKey)) {
+      variants.set(variantKey, { slot, index, variantKey, label: getFormulaVariantLabel(slot, formule) });
+    }
   });
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
+  return [...groups.entries()]
+    .map(([time, variantMap]) => {
+      const all = [...variantMap.values()];
+      // Variantes espacées plutôt que 5 options à 15 min d'écart.
+      const variants = all.length > 3
+        ? [all[0], all[Math.floor(all.length / 2)], all[all.length - 1]]
+        : all;
+      return { time, variants, totalVariants: all.length };
+    })
+    .sort((left, right) => timeToNum(left.time) - timeToNum(right.time));
+}
+
+function setFormulaArrivalChoice(time) {
+  formulaArrivalChoice = time;
+  formulaVariantKey = '';
   renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
-  save();
 }
 
-function clearFormulaPreferredTimes() {
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
-  state.booking.preference = createDefaultFormulaPreference({
-    ...(state.booking.preference || {}),
-    formulaMode: 'manual',
-    activityOrder: formule ? getFormulaActivityOrder(formule) : state.booking.preference?.activityOrder || [],
-    firstActivityId: formule ? getFormulaActivityOrder(formule)[0] || '' : '',
-    orderFilter: 'all',
-    preferredTimes: {},
-  });
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
+function setFormulaVariantChoice(variantKey) {
+  formulaVariantKey = variantKey;
   renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
-  save();
 }
 
-function getFormulaPlannerMatchingSlots(formule, preferredTimes = state.booking.preference?.preferredTimes || {}) {
-  return (state.availableSlots || [])
-    .filter(slot => slotMatchesFormulaActivityOrder(slot, formule))
-    .filter(slot => slotMatchesFormulaPreferredTimes(slot, preferredTimes));
+function useRecommendedFormulaOrder() {
+  setFormulaPlanningMode('auto');
+  fetchSlots();
 }
 
-function renderFormulaActivityPlanner(formule) {
-  const displayOrder = getFormulaActivityOrder(formule);
-  const order = getFormulaTimedActivityOrder(formule);
-  const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const preferredTimes = preference.preferredTimes || {};
-  const matchingSlots = getFormulaPlannerMatchingSlots(formule, preferredTimes);
-  const activeActivity = order.find(activityId => !preferredTimes[activityId]);
-  const completed = order.filter(activityId => preferredTimes[activityId]);
-  const allChosen = order.length > 0 && !activeActivity;
+function renderFormulaProgramTimeline(slot) {
+  const plan = slot?.opsPlan;
+  if (!plan) return '';
+  const timeline = Array.isArray(plan.timeline) ? plan.timeline : [];
+  const rows = [];
+  rows.push(`
+    <div class="ftl-row">
+      <span class="ftl-dot arrival" aria-hidden="true"></span>
+      <span class="ftl-time">${escapeHtml(plan.startTime || slot.time)}</span>
+      <span class="ftl-copy"><strong>Arrivée &amp; accueil</strong></span>
+    </div>`);
+  timeline
+    .filter(step => step.type === 'activity' && step.activityId && step.activityId !== 'service_drinks')
+    .forEach((step) => {
+      const reserved = Boolean(step.critical) || ['bowling_lane', 'laser_arena', 'party_table'].includes(step.resourceType || '');
+      rows.push(`
+        <div class="ftl-row">
+          <span class="ftl-dot ${reserved ? 'reserved' : 'free'}" aria-hidden="true"></span>
+          <span class="ftl-time">${escapeHtml(step.startTime || '')}<small>${escapeHtml(step.endTime || '')}</small></span>
+          <span class="ftl-copy">
+            <strong>${escapeHtml(step.label || step.activityId)}</strong>
+            <span class="ftl-badge ${reserved ? 'reserved' : 'free'}">${reserved ? 'Réservé pour vous' : 'Libre, à votre rythme'}</span>
+          </span>
+        </div>`);
+    });
+  rows.push(`
+    <div class="ftl-row">
+      <span class="ftl-dot end" aria-hidden="true"></span>
+      <span class="ftl-time">${escapeHtml(plan.endTime || '')}</span>
+      <span class="ftl-copy"><strong>Fin du programme</strong></span>
+    </div>`);
 
-  const route = displayOrder.map((activityId, index) => {
-    const selectedTime = preferredTimes[activityId] || '';
-    const isTimed = isFormulaTimedActivity(activityId);
-    const isActive = isTimed && activeActivity === activityId;
-    return `
-      <button type="button" class="formula-route-step ${selectedTime ? 'done' : !isTimed ? 'done soft' : ''} ${isActive ? 'active' : ''}" ${selectedTime ? `onclick="editFormulaActivityTime('${activityId}')"` : 'disabled aria-disabled="true"'}>
-        <span>${index + 1}</span>
-        <strong>${escapeHtml(getFormulaActivityLabel(formule, activityId))}</strong>
-        <small>${selectedTime ? escapeHtml(selectedTime) : !isTimed ? 'Libre sur place' : isActive ? 'À choisir' : 'Ensuite'}</small>
-      </button>`;
-  }).join('');
-
-  if (allChosen) {
-    const finalSlots = matchingSlots;
-    const first = finalSlots[0];
-    const summary = first ? order.map(activityId => {
-      const label = getFormulaActivityLabel(formule, activityId);
-      const timeLabel = getFormulaSlotActivityTimeLabel(first, activityId) || preferredTimes[activityId];
-      return `<span><b>${escapeHtml(label)}</b><small>${escapeHtml(timeLabel)}</small></span>`;
-    }).join('') : '';
-    return `
-      <div class="formula-planner">
-        <div class="formula-planner-head">
-          <div>
-            <strong>Votre programme</strong>
-            <span>${finalSlots.length} combinaison${finalSlots.length > 1 ? 's' : ''} compatible${finalSlots.length > 1 ? 's' : ''} avec votre choix.</span>
-          </div>
-          <button type="button" class="formula-order-btn" onclick="clearFormulaPreferredTimes()">Recommencer</button>
-        </div>
-        <div class="formula-planner-route">${route}</div>
-        ${finalSlots.length ? `
-          <div class="formula-plan-summary">${summary}</div>
-          <button type="button" class="btn-primary formula-plan-confirm" onclick="confirmFormulaActivityPlan()">Continuer avec ce programme</button>
-        ` : `<div class="formula-time-empty">Cette combinaison n’est plus disponible. Modifiez une heure ou revenez à l’étape précédente.</div>`}
-      </div>`;
-  }
-
-  const optionSlots = getFormulaPlannerMatchingSlots(formule, preferredTimes);
-  const options = [...new Set(optionSlots.map(slot => getFormulaSlotActivityTime(slot, activeActivity)).filter(Boolean))]
-    .sort((left, right) => timeToNum(left) - timeToNum(right));
-  const optionButtons = options.map((time) => {
-    const nextTimes = { ...preferredTimes, [activeActivity]: time };
-    const compatibleCount = getFormulaPlannerMatchingSlots(formule, nextTimes).length;
-    const example = getFormulaPlannerMatchingSlots(formule, nextTimes)[0];
-    const label = example ? getFormulaSlotActivityTimeLabel(example, activeActivity) || time : time;
-    return `
-      <button type="button" class="formula-time-choice" onclick="setFormulaPreferredTime('${activeActivity}', '${time}')">
-        <strong>${escapeHtml(label)}</strong>
-        <small>${compatibleCount} programme${compatibleCount > 1 ? 's' : ''} compatible${compatibleCount > 1 ? 's' : ''}</small>
-      </button>`;
-  }).join('');
+  const footNotes = [];
+  const drinks = [...new Set(timeline.filter(step => step.activityId === 'service_drinks').map(step => step.label).filter(Boolean))];
+  if (drinks.length) footNotes.push(`Inclus au bar : ${drinks.join(' · ')}`);
+  const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
+  if (remainingLaser > 0) footNotes.push(`${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} Laser supplémentaire${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe`);
+  if (plan.laserSharing?.mayShare) footNotes.push('Le Laser Game peut être complété par d’autres joueurs selon l’affluence');
 
   return `
-    <div class="formula-planner">
-      <div class="formula-planner-head">
-        <div>
-          <strong>${escapeHtml(getFormulaActivityLabel(formule, activeActivity))}</strong>
-          <span>${completed.length ? 'Choisissez une heure libre après votre pause, pas forcément juste après.' : 'Choisissez la première activité horaire de votre ordre.'}</span>
+    <div class="formula-timeline">${rows.join('')}</div>
+    ${footNotes.length ? `<p class="formula-timeline-note">${footNotes.map(escapeHtml).join(' · ')}</p>` : ''}`;
+}
+
+function renderFormulaArrivalPicker(formule) {
+  const groups = getFormulaArrivalGroups(formule);
+  if (!groups.length) return '';
+  if (!groups.some(group => group.time === formulaArrivalChoice)) formulaArrivalChoice = '';
+  const activeGroup = groups.find(group => group.time === formulaArrivalChoice) || null;
+  const selectedVariant = activeGroup
+    ? activeGroup.variants.find(variant => variant.variantKey === formulaVariantKey) || activeGroup.variants[0]
+    : null;
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  const isManual = preference.formulaMode === 'manual';
+  const chips = groups.map(group => `
+    <button type="button" class="formula-arrival-chip ${activeGroup && group.time === activeGroup.time ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeHtml(group.time)}')">
+      ${escapeHtml(group.time)}
+    </button>`).join('');
+  const variantChips = activeGroup && activeGroup.variants.length > 1
+    ? `<div class="formula-variant-row">
+        <span class="formula-variant-label">Plusieurs déroulés possibles pour cette arrivée :</span>
+        <div class="formula-variant-chips">
+          ${activeGroup.variants.map(variant => `
+            <button type="button" class="formula-variant-chip ${variant.variantKey === selectedVariant.variantKey ? 'active' : ''}" onclick="setFormulaVariantChoice('${escapeHtml(variant.variantKey)}')">
+              ${escapeHtml(variant.label)}
+            </button>`).join('')}
         </div>
-        <span class="formula-plan-count">${matchingSlots.length} option${matchingSlots.length > 1 ? 's' : ''}</span>
+      </div>`
+    : '';
+  return `
+    <div class="formula-arrival-picker">
+      <div class="formula-arrival-head">
+        <strong>Choisissez votre heure d'arrivée</strong>
+        <span>Programme complet d'environ ${escapeHtml(formatDurationLabel(getFormuleTotalDuration(formule)))}${isManual ? ' · votre ordre d’activités est respecté' : ''} — le détail s'affiche après votre choix.</span>
       </div>
-      <div class="formula-planner-route">${route}</div>
-      ${optionButtons
-        ? `<div class="formula-time-choice-grid">${optionButtons}</div>`
-        : `<div class="formula-time-empty">Aucune heure compatible pour cette activité avec l’ordre choisi.</div>`}
+      <div class="formula-arrival-grid">${chips}</div>
+      ${activeGroup ? `
+        <div class="formula-program-panel">
+          ${variantChips}
+          ${renderFormulaProgramTimeline(selectedVariant.slot)}
+          <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${selectedVariant.index})">Choisir ce programme</button>
+        </div>` : `
+        <p class="formula-arrival-hint">Touchez une heure pour voir le déroulé détaillé de votre formule.</p>`}
     </div>`;
 }
 
-function confirmFormulaActivityPlan() {
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
-  if (!formule) return;
-  const slots = getFormulaPlannerMatchingSlots(formule, state.booking.preference?.preferredTimes || {});
-  if (!slots.length) {
-    showAlert('Ce programme n’est plus disponible. Choisissez une autre heure.');
-    return;
-  }
-  const slot = slots[0];
-  const index = state.availableSlots.indexOf(slot);
-  if (index < 0) {
-    showAlert('Impossible de retrouver ce programme. Rechargez les disponibilités.');
-    return;
-  }
-  selectSlot(index);
-}
-
-function renderFormulaTimePicker(formule, resultCount = 0) {
-  if (!formule) return '';
+function renderFormulaEmptySlots(formule) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const order = getFormulaActivityOrder(formule);
-  if (preference.formulaMode === 'manual' || order.length <= 1) return '';
+  const isManual = Boolean(formule) && preference.formulaMode === 'manual';
+  if (isManual) {
+    return `
+      <div class="slot-state slot-state-empty" role="status">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div>
+          <strong>Cet ordre d'activités ne passe pas à cette date</strong>
+          <span>Des programmes existent, mais pas dans l'ordre que vous avez choisi. Essayez l'ordre recommandé ou modifiez votre ordre.</span>
+          <button type="button" class="formula-order-fallback-btn" onclick="useRecommendedFormulaOrder()">Essayer l'ordre recommandé</button>
+        </div>
+      </div>`;
+  }
   return `
-    <div class="formula-auto-preview formula-auto-step2">
-      <span>${Math.max(0, Number(resultCount) || 0)}</span>
+    <div class="slot-state slot-state-empty" role="status">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <div>
-        <strong>Programmes proposés par Fun Galaxy</strong>
-        <small>Chaque carte ci-dessous contient un enchaînement complet compatible avec la formule. Choisissez simplement celui qui vous arrange.</small>
+        <strong>Aucun créneau disponible</strong>
+        <span>Essayez une autre date, un autre horaire ou un groupe plus petit.</span>
       </div>
     </div>`;
 }
@@ -3332,20 +3223,15 @@ function renderSlots(formule) {
   const isLaser = state.booking.type === 'laser';
   const ds = parseLocalDate(state.booking.date).toLocaleDateString('fr-BE', { weekday:'long', day:'2-digit', month:'short' });
   const slotTitle = document.getElementById('slotTitle');
-  const formulaPreference = createDefaultFormulaPreference(state.booking.preference || {});
-  const formulaActivityOrder = formule ? getFormulaActivityOrder(formule) : [];
-  const formulaTimedActivityOrder = formule ? getFormulaTimedActivityOrder(formule) : [];
-  const isManualFormulaPlanner = Boolean(formule && formulaPreference.formulaMode === 'manual' && formulaTimedActivityOrder.length > 0);
-  if (slotTitle) slotTitle.textContent = formule
-    ? isManualFormulaPlanner ? 'Choix des horaires' : 'Programmes disponibles'
-    : 'Horaire disponible';
+  if (slotTitle) slotTitle.textContent = formule ? 'Votre programme' : 'Horaire disponible';
   document.getElementById('slotDate').textContent = ds;
   const tl = document.getElementById('formTimeLimit');
   if (formule) {
-    const parts = [`Durée totale estimée : <b>${formatDurationLabel(getFormuleTotalDuration(formule))}</b>`];
-    if (formule.hasBowling) parts.push(`Temps de piste : <b>${formatDurationLabel(getFormuleLaneDuration(formule))}</b>`);
-    if (formule.timeLimit) parts.push(`Créneaux limités aux horaires de la formule ${formule.name}`);
-    tl.innerHTML = `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><div>${parts.join(' • ')}</div></div>`;
+    // La durée estimée et le compteur brut de programmes vivent désormais dans
+    // l'en-tête du picker « heure d'arrivée » : pas de double bandeau.
+    tl.innerHTML = formule.timeLimit
+      ? `<div class="info-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><div>Créneaux limités aux horaires de la formule ${formule.name}</div></div>`
+      : '';
   } else if (isLaser) {
     const option = getLaserOption(state.booking.duration);
     const waveCount = getLaserWaveCount(state.booking.pax);
@@ -3369,43 +3255,21 @@ function renderSlots(formule) {
     return;
   }
   if (!state.availableSlots.length) {
-    list.innerHTML = `
-      <div class="slot-state slot-state-empty" role="status">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <div>
-          <strong>Aucun créneau disponible</strong>
-          <span>Essayez une autre date, un autre horaire ou un groupe plus petit.</span>
-        </div>
-      </div>`;
+    list.innerHTML = renderFormulaEmptySlots(formule);
     return;
   }
-  const isFormula = Boolean(formule);
-  if (isManualFormulaPlanner) {
-    list.innerHTML = renderFormulaActivityPlanner(formule);
+  if (formule) {
+    const picker = renderFormulaArrivalPicker(formule);
+    list.innerHTML = picker || renderFormulaEmptySlots(formule);
     return;
   }
   const showLanes = reservationNeedsLanes(state.booking.type, state.booking.formuleId);
-  const slotsToRender = isFormula
-    ? state.availableSlots.map((slot, index) => ({ slot, index })).filter(({ slot }) => slotMatchesFormulaTimeFilters(slot, formule))
-    : state.availableSlots.map((slot, index) => ({ slot, index }));
-  const formulaTimePicker = renderFormulaTimePicker(formule, slotsToRender.length);
-  if (!slotsToRender.length) {
-    list.innerHTML = `${formulaTimePicker}
-      <div class="slot-state slot-state-empty" role="status">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <div>
-          <strong>Aucun scénario compatible avec ces heures</strong>
-          <span>Ajustez les horaires choisis ou laissez l'agent proposer un programme.</span>
-        </div>
-      </div>`;
-    return;
-  }
-  list.innerHTML = `${formulaTimePicker}<div class="slot-grid stagger ${isFormula ? 'formula-plan-grid' : ''}">${slotsToRender.map(({ slot: s, index: i }) => `
-    <button class="slot ${isFormula ? 'formula-slot' : ''}" onclick="selectSlot(${i})">
-      <span class="slot-time">${isFormula ? `Arrivée ${s.time}` : s.time}</span>
-      ${!isFormula && showLanes ? `<span class="slot-free">${s.freeCount} pistes libres</span>` : isLaser ? `<span class="slot-free">${getLaserSlotCapacityText(s)}</span>` : ''}
+  list.innerHTML = `<div class="slot-grid stagger">${state.availableSlots.map((s, i) => `
+    <button class="slot" onclick="selectSlot(${i})">
+      <span class="slot-time">${s.time}</span>
+      ${showLanes ? `<span class="slot-free">${s.freeCount} pistes libres</span>` : isLaser ? `<span class="slot-free">${getLaserSlotCapacityText(s)}</span>` : ''}
       ${isLaser ? `<span class="slot-plan"><b>${s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte'}</b><br>${getLaserSlotAfterText(s)}</span>` : ''}
-      ${isFormula ? renderFormulaSlotPlan(s) : (!isLaser && s.opsPlan ? `<span class="slot-plan"><b>Plan conseillé</b><br>${describeSlotPlan(s.opsPlan)}</span>` : '')}
+      ${!isLaser && s.opsPlan ? `<span class="slot-plan"><b>Plan conseillé</b><br>${describeSlotPlan(s.opsPlan)}</span>` : ''}
     </button>
   `).join('')}</div>`;
 }
@@ -3716,7 +3580,7 @@ function renderDashboardIcon(name) {
     laser: '<path d="M12 5v14"></path><path d="M5 12h14"></path><path d="m7 7 10 10M17 7 7 17"></path>',
     wrench: '<path d="M14.5 5.5a4 4 0 0 0 4 4L9 19l-4-4 9.5-9.5Z"></path>'
   };
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.calendar}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.calendar}</svg>`;
 }
 
 function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
@@ -7612,7 +7476,7 @@ function renderStaffEmailIcon(name) {
     search: '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
     export: '<path d="M12 3v11"></path><path d="m8 10 4 4 4-4"></path><path d="M5 20h14"></path>'
   };
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.mail}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.mail}</svg>`;
 }
 
 function renderStaffEmailMetric(kind, label, value, detail) {
@@ -8036,7 +7900,7 @@ function renderCampaignIcon(name) {
     mail: '<rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m5 8 7 5 7-5"></path>',
     shield: '<path d="M12 3 5 6v5c0 4.4 2.8 8.3 7 10 4.2-1.7 7-5.6 7-10V6l-7-3z"></path><path d="m9 12 2 2 4-5"></path>'
   };
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.spark}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.spark}</svg>`;
 }
 
 function renderStaffCampaignMetric(icon, label, value, detail) {
@@ -8806,7 +8670,7 @@ function renderStaffClientIcon(name) {
     plus: '<path d="M12 5v14"></path><path d="M5 12h14"></path>',
     columns: '<rect x="4" y="5" width="6" height="14" rx="1.5"></rect><rect x="14" y="5" width="6" height="14" rx="1.5"></rect>'
   };
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.user}</svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.user}</svg>`;
 }
 
 function renderStaffClientSpark(values = [], tone = 'purple') {
@@ -12844,6 +12708,15 @@ function renderFormules() {
     group.items.push(f);
   });
 
+  // Ordre d'affichage : les formules réservables à la date choisie d'abord,
+  // les indisponibles ensuite (grisées avec leur raison). Idem entre familles.
+  families.forEach(group => {
+    group.items.sort((left, right) => Number(right.available) - Number(left.available));
+  });
+  families.sort((left, right) => (
+    Number(right.items.some(item => item.available)) - Number(left.items.some(item => item.available))
+  ));
+
   // Date en grandes vacances : les formules « noHolidays » restent ouvertes
   // (exception été) — on l'affiche explicitement pour lever l'ambiguïté.
   const dateContext = getSpecialOpeningContext(state.booking.date, state.isHolidayMode);
@@ -12865,7 +12738,7 @@ function renderFormules() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span>Ces formules ne sont pas disponibles à la date choisie (vacances scolaires ou jour férié). Choisissez une autre date pour les réserver.</span>
       </div>` : ''}
-      <div class="formule-rows">
+      <div class="formule-cards">
         ${group.items.map(f => {
           // Notes propres à la carte, en version compacte (la phrase longue
           // « Non valable durant... » reste réservée à l'en-tête de famille).
@@ -12878,25 +12751,27 @@ function renderFormules() {
           ].filter(Boolean))];
           // Le motif « vacances/férié » est déjà annoncé une seule fois au
           // niveau de la famille : pas de redite par carte.
-          const rowStatus = groupBlocked && f.noHolidays ? '' : f.status;
+          const cardStatus = groupBlocked && f.noHolidays ? '' : f.status;
           return `
-        <button type="button" class="formule-row ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
-          <span class="formule-row-check" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </span>
-          <span class="formule-row-main">
-            <span class="formule-row-title">
+        <button type="button" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
+          <span class="formule-card-head">
+            <span class="formule-card-title">
               <span class="formule-name">${f.name}</span>
               ${f.best ? '<span class="badge-best">Best deal</span>' : ''}
             </span>
-            <span class="formule-row-desc">${f.desc.join(' · ')}</span>
-            ${meta.length ? `<span class="formule-row-meta">${meta.join(' · ')}</span>` : ''}
-            ${rowStatus ? `<span class="formule-row-status ${f.cls}">${rowStatus}</span>` : ''}
+            <span class="formule-card-price">
+              ${f.oldPrice ? `<s>${f.oldPrice}€</s>` : ''}
+              <strong>${f.price}€</strong>
+              <small>/ ${f.type === 'per_lane' ? 'piste' : 'pers.'}</small>
+            </span>
           </span>
-          <span class="formule-row-price">
-            ${f.oldPrice ? `<s>${f.oldPrice}€</s>` : ''}
-            <strong>${f.price}€</strong>
-            <small>/ ${f.type === 'per_lane' ? 'piste' : 'pers.'}</small>
+          <ul class="formule-card-list">
+            ${f.desc.map(line => `<li>${line}</li>`).join('')}
+          </ul>
+          ${meta.length ? `<span class="formule-card-meta">${meta.join(' · ')}</span>` : ''}
+          ${cardStatus ? `<span class="formule-card-status ${f.cls}">${cardStatus}</span>` : ''}
+          <span class="formule-card-check" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </span>
         </button>`;
         }).join('')}

@@ -21,7 +21,13 @@ const { getPool, readAvailabilitySnapshot, validateReservationResources } = requ
 const { sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
-const { getActivity, getCenter, getFormula, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const {
+  buildDefaultAnchorTimes,
+  evaluateAnchoredCombination,
+  getFormulaAnchorAvailability,
+  getFormulaAnchorModel,
+} = require('../lib/ops-engine');
+const { getCenter, getFormula, refreshCenterOverrides } = require('../lib/ops-knowledge');
 
 const LASER_ARENA_MINUTES = 25;
 // Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
@@ -29,7 +35,6 @@ const LASER_ARENA_MINUTES = 25;
 // fait 10 minutes avant (aligné sur lib/ops-engine.js).
 const FORMULA_ARRIVAL_MINUTES = 10;
 const FORMULA_TRANSITION_MINUTES = 5;
-const FLEXIBLE_SLOT_STEP_MINUTES = 15;
 // Règle métier : TOUTE heure proposée au client est une heure pleine ou demie
 // (15:00, 15:30 — jamais 15:15 ni 16:40). Elle s'applique au début du
 // PROGRAMME, c'est-à-dire au début de la PREMIÈRE activité, quelle qu'elle
@@ -158,351 +163,10 @@ function getOccupiedLanes(reservations, startTime, duration) {
   return occupied;
 }
 
-function getFormulaTimedActivityOrder(formulaDoc, activityOrder = []) {
-  const steps = Array.isArray(formulaDoc?.steps) ? formulaDoc.steps : [];
-  const timed = steps
-    .filter((step) => ['bowling_lane', 'laser_arena', 'party_table'].includes(step.resourceType || getActivity(step.activityId)?.resourceType || ''))
-    .map((step) => step.activityId)
-    .filter(Boolean)
-    .filter((activityId, index, list) => list.indexOf(activityId) === index);
-  const requested = activityOrder.filter((activityId) => timed.includes(activityId));
-  return [
-    ...requested,
-    ...timed.filter((activityId) => !requested.includes(activityId)),
-  ];
-}
-
-function getFormulaDisplayOrder(formulaDoc, activityOrder = []) {
-  const steps = Array.isArray(formulaDoc?.steps) ? formulaDoc.steps : [];
-  const ids = steps
-    .map((step) => step.activityId)
-    .filter(Boolean)
-    .filter((activityId) => !String(activityId).includes('service_drinks'))
-    .filter((activityId, index, list) => list.indexOf(activityId) === index);
-  const requested = activityOrder.filter((activityId) => ids.includes(activityId));
-  return [
-    ...requested,
-    ...ids.filter((activityId) => !requested.includes(activityId)),
-  ];
-}
-
 function getFormulaStepCount(formulaDoc, activityId) {
   return (formulaDoc?.steps || [])
     .filter((step) => step.activityId === activityId)
     .reduce((sum, step) => sum + Math.max(1, Number(step.count || 1)), 0);
-}
-
-function getFormulaStepDurationMinutes(formulaDoc, formula, activityId) {
-  if (activityId === 'bowling') return Math.max(30, Number(getFormuleLaneDuration(formula) || 1) * 60);
-  if (activityId === 'laser_game') return LASER_ARENA_MINUTES;
-  const step = (formulaDoc?.steps || []).find((item) => item.activityId === activityId);
-  const activity = getActivity(activityId);
-  if (step?.durationMinutes) return Number(step.durationMinutes);
-  return Number(activity?.durationModel?.defaultMinutes || activity?.durationModel?.gameMinutes || 30);
-}
-
-function minuteRange(startMinute, endMinute, stepMinutes = FLEXIBLE_SLOT_STEP_MINUTES) {
-  const values = [];
-  for (let value = Math.ceil(startMinute / stepMinutes) * stepMinutes; value <= endMinute; value += stepMinutes) {
-    values.push(value);
-  }
-  return values;
-}
-
-function getFormulaActivityCandidates({ activityId, formulaDoc, formula, pax, snapshot, laneStatuses, schedule, minStartMinute, closeMinute, preferredTimes, laneCount, center }) {
-  if (center.activityAvailability && center.activityAvailability[activityId] !== true) return [];
-  const preferred = preferredTimes?.[activityId] ? [Math.round(timeToNum(preferredTimes[activityId]) * 60)] : null;
-  const duration = getFormulaStepDurationMinutes(formulaDoc, formula, activityId);
-  let laserExisting = [];
-  let candidates = preferred || minuteRange(minStartMinute, closeMinute - duration);
-  if (activityId === 'laser_game') {
-    laserExisting = snapshot.reservations.flatMap(laserWindowsFromReservation);
-    if (!preferred) {
-      candidates = [...new Set([
-        ...candidates,
-        ...laserExisting
-          .map((window) => Number(window.start))
-          .filter((start) => Number.isFinite(start) && start >= minStartMinute && start + duration <= closeMinute),
-      ])].sort((left, right) => left - right);
-    }
-  }
-  if (activityId === 'bowling') {
-    // Alignement bowling :00/:30 — appliqué aussi à une heure préférée envoyée
-    // par le client : le serveur ne propose jamais un départ de piste hors grille.
-    candidates = candidates.filter((start) => start % BOWLING_GRID_MINUTES === 0);
-  }
-  return candidates
-    .map((start) => {
-      if (start < minStartMinute || start + duration > closeMinute) return null;
-      if (activityId === 'bowling') {
-        const lanes = allocateLanes(laneCount, snapshot.reservations, laneStatuses, numToTime(start / 60), duration / 60, Number(center.resources?.bowling?.laneCount) || TOTAL_LANES);
-        if (!lanes) return null;
-        return { activityId, start, end: start + duration, lanes, players: pax };
-      }
-      if (activityId === 'laser_game') {
-        const end = start + LASER_ARENA_MINUTES;
-        const overlapping = laserExisting.filter((window) => start < window.end && window.start < end);
-        const sessionKey = `${start}-${end}`;
-        const keys = new Set(overlapping.map((window) => `${window.start}-${window.end}`));
-        const joinsExisting = keys.has(sessionKey);
-        const launchCount = keys.size + (joinsExisting ? 0 : 1);
-        const playersBefore = overlapping.reduce((sum, window) => sum + Number(window.players || 0), 0);
-        const weaponCount = Number(center.resources?.laser?.weaponCount || 30);
-        const parallelLaunches = Number(center.resources?.laser?.parallelLaunches || 1);
-        const playersTotal = playersBefore + pax;
-        if (launchCount > parallelLaunches || playersTotal > weaponCount) return null;
-        return {
-          activityId,
-          start,
-          end,
-          players: pax,
-          playersBefore,
-          playersTotal,
-          remainingWeapons: Math.max(0, weaponCount - playersTotal),
-          sharedSession: playersBefore > 0,
-          mayShareSession: playersTotal < weaponCount,
-        };
-      }
-      return { activityId, start, end: start + duration, players: pax };
-    })
-    .filter(Boolean);
-}
-
-function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected, openMinute = 0 }) {
-  const selectedByActivity = new Map(selected.map((item) => [item.activityId, item]));
-  // La PREMIÈRE activité de l'ordre demandé (même libre : minigolf, arcades…)
-  // démarre à l'heure « client » exacte ; l'accueil est ancré 10 minutes AVANT
-  // cette première activité et ne décale aucune réservation de ressource. Si le
-  // client place des activités libres avant un bloc fixe, elles doivent tenir
-  // entre la première activité et ce bloc.
-  const firstFixedIndex = order.findIndex((activityId) => selectedByActivity.has(activityId));
-  if (firstFixedIndex < 0) return null;
-  let preOffsetMinutes = 0;
-  for (let index = 0; index < firstFixedIndex; index += 1) {
-    preOffsetMinutes += getFormulaStepDurationMinutes(formulaDoc, formula, order[index]) + FORMULA_TRANSITION_MINUTES;
-  }
-  const firstFixedStart = selectedByActivity.get(order[firstFixedIndex]).start;
-  // Règle métier : l'heure d'ENTRÉE choisie par le client (= début de la
-  // première activité du programme) tombe TOUJOURS sur :00/:30. Quand des
-  // activités libres précèdent le premier bloc fixe, on ancre le départ du
-  // programme sur la grille en amont : le mou est absorbé en temps libre
-  // avant le bloc fixe. Quand le bloc fixe EST la première activité, aucun
-  // recalage possible : le candidat doit déjà être sur la grille.
-  const rawProgramStart = firstFixedStart - preOffsetMinutes;
-  const programStart = firstFixedIndex === 0
-    ? rawProgramStart
-    : Math.floor(rawProgramStart / PROGRAM_GRID_MINUTES) * PROGRAM_GRID_MINUTES;
-  if (programStart % PROGRAM_GRID_MINUTES !== 0) return null;
-  const arrivalStart = programStart - FORMULA_ARRIVAL_MINUTES;
-  // L'accueil doit tenir dans les horaires d'ouverture.
-  if (arrivalStart < openMinute) return null;
-
-  let cursor = programStart;
-  const timeline = [{
-    type: 'service',
-    label: 'Arrivée & accueil',
-    resourceType: 'bar_service',
-    start: arrivalStart,
-    end: programStart,
-    startTime: numToTime(arrivalStart / 60),
-    endTime: numToTime(programStart / 60),
-  }];
-  const resourceBlocks = [];
-
-  for (const activityId of order) {
-    const fixed = selectedByActivity.get(activityId);
-    const activity = getActivity(activityId);
-    const resourceType = activityId === 'bowling' ? 'bowling_lane' : activityId === 'laser_game' ? 'laser_arena' : (activity?.resourceType || 'soft_capacity');
-    const duration = getFormulaStepDurationMinutes(formulaDoc, formula, activityId);
-    const start = fixed ? fixed.start : cursor;
-    if (start < cursor) return null;
-    // Défense en profondeur : jamais de départ bowling hors grille :00/:30,
-    // même si un candidat forgé passait le filtre amont.
-    if (activityId === 'bowling' && start % BOWLING_GRID_MINUTES !== 0) return null;
-    const end = fixed ? fixed.end : start + duration;
-    const step = {
-      type: 'activity',
-      activityId,
-      label: activity?.name || activityId,
-      resourceType,
-      start,
-      end,
-      startTime: numToTime(start / 60),
-      endTime: numToTime(end / 60),
-      durationMinutes: end - start,
-      critical: resourceType === 'bowling_lane' || resourceType === 'laser_arena',
-    };
-    if (activityId === 'bowling') {
-      step.requiredLanes = fixed?.lanes?.length || 1;
-      step.lanes = fixed?.lanes || [];
-      step.players = pax;
-    }
-    if (activityId === 'laser_game') {
-      step.players = fixed?.players || pax;
-      step.playersBefore = fixed?.playersBefore || 0;
-      step.playersTotal = fixed?.playersTotal || pax;
-      step.remainingWeapons = fixed?.remainingWeapons ?? Math.max(0, Number(center.resources?.laser?.weaponCount || 30) - pax);
-      step.sharedSession = Boolean(fixed?.sharedSession);
-      step.mayShareSession = fixed?.mayShareSession !== false;
-      step.countIndex = 1;
-    }
-    timeline.push(step);
-    if (['bowling_lane', 'laser_arena', 'party_table'].includes(resourceType)) resourceBlocks.push(step);
-    cursor = end;
-    if (order.indexOf(activityId) < order.length - 1) {
-      timeline.push({
-        type: 'service',
-        label: 'Transition libre',
-        resourceType: 'transition',
-        start: cursor,
-        end: cursor + FORMULA_TRANSITION_MINUTES,
-        startTime: numToTime(cursor / 60),
-        endTime: numToTime((cursor + FORMULA_TRANSITION_MINUTES) / 60),
-      });
-      cursor += FORMULA_TRANSITION_MINUTES;
-    }
-  }
-
-  const bowlingBlock = resourceBlocks.find((block) => block.resourceType === 'bowling_lane');
-  const laserBlock = resourceBlocks.find((block) => block.resourceType === 'laser_arena');
-  const laserCount = getFormulaStepCount(formulaDoc, 'laser_game');
-  const fixedCommitments = resourceBlocks.map((block) => ({
-    type: block.resourceType === 'bowling_lane' ? 'bowling' : block.resourceType === 'laser_arena' ? 'laser_game' : block.resourceType,
-    label: block.resourceType === 'bowling_lane' ? 'Bowling' : block.resourceType === 'laser_arena' ? 'Laser Game' : block.label,
-    startTime: block.startTime,
-    endTime: block.endTime,
-    lanes: block.lanes || [],
-    players: Number(block.players || pax),
-    remainingPlaces: block.resourceType === 'laser_arena' ? block.remainingWeapons : undefined,
-    countIndex: block.countIndex || 1,
-  }));
-  return {
-    ok: true,
-    // start = début exact de la première activité (heure « client ») ;
-    // l'accueil recommandé vit avant, exposé via arrivalTime/arrivalMinutes.
-    start: programStart,
-    end: cursor,
-    startTime: numToTime(programStart / 60),
-    endTime: numToTime(cursor / 60),
-    totalMinutes: cursor - programStart,
-    arrivalStart,
-    arrivalTime: numToTime(arrivalStart / 60),
-    arrivalMinutes: FORMULA_ARRIVAL_MINUTES,
-    bufferMinutes: 0,
-    risk: { level: center.id === 'libramont' && laserBlock ? 'medium' : 'low', score: laserBlock ? 35 : 15, reasons: [] },
-    staffSummary: [
-      bowlingBlock ? `Bowling ${bowlingBlock.startTime}-${bowlingBlock.endTime}` : '',
-      laserBlock ? `Laser ${laserBlock.startTime}-${laserBlock.endTime}` : '',
-    ].filter(Boolean).join(' | '),
-    assignedLanes: bowlingBlock?.lanes || [],
-    timeline,
-    resourceBlocks,
-    marketIntelligence: { qualityScore: 92, warnings: [] },
-    entitlements: {
-      fixedCommitments,
-      flexibleEntitlements: (formulaDoc.steps || [])
-        .filter((step) => !['bowling', 'laser_game'].includes(step.activityId) && step.activityId !== 'service_drinks')
-        .map((step) => ({ type: step.activityId, label: getActivity(step.activityId)?.name || step.activityId })),
-    },
-    operationsChecklist: [
-      laserBlock ? { title: 'Prévenir le client que le Laser Game peut être partagé selon l’affluence.' } : null,
-      laserCount > 1 ? { title: `${laserCount - 1} partie(s) Laser restante(s) à placer par le staff si le client veut une pause.` } : null,
-    ].filter(Boolean),
-    customerCommitment: [
-      `Votre première activité démarre à ${numToTime(programStart / 60)} : présentez-vous ${FORMULA_ARRIVAL_MINUTES} minutes avant pour l'accueil (${numToTime(arrivalStart / 60)}).`,
-      'Vos horaires choisis sont enregistrés. Les activités sans horaire fixe restent libres sur place.',
-      laserBlock ? 'Le Laser Game peut être complété avec d’autres joueurs selon l’affluence.' : '',
-    ].filter(Boolean),
-    firstBowlingTime: bowlingBlock?.startTime || '',
-    firstLaserTime: laserBlock?.startTime || '',
-    laserSharing: laserBlock ? {
-      mayShare: laserBlock.mayShareSession !== false,
-      sharedNow: Boolean(laserBlock.sharedSession),
-      requestedPlayers: pax,
-      remainingPlaces: laserBlock.remainingWeapons,
-      waveCount: 1,
-      launchCount: 1,
-    } : null,
-    laserPassPlan: laserCount > 1 && laserBlock ? {
-      mode: 'manual_after_first',
-      totalGames: laserCount,
-      scheduledGames: 1,
-      remainingGames: laserCount - 1,
-      scheduledPasses: [{ countIndex: 1, startTime: laserBlock.startTime, endTime: laserBlock.endTime, status: 'scheduled' }],
-    } : null,
-  };
-}
-
-function buildFlexibleFormulaSlots({ centerId, date, formula, formulaDoc, pax, snapshot, schedule, minTime, maxTime, activityOrder, preferredTimes, laneCount }) {
-  const center = getCenter(centerId);
-  const openMinute = Math.round(minTime * 60);
-  const closeMinute = Math.round((maxTime || schedule.close) * 60);
-  const order = getFormulaDisplayOrder(formulaDoc, activityOrder);
-  const timedOrder = getFormulaTimedActivityOrder(formulaDoc, activityOrder);
-  if (!timedOrder.length) return [];
-  const candidates = {};
-  timedOrder.forEach((activityId) => {
-    candidates[activityId] = getFormulaActivityCandidates({
-      activityId,
-      formulaDoc,
-      formula,
-      pax,
-      snapshot,
-      laneStatuses: snapshot.laneStatuses || {},
-      schedule,
-      minStartMinute: openMinute + FORMULA_ARRIVAL_MINUTES,
-      closeMinute,
-      preferredTimes,
-      laneCount,
-      center,
-    });
-  });
-  // Si la première activité du programme est un bloc fixe (bowling/laser/
-  // table), l'heure d'entrée du client = son heure de départ : elle doit être
-  // sur la grille :00/:30. On filtre les candidats en amont pour ne pas
-  // explorer des combinaisons condamnées (le compositeur re-vérifie ensuite).
-  const firstTimedId = order.find((activityId) => timedOrder.includes(activityId));
-  if (firstTimedId && order.indexOf(firstTimedId) === 0 && candidates[firstTimedId]) {
-    candidates[firstTimedId] = candidates[firstTimedId]
-      .filter((candidate) => candidate.start % PROGRAM_GRID_MINUTES === 0);
-  }
-  if (timedOrder.some((activityId) => !candidates[activityId]?.length)) return [];
-
-  // Cap PAR heure de départ de la première activité horodatée (et non global) :
-  // un plafond global tronquait l'exploration et faisait disparaître toutes les
-  // heures d'arrivée tardives quand le produit cartésien était large.
-  const MAX_SCENARIOS_TOTAL = 240;
-  const MAX_VARIANTS_PER_FIRST_START = 6;
-  const selected = [];
-  const scenarios = [];
-  let variantsForCurrentFirst = 0;
-  const walk = (index) => {
-    if (scenarios.length >= MAX_SCENARIOS_TOTAL) return;
-    if (index > 0 && variantsForCurrentFirst >= MAX_VARIANTS_PER_FIRST_START) return;
-    if (index >= timedOrder.length) {
-      const scenario = buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order, selected: [...selected], openMinute });
-      if (!scenario) return;
-      if (scenario.end > closeMinute) return;
-      scenarios.push(scenario);
-      variantsForCurrentFirst += 1;
-      return;
-    }
-    const activityId = timedOrder[index];
-    candidates[activityId].forEach((candidate) => {
-      if (index === 0) variantsForCurrentFirst = 0;
-      selected.push(candidate);
-      walk(index + 1);
-      selected.pop();
-    });
-  };
-  walk(0);
-
-  return scenarios
-    .sort((left, right) => (
-      left.start - right.start
-      || left.end - right.end
-    ))
-    .map((scenario) => toFormulaSlot(scenario, snapshot, getFormuleLaneDuration(formula)));
 }
 
 function centerLaneBound(centerId) {
@@ -609,6 +273,8 @@ function toFormulaSlot(scenario, snapshot, duration) {
       firstLaserTime: firstActivityTime(scenario, 'laser_game'),
       firstBowlingTime: firstActivityTime(scenario, 'bowling'),
       laserSharing: scenario.laserSharing || null,
+      laserPassPlan: scenario.laserPassPlan || null,
+      anchorPlan: scenario.anchorPlan || null,
     },
   };
 }
@@ -847,70 +513,137 @@ module.exports = async (req, res) => {
 
     if (type === 'formule') {
       const formulaDoc = getFormula(formuleId);
-      // Sans activité horodatée (bowling/laser/table), l'ordre personnalisé n'a
-      // aucune contrainte de créneau : on retombe sur le compositeur automatique
-      // plutôt que de renvoyer à tort « aucune combinaison ».
-      const hasManualFormulaChoice = (activityOrder.length > 0 || Object.values(preferredTimes || {}).some(Boolean))
-        && getFormulaTimedActivityOrder(formulaDoc, activityOrder).length > 0;
-      if (hasManualFormulaChoice) {
-        const flexibleSlots = buildFlexibleFormulaSlots({
-          centerId,
-          date,
-          formula: formule,
-          formulaDoc,
-          pax,
-          snapshot,
-          schedule,
-          minTime,
-          maxTime: formule?.timeLimit?.max ? Math.min(maxTime + totalDuration, formule.timeLimit.max) : schedule.close,
-          activityOrder,
-          preferredTimes,
-          laneCount,
-        });
-        const guardedFlexibleSlots = filterSlotsByFinalGuards(flexibleSlots, {
-          centerId,
-          date,
-          type,
-          formuleId,
-          pax,
-          duration,
-          totalDuration,
-          laneCount,
-          requiresLanes,
-          label: formule.name,
-          snapshot,
-        });
-        if (guardedFlexibleSlots.length) {
-          sendJson(res, 200, {
-            ok: true,
-            date,
-            ...scheduleMeta,
-            slots: guardedFlexibleSlots,
-            laneCount,
-            duration,
-            totalDuration,
-            price: getBasePrice(type, duration, laneCount, pax, formuleId),
-            requiresLanes,
-            label: formule.name,
-            message: '',
-          });
-          return;
-        }
+      const engineContext = {
+        reservations: snapshot.reservations,
+        laneStatuses: snapshot.laneStatuses,
+      };
+      // Modèle « Ancres + Liberté » : la dispo est exposée PAR ANCRE
+      // (bowling/laser — heures :00/:30 vérifiées indépendamment) + une
+      // combinaison par défaut valide. Les activités libres restent un pass
+      // sans aucune heure, la table suit l'arrivée.
+      const anchorModel = getFormulaAnchorModel(formulaDoc);
+      let anchorMeta = null;
+      try {
+        anchorMeta = getFormulaAnchorAvailability({ centerId, formuleId, date, pax }, engineContext);
+      } catch (error) {
+        anchorMeta = null;
+      }
+      const guardContext = {
+        centerId,
+        date,
+        type,
+        formuleId,
+        pax,
+        duration,
+        totalDuration,
+        laneCount,
+        requiresLanes,
+        label: formule.name,
+        snapshot,
+      };
+      const respondFormula = (slots, message, suggestions = []) => {
         sendJson(res, 200, {
           ok: true,
           date,
           ...scheduleMeta,
-          slots: [],
+          slots,
           laneCount,
           duration,
           totalDuration,
           price: getBasePrice(type, duration, laneCount, pax, formuleId),
           requiresLanes,
           label: formule.name,
-          message: 'Aucune combinaison disponible avec ces heures. Choisissez un autre horaire.',
+          anchors: anchorMeta,
+          suggestions,
+          message,
         });
+      };
+
+      if (anchorModel.anchors.length) {
+        const laserPlacement = String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled';
+        const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game) || laserPlacement === 'onsite';
+
+        if (hasAnchorChoice) {
+          // Revalidation serveur de la combinaison choisie (source de vérité) :
+          // soit LE créneau composé, soit un refus clair + suggestions proches.
+          const plan = planningAgent(
+            {
+              centerId,
+              date,
+              type,
+              formuleId,
+              pax,
+              duration,
+              preference: {
+                preferredTimes,
+                laserPlacement,
+                arrivalConfidence: 'normal',
+              },
+              pauseMinutes,
+            },
+            engineContext,
+          );
+          const recommended = plan?.plan?.recommended;
+          const guarded = recommended && recommended.ok
+            ? filterSlotsByFinalGuards([toFormulaSlot(recommended, snapshot, duration)], guardContext)
+            : [];
+          if (guarded.length) {
+            respondFormula(guarded, '');
+            return;
+          }
+          respondFormula(
+            [],
+            plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.',
+            plan?.plan?.anchorSuggestions || [],
+          );
+          return;
+        }
+
+        // Défaut zéro friction : pour chaque heure possible de la première
+        // ancre, la combinaison valide la plus simple (ancres enchaînées,
+        // pass liberté autour). Le client peut ensuite modifier chaque ancre.
+        const centerDocResolved = getCenter(centerId);
+        const candidatesByActivity = {};
+        (anchorMeta?.activities || []).forEach((activity) => {
+          candidatesByActivity[activity.activityId] = activity.times.map((item) => Math.round(timeToNum(item.time) * 60));
+        });
+        const firstAnchorId = anchorModel.anchors[0].activityId;
+        const defaultSlots = [];
+        (candidatesByActivity[firstAnchorId] || []).forEach((firstStart) => {
+          const anchorTimes = buildDefaultAnchorTimes({
+            center: centerDocResolved,
+            formula: formulaDoc,
+            date,
+            pax,
+            model: anchorModel,
+            candidatesByActivity,
+            reservations: snapshot.reservations,
+            laneStatuses: snapshot.laneStatuses,
+            firstStart,
+          });
+          if (!anchorTimes) return;
+          const combo = evaluateAnchoredCombination({
+            center: centerDocResolved,
+            formula: formulaDoc,
+            date,
+            pax,
+            anchorTimes,
+            laserPlacement: 'scheduled',
+            reservations: snapshot.reservations,
+            laneStatuses: snapshot.laneStatuses,
+          });
+          if (combo.ok) defaultSlots.push(toFormulaSlot(combo.scenario, snapshot, duration));
+        });
+        const guardedDefaults = filterSlotsByFinalGuards(defaultSlots, guardContext);
+        respondFormula(
+          guardedDefaults,
+          guardedDefaults.length ? '' : 'Aucune combinaison disponible pour cette formule ce jour-là. Essayez une autre date ou un autre groupe.',
+        );
         return;
       }
+
+      // Formules sans ancre (table anniversaire + pass liberté) : le client
+      // choisit simplement son heure d'arrivée — la table suit automatiquement.
       const slotsByPlan = new Map();
 
       // Départs de programme proposés au client : uniquement aux heures
@@ -985,19 +718,10 @@ module.exports = async (req, res) => {
         label: formule.name,
         snapshot,
       });
-      sendJson(res, 200, {
-        ok: true,
-        date,
-        ...scheduleMeta,
-        slots: guardedSlots,
-        laneCount,
-        duration,
-        totalDuration,
-        price: getBasePrice(type, duration, laneCount, pax, formuleId),
-        requiresLanes,
-        label: formule.name,
-        message: guardedSlots.length ? '' : 'Aucun scénario automatique sûr pour cette formule. Essayez un autre horaire, un autre ordre ou contactez le centre.',
-      });
+      respondFormula(
+        guardedSlots,
+        guardedSlots.length ? '' : 'Aucun scénario automatique sûr pour cette formule. Essayez un autre horaire ou contactez le centre.',
+      );
       return;
     }
 

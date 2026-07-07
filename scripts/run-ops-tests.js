@@ -89,67 +89,107 @@ function testFormulaPlanning() {
   assert.ok(result.plan.recommended.operationsChecklist.length >= 1, 'formula should expose staff checklist');
 }
 
+// Modèle « Ancres + Liberté » : les heures choisies par activité (ancres
+// bowling/laser) composent la visite telles quelles — validation serveur de la
+// combinaison (grille :00/:30, pas de chevauchement, horaires, écart réaliste).
 function testFormulaPreferredTimes() {
-  const base = planningAgent({
+  const anchorRequest = (preferredTimes, extra = {}) => planningAgent({
     centerId: 'libramont',
     date: TEST_DATE,
     type: 'formule',
     formuleId: 'f1',
     pax: 10,
-    startTime: '14:00',
+    preference: { preferredTimes, ...extra },
   }, {
     reservations: [],
     laneStatuses: {},
   });
 
-  const recommended = base.plan.recommended;
-  assert.ok(recommended?.ok, 'expected a baseline formula scenario');
-  const bowlingTime = recommended.timeline.find((step) => step.activityId === 'bowling')?.startTime;
-  const laserTime = recommended.timeline.find((step) => step.activityId === 'laser_game')?.startTime;
-  assert.ok(bowlingTime && laserTime, 'baseline formula should include bowling and laser times');
+  const locked = anchorRequest({ bowling: '15:00', laser_game: '16:30' });
+  assert.strictEqual(locked.ok, true, 'a valid anchor combination must be bookable');
+  const lockedPlan = locked.plan.recommended;
+  const bowlingBlock = lockedPlan.resourceBlocks.find((block) => block.resourceType === 'bowling_lane');
+  const laserBlocks = lockedPlan.resourceBlocks.filter((block) => block.resourceType === 'laser_arena');
+  assert.strictEqual(bowlingBlock?.startTime, '15:00', 'bowling block must start at the chosen anchor time');
+  assert.strictEqual(bowlingBlock?.endTime, '16:00', 'bowling block must keep the formula lane duration');
+  assert.strictEqual(laserBlocks[0]?.startTime, '16:30', 'laser block must start at the chosen anchor time');
+  assert.strictEqual(lockedPlan.startTime, '15:00', 'program start = first anchor');
+  assert.strictEqual(lockedPlan.arrivalTime, '14:50', 'arrival stays 10 minutes before the first anchor');
+  assert.ok(
+    lockedPlan.timeline.filter((step) => step.flexible).length >= 1,
+    'free activities must stay in the plan as flexible pass entries',
+  );
+  assert.ok(
+    lockedPlan.timeline.filter((step) => step.flexible).every((step) => step.startTime === lockedPlan.startTime),
+    'flexible pass entries carry no dedicated schedule (whole visit window)',
+  );
 
-  const locked = planningAgent({
-    centerId: 'libramont',
-    date: TEST_DATE,
-    type: 'formule',
-    formuleId: 'f1',
-    pax: 10,
-    startTime: '14:00',
-    preference: {
-      preferredTimes: {
-        bowling: bowlingTime,
-        laser_game: laserTime,
-      },
-    },
-  }, {
-    reservations: [],
-    laneStatuses: {},
-  });
+  // Ordre inversé (laser avant bowling) : toujours un vrai choix par ancre.
+  const reversed = anchorRequest({ bowling: '17:00', laser_game: '16:00' });
+  assert.strictEqual(reversed.ok, true, 'anchors can be booked in any order');
+  assert.strictEqual(reversed.plan.recommended.startTime, '16:00', 'program start follows the earliest anchor');
 
-  assert.strictEqual(locked.ok, true, 'matching preferred activity times should remain bookable');
-  assert.strictEqual(locked.plan.recommended.timeline.find((step) => step.activityId === 'bowling')?.startTime, bowlingTime);
-  assert.strictEqual(locked.plan.recommended.timeline.find((step) => step.activityId === 'laser_game')?.startTime, laserTime);
+  const overlapping = anchorRequest({ bowling: '15:00', laser_game: '15:30' });
+  assert.strictEqual(overlapping.ok, false, 'overlapping anchors must be refused');
+  assert.strictEqual(overlapping.plan.refusalCode, 'anchor_overlap');
+  assert.ok(overlapping.plan.anchorSuggestions.length >= 1, 'a refusal must come with close suggestions');
 
-  const impossible = planningAgent({
-    centerId: 'libramont',
-    date: TEST_DATE,
-    type: 'formule',
-    formuleId: 'f1',
-    pax: 10,
-    startTime: '14:00',
-    preference: {
-      preferredTimes: {
-        bowling: '08:00',
-        laser_game: laserTime,
-      },
-    },
-  }, {
-    reservations: [],
-    laneStatuses: {},
-  });
+  const offGrid = anchorRequest({ bowling: '15:00', laser_game: '16:15' });
+  assert.strictEqual(offGrid.ok, false, 'off-grid anchor times must be refused');
+  assert.strictEqual(offGrid.plan.refusalCode, 'off_grid');
 
+  const impossible = anchorRequest({ bowling: '08:00', laser_game: '16:30' });
   assert.strictEqual(impossible.ok, false, 'impossible preferred formula times must be rejected');
-  assert.strictEqual(impossible.plan.scenarios.length, 0);
+
+  const unrealisticGap = anchorRequest({ bowling: '12:00', laser_game: '19:00' });
+  assert.strictEqual(unrealisticGap.ok, false, 'an unrealistic gap between anchors must be refused');
+  assert.strictEqual(unrealisticGap.plan.refusalCode, 'anchor_gap');
+
+  // Option « Je place mes parties laser sur place » : seul le bowling est
+  // fixé, le laser reste un crédit à placer selon l'affluence.
+  const onSite = anchorRequest({ bowling: '15:00' }, { laserPlacement: 'onsite' });
+  assert.strictEqual(onSite.ok, true, 'laser on-site option must stay bookable');
+  const onSitePlan = onSite.plan.recommended;
+  assert.ok(!onSitePlan.resourceBlocks.some((block) => block.resourceType === 'laser_arena'), 'on-site laser must not lock the arena');
+  assert.strictEqual(onSitePlan.laserPassPlan.scheduledGames, 0);
+  assert.strictEqual(onSitePlan.laserPassPlan.remainingGames, 1);
+
+  // Formule à ancre laser unique (f5, 2 parties) : une seule session fixée,
+  // le reste en crédit — jamais deux sessions imposées d'affilée.
+  const laserOnly = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'formule',
+    formuleId: 'f5',
+    pax: 10,
+    preference: { preferredTimes: { laser_game: '15:00' } },
+  }, { reservations: [], laneStatuses: {} });
+  assert.strictEqual(laserOnly.ok, true, 'single-anchor laser formula must be bookable at the chosen time');
+  const laserOnlyPlan = laserOnly.plan.recommended;
+  assert.strictEqual(laserOnlyPlan.resourceBlocks.filter((block) => block.resourceType === 'laser_arena').length, 1);
+  assert.strictEqual(laserOnlyPlan.laserPassPlan.totalGames, 2);
+  assert.strictEqual(laserOnlyPlan.laserPassPlan.remainingGames, 1, 'second laser game stays a flexible credit');
+}
+
+// Table anniversaire : jamais une ancre — elle suit l'arrivée et couvre toute
+// la visite pour le staff, sans aucune heure à choisir côté client.
+function testPartyTableFollowsArrival() {
+  const result = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'formule',
+    formuleId: 'f7',
+    pax: 8,
+    startTime: '15:00',
+  }, { reservations: [], laneStatuses: {} });
+
+  assert.strictEqual(result.ok, true, 'table formulas must be plannable');
+  const plan = result.plan.recommended;
+  const tableBlock = plan.resourceBlocks.find((block) => block.resourceType === 'party_table');
+  assert.ok(tableBlock, 'table formulas must produce an internal party_table block');
+  assert.strictEqual(tableBlock.startTime, plan.arrivalTime, 'table is blocked from the group arrival');
+  assert.strictEqual(tableBlock.endTime, plan.timeline[plan.timeline.length - 1].endTime, 'table stays blocked until the end of the visit');
+  assert.ok(tableBlock.followsArrival, 'table block must be flagged as following the arrival');
 }
 
 function testLaserConflict() {
@@ -699,6 +739,62 @@ async function testPrepareReservationOpsPersistsLaserGamesInOpsPlan() {
   }
 }
 
+// POST public forgé avec des ancres qui se chevauchent : le serveur recompose
+// la combinaison depuis la préférence (jamais depuis l'opsPlan client) et
+// refuse la confirmation en ligne.
+async function testPreparePublicReservationRefusesOverlappingAnchors() {
+  const originalReadStaffState = database.readStaffState;
+  database.readStaffState = async () => ({ reservations: [], laneStatuses: {} });
+  delete require.cache[reservationOpsPath];
+  const { prepareReservationOps } = require('../lib/reservation-ops');
+
+  const forgedBase = {
+    channel: 'public',
+    type: 'formule',
+    formuleId: 'f1',
+    date: TEST_DATE,
+    startTime: '15:00',
+    pax: 8,
+    duration: 1,
+    totalDuration: 2.5,
+    label: 'FORMULE 1',
+    // opsPlan client forgé « propre » : il doit être ignoré, seule la
+    // préférence (ancres) fait foi côté serveur.
+    opsPlan: {
+      resourceBlocks: [
+        { resourceType: 'bowling_lane', startTime: '15:00', endTime: '16:00', lanes: [1] },
+        { resourceType: 'laser_arena', startTime: '16:30', endTime: '16:55', players: 8 },
+      ],
+    },
+  };
+
+  try {
+    const overlapping = await prepareReservationOps({
+      ...forgedBase,
+      preference: { preferredTimes: { bowling: '15:00', laser_game: '15:30' } },
+    }, 'public');
+    assert.strictEqual(overlapping.blockOnlineConfirmation, true, 'overlapping anchors must block online confirmation');
+
+    const offGrid = await prepareReservationOps({
+      ...forgedBase,
+      preference: { preferredTimes: { bowling: '15:00', laser_game: '16:45' } },
+    }, 'public');
+    assert.strictEqual(offGrid.blockOnlineConfirmation, true, 'off-grid anchor must block online confirmation');
+
+    const valid = await prepareReservationOps({
+      ...forgedBase,
+      preference: { preferredTimes: { bowling: '15:00', laser_game: '16:30' } },
+    }, 'public');
+    assert.strictEqual(valid.blockOnlineConfirmation, false, 'a valid anchor combination must confirm online');
+    const blocks = valid.opsPlan.resourceBlocks;
+    assert.strictEqual(blocks.find((block) => block.resourceType === 'bowling_lane')?.startTime, '15:00');
+    assert.strictEqual(blocks.find((block) => block.resourceType === 'laser_arena')?.startTime, '16:30');
+  } finally {
+    database.readStaffState = originalReadStaffState;
+    delete require.cache[reservationOpsPath];
+  }
+}
+
 async function invokePublicAvailability(query, snapshot) {
   const originalReadAvailabilitySnapshot = database.readAvailabilitySnapshot;
   database.readAvailabilitySnapshot = async () => snapshot;
@@ -1002,21 +1098,73 @@ async function testPublicFormulaAvailabilityAutoMode() {
   assert.ok(slots.length >= 5, 'the :30 grid must still leave a healthy number of programs on a full day');
 }
 
-async function testPublicFormulaAvailabilityManualOrder() {
-  const slots = await testPublicFormulaAvailabilityNewSemantics(new URLSearchParams({
+// Modèle « Ancres + Liberté » via l'API publique : chaque ancre exposée avec
+// ses chips :00/:30, combinaison choisie revalidée serveur, refus + suggestions
+// quand elle est impossible, option laser « sur place ».
+async function testPublicFormulaAvailabilityAnchorChoice() {
+  // Le laser peut ouvrir la visite (vrai choix par ancre, plus d'ordre imposé).
+  const laserFirst = await invokePublicAvailability(new URLSearchParams({
     date: TEST_DATE,
     centerId: 'libramont',
     type: 'formule',
     formuleId: 'f1',
     pax: '10',
-    activityOrder: 'laser_game,bowling,arcade_time',
-  }), { expectFirstActivity: 'laser_game' });
-  // Mode « Je choisis », laser en premier : les chips restent :00/:30 (plus
-  // jamais de 15:15/16:40 issus de la grille 15 min).
-  slots.forEach((slot) => {
-    assert.strictEqual(toMinutes(slot.time) % 30, 0, `laser-first chip must be on :00/:30, got ${slot.time}`);
+    preferredTimes: JSON.stringify({ laser_game: '15:00', bowling: '16:00' }),
+  }), { reservations: [], laneStatuses: {} });
+  assert.strictEqual(laserFirst.statusCode, 200);
+  assert.strictEqual((laserFirst.payload.slots || []).length, 1, 'a valid anchor combination returns exactly one composed slot');
+  const laserFirstPlan = laserFirst.payload.slots[0].opsPlan;
+  assert.strictEqual(laserFirst.payload.slots[0].time, '15:00', 'the program starts at the earliest anchor');
+  assert.strictEqual(laserFirstPlan.firstLaserTime, '15:00');
+  assert.strictEqual(laserFirstPlan.firstBowlingTime, '16:00');
+
+  // Métadonnées d'ancres : une liste d'heures par ancre, toutes :00/:30.
+  const anchors = laserFirst.payload.anchors;
+  assert.ok(anchors && anchors.activities.length === 2, 'anchor metadata must list bowling and laser');
+  anchors.activities.forEach((activity) => {
+    assert.ok(activity.times.length >= 5, `anchor ${activity.activityId} must offer several times`);
+    activity.times.forEach((item) => {
+      assert.strictEqual(toMinutes(item.time) % 30, 0, `anchor chip must be on :00/:30, got ${item.time}`);
+    });
   });
-  assert.ok(slots.length >= 3, 'the :30 grid must still leave several laser-first programs on a full day');
+  assert.ok(anchors.defaultTimes && anchors.defaultTimes.bowling && anchors.defaultTimes.laser_game,
+    'a valid default combination must be preselected server-side');
+  assert.ok((anchors.freePass || []).length >= 1, 'free-pass activities must be listed without any time');
+  assert.ok((anchors.freePass || []).every((item) => !item.time && !item.startTime), 'free pass never carries a time');
+
+  // Combinaison impossible (chevauchement) : refus clair + suggestions proches.
+  const overlapping = await invokePublicAvailability(new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'formule',
+    formuleId: 'f1',
+    pax: '10',
+    preferredTimes: JSON.stringify({ bowling: '15:00', laser_game: '15:30' }),
+  }), { reservations: [], laneStatuses: {} });
+  assert.strictEqual(overlapping.statusCode, 200);
+  assert.strictEqual((overlapping.payload.slots || []).length, 0, 'overlapping anchors must not produce a slot');
+  assert.ok(/chevauchent/i.test(overlapping.payload.message), 'the refusal message must explain the overlap');
+  assert.ok((overlapping.payload.suggestions || []).length >= 1, 'close suggestions must accompany the refusal');
+  overlapping.payload.suggestions.forEach((suggestion) => {
+    assert.ok(suggestion.times.bowling && suggestion.times.laser_game, 'suggestions must be complete combinations');
+  });
+
+  // Option « Je place mes parties laser sur place » : bowling seul fixé.
+  const onSite = await invokePublicAvailability(new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'formule',
+    formuleId: 'f1',
+    pax: '10',
+    laserPlacement: 'onsite',
+    preferredTimes: JSON.stringify({ bowling: '15:00' }),
+  }), { reservations: [], laneStatuses: {} });
+  assert.strictEqual(onSite.statusCode, 200);
+  assert.strictEqual((onSite.payload.slots || []).length, 1, 'laser on-site option must stay bookable');
+  const onSitePlan = onSite.payload.slots[0].opsPlan;
+  assert.ok(!(onSitePlan.resourceBlocks || []).some((block) => block.resourceType === 'laser_arena'),
+    'laser on-site must not lock the arena');
+  assert.strictEqual(onSitePlan.laserPassPlan.remainingGames, 1, 'laser games stay as an on-site credit');
 }
 
 // Parcours simples côté client : les créneaux proposés (laser seul, bowling
@@ -1056,6 +1204,7 @@ async function main() {
   testLaneRules();
   testFormulaPlanning();
   testFormulaPreferredTimes();
+  testPartyTableFollowsArrival();
   testLaserConflict();
   testStandaloneLaserPlanning();
   testStandaloneLaserCapacityBlock();
@@ -1078,9 +1227,10 @@ async function main() {
   testBowlingClassicRefusesOffGridStart();
   testReservationValidationRefusesOffGridBowling();
   await testPrepareReservationOpsPersistsLaserGamesInOpsPlan();
+  await testPreparePublicReservationRefusesOverlappingAnchors();
   await testPublicLaserAvailabilityUsesLaserGamesAndExactRemainingCapacity();
   await testPublicFormulaAvailabilityAutoMode();
-  await testPublicFormulaAvailabilityManualOrder();
+  await testPublicFormulaAvailabilityAnchorChoice();
   await testPublicSimpleAvailabilityUsesHalfHourGrid();
 
   console.log('ops-tests-ok');

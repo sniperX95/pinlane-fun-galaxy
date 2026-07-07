@@ -252,13 +252,15 @@ function runFixedGuardrailTests(knowledge) {
   assert.strictEqual(splitLaser.ok, true, 'standalone laser should split oversized groups into waves');
   assert.strictEqual(splitLaser.plan.recommended.laserSharing.waveCount, 2, '50 laser players should create two waves');
 
+  // Départ 15:00 : reste valide quel que soit le jour ouvert retenu (une
+  // formule ne peut pas partir pile à l'ouverture — accueil 10 min avant).
   const hugeLaserFormula = planningAgent({
     centerId: 'libramont',
     date: formulaGuardDate,
     type: 'formule',
     formuleId: 'f5',
     pax: 31,
-    startTime: '14:00',
+    startTime: '15:00',
   }, { reservations: [], laneStatuses: {} });
   assert.strictEqual(hugeLaserFormula.ok, true, 'laser formulas should split groups over weapon capacity');
   assert.ok(hugeLaserFormula.plan.recommended.laserSharing.waveCount >= 2, 'formula laser split missing');

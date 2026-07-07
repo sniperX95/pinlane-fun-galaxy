@@ -2451,30 +2451,20 @@ const ACTIVITY_LABELS = {
   party_table: 'Table',
 };
 
+// Modèle « Ancres + Liberté » : le client choisit une heure PAR ANCRE
+// (bowling, laser) — plus d'ordre imposé ni de mode « Fun Galaxy organise /
+// Je choisis ». Les activités libres restent un pass sans aucune heure.
 function createDefaultFormulaPreference(value = {}) {
-  const base = {
-    firstActivityId: '',
-    formulaMode: 'auto',
-    orderFilter: 'all',
-    activityOrder: [],
-    arrivalConfidence: 'normal',
+  const source = value && typeof value === 'object' ? value : {};
+  const preferred = source.preferredTimes && typeof source.preferredTimes === 'object' ? source.preferredTimes : {};
+  return {
+    arrivalConfidence: source.arrivalConfidence === 'uncertain' ? 'uncertain' : 'normal',
+    laserPlacement: source.laserPlacement === 'onsite' ? 'onsite' : 'scheduled',
     preferredTimes: {
-      bowling: '',
-      laser_game: '',
+      bowling: typeof preferred.bowling === 'string' ? preferred.bowling : '',
+      laser_game: typeof preferred.laser_game === 'string' ? preferred.laser_game : '',
     },
   };
-  const next = {
-    ...base,
-    ...(value || {}),
-    activityOrder: Array.isArray(value?.activityOrder) ? value.activityOrder.filter(Boolean) : [],
-    preferredTimes: {
-      ...base.preferredTimes,
-      ...((value && value.preferredTimes) || {}),
-    },
-  };
-  if (!['auto', 'manual'].includes(next.formulaMode)) next.formulaMode = 'auto';
-  if (!['all', 'bowling', 'laser_game'].includes(next.orderFilter)) next.orderFilter = 'all';
-  return next;
 }
 
 function formulaActivityToken(text = '') {
@@ -2528,84 +2518,34 @@ function getFormulaActivityLabel(formule, activityId) {
   return label;
 }
 
-function getFormulaActivityDetail(activityId) {
-  const details = {
-    bowling: 'Vous choisirez une heure de piste disponible.',
-    laser_game: 'Vous choisirez un départ Laser compatible.',
-    minigolf_blacklight: 'Activité libre, placée dans votre ordre.',
-    arcade_time: 'Temps arcade placé dans votre ordre.',
-    playground: 'Activité libre, placée dans votre ordre.',
-    party_table: 'Table réservée dans votre organisation.',
-  };
-  return details[activityId] || 'Activité placée dans votre ordre.';
+// Classification client d'une formule (miroir du serveur) :
+// - ANCRES : bowling et laser uniquement (vraies ressources à créneau).
+// - TABLE : au groupe dès l'arrivée, jamais choisie.
+// - PASS LIBERTÉ : tout le reste, sans aucune heure.
+function getFormulaAnchorIds(formule) {
+  return getFormulaActivityIds(formule).filter((id) => ['bowling', 'laser_game'].includes(id));
 }
 
-function getFormulaActivityOrder(formule) {
-  const ids = getFormulaActivityIds(formule);
-  if (!ids.length) return [];
-  const preferred = createDefaultFormulaPreference(state.booking.preference || {}).activityOrder;
-  const ordered = preferred.filter((id) => ids.includes(id));
-  ids.forEach((id) => {
-    if (!ordered.includes(id)) ordered.push(id);
-  });
-  return ordered;
+function getFormulaFreePassIds(formule) {
+  return getFormulaActivityIds(formule).filter((id) => !['bowling', 'laser_game', 'party_table'].includes(id));
 }
 
-function isFormulaTimedActivity(activityId) {
-  return ['bowling', 'laser_game', 'party_table'].includes(activityId);
-}
-
-function getFormulaTimedActivityOrder(formule) {
-  return getFormulaActivityOrder(formule).filter(isFormulaTimedActivity);
-}
-
-function formulaHasTimedChoicePair(formule) {
-  const ids = getFormulaActivityIds(formule);
-  return ids.includes('bowling') && ids.includes('laser_game');
-}
-
-function getFormulaActivityChoices(formule) {
-  const detected = getFormulaActivityIds(formule);
-  const critical = detected.filter((id) => ['bowling', 'laser_game'].includes(id));
-  const displayed = critical.length >= 2 ? critical : detected;
-  if (displayed.length < 2) return [{ id: '', label: "Laisser l'agent choisir", detail: 'Meilleur enchaînement selon le planning.' }];
-  const choices = [{ id: '', label: "Laisser l'agent choisir", detail: 'Le système réserve le meilleur enchaînement disponible.' }];
-  const details = {
-    bowling: 'Piste Bowling placée en priorité.',
-    laser_game: 'Départ Laser Game placé en priorité.',
-    minigolf_blacklight: 'Activité libre placée avant les blocs fixes.',
-    arcade_time: 'Arcades placées avant les blocs fixes.',
-    playground: 'Plaine placée avant les blocs fixes.',
-  };
-  displayed.forEach((id) => {
-    choices.push({
-      id,
-      label: `${ACTIVITY_LABELS[id] || id} d'abord`,
-      detail: details[id] || 'Le reste reste flexible sur place.',
-    });
-  });
-  return choices;
+function formulaHasPartyTable(formule) {
+  return getFormulaActivityIds(formule).includes('party_table');
 }
 
 function ensureFormulaPreferences(formule) {
-  state.booking.preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const ids = getFormulaActivityIds(formule);
-  const ordered = state.booking.preference.activityOrder.filter((id) => ids.includes(id));
-  ids.forEach((id) => {
-    if (!ordered.includes(id)) ordered.push(id);
-  });
-  state.booking.preference.activityOrder = ordered;
-  if (!ids.includes(state.booking.preference.firstActivityId)) {
-    state.booking.preference.firstActivityId = '';
-  }
-  const preferred = state.booking.preference.preferredTimes || {};
-  Object.keys(preferred).forEach((activityId) => {
-    if (!ids.includes(activityId)) delete preferred[activityId];
-  });
-  state.booking.preference.preferredTimes = preferred;
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  const anchorIds = getFormulaAnchorIds(formule);
+  if (!anchorIds.includes('bowling')) preference.preferredTimes.bowling = '';
+  if (!anchorIds.includes('laser_game')) preference.preferredTimes.laser_game = '';
+  if (!anchorIds.includes('laser_game') || anchorIds.length < 2) preference.laserPlacement = 'scheduled';
+  state.booking.preference = preference;
   state.booking.pauseMinutes = 0;
 }
 
+// Étape 1 : simple annonce du modèle — le vrai choix (une heure par ancre)
+// vit à l'étape Créneau. Plus de mode « Fun Galaxy organise / Je choisis ».
 function renderFormulaPreferences() {
   const box = document.getElementById('formulaPrefs');
   const orderEl = document.getElementById('formulaOrderOptions');
@@ -2619,157 +2559,31 @@ function renderFormulaPreferences() {
     return;
   }
   ensureFormulaPreferences(formule);
-  const order = getFormulaActivityOrder(formule);
-  if (order.length <= 1) {
-    box.classList.add('hidden');
-    orderEl.innerHTML = '';
-    noteEl.textContent = '';
-    return;
-  }
+  const anchorIds = getFormulaAnchorIds(formule);
+  const freeIds = getFormulaFreePassIds(formule);
+  const hasTable = formulaHasPartyTable(formule);
   box.classList.remove('hidden');
-  const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const isManual = preference.formulaMode === 'manual';
-  noteEl.textContent = isManual
-    ? 'Vous choisissez l’ordre ; à l’étape suivante, choisissez une heure d’arrivée qui le respecte.'
-    : 'Les boissons et cruches restent libres sur place.';
-  const path = order.map((activityId, index) => `
-    ${index > 0 ? '<span>puis</span>' : ''}
-    <strong>${escapeHtml(getFormulaActivityLabel(formule, activityId))}</strong>
-  `).join('');
+  noteEl.textContent = anchorIds.length
+    ? 'À l’étape suivante, choisissez une heure pour chaque activité à créneau — le reste se vit librement sur place.'
+    : 'À l’étape suivante, choisissez simplement votre heure d’arrivée — tout le reste se vit librement sur place.';
   orderEl.innerHTML = `
-    <div class="formula-mode-switch">
-      <button type="button" class="formula-mode-card ${!isManual ? 'active' : ''}" onclick="setFormulaPlanningMode('auto')">
-        <span class="formula-mode-kicker">Recommandé</span>
-        <strong>Fun Galaxy organise</strong>
-        <small>On propose le programme le plus fluide selon les places disponibles.</small>
-      </button>
-      <button type="button" class="formula-mode-card ${isManual ? 'active' : ''}" onclick="setFormulaPlanningMode('manual')">
-        <span class="formula-mode-kicker">Sur mesure</span>
-        <strong>Je choisis</strong>
-        <small>Vous décidez l’ordre, puis vous choisissez chaque horaire possible.</small>
-      </button>
-    </div>
-    ${isManual ? `
-    <div class="formula-order-builder">
-      <div class="formula-order-path">${path}</div>
-      ${order.map((activityId, index) => `
-        <div class="formula-order-row" data-activity="${escapeHtml(activityId)}">
-          <span class="formula-order-handle" aria-hidden="true">
-            <svg width="16" height="22" viewBox="0 0 16 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h.01"/><path d="M11 5h.01"/><path d="M5 11h.01"/><path d="M11 11h.01"/><path d="M5 17h.01"/><path d="M11 17h.01"/></svg>
-          </span>
-          <span class="formula-order-num">${index + 1}</span>
-          <span class="formula-order-copy">
-            <strong>${escapeHtml(getFormulaActivityLabel(formule, activityId))}</strong>
-            <small>${escapeHtml(getFormulaActivityDetail(activityId))}</small>
-          </span>
-          <span class="formula-order-actions">
-            <button type="button" class="formula-order-move" ${index === 0 ? 'disabled' : ''} onclick="moveFormulaActivity('${activityId}', -1)" aria-label="Monter ${escapeHtml(getFormulaActivityLabel(formule, activityId))}">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
-            </button>
-            <button type="button" class="formula-order-move" ${index === order.length - 1 ? 'disabled' : ''} onclick="moveFormulaActivity('${activityId}', 1)" aria-label="Descendre ${escapeHtml(getFormulaActivityLabel(formule, activityId))}">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-          </span>
-        </div>
-      `).join('')}
-    </div>` : `
-    <div class="formula-auto-preview">
-      <span>OK</span>
-      <div>
-        <strong>Le système garde la formule flexible.</strong>
-        <small>À l’étape suivante, choisissez simplement votre heure d’arrivée : le programme complet s’affiche automatiquement.</small>
-      </div>
-    </div>`}`;
-}
-
-function moveFormulaActivity(activityId, direction) {
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
-  if (!formule) return;
-  const previousRows = new Map(Array.from(document.querySelectorAll('.formula-order-row[data-activity]')).map((row) => [
-    row.dataset.activity,
-    row.getBoundingClientRect(),
-  ]));
-  const order = getFormulaActivityOrder(formule);
-  const index = order.indexOf(activityId);
-  const nextIndex = index + Number(direction);
-  if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
-  const nextOrder = [...order];
-  [nextOrder[index], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[index]];
-  state.booking.preference = createDefaultFormulaPreference({
-    ...(state.booking.preference || {}),
-    activityOrder: nextOrder,
-    firstActivityId: nextOrder[0] || '',
-    formulaMode: 'manual',
-    orderFilter: 'all',
-    preferredTimes: {},
-  });
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
-  renderFormulaPreferences();
-  requestAnimationFrame(() => {
-    document.querySelectorAll('.formula-order-row[data-activity]').forEach((row) => {
-      const previous = previousRows.get(row.dataset.activity);
-      if (!previous) return;
-      const next = row.getBoundingClientRect();
-      const deltaY = previous.top - next.top;
-      if (Math.abs(deltaY) > 1) {
-        row.animate([
-          { transform: `translateY(${deltaY}px)`, opacity: 0.92 },
-          { transform: 'translateY(0)', opacity: 1 },
-        ], {
-          duration: 260,
-          easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
-        });
-      }
-      if (row.dataset.activity === activityId) {
-        row.classList.add('formula-order-row-pulse');
-        window.setTimeout(() => row.classList.remove('formula-order-row-pulse'), 360);
-      }
-    });
-  });
-  save();
-}
-
-function setFormulaPlanningMode(mode) {
-  const safeMode = mode === 'manual' ? 'manual' : 'auto';
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
-  const order = formule ? getFormulaActivityOrder(formule) : state.booking.preference?.activityOrder || [];
-  state.booking.preference = createDefaultFormulaPreference({
-    ...(state.booking.preference || {}),
-    formulaMode: safeMode,
-    activityOrder: order,
-    firstActivityId: safeMode === 'manual' ? order[0] || '' : '',
-    orderFilter: 'all',
-    preferredTimes: {},
-  });
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
-  resetFormulaProgramChoice();
-  renderFormulaPreferences();
-  renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
-  save();
-}
-
-function setFormulaFirstActivity(activityId) {
-  state.booking.preference = createDefaultFormulaPreference({
-    ...(state.booking.preference || {}),
-    firstActivityId: activityId,
-    formulaMode: 'auto',
-    preferredTimes: { bowling: '', laser_game: '' },
-    arrivalConfidence: 'normal',
-  });
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
-  renderFormulaPreferences();
-  save();
-}
-
-function setFormulaPause(minutes) {
-  state.booking.pauseMinutes = 0;
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
-  renderFormulaPreferences();
-  save();
+    <div class="formula-model-preview">
+      ${anchorIds.length ? `
+      <div class="formula-model-line">
+        <span class="formula-model-tag reserved">Heure à choisir</span>
+        <span>${anchorIds.map(id => escapeHtml(getFormulaActivityLabel(formule, id))).join(' · ')}</span>
+      </div>` : ''}
+      ${hasTable ? `
+      <div class="formula-model-line">
+        <span class="formula-model-tag table">Table</span>
+        <span>Votre table vous attend dès votre arrivée, pendant toute la visite</span>
+      </div>` : ''}
+      ${freeIds.length ? `
+      <div class="formula-model-line">
+        <span class="formula-model-tag free">Pass liberté</span>
+        <span>${freeIds.map(id => escapeHtml(getFormulaActivityLabel(formule, id))).join(' · ')} — à votre rythme, quand vous voulez</span>
+      </div>` : ''}
+    </div>`;
 }
 
 function selectFormule(id) {
@@ -2845,19 +2659,15 @@ function applyBookingAlternative(index) {
   state.booking.opsPlan = alternative.opsPlan || null;
   state.booking.allocatedLanes = alternative.lanes || alternative.opsPlan?.assignedLanes || [];
   if (state.booking.type === 'formule' && alternative.opsPlan) {
-    const formule = FORMULES.find(x => x.id === state.booking.formuleId);
-    const order = formule ? getFormulaActivityOrder(formule) : state.booking.preference?.activityOrder || [];
+    // Aligne les ancres choisies sur l'alternative retenue : le serveur
+    // revalidera exactement cette combinaison à la confirmation.
     state.booking.preference = createDefaultFormulaPreference({
       ...(state.booking.preference || {}),
-      formulaMode: 'manual',
-      activityOrder: order,
-      firstActivityId: alternative.opsPlan.firstBowlingTime && alternative.opsPlan.firstLaserTime
-        ? timeToNum(alternative.opsPlan.firstBowlingTime) <= timeToNum(alternative.opsPlan.firstLaserTime) ? 'bowling' : 'laser_game'
-        : order[0] || '',
       preferredTimes: {
-        ...(alternative.opsPlan.firstBowlingTime ? { bowling: alternative.opsPlan.firstBowlingTime } : {}),
-        ...(alternative.opsPlan.firstLaserTime ? { laser_game: alternative.opsPlan.firstLaserTime } : {}),
+        bowling: alternative.opsPlan.firstBowlingTime || '',
+        laser_game: alternative.opsPlan.firstLaserTime || '',
       },
+      laserPlacement: alternative.opsPlan.firstLaserTime ? 'scheduled' : (state.booking.preference?.laserPlacement || 'scheduled'),
     });
   }
   save();
@@ -2937,13 +2747,13 @@ async function fetchSlots(options = {}) {
     if (state.booking.type === 'formule') {
       const preference = createDefaultFormulaPreference(state.booking.preference || {});
       params.set('formuleId', state.booking.formuleId || '');
-      if (preference.formulaMode === 'manual') {
-        if (preference.activityOrder?.length) params.set('activityOrder', preference.activityOrder.join(','));
-        if (preference.preferredTimes) params.set('preferredTimes', JSON.stringify(preference.preferredTimes));
-        if (preference.firstActivityId) params.set('firstActivityId', preference.firstActivityId);
-        if (preference.preferredTimes?.bowling) params.set('preferredBowlingTime', preference.preferredTimes.bowling);
-        if (preference.preferredTimes?.laser_game) params.set('preferredLaserTime', preference.preferredTimes.laser_game);
+      const chosenTimes = {};
+      if (preference.preferredTimes.bowling) chosenTimes.bowling = preference.preferredTimes.bowling;
+      if (preference.preferredTimes.laser_game && preference.laserPlacement !== 'onsite') {
+        chosenTimes.laser_game = preference.preferredTimes.laser_game;
       }
+      if (Object.keys(chosenTimes).length) params.set('preferredTimes', JSON.stringify(chosenTimes));
+      if (preference.laserPlacement === 'onsite') params.set('laserPlacement', 'onsite');
     } else {
       params.set('duration', String(state.booking.duration));
       if (state.booking.type === 'laser') params.set('laserGames', String(getLaserGameCount(state.booking.duration)));
@@ -2955,7 +2765,11 @@ async function fetchSlots(options = {}) {
     if (requestId !== slotFetchRequestId) return;
 
     state.availableSlots = filterPastSlotsForDate(payload.slots || [], state.booking.date);
+    formulaAnchorData = payload.anchors || null;
+    formulaAnchorMessage = state.availableSlots.length ? '' : (payload.message || '');
+    formulaAnchorSuggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
     resetFormulaProgramChoice();
+    adoptDefaultFormulaAnchors();
     state.booking.laneCount = Number(payload.laneCount || 0);
     state.booking.duration = Number(payload.duration || state.booking.duration || 0);
     state.booking.totalDuration = state.booking.type === 'laser'
@@ -2965,6 +2779,9 @@ async function fetchSlots(options = {}) {
   } catch (error) {
     if (requestId !== slotFetchRequestId) return;
     state.availableSlots = [];
+    formulaAnchorData = null;
+    formulaAnchorMessage = '';
+    formulaAnchorSuggestions = [];
     showAlert(error.message || 'Impossible de charger les créneaux.');
   }
 
@@ -2984,247 +2801,323 @@ function describeSlotPlan(plan) {
   return bits.join(' • ');
 }
 
+// Heure d'une ancre dans un créneau : jamais les étapes « flexible » (pass
+// liberté), qui n'ont pas d'horaire propre.
 function getFormulaSlotActivityTime(slot, activityId) {
   const plan = slot?.opsPlan || {};
   if (activityId === 'bowling' && plan.firstBowlingTime) return plan.firstBowlingTime;
   if (activityId === 'laser_game' && plan.firstLaserTime) return plan.firstLaserTime;
-  const item = (plan.timeline || []).find(step => step.activityId === activityId);
+  const item = (plan.timeline || []).find(step => step.activityId === activityId && !step.flexible);
   return item?.startTime || '';
 }
 
-function getFormulaSlotActivityTimes(slot, activityId) {
-  return (slot?.opsPlan?.timeline || [])
-    .filter(step => step.activityId === activityId)
-    .map(step => step.startTime)
-    .filter(Boolean);
-}
-
-function getFormulaSlotActivitySequence(slot, formule) {
-  const allowed = getFormulaActivityIds(formule);
-  return (slot?.opsPlan?.timeline || [])
-    .filter(step => step.activityId && allowed.includes(step.activityId))
-    .sort((left, right) => timeToNum(left.startTime) - timeToNum(right.startTime))
-    .map(step => step.activityId)
-    .filter((activityId, index, list) => list.indexOf(activityId) === index);
-}
-
-function slotMatchesFormulaActivityOrder(slot, formule) {
-  const expected = getFormulaActivityOrder(formule);
-  if (expected.length < 2) return true;
-  const actual = getFormulaSlotActivitySequence(slot, formule);
-  return expected.every((activityId, index) => actual[index] === activityId);
-}
-
-function slotMatchesFormulaPreferredTimes(slot, preferredTimes = {}) {
-  return Object.entries(preferredTimes || {}).every(([activityId, startTime]) => {
-    if (!startTime) return true;
-    return getFormulaSlotActivityTimes(slot, activityId).includes(startTime);
-  });
-}
-
-function slotMatchesFormulaTimeFilters(slot, formule) {
-  if (!formule) return true;
-  const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  if (preference.formulaMode !== 'manual') return true;
-  if (!slotMatchesFormulaActivityOrder(slot, formule)) return false;
-  return slotMatchesFormulaPreferredTimes(slot, preference.preferredTimes || {});
-}
-
-function getFormulaSlotOrderKey(slot) {
-  const bowlingTime = getFormulaSlotActivityTime(slot, 'bowling');
-  const laserTime = getFormulaSlotActivityTime(slot, 'laser_game');
-  if (!bowlingTime || !laserTime) return 'all';
-  return timeToNum(bowlingTime) <= timeToNum(laserTime) ? 'bowling' : 'laser_game';
-}
-
-// --- Picker formule « heure de début d'abord » ------------------------------
-// Le client ne compare pas des dizaines d'enchaînements : il choisit UNE heure
-// (chips scannables) = l'heure EXACTE de début de sa première activité, puis
-// voit LE programme composé (timeline Réservé / Libre) avec, en premier point,
-// l'« Arrivée conseillée » 10 minutes avant pour l'accueil. S'il existe
-// plusieurs variantes pour la même heure (heures de laser/bowling différentes),
-// un choix secondaire compact propose au plus 3 options espacées. Fonctionne
-// pour les deux modes : « Fun Galaxy organise » et « Je choisis » (les créneaux
-// serveur respectent alors l'ordre d'activités demandé).
-let formulaArrivalChoice = '';
-let formulaVariantKey = '';
+// --- Picker formule « Ancres + Liberté » -------------------------------------
+// Une ligne par ANCRE (Bowling, Laser) avec ses chips d'heures :00/:30. Le
+// serveur pré-sélectionne une combinaison valide (zéro friction) ; chaque
+// ancre reste modifiable indépendamment, avec revalidation serveur en direct.
+// La table suit l'arrivée (jamais choisie) et le pass liberté n'affiche
+// JAMAIS d'heure — ni ici, ni au récap, ni dans le mail.
+let formulaArrivalChoice = '';      // formules sans ancre : heure d'arrivée
+let formulaAnchorData = null;       // bloc `anchors` renvoyé par le serveur
+let formulaAnchorMessage = '';      // message de refus de combinaison
+let formulaAnchorSuggestions = [];  // combinaisons proches proposées
+let formulaAnchorBusy = false;      // revalidation en cours
 
 function resetFormulaProgramChoice() {
   formulaArrivalChoice = '';
-  formulaVariantKey = '';
 }
 
-function getFormulaSlotVariantKey(slot, formule) {
-  return getFormulaTimedActivityOrder(formule)
-    .map(activityId => `${activityId}:${getFormulaSlotActivityTimes(slot, activityId).join('+')}`)
-    .join('|') || `end:${slot?.opsPlan?.endTime || slot.time}`;
+function formulaHasAnchorUi() {
+  return Boolean(formulaAnchorData && Array.isArray(formulaAnchorData.activities) && formulaAnchorData.activities.length);
 }
 
-function getFormulaVariantLabel(slot, formule) {
-  const shortLabels = { bowling: 'Bowling', laser_game: 'Laser', party_table: 'Table' };
-  const bits = getFormulaTimedActivityOrder(formule)
-    .map(activityId => {
-      const time = getFormulaSlotActivityTime(slot, activityId);
-      return time ? `${shortLabels[activityId] || activityId} ${time}` : '';
-    })
-    .filter(Boolean);
-  return bits.join(' · ') || `Fin ${slot?.opsPlan?.endTime || ''}`.trim();
-}
-
-function getFormulaArrivalGroups(formule) {
-  const groups = new Map();
-  (state.availableSlots || []).forEach((slot, index) => {
-    if (!slotMatchesFormulaTimeFilters(slot, formule)) return;
-    const variantKey = getFormulaSlotVariantKey(slot, formule);
-    if (!groups.has(slot.time)) groups.set(slot.time, new Map());
-    const variants = groups.get(slot.time);
-    if (!variants.has(variantKey)) {
-      variants.set(variantKey, { slot, index, variantKey, label: getFormulaVariantLabel(slot, formule) });
+// Défaut zéro friction : à l'arrivée sur l'étape, la combinaison valide
+// proposée par le serveur est pré-sélectionnée — chaque ancre reste modifiable.
+function adoptDefaultFormulaAnchors() {
+  if (state.booking.type !== 'formule' || !formulaHasAnchorUi()) return;
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  let changed = false;
+  formulaAnchorData.activities.forEach((activity) => {
+    if (activity.activityId === 'laser_game' && preference.laserPlacement === 'onsite') return;
+    const fallback = formulaAnchorData.defaultTimes?.[activity.activityId] || '';
+    if (!preference.preferredTimes[activity.activityId] && fallback) {
+      preference.preferredTimes[activity.activityId] = fallback;
+      changed = true;
     }
   });
-  return [...groups.entries()]
-    .map(([time, variantMap]) => {
-      const all = [...variantMap.values()];
-      // Variantes espacées plutôt que 5 options à 15 min d'écart.
-      const variants = all.length > 3
-        ? [all[0], all[Math.floor(all.length / 2)], all[all.length - 1]]
-        : all;
-      return { time, variants, totalVariants: all.length };
-    })
-    .sort((left, right) => timeToNum(left.time) - timeToNum(right.time));
+  if (changed) {
+    state.booking.preference = preference;
+    save();
+  }
+}
+
+function getCurrentFormulaAnchorSelection() {
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  const times = {};
+  (formulaAnchorData?.activities || []).forEach((activity) => {
+    if (activity.activityId === 'laser_game' && preference.laserPlacement === 'onsite') return;
+    times[activity.activityId] = preference.preferredTimes[activity.activityId] || '';
+  });
+  return { preference, times };
+}
+
+function formulaSlotMatchesTimes(slot, times) {
+  return Object.entries(times || {}).every(([activityId, time]) => {
+    if (!time) return false;
+    const planTimes = slot?.opsPlan?.anchorPlan?.times;
+    if (planTimes && planTimes[activityId]) return planTimes[activityId] === time;
+    return getFormulaSlotActivityTime(slot, activityId) === time;
+  });
+}
+
+function getCurrentFormulaAnchorSlotIndex() {
+  const { times } = getCurrentFormulaAnchorSelection();
+  return (state.availableSlots || []).findIndex((slot) => formulaSlotMatchesTimes(slot, times));
+}
+
+async function revalidateFormulaAnchors() {
+  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  formulaAnchorBusy = true;
+  renderSlots(formule);
+  await fetchSlots({ showLoading: false });
+  formulaAnchorBusy = false;
+  renderSlots(formule);
+}
+
+async function setFormulaAnchorTime(activityId, time) {
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
+  preference.preferredTimes[activityId] = time;
+  if (activityId === 'laser_game') preference.laserPlacement = 'scheduled';
+  state.booking.preference = preference;
+  state.booking.startTime = '';
+  state.booking.opsPlan = null;
+  save();
+  await revalidateFormulaAnchors();
+}
+
+function getDefaultLaserTimeAfterBowling(preference) {
+  const laser = (formulaAnchorData?.activities || []).find((activity) => activity.activityId === 'laser_game');
+  if (!laser) return '';
+  const fallback = formulaAnchorData?.defaultTimes?.laser_game || laser.times[0]?.time || '';
+  const bowlingTime = preference.preferredTimes.bowling;
+  const bowling = (formulaAnchorData?.activities || []).find((activity) => activity.activityId === 'bowling');
+  if (!bowlingTime || !bowling) return fallback;
+  const bowlingEnd = timeToNum(bowlingTime) * 60 + Number(bowling.durationMinutes || 60);
+  const next = laser.times.find((item) => timeToNum(item.time) * 60 >= bowlingEnd + 5);
+  return next?.time || fallback;
+}
+
+async function setFormulaLaserPlacement(placement) {
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  const next = placement === 'onsite' ? 'onsite' : 'scheduled';
+  if (preference.laserPlacement === next) return;
+  preference.laserPlacement = next;
+  preference.preferredTimes.laser_game = next === 'onsite' ? '' : getDefaultLaserTimeAfterBowling(preference);
+  state.booking.preference = preference;
+  state.booking.startTime = '';
+  state.booking.opsPlan = null;
+  save();
+  await revalidateFormulaAnchors();
+}
+
+async function applyFormulaAnchorSuggestion(index) {
+  const suggestion = (formulaAnchorSuggestions || [])[index];
+  if (!suggestion || !suggestion.times) return;
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  Object.entries(suggestion.times).forEach(([activityId, time]) => {
+    if (Object.prototype.hasOwnProperty.call(preference.preferredTimes, activityId)) {
+      preference.preferredTimes[activityId] = time;
+    }
+  });
+  if (suggestion.times.laser_game) preference.laserPlacement = 'scheduled';
+  state.booking.preference = preference;
+  save();
+  await revalidateFormulaAnchors();
+}
+
+async function resetFormulaAnchorChoices() {
+  state.booking.preference = createDefaultFormulaPreference();
+  state.booking.startTime = '';
+  state.booking.opsPlan = null;
+  save();
+  await revalidateFormulaAnchors();
+}
+
+// Carte « votre visite » : les rendez-vous (ancres), la table dès l'arrivée et
+// le pass liberté — sans aucune heure pour les activités libres.
+function renderFormulaVisitSummary(slot, formule) {
+  const plan = slot?.opsPlan;
+  if (!plan) return '';
+  const blocks = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
+  const bowlingBlock = blocks.find(block => block.resourceType === 'bowling_lane');
+  const laserBlock = blocks.find(block => block.resourceType === 'laser_arena');
+  const tableBlock = blocks.find(block => block.resourceType === 'party_table');
+  const appointments = [];
+  if (bowlingBlock?.startTime) appointments.push(`Bowling ${bowlingBlock.startTime}`);
+  if (laserBlock?.startTime) appointments.push(`Laser Game ${laserBlock.startTime}`);
+  const arrivalTime = plan.arrivalTime || '';
+  const arrivalMinutes = Number(plan.arrivalMinutes || 10);
+  const passLabels = (formulaAnchorData?.freePass || []).map(item => item.label);
+  if (!passLabels.length && formule) {
+    passLabels.push(...getFormulaFreePassIds(formule).map(id => ACTIVITY_LABELS[id] || id));
+  }
+  const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
+  const rows = [];
+  if (appointments.length) {
+    rows.push(`<div class="visit-line"><span class="visit-tag reserved">Vos rendez-vous</span><strong>${appointments.map(escapeHtml).join(' · ')}</strong></div>`);
+  }
+  if (arrivalTime) {
+    rows.push(`<div class="visit-line"><span class="visit-tag arrival">Arrivée</span><span>Présentez-vous ${arrivalMinutes} min avant : accueil à <strong>${escapeHtml(arrivalTime)}</strong></span></div>`);
+  }
+  if (tableBlock || formulaAnchorData?.hasTable || (formule && formulaHasPartyTable(formule))) {
+    rows.push(`<div class="visit-line"><span class="visit-tag table">Table</span><span>Votre table vous attend dès votre arrivée${arrivalTime ? ` (${escapeHtml(arrivalTime)})` : ''}</span></div>`);
+  }
+  if (passLabels.length) {
+    rows.push(`<div class="visit-line"><span class="visit-tag free">À votre rythme</span><span>${passLabels.map(escapeHtml).join(' · ')} — quand vous voulez</span></div>`);
+  }
+  if (remainingLaser > 0) {
+    rows.push(`<div class="visit-line"><span class="visit-tag laser">Laser</span><span>${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence</span></div>`);
+  }
+  if (plan.laserSharing?.mayShare) {
+    rows.push(`<div class="visit-line visit-line-note"><span>Le Laser Game peut être complété par d'autres joueurs selon l'affluence</span></div>`);
+  }
+  return `<div class="formula-visit-summary">${rows.join('')}</div>`;
+}
+
+// Formules AVEC ancres : une ligne de chips par ancre + pass liberté.
+function renderFormulaAnchorRows(formule) {
+  const { preference, times } = getCurrentFormulaAnchorSelection();
+  const laserOnSite = preference.laserPlacement === 'onsite';
+  return formulaAnchorData.activities.map((activity) => {
+    const isLaser = activity.activityId === 'laser_game';
+    const disabled = isLaser && laserOnSite;
+    const selected = disabled ? '' : (times[activity.activityId] || '');
+    const chips = activity.times.map(item => `
+      <button type="button" class="anchor-chip ${item.time === selected ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`).join('');
+    const detail = isLaser
+      ? (activity.count > 1
+        ? `${activity.count} parties incluses — choisissez la 1re, le reste se place sur place`
+        : `Session de ${activity.durationMinutes} min`)
+      : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
+    const onSiteToggle = isLaser && formulaAnchorData.laserOnSiteAvailable ? `
+      <label class="anchor-onsite ${laserOnSite ? 'active' : ''}">
+        <input type="checkbox" ${laserOnSite ? 'checked' : ''} onchange="setFormulaLaserPlacement(this.checked ? 'onsite' : 'scheduled')">
+        <span>Je place mes parties laser sur place, selon l'affluence</span>
+      </label>` : '';
+    return `
+      <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}">
+        <div class="anchor-row-head">
+          <strong>${escapeHtml(activity.label)}</strong>
+          <small>${escapeHtml(detail)}</small>
+        </div>
+        <div class="anchor-chip-grid">${chips}</div>
+        ${onSiteToggle}
+      </div>`;
+  }).join('');
+}
+
+function renderFormulaFreePassBlock(formule) {
+  const passItems = (formulaAnchorData?.freePass || []).map(item => item.label);
+  if (!passItems.length && formule) {
+    passItems.push(...getFormulaFreePassIds(formule).map(id => ACTIVITY_LABELS[id] || id));
+  }
+  const drinks = formulaAnchorData?.drinks || [];
+  if (!passItems.length && !drinks.length) return '';
+  return `
+    <div class="anchor-free-pass">
+      <div class="anchor-free-head">
+        <span class="anchor-free-badge">Pass liberté</span>
+        <strong>Inclus, à votre rythme sur place — quand vous voulez</strong>
+      </div>
+      <div class="anchor-free-items">
+        ${passItems.map(label => `<span class="anchor-free-item">${escapeHtml(label)}</span>`).join('')}
+        ${drinks.map(label => `<span class="anchor-free-item anchor-free-drink">${escapeHtml(label)}</span>`).join('')}
+      </div>
+      <small>Aucune heure à choisir : ces avantages se vivent librement pendant toute votre visite.</small>
+    </div>`;
+}
+
+function renderFormulaAnchorPicker(formule) {
+  if (!formulaHasAnchorUi()) return renderFormulaArrivalPicker(formule);
+  const slotIndex = getCurrentFormulaAnchorSlotIndex();
+  const slot = slotIndex >= 0 ? state.availableSlots[slotIndex] : null;
+  let statusHtml = '';
+  if (formulaAnchorBusy) {
+    statusHtml = `
+      <div class="anchor-status anchor-status-busy" role="status" aria-live="polite">
+        <span class="slot-spinner" aria-hidden="true"></span>
+        <span>Vérification de votre combinaison…</span>
+      </div>`;
+  } else if (slot) {
+    statusHtml = `
+      <div class="formula-program-panel">
+        ${renderFormulaVisitSummary(slot, formule)}
+        <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${slotIndex})">Valider ces horaires</button>
+      </div>`;
+  } else {
+    const suggestions = (formulaAnchorSuggestions || []).map((suggestion, index) => `
+      <button type="button" class="anchor-suggestion" onclick="applyFormulaAnchorSuggestion(${index})">${escapeHtml(suggestion.label || Object.values(suggestion.times || {}).join(' · '))}</button>`).join('');
+    statusHtml = `
+      <div class="anchor-status anchor-status-error" role="alert">
+        <strong>${escapeHtml(formulaAnchorMessage || 'Cette combinaison n’est pas possible.')}</strong>
+        ${suggestions ? `<div class="anchor-suggestions"><span>Essayez plutôt :</span>${suggestions}</div>` : ''}
+        <button type="button" class="formula-order-fallback-btn" onclick="resetFormulaAnchorChoices()">Revenir à la proposition automatique</button>
+      </div>`;
+  }
+  return `
+    <div class="formula-anchor-picker">
+      <div class="formula-arrival-head">
+        <strong>Composez votre visite</strong>
+        <span>Choisissez l'heure de chaque activité à créneau — présentez-vous 10 minutes avant votre premier rendez-vous. Le reste de la formule se vit à votre rythme, sans horaire.</span>
+      </div>
+      ${renderFormulaAnchorRows(formule)}
+      ${statusHtml}
+      ${renderFormulaFreePassBlock(formule)}
+    </div>`;
+}
+
+// Formules SANS ancre (table anniversaire + pass liberté) : le seul choix est
+// l'heure d'arrivée — la table suit automatiquement.
+function renderFormulaArrivalPicker(formule) {
+  const slots = state.availableSlots || [];
+  if (!slots.length) return '';
+  if (!slots.some(slot => slot.time === formulaArrivalChoice)) formulaArrivalChoice = '';
+  const activeIndex = slots.findIndex(slot => slot.time === formulaArrivalChoice);
+  const activeSlot = activeIndex >= 0 ? slots[activeIndex] : null;
+  const chips = slots.map(slot => `
+    <button type="button" class="formula-arrival-chip ${activeSlot && slot.time === formulaArrivalChoice ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeHtml(slot.time)}')">
+      ${escapeHtml(slot.time)}
+    </button>`).join('');
+  return `
+    <div class="formula-arrival-picker">
+      <div class="formula-arrival-head">
+        <strong>Choisissez votre heure d'arrivée</strong>
+        <span>Votre table vous attend dès votre arrivée et les activités incluses se vivent à votre rythme — présentez-vous 10 minutes avant l'heure choisie pour l'accueil.</span>
+      </div>
+      <div class="formula-arrival-grid">${chips}</div>
+      ${activeSlot ? `
+        <div class="formula-program-panel">
+          ${renderFormulaVisitSummary(activeSlot, formule)}
+          <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${activeIndex})">Choisir cette arrivée</button>
+        </div>` : `
+        <p class="formula-arrival-hint">Touchez une heure pour voir le résumé de votre visite.</p>`}
+      ${renderFormulaFreePassBlock(formule)}
+    </div>`;
 }
 
 function setFormulaArrivalChoice(time) {
   formulaArrivalChoice = time;
-  formulaVariantKey = '';
   renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
-}
-
-function setFormulaVariantChoice(variantKey) {
-  formulaVariantKey = variantKey;
-  renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
-}
-
-function useRecommendedFormulaOrder() {
-  setFormulaPlanningMode('auto');
-  fetchSlots();
-}
-
-function renderFormulaProgramTimeline(slot) {
-  const plan = slot?.opsPlan;
-  if (!plan) return '';
-  const timeline = Array.isArray(plan.timeline) ? plan.timeline : [];
-  const rows = [];
-  // L'heure choisie = début exact de la première activité. L'arrivée conseillée
-  // (accueil) est 10 min AVANT : elle vient du serveur (arrivalTime), avec le
-  // bloc bar_service de la timeline en secours.
-  const arrivalTime = plan.arrivalTime
-    || timeline.find(step => step.type === 'service' && step.resourceType === 'bar_service')?.startTime
-    || '';
-  const arrivalMinutes = Number(plan.arrivalMinutes || 10);
-  rows.push(`
-    <div class="ftl-row">
-      <span class="ftl-dot arrival" aria-hidden="true"></span>
-      <span class="ftl-time">${escapeHtml(arrivalTime || plan.startTime || slot.time)}</span>
-      <span class="ftl-copy"><strong>Arrivée conseillée</strong><span class="ftl-badge free">Accueil ${arrivalMinutes} min avant</span></span>
-    </div>`);
-  timeline
-    .filter(step => step.type === 'activity' && step.activityId && step.activityId !== 'service_drinks')
-    .forEach((step, index) => {
-      const reserved = Boolean(step.critical) || ['bowling_lane', 'laser_arena', 'party_table'].includes(step.resourceType || '');
-      const firstBadge = index === 0 ? '<span class="ftl-badge reserved">Première activité — heure choisie</span>' : '';
-      rows.push(`
-        <div class="ftl-row">
-          <span class="ftl-dot ${reserved ? 'reserved' : 'free'}" aria-hidden="true"></span>
-          <span class="ftl-time">${escapeHtml(step.startTime || '')}<small>${escapeHtml(step.endTime || '')}</small></span>
-          <span class="ftl-copy">
-            <strong>${escapeHtml(step.label || step.activityId)}</strong>
-            ${firstBadge}
-            <span class="ftl-badge ${reserved ? 'reserved' : 'free'}">${reserved ? 'Réservé pour vous' : 'Libre, à votre rythme'}</span>
-          </span>
-        </div>`);
-    });
-  rows.push(`
-    <div class="ftl-row">
-      <span class="ftl-dot end" aria-hidden="true"></span>
-      <span class="ftl-time">${escapeHtml(plan.endTime || '')}</span>
-      <span class="ftl-copy"><strong>Fin du programme</strong></span>
-    </div>`);
-
-  const footNotes = [`Présentez-vous ${arrivalMinutes} minutes avant pour l'accueil : votre première activité démarre à l'heure choisie`];
-  const drinks = [...new Set(timeline.filter(step => step.activityId === 'service_drinks').map(step => step.label).filter(Boolean))];
-  if (drinks.length) footNotes.push(`Inclus au bar : ${drinks.join(' · ')}`);
-  const remainingLaser = Number(plan.laserPassPlan?.remainingGames || 0);
-  if (remainingLaser > 0) footNotes.push(`${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} Laser supplémentaire${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe`);
-  if (plan.laserSharing?.mayShare) footNotes.push('Le Laser Game peut être complété par d’autres joueurs selon l’affluence');
-
-  return `
-    <div class="formula-timeline">${rows.join('')}</div>
-    ${footNotes.length ? `<p class="formula-timeline-note">${footNotes.map(escapeHtml).join(' · ')}</p>` : ''}`;
-}
-
-function renderFormulaArrivalPicker(formule) {
-  const groups = getFormulaArrivalGroups(formule);
-  if (!groups.length) return '';
-  if (!groups.some(group => group.time === formulaArrivalChoice)) formulaArrivalChoice = '';
-  const activeGroup = groups.find(group => group.time === formulaArrivalChoice) || null;
-  const selectedVariant = activeGroup
-    ? activeGroup.variants.find(variant => variant.variantKey === formulaVariantKey) || activeGroup.variants[0]
-    : null;
-  const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const isManual = preference.formulaMode === 'manual';
-  const chips = groups.map(group => `
-    <button type="button" class="formula-arrival-chip ${activeGroup && group.time === activeGroup.time ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeHtml(group.time)}')">
-      ${escapeHtml(group.time)}
-    </button>`).join('');
-  const variantChips = activeGroup && activeGroup.variants.length > 1
-    ? `<div class="formula-variant-row">
-        <span class="formula-variant-label">Plusieurs déroulés possibles pour cette arrivée :</span>
-        <div class="formula-variant-chips">
-          ${activeGroup.variants.map(variant => `
-            <button type="button" class="formula-variant-chip ${variant.variantKey === selectedVariant.variantKey ? 'active' : ''}" onclick="setFormulaVariantChoice('${escapeHtml(variant.variantKey)}')">
-              ${escapeHtml(variant.label)}
-            </button>`).join('')}
-        </div>
-      </div>`
-    : '';
-  return `
-    <div class="formula-arrival-picker">
-      <div class="formula-arrival-head">
-        <strong>Choisissez l'heure de votre première activité</strong>
-        <span>Votre programme démarre pile à l'heure choisie — présentez-vous 10 minutes avant pour l'accueil. Programme complet d'environ ${escapeHtml(formatDurationLabel(getFormuleTotalDuration(formule)))}${isManual ? ' · votre ordre d’activités est respecté' : ''} — le détail s'affiche après votre choix.</span>
-      </div>
-      <div class="formula-arrival-grid">${chips}</div>
-      ${activeGroup ? `
-        <div class="formula-program-panel">
-          ${variantChips}
-          ${renderFormulaProgramTimeline(selectedVariant.slot)}
-          <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${selectedVariant.index})">Choisir ce programme</button>
-        </div>` : `
-        <p class="formula-arrival-hint">Touchez une heure pour voir le déroulé détaillé de votre formule.</p>`}
-    </div>`;
 }
 
 function renderFormulaEmptySlots(formule) {
-  const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const isManual = Boolean(formule) && preference.formulaMode === 'manual';
-  if (isManual) {
-    return `
-      <div class="slot-state slot-state-empty" role="status">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <div>
-          <strong>Cet ordre d'activités ne passe pas à cette date</strong>
-          <span>Des programmes existent, mais pas dans l'ordre que vous avez choisi. Essayez l'ordre recommandé ou modifiez votre ordre.</span>
-          <button type="button" class="formula-order-fallback-btn" onclick="useRecommendedFormulaOrder()">Essayer l'ordre recommandé</button>
-        </div>
-      </div>`;
-  }
   return `
     <div class="slot-state slot-state-empty" role="status">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <div>
         <strong>Aucun créneau disponible</strong>
-        <span>Essayez une autre date, un autre horaire ou un groupe plus petit.</span>
+        <span>${escapeHtml(formulaAnchorMessage || 'Essayez une autre date, un autre horaire ou un groupe plus petit.')}</span>
       </div>
     </div>`;
 }
@@ -3264,6 +3157,12 @@ function renderSlots(formule) {
       </div>`;
     return;
   }
+  if (formule && formulaHasAnchorUi()) {
+    // Formule à ancres : le picker reste affiché même sans créneau composé
+    // (combinaison refusée → message + suggestions proches).
+    list.innerHTML = renderFormulaAnchorPicker(formule);
+    return;
+  }
   if (!state.availableSlots.length) {
     list.innerHTML = renderFormulaEmptySlots(formule);
     return;
@@ -3286,26 +3185,26 @@ function renderSlots(formule) {
 
 function selectSlot(i) {
   const slot = state.availableSlots[i];
+  if (!slot) return;
   state.booking.startTime = slot.time;
   state.booking.allocatedLanes = slot.lanes;
   state.booking.opsPlan = slot.opsPlan || null;
   const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
-  if (formule && formulaHasTimedChoicePair(formule) && slot.opsPlan) {
-    const bowlingTime = getFormulaSlotActivityTime(slot, 'bowling');
-    const laserTime = getFormulaSlotActivityTime(slot, 'laser_game');
-    const order = getFormulaActivityOrder(formule);
-    const preferredTimes = { ...(state.booking.preference?.preferredTimes || {}) };
-    if (bowlingTime) preferredTimes.bowling = bowlingTime;
-    if (laserTime) preferredTimes.laser_game = laserTime;
-    state.booking.preference = createDefaultFormulaPreference({
-      ...(state.booking.preference || {}),
-      formulaMode: 'manual',
-      activityOrder: order,
-      preferredTimes,
-      firstActivityId: bowlingTime && laserTime
-        ? timeToNum(bowlingTime) <= timeToNum(laserTime) ? 'bowling' : 'laser_game'
-        : order[0] || getFormulaSlotOrderKey(slot),
+  if (formule && slot.opsPlan && formulaHasAnchorUi()) {
+    // Fige les ancres du créneau retenu : le serveur revalide exactement
+    // cette combinaison à la confirmation (POST refusé sinon).
+    const preference = createDefaultFormulaPreference(state.booking.preference || {});
+    const anchorTimes = slot.opsPlan.anchorPlan?.times || {};
+    ['bowling', 'laser_game'].forEach((activityId) => {
+      preference.preferredTimes[activityId] = anchorTimes[activityId]
+        || getFormulaSlotActivityTime(slot, activityId)
+        || '';
     });
+    if (slot.opsPlan.anchorPlan?.laserPlacement === 'onsite') {
+      preference.laserPlacement = 'onsite';
+      preference.preferredTimes.laser_game = '';
+    }
+    state.booking.preference = preference;
   }
   if (state.booking.type === 'laser' && slot.opsPlan?.totalMinutes) {
     state.booking.totalDuration = Math.max(Number(state.booking.duration) || 0.5, Math.ceil(Number(slot.opsPlan.totalMinutes) / 30) / 2);
@@ -3329,14 +3228,31 @@ function goStep4() {
   goStep(4);
 }
 
-function formatFormulaPreferenceSummary(formule, preference = {}) {
-  const order = getFormulaActivityOrder(formule);
-  const times = preference.preferredTimes || {};
-  const parts = order.map((activityId) => {
-    const label = getFormulaActivityLabel(formule, activityId);
-    return times[activityId] ? `${label} ${times[activityId]}` : label;
-  });
-  return parts.length ? parts.join(' → ') : "L'agent optimise";
+// Récap « Ancres + Liberté » d'une réservation formule.
+function getFormulaRecapModel(booking) {
+  const plan = booking.opsPlan || {};
+  const blocks = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
+  const preference = createDefaultFormulaPreference(booking.preference || {});
+  const formule = FORMULES.find(x => x.id === booking.formuleId) || null;
+  const appointments = [];
+  const bowlingTime = blocks.find(block => block.resourceType === 'bowling_lane')?.startTime
+    || preference.preferredTimes.bowling;
+  const laserTime = blocks.find(block => block.resourceType === 'laser_arena')?.startTime
+    || (preference.laserPlacement === 'onsite' ? '' : preference.preferredTimes.laser_game);
+  if (bowlingTime) appointments.push(`Bowling ${bowlingTime}`);
+  if (laserTime) appointments.push(`Laser Game ${laserTime}`);
+  const freeLabels = (formulaAnchorData?.freePass || []).map(item => item.label);
+  if (!freeLabels.length && formule) {
+    freeLabels.push(...getFormulaFreePassIds(formule).map(id => ACTIVITY_LABELS[id] || id));
+  }
+  return {
+    appointments,
+    laserOnSite: preference.laserPlacement === 'onsite',
+    remainingLaser: Number(plan.laserPassPlan?.remainingGames || 0),
+    hasTable: blocks.some(block => block.resourceType === 'party_table') || (formule && formulaHasPartyTable(formule)),
+    arrivalTime: plan.arrivalTime || '',
+    freeLabels,
+  };
 }
 
 function renderRecap() {
@@ -3346,9 +3262,7 @@ function renderRecap() {
   const showLanes = reservationNeedsLanes(b.type, b.formuleId);
   const total = getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId);
   const totalDuration = getBookingTotalDuration(b);
-  const preferred = formule
-    ? formatFormulaPreferenceSummary(formule, b.preference || {})
-    : b.preference?.firstActivityId ? `${ACTIVITY_LABELS[b.preference.firstActivityId] || b.preference.firstActivityId} d'abord` : "L'agent optimise";
+  const formulaRecap = formule ? getFormulaRecapModel(b) : null;
   const planLine = b.opsPlan ? describeSlotPlan(b.opsPlan) : '';
   const laserOption = isLaser ? getLaserOption(b.duration) : null;
   const laserWaveCount = isLaser ? Number(b.opsPlan?.laserSharing?.waveCount || getLaserWaveCount(b.pax)) : 1;
@@ -3364,10 +3278,13 @@ function renderRecap() {
     ${showLanes ? `<div class="recap-item"><span class="recap-label">Piste${b.allocatedLanes.length > 1 ? 's' : ''} assignée${b.allocatedLanes.length > 1 ? 's' : ''}</span><span class="recap-value teal">${b.allocatedLanes.join(' & ')}</span></div>` : ''}
     ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game • ${laserOption.label}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${formule.name}</span></div>` : ''}
-    ${formule ? `<div class="recap-item"><span class="recap-label">Organisation</span><span class="recap-value">${preferred}</span></div>` : ''}
+    ${formulaRecap && formulaRecap.appointments.length ? `<div class="recap-item"><span class="recap-label">Vos rendez-vous</span><span class="recap-value">${formulaRecap.appointments.map(escapeHtml).join(' · ')}</span></div>` : ''}
+    ${formulaRecap && formulaRecap.hasTable ? `<div class="recap-item"><span class="recap-label">Votre table</span><span class="recap-value">Dès l'arrivée${formulaRecap.arrivalTime ? ` (${escapeHtml(formulaRecap.arrivalTime)})` : ''}</span></div>` : ''}
+    ${formulaRecap && formulaRecap.freeLabels.length ? `<div class="recap-item"><span class="recap-label">À votre rythme</span><span class="recap-value">${formulaRecap.freeLabels.map(escapeHtml).join(' · ')}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Temps total estimé</span><span class="recap-value">${formatDurationLabel(totalDuration)}</span></div>` : ''}
     ${isLaser ? `<div class="recap-note"><b>Laser Game :</b> ${laserWaveCount > 1 ? `votre groupe est réparti sur ${laserWaveCount} sessions successives. ` : ''}Votre session peut être complétée avec d'autres joueurs selon l'affluence. ${planLine ? `Plan retenu : ${planLine}.` : ''}</div>` : ''}
-    ${formule && planLine ? `<div class="recap-note"><b>Plan retenu :</b> ${planLine}. Les temps entre activités restent flexibles sur place.</div>` : ''}
+    ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
+    ${formule ? `<div class="recap-note"><b>Le reste, à votre rythme :</b> aucune heure imposée pour les activités du pass liberté — vous les vivez quand vous voulez pendant votre visite.</div>` : ''}
   `;
 }
 
@@ -3489,7 +3406,17 @@ async function confirmBooking() {
   const arrivalLine = b.type === 'formule' && b.opsPlan?.arrivalTime
     ? ` Présentez-vous <b>${Number(b.opsPlan.arrivalMinutes || 10)} minutes avant</b> pour l'accueil (arrivée conseillée <b>${escapeHtml(b.opsPlan.arrivalTime)}</b>).`
     : '';
-  document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${arrivalLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
+  const successRecap = b.type === 'formule' ? getFormulaRecapModel(b) : null;
+  const appointmentsLine = successRecap && successRecap.appointments.length
+    ? ` Vos rendez-vous : <b>${successRecap.appointments.map(escapeHtml).join(' · ')}</b>.`
+    : '';
+  const tableLine = successRecap && successRecap.hasTable
+    ? ` Votre table vous attend dès votre arrivée${successRecap.arrivalTime ? ` (<b>${escapeHtml(successRecap.arrivalTime)}</b>)` : ''}.`
+    : '';
+  const freeLine = successRecap && successRecap.freeLabels.length
+    ? ` À votre rythme sur place : ${successRecap.freeLabels.map(escapeHtml).join(', ')} — quand vous voulez.`
+    : '';
+  document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
   releaseBookingSubmit();
   goStep(5);
 }

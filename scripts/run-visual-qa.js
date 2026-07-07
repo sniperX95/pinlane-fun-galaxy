@@ -292,7 +292,182 @@ async function installQaApi(page) {
       }
 
       if (url.pathname === '/api/public-availability') {
-        return jsonResponse({ ok: true, slots: [] });
+        const availabilityType = url.searchParams.get('type');
+        if (availabilityType !== 'formule') return jsonResponse({ ok: true, slots: [] });
+        window.__PINLANE_QA_AVAILABILITY_CALLS__ = window.__PINLANE_QA_AVAILABILITY_CALLS__ || [];
+        window.__PINLANE_QA_AVAILABILITY_CALLS__.push(url.search);
+        const toMin = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+        const toTime = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        const formuleId = url.searchParams.get('formuleId');
+
+        // FORMULE 7 (table + pass, aucune ancre) : chips = heures d'arrivée,
+        // table bloquée de l'arrivée à la fin de visite.
+        if (formuleId === 'f7') {
+          const slots = ['14:00', '14:30', '15:00'].map((time) => {
+            const start = toMin(time);
+            const arrival = toTime(start - 10);
+            const end = toTime(start + 150);
+            return {
+              time,
+              lanes: [],
+              freeCount: 6,
+              opsPlan: {
+                startTime: time,
+                endTime: end,
+                totalMinutes: 150,
+                arrivalTime: arrival,
+                arrivalMinutes: 10,
+                bufferMinutes: 0,
+                risk: { level: 'low', score: 15, reasons: [] },
+                staffSummary: '',
+                assignedLanes: [],
+                timeline: [
+                  { type: 'service', label: 'Arrivée & accueil', resourceType: 'bar_service', startTime: arrival, endTime: time },
+                  { type: 'activity', activityId: 'party_table', label: 'Table anniversaire', resourceType: 'party_table', followsArrival: true, startTime: arrival, endTime: end, tableNeed: 1 },
+                  { type: 'activity', activityId: 'playground', label: 'Playground', resourceType: 'soft_capacity', flexible: true, startTime: time, endTime: end },
+                  { type: 'activity', activityId: 'minigolf_blacklight', label: 'Minigolf Blacklight', resourceType: 'soft_capacity', flexible: true, startTime: time, endTime: end },
+                ],
+                resourceBlocks: [
+                  { resourceType: 'party_table', activityId: 'party_table', label: 'Table anniversaire', followsArrival: true, startTime: arrival, endTime: end, tableNeed: 1 },
+                ],
+                anchorPlan: null,
+                laserPassPlan: null,
+                customerCommitment: [],
+              },
+            };
+          });
+          return jsonResponse({
+            ok: true,
+            slots,
+            laneCount: 0,
+            duration: 2,
+            totalDuration: 2.5,
+            price: 24,
+            requiresLanes: false,
+            label: 'FORMULE 7',
+            anchors: {
+              ok: true,
+              arrivalLeadMinutes: 10,
+              hasTable: true,
+              freePass: [
+                { activityId: 'playground', label: 'Plaine de jeux' },
+                { activityId: 'minigolf_blacklight', label: 'Mini Golf' },
+                { activityId: 'arcade_time', label: 'Arcades' },
+              ],
+              drinks: ['2 cruches boissons'],
+              laserGames: 0,
+              laserOnSiteAvailable: false,
+              activities: [],
+              defaultTimes: null,
+            },
+            suggestions: [],
+            message: '',
+          });
+        }
+
+        // FORMULE 1 (ancres bowling + laser) : dispo PAR ANCRE + revalidation
+        // de la combinaison choisie, refus + suggestions si chevauchement.
+        let preferred = {};
+        try { preferred = JSON.parse(url.searchParams.get('preferredTimes') || '{}') || {}; } catch (error) { preferred = {}; }
+        const laserPlacement = url.searchParams.get('laserPlacement') === 'onsite' ? 'onsite' : 'scheduled';
+        const anchors = {
+          ok: true,
+          arrivalLeadMinutes: 10,
+          hasTable: false,
+          freePass: [{ activityId: 'arcade_time', label: 'Arcades' }],
+          drinks: ['2 cruches boissons'],
+          laserGames: 1,
+          laserOnSiteAvailable: true,
+          activities: [
+            { activityId: 'bowling', label: 'Bowling', count: 1, durationMinutes: 60, times: ['14:30', '15:00', '15:30', '16:00', '17:00'].map((time) => ({ time, lanes: [1, 2] })) },
+            { activityId: 'laser_game', label: 'Laser Game', count: 1, durationMinutes: 25, times: ['15:30', '16:00', '16:30', '17:00', '17:30'].map((time) => ({ time, remainingPlaces: 22 })) },
+          ],
+          defaultTimes: { bowling: '15:00', laser_game: '16:30' },
+        };
+        const bowling = preferred.bowling || '15:00';
+        const laser = laserPlacement === 'onsite' ? '' : (preferred.laser_game || '16:30');
+        const overlaps = laser && toMin(laser) < toMin(bowling) + 65 && toMin(laser) + 30 > toMin(bowling);
+        if (overlaps) {
+          const fallbackLaser = toTime(toMin(bowling) + 90);
+          return jsonResponse({
+            ok: true,
+            slots: [],
+            laneCount: 2,
+            duration: 1,
+            totalDuration: 2.5,
+            price: 208,
+            requiresLanes: true,
+            label: 'FORMULE 1',
+            anchors,
+            message: `Bowling (${bowling}) et Laser Game (${laser}) se chevauchent : décalez l'une des deux heures.`,
+            suggestions: [
+              { times: { bowling, laser_game: fallbackLaser }, label: `Bowling ${bowling} · Laser Game ${fallbackLaser}` },
+            ],
+          });
+        }
+        const firstStart = laser && toMin(laser) < toMin(bowling) ? laser : bowling;
+        const arrival = toTime(toMin(firstStart) - 10);
+        const lastEnd = Math.max(toMin(bowling) + 60, laser ? toMin(laser) + 25 : 0);
+        const visitEnd = toTime(Math.max(lastEnd, toMin(firstStart) + 145));
+        const anchorTimes = laser ? { bowling, laser_game: laser } : { bowling };
+        const slot = {
+          time: firstStart,
+          lanes: [1, 2],
+          freeCount: 6,
+          opsPlan: {
+            startTime: firstStart,
+            endTime: visitEnd,
+            totalMinutes: toMin(visitEnd) - toMin(firstStart),
+            arrivalTime: arrival,
+            arrivalMinutes: 10,
+            bufferMinutes: 0,
+            risk: { level: 'low', score: 15, reasons: [] },
+            staffSummary: `Bowling ${bowling} | ${laser ? `Laser ${laser}` : 'Laser sur place'}`,
+            assignedLanes: [1, 2],
+            timeline: [
+              { type: 'service', label: 'Arrivée & accueil', resourceType: 'bar_service', startTime: arrival, endTime: firstStart },
+              { type: 'activity', activityId: 'bowling', label: 'Bowling', resourceType: 'bowling_lane', critical: true, startTime: bowling, endTime: toTime(toMin(bowling) + 60), lanes: [1, 2] },
+              ...(laser ? [{ type: 'activity', activityId: 'laser_game', label: 'Laser Game', resourceType: 'laser_arena', critical: true, startTime: laser, endTime: toTime(toMin(laser) + 25), players: 8, countIndex: 1 }] : []),
+              { type: 'activity', activityId: 'arcade_time', label: 'Arcades', resourceType: 'bar_service_then_autonomous', flexible: true, startTime: firstStart, endTime: visitEnd },
+            ],
+            resourceBlocks: [
+              { resourceType: 'bowling_lane', activityId: 'bowling', label: 'Bowling', startTime: bowling, endTime: toTime(toMin(bowling) + 60), lanes: [1, 2], requiredLanes: 2 },
+              ...(laser ? [{ resourceType: 'laser_arena', activityId: 'laser_game', label: 'Laser Game', startTime: laser, endTime: toTime(toMin(laser) + 25), players: 8, countIndex: 1 }] : []),
+            ],
+            firstBowlingTime: bowling,
+            firstLaserTime: laser || '',
+            anchorPlan: { mode: 'anchors_freedom', laserPlacement, times: anchorTimes },
+            laserPassPlan: laser ? null : { mode: 'all_on_site', totalGames: 1, scheduledGames: 0, remainingGames: 1, scheduledPasses: [], pendingPasses: [{ countIndex: 1, status: 'pending' }] },
+            laserSharing: laser ? { mayShare: true, sharedNow: false } : null,
+            customerCommitment: [],
+          },
+        };
+        return jsonResponse({
+          ok: true,
+          slots: [slot],
+          laneCount: 2,
+          duration: 1,
+          totalDuration: 2.5,
+          price: 208,
+          requiresLanes: true,
+          label: 'FORMULE 1',
+          anchors,
+          suggestions: [],
+          message: '',
+        });
+      }
+
+      if (url.pathname === '/api/public-reservations' && String(init.method || 'GET').toUpperCase() === 'POST') {
+        const body = JSON.parse(init.body || '{}');
+        window.__PINLANE_QA_PUBLIC_POSTS__ = window.__PINLANE_QA_PUBLIC_POSTS__ || [];
+        window.__PINLANE_QA_PUBLIC_POSTS__.push(body);
+        return jsonResponse({
+          ok: true,
+          reservation: { ...body, id: 9991, lanes: body.lanes && body.lanes.length ? body.lanes : [1, 2] },
+          ops: { riskLevel: 'low', riskScore: 15, validationStatus: 'confirmed', planWarning: null, autoDecision: 'auto_confirmed' },
+          communications: [],
+          warnings: [],
+        });
       }
 
       if (url.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'POST') {
@@ -841,82 +1016,178 @@ async function main() {
     await page.evaluate(() => goStep(1));
 
     // ------------------------------------------------------------------
-    // Picker formule — nouvelles règles métier : l'heure choisie est le début
-    // EXACT de la première activité (chips), l'« Arrivée conseillée » est
-    // affichée 10 min avant, et le bowling ne démarre qu'à :00/:30.
+    // Picker formule « Ancres + Liberté » — chips par ancre (:00/:30), défaut
+    // valide pré-sélectionné, revalidation à chaque modification, refus +
+    // suggestions, pass liberté SANS heure, payload de réservation correct.
     // ------------------------------------------------------------------
-    await page.evaluate(() => {
-      const makeFormulaSlot = (time, arrivalTime, endTime, bowling, laser) => ({
-        time,
-        lanes: [1, 2],
-        freeCount: 6,
-        opsPlan: {
-          startTime: time,
-          endTime,
-          totalMinutes: 125,
-          arrivalTime,
-          arrivalMinutes: 10,
-          bufferMinutes: 0,
-          risk: { level: 'low', score: 15, reasons: [] },
-          staffSummary: `Bowling ${bowling.start}-${bowling.end} | Laser ${laser.start}-${laser.end}`,
-          assignedLanes: [1, 2],
-          timeline: [
-            { type: 'service', label: 'Arrivée & accueil', resourceType: 'bar_service', startTime: arrivalTime, endTime: time },
-            { type: 'activity', activityId: 'bowling', label: 'Bowling', resourceType: 'bowling_lane', critical: true, startTime: bowling.start, endTime: bowling.end },
-            { type: 'service', label: 'Transition', resourceType: 'transition', startTime: bowling.end, endTime: laser.start },
-            { type: 'activity', activityId: 'laser_game', label: 'Laser Game', resourceType: 'laser_arena', critical: true, startTime: laser.start, endTime: laser.end },
-            { type: 'activity', activityId: 'arcade_time', label: 'Arcades', resourceType: 'soft_capacity', startTime: laser.end, endTime },
-          ],
-          resourceBlocks: [
-            { resourceType: 'bowling_lane', startTime: bowling.start, endTime: bowling.end, lanes: [1, 2] },
-            { resourceType: 'laser_arena', startTime: laser.start, endTime: laser.end, players: 8 },
-          ],
-          firstBowlingTime: bowling.start,
-          firstLaserTime: laser.start,
-          customerCommitment: [`Votre première activité démarre à ${time} : présentez-vous 10 minutes avant pour l'accueil (${arrivalTime}).`],
-        },
-      });
+    const nextSaturdayIso = await page.evaluate(() => {
+      const target = new Date();
+      target.setDate(target.getDate() + ((6 - target.getDay() + 7) % 7 || 7));
+      return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+    });
+    await page.evaluate(async (iso) => {
+      window.__PINLANE_QA_AVAILABILITY_CALLS__ = [];
+      window.__PINLANE_QA_PUBLIC_POSTS__ = [];
       state.booking.type = 'formule';
       state.booking.formuleId = 'f1';
+      state.booking.pax = 8;
+      state.booking.date = iso;
       state.booking.preference = createDefaultFormulaPreference();
       goStep(2);
-      slotLoading = false;
-      state.availableSlots = [
-        makeFormulaSlot('15:00', '14:50', '17:05', { start: '15:00', end: '16:00' }, { start: '16:05', end: '16:30' }),
-        makeFormulaSlot('15:30', '15:20', '17:35', { start: '15:30', end: '16:30' }, { start: '16:35', end: '17:00' }),
-      ];
-      resetFormulaProgramChoice();
-      renderSlots(FORMULES.find(f => f.id === 'f1'));
-    });
-    await page.waitForTimeout(250);
-    const pickerState = await page.evaluate(() => ({
+      await fetchSlots({ showLoading: false });
+    }, nextSaturdayIso);
+    await page.waitForTimeout(300);
+
+    // 1) Chips par ancre, toutes :00/:30, une ligne par ancre.
+    const anchorPickerState = await page.evaluate(() => ({
+      rows: Array.from(document.querySelectorAll('.anchor-row')).map(row => ({
+        anchor: row.dataset.anchor,
+        label: row.querySelector('.anchor-row-head strong')?.textContent.trim() || '',
+        chips: Array.from(row.querySelectorAll('.anchor-chip')).map(el => el.textContent.trim()),
+        active: Array.from(row.querySelectorAll('.anchor-chip.active')).map(el => el.textContent.trim()),
+      })),
+      summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
+      confirm: Boolean(document.querySelector('.formula-plan-confirm')),
+      passText: document.querySelector('.anchor-free-pass')?.textContent.replace(/\s+/g, ' ') || '',
       head: document.querySelector('.formula-arrival-head')?.textContent || '',
-      chips: Array.from(document.querySelectorAll('.formula-arrival-chip')).map(el => el.textContent.trim()),
     }));
-    assert(pickerState.chips.length === 2, 'Picker formule : les chips d heures doivent être rendues.');
-    assert(pickerState.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), `Formule avec bowling : toutes les chips doivent être :00/:30 (reçu ${pickerState.chips.join(', ')}).`);
-    assert(/première activité/i.test(pickerState.head), 'Picker formule : l en-tête doit annoncer l heure de la première activité.');
-    assert(/10 minutes avant/i.test(pickerState.head), 'Picker formule : la mention « présentez-vous 10 minutes avant » doit être visible.');
+    assert(anchorPickerState.rows.length === 2, `Picker ancres : une ligne par ancre attendue (reçu ${anchorPickerState.rows.length}).`);
+    assert(anchorPickerState.rows[0].anchor === 'bowling' && anchorPickerState.rows[1].anchor === 'laser_game', 'Picker ancres : lignes Bowling puis Laser attendues.');
+    anchorPickerState.rows.forEach((row) => {
+      assert(row.chips.length >= 4, `Ancre ${row.anchor} : plusieurs chips d heures attendues.`);
+      assert(row.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), `Ancre ${row.anchor} : toutes les chips doivent être :00/:30 (reçu ${row.chips.join(', ')}).`);
+    });
+    // 2) Défaut pré-sélectionné valide (zéro friction).
+    assert(anchorPickerState.rows[0].active[0] === '15:00' && anchorPickerState.rows[1].active[0] === '16:30', `Picker ancres : la combinaison par défaut doit être pré-sélectionnée (reçu ${JSON.stringify(anchorPickerState.rows.map(r => r.active))}).`);
+    assert(/Vos rendez-vous/.test(anchorPickerState.summary) && /Bowling 15:00/.test(anchorPickerState.summary) && /Laser Game 16:30/.test(anchorPickerState.summary), 'Picker ancres : le résumé doit afficher les rendez-vous par ancre.');
+    assert(/14:50/.test(anchorPickerState.summary), 'Picker ancres : arrivée 10 min avant la première ancre (14:50).');
+    assert(anchorPickerState.confirm, 'Picker ancres : bouton de validation requis quand la combinaison est valide.');
+    // 5) Pass liberté visible, rassurant, sans AUCUNE heure.
+    assert(/Pass liberté/.test(anchorPickerState.passText) && /à votre rythme/i.test(anchorPickerState.passText), 'Pass liberté : bloc distinct requis.');
+    assert(/Arcades/.test(anchorPickerState.passText), 'Pass liberté : les activités libres doivent être listées.');
+    assert(!/\d{1,2}:\d{2}/.test(anchorPickerState.passText), 'Pass liberté : aucune heure ne doit apparaître.');
+    await screenshot(page, 'formula-anchors-desktop');
+    issues.push(...await collectIssues(page, 'formula-anchors-desktop'));
+
+    // 3) Modifier une ancre revalide la combinaison côté serveur.
+    const callsBeforeChange = await page.evaluate(() => window.__PINLANE_QA_AVAILABILITY_CALLS__.length);
+    await page.evaluate(() => setFormulaAnchorTime('laser_game', '17:30'));
+    await page.waitForTimeout(350);
+    const afterChange = await page.evaluate(() => ({
+      calls: window.__PINLANE_QA_AVAILABILITY_CALLS__.length,
+      lastCall: decodeURIComponent(window.__PINLANE_QA_AVAILABILITY_CALLS__[window.__PINLANE_QA_AVAILABILITY_CALLS__.length - 1] || ''),
+      summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
+    }));
+    assert(afterChange.calls > callsBeforeChange, 'Changer une ancre doit déclencher une revalidation serveur.');
+    assert(/laser_game":"17:30/.test(afterChange.lastCall), `La revalidation doit porter la nouvelle heure laser (reçu ${afterChange.lastCall}).`);
+    assert(/Laser Game 17:30/.test(afterChange.summary) && /Bowling 15:00/.test(afterChange.summary), 'Le résumé doit refléter la combinaison revalidée.');
+
+    // 4) Combinaison impossible → message clair + suggestions proches.
+    await page.evaluate(() => setFormulaAnchorTime('laser_game', '15:30'));
+    await page.waitForTimeout(350);
+    const invalidState = await page.evaluate(() => ({
+      error: document.querySelector('.anchor-status-error')?.textContent.replace(/\s+/g, ' ') || '',
+      suggestions: Array.from(document.querySelectorAll('.anchor-suggestion')).map(el => el.textContent.trim()),
+      confirm: Boolean(document.querySelector('.formula-plan-confirm')),
+    }));
+    assert(/chevauchent/i.test(invalidState.error), 'Combinaison impossible : message clair requis.');
+    assert(invalidState.suggestions.length >= 1, 'Combinaison impossible : suggestions proches requises.');
+    assert(!invalidState.confirm, 'Combinaison impossible : pas de bouton de validation.');
+    await screenshot(page, 'formula-anchors-invalid');
+    issues.push(...await collectIssues(page, 'formula-anchors-invalid'));
+    await page.evaluate(() => applyFormulaAnchorSuggestion(0));
+    await page.waitForTimeout(350);
+    const afterSuggestion = await page.evaluate(() => ({
+      summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
+      error: Boolean(document.querySelector('.anchor-status-error')),
+    }));
+    assert(!afterSuggestion.error && /Bowling 15:00/.test(afterSuggestion.summary), 'Une suggestion appliquée doit redonner une combinaison valide.');
+
+    // Option « Je place mes parties laser sur place ».
+    await page.evaluate(() => setFormulaLaserPlacement('onsite'));
+    await page.waitForTimeout(350);
+    const onSiteState = await page.evaluate(() => ({
+      laserDisabled: Array.from(document.querySelectorAll('.anchor-row[data-anchor="laser_game"] .anchor-chip')).every(el => el.disabled),
+      summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
+      toggle: Boolean(document.querySelector('.anchor-onsite input:checked')),
+    }));
+    assert(onSiteState.toggle && onSiteState.laserDisabled, 'Option laser sur place : chips laser désactivées, toggle actif.');
+    assert(!/Laser Game \d{2}:\d{2}/.test(onSiteState.summary), 'Option laser sur place : plus aucun rendez-vous laser fixé.');
+    assert(/à placer sur place/i.test(onSiteState.summary), 'Option laser sur place : le crédit laser doit être annoncé.');
+    await screenshot(page, 'formula-anchors-onsite');
+    await page.evaluate(() => setFormulaLaserPlacement('scheduled'));
+    await page.waitForTimeout(350);
+
+    // 6) Payload final : blocs bowling/laser aux heures choisies + préférence
+    //    d'ancres transmise au serveur (revalidation POST).
+    await page.evaluate(async () => {
+      await setFormulaAnchorTime('laser_game', '17:00');
+    });
+    await page.waitForTimeout(350);
+    await page.evaluate(async () => {
+      const index = getCurrentFormulaAnchorSlotIndex();
+      selectSlot(index);
+      state.booking.name = 'QA Ancres';
+      state.booking.phone = '+32 470 12 34 56';
+      state.booking.email = 'qa@example.test';
+      await confirmBooking();
+    });
+    await page.waitForTimeout(400);
+    const anchorPost = await page.evaluate(() => (window.__PINLANE_QA_PUBLIC_POSTS__ || [])[0] || null);
+    assert(anchorPost, 'Le parcours ancres doit poster sur /api/public-reservations.');
+    assert(anchorPost.type === 'formule' && anchorPost.formuleId === 'f1', 'Payload : formule préservée.');
+    assert(anchorPost.startTime === '15:00', `Payload : startTime = première ancre (reçu ${anchorPost.startTime}).`);
+    assert(anchorPost.preference?.preferredTimes?.bowling === '15:00' && anchorPost.preference?.preferredTimes?.laser_game === '17:00', 'Payload : les heures d ancre choisies sont transmises pour revalidation serveur.');
+    const postBowling = (anchorPost.opsPlan?.resourceBlocks || []).find(block => block.resourceType === 'bowling_lane');
+    const postLaser = (anchorPost.opsPlan?.resourceBlocks || []).find(block => block.resourceType === 'laser_arena');
+    assert(postBowling?.startTime === '15:00' && postLaser?.startTime === '17:00', 'Payload : blocs bowling/laser aux heures choisies.');
+    const successText = await page.evaluate(() => document.getElementById('successDetails')?.textContent.replace(/\s+/g, ' ') || '');
+    assert(/Bowling 15:00/.test(successText) && /Laser Game 17:00/.test(successText), 'Confirmation : les rendez-vous par ancre doivent être annoncés.');
+    assert(/à votre rythme/i.test(successText), 'Confirmation : le pass liberté doit être annoncé sans heure.');
+    await screenshot(page, 'formula-anchors-confirmed');
+
+    // Formule table (f7, aucune ancre) : chips d'arrivée + table dès l'arrivée
+    // jusqu'à la fin de visite dans le payload.
+    await page.evaluate(async (iso) => {
+      window.__PINLANE_QA_PUBLIC_POSTS__ = [];
+      resetBooking();
+      state.booking.type = 'formule';
+      state.booking.formuleId = 'f7';
+      state.booking.pax = 8;
+      state.booking.date = iso;
+      state.booking.preference = createDefaultFormulaPreference();
+      goStep(2);
+      await fetchSlots({ showLoading: false });
+    }, nextSaturdayIso);
+    await page.waitForTimeout(300);
     await page.evaluate(() => setFormulaArrivalChoice('15:00'));
     await page.waitForTimeout(250);
-    const programState = await page.evaluate(() => {
-      const rows = Array.from(document.querySelectorAll('.formula-timeline .ftl-row')).map(row => row.textContent.replace(/\s+/g, ' ').trim());
-      return {
-        rows,
-        note: document.querySelector('.formula-timeline-note')?.textContent || '',
-      };
+    const tableState = await page.evaluate(() => ({
+      summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
+      passText: document.querySelector('.anchor-free-pass')?.textContent.replace(/\s+/g, ' ') || '',
+      chips: Array.from(document.querySelectorAll('.formula-arrival-chip')).map(el => el.textContent.trim()),
+    }));
+    assert(tableState.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), 'Formule table : chips d arrivée :00/:30.');
+    assert(/table vous attend dès votre arrivée/i.test(tableState.summary), 'Formule table : « votre table vous attend dès votre arrivée » requis.');
+    assert(!/Table \d{1,2}:\d{2}/.test(tableState.summary), 'Formule table : aucune heure de table à choisir.');
+    assert(!/\d{1,2}:\d{2}/.test(tableState.passText), 'Formule table : pass liberté sans aucune heure.');
+    await screenshot(page, 'formula-table-arrival');
+    await page.evaluate(async () => {
+      const index = state.availableSlots.findIndex(slot => slot.time === '15:00');
+      selectSlot(index);
+      state.booking.name = 'QA Table';
+      state.booking.phone = '+32 470 65 43 21';
+      state.booking.email = 'qa-table@example.test';
+      await confirmBooking();
     });
-    assert(/Arrivée conseillée/.test(programState.rows[0] || ''), 'Timeline formule : premier point = « Arrivée conseillée ».');
-    assert(/14:50/.test(programState.rows[0] || ''), 'Timeline formule : l arrivée conseillée doit être 10 min avant l heure choisie (14:50).');
-    assert(/15:00/.test(programState.rows[1] || '') && /Première activité/.test(programState.rows[1] || ''), 'Timeline formule : la première activité doit démarrer à l heure choisie exacte (15:00).');
-    assert(/Présentez-vous 10 minutes avant/i.test(programState.note), 'Timeline formule : mention « Présentez-vous 10 minutes avant » requise.');
-    await screenshot(page, 'formula-picker-first-activity-semantics');
-    issues.push(...await collectIssues(page, 'formula-picker-first-activity'));
-    await page.evaluate(() => {
-      state.availableSlots = [];
-      resetFormulaProgramChoice();
-      goStep(1);
-    });
+    await page.waitForTimeout(400);
+    const tablePost = await page.evaluate(() => (window.__PINLANE_QA_PUBLIC_POSTS__ || [])[0] || null);
+    assert(tablePost, 'Formule table : la réservation doit être postée.');
+    const tableBlock = (tablePost.opsPlan?.resourceBlocks || []).find(block => block.resourceType === 'party_table');
+    assert(tableBlock, 'Formule table : bloc table interne requis dans le payload.');
+    assert(tableBlock.startTime === '14:50', `Formule table : la table démarre à l arrivée (14:50, reçu ${tableBlock.startTime}).`);
+    assert(tableBlock.endTime === tablePost.opsPlan.endTime, 'Formule table : la table reste bloquée jusqu à la fin de la visite.');
+    await page.evaluate(() => resetBooking());
 
     // ------------------------------------------------------------------
     // Chantier 6 — les horaires alternatifs disparaissent au changement de contexte
@@ -1185,6 +1456,29 @@ async function main() {
     await mobilePage.waitForTimeout(300);
     await screenshot(mobilePage, 'chantier3-formules-mobile');
     issues.push(...await collectIssues(mobilePage, 'chantier3-formules-mobile'));
+
+    // Picker « Ancres + Liberté » sur 390px : chips par ancre + pass liberté.
+    await mobilePage.evaluate(async (iso) => {
+      state.booking.type = 'formule';
+      state.booking.formuleId = 'f1';
+      state.booking.pax = 8;
+      state.booking.date = iso;
+      state.booking.preference = createDefaultFormulaPreference();
+      goStep(2);
+      await fetchSlots({ showLoading: false });
+    }, nextSaturdayIso);
+    await mobilePage.waitForTimeout(350);
+    const mobileAnchorState = await mobilePage.evaluate(() => ({
+      rows: document.querySelectorAll('.anchor-row').length,
+      activeChips: Array.from(document.querySelectorAll('.anchor-chip.active')).map(el => el.textContent.trim()),
+      pass: Boolean(document.querySelector('.anchor-free-pass')),
+    }));
+    assert(mobileAnchorState.rows === 2, 'Mobile : une ligne de chips par ancre.');
+    assert(mobileAnchorState.activeChips.length === 2, 'Mobile : combinaison par défaut pré-sélectionnée.');
+    assert(mobileAnchorState.pass, 'Mobile : bloc pass liberté visible.');
+    await screenshot(mobilePage, 'formula-anchors-mobile');
+    issues.push(...await collectIssues(mobilePage, 'formula-anchors-mobile'));
+    await mobilePage.evaluate(() => resetBooking());
 
     // Console Direction (#adminView) en mobile — l'ancienne capture "direction-mobile"
     // ne couvrait que la page legacy direction.html.

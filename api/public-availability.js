@@ -30,9 +30,15 @@ const LASER_ARENA_MINUTES = 25;
 const FORMULA_ARRIVAL_MINUTES = 10;
 const FORMULA_TRANSITION_MINUTES = 5;
 const FLEXIBLE_SLOT_STEP_MINUTES = 15;
-// Règle métier : le bowling ne démarre qu'aux heures pleines ou demies
-// (15:00, 15:30 — jamais 15:15 ni 15:45).
-const BOWLING_GRID_MINUTES = 30;
+// Règle métier : TOUTE heure proposée au client est une heure pleine ou demie
+// (15:00, 15:30 — jamais 15:15 ni 16:40). Elle s'applique au début du
+// PROGRAMME, c'est-à-dire au début de la PREMIÈRE activité, quelle qu'elle
+// soit (bowling, laser, minigolf…). Les activités suivantes à l'intérieur du
+// programme peuvent rester à des heures fines (enchaînement naturel).
+const PROGRAM_GRID_MINUTES = 30;
+// Les pistes de bowling restent en plus alignées :00/:30 même au milieu d'un
+// programme (contrainte d'exploitation des pistes).
+const BOWLING_GRID_MINUTES = PROGRAM_GRID_MINUTES;
 
 function overlap(startA, durationA, startB, durationB) {
   return startA < startB + durationB && startB < startA + durationA;
@@ -276,7 +282,17 @@ function buildFlexibleFormulaScenario({ center, formulaDoc, formula, pax, order,
     preOffsetMinutes += getFormulaStepDurationMinutes(formulaDoc, formula, order[index]) + FORMULA_TRANSITION_MINUTES;
   }
   const firstFixedStart = selectedByActivity.get(order[firstFixedIndex]).start;
-  const programStart = firstFixedStart - preOffsetMinutes;
+  // Règle métier : l'heure d'ENTRÉE choisie par le client (= début de la
+  // première activité du programme) tombe TOUJOURS sur :00/:30. Quand des
+  // activités libres précèdent le premier bloc fixe, on ancre le départ du
+  // programme sur la grille en amont : le mou est absorbé en temps libre
+  // avant le bloc fixe. Quand le bloc fixe EST la première activité, aucun
+  // recalage possible : le candidat doit déjà être sur la grille.
+  const rawProgramStart = firstFixedStart - preOffsetMinutes;
+  const programStart = firstFixedIndex === 0
+    ? rawProgramStart
+    : Math.floor(rawProgramStart / PROGRAM_GRID_MINUTES) * PROGRAM_GRID_MINUTES;
+  if (programStart % PROGRAM_GRID_MINUTES !== 0) return null;
   const arrivalStart = programStart - FORMULA_ARRIVAL_MINUTES;
   // L'accueil doit tenir dans les horaires d'ouverture.
   if (arrivalStart < openMinute) return null;
@@ -441,6 +457,15 @@ function buildFlexibleFormulaSlots({ centerId, date, formula, formulaDoc, pax, s
       center,
     });
   });
+  // Si la première activité du programme est un bloc fixe (bowling/laser/
+  // table), l'heure d'entrée du client = son heure de départ : elle doit être
+  // sur la grille :00/:30. On filtre les candidats en amont pour ne pas
+  // explorer des combinaisons condamnées (le compositeur re-vérifie ensuite).
+  const firstTimedId = order.find((activityId) => timedOrder.includes(activityId));
+  if (firstTimedId && order.indexOf(firstTimedId) === 0 && candidates[firstTimedId]) {
+    candidates[firstTimedId] = candidates[firstTimedId]
+      .filter((candidate) => candidate.start % PROGRAM_GRID_MINUTES === 0);
+  }
   if (timedOrder.some((activityId) => !candidates[activityId]?.length)) return [];
 
   // Cap PAR heure de départ de la première activité horodatée (et non global) :
@@ -888,7 +913,11 @@ module.exports = async (req, res) => {
       }
       const slotsByPlan = new Map();
 
-      for (let value = minTime; value <= maxTime; value += 0.5) {
+      // Départs de programme proposés au client : uniquement aux heures
+      // pleines ou demies (grille :00/:30) — on recale la borne basse si la
+      // config (timeLimit, horaires) l'a désalignée.
+      const formulaMinTime = Math.ceil(minTime * 2) / 2;
+      for (let value = formulaMinTime; value <= maxTime; value += 0.5) {
         const startTime = numToTime(value);
         const plan = planningAgent(
           {
@@ -976,15 +1005,23 @@ module.exports = async (req, res) => {
       const slotsByTime = new Map();
       const candidateMinutes = new Set();
 
-      for (let value = minTime; value <= maxTime; value += 0.5) {
+      // Départs Laser proposés au client : uniquement aux heures pleines ou
+      // demies (grille :00/:30) — on recale la borne basse si la config l'a
+      // désalignée.
+      const laserMinTime = Math.ceil(minTime * 2) / 2;
+      for (let value = laserMinTime; value <= maxTime; value += 0.5) {
         candidateMinutes.add(Math.round(value * 60));
       }
 
+      // Sessions partagées existantes : on ne propose de les rejoindre que si
+      // leur départ tombe sur la grille client :00/:30 (les sessions décalées
+      // par le staff restent gérables en interne, jamais proposées au client).
       snapshot.reservations
         .flatMap(laserWindowsFromReservation)
         .forEach((window) => {
           const startMinute = Math.round(Number(window.start || 0));
-          if (startMinute >= Math.round(minTime * 60) && startMinute <= Math.round(maxTime * 60)) {
+          if (startMinute % PROGRAM_GRID_MINUTES !== 0) return;
+          if (startMinute >= Math.round(laserMinTime * 60) && startMinute <= Math.round(maxTime * 60)) {
             candidateMinutes.add(startMinute);
           }
         });

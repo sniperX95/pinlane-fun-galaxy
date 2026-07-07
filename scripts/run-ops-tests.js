@@ -825,10 +825,11 @@ function testFormulaChosenTimeIsExactFirstActivityStart() {
   });
 }
 
-// Règle métier 2 : le bowling ne démarre qu'à :00/:30, dans TOUS les scénarios
-// composés (y compris quand le bowling n'est pas la première activité).
-function testFormulaBowlingSnapsToHalfHourGrid() {
-  const result = planningAgent({
+// Règle métier 2 : le début du PROGRAMME (première activité, quelle qu'elle
+// soit — bowling, laser, minigolf…) ne tombe que sur :00/:30. Un départ 15:15
+// est refusé même si la première activité n'est pas du bowling.
+function testFormulaProgramStartSnapsToHalfHourGrid() {
+  const refused = planningAgent({
     centerId: 'libramont',
     date: TEST_DATE,
     type: 'formule',
@@ -837,10 +838,22 @@ function testFormulaBowlingSnapsToHalfHourGrid() {
     startTime: '15:15',
   }, { reservations: [], laneStatuses: {} });
 
-  result.plan.scenarios.forEach((scenario) => {
-    assert.strictEqual(scenario.startTime, '15:15', 'a 15:15 start is allowed only when the first activity is not bowling');
-    const firstActivity = scenario.timeline.find((step) => step.type === 'activity');
-    assert.notStrictEqual(firstActivity.activityId, 'bowling', 'bowling can never open a program off the :00/:30 grid');
+  assert.strictEqual(refused.ok, false, 'a formula program can never start at 15:15, whatever the first activity');
+  assert.strictEqual(refused.plan.scenarios.length, 0, 'no scenario may be proposed off the :00/:30 grid');
+  assert.ok(/heures pleines ou demies/i.test(refused.plan.reason || ''), 'refusal reason must explain the :00/:30 grid');
+
+  const accepted = planningAgent({
+    centerId: 'libramont',
+    date: TEST_DATE,
+    type: 'formule',
+    formuleId: 'f1',
+    pax: 10,
+    startTime: '15:30',
+  }, { reservations: [], laneStatuses: {} });
+
+  assert.strictEqual(accepted.ok, true, 'a formula program at 15:30 must remain plannable');
+  accepted.plan.scenarios.forEach((scenario) => {
+    assert.strictEqual(toMinutes(scenario.startTime) % 30, 0, `program start must be on :00/:30, got ${scenario.startTime}`);
     scenario.resourceBlocks
       .filter((block) => block.resourceType === 'bowling_lane')
       .forEach((block) => {
@@ -914,6 +927,28 @@ function testReservationValidationRefusesOffGridBowling() {
     /heures pleines ou demies/i,
     'a forged formula program with an off-grid bowling block must be refused',
   );
+
+  // Généralisation programme : une FORMULE dont la PREMIÈRE activité (ici un
+  // laser, pas de bowling) démarre à :15 est refusée à la création.
+  assert.throws(
+    () => database.validateReservationResources({
+      ...baseBowling,
+      type: 'formule',
+      formuleId: 'f5',
+      label: 'FORMULE 5',
+      startTime: '15:15',
+      lanes: [],
+      laneCount: 0,
+      requiresLanes: false,
+      opsPlan: {
+        resourceBlocks: [
+          { resourceType: 'laser_arena', startTime: '15:15', endTime: '15:40', players: 4 },
+        ],
+      },
+    }, [], {}),
+    /heures pleines ou demies/i,
+    'a forged formula program starting at :15 must be refused even without bowling',
+  );
 }
 
 // Parcours public complet (mode auto + mode « Je choisis ») via l'API de
@@ -928,6 +963,9 @@ async function testPublicFormulaAvailabilityNewSemantics(query, { expectFirstAct
     const plan = slot.opsPlan || {};
     const activities = (plan.timeline || []).filter((step) => step.type === 'activity');
     assert.ok(activities.length, 'each slot must expose its program timeline');
+    // Règle patron : TOUTE heure proposée au client est :00/:30, quelle que
+    // soit la première activité (bowling, laser, minigolf…).
+    assert.strictEqual(toMinutes(slot.time) % 30, 0, `every proposed chip must be on :00/:30, got ${slot.time}`);
     assert.strictEqual(
       activities[0].startTime,
       slot.time,
@@ -957,16 +995,15 @@ async function testPublicFormulaAvailabilityAutoMode() {
     formuleId: 'f1',
     pax: '10',
   }));
-  // f1 démarre au bowling en mode auto : toutes les chips doivent être :00/:30.
-  slots
-    .filter((slot) => (slot.opsPlan.timeline || []).find((step) => step.type === 'activity')?.activityId === 'bowling')
-    .forEach((slot) => {
-      assert.strictEqual(toMinutes(slot.time) % 30, 0, `bowling-first chip must be on :00/:30, got ${slot.time}`);
-    });
+  // Toutes les chips (bowling-first ou non) doivent être :00/:30.
+  slots.forEach((slot) => {
+    assert.strictEqual(toMinutes(slot.time) % 30, 0, `auto-mode chip must be on :00/:30, got ${slot.time}`);
+  });
+  assert.ok(slots.length >= 5, 'the :30 grid must still leave a healthy number of programs on a full day');
 }
 
 async function testPublicFormulaAvailabilityManualOrder() {
-  await testPublicFormulaAvailabilityNewSemantics(new URLSearchParams({
+  const slots = await testPublicFormulaAvailabilityNewSemantics(new URLSearchParams({
     date: TEST_DATE,
     centerId: 'libramont',
     type: 'formule',
@@ -974,6 +1011,44 @@ async function testPublicFormulaAvailabilityManualOrder() {
     pax: '10',
     activityOrder: 'laser_game,bowling,arcade_time',
   }), { expectFirstActivity: 'laser_game' });
+  // Mode « Je choisis », laser en premier : les chips restent :00/:30 (plus
+  // jamais de 15:15/16:40 issus de la grille 15 min).
+  slots.forEach((slot) => {
+    assert.strictEqual(toMinutes(slot.time) % 30, 0, `laser-first chip must be on :00/:30, got ${slot.time}`);
+  });
+  assert.ok(slots.length >= 3, 'the :30 grid must still leave several laser-first programs on a full day');
+}
+
+// Parcours simples côté client : les créneaux proposés (laser seul, bowling
+// seul) tombent aussi uniquement sur :00/:30.
+async function testPublicSimpleAvailabilityUsesHalfHourGrid() {
+  const laser = await invokePublicAvailability(new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'laser',
+    pax: '6',
+    laserGames: '1',
+  }), { reservations: [], laneStatuses: {} });
+  assert.strictEqual(laser.statusCode, 200);
+  const laserSlots = laser.payload.slots || [];
+  assert.ok(laserSlots.length >= 5, 'laser availability should keep a healthy number of half-hour slots');
+  laserSlots.forEach((slot) => {
+    assert.strictEqual(toMinutes(slot.time) % 30, 0, `laser slot must be on :00/:30, got ${slot.time}`);
+  });
+
+  const bowling = await invokePublicAvailability(new URLSearchParams({
+    date: TEST_DATE,
+    centerId: 'libramont',
+    type: 'bowling',
+    pax: '4',
+    duration: '1',
+  }), { reservations: [], laneStatuses: {} });
+  assert.strictEqual(bowling.statusCode, 200);
+  const bowlingSlots = bowling.payload.slots || [];
+  assert.ok(bowlingSlots.length >= 5, 'bowling availability should keep a healthy number of half-hour slots');
+  bowlingSlots.forEach((slot) => {
+    assert.strictEqual(toMinutes(slot.time) % 30, 0, `bowling slot must be on :00/:30, got ${slot.time}`);
+  });
 }
 
 async function main() {
@@ -999,13 +1074,14 @@ async function main() {
   testLaserGameCountSurvivesRequestNormalization();
   testStaffLaserGameCountSurvivesOpsPreparationShape();
   testFormulaChosenTimeIsExactFirstActivityStart();
-  testFormulaBowlingSnapsToHalfHourGrid();
+  testFormulaProgramStartSnapsToHalfHourGrid();
   testBowlingClassicRefusesOffGridStart();
   testReservationValidationRefusesOffGridBowling();
   await testPrepareReservationOpsPersistsLaserGamesInOpsPlan();
   await testPublicLaserAvailabilityUsesLaserGamesAndExactRemainingCapacity();
   await testPublicFormulaAvailabilityAutoMode();
   await testPublicFormulaAvailabilityManualOrder();
+  await testPublicSimpleAvailabilityUsesHalfHourGrid();
 
   console.log('ops-tests-ok');
 }

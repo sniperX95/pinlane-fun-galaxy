@@ -1209,7 +1209,8 @@ input.dash-date-input {
 .planning-box.expanded .lane-header .num { font-size: 16px; }
 .planning-box.expanded .booking-name { font-size: 15px; }
 .planning-box.expanded .booking .b-tag { font-size: 12px; }
-.planning-box.expanded .booking-meta { font-size: 12px; }
+.planning-box.expanded .booking .bk-pax { font-size: 12px; }
+.planning-box.expanded .booking .bk-dur { font-size: 11px; }
 .planning-box.expanded .reservation-tag { font-size: 11px; }
 
 /* Laser : l'agenda occupe toute la largeur et grossit en plein écran */
@@ -1462,28 +1463,93 @@ input.dash-date-input {
   text-overflow: ellipsis;
 }
 
-.booking-meta {
+/* Pied de carte : activité (gauche, tronquée) + stats effectif/durée (droite),
+   épinglé en bas de la carte via margin-top:auto. */
+.booking-foot {
   margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.booking-foot .b-tag { flex: 1 1 auto; }
+
+/* Effectif + durée — toujours affichés sur TOUTES les cartes. */
+.booking-stats {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  line-height: 1.2;
-  color: var(--muted);
+  line-height: 1.1;
+}
+.booking-stats .u { opacity: 0.65; font-weight: 500; margin-left: 1px; }
+
+/* Effectif — emphase croissante (gris → pastille inversée) selon le groupe. */
+.bk-pax {
+  display: inline-flex;
+  align-items: baseline;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.bk-pax.grp-m { color: var(--text); font-weight: 600; }
+.bk-pax.grp-l {
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--line-strong);
+  color: var(--text);
+  font-weight: 700;
+}
+.bk-pax.grp-xl {
+  padding: 0 7px;
+  border-radius: var(--radius-full);
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 700;
 }
 
-.booking.booking-mini .b-tag,
-.booking.booking-mini .booking-meta,
-.booking.booking-mini .reservation-tags,
-.booking.booking-snug .booking-meta,
-.booking.booking-snug .reservation-tags,
-.booking.booking-compact .booking-meta,
-.booking.booking-compact .reservation-tags { display: none; }
-.booking.booking-mini { padding: 2px 6px; justify-content: center; }
-.booking.booking-mini .booking-name { font-size: 11px; }
-.booking.booking-snug { padding: 4px 7px; }
+/* Durée — 1h neutre, toute autre durée ressort (ambre = attention). Le libellé
+   texte porte l'info, la couleur ne fait que la renforcer. */
+.bk-dur {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.bk-dur.dur-special {
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 700;
+}
 
-/* Vue non agrandie : les pills dupliquent le .b-tag, on garde la densité */
+/* --- Densité responsive selon la hauteur réelle de la carte (durée × zoom) ---
+   dens-lg (défaut) : nom + activité + effectif + durée, aéré.
+   dens-md          : idem, compact (les tags secondaires restent masqués).
+   dens-xs (≈30 min): une seule ligne — nom tronqué + effectif + durée. */
+.booking.dens-xs {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+}
+.booking.dens-xs .booking-name { flex: 1 1 auto; font-size: 11px; }
+.booking.dens-xs .booking-foot { margin-top: 0; flex: 0 0 auto; }
+.booking.dens-xs .booking-foot .b-tag { display: none; }
+.booking.dens-xs.is-delayed { padding-right: 22px; }
+.booking.dens-xs .delay-indicator .delay-indicator-label { display: none; }
+
+/* Vue non agrandie : les pills dupliquent le .b-tag / la durée, on garde la
+   densité. En plein écran, les tags ne reviennent que sur les cartes hautes. */
 .planning-box:not(.expanded) .booking .reservation-tags { display: none; }
+.planning-box.expanded .booking.dens-md .reservation-tags { display: none; }
 
 .reservation-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
 
@@ -1805,13 +1871,10 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .laser-group-main strong { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .laser-group-main small { font-size: 11px; color: var(--muted); }
 
-.laser-group-count {
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
+/* Cluster effectif + durée à droite de la carte laser (réutilise .booking-stats
+   et l'échelle d'emphase .bk-pax/.bk-dur pour rester cohérent avec le bowling). */
+.laser-group-stats { flex: 0 0 auto; }
+.laser-group-count.bk-pax { font-size: 12px; }
 
 .laser-card-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 
@@ -5923,7 +5986,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .booking.is-delayed { border-left-color: var(--warning); box-shadow: inset 0 0 0 1px var(--warning-soft); }
 .laser-group-card.is-delayed { box-shadow: inset 0 0 0 1px var(--warning); }
 .laser-group-card .delay-indicator { margin-left: auto; }
-.booking.booking-mini .delay-indicator .delay-indicator-label { display: none; }
 
 /* Bouton d'ouverture du centre de communication (fiche résa) */
 .comm-open-btn {
@@ -7555,9 +7617,15 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .lane-header .pl, .lane-header .settings { display: none; }
   .hour-cell { font-size: 10px; }
   .hour-cell.minor { font-size: 9px; }
+  /* Pistes très étroites (34px) : on garde nom + effectif/durée (demande staff),
+     l'activité et les tags secondaires passent à la trappe faute de largeur. */
   .booking { left: 1px; right: 1px; padding: 3px 4px; border-radius: var(--radius-sm); }
-  .booking .b-tag, .booking .booking-meta, .booking .reservation-tags { display: none; }
-  .booking .booking-name, .booking.booking-mini .booking-name { font-size: 10px; }
+  .booking .b-tag, .booking .reservation-tags { display: none; }
+  .booking .booking-name, .booking.dens-xs .booking-name { font-size: 10px; }
+  .booking .booking-foot { gap: 3px; }
+  .booking .booking-stats { gap: 3px; }
+  .booking .bk-pax, .booking .bk-dur { font-size: 9px; }
+  .booking .bk-pax.grp-l, .booking .bk-pax.grp-xl, .booking .bk-dur.dur-special { padding: 0 4px; }
 
   /* Groupes : registre empilé (les 7 colonnes de 720px ne tiennent pas) */
   .groups-ledger-row { min-width: 0; grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }

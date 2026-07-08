@@ -11214,6 +11214,60 @@ function getBowlingDurationForReservation(reservation) {
   return Number(reservation.duration || 0);
 }
 
+// Palier d'emphase effectif selon la taille du groupe. Escalade en niveaux de
+// gris + graisse (grp-l/grp-xl deviennent des pastilles pleines) pour repérer
+// un gros groupe d'un coup d'œil, sans introduire une 2e couleur vive à côté de
+// la durée (design system : un seul accent chaud = ambre pour la durée).
+//   ≤6 neutre · 7-14 semi-gras · 15-29 pastille · 30+ pastille inversée.
+function getGroupSizeClass(pax) {
+  const n = Number(pax) || 0;
+  if (n >= 30) return 'grp-xl';
+  if (n >= 15) return 'grp-l';
+  if (n >= 7) return 'grp-m';
+  return 'grp-s';
+}
+
+// Durée bowling « standard » = 1h (neutre). Toute autre durée (30 min, 1h30,
+// 2h…) est signalée pour attirer l'œil du staff.
+function isSpecialBowlingDuration(duration) {
+  const d = Number(duration) || 0;
+  return d > 0 && Math.abs(d - 1) > 0.01;
+}
+
+// Densité d'info d'une carte bowling dérivée de sa HAUTEUR réelle (durée × zoom
+// du planning). Une seule classe pilote l'affichage responsive côté CSS :
+//   dens-xs : très petite (≈30 min) → nom tronqué + effectif + durée, 1 ligne.
+//   dens-md : moyenne (≈1h)         → nom + activité + effectif + durée.
+//   dens-lg : grande (1h30/2h+)     → tout, aéré (+ tags en plein écran).
+// En plein écran les cellules sont plus hautes ET les polices plus grandes :
+// on ne descend jamais sous dens-md pour afficher davantage de détail.
+function getBookingDensityClass(height, expanded) {
+  if (expanded) {
+    // Polices plus grandes en plein écran : une cellule très courte (≈30 min)
+    // ne tient toujours pas 2 lignes → ligne unique essentielle. Les créneaux
+    // plus longs profitent de la hauteur pour afficher davantage de détail.
+    if (height < 54) return 'dens-xs';
+    return height >= 108 ? 'dens-lg' : 'dens-md';
+  }
+  if (height < 40) return 'dens-xs';
+  if (height < 66) return 'dens-md';
+  return 'dens-lg';
+}
+
+// Bloc effectif + durée commun aux cartes bowling ET laser. Le libellé texte
+// porte toujours l'info (accessibilité : jamais de sens porté par la couleur
+// seule) ; la couleur/pastille ne fait que renforcer.
+function renderCardStats(pax, durationLabel, options = {}) {
+  const special = Boolean(options.special);
+  const paxNum = Math.max(0, Number(pax) || 0);
+  const grp = getGroupSizeClass(paxNum);
+  const durClass = special ? 'bk-dur dur-special' : 'bk-dur';
+  return `<span class="booking-stats">`
+    + `<span class="bk-pax ${grp}" title="${paxNum} joueur${paxNum > 1 ? 's' : ''}">${paxNum}<span class="u">j</span></span>`
+    + `<span class="${durClass}" title="Durée ${escapeHtml(durationLabel)}">${escapeHtml(durationLabel)}</span>`
+    + `</span>`;
+}
+
 function getReservationHighlightClasses(reservation) {
   const classes = [];
   if (reservation.type === 'formule' || reservation.formuleId) classes.push('is-formula');
@@ -11671,18 +11725,20 @@ function renderPlanning() {
       let cls = 'conf';
       if (r.status === 'arrived') cls = 'arr';
       if (r.status === 'paid') cls = 'paid';
-      const compactClass = state.staffPlanningExpanded
-        ? (height < 92 ? ' booking-compact' : '')
-        : (height <= 30 ? ' booking-mini' : height <= 52 ? ' booking-snug' : '');
+      const densClass = getBookingDensityClass(height, state.staffPlanningExpanded);
       const displayName = getPlanningBookingDisplayName(r);
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
-      bkHtml += `<div class="booking ${cls}${compactClass} ${getReservationHighlightClasses(r)}${delayedClass}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      const bowlingDuration = Number(item.window.duration) || 0;
+      const statsHtml = renderCardStats(r.pax, formatDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration) });
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${renderDelayIndicator(r)}
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
-        <div class="b-tag">${getReservationLabel(r)}</div>
         ${renderReservationTags(r)}
-        <div class="booking-meta">${r.pax}j • ${formatDurationLabel(item.window.duration)}</div>
+        <div class="booking-foot">
+          <span class="b-tag">${getReservationLabel(r)}</span>
+          ${statsHtml}
+        </div>
       </div>`;
     });
     lanesHtml += `<div class="lane-col ${maint ? 'maint' : ''}" data-lane="${i}">
@@ -11849,7 +11905,10 @@ function renderLaserPlanning() {
           ${pillHtml}
         </span>
         ${renderDelayIndicator(reservation)}
-        <span class="laser-group-count">${players}j</span>
+        <span class="booking-stats laser-group-stats">
+          <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
+          <span class="bk-dur laser-dur" title="Durée ${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}">${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}</span>
+        </span>
       </button>`;
     }).join('');
     const sessionType = hasFormula && hasDirect ? 'mixte' : hasFormula ? 'formule' : 'direct';

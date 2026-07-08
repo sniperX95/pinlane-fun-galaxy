@@ -954,7 +954,7 @@ async function collectIssues(page, scopeLabel) {
       }
     });
 
-    document.querySelectorAll('.booking-name, .booking-meta, .b-tag, .client-cell strong, .client-cell small').forEach((el) => {
+    document.querySelectorAll('.booking-name, .booking-stats, .bk-pax, .bk-dur, .b-tag, .client-cell strong, .client-cell small').forEach((el) => {
       if (!visible(el)) return;
       if (el.scrollHeight > el.clientHeight + 3) {
         issues.push({
@@ -1020,6 +1020,114 @@ async function main() {
     await page.waitForTimeout(700);
     await screenshot(page, 'staff-planning-stress');
     issues.push(...await collectIssues(page, 'staff-planning'));
+
+    // === Cartes planning : effectif + durée sur TOUTES les cartes, code couleur
+    //     durée (≠1h), emphase gros groupe, densité responsive anti-débordement.
+    const cardAudit = await page.evaluate(() => {
+      const num = (el) => (el ? el.textContent.replace(/\D+/g, '') : '');
+      const booking = (resId) => document.querySelector(`.booking[data-booking-res-id="${resId}"]`);
+      const scan = (root) => ({
+        hasPax: Boolean(root && root.querySelector('.bk-pax')),
+        hasDur: Boolean(root && root.querySelector('.bk-dur')),
+        pax: num(root && root.querySelector('.bk-pax')),
+        dur: (root && root.querySelector('.bk-dur') || {}).textContent || '',
+        durSpecial: Boolean(root && root.querySelector('.bk-dur.dur-special')),
+        classes: root ? root.className : '',
+        overflow: root ? (root.scrollHeight - root.clientHeight) : 0,
+      });
+      // 9001 = bowling 30 min (dens-xs), 9002 = bowling 1h (durée standard),
+      // 9004 = bowling 2h (dens-lg, durée ≠1h). Cartes laser via .laser-group-card.
+      const bTagVisible = (root) => {
+        const bt = root && root.querySelector('.booking-foot .b-tag');
+        if (!bt) return false;
+        return window.getComputedStyle(bt).display !== 'none';
+      };
+      const laserCards = Array.from(document.querySelectorAll('.laser-group-card'));
+      return {
+        min30: { ...scan(booking(9001)), bTagVisible: bTagVisible(booking(9001)) },
+        h1: scan(booking(9002)),
+        h2: { ...scan(booking(9004)), bTagVisible: bTagVisible(booking(9004)) },
+        laser: laserCards.map((card) => ({
+          hasPax: Boolean(card.querySelector('.bk-pax')),
+          hasDur: Boolean(card.querySelector('.bk-dur')),
+          classes: card.className,
+        })),
+        allBowlingHaveStats: Array.from(document.querySelectorAll('.booking')).every(
+          (el) => el.querySelector('.bk-pax') && el.querySelector('.bk-dur')
+        ),
+      };
+    });
+    assert(cardAudit.allBowlingHaveStats, 'Planning : toutes les cartes bowling portent effectif + durée.');
+    assert(cardAudit.min30.hasPax && cardAudit.min30.hasDur, 'Planning : carte 30 min montre effectif + durée.');
+    assert(/\bdens-xs\b/.test(cardAudit.min30.classes), 'Planning : carte 30 min en densité compacte (dens-xs).');
+    assert(!cardAudit.min30.bTagVisible, 'Planning : carte 30 min masque le détail secondaire (activité).');
+    assert(cardAudit.min30.overflow <= 1, `Planning : carte 30 min ne déborde pas (overflow=${cardAudit.min30.overflow}).`);
+    assert(cardAudit.min30.durSpecial, 'Planning : durée 30 min ≠1h est mise en évidence.');
+    assert(!cardAudit.h1.durSpecial, 'Planning : durée standard 1h reste neutre (pas de mise en évidence).');
+    assert(/\bdens-lg\b/.test(cardAudit.h2.classes), 'Planning : carte 2h en densité large (dens-lg).');
+    assert(cardAudit.h2.bTagVisible, 'Planning : carte 2h affiche le détail complet (activité).');
+    assert(cardAudit.h2.durSpecial, 'Planning : durée 2h ≠1h est mise en évidence.');
+    assert(cardAudit.h2.overflow <= 1, `Planning : carte 2h ne déborde pas (overflow=${cardAudit.h2.overflow}).`);
+    assert(cardAudit.laser.length > 0, 'Planning : au moins une carte laser présente.');
+    assert(cardAudit.laser.every((c) => c.hasPax && c.hasDur), 'Planning : cartes laser portent effectif + durée.');
+
+    // Emphase « gros groupe » : un groupe de 40 joueurs doit passer au niveau
+    // maximal (grp-xl / pastille inversée).
+    const bigGroupAudit = await page.evaluate(() => {
+      const d = state.currentDate;
+      state.reservations = state.reservations.concat([{
+        id: 9042,
+        name: 'Comité Entreprise Géant #9042',
+        phone: '+32470860042',
+        email: 'geant@example.test',
+        date: d,
+        startTime: '19:00',
+        duration: 2,
+        lanes: [7],
+        status: 'confirmed',
+        pax: 40,
+        price: 520,
+        type: 'bowling',
+        label: 'Bowling 2h',
+      }]);
+      renderPlanning();
+      const card = document.querySelector('.booking[data-booking-res-id="9042"]');
+      const pax = card && card.querySelector('.bk-pax');
+      return { grpXl: Boolean(pax && pax.classList.contains('grp-xl')), pax: pax ? pax.textContent : '' };
+    });
+    assert(bigGroupAudit.grpXl, 'Planning : un groupe de 40 joueurs porte l’emphase maximale (grp-xl).');
+    // On restaure le jeu de données de stress pour la suite.
+    await seedStressDay(page);
+    await renderStaffPage(page, 'planning');
+    await page.waitForTimeout(300);
+
+    // Plein écran : la densité passe à un niveau plus détaillé (dens-md/lg) même
+    // pour les créneaux courts, et rien ne déborde.
+    const expandedAudit = await page.evaluate(() => {
+      state.staffPlanningExpanded = true;
+      const box = document.getElementById('planningBox');
+      if (box) box.classList.add('expanded');
+      renderPlanning();
+      const cards = Array.from(document.querySelectorAll('.booking'));
+      const tall = document.querySelector('.booking[data-booking-res-id="9004"]'); // 2h
+      const tallTag = tall && tall.querySelector('.booking-foot .b-tag');
+      return {
+        noOverflow: cards.every((el) => (el.scrollHeight - el.clientHeight) <= 2),
+        count: cards.length,
+        tallDetailed: Boolean(tall && /\bdens-lg\b/.test(tall.className)
+          && tallTag && window.getComputedStyle(tallTag).display !== 'none'),
+      };
+    });
+    assert(expandedAudit.count > 0, 'Planning agrandi : cartes présentes.');
+    assert(expandedAudit.tallDetailed, 'Planning agrandi : les cartes hautes affichent plus de détail (activité + stats).');
+    assert(expandedAudit.noOverflow, 'Planning agrandi : aucune carte ne déborde.');
+    await screenshot(page, 'staff-planning-expanded-cards');
+    await page.evaluate(() => {
+      state.staffPlanningExpanded = false;
+      const box = document.getElementById('planningBox');
+      if (box) box.classList.remove('expanded');
+      renderPlanning();
+    });
 
     await renderStaffPage(page, 'clients');
     await screenshot(page, 'staff-clients-stress');

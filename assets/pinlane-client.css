@@ -349,6 +349,24 @@ body {
   color: var(--warning);
 }
 
+/* Stepper joueurs : sur desktop, champ simple (boutons masqués = rendu
+   historique préservé). Les boutons +/- n'apparaissent qu'en mobile. */
+#clientView .pax-stepper {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+#clientView .pax-step-btn {
+  display: none;
+}
+
+/* Conteneur du CTA principal d'étape : transparent sur desktop (le bouton
+   garde son rendu pleine largeur habituel), transformé en barre sticky en
+   mobile — voir la media query. */
+#clientView .step-cta-bar {
+  margin-top: var(--space-4);
+}
+
 /* --- Segmented type d'activité : sélection = accent --------------------- */
 #clientView .segmented {
   display: grid;
@@ -1386,6 +1404,129 @@ body {
   #clientView .step-actions .btn-secondary {
     width: 100%;
   }
+
+  /* Cible tactile ≥44px pour l'ouverture du calendrier */
+  #clientView .date-picker-trigger {
+    width: 44px;
+    height: 44px;
+  }
+
+  #clientView .date-input-wrap input {
+    padding-right: 52px;
+  }
+
+  /* --- Stepper joueurs tactile : − [champ] + ------------------------------ */
+  #clientView .pax-stepper {
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    gap: var(--space-2);
+    align-items: stretch;
+  }
+
+  #clientView .pax-stepper .input {
+    text-align: center;
+  }
+
+  #clientView .pax-step-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  }
+
+  #clientView .pax-step-btn:hover {
+    background: var(--subtle);
+  }
+
+  #clientView .pax-step-btn:active {
+    background: var(--accent-soft);
+  }
+
+  /* --- FORMULES SCANNABLES : grille 2 colonnes, cartes compactes ---------- */
+  /* Objectif : embrasser l'offre en 1-2 écrans au lieu de dérouler 14 cartes.
+     Par défaut chaque carte = nom + prix + 1 ligne teaser. Au tap la carte
+     sélectionnée passe pleine largeur et déplie son détail complet (accordéon). */
+  #clientView .formule-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  #clientView .formule-card {
+    padding: var(--space-3);
+    gap: 6px;
+    border-radius: var(--radius-md);
+  }
+
+  /* Nom au-dessus du prix : lecture verticale nette dans une carte étroite */
+  #clientView .formule-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  #clientView .formule-card-price strong {
+    font-size: 17px;
+  }
+
+  /* Teaser compact : une seule ligne d'items + meta masquée tant que la carte
+     n'est pas ouverte. */
+  #clientView .formule-card:not(.active) .formule-card-list li:nth-child(n + 2) {
+    display: none;
+  }
+
+  #clientView .formule-card:not(.active) .formule-card-meta {
+    display: none;
+  }
+
+  /* Carte choisie : pleine largeur, détail complet déplié, prix à droite */
+  #clientView .formule-card.active {
+    grid-column: 1 / -1;
+    gap: var(--space-2);
+  }
+
+  #clientView .formule-card.active .formule-card-head {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  /* --- CTA principal STICKY (pouce + safe-area iOS) ----------------------- */
+  /* Barre pleine largeur ancrée en bas de l'écran : le CTA reste atteignable
+     même au milieu d'une longue liste de formules. Le conteneur porte le fond
+     dégradé + la safe-area, le bouton garde son style d'origine. */
+  #clientView .step-cta-bar,
+  #clientView #step3 .step-actions,
+  #clientView #step4 .step-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    margin-top: var(--space-4);
+    margin-left: calc(-1 * var(--space-3));
+    margin-right: calc(-1 * var(--space-3));
+    padding: var(--space-3) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, var(--page) 68%, rgba(0, 0, 0, 0));
+  }
+
+  #clientView #step3 .step-actions,
+  #clientView #step4 .step-actions {
+    gap: var(--space-2);
+  }
+
+  /* Boutons d'action d'étape : en colonne, le CTA doit garder sa pleine
+     hauteur (neutralise le flex:1 inline hérité du layout desktop en ligne,
+     qui écrase le bouton en colonne). */
+  #clientView .step-actions .btn-primary {
+    flex: none !important;
+    width: 100%;
+  }
 }
 
 /* ============================================================================
@@ -2417,6 +2558,20 @@ body.client-mode .client-demo-access.hidden {
 
   body.client-mode .location-select {
     display: none;
+  }
+}
+
+/* Très petits mobiles (≤430px) : resserre le switch de vue pour supprimer le
+   léger débordement horizontal du header (logo + switch Réserver/Staff/Direction). */
+@media (max-width: 430px) {
+  body.client-mode header {
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  body.client-mode .view-switch button {
+    padding: 0 8px;
+    font-size: 12px;
   }
 }
 

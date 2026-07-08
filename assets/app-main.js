@@ -2394,6 +2394,19 @@ function initClient() {
   updateProgress();
 }
 
+// Stepper tactile du nombre de joueurs (boutons +/- mobile). On reste sur le
+// champ #fPax comme source de vérité : on modifie sa valeur puis on rejoue son
+// listener 'input' existant (pas de duplication de logique de recalcul).
+function stepPax(delta) {
+  const input = document.getElementById('fPax');
+  if (!input) return;
+  const min = Number(input.min) || 1;
+  const max = Number(input.max) || 120;
+  const next = Math.min(max, Math.max(min, (Number(input.value) || min) + delta));
+  input.value = String(next);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function renderDurations() {
   const g = document.getElementById('durGrid');
   g.innerHTML = DURATION_OPTIONS.map(o => `

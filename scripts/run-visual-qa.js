@@ -1278,6 +1278,54 @@ async function main() {
     const modalStillOpen = await page.locator('#staffAccessModalOverlay').count();
     assert(!modalStillOpen, 'La modale de création d accès doit se fermer avec Escape.');
 
+    // ------------------------------------------------------------------
+    // Chantier 2 — un rôle limité ne voit dans le menu QUE ses entrées
+    // autorisées (entrées interdites ABSENTES du DOM, pas juste désactivées).
+    // ------------------------------------------------------------------
+    const limitedMenu = await page.evaluate(() => {
+      const AUTH_KEY = 'funGalaxy_auth_v1';
+      const snapshot = JSON.parse(JSON.stringify(state.staffAuthSession));
+      const limited = Object.assign({}, snapshot, {
+        member: { id: 'qa-staff', name: 'QA Staff bar', roleId: 'staff-bar' },
+        role: { id: 'staff-bar', name: 'Staff bar', locked: false },
+        permissions: [
+          'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser',
+          'reservations.view', 'reservations.status', 'reservations.quick',
+          'payments.view', 'payments.markPaid',
+        ],
+      });
+      state.staffAuthSession = limited;
+      try { localStorage.setItem(AUTH_KEY, JSON.stringify(limited)); } catch (error) {}
+      state.staffMenuPage = 'dashboard';
+      if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
+      if (typeof renderStaff === 'function') renderStaff();
+      const nav = document.querySelector('.fgx-menu-nav');
+      const keys = nav ? [...nav.querySelectorAll('[data-fgx-menu-key]')].map((node) => node.dataset.fgxMenuKey) : [];
+      const toggles = nav ? [...nav.querySelectorAll('[data-fgx-menu-toggle]')].map((node) => node.dataset.fgxMenuToggle) : [];
+      return { keys, toggles, snapshot };
+    });
+    await page.waitForTimeout(300);
+    await screenshot(page, 'chantier2-menu-limited-role');
+    // Identifiants visibles = boutons feuilles (data-fgx-menu-key) + groupes (data-fgx-menu-toggle).
+    const limitedVisible = new Set([...limitedMenu.keys, ...limitedMenu.toggles]);
+    assert(limitedVisible.has('dashboard') && limitedVisible.has('planning') && limitedVisible.has('reservations'),
+      'Rôle limité : les entrées autorisées doivent rester visibles.');
+    for (const forbidden of ['users', 'establishment', 'clients', 'groups', 'emails', 'campaigns', 'prices']) {
+      assert(!limitedVisible.has(forbidden),
+        `Rôle limité : l entrée interdite « ${forbidden} » doit être absente du menu (pas seulement désactivée).`);
+    }
+    // Restauration de la session complète pour la suite du parcours QA.
+    await page.evaluate((snapshot) => {
+      const AUTH_KEY = 'funGalaxy_auth_v1';
+      state.staffAuthSession = snapshot;
+      try { localStorage.setItem(AUTH_KEY, JSON.stringify(snapshot)); } catch (error) {}
+      if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
+      if (typeof renderStaff === 'function') renderStaff();
+    }, limitedMenu.snapshot);
+    await page.waitForTimeout(200);
+    await renderStaffPage(page, 'users');
+    await page.waitForTimeout(300);
+
     // Passe thème clair sur les écrans clés (le système v2 est bi-thème)
     await page.evaluate(() => setStaffTheme('light'));
     await page.waitForTimeout(400);

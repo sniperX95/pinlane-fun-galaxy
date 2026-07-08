@@ -55,6 +55,11 @@ const MIGRATIONS = [
     file: 'database/custom-requests-schema.sql',
     description: 'Custom / bespoke enquiry leads (companies, special needs)',
   },
+  {
+    id: '0011_staff_access_code_enc',
+    file: 'database/staff-access-code-enc-schema.sql',
+    description: 'Reversible AES-256-GCM encrypted staff access codes (copy without regenerating)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -6869,6 +6869,47 @@ function copyStaffAccessCode(value, options = {}) {
     .catch(() => { if (!options.silent) toast(code); });
 }
 
+// Copie le code d'accès ACTUEL en le révélant via le serveur (déchiffrement),
+// sans le régénérer. Gated à users.manage côté serveur ET côté client.
+async function copyStaffRoleCode(roleId) {
+  if (!canUseStaffPermission('users.manage')) { toast('Copie du code réservée à la direction.'); return; }
+  const role = getStaffAccessRole(roleId);
+  if (!role) return;
+  try {
+    const response = await apiRequest(API_ENDPOINTS.staffAuth, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'revealRoleCode', centerId: getCurrentStaffCenterId(), roleId })
+    });
+    if (!response || response.needsRegenerate || !response.revealedCode) {
+      toast('Régénère le code pour activer la copie.');
+      return;
+    }
+    copyStaffAccessCode(response.revealedCode);
+  } catch (error) {
+    toast(error.message || 'Copie du code impossible.');
+  }
+}
+
+async function copyStaffMemberCode(memberId) {
+  if (!canUseStaffPermission('users.manage')) { toast('Copie du code réservée à la direction.'); return; }
+  const access = ensureStaffAccessControl();
+  const member = access.members.find(item => item.id === memberId);
+  if (!member) return;
+  try {
+    const response = await apiRequest(API_ENDPOINTS.staffAuth, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'revealMemberCode', centerId: getCurrentStaffCenterId(), memberId })
+    });
+    if (!response || response.needsRegenerate || !response.revealedCode) {
+      toast('Régénère l’accès pour activer la copie.');
+      return;
+    }
+    copyStaffAccessCode(response.revealedCode);
+  } catch (error) {
+    toast(error.message || 'Copie du code impossible.');
+  }
+}
+
 function getStaffRoleAccessiblePages(roleId) {
   const permissions = getStaffRolePermissionSet(roleId);
   const pages = [
@@ -6953,9 +6994,10 @@ function renderStaffUtilityUsers() {
             <strong>${escapeHtml(displayedCode)}</strong>
             <div>
               ${rawAccessCode && !codeAlreadyMasked ? `<button type="button" class="btn btn-secondary btn-sm" aria-pressed="${staffAccessCodeRevealed ? 'true' : 'false'}" onclick="toggleStaffAccessCodeVisibility()">${staffAccessCodeRevealed ? 'Masquer' : 'Afficher'}</button>` : ''}
-              <button type="button" class="btn btn-secondary btn-sm" onclick='copyStaffAccessCode(${staffClientJs(rawAccessCode)})'>Copier</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick='copyStaffRoleCode(${staffClientJs(selectedRole.id)})'>Copier</button>
               <button type="button" class="btn btn-secondary btn-sm" onclick='regenerateStaffAccessCode(${staffClientJs(selectedRole.id)})'>Régénérer</button>
             </div>
+            ${rawAccessCode && selectedRole.codeCopyReady === false ? '<small class="staff-code-hint">Régénérer pour activer la copie.</small>' : ''}
           </div>
         </div>
 
@@ -7019,7 +7061,7 @@ function renderStaffUtilityUsers() {
                   ${access.roles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('')}
                 </select>
                 <footer>
-                  <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffAccessCode(${staffClientJs(member.code || '')})'>${escapeHtml(member.code || 'Copier code')}</button>
+                  <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffMemberCode(${staffClientJs(member.id)})'>${escapeHtml(member.code || 'Copier code')}</button>
                   <button type="button" class="btn btn-ghost btn-sm" onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
                 </footer>
               </article>`;

@@ -117,6 +117,41 @@
     }
   ];
 
+  // --- Masquage des entrées non autorisées selon le rôle de la session --------
+  // Une entrée que le rôle n'a pas le droit d'ouvrir est RETIRÉE du DOM (pas
+  // affichée désactivée). Le serveur reste l'autorité : ce filtrage ne fait que
+  // cacher côté UI ce qui est déjà refusé côté serveur.
+  function menuKeyToPage(key) {
+    if (key === 'bowling' || key === 'laser' || key === 'complete') return 'planning';
+    if (key === 'field' || key === 'activities') return null; // conteneurs : gérés par leurs enfants
+    return key;
+  }
+
+  function menuKeyVisible(key) {
+    const page = menuKeyToPage(key);
+    if (!page) return true;
+    if (typeof canUseStaffPage === 'function') return canUseStaffPage(page);
+    return true;
+  }
+
+  function filterMenuItem(item) {
+    if (item.children) {
+      const children = item.children.filter(child => menuKeyVisible(child.key));
+      if (!children.length) return null;
+      return Object.assign({}, item, { children });
+    }
+    return menuKeyVisible(item.key) ? item : null;
+  }
+
+  function visibleMenuSections() {
+    return menuSections
+      .map(section => {
+        const items = section.items.map(filterMenuItem).filter(Boolean);
+        return items.length ? Object.assign({}, section, { items }) : null;
+      })
+      .filter(Boolean);
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replace(/&/g, '&amp;')
@@ -424,7 +459,12 @@
 
   function toggleCenterMenu(anchor) {
     const selectedId = getSelectedCenterId();
-    const options = getMenuCenters().map(center => {
+    // Sans la permission centers.switch, le rôle ne voit que son centre courant
+    // (aucun autre centre à sélectionner) — on n'affiche pas d'action interdite.
+    const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
+    const canDirection = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('direction.view');
+    const centers = canSwitch ? getMenuCenters() : getMenuCenters().filter(center => center.id === selectedId);
+    const options = centers.map(center => {
       const isActive = center.id === selectedId;
       return `
         <button type="button" class="fgx-menu-option fgx-center-option${isActive ? ' is-active' : ''}" data-fgx-center-option="${escapeHtml(center.id)}" role="menuitem">
@@ -437,14 +477,14 @@
       `;
     }).join('');
     openMenuPopover('center', anchor, `
-      <div class="fgx-menu-popover-title">Changer de centre</div>
+      <div class="fgx-menu-popover-title">${canSwitch ? 'Changer de centre' : 'Centre'}</div>
       <div class="fgx-menu-options">${options}</div>
-      <button type="button" class="fgx-menu-option fgx-center-option muted" data-fgx-menu-action="direction" role="menuitem">
+      ${canDirection ? `<button type="button" class="fgx-menu-option fgx-center-option muted" data-fgx-menu-action="direction" role="menuitem">
         <span>
           <strong>Direction multi-centres</strong>
           <small>Comparer les centres et exports</small>
         </span>
-      </button>
+      </button>` : ''}
     `);
   }
 
@@ -454,33 +494,34 @@
     const roleLabel = getRoleLabel();
     const accessSummary = getAccessSummary();
     const themeSummary = getThemeSummary();
+    const canOpen = key => (typeof canUseStaffPage === 'function' ? canUseStaffPage(key) : true);
     openMenuPopover('account', anchor, `
       <div class="fgx-account-summary compact" role="presentation">
         <span>Compte</span>
         <strong>${escapeHtml(displayName)}</strong>
         <small>${escapeHtml(roleLabel)} · ${escapeHtml(accessSummary)}</small>
       </div>
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="users" role="menuitem">
+      ${canOpen('users') ? `<button type="button" class="fgx-menu-option" data-fgx-menu-action="users" role="menuitem">
         <span class="fgx-menu-option-icon">${icons.users}</span>
         <span>
           <strong>Équipe & accès</strong>
           <small>Codes, rôles et permissions</small>
         </span>
-      </button>
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="establishment" role="menuitem">
+      </button>` : ''}
+      ${canOpen('establishment') ? `<button type="button" class="fgx-menu-option" data-fgx-menu-action="establishment" role="menuitem">
         <span class="fgx-menu-option-icon">${icons.establishment}</span>
         <span>
           <strong>Établissement</strong>
           <small>Centre, horaires et capacité</small>
         </span>
-      </button>
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="settings" role="menuitem">
+      </button>` : ''}
+      ${canOpen('settings') ? `<button type="button" class="fgx-menu-option" data-fgx-menu-action="settings" role="menuitem">
         <span class="fgx-menu-option-icon">${icons.settings}</span>
         <span>
           <strong>Pr&eacute;f&eacute;rences</strong>
           <small>Poste staff et exports</small>
         </span>
-      </button>
+      </button>` : ''}
       <button type="button" class="fgx-menu-option" data-fgx-menu-action="theme" role="menuitem">
         <span class="fgx-menu-option-icon">${icons.settings}</span>
         <span>
@@ -604,7 +645,7 @@
       </button>
 
       <nav class="fgx-menu-nav" aria-label="Navigation op\u00e9rationnelle">
-        ${menuSections.map(sectionMarkup).join('')}
+        ${visibleMenuSections().map(sectionMarkup).join('')}
       </nav>
 
       <button type="button" class="fgx-menu-account" data-fgx-account-menu aria-haspopup="menu" aria-expanded="false" title="Options du compte">
@@ -926,7 +967,11 @@
   }
 
   window.syncStaffMenuState = syncStaffMenuState;
+  window.renderStaffMenu = renderMenu;
   window.FGX_STAFF_MENU = menuSections;
+  // Exposé pour diagnostics/tests : sections filtrées selon les permissions de
+  // la session (entrées interdites retirées, pas seulement désactivées).
+  window.FGX_STAFF_VISIBLE_SECTIONS = visibleMenuSections;
   window.FGX_STAFF_MENU_GROUP_TARGETS = GROUP_DEFAULT_TARGETS;
   window.toggleStaffMenuCollapsed = toggleMenuCollapsed;
   window.setStaffMenuCollapsed = collapsed => {

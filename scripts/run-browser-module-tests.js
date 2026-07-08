@@ -142,6 +142,44 @@ async function main() {
   assert(/measureMenuSubnavHeight/.test(staffMenuSource), 'staff menu subnav animation is not height-measured');
   assert(/applyMenuGroupOpen\(groupToggle,\s*nextOpen,\s*\{\s*animate:\s*true\s*\}\)/.test(staffMenuSource), 'group toggles do not request animated state changes');
   assert(staffMenuSource.includes('FGX_STAFF_MENU_GROUP_TARGETS'), 'staff menu group targets are not exposed for diagnostics');
+  assert(/visibleMenuSections\(\)\.map\(sectionMarkup\)/.test(staffMenuSource), 'sidebar nav must render only permission-filtered sections');
+
+  // Masquage réel : un rôle limité ne doit voir QUE ses entrées autorisées dans
+  // le menu (entrées interdites absentes, pas seulement désactivées).
+  function buildMenuSandbox(allowedPages) {
+    const noopEl = { classList: { add() {}, remove() {}, toggle() {} }, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, dataset: {}, setAttribute() {} };
+    const sandbox = {
+      window: {},
+      document: {
+        readyState: 'loading',
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener() {},
+        createElement: () => noopEl,
+      },
+      canUseStaffPage: (page) => allowedPages.has(page),
+      canUseStaffPermission: () => false,
+      localStorage: { getItem: () => null, setItem() {} },
+      state: { view: 'staff', staffMenuPage: 'dashboard' },
+    };
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(staffMenuSource, sandbox);
+    return sandbox;
+  }
+
+  const limitedSandbox = buildMenuSandbox(new Set(['dashboard', 'planning', 'reservations']));
+  const limitedSections = limitedSandbox.window.FGX_STAFF_VISIBLE_SECTIONS();
+  const limitedKeys = new Set(limitedSections.flatMap(section => section.items.map(item => item.key)));
+  assert(limitedKeys.has('dashboard') && limitedKeys.has('planning') && limitedKeys.has('reservations'), 'allowed entries must remain visible');
+  assert(!limitedKeys.has('users'), 'forbidden "users" entry must be absent from the menu (not just disabled)');
+  assert(!limitedKeys.has('clients'), 'forbidden "clients" entry must be absent from the menu');
+  assert(!limitedSections.some(section => section.title === 'Clients & marketing'), 'a section with no allowed entry must be removed entirely');
+  assert(!limitedSections.some(section => section.items.some(item => item.key === 'activities')), 'forbidden "activities" group must be removed when no child is allowed');
+
+  const directionSandbox = buildMenuSandbox(new Set(['dashboard', 'planning', 'reservations', 'clients', 'groups', 'emails', 'campaigns', 'prices', 'lanes', 'laserGame', 'users', 'establishment', 'settings', 'sessions', 'arrivals', 'events']));
+  const directionKeys = new Set(directionSandbox.window.FGX_STAFF_VISIBLE_SECTIONS().flatMap(section => section.items.map(item => item.key)));
+  assert(directionKeys.has('users') && directionKeys.has('establishment'), 'full-access role must still see the access-management entries');
 
   const staffMenuCss = fs.readFileSync(path.join(root, 'assets', 'pinlane-staff.css'), 'utf8');
   assert(

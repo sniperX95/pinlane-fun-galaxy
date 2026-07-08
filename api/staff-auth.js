@@ -11,6 +11,8 @@ const {
   logoutStaff,
   normalizeStaffCenterId,
   regenerateRoleCode,
+  revealRoleCode,
+  revealMemberCode,
   requireStaffPermission,
   sessionHasPermission,
   setRolePreset,
@@ -197,6 +199,25 @@ module.exports = async (req, res) => {
         roleId: body.roleId,
       });
       extra = { updatedRole: result.role, newAccessCode: result.accessCode };
+    } else if (action === 'revealRoleCode') {
+      // Révèle+copie le code ACTUEL sans le régénérer. Gated à users.manage via
+      // requireStaffPermission ci-dessus (Direction / Propriétaire plateforme).
+      // Réponse minimale : le clair n'apparaît que dans revealedCode, jamais loggé.
+      const result = await revealRoleCode({
+        centerId,
+        actorMemberId: session.member.id,
+        roleId: body.roleId,
+      });
+      sendJson(res, 200, { ok: true, revealedCode: result.code, needsRegenerate: result.needsRegenerate });
+      return;
+    } else if (action === 'revealMemberCode') {
+      const result = await revealMemberCode({
+        centerId,
+        actorMemberId: session.member.id,
+        memberId: body.memberId,
+      });
+      sendJson(res, 200, { ok: true, revealedCode: result.code, needsRegenerate: result.needsRegenerate });
+      return;
     } else if (action === 'createMember') {
       const result = await createMember({
         centerId,

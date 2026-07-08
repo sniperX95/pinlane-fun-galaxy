@@ -171,6 +171,55 @@ try {
     'delay apply must cancel stale communications before scheduling new ones',
   );
 
+  // --- Chiffrement réversible des codes d'accès (copie sans régénération) -----
+  resetEnv({
+    NODE_ENV: 'production',
+    STAFF_AUTH_SECRET: 'staff-auth-secret-64-chars-local-test-value',
+    STAFF_DIRECTION_CODE: 'direction-access-code-local-test',
+    PLATFORM_OWNER_CODE: 'owner-access-code-local-test',
+  });
+  const plainCode = 'FG-A1B2-C3D4';
+  const cipher = staffAuth.encryptAccessCode(plainCode);
+  assert.ok(cipher && cipher.length > 0, 'access code must be encrypted at rest');
+  assert.ok(!cipher.includes(plainCode), 'ciphertext must NOT contain the plaintext access code');
+  assert.strictEqual(staffAuth.decryptAccessCode(cipher), plainCode, 'authorized reveal must round-trip to the real code');
+  assert.strictEqual(staffAuth.deriveAccessCodeKey().length, 32, 'AES-256 key must be 32 bytes');
+  assert.notStrictEqual(staffAuth.encryptAccessCode(plainCode), cipher, 'random IV must make each ciphertext unique');
+  const tampered = Buffer.from(cipher, 'base64');
+  tampered[tampered.length - 1] ^= 0xff;
+  assert.strictEqual(staffAuth.decryptAccessCode(tampered.toString('base64')), '', 'GCM auth tag must reject tampered ciphertext');
+  assert.strictEqual(staffAuth.encryptAccessCode(''), '', 'empty code must not produce ciphertext');
+  // Rotation du secret => anciens ciphertexts illisibles (fail-secure).
+  resetEnv({
+    NODE_ENV: 'production',
+    STAFF_AUTH_SECRET: 'rotated-staff-auth-secret-different-value',
+    STAFF_DIRECTION_CODE: 'direction-access-code-local-test',
+    PLATFORM_OWNER_CODE: 'owner-access-code-local-test',
+  });
+  assert.strictEqual(staffAuth.decryptAccessCode(cipher), '', 'ciphertext must not decrypt under a rotated secret');
+
+  const staffAuthLibSource = readProjectFile('lib/staff-auth.js');
+  assert.match(
+    staffAuthLibSource,
+    /return safeTimingEqual\(hashSecret\(input\), hashSecret\(expected\)\)/,
+    'login verification must keep using the SHA-256 hash (unchanged authority)',
+  );
+  assert.match(
+    staffAuthLibSource,
+    /access_code_enc = \$5[\s\S]{0,200}encryptAccessCode\(accessCode\)/,
+    'regenerateRoleCode must persist the encrypted code',
+  );
+  const staffAuthApiSource = readProjectFile('api/staff-auth.js');
+  const revealIndex = staffAuthApiSource.indexOf("action === 'revealRoleCode'");
+  const gateIndex = staffAuthApiSource.indexOf("requireStaffPermission(req, res, 'users.manage'");
+  assert.ok(revealIndex > -1, 'revealRoleCode action must exist');
+  assert.ok(gateIndex > -1 && gateIndex < revealIndex, 'reveal actions must be gated behind users.manage');
+  assert.doesNotMatch(
+    staffAuthLibSource,
+    /addAccessEvent\([^)]*payload:\s*\{[^}]*code[^}]*\}/,
+    'revealed access codes must never be written to the audit event payload',
+  );
+
   console.log('security-config-tests-ok');
 } finally {
   for (const key of ENV_KEYS) {

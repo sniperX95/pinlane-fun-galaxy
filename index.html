@@ -12,7 +12,7 @@
 <link rel="preload" href="./assets/fonts/montserrat-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260703b">
 <link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260708i">
-<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260708d">
+<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260708e">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260707a"></script>
@@ -420,23 +420,13 @@
           </div>
         </div>
         <div style="margin-top:14px;">
-          <label class="lbl">Type d'occasion <span class="lbl-optional">(optionnel)</span></label>
-          <div class="occasion-chips" id="crOccasionChips" role="group" aria-label="Type d'occasion">
-            <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false" onclick="setCustomRequestOccasion('anniversaire')">🎂 Anniversaire</button>
-            <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false" onclick="setCustomRequestOccasion('amis')">👥 Entre amis</button>
-            <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false" onclick="setCustomRequestOccasion('entreprise')">💼 Entreprise</button>
-            <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false" onclick="setCustomRequestOccasion('ecole')">🎓 École / asso</button>
-            <button type="button" class="occasion-chip" data-occasion="autre" aria-pressed="false" onclick="setCustomRequestOccasion('autre')">✨ Autre</button>
-          </div>
-        </div>
-        <div style="margin-top:14px;">
           <label class="lbl" for="crMessage">Décrivez votre besoin *</label>
           <textarea id="crMessage" class="input" rows="4" maxlength="2000" placeholder="Privatisation, traiteur, facture entreprise, budget, contraintes horaires…"></textarea>
         </div>
         <div id="bespokeError" class="bespoke-error hidden"></div>
-        <div class="step-actions" style="margin-top:18px;">
+        <div class="cr-actions">
           <button type="button" class="btn-secondary" onclick="closeCustomRequestModal()">Annuler</button>
-          <button type="button" class="btn-primary" id="crSubmit" style="flex:1" onclick="submitCustomRequest()">Envoyer ma demande</button>
+          <button type="button" class="btn-primary" id="crSubmit" onclick="submitCustomRequest()">Envoyer ma demande</button>
         </div>
       </div>
     </div>

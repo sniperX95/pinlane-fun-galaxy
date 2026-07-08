@@ -3417,3 +3417,9 @@ body.modal-open { overflow: hidden; }
   border: 1px solid var(--line-strong);
 }
 .cta-secondary:hover { background: var(--subtle); }
+
+/* Modale demande sur mesure — rangée d'actions (indépendante du CTA sticky) */
+#clientView .cr-actions,
+.cr-actions { display:flex; gap:10px; align-items:center; margin-top:18px; }
+.cr-actions .btn-secondary { flex:0 0 auto; }
+.cr-actions .btn-primary { flex:1 1 auto; }

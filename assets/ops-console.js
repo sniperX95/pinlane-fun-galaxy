@@ -160,7 +160,7 @@ const OPS_AGENT_WORK_TRIGGERS = {
   'communication-manager-agent': 'Travaille quand une réservation doit recevoir confirmation, rappel, correction ou relance.',
   'crm-followup-agent': 'Travaille en lecture sur les clients existants; les relances automatiques attendent un CRM branché.',
   'director-agent': 'Travaille sur les vues Direction, exports, rapports et comparaisons par centre/période.',
-  'finance-admin-agent': 'Travaille quand la direction consulte les montants, acomptes, exports compta et écarts de caisse.',
+  'finance-admin-agent': 'Travaille quand la direction consulte les montants, exports compta et écarts de caisse.',
   'learning-agent': 'Travaille quand des événements terrain ou simulations donnent assez de données pour proposer une règle.',
   'qa-redteam-agent': 'Travaille avant déploiement et pendant les simulations rush pour casser le système avant les vrais clients.',
   'security-agent': 'Travaille en contrôle: secrets, permissions, prompt injection et actions dangereuses restent sous garde-fous.',

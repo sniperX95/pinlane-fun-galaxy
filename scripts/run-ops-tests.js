@@ -787,9 +787,9 @@ function testDelayNotificationChannelsAndMessages() {
 // éditables, et état des canaux (email actif, SMS inactif sans config).
 function testClientMessageCenter() {
   const templates = listClientMessageTemplates();
-  assert.ok(templates.length >= 10, 'client message library should offer at least 10 templates');
+  assert.ok(templates.length >= 9, 'client message library should offer at least 9 templates');
   const ids = templates.map((template) => template.id);
-  ['confirmation', 'reminder', 'delay', 'reschedule', 'cancellation', 'thanks', 'deposit_request', 'practical_info', 'promo', 'custom']
+  ['confirmation', 'reminder', 'delay', 'reschedule', 'cancellation', 'thanks', 'practical_info', 'promo', 'custom']
     .forEach((id) => assert.ok(ids.includes(id), `template ${id} must exist`));
 
   const reservation = {
@@ -806,9 +806,6 @@ function testClientMessageCenter() {
   const sms = buildClientMessage({ reservation, templateId: 'reminder', channel: 'sms' });
   assert.ok(sms.body.length > 0 && sms.body.length <= 320, 'sms body stays short');
   assert.ok(sms.body.includes('11/07/2026'), 'sms is filled with the date');
-
-  const deposit = buildClientMessage({ reservation, templateId: 'deposit_request', channel: 'email' });
-  assert.ok(/EUR/.test(deposit.body), 'deposit template names an amount');
 
   const channels = listClientMessageChannels(reservation);
   const emailChannel = channels.find((channel) => channel.id === 'email');

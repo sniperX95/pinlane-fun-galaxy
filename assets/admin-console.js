@@ -137,10 +137,6 @@ function buildAdminMarketMetrics(reservations = []) {
   const fixed = withPlan.reduce((sum, reservation) => sum + getOpsPlanFixedCommitments(reservation.opsPlan).length, 0);
   const flexible = withPlan.reduce((sum, reservation) => sum + getOpsPlanFlexibleEntitlements(reservation.opsPlan).length, 0);
   const guestTracked = active.filter(reservation => getGuestOpsChips(reservation).length > 0).length;
-  const depositsOpen = active.filter(reservation => {
-    const guest = getReservationGuestOps(reservation);
-    return guest.depositRequired && !guest.depositPaid;
-  }).length;
   const waiversOpen = active.filter(reservation => {
     const guest = getReservationGuestOps(reservation);
     return guest.waiverRequired && !guest.waiverDone;
@@ -153,7 +149,7 @@ function buildAdminMarketMetrics(reservations = []) {
     : null;
   const warningCount = withPlan.reduce((sum, reservation) => sum + (reservation.opsPlan?.marketIntelligence?.warnings?.length || 0), 0);
   const checklistCount = withPlan.reduce((sum, reservation) => sum + (reservation.opsPlan?.operationsChecklist?.length || 0), 0);
-  return { withPlan: withPlan.length, fixed, flexible, avgQuality, warningCount, checklistCount, guestTracked, depositsOpen, waiversOpen };
+  return { withPlan: withPlan.length, fixed, flexible, avgQuality, warningCount, checklistCount, guestTracked, waiversOpen };
 }
 
 function getClientProfileKey(reservation) {
@@ -181,7 +177,6 @@ function buildAdminClientProfiles(reservations = []) {
         formulas: 0,
         bowling: 0,
         laser: 0,
-        depositsOpen: 0,
         waiversOpen: 0,
         lastDate: reservation.date || '',
         nextDate: reservation.date || '',
@@ -196,7 +191,6 @@ function buildAdminClientProfiles(reservations = []) {
       if (getBowlingWindowsFromReservation(reservation).length) profile.bowling += 1;
       if (getLaserWindowsFromReservation(reservation).length || getLaserGameCountForReservation(reservation) > 0) profile.laser += 1;
       const guest = getReservationGuestOps(reservation);
-      if (guest.depositRequired && !guest.depositPaid) profile.depositsOpen += 1;
       if (guest.waiverRequired && !guest.waiverDone) profile.waiversOpen += 1;
       if (!profile.lastDate || reservation.date > profile.lastDate) profile.lastDate = reservation.date;
       if (!profile.nextDate || reservation.date < profile.nextDate) profile.nextDate = reservation.date;
@@ -210,11 +204,9 @@ function buildAdminClientProfiles(reservations = []) {
         : profile.visits >= 2
           ? 'Récurrent'
           : 'Nouveau';
-    const action = profile.depositsOpen
-      ? 'Sécuriser acompte'
-      : profile.waiversOpen
-        ? 'Valider consignes laser'
-        : profile.formulas
+    const action = profile.waiversOpen
+      ? 'Valider consignes laser'
+      : profile.formulas
           ? 'Proposer anniversaire / formule'
           : profile.laser
             ? 'Proposer pack Laser'
@@ -366,7 +358,7 @@ function buildAdminExcelXml(payload) {
     excelRow(['Signaux agents', metrics.suggestions, `${metrics.events} événement(s) terrain`]),
   ];
   const reservationRows = [
-    excelRow(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Acompte', 'Consignes', 'Check-in', 'Risque', 'Validation'], 'Header'),
+    excelRow(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation'], 'Header'),
     ...reservations.map(reservation => {
       const guest = getReservationGuestOps(reservation);
       return excelRow([
@@ -382,7 +374,6 @@ function buildAdminExcelXml(payload) {
       reservation.paymentMethod || '',
       Number(reservation.price || 0),
       getAdminResourceText(reservation),
-      guest.depositRequired ? (guest.depositPaid ? `OK (${guest.depositAmount} EUR)` : `A recevoir ${guest.depositAmount} EUR`) : 'Non requis',
       guest.waiverRequired ? (guest.waiverDone ? 'OK' : 'A valider') : 'Non requis',
       guest.checkInDone ? 'OK' : guest.checkInCode,
       reservation.riskLevel || 'normal',
@@ -392,7 +383,7 @@ function buildAdminExcelXml(payload) {
   ];
   const clientProfiles = buildAdminClientProfiles(reservations);
   const clientRows = [
-    excelRow(['Client', 'Téléphone', 'Email', 'Segment', 'Visites', 'Joueurs', 'CA', 'Formules', 'Bowling', 'Laser', 'Acomptes ouverts', 'Consignes ouvertes', 'Action suivante'], 'Header'),
+    excelRow(['Client', 'Téléphone', 'Email', 'Segment', 'Visites', 'Joueurs', 'CA', 'Formules', 'Bowling', 'Laser', 'Consignes ouvertes', 'Action suivante'], 'Header'),
     ...(clientProfiles.length ? clientProfiles.map(profile => excelRow([
       profile.name,
       profile.phone,
@@ -404,7 +395,6 @@ function buildAdminExcelXml(payload) {
       profile.formulas,
       profile.bowling,
       profile.laser,
-      profile.depositsOpen,
       profile.waiversOpen,
       profile.action,
     ])) : [excelRow(['Aucun profil client sur la période'])])
@@ -591,7 +581,6 @@ function buildFunGalaxyReportHtml(payload) {
           <tr><td>Bowling direct</td><td><strong>${metrics.directBowling}</strong></td></tr>
           <tr><td>Laser direct</td><td><strong>${metrics.directLaser}</strong></td></tr>
           <tr><td>Clients uniques</td><td><strong>${clientProfiles.length}</strong></td></tr>
-          <tr><td>Acomptes ouverts</td><td><strong>${marketMetrics.depositsOpen}</strong></td></tr>
           <tr><td>Consignes ouvertes</td><td><strong>${marketMetrics.waiversOpen}</strong></td></tr>
           <tr><td>Signaux agents</td><td><strong>${metrics.suggestions}</strong></td></tr>
           <tr><td>Mails en échec</td><td><strong>${metrics.failedMails}</strong></td></tr>
@@ -606,7 +595,6 @@ function buildFunGalaxyReportHtml(payload) {
           ${topReservations.map(reservation => {
             const guest = getReservationGuestOps(reservation);
             const engagement = [
-              guest.depositRequired ? (guest.depositPaid ? 'Acompte OK' : `Acompte ${guest.depositAmount} EUR`) : '',
               guest.waiverRequired ? (guest.waiverDone ? 'Consignes OK' : 'Consignes a valider') : '',
               guest.checkInDone ? 'Check-in OK' : guest.checkInCode,
             ].filter(Boolean).join(' / ');
@@ -1070,9 +1058,6 @@ function buildAdminCockpitActions(reservations = [], metrics = {}) {
     .filter(reservation => !state.adminDate || reservation.date === state.adminDate);
   active.forEach(reservation => {
     const guest = getReservationGuestOps(reservation);
-    if (guest.depositRequired && !guest.depositPaid && actions.length < 5) {
-      actions.push(`Sécuriser acompte ${guest.depositAmount}€ pour ${reservation.name}.`);
-    }
     if (guest.waiverRequired && !guest.waiverDone && actions.length < 5) {
       actions.push(`Valider consignes Laser Game pour ${reservation.name}.`);
     }
@@ -1376,19 +1361,19 @@ function renderAdminClients() {
   const totalRevenue = profiles.reduce((sum, profile) => sum + Number(profile.revenue || 0), 0);
   const vipCount = profiles.filter(profile => profile.segment === 'VIP').length;
   const groupCount = profiles.filter(profile => profile.segment === 'Groupe').length;
-  const openActions = profiles.filter(profile => profile.depositsOpen || profile.waiversOpen).length;
+  const openActions = profiles.filter(profile => profile.waiversOpen).length;
   return `<div class="admin-panel">
     <div class="admin-section-title">
       <div>
         <h2>Clientèle & engagement</h2>
-        <p>CRM léger, suivi acompte, consignes laser, check-in et prochaines actions commerciales.</p>
+        <p>CRM léger, consignes laser, check-in et prochaines actions commerciales.</p>
       </div>
     </div>
     <div class="admin-client-grid">
       <div class="admin-client-kpi"><div class="k">Clients uniques</div><div class="v">${profiles.length}</div><div class="s">sur la période sélectionnée</div></div>
       <div class="admin-client-kpi"><div class="k">Valeur suivie</div><div class="v">${formatMoney(totalRevenue)}</div><div class="s">CA rattaché aux profils</div></div>
       <div class="admin-client-kpi"><div class="k">Profils forts</div><div class="v">${vipCount + groupCount}</div><div class="s">${vipCount} VIP · ${groupCount} groupes</div></div>
-      <div class="admin-client-kpi"><div class="k">Actions ouvertes</div><div class="v">${openActions}</div><div class="s">acompte ou consignes à terminer</div></div>
+      <div class="admin-client-kpi"><div class="k">Actions ouvertes</div><div class="v">${openActions}</div><div class="s">consignes à terminer</div></div>
     </div>
     ${profiles.length ? `<div class="admin-table-wrap"><table class="admin-table">
       <thead><tr><th>Client</th><th>Segment</th><th>Historique</th><th>Valeur</th><th>Engagement</th><th>Action suivante</th></tr></thead>
@@ -1399,7 +1384,6 @@ function renderAdminClients() {
           <td>${profile.visits} visite(s)<br>${profile.players} joueur(s) · ${profile.formulas} formule(s)</td>
           <td><strong>${formatMoney(profile.revenue)}</strong><br>Dernière : ${escapeHtml(profile.lastDate && profile.lastDate !== '--' ? new Date(profile.lastDate).toLocaleDateString('fr-BE') : '--')}</td>
           <td><div class="engagement-cell">
-            <span class="guest-chip ${profile.depositsOpen ? 'warn' : 'ok'}">${profile.depositsOpen ? `${profile.depositsOpen} acompte` : 'Acompte OK'}</span>
             <span class="guest-chip ${profile.waiversOpen ? 'warn' : 'ok'}">${profile.waiversOpen ? `${profile.waiversOpen} consigne` : 'Consignes OK'}</span>
           </div></td>
           <td>${escapeHtml(profile.action)}</td>

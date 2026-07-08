@@ -10672,35 +10672,17 @@ function reservationRequiresGuestWaiver(reservation) {
     || getLaserWindowsFromReservation(reservation).length > 0;
 }
 
-function getReservationDepositAmount(reservation) {
-  const price = Number(reservation?.price || reservation?.basePrice || 0);
-  const pax = Number(reservation?.pax || 0);
-  const needsDeposit = reservation?.type === 'formule'
-    || Boolean(reservation?.formuleId)
-    || pax >= 10
-    || price >= 150;
-  if (!needsDeposit || price <= 0) return 0;
-  return Math.min(price, Math.max(50, Math.ceil((price * 0.25) / 5) * 5));
-}
-
 function getReservationGuestOps(reservation) {
   const stored = getReservationCommercialStore(reservation);
-  const depositAmount = Number(stored.depositAmount ?? getReservationDepositAmount(reservation));
   const waiverRequired = Boolean(stored.waiverRequired ?? reservationRequiresGuestWaiver(reservation));
-  const depositRequired = Boolean(stored.depositRequired ?? depositAmount > 0);
   const checkInDone = Boolean(stored.checkInDone || reservation.status === 'arrived' || reservation.status === 'paid');
-  const depositPaid = Boolean(stored.depositPaid || reservation.status === 'paid');
   const waiverDone = Boolean(stored.waiverDone);
   const missing = [];
-  if (depositRequired && !depositPaid) missing.push('acompte');
   if (waiverRequired && !waiverDone) missing.push('consignes laser');
   if (!checkInDone) missing.push('check-in');
-  const scoreBase = [!depositRequired || depositPaid, !waiverRequired || waiverDone, checkInDone];
+  const scoreBase = [!waiverRequired || waiverDone, checkInDone];
   const readinessScore = Math.round((scoreBase.filter(Boolean).length / scoreBase.length) * 100);
   return {
-    depositRequired,
-    depositAmount,
-    depositPaid,
     waiverRequired,
     waiverDone,
     checkInDone,
@@ -10715,12 +10697,6 @@ function getReservationGuestOps(reservation) {
 function getGuestOpsChips(reservation) {
   const guest = getReservationGuestOps(reservation);
   const chips = [];
-  if (guest.depositRequired) {
-    chips.push({
-      cls: guest.depositPaid ? 'ok' : 'warn',
-      label: guest.depositPaid ? `Acompte OK` : `Acompte ${guest.depositAmount}€`,
-    });
-  }
   if (guest.waiverRequired) {
     chips.push({
       cls: guest.waiverDone ? 'ok' : 'warn',

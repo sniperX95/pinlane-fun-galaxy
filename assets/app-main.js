@@ -10608,6 +10608,52 @@ function renderReservationTags(reservation) {
   return `<div class="reservation-tags">${tags.map(tag => `<span class="reservation-tag ${tag.cls}">${tag.label}</span>`).join('')}</div>`;
 }
 
+// Flag d'affichage « retard » posé par l'application d'un plan de retard
+// (opsPlan.delayFlag). Actif tant qu'il n'a pas été retiré (cleared) par le
+// staff depuis la carte. Purement visuel : n'affecte pas l'horaire appliqué.
+function getReservationDelayFlag(reservation) {
+  const flag = reservation && reservation.opsPlan && reservation.opsPlan.delayFlag;
+  if (!flag || flag.cleared) return null;
+  return flag;
+}
+
+// Petit indicateur horloge « +X min » sur la carte planning, avec tooltip
+// (« retardée de X min, 15:00→15:15 »). Cliquable pour retirer l'indicateur.
+function renderDelayIndicator(reservation) {
+  const flag = getReservationDelayFlag(reservation);
+  if (!flag) return '';
+  const mins = Math.round(Number(flag.minutes) || 0);
+  const range = flag.from && flag.to ? ` ${flag.from}→${flag.to}` : '';
+  const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''} — cliquer pour retirer l'indicateur de retard`;
+  return `<button type="button" class="delay-indicator" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}" onmousedown="event.stopPropagation()" onclick="clearDelayFlag(event, ${reservation.id})">`
+    + `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
+    + `<span class="delay-indicator-label">+${mins}</span></button>`;
+}
+
+// Retire l'indicateur de retard directement depuis la carte planning. Le
+// serveur passe opsPlan.delayFlag.cleared = true SANS toucher à l'horaire.
+async function clearDelayFlag(ev, id) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const reservation = state.reservations.find(item => Number(item.id) === Number(id));
+  const centerId = (reservation && reservation.centerId) || state.currentCenterId || 'libramont';
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delayClear', centerId, reservationId: Number(id) })
+    });
+    if (payload.reservation) upsertReservationInState(payload.reservation);
+    if (state.selectedRes && Number(state.selectedRes.id) === Number(id) && payload.reservation) {
+      state.selectedRes = payload.reservation;
+    }
+    save();
+    renderStaffData();
+    renderPos();
+    toast(payload.cleared === false ? 'Aucun indicateur à retirer.' : 'Indicateur de retard retiré.');
+  } catch (error) {
+    toast(error.message || 'Impossible de retirer l\'indicateur de retard.');
+  }
+}
+
 function getReservationCommercialStore(reservation) {
   return reservation?.opsPlan?.guestOps && typeof reservation.opsPlan.guestOps === 'object'
     ? reservation.opsPlan.guestOps
@@ -11025,7 +11071,9 @@ function renderPlanning() {
         : (height <= 30 ? ' booking-mini' : height <= 52 ? ' booking-snug' : '');
       const displayName = getPlanningBookingDisplayName(r);
       const fullName = String(r.name || 'Client');
-      bkHtml += `<div class="booking ${cls}${compactClass} ${getReservationHighlightClasses(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
+      bkHtml += `<div class="booking ${cls}${compactClass} ${getReservationHighlightClasses(r)}${delayedClass}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+        ${renderDelayIndicator(r)}
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
         <div class="b-tag">${getReservationLabel(r)}</div>
         ${renderReservationTags(r)}
@@ -11188,12 +11236,14 @@ function renderLaserPlanning() {
           ${window.formulaFallback ? '<span class="laser-card-pill fallback">Plan estimé</span>' : ''}
         </span>`;
       const dragTitle = passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
-      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${passIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
+      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${passIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` • ${escapeHtml(waveLabel)}` : ''}</small>
           ${pillHtml}
         </span>
+        ${renderDelayIndicator(reservation)}
         <span class="laser-group-count">${players}j</span>
       </button>`;
     }).join('');
@@ -11725,7 +11775,11 @@ function renderPosDetails(r) {
     <div class="info-block">
       <div class="info-label">Contact client</div>
       <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span style="font-weight:600;">${r.phone || 'Non renseigné'}</span></div>
-      <div style="display:flex;align-items:center;gap:10px;font-size:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><span style="font-weight:600;">${r.email || 'Non renseigné'}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><span style="font-weight:600;">${r.email || 'Non renseigné'}</span></div>
+      <button type="button" class="comm-open-btn" onclick="openCommCenter(${r.id}, event)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Envoyer un message
+      </button>
     </div>
     <div class="info-block">
       <div class="info-label">Résumé</div>
@@ -11776,6 +11830,7 @@ async function openDelayImpact(id, delayMinutes, ev) {
     impact: null,
     selectedStrategyId: '',
     notifyChecked: {},
+    notifyMessages: {},
     applyResult: null,
     busy: false
   };
@@ -11815,6 +11870,13 @@ function toggleDelayNotifyClient(reservationId) {
   const key = Number(reservationId);
   delayFlowState.notifyChecked[key] = !delayFlowState.notifyChecked[key];
   renderDelayModal();
+}
+
+// Mise à jour du texte relu/modifié SANS re-render (préserve le focus/curseur
+// dans le textarea). Le texte part au serveur au moment de l'envoi.
+function setDelayNotifyMessage(reservationId, value) {
+  if (!delayFlowState || delayFlowState.step !== 'notify') return;
+  delayFlowState.notifyMessages[Number(reservationId)] = value;
 }
 
 function closeDelayModal() {
@@ -11866,7 +11928,13 @@ async function applyDelayPlan() {
     }
     delayFlowState.step = 'notify';
     delayFlowState.notifyChecked = {};
-    candidates.forEach(candidate => { delayFlowState.notifyChecked[Number(candidate.reservationId)] = true; });
+    delayFlowState.notifyMessages = {};
+    candidates.forEach(candidate => {
+      const key = Number(candidate.reservationId);
+      delayFlowState.notifyChecked[key] = true;
+      // Textarea pré-remplie par le template serveur, éditable avant envoi.
+      delayFlowState.notifyMessages[key] = (candidate.message && candidate.message.body) || '';
+    });
     renderDelayModal();
   } catch (error) {
     if (delayFlowState) {
@@ -11892,6 +11960,15 @@ async function sendDelayNotifications() {
     skipDelayNotifications();
     return;
   }
+  // Corps relus/modifiés par le staff, transmis au serveur (source de vérité).
+  const messages = selectedIds.map(id => {
+    const candidate = candidates.find(item => Number(item.reservationId) === id);
+    return {
+      reservationId: id,
+      subject: (candidate && candidate.message && candidate.message.subject) || '',
+      body: delayFlowState.notifyMessages[id] || ''
+    };
+  });
   delayFlowState.busy = true;
   renderDelayModal();
   try {
@@ -11902,7 +11979,8 @@ async function sendDelayNotifications() {
         centerId: delayFlowState.centerId,
         incidentId: delayFlowState.applyResult?.incidentId || null,
         reservationIds: selectedIds,
-        channels: ['email']
+        channels: ['email'],
+        messages
       })
     });
     closeDelayModal();
@@ -11975,19 +12053,29 @@ function renderDelayModal() {
     const checkedCount = candidates.filter(candidate => flow.notifyChecked[Number(candidate.reservationId)]).length;
     body = `
       <div class="delay-applied-banner">Plan appliqué. ${escapeHtml(flow.applyResult?.strategyLabel || '')}</div>
-      <div class="delay-section-title">Prévenir les clients ?</div>
-      <div class="delay-notify-intro">Un email courtois part uniquement aux clients cochés, quand vous cliquez sur « Envoyer les emails ». Rien n'est envoyé automatiquement.</div>
+      <div class="delay-notify-prominent">
+        <div class="delay-notify-step">Étape 2 · Prévenir les clients</div>
+        <div class="delay-notify-intro">Chaque message est <strong>pré-rédigé et personnalisé</strong> — relisez-le et modifiez-le si besoin. Un email part uniquement aux clients cochés, quand vous cliquez sur « Envoyer les emails ». Vous pouvez aussi ne prévenir personne.</div>
+      </div>
       <div class="delay-notify-list">
-        ${candidates.map(candidate => `
-          <label class="delay-notify-row">
-            <input type="checkbox" ${flow.notifyChecked[Number(candidate.reservationId)] ? 'checked' : ''} onchange="toggleDelayNotifyClient(${Number(candidate.reservationId)})">
-            <span class="delay-notify-body">
-              <span class="delay-notify-name">${escapeHtml(candidate.name)}</span>
-              <span class="delay-notify-summary">${escapeHtml(candidate.summary || '')}</span>
-              <span class="delay-notify-email">${escapeHtml(candidate.email)}</span>
-            </span>
-          </label>
-        `).join('')}
+        ${candidates.map(candidate => {
+          const key = Number(candidate.reservationId);
+          const checked = flow.notifyChecked[key];
+          const value = flow.notifyMessages[key] !== undefined ? flow.notifyMessages[key] : ((candidate.message && candidate.message.body) || '');
+          return `
+          <div class="delay-notify-card ${checked ? 'is-on' : 'is-off'}">
+            <label class="delay-notify-head">
+              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleDelayNotifyClient(${key})">
+              <span class="delay-notify-body">
+                <span class="delay-notify-name">${escapeHtml(candidate.name)}</span>
+                <span class="delay-notify-summary">${escapeHtml(candidate.summary || '')}</span>
+                <span class="delay-notify-email">${escapeHtml(candidate.email)}</span>
+              </span>
+            </label>
+            <textarea class="delay-notify-textarea" rows="7" ${checked ? '' : 'disabled'} oninput="setDelayNotifyMessage(${key}, this.value)" aria-label="Message pour ${escapeHtml(candidate.name)}">${escapeHtml(value)}</textarea>
+          </div>
+        `;
+        }).join('')}
       </div>
     `;
     footer = `
@@ -12005,6 +12093,267 @@ function renderDelayModal() {
           <p>${escapeHtml(flow.reservationName)}</p>
         </div>
         <button type="button" class="close-btn" onclick="closeDelayModal()" aria-label="Fermer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="delay-modal-body">${body}</div>
+      <div class="delay-modal-foot">${footer}</div>
+    </div>
+  `;
+}
+
+// === Centre de communication client (mail + SMS) ===========================
+// Ouvert depuis une fiche résa : le staff choisit un modèle pré-rédigé (qui se
+// remplit avec les variables de la résa), ajuste le texte, choisit le canal
+// (email actif, SMS « à activer » sans Twilio), pré-visualise, puis envoie.
+// Le serveur fait l'envoi et la trace ; le front ne fait que composer.
+let commCenterState = null;
+
+function openCommCenter(reservationId, ev) {
+  if (ev) ev.stopPropagation();
+  const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId))
+    || (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId) ? state.selectedRes : null);
+  const centerId = (reservation && reservation.centerId) || state.currentCenterId || 'libramont';
+  commCenterState = {
+    step: 'loading',
+    reservationId: Number(reservationId),
+    centerId,
+    data: null,
+    templateId: 'confirmation',
+    channel: 'email',
+    subject: '',
+    body: '',
+    busy: false
+  };
+  renderCommCenter();
+  apiRequest(API_ENDPOINTS.ops, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'clientMessageComposer', centerId, reservationId: Number(reservationId) })
+  }).then(payload => {
+    if (!commCenterState || commCenterState.reservationId !== Number(reservationId)) return;
+    commCenterState.data = payload;
+    // Canal par défaut : email si dispo, sinon le premier canal disponible.
+    const channels = payload.channels || [];
+    const emailChannel = channels.find(c => c.id === 'email');
+    commCenterState.channel = (emailChannel && emailChannel.available) ? 'email' : (channels.find(c => c.available)?.id || 'email');
+    commCenterState.step = 'compose';
+    fillCommFromTemplate();
+    renderCommCenter();
+  }).catch(error => {
+    closeCommCenter();
+    toast(error.message || 'Ouverture du centre de communication impossible.');
+  });
+}
+
+function closeCommCenter() {
+  commCenterState = null;
+  const overlay = document.getElementById('commOverlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  overlay.innerHTML = '';
+}
+
+function getCommTemplate() {
+  if (!commCenterState || !commCenterState.data) return null;
+  return (commCenterState.data.templates || []).find(t => t.id === commCenterState.templateId) || null;
+}
+
+// (Re)remplit sujet + corps à partir du modèle courant et du canal courant.
+function fillCommFromTemplate() {
+  const template = getCommTemplate();
+  if (!template) return;
+  if (commCenterState.channel === 'email') {
+    commCenterState.subject = (template.email && template.email.subject) || '';
+    commCenterState.body = (template.email && template.email.body) || '';
+  } else {
+    commCenterState.subject = '';
+    commCenterState.body = template.sms || '';
+  }
+}
+
+function selectCommTemplate(templateId) {
+  if (!commCenterState || commCenterState.step !== 'compose') return;
+  commCenterState.templateId = templateId;
+  fillCommFromTemplate();
+  renderCommCenter();
+}
+
+function selectCommChannel(channelId) {
+  if (!commCenterState || commCenterState.step !== 'compose') return;
+  const channel = (commCenterState.data.channels || []).find(c => c.id === channelId);
+  if (!channel || !channel.available) return;
+  commCenterState.channel = channelId;
+  fillCommFromTemplate();
+  renderCommCenter();
+}
+
+function setCommSubject(value) {
+  if (!commCenterState) return;
+  commCenterState.subject = value;
+}
+
+// Édition du corps SANS re-render (préserve le focus). Met à jour le compteur
+// SMS et l'aperçu en direct via le DOM.
+function setCommBody(value) {
+  if (!commCenterState) return;
+  commCenterState.body = value;
+  const preview = document.getElementById('commPreviewBody');
+  if (preview) preview.textContent = value;
+  const counter = document.getElementById('commCharCounter');
+  if (counter && commCenterState.channel === 'sms') {
+    const len = value.length;
+    const segments = Math.max(1, Math.ceil(len / 160));
+    counter.textContent = `${len} caractère${len > 1 ? 's' : ''} · ${segments} SMS`;
+  }
+}
+
+async function sendCommMessage() {
+  if (!commCenterState || commCenterState.busy || commCenterState.step !== 'compose') return;
+  const channel = (commCenterState.data.channels || []).find(c => c.id === commCenterState.channel);
+  if (!channel || !channel.available) { toast('Ce canal doit d\'abord être activé.'); return; }
+  if (!channel.hasRecipient) {
+    toast(commCenterState.channel === 'sms' ? 'Aucun numéro de téléphone pour ce client.' : 'Aucun email pour ce client.');
+    return;
+  }
+  if (!commCenterState.body.trim()) { toast('Le message est vide.'); return; }
+  commCenterState.busy = true;
+  renderCommCenter();
+  try {
+    await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'clientMessageSend',
+        centerId: commCenterState.centerId,
+        reservationId: commCenterState.reservationId,
+        channel: commCenterState.channel,
+        templateId: commCenterState.templateId,
+        subject: commCenterState.subject,
+        body: commCenterState.body
+      })
+    });
+    toast(commCenterState.channel === 'sms' ? 'SMS envoyé.' : 'Email envoyé.');
+    // Rafraîchit l'historique (trace) sans fermer le centre.
+    const reservationId = commCenterState.reservationId;
+    const centerId = commCenterState.centerId;
+    try {
+      const refreshed = await apiRequest(API_ENDPOINTS.ops, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'clientMessageComposer', centerId, reservationId })
+      });
+      if (commCenterState && commCenterState.reservationId === reservationId) {
+        commCenterState.data = refreshed;
+        commCenterState.busy = false;
+        renderCommCenter();
+      }
+    } catch (refreshError) {
+      if (commCenterState) { commCenterState.busy = false; renderCommCenter(); }
+    }
+  } catch (error) {
+    if (commCenterState) { commCenterState.busy = false; renderCommCenter(); }
+    toast(error.message || 'Envoi du message impossible pour le moment.');
+  }
+}
+
+function renderCommHistory(history = []) {
+  if (!history.length) return '<div class="comm-history-empty">Aucun message envoyé à ce client pour le moment.</div>';
+  const statusLabel = { sent: 'Envoyé', delivered: 'Reçu', queued: 'En file', failed: 'Échec', cancelled: 'Annulé', processing: 'En cours', draft: 'Brouillon' };
+  return history.slice(0, 12).map(item => {
+    const when = item.createdAt ? new Date(item.createdAt).toLocaleString('fr-BE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const cls = item.status === 'sent' || item.status === 'delivered' ? 'ok' : item.status === 'failed' ? 'err' : 'wait';
+    return `<div class="comm-history-row">
+      <span class="comm-history-chan ${escapeHtml(item.channel)}">${item.channel === 'sms' ? 'SMS' : 'Email'}</span>
+      <span class="comm-history-main">
+        <span class="comm-history-subject">${escapeHtml(item.subject || item.templateId || 'Message')}</span>
+        <span class="comm-history-meta">${escapeHtml(when)} · ${escapeHtml(item.recipient || '')}</span>
+      </span>
+      <span class="comm-history-status ${cls}">${escapeHtml(statusLabel[item.status] || item.status || '')}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderCommCenter() {
+  const overlay = document.getElementById('commOverlay');
+  if (!overlay) return;
+  if (!commCenterState) {
+    overlay.classList.add('hidden');
+    overlay.innerHTML = '';
+    return;
+  }
+  overlay.classList.remove('hidden');
+  const flow = commCenterState;
+  let body = '';
+  let footer = '';
+
+  if (flow.step === 'loading') {
+    body = '<div class="delay-loading">Chargement des modèles de message...</div>';
+    footer = '<button type="button" class="delay-btn" onclick="closeCommCenter()">Fermer</button>';
+  } else if (flow.step === 'compose' && flow.data) {
+    const channels = flow.data.channels || [];
+    const templates = flow.data.templates || [];
+    const activeChannel = channels.find(c => c.id === flow.channel) || channels[0] || {};
+    const channelBtns = channels.map(channel => {
+      const disabled = !channel.available;
+      const title = disabled ? channel.unavailableReason : (channel.hasRecipient ? '' : 'Aucun destinataire pour ce canal');
+      return `<button type="button" class="comm-channel-btn ${flow.channel === channel.id ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}" ${disabled ? 'disabled' : ''} title="${escapeHtml(title || '')}" onclick="selectCommChannel('${channel.id}')">
+        ${channel.id === 'sms' ? 'SMS' : 'Email'}${disabled ? ' <span class="comm-channel-tag">à activer</span>' : ''}
+      </button>`;
+    }).join('');
+    const templateOptions = templates.map(template =>
+      `<option value="${template.id}" ${flow.templateId === template.id ? 'selected' : ''}>${escapeHtml(template.category ? `${template.category} — ${template.label}` : template.label)}</option>`
+    ).join('');
+    const activeTemplate = templates.find(t => t.id === flow.templateId) || null;
+    const recipient = flow.channel === 'sms' ? (flow.data.reservation?.phone || '') : (flow.data.reservation?.email || '');
+    const recipientMissing = !activeChannel.hasRecipient;
+    const smsUnavailable = flow.channel === 'sms' && !activeChannel.available;
+    const smsCounter = flow.channel === 'sms'
+      ? `<div class="comm-char-counter" id="commCharCounter">${flow.body.length} caractère${flow.body.length > 1 ? 's' : ''} · ${Math.max(1, Math.ceil(flow.body.length / 160))} SMS</div>`
+      : '';
+
+    body = `
+      <div class="comm-channels">${channelBtns}</div>
+      ${smsUnavailable ? `<div class="comm-warning">${escapeHtml(activeChannel.unavailableReason || 'Ce canal doit être activé.')}</div>` : ''}
+      <div class="comm-field">
+        <label class="comm-label" for="commTemplateSelect">Modèle</label>
+        <select id="commTemplateSelect" class="comm-select" onchange="selectCommTemplate(this.value)">${templateOptions}</select>
+        ${activeTemplate && activeTemplate.description ? `<div class="comm-template-desc">${escapeHtml(activeTemplate.description)}</div>` : ''}
+      </div>
+      <div class="comm-recipient ${recipientMissing ? 'is-missing' : ''}">À : ${recipientMissing ? '<em>aucun destinataire pour ce canal</em>' : escapeHtml(recipient)}</div>
+      ${flow.channel === 'email' ? `
+      <div class="comm-field">
+        <label class="comm-label" for="commSubjectInput">Sujet</label>
+        <input id="commSubjectInput" class="comm-input" value="${escapeHtml(flow.subject)}" oninput="setCommSubject(this.value)">
+      </div>` : ''}
+      <div class="comm-field">
+        <label class="comm-label" for="commBodyTextarea">Message</label>
+        <textarea id="commBodyTextarea" class="comm-textarea" rows="${flow.channel === 'sms' ? 4 : 9}" oninput="setCommBody(this.value)" aria-label="Corps du message">${escapeHtml(flow.body)}</textarea>
+        ${smsCounter}
+      </div>
+      <div class="comm-preview">
+        <div class="comm-preview-label">Aperçu</div>
+        <div class="comm-preview-body" id="commPreviewBody">${escapeHtml(flow.body)}</div>
+      </div>
+      <div class="comm-history">
+        <div class="comm-history-title">Historique par client</div>
+        ${renderCommHistory(flow.data.history || [])}
+      </div>
+    `;
+    const canSend = !flow.busy && activeChannel.available && activeChannel.hasRecipient;
+    footer = `
+      <button type="button" class="delay-btn" ${flow.busy ? 'disabled' : ''} onclick="closeCommCenter()">Fermer</button>
+      <button type="button" class="delay-btn delay-btn-primary" ${canSend ? '' : 'disabled'} onclick="sendCommMessage()">${flow.busy ? 'Envoi...' : (flow.channel === 'sms' ? 'Envoyer le SMS' : 'Envoyer l\'email')}</button>
+    `;
+  }
+
+  const clientName = flow.data?.reservation?.name || '';
+  overlay.className = 'delay-overlay comm-overlay';
+  overlay.innerHTML = `
+    <div class="delay-modal comm-modal" role="dialog" aria-modal="true" aria-label="Centre de communication client">
+      <div class="delay-modal-head">
+        <div>
+          <h3>Message au client</h3>
+          <p>${escapeHtml(clientName)}</p>
+        </div>
+        <button type="button" class="close-btn" onclick="closeCommCenter()" aria-label="Fermer">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>

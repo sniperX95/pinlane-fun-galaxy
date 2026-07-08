@@ -5751,6 +5751,191 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .delay-notify-summary { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .delay-notify-email { color: var(--muted); font-size: 11px; font-family: var(--font-data); }
 
+/* Étape notification retard mise en évidence + message éditable par client */
+.delay-notify-prominent {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  display: grid;
+  gap: 6px;
+}
+.delay-notify-step {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-strong, var(--accent));
+}
+.delay-notify-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  transition: border-color var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+.delay-notify-card.is-on { border-color: var(--accent); }
+.delay-notify-card.is-off { opacity: 0.62; }
+.delay-notify-head { display: flex; gap: var(--space-3); align-items: flex-start; cursor: pointer; }
+.delay-notify-head input { margin-top: 3px; accent-color: var(--accent); }
+.delay-notify-textarea {
+  width: 100%;
+  resize: vertical;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2, var(--surface));
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.delay-notify-textarea:focus { outline: none; border-color: var(--accent); }
+.delay-notify-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Indicateur de retard sur les cartes planning (bowling + laser) */
+.delay-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px 1px 3px;
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.delay-indicator:hover { filter: brightness(0.96); }
+.delay-indicator .delay-indicator-label { font-variant-numeric: tabular-nums; }
+.booking .delay-indicator { position: absolute; top: 3px; right: 4px; z-index: 3; }
+.booking.is-delayed { border-left-color: var(--warning); box-shadow: inset 0 0 0 1px var(--warning-soft); }
+.laser-group-card.is-delayed { box-shadow: inset 0 0 0 1px var(--warning); }
+.laser-group-card .delay-indicator { margin-left: auto; }
+.booking.booking-mini .delay-indicator .delay-indicator-label { display: none; }
+
+/* Bouton d'ouverture du centre de communication (fiche résa) */
+.comm-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-strong, var(--accent));
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.comm-open-btn:hover { background: var(--accent); color: #fff; }
+
+/* Centre de communication client (modale) */
+.comm-modal { max-width: 560px; }
+.comm-channels { display: flex; gap: var(--space-2); }
+.comm-channel-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.comm-channel-btn.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong, var(--accent)); }
+.comm-channel-btn.is-disabled { opacity: 0.55; cursor: not-allowed; }
+.comm-channel-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.comm-warning {
+  padding: var(--space-3);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.comm-field { display: grid; gap: 5px; }
+.comm-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.comm-select, .comm-input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.comm-select:focus, .comm-input:focus { outline: none; border-color: var(--accent); }
+.comm-template-desc { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.comm-recipient { font-size: 12px; color: var(--muted); font-family: var(--font-data); }
+.comm-recipient.is-missing { color: var(--warning); }
+.comm-textarea {
+  width: 100%;
+  resize: vertical;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2, var(--surface));
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.comm-textarea:focus { outline: none; border-color: var(--accent); }
+.comm-char-counter { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.comm-preview {
+  padding: var(--space-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  display: grid;
+  gap: 5px;
+}
+.comm-preview-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.comm-preview-body { font-size: 12px; line-height: 1.55; white-space: pre-wrap; color: var(--text); }
+.comm-history { display: grid; gap: var(--space-2); }
+.comm-history-title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.comm-history-empty { color: var(--muted); font-size: 12px; }
+.comm-history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.comm-history-chan {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong, var(--accent));
+}
+.comm-history-chan.sms { background: var(--info-soft, var(--accent-soft)); color: var(--info, var(--accent)); }
+.comm-history-main { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.comm-history-subject { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comm-history-meta { font-size: 10px; color: var(--muted); font-family: var(--font-data); }
+.comm-history-status { font-size: 11px; font-weight: 600; }
+.comm-history-status.ok { color: var(--success); }
+.comm-history-status.err { color: var(--danger); }
+.comm-history-status.wait { color: var(--muted); }
+
 /* Caisse / reçu */
 .receipt {
   position: relative;

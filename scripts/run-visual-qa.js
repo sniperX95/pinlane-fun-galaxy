@@ -545,6 +545,10 @@ async function installQaApi(page) {
             email: change.email,
             summary: change.summary,
             kind: change.kind,
+            message: {
+              subject: 'Ajustement de votre réservation Fun Galaxy',
+              body: `Bonjour ${change.name},\n\nPetit ajustement de planning : votre réservation reste bien confirmée. ${change.previousStartTime} devient ${change.newStartTime}.\n\nÀ très vite,\nFun Galaxy Libramont`,
+            },
           }));
 
           if (opsBody.action === 'delayImpact') {
@@ -617,6 +621,16 @@ async function installQaApi(page) {
               .map((reservation) => ({
                 ...reservation,
                 startTime: Number(reservation.id) === 9001 ? '14:15' : '14:45',
+                opsPlan: {
+                  ...(reservation.opsPlan || {}),
+                  delayFlag: {
+                    minutes: 15,
+                    from: Number(reservation.id) === 9001 ? '14:00' : '14:30',
+                    to: Number(reservation.id) === 9001 ? '14:15' : '14:45',
+                    flaggedAt: new Date().toISOString(),
+                    cleared: false,
+                  },
+                },
               }));
             return jsonResponse({
               ok: true,
@@ -643,12 +657,54 @@ async function installQaApi(page) {
             });
           }
 
+          window.__PINLANE_QA_DELAY_NOTIFY__ = opsBody;
           return jsonResponse({
             ok: true,
             incidentId: 777,
             queued: (opsBody.reservationIds || []).map((reservationId, index) => ({ id: 9100 + index, reservationId, channel: 'email', status: 'queued' })),
             dispatched: [],
           });
+        }
+
+        if (opsBody.action === 'delayClear') {
+          window.__PINLANE_QA_DELAY_CLEAR__ = opsBody;
+          const date = new Date().toISOString().slice(0, 10);
+          const seeded = window.__PINLANE_QA_RESERVATIONS__ ? window.__PINLANE_QA_RESERVATIONS__(date) : [];
+          const target = seeded.find((reservation) => Number(reservation.id) === Number(opsBody.reservationId));
+          const reservation = target
+            ? { ...target, startTime: '14:15', opsPlan: { ...(target.opsPlan || {}), delayFlag: { minutes: 15, from: '14:00', to: '14:15', flaggedAt: new Date().toISOString(), cleared: true } } }
+            : null;
+          return jsonResponse({ ok: true, cleared: true, reservation });
+        }
+
+        if (opsBody.action === 'clientMessageComposer') {
+          window.__PINLANE_QA_COMM_COMPOSER__ = opsBody;
+          const mkTemplate = (id, label, category, description, subject, emailBody, sms) => ({
+            id, label, category, description, channels: sms ? ['email', 'sms'] : ['email'],
+            email: { subject, body: emailBody }, sms: sms || '',
+          });
+          return jsonResponse({
+            ok: true,
+            reservation: { id: opsBody.reservationId, name: 'Anniversaire Lina', email: 'lina@example.test', phone: '+32470111222', date: new Date().toISOString().slice(0, 10), startTime: '14:00' },
+            channels: [
+              { id: 'email', label: 'Email', available: true, unavailableReason: '', hasRecipient: true, maxLength: 0 },
+              { id: 'sms', label: 'SMS', available: false, unavailableReason: 'Nécessite un compte SMS/Twilio (variables TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM).', hasRecipient: true, maxLength: 480 },
+            ],
+            templates: [
+              mkTemplate('confirmation', 'Confirmation de réservation', 'Avant venue', 'Confirme la réservation.', 'Votre réservation Fun Galaxy est confirmée', 'Bonjour Lina,\n\nC’est confirmé pour votre formule le 11/07/2026 à 14:00.\n\nÀ très vite,\nFun Galaxy Libramont', 'Fun Galaxy: reservation confirmee pour Lina le 11/07/2026 a 14:00.'),
+              mkTemplate('reminder', 'Rappel de venue', 'Avant venue', 'Rappelle un rendez-vous proche.', 'Petit rappel pour votre venue', 'Bonjour Lina,\n\nOn vous attend le 11/07/2026 à 14:00.\n\nÀ très vite,\nFun Galaxy Libramont', 'Fun Galaxy: rappel, on vous attend le 11/07/2026 a 14:00.'),
+              mkTemplate('thanks', 'Remerciement post-visite', 'Après venue', 'Remercier après la visite.', 'Merci pour votre visite !', 'Bonjour Lina,\n\nMerci d’être passés nous voir !\n\nÀ bientôt,\nFun Galaxy Libramont', 'Fun Galaxy: merci pour votre visite Lina !'),
+              mkTemplate('custom', 'Message vierge', 'Personnalisé', 'Rédiger un message libre.', 'Un message de Fun Galaxy', 'Bonjour Lina,\n\n\n\nFun Galaxy Libramont', 'Fun Galaxy: '),
+            ],
+            history: [
+              { id: 8801, channel: 'email', templateId: 'client_confirmation', subject: 'Votre réservation Fun Galaxy est confirmée', status: 'sent', recipient: 'lina@example.test', createdAt: new Date(Date.now() - 3600000).toISOString() },
+            ],
+          });
+        }
+
+        if (opsBody.action === 'clientMessageSend') {
+          window.__PINLANE_QA_COMM_SEND__ = opsBody;
+          return jsonResponse({ ok: true, channel: opsBody.channel || 'email', communication: { id: 8802, status: 'sent', channel: opsBody.channel || 'email' }, dispatched: { results: [{ id: 8802, status: 'sent' }] } });
         }
       }
 
@@ -813,7 +869,7 @@ async function collectIssues(page, scopeLabel) {
       '.delay-modal-head',
       '.delay-strategy',
       '.delay-plan-row',
-      '.delay-notify-row',
+      '.delay-notify-card',
       '.delay-warning',
       '.staff-role-pill',
       '.staff-member-card',
@@ -925,6 +981,94 @@ async function main() {
     await renderStaffPage(page, 'reservations');
     await screenshot(page, 'staff-reservations-stress');
     issues.push(...await collectIssues(page, 'staff-reservations'));
+
+    // === Chantier retard + centre de communication (nouveaux volets) ========
+    await renderStaffPage(page, 'planning');
+    await page.waitForTimeout(500);
+
+    // Volet A.1 — étape notification retard pré-remplie ET éditable, « ne pas
+    // prévenir » = 0 mail. On ouvre l'analyse d'un retard puis on applique.
+    await page.evaluate('window.__PINLANE_QA_DELAY_NOTIFY__ = null;');
+    await page.evaluate(() => openDelayImpact(9001, 15));
+    await page.waitForTimeout(500);
+    await page.evaluate(() => applyDelayPlan());
+    await page.waitForTimeout(500);
+    const notifyState = await page.evaluate(() => ({
+      step: (typeof delayFlowState !== 'undefined' && delayFlowState) ? delayFlowState.step : null,
+      textareas: document.querySelectorAll('#delayOverlay .delay-notify-textarea').length,
+      prefilled: (document.querySelector('#delayOverlay .delay-notify-textarea') || {}).value || '',
+      prominent: Boolean(document.querySelector('#delayOverlay .delay-notify-prominent')),
+    }));
+    assert(notifyState.step === 'notify', 'Retard : après application, on arrive à l’étape notification.');
+    assert(notifyState.textareas >= 1, 'Retard : chaque client impacté a un message éditable (textarea).');
+    assert(notifyState.prefilled.length > 10, 'Retard : le message est pré-rempli (template).');
+    assert(notifyState.prominent, 'Retard : l’étape notification est mise en évidence.');
+    await screenshot(page, 'delay-notify-editable');
+
+    // « Ne pas prévenir » ne déclenche AUCUN email.
+    await page.evaluate(() => skipDelayNotifications());
+    await page.waitForTimeout(200);
+    const afterSkip = await page.evaluate(() => window.__PINLANE_QA_DELAY_NOTIFY__);
+    assert(!afterSkip, 'Retard : « Ne pas prévenir » n’envoie aucun email.');
+
+    // Envoi avec texte relu/modifié : l’override part bien au serveur.
+    await page.evaluate(() => openDelayImpact(9001, 15));
+    await page.waitForTimeout(500);
+    await page.evaluate(() => applyDelayPlan());
+    await page.waitForTimeout(500);
+    await page.evaluate(() => setDelayNotifyMessage(9001, 'TEXTE EDITE QA — bonjour et merci de votre patience.'));
+    await page.evaluate(() => sendDelayNotifications());
+    await page.waitForTimeout(400);
+    const notifyPost = await page.evaluate(() => window.__PINLANE_QA_DELAY_NOTIFY__);
+    assert(notifyPost && Array.isArray(notifyPost.messages), 'Retard : l’envoi transmet les messages édités au serveur.');
+    const editedMsg = (notifyPost.messages || []).find((m) => Number(m.reservationId) === 9001);
+    assert(editedMsg && /TEXTE EDITE QA/.test(editedMsg.body || ''), 'Retard : le texte modifié par le staff est bien transmis.');
+
+    // Volet A.2 — indicateur de retard sur la carte planning + retrait.
+    await page.evaluate(() => { renderPlanning(); if (typeof renderLaserPlanning === 'function') renderLaserPlanning(); });
+    await page.waitForTimeout(300);
+    const indicatorCount = await page.evaluate(() => document.querySelectorAll('.delay-indicator').length);
+    assert(indicatorCount >= 1, 'Planning : un indicateur de retard est visible sur la carte retardée.');
+    await screenshot(page, 'planning-delay-indicator');
+
+    await page.evaluate(() => clearDelayFlag(null, 9001));
+    await page.waitForTimeout(400);
+    const clearPost = await page.evaluate(() => window.__PINLANE_QA_DELAY_CLEAR__);
+    assert(clearPost && Number(clearPost.reservationId) === 9001, 'Planning : le staff peut retirer l’indicateur de retard.');
+    await page.evaluate(() => { renderPlanning(); if (typeof renderLaserPlanning === 'function') renderLaserPlanning(); });
+    await page.waitForTimeout(300);
+    const indicatorAfterClear = await page.evaluate(() => document.querySelectorAll('.booking .delay-indicator').length);
+    await screenshot(page, 'planning-delay-cleared');
+
+    // Volet B — centre de communication client : modèles, canaux, envoi.
+    await page.evaluate(() => openCommCenter(9001));
+    await page.waitForTimeout(600);
+    const commState = await page.evaluate(() => ({
+      templates: document.querySelectorAll('#commOverlay .comm-select option').length,
+      channels: document.querySelectorAll('#commOverlay .comm-channel-btn').length,
+      smsDisabled: Boolean(document.querySelector('#commOverlay .comm-channel-btn.is-disabled')),
+      smsTag: Boolean(document.querySelector('#commOverlay .comm-channel-tag')),
+      body: (document.querySelector('#commOverlay .comm-textarea') || {}).value || '',
+      history: document.querySelectorAll('#commOverlay .comm-history-row').length,
+    }));
+    assert(commState.templates >= 4, 'Comm : plusieurs modèles pré-faits sont proposés.');
+    assert(commState.channels >= 2, 'Comm : les canaux email et SMS sont présents.');
+    assert(commState.smsDisabled && commState.smsTag, 'Comm : SMS sans config = désactivé + « à activer ».');
+    assert(commState.body.length > 10, 'Comm : le modèle sélectionné remplit le message.');
+    await screenshot(page, 'comm-center');
+
+    await page.evaluate(() => selectCommTemplate('thanks'));
+    await page.waitForTimeout(200);
+    const commEdited = await page.evaluate(() => (document.querySelector('#commOverlay .comm-textarea') || {}).value || '');
+    assert(/Merci/.test(commEdited), 'Comm : changer de modèle recharge le texte pré-rempli.');
+    await screenshot(page, 'comm-center-template');
+
+    await page.evaluate(() => sendCommMessage());
+    await page.waitForTimeout(500);
+    const commSend = await page.evaluate(() => window.__PINLANE_QA_COMM_SEND__);
+    assert(commSend && commSend.channel === 'email', 'Comm : l’envoi email trace un message côté serveur.');
+    await page.evaluate(() => closeCommCenter());
+    await page.waitForTimeout(200);
 
     await renderStaffPage(page, 'emails');
     await screenshot(page, 'staff-emails-stress');
@@ -1628,16 +1772,22 @@ async function main() {
 
     // Application -> étape notification : tout coché par défaut, envoi UNIQUEMENT sur clic.
     await page.evaluate(() => applyDelayPlan());
-    await page.locator('.delay-notify-row').first().waitFor({ timeout: 5000 });
+    await page.locator('.delay-notify-card').first().waitFor({ timeout: 5000 });
     const delayNotifyState = await page.evaluate(() => ({
-      rows: document.querySelectorAll('.delay-notify-row').length,
-      checked: document.querySelectorAll('.delay-notify-row input:checked').length,
+      rows: document.querySelectorAll('.delay-notify-card').length,
+      checked: document.querySelectorAll('.delay-notify-card input:checked').length,
+      textareas: document.querySelectorAll('.delay-notify-textarea').length,
+      prefilled: (document.querySelector('.delay-notify-textarea') || {}).value || '',
+      prominent: Boolean(document.querySelector('.delay-notify-prominent')),
       sendLabel: document.querySelector('.delay-btn-primary')?.textContent.trim() || '',
       skipButton: Array.from(document.querySelectorAll('.delay-btn')).some((el) => /Ne pas prévenir/.test(el.textContent)),
       posts: window.__PINLANE_QA_DELAY_POSTS__.map((post) => post.action),
     }));
     assert(delayNotifyState.rows === 2, 'Notification retard : chaque client impacté avec email doit être listé.');
     assert(delayNotifyState.checked === 2, 'Notification retard : tout doit être coché par défaut.');
+    assert(delayNotifyState.textareas === 2, 'Notification retard : chaque client a un message éditable.');
+    assert(delayNotifyState.prefilled.length > 10, 'Notification retard : le message est pré-rempli et éditable.');
+    assert(delayNotifyState.prominent, 'Notification retard : l étape est bien mise en évidence.');
     assert(/Envoyer les emails \(2\)/.test(delayNotifyState.sendLabel), `Notification retard : bouton d envoi explicite requis (reçu ${delayNotifyState.sendLabel}).`);
     assert(delayNotifyState.skipButton, 'Notification retard : « Ne pas prévenir » doit toujours être possible.');
     assert(!delayNotifyState.posts.includes('delayNotify'), 'Notification retard : AUCUN envoi ne doit partir sans clic explicite.');
@@ -1664,7 +1814,7 @@ async function main() {
     await page.evaluate(() => openDelayImpact(9001, 15));
     await page.locator('.delay-modal .delay-strategy').first().waitFor({ timeout: 5000 });
     await page.evaluate(() => applyDelayPlan());
-    await page.locator('.delay-notify-row').first().waitFor({ timeout: 5000 });
+    await page.locator('.delay-notify-card').first().waitFor({ timeout: 5000 });
     await page.evaluate(() => sendDelayNotifications());
     await page.waitForTimeout(300);
     const delaySentState = await page.evaluate(() => {

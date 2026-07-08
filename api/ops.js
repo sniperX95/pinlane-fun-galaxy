@@ -28,11 +28,16 @@ const { buildAgentEcosystemStatus } = require('../lib/agent-ecosystem');
 const { auditAgentSkillCatalog, getAgentSkillCatalog } = require('../lib/agent-skill-registry');
 const { runOrchestratorForCenter } = require('../lib/orchestrator-runner');
 const {
+  buildClientMessage,
+  buildDelayChangeMessage,
   buildEmailSamples,
   dispatchDueCommunications,
   enqueueDelayChangeCommunications,
   enqueueReservationCommunications,
+  listClientMessageChannels,
+  listClientMessageTemplates,
   listDelayNotificationChannels,
+  sendClientMessage,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -87,6 +92,39 @@ function safeUserMessage(error, fallback = 'Service momentanément indisponible.
   }
   console.error('[ops] erreur non exposée', error && (error.stack || error.message || error));
   return fallback;
+}
+
+// Marque le plan Ops d'une réservation avec un flag d'affichage « retard »
+// (opsPlan.delayFlag). Ce flag est purement visuel : il alimente l'indicateur
+// sur la carte planning et peut être retiré par le staff (delayClear) SANS
+// toucher au décalage horaire déjà appliqué. jsonb catch-all, zéro migration.
+function stampDelayFlag(opsPlan, { minutes, from, to }) {
+  const base = opsPlan && typeof opsPlan === 'object' ? opsPlan : {};
+  return {
+    ...base,
+    delayFlag: {
+      minutes: Number(minutes) || 0,
+      from: from || '',
+      to: to || '',
+      flaggedAt: new Date().toISOString(),
+      cleared: false,
+    },
+  };
+}
+
+function clearDelayFlagOnPlan(opsPlan) {
+  if (!opsPlan || typeof opsPlan !== 'object' || !opsPlan.delayFlag) return { plan: opsPlan, changed: false };
+  return {
+    plan: {
+      ...opsPlan,
+      delayFlag: {
+        ...opsPlan.delayFlag,
+        cleared: true,
+        clearedAt: new Date().toISOString(),
+      },
+    },
+    changed: true,
+  };
 }
 
 function normalizeCenterId(value) {
@@ -418,17 +456,31 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     }
 
     const staffMember = editSession.member?.name || editSession.member?.id || 'staff';
-    const updates = strategy.changes.map((change) => ({
-      id: change.reservationId,
-      startTime: change.update.startTime,
-      lanes: change.update.lanes,
-      opsPlan: change.update.opsPlan,
-      noteAppend: change.kind === 'delayed'
+    const updates = strategy.changes.map((change) => {
+      // La réservation retardée ET toute réservation réellement décalée dans le
+      // temps reçoivent un flag d'affichage « retard » (from → to). Les simples
+      // relocalisations de piste sans décalage n'affichent pas de badge minutes.
+      const timeShifted = change.kind === 'delayed'
+        || (change.previousStartTime && change.newStartTime && change.previousStartTime !== change.newStartTime);
+      const flagMinutes = change.kind === 'delayed' ? impact.delayMinutes : change.shiftMinutes;
+      return {
+        id: change.reservationId,
+        startTime: change.update.startTime,
+        lanes: change.update.lanes,
+        opsPlan: timeShifted
+          ? stampDelayFlag(change.update.opsPlan, {
+            minutes: flagMinutes,
+            from: change.previousStartTime,
+            to: change.newStartTime,
+          })
+          : change.update.opsPlan,
+        noteAppend: change.kind === 'delayed'
         ? `Retard +${impact.delayMinutes} min appliqué (${impact.reason}) — ${strategy.label} — par ${staffMember}.`
         : change.kind === 'relocate'
           ? `Changement de piste (${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}) suite au retard de « ${impact.reservationName} » — par ${staffMember}.`
           : `Décalage de ${change.shiftMinutes} min suite au retard de « ${impact.reservationName} » — par ${staffMember}.`,
-    }));
+      };
+    });
 
     const updatedReservations = await applyReservationScheduleUpdates({
       centerId: effectiveCenter,
@@ -508,13 +560,20 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         channels: listDelayNotificationChannels(),
         candidates: publicChanges
           .filter((change) => change.hasEmail)
-          .map((change) => ({
-            reservationId: change.reservationId,
-            name: change.name,
-            email: change.email,
-            summary: change.summary,
-            kind: change.kind,
-          })),
+          .map((change) => {
+            // Message pré-rédigé, personnalisé et éditable par le staff avant
+            // envoi (nom, ancienne → nouvelle heure, activité, ton Fun Galaxy).
+            const target = updatedReservations.find((item) => Number(item.id) === Number(change.reservationId));
+            const message = target ? buildDelayChangeMessage({ reservation: target, change, channel: 'email' }) : null;
+            return {
+              reservationId: change.reservationId,
+              name: change.name,
+              email: change.email,
+              summary: change.summary,
+              kind: change.kind,
+              message: message ? { subject: message.subject, body: message.body } : null,
+            };
+          }),
       },
     });
     return;
@@ -532,6 +591,21 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const requestedIds = Array.isArray(body.reservationIds) ? body.reservationIds.map(Number) : [];
     if (!requestedIds.length) throw createHttpError('Aucun client sélectionné pour la notification.', 400);
     const channels = Array.isArray(body.channels) && body.channels.length ? body.channels : ['email'];
+    // Textes relus/modifiés par le staff, indexés par réservation. Le serveur
+    // fait autorité sur l'envoi et la trace ; ces overrides ne changent que le
+    // CORPS du message (le staff a validé ce texte à l'étape notification).
+    const overridesById = new Map();
+    if (Array.isArray(body.messages)) {
+      body.messages.forEach((item) => {
+        const id = Number(item && item.reservationId);
+        if (Number.isInteger(id) && id > 0) {
+          overridesById.set(id, {
+            subject: typeof item.subject === 'string' ? item.subject : '',
+            body: typeof item.body === 'string' ? item.body : '',
+          });
+        }
+      });
+    }
 
     const queued = [];
     const dispatched = [];
@@ -545,6 +619,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         change,
         incidentId,
         channels,
+        override: overridesById.get(requestedId) || null,
       });
       queued.push(...created.map((item) => ({ id: item.id, reservationId: requestedId, channel: item.channel, status: item.status })));
       if (created.length) {
@@ -571,6 +646,143 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     }).catch(() => null);
 
     sendJson(res, 200, { ok: true, incidentId, queued, dispatched });
+    return;
+  }
+
+  if (action === 'delayClear') {
+    // Retire l'indicateur de retard d'une carte planning (flag d'affichage
+    // « retard traité/résorbé »). NE modifie PAS l'horaire déjà appliqué : seul
+    // le flag visuel opsPlan.delayFlag passe à cleared. Persistance atomique.
+    requireConcreteCenter('retard');
+    const reservationId = Number(body.reservationId || body.reservation?.id || body.id || 0);
+    if (!reservationId) throw createHttpError('Réservation manquante pour retirer l\'indicateur de retard.', 400);
+    const reservation = await getReservationById(reservationId);
+    if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    const clearSession = await requireStaffPermission(req, res, ['reservations.edit', 'planning.drag'], {
+      centerId: reservation.centerId || 'libramont',
+    });
+    if (!clearSession) return;
+
+    const { plan, changed } = clearDelayFlagOnPlan(reservation.opsPlan);
+    if (!changed) {
+      sendJson(res, 200, { ok: true, cleared: false, reservation });
+      return;
+    }
+    const staffMember = clearSession.member?.name || clearSession.member?.id || 'staff';
+    const [updated] = await applyReservationScheduleUpdates({
+      centerId: reservation.centerId || 'libramont',
+      date: reservation.date,
+      updates: [{
+        id: reservationId,
+        startTime: reservation.startTime,
+        lanes: reservation.lanes,
+        opsPlan: plan,
+      }],
+    });
+    await createOpsEvent({
+      centerId: reservation.centerId || 'libramont',
+      reservationId,
+      eventType: 'delay_indicator_cleared',
+      payload: { clearedBy: staffMember },
+      runLearning: false,
+    }).catch(() => null);
+    sendJson(res, 200, { ok: true, cleared: true, reservation: updated || reservation });
+    return;
+  }
+
+  if (action === 'clientMessageComposer') {
+    // Ouverture du centre de communication pour UNE réservation : modèles
+    // pré-remplis (email + SMS courts), état des canaux, et historique des
+    // messages déjà envoyés à ce client (anti-spam / traçabilité).
+    requireConcreteCenter('communication client');
+    const reservationId = Number(body.reservationId || body.reservation?.id || body.id || 0);
+    if (!reservationId) throw createHttpError('Réservation manquante pour composer un message.', 400);
+    const reservation = await getReservationById(reservationId);
+    if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    const templates = listClientMessageTemplates().map((template) => ({
+      ...template,
+      email: buildClientMessage({ reservation, templateId: template.id, channel: 'email' }),
+      sms: template.channels.includes('sms')
+        ? buildClientMessage({ reservation, templateId: template.id, channel: 'sms' }).body
+        : '',
+    }));
+    const history = await listCommunications({
+      centerId: reservation.centerId || centerId,
+      reservationId,
+      limit: 25,
+    }).catch(() => []);
+    sendJson(res, 200, {
+      ok: true,
+      reservation: {
+        id: reservation.id,
+        name: reservation.name,
+        email: reservation.email || '',
+        phone: reservation.phone || '',
+        date: reservation.date,
+        startTime: reservation.startTime,
+      },
+      channels: listClientMessageChannels(reservation),
+      templates,
+      history: history.map((item) => ({
+        id: item.id,
+        channel: item.channel,
+        templateId: item.templateId,
+        subject: item.subject,
+        status: item.status,
+        recipient: item.recipient,
+        createdAt: item.createdAt,
+      })),
+    });
+    return;
+  }
+
+  if (action === 'clientMessageSend') {
+    requireConcreteCenter('communication client');
+    const sendSession = await requireStaffPermission(req, res, ['emails.send'], { centerId });
+    if (!sendSession) return;
+    const reservationId = Number(body.reservationId || body.reservation?.id || body.id || 0);
+    if (!reservationId) throw createHttpError('Réservation manquante pour envoyer le message.', 400);
+    const reservation = await getReservationById(reservationId);
+    if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    const channel = body.channel === 'sms' ? 'sms' : 'email';
+    const staffMember = sendSession.member?.name || sendSession.member?.id || 'staff';
+    let result;
+    try {
+      result = await sendClientMessage({
+        centerId: reservation.centerId || centerId,
+        reservation,
+        templateId: body.templateId || 'custom',
+        channel,
+        subject: body.subject || '',
+        body: body.body || '',
+        staffMember,
+      });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Envoi du message impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    await createOpsEvent({
+      centerId: reservation.centerId || centerId,
+      reservationId,
+      eventType: 'client_message_sent',
+      payload: {
+        channel,
+        templateId: body.templateId || 'custom',
+        communicationId: result.communication?.id || null,
+        sentBy: staffMember,
+      },
+      runLearning: false,
+    }).catch(() => null);
+    const dispatchResult = Array.isArray(result.dispatched?.results)
+      ? result.dispatched.results.find((item) => Number(item.id) === Number(result.communication?.id))
+      : null;
+    sendJson(res, 200, {
+      ok: true,
+      channel,
+      communication: result.communication
+        ? { id: result.communication.id, status: dispatchResult?.status || result.communication.status, channel: result.communication.channel }
+        : null,
+      dispatched: result.dispatched || null,
+    });
     return;
   }
 
@@ -678,10 +890,10 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     return 'ai.ops';
   }
-  if (['communicationDraft'].includes(action)) return 'emails.view';
-  if (['enqueueReservation', 'dispatchDue'].includes(action)) return 'emails.send';
+  if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
+  if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';
   if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';
-  if (['plan', 'delay', 'delayImpact', 'delayApply', 'delayNotify'].includes(action)) return ['planning.view', 'ai.ops'];
+  if (['plan', 'delay', 'delayImpact', 'delayApply', 'delayNotify', 'delayClear'].includes(action)) return ['planning.view', 'ai.ops'];
   return 'ai.ops';
 }
 

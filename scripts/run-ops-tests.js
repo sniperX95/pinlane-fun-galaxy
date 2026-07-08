@@ -2,8 +2,11 @@ const assert = require('assert');
 const { communicationAgent, delayAgent, learningAgent, planningAgent } = require('../lib/ops-agents');
 const { computeDelayImpact, getRequiredLaneCount } = require('../lib/ops-engine');
 const {
+  buildClientMessage,
   buildDelayChangeMessage,
   buildMessage,
+  listClientMessageChannels,
+  listClientMessageTemplates,
   listDelayNotificationChannels,
   normalizePhoneForSms,
 } = require('../lib/ops-communications');
@@ -780,6 +783,59 @@ function testDelayNotificationChannelsAndMessages() {
   assert.ok(!/décalé de/.test(relocated.body), 'a pure lane change never announces a time shift');
 }
 
+// Centre de communication client : bibliothèque de modèles pré-remplis,
+// éditables, et état des canaux (email actif, SMS inactif sans config).
+function testClientMessageCenter() {
+  const templates = listClientMessageTemplates();
+  assert.ok(templates.length >= 10, 'client message library should offer at least 10 templates');
+  const ids = templates.map((template) => template.id);
+  ['confirmation', 'reminder', 'delay', 'reschedule', 'cancellation', 'thanks', 'deposit_request', 'practical_info', 'promo', 'custom']
+    .forEach((id) => assert.ok(ids.includes(id), `template ${id} must exist`));
+
+  const reservation = {
+    id: 42, centerId: 'libramont', name: 'Marie Dupont', email: 'marie@example.test', phone: '0470111222',
+    date: '2026-07-11', startTime: '15:00', pax: 12, price: 468, type: 'formule', formuleId: 'f4', label: 'FORMULE 4',
+  };
+
+  const email = buildClientMessage({ reservation, templateId: 'reminder', channel: 'email' });
+  assert.ok(email.subject && email.subject.length > 3, 'email template has a subject');
+  assert.ok(email.body.includes('Marie Dupont'), 'email is personalised with the client name');
+  assert.ok(email.body.includes('11/07/2026') && email.body.includes('15:00'), 'email is filled with date and time');
+  assert.ok(email.body.includes('FORMULE 4'), 'email is filled with the activity/offer');
+
+  const sms = buildClientMessage({ reservation, templateId: 'reminder', channel: 'sms' });
+  assert.ok(sms.body.length > 0 && sms.body.length <= 320, 'sms body stays short');
+  assert.ok(sms.body.includes('11/07/2026'), 'sms is filled with the date');
+
+  const deposit = buildClientMessage({ reservation, templateId: 'deposit_request', channel: 'email' });
+  assert.ok(/EUR/.test(deposit.body), 'deposit template names an amount');
+
+  const channels = listClientMessageChannels(reservation);
+  const emailChannel = channels.find((channel) => channel.id === 'email');
+  const smsChannel = channels.find((channel) => channel.id === 'sms');
+  assert.ok(emailChannel && emailChannel.available, 'email channel is active immediately');
+  assert.ok(emailChannel.hasRecipient, 'email recipient detected from reservation email');
+  assert.ok(smsChannel && smsChannel.available === false, 'sms channel stays inactive without Twilio config');
+  assert.ok(smsChannel.unavailableReason && /Twilio/i.test(smsChannel.unavailableReason), 'sms explains it needs Twilio');
+  assert.ok(smsChannel.hasRecipient, 'sms recipient detected from reservation phone');
+
+  const noContact = listClientMessageChannels({ id: 1, centerId: 'libramont', name: 'Sans Contact', date: '2026-07-11', startTime: '15:00' });
+  assert.ok(noContact.find((channel) => channel.id === 'email').hasRecipient === false, 'missing email means no recipient');
+}
+
+// Le corps relu/modifié par le staff (override) doit rester une chaîne éditable
+// distincte du template généré, tout en gardant le rendu généré comme repli.
+function testDelayNotificationEditableOverride() {
+  const reservation = {
+    id: 7, centerId: 'libramont', name: 'Groupe Suivant', email: 'suivant@example.test',
+    date: TEST_DATE, startTime: '15:15', pax: 6, type: 'bowling', label: 'Bowling classique',
+  };
+  const change = { kind: 'shift', previousStartTime: '15:00', newStartTime: '15:15', shiftMinutes: 15, previousLanes: [1], newLanes: [1], laneChanged: false };
+  const generated = buildDelayChangeMessage({ reservation, change });
+  assert.ok(generated.body.includes('15:15'), 'generated delay message is available as a prefill');
+  assert.ok(typeof generated.subject === 'string' && generated.subject.length > 0, 'generated message exposes an editable subject');
+}
+
 function testDelayEmailTemplate() {
   const message = buildMessage({
     templateId: 'delay_update',
@@ -1451,6 +1507,8 @@ async function main() {
   testDelayImpactFlagsClosingOverrun();
   testDelayImpactLaserSharedSession();
   testDelayNotificationChannelsAndMessages();
+  testClientMessageCenter();
+  testDelayNotificationEditableOverride();
   testDelayEmailTemplate();
   testLearningAgent();
   testPhoneNormalization();

@@ -4080,6 +4080,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
     const onSite = unpaidRows.filter(reservation => reservation.status === 'arrived').length;
     alerts.push({
       kind: 'payment',
+      priority: onSite ? 'critical' : 'important',
       title: 'Paiement à encaisser',
       text: `${unpaidRows.length} réservation${unpaidRows.length > 1 ? 's' : ''} non payée${unpaidRows.length > 1 ? 's' : ''} · ${formatMoney(outstanding)}${onSite ? ` · ${onSite} déjà sur place` : ''}`,
       rows: unpaidRows,
@@ -4097,6 +4098,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
   if (reviewRows.length) {
     alerts.push({
       kind: 'review',
+      priority: 'important',
       title: 'Réservations à vérifier',
       text: `${reviewRows.length} réservation${reviewRows.length > 1 ? 's' : ''} en attente de validation staff`,
       rows: reviewRows,
@@ -4109,6 +4111,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
     const closeLabel = formatClockDisplay(metrics.planningWindow.close);
     alerts.push({
       kind: 'warning',
+      priority: 'critical',
       title: 'Laser après fermeture',
       text: `${rows.length} réservation${rows.length > 1 ? 's' : ''} laser se termine${rows.length > 1 ? 'nt' : ''} après ${closeLabel}`,
       rows,
@@ -4123,6 +4126,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
   if (maintenanceLanes.length) {
     alerts.push({
       kind: 'maintenance',
+      priority: 'info',
       title: 'Pistes en maintenance',
       text: `Piste${maintenanceLanes.length > 1 ? 's' : ''} ${maintenanceLanes.join(', ')} bloquée${maintenanceLanes.length > 1 ? 's' : ''}`,
       lanes: maintenanceLanes,
@@ -4138,6 +4142,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
   if (comboRows.length) {
     alerts.push({
       kind: 'formula',
+      priority: 'important',
       title: 'Formules à enchaîner',
       text: `${comboRows.length} formule${comboRows.length > 1 ? 's' : ''} bowling + laser à cadencer aujourd'hui`,
       rows: comboRows,
@@ -4520,19 +4525,111 @@ function renderStaffDashboardArrivalsDetail(metrics) {
   </div>`;
 }
 
+// Niveaux d'importance des alertes : repère visuel + ordre de tri (rank).
+// critical = Prioritaire (rouge) · important = À traiter (orange) · info = À suivre (bleu).
+const STAFF_ALERT_PRIORITY = {
+  critical: { rank: 0, tone: 'critical', label: 'Prioritaire' },
+  important: { rank: 1, tone: 'important', label: 'À traiter' },
+  info: { rank: 2, tone: 'info', label: 'À suivre' }
+};
+
+// Priorité par défaut si l'alerte n'en porte pas (robustesse).
+const STAFF_ALERT_PRIORITY_FALLBACK = {
+  payment: 'important', review: 'important', warning: 'critical', maintenance: 'info', formula: 'important'
+};
+
+function getStaffAlertPriorityMeta(alert) {
+  const level = alert.priority || STAFF_ALERT_PRIORITY_FALLBACK[alert.kind] || 'info';
+  return STAFF_ALERT_PRIORITY[level] || STAFF_ALERT_PRIORITY.info;
+}
+
+// Tri lecture rapide : plus tôt en premier, puis plus gros montant en premier.
+function sortStaffAlertRows(rows = []) {
+  return [...rows].sort((left, right) =>
+    (getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'))
+    || ((Number(right.price) || 0) - (Number(left.price) || 0)));
+}
+
+function sumStaffRowsAmount(rows = []) {
+  return rows.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
+}
+
+// Découpe une alerte en sous-blocs titrés triés par importance.
+// Paiement : clients SUR PLACE (arrivé) d'abord, puis les confirmés à venir.
+function getStaffAlertSubsections(alert) {
+  const rows = alert.rows || [];
+  if (alert.kind === 'payment') {
+    const onSite = sortStaffAlertRows(rows.filter(reservation => reservation.status === 'arrived'));
+    const upcoming = sortStaffAlertRows(rows.filter(reservation => reservation.status !== 'arrived'));
+    const subs = [];
+    if (onSite.length) {
+      subs.push({ key: 'onsite', tone: 'critical', icon: '⚡', showTotal: true,
+        label: 'Sur place — à encaisser maintenant', rows: onSite });
+    }
+    if (upcoming.length) {
+      subs.push({ key: 'upcoming', tone: 'info', showTotal: false,
+        label: 'À venir — confirmés', rows: upcoming });
+    }
+    return subs;
+  }
+  if (!rows.length) return [];
+  return [{ key: 'all', tone: '', showTotal: false, label: '', rows: sortStaffAlertRows(rows) }];
+}
+
+function renderStaffAlertSubsection(sub, kind) {
+  const total = sumStaffRowsAmount(sub.rows);
+  const metaText = `${sub.rows.length} résa${sub.rows.length > 1 ? 's' : ''}${sub.showTotal && total > 0 ? ` · ${formatMoney(total)}` : ''}`;
+  const head = sub.label
+    ? `<div class="alert-subsection-head tone-${escapeHtml(sub.tone || 'neutral')}">
+        <span class="alert-subsection-title">${sub.icon ? `<span class="alert-subsection-icon" aria-hidden="true">${escapeHtml(sub.icon)}</span>` : ''}${escapeHtml(sub.label)}</span>
+        <span class="alert-subsection-meta">${escapeHtml(metaText)}</span>
+      </div>`
+    : '';
+  return `<div class="alert-subsection tone-${escapeHtml(sub.tone || 'neutral')}">
+    ${head}
+    ${renderStaffDashboardReservationRows(sub.rows, 'Aucun élément à traiter.', kind)}
+  </div>`;
+}
+
 function renderStaffDashboardAlertsDetail(alerts = []) {
   if (!alerts.length) {
     return `<div class="dashboard-detail-empty">Aucune alerte active. Les réservations restent surveillées en temps réel.</div>`;
   }
   const canRelease = canUseStaffPermission(['planning.drag', 'settings.manage']);
-  return alerts.map(alert => `<section class="dashboard-detail-section alert-${escapeHtml(alert.kind)}">
-    <div class="dashboard-detail-section-head">
-      <h3>${escapeHtml(alert.title)}</h3>
-      <p>${escapeHtml(alert.action || alert.text)}</p>
-    </div>
-    ${alert.lanes?.length ? `<div class="dashboard-detail-lane-chips">${alert.lanes.map(lane => `<span class="lane-chip">Piste ${Number(lane)}${canRelease ? `<button type="button" class="lane-release" onclick="dashboardDetailReleaseLane(${Number(lane)}, event)">Libérer</button>` : ''}</span>`).join('')}</div>` : ''}
-    ${renderStaffDashboardReservationRows(alert.rows || [], alert.kind === 'info' ? 'Aucun élément à traiter.' : 'Pas de réservation liée à ce signal.', alert.kind)}
-  </section>`).join('');
+  // Ordonne du plus urgent (Prioritaire) au moins urgent (À suivre). Tri stable :
+  // à rang égal, l'ordre métier d'origine (paiement > vérif > laser > …) est conservé.
+  const ordered = [...alerts].sort((left, right) => getStaffAlertPriorityMeta(left).rank - getStaffAlertPriorityMeta(right).rank);
+  return ordered.map(alert => {
+    const meta = getStaffAlertPriorityMeta(alert);
+    const rows = alert.rows || [];
+    const total = sumStaffRowsAmount(rows);
+    const count = alert.kind === 'maintenance' ? (alert.lanes || []).length : rows.length;
+    const countLabel = alert.kind === 'maintenance'
+      ? `${count} piste${count > 1 ? 's' : ''}`
+      : `${count} résa${count > 1 ? 's' : ''}`;
+    const laneChips = alert.lanes?.length
+      ? `<div class="dashboard-detail-lane-chips">${alert.lanes.map(lane => `<span class="lane-chip">Piste ${Number(lane)}${canRelease ? `<button type="button" class="lane-release" onclick="dashboardDetailReleaseLane(${Number(lane)}, event)">Libérer</button>` : ''}</span>`).join('')}</div>`
+      : '';
+    const subsections = getStaffAlertSubsections(alert);
+    const body = subsections.length
+      ? subsections.map(sub => renderStaffAlertSubsection(sub, alert.kind)).join('')
+      : (laneChips ? '' : `<div class="dashboard-detail-empty">Pas de réservation liée à ce signal.</div>`);
+    return `<section class="dashboard-detail-section alert-section pr-${meta.tone} alert-${escapeHtml(alert.kind)}">
+      <div class="alert-section-head">
+        <div class="alert-section-heading">
+          <span class="priority-badge pr-${meta.tone}"><span class="priority-dot" aria-hidden="true"></span>${escapeHtml(meta.label)}</span>
+          <h3>${escapeHtml(alert.title)}</h3>
+        </div>
+        <div class="alert-section-meta">
+          <span class="alert-count">${escapeHtml(countLabel)}</span>
+          ${total > 0 ? `<span class="alert-total">${formatMoney(total)}</span>` : ''}
+        </div>
+      </div>
+      <p class="alert-section-note">${escapeHtml(alert.action || alert.text)}</p>
+      ${laneChips}
+      ${body}
+    </section>`;
+  }).join('');
 }
 
 function renderStaffDashboardRevenueDetail(metrics) {

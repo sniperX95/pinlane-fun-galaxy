@@ -3327,8 +3327,126 @@ function goStep4() {
   state.booking.name = name;
   state.booking.phone = phone;
   state.booking.email = email;
+  const specialRequestInput = document.getElementById('fSpecialRequest');
+  state.booking.specialRequest = specialRequestInput ? specialRequestInput.value.trim().slice(0, 500) : '';
   renderRecap();
   goStep(4);
+}
+
+// Occasion DÉCLARÉE par le client (anniversaire, amis, entreprise, ecole,
+// autre). '' = non précisé. Propagée au serveur → catégorisation staff déclarée.
+const BOOKING_OCCASIONS = ['anniversaire', 'amis', 'entreprise', 'ecole', 'autre'];
+function setBookingOccasion(value) {
+  const next = BOOKING_OCCASIONS.includes(value)
+    ? (state.booking.occasion === value ? '' : value)
+    : '';
+  state.booking.occasion = next;
+  document.querySelectorAll('#occasionChips .occasion-chip').forEach(chip => {
+    const active = chip.dataset.occasion === next;
+    chip.classList.toggle('active', active);
+    chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  save();
+}
+
+// ── Demande SUR MESURE (lead entreprise / besoin spécial) ──────────────────
+// Crée un LEAD (hors planning), pas une réservation. POST /api/custom-request.
+const customRequestState = { occasion: '' };
+
+function setCustomRequestOccasion(value) {
+  const next = BOOKING_OCCASIONS.includes(value)
+    ? (customRequestState.occasion === value ? '' : value)
+    : '';
+  customRequestState.occasion = next;
+  document.querySelectorAll('#crOccasionChips .occasion-chip').forEach(chip => {
+    const active = chip.dataset.occasion === next;
+    chip.classList.toggle('active', active);
+    chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function openCustomRequestModal() {
+  const modal = document.getElementById('customRequestModal');
+  if (!modal) return;
+  // Pré-remplit avec ce que le client a déjà saisi à l'étape 1 (contexte utile).
+  const b = state.booking || {};
+  const dateInput = document.getElementById('crDate');
+  const paxInput = document.getElementById('crPax');
+  if (dateInput && !dateInput.value && b.date) dateInput.value = b.date;
+  if (paxInput && !paxInput.value && Number(b.pax) > 0) paxInput.value = b.pax;
+  setCustomRequestOccasion(b.occasion || '');
+  const success = document.getElementById('bespokeSuccess');
+  const form = document.getElementById('bespokeForm');
+  if (success) { success.classList.add('hidden'); success.textContent = ''; }
+  if (form) form.classList.remove('hidden');
+  const errorBox = document.getElementById('bespokeError');
+  if (errorBox) errorBox.classList.add('hidden');
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  const nameInput = document.getElementById('crName');
+  if (nameInput) setTimeout(() => nameInput.focus(), 30);
+}
+
+function closeCustomRequestModal() {
+  const modal = document.getElementById('customRequestModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+}
+
+function showCustomRequestError(message) {
+  const errorBox = document.getElementById('bespokeError');
+  if (!errorBox) return;
+  errorBox.textContent = message;
+  errorBox.classList.remove('hidden');
+}
+
+async function submitCustomRequest() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const name = val('crName');
+  const email = val('crEmail');
+  const message = val('crMessage');
+  const errorBox = document.getElementById('bespokeError');
+  if (errorBox) errorBox.classList.add('hidden');
+
+  if (!name) { showCustomRequestError('Merci d\'indiquer le nom du contact.'); return; }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showCustomRequestError('Un email valide est requis pour vous recontacter.'); return; }
+  if (!message) { showCustomRequestError('Décrivez votre besoin en quelques mots.'); return; }
+
+  const submitBtn = document.getElementById('crSubmit');
+  const payload = {
+    kind: 'custom-request',
+    centerId: (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : 'libramont') || 'libramont',
+    contactName: name,
+    company: val('crCompany'),
+    email,
+    phone: val('crPhone'),
+    requestedDate: val('crDate'),
+    pax: Number(document.getElementById('crPax')?.value || 0) || 0,
+    occasion: customRequestState.occasion || '',
+    message,
+  };
+
+  try {
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Envoi en cours…'; }
+    await apiRequest('/api/custom-request', { method: 'POST', body: JSON.stringify(payload) });
+    const form = document.getElementById('bespokeForm');
+    const success = document.getElementById('bespokeSuccess');
+    if (form) form.classList.add('hidden');
+    if (success) {
+      success.innerHTML = 'Demande bien envoyée ! Vous recevez un accusé par email et notre équipe vous recontacte rapidement.';
+      success.classList.remove('hidden');
+    }
+    ['crName', 'crCompany', 'crEmail', 'crPhone', 'crDate', 'crPax', 'crMessage'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    setCustomRequestOccasion('');
+  } catch (error) {
+    showCustomRequestError(error.message || 'Impossible d\'envoyer la demande. Réessayez.');
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Envoyer ma demande'; }
+  }
 }
 
 // Récap « Ancres + Liberté » d'une réservation formule.
@@ -3468,6 +3586,9 @@ async function confirmBooking() {
     preference: b.preference || {},
     pauseMinutes: 0,
     opsPlan: b.opsPlan || null,
+    // Champs ADDITIFS optionnels : occasion déclarée + demande particulière.
+    occasion: b.occasion || '',
+    notes: b.specialRequest || '',
     extras: []
   };
 
@@ -3532,6 +3653,8 @@ function resetBooking() {
     type:'bowling', formuleId:'', duration:1, totalDuration:1, laneCount:1, startTime:'', allocatedLanes:[],
     preference: createDefaultFormulaPreference(),
     pauseMinutes: 0,
+    occasion: '',
+    specialRequest: '',
     opsPlan: null,
     opsResult: null
   };
@@ -3540,6 +3663,9 @@ function resetBooking() {
   document.getElementById('fEmail').value = '';
   document.getElementById('fPax').value = 4;
   document.getElementById('fDate').value = todayStr();
+  const specialRequestInput = document.getElementById('fSpecialRequest');
+  if (specialRequestInput) specialRequestInput.value = '';
+  setBookingOccasion('');
   setType('bowling');
   renderDurations();
   updatePaxAlert();
@@ -4718,10 +4844,12 @@ function renderStaffUtilityReservationCard(reservation, options = {}) {
     <div class="utility-res-main">
       <div class="utility-res-title">
         <strong>${escapeHtml(reservation.name || 'Client')}</strong>
+        ${getReservationOccasion(reservation) ? `<span class="res-occasion-tag res-occasion-${escapeHtml(getReservationOccasion(reservation))}">${escapeHtml(getReservationOccasionLabel(reservation))}</span>` : ''}
         <span>${escapeHtml(getStaffUtilityRiskLabel(reservation))}</span>
       </div>
       <p>${escapeHtml(getReservationLabel(reservation))}</p>
       <small>${escapeHtml(getStaffUtilityResourceSummary(reservation))}</small>
+      ${reservation.notes ? `<small class="res-special-request">📝 ${escapeHtml(reservation.notes)}</small>` : ''}
     </div>
     <div class="utility-res-meta">
       <span>${Number(reservation.pax || 0)} pers.</span>
@@ -4828,7 +4956,44 @@ function getStaffGroupNextReservation(row = {}) {
     || null;
 }
 
+// Libellés d'occasion DÉCLARÉE (source de vérité de la catégorisation staff).
+const STAFF_OCCASION_LABELS = {
+  anniversaire: 'Anniversaire',
+  amis: 'Entre amis',
+  entreprise: 'Entreprise',
+  ecole: 'École / association',
+  autre: 'Autre',
+};
+
+function getReservationOccasion(reservation = {}) {
+  const raw = String(reservation.occasion || '').toLowerCase();
+  return STAFF_OCCASION_LABELS[raw] ? raw : '';
+}
+
+function getReservationOccasionLabel(reservation = {}) {
+  const occ = getReservationOccasion(reservation);
+  return occ ? STAFF_OCCASION_LABELS[occ] : '';
+}
+
+// Catégorie staff d'un profil groupe à partir de l'occasion DÉCLARÉE. Renvoie
+// '' si aucune occasion n'a été déclarée → on retombe alors sur l'heuristique.
+function getStaffGroupDeclaredCategory(row = {}) {
+  const occ = String(row.declaredOccasion || '').toLowerCase();
+  if (occ === 'anniversaire') return 'birthday';
+  if (occ === 'entreprise') return 'business';
+  if (occ === 'amis' || occ === 'ecole') return 'regular';
+  if (occ === 'autre') return 'other';
+  return '';
+}
+
 function getStaffGroupKind(row = {}) {
+  // 1) Occasion DÉCLARÉE par le client (prioritaire, plus d'heuristique devinée).
+  const declared = String(row.declaredOccasion || '').toLowerCase();
+  if (declared === 'anniversaire') return 'Anniversaire';
+  if (declared === 'entreprise') return 'Entreprise';
+  if (declared === 'ecole') return 'École / association';
+  if (declared === 'amis') return 'Groupe';
+  // 2) Repli heuristique (anciennes résas sans occasion déclarée).
   if (row.hasBirthday) return 'Anniversaire';
   if (Number(row.formulas || 0) > 0) return 'Formule';
   if (Number(row.players || 0) >= 30 || Number(row.reservations || 0) >= 3) return 'Groupe regulier';
@@ -5081,6 +5246,10 @@ function getStaffGroupSizeKey(row = {}, reservation = null) {
 }
 
 function isStaffGroupBusiness(row = {}) {
+  // Occasion DÉCLARÉE prioritaire : si le client a déclaré quelque chose, on ne
+  // devine plus. Sinon (ancienne résa), repli sur l'heuristique de mots-clés.
+  const declared = getStaffGroupDeclaredCategory(row);
+  if (declared) return declared === 'business';
   const text = formulaActivityToken(`${row.name || ''} ${(row.tags || []).join(' ')}`);
   return /entreprise|team|garage|sa|ecole|college|association|club|comite|bureau/.test(text);
 }
@@ -5124,7 +5293,7 @@ function getFilteredStaffGroupRows(rows = []) {
     if (dateFilter === 'today' && reservation.date !== today) return false;
     if (dateFilter === 'week' && (!reservation.date || String(reservation.date) < today || String(reservation.date) > weekEnd)) return false;
     if (tab === 'birthdays' && !row.hasBirthday) return false;
-    if (tab === 'regular' && Number(row.reservations || 0) < 2) return false;
+    if (tab === 'regular' && getStaffGroupDeclaredCategory(row) !== 'regular' && Number(row.reservations || 0) < 2) return false;
     if (tab === 'business' && !isStaffGroupBusiness(row)) return false;
     if (tab === 'followup' && !needsStaffGroupFollowup(row, reservation)) return false;
     return true;
@@ -5175,7 +5344,7 @@ function renderStaffGroupToolbar(allRows = [], filteredRows = [], agenda = [], f
   </select></label>`;
   const tab = (id, label, count) => `<button type="button" class="${state.staffGroupTab === id ? 'active' : ''}" onclick="setStaffGroupFilter('tab', '${escapeHtml(id)}')">${escapeHtml(label)}<span>${Number(count || 0)}</span></button>`;
   const birthdays = allRows.filter(row => row.hasBirthday).length;
-  const regular = allRows.filter(row => Number(row.reservations || 0) >= 2).length;
+  const regular = allRows.filter(row => getStaffGroupDeclaredCategory(row) === 'regular' || Number(row.reservations || 0) >= 2).length;
   const business = allRows.filter(isStaffGroupBusiness).length;
   return `<section class="groups-toolbar-card">
     <div class="groups-toolbar-main">
@@ -5341,6 +5510,7 @@ function renderStaffGroupWorkspaceV2(rows = []) {
     const loading = !!staffClientDataCache.loading;
     const error = staffClientDataCache.error || '';
     return `<div class="groups-page">
+      ${renderStaffCustomRequestsPanel()}
       <section class="groups-empty-state">
         <span>${loading ? 'Synchronisation' : error ? 'Lecture impossible' : 'Aucun groupe'}</span>
         <h2>${loading ? 'Chargement des profils groupes' : error ? 'Donnees groupes indisponibles' : 'Aucun groupe repere pour le moment'}</h2>
@@ -5373,6 +5543,7 @@ function renderStaffGroupWorkspaceV2(rows = []) {
   };
 
   return `<div class="groups-page">
+    ${renderStaffCustomRequestsPanel()}
     ${renderStaffGroupToolbar(allRows, filteredRows, agenda, followUps)}
     <div class="groups-main-layout">
       <div class="groups-primary-stack">
@@ -6941,6 +7112,7 @@ function renderStaffUtilityPage() {
     </section>
   `;
   if (archivePages.has(model.page)) ensureStaffClientData();
+  if (model.page === 'groups') ensureStaffCustomRequests();
   if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) loadOpsAdmin(false);
 }
 
@@ -9083,6 +9255,120 @@ function ensureStaffClientData() {
   }
 }
 
+// ── File staff des DEMANDES SUR MESURE (leads hors planning) ───────────────
+let staffCustomRequestsCache = { loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
+
+async function loadStaffCustomRequests(force = false) {
+  if (!force && staffCustomRequestsCache.loading) return;
+  if (!force && staffCustomRequestsCache.loaded && (Date.now() - staffCustomRequestsCache.loadedAt) < 60000) return;
+  staffCustomRequestsCache = { ...staffCustomRequestsCache, loading: true, error: '' };
+  if (isStaffUtilityActive()) renderStaffUtilityPage();
+  try {
+    const centerQuery = encodeURIComponent(getActiveOpsCenterId());
+    const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=customRequests&centerId=${centerQuery}&limit=100`);
+    staffCustomRequestsCache = {
+      loading: false,
+      loaded: true,
+      error: '',
+      items: Array.isArray(payload.customRequests) ? payload.customRequests : [],
+      loadedAt: Date.now()
+    };
+  } catch (error) {
+    staffCustomRequestsCache = {
+      ...staffCustomRequestsCache,
+      loading: false,
+      error: error.message || 'Chargement des demandes impossible.'
+    };
+  }
+  if (isStaffUtilityActive()) renderStaffUtilityPage();
+}
+
+function ensureStaffCustomRequests() {
+  if (!staffCustomRequestsCache.loaded && !staffCustomRequestsCache.loading) loadStaffCustomRequests(false);
+}
+
+async function setStaffCustomRequestStatus(id, status) {
+  try {
+    await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'customRequestStatus', id, status, centerId: getActiveOpsCenterId() })
+    });
+    // Mise à jour optimiste locale puis rechargement serveur (source de vérité).
+    staffCustomRequestsCache.items = (staffCustomRequestsCache.items || []).map(item =>
+      String(item.id) === String(id) ? { ...item, status } : item);
+    if (isStaffUtilityActive()) renderStaffUtilityPage();
+    loadStaffCustomRequests(true);
+    toast('Demande mise à jour.');
+  } catch (error) {
+    toast(error.message || 'Mise à jour impossible.');
+  }
+}
+
+function renderStaffCustomRequestBadge(status) {
+  const map = {
+    new: ['Nouvelle', 'new'],
+    in_progress: ['En cours', 'progress'],
+    handled: ['Traitée', 'handled'],
+    archived: ['Archivée', 'archived']
+  };
+  const [label, cls] = map[status] || map.new;
+  return `<span class="cr-badge cr-badge-${cls}">${escapeHtml(label)}</span>`;
+}
+
+function renderStaffCustomRequestCard(item) {
+  const occKey = String(item.occasion || '').toLowerCase();
+  const occ = STAFF_OCCASION_LABELS[occKey] || '';
+  const meta = [
+    item.company,
+    item.phone,
+    item.requestedDate ? `Souhait : ${item.requestedDate}` : '',
+    Number(item.pax) > 0 ? `${item.pax} pers.` : ''
+  ].filter(Boolean).join(' · ');
+  const jid = staffClientJs(item.id);
+  return `<article class="cr-card cr-status-${escapeHtml(item.status)}">
+    <div class="cr-card-head">
+      <div class="cr-card-ident">
+        <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
+        ${occ ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occKey)}">${escapeHtml(occ)}</span>` : ''}
+      </div>
+      ${renderStaffCustomRequestBadge(item.status)}
+    </div>
+    ${meta ? `<div class="cr-meta">${escapeHtml(meta)}</div>` : ''}
+    ${item.email ? `<div class="cr-meta cr-email">${escapeHtml(item.email)}</div>` : ''}
+    <p class="cr-message">${escapeHtml(item.message || '')}</p>
+    <div class="cr-actions">
+      ${item.email ? `<button type="button" onclick="composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
+      ${item.status !== 'in_progress' && item.status !== 'handled' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
+      ${item.status !== 'handled' ? `<button type="button" class="success" onclick="setStaffCustomRequestStatus(${jid}, 'handled')">Marquer traitée</button>` : ''}
+      <button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>
+    </div>
+  </article>`;
+}
+
+function renderStaffCustomRequestsPanel() {
+  const cache = staffCustomRequestsCache;
+  const items = (cache.items || []).filter(item => item.status !== 'archived');
+  const newCount = (cache.items || []).filter(item => item.status === 'new').length;
+  const head = `<div class="cr-panel-head">
+    <div>
+      <strong>Demandes sur mesure${newCount ? ` <span class="cr-count">${newCount}</span>` : ''}</strong>
+      <span>${cache.loading ? 'Chargement…' : `${items.length} demande(s) active(s)${newCount ? ` · ${newCount} nouvelle(s)` : ''}`}</span>
+    </div>
+    <button type="button" onclick="loadStaffCustomRequests(true)">Actualiser</button>
+  </div>`;
+  let body;
+  if (cache.loading && !items.length) {
+    body = `<div class="cr-empty">Lecture des demandes…</div>`;
+  } else if (cache.error) {
+    body = `<div class="cr-empty cr-error">${escapeHtml(cache.error)}</div>`;
+  } else if (!items.length) {
+    body = `<div class="cr-empty">Aucune demande sur mesure en attente. Les demandes entreprises et besoins spéciaux envoyées depuis la page client apparaissent ici, sans occuper le planning.</div>`;
+  } else {
+    body = items.map(renderStaffCustomRequestCard).join('');
+  }
+  return `<section class="cr-panel">${head}<div class="cr-list">${body}</div></section>`;
+}
+
 function getStaffClientTone(seed = '') {
   const tones = ['violet', 'blue', 'green', 'gold', 'teal'];
   const score = String(seed || 'client').split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -9217,7 +9503,18 @@ function buildStaffClientRowsFromReservations(reservations = []) {
       const daysSinceLast = profile.lastDate ? staffClientDaysBetween(todayStr(), profile.lastDate) : 999;
       const isNew = profile.firstDate && getMonthKey(profile.firstDate) === getMonthKey(state.currentDate || todayStr());
       const isGroup = profile.maxPax >= 10 || profile.players >= 18 || profile.formulas > 0;
-      const hasBirthday = profile.reservationsRaw.some(reservation => /anniversaire|birthday|enfant/i.test(`${reservation.name || ''} ${reservation.label || ''} ${reservation.notes || ''}`));
+      // Occasion DÉCLARÉE : on prend la plus récente réservation qui en porte une.
+      const declaredOccasionSource = [...profile.reservationsRaw]
+        .sort((left, right) => `${right.date || ''} ${right.startTime || ''}`.localeCompare(`${left.date || ''} ${left.startTime || ''}`))
+        .find(reservation => STAFF_OCCASION_LABELS[String(reservation.occasion || '').toLowerCase()]);
+      const declaredOccasion = declaredOccasionSource
+        ? String(declaredOccasionSource.occasion).toLowerCase()
+        : '';
+      // hasBirthday : occasion déclarée prioritaire ; repli regex UNIQUEMENT si
+      // aucune occasion n'a été déclarée (rétrocompat anciennes réservations).
+      const hasBirthday = declaredOccasion
+        ? declaredOccasion === 'anniversaire'
+        : profile.reservationsRaw.some(reservation => /anniversaire|birthday|enfant/i.test(`${reservation.name || ''} ${reservation.label || ''} ${reservation.notes || ''}`));
       const status = profile.revenue >= 500 || profile.visits >= 4
         ? 'Fidèle'
         : isNew
@@ -9234,13 +9531,15 @@ function buildStaffClientRowsFromReservations(reservations = []) {
       const lastBooking = sortedReservations.find(reservation => reservation.status !== 'cancelled') || sortedReservations[0] || null;
       const tags = [status];
       if (isGroup) tags.push('Groupe');
-      if (hasBirthday) tags.push('Anniversaire');
+      if (declaredOccasion && STAFF_OCCASION_LABELS[declaredOccasion]) tags.push(STAFF_OCCASION_LABELS[declaredOccasion]);
+      else if (hasBirthday) tags.push('Anniversaire');
       return {
         id: profile.id,
         key: profile.key,
         name: profile.name,
         email: profile.email,
         phone: profile.phone,
+        declaredOccasion,
         status,
         statusClass,
         lastVisit: formatStaffClientDateText(profile.lastDate),

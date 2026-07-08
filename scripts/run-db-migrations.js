@@ -45,6 +45,16 @@ const MIGRATIONS = [
     file: 'database/tenant-integrity-schema.sql',
     description: 'Foreign keys from center_id columns to centers(id)',
   },
+  {
+    id: '0009_reservation_occasion',
+    file: 'database/reservation-occasion-schema.sql',
+    description: 'Client-declared reservation occasion (birthday, company, school, ...)',
+  },
+  {
+    id: '0010_custom_requests',
+    file: 'database/custom-requests-schema.sql',
+    description: 'Custom / bespoke enquiry leads (companies, special needs)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

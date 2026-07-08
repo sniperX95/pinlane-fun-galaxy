@@ -11,7 +11,7 @@
   <link rel="preload" href="./assets/fonts/anton-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/montserrat-latin-600.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./assets/pinlane.css?v=geist-v2">
-  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260707a">
+  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260708d">
 </head>
 <body class="public-form">
   <div class="shell">
@@ -75,10 +75,44 @@
             Email <span aria-hidden="true">*</span>
             <input type="email" id="contactEmail" placeholder="Ex. sarah@email.com" required />
           </label>
+          <div class="occasion-field" style="margin-top:6px;">
+            <span class="occasion-label">Type de réservation / occasion (optionnel)</span>
+            <div class="occasion-chips" id="occasionChips" role="group" aria-label="Type de réservation ou occasion">
+              <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false">🎂 Anniversaire</button>
+              <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false">👥 Entre amis</button>
+              <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false">💼 Entreprise</button>
+              <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false">🎓 École / asso</button>
+              <button type="button" class="occasion-chip" data-occasion="autre" aria-pressed="false">✨ Autre</button>
+            </div>
+          </div>
           <label>
-            Note
-            <textarea id="contactNotes" placeholder="Anniversaire, demande speciale, info utile..."></textarea>
+            Demande particulière (optionnel)
+            <textarea id="contactNotes" placeholder="Gâteau, décoration, allergie, info utile..."></textarea>
           </label>
+        </div>
+
+        <div class="section">
+          <h2>Groupe, entreprise ou besoin spécial ?</h2>
+          <p class="tiny" style="margin:-4px 0 10px;">Privatisation, team-building, traiteur, facture entreprise… Faites une demande sur mesure : ce n'est pas une réservation ferme, on vous recontacte.</p>
+          <button type="button" class="cta cta-secondary" id="openCustomRequest">Faire une demande sur mesure</button>
+          <div id="customRequestForm" style="display:none;margin-top:14px;">
+            <div class="row">
+              <label>Nom du contact *<input type="text" id="crName" placeholder="Marie Dupont" /></label>
+              <label>Société (optionnel)<input type="text" id="crCompany" placeholder="Acme SA" /></label>
+            </div>
+            <div class="row">
+              <label>Email *<input type="email" id="crEmail" placeholder="marie@email.com" /></label>
+              <label>Téléphone (optionnel)<input type="tel" id="crPhone" placeholder="+32 470 00 00 00" /></label>
+            </div>
+            <div class="row">
+              <label>Date(s) souhaitée(s)<input type="text" id="crDate" placeholder="Ex. samedi 12 sept." /></label>
+              <label>Personnes (approx.)<input type="number" id="crPax" min="1" max="500" placeholder="Ex. 25" /></label>
+            </div>
+            <label>Décrivez votre besoin *<textarea id="crMessage" placeholder="Privatisation, traiteur, facture entreprise, budget..."></textarea></label>
+            <button type="button" class="cta" id="submitCustomRequest">Envoyer ma demande</button>
+            <div class="success" id="customRequestSuccess"></div>
+            <div class="notice" id="customRequestNotice" style="display:none;"></div>
+          </div>
         </div>
       </div>
 
@@ -111,7 +145,10 @@
       availability: null,
       selectedSlot: null,
       loadingAvailability: false,
+      occasion: '',
     };
+
+    const OCCASION_VALUES = ['anniversaire', 'amis', 'entreprise', 'ecole', 'autre'];
 
     const elements = {
       bookingDate: document.getElementById('bookingDate'),
@@ -454,6 +491,7 @@
         games: state.type === 'laser' ? getSelectedLaserOption().games : 0,
         label: availability.label,
         lanes: slot.lanes || [],
+        occasion: state.occasion || '',
         extras: [],
       };
 
@@ -473,12 +511,65 @@
         elements.contactPhone.value = '';
         elements.contactEmail.value = '';
         elements.contactNotes.value = '';
+        setFormOccasion('');
         await loadAvailability();
       } catch (error) {
         setAvailabilityNotice(error.message || "Impossible d'envoyer la réservation.", true);
       } finally {
         elements.submitButton.textContent = 'Envoyer la réservation';
         renderSummary();
+      }
+    }
+
+    function setFormOccasion(value) {
+      const next = OCCASION_VALUES.includes(value) && state.occasion !== value ? value : '';
+      state.occasion = next;
+      document.querySelectorAll('#occasionChips .occasion-chip').forEach((chip) => {
+        const active = chip.dataset.occasion === next;
+        chip.classList.toggle('active', active);
+        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    async function submitCustomRequest() {
+      const val = (id) => (document.getElementById(id)?.value || '').trim();
+      const name = val('crName');
+      const email = val('crEmail');
+      const message = val('crMessage');
+      const notice = document.getElementById('customRequestNotice');
+      const success = document.getElementById('customRequestSuccess');
+      const showNotice = (msg) => { notice.textContent = msg; notice.style.display = 'block'; notice.classList.add('warn'); };
+      notice.style.display = 'none';
+      success.style.display = 'none';
+
+      if (!name) { showNotice('Merci d\'indiquer le nom du contact.'); return; }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showNotice('Un email valide est requis.'); return; }
+      if (!message) { showNotice('Décrivez votre besoin en quelques mots.'); return; }
+
+      const button = document.getElementById('submitCustomRequest');
+      const payload = {
+        kind: 'custom-request',
+        contactName: name,
+        company: val('crCompany'),
+        email,
+        phone: val('crPhone'),
+        requestedDate: val('crDate'),
+        pax: Number(document.getElementById('crPax')?.value || 0) || 0,
+        occasion: state.occasion || '',
+        message,
+      };
+      try {
+        button.disabled = true;
+        button.textContent = 'Envoi en cours...';
+        await api('/api/custom-request', { method: 'POST', body: JSON.stringify(payload) });
+        document.getElementById('customRequestForm').querySelectorAll('input, textarea').forEach((el) => { el.value = ''; });
+        success.innerHTML = 'Demande bien envoyée ! Vous recevez un accusé par email et notre équipe vous recontacte rapidement.';
+        success.style.display = 'block';
+      } catch (error) {
+        showNotice(error.message || 'Impossible d\'envoyer la demande.');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Envoyer ma demande';
       }
     }
 
@@ -496,6 +587,15 @@
         loadAvailability();
       });
       elements.submitButton.addEventListener('click', submitReservation);
+      document.querySelectorAll('#occasionChips .occasion-chip').forEach((chip) => {
+        chip.addEventListener('click', () => setFormOccasion(chip.dataset.occasion));
+      });
+      document.getElementById('openCustomRequest').addEventListener('click', () => {
+        const form = document.getElementById('customRequestForm');
+        const open = form.style.display !== 'none';
+        form.style.display = open ? 'none' : 'block';
+      });
+      document.getElementById('submitCustomRequest').addEventListener('click', submitCustomRequest);
       renderDurationOptions();
       renderFormulaOptions();
       refreshLaneNotice();

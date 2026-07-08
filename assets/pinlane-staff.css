@@ -7458,3 +7458,143 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .groups-ledger-row .groups-profile-cell { grid-column: 1 / -1; }
   .groups-row-actions { justify-self: end; }
 }
+
+/* === Occasion DÉCLARÉE + file demandes sur mesure (CHANTIER 1 & 2) ======== */
+.res-occasion-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  background: var(--accent-soft);
+  color: var(--accent-strong, var(--accent));
+  white-space: nowrap;
+}
+.res-occasion-anniversaire { background: #fde8f3; color: #b3266b; }
+.res-occasion-entreprise { background: #e5edff; color: #2647b3; }
+.res-occasion-ecole { background: #e6f6ec; color: #1c7a44; }
+.res-occasion-amis { background: #fff2e0; color: #a85a12; }
+.res-occasion-autre { background: var(--subtle); color: var(--text-2); }
+[data-theme="dark"] .res-occasion-anniversaire { background: rgba(179,38,107,0.22); color: #f7a8cf; }
+[data-theme="dark"] .res-occasion-entreprise { background: rgba(38,71,179,0.24); color: #a8bef7; }
+[data-theme="dark"] .res-occasion-ecole { background: rgba(28,122,68,0.24); color: #93e0b0; }
+[data-theme="dark"] .res-occasion-amis { background: rgba(168,90,18,0.24); color: #f3c58a; }
+.res-special-request {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* File des demandes sur mesure (leads hors planning) */
+.cr-panel {
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+}
+.cr-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.cr-panel-head strong { display: block; font-size: 15px; font-weight: 700; }
+.cr-panel-head span { font-size: 12.5px; color: var(--text-2); }
+.cr-panel-head button {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cr-panel-head button:hover { border-color: var(--border-hover); }
+.cr-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cr-list { display: grid; gap: 12px; }
+.cr-empty {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.cr-empty.cr-error { color: var(--danger); border-color: var(--danger); }
+.cr-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+.cr-card.cr-status-new { border-left-color: var(--accent); }
+.cr-card.cr-status-in_progress { border-left-color: #a85a12; }
+.cr-card.cr-status-handled { border-left-color: var(--success); opacity: 0.82; }
+.cr-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.cr-card-ident { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cr-card-ident strong { font-size: 14px; font-weight: 700; }
+.cr-meta { font-size: 12.5px; color: var(--text-2); margin-bottom: 2px; }
+.cr-email { color: var(--accent-strong, var(--accent)); }
+.cr-message {
+  margin: 8px 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.cr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cr-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.cr-actions button:hover { border-color: var(--border-hover); }
+.cr-actions button.success { border-color: var(--success); color: var(--success); }
+.cr-actions button.ghost { color: var(--text-2); }
+.cr-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cr-badge-new { background: var(--accent-soft); color: var(--accent-strong, var(--accent)); }
+.cr-badge-progress { background: #fff2e0; color: #a85a12; }
+.cr-badge-handled { background: #e6f6ec; color: #1c7a44; }
+.cr-badge-archived { background: var(--subtle); color: var(--text-2); }

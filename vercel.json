@@ -27,6 +27,10 @@
       "destination": "/api/public-booking-meta"
     },
     {
+      "source": "/api/custom-request",
+      "destination": "/api/public-booking-meta"
+    },
+    {
       "source": "/api/cron/dispatch-communications",
       "destination": "/api/cron?action=dispatch-communications"
     },

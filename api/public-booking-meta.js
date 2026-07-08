@@ -1,32 +1,99 @@
 const { DURATION_OPTIONS, FORMULES, todayStr } = require('../lib/booking-config');
-const { getPool } = require('../lib/database');
+const { getPool, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { sendCustomRequestAck } = require('../lib/ops-communications');
 
-// This function serves two public surfaces to stay under the Vercel Hobby
+// This function serves several public surfaces to stay under the Vercel Hobby
 // 12-function limit:
 //   GET  /api/public-booking-meta  -> booking catalog for the public forms
-//   POST /api/pilot-lead           -> pilot lead capture (rewritten here in
-//                                      vercel.json; keeps the clean URL for free)
+//   POST /api/pilot-lead           -> pilot lead capture (SaaS landing)
+//   POST /api/custom-request       -> bespoke enquiry lead (companies / special
+//                                      needs). Both POSTs are rewritten here in
+//                                      vercel.json; discriminated by body.kind.
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CUSTOM_REQUEST_OCCASIONS = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'autre']);
 
 function clean(value, maxLength) {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, maxLength);
 }
 
-async function handlePilotLead(req, res) {
-  if (enforceRateLimit(req, res, { scope: 'pilot-lead', limit: 5, windowMs: 600_000 })) {
+// LEAD sur mesure : enregistré hors planning (table custom_requests), jamais
+// dans reservations. Renvoie 201 même si l'accusé email échoue (best-effort).
+async function handleCustomRequest(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'custom-request', limit: 5, windowMs: 600_000 })) {
     return;
   }
 
-  let body;
+  const contactName = clean(body.contactName ?? body.name, 160);
+  const email = clean(body.email, 200);
+  const phone = clean(body.phone, 60);
+  const company = clean(body.company, 160);
+  const requestedDate = clean(body.requestedDate ?? body.date, 120);
+  const message = clean(body.message ?? body.notes, 2000);
+  const occasionRaw = clean(body.occasion, 40).toLowerCase();
+  const occasion = CUSTOM_REQUEST_OCCASIONS.has(occasionRaw) ? occasionRaw : '';
+  const pax = Math.max(0, Math.trunc(Number(body.pax) || 0));
+  const centerId = clean(body.centerId ?? body.center_id, 60) || 'libramont';
+
+  if (!contactName || !email) {
+    sendError(res, 400, 'Nom du contact et email sont obligatoires.');
+    return;
+  }
+  if (!EMAIL_PATTERN.test(email)) {
+    sendError(res, 400, 'Adresse email invalide.');
+    return;
+  }
+  if (!message) {
+    sendError(res, 400, 'Merci de décrire votre besoin.');
+    return;
+  }
+
+  let lead;
   try {
-    body = await readJson(req);
+    lead = await createCustomRequest({
+      centerId,
+      contactName,
+      company,
+      email,
+      phone,
+      requestedDate,
+      pax,
+      occasion,
+      message,
+      source: 'client',
+      payload: { userAgent: clean(req.headers?.['user-agent'], 400) },
+    });
   } catch (error) {
-    sendError(res, error.statusCode || 400, error.message || 'Requête invalide.');
+    sendError(res, 503, 'Demande non enregistrée, réessayez dans un instant.');
+    return;
+  }
+
+  // Accusé de réception client (best-effort, tracé mais non bloquant).
+  const ack = await sendCustomRequestAck({
+    id: lead.id,
+    email: lead.email,
+    contactName: lead.contactName,
+    company: lead.company,
+    occasion: lead.occasion,
+    requestedDate: lead.requestedDate,
+    pax: lead.pax,
+    message: lead.message,
+  }).catch((error) => ({ skipped: true, reason: error.message || 'Envoi impossible.' }));
+
+  sendJson(res, 201, {
+    ok: true,
+    id: lead.id,
+    acknowledgementSent: Boolean(ack && ack.ok),
+    acknowledgement: ack || null,
+  });
+}
+
+async function handlePilotLead(req, res, body) {
+  if (enforceRateLimit(req, res, { scope: 'pilot-lead', limit: 5, windowMs: 600_000 })) {
     return;
   }
 
@@ -79,7 +146,20 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === 'POST') {
-    await handlePilotLead(req, res);
+    let body;
+    try {
+      body = await readJson(req);
+    } catch (error) {
+      sendError(res, error.statusCode || 400, error.message || 'Requête invalide.');
+      return;
+    }
+    const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+    const isCustomRequest = body?.kind === 'custom-request' || url.pathname.endsWith('/custom-request');
+    if (isCustomRequest) {
+      await handleCustomRequest(req, res, body || {});
+      return;
+    }
+    await handlePilotLead(req, res, body || {});
     return;
   }
 

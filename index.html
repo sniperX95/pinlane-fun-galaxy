@@ -11,15 +11,15 @@
 <link rel="preload" href="./assets/fonts/anton-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/montserrat-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260703b">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260708h">
-<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260708c">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260708i">
+<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260708d">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260707a"></script>
 <script defer src="./assets/booking-core.js?v=20260707a"></script>
 <script defer src="./assets/admin-console.js?v=20260708j"></script>
 <script defer src="./assets/ops-console.js?v=20260708j"></script>
-<script defer src="./assets/app-main.js?v=20260708j"></script>
+<script defer src="./assets/app-main.js?v=20260708k"></script>
 <script defer src="./assets/staff-menu.js?v=20260703j"></script>
 <script defer src="./assets/staff-pages-v2.js?v=20260704c"></script>
 <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
@@ -240,6 +240,17 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
         </div>
+
+        <button type="button" class="bespoke-entry slide-up" onclick="openCustomRequestModal()">
+          <span class="bespoke-entry-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+          </span>
+          <span class="bespoke-entry-text">
+            <strong>Groupe, entreprise ou besoin spécial ?</strong>
+            <small>Privatisation, team-building, traiteur, facture entreprise… Faites une demande sur mesure, on vous recontacte.</small>
+          </span>
+          <svg class="bespoke-entry-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
       </div>
 
       <div id="step2" class="step hidden">
@@ -289,6 +300,23 @@
               <input id="fEmail" type="email" class="input" placeholder="marie@email.com" required/>
             </div>
           </div>
+
+          <div class="occasion-field" style="margin-top:20px;">
+            <label class="lbl">Type de réservation / occasion <span class="lbl-optional">(optionnel)</span></label>
+            <div class="occasion-chips" id="occasionChips" role="group" aria-label="Type de réservation ou occasion">
+              <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false" onclick="setBookingOccasion('anniversaire')">🎂 Anniversaire</button>
+              <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false" onclick="setBookingOccasion('amis')">👥 Entre amis</button>
+              <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false" onclick="setBookingOccasion('entreprise')">💼 Entreprise</button>
+              <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false" onclick="setBookingOccasion('ecole')">🎓 École / asso</button>
+              <button type="button" class="occasion-chip" data-occasion="autre" aria-pressed="false" onclick="setBookingOccasion('autre')">✨ Autre</button>
+            </div>
+          </div>
+
+          <div class="occasion-field" style="margin-top:16px;">
+            <label class="lbl" for="fSpecialRequest">Demande particulière <span class="lbl-optional">(optionnel)</span></label>
+            <textarea id="fSpecialRequest" class="input" rows="2" maxlength="500" placeholder="Gâteau, décoration, allergie, chaise haute, info utile…"></textarea>
+          </div>
+
           <div class="info-box" style="margin-top:22px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <div>Confirmation envoyée par email. Paiement sur place.</div>
@@ -349,6 +377,66 @@
           </div>
 
           <button class="btn-secondary" onclick="resetBooking()" style="margin-top:14px;">Faire une autre réservation</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="customRequestModal" class="bespoke-modal hidden" role="dialog" aria-modal="true" aria-labelledby="bespokeTitle" onclick="if(event.target===this)closeCustomRequestModal()">
+    <div class="bespoke-modal-card">
+      <button type="button" class="bespoke-modal-close" aria-label="Fermer" onclick="closeCustomRequestModal()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="bespoke-modal-head">
+        <h2 id="bespokeTitle">Demande sur mesure</h2>
+        <p>Décrivez votre besoin (entreprise, privatisation, événement…). Ce n'est pas une réservation ferme : on revient vers vous rapidement.</p>
+      </div>
+      <div id="bespokeSuccess" class="bespoke-success hidden"></div>
+      <div id="bespokeForm">
+        <div class="grid-2">
+          <div>
+            <label class="lbl" for="crName">Nom du contact *</label>
+            <input id="crName" class="input" placeholder="Marie Dupont" />
+          </div>
+          <div>
+            <label class="lbl" for="crCompany">Société <span class="lbl-optional">(optionnel)</span></label>
+            <input id="crCompany" class="input" placeholder="Ex. Acme SA" />
+          </div>
+          <div>
+            <label class="lbl" for="crEmail">Email *</label>
+            <input id="crEmail" type="email" class="input" placeholder="marie@email.com" />
+          </div>
+          <div>
+            <label class="lbl" for="crPhone">Téléphone <span class="lbl-optional">(optionnel)</span></label>
+            <input id="crPhone" type="tel" class="input" placeholder="+32 470 00 00 00" />
+          </div>
+          <div>
+            <label class="lbl" for="crDate">Date(s) souhaitée(s)</label>
+            <input id="crDate" class="input" placeholder="Ex. samedi 12 sept. ou mi-octobre" />
+          </div>
+          <div>
+            <label class="lbl" for="crPax">Personnes (approx.)</label>
+            <input id="crPax" type="number" min="1" max="500" class="input" placeholder="Ex. 25" />
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="lbl">Type d'occasion <span class="lbl-optional">(optionnel)</span></label>
+          <div class="occasion-chips" id="crOccasionChips" role="group" aria-label="Type d'occasion">
+            <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false" onclick="setCustomRequestOccasion('anniversaire')">🎂 Anniversaire</button>
+            <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false" onclick="setCustomRequestOccasion('amis')">👥 Entre amis</button>
+            <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false" onclick="setCustomRequestOccasion('entreprise')">💼 Entreprise</button>
+            <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false" onclick="setCustomRequestOccasion('ecole')">🎓 École / asso</button>
+            <button type="button" class="occasion-chip" data-occasion="autre" aria-pressed="false" onclick="setCustomRequestOccasion('autre')">✨ Autre</button>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="lbl" for="crMessage">Décrivez votre besoin *</label>
+          <textarea id="crMessage" class="input" rows="4" maxlength="2000" placeholder="Privatisation, traiteur, facture entreprise, budget, contraintes horaires…"></textarea>
+        </div>
+        <div id="bespokeError" class="bespoke-error hidden"></div>
+        <div class="step-actions" style="margin-top:18px;">
+          <button type="button" class="btn-secondary" onclick="closeCustomRequestModal()">Annuler</button>
+          <button type="button" class="btn-primary" id="crSubmit" style="flex:1" onclick="submitCustomRequest()">Envoyer ma demande</button>
         </div>
       </div>
     </div>

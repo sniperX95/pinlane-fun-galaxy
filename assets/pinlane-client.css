@@ -3274,3 +3274,146 @@ body.client-mode .view-switch button.active {
   cursor: pointer;
 }
 #clientView .formula-order-fallback-btn:hover { border-color: var(--accent); }
+
+/* === Occasion déclarée + demande sur mesure (CHANTIER 1 & 2) ============== */
+.lbl-optional { color: var(--text-3); font-weight: 500; font-size: 0.9em; }
+
+.occasion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.occasion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.occasion-chip:hover { background: var(--subtle); }
+.occasion-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* Entrée « demande sur mesure » sous l'étape 1 */
+.bespoke-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: 16px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+.bespoke-entry:hover { border-color: var(--accent); background: var(--subtle); }
+.bespoke-entry-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.bespoke-entry-text { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.bespoke-entry-text strong { font-size: 14.5px; font-weight: 600; }
+.bespoke-entry-text small { font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
+.bespoke-entry-chevron { flex-shrink: 0; color: var(--text-3); }
+
+/* Modale demande sur mesure */
+body.modal-open { overflow: hidden; }
+.bespoke-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-4);
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+.bespoke-modal.hidden { display: none; }
+.bespoke-modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  margin: auto;
+  padding: 26px 24px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg, var(--surface));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.bespoke-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.bespoke-modal-close:hover { background: var(--subtle); color: var(--text); }
+.bespoke-modal-head { margin-bottom: var(--space-3); padding-right: 36px; }
+.bespoke-modal-head h2 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+.bespoke-modal-head p { font-size: 13px; color: var(--text-2); line-height: 1.5; margin: 0; }
+.bespoke-success {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 13.5px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+.bespoke-error {
+  margin-top: var(--space-3);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 500;
+}
+.bespoke-modal .hidden { display: none; }
+
+/* Type déclaré affiché sur une fiche réservation client */
+.occasion-field textarea.input { resize: vertical; min-height: 46px; }
+
+/* Libellé de groupe occasion sur le formulaire public standalone */
+.occasion-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+.cta-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+}
+.cta-secondary:hover { background: var(--subtle); }

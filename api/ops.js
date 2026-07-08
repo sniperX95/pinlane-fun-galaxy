@@ -47,7 +47,7 @@ const {
   upsertCenter,
   setCenterStatus,
 } = require('../lib/center-config');
-const { getPool } = require('../lib/database');
+const { getPool, listCustomRequests, updateCustomRequestStatus } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 
@@ -226,6 +226,18 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 20),
     });
     sendJson(res, 200, { ok: true, health });
+    return;
+  }
+
+  // File staff des demandes SUR MESURE (leads hors planning). PII client :
+  // l'auth est déjà appliquée en amont (getRequiredOpsPermission GET).
+  if (action === 'customRequests') {
+    const requests = await listCustomRequests({
+      centerId,
+      status: url.searchParams.get('status') || '',
+      limit: Number(url.searchParams.get('limit') || 100),
+    });
+    sendJson(res, 200, { ok: true, centerId, customRequests: requests });
     return;
   }
 
@@ -880,6 +892,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Mise à jour du statut d'une demande sur mesure (nouvelle → traitée…).
+  if (action === 'customRequestStatus') {
+    const request = await updateCustomRequestStatus(body.id, body.status);
+    sendJson(res, 200, { ok: true, action, customRequest: request });
+    return;
+  }
+
   sendError(res, 400, 'Action Ops POST inconnue.');
 }
 
@@ -888,8 +907,10 @@ function getRequiredOpsPermission(method, action) {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
     if (action === 'health') return ['dashboard.view', 'ai.ops'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
+    if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     return 'ai.ops';
   }
+  if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';
   if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';

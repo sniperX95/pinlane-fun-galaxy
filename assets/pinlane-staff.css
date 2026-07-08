@@ -2535,6 +2535,40 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-alert-dot.maintenance { background: var(--muted); }
 .dash-alert-dot.formula { background: var(--accent); }
 .dash-alert-dot.info { background: var(--line-strong); }
+.dash-alert-dot.review { background: var(--info); }
+
+/* Alerte compacte : bouton d'action rapide (CTA) + « Voir » côte à côte. */
+.dash-alert-actions { display: flex; gap: 6px; align-items: center; }
+.dash-alert-actions .dash-alert-cta { background: var(--text); border-color: var(--text); color: var(--surface); font-weight: 600; }
+.dash-alert-actions .dash-alert-cta:hover { background: var(--text); color: var(--surface); opacity: 0.88; }
+
+/* Boutons d'action « réels » dans la modale détail (Valider, Encaisser, Ouvrir…). */
+.dashboard-detail-row-actions button.primary,
+.dashboard-detail-actions button.primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+.dashboard-detail-row-actions button.primary:hover,
+.dashboard-detail-actions button.primary:hover { background: var(--text); color: var(--surface); opacity: 0.88; }
+
+/* Puce piste en maintenance avec bouton « Libérer » intégré. */
+.dashboard-detail-lane-chips span.lane-chip { display: inline-flex; align-items: center; gap: 7px; padding-right: 3px; }
+.dashboard-detail-lane-chips .lane-release {
+  min-height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--text);
+  border-radius: var(--radius-full);
+  background: var(--text);
+  color: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--dur) var(--ease);
+}
+.dashboard-detail-lane-chips .lane-release:hover { opacity: 0.85; }
 
 .dash-revenue-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: var(--space-3); flex-wrap: wrap; }
 .dash-revenue-head strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }

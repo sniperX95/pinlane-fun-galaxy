@@ -282,6 +282,19 @@ async function installQaApi(page) {
 
       if (url.pathname === '/api/staff-state') {
         const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+        // Override mutable (scénario « alertes actionnables ») : agit comme la base
+        // serveur pour que les polls restent cohérents avec les résolutions (paiement,
+        // validation, libération piste) au lieu de tout réécraser.
+        const override = window.__PINLANE_QA_STATE_OVERRIDE__;
+        if (override && override.date === date) {
+          return jsonResponse({
+            ok: true,
+            revision: `visual-qa-override-${override.rev || 0}`,
+            reservations: override.reservations,
+            laneStatuses: override.laneStatuses,
+            centerId: 'libramont',
+          });
+        }
         return jsonResponse({
           ok: true,
           revision: `visual-qa-${date}`,
@@ -475,6 +488,44 @@ async function installQaApi(page) {
         window.__PINLANE_QA_RES_POSTS__ = window.__PINLANE_QA_RES_POSTS__ || [];
         window.__PINLANE_QA_RES_POSTS__.push(body);
         return jsonResponse({ ok: true, reservation: { ...body, id: 9990 } });
+      }
+
+      if (url.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'PATCH') {
+        const body = JSON.parse(init.body || '{}');
+        window.__PINLANE_QA_RES_PATCHES__ = window.__PINLANE_QA_RES_PATCHES__ || [];
+        window.__PINLANE_QA_RES_PATCHES__.push(body);
+        // Le serveur renvoie la réservation complète : on fusionne le patch sur
+        // l'état courant pour que la mise à jour optimiste ne perde aucun champ.
+        let merged = { ...body };
+        const override = window.__PINLANE_QA_STATE_OVERRIDE__;
+        if (override && Array.isArray(override.reservations)) {
+          const idx = override.reservations.findIndex((item) => Number(item.id) === Number(body.id));
+          if (idx >= 0) {
+            override.reservations[idx] = { ...override.reservations[idx], ...body };
+            override.rev = (override.rev || 0) + 1;
+            merged = override.reservations[idx];
+          }
+        } else {
+          try {
+            if (typeof state !== 'undefined' && Array.isArray(state.reservations)) {
+              const found = state.reservations.find((item) => Number(item.id) === Number(body.id));
+              if (found) merged = { ...found, ...body };
+            }
+          } catch (error) { /* état applicatif non prêt : on renvoie le patch brut */ }
+        }
+        return jsonResponse({ ok: true, reservation: merged, automation: { communications: 0, jobs: 0, refreshed: true } });
+      }
+
+      if (url.pathname === '/api/staff-lanes' && String(init.method || 'GET').toUpperCase() === 'PATCH') {
+        const body = JSON.parse(init.body || '{}');
+        window.__PINLANE_QA_LANE_PATCHES__ = window.__PINLANE_QA_LANE_PATCHES__ || [];
+        window.__PINLANE_QA_LANE_PATCHES__.push(body);
+        const laneOverride = window.__PINLANE_QA_STATE_OVERRIDE__;
+        if (laneOverride && laneOverride.laneStatuses) {
+          laneOverride.laneStatuses[body.lane] = body.status;
+          laneOverride.rev = (laneOverride.rev || 0) + 1;
+        }
+        return jsonResponse({ ok: true, lane: { lane: body.lane, status: body.status } });
       }
 
       if (url.pathname === '/api/public-booking-meta') {
@@ -1069,6 +1120,117 @@ async function main() {
     assert(commSend && commSend.channel === 'email', 'Comm : l’envoi email trace un message côté serveur.');
     await page.evaluate(() => closeCommCenter());
     await page.waitForTimeout(200);
+
+    // ---- Alertes dashboard ACTIONNABLES : chaque alerte mène à une résolution
+    // réelle (bouton qui agit) et se résorbe automatiquement après action.
+    await page.evaluate(() => {
+      const d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+      const reservations = [
+        { id: 7101, name: 'Paiement Ouvert', phone: '+32470000001', email: 'pay@example.test', date: d, startTime: '14:00', duration: 1, lanes: [1], status: 'arrived', pax: 4, price: 60, type: 'bowling', validationStatus: 'confirmed' },
+        { id: 7102, name: 'A Verifier', phone: '+32470000002', email: 'verif@example.test', date: d, startTime: '15:00', duration: 1, lanes: [2], status: 'pending', pax: 6, price: 90, type: 'bowling', validationStatus: 'staff_review', riskLevel: 'high' },
+      ];
+      const laneStatuses = typeof window.__PINLANE_QA_LANES__ === 'function' ? window.__PINLANE_QA_LANES__() : {};
+      laneStatuses[3] = 'maintenance';
+      // Override serveur mutable : les polls staff-state resteront cohérents avec
+      // les résolutions déclenchées par les boutons d'alerte.
+      window.__PINLANE_QA_STATE_OVERRIDE__ = {
+        date: d,
+        rev: 1,
+        reservations: JSON.parse(JSON.stringify(reservations)),
+        laneStatuses: JSON.parse(JSON.stringify(laneStatuses)),
+      };
+      state.currentDate = d;
+      state.staffMenuPage = 'dashboard';
+      state.staffTheme = 'dark';
+      state.reservations = reservations;
+      state.laneStatuses = laneStatuses;
+      save();
+      setView('staff');
+      renderStaff();
+    });
+
+    // Paiement à encaisser → bouton « Encaisser » réel dans « Voir toutes ».
+    const payBefore = await page.evaluate(() => {
+      openStaffDashboardDetail('alerts', 'payment');
+      const overlay = document.getElementById('staffDashboardDetailOverlay');
+      const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
+      const pay = alerts.find((a) => a.kind === 'payment');
+      return { hasBtn: /Encaisser/.test(overlay ? overlay.innerHTML : ''), count: pay ? pay.rows.length : 0 };
+    });
+    assert(payBefore.hasBtn, 'Alerte paiement : bouton « Encaisser » réel présent dans « Voir toutes ».');
+    assert(payBefore.count >= 1, 'Alerte paiement : au moins une réservation non payée listée.');
+    await screenshot(page, 'alert-payment-actionable');
+    await page.evaluate(() => dashboardDetailSetStatus(7101, 'paid'));
+    await page.waitForTimeout(500);
+    const payAfter = await page.evaluate(() => {
+      const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
+      const pay = alerts.find((a) => a.kind === 'payment');
+      const r = state.reservations.find((x) => Number(x.id) === 7101);
+      return { count: pay ? pay.rows.length : 0, status: r && r.status };
+    });
+    assert(payAfter.status === 'paid', 'Alerte paiement : « Encaisser » marque bien la réservation payée (serveur).');
+    assert(payAfter.count === payBefore.count - 1, 'Alerte paiement : la file décrémente après encaissement.');
+
+    // Réservations à vérifier → file de validation avec « Valider » par item.
+    const reviewBefore = await page.evaluate(() => {
+      openStaffDashboardDetail('alerts', 'review');
+      const overlay = document.getElementById('staffDashboardDetailOverlay');
+      const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
+      const review = alerts.find((a) => a.kind === 'review');
+      return {
+        hasBtn: /Valider/.test(overlay ? overlay.innerHTML : ''),
+        hasContact: /Contacter/.test(overlay ? overlay.innerHTML : ''),
+        count: review ? review.rows.length : 0,
+      };
+    });
+    assert(reviewBefore.hasBtn, 'File de validation : bouton « Valider » réel présent.');
+    assert(reviewBefore.hasContact, 'File de validation : bouton « Contacter » (comm center) présent.');
+    assert(reviewBefore.count >= 1, 'File de validation : au moins une réservation à vérifier.');
+    await screenshot(page, 'alert-review-queue');
+    await page.evaluate(() => dashboardDetailValidate(7102));
+    await page.waitForTimeout(500);
+    const reviewAfter = await page.evaluate(() => {
+      const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
+      const review = alerts.find((a) => a.kind === 'review');
+      const r = state.reservations.find((x) => Number(x.id) === 7102);
+      const patched = (window.__PINLANE_QA_RES_PATCHES__ || []).some((p) => Number(p.id) === 7102 && p.validationStatus === 'confirmed');
+      return { count: review ? review.rows.length : 0, validation: r && r.validationStatus, patched };
+    });
+    assert(reviewAfter.validation === 'confirmed', 'File de validation : « Valider » confirme la réservation.');
+    assert(reviewAfter.patched, 'File de validation : « Valider » PATCH validationStatus=confirmed côté serveur.');
+    assert(!reviewAfter.count, 'File de validation : l’item quitte la file après validation.');
+
+    // Pistes en maintenance → bouton « Libérer » par piste.
+    const maintBefore = await page.evaluate(() => {
+      openStaffDashboardDetail('alerts', 'maintenance');
+      const overlay = document.getElementById('staffDashboardDetailOverlay');
+      const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
+      const maint = alerts.find((a) => a.kind === 'maintenance');
+      return {
+        hasBtn: /Libérer/.test(overlay ? overlay.innerHTML : ''),
+        showsLane3: /Piste 3/.test(overlay ? overlay.innerHTML : ''),
+        lanes: maint ? maint.lanes.slice() : [],
+      };
+    });
+    assert(maintBefore.hasBtn, 'Alerte maintenance : bouton « Libérer » réel présent.');
+    assert(maintBefore.showsLane3 && maintBefore.lanes.includes(3), 'Alerte maintenance : la piste 3 est correctement identifiée (off-by-one corrigé).');
+    await screenshot(page, 'alert-maintenance-release');
+    await page.evaluate(() => dashboardDetailReleaseLane(3));
+    await page.waitForTimeout(500);
+    const maintAfter = await page.evaluate(() => {
+      const alerts = getStaffDashboardAlertDefinitions(getStaffDashboardMetrics(todaysReservations()));
+      const maint = alerts.find((a) => a.kind === 'maintenance');
+      const patched = (window.__PINLANE_QA_LANE_PATCHES__ || []).some((p) => Number(p.lane) === 3 && p.status === 'active');
+      return { active: state.laneStatuses[3], present: Boolean(maint), patched };
+    });
+    assert(maintAfter.active === 'active', 'Alerte maintenance : « Libérer » réactive la piste 3.');
+    assert(maintAfter.patched, 'Alerte maintenance : « Libérer » PATCH la piste (status=active) côté serveur.');
+    assert(!maintAfter.present, 'Alerte maintenance : l’alerte disparaît une fois la piste libérée.');
+    await page.evaluate(() => closeStaffDashboardDetail());
+    await page.waitForTimeout(150);
+    // Nettoie l'override et restaure le jeu de données standard pour la suite.
+    await page.evaluate(() => { window.__PINLANE_QA_STATE_OVERRIDE__ = null; });
+    await seedStressDay(page);
 
     await renderStaffPage(page, 'emails');
     await screenshot(page, 'staff-emails-stress');

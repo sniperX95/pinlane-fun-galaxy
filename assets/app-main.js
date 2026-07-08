@@ -3971,8 +3971,23 @@ function renderStaffDashboardAlerts(metrics) {
   return alerts.slice(0, 4).map(alert => `<div class="dash-alert-row ${escapeHtml(alert.kind)}">
     <span class="dash-alert-dot ${escapeHtml(alert.kind)}" aria-hidden="true"></span>
     <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
-    <button type="button" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">Voir</button>
+    <div class="dash-alert-actions">
+      <button type="button" class="dash-alert-cta" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>
+      <button type="button" class="dash-alert-see" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">Voir</button>
+    </div>
   </div>`).join('');
+}
+
+// Libellé du bouton d'action rapide inline selon le type d'alerte : mène
+// directement à la surface de résolution (détail « Voir toutes ») pré-filtrée.
+function getStaffAlertCtaLabel(kind) {
+  return {
+    payment: 'Encaisser',
+    review: 'Vérifier',
+    warning: 'Traiter',
+    maintenance: 'Libérer',
+    formula: 'Cadencer'
+  }[kind] || 'Résoudre';
 }
 
 function niceRevenueScale(rawMax) {
@@ -4073,6 +4088,21 @@ function getStaffDashboardAlertDefinitions(metrics) {
         : 'Encaisser ou clôturer les réservations restées ouvertes.'
     });
   }
+  const reviewRows = metrics.activeReservations.filter(reservation =>
+    reservation.status !== 'cancelled'
+    && reservation.validationStatus !== 'confirmed'
+    && (reservation.validationStatus === 'staff_review'
+      || reservation.riskLevel === 'high'
+      || reservation.riskLevel === 'critical'));
+  if (reviewRows.length) {
+    alerts.push({
+      kind: 'review',
+      title: 'Réservations à vérifier',
+      text: `${reviewRows.length} réservation${reviewRows.length > 1 ? 's' : ''} en attente de validation staff`,
+      rows: reviewRows,
+      action: 'Valider, ouvrir la fiche ou contacter le client pour lever le doute sur chaque réservation.'
+    });
+  }
   const lateLaserWindows = metrics.laserWindows.filter(window => window.end > metrics.planningWindow.close);
   if (lateLaserWindows.length) {
     const rows = [...new Map(lateLaserWindows.map(window => [window.reservation.id, window.reservation])).values()];
@@ -4088,7 +4118,8 @@ function getStaffDashboardAlertDefinitions(metrics) {
   }
   const maintenanceLanes = Object.entries(state.laneStatuses || {})
     .filter(([, status]) => status === 'maintenance')
-    .map(([lane]) => Number(lane) + 1);
+    .map(([lane]) => Number(lane))
+    .sort((a, b) => a - b);
   if (maintenanceLanes.length) {
     alerts.push({
       kind: 'maintenance',
@@ -4096,7 +4127,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
       text: `Piste${maintenanceLanes.length > 1 ? 's' : ''} ${maintenanceLanes.join(', ')} bloquée${maintenanceLanes.length > 1 ? 's' : ''}`,
       lanes: maintenanceLanes,
       rows: [],
-      action: 'Garder ces pistes bloquées tant que le responsable terrain ne les a pas libérées.'
+      action: 'Libérer chaque piste dès que le responsable terrain confirme qu\'elle est de nouveau exploitable.'
     });
   }
   const comboRows = metrics.activeReservations.filter(reservation =>
@@ -4125,9 +4156,134 @@ function closeStaffDashboardDetail() {
 function dashboardDetailSetStatus(id, status, ev) {
   if (ev) ev.stopPropagation();
   setReservationStatusDirect(id, status, ev);
-  const type = state.dashboardDetailType || 'arrivals';
+  refreshStaffDashboardDetailSoon();
+}
+
+// Recalcule les metrics + alertes et re-render : le panneau dashboard en
+// arrière-plan ET la modale « Voir toutes » ouverte décrémentent tout seuls
+// après une résolution (paiement, validation, libération de piste…).
+function refreshStaffDashboardDetailSoon(delay = 160) {
+  const type = state.dashboardDetailType || 'alerts';
   const kind = state.dashboardDetailKind || '';
-  window.setTimeout(() => openStaffDashboardDetail(type, kind), 140);
+  window.setTimeout(() => {
+    if (typeof renderStaffData === 'function' && state.view === 'staff' && state.staffMenuPage === 'dashboard') {
+      try { renderStaffData(); } catch (error) { /* le dashboard peut ne plus être monté */ }
+    }
+    if (document.getElementById('staffDashboardDetailOverlay')) openStaffDashboardDetail(type, kind);
+  }, delay);
+}
+
+// Ouvre la fiche réservation pré-sélectionnée depuis une alerte.
+function dashboardDetailOpenReservation(id) {
+  closeStaffDashboardDetail();
+  openPos(id);
+}
+
+// Ouvre le centre de communication (mail + SMS) pour contacter le client
+// concerné par l'alerte, en réutilisant le module existant.
+function dashboardDetailContact(id) {
+  closeStaffDashboardDetail();
+  openCommCenter(id);
+}
+
+// Valide une réservation en attente (staff_review / risque élevé) puis
+// re-render : l'item quitte la file de validation.
+function dashboardDetailValidate(id, ev) {
+  if (ev) ev.stopPropagation();
+  validateReservationDirect(id, ev);
+  refreshStaffDashboardDetailSoon(200);
+}
+
+// PATCH minimal (validationStatus='confirmed', skipReplan) : confirme la résa
+// sans re-planifier. Optimiste + rollback, cohérent avec setReservationStatusDirect.
+function validateReservationDirect(id, ev) {
+  if (ev) ev.stopPropagation();
+  if (!canUseStaffPermission('reservations.edit')) {
+    toast('Validation réservée à un rôle autorisé.');
+    return;
+  }
+  const key = String(id);
+  const current = state.reservations.find(r => String(r.id) === key) || findStaffReservationById(id);
+  if (!current) {
+    toast('Réservation introuvable.');
+    return;
+  }
+  if (current.validationStatus === 'confirmed') {
+    toast('Réservation déjà validée.');
+    return;
+  }
+  const nextReservation = { ...current, validationStatus: 'confirmed' };
+  markReservationMutation(id, nextReservation, ['validationStatus']);
+  applyOptimisticReservation(nextReservation, { preserveEditState: true });
+  apiRequest(API_ENDPOINTS.staffReservations, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      id: Number(id),
+      centerId: current.centerId || current.center_id || getCurrentStaffCenterId(),
+      validationStatus: 'confirmed',
+      skipReplan: true
+    })
+  }).then(payload => {
+    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    markReservationMutation(id, payload.reservation, ['validationStatus']);
+    toast('Réservation validée');
+  }).catch(error => {
+    applyOptimisticReservation(current, { preserveEditState: true });
+    clearReservationMutation(id);
+    toast(error.message || 'Impossible de valider la réservation.');
+  });
+}
+
+// Libère une piste en maintenance (retour à 'active') via l'endpoint pistes
+// existant, avec mise à jour optimiste + rollback.
+async function releaseMaintenanceLane(lane, ev) {
+  if (ev) ev.stopPropagation();
+  const i = Number(lane);
+  if (state.laneStatuses[i] !== 'maintenance') return;
+  const previousStatus = state.laneStatuses[i];
+  state.laneStatuses[i] = 'active';
+  save();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffLanes, {
+      method: 'PATCH',
+      body: JSON.stringify({ lane: i, status: 'active', centerId: getCurrentStaffCenterId() })
+    });
+    state.laneStatuses[i] = payload.lane?.status || 'active';
+    save();
+    toast(`Piste ${i} réactivée`);
+  } catch (error) {
+    state.laneStatuses[i] = previousStatus;
+    save();
+    toast(error.message || 'Impossible de libérer la piste.');
+  }
+}
+
+function dashboardDetailReleaseLane(lane, ev) {
+  if (ev) ev.stopPropagation();
+  releaseMaintenanceLane(lane, ev);
+  refreshStaffDashboardDetailSoon(220);
+}
+
+// Actions groupées (footer détail) — encaisse ou libère en un clic.
+function dashboardDetailPayAllUnpaid(ev) {
+  if (ev) ev.stopPropagation();
+  const metrics = getStaffDashboardMetrics(todaysReservations());
+  const rows = metrics.activeReservations.filter(r => r.status !== 'paid');
+  if (!rows.length) { toast('Aucune réservation à encaisser.'); return; }
+  if (!confirm(`Marquer ${rows.length} réservation${rows.length > 1 ? 's' : ''} comme payée${rows.length > 1 ? 's' : ''} ?`)) return;
+  rows.forEach(r => setReservationStatusDirect(r.id, 'paid'));
+  refreshStaffDashboardDetailSoon(240);
+}
+
+function dashboardDetailReleaseAllLanes(ev) {
+  if (ev) ev.stopPropagation();
+  const lanes = Object.entries(state.laneStatuses || {})
+    .filter(([, status]) => status === 'maintenance')
+    .map(([l]) => Number(l));
+  if (!lanes.length) { toast('Aucune piste en maintenance.'); return; }
+  if (!confirm(`Réactiver ${lanes.length} piste${lanes.length > 1 ? 's' : ''} ?`)) return;
+  lanes.forEach(lane => releaseMaintenanceLane(lane));
+  refreshStaffDashboardDetailSoon(260);
 }
 
 function openStaffDashboardDetail(type = 'arrivals', kind = '') {
@@ -4201,10 +4357,7 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
         { label: 'Sur place', value: String(onSiteUnpaid), note: 'clients à servir' }
       ],
       body: renderStaffDashboardAlertsDetail(visibleAlerts),
-      actions: [
-        { label: 'Voir toutes les réservations', onclick: openReservations },
-        { label: 'Ouvrir le planning', onclick: openPlanning, className: 'secondary' }
-      ]
+      actions: getStaffDashboardAlertActions(kind, visibleAlerts, { openReservations, openPlanning })
     };
   }
   if (type === 'revenue') {
@@ -4297,7 +4450,7 @@ function getStaffDashboardReservationResources(reservation) {
   return [...bowling, ...laser].join(' · ') || 'Hors piste';
 }
 
-function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donnée à afficher.') {
+function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donnée à afficher.', kind = '') {
   if (!rows.length) return `<div class="dashboard-detail-empty">${escapeHtml(emptyText)}</div>`;
   return rows.map(reservation => {
     const status = getStaffDashboardStatusMeta(reservation);
@@ -4314,12 +4467,49 @@ function renderStaffDashboardReservationRows(rows = [], emptyText = 'Aucune donn
         <span>${escapeHtml(reservation.paymentMethod || (reservation.status === 'paid' ? 'Comptoir' : 'Sur place'))}</span>
       </div>
       <div class="dashboard-detail-row-actions">
-        <button type="button" onclick="closeStaffDashboardDetail(); openPos(${reservation.id});">Fiche</button>
-        ${reservation.status !== 'arrived' && reservation.status !== 'paid' ? `<button type="button" onclick="dashboardDetailSetStatus(${reservation.id}, 'arrived', event)">Arrivé</button>` : ''}
-        ${reservation.status !== 'paid' ? `<button type="button" onclick="dashboardDetailSetStatus(${reservation.id}, 'paid', event)">Payé</button>` : ''}
+        ${renderDashboardRowActions(reservation, kind)}
       </div>
     </article>`;
   }).join('');
+}
+
+// Boutons d'action réels par type d'alerte : chacun EXÉCUTE la résolution
+// (statut, validation) ou mène à l'endroit exact pré-sélectionné (fiche, comm).
+// Chaque bouton est masqué si le rôle courant n'a pas la permission requise.
+function renderDashboardRowActions(reservation, kind) {
+  const id = Number(reservation.id);
+  const canStatus = canUseStaffPermission(['reservations.status', 'reservations.edit', 'payments.markPaid']);
+  const canEdit = canUseStaffPermission('reservations.edit');
+  const canContact = canUseStaffPermission(['emails.send', 'emails.view', 'reservations.edit']);
+  const fiche = `<button type="button" onclick="dashboardDetailOpenReservation(${id})">Fiche</button>`;
+  const open = `<button type="button" class="primary" onclick="dashboardDetailOpenReservation(${id})">Ouvrir la réservation</button>`;
+  const contact = canContact ? `<button type="button" onclick="dashboardDetailContact(${id})">Contacter</button>` : '';
+  const encaisser = (canStatus && reservation.status !== 'paid')
+    ? `<button type="button" class="primary" onclick="dashboardDetailSetStatus(${id}, 'paid', event)">Encaisser</button>` : '';
+  const arrived = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
+    ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'arrived', event)">Arrivé</button>` : '';
+  const valider = canEdit
+    ? `<button type="button" class="primary" onclick="dashboardDetailValidate(${id}, event)">Valider</button>` : '';
+  if (kind === 'review') return `${valider}${fiche}${contact}`;
+  if (kind === 'payment') return `${encaisser}${arrived}${fiche}`;
+  if (kind === 'warning') return `${open}${contact}`;
+  if (kind === 'formula') return `${open}${arrived}${encaisser}`;
+  // Vue par défaut (arrivées, activité…)
+  return `${fiche}${arrived}${(canStatus && reservation.status !== 'paid') ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'paid', event)">Payé</button>` : ''}`;
+}
+
+// Actions du footer de la modale détail, spécialisées par type d'alerte.
+function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
+  const actions = [];
+  if (kind === 'payment' && canUseStaffPermission(['reservations.status', 'reservations.edit', 'payments.markPaid'])) {
+    actions.push({ label: 'Tout encaisser', onclick: 'dashboardDetailPayAllUnpaid(event)', className: 'primary' });
+  }
+  if (kind === 'maintenance' && canUseStaffPermission(['planning.drag', 'settings.manage'])) {
+    actions.push({ label: 'Libérer toutes les pistes', onclick: 'dashboardDetailReleaseAllLanes(event)', className: 'primary' });
+  }
+  actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
+  actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
+  return actions;
 }
 
 function renderStaffDashboardArrivalsDetail(metrics) {
@@ -4334,13 +4524,14 @@ function renderStaffDashboardAlertsDetail(alerts = []) {
   if (!alerts.length) {
     return `<div class="dashboard-detail-empty">Aucune alerte active. Les réservations restent surveillées en temps réel.</div>`;
   }
+  const canRelease = canUseStaffPermission(['planning.drag', 'settings.manage']);
   return alerts.map(alert => `<section class="dashboard-detail-section alert-${escapeHtml(alert.kind)}">
     <div class="dashboard-detail-section-head">
       <h3>${escapeHtml(alert.title)}</h3>
       <p>${escapeHtml(alert.action || alert.text)}</p>
     </div>
-    ${alert.lanes?.length ? `<div class="dashboard-detail-lane-chips">${alert.lanes.map(lane => `<span>Piste ${lane}</span>`).join('')}</div>` : ''}
-    ${renderStaffDashboardReservationRows(alert.rows || [], alert.kind === 'info' ? 'Aucun élément à traiter.' : 'Pas de réservation liée à ce signal.')}
+    ${alert.lanes?.length ? `<div class="dashboard-detail-lane-chips">${alert.lanes.map(lane => `<span class="lane-chip">Piste ${Number(lane)}${canRelease ? `<button type="button" class="lane-release" onclick="dashboardDetailReleaseLane(${Number(lane)}, event)">Libérer</button>` : ''}</span>`).join('')}</div>` : ''}
+    ${renderStaffDashboardReservationRows(alert.rows || [], alert.kind === 'info' ? 'Aucun élément à traiter.' : 'Pas de réservation liée à ce signal.', alert.kind)}
   </section>`).join('');
 }
 

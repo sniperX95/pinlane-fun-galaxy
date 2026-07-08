@@ -307,26 +307,72 @@ async function main() {
     assert(live.changed === true && live.inStore, 'la résa prise EN LIGNE entre dans le store au tick suivant, sans action');
     assert(live.after === 1, `la résa en ligne apparaît sur le planning sans rechargement (obtenu ${live.after})`);
 
-    // ============ CHANTIER 3 — email obligatoire (front) ============
-    console.log('\n[CHANTIER 3] Email obligatoire à la création staff (front)');
+    // ============ CHANTIER 3 — contact STAFF libre (email non obligatoire) ============
+    console.log('\n[CHANTIER 3] Contact staff libre : email NON obligatoire, badges OBLIGATOIRE absents');
     const emailFront = await page.evaluate(async ({ date }) => {
-      const attempt = async (email) => {
+      const attempt = async (fields) => {
         window.__RES_POSTS__ = [];
+        // On repart d'un planning vide à chaque essai : une création réussie
+        // occuperait sinon la piste 1 à 16:00 et ferait échouer les suivantes.
+        state.reservations = [];
         openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true });
-        quickBookState.name = 'Client Sans Mail';
-        quickBookState.phone = '+32470444444';
-        quickBookState.email = email;
+        Object.assign(quickBookState, fields);
         await saveQuickBook();
-        return { posts: window.__RES_POSTS__.length, error: quickBookState ? quickBookState.error : '' };
+        return { posts: window.__RES_POSTS__.length, error: quickBookState ? quickBookState.error : '', last: window.__RES_POSTS__[0] || null };
       };
-      const noEmail = await attempt('');
-      const badEmail = await attempt('pas-un-email');
-      const goodEmail = await attempt('client@test.com');
-      return { noEmail, badEmail, goodEmail };
+      // Sans email : ACCEPTÉ côté staff (contact libre).
+      const noEmail = await attempt({ name: 'Client Sans Mail', phone: '+32470444444', email: '' });
+      // Sans nom NI email NI téléphone : ACCEPTÉ, avec fallback nom « Client ».
+      const emptyAll = await attempt({ name: '', phone: '+32 ', email: '' });
+      // Email présent mais mal formé : refusé (garde-fou format uniquement).
+      const badEmail = await attempt({ name: 'Client', phone: '+32470444444', email: 'pas-un-email' });
+      // Email valide : part normalement.
+      const goodEmail = await attempt({ name: 'Client', phone: '+32470444444', email: 'client@test.com' });
+      // Badges « obligatoire » (qb-req) absents dans la modale staff.
+      openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
+      renderQuickBook();
+      const modalHtml = document.querySelector('#quickBookOverlay').innerHTML;
+      const hasReqBadge = /qb-req|>obligatoire</i.test(modalHtml);
+      const emailRequiredAttr = /type="email"[^>]*\brequired\b/i.test(modalHtml);
+      return { noEmail, emptyAll, badEmail, goodEmail, hasReqBadge, emailRequiredAttr };
     }, { date: TEST_DATE });
-    assert(emailFront.noEmail.posts === 0 && /email requis/i.test(emailFront.noEmail.error), `sans email : aucun POST + message clair ("${emailFront.noEmail.error}")`);
-    assert(emailFront.badEmail.posts === 0 && /email invalide/i.test(emailFront.badEmail.error), `email mal formé : refusé + message ("${emailFront.badEmail.error}")`);
+    assert(emailFront.noEmail.posts === 1, `staff sans email : la réservation part quand même (1 POST, obtenu ${emailFront.noEmail.posts})`);
+    assert(emailFront.emptyAll.posts === 1 && emailFront.emptyAll.last && emailFront.emptyAll.last.name === 'Client', `staff nom/tél/email vides : accepté avec fallback nom « Client » (obtenu "${emailFront.emptyAll.last && emailFront.emptyAll.last.name}")`);
+    assert(emailFront.badEmail.posts === 0 && /email invalide/i.test(emailFront.badEmail.error), `email mal formé saisi : refusé + message ("${emailFront.badEmail.error}")`);
     assert(emailFront.goodEmail.posts === 1, `email valide : la réservation part (1 POST, obtenu ${emailFront.goodEmail.posts})`);
+    assert(!emailFront.hasReqBadge, 'aucun badge « OBLIGATOIRE » (qb-req) dans la modale staff');
+    assert(!emailFront.emailRequiredAttr, 'le champ email staff n\'a plus l\'attribut HTML required');
+
+    // ============ CHANTIER 3b — champ Joueurs : saisie sans perte de focus ============
+    console.log('\n[CHANTIER 3b] Champ Joueurs : taper « 40 », backspace jusqu\'à vide, focus conservé');
+    await page.evaluate(({ date }) => {
+      openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
+      renderQuickBook();
+    }, { date: TEST_DATE });
+    const paxSelector = '#quickBookOverlay input[type="number"]';
+    await page.click(paxSelector);
+    await page.evaluate((sel) => { const el = document.querySelector(sel); el.focus(); el.value = ''; }, paxSelector);
+    // Tape « 40 » chiffre par chiffre.
+    await page.type(paxSelector, '40', { delay: 20 });
+    let paxStep = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      return { focused: document.activeElement === el, value: el.value, statePax: quickBookState.pax };
+    }, paxSelector);
+    assert(paxStep.focused && paxStep.value === '40' && paxStep.statePax === 40, `après « 40 » : focus conservé, champ = 40, état = 40 (obtenu focus=${paxStep.focused} val=${paxStep.value} pax=${paxStep.statePax})`);
+    // Backspace jusqu'à vide : PAS de « 1 » forcé pendant la frappe, focus conservé.
+    await page.click(paxSelector);
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Backspace');
+    paxStep = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      return { focused: document.activeElement === el, value: el.value };
+    }, paxSelector);
+    assert(paxStep.focused && paxStep.value === '', `backspace jusqu'à vide : focus conservé et champ vide, PAS de « 1 » forcé (obtenu focus=${paxStep.focused} val="${paxStep.value}")`);
+    // Au blur seulement : normalisation vers 1 (entier >= 1).
+    await page.evaluate((sel) => { document.querySelector(sel).blur(); }, paxSelector);
+    const paxBlur = await page.evaluate((sel) => ({ value: document.querySelector(sel).value, statePax: quickBookState.pax }), paxSelector);
+    assert(paxBlur.value === '1' && paxBlur.statePax === 1, `au blur : valeur normalisée à 1 (obtenu val=${paxBlur.value} pax=${paxBlur.statePax})`);
+    await page.evaluate(() => closeQuickBook());
 
     // ============ CHANTIER 4 — « Plus d'options » repensé + email en essentiel ============
     console.log('\n[CHANTIER 4] Plus d\'options structuré + email remonté en champ essentiel');
@@ -338,7 +384,7 @@ async function main() {
       const toggle = document.querySelector('.qb-more-toggle');
       // Bloc essentiel = tout ce qui précède le bouton « Plus d'options ».
       const essentialHtml = modal.innerHTML.split(toggle.outerHTML)[0];
-      const emailInEssential = /type="email"[^>]*required/i.test(essentialHtml);
+      const emailInEssential = /type="email"/i.test(essentialHtml);
       const toggleLabel = toggle.textContent.trim();
       quickBookState.moreOpen = true;
       renderQuickBook();
@@ -351,7 +397,7 @@ async function main() {
       const hasNotesTextarea = Boolean(document.querySelector('#quickBookOverlay textarea'));
       return { emailInEssential, toggleLabel, blockLabels, helps, advancedHasEmail, hasNotesTextarea };
     }, { date: TEST_DATE });
-    assert(options.emailInEssential, 'l\'email est un champ ESSENTIEL requis (hors « Plus d\'options »)');
+    assert(options.emailInEssential, 'l\'email reste un champ ESSENTIEL visible/saisissable (hors « Plus d\'options »)');
     assert(!/email/i.test(options.toggleLabel), `le libellé du repli ne mentionne plus « email » ("${options.toggleLabel}")`);
     assert(options.blockLabels.some((l) => /Créneau & disponibilité/i.test(l)), `section « Créneau & disponibilité » présente (${options.blockLabels.join(' | ')})`);
     assert(options.blockLabels.some((l) => /Durée & pistes/i.test(l)), 'section « Durée & pistes » présente et étiquetée');

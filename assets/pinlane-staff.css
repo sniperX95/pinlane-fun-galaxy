@@ -6242,6 +6242,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-dur-btn {
   display: grid;
   gap: 1px;
+  justify-items: center;
+  align-content: center;
   min-height: 36px;
   padding: 5px 8px;
   border: 1px solid var(--line-strong);
@@ -6252,6 +6254,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }

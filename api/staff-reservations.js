@@ -109,7 +109,10 @@ module.exports = async (req, res) => {
       const body = await readJson(req);
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
-      const request = normalizeReservationRequest(body, { channel: 'staff', requireEmail: true });
+      // Côté STAFF le contact est LIBRE (nom/tél/email non imposés) : le staff
+      // crée souvent une résa au comptoir sans tout saisir. L'email obligatoire
+      // reste réservé au parcours CLIENT PUBLIC (api/public-reservations.js).
+      const request = normalizeReservationRequest(body, { channel: 'staff' });
       const ops = await prepareReservationOps(request, 'staff');
       const reservation = await createReservation({
         ...request,

@@ -12407,6 +12407,50 @@ function setQuickPax(value) {
   renderQuickBook();
 }
 
+// Met à jour le « Total estimé » (seul nombre visible qui dépend des joueurs)
+// SANS reconstruire la modale : on patche en place, jamais l'input ni le bouton.
+function patchQuickBookPaxDerived() {
+  if (!quickBookState) return;
+  const overlay = document.getElementById('quickBookOverlay');
+  if (!overlay) return;
+  const summary = getQuickBookSummary();
+  const amt = overlay.querySelector('.qb-summary .amt');
+  const desc = overlay.querySelector('.qb-summary .desc');
+  if (amt) amt.textContent = `${summary.total}€`;
+  if (desc) desc.textContent = `${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
+}
+
+// Champ « Joueurs » de la modale staff : saisie NORMALE sans re-render destructif.
+// Pendant la frappe on met à jour l'état + la réconciliation pistes/laser SANS
+// reconstruire l'input (sinon perte de focus) et SANS forcer « 1 » (le champ peut
+// rester vide transitoirement, backspace inclus). La normalisation (entier >= 1)
+// n'a lieu qu'au blur/commit.
+function onQuickPaxInput(value) {
+  if (!quickBookState) return;
+  const trimmed = String(value).trim();
+  if (trimmed === '') return; // champ vidé : on laisse l'utilisateur, aucune normalisation
+  const n = Math.trunc(Number(trimmed));
+  if (!Number.isFinite(n) || n < 1) return; // valeur transitoire invalide : on ne force rien
+  quickBookState.pax = n;
+  syncQuickBookDuration();
+  reconcileQuickLaneSelection();
+  patchQuickBookPaxDerived();
+}
+
+function onQuickPaxBlur(el, ev) {
+  if (!quickBookState) return;
+  const n = Math.max(1, Math.trunc(Number(el && el.value) || 1));
+  quickBookState.pax = n;
+  syncQuickBookDuration();
+  reconcileQuickLaneSelection();
+  // On reflète la valeur normalisée directement dans le champ (pas de re-render :
+  // reconstruire la modale ici détruirait « Créer la réservation » avant l'arrivée
+  // du clic — le même piège que le champ téléphone — et volerait le focus si on
+  // tabule vers un autre champ). Le « Total estimé » est patché en place.
+  if (el) el.value = String(n);
+  patchQuickBookPaxDerived();
+}
+
 function setQuickType(type) {
   quickBookState.type = type;
   if (type === 'bowling' || type === 'laser') {
@@ -12783,14 +12827,14 @@ function renderQuickBook() {
   );
   const showFormuleGrid = quickBookState.type === 'formule' && (!quickFieldKnown('formule') || !formule);
   const manualLanesShort = needsLanes && !quickBookState.autoAssign && quickBookState.lanes.length < requiredCount;
-  // Email = champ ESSENTIEL requis (comme nom/tél). On le montre dans le bloc
-  // client quand celui-ci est saisi ; s'il est déjà connu mais sans email valide,
-  // on affiche un mini-bloc dédié pour ne jamais bloquer la création plus tard.
+  // Email = champ visible et saisissable, mais NON obligatoire côté staff (contact
+  // libre au comptoir). On le montre dans le bloc client ; s'il est déjà connu mais
+  // renseigné avec un format invalide, on le signale sans jamais bloquer la création.
   const emailValid = isValidEmail(quickBookState.email);
   const emailInputHtml = `
     <div>
-      <label class="qb-mini-label">Email <span class="qb-req">obligatoire</span></label>
-      <input class="qb-input ${quickBookState.email && !emailValid ? 'qb-input-invalid' : ''}" type="email" required value="${escapeHtml(quickBookState.email)}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
+      <label class="qb-mini-label">Email</label>
+      <input class="qb-input ${quickBookState.email && !emailValid ? 'qb-input-invalid' : ''}" type="email" value="${escapeHtml(quickBookState.email)}" oninput="quickBookState.email=this.value" placeholder="client@email.com">
       ${quickBookState.email && !emailValid ? '<div class="qb-field-note danger">Format email invalide.</div>' : '<div class="qb-field-note">Sert aux confirmations et rappels automatiques.</div>'}
     </div>`;
 
@@ -12830,7 +12874,7 @@ function renderQuickBook() {
   essentialCells.push(`
     <div>
       <label class="qb-mini-label">Joueurs</label>
-      <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="setQuickPax(this.value)">
+      <input class="qb-input" type="number" min="1" max="120" value="${quickBookState.pax}" oninput="onQuickPaxInput(this.value)" onblur="onQuickPaxBlur(this, event)">
     </div>`);
 
   const essentialActions = [];
@@ -13034,11 +13078,11 @@ function renderQuickBook() {
           <div class="blk-label">Client</div>
           <div class="qb-row two">
             <div>
-              <label class="qb-mini-label">Nom <span class="qb-req">obligatoire</span></label>
+              <label class="qb-mini-label">Nom</label>
               <input class="qb-input" value="${quickBookState.name}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
             </div>
             <div>
-              <label class="qb-mini-label">Téléphone <span class="qb-req">obligatoire</span></label>
+              <label class="qb-mini-label">Téléphone</label>
               <input class="qb-input" value="${quickBookState.phone}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
             </div>
           </div>
@@ -13046,7 +13090,7 @@ function renderQuickBook() {
             ${emailInputHtml}
           </div>
           ` : !emailValid ? `
-          <div class="blk-label">Contact client — email requis</div>
+          <div class="blk-label">Email client (facultatif)</div>
           <div class="qb-row">
             ${emailInputHtml}
           </div>
@@ -13105,9 +13149,12 @@ async function saveQuickBook() {
     saveBtn.setAttribute('aria-busy', 'true');
     saveBtn.textContent = 'Création…';
   }
-  const name = quickBookState.name.trim();
-  const phone = normalizePhoneInput(quickBookState.phone);
-  quickBookState.phone = phone;
+  // Contact STAFF libre : on ne bloque pas sur nom/tél/email manquants. Fallback
+  // propre pour le payload (nom par défaut « Client » si vide, tél vide autorisé)
+  // afin de ne pas casser createReservation. L'email obligatoire reste au CLIENT.
+  const name = quickBookState.name.trim() || 'Client';
+  const phoneDigits = quickBookState.phone.replace(/\D/g, '');
+  const phone = phoneDigits && phoneDigits !== '32' ? normalizePhoneInput(quickBookState.phone) : '';
   const failQuickBook = (message) => {
     // Ré-active le bouton (le re-render reconstruit « Créer la réservation »).
     quickBookState.submitting = false;
@@ -13117,9 +13164,9 @@ async function saveQuickBook() {
   };
   const email = quickBookState.email.trim();
   quickBookState.email = email;
-  if (!name || !phone) { failQuickBook('Nom et téléphone requis.'); return; }
-  if (!email) { failQuickBook('Email requis pour la réservation.'); return; }
-  if (!isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }
+  // Seul garde-fou email : un format invalide SI le staff a saisi quelque chose
+  // (on évite d'enregistrer une adresse cassée). Un email vide reste accepté.
+  if (email && !isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }
   if (!quickBookState.startTime) { failQuickBook('Choisissez une heure.'); return; }
   const formule = quickBookState.type === 'formule' ? FORMULES.find(x => x.id === quickBookState.formuleId) : null;
   if (quickBookState.type === 'formule' && !formule) { failQuickBook('Sélectionnez une formule.'); return; }

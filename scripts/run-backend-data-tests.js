@@ -336,25 +336,26 @@ function testEmailRequiredOnCreation() {
     centerId: 'libramont',
   };
 
-  // Staff (POST, requireEmail) : sans email => rejet 422.
-  assert.throws(
-    () => normalizeReservationRequest({ ...base }, { channel: 'staff', requireEmail: true }),
-    (error) => /email requis/i.test(error.message) && Number(error.statusCode) === 422,
-    'staff : un POST sans email doit être refusé (422)',
+  // STAFF : contact LIBRE. Le vrai POST staff (api/staff-reservations.js) appelle
+  // normalizeReservationRequest SANS requireEmail => une résa staff sans email ne
+  // doit PLUS être refusée (le serveur ne bloque pas).
+  assert.doesNotThrow(
+    () => normalizeReservationRequest({ ...base }, { channel: 'staff' }),
+    'staff : un POST sans email ne doit PAS être refusé (contact libre)',
   );
 
-  // Email mal formé => rejet.
-  assert.throws(
-    () => normalizeReservationRequest({ ...base, email: 'pas-un-email' }, { channel: 'staff', requireEmail: true }),
-    (error) => /email invalide/i.test(error.message) && Number(error.statusCode) === 422,
-    'staff : un email mal formé doit être refusé',
-  );
-
-  // Public (POST, requireEmail) : idem, l'email est requis.
+  // PUBLIC (POST, requireEmail) : l'email reste OBLIGATOIRE côté client public.
   assert.throws(
     () => normalizeReservationRequest({ ...base, email: '' }, { channel: 'public', requireEmail: true }),
-    /email requis/i,
-    'public : un POST sans email doit être refusé',
+    (error) => /email requis/i.test(error.message) && Number(error.statusCode) === 422,
+    'public : un POST sans email doit être refusé (422)',
+  );
+
+  // PUBLIC : email mal formé => rejet.
+  assert.throws(
+    () => normalizeReservationRequest({ ...base, email: 'pas-un-email' }, { channel: 'public', requireEmail: true }),
+    (error) => /email invalide/i.test(error.message) && Number(error.statusCode) === 422,
+    'public : un email mal formé doit être refusé',
   );
 
   // Réutilisation interne (alternatives / prep ops) : PAS de requireEmail =>
@@ -365,10 +366,10 @@ function testEmailRequiredOnCreation() {
     'réutilisation interne sans requireEmail ne doit pas exiger l\'email',
   );
 
-  // Email valide => passe la validation email (le staff conserve l'email).
-  const ok = normalizeReservationRequest({ ...base, email: '  Marie@Domaine.com ' }, { channel: 'staff', requireEmail: true });
+  // Un email renseigné (staff ou public) est conservé (trim) tel quel.
+  const ok = normalizeReservationRequest({ ...base, email: '  Marie@Domaine.com ' }, { channel: 'staff' });
   assert.strictEqual(ok.email, 'Marie@Domaine.com', 'un email valide est conservé (trim)');
-  console.log('  ok  email obligatoire (staff + public) validé côté serveur');
+  console.log('  ok  email libre côté staff / obligatoire côté public validé serveur');
 }
 
 (async () => {

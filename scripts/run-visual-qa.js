@@ -1485,7 +1485,7 @@ async function main() {
     assert(qbGeneric, 'Réservation rapide générique : la modale doit s ouvrir.');
     assert(qbGeneric.title === 'Réservation rapide', `Générique : titre attendu « Réservation rapide » (reçu ${qbGeneric.title}).`);
     assert(qbGeneric.interactive <= 20, `Générique : max 20 éléments interactifs visibles à l ouverture — proche de la moitié de l ancienne modale (reçu ${qbGeneric.interactive}).`);
-    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles — email désormais requis à côté du contact.');
+    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles — email visible/saisissable (non obligatoire côté staff).');
     assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea, 'Générique : créneaux, pistes et notes internes doivent être repliés à l ouverture (email reste essentiel, visible).');
     assert(qbGeneric.moreToggle, 'Générique : le bouton « Plus d options » est requis.');
     await screenshot(page, 'quickbook-generic');
@@ -1507,7 +1507,7 @@ async function main() {
     assert(!qbCell.hasTypeRow && !qbCell.hasDateInput && !qbCell.hasTimeInput, 'Case planning : activité, date et heure sont acquises — ne pas les redemander.');
     assert(qbCell.chips.includes('Piste') && qbCell.chips.includes('Départ') && qbCell.chips.includes('Date'), 'Case planning : les acquis doivent être rappelés en chips.');
     assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
-    assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasEmailInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client (nom, téléphone, email requis), joueurs, durée.');
+    assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasEmailInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client (nom, téléphone, email visible), joueurs, durée.');
     assert(qbCell.interactive <= 20, `Case planning : la variante doit rester compacte (reçu ${qbCell.interactive}).`);
     await screenshot(page, 'quickbook-bowling-cell');
     issues.push(...await collectIssues(page, 'quickbook-bowling-cell'));

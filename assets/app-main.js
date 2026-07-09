@@ -3131,13 +3131,13 @@ function renderFormulaFreePassBlock(formule) {
     <div class="anchor-free-pass">
       <div class="anchor-free-head">
         <span class="anchor-free-badge">Pass liberté</span>
-        <strong>Inclus, à votre rythme sur place — quand vous voulez</strong>
+        <strong><span class="only-desktop">Inclus, à votre rythme sur place — quand vous voulez</span><span class="only-mobile">Inclus, quand vous voulez</span></strong>
       </div>
       <div class="anchor-free-items">
         ${passItems.map(label => `<span class="anchor-free-item">${escapeHtml(label)}</span>`).join('')}
         ${drinks.map(label => `<span class="anchor-free-item anchor-free-drink">${escapeHtml(label)}</span>`).join('')}
       </div>
-      <small>Aucune heure à choisir : ces avantages se vivent librement pendant toute votre visite.</small>
+      <small><span class="only-desktop">Aucune heure à choisir : ces avantages se vivent librement pendant toute votre visite.</span><span class="only-mobile">Sans horaire : à vivre librement.</span></small>
     </div>`;
 }
 
@@ -3172,7 +3172,7 @@ function renderFormulaAnchorPicker(formule) {
     <div class="formula-anchor-picker">
       <div class="formula-arrival-head">
         <strong>Composez votre visite</strong>
-        <span>Choisissez l'heure de chaque activité à créneau — présentez-vous 10 minutes avant votre premier rendez-vous. Le reste de la formule se vit à votre rythme, sans horaire.</span>
+        <span><span class="only-desktop">Choisissez l'heure de chaque activité à créneau — présentez-vous 10 minutes avant votre premier rendez-vous. Le reste de la formule se vit à votre rythme, sans horaire.</span><span class="only-mobile">Choisissez l'heure de chaque activité. Présentez-vous 10 min avant. Le reste, à votre rythme.</span></span>
       </div>
       ${renderFormulaAnchorRows(formule)}
       ${statusHtml}
@@ -3196,7 +3196,7 @@ function renderFormulaArrivalPicker(formule) {
     <div class="formula-arrival-picker">
       <div class="formula-arrival-head">
         <strong>Choisissez votre heure d'arrivée</strong>
-        <span>Votre table vous attend dès votre arrivée et les activités incluses se vivent à votre rythme — présentez-vous 10 minutes avant l'heure choisie pour l'accueil.</span>
+        <span><span class="only-desktop">Votre table vous attend dès votre arrivée et les activités incluses se vivent à votre rythme — présentez-vous 10 minutes avant l'heure choisie pour l'accueil.</span><span class="only-mobile">Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.</span></span>
       </div>
       <div class="formula-arrival-grid">${chips}</div>
       ${activeSlot ? `

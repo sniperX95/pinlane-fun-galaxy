@@ -141,9 +141,38 @@ async function measure(page, label) {
     // Inputs font-size (zoom iOS si < 16)
     const smallInputs = [];
     document.querySelectorAll('#clientView input').forEach((el) => { if (!visible(el)) return; const fs = parseFloat(getComputedStyle(el).fontSize); if (fs < 16) smallInputs.push({ id: el.id, fs }); });
+    // (a) Contenu des cartes formules : nombre d'inclusions (<li>) VISIBLES par
+    // carte, en distinguant les cartes selectionnees (active) des autres. Objectif :
+    // chaque carte NON selectionnee doit montrer > 1 inclusion (pas de tap requis).
+    const cardContent = cards.map((c) => {
+      const active = c.classList.contains('active');
+      const lis = [...c.querySelectorAll('.formule-card-list li')].filter(visible);
+      return { active, liVisible: lis.length };
+    });
+    // (b) Empilement des blocs label|texte (visit-line, recap-item, pass) : les
+    // enfants directs doivent partager le meme x (colonne unique) avec des y
+    // croissants — sinon = colonnes serrees illisibles sur mobile.
+    const directCol = (el) => {
+      const kids = [...el.children].filter(visible);
+      if (kids.length < 2) return { stacked: true, sameX: true, inc: true, n: kids.length };
+      const rects = kids.map((k) => k.getBoundingClientRect());
+      const left0 = rects[0].left;
+      const sameX = rects.every((r) => Math.abs(r.left - left0) <= 6);
+      let inc = true;
+      for (let i = 1; i < rects.length; i += 1) { if (rects[i].top < rects[i - 1].bottom - 6) { inc = false; break; } }
+      return { stacked: sameX && inc, sameX, inc, n: kids.length };
+    };
+    const stacks = [];
+    ['.visit-line', '.recap-item', '.anchor-free-head'].forEach((sel) => {
+      document.querySelectorAll(`#clientView ${sel}`).forEach((el) => {
+        if (!visible(el)) return;
+        stacks.push({ sel, ...directCol(el) });
+      });
+    });
     return { label: lbl, vw, scrollW, overflowX, offenders: offenders.slice(0, 8), offendersCount: offenders.length,
       smallTargets: smallTargets.slice(0, 8), smallTargetsCount: smallTargets.length,
-      cardCount: cards.length, cardHeights, firstCardH: firstCard ? Math.round(firstCard.height) : null, cardsInViewport, smallInputs };
+      cardCount: cards.length, cardHeights, firstCardH: firstCard ? Math.round(firstCard.height) : null, cardsInViewport, smallInputs,
+      cardContent, stacks };
   }, label);
 }
 
@@ -201,13 +230,75 @@ async function walkSteps(page, width) {
   return results;
 }
 
+// Verification DESKTOP (1280px) : la refonte mobile ne doit RIEN changer au
+// rendu large. On mesure la grille multi-colonnes des formules, la disposition
+// en ligne du recap et des visit-line, et on capture des screenshots de preuve.
+async function desktopCheck(browser) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
+  await installClientApi(page);
+  await page.goto(`${BASE_URL}/?v=cqa-desk-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+  await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+  await page.evaluate(() => setView('client'));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { if (typeof resetBooking === 'function') resetBooking(); setType('formule'); });
+  await page.waitForTimeout(300);
+  const formules = await page.evaluate(() => {
+    const cardsWrap = document.querySelector('#clientView .formule-cards');
+    const grid = document.querySelector('#clientView .formule-grid');
+    const cols = cardsWrap ? getComputedStyle(cardsWrap).gridTemplateColumns : '';
+    const trackCount = cols ? cols.split(' ').filter(Boolean).length : 0;
+    const cards = [...document.querySelectorAll('#clientView .formule-card')].map((c) => c.getBoundingClientRect());
+    let sameRowPairs = 0;
+    for (let i = 0; i < cards.length; i += 1) {
+      for (let j = i + 1; j < cards.length; j += 1) {
+        if (Math.abs(cards[i].top - cards[j].top) < 4 && Math.abs(cards[i].left - cards[j].left) > 20) sameRowPairs += 1;
+      }
+    }
+    return { gridDisplay: grid ? getComputedStyle(grid).display : '', trackCount, cardCount: cards.length, sameRowPairs, firstCardW: cards[0] ? Math.round(cards[0].width) : null };
+  });
+  await page.screenshot({ path: path.join(OUT_DIR, `client-desktop-1280-${PHASE}-formules.png`), fullPage: false });
+  // Etape 2 (visit-line en ligne) + etape 4 (recap en ligne)
+  await page.evaluate(() => { state.booking.pax = 8; if (typeof selectFormule === 'function') selectFormule('f1'); goStep2(); });
+  await page.waitForTimeout(900);
+  const step2 = await page.evaluate(() => {
+    const line = document.querySelector('#clientView .visit-line');
+    if (!line) return { visitLineRow: null };
+    const kids = [...line.children].map((k) => k.getBoundingClientRect());
+    const row = kids.length >= 2 ? Math.abs(kids[0].top - kids[1].top) < 12 : true;
+    return { visitLineRow: row };
+  });
+  await page.screenshot({ path: path.join(OUT_DIR, `client-desktop-1280-${PHASE}-step2.png`), fullPage: false });
+  await page.evaluate(() => {
+    const slot = (state.availableSlots || [])[0];
+    if (slot) { state.booking.startTime = slot.time; state.booking.opsPlan = slot.opsPlan; }
+    goStep(3);
+    document.getElementById('fName').value = 'Marie Dupont';
+    document.getElementById('fPhone').value = '+32470000000';
+    document.getElementById('fEmail').value = 'marie@email.com';
+    goStep4();
+  });
+  await page.waitForTimeout(300);
+  const step4 = await page.evaluate(() => {
+    const item = document.querySelector('#clientView .recap-item');
+    if (!item) return { recapRow: null };
+    const kids = [...item.children].map((k) => k.getBoundingClientRect());
+    const row = kids.length >= 2 ? Math.abs(kids[0].top - kids[1].top) < 12 : true;
+    return { recapRow: row };
+  });
+  await page.screenshot({ path: path.join(OUT_DIR, `client-desktop-1280-${PHASE}-step4.png`), fullPage: false });
+  await page.close();
+  return { formules, ...step2, ...step4 };
+}
+
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const server = await serveStatic();
   const browser = await chromium.launch({ headless: true, executablePath: BROWSER_PATH });
   const report = {};
+  let desktop = null;
   const consoleErrors = [];
   try {
+    desktop = await desktopCheck(browser);
     for (const width of WIDTHS) {
       const page = await browser.newPage({ viewport: { width, height: 780 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
       page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(`[${width}] ${m.text()}`); });
@@ -234,10 +325,13 @@ async function main() {
       summary.push(`[${width}] ${r.label.padEnd(24)} overflowX=${r.overflowX} offenders=${r.offendersCount} smallTargets=${r.smallTargetsCount} cards=${r.cardCount} firstCardH=${r.firstCardH} inViewport=${r.cardsInViewport} smallInputs=${r.smallInputs.length}`);
     }
   }
-  fs.writeFileSync(path.join(OUT_DIR, `client-mobile-audit-${PHASE}.json`), JSON.stringify({ report, consoleErrors }, null, 2));
+  fs.writeFileSync(path.join(OUT_DIR, `client-mobile-audit-${PHASE}.json`), JSON.stringify({ report, desktop, consoleErrors }, null, 2));
   console.log(`\n=== CLIENT MOBILE AUDIT (${PHASE}) ===`);
   console.log(summary.join('\n'));
   console.log(`\nworstOverflowX=${worstOverflow}px  totalSmallTargets=${totalSmallTargets}  maxFirstCardHeight=${maxCardH}px`);
+  if (desktop) {
+    console.log(`\n[DESKTOP 1280] formule-grid display=${desktop.formules.gridDisplay} gridTracks=${desktop.formules.trackCount} cards=${desktop.formules.cardCount} sameRowPairs=${desktop.formules.sameRowPairs} firstCardW=${desktop.formules.firstCardW}px  visitLineRow=${desktop.visitLineRow} recapRow=${desktop.recapRow}`);
+  }
   if (consoleErrors.length) { console.log('\nConsole/page errors:'); console.log(consoleErrors.slice(0, 20).join('\n')); }
   // Detail offenders/smallTargets for the 390 formules step
   const f = report[390].find((r) => r.label === 'step1-formules');
@@ -245,13 +339,26 @@ async function main() {
 
   // --- Assertions mobile (le script echoue si une regression est detectee) ---
   const failures = [];
+  // (c) Chaque etape 390px (et 360/414) : aucun scroll horizontal.
   if (worstOverflow > 2) failures.push(`scroll horizontal detecte (worstOverflowX=${worstOverflow}px)`);
-  // Cartes formules scannables : hauteur repliee raisonnable (< 130px) et 2 colonnes
   const formuleRows = WIDTHS.map((w) => report[w].find((r) => r.label === 'step1-formules')).filter(Boolean);
   formuleRows.forEach((r) => {
-    if (r.firstCardH && r.firstCardH > 130) failures.push(`carte formule trop haute a ${r.vw}px (${r.firstCardH}px repliee)`);
     if (r.cardCount < 10) failures.push(`peu de cartes formules visibles a ${r.vw}px (${r.cardCount})`);
+    // (a) Cartes NON selectionnees : inclusions completes visibles SANS tap (> 1 <li>).
+    const truncated = (r.cardContent || []).filter((c) => !c.active && c.liVisible <= 1);
+    if (truncated.length) failures.push(`cartes formules tronquees a ${r.vw}px (${truncated.length} cartes non selectionnees ne montrent qu'une inclusion — tap requis)`);
   });
+  // (b) Blocs label|texte (visit-line / recap-item / pass) empiles pleine largeur
+  // a <=640 : enfants en colonne unique (meme x, y croissants).
+  for (const w of WIDTHS) {
+    for (const r of report[w]) {
+      const badStacks = (r.stacks || []).filter((s) => !s.stacked);
+      if (badStacks.length) {
+        const sels = [...new Set(badStacks.map((s) => s.sel))].join(', ');
+        failures.push(`blocs non empiles a ${w}px sur ${r.label} (${sels} en colonnes serrees)`);
+      }
+    }
+  }
   // Un CTA principal ecrase (hauteur < 40px) sur step3/step4 = regression flex
   for (const w of WIDTHS) {
     for (const r of report[w]) {
@@ -261,9 +368,21 @@ async function main() {
       }
     }
   }
+  // (d) DESKTOP 1280px NON REGRESSE : grille formules multi-colonnes conservee,
+  // formule-grid en flex, recap/visit-line en ligne (pas empiles).
+  if (desktop) {
+    const d = desktop.formules;
+    if (d.gridDisplay !== 'flex') failures.push(`desktop regresse : formule-grid n'est plus flex (${d.gridDisplay})`);
+    if (d.trackCount < 2) failures.push(`desktop regresse : grille formules en 1 colonne (tracks=${d.trackCount})`);
+    if (d.sameRowPairs < 1) failures.push('desktop regresse : plus aucune paire de cartes formules sur la meme ligne');
+    if (desktop.visitLineRow === false) failures.push('desktop regresse : visit-line empilee au lieu d\'etre en ligne');
+    if (desktop.recapRow === false) failures.push('desktop regresse : recap-item empile au lieu d\'etre en ligne');
+  } else {
+    failures.push('verification desktop 1280px absente');
+  }
   if (consoleErrors.length) failures.push(`erreurs console/page: ${consoleErrors.length}`);
   if (failures.length) { console.error('\nASSERTIONS ECHOUEES:\n- ' + failures.join('\n- ')); process.exit(1); }
-  console.log('\nAssertions mobile: OK (0 scroll horizontal, cartes formules compactes, CTA sticky non ecrase).');
+  console.log('\nAssertions: OK — mobile (0 scroll horizontal, inclusions completes sans tap, blocs empiles, CTA non ecrase) + DESKTOP 1280 non regresse.');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

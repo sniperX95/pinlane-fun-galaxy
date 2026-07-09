@@ -1188,6 +1188,12 @@ body {
   color: var(--muted);
 }
 
+/* --- Texte responsive : version longue (desktop) / courte (mobile) --------
+   Permet de raccourcir certaines descriptions UNIQUEMENT sur mobile sans
+   toucher au contenu desktop. Par défaut le desktop affiche la version longue
+   et masque la version mobile ; la media query mobile inverse. */
+#clientView .only-mobile { display: none; }
+
 /* --- Récapitulatif -------------------------------------------------------- */
 #clientView .recap-item {
   display: flex;
@@ -1448,55 +1454,86 @@ body {
     background: var(--accent-soft);
   }
 
-  /* --- FORMULES SCANNABLES : grille 2 colonnes, cartes compactes ---------- */
-  /* Objectif : embrasser l'offre en 1-2 écrans au lieu de dérouler 14 cartes.
-     Par défaut chaque carte = nom + prix + 1 ligne teaser. Au tap la carte
-     sélectionnée passe pleine largeur et déplie son détail complet (accordéon). */
+  /* --- FORMULES MOBILE : 1 colonne pleine largeur, CONTENU COMPLET visible -
+     Objectif patron : voir d'un coup d'œil TOUT ce que contient chaque formule
+     sans avoir à taper. Le tap ne sert plus qu'à SÉLECTIONNER. Une colonne pleine
+     largeur laisse respirer nom + prix + la liste complète des inclusions.
+     (Desktop ≥769px conserve sa grille multi-colonnes intacte.) */
   #clientView .formule-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2);
-    margin-top: var(--space-2);
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
   }
 
   #clientView .formule-card {
-    padding: var(--space-3);
-    gap: 6px;
-    border-radius: var(--radius-md);
-  }
-
-  /* Nom au-dessus du prix : lecture verticale nette dans une carte étroite */
-  #clientView .formule-card-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-  }
-
-  #clientView .formule-card-price strong {
-    font-size: 17px;
-  }
-
-  /* Teaser compact : une seule ligne d'items + meta masquée tant que la carte
-     n'est pas ouverte. */
-  #clientView .formule-card:not(.active) .formule-card-list li:nth-child(n + 2) {
-    display: none;
-  }
-
-  #clientView .formule-card:not(.active) .formule-card-meta {
-    display: none;
-  }
-
-  /* Carte choisie : pleine largeur, détail complet déplié, prix à droite */
-  #clientView .formule-card.active {
-    grid-column: 1 / -1;
+    padding: var(--space-4);
     gap: var(--space-2);
+    border-radius: var(--radius-lg);
   }
 
-  #clientView .formule-card.active .formule-card-head {
+  /* En-tête en ligne : nom + Best deal à gauche, prix (barré + actuel + /pers) à
+     droite — comme une carte tarif d'app mobile. */
+  #clientView .formule-card-head {
     flex-direction: row;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-3);
   }
+
+  #clientView .formule-name {
+    font-size: 15px;
+  }
+
+  #clientView .formule-card-price strong {
+    font-size: 18px;
+  }
+
+  /* La liste complète des inclusions reste TOUJOURS visible (aucun masquage),
+     sélectionnée ou non — c'est le cœur de la demande. */
+  #clientView .formule-card-list {
+    font-size: 13px;
+    gap: 4px;
+  }
+
+  /* --- BLOCS label|texte EMPILÉS pleine largeur --------------------------
+     Sur mobile, aucun bloc « pilule à gauche | texte écrasé à droite ». Le
+     libellé passe au-dessus, le texte coule normalement sur toute la largeur.
+     Concerne : le récap « Vos rendez-vous / Arrivée / Table / À votre rythme »
+     (visit-line), le récapitulatif final (recap-item) et l'en-tête du pass
+     liberté (anchor-free-head). Desktop conserve la disposition en ligne. */
+  #clientView .visit-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  #clientView .visit-line > span:not(.visit-tag),
+  #clientView .visit-line > strong {
+    width: 100%;
+  }
+
+  #clientView .recap-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  #clientView .recap-value {
+    width: 100%;
+    text-align: left;
+  }
+
+  /* Sélecteur plus spécifique (.anchor-free-pass parent) pour battre la règle de
+     base align-items:center définie plus bas dans le fichier — sinon le badge et
+     le texte restent centrés sur des x différents (colonne non détectée). */
+  #clientView .anchor-free-pass .anchor-free-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  /* Texte responsive : sur mobile on montre la version courte, on masque la longue. */
+  #clientView .only-desktop { display: none; }
+  #clientView .only-mobile { display: inline; }
 
   /* --- CTA principal STICKY (pouce + safe-area iOS) ----------------------- */
   /* Barre pleine largeur ancrée en bas de l'écran : le CTA reste atteignable

@@ -186,6 +186,24 @@ async function walkSteps(page, width) {
   await page.waitForTimeout(250);
   results.push(await measure(page, 'step1-bowling'));
   await shot(page, `client-${tag}-step1-bowling`);
+  // Etape 1 - bowling, GROUPE 15 joueurs : declenche l'encart warning orange
+  // « Maximum conseille : 6 joueurs par piste... 3 pistes cote a cote ». Etat
+  // exact du bug patron (carte + champ Date qui debordaient sur iPhone). On
+  // simule aussi le chrome staff connecte (bouton Deconnexion visible).
+  await page.evaluate(() => {
+    const lb = document.getElementById('logoutBtn');
+    if (lb) lb.classList.remove('hidden');
+    setType('bowling');
+    state.booking.pax = 15;
+    document.getElementById('fPax').value = '15';
+    if (typeof updatePaxAlert === 'function') updatePaxAlert();
+    if (typeof goStep === 'function') goStep(1);
+  });
+  await page.waitForTimeout(300);
+  results.push(await measure(page, 'step1-pax15-warning'));
+  await shot(page, `client-${tag}-step1-pax15-warning`);
+  await page.evaluate(() => { const lb = document.getElementById('logoutBtn'); if (lb) lb.classList.add('hidden'); if (typeof resetBooking === 'function') resetBooking(); setType('bowling'); });
+  await page.waitForTimeout(200);
   // Etape 1 - formules (le gros probleme)
   await page.evaluate(() => setType('formule'));
   await page.waitForTimeout(300);
@@ -341,6 +359,18 @@ async function main() {
   const failures = [];
   // (c) Chaque etape 390px (et 360/414) : aucun scroll horizontal.
   if (worstOverflow > 2) failures.push(`scroll horizontal detecte (worstOverflowX=${worstOverflow}px)`);
+  // (c-bis) ASSERTION PAR ELEMENT (pas seulement le body) : sur CHAQUE etape et
+  // CHAQUE largeur, aucun element de #clientView ne doit avoir rect.right >
+  // innerWidth+1. Attrape le bug patron (carte/date qui debordent a l'etape 1
+  // avec 15 joueurs) meme si document.scrollWidth reste clampe au viewport.
+  for (const w of WIDTHS) {
+    for (const r of report[w]) {
+      if (r.offendersCount > 0) {
+        const first = (r.offenders || []).map((o) => `${o.cls || 'el'}@${o.right}`).slice(0, 4).join(', ');
+        failures.push(`element(s) hors viewport a ${w}px sur ${r.label} (${r.offendersCount} : ${first})`);
+      }
+    }
+  }
   const formuleRows = WIDTHS.map((w) => report[w].find((r) => r.label === 'step1-formules')).filter(Boolean);
   formuleRows.forEach((r) => {
     if (r.cardCount < 10) failures.push(`peu de cartes formules visibles a ${r.vw}px (${r.cardCount})`);

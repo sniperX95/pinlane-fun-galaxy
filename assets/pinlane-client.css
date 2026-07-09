@@ -1421,6 +1421,44 @@ body {
     padding-right: 52px;
   }
 
+  /* --- Anti-débordement iOS des contrôles natifs date/number -------------
+     BUG mobile : à l'étape 1, la carte « Date et joueurs » et le champ Date
+     débordaient à droite hors de l'écran sur iPhone réel. Cause racine : sur
+     iOS Safari, <input type="date"> et <input type="number"> sont des WIDGETS
+     NATIFS dotés d'une largeur intrinsèque (min-width UA) que `width:100%` ne
+     réduit pas. Dans la grille mobile 1 colonne, cette largeur intrinsèque
+     dépasse la colonne → l'input pousse sa cellule .grid-2, la .date-input-wrap
+     et la .card au-delà du viewport. Invisible sous Chromium / WebKit desktop
+     (qui rendent ces champs en simple champ texte, d'où « 0 débordement » dans
+     les audits automatisés). On neutralise la largeur intrinsèque : les enfants
+     de grille/stepper peuvent rétrécir (min-width:0), les champs sont bornés au
+     conteneur (max-width:100%) et rendus non-natifs (appearance:none). Desktop
+     (≥641px) hors média-query : rendu natif intact. */
+  #clientView .grid-2 > *,
+  #clientView .contact-grid > *,
+  #clientView .pax-stepper > *,
+  #clientView .date-input-wrap {
+    min-width: 0;
+  }
+
+  #clientView .input,
+  #clientView input[type='date'],
+  #clientView input[type='number'],
+  #clientView input[type='tel'],
+  #clientView input[type='email'],
+  #clientView input[type='text'] {
+    min-width: 0;
+    max-width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* Garde-fou : même si un widget natif tentait d'imposer sa largeur, il est
+     borné visuellement au champ (le contenu « 2026-07-09 » y tient largement). */
+  #clientView .date-input-wrap {
+    overflow: hidden;
+  }
+
   /* --- Stepper joueurs tactile : − [champ] + ------------------------------ */
   #clientView .pax-stepper {
     grid-template-columns: 48px minmax(0, 1fr) 48px;

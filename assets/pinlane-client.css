@@ -2447,6 +2447,15 @@ body.client-mode .nav-link:hover {
   text-decoration: none;
 }
 
+/* Groupe d'actions à droite du header (switch de vue). Classe portée par le
+   conteneur (ex-style inline) pour piloter le comportement responsive. */
+body.client-mode .header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-left: auto;
+}
+
 body.client-mode .view-switch {
   display: inline-flex;
   padding: 3px;
@@ -2529,6 +2538,15 @@ body.client-mode .client-demo-access.hidden {
   display: none;
 }
 
+/* --- Mode client pur (/reserver) : zéro commande staff ------------------- */
+/* Entrée partageable aux clients finaux. Masque totalement le switch de vue,
+   la Déconnexion et l'Accès SaaS. Le staff continue d'utiliser / ou #staff. */
+body.customer-mode .view-switch,
+body.customer-mode #logoutBtn,
+body.customer-mode #clientDemoAccess {
+  display: none !important;
+}
+
 @media (max-width: 900px) {
   body.client-mode #nav {
     display: none;
@@ -2536,8 +2554,14 @@ body.client-mode .client-demo-access.hidden {
 }
 
 @media (max-width: 640px) {
+  /* En-tête robuste mobile : le logo reste seul sur la première ligne, le switch
+     de vue passe en pleine largeur sur une seconde ligne (flex-wrap). Plus aucun
+     débordement horizontal ni libellé « Direction » coupé, quelle que soit la
+     largeur. Ne s'applique JAMAIS aux <header> internes type .formule-group-head
+     (neutralisés en display:block plus bas). */
   body.client-mode header {
-    gap: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
     padding: var(--space-2) var(--space-4);
     min-height: 60px;
   }
@@ -2547,22 +2571,51 @@ body.client-mode .client-demo-access.hidden {
     height: 40px;
   }
 
+  /* Le groupe d'actions (switch) occupe sa propre ligne, pleine largeur. */
+  body.client-mode .header-actions {
+    order: 3;
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
   body.client-mode .view-switch {
-    margin-left: auto;
+    flex: 1 1 auto;
+    margin-left: 0;
   }
 
+  /* Les trois vues se répartissent l'espace à parts égales : aucun texte coupé. */
   body.client-mode .view-switch button {
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 38px;
-    padding: 0 10px;
+    padding: 0 8px;
+    white-space: nowrap;
   }
 
+  /* Le sélecteur de centre (inline flex posé par JS) doit rester masqué ici. */
   body.client-mode .location-select {
-    display: none;
+    display: none !important;
+  }
+
+  /* Accès SaaS (staff qui teste la vue client) : remonté au-dessus de la barre
+     CTA sticky « Vérifier les disponibilités » pour ne jamais la recouvrir. En
+     mode client pur il est de toute façon masqué (body.customer-mode). */
+  body.client-mode .client-demo-access {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  /* En-tête de famille de formules : empilé verticalement pleine largeur (le
+     sélecteur global `body.client-mode header` le passait en flex-row, d'où 3
+     colonnes serrées illisibles sur mobile). Desktop conserve sa mise en page. */
+  #clientView .formule-group-head {
+    display: block;
   }
 }
 
-/* Très petits mobiles (≤430px) : resserre le switch de vue pour supprimer le
-   léger débordement horizontal du header (logo + switch Réserver/Staff/Direction). */
+/* Très petits mobiles (≤430px) : resserre encore le header. */
 @media (max-width: 430px) {
   body.client-mode header {
     gap: var(--space-2);
@@ -2570,7 +2623,7 @@ body.client-mode .client-demo-access.hidden {
   }
 
   body.client-mode .view-switch button {
-    padding: 0 8px;
+    padding: 0 6px;
     font-size: 12px;
   }
 }

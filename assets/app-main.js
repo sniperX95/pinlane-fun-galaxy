@@ -14471,9 +14471,28 @@ async function loadCenterScheduleConfig() {
   }
 }
 
+// Mode client pur : entrée /reserver destinée aux clients finaux. Force la vue
+// client et masque toute commande staff (switch de vue, Déconnexion, Accès SaaS)
+// via la classe body.customer-mode. Le flag est mémorisé pour la durée de
+// l'onglet (sessionStorage) afin de survivre aux changements de hash internes
+// sans jamais « fuiter » vers l'usage staff normal (/ ou #staff) dans une autre
+// session/onglet.
+function detectCustomerMode() {
+  let path = '';
+  try { path = String(window.location.pathname || '').toLowerCase().replace(/\/+$/, ''); } catch (e) { path = ''; }
+  if (path === '/reserver') {
+    try { sessionStorage.setItem('pinlane-customer-mode', '1'); } catch (e) {}
+    return true;
+  }
+  try { return sessionStorage.getItem('pinlane-customer-mode') === '1'; } catch (e) { return false; }
+}
+
 async function bootstrapApp() {
   isAuthenticated = hasSavedAuth();
+  const customerMode = detectCustomerMode();
+  if (customerMode) document.body.classList.add('customer-mode');
   applyInitialRouteFromHash();
+  if (customerMode) state.view = 'client';
   initClient();
   loadCenterScheduleConfig();
   if (isAuthenticated) {
@@ -14524,6 +14543,8 @@ function applyInitialRouteFromHash() {
     const allowedAdminTabs = ['overview', 'reservations', 'clients', 'ops', 'exports'];
     if (allowedAdminTabs.includes(normalizedAdminTab)) state.adminTab = normalizedAdminTab;
   }
+  // En mode client pur, aucune bascule staff/admin possible (même via #staff).
+  if (document.body.classList.contains('customer-mode')) state.view = 'client';
 }
 
 window.addEventListener('hashchange', syncRouteFromHash);

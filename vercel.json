@@ -23,6 +23,10 @@
   ],
   "rewrites": [
     {
+      "source": "/reserver",
+      "destination": "/index.html"
+    },
+    {
       "source": "/api/pilot-lead",
       "destination": "/api/public-booking-meta"
     },

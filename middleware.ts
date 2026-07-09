@@ -80,6 +80,7 @@ export default function middleware(request: Request) {
     '/api/staff-state',
     '/public-form.html',
     '/pro.html',
+    '/reserver',
   ]);
 
   if (

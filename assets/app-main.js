@@ -1107,6 +1107,7 @@ let remoteSyncBusy = false;
 let remoteSyncFailureCount = 0;
 let remoteSyncPausedUntil = 0;
 let remoteSyncLastFailure = '';
+let remoteSyncDownSince = 0;
 let staffRevisionByDate = {};
 // Horodatage du dernier sync serveur réussi par (centre, date) : évite de
 // re-payer un aller-retour staff-state quand la donnée vient d'être polléé.
@@ -1597,11 +1598,15 @@ function markRemoteSyncSuccess() {
   remoteSyncFailureCount = 0;
   remoteSyncPausedUntil = 0;
   remoteSyncLastFailure = '';
+  remoteSyncDownSince = 0;
+  updateRemoteSyncIndicator();
 }
 
 function markRemoteSyncFailure(error) {
   remoteSyncFailureCount += 1;
   remoteSyncLastFailure = getRemoteSyncErrorMessage(error);
+  if (!remoteSyncDownSince) remoteSyncDownSince = Date.now();
+  updateRemoteSyncIndicator();
   if (isStaticApiFailure(error)) {
     remoteSyncPausedUntil = Date.now() + 5 * 60 * 1000;
     return;
@@ -1609,6 +1614,28 @@ function markRemoteSyncFailure(error) {
   if (remoteSyncFailureCount >= 3) {
     remoteSyncPausedUntil = Date.now() + Math.min(2 * 60 * 1000, 15000 * remoteSyncFailureCount);
   }
+}
+
+// Signal de panne du poll temps réel (pill du dashboard staff) : dégradé
+// discret dès 2 échecs consécutifs, données déclarées périmées dès 6 échecs
+// (le backoff espace alors les tentatives), retour auto au vert au succès.
+function getRemoteSyncIndicator() {
+  if (remoteSyncFailureCount >= 6) {
+    const since = new Date(remoteSyncDownSince || Date.now()).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+    return { tone: 'stale', label: `Données périmées depuis ${since}` };
+  }
+  if (remoteSyncFailureCount >= 2) return { tone: 'warning', label: 'Reconnexion…' };
+  return { tone: 'live', label: 'Données en temps réel' };
+}
+
+function updateRemoteSyncIndicator() {
+  const dot = document.querySelector('.dash-live-dot');
+  if (!dot) return;
+  const indicator = getRemoteSyncIndicator();
+  dot.classList.toggle('warning', indicator.tone === 'warning');
+  dot.classList.toggle('stale', indicator.tone === 'stale');
+  const label = dot.nextElementSibling;
+  if (label) label.textContent = indicator.label;
 }
 
 function escapeHtml(value = '') {
@@ -4746,11 +4773,12 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
   const availableLanes = TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
   const totalPeriodRevenue = metrics.revenueSeries.reduce((sum, value) => sum + value, 0);
+  const syncIndicator = getRemoteSyncIndicator();
   root.innerHTML = `
     <section class="dash-hero">
       <div>
         <h1>Dashboard</h1>
-        <p>Vue d'ensemble de votre activité <span class="dash-live-dot"></span><span>Données en temps réel</span></p>
+        <p>Vue d'ensemble de votre activité <span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></p>
       </div>
       <div class="dash-actions">
         <div class="dash-date-control">

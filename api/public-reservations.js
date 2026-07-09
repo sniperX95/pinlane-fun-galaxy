@@ -63,9 +63,19 @@ module.exports = async (req, res) => {
       warnings: postCreate.warnings,
     });
   } catch (error) {
+    // Même politique que staff-reservations : les messages métier (français,
+    // contrôlés) passent, les erreurs d'infrastructure (Postgres/Neon/réseau)
+    // ne fuient jamais vers le public — on les log et on renvoie un 503 neutre.
+    const raw = String((error && error.message) || '');
+    const isInfra = !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+    if (isInfra) {
+      console.error('[public-reservations] échec', error && (error.stack || raw || error));
+      sendError(res, 503, 'Réservation momentanément indisponible. Réessayez dans un instant.');
+      return;
+    }
     const statusCode = Number(error.statusCode || 0);
     if (statusCode && statusCode !== 400) {
-      sendError(res, statusCode, error.message || 'Requete impossible.');
+      sendError(res, statusCode, raw || 'Requete impossible.');
       return;
     }
     const alternatives = request
@@ -78,7 +88,7 @@ module.exports = async (req, res) => {
       : [];
     sendError(res, alternatives.length ? 409 : 400, alternatives.length
       ? 'Ce créneau vient de changer. Choisissez une des alternatives compatibles ci-dessous.'
-      : (error.message || 'Impossible de créer la réservation.'), {
+      : (raw || 'Impossible de créer la réservation.'), {
       alternatives,
     });
   }

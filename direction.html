@@ -11,7 +11,7 @@
   <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./assets/pinlane.css?v=geist-v2">
-  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260707a">
+  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260709d">
 </head>
 <body class="direction">
   <main class="wrap">
@@ -24,7 +24,7 @@
       <div class="actions">
         <a class="btn" href="/">Retour planning</a>
         <button class="btn" onclick="loadDirection(true)">Actualiser</button>
-        <button class="btn primary" onclick="dispatchQueue()">Envoyer la file</button>
+        <button class="btn primary" onclick="dispatchQueue(this)">Envoyer la file</button>
       </div>
     </section>
 
@@ -41,7 +41,7 @@
   </main>
 
   <script>
-    const state = { tab: 'communications', loading: false, loaded: false, communications: [], samples: [], suggestions: [], events: [], simulation: null, simAuto: false, simTimer: null, lastLoadedAt: '' };
+    const state = { tab: 'communications', loading: false, loaded: false, communications: [], samples: [], suggestions: [], events: [], simulation: null, simAuto: false, simTimer: null, lastLoadedAt: '', error: '', actionError: '' };
     const api = '/api/ops';
     const simulationApi = '/api/simulation';
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -88,6 +88,7 @@
         Object.assign(state, {
           loading: false,
           loaded: true,
+          error: '',
           communications: communications.communications || [],
           samples: samples.samples || [],
           suggestions: suggestions.suggestions || [],
@@ -98,7 +99,8 @@
         render();
       } catch (error) {
         state.loading = false;
-        document.getElementById('content').innerHTML = `<div class="empty">Console indisponible<br>${esc(error.message)}</div>`;
+        state.error = error.message || 'Console indisponible.';
+        render();
       }
     }
     function visibleCommunications() {
@@ -188,9 +190,9 @@
           <div class="sim-progress"><span style="width:${progress}%"></span></div>
           <p>${run ? `${run.stepIndex}/${run.totalSteps} actions · ${esc(run.simDate)}` : `Aucun run actif pour ${esc(simDate())}.`}</p>
           <div class="sim-actions">
-            ${run?.status === 'running' ? `<button class="btn primary" onclick="stepSimulation(8)">Avancer 8</button><button class="btn" onclick="${state.simAuto ? 'stopSimulationAuto()' : 'resumeSimulationAuto()'}">${state.simAuto ? 'Pause auto' : 'Lecture auto'}</button>` : `<button class="btn primary" onclick="startSimulation()">Lancer simulation</button>`}
+            ${run?.status === 'running' ? `<button class="btn primary" onclick="stepSimulation(8)">Avancer 8</button><button class="btn" onclick="${state.simAuto ? 'stopSimulationAuto()' : 'resumeSimulationAuto()'}">${state.simAuto ? 'Pause auto' : 'Lecture auto'}</button>` : `<button class="btn primary" onclick="startSimulation(this)">Lancer simulation</button>`}
             <button class="btn" onclick="stepSimulation(24)">Burst 24</button>
-            <button class="btn" onclick="resetSimulation()">Reset</button>
+            <button class="btn" onclick="resetSimulation(this)">Reset</button>
           </div>
         </div>
         <div class="sim-card">
@@ -211,12 +213,22 @@
         render();
       } catch (error) {}
     }
-    async function startSimulation() {
+    async function startSimulation(button) {
       stopSimulationAuto(false);
-      state.simulation = await json(simulationApi, { method:'POST', body:JSON.stringify({ action:'start', centerId:'libramont', date:simDate(), resetExisting:true, speedFactor:96 }) });
-      state.simAuto = true;
-      render();
-      await stepSimulation(12, true);
+      if (button) button.disabled = true;
+      try {
+        state.simulation = await json(simulationApi, { method:'POST', body:JSON.stringify({ action:'start', centerId:'libramont', date:simDate(), resetExisting:true, speedFactor:96 }) });
+        state.actionError = '';
+        state.simAuto = true;
+        render();
+        await stepSimulation(12, true);
+      } catch (error) {
+        stopSimulationAuto(false);
+        state.actionError = `Lancement de la simulation impossible : ${error.message}`;
+        render();
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
     async function stepSimulation(batchSize = 8, auto = false) {
       const run = state.simulation?.run;
@@ -242,10 +254,30 @@
       state.simTimer = null;
       if (renderNow) render();
     }
-    async function resetSimulation() {
+    async function resetSimulation(button) {
       stopSimulationAuto(false);
-      state.simulation = await json(simulationApi, { method:'POST', body:JSON.stringify({ action:'reset', centerId:'libramont' }) });
-      await loadDirection(true);
+      const runId = state.simulation?.run?.id || '';
+      if (!runId && !confirm('Aucun run de simulation identifié : supprimer TOUTES les données de simulation du centre ?')) return;
+      if (button) button.disabled = true;
+      try {
+        state.simulation = await json(simulationApi, { method:'POST', body:JSON.stringify({ action:'reset', centerId:'libramont', ...(runId ? { runId } : { confirmResetAll: true }) }) });
+        state.actionError = '';
+        await loadDirection(true);
+      } catch (error) {
+        state.actionError = `Reset simulation impossible : ${error.message}`;
+        render();
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+    function errorBanner() {
+      if (state.error) return `<div class="error-banner" role="alert"><span>Console indisponible : ${esc(state.error)}</span><button class="btn" onclick="loadDirection(true)">Réessayer</button></div>`;
+      if (state.actionError) return `<div class="error-banner" role="alert"><span>${esc(state.actionError)}</span><button class="btn" onclick="dismissActionError()">Fermer</button></div>`;
+      return '';
+    }
+    function dismissActionError() {
+      state.actionError = '';
+      render();
     }
     function render() {
       ['communications','samples','suggestions','events','simulation'].forEach(tab => document.getElementById(`tab-${tab}`).classList.toggle('active', state.tab === tab));
@@ -254,9 +286,13 @@
         content.innerHTML = '<div class="empty">Chargement...</div>';
         return;
       }
+      if (!state.loaded) {
+        content.innerHTML = errorBanner() || '<div class="empty">Chargement...</div>';
+        return;
+      }
       const note = state.lastLoadedAt ? `<div class="refresh">Actualisé ${esc(when(state.lastLoadedAt))}</div>` : '';
       const html = state.tab === 'samples' ? renderSamples() : state.tab === 'suggestions' ? renderSuggestions() : state.tab === 'events' ? renderEvents() : state.tab === 'simulation' ? renderSimulation() : renderCommunications();
-      content.innerHTML = note + html;
+      content.innerHTML = errorBanner() + note + html;
     }
     function preview(index, type) {
       const list = type === 'communication-visible'
@@ -273,10 +309,19 @@
       </div>`;
       document.body.appendChild(overlay);
     }
-    async function dispatchQueue() {
-      const payload = await json(api, { method:'POST', body:JSON.stringify({ action:'dispatchDue', limit:25 }) });
-      await loadDirection(true);
-      alert(`${payload.checked || 0} message(s) vérifié(s).`);
+    async function dispatchQueue(button) {
+      if (button) button.disabled = true;
+      try {
+        const payload = await json(api, { method:'POST', body:JSON.stringify({ action:'dispatchDue', limit:25 }) });
+        state.actionError = '';
+        await loadDirection(true);
+        alert(`${payload.checked || 0} message(s) vérifié(s).`);
+      } catch (error) {
+        state.actionError = `Envoi de la file impossible : ${error.message}`;
+        render();
+      } finally {
+        if (button) button.disabled = false;
+      }
     }
     loadDirection();
     setInterval(() => loadDirection(), 20000);

@@ -2292,6 +2292,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-live-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--success); flex: none; }
 .dash-hero p > span:last-child { color: var(--faint); font-size: 12px; }
 
+/* Panne du poll temps réel : warning après 2 échecs, périmé après 6 */
+.dash-live-dot.warning { background: var(--warning); }
+.dash-live-dot.stale { background: var(--danger); }
+.dash-hero p > .dash-live-dot.warning + span { color: var(--warning); }
+.dash-hero p > .dash-live-dot.stale + span { color: var(--danger); }
+
 .dash-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 .dash-date-control {

@@ -2283,6 +2283,26 @@ body.public-form {
   color: var(--muted);
 }
 
+/* Bannière d'erreur (chargement ou action) : distincte de l'état vide */
+.direction .error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.direction .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .direction .refresh {
   margin-bottom: var(--space-2);
   font-size: 12px;

@@ -844,6 +844,16 @@ module.exports = async (req, res) => {
       message: slots.length ? '' : 'Aucun créneau disponible pour ces critères.',
     });
   } catch (error) {
-    sendError(res, 400, error.message || 'Impossible de charger les disponibilités.');
+    // Même politique que staff-reservations : les messages métier (français,
+    // contrôlés) passent, les erreurs d'infrastructure (Postgres/Neon/réseau)
+    // ne fuient jamais vers le public — on les log et on renvoie un 503 neutre.
+    const raw = String((error && error.message) || '');
+    const isInfra = !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
+    if (isInfra) {
+      console.error('[public-availability] échec', error && (error.stack || raw || error));
+      sendError(res, 503, 'Disponibilités momentanément indisponibles. Réessayez dans un instant.');
+      return;
+    }
+    sendError(res, 400, raw);
   }
 };

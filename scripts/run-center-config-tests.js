@@ -2,7 +2,7 @@
 // et que SANS override le comportement est byte-for-byte identique.
 const assert = require('assert');
 const { normalizeCenterConfig, mergeCenterConfig } = require('../lib/center-config');
-const { getRequiredLaneCount } = require('../lib/booking-config');
+const { getRequiredLaneCount, pairsForLaneCount, PAIRS } = require('../lib/booking-config');
 const { getCenter, applyCenterOverrides } = require('../lib/ops-knowledge');
 
 function testNormalizationBounds() {
@@ -60,6 +60,16 @@ function testEngineOverrideCorrelates() {
   );
 }
 
+function testPairsFollowLaneCount() {
+  // Équivalence stricte à 8 pistes : paires générées = PAIRS historique.
+  assert.deepStrictEqual(pairsForLaneCount(8), PAIRS, '8 pistes → PAIRS historique byte-for-byte');
+  assert.deepStrictEqual(pairsForLaneCount(6), [[1, 2], [3, 4], [5, 6]], '6 pistes → 3 paires');
+  assert.deepStrictEqual(pairsForLaneCount(7), [[1, 2], [3, 4], [5, 6]], 'impair : dernière piste sans binôme');
+  assert.deepStrictEqual(pairsForLaneCount(12), [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]], '12 pistes → 6 paires');
+  assert.deepStrictEqual(pairsForLaneCount(1), [], 'moins de 2 pistes → aucune paire');
+  assert.deepStrictEqual(pairsForLaneCount('bogus'), [], 'valeur invalide → aucune paire');
+}
+
 function testGetCenterMerge() {
   // applyCenterOverrides doit refléter l'override dans getCenter, puis pouvoir
   // restaurer la baseline (map vide).
@@ -82,6 +92,7 @@ function main() {
   testMergeDoesNotMutate();
   testEngineDefaultUnchanged();
   testEngineOverrideCorrelates();
+  testPairsFollowLaneCount();
   testGetCenterMerge();
   // Sécurité : laisser le module dans son état baseline pour les tests suivants.
   applyCenterOverrides(new Map());

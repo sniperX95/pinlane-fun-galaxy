@@ -178,6 +178,40 @@ function getCenterScheduleConfig() {
   return centerScheduleConfig;
 }
 
+// Config bookable poussée par /api/public-booking-meta (center.booking) ou par
+// la config staff (resources.bowling). Absente = constantes historiques.
+function getBookingCatalogConfig() {
+  const booking = centerScheduleConfig?.booking;
+  return booking && typeof booking === 'object' ? booking : null;
+}
+
+function resolveBookingCapacityValue(key, fallback) {
+  const raw = Number(getBookingCatalogConfig()?.[key] ?? centerScheduleConfig?.resources?.bowling?.[key]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+function getTotalLanes() {
+  return resolveBookingCapacityValue('laneCount', TOTAL_LANES);
+}
+
+function getMaxPerLane() {
+  return resolveBookingCapacityValue('normalCapacityPerLane', MAX_PER_LANE);
+}
+
+function getEmergencyMaxPerLane() {
+  return resolveBookingCapacityValue('emergencyCapacityPerLane', EMERGENCY_MAX_PER_LANE);
+}
+
+function getBowlingPrices() {
+  const prices = getBookingCatalogConfig()?.bowlingPrices;
+  return prices && typeof prices === 'object' ? prices : BOWLING_PRICES;
+}
+
+function getLaserOptionsCatalog() {
+  const options = getBookingCatalogConfig()?.laserOptions;
+  return Array.isArray(options) && options.length ? options : LASER_GAME_OPTIONS;
+}
+
 function getBusinessNowParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: BUSINESS_TIME_ZONE,
@@ -345,15 +379,17 @@ function reservationNeedsLanes(type, formuleId) {
 }
 function getRequiredLaneCount(type, pax, formuleId) {
   if (!reservationNeedsLanes(type, formuleId)) return 0;
+  const laneCount = getTotalLanes();
   const players = Number(pax) || 1;
-  const normal = Math.ceil(players / MAX_PER_LANE);
-  if (normal > TOTAL_LANES && players <= TOTAL_LANES * EMERGENCY_MAX_PER_LANE) return TOTAL_LANES;
+  const normal = Math.ceil(players / getMaxPerLane());
+  if (normal > laneCount && players <= laneCount * getEmergencyMaxPerLane()) return laneCount;
   return normal;
 }
 function getBasePrice(type, duration, laneCount, pax, formuleId) {
-  if (type === 'bowling') return (BOWLING_PRICES[duration] || 0) * laneCount;
+  if (type === 'bowling') return (getBowlingPrices()[duration] || 0) * laneCount;
   if (type === 'laser') {
-    const option = LASER_GAME_OPTIONS.find(x => Number(x.value) === Number(duration)) || LASER_GAME_OPTIONS[0];
+    const options = getLaserOptionsCatalog();
+    const option = options.find(x => Number(x.value) === Number(duration)) || options[0];
     return option.price * pax;
   }
   const formule = FORMULES.find(x => x.id === formuleId);
@@ -384,7 +420,8 @@ function formatDurationLabel(hours) {
 }
 
 function getLaserOption(duration = state.booking?.duration || 0.5) {
-  return LASER_GAME_OPTIONS.find(x => Number(x.value) === Number(duration)) || LASER_GAME_OPTIONS[0];
+  const options = getLaserOptionsCatalog();
+  return options.find(x => Number(x.value) === Number(duration)) || options[0];
 }
 
 function getLaserGameCount(duration = state.booking?.duration || 0.5) {
@@ -1029,6 +1066,11 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     isOfferEnabled,
     setCenterScheduleConfig,
     getCenterScheduleConfig,
+    getTotalLanes,
+    getMaxPerLane,
+    getEmergencyMaxPerLane,
+    getBowlingPrices,
+    getLaserOptionsCatalog,
     getReservationLabel,
     reservationNeedsLanes,
     getRequiredLaneCount,

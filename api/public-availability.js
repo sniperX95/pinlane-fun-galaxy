@@ -1,7 +1,6 @@
 const {
   FORMULES,
   LASER_GAME_OPTIONS,
-  PAIRS,
   currentTimeDecimal,
   getBasePrice,
   getFormuleAvailability,
@@ -17,7 +16,7 @@ const {
   todayStr,
   TOTAL_LANES,
 } = require('../lib/booking-config');
-const { getPool, readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
+const { allocateLanes, getPool, readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
 const { sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
 const { planningAgent } = require('../lib/ops-agents');
@@ -187,53 +186,6 @@ function getFreeCount(reservations, laneStatuses, startTime, duration, laneCount
     }
   }
   return count;
-}
-
-function allocateLanes(requiredCount, reservations, laneStatuses, startTime, duration, laneCount = TOTAL_LANES) {
-  if (!requiredCount) return [];
-
-  const occupied = getOccupiedLanes(reservations, startTime, duration);
-  const available = [];
-
-  for (let lane = 1; lane <= laneCount; lane += 1) {
-    if (!occupied.has(lane) && laneStatuses[lane] !== 'maintenance') {
-      available.push(lane);
-    }
-  }
-
-  if (available.length < requiredCount) return null;
-
-  if (requiredCount === 1) {
-    for (const pair of PAIRS) {
-      if (available.includes(pair[0]) && !available.includes(pair[1])) return [pair[0]];
-      if (!available.includes(pair[0]) && available.includes(pair[1])) return [pair[1]];
-    }
-    return [available[0]];
-  }
-
-  if (requiredCount === 2) {
-    for (const pair of PAIRS) {
-      if (available.includes(pair[0]) && available.includes(pair[1])) return [...pair];
-    }
-  }
-
-  for (let index = 0; index <= available.length - requiredCount; index += 1) {
-    const group = [available[index]];
-    let contiguous = true;
-
-    for (let offset = 1; offset < requiredCount; offset += 1) {
-      if (available[index + offset] === group[group.length - 1] + 1) {
-        group.push(available[index + offset]);
-      } else {
-        contiguous = false;
-        break;
-      }
-    }
-
-    if (contiguous) return group;
-  }
-
-  return available.slice(0, requiredCount);
 }
 
 function findBowlingBlock(scenario) {

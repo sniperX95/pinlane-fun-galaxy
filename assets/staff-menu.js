@@ -152,13 +152,19 @@
       .filter(Boolean);
   }
 
-  function escapeHtml(value) {
-    return String(value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
+  // Implémentation officielle (app-main.js, globale — chargée avant ce script) ;
+  // repli identique quand le module est chargé seul (tests vm).
+  const escapeHtml = (typeof window !== 'undefined' && typeof window.escapeHtml === 'function')
+    ? window.escapeHtml
+    : function escapeHtml(value = '') {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[char]));
+    };
 
   function getMenuCenters() {
     try {

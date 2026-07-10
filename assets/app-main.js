@@ -10064,6 +10064,7 @@ function refreshStaffClients() {
 }
 
 function exportStaffClientsCsv() {
+  if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement — patientez avant d\'exporter.'); return; }
   const rows = getFilteredStaffClientRows();
   const header = ['Client', 'Email', 'Telephone', 'Statut', 'Reservations', 'Joueurs', 'Depense', 'Annulations', 'Premiere visite', 'Derniere visite'];
   const body = rows.map(row => [

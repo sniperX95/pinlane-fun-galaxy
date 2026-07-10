@@ -41,7 +41,7 @@
   </main>
 
   <script>
-    const state = { tab: 'communications', loading: false, loaded: false, communications: [], samples: [], suggestions: [], events: [], simulation: null, simAuto: false, simTimer: null, lastLoadedAt: '', error: '', actionError: '' };
+    const state = { tab: 'communications', loading: false, loaded: false, communications: [], samples: [], suggestions: [], events: [], simulation: null, simAuto: false, simTimer: null, lastLoadedAt: '', error: '', actionError: '', sectionErrors: {} };
     const api = '/api/ops';
     const simulationApi = '/api/simulation';
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -65,7 +65,11 @@
         headers: { 'Content-Type':'application/json', ...(options.headers || {}) }
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false) throw new Error(payload.message || 'Action impossible.');
+      if (!response.ok || payload.ok === false) {
+        const error = new Error(payload.message || 'Action impossible.');
+        error.status = response.status;
+        throw error;
+      }
       return payload;
     }
     function setTab(tab) {
@@ -73,35 +77,50 @@
       render();
       if (tab === 'simulation') loadSimulationStatus();
     }
+    // allSettled : chaque onglet vit avec SES permissions — un rôle partiel
+    // (ex. emails.view seul) garde ses onglets légitimes, les autres affichent
+    // « Accès restreint » ou « Erreur de chargement » sans tout perdre.
     async function loadDirection(force = false) {
       if (state.loading && !force) return;
       state.loading = true;
       if (!state.loaded) render();
-      try {
-        const [communications, samples, suggestions, events, simulation] = await Promise.all([
-          json(`${api}?action=communications&centerId=libramont&limit=150`),
-          json(`${api}?action=emailSamples`),
-          json(`${api}?action=suggestions&centerId=libramont&limit=100`),
-          json(`${api}?action=events&centerId=libramont&limit=100`),
-          json(`${simulationApi}?action=status&centerId=libramont&date=${simDate()}`)
-        ]);
-        Object.assign(state, {
-          loading: false,
-          loaded: true,
-          error: '',
-          communications: communications.communications || [],
-          samples: samples.samples || [],
-          suggestions: suggestions.suggestions || [],
-          events: events.events || [],
-          simulation,
-          lastLoadedAt: new Date().toISOString()
-        });
-        render();
-      } catch (error) {
-        state.loading = false;
-        state.error = error.message || 'Console indisponible.';
-        render();
-      }
+      const sections = ['communications', 'samples', 'suggestions', 'events', 'simulation'];
+      const results = await Promise.allSettled([
+        json(`${api}?action=communications&centerId=libramont&limit=150`),
+        json(`${api}?action=emailSamples`),
+        json(`${api}?action=suggestions&centerId=libramont&limit=100`),
+        json(`${api}?action=events&centerId=libramont&limit=100`),
+        json(`${simulationApi}?action=status&centerId=libramont&date=${simDate()}`)
+      ]);
+      const sectionErrors = {};
+      const read = (index, pick) => {
+        const result = results[index];
+        if (result.status === 'fulfilled') return pick(result.value);
+        sectionErrors[sections[index]] = {
+          status: Number(result.reason?.status || 0),
+          message: result.reason?.message || 'Erreur de chargement.'
+        };
+        return null;
+      };
+      const communications = read(0, payload => payload.communications || []);
+      const samples = read(1, payload => payload.samples || []);
+      const suggestions = read(2, payload => payload.suggestions || []);
+      const events = read(3, payload => payload.events || []);
+      const simulation = read(4, payload => payload);
+      const allFailed = results.every(result => result.status === 'rejected');
+      Object.assign(state, {
+        loading: false,
+        loaded: state.loaded || !allFailed,
+        error: allFailed ? (results[0].reason?.message || 'Console indisponible.') : '',
+        sectionErrors,
+        communications: communications ?? state.communications,
+        samples: samples ?? state.samples,
+        suggestions: suggestions ?? state.suggestions,
+        events: events ?? state.events,
+        simulation: simulation ?? state.simulation,
+        lastLoadedAt: allFailed ? state.lastLoadedAt : new Date().toISOString()
+      });
+      render();
     }
     function visibleCommunications() {
       return state.communications.filter(item => item.templateId !== 'sms_future_reminder' && item.channel !== 'phone_note' && !item.payload?.smsDeferred);
@@ -210,6 +229,7 @@
     async function loadSimulationStatus() {
       try {
         state.simulation = await json(`${simulationApi}?action=status&centerId=libramont&date=${simDate()}`);
+        delete state.sectionErrors.simulation;
         render();
       } catch (error) {}
     }
@@ -279,6 +299,14 @@
       state.actionError = '';
       render();
     }
+    function sectionBanner(tab) {
+      const sectionError = state.sectionErrors[tab];
+      if (!sectionError) return '';
+      if (sectionError.status === 401 || sectionError.status === 403) {
+        return '<div class="empty">Accès restreint : votre rôle ne permet pas de consulter cette section.</div>';
+      }
+      return `<div class="error-banner" role="alert"><span>Erreur de chargement : ${esc(sectionError.message)}</span><button class="btn" onclick="loadDirection(true)">Réessayer</button></div>`;
+    }
     function render() {
       ['communications','samples','suggestions','events','simulation'].forEach(tab => document.getElementById(`tab-${tab}`).classList.toggle('active', state.tab === tab));
       const content = document.getElementById('content');
@@ -291,7 +319,8 @@
         return;
       }
       const note = state.lastLoadedAt ? `<div class="refresh">Actualisé ${esc(when(state.lastLoadedAt))}</div>` : '';
-      const html = state.tab === 'samples' ? renderSamples() : state.tab === 'suggestions' ? renderSuggestions() : state.tab === 'events' ? renderEvents() : state.tab === 'simulation' ? renderSimulation() : renderCommunications();
+      const html = sectionBanner(state.tab)
+        || (state.tab === 'samples' ? renderSamples() : state.tab === 'suggestions' ? renderSuggestions() : state.tab === 'events' ? renderEvents() : state.tab === 'simulation' ? renderSimulation() : renderCommunications());
       content.innerHTML = errorBanner() + note + html;
     }
     function preview(index, type) {

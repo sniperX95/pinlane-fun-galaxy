@@ -1,4 +1,11 @@
-const { DURATION_OPTIONS, FORMULES, todayStr } = require('../lib/booking-config');
+const {
+  BOWLING_PRICES,
+  DURATION_OPTIONS,
+  FORMULES,
+  LASER_GAME_OPTIONS,
+  resolveBowlingCapacity,
+  todayStr,
+} = require('../lib/booking-config');
 const { getPool, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
@@ -185,11 +192,18 @@ module.exports = async (req, res) => {
     center = null;
   }
 
+  // Config bookable per-center (pistes, capacités, tarifs, options laser) : le
+  // front la consomme quand elle est présente, ses constantes locales restent
+  // le fallback (mêmes valeurs sans override).
+  const bowlingCapacity = resolveBowlingCapacity(center?.resources?.bowling);
+
   sendJson(res, 200, {
     ok: true,
     today: todayStr(),
     durationOptions: DURATION_OPTIONS,
     formules: FORMULES,
+    laserOptions: LASER_GAME_OPTIONS,
+    bowlingPrices: BOWLING_PRICES,
     center: center
       ? {
         id: center.id,
@@ -199,6 +213,13 @@ module.exports = async (req, res) => {
           ? center.holidaySettings
           : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] },
         offerAvailability: center.offerAvailability && typeof center.offerAvailability === 'object' ? center.offerAvailability : {},
+        booking: {
+          laneCount: bowlingCapacity.laneCount,
+          normalCapacityPerLane: bowlingCapacity.normalCapacityPerLane,
+          emergencyCapacityPerLane: bowlingCapacity.emergencyCapacityPerLane,
+          bowlingPrices: BOWLING_PRICES,
+          laserOptions: LASER_GAME_OPTIONS,
+        },
       }
       : null,
   });

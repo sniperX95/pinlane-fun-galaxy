@@ -44,10 +44,12 @@
   // message technique brut (erreur d'infrastructure Vercel, trace Postgres,
   // anglais…) : seul un message issu de NOTRE API (enveloppe { ok:false,
   // message }, rédigé en français) est affiché tel quel.
-  function friendlyMessageForStatus(status) {
+  function friendlyMessageForStatus(status, method = 'GET') {
     if (status === 401) return 'Session expirée. Reconnectez-vous pour continuer.';
     if (status === 403) return "Vous n'avez pas l'autorisation pour cette action.";
-    if (status === 404) return 'Élément introuvable ou déjà supprimé.';
+    // « déjà supprimé » n'a de sens que sur une vraie suppression (DELETE) —
+    // un endpoint non résolu (GET/POST) reste un 404 neutre.
+    if (status === 404) return method === 'DELETE' ? 'Élément introuvable ou déjà supprimé.' : 'Ressource introuvable.';
     if (status === 408 || status === 504) return 'Le serveur a mis trop de temps à répondre. Réessayez.';
     if (status === 429) return 'Service momentanément surchargé. Réessayez dans quelques instants.';
     if (status >= 500 || status === 0) return 'Service temporairement indisponible. Réessayez dans un instant.';
@@ -127,7 +129,7 @@
 
       const userMessage = isOurApiError(payload)
         ? payload.message
-        : friendlyMessageForStatus(response.status);
+        : friendlyMessageForStatus(response.status, String(options.method || 'GET').toUpperCase());
       throw buildError(userMessage, {
         status: response.status,
         payload,

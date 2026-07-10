@@ -104,14 +104,20 @@
       });
     }
 
-    const contentType = (response.headers && typeof response.headers.get === 'function'
-      ? response.headers.get('content-type')
-      : '') || '';
-    // Pas de content-type JSON explicite → on tente quand même de parser (certains
-    // runtimes/tests omettent l'en-tête) ; échec silencieux → payload null.
-    const payload = contentType.includes('application/json') || !contentType
-      ? await response.json().catch(() => null)
-      : null;
+    // Corps lu UNE SEULE fois : texte d'abord, puis parse JSON best-effort.
+    // Jamais de response.clone() après consommation du body — c'est un
+    // TypeError brut (« Failed to execute 'clone'… ») garanti côté UI.
+    // Fallback .json() : certains runtimes de test n'exposent que json().
+    let rawBody = '';
+    let payload = null;
+    if (typeof response.text === 'function') {
+      rawBody = await response.text().catch(() => '');
+      if (rawBody) {
+        try { payload = JSON.parse(rawBody); } catch (parseError) { payload = null; }
+      }
+    } else if (typeof response.json === 'function') {
+      payload = await response.json().catch(() => null);
+    }
 
     if (!response.ok || (payload && payload.ok === false)) {
       if (response.status === 401 && isProtectedStaffApi(url) && typeof config.onUnauthorized === 'function') {
@@ -122,9 +128,7 @@
       let rawDetail = payload && typeof payload === 'object'
         ? (payload.message || (payload.error && payload.error.message) || '')
         : '';
-      if (!rawDetail && typeof response.clone === 'function' && typeof response.text === 'function') {
-        rawDetail = (await response.clone().text().catch(() => '')).slice(0, 300);
-      }
+      if (!rawDetail && rawBody) rawDetail = rawBody.slice(0, 300);
       if (rawDetail) console.warn('[api]', response.status, requestUrl, rawDetail);
 
       const userMessage = isOurApiError(payload)

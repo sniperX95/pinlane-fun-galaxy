@@ -2154,6 +2154,10 @@ function applyAuthState() {
   const logoutBtn = document.getElementById('logoutBtn');
   if (overlay) overlay.classList.toggle('hidden', !locked);
   if (logoutBtn) logoutBtn.classList.toggle('hidden', !hasSavedAuth());
+  // A1 : bouton header « Direction » masqué pour un rôle sans direction.view
+  // (visible hors session : il mène au login, re-vérifié après connexion).
+  const adminBtn = document.getElementById('btnAdmin');
+  if (adminBtn) adminBtn.classList.toggle('hidden', !canOpenAdminView());
   if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
 }
 
@@ -2242,8 +2246,14 @@ async function submitLogin(ev) {
       await syncDateReservations(state.currentDate, { silent: true, skipRender: true });
       renderStaff();
     } else if (state.view === 'admin') {
-      await loadAdminDashboard(true);
-      renderAdminDashboard();
+      // A1 : le rôle fraîchement connecté doit avoir direction.view pour
+      // rester sur la console Direction — sinon retour vue staff.
+      if (!canOpenAdminView()) {
+        setView('staff');
+      } else {
+        await loadAdminDashboard(true);
+        renderAdminDashboard();
+      }
     }
     toast('Connexion Pinlane active.');
   } catch (loginError) {
@@ -2287,7 +2297,19 @@ function syncOpsSidebar() {
   });
 }
 
+// A1 : la console Direction exige `direction.view` (même mécanique que
+// guardStaffPage). Un rôle connecté sans cette permission est renvoyé sur la
+// vue staff ; non connecté, la vue admin reste atteignable pour afficher le
+// login (le refus est re-vérifié après connexion dans submitLogin).
+function canOpenAdminView() {
+  return !hasSavedAuth() || canUseStaffPermission('direction.view');
+}
+
 function setView(v) {
+  if (v === 'admin' && !canOpenAdminView()) {
+    toast('Accès non autorisé pour ce rôle.');
+    v = 'staff';
+  }
   state.view = v;
   document.body.classList.toggle('client-mode', v === 'client');
   document.body.classList.toggle('staff-mode', v === 'staff' || v === 'admin');
@@ -6249,8 +6271,92 @@ function collectEstablishmentScheduleBlock(prefix) {
   return block;
 }
 
+// A3 : bornes alignées sur la validation serveur (lib/center-config.js,
+// clampInt) — le front refuse AVANT envoi ce que le serveur re-clamperait en
+// silence. Pattern DESIGN.md §6 : bordure danger (aria-invalid) + message
+// 12px role="alert" sous le champ.
+const ESTABLISHMENT_NUMBER_RULES = [
+  ['estab-laneCount', 1, 40, 'Nombre de pistes : entier entre 1 et 40.'],
+  ['estab-normalCap', 1, 12, 'Joueurs confort : entier entre 1 et 12 par piste.'],
+  ['estab-emergencyCap', 1, 15, 'Joueurs max (secours) : entier entre 1 et 15 par piste.'],
+  ['estab-weaponCount', 0, 200, "Nombre d'armes : entier entre 0 et 200."],
+  ['estab-launches', 1, 20, 'Lancements parallèles : entier entre 1 et 20.']
+];
+
+function clearEstablishmentFieldErrors() {
+  document.querySelectorAll('.establishment-editor .field-error-message').forEach(el => el.remove());
+  document.querySelectorAll('.establishment-editor [aria-invalid="true"]').forEach(el => el.removeAttribute('aria-invalid'));
+}
+
+function markEstablishmentFieldError(input, message) {
+  if (!input) return;
+  input.setAttribute('aria-invalid', 'true');
+  const note = document.createElement('div');
+  note.className = 'field-error-message';
+  note.setAttribute('role', 'alert');
+  note.textContent = message;
+  const host = input.closest('.field') || input.closest('.estab-day-row');
+  if (host) host.appendChild(note);
+  else input.insertAdjacentElement('afterend', note);
+}
+
+function validateEstablishmentForm() {
+  clearEstablishmentFieldErrors();
+  const invalid = [];
+  ESTABLISHMENT_NUMBER_RULES.forEach(([id, min, max, message]) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    const value = Number(input.value);
+    if (!Number.isInteger(value) || value < min || value > max) {
+      markEstablishmentFieldError(input, message);
+      invalid.push(input);
+    }
+  });
+  // Cohérence : la capacité de secours ne peut pas être sous la capacité
+  // confort (le serveur la relèverait en silence).
+  const normalCap = Number(document.getElementById('estab-normalCap')?.value);
+  const emergencyInput = document.getElementById('estab-emergencyCap');
+  if (emergencyInput && !emergencyInput.hasAttribute('aria-invalid')
+    && Number.isInteger(normalCap) && Number(emergencyInput.value) < normalCap) {
+    markEstablishmentFieldError(emergencyInput, 'Joueurs max (secours) doit être au moins égal aux joueurs confort.');
+    invalid.push(emergencyInput);
+  }
+  // Horaires : fermeture strictement après ouverture pour chaque jour ouvert
+  // (00:00 saisi en fermeture = minuit, stocké 24:00).
+  const toMinutes = (value) => {
+    const [h, m] = String(value).split(':').map(Number);
+    return h * 60 + m;
+  };
+  [['estab-day', 'Horaires normaux'], ['estab-hday', 'Horaires vacances/fériés']].forEach(([prefix, blockLabel]) => {
+    ESTABLISHMENT_DAYS.forEach(([key, dayLabel]) => {
+      if (document.getElementById(`${prefix}-${key}-closed`)?.checked) return;
+      const closeInput = document.getElementById(`${prefix}-${key}-close`);
+      const open = establishmentInputValue(`${prefix}-${key}-open`);
+      let close = establishmentInputValue(`${prefix}-${key}-close`);
+      if (!open || !close) return; // champ vide = jour stocké fermé (comportement existant)
+      if (close === '00:00') close = '24:00';
+      if (toMinutes(close) <= toMinutes(open)) {
+        markEstablishmentFieldError(closeInput, `${blockLabel} — ${dayLabel} : la fermeture doit être après l'ouverture (00:00 = minuit).`);
+        invalid.push(closeInput);
+      }
+    });
+  });
+  return invalid;
+}
+
+// A4 : garde de ré-entrance — un double-clic sur « Enregistrer » ne doit
+// produire qu'UN seul POST, bouton désactivé pendant l'async.
+let submitCenterConfigInFlight = false;
+
 async function submitCenterConfig(centerId) {
   if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
+  if (submitCenterConfigInFlight) return;
+  const invalidFields = validateEstablishmentForm();
+  if (invalidFields.length) {
+    invalidFields[0].focus();
+    toast('Corrigez les champs en erreur avant d’enregistrer.');
+    return;
+  }
   const regular = collectEstablishmentScheduleBlock('estab-day');
   const holiday = collectEstablishmentScheduleBlock('estab-hday');
   const activityAvailability = {};
@@ -6290,6 +6396,9 @@ async function submitCenterConfig(centerId) {
     activityAvailability
   };
   const name = establishmentInputValue('estab-name').trim();
+  submitCenterConfigInFlight = true;
+  const saveBtn = document.getElementById('estabSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Enregistrement…'; }
   try {
     if (name) {
       await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'saveCenter', center: { id: centerId, name, status: config.status } }) });
@@ -6301,6 +6410,11 @@ async function submitCenterConfig(centerId) {
     await loadStaffCenterConfig(true);
   } catch (error) {
     toast(error?.message || 'Enregistrement impossible.');
+  } finally {
+    submitCenterConfigInFlight = false;
+    // Re-query : la page a pu être re-rendue (succès) ou pas (échec réseau).
+    const btn = document.getElementById('estabSaveBtn');
+    if (btn) { btn.disabled = false; btn.textContent = 'Enregistrer'; }
   }
 }
 
@@ -6322,6 +6436,13 @@ async function submitNewCenter() {
 
 async function setEstablishmentCenterStatus(centerId, status) {
   if (!canUseStaffPermission('settings.manage')) { toast('Action réservée à la direction.'); return; }
+  // A5 : archiver coupe la réservation client en direct — confirmation
+  // explicite obligatoire, annulation = zéro appel API.
+  if (status === 'closed') {
+    const center = (staffCenterConfigCache.centers || []).find(item => item.id === centerId);
+    const centerName = center?.name || centerId;
+    if (!window.confirm(`Archiver ${centerName} ? Les réservations client seront coupées pour ce centre.`)) return;
+  }
   try {
     await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'setCenterStatus', centerId, status }) });
     toast(status === 'closed' ? 'Centre archivé.' : 'Statut mis à jour.');
@@ -6402,7 +6523,7 @@ function renderStaffUtilityEstablishment() {
         </div>
         <div class="establishment-editor-actions">
           ${editing
-            ? `<button type="button" class="btn btn-primary" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
+            ? `<button type="button" id="estabSaveBtn" class="btn btn-primary" onclick="submitCenterConfig('${escapeJsString(center.id)}')">Enregistrer</button>
                <button type="button" class="btn btn-ghost btn-sm" onclick="cancelEstablishmentEdit()">Annuler</button>`
             : canEdit
               ? `<button type="button" class="btn btn-primary" onclick="startEstablishmentEdit()">Modifier</button>
@@ -6883,10 +7004,18 @@ async function setStaffRolePreset(roleId, presetId) {
   await runStaffAuthAction('setRolePreset', { roleId, presetId }, 'Preset appliqué.');
 }
 
+// A10 : mémorise le bouton déclencheur pour lui rendre le focus au close
+// (Échap, Annuler, clic backdrop ou submit) au lieu de retomber sur <body>.
+let staffAccessModalTrigger = null;
+
 function closeStaffAccessModal() {
   const overlay = document.getElementById('staffAccessModalOverlay');
   if (overlay) overlay.remove();
   document.removeEventListener('keydown', handleStaffAccessModalKeydown, true);
+  if (staffAccessModalTrigger && document.contains(staffAccessModalTrigger)) {
+    staffAccessModalTrigger.focus({ preventScroll: true });
+  }
+  staffAccessModalTrigger = null;
 }
 
 function handleStaffAccessModalKeydown(event) {
@@ -6897,6 +7026,7 @@ function handleStaffAccessModalKeydown(event) {
 
 function openStaffAccessModal(kind) {
   closeStaffAccessModal();
+  staffAccessModalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const access = ensureStaffAccessControl();
   const selectedRole = getStaffAccessRole(access.selectedRoleId);
   const isRole = kind === 'role';
@@ -14571,6 +14701,12 @@ function applyInitialRouteFromHash() {
     const normalizedAdminTab = adminPageAliases[page] || page;
     const allowedAdminTabs = ['overview', 'reservations', 'clients', 'ops', 'exports'];
     if (allowedAdminTabs.includes(normalizedAdminTab)) state.adminTab = normalizedAdminTab;
+  }
+  // A1 : deep-link #admin/... refusé à un rôle connecté sans direction.view —
+  // même refus que setView, retombée sur la vue staff.
+  if (state.view === 'admin' && !canOpenAdminView()) {
+    state.view = 'staff';
+    toast('Accès non autorisé pour ce rôle.');
   }
   // En mode client pur, aucune bascule staff/admin possible (même via #staff).
   if (document.body.classList.contains('customer-mode')) state.view = 'client';

@@ -3400,6 +3400,8 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-day-closed { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .estab-day-sep { color: var(--faint); text-align: center; }
 .estab-day-row input[type='time'] { height: 34px; max-width: 120px; }
+/* A3 : le message d'erreur d'un horaire occupe sa propre ligne sous la rangée */
+.estab-day-row .field-error-message { grid-column: 1 / -1; }
 .estab-day-row input[type='time']:disabled { opacity: 0.45; }
 .estab-day-row input[type='time']::-webkit-calendar-picker-indicator { opacity: 0.55; }
 [data-theme='dark'] .estab-day-row input[type='time']::-webkit-calendar-picker-indicator { filter: invert(1); }
@@ -6967,6 +6969,30 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .ops-admin-tabs button.active,
 .ops-tab.active,
 .ops-cockpit-tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
+
+/* A9 : en mobile, les 5 onglets restent atteignables au doigt — scroll-x
+   fluide avec snap + cibles tactiles ≥ 44px (DESIGN.md §7). */
+@media (max-width: 480px) {
+  .admin-period-tabs,
+  .admin-tabs,
+  .ops-admin-tabs,
+  .ops-cockpit-tabs {
+    display: flex;
+    width: 100%;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-period-tabs button,
+  .admin-tabs button,
+  .ops-admin-tabs button,
+  .ops-tab,
+  .ops-cockpit-tab {
+    min-height: 44px;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+}
 
 /* Panneaux + titres de section */
 .admin-panel {

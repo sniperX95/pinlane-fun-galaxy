@@ -2239,10 +2239,16 @@ body.public-form {
 }
 
 .direction .pill.failed,
-.direction .pill.critical,
 .direction .pill.high {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+/* P2-5 : hiérarchie visible critical > high — critical passe en danger plein
+   (texte = surface : blanc en light, quasi-noir en dark, AA dans les 2 thèmes) */
+.direction .pill.critical {
+  background: var(--danger);
+  color: var(--surface);
 }
 
 .direction .pill.info,
@@ -2466,6 +2472,20 @@ body.public-form {
   .direction .sim-layout,
   .direction .sim-log {
     grid-template-columns: 1fr;
+  }
+}
+
+/* P3-4 : en mobile étroit (390px), le segmented 5 onglets wrappe proprement
+   dans la largeur avec des cibles tactiles ≥ 44px (DESIGN.md §7). */
+@media (max-width: 480px) {
+  .direction .tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .direction .tab {
+    flex: 1 1 auto;
+    min-height: 44px;
   }
 }
 

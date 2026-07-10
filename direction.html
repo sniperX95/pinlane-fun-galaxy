@@ -11,7 +11,7 @@
   <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./assets/pinlane.css?v=geist-v2">
-  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260709d">
+  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260710a">
 </head>
 <body class="direction">
   <main class="wrap">
@@ -29,14 +29,14 @@
     </section>
 
     <section class="panel">
-      <div class="tabs">
-        <button id="tab-communications" class="tab active" onclick="setTab('communications')">Mails</button>
-        <button id="tab-samples" class="tab" onclick="setTab('samples')">Modèles</button>
-        <button id="tab-suggestions" class="tab" onclick="setTab('suggestions')">Agents</button>
-        <button id="tab-events" class="tab" onclick="setTab('events')">Journal</button>
-        <button id="tab-simulation" class="tab" onclick="setTab('simulation')">Simulation rush</button>
+      <div class="tabs" role="tablist" aria-label="Sections de la console direction">
+        <button id="tab-communications" class="tab active" role="tab" aria-selected="true" aria-controls="content" onclick="setTab('communications')">Mails</button>
+        <button id="tab-samples" class="tab" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" onclick="setTab('samples')">Modèles</button>
+        <button id="tab-suggestions" class="tab" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" onclick="setTab('suggestions')">Agents</button>
+        <button id="tab-events" class="tab" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" onclick="setTab('events')">Journal</button>
+        <button id="tab-simulation" class="tab" role="tab" aria-selected="false" aria-controls="content" tabindex="-1" onclick="setTab('simulation')">Simulation rush</button>
       </div>
-      <div id="content"></div>
+      <div id="content" role="tabpanel" tabindex="0" aria-label="Contenu de la section"></div>
     </section>
   </main>
 
@@ -72,11 +72,26 @@
       }
       return payload;
     }
+    const TAB_ORDER = ['communications', 'samples', 'suggestions', 'events', 'simulation'];
     function setTab(tab) {
       state.tab = tab;
       render();
       if (tab === 'simulation') loadSimulationStatus();
     }
+    // P2-6 : navigation clavier du tablist — flèches gauche/droite (cycliques),
+    // Home/End, roving tabindex (l'onglet actif est le seul tabbable).
+    document.querySelector('.tabs').addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const index = TAB_ORDER.indexOf(state.tab);
+      let next = index;
+      if (event.key === 'ArrowLeft') next = (index + TAB_ORDER.length - 1) % TAB_ORDER.length;
+      if (event.key === 'ArrowRight') next = (index + 1) % TAB_ORDER.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = TAB_ORDER.length - 1;
+      event.preventDefault();
+      setTab(TAB_ORDER[next]);
+      document.getElementById(`tab-${TAB_ORDER[next]}`).focus();
+    });
     // allSettled : chaque onglet vit avec SES permissions — un rôle partiel
     // (ex. emails.view seul) garde ses onglets légitimes, les autres affichent
     // « Accès restreint » ou « Erreur de chargement » sans tout perdre.
@@ -156,13 +171,20 @@
           <button class="mini" onclick="preview(${index}, 'sample')">Voir</button>
         </div>`).join('')}</div>`;
     }
+    // P3-3 : libellé FR de repli quand l'agent n'a pas fourni de titre —
+    // jamais l'ID technique brut (duration_adjustment…) à l'écran.
+    const suggestionLabel = type => ({
+      duration_adjustment: 'Ajustement de durée recommandé',
+      marketing_script: 'Script marketing proposé',
+      orchestrator_action: 'Action orchestrateur'
+    }[type] || 'Recommandation agent');
     function renderSuggestions() {
       if (!state.suggestions.length) return '<div class="empty">Aucune recommandation active. Les agents en créeront après incidents, retards ou anomalies répétées.</div>';
       return `<div class="list">${state.suggestions.map(item => {
         const payload = item.payload || {};
         return `<div class="row">
           <div><span class="pill ${esc(item.severity)}">${esc(item.severity)}</span><div class="meta">Confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div></div>
-          <div><div class="title">${esc(payload.title || item.suggestionType)}</div><div class="meta">${esc(item.agentId)} • ${esc(item.status)}</div></div>
+          <div><div class="title">${esc(payload.title || suggestionLabel(item.suggestionType))}</div><div class="meta">${esc(item.agentId)} • ${esc(item.status)}</div></div>
           <div class="meta">${esc(payload.recommendation || payload.reason || payload.message || 'À examiner.')}</div>
           <span class="pill">Agent</span>
         </div>`;
@@ -308,7 +330,13 @@
       return `<div class="error-banner" role="alert"><span>Erreur de chargement : ${esc(sectionError.message)}</span><button class="btn" onclick="loadDirection(true)">Réessayer</button></div>`;
     }
     function render() {
-      ['communications','samples','suggestions','events','simulation'].forEach(tab => document.getElementById(`tab-${tab}`).classList.toggle('active', state.tab === tab));
+      TAB_ORDER.forEach(tab => {
+        const button = document.getElementById(`tab-${tab}`);
+        const active = state.tab === tab;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+        button.tabIndex = active ? 0 : -1;
+      });
       const content = document.getElementById('content');
       if (state.loading && !state.loaded) {
         content.innerHTML = '<div class="empty">Chargement...</div>';
@@ -323,20 +351,58 @@
         || (state.tab === 'samples' ? renderSamples() : state.tab === 'suggestions' ? renderSuggestions() : state.tab === 'events' ? renderEvents() : state.tab === 'simulation' ? renderSimulation() : renderCommunications());
       content.innerHTML = errorBanner() + note + html;
     }
+    // P2-6 : la modale d'aperçu est un vrai dialog — Échap ferme, focus piégé
+    // dans la carte, retour de focus au bouton « Voir » déclencheur.
+    let previewTrigger = null;
+    function closePreview() {
+      const overlay = document.querySelector('.preview');
+      if (!overlay) return;
+      overlay.remove();
+      document.removeEventListener('keydown', handlePreviewKeydown, true);
+      if (previewTrigger && document.contains(previewTrigger)) previewTrigger.focus();
+      previewTrigger = null;
+    }
+    function handlePreviewKeydown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePreview();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const overlay = document.querySelector('.preview');
+      if (!overlay) return;
+      const focusables = [...overlay.querySelectorAll('button, iframe, [tabindex]:not([tabindex="-1"])')];
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!overlay.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
     function preview(index, type) {
       const list = type === 'communication-visible'
         ? visibleCommunications()
         : type === 'communication' ? state.communications : state.samples;
       const item = list[index];
       if (!item) return;
-      const html = item.html || item.body || `<pre>${esc(item.textBody || '')}</pre>`;
+      previewTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // P3-3 : aucun contenu (html, body et texte vides) → message explicite
+      // au lieu d'un <pre> blanc dans l'iframe.
+      const textBody = String(item.textBody || '').trim();
+      const html = item.html || item.body || (textBody ? `<pre>${esc(textBody)}</pre>` : '');
+      const title = item.subject || label(item.templateId);
       const overlay = document.createElement('div');
       overlay.className = 'preview';
-      overlay.innerHTML = `<div class="preview-card">
-        <div class="preview-head"><span>${esc(item.subject || label(item.templateId))}</span><button class="btn" onclick="this.closest('.preview').remove()">Fermer</button></div>
-        <iframe sandbox="" srcdoc="${esc(html)}"></iframe>
+      overlay.innerHTML = `<div class="preview-card" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="preview-head"><span>${esc(title)}</span><button class="btn" onclick="closePreview()">Fermer</button></div>
+        ${html ? `<iframe sandbox="" title="Aperçu du message" srcdoc="${esc(html)}"></iframe>` : '<div class="empty">Aperçu indisponible.</div>'}
       </div>`;
+      overlay.addEventListener('mousedown', event => {
+        if (event.target === overlay) closePreview();
+      });
+      document.addEventListener('keydown', handlePreviewKeydown, true);
       document.body.appendChild(overlay);
+      overlay.querySelector('.preview-head button')?.focus();
     }
     async function dispatchQueue(button) {
       if (button) button.disabled = true;

@@ -1895,6 +1895,10 @@ let quickBookState = null;
 let isAuthenticated = false;
 let slotFetchRequestId = 0;
 let slotLoading = false;
+// P3-9 : distingue « panne serveur » (message + Réessayer) de « aucun créneau »
+// (suggestion de changer de date). Posé par fetchSlots, lu par renderSlots.
+let slotLoadFailed = false;
+let slotLoadFailedMessage = '';
 let bookingSubmitBusy = false;
 const STAFF_MENU_PAGES = [
   'dashboard',
@@ -2771,6 +2775,30 @@ function showAlert(msg) {
   setTimeout(() => { el.innerHTML = ''; }, 4500);
 }
 
+// Erreur au champ (P2-1, DESIGN.md §6) : aria-invalid → bordure --danger
+// (pinlane.css) + message 12px role="alert" injecté juste sous le champ.
+function clearFieldError(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input || !input.parentElement) return;
+  input.removeAttribute('aria-invalid');
+  const message = input.parentElement.querySelector('.field-error-message');
+  if (message) message.remove();
+}
+
+function setFieldError(inputId, text) {
+  const input = document.getElementById(inputId);
+  if (!input || !input.parentElement) return;
+  input.setAttribute('aria-invalid', 'true');
+  let message = input.parentElement.querySelector('.field-error-message');
+  if (!message) {
+    message = document.createElement('div');
+    message.className = 'field-error-message';
+    message.setAttribute('role', 'alert');
+    input.insertAdjacentElement('afterend', message);
+  }
+  message.textContent = text;
+}
+
 // Purge la proposition d'horaires alternatifs (état + DOM). Appelée dès que le
 // contexte de réservation change : nouvelle recherche, reset, changement de
 // date/joueurs/activité/formule, réservation confirmée. Sans ça, la carte
@@ -2916,6 +2944,7 @@ async function fetchSlots(options = {}) {
     });
     if (requestId !== slotFetchRequestId) return;
 
+    slotLoadFailed = false;
     state.availableSlots = filterPastSlotsForDate(payload.slots || [], state.booking.date);
     formulaAnchorData = payload.anchors || null;
     formulaAnchorMessage = state.availableSlots.length ? '' : (payload.message || '');
@@ -2934,7 +2963,10 @@ async function fetchSlots(options = {}) {
     formulaAnchorData = null;
     formulaAnchorMessage = '';
     formulaAnchorSuggestions = [];
-    showAlert(error.message || 'Impossible de charger les créneaux.');
+    // Panne serveur ≠ zéro créneau : renderSlots affiche l'état d'erreur
+    // dédié (role="alert" + bouton Réessayer), pas l'état vide.
+    slotLoadFailed = true;
+    slotLoadFailedMessage = error.message || '';
   }
 
   if (requestId !== slotFetchRequestId) return;
@@ -3274,6 +3306,24 @@ function renderFormulaEmptySlots(formule) {
     </div>`;
 }
 
+// Panne serveur (P3-9) : état distinct du « zéro créneau » — la disponibilité
+// n'a pas pu être chargée, on propose de réessayer sans perdre les choix.
+function renderSlotLoadError() {
+  return `
+    <div class="slot-state slot-state-error" role="alert">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div>
+        <strong>Impossible de charger les créneaux</strong>
+        <span>${escapeHtml(slotLoadFailedMessage || 'Le service ne répond pas pour le moment. Vos choix sont conservés.')}</span>
+        <button type="button" class="slot-retry-btn" onclick="retryFetchSlots()">Réessayer</button>
+      </div>
+    </div>`;
+}
+
+function retryFetchSlots() {
+  fetchSlots({ showLoading: true });
+}
+
 function renderSlots(formule) {
   const isLaser = state.booking.type === 'laser';
   const ds = parseLocalDate(state.booking.date).toLocaleDateString('fr-BE', { weekday:'long', day:'2-digit', month:'short' });
@@ -3307,6 +3357,10 @@ function renderSlots(formule) {
       <div class="slot-grid slot-grid-skeleton" aria-hidden="true">
         ${Array.from({ length: 8 }, () => '<div class="slot slot-skeleton"><span class="slot-skeleton-line"></span><span class="slot-skeleton-line short"></span></div>').join('')}
       </div>`;
+    return;
+  }
+  if (slotLoadFailed) {
+    list.innerHTML = renderSlotLoadError();
     return;
   }
   if (formule && formulaHasAnchorUi()) {
@@ -3368,11 +3422,22 @@ function goStep4() {
   const name = document.getElementById('fName').value.trim();
   const phone = document.getElementById('fPhone').value.trim();
   const email = document.getElementById('fEmail').value.trim();
-  if (!name || !phone || !email) { showAlert('Nom, téléphone et email requis pour envoyer la confirmation.'); return; }
-  if (name.length < 2) { showAlert('Merci d\'indiquer votre nom complet.'); return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showAlert('Adresse email invalide — vérifiez-la pour recevoir votre confirmation.'); return; }
+  ['fName', 'fPhone', 'fEmail'].forEach(clearFieldError);
+  const fieldErrors = [];
+  if (!name) fieldErrors.push(['fName', 'Indiquez votre prénom et nom.']);
+  else if (name.length < 2) fieldErrors.push(['fName', 'Merci d\'indiquer votre nom complet.']);
   const phoneDigits = phone.replace(/[^0-9]/g, '');
-  if (phoneDigits.length < 8 || phoneDigits.length > 15) { showAlert('Numéro de téléphone invalide.'); return; }
+  if (!phone) fieldErrors.push(['fPhone', 'Indiquez un numéro de téléphone.']);
+  else if (phoneDigits.length < 8 || phoneDigits.length > 15) fieldErrors.push(['fPhone', 'Numéro de téléphone invalide.']);
+  if (!email) fieldErrors.push(['fEmail', 'Indiquez votre email pour recevoir la confirmation.']);
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.push(['fEmail', 'Adresse email invalide — vérifiez-la pour recevoir votre confirmation.']);
+  if (fieldErrors.length) {
+    fieldErrors.forEach(([inputId, text]) => setFieldError(inputId, text));
+    showAlert('Vérifiez les champs signalés avant de continuer.');
+    const firstInvalid = document.getElementById(fieldErrors[0][0]);
+    if (firstInvalid) firstInvalid.focus();
+    return;
+  }
   state.booking.name = name;
   state.booking.phone = phone;
   state.booking.email = email;

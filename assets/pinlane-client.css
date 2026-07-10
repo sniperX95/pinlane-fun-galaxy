@@ -11,6 +11,8 @@
      2. index.html — #clientView (parcours formule → activité → créneau → OK)
      3. public-form.html — body.public-form
      4. direction.html — body.direction (outil interne : densité console)
+     5. Header client — shell public de index.html (body.client-mode)
+     6. Pickers formule (heure d'arrivée, « Ancres + Liberté », occasion)
    ========================================================================== */
 
 /* ----------------------------------------------------------------------------
@@ -263,6 +265,13 @@ body {
 
 #clientView .contact-grid {
   row-gap: var(--space-5);
+}
+
+/* Erreur au champ (P2-1, DESIGN.md §6) : message 12px --danger injecté par
+   setFieldError() sous l'input marqué aria-invalid (bordure via pinlane.css). */
+#clientView .field-error-message {
+  display: block;
+  margin-top: 6px;
 }
 
 #clientView .date-input-wrap {
@@ -887,6 +896,55 @@ body {
   color: var(--faint);
 }
 
+/* État panne serveur : distinct de l'état vide (P3-9) — signal danger +
+   action « Réessayer » (le vide suggère seulement de changer de date). */
+#clientView .slot-state-error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--text);
+}
+
+#clientView .slot-state-error svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--danger);
+}
+
+#clientView .slot-state-error strong {
+  display: block;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#clientView .slot-state-error span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+#clientView .slot-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--space-3);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+#clientView .slot-retry-btn:hover {
+  background: var(--subtle);
+}
+
 #clientView .slot-spinner {
   flex-shrink: 0;
   width: 16px;
@@ -1295,10 +1353,8 @@ body {
   color: var(--muted);
 }
 
-/* Override d'un style="" inline historique (couleur blanche en dur) sur
-   #successName : illisible en thème light, on le ramène au token texte. */
 #clientView .success-wrap .sub b {
-  color: var(--text) !important;
+  color: var(--text);
 }
 
 #clientView .confetti-hint {
@@ -2513,15 +2569,16 @@ body.client-mode .logo-wrap {
   border-radius: var(--radius-sm);
 }
 
-/* Le logo tenant est blanc (branding conservé) : en thème clair il devient
-   invisible sur fond clair — on lui garantit un socle sombre. */
+/* Le logo tenant officiel (assets/brand/logo-fun-galaxy.svg) est à texte
+   blanc : en thème clair on lui garantit un socle sombre — var(--text) vaut
+   exactement le noir de référence (#0a0a0a) dans ce thème. Pas de halo. */
 [data-theme='light'] body.client-mode .logo-wrap {
-  background: #0a0a0a;
-  padding: 2px 10px;
+  background: var(--text);
+  padding: 4px 12px;
 }
 
 body.client-mode .logo {
-  width: 118px;
+  width: auto;
   height: 48px;
   display: block;
 }
@@ -2625,28 +2682,35 @@ body.client-mode #logoutBtn.site-auth-action:hover {
   background: var(--subtle);
 }
 
+/* Entrée staff (P3-7) : plus de bouton flottant au-dessus du flux — un lien
+   sobre dans le footer du parcours client. */
+body.client-mode .client-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-10);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+
 body.client-mode .client-demo-access {
-  position: fixed;
-  bottom: var(--space-4);
-  right: var(--space-4);
-  z-index: 60;
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
-  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--muted);
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+  transition: color var(--dur) var(--ease);
 }
 
 body.client-mode .client-demo-access:hover {
-  background: var(--subtle);
   color: var(--text);
+  text-decoration: underline;
 }
 
 body.client-mode .client-demo-access.hidden {
@@ -2658,7 +2722,8 @@ body.client-mode .client-demo-access.hidden {
    la Déconnexion et l'Accès SaaS. Le staff continue d'utiliser / ou #staff. */
 body.customer-mode .view-switch,
 body.customer-mode #logoutBtn,
-body.customer-mode #clientDemoAccess {
+body.customer-mode #clientDemoAccess,
+body.customer-mode .client-footer {
   display: none !important;
 }
 
@@ -2682,7 +2747,7 @@ body.customer-mode #clientDemoAccess {
   }
 
   body.client-mode .logo {
-    width: 98px;
+    width: auto;
     height: 40px;
   }
 
@@ -2712,16 +2777,6 @@ body.customer-mode #clientDemoAccess {
     display: none !important;
   }
 
-  /* Accès SaaS (staff qui teste la vue client) : remonté au-dessus de la barre
-     CTA sticky « Vérifier les disponibilités » pour ne jamais la recouvrir. En
-     mode client pur il est de toute façon masqué (body.customer-mode). */
-  body.client-mode .client-demo-access {
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
-    height: 32px;
-    padding: 0 12px;
-    font-size: 12px;
-  }
-
   /* En-tête de famille de formules : empilé verticalement pleine largeur (le
      sélecteur global `body.client-mode header` le passait en flex-row, d'où 3
      colonnes serrées illisibles sur mobile). Desktop conserve sa mise en page. */
@@ -2744,363 +2799,12 @@ body.customer-mode #clientDemoAccess {
 }
 
 /* ============================================================================
-   6. SKIN FUN GALAXY — identité du client final (fungalaxy.be)
-   ----------------------------------------------------------------------------
-   Portée STRICTE : surfaces publiques `body.client-mode` (index.html #clientView
-   + header public) et `body.public-form`. N'affecte JAMAIS staff/admin/direction
-   (setView() ne pose `client-mode` que sur la vue publique ; ces scopes ne
-   matchent ni body.staff-mode, ni body.admin-mode, ni body.direction).
-
-   Direction artistique calquée sur le vrai site fungalaxy.be :
-     • Fond NOIR PUR, texte BLANC dominant. Le noir est la scène.
-     • Violet signature #944292 = ACCENT parcimonieux : mot-accent des titres,
-       remplissage des boutons, états actifs. Jamais en fond de page.
-     • Teal/cyan #00acad = UNIQUEMENT le HALO lumineux rétro autour des boutons
-       pilule (glow + fine bordure claire), signature « néon » du site.
-     • Titres = display condensé gras MAJUSCULE (Anton, self-hosted, équivalent
-       libre de la « Korolev » propriétaire). Corps = Montserrat (self-hosted).
-     • Effet rétro « contour » (lettres transparentes + trait blanc) réservé à
-       un grand titre de section (écran de confirmation).
-
-   Méthode tokens : tous les hex de marque + le halo vivent UNIQUEMENT dans la
-   déclaration de variables `--fgx-*` ci-dessous ; les règles ne consomment que
-   des var() (contrainte run-quality-audit.js).
-   Contraste AA vérifié : blanc #fff sur violet #944292 = 6.08:1 ; noir #000 sur
-   blanc #fff = 21:1 ; texte violet clair #c77fc2 sur noir ≈ 6.9:1 ; mot-accent
-   violet #944292 réservé au display large (seuil AA large 3:1).
+   6. PICKERS FORMULE — heure d'arrivée & « Ancres + Liberté »
+   (L'ancien bloc « SKIN FUN GALAXY » — tokens --fgx-*, fonts Anton/Montserrat,
+   fond noir figé, halos néon teal, color-scheme:dark forcé — est supprimé :
+   le branding tenant n'existe plus que par le logo du header (DESIGN.md §3)
+   et les thèmes light/dark de pinlane.css font foi sur tout le parcours.)
    ========================================================================== */
-
-/* --- Polices self-hostées (OFL), scope client uniquement ------------------ */
-@font-face {
-  font-family: 'Anton';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('./fonts/anton-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Montserrat';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('./fonts/montserrat-latin-600.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Montserrat';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./fonts/montserrat-latin-700.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Montserrat';
-  font-style: normal;
-  font-weight: 800;
-  font-display: swap;
-  src: url('./fonts/montserrat-latin-800.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-body.client-mode,
-body.public-form {
-  /* -- Marque Fun Galaxy (SEULE source des hex de marque + halo) ---------- */
-  --fgx-violet: #944292;           /* violet signature : fills boutons/actifs */
-  --fgx-violet-strong: #a94fa5;    /* violet hover (plus clair) */
-  --fgx-violet-text: #c77fc2;      /* violet clair : petits textes accent AA  */
-  --fgx-white: #ffffff;            /* boutons spéciaux « Réserver » (fond)    */
-  --fgx-black: #000000;            /* texte sur boutons blancs                */
-
-  /* Halo rétro teal/cyan : fine bordure claire + lueur néon (var() only) --- */
-  --fgx-halo:
-    0 0 0 1px rgba(255, 255, 255, 0.55),
-    0 0 12px rgba(0, 172, 173, 0.55),
-    0 0 26px rgba(0, 172, 173, 0.38),
-    0 0 46px rgba(64, 224, 224, 0.22);
-  --fgx-halo-strong:
-    0 0 0 1px rgba(255, 255, 255, 0.78),
-    0 0 16px rgba(0, 172, 173, 0.72),
-    0 0 34px rgba(0, 172, 173, 0.50),
-    0 0 64px rgba(64, 224, 224, 0.32);
-  --fgx-halo-ring: 0 0 0 1px rgba(255, 255, 255, 0.40), 0 0 14px rgba(0, 172, 173, 0.30);
-
-  /* -- Polices : display condensé (Anton) + corps (Montserrat) ------------ */
-  --fgx-display: 'Anton', 'Bebas Neue', 'Arial Narrow', system-ui, sans-serif;
-  --font-ui: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-data: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
-
-  /* -- Neutres : NOIR PUR + rampe grise neutre (aucune teinte violette) --- */
-  --page: #000000;
-  --surface: #0d0d0f;
-  --raised: #141416;
-  --subtle: #1a1a1d;
-  --line: #262629;
-  --line-strong: #3b3b40;
-  --text: #ffffff;
-  --muted: #b6b6bb;
-  --faint: #86868c;
-
-  /* -- Accent = violet signature (fills : sélection, CTA, états actifs) ---- */
-  --accent: var(--fgx-violet);
-  --accent-strong: var(--fgx-violet-strong);
-  --accent-soft: rgba(148, 66, 146, 0.22);
-  --accent-contrast: #ffffff;
-
-  --tenant-accent: var(--accent);
-  --tenant-accent-soft: var(--accent-soft);
-
-  /* -- Statuts sur fond noir ---------------------------------------------- */
-  --success: #3dd68c;
-  --success-soft: rgba(61, 214, 140, 0.16);
-  --warning: #f5a623;
-  --warning-soft: rgba(245, 166, 35, 0.16);
-  --danger: #f76d6d;
-  --danger-soft: rgba(247, 109, 109, 0.16);
-  --info: #2fd0d1;
-  --info-soft: rgba(0, 172, 173, 0.18);
-
-  /* -- Profondeur noire ---------------------------------------------------- */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.55);
-  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.6);
-  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.7);
-  --backdrop: rgba(0, 0, 0, 0.74);
-
-  color-scheme: dark;
-}
-
-/* --- Fond NOIR PUR : pas de dégradé violet en page (DA fungalaxy.be) ------ */
-#clientView {
-  background: var(--page);
-}
-
-body.public-form {
-  background: var(--page);
-}
-
-/* --- Header public : onglet actif = violet plein -------------------------- */
-body.client-mode .view-switch button.active {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  box-shadow: none;
-}
-
-/* --- Titres display : Anton condensé, MAJUSCULES -------------------------- */
-#clientView .hero-title h1,
-#clientView .card-title,
-#clientView .success-wrap h2,
-.public-form h1,
-.public-form h2 {
-  font-family: var(--fgx-display);
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.01em;
-}
-
-#clientView .hero-kicker {
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-weight: 700;
-  color: var(--fgx-violet-text);
-}
-
-#clientView .hero-title h1 {
-  font-size: clamp(30px, 6.2vw, 46px);
-  line-height: 0.98;
-  letter-spacing: 0.005em;
-}
-
-/* Mot-accent violet du titre (display large → AA large 3:1) --------------- */
-#clientView .hero-title h1 .accent {
-  color: var(--fgx-violet);
-}
-
-#clientView .card-title {
-  font-size: clamp(17px, 3.4vw, 21px);
-  letter-spacing: 0.02em;
-}
-
-/* --- Stepper : étape active violet, étape faite violet plein -------------- */
-#clientView .progress-step.active .progress-index {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-  box-shadow: 0 0 0 4px var(--accent-soft);
-}
-
-#clientView .progress-step.done .progress-index {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-}
-
-#clientView .progress-step.done .progress-label {
-  color: var(--text);
-}
-
-/* --- Cartes : surface noire neutre, icônes violet clair ------------------- */
-#clientView .card {
-  box-shadow: var(--shadow-sm);
-}
-
-#clientView .card-icon,
-#clientView .card-icon.teal {
-  background: var(--accent-soft);
-  border: 1px solid var(--line-strong);
-  color: var(--fgx-violet-text);
-}
-
-/* --- Sélecteurs d'activité : fill violet + fin halo sur l'état actif ------ */
-#clientView .seg-btn.active,
-#clientView .dur-pill.active,
-#clientView .slot.active,
-#clientView .formula-time-choice.active {
-  box-shadow: var(--fgx-halo-ring);
-}
-
-/* --- Ligne formule sélectionnée : bordure + ring violet ------------------- */
-#clientView .formule-row.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md);
-  background: var(--accent-soft);
-}
-
-/* --- Petits textes accentués : violet clair (contraste AA) ---------------- */
-#clientView .formula-plan-count,
-#clientView .recap-value.accent,
-#clientView .formula-route-step.done small {
-  color: var(--fgx-violet-text);
-}
-
-/* ==========================================================================
-   BOUTONS PILULE À HALO RÉTRO — signature Fun Galaxy
-   Variante (a) primaire : fond violet plein + texte blanc + halo teal.
-   Variante (b) spéciale  : fond blanc + texte noir + halo teal (action clé
-   « Réserver » = confirmation finale index + envoi public-form).
-   ========================================================================== */
-#clientView .btn-primary,
-#clientView .btn-secondary {
-  border-radius: var(--radius-full);
-  font-family: var(--font-ui);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-/* (a) Primaire — violet plein, halo teal */
-#clientView .btn-primary {
-  background: var(--accent);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: var(--accent-contrast);
-  box-shadow: var(--fgx-halo);
-}
-
-#clientView .btn-primary:hover {
-  background: var(--accent-strong);
-  border-color: rgba(255, 255, 255, 0.22);
-  box-shadow: var(--fgx-halo-strong);
-  opacity: 1;
-}
-
-/* (b) Spéciale — action clé « Réserver » : fond blanc, texte noir, halo teal */
-#clientView #btnConfirmBooking.btn-primary {
-  background: var(--fgx-white);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  color: var(--fgx-black);
-  box-shadow: var(--fgx-halo);
-}
-
-#clientView #btnConfirmBooking.btn-primary:hover {
-  background: var(--fgx-white);
-  color: var(--fgx-black);
-  box-shadow: var(--fgx-halo-strong);
-}
-
-/* Secondaire (Retour) : pilule sobre, contour, sans halo criard */
-#clientView .btn-secondary {
-  background: transparent;
-  border: 1px solid var(--line-strong);
-  color: var(--text);
-  box-shadow: none;
-}
-
-#clientView .btn-secondary:hover {
-  background: var(--subtle);
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
-/* --- Confirmation : pastille violet signature + halo teal ----------------- */
-#clientView .success-icon {
-  background: var(--accent);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: var(--accent-contrast);
-  box-shadow: var(--fgx-halo);
-}
-
-/* --- Titre CONTOUR rétro (transparent + trait blanc) : écran de confirmation
-   Grand titre display, effet « outline » sobre et lisible (trait #fff sur
-   noir → pixels visibles 21:1). Un seul grand titre concerné. ------------- */
-#clientView #step5 .success-wrap h2 {
-  font-size: clamp(34px, 8vw, 58px);
-  line-height: 1;
-  color: transparent;
-  -webkit-text-stroke: 1.6px var(--fgx-white);
-  text-stroke: 1.6px var(--fgx-white);
-}
-
-/* ============================================================================
-   6bis. SKIN FUN GALAXY — public-form.html (body.public-form)
-   ========================================================================== */
-.public-form h1 {
-  font-size: clamp(30px, 6vw, 44px);
-  line-height: 1;
-}
-
-.public-form .eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-weight: 700;
-  color: var(--fgx-violet-text);
-}
-
-/* CTA « Envoyer la réservation » = action clé → variante (b) blanc + halo */
-.public-form .cta {
-  border-radius: var(--radius-full);
-  font-family: var(--font-ui);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  background: var(--fgx-white);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  color: var(--fgx-black);
-  box-shadow: var(--fgx-halo);
-}
-
-.public-form .cta:hover {
-  opacity: 1;
-  background: var(--fgx-white);
-  color: var(--fgx-black);
-  box-shadow: var(--fgx-halo-strong);
-}
-
-.public-form .cta:disabled {
-  background: var(--subtle);
-  border-color: var(--line-strong);
-  color: var(--faint);
-  box-shadow: none;
-}
-
-/* Segmented (Bowling/Laser/Formule) & créneaux : actif violet + fin halo --- */
-.public-form .segmented button.active,
-.public-form .slot-list button.active,
-.public-form .duration-list button.active,
-.public-form .formula-card.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-contrast);
-  box-shadow: var(--fgx-halo-ring);
-}
 
 /* --- Picker formule « heure d'arrivée d'abord » --------------------------- */
 #clientView .formula-arrival-picker {
@@ -3156,7 +2860,7 @@ body.client-mode .view-switch button.active {
 #clientView .formula-arrival-hint {
   margin: 0;
   font-size: 12.5px;
-  color: var(--subtle);
+  color: var(--muted);
 }
 #clientView .formula-program-panel {
   display: flex;
@@ -3223,7 +2927,7 @@ body.client-mode .view-switch button.active {
   padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--bg);
+  background: var(--page);
 }
 
 #clientView .anchor-row-head {
@@ -3303,7 +3007,7 @@ body.client-mode .view-switch button.active {
   cursor: pointer;
 }
 
-#clientView .anchor-onsite.active { color: var(--fgx-violet-text); font-weight: 600; }
+#clientView .anchor-onsite.active { color: var(--accent); font-weight: 600; }
 
 #clientView .anchor-status {
   display: flex;
@@ -3322,8 +3026,8 @@ body.client-mode .view-switch button.active {
 }
 
 #clientView .anchor-status-error {
-  border: 1px solid var(--danger, #b3261e);
-  background: var(--danger-soft, rgba(179, 38, 30, 0.08));
+  border: 1px solid var(--danger);
+  background: var(--danger-soft);
   color: var(--text);
 }
 
@@ -3374,11 +3078,13 @@ body.client-mode .view-switch button.active {
   color: var(--text);
 }
 
+/* Badge statut §6 : fond -soft + texte statut (blanc sur vert clair échouait
+   le contraste AA en thème dark). */
 #clientView .anchor-free-badge {
   padding: 2px 10px;
   border-radius: var(--radius-full);
-  background: var(--success);
-  color: #fff;
+  background: var(--success-soft);
+  color: var(--success);
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -3519,7 +3225,7 @@ body.modal-open { overflow: hidden; }
   justify-content: center;
   padding: var(--space-4);
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--backdrop);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
@@ -3530,10 +3236,10 @@ body.modal-open { overflow: hidden; }
   max-width: 560px;
   margin: auto;
   padding: 26px 24px 24px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  background: var(--bg, var(--surface));
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  background: var(--raised);
+  box-shadow: var(--shadow-overlay);
 }
 .bespoke-modal-close {
   position: absolute;

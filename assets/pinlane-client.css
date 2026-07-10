@@ -151,48 +151,7 @@ body {
   font-weight: 400;
 }
 
-#clientView .booking-alt-head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  color: var(--danger);
-  font-weight: 500;
-}
-
-#clientView .booking-alt-list {
-  display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-
-#clientView .booking-alt-option {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-
-#clientView .booking-alt-option:hover {
-  background: var(--subtle);
-}
-
-#clientView .booking-alt-option small {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
-}
+/* .booking-alt-* : composant partagé défini dans pinlane.css */
 
 /* --- Cartes du parcours (plus d'air que la console) --------------------- */
 #clientView .card {
@@ -313,32 +272,7 @@ body {
   color: var(--text);
 }
 
-#clientView .schedule-hint {
-  margin-top: 6px;
-  font-size: 12px;
-}
-
-#clientView .schedule-hint .open {
-  color: var(--success);
-  font-weight: 500;
-}
-
-#clientView .schedule-hint .closed {
-  color: var(--danger);
-  font-weight: 500;
-}
-
-/* Contexte vacances/férié à côté de « Ouvert 10h - 22h » */
-#clientView .schedule-hint .sched-holiday {
-  margin-left: var(--space-2);
-  padding: 1px 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
-  background: var(--subtle);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
-}
+/* .schedule-hint : composant partagé défini dans pinlane.css */
 
 #clientView .pax-alert {
   display: flex;
@@ -707,22 +641,7 @@ body {
 }
 
 /* --- Info box + actions d'étape ------------------------------------------ */
-#clientView .info-box {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: var(--info-soft);
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-#clientView .info-box svg {
-  color: var(--info);
-  margin-top: 1px;
-}
+/* .info-box : composant partagé défini dans pinlane.css */
 
 #clientView .step-actions {
   display: flex;
@@ -1388,20 +1307,10 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes pl-client-shake {
-  0%, 100% { transform: translateX(0); }
-  30% { transform: translateX(-3px); }
-  60% { transform: translateX(3px); }
-}
-
+/* .scale-in / .shake : composants partagés définis dans pinlane.css */
 #clientView .slide-up,
-#clientView .slide-right,
-#clientView .scale-in {
+#clientView .slide-right {
   animation: pl-client-enter var(--dur-slow) var(--ease) both;
-}
-
-#clientView .shake {
-  animation: pl-client-shake 200ms var(--ease) 1;
 }
 
 /* --- Mobile first : le parcours se fait au téléphone ---------------------- */
@@ -3271,8 +3180,4 @@ body.modal-open { overflow: hidden; }
 }
 .cta-secondary:hover { background: var(--subtle); }
 
-/* Modale demande sur mesure — rangée d'actions (indépendante du CTA sticky) */
-#clientView .cr-actions,
-.cr-actions { display:flex; gap:10px; align-items:center; margin-top:18px; }
-.cr-actions .btn-secondary { flex:0 0 auto; }
-.cr-actions .btn-primary { flex:1 1 auto; }
+/* Modale demande sur mesure — .cr-actions : composant partagé dans pinlane.css */

@@ -867,7 +867,8 @@
       setMenuPage('emails');
       if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();
-      if (typeof loadOpsAdmin === 'function') loadOpsAdmin(false);
+      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(false);
+      else if (typeof loadOpsAdmin === 'function') loadOpsAdmin(false);
       return;
     }
     if (key === 'campaigns') {
@@ -909,7 +910,8 @@
       return;
     }
     if (typeof setView === 'function') setView('admin');
-    if (typeof setAdminTab === 'function') setAdminTab('overview');
+    if (typeof openAdminTab === 'function') openAdminTab('overview');
+    else if (typeof setAdminTab === 'function') setAdminTab('overview');
   }
 
   function syncStaffMenuState() {

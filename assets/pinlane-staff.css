@@ -124,12 +124,9 @@ body:not(.staff-mode):not(.admin-mode) .ops-sidebar { display: none; }
   padding: 20px clamp(16px, 2.2vw, 32px) 48px;
 }
 
-/* Animations d'entrée référencées par le markup (une fois par navigation) */
-@keyframes pl-scale-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
-.scale-in { animation: pl-scale-in var(--dur-slow) var(--ease) both; }
+/* Animation d'entrée référencée par le markup — scale-in/shake vivent dans
+   pinlane.css (couche partagée, DESIGN.md §8). */
 .fade-in { animation: pl-enter var(--dur-slow) var(--ease) both; }
-@keyframes pl-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-.shake { animation: pl-shake 160ms var(--ease) 2; }
 
 /* ----------------------------------------------------------------------------
    1. SIDEBAR NAVIGATION (.ops-sidebar + .fgx-*)
@@ -1600,7 +1597,6 @@ input.dash-date-input {
 .bowling-drop-preview.invalid { border-color: var(--danger); background: var(--danger-soft); }
 .bowling-drop-preview.invalid span { color: var(--danger); }
 
-.bowling-drag-ghost,
 .bowling-drag-ghost-card,
 .laser-drag-ghost {
   position: fixed;
@@ -2201,39 +2197,6 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .guest-chip.ok { background: var(--success-soft); color: var(--success); }
 .guest-chip.warn { background: var(--warning-soft); color: var(--warning); }
 .guest-mini { display: flex; flex-wrap: wrap; gap: 4px; }
-
-.guest-engagement-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
-
-.guest-action-card {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  font-size: 12px;
-}
-
-.guest-action-card strong { font-size: 13px; font-weight: 600; }
-.guest-action-card small { color: var(--muted); }
-
-.guest-copy-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.guest-copy-btn:hover { background: var(--subtle); color: var(--text); }
-.guest-upsell-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* ----------------------------------------------------------------------------
    7. VUE D'ENSEMBLE (.dash-*)
@@ -3240,81 +3203,6 @@ body.dashboard-detail-open { overflow: hidden; }
 
 .utility-session-groups button:hover { background: var(--subtle); }
 .utility-session-groups em { font-style: normal; color: var(--faint); font-variant-numeric: tabular-nums; }
-
-/* Offres & cartes */
-.utility-offer-market { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
-
-.utility-offer {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-
-.utility-offer img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--line); }
-.utility-offer span { color: var(--muted); font-size: 11px; font-weight: 500; }
-.utility-offer strong { font-size: 14px; font-weight: 600; }
-.utility-offer small { color: var(--accent); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 500; }
-.utility-offer p { color: var(--muted); font-size: 12px; line-height: 1.45; }
-
-.utility-offer footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: var(--space-2); }
-.utility-offer footer b { font-size: 12px; color: var(--faint); font-weight: 500; font-variant-numeric: tabular-nums; }
-
-.utility-offer footer button {
-  min-height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.utility-offer footer button:hover { background: var(--subtle); }
-
-/* Etablissement */
-.utility-establishment { display: grid; gap: var(--space-4); }
-.utility-center-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
-
-.utility-center-card {
-  display: grid;
-  gap: 5px;
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.utility-center-card.active { border-color: var(--accent); background: var(--accent-soft); }
-.utility-center-card span { color: var(--muted); font-size: 11px; font-weight: 500; }
-.utility-center-card strong { font-size: 14px; font-weight: 600; }
-.utility-center-card small { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
-
-.utility-center-card button {
-  justify-self: start;
-  margin-top: 4px;
-  min-height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.utility-center-card button:hover { background: var(--subtle); }
-
-.utility-policy-list { display: grid; gap: var(--space-2); }
-.utility-policy-list > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--space-3); padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
-.utility-policy-list > div:last-child { border-bottom: 0; }
-.utility-policy-list strong { font-weight: 600; }
-.utility-policy-list span { color: var(--muted); }
 
 /* --- Établissement : éditeur de configuration par centre --- */
 .establishment-page { display: grid; gap: var(--space-4); }
@@ -5187,42 +5075,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .pv2-price-stats strong { color: var(--text); font-weight: 600; }
 
-/* Angles campagnes */
-.pv2-ideas { display: grid; gap: var(--space-2); }
-
-.pv2-idea {
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
-}
-
-.pv2-idea:hover { border-color: var(--line-strong); }
-.pv2-idea.selected { border-color: var(--accent); background: var(--accent-soft); }
-
-.pv2-idea-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-.pv2-idea-top strong { font-size: 13px; font-weight: 600; }
-
-.pv2-idea-score {
-  padding: 1px 8px;
-  border-radius: var(--radius-full);
-  background: var(--subtle);
-  color: var(--muted);
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.pv2-idea.selected .pv2-idea-score { background: var(--surface); color: var(--accent); }
-.pv2-idea p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
-
 /* ----------------------------------------------------------------------------
    15b. CAMPAGNES — parcours gamifié « agence marketing » (style Duolingo)
    Structure motivante (niveaux, XP, streak, chemin de missions) sur l'identité
@@ -5673,7 +5525,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .info-row .lbl { font-size: 11px; color: var(--faint); font-weight: 500; margin-bottom: 3px; }
 .info-row .val { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; }
 .info-row .val small { font-size: 11px; color: var(--faint); font-weight: 400; }
-.info-box { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--subtle); font-size: 13px; color: var(--muted); }
 
 .status-pill {
   display: inline-flex;
@@ -5897,18 +5748,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .delay-notify-intro { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .delay-notify-list { display: grid; gap: var(--space-2); }
 
-.delay-notify-row {
-  display: flex;
-  gap: var(--space-3);
-  align-items: flex-start;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.delay-notify-row input { margin-top: 3px; accent-color: var(--accent); }
 .delay-notify-body { display: grid; gap: 2px; min-width: 0; }
 .delay-notify-name { font-size: 13px; font-weight: 600; }
 .delay-notify-summary { color: var(--muted); font-size: 12px; line-height: 1.4; }
@@ -6195,26 +6034,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .pay-btn:hover { opacity: 0.88; }
 
-/* Alternatives proposées (retard / conflit) */
-.booking-alternatives { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
-.booking-alt-head { font-size: 12px; font-weight: 500; color: var(--muted); }
-.booking-alt-list { display: grid; gap: 6px; }
-
-.booking-alt-option {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.booking-alt-option:hover { border-color: var(--accent); background: var(--accent-soft); }
-.booking-alt-option span { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; }
-.booking-alt-option small { color: var(--faint); }
+/* Alternatives proposées (retard / conflit) : composant partagé dans pinlane.css */
 
 .ops-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
 
@@ -6397,17 +6217,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .qb-input-invalid { border-color: var(--danger); background: var(--danger-soft); }
 .qb-textarea { height: auto; min-height: 52px; padding: 8px 10px; line-height: 1.4; resize: vertical; }
 
-/* Marqueur « obligatoire » discret à côté d'un label (nom/tél/email). */
-.qb-req {
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--danger);
-  vertical-align: middle;
-}
 
 /* Aide courte sous un champ ou un titre de section « Plus d'options ». */
 .qb-field-note { margin-top: 4px; font-size: 11px; color: var(--muted); }
@@ -6651,9 +6460,6 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .qb-lane-footer { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .qb-lane-selection { font-size: 12px; color: var(--muted); }
-.schedule-hint { font-size: 12px; }
-.schedule-hint .open { color: var(--success); }
-.schedule-hint .closed { color: var(--danger); }
 
 .qb-warn {
   padding: 8px 11px;
@@ -7212,7 +7018,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .ops-pill.err, .ops-pill.failed, .ops-pill.red, .ops-pill.danger { background: var(--danger-soft); color: var(--danger); }
 .ops-pill.info, .ops-pill.blue { background: var(--info-soft); color: var(--info); }
 
-.ops-mini-btn, .ops-link-btn {
+.ops-mini-btn {
   min-height: 28px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
@@ -7226,9 +7032,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   transition: background-color var(--dur) var(--ease);
 }
 
-.ops-mini-btn:hover, .ops-link-btn:hover { background: var(--subtle); }
-.ops-link-btn { border: 0; background: transparent; color: var(--accent); padding: 0 4px; }
-.ops-link-btn:hover { background: transparent; text-decoration: underline; }
+.ops-mini-btn:hover { background: var(--subtle); }
 
 /* File de validation staff */
 .ops-review-list { display: grid; gap: var(--space-2); }
@@ -7760,22 +7564,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   color: var(--text);
   white-space: pre-wrap;
 }
-.cr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.cr-actions button {
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--card);
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-.cr-actions button:hover { border-color: var(--border-hover); }
-.cr-actions button.success { border-color: var(--success); color: var(--success); }
-.cr-actions button.ghost { color: var(--text-2); }
+/* .cr-actions : composant partagé défini dans pinlane.css */
 .cr-badge {
   display: inline-flex;
   align-items: center;

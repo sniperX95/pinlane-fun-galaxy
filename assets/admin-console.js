@@ -238,17 +238,8 @@ function getAdminExportPayload() {
   };
 }
 
-function downloadTextFile(filename, content, mime = 'text/plain;charset=utf-8') {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+// downloadTextFile vit dans app-main.js (C14) : les exports CSV staff en ont
+// besoin sans que la console admin soit chargée.
 
 function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
@@ -261,10 +252,7 @@ function downloadBlob(filename, blob) {
   URL.revokeObjectURL(url);
 }
 
-function csvCell(value) {
-  const text = String(value ?? '');
-  return `"${text.replace(/"/g, '""')}"`;
-}
+// csvCell vit dans app-main.js (C14) : partagé avec les exports CSV staff.
 
 function exportAdminCsv() {
   exportAdminExcel();
@@ -1770,9 +1758,11 @@ function startAdminHealthAutoRefresh() {
     getClientProfileKey,
     buildAdminClientProfiles,
     getAdminExportPayload,
-    downloadTextFile,
+    // C14 : downloadTextFile/csvCell vivent dans app-main.js (globals au
+    // runtime) — référence défensive pour les harnais qui isolent ce module.
+    downloadTextFile: typeof downloadTextFile === 'function' ? downloadTextFile : undefined,
     downloadBlob,
-    csvCell,
+    csvCell: typeof csvCell === 'function' ? csvCell : undefined,
     exportAdminCsv,
     exportAdminJson,
     escapeXml,

@@ -767,6 +767,128 @@ kbd, .kbd {
 }
 
 /* ----------------------------------------------------------------------------
+   11b. COMPOSANTS PARTAGÉS CLIENT ↔ STAFF — une seule définition (DESIGN.md §8)
+   Consommés par le parcours client (index/public-form) et les surfaces staff
+   (quick-book, fiches demandes sur mesure). Ne pas re-définir dans les couches.
+   -------------------------------------------------------------------------- */
+
+/* Alternatives de créneaux proposées (la variante d'alerte reste côté client) */
+.booking-alt-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.booking-alt-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.booking-alt-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.booking-alt-option:hover { background: var(--subtle); }
+
+.booking-alt-option small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* Indication d'horaires (étape date client + modale quick-book staff) */
+.schedule-hint {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.schedule-hint .open { color: var(--success); font-weight: 500; }
+.schedule-hint .closed { color: var(--danger); font-weight: 500; }
+
+/* Contexte vacances/férié à côté de « Ouvert 10h - 22h » */
+.schedule-hint .sched-holiday {
+  margin-left: var(--space-2);
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Encart informatif d'étape */
+.info-box {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--info-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.info-box svg {
+  color: var(--info);
+  margin-top: 1px;
+}
+
+/* Rangée d'actions « demande sur mesure » (modale client + fiche staff) */
+.cr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.cr-actions .btn-secondary { flex: 0 0 auto; }
+.cr-actions .btn-primary { flex: 1 1 auto; }
+
+.cr-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.cr-actions button:hover { border-color: var(--border-hover); }
+.cr-actions button.success { border-color: var(--success); color: var(--success); }
+.cr-actions button.ghost { color: var(--text-2); }
+
+/* Animations d'entrée / erreur partagées, référencées par le markup */
+@keyframes pl-scale-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+.scale-in { animation: pl-scale-in var(--dur-slow) var(--ease) both; }
+@keyframes pl-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.shake { animation: pl-shake 160ms var(--ease) 2; }
+
+/* ----------------------------------------------------------------------------
    12. REDUCED MOTION — !important autorisé ici (DESIGN.md §8)
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {

@@ -68,11 +68,13 @@ if (/<style[^>]*>(?:(?!<\/style>)[\s\S]){200,}<\/style>/i.test(index) || /<scrip
 if (!/assets\/booking-core\.js/.test(index) || !/PinlaneBookingCore/.test(bookingCore)) {
   addFail('Booking constants and planning helpers must stay extracted from index.html.');
 }
-if (!/assets\/admin-console\.js/.test(index) || !/PinlaneAdminConsole/.test(adminConsole)) {
-  addFail('Admin dashboard/rendering helpers must stay extracted from index.html.');
+// C14 : la console admin n'est plus chargee au boot — app-main.js l'injecte
+// dynamiquement a l'ouverture de la vue direction (garde de permission).
+if (!/assets\/admin-console\.js/.test(appMain) || !/PinlaneAdminConsole/.test(adminConsole)) {
+  addFail('Admin dashboard/rendering helpers must stay extracted and lazy-loaded via app-main.js.');
 }
-if (!/assets\/ops-console\.js/.test(index) || !/PinlaneOpsConsole/.test(opsConsole)) {
-  addFail('Ops communications, agent stack and simulation helpers must stay extracted from index.html.');
+if (!/assets\/ops-console\.js/.test(appMain) || !/PinlaneOpsConsole/.test(opsConsole)) {
+  addFail('Ops communications, agent stack and simulation helpers must stay extracted and lazy-loaded via app-main.js.');
 }
 if (/const\s+TOTAL_LANES\s*=/.test(index) || /const\s+FORMULES\s*=/.test(index)) {
   addFail('index.html must not re-own booking constants; keep them in assets/booking-core.js.');

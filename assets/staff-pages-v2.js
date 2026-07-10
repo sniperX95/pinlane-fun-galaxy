@@ -388,7 +388,9 @@
   window.renderStaffEmailsPage = function (errorMessage = '') {
     const root = document.getElementById('staffEmailsPage');
     if (!root) return;
-    if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => loadOpsAdmin(false), 0);
+    // C14 : ops-console.js est injecté à la demande — requestOpsAdminLoad
+    // (app-main) charge le script puis déclenche loadOpsAdmin.
+    if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
     const allRows = getStaffEmailRows();
     const rows = getStaffEmailRowsFiltered();
     const selected = getSelectedStaffEmailRow(rows);
@@ -447,9 +449,9 @@
         sub: `File opérationnelle · actualisé ${esc(updatedAt)}${errorMessage ? ` · <span style="color:var(--v2-red)">${esc(errorMessage)}</span>` : ''}`,
         actions: `
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" oninput="setStaffEmailQuery(this.value)"></label>
-          <button type="button" class="pv2-btn" onclick="loadOpsAdmin(true)">Actualiser</button>
+          <button type="button" class="pv2-btn" onclick="requestOpsAdminLoad(true)">Actualiser</button>
           <button type="button" class="pv2-btn" onclick="exportStaffEmailsCsv()">Exporter</button>
-          <button type="button" class="pv2-btn primary" onclick="dispatchOpsEmails()">Envoyer la file</button>`,
+          <button type="button" class="pv2-btn primary" onclick="requestOpsDispatch()">Envoyer la file</button>`,
       })}
 
       <section class="pv2-pipeline">

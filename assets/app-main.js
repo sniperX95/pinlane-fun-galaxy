@@ -1815,7 +1815,8 @@ function scheduleRemoteSync() {
       scheduleRemoteSync();
       return;
     }
-    if (state.view === 'admin') await loadAdminDashboard(true);
+    // C14 : la console peut être en cours d'injection au premier tick admin.
+    if (state.view === 'admin') { if (typeof loadAdminDashboard === 'function') await loadAdminDashboard(true); }
     else await syncDateReservations(state.currentDate, { silent: true });
     scheduleRemoteSync();
   }, delay);
@@ -2251,6 +2252,9 @@ async function submitLogin(ev) {
       if (!canOpenAdminView()) {
         setView('staff');
       } else {
+        // C14 : les consoles ne sont pas chargées quand la vue admin n'a
+        // affiché que l'écran de login — injection avant le premier rendu.
+        await ensureAdminConsolesLoaded();
         await loadAdminDashboard(true);
         renderAdminDashboard();
       }
@@ -2305,6 +2309,58 @@ function canOpenAdminView() {
   return !hasSavedAuth() || canUseStaffPermission('direction.view');
 }
 
+// C14 : admin-console.js (~92 Ko) et ops-console.js (~75 Ko) ne sont plus
+// chargés au boot pour tous les profils. Injection dynamique à la première
+// ouverture de la vue admin (après le garde canOpenAdminView) et, pour
+// ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
+// réglages). Promesse partagée : une seule balise <script> par fichier.
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260710w5';
+const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260710w5';
+const dynamicConsoleScripts = {};
+
+function loadConsoleScriptOnce(src) {
+  if (!dynamicConsoleScripts[src]) {
+    dynamicConsoleScripts[src] = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        delete dynamicConsoleScripts[src];
+        script.remove();
+        reject(new Error(`Script indisponible : ${src}`));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return dynamicConsoleScripts[src];
+}
+
+function ensureAdminConsolesLoaded() {
+  return Promise.all([
+    loadConsoleScriptOnce(ADMIN_CONSOLE_SRC),
+    loadConsoleScriptOnce(OPS_CONSOLE_SRC)
+  ]);
+}
+
+function ensureOpsConsoleLoaded() {
+  return loadConsoleScriptOnce(OPS_CONSOLE_SRC);
+}
+
+// Point d'entrée unique du besoin Ops côté staff : charge ops-console.js au
+// premier appel puis délègue à loadOpsAdmin (définie par le script injecté).
+function requestOpsAdminLoad(force = false) {
+  ensureOpsConsoleLoaded()
+    .then(() => loadOpsAdmin(force))
+    .catch(() => toast('Console Ops indisponible (script non chargé).'));
+}
+
+// « Envoyer la file » depuis la page Emails staff : même garantie de chargement.
+function requestOpsDispatch() {
+  ensureOpsConsoleLoaded()
+    .then(() => dispatchOpsEmails())
+    .catch(() => toast('Console Ops indisponible (script non chargé).'));
+}
+
 function setView(v) {
   if (v === 'admin' && !canOpenAdminView()) {
     toast('Accès non autorisé pour ce rôle.');
@@ -2339,8 +2395,21 @@ function setView(v) {
   else if (v === 'admin') {
     if (!state.adminDate) state.adminDate = todayStr();
     document.body.style.overflow = '';
-    renderAdminDashboard();
-    loadAdminDashboard(false);
+    // C14 : le rendu admin ne démarre qu'une fois les deux consoles injectées
+    // (couvre aussi le deep-link #admin/... au boot, qui passe par setView).
+    const adminRoot = document.getElementById('adminView');
+    if (adminRoot) adminRoot.style.pointerEvents = 'none';
+    ensureAdminConsolesLoaded()
+      .then(() => {
+        if (adminRoot) adminRoot.style.pointerEvents = '';
+        if (state.view !== 'admin') return;
+        renderAdminDashboard();
+        loadAdminDashboard(false);
+      })
+      .catch(() => {
+        if (adminRoot) adminRoot.style.pointerEvents = '';
+        toast('Console direction indisponible (script non chargé).');
+      });
   }
   else document.body.style.overflow = '';
   scheduleRemoteSync();
@@ -4177,7 +4246,7 @@ function openStaffDashboardSection(section) {
   }
   if (section === 'direction') {
     setView('admin');
-    setAdminTab('overview');
+    openAdminTab('overview');
   }
 }
 
@@ -4453,7 +4522,7 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
   ];
   const openPlanning = "closeStaffDashboardDetail(); openStaffDashboardSection('planning');";
   const openReservations = "closeStaffDashboardDetail(); openStaffDashboardSection('reservations');";
-  const openDirection = "closeStaffDashboardDetail(); setView('admin'); setAdminTab('overview');";
+  const openDirection = "closeStaffDashboardDetail(); setView('admin'); openAdminTab('overview');";
   if (type === 'alerts') {
     const alerts = getStaffDashboardAlertDefinitions(metrics);
     const visibleAlerts = kind ? alerts.filter(alert => alert.kind === kind) : alerts;
@@ -5398,13 +5467,6 @@ function getStaffGroupKind(row = {}) {
   return 'Groupe';
 }
 
-function getStaffGroupContact(row = {}) {
-  if (row.phone && row.email) return `${row.phone} - ${row.email}`;
-  if (row.phone) return row.phone;
-  if (row.email) return row.email;
-  return 'Contact a completer';
-}
-
 function formatStaffGroupReservationDate(reservation) {
   if (!reservation?.date) return 'Date inconnue';
   return parseLocalDate(reservation.date)
@@ -5422,159 +5484,6 @@ function getStaffGroupAgenda(rows = []) {
       const rightKey = `${right.reservation.date || ''} ${right.reservation.startTime || '00:00'}`;
       return leftKey.localeCompare(rightKey);
     });
-}
-
-function renderStaffGroupWorkspace(rows = []) {
-  if (!rows.length) {
-    const loading = !!staffClientDataCache.loading;
-    const error = staffClientDataCache.error || '';
-    const title = loading ? 'Chargement des groupes' : error ? 'Donnees groupes indisponibles' : 'Aucun groupe detecte';
-    const subtitle = loading
-      ? 'Lecture de l historique reservations sur 24 mois pour consolider anniversaires, ecoles et entreprises.'
-      : error
-        ? 'La page reste utilisable, mais la consolidation historique doit etre relancee.'
-        : 'Les groupes apparaitront ici automatiquement des qu une reservation contient un gros volume, une formule ou un anniversaire.';
-    return `<div class="utility-group-workspace utility-group-empty-state">
-      <section class="group-command">
-        <article class="group-focus">
-          <span class="group-label">${loading ? 'Synchronisation' : 'Point de depart'}</span>
-          <div class="group-focus-main">
-            <span class="group-avatar">${loading ? '...' : 'GR'}</span>
-            <div>
-              <strong>${escapeHtml(title)}</strong>
-              <small>${escapeHtml(subtitle)}</small>
-            </div>
-          </div>
-          <dl class="group-focus-grid">
-            <div><dt>Source</dt><dd>${loading ? 'API en cours' : 'Reservations'}</dd></div>
-            <div><dt>Portee</dt><dd>Historique centre</dd></div>
-            <div><dt>Action</dt><dd>${error ? 'Relancer' : 'Creer groupe'}</dd></div>
-          </dl>
-          <div class="group-focus-actions">
-            ${renderStaffUtilityAction('Nouvelle reservation groupe', "openQuickBook({ date: state.currentDate, type: 'formule' })", 'success')}
-            ${renderStaffUtilityAction('Voir les clients', "openStaffMenuPage('clients')")}
-            ${renderStaffUtilityAction('Actualiser', 'loadStaffClientData(true)')}
-          </div>
-        </article>
-        <article class="group-agenda">
-          <div class="group-section-title"><strong>Ce que cette page suivra</strong><span>Automatique</span></div>
-          <div class="group-agenda-list">
-            <div class="group-agenda-row"><span>01</span><strong>Anniversaires et ecoles</strong><em>dates, joueurs, formule</em></div>
-            <div class="group-agenda-row"><span>02</span><strong>Groupes laser ou bowling</strong><em>volume et ressources</em></div>
-            <div class="group-agenda-row"><span>03</span><strong>Relances utiles</strong><em>contact, confirmation, suivi</em></div>
-          </div>
-        </article>
-      </section>
-      <section class="group-ledger group-empty-guide">
-        <div class="group-ledger-head">
-          <div><strong>Mode d emploi staff</strong><span>Simple: creer une reservation, le profil groupe se consolide tout seul.</span></div>
-        </div>
-        <div class="group-empty-steps">
-          <article><strong>1. Identifier</strong><span>Le systeme repere les gros groupes, anniversaires et formules.</span></article>
-          <article><strong>2. Preparer</strong><span>Agenda, prochaine visite et contraintes remontent en priorite.</span></article>
-          <article><strong>3. Suivre</strong><span>La fiche client garde l historique et les prochaines reservations.</span></article>
-        </div>
-      </section>
-    </div>`;
-  }
-
-  const sortedRows = [...rows].sort((left, right) => Number(right.spent || 0) - Number(left.spent || 0));
-  const agenda = getStaffGroupAgenda(sortedRows);
-  const focusItem = agenda[0] || { row: sortedRows[0], reservation: getStaffGroupNextReservation(sortedRows[0]) };
-  const focusReservation = focusItem.reservation || {};
-  const followUps = sortedRows
-    .filter(row => !row.phone || !row.email || row.hasBirthday || Number(row.formulas || 0) > 0)
-    .slice(0, 5);
-
-  return `<div class="utility-group-workspace">
-    <section class="group-command">
-      <article class="group-focus">
-        <span class="group-label">Priorite</span>
-        <div class="group-focus-main">
-          <span class="group-avatar">${escapeHtml(focusItem.row?.initials || 'GR')}</span>
-          <div>
-            <strong>${escapeHtml(focusItem.row?.name || 'Groupe')}</strong>
-            <small>${escapeHtml(getStaffGroupKind(focusItem.row || {}))} - ${Number(focusItem.row?.players || focusReservation.pax || 0)} joueur(s) cumules</small>
-          </div>
-        </div>
-        <dl class="group-focus-grid">
-          <div><dt>Prochaine visite</dt><dd>${escapeHtml(focusReservation.date ? `${formatStaffGroupReservationDate(focusReservation)} - ${getStaffUtilityStartLabel(focusReservation)}` : 'A planifier')}</dd></div>
-          <div><dt>Activite</dt><dd>${escapeHtml(focusReservation.id ? getStaffUtilityTypeLabel(focusReservation) : getStaffGroupKind(focusItem.row || {}))}</dd></div>
-          <div><dt>Contact</dt><dd>${escapeHtml(getStaffGroupContact(focusItem.row || {}))}</dd></div>
-        </dl>
-        <div class="group-focus-actions">
-          ${focusReservation.id ? renderStaffUtilityAction('Ouvrir reservation', `openStaffReservationDetail(${staffClientJs(focusReservation.id)})`) : ''}
-          ${renderStaffUtilityAction('Fiche client', `openStaffMenuPage('clients'); selectStaffClient('${escapeJsString(focusItem.row?.id || '')}')`)}
-          ${renderStaffUtilityAction('Nouvelle reservation', `openStaffClientBooking('${escapeJsString(focusItem.row?.id || '')}')`, 'success')}
-        </div>
-      </article>
-      <article class="group-agenda">
-        <div class="group-section-title"><strong>Agenda groupes</strong><span>${agenda.length} passage(s) a venir</span></div>
-        <div class="group-agenda-list">
-          ${(agenda.length ? agenda.slice(0, 6) : sortedRows.slice(0, 3).map(row => ({ row, reservation: getStaffGroupNextReservation(row) || {} }))).map(item => {
-            const reservation = item.reservation || {};
-            const onclick = reservation.id
-              ? `openStaffReservationDetail(${staffClientJs(reservation.id)})`
-              : `openStaffMenuPage('clients'); selectStaffClient('${escapeJsString(item.row.id)}')`;
-            return `<button type="button" class="group-agenda-row" onclick="${onclick}">
-              <span>${escapeHtml(reservation.date ? formatStaffGroupReservationDate(reservation) : 'Sans date')}</span>
-              <strong>${escapeHtml(item.row.name || reservation.name || 'Groupe')}</strong>
-              <em>${escapeHtml(reservation.id ? `${getStaffUtilityStartLabel(reservation)} - ${Number(reservation.pax || 0)} pers.` : `${Number(item.row.players || 0)} joueurs historique`)}</em>
-            </button>`;
-          }).join('')}
-        </div>
-      </article>
-    </section>
-
-    <section class="group-ledger">
-      <div class="group-ledger-head">
-        <div><strong>Groupes exploitables</strong><span>Clients a fort volume, anniversaires et formules.</span></div>
-        <button type="button" onclick="exportStaffClientsCsv()">Exporter CSV</button>
-      </div>
-      <div class="group-table">
-        <div class="group-table-head"><span>Groupe</span><span>Prochaine action</span><span>Volume</span><span>Valeur</span><span>Actions</span></div>
-        ${sortedRows.slice(0, 14).map(row => {
-          const nextReservation = getStaffGroupNextReservation(row);
-          const tags = [getStaffGroupKind(row), ...(row.tags || []).filter(Boolean)].slice(0, 3);
-          return `<article class="group-table-row">
-            <div class="group-identity">
-              <span class="group-avatar">${escapeHtml(row.initials || 'GR')}</span>
-              <div><strong>${escapeHtml(row.name || 'Groupe')}</strong><small>${escapeHtml(getStaffGroupContact(row))}</small></div>
-            </div>
-            <div class="group-next">
-              <strong>${escapeHtml(nextReservation?.date ? `${formatStaffGroupReservationDate(nextReservation)} - ${getStaffUtilityStartLabel(nextReservation)}` : 'A relancer')}</strong>
-              <small>${escapeHtml(nextReservation?.id ? getReservationLabel(nextReservation) : 'Aucune reservation future detectee')}</small>
-            </div>
-            <div class="group-metrics"><strong>${Number(row.reservations || 0)} res.</strong><small>${Number(row.players || 0)} joueur(s) - ${Number(row.formulas || 0)} formule(s)</small></div>
-            <div class="group-value"><strong>${formatMoney(row.spent || 0)}</strong><small>${Number(row.cancellations || 0)} annulation(s)</small></div>
-            <div class="group-row-actions">
-              ${renderStaffUtilityAction('Fiche', `openStaffMenuPage('clients'); selectStaffClient('${escapeJsString(row.id)}')`)}
-              ${renderStaffUtilityAction('Reserver', `openStaffClientBooking('${escapeJsString(row.id)}')`, 'success')}
-            </div>
-            <div class="group-tags">${tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}</div>
-          </article>`;
-        }).join('')}
-      </div>
-    </section>
-
-    <aside class="group-followups">
-      <div class="group-section-title"><strong>Relances utiles</strong><span>Ce qui evite les oublis staff.</span></div>
-      <div class="group-followup-list">
-      ${followUps.length ? followUps.map(row => {
-        const reason = !row.phone || !row.email
-          ? 'Completer les coordonnees'
-          : row.hasBirthday
-            ? 'Anniversaire a confirmer'
-            : 'Formule a suivre';
-        return `<button type="button" class="group-followup-row" onclick="openStaffMenuPage('clients'); selectStaffClient('${escapeJsString(row.id)}')">
-          <span>${escapeHtml(reason)}</span>
-          <strong>${escapeHtml(row.name || 'Groupe')}</strong>
-          <em>${escapeHtml(getStaffGroupContact(row))}</em>
-        </button>`;
-      }).join('') : `<div class="utility-mini-empty">Aucune relance urgente.</div>`}
-      </div>
-    </aside>
-  </div>`;
 }
 
 function setStaffGroupFilter(key, value) {
@@ -7397,7 +7306,7 @@ function renderStaffUtilitySettings() {
   return `<div class="utility-settings-console">
     <article><span>Interface</span><strong>Thème ${escapeHtml(currentTheme)}</strong><p>Mode staff persistant sur ce poste.</p><div><button type="button" onclick="setStaffTheme('dark')">Sombre</button><button type="button" onclick="setStaffTheme('light')">Clair</button></div></article>
     <article><span>Données</span><strong>${state.reservations.length} réservation(s)</strong><p>Actualise planning, mails et état staff.</p><div><button type="button" onclick="refreshStaffPlanning()">Actualiser</button><button type="button" onclick="exportStaffPlanningCsv()">Exporter</button></div></article>
-    <article><span>Ops</span><strong>${opsAdminCache.loaded ? 'Console chargée' : 'Console prête'}</strong><p>Mails, agents et suggestions terrain.</p><div><button type="button" onclick="loadOpsAdmin(true)">Charger Ops</button><button type="button" onclick="openStaffMenuPage('emails')">Emails</button></div></article>
+    <article><span>Ops</span><strong>${opsAdminCache.loaded ? 'Console chargée' : 'Console prête'}</strong><p>Mails, agents et suggestions terrain.</p><div><button type="button" onclick="requestOpsAdminLoad(true)">Charger Ops</button><button type="button" onclick="openStaffMenuPage('emails')">Emails</button></div></article>
   </div>`;
 }
 
@@ -7567,7 +7476,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       hidePanelHead: true,
       hideDateAction: true,
       primaryLabel: 'Ouvrir la direction',
-      primaryAction: "setView('admin'); setAdminTab('overview')",
+      primaryAction: "setView('admin'); openAdminTab('overview')",
       body: renderStaffUtilityEstablishment()
     };
   }
@@ -7661,7 +7570,7 @@ function renderStaffUtilityPage() {
   `;
   if (archivePages.has(model.page)) ensureStaffClientData();
   if (model.page === 'groups') ensureStaffCustomRequests();
-  if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) loadOpsAdmin(false);
+  if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
 }
 
 function isStaffClientsActive() {
@@ -7820,20 +7729,8 @@ function getPricingMetrics(rows = getPricingRows()) {
   return { revenue, reservations, activeOffers, formulaRows: formulaRows.length, topRow };
 }
 
-function setStaffPricingFilter(filter) {
-  state.staffPricingFilter = ['all', 'bowling', 'laser', 'formula', 'special'].includes(filter) ? filter : 'all';
-  save();
-  renderStaffPricingPage();
-}
-
 function setStaffPricingQuery(value) {
   state.staffPricingQuery = value || '';
-  renderStaffPricingPage();
-}
-
-function selectStaffPricing(id) {
-  state.staffPricingSelectedId = id || '';
-  save();
   renderStaffPricingPage();
 }
 
@@ -7857,6 +7754,37 @@ function openStaffPricingBooking(id) {
   openQuickBook({ date: state.currentDate || todayStr(), type: 'bowling', duration: option.value });
 }
 
+// C14 : utilitaires d'export partagés staff/direction — vivaient dans
+// admin-console.js, désormais ici car ce fichier est chargé pour tous les
+// profils alors que la console admin est injectée à la demande.
+function downloadTextFile(filename, content, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+// C14 : sélection d'onglet admin sûre même pendant l'injection des consoles —
+// l'onglet est mémorisé et setView('admin') le rend une fois le script chargé.
+function openAdminTab(tab) {
+  if (typeof setAdminTab === 'function') {
+    setAdminTab(tab);
+    return;
+  }
+  state.adminTab = tab || 'overview';
+  save();
+}
+
 function exportStaffPricingCsv() {
   const rows = getPricingRowsFiltered();
   const header = ['Type', 'Nom', 'Prix', 'Capacite', 'Disponibilite', 'Reservations', 'Joueurs', 'Revenu', 'Details'];
@@ -7878,147 +7806,6 @@ function copyStaffPricingSummary() {
   const rows = getPricingRowsFiltered();
   const summary = rows.map(row => `${row.title}: ${getPricingPriceLabel(row)} (${row.availability})`).join('\n');
   navigator.clipboard?.writeText(summary).then(() => toast('Tarifs copiés.')).catch(() => toast(summary));
-}
-
-function renderStaffPricingKpi(asset, label, value, detail, tone) {
-  return `<article class="pricing-kpi ${escapeHtml(tone)}">
-    <span class="pricing-kpi-media"><img src="${escapeHtml(asset)}" alt=""></span>
-    <div>
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </div>
-  </article>`;
-}
-
-function renderStaffPricingFilterButton(key, label, count) {
-  const active = (state.staffPricingFilter || 'all') === key;
-  return `<button type="button" class="${active ? 'active' : ''}" onclick="setStaffPricingFilter('${key}')">
-    <span>${escapeHtml(label)}</span><em>${Number(count || 0)}</em>
-  </button>`;
-}
-
-function renderStaffPricingRow(row, selected) {
-  const tags = row.tags.slice(0, 3).map(tag => `<em>${escapeHtml(tag)}</em>`).join('');
-  return `<button type="button" class="pricing-row ${escapeHtml(row.type)} ${selected ? 'selected' : ''}" onclick="selectStaffPricing('${escapeJsString(row.id)}')">
-    <span class="pricing-row-main">
-      <span class="pricing-row-visual"><img src="${escapeHtml(row.asset)}" alt=""></span>
-      <span class="pricing-row-copy">
-        <strong>${escapeHtml(row.title)}</strong>
-        <small><em>${escapeHtml(getPricingTypeLabel(row.type))}</em>${escapeHtml(row.subtitle)} · ${escapeHtml(row.durationLabel)}</small>
-        <span class="pricing-row-tags-inline">${tags}</span>
-      </span>
-    </span>
-    <span class="pricing-cell price">${escapeHtml(getPricingPriceLabel(row))}${row.oldPrice ? `<small>${formatMoney(row.oldPrice)}</small>` : ''}</span>
-    <span class="pricing-cell">${escapeHtml(row.capacity)}</span>
-    <span class="pricing-cell">${Number(row.count || 0)} rés.<small>${formatMoney(row.revenue || 0)}</small></span>
-  </button>`;
-}
-
-function renderStaffPricingDetail(row) {
-  if (!row) {
-    return `<aside class="pricing-detail empty"><h2>Aucun tarif</h2><p>Aucune offre ne correspond au filtre actuel.</p></aside>`;
-  }
-  const activityItems = (row.activities || []).slice(0, 6);
-  const noteItems = row.notes?.length ? row.notes : [row.availability, row.capacity];
-  return `<aside class="pricing-detail ${escapeHtml(row.type)}">
-    <div class="pricing-detail-visual">
-      <img src="${escapeHtml(row.asset)}" alt="">
-      <div>
-        <span>${escapeHtml(getPricingTypeLabel(row.type))}</span>
-        <strong>${escapeHtml(row.durationLabel)}</strong>
-      </div>
-    </div>
-    <div class="pricing-detail-head">
-      <span>${escapeHtml(getPricingTypeLabel(row.type))}</span>
-      <h2>${escapeHtml(row.title)}</h2>
-      <p>${escapeHtml(row.description)}</p>
-    </div>
-    <div class="pricing-detail-price">
-      <strong>${escapeHtml(getPricingPriceLabel(row))}</strong>
-      ${row.oldPrice ? `<span>Ancien prix ${formatMoney(row.oldPrice)}</span>` : `<span>Tarif actif</span>`}
-    </div>
-    <div class="pricing-detail-stats">
-      <div><strong>${Number(row.count || 0)}</strong><span>Réservations</span></div>
-      <div><strong>${Number(row.players || 0)}</strong><span>Joueurs</span></div>
-      <div><strong>${formatMoney(row.revenue || 0)}</strong><span>Prévu</span></div>
-    </div>
-    <div class="pricing-detail-section">
-      <h3>Contenu</h3>
-      <div class="pricing-activity-list">
-        ${activityItems.length ? activityItems.map(item => `<span>${escapeHtml(item)}</span>`).join('') : `<span>${escapeHtml(row.description)}</span>`}
-      </div>
-    </div>
-    <div class="pricing-detail-section">
-      <h3>Conditions terrain</h3>
-      <div class="pricing-note-list">
-        ${noteItems.map(item => `<span>${escapeHtml(item)}</span>`).join('')}
-      </div>
-    </div>
-    <div class="pricing-detail-actions">
-      <button type="button" class="primary" onclick="openStaffPricingBooking('${escapeJsString(row.id)}')">Créer une réservation</button>
-      <button type="button" onclick="state.staffMenuPage='planning'; save(); renderStaff(); syncOpsSidebar();">Voir planning</button>
-    </div>
-  </aside>`;
-}
-
-function renderStaffPricingPage() {
-  const root = document.getElementById('staffPricingPage');
-  if (!root) return;
-  const allRows = getPricingRows();
-  const rows = getPricingRowsFiltered();
-  const selected = getSelectedPricingRow(rows);
-  if (selected && state.staffPricingSelectedId !== selected.id) state.staffPricingSelectedId = selected.id;
-  const metrics = getPricingMetrics(allRows);
-  const countByType = type => allRows.filter(row => row.type === type).length;
-  const queryValue = escapeHtml(state.staffPricingQuery || '');
-  root.innerHTML = `
-    <section class="pricing-hero">
-      <div>
-        <h1>Tarifs & formules</h1>
-        <p>Catalogue opérationnel, prix publics et contraintes de réservation.</p>
-      </div>
-      <div class="pricing-actions">
-        <label class="pricing-search">
-          <span>⌕</span>
-          <input value="${queryValue}" placeholder="Rechercher une formule, activité, condition..." oninput="setStaffPricingQuery(this.value)">
-        </label>
-        <button type="button" onclick="copyStaffPricingSummary()">Copier</button>
-        <button type="button" onclick="exportStaffPricingCsv()">Exporter CSV</button>
-        <button type="button" class="primary" onclick="openStaffPricingBooking('${escapeJsString(selected?.id || '')}')">+ Réservation</button>
-      </div>
-    </section>
-
-    <section class="pricing-kpis">
-      ${renderStaffPricingKpi('./assets/pricing/special.png', 'Offres actives', String(metrics.activeOffers), `${metrics.formulaRows} formules`, 'violet')}
-      ${renderStaffPricingKpi('./assets/pricing/bowling.png', 'Réservations liées', String(metrics.reservations), 'sur toutes les données locales', 'blue')}
-      ${renderStaffPricingKpi('./assets/pricing/formula.png', 'Chiffre associé', formatMoney(metrics.revenue), 'réservations non annulées', 'green')}
-      ${renderStaffPricingKpi(metrics.topRow?.asset || './assets/pricing/bowling.png', 'Plus demandé', metrics.topRow?.title || 'Aucun', `${metrics.topRow?.count || 0} réservation(s)`, 'amber')}
-    </section>
-
-    <section class="pricing-workspace">
-      <article class="pricing-list-panel">
-        <div class="pricing-tabs">
-          ${renderStaffPricingFilterButton('all', 'Tout', allRows.length)}
-          ${renderStaffPricingFilterButton('bowling', 'Bowling', countByType('bowling'))}
-          ${renderStaffPricingFilterButton('laser', 'Laser Game', countByType('laser'))}
-          ${renderStaffPricingFilterButton('formula', 'Anniversaires', countByType('formula'))}
-          ${renderStaffPricingFilterButton('special', 'Spéciales', countByType('special'))}
-        </div>
-        <div class="pricing-table-head">
-          <span>Offre</span><span>Prix</span><span>Capacité</span><span>Usage</span>
-        </div>
-        <div class="pricing-list">
-          ${rows.length ? rows.map(row => renderStaffPricingRow(row, selected && row.id === selected.id)).join('') : `<div class="pricing-empty">Aucun tarif ne correspond à cette recherche.</div>`}
-        </div>
-      </article>
-      ${renderStaffPricingDetail(selected)}
-    </section>
-  `;
-}
-
-function staffEmailJs(value) {
-  return escapeHtml(JSON.stringify(String(value || '')).replace(/</g, '\\u003c'));
 }
 
 function getStaffEmailId(item, index = 0) {
@@ -8052,6 +7839,9 @@ function getStaffEmailStatusLabel(item = {}) {
 }
 
 function getStaffEmailRows() {
+  // C14 : ops-console.js est injecté à la demande — avant son arrivée, la page
+  // Emails rend son état vide (le chargement est déjà déclenché par la page).
+  if (typeof getVisibleOpsCommunications !== 'function') return [];
   return getVisibleOpsCommunications()
     .map((item, index) => ({
       ...item,
@@ -8104,29 +7894,9 @@ function getStaffEmailMetrics(rows = getStaffEmailRows()) {
   return { sent, queued, failed, review, due, reminders, attempted, deliveryRate, total: rows.length };
 }
 
-function setStaffEmailFilter(filter) {
-  state.staffEmailFilter = ['all', 'queued', 'sent', 'failed', 'review'].includes(filter) ? filter : 'all';
-  state.staffEmailSelectedId = '';
-  save();
-  renderStaffEmailsPage();
-}
-
 function setStaffEmailQuery(query = '') {
   state.staffEmailQuery = String(query || '');
   state.staffEmailSelectedId = '';
-  save();
-  renderStaffEmailsPage();
-}
-
-function setStaffEmailTemplateFilter(templateId = 'all') {
-  state.staffEmailTemplateFilter = templateId || 'all';
-  state.staffEmailSelectedId = '';
-  save();
-  renderStaffEmailsPage();
-}
-
-function selectStaffEmail(id) {
-  state.staffEmailSelectedId = String(id || '');
   save();
   renderStaffEmailsPage();
 }
@@ -8135,67 +7905,6 @@ function getSelectedStaffEmailRow(rows = getStaffEmailRowsFiltered()) {
   if (!rows.length) return null;
   const selected = rows.find(row => row.uid === state.staffEmailSelectedId);
   return selected || rows[0];
-}
-
-function getStaffEmailReservation(row = {}) {
-  const payload = row.payload || {};
-  const reservationId = row.reservationId || payload.reservationId || payload.reservation_id;
-  const source = typeof getStaffReservationsSourceReservations === 'function'
-    ? getStaffReservationsSourceReservations()
-    : (state.reservations || []);
-  if (reservationId) {
-    const byId = source.find(reservation => String(reservation.id) === String(reservationId));
-    if (byId) return byId;
-  }
-  const recipient = String(row.recipient || '').trim().toLowerCase();
-  if (recipient) {
-    const byEmail = source.find(reservation => String(reservation.email || '').trim().toLowerCase() === recipient);
-    if (byEmail) return byEmail;
-  }
-  const phone = String(payload.phone || payload.clientPhone || '').replace(/\D/g, '');
-  if (phone) {
-    return source.find(reservation => String(reservation.phone || '').replace(/\D/g, '').endsWith(phone.slice(-8))) || null;
-  }
-  return null;
-}
-
-function openStaffEmailReservation(id) {
-  const row = getStaffEmailRows().find(item => item.uid === String(id));
-  const reservation = row ? getStaffEmailReservation(row) : null;
-  if (!reservation) {
-    toast('Réservation liée introuvable dans les données chargées.');
-    return;
-  }
-  openStaffReservationDetail(reservation.id);
-}
-
-function previewStaffEmail(id) {
-  const row = getStaffEmailRows().find(item => item.uid === String(id));
-  if (!row) return;
-  previewOpsEmail(row.sourceIndex, 'communication-visible');
-}
-
-function copyStaffEmailDiagnostic(id) {
-  const row = getStaffEmailRows().find(item => item.uid === String(id));
-  if (!row) return;
-  const reservation = getStaffEmailReservation(row);
-  const diagnostic = [
-    `Sujet: ${row.subject || getOpsTemplateLabel(row.templateId)}`,
-    `Statut: ${getStaffEmailStatusLabel(row)} (${row.status || 'inconnu'})`,
-    `Destinataire: ${row.recipient || 'manquant'}`,
-    `Modele: ${getOpsTemplateLabel(row.templateId)}`,
-    `Tentatives: ${Number(row.attempts || 0)}`,
-    `Planifie: ${formatOpsTimestamp(row.scheduledAt || row.createdAt)}`,
-    `Envoye: ${row.sentAt ? formatOpsTimestamp(row.sentAt) : 'non'}`,
-    `Erreur: ${row.lastError || 'aucune'}`,
-    reservation ? `Reservation: #${reservation.id} ${reservation.name || ''} ${reservation.date || ''} ${reservation.startTime || ''}` : 'Reservation: non trouvee'
-  ].join('\n');
-  const writer = navigator.clipboard?.writeText
-    ? navigator.clipboard.writeText(diagnostic)
-    : Promise.reject(new Error('Clipboard indisponible.'));
-  writer
-    .then(() => toast('Diagnostic mail copié.'))
-    .catch(() => toast(diagnostic));
 }
 
 function exportStaffEmailsCsv() {
@@ -8213,235 +7922,6 @@ function exportStaffEmailsCsv() {
     row.lastError || ''
   ].map(csvCell).join(','));
   downloadTextFile(`fungalaxy-mails-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
-}
-
-function formatStaffEmailDate(value) {
-  if (!value) return 'Non planifié';
-  return formatOpsTimestamp(value);
-}
-
-function getStaffEmailTiming(row = {}) {
-  if (row.statusKind === 'sent' && row.sentAt) return `Envoyé ${formatStaffEmailDate(row.sentAt)}`;
-  if (row.statusKind === 'failed') return row.lastError ? 'Erreur à traiter' : 'Échec envoi';
-  if (row.scheduledAt) {
-    const due = new Date(row.scheduledAt).getTime() <= Date.now();
-    return due ? `À envoyer maintenant` : `Planifié ${formatStaffEmailDate(row.scheduledAt)}`;
-  }
-  return `Créé ${formatStaffEmailDate(row.createdAt)}`;
-}
-
-function renderStaffEmailIcon(name) {
-  const icons = {
-    queued: '<path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="8"></circle>',
-    sent: '<path d="M5 12.5 9.2 17 19 7"></path>',
-    failed: '<path d="M12 8v5"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="8"></circle>',
-    review: '<path d="M8 7h8"></path><path d="M8 11h8"></path><path d="M8 15h5"></path><rect x="5" y="4" width="14" height="16" rx="2"></rect>',
-    mail: '<rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m5 8 7 5 7-5"></path>',
-    search: '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
-    export: '<path d="M12 3v11"></path><path d="m8 10 4 4 4-4"></path><path d="M5 20h14"></path>'
-  };
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.mail}</svg>`;
-}
-
-function renderStaffEmailMetric(kind, label, value, detail) {
-  return `<article class="email-metric ${escapeHtml(kind)}">
-    <span>${renderStaffEmailIcon(kind)}</span>
-    <div>
-      <small>${escapeHtml(label)}</small>
-      <strong>${escapeHtml(value)}</strong>
-      <em>${escapeHtml(detail)}</em>
-    </div>
-  </article>`;
-}
-
-function renderStaffEmailFilterButton(key, label, count) {
-  const active = (state.staffEmailFilter || 'all') === key;
-  return `<button type="button" class="${active ? 'active' : ''}" onclick="setStaffEmailFilter('${escapeJsString(key)}')">
-    <span>${escapeHtml(label)}</span><em>${Number(count || 0)}</em>
-  </button>`;
-}
-
-function renderStaffEmailTemplateButtons(rows = []) {
-  const templateIds = [...new Set(rows.map(row => row.templateId || '').filter(Boolean))].slice(0, 6);
-  const active = state.staffEmailTemplateFilter || 'all';
-  return `<div class="email-template-tabs">
-    <button type="button" class="${active === 'all' ? 'active' : ''}" onclick="setStaffEmailTemplateFilter('all')">Tous modèles</button>
-    ${templateIds.map(templateId => `<button type="button" class="${active === templateId ? 'active' : ''}" onclick="setStaffEmailTemplateFilter(${staffEmailJs(templateId)})">${escapeHtml(getOpsTemplateLabel(templateId))}</button>`).join('')}
-  </div>`;
-}
-
-function renderStaffEmailRow(row, selected) {
-  const reservation = getStaffEmailReservation(row);
-  const reservationLabel = reservation
-    ? `${reservation.name || 'Client'} · ${reservation.date || ''} ${reservation.startTime || ''}`.trim()
-    : 'Aucune réservation chargée';
-  return `<button type="button" class="email-row ${escapeHtml(row.statusKind)} ${row.templateId === 'staff_review_request' ? 'review' : ''} ${selected ? 'selected' : ''}" onclick="selectStaffEmail(${staffEmailJs(row.uid)})">
-    <span class="email-row-status">
-      <span class="email-status-dot" aria-hidden="true"></span>
-      <strong>${escapeHtml(getStaffEmailStatusLabel(row))}</strong>
-      <small>${Number(row.attempts || 0)} tentative${Number(row.attempts || 0) > 1 ? 's' : ''}</small>
-    </span>
-    <span class="email-row-main">
-      <strong>${escapeHtml(row.subject || getOpsTemplateLabel(row.templateId))}</strong>
-      <small>${escapeHtml(getOpsTemplateLabel(row.templateId))} · ${escapeHtml(row.recipient || 'destinataire manquant')}</small>
-      <em>${escapeHtml(reservationLabel)}</em>
-    </span>
-    <span class="email-row-time">
-      <strong>${escapeHtml(getStaffEmailTiming(row))}</strong>
-      <small>${escapeHtml(row.channel || 'email')}</small>
-    </span>
-  </button>`;
-}
-
-function renderStaffEmailDetail(row) {
-  if (!row) {
-    return `<aside class="email-detail empty">
-      <h2>Aucun message</h2>
-      <p>Les confirmations, rappels, validations et erreurs s'afficheront ici dès qu'une réservation génère un mail.</p>
-    </aside>`;
-  }
-  const reservation = getStaffEmailReservation(row);
-  const payload = row.payload || {};
-  const actionText = row.statusKind === 'failed'
-    ? 'Corriger le destinataire ou la configuration, puis relancer la file.'
-    : row.statusKind === 'queued'
-      ? 'Message en attente. Envoyer la file vérifie uniquement les mails arrivés à échéance.'
-      : row.statusKind === 'sent'
-        ? 'Message envoyé. Garder le suivi pour historique client et direction.'
-        : 'Message à surveiller.';
-  return `<aside class="email-detail ${escapeHtml(row.statusKind)}">
-    <div class="email-detail-head">
-      <span class="email-detail-icon">${renderStaffEmailIcon(row.templateId === 'staff_review_request' ? 'review' : row.statusKind)}</span>
-      <div>
-        <small>${escapeHtml(getOpsTemplateLabel(row.templateId))}</small>
-        <h2>${escapeHtml(row.subject || getOpsTemplateLabel(row.templateId))}</h2>
-        <p>${escapeHtml(row.recipient || 'Destinataire manquant')}</p>
-      </div>
-    </div>
-    <div class="email-detail-grid">
-      <div><small>Statut</small><strong>${escapeHtml(getStaffEmailStatusLabel(row))}</strong></div>
-      <div><small>Canal</small><strong>${escapeHtml(row.channel || 'email')}</strong></div>
-      <div><small>Planifié</small><strong>${escapeHtml(formatStaffEmailDate(row.scheduledAt || row.createdAt))}</strong></div>
-      <div><small>Envoyé</small><strong>${escapeHtml(row.sentAt ? formatStaffEmailDate(row.sentAt) : 'Non')}</strong></div>
-    </div>
-    ${row.lastError ? `<div class="email-alert"><strong>Erreur</strong><span>${escapeHtml(row.lastError)}</span></div>` : ''}
-    <div class="email-detail-section">
-      <h3>Réservation liée</h3>
-      ${reservation ? `
-        <div class="email-linked-reservation">
-          <strong>#${escapeHtml(reservation.id)} · ${escapeHtml(reservation.name || 'Client')}</strong>
-          <span>${escapeHtml(reservation.date || '')} · ${escapeHtml(reservation.startTime || '')} · ${escapeHtml(getReservationLabel(reservation))}</span>
-        </div>` : `<p>Aucune réservation locale trouvée pour ce message. Le mail reste visible avec son destinataire et son identifiant.</p>`}
-    </div>
-    <div class="email-detail-section">
-      <h3>Prochaine action</h3>
-      <p>${escapeHtml(actionText)}</p>
-      ${payload.textBody ? `<blockquote>${escapeHtml(String(payload.textBody).slice(0, 260))}${String(payload.textBody).length > 260 ? '...' : ''}</blockquote>` : ''}
-    </div>
-    <div class="email-detail-actions">
-      <button type="button" class="primary" onclick="previewStaffEmail(${staffEmailJs(row.uid)})">Prévisualiser</button>
-      <button type="button" onclick="copyStaffEmailDiagnostic(${staffEmailJs(row.uid)})">Copier diagnostic</button>
-      <button type="button" ${reservation ? '' : 'disabled'} onclick="openStaffEmailReservation(${staffEmailJs(row.uid)})">Voir réservation</button>
-    </div>
-  </aside>`;
-}
-
-function renderStaffEmailSamples() {
-  const samples = opsAdminCache.samples || [];
-  if (!samples.length) return '';
-  return `<section class="email-samples">
-    <div>
-      <h2>Modèles disponibles</h2>
-      <p>Prévisualisations officielles utilisées par le moteur de communication.</p>
-    </div>
-    <div class="email-sample-list">
-      ${samples.map((sample, index) => `<button type="button" onclick="previewOpsEmail(${index}, 'sample')">
-        <strong>${escapeHtml(sample.subject || getOpsTemplateLabel(sample.templateId))}</strong>
-        <span>${escapeHtml(getOpsTemplateLabel(sample.templateId))}</span>
-      </button>`).join('')}
-    </div>
-  </section>`;
-}
-
-function renderStaffEmailsPage(errorMessage = '') {
-  const root = document.getElementById('staffEmailsPage');
-  if (!root) return;
-  if (!opsAdminCache.loaded && !opsAdminCache.loading) {
-    setTimeout(() => loadOpsAdmin(false), 0);
-  }
-  const allRows = getStaffEmailRows();
-  const rows = getStaffEmailRowsFiltered();
-  const selected = getSelectedStaffEmailRow(rows);
-  if (selected && state.staffEmailSelectedId !== selected.uid) state.staffEmailSelectedId = selected.uid;
-  const metrics = getStaffEmailMetrics(allRows);
-  const filteredMetrics = getStaffEmailMetrics(rows);
-  const queryValue = escapeHtml(state.staffEmailQuery || '');
-  const updatedAt = opsAdminCache.lastLoadedAt ? formatOpsTimestamp(opsAdminCache.lastLoadedAt) : 'Non chargé';
-  const loading = opsAdminCache.loading && !opsAdminCache.loaded;
-  root.innerHTML = `
-    <section class="emails-hero">
-      <div>
-        <span class="emails-eyebrow">Communication opérationnelle</span>
-        <h1>Emails</h1>
-        <p>Suivi des confirmations, rappels, validations staff, erreurs et modèles envoyés depuis les réservations.</p>
-      </div>
-      <div class="emails-actions">
-        <label class="emails-search">
-          ${renderStaffEmailIcon('search')}
-          <input value="${queryValue}" placeholder="Rechercher un client, sujet, erreur..." oninput="setStaffEmailQuery(this.value)">
-        </label>
-        <button type="button" onclick="loadOpsAdmin(true)">Actualiser</button>
-        <button type="button" onclick="exportStaffEmailsCsv()">Exporter</button>
-        <button type="button" class="primary" onclick="dispatchOpsEmails()">Envoyer la file</button>
-      </div>
-    </section>
-
-    ${errorMessage ? `<div class="email-page-alert">${escapeHtml(errorMessage)}</div>` : ''}
-
-    <section class="email-metrics">
-      ${renderStaffEmailMetric('queued', 'En file', String(metrics.queued), `${metrics.due} prêt(s) à partir`)}
-      ${renderStaffEmailMetric('sent', 'Envoyés', String(metrics.sent), `${metrics.deliveryRate}% de réussite`)}
-      ${renderStaffEmailMetric('failed', 'À corriger', String(metrics.failed), `${metrics.attempted} tentative(s)`)}
-      ${renderStaffEmailMetric('review', 'Validations', String(metrics.review), 'messages staff')}
-      ${renderStaffEmailMetric('mail', 'Rappels', String(metrics.reminders), '48h avant venue')}
-    </section>
-
-    <section class="emails-workspace">
-      <article class="emails-list-panel">
-        <div class="emails-list-head">
-          <div>
-            <h2>File et historique</h2>
-            <p>${loading ? 'Chargement des données Ops...' : `${rows.length} message(s) affiché(s) sur ${allRows.length} · actualisé ${updatedAt}`}</p>
-          </div>
-          <span>${filteredMetrics.failed ? `${filteredMetrics.failed} à corriger` : 'File propre'}</span>
-        </div>
-        <div class="emails-tabs">
-          ${renderStaffEmailFilterButton('all', 'Tout', allRows.length)}
-          ${renderStaffEmailFilterButton('queued', 'En file', metrics.queued)}
-          ${renderStaffEmailFilterButton('sent', 'Envoyés', metrics.sent)}
-          ${renderStaffEmailFilterButton('failed', 'Échecs', metrics.failed)}
-          ${renderStaffEmailFilterButton('review', 'Validations', metrics.review)}
-        </div>
-        ${renderStaffEmailTemplateButtons(allRows)}
-        <div class="email-table-head">
-          <span>Statut</span><span>Message</span><span>Échéance</span>
-        </div>
-        <div class="email-row-list">
-          ${loading ? `
-            <div class="email-loading"><span></span><span></span><span></span></div>
-            <div class="email-loading"><span></span><span></span><span></span></div>
-            <div class="email-loading"><span></span><span></span><span></span></div>
-          ` : rows.length ? rows.map(row => renderStaffEmailRow(row, selected && selected.uid === row.uid)).join('') : `
-            <div class="email-empty">
-              <strong>Aucun mail ne correspond aux filtres.</strong>
-              <span>Retirez la recherche ou changez de modèle pour revoir la file complète.</span>
-            </div>`}
-        </div>
-      </article>
-      ${renderStaffEmailDetail(selected)}
-    </section>
-    ${renderStaffEmailSamples()}
-  `;
 }
 
 function staffCampaignJs(value) {
@@ -8665,33 +8145,6 @@ function renderCampaignIcon(name) {
     shield: '<path d="M12 3 5 6v5c0 4.4 2.8 8.3 7 10 4.2-1.7 7-5.6 7-10V6l-7-3z"></path><path d="m9 12 2 2 4-5"></path>'
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.spark}</svg>`;
-}
-
-function renderStaffCampaignMetric(icon, label, value, detail) {
-  return `<article class="campaign-metric">
-    <span>${renderCampaignIcon(icon)}</span>
-    <div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong><em>${escapeHtml(detail)}</em></div>
-  </article>`;
-}
-
-function renderStaffCampaignObjectiveButton(key, label) {
-  const active = state.staffCampaignObjective === key;
-  return `<button type="button" class="${active ? 'active' : ''}" onclick="setStaffCampaignObjective('${escapeJsString(key)}')">${escapeHtml(label)}</button>`;
-}
-
-function renderStaffCampaignChannelButton(key, label) {
-  const active = state.staffCampaignChannel === key;
-  const agent = getStaffCampaignAgent(key);
-  return `<button type="button" class="${active ? 'active' : ''}" onclick="setStaffCampaignChannel('${escapeJsString(key)}')" title="${escapeHtml(agent.name)}">${renderCampaignIcon(agent.icon)} ${escapeHtml(label)}</button>`;
-}
-
-function renderStaffCampaignIdea(idea) {
-  const selected = idea.id === (getSelectedStaffCampaignIdea()?.id || '');
-  return `<button type="button" class="campaign-idea ${selected ? 'selected' : ''}" onclick="selectStaffCampaignIdea(${staffCampaignJs(idea.id)})">
-    <span><strong>${escapeHtml(idea.title)}</strong><em>${escapeHtml(idea.segment)}</em></span>
-    <small>${Number(idea.score || 0)}/100</small>
-    <p>${escapeHtml(idea.source || '')}</p>
-  </button>`;
 }
 
 function getStaffCampaignActivitiesForIdea(idea, center) {
@@ -8944,70 +8397,9 @@ function renderStaffCampaignDraft(draft, idea) {
   </div>`;
 }
 
-function renderStaffCampaignSavedRow(campaign) {
-  const draft = campaign.draft && Array.isArray(campaign.draft.variants) ? campaign.draft : null;
-  const centers = draft ? draft.variants.map(variant => variant.city || variant.centerName).join(' + ') : 'Libramont + Gembloux';
-  return `<div class="campaign-row">
-    <span>
-      <strong>${escapeHtml(campaign.title)}</strong>
-      <small>${escapeHtml(campaign.segment)} · ${escapeHtml(campaign.channel)} · ${escapeHtml(centers)}</small>
-    </span>
-    <span>${escapeHtml(formatCampaignDate(campaign.date || state.currentDate))}</span>
-    <span class="campaign-status ${escapeHtml(campaign.status || 'draft')}">${escapeHtml(getCampaignStatusLabel(campaign.status))}</span>
-    <span class="campaign-actions">
-      <button type="button" onclick="selectStaffCampaignIdea(${staffCampaignJs(campaign.id)})">Ouvrir</button>
-      <button type="button" onclick="advanceStaffCampaignStatus(${staffCampaignJs(campaign.id)})">Avancer</button>
-    </span>
-  </div>`;
-}
-
 function getCampaignStatusLabel(status) {
   const labels = { draft: 'Brouillon', ready: 'Prêt', scheduled: 'Planifié', sent: 'Envoyé' };
   return labels[status || 'draft'] || 'Brouillon';
-}
-
-function setStaffCampaignObjective(objective) {
-  state.staffCampaignObjective = ['anniversaires', 'calme', 'groupes', 'fidelisation', 'laser', 'formules'].includes(objective) ? objective : 'anniversaires';
-  state.staffCampaignSelectedId = buildStaffCampaignIdeas()[0]?.id || '';
-  state.staffCampaignDraft = null;
-  save();
-  renderStaffCampaignsPage();
-}
-
-function setStaffCampaignChannel(channel) {
-  state.staffCampaignChannel = STAFF_CAMPAIGN_CHANNELS.includes(channel) ? channel : 'linkedin';
-  state.staffCampaignDraft = null;
-  save();
-  renderStaffCampaignsPage();
-}
-
-function selectStaffCampaignIdea(id) {
-  state.staffCampaignSelectedId = id;
-  const selected = getStaffCampaignIdeaById(id);
-  if (selected && selected.draft) state.staffCampaignDraft = selected.draft;
-  else state.staffCampaignDraft = null;
-  save();
-  renderStaffCampaignsPage();
-}
-
-function setStaffCampaignBrief(value) {
-  state.staffCampaignBrief = value || '';
-  save();
-}
-
-function insertStaffCampaignPrompt(prompt) {
-  const current = String(state.staffCampaignBrief || '').trim();
-  state.staffCampaignBrief = current ? `${current}\n${prompt}` : prompt;
-  save();
-  renderStaffCampaignsPage();
-}
-
-function generateStaffCampaignDraft() {
-  const idea = getSelectedStaffCampaignIdea();
-  state.staffCampaignDraft = getStaffCampaignDraftForIdea(idea);
-  save();
-  renderStaffCampaignsPage();
-  toast('Brouillon marketing généré.');
 }
 
 function updateStaffCampaignDraftText(value, centerId = '') {
@@ -9021,37 +8413,6 @@ function updateStaffCampaignDraftText(value, centerId = '') {
   draft.email = draft.variants[0]?.text || '';
   state.staffCampaignDraft = draft;
   save();
-}
-
-function saveStaffCampaignFromCurrent() {
-  const idea = getSelectedStaffCampaignIdea();
-  const draft = normalizeStaffCampaignDraft(state.staffCampaignDraft, idea);
-  const campaign = {
-    ...idea,
-    id: `campaign-${Date.now()}`,
-    date: state.currentDate || todayStr(),
-    channel: state.staffCampaignChannel || idea.channel,
-    status: 'ready',
-    brief: state.staffCampaignBrief || '',
-    draft
-  };
-  state.marketingCampaigns = [campaign, ...(state.marketingCampaigns || [])].slice(0, 30);
-  state.staffCampaignSelectedId = campaign.id;
-  state.staffCampaignDraft = draft;
-  save();
-  renderStaffCampaignsPage();
-  toast('Campagne ajoutée au calendrier.');
-}
-
-function advanceStaffCampaignStatus(id) {
-  const order = ['draft', 'ready', 'scheduled', 'sent'];
-  state.marketingCampaigns = (state.marketingCampaigns || []).map(campaign => {
-    if (campaign.id !== id) return campaign;
-    const current = order.indexOf(campaign.status || 'draft');
-    return { ...campaign, status: order[Math.min(current + 1, order.length - 1)] };
-  });
-  save();
-  renderStaffCampaignsPage();
 }
 
 function copyStaffCampaignDraft() {
@@ -9071,37 +8432,6 @@ function exportStaffCampaignsCsv() {
   });
   const csvCell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
   downloadTextFile(`fungalaxy-campagnes-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n'), 'text/csv;charset=utf-8');
-}
-
-function seedStaffCampaignWeek() {
-  const ideas = buildStaffCampaignIdeas().slice(0, 5);
-  const existingTitles = new Set((state.marketingCampaigns || []).map(campaign => `${campaign.title}-${campaign.date}`));
-  const additions = ideas.map((idea, index) => ({
-    ...idea,
-    id: `campaign-${Date.now()}-${index}`,
-    date: addDays(state.currentDate || todayStr(), index * 2),
-    channel: idea.channel,
-    status: index === 0 ? 'ready' : 'draft',
-    brief: '',
-    draft: getStaffCampaignDraftForIdea(idea, idea.channel)
-  })).filter(campaign => !existingTitles.has(`${campaign.title}-${campaign.date}`));
-  state.marketingCampaigns = [...additions, ...(state.marketingCampaigns || [])].slice(0, 30);
-  if (additions[0]) {
-    state.staffCampaignSelectedId = additions[0].id;
-    state.staffCampaignDraft = additions[0].draft;
-  }
-  save();
-  renderStaffCampaignsPage();
-  toast(`${additions.length} campagne(s) préparée(s).`);
-}
-
-function getStaffMarketingAgentCenters(status = staffMarketingAgentsCache.status) {
-  return Array.isArray(status?.centers) ? status.centers : [];
-}
-
-function getStaffMarketingAgentCurrentCenter(status = staffMarketingAgentsCache.status) {
-  const centers = getStaffMarketingAgentCenters(status);
-  return centers.find(center => center.centerId === (state.adminCenterId || 'libramont')) || centers[0] || null;
 }
 
 async function loadStaffMarketingAgents(force = false) {
@@ -9197,210 +8527,6 @@ async function runStaffMarketingAgents() {
   }
 }
 
-function renderMarketingAgentCard(agent) {
-  const score = agent.score === null || agent.score === undefined ? '--' : `${Math.round(Number(agent.score) || 0)}`;
-  const connectedLabel = agent.connected ? 'Connecté' : 'Interne';
-  const mode = agent.generationMode === 'openai' ? 'OpenAI contrôlé' : 'Règles contrôlées';
-  const learned = Number(agent.learnedCriteria || 0);
-  return `<article class="campaign-agent-status">
-    <div>
-      <span class="campaign-agent-dot"></span>
-      <strong>${escapeHtml(agent.label || agent.platform)}</strong>
-      <small>${escapeHtml(agent.centerId || 'centre')} · ${escapeHtml(connectedLabel)} · ${escapeHtml(agent.platform || '')}</small>
-    </div>
-    <b>${escapeHtml(score)}</b>
-    <p>${escapeHtml(agent.currentWork || agent.mission || 'Surveillance active.')}</p>
-    <em>${escapeHtml(mode)} · ${escapeHtml(String(agent.criteriaChecked || 0))} critères · ${escapeHtml(String(learned))} appris</em>
-    <em>${escapeHtml(agent.socialSummary || 'Données centre en cours de lecture.')}</em>
-  </article>`;
-}
-
-function renderStaffMarketingAgentOps() {
-  if (!staffMarketingAgentsCache.loaded && !staffMarketingAgentsCache.loading) {
-    setTimeout(() => loadStaffMarketingAgents(), 0);
-  }
-  const status = staffMarketingAgentsCache.status;
-  const centers = getStaffMarketingAgentCenters(status);
-  const activeCenter = getStaffMarketingAgentCurrentCenter(status);
-  const allAgents = centers.flatMap(center => (center.agents || []).map(agent => ({ ...agent, centerId: center.centerId })));
-  const autonomyScores = centers.map(center => Number(center.autonomy?.score || 0)).filter(score => Number.isFinite(score));
-  const autonomyScore = autonomyScores.length
-    ? Math.round(autonomyScores.reduce((sum, score) => sum + score, 0) / autonomyScores.length)
-    : 0;
-  const autonomyLabel = centers.find(center => center.autonomy?.label)?.autonomy?.label || 'Non évalué';
-  const autonomyBlockers = centers.flatMap(center => (center.autonomy?.blockers || []).map(blocker => ({
-    centerId: center.centerId,
-    ...blocker
-  }))).slice(0, 4);
-  const problemSuggestions = centers.flatMap(center => (center.suggestions || [])
-    .filter(suggestion => ['high', 'critical'].includes(suggestion.severity))
-    .slice(0, 3)
-    .map(suggestion => ({
-      centerId: center.centerId,
-      label: suggestion.payload?.title || suggestion.title || 'Script marketing à corriger',
-      detail: suggestion.payload?.evaluation?.summary || suggestion.summary || 'Relecture demandée.'
-    })));
-  const updatedAt = staffMarketingAgentsCache.lastLoadedAt ? formatOpsTimestamp(staffMarketingAgentsCache.lastLoadedAt) : 'Non lancé';
-  const loadingText = staffMarketingAgentsCache.loading ? 'Lecture en cours...' : staffMarketingAgentsCache.running ? 'Analyse en cours...' : `Actualisé ${updatedAt}`;
-  return `<section class="campaign-agent-ops">
-    <div class="campaign-agent-ops-head">
-      <div>
-        <span class="campaigns-eyebrow">Agents IA marketing</span>
-        <h2>Moteur de contenu contrôlé</h2>
-        <p>Les agents lisent les données réelles du centre, vérifient chaque script et gardent une trace des décisions.</p>
-      </div>
-      <div class="campaign-agent-actions">
-        <span>${escapeHtml(loadingText)}</span>
-        <button type="button" onclick="loadStaffMarketingAgents(true)">Actualiser</button>
-        <button type="button" class="primary" onclick="runStaffMarketingAgents()" ${staffMarketingAgentsCache.running ? 'disabled' : ''}>Analyser maintenant</button>
-      </div>
-    </div>
-    ${staffMarketingAgentsCache.error ? `<div class="campaign-agent-alert">${escapeHtml(staffMarketingAgentsCache.error)}</div>` : ''}
-    <div class="campaign-agent-summary">
-      <div><small>Centres</small><strong>${escapeHtml(String(centers.length || 0))}</strong><span>Libramont + Gembloux</span></div>
-      <div><small>Scripts suivis</small><strong>${escapeHtml(String(centers.reduce((sum, center) => sum + Number(center.metrics?.pendingScripts || 0), 0)))}</strong><span>en suggestion Ops</span></div>
-      <div><small>Signaux appris</small><strong>${escapeHtml(String(centers.reduce((sum, center) => sum + Number(center.metrics?.learnedSignals ?? center.metrics?.externalSignals ?? 0), 0)))}</strong><span>internes + retours réels</span></div>
-      <div><small>Autonomie</small><strong>${escapeHtml(String(autonomyScore))}</strong><span>${escapeHtml(autonomyLabel)}</span></div>
-    </div>
-    <div class="campaign-agent-body">
-      <div class="campaign-agent-grid">
-        ${allAgents.length ? allAgents.map(renderMarketingAgentCard).join('') : `<div class="campaign-empty">Aucun agent chargé pour le moment.</div>`}
-      </div>
-      <aside class="campaign-agent-problems">
-        <h3>Ce qui bloque le 100/100</h3>
-        ${autonomyBlockers.length
-          ? autonomyBlockers.map(item => `<div class="campaign-agent-blocker ${escapeHtml(item.level || 'medium')}"><strong>${escapeHtml(item.centerId)}</strong><span>${escapeHtml(item.title)}</span><p>${escapeHtml(item.detail)}</p></div>`).join('')
-          : `<p>Tous les prérequis critiques sont branchés sur les derniers contrôles.</p>`}
-        ${problemSuggestions.length
-          ? problemSuggestions.map(item => `<div><strong>${escapeHtml(item.centerId)}</strong><span>${escapeHtml(item.label)}</span><p>${escapeHtml(item.detail)}</p></div>`).join('')
-          : `<p>Aucun script haut risque détecté sur les derniers contrôles.</p>`}
-        <small>${escapeHtml(activeCenter?.scheduler?.note || 'Les agents analysent sans publier automatiquement.')}</small>
-      </aside>
-    </div>
-  </section>`;
-}
-
-function renderStaffCampaignsPage() {
-  const root = document.getElementById('staffCampaignsPage');
-  if (!root) return;
-  const snapshot = getStaffCampaignSnapshot();
-  const ideas = buildStaffCampaignIdeas(snapshot);
-  if (!state.staffCampaignSelectedId && ideas[0]) state.staffCampaignSelectedId = ideas[0].id;
-  const selected = getSelectedStaffCampaignIdea();
-  const draft = normalizeStaffCampaignDraft(state.staffCampaignDraft, selected);
-  const saved = state.marketingCampaigns || [];
-  const campaignsThisMonth = saved.filter(campaign => getMonthKey(campaign.date) === getMonthKey(state.currentDate || todayStr()));
-  const activeAgent = getStaffCampaignAgent(getStaffCampaignChannel());
-  root.innerHTML = `
-    <section class="campaigns-hero campaigns-hero-simple">
-      <div>
-        <span class="campaigns-eyebrow">Marketing local</span>
-        <h1>Campagnes</h1>
-        <p>Choisissez un objectif, un réseau, puis copiez les deux textes: Libramont et Gembloux.</p>
-      </div>
-      <div class="campaigns-actions">
-        <button type="button" class="primary" onclick="generateStaffCampaignDraft()">${renderCampaignIcon('spark')} Générer</button>
-      </div>
-    </section>
-
-    <section class="campaign-safe-strip" aria-label="Ce que le générateur utilise">
-      <span>${renderCampaignIcon('shield')} Aucune activité inventée</span>
-      <span>Libramont + Gembloux</span>
-      <span>${escapeHtml(activeAgent.label)}</span>
-      <span>Agents actifs</span>
-    </section>
-
-    ${renderStaffMarketingAgentOps()}
-
-    <section class="campaign-workspace campaign-workspace-simple">
-      <article class="campaign-panel campaign-create">
-        <div class="campaign-panel-head">
-          <div>
-            <h2>Créer une publication</h2>
-            <p>Trois choix. Le reste est préparé automatiquement.</p>
-          </div>
-        </div>
-        <div class="campaign-step">
-          <b>1</b>
-          <div>
-            <h3>Objectif</h3>
-            <div class="campaign-objectives">
-              ${renderStaffCampaignObjectiveButton('anniversaires', 'Anniversaire')}
-              ${renderStaffCampaignObjectiveButton('calme', 'Jour calme')}
-              ${renderStaffCampaignObjectiveButton('groupes', 'Groupe')}
-              ${renderStaffCampaignObjectiveButton('laser', 'Laser')}
-              ${renderStaffCampaignObjectiveButton('formules', 'Formule')}
-              ${renderStaffCampaignObjectiveButton('fidelisation', 'Fidéliser')}
-            </div>
-          </div>
-        </div>
-        <div class="campaign-step">
-          <b>2</b>
-          <div>
-            <h3>Réseau</h3>
-            <div class="campaign-channels">
-              ${renderStaffCampaignChannelButton('facebook', 'Facebook')}
-              ${renderStaffCampaignChannelButton('instagram', 'Instagram')}
-              ${renderStaffCampaignChannelButton('tiktok', 'TikTok')}
-              ${renderStaffCampaignChannelButton('linkedin', 'LinkedIn')}
-              ${renderStaffCampaignChannelButton('email', 'Email')}
-            </div>
-          </div>
-        </div>
-        <div class="campaign-step">
-          <b>3</b>
-          <div>
-            <h3>Détail utile <span>facultatif</span></h3>
-            <label class="campaign-brief">
-              <textarea placeholder="Ex: mettre en avant les anniversaires de juin, une journée calme, ou une sortie groupe. Rien d’obligatoire." oninput="setStaffCampaignBrief(this.value)">${escapeHtml(state.staffCampaignBrief || '')}</textarea>
-            </label>
-          </div>
-        </div>
-        <div class="campaign-create-actions">
-          <button type="button" class="primary" onclick="generateStaffCampaignDraft()">${renderCampaignIcon('spark')} Créer les textes</button>
-          <button type="button" onclick="saveStaffCampaignFromCurrent()">Garder cette campagne</button>
-        </div>
-      </article>
-
-      <article class="campaign-panel campaign-editor campaign-result">
-        <div class="campaign-panel-head">
-          <div>
-            <h2>${escapeHtml(selected.title)}</h2>
-            <p>${escapeHtml(selected.segment)} · ${escapeHtml(activeAgent.label)} · ${escapeHtml(selected.source)}</p>
-          </div>
-        </div>
-        ${renderStaffCampaignDraft(draft, selected)}
-      </article>
-    </section>
-
-    <section class="campaign-calendar campaign-calendar-simple">
-      <div class="campaign-panel-head">
-        <div>
-          <h2>Campagnes gardées</h2>
-          <p>${saved.length ? `${saved.length} campagne(s) préparée(s)` : 'Planifiez une semaine pour créer les premières actions.'}</p>
-        </div>
-        <div class="campaigns-actions">
-          <button type="button" onclick="seedStaffCampaignWeek()">${renderCampaignIcon('plus')} Préparer 5 idées</button>
-          <button type="button" onclick="exportStaffCampaignsCsv()">${renderCampaignIcon('copy')} Exporter</button>
-        </div>
-      </div>
-      <div class="campaign-table">
-        <div class="campaign-table-head"><span>Campagne</span><span>Date</span><span>Statut</span><span>Actions</span></div>
-        ${saved.length ? saved.map(renderStaffCampaignSavedRow).join('') : `<div class="campaign-empty">Aucune campagne enregistrée. Lancez une semaine pour préparer les premiers messages.</div>`}
-      </div>
-    </section>
-  `;
-}
-
-function formatStaffClientMoney(value) {
-  return new Intl.NumberFormat('fr-BE', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(Number(value) || 0).replace(/\s/g, ' ');
-}
-
 function getStaffClientInitials(name = '') {
   const parts = String(name || 'Client')
     .trim()
@@ -9435,294 +8561,6 @@ function renderStaffClientIcon(name) {
     columns: '<rect x="4" y="5" width="6" height="14" rx="1.5"></rect><rect x="14" y="5" width="6" height="14" rx="1.5"></rect>'
   };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.user}</svg>`;
-}
-
-function renderStaffClientSpark(values = [], tone = 'purple') {
-  const clean = values.map(value => Number(value) || 0);
-  const max = Math.max(...clean, 1);
-  const points = clean.map((value, index) => {
-    const x = clean.length <= 1 ? 100 : (index / (clean.length - 1)) * 100;
-    const y = 34 - ((value / max) * 26);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  return `<svg class="clients-spark ${escapeHtml(tone)}" viewBox="0 0 100 38" preserveAspectRatio="none" aria-hidden="true">
-    <polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></polyline>
-  </svg>`;
-}
-
-function getStaffClientSeedRows() {
-  return [];
-  return [
-    {
-      id: 'martin-laurent',
-      name: 'Martin Laurent',
-      email: 'martin.laurent@gmail.com',
-      phone: '06 12 34 56 78',
-      status: 'Fidèle',
-      statusClass: 'loyal',
-      lastVisit: '24 mai 2026',
-      lastVisitAgo: 'Il y a 2 jours',
-      reservations: 18,
-      spent: 764.80,
-      cancellations: 3,
-      initials: 'ML',
-      avatarTone: 'violet',
-      tags: ['Fidèle', 'VIP'],
-      history: [
-        { date: '24 mai 2026', label: 'Réservation', amount: 78 },
-        { date: '18 mai 2026', label: 'Réservation', amount: 45 },
-        { date: '10 mai 2026', label: 'Annulation', amount: -35 },
-        { date: '2 mai 2026', label: 'Réservation', amount: 62 },
-        { date: '20 avr. 2026', label: 'Réservation', amount: 52 },
-      ],
-      lastBooking: {
-        date: 'Sam. 24 mai 2026',
-        time: '20:00 - 22:00',
-        lane: 'Piste 3',
-        status: 'Terminée',
-        offer: 'Bowling classique',
-        players: '6 personnes',
-        total: 78
-      }
-    },
-    { id: 'sophie-dubois', name: 'Sophie Dubois', email: 'sophie.dubois@gmail.com', phone: '06 23 45 67 89', status: 'Actif', statusClass: 'active', lastVisit: '23 mai 2026', lastVisitAgo: 'Il y a 3 jours', reservations: 12, spent: 482.40, cancellations: 1, initials: 'SD', avatarTone: 'orange' },
-    { id: 'julien-bernard', name: 'Julien Bernard', email: 'julien.bernard@gmail.com', phone: '06 34 56 78 90', status: 'Actif', statusClass: 'active', lastVisit: '20 mai 2026', lastVisitAgo: 'Il y a 6 jours', reservations: 9, spent: 315, cancellations: 0, initials: 'JB', avatarTone: 'blue' },
-    { id: 'camille-moreau', name: 'Camille Moreau', email: 'camille.moreau@gmail.com', phone: '06 45 67 89 01', status: 'Nouveau', statusClass: 'new', lastVisit: '18 mai 2026', lastVisitAgo: 'Il y a 8 jours', reservations: 2, spent: 68, cancellations: 0, initials: 'CM', avatarTone: 'gold' },
-    { id: 'nicolas-girard', name: 'Nicolas Girard', email: 'nicolas.girard@gmail.com', phone: '06 56 78 90 12', status: 'Inactif', statusClass: 'inactive', lastVisit: '10 avr. 2026', lastVisitAgo: 'Il y a 45 jours', reservations: 3, spent: 122, cancellations: 1, initials: 'NG', avatarTone: 'purple' },
-    { id: 'amandine-petit', name: 'Amandine Petit', email: 'amandine.petit@gmail.com', phone: '06 67 89 01 23', status: 'Actif', statusClass: 'active', lastVisit: '9 mai 2026', lastVisitAgo: 'Il y a 17 jours', reservations: 7, spent: 246.50, cancellations: 0, initials: 'AP', avatarTone: 'green' },
-    { id: 'tom-henry', name: 'Tom Henry', email: 'tom.henry@gmail.com', phone: '06 78 90 12 34', status: 'Fidèle', statusClass: 'loyal', lastVisit: '25 mai 2026', lastVisitAgo: 'Il y a 1 jour', reservations: 21, spent: 912.30, cancellations: 2, initials: 'TH', avatarTone: 'teal' },
-  ];
-}
-
-function legacyFormatStaffClientDateText(dateValue) {
-  if (!dateValue) return '--';
-  const date = parseLocalDate(dateValue);
-  return date.toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', year: 'numeric' }).replace('.', '');
-}
-
-function legacyFormatStaffClientAgo(dateValue) {
-  if (!dateValue) return '';
-  const today = parseLocalDate(todayStr());
-  const date = parseLocalDate(dateValue);
-  const diff = Math.max(0, Math.round((today - date) / 86400000));
-  if (diff === 0) return "Aujourd'hui";
-  if (diff === 1) return 'Il y a 1 jour';
-  return `Il y a ${diff} jours`;
-}
-
-function legacyGetStaffClientRows() {
-  const seedRows = getStaffClientSeedRows();
-  const known = new Set(seedRows.map(row => String(row.email || row.phone || row.name).toLowerCase()));
-  const realRows = buildAdminClientProfiles(state.reservations || [])
-    .map((profile, index) => {
-      const key = String(profile.email || profile.phone || profile.name || '').toLowerCase();
-      if (known.has(key)) return null;
-      const status = profile.segment === 'VIP' || profile.segment === 'Récurrent' ? 'Fidèle' : profile.segment === 'Groupe' ? 'Actif' : 'Nouveau';
-      const statusClass = status === 'Fidèle' ? 'loyal' : status === 'Nouveau' ? 'new' : 'active';
-      return {
-        id: `real-${index}-${String(profile.key || profile.name).replace(/[^a-z0-9]+/gi, '-')}`,
-        name: profile.name || 'Client',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        status,
-        statusClass,
-        lastVisit: formatStaffClientDateText(profile.lastDate),
-        lastVisitAgo: formatStaffClientAgo(profile.lastDate),
-        reservations: profile.visits || 0,
-        spent: Number(profile.revenue || 0),
-        cancellations: 0,
-        initials: getStaffClientInitials(profile.name),
-        avatarTone: ['violet', 'blue', 'green', 'gold', 'teal'][index % 5],
-        history: [],
-        lastBooking: null
-      };
-    })
-    .filter(Boolean);
-  return [...seedRows, ...realRows];
-}
-
-function legacyGetFilteredStaffClientRows() {
-  const query = String(state.staffClientQuery || '').trim().toLowerCase();
-  const segment = state.staffClientSegment || 'all';
-  return getStaffClientRows().filter(row => {
-    const text = `${row.name} ${row.email} ${row.phone} ${row.status}`.toLowerCase();
-    if (query && !text.includes(query)) return false;
-    if (segment === 'loyal' && row.status !== 'Fidèle') return false;
-    if (segment === 'groups' && row.reservations < 10) return false;
-    if (segment === 'birthdays' && !/anniversaire|adam|camille|tom|martin/i.test(`${row.name} ${row.email}`)) return false;
-    return true;
-  });
-}
-
-function legacySetStaffClientSegment(segment) {
-  state.staffClientSegment = ['all', 'loyal', 'groups', 'birthdays'].includes(segment) ? segment : 'all';
-  save();
-  renderStaffClientsPage();
-}
-
-function legacySetStaffClientQuery(value) {
-  state.staffClientQuery = value || '';
-  renderStaffClientsPage();
-}
-
-function legacySelectStaffClient(id) {
-  state.staffSelectedClientId = id;
-  save();
-  renderStaffClientsPage();
-}
-
-function legacyRenderStaffClientRow(row, selected) {
-  return `<button type="button" class="clients-table-row ${selected ? 'selected' : ''}" onclick='selectStaffClient(${staffClientJs(row.id)})'>
-    <span class="client-cell client-main">
-      <span class="client-avatar ${escapeHtml(row.avatarTone || 'violet')}">${escapeHtml(row.initials || getStaffClientInitials(row.name))}</span>
-      <span><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.email || 'email à compléter')}</small><small>${escapeHtml(row.phone || 'téléphone à compléter')}</small></span>
-    </span>
-    <span class="client-cell"><span class="client-status ${escapeHtml(row.statusClass || 'active')}">${escapeHtml(row.status || 'Actif')}</span></span>
-    <span class="client-cell"><strong>${escapeHtml(row.lastVisit || '--')}</strong><small>${escapeHtml(row.lastVisitAgo || '')}<i></i></small></span>
-    <span class="client-cell"><strong>${row.reservations}</strong><small>Voir historique</small></span>
-    <span class="client-cell"><strong>${formatStaffClientMoney(row.spent)}</strong><small>Total</small></span>
-    <span class="client-cell actions"><span aria-hidden="true">Ouvrir</span></span>
-  </button>`;
-}
-
-function legacyRenderStaffClientDetail(row) {
-  const detail = row || getStaffClientSeedRows()[0];
-  const history = detail.history?.length ? detail.history : [
-    { date: detail.lastVisit || 'Dernière visite', label: 'Réservation', amount: detail.spent || 0 },
-    { date: 'Historique', label: `${detail.reservations || 0} réservation(s) enregistrée(s)`, amount: 0 }
-  ];
-  const lastBooking = detail.lastBooking || {
-    date: detail.lastVisit || 'Dernière réservation',
-    time: '--',
-    lane: 'Activité',
-    status: detail.status || 'Actif',
-    offer: detail.reservations > 10 ? 'Groupe / anniversaire' : 'Bowling classique',
-    players: `${Math.max(2, Math.min(12, detail.reservations || 2))} personnes`,
-    total: detail.spent || 0
-  };
-  return `<aside class="client-profile-panel">
-    <div class="client-profile-kicker">Fiche client</div>
-    <div class="client-profile-head">
-      <span class="client-profile-avatar ${escapeHtml(detail.avatarTone || 'violet')}">${escapeHtml(detail.initials || getStaffClientInitials(detail.name))}</span>
-      <div>
-        <h2>${escapeHtml(detail.name)}</h2>
-        <div class="client-profile-tags">
-          ${(detail.tags || [detail.status || 'Actif']).map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}
-        </div>
-      </div>
-      <button type="button" onclick="openStaffClientBooking(${staffClientJs(detail.id || '')})" aria-label="Nouvelle réservation">+</button>
-    </div>
-    <div class="client-profile-contact">
-      <p>${renderStaffClientIcon('mail')}<span>${escapeHtml(detail.email || 'email à compléter')}</span></p>
-      <p>${renderStaffClientIcon('phone')}<span>${escapeHtml(detail.phone || 'téléphone à compléter')}</span></p>
-      <p>${renderStaffClientIcon('clock')}<span>Client depuis le 12 mars 2024</span></p>
-    </div>
-    <div class="client-profile-stats">
-      <div><strong>${detail.reservations || 0}</strong><span>Réservations</span></div>
-      <div><strong>${formatStaffClientMoney(detail.spent || 0)}</strong><span>Dépensés</span></div>
-      <div><strong>${detail.cancellations || 0}</strong><span>Annulations</span></div>
-    </div>
-    <div class="client-last-booking">
-      <div class="client-panel-title"><span>Dernière réservation</span><button type="button" onclick="toggleStaffClientHistory()">Voir tout</button></div>
-      <div class="client-last-card">
-        <div><strong>${escapeHtml(lastBooking.date)}</strong><span>${escapeHtml(lastBooking.time)}</span></div>
-        <div><span>${escapeHtml(lastBooking.lane)}</span><em>${escapeHtml(lastBooking.status)}</em><span>${escapeHtml(lastBooking.offer)}</span></div>
-        <div><span>${escapeHtml(lastBooking.players)}</span><strong>Total : ${formatStaffClientMoney(lastBooking.total || 0)}</strong></div>
-      </div>
-    </div>
-    <div class="client-profile-tabs">
-      <button type="button" class="active" onclick="setStaffClientDetailTab('history')">Historique</button>
-      <button type="button" onclick="setStaffClientDetailTab('notes')">Notes</button>
-      <button type="button" onclick="setStaffClientDetailTab('preferences')">Préférences</button>
-    </div>
-    <div class="client-history-list">
-      ${history.map(item => `<div>
-        <span>${escapeHtml(item.date)}</span>
-        <span>${escapeHtml(item.label)}</span>
-        <strong class="${Number(item.amount) < 0 ? 'negative' : ''}">${Number(item.amount) ? formatStaffClientMoney(item.amount) : ''}</strong>
-      </div>`).join('')}
-    </div>
-    <button type="button" class="client-history-button" onclick="toggleStaffClientHistory()">Voir tout l'historique</button>
-  </aside>`;
-}
-
-function legacyRenderStaffClientsPage() {
-  const root = document.getElementById('staffClientsPage');
-  if (!root) return;
-  const rows = getFilteredStaffClientRows();
-  const allRows = getStaffClientRows();
-  const selected = rows.find(row => row.id === state.staffSelectedClientId)
-    || allRows.find(row => row.id === state.staffSelectedClientId)
-    || rows[0]
-    || allRows[0];
-  if (selected && state.staffSelectedClientId !== selected.id) state.staffSelectedClientId = selected.id;
-  const activeRows = allRows.filter(row => row.statusClass !== 'inactive');
-  const loyalRows = allRows.filter(row => row.status === 'Fidèle');
-  const groupRows = allRows.filter(row => row.reservations >= 10);
-  const birthdays = allRows.filter(row => /martin|camille|tom|anniversaire/i.test(row.name)).length || 23;
-  const queryValue = escapeHtml(state.staffClientQuery || '');
-  const tab = state.staffClientSegment || 'all';
-  const tabButton = (key, label, count) => `<button type="button" class="${tab === key ? 'active' : ''}" onclick="setStaffClientSegment('${key}')"><span>${escapeHtml(label)}</span><em>${count}</em></button>`;
-  root.innerHTML = `
-    <section class="clients-hero">
-      <div>
-        <h1>Clients</h1>
-        <p>Gérez votre base clients et leur historique</p>
-      </div>
-      <div class="clients-actions">
-        <label class="clients-top-search">
-          ${renderStaffClientIcon('search')}
-          <input value="${queryValue}" placeholder="Rechercher un client..." oninput="setStaffClientQuery(this.value)">
-          <kbd>⌘ K</kbd>
-        </label>
-        <button type="button" class="clients-action-btn" onclick="toggleStaffClientFilters()">${renderStaffClientIcon('filter')}Filtres</button>
-        <button type="button" class="clients-action-btn" onclick="exportStaffClientsCsv()">${renderStaffClientIcon('import')}Exporter</button>
-        <button type="button" class="clients-action-btn primary" onclick="openStaffClientBooking()">+ Nouveau client</button>
-      </div>
-    </section>
-
-    <section class="clients-kpis">
-      <article class="clients-kpi purple"><div class="clients-kpi-icon">${renderStaffClientIcon('users')}</div><div><span>Total clients</span><strong>2 847</strong><small>+23 ce mois-ci</small></div>${renderStaffClientSpark([12, 22, 18, 30, 24, 35, 28], 'purple')}</article>
-      <article class="clients-kpi blue"><div class="clients-kpi-icon">${renderStaffClientIcon('user')}</div><div><span>Clients actifs</span><strong>1 892</strong><small>66% du total</small></div>${renderStaffClientSpark([8, 15, 14, 20, 17, 24, 21], 'blue')}</article>
-      <article class="clients-kpi violet"><div class="clients-kpi-icon">${renderStaffClientIcon('star')}</div><div><span>Nouveaux ce mois</span><strong>78</strong><small>+18% vs mois dernier</small></div>${renderStaffClientSpark([5, 8, 12, 10, 16, 14, 19], 'purple')}</article>
-      <article class="clients-kpi amber"><div class="clients-kpi-icon">${renderStaffClientIcon('euro')}</div><div><span>Dépense moyenne</span><strong>42,60 €</strong><small>+8% vs mois dernier</small></div>${renderStaffClientSpark([20, 18, 24, 21, 27, 23, 30], 'purple')}</article>
-    </section>
-
-    <section class="clients-workspace">
-      <article class="clients-table-panel">
-        <div class="clients-panel-head">
-          <div>
-            <span>Repertoire CRM</span>
-            <strong>${rows.length} profil${rows.length > 1 ? 's' : ''} visible${rows.length > 1 ? 's' : ''}</strong>
-          </div>
-          <p>Selectionnez une ligne pour ouvrir la fiche, relancer un client ou creer une reservation.</p>
-        </div>
-        <div class="clients-tabs">
-          ${tabButton('all', 'Tous les clients', '2 847')}
-          ${tabButton('loyal', 'Clients fidèles', Math.max(892, loyalRows.length))}
-          ${tabButton('groups', 'Groupes', Math.max(156, groupRows.length))}
-          ${tabButton('birthdays', 'Anniversaires à venir', birthdays)}
-        </div>
-        <div class="clients-toolbar">
-          <label class="clients-panel-search">${renderStaffClientIcon('search')}<input value="${queryValue}" placeholder="Rechercher..." oninput="setStaffClientQuery(this.value)"></label>
-          <button type="button" onclick="toggleStaffClientFilters()">Segment <span>⌄</span></button>
-          <button type="button" onclick="setStaffClientStatusFilter('all')">Dernière visite <span>⌄</span></button>
-          <button type="button" class="clients-columns" onclick="toggleStaffClientCompact()">${renderStaffClientIcon('columns')}Colonnes</button>
-        </div>
-        <div class="clients-table-head">
-          <span>Client</span><span>Statut ↕</span><span>Dernière visite ↕</span><span>Réservations ↕</span><span>Dépensé ↕</span><span>Actions</span>
-        </div>
-        <div class="clients-table-body">
-          ${rows.length ? rows.slice(0, 7).map(row => renderStaffClientRow(row, selected && row.id === selected.id)).join('') : `<div class="clients-empty">Aucun client ne correspond à cette recherche.</div>`}
-        </div>
-        <div class="clients-table-footer">
-          <span>Affichage de 1 à ${Math.min(rows.length, 20)} sur 2 847 clients</span>
-          <div><button type="button" disabled>‹</button><button type="button" class="active" disabled>1</button><button type="button" disabled>2</button><button type="button" disabled>3</button><span>...</span><button type="button" disabled>143</button><button type="button" disabled>›</button></div>
-        </div>
-      </article>
-      ${renderStaffClientDetail(selected)}
-    </section>
-  `;
 }
 
 function getStaffClientRange() {
@@ -9953,32 +8791,6 @@ function getStaffClientOfferLabel(reservation) {
   return `Bowling ${formatDurationLabel(reservation.duration || 1)}`;
 }
 
-function getStaffClientResourceLabel(reservation) {
-  if (!reservation) return '--';
-  const bowlingWindows = getBowlingWindowsFromReservation(reservation);
-  const laserWindows = getLaserWindowsFromReservation(reservation);
-  const parts = [];
-  if (bowlingWindows.length) {
-    parts.push(`Piste${bowlingWindows[0].lanes?.length > 1 ? 's' : ''} ${(bowlingWindows[0].lanes || reservation.lanes || []).join(', ')}`);
-  }
-  if (laserWindows.length || reservation.type === 'laser') {
-    parts.push('Laser Game');
-  }
-  return parts.join(' + ') || 'Activité';
-}
-
-function getStaffClientTimeRange(reservation) {
-  if (!reservation) return '--';
-  const windows = [...getBowlingWindowsFromReservation(reservation), ...getLaserWindowsFromReservation(reservation)]
-    .filter(window => Number.isFinite(Number(window.start)))
-    .sort((left, right) => Number(left.start) - Number(right.start));
-  const start = windows.length ? Number(windows[0].start) : timeToNum(reservation.startTime || '00:00');
-  const end = windows.length
-    ? Math.max(...windows.map(window => Number(window.start) + Number(window.duration || reservation.duration || 0)))
-    : start + Number(reservation.totalDuration || reservation.duration || 0);
-  return `${numToTime(start)} - ${numToTime(end)}`;
-}
-
 function formatStaffClientDateText(dateValue) {
   if (!dateValue) return '--';
   return parseLocalDate(dateValue)
@@ -10191,22 +9003,8 @@ function getStaffClientMetrics(rows = getStaffClientRows(), reservations = getSt
   };
 }
 
-function renderStaffClientKpi(icon, tone, label, value, hint, series) {
-  return `<article class="clients-kpi ${escapeHtml(tone)}">
-    <div class="clients-kpi-icon">${renderStaffClientIcon(icon)}</div>
-    <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(hint)}</small></div>
-    ${renderStaffClientSpark(series || [0, 0, 0], tone === 'blue' ? 'blue' : 'purple')}
-  </article>`;
-}
-
 function setStaffClientSegment(segment) {
   state.staffClientSegment = ['all', 'loyal', 'groups', 'birthdays'].includes(segment) ? segment : 'all';
-  save();
-  renderStaffClientsPage();
-}
-
-function setStaffClientStatusFilter(filter) {
-  state.staffClientStatusFilter = ['all', 'active', 'inactive', 'new', 'loyal'].includes(filter) ? filter : 'all';
   save();
   renderStaffClientsPage();
 }
@@ -10219,32 +9017,6 @@ function setStaffClientQuery(value) {
 function selectStaffClient(id) {
   state.staffSelectedClientId = id;
   state.staffClientHistoryExpanded = false;
-  save();
-  renderStaffClientsPage();
-}
-
-function toggleStaffClientFilters() {
-  state.staffClientFiltersOpen = !state.staffClientFiltersOpen;
-  save();
-  renderStaffClientsPage();
-}
-
-function toggleStaffClientCompact() {
-  state.staffClientCompact = !state.staffClientCompact;
-  save();
-  renderStaffClientsPage();
-}
-
-function clearStaffClientFilters() {
-  state.staffClientQuery = '';
-  state.staffClientSegment = 'all';
-  state.staffClientStatusFilter = 'all';
-  save();
-  renderStaffClientsPage();
-}
-
-function toggleStaffClientHistory() {
-  state.staffClientHistoryExpanded = !state.staffClientHistoryExpanded;
   save();
   renderStaffClientsPage();
 }
@@ -10311,272 +9083,8 @@ function composeStaffClientEmail(email = '', name = '') {
   }
 }
 
-function getStaffClientDetailTab() {
-  return ['history', 'notes', 'preferences'].includes(state.staffClientDetailTab) ? state.staffClientDetailTab : 'history';
-}
-
-function setStaffClientDetailTab(tab) {
-  state.staffClientDetailTab = ['history', 'notes', 'preferences'].includes(tab) ? tab : 'history';
-  save();
-  renderStaffClientsPage();
-}
-
-function setStaffClientNote(id, value) {
-  state.staffClientNotes = state.staffClientNotes || {};
-  state.staffClientNotes[String(id || 'default')] = value || '';
-  save();
-}
-
-function toggleStaffClientPreference(id, key) {
-  const clientId = String(id || 'default');
-  state.staffClientPreferences = state.staffClientPreferences || {};
-  const prefs = state.staffClientPreferences[clientId] || {};
-  prefs[key] = !prefs[key];
-  state.staffClientPreferences[clientId] = prefs;
-  save();
-  renderStaffClientsPage();
-}
-
-function renderStaffClientTabs() {
-  const tab = getStaffClientDetailTab();
-  return `<div class="client-profile-tabs">
-    <button type="button" class="${tab === 'history' ? 'active' : ''}" onclick="setStaffClientDetailTab('history')">Historique</button>
-    <button type="button" class="${tab === 'notes' ? 'active' : ''}" onclick="setStaffClientDetailTab('notes')">Notes</button>
-    <button type="button" class="${tab === 'preferences' ? 'active' : ''}" onclick="setStaffClientDetailTab('preferences')">Préférences</button>
-  </div>`;
-}
-
-function renderStaffClientTabBody(row, historyItems) {
-  const tab = getStaffClientDetailTab();
-  const clientId = String(row?.id || 'default');
-  if (tab === 'notes') {
-    const note = state.staffClientNotes?.[clientId] || '';
-    return `<div class="client-tab-body">
-      <label class="client-note-field">
-        <span>Note interne</span>
-        <textarea oninput="setStaffClientNote('${escapeJsString(clientId)}', this.value)" placeholder="Ajoutez une consigne utile pour l'équipe...">${escapeHtml(note)}</textarea>
-      </label>
-    </div>`;
-  }
-  if (tab === 'preferences') {
-    const prefs = state.staffClientPreferences?.[clientId] || {};
-    const options = [
-      ['birthday', 'Anniversaire'],
-      ['phone', 'Prévenir par téléphone'],
-      ['quiet', 'Groupe calme'],
-      ['invoice', 'Facture demandée']
-    ];
-    return `<div class="client-tab-body client-preferences-list">
-      ${options.map(([key, label]) => `<button type="button" class="${prefs[key] ? 'active' : ''}" onclick="toggleStaffClientPreference('${escapeJsString(clientId)}', '${key}')">${escapeHtml(label)}</button>`).join('')}
-    </div>`;
-  }
-  return `<div class="client-history-list">
-    ${historyItems.length ? historyItems.map(item => `<div>
-      <span>${escapeHtml(item.date)}</span>
-      <span>${escapeHtml(item.label)} · ${escapeHtml(item.status)}</span>
-      <strong class="${Number(item.amount) < 0 ? 'negative' : ''}">${Number(item.amount) ? formatStaffClientMoney(item.amount) : ''}</strong>
-    </div>`).join('') : `<div><span>--</span><span>Aucun historique</span><strong></strong></div>`}
-  </div>
-  <button type="button" class="client-history-button" onclick="openStaffClientBooking(${staffClientJs(row.id)})">Nouvelle réservation pour ce client</button>`;
-}
-
-function renderStaffClientFilterPanel(metrics) {
-  return `<div class="clients-filter-panel">
-    <div>
-      <label>Segment</label>
-      <select class="clients-select" onchange="setStaffClientSegment(this.value)">
-        <option value="all" ${state.staffClientSegment === 'all' ? 'selected' : ''}>Tous les clients</option>
-        <option value="loyal" ${state.staffClientSegment === 'loyal' ? 'selected' : ''}>Clients fidèles</option>
-        <option value="groups" ${state.staffClientSegment === 'groups' ? 'selected' : ''}>Groupes</option>
-        <option value="birthdays" ${state.staffClientSegment === 'birthdays' ? 'selected' : ''}>Anniversaires</option>
-      </select>
-    </div>
-    <div>
-      <label>Statut</label>
-      <select class="clients-select" onchange="setStaffClientStatusFilter(this.value)">
-        <option value="all" ${state.staffClientStatusFilter === 'all' ? 'selected' : ''}>Tous les statuts</option>
-        <option value="active" ${state.staffClientStatusFilter === 'active' ? 'selected' : ''}>Actifs</option>
-        <option value="loyal" ${state.staffClientStatusFilter === 'loyal' ? 'selected' : ''}>Fidèles</option>
-        <option value="new" ${state.staffClientStatusFilter === 'new' ? 'selected' : ''}>Nouveaux</option>
-        <option value="inactive" ${state.staffClientStatusFilter === 'inactive' ? 'selected' : ''}>Inactifs</option>
-      </select>
-    </div>
-    <div class="clients-filter-summary">
-      <strong>${metrics.totalClients}</strong>
-      <span>profil${metrics.totalClients > 1 ? 's' : ''} réel${metrics.totalClients > 1 ? 's' : ''} sur la période synchronisée</span>
-    </div>
-    <button type="button" class="clients-action-btn" onclick="clearStaffClientFilters()">Réinitialiser</button>
-  </div>`;
-}
-
-function renderStaffClientRow(row, selected) {
-  const email = String(row.email || '');
-  const phone = String(row.phone || '');
-  const syntheticEmail = /simulation\.fungalaxy\.invalid|_sim_|client\d+\.sim_/i.test(email);
-  const primaryContact = phone || (!syntheticEmail ? email : '') || 'Contact a completer';
-  const secondaryContact = (!syntheticEmail && email && phone)
-    ? email
-    : `${Number(row.players || 0)} joueur(s) cumule(s)`;
-  return `<button type="button" class="clients-table-row ${selected ? 'selected' : ''}" onclick='selectStaffClient(${staffClientJs(row.id)})'>
-    <span class="client-cell client-main">
-      <span class="client-avatar ${escapeHtml(row.avatarTone || 'violet')}">${escapeHtml(row.initials || getStaffClientInitials(row.name))}</span>
-      <span><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(primaryContact)}</small><small>${escapeHtml(secondaryContact)}</small></span>
-    </span>
-    <span class="client-cell"><span class="client-status ${escapeHtml(row.statusClass || 'active')}">${escapeHtml(row.status || 'Actif')}</span></span>
-    <span class="client-cell"><strong>${escapeHtml(row.lastVisit || '--')}</strong><small>${escapeHtml(row.lastVisitAgo || '')}${row.statusClass !== 'inactive' ? '<i></i>' : ''}</small></span>
-    <span class="client-cell"><strong>${row.reservations}</strong><small>${row.players} joueur(s)</small></span>
-    <span class="client-cell"><strong>${formatStaffClientMoney(row.spent)}</strong><small>${row.cancellations} annulation(s)</small></span>
-    <span class="client-cell actions"><span aria-hidden="true">Ouvrir</span></span>
-  </button>`;
-}
-
-function renderStaffClientDetail(row) {
-  if (!row) {
-    return `<aside class="client-profile-panel empty">
-      <h2>Aucun client réel</h2>
-      <p>Les profils apparaissent dès que des réservations sont synchronisées depuis la base de données.</p>
-      <button type="button" class="client-history-button" onclick="openStaffClientBooking()">Créer une réservation</button>
-    </aside>`;
-  }
-  const lastBooking = row.lastBooking;
-  const historyItems = state.staffClientHistoryExpanded ? row.history : row.history.slice(0, 6);
-  return `<aside class="client-profile-panel">
-    <div class="client-profile-kicker">Fiche client</div>
-    <div class="client-profile-head">
-      <span class="client-profile-avatar ${escapeHtml(row.avatarTone || 'violet')}">${escapeHtml(row.initials || getStaffClientInitials(row.name))}</span>
-      <div>
-        <h2>${escapeHtml(row.name)}</h2>
-        <div class="client-profile-tags">
-          ${(row.tags || [row.status || 'Actif']).map(tag => `<span>${escapeHtml(tag)}</span>`).join('')}
-        </div>
-      </div>
-      <button type="button" onclick="openStaffClientBooking(${staffClientJs(row.id)})" aria-label="Nouvelle réservation">+</button>
-    </div>
-    <div class="client-profile-contact">
-      <p>${renderStaffClientIcon('mail')}<span>${escapeHtml(row.email || 'email absent')}</span></p>
-      <p>${renderStaffClientIcon('phone')}<span>${escapeHtml(row.phone || 'téléphone absent')}</span></p>
-      <p>${renderStaffClientIcon('clock')}<span>Client depuis ${escapeHtml(formatStaffClientDateText(row.firstDate))}</span></p>
-    </div>
-    <div class="client-profile-stats">
-      <div><strong>${row.reservations || 0}</strong><span>Réservations</span></div>
-      <div><strong>${formatStaffClientMoney(row.spent || 0)}</strong><span>Dépensés</span></div>
-      <div><strong>${row.cancellations || 0}</strong><span>Annulations</span></div>
-    </div>
-    <div class="client-last-booking">
-      <div class="client-panel-title"><span>Dernière réservation réelle</span><button type="button" onclick="toggleStaffClientHistory()">${state.staffClientHistoryExpanded ? 'Réduire' : 'Voir tout'}</button></div>
-      ${lastBooking ? `<div class="client-last-card">
-        <div><strong>${escapeHtml(formatStaffClientDateText(lastBooking.date))}</strong><span>${escapeHtml(getStaffClientTimeRange(lastBooking))}</span></div>
-        <div><span>${escapeHtml(getStaffClientResourceLabel(lastBooking))}</span><em>${escapeHtml(formatStaffClientStatus(lastBooking.status))}</em><span>${escapeHtml(getStaffClientOfferLabel(lastBooking))}</span></div>
-        <div><span>${Number(lastBooking.pax || 0)} personne(s)</span><strong>Total : ${formatStaffClientMoney(lastBooking.price || 0)}</strong></div>
-      </div>` : `<div class="clients-empty compact">Aucune réservation active.</div>`}
-    </div>
-    ${renderStaffClientTabs()}
-    ${renderStaffClientTabBody(row, historyItems)}
-  </aside>`;
-}
-
-function renderStaffClientsPage() {
-  const root = document.getElementById('staffClientsPage');
-  if (!root) return;
-  const allRows = getStaffClientRows();
-  const rows = getFilteredStaffClientRows();
-  const metrics = getStaffClientMetrics(allRows, getStaffClientSourceReservations());
-  const selected = rows.find(row => row.id === state.staffSelectedClientId)
-    || allRows.find(row => row.id === state.staffSelectedClientId)
-    || rows[0]
-    || allRows[0]
-    || null;
-  if (selected && state.staffSelectedClientId !== selected.id) state.staffSelectedClientId = selected.id;
-  const queryValue = escapeHtml(state.staffClientQuery || '');
-  const tab = state.staffClientSegment || 'all';
-  const tabButton = (key, label, count) => `<button type="button" class="${tab === key ? 'active' : ''}" onclick="setStaffClientSegment('${key}')"><span>${escapeHtml(label)}</span><em>${count}</em></button>`;
-  const loadingText = staffClientDataCache.loading ? 'Synchronisation...' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'Données locales disponibles';
-  const syncIssueText = staffClientDataCache.error ? ' · synchronisation indisponible' : '';
-  root.classList.toggle('compact-clients', !!state.staffClientCompact);
-  root.innerHTML = `
-    <section class="clients-hero">
-      <div>
-        <h1>Clients</h1>
-        <p>${escapeHtml(loadingText)}${escapeHtml(syncIssueText)}</p>
-      </div>
-      <div class="clients-actions">
-        <label class="clients-top-search">
-          ${renderStaffClientIcon('search')}
-          <input value="${queryValue}" placeholder="Rechercher un client..." oninput="setStaffClientQuery(this.value)">
-          <kbd>⌘ K</kbd>
-        </label>
-        <button type="button" class="clients-action-btn ${state.staffClientFiltersOpen ? 'active' : ''}" onclick="toggleStaffClientFilters()">${renderStaffClientIcon('filter')}Filtres</button>
-        <button type="button" class="clients-action-btn" onclick="refreshStaffClients()">${renderStaffClientIcon('refresh')}Actualiser</button>
-        <button type="button" class="clients-action-btn" onclick="exportStaffClientsCsv()">${renderStaffClientIcon('import')}Exporter</button>
-        <button type="button" class="clients-action-btn primary" onclick="openStaffClientBooking()">${renderStaffClientIcon('plus')}Nouveau client</button>
-      </div>
-    </section>
-
-    <section class="clients-kpis">
-      ${renderStaffClientKpi('users', 'purple', 'Total clients', String(metrics.totalClients), `${metrics.reservations} réservation(s) réelles`, metrics.series.clients)}
-      ${renderStaffClientKpi('user', 'blue', 'Clients actifs', String(metrics.activeClients), `${metrics.activeShare}% du total`, metrics.series.players)}
-      ${renderStaffClientKpi('star', 'violet', 'Nouveaux ce mois', String(metrics.newThisMonth), `${metrics.previousNew} le mois précédent`, metrics.series.clients)}
-      ${renderStaffClientKpi('euro', 'amber', 'Dépense moyenne', formatStaffClientMoney(metrics.averageSpend), `${formatStaffClientMoney(metrics.currentMonthRevenue)} ce mois`, metrics.series.revenue)}
-    </section>
-
-    ${state.staffClientFiltersOpen ? renderStaffClientFilterPanel(metrics) : ''}
-
-    <section class="clients-workspace">
-      <article class="clients-table-panel">
-        <div class="clients-panel-head">
-          <div>
-            <span>Repertoire CRM</span>
-            <strong>${rows.length} profil${rows.length > 1 ? 's' : ''} visible${rows.length > 1 ? 's' : ''}</strong>
-          </div>
-          <p>Selectionnez une ligne pour ouvrir la fiche, relancer un client ou creer une reservation.</p>
-        </div>
-        <div class="clients-tabs">
-          ${tabButton('all', 'Tous les clients', metrics.totalClients)}
-          ${tabButton('loyal', 'Clients fidèles', metrics.loyalClients)}
-          ${tabButton('groups', 'Groupes', metrics.groupClients)}
-          ${tabButton('birthdays', 'Anniversaires', metrics.birthdayClients)}
-        </div>
-        <div class="clients-toolbar">
-          <label class="clients-panel-search">${renderStaffClientIcon('search')}<input value="${queryValue}" placeholder="Rechercher..." oninput="setStaffClientQuery(this.value)"></label>
-          <select class="clients-select" onchange="setStaffClientSegment(this.value)">
-            <option value="all" ${tab === 'all' ? 'selected' : ''}>Tous</option>
-            <option value="loyal" ${tab === 'loyal' ? 'selected' : ''}>Fidèles</option>
-            <option value="groups" ${tab === 'groups' ? 'selected' : ''}>Groupes</option>
-            <option value="birthdays" ${tab === 'birthdays' ? 'selected' : ''}>Anniversaires</option>
-          </select>
-          <select class="clients-select" onchange="setStaffClientStatusFilter(this.value)">
-            <option value="all" ${state.staffClientStatusFilter === 'all' ? 'selected' : ''}>Tous statuts</option>
-            <option value="active" ${state.staffClientStatusFilter === 'active' ? 'selected' : ''}>Actifs</option>
-            <option value="loyal" ${state.staffClientStatusFilter === 'loyal' ? 'selected' : ''}>Fidèles</option>
-            <option value="new" ${state.staffClientStatusFilter === 'new' ? 'selected' : ''}>Nouveaux</option>
-            <option value="inactive" ${state.staffClientStatusFilter === 'inactive' ? 'selected' : ''}>Inactifs</option>
-          </select>
-          <span></span>
-          <button type="button" class="clients-columns" onclick="toggleStaffClientCompact()">${renderStaffClientIcon('columns')}Colonnes</button>
-        </div>
-        <div class="clients-table-head">
-          <span>Client</span><span>Statut</span><span>Dernière visite</span><span>Réservations</span><span>Dépensé</span><span>Actions</span>
-        </div>
-        <div class="clients-table-body">
-          ${rows.length ? rows.slice(0, 20).map(row => renderStaffClientRow(row, selected && row.id === selected.id)).join('') : `<div class="clients-empty">Aucun client réel ne correspond à ces filtres.</div>`}
-        </div>
-        <div class="clients-table-footer">
-          <span>Affichage de ${rows.length ? 1 : 0} à ${Math.min(rows.length, 20)} sur ${rows.length} client(s) filtré(s)</span>
-          <div><button type="button" onclick="clearStaffClientFilters()">Effacer filtres</button><button type="button" onclick="exportStaffClientsCsv()">CSV</button></div>
-        </div>
-      </article>
-      ${renderStaffClientDetail(selected)}
-    </section>
-  `;
-  ensureStaffClientData();
-}
-
 function getStaffReservationsMonthKey() {
   return /^\d{4}-\d{2}$/.test(state.staffReservationsMonth || '') ? state.staffReservationsMonth : getMonthKey(state.currentDate || todayStr());
-}
-
-function getStaffReservationsMonthAnchor() {
-  return `${getStaffReservationsMonthKey()}-01`;
 }
 
 function addMonthsToMonthKey(monthKey, delta) {
@@ -10673,33 +9181,6 @@ function getStaffReservationActivityType(reservation) {
   return 'event';
 }
 
-function staffReservationMatchesActivityFilter(reservation, filter = state.staffReservationActivityFilter || 'all') {
-  if (filter === 'all') return true;
-  return getStaffReservationActivityType(reservation) === filter;
-}
-
-function getStaffReservationsForRange(startDate, endDate, filter = state.staffReservationActivityFilter || 'all') {
-  return getStaffReservationsSourceReservations()
-    .filter(reservation => reservation.status !== 'cancelled')
-    .filter(reservation => reservation.date >= startDate && reservation.date <= endDate)
-    .filter(reservation => staffReservationMatchesActivityFilter(reservation, filter));
-}
-
-function getStaffReservationFirstTime(reservation) {
-  return getReservationFirstResourceStart(reservation, 'all') || timeToNum(reservation.startTime || '00:00');
-}
-
-function getStaffReservationTypeLabel(type) {
-  const labels = {
-    bowling: 'Bowling',
-    laser: 'Laser Game',
-    complete: 'Complet',
-    event: 'Événement',
-    maintenance: 'Maintenance'
-  };
-  return labels[type] || 'Réservation';
-}
-
 function getStaffReservationStatusLabel(status) {
   const labels = {
     pending: 'En attente',
@@ -10779,197 +9260,8 @@ function getStaffReservationsMetrics() {
   };
 }
 
-function renderStaffReservationsKpi(icon, tone, label, value, detail, series) {
-  return `<article class="reservations-kpi ${escapeHtml(tone)}">
-    <div class="reservations-kpi-icon">${renderDashboardIcon(icon)}</div>
-    <div class="reservations-kpi-copy">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    </div>
-    ${renderDashboardSpark(series || [0], tone)}
-  </article>`;
-}
-
-function getStaffReservationsDayCounts(dayReservations = []) {
-  return dayReservations.reduce((acc, reservation) => {
-    const type = getStaffReservationActivityType(reservation);
-    acc[type] = (acc[type] || 0) + 1;
-    return acc;
-  }, { bowling: 0, laser: 0, complete: 0, event: 0, maintenance: 0 });
-}
-
-function renderStaffReservationsDayRows(counts) {
-  const entries = [
-    ['bowling', 'Bowling'],
-    ['laser', 'Laser Game'],
-    ['complete', 'Complet']
-  ].filter(([key]) => (counts[key] || 0) > 0);
-  if (!entries.length) return '<div class="reservations-day-empty">Aucune réservation</div>';
-  return entries.map(([key, label]) => `<div class="reservations-day-line ${key}">
-    <span>${counts[key]}</span>
-    <em>${escapeHtml(label)}</em>
-  </div>`).join('');
-}
-
-function renderStaffReservationsCalendar(metrics) {
-  const range = metrics.range;
-  const filter = state.staffReservationActivityFilter || 'all';
-  const source = getStaffReservationsForRange(range.gridStart, range.gridEnd, filter);
-  const weeks = [];
-  for (let index = 0; index < range.gridDays.length; index += 7) {
-    weeks.push(range.gridDays.slice(index, index + 7));
-  }
-  const weekLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-  return `<article class="reservations-calendar-panel">
-    <div class="reservations-filter-row">
-      <div class="reservations-pill-group">
-        ${renderStaffReservationsFilterButton('all', 'Tous')}
-        ${renderStaffReservationsFilterButton('bowling', 'Bowling')}
-        ${renderStaffReservationsFilterButton('laser', 'Laser Game')}
-        ${renderStaffReservationsFilterButton('complete', 'Complet')}
-        ${renderStaffReservationsFilterButton('event', 'Événements')}
-      </div>
-      <div class="reservations-legend">
-        <span><i class="bowling"></i>Bowling</span>
-        <span><i class="laser"></i>Laser Game</span>
-        <span><i class="complete"></i>Complet</span>
-        <span><i class="event"></i>Événement</span>
-        <span><i class="maintenance"></i>Maintenance</span>
-      </div>
-    </div>
-    <div class="reservations-calendar">
-      ${weekLabels.map(label => `<div class="reservations-weekday">${label}</div>`).join('')}
-      ${weeks.flatMap(week => week.map(day => {
-        const dayReservations = source.filter(reservation => reservation.date === day);
-        const counts = getStaffReservationsDayCounts(dayReservations);
-        const isOutside = day.slice(0, 7) !== range.monthKey;
-        const isSelected = day === state.staffReservationsSelectedDate;
-        const isToday = day === todayStr();
-        const hasReservations = dayReservations.length > 0;
-        return `<button type="button" class="reservations-day ${isOutside ? 'outside' : ''} ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${hasReservations ? 'has-reservations' : 'is-empty'}" onclick="selectStaffReservationsDate('${day}')">
-          <span class="reservations-day-head"><strong>${parseLocalDate(day).getDate()}</strong><em>${hasReservations ? `${dayReservations.length} rés.` : ''}</em></span>
-          <span class="reservations-day-body">${renderStaffReservationsDayRows(counts)}</span>
-        </button>`;
-      })).join('')}
-    </div>
-    <div class="reservations-calendar-foot">
-      <span>i</span>
-      <p>Cliquez sur un jour pour voir le détail des réservations réelles.</p>
-    </div>
-  </article>`;
-}
-
-function renderStaffReservationsFilterButton(key, label) {
-  const active = (state.staffReservationActivityFilter || 'all') === key;
-  return `<button type="button" class="${active ? 'active' : ''}" onclick="setStaffReservationsActivityFilter('${key}')">${escapeHtml(label)}</button>`;
-}
-
-function renderStaffReservationsDayDetail() {
-  const selectedDate = state.staffReservationsSelectedDate || state.currentDate || todayStr();
-  const dayReservations = getStaffReservationsForRange(selectedDate, selectedDate, state.staffReservationActivityFilter || 'all')
-    .sort((left, right) => getStaffReservationFirstTime(left) - getStaffReservationFirstTime(right));
-  const dateLabel = parseLocalDate(selectedDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const totalPlayers = dayReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
-  const totalRevenue = dayReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
-  return `<aside class="reservations-day-detail">
-    <div class="reservations-day-detail-head">
-      <div>
-        <span>Détail journée</span>
-        <h2>${escapeHtml(dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1))}</h2>
-      </div>
-      <button type="button" onclick="openStaffReservationsQuick()">+ Réserver</button>
-    </div>
-    <div class="reservations-day-summary">
-      <div><strong>${dayReservations.length}</strong><span>Réservations</span></div>
-      <div><strong>${totalPlayers}</strong><span>Joueurs</span></div>
-      <div><strong>${formatMoney(totalRevenue)}</strong><span>Prévu</span></div>
-    </div>
-    <div class="reservations-day-list">
-      ${dayReservations.length ? dayReservations.map(renderStaffReservationsDetailRow).join('') : `<div class="reservations-empty-state">
-        <strong>Aucune réservation réelle</strong>
-        <span>Ce jour ne contient aucune ligne pour le filtre choisi.</span>
-      </div>`}
-    </div>
-  </aside>`;
-}
-
-function renderStaffReservationsDetailRow(reservation) {
-  const type = getStaffReservationActivityType(reservation);
-  const start = formatClockDisplay(getStaffReservationFirstTime(reservation));
-  const windows = getStaffResourceWindows(reservation, 'all');
-  const resourceLabel = windows.length
-    ? windows.map(window => window.resourceType === 'laser_arena'
-      ? `Laser ${formatClockDisplay(window.start)}`
-      : `Piste ${(window.lanes || []).join(', ')} ${formatClockDisplay(window.start)}`).join(' · ')
-    : getReservationLabel(reservation);
-  return `<button type="button" class="reservations-detail-row ${type}" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">
-    <span class="time">${escapeHtml(start)}</span>
-    <span class="main"><strong>${escapeHtml(reservation.name || 'Sans nom')}</strong><em>${escapeHtml(getReservationLabel(reservation))}</em></span>
-    <span class="resource">${escapeHtml(resourceLabel)}</span>
-    <span class="players">${Number(reservation.pax || 0)} pers.</span>
-    <span class="status ${escapeHtml(reservation.status || 'confirmed')}">${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
-    <span class="amount">${formatMoney(reservation.price || 0)}</span>
-  </button>`;
-}
-
-function renderStaffReservationsPage() {
-  const root = document.getElementById('staffReservationsPage');
-  if (!root) return;
-  const metrics = getStaffReservationsMetrics();
-  const range = metrics.range;
-  const monthLabel = parseLocalDate(range.monthStart).toLocaleDateString('fr-BE', { month: 'long', year: 'numeric' });
-  const syncText = staffReservationsDataCache.loading
-    ? 'Synchronisation...'
-    : staffReservationsDataCache.loaded
-      ? `Synchronisé ${formatOpsTimestamp(staffReservationsDataCache.syncedAt)}`
-      : 'Données locales disponibles';
-  const syncIssue = staffReservationsDataCache.error ? ' · API indisponible' : '';
-  root.innerHTML = `
-    <section class="reservations-hero">
-      <div>
-        <h1>Réservations</h1>
-        <p>Vue mensuelle des réservations réelles · ${escapeHtml(syncText)}${escapeHtml(syncIssue)}</p>
-      </div>
-      <div class="reservations-actions">
-        <select class="reservations-select" onchange="setStaffReservationsPreset(this.value)">
-          <option value="today" ${state.staffReservationsPreset === 'today' ? 'selected' : ''}>Aujourd'hui</option>
-          <option value="month" ${state.staffReservationsPreset === 'month' ? 'selected' : ''}>Mois affiché</option>
-        </select>
-        <div class="reservations-month-nav">
-          <button type="button" aria-label="Mois précédent" onclick="shiftStaffReservationsMonth(-1)">‹</button>
-          <button type="button" class="month-button" onclick="openStaffReservationsMonthPicker()">${escapeHtml(monthLabel)}</button>
-          <input id="staffReservationsMonthPicker" type="month" value="${escapeHtml(range.monthKey)}" onchange="setStaffReservationsMonthFromPicker(this.value)" aria-label="Choisir un mois">
-          <button type="button" aria-label="Mois suivant" onclick="shiftStaffReservationsMonth(1)">›</button>
-        </div>
-        <button type="button" class="reservations-action" onclick="refreshStaffReservations()">Actualiser</button>
-        <button type="button" class="reservations-action primary" onclick="openStaffReservationsQuick()">+ Nouvelle réservation</button>
-      </div>
-    </section>
-
-    <section class="reservations-kpi-grid">
-      ${renderStaffReservationsKpi('calendar', 'violet', 'Réservations ce mois', String(metrics.reservations), `${metrics.reservationTrend} vs mois précédent`, metrics.series.reservations)}
-      ${renderStaffReservationsKpi('users', 'blue', 'Joueurs ce mois', String(metrics.players), `${metrics.playersTrend} vs mois précédent`, metrics.series.players)}
-      ${renderStaffReservationsKpi('euro', 'green', "Chiffre d'affaires", formatMoney(metrics.revenue), `${metrics.revenueTrend} vs mois précédent`, metrics.series.revenue)}
-      ${renderStaffReservationsKpi('activity', 'amber', "Taux d'occupation moyen", `${metrics.occupancy}%`, `${metrics.occupancyTrend} vs mois précédent`, metrics.series.occupancy)}
-    </section>
-
-    <section class="reservations-main-grid">
-      ${renderStaffReservationsCalendar(metrics)}
-      ${renderStaffReservationsDayDetail()}
-    </section>
-  `;
-  ensureStaffReservationsData();
-}
-
 function refreshStaffReservations() {
   loadStaffReservationsData(true);
-}
-
-function setStaffReservationsActivityFilter(filter) {
-  state.staffReservationActivityFilter = ['all', 'bowling', 'laser', 'complete', 'event'].includes(filter) ? filter : 'all';
-  save();
-  renderStaffReservationsPage();
 }
 
 function selectStaffReservationsDate(dateStr) {
@@ -10978,20 +9270,6 @@ function selectStaffReservationsDate(dateStr) {
   save();
   renderStaffReservationsPage();
   syncDateReservations(dateStr, { silent: true });
-}
-
-function setStaffReservationsPreset(value) {
-  state.staffReservationsPreset = value === 'today' ? 'today' : 'month';
-  if (state.staffReservationsPreset === 'today') {
-    const today = todayStr();
-    state.staffReservationsSelectedDate = today;
-    state.currentDate = today;
-    state.staffReservationsMonth = getMonthKey(today);
-    syncDateReservations(today, { silent: true });
-  }
-  save();
-  renderStaffReservationsPage();
-  ensureStaffReservationsData();
 }
 
 function setStaffReservationsMonthFromPicker(value) {
@@ -12552,53 +10830,6 @@ function setTab(t) {
     syncEditLaneAssignment();
   }
   renderPos();
-}
-
-function legacyRenderPos() {
-  if (!state.selectedRes) return;
-  const r = state.selectedRes;
-  const overlay = document.getElementById('posOverlay');
-  overlay.classList.remove('hidden');
-  if (state.activeTab === 'modifier') {
-    overlay.classList.add('centered');
-    overlay.innerHTML = `
-      <div class="edit-modal">
-        <div class="edit-modal-head">
-          <div>
-            <h3>Modifier la réservation</h3>
-            <p>Un seul pop-up centré pour corriger le client, l'horaire, les pistes ou le statut sans casser la lecture du planning.</p>
-          </div>
-          <button class="close-btn" onclick="closePos()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div class="edit-modal-body">${renderPosEdit(r)}</div>
-      </div>
-    `;
-    return;
-  }
-  overlay.classList.remove('centered');
-  const bodyHtml = renderPosDetails(r);
-
-  overlay.innerHTML = `
-    <div class="pos-panel">
-      <div class="pos-head">
-        <div class="pos-head-top">
-          <div>
-            <h3>${escapeHtml(r.name)}</h3>
-          </div>
-          <button class="close-btn" onclick="closePos()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div class="tabs">
-          <button class="tab ${state.activeTab === 'details' ? 'active' : ''}" onclick="setTab('details')">Infos</button>
-          <button class="tab ${state.activeTab === 'modifier' ? 'active' : ''}" onclick="setTab('modifier')">Éditer</button>
-        </div>
-      </div>
-      <div class="pos-body">${bodyHtml}</div>
-    </div>
-  `;
 }
 
 function renderPosDetails(r) {

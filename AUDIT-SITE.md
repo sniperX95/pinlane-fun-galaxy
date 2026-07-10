@@ -124,3 +124,17 @@ Correction de surface : `#adminView` = scoreboard + 5 onglets (Vue période, Ré
 - **Passe adversariale finale** : agent frais, barre de qualité seule, boucle jusqu'à zéro finding sérieux.
 
 Après chaque vague : `npm run test:ops:all` vert + re-screenshots des pages touchées (light/dark/mobile) + commit dédié — une vague sans preuve = non finie.
+
+## 4. État des vagues (2026-07-10)
+
+| Vague | Commit | Contenu | Preuves |
+|---|---|---|---|
+| 1 — P0 + robustesse API | `06a36c1` | P0-1, P0-3, P1-3, P1-4, C1, C2 (équivalence byte-identique, 29→2 reads), C3, C4 | `artifacts/audit/wave1/`, ops:all vert |
+| 2 — Unification logique | `c9376dd` | C5, C6 (équiv. stricte n=8), C7+P1-10 (équiv. prix 1008 cas, diff vide), C9, P1-2, P2-3, P2-4 | `artifacts/audit/wave2/`, ops:all vert |
+| 2bis — P0 admin + a11y | `52f4da2` | A1, A2, A3, A4, A5, A9, A10, P1-5 (déjà résolu, prouvé), P2-5, P2-6, P3-3, P3-4 | `artifacts/audit/wave2bis/`, ops:all vert |
+| 4a — Statics & marginales | `d2a7e7f` | P1-7, P1-8, P1-9 (transcription réelle des cartes), P2-7 (5.82:1/5.64:1), P2-8 (-75 %), P2-9 + bonus setFace | `artifacts/audit/wave4a/`, security-config vert |
+| 3 — Reskin client v2 | `98a5ff3` | P1-1 (couche fgx supprimée), P0-4, P2-1, P2-2, P3-7, P3-8 (-73 Ko fonts), P3-9, C11 | 134/134 assertions, `artifacts/audit/wave3/`, ops:all + visual verts |
+| 4b — Staff Groupes + polish | `6203092` | P1-6, P1-11, P3-1, P3-2, A7 + réparation harnais test:visual (2 assertions flaky par construction) | `artifacts/audit/wave4b/`, visual + ops:all verts |
+| 5 — Purge & perf | ce commit | C8 (app-main.js −~1 900 lignes legacy), C10 (2 crons morts supprimés), C12 (CSS morts purgés), C13 (doublons remontés dans pinlane.css), C14 (admin/ops-console lazy-loadés à la demande), C15 (0 PNG racine) | `artifacts/audit/wave5/` (17 shots + assertions réseau `scripts/wave5-manual-check.js`), ops:all + visual verts |
+
+**Restent volontairement en décision propriétaire (non implémentés)** : P0-2 purge des lignes `sim-*` en prod (destructif) · A6 (redondance scoreboard/dashboard — produit) · A8 (Simulation rush exposée en console direction — produit) · P3-5 (pro.html orpheline — lien à décider) · P3-6/tmp (29 Mo débris locaux) · isolation writes simulation (design à trancher : table dédiée vs filtre channel).

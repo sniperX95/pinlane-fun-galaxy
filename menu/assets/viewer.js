@@ -480,16 +480,25 @@
   var face = 0;
   var recto = imgBase ? imgBase.getAttribute('data-recto') : '';
   var verso = imgBase ? imgBase.getAttribute('data-verso') : '';
+  // Variantes responsive (1400px + original) : la visionneuse sert la version
+  // légère via srcset ; le plein écran garde l'ORIGINAL (zoom natif net).
+  var rectoSet = imgBase ? (imgBase.getAttribute('data-recto-srcset') || '') : '';
+  var versoSet = imgBase ? (imgBase.getAttribute('data-verso-srcset') || '') : '';
   var altBase = imgBase ? imgBase.getAttribute('data-alt-base') : '';
 
   function srcFor(i) { return i === 1 ? verso : recto; }
+  function srcsetFor(i) { return i === 1 ? versoSet : rectoSet; }
   function altFor(i) { return altBase + (i === 1 ? ' — verso' : ' — recto'); }
+  function applyImg(el, src, srcset, alt) {
+    el.srcset = srcset; el.src = src;
+    if (alt !== undefined) el.alt = alt;
+  }
 
-  function crossfadeTo(src, alt) {
-    if (!imgFx || !imgBase) { if (imgBase) { imgBase.src = src; imgBase.alt = alt; } return; }
+  function crossfadeTo(src, srcset, alt) {
+    if (!imgFx || !imgBase) { if (imgBase) applyImg(imgBase, src, srcset, alt); return; }
     var done = function () {
       imgFx.removeEventListener('transitionend', done);
-      imgBase.src = src; imgBase.alt = alt;
+      applyImg(imgBase, src, srcset, alt);
       imgFx.style.transition = 'none';
       imgFx.style.opacity = '0';
       void imgFx.offsetWidth;                 // reflow
@@ -500,7 +509,7 @@
       imgFx.addEventListener('transitionend', done);
       requestAnimationFrame(function () { imgFx.style.opacity = '1'; });
     };
-    imgFx.src = src;
+    applyImg(imgFx, src, srcset);
   }
 
   function syncSeg(i) {
@@ -513,10 +522,13 @@
   function setFace(i, animate) {
     i = i ? 1 : 0;
     syncSeg(i);
-    var src = srcFor(i), alt = altFor(i);
-    if (i !== face && animate) crossfadeTo(src, alt);
-    else if (imgBase) { imgBase.src = src; imgBase.alt = alt; }
-    if (fsImg) { fsImg.src = src; fsImg.alt = alt; }
+    var src = srcFor(i), srcset = srcsetFor(i), alt = altFor(i);
+    if (i !== face && animate) crossfadeTo(src, srcset, alt);
+    else if (imgBase) applyImg(imgBase, src, srcset, alt);
+    // Plein écran = original haute-def, chargé PARESSEUSEMENT : openFs() le pose à
+    // l'ouverture ; on ne le met à jour ici que si le plein écran est déjà ouvert
+    // (sinon chaque bascule téléchargerait l'original ~1 Mo pour rien).
+    if (fsImg && fs && !fs.hidden) { fsImg.src = src; fsImg.alt = alt; }
     face = i;
     if (stage) stage.scrollTop = 0;
   }
@@ -651,10 +663,28 @@
     if (Space) Space.setGLMode(false);
   }
 
+  // La cinématique complète (~3,4s) ne se joue qu'à la PREMIÈRE visite : une fois
+  // la carte atteinte (ou l'intro passée), on retient le flag et les scans suivants
+  // vont droit à la carte (fondu court). « Passer » reste offert pendant l'intro.
+  var INTRO_SEEN_KEY = 'fgIntroSeen';
+  function introSeen() { try { return localStorage.getItem(INTRO_SEEN_KEY) === '1'; } catch (e) { return false; } }
+  function markIntroSeen() { try { localStorage.setItem(INTRO_SEEN_KEY, '1'); } catch (e) {} }
+
+  function skipIntro() {                        // saute la cinématique en plein vol -> carte posée proprement
+    markIntroSeen();
+    clearTimers();
+    disposeIntro();
+    if (Space) Space.reset();
+    body.classList.remove('go', 'arm', 'travel', 'zoom', 'warp', 'flash', 'dissolve', 'land', 'pre');
+    if (scene) scene.style.display = 'none';
+  }
+  var skipBtn = byId('introSkip');
+  if (skipBtn) skipBtn.addEventListener('click', skipIntro);
+
   function runIntro() {
     clearTimers();
     disposeIntro();
-    if (reduce || !Space) {                     // simple fondu court (aucun warp / zoom / dispersion)
+    if (reduce || !Space || introSeen()) {      // simple fondu court (mouvement réduit ou visite déjà faite)
       body.classList.remove('pre');
       return;
     }
@@ -733,6 +763,7 @@
     // B6 — DÉBOUCHÉ : pic du whiteout (montée 18% de .55s ≈ 99ms) à ~2939 = 4ms après la pose de la carte
     at(2840, function () { body.classList.add('flash'); });
     at(2935, function () {                       // B7 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
+      markIntroSeen();
       body.classList.remove('pre');
       body.classList.add('land');
     });
@@ -818,7 +849,7 @@
     // B6 : DÉBOUCHÉ — whiteout DOM + inondation bloom GL (pic ~2939)
     intro.cue(2840, function () { body.classList.add('flash'); intro.flood(); });
     // B7 : ARRIVÉE — carte posée sous le blanc plein, le GL a fini son travail
-    intro.cue(2935, function () { body.classList.remove('pre'); body.classList.add('land'); });
+    intro.cue(2935, function () { markIntroSeen(); body.classList.remove('pre'); body.classList.add('land'); });
     intro.cue(2950, function () { intro.hide(); });
     intro.cue(3050, function () { Space.warpTo(0); });
     intro.cue(3390, function () { body.classList.remove('flash'); });

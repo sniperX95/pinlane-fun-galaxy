@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /$
+Allow: /reserver
+Allow: /pro.html
+Allow: /menu/
+Allow: /assets/
+Disallow: /direction.html
+Disallow: /api/
+Disallow: /
+
+Sitemap: https://www.mngfunglxy.com/sitemap.xml

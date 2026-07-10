@@ -81,6 +81,9 @@ export default function middleware(request: Request) {
     '/public-form.html',
     '/pro.html',
     '/reserver',
+    '/robots.txt',
+    '/sitemap.xml',
+    '/favicon.ico',
   ]);
 
   if (

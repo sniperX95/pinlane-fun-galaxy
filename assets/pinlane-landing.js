@@ -1,20 +1,39 @@
 (function () {
-  // Active les animations reveal uniquement quand le JS tourne :
-  // sans cette classe, le CSS laisse tout le contenu visible (no-JS safe).
-  document.documentElement.classList.add('js');
-
+  // Reveal en progressive enhancement : le contenu est VISIBLE par défaut
+  // (bots, OG, print, tout rendu sans scroll — screenshot fullPage compris).
+  // La classe qui cache (.reveal-pending) n'est posée que si l'Intersection-
+  // Observer est opérationnel (1er callback reçu) ET au premier scroll réel,
+  // uniquement sur les éléments encore entièrement sous le fold à cet instant :
+  // le masquage est donc invisible, et l'animation d'entrée reste intacte.
   const reveals = Array.from(document.querySelectorAll('.reveal'));
-  if ('IntersectionObserver' in window) {
+  const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if ('IntersectionObserver' in window && !reduceMotion) {
+    const belowFold = new Set();
+    let hidingArmed = false;
+    const armHiding = () => {
+      if (hidingArmed) return;
+      hidingArmed = true;
+      window.addEventListener('scroll', () => {
+        belowFold.forEach((el) => {
+          if (el.getBoundingClientRect().top >= window.innerHeight) el.classList.add('reveal-pending');
+        });
+      }, { passive: true, once: true });
+    };
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
+        const el = entry.target;
+        if (entry.isIntersecting) {
+          if (el.classList.contains('reveal-pending')) el.classList.add('is-visible');
+          belowFold.delete(el);
+          observer.unobserve(el);
+          return;
+        }
+        const foldBottom = entry.rootBounds ? entry.rootBounds.bottom : window.innerHeight;
+        if (entry.boundingClientRect.top >= foldBottom) belowFold.add(el);
       });
+      armHiding(); // l'observer a répondu : le masquage différé peut s'armer
     }, { threshold: 0.16 });
     reveals.forEach((item) => observer.observe(item));
-  } else {
-    reveals.forEach((item) => item.classList.add('is-visible'));
   }
 
   const previewCopy = {

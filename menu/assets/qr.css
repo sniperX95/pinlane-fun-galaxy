@@ -19,7 +19,8 @@ body{
 .tent__body{padding:36px 32px 40px}
 .tent__logo{width:min(70%,236px);height:auto;display:block;margin:0 auto 24px}
 .tent__eyebrow{
-  margin:0 0 8px;font-weight:700;font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:#9a8fa8;
+  /* #6b6178 : gris-violet assombri, 5.82:1 sur blanc (AA, ex-#9a8fa8 à 3.06:1) */
+  margin:0 0 8px;font-weight:700;font-size:11px;letter-spacing:.36em;text-transform:uppercase;color:#6b6178;
 }
 .tent__title{
   margin:0 0 8px;font-family:'Anton',sans-serif;font-weight:400;
@@ -36,7 +37,8 @@ body{
   margin-top:24px;display:inline-block;font-weight:700;font-size:12px;letter-spacing:.24em;text-transform:uppercase;
   color:#6c458a;padding:9px 20px;border:1px solid rgba(108,69,138,.3);border-radius:999px;
 }
-.tent__foot{margin:18px 0 0;font-size:12.5px;letter-spacing:.02em;color:#9a92a5}
+/* #6d637b : 5.64:1 sur blanc (AA, ex-#9a92a5 à 2.99:1) */
+.tent__foot{margin:18px 0 0;font-size:12.5px;letter-spacing:.02em;color:#6d637b}
 
 /* Impression : fond blanc, pas d'ombres, économe en encre */
 @media print{

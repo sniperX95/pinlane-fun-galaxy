@@ -872,22 +872,32 @@ html:not([data-theme='dark']) .mock-sidebar > img {
 
 /* ----------------------------------------------------------------------------
    8. REVEAL — fade + translateY 8px, une fois, transform/opacity uniquement.
-   Gated sur html.js (posé par pinlane-landing.js) : sans JS, tout reste
-   visible. prefers-reduced-motion est neutralisé globalement par pinlane.css.
+   Progressive enhancement : tout est visible par défaut. .reveal-pending est
+   posée par JS (pinlane-landing.js) UNIQUEMENT quand l'IntersectionObserver
+   est opérationnel ET au premier scroll réel, sur les éléments encore
+   entièrement sous le fold — un rendu sans scroll (bot, OG, print, screenshot
+   fullPage) voit 100 % du contenu. prefers-reduced-motion : pinlane.css.
    -------------------------------------------------------------------------- */
 .reveal {
   --delay: 0ms;
 }
 
-.js .reveal {
+.reveal-pending {
   opacity: 0;
   transform: translateY(8px);
   transition: opacity var(--dur-slow) var(--ease) var(--delay), transform var(--dur-slow) var(--ease) var(--delay);
 }
 
-.js .reveal.is-visible {
+.reveal-pending.is-visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media print {
+  .reveal-pending {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 /* ----------------------------------------------------------------------------

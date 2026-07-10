@@ -295,10 +295,19 @@ async function installQaApi(page) {
             centerId: 'libramont',
           });
         }
+        // Comme la vraie base : les mutations delayApply/delayClear persistent
+        // (opsPlan.delayFlag + horaires décalés). Sans ce merge, le poll 4 s
+        // réécrasait le flag posé par delayApply et l'indicateur de retard
+        // disparaissait selon le timing (test flaky par construction).
+        const delayPatches = window.__PINLANE_QA_DELAY_STATE__ || {};
+        const patched = buildReservations(date).map((reservation) => {
+          const patch = delayPatches[reservation.id];
+          return patch ? { ...reservation, ...patch } : reservation;
+        });
         return jsonResponse({
           ok: true,
-          revision: `visual-qa-${date}`,
-          reservations: buildReservations(date),
+          revision: `visual-qa-${date}-delay${Object.keys(delayPatches).length ? window.__PINLANE_QA_DELAY_REV__ || 0 : 0}`,
+          reservations: patched,
           laneStatuses: buildLaneStatuses(),
           centerId: 'libramont',
         });
@@ -683,6 +692,16 @@ async function installQaApi(page) {
                   },
                 },
               }));
+            // Persistance côté « serveur » : les polls staff-state suivants
+            // renvoient les mêmes horaires + delayFlag (comportement prod).
+            window.__PINLANE_QA_DELAY_STATE__ = window.__PINLANE_QA_DELAY_STATE__ || {};
+            updated.forEach((reservation) => {
+              window.__PINLANE_QA_DELAY_STATE__[reservation.id] = {
+                startTime: reservation.startTime,
+                opsPlan: reservation.opsPlan,
+              };
+            });
+            window.__PINLANE_QA_DELAY_REV__ = (window.__PINLANE_QA_DELAY_REV__ || 0) + 1;
             return jsonResponse({
               ok: true,
               applied: true,
@@ -725,6 +744,15 @@ async function installQaApi(page) {
           const reservation = target
             ? { ...target, startTime: '14:15', opsPlan: { ...(target.opsPlan || {}), delayFlag: { minutes: 15, from: '14:00', to: '14:15', flaggedAt: new Date().toISOString(), cleared: true } } }
             : null;
+          // Persistance du retrait pour les polls staff-state suivants.
+          if (reservation) {
+            window.__PINLANE_QA_DELAY_STATE__ = window.__PINLANE_QA_DELAY_STATE__ || {};
+            window.__PINLANE_QA_DELAY_STATE__[reservation.id] = {
+              startTime: reservation.startTime,
+              opsPlan: reservation.opsPlan,
+            };
+            window.__PINLANE_QA_DELAY_REV__ = (window.__PINLANE_QA_DELAY_REV__ || 0) + 1;
+          }
           return jsonResponse({ ok: true, cleared: true, reservation });
         }
 
@@ -929,18 +957,38 @@ async function collectIssues(page, scopeLabel) {
       '.establishment-read-card',
     ].join(',');
 
+    // Un élément posé dans un conteneur à défilement horizontal VOLONTAIRE
+    // (planning mobile, registre groupes…) déborde légitimement du viewport :
+    // on vérifie alors qu'il reste dans la zone défilable de son scroller.
+    const horizontalScroller = (el) => {
+      let node = el.parentElement;
+      while (node && node !== document.body) {
+        const style = window.getComputedStyle(node);
+        if ((style.overflowX === 'auto' || style.overflowX === 'scroll') && node.scrollWidth > node.clientWidth + 1) return node;
+        node = node.parentElement;
+      }
+      return null;
+    };
+
     document.querySelectorAll(watched).forEach((el) => {
       if (!visible(el)) return;
       const rect = el.getBoundingClientRect();
       if (rect.left < -1 || rect.right > viewportWidth + 1) {
-        issues.push({
-          label,
-          type: 'element-horizontal-overflow',
-          selector: String(el.className),
-          left: Math.round(rect.left),
-          right: Math.round(rect.right),
-          viewportWidth,
-        });
+        const scroller = horizontalScroller(el);
+        const contentLeft = scroller ? scroller.getBoundingClientRect().left - scroller.scrollLeft : 0;
+        const inScrollerContent = scroller
+          && rect.left >= contentLeft - 1
+          && rect.right <= contentLeft + scroller.scrollWidth + 1;
+        if (!inScrollerContent) {
+          issues.push({
+            label,
+            type: 'element-horizontal-overflow',
+            selector: String(el.className),
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            viewportWidth,
+          });
+        }
       }
       if (el.scrollHeight > el.clientHeight + 4 && !el.classList.contains('clients-table-row')) {
         issues.push({
@@ -1103,6 +1151,15 @@ async function main() {
 
     // Plein écran : la densité passe à un niveau plus détaillé (dens-md/lg) même
     // pour les créneaux courts, et rien ne déborde.
+    // NB déterminisme : en plein écran la hauteur de cellule est CALCULÉE pour
+    // que toute la journée tienne à l'écran. La fenêtre d'ouverture du jour QA
+    // varie (10 h à 14 h selon jour/congés) : à 920px de haut, un jour de 14 h
+    // donne des cellules de 53px, soit une carte 2h de 98px < seuil dens-lg
+    // (108px) — le test échouait selon la DATE d'exécution, pas selon le code.
+    // On garantit donc la hauteur d'écran d'un poste comptoir (1400px) pour
+    // vérifier le contrat réel « carte haute = détail complet », puis on
+    // restaure le viewport de référence.
+    await page.setViewportSize({ width: 1440, height: 1400 });
     const expandedAudit = await page.evaluate(() => {
       state.staffPlanningExpanded = true;
       const box = document.getElementById('planningBox');
@@ -1128,6 +1185,7 @@ async function main() {
       if (box) box.classList.remove('expanded');
       renderPlanning();
     });
+    await page.setViewportSize({ width: 1440, height: 920 });
 
     await renderStaffPage(page, 'clients');
     await screenshot(page, 'staff-clients-stress');

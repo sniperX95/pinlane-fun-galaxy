@@ -111,15 +111,11 @@ body.admin-mode header > div { display: none !important; } /* override inline */
 /* La sidebar n'existe qu'en console */
 body:not(.staff-mode):not(.admin-mode) .ops-sidebar { display: none; }
 
-/* override inline : setView() (app-main.js l.2037-2038) pose style="display:flex"
-   sur #nav et #locSelect en mode client — les media queries de pinlane-client.css
-   ne peuvent pas gagner sans !important. Shell responsive du header global. */
+/* override inline : setView() (app-main.js) pose style="display:flex" sur #nav
+   en mode client — les media queries de pinlane-client.css ne peuvent pas
+   gagner sans !important. Shell responsive du header global. */
 @media (max-width: 900px) {
   body.client-mode #nav { display: none !important; } /* override inline */
-}
-
-@media (max-width: 640px) {
-  body.client-mode .location-select { display: none !important; } /* override inline */
 }
 
 .staff-wrap {
@@ -774,31 +770,6 @@ input.dash-date-input {
   clip: rect(0, 0, 0, 0);
   pointer-events: none;
 }
-
-.staff-theme-switch {
-  display: inline-flex;
-  padding: 3px;
-  gap: 2px;
-  background: var(--subtle);
-  border-radius: var(--radius-md);
-}
-
-.staff-theme-btn {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
-}
-
-.staff-theme-btn:hover { color: var(--text); }
-.staff-theme-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
 
 .btn-new {
   display: inline-flex;
@@ -3806,7 +3777,21 @@ body.dashboard-detail-open { overflow: hidden; }
 .groups-ledger-head button:hover, .groups-show-more:hover { background: var(--subtle); color: var(--text); }
 .groups-show-more { justify-self: center; }
 
-.groups-ledger { display: grid; gap: 4px; overflow-x: auto; }
+/* P1-6 : les lignes font min 720px — quand le panneau est plus étroit, le
+   débordement horizontal doit être VISIBLE (colonne Actions atteignable).
+   Scrollbar fine toujours dessinée, stylée tokens (Chromium + Firefox). */
+.groups-ledger {
+  display: grid;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--subtle);
+}
+.groups-ledger::-webkit-scrollbar { height: 8px; }
+.groups-ledger::-webkit-scrollbar-track { background: var(--subtle); border-radius: var(--radius-full); }
+.groups-ledger::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-full); }
+.groups-ledger::-webkit-scrollbar-thumb:hover { background: var(--faint); }
 
 .groups-ledger-row {
   display: grid;
@@ -7628,7 +7613,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   /* Cibles tactiles >= 44px */
   .res-status-btn, .status-chip, .pv2-btn, .qb-slot-chip, .qb-type-btn,
   .qb-dur-btn, .qb-lane-btn, .utility-action, .groups-action, .admin-btn,
-  .ops-admin-btn, .pv2-seg button, .staff-theme-btn, .tab,
+  .ops-admin-btn, .pv2-seg button, .tab,
   .planning-toggle, .planning-more-btn, .resource-filter-btn { min-height: 44px; }
 
   .planning-search-inline input { height: 44px; width: 150px; }
@@ -7641,29 +7626,28 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .laser-pass-queue { grid-template-columns: 1fr; }
   .laser-agenda-header, .laser-agenda-row { grid-template-columns: 72px minmax(420px, 1fr) 90px; }
 
-  /* Planning bowling : la grille des 8 pistes tient dans l'écran (lecture
-     d'occupation, tap = fiche). Détail complet via la liste réservations. */
-  .planning-box { --planning-hour-col: 40px; --planning-lane-w: 34px; }
-  .planning-grid { min-width: 0; }
-  .lane-header { gap: 2px; }
-  .lane-header .pl, .lane-header .settings { display: none; }
-  .hour-cell { font-size: 10px; }
-  .hour-cell.minor { font-size: 9px; }
-  /* Pistes très étroites (34px) : on garde nom + effectif/durée (demande staff),
-     l'activité et les tags secondaires passent à la trappe faute de largeur. */
-  .booking { left: 1px; right: 1px; padding: 3px 4px; border-radius: var(--radius-sm); }
-  .booking .b-tag, .booking .reservation-tags { display: none; }
-  .booking .booking-name, .booking.dens-xs .booking-name { font-size: 10px; }
-  .booking .booking-foot { gap: 3px; }
-  .booking .booking-stats { gap: 3px; }
-  .booking .bk-pax, .booking .bk-dur { font-size: 9px; }
-  .booking .bk-pax.grp-l, .booking .bk-pax.grp-xl, .booking .bk-dur.dur-special { padding: 0 4px; }
+  /* P1-11 — Planning bowling mobile : l'ancien mode « tout tient » (pistes
+     34px) rendait les libellés illisibles (2-3 caractères). Fix minimal, sans
+     refonte : colonnes à largeur LISIBLE + défilement horizontal du wrap
+     (.planning-grid-wrap est déjà overflow-x:auto), heures sticky à gauche
+     (.hour-col est déjà sticky/left:0). Scrollbar fine visible en affordance. */
+  /* (la largeur de la colonne heures reste posée inline par renderPlanning) */
+  .planning-box { --planning-lane-w: 118px; }
+  .planning-grid-wrap { scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--subtle); }
+  .planning-grid-wrap::-webkit-scrollbar { height: 8px; }
+  .planning-grid-wrap::-webkit-scrollbar-track { background: var(--subtle); }
+  .planning-grid-wrap::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius-full); }
+  .lane-header { gap: 4px; }
+  .lane-header .settings { display: none; }
+  .booking { left: 2px; right: 2px; }
 
   /* Groupes : registre empilé (les 7 colonnes de 720px ne tiennent pas) */
   .groups-ledger-row { min-width: 0; grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
   .groups-ledger-row-head { display: none; }
   .groups-ledger-row .groups-profile-cell { grid-column: 1 / -1; }
   .groups-row-actions { justify-self: end; }
+  /* Cibles tactiles : les 3 actions par ligne passent à 44px */
+  .groups-row-actions button { width: 44px; height: 44px; }
 }
 
 /* === Occasion DÉCLARÉE + file demandes sur mesure (CHANTIER 1 & 2) ======== */

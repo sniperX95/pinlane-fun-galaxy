@@ -2583,22 +2583,6 @@ body.client-mode .logo {
   display: block;
 }
 
-body.client-mode .location-select {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: default;
-}
-
 body.client-mode #nav {
   display: flex;
   align-items: center;
@@ -2770,11 +2754,6 @@ body.customer-mode .client-footer {
     min-height: 38px;
     padding: 0 8px;
     white-space: nowrap;
-  }
-
-  /* Le sélecteur de centre (inline flex posé par JS) doit rester masqué ici. */
-  body.client-mode .location-select {
-    display: none !important;
   }
 
   /* En-tête de famille de formules : empilé verticalement pleine largeur (le

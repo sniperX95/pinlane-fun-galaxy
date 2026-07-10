@@ -1006,6 +1006,66 @@
   };
 
   /* ==========================================================================
+     GROUPES & ANNIVERSAIRES — chrome V2 (P1-6)
+     Dernière page « Clients & marketing » restée en chrome V1 : on remplace le
+     header utilitaire 4 lignes par la barre pv2 + stats, en gardant TOUT le
+     moteur data existant (renderStaffGroupWorkspaceV2 d'app-main.js : demandes
+     sur mesure, toolbar, table « Profils exploitables », agenda, relances).
+     Les autres pages utilitaires (sessions, arrivées, users…) restent servies
+     par le renderer legacy, qu'on délègue.
+     ======================================================================== */
+
+  const legacyRenderStaffUtilityPage = window.renderStaffUtilityPage;
+
+  window.renderStaffUtilityPage = function (...args) {
+    const page = typeof getStaffMenuPage === 'function' ? getStaffMenuPage() : '';
+    if (page !== 'groups') {
+      if (typeof legacyRenderStaffUtilityPage === 'function') legacyRenderStaffUtilityPage.apply(this, args);
+      return;
+    }
+    renderStaffGroupsPageV2();
+  };
+
+  function renderStaffGroupsPageV2() {
+    const root = document.getElementById('staffUtilityPage');
+    if (!root) return;
+    const clientRows = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
+    const rows = clientRows.filter((row) => row.isGroup || row.hasBirthday);
+    const players = rows.reduce((sum, row) => sum + (Number(row.players) || 0), 0);
+    const formulas = rows.reduce((sum, row) => sum + (Number(row.formulas) || 0), 0);
+    const revenue = rows.reduce((sum, row) => sum + (Number(row.spent) || 0), 0);
+    const sync = staffClientDataCache.loading
+      ? 'Synchronisation…'
+      : staffClientDataCache.loaded
+        ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}`
+        : 'Données locales';
+
+    root.className = 'staff-utility-page utility-page-groups';
+    root.innerHTML = `<div class="pv2-shell">
+      ${bar({
+        crumb: 'Clients & Marketing / Groupes',
+        title: 'Groupes & anniversaires',
+        sub: `${esc(sync)}${staffClientDataCache.error ? ' · <span style="color:var(--warning)">API indisponible</span>' : ''}`,
+        actions: `
+          <button type="button" class="pv2-btn" onclick="loadStaffClientData(true)">Actualiser</button>
+          <button type="button" class="pv2-btn primary" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">+ Réservation groupe</button>`,
+      })}
+
+      <section class="pv2-stats">
+        ${stat({ label: 'Groupes actifs', count: rows.length, foot: 'profils consolidés' })}
+        ${stat({ label: 'Joueurs cumulés', count: players, foot: 'historique réel' })}
+        ${stat({ label: 'Formules réservées', count: formulas, foot: 'anniversaires & packs' })}
+        ${stat({ label: 'CA groupe', value: money(revenue), foot: 'réservations non annulées' })}
+      </section>
+
+      ${renderStaffGroupWorkspaceV2(rows)}
+    </div>`;
+    mount(root, 'groups');
+    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
+    if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
+  }
+
+  /* ==========================================================================
      COMMAND PALETTE — Ctrl/Cmd+K
      ======================================================================== */
 

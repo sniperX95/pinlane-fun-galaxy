@@ -1996,10 +1996,6 @@ function applyStaffTheme() {
     document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
     try { localStorage.setItem('pinlane-theme', isLight ? 'light' : 'dark'); } catch (error) {}
   }
-  const darkBtn = document.getElementById('staffThemeDark');
-  const lightBtn = document.getElementById('staffThemeLight');
-  if (darkBtn) darkBtn.classList.toggle('active', !isLight);
-  if (lightBtn) lightBtn.classList.toggle('active', isLight);
 }
 function setStaffTheme(theme) {
   state.staffTheme = theme === 'light' ? 'light' : 'dark';
@@ -2324,7 +2320,6 @@ function setView(v) {
   document.getElementById('btnClient').classList.toggle('active', v === 'client');
   document.getElementById('btnStaff').classList.toggle('active', v === 'staff');
   document.getElementById('btnAdmin').classList.toggle('active', v === 'admin');
-  document.getElementById('locSelect').style.display = v === 'client' ? 'flex' : 'none';
   document.getElementById('nav').style.display = v === 'client' ? 'flex' : 'none';
   document.getElementById('clientDemoAccess').classList.toggle('hidden', v !== 'client');
   syncOpsSidebar();
@@ -11881,7 +11876,13 @@ function renderPlanning() {
   const closeHour = config.close;
   const totalHours = Math.max(closeHour - startHour, 1);
   const halfSlots = totalHours * 2;
-  let HH = state.staffPlanningExpanded ? 52 : 48;
+  // P1-11 — mobile : cellules plus hautes pour des cibles tactiles correctes
+  // (slot 30 min = HH/2 = 44px). Le zoom horizontal vient du CSS (largeur de
+  // piste lisible + scroll du wrap), la hauteur vient d'ici (positions px JS).
+  const compactTouch = !state.staffPlanningExpanded
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(max-width: 768px)').matches;
+  let HH = state.staffPlanningExpanded ? 52 : compactTouch ? 88 : 48;
   let HEADER_H = state.staffPlanningExpanded ? 46 : 38;
   if (state.staffPlanningExpanded) {
     // Plein écran comptoir : toutes les heures d'ouverture doivent tenir d'une
@@ -11943,7 +11944,7 @@ function renderPlanning() {
       const verticalInset = state.staffPlanningExpanded ? 4 : 1;
       const top = (st - startHour) * HH + HEADER_H + verticalInset;
       const rawHeight = (Number(item.window.duration) * HH) - (verticalInset * 2);
-      const minHeight = state.staffPlanningExpanded ? 40 : 22;
+      const minHeight = state.staffPlanningExpanded ? 40 : compactTouch ? 42 : 22;
       const height = Math.max(rawHeight, minHeight);
       const end = formatClockDisplay(item.window.end);
       let cls = 'conf';

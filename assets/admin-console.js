@@ -451,13 +451,17 @@ function buildAdminExcelXml(payload) {
       item.payload?.recommendation || item.payload?.message || item.payload?.reason || '',
     ]))
   ];
+  // A7 : couleurs alignées sur les tokens light de DESIGN.md (texte #0a0a0a,
+  // muted #666666, page #fafafa, subtle #f2f2f2, accent-soft #e8f1fd +
+  // accent-strong #0761d1). Police Excel (Aptos) tolérée : Geist n'existe pas
+  // dans les postes Office, seules les COULEURS portent le système.
   const styles = `
     <Styles>
-      <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Aptos" ss:Size="10" ss:Color="#222222"/></Style>
-      <Style ss:ID="Title"><Font ss:FontName="Aptos Display" ss:Size="18" ss:Bold="1" ss:Color="#111111"/><Interior ss:Color="#F2F2F2" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Aptos" ss:Size="10" ss:Color="#0A0A0A"/></Style>
+      <Style ss:ID="Title"><Font ss:FontName="Aptos Display" ss:Size="18" ss:Bold="1" ss:Color="#0A0A0A"/><Interior ss:Color="#F2F2F2" ss:Pattern="Solid"/></Style>
       <Style ss:ID="Subtle"><Font ss:FontName="Aptos" ss:Size="10" ss:Color="#666666"/><Interior ss:Color="#FAFAFA" ss:Pattern="Solid"/></Style>
-      <Style ss:ID="Header"><Font ss:FontName="Aptos" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#111111" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
-      <Style ss:ID="Section"><Font ss:FontName="Aptos" ss:Size="11" ss:Bold="1" ss:Color="#111111"/><Interior ss:Color="#E8DFC9" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="Header"><Font ss:FontName="Aptos" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A0A0A" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>
+      <Style ss:ID="Section"><Font ss:FontName="Aptos" ss:Size="11" ss:Bold="1" ss:Color="#0761D1"/><Interior ss:Color="#E8F1FD" ss:Pattern="Solid"/></Style>
       <Style ss:ID="Money"><NumberFormat ss:Format="#,##0&quot; €&quot;"/></Style>
     </Styles>`;
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -502,38 +506,41 @@ function buildFunGalaxyReportHtml(payload) {
   <meta charset="utf-8">
   <title>Rapport Direction - ${escapeHtml(payload.center.name)} - ${escapeHtml(periodLabel)}</title>
   <style>
+    /* A7 : palette = tokens light DESIGN.md (page #fafafa, texte #0a0a0a,
+       muted #666, line #ebebeb, accent #0070f3), stack Geist + fallbacks
+       système (document autonome : pas de webfont embarquée). */
     @page { size: A4; margin: 18mm; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: #f2f1ee; color: #111; font-family: Arial, Helvetica, sans-serif; }
-    .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 18mm; background: #fff; border-left: 1px solid #d8d8d2; border-right: 1px solid #d8d8d2; }
-    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; border-bottom: 2px solid #111; padding-bottom: 18px; }
-    .logo-box { display: inline-flex; align-items: center; justify-content: center; width: 160px; height: 92px; padding: 14px 18px; background: #111; border: 1.5px solid #111; border-radius: 7px; }
+    body { margin: 0; background: #fafafa; color: #0a0a0a; font-family: Geist, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 18mm; background: #fff; border-left: 1px solid #ebebeb; border-right: 1px solid #ebebeb; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; border-bottom: 2px solid #0a0a0a; padding-bottom: 18px; }
+    .logo-box { display: inline-flex; align-items: center; justify-content: center; width: 160px; height: 92px; padding: 14px 18px; background: #0a0a0a; border: 1.5px solid #0a0a0a; border-radius: 8px; }
     .logo-box img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; opacity: 1; filter: none; }
     .report-title { margin-top: 16px; }
-    .eyebrow { font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; color: #777; }
-    h1 { margin: 6px 0 0; font-size: 30px; letter-spacing: -.04em; line-height: 1; }
-    h2 { margin: 0 0 10px; font-size: 15px; letter-spacing: -.02em; }
-    .meta { text-align: right; font-size: 11px; line-height: 1.6; color: #555; font-weight: 700; }
-    .company { margin-top: 12px; padding: 12px; border: 1px solid #d8d8d2; background: #fbfbfa; font-size: 11px; line-height: 1.55; color: #333; }
+    .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #666; }
+    h1 { margin: 6px 0 0; font-size: 30px; letter-spacing: -.02em; line-height: 1; font-weight: 600; }
+    h2 { margin: 0 0 10px; font-size: 15px; letter-spacing: -.02em; font-weight: 600; }
+    .meta { text-align: right; font-size: 11px; line-height: 1.6; color: #666; font-weight: 500; }
+    .company { margin-top: 12px; padding: 12px; border: 1px solid #ebebeb; background: #fafafa; font-size: 11px; line-height: 1.55; color: #666; }
     .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin: 18px 0; }
-    .kpi { border: 1px solid #d8d8d2; padding: 12px; background: #fbfbfa; min-height: 74px; }
-    .kpi .k { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: #777; font-weight: 900; }
-    .kpi .v { margin-top: 7px; font-size: 22px; font-weight: 900; letter-spacing: -.03em; }
+    .kpi { border: 1px solid #ebebeb; padding: 12px; background: #fafafa; min-height: 74px; }
+    .kpi .k { font-size: 9px; letter-spacing: .05em; text-transform: uppercase; color: #666; font-weight: 700; }
+    .kpi .v { margin-top: 7px; font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-    .box { border: 1px solid #d8d8d2; padding: 14px; break-inside: avoid; }
-    .signal { display: grid; grid-template-columns: 10px 1fr; gap: 9px; padding: 9px 0; border-bottom: 1px solid #eee; }
+    .box { border: 1px solid #ebebeb; padding: 14px; break-inside: avoid; }
+    .signal { display: grid; grid-template-columns: 10px 1fr; gap: 9px; padding: 9px 0; border-bottom: 1px solid #ebebeb; }
     .signal:last-child { border-bottom: 0; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: #111; }
-    .signal.high .dot { background: #9b2f29; }
-    .signal.good .dot { background: #2d7d4b; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; background: #0070f3; }
+    .signal.high .dot { background: #cb2a2f; }
+    .signal.good .dot { background: #0f7b3c; }
     .signal strong { display: block; font-size: 12px; }
-    .signal span { display: block; font-size: 11px; color: #555; line-height: 1.45; margin-top: 2px; }
+    .signal span { display: block; font-size: 11px; color: #666; line-height: 1.45; margin-top: 2px; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; }
-    th { background: #111; color: #fff; text-align: left; padding: 7px; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
-    td { border-bottom: 1px solid #e5e5e0; padding: 7px; vertical-align: top; color: #333; line-height: 1.35; }
-    td strong { color: #111; }
-    .footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #d8d8d2; font-size: 10px; color: #777; display: flex; justify-content: space-between; gap: 20px; }
-    .print { position: fixed; right: 18px; bottom: 18px; padding: 10px 14px; border-radius: 8px; border: 0; background: #111; color: #fff; font-weight: 800; }
+    th { background: #0a0a0a; color: #fff; text-align: left; padding: 7px; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; }
+    td { border-bottom: 1px solid #ebebeb; padding: 7px; vertical-align: top; color: #0a0a0a; line-height: 1.35; }
+    td strong { color: #0a0a0a; }
+    .footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #ebebeb; font-size: 10px; color: #666; display: flex; justify-content: space-between; gap: 20px; }
+    .print { position: fixed; right: 18px; bottom: 18px; padding: 10px 14px; border-radius: 6px; border: 0; background: #0a0a0a; color: #fff; font-weight: 600; cursor: pointer; font-family: inherit; }
     @media print { body { background: #fff; } .page { width: auto; min-height: auto; margin: 0; padding: 0; } .print { display: none; } }
   </style>
 </head>

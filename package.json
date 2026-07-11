@@ -16,6 +16,7 @@
     "test:quality": "node scripts/run-quality-audit.js",
     "test:center-config": "node scripts/run-center-config-tests.js",
     "test:visual": "node scripts/run-visual-qa.js",
+    "test:role-refresh": "node scripts/role-refresh-check.js",
     "test:reservation-bugs": "node scripts/run-reservation-bugs-test.js",
     "test:ops:stress": "node scripts/run-ops-stress.js",
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",

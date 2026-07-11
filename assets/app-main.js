@@ -2160,6 +2160,11 @@ function applyAuthState() {
   // (visible hors session : il mène au login, re-vérifié après connexion).
   const adminBtn = document.getElementById('btnAdmin');
   if (adminBtn) adminBtn.classList.toggle('hidden', !canOpenAdminView());
+  // Le menu latéral n'est reconstruit qu'au chargement de page : sans ça, un
+  // changement de rôle (directrice → manager) garde les catégories de l'ancien
+  // rôle jusqu'à un refresh manuel. On le rebâtit à chaque transition d'auth
+  // (login/logout) — reconstruction DOM pure, aucune requête serveur.
+  if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
   if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
 }
 

@@ -25,6 +25,108 @@ body {
   --text-3: var(--faint);
 }
 
+/* ----------------------------------------------------------------------------
+   0. IDENTITÉ FUN GALAXY — accent magenta de marque (#944292, logo Fun Galaxy)
+   sur le parcours CLIENT uniquement. Le staff/direction gardent l'accent système
+   (bleu). Scopé body.client-mode (index #clientView + header public) et
+   body.public-form (formulaire autonome) — jamais body.staff-mode/admin-mode.
+   Contrastes tenus : boutons magenta + texte blanc (light 6.4:1 / dark ≥3.9:1
+   pour libellés bold), accent-strong plus foncé/plus clair pour le texte.
+   -------------------------------------------------------------------------- */
+body.client-mode, body.public-form {
+  --accent: #a1289a;
+  --accent-strong: #7d2478;
+  --accent-soft: #f7ebf6;
+  --accent-contrast: #ffffff;
+  --tenant-accent: #a1289a;
+  --tenant-accent-soft: #f7ebf6;
+}
+[data-theme='dark'] body.client-mode,
+[data-theme='dark'] body.public-form {
+  --accent: #c74fbf;
+  --accent-strong: #e59ede;
+  --accent-soft: #2a1228;
+  --accent-contrast: #ffffff;
+  --tenant-accent: #c74fbf;
+  --tenant-accent-soft: #2a1228;
+}
+
+/* Titres « marqués » Fun Galaxy sur le parcours client (majuscules + poids). */
+body.client-mode #clientView .hero-title h1 {
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  font-size: clamp(28px, 5.4vw, 38px);
+}
+body.client-mode #clientView .hero-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+/* Titres de sections (Date et joueurs, Que souhaitez-vous faire ?, …) marqués. */
+body.client-mode #clientView .card-title {
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+/* Icônes de cartes teintées marque Fun Galaxy. */
+body.client-mode #clientView .card-icon,
+body.client-mode #clientView .card-icon.teal {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+/* CTA principal Fun Galaxy : pill magenta + halo (remplace l'inversion noir/blanc). */
+body.client-mode #clientView .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+body.client-mode #clientView .btn-primary:hover {
+  opacity: 1;
+  filter: brightness(1.06);
+  box-shadow: 0 10px 32px color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+/* Écran de confirmation Fun Galaxy — badge magenta halo + titre marqué, plus pro. */
+body.client-mode #clientView .success-wrap {
+  padding: var(--space-10) var(--space-6) var(--space-8);
+  gap: var(--space-4);
+}
+body.client-mode #clientView .success-icon {
+  width: 76px;
+  height: 76px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 0 0 8px var(--accent-soft), 0 12px 34px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+body.client-mode #clientView .success-wrap h2 {
+  text-transform: uppercase;
+  font-size: clamp(32px, 6.4vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  line-height: 1.05;
+  color: transparent;
+  -webkit-text-stroke: 1.8px var(--text);
+  margin-top: var(--space-1);
+}
+body.client-mode #clientView .success-wrap .sub { font-size: 16px; }
+body.client-mode #clientView .success-wrap .btn-secondary {
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line-strong));
+}
+body.client-mode #clientView .success-wrap .btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
 /* ============================================================================
    2. PARCOURS CLIENT — index.html #clientView
    ========================================================================== */

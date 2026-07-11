@@ -85,6 +85,26 @@ async function main() {
   assert(basketCells > 0, 'panier moyen affiché par carte');
   await page.screenshot({ path: path.join(OUT, '02-catalogue-classement.png'), fullPage: true });
 
+  // ---- Groupes : actions réelles + dismiss persisté ------------------------
+  await page.goto(`${BASE_URL}/#staff/groups`, { waitUntil: 'load', timeout: 45000 });
+  await page.waitForTimeout(1600);
+  assert(await page.locator('.groups-side-card h3:has-text("Agenda groupes")').count() === 1, 'agenda groupes présent');
+  const agendaButtons = await page.locator('.groups-agenda-item[onclick]').count();
+  const actionItems = await page.locator('.groups-action-item').count();
+  console.log(`  [groupes] ${agendaButtons} entrée(s) agenda cliquables · ${actionItems} action(s) recommandée(s)`);
+  if (actionItems > 0) {
+    assert(await page.locator('.groups-action-dismiss').count() === actionItems, 'chaque action a un bouton traiter');
+    const firstLabel = await page.locator('.groups-action-item strong').first().textContent();
+    await page.locator('.groups-action-dismiss').first().click();
+    await page.waitForTimeout(600);
+    const after = await page.locator('.groups-action-item').count();
+    assert(after < actionItems, `action traitée disparue (${actionItems} → ${after})`);
+    const persisted = await page.evaluate(() => (state.dismissedGroupActions || []).length);
+    assert(persisted >= 1, 'dismiss persisté dans le state');
+    console.log(`  [groupes] action « ${firstLabel.trim()} » traitée et masquée`);
+  }
+  await page.screenshot({ path: path.join(OUT, '03-groupes-actions.png'), fullPage: true });
+
   const critical = pageErrors.filter((e) => !/ResizeObserver|favicon/i.test(e));
   if (critical.length) { console.log('PAGE ERRORS:', JSON.stringify(critical, null, 1)); throw new Error(`${critical.length} erreur(s) page`); }
   await browser.close();

@@ -5805,18 +5805,45 @@ function renderStaffGroupAgendaPanel(agenda = []) {
   </section>`;
 }
 
+// Une action « traitée » disparaît (persisté) — elle réapparaît uniquement si
+// la donnée régénère une raison différente pour le même profil.
+function getStaffGroupActionKey(row, reason) {
+  return `${row.key || row.id || row.name}|${reason.label}`;
+}
+
+function dismissStaffGroupAction(key, ev) {
+  if (ev) ev.stopPropagation();
+  state.dismissedGroupActions = state.dismissedGroupActions || [];
+  if (!state.dismissedGroupActions.includes(key)) state.dismissedGroupActions.push(key);
+  if (state.dismissedGroupActions.length > 200) state.dismissedGroupActions = state.dismissedGroupActions.slice(-100);
+  save();
+  renderStaff();
+  toast('Action marquée comme traitée.');
+}
+
 function renderStaffGroupActionsPanel(followUps = []) {
-  const rows = followUps.slice(0, 4);
+  const dismissed = state.dismissedGroupActions || [];
+  const rows = followUps
+    .filter(({ row, reservation }) => !dismissed.includes(getStaffGroupActionKey(row, getStaffGroupFollowupReason(row, reservation))))
+    .slice(0, 4);
   return `<section class="groups-side-card">
     <div class="groups-side-head"><h3>Actions recommandees</h3><button type="button" onclick="setStaffGroupFilter('tab', 'followup')">Voir tout</button></div>
     <div class="groups-action-list">
       ${rows.length ? rows.map(({ row, reservation }) => {
         const reason = getStaffGroupFollowupReason(row, reservation);
         const activity = getStaffGroupActivityKey(row, reservation);
+        // Chaque action ouvre le bon outil : Relancer = email prérempli,
+        // Préparer = la réservation, Compléter = la fiche, Planifier = résa.
+        const actionCall = reason.action === 'Relancer'
+          ? getStaffGroupContactAction(row)
+          : reason.action === 'Preparer' && reservation?.id
+            ? `openStaffReservationDetail(${staffClientJs(reservation.id)})`
+            : getStaffGroupProfileAction(row, reason.action === 'Planifier' ? 'book' : 'client');
         return `<article class="groups-action-item">
           <span class="groups-action-icon groups-action-${escapeHtml(activity)}">${renderStaffClientIcon(activity === 'laser' ? 'clock' : activity === 'formule' ? 'star' : 'users')}</span>
           <div><strong>${escapeHtml(reason.label)}</strong><small>${escapeHtml(row.name || 'Groupe')} · ${escapeHtml(reservation?.date ? formatStaffGroupReservationDate(reservation) : 'sans date')}</small></div>
-          <button type="button" onclick="${getStaffGroupProfileAction(row, reason.action === 'Planifier' ? 'book' : 'client')}">${escapeHtml(reason.action)}</button>
+          <button type="button" onclick="${actionCall}">${escapeHtml(reason.action)}</button>
+          <button type="button" class="groups-action-dismiss" title="Marquer comme traité" aria-label="Marquer ${escapeHtml(reason.label)} comme traité" onclick="dismissStaffGroupAction(${staffClientJs(getStaffGroupActionKey(row, reason))}, event)">✕</button>
         </article>`;
       }).join('') : `<div class="groups-empty-note">Aucune relance prioritaire.</div>`}
     </div>
@@ -9190,6 +9217,26 @@ function composeStaffClientEmail(email = '', name = '') {
   const address = String(email || '').trim();
   if (!address) {
     toast('Aucune adresse email pour ce client.');
+    return;
+  }
+  // Studio mails interne quand accessible : envoi tracé dans l'historique,
+  // template relance prérempli. Mailto en repli pour les rôles sans direction.
+  if (typeof canOpenAdminView === 'function' && canOpenAdminView()) {
+    const firstName = String(name || '').trim().split(/\s+/)[0] || '';
+    setView('admin');
+    ensureAdminConsolesLoaded().then(() => {
+      if (typeof msState === 'undefined') return;
+      const starter = typeof MS_STARTERS !== 'undefined' ? MS_STARTERS.find(s => s.key === 'relance-client') : null;
+      msState.section = 'compose';
+      msState.draft.to = address;
+      msState.draft.category = 'relance';
+      msState.draft.templateRef = starter ? 'starter:relance-client' : '';
+      msState.draft.subject = starter ? starter.subject.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || 'vous') : `Fun Galaxy — ${name || 'votre visite'}`;
+      msState.draft.body = starter ? starter.body.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || '') : `Bonjour ${name || ''},\n\n`;
+      msState.aiTips = [];
+      if (typeof setAdminTab === 'function') setAdminTab('mail');
+      toast(`Relance prête pour ${address} — relis et envoie.`);
+    }).catch(() => {});
     return;
   }
   const subject = `Fun Galaxy — ${name ? name : 'votre réservation'}`;

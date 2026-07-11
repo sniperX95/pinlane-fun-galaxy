@@ -7740,6 +7740,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   font: 700 10.5px var(--font-data);
 }
 .utility-lane-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.groups-action-dismiss {
+  flex: none; width: 24px; height: 24px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: var(--radius-full); background: transparent;
+  color: var(--faint); font-size: 11px; cursor: pointer;
+}
+.groups-action-dismiss:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 
 /* ============================================================
    Onglet « Mails » — studio (admin-mail.js)

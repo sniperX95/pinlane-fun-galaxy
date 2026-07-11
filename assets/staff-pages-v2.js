@@ -813,6 +813,259 @@
     }
   };
 
+  /* ==========================================================================
+     CAMPAGNES EMAIL RÉELLES — segments CRM calculés serveur, envoi via la
+     pipeline communications (stats relues en direct, jamais stockées).
+     Ouvertures/clics : non suivis tant qu'aucun pixel/lien tracké — affiché
+     honnêtement, jamais de faux chiffres.
+     ========================================================================== */
+  const pv2Camp = {
+    loaded: false, loading: false, error: '', campaigns: [], segments: [], channel: {},
+    formOpen: false, busy: false, audience: {}, audienceLoading: '',
+    form: { name: '', objective: '', segment: 'all', subject: '', body: '', mode: 'now', scheduledAt: '' },
+  };
+  window.pv2Camp = pv2Camp;
+
+  async function loadPv2Campaigns(force = false) {
+    if (pv2Camp.loading || (pv2Camp.loaded && !force)) return;
+    pv2Camp.loading = true;
+    pv2Camp.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=listCampaigns&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      pv2Camp.campaigns = payload.campaigns || [];
+      pv2Camp.segments = payload.segments || [];
+      pv2Camp.channel = payload.channel || {};
+      pv2Camp.loaded = true;
+    } catch (error) {
+      pv2Camp.error = error.message || 'Campagnes indisponibles.';
+    } finally {
+      pv2Camp.loading = false;
+      renderStaffCampaignsPage();
+    }
+  }
+  window.loadPv2Campaigns = loadPv2Campaigns;
+
+  window.pv2CampSegmentChanged = async function (segment) {
+    pv2Camp.form.segment = segment;
+    if (pv2Camp.audience[segment] === undefined && pv2Camp.audienceLoading !== segment) {
+      pv2Camp.audienceLoading = segment;
+      renderStaffCampaignsPage();
+      try {
+        const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+        pv2Camp.audience[segment] = { count: payload.count, sample: payload.sample || [] };
+      } catch (error) {
+        pv2Camp.audience[segment] = { count: null, sample: [] };
+      }
+      pv2Camp.audienceLoading = '';
+    }
+    renderStaffCampaignsPage();
+  };
+
+  window.pv2CampOpenForm = function () {
+    pv2Camp.formOpen = true;
+    renderStaffCampaignsPage();
+    window.pv2CampSegmentChanged(pv2Camp.form.segment);
+  };
+
+  window.pv2CampCloseForm = function () {
+    pv2Camp.formOpen = false;
+    renderStaffCampaignsPage();
+  };
+
+  window.pv2CampImprove = async function (button) {
+    if (!pv2Camp.form.subject.trim() && !pv2Camp.form.body.trim()) {
+      if (typeof toast === 'function') toast('Écris d\'abord un objet ou un message.');
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'improveEmailWithAi', centerId: state.currentCenterId || 'libramont', subject: pv2Camp.form.subject, body: pv2Camp.form.body, category: 'marketing' }),
+      });
+      if (payload.mode === 'ia' && payload.subject && payload.body) {
+        pv2Camp.form.subject = payload.subject;
+        pv2Camp.form.body = payload.body;
+        if (typeof toast === 'function') toast('Contenu réécrit par l\'IA — relis avant envoi.');
+      } else if (typeof toast === 'function') {
+        toast(`Conseils : ${(payload.tips || []).slice(0, 2).join(' · ')}`);
+      }
+    } catch (error) {
+      if (typeof toast === 'function') toast(error.message || 'Analyse impossible.');
+    } finally {
+      if (button) button.disabled = false;
+      renderStaffCampaignsPage();
+    }
+  };
+
+  window.pv2CampSubmit = async function (mode, button) {
+    const form = pv2Camp.form;
+    if (!form.name.trim()) { if (typeof toast === 'function') toast('Nom de campagne requis.'); return; }
+    if (mode !== 'draft' && (!form.subject.trim() || !form.body.trim())) {
+      if (typeof toast === 'function') toast('Objet et message requis pour envoyer.');
+      return;
+    }
+    const count = pv2Camp.audience[form.segment]?.count;
+    if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${count ?? '?'} destinataire(s) du segment sélectionné ?`)) return;
+    if (mode === 'schedule' && !form.scheduledAt) { if (typeof toast === 'function') toast('Choisis la date et l\'heure d\'envoi.'); return; }
+    pv2Camp.busy = true;
+    if (button) button.disabled = true;
+    renderStaffCampaignsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'createCampaign',
+          centerId: state.currentCenterId || 'libramont',
+          name: form.name, objective: form.objective, segment: form.segment,
+          subject: form.subject, body: form.body, mode,
+          scheduledAt: mode === 'schedule' ? new Date(form.scheduledAt).toISOString() : null,
+        }),
+      });
+      pv2Camp.formOpen = false;
+      pv2Camp.form = { name: '', objective: '', segment: form.segment, subject: '', body: '', mode: 'now', scheduledAt: '' };
+      if (typeof toast === 'function') {
+        toast(mode === 'draft' ? 'Brouillon enregistré.'
+          : mode === 'schedule' ? `Campagne programmée · ${payload.queued} envoi(s) en file.`
+          : payload.resendConfigured ? `Campagne lancée · ${payload.queued} envoi(s).`
+          : `Campagne créée · ${payload.queued} envoi(s) en file (canal d'envoi à configurer).`);
+      }
+      await loadPv2Campaigns(true);
+    } catch (error) {
+      if (typeof toast === 'function') toast(error.message || 'Création impossible.');
+      pv2Camp.busy = false;
+      if (button) button.disabled = false;
+      renderStaffCampaignsPage();
+      return;
+    }
+    pv2Camp.busy = false;
+  };
+
+  window.pv2CampCancel = async function (id) {
+    if (!window.confirm('Annuler cette campagne ? Les envois encore en file seront stoppés.')) return;
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'cancelCampaign', centerId: state.currentCenterId || 'libramont', id }),
+      });
+      if (typeof toast === 'function') toast(`Campagne annulée · ${payload.cancelledCommunications} envoi(s) stoppé(s).`);
+      await loadPv2Campaigns(true);
+    } catch (error) {
+      if (typeof toast === 'function') toast(error.message || 'Annulation impossible.');
+    }
+  };
+
+  function pv2CampDownload(filename, content, mime) {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([content], { type: mime }));
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+  }
+
+  window.pv2CampExportRecipients = async function (segment) {
+    try {
+      const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&full=1&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const rows = [['Nom', 'Email', 'Visites', 'Chiffre (EUR)', 'Dernière visite']];
+      for (const r of payload.recipients || []) rows.push([r.name, r.email, r.visits, String(r.revenue).replace('.', ','), r.lastDate]);
+      const csv = '﻿' + rows.map((row) => row.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      pv2CampDownload(`destinataires-${segment}.csv`, csv, 'text/csv;charset=utf-8');
+      if (typeof toast === 'function') toast(`${(payload.recipients || []).length} destinataire(s) exporté(s).`);
+    } catch (error) {
+      if (typeof toast === 'function') toast(error.message || 'Export impossible.');
+    }
+  };
+
+  window.pv2CampExportContent = function (id) {
+    const campaign = pv2Camp.campaigns.find((c) => c.id === id);
+    if (!campaign) return;
+    pv2CampDownload(`campagne-${id}.txt`, `Campagne : ${campaign.name}\nSegment : ${campaign.segment}\nObjet : ${campaign.subject}\n\n${campaign.body}`, 'text/plain;charset=utf-8');
+  };
+
+  const PV2_CAMP_STATUS = { draft: ['Brouillon', ''], scheduled: ['Programmée', 'blue'], sending: ['En envoi', 'green'], cancelled: ['Annulée', ''] };
+
+  function renderPv2RealCampaigns() {
+    if (!pv2Camp.loaded && !pv2Camp.loading && !pv2Camp.error) setTimeout(() => loadPv2Campaigns(), 0);
+    const segLabel = (id) => (pv2Camp.segments.find((s) => s.id === id) || {}).label || id;
+
+    const list = pv2Camp.campaigns.length ? `<table class="pv2-table">
+      <thead><tr><th>Campagne</th><th>Segment</th><th>Statut</th><th class="num">Cibles</th><th class="num">Envoyés</th><th class="num">Échecs</th><th class="num">En file</th><th>Suivi</th><th></th></tr></thead>
+      <tbody>${pv2Camp.campaigns.map((c) => {
+        const [label, tone] = PV2_CAMP_STATUS[c.status] || [c.status, ''];
+        return `<tr>
+          <td><strong>${esc(c.name)}</strong>${c.scheduledAt && c.status === 'scheduled' ? `<small style="display:block;color:var(--v2-text-3)">le ${new Date(c.scheduledAt).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' })}</small>` : ''}</td>
+          <td>${esc(segLabel(c.segment))}</td>
+          <td><span class="pv2-chip ${tone}">${label}</span></td>
+          <td class="num">${c.recipientCount}</td>
+          <td class="num">${c.sent}</td>
+          <td class="num">${c.failed}</td>
+          <td class="num">${c.queued}</td>
+          <td><small style="color:var(--v2-text-3)">ouvertures/clics : non suivis</small></td>
+          <td style="white-space:nowrap">
+            <button type="button" class="pv2-btn" onclick="pv2CampExportContent(${c.id})">Contenu</button>
+            ${['draft', 'scheduled', 'sending'].includes(c.status) && (c.queued > 0 || c.status !== 'sending') ? `<button type="button" class="pv2-btn" onclick="pv2CampCancel(${c.id})">Annuler</button>` : ''}
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>` : `<div class="pv2-empty"><strong>${pv2Camp.loading ? 'Chargement…' : 'Aucune campagne'}</strong>${pv2Camp.loading ? '' : 'Créez la première : ciblage réel depuis votre base clients.'}</div>`;
+
+    const form = pv2Camp.formOpen ? (() => {
+      const f = pv2Camp.form;
+      const audience = pv2Camp.audience[f.segment];
+      const audienceLabel = pv2Camp.audienceLoading === f.segment
+        ? 'calcul…'
+        : audience ? `${audience.count} destinataire(s)${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '—';
+      return `<div class="ms-viewer"><div class="ms-form">
+        <div class="ms-grid-2">
+          <label class="ms-field"><span>Nom de la campagne *</span><input type="text" class="ms-input" value="${esc(f.name)}" oninput="pv2Camp.form.name = this.value"></label>
+          <label class="ms-field"><span>Objectif</span><input type="text" class="ms-input" placeholder="Ex : remplir les mardis soirs" value="${esc(f.objective)}" oninput="pv2Camp.form.objective = this.value"></label>
+        </div>
+        <div class="ms-grid-2">
+          <label class="ms-field"><span>Segment (base clients réelle)</span>
+            <select class="ms-input" onchange="pv2CampSegmentChanged(this.value)">${pv2Camp.segments.map((s) => `<option value="${s.id}" ${f.segment === s.id ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select>
+          </label>
+          <div class="ms-field"><span>Audience</span>
+            <div class="ms-input" style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>${esc(audienceLabel)}</span>
+              <button type="button" class="pv2-btn" onclick="pv2CampExportRecipients('${f.segment}')">Exporter la liste</button></div>
+          </div>
+        </div>
+        <label class="ms-field"><span>Objet *</span><input type="text" class="ms-input" maxlength="150" value="${esc(f.subject)}" oninput="pv2Camp.form.subject = this.value"></label>
+        <label class="ms-field"><span>Message * <em>({{prenom}} et {{nom}} remplacés par les vraies valeurs à l'envoi)</em></span>
+          <textarea class="ms-input ms-body" rows="8" oninput="pv2Camp.form.body = this.value">${esc(f.body)}</textarea></label>
+        <div class="ms-grid-2">
+          <label class="ms-field"><span>Programmer (optionnel)</span><input type="datetime-local" class="ms-input" value="${esc(f.scheduledAt)}" onchange="pv2Camp.form.scheduledAt = this.value"></label>
+          <div></div>
+        </div>
+        <div class="ms-actions">
+          <button type="button" class="pv2-btn" onclick="pv2CampImprove(this)">Améliorer avec l'IA</button>
+          <button type="button" class="pv2-btn" onclick="pv2CampSubmit('draft', this)" ${pv2Camp.busy ? 'disabled' : ''}>Enregistrer brouillon</button>
+          <span class="ms-actions-spacer"></span>
+          <button type="button" class="pv2-btn" onclick="pv2CampSubmit('schedule', this)" ${pv2Camp.busy ? 'disabled' : ''}>Programmer</button>
+          <button type="button" class="pv2-btn primary" onclick="pv2CampSubmit('now', this)" ${pv2Camp.busy ? 'disabled' : ''}>Envoyer maintenant</button>
+          <button type="button" class="pv2-btn" onclick="pv2CampCloseForm()">Fermer</button>
+        </div>
+      </div></div>`;
+    })() : '';
+
+    return `<section class="pv2-panel">
+      <div class="pv2-panel-head">
+        <h2>Campagnes email — ciblage réel</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${pv2Camp.channel && pv2Camp.channel.resendConfigured === false ? '<small style="color:var(--warning)">canal d\'envoi à configurer — les envois restent en file</small>' : ''}
+          <button type="button" class="pv2-btn" onclick="loadPv2Campaigns(true)">Actualiser</button>
+          <button type="button" class="pv2-btn primary" onclick="pv2CampOpenForm()">+ Nouvelle campagne</button>
+        </div>
+      </div>
+      <div class="pv2-panel-body">
+        ${pv2Camp.error ? `<div class="pv2-empty"><strong>${esc(pv2Camp.error)}</strong><button type="button" class="pv2-btn" onclick="loadPv2Campaigns(true)">Réessayer</button></div>` : ''}
+        ${form}
+        ${list}
+      </div>
+    </section>`;
+  }
+
   window.renderStaffCampaignsPage = function () {
     const root = document.getElementById('staffCampaignsPage');
     if (!root) return;
@@ -847,6 +1100,7 @@
           sub: `Parcours marketing factuel · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
           actions,
         })}
+        ${renderPv2RealCampaigns()}
         <section class="pv2-panel"><div class="pv2-panel-body">
           <div class="pv2-empty"><strong>${loading ? 'Chargement du moteur marketing…' : 'Aucune donnée marketing'}</strong>${loading ? 'Lecture des données réelles du centre.' : 'Lancez une analyse pour générer le parcours et les contenus prêts à publier.'}</div>
         </div></section>
@@ -936,6 +1190,7 @@
         sub: `Parcours marketing factuel · ${esc(centerName(center))}${voiceText(brand.voice) ? ` · voix ${esc(voiceText(brand.voice))}` : ''} · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
         actions,
       })}
+      ${renderPv2RealCampaigns()}
       ${centerSeg}
       ${hero}
       <section class="pv2-split pv2-camp-split">

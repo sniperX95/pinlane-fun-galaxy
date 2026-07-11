@@ -75,6 +75,11 @@ const MIGRATIONS = [
     file: 'database/lane-maintenance-window-schema.sql',
     description: 'Dated maintenance windows on lanes (auto-lift outside the window)',
   },
+  {
+    id: '0015_campaigns',
+    file: 'database/campaigns-schema.sql',
+    description: 'Real email campaigns targeting CRM segments via the communications pipeline',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

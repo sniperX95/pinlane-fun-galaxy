@@ -21,11 +21,15 @@ const {
   saveEmailIdentity,
   deleteEmailIdentity,
   getEmailInsightRows,
+  createCampaignRow,
+  listCampaigns,
+  cancelCampaignRow,
   readAdminRangeState,
   readStaffState,
   saveAgentSuggestions,
 } = require('../lib/database');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
+const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText } = require('../lib/campaigns');
 const {
   buildDirectionAnalytics,
   buildDirectionReportMarkdown,
@@ -59,6 +63,7 @@ const {
   listDelayNotificationChannels,
   sendClientMessage,
   sendDirectEmail,
+  enqueueCampaign,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -312,6 +317,36 @@ async function handleGet(req, res, options = {}) {
     const rows = await getEmailInsightRows({ centerId });
     const insights = buildEmailInsights({ ...rows, resendConfigured: Boolean(process.env.RESEND_API_KEY) });
     sendJson(res, 200, { ok: true, centerId, insights });
+    return;
+  }
+
+  // Campagnes : audience d'un segment (comptage réel ; full=1 pour l'export).
+  if (action === 'campaignAudience') {
+    const segment = url.searchParams.get('segment') || 'all';
+    const today = new Date().toISOString().slice(0, 10);
+    const history = (await readAdminRangeState('2023-01-01', today, centerId)).reservations;
+    const recipients = buildCampaignAudience({ history, segment, today });
+    const full = url.searchParams.get('full') === '1';
+    sendJson(res, 200, {
+      ok: true,
+      centerId,
+      segment,
+      count: recipients.length,
+      sample: recipients.slice(0, 5).map((r) => r.name),
+      recipients: full ? recipients : undefined,
+    });
+    return;
+  }
+
+  if (action === 'listCampaigns') {
+    const campaigns = await listCampaigns({ centerId });
+    sendJson(res, 200, {
+      ok: true,
+      centerId,
+      campaigns,
+      segments: CAMPAIGN_SEGMENTS,
+      channel: { resendConfigured: Boolean(process.env.RESEND_API_KEY) },
+    });
     return;
   }
 
@@ -1105,6 +1140,74 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Campagne : création (brouillon / envoi immédiat / programmée). Chaque
+  // destinataire = une communication réelle (idempotente par campagne+email).
+  if (action === 'createCampaign') {
+    const campaignCenterId = requireConcreteCenter('createCampaign');
+    const name = String(body.name || '').trim();
+    if (!name) throw createHttpError('Nom de campagne requis.', 400);
+    const segment = CAMPAIGN_SEGMENTS.some((s) => s.id === body.segment) ? body.segment : null;
+    if (!segment) throw createHttpError('Segment inconnu.', 400);
+    const mode = ['now', 'schedule', 'draft'].includes(body.mode) ? body.mode : 'draft';
+    const subject = String(body.subject || '').trim();
+    const bodyText = String(body.body || '').trim();
+    if (mode !== 'draft' && (!subject || !bodyText)) throw createHttpError('Objet et message requis pour envoyer.', 400);
+    let scheduledAt = null;
+    if (mode === 'schedule') {
+      const when = new Date(body.scheduledAt || '');
+      if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 60000) {
+        throw createHttpError('Date de programmation invalide (au moins 1 minute dans le futur).', 400);
+      }
+      scheduledAt = when.toISOString();
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const history = (await readAdminRangeState('2023-01-01', today, campaignCenterId)).reservations;
+    const recipients = buildCampaignAudience({ history, segment, today });
+    if (mode !== 'draft' && !recipients.length) {
+      throw createHttpError('Ce segment ne contient aucun client avec email : rien à envoyer.', 400);
+    }
+
+    const campaign = await createCampaignRow({
+      centerId: campaignCenterId,
+      name,
+      objective: body.objective || '',
+      segment,
+      subject,
+      body: bodyText,
+      status: mode === 'draft' ? 'draft' : mode === 'schedule' ? 'scheduled' : 'sending',
+      scheduledAt,
+      recipientCount: recipients.length,
+      createdBy: options.session?.member?.name || 'staff',
+    });
+
+    let queued = 0;
+    if (mode !== 'draft') {
+      const identities = await listEmailIdentities({ centerId: campaignCenterId });
+      const identity = identities.find((item) => item.isDefault) || null;
+      const result = await enqueueCampaign({
+        centerId: campaignCenterId,
+        campaignId: campaign.id,
+        recipients,
+        subject,
+        body: bodyText,
+        scheduledAt,
+        fromEmail: identity?.email || '',
+        fromLabel: identity?.label || '',
+        personalize: personalizeCampaignText,
+      });
+      queued = result.queued;
+    }
+    sendJson(res, 200, { ok: true, campaign, queued, resendConfigured: Boolean(process.env.RESEND_API_KEY) });
+    return;
+  }
+
+  if (action === 'cancelCampaign') {
+    const result = await cancelCampaignRow({ id: body.id, centerId: requireConcreteCenter('cancelCampaign') });
+    sendJson(res, 200, { ok: true, ...result });
+    return;
+  }
+
   if (action === 'improveEmailWithAi') {
     const { getCenter } = require('../lib/ops-knowledge');
     const center = getCenter(centerId);
@@ -1129,9 +1232,11 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights'].includes(action)) return 'direction.view';
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
+    if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
   }
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
+  if (['createCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];

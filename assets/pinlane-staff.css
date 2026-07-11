@@ -3378,6 +3378,101 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-classification legend { color: var(--accent-strong); }
 .establishment-classification-read h3 { color: var(--accent-strong); }
 
+/* ============================================================================
+   ÉTABLISSEMENT v2 — système de configuration premium (tuiles, semaine, badges)
+   ========================================================================== */
+.establishment-page { gap: var(--space-5); }
+
+/* En-tête de page */
+.estab-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+.estab-page-head h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+.estab-page-head .estab-page-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+.estab-page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Sélecteur de centres — cartes riches */
+.establishment-selector { padding: var(--space-5); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.establishment-center-chip {
+  min-width: 230px; flex: 1 1 230px; max-width: 320px; gap: var(--space-3);
+  padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.establishment-center-chip:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.establishment-center-chip.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-md); background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface)); }
+.establishment-chip-top strong { font-size: 15px; }
+.estab-chip-stats { display: flex; gap: var(--space-5); margin-top: 2px; }
+.estab-chip-stat { display: grid; gap: 1px; }
+.estab-chip-stat b { font: 600 17px/1 var(--font-data); font-variant-numeric: tabular-nums; }
+.estab-chip-stat span { font-size: 11px; color: var(--muted); }
+.establishment-add { min-width: 220px; border-radius: var(--radius-lg); padding: var(--space-4); }
+
+/* Coquille éditeur/lecture */
+.establishment-editor { padding: var(--space-6); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+.establishment-editor-head { padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); margin-bottom: var(--space-2); }
+.establishment-editor-head h2 { font-size: 20px; }
+
+/* Vue lecture — grille de sections premium */
+.establishment-readview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.estab-section { display: grid; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--page); align-content: start; }
+.estab-section.full { grid-column: 1 / -1; }
+.estab-section-head { display: flex; align-items: center; gap: var(--space-3); }
+.estab-section-ico { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: none; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent-strong); }
+.estab-section-ico svg { width: 20px; height: 20px; }
+.estab-section-copy { display: grid; gap: 1px; }
+.estab-section-copy h3 { font-size: 15px; font-weight: 650; }
+.estab-section-copy p { font-size: 12px; color: var(--muted); }
+
+/* Tuiles de ressources — grand chiffre */
+.estab-stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: var(--space-3); }
+.estab-stat { display: grid; gap: 8px; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.estab-stat-top { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.estab-stat-ico { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border-radius: var(--radius-sm); background: var(--subtle); color: var(--muted); }
+.estab-stat-ico svg { width: 16px; height: 16px; }
+.estab-stat-value { font: 600 28px/1 var(--font-data); font-variant-numeric: tabular-nums; color: var(--text); }
+.estab-stat-value small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 5px; }
+.estab-stat-sub { font-size: 11px; color: var(--faint); }
+
+/* Semaine horaires — tableau lisible */
+.estab-week { display: grid; gap: 3px; }
+.estab-week-head, .estab-week-row { display: grid; grid-template-columns: 96px 1fr 1fr; gap: var(--space-3); align-items: center; }
+.estab-week-head { padding: 0 var(--space-3) 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 600; }
+.estab-week-row { padding: 9px var(--space-3); border-radius: var(--radius-sm); }
+.estab-week-row:nth-child(odd) { background: var(--surface); }
+.estab-week-day { font-size: 13px; font-weight: 550; }
+.estab-hour-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-strong); font: 550 12px var(--font-data); font-variant-numeric: tabular-nums; }
+.estab-hour-pill.holiday { background: color-mix(in srgb, var(--warning-soft) 70%, transparent); color: var(--warning); }
+.estab-hour-closed { display: inline-flex; align-items: center; gap: 5px; color: var(--faint); font-size: 12px; }
+
+/* Lignes règle / clé-valeur premium + badges */
+.estab-rules { display: grid; gap: 0; }
+.estab-rule { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: 11px 0; font-size: 13px; border-bottom: 1px solid var(--line); }
+.estab-rule:last-child { border-bottom: 0; }
+.estab-rule-label { color: var(--muted); display: grid; gap: 1px; }
+.estab-rule-label small { color: var(--faint); font-size: 11px; }
+.estab-rule-value { font-weight: 600; text-align: right; }
+.estab-rule-value .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.estab-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px; border-radius: var(--radius-full); font-size: 12px; font-weight: 550; white-space: nowrap; }
+.estab-badge.on { background: var(--success-soft); color: var(--success); }
+.estab-badge.off { background: var(--subtle); color: var(--muted); }
+.estab-badge.accent { background: var(--accent-soft); color: var(--accent-strong); }
+.estab-badge.warn { background: var(--warning-soft); color: var(--warning); }
+.estab-badge.danger { background: var(--danger-soft); color: var(--danger); }
+.estab-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.estab-chip-row .estab-tag { padding: 4px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); font-size: 12px; }
+.estab-empty { color: var(--faint); font-size: 13px; }
+
+/* Édition — cartes plus premium + en-tête */
+.establishment-card { padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
+.establishment-card legend { font-size: 14px; }
+.estab-subhead { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); font-weight: 600; margin-top: var(--space-2); }
+
+.estab-section-accent { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); }
+.estab-section-accent .estab-section-copy h3 { color: var(--accent-strong); }
+
+@media (max-width: 720px) {
+  .establishment-readview { grid-template-columns: 1fr; }
+  .estab-week-head, .estab-week-row { grid-template-columns: 72px 1fr 1fr; gap: var(--space-2); }
+}
+
 .estab-override-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .estab-override-form input[type='date'] { height: 34px; max-width: 160px; }
 .estab-override-form input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.55; }

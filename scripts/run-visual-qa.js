@@ -955,6 +955,9 @@ async function collectIssues(page, scopeLabel) {
       '.staff-code-card',
       '.staff-access-summary',
       '.establishment-read-card',
+      '.estab-section',
+      '.estab-week',
+      '.estab-stat-grid',
     ].join(',');
 
     // Un élément posé dans un conteneur à défilement horizontal VOLONTAIRE
@@ -1904,10 +1907,12 @@ async function main() {
     await renderStaffPage(page, 'establishment');
     await page.waitForTimeout(500);
     const readViewState = await page.evaluate(() => ({
-      holidayCards: Array.from(document.querySelectorAll('.establishment-read-card h3')).map(el => el.textContent.trim()),
+      sectionTitles: Array.from(document.querySelectorAll('.estab-section h3')).map(el => el.textContent.trim()),
+      hasHolidayHours: /vacances/i.test(document.querySelector('.establishment-readview')?.textContent || ''),
     }));
-    assert(readViewState.holidayCards.some(title => /vacances/i.test(title)), 'Vue lecture Établissement : carte horaires vacances requise.');
-    assert(readViewState.holidayCards.some(title => /Offres/i.test(title)), 'Vue lecture Établissement : carte offres requise.');
+    assert(readViewState.hasHolidayHours, 'Vue lecture Établissement : horaires vacances/fériés requis.');
+    assert(readViewState.sectionTitles.some(title => /Offres/i.test(title)), 'Vue lecture Établissement : section offres requise.');
+    assert(readViewState.sectionTitles.some(title => /Ressources/i.test(title)), 'Vue lecture Établissement : section ressources requise.');
     await screenshot(page, 'chantier5-establishment-read');
     const editBtn2 = page.locator('.establishment-editor-actions button', { hasText: 'Modifier' });
     if (await editBtn2.count()) {

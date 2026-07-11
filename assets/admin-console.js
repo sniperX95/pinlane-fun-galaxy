@@ -1441,6 +1441,30 @@ function renderAdminExports() {
         <button class="admin-btn" onclick="copyAdminSummary()">Copier le résumé</button>
       </div>
     </div>
+    <div class="admin-section-title" style="margin-top: var(--space-6);">
+      <div>
+        <h2>Exports de la période analysée</h2>
+        <p>Basés sur la période sélectionnée dans l'onglet Données (${typeof dhState !== 'undefined' && dhState.analytics ? `du ${dhState.analytics.startDate} au ${dhState.analytics.endDate}` : 'ouvrez l’onglet Données pour choisir la période'}). Format CSV compatible Excel belge.</p>
+      </div>
+    </div>
+    <div class="admin-export-grid">
+      <div class="admin-export-card">
+        <div><h3>Rapport direction A4</h3><p>KPIs, activités, formules, clients fidèles et bilan — mise en page sobre, imprimable en PDF.</p></div>
+        <button class="admin-btn" onclick="dhPrintReport()">Imprimer</button>
+      </div>
+      <div class="admin-export-card">
+        <div><h3>Série temporelle</h3><p>Réservations, joueurs, chiffre et annulations par jour/semaine/mois sur la période.</p></div>
+        <button class="admin-btn" onclick="dhExportCsv('serie')">CSV</button>
+      </div>
+      <div class="admin-export-card">
+        <div><h3>Clients de la période</h3><p>Visites, chiffre, première/dernière venue, activité préférée, contact.</p></div>
+        <button class="admin-btn" onclick="dhExportCsv('clients')">CSV</button>
+      </div>
+      <div class="admin-export-card">
+        <div><h3>Réservations brutes</h3><p>Le détail ligne par ligne de toutes les réservations de la période.</p></div>
+        <button class="admin-btn" onclick="dhExportCsv('reservations-brutes')">CSV</button>
+      </div>
+    </div>
   </div>`;
 }
 

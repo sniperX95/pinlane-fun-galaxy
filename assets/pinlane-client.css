@@ -2219,7 +2219,7 @@ body.public-form {
 .direction .pill.info,
 .direction .pill.low {
   background: var(--info-soft);
-  color: var(--info);
+  color: var(--info-strong);
 }
 
 /* Bouton compact des lignes */

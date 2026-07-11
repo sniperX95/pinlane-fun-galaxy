@@ -538,7 +538,11 @@ function dhExportMenuToggle(event) {
 
 async function dhExportCsv(kind) {
   const a = dhState.analytics;
-  if (!a) return;
+  if (!a) {
+    if (typeof toast === 'function') toast('Ouvrez d\'abord l\'onglet Données pour charger la période.');
+    loadAdminDataHub();
+    return;
+  }
   const menu = document.getElementById('dhExportMenu');
   if (menu) menu.classList.add('hidden');
   const sep = ';';
@@ -587,7 +591,11 @@ async function dhExportCsv(kind) {
 // Rapport imprimable — mise en page sobre A4, prêt pour PDF (Ctrl+P).
 function dhPrintReport(reportId = null) {
   const a = dhState.analytics;
-  if (!a) return;
+  if (!a) {
+    if (typeof toast === 'function') toast('Ouvrez d\'abord l\'onglet Données pour charger la période.');
+    loadAdminDataHub();
+    return;
+  }
   const menu = document.getElementById('dhExportMenu');
   if (menu) menu.classList.add('hidden');
   const report = reportId ? dhState.reports.find((r) => r.id === reportId) : null;

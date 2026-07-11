@@ -906,7 +906,12 @@
       return;
     }
     const count = pv2Camp.audience[form.segment]?.count;
-    if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${count ?? '?'} destinataire(s) du segment sélectionné ?`)) return;
+    // Jamais d'envoi sans volume connu : le serveur revalide ce nombre (409 si décalage).
+    if (mode !== 'draft' && !Number.isInteger(count)) {
+      if (typeof toast === 'function') toast("Audience en cours de calcul — attends le nombre de destinataires avant d'envoyer.");
+      return;
+    }
+    if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${count} destinataire(s) du segment sélectionné ?`)) return;
     if (mode === 'schedule' && !form.scheduledAt) { if (typeof toast === 'function') toast('Choisis la date et l\'heure d\'envoi.'); return; }
     pv2Camp.busy = true;
     if (button) button.disabled = true;
@@ -919,6 +924,7 @@
           centerId: state.currentCenterId || 'libramont',
           name: form.name, objective: form.objective, segment: form.segment,
           subject: form.subject, body: form.body, mode,
+          expectedRecipients: mode === 'draft' ? null : count,
           scheduledAt: mode === 'schedule' ? new Date(form.scheduledAt).toISOString() : null,
         }),
       });

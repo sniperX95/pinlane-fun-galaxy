@@ -72,6 +72,7 @@ async function main() {
             return json({ ok: true, ...(store.audiences[seg] || { count: 0, sample: [] }) });
           }
           if (action === 'createCampaign') {
+            window.__lastCreateBody = body;
             const campaign = {
               id: store.nextId++, name: body.name, segment: body.segment, subject: body.subject, body: body.body,
               status: body.mode === 'draft' ? 'draft' : body.mode === 'schedule' ? 'scheduled' : 'sending',
@@ -121,7 +122,26 @@ async function main() {
   const row = await page.locator('.pv2-table tbody tr').first().textContent();
   assert(row.includes('Relance dormants juillet') && row.includes('En envoi'), `campagne listée avec statut réel (reçu "${row.slice(0, 90)}")`);
   assert(row.includes('non suivis'), 'ouvertures/clics affichés honnêtement comme non suivis');
+  const createBody = await page.evaluate(() => window.__lastCreateBody);
+  assert(createBody && createBody.expectedRecipients === 2, `envoi confirmé avec le volume exact vu à l'écran (reçu ${createBody?.expectedRecipients})`);
   await page.screenshot({ path: path.join(OUT, '02-campagne-listee.png'), fullPage: true });
+
+  // Garde-fou : audience pas encore calculée → l'envoi est bloqué côté front
+  await page.locator('button:has-text("+ Nouvelle campagne")').click();
+  await page.waitForTimeout(600);
+  await page.evaluate(() => {
+    window.__lastCreateBody = null;
+    pv2Camp.audience = {};
+    pv2Camp.form.name = 'Ne doit pas partir';
+    pv2Camp.form.subject = 'x';
+    pv2Camp.form.body = 'y';
+  });
+  await page.locator('button:has-text("Envoyer maintenant")').click();
+  await page.waitForTimeout(600);
+  assert((await page.evaluate(() => window.__lastCreateBody)) === null, 'envoi refusé tant que le volume est inconnu');
+  await page.evaluate(() => { pv2Camp.formOpen = false; });
+  await page.evaluate(() => typeof loadPv2Campaigns === 'function' && loadPv2Campaigns(true));
+  await page.waitForTimeout(600);
 
   // Annulation → stoppe la file
   await page.locator('.pv2-table tbody tr').first().locator('button:has-text("Annuler")').click();

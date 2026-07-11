@@ -29,7 +29,7 @@ const {
   saveAgentSuggestions,
 } = require('../lib/database');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
-const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText } = require('../lib/campaigns');
+const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
 const {
   buildDirectionAnalytics,
   buildDirectionReportMarkdown,
@@ -267,9 +267,24 @@ async function handleGet(req, res, options = {}) {
     const { getCenter } = require('../lib/ops-knowledge');
     const center = getCenter(centerId);
     const history = (await readAdminRangeState('2023-01-01', endDate, centerId)).reservations;
-    const analytics = buildDirectionAnalytics({ history, startDate, endDate, center });
+    let analytics = buildDirectionAnalytics({ history, startDate, endDate, center });
     const prevWin = previousWindow(startDate, endDate);
     const previous = buildDirectionAnalytics({ history, startDate: prevWin.startDate, endDate: prevWin.endDate, center });
+    // dashboardAnalytics est accessible avec dashboard.view seul : on ne sert
+    // que ce que les widgets consomment — jamais le PII direction (top clients).
+    if (action === 'dashboardAnalytics') {
+      analytics = {
+        startDate: analytics.startDate,
+        endDate: analytics.endDate,
+        totals: analytics.totals,
+        daily: analytics.daily,
+        weekly: analytics.weekly,
+        monthly: analytics.monthly,
+        byType: analytics.byType,
+        byChannel: analytics.byChannel,
+        occupancy: analytics.occupancy,
+      };
+    }
     sendJson(res, 200, {
       ok: true,
       centerId,
@@ -323,6 +338,8 @@ async function handleGet(req, res, options = {}) {
   // Campagnes : audience d'un segment (comptage réel ; full=1 pour l'export).
   if (action === 'campaignAudience') {
     const segment = url.searchParams.get('segment') || 'all';
+    // Fail-closed : un segment inconnu renverrait toute la base sous un faux label.
+    if (!CAMPAIGN_SEGMENTS.some((s) => s.id === segment)) throw createHttpError('Segment inconnu.', 400);
     const today = new Date().toISOString().slice(0, 10);
     const history = (await readAdminRangeState('2023-01-01', today, centerId)).reservations;
     const recipients = buildCampaignAudience({ history, segment, today });
@@ -1167,6 +1184,19 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (mode !== 'draft' && !recipients.length) {
       throw createHttpError('Ce segment ne contient aucun client avec email : rien à envoyer.', 400);
     }
+    if (mode !== 'draft') {
+      // Garde-fou serveur anti envoi de masse à l'aveugle : le client DOIT
+      // confirmer le volume exact qu'il a vu à l'écran. Décalage = refus.
+      const expected = Number(body.expectedRecipients);
+      if (!Number.isInteger(expected) || expected !== recipients.length) {
+        throw createHttpError(`Le volume de destinataires a changé (${recipients.length} actuellement). Revérifie l'audience puis confirme à nouveau.`, 409);
+      }
+      // Un token {{...}} inconnu partirait brut dans le mail de chaque client.
+      const unknownTokens = findUnknownCampaignTokens(`${subject}\n${bodyText}`);
+      if (unknownTokens.length) {
+        throw createHttpError(`Variable(s) non reconnue(s) : ${unknownTokens.join(', ')} — seules {{prenom}} et {{nom}} sont remplacées.`, 400);
+      }
+    }
 
     const campaign = await createCampaignRow({
       centerId: campaignCenterId,
@@ -1241,7 +1271,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendDirectEmail') return 'emails.send';
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
-  if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view'];
+  if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';

@@ -4087,10 +4087,14 @@ function dashRangeDates() {
   return { start: addDays(today, -(days - 1)), end: today };
 }
 
-async function loadDashAnalytics(force = false) {
+function dashAnalyticsKey() {
   const { start, end } = dashRangeDates();
   const centerId = (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId()) || 'libramont';
-  const key = `${centerId}|${start}|${end}`;
+  return { key: `${centerId}|${start}|${end}`, centerId, start, end };
+}
+
+async function loadDashAnalytics(force = false) {
+  const { key, centerId, start, end } = dashAnalyticsKey();
   if (dashAnalyticsCache.loading || (!force && dashAnalyticsCache.key === key && dashAnalyticsCache.analytics)) return;
   dashAnalyticsCache.loading = true;
   dashAnalyticsCache.error = '';
@@ -4128,17 +4132,18 @@ function dashSetCustomRange() {
   state.dashRange = { key: 'custom', start, end };
   save();
   loadDashAnalytics();
+  renderStaffIfDashboard();
 }
 
 // Bouton « Aujourd'hui » : ramène le dashboard (jour courant) ET l'analyse
-// sur la fenêtre la plus courte.
+// sur la fenêtre la plus courte, avec données re-fetchées.
 function dashGoToday() {
-  if (typeof setCurrentDate === 'function') setCurrentDate(todayStr());
-  else state.currentDate = todayStr();
+  state.currentDate = todayStr();
   state.dashRange = { key: '7j', start: '', end: '' };
   save();
-  loadDashAnalytics();
+  loadDashAnalytics(true);
   renderStaff();
+  syncDateReservations(state.currentDate, { silent: true });
 }
 
 function dashSetWidget(index, field, value) {
@@ -4239,10 +4244,13 @@ function dashWTile(analytics, metricId) {
 
 function renderDashboardCustomAnalytics() {
   const { widgets, range } = getDashWidgetConfig();
-  const analytics = dashAnalyticsCache.analytics;
-  if (!analytics && !dashAnalyticsCache.loading && !dashAnalyticsCache.error) setTimeout(() => loadDashAnalytics(), 0);
+  // Cache périmé (centre ou plage changés) = on ne montre JAMAIS les chiffres
+  // d'un autre centre : état de chargement + re-fetch.
+  const stale = dashAnalyticsCache.key !== dashAnalyticsKey().key;
+  const analytics = stale ? null : dashAnalyticsCache.analytics;
+  if (stale && !dashAnalyticsCache.loading) setTimeout(() => loadDashAnalytics(), 0);
   const { start, end } = dashRangeDates();
-  const previous = dashAnalyticsCache.previous;
+  const previous = stale ? null : dashAnalyticsCache.previous;
 
   const deltaChip = (current, prev) => {
     if (!prev) return '';
@@ -13200,7 +13208,8 @@ async function saveQuickBook() {
 let toastTimer;
 function toast(msg) {
   const el = document.getElementById('toast');
-  el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${msg}`;
+  // msg peut contenir des données client (email, nom) — toujours échappé au sink.
+  el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(String(msg ?? ''))}`;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);

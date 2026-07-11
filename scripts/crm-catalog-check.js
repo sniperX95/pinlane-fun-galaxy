@@ -44,6 +44,39 @@ async function main() {
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   await installQaApi(page);
+  // Stub dashboardAnalytics (le stub QA ne le connaît pas) — données réalistes.
+  await page.addInitScript(() => {
+    const attach = () => {
+      const prevFetch = window.fetch;
+      window.fetch = async (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : input.url, location.origin);
+        if (url.pathname === '/api/ops' && url.searchParams.get('action') === 'dashboardAnalytics') {
+          const daily = [];
+          const end = new Date('2026-07-11T00:00:00Z');
+          for (let i = 29; i >= 0; i -= 1) {
+            const d = new Date(end); d.setUTCDate(d.getUTCDate() - i);
+            const count = (i * 7) % 9;
+            daily.push({ date: d.toISOString().slice(0, 10), count, revenue: count * 45, pax: count * 5, cancelled: 0 });
+          }
+          const analytics = {
+            startDate: daily[0].date, endDate: daily[29].date,
+            totals: { reservations: 120, revenue: 5400, pax: 600, cancelled: 3, cancelRate: 2.4, avgBasket: 45, paid: 84, paymentRate: 70, days: 30 },
+            daily, weekly: [], monthly: [],
+            byType: { bowling: { count: 80, revenue: 3600, pax: 400 }, laser: { count: 25, revenue: 1000, pax: 130 }, formule: { count: 15, revenue: 800, pax: 70 } },
+            byChannel: [{ channel: 'en ligne', count: 55 }, { channel: 'staff', count: 65 }],
+            byFormule: [], byOccasion: [], heatmap: [],
+            occupancy: { scope: 'bowling', bookedLaneHours: 120, capacityLaneHours: 2100, rate: 5.7 },
+            clients: { unique: 60, new: 20, returning: 40, returningRate: 66, multi: 12, top: [] },
+          };
+          const previous = { totals: { reservations: 100, revenue: 5000, pax: 500, cancelled: 4, cancelRate: 3.8, avgBasket: 50, paid: 60, paymentRate: 60, days: 30 }, clients: { unique: 50, returning: 30 } };
+          return new Response(JSON.stringify({ ok: true, analytics, previous }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return prevFetch(input, init);
+      };
+    };
+    setTimeout(attach, 0);
+    document.addEventListener('DOMContentLoaded', attach, { once: true });
+  });
 
   // ---- CRM clients : tri colonnes + tris rapides ---------------------------
   await page.goto(`${BASE_URL}/#staff/clients`, { waitUntil: 'load', timeout: 45000 });
@@ -84,6 +117,34 @@ async function main() {
   const basketCells = await page.locator('.pv2-price-stats span:nth-child(4)').count();
   assert(basketCells > 0, 'panier moyen affiché par carte');
   await page.screenshot({ path: path.join(OUT, '02-catalogue-classement.png'), fullPage: true });
+
+  // ---- Dashboard : widgets modulaires + navigation temporelle --------------
+  await page.goto(`${BASE_URL}/#staff/dashboard`, { waitUntil: 'load', timeout: 45000 });
+  await page.waitForTimeout(2000);
+  assert(await page.locator('.dash-custom-analytics').count() === 1, 'section Analyse personnalisée présente');
+  assert(await page.locator('.dash-widgets .dash-card').count() === 2, '2 widgets rendus');
+  assert(await page.locator('.dash-widgets .dh-col').count() >= 20, 'widget 1 : histogramme réel');
+  assert(await page.locator('.dash-w-donut svg circle').count() === 3, 'widget 2 : donut 3 activités');
+  assert((await page.locator('.dash-range-deltas').textContent()).includes('▲'), 'deltas vs période précédente affichés');
+  assert(await page.locator('button:has-text("Aujourd\'hui")').count() >= 1, 'bouton Aujourd\'hui');
+  // Changement de visualisation : donut → barres
+  await page.locator('.dash-widgets .dash-card').nth(1).locator('select').nth(1).selectOption('rows');
+  await page.waitForTimeout(500);
+  assert(await page.locator('.dash-w-donut').count() === 0, 'donut remplacé');
+  assert(await page.locator('.dash-widgets .dh-row').count() === 3, 'répartition en barres');
+  // Changement de métrique : stat tile
+  await page.locator('.dash-widgets .dash-card').nth(1).locator('select').first().selectOption('paymentRate');
+  await page.waitForTimeout(500);
+  const tile = await page.locator('.dash-widgets .dh-tile').textContent();
+  assert(tile.includes('70') && tile.includes('%'), `taux d'encaissement réel affiché (reçu "${tile.slice(0, 60)}")`);
+  // Plage personnalisée
+  await page.locator('#dashRangeStart').fill('2026-07-01');
+  await page.locator('#dashRangeEnd').fill('2026-07-11');
+  await page.locator('button:has-text("Appliquer")').click();
+  await page.waitForTimeout(800);
+  const rangeKey = await page.evaluate(() => state.dashRange.key);
+  assert(rangeKey === 'custom', 'plage personnalisée appliquée');
+  await page.screenshot({ path: path.join(OUT, '04-dashboard-widgets.png'), fullPage: true });
 
   // ---- Groupes : actions réelles + dismiss persisté ------------------------
   await page.goto(`${BASE_URL}/#staff/groups`, { waitUntil: 'load', timeout: 45000 });

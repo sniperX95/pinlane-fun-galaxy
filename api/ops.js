@@ -258,7 +258,7 @@ async function handleGet(req, res, options = {}) {
   // Hub « Données » : agrégats calculés côté serveur (source de vérité unique,
   // le front ne recalcule rien). L'historique complet sert à qualifier
   // nouveau/récurrent au-delà de la fenêtre demandée.
-  if (action === 'directionAnalytics') {
+  if (action === 'directionAnalytics' || action === 'dashboardAnalytics') {
     const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
     const today = new Date().toISOString().slice(0, 10);
     const endDate = DATE_RX.test(url.searchParams.get('endDate') || '') ? url.searchParams.get('endDate') : today;
@@ -1231,6 +1231,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights'].includes(action)) return 'direction.view';
+    if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';

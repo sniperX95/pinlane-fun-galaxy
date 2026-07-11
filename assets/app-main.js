@@ -4044,6 +4044,272 @@ function formatDashboardTrend(current, previous) {
   return `${delta > 0 ? '+' : ''}${delta}%`;
 }
 
+
+/* ============================================================================
+   ANALYSE PERSONNALISÉE (dashboard) — widgets modulaires : l'utilisateur
+   choisit la métrique ET la forme (barres/aire/donut/lignes). Données servies
+   par dashboardAnalytics (mêmes agrégats réels que l'onglet Données).
+   ========================================================================== */
+const DASH_RANGES = { '7j': 7, '30j': 30, '90j': 90 };
+const dashAnalyticsCache = { key: '', loading: false, error: '', analytics: null, previous: null };
+
+const DASH_METRICS = [
+  { id: 'revenue', label: "Chiffre d'affaires", kind: 'series', color: 'var(--chart-2)', fmt: v => formatMoney(v) },
+  { id: 'reservations', label: 'Réservations', kind: 'series', color: 'var(--chart-1)', fmt: v => `${v}` },
+  { id: 'pax', label: 'Joueurs', kind: 'series', color: 'var(--chart-3)', fmt: v => `${v}` },
+  { id: 'byType', label: 'Répartition par activité', kind: 'split' },
+  { id: 'byChannel', label: 'Canal de réservation', kind: 'split' },
+  { id: 'occupancy', label: 'Taux d’occupation bowling', kind: 'stat' },
+  { id: 'paymentRate', label: 'Taux d’encaissement', kind: 'stat' },
+  { id: 'cancelRate', label: "Taux d'annulation", kind: 'stat' },
+  { id: 'avgBasket', label: 'Panier moyen', kind: 'stat' },
+];
+const DASH_VIZ = { series: [['bars', 'Histogramme'], ['area', 'Courbe']], split: [['donut', 'Donut'], ['rows', 'Barres']] };
+const DASH_TYPE_META = {
+  bowling: { label: 'Bowling', color: 'var(--chart-1)' },
+  laser: { label: 'Laser Game', color: 'var(--chart-2)' },
+  formule: { label: 'Formules', color: 'var(--chart-3)' },
+};
+
+function getDashWidgetConfig() {
+  if (!Array.isArray(state.dashWidgets) || state.dashWidgets.length !== 2) {
+    state.dashWidgets = [{ metric: 'revenue', viz: 'bars' }, { metric: 'byType', viz: 'donut' }];
+  }
+  if (!state.dashRange || !state.dashRange.key) state.dashRange = { key: '30j', start: '', end: '' };
+  return { widgets: state.dashWidgets, range: state.dashRange };
+}
+
+function dashRangeDates() {
+  const { range } = getDashWidgetConfig();
+  const today = todayStr();
+  if (range.key === 'custom' && range.start && range.end) return { start: range.start, end: range.end };
+  const days = DASH_RANGES[range.key] || 30;
+  return { start: addDays(today, -(days - 1)), end: today };
+}
+
+async function loadDashAnalytics(force = false) {
+  const { start, end } = dashRangeDates();
+  const centerId = (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId()) || 'libramont';
+  const key = `${centerId}|${start}|${end}`;
+  if (dashAnalyticsCache.loading || (!force && dashAnalyticsCache.key === key && dashAnalyticsCache.analytics)) return;
+  dashAnalyticsCache.loading = true;
+  dashAnalyticsCache.error = '';
+  renderStaffIfDashboard();
+  try {
+    const payload = await apiRequest(`/api/ops?action=dashboardAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${start}&endDate=${end}`);
+    dashAnalyticsCache.analytics = payload.analytics;
+    dashAnalyticsCache.previous = payload.previous;
+    dashAnalyticsCache.key = key;
+  } catch (error) {
+    dashAnalyticsCache.error = error.message || 'Analyse momentanément indisponible.';
+  } finally {
+    dashAnalyticsCache.loading = false;
+    renderStaffIfDashboard();
+  }
+}
+
+function renderStaffIfDashboard() {
+  if (state.view === 'staff' && (state.staffMenuPage === 'dashboard' || !state.staffMenuPage)) renderStaff();
+}
+
+function dashSetRange(key) {
+  getDashWidgetConfig();
+  state.dashRange = { key, start: state.dashRange.start, end: state.dashRange.end };
+  save();
+  loadDashAnalytics();
+  renderStaffIfDashboard();
+}
+
+function dashSetCustomRange() {
+  const start = document.getElementById('dashRangeStart')?.value || '';
+  const end = document.getElementById('dashRangeEnd')?.value || '';
+  if (!start || !end) { toast('Choisis les deux dates.'); return; }
+  if (end < start) { toast('La fin précède le début.'); return; }
+  state.dashRange = { key: 'custom', start, end };
+  save();
+  loadDashAnalytics();
+}
+
+// Bouton « Aujourd'hui » : ramène le dashboard (jour courant) ET l'analyse
+// sur la fenêtre la plus courte.
+function dashGoToday() {
+  if (typeof setCurrentDate === 'function') setCurrentDate(todayStr());
+  else state.currentDate = todayStr();
+  state.dashRange = { key: '7j', start: '', end: '' };
+  save();
+  loadDashAnalytics();
+  renderStaff();
+}
+
+function dashSetWidget(index, field, value) {
+  const { widgets } = getDashWidgetConfig();
+  const widget = widgets[index];
+  if (!widget) return;
+  widget[field] = value;
+  if (field === 'metric') {
+    const metric = DASH_METRICS.find(m => m.id === value);
+    widget.viz = metric?.kind === 'split' ? 'donut' : metric?.kind === 'stat' ? 'tile' : 'bars';
+  }
+  save();
+  renderStaffIfDashboard();
+}
+
+function dashWidgetSeries(analytics, metricId) {
+  const useWeekly = analytics.daily.length > 35;
+  const source = useWeekly ? analytics.weekly : analytics.daily;
+  const key = metricId === 'revenue' ? 'revenue' : metricId === 'pax' ? 'pax' : 'count';
+  return source.map(item => ({
+    label: useWeekly ? String(item.weekStart || '').slice(5) : item.date.slice(5),
+    hint: useWeekly ? `Semaine du ${item.weekStart}` : item.date,
+    value: Number(item[key] || 0),
+  }));
+}
+
+function dashWBars(points, color, fmt) {
+  if (points.every(p => !p.value)) return '<div class="dh-chart-empty">Aucune donnée sur cette période.</div>';
+  const max = Math.max(...points.map(p => p.value), 1);
+  const tickEvery = Math.max(1, Math.ceil(points.length / 6));
+  return `<div class="dh-chart"><div class="dh-chart-max">${fmt(max)}</div><div class="dh-cols">${points.map((p, i) => `
+    <div class="dh-col" title="${escapeHtml(`${p.hint} — ${fmt(p.value)}`)}">
+      <div class="dh-col-bar" style="height:${Math.max(Math.round((p.value / max) * 100), p.value ? 3 : 0)}%;background:${color}"></div>
+      <div class="dh-col-tick">${i % tickEvery === 0 || i === points.length - 1 ? escapeHtml(p.label) : ''}</div>
+    </div>`).join('')}</div></div>`;
+}
+
+function dashWArea(points, color, fmt) {
+  if (points.every(p => !p.value)) return '<div class="dh-chart-empty">Aucune donnée sur cette période.</div>';
+  const max = Math.max(...points.map(p => p.value), 1);
+  const W = 100, H = 40;
+  const step = points.length > 1 ? W / (points.length - 1) : W;
+  const coords = points.map((p, i) => `${(i * step).toFixed(2)},${(H - (p.value / max) * (H - 4)).toFixed(2)}`);
+  return `<div class="dh-chart"><div class="dh-chart-max">${fmt(max)}</div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:150px;display:block" role="img" aria-label="Courbe">
+      <polygon points="0,${H} ${coords.join(' ')} ${W},${H}" fill="${color}" fill-opacity="0.14"></polygon>
+      <polyline points="${coords.join(' ')}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline>
+    </svg>
+    <div class="dash-area-ticks"><span>${escapeHtml(points[0].label)}</span><span>${escapeHtml(points[points.length - 1].label)}</span></div></div>`;
+}
+
+function dashSplitParts(analytics, metricId) {
+  if (metricId === 'byChannel') {
+    return analytics.byChannel.map((c, i) => ({
+      label: c.channel === 'en ligne' ? 'En ligne' : 'Staff',
+      value: c.count,
+      color: i === 0 ? 'var(--chart-1)' : 'var(--chart-2)',
+    }));
+  }
+  return Object.entries(analytics.byType).map(([type, v]) => ({
+    label: DASH_TYPE_META[type] ? DASH_TYPE_META[type].label : type,
+    value: v.count,
+    color: DASH_TYPE_META[type] ? DASH_TYPE_META[type].color : 'var(--chart-1)',
+  })).sort((a, b) => b.value - a.value);
+}
+
+function dashWDonut(parts) {
+  const total = parts.reduce((s, p) => s + p.value, 0);
+  if (!total) return '<div class="dh-chart-empty">Aucune donnée sur cette période.</div>';
+  let offset = 25;
+  const circles = parts.map(p => {
+    const pct = (p.value / total) * 100;
+    const html = `<circle r="15.9155" cx="21" cy="21" fill="none" stroke="${p.color}" stroke-width="5.4" stroke-dasharray="${pct.toFixed(2)} ${(100 - pct).toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>`;
+    offset -= pct;
+    return html;
+  }).join('');
+  const rows = parts.map(p => `
+      <div class="dh-row"><div class="dh-row-label"><span class="dh-dot" style="background:${p.color}"></span>${escapeHtml(p.label)}</div>
+      <div class="dh-row-track"><div class="dh-row-bar" style="width:${Math.max((p.value / total) * 100, 2)}%;background:${p.color}"></div></div>
+      <div class="dh-row-value">${p.value} <span class="dh-row-extra">${Math.round((p.value / total) * 100)} %</span></div></div>`).join('');
+  return `<div class="dash-w-donut">
+    <svg viewBox="0 0 42 42" role="img" aria-label="Répartition">${circles}</svg>
+    <div class="dh-rows">${rows}</div>
+  </div>`;
+}
+
+function dashWTile(analytics, metricId) {
+  const t = analytics.totals;
+  const configs = {
+    occupancy: { value: analytics.occupancy.rate === null ? '—' : `${analytics.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${analytics.occupancy.bookedLaneHours} h réservées / ${analytics.occupancy.capacityLaneHours} h ouvertes` },
+    paymentRate: { value: `${Number(t.paymentRate || 0).toLocaleString('fr-BE')} %`, sub: `${t.paid || 0} payée(s) sur ${t.reservations} · statut binaire (montants partiels non modélisés)` },
+    cancelRate: { value: `${t.cancelRate.toLocaleString('fr-BE')} %`, sub: `${t.cancelled} annulation(s)` },
+    avgBasket: { value: formatMoney(t.avgBasket), sub: 'par réservation active' },
+  };
+  const config = configs[metricId] || { value: '—', sub: '' };
+  return `<div class="dh-tile" style="margin-top:8px"><div class="dh-tile-value" style="font-size:30px">${config.value}</div><div class="dh-tile-foot"><span class="dh-tile-sub">${escapeHtml(config.sub)}</span></div></div>`;
+}
+
+function renderDashboardCustomAnalytics() {
+  const { widgets, range } = getDashWidgetConfig();
+  const analytics = dashAnalyticsCache.analytics;
+  if (!analytics && !dashAnalyticsCache.loading && !dashAnalyticsCache.error) setTimeout(() => loadDashAnalytics(), 0);
+  const { start, end } = dashRangeDates();
+  const previous = dashAnalyticsCache.previous;
+
+  const deltaChip = (current, prev) => {
+    if (!prev) return '';
+    const delta = Math.round(((current - prev) / prev) * 1000) / 10;
+    if (!Number.isFinite(delta)) return '';
+    const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'neutral';
+    const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '=';
+    return `<span class="dh-delta ${cls}">${arrow} ${Math.abs(delta).toLocaleString('fr-BE')} %</span>`;
+  };
+
+  let body;
+  if (dashAnalyticsCache.error) {
+    body = `<div class="dh-error" role="alert">${escapeHtml(dashAnalyticsCache.error)} <button type="button" class="admin-btn" onclick="loadDashAnalytics(true)">Réessayer</button></div>`;
+  } else if (!analytics) {
+    body = '<div class="dh-chart-empty">Chargement de l’analyse…</div>';
+  } else {
+    body = `<div class="dash-widgets">${widgets.map((widget, index) => {
+      const metric = DASH_METRICS.find(m => m.id === widget.metric) || DASH_METRICS[0];
+      const vizOptions = DASH_VIZ[metric.kind] || [];
+      let chart = '';
+      if (metric.kind === 'series') {
+        const points = dashWidgetSeries(analytics, metric.id);
+        chart = widget.viz === 'area' ? dashWArea(points, metric.color, metric.fmt) : dashWBars(points, metric.color, metric.fmt);
+      } else if (metric.kind === 'split') {
+        const parts = dashSplitParts(analytics, metric.id);
+        if (widget.viz === 'rows') {
+          const total = parts.reduce((s, x) => s + x.value, 0) || 1;
+          chart = `<div class="dh-rows" style="margin-top:8px">${parts.map(p => `
+            <div class="dh-row"><div class="dh-row-label"><span class="dh-dot" style="background:${p.color}"></span>${escapeHtml(p.label)}</div>
+            <div class="dh-row-track"><div class="dh-row-bar" style="width:${Math.max((p.value / total) * 100, 2)}%;background:${p.color}"></div></div>
+            <div class="dh-row-value">${p.value}</div></div>`).join('')}</div>`;
+        } else {
+          chart = dashWDonut(parts);
+        }
+      } else {
+        chart = dashWTile(analytics, metric.id);
+      }
+      return `<article class="dash-card">
+        <div class="dash-widget-controls">
+          <select onchange="dashSetWidget(${index}, 'metric', this.value)" aria-label="Métrique du widget ${index + 1}">
+            ${DASH_METRICS.map(m => `<option value="${m.id}" ${widget.metric === m.id ? 'selected' : ''}>${m.label}</option>`).join('')}
+          </select>
+          ${vizOptions.length ? `<select onchange="dashSetWidget(${index}, 'viz', this.value)" aria-label="Type de graphique du widget ${index + 1}">
+            ${vizOptions.map(([id, label]) => `<option value="${id}" ${widget.viz === id ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>` : ''}
+        </div>
+        ${chart}
+      </article>`;
+    }).join('')}</div>`;
+  }
+
+  return `<section class="dash-card dash-custom-analytics">
+    <div class="dash-card-head">
+      <h2>Analyse personnalisée</h2>
+      <div class="dash-range-controls">
+        ${analytics && previous ? `<span class="dash-range-deltas">Résa ${deltaChip(analytics.totals.reservations, previous.totals.reservations)} · CA ${deltaChip(analytics.totals.revenue, previous.totals.revenue)} vs période préc.</span>` : ''}
+        <button type="button" class="admin-btn" onclick="dashGoToday()">Aujourd'hui</button>
+        <div class="dh-range">${Object.keys(DASH_RANGES).map(key => `<button type="button" class="${range.key === key ? 'active' : ''}" onclick="dashSetRange('${key}')">${key}</button>`).join('')}</div>
+        <input type="date" id="dashRangeStart" value="${range.key === 'custom' ? range.start : start}" aria-label="Début de période">
+        <input type="date" id="dashRangeEnd" value="${range.key === 'custom' ? range.end : end}" aria-label="Fin de période">
+        <button type="button" class="admin-btn" onclick="dashSetCustomRange()">Appliquer</button>
+      </div>
+    </div>
+    ${body}
+  </section>`;
+}
+
 function renderStaffDashboardHourly(metrics) {
   const { planningWindow, bowlingWindows } = metrics;
   if (planningWindow.closed) return `<div class="dash-empty">Centre fermé sur cette date.</div>`;
@@ -5042,6 +5308,8 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         ${renderStaffDashboardRevenue(metrics)}
       </article>
     </section>
+
+    ${renderDashboardCustomAnalytics()}
 
     <section class="dash-status-strip">
       <div><span>${renderDashboardIcon('lanes')}</span><small>Pistes disponibles</small><strong>${availableLanes} / ${TOTAL_LANES}</strong><em>${TOTAL_LANES ? Math.round((availableLanes / TOTAL_LANES) * 100) : 0}%</em></div>

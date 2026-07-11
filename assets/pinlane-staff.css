@@ -7747,6 +7747,30 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 .groups-action-dismiss:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 
+/* Analyse personnalisée (dashboard) — widgets métrique × visualisation */
+.dash-custom-analytics .dash-card-head { flex-wrap: wrap; gap: var(--space-3); }
+.dash-range-controls { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.dash-range-controls input[type="date"] {
+  width: auto; max-width: 150px;
+  padding: 6px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text); font: 12.5px var(--font-ui);
+}
+.dash-range-deltas { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: baseline; }
+.dash-widgets { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-3); }
+.dash-widgets .dash-card { min-width: 0; }
+.dash-widget-controls { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.dash-widget-controls select {
+  flex: 1; min-width: 140px; padding: 7px 10px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: 500 12.5px var(--font-ui);
+}
+.dash-w-donut { display: grid; grid-template-columns: 120px 1fr; gap: var(--space-4); align-items: center; }
+.dash-w-donut svg { width: 120px; height: 120px; transform: rotate(0deg); }
+.dash-area-ticks { display: flex; justify-content: space-between; margin-top: 4px; font: 500 10px var(--font-data); color: var(--faint); }
+@media (max-width: 900px) {
+  .dash-widgets { grid-template-columns: 1fr; }
+  .dash-w-donut { grid-template-columns: 1fr; justify-items: center; }
+}
+
 /* ============================================================
    Onglet « Mails » — studio (admin-mail.js)
    ============================================================ */

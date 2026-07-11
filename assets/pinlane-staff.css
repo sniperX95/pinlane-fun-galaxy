@@ -3370,6 +3370,13 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-subsection h4 { font-size: 12px; font-weight: 600; color: var(--muted); }
 .estab-period-grid { display: grid; gap: 6px; }
 .estab-card-hint { color: var(--muted); font-size: 12px; margin-bottom: var(--space-2); }
+/* Champs numériques côte à côte (classification, paliers) */
+.estab-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.estab-field-row .field input[type='number'] { max-width: none; }
+/* Section Classification : léger accent pour la distinguer (nouvelle, business) */
+.establishment-classification { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+.establishment-classification legend { color: var(--accent-strong); }
+.establishment-classification-read h3 { color: var(--accent-strong); }
 
 .estab-override-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .estab-override-form input[type='date'] { height: 34px; max-width: 160px; }

@@ -1,6 +1,7 @@
 const { getPool, readStaffState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
-const { refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { refreshCenterOverrides, getCenter } = require('../lib/ops-knowledge');
+const { normalizeClassification } = require('../lib/center-config');
 const { isStaffAuthStorageError, requireStaffPermission } = require('../lib/staff-auth');
 
 function buildOfflineStaffState(date, centerId, error) {
@@ -52,7 +53,11 @@ module.exports = async (req, res) => {
       return;
     }
     res.setHeader('ETag', snapshot.revision);
-    sendJson(res, 200, { ok: true, ...snapshot });
+    // Classification client/groupe du centre (seuils groupe + formules anniversaire),
+    // servie à tout le staff via le poll qu'il fait déjà — pas de requête en plus.
+    let classification;
+    try { classification = normalizeClassification(getCenter(centerId)?.classification); } catch (error) { classification = undefined; }
+    sendJson(res, 200, { ok: true, ...snapshot, classification });
   } catch (error) {
     if (isStaffAuthStorageError(error)) {
       const requestUrl = new URL(req.url, 'http://localhost');

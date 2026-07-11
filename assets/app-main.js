@@ -1779,6 +1779,9 @@ async function syncDateReservations(dateStr, opts = {}) {
     replaceReservationsForDate(dateStr, payload.reservations || []);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
     if (payload.laneMaintenance) state.laneMaintenance = payload.laneMaintenance;
+    // Classification client/groupe du centre (seuils groupe + formules annif),
+    // servie par le poll — pilote isGroup/hasBirthday/tiers côté Clients & Groupes.
+    if (payload.classification) state.staffClassification = payload.classification;
     hydrateSelectedReservation();
     save();
     if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
@@ -5906,11 +5909,50 @@ function getStaffGroupStatusKey(reservation = {}) {
   return ['pending', 'confirmed', 'arrived', 'paid'].includes(reservation.status) ? reservation.status : 'confirmed';
 }
 
+// Classification client/groupe SERVIE PAR LE CENTRE (staff-state) : seuils
+// groupe + formules anniversaire éditables côté Établissement. Défauts alignés
+// sur le serveur (lib/center-config.js DEFAULT_CLASSIFICATION) tant que le poll
+// n'a rien renvoyé.
+const DEFAULT_STAFF_CLASSIFICATION = {
+  groupMinPax: 10,
+  groupMinCumulative: 18,
+  countFormulaAsGroup: true,
+  sizeTiers: { medium: 12, large: 30, xl: 60 },
+  birthdayFromFormula: true,
+  birthdayFormulaIds: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'],
+};
+
+function getStaffClassification() {
+  const c = state.staffClassification;
+  if (!c || typeof c !== 'object') return DEFAULT_STAFF_CLASSIFICATION;
+  const tiers = (c.sizeTiers && typeof c.sizeTiers === 'object') ? c.sizeTiers : DEFAULT_STAFF_CLASSIFICATION.sizeTiers;
+  return {
+    groupMinPax: Number(c.groupMinPax) || DEFAULT_STAFF_CLASSIFICATION.groupMinPax,
+    groupMinCumulative: Number(c.groupMinCumulative) || DEFAULT_STAFF_CLASSIFICATION.groupMinCumulative,
+    countFormulaAsGroup: c.countFormulaAsGroup !== false,
+    sizeTiers: {
+      medium: Number(tiers.medium) || DEFAULT_STAFF_CLASSIFICATION.sizeTiers.medium,
+      large: Number(tiers.large) || DEFAULT_STAFF_CLASSIFICATION.sizeTiers.large,
+      xl: Number(tiers.xl) || DEFAULT_STAFF_CLASSIFICATION.sizeTiers.xl,
+    },
+    birthdayFromFormula: c.birthdayFromFormula !== false,
+    birthdayFormulaIds: Array.isArray(c.birthdayFormulaIds) ? c.birthdayFormulaIds : DEFAULT_STAFF_CLASSIFICATION.birthdayFormulaIds,
+  };
+}
+
+// Une réservation compte-t-elle comme « anniversaire » via sa formule ?
+function isStaffBirthdayFormulaReservation(reservation, classification = getStaffClassification()) {
+  if (!classification.birthdayFromFormula) return false;
+  const formulaId = reservation && (reservation.formuleId || reservation.formulaId);
+  return Boolean(formulaId) && classification.birthdayFormulaIds.includes(formulaId);
+}
+
 function getStaffGroupSizeKey(row = {}, reservation = null) {
   const pax = Number(reservation?.pax || row.maxPax || row.players || 0);
-  if (pax >= 60) return 'xl';
-  if (pax >= 30) return 'large';
-  if (pax >= 12) return 'medium';
+  const tiers = getStaffClassification().sizeTiers;
+  if (pax >= tiers.xl) return 'xl';
+  if (pax >= tiers.large) return 'large';
+  if (pax >= tiers.medium) return 'medium';
   return 'small';
 }
 
@@ -6753,6 +6795,20 @@ async function submitCenterConfig(centerId) {
   if (document.getElementById('estab-fbp-public')?.checked) formulaBlockedPeriods.push('public');
   if (document.getElementById('estab-fbp-short')?.checked) formulaBlockedPeriods.push('school_short');
   if (document.getElementById('estab-fbp-summer')?.checked) formulaBlockedPeriods.push('school_summer');
+  // Classification client/groupe éditée par le staff (seuils + formules annif).
+  const birthdayFormulaIds = FORMULES.filter(formule => document.getElementById(`estab-bday-${formule.id}`)?.checked).map(formule => formule.id);
+  const classification = {
+    groupMinPax: Number(establishmentInputValue('estab-groupMinPax', 10)),
+    groupMinCumulative: Number(establishmentInputValue('estab-groupMinCumulative', 18)),
+    countFormulaAsGroup: !!document.getElementById('estab-countFormulaAsGroup')?.checked,
+    sizeTiers: {
+      medium: Number(establishmentInputValue('estab-tier-medium', 12)),
+      large: Number(establishmentInputValue('estab-tier-large', 30)),
+      xl: Number(establishmentInputValue('estab-tier-xl', 60)),
+    },
+    birthdayFromFormula: !!document.getElementById('estab-birthdayFromFormula')?.checked,
+    birthdayFormulaIds,
+  };
   const config = {
     status: establishmentInputValue('estab-status', 'active'),
     resources: {
@@ -6773,7 +6829,8 @@ async function submitCenterConfig(centerId) {
       formulaBlockedPeriods
     },
     offerAvailability,
-    activityAvailability
+    activityAvailability,
+    classification
   };
   const name = establishmentInputValue('estab-name').trim();
   submitCenterConfigInFlight = true;
@@ -6866,6 +6923,9 @@ function renderStaffUtilityEstablishment() {
   const editing = canEdit && !!state.establishmentEditing;
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
+  const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
+  const classTiers = classification.sizeTiers && typeof classification.sizeTiers === 'object' ? classification.sizeTiers : {};
+  const birthdayFormulaIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
   const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
     ? center.holidaySettings
     : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] };
@@ -6975,6 +7035,37 @@ function renderStaffUtilityEstablishment() {
           </div>
         </fieldset>
 
+        <fieldset class="establishment-card establishment-classification">
+          <legend>Classification clients &amp; groupes</legend>
+          <p class="estab-card-hint">Définit à partir de quand une réservation devient un « groupe », et quelles formules valent « anniversaire ». S'applique en direct aux pages Clients et Groupes.</p>
+          <div class="estab-field-row">
+            <div class="field"><label for="estab-groupMinPax">Groupe dès (joueurs / résa)</label><input type="number" id="estab-groupMinPax" min="2" max="200" value="${Number(classification.groupMinPax || 10)}"></div>
+            <div class="field"><label for="estab-groupMinCumulative">… ou joueurs cumulés</label><input type="number" id="estab-groupMinCumulative" min="2" max="5000" value="${Number(classification.groupMinCumulative || 18)}"></div>
+          </div>
+          <label class="establishment-toggle"><input type="checkbox" id="estab-countFormulaAsGroup" ${classification.countFormulaAsGroup !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec formule compte comme groupe</span></label>
+          <div class="estab-subsection">
+            <h4>Paliers de taille (badges groupes)</h4>
+            <div class="estab-field-row">
+              <div class="field"><label for="estab-tier-medium">Moyen dès</label><input type="number" id="estab-tier-medium" min="2" max="500" value="${Number(classTiers.medium || 12)}"></div>
+              <div class="field"><label for="estab-tier-large">Grand dès</label><input type="number" id="estab-tier-large" min="2" max="1000" value="${Number(classTiers.large || 30)}"></div>
+              <div class="field"><label for="estab-tier-xl">XL dès</label><input type="number" id="estab-tier-xl" min="2" max="2000" value="${Number(classTiers.xl || 60)}"></div>
+            </div>
+          </div>
+          <div class="estab-subsection">
+            <h4>Formules considérées « anniversaire »</h4>
+            <label class="establishment-toggle"><input type="checkbox" id="estab-birthdayFromFormula" ${classification.birthdayFromFormula !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec une de ces formules est classée anniversaire (même sans le déclarer)</span></label>
+            <div class="establishment-activity-grid">
+              ${FORMULES.map(formule => {
+                const on = birthdayFormulaIds.includes(formule.id);
+                return `<label class="establishment-activity ${on ? 'on' : ''}">
+                  <input type="checkbox" id="estab-bday-${escapeHtml(formule.id)}" ${on ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+                  <span>${escapeHtml(formule.name)}</span>
+                </label>`;
+              }).join('')}
+            </div>
+          </div>
+        </fieldset>
+
         <fieldset class="establishment-card establishment-offers">
           <legend>Offres &amp; formules</legend>
           <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
@@ -7034,6 +7125,10 @@ function renderEstablishmentReadView(center) {
   const activities = (staffCenterConfigCache.activities || []);
   const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
   const disabledOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] === false);
+  const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
+  const classTiers = classification.sizeTiers && typeof classification.sizeTiers === 'object' ? classification.sizeTiers : {};
+  const birthdayIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
+  const birthdayNames = FORMULES.filter(formule => birthdayIds.includes(formule.id)).map(formule => formule.name);
   const kv = (label, value) => `<div class="establishment-kv"><span>${escapeHtml(label)}</span><strong>${value}</strong></div>`;
   const num = (v) => `<span class="num">${escapeHtml(String(v))}</span>`;
   const hoursGrid = (block) => ESTABLISHMENT_DAYS.map(([key, label]) => {
@@ -7072,6 +7167,14 @@ function renderEstablishmentReadView(center) {
       <div class="establishment-hours-grid">${hoursGrid(holiday)}</div>
       ${kv('Formules anniversaires bloquées', blockedLabel.length ? escapeHtml(blockedLabel.join(', ')) : 'jamais')}
       ${overrides.length ? `<div class="establishment-read-tags">${overrides.map(item => `<span>${escapeHtml(item.date)} · ${item.mode === 'holiday' ? 'vacances/férié' : 'jour normal'}</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="establishment-read-card establishment-classification-read">
+      <h3>Classification clients &amp; groupes</h3>
+      ${kv('Groupe dès', `${num(Number(classification.groupMinPax || 10))} joueurs / résa · ou ${num(Number(classification.groupMinCumulative || 18))} cumulés${classification.countFormulaAsGroup !== false ? ' · ou 1 formule' : ''}`)}
+      ${kv('Paliers taille', `moyen ${num(Number(classTiers.medium || 12))} · grand ${num(Number(classTiers.large || 30))} · XL ${num(Number(classTiers.xl || 60))}`)}
+      ${classification.birthdayFromFormula !== false
+        ? `<p class="establishment-read-hint">Formules classées « anniversaire » :</p><div class="establishment-read-tags">${birthdayNames.length ? birthdayNames.map(name => `<span>${escapeHtml(name)}</span>`).join('') : '<span>aucune</span>'}</div>`
+        : '<p class="establishment-read-empty">L\'anniversaire n\'est déterminé que par l\'occasion déclarée par le client.</p>'}
     </div>
     <div class="establishment-read-card establishment-activities-read">
       <h3>Offres &amp; formules</h3>
@@ -9307,7 +9410,11 @@ function buildStaffClientRowsFromReservations(reservations = []) {
     .map(profile => {
       const daysSinceLast = profile.lastDate ? staffClientDaysBetween(todayStr(), profile.lastDate) : 999;
       const isNew = profile.firstDate && getMonthKey(profile.firstDate) === getMonthKey(state.currentDate || todayStr());
-      const isGroup = profile.maxPax >= 10 || profile.players >= 18 || profile.formulas > 0;
+      // Seuils groupe SERVIS PAR LE CENTRE (éditables côté Établissement).
+      const classification = getStaffClassification();
+      const isGroup = profile.maxPax >= classification.groupMinPax
+        || profile.players >= classification.groupMinCumulative
+        || (classification.countFormulaAsGroup && profile.formulas > 0);
       // Occasion DÉCLARÉE : on prend la plus récente réservation qui en porte une.
       const declaredOccasionSource = [...profile.reservationsRaw]
         .sort((left, right) => `${right.date || ''} ${right.startTime || ''}`.localeCompare(`${left.date || ''} ${left.startTime || ''}`))
@@ -9315,11 +9422,14 @@ function buildStaffClientRowsFromReservations(reservations = []) {
       const declaredOccasion = declaredOccasionSource
         ? String(declaredOccasionSource.occasion).toLowerCase()
         : '';
-      // hasBirthday : occasion déclarée prioritaire ; repli regex UNIQUEMENT si
-      // aucune occasion n'a été déclarée (rétrocompat anciennes réservations).
-      const hasBirthday = declaredOccasion
+      // hasBirthday : une résa avec une FORMULE anniversaire (f1–f8 par défaut,
+      // configurable) compte comme anniversaire ; sinon occasion déclarée ;
+      // sinon repli regex (rétrocompat anciennes réservations sans occasion).
+      const hasBirthdayFormula = profile.reservationsRaw.some(reservation =>
+        reservation.status !== 'cancelled' && isStaffBirthdayFormulaReservation(reservation, classification));
+      const hasBirthday = hasBirthdayFormula || (declaredOccasion
         ? declaredOccasion === 'anniversaire'
-        : profile.reservationsRaw.some(reservation => /anniversaire|birthday|enfant/i.test(`${reservation.name || ''} ${reservation.label || ''} ${reservation.notes || ''}`));
+        : profile.reservationsRaw.some(reservation => /anniversaire|birthday|enfant/i.test(`${reservation.name || ''} ${reservation.label || ''} ${reservation.notes || ''}`)));
       const status = profile.revenue >= 500 || profile.visits >= 4
         ? 'Fidèle'
         : isNew

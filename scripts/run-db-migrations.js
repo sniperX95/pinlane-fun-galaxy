@@ -70,6 +70,11 @@ const MIGRATIONS = [
     file: 'database/email-studio-schema.sql',
     description: 'Email studio: custom templates and sender identities per center',
   },
+  {
+    id: '0014_lane_maintenance_window',
+    file: 'database/lane-maintenance-window-schema.sql',
+    description: 'Dated maintenance windows on lanes (auto-lift outside the window)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

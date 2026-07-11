@@ -1774,6 +1774,7 @@ async function syncDateReservations(dateStr, opts = {}) {
     staffSyncAtByDate[revisionKey] = Date.now();
     replaceReservationsForDate(dateStr, payload.reservations || []);
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
+    if (payload.laneMaintenance) state.laneMaintenance = payload.laneMaintenance;
     hydrateSelectedReservation();
     save();
     if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
@@ -4344,7 +4345,10 @@ function getStaffDashboardAlertDefinitions(metrics) {
       kind: 'maintenance',
       priority: 'info',
       title: 'Pistes en maintenance',
-      text: `Piste${maintenanceLanes.length > 1 ? 's' : ''} ${maintenanceLanes.join(', ')} bloquée${maintenanceLanes.length > 1 ? 's' : ''}`,
+      text: `Piste${maintenanceLanes.length > 1 ? 's' : ''} ${maintenanceLanes.map(lane => {
+        const window = state.laneMaintenance?.[lane];
+        return window && window.until ? `${lane} (jusqu'au ${window.until})` : String(lane);
+      }).join(', ')} bloquée${maintenanceLanes.length > 1 ? 's' : ''}`,
       lanes: maintenanceLanes,
       rows: [],
       action: 'Libérer chaque piste dès que le responsable terrain confirme qu\'elle est de nouveau exploitable.'
@@ -6094,7 +6098,13 @@ function renderStaffUtilityLaneGrid(reservations = getStaffUtilityReservations()
         </div>
         <div class="utility-lane-meter"><i style="width:${fill}%"></i></div>
         <div class="utility-lane-next">${next ? `<b>${escapeHtml(next.reservation.name || 'Client')}</b><span>${escapeHtml(getReservationLabel(next.reservation))}</span>` : '<span>Aucun bloc planifié</span>'}</div>
-        <button type="button" onclick="toggleMaint(${lane}, event)">${status === 'maintenance' ? 'Réactiver' : 'Maintenance'}</button>
+        <div class="utility-lane-actions">
+          <button type="button" onclick="toggleMaint(${lane}, event)">${status === 'maintenance' ? 'Réactiver' : 'Maintenance'}</button>
+          ${status !== 'maintenance' ? `<button type="button" onclick="toggleMaintDated(${lane}, event)">Maintenance datée…</button>` : ''}
+        </div>
+        ${status === 'maintenance' && state.laneMaintenance?.[lane] && (state.laneMaintenance[lane].from || state.laneMaintenance[lane].until)
+          ? `<small class="utility-state-note">Du ${state.laneMaintenance[lane].from || '…'} au ${state.laneMaintenance[lane].until || '…'}${state.laneMaintenance[lane].note ? ` · ${escapeHtml(state.laneMaintenance[lane].note)}` : ''}</small>`
+          : ''}
       </article>`;
     }).join('')}
   </div>`;
@@ -10589,6 +10599,38 @@ function renderLaserPlanning() {
   wrap.scrollLeft = prevScrollLeft;
 }
 
+// Maintenance datée : fenêtre [du, au] — la piste reste réservable hors
+// fenêtre et se libère automatiquement après (résolution par date côté
+// serveur, y compris dans le chemin d'écriture des réservations).
+async function toggleMaintDated(i, ev) {
+  if (ev) ev.stopPropagation();
+  const today = todayStr();
+  const from = window.prompt(`Piste ${i} — début de maintenance (AAAA-MM-JJ, vide = dès maintenant) :`, today);
+  if (from === null) return;
+  const until = window.prompt(`Piste ${i} — fin de maintenance (AAAA-MM-JJ, vide = jusqu'à réactivation manuelle) :`, from || today);
+  if (until === null) return;
+  const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
+  if ((from && !DATE_RX.test(from)) || (until && !DATE_RX.test(until))) { toast('Format de date invalide (AAAA-MM-JJ).'); return; }
+  if (from && until && until < from) { toast('La fin précède le début.'); return; }
+  const note = window.prompt("Motif (optionnel, visible par l'équipe) :", '') || '';
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffLanes, {
+      method: 'PATCH',
+      body: JSON.stringify({ lane: i, status: 'maintenance', maintenanceFrom: from || '', maintenanceUntil: until || '', note }),
+    });
+    const lane = payload.lane || {};
+    state.laneMaintenance = state.laneMaintenance || {};
+    state.laneMaintenance[i] = { from: lane.maintenanceFrom || '', until: lane.maintenanceUntil || '', note: lane.maintenanceNote || '' };
+    const applies = (!lane.maintenanceFrom || today >= lane.maintenanceFrom) && (!lane.maintenanceUntil || today <= lane.maintenanceUntil);
+    state.laneStatuses[i] = applies ? 'maintenance' : 'active';
+    save();
+    renderStaff();
+    toast(`Piste ${i} : maintenance ${lane.maintenanceFrom || 'immédiate'} → ${lane.maintenanceUntil || 'sans fin'}${applies ? '' : ' (programmée)'}`);
+  } catch (error) {
+    toast(error.message || 'Impossible de programmer la maintenance.');
+  }
+}
+
 async function toggleMaint(i, ev) {
   if (ev) ev.stopPropagation();
   const previousStatus = state.laneStatuses[i];
@@ -10604,6 +10646,10 @@ async function toggleMaint(i, ev) {
     const confirmedStatus = payload.lane?.status || nextStatus;
     const changedOnConfirm = state.laneStatuses[i] !== confirmedStatus;
     state.laneStatuses[i] = confirmedStatus;
+    if (state.laneMaintenance) {
+      if (confirmedStatus === 'maintenance') state.laneMaintenance[i] = { from: payload.lane?.maintenanceFrom || '', until: payload.lane?.maintenanceUntil || '', note: payload.lane?.maintenanceNote || '' };
+      else delete state.laneMaintenance[i];
+    }
     save();
     if (changedOnConfirm) renderPlanning();
     toast(`Piste ${i} ${state.laneStatuses[i] === 'maintenance' ? 'en maintenance' : 'active'}`);

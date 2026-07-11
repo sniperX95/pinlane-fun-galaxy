@@ -7739,6 +7739,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   border-radius: var(--radius-full); background: var(--accent); color: var(--accent-contrast);
   font: 700 10.5px var(--font-data);
 }
+.utility-lane-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
 /* ============================================================
    Onglet « Mails » — studio (admin-mail.js)

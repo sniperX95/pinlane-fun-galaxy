@@ -580,7 +580,8 @@
     }
     if (centerId !== 'libramont') {
       if (typeof setView === 'function') setView('admin');
-      if (typeof setAdminCenter === 'function') setAdminCenter(centerId);
+      if (typeof openAdminCenter === 'function') openAdminCenter(centerId);
+      else if (typeof setAdminCenter === 'function') setAdminCenter(centerId);
     } else if (typeof renderStaff === 'function' && typeof state !== 'undefined' && state.view === 'staff') {
       renderStaff();
     }

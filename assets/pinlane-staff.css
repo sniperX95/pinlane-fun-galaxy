@@ -7574,7 +7574,26 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   font-weight: 700;
   white-space: nowrap;
 }
-.cr-badge-new { background: var(--accent-soft); color: var(--accent-strong, var(--accent)); }
-.cr-badge-progress { background: #fff2e0; color: #a85a12; }
-.cr-badge-handled { background: #e6f6ec; color: #1c7a44; }
-.cr-badge-archived { background: var(--subtle); color: var(--text-2); }
+.cr-badge-new { background: var(--accent-soft); color: var(--accent-strong); }
+.cr-badge-progress { background: var(--warning-soft); color: var(--warning); }
+.cr-badge-handled { background: var(--success-soft); color: var(--success); }
+.cr-badge-archived { background: var(--subtle); color: var(--muted); }
+
+/* C14 : échec de chargement des bundles admin/ops — panneau bloquant + retry.
+   #adminView est en pointer-events:none ; seul ce panneau se réactive. */
+.admin-load-error {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--line));
+  background: var(--danger-soft);
+  color: var(--text);
+}
+.admin-load-error strong { color: var(--danger); }
+.admin-load-error p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }

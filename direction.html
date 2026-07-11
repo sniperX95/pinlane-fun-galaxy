@@ -10,8 +10,8 @@
   <script>try{var t=localStorage.getItem('pinlane-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="./assets/pinlane.css?v=20260710w5">
-  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260710w5">
+  <link rel="stylesheet" href="./assets/pinlane.css?v=20260711a">
+  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260711a">
 </head>
 <body class="direction">
   <main class="wrap">
@@ -164,6 +164,7 @@
         </div>`).join('')}</div>`;
     }
     function renderSamples() {
+      if (!state.samples.length) return '<div class="empty">Aucun modèle à prévisualiser. Les aperçus des templates d\'emails apparaissent ici dès qu\'ils sont disponibles.</div>';
       return `<div class="list">${state.samples.map((item, index) => `
         <div class="row template">
           <div><span class="pill">${esc(label(item.templateId))}</span><div class="meta">Aperçu</div></div>
@@ -275,7 +276,18 @@
     async function stepSimulation(batchSize = 8, auto = false) {
       const run = state.simulation?.run;
       if (!run?.id || run.status !== 'running') return stopSimulationAuto();
-      state.simulation = await json(simulationApi, { method:'POST', body:JSON.stringify({ action:'step', centerId:'libramont', date:run.simDate, runId:run.id, batchSize }) });
+      // Appelée par onclick ET par la boucle auto : sans catch, un 500 devient
+      // un rejet non géré, zéro feedback, et la boucle meurt en affichant
+      // encore « Pause auto ».
+      try {
+        state.simulation = await json(simulationApi, { method:'POST', body:JSON.stringify({ action:'step', centerId:'libramont', date:run.simDate, runId:run.id, batchSize }) });
+        state.actionError = '';
+      } catch (error) {
+        stopSimulationAuto(false);
+        state.actionError = `Avancement de la simulation impossible : ${error.message}`;
+        render();
+        return;
+      }
       render();
       if (state.simulation.run?.status === 'running' && state.simAuto) scheduleSimulationAuto();
       else stopSimulationAuto(false);

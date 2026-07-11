@@ -10,8 +10,8 @@
   <script>try{var t=localStorage.getItem('pinlane-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="./assets/pinlane.css?v=20260710w5">
-  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260710w5">
+  <link rel="stylesheet" href="./assets/pinlane.css?v=20260711a">
+  <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260711a">
 </head>
 <body class="public-form">
   <div class="shell">
@@ -111,7 +111,7 @@
             <label>Décrivez votre besoin *<textarea id="crMessage" placeholder="Privatisation, traiteur, facture entreprise, budget..."></textarea></label>
             <button type="button" class="cta" id="submitCustomRequest">Envoyer ma demande</button>
             <div class="success" id="customRequestSuccess"></div>
-            <div class="notice" id="customRequestNotice" style="display:none;"></div>
+            <div class="notice" id="customRequestNotice" style="display:none;" role="alert"></div>
           </div>
         </div>
       </div>

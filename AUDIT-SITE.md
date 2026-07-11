@@ -136,5 +136,30 @@ Après chaque vague : `npm run test:ops:all` vert + re-screenshots des pages tou
 | 3 — Reskin client v2 | `98a5ff3` | P1-1 (couche fgx supprimée), P0-4, P2-1, P2-2, P3-7, P3-8 (-73 Ko fonts), P3-9, C11 | 134/134 assertions, `artifacts/audit/wave3/`, ops:all + visual verts |
 | 4b — Staff Groupes + polish | `6203092` | P1-6, P1-11, P3-1, P3-2, A7 + réparation harnais test:visual (2 assertions flaky par construction) | `artifacts/audit/wave4b/`, visual + ops:all verts |
 | 5 — Purge & perf | `d8d37b7` | C8 (app-main.js −~1 900 lignes legacy), C10 (2 crons morts supprimés), C12 (CSS morts purgés), C13 (doublons remontés dans pinlane.css), C14 (admin/ops-console lazy-loadés à la demande), C15 (0 PNG racine) | `artifacts/audit/wave5/` (17 shots + assertions réseau `scripts/wave5-manual-check.js`), ops:all + visual verts |
+| Adversariale — fixes ADV-1..7 | (ce commit) | Voir §5 : lazyfail admin (P0), centre perdu, sim step 500, contrastes AA tokens, empty state Modèles, role=alert bespoke, cr-badge tokens | `scripts/adversarial-manual-check.js` ALL OK, `artifacts/audit/adversarial/`, ops:all + visual verts |
 
 **Restent volontairement en décision propriétaire (non implémentés)** : P0-2 purge des lignes `sim-*` en prod (destructif) · A6 (redondance scoreboard/dashboard — produit) · A8 (Simulation rush exposée en console direction — produit) · P3-5 (pro.html orpheline — lien à décider) · P3-6/tmp (29 Mo débris locaux) · isolation writes simulation (design à trancher : table dédiée vs filtre channel).
+
+## 5. Passe adversariale (2026-07-11)
+
+Trois reviewers à contexte frais (zones client / staff+admin / direction+marginales+régression code), interdits de lire cet audit, briefés « prouve que c'est raté » : screenshots light/dark × desktop/mobile, capture pageerror systématique, scan contrastes/overflow instrumenté (`artifacts/adversarial/` : 233 preuves, `_scripts/adv-results.json`).
+
+### Findings → tous corrigés (ce commit)
+
+| ID | Prio | Finding | Preuve | Fix |
+|---|---|---|---|---|
+| ADV-1 | **P0** | Échec d'injection des consoles lazy (C14) → UI admin morte mais cliquable : le `.catch` de `setView('admin')` restaurait `pointer-events` alors que les onclick statiques de `#adminView` (`index.html:581-609`) pointent vers des fonctions du bundle absent → ReferenceError à chaque clic, aucune issue | `artifacts/adversarial/marginal/index-admin-lazyfail-after-click.png` | Panneau d'erreur `role=alert` + bouton Réessayer (`renderAdminConsoleLoadError`), chrome statique neutralisé pendant la panne ; la promesse rejetée étant purgée du cache, le retry réinjecte réellement |
+| ADV-2 | P1 | Premier switch de centre ≠ Libramont silencieusement perdu : `setView('admin')` lance l'injection async puis `typeof setAdminCenter` échoue (le lazy-load garantit l'absence au premier appel) | `staff-menu.js:583` (avant fix) | `openAdminCenter()` mémorise `state.adminCenterId` avant injection (pattern `openAdminTab`) |
+| ADV-3 | P1 | `stepSimulation` (onclick + boucle auto) sans try/catch : un 500 = unhandled rejection, zéro feedback, boucle auto morte qui affiche encore « Pause auto » | `run2.log` DIR-SIM-STEP-* | try/catch → bannière `actionError` (role=alert existant) + `stopSimulationAuto` |
+| ADV-4 | P1 | Contrastes AA systématiques : dark = blanc sur `--accent` #3291ff à **3.17:1** sur TOUS les éléments actifs (seg-btn, dur-pill, anchor-chip, badge, slot) ; light = `--faint` #8f8f8f à **2.89-3.23** (prix barrés, meta formules, « optionnel », « À régler sur place ») ; texte accent 13px à 4.0-4.36 (kicker, pax-alert, eyebrow) | mesures `adv-results.json` | Tokens : `--accent-contrast` dark → `#0a0a0a` (6.25:1, corrige aussi blanc/success 1.9:1) · `--faint` → `#6f6f6f`/`#828282` (5.0:1+) · textes accent → `--accent-strong` + nouveau `--info-strong` (5.06-8.4:1) |
+| ADV-5 | P2 | Onglet Modèles (direction.html) sans état vide : panneau nu quand 0 sample | `artifacts/adversarial/marginal/direction-empty-samples.png` | Empty state aligné sur Suggestions/Journal |
+| ADV-6 | P2 | Erreurs « sur mesure » affichées sans `role=alert`/aria-live (index `bespokeError` + public-form `customRequestNotice`) | `adv-results.json` flow bespoke | `role="alert"` sur les deux conteneurs |
+| ADV-7 | P3 | `.cr-badge-*` : 4 couleurs en dur + token inexistant `--text-2` (couleur invalide) | `pinlane-staff.css:7577-7580` (avant fix) | Tokens `warning`/`success`/`muted` |
+
+### RAS prouvés (rien à corriger)
+
+Client : 0 pageerror, 0 overflow horizontal sur tout le flux (14 étapes × 4 variantes), erreurs de validation avec 3 role=alert + aria-invalid, état 500 propre avec retry fonctionnel. Staff : 8 pages + palette + modale rôle propres light/dark/mobile ; deep-links `#admin/...` à froid OK ; recovery bundle lent OK. Direction : permissions partielles dégradées proprement (403 par section), erreur 500 affichée, empty states (sauf Modèles → ADV-5). Marginales : menus/QR/pro propres (reduced-motion OK, no-JS pro OK). Le « band » noir direction light et le « chevauchement CTA mobile » = artefacts de capture fullPage (overflow mesuré = 0, pixels sondés).
+
+### Preuves du fix
+
+`scripts/adversarial-manual-check.js` (harnais commité) : ALL OK — lazyfail → panneau + zéro ReferenceError au clic forcé + retry qui réinjecte et rend ; centre conservé à travers le lazy-load ; step 500 → bannière + auto stoppé + zéro rejection ; Modèles vide → état vide ; contrastes re-mesurés 4.55-8.4:1 light+dark sur chaque élément précédemment fautif. Screenshots : `artifacts/audit/adversarial/`.

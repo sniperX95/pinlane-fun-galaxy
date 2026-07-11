@@ -2346,6 +2346,36 @@ function ensureOpsConsoleLoaded() {
   return loadConsoleScriptOnce(OPS_CONSOLE_SRC);
 }
 
+// C14 : si l'injection échoue, l'UI statique de #adminView (onclick vers des
+// fonctions du bundle absent) serait un piège à ReferenceError — on la laisse
+// neutralisée (pointer-events) et on pose un panneau d'erreur avec retry ;
+// la promesse rejetée étant purgée du cache, setView('admin') relance une
+// vraie injection.
+function clearAdminConsoleLoadError() {
+  const panel = document.getElementById('adminConsoleLoadError');
+  if (panel) panel.remove();
+}
+
+function renderAdminConsoleLoadError(adminRoot) {
+  if (!adminRoot) {
+    toast('Console direction indisponible (script non chargé).');
+    return;
+  }
+  adminRoot.style.pointerEvents = 'none';
+  clearAdminConsoleLoadError();
+  const panel = document.createElement('div');
+  panel.id = 'adminConsoleLoadError';
+  panel.className = 'admin-load-error';
+  panel.setAttribute('role', 'alert');
+  panel.innerHTML = `
+    <div>
+      <strong>Console direction indisponible</strong>
+      <p>Le module n'a pas pu être chargé (connexion instable ?). Vos données ne sont pas affectées.</p>
+    </div>
+    <button type="button" class="admin-btn" onclick="setView('admin')">Réessayer</button>`;
+  adminRoot.prepend(panel);
+}
+
 // Point d'entrée unique du besoin Ops côté staff : charge ops-console.js au
 // premier appel puis délègue à loadOpsAdmin (définie par le script injecté).
 function requestOpsAdminLoad(force = false) {
@@ -2398,6 +2428,7 @@ function setView(v) {
     // C14 : le rendu admin ne démarre qu'une fois les deux consoles injectées
     // (couvre aussi le deep-link #admin/... au boot, qui passe par setView).
     const adminRoot = document.getElementById('adminView');
+    clearAdminConsoleLoadError();
     if (adminRoot) adminRoot.style.pointerEvents = 'none';
     ensureAdminConsolesLoaded()
       .then(() => {
@@ -2407,8 +2438,11 @@ function setView(v) {
         loadAdminDashboard(false);
       })
       .catch(() => {
-        if (adminRoot) adminRoot.style.pointerEvents = '';
-        toast('Console direction indisponible (script non chargé).');
+        if (state.view !== 'admin') {
+          if (adminRoot) adminRoot.style.pointerEvents = '';
+          return;
+        }
+        renderAdminConsoleLoadError(adminRoot);
       });
   }
   else document.body.style.overflow = '';
@@ -7782,6 +7816,18 @@ function openAdminTab(tab) {
     return;
   }
   state.adminTab = tab || 'overview';
+  save();
+}
+
+// C14 : sélection de centre sûre pendant l'injection — le centre est mémorisé
+// et le .then() de setView('admin') rend le dashboard avec (sans ce garde, le
+// premier switch de centre était perdu, setAdminCenter n'existant pas encore).
+function openAdminCenter(centerId) {
+  if (typeof setAdminCenter === 'function') {
+    setAdminCenter(centerId);
+    return;
+  }
+  state.adminCenterId = centerId || 'libramont';
   save();
 }
 

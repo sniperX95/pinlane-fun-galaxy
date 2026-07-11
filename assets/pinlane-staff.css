@@ -6534,9 +6534,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
    fixed → non rognée par l'overflow:hidden du mode agrandi. */
 #newResNotifs {
   position: fixed; top: 16px; right: 16px; z-index: 950;
-  display: flex; flex-direction: column; gap: 10px;
+  display: none; /* jamais côté client/public — réservé au poste staff */
+  flex-direction: column; gap: 10px;
   width: min(340px, calc(100vw - 32px)); pointer-events: none;
 }
+body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .nr-card {
   pointer-events: auto; position: relative;
   display: flex; align-items: flex-start; gap: 8px;

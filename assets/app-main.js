@@ -2422,6 +2422,9 @@ function setView(v) {
   document.body.classList.toggle('client-mode', v === 'client');
   document.body.classList.toggle('staff-mode', v === 'staff' || v === 'admin');
   document.body.classList.toggle('admin-mode', v === 'admin');
+  // Les notifs « nouvelle réservation » sont réservées au poste staff : on purge
+  // dès qu'on quitte cette vue (jamais rien qui traîne sur le parcours client).
+  if (v !== 'staff') clearNewResNotifs();
   document.getElementById('clientView').classList.toggle('hidden', v !== 'client');
   document.getElementById('staffView').classList.toggle('hidden', v !== 'staff');
   document.getElementById('adminView').classList.toggle('hidden', v !== 'admin');
@@ -13350,7 +13353,14 @@ function openNewResFromNotif(id) {
   if (typeof openStaffReservationDetail === 'function') openStaffReservationDetail(id);
 }
 
+function clearNewResNotifs() {
+  const root = document.getElementById('newResNotifs');
+  if (root) root.innerHTML = '';
+}
+
 function notifyNewReservation(reservation) {
+  // Verrou : jamais côté client/public, uniquement au poste staff.
+  if (state.view !== 'staff') return;
   if (!reservation || reservation.id == null) return;
   const id = reservation.id;
   if (document.getElementById(`nr-${id}`)) return; // déjà affichée

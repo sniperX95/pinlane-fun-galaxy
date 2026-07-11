@@ -62,6 +62,10 @@ async function main() {
     state.staffMenuPage = 'dashboard';
     state.currentDate = today;
     state.newResSound = true;
+    // Vue staff réelle : le conteneur de notifs n'est visible qu'en staff-mode
+    // (jamais côté client). On reproduit la classe posée par setView().
+    document.body.classList.add('staff-mode');
+    document.body.classList.remove('client-mode', 'admin-mode');
     save();
   });
 
@@ -107,6 +111,21 @@ async function main() {
   await page.locator('#newResNotifs .nr-card').first().locator('.nr-close').click();
   await page.waitForTimeout(400);
   assert(await page.locator('#newResNotifs .nr-card:has-text("Nouveau Client Web")').count() === 0, 'notif fermée à la main');
+
+  // JAMAIS côté client : conteneur masqué + purge à la bascule de vue.
+  await page.evaluate(() => {
+    // une notif est présente en staff…
+    notifyNewReservation({ id: 9099, name: 'Ne doit pas fuiter', startTime: '21:00', label: 'Bowling', pax: 3, status: 'confirmed' });
+  });
+  assert(await page.locator('#newResNotifs .nr-card').count() >= 1, 'notif créée en staff');
+  await page.evaluate(() => { document.body.classList.remove('staff-mode'); document.body.classList.add('client-mode'); state.view = 'client'; clearNewResNotifs(); });
+  await page.waitForTimeout(200);
+  const clientVisible = await page.locator('#newResNotifs').isVisible();
+  assert(!clientVisible, 'conteneur de notifs invisible côté client');
+  assert(await page.locator('#newResNotifs .nr-card').count() === 0, 'notifs purgées à la bascule vers client');
+  // …et une nouvelle notif tentée en client ne crée rien.
+  await page.evaluate(() => notifyNewReservation({ id: 9100, name: 'Client leak', startTime: '22:00', status: 'confirmed' }));
+  assert(await page.locator('#newResNotifs .nr-card').count() === 0, 'notifyNewReservation ignoré hors vue staff');
 
   const critical = pageErrors.filter((e) => !/ResizeObserver|favicon/i.test(e));
   if (critical.length) { console.log('PAGE ERRORS:', JSON.stringify(critical, null, 1)); throw new Error(`${critical.length} erreur(s) page`); }

@@ -3213,10 +3213,10 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-selector { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .establishment-selector-head h2 { font-size: 15px; }
 .establishment-selector-head p { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.establishment-center-list { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.establishment-center-list { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-start; }
 
 .establishment-center-chip {
-  display: grid; gap: 8px; min-width: 200px; flex: 1 1 200px; max-width: 280px; padding: 12px 14px; text-align: left;
+  display: grid; gap: 4px; min-width: 170px; flex: 0 1 210px; max-width: 240px; padding: 9px 12px; text-align: left;
   border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page);
   color: var(--text); cursor: pointer;
   transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
@@ -3236,7 +3236,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-status-closed { background: var(--subtle); color: var(--muted); }
 
 .establishment-add {
-  display: grid; gap: 8px; align-content: start; min-width: 200px; padding: 12px 14px;
+  display: grid; gap: 6px; align-content: start; min-width: 210px; flex: 0 1 240px; padding: 9px 12px;
   border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: var(--page);
 }
 .establishment-add span { color: var(--muted); font-size: 11px; font-weight: 500; }

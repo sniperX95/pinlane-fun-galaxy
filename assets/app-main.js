@@ -10567,8 +10567,8 @@ function renderDelayIndicator(reservation) {
   if (!flag) return '';
   const mins = Math.round(Number(flag.minutes) || 0);
   const range = flag.from && flag.to ? ` ${flag.from}→${flag.to}` : '';
-  const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''} — cliquer pour retirer l'indicateur de retard`;
-  return `<button type="button" class="delay-indicator" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}" onmousedown="event.stopPropagation()" onclick="clearDelayFlag(event, ${reservation.id})">`
+  const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''} — cliquer pour retirer le retard et remettre à l'heure d'origine`;
+  return `<button type="button" class="delay-indicator" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}" onmousedown="event.stopPropagation()" onclick="revertDelay(event, ${reservation.id})">`
     + `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
     + `<span class="delay-indicator-label">+${mins}</span></button>`;
 }
@@ -10594,6 +10594,34 @@ async function clearDelayFlag(ev, id) {
     toast(payload.cleared === false ? 'Aucun indicateur à retirer.' : 'Indicateur de retard retiré.');
   } catch (error) {
     toast(error.message || 'Impossible de retirer l\'indicateur de retard.');
+  }
+}
+
+// Retire le retard d'une réservation ET restaure son créneau d'origine (heure +
+// plan + pistes) via l'action serveur delayRevert (snapshot pré-décalage). Si
+// l'origine n'est pas restaurable (retard legacy / résa cascadée), le serveur se
+// contente de masquer l'indicateur et le signale dans le message.
+async function revertDelay(ev, id) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const reservation = state.reservations.find(item => Number(item.id) === Number(id));
+  const centerId = (reservation && reservation.centerId) || state.currentCenterId || 'libramont';
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delayRevert', centerId, reservationId: Number(id) })
+    });
+    if (payload.reservation) upsertReservationInState(payload.reservation);
+    if (state.selectedRes && Number(state.selectedRes.id) === Number(id) && payload.reservation) {
+      state.selectedRes = payload.reservation;
+    }
+    save();
+    renderStaffData();
+    renderPos();
+    if (payload.reverted) toast('Retard retiré — créneau d\'origine restauré.');
+    else if (payload.message) toast(payload.message);
+    else toast('Aucun retard à retirer.');
+  } catch (error) {
+    toast(error.message || 'Impossible de retirer le retard.');
   }
 }
 
@@ -11087,7 +11115,10 @@ function renderLaserPlanning() {
   const curH = currentTimeDecimal();
   const sessionsBySlot = new Map();
   sessions.forEach(session => {
-    const slotIndex = Math.max(0, Math.min(halfSlots - 1, Math.floor(((session.start - startHour) * 2) + 0.001)));
+    // Arrondi (et non plancher) à la demi-heure la plus proche : une vague qui
+    // démarre à :55 (ex. vague 2 d'un groupe scindé) tombe sur la LIGNE suivante
+    // (11:00) au lieu d'être empilée avec la vague 1 dans la case 10:30.
+    const slotIndex = Math.max(0, Math.min(halfSlots - 1, Math.round((session.start - startHour) * 2)));
     if (!sessionsBySlot.has(slotIndex)) sessionsBySlot.set(slotIndex, []);
     sessionsBySlot.get(slotIndex).push(session);
   });
@@ -11201,9 +11232,16 @@ function renderLaserPlanning() {
     const isHalf = slot % 2 === 1;
     const slotSessions = sessionsBySlot.get(slot) || [];
     const current = isToday && curH >= timeValue && curH < timeValue + 0.5;
-    const sessionPlayers = slotSessions.reduce((sum, session) => (
-      sum + session.windows.reduce((inner, window) => inner + Number(window.players || window.reservation?.pax || 0), 0)
-    ), 0);
+    // Occupation par tranche = pic de joueurs simultanés parmi les sessions qui
+    // CHEVAUCHENT la tranche [timeValue, +30 min), pas seulement celles qui y
+    // démarrent — sinon une vague qui déborde (ex. 10:55-11:20) laisse la tranche
+    // 11:00 à « 30 armes libres » alors qu'elle est occupée. `max` (pas somme) car
+    // deux vagues séquentielles ne tournent jamais en même temps ; exact tant que
+    // parallelLaunches === 1 (cas Fun Galaxy).
+    const slotStart = timeValue;
+    const slotEnd = timeValue + 0.5;
+    const activeSessions = sessions.filter(s => s.start < slotEnd && s.end > slotStart);
+    const sessionPlayers = activeSessions.reduce((peak, s) => Math.max(peak, s.windows.reduce((inner, window) => inner + Number(window.players || window.reservation?.pax || 0), 0)), 0);
     const remaining = Math.max(0, capacity - sessionPlayers);
     const sessionHtml = slotSessions.length
       ? `<div class="laser-session-stack">${slotSessions.map(session => renderLaserSession(session, timeValue)).join('')}</div>`

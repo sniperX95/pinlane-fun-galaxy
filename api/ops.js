@@ -34,6 +34,7 @@ const {
 } = require('../lib/database');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
+const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
 const {
   buildDirectionAnalytics,
   buildDirectionReportMarkdown,
@@ -124,38 +125,9 @@ function safeUserMessage(error, fallback = 'Service momentanément indisponible.
   return fallback;
 }
 
-// Marque le plan Ops d'une réservation avec un flag d'affichage « retard »
-// (opsPlan.delayFlag). Ce flag est purement visuel : il alimente l'indicateur
-// sur la carte planning et peut être retiré par le staff (delayClear) SANS
-// toucher au décalage horaire déjà appliqué. jsonb catch-all, zéro migration.
-function stampDelayFlag(opsPlan, { minutes, from, to }) {
-  const base = opsPlan && typeof opsPlan === 'object' ? opsPlan : {};
-  return {
-    ...base,
-    delayFlag: {
-      minutes: Number(minutes) || 0,
-      from: from || '',
-      to: to || '',
-      flaggedAt: new Date().toISOString(),
-      cleared: false,
-    },
-  };
-}
-
-function clearDelayFlagOnPlan(opsPlan) {
-  if (!opsPlan || typeof opsPlan !== 'object' || !opsPlan.delayFlag) return { plan: opsPlan, changed: false };
-  return {
-    plan: {
-      ...opsPlan,
-      delayFlag: {
-        ...opsPlan.delayFlag,
-        cleared: true,
-        clearedAt: new Date().toISOString(),
-      },
-    },
-    changed: true,
-  };
-}
+// Le flag d'affichage « retard » (opsPlan.delayFlag) — cumul des minutes,
+// snapshot du créneau d'origine et retrait — vit dans les helpers PURS de
+// lib/delay-flag.js (importés en tête, testés par scripts/delay-flag-check.js).
 
 function normalizeCenterId(value) {
   return String(value || '').trim().toLowerCase();
@@ -617,6 +589,22 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       const timeShifted = change.kind === 'delayed'
         || (change.previousStartTime && change.newStartTime && change.previousStartTime !== change.newStartTime);
       const flagMinutes = change.kind === 'delayed' ? impact.delayMinutes : change.shiftMinutes;
+      // Pour la résa CIBLE, on connaît son état PRÉ-décalage (`reservation`,
+      // chargé avant l'application) : on CUMULE au flag existant (badge +5 puis
+      // +10 => +15) et on snapshotte l'origine (heure + plan + pistes) pour un
+      // revert fidèle. Les résas cascadées n'exposent pas leur plan d'origine →
+      // pas de snapshot (leur revert se limite au masquage de l'indicateur).
+      const isTargetReservation = Number(change.reservationId) === reservationId;
+      const existingDelayFlag = isTargetReservation && reservation.opsPlan && typeof reservation.opsPlan === 'object'
+        ? reservation.opsPlan.delayFlag
+        : null;
+      const delayOrigin = isTargetReservation
+        ? {
+          startTime: reservation.startTime,
+          opsPlan: reservation.opsPlan || null,
+          lanes: Array.isArray(reservation.lanes) ? reservation.lanes : [],
+        }
+        : null;
       return {
         id: change.reservationId,
         startTime: change.update.startTime,
@@ -626,6 +614,8 @@ async function handlePost(req, res, providedBody = null, options = {}) {
             minutes: flagMinutes,
             from: change.previousStartTime,
             to: change.newStartTime,
+            existingFlag: existingDelayFlag,
+            origin: delayOrigin,
           })
           : change.update.opsPlan,
         noteAppend: change.kind === 'delayed'
@@ -841,6 +831,88 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       runLearning: false,
     }).catch(() => null);
     sendJson(res, 200, { ok: true, cleared: true, reservation: updated || reservation });
+    return;
+  }
+
+  if (action === 'delayRevert') {
+    // Retire le retard d'une réservation ET restaure son créneau d'origine
+    // (heure + plan + pistes) depuis le snapshot posé au premier retard. On
+    // restaure start_time ET opsPlan de façon COHÉRENTE : le contrôle de conflit
+    // de applyReservationScheduleUpdates valide alors le VRAI créneau et lève une
+    // erreur claire si l'origine a été reprise entre-temps. Ne recale QUE la résa
+    // cible (les résas cascadées gardent leur décalage).
+    requireConcreteCenter('retard');
+    const reservationId = Number(body.reservationId || body.reservation?.id || body.id || 0);
+    if (!reservationId) throw createHttpError('Réservation manquante pour retirer le retard.', 400);
+    const reservation = await getReservationById(reservationId);
+    if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    const revertSession = await requireStaffPermission(req, res, ['reservations.edit', 'planning.drag'], {
+      centerId: reservation.centerId || 'libramont',
+    });
+    if (!revertSession) return;
+
+    const flag = reservation.opsPlan && typeof reservation.opsPlan === 'object' ? reservation.opsPlan.delayFlag : null;
+    if (!flag || flag.cleared) {
+      sendJson(res, 200, { ok: true, reverted: false, reservation });
+      return;
+    }
+    const staffMember = revertSession.member?.name || revertSession.member?.id || 'staff';
+    const origin = flag.origin && typeof flag.origin === 'object' ? flag.origin : null;
+
+    // Sans snapshot d'origine (retard legacy antérieur à cette version, ou résa
+    // cascadée) : restaurer start_time seul désynchroniserait la donnée
+    // (start_time vs resourceBlocks). On se limite alors au masquage.
+    if (!origin || !origin.startTime || !origin.opsPlan || typeof origin.opsPlan !== 'object') {
+      const { plan, changed } = clearDelayFlagOnPlan(reservation.opsPlan);
+      if (!changed) {
+        sendJson(res, 200, { ok: true, reverted: false, reservation });
+        return;
+      }
+      const [cleared] = await applyReservationScheduleUpdates({
+        centerId: reservation.centerId || 'libramont',
+        date: reservation.date,
+        updates: [{ id: reservationId, startTime: reservation.startTime, lanes: reservation.lanes, opsPlan: plan }],
+      });
+      await createOpsEvent({
+        centerId: reservation.centerId || 'libramont',
+        reservationId,
+        eventType: 'delay_indicator_cleared',
+        payload: { clearedBy: staffMember, reason: 'no_origin_snapshot' },
+        runLearning: false,
+      }).catch(() => null);
+      sendJson(res, 200, {
+        ok: true,
+        reverted: false,
+        cleared: true,
+        reservation: cleared || reservation,
+        message: 'Indicateur retiré. L\'horaire d\'origine n\'a pas pu être restauré automatiquement (retard posé avant cette mise à jour) — ajustez à la main si besoin.',
+      });
+      return;
+    }
+
+    // Restauration cohérente : heure + plan d'origine (delayFlag retiré du plan).
+    const restoredPlan = { ...origin.opsPlan };
+    delete restoredPlan.delayFlag;
+    const restoredLanes = Array.isArray(origin.lanes) && origin.lanes.length ? origin.lanes : reservation.lanes;
+    const [updated] = await applyReservationScheduleUpdates({
+      centerId: reservation.centerId || 'libramont',
+      date: reservation.date,
+      updates: [{
+        id: reservationId,
+        startTime: origin.startTime,
+        lanes: restoredLanes,
+        opsPlan: restoredPlan,
+        noteAppend: `Retard retiré — créneau d'origine ${origin.startTime} restauré — par ${staffMember}.`,
+      }],
+    });
+    await createOpsEvent({
+      centerId: reservation.centerId || 'libramont',
+      reservationId,
+      eventType: 'delay_reverted',
+      payload: { revertedBy: staffMember, restoredStartTime: origin.startTime },
+      runLearning: false,
+    }).catch(() => null);
+    sendJson(res, 200, { ok: true, reverted: true, reservation: updated || reservation });
     return;
   }
 
@@ -1326,7 +1398,7 @@ function getRequiredOpsPermission(method, action) {
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';
   if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';
-  if (['plan', 'delay', 'delayImpact', 'delayApply', 'delayNotify', 'delayClear'].includes(action)) return ['planning.view', 'ai.ops'];
+  if (['plan', 'delay', 'delayImpact', 'delayApply', 'delayNotify', 'delayClear', 'delayRevert'].includes(action)) return ['planning.view', 'ai.ops'];
   return 'ai.ops';
 }
 

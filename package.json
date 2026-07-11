@@ -20,10 +20,11 @@
     "test:new-res-notif": "node scripts/new-reservation-notif-check.js",
     "test:classification": "node scripts/classification-check.js",
     "test:reservation-bugs": "node scripts/run-reservation-bugs-test.js",
+    "test:delay-flag": "node scripts/delay-flag-check.js",
     "test:ops:stress": "node scripts/run-ops-stress.js",
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
     "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",
-    "test:ops:all": "npm run test:ops && npm run test:backend-data && npm run test:security-config && npm run test:browser-modules && npm run test:agent-stack && npm run test:agent-orchestration && npm run test:marketing-agents && npm run test:simulation && npm run test:center-config && npm run test:ops:stress && npm run test:quality",
+    "test:ops:all": "npm run test:ops && npm run test:backend-data && npm run test:security-config && npm run test:browser-modules && npm run test:agent-stack && npm run test:agent-orchestration && npm run test:marketing-agents && npm run test:simulation && npm run test:center-config && npm run test:delay-flag && npm run test:ops:stress && npm run test:quality",
     "worker:ops": "node workers/ops-worker.js",
     "worker:once": "node workers/ops-worker.js --once"
   },

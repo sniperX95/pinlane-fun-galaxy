@@ -1247,6 +1247,13 @@ async function main() {
     // Volet A.2 — indicateur de retard sur la carte planning + retrait.
     await page.evaluate(() => { renderPlanning(); if (typeof renderLaserPlanning === 'function') renderLaserPlanning(); });
     await page.waitForTimeout(300);
+    // Le flag de retard est appliqué de façon asynchrone après delayApply : on
+    // re-render jusqu'à ce que l'indicateur apparaisse (borné 6 s) au lieu d'un
+    // délai fixe qui rendait parfois AVANT que l'état soit à jour (course).
+    await page.waitForFunction(() => {
+      if (typeof renderPlanning === 'function') renderPlanning();
+      return document.querySelectorAll('.delay-indicator').length >= 1;
+    }, { timeout: 6000 });
     const indicatorCount = await page.evaluate(() => document.querySelectorAll('.delay-indicator').length);
     assert(indicatorCount >= 1, 'Planning : un indicateur de retard est visible sur la carte retardée.');
     await screenshot(page, 'planning-delay-indicator');

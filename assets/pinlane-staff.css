@@ -6529,6 +6529,50 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .qb-btn-save:hover { opacity: 0.88; }
 
+/* Notifications « nouvelle réservation du jour » — z-index 950 : au-dessus du
+   planning plein écran (400), des overlays (480) et du toast (500). position
+   fixed → non rognée par l'overflow:hidden du mode agrandi. */
+#newResNotifs {
+  position: fixed; top: 16px; right: 16px; z-index: 950;
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(340px, calc(100vw - 32px)); pointer-events: none;
+}
+.nr-card {
+  pointer-events: auto; position: relative;
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 12px 12px 12px 14px; border-radius: var(--radius-lg);
+  background: var(--surface); border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(120%); opacity: 0;
+  transition: transform .28s var(--ease), opacity .28s var(--ease);
+}
+.nr-card.nr-in { transform: translateX(0); opacity: 1; }
+.nr-card.nr-leaving { transform: translateX(120%); opacity: 0; }
+.nr-body {
+  flex: 1; min-width: 0; display: grid; gap: 3px; text-align: left;
+  background: none; border: 0; padding: 0; cursor: pointer;
+}
+.nr-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; color: var(--accent-strong);
+  text-transform: uppercase; letter-spacing: .03em;
+}
+.nr-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  animation: nrPulse 1.5s ease-in-out infinite;
+}
+@keyframes nrPulse { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); } }
+.nr-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nr-meta { font-size: 12px; color: var(--muted); }
+.nr-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.nr-mute, .nr-close {
+  pointer-events: auto; background: none; border: 0; cursor: pointer;
+  font-size: 13px; line-height: 1; color: var(--muted); padding: 3px 5px; border-radius: 6px;
+}
+.nr-mute:hover, .nr-close:hover { background: var(--line); color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .nr-card, .nr-dot { transition: none; animation: none; } }
+
 /* Toast */
 #toast:not(.hidden) {
   position: fixed;

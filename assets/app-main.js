@@ -1770,6 +1770,10 @@ async function syncDateReservations(dateStr, opts = {}) {
     }
     const nextRevision = response.headers.get('ETag') || payload.revision || '';
     const changed = nextRevision !== knownRevision;
+    // Baseline connu (pas le 1er sync) + IDs déjà en mémoire AVANT remplacement :
+    // sert à repérer les résas réellement nouvelles venues du serveur.
+    const hadBaseline = Boolean(knownRevision);
+    const beforeResIds = new Set(state.reservations.filter(r => r.date === dateStr).map(r => r.id));
     staffRevisionByDate[revisionKey] = nextRevision;
     staffSyncAtByDate[revisionKey] = Date.now();
     replaceReservationsForDate(dateStr, payload.reservations || []);
@@ -1780,6 +1784,14 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (!opts.skipRender && changed && state.view === 'staff' && state.currentDate === dateStr) {
       const afterData = getStaffDataSignature(dateStr);
       if (beforeData !== afterData) renderStaffData();
+    }
+    // Notif + son pour toute NOUVELLE réservation du jour même reçue du serveur
+    // (site public / autre poste). Les créations locales sont déjà dans l'état
+    // avant le poll → jamais notifiées ici. Skip au 1er sync (baseline).
+    if (changed && hadBaseline && state.view === 'staff' && dateStr === todayStr()) {
+      (payload.reservations || [])
+        .filter(r => r && !beforeResIds.has(r.id) && r.status !== 'cancelled' && r.status !== 'rejected')
+        .forEach(r => notifyNewReservation(r));
     }
     markRemoteSyncSuccess();
     return changed;
@@ -13258,6 +13270,113 @@ function toast(msg) {
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+/* ============================================================================
+   Notification « nouvelle réservation du jour » — bip + carte, visible même
+   avec le planning en plein écran (z-index au-dessus). Déclenchée par le poll
+   quand une résa du jour apparaît DEPUIS LE SERVEUR (site public / autre poste) ;
+   jamais pour une création locale au comptoir (déjà dans l'état avant le poll).
+   ========================================================================== */
+let newResAudioCtx = null;
+
+function ensureNewResAudio() {
+  if (newResAudioCtx) return newResAudioCtx;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    newResAudioCtx = new Ctx();
+  } catch (error) { return null; }
+  return newResAudioCtx;
+}
+
+// Politique autoplay : le contexte audio ne démarre qu'après un geste utilisateur.
+['pointerdown', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    const ctx = ensureNewResAudio();
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+  }, { once: true, passive: true });
+});
+
+// Petit « ding-dong » synthétisé (aucun fichier son, compatible CSP self).
+function playNewResChime() {
+  if (state.newResSound === false) return;
+  const ctx = ensureNewResAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  const now = ctx.currentTime;
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+  [[880, 0], [1320, 0.13]].forEach(([freq, offset]) => {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    osc.start(now + offset);
+    osc.stop(now + offset + 0.42);
+  });
+}
+
+function newResNotifRoot() {
+  let root = document.getElementById('newResNotifs');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'newResNotifs';
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
+function toggleNewResSound() {
+  state.newResSound = state.newResSound === false;
+  save();
+  const muted = state.newResSound === false;
+  document.querySelectorAll('#newResNotifs .nr-mute').forEach(btn => { btn.textContent = muted ? '🔕' : '🔔'; });
+  toast(muted ? 'Son des réservations coupé.' : 'Son des réservations activé.');
+}
+
+function dismissNewResNotif(id) {
+  const el = document.getElementById(`nr-${id}`);
+  if (!el) return;
+  el.classList.add('nr-leaving');
+  setTimeout(() => el.remove(), 260);
+}
+
+function openNewResFromNotif(id) {
+  dismissNewResNotif(id);
+  if (typeof openStaffReservationDetail === 'function') openStaffReservationDetail(id);
+}
+
+function notifyNewReservation(reservation) {
+  if (!reservation || reservation.id == null) return;
+  const id = reservation.id;
+  if (document.getElementById(`nr-${id}`)) return; // déjà affichée
+  playNewResChime();
+  const name = escapeHtml(reservation.name || 'Client');
+  const time = escapeHtml(reservation.startTime || '');
+  const label = escapeHtml(typeof getReservationLabel === 'function' ? (getReservationLabel(reservation) || reservation.label || '') : (reservation.label || ''));
+  const pax = Number(reservation.pax || 0);
+  const muted = state.newResSound === false;
+  const card = document.createElement('div');
+  card.id = `nr-${id}`;
+  card.className = 'nr-card';
+  card.setAttribute('role', 'alert');
+  card.innerHTML = `
+    <button type="button" class="nr-body" onclick="openNewResFromNotif(${staffClientJs(id)})">
+      <span class="nr-eyebrow"><span class="nr-dot"></span>Nouvelle réservation</span>
+      <strong class="nr-title">${name}</strong>
+      <span class="nr-meta">${time ? time + ' · ' : ''}${label}${pax ? ' · ' + pax + ' j.' : ''}</span>
+    </button>
+    <div class="nr-actions">
+      <button type="button" class="nr-mute" title="Activer/couper le son" aria-label="Activer ou couper le son des réservations" onclick="toggleNewResSound()">${muted ? '🔕' : '🔔'}</button>
+      <button type="button" class="nr-close" title="Fermer" aria-label="Fermer la notification" onclick="dismissNewResNotif(${staffClientJs(id)})">✕</button>
+    </div>`;
+  newResNotifRoot().appendChild(card);
+  requestAnimationFrame(() => card.classList.add('nr-in'));
+  setTimeout(() => dismissNewResNotif(id), 12000);
 }
 
 document.addEventListener('input', e => {

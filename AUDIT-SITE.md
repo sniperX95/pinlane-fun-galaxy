@@ -138,7 +138,12 @@ Après chaque vague : `npm run test:ops:all` vert + re-screenshots des pages tou
 | 5 — Purge & perf | `d8d37b7` | C8 (app-main.js −~1 900 lignes legacy), C10 (2 crons morts supprimés), C12 (CSS morts purgés), C13 (doublons remontés dans pinlane.css), C14 (admin/ops-console lazy-loadés à la demande), C15 (0 PNG racine) | `artifacts/audit/wave5/` (17 shots + assertions réseau `scripts/wave5-manual-check.js`), ops:all + visual verts |
 | Adversariale — fixes ADV-1..7 | `98f0c19` | Voir §5 : lazyfail admin (P0), centre perdu, sim step 500, contrastes AA tokens, empty state Modèles, role=alert bespoke, cr-badge tokens | `scripts/adversarial-manual-check.js` ALL OK, `artifacts/audit/adversarial/`, ops:all + visual verts |
 
-**Restent volontairement en décision propriétaire (non implémentés)** : P0-2 purge des lignes `sim-*` en prod (destructif) · A6 (redondance scoreboard/dashboard — produit) · A8 (Simulation rush exposée en console direction — produit) · P3-5 (pro.html orpheline — lien à décider) · P3-6/tmp (29 Mo débris locaux) · isolation writes simulation (design à trancher : table dédiée vs filtre channel).
+**Décisions propriétaire — tranchées le 2026-07-11 (délégation Movsar)** :
+- ✅ P0-2 purge `sim-*` prod : FAIT — 20 réservations + 167 artefacts liés (72 communications, 49 ops_events, 28 decision_logs, 18 ops_jobs) supprimés en transaction, backup complet `artifacts/backup-sim-purge-2026-07-11.json`. Restent 18 public + 13 staff ; file de mails propre (0 queued).
+- ✅ P3-6 tmp/ : purgé (37 Mo → 0).
+- ✅ P3-5 pro.html : reste volontairement orpheline — landing B2B partagée en lien direct, pas de lien depuis le parcours client (cohérent avec le retrait du bouton « Accès SaaS », P3-7).
+- ⏸ A6 (lecture Direction distincte du scoreboard) et A8 (Simulation rush en console direction) : reportés à la checklist pré-lancement — refonte produit, et l'outil de simulation sert encore aux démos/formation tant que les données sont de la simulation. À retrancher au moment du wipe pré-lancement (avec le code founder).
+- ⏸ Isolation writes simulation (table dédiée vs filtre channel) : même échéance — le besoin disparaît si la simulation est retirée de la console client au lancement.
 
 ## 5. Passe adversariale (2026-07-11)
 

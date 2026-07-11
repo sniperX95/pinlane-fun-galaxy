@@ -7719,6 +7719,27 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   pointer-events: none; box-shadow: var(--shadow-md);
 }
 
+/* CRM clients : colonnes triables + tris rapides */
+.pv2-th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.pv2-th-sort:hover { color: var(--text); }
+.pv2-th-sort .pv2-sort-arrow { opacity: 0.35; font-size: 10px; }
+.pv2-th-sort.active { color: var(--text); }
+.pv2-th-sort.active .pv2-sort-arrow { opacity: 1; color: var(--accent-strong); }
+.pv2-quicksorts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 2px 0 4px; }
+.pv2-quicksorts > span { font-size: 11.5px; font-weight: 600; color: var(--faint); }
+.pv2-chip-btn {
+  border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--surface);
+  color: var(--muted); font: 500 12px var(--font-ui); padding: 5px 12px; cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.pv2-chip-btn:hover { border-color: var(--line-strong); color: var(--text); }
+.pv2-chip-btn.active { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); color: var(--accent-strong); }
+.pv2-rank {
+  display: inline-flex; align-items: center; margin-right: 7px; padding: 1px 7px;
+  border-radius: var(--radius-full); background: var(--accent); color: var(--accent-contrast);
+  font: 700 10.5px var(--font-data);
+}
+
 /* ============================================================
    Onglet « Mails » — studio (admin-mail.js)
    ============================================================ */

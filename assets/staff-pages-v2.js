@@ -353,15 +353,28 @@
         { key: 'birthdays', label: 'Anniversaires', active: tab === 'birthdays' },
       ], 'setStaffClientSegment')}
 
+      <div class="pv2-quicksorts">
+        <span>Tris rapides</span>
+        ${[['spenders', 'Meilleurs dépensiers'], ['frequent', 'Plus fidèles (visites)'], ['recent', 'Vus récemment'], ['dormant', 'Dormants +90 j']]
+          .map(([key, label]) => `<button type="button" class="pv2-chip-btn${(state.staffClientQuickSort || '') === key ? ' active' : ''}" onclick="applyStaffClientQuickSort('${key}')">${label}</button>`).join('')}
+      </div>
+
       <section class="pv2-split">
         <article class="pv2-panel" style="max-height:600px;overflow:auto">
           <table class="pv2-table">
-            <thead><tr><th>Client</th><th>Statut</th><th>Dernière visite</th><th class="num">Résa</th><th class="num">Dépensé</th></tr></thead>
+            <thead><tr>${(() => {
+              const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+              const th = (key, label, num) => {
+                const active = sortState.key === key;
+                return `<th class="${num ? 'num ' : ''}pv2-th-sort${active ? ' active' : ''}" aria-sort="${active ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${label} <span class="pv2-sort-arrow">${active ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`;
+              };
+              return th('name', 'Client') + th('status', 'Statut') + th('lastDate', 'Dernière visite') + th('reservations', 'Résa', true) + th('spent', 'Dépensé', true);
+            })()}</tr></thead>
             <tbody>${tableRows || `<tr><td colspan="5"><div class="pv2-empty"><strong>Aucun résultat</strong>Modifiez la recherche ou le segment.</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">
-          <div class="pv2-panel-head"><h2>Fiche client</h2><small>${rows.length} visible(s)</small></div>
+          <div class="pv2-panel-head"><h2>Fiche client</h2><small>${rows.length} visible(s) · ${money(rows.reduce((sum, row) => sum + Number(row.spent || 0), 0))} cumulés</small></div>
           ${profile}
         </article>
       </section>
@@ -962,9 +975,10 @@
     const filter = state.staffPricingFilter || 'all';
     const countByType = (type) => allRows.filter((row) => row.type === type).length;
 
-    const cards = rows.map((row) => `<article class="pv2-price-card ${selected && row.id === selected.id ? 'selected' : ''}" onclick="pv2SelectPricing('${escJs(row.id)}')">
+    const ranking = state.staffPricingSort || 'default';
+    const cards = rows.map((row, index) => `<article class="pv2-price-card ${selected && row.id === selected.id ? 'selected' : ''}" onclick="pv2SelectPricing('${escJs(row.id)}')">
       <div class="pv2-price-head">
-        <div><strong>${esc(row.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
+        <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(row.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
         <div class="pv2-price-amount">${money(row.price)}<small> ${esc(row.type === 'formula' ? '/pers' : row.type === 'bowling' ? '/piste' : '')}</small></div>
       </div>
       <p class="pv2-price-desc">${esc(row.description || '')}</p>
@@ -973,6 +987,7 @@
         <span><strong>${Number(row.count) || 0}</strong> résa</span>
         <span><strong>${Number(row.players) || 0}</strong> joueurs</span>
         <span><strong>${money(row.revenue)}</strong></span>
+        <span><strong>${Number(row.count) ? money(Number(row.revenue || 0) / Number(row.count)) : '—'}</strong> panier</span>
       </div>
     </article>`).join('');
 
@@ -1001,6 +1016,13 @@
         { key: 'laser', label: 'Laser Game', count: countByType('laser'), active: filter === 'laser' },
         { key: 'formula', label: 'Anniversaires', count: countByType('formula'), active: filter === 'formula' },
       ], 'pv2PricingFilter')}
+
+      <div class="pv2-quicksorts">
+        <span>Classement</span>
+        ${[['demand', 'Plus demandées'], ['revenue', 'Top chiffre'], ['players', 'Top joueurs'], ['basket', 'Panier moyen']]
+          .map(([key, label]) => `<button type="button" class="pv2-chip-btn${ranking === key ? ' active' : ''}" onclick="setStaffPricingSort('${key}')">${label}</button>`).join('')}
+        ${ranking !== 'default' ? '<button type="button" class="pv2-chip-btn" onclick="setStaffPricingSort(state.staffPricingSort)">Ordre catalogue</button>' : ''}
+      </div>
 
       <section class="pv2-catalog">${cards || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</section>
     </div>`;

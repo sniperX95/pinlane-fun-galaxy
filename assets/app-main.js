@@ -7751,11 +7751,33 @@ function getFormulaAvailabilityLabel(formule) {
 function getPricingRowsFiltered() {
   const filter = state.staffPricingFilter || 'all';
   const query = String(state.staffPricingQuery || '').trim().toLowerCase();
-  return getPricingRows().filter(row => {
+  const filtered = getPricingRows().filter(row => {
     if (filter !== 'all' && row.type !== filter) return false;
     if (!query) return true;
     return `${row.title} ${row.subtitle} ${row.description} ${row.tags.join(' ')}`.toLowerCase().includes(query);
   });
+  return sortPricingRows(filtered);
+}
+
+// Classement rentabilité/demande — agrégats réels des réservations (count,
+// revenue, players déjà portés par chaque ligne du catalogue).
+function sortPricingRows(rows) {
+  const ranking = state.staffPricingSort || 'default';
+  if (ranking === 'default') return rows;
+  const basket = row => (Number(row.count) ? Number(row.revenue || 0) / Number(row.count) : 0);
+  const keyFn = {
+    demand: row => Number(row.count || 0),
+    revenue: row => Number(row.revenue || 0),
+    players: row => Number(row.players || 0),
+    basket,
+  }[ranking] || (row => 0);
+  return [...rows].sort((a, b) => keyFn(b) - keyFn(a) || Number(b.revenue || 0) - Number(a.revenue || 0));
+}
+
+function setStaffPricingSort(ranking) {
+  state.staffPricingSort = state.staffPricingSort === ranking ? 'default' : ranking;
+  save();
+  renderStaffPricingPage();
 }
 
 function getPricingMetrics(rows = getPricingRows()) {
@@ -8992,7 +9014,7 @@ function getFilteredStaffClientRows() {
   const query = String(state.staffClientQuery || '').trim().toLowerCase();
   const segment = state.staffClientSegment || 'all';
   const statusFilter = state.staffClientStatusFilter || 'all';
-  return getStaffClientRows().filter(row => {
+  return sortStaffClientRows(getStaffClientRows().filter(row => {
     const text = `${row.name} ${row.email} ${row.phone} ${row.status} ${row.tags.join(' ')}`.toLowerCase();
     if (query && !text.includes(query)) return false;
     if (segment === 'loyal' && row.status !== 'Fidèle') return false;
@@ -9003,7 +9025,52 @@ function getFilteredStaffClientRows() {
     if (statusFilter === 'new' && row.statusClass !== 'new') return false;
     if (statusFilter === 'loyal' && row.statusClass !== 'loyal') return false;
     return true;
+  }));
+}
+
+// Tri CRM : colonne + direction, appliqué APRÈS filtres — chaque colonne de la
+// table est triable, valeurs brutes (lastDate ISO, spent numérique).
+function sortStaffClientRows(rows) {
+  const { key, dir } = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+  const mul = dir === 'asc' ? 1 : -1;
+  const statusWeight = { loyal: 3, active: 2, new: 1, inactive: 0 };
+  return [...rows].sort((a, b) => {
+    if (key === 'name') return a.name.localeCompare(b.name, 'fr') * mul;
+    if (key === 'status') {
+      const delta = (statusWeight[a.statusClass] ?? 0) - (statusWeight[b.statusClass] ?? 0);
+      return delta ? delta * mul : a.name.localeCompare(b.name, 'fr');
+    }
+    if (key === 'reservations') return ((a.reservations || 0) - (b.reservations || 0)) * mul;
+    if (key === 'spent') return ((a.spent || 0) - (b.spent || 0)) * mul;
+    return String(a.lastDate || '').localeCompare(String(b.lastDate || '')) * mul;
   });
+}
+
+function setStaffClientSort(key) {
+  const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+  state.staffClientSort = current.key === key
+    ? { key, dir: current.dir === 'desc' ? 'asc' : 'desc' }
+    : { key, dir: ['name', 'status'].includes(key) ? 'asc' : 'desc' };
+  state.staffClientQuickSort = '';
+  save();
+  renderStaff();
+}
+
+// Tris rapides = tri + filtre en un clic (dormant = inactifs, plus anciens d'abord).
+function applyStaffClientQuickSort(preset) {
+  const presets = {
+    spenders: { sort: { key: 'spent', dir: 'desc' }, status: 'all' },
+    frequent: { sort: { key: 'reservations', dir: 'desc' }, status: 'all' },
+    recent: { sort: { key: 'lastDate', dir: 'desc' }, status: 'all' },
+    dormant: { sort: { key: 'lastDate', dir: 'asc' }, status: 'inactive' },
+  };
+  const config = presets[preset];
+  if (!config) return;
+  state.staffClientSort = config.sort;
+  state.staffClientStatusFilter = config.status;
+  state.staffClientQuickSort = preset;
+  save();
+  renderStaff();
 }
 
 function getStaffClientDailySeries(reservations = [], metric = 'count') {

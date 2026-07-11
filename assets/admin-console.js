@@ -1255,7 +1255,7 @@ function renderAdminHeader() {
     const button = document.getElementById(`adminPeriod${name}`);
     if (button) button.classList.toggle('active', state.adminPeriod === name.toLowerCase());
   });
-  ['Overview', 'Reservations', 'Clients', 'Ops', 'Exports'].forEach(name => {
+  ['Overview', 'Data', 'Reservations', 'Clients', 'Ops', 'Exports'].forEach(name => {
     const button = document.getElementById(`adminTab${name}`);
     if (button) button.classList.toggle('active', state.adminTab === name.toLowerCase());
   });
@@ -1451,6 +1451,17 @@ function renderAdminDashboard() {
   const cacheIsCurrent = isAdminDashboardCacheCurrent();
   if (adminDashboardCache.loading && (!adminDashboardCache.loaded || !cacheIsCurrent)) {
     content.innerHTML = `<div class="admin-panel"><div class="empty-state"><div class="e-title">Chargement direction</div><div class="e-sub">Récupération du centre, des réservations, des mails et des signaux agents.</div></div></div>`;
+    return;
+  }
+  // « Données » gère son propre chargement long-range : jamais bloqué par le
+  // cache ni les erreurs du dashboard période.
+  if (state.adminTab === 'data') {
+    if (typeof renderAdminDataTab === 'function') {
+      content.innerHTML = renderAdminDataTab();
+      if (typeof initAdminDataTab === 'function') initAdminDataTab();
+    } else {
+      content.innerHTML = '<div class="admin-panel"><div class="empty-state"><div class="e-title">Module Données indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
+    }
     return;
   }
   if (adminDashboardCache.error && (!adminDashboardCache.loaded || !cacheIsCurrent)) {

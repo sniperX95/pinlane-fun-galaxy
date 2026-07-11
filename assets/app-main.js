@@ -2314,8 +2314,9 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260710w5';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260711d';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260710w5';
+const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711d';
 const dynamicConsoleScripts = {};
 
 function loadConsoleScriptOnce(src) {
@@ -2338,7 +2339,8 @@ function loadConsoleScriptOnce(src) {
 function ensureAdminConsolesLoaded() {
   return Promise.all([
     loadConsoleScriptOnce(ADMIN_CONSOLE_SRC),
-    loadConsoleScriptOnce(OPS_CONSOLE_SRC)
+    loadConsoleScriptOnce(OPS_CONSOLE_SRC),
+    loadConsoleScriptOnce(ADMIN_DATA_SRC)
   ]);
 }
 

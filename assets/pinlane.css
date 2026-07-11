@@ -79,6 +79,11 @@
   --tenant-accent: var(--accent);
   --tenant-accent-soft: var(--accent-soft);
 
+  /* Data-viz catégoriel — ordre fixe, palette validée CVD+contraste (light) */
+  --chart-1: #0070f3;
+  --chart-2: #0d9488;
+  --chart-3: #c2410c;
+
   /* Typo */
   --font-ui: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-data: 'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
@@ -146,6 +151,11 @@
   --info: #3291ff;
   --info-soft: #0d2137;
   --info-strong: var(--accent-strong);
+
+  /* Data-viz — steps recalés pour surface sombre (validés L 0.48-0.67) */
+  --chart-1: #3291ff;
+  --chart-2: #0d9488;
+  --chart-3: #ea580c;
 
   --shadow-border: 0 0 0 1px var(--line);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);

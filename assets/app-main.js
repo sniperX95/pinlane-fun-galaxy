@@ -6619,6 +6619,7 @@ function selectEstablishmentCenter(id) {
 // l'édition : manipulé en direct dans le DOM pour ne pas perdre les autres
 // champs non sauvegardés à chaque ajout/retrait.
 let establishmentHolidayOverridesDraft = [];
+let establishmentCustomActivitiesDraft = [];
 
 function startEstablishmentEdit() {
   if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
@@ -6626,6 +6627,9 @@ function startEstablishmentEdit() {
   establishmentHolidayOverridesDraft = (center?.holidaySettings?.overrides || [])
     .filter(item => item && item.date && (item.mode === 'holiday' || item.mode === 'normal'))
     .map(item => ({ date: item.date, mode: item.mode }));
+  establishmentCustomActivitiesDraft = (Array.isArray(center?.customActivities) ? center.customActivities : [])
+    .filter(item => item && item.id && item.label)
+    .map(item => ({ id: item.id, label: item.label }));
   state.establishmentEditing = true;
   renderStaffUtilityPage();
 }
@@ -6633,7 +6637,49 @@ function startEstablishmentEdit() {
 function cancelEstablishmentEdit() {
   state.establishmentEditing = false;
   establishmentHolidayOverridesDraft = [];
+  establishmentCustomActivitiesDraft = [];
   renderStaffUtilityPage();
+}
+
+function establishmentSlugify(value) {
+  return String(value || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
+function renderEstablishmentCustomActivities() {
+  if (!establishmentCustomActivitiesDraft.length) {
+    return '<p class="estab-overrides-empty">Aucune activité personnalisée. Ajoute-en une (ex : Réalité Virtuelle, Karaoké, Escape Game).</p>';
+  }
+  return establishmentCustomActivitiesDraft.map(item => `<div class="estab-custom-activity">
+    <span>${escapeHtml(item.label)}</span>
+    <button type="button" class="estab-override-remove" aria-label="Retirer l'activité ${escapeHtml(item.label)}" onclick="removeEstablishmentCustomActivity('${escapeJsString(item.id)}')">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>`).join('');
+}
+
+function refreshEstablishmentCustomActivitiesList() {
+  const list = document.getElementById('estabCustomActivitiesList');
+  if (list) list.innerHTML = renderEstablishmentCustomActivities();
+}
+
+function addEstablishmentCustomActivity() {
+  const input = document.getElementById('estab-new-activity');
+  const label = String(input?.value || '').trim().slice(0, 60);
+  if (!label) { toast('Donne un nom à l\'activité.'); return; }
+  const id = establishmentSlugify(label);
+  if (!id) { toast('Nom d\'activité invalide.'); return; }
+  if (establishmentCustomActivitiesDraft.some(item => item.id === id)) { toast('Cette activité existe déjà.'); return; }
+  if (establishmentCustomActivitiesDraft.length >= 40) { toast('Maximum 40 activités personnalisées.'); return; }
+  establishmentCustomActivitiesDraft.push({ id, label });
+  if (input) input.value = '';
+  refreshEstablishmentCustomActivitiesList();
+}
+
+function removeEstablishmentCustomActivity(id) {
+  establishmentCustomActivitiesDraft = establishmentCustomActivitiesDraft.filter(item => item.id !== id);
+  refreshEstablishmentCustomActivitiesList();
 }
 
 function renderEstablishmentOverridesList() {
@@ -6846,7 +6892,8 @@ async function submitCenterConfig(centerId) {
     },
     offerAvailability,
     activityAvailability,
-    classification
+    classification,
+    customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
   const name = establishmentInputValue('estab-name').trim();
   submitCenterConfigInFlight = true;
@@ -7149,11 +7196,21 @@ function renderStaffUtilityEstablishment() {
 
         <fieldset class="establishment-card establishment-activities">
           <legend>Activités disponibles</legend>
+          <p class="estab-card-hint">Coche les activités du catalogue proposées sur ce centre.</p>
           <div class="establishment-activity-grid">
             ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
               <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
               <span>${escapeHtml(activity.label)}</span>
             </label>`).join('')}
+          </div>
+          <div class="estab-subsection">
+            <h4>Activités personnalisées de ce centre</h4>
+            <p class="estab-card-hint">Ajoute une activité propre au centre (au-delà du catalogue). Retire-la avec la croix.</p>
+            <div class="estab-override-form">
+              <input type="text" id="estab-new-activity" placeholder="Nom (ex : Réalité Virtuelle)" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentCustomActivity()">Ajouter</button>
+            </div>
+            <div id="estabCustomActivitiesList" class="estab-custom-activities-list">${renderEstablishmentCustomActivities()}</div>
           </div>
         </fieldset>
       </div>` : renderEstablishmentReadView(center)}
@@ -7178,6 +7235,7 @@ function renderEstablishmentReadView(center) {
   const overrides = Array.isArray(holidaySettings.overrides) ? holidaySettings.overrides : [];
   const activities = (staffCenterConfigCache.activities || []);
   const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
+  const customList = Array.isArray(center.customActivities) ? center.customActivities : [];
   const disabledOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] === false);
   const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
   const classTiers = classification.sizeTiers && typeof classification.sizeTiers === 'object' ? classification.sizeTiers : {};
@@ -7269,9 +7327,9 @@ function renderEstablishmentReadView(center) {
         ? `<p class="estab-empty" style="margin-bottom:6px">Désactivées côté client :</p><div class="estab-chip-row">${disabledOffers.map(formule => `<span class="estab-tag">${escapeHtml(formule.name)}</span>`).join('')}</div>`
         : '<p class="estab-empty">Toutes les offres sont actives côté client.</p>'}`)}
 
-    ${section(ICO.grid, 'Activités disponibles', 'Activités proposées sur ce centre.', `
-      ${enabled.length
-        ? `<div class="estab-chip-row">${enabled.map(activity => `<span class="estab-tag">${escapeHtml(activity.label)}</span>`).join('')}</div>`
+    ${section(ICO.grid, 'Activités disponibles', 'Catalogue proposé sur ce centre + activités personnalisées.', `
+      ${(enabled.length || customList.length)
+        ? `<div class="estab-chip-row">${enabled.map(activity => `<span class="estab-tag">${escapeHtml(activity.label)}</span>`).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
         : '<p class="estab-empty">Aucune activité activée.</p>'}`)}
   </div>`;
 }

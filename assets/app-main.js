@@ -4095,7 +4095,11 @@ function dashAnalyticsKey() {
 
 async function loadDashAnalytics(force = false) {
   const { key, centerId, start, end } = dashAnalyticsKey();
-  if (dashAnalyticsCache.loading || (!force && dashAnalyticsCache.key === key && dashAnalyticsCache.analytics)) return;
+  if (!force && dashAnalyticsCache.key === key && dashAnalyticsCache.analytics) return;
+  // Fetch déjà en vol : on note la plage désirée et on rattrape à la fin —
+  // un changement de plage pendant un chargement n'est jamais silencieusement perdu.
+  if (dashAnalyticsCache.loading) { dashAnalyticsCache.pendingKey = key; return; }
+  dashAnalyticsCache.pendingKey = null;
   dashAnalyticsCache.loading = true;
   dashAnalyticsCache.error = '';
   renderStaffIfDashboard();
@@ -4109,6 +4113,11 @@ async function loadDashAnalytics(force = false) {
   } finally {
     dashAnalyticsCache.loading = false;
     renderStaffIfDashboard();
+    // La plage a changé pendant ce fetch → on relance sur la nouvelle.
+    if (dashAnalyticsCache.pendingKey && dashAnalyticsCache.pendingKey !== dashAnalyticsCache.key) {
+      dashAnalyticsCache.pendingKey = null;
+      loadDashAnalytics();
+    }
   }
 }
 
@@ -4124,9 +4133,24 @@ function dashSetRange(key) {
   renderStaffIfDashboard();
 }
 
+// Saisie de date en cours conservée dans l'état → un re-render de fond (sync
+// 4 s) ne l'efface plus avant que l'utilisateur ait cliqué « Appliquer ».
+function dashTypeRange(which, value) {
+  getDashWidgetConfig();
+  if (which === 'start') state.dashRange.typedStart = value;
+  else state.dashRange.typedEnd = value;
+}
+
+function dashRangeInputValue(which, computed) {
+  const range = state.dashRange || {};
+  if (which === 'start') return range.typedStart != null ? range.typedStart : (range.key === 'custom' ? range.start : computed);
+  return range.typedEnd != null ? range.typedEnd : (range.key === 'custom' ? range.end : computed);
+}
+
 function dashSetCustomRange() {
-  const start = document.getElementById('dashRangeStart')?.value || '';
-  const end = document.getElementById('dashRangeEnd')?.value || '';
+  const range = state.dashRange || {};
+  const start = range.typedStart || document.getElementById('dashRangeStart')?.value || '';
+  const end = range.typedEnd || document.getElementById('dashRangeEnd')?.value || '';
   if (!start || !end) { toast('Choisis les deux dates.'); return; }
   if (end < start) { toast('La fin précède le début.'); return; }
   state.dashRange = { key: 'custom', start, end };
@@ -4309,8 +4333,8 @@ function renderDashboardCustomAnalytics() {
         ${analytics && previous ? `<span class="dash-range-deltas">Résa ${deltaChip(analytics.totals.reservations, previous.totals.reservations)} · CA ${deltaChip(analytics.totals.revenue, previous.totals.revenue)} vs période préc.</span>` : ''}
         <button type="button" class="admin-btn" onclick="dashGoToday()">Aujourd'hui</button>
         <div class="dh-range">${Object.keys(DASH_RANGES).map(key => `<button type="button" class="${range.key === key ? 'active' : ''}" onclick="dashSetRange('${key}')">${key}</button>`).join('')}</div>
-        <input type="date" id="dashRangeStart" value="${range.key === 'custom' ? range.start : start}" aria-label="Début de période">
-        <input type="date" id="dashRangeEnd" value="${range.key === 'custom' ? range.end : end}" aria-label="Fin de période">
+        <input type="date" id="dashRangeStart" value="${dashRangeInputValue('start', start)}" oninput="dashTypeRange('start', this.value)" aria-label="Début de période">
+        <input type="date" id="dashRangeEnd" value="${dashRangeInputValue('end', end)}" oninput="dashTypeRange('end', this.value)" aria-label="Fin de période">
         <button type="button" class="admin-btn" onclick="dashSetCustomRange()">Appliquer</button>
       </div>
     </div>
@@ -5920,7 +5944,7 @@ function getFilteredStaffGroupRows(rows = []) {
     if (tab === 'birthdays' && !row.hasBirthday) return false;
     if (tab === 'regular' && getStaffGroupDeclaredCategory(row) !== 'regular' && Number(row.reservations || 0) < 2) return false;
     if (tab === 'business' && !isStaffGroupBusiness(row)) return false;
-    if (tab === 'followup' && !needsStaffGroupFollowup(row, reservation)) return false;
+    if (tab === 'followup' && (!needsStaffGroupFollowup(row, reservation) || isStaffGroupActionDismissed(row, reservation))) return false;
     return true;
   });
 }
@@ -6083,8 +6107,23 @@ function renderStaffGroupAgendaPanel(agenda = []) {
 
 // Une action « traitée » disparaît (persisté) — elle réapparaît uniquement si
 // la donnée régénère une raison différente pour le même profil.
+// Clé d'action groupe SCOPÉE PAR CENTRE : traiter l'action d'un client à
+// Libramont ne doit pas la masquer pour le même client (même tél) à Gembloux.
+function staffGroupCenterScope() {
+  return (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId())
+    || state.adminCenterId || state.currentCenterId || 'libramont';
+}
+
 function getStaffGroupActionKey(row, reason) {
-  return `${row.key || row.id || row.name}|${reason.label}`;
+  return `${staffGroupCenterScope()}|${row.key || row.id || row.name}|${reason.label}`;
+}
+
+// Une action traitée disparaît PARTOUT (panneau, compteurs, onglet « A relancer »).
+function isStaffGroupActionDismissed(row, reservation) {
+  const dismissed = state.dismissedGroupActions || [];
+  if (!dismissed.length) return false;
+  const reason = getStaffGroupFollowupReason(row, reservation);
+  return dismissed.includes(getStaffGroupActionKey(row, reason));
 }
 
 function dismissStaffGroupAction(key, ev) {
@@ -6188,7 +6227,8 @@ function renderStaffGroupWorkspaceV2(rows = []) {
   const agenda = getStaffGroupAgenda(filteredRows.length ? filteredRows : allRows);
   const followUps = (filteredRows.length ? filteredRows : allRows)
     .map(row => ({ row, reservation: getStaffGroupNextReservation(row) || {} }))
-    .filter(item => needsStaffGroupFollowup(item.row, item.reservation));
+    .filter(item => needsStaffGroupFollowup(item.row, item.reservation))
+    .filter(item => !isStaffGroupActionDismissed(item.row, item.reservation));
   const focusItem = agenda[0] || {
     row: filteredRows[0] || allRows[0],
     reservation: getStaffGroupNextReservation(filteredRows[0] || allRows[0]) || {}

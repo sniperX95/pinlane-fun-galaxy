@@ -7781,6 +7781,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 .ms-note.warn { background: var(--warning-soft); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--line)); }
 .ms-form { display: grid; gap: var(--space-3); }
+.ms-form-note { font-size: 12px; color: var(--info); background: var(--info-soft); padding: 8px 12px; border-radius: var(--radius-md); }
 .ms-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .ms-field { display: grid; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); min-width: 0; }
 .ms-field em { font-style: normal; font-weight: 400; color: var(--faint); }

@@ -821,7 +821,7 @@
      ========================================================================== */
   const pv2Camp = {
     loaded: false, loading: false, error: '', campaigns: [], segments: [], channel: {},
-    formOpen: false, busy: false, audience: {}, audienceLoading: '',
+    formOpen: false, editingId: null, busy: false, audience: {}, audienceLoading: '',
     form: { name: '', objective: '', segment: 'all', subject: '', body: '', mode: 'now', scheduledAt: '' },
   };
   window.pv2Camp = pv2Camp;
@@ -862,6 +862,8 @@
   };
 
   window.pv2CampOpenForm = function () {
+    pv2Camp.editingId = null;
+    pv2Camp.form = { name: '', objective: '', segment: pv2Camp.form.segment || 'all', subject: '', body: '', mode: 'now', scheduledAt: '' };
     pv2Camp.formOpen = true;
     renderStaffCampaignsPage();
     window.pv2CampSegmentChanged(pv2Camp.form.segment);
@@ -869,7 +871,49 @@
 
   window.pv2CampCloseForm = function () {
     pv2Camp.formOpen = false;
+    pv2Camp.editingId = null;
     renderStaffCampaignsPage();
+  };
+
+  // Ouvre un brouillon existant dans le formulaire pour édition.
+  window.pv2CampEditDraft = function (id) {
+    const campaign = pv2Camp.campaigns.find((c) => c.id === id);
+    if (!campaign) return;
+    pv2Camp.editingId = id;
+    pv2Camp.form = { name: campaign.name, objective: campaign.objective, segment: campaign.segment, subject: campaign.subject, body: campaign.body, mode: 'now', scheduledAt: '' };
+    pv2Camp.formOpen = true;
+    renderStaffCampaignsPage();
+    window.pv2CampSegmentChanged(campaign.segment);
+  };
+
+  // Envoie un brouillon directement depuis la liste (confirme le volume réel).
+  window.pv2CampSendDraft = async function (id) {
+    const campaign = pv2Camp.campaigns.find((c) => c.id === id);
+    if (!campaign) return;
+    const centerId = state.currentCenterId || 'libramont';
+    let count = pv2Camp.audience[campaign.segment]?.count;
+    if (!Number.isInteger(count)) {
+      try {
+        const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(campaign.segment)}&centerId=${encodeURIComponent(centerId)}`);
+        count = payload.count;
+        pv2Camp.audience[campaign.segment] = { count: payload.count, sample: payload.sample || [] };
+      } catch (error) {
+        if (typeof toast === 'function') toast(error.message || 'Audience indisponible.');
+        return;
+      }
+    }
+    if (!Number.isInteger(count) || count < 1) { if (typeof toast === 'function') toast('Ce segment ne contient aucun destinataire.'); return; }
+    if (!window.confirm(`Envoyer le brouillon « ${campaign.name} » maintenant à ${count} destinataire(s) ?`)) return;
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sendCampaign', centerId, id, mode: 'now', expectedRecipients: count }),
+      });
+      if (typeof toast === 'function') toast('Campagne lancée · mails en file (départ en continu).');
+      await loadPv2Campaigns(true);
+    } catch (error) {
+      if (typeof toast === 'function') toast(error.message || 'Envoi impossible.');
+    }
   };
 
   window.pv2CampImprove = async function (button) {
@@ -917,28 +961,50 @@
     if (button) button.disabled = true;
     renderStaffCampaignsPage();
     try {
-      const payload = await apiRequest('/api/ops', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'createCampaign',
-          centerId: state.currentCenterId || 'libramont',
-          name: form.name, objective: form.objective, segment: form.segment,
-          subject: form.subject, body: form.body, mode,
-          expectedRecipients: mode === 'draft' ? null : count,
-          scheduledAt: mode === 'schedule' ? new Date(form.scheduledAt).toISOString() : null,
-        }),
-      });
+      const centerId = state.currentCenterId || 'libramont';
+      const editingId = pv2Camp.editingId;
+      const scheduledAt = mode === 'schedule' ? new Date(form.scheduledAt).toISOString() : null;
+      let queued = 0;
+      let resendConfigured = pv2Camp.channel?.resendConfigured;
+      if (editingId) {
+        // Brouillon existant : on sauve les modifs, puis on envoie si demandé.
+        await apiRequest('/api/ops', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'updateCampaign', centerId, id: editingId, name: form.name, objective: form.objective, segment: form.segment, subject: form.subject, body: form.body }),
+        });
+        if (mode !== 'draft') {
+          const payload = await apiRequest('/api/ops', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'sendCampaign', centerId, id: editingId, mode, expectedRecipients: count, scheduledAt }),
+          });
+          queued = payload.queued; resendConfigured = payload.resendConfigured;
+        }
+      } else {
+        const payload = await apiRequest('/api/ops', {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'createCampaign', centerId,
+            name: form.name, objective: form.objective, segment: form.segment,
+            subject: form.subject, body: form.body, mode,
+            expectedRecipients: mode === 'draft' ? null : count,
+            scheduledAt,
+          }),
+        });
+        queued = payload.queued; resendConfigured = payload.resendConfigured;
+      }
       pv2Camp.formOpen = false;
+      pv2Camp.editingId = null;
       pv2Camp.form = { name: '', objective: '', segment: form.segment, subject: '', body: '', mode: 'now', scheduledAt: '' };
       if (typeof toast === 'function') {
-        toast(mode === 'draft' ? 'Brouillon enregistré.'
-          : mode === 'schedule' ? `Campagne programmée · ${payload.queued} envoi(s) en file.`
-          : payload.resendConfigured ? `Campagne lancée · ${payload.queued} envoi(s).`
-          : `Campagne créée · ${payload.queued} envoi(s) en file (canal d'envoi à configurer).`);
+        const inFile = `${queued} mail(s) en file`;
+        toast(mode === 'draft' ? (editingId ? 'Brouillon mis à jour.' : 'Brouillon enregistré.')
+          : mode === 'schedule' ? `Campagne programmée · ${inFile} (départ à l'heure dite).`
+          : resendConfigured === false ? `Campagne lancée · ${inFile} (canal d'envoi à configurer).`
+          : `Campagne lancée · ${inFile} (départ en continu).`);
       }
       await loadPv2Campaigns(true);
     } catch (error) {
-      if (typeof toast === 'function') toast(error.message || 'Création impossible.');
+      if (typeof toast === 'function') toast(error.message || 'Opération impossible.');
       pv2Camp.busy = false;
       if (button) button.disabled = false;
       renderStaffCampaignsPage();
@@ -990,7 +1056,15 @@
     pv2CampDownload(`campagne-${id}.txt`, `Campagne : ${campaign.name}\nSegment : ${campaign.segment}\nObjet : ${campaign.subject}\n\n${campaign.body}`, 'text/plain;charset=utf-8');
   };
 
-  const PV2_CAMP_STATUS = { draft: ['Brouillon', ''], scheduled: ['Programmée', 'blue'], sending: ['En envoi', 'green'], cancelled: ['Annulée', ''] };
+  const PV2_CAMP_STATUS = {
+    draft: ['Brouillon', ''],
+    scheduled: ['Programmée', 'blue'],
+    sending: ['En envoi', 'green'],
+    sent: ['Envoyée', 'green'],
+    sent_partial: ['Envoyée · échecs partiels', 'amber'],
+    failed: ['Échec d\'envoi', 'red'],
+    cancelled: ['Annulée', ''],
+  };
 
   function renderPv2RealCampaigns() {
     if (!pv2Camp.loaded && !pv2Camp.loading && !pv2Camp.error) setTimeout(() => loadPv2Campaigns(), 0);
@@ -1011,7 +1085,9 @@
           <td><small style="color:var(--v2-text-3)">ouvertures/clics : non suivis</small></td>
           <td style="white-space:nowrap">
             <button type="button" class="pv2-btn" onclick="pv2CampExportContent(${c.id})">Contenu</button>
-            ${['draft', 'scheduled', 'sending'].includes(c.status) && (c.queued > 0 || c.status !== 'sending') ? `<button type="button" class="pv2-btn" onclick="pv2CampCancel(${c.id})">Annuler</button>` : ''}
+            ${c.status === 'draft' ? `<button type="button" class="pv2-btn" onclick="pv2CampEditDraft(${c.id})">Éditer</button><button type="button" class="pv2-btn primary" onclick="pv2CampSendDraft(${c.id})">Envoyer</button>` : ''}
+            ${['scheduled', 'sending'].includes(c.status) && c.queued > 0 ? `<button type="button" class="pv2-btn" onclick="pv2CampCancel(${c.id})">Annuler</button>` : ''}
+            ${c.status === 'draft' ? `<button type="button" class="pv2-btn" onclick="pv2CampCancel(${c.id})">Supprimer</button>` : ''}
           </td>
         </tr>`;
       }).join('')}</tbody>
@@ -1024,6 +1100,7 @@
         ? 'calcul…'
         : audience ? `${audience.count} destinataire(s)${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '—';
       return `<div class="ms-viewer"><div class="ms-form">
+        ${pv2Camp.editingId ? '<div class="ms-form-note">Édition du brouillon — enregistre tes modifications, ou envoie-le directement.</div>' : ''}
         <div class="ms-grid-2">
           <label class="ms-field"><span>Nom de la campagne *</span><input type="text" class="ms-input" value="${esc(f.name)}" oninput="pv2Camp.form.name = this.value"></label>
           <label class="ms-field"><span>Objectif</span><input type="text" class="ms-input" placeholder="Ex : remplir les mardis soirs" value="${esc(f.objective)}" oninput="pv2Camp.form.objective = this.value"></label>
@@ -1046,7 +1123,7 @@
         </div>
         <div class="ms-actions">
           <button type="button" class="pv2-btn" onclick="pv2CampImprove(this)">Améliorer avec l'IA</button>
-          <button type="button" class="pv2-btn" onclick="pv2CampSubmit('draft', this)" ${pv2Camp.busy ? 'disabled' : ''}>Enregistrer brouillon</button>
+          <button type="button" class="pv2-btn" onclick="pv2CampSubmit('draft', this)" ${pv2Camp.busy ? 'disabled' : ''}>${pv2Camp.editingId ? 'Enregistrer les modifications' : 'Enregistrer brouillon'}</button>
           <span class="ms-actions-spacer"></span>
           <button type="button" class="pv2-btn" onclick="pv2CampSubmit('schedule', this)" ${pv2Camp.busy ? 'disabled' : ''}>Programmer</button>
           <button type="button" class="pv2-btn primary" onclick="pv2CampSubmit('now', this)" ${pv2Camp.busy ? 'disabled' : ''}>Envoyer maintenant</button>

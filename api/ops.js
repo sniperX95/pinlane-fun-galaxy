@@ -23,6 +23,10 @@ const {
   getEmailInsightRows,
   createCampaignRow,
   listCampaigns,
+  getCampaignRow,
+  updateCampaignRow,
+  markCampaignSending,
+  findRecentDuplicateCampaign,
   cancelCampaignRow,
   readAdminRangeState,
   readStaffState,
@@ -1169,32 +1173,17 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const subject = String(body.subject || '').trim();
     const bodyText = String(body.body || '').trim();
     if (mode !== 'draft' && (!subject || !bodyText)) throw createHttpError('Objet et message requis pour envoyer.', 400);
-    let scheduledAt = null;
-    if (mode === 'schedule') {
-      const when = new Date(body.scheduledAt || '');
-      if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 60000) {
-        throw createHttpError('Date de programmation invalide (au moins 1 minute dans le futur).', 400);
-      }
-      scheduledAt = when.toISOString();
-    }
+    const scheduledAt = mode === 'schedule' ? parseCampaignScheduledAt(body.scheduledAt) : null;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const history = (await readAdminRangeState('2023-01-01', today, campaignCenterId)).reservations;
-    const recipients = buildCampaignAudience({ history, segment, today });
-    if (mode !== 'draft' && !recipients.length) {
-      throw createHttpError('Ce segment ne contient aucun client avec email : rien à envoyer.', 400);
-    }
+    let recipients = [];
     if (mode !== 'draft') {
-      // Garde-fou serveur anti envoi de masse à l'aveugle : le client DOIT
-      // confirmer le volume exact qu'il a vu à l'écran. Décalage = refus.
-      const expected = Number(body.expectedRecipients);
-      if (!Number.isInteger(expected) || expected !== recipients.length) {
-        throw createHttpError(`Le volume de destinataires a changé (${recipients.length} actuellement). Revérifie l'audience puis confirme à nouveau.`, 409);
-      }
-      // Un token {{...}} inconnu partirait brut dans le mail de chaque client.
-      const unknownTokens = findUnknownCampaignTokens(`${subject}\n${bodyText}`);
-      if (unknownTokens.length) {
-        throw createHttpError(`Variable(s) non reconnue(s) : ${unknownTokens.join(', ')} — seules {{prenom}} et {{nom}} sont remplacées.`, 400);
+      recipients = await prepareCampaignRecipients({
+        centerId: campaignCenterId, segment, subject, bodyText, expectedRecipients: body.expectedRecipients,
+      });
+      // Anti-doublon : un re-clic / retry ne recrée pas une campagne identique déjà partie.
+      const dupId = await findRecentDuplicateCampaign({ centerId: campaignCenterId, segment, subject, body: bodyText });
+      if (dupId) {
+        throw createHttpError(`Une campagne identique a déjà été lancée il y a moins de 3 min (#${dupId}) — vérifie la liste avant de renvoyer.`, 409);
       }
     }
 
@@ -1213,21 +1202,44 @@ async function handlePost(req, res, providedBody = null, options = {}) {
 
     let queued = 0;
     if (mode !== 'draft') {
-      const identities = await listEmailIdentities({ centerId: campaignCenterId });
-      const identity = identities.find((item) => item.isDefault) || null;
-      const result = await enqueueCampaign({
-        centerId: campaignCenterId,
-        campaignId: campaign.id,
-        recipients,
-        subject,
-        body: bodyText,
-        scheduledAt,
-        fromEmail: identity?.email || '',
-        fromLabel: identity?.label || '',
-        personalize: personalizeCampaignText,
-      });
-      queued = result.queued;
+      queued = await runCampaignEnqueue({ centerId: campaignCenterId, campaignId: campaign.id, recipients, subject, bodyText, scheduledAt });
     }
+    sendJson(res, 200, { ok: true, campaign, queued, resendConfigured: Boolean(process.env.RESEND_API_KEY) });
+    return;
+  }
+
+  // Édition d'un brouillon (jamais une campagne partie).
+  if (action === 'updateCampaign') {
+    const campaignCenterId = requireConcreteCenter('updateCampaign');
+    const name = String(body.name || '').trim();
+    if (!name) throw createHttpError('Nom de campagne requis.', 400);
+    const segment = CAMPAIGN_SEGMENTS.some((s) => s.id === body.segment) ? body.segment : null;
+    if (!segment) throw createHttpError('Segment inconnu.', 400);
+    const campaign = await updateCampaignRow({
+      id: body.id, centerId: campaignCenterId, name,
+      objective: body.objective || '', segment,
+      subject: String(body.subject || '').trim(), body: String(body.body || '').trim(),
+    });
+    sendJson(res, 200, { ok: true, campaign });
+    return;
+  }
+
+  // Envoi d'un brouillon existant (immédiat ou programmé) — draft → sending.
+  if (action === 'sendCampaign') {
+    const campaignCenterId = requireConcreteCenter('sendCampaign');
+    const existing = await getCampaignRow({ id: body.id, centerId: campaignCenterId });
+    if (!existing) throw createHttpError('Campagne introuvable.', 404);
+    if (existing.storedStatus !== 'draft') throw createHttpError('Seul un brouillon peut être envoyé.', 409);
+    const subject = existing.subject.trim();
+    const bodyText = existing.body.trim();
+    if (!subject || !bodyText) throw createHttpError('Objet et message requis pour envoyer.', 400);
+    const mode = body.mode === 'schedule' ? 'schedule' : 'now';
+    const scheduledAt = mode === 'schedule' ? parseCampaignScheduledAt(body.scheduledAt) : null;
+    const recipients = await prepareCampaignRecipients({
+      centerId: campaignCenterId, segment: existing.segment, subject, bodyText, expectedRecipients: body.expectedRecipients,
+    });
+    const campaign = await markCampaignSending({ id: existing.id, centerId: campaignCenterId, scheduledAt });
+    const queued = await runCampaignEnqueue({ centerId: campaignCenterId, campaignId: campaign.id, recipients, subject, bodyText, scheduledAt });
     sendJson(res, 200, { ok: true, campaign, queued, resendConfigured: Boolean(process.env.RESEND_API_KEY) });
     return;
   }
@@ -1254,6 +1266,44 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   sendError(res, 400, 'Action Ops POST inconnue.');
 }
 
+// ---- Helpers campagnes (partagés entre createCampaign et sendCampaign) ------
+function parseCampaignScheduledAt(raw) {
+  const when = new Date(raw || '');
+  if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() + 60000) {
+    throw createHttpError('Date de programmation invalide (au moins 1 minute dans le futur).', 400);
+  }
+  return when.toISOString();
+}
+
+// Construit l'audience réelle + applique tous les garde-fous d'envoi (segment
+// non vide, volume confirmé, aucun token {{...}} inconnu). Jette sinon.
+async function prepareCampaignRecipients({ centerId, segment, subject, bodyText, expectedRecipients }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const history = (await readAdminRangeState('2023-01-01', today, centerId)).reservations;
+  const recipients = buildCampaignAudience({ history, segment, today });
+  if (!recipients.length) throw createHttpError('Ce segment ne contient aucun client avec email : rien à envoyer.', 400);
+  const expected = Number(expectedRecipients);
+  if (!Number.isInteger(expected) || expected !== recipients.length) {
+    throw createHttpError(`Le volume de destinataires a changé (${recipients.length} actuellement). Revérifie l'audience puis confirme à nouveau.`, 409);
+  }
+  const unknownTokens = findUnknownCampaignTokens(`${subject}\n${bodyText}`);
+  if (unknownTokens.length) {
+    throw createHttpError(`Variable(s) non reconnue(s) : ${unknownTokens.join(', ')} — seules {{prenom}} et {{nom}} sont remplacées.`, 400);
+  }
+  return recipients;
+}
+
+async function runCampaignEnqueue({ centerId, campaignId, recipients, subject, bodyText, scheduledAt }) {
+  const identities = await listEmailIdentities({ centerId });
+  const identity = identities.find((item) => item.isDefault) || null;
+  const result = await enqueueCampaign({
+    centerId, campaignId, recipients, subject, body: bodyText, scheduledAt,
+    fromEmail: identity?.email || '', fromLabel: identity?.label || '',
+    personalize: personalizeCampaignText,
+  });
+  return result.queued;
+}
+
 function getRequiredOpsPermission(method, action) {
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
@@ -1267,7 +1317,7 @@ function getRequiredOpsPermission(method, action) {
     return 'ai.ops';
   }
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
-  if (['createCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
+  if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];

@@ -83,6 +83,17 @@ async function main() {
             store.campaigns.unshift(campaign);
             return json({ ok: true, campaign, queued: campaign.queued, resendConfigured: false });
           }
+          if (action === 'updateCampaign') {
+            window.__lastUpdateBody = body;
+            store.campaigns = store.campaigns.map((c) => (c.id === body.id ? { ...c, name: body.name, objective: body.objective, segment: body.segment, subject: body.subject, body: body.body } : c));
+            return json({ ok: true, campaign: store.campaigns.find((c) => c.id === body.id) });
+          }
+          if (action === 'sendCampaign') {
+            window.__lastSendBody = body;
+            const count = (store.audiences[store.campaigns.find((c) => c.id === body.id)?.segment] || {}).count || 0;
+            store.campaigns = store.campaigns.map((c) => (c.id === body.id ? { ...c, status: body.mode === 'schedule' ? 'scheduled' : 'sending', queued: count } : c));
+            return json({ ok: true, campaign: store.campaigns.find((c) => c.id === body.id), queued: count, resendConfigured: false });
+          }
           if (action === 'cancelCampaign') {
             store.campaigns = store.campaigns.map((c) => (c.id === body.id ? { ...c, status: 'cancelled', queued: 0 } : c));
             return json({ ok: true, campaign: store.campaigns.find((c) => c.id === body.id), cancelledCommunications: 2 });
@@ -148,6 +159,37 @@ async function main() {
   await page.waitForTimeout(900);
   const rowAfter = await page.locator('.pv2-table tbody tr').first().textContent();
   assert(rowAfter.includes('Annulée'), 'annulation reflétée');
+
+  // --- Brouillon : éditable ET envoyable (plus de cul-de-sac) --------------
+  await page.locator('button:has-text("+ Nouvelle campagne")').click();
+  await page.waitForTimeout(500);
+  await page.evaluate(() => pv2CampSegmentChanged('loyal'));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    pv2Camp.form.name = 'Brouillon fideles';
+    pv2Camp.form.subject = 'Merci {{prenom}}';
+    pv2Camp.form.body = 'Coucou {{prenom}}';
+  });
+  await page.locator('button:has-text("Enregistrer brouillon")').click();
+  await page.waitForTimeout(800);
+  const draftRow = page.locator('.pv2-table tbody tr', { hasText: 'Brouillon fideles' }).first();
+  assert(await draftRow.locator('.pv2-chip:has-text("Brouillon")').count() === 1, 'brouillon listé comme Brouillon');
+  assert(await draftRow.locator('button:has-text("Éditer")').count() === 1, 'brouillon éditable');
+  assert(await draftRow.locator('button:has-text("Envoyer")').count() === 1, 'brouillon envoyable depuis la liste');
+  await draftRow.locator('button:has-text("Éditer")').click();
+  await page.waitForTimeout(600);
+  assert(await page.evaluate(() => pv2Camp.editingId != null), 'formulaire ouvert en mode édition');
+  await page.evaluate(() => { pv2Camp.form.name = 'Brouillon fideles v2'; });
+  await page.locator('button:has-text("Enregistrer les modifications")').click();
+  await page.waitForTimeout(700);
+  const upd = await page.evaluate(() => window.__lastUpdateBody);
+  assert(upd && upd.name === 'Brouillon fideles v2', 'édition du brouillon persistée (updateCampaign)');
+  const draftRow2 = page.locator('.pv2-table tbody tr', { hasText: 'Brouillon fideles v2' }).first();
+  await draftRow2.locator('button:has-text("Envoyer")').click();
+  await page.waitForTimeout(800);
+  const sendBody = await page.evaluate(() => window.__lastSendBody);
+  assert(sendBody && Number.isInteger(sendBody.expectedRecipients), `envoi du brouillon confirme le volume réel (reçu ${sendBody && sendBody.expectedRecipients})`);
+  await page.screenshot({ path: path.join(OUT, '03-brouillon-flow.png'), fullPage: true });
 
   // Export destinataires
   await page.locator('button:has-text("+ Nouvelle campagne")').click();

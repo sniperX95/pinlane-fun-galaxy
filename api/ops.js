@@ -11,10 +11,22 @@ const {
   listCommunications,
   listAgentSuggestions,
   listOpsEvents,
+  listDirectionReports,
+  upsertDirectionReport,
+  updateDirectionReportBody,
   readAdminRangeState,
   readStaffState,
   saveAgentSuggestions,
 } = require('../lib/database');
+const {
+  buildDirectionAnalytics,
+  buildDirectionReportMarkdown,
+  polishReportWithAi,
+  previousWindow,
+  addDays,
+  mondayOf,
+  endOfMonth,
+} = require('../lib/direction-analytics');
 const { computeDelayImpact } = require('../lib/ops-engine');
 const {
   architectureAgent,
@@ -226,6 +238,44 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 20),
     });
     sendJson(res, 200, { ok: true, health });
+    return;
+  }
+
+  // Hub « Données » : agrégats calculés côté serveur (source de vérité unique,
+  // le front ne recalcule rien). L'historique complet sert à qualifier
+  // nouveau/récurrent au-delà de la fenêtre demandée.
+  if (action === 'directionAnalytics') {
+    const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
+    const today = new Date().toISOString().slice(0, 10);
+    const endDate = DATE_RX.test(url.searchParams.get('endDate') || '') ? url.searchParams.get('endDate') : today;
+    const startDate = DATE_RX.test(url.searchParams.get('startDate') || '') ? url.searchParams.get('startDate') : addDays(endDate, -29);
+    if (startDate > endDate) throw createHttpError('Période invalide.', 400);
+    const { getCenter } = require('../lib/ops-knowledge');
+    const center = getCenter(centerId);
+    const history = (await readAdminRangeState('2023-01-01', endDate, centerId)).reservations;
+    const analytics = buildDirectionAnalytics({ history, startDate, endDate, center });
+    const prevWin = previousWindow(startDate, endDate);
+    const previous = buildDirectionAnalytics({ history, startDate: prevWin.startDate, endDate: prevWin.endDate, center });
+    sendJson(res, 200, {
+      ok: true,
+      centerId,
+      analytics,
+      previous: {
+        startDate: previous.startDate,
+        endDate: previous.endDate,
+        totals: previous.totals,
+        clients: { unique: previous.clients.unique, returning: previous.clients.returning },
+      },
+    });
+    return;
+  }
+
+  if (action === 'directionReports') {
+    const reports = await listDirectionReports({
+      centerId,
+      limit: Number(url.searchParams.get('limit') || 24),
+    });
+    sendJson(res, 200, { ok: true, centerId, reports });
     return;
   }
 
@@ -899,6 +949,64 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Génère (ou régénère) le bilan de la dernière semaine/mois complet — ou de
+  // la période explicitement demandée. Déterministe d'abord, IA si clé dispo.
+  if (action === 'generateDirectionReport') {
+    const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
+    const periodType = body.periodType === 'month' ? 'month' : 'week';
+    const today = new Date().toISOString().slice(0, 10);
+    let periodStart;
+    let periodEnd;
+    if (DATE_RX.test(body.periodStart || '')) {
+      periodStart = periodType === 'week' ? mondayOf(body.periodStart) : `${body.periodStart.slice(0, 7)}-01`;
+      periodEnd = periodType === 'week' ? addDays(periodStart, 6) : endOfMonth(periodStart);
+    } else if (periodType === 'week') {
+      periodStart = addDays(mondayOf(today), -7);
+      periodEnd = addDays(periodStart, 6);
+    } else {
+      periodEnd = addDays(`${today.slice(0, 7)}-01`, -1);
+      periodStart = `${periodEnd.slice(0, 7)}-01`;
+    }
+    const { getCenter } = require('../lib/ops-knowledge');
+    const reportCenterId = requireConcreteCenter('generateDirectionReport');
+    const center = getCenter(reportCenterId);
+    const history = (await readAdminRangeState('2023-01-01', periodEnd, reportCenterId)).reservations;
+    const current = buildDirectionAnalytics({ history, startDate: periodStart, endDate: periodEnd, center });
+    const prevWin = previousWindow(periodStart, periodEnd);
+    const previous = buildDirectionAnalytics({ history, startDate: prevWin.startDate, endDate: prevWin.endDate, center });
+    const periodLabel = periodType === 'week'
+      ? `de la semaine du ${periodStart}`
+      : `du mois ${periodStart.slice(0, 7)}`;
+    const centerName = center?.name || reportCenterId;
+    const deterministicMd = buildDirectionReportMarkdown({ current, previous, periodLabel, centerName });
+    const aiMd = await polishReportWithAi(deterministicMd, { periodLabel, centerName });
+    const report = await upsertDirectionReport({
+      centerId: reportCenterId,
+      periodType,
+      periodStart,
+      periodEnd,
+      title: `Bilan ${periodLabel} — ${centerName}`,
+      bodyMd: aiMd || deterministicMd,
+      generatedBy: aiMd ? 'ia' : 'deterministic',
+    });
+    sendJson(res, 200, { ok: true, report });
+    return;
+  }
+
+  if (action === 'saveDirectionReport') {
+    if (!body.id || typeof body.bodyMd !== 'string' || !body.bodyMd.trim()) {
+      throw createHttpError('Bilan invalide : contenu requis.', 400);
+    }
+    const report = await updateDirectionReportBody({
+      id: body.id,
+      bodyMd: body.bodyMd,
+      title: body.title,
+      editedBy: options.session?.member?.name || options.session?.member?.id || 'direction',
+    });
+    sendJson(res, 200, { ok: true, report });
+    return;
+  }
+
   sendError(res, 400, 'Action Ops POST inconnue.');
 }
 
@@ -908,8 +1016,10 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'health') return ['dashboard.view', 'ai.ops'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
+    if (['directionAnalytics', 'directionReports'].includes(action)) return 'direction.view';
     return 'ai.ops';
   }
+  if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';
@@ -948,7 +1058,7 @@ module.exports = async (req, res) => {
       });
       if (!session) return;
       const effectiveCenterId = resolveEffectiveCenterId(session, requestedCenterId);
-      await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId });
+      await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session });
       return;
     }
     sendError(res, 405, 'Méthode non autorisée.');

@@ -60,6 +60,11 @@ const MIGRATIONS = [
     file: 'database/staff-access-code-enc-schema.sql',
     description: 'Reversible AES-256-GCM encrypted staff access codes (copy without regenerating)',
   },
+  {
+    id: '0012_direction_reports',
+    file: 'database/direction-reports-schema.sql',
+    description: 'Editable weekly/monthly direction reports generated from analytics',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

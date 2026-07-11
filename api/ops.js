@@ -14,10 +14,18 @@ const {
   listDirectionReports,
   upsertDirectionReport,
   updateDirectionReportBody,
+  listEmailTemplates,
+  saveEmailTemplate,
+  archiveEmailTemplate,
+  listEmailIdentities,
+  saveEmailIdentity,
+  deleteEmailIdentity,
+  getEmailInsightRows,
   readAdminRangeState,
   readStaffState,
   saveAgentSuggestions,
 } = require('../lib/database');
+const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
 const {
   buildDirectionAnalytics,
   buildDirectionReportMarkdown,
@@ -50,6 +58,7 @@ const {
   listClientMessageTemplates,
   listDelayNotificationChannels,
   sendClientMessage,
+  sendDirectEmail,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -276,6 +285,33 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 24),
     });
     sendJson(res, 200, { ok: true, centerId, reports });
+    return;
+  }
+
+  // Studio mails : modèles personnalisés + identités d'expéditeur + état canal.
+  if (action === 'emailStudio') {
+    const [templates, identities] = await Promise.all([
+      listEmailTemplates({ centerId }),
+      listEmailIdentities({ centerId }),
+    ]);
+    sendJson(res, 200, {
+      ok: true,
+      centerId,
+      templates,
+      identities,
+      channel: {
+        resendConfigured: Boolean(process.env.RESEND_API_KEY),
+        aiConfigured: Boolean(process.env.OPENAI_API_KEY),
+        defaultFrom: process.env.RESEND_FROM || 'onboarding@resend.dev',
+      },
+    });
+    return;
+  }
+
+  if (action === 'emailInsights') {
+    const rows = await getEmailInsightRows({ centerId });
+    const insights = buildEmailInsights({ ...rows, resendConfigured: Boolean(process.env.RESEND_API_KEY) });
+    sendJson(res, 200, { ok: true, centerId, insights });
     return;
   }
 
@@ -1007,6 +1043,81 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Studio mails — envoi libre : même pipeline que les messages client.
+  if (action === 'sendDirectEmail') {
+    const studioCenterId = requireConcreteCenter('sendDirectEmail');
+    let identity = null;
+    if (body.identityId) {
+      const identities = await listEmailIdentities({ centerId: studioCenterId });
+      identity = identities.find((item) => item.id === Number(body.identityId)) || null;
+    }
+    const result = await sendDirectEmail({
+      centerId: studioCenterId,
+      to: body.to,
+      subject: body.subject,
+      body: body.body,
+      fromEmail: identity?.email || '',
+      fromLabel: identity?.label || '',
+      category: body.category || 'direct',
+      templateRef: body.templateRef || '',
+      staffMember: options.session?.member?.name || options.session?.member?.id || 'direction',
+    });
+    sendJson(res, 200, { ok: true, ...result });
+    return;
+  }
+
+  if (action === 'saveEmailTemplate') {
+    if (!String(body.name || '').trim()) throw createHttpError('Nom du modèle requis.', 400);
+    const template = await saveEmailTemplate({
+      id: body.id || null,
+      centerId: requireConcreteCenter('saveEmailTemplate'),
+      name: body.name,
+      category: body.category,
+      subject: body.subject,
+      body: body.body,
+      createdBy: options.session?.member?.name || 'direction',
+    });
+    sendJson(res, 200, { ok: true, template });
+    return;
+  }
+
+  if (action === 'archiveEmailTemplate') {
+    const template = await archiveEmailTemplate({ id: body.id, centerId: requireConcreteCenter('archiveEmailTemplate') });
+    sendJson(res, 200, { ok: true, template });
+    return;
+  }
+
+  if (action === 'saveEmailIdentity') {
+    const identity = await saveEmailIdentity({
+      id: body.id || null,
+      centerId: requireConcreteCenter('saveEmailIdentity'),
+      label: body.label,
+      email: body.email,
+      isDefault: Boolean(body.isDefault),
+    });
+    sendJson(res, 200, { ok: true, identity });
+    return;
+  }
+
+  if (action === 'deleteEmailIdentity') {
+    const result = await deleteEmailIdentity({ id: body.id, centerId: requireConcreteCenter('deleteEmailIdentity') });
+    sendJson(res, 200, { ok: true, ...result });
+    return;
+  }
+
+  if (action === 'improveEmailWithAi') {
+    const { getCenter } = require('../lib/ops-knowledge');
+    const center = getCenter(centerId);
+    const result = await improveEmailDraft({
+      subject: body.subject,
+      body: body.body,
+      category: body.category || 'marketing',
+      centerName: center?.name || 'Fun Galaxy',
+    });
+    sendJson(res, 200, { ok: true, ...result });
+    return;
+  }
+
   sendError(res, 400, 'Action Ops POST inconnue.');
 }
 
@@ -1016,10 +1127,15 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'health') return ['dashboard.view', 'ai.ops'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
-    if (['directionAnalytics', 'directionReports'].includes(action)) return 'direction.view';
+    if (['directionAnalytics', 'directionReports', 'emailInsights'].includes(action)) return 'direction.view';
+    if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     return 'ai.ops';
   }
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
+  if (action === 'sendDirectEmail') return 'emails.send';
+  if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
+  if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
+  if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view'];
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';

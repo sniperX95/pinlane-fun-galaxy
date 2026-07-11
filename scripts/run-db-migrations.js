@@ -65,6 +65,11 @@ const MIGRATIONS = [
     file: 'database/direction-reports-schema.sql',
     description: 'Editable weekly/monthly direction reports generated from analytics',
   },
+  {
+    id: '0013_email_studio',
+    file: 'database/email-studio-schema.sql',
+    description: 'Email studio: custom templates and sender identities per center',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

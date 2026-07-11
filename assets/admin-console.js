@@ -1255,7 +1255,7 @@ function renderAdminHeader() {
     const button = document.getElementById(`adminPeriod${name}`);
     if (button) button.classList.toggle('active', state.adminPeriod === name.toLowerCase());
   });
-  ['Overview', 'Data', 'Reservations', 'Clients', 'Ops', 'Exports'].forEach(name => {
+  ['Overview', 'Data', 'Mail', 'Reservations', 'Clients', 'Ops', 'Exports'].forEach(name => {
     const button = document.getElementById(`adminTab${name}`);
     if (button) button.classList.toggle('active', state.adminTab === name.toLowerCase());
   });
@@ -1485,6 +1485,15 @@ function renderAdminDashboard() {
       if (typeof initAdminDataTab === 'function') initAdminDataTab();
     } else {
       content.innerHTML = '<div class="admin-panel"><div class="empty-state"><div class="e-title">Module Données indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
+    }
+    return;
+  }
+  if (state.adminTab === 'mail') {
+    if (typeof renderAdminMailTab === 'function') {
+      content.innerHTML = renderAdminMailTab();
+      if (typeof initAdminMailTab === 'function') initAdminMailTab();
+    } else {
+      content.innerHTML = '<div class="admin-panel"><div class="empty-state"><div class="e-title">Module Mails indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
     }
     return;
   }

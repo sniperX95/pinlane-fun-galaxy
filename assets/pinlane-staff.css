@@ -7719,8 +7719,62 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   pointer-events: none; box-shadow: var(--shadow-md);
 }
 
+/* ============================================================
+   Onglet « Mails » — studio (admin-mail.js)
+   ============================================================ */
+.ms-note {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+}
+.ms-note.warn { background: var(--warning-soft); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--line)); }
+.ms-form { display: grid; gap: var(--space-3); }
+.ms-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.ms-field { display: grid; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); min-width: 0; }
+.ms-field em { font-style: normal; font-weight: 400; color: var(--faint); }
+.ms-input {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text); font: 13px/1.5 var(--font-ui);
+}
+.ms-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
+.ms-body { resize: vertical; font-family: var(--font-ui); }
+.ms-actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.ms-actions-spacer { flex: 1; }
+.ms-tips { padding: var(--space-3) var(--space-4); background: var(--accent-soft); border-radius: var(--radius-md); }
+.ms-tips-title { font-size: 12px; font-weight: 600; color: var(--accent-strong); margin-bottom: 4px; }
+.ms-tips ul { margin: 0; padding-left: 18px; font-size: 12.5px; }
+.ms-tips li { margin: 3px 0; }
+.ms-history-bar { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-bottom: var(--space-4); }
+.ms-search { max-width: 320px; }
+.ms-pill {
+  display: inline-flex; align-items: center; padding: 2px 9px; border-radius: var(--radius-full);
+  background: var(--subtle); color: var(--muted); font-size: 11.5px; font-weight: 500; white-space: nowrap;
+}
+.ms-pill.sent, .ms-pill.delivered { background: var(--success-soft); color: var(--success); }
+.ms-pill.queued { background: var(--warning-soft); color: var(--warning); }
+.ms-pill.failed { background: var(--danger-soft); color: var(--danger); }
+.ms-error-hint { margin-top: 2px; font-size: 10.5px; color: var(--danger); max-width: 220px; }
+.ms-viewer { margin: var(--space-4) 0; padding: var(--space-4); background: var(--subtle); border-radius: var(--radius-md); }
+.ms-viewer-head { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; flex-wrap: wrap; margin-bottom: var(--space-3); }
+.ms-viewer-actions { display: flex; gap: var(--space-2); }
+.ms-iframe { width: 100%; height: 420px; border: 1px solid var(--line); border-radius: var(--radius-md); background: #fff; }
+.ms-tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+.ms-tpl-card { display: grid; gap: 8px; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); align-content: start; }
+.ms-tpl-head { display: flex; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+.ms-tpl-subject { font-size: 12.5px; font-weight: 500; }
+.ms-tpl-body { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.ms-check { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.ms-failures, .ms-recos { margin: 0; padding-left: 4px; list-style: none; display: grid; gap: 8px; font-size: 12.5px; }
+.ms-failures li { display: flex; gap: 8px; align-items: baseline; }
+.ms-recos li { padding-left: 14px; position: relative; }
+.ms-recos li::before { content: ''; position: absolute; left: 0; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
 @media (max-width: 900px) {
   .dh-grid-2 { grid-template-columns: 1fr; }
+  .ms-grid-2 { grid-template-columns: 1fr; }
+  .ms-search { max-width: none; width: 100%; }
+  .dh-range { flex-wrap: wrap; max-width: 100%; }
+  .ms-viewer-head { flex-direction: column; }
   .dh-cols { height: 120px; }
   .dh-col-tick { font-size: 9px; }
   .dh-hm { overflow-x: auto; }

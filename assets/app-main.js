@@ -403,9 +403,15 @@ function getBowlingDragTargetPlan(target) {
   const targetStart = Number(target.dataset.bowlingDropStart);
   const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
   const startTime = numToTime(targetStart);
-  const requiredCount = Math.max(1, getRequiredLaneCount(reservation.type, reservation.pax, reservation.formuleId));
   const sourceWindow = getBowlingDragSourceWindow(reservation, bowlingPointerDrag.sourceLane, bowlingPointerDrag.sourceStart);
-  const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
+  const currentLanes = (sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || [])).map(Number);
+  // SPLIT en cours (pastilles sélectionnées) : SEULES les pistes choisies bougent
+  // dans l'aperçu — sinon l'aperçu dessine tout le groupe (bug « on dirait que je
+  // décale tout / doublon »). Les pistes restantes sont exclues des cibles.
+  const splitSel = Array.isArray(bowlingPointerDrag.splitSelection) ? bowlingPointerDrag.splitSelection.map(Number) : null;
+  const isSplit = Boolean(splitSel && splitSel.length && splitSel.length < currentLanes.length);
+  const requiredCount = isSplit ? splitSel.length : Math.max(1, getRequiredLaneCount(reservation.type, reservation.pax, reservation.formuleId));
+  const excludeLanes = isSplit ? currentLanes.filter(l => !splitSel.includes(l)) : [];
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: slotCheck.message };
@@ -417,15 +423,18 @@ function getBowlingDragTargetPlan(target) {
     startTime,
     duration,
     reservation.id,
-    currentLanes,
-    bowlingPointerDrag.sourceLane,
-    Boolean(bowlingPointerDrag.splitLane)
+    isSplit ? splitSel : currentLanes,
+    isSplit ? splitSel[0] : bowlingPointerDrag.sourceLane,
+    Boolean(bowlingPointerDrag.splitLane),
+    excludeLanes
   );
   if (!lanes || lanes.length < requiredCount) {
     return { reservation, targetLane, targetStart, duration, lanes: [targetLane], valid: false, message: `${requiredCount} piste${requiredCount > 1 ? 's' : ''} indisponible${requiredCount > 1 ? 's' : ''}` };
   }
-  const movedOpsPlan = moveBowlingOpsPlan(reservation, targetStart, lanes, duration);
-  const conflicts = lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan);
+  // Aperçu : pour un split on ne teste le conflit que sur le bloc DÉPLACÉ (les
+  // pistes restantes ne bougent pas) → opsPlan candidat = fenêtre unique.
+  const previewOpsPlan = isSplit ? null : moveBowlingOpsPlan(reservation, targetStart, lanes, duration);
+  const conflicts = lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, previewOpsPlan);
   return {
     reservation,
     targetLane,
@@ -433,7 +442,7 @@ function getBowlingDragTargetPlan(target) {
     duration,
     lanes,
     valid: conflicts.length === 0,
-    message: conflicts.length ? 'Conflit avec une réservation' : `Pistes ${lanes.join(', ')}`
+    message: conflicts.length ? 'Conflit avec une réservation' : (isSplit ? `${lanes.length} piste${lanes.length > 1 ? 's' : ''} → ${lanes.join(', ')}` : `Pistes ${lanes.join(', ')}`)
   };
 }
 

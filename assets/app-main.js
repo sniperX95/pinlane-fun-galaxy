@@ -593,10 +593,23 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     showPlanningMoveNotice('Conflit detecte', 'Une autre reservation occupe deja cette piste ou cet horaire.', 'warning');
     return;
   }
-  const shouldMoveReservationStart = reservation.type === 'bowling' || !Array.isArray(reservation.opsPlan?.resourceBlocks);
+  // On déplace la résa ENTIÈRE du même delta que le bloc bowling attrapé, pour
+  // que le bowling atterrisse au créneau déposé. Indispensable pour les FORMULES :
+  // le serveur RE-PLANIFIE toujours une formule (isFormulaPatch) depuis startTime.
+  // L'ancien comportement gardait startTime inchangé → la formule était
+  // re-planifiée à l'ancienne heure et « revenait en place » malgré le toast.
+  const reservationStartMin = hourToMinuteInt(timeToNum(reservation.startTime));
+  const bowlingBlocksNow = Array.isArray(reservation.opsPlan?.resourceBlocks)
+    ? reservation.opsPlan.resourceBlocks.filter(block => block.resourceType === 'bowling_lane')
+    : [];
+  const firstBowlingStartMin = bowlingBlocksNow.length
+    ? Math.min(...bowlingBlocksNow.map(block => getBowlingBlockMinutes(block, 'start')))
+    : reservationStartMin;
+  const dragDeltaMin = hourToMinuteInt(Number(targetStart)) - firstBowlingStartMin;
+  const movedReservationStartTime = minuteIntToTime(reservationStartMin + dragDeltaMin);
   const updated = {
     ...reservation,
-    startTime: shouldMoveReservationStart ? startTime : reservation.startTime,
+    startTime: movedReservationStartTime,
     lanes,
     allowPastStart: true,
     opsPlan: movedOpsPlan
@@ -630,7 +643,20 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     markReservationMutation(requestKey, payload.reservation, moveFields);
     save();
     renderStaffData();
-    toast(`Bowling déplacé à ${formatClockDisplay(Number(targetStart))} piste${lanes.length > 1 ? 's' : ''} ${lanes.join(', ')}`);
+    // Toast HONNÊTE : on vérifie où le serveur a RÉELLEMENT placé le bowling
+    // (une formule peut être re-planifiée / ajustée). Plus de faux « déplacé ».
+    const savedBowlingBlocks = Array.isArray(payload.reservation.opsPlan?.resourceBlocks)
+      ? payload.reservation.opsPlan.resourceBlocks.filter(block => block.resourceType === 'bowling_lane')
+      : [];
+    const savedStartMin = savedBowlingBlocks.length
+      ? Math.min(...savedBowlingBlocks.map(block => getBowlingBlockMinutes(block, 'start')))
+      : hourToMinuteInt(timeToNum(payload.reservation.startTime));
+    const targetMin = hourToMinuteInt(Number(targetStart));
+    if (Math.abs(savedStartMin - targetMin) <= 1) {
+      toast(`Bowling déplacé à ${formatClockDisplay(Number(targetStart))} piste${lanes.length > 1 ? 's' : ''} ${lanes.join(', ')}`);
+    } else {
+      showPlanningMoveNotice('Replanifié', `La réservation a été placée à ${formatClockDisplay(savedStartMin / 60)} (ajustement serveur).`, 'info');
+    }
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });

@@ -17,6 +17,7 @@
     "test:center-config": "node scripts/run-center-config-tests.js",
     "test:visual": "node scripts/run-visual-qa.js",
     "test:laser-drag": "node scripts/laser-drag-check.js",
+    "test:formula-activity": "node scripts/formula-activity-check.js",
     "test:role-refresh": "node scripts/role-refresh-check.js",
     "test:new-res-notif": "node scripts/new-reservation-notif-check.js",
     "test:classification": "node scripts/classification-check.js",

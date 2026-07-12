@@ -80,6 +80,11 @@ const MIGRATIONS = [
     file: 'database/campaigns-schema.sql',
     description: 'Real email campaigns targeting CRM segments via the communications pipeline',
   },
+  {
+    id: '0016_activity_progress',
+    file: 'database/activity-progress-schema.sql',
+    description: 'Per-reservation formula activity completion tracking (survives ops replan)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

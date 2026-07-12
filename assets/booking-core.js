@@ -1129,6 +1129,53 @@ async function unscheduleLaserPass(reservationId, passIndex) {
   }
 }
 
+// ── Suivi des activités de formule ─────────────────────────────────────────────
+// La checklist dérive du plan opérationnel (opsPlan.timeline), source de vérité des
+// activités réellement incluses (bowling, laser ×N, minigolf, arcades, boissons…).
+// Chaque étape « activity » = un item cochable, clé stable `${activityId}-${countIndex}`.
+// L'état coché vit dans reservation.activityProgress (colonne DB, survit au replan).
+function reservationHasFormulaActivities(reservation) {
+  if (!reservation) return false;
+  const isFormula = reservation.type === 'formule' || !!reservation.formuleId;
+  const steps = Array.isArray(reservation.opsPlan?.timeline) ? reservation.opsPlan.timeline : [];
+  return isFormula && steps.some(step => step && step.type === 'activity');
+}
+
+function getFormulaActivityChecklist(reservation) {
+  const steps = Array.isArray(reservation?.opsPlan?.timeline) ? reservation.opsPlan.timeline : [];
+  const progress = reservation?.activityProgress && typeof reservation.activityProgress === 'object' ? reservation.activityProgress : {};
+  const seen = new Map();
+  const items = [];
+  steps.filter(step => step && step.type === 'activity').forEach(step => {
+    const activityId = String(step.activityId || 'activite');
+    // countIndex peut manquer : on numérote les occurrences répétées du même activityId
+    // (ex. « 2 parties Laser Game » → laser_game-1 et laser_game-2, cochables séparément).
+    const occ = (seen.get(activityId) || 0) + 1;
+    seen.set(activityId, occ);
+    const countIndex = Number(step.countIndex || occ);
+    const key = `${activityId}-${countIndex}`;
+    const entry = progress[key];
+    items.push({
+      key,
+      activityId,
+      countIndex,
+      label: String(step.label || activityId),
+      startTime: step.startTime || '',
+      endTime: step.endTime || '',
+      done: !!(entry && entry.done),
+      doneAt: entry && entry.doneAt ? entry.doneAt : '',
+      by: entry && entry.by ? entry.by : '',
+    });
+  });
+  return items;
+}
+
+function getFormulaActivityProgressSummary(reservation) {
+  const items = getFormulaActivityChecklist(reservation);
+  const done = items.filter(item => item.done).length;
+  return { items, done, total: items.length, allDone: items.length > 0 && done === items.length };
+}
+
 (function exposeBookingCore(global) {
   if (!global) return;
   global.PinlaneBookingCore = {
@@ -1216,5 +1263,8 @@ async function unscheduleLaserPass(reservationId, passIndex) {
     scheduleLaserPass,
     removeLaserPassFromPlan,
     unscheduleLaserPass,
+    reservationHasFormulaActivities,
+    getFormulaActivityChecklist,
+    getFormulaActivityProgressSummary,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

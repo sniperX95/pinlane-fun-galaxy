@@ -77,6 +77,7 @@
           ]
         },
         { key: 'reservations', label: 'Réservations', icon: 'reservations' },
+        { key: 'formules', label: 'Formules', icon: 'events' },
         {
           key: 'field',
           label: 'Terrain',
@@ -820,6 +821,12 @@
     if (key === 'reservations') {
       if (typeof setView === 'function') setView('staff');
       if (typeof setStaffStatusFilter === 'function') setStaffStatusFilter('all');
+      if (typeof renderStaff === 'function') renderStaff();
+      return;
+    }
+    if (key === 'formules') {
+      setMenuPage('formules');
+      if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }

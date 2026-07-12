@@ -14,6 +14,8 @@ let bowlingDragSaveSeq = 0;
 const bowlingDragLatestSeqByReservation = {};
 let statusSaveSeq = 0;
 const statusSaveLatestSeqByReservation = {};
+let activitySaveSeq = 0;
+const activitySaveLatestSeqByReservation = {};
 const pendingReservationWriteIds = new Set();
 let planningMoveNoticeTimer = null;
 
@@ -1981,6 +1983,7 @@ const STAFF_MENU_PAGES = [
   'dashboard',
   'planning',
   'reservations',
+  'formules',
   'sessions',
   'arrivals',
   'events',
@@ -2084,6 +2087,7 @@ const STAFF_PAGE_PERMISSION_MAP = {
   dashboard: ['dashboard.view'],
   planning: ['planning.view'],
   reservations: ['reservations.view'],
+  formules: ['reservations.view'],
   sessions: ['reservations.view'],
   arrivals: ['reservations.status', 'reservations.view'],
   events: ['reservations.view'],
@@ -4000,6 +4004,7 @@ function isStaffCampaignsActive() {
 }
 
 const STAFF_UTILITY_MENU_PAGES = [
+  'formules',
   'sessions',
   'arrivals',
   'events',
@@ -6432,6 +6437,37 @@ function getStaffEventResources(reservation) {
   }).join(' | ');
 }
 
+function renderStaffFormulesBoard(rows = []) {
+  const formuleRows = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
+  if (!formuleRows.length) {
+    return `<div class="events-empty-state">
+      <strong>Aucune formule sur cette date.</strong>
+      <span>Les réservations de type formule apparaissent ici avec leur checklist d'activités (bowling, laser, arcades, minigolf, boissons…) à cocher au fur et à mesure.</span>
+      <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Créer une formule</button>
+    </div>`;
+  }
+  return `<div class="formules-board">
+    ${formuleRows.map(reservation => {
+      const summary = getFormulaActivityProgressSummary(reservation);
+      const checklist = renderFormulaActivityChecklist(reservation);
+      return `<article class="formules-card${summary.allDone ? ' all-done' : ''}">
+        <header class="formules-card-head">
+          <div class="formules-card-time">
+            <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
+            <span>${Number(reservation.pax || 0)} joueurs</span>
+          </div>
+          <div class="formules-card-id">
+            <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
+            <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
+          </div>
+          <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
+        </header>
+        ${checklist || '<div class="formules-card-empty">Pas de plan d\'activités détaillé pour cette formule.</div>'}
+      </article>`;
+    }).join('')}
+  </div>`;
+}
+
 function renderStaffUtilityEventsBoard(rows = []) {
   if (!rows.length) {
     return `<div class="events-empty-state">
@@ -6507,6 +6543,7 @@ function renderStaffUtilityEventsBoard(rows = []) {
                   <span>${Number(reservation.pax || 0)} joueurs</span>
                   <span>${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
                   <span>${formatMoney(Number(reservation.price || 0))}</span>
+                  ${renderActivityProgressPill(reservation)}
                 </div>
               </div>
               <div class="event-resource" title="${escapeHtml(resources)}">
@@ -8052,6 +8089,33 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     kpis: [],
     body: ''
   };
+  if (page === 'formules') {
+    const formuleRows = reservations.filter(reservation => reservation.type === 'formule' || reservation.formuleId);
+    const withActivities = formuleRows.filter(reservationHasFormulaActivities);
+    const totals = withActivities.reduce((acc, reservation) => {
+      const summary = getFormulaActivityProgressSummary(reservation);
+      acc.done += summary.done;
+      acc.total += summary.total;
+      if (summary.allDone) acc.complete += 1;
+      return acc;
+    }, { done: 0, total: 0, complete: 0 });
+    return {
+      ...base,
+      layout: 'events',
+      eyebrow: 'Terrain',
+      title: 'Formules — suivi des activités',
+      subtitle: 'Cochez chaque activité au fur et à mesure : vous voyez d\'un coup d\'œil ce qui reste à faire.',
+      panelSubtitle: `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.done > 1 ? 's' : ''}`,
+      secondaryAction: "openStaffMenuPage('reservations')",
+      kpis: [
+        ['Formules', formuleRows.length, 'sur la date'],
+        ['Joueurs', formuleRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'participants'],
+        ['Activités faites', `${totals.done}/${totals.total}`, 'cochées'],
+        ['Complètes', totals.complete, 'toutes activités faites']
+      ],
+      body: renderStaffFormulesBoard(formuleRows)
+    };
+  }
   if (page === 'sessions') {
     const nextRows = reservations.filter(reservation => getReservationFirstResourceStart(reservation, 'all') > now && reservation.status !== 'paid').slice(0, 8);
     const closingRows = reservations.filter(reservation => reservation.status === 'arrived' || (getStaffResourceWindows(reservation, 'all').some(window => window.end <= now) && reservation.status !== 'paid')).slice(0, 8);
@@ -11091,6 +11155,7 @@ function renderPlanning() {
         ${renderReservationTags(r)}
         <div class="booking-foot">
           <span class="b-tag">${getReservationLabel(r)}</span>
+          ${renderActivityProgressPill(r)}
           ${statsHtml}
         </div>
       </div>`;
@@ -11273,6 +11338,7 @@ function renderLaserPlanning() {
         </span>
         ${renderDelayIndicator(reservation)}
         <span class="booking-stats laser-group-stats">
+          ${renderActivityProgressPill(reservation)}
           <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
           <span class="bk-dur laser-dur" title="Durée ${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}">${escapeHtml(formatDurationLabel(window.duration || (LASER_GAME_ARENA_MINUTES / 60)))}</span>
         </span>
@@ -11665,6 +11731,72 @@ function quickPay(id) {
   setReservationStatusDirect(id, 'paid');
 }
 
+// Coche/décoche une activité de formule comme « faite ». PATCH MINIMAL
+// { id, centerId, activityProgress } → chemin permission-light (reservations.status,
+// staff comptoir/terrain OK) + AUCUN replan (activityProgress hors REPLAN_FIELDS) →
+// l'opsPlan reste intact, seule la colonne activity_progress change. Optimiste +
+// rollback + protection anti-poll (markReservationMutation) comme le statut.
+function toggleFormulaActivity(reservationId, key, ev) {
+  if (ev) ev.stopPropagation();
+  const idKey = String(reservationId);
+  let current = state.reservations.find(r => String(r.id) === idKey);
+  if (!current) {
+    const external = findStaffReservationById(reservationId);
+    if (external) {
+      upsertReservationInState(external);
+      current = state.reservations.find(r => String(r.id) === idKey) || external;
+    }
+  }
+  if (!current) { toast('Réservation introuvable.'); return; }
+  const progress = current.activityProgress && typeof current.activityProgress === 'object'
+    ? { ...current.activityProgress }
+    : {};
+  const wasDone = !!(progress[key] && progress[key].done);
+  if (wasDone) {
+    delete progress[key];
+  } else {
+    progress[key] = { done: true, doneAt: new Date().toISOString(), by: state.staffAuthSession?.member?.name || 'Staff' };
+  }
+  const nextReservation = { ...current, activityProgress: progress };
+  const requestKey = Number(reservationId);
+  const requestSeq = ++activitySaveSeq;
+  activitySaveLatestSeqByReservation[requestKey] = requestSeq;
+  const isLatestRequest = () => activitySaveLatestSeqByReservation[requestKey] === requestSeq;
+  // Les signatures de re-render (getStaffDataSignature / getSelectedReservationSignature)
+  // n'incluent pas activityProgress → applyOptimisticReservation zapperait le re-render.
+  // On rafraîchit donc explicitement la surface courante + l'overlay détail s'il est ouvert.
+  const refreshSurfaces = () => {
+    if (state.view === 'staff') { try { renderStaffData(); } catch (e) { /* page peut ne plus être montée */ } }
+    if (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId)) { try { renderPos(); } catch (e) { /* overlay fermé */ } }
+  };
+  markReservationMutation(reservationId, nextReservation, ['activityProgress']);
+  applyOptimisticReservation(nextReservation, { preserveEditState: true });
+  refreshSurfaces();
+  apiRequest(API_ENDPOINTS.staffReservations, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      id: Number(reservationId),
+      centerId: current.centerId || (typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : 'libramont'),
+      activityProgress: progress,
+    })
+  }).then(payload => {
+    if (!isLatestRequest()) return;
+    if (payload?.reservation) {
+      applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+      markReservationMutation(reservationId, payload.reservation, ['activityProgress']);
+      refreshSurfaces();
+    }
+  }).catch(error => {
+    if (!isLatestRequest()) return;
+    applyOptimisticReservation(current, { preserveEditState: true });
+    clearReservationMutation(reservationId);
+    refreshSurfaces();
+    toast(error.message || "Impossible d'enregistrer l'activité.");
+  }).finally(() => {
+    if (isLatestRequest()) delete activitySaveLatestSeqByReservation[requestKey];
+  });
+}
+
 async function cancelRes(id, ev) {
   if (ev) ev.stopPropagation();
   if (!confirm('Annuler cette réservation ?')) return;
@@ -11746,6 +11878,55 @@ function setTab(t) {
   renderPos();
 }
 
+// Pill compacte « faites/total » pour les cartes planning (formules uniquement).
+function renderActivityProgressPill(r) {
+  if (typeof reservationHasFormulaActivities === 'function' && !reservationHasFormulaActivities(r)) return '';
+  const summary = getFormulaActivityProgressSummary(r);
+  if (!summary.total) return '';
+  return `<span class="activity-pill${summary.allDone ? ' done' : ''}" title="Activités faites : ${summary.done}/${summary.total}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>`;
+}
+
+function formatActivityDoneTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+}
+
+const ACTIVITY_CHECK_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+// Bloc de suivi des activités d'une formule : une case cochable par activité incluse
+// (bowling, laser ×N, minigolf, arcades, boissons…), grisée + horodatée quand faite.
+// Réutilisé dans le détail réservation, la page Formules et le board Terrain.
+function renderFormulaActivityChecklist(r, opts = {}) {
+  if (typeof reservationHasFormulaActivities === 'function' && !reservationHasFormulaActivities(r)) return '';
+  const summary = getFormulaActivityProgressSummary(r);
+  if (!summary.total) return '';
+  const pct = Math.round((summary.done / summary.total) * 100);
+  const rows = summary.items.map(item => {
+    const time = item.startTime ? `${escapeHtml(item.startTime)}${item.endTime ? ' – ' + escapeHtml(item.endTime) : ''}` : '';
+    const meta = item.done
+      ? [item.by ? `par ${escapeHtml(item.by)}` : '', formatActivityDoneTime(item.doneAt)].filter(Boolean).join(' · ')
+      : '';
+    return `<button type="button" class="activity-check-row${item.done ? ' is-done' : ''}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
+      <span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
+      <span class="activity-check-main">
+        <span class="activity-check-label">${escapeHtml(item.label)}</span>
+        ${time ? `<span class="activity-check-time">${time}</span>` : ''}
+      </span>
+      <span class="activity-check-state">${item.done ? (meta || 'Fait') : 'À faire'}</span>
+    </button>`;
+  }).join('');
+  return `<div class="info-block activity-check-block${summary.allDone ? ' all-done' : ''}">
+    <div class="activity-check-head">
+      <div class="info-label">Suivi des activités${opts.titleSuffix ? ` ${escapeHtml(opts.titleSuffix)}` : ''}</div>
+      <span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>
+    </div>
+    <div class="activity-check-bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
+    <div class="activity-check-list">${rows}</div>
+  </div>`;
+}
+
 function renderPosDetails(r) {
   const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
   const lanesTxt = r.type === 'laser'
@@ -11756,7 +11937,10 @@ function renderPosDetails(r) {
     arrived: { label: 'Arrivé', cls: 'arr' },
     paid: { label: 'Payé', cls: 'paid' }
   }[r.status] || { label: 'Confirmé', cls: 'conf' };
-  const opsPlanHtml = r.opsPlan?.timeline?.length ? `
+  // Pour une formule : checklist cochable des activités (suivi « fait / à faire »).
+  // Sinon : plan automatique en lecture seule.
+  const activityChecklistHtml = renderFormulaActivityChecklist(r);
+  const opsPlanHtml = (r.opsPlan?.timeline?.length && !activityChecklistHtml) ? `
     <div class="info-block">
       <div class="info-label">Plan automatique</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -11779,6 +11963,7 @@ function renderPosDetails(r) {
         <div class="info-row" style="grid-column:1/-1;padding-top:14px;border-top:1px solid var(--border);"><div class="lbl">Emplacement</div><div class="val">${lanesTxt}</div></div>
       </div>
     </div>
+    ${activityChecklistHtml}
     ${opsPlanHtml}
     ${renderOpsPlanInsightBlock(r)}
     <div class="info-block">
@@ -14018,7 +14203,7 @@ function applyInitialRouteFromHash() {
   const normalizedPage = staffPageAliases[page] || page;
   if (['client', 'staff', 'admin'].includes(view)) state.view = view;
   if (view === 'staff') {
-    const allowedPages = ['dashboard', 'planning', 'reservations', 'sessions', 'arrivals', 'events', 'clients', 'groups', 'contacts', 'lanes', 'prices', 'laserGame', 'emails', 'campaigns', 'establishment', 'users', 'settings'];
+    const allowedPages = ['dashboard', 'planning', 'reservations', 'formules', 'sessions', 'arrivals', 'events', 'clients', 'groups', 'contacts', 'lanes', 'prices', 'laserGame', 'emails', 'campaigns', 'establishment', 'users', 'settings'];
     if (allowedPages.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
     if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
   }

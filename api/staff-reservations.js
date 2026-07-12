@@ -57,7 +57,7 @@ function hasAnyField(body = {}, fields = []) {
 
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
-  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes'].includes(key));
+  return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress'].includes(key));
 }
 
 function isFormulaPatch(body = {}) {

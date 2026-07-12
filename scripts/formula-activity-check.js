@@ -127,6 +127,23 @@ async function main() {
     ok(model.f1.keys.join(',') === 'bowling-1,laser_game-1,arcade_time-1,service_drinks-1', 'F1 : bowling + laser + arcades + boissons (liste exacte de F1)');
     ok(model.f1.labels.includes('Arcades') && model.f1.labels.some(l => /boissons/i.test(l)), 'F1 : Arcades + Boissons présents (absents du plan)');
 
+    // [SYNC] le miroir client FORMULA_ACTIVITY_STEPS doit matcher ops-knowledge/formulas.json
+    console.log('\n[SYNC] miroir client == source serveur (formulas.json)');
+    const serverFormulas = JSON.parse(fs.readFileSync(path.join(ROOT, 'ops-knowledge', 'formulas.json'), 'utf8')).formulas;
+    const clientSteps = await page.evaluate(() => {
+      const out = {};
+      const ids = ['f1','f2','f3','f4','f5','f6','f7','f8','bts','mm','css','kfd','hlg','ffm'];
+      ids.forEach(id => { const s = window.PinlaneBookingCore.getFormulaActivitySteps(id); out[id] = s ? s.map(x => `${x.a}:${x.c}`) : null; });
+      return out;
+    });
+    let syncMismatch = [];
+    serverFormulas.forEach(f => {
+      const serverSeq = f.steps.map(s => `${s.activityId}:${Number(s.count || 1)}`);
+      const clientSeq = clientSteps[f.id];
+      if (!clientSeq || clientSeq.join('|') !== serverSeq.join('|')) syncMismatch.push(`${f.id}: serveur[${serverSeq.join(',')}] vs client[${clientSeq ? clientSeq.join(',') : 'ABSENT'}]`);
+    });
+    ok(syncMismatch.length === 0, `miroir synchronisé pour les ${serverFormulas.length} formules${syncMismatch.length ? ' — DÉRIVE: ' + syncMismatch.join(' ; ') : ''}`);
+
     // [DÉTAIL] ouvrir la résa + cocher « Bowling » par un VRAI clic
     console.log('\n[DÉTAIL] clic réel sur une case');
     await page.evaluate(() => { if (typeof openStaffReservationDetail === 'function') openStaffReservationDetail(9020); else openPos(9020); });

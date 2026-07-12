@@ -1267,6 +1267,15 @@ input.dash-date-input {
 }
 .laser-pass-queue.is-empty { background: var(--surface); }
 
+/* Cible de dépôt active : on glisse une carte placée vers la file pour la retirer
+   du planning. Accent net + liseré pour signaler la zone sans ambiguïté. */
+.laser-pass-queue.is-unplace-target {
+  outline: 2px dashed var(--accent-strong);
+  outline-offset: -4px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+.laser-pass-queue.is-unplace-target .laser-pass-queue-copy strong { color: var(--accent-strong); }
+
 .hour-col {
   width: var(--planning-hour-col);
   flex-shrink: 0;

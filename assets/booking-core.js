@@ -761,6 +761,10 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
     })
     .filter(window => window.duration > 0);
   if (planned.length) return planned;
+  // Gestion laser MANUELLE (une partie a été dé-placée vers « à placer ») : on ne
+  // régénère JAMAIS de fenêtre par fallback — l'absence de bloc laser = partie non
+  // placée (sinon la carte réapparaîtrait aussitôt sur le planning).
+  if (resourceType === 'laser_arena' && reservation.opsPlan?.laserManual) return planned;
   if (resourceType === 'bowling_lane' && (reservation.lanes || []).length) {
     return [{
       reservation,
@@ -815,13 +819,18 @@ function getPendingLaserPasses(dateStr = state.currentDate) {
       reservation.date === dateStr
       && reservation.status !== 'cancelled'
       && (reservation.type === 'laser' || reservation.type === 'formule' || reservation.formuleId)
-      && getLaserGameCountForReservation(reservation) > 1
+      // Multi-parties (passes 2..N à placer) OU laser en gestion manuelle : une partie
+      // a été dé-placée vers « à placer », y compris une session laser direct 1-partie.
+      && (getLaserGameCountForReservation(reservation) > 1 || reservation.opsPlan?.laserManual)
     )
     .flatMap(reservation => {
-      const totalGames = getLaserGameCountForReservation(reservation);
+      const totalGames = Math.max(1, getLaserGameCountForReservation(reservation));
       const scheduled = new Set(getLaserPassScheduledIndexes(reservation));
+      // La 1re partie reste ancrée automatiquement, SAUF quand le laser est en gestion
+      // manuelle (elle a pu être dé-placée) → on part alors de l'index 1.
+      const startIndex = reservation.opsPlan?.laserManual ? 1 : 2;
       const passes = [];
-      for (let countIndex = 2; countIndex <= totalGames; countIndex += 1) {
+      for (let countIndex = startIndex; countIndex <= totalGames; countIndex += 1) {
         if (!scheduled.has(countIndex)) {
           passes.push({
             reservation,
@@ -1024,6 +1033,102 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
   }
 }
 
+// Matérialise les parties laser CONSERVÉES en blocs explicites (+ garde les blocs
+// non-laser), en retirant la partie `passIndex`. Indispensable : sans bloc explicite,
+// getResourceWindowsFromReservation régénère la partie par fallback (elle reviendrait).
+function removeLaserPassFromPlan(reservation, passIndex) {
+  const keptLaserBlocks = getLaserWindowsFromReservation(reservation)
+    .filter(window => Number(window.countIndex || 1) !== Number(passIndex))
+    .map(window => {
+      const start = hourToMinuteInt(window.start);
+      const end = hourToMinuteInt(window.end);
+      return {
+        type: 'activity',
+        activityId: 'laser_game',
+        label: 'Laser Game',
+        resourceType: 'laser_arena',
+        countIndex: Number(window.countIndex || 1),
+        manualLaserPass: true,
+        critical: true,
+        start,
+        end,
+        startTime: minuteIntToTime(start),
+        endTime: minuteIntToTime(end),
+        durationMinutes: Math.max(15, end - start),
+        players: Number(window.players || reservation.pax || 0),
+        groupPlayers: Number(reservation.pax || window.players || 0),
+      };
+    });
+  const nonLaserBlocks = (reservation.opsPlan?.resourceBlocks || [])
+    .filter(block => block.resourceType !== 'laser_arena');
+  return [...nonLaserBlocks, ...keptLaserBlocks].sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
+}
+
+// Dé-planifie une partie laser : la carte quitte le planning et repart dans la file
+// « Parties à placer ». Miroir de scheduleLaserPass.
+async function unscheduleLaserPass(reservationId, passIndex) {
+  const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
+  if (!reservation) return;
+  const targetIndex = Number(passIndex) || 1;
+  // Déjà dans « à placer » (aucune fenêtre planifiée) → rien à faire.
+  const scheduledIndexes = new Set(getLaserPassScheduledIndexes(reservation));
+  if (!scheduledIndexes.has(targetIndex)) return;
+  // La 1re partie d'une FORMULE est ré-ancrée par le serveur (ops-engine) : la
+  // dé-placer n'aurait aucun effet durable → on le dit au lieu de faire clignoter.
+  if (targetIndex === 1 && reservation.type !== 'laser') {
+    if (typeof showPlanningMoveNotice === 'function') {
+      showPlanningMoveNotice('Partie ancrée', "La 1re partie d'une formule reste placée automatiquement. Seules les parties supplémentaires peuvent être retirées.", 'info');
+    }
+    return;
+  }
+  const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
+  const nextOpsPlan = updateLaserPassPlan({
+    ...(reservation.opsPlan || {}),
+    // Laser direct : marqueur « géré à la main » → pas de régénération par fallback.
+    ...(reservation.type === 'laser' ? { laserManual: true } : {}),
+    resourceBlocks: removeLaserPassFromPlan(reservation, targetIndex),
+  }, reservation);
+  const updated = { ...reservation, allowPastStart: true, opsPlan: nextOpsPlan };
+  const requestKey = Number(reservation.id);
+  const requestSeq = ++laserPassSaveSeq;
+  laserPassLatestSeqByReservation[requestKey] = requestSeq;
+  const isLatestRequest = () => laserPassLatestSeqByReservation[requestKey] === requestSeq;
+  const clearLatestRequest = () => {
+    if (isLatestRequest()) delete laserPassLatestSeqByReservation[requestKey];
+  };
+  const moveFields = ['opsPlan'];
+  if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, updated, moveFields);
+  applyOptimisticReservation(updated, { preserveEditState: true });
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+      method: 'PATCH',
+      body: JSON.stringify(buildReservationApiPayload(updated, {
+        skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
+        laneCount: 0,
+        requiresLanes: false,
+        allowPastStart: true
+      }))
+    });
+    if (!isLatestRequest()) return;
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmee par le serveur.');
+    upsertReservationInState(payload.reservation);
+    if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, moveFields);
+    save();
+    renderStaffData();
+    toast('Partie retirée du planning — à replacer quand tu veux.');
+  } catch (error) {
+    if (!isLatestRequest()) return;
+    applyOptimisticReservation(previous, { preserveEditState: true });
+    if (typeof clearReservationMutation === 'function') clearReservationMutation(requestKey);
+    if (typeof showPlanningMoveNotice === 'function') {
+      showPlanningMoveNotice('Retrait annule', error.message || 'Impossible de retirer cette partie Laser Game.', 'warning');
+    }
+    return;
+  } finally {
+    clearLatestRequest();
+  }
+}
+
 (function exposeBookingCore(global) {
   if (!global) return;
   global.PinlaneBookingCore = {
@@ -1109,5 +1214,7 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     checkManualLaserPassPlacement,
     updateLaserPassPlan,
     scheduleLaserPass,
+    removeLaserPassFromPlan,
+    unscheduleLaserPass,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

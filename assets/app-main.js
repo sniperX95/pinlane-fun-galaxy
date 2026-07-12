@@ -4,6 +4,7 @@ let laserDragScrollRaf = null;
 let laserDragLastY = 0;
 let laserPointerDrag = null;
 let laserDragDropTarget = null;
+let laserUnplaceDropTarget = null;
 let laserDragSuppressClickUntil = 0;
 let bowlingPointerDrag = null;
 let bowlingDragDropTarget = null;
@@ -217,6 +218,13 @@ function getLaserDropTargetFromPoint(clientX, clientY) {
   return element?.closest?.('.laser-session-slot[data-laser-drop-start]') || null;
 }
 
+// La colonne « Parties à placer » devient une cible de dépôt : glisser une carte
+// déjà placée dessus dé-planifie la partie (elle repart dans la file « à placer »).
+function getLaserUnplaceDropFromPoint(clientX, clientY) {
+  const element = document.elementFromPoint(clientX, clientY);
+  return element?.closest?.('.laser-pass-queue') || null;
+}
+
 function setLaserDragDropTarget(target) {
   if (laserDragDropTarget && laserDragDropTarget !== target) {
     laserDragDropTarget.classList.remove('is-drop-target');
@@ -228,6 +236,19 @@ function setLaserDragDropTarget(target) {
 function clearLaserDragDropTarget() {
   if (laserDragDropTarget) laserDragDropTarget.classList.remove('is-drop-target');
   laserDragDropTarget = null;
+}
+
+function setLaserUnplaceDropTarget(target) {
+  if (laserUnplaceDropTarget && laserUnplaceDropTarget !== target) {
+    laserUnplaceDropTarget.classList.remove('is-unplace-target');
+  }
+  laserUnplaceDropTarget = target;
+  if (laserUnplaceDropTarget) laserUnplaceDropTarget.classList.add('is-unplace-target');
+}
+
+function clearLaserUnplaceDropTarget() {
+  if (laserUnplaceDropTarget) laserUnplaceDropTarget.classList.remove('is-unplace-target');
+  laserUnplaceDropTarget = null;
 }
 
 function onLaserDocumentDragOver(event) {
@@ -281,7 +302,10 @@ function onLaserPointerMove(event) {
   laserPointerDrag.lastY = event.clientY;
   updateLaserPointerGhost(event);
   startLaserDragAutoScroll(event.clientY);
-  setLaserDragDropTarget(getLaserDropTargetFromPoint(event.clientX, event.clientY));
+  const slotTarget = getLaserDropTargetFromPoint(event.clientX, event.clientY);
+  setLaserDragDropTarget(slotTarget);
+  // Sinon, survole-t-on la file « Parties à placer » ? (dépôt = dé-planifier)
+  setLaserUnplaceDropTarget(slotTarget ? null : getLaserUnplaceDropFromPoint(event.clientX, event.clientY));
 }
 
 function onLaserPointerUp(event) {
@@ -301,10 +325,17 @@ function onLaserPointerUp(event) {
   document.removeEventListener('wheel', onLaserDragWheel);
   drag.sourceEl.classList.remove('is-dragging');
   if (drag.ghost) drag.ghost.remove();
+  const unplaceZone = getLaserUnplaceDropFromPoint(event.clientX, event.clientY);
   const target = getLaserDropTargetFromPoint(event.clientX, event.clientY) || laserDragDropTarget;
   clearLaserDragDropTarget();
+  clearLaserUnplaceDropTarget();
+  // Dépôt sur la file « Parties à placer » → on retire la partie du planning.
+  if (unplaceZone) {
+    unscheduleLaserPass(drag.reservationId, drag.passIndex);
+    return;
+  }
   if (!target) {
-    showPlanningMoveNotice('Aucun lancement choisi', 'Deposez la carte sur une ligne Laser Game disponible.', 'warning');
+    showPlanningMoveNotice('Aucun lancement choisi', 'Deposez la carte sur une ligne Laser Game disponible, ou sur « Parties à placer » pour la retirer du planning.', 'warning');
     return;
   }
   const targetStart = Number(target.dataset.laserDropStart);
@@ -11182,7 +11213,7 @@ function renderLaserPlanning() {
     <div class="laser-pass-queue${pendingPasses.length ? '' : ' is-empty'}" aria-label="Parties Laser Game à placer">
       <div class="laser-pass-queue-copy">
         <strong>Parties à placer${pendingPasses.length ? ` • ${pendingPasses.length}` : ''}</strong>
-        <span>Glissez une carte sur un lancement disponible ou partagé.</span>
+        <span>Glissez une partie <b>ici</b> pour la retirer du planning, ou sur un lancement pour la placer.</span>
       </div>
       <div class="laser-pass-list">
         ${passListHtml}

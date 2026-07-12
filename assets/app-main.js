@@ -5862,13 +5862,19 @@ function getStaffGroupReservations(row = {}) {
     });
 }
 
+// « Aujourd'hui RÉEL » — la page Groupes est ancrée à la date réelle, jamais à la
+// date affichée (state.currentDate). Naviguer dans le calendrier ne change PAS
+// l'à-venir des groupes (distinction nette avec Terrain, qui est le jour affiché).
+function staffGroupToday() {
+  return todayStr();
+}
+
 function getStaffGroupNextReservation(row = {}) {
   const reservations = getStaffGroupReservations(row).filter(reservation => reservation.status !== 'cancelled');
-  const visibleDate = state.currentDate || todayStr();
-  return reservations.find(reservation => String(reservation.date || '') >= visibleDate)
-    || reservations[reservations.length - 1]
-    || row.lastBooking
-    || null;
+  const today = staffGroupToday();
+  // Prochaine visite = la 1re résa FUTURE (>= aujourd'hui réel). Plus de repli sur
+  // la dernière résa passée (bug « prochaine visite » affichant du passé).
+  return reservations.find(reservation => String(reservation.date || '') >= today) || null;
 }
 
 // Libellés d'occasion DÉCLARÉE (source de vérité de la catégorisation staff).
@@ -5896,7 +5902,8 @@ function getStaffGroupDeclaredCategory(row = {}) {
   const occ = String(row.declaredOccasion || '').toLowerCase();
   if (occ === 'anniversaire') return 'birthday';
   if (occ === 'entreprise') return 'business';
-  if (occ === 'amis' || occ === 'ecole') return 'regular';
+  if (occ === 'ecole') return 'school';
+  if (occ === 'amis') return 'regular';
   if (occ === 'autre') return 'other';
   return '';
 }
@@ -5923,10 +5930,10 @@ function formatStaffGroupReservationDate(reservation) {
 }
 
 function getStaffGroupAgenda(rows = []) {
-  const visibleDate = state.currentDate || todayStr();
+  const today = staffGroupToday();
   return rows
     .flatMap(row => getStaffGroupReservations(row).map(reservation => ({ row, reservation })))
-    .filter(item => item.reservation.status !== 'cancelled' && String(item.reservation.date || '') >= visibleDate)
+    .filter(item => item.reservation.status !== 'cancelled' && String(item.reservation.date || '') >= today)
     .sort((left, right) => {
       const leftKey = `${left.reservation.date || ''} ${left.reservation.startTime || '00:00'}`;
       const rightKey = `${right.reservation.date || ''} ${right.reservation.startTime || '00:00'}`;
@@ -6341,62 +6348,444 @@ function renderStaffGroupTable(rows = []) {
   </section>`;
 }
 
-function renderStaffGroupWorkspaceV2(rows = []) {
-  if (!rows.length) {
-    const loading = !!staffClientDataCache.loading;
-    const error = staffClientDataCache.error || '';
-    return `<div class="groups-page">
-      ${renderStaffCustomRequestsPanel()}
-      <section class="groups-empty-state">
-        <span>${loading ? 'Synchronisation' : error ? 'Lecture impossible' : 'Aucun groupe'}</span>
-        <h2>${loading ? 'Chargement des profils groupes' : error ? 'Donnees groupes indisponibles' : 'Aucun groupe repere pour le moment'}</h2>
-        <p>${loading ? 'Pinlane lit les reservations reelles du centre pour consolider anniversaires, ecoles, entreprises et gros volumes.' : error || 'Les profils apparaitront automatiquement quand une reservation contient un gros groupe, une formule ou un anniversaire.'}</p>
-        <div>
-          ${renderStaffGroupActionButton('Nouvelle reservation groupe', "openQuickBook({ date: state.currentDate, type: 'formule' })", 'primary')}
-          ${renderStaffGroupActionButton('Actualiser', 'loadStaffClientData(true)')}
+// ════════════════════════════════════════════════════════════════════════════
+//  GROUPES & ANNIVERSAIRES — RADAR DE PRÉPARATION (futur proche, ancré aujourd'hui
+//  réel). Unité = LE DOSSIER (événement daté), pas le client. 3 horizons : CRM=passé,
+//  Terrain=présent, ici=FUTUR PROCHE « qu'est-ce qui me tombe dessus, est-ce prêt ? ».
+// ════════════════════════════════════════════════════════════════════════════
+
+// État filtres/prépa (défauts inline, persistés dans save()).
+function getStaffGroupHorizon() { return ['week', 'next', '30', 'all'].includes(state.staffGroupHorizon) ? state.staffGroupHorizon : 'all'; }
+function getStaffGroupHorizonDays() { const h = getStaffGroupHorizon(); return h === 'week' ? 7 : h === 'next' ? 14 : h === '30' ? 30 : 3650; }
+function getStaffGroupFacet() { return ['all', 'anniversaire', 'amis', 'entreprise', 'ecole', 'sur-mesure'].includes(state.staffGroupFacet) ? state.staffGroupFacet : 'all'; }
+function getStaffGroupPrepMap() { return (state.staffGroupPrep && typeof state.staffGroupPrep === 'object') ? state.staffGroupPrep : {}; }
+
+function setStaffGroupHorizon(value) { state.staffGroupHorizon = value; save(); renderStaffUtilityPage(); }
+function setStaffGroupFacet(value) { state.staffGroupFacet = (getStaffGroupFacet() === value) ? 'all' : value; save(); renderStaffUtilityPage(); }
+function toggleStaffGroupPrepFirst() { state.staffGroupPrepFirst = !state.staffGroupPrepFirst; save(); renderStaffUtilityPage(); }
+function resetStaffGroupView() { state.staffGroupFacet = 'all'; state.staffGroupHorizon = 'all'; state.staffGroupPrepFirst = false; state.staffGroupQuery = ''; save(); renderStaffUtilityPage(); }
+// Coche/décoche un item de prépa. Clé STABLE = id dossier + item (jamais un libellé).
+function toggleStaffGroupPrep(dossierId, itemKey) {
+  const map = { ...getStaffGroupPrepMap() };
+  const key = `${dossierId}|${itemKey}`;
+  if (map[key]) delete map[key]; else map[key] = true;
+  state.staffGroupPrep = map;
+  save();
+  renderStaffUtilityPage();
+}
+
+// Occasion normalisée d'un dossier → sert aux facettes.
+function getStaffGroupDossierOccasion(dossier) {
+  if (dossier.kind === 'lead') return 'sur-mesure';
+  const occ = String(dossier.occasion || '').toLowerCase();
+  if (['anniversaire', 'entreprise', 'ecole', 'amis'].includes(occ)) return occ;
+  if (dossier.row && dossier.row.hasBirthday) return 'anniversaire';
+  return 'amis';
+}
+function getStaffGroupOccasionLabel(occ) {
+  return { anniversaire: 'Anniversaire', amis: 'Groupe amis', entreprise: 'Entreprise', ecole: 'École / asso', 'sur-mesure': 'Sur mesure' }[occ] || 'Groupe';
+}
+
+// UNIFICATION des dossiers : (a) résas FUTURES des profils groupe/anniversaire,
+// enrichies des agrégats du client parent ; (b) demandes sur mesure (leads).
+function buildStaffGroupDossiers() {
+  const today = staffGroupToday();
+  const rows = getStaffClientRows().filter(row => row.isGroup || row.hasBirthday);
+  const dossiers = [];
+  rows.forEach(row => {
+    getStaffGroupReservations(row).forEach(reservation => {
+      if (!reservation || reservation.status === 'cancelled') return;
+      const dateISO = String(reservation.date || '');
+      if (dateISO < today) return; // futur proche uniquement
+      dossiers.push({
+        id: `r-${reservation.id}`,
+        kind: 'reservation',
+        dateISO,
+        startTime: reservation.startTime || '',
+        name: row.name,
+        phone: row.phone,
+        email: row.email,
+        initials: row.initials,
+        avatarTone: row.avatarTone,
+        pax: Number(reservation.pax || row.maxPax || 0),
+        occasion: row.declaredOccasion || '',
+        row,
+        reservation,
+      });
+    });
+  });
+  (staffCustomRequestsCache.items || []).filter(item => item.status !== 'archived').forEach(lead => {
+    const requested = String(lead.requestedDate || '');
+    // rapprochement heuristique lead↔client (hint seulement, jamais fusion sur vide)
+    const email = String(lead.email || '').trim().toLowerCase();
+    const phone = String(lead.phone || '').replace(/\D/g, '');
+    const match = (email || phone) ? rows.find(r => (email && String(r.email || '').trim().toLowerCase() === email) || (phone && String(r.phone || '').replace(/\D/g, '') === phone)) : null;
+    dossiers.push({
+      id: `l-${lead.id}`,
+      kind: 'lead',
+      dateISO: requested >= today ? requested : '',
+      startTime: '',
+      name: lead.contactName || lead.company || 'Demande sur mesure',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      pax: Number(lead.pax || 0),
+      occasion: String(lead.occasion || '').toLowerCase(),
+      lead,
+      stage: lead.status,
+      matchedRow: match || null,
+    });
+  });
+  dossiers.sort((a, b) => `${a.dateISO || '9999-99-99'} ${a.startTime || '99:99'}`.localeCompare(`${b.dateISO || '9999-99-99'} ${b.startTime || '99:99'}`));
+  return dossiers;
+}
+
+// Valeur du dossier : RÉELLE (spent de la résa) sinon PRÉVISIONNELLE (avgBasket × pax),
+// sinon null (on n'invente pas).
+function getStaffGroupDossierValue(dossier) {
+  const real = dossier.reservation ? Number(dossier.reservation.price || 0) : 0;
+  if (real > 0) return { value: real, estimated: false };
+  const row = dossier.row || {};
+  const pax = Number(dossier.pax || 0);
+  if (Number(row.avgBasket || 0) > 0 && pax) return { value: Math.round(Number(row.avgBasket) * pax), estimated: true };
+  return { value: null, estimated: false };
+}
+
+// READINESS honnête 0-N (remplace needsStaffGroupFollowup qui saturait de faux positifs).
+function computeStaffGroupReadiness(dossier) {
+  if (dossier.kind === 'lead') return { score: 0, total: 0, items: [], ready: false, todo: 0, na: 6 };
+  const r = dossier.reservation || {};
+  const row = dossier.row || {};
+  const isFormula = r.type === 'formule' || !!r.formuleId;
+  const needsLanes = r.type === 'bowling' || isFormula;
+  const hasResource = (Array.isArray(r.lanes) && r.lanes.length) || r.type === 'laser'
+    || (r.opsPlan && Array.isArray(r.opsPlan.resourceBlocks) && r.opsPlan.resourceBlocks.length);
+  const activityDone = r.activityProgress && typeof r.activityProgress === 'object' && Object.keys(r.activityProgress).length > 0;
+  const items = [
+    { key: 'formule', label: 'Formule', state: (isFormula ? 'done' : (row.hasBirthday ? 'todo' : 'na')) },
+    { key: 'joueurs', label: 'Joueurs', state: (Number(r.pax || 0) > 0 ? 'done' : 'todo') },
+    { key: 'ressource', label: 'Ressource', state: (needsLanes ? (hasResource ? 'done' : 'todo') : 'na') },
+    { key: 'contact', label: 'Contact', state: ((row.phone && row.email) ? 'done' : 'todo') },
+    { key: 'acompte', label: 'Acompte', state: (r.status === 'paid' ? 'done' : 'todo') },
+    { key: 'activites', label: 'Activités', state: (isFormula ? (activityDone ? 'done' : 'todo') : 'na') },
+  ];
+  // Coche manuelle du staff → force 'done'.
+  const prep = getStaffGroupPrepMap();
+  items.forEach(item => { if (prep[`${dossier.id}|${item.key}`]) item.state = 'done'; });
+  const relevant = items.filter(item => item.state !== 'na');
+  const done = relevant.filter(item => item.state === 'done').length;
+  const todo = relevant.filter(item => item.state === 'todo').length;
+  return { score: done, total: relevant.length, items, ready: todo === 0, todo, na: items.length - relevant.length };
+}
+
+// Mémo « habitué » en français, assemblé des agrégats. Dégrade proprement (vide si rien).
+function getStaffGroupMemo(row) {
+  if (!row) return '';
+  const bits = [];
+  if (Number(row.reservations || 0) >= 3) bits.push('Habitué·e');
+  else if (Number(row.reservations || 0) >= 2) bits.push('Déjà venu·e');
+  else if (Number(row.tenureDays || 0) < 40 && Number(row.reservations || 0) <= 1) bits.push('Nouveau·elle');
+  if (row.favoriteLabel) bits.push(`aime ${row.favoriteLabel}`);
+  else if (row.favoriteFormula) bits.push(`formule ${row.favoriteFormula}`);
+  if (Number(row.avgPlayers || 0) > 0) bits.push(`vient à ~${Math.round(Number(row.avgPlayers))}`);
+  if (row.cancelRate != null && Number(row.reservations || 0) >= 2) {
+    if (Number(row.cancelRate) <= 0.05) bits.push('annule rarement');
+    else if (Number(row.cancelRate) >= 0.3) bits.push('annule souvent');
+  }
+  if (Number(row.leadTimeAvgDays || 0) >= 3) bits.push(`réserve ~${Math.round(Number(row.leadTimeAvgDays))}j avant`);
+  return bits.join(' · ');
+}
+
+function getStaffGroupLastComm(row) {
+  if (!row || typeof getStaffClientCommunications !== 'function') return null;
+  const list = getStaffClientCommunications(row);
+  return (Array.isArray(list) && list.length) ? list[0] : null;
+}
+
+// Compte à rebours ancré aujourd'hui réel.
+function staffGroupCountdown(dateISO) {
+  if (!dateISO) return '';
+  const days = staffClientDaysBetween(dateISO, staffGroupToday());
+  if (days <= 0) return "Aujourd'hui";
+  if (days === 1) return 'Demain';
+  return `J-${days}`;
+}
+const STAFF_GROUP_BANDS = [
+  { key: 'now', label: "Aujourd'hui & demain", max: 1 },
+  { key: 'week', label: 'Cette semaine', max: 7 },
+  { key: 'next', label: 'Semaine prochaine', max: 14 },
+  { key: 'later', label: 'Plus tard', max: 99999 },
+];
+function getStaffGroupBandKey(dateISO) {
+  if (!dateISO) return 'later';
+  const days = staffClientDaysBetween(dateISO, staffGroupToday());
+  const band = STAFF_GROUP_BANDS.find(b => days <= b.max);
+  return band ? band.key : 'later';
+}
+
+// Filtre les dossiers : facette occasion + horizon + recherche + « à préparer d'abord ».
+function getFilteredStaffGroupDossiers(dossiers) {
+  const facet = getStaffGroupFacet();
+  const horizonDays = getStaffGroupHorizonDays();
+  const query = String(state.staffGroupQuery || '').trim().toLowerCase();
+  const today = staffGroupToday();
+  let list = dossiers.filter(dossier => {
+    if (facet !== 'all' && getStaffGroupDossierOccasion(dossier) !== facet) return false;
+    if (dossier.dateISO) {
+      const days = staffClientDaysBetween(dossier.dateISO, today);
+      if (days > horizonDays) return false;
+    } else if (facet !== 'sur-mesure' && horizonDays < 3650) {
+      // les leads sans date ne s'affichent dans la timeline que si horizon = Tout
+      return false;
+    }
+    if (query) {
+      const text = `${dossier.name || ''} ${dossier.email || ''} ${dossier.phone || ''} ${getStaffGroupOccasionLabel(getStaffGroupDossierOccasion(dossier))}`.toLowerCase();
+      if (!text.includes(query)) return false;
+    }
+    return true;
+  });
+  if (state.staffGroupPrepFirst) {
+    list = list.filter(dossier => dossier.kind === 'lead' || !computeStaffGroupReadiness(dossier).ready);
+  }
+  return list;
+}
+
+// 5 KPI PROSPECTIFS scopés à l'horizon + facette (remplacent les KPI lifetime trompeurs).
+function getStaffGroupProspectiveKpis() {
+  const dossiers = getFilteredStaffGroupDossiers(buildStaffGroupDossiers());
+  const events = dossiers.filter(d => d.kind === 'reservation');
+  const toPrepare = events.filter(d => !computeStaffGroupReadiness(d).ready).length;
+  let forecast = 0;
+  events.forEach(d => { const v = getStaffGroupDossierValue(d); if (v.value != null) forecast += v.value; });
+  const leadsOpen = dossiers.filter(d => d.kind === 'lead').length;
+  // Anniversaires à re-booker : profils anniversaire dont l'échéance annuelle tombe < 60 j.
+  const today = staffGroupToday();
+  const rebook = getStaffClientRows().filter(row => row.hasBirthday).filter(row => {
+    const anniv = (row.history || []).map(h => h.reservation).filter(r => r && isStaffBirthdayFormulaReservation(r)).map(r => r.date).sort()[0];
+    if (!anniv) return false;
+    let days = staffClientDaysBetween(anniv, today) % 365;
+    if (days < 0) days += 365;
+    return days >= 0 && days <= 60;
+  }).length;
+  return [
+    ['Dossiers à venir', events.length, 'sur l\'horizon'],
+    ['À préparer', toPrepare, 'checklist incomplète'],
+    ['CA prévisionnel', forecast > 0 ? formatMoney(forecast) : '—', 'réel + estimé'],
+    ['Anniv. à re-booker', rebook, 'échéance < 60 j'],
+    ['Leads sur mesure', leadsOpen, 'demandes ouvertes'],
+  ];
+}
+
+// ── RENDU ────────────────────────────────────────────────────────────────────
+function renderStaffGroupReadinessChips(readiness) {
+  const meterPct = readiness.total ? Math.round((readiness.score / readiness.total) * 100) : 0;
+  // Mètre de préparation seul + compteur. Les items eux-mêmes sont la rangée de
+  // chips CLIQUABLES juste en dessous (.groups-check-toggles) — pas de doublon.
+  return `<div class="groups-readiness">
+    <div class="groups-readiness-bar" aria-hidden="true"><span style="width:${meterPct}%"></span></div>
+    <span class="groups-readiness-count">${readiness.score}/${readiness.total} prêt</span>
+  </div>`;
+}
+
+function renderStaffGroupDossierCard(dossier) {
+  const occ = getStaffGroupDossierOccasion(dossier);
+  const countdown = staffGroupCountdown(dossier.dateISO);
+  const dateLabel = dossier.dateISO ? `${escapeHtml(formatStaffGroupReservationDate(dossier.reservation || { date: dossier.dateISO }))}${dossier.startTime ? ' · ' + escapeHtml(dossier.startTime.slice(0, 5)) : ''}` : 'Date à définir';
+
+  if (dossier.kind === 'lead') {
+    const stageLabel = dossier.stage === 'in_progress' ? 'DEVIS' : dossier.stage === 'handled' ? 'À CONVERTIR' : 'LEAD';
+    const jid = staffClientJs(dossier.lead.id);
+    return `<article class="groups-dossier groups-dossier-lead tone-info">
+      <div class="groups-dossier-head">
+        <div class="groups-dossier-when">
+          <strong>${dateLabel}</strong>
+          ${countdown ? `<span class="groups-jx">${escapeHtml(countdown)}</span>` : '<span class="groups-jx">Sans date</span>'}
         </div>
+        <span class="groups-stage-badge groups-stage-${escapeHtml(String(dossier.stage || 'new'))}">${escapeHtml(stageLabel)}</span>
+        <span class="admin-pill">${escapeHtml(getStaffGroupOccasionLabel(occ))}</span>
+        ${dossier.pax ? `<span class="groups-pax">${dossier.pax} pers.</span>` : ''}
+      </div>
+      <div class="groups-dossier-ident">
+        <span class="crm-avatar tone-blue">${escapeHtml(getStaffClientInitials(dossier.name))}</span>
+        <div><strong>${escapeHtml(dossier.name)}</strong><small>${escapeHtml(dossier.email || dossier.phone || 'Coordonnées à compléter')}${dossier.matchedRow ? ' · client connu' : ''}</small></div>
+      </div>
+      ${dossier.lead.message ? `<div class="groups-memo">${escapeHtml(String(dossier.lead.message).slice(0, 160))}</div>` : ''}
+      <div class="groups-dossier-actions">
+        ${dossier.email ? `<button type="button" class="groups-action primary" onclick="composeStaffClientEmail(${staffClientJs(dossier.email)}, ${staffClientJs(dossier.name)})">Répondre</button>` : ''}
+        <button type="button" class="groups-action" onclick="openStaffClientBooking()">Convertir en dossier</button>
+        ${dossier.stage !== 'in_progress' && dossier.stage !== 'handled' ? `<button type="button" class="groups-action" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
+        <button type="button" class="groups-action ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>
+      </div>
+    </article>`;
+  }
+
+  const readiness = computeStaffGroupReadiness(dossier);
+  const tone = readiness.ready ? 'success' : (staffClientDaysBetween(dossier.dateISO, staffGroupToday()) <= 2 && readiness.todo) ? 'danger' : 'warning';
+  const val = getStaffGroupDossierValue(dossier);
+  const valLabel = val.value != null ? `${val.estimated ? '≈ ' : ''}${formatMoney(val.value)}` : '—';
+  const memo = getStaffGroupMemo(dossier.row);
+  const isVip = Number(dossier.row?.engagementScore || 0) >= 75;
+  const noShow = Number(dossier.row?.cancelRate || 0) >= 0.3 && Number(dossier.row?.reservations || 0) >= 2;
+  const lastComm = getStaffGroupLastComm(dossier.row);
+  const lastCommDays = lastComm ? staffClientDaysBetween(staffGroupToday(), String(lastComm.sentAt || lastComm.createdAt || '').slice(0, 10)) : null;
+  const history = (dossier.row?.history || []).filter(h => h.reservation && String(h.reservation.date || '') < staffGroupToday()).slice(0, 6);
+
+  return `<article class="groups-dossier tone-${tone}">
+    <div class="groups-dossier-head">
+      <div class="groups-dossier-when">
+        <strong>${dateLabel}</strong>
+        <span class="groups-jx">${escapeHtml(countdown)}</span>
+      </div>
+      <span class="admin-pill groups-occ-${escapeHtml(occ)}">${escapeHtml(getStaffGroupOccasionLabel(occ))}</span>
+      <span class="groups-pax">${dossier.pax} pers.</span>
+      ${isVip ? '<span class="groups-flag groups-flag-vip" title="Bon client">★ VIP</span>' : ''}
+      ${noShow ? '<span class="groups-flag groups-flag-risk" title="Annule souvent">⚠ Risque no-show</span>' : ''}
+      <span class="groups-dossier-val">${valLabel}</span>
+    </div>
+    <div class="groups-dossier-ident">
+      <span class="crm-avatar tone-${escapeHtml(dossier.avatarTone || 'blue')}">${escapeHtml(dossier.initials || getStaffClientInitials(dossier.name))}</span>
+      <div><strong>${escapeHtml(dossier.name)}</strong><small>${escapeHtml(getReservationLabel(dossier.reservation) || getStaffGroupKind(dossier.row))}${readiness.ready ? ' · Prêt' : ` · ${readiness.todo} à préparer`}</small></div>
+    </div>
+    ${renderStaffGroupReadinessChips(readiness)}
+    <div class="groups-check-toggles">
+      ${readiness.items.filter(i => i.state !== 'na').map(i => `<button type="button" class="groups-check-toggle${i.state === 'done' ? ' is-done' : ''}" onclick="toggleStaffGroupPrep(${staffClientJs(dossier.id)}, ${staffClientJs(i.key)})" aria-pressed="${i.state === 'done'}">${i.state === 'done' ? '✓' : '○'} ${escapeHtml(i.label)}</button>`).join('')}
+    </div>
+    ${memo ? `<div class="groups-memo crm-insight">${escapeHtml(memo)}</div>` : ''}
+    <div class="groups-dossier-actions">
+      <button type="button" class="groups-action primary" onclick="openStaffReservationDetail(${staffClientJs(dossier.reservation.id)})">Ouvrir le dossier</button>
+      <button type="button" class="groups-action" onclick="${getStaffGroupContactAction(dossier.row)}" title="${lastComm ? `Dernier message il y a ${lastCommDays} j` : 'Aucun message envoyé'}">Contacter${lastCommDays != null ? ` · relancé il y a ${lastCommDays}j` : ''}</button>
+      <button type="button" class="groups-action ghost" onclick="openStaffMenuPage('clients'); selectStaffClient(${staffClientJs(dossier.row.id)})">Fiche client</button>
+    </div>
+    ${history.length ? `<details class="groups-history crm-history"><summary>Voir ses ${history.length} derniers passages</summary><div class="groups-history-list">${history.map(h => `<div class="groups-history-row"><span>${escapeHtml(h.date)}</span><span>${escapeHtml(h.label)}</span><span>${escapeHtml(h.status)}</span><strong>${formatMoney(Math.abs(h.amount))}</strong></div>`).join('')}</div></details>` : ''}
+  </article>`;
+}
+
+function renderStaffGroupTimeline(dossiers) {
+  if (!dossiers.length) {
+    return `<section class="groups-empty-state"><span>Rien à préparer</span><h2>Aucun dossier sur cet horizon</h2><p>Élargissez l'horizon ou retirez les facettes. Les anniversaires, groupes et demandes sur mesure à venir apparaissent ici dès qu'une réservation existe.</p></section>`;
+  }
+  const byBand = new Map();
+  dossiers.forEach(dossier => {
+    const key = getStaffGroupBandKey(dossier.dateISO);
+    if (!byBand.has(key)) byBand.set(key, []);
+    byBand.get(key).push(dossier);
+  });
+  return `<div class="groups-timeline">
+    ${STAFF_GROUP_BANDS.filter(band => byBand.has(band.key)).map(band => {
+      const list = byBand.get(band.key);
+      let sum = 0; list.forEach(d => { const v = getStaffGroupDossierValue(d); if (v.value != null) sum += v.value; });
+      return `<section class="groups-band">
+        <div class="groups-band-head"><h3>${escapeHtml(band.label)}</h3><span>${list.length} dossier${list.length > 1 ? 's' : ''}${sum ? ` · ${formatMoney(sum)}` : ''}</span></div>
+        <div class="groups-band-list">${list.map(renderStaffGroupDossierCard).join('')}</div>
+      </section>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderStaffGroupPriorityPanel(dossiers) {
+  const today = staffGroupToday();
+  const shortlist = dossiers
+    .filter(d => d.kind === 'reservation')
+    .map(d => ({ d, r: computeStaffGroupReadiness(d), days: staffClientDaysBetween(d.dateISO, today) }))
+    .filter(x => x.days <= 7 && (x.r.todo > 0 || (Number(x.d.row?.cancelRate || 0) >= 0.3)))
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 5);
+  return `<section class="crm-block groups-side-card">
+    <div class="groups-side-head"><h3>À confirmer en priorité</h3></div>
+    ${shortlist.length ? shortlist.map(({ d, r }) => {
+      const reason = r.todo > 0 ? `${r.todo} à préparer` : 'Annule souvent — confirmer';
+      return `<button type="button" class="groups-priority-row" onclick="openStaffReservationDetail(${staffClientJs(d.reservation.id)})">
+        <span class="groups-jx">${escapeHtml(staffGroupCountdown(d.dateISO))}</span>
+        <div><strong>${escapeHtml(d.name)}</strong><small>${escapeHtml(reason)}</small></div>
+        <span class="groups-pax">${d.pax}p</span>
+      </button>`;
+    }).join('') : `<div class="groups-empty-note">Tout est prêt sur les 7 prochains jours. 👍</div>`}
+  </section>`;
+}
+
+function renderStaffGroupForecastPanel(dossiers) {
+  const today = staffGroupToday();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
+  const perDay = days.map(date => {
+    const list = dossiers.filter(d => d.kind === 'reservation' && d.dateISO === date);
+    return { date, pax: list.reduce((sum, d) => sum + Number(d.pax || 0), 0), count: list.length };
+  });
+  const maxPax = Math.max(1, ...perDay.map(p => p.pax));
+  return `<section class="crm-block groups-side-card">
+    <div class="groups-side-head"><h3>Charge à venir · 7 jours</h3></div>
+    <div class="groups-forecast">
+      ${perDay.map(p => `<div class="groups-forecast-col" title="${p.count} dossier(s) · ${p.pax} joueurs">
+        <div class="groups-forecast-bar"><span style="height:${Math.round((p.pax / maxPax) * 100)}%"></span></div>
+        <small>${escapeHtml(parseLocalDate(p.date).toLocaleDateString('fr-BE', { weekday: 'short' }).replace('.', ''))}</small>
+        <strong>${p.pax}</strong>
+      </div>`).join('')}
+    </div>
+  </section>`;
+}
+
+function renderStaffGroupControlBar(allDossiers, filteredDossiers) {
+  const facet = getStaffGroupFacet();
+  const horizon = getStaffGroupHorizon();
+  const query = escapeHtml(state.staffGroupQuery || '');
+  const facetPill = (key, label) => `<button type="button" class="crm-pill groups-facet${facet === key ? ' active' : ''}" aria-pressed="${facet === key}" onclick="setStaffGroupFacet('${key}')">${escapeHtml(label)}</button>`;
+  const horizonSeg = (key, label) => `<button type="button" class="${horizon === key ? 'active' : ''}" aria-pressed="${horizon === key}" onclick="setStaffGroupHorizon('${key}')">${escapeHtml(label)}</button>`;
+  const active = facet !== 'all' || horizon !== 'all' || state.staffGroupPrepFirst || state.staffGroupQuery;
+  return `<section class="groups-toolbar-card">
+    <div class="groups-toolbar-main">
+      <div class="seg groups-view-seg">
+        <button type="button" class="active" aria-pressed="true">Timeline</button>
+        <button type="button" disabled title="Bientôt">Liste</button>
+        <button type="button" disabled title="Bientôt">Calendrier</button>
+      </div>
+      <div class="seg groups-horizon-seg">
+        ${horizonSeg('week', 'Cette semaine')}${horizonSeg('next', '15 j')}${horizonSeg('30', '30 j')}${horizonSeg('all', 'Tout')}
+      </div>
+      <label class="groups-search">${renderStaffClientIcon('search')}<input value="${query}" placeholder="Rechercher un dossier, contact…" oninput="setStaffGroupQuery(this.value)"></label>
+      <button type="button" class="groups-prepfirst${state.staffGroupPrepFirst ? ' active' : ''}" aria-pressed="${!!state.staffGroupPrepFirst}" onclick="toggleStaffGroupPrepFirst()">À préparer d'abord</button>
+      ${active ? `<button type="button" class="groups-reset" onclick="resetStaffGroupView()">✕ Réinitialiser</button>` : ''}
+    </div>
+    <div class="groups-facets">
+      ${facetPill('all', 'Tous')}
+      ${facetPill('anniversaire', 'Anniversaires')}
+      ${facetPill('amis', 'Groupes amis')}
+      ${facetPill('entreprise', 'Entreprises')}
+      ${facetPill('ecole', 'École & asso')}
+      ${facetPill('sur-mesure', 'Sur mesure')}
+      <span class="groups-count">${filteredDossiers.length} / ${allDossiers.length} dossiers</span>
+    </div>
+  </section>`;
+}
+
+function renderStaffGroupWorkspaceV2() {
+  const allDossiers = buildStaffGroupDossiers();
+  const filtered = getFilteredStaffGroupDossiers(allDossiers);
+  if (!allDossiers.length && !staffClientDataCache.loaded) {
+    const loading = !!staffClientDataCache.loading;
+    return `<div class="groups-page">
+      <section class="groups-empty-state">
+        <span>${loading ? 'Synchronisation' : 'Aucun dossier'}</span>
+        <h2>${loading ? 'Lecture des réservations à venir…' : 'Aucun groupe ou anniversaire à venir'}</h2>
+        <p>Les dossiers apparaissent dès qu'une réservation future contient un groupe, une formule anniversaire, ou qu'une demande sur mesure arrive.</p>
+        <div>${renderStaffGroupActionButton('Nouvelle réservation groupe', "openQuickBook({ date: state.currentDate, type: 'formule' })", 'primary')}${renderStaffGroupActionButton('Actualiser', 'loadStaffClientData(true)')}</div>
       </section>
     </div>`;
   }
-
-  const allRows = [...rows].sort((left, right) => {
-    const leftNext = getStaffGroupNextReservation(left);
-    const rightNext = getStaffGroupNextReservation(right);
-    const leftKey = `${leftNext?.date || '9999-12-31'} ${leftNext?.startTime || '23:59'}`;
-    const rightKey = `${rightNext?.date || '9999-12-31'} ${rightNext?.startTime || '23:59'}`;
-    const dateDelta = leftKey.localeCompare(rightKey);
-    if (dateDelta) return dateDelta;
-    return Number(right.spent || 0) - Number(left.spent || 0);
-  });
-  const filteredRows = getFilteredStaffGroupRows(allRows);
-  const agenda = getStaffGroupAgenda(filteredRows.length ? filteredRows : allRows);
-  const followUps = (filteredRows.length ? filteredRows : allRows)
-    .map(row => ({ row, reservation: getStaffGroupNextReservation(row) || {} }))
-    .filter(item => needsStaffGroupFollowup(item.row, item.reservation))
-    .filter(item => !isStaffGroupActionDismissed(item.row, item.reservation));
-  const focusItem = agenda[0] || {
-    row: filteredRows[0] || allRows[0],
-    reservation: getStaffGroupNextReservation(filteredRows[0] || allRows[0]) || {}
-  };
-
   return `<div class="groups-page">
-    ${renderStaffCustomRequestsPanel()}
-    ${renderStaffGroupToolbar(allRows, filteredRows, agenda, followUps)}
-    <div class="groups-main-layout">
-      <div class="groups-primary-stack">
-        ${renderStaffGroupSelected(focusItem)}
-        ${renderStaffGroupTable(filteredRows)}
+    ${renderStaffGroupControlBar(allDossiers, filtered)}
+    <div class="crm-split groups-cockpit">
+      <div class="groups-primary">
+        ${renderStaffGroupTimeline(filtered)}
       </div>
       <aside class="groups-side-stack">
-        ${renderStaffGroupAgendaPanel(agenda)}
-        ${renderStaffGroupActionsPanel(followUps)}
+        ${renderStaffCustomRequestsPanel()}
+        ${renderStaffGroupPriorityPanel(filtered)}
+        ${renderStaffGroupForecastPanel(allDossiers)}
       </aside>
     </div>
   </div>`;
 }
 
-function renderStaffUtilityGroupBoard(rows = []) {
-  return renderStaffGroupWorkspaceV2(rows);
+function renderStaffUtilityGroupBoard() {
+  return renderStaffGroupWorkspaceV2();
 }
 
 function renderStaffUtilityContactLedger(rows = []) {
@@ -8114,7 +8503,6 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   const arrivedRows = reservations.filter(reservation => reservation.status === 'arrived');
   const eventRows = reservations.filter(isStaffUtilityEventReservation);
   const clientRows = getStaffClientRows();
-  const groupRows = clientRows.filter(row => row.isGroup || row.hasBirthday);
   const laserSessions = getStaffUtilityLaserSessions(reservations);
   const maintenanceCount = Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
   const base = {
@@ -8217,16 +8605,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       layout: 'groups',
       eyebrow: 'Groupes & anniversaires',
       title: 'Groupes & anniversaires',
-      subtitle: 'Suivi operationnel des groupes, anniversaires, entreprises et actions commerciales.',
-      panelSubtitle: `${groupRows.length} profil${groupRows.length > 1 ? 's' : ''} consolidé${groupRows.length > 1 ? 's' : ''} · ${groupRows.reduce((sum, row) => sum + Number(row.players || 0), 0)} joueur(s) cumulés · suivi groupes prêt terrain`,
+      subtitle: 'Prépa des dossiers à venir : anniversaires, groupes, entreprises et demandes sur mesure.',
       hidePanelHead: true,
-      kpis: [
-        ['Groupes', groupRows.length, 'profils actifs'],
-        ['Joueurs cumulés', groupRows.reduce((sum, row) => sum + Number(row.players || 0), 0), 'historique'],
-        ['Formules', groupRows.reduce((sum, row) => sum + Number(row.formulas || 0), 0), 'réservées'],
-        ['CA groupe', formatMoney(groupRows.reduce((sum, row) => sum + Number(row.spent || 0), 0)), 'historique']
-      ],
-      body: renderStaffUtilityGroupBoard(groupRows)
+      kpis: getStaffGroupProspectiveKpis(),
+      body: renderStaffUtilityGroupBoard()
     };
   }
   if (page === 'contacts') {

@@ -6,6 +6,7 @@ const {
   deleteReservation,
   getReservationById,
   updateReservation,
+  setReservationActivityProgress,
 } = require('../lib/database');
 const { readJson, sendError, sendJson } = require('../lib/http');
 const { enqueueReservationCommunications } = require('../lib/ops-communications');
@@ -58,6 +59,13 @@ function hasAnyField(body = {}, fields = []) {
 function patchNeedsOnlyStatus(body = {}) {
   const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
   return keys.length > 0 && keys.every((key) => ['status', 'paymentMethod', 'payment_method', 'notes', 'activityProgress', 'activity_progress'].includes(key));
+}
+
+// Un PATCH qui ne touche QUE le suivi d'activités (cocher/décocher) : chemin rapide
+// dédié, aucune re-validation planning (pistes/laser/créneau).
+function patchIsActivityProgressOnly(body = {}) {
+  const keys = Object.keys(body || {}).filter((key) => key !== 'id' && key !== 'centerId' && key !== 'center_id');
+  return keys.length === 1 && (keys[0] === 'activityProgress' || keys[0] === 'activity_progress');
 }
 
 function isFormulaPatch(body = {}) {
@@ -151,6 +159,19 @@ module.exports = async (req, res) => {
       if (requestedCenterId !== (current.centerId || 'libramont')) {
         const switchSession = await requireStaffPermission(req, res, 'centers.switch', { centerId: requestedCenterId });
         if (!switchSession) return;
+      }
+
+      // Chemin rapide : cocher/décocher une activité de formule. On écrit UNIQUEMENT
+      // activity_progress, SANS re-valider pistes/laser/créneau (rien du planning ne
+      // change) → plus de faux « Ce créneau vient de changer » qui annulait la coche.
+      if (patchIsActivityProgressOnly(body)) {
+        const updated = await setReservationActivityProgress(
+          current.id,
+          current.centerId || 'libramont',
+          body.activityProgress ?? body.activity_progress,
+        );
+        sendJson(res, 200, { ok: true, reservation: updated, automation: { communications: 0, jobs: 0, refreshed: false } });
+        return;
       }
 
       const patch = {

@@ -11113,6 +11113,16 @@ function renderLaserPlanning() {
   // Préserve le scroll (heures + horizontal) entre deux re-renders du polling.
   const prevScrollTop = wrap.scrollTop;
   const prevScrollLeft = wrap.scrollLeft;
+  // En PLEIN ÉCRAN, le wrap est en overflow:hidden (grille 2 colonnes) : le vrai
+  // scroller vertical est la timeline `.laser-agenda` (et la file `.laser-pass-queue`
+  // à gauche défile aussi). Comme on reconstruit tout le innerHTML, ces éléments
+  // repartaient à 0 → « ça remet tout en haut à chaque déplacement ». On mémorise
+  // donc leur position pour la restaurer après le rebuild. (Signalé Movsar 2026-07-12.)
+  const prevAgenda = wrap.querySelector('.laser-agenda');
+  const prevAgendaTop = prevAgenda ? prevAgenda.scrollTop : 0;
+  const prevAgendaLeft = prevAgenda ? prevAgenda.scrollLeft : 0;
+  const prevQueue = wrap.querySelector('.laser-pass-queue');
+  const prevQueueTop = prevQueue ? prevQueue.scrollTop : 0;
   const config = getPlanningWindow(state.currentDate);
   if (config.closed) {
     wrap.innerHTML = `<div class="empty-state"><div class="e-title">Laser fermé ce jour</div><div class="e-sub">Aucun lancement possible sur cette date.</div></div>`;
@@ -11300,6 +11310,13 @@ function renderLaserPlanning() {
     </div>`;
   wrap.scrollTop = prevScrollTop;
   wrap.scrollLeft = prevScrollLeft;
+  const nextAgenda = wrap.querySelector('.laser-agenda');
+  if (nextAgenda) {
+    nextAgenda.scrollTop = prevAgendaTop;
+    nextAgenda.scrollLeft = prevAgendaLeft;
+  }
+  const nextQueue = wrap.querySelector('.laser-pass-queue');
+  if (nextQueue) nextQueue.scrollTop = prevQueueTop;
 }
 
 // Maintenance datée : fenêtre [du, au] — la piste reste réservable hors

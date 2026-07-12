@@ -3215,12 +3215,6 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-selector-head p { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .establishment-center-list { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-start; }
 
-/* Sélection de pistes à détacher (drag split bowling) : pastille en coin de carte */
-.bk-split-dot { position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--surface); cursor: pointer; padding: 0; z-index: 3; transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
-.bk-split-dot:hover { border-color: var(--accent); }
-.bk-split-dot.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-.booking.is-split-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
-
 .establishment-center-chip {
   display: grid; gap: 4px; min-width: 170px; flex: 0 1 210px; max-width: 240px; padding: 9px 12px; text-align: left;
   border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page);

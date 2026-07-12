@@ -2028,8 +2028,26 @@ state.adminPeriod = ['day', 'week', 'month', 'year'].includes(state.adminPeriod)
 state.adminTab = state.adminTab || 'overview';
 state.adminCockpitMode = ['today', 'bowling', 'laser', 'direction'].includes(state.adminCockpitMode) ? state.adminCockpitMode : 'today';
 state.staffMenuPage = normalizeStaffMenuPage(state.staffMenuPage);
-state.staffClientSegment = ['all', 'loyal', 'groups', 'birthdays'].includes(state.staffClientSegment) ? state.staffClientSegment : 'all';
-state.staffClientStatusFilter = ['all', 'active', 'inactive', 'new', 'loyal'].includes(state.staffClientStatusFilter) ? state.staffClientStatusFilter : 'all';
+// CRM v3 : facettes multi-sélection déselectionnables (remplacent segment + statusFilter
+// + tris rapides collants). Migration des anciennes clés puis nettoyage.
+(function migrateStaffClientFilters() {
+  const base = { statut: [], type: [], occasion: [], canal: [], valeur: [], relation: [] };
+  const existing = state.staffClientFilters && typeof state.staffClientFilters === 'object' ? state.staffClientFilters : null;
+  if (existing) {
+    Object.keys(base).forEach(family => { if (Array.isArray(existing[family])) base[family] = existing[family].filter(v => typeof v === 'string'); });
+  } else {
+    if (state.staffClientSegment === 'loyal') base.statut = ['Fidèle'];
+    else if (state.staffClientSegment === 'groups') base.type = ['Groupe'];
+    else if (state.staffClientSegment === 'birthdays') base.occasion = ['Anniversaire'];
+  }
+  state.staffClientFilters = base;
+})();
+delete state.staffClientSegment;
+delete state.staffClientStatusFilter;
+delete state.staffClientQuickSort;
+if (!state.staffClientSort || typeof state.staffClientSort !== 'object' || !state.staffClientSort.key) {
+  state.staffClientSort = { key: 'lastDate', dir: 'desc' };
+}
 state.staffClientQuery = state.staffClientQuery || '';
 state.staffSelectedClientId = state.staffSelectedClientId || '';
 state.staffClientFiltersOpen = !!state.staffClientFiltersOpen;
@@ -9479,6 +9497,67 @@ function ensureStaffClientData() {
   }
 }
 
+// ── Communications par client (mails/relances) — cache page dédié ──────────────
+// On charge l'historique des communications du centre (même source que le studio
+// mails) dans un cache propre à la page CRM, puis on filtre par destinataire
+// (email/téléphone) ou par réservation. Découplé de la console admin (pas de
+// dépendance au module ops lourd). Dégrade proprement si l'API refuse (permissions).
+let staffClientCommsCache = { key: '', loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
+
+function getStaffClientCommsKey() {
+  return getActiveOpsCenterId();
+}
+
+async function loadStaffClientComms(force = false) {
+  const key = getStaffClientCommsKey();
+  if (!force && staffClientCommsCache.loading) return;
+  if (!force && staffClientCommsCache.loaded && staffClientCommsCache.key === key) return;
+  staffClientCommsCache = { ...staffClientCommsCache, key, loading: true, error: '' };
+  try {
+    const centerQuery = encodeURIComponent(getActiveOpsCenterId());
+    const payload = await apiRequest(`/api/ops?action=communications&centerId=${centerQuery}&limit=300`);
+    staffClientCommsCache = { key, loading: false, loaded: true, error: '', items: Array.isArray(payload.communications) ? payload.communications : [], loadedAt: Date.now() };
+  } catch (error) {
+    staffClientCommsCache = { ...staffClientCommsCache, key, loading: false, loaded: false, error: error.message || 'indisponible' };
+  }
+  if (isStaffClientsActive()) renderStaffClientsPage();
+}
+
+function ensureStaffClientComms(force = false) {
+  const key = getStaffClientCommsKey();
+  if (force || staffClientCommsCache.key !== key || (!staffClientCommsCache.loaded && !staffClientCommsCache.loading && !staffClientCommsCache.error)) {
+    loadStaffClientComms(force);
+  }
+}
+
+function staffClientPhoneDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+// Retourne la liste des communications du client (triée récent→ancien), ou null si
+// le cache n'est pas encore chargé (permet de distinguer "0 message" de "inconnu").
+function getStaffClientCommunications(row) {
+  if (!row || !staffClientCommsCache.loaded) return null;
+  const email = String(row.email || '').trim().toLowerCase();
+  const phone = staffClientPhoneDigits(row.phone);
+  const reservationIds = new Set((row.history || []).map(entry => Number(entry.id)).filter(Boolean));
+  return staffClientCommsCache.items
+    .filter(comm => {
+      if (comm.reservationId && reservationIds.has(Number(comm.reservationId))) return true;
+      const recipient = String(comm.recipient || '').trim().toLowerCase();
+      if (!recipient) return false;
+      if (email && recipient === email) return true;
+      if (phone && staffClientPhoneDigits(recipient) === phone) return true;
+      return false;
+    })
+    .sort((a, b) => String(b.sentAt || b.createdAt || '').localeCompare(String(a.sentAt || a.createdAt || '')));
+}
+
+function getStaffClientCommsCount(row) {
+  const list = getStaffClientCommunications(row);
+  return list === null ? -1 : list.length;
+}
+
 // ── File staff des DEMANDES SUR MESURE (leads hors planning) ───────────────
 let staffCustomRequestsCache = { loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
 
@@ -9734,6 +9813,85 @@ function buildStaffClientRowsFromReservations(reservations = []) {
         return rightKey.localeCompare(leftKey);
       });
       const lastBooking = sortedReservations.find(reservation => reservation.status !== 'cancelled') || sortedReservations[0] || null;
+      // ── Agrégats "data à mort" (dérivés SANS réseau des réservations en main) ──
+      const activeRes = profile.reservationsRaw.filter(reservation => reservation.status !== 'cancelled');
+      const totalBookings = profile.visits + profile.cancellations;
+      const avgBasket = profile.visits ? profile.revenue / profile.visits : 0;
+      const avgPlayers = profile.visits ? profile.players / profile.visits : 0;
+      const cancelRate = totalBookings ? profile.cancellations / totalBookings : 0;
+      const tenureDays = profile.firstDate ? staffClientDaysBetween(todayStr(), profile.firstDate) : 0;
+      const frequencyPerMonth = tenureDays > 15 ? (profile.visits / (tenureDays / 30)) : profile.visits;
+      const visitDates = [...new Set(activeRes.map(reservation => reservation.date).filter(Boolean))].sort();
+      let avgIntervalDays = 0;
+      if (visitDates.length > 1) {
+        let intervalSum = 0;
+        for (let i = 1; i < visitDates.length; i += 1) intervalSum += staffClientDaysBetween(visitDates[i], visitDates[i - 1]);
+        avgIntervalDays = Math.round(intervalSum / (visitDates.length - 1));
+      }
+      const typeBreakdown = { bowling: 0, laser: 0, formule: 0 };
+      const formuleCount = {};
+      const channelCount = { staff: 0, public: 0 };
+      const occasionsSet = new Set();
+      const centersSet = new Set();
+      const paymentCount = {};
+      let laserGamesTotal = 0;
+      let bowlingHoursTotal = 0;
+      let totalDurationBooked = 0;
+      let paidCount = 0;
+      let leadSum = 0;
+      let leadN = 0;
+      let activityDone = 0;
+      let activityTotal = 0;
+      const notesParts = [];
+      activeRes.forEach(reservation => {
+        const t = (reservation.type === 'formule' || reservation.formuleId) ? 'formule' : (reservation.type === 'laser' ? 'laser' : 'bowling');
+        typeBreakdown[t] += 1;
+        if (reservation.formuleId) formuleCount[reservation.formuleId] = (formuleCount[reservation.formuleId] || 0) + 1;
+        const ch = reservation.channel === 'staff' ? 'staff' : 'public';
+        channelCount[ch] += 1;
+        const occ = String(reservation.occasion || '').toLowerCase();
+        if (occ && STAFF_OCCASION_LABELS[occ]) occasionsSet.add(occ);
+        const center = reservation.centerId || reservation.center_id;
+        if (center) centersSet.add(center);
+        if ((reservation.type === 'laser' || reservation.formuleId || reservation.type === 'formule') && typeof getLaserGameCountForReservation === 'function') {
+          laserGamesTotal += Number(getLaserGameCountForReservation(reservation)) || 0;
+        }
+        if (typeof getBowlingDurationForReservation === 'function') bowlingHoursTotal += Number(getBowlingDurationForReservation(reservation)) || 0;
+        totalDurationBooked += Number(reservation.totalDuration || reservation.duration || 0);
+        if (reservation.status === 'paid') paidCount += 1;
+        if (reservation.paymentMethod) paymentCount[reservation.paymentMethod] = (paymentCount[reservation.paymentMethod] || 0) + 1;
+        if (reservation.createdAt && reservation.date) {
+          const lead = staffClientDaysBetween(reservation.date, String(reservation.createdAt).slice(0, 10));
+          if (Number.isFinite(lead)) { leadSum += Math.max(0, lead); leadN += 1; }
+        }
+        if ((reservation.type === 'formule' || reservation.formuleId) && typeof getFormulaActivityProgressSummary === 'function') {
+          const summary = getFormulaActivityProgressSummary(reservation);
+          activityDone += summary.done; activityTotal += summary.total;
+        }
+        const note = String(reservation.notes || '').trim();
+        if (note) notesParts.push(note);
+      });
+      const favoriteType = Object.keys(typeBreakdown).sort((a, b) => typeBreakdown[b] - typeBreakdown[a]).find(k => typeBreakdown[k] > 0) || '';
+      const favoriteFormula = Object.keys(formuleCount).sort((a, b) => formuleCount[b] - formuleCount[a])[0] || '';
+      const preferredChannel = channelCount.staff > channelCount.public ? 'Comptoir' : channelCount.public > 0 ? 'En ligne' : '';
+      const paymentMethodDominant = Object.keys(paymentCount).sort((a, b) => paymentCount[b] - paymentCount[a])[0] || '';
+      const paidShare = profile.visits ? paidCount / profile.visits : 0;
+      const leadTimeAvgDays = leadN ? Math.round(leadSum / leadN) : 0;
+      const activityCompletionRate = activityTotal ? activityDone / activityTotal : 0;
+      let favoriteLabel = '';
+      if (favoriteFormula && typeof FORMULES !== 'undefined') {
+        const f = FORMULES.find(item => item.id === favoriteFormula);
+        favoriteLabel = f ? f.name : 'Formule';
+      } else if (favoriteType === 'laser') favoriteLabel = 'Laser Game';
+      else if (favoriteType === 'bowling') favoriteLabel = 'Bowling';
+      else if (favoriteType === 'formule') favoriteLabel = 'Formule';
+      const nextBooking = [...activeRes]
+        .filter(reservation => reservation.date && reservation.date > todayStr())
+        .sort((a, b) => `${a.date} ${a.startTime || ''}`.localeCompare(`${b.date} ${b.startTime || ''}`))[0] || null;
+      const recencyScore = daysSinceLast <= 14 ? 100 : daysSinceLast <= 30 ? 80 : daysSinceLast <= 90 ? 55 : daysSinceLast <= 180 ? 30 : 10;
+      const frequencyScore = Math.min(100, profile.visits * 20);
+      const monetaryScore = Math.min(100, profile.revenue / 10);
+      const engagementScore = Math.round(recencyScore * 0.4 + frequencyScore * 0.3 + monetaryScore * 0.3);
       const tags = [status];
       if (isGroup) tags.push('Groupe');
       if (declaredOccasion && STAFF_OCCASION_LABELS[declaredOccasion]) tags.push(STAFF_OCCASION_LABELS[declaredOccasion]);
@@ -9769,7 +9927,34 @@ function buildStaffClientRowsFromReservations(reservations = []) {
           status: formatStaffClientStatus(reservation.status),
           amount: Number(reservation.price || 0) * (reservation.status === 'cancelled' ? -1 : 1),
           reservation
-        }))
+        })),
+        // Agrégats enrichis
+        daysSinceLast,
+        avgBasket,
+        avgPlayers,
+        cancelRate,
+        tenureDays,
+        frequencyPerMonth,
+        avgIntervalDays,
+        favoriteType,
+        favoriteFormula,
+        favoriteLabel,
+        typeBreakdown,
+        preferredChannel,
+        occasions: [...occasionsSet],
+        centers: [...centersSet],
+        paymentMethodDominant,
+        paidShare,
+        laserGamesTotal,
+        bowlingHoursTotal,
+        totalDurationBooked: Math.round(totalDurationBooked * 10) / 10,
+        leadTimeAvgDays,
+        activityCompletionRate,
+        notesConcat: notesParts.join(' · ').slice(0, 400),
+        nextBooking,
+        engagementScore,
+        maxPax: profile.maxPax,
+        firstBooking: sortedReservations.length ? sortedReservations[sortedReservations.length - 1] : null
       };
     })
     .sort((left, right) => {
@@ -9783,22 +9968,79 @@ function getStaffClientRows() {
   return buildStaffClientRowsFromReservations(getStaffClientSourceReservations());
 }
 
+// Familles de filtres CRM — chacune un tableau de clés actives. Vide = pas de
+// contrainte (l'état "aucune catégorie" par défaut). OR à l'intérieur d'une famille,
+// AND entre familles. Déselectionnable (toggleStaffClientFilter).
+const STAFF_CLIENT_FILTER_FAMILIES = ['statut', 'type', 'occasion', 'canal', 'valeur', 'relation'];
+
+function getStaffClientFilterState() {
+  const source = state.staffClientFilters && typeof state.staffClientFilters === 'object' ? state.staffClientFilters : {};
+  const out = {};
+  STAFF_CLIENT_FILTER_FAMILIES.forEach(family => { out[family] = Array.isArray(source[family]) ? source[family] : []; });
+  return out;
+}
+
+function getStaffClientActiveFilterCount() {
+  const filters = getStaffClientFilterState();
+  return STAFF_CLIENT_FILTER_FAMILIES.reduce((sum, family) => sum + filters[family].length, 0);
+}
+
 function getFilteredStaffClientRows() {
   const query = String(state.staffClientQuery || '').trim().toLowerCase();
-  const segment = state.staffClientSegment || 'all';
-  const statusFilter = state.staffClientStatusFilter || 'all';
-  return sortStaffClientRows(getStaffClientRows().filter(row => {
+  const filters = getStaffClientFilterState();
+  const allRows = getStaffClientRows();
+  // Seuils VIP / gros paniers calculés sur toute la base du centre.
+  const spends = allRows.map(row => Number(row.spent || 0)).sort((a, b) => b - a);
+  const vipThreshold = spends.length ? (spends[Math.max(0, Math.floor(spends.length * 0.2) - 1)] || spends[0] || 0) : 0;
+  const baskets = allRows.map(row => Number(row.avgBasket || 0)).sort((a, b) => b - a);
+  const bigBasketThreshold = baskets.length ? (baskets[Math.floor(baskets.length * 0.25)] || 0) : 0;
+  const matchFamily = (arr, predicate) => arr.length === 0 || arr.some(predicate);
+  return sortStaffClientRows(allRows.filter(row => {
     const text = `${row.name} ${row.email} ${row.phone} ${row.status} ${row.tags.join(' ')}`.toLowerCase();
     if (query && !text.includes(query)) return false;
-    if (segment === 'loyal' && row.status !== 'Fidèle') return false;
-    if (segment === 'groups' && !row.isGroup) return false;
-    if (segment === 'birthdays' && !row.hasBirthday) return false;
-    if (statusFilter === 'active' && row.statusClass === 'inactive') return false;
-    if (statusFilter === 'inactive' && row.statusClass !== 'inactive') return false;
-    if (statusFilter === 'new' && row.statusClass !== 'new') return false;
-    if (statusFilter === 'loyal' && row.statusClass !== 'loyal') return false;
+    if (!matchFamily(filters.statut, key => row.status === key)) return false;
+    if (!matchFamily(filters.type, key =>
+      key === 'Groupe' ? row.isGroup
+        : key === 'Entreprise' ? row.declaredOccasion === 'entreprise'
+          : key === 'École' ? row.declaredOccasion === 'ecole'
+            : key === 'Particulier' ? !row.isGroup
+              : false)) return false;
+    if (!matchFamily(filters.occasion, key => (STAFF_OCCASION_LABELS[row.declaredOccasion] || '') === key || (key === 'Anniversaire' && row.hasBirthday))) return false;
+    if (!matchFamily(filters.canal, key => row.preferredChannel === key)) return false;
+    if (!matchFamily(filters.valeur, key =>
+      key === 'VIP' ? (vipThreshold > 0 && Number(row.spent || 0) >= vipThreshold)
+        : key === 'Gros paniers' ? (bigBasketThreshold > 0 && Number(row.avgBasket || 0) >= bigBasketThreshold)
+          : key === 'Multi-visites' ? Number(row.reservations || 0) >= 3
+            : false)) return false;
+    if (!matchFamily(filters.relation, key =>
+      key === 'Annulations' ? Number(row.cancellations || 0) > 0
+        : key === 'Dormant' ? Number(row.daysSinceLast || 0) > 90
+          : key === 'Anniversaire' ? row.hasBirthday
+            : key === 'Nouveau ce mois' ? row.statusClass === 'new'
+              : key === 'Résa à venir' ? !!row.nextBooking
+                : key === 'Jamais contacté' ? getStaffClientCommsCount(row) === 0
+                  : key === 'À relancer' ? Number(row.daysSinceLast || 0) > 90
+                    : false)) return false;
     return true;
   }));
+}
+
+function toggleStaffClientFilter(family, key) {
+  if (!STAFF_CLIENT_FILTER_FAMILIES.includes(family)) return;
+  const filters = getStaffClientFilterState();
+  const arr = filters[family];
+  const index = arr.indexOf(key);
+  if (index >= 0) arr.splice(index, 1); else arr.push(key);
+  state.staffClientFilters = filters;
+  if (family === 'relation' && key === 'Jamais contacté') ensureStaffClientComms();
+  save();
+  renderStaffClientsPage();
+}
+
+function clearStaffClientFilters() {
+  state.staffClientFilters = { statut: [], type: [], occasion: [], canal: [], valeur: [], relation: [] };
+  save();
+  renderStaffClientsPage();
 }
 
 // Tri CRM : colonne + direction, appliqué APRÈS filtres — chaque colonne de la
@@ -9807,43 +10049,45 @@ function sortStaffClientRows(rows) {
   const { key, dir } = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
   const mul = dir === 'asc' ? 1 : -1;
   const statusWeight = { loyal: 3, active: 2, new: 1, inactive: 0 };
+  const num = value => Number(value || 0);
   return [...rows].sort((a, b) => {
     if (key === 'name') return a.name.localeCompare(b.name, 'fr') * mul;
     if (key === 'status') {
       const delta = (statusWeight[a.statusClass] ?? 0) - (statusWeight[b.statusClass] ?? 0);
       return delta ? delta * mul : a.name.localeCompare(b.name, 'fr');
     }
-    if (key === 'reservations') return ((a.reservations || 0) - (b.reservations || 0)) * mul;
-    if (key === 'spent') return ((a.spent || 0) - (b.spent || 0)) * mul;
+    if (key === 'reservations') return (num(a.reservations) - num(b.reservations)) * mul;
+    if (key === 'players') return (num(a.players) - num(b.players)) * mul;
+    if (key === 'spent') return (num(a.spent) - num(b.spent)) * mul;
+    if (key === 'avgBasket') return (num(a.avgBasket) - num(b.avgBasket)) * mul;
+    if (key === 'frequencyPerMonth') return (num(a.frequencyPerMonth) - num(b.frequencyPerMonth)) * mul;
+    if (key === 'avgIntervalDays') return (num(a.avgIntervalDays) - num(b.avgIntervalDays)) * mul;
+    if (key === 'cancelRate') return (num(a.cancelRate) - num(b.cancelRate)) * mul;
+    if (key === 'engagementScore') return (num(a.engagementScore) - num(b.engagementScore)) * mul;
+    if (key === 'firstDate') return String(a.firstDate || '').localeCompare(String(b.firstDate || '')) * mul;
     return String(a.lastDate || '').localeCompare(String(b.lastDate || '')) * mul;
   });
 }
 
+// Tri par en-tête de colonne : bascule asc/desc si même colonne.
 function setStaffClientSort(key) {
   const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
   state.staffClientSort = current.key === key
     ? { key, dir: current.dir === 'desc' ? 'asc' : 'desc' }
     : { key, dir: ['name', 'status'].includes(key) ? 'asc' : 'desc' };
-  state.staffClientQuickSort = '';
   save();
-  renderStaff();
+  renderStaffClientsPage();
 }
 
-// Tris rapides = tri + filtre en un clic (dormant = inactifs, plus anciens d'abord).
-function applyStaffClientQuickSort(preset) {
-  const presets = {
-    spenders: { sort: { key: 'spent', dir: 'desc' }, status: 'all' },
-    frequent: { sort: { key: 'reservations', dir: 'desc' }, status: 'all' },
-    recent: { sort: { key: 'lastDate', dir: 'desc' }, status: 'all' },
-    dormant: { sort: { key: 'lastDate', dir: 'asc' }, status: 'inactive' },
-  };
-  const config = presets[preset];
-  if (!config) return;
-  state.staffClientSort = config.sort;
-  state.staffClientStatusFilter = config.status;
-  state.staffClientQuickSort = preset;
+// Chips "Trier par" : re-clic sur la clé DÉJÀ active → retour au tri par défaut
+// (déselectionnable, comme demandé). Sinon applique la clé.
+function setStaffClientSortKey(key) {
+  const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+  state.staffClientSort = current.key === key
+    ? { key: 'lastDate', dir: 'desc' }
+    : { key, dir: ['name', 'status', 'avgIntervalDays'].includes(key) ? 'asc' : 'desc' };
   save();
-  renderStaff();
+  renderStaffClientsPage();
 }
 
 function getStaffClientDailySeries(reservations = [], metric = 'count') {
@@ -9893,8 +10137,13 @@ function getStaffClientMetrics(rows = getStaffClientRows(), reservations = getSt
   };
 }
 
+// Compat : anciens appels de segment → nouvelles facettes déselectionnables.
 function setStaffClientSegment(segment) {
-  state.staffClientSegment = ['all', 'loyal', 'groups', 'birthdays'].includes(segment) ? segment : 'all';
+  const filters = { statut: [], type: [], occasion: [], canal: [], valeur: [], relation: [] };
+  if (segment === 'loyal') filters.statut = ['Fidèle'];
+  else if (segment === 'groups') filters.type = ['Groupe'];
+  else if (segment === 'birthdays') filters.occasion = ['Anniversaire'];
+  state.staffClientFilters = filters;
   save();
   renderStaffClientsPage();
 }
@@ -9918,7 +10167,7 @@ function refreshStaffClients() {
 function exportStaffClientsCsv() {
   if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement — patientez avant d\'exporter.'); return; }
   const rows = getFilteredStaffClientRows();
-  const header = ['Client', 'Email', 'Telephone', 'Statut', 'Reservations', 'Joueurs', 'Depense', 'Annulations', 'Premiere visite', 'Derniere visite'];
+  const header = ['Client', 'Email', 'Telephone', 'Statut', 'Reservations', 'Joueurs', 'Depense', 'Panier moyen', 'Annulations', 'Aime', 'Canal', 'Engagement', 'Premiere visite', 'Derniere visite'];
   const body = rows.map(row => [
     row.name,
     row.email,
@@ -9927,7 +10176,11 @@ function exportStaffClientsCsv() {
     row.reservations,
     row.players,
     row.spent,
+    Math.round(Number(row.avgBasket) || 0),
     row.cancellations,
+    row.favoriteLabel || '',
+    row.preferredChannel || '',
+    row.engagementScore || 0,
     row.firstDate,
     row.lastDate
   ].map(csvCell).join(','));

@@ -282,6 +282,245 @@
     return count ? spent / count : 0;
   }
 
+  const CRM_STATUS_TONE = { loyal: 'accent', active: 'success', new: 'info', inactive: 'warn' };
+  const crmPct = (value) => `${Math.round((Number(value) || 0) * 100)}%`;
+  const crmNum = (value) => (Math.round((Number(value) || 0) * 10) / 10).toLocaleString('fr-BE');
+
+  function crmStatusPill(row) {
+    return `<span class="crm-pill tone-${CRM_STATUS_TONE[row.statusClass] || 'muted'}"><span class="crm-dot"></span>${esc(row.status || '—')}</span>`;
+  }
+
+  // Barre de facettes multi-sélection DÉSÉLECTIONNABLES (remplace segments + tris
+  // rapides collants). OR intra-famille, AND inter-familles. Défaut = rien = tout.
+  function crmFacetBar(filteredCount, totalCount) {
+    const filters = getStaffClientFilterState();
+    const occasionChips = [...new Set(Object.values(typeof STAFF_OCCASION_LABELS !== 'undefined' ? STAFF_OCCASION_LABELS : {}))];
+    const families = [
+      { family: 'statut', label: 'Statut', chips: ['Fidèle', 'Actif', 'Nouveau', 'Inactif'] },
+      { family: 'type', label: 'Type', chips: ['Groupe', 'Particulier', 'Entreprise', 'École'] },
+      { family: 'occasion', label: 'Occasion', chips: occasionChips.length ? occasionChips : ['Anniversaire'] },
+      { family: 'canal', label: 'Canal', chips: ['En ligne', 'Comptoir'] },
+      { family: 'valeur', label: 'Valeur', chips: ['VIP', 'Gros paniers', 'Multi-visites'] },
+      { family: 'relation', label: 'Relation', chips: ['Dormant', 'À relancer', 'Résa à venir', 'Nouveau ce mois', 'Annulations', 'Jamais contacté'] },
+    ];
+    const active = getStaffClientActiveFilterCount();
+    const groups = families.map((group) => `
+      <div class="crm-facet-group">
+        <span class="crm-facet-label">${esc(group.label)}</span>
+        <div class="crm-facet-chips">${group.chips.map((chip) => {
+          const on = (filters[group.family] || []).includes(chip);
+          return `<button type="button" class="crm-chip${on ? ' is-on' : ''}" aria-pressed="${on}" onclick="toggleStaffClientFilter('${group.family}','${escJs(chip)}')">${esc(chip)}</button>`;
+        }).join('')}</div>
+      </div>`).join('');
+    const sortKeys = [
+      ['spent', 'Dépense'], ['avgBasket', 'Panier moyen'], ['reservations', 'Visites'], ['players', 'Joueurs'],
+      ['lastDate', 'Récence'], ['firstDate', 'Ancienneté'], ['frequencyPerMonth', 'Fréquence'], ['engagementScore', 'Engagement'], ['name', 'Nom'],
+    ];
+    const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+    const sortRow = sortKeys.map(([key, label]) => `<button type="button" class="crm-chip crm-chip-sort${sortState.key === key ? ' is-on' : ''}" aria-pressed="${sortState.key === key}" onclick="setStaffClientSortKey('${key}')">${esc(label)}${sortState.key === key ? ` ${sortState.dir === 'asc' ? '↑' : '↓'}` : ''}</button>`).join('');
+    return `
+      <section class="crm-controls">
+        <div class="crm-controls-head">
+          <div class="crm-counter"><strong>${filteredCount}</strong> / ${totalCount} clients${active ? ` · <span class="crm-badge">${active} filtre${active > 1 ? 's' : ''}</span>` : ''}</div>
+          ${active ? `<button type="button" class="crm-clear" onclick="clearStaffClientFilters()">✕ Réinitialiser</button>` : '<span class="crm-hint">Aucun filtre — toute la base. Cliquez pour affiner.</span>'}
+        </div>
+        <div class="crm-facets">${groups}</div>
+        <div class="crm-sortbar"><span class="crm-facet-label">Trier par</span><div class="crm-facet-chips">${sortRow}</div></div>
+      </section>`;
+  }
+
+  function crmListRow(row, selected) {
+    const tagsHtml = (row.tags || []).slice(1, 4).map((t) => `<span class="crm-tag">${esc(t)}</span>`).join('');
+    const dormant = Number(row.daysSinceLast || 0) > 90;
+    return `
+      <tr class="${selected && row.id === selected.id ? 'is-selected' : ''}" tabindex="0" role="button" onclick="selectStaffClient('${escJs(row.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectStaffClient('${escJs(row.id)}');}">
+        <td class="crm-cell-client">
+          <span class="crm-avatar tone-${esc(row.avatarTone || 'a')}">${esc(row.initials || '–')}</span>
+          <span class="crm-client-id"><strong>${esc(row.name || 'Sans nom')}</strong><small>${esc(row.email || row.phone || '')}</small>${tagsHtml ? `<span class="crm-tags">${tagsHtml}</span>` : ''}</span>
+        </td>
+        <td>${crmStatusPill(row)}</td>
+        <td class="num">${Number(row.reservations) || 0}</td>
+        <td class="num col-secondary">${Number(row.players) || 0}</td>
+        <td class="num crm-ltv"><strong>${money(row.spent)}</strong></td>
+        <td class="num col-secondary">${money(row.avgBasket)}</td>
+        <td class="crm-cell-visit"><strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>${dormant ? '<span class="crm-dot-warn" title="Sans visite depuis +90 j"></span>' : ''}</td>
+        <td class="col-secondary">${row.favoriteLabel ? `<span class="crm-chip-static">${esc(row.favoriteLabel)}</span>` : '<span class="crm-muted">—</span>'}</td>
+      </tr>`;
+  }
+
+  function crmInsightLines(row, comms) {
+    const lines = [];
+    if (row.favoriteLabel) lines.push(['🎯', `Aime surtout : <strong>${esc(row.favoriteLabel)}</strong>`, 'accent']);
+    if (row.avgPlayers) lines.push(['👥', `Vient en général à <strong>${Math.round(row.avgPlayers)}</strong> personne${Math.round(row.avgPlayers) > 1 ? 's' : ''}`, 'muted']);
+    if ((row.occasions || []).length) lines.push(['📅', `Occasions : ${esc(row.occasions.map((o) => (typeof STAFF_OCCASION_LABELS !== 'undefined' && STAFF_OCCASION_LABELS[o]) || o).join(' · '))}`, 'muted']);
+    if (row.preferredChannel) lines.push(['💻', `Réserve surtout <strong>${row.preferredChannel === 'Comptoir' ? 'au comptoir' : 'en ligne'}</strong>`, 'muted']);
+    if (Number(row.daysSinceLast || 0) > 90) lines.push(['⚠️', `Sans visite depuis <strong>${row.daysSinceLast} j</strong> — à relancer`, 'warn']);
+    if (row.hasBirthday) lines.push(['🎂', 'Client anniversaire', 'info']);
+    if (Number(row.engagementScore || 0) >= 75) lines.push(['⭐', 'Parmi vos meilleurs clients', 'success']);
+    if (comms && comms.length === 0) lines.push(['✉️', 'Jamais contacté — une relance à tenter', 'warn']);
+    return lines.map(([icon, text, tone]) => `<div class="crm-insight tone-${tone}"><span>${icon}</span><span>${text}</span></div>`).join('');
+  }
+
+  function crmBar(label, value, tone) {
+    return `<div class="crm-bar"><span class="crm-bar-label">${esc(label)}</span><span class="crm-bar-track"><span class="crm-bar-fill tone-${tone}" style="width:${Math.round(value)}%"></span></span><span class="crm-bar-val">${Math.round(value)}%</span></div>`;
+  }
+
+  function crmHistoryItem(entry) {
+    const r = entry.reservation || {};
+    const cancelled = String(r.status) === 'cancelled';
+    const cls = r.status === 'paid' ? 'paid' : r.status === 'arrived' ? 'arr' : cancelled ? 'cancel' : 'conf';
+    const acts = [];
+    if (typeof getBowlingWindowsFromReservation === 'function' && getBowlingWindowsFromReservation(r).length) acts.push('Bowling');
+    if (typeof getLaserWindowsFromReservation === 'function' && getLaserWindowsFromReservation(r).length) acts.push('Laser');
+    const lanesTxt = (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : '';
+    const occ = r.occasion && typeof STAFF_OCCASION_LABELS !== 'undefined' ? STAFF_OCCASION_LABELS[String(r.occasion).toLowerCase()] : '';
+    return `
+      <details class="crm-hist status-${cls}">
+        <summary>
+          <span class="crm-hist-date">${esc(entry.date || '—')}</span>
+          <span class="crm-hist-main"><strong>${esc(entry.label || 'Réservation')}</strong><small>${Number(r.pax) || 0} joueur${(Number(r.pax) || 0) > 1 ? 's' : ''}${acts.length ? ` · ${acts.join(' + ')}` : ''}</small></span>
+          <span class="crm-hist-amount ${entry.amount < 0 ? 'is-neg' : ''}">${money(Math.abs(entry.amount))}</span>
+          <span class="crm-pill tone-${r.status === 'paid' ? 'success' : cancelled ? 'warn' : 'muted'} crm-hist-status">${esc(entry.status)}</span>
+        </summary>
+        <div class="crm-hist-detail">
+          <div><dt>Heure</dt><dd>${esc(r.startTime || '—')}${r.duration ? ` · ${crmNum(r.duration)}h` : ''}</dd></div>
+          ${lanesTxt ? `<div><dt>Emplacement</dt><dd>${esc(lanesTxt)}</dd></div>` : ''}
+          ${occ ? `<div><dt>Occasion</dt><dd>${esc(occ)}</dd></div>` : ''}
+          ${r.paymentMethod ? `<div><dt>Paiement</dt><dd>${esc(r.paymentMethod)}</dd></div>` : ''}
+          <div><dt>Canal</dt><dd>${r.channel === 'staff' ? 'Comptoir' : 'En ligne'}</dd></div>
+          ${Array.isArray(r.extras) && r.extras.length ? `<div><dt>Extras</dt><dd>${esc(r.extras.map((e) => (e && (e.label || e.name)) || e).join(', '))}</dd></div>` : ''}
+          ${r.notes ? `<div class="crm-hist-notes"><dt>Notes</dt><dd>${esc(r.notes)}</dd></div>` : ''}
+        </div>
+      </details>`;
+  }
+
+  function crmCommsBlock(selected) {
+    const comms = getStaffClientCommunications(selected);
+    const compose = selected.email
+      ? `<button type="button" class="crm-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">✉️ Nouveau message</button>`
+      : '<span class="crm-muted">Aucune adresse email</span>';
+    if (comms === null) {
+      const loading = staffClientCommsCache.loading;
+      const failed = !!staffClientCommsCache.error;
+      return `<div class="info-block crm-block"><div class="crm-block-head"><h3>Messages & relances</h3></div>
+        <div class="crm-empty">${loading ? 'Chargement de l\'historique…' : failed ? 'Historique des messages indisponible pour ce rôle.' : 'Historique non chargé.'}${!loading ? ` ${compose}` : ''}</div></div>`;
+    }
+    if (!comms.length) {
+      return `<div class="info-block crm-block"><div class="crm-block-head"><h3>Messages & relances</h3></div>
+        <div class="crm-empty"><strong>Jamais contacté.</strong> Aucun message envoyé à ce client. ${compose}</div></div>`;
+    }
+    const sent = comms.filter((c) => ['sent', 'delivered'].includes(c.status)).length;
+    const delivered = comms.filter((c) => c.status === 'delivered').length;
+    const failedCount = comms.filter((c) => c.status === 'failed').length;
+    const last = comms[0];
+    const CHAN = { email: '✉️', sms: '💬', whatsapp: '📲', note: '📝' };
+    const TONE = { sent: 'info', delivered: 'success', failed: 'warn', queued: 'info', draft: 'muted' };
+    const items = comms.slice(0, 40).map((c) => `
+      <div class="crm-comm dir-${esc(c.direction || 'outbound')}">
+        <span class="crm-comm-icon">${CHAN[c.channel] || '✉️'}</span>
+        <span class="crm-comm-main"><strong>${esc(c.subject || c.templateId || 'Message')}</strong><small>${esc(c.recipient || '')} · ${esc((typeof formatOpsTimestamp === 'function' && (c.sentAt || c.createdAt)) ? formatOpsTimestamp(c.sentAt || c.createdAt) : (c.sentAt || c.createdAt || ''))}${c.direction === 'inbound' ? ' · reçu' : ''}</small></span>
+        <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(c.status || '')}</span>
+        ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">↻</button>` : ''}
+      </div>`).join('');
+    return `<div class="info-block crm-block"><div class="crm-block-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
+      <div class="crm-comm-stats">${sent} envoyé${sent > 1 ? 's' : ''} · ${delivered} délivré${delivered > 1 ? 's' : ''} · ${failedCount} échec${failedCount > 1 ? 's' : ''}${last ? ` · dernier ${esc((typeof formatOpsTimestamp === 'function' && (last.sentAt || last.createdAt)) ? formatOpsTimestamp(last.sentAt || last.createdAt) : '')}` : ''}</div>
+      <div class="crm-comm-list">${items}</div></div>`;
+  }
+
+  function crmFiche(selected) {
+    if (!selected) return '<div class="crm-empty crm-empty-lg"><strong>Sélectionnez un client</strong>Cliquez sur une ligne pour voir sa fiche complète.</div>';
+    ensureStaffClientComms();
+    const comms = getStaffClientCommunications(selected);
+    const badges = [];
+    badges.push(crmStatusPill(selected));
+    if (Number(selected.engagementScore || 0) >= 80) badges.push('<span class="crm-pill tone-accent">VIP</span>');
+    if (selected.isGroup) badges.push('<span class="crm-pill tone-info">Groupe</span>');
+    (selected.occasions || []).slice(0, 1).forEach((o) => badges.push(`<span class="crm-pill tone-muted">${esc((typeof STAFF_OCCASION_LABELS !== 'undefined' && STAFF_OCCASION_LABELS[o]) || o)}</span>`));
+    const tenure = selected.tenureDays >= 365 ? `${Math.floor(selected.tenureDays / 365)} an${Math.floor(selected.tenureDays / 365) > 1 ? 's' : ''}` : `${selected.tenureDays} j`;
+    const kpi = (label, value, sub) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div>${sub ? `<div class="crm-kpi-sub">${esc(sub)}</div>` : ''}</div>`;
+    const tb = selected.typeBreakdown || { bowling: 0, laser: 0, formule: 0 };
+    const tbTotal = (tb.bowling + tb.laser + tb.formule) || 1;
+    const next = selected.nextBooking;
+    return `
+      <div class="crm-fiche">
+        <div class="info-block crm-block crm-head">
+          <span class="crm-avatar crm-avatar-lg tone-${esc(selected.avatarTone || 'a')}">${esc(selected.initials || '–')}</span>
+          <div class="crm-head-id">
+            <h2>${esc(selected.name || 'Sans nom')}</h2>
+            <div class="crm-head-contact">${selected.phone ? `📞 ${esc(selected.phone)}` : ''}${selected.phone && selected.email ? ' · ' : ''}${selected.email ? `✉️ ${esc(selected.email)}` : ''}</div>
+            <div class="crm-head-badges">${badges.join('')}</div>
+            <div class="crm-head-since">Client depuis ${esc(formatStaffClientDateText(selected.firstDate))} · ${esc(tenure)}</div>
+          </div>
+          <div class="crm-head-actions">
+            <button type="button" class="crm-btn crm-btn-primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>
+            ${selected.email ? `<button type="button" class="crm-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">✉️ Message</button>` : ''}
+          </div>
+        </div>
+
+        <div class="info-block crm-block">
+          <div class="crm-block-head"><h3>Ce que vaut ce client</h3></div>
+          <div class="crm-kpis">
+            ${kpi('Dépensé (total)', money(selected.spent), selected.reservations ? `${crmNum(selected.avgBasket)} € / visite` : '')}
+            ${kpi('Visites', Number(selected.reservations) || 0, `${crmNum(selected.frequencyPerMonth)} / mois`)}
+            ${kpi('Joueurs accueillis', Number(selected.players) || 0, `ø ${Math.round(selected.avgPlayers || 0)} / résa`)}
+            ${kpi('Engagement', `${selected.engagementScore || 0}/100`, selected.engagementScore >= 70 ? 'à choyer' : selected.engagementScore >= 40 ? 'à suivre' : 'à réveiller')}
+            ${kpi('Annulations', Number(selected.cancellations) || 0, `${crmPct(selected.cancelRate)} des résas`)}
+            ${kpi('Intervalle', selected.avgIntervalDays ? `${selected.avgIntervalDays} j` : '—', 'entre visites')}
+          </div>
+        </div>
+
+        <div class="info-block crm-block">
+          <div class="crm-block-head"><h3>En un coup d'œil</h3></div>
+          <div class="crm-insights">${crmInsightLines(selected, comms) || '<div class="crm-muted">Pas encore assez d\'historique.</div>'}</div>
+        </div>
+
+        ${next ? `<div class="info-block crm-block crm-next">
+          <div class="crm-block-head"><h3>Prochaine réservation</h3></div>
+          <div class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))} · ${esc(next.startTime || '')}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${Number(next.pax) || 0} joueurs</span></div>
+        </div>` : ''}
+
+        <div class="info-block crm-block">
+          <div class="crm-block-head"><h3>Profil comportemental</h3></div>
+          <div class="crm-bars">
+            ${crmBar('Bowling', (tb.bowling / tbTotal) * 100, 'chart1')}
+            ${crmBar('Laser', (tb.laser / tbTotal) * 100, 'chart2')}
+            ${crmBar('Formule', (tb.formule / tbTotal) * 100, 'chart3')}
+          </div>
+          <div class="crm-kv-grid">
+            ${selected.favoriteLabel ? `<div><dt>Activité préférée</dt><dd>${esc(selected.favoriteLabel)}</dd></div>` : ''}
+            ${selected.preferredChannel ? `<div><dt>Canal préféré</dt><dd>${esc(selected.preferredChannel)}</dd></div>` : ''}
+            ${selected.laserGamesTotal ? `<div><dt>Parties laser</dt><dd>${selected.laserGamesTotal}</dd></div>` : ''}
+            ${selected.bowlingHoursTotal ? `<div><dt>Heures bowling</dt><dd>${crmNum(selected.bowlingHoursTotal)} h</dd></div>` : ''}
+            ${selected.totalDurationBooked ? `<div><dt>Durée réservée</dt><dd>${crmNum(selected.totalDurationBooked)} h</dd></div>` : ''}
+            ${selected.maxPax ? `<div><dt>Plus gros groupe</dt><dd>${selected.maxPax} joueurs</dd></div>` : ''}
+            ${selected.paymentMethodDominant ? `<div><dt>Paiement habituel</dt><dd>${esc(selected.paymentMethodDominant)}</dd></div>` : ''}
+            <div><dt>Part payée</dt><dd>${crmPct(selected.paidShare)}</dd></div>
+            ${(selected.occasions || []).length ? `<div class="crm-kv-wide"><dt>Occasions</dt><dd>${selected.occasions.map((o) => `<span class="crm-chip-static">${esc((typeof STAFF_OCCASION_LABELS !== 'undefined' && STAFF_OCCASION_LABELS[o]) || o)}</span>`).join('')}</dd></div>` : ''}
+          </div>
+        </div>
+
+        <div class="info-block crm-block">
+          <div class="crm-block-head"><h3>Toutes ses réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
+          <div class="crm-block-sub">${Number(selected.players) || 0} joueurs cumulés · ${money(selected.spent)}</div>
+          <div class="crm-history">${(selected.history || []).map(crmHistoryItem).join('') || '<div class="crm-muted">Aucune réservation.</div>'}</div>
+        </div>
+
+        ${crmCommsBlock(selected)}
+
+        <div class="info-block crm-block crm-meta">
+          ${selected.leadTimeAvgDays ? `<div><dt>Délai de réservation moyen</dt><dd>${selected.leadTimeAvgDays} j à l'avance</dd></div>` : ''}
+          ${(selected.centers || []).length ? `<div><dt>Centre(s)</dt><dd>${esc(selected.centers.join(', '))}</dd></div>` : ''}
+          ${selected.formulas ? `<div><dt>Formules réservées</dt><dd>${selected.formulas}</dd></div>` : ''}
+          ${selected.notesConcat ? `<div class="crm-kv-wide"><dt>Notes staff</dt><dd>${esc(selected.notesConcat)}</dd></div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  window.showMoreStaffClients = function () {
+    state.staffClientListLimit = (Number(state.staffClientListLimit) || 40) + 40;
+    renderStaffClientsPage();
+  };
+
   window.renderStaffClientsPage = function () {
     const root = document.getElementById('staffClientsPage');
     if (!root) return;
@@ -292,42 +531,17 @@
       || allRows.find((r) => r.id === state.staffSelectedClientId)
       || rows[0] || allRows[0] || null;
     if (selected && state.staffSelectedClientId !== selected.id) state.staffSelectedClientId = selected.id;
-    const tab = state.staffClientSegment || 'all';
     const sync = staffClientDataCache.loading ? 'Synchronisation…' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'Données locales';
+    const limit = Number(state.staffClientListLimit) || 40;
+    const shown = rows.slice(0, limit);
+    const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+    const th = (key, label, num, secondary) => {
+      const on = sortState.key === key;
+      return `<th class="${num ? 'num ' : ''}${secondary ? 'col-secondary ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort">${on ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`;
+    };
+    const tableRows = shown.map((row) => crmListRow(row, selected)).join('');
 
-    const tableRows = rows.slice(0, 60).map((row) => `
-      <tr class="${selected && row.id === selected.id ? 'selected' : ''}" onclick="selectStaffClient('${escJs(row.id)}')">
-        <td><div class="pv2-id"><span class="pv2-avatar">${esc(row.initials || '–')}</span><div><strong>${esc(row.name || 'Sans nom')}</strong><small>${esc(row.email || row.phone || '')}</small></div></div></td>
-        <td><span class="pv2-chip ${row.statusClass === 'active' || row.statusClass === 'loyal' ? 'green' : row.statusClass === 'new' ? 'blue' : ''}">${esc(row.status || '—')}</span></td>
-        <td>${esc(row.lastVisit || '—')}</td>
-        <td class="num">${Number(row.reservations) || 0}</td>
-        <td class="num"><strong>${money(row.spent)}</strong></td>
-      </tr>`).join('');
-
-    const profile = selected ? `
-      <div class="pv2-panel-body" style="display:grid;gap:14px">
-        <div class="pv2-id" style="gap:14px">
-          <span class="pv2-avatar" style="width:46px;height:46px;font-size:15px;border-radius:12px">${esc(selected.initials || '–')}</span>
-          <div>
-            <strong style="font-size:16px;color:var(--v2-text)">${esc(selected.name || 'Sans nom')}</strong>
-            <small style="display:block;color:var(--v2-text-3);margin-top:2px">${esc(selected.email || '')}${selected.email && selected.phone ? ' · ' : ''}${esc(selected.phone || '')}</small>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
-          ${['Réservations|' + (Number(selected.reservations) || 0), 'Dépensé|' + money(selected.spent), 'Annulations|' + (Number(selected.cancellations) || 0)]
-            .map((pair) => { const [k, v] = pair.split('|'); return `<div style="border:1px solid var(--v2-line);border-radius:10px;padding:11px;text-align:center"><div style="font-size:18px;font-weight:740;color:var(--v2-text);font-variant-numeric:tabular-nums">${v}</div><div style="font-size:10.5px;color:var(--v2-text-3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:3px">${k}</div></div>`; }).join('')}
-        </div>
-        <div class="pv2-kv">
-          <div><dt>Dernière visite</dt><dd>${esc(selected.lastVisit || '—')} ${selected.lastVisitAgo ? `· ${esc(selected.lastVisitAgo)}` : ''}</dd></div>
-          <div><dt>Statut</dt><dd>${esc(selected.status || '—')}</dd></div>
-        </div>
-        <div style="display:grid;gap:8px">
-          <button type="button" class="pv2-btn primary" style="justify-content:center" onclick="openStaffClientBooking('${escJs(selected.id)}')">Nouvelle réservation</button>
-          ${selected.email ? `<button type="button" class="pv2-btn" style="justify-content:center" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">Envoyer un email</button>` : ''}
-        </div>
-      </div>` : '<div class="pv2-empty"><strong>Aucun profil</strong>Sélectionnez un client dans la liste.</div>';
-
-    root.innerHTML = `<div class="pv2-shell">
+    root.innerHTML = `<div class="pv2-shell crm-shell">
       ${bar({
         crumb: 'Clients & Marketing / CRM',
         title: 'Clients',
@@ -346,36 +560,23 @@
         ${stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' })}
       </section>
 
-      ${seg([
-        { key: 'all', label: 'Tous', count: allRows.length, active: tab === 'all' },
-        { key: 'loyal', label: 'Fidèles', active: tab === 'loyal' },
-        { key: 'groups', label: 'Groupes', active: tab === 'groups' },
-        { key: 'birthdays', label: 'Anniversaires', active: tab === 'birthdays' },
-      ], 'setStaffClientSegment')}
+      ${crmFacetBar(rows.length, allRows.length)}
 
-      <div class="pv2-quicksorts">
-        <span>Tris rapides</span>
-        ${[['spenders', 'Meilleurs dépensiers'], ['frequent', 'Plus fidèles (visites)'], ['recent', 'Vus récemment'], ['dormant', 'Dormants +90 j']]
-          .map(([key, label]) => `<button type="button" class="pv2-chip-btn${(state.staffClientQuickSort || '') === key ? ' active' : ''}" onclick="applyStaffClientQuickSort('${key}')">${label}</button>`).join('')}
-      </div>
-
-      <section class="pv2-split">
-        <article class="pv2-panel" style="max-height:600px;overflow:auto">
-          <table class="pv2-table">
-            <thead><tr>${(() => {
-              const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-              const th = (key, label, num) => {
-                const active = sortState.key === key;
-                return `<th class="${num ? 'num ' : ''}pv2-th-sort${active ? ' active' : ''}" aria-sort="${active ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${label} <span class="pv2-sort-arrow">${active ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`;
-              };
-              return th('name', 'Client') + th('status', 'Statut') + th('lastDate', 'Dernière visite') + th('reservations', 'Résa', true) + th('spent', 'Dépensé', true);
-            })()}</tr></thead>
-            <tbody>${tableRows || `<tr><td colspan="5"><div class="pv2-empty"><strong>Aucun résultat</strong>Modifiez la recherche ou le segment.</div></td></tr>`}</tbody>
-          </table>
+      <section class="pv2-split crm-split">
+        <article class="pv2-panel crm-list-panel">
+          <div class="crm-table-wrap">
+            <table class="crm-table">
+              <thead><tr>${th('name', 'Client') + th('status', 'Statut') + th('reservations', 'Visites', true) + th('players', 'Joueurs', true, true) + th('spent', 'Dépensé', true) + th('avgBasket', 'Panier moy.', true, true) + th('lastDate', 'Dernière visite') + `<th class="col-secondary">Aime</th>`}</tr></thead>
+              <tbody>${tableRows || `<tr><td colspan="8"><div class="crm-empty"><strong>Aucun client</strong>Aucun résultat pour ces filtres. <button type="button" class="crm-clear" onclick="clearStaffClientFilters()">Réinitialiser</button></div></td></tr>`}</tbody>
+            </table>
+          </div>
+          <div class="crm-list-foot">
+            <span>${shown.length} affiché${shown.length > 1 ? 's' : ''} sur ${rows.length}</span>
+            ${rows.length > shown.length ? `<button type="button" class="crm-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
+          </div>
         </article>
-        <article class="pv2-panel">
-          <div class="pv2-panel-head"><h2>Fiche client</h2><small>${rows.length} visible(s) · ${money(rows.reduce((sum, row) => sum + Number(row.spent || 0), 0))} cumulés</small></div>
-          ${profile}
+        <article class="pv2-panel crm-fiche-panel">
+          ${crmFiche(selected)}
         </article>
       </section>
     </div>`;

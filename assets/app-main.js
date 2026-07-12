@@ -211,7 +211,7 @@ function startLaserDragAutoScroll(clientY) {
 
 function getLaserDropTargetFromPoint(clientX, clientY) {
   const element = document.elementFromPoint(clientX, clientY);
-  return element?.closest?.('.laser-session-slot[data-laser-drop-start]') || null;
+  return element?.closest?.('.laser-session-slot[data-laser-drop-start], .laser-pass-queue[data-laser-unplace-drop]') || null;
 }
 
 function setLaserDragDropTarget(target) {
@@ -302,6 +302,11 @@ function onLaserPointerUp(event) {
   clearLaserDragDropTarget();
   if (!target) {
     showPlanningMoveNotice('Aucun lancement choisi', 'Deposez la carte sur une ligne Laser Game disponible.', 'warning');
+    return;
+  }
+  if (target.dataset.laserUnplaceDrop) {
+    // Chip d'une partie DÉJÀ placée relâchée sur la file → la remettre en attente.
+    unscheduleLaserPass(drag.reservationId, drag.passIndex);
     return;
   }
   const targetStart = Number(target.dataset.laserDropStart);
@@ -463,9 +468,10 @@ function renderBowlingDragPreview(target) {
   });
 }
 
-function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, duration, ignoreId, currentLanes = [], sourceLane = null, splitLane = false) {
+function getTargetBowlingLanes(requiredCount, targetLane, date, startTime, duration, ignoreId, currentLanes = [], sourceLane = null, splitLane = false, excludeLanes = []) {
   const occupied = getOccupiedLanes(date, startTime, duration, ignoreId);
-  const isAvailable = lane => lane >= 1 && lane <= TOTAL_LANES && state.laneStatuses[lane] !== 'maintenance' && !occupied.has(lane);
+  const excludedSet = new Set((excludeLanes || []).map(Number));
+  const isAvailable = lane => lane >= 1 && lane <= TOTAL_LANES && state.laneStatuses[lane] !== 'maintenance' && !occupied.has(lane) && !excludedSet.has(lane);
   const target = Number(targetLane);
   const count = Math.max(1, Number(requiredCount || 1));
   if (count === 1) return isAvailable(target) ? [target] : null;
@@ -563,6 +569,92 @@ function moveBowlingOpsPlan(reservation, targetStart, targetLanes, duration) {
     timeline,
     resourceBlocks,
   };
+}
+
+// Scinde le bloc bowling : les pistes `movedLanes` partent au créneau cible
+// (nouvelles pistes `targetLanes`, à `targetStartMin`), les autres pistes restent
+// à leur place. Produit un opsPlan à 2 blocs bowling → UNE réservation, 2
+// créneaux. Les joueurs sont répartis au prorata des pistes ; les blocs non
+// bowling (laser, table anniv.) sont conservés intacts. Fonction PURE (testée par
+// scripts/bowling-split-check.js).
+function buildSplitBowlingOpsPlan(reservation, movedLanes, targetLanes, targetStartMin, duration) {
+  const plan = reservation.opsPlan && typeof reservation.opsPlan === 'object' ? reservation.opsPlan : {};
+  const blocks = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
+  const movedSet = new Set(movedLanes.map(Number).filter(l => (reservation.lanes || []).map(Number).includes(l)));
+  const durMin = Math.max(1, Math.round(Number(duration || reservation.duration || 1) * 60));
+  const totalLanes = Math.max(1, (reservation.lanes || []).length);
+  const totalPax = Number(reservation.pax || 0);
+  const movedPlayers = Math.max(0, Math.round(totalPax * (movedSet.size / totalLanes)));
+  const restPlayers = Math.max(0, totalPax - movedPlayers);
+
+  const nonBowling = blocks.filter(b => b.resourceType !== 'bowling_lane' && b.activityId !== 'bowling');
+  const bowling = blocks.filter(b => b.resourceType === 'bowling_lane' || b.activityId === 'bowling');
+
+  // Répartit restPlayers au prorata des pistes restantes (sans double-décote).
+  const restLaneTotal = Math.max(1, bowling.reduce((n, b) => n + (b.lanes || []).map(Number).filter(l => !movedSet.has(l)).length, 0));
+  const restBlocks = [];
+  bowling.forEach(b => {
+    const laneList = (b.lanes || []).map(Number);
+    const rest = laneList.filter(l => !movedSet.has(l));
+    if (!rest.length) return;
+    restBlocks.push({
+      ...b,
+      lanes: rest,
+      players: Math.max(0, Math.round(restPlayers * (rest.length / restLaneTotal))),
+    });
+  });
+  if (!bowling.length) {
+    // Fallback (résa sans blocs bowling explicites) : reconstruire le bloc restant.
+    const startMin = hourToMinuteInt(timeToNum(reservation.startTime));
+    const restLanes = (reservation.lanes || []).map(Number).filter(l => !movedSet.has(l));
+    if (restLanes.length) {
+      restBlocks.push({
+        resourceType: 'bowling_lane', activityId: 'bowling', lanes: restLanes,
+        start: startMin, end: startMin + durMin, startTime: minuteIntToTime(startMin),
+        endTime: minuteIntToTime(startMin + durMin), durationMinutes: durMin, players: restPlayers,
+      });
+    }
+  }
+
+  const movedBlock = {
+    resourceType: 'bowling_lane', activityId: 'bowling', lanes: targetLanes.map(Number),
+    start: targetStartMin, end: targetStartMin + durMin, startTime: minuteIntToTime(targetStartMin),
+    endTime: minuteIntToTime(targetStartMin + durMin), durationMinutes: durMin, players: movedPlayers,
+  };
+
+  const resourceBlocks = [...nonBowling, ...restBlocks, movedBlock];
+  const planTimes = summarizePlanTimes(resourceBlocks);
+  const assignedLanes = [...new Set(resourceBlocks
+    .filter(b => b.resourceType === 'bowling_lane')
+    .flatMap(b => (b.lanes || []).map(Number)))].sort((a, b) => a - b);
+  return { ...plan, ...planTimes, assignedLanes, resourceBlocks };
+}
+
+// Sélection de pistes pour SCINDER un groupe : le staff clique les pastilles des
+// pistes à détacher (surbrillance), puis glisse le lot vers un autre créneau.
+let bowlingSplitSel = null; // { reservationId, sourceStart, lanes: number[] }
+function bowlingSplitSelHas(resId, start, lane) {
+  return Boolean(bowlingSplitSel
+    && Number(bowlingSplitSel.reservationId) === Number(resId)
+    && Math.abs(Number(bowlingSplitSel.sourceStart) - Number(start)) < 0.001
+    && bowlingSplitSel.lanes.includes(Number(lane)));
+}
+function toggleBowlingLaneSelection(resId, lane, start) {
+  const l = Number(lane);
+  const sameGroup = bowlingSplitSel
+    && Number(bowlingSplitSel.reservationId) === Number(resId)
+    && Math.abs(Number(bowlingSplitSel.sourceStart) - Number(start)) < 0.001;
+  if (!sameGroup) {
+    bowlingSplitSel = { reservationId: Number(resId), sourceStart: Number(start), lanes: [l] };
+  } else {
+    const idx = bowlingSplitSel.lanes.indexOf(l);
+    if (idx === -1) bowlingSplitSel.lanes.push(l); else bowlingSplitSel.lanes.splice(idx, 1);
+    if (!bowlingSplitSel.lanes.length) bowlingSplitSel = null;
+  }
+  renderStaffData();
+}
+function clearBowlingSplitSel() {
+  if (bowlingSplitSel) { bowlingSplitSel = null; renderStaffData(); }
 }
 
 async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourceLaneValue = null, sourceStartValue = null, splitLane = false) {
@@ -668,6 +760,84 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   }
 }
 
+// SCINDE un sous-ensemble de pistes d'un groupe vers un autre créneau : produit
+// une seule réservation à 2 blocs bowling (via buildSplitBowlingOpsPlan) et
+// persiste en `manualPlacement` (pas de re-plan, mais validation pistes/laser
+// garantie côté serveur). Prix inchangé (mêmes pistes au total).
+async function scheduleBowlingSplit(reservationId, movedLanes, targetLane, targetStart) {
+  const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
+  if (!reservation) return;
+  const currentLanes = (reservation.lanes || []).map(Number);
+  const lanesToMove = [...new Set((movedLanes || []).map(Number))].filter(l => currentLanes.includes(l));
+  if (!lanesToMove.length) return;
+  if (lanesToMove.length >= currentLanes.length) {
+    // Tout le groupe sélectionné = déplacement complet, pas un split.
+    clearBowlingSplitSel();
+    return scheduleBowlingDrag(reservationId, targetLane, targetStart, lanesToMove[0], null, false);
+  }
+  const duration = getBowlingDurationForReservation(reservation) || Number(reservation.duration || 1);
+  const startTime = numToTime(Number(targetStart));
+  const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
+  if (!slotCheck.ok) {
+    showPlanningMoveNotice('Split impossible', slotCheck.message || 'Ce créneau ne peut pas être utilisé.', 'warning');
+    return;
+  }
+  // CRITIQUE : exclure les pistes qui RESTENT du choix des pistes cibles. La résa
+  // s'ignore elle-même dans getOccupiedLanes → sans ça, le bloc déplacé pourrait
+  // réutiliser une piste du bloc restant = AUTO-SURBOOKING (non détecté serveur).
+  const restLanes = currentLanes.filter(l => !lanesToMove.includes(l));
+  const targetLanes = getTargetBowlingLanes(lanesToMove.length, targetLane, reservation.date, startTime, duration, reservation.id, lanesToMove, lanesToMove[0], false, restLanes);
+  if (!targetLanes || targetLanes.length < lanesToMove.length) {
+    showPlanningMoveNotice('Pistes indisponibles', `Il faut ${lanesToMove.length} piste(s) libre(s) à ${formatClockDisplay(Number(targetStart))}.`, 'warning');
+    return;
+  }
+  const targetStartMin = hourToMinuteInt(Number(targetStart));
+  const opsPlan = buildSplitBowlingOpsPlan(reservation, lanesToMove, targetLanes, targetStartMin, duration);
+  const updated = {
+    ...reservation,
+    startTime: opsPlan.startTime || reservation.startTime,
+    lanes: opsPlan.assignedLanes,
+    allowPastStart: true,
+    opsPlan,
+  };
+  const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
+  const requestKey = Number(reservation.id);
+  // Garde de séquence PARTAGÉE avec scheduleBowlingDrag (même compteur par résa) :
+  // un split puis un déplacement rapide de la même résa ne s'écrasent pas.
+  const requestSeq = ++bowlingDragSaveSeq;
+  bowlingDragLatestSeqByReservation[requestKey] = requestSeq;
+  const isLatestRequest = () => bowlingDragLatestSeqByReservation[requestKey] === requestSeq;
+  markReservationMutation(requestKey, updated, ['startTime', 'lanes', 'opsPlan']);
+  applyOptimisticReservation(updated, { preserveEditState: true });
+  clearBowlingSplitSel();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+      method: 'PATCH',
+      body: JSON.stringify(buildReservationApiPayload(updated, {
+        skipReplan: true,
+        manualPlacement: true,
+        laneCount: opsPlan.assignedLanes.length,
+        requiresLanes: true,
+        allowPastStart: true,
+      })),
+    });
+    if (!isLatestRequest()) return;
+    if (!payload?.reservation) throw new Error('Sauvegarde non confirmée par le serveur.');
+    upsertReservationInState(payload.reservation);
+    markReservationMutation(requestKey, payload.reservation, ['startTime', 'lanes', 'opsPlan']);
+    save();
+    renderStaffData();
+    toast(`${lanesToMove.length} piste${lanesToMove.length > 1 ? 's' : ''} scindée${lanesToMove.length > 1 ? 's' : ''} à ${formatClockDisplay(Number(targetStart))} (piste${targetLanes.length > 1 ? 's' : ''} ${targetLanes.join(', ')})`);
+  } catch (error) {
+    if (!isLatestRequest()) return;
+    applyOptimisticReservation(previous, { preserveEditState: true });
+    clearReservationMutation(requestKey);
+    showPlanningMoveNotice('Split annulé', error.message || 'Le serveur a refusé ce placement.', 'warning');
+  } finally {
+    if (bowlingDragLatestSeqByReservation[requestKey] === requestSeq) delete bowlingDragLatestSeqByReservation[requestKey];
+  }
+}
+
 function setBowlingSourceDragging(reservationId, active) {
   document.querySelectorAll(`.booking[data-booking-res-id="${Number(reservationId)}"]`).forEach(el => {
     el.classList.toggle('is-dragging', active);
@@ -750,14 +920,24 @@ function onBowlingPointerUp(event) {
     showPlanningMoveNotice('Aucun creneau choisi', 'Deposez la carte sur une cellule piste/heure disponible.', 'warning');
     return;
   }
-  scheduleBowlingDrag(
-    drag.reservationId,
-    Number(target.dataset.bowlingDropLane),
-    Number(target.dataset.bowlingDropStart),
-    drag.sourceLane,
-    drag.sourceStart,
-    Boolean(drag.splitLane)
-  );
+  if (drag.splitSelection && drag.splitSelection.length) {
+    // Sous-ensemble de pistes sélectionné → SCINDER vers le créneau cible.
+    scheduleBowlingSplit(
+      drag.reservationId,
+      drag.splitSelection,
+      Number(target.dataset.bowlingDropLane),
+      Number(target.dataset.bowlingDropStart)
+    );
+  } else {
+    scheduleBowlingDrag(
+      drag.reservationId,
+      Number(target.dataset.bowlingDropLane),
+      Number(target.dataset.bowlingDropStart),
+      drag.sourceLane,
+      drag.sourceStart,
+      Boolean(drag.splitLane)
+    );
+  }
 }
 
 function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null, sourceStart = null) {
@@ -768,6 +948,7 @@ function startBowlingBookingPointerDrag(event, reservationId, sourceLane = null,
     sourceLane,
     sourceStart,
     splitLane: event.shiftKey || event.altKey || event.ctrlKey || event.metaKey,
+    splitSelection: bowlingSplitSelHas(reservationId, sourceStart, sourceLane) ? [...bowlingSplitSel.lanes] : null,
     sourceEl: event.currentTarget,
     startX: event.clientX,
     startY: event.clientY,
@@ -11051,7 +11232,10 @@ function renderPlanning() {
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
       const statsHtml = renderCardStats(r.pax, formatDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration) });
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      const isMultiLaneWin = (item.window.lanes || []).length > 1;
+      const laneSelected = bowlingSplitSelHas(r.id, st, i);
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${laneSelected ? ' is-split-selected' : ''}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+        ${isMultiLaneWin ? `<button type="button" class="bk-split-dot${laneSelected ? ' on' : ''}" title="Détacher cette piste : sélectionne-en une ou plusieurs, puis glisse-les vers un autre créneau" aria-label="Sélectionner la piste ${i} pour scinder le groupe" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();toggleBowlingLaneSelection(${r.id}, ${i}, ${st})"></button>` : ''}
         ${renderDelayIndicator(r)}
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
         ${renderReservationTags(r)}
@@ -11151,7 +11335,13 @@ function renderLaserPlanning() {
   // La file « Parties à placer » est TOUJOURS rendue en plein écran (zone
   // permanente) pour ne jamais oublier une partie ; en mode réduit elle
   // n'apparaît que s'il reste des parties à placer.
-  const showPassQueue = pendingPasses.length > 0 || state.staffLaserPlanningExpanded;
+  // Un-place (drag d'une partie placée → file) : la file DOIT exister comme cible
+  // de drop dès qu'au moins une partie ≥2 est placée, même sans partie en attente.
+  const hasPlacedExtraPass = getPlanningVisibleReservations('laser').some(r =>
+    getLaserGameCountForReservation(r) > 1
+    && getLaserPassScheduledIndexes(r).some(idx => idx >= 2)
+  );
+  const showPassQueue = pendingPasses.length > 0 || state.staffLaserPlanningExpanded || hasPlacedExtraPass;
   const passListHtml = pendingPasses.length
     ? pendingPasses.map(pass => {
         const reservation = pass.reservation;
@@ -11166,7 +11356,7 @@ function renderLaserPlanning() {
       }).join('')
     : `<div class="laser-pass-empty">Aucune partie en attente. Toutes les parties sont placées.</div>`;
   const pendingQueueHtml = showPassQueue ? `
-    <div class="laser-pass-queue${pendingPasses.length ? '' : ' is-empty'}" aria-label="Parties Laser Game à placer">
+    <div class="laser-pass-queue${pendingPasses.length ? '' : ' is-empty'}" data-laser-unplace-drop="1" aria-label="Parties Laser Game à placer">
       <div class="laser-pass-queue-copy">
         <strong>Parties à placer${pendingPasses.length ? ` • ${pendingPasses.length}` : ''}</strong>
         <span>Glissez une carte sur un lancement disponible ou partagé.</span>

@@ -157,7 +157,37 @@ module.exports = async (req, res) => {
         ...body,
         centerId: requestedCenterId,
       };
-      const shouldReplan = (!patch.skipReplan || isFormulaPatch(patch)) && hasAnyField(patch, REPLAN_FIELDS);
+      // `manualPlacement` : le staff impose une disposition manuelle (split d'un
+      // groupe sur 2 créneaux, dé-placement d'une partie laser). Même une formule
+      // ne doit PAS être re-planifiée sinon le moteur écrase la disposition. La
+      // validation reste garantie : updateReservation appelle toujours
+      // ensureAssignableLanes + ensureLaserCapacity → un layout en conflit est
+      // rejeté (pas de surbooking), on ne saute QUE le re-plan.
+      const shouldReplan = (!patch.skipReplan || (isFormulaPatch(patch) && !patch.manualPlacement)) && hasAnyField(patch, REPLAN_FIELDS);
+
+      if (patch.manualPlacement) {
+        // Placement manuel (pas de re-plan) : la validation serveur (ensureAssignableLanes)
+        // porte sur les pistes PLATES (patch.lanes). On EXIGE donc que TOUTES les pistes des
+        // blocs bowling de l'opsPlan soient couvertes par patch.lanes — sinon un layout
+        // divergent contournerait la vérif maintenance/conflit. Et on FIGE le prix côté
+        // serveur (un split/dé-placement ne re-tarife jamais ; on ne fait pas confiance au
+        // prix client).
+        const blockLanes = new Set();
+        (Array.isArray(patch.opsPlan?.resourceBlocks) ? patch.opsPlan.resourceBlocks : [])
+          .forEach((block) => {
+            if (block && block.resourceType === 'bowling_lane') {
+              (block.lanes || []).forEach((lane) => blockLanes.add(Number(lane)));
+            }
+          });
+        const flatLanes = new Set((Array.isArray(patch.lanes) ? patch.lanes : []).map(Number));
+        for (const lane of blockLanes) {
+          if (!flatLanes.has(lane)) {
+            throw createHttpError('Placement manuel invalide : les pistes du plan ne correspondent pas aux pistes de la réservation.', 409);
+          }
+        }
+        patch.price = current.price;
+        if (current.basePrice != null) patch.basePrice = current.basePrice;
+      }
       const ops = shouldReplan
         ? await prepareReservationOps(patch, 'staff', { ignoreReservationId: Number(patch.id) })
         : {};

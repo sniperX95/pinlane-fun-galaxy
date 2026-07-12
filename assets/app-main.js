@@ -6449,9 +6449,9 @@ function renderStaffFormulesBoard(rows = []) {
   return `<div class="formules-board">
     ${formuleRows.map(reservation => {
       const summary = getFormulaActivityProgressSummary(reservation);
-      const checklist = renderFormulaActivityChecklist(reservation);
+      const checklist = renderFormulaActivityChecklist(reservation, { bare: true });
       return `<article class="formules-card${summary.allDone ? ' all-done' : ''}">
-        <header class="formules-card-head">
+        <div class="formules-card-head">
           <div class="formules-card-time">
             <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
             <span>${Number(reservation.pax || 0)} joueurs</span>
@@ -6460,8 +6460,9 @@ function renderStaffFormulesBoard(rows = []) {
             <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
             <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
           </div>
+          ${summary.total ? `<span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>` : ''}
           <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
-        </header>
+        </div>
         ${checklist || '<div class="formules-card-empty">Pas de plan d\'activités détaillé pour cette formule.</div>'}
       </article>`;
     }).join('')}
@@ -11917,11 +11918,13 @@ function renderFormulaActivityChecklist(r, opts = {}) {
       <span class="activity-check-state">${item.done ? (meta || 'Fait') : 'À faire'}</span>
     </button>`;
   }).join('');
-  return `<div class="info-block activity-check-block${summary.allDone ? ' all-done' : ''}">
-    <div class="activity-check-head">
+  // opts.bare : sans en-tête (utilisé dans la carte Formules qui porte déjà nom + count).
+  const head = opts.bare ? '' : `<div class="activity-check-head">
       <div class="info-label">Suivi des activités${opts.titleSuffix ? ` ${escapeHtml(opts.titleSuffix)}` : ''}</div>
       <span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>
-    </div>
+    </div>`;
+  return `<div class="info-block activity-check-block${summary.allDone ? ' all-done' : ''}${opts.bare ? ' is-bare' : ''}">
+    ${head}
     <div class="activity-check-bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
     <div class="activity-check-list">${rows}</div>
   </div>`;

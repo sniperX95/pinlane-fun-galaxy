@@ -49,6 +49,10 @@ async function installMock(page) {
           { resourceType:'laser_arena', activityId:'laser_game', startTime:'17:15', endTime:'17:40', countIndex:2 },
         ] },
         activityProgress: {} },
+      // F1 avec un plan VIDE : la checklist doit QUAND MÊME montrer les 4 activités
+      // de F1 (bowling, laser, arcades, boissons) — la source est la DÉFINITION, pas le plan.
+      { id: 9021, name: 'Groupe Lucas #9021', phone: '+32470860021', email: 'lucas@x.test', date, startTime: '16:00', duration: 1, lanes: [5,6], status: 'confirmed', pax: 6, price: 156, type: 'formule', formuleId: 'f1', label: 'FORMULE 1',
+        opsPlan: { staffSummary: 'Formule 1', timeline: [] }, activityProgress: {} },
     ]);
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i+1] = 'active'; return a; }, {});
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
@@ -103,16 +107,25 @@ async function main() {
     });
     await page.waitForTimeout(400);
 
-    // Modèle de base
-    console.log('\n[MODÈLE] checklist dérivée de opsPlan.timeline');
+    // Modèle : checklist = définition COMPLÈTE de la formule (pas le plan)
+    console.log('\n[MODÈLE] checklist = toutes les activités de LA formule');
     const model = await page.evaluate(() => {
-      const r = state.reservations.find(x => x.id === 9020);
-      const items = getFormulaActivityChecklist(r);
-      return { keys: items.map(i => i.key), summary: getFormulaActivityProgressSummary(r) };
+      const r4 = state.reservations.find(x => x.id === 9020);
+      const r1 = state.reservations.find(x => x.id === 9021);
+      const it4 = getFormulaActivityChecklist(r4);
+      const it1 = getFormulaActivityChecklist(r1);
+      return {
+        f4: { keys: it4.map(i => i.key), labels: it4.map(i => i.label), summary: getFormulaActivityProgressSummary(r4) },
+        f1: { keys: it1.map(i => i.key), labels: it1.map(i => i.label) },
+      };
     });
-    ok(model.keys.length === 5, `5 activités cochables (${JSON.stringify(model.keys)})`);
-    ok(model.keys.includes('laser_game-1') && model.keys.includes('laser_game-2'), '« 2 parties laser » = 2 items séparés');
-    ok(model.summary.done === 0 && model.summary.total === 5, `0/5 au départ`);
+    ok(model.f4.keys.length === 5, `F4 : 5 activités (${JSON.stringify(model.f4.keys)})`);
+    ok(model.f4.keys.includes('laser_game-1') && model.f4.keys.includes('laser_game-2'), 'F4 : « 2 parties laser » = 2 items séparés');
+    ok(model.f4.summary.done === 0 && model.f4.summary.total === 5, `F4 : 0/5 au départ`);
+    // LA vérif clé : F1 a un plan VIDE mais montre quand même SES 4 activités.
+    ok(model.f1.keys.length === 4, `F1 (plan vide) montre quand même 4 activités (${JSON.stringify(model.f1.keys)})`);
+    ok(model.f1.keys.join(',') === 'bowling-1,laser_game-1,arcade_time-1,service_drinks-1', 'F1 : bowling + laser + arcades + boissons (liste exacte de F1)');
+    ok(model.f1.labels.includes('Arcades') && model.f1.labels.some(l => /boissons/i.test(l)), 'F1 : Arcades + Boissons présents (absents du plan)');
 
     // [DÉTAIL] ouvrir la résa + cocher « Bowling » par un VRAI clic
     console.log('\n[DÉTAIL] clic réel sur une case');
@@ -168,19 +181,28 @@ async function main() {
     console.log('\n[PAGE FORMULES] carte + clic');
     await page.evaluate(() => { if (typeof openStaffMenuPage === 'function') openStaffMenuPage('formules'); else { state.staffMenuPage = 'formules'; save(); renderStaff(); } });
     await page.waitForTimeout(400);
-    const fpage = await page.evaluate(() => ({
-      cards: document.querySelectorAll('#staffUtilityPage .formules-card').length,
-      rows: document.querySelectorAll('#staffUtilityPage .activity-check-row').length,
-      doneRows: document.querySelectorAll('#staffUtilityPage .activity-check-row.is-done').length,
-      title: (document.querySelector('#staffUtilityPage .utility-hero h1') || {}).textContent || '',
-    }));
-    ok(fpage.cards >= 1, `page Formules : ${fpage.cards} carte(s)`);
-    ok(fpage.rows === 5, `checklist dans la carte (${fpage.rows} lignes)`);
-    ok(fpage.doneRows === 1, 'la coche faite au détail est reflétée ici (1 grisée)');
+    const fpage = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('#staffUtilityPage .formules-card')];
+      const emma = cards.find(c => /Emma/.test(c.textContent));
+      const lucas = cards.find(c => /Lucas/.test(c.textContent));
+      return {
+        cards: cards.length,
+        emmaRows: emma ? emma.querySelectorAll('.activity-check-row').length : 0,
+        emmaDone: emma ? emma.querySelectorAll('.activity-check-row.is-done').length : 0,
+        lucasRows: lucas ? lucas.querySelectorAll('.activity-check-row').length : 0,
+        title: (document.querySelector('#staffUtilityPage .utility-hero h1') || {}).textContent || '',
+      };
+    });
+    ok(fpage.cards >= 2, `page Formules : ${fpage.cards} cartes`);
+    ok(fpage.emmaRows === 5, `checklist F4 dans la carte Emma (${fpage.emmaRows} lignes)`);
+    ok(fpage.lucasRows === 4, `checklist F1 COMPLÈTE dans la carte Lucas malgré plan vide (${fpage.lucasRows} lignes)`);
+    ok(fpage.emmaDone === 1, 'la coche faite au détail est reflétée ici (1 grisée sur Emma)');
     ok(/Formule/i.test(fpage.title), `titre page = "${fpage.title}"`);
-    // coche « Minigolf » depuis la page Formules
+    // coche « Minigolf » depuis la page Formules (dans la carte Emma)
     const clicked2 = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('#staffUtilityPage .activity-check-row')];
+      const cards = [...document.querySelectorAll('#staffUtilityPage .formules-card')];
+      const emma = cards.find(c => /Emma/.test(c.textContent));
+      const rows = emma ? [...emma.querySelectorAll('.activity-check-row')] : [];
       const target = rows.find(r => /Minigolf/i.test(r.textContent));
       if (!target) return false; target.click(); return true;
     });
@@ -188,7 +210,9 @@ async function main() {
     await page.waitForTimeout(400);
     const afterClick2 = await page.evaluate(() => {
       const r = state.reservations.find(x => x.id === 9020);
-      return { done: getFormulaActivityProgressSummary(r).done, minigolf: !!(r.activityProgress?.['minigolf_blacklight-1']?.done), doneRows: document.querySelectorAll('#staffUtilityPage .activity-check-row.is-done').length };
+      const cards = [...document.querySelectorAll('#staffUtilityPage .formules-card')];
+      const emma = cards.find(c => /Emma/.test(c.textContent));
+      return { done: getFormulaActivityProgressSummary(r).done, minigolf: !!(r.activityProgress?.['minigolf_blacklight-1']?.done), doneRows: emma ? emma.querySelectorAll('.activity-check-row.is-done').length : 0 };
     });
     ok(afterClick2.minigolf && afterClick2.done === 2, `minigolf coché → 2/5 (obtenu ${afterClick2.done})`);
     ok(afterClick2.doneRows === 2, '2 lignes grisées sur la page');

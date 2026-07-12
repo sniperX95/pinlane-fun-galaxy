@@ -1130,43 +1130,143 @@ async function unscheduleLaserPass(reservationId, passIndex) {
 }
 
 // ── Suivi des activités de formule ─────────────────────────────────────────────
-// La checklist dérive du plan opérationnel (opsPlan.timeline), source de vérité des
-// activités réellement incluses (bowling, laser ×N, minigolf, arcades, boissons…).
-// Chaque étape « activity » = un item cochable, clé stable `${activityId}-${countIndex}`.
-// L'état coché vit dans reservation.activityProgress (colonne DB, survit au replan).
+// La checklist = les activités RÉELLEMENT INCLUSES dans LA formule réservée (source de
+// vérité : la DÉFINITION de la formule, pas le plan opérationnel qui peut être partiel).
+// Chaque activité = un item cochable, clé stable `${activityId}-${occurrence}`. Les
+// heures viennent du plan (opsPlan.timeline) quand elles existent. État coché dans
+// reservation.activityProgress (colonne DB, survit au replan).
+
+// Libellés d'activités (miroir de ops-knowledge/activities.json, côté client).
+const FORMULA_ACTIVITY_LABELS = {
+  bowling: 'Bowling',
+  laser_game: 'Laser Game',
+  minigolf_blacklight: 'Minigolf Blacklight',
+  golf_oclock: "Golf o'Clock",
+  arcade_time: 'Arcades',
+  arcade_credit: 'Arcade',
+  playground: 'Plaine de jeux',
+  party_table: 'Table anniversaire',
+  service_drinks: 'Boissons',
+  duckpin_bowling: 'Duckpin Bowling',
+  axe_throwing: 'Lancer de haches',
+  free_roaming_vr: 'VR Free Roaming',
+  karting_vr: 'Karting VR',
+};
+
+// Activités « à sessions » : chaque unité est une session distincte à suivre
+// séparément (ex. « 2 parties Laser Game » → 2 cases). Les autres (boissons ×2,
+// arcade…) restent UN item, la quantité est dans le libellé.
+const SESSION_ACTIVITIES = new Set(['laser_game', 'bowling']);
+
+// Étapes d'activités PAR FORMULE — miroir fidèle de ops-knowledge/formulas.json.
+// À garder synchronisé si formulas.json change (c'est la source serveur).
+const FORMULA_ACTIVITY_STEPS = {
+  f1: [{ a: 'bowling', c: 1 }, { a: 'laser_game', c: 1 }, { a: 'arcade_time', c: 1 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f2: [{ a: 'minigolf_blacklight', c: 1 }, { a: 'laser_game', c: 2 }, { a: 'arcade_time', c: 1 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f3: [{ a: 'minigolf_blacklight', c: 1 }, { a: 'bowling', c: 1 }, { a: 'arcade_time', c: 1 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f4: [{ a: 'minigolf_blacklight', c: 1 }, { a: 'bowling', c: 1 }, { a: 'laser_game', c: 2 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f5: [{ a: 'laser_game', c: 2 }, { a: 'minigolf_blacklight', c: 1 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f6: [{ a: 'party_table', c: 1 }, { a: 'playground', c: 1 }, { a: 'arcade_credit', c: 1, label: "8€ d'arcade par enfant" }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f7: [{ a: 'party_table', c: 1 }, { a: 'playground', c: 1 }, { a: 'minigolf_blacklight', c: 1 }, { a: 'arcade_credit', c: 1, label: "8€ d'arcade par enfant" }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  f8: [{ a: 'party_table', c: 1 }, { a: 'playground', c: 1 }, { a: 'minigolf_blacklight', c: 1 }, { a: 'arcade_time', c: 1 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
+  bts: [{ a: 'bowling', c: 1 }, { a: 'arcade_time', c: 1 }],
+  mm: [{ a: 'arcade_time', c: 1 }, { a: 'laser_game', c: 2 }],
+  css: [{ a: 'bowling', c: 1 }, { a: 'service_drinks', c: 1, label: '1 mètre de bière' }],
+  kfd: [{ a: 'playground', c: 1 }, { a: 'arcade_time', c: 1 }],
+  hlg: [{ a: 'arcade_time', c: 1 }, { a: 'laser_game', c: 1 }, { a: 'service_drinks', c: 1, label: '1 boisson' }],
+  ffm: [{ a: 'bowling', c: 1 }, { a: 'laser_game', c: 1 }, { a: 'arcade_time', c: 1 }, { a: 'service_drinks', c: 1, label: '1 boisson' }],
+};
+
+function getActivityLabel(activityId, stepLabel) {
+  return stepLabel || FORMULA_ACTIVITY_LABELS[activityId] || String(activityId || 'Activité');
+}
+
+function getReservationFormulaId(reservation) {
+  return String(reservation?.formuleId || reservation?.formulaId || '').trim();
+}
+
+function getFormulaActivitySteps(formuleId) {
+  return FORMULA_ACTIVITY_STEPS[String(formuleId || '').trim()] || null;
+}
+
+// Famille/catégorie d'une formule (ex. « Formules anniversaires » / « Formules
+// spéciales ») — pour regrouper la page Formules par catégorie.
+function getFormulaFamilyLabel(formuleId) {
+  const formule = FORMULES.find(item => item.id === String(formuleId || '').trim());
+  return formule && formule.family ? formule.family : 'Autres formules';
+}
+
 function reservationHasFormulaActivities(reservation) {
   if (!reservation) return false;
+  if (getFormulaActivitySteps(getReservationFormulaId(reservation))) return true;
+  // Fallback : formule sans définition connue mais avec un plan détaillé.
   const isFormula = reservation.type === 'formule' || !!reservation.formuleId;
   const steps = Array.isArray(reservation.opsPlan?.timeline) ? reservation.opsPlan.timeline : [];
   return isFormula && steps.some(step => step && step.type === 'activity');
 }
 
+// Index des heures planifiées (opsPlan.timeline) par clé `${activityId}-${occurrence}`.
+function buildFormulaTimelineTimeIndex(reservation) {
+  const timeline = Array.isArray(reservation?.opsPlan?.timeline)
+    ? reservation.opsPlan.timeline.filter(step => step && step.type === 'activity')
+    : [];
+  const seen = {};
+  const index = {};
+  timeline.forEach(step => {
+    const aid = String(step.activityId || '');
+    seen[aid] = (seen[aid] || 0) + 1;
+    const occ = Number(step.countIndex || seen[aid]);
+    index[`${aid}-${occ}`] = { startTime: step.startTime || '', endTime: step.endTime || '' };
+  });
+  return index;
+}
+
 function getFormulaActivityChecklist(reservation) {
-  const steps = Array.isArray(reservation?.opsPlan?.timeline) ? reservation.opsPlan.timeline : [];
   const progress = reservation?.activityProgress && typeof reservation.activityProgress === 'object' ? reservation.activityProgress : {};
-  const seen = new Map();
-  const items = [];
-  steps.filter(step => step && step.type === 'activity').forEach(step => {
-    const activityId = String(step.activityId || 'activite');
-    // countIndex peut manquer : on numérote les occurrences répétées du même activityId
-    // (ex. « 2 parties Laser Game » → laser_game-1 et laser_game-2, cochables séparément).
-    const occ = (seen.get(activityId) || 0) + 1;
-    seen.set(activityId, occ);
-    const countIndex = Number(step.countIndex || occ);
-    const key = `${activityId}-${countIndex}`;
+  const timeByKey = buildFormulaTimelineTimeIndex(reservation);
+  const steps = getFormulaActivitySteps(getReservationFormulaId(reservation));
+  const mkItem = (activityId, occurrence, label) => {
+    const key = `${activityId}-${occurrence}`;
     const entry = progress[key];
-    items.push({
+    const t = timeByKey[key] || {};
+    return {
       key,
       activityId,
-      countIndex,
-      label: String(step.label || activityId),
-      startTime: step.startTime || '',
-      endTime: step.endTime || '',
+      countIndex: occurrence,
+      label,
+      startTime: t.startTime || '',
+      endTime: t.endTime || '',
       done: !!(entry && entry.done),
       doneAt: entry && entry.doneAt ? entry.doneAt : '',
       by: entry && entry.by ? entry.by : '',
+    };
+  };
+  // Cas nominal : on connaît la formule → liste COMPLÈTE de SES activités.
+  if (Array.isArray(steps)) {
+    const items = [];
+    steps.forEach(step => {
+      const aid = String(step.a || 'activite');
+      const count = Math.max(1, Number(step.c || 1));
+      if (SESSION_ACTIVITIES.has(aid) && count > 1) {
+        for (let i = 1; i <= count; i += 1) items.push(mkItem(aid, i, `${getActivityLabel(aid)} (${i}/${count})`));
+      } else {
+        items.push(mkItem(aid, 1, getActivityLabel(aid, step.label)));
+      }
     });
-  });
+    return items;
+  }
+  // Fallback (formuleId inconnu) : dérive du plan opérationnel.
+  const seen = new Map();
+  const items = [];
+  (Array.isArray(reservation?.opsPlan?.timeline) ? reservation.opsPlan.timeline : [])
+    .filter(step => step && step.type === 'activity')
+    .forEach(step => {
+      const activityId = String(step.activityId || 'activite');
+      const occ = (seen.get(activityId) || 0) + 1;
+      seen.set(activityId, occ);
+      const countIndex = Number(step.countIndex || occ);
+      items.push(mkItem(activityId, countIndex, getActivityLabel(activityId, step.label)));
+    });
   return items;
 }
 
@@ -1266,5 +1366,8 @@ function getFormulaActivityProgressSummary(reservation) {
     reservationHasFormulaActivities,
     getFormulaActivityChecklist,
     getFormulaActivityProgressSummary,
+    getFormulaActivitySteps,
+    getFormulaFamilyLabel,
+    getActivityLabel,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

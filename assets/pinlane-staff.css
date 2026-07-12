@@ -1332,6 +1332,11 @@ input.dash-date-input {
 .formules-card .activity-check-block { padding: 0; border: 0; background: transparent; }
 .formules-card-empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
 @media (max-width: 640px) { .formules-board { grid-template-columns: 1fr; } }
+.formules-group { margin-bottom: var(--space-6); }
+.formules-group + .formules-group { margin-top: var(--space-2); }
+.formules-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: var(--space-3); padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.formules-group-head h3 { font-size: 15px; font-weight: 800; color: var(--text); margin: 0; }
+.formules-group-head span { font-size: 12px; color: var(--muted); font-weight: 600; }
 
 /* Pill compacte de progression des activités (cartes planning + lignes terrain) */
 .activity-pill {

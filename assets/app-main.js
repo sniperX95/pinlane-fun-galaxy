@@ -6437,6 +6437,26 @@ function getStaffEventResources(reservation) {
   }).join(' | ');
 }
 
+function renderFormuleTrackingCard(reservation) {
+  const summary = getFormulaActivityProgressSummary(reservation);
+  const checklist = renderFormulaActivityChecklist(reservation, { bare: true });
+  return `<article class="formules-card${summary.allDone ? ' all-done' : ''}">
+    <div class="formules-card-head">
+      <div class="formules-card-time">
+        <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
+        <span>${Number(reservation.pax || 0)} joueurs</span>
+      </div>
+      <div class="formules-card-id">
+        <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
+        <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
+      </div>
+      ${summary.total ? `<span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>` : ''}
+      <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
+    </div>
+    ${checklist || '<div class="formules-card-empty">Pas de plan d\'activités détaillé pour cette formule.</div>'}
+  </article>`;
+}
+
 function renderStaffFormulesBoard(rows = []) {
   const formuleRows = [...rows].sort((left, right) => getReservationFirstResourceStart(left, 'all') - getReservationFirstResourceStart(right, 'all'));
   if (!formuleRows.length) {
@@ -6446,27 +6466,29 @@ function renderStaffFormulesBoard(rows = []) {
       <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Créer une formule</button>
     </div>`;
   }
-  return `<div class="formules-board">
-    ${formuleRows.map(reservation => {
-      const summary = getFormulaActivityProgressSummary(reservation);
-      const checklist = renderFormulaActivityChecklist(reservation, { bare: true });
-      return `<article class="formules-card${summary.allDone ? ' all-done' : ''}">
-        <div class="formules-card-head">
-          <div class="formules-card-time">
-            <strong>${escapeHtml(getStaffUtilityStartLabel(reservation))}</strong>
-            <span>${Number(reservation.pax || 0)} joueurs</span>
-          </div>
-          <div class="formules-card-id">
-            <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
-            <span>${escapeHtml(getReservationLabel(reservation))} · ${escapeHtml(getStaffReservationStatusLabel(reservation.status))}</span>
-          </div>
-          ${summary.total ? `<span class="activity-check-count${summary.allDone ? ' done' : ''}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>` : ''}
-          <button type="button" class="formules-card-open" onclick="openStaffReservationDetail(${staffClientJs(reservation.id)})">Ouvrir</button>
-        </div>
-        ${checklist || '<div class="formules-card-empty">Pas de plan d\'activités détaillé pour cette formule.</div>'}
-      </article>`;
-    }).join('')}
-  </div>`;
+  // Regroupement par CATÉGORIE de formule (anniversaires / spéciales / autres),
+  // dans un ordre stable. Chaque formule ne montre QUE ses propres activités.
+  const groups = new Map();
+  formuleRows.forEach(reservation => {
+    const family = getFormulaFamilyLabel(reservation.formuleId);
+    if (!groups.has(family)) groups.set(family, []);
+    groups.get(family).push(reservation);
+  });
+  const familyOrder = ['Formules anniversaires', 'Formules spéciales'];
+  const rank = (name) => { const i = familyOrder.indexOf(name); return i === -1 ? familyOrder.length : i; };
+  const families = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return families.map(family => {
+    const cards = groups.get(family);
+    const done = cards.reduce((sum, reservation) => sum + getFormulaActivityProgressSummary(reservation).done, 0);
+    const total = cards.reduce((sum, reservation) => sum + getFormulaActivityProgressSummary(reservation).total, 0);
+    return `<section class="formules-group">
+      <div class="formules-group-head">
+        <h3>${escapeHtml(family)}</h3>
+        <span>${cards.length} formule${cards.length > 1 ? 's' : ''}${total ? ` · ${done}/${total} activité${total > 1 ? 's' : ''}` : ''}</span>
+      </div>
+      <div class="formules-board">${cards.map(renderFormuleTrackingCard).join('')}</div>
+    </section>`;
+  }).join('');
 }
 
 function renderStaffUtilityEventsBoard(rows = []) {

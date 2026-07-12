@@ -173,13 +173,16 @@ function scrollLaserDragBy(deltaY) {
     : laserPointerDrag
       ? document.getElementById('laserPlanningGridWrap')
       : null;
+  // L'auto-scroll de bord ne pilote QUE la grille quand elle défile en interne
+  // (mode plein écran comptoir : le wrap a une hauteur bornée + overflow:auto).
+  // En mode normal, le défilement vertical du planning EST celui de la PAGE :
+  // y retomber (ancien comportement) happait toute la page vers le haut dès que
+  // le curseur passait dans la zone de bord pendant un glisser — « ça me remet
+  // tout en haut ». On ne touche donc jamais au scroll de page pendant le drag :
+  // la vue reste là où Movsar l'a laissée. (Cf. journal 2026-07-12.)
   if (activeWrap && activeWrap.scrollHeight > activeWrap.clientHeight) {
     activeWrap.scrollTop += deltaY;
-    return;
   }
-  const scroller = document.scrollingElement || document.documentElement;
-  if (!scroller) return;
-  scroller.scrollTop += deltaY;
 }
 
 function stopLaserDragAutoScroll() {

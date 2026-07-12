@@ -11172,7 +11172,7 @@ function renderPlanning() {
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
       const statsHtml = renderCardStats(r.pax, formatDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration) });
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${renderDelayIndicator(r)}
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
         ${renderReservationTags(r)}
@@ -11353,7 +11353,7 @@ function renderLaserPlanning() {
         </span>`;
       const dragTitle = passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${passIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${passIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` • ${escapeHtml(waveLabel)}` : ''}</small>
@@ -11901,6 +11901,12 @@ function setTab(t) {
   renderPos();
 }
 
+// Classe « toutes les activités faites » pour styliser (griser) une carte planning.
+function activitiesCompleteClass(r) {
+  if (typeof reservationHasFormulaActivities !== 'function' || !reservationHasFormulaActivities(r)) return '';
+  return getFormulaActivityProgressSummary(r).allDone ? ' activities-complete' : '';
+}
+
 // Pill compacte « faites/total » pour les cartes planning (formules uniquement).
 function renderActivityProgressPill(r) {
   if (typeof reservationHasFormulaActivities === 'function' && !reservationHasFormulaActivities(r)) return '';
@@ -11918,6 +11924,23 @@ function formatActivityDoneTime(iso) {
 
 const ACTIVITY_CHECK_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
 
+// Icône par type d'activité (ligne d'icônes fines, cohérent avec le design system).
+const ACTIVITY_ICON_PATHS = {
+  bowling: '<circle cx="12" cy="12" r="9"/><circle cx="9.4" cy="9" r=".55" fill="currentColor" stroke="none"/><circle cx="12.6" cy="8.2" r=".55" fill="currentColor" stroke="none"/><circle cx="9.9" cy="12" r=".55" fill="currentColor" stroke="none"/>',
+  laser_game: '<circle cx="12" cy="12" r="6.4"/><path d="M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  minigolf_blacklight: '<path d="M7 21V4l9.2 2.6L7 9.2"/>',
+  golf_oclock: '<path d="M7 21V4l9.2 2.6L7 9.2"/>',
+  arcade_time: '<rect x="2.5" y="8" width="19" height="10" rx="3.6"/><path d="M7.4 12v3M5.9 13.5h3"/><circle cx="16" cy="12.6" r=".7" fill="currentColor" stroke="none"/><circle cx="18" cy="14.8" r=".7" fill="currentColor" stroke="none"/>',
+  arcade_credit: '<rect x="2.5" y="8" width="19" height="10" rx="3.6"/><path d="M7.4 12v3M5.9 13.5h3"/><circle cx="16" cy="12.6" r=".7" fill="currentColor" stroke="none"/><circle cx="18" cy="14.8" r=".7" fill="currentColor" stroke="none"/>',
+  playground: '<circle cx="12" cy="12" r="9"/><path d="M8.4 14.8a4.2 4.2 0 0 0 7.2 0"/><path d="M9 9.8h.01M15 9.8h.01"/>',
+  party_table: '<path d="M5 21h14M7 21v-6a5 5 0 0 1 10 0v6M12 6.2V3.6"/><path d="M10.6 3.6h2.8"/>',
+  service_drinks: '<path d="M7 8h10l-1 11.2a2 2 0 0 1-2 1.8H10a2 2 0 0 1-2-1.8L7 8z"/><path d="M9 8V6.6a3 3 0 0 1 6 0V8"/>',
+};
+function renderActivityIcon(activityId) {
+  const paths = ACTIVITY_ICON_PATHS[activityId] || '<circle cx="12" cy="12" r="8"/>';
+  return `<svg class="activity-check-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
 // Bloc de suivi des activités d'une formule : une case cochable par activité incluse
 // (bowling, laser ×N, minigolf, arcades, boissons…), grisée + horodatée quand faite.
 // Réutilisé dans le détail réservation, la page Formules et le board Terrain.
@@ -11933,6 +11956,7 @@ function renderFormulaActivityChecklist(r, opts = {}) {
       : '';
     return `<button type="button" class="activity-check-row${item.done ? ' is-done' : ''}" onclick="toggleFormulaActivity(${Number(r.id)}, '${escapeHtml(item.key)}', event)" aria-pressed="${item.done}" title="${item.done ? 'Annuler : marquer à faire' : 'Marquer comme fait'}">
       <span class="activity-check-box" aria-hidden="true">${item.done ? ACTIVITY_CHECK_SVG : ''}</span>
+      <span class="activity-check-icon-wrap" aria-hidden="true">${renderActivityIcon(item.activityId)}</span>
       <span class="activity-check-main">
         <span class="activity-check-label">${escapeHtml(item.label)}</span>
         ${time ? `<span class="activity-check-time">${time}</span>` : ''}

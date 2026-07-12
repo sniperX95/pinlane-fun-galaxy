@@ -89,7 +89,25 @@ async function installMock(page) {
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
 
+// Garde-fou SERVEUR (node) : un PATCH partiel (id + activityProgress, SANS name/phone,
+// comme le toggle) ne doit PAS jeter « Champ requis manquant » — sinon le PATCH échoue
+// en 400 et le client annule la coche (« active puis désactive direct »). Teste la VRAIE
+// fonction serveur, pas le mock.
+function serverGuard() {
+  console.log('[SERVEUR] PATCH partiel activité ne casse pas sur name/phone requis');
+  let normalizeReservationPayload;
+  try { ({ normalizeReservationPayload } = require(path.join(ROOT, 'lib', 'database'))); }
+  catch (e) { ok(false, 'require lib/database: ' + e.message); return; }
+  const current = { id: 5, name: 'smile Pro', phone: '+32470000000', email: 'x@x.test', date: '2026-07-12', startTime: '15:00', duration: 1, totalDuration: 1, pax: 10, type: 'formule', formuleId: 'f1', centerId: 'libramont', activityProgress: {} };
+  try {
+    const p = normalizeReservationPayload({ id: 5, centerId: 'libramont', activityProgress: { 'bowling-1': { done: true, doneAt: '2026-07-12T10:00:00.000Z', by: 'Rachel' } } }, current);
+    ok(p.name === 'smile Pro' && p.phone === '+32470000000', `PATCH partiel conserve name/phone (name="${p.name}")`);
+    ok(!!(p.activityProgress && p.activityProgress['bowling-1'] && p.activityProgress['bowling-1'].done), 'activityProgress persisté par normalize');
+  } catch (e) { ok(false, 'PATCH partiel a jeté (bug « Champ requis manquant ») : ' + e.message); }
+}
+
 async function main() {
+  serverGuard();
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });

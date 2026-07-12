@@ -1303,6 +1303,8 @@ input.dash-date-input {
   border: 2px solid var(--line-strong); display: inline-flex; align-items: center; justify-content: center;
   color: var(--accent-contrast); background: var(--surface); transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
+.activity-check-icon-wrap { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: var(--subtle); color: var(--muted); }
+.activity-check-row.is-done .activity-check-icon-wrap { color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
 .activity-check-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .activity-check-label { font-weight: 700; font-size: 14px; line-height: 1.25; }
 .activity-check-time { font-size: 12px; color: var(--muted); font-weight: 600; }
@@ -1347,6 +1349,18 @@ input.dash-date-input {
   white-space: nowrap;
 }
 .activity-pill.done { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+
+/* Carte planning dont TOUTES les activités de formule sont faites : grisée + coche.
+   Signal « ce groupe a tout terminé » d'un coup d'œil sur le planning. */
+.booking.activities-complete, .laser-group-card.activities-complete { opacity: 0.6; }
+.booking.activities-complete .booking-name { text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.booking.activities-complete::after {
+  content: '✓'; position: absolute; top: 3px; right: 4px;
+  font-size: 10px; font-weight: 900; line-height: 1;
+  color: var(--accent-contrast); background: var(--accent);
+  width: 15px; height: 15px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; z-index: 2;
+}
 
 .hour-col {
   width: var(--planning-hour-col);

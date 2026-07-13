@@ -8131,11 +8131,20 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-filter-toggle.has-active { border-color: var(--accent); color: var(--accent-strong); }
 .crm-filter-toggle .crm-badge { background: var(--accent); color: var(--accent-contrast); border-radius: var(--radius-full); font-size: 10.5px; font-weight: 800; padding: 1px 7px; }
 .crm-filter-toggle .crm-chevron { font-size: 9px; color: var(--muted); }
-.crm-sort-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 3px 4px 3px 10px; background: var(--surface); }
-.crm-sort-select > span { font-weight: 700; }
-.crm-sort-select select { border: 0; background: transparent; color: var(--text); font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; padding: 3px 2px; outline: none; }
-.crm-sort-dir { border: 0; background: var(--subtle); color: var(--text); width: 24px; height: 24px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 800; }
-.crm-sort-dir:hover { background: var(--accent); color: var(--accent-contrast); }
+.crm-sort { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.crm-sort-trigger { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 7px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
+.crm-sort-trigger:hover, .crm-sort-trigger.is-open { border-color: var(--accent); }
+.crm-sort-caption { color: var(--muted); font-weight: 700; }
+.crm-sort-current { font-weight: 800; color: var(--accent-strong); }
+.crm-sort-trigger .crm-chevron { font-size: 9px; color: var(--muted); }
+.crm-sort-dir { border: 1px solid var(--line); background: var(--subtle); color: var(--text); width: 30px; height: 30px; border-radius: var(--radius-md); cursor: pointer; font-size: 13px; font-weight: 800; transition: background var(--dur) var(--ease); }
+.crm-sort-dir:hover { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.crm-sort-backdrop { position: fixed; inset: 0; z-index: 40; background: transparent; }
+.crm-sort-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 41; min-width: 208px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22); display: flex; flex-direction: column; gap: 2px; }
+.crm-sort-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; font-size: 12.5px; font-weight: 600; color: var(--text); background: transparent; border: 0; border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer; transition: background var(--dur) var(--ease); }
+.crm-sort-option:hover { background: var(--subtle); }
+.crm-sort-option.is-active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 800; }
+.crm-sort-check { color: var(--accent-strong); font-weight: 800; }
 .crm-active-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .crm-active-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: var(--radius-full); border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent-strong); cursor: pointer; }
 .crm-active-chip:hover { background: color-mix(in srgb, var(--accent) 20%, var(--surface)); }

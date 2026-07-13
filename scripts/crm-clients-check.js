@@ -108,7 +108,8 @@ async function main() {
       root: !!document.getElementById('staffClientsPage'),
       rows: document.querySelectorAll('#staffClientsPage table tbody tr').length,
       filterToggle: !!document.querySelector('#staffClientsPage .crm-filter-toggle'),
-      sortSelect: !!document.querySelector('#staffClientsPage .crm-sort-select select'),
+      sortTrigger: !!document.querySelector('#staffClientsPage .crm-sort-trigger'),
+      sortMenuClosed: !document.querySelector('#staffClientsPage .crm-sort-menu'),
       facetsCollapsed: document.querySelectorAll('#staffClientsPage [aria-pressed]').length === 0,
       clients: (typeof getStaffClientRows === 'function') ? getStaffClientRows().length : -1,
     }));
@@ -117,8 +118,35 @@ async function main() {
     ok(load.clients === 6, `6 clients agrégés depuis les résas (obtenu ${load.clients})`);
     ok(load.rows >= 6, `liste rend ${load.rows} lignes`);
     ok(load.filterToggle, 'bouton "Filtres" (barre épurée) présent');
-    ok(load.sortSelect, 'tri en menu déroulant présent');
+    ok(load.sortTrigger, 'bouton "Trier" (menu custom) présent');
+    ok(load.sortMenuClosed, 'menu de tri fermé par défaut');
     ok(load.facetsCollapsed, 'facettes repliées par défaut (page épurée)');
+
+    // [TRI-MENU] le menu custom s'ouvre lisible et une option applique le tri
+    console.log('\n[TRI-MENU] popover de tri custom (fini le <select> gris illisible)');
+    await page.evaluate(() => document.querySelector('#staffClientsPage .crm-sort-trigger').click());
+    await page.waitForTimeout(150);
+    const sortMenu = await page.evaluate(() => {
+      const menu = document.querySelector('#staffClientsPage .crm-sort-menu');
+      const opts = menu ? [...menu.querySelectorAll('.crm-sort-option')] : [];
+      const spent = opts.find(o => /dépense totale/i.test(o.textContent));
+      return { open: !!menu, count: opts.length, hasSpent: !!spent };
+    });
+    ok(sortMenu.open, 'clic "Trier" → menu ouvert');
+    ok(sortMenu.count >= 8, `menu liste ${sortMenu.count} critères lisibles`);
+    const sortApplied = await page.evaluate(() => {
+      const opts = [...document.querySelectorAll('#staffClientsPage .crm-sort-menu .crm-sort-option')];
+      const spent = opts.find(o => /dépense totale/i.test(o.textContent));
+      spent.click();
+      return {
+        key: (state.staffClientSort || {}).key,
+        menuClosed: !document.querySelector('#staffClientsPage .crm-sort-menu'),
+        current: (document.querySelector('#staffClientsPage .crm-sort-current') || {}).textContent,
+      };
+    });
+    ok(sortApplied.key === 'spent', `choisir une option applique le tri (key=${sortApplied.key})`);
+    ok(sortApplied.menuClosed, 'choisir une option referme le menu');
+    ok(/dépense totale/i.test(sortApplied.current || ''), `label courant reflète le choix (${sortApplied.current})`);
 
     // [FACETTE] toggle + DÉSÉLECTION (le bug) — on OUVRE d'abord le panneau
     console.log('\n[FACETTE] multi-sélection déselectionnable (le bug "coincé")');
@@ -241,6 +269,17 @@ async function main() {
     });
     await page.waitForTimeout(200);
     ok(sortInfo.hadTh && sortInfo.before !== sortInfo.after, 'clic en-tête change le tri');
+
+    // [SHOT] capture visuelle du menu de tri ouvert (dark + light), à la demande
+    if (process.env.CRM_SHOT) {
+      const shotDir = process.env.CRM_SHOT;
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate((t) => { state.staffTheme = t; state.staffClientSortOpen = true; save(); renderStaffClientsPage(); }, theme);
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: `${shotDir}/crm-sort-${theme}.png`, clip: { x: 0, y: 0, width: 1400, height: 460 } });
+      }
+      await page.evaluate(() => { state.staffClientSortOpen = false; save(); renderStaffClientsPage(); });
+    }
 
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); }
   } catch (e) {

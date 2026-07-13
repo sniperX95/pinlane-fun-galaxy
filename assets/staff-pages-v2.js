@@ -322,7 +322,12 @@
       ['firstDate', 'Ancienneté'], ['frequencyPerMonth', 'Fréquence'], ['engagementScore', 'Engagement'], ['name', 'Nom'],
     ];
     const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-    const sortOptions = sortKeys.map(([key, label]) => `<option value="${key}"${sortState.key === key ? ' selected' : ''}>${esc(label)}</option>`).join('');
+    const sortOpen = !!state.staffClientSortOpen;
+    const currentSortLabel = (sortKeys.find(([key]) => key === sortState.key) || sortKeys[0])[1];
+    const sortMenu = sortKeys.map(([key, label]) => {
+      const on = sortState.key === key;
+      return `<button type="button" role="option" aria-selected="${on}" class="crm-sort-option${on ? ' is-active' : ''}" onclick="pickStaffClientSort('${key}')">${esc(label)}${on ? ' <span class="crm-sort-check" aria-hidden="true">✓</span>' : ''}</button>`;
+    }).join('');
     return `
       <section class="crm-controls">
         <div class="crm-controls-head">
@@ -332,10 +337,14 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
               Filtres${active ? ` <span class="crm-badge">${active}</span>` : ''}<span class="crm-chevron" aria-hidden="true">${open ? '▲' : '▾'}</span>
             </button>
-            <div class="crm-sort-select">
-              <span>Trier</span>
-              <select onchange="setStaffClientSort(this.value)" aria-label="Trier par">${sortOptions}</select>
+            <div class="crm-sort">
+              <button type="button" class="crm-sort-trigger${sortOpen ? ' is-open' : ''}" onclick="toggleStaffClientSortMenu()" aria-haspopup="listbox" aria-expanded="${sortOpen}">
+                <span class="crm-sort-caption">Trier</span>
+                <span class="crm-sort-current">${esc(currentSortLabel)}</span>
+                <span class="crm-chevron" aria-hidden="true">${sortOpen ? '▲' : '▾'}</span>
+              </button>
               <button type="button" class="crm-sort-dir" onclick="setStaffClientSort('${sortState.key}')" title="Croissant / décroissant" aria-label="Inverser l'ordre">${sortState.dir === 'asc' ? '↑' : '↓'}</button>
+              ${sortOpen ? `<div class="crm-sort-backdrop" onclick="toggleStaffClientSortMenu()" aria-hidden="true"></div><div class="crm-sort-menu" role="listbox" aria-label="Trier par">${sortMenu}</div>` : ''}
             </div>
             ${active ? `<button type="button" class="crm-clear" onclick="clearStaffClientFilters()">✕ Effacer</button>` : ''}
           </div>

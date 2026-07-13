@@ -10433,6 +10433,23 @@ function toggleStaffClientFiltersPanel() {
   renderStaffClientsPage();
 }
 
+// Menu de tri CRM : popover custom (le <select> natif rendait une liste
+// illisible gris-sur-noir). Ouvrir/fermer + choisir une clé qui referme.
+function toggleStaffClientSortMenu() {
+  state.staffClientSortOpen = !state.staffClientSortOpen;
+  renderStaffClientsPage();
+}
+
+function pickStaffClientSort(key) {
+  const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+  if (current.key !== key) {
+    state.staffClientSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
+  }
+  state.staffClientSortOpen = false;
+  save();
+  renderStaffClientsPage();
+}
+
 // Tri CRM : colonne + direction, appliqué APRÈS filtres — chaque colonne de la
 // table est triable, valeurs brutes (lastDate ISO, spent numérique).
 function sortStaffClientRows(rows) {

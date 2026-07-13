@@ -33,7 +33,7 @@ const {
   saveAgentSuggestions,
 } = require('../lib/database');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
-const { listDailyMetrics, listMarketingInsights, setInsightStatus } = require('../lib/center-metrics');
+const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
 const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
 const {
@@ -70,6 +70,15 @@ const {
   sendClientMessage,
   sendDirectEmail,
   enqueueCampaign,
+  getAutomationSettings,
+  setAutomationSetting,
+  getAutomationStats,
+  sendClientRelance,
+  getRelanceStats,
+  getClientNote,
+  saveClientNote,
+  buildBirthdayJ30Message,
+  buildReactivationMessage,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -253,6 +262,43 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 100),
     });
     sendJson(res, 200, { ok: true, centerId, insights });
+    return;
+  }
+
+  // Séquences automatiques : état ON/OFF + stats 30 j (page Emails & relances).
+  if (action === 'automationSettings') {
+    const [settings, stats] = await Promise.all([
+      getAutomationSettings(centerId),
+      getAutomationStats(centerId),
+    ]);
+    sendJson(res, 200, { ok: true, centerId, settings, stats });
+    return;
+  }
+
+  // ROI des relances CRM : envoyées → venues → € (page Clients).
+  if (action === 'relanceStats') {
+    const stats = await getRelanceStats(centerId, { days: Number(url.searchParams.get('days') || 90) });
+    sendJson(res, 200, { ok: true, centerId, ...stats });
+    return;
+  }
+
+  // Note terrain d'un client (fiche CRM).
+  if (action === 'clientNotes') {
+    const clientKey = String(url.searchParams.get('clientKey') || '').trim();
+    if (!clientKey) throw createHttpError('clientKey requis.', 400);
+    const note = await getClientNote(centerId, clientKey);
+    sendJson(res, 200, { ok: true, centerId, note });
+    return;
+  }
+
+  // « Ta période » : plage LIBRE (from/to, défaut aujourd'hui → +6 j, cap 31 j)
+  // — météo + calendrier + idées (page Marketing).
+  if (action === 'marketingWeek') {
+    const week = await buildMarketingWeek(centerId, {
+      from: url.searchParams.get('from') || null,
+      to: url.searchParams.get('to') || null,
+    });
+    sendJson(res, 200, { ok: true, centerId, ...week });
     return;
   }
 
@@ -1146,6 +1192,62 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // « Refaire » une idée mesurée « ça a marché » : clone en nouvelle proposition.
+  if (action === 'insightRedo') {
+    const insight = await redoInsight(body.id);
+    sendJson(res, 200, { ok: true, action, insight });
+    return;
+  }
+
+  // Toggle ON/OFF d'une séquence automatique (persisté par centre).
+  if (action === 'automationSettings') {
+    const concreteCenterId = requireConcreteCenter('séquences automatiques');
+    const settings = await setAutomationSetting(concreteCenterId, body.key, body.enabled);
+    sendJson(res, 200, { ok: true, action, settings });
+    return;
+  }
+
+  // Relance client 1-clic (CRM) : envoi réel via la queue, tracé payload.relance
+  // → alimente relanceStats (ROI). Pas besoin de réservation existante.
+  if (action === 'sendClientRelance') {
+    const concreteCenterId = requireConcreteCenter('relance client');
+    const relanceSession = await requireStaffPermission(req, res, ['emails.send'], { centerId: concreteCenterId });
+    if (!relanceSession) return;
+    let result;
+    try {
+      result = await sendClientRelance({
+        centerId: concreteCenterId,
+        email: body.email,
+        name: body.name || '',
+        phone: body.phone || '',
+        reason: body.reason || 'custom',
+        subject: body.subject || '',
+        body: body.body || '',
+        staffMember: relanceSession.member?.name || relanceSession.member?.id || 'staff',
+      });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Relance impossible pour le moment. Réessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, {
+      ok: true,
+      action,
+      communication: result.communication
+        ? { id: result.communication.id, status: result.communication.status }
+        : null,
+    });
+    return;
+  }
+
+  // Note terrain d'un client (upsert).
+  if (action === 'clientNotes') {
+    const concreteCenterId = requireConcreteCenter('note client');
+    const clientKey = String(body.clientKey || '').trim();
+    if (!clientKey) throw createHttpError('clientKey requis.', 400);
+    await saveClientNote(concreteCenterId, clientKey, body.body || '');
+    sendJson(res, 200, { ok: true, action });
+    return;
+  }
+
   // Génère (ou régénère) le bilan de la dernière semaine/mois complet — ou de
   // la période explicitement demandée. Déterministe d'abord, IA si clé dispo.
   if (action === 'generateDirectionReport') {
@@ -1419,10 +1521,18 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
     if (action === 'dailyMetrics') return ['dashboard.view', 'direction.view'];
     if (action === 'marketingInsights') return ['campaigns.manage', 'marketing.agents'];
+    if (action === 'automationSettings') return ['emails.view', 'direction.view'];
+    if (action === 'relanceStats') return ['clients.view', 'emails.view'];
+    if (action === 'clientNotes') return 'clients.view';
+    if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
   }
+  if (action === 'automationSettings') return ['settings.manage', 'emails.send', 'direction.view'];
+  if (action === 'sendClientRelance') return 'emails.send';
+  if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
+  if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

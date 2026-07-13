@@ -52,14 +52,32 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'QA', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: lanes(), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: [], emails: [], agentEvents: [], centerId: 'libramont' });
-      if (u.pathname === '/api/marketing-agents') return J({ ok: true, centers: [], updatedAt: new Date().toISOString() });
+      if (u.pathname === '/api/marketing-agents') {
+        if (m === 'POST') { const b = JSON.parse(init.body || '{}'); (window.__QA_MA_POSTS__ = window.__QA_MA_POSTS__ || []).push(b); }
+        return J({ ok: true, centers: [], updatedAt: new Date().toISOString() });
+      }
       if (u.pathname === '/api/ops' && m === 'POST') {
         const b = JSON.parse(init.body || '{}');
         window.__QA_POSTS__.push(b);
         if (b.action === 'insightStatus') return J({ ok: true, action: 'insightStatus', insight: { id: b.id, status: b.status } });
+        if (b.action === 'insightRedo') return J({ ok: true, insight: { id: 99, status: 'proposed' } });
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingInsights') return J({ ok: true, centerId: 'libramont', insights });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingWeek') {
+        const from = u.searchParams.get('from') || dstr(0);
+        const to = u.searchParams.get('to') || dstr(6);
+        (window.__QA_WEEK_CALLS__ = window.__QA_WEEK_CALLS__ || []).push({ from, to });
+        const span = Math.min(31, Math.round((new Date(to + 'T12:00:00Z') - new Date(from + 'T12:00:00Z')) / 864e5) + 1);
+        const days = Array.from({ length: span }, (_, i) => {
+          const d = new Date(from + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + i);
+          const date = d.toISOString().slice(0, 10);
+          return { date, tmax: i === 2 ? 26 : 19, precipMm: i === 3 ? 14 : 0, weatherCode: 3,
+            holidayLabel: i === 4 ? 'Foire de Libramont' : '', isSchoolHoliday: false,
+            events: i === 4 ? ['Foire de Libramont'] : [], ideas: i === 0 ? [{ id: 11, title: 'Post fraîcheur', channel: 'facebook', status: 'proposed' }] : [] };
+        });
+        return J({ ok: true, centerId: 'libramont', days });
+      }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'dailyMetrics') {
         const from = u.searchParams.get('from');
         const rows = mkRows.filter((row) => !from || row.date >= from);
@@ -150,6 +168,58 @@ async function main() {
     ok(period.count === callsBefore + 1, 'clic période → refetch');
     const spanDays = period.last ? Math.round((new Date(period.last.to) - new Date(period.last.from)) / 864e5) + 1 : 0;
     ok(spanDays === 7, `période demandée = 7 jours (obtenu ${spanDays})`);
+
+    console.log('\n[À VENIR] bande plage libre + calendrier');
+    await page.evaluate(() => loadMarketingWeek(true));
+    await page.waitForTimeout(500);
+    const week = await page.evaluate(() => ({
+      days: document.querySelectorAll('#staffCampaignsPage .mk-week-day').length,
+      foire: /Foire/.test((document.querySelector('#staffCampaignsPage .mk-week') || {}).textContent || ''),
+      rain: /🌧/.test((document.querySelector('#staffCampaignsPage .mk-week') || {}).textContent || ''),
+      inputs: document.querySelectorAll('#staffCampaignsPage .mk-week-range input[type=date]').length,
+    }));
+    ok(week.days === 7, 'bande 7 jours par défaut (obtenu ' + week.days + ')');
+    ok(week.foire && week.rain, 'badge Foire + pluie 🌧 visibles');
+    ok(week.inputs === 2, 'sélecteur de plage libre (2 dates) présent');
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-week-range button')].find((x) => /14/.test(x.textContent)); b.click(); });
+    await page.waitForTimeout(500);
+    const week14 = await page.evaluate(() => {
+      const calls = window.__QA_WEEK_CALLS__ || [];
+      const last = calls[calls.length - 1] || {};
+      const span = last.from && last.to ? Math.round((new Date(last.to + 'T12:00:00Z') - new Date(last.from + 'T12:00:00Z')) / 864e5) + 1 : 0;
+      return { span, days: document.querySelectorAll('#staffCampaignsPage .mk-week-day').length };
+    });
+    ok(week14.span === 14 && week14.days === 14, 'preset 14 j → requête et rendu sur 14 jours (span=' + week14.span + ')');
+
+    console.log('\n[DEMANDE] demande une idée ciblée');
+    const ask = await page.evaluate(async () => {
+      const select = document.getElementById('mkAskObjective');
+      const brief = document.getElementById('mkAskBrief');
+      if (!select || !brief) return { found: false };
+      select.value = 'meteo';
+      brief.value = 'canicule annoncée jeudi';
+      mkIaAsk();
+      await new Promise((r) => setTimeout(r, 400));
+      const posts = window.__QA_MA_POSTS__ || [];
+      return { found: true, run: posts.find((p) => p.action === 'run') || null };
+    });
+    ok(ask.found, 'champ objectif + brief présents');
+    ok(ask.run && ask.run.objective === 'meteo' && /canicule/.test(ask.run.brief || ''), 'POST run avec objectif météo + brief');
+
+    console.log('\n[ARCHIVE+REDO] historique complet + refaire une idée validée');
+    const arch = await page.evaluate(async () => {
+      const details = document.querySelector('#staffCampaignsPage .mk-archive');
+      if (details) details.open = true;
+      await new Promise((r) => setTimeout(r, 150));
+      const items = details ? details.querySelectorAll('.mk-archive-list li, .mk-archive-list .mk-archive-item').length : 0;
+      const redoBtn = [...document.querySelectorAll('#staffCampaignsPage button')].find((x) => /refaire/i.test(x.textContent));
+      if (redoBtn) redoBtn.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'insightRedo');
+      return { archive: !!details, items, redo: posts.length, redoId: posts[0] && posts[0].id };
+    });
+    ok(arch.archive && arch.items >= 3, 'archive dépliable avec l\'historique (' + arch.items + ' items)');
+    ok(arch.redo === 1 && arch.redoId === 5, 'Refaire → POST insightRedo sur l\'idée validée');
 
     // capture visuelle optionnelle
     if (process.env.MK_SHOT) {

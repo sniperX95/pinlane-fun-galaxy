@@ -90,6 +90,11 @@ const MIGRATIONS = [
     file: 'database/daily-metrics-schema.sql',
     description: 'Daily center metrics warehouse (visitors/revenue/weather/holidays) + marketing insights lifecycle',
   },
+  {
+    id: '0018_client_notes_automation',
+    file: 'database/client-notes-schema.sql',
+    description: 'Persistent client notes (terrain memory) + per-center automation sequence toggles',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

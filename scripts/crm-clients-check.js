@@ -79,6 +79,15 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'Rachel', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: build(), laneStatuses: lanes(), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: build(), emails: [], agentEvents: [], centerId: 'libramont' });
+      if (u.pathname === '/api/ops' && String(init.method || 'GET').toUpperCase() === 'POST') {
+        const b = JSON.parse(init.body || '{}');
+        (window.__QA_POSTS__ = window.__QA_POSTS__ || []).push(b);
+        if (b.action === 'sendClientRelance') return J({ ok: true, communication: { id: 901, status: 'queued' } });
+        if (b.action === 'clientNotes') return J({ ok: true });
+        return J({ ok: true });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'relanceStats') return J({ ok: true, sent: 3, converted: 1, revenue: 180 });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'clientNotes') return J({ ok: true, note: null });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'communications') return J({ ok: true, communications: comms });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, customRequests: leads });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
@@ -246,6 +255,45 @@ async function main() {
     ok(!!csv, 'export déclenche un téléchargement');
     ok(csv && csv.lines >= 3, `CSV non vide (${csv && csv.lines} lignes)`);
     ok(csv && csv.hasWhy && csv.hasGeorges, 'CSV relance contient le pourquoi + le dormant');
+    console.log('\n[RELANCE] composer 1-clic + ROI + notes');
+    await page.evaluate(() => { state.staffClientSegment = 'relancer'; renderStaffClientsPage(); if (typeof loadCrmRelanceStats === 'function') loadCrmRelanceStats(true); });
+    await page.waitForTimeout(500);
+    const relInfo = await page.evaluate(() => ({
+      roi: (document.querySelector('#staffClientsPage .crm-roi-figures') || {}).textContent || '',
+      btn: !!document.querySelector('#staffClientsPage [onclick*=crmOpenRelance]'),
+    }));
+    ok(relInfo.btn, 'bouton Relancer présent sur une ligne À relancer');
+    ok(/3\s*relance/.test(relInfo.roi) && /180/.test(relInfo.roi), 'bandeau ROI relances affiché (' + relInfo.roi.trim().slice(0, 50) + ')');
+    const relSend = await page.evaluate(async () => {
+      const btn = document.querySelector('#staffClientsPage [onclick*=crmOpenRelance]');
+      btn.click();
+      await new Promise((r) => setTimeout(r, 250));
+      const row = document.querySelector('#staffClientsPage .crm-composer');
+      const subject = row ? (row.querySelector('.crm-composer-subject') || {}).value || '' : '';
+      const send = row ? [...row.querySelectorAll('button')].find((x) => /envoyer/i.test(x.textContent)) : null;
+      if (send) send.click();
+      await new Promise((r) => setTimeout(r, 350));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'sendClientRelance');
+      return { opened: !!row, subject, posts: posts.length, reason: posts[0] && posts[0].reason, closed: !document.querySelector('#staffClientsPage .crm-composer') };
+    });
+    ok(relSend.opened, 'composer relance ouvert');
+    ok(relSend.subject.length > 3, 'objet prérempli (' + relSend.subject.slice(0, 30) + ')');
+    ok(relSend.posts === 1 && ['dormant', 'birthday'].includes(relSend.reason), 'POST sendClientRelance parti (reason=' + relSend.reason + ')');
+    ok(relSend.closed, 'composer refermé après envoi');
+    const note = await page.evaluate(async () => {
+      const rows2 = [...document.querySelectorAll('#staffClientsPage tbody tr')];
+      if (rows2[0]) { rows2[0].click(); await new Promise((r) => setTimeout(r, 300)); }
+      const input = document.querySelector('#staffClientsPage .crm-note-input');
+      if (!input) return { found: false };
+      input.value = 'Allergie arachide — enfant Lina';
+      input.dispatchEvent(new Event('blur'));
+      await new Promise((r) => setTimeout(r, 350));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'clientNotes');
+      return { found: true, posts: posts.length, body: posts[0] && posts[0].body };
+    });
+    ok(note.found, 'champ notes présent dans la fiche');
+    ok(note.posts >= 1 && /arachide/.test(note.body || ''), 'note sauvegardée au blur (POST clientNotes)');
+
 
     console.log('\n[TRI] les en-têtes de colonnes restent triables');
     await page.evaluate(() => { setStaffClientSegment('tous'); });

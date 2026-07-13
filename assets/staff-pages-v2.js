@@ -327,7 +327,7 @@
       ? `<strong>${esc(formatStaffClientDateText(next.date))}</strong><small>prochaine venue${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</small>`
       : `<strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>`;
     const lastCell = ctx.segment === 'relancer'
-      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}</td>`
+      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}${row.email ? `<button type="button" class="crm-btn crm-btn-sm" onclick="event.stopPropagation();crmOpenRelance('${escJs(row.id)}')">✉️ Relancer</button>` : ''}</td>`
       : `<td class="crm-cell-badge">${crmRowBadge(row, ctx)}</td>`;
     return `
       <tr class="${selected && row.id === selected.id ? 'is-selected' : ''}" tabindex="0" role="button" onclick="selectStaffClient('${escJs(row.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectStaffClient('${escJs(row.id)}');}">
@@ -404,6 +404,156 @@
       <div class="crm-comm-list">${items}</div></div>`;
   }
 
+  /* ── Relance 1-clic : composer inline prérempli, envoi RÉEL via la queue
+     communications (action sendClientRelance). Boucle fermée : le marqueur
+     « relancé il y a X j » (comms) se met à jour après envoi. ── */
+  const crmRelance = { openFor: null, reason: 'dormant', subject: '', body: '', busy: false };
+  const crmRelanceStats = { loaded: false, loading: false, sent: 0, converted: 0, revenue: 0 };
+  const crmNotes = { key: '', body: '', loaded: false, loading: false, saving: false };
+
+  function crmRelancePrefill(row) {
+    const relance = getStaffClientRelance(row);
+    const firstName = String(row.name || '').trim().split(/\s+/)[0] || '';
+    if (relance.kind === 'anniversaire') {
+      return {
+        reason: 'birthday',
+        subject: `L'anniversaire approche — on vous re-réserve la fête ? 🎂`,
+        body: `Bonjour ${firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez nous — et c'était un super moment !\nLa date approche : on vous re-réserve la formule ? Les créneaux du week-end partent vite.\n\nRépondez à ce message ou réservez en ligne, on s'occupe du reste.\n\nÀ très vite,\nL'équipe Fun Galaxy`,
+      };
+    }
+    return {
+      reason: 'dormant',
+      subject: 'Ça fait un moment — on vous a gardé une piste 🎳',
+      body: `Bonjour ${firstName},\n\nÇa fait un moment qu'on ne vous a pas vus au centre — bowling, laser, arcades… tout est prêt.\nVenez en semaine, c'est plus calme (et plus tranquille pour jouer).\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe Fun Galaxy`,
+    };
+  }
+
+  window.crmOpenRelance = function (clientId) {
+    const row = getStaffClientRows().find((r) => r.id === clientId);
+    if (!row || !row.email) { toast('Pas d’adresse email pour ce client.'); return; }
+    if (state.staffSelectedClientId !== clientId) state.staffSelectedClientId = clientId;
+    const prefill = crmRelancePrefill(row);
+    crmRelance.openFor = clientId;
+    crmRelance.reason = prefill.reason;
+    crmRelance.subject = prefill.subject;
+    crmRelance.body = prefill.body;
+    renderStaffClientsPage();
+  };
+
+  window.crmCloseRelance = function () {
+    crmRelance.openFor = null;
+    renderStaffClientsPage();
+  };
+
+  window.crmRelanceField = function (field, value) {
+    crmRelance[field] = value;
+  };
+
+  window.crmSendRelance = async function (clientId) {
+    if (crmRelance.busy) return;
+    const row = getStaffClientRows().find((r) => r.id === clientId);
+    if (!row || !row.email) return;
+    crmRelance.busy = true;
+    renderStaffClientsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'sendClientRelance',
+          centerId: state.currentCenterId || 'libramont',
+          email: row.email,
+          name: row.name || '',
+          phone: row.phone || '',
+          reason: crmRelance.reason,
+          subject: crmRelance.subject,
+          body: crmRelance.body,
+        }),
+      });
+      crmRelance.openFor = null;
+      toast('Relance en file d’envoi ✓ — je mesure si le client revient.');
+      ensureStaffClientComms(true);
+      loadCrmRelanceStats(true);
+    } catch (error) {
+      toast(error.message || 'Envoi impossible.');
+    } finally {
+      crmRelance.busy = false;
+      renderStaffClientsPage();
+    }
+  };
+
+  async function loadCrmRelanceStats(force = false) {
+    if (crmRelanceStats.loading || (crmRelanceStats.loaded && !force)) return;
+    crmRelanceStats.loading = true;
+    try {
+      const payload = await apiRequest(`/api/ops?action=relanceStats&days=90&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      crmRelanceStats.sent = Number(payload.sent) || 0;
+      crmRelanceStats.converted = Number(payload.converted) || 0;
+      crmRelanceStats.revenue = Number(payload.revenue) || 0;
+      crmRelanceStats.loaded = true;
+    } catch (error) { /* silencieux : le bandeau affiche l'amorce */ } finally {
+      crmRelanceStats.loading = false;
+      renderStaffClientsPage();
+    }
+  }
+  window.loadCrmRelanceStats = loadCrmRelanceStats;
+
+  /* Notes client persistantes (allergies, prénom de l'enfant…) — table client_notes. */
+  function crmClientKey(row) {
+    return String(row.phone || row.email || '').trim().toLowerCase();
+  }
+
+  async function loadCrmClientNote(row) {
+    const key = crmClientKey(row);
+    if (!key || crmNotes.key === key) return;
+    crmNotes.key = key;
+    crmNotes.body = '';
+    crmNotes.loaded = false;
+    crmNotes.loading = true;
+    try {
+      const payload = await apiRequest(`/api/ops?action=clientNotes&clientKey=${encodeURIComponent(key)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      if (crmNotes.key !== key) return; // sélection changée entre-temps
+      crmNotes.body = payload.note ? String(payload.note.body || '') : '';
+      crmNotes.loaded = true;
+    } catch (error) { /* rôle sans accès : zone masquée */ } finally {
+      if (crmNotes.key === key) { crmNotes.loading = false; renderStaffClientsPage(); }
+    }
+  }
+
+  window.crmSaveClientNote = async function (clientId, body) {
+    const row = getStaffClientRows().find((r) => r.id === clientId);
+    if (!row) return;
+    const key = crmClientKey(row);
+    // Garde anti-écrasement : jamais de save tant que la note du client n'est
+    // pas CHARGÉE (sinon un blur sur textarea vide effacerait la vraie note).
+    if (!key || crmNotes.saving || crmNotes.key !== key || !crmNotes.loaded || body === crmNotes.body) return;
+    crmNotes.saving = true;
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'clientNotes', clientKey: key, body, centerId: state.currentCenterId || 'libramont' }),
+      });
+      crmNotes.body = body;
+      toast('Note enregistrée.');
+    } catch (error) {
+      toast(error.message || 'Note non enregistrée.');
+    } finally {
+      crmNotes.saving = false;
+    }
+  };
+
+  function crmRelanceComposer(selected) {
+    const busy = crmRelance.busy;
+    return `<div class="crm-composer" role="form" aria-label="Relancer ${esc(selected.name || 'ce client')}">
+      <input class="crm-composer-subject" value="${esc(crmRelance.subject)}" oninput="crmRelanceField('subject', this.value)" aria-label="Objet">
+      <textarea class="crm-composer-body" rows="7" oninput="crmRelanceField('body', this.value)" aria-label="Message">${esc(crmRelance.body)}</textarea>
+      <div class="crm-composer-actions">
+        <span class="crm-muted">→ ${esc(selected.email)}</span>
+        <button type="button" class="crm-btn" onclick="crmCloseRelance()">Annuler</button>
+        <button type="button" class="crm-btn crm-btn-primary" onclick="crmSendRelance('${escJs(selected.id)}')" ${busy ? 'disabled' : ''}>${busy ? 'Envoi…' : 'Envoyer la relance'}</button>
+      </div>
+    </div>`;
+  }
+
   // Fiche client KISS : qui c'est, ce qu'il vaut (3 chiffres), sa prochaine venue
   // (avec la checklist prépa du dossier), pourquoi le relancer, son historique et
   // les messages. Un tap = agir (tel/email cliquables).
@@ -460,8 +610,11 @@
         ${nextBlock}
 
         ${relance.due ? `<div class="info-block crm-block crm-relance">
-          <span class="crm-relance-why">📣 ${esc(relance.reason)}</span>
-          ${selected.email ? `<button type="button" class="crm-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">Relancer</button>` : ''}
+          <div class="crm-relance-row">
+            <span class="crm-relance-why">📣 ${esc(relance.reason)}</span>
+            ${selected.email && crmRelance.openFor !== selected.id ? `<button type="button" class="crm-btn crm-btn-primary" onclick="crmOpenRelance('${escJs(selected.id)}')">✉️ Relancer par email</button>` : ''}
+          </div>
+          ${crmRelance.openFor === selected.id ? crmRelanceComposer(selected) : ''}
         </div>` : ''}
 
         <div class="info-block crm-block">
@@ -471,7 +624,13 @@
 
         ${crmCommsBlock(selected)}
 
-        ${selected.notesConcat ? `<div class="info-block crm-block crm-meta"><div class="crm-kv-grid"><div class="crm-kv-wide"><dt>Notes staff</dt><dd>${esc(selected.notesConcat)}</dd></div></div></div>` : ''}
+        <div class="info-block crm-block crm-note-block">
+          <div class="crm-block-head"><h3>Notes</h3>${crmNotes.saving ? '<span class="crm-muted">Enregistrement…</span>' : ''}</div>
+          <textarea class="crm-note-input" rows="3" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
+            ${crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? '' : 'disabled'}
+            onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? crmNotes.body : '')}</textarea>
+          ${selected.notesConcat ? `<div class="crm-muted crm-note-legacy">Notes des réservations : ${esc(selected.notesConcat)}</div>` : ''}
+        </div>
       </div>`;
   }
 
@@ -522,7 +681,14 @@
         ? '<th class="crm-th">Pourquoi</th>'
         : '<th class="crm-th"></th>';
       const tableRows = shown.map((row) => crmListRow(row, selected, ctx)).join('');
-      body = `<section class="pv2-split crm-split">
+      // ROI du CRM : les relances envoyées → venues → € (le CRM prouve sa valeur).
+      const roi = ctx.segment !== 'relancer' ? '' : `<section class="crm-roi">
+        ${crmRelanceStats.loaded && crmRelanceStats.sent > 0
+          ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} (90 j) → <strong>${crmRelanceStats.converted}</strong> venue${crmRelanceStats.converted > 1 ? 's' : ''} → <strong>${money(crmRelanceStats.revenue)}</strong></span>`
+          : `<span class="crm-roi-figures">Relance ton premier client — je mesure ce que chaque relance rapporte.</span>`}
+        <button type="button" class="crm-btn" onclick="openStaffCampaignForRelance()">📣 Campagne pour ce segment</button>
+      </section>`;
+      body = `${roi}<section class="pv2-split crm-split">
         <article class="pv2-panel crm-list-panel">
           <div class="crm-table-wrap">
             <table class="crm-table">
@@ -567,6 +733,20 @@
     mount(root, 'clients');
     if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
     if (segment === 'avenir' && typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
+    if (segment === 'relancer' && !crmRelanceStats.loaded && !crmRelanceStats.loading) setTimeout(() => loadCrmRelanceStats(), 0);
+    if (selected && crmNotes.key !== crmClientKey(selected) && !crmNotes.loading) setTimeout(() => loadCrmClientNote(selected), 0);
+  };
+
+  // Pont Clients → Campagne : préouvre le formulaire campagne sur les dormants.
+  window.openStaffCampaignForRelance = function () {
+    openStaffMenuPage('campaigns');
+    setTimeout(() => {
+      if (typeof window.pv2CampOpenForm === 'function') {
+        pv2Camp.form.segment = 'dormant'; // id serveur réel (lib/campaigns.js)
+        pv2CampOpenForm();
+        if (typeof window.pv2CampSegmentChanged === 'function') pv2CampSegmentChanged('dormant');
+      }
+    }, 60);
   };
 
   /* ==========================================================================
@@ -585,9 +765,76 @@
     renderStaffEmailsPage();
   };
 
+  /* ── Séquences automatiques : les emails qui partent tout seuls, pilotés
+     ON/OFF depuis ici (contrat automationSettings). Le levier n°1 du secteur
+     (anniversaire J-30) vit ici. ── */
+  const AUTOMATION_META = [
+    { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.', preview: 'Votre réservation est confirmée — date, heure, formule et infos pratiques.' },
+    { key: 'reminder_48h', label: 'Rappel 48 h', desc: 'Rappelle la venue 2 jours avant — moins de no-show.', preview: 'Rappel de votre venue après-demain, avec l’heure d’arrivée conseillée.' },
+    { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', preview: 'Merci de votre visite ! Une prochaine fois ? Les créneaux de la semaine sont plus calmes.' },
+    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année — relance toute seule au bon moment, 30 jours avant.', preview: 'L’anniversaire approche — on vous re-réserve la fête ? Gâteau et formule prêts.', star: true },
+    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, max 20/semaine.', preview: 'Ça fait un moment — bowling, laser et arcades vous attendent. Venez en semaine, c’est plus calme.', star: true },
+  ];
+  const mkAuto = { loaded: false, loading: false, error: '', settings: null, stats: {}, busyKey: '' };
+
+  async function loadStaffAutomations(force = false) {
+    if (mkAuto.loading || (mkAuto.loaded && !force)) return;
+    mkAuto.loading = true;
+    mkAuto.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=automationSettings&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      mkAuto.settings = payload.settings || {};
+      mkAuto.stats = payload.stats || {};
+      mkAuto.loaded = true;
+    } catch (error) {
+      mkAuto.error = error.message || 'Séquences indisponibles.';
+    } finally {
+      mkAuto.loading = false;
+      renderStaffEmailsPage();
+    }
+  }
+  window.loadStaffAutomations = loadStaffAutomations;
+
+  window.toggleStaffAutomation = async function (key) {
+    if (mkAuto.busyKey || !mkAuto.settings) return;
+    const current = !!(mkAuto.settings[key] && mkAuto.settings[key].enabled);
+    mkAuto.busyKey = key;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'automationSettings', key, enabled: !current, centerId: state.currentCenterId || 'libramont' }),
+      });
+      mkAuto.settings = payload.settings || mkAuto.settings;
+      toast(!current ? 'Séquence activée — elle tourne toute seule.' : 'Séquence désactivée.');
+    } catch (error) {
+      toast(error.message || 'Impossible de changer la séquence.');
+    } finally {
+      mkAuto.busyKey = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  function mkAutoCard(meta) {
+    const setting = mkAuto.settings ? mkAuto.settings[meta.key] : null;
+    const enabled = !!(setting && setting.enabled);
+    const stats = mkAuto.stats[meta.key] || {};
+    const busy = mkAuto.busyKey === meta.key;
+    return `<article class="mk-auto${enabled ? ' is-on' : ''}">
+      <div class="mk-auto-head">
+        <strong>${meta.star ? '⭐ ' : ''}${esc(meta.label)}</strong>
+        <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
+      </div>
+      <p class="mk-auto-desc">${esc(meta.desc)}</p>
+      <details class="mk-auto-preview"><summary>Aperçu du message</summary><p>${esc(meta.preview)}</p></details>
+      <div class="mk-auto-stats">${Number(stats.sent30d) || 0} envoyé${(Number(stats.sent30d) || 0) > 1 ? 's' : ''}${Number(stats.failed30d) ? ` · <span class="mk-auto-fail">${Number(stats.failed30d)} échec${Number(stats.failed30d) > 1 ? 's' : ''}</span>` : ''} (30 j)</div>
+    </article>`;
+  }
+
   window.renderStaffEmailsPage = function (errorMessage = '') {
     const root = document.getElementById('staffEmailsPage');
     if (!root) return;
+    if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
     // C14 : ops-console.js est injecté à la demande — requestOpsAdminLoad
     // (app-main) charge le script puis déclenche loadOpsAdmin.
     if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
@@ -653,6 +900,20 @@
           <button type="button" class="pv2-btn" onclick="exportStaffEmailsCsv()">Exporter</button>
           <button type="button" class="pv2-btn primary" onclick="requestOpsDispatch()">Envoyer la file</button>`,
       })}
+
+      <section class="pv2-panel mk-auto-panel">
+        <div class="pv2-panel-head has-sub">
+          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Active ou coupe chaque séquence — le reste est géré.</p></div>
+          ${mkAuto.error ? `<button type="button" class="pv2-btn" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
+        </div>
+        <div class="pv2-panel-body">
+          ${mkAuto.error
+            ? `<div class="pv2-empty"><strong>${esc(mkAuto.error)}</strong></div>`
+            : mkAuto.loaded
+              ? `<div class="mk-auto-grid">${AUTOMATION_META.map(mkAutoCard).join('')}</div>`
+              : `<div class="pv2-empty"><strong>Chargement des séquences…</strong></div>`}
+        </div>
+      </section>
 
       <section class="pv2-pipeline">
         ${pipe('all', 'Total', allRows.length, 'toutes communications')}
@@ -815,6 +1076,122 @@
     }
   };
 
+  /* « À venir » : météo prévue + congés/événements + idées posées sur leur jour.
+     Plage de dates LIBRE (demande Movsar) : défaut aujourd'hui → +6 j, cap serveur 31 j. */
+  const mkWeek = { loaded: false, loading: false, days: [], from: '', to: '' };
+
+  function mkWeekDefaults() {
+    const today = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+    const end = new Date(`${today}T12:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + 6);
+    return { from: today, to: end.toISOString().slice(0, 10) };
+  }
+
+  async function loadMarketingWeek(force = false) {
+    if (mkWeek.loading || (mkWeek.loaded && !force)) return;
+    if (!mkWeek.from || !mkWeek.to) Object.assign(mkWeek, mkWeekDefaults());
+    mkWeek.loading = true;
+    try {
+      const centerId = encodeURIComponent(state.currentCenterId || 'libramont');
+      const payload = await apiRequest(`/api/ops?action=marketingWeek&centerId=${centerId}&from=${mkWeek.from}&to=${mkWeek.to}`);
+      mkWeek.days = Array.isArray(payload.days) ? payload.days : [];
+      mkWeek.loaded = true;
+    } catch (error) { /* silencieux : la section s'efface */ } finally {
+      mkWeek.loading = false;
+      renderStaffCampaignsPage();
+    }
+  }
+  window.loadMarketingWeek = loadMarketingWeek;
+
+  window.mkWeekSetRange = function (which, value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return;
+    if (which === 'from') mkWeek.from = value; else mkWeek.to = value;
+    if (mkWeek.to < mkWeek.from) mkWeek.to = mkWeek.from;
+    loadMarketingWeek(true);
+  };
+
+  window.mkWeekPreset = function (days) {
+    const today = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+    const end = new Date(`${today}T12:00:00Z`);
+    end.setUTCDate(end.getUTCDate() + (Number(days) - 1));
+    mkWeek.from = today;
+    mkWeek.to = end.toISOString().slice(0, 10);
+    loadMarketingWeek(true);
+  };
+
+  // « Demande une idée » : objectif + brief → cycle du moteur → nouvelles idées.
+  const MK_OBJECTIVES = [
+    ['anniversaires', 'Anniversaires'],
+    ['heures-creuses', 'Heures creuses'],
+    ['meteo', 'Météo'],
+    ['evenement', 'Événement local'],
+    ['libre', 'Libre'],
+  ];
+
+  window.mkIaAsk = function () {
+    const select = document.getElementById('mkAskObjective');
+    const brief = document.getElementById('mkAskBrief');
+    state.staffCampaignObjective = select ? select.value : 'anniversaires';
+    state.staffCampaignBrief = brief ? brief.value.trim() : '';
+    save();
+    if (typeof runStaffMarketingAgents === 'function') runStaffMarketingAgents();
+  };
+
+  window.mkIaRedo = async function (id) {
+    if (mkIa.busyId) return;
+    mkIa.busyId = Number(id);
+    renderStaffCampaignsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'insightRedo', id: Number(id), centerId: state.currentCenterId || 'libramont' }),
+      });
+      toast('Idée relancée — elle revient dans « À faire » adaptée à maintenant.');
+      await loadMarketingIa(true);
+    } catch (error) {
+      toast(error.message || 'Impossible de relancer cette idée.');
+    } finally {
+      mkIa.busyId = null;
+      renderStaffCampaignsPage();
+    }
+  };
+
+  const MK_STATUS_LABELS = {
+    proposed: 'proposée', applied: 'appliquée', ignored: 'ignorée',
+    validated: 'validée ✓', refuted: 'sans effet', inconclusive: 'pas net',
+  };
+
+  function mkWeekStrip() {
+    if (!mkWeek.loaded || !mkWeek.days.length) return '';
+    const dayCards = mkWeek.days.map((day) => {
+      const d = new Date(`${day.date}T12:00:00Z`);
+      const dow = d.toLocaleDateString('fr-BE', { weekday: 'short' });
+      const rain = Number(day.precipMm) >= 10;
+      const badge = day.holidayLabel || (day.isSchoolHoliday ? 'Congé scolaire' : '') || (Array.isArray(day.events) && day.events.length ? day.events[0] : '');
+      const ideas = (day.ideas || []).slice(0, 2).map((idea) => `<span class="mk-week-idea" title="${esc(idea.title || '')}">💡</span>`).join('');
+      return `<div class="mk-week-day${badge ? ' has-badge' : ''}">
+        <span class="mk-week-dow">${esc(dow)} ${d.getUTCDate()}</span>
+        <span class="mk-week-temp">${day.tmax === null || day.tmax === undefined ? '—' : Math.round(Number(day.tmax)) + '°'}${rain ? ' 🌧' : ''}</span>
+        ${badge ? `<span class="mk-week-badge" title="${esc(badge)}">${esc(String(badge).length > 14 ? String(badge).slice(0, 13) + '…' : badge)}</span>` : ''}
+        ${ideas}
+      </div>`;
+    }).join('');
+    return `<section class="pv2-panel">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>À venir</h2><p class="pv2-panel-sub">Météo prévue, congés et événements — les 💡 sont les idées posées sur leur jour.</p></div>
+        <div class="mk-week-range">
+          <button type="button" class="pv2-btn" onclick="mkWeekPreset(7)">7 j</button>
+          <button type="button" class="pv2-btn" onclick="mkWeekPreset(14)">14 j</button>
+          <button type="button" class="pv2-btn" onclick="mkWeekPreset(31)">31 j</button>
+          <input type="date" value="${esc(mkWeek.from)}" aria-label="Du" onchange="mkWeekSetRange('from', this.value)">
+          <span aria-hidden="true">→</span>
+          <input type="date" value="${esc(mkWeek.to)}" aria-label="Au" onchange="mkWeekSetRange('to', this.value)">
+        </div>
+      </div>
+      <div class="pv2-panel-body"><div class="mk-week">${dayCards}</div></div>
+    </section>`;
+  }
+
   function mkIdeaCard(insight) {
     const busy = mkIa.busyId === Number(insight.id);
     const channel = CHANNEL_LABELS[insight.channel] || (insight.channel ? insight.channel.charAt(0).toUpperCase() + insight.channel.slice(1) : 'Idée');
@@ -848,9 +1225,13 @@
     const detail = delta === null
       ? 'pas assez de jours comparables pour trancher'
       : `${delta > 0 ? '+' : ''}${delta} % de visiteurs (avant ~${esc(String(r.before ?? '?'))}/j, après ~${esc(String(r.after ?? '?'))}/j, sur ${esc(String(r.sampleDays ?? '?'))} j comparables)`;
+    const redo = insight.status === 'validated'
+      ? `<button type="button" class="pv2-btn mk-redo" onclick="mkIaRedo(${Number(insight.id)})" ${mkIa.busyId ? 'disabled' : ''}>↻ Refaire</button>`
+      : '';
     return `<li class="mk-learned ${verdict.tone}">
       <span class="mk-learned-badge">${esc(verdict.label)}</span>
       <div><strong>${esc(insight.title || 'Idée')}</strong><small>${detail}</small></div>
+      ${redo}
     </li>`;
   }
 
@@ -1254,6 +1635,19 @@
         ${measured.length ? `<ul class="mk-learned-list">${measured.map(mkMeasuredLine).join('')}</ul>` : ''}
         ${waiting.length ? `<p class="mk-waiting">${waiting.map((item) => esc(item.title || 'Idée')).join(' · ')} — verdict automatique à J+14.</p>` : ''}
         ${!measured.length && !waiting.length ? `<div class="pv2-empty"><strong>Rien de mesuré pour l’instant</strong>Marque une idée « C’est fait » et je te dirai si elle a vraiment ramené du monde.</div>` : ''}
+        ${mkIa.insights.length > 3 ? `<details class="mk-archive"><summary>Toutes les idées (${mkIa.insights.length})</summary>
+          <ul class="mk-archive-list">${mkIa.insights.map((item) => `<li><span class="mk-archive-status st-${esc(item.status)}">${esc(MK_STATUS_LABELS[item.status] || item.status)}</span><strong>${esc(item.title || 'Idée')}</strong><small>${esc(item.proposed_at ? String(item.proposed_at).slice(0, 10) : '')}${item.channel ? ` · ${esc(item.channel)}` : ''}</small></li>`).join('')}</ul>
+        </details>` : ''}
+      </div>
+    </section>`;
+
+    // « Demande une idée » : le gérant choisit l'angle, le moteur fait le reste.
+    const ask = `<section class="pv2-panel mk-ask">
+      <div class="pv2-panel-body mk-ask-row">
+        <label class="mk-ask-label" for="mkAskObjective">Demande une idée :</label>
+        <select id="mkAskObjective" class="mk-ask-select" aria-label="Objectif">${MK_OBJECTIVES.map(([value, label]) => `<option value="${value}"${(state.staffCampaignObjective || 'anniversaires') === value ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>
+        <input id="mkAskBrief" class="mk-ask-brief" placeholder="Précision (optionnel) : « pour le week-end du 15 », « spécial ados »…" value="${esc(state.staffCampaignBrief || '')}">
+        <button type="button" class="pv2-btn primary" onclick="mkIaAsk()" ${running ? 'disabled' : ''}>${running ? 'Analyse…' : '💡 Propose-moi une idée'}</button>
       </div>
     </section>`;
 
@@ -1265,11 +1659,14 @@
         actions,
       })}
       ${todo}
+      ${ask}
+      ${mkWeekStrip()}
       ${stats}
       ${learned}
       ${renderPv2RealCampaigns()}
     </div>`;
     mount(root, 'campaigns');
+    if (!mkWeek.loaded && !mkWeek.loading) setTimeout(() => loadMarketingWeek(), 0);
   };
 
   /* ==========================================================================

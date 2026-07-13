@@ -8201,3 +8201,112 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mk-stats .pv2-stat-value { font-weight: 400; } /* Display Astryx : la taille fait le poids, pas la graisse */
 .mk-idea-actions .pv2-btn:focus-visible,
 .mk-idea-basis summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Marketing suite v2 — passe Astryx (échelle de hauteur unique, états en
+   voile, focus ring, segments par graisse, badges pilule, tables denses) ── */
+
+/* Hauteur unique des contrôles (Astryx 28/32/36) */
+.pv2-btn, .crm-btn { min-height: var(--h-md); }
+.crm-btn-sm { min-height: var(--h-sm); padding: 2px 10px; font-size: 11.5px; display: inline-flex; align-items: center; margin-left: 8px; }
+.pv2-search input, .mk-ask-select, .mk-ask-brief { min-height: var(--h-md); }
+
+/* États en voile — pas de recoloration par variante */
+.pv2-btn:hover, .crm-btn:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
+.pv2-btn:active, .crm-btn:active { background-image: linear-gradient(var(--overlay-pressed), var(--overlay-pressed)); }
+.crm-table tbody tr:hover, .pv2-table tbody tr:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
+
+/* Focus ring standard (2px accent, offset 2) */
+.pv2-btn:focus-visible, .crm-btn:focus-visible, .crm-seg:focus-visible, .pv2-pipe:focus-visible,
+.mk-switch:focus-visible, .mk-ask-select:focus-visible, .mk-ask-brief:focus-visible,
+.crm-note-input:focus-visible, .crm-composer-subject:focus-visible, .crm-composer-body:focus-visible,
+.crm-table tr:focus-visible, .crm-stat-link:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+/* Segments : sélection par GRAISSE + barre 2px (Astryx), plus de fond plein */
+.crm-seg { font-weight: 400; border: 0; background: transparent; position: relative; padding: 8px 12px; border-radius: var(--radius-sm); }
+.crm-seg:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); border: 0; }
+.crm-seg.is-active { background: transparent; color: var(--text); font-weight: 600; }
+.crm-seg.is-active::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: var(--radius-full); background: var(--accent); }
+
+/* Badges = pilule 20px / 12px / 500 (Astryx) */
+.crm-pill, .pv2-chip { height: 20px; display: inline-flex; align-items: center; padding: 0 8px; font-size: 12px; font-weight: 500; border-radius: var(--radius-full); }
+
+/* Tables denses : lignes 36-40px, header 600 en muted */
+.crm-table td, .pv2-table td { height: 38px; }
+.crm-table th, .pv2-table th { font-weight: 600; color: var(--muted); }
+
+/* Gros chiffres en graisse 400 (display éditorial) */
+.crm-stats .pv2-stat-value, .crm-kpi-val { font-weight: 400; }
+
+/* Cards majeures en radius container */
+.mk-auto, .mk-idea { border-radius: var(--radius-xl); }
+
+/* ── ROI relances (segment À relancer) ── */
+.crm-roi { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--success) 6%, var(--surface)); }
+.crm-roi-figures { font-size: 13px; color: var(--text); }
+.crm-roi-figures strong { font-size: 15px; font-weight: 600; }
+
+/* ── Composer de relance inline ── */
+.crm-relance-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.crm-composer { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.crm-composer-subject, .crm-composer-body { width: 100%; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--subtle); color: var(--text); font-family: inherit; font-size: 13px; padding: 8px 10px; }
+.crm-composer-body { resize: vertical; line-height: 1.5; }
+.crm-composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.crm-composer-actions .crm-muted { margin-right: auto; font-size: 12px; }
+
+/* ── Notes client ── */
+.crm-note-input { width: 100%; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--subtle); color: var(--text); font-family: inherit; font-size: 13px; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+.crm-note-input:disabled { opacity: 0.55; }
+.crm-note-legacy { margin-top: 8px; font-size: 12px; }
+
+/* ── Séquences automatiques (page Emails) ── */
+.mk-auto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--space-4); }
+.mk-auto { display: flex; flex-direction: column; gap: 8px; padding: var(--space-4); background: var(--surface); border: 1px solid var(--line); }
+.mk-auto.is-on { border-color: color-mix(in srgb, var(--success) 45%, var(--line)); }
+.mk-auto-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mk-auto-head strong { font-size: 13.5px; font-weight: 600; }
+.mk-auto-desc { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.mk-auto-preview summary { font-size: 11.5px; color: var(--faint); cursor: pointer; }
+.mk-auto-preview p { margin: 6px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
+.mk-auto-stats { margin-top: auto; padding-top: 4px; font-size: 11.5px; color: var(--faint); }
+.mk-auto-fail { color: var(--danger); }
+.mk-switch { position: relative; width: 40px; height: 22px; border-radius: var(--radius-full); border: 1px solid var(--line-strong); background: var(--subtle); cursor: pointer; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); flex-shrink: 0; }
+.mk-switch span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: var(--radius-full); background: var(--muted); transition: transform var(--dur) var(--ease), background var(--dur) var(--ease); }
+.mk-switch.is-on { background: var(--success); border-color: var(--success); }
+.mk-switch.is-on span { transform: translateX(18px); background: var(--surface); }
+.mk-switch:disabled { opacity: 0.6; cursor: default; }
+
+/* ── Demande une idée ── */
+.mk-ask-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mk-ask-label { font-size: 13px; font-weight: 600; }
+.mk-ask-select { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-size: 13px; padding: 0 10px; }
+.mk-ask-brief { flex: 1; min-width: 220px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--subtle); color: var(--text); font-size: 13px; padding: 0 10px; }
+
+/* ── Ta semaine ── */
+.mk-week { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.mk-week > .mk-week-day { flex: 1 0 92px; max-width: 140px; }
+.mk-week-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mk-week-range .pv2-btn { min-height: var(--h-sm); padding: 0 10px; font-size: 12px; }
+.mk-week-range input[type"date"] { height: var(--h-md); padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-size: 12.5px; font-family: inherit; }
+.mk-week-range input[type"date"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mk-week-range span { color: var(--faint); }
+.mk-week-day { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); text-align: center; min-width: 0; }
+.mk-week-day.has-badge { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.mk-week-dow { font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: capitalize; }
+.mk-week-temp { font-size: 15px; font-weight: 400; color: var(--text); }
+.mk-week-badge { font-size: 10.5px; font-weight: 500; color: var(--accent-strong); background: var(--accent-soft); border-radius: var(--radius-full); padding: 1px 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-week-idea { font-size: 12px; }
+@media (max-width: 900px) { .mk-week { grid-template-columns: repeat(4, 1fr); } }
+
+/* ── Archive des idées + Refaire ── */
+.mk-archive { margin-top: 12px; }
+.mk-archive summary { font-size: 12px; color: var(--faint); cursor: pointer; }
+.mk-archive-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mk-archive-list li { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+.mk-archive-list li small { color: var(--faint); }
+.mk-archive-status { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: 11px; font-weight: 500; background: var(--subtle); color: var(--muted); }
+.mk-archive-status.st-validated { background: var(--success-soft); color: var(--success); }
+.mk-archive-status.st-refuted { background: var(--danger-soft); color: var(--danger); }
+.mk-archive-status.st-applied { background: var(--accent-soft); color: var(--accent-strong); }
+.mk-learned .mk-redo { margin-left: auto; flex-shrink: 0; }

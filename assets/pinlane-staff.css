@@ -8124,11 +8124,33 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-chip.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .crm-sortbar { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 10px; flex-wrap: wrap; }
 .crm-chip-sort.is-on { background: var(--text); border-color: var(--text); color: var(--surface); }
+/* Barre de contrôle épurée : Filtres repliables + tri en menu + chips actifs */
+.crm-controls-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.crm-filter-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; padding: 7px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
+.crm-filter-toggle:hover { border-color: var(--accent); }
+.crm-filter-toggle.has-active { border-color: var(--accent); color: var(--accent-strong); }
+.crm-filter-toggle .crm-badge { background: var(--accent); color: var(--accent-contrast); border-radius: var(--radius-full); font-size: 10.5px; font-weight: 800; padding: 1px 7px; }
+.crm-filter-toggle .crm-chevron { font-size: 9px; color: var(--muted); }
+.crm-sort-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 3px 4px 3px 10px; background: var(--surface); }
+.crm-sort-select > span { font-weight: 700; }
+.crm-sort-select select { border: 0; background: transparent; color: var(--text); font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; padding: 3px 2px; outline: none; }
+.crm-sort-dir { border: 0; background: var(--subtle); color: var(--text); width: 24px; height: 24px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 800; }
+.crm-sort-dir:hover { background: var(--accent); color: var(--accent-contrast); }
+.crm-active-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.crm-active-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: var(--radius-full); border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent-strong); cursor: pointer; }
+.crm-active-chip:hover { background: color-mix(in srgb, var(--accent) 20%, var(--surface)); }
+.crm-active-chip span { color: var(--muted); font-weight: 800; }
+/* Table CRM : tenir dans la largeur SANS scroll horizontal (padding serré ; la
+   troncature nom/email est déjà gérée plus bas). */
+.crm-table thead th { padding: 8px 9px; }
+.crm-table td { padding: 7px 9px; }
+/* Colonne "Aime" : chip favorite tronquée pour ne jamais déborder la liste */
+.crm-table td .crm-chip-static { display: inline-block; vertical-align: middle; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.crm-split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(340px, 0.95fr); gap: var(--space-4); align-items: start; }
+.crm-split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 0.7fr); gap: var(--space-4); align-items: start; }
 .crm-list-panel { padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 720px; }
 .crm-table-wrap { overflow: auto; flex: 1; }
-.crm-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px; }
+.crm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 0; table-layout: auto; }
 .crm-table thead th { position: sticky; top: 0; z-index: 1; background: var(--subtle); color: var(--muted); font-size: 11px; font-weight: 700; text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .crm-th { cursor: pointer; user-select: none; }
 .crm-th:hover { color: var(--text); }

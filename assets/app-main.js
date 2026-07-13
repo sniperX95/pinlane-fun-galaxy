@@ -10425,6 +10425,14 @@ function clearStaffClientFilters() {
   renderStaffClientsPage();
 }
 
+// Replie/déplie le panneau de filtres (par défaut replié = page épurée). Les filtres
+// actifs restent visibles en chips retirables dans la barre même replié.
+function toggleStaffClientFiltersPanel() {
+  state.staffClientFiltersOpen = !state.staffClientFiltersOpen;
+  save();
+  renderStaffClientsPage();
+}
+
 // Tri CRM : colonne + direction, appliqué APRÈS filtres — chaque colonne de la
 // table est triable, valeurs brutes (lastDate ISO, spent numérique).
 function sortStaffClientRows(rows) {

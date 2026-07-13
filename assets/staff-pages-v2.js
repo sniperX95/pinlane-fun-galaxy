@@ -304,6 +304,7 @@
       { family: 'relation', label: 'Relation', chips: ['Dormant', 'À relancer', 'Résa à venir', 'Nouveau ce mois', 'Annulations', 'Jamais contacté'] },
     ];
     const active = getStaffClientActiveFilterCount();
+    const open = !!state.staffClientFiltersOpen;
     const groups = families.map((group) => `
       <div class="crm-facet-group">
         <span class="crm-facet-label">${esc(group.label)}</span>
@@ -312,20 +313,35 @@
           return `<button type="button" class="crm-chip${on ? ' is-on' : ''}" aria-pressed="${on}" onclick="toggleStaffClientFilter('${group.family}','${escJs(chip)}')">${esc(chip)}</button>`;
         }).join('')}</div>
       </div>`).join('');
+    // Filtres actifs = chips retirables, visibles même panneau replié.
+    const activeChips = families.flatMap((group) => (filters[group.family] || []).map((chip) =>
+      `<button type="button" class="crm-active-chip" onclick="toggleStaffClientFilter('${group.family}','${escJs(chip)}')" title="Retirer ce filtre">${esc(chip)} <span aria-hidden="true">✕</span></button>`
+    )).join('');
     const sortKeys = [
-      ['spent', 'Dépense'], ['avgBasket', 'Panier moyen'], ['reservations', 'Visites'], ['players', 'Joueurs'],
-      ['lastDate', 'Récence'], ['firstDate', 'Ancienneté'], ['frequencyPerMonth', 'Fréquence'], ['engagementScore', 'Engagement'], ['name', 'Nom'],
+      ['lastDate', 'Récence'], ['spent', 'Dépense totale'], ['avgBasket', 'Panier moyen'], ['reservations', 'Visites'], ['players', 'Joueurs'],
+      ['firstDate', 'Ancienneté'], ['frequencyPerMonth', 'Fréquence'], ['engagementScore', 'Engagement'], ['name', 'Nom'],
     ];
     const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-    const sortRow = sortKeys.map(([key, label]) => `<button type="button" class="crm-chip crm-chip-sort${sortState.key === key ? ' is-on' : ''}" aria-pressed="${sortState.key === key}" onclick="setStaffClientSortKey('${key}')">${esc(label)}${sortState.key === key ? ` ${sortState.dir === 'asc' ? '↑' : '↓'}` : ''}</button>`).join('');
+    const sortOptions = sortKeys.map(([key, label]) => `<option value="${key}"${sortState.key === key ? ' selected' : ''}>${esc(label)}</option>`).join('');
     return `
       <section class="crm-controls">
         <div class="crm-controls-head">
-          <div class="crm-counter"><strong>${filteredCount}</strong> / ${totalCount} clients${active ? ` · <span class="crm-badge">${active} filtre${active > 1 ? 's' : ''}</span>` : ''}</div>
-          ${active ? `<button type="button" class="crm-clear" onclick="clearStaffClientFilters()">✕ Réinitialiser</button>` : '<span class="crm-hint">Aucun filtre — toute la base. Cliquez pour affiner.</span>'}
+          <div class="crm-counter"><strong>${filteredCount}</strong> / ${totalCount} clients</div>
+          <div class="crm-controls-tools">
+            <button type="button" class="crm-filter-toggle${open ? ' is-open' : ''}${active ? ' has-active' : ''}" onclick="toggleStaffClientFiltersPanel()" aria-expanded="${open}">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
+              Filtres${active ? ` <span class="crm-badge">${active}</span>` : ''}<span class="crm-chevron" aria-hidden="true">${open ? '▲' : '▾'}</span>
+            </button>
+            <div class="crm-sort-select">
+              <span>Trier</span>
+              <select onchange="setStaffClientSort(this.value)" aria-label="Trier par">${sortOptions}</select>
+              <button type="button" class="crm-sort-dir" onclick="setStaffClientSort('${sortState.key}')" title="Croissant / décroissant" aria-label="Inverser l'ordre">${sortState.dir === 'asc' ? '↑' : '↓'}</button>
+            </div>
+            ${active ? `<button type="button" class="crm-clear" onclick="clearStaffClientFilters()">✕ Effacer</button>` : ''}
+          </div>
         </div>
-        <div class="crm-facets">${groups}</div>
-        <div class="crm-sortbar"><span class="crm-facet-label">Trier par</span><div class="crm-facet-chips">${sortRow}</div></div>
+        ${active ? `<div class="crm-active-chips">${activeChips}</div>` : ''}
+        ${open ? `<div class="crm-facets">${groups}</div>` : ''}
       </section>`;
   }
 
@@ -342,9 +358,8 @@
         <td class="num">${Number(row.reservations) || 0}</td>
         <td class="num col-secondary">${Number(row.players) || 0}</td>
         <td class="num crm-ltv"><strong>${money(row.spent)}</strong></td>
-        <td class="num col-secondary">${money(row.avgBasket)}</td>
+        <td class="num">${money(row.avgBasket)}</td>
         <td class="crm-cell-visit"><strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>${dormant ? '<span class="crm-dot-warn" title="Sans visite depuis +90 j"></span>' : ''}</td>
-        <td class="col-secondary">${row.favoriteLabel ? `<span class="crm-chip-static">${esc(row.favoriteLabel)}</span>` : '<span class="crm-muted">—</span>'}</td>
       </tr>`;
   }
 
@@ -566,8 +581,8 @@
         <article class="pv2-panel crm-list-panel">
           <div class="crm-table-wrap">
             <table class="crm-table">
-              <thead><tr>${th('name', 'Client') + th('status', 'Statut') + th('reservations', 'Visites', true) + th('players', 'Joueurs', true, true) + th('spent', 'Dépensé', true) + th('avgBasket', 'Panier moy.', true, true) + th('lastDate', 'Dernière visite') + `<th class="col-secondary">Aime</th>`}</tr></thead>
-              <tbody>${tableRows || `<tr><td colspan="8"><div class="crm-empty"><strong>Aucun client</strong>Aucun résultat pour ces filtres. <button type="button" class="crm-clear" onclick="clearStaffClientFilters()">Réinitialiser</button></div></td></tr>`}</tbody>
+              <thead><tr>${th('name', 'Client') + th('status', 'Statut') + th('reservations', 'Visites', true) + th('players', 'Joueurs', true, true) + th('spent', 'Dépensé', true) + th('avgBasket', 'Panier moy.', true) + th('lastDate', 'Dernière visite')}</tr></thead>
+              <tbody>${tableRows || `<tr><td colspan="7"><div class="crm-empty"><strong>Aucun client</strong>Aucun résultat pour ces filtres. <button type="button" class="crm-clear" onclick="clearStaffClientFilters()">Réinitialiser</button></div></td></tr>`}</tbody>
             </table>
           </div>
           <div class="crm-list-foot">

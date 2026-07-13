@@ -107,17 +107,23 @@ async function main() {
     const load = await page.evaluate(() => ({
       root: !!document.getElementById('staffClientsPage'),
       rows: document.querySelectorAll('#staffClientsPage table tbody tr').length,
-      facets: document.querySelectorAll('#staffClientsPage [aria-pressed]').length,
+      filterToggle: !!document.querySelector('#staffClientsPage .crm-filter-toggle'),
+      sortSelect: !!document.querySelector('#staffClientsPage .crm-sort-select select'),
+      facetsCollapsed: document.querySelectorAll('#staffClientsPage [aria-pressed]').length === 0,
       clients: (typeof getStaffClientRows === 'function') ? getStaffClientRows().length : -1,
     }));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0,3).join(' | ') : ''}`);
     ok(load.root, 'conteneur #staffClientsPage présent');
     ok(load.clients === 6, `6 clients agrégés depuis les résas (obtenu ${load.clients})`);
     ok(load.rows >= 6, `liste rend ${load.rows} lignes`);
-    ok(load.facets >= 6, `barre de facettes présente (${load.facets} chips aria-pressed)`);
+    ok(load.filterToggle, 'bouton "Filtres" (barre épurée) présent');
+    ok(load.sortSelect, 'tri en menu déroulant présent');
+    ok(load.facetsCollapsed, 'facettes repliées par défaut (page épurée)');
 
-    // [FACETTE] toggle + DÉSÉLECTION (le bug)
+    // [FACETTE] toggle + DÉSÉLECTION (le bug) — on OUVRE d'abord le panneau
     console.log('\n[FACETTE] multi-sélection déselectionnable (le bug "coincé")');
+    await page.evaluate(() => document.querySelector('#staffClientsPage .crm-filter-toggle').click());
+    await page.waitForTimeout(200);
     const baseRows = await page.evaluate(() => document.querySelectorAll('#staffClientsPage table tbody tr').length);
     // clique la facette "Groupe" (type) — doit filtrer
     const facetInfo = await page.evaluate(() => {

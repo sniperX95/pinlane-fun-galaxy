@@ -1428,6 +1428,13 @@ function getSelectedReservationSignature() {
 }
 
 function renderStaffData() {
+  // Fusion Clients+Groupes : « groups » n'est plus une page — tout état legacy
+  // (onglet sauvegardé, hash) retombe sur Clients, segment « À venir ».
+  if (getStaffMenuPage() === 'groups') {
+    state.staffMenuPage = 'clients';
+    state.staffClientSegment = 'avenir';
+    save();
+  }
   const dayReservations = todaysReservations();
   renderStaffShell(dayReservations);
   if (isStaffDashboardActive()) {
@@ -2028,21 +2035,12 @@ state.adminPeriod = ['day', 'week', 'month', 'year'].includes(state.adminPeriod)
 state.adminTab = state.adminTab || 'overview';
 state.adminCockpitMode = ['today', 'bowling', 'laser', 'direction'].includes(state.adminCockpitMode) ? state.adminCockpitMode : 'today';
 state.staffMenuPage = normalizeStaffMenuPage(state.staffMenuPage);
-// CRM v3 : facettes multi-sélection déselectionnables (remplacent segment + statusFilter
-// + tris rapides collants). Migration des anciennes clés puis nettoyage.
-(function migrateStaffClientFilters() {
-  const base = { statut: [], type: [], occasion: [], canal: [], valeur: [], relation: [] };
-  const existing = state.staffClientFilters && typeof state.staffClientFilters === 'object' ? state.staffClientFilters : null;
-  if (existing) {
-    Object.keys(base).forEach(family => { if (Array.isArray(existing[family])) base[family] = existing[family].filter(v => typeof v === 'string'); });
-  } else {
-    if (state.staffClientSegment === 'loyal') base.statut = ['Fidèle'];
-    else if (state.staffClientSegment === 'groups') base.type = ['Groupe'];
-    else if (state.staffClientSegment === 'birthdays') base.occasion = ['Anniversaire'];
-  }
-  state.staffClientFilters = base;
-})();
-delete state.staffClientSegment;
+// CRM v4 (fusion Clients + Groupes, KISS) : 4 segments simples remplacent les
+// familles de facettes et le tri custom. Anciennes clés nettoyées.
+state.staffClientSegment = ['tous', 'avenir', 'relancer', 'vip'].includes(state.staffClientSegment) ? state.staffClientSegment : 'tous';
+delete state.staffClientFilters;
+delete state.staffClientFiltersOpen;
+delete state.staffClientSortOpen;
 delete state.staffClientStatusFilter;
 delete state.staffClientQuickSort;
 if (!state.staffClientSort || typeof state.staffClientSort !== 'object' || !state.staffClientSort.key) {
@@ -2050,7 +2048,6 @@ if (!state.staffClientSort || typeof state.staffClientSort !== 'object' || !stat
 }
 state.staffClientQuery = state.staffClientQuery || '';
 state.staffSelectedClientId = state.staffSelectedClientId || '';
-state.staffClientFiltersOpen = !!state.staffClientFiltersOpen;
 state.staffClientCompact = !!state.staffClientCompact;
 state.staffGroupQuery = state.staffGroupQuery || '';
 state.staffGroupType = ['all', 'bowling', 'laser', 'complete', 'formule'].includes(state.staffGroupType) ? state.staffGroupType : 'all';
@@ -4026,7 +4023,6 @@ const STAFF_UTILITY_MENU_PAGES = [
   'sessions',
   'arrivals',
   'events',
-  'groups',
   'contacts',
   'lanes',
   'laserGame',
@@ -5560,7 +5556,14 @@ function setupRevenueChartInteraction(container) {
 
 function openStaffMenuPage(page, resource = '') {
   const requestedPage = String(page || 'dashboard').trim();
-  const cleanPage = normalizeStaffMenuPage(requestedPage);
+  let cleanPage = normalizeStaffMenuPage(requestedPage);
+  // Fusion Clients+Groupes : l'ancienne page « groups » vit dans Clients,
+  // segment « À venir ». Tous les liens historiques continuent de marcher.
+  if (cleanPage === 'groups') {
+    cleanPage = 'clients';
+    state.staffClientSegment = 'avenir';
+    if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
+  }
   if (cleanPage !== requestedPage) {
     if (typeof showPlanningMoveNotice === 'function') {
       showPlanningMoveNotice('Page indisponible', 'Cette section n existe pas encore dans le back-office. Ouverture du planning.', 'warning');
@@ -5964,7 +5967,7 @@ function setStaffGroupQuery(value) {
   clearTimeout(staffGroupQueryTimer);
   staffGroupQueryTimer = setTimeout(() => {
     save();
-    renderStaffUtilityPage();
+    renderStaffGroupHost();
   }, 90);
 }
 
@@ -6355,15 +6358,22 @@ function renderStaffGroupTable(rows = []) {
 // ════════════════════════════════════════════════════════════════════════════
 
 // État filtres/prépa (défauts inline, persistés dans save()).
+// Le workspace groupes vit dans la page Clients (segment « À venir ») depuis la
+// fusion : ses actions re-rendent la page hôte, quelle qu'elle soit.
+function renderStaffGroupHost() {
+  if (getStaffMenuPage() === 'clients') { renderStaffClientsPage(); return; }
+  if (isStaffUtilityActive()) renderStaffUtilityPage();
+}
+
 function getStaffGroupHorizon() { return ['week', 'next', '30', 'all'].includes(state.staffGroupHorizon) ? state.staffGroupHorizon : 'all'; }
 function getStaffGroupHorizonDays() { const h = getStaffGroupHorizon(); return h === 'week' ? 7 : h === 'next' ? 14 : h === '30' ? 30 : 3650; }
 function getStaffGroupFacet() { return ['all', 'anniversaire', 'amis', 'entreprise', 'ecole', 'sur-mesure'].includes(state.staffGroupFacet) ? state.staffGroupFacet : 'all'; }
 function getStaffGroupPrepMap() { return (state.staffGroupPrep && typeof state.staffGroupPrep === 'object') ? state.staffGroupPrep : {}; }
 
-function setStaffGroupHorizon(value) { state.staffGroupHorizon = value; save(); renderStaffUtilityPage(); }
-function setStaffGroupFacet(value) { state.staffGroupFacet = (getStaffGroupFacet() === value) ? 'all' : value; save(); renderStaffUtilityPage(); }
-function toggleStaffGroupPrepFirst() { state.staffGroupPrepFirst = !state.staffGroupPrepFirst; save(); renderStaffUtilityPage(); }
-function resetStaffGroupView() { state.staffGroupFacet = 'all'; state.staffGroupHorizon = 'all'; state.staffGroupPrepFirst = false; state.staffGroupQuery = ''; save(); renderStaffUtilityPage(); }
+function setStaffGroupHorizon(value) { state.staffGroupHorizon = value; save(); renderStaffGroupHost(); }
+function setStaffGroupFacet(value) { state.staffGroupFacet = (getStaffGroupFacet() === value) ? 'all' : value; save(); renderStaffGroupHost(); }
+function toggleStaffGroupPrepFirst() { state.staffGroupPrepFirst = !state.staffGroupPrepFirst; save(); renderStaffGroupHost(); }
+function resetStaffGroupView() { state.staffGroupFacet = 'all'; state.staffGroupHorizon = 'all'; state.staffGroupPrepFirst = false; state.staffGroupQuery = ''; save(); renderStaffGroupHost(); }
 // Coche/décoche un item de prépa. Clé STABLE = id dossier + item (jamais un libellé).
 function toggleStaffGroupPrep(dossierId, itemKey) {
   const map = { ...getStaffGroupPrepMap() };
@@ -6371,7 +6381,7 @@ function toggleStaffGroupPrep(dossierId, itemKey) {
   if (map[key]) delete map[key]; else map[key] = true;
   state.staffGroupPrep = map;
   save();
-  renderStaffUtilityPage();
+  renderStaffGroupHost();
 }
 
 // Occasion normalisée d'un dossier → sert aux facettes.
@@ -6731,11 +6741,6 @@ function renderStaffGroupControlBar(allDossiers, filteredDossiers) {
   const active = facet !== 'all' || horizon !== 'all' || state.staffGroupPrepFirst || state.staffGroupQuery;
   return `<section class="groups-toolbar-card">
     <div class="groups-toolbar-main">
-      <div class="seg groups-view-seg">
-        <button type="button" class="active" aria-pressed="true">Timeline</button>
-        <button type="button" disabled title="Bientôt">Liste</button>
-        <button type="button" disabled title="Bientôt">Calendrier</button>
-      </div>
       <div class="seg groups-horizon-seg">
         ${horizonSeg('week', 'Cette semaine')}${horizonSeg('next', '15 j')}${horizonSeg('30', '30 j')}${horizonSeg('all', 'Tout')}
       </div>
@@ -9756,7 +9761,9 @@ async function runStaffMarketingAgents() {
     if (draft) state.staffCampaignDraft = draft;
     staffMarketingAgentsCache.running = false;
     await loadStaffMarketingAgents(true);
-    toast('Agents marketing lancés.');
+    // Le cycle persiste les idées data (marketing_insights) → recharger le conseiller.
+    if (typeof loadMarketingIa === 'function') await loadMarketingIa(true);
+    toast('Analyse terminée — les idées du jour sont à jour.');
   } catch (error) {
     staffMarketingAgentsCache.running = false;
     staffMarketingAgentsCache.error = error.message || 'Analyse marketing impossible.';
@@ -9947,7 +9954,7 @@ async function loadStaffCustomRequests(force = false) {
   if (!force && staffCustomRequestsCache.loading) return;
   if (!force && staffCustomRequestsCache.loaded && (Date.now() - staffCustomRequestsCache.loadedAt) < 60000) return;
   staffCustomRequestsCache = { ...staffCustomRequestsCache, loading: true, error: '' };
-  if (isStaffUtilityActive()) renderStaffUtilityPage();
+  renderStaffGroupHost();
   try {
     const centerQuery = encodeURIComponent(getActiveOpsCenterId());
     const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=customRequests&centerId=${centerQuery}&limit=100`);
@@ -9965,7 +9972,7 @@ async function loadStaffCustomRequests(force = false) {
       error: error.message || 'Chargement des demandes impossible.'
     };
   }
-  if (isStaffUtilityActive()) renderStaffUtilityPage();
+  renderStaffGroupHost();
 }
 
 function ensureStaffCustomRequests() {
@@ -9981,7 +9988,7 @@ async function setStaffCustomRequestStatus(id, status) {
     // Mise à jour optimiste locale puis rechargement serveur (source de vérité).
     staffCustomRequestsCache.items = (staffCustomRequestsCache.items || []).map(item =>
       String(item.id) === String(id) ? { ...item, status } : item);
-    if (isStaffUtilityActive()) renderStaffUtilityPage();
+    renderStaffGroupHost();
     loadStaffCustomRequests(true);
     toast('Demande mise à jour.');
   } catch (error) {
@@ -10350,102 +10357,64 @@ function getStaffClientRows() {
   return buildStaffClientRowsFromReservations(getStaffClientSourceReservations());
 }
 
-// Familles de filtres CRM — chacune un tableau de clés actives. Vide = pas de
-// contrainte (l'état "aucune catégorie" par défaut). OR à l'intérieur d'une famille,
-// AND entre familles. Déselectionnable (toggleStaffClientFilter).
-const STAFF_CLIENT_FILTER_FAMILIES = ['statut', 'type', 'occasion', 'canal', 'valeur', 'relation'];
-
-function getStaffClientFilterState() {
-  const source = state.staffClientFilters && typeof state.staffClientFilters === 'object' ? state.staffClientFilters : {};
-  const out = {};
-  STAFF_CLIENT_FILTER_FAMILIES.forEach(family => { out[family] = Array.isArray(source[family]) ? source[family] : []; });
-  return out;
+// Segments CRM v4 (KISS) : 4 vues simples, une seule active, re-clic = retour à
+// « Tous ». Remplace les familles de facettes + le tri custom (retour client).
+function getStaffClientSegment() {
+  return ['tous', 'avenir', 'relancer', 'vip'].includes(state.staffClientSegment) ? state.staffClientSegment : 'tous';
 }
 
-function getStaffClientActiveFilterCount() {
-  const filters = getStaffClientFilterState();
-  return STAFF_CLIENT_FILTER_FAMILIES.reduce((sum, family) => sum + filters[family].length, 0);
+// « À relancer » = la liste qui rapporte : dormants avec historique, et clients
+// dont l'anniversaire fêté ici revient (11-13 mois). Raison = 1 phrase FR.
+function getStaffClientRelance(row) {
+  const visits = Number(row.reservations || 0);
+  const history = Array.isArray(row.history) ? row.history : [];
+  const today = staffGroupToday();
+  const birthdayPast = history
+    .map(entry => entry.reservation)
+    .filter(reservation => reservation && String(reservation.status) !== 'cancelled')
+    .filter(reservation => String(reservation.occasion || '').toLowerCase() === 'anniversaire'
+      || (typeof isStaffBirthdayFormulaReservation === 'function' && isStaffBirthdayFormulaReservation(reservation)))
+    .map(reservation => staffClientDaysBetween(today, String(reservation.date || '')))
+    .filter(days => days >= 335 && days <= 395);
+  if (birthdayPast.length) {
+    return { due: true, kind: 'anniversaire', reason: 'Anniversaire fêté ici il y a ~1 an — ça se re-réserve maintenant' };
+  }
+  const daysSince = Number(row.daysSinceLast || 0);
+  if (visits >= 2 && daysSince > 60 && !row.nextBooking) {
+    return { due: true, kind: 'dormant', reason: `Venu ${visits}×, plus vu depuis ${daysSince > 90 ? Math.round(daysSince / 30) + ' mois' : daysSince + ' j'}` };
+  }
+  return { due: false, kind: '', reason: '' };
+}
+
+// Seuil VIP = top 20 % des dépensiers du centre.
+function getStaffClientVipThreshold(allRows) {
+  const spends = allRows.map(row => Number(row.spent || 0)).sort((a, b) => b - a);
+  return spends.length ? (spends[Math.max(0, Math.floor(spends.length * 0.2) - 1)] || spends[0] || 0) : 0;
 }
 
 function getFilteredStaffClientRows() {
   const query = String(state.staffClientQuery || '').trim().toLowerCase();
-  const filters = getStaffClientFilterState();
+  const segment = getStaffClientSegment();
   const allRows = getStaffClientRows();
-  // Seuils VIP / gros paniers calculés sur toute la base du centre.
-  const spends = allRows.map(row => Number(row.spent || 0)).sort((a, b) => b - a);
-  const vipThreshold = spends.length ? (spends[Math.max(0, Math.floor(spends.length * 0.2) - 1)] || spends[0] || 0) : 0;
-  const baskets = allRows.map(row => Number(row.avgBasket || 0)).sort((a, b) => b - a);
-  const bigBasketThreshold = baskets.length ? (baskets[Math.floor(baskets.length * 0.25)] || 0) : 0;
-  const matchFamily = (arr, predicate) => arr.length === 0 || arr.some(predicate);
+  const vipThreshold = getStaffClientVipThreshold(allRows);
   return sortStaffClientRows(allRows.filter(row => {
     const text = `${row.name} ${row.email} ${row.phone} ${row.status} ${row.tags.join(' ')}`.toLowerCase();
     if (query && !text.includes(query)) return false;
-    if (!matchFamily(filters.statut, key => row.status === key)) return false;
-    if (!matchFamily(filters.type, key =>
-      key === 'Groupe' ? row.isGroup
-        : key === 'Entreprise' ? row.declaredOccasion === 'entreprise'
-          : key === 'École' ? row.declaredOccasion === 'ecole'
-            : key === 'Particulier' ? !row.isGroup
-              : false)) return false;
-    if (!matchFamily(filters.occasion, key => (STAFF_OCCASION_LABELS[row.declaredOccasion] || '') === key || (key === 'Anniversaire' && row.hasBirthday))) return false;
-    if (!matchFamily(filters.canal, key => row.preferredChannel === key)) return false;
-    if (!matchFamily(filters.valeur, key =>
-      key === 'VIP' ? (vipThreshold > 0 && Number(row.spent || 0) >= vipThreshold)
-        : key === 'Gros paniers' ? (bigBasketThreshold > 0 && Number(row.avgBasket || 0) >= bigBasketThreshold)
-          : key === 'Multi-visites' ? Number(row.reservations || 0) >= 3
-            : false)) return false;
-    if (!matchFamily(filters.relation, key =>
-      key === 'Annulations' ? Number(row.cancellations || 0) > 0
-        : key === 'Dormant' ? Number(row.daysSinceLast || 0) > 90
-          : key === 'Anniversaire' ? row.hasBirthday
-            : key === 'Nouveau ce mois' ? row.statusClass === 'new'
-              : key === 'Résa à venir' ? !!row.nextBooking
-                : key === 'Jamais contacté' ? getStaffClientCommsCount(row) === 0
-                  : key === 'À relancer' ? Number(row.daysSinceLast || 0) > 90
-                    : false)) return false;
+    if (segment === 'relancer') return getStaffClientRelance(row).due;
+    if (segment === 'vip') return vipThreshold > 0 && Number(row.spent || 0) >= vipThreshold;
     return true;
   }));
 }
 
-function toggleStaffClientFilter(family, key) {
-  if (!STAFF_CLIENT_FILTER_FAMILIES.includes(family)) return;
-  const filters = getStaffClientFilterState();
-  const arr = filters[family];
-  const index = arr.indexOf(key);
-  if (index >= 0) arr.splice(index, 1); else arr.push(key);
-  state.staffClientFilters = filters;
-  if (family === 'relation' && key === 'Jamais contacté') ensureStaffClientComms();
-  save();
-  renderStaffClientsPage();
-}
-
-function clearStaffClientFilters() {
-  state.staffClientFilters = { statut: [], type: [], occasion: [], canal: [], valeur: [], relation: [] };
-  save();
-  renderStaffClientsPage();
-}
-
-// Replie/déplie le panneau de filtres (par défaut replié = page épurée). Les filtres
-// actifs restent visibles en chips retirables dans la barre même replié.
-function toggleStaffClientFiltersPanel() {
-  state.staffClientFiltersOpen = !state.staffClientFiltersOpen;
-  save();
-  renderStaffClientsPage();
-}
-
-// Menu de tri CRM : popover custom (le <select> natif rendait une liste
-// illisible gris-sur-noir). Ouvrir/fermer + choisir une clé qui referme.
-function toggleStaffClientSortMenu() {
-  state.staffClientSortOpen = !state.staffClientSortOpen;
-  renderStaffClientsPage();
-}
-
-function pickStaffClientSort(key) {
-  const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-  if (current.key !== key) {
-    state.staffClientSort = { key, dir: key === 'name' ? 'asc' : 'desc' };
-  }
-  state.staffClientSortOpen = false;
+// Segment cliqué : re-clic sur l'actif → retour « Tous ». Chaque segment pose son
+// tri par défaut (les en-têtes de colonnes restent cliquables ensuite).
+function setStaffClientSegment(segment) {
+  const next = getStaffClientSegment() === segment ? 'tous' : segment;
+  state.staffClientSegment = ['tous', 'avenir', 'relancer', 'vip'].includes(next) ? next : 'tous';
+  state.staffClientSort = state.staffClientSegment === 'vip' || state.staffClientSegment === 'relancer'
+    ? { key: 'spent', dir: 'desc' }
+    : { key: 'lastDate', dir: 'desc' };
+  if (state.staffClientSegment === 'avenir' && typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
   save();
   renderStaffClientsPage();
 }
@@ -10482,17 +10451,6 @@ function setStaffClientSort(key) {
   state.staffClientSort = current.key === key
     ? { key, dir: current.dir === 'desc' ? 'asc' : 'desc' }
     : { key, dir: ['name', 'status'].includes(key) ? 'asc' : 'desc' };
-  save();
-  renderStaffClientsPage();
-}
-
-// Chips "Trier par" : re-clic sur la clé DÉJÀ active → retour au tri par défaut
-// (déselectionnable, comme demandé). Sinon applique la clé.
-function setStaffClientSortKey(key) {
-  const current = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-  state.staffClientSort = current.key === key
-    ? { key: 'lastDate', dir: 'desc' }
-    : { key, dir: ['name', 'status', 'avgIntervalDays'].includes(key) ? 'asc' : 'desc' };
   save();
   renderStaffClientsPage();
 }
@@ -10544,17 +10502,6 @@ function getStaffClientMetrics(rows = getStaffClientRows(), reservations = getSt
   };
 }
 
-// Compat : anciens appels de segment → nouvelles facettes déselectionnables.
-function setStaffClientSegment(segment) {
-  const filters = { statut: [], type: [], occasion: [], canal: [], valeur: [], relation: [] };
-  if (segment === 'loyal') filters.statut = ['Fidèle'];
-  else if (segment === 'groups') filters.type = ['Groupe'];
-  else if (segment === 'birthdays') filters.occasion = ['Anniversaire'];
-  state.staffClientFilters = filters;
-  save();
-  renderStaffClientsPage();
-}
-
 function setStaffClientQuery(value) {
   state.staffClientQuery = value || '';
   renderStaffClientsPage();
@@ -10571,27 +10518,25 @@ function refreshStaffClients() {
   loadStaffClientData(true);
 }
 
+// Export CSV du SEGMENT courant : la liste prête à l'emploi (relance = avec le
+// pourquoi ; marketing = emails). Colonnes réduites à l'utile.
 function exportStaffClientsCsv() {
   if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement — patientez avant d\'exporter.'); return; }
+  const segment = getStaffClientSegment();
   const rows = getFilteredStaffClientRows();
-  const header = ['Client', 'Email', 'Telephone', 'Statut', 'Reservations', 'Joueurs', 'Depense', 'Panier moyen', 'Annulations', 'Aime', 'Canal', 'Engagement', 'Premiere visite', 'Derniere visite'];
+  const relance = segment === 'relancer';
+  const header = ['Client', 'Email', 'Telephone', 'Visites', 'Depense', 'Panier moyen', 'Derniere visite', ...(relance ? ['Pourquoi relancer'] : [])];
   const body = rows.map(row => [
     row.name,
     row.email,
     row.phone,
-    row.status,
     row.reservations,
-    row.players,
     row.spent,
     Math.round(Number(row.avgBasket) || 0),
-    row.cancellations,
-    row.favoriteLabel || '',
-    row.preferredChannel || '',
-    row.engagementScore || 0,
-    row.firstDate,
-    row.lastDate
+    row.lastDate,
+    ...(relance ? [getStaffClientRelance(row).reason] : [])
   ].map(csvCell).join(','));
-  downloadTextFile(`fungalaxy-clients-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
+  downloadTextFile(`fungalaxy-clients-${segment}-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
 }
 
 function openStaffClientBooking(id = '') {

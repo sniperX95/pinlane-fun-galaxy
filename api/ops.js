@@ -33,6 +33,7 @@ const {
   saveAgentSuggestions,
 } = require('../lib/database');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
+const { listDailyMetrics, listMarketingInsights, setInsightStatus } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
 const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
 const {
@@ -228,6 +229,30 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 20),
     });
     sendJson(res, 200, { ok: true, health });
+    return;
+  }
+
+  // Warehouse quotidien : lignes daily_center_metrics + agrégats de période.
+  // La période est libre (jour/semaine/mois — le front choisit from/to).
+  if (action === 'dailyMetrics') {
+    const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
+    const today = new Date().toISOString().slice(0, 10);
+    const to = DATE_RX.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : today;
+    const from = DATE_RX.test(url.searchParams.get('from') || '') ? url.searchParams.get('from') : addDays(to, -29);
+    if (from > to) throw createHttpError('Période invalide.', 400);
+    const metrics = await listDailyMetrics(centerId, from, to);
+    sendJson(res, 200, { ok: true, centerId, from, to, ...metrics });
+    return;
+  }
+
+  // Idées/constats de l'agent marketing (cycle de vie proposed -> applied ->
+  // validated/refuted). Grounding : data_basis contient les faits SQL sources.
+  if (action === 'marketingInsights') {
+    const insights = await listMarketingInsights(centerId, {
+      status: url.searchParams.get('status') || '',
+      limit: Number(url.searchParams.get('limit') || 100),
+    });
+    sendJson(res, 200, { ok: true, centerId, insights });
     return;
   }
 
@@ -1113,6 +1138,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Cycle de vie d'une idée de l'agent : le gérant l'applique ou l'ignore.
+  // `applied` pose applied_at → la mesure avant/après tourne à J+14 (cron).
+  if (action === 'insightStatus') {
+    const insight = await setInsightStatus(body.id, body.status);
+    sendJson(res, 200, { ok: true, action, insight });
+    return;
+  }
+
   // Génère (ou régénère) le bilan de la dernière semaine/mois complet — ou de
   // la période explicitement demandée. Déterministe d'abord, IA si clé dispo.
   if (action === 'generateDirectionReport') {
@@ -1384,6 +1417,8 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
+    if (action === 'dailyMetrics') return ['dashboard.view', 'direction.view'];
+    if (action === 'marketingInsights') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
@@ -1395,6 +1430,7 @@ function getRequiredOpsPermission(method, action) {
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
+  if (action === 'insightStatus') return ['campaigns.manage', 'marketing.agents'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';
   if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';

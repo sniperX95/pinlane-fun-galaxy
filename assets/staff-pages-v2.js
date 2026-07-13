@@ -290,103 +290,56 @@
     return `<span class="crm-pill tone-${CRM_STATUS_TONE[row.statusClass] || 'muted'}"><span class="crm-dot"></span>${esc(row.status || '—')}</span>`;
   }
 
-  // Barre de facettes multi-sélection DÉSÉLECTIONNABLES (remplace segments + tris
-  // rapides collants). OR intra-famille, AND inter-familles. Défaut = rien = tout.
-  function crmFacetBar(filteredCount, totalCount) {
-    const filters = getStaffClientFilterState();
-    const occasionChips = [...new Set(Object.values(typeof STAFF_OCCASION_LABELS !== 'undefined' ? STAFF_OCCASION_LABELS : {}))];
-    const families = [
-      { family: 'statut', label: 'Statut', chips: ['Fidèle', 'Actif', 'Nouveau', 'Inactif'] },
-      { family: 'type', label: 'Type', chips: ['Groupe', 'Particulier', 'Entreprise', 'École'] },
-      { family: 'occasion', label: 'Occasion', chips: occasionChips.length ? occasionChips : ['Anniversaire'] },
-      { family: 'canal', label: 'Canal', chips: ['En ligne', 'Comptoir'] },
-      { family: 'valeur', label: 'Valeur', chips: ['VIP', 'Gros paniers', 'Multi-visites'] },
-      { family: 'relation', label: 'Relation', chips: ['Dormant', 'À relancer', 'Résa à venir', 'Nouveau ce mois', 'Annulations', 'Jamais contacté'] },
-    ];
-    const active = getStaffClientActiveFilterCount();
-    const open = !!state.staffClientFiltersOpen;
-    const groups = families.map((group) => `
-      <div class="crm-facet-group">
-        <span class="crm-facet-label">${esc(group.label)}</span>
-        <div class="crm-facet-chips">${group.chips.map((chip) => {
-          const on = (filters[group.family] || []).includes(chip);
-          return `<button type="button" class="crm-chip${on ? ' is-on' : ''}" aria-pressed="${on}" onclick="toggleStaffClientFilter('${group.family}','${escJs(chip)}')">${esc(chip)}</button>`;
-        }).join('')}</div>
-      </div>`).join('');
-    // Filtres actifs = chips retirables, visibles même panneau replié.
-    const activeChips = families.flatMap((group) => (filters[group.family] || []).map((chip) =>
-      `<button type="button" class="crm-active-chip" onclick="toggleStaffClientFilter('${group.family}','${escJs(chip)}')" title="Retirer ce filtre">${esc(chip)} <span aria-hidden="true">✕</span></button>`
-    )).join('');
-    const sortKeys = [
-      ['lastDate', 'Récence'], ['spent', 'Dépense totale'], ['avgBasket', 'Panier moyen'], ['reservations', 'Visites'], ['players', 'Joueurs'],
-      ['firstDate', 'Ancienneté'], ['frequencyPerMonth', 'Fréquence'], ['engagementScore', 'Engagement'], ['name', 'Nom'],
-    ];
-    const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-    const sortOpen = !!state.staffClientSortOpen;
-    const currentSortLabel = (sortKeys.find(([key]) => key === sortState.key) || sortKeys[0])[1];
-    const sortMenu = sortKeys.map(([key, label]) => {
-      const on = sortState.key === key;
-      return `<button type="button" role="option" aria-selected="${on}" class="crm-sort-option${on ? ' is-active' : ''}" onclick="pickStaffClientSort('${key}')">${esc(label)}${on ? ' <span class="crm-sort-check" aria-hidden="true">✓</span>' : ''}</button>`;
-    }).join('');
-    return `
-      <section class="crm-controls">
-        <div class="crm-controls-head">
-          <div class="crm-counter"><strong>${filteredCount}</strong> / ${totalCount} clients</div>
-          <div class="crm-controls-tools">
-            <button type="button" class="crm-filter-toggle${open ? ' is-open' : ''}${active ? ' has-active' : ''}" onclick="toggleStaffClientFiltersPanel()" aria-expanded="${open}">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
-              Filtres${active ? ` <span class="crm-badge">${active}</span>` : ''}<span class="crm-chevron" aria-hidden="true">${open ? '▲' : '▾'}</span>
-            </button>
-            <div class="crm-sort">
-              <button type="button" class="crm-sort-trigger${sortOpen ? ' is-open' : ''}" onclick="toggleStaffClientSortMenu()" aria-haspopup="listbox" aria-expanded="${sortOpen}">
-                <span class="crm-sort-caption">Trier</span>
-                <span class="crm-sort-current">${esc(currentSortLabel)}</span>
-                <span class="crm-chevron" aria-hidden="true">${sortOpen ? '▲' : '▾'}</span>
-              </button>
-              <button type="button" class="crm-sort-dir" onclick="setStaffClientSort('${sortState.key}')" title="Croissant / décroissant" aria-label="Inverser l'ordre">${sortState.dir === 'asc' ? '↑' : '↓'}</button>
-              ${sortOpen ? `<div class="crm-sort-backdrop" onclick="toggleStaffClientSortMenu()" aria-hidden="true"></div><div class="crm-sort-menu" role="listbox" aria-label="Trier par">${sortMenu}</div>` : ''}
-            </div>
-            ${active ? `<button type="button" class="crm-clear" onclick="clearStaffClientFilters()">✕ Effacer</button>` : ''}
-          </div>
-        </div>
-        ${active ? `<div class="crm-active-chips">${activeChips}</div>` : ''}
-        ${open ? `<div class="crm-facets">${groups}</div>` : ''}
-      </section>`;
+  // 4 segments simples (fusion Clients+Groupes, KISS). Une seule vue active,
+  // re-clic sur l'actif → retour « Tous ». Remplace facettes + tri custom.
+  const CRM_SEGMENTS = [
+    ['tous', 'Tous'],
+    ['avenir', 'À venir'],
+    ['relancer', 'À relancer'],
+    ['vip', 'VIP'],
+  ];
+
+  function crmSegmentBar(filteredCount, totalCount) {
+    const active = getStaffClientSegment();
+    const seg = CRM_SEGMENTS.map(([key, label]) =>
+      `<button type="button" class="crm-seg${active === key ? ' is-active' : ''}" aria-pressed="${active === key}" onclick="setStaffClientSegment('${key}')">${esc(label)}</button>`
+    ).join('');
+    const count = active === 'avenir' ? '' : `<span class="crm-seg-count"><strong>${filteredCount}</strong>${active === 'tous' ? ` / ${totalCount}` : ''} client${filteredCount > 1 ? 's' : ''}</span>`;
+    return `<section class="crm-segbar" role="tablist" aria-label="Vue clients">${seg}${count}</section>`;
   }
 
-  function crmListRow(row, selected) {
-    const tagsHtml = (row.tags || []).slice(1, 4).map((t) => `<span class="crm-tag">${esc(t)}</span>`).join('');
-    const dormant = Number(row.daysSinceLast || 0) > 90;
+  // Badge unique par ligne — le plus décisionnel gagne.
+  function crmRowBadge(row, ctx) {
+    const relance = getStaffClientRelance(row);
+    if (row.nextBooking && (String(row.nextBooking.occasion || '').toLowerCase() === 'anniversaire' || row.hasBirthday)) {
+      return '<span class="crm-pill tone-info">🎂 Anniv à venir</span>';
+    }
+    if (ctx.vipThreshold > 0 && Number(row.spent || 0) >= ctx.vipThreshold) return '<span class="crm-pill tone-accent">VIP</span>';
+    if (relance.due) return '<span class="crm-pill tone-warn">À relancer</span>';
+    if (row.statusClass === 'new') return '<span class="crm-pill tone-info">Nouveau</span>';
+    return '';
+  }
+
+  // Table 5 colonnes max : Client / Venue / Visites / Dépensé / Badge (ou Pourquoi).
+  function crmListRow(row, selected, ctx) {
+    const next = row.nextBooking;
+    const visite = next
+      ? `<strong>${esc(formatStaffClientDateText(next.date))}</strong><small>prochaine venue${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</small>`
+      : `<strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>`;
+    const lastCell = ctx.segment === 'relancer'
+      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}</td>`
+      : `<td class="crm-cell-badge">${crmRowBadge(row, ctx)}</td>`;
     return `
       <tr class="${selected && row.id === selected.id ? 'is-selected' : ''}" tabindex="0" role="button" onclick="selectStaffClient('${escJs(row.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectStaffClient('${escJs(row.id)}');}">
         <td class="crm-cell-client">
           <span class="crm-avatar tone-${esc(row.avatarTone || 'a')}">${esc(row.initials || '–')}</span>
-          <span class="crm-client-id"><strong>${esc(row.name || 'Sans nom')}</strong><small>${esc(row.email || row.phone || '')}</small>${tagsHtml ? `<span class="crm-tags">${tagsHtml}</span>` : ''}</span>
+          <span class="crm-client-id"><strong>${esc(row.name || 'Sans nom')}</strong><small>${esc(row.email || row.phone || '')}</small></span>
         </td>
-        <td>${crmStatusPill(row)}</td>
+        <td class="crm-cell-visit${next ? ' is-upcoming' : ''}">${visite}</td>
         <td class="num">${Number(row.reservations) || 0}</td>
-        <td class="num col-secondary">${Number(row.players) || 0}</td>
         <td class="num crm-ltv"><strong>${money(row.spent)}</strong></td>
-        <td class="num">${money(row.avgBasket)}</td>
-        <td class="crm-cell-visit"><strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>${dormant ? '<span class="crm-dot-warn" title="Sans visite depuis +90 j"></span>' : ''}</td>
+        ${lastCell}
       </tr>`;
-  }
-
-  function crmInsightLines(row, comms) {
-    const lines = [];
-    if (row.favoriteLabel) lines.push(['🎯', `Aime surtout : <strong>${esc(row.favoriteLabel)}</strong>`, 'accent']);
-    if (row.avgPlayers) lines.push(['👥', `Vient en général à <strong>${Math.round(row.avgPlayers)}</strong> personne${Math.round(row.avgPlayers) > 1 ? 's' : ''}`, 'muted']);
-    if ((row.occasions || []).length) lines.push(['📅', `Occasions : ${esc(row.occasions.map((o) => (typeof STAFF_OCCASION_LABELS !== 'undefined' && STAFF_OCCASION_LABELS[o]) || o).join(' · '))}`, 'muted']);
-    if (row.preferredChannel) lines.push(['💻', `Réserve surtout <strong>${row.preferredChannel === 'Comptoir' ? 'au comptoir' : 'en ligne'}</strong>`, 'muted']);
-    if (Number(row.daysSinceLast || 0) > 90) lines.push(['⚠️', `Sans visite depuis <strong>${row.daysSinceLast} j</strong> — à relancer`, 'warn']);
-    if (row.hasBirthday) lines.push(['🎂', 'Client anniversaire', 'info']);
-    if (Number(row.engagementScore || 0) >= 75) lines.push(['⭐', 'Parmi vos meilleurs clients', 'success']);
-    if (comms && comms.length === 0) lines.push(['✉️', 'Jamais contacté — une relance à tenter', 'warn']);
-    return lines.map(([icon, text, tone]) => `<div class="crm-insight tone-${tone}"><span>${icon}</span><span>${text}</span></div>`).join('');
-  }
-
-  function crmBar(label, value, tone) {
-    return `<div class="crm-bar"><span class="crm-bar-label">${esc(label)}</span><span class="crm-bar-track"><span class="crm-bar-fill tone-${tone}" style="width:${Math.round(value)}%"></span></span><span class="crm-bar-val">${Math.round(value)}%</span></div>`;
   }
 
   function crmHistoryItem(entry) {
@@ -451,29 +404,44 @@
       <div class="crm-comm-list">${items}</div></div>`;
   }
 
-  function crmFiche(selected) {
-    if (!selected) return '<div class="crm-empty crm-empty-lg"><strong>Sélectionnez un client</strong>Cliquez sur une ligne pour voir sa fiche complète.</div>';
+  // Fiche client KISS : qui c'est, ce qu'il vaut (3 chiffres), sa prochaine venue
+  // (avec la checklist prépa du dossier), pourquoi le relancer, son historique et
+  // les messages. Un tap = agir (tel/email cliquables).
+  function crmFiche(selected, ctx = {}) {
+    if (!selected) return '<div class="crm-empty crm-empty-lg"><strong>Sélectionnez un client</strong>Cliquez sur une ligne pour voir sa fiche.</div>';
     ensureStaffClientComms();
-    const comms = getStaffClientCommunications(selected);
-    const badges = [];
-    badges.push(crmStatusPill(selected));
-    if (Number(selected.engagementScore || 0) >= 80) badges.push('<span class="crm-pill tone-accent">VIP</span>');
-    if (selected.isGroup) badges.push('<span class="crm-pill tone-info">Groupe</span>');
-    (selected.occasions || []).slice(0, 1).forEach((o) => badges.push(`<span class="crm-pill tone-muted">${esc((typeof STAFF_OCCASION_LABELS !== 'undefined' && STAFF_OCCASION_LABELS[o]) || o)}</span>`));
-    const tenure = selected.tenureDays >= 365 ? `${Math.floor(selected.tenureDays / 365)} an${Math.floor(selected.tenureDays / 365) > 1 ? 's' : ''}` : `${selected.tenureDays} j`;
+    const badges = [crmStatusPill(selected)];
+    if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push('<span class="crm-pill tone-accent">VIP</span>');
+    if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">🎂 Anniversaire</span>');
     const kpi = (label, value, sub) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div>${sub ? `<div class="crm-kpi-sub">${esc(sub)}</div>` : ''}</div>`;
-    const tb = selected.typeBreakdown || { bowling: 0, laser: 0, formule: 0 };
-    const tbTotal = (tb.bowling + tb.laser + tb.formule) || 1;
     const next = selected.nextBooking;
+    const relance = getStaffClientRelance(selected);
+    let nextBlock = '';
+    if (next) {
+      // Même dossier (même id) que le segment « À venir » → les coches de prépa
+      // sont partagées entre la carte dossier et la fiche.
+      const dossier = { id: `r-${next.id}`, kind: 'reservation', reservation: next, row: selected, dateISO: next.date, startTime: next.startTime || '', pax: Number(next.pax || 0) };
+      const readiness = computeStaffGroupReadiness(dossier);
+      const checks = readiness.items.filter((i) => i.state !== 'na').map((i) =>
+        `<button type="button" class="groups-check-toggle${i.state === 'done' ? ' is-done' : ''}" onclick="toggleStaffGroupPrep('${escJs(dossier.id)}','${escJs(i.key)}')" aria-pressed="${i.state === 'done'}">${i.state === 'done' ? '✓' : '○'} ${esc(i.label)}</button>`
+      ).join('');
+      nextBlock = `<div class="info-block crm-block crm-next">
+        <div class="crm-block-head"><h3>Prochaine venue</h3><span class="crm-pill tone-${readiness.ready ? 'success' : 'warn'}">${readiness.ready ? 'Prêt' : `${readiness.todo} à préparer`}</span></div>
+        <div class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))}${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${Number(next.pax) || 0} joueurs</span></div>
+        <div class="groups-check-toggles">${checks}</div>
+      </div>`;
+    }
     return `
       <div class="crm-fiche">
         <div class="info-block crm-block crm-head">
           <span class="crm-avatar crm-avatar-lg tone-${esc(selected.avatarTone || 'a')}">${esc(selected.initials || '–')}</span>
           <div class="crm-head-id">
             <h2>${esc(selected.name || 'Sans nom')}</h2>
-            <div class="crm-head-contact">${selected.phone ? `📞 ${esc(selected.phone)}` : ''}${selected.phone && selected.email ? ' · ' : ''}${selected.email ? `✉️ ${esc(selected.email)}` : ''}</div>
+            <div class="crm-head-contact">
+              ${selected.phone ? `<a href="tel:${esc(selected.phone)}" class="crm-contact-link">📞 ${esc(selected.phone)}</a>` : ''}
+              ${selected.email ? `<a href="mailto:${esc(selected.email)}" class="crm-contact-link">✉️ ${esc(selected.email)}</a>` : ''}
+            </div>
             <div class="crm-head-badges">${badges.join('')}</div>
-            <div class="crm-head-since">Client depuis ${esc(formatStaffClientDateText(selected.firstDate))} · ${esc(tenure)}</div>
           </div>
           <div class="crm-head-actions">
             <button type="button" class="crm-btn crm-btn-primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>
@@ -482,61 +450,28 @@
         </div>
 
         <div class="info-block crm-block">
-          <div class="crm-block-head"><h3>Ce que vaut ce client</h3></div>
-          <div class="crm-kpis">
-            ${kpi('Dépensé (total)', money(selected.spent), selected.reservations ? `${crmNum(selected.avgBasket)} € / visite` : '')}
-            ${kpi('Visites', Number(selected.reservations) || 0, `${crmNum(selected.frequencyPerMonth)} / mois`)}
-            ${kpi('Joueurs accueillis', Number(selected.players) || 0, `ø ${Math.round(selected.avgPlayers || 0)} / résa`)}
-            ${kpi('Engagement', `${selected.engagementScore || 0}/100`, selected.engagementScore >= 70 ? 'à choyer' : selected.engagementScore >= 40 ? 'à suivre' : 'à réveiller')}
-            ${kpi('Annulations', Number(selected.cancellations) || 0, `${crmPct(selected.cancelRate)} des résas`)}
-            ${kpi('Intervalle', selected.avgIntervalDays ? `${selected.avgIntervalDays} j` : '—', 'entre visites')}
+          <div class="crm-kpis crm-kpis-3">
+            ${kpi('Dépensé', money(selected.spent), '')}
+            ${kpi('Visites', Number(selected.reservations) || 0, '')}
+            ${kpi('Panier moyen', money(selected.avgBasket), '')}
           </div>
         </div>
 
-        <div class="info-block crm-block">
-          <div class="crm-block-head"><h3>En un coup d'œil</h3></div>
-          <div class="crm-insights">${crmInsightLines(selected, comms) || '<div class="crm-muted">Pas encore assez d\'historique.</div>'}</div>
-        </div>
+        ${nextBlock}
 
-        ${next ? `<div class="info-block crm-block crm-next">
-          <div class="crm-block-head"><h3>Prochaine réservation</h3></div>
-          <div class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))} · ${esc(next.startTime || '')}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${Number(next.pax) || 0} joueurs</span></div>
+        ${relance.due ? `<div class="info-block crm-block crm-relance">
+          <span class="crm-relance-why">📣 ${esc(relance.reason)}</span>
+          ${selected.email ? `<button type="button" class="crm-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">Relancer</button>` : ''}
         </div>` : ''}
 
         <div class="info-block crm-block">
-          <div class="crm-block-head"><h3>Profil comportemental</h3></div>
-          <div class="crm-bars">
-            ${crmBar('Bowling', (tb.bowling / tbTotal) * 100, 'chart1')}
-            ${crmBar('Laser', (tb.laser / tbTotal) * 100, 'chart2')}
-            ${crmBar('Formule', (tb.formule / tbTotal) * 100, 'chart3')}
-          </div>
-          <div class="crm-kv-grid">
-            ${selected.favoriteLabel ? `<div><dt>Activité préférée</dt><dd>${esc(selected.favoriteLabel)}</dd></div>` : ''}
-            ${selected.preferredChannel ? `<div><dt>Canal préféré</dt><dd>${esc(selected.preferredChannel)}</dd></div>` : ''}
-            ${selected.laserGamesTotal ? `<div><dt>Parties laser</dt><dd>${selected.laserGamesTotal}</dd></div>` : ''}
-            ${selected.bowlingHoursTotal ? `<div><dt>Heures bowling</dt><dd>${crmNum(selected.bowlingHoursTotal)} h</dd></div>` : ''}
-            ${selected.totalDurationBooked ? `<div><dt>Durée réservée</dt><dd>${crmNum(selected.totalDurationBooked)} h</dd></div>` : ''}
-            ${selected.maxPax ? `<div><dt>Plus gros groupe</dt><dd>${selected.maxPax} joueurs</dd></div>` : ''}
-            ${selected.paymentMethodDominant ? `<div><dt>Paiement habituel</dt><dd>${esc(selected.paymentMethodDominant)}</dd></div>` : ''}
-            <div><dt>Part payée</dt><dd>${crmPct(selected.paidShare)}</dd></div>
-            ${(selected.occasions || []).length ? `<div class="crm-kv-wide"><dt>Occasions</dt><dd>${selected.occasions.map((o) => `<span class="crm-chip-static">${esc((typeof STAFF_OCCASION_LABELS !== 'undefined' && STAFF_OCCASION_LABELS[o]) || o)}</span>`).join('')}</dd></div>` : ''}
-          </div>
-        </div>
-
-        <div class="info-block crm-block">
-          <div class="crm-block-head"><h3>Toutes ses réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
-          <div class="crm-block-sub">${Number(selected.players) || 0} joueurs cumulés · ${money(selected.spent)}</div>
+          <div class="crm-block-head"><h3>Ses réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
           <div class="crm-history">${(selected.history || []).map(crmHistoryItem).join('') || '<div class="crm-muted">Aucune réservation.</div>'}</div>
         </div>
 
         ${crmCommsBlock(selected)}
 
-        <div class="info-block crm-block crm-meta">
-          ${selected.leadTimeAvgDays ? `<div><dt>Délai de réservation moyen</dt><dd>${selected.leadTimeAvgDays} j à l'avance</dd></div>` : ''}
-          ${(selected.centers || []).length ? `<div><dt>Centre(s)</dt><dd>${esc(selected.centers.join(', '))}</dd></div>` : ''}
-          ${selected.formulas ? `<div><dt>Formules réservées</dt><dd>${selected.formulas}</dd></div>` : ''}
-          ${selected.notesConcat ? `<div class="crm-kv-wide"><dt>Notes staff</dt><dd>${esc(selected.notesConcat)}</dd></div>` : ''}
-        </div>
+        ${selected.notesConcat ? `<div class="info-block crm-block crm-meta"><div class="crm-kv-grid"><div class="crm-kv-wide"><dt>Notes staff</dt><dd>${esc(selected.notesConcat)}</dd></div></div></div>` : ''}
       </div>`;
   }
 
@@ -548,26 +483,67 @@
   window.renderStaffClientsPage = function () {
     const root = document.getElementById('staffClientsPage');
     if (!root) return;
+    const segment = getStaffClientSegment();
     const allRows = getStaffClientRows();
     const rows = getFilteredStaffClientRows();
-    const metrics = getStaffClientMetrics(allRows, getStaffClientSourceReservations());
+    const vipThreshold = getStaffClientVipThreshold(allRows);
+    const ctx = { vipThreshold, segment };
+    const sync = staffClientDataCache.loading ? 'Synchronisation…' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'Données locales';
+
+    // 4 chiffres qui déclenchent chacun UNE décision (cliquables → segment).
+    const dossiers = (typeof buildStaffGroupDossiers === 'function' ? buildStaffGroupDossiers() : []).filter((d) => d.kind === 'reservation');
+    const today = staffGroupToday();
+    const within = (d, days) => d.dateISO && staffClientDaysBetween(d.dateISO, today) <= days;
+    const upcoming7 = dossiers.filter((d) => within(d, 7));
+    const upcoming7Value = upcoming7.reduce((sum, d) => { const v = getStaffGroupDossierValue(d); return sum + (v.value || 0); }, 0);
+    const birthdays30 = dossiers.filter((d) => within(d, 30) && getStaffGroupDossierOccasion(d) === 'anniversaire').length;
+    const relancer = allRows.filter((row) => getStaffClientRelance(row).due).length;
+    const statBtn = (seg, html) => `<div class="crm-stat-link${segment === seg ? ' is-active' : ''}" role="button" tabindex="0" onclick="setStaffClientSegment('${seg}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setStaffClientSegment('${seg}');}">${html}</div>`;
+
     const selected = rows.find((r) => r.id === state.staffSelectedClientId)
       || allRows.find((r) => r.id === state.staffSelectedClientId)
       || rows[0] || allRows[0] || null;
     if (selected && state.staffSelectedClientId !== selected.id) state.staffSelectedClientId = selected.id;
-    const sync = staffClientDataCache.loading ? 'Synchronisation…' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'Données locales';
-    const limit = Number(state.staffClientListLimit) || 40;
-    const shown = rows.slice(0, limit);
-    const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
-    const th = (key, label, num, secondary) => {
-      const on = sortState.key === key;
-      return `<th class="${num ? 'num ' : ''}${secondary ? 'col-secondary ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort">${on ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`;
-    };
-    const tableRows = shown.map((row) => crmListRow(row, selected)).join('');
+
+    let body = '';
+    if (segment === 'avenir') {
+      // L'ancienne page « Groupes & anniversaires » vit ici : dossiers datés,
+      // checklist prépa, leads sur mesure, priorités, charge à venir.
+      body = renderStaffGroupWorkspaceV2();
+    } else {
+      const limit = Number(state.staffClientListLimit) || 40;
+      const shown = rows.slice(0, limit);
+      const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
+      const th = (key, label, num) => {
+        const on = sortState.key === key;
+        return `<th class="${num ? 'num ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort">${on ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`;
+      };
+      const lastTh = segment === 'relancer'
+        ? '<th class="crm-th">Pourquoi</th>'
+        : '<th class="crm-th"></th>';
+      const tableRows = shown.map((row) => crmListRow(row, selected, ctx)).join('');
+      body = `<section class="pv2-split crm-split">
+        <article class="pv2-panel crm-list-panel">
+          <div class="crm-table-wrap">
+            <table class="crm-table">
+              <thead><tr>${th('name', 'Client') + th('lastDate', 'Venue') + th('reservations', 'Visites', true) + th('spent', 'Dépensé', true)}${lastTh}</tr></thead>
+              <tbody>${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment. 👍' : 'Aucun résultat.'} <button type="button" class="crm-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
+            </table>
+          </div>
+          <div class="crm-list-foot">
+            <span>${shown.length} affiché${shown.length > 1 ? 's' : ''} sur ${rows.length}</span>
+            ${rows.length > shown.length ? `<button type="button" class="crm-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
+          </div>
+        </article>
+        <article class="pv2-panel crm-fiche-panel">
+          ${crmFiche(selected, ctx)}
+        </article>
+      </section>`;
+    }
 
     root.innerHTML = `<div class="pv2-shell crm-shell">
       ${bar({
-        crumb: 'Clients & Marketing / CRM',
+        crumb: 'Clients & Marketing',
         title: 'Clients',
         sub: esc(sync),
         actions: `
@@ -577,34 +553,20 @@
           <button type="button" class="pv2-btn primary" onclick="openStaffClientBooking()">+ Nouveau client</button>`,
       })}
 
-      <section class="pv2-stats">
-        ${stat({ label: 'Total clients', count: metrics.totalClients, foot: `${metrics.reservations} réservations réelles`, series: metrics.series.clients })}
-        ${stat({ label: 'Clients actifs', count: metrics.activeClients, foot: `${metrics.activeShare}% du total`, series: metrics.series.players })}
-        ${stat({ label: 'Nouveaux ce mois', count: metrics.newThisMonth, foot: `${metrics.previousNew} le mois précédent` })}
-        ${stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' })}
+      <section class="pv2-stats crm-stats">
+        ${statBtn('avenir', stat({ label: 'À venir 7 j', count: upcoming7.length, foot: upcoming7Value ? `${money(upcoming7Value)} attendus` : 'dossiers à préparer' }))}
+        ${statBtn('avenir', stat({ label: 'Anniversaires 30 j', count: birthdays30, foot: 'fêtes à préparer' }))}
+        ${statBtn('relancer', stat({ label: 'À relancer', count: relancer, foot: 'clients à récupérer' }))}
+        ${statBtn('vip', stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' }))}
       </section>
 
-      ${crmFacetBar(rows.length, allRows.length)}
+      ${crmSegmentBar(rows.length, allRows.length)}
 
-      <section class="pv2-split crm-split">
-        <article class="pv2-panel crm-list-panel">
-          <div class="crm-table-wrap">
-            <table class="crm-table">
-              <thead><tr>${th('name', 'Client') + th('status', 'Statut') + th('reservations', 'Visites', true) + th('players', 'Joueurs', true, true) + th('spent', 'Dépensé', true) + th('avgBasket', 'Panier moy.', true) + th('lastDate', 'Dernière visite')}</tr></thead>
-              <tbody>${tableRows || `<tr><td colspan="7"><div class="crm-empty"><strong>Aucun client</strong>Aucun résultat pour ces filtres. <button type="button" class="crm-clear" onclick="clearStaffClientFilters()">Réinitialiser</button></div></td></tr>`}</tbody>
-            </table>
-          </div>
-          <div class="crm-list-foot">
-            <span>${shown.length} affiché${shown.length > 1 ? 's' : ''} sur ${rows.length}</span>
-            ${rows.length > shown.length ? `<button type="button" class="crm-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
-          </div>
-        </article>
-        <article class="pv2-panel crm-fiche-panel">
-          ${crmFiche(selected)}
-        </article>
-      </section>
+      ${body}
     </div>`;
     mount(root, 'clients');
+    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
+    if (segment === 'avenir' && typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
   };
 
   /* ==========================================================================
@@ -740,35 +702,6 @@
 
   // La voix de marque est un objet {person, energy, ...} : on en tire une chaîne
   // lisible (jamais « [object Object] »).
-  function voiceText(voice) {
-    if (!voice) return '';
-    if (typeof voice === 'string') return voice;
-    return [voice.person, voice.energy].filter(Boolean).join(', ');
-  }
-
-  // Détail du score qualité pour l'infobulle : rappelle les critères réels de
-  // scoreDraft et, si disponible, la note obtenue par critère.
-  function scoreTitle(evaluation) {
-    const checks = Array.isArray(evaluation && evaluation.checks) ? evaluation.checks : [];
-    const header = 'Score qualité du texte, noté sur : accroche, CTA, preuve, longueur, ton.';
-    if (!checks.length) return header;
-    const lines = checks.map((c) => `• ${c.label} : ${Math.round(Number(c.score) || 0)}/100`);
-    return `${header}\n${lines.join('\n')}`;
-  }
-
-  // Signaux réels de la période (réservations/joueurs), reconstitués depuis le
-  // dernier run persisté qui les porte. Sert à labelliser « c'est TA data ».
-  function centerSignals(center) {
-    const runs = (center && center.runs) || [];
-    return runs.map((r) => r && r.payload && r.payload.signals).find(Boolean) || null;
-  }
-
-  function dataProvenanceLabel(signals) {
-    if (signals && Number(signals.reservationCount) > 0) {
-      return `Basé sur tes ${Number(signals.reservationCount)} réservation(s) et ${Number(signals.players) || 0} joueur(s) réels sur la période.`;
-    }
-    return 'Aucune réservation sur la période : ces pistes s’appuient sur l’ADN de marque et le calendrier type (exemples honnêtes, pas de fausse data).';
-  }
 
   function ci(name) {
     const paths = {
@@ -790,260 +723,138 @@
   }
 
   const channelLabel = (p) => CHANNEL_LABELS[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Canal');
-  const scoreTone = (score) => (Number(score) >= 85 ? 'green' : Number(score) >= 70 ? 'amber' : 'red');
-  const missionStateLabel = (st) => (st === 'done' ? 'Fait' : st === 'active' ? 'En cours' : st === 'attention' ? 'À surveiller' : 'À faire');
 
-  function marketingCenters() {
-    const status = typeof staffMarketingAgentsCache !== 'undefined' ? staffMarketingAgentsCache.status : null;
-    return Array.isArray(status && status.centers) ? status.centers : [];
+  /* ==========================================================================
+     MARKETING — le conseiller data (insight-only : il propose, tu appliques,
+     il mesure). Les idées viennent du serveur (marketing_insights, générées
+     chaque matin par le cron sur les chiffres réels + météo + calendrier).
+     ======================================================================== */
+
+  const mkIa = {
+    loaded: false, loading: false, error: '',
+    insights: [], metrics: null, period: 30, metricsLoading: false, busyId: null,
+  };
+  window.mkIa = mkIa;
+
+  async function loadMarketingIa(force = false) {
+    if (mkIa.loading || (mkIa.loaded && !force)) return;
+    mkIa.loading = true;
+    mkIa.error = '';
+    try {
+      const centerId = encodeURIComponent(state.currentCenterId || 'libramont');
+      const payload = await apiRequest(`/api/ops?action=marketingInsights&centerId=${centerId}`);
+      mkIa.insights = payload.insights || [];
+      mkIa.loaded = true;
+    } catch (error) {
+      mkIa.error = error.message || 'Conseiller marketing indisponible.';
+    } finally {
+      mkIa.loading = false;
+      renderStaffCampaignsPage();
+    }
+    loadMarketingMetrics(true);
+  }
+  window.loadMarketingIa = loadMarketingIa;
+
+  async function loadMarketingMetrics(force = false) {
+    if (mkIa.metricsLoading || (mkIa.metrics && !force)) return;
+    mkIa.metricsLoading = true;
+    try {
+      const centerId = encodeURIComponent(state.currentCenterId || 'libramont');
+      const to = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+      const fromDate = new Date(`${to}T12:00:00Z`);
+      fromDate.setUTCDate(fromDate.getUTCDate() - (mkIa.period - 1));
+      const from = fromDate.toISOString().slice(0, 10);
+      mkIa.metrics = await apiRequest(`/api/ops?action=dailyMetrics&centerId=${centerId}&from=${from}&to=${to}`);
+    } catch (error) {
+      mkIa.metrics = null;
+    } finally {
+      mkIa.metricsLoading = false;
+      renderStaffCampaignsPage();
+    }
   }
 
-  function activeMarketingCenter(centers) {
-    const wanted = state.staffCampaignCenterId || state.adminCenterId || 'libramont';
-    return centers.find((c) => c.centerId === wanted) || centers[0] || null;
-  }
-
-  function centerName(center) {
-    const fromDraft = (center && center.runs || []).map((r) => r.payload && r.payload.centerName).find(Boolean);
-    if (fromDraft) return fromDraft;
-    const id = (center && center.centerId) || '';
-    return id ? id.charAt(0).toUpperCase() + id.slice(1) : 'Centre';
-  }
-
-  // Reconstitue les drafts prêts à afficher depuis les runs persistés (le dernier
-  // run par plateforme), le status ne les expose pas à plat.
-  function centerDrafts(center) {
-    const seen = new Set();
-    const out = [];
-    ((center && center.runs) || []).forEach((run) => {
-      const d = run && run.payload;
-      if (!d || !d.platform || seen.has(d.platform)) return;
-      seen.add(d.platform);
-      out.push(d);
-    });
-    return out;
-  }
-
-  function centerSummary(drafts) {
-    const sc = (d) => Number(d && d.evaluation && d.evaluation.score) || 0;
-    const scores = drafts.map(sc).filter(Boolean);
-    return {
-      averageScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0,
-      ready: drafts.filter((d) => sc(d) >= 85).length,
-      review: drafts.filter((d) => sc(d) >= 70 && sc(d) < 85).length,
-      blocked: drafts.filter((d) => d.evaluation && d.evaluation.blocked).length,
-    };
-  }
-
-  function campaignProgress(missions, summary) {
-    const list = Array.isArray(missions) ? missions : [];
-    const total = list.length || 1;
-    const done = list.filter((m) => m.status === 'done').length;
-    const pct = Math.round((done / total) * 100);
-    let streak = 0;
-    for (const m of list) { if (m.status === 'done') streak += 1; else break; }
-    const ready = Number(summary.ready) || 0;
-    const review = Number(summary.review) || 0;
-    // Tout est dérivé de données réelles : jalons validés du parcours +
-    // contenus prêts/à relire (issus des scores qualité réels).
-    const level = done;
-    const tier = CAMPAIGN_TIERS[Math.min(level, CAMPAIGN_TIERS.length - 1)];
-    const xp = done * 100 + ready * 20 + review * 8;
-    const next = list.find((m) => m.status !== 'done') || null;
-    return {
-      total: list.length,
-      done,
-      pct,
-      streak,
-      level,
-      tier,
-      xp,
-      next,
-      levelExplain: `Niveau = jalons du parcours validés (${done} sur ${list.length}).`,
-      xpExplain: `XP = 100 par jalon validé + 20 par contenu prêt + 8 par contenu à relire (${done}×100 + ${ready}×20 + ${review}×8).`,
-      streakExplain: 'Jalons = étapes validées d’affilée depuis le début du parcours.',
-    };
-  }
-
-  function renderMissionPath(missions, progress) {
-    const list = Array.isArray(missions) ? missions : [];
-    const nodes = list.map((m, i) => {
-      const st = ['done', 'active', 'attention', 'todo'].includes(m.status) ? m.status : 'todo';
-      const icon = st === 'done' ? ci('check') : st === 'active' ? ci('bolt') : st === 'attention' ? ci('alert') : ci('lock');
-      const last = i === list.length - 1;
-      return `<li class="pv2-mission ${st}" ${st === 'active' ? 'aria-current="step"' : ''}>
-        <span class="pv2-mission-node" aria-hidden="true">${icon}</span>
-        ${last ? '' : '<span class="pv2-mission-link" aria-hidden="true"></span>'}
-        <div class="pv2-mission-body">
-          <div class="pv2-mission-top"><strong>${esc(m.label)}</strong><span class="pv2-mission-state">${esc(missionStateLabel(st))}</span></div>
-          <p>${esc(m.detail || '')}</p>
-        </div>
-      </li>`;
-    }).join('');
-    return `<ol class="pv2-mission-path">${nodes}</ol>`;
-  }
-
-  function renderDraftCard(draft) {
-    const c = draft.content || {};
-    const body = c.body || draft.body || '';
-    const evaluation = draft.evaluation || {};
-    const score = Number(evaluation.score) || 0;
-    const occLabel = draft.occasionLabel || draft.occasion || 'Général';
-    const audienceLabel = AUDIENCE_LABELS[draft.audience] || draft.audience || 'Grand public';
-    const clipKey = `${draft.centerId || ''}:${draft.platform || ''}:${draft.occasion || ''}`;
-    campaignClipboard.set(clipKey, [c.hook, '', body, '', c.cta].filter((x) => x != null && x !== '').join('\n').trim());
-    const benefits = (c.benefits || []).slice(0, 5);
-    return `<article class="pv2-camp-draft">
-      <div class="pv2-camp-draft-occ">
-        <strong>${esc(occLabel)}</strong>
-        <span>${esc(audienceLabel)}</span>
-      </div>
-      <header class="pv2-camp-draft-head">
-        <div class="pv2-camp-badges">
-          <span class="pv2-chip accent">${ci('channel')}${esc(channelLabel(draft.platform))}</span>
-        </div>
-        <span class="pv2-camp-score ${scoreTone(score)}" title="${esc(scoreTitle(evaluation))}"><em>${score}</em><small>/100</small></span>
-      </header>
-      ${c.hook ? `<p class="pv2-camp-hook">${esc(c.hook)}</p>` : ''}
-      ${body ? `<div class="pv2-camp-text">${esc(body)}</div>` : ''}
-      ${benefits.length ? `<ul class="pv2-camp-benefits">${benefits.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
-      ${c.proof ? `<p class="pv2-camp-proof">${ci('star')}<span>${esc(c.proof)}</span></p>` : ''}
-      ${c.urgency ? `<p class="pv2-camp-urgency">${ci('alert')}<span>${esc(c.urgency)}</span></p>` : ''}
-      <div class="pv2-camp-draft-foot">
-        ${c.cta ? `<span class="pv2-camp-cta">${esc(c.cta)}</span>` : '<span></span>'}
-        <button type="button" class="pv2-btn" onclick="pv2CopyDraft('${escJs(clipKey)}')">${ci('copy')}Copier</button>
-      </div>
-    </article>`;
-  }
-
-  function renderStrategyBoard(strategy, dataLabel) {
-    const gaps = (strategy.gapAnalysis || []).slice().sort((a, b) => (a.priority || 9) - (b.priority || 9)).slice(0, 4);
-    const cal = (strategy.editorialCalendar || []).slice(0, 6);
-    const improvements = (strategy.contentImprovements || []).slice(0, 4);
-    const priorities = (strategy.priorities || []).slice(0, 4);
-
-    const gapCard = `<article class="pv2-camp-card">
-      <div class="pv2-camp-card-head">${ci('target')}<h3>Ce qu'il manque</h3></div>
-      <p class="pv2-camp-card-sub">Occasions pas encore travaillées vs. ta demande réelle.</p>
-      <ul class="pv2-camp-list">${gaps.map((g) => {
-        const meta = GAP_META[g.status] || { label: g.status, tone: 'blue' };
-        return `<li>
-          <div class="pv2-camp-list-top"><strong>${esc(g.label)}</strong><span class="pv2-chip ${meta.tone}">${esc(meta.label)}</span></div>
-          <p>${esc(g.insight || '')}</p>
-          <small>${esc(g.recommendation || '')}</small>
-        </li>`;
-      }).join('')}</ul>
-    </article>`;
-
-    const calCard = `<article class="pv2-camp-card">
-      <div class="pv2-camp-card-head">${ci('calendar')}<h3>Calendrier éditorial</h3></div>
-      <p class="pv2-camp-card-sub">Quoi publier, quel jour, sur quel canal.</p>
-      <ul class="pv2-camp-cal">${cal.map((c) => `<li>
-        <span class="pv2-camp-cal-slot">${esc(c.slot)}</span>
-        <div class="pv2-camp-cal-body">
-          <strong>${esc(c.occasionLabel || '')}</strong>
-          ${c.angle ? `<p>${esc(c.angle)}</p>` : ''}
-          <div class="pv2-camp-cal-ch">${(c.channels || []).map((ch) => `<span class="pv2-chip">${esc(channelLabel(ch))}</span>`).join('')}</div>
-        </div>
-      </li>`).join('')}</ul>
-    </article>`;
-
-    const impCard = `<article class="pv2-camp-card">
-      <div class="pv2-camp-card-head">${ci('wrench')}<h3>Améliorations concrètes</h3></div>
-      <p class="pv2-camp-card-sub">Points faibles détectés sur les scripts générés.</p>
-      ${improvements.length
-        ? `<ul class="pv2-camp-list">${improvements.map((im) => `<li>
-            <div class="pv2-camp-list-top"><strong>${esc(im.area || '')}</strong><span class="pv2-camp-score ${scoreTone(im.score)}"><em>${Number(im.score) || 0}</em></span></div>
-            <p>${esc(im.issue || '')}</p>
-            <small>${esc(im.fix || '')}</small>
-            <span class="pv2-chip accent">${esc(channelLabel(im.platform))}</span>
-          </li>`).join('')}</ul>`
-        : '<div class="pv2-empty"><strong>Rien à corriger</strong>Tous les scripts passent le contrôle qualité.</div>'}
-    </article>`;
-
-    const prioCard = `<article class="pv2-camp-card">
-      <div class="pv2-camp-card-head">${ci('flag')}<h3>Priorités</h3></div>
-      <p class="pv2-camp-card-sub">Par quoi commencer cette semaine.</p>
-      ${priorities.length
-        ? `<ol class="pv2-camp-prio">${priorities.map((p) => `<li>
-            <span class="pv2-camp-rank">${Number(p.rank) || 0}</span>
-            <div><strong>${esc(p.action || '')}</strong><p>${esc(p.impact || '')}</p></div>
-          </li>`).join('')}</ol>`
-        : '<div class="pv2-empty"><strong>Aucune priorité</strong>Lancez une analyse pour établir le plan.</div>'}
-    </article>`;
-
-    return `<section class="pv2-panel pv2-camp-strategy">
-      <div class="pv2-panel-head has-sub">
-        <div><h2>Conseil d'agence</h2><p class="pv2-panel-sub">Ce qu'il faut travailler en priorité, déduit de tes réservations. ${esc(dataLabel || '')}</p></div>
-        <small>stratégie actionnable</small>
-      </div>
-      <div class="pv2-panel-body"><div class="pv2-camp-board">${gapCard}${calCard}${impCard}${prioCard}</div></div>
-    </section>`;
-  }
-
-  function renderCampAgents(agents) {
-    const list = Array.isArray(agents) ? agents : [];
-    if (!list.length) return '';
-    return `<section class="pv2-panel">
-      <div class="pv2-panel-head has-sub">
-        <div><h2>Comment chaque canal est rédigé</h2><p class="pv2-panel-sub">Un rédacteur spécialisé par réseau : il écrit le texte puis l'auto-évalue sur les mêmes critères qualité. C'est ce qui produit le score de chaque carte ci-dessus.</p></div>
-        <small>${list.length} canal(aux)</small>
-      </div>
-      <div class="pv2-panel-body"><div class="pv2-camp-agents">${list.map((a) => {
-        const known = a.score != null;
-        const score = known ? Math.round(Number(a.score) || 0) : '--';
-        const criteria = Number(a.criteriaChecked || 0);
-        const mode = a.generationMode === 'openai' ? 'IA + contrôle' : 'règles + contrôle';
-        return `<article class="pv2-camp-agent">
-          <div class="pv2-camp-agent-top">
-            <span class="pv2-camp-agent-dot ${a.connected ? 'on' : ''}" aria-hidden="true" title="${a.connected ? 'Canal officiel connecté (publication possible)' : 'Brouillon interne (pas encore connecté)'}"></span>
-            <strong>${esc(channelLabel(a.platform))}</strong>
-            <span class="pv2-camp-score ${known ? scoreTone(a.score) : ''}" title="Score qualité du dernier script rédigé pour ce canal."><em>${esc(String(score))}</em>${known ? '<small>/100</small>' : ''}</span>
-          </div>
-          <p>${esc(a.currentWork || a.mission || 'Analyse des données du centre.')}</p>
-          <small>${esc(mode)} · ${criteria} critère(s) vérifié(s) · ${a.connected ? 'canal connecté' : 'brouillon interne'}</small>
-        </article>`;
-      }).join('')}</div></div>
-    </section>`;
-  }
-
-  window.pv2SelectCampaignIdea = function (id) {
-    state.staffCampaignSelectedId = id;
-    state.staffCampaignDraft = null;
-    save();
+  window.mkIaSetPeriod = function (days) {
+    mkIa.period = Number(days) || 30;
+    mkIa.metrics = null;
     renderStaffCampaignsPage();
+    loadMarketingMetrics(true);
   };
 
-  window.pv2SetCampaignChannel = function (channel) {
-    state.staffCampaignChannel = channel;
-    save();
-    renderStaffCampaignsPage();
-  };
-
-  window.pv2SetCampaignCenter = function (centerId) {
-    state.staffCampaignCenterId = centerId;
-    save();
-    renderStaffCampaignsPage();
-  };
-
-  window.pv2CopyDraft = function (key) {
-    const text = campaignClipboard.get(key);
-    if (!text) { if (typeof toast === 'function') toast('Contenu indisponible.'); return; }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text)
-        .then(() => (typeof toast === 'function' ? toast('Contenu copié.') : null))
-        .catch(() => (typeof toast === 'function' ? toast('Copie indisponible.') : null));
-    } else if (typeof toast === 'function') {
-      toast('Copie indisponible.');
+  window.mkIaCopy = async function (id) {
+    const insight = mkIa.insights.find((item) => Number(item.id) === Number(id));
+    if (!insight) return;
+    const text = insight.ready_content || insight.body || '';
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copié — colle-le sur ton réseau.');
+    } catch (error) {
+      toast('Copie auto impossible — sélectionne le texte à la main.');
     }
   };
 
-  /* ==========================================================================
-     CAMPAGNES EMAIL RÉELLES — segments CRM calculés serveur, envoi via la
-     pipeline communications (stats relues en direct, jamais stockées).
-     Ouvertures/clics : non suivis tant qu'aucun pixel/lien tracké — affiché
-     honnêtement, jamais de faux chiffres.
-     ========================================================================== */
+  window.mkIaStatus = async function (id, status) {
+    if (mkIa.busyId) return;
+    mkIa.busyId = Number(id);
+    renderStaffCampaignsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'insightStatus', id: Number(id), status, centerId: state.currentCenterId || 'libramont' }),
+      });
+      const insight = mkIa.insights.find((item) => Number(item.id) === Number(id));
+      if (insight) {
+        insight.status = status;
+        if (status === 'applied') insight.applied_at = new Date().toISOString();
+      }
+      toast(status === 'applied' ? 'Noté ! Je mesure l’effet réel dans 14 jours.' : 'OK — je ne re-proposerai plus cette idée.');
+    } catch (error) {
+      toast(error.message || 'Action impossible.');
+    } finally {
+      mkIa.busyId = null;
+      renderStaffCampaignsPage();
+    }
+  };
+
+  function mkIdeaCard(insight) {
+    const busy = mkIa.busyId === Number(insight.id);
+    const channel = CHANNEL_LABELS[insight.channel] || (insight.channel ? insight.channel.charAt(0).toUpperCase() + insight.channel.slice(1) : 'Idée');
+    const basis = Array.isArray(insight.data_basis) ? insight.data_basis : [];
+    return `<article class="mk-idea">
+      <div class="mk-idea-head">
+        <span class="mk-idea-channel">${esc(channel)}</span>
+        <strong>${esc(insight.title || 'Idée')}</strong>
+      </div>
+      ${insight.body ? `<p class="mk-idea-why">${esc(insight.body)}</p>` : ''}
+      ${insight.ready_content ? `<div class="mk-idea-content">${esc(insight.ready_content)}</div>` : ''}
+      ${basis.length ? `<details class="mk-idea-basis"><summary>Les chiffres derrière cette idée</summary><ul>${basis.slice(0, 5).map((fact) => `<li>${esc(fact.label || fact.id || '')}${fact.sampleSize ? ` <small>(${esc(String(fact.sampleSize))} j)</small>` : ''}</li>`).join('')}</ul></details>` : ''}
+      <div class="mk-idea-actions">
+        ${insight.ready_content ? `<button type="button" class="pv2-btn" onclick="mkIaCopy(${Number(insight.id)})">${ci('copy')}Copier</button>` : ''}
+        <button type="button" class="pv2-btn primary" onclick="mkIaStatus(${Number(insight.id)}, 'applied')" ${busy ? 'disabled' : ''}>${ci('check')}C’est fait</button>
+        <button type="button" class="pv2-btn" onclick="mkIaStatus(${Number(insight.id)}, 'ignored')" ${busy ? 'disabled' : ''}>Ignorer</button>
+      </div>
+    </article>`;
+  }
+
+  const MK_VERDICTS = {
+    validated: { label: 'Ça a marché', tone: 'good' },
+    refuted: { label: 'Pas d’effet mesuré', tone: 'bad' },
+    inconclusive: { label: 'Pas assez net', tone: 'mid' },
+  };
+
+  function mkMeasuredLine(insight) {
+    const verdict = MK_VERDICTS[insight.status] || MK_VERDICTS.inconclusive;
+    const r = insight.result || {};
+    const delta = r.deltaPct === null || r.deltaPct === undefined ? null : Math.round(Number(r.deltaPct));
+    const detail = delta === null
+      ? 'pas assez de jours comparables pour trancher'
+      : `${delta > 0 ? '+' : ''}${delta} % de visiteurs (avant ~${esc(String(r.before ?? '?'))}/j, après ~${esc(String(r.after ?? '?'))}/j, sur ${esc(String(r.sampleDays ?? '?'))} j comparables)`;
+    return `<li class="mk-learned ${verdict.tone}">
+      <span class="mk-learned-badge">${esc(verdict.label)}</span>
+      <div><strong>${esc(insight.title || 'Idée')}</strong><small>${detail}</small></div>
+    </li>`;
+  }
+
+
   const pv2Camp = {
     loaded: false, loading: false, error: '', campaigns: [], segments: [], channel: {},
     formOpen: false, editingId: null, busy: false, audience: {}, audienceLoading: '',
@@ -1377,136 +1188,86 @@
   window.renderStaffCampaignsPage = function () {
     const root = document.getElementById('staffCampaignsPage');
     if (!root) return;
+    if (!mkIa.loaded && !mkIa.loading) setTimeout(() => loadMarketingIa(), 0);
 
-    // Charge le moteur marketing au premier affichage (idempotent, cache 45 s).
-    if (typeof loadStaffMarketingAgents === 'function' && typeof staffMarketingAgentsCache !== 'undefined'
-        && !staffMarketingAgentsCache.loaded && !staffMarketingAgentsCache.loading) {
-      setTimeout(() => loadStaffMarketingAgents(), 0);
-    }
-
-    const cache = typeof staffMarketingAgentsCache !== 'undefined' ? staffMarketingAgentsCache : {};
-    const loading = Boolean(cache.loading);
-    const running = Boolean(cache.running);
-    const error = cache.error || '';
-    const updatedAt = cache.lastLoadedAt && typeof formatOpsTimestamp === 'function'
-      ? formatOpsTimestamp(cache.lastLoadedAt)
-      : (cache.lastLoadedAt || 'jamais');
-
-    const centers = marketingCenters();
-    const center = activeMarketingCenter(centers);
+    const proposed = mkIa.insights.filter((item) => item.status === 'proposed').slice(0, 3);
+    const waiting = mkIa.insights.filter((item) => item.status === 'applied');
+    const measured = mkIa.insights.filter((item) => ['validated', 'refuted', 'inconclusive'].includes(item.status)).slice(0, 6);
+    const running = typeof staffMarketingAgentsCache !== 'undefined' && Boolean(staffMarketingAgentsCache.running);
 
     const actions = `
-      <button type="button" class="pv2-btn" onclick="loadStaffMarketingAgents(true)">${ci('refresh')}Actualiser</button>
-      <button type="button" class="pv2-btn" onclick="exportStaffCampaignsCsv()">Exporter</button>
-      <button type="button" class="pv2-btn primary" onclick="runStaffMarketingAgents()" ${running ? 'disabled' : ''}>${ci('bolt')}${running ? 'Analyse…' : 'Analyser'}</button>`;
+      <button type="button" class="pv2-btn" onclick="loadMarketingIa(true)">${ci('refresh')}Actualiser</button>
+      <button type="button" class="pv2-btn primary" onclick="runStaffMarketingAgents()" ${running ? 'disabled' : ''}>${ci('bolt')}${running ? 'Analyse…' : 'Analyser maintenant'}</button>`;
 
-    if (!center) {
-      root.innerHTML = `<div class="pv2-shell">
-        ${bar({
-          crumb: 'Clients & Marketing / Studio',
-          title: 'Campagnes',
-          sub: `Parcours marketing factuel · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
-          actions,
-        })}
-        ${renderPv2RealCampaigns()}
-        <section class="pv2-panel"><div class="pv2-panel-body">
-          <div class="pv2-empty"><strong>${loading ? 'Chargement du moteur marketing…' : 'Aucune donnée marketing'}</strong>${loading ? 'Lecture des données réelles du centre.' : 'Lancez une analyse pour générer le parcours et les contenus prêts à publier.'}</div>
-        </div></section>
-      </div>`;
-      mount(root, 'campaigns');
-      return;
-    }
-
-    const brand = center.brand || {};
-    const strategy = center.strategy || {};
-    const missions = center.missions || [];
-    const agents = center.agents || [];
-    const drafts = centerDrafts(center);
-    const summary = centerSummary(drafts);
-    const progress = campaignProgress(missions, summary);
-    const signals = centerSignals(center);
-    const dataLabel = dataProvenanceLabel(signals);
-    const occasionsCount = new Set(drafts.map((d) => d.occasion || d.occasionLabel).filter(Boolean)).size;
-
-    const rating = brand.proof && brand.proof.rating != null ? brand.proof.rating : '';
-    const diff = (brand.differentiators || []).slice(0, 3);
-
-    const centerSeg = centers.length > 1
-      ? seg(centers.map((c) => ({ key: c.centerId, label: centerName(c), active: c.centerId === center.centerId })), 'pv2SetCampaignCenter')
-      : '';
-
-    const hero = `<section class="pv2-camp-hero">
-      <div class="pv2-camp-brand">
-        <div class="pv2-camp-brand-top">
-          <h2>${esc(brand.name || centerName(center))}</h2>
-          ${rating !== '' ? `<span class="pv2-camp-rating" title="Note Google réelle de Fun Galaxy (avis clients).">${ci('star')}<b>${esc(String(rating))}</b><small>note Google réelle</small></span>` : ''}
-        </div>
-        ${brand.tagline ? `<p class="pv2-camp-tagline">${esc(brand.tagline)}</p>` : ''}
-        ${strategy.positioning ? `<p class="pv2-camp-positioning">${esc(strategy.positioning)}</p>` : ''}
-        ${diff.length ? `<div class="pv2-camp-diff">${diff.map((d) => `<span class="pv2-chip">${esc(d)}</span>`).join('')}</div>` : ''}
+    const todo = `<section class="pv2-panel">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>À faire cette semaine</h2><p class="pv2-panel-sub">Des idées appuyées sur tes chiffres réels, la météo et le calendrier. Copie, publie, marque « fait » — je mesure l’effet.</p></div>
+        <small>${proposed.length} idée${proposed.length > 1 ? 's' : ''}</small>
       </div>
-      <div class="pv2-camp-level">
-        <div class="pv2-level-head">
-          <span class="pv2-level-ring" style="--p:${progress.pct}" title="${esc(progress.levelExplain)}"><b>${progress.level}</b><small>/ ${progress.total}</small></span>
-          <div class="pv2-level-meta">
-            <strong>Niveau ${progress.level} · ${esc(progress.tier)}</strong>
-            <span title="${esc(progress.xpExplain)}">${progress.xp} XP</span>
-            <span class="pv2-streak" title="${esc(progress.streakExplain)}">${ci('flame')}<b>${progress.streak}</b> jalon(s) d'affilée</span>
-            <span class="pv2-level-note">${esc(progress.levelExplain)}</span>
-          </div>
-        </div>
-        <div class="pv2-xpbar" role="progressbar" aria-valuenow="${progress.pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progression du parcours marketing">
-          <span class="pv2-xpbar-fill" style="transform:scaleX(${progress.pct / 100})"></span>
-        </div>
-        <div class="pv2-camp-counters">
-          <span class="pv2-camp-count" title="Moyenne des scores qualité des ${drafts.length} contenu(s) généré(s)."><b>${summary.averageScore}</b><small>score moyen</small></span>
-          <span class="pv2-camp-count green" title="Contenu prêt = score ≥ 85 (utilisable après relecture rapide)."><b>${summary.ready}</b><small>prêt(s)</small></span>
-          <span class="pv2-camp-count amber" title="À relire = score 70 à 84 (bon, mais à peaufiner avant publication)."><b>${summary.review}</b><small>à relire</small></span>
-          <span class="pv2-camp-count red" title="Bloqué = contient une promesse interdite (dispo ou session garantie) à corriger."><b>${summary.blocked}</b><small>bloqué(s)</small></span>
-        </div>
-        <p class="pv2-camp-counters-note">Compteurs calculés sur les ${drafts.length} contenu(s) · score = accroche, CTA, preuve, longueur, ton.</p>
-        ${progress.next
-          ? `<div class="pv2-camp-next"><span class="pv2-camp-next-ico">${ci('bolt')}</span><div><small>Pour monter de niveau</small><strong>${esc(progress.next.label)}</strong><p>${esc(progress.next.detail || '')}</p></div></div>`
-          : `<div class="pv2-camp-next done"><span class="pv2-camp-next-ico">${ci('check')}</span><div><strong>Parcours complet</strong><p>Tous les jalons sont validés sur ce centre.</p></div></div>`}
+      <div class="pv2-panel-body">
+        ${mkIa.error
+          ? `<div class="pv2-empty"><strong>${esc(mkIa.error)}</strong><button type="button" class="pv2-btn" onclick="loadMarketingIa(true)">Réessayer</button></div>`
+          : proposed.length
+            ? `<div class="mk-idea-grid">${proposed.map(mkIdeaCard).join('')}</div>`
+            : `<div class="pv2-empty"><strong>${mkIa.loading ? 'Analyse en cours…' : 'Rien d’urgent pour l’instant'}</strong>${mkIa.loading ? '' : 'J’analyse chaque matin à 8h15. Dès qu’une occasion se présente (météo, vacances, creux, événement local), l’idée apparaît ici, prête à publier.'}</div>`}
       </div>
     </section>`;
 
-    const contents = `<article class="pv2-panel">
+    const m = mkIa.metrics;
+    const totals = m && m.totals ? m.totals : null;
+    const dataDays = totals ? Number(totals.days) || 0 : 0;
+    const spendPerHead = totals && Number(totals.visitors) > 0 ? Math.round((Number(totals.revenue) / Number(totals.visitors)) * 10) / 10 : null;
+    const fmtDay = (row) => {
+      if (!row) return '';
+      const d = new Date(`${row.date}T12:00:00Z`);
+      return `${d.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'short' })} · ${Number(row.visitors) || 0} visiteurs`;
+    };
+    const periodSeg = seg([
+      { key: '7', label: '7 jours', active: mkIa.period === 7 },
+      { key: '30', label: '30 jours', active: mkIa.period === 30 },
+      { key: '90', label: '90 jours', active: mkIa.period === 90 },
+    ], 'mkIaSetPeriod');
+
+    const stats = `<section class="pv2-panel">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Contenus prêts à publier</h2><p class="pv2-panel-sub">Un script par canal et par occasion, écrit sur les vraies activités du centre et prêt à copier-coller.</p></div>
-        <small>${drafts.length} script(s) · ${occasionsCount} occasion(s)</small>
+        <div><h2>Tes chiffres</h2><p class="pv2-panel-sub">${dataDays && dataDays < 90 ? `Données encore jeunes (${dataDays} j) — tendances indicatives.` : 'La réalité du terrain sur la période choisie.'}</p></div>
+        ${periodSeg}
       </div>
       <div class="pv2-panel-body">
-        ${drafts.length
-          ? `<div class="pv2-camp-draft-grid">${drafts.map((d) => renderDraftCard(d)).join('')}</div>`
-          : '<div class="pv2-empty"><strong>Pas encore de contenu</strong>Cliquez sur Analyser pour générer les scripts prêts à l’emploi.</div>'}
+        ${totals && dataDays
+          ? `<div class="pv2-stats mk-stats">
+              ${stat({ label: 'Visiteurs', count: Number(totals.visitors) || 0 })}
+              ${stat({ label: 'Chiffre d’affaires', value: money(totals.revenue) })}
+              ${stat({ label: 'Dépense / visiteur', value: spendPerHead === null ? '—' : money(spendPerHead) })}
+              ${stat({ label: 'Meilleur jour', value: m.bestDay ? money(m.bestDay.revenue_total) : '—', foot: fmtDay(m.bestDay) })}
+            </div>`
+          : `<div class="pv2-empty"><strong>${mkIa.metricsLoading ? 'Chargement…' : 'Pas encore de chiffres sur cette période'}</strong>${mkIa.metricsLoading ? '' : 'La collecte tourne automatiquement chaque nuit.'}</div>`}
       </div>
-    </article>`;
+    </section>`;
 
-    const rail = `<aside class="pv2-panel pv2-camp-rail">
+    const learned = `<section class="pv2-panel">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Parcours de missions</h2><p class="pv2-panel-sub">Les étapes pour passer d'une analyse à des contenus publiables.</p></div>
-        <small>${progress.done}/${progress.total}</small>
+        <div><h2>Ce qu’on a appris</h2><p class="pv2-panel-sub">Chaque idée « faite » est mesurée 14 jours après, à jours comparables (même jour de semaine, hors biais vacances).</p></div>
+        ${waiting.length ? `<small>${waiting.length} en cours de mesure</small>` : ''}
       </div>
-      <div class="pv2-panel-body">${renderMissionPath(missions, progress)}</div>
-    </aside>`;
+      <div class="pv2-panel-body">
+        ${measured.length ? `<ul class="mk-learned-list">${measured.map(mkMeasuredLine).join('')}</ul>` : ''}
+        ${waiting.length ? `<p class="mk-waiting">${waiting.map((item) => esc(item.title || 'Idée')).join(' · ')} — verdict automatique à J+14.</p>` : ''}
+        ${!measured.length && !waiting.length ? `<div class="pv2-empty"><strong>Rien de mesuré pour l’instant</strong>Marque une idée « C’est fait » et je te dirai si elle a vraiment ramené du monde.</div>` : ''}
+      </div>
+    </section>`;
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
-        crumb: 'Clients & Marketing / Studio',
-        title: 'Campagnes',
-        sub: `Parcours marketing factuel · ${esc(centerName(center))}${voiceText(brand.voice) ? ` · voix ${esc(voiceText(brand.voice))}` : ''} · maj ${esc(updatedAt)}${error ? ` · <span class="pv2-camp-err">${esc(error)}</span>` : ''}`,
+        crumb: 'Clients & Marketing',
+        title: 'Marketing',
+        sub: 'Ton conseiller data : il analyse chaque matin tes chiffres, la météo de Libramont et le calendrier scolaire.',
         actions,
       })}
+      ${todo}
+      ${stats}
+      ${learned}
       ${renderPv2RealCampaigns()}
-      ${centerSeg}
-      ${hero}
-      <section class="pv2-split pv2-camp-split">
-        ${contents}
-        ${rail}
-      </section>
-      ${renderStrategyBoard(strategy, dataLabel)}
-      ${renderCampAgents(agents)}
     </div>`;
     mount(root, 'campaigns');
   };
@@ -1610,47 +1371,13 @@
       if (typeof legacyRenderStaffUtilityPage === 'function') legacyRenderStaffUtilityPage.apply(this, args);
       return;
     }
-    renderStaffGroupsPageV2();
+    // Fusion Clients+Groupes : « groups » n'est plus une page — accès historique
+    // (hash, état sauvegardé) → on bascule vers Clients, segment « À venir ».
+    state.staffMenuPage = 'clients';
+    state.staffClientSegment = 'avenir';
+    save();
+    renderStaff();
   };
-
-  function renderStaffGroupsPageV2() {
-    const root = document.getElementById('staffUtilityPage');
-    if (!root) return;
-    const clientRows = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
-    const rows = clientRows.filter((row) => row.isGroup || row.hasBirthday);
-    const players = rows.reduce((sum, row) => sum + (Number(row.players) || 0), 0);
-    const formulas = rows.reduce((sum, row) => sum + (Number(row.formulas) || 0), 0);
-    const revenue = rows.reduce((sum, row) => sum + (Number(row.spent) || 0), 0);
-    const sync = staffClientDataCache.loading
-      ? 'Synchronisation…'
-      : staffClientDataCache.loaded
-        ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}`
-        : 'Données locales';
-
-    root.className = 'staff-utility-page utility-page-groups';
-    root.innerHTML = `<div class="pv2-shell">
-      ${bar({
-        crumb: 'Clients & Marketing / Groupes',
-        title: 'Groupes & anniversaires',
-        sub: `${esc(sync)}${staffClientDataCache.error ? ' · <span style="color:var(--warning)">API indisponible</span>' : ''}`,
-        actions: `
-          <button type="button" class="pv2-btn" onclick="loadStaffClientData(true)">Actualiser</button>
-          <button type="button" class="pv2-btn primary" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">+ Réservation groupe</button>`,
-      })}
-
-      <section class="pv2-stats">
-        ${stat({ label: 'Groupes actifs', count: rows.length, foot: 'profils consolidés' })}
-        ${stat({ label: 'Joueurs cumulés', count: players, foot: 'historique réel' })}
-        ${stat({ label: 'Formules réservées', count: formulas, foot: 'anniversaires & packs' })}
-        ${stat({ label: 'CA groupe', value: money(revenue), foot: 'réservations non annulées' })}
-      </section>
-
-      ${renderStaffGroupWorkspaceV2(rows)}
-    </div>`;
-    mount(root, 'groups');
-    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
-    if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
-  }
 
   /* ==========================================================================
      COMMAND PALETTE — Ctrl/Cmd+K
@@ -1661,7 +1388,6 @@
     ['planning', 'Planning du jour', '▤'],
     ['reservations', 'Réservations', '☰'],
     ['clients', 'Clients', '◉'],
-    ['groups', 'Groupes & anniversaires', '❋'],
     ['emails', 'Emails & relances', '✉'],
     ['campaigns', 'Campagnes', '◍'],
     ['prices', 'Activités & tarifs', '€'],

@@ -94,9 +94,8 @@
       title: 'Clients & marketing',
       items: [
         { key: 'clients', label: 'Clients', icon: 'clients' },
-        { key: 'groups', label: 'Groupes & anniversaires', icon: 'groups' },
         { key: 'emails', label: 'Emails & relances', icon: 'emails' },
-        { key: 'campaigns', label: 'Campagnes', icon: 'campaigns' }
+        { key: 'campaigns', label: 'Marketing', icon: 'campaigns' }
       ]
     },
     {

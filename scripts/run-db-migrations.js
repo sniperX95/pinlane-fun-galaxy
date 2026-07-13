@@ -85,6 +85,11 @@ const MIGRATIONS = [
     file: 'database/activity-progress-schema.sql',
     description: 'Per-reservation formula activity completion tracking (survives ops replan)',
   },
+  {
+    id: '0017_daily_metrics',
+    file: 'database/daily-metrics-schema.sql',
+    description: 'Daily center metrics warehouse (visitors/revenue/weather/holidays) + marketing insights lifecycle',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

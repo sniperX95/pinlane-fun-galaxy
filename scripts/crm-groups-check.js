@@ -92,38 +92,55 @@ async function main() {
     await page.goto(`${BASE_URL}/?v=grp-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate(() => {
-      state.staffMenuPage = 'groups'; state.staffTheme = 'dark';
+      state.staffMenuPage = 'planning'; state.staffTheme = 'dark'; state.staffClientSegment = 'tous';
       state.reservations = window.__QA_BUILD__();
-      save(); setView('staff');
-      if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
-      renderStaff();
+      save(); setView('staff'); renderStaff();
     });
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(500);
+
+    // [REDIRECT] la page « groups » n'existe plus : elle vit dans Clients (« À venir »)
+    console.log('\n[REDIRECT] openStaffMenuPage("groups") → Clients, segment « À venir »');
+    await page.evaluate(() => openStaffMenuPage('groups'));
+    await page.waitForTimeout(600);
     await page.evaluate(async () => { try { if (typeof loadStaffCustomRequests === 'function') await loadStaffCustomRequests(true); } catch (e) {} });
     await page.waitForTimeout(400);
-    await page.evaluate(() => renderStaff());
-    await page.waitForTimeout(300);
+    const redir = await page.evaluate(() => ({
+      page: state.staffMenuPage,
+      segment: state.staffClientSegment,
+      visible: !!document.getElementById('staffClientsPage') && !document.getElementById('staffClientsPage').classList.contains('hidden'),
+      activeSeg: ((document.querySelector('#staffClientsPage .crm-seg.is-active') || {}).textContent || '').trim(),
+      menuGroups: !![...document.querySelectorAll('button, a')].find((el) => /groupes & anniversaires/i.test(el.textContent || '')),
+    }));
+    ok(redir.page === 'clients', `staffMenuPage = clients (obtenu ${redir.page})`);
+    ok(redir.segment === 'avenir', `segment = avenir (obtenu ${redir.segment})`);
+    ok(redir.visible, 'conteneur clients affiché');
+    ok(redir.activeSeg === 'À venir', `segment « À venir » actif (obtenu « ${redir.activeSeg} »)`);
+    ok(!redir.menuGroups, 'entrée menu « Groupes & anniversaires » supprimée');
 
-    const root = '#staffUtilityPage';
-    console.log('\n[LOAD] page Groupes rendue sans erreur');
+    // [LEGACY] un ancien onglet avec staffMenuPage='groups' sauvegardé retombe aussi sur Clients
+    await page.evaluate(() => { state.staffMenuPage = 'groups'; save(); renderStaffData(); });
+    await page.waitForTimeout(400);
+    const legacy = await page.evaluate(() => ({ page: state.staffMenuPage, segment: state.staffClientSegment }));
+    ok(legacy.page === 'clients' && legacy.segment === 'avenir', `état sauvegardé "groups" → redirigé (${legacy.page}/${legacy.segment})`);
+
+    const root = '#staffClientsPage';
+    console.log('\n[LOAD] workspace dossiers rendu dans la page Clients, sans erreur');
     const load = await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       const txt = el ? el.textContent : '';
       return {
         exists: !!el,
-        timeline: (el && el.querySelectorAll('.groups-band, .groups-timeline, .groups-dossier').length) || 0,
         dossiers: (el && el.querySelectorAll('.groups-dossier').length) || 0,
-        kpis: (el && el.querySelectorAll('.utility-kpi, .crm-kpi, .admin-kpi').length) || 0,
-        kpiText: el ? (el.textContent.match(/À préparer|prévisionnel|Dossiers à venir|re-booker|Leads/gi) || []).length : 0,
-        facets: (el && el.querySelectorAll('[aria-pressed], .crm-pill').length) || 0,
+        hasPriority: /À confirmer en priorité/i.test(txt),
+        hasForecast: /Charge à venir/i.test(txt),
         hasProfilsTable: /Profils exploitables/i.test(txt),
         hasSurMesure: /sur[- ]mesure|Demandes/i.test(txt),
       };
     }, root);
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0,3).join(' | ') : ''}`);
-    ok(load.exists, 'page rendue (#staffUtilityPage)');
+    ok(load.exists, 'workspace rendu dans #staffClientsPage');
     ok(load.dossiers >= 2, `timeline de dossiers À VENIR : ${load.dossiers} cartes dossier`);
-    ok(load.kpiText >= 3, `KPIs prospectifs rendus (${load.kpiText} libellés "À préparer/CA prévisionnel/re-booker/Leads…", tuiles=${load.kpis})`);
+    ok(load.hasPriority && load.hasForecast, 'panneaux « À confirmer en priorité » + « Charge à venir » présents');
     ok(!load.hasProfilsTable, 'plus de tableau "Profils exploitables" (pas de doublon CRM)');
     ok(load.hasSurMesure, 'bloc "Demandes sur mesure" (intake leads) présent');
 

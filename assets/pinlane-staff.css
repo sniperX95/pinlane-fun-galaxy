@@ -1953,6 +1953,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .laser-card-pill.formula { background: var(--accent-soft); color: var(--accent); }
 .laser-card-pill.direct { background: var(--subtle); color: var(--muted); }
 .laser-card-pill.pass { background: var(--info-soft); color: var(--info); font-variant-numeric: tabular-nums; }
+.laser-card-pill.wave { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent-strong); font-variant-numeric: tabular-nums; }
 .laser-card-pill.fallback { background: var(--warning-soft); color: var(--warning); }
 
 .laser-capacity-line {

@@ -757,6 +757,7 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
         duration: Math.max(0, end - start),
         lanes: (block.lanes?.length ? block.lanes : reservation.lanes || []).map(Number),
         players: Number(block.players || reservation.pax || 0),
+        unitKey: resourceType === 'laser_arena' ? laserBlockUnitKey(block) : undefined,
       };
     })
     .filter(window => window.duration > 0);
@@ -809,6 +810,67 @@ function minuteIntToTime(value) {
   return numToTime(Number(value || 0) / 60);
 }
 
+// ── Identité par VAGUE (unité laser plaçable indépendamment) ─────────────────
+// Un gros groupe joue UN jeu laser en plusieurs vagues (pas assez d'armes pour
+// tout le monde d'un coup). Chaque vague est une unité qu'on place où on veut :
+// son identité stable = `${countIndex}.${waveIndex}` (jeu . vague). Le cas 2 jeux
+// distincts (1 vague chacun) reste `1.1` / `2.1` → comportement inchangé.
+function laserUnitKey(countIndex, waveIndex) {
+  return `${Number(countIndex || 1)}.${Number(waveIndex || 1)}`;
+}
+function laserBlockUnitKey(block) {
+  return laserUnitKey(block?.countIndex, block?.groupWaveIndex);
+}
+function parseLaserUnitKey(key) {
+  const [ci, wi] = String(key).split('.').map(Number);
+  return { countIndex: ci || 1, waveIndex: wi || 1 };
+}
+
+// Liste canonique de TOUTES les vagues d'une réservation (indépendante du placement) :
+// pour chaque jeu (countIndex 1..N), les vagues issues du découpage capacité armes.
+function getLaserUnitsForReservation(reservation) {
+  const games = Math.max(1, getLaserGameCountForReservation(reservation));
+  const waveSizes = getBalancedLaserWaveSizes(reservation.pax);
+  const units = [];
+  for (let game = 1; game <= games; game += 1) {
+    waveSizes.forEach((players, waveIdx) => {
+      units.push({
+        countIndex: game,
+        waveIndex: waveIdx + 1,
+        waveCount: waveSizes.length,
+        players,
+        unitKey: laserUnitKey(game, waveIdx + 1),
+      });
+    });
+  }
+  return units;
+}
+
+// Clés des vagues ACTUELLEMENT placées (présentes en blocs opsPlan).
+function getLaserScheduledUnitKeys(reservation) {
+  return [...new Set(getLaserWindowsFromReservation(reservation).map(laserBlockUnitKey))];
+}
+
+// Infos d'une vague (par clé) : priorité au bloc placé (compte joueurs réel du
+// serveur), sinon canonique. Accepte aussi un ancien index numérique de jeu.
+function laserUnitInfo(reservation, unitRef) {
+  const key = String(unitRef).includes('.') ? String(unitRef) : laserUnitKey(Number(unitRef) || 1, 1);
+  const placed = getLaserWindowsFromReservation(reservation).find(window => laserBlockUnitKey(window) === key);
+  if (placed) {
+    return {
+      countIndex: Number(placed.countIndex || 1),
+      waveIndex: Number(placed.groupWaveIndex || 1),
+      waveCount: Number(placed.groupWaveCount || 1),
+      players: Math.max(1, Number(placed.players || reservation.pax || 1)),
+      unitKey: key,
+    };
+  }
+  const canon = getLaserUnitsForReservation(reservation).find(unit => unit.unitKey === key);
+  if (canon) return canon;
+  const { countIndex, waveIndex } = parseLaserUnitKey(key);
+  return { countIndex, waveIndex, waveCount: 1, players: Math.max(1, Number(reservation.pax || 1)), unitKey: key };
+}
+
 function getLaserPassScheduledIndexes(reservation) {
   return [...new Set(getLaserWindowsFromReservation(reservation).map(window => Number(window.countIndex || 1)))].sort((a, b) => a - b);
 }
@@ -819,64 +881,65 @@ function getPendingLaserPasses(dateStr = state.currentDate) {
       reservation.date === dateStr
       && reservation.status !== 'cancelled'
       && (reservation.type === 'laser' || reservation.type === 'formule' || reservation.formuleId)
-      // Multi-parties (passes 2..N à placer) OU laser en gestion manuelle : une partie
-      // a été dé-placée vers « à placer », y compris une session laser direct 1-partie.
-      && (getLaserGameCountForReservation(reservation) > 1 || reservation.opsPlan?.laserManual)
+      // Plusieurs unités laser (vagues et/ou parties à placer) OU laser en gestion
+      // manuelle : une unité a été dé-placée vers « à placer », y compris une
+      // session laser direct 1-partie.
+      && (getLaserUnitsForReservation(reservation).length > 1 || reservation.opsPlan?.laserManual)
     )
     .flatMap(reservation => {
+      const units = getLaserUnitsForReservation(reservation);
+      const scheduled = new Set(getLaserScheduledUnitKeys(reservation));
       const totalGames = Math.max(1, getLaserGameCountForReservation(reservation));
-      const scheduled = new Set(getLaserPassScheduledIndexes(reservation));
-      // La 1re partie reste ancrée automatiquement, SAUF quand le laser est en gestion
-      // manuelle (elle a pu être dé-placée) → on part alors de l'index 1.
-      const startIndex = reservation.opsPlan?.laserManual ? 1 : 2;
-      const passes = [];
-      for (let countIndex = startIndex; countIndex <= totalGames; countIndex += 1) {
-        if (!scheduled.has(countIndex)) {
-          passes.push({
-            reservation,
-            countIndex,
-            totalGames,
-            players: Number(reservation.pax || 0),
-          });
-        }
-      }
-      return passes;
+      // La 1re unité (jeu 1 · vague 1) reste ancrée automatiquement pour une formule,
+      // SAUF laser en gestion manuelle (elle a pu être dé-placée) → tout devient plaçable.
+      const anchorFirst = !reservation.opsPlan?.laserManual && reservation.type !== 'laser';
+      return units
+        .filter((unit, index) => {
+          if (anchorFirst && index === 0) return false;
+          return !scheduled.has(unit.unitKey);
+        })
+        .map(unit => ({
+          reservation,
+          countIndex: unit.countIndex,
+          waveIndex: unit.waveIndex,
+          waveCount: unit.waveCount,
+          unitKey: unit.unitKey,
+          totalGames,
+          players: Number(unit.players || reservation.pax || 0),
+        }));
     });
 }
 
-function buildManualLaserPassBlocks(reservation, countIndex, targetStart, targetEnd = null) {
-  const waveSizes = getBalancedLaserWaveSizes(reservation.pax);
-  let cursor = hourToMinuteInt(targetStart);
+// Construit le bloc d'UNE vague (unité) placée manuellement à `targetStart`.
+// Chaque vague est indépendante : on ne re-découpe plus tout le groupe.
+function buildManualLaserPassBlocks(reservation, unitRef, targetStart, targetEnd = null) {
+  const unit = laserUnitInfo(reservation, unitRef);
+  const start = hourToMinuteInt(targetStart);
   const fixedEnd = Number.isFinite(Number(targetEnd)) ? hourToMinuteInt(targetEnd) : null;
-  return waveSizes.map((players, waveIndex) => {
-    const start = cursor;
-    const defaultDurationMinutes = LASER_GAME_ARENA_MINUTES;
-    const durationMinutes = fixedEnd && waveSizes.length === 1 ? Math.max(15, fixedEnd - start) : defaultDurationMinutes;
-    const end = start + durationMinutes;
-    cursor = end;
-    return {
-      type: 'activity',
-      activityId: 'laser_game',
-      label: 'Laser Game',
-      resourceType: 'laser_arena',
-      countIndex,
-      manualLaserPass: true,
-      critical: true,
-      start,
-      end,
-      startTime: minuteIntToTime(start),
-      endTime: minuteIntToTime(end),
-      durationMinutes,
-      players,
-      groupPlayers: Number(reservation.pax || players),
-      groupWaveIndex: waveIndex + 1,
-      groupWaveCount: waveSizes.length,
-      weaponNeed: Math.min(players, LASER_GAME_MAX_PLAYERS),
-    };
-  });
+  const durationMinutes = fixedEnd ? Math.max(15, fixedEnd - start) : LASER_GAME_ARENA_MINUTES;
+  const end = start + durationMinutes;
+  return [{
+    type: 'activity',
+    activityId: 'laser_game',
+    label: 'Laser Game',
+    resourceType: 'laser_arena',
+    countIndex: unit.countIndex,
+    manualLaserPass: true,
+    critical: true,
+    start,
+    end,
+    startTime: minuteIntToTime(start),
+    endTime: minuteIntToTime(end),
+    durationMinutes,
+    players: unit.players,
+    groupPlayers: Number(reservation.pax || unit.players),
+    groupWaveIndex: unit.waveIndex,
+    groupWaveCount: unit.waveCount,
+    weaponNeed: Math.min(unit.players, LASER_GAME_MAX_PLAYERS),
+  }];
 }
 
-function getSanitizedLaserResourceBlocks(reservation, replacingPassIndex = null) {
+function getSanitizedLaserResourceBlocks(reservation, replacingUnitRef = null) {
   const planned = Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : [];
   const base = planned.length
     ? planned
@@ -891,22 +954,32 @@ function getSanitizedLaserResourceBlocks(reservation, replacingPassIndex = null)
       resourceType: 'laser_arena',
       critical: true,
     }));
+  const replacingKey = replacingUnitRef == null
+    ? null
+    : (String(replacingUnitRef).includes('.') ? String(replacingUnitRef) : null);
+  const replacingGame = replacingKey ? null : (replacingUnitRef == null ? null : Number(replacingUnitRef));
   return base.filter(block => {
     if (block.resourceType !== 'laser_arena') return true;
     const index = Number(block.countIndex || 1);
-    if (replacingPassIndex && index === Number(replacingPassIndex)) return false;
+    // Retire UNIQUEMENT la vague déplacée (clé jeu.vague). Compat : un index de
+    // jeu numérique retire toutes les vagues de ce jeu (ancien comportement).
+    if (replacingKey && laserBlockUnitKey(block) === replacingKey) return false;
+    if (replacingGame && index === replacingGame) return false;
     if (reservation.type === 'laser' && index > 1 && !block.manualLaserPass) return false;
     return true;
   });
 }
 
-function checkManualLaserPassPlacement(reservation, passIndex, targetStart, targetEnd = null) {
-  const candidateBlocks = buildManualLaserPassBlocks(reservation, passIndex, targetStart, targetEnd);
+function checkManualLaserPassPlacement(reservation, unitRef, targetStart, targetEnd = null) {
+  const candidateBlocks = buildManualLaserPassBlocks(reservation, unitRef, targetStart, targetEnd);
+  const movingKey = laserUnitInfo(reservation, unitRef).unitKey;
   const existingWindows = todaysReservations()
     .filter(item => item.status !== 'cancelled' && item.id !== reservation.id)
     .flatMap(getLaserWindowsFromReservation);
+  // On exclut UNIQUEMENT la vague déplacée : les autres vagues/parties du même
+  // groupe restent des obstacles (une seule arène, pas de chevauchement).
   const sameReservationWindows = getLaserWindowsFromReservation(reservation)
-    .filter(window => Number(window.countIndex || 1) !== Number(passIndex));
+    .filter(window => laserBlockUnitKey(window) !== movingKey);
   const allWindows = [...existingWindows, ...sameReservationWindows];
   for (const candidate of candidateBlocks) {
     const candidateStart = Number(candidate.start) / 60;
@@ -961,10 +1034,11 @@ function updateLaserPassPlan(opsPlan, reservation) {
   };
 }
 
-async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEnd = null) {
+async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd = null) {
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
   if (!reservation) return;
-  const placement = checkManualLaserPassPlacement(reservation, passIndex, targetStart, targetEnd);
+  const unit = laserUnitInfo(reservation, unitRef);
+  const placement = checkManualLaserPassPlacement(reservation, unit.unitKey, targetStart, targetEnd);
   if (!placement.ok) {
     if (typeof showPlanningMoveNotice === 'function') {
       showPlanningMoveNotice('Laser Game bloque', placement.message, 'warning');
@@ -973,17 +1047,18 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     }
     return;
   }
+  const isFirstUnit = unit.countIndex === 1 && unit.waveIndex === 1;
   const previous = { ...reservation, opsPlan: reservation.opsPlan ? { ...reservation.opsPlan } : null };
   const nextOpsPlan = updateLaserPassPlan({
     ...(reservation.opsPlan || {}),
     resourceBlocks: [
-      ...getSanitizedLaserResourceBlocks(reservation, passIndex),
+      ...getSanitizedLaserResourceBlocks(reservation, unit.unitKey),
       ...placement.blocks,
     ].sort((left, right) => Number(left.start || 0) - Number(right.start || 0)),
   }, reservation);
   const updated = {
     ...reservation,
-    startTime: reservation.type === 'laser' && Number(passIndex) === 1
+    startTime: reservation.type === 'laser' && isFirstUnit
       ? getQuickBookStartForLaserSession({ start: Number(targetStart) }, Number(reservation.pax || 4))
       : reservation.startTime,
     allowPastStart: true,
@@ -1017,7 +1092,8 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
     if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, moveFields);
     save();
     renderStaffData();
-    toast(`Partie ${passIndex} placée à ${formatClockDisplay(targetStart)}`);
+    const unitLabel = unit.waveCount > 1 ? `Vague ${unit.waveIndex}/${unit.waveCount}` : `Partie ${unit.countIndex}`;
+    toast(`${unitLabel} placée à ${formatClockDisplay(targetStart)}`);
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
@@ -1033,12 +1109,13 @@ async function scheduleLaserPass(reservationId, passIndex, targetStart, targetEn
   }
 }
 
-// Matérialise les parties laser CONSERVÉES en blocs explicites (+ garde les blocs
-// non-laser), en retirant la partie `passIndex`. Indispensable : sans bloc explicite,
-// getResourceWindowsFromReservation régénère la partie par fallback (elle reviendrait).
-function removeLaserPassFromPlan(reservation, passIndex) {
+// Matérialise les vagues laser CONSERVÉES en blocs explicites (+ garde les blocs
+// non-laser), en retirant la vague `unitRef`. Indispensable : sans bloc explicite,
+// getResourceWindowsFromReservation régénère la vague par fallback (elle reviendrait).
+function removeLaserPassFromPlan(reservation, unitRef) {
+  const removeKey = laserUnitInfo(reservation, unitRef).unitKey;
   const keptLaserBlocks = getLaserWindowsFromReservation(reservation)
-    .filter(window => Number(window.countIndex || 1) !== Number(passIndex))
+    .filter(window => laserBlockUnitKey(window) !== removeKey)
     .map(window => {
       const start = hourToMinuteInt(window.start);
       const end = hourToMinuteInt(window.end);
@@ -1057,6 +1134,8 @@ function removeLaserPassFromPlan(reservation, passIndex) {
         durationMinutes: Math.max(15, end - start),
         players: Number(window.players || reservation.pax || 0),
         groupPlayers: Number(reservation.pax || window.players || 0),
+        groupWaveIndex: Number(window.groupWaveIndex || 1),
+        groupWaveCount: Number(window.groupWaveCount || 1),
       };
     });
   const nonLaserBlocks = (reservation.opsPlan?.resourceBlocks || [])
@@ -1064,20 +1143,20 @@ function removeLaserPassFromPlan(reservation, passIndex) {
   return [...nonLaserBlocks, ...keptLaserBlocks].sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
 }
 
-// Dé-planifie une partie laser : la carte quitte le planning et repart dans la file
+// Dé-planifie une vague laser : la carte quitte le planning et repart dans la file
 // « Parties à placer ». Miroir de scheduleLaserPass.
-async function unscheduleLaserPass(reservationId, passIndex) {
+async function unscheduleLaserPass(reservationId, unitRef) {
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId));
   if (!reservation) return;
-  const targetIndex = Number(passIndex) || 1;
+  const unit = laserUnitInfo(reservation, unitRef);
   // Déjà dans « à placer » (aucune fenêtre planifiée) → rien à faire.
-  const scheduledIndexes = new Set(getLaserPassScheduledIndexes(reservation));
-  if (!scheduledIndexes.has(targetIndex)) return;
-  // La 1re partie d'une FORMULE est ré-ancrée par le serveur (ops-engine) : la
-  // dé-placer n'aurait aucun effet durable → on le dit au lieu de faire clignoter.
-  if (targetIndex === 1 && reservation.type !== 'laser') {
+  const scheduledKeys = new Set(getLaserScheduledUnitKeys(reservation));
+  if (!scheduledKeys.has(unit.unitKey)) return;
+  // La 1re unité (jeu 1 · vague 1) d'une FORMULE reste ancrée : la dé-placer n'aurait
+  // pas d'effet durable → on le dit au lieu de faire clignoter. (Elle reste déplaçable.)
+  if (unit.countIndex === 1 && unit.waveIndex === 1 && reservation.type !== 'laser') {
     if (typeof showPlanningMoveNotice === 'function') {
-      showPlanningMoveNotice('Partie ancrée', "La 1re partie d'une formule reste placée automatiquement. Seules les parties supplémentaires peuvent être retirées.", 'info');
+      showPlanningMoveNotice('Partie ancrée', "La 1re partie d'une formule reste placée automatiquement (elle reste déplaçable). Les vagues et parties suivantes peuvent être retirées.", 'info');
     }
     return;
   }
@@ -1086,7 +1165,7 @@ async function unscheduleLaserPass(reservationId, passIndex) {
     ...(reservation.opsPlan || {}),
     // Laser direct : marqueur « géré à la main » → pas de régénération par fallback.
     ...(reservation.type === 'laser' ? { laserManual: true } : {}),
-    resourceBlocks: removeLaserPassFromPlan(reservation, targetIndex),
+    resourceBlocks: removeLaserPassFromPlan(reservation, unit.unitKey),
   }, reservation);
   const updated = { ...reservation, allowPastStart: true, opsPlan: nextOpsPlan };
   const requestKey = Number(reservation.id);
@@ -1355,6 +1434,12 @@ function getFormulaActivityProgressSummary(reservation) {
     hourToMinuteInt,
     minuteIntToTime,
     getLaserPassScheduledIndexes,
+    laserUnitKey,
+    laserBlockUnitKey,
+    parseLaserUnitKey,
+    getLaserUnitsForReservation,
+    getLaserScheduledUnitKeys,
+    laserUnitInfo,
     getPendingLaserPasses,
     buildManualLaserPassBlocks,
     getSanitizedLaserResourceBlocks,

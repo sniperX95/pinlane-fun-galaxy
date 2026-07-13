@@ -333,7 +333,7 @@ function onLaserPointerUp(event) {
   clearLaserUnplaceDropTarget();
   // Dépôt sur la file « Parties à placer » → on retire la partie du planning.
   if (unplaceZone) {
-    unscheduleLaserPass(drag.reservationId, drag.passIndex);
+    unscheduleLaserPass(drag.reservationId, drag.unitKey);
     return;
   }
   if (!target) {
@@ -342,15 +342,15 @@ function onLaserPointerUp(event) {
   }
   const targetStart = Number(target.dataset.laserDropStart);
   const targetEnd = target.dataset.laserDropEnd ? Number(target.dataset.laserDropEnd) : null;
-  scheduleLaserPass(drag.reservationId, drag.passIndex, targetStart, targetEnd);
+  scheduleLaserPass(drag.reservationId, drag.unitKey, targetStart, targetEnd);
 }
 
-function startLaserPassPointerDrag(event, reservationId, passIndex) {
+function startLaserPassPointerDrag(event, reservationId, unitKey) {
   if (event.button !== 0) return;
   event.stopPropagation();
   laserPointerDrag = {
     reservationId,
-    passIndex,
+    unitKey,
     sourceEl: event.currentTarget,
     startX: event.clientX,
     startY: event.clientY,
@@ -823,9 +823,9 @@ function shouldIgnoreBowlingDragClick(event) {
   return true;
 }
 
-function onLaserPassDragStart(event, reservationId, passIndex) {
+function onLaserPassDragStart(event, reservationId, unitKey) {
   event.stopPropagation();
-  event.dataTransfer.setData('text/plain', JSON.stringify({ type: 'laser-pass', reservationId, passIndex }));
+  event.dataTransfer.setData('text/plain', JSON.stringify({ type: 'laser-pass', reservationId, unitKey }));
   event.dataTransfer.effectAllowed = 'move';
   laserDragActive = true;
   laserDragLastY = event.clientY || 0;
@@ -870,7 +870,7 @@ function onLaserPassDrop(event, targetStart, targetEnd = null) {
   try {
     const data = JSON.parse(raw);
     if (data.type !== 'laser-pass') return;
-    scheduleLaserPass(data.reservationId, data.passIndex, Number(targetStart), targetEnd === null ? null : Number(targetEnd));
+    scheduleLaserPass(data.reservationId, data.unitKey ?? data.passIndex, Number(targetStart), targetEnd === null ? null : Number(targetEnd));
   } catch (error) {
     toast('Déplacement Laser Game impossible.');
   }
@@ -11950,9 +11950,13 @@ function renderLaserPlanning() {
         const scheduled = getLaserWindowsFromReservation(reservation)
           .filter(window => Number(window.countIndex || 1) === 1)
           .sort((a, b) => a.start - b.start)[0];
-        return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${pass.countIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette partie">
+        const unitKey = pass.unitKey || `${pass.countIndex}.${pass.waveIndex || 1}`;
+        const unitLabel = pass.waveCount > 1
+          ? `Vague ${pass.waveIndex}/${pass.waveCount}${pass.totalGames > 1 ? ` • Partie ${pass.countIndex}/${pass.totalGames}` : ''}`
+          : `Partie ${pass.countIndex}/${pass.totalGames}`;
+        return `<button type="button" class="laser-pass-card" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" onclick="if(shouldIgnoreLaserPassClick(event)) return; editRes(${reservation.id}, event)" title="Glisser pour placer cette vague">
           <span class="laser-pass-name">${escapeHtml(reservation.name || 'Groupe')}</span>
-          <span class="laser-pass-meta">Partie ${pass.countIndex}/${pass.totalGames} • ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
+          <span class="laser-pass-meta">${unitLabel} • ${pass.players} joueur${pass.players > 1 ? 's' : ''}</span>
           <span class="laser-pass-origin">1re partie ${scheduled ? formatClockDisplay(scheduled.start) : formatClockDisplay(timeToNum(reservation.startTime))}</span>
         </button>`;
       }).join('')
@@ -11998,9 +12002,12 @@ function renderLaserPlanning() {
       const isFormulaGroup = reservation.type === 'formule' || reservation.formuleId;
       const typeClass = isFormulaGroup ? 'formula' : 'direct';
       const statusClass = reservation.status === 'paid' ? 'paid' : reservation.status === 'arrived' ? 'arrived' : 'confirmed';
-      const waveLabel = window.groupWaveCount > 1 ? `Vague ${window.groupWaveIndex || 1}/${window.groupWaveCount}` : '';
+      const waveCount = Number(window.groupWaveCount || 1);
+      const waveIndex = Number(window.groupWaveIndex || 1);
+      const waveLabel = waveCount > 1 ? `Vague ${waveIndex}/${waveCount}` : '';
       const laserGames = getLaserGameCountForReservation(reservation);
       const passIndex = Number(window.countIndex || 1);
+      const unitKey = window.unitKey || `${passIndex}.${waveIndex}`;
       const passLabel = laserGames > 1 ? `Partie ${passIndex}/${laserGames}` : 'Partie unique';
       const label = isFormulaGroup
         ? `${getReservationLabel(reservation)}${laserGames > 1 ? ` • ${passLabel}` : ' • Laser'}`
@@ -12009,11 +12016,14 @@ function renderLaserPlanning() {
         <span class="laser-card-pills">
           ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
           ${laserGames > 1 ? `<span class="laser-card-pill pass">P${passIndex}/${laserGames}</span>` : ''}
+          ${waveCount > 1 ? `<span class="laser-card-pill wave">V${waveIndex}/${waveCount}</span>` : ''}
           ${window.formulaFallback ? '<span class="laser-card-pill fallback">Plan estimé</span>' : ''}
         </span>`;
-      const dragTitle = passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
+      const dragTitle = waveCount > 1
+        ? `Déplacer la vague ${waveIndex}/${waveCount}${laserGames > 1 ? ` (partie ${passIndex})` : ''}`
+        : passIndex > 1 ? `Déplacer la partie ${passIndex}/${laserGames}` : 'Déplacer ce groupe Laser Game';
       const laserDelayedClass = getReservationDelayFlag(reservation) ? ' is-delayed' : '';
-      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, ${passIndex})" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
+      return `<button type="button" class="laser-group-card ${typeClass} ${statusClass}${laserDelayedClass}${activitiesCompleteClass(reservation)}" draggable="false" onmousedown="startLaserPassPointerDrag(event, ${reservation.id}, '${unitKey}')" onclick="if(shouldIgnoreLaserPassClick(event)) return; event.stopPropagation();editRes(${reservation.id}, event)" title="${escapeHtml(dragTitle)}">
         <span class="laser-group-main">
           <strong>${escapeHtml(reservation.name || 'Groupe')}</strong>
           <small>${escapeHtml(label)}${waveLabel ? ` • ${escapeHtml(waveLabel)}` : ''}</small>

@@ -81,7 +81,9 @@ function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); i
 
 async function seedBowling(page) {
   await page.evaluate(() => {
-    const d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0,10);
+    // Date FIXE ouverte (samedi 10:00-24:00) → test déterministe, jamais faussé par
+    // un jour de fermeture (ex. lundi) où la grille planning ne rend pas de créneaux.
+    const d = '2026-07-18';
     state.currentDate = d; state.staffMenuPage = 'planning'; state.staffResourceView = 'bowling'; state.staffTheme = 'dark';
     state.staffLaserPlanningExpanded = false; state.staffPlanningExpanded = false;
     state.reservations = window.__QA_BUILD__(d); state.laneStatuses = window.__QA_LANES__();

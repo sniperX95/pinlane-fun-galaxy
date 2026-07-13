@@ -118,7 +118,8 @@ async function main() {
     await page.goto(`${BASE_URL}/?v=formula-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate(() => {
-      const d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0,10);
+      // Date FIXE ouverte (samedi) → déterministe, jamais faussé par un jour fermé.
+      const d = '2026-07-18';
       state.currentDate = d; state.staffMenuPage = 'planning'; state.staffResourceView = 'bowling'; state.staffTheme = 'dark';
       state.reservations = window.__QA_BUILD__(d); state.laneStatuses = window.__QA_LANES__();
       save(); setView('staff'); renderStaff();

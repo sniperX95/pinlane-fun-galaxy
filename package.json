@@ -17,6 +17,7 @@
     "test:center-config": "node scripts/run-center-config-tests.js",
     "test:visual": "node scripts/run-visual-qa.js",
     "test:laser-drag": "node scripts/laser-drag-check.js",
+    "test:laser-waves": "node scripts/laser-waves-check.js",
     "test:formula-activity": "node scripts/formula-activity-check.js",
     "test:crm-clients": "node scripts/crm-clients-check.js",
     "test:crm-groups": "node scripts/crm-groups-check.js",

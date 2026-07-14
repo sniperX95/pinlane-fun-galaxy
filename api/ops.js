@@ -81,6 +81,11 @@ const {
   saveClientNote,
   buildBirthdayJ30Message,
   buildReactivationMessage,
+  CUSTOM_SEQUENCE_LIMITS,
+  listCustomSequences,
+  saveCustomSequence,
+  toggleCustomSequence,
+  deleteCustomSequence,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
@@ -275,6 +280,23 @@ async function handleGet(req, res, options = {}) {
       getAutomationStats(centerId),
     ]);
     sendJson(res, 200, { ok: true, centerId, settings, stats, defaults: getAutomationDefaults() });
+    return;
+  }
+
+  // Séquences PERSONNALISÉES créées par le gérant : liste + limites (déclencheurs
+  // disponibles, bornes, segments) pour construire l'éditeur.
+  if (action === 'customSequences') {
+    const sequences = await listCustomSequences(centerId);
+    sendJson(res, 200, { ok: true, centerId, sequences, limits: CUSTOM_SEQUENCE_LIMITS });
+    return;
+  }
+
+  // « Ce que l'agent sait » : textes du gérant (prioritaires) + défauts fichiers
+  // (placeholders et Réinitialiser de l'éditeur).
+  if (action === 'emailBrain') {
+    const { getEmailBrainOverrides, getEmailBrainDefaults } = require('../lib/email-agent');
+    const overrides = await getEmailBrainOverrides(centerId);
+    sendJson(res, 200, { ok: true, centerId, overrides, defaults: getEmailBrainDefaults() });
     return;
   }
 
@@ -1217,6 +1239,41 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Séquences personnalisées : créer/modifier (op absent), activer/couper
+  // (op:'toggle') ou supprimer (op:'delete'). Validation FR côté lib.
+  if (action === 'customSequences') {
+    const concreteCenterId = requireConcreteCenter('séquences personnalisées');
+    let sequences;
+    try {
+      if (body.op === 'delete') sequences = await deleteCustomSequence(concreteCenterId, String(body.id || ''));
+      else if (body.op === 'toggle') sequences = await toggleCustomSequence(concreteCenterId, String(body.id || ''), body.enabled === true);
+      else sequences = await saveCustomSequence(concreteCenterId, body.sequence || {});
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Enregistrement de la séquence impossible.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, sequences, limits: CUSTOM_SEQUENCE_LIMITS });
+    return;
+  }
+
+  // « Ce que l'agent sait » : le gérant édite la FAQ de l'agent email, sa
+  // signature et ses consignes libres.
+  if (action === 'emailBrain') {
+    const concreteCenterId = requireConcreteCenter('cerveau agent email');
+    const { saveEmailBrainOverrides, getEmailBrainDefaults } = require('../lib/email-agent');
+    let overrides;
+    try {
+      overrides = await saveEmailBrainOverrides(concreteCenterId, {
+        faq: body.faq,
+        signature: body.signature,
+        extra: body.extra,
+      });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Enregistrement impossible.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, overrides, defaults: getEmailBrainDefaults() });
+    return;
+  }
+
   // Relance client 1-clic (CRM) : envoi réel via la queue, tracé payload.relance
   // → alimente relanceStats (ROI). Pas besoin de réservation existante.
   if (action === 'sendClientRelance') {
@@ -1339,6 +1396,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       staffMember: options.session?.member?.name || options.session?.member?.id || 'direction',
       identityId: body.identityId || null,
       replyToCommunicationId: body.replyToCommunicationId || null,
+      scheduledAt: body.scheduledAt || null,
     });
     sendJson(res, 200, { ok: true, ...result });
     return;
@@ -1568,6 +1626,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'dailyMetrics') return ['dashboard.view', 'direction.view'];
     if (action === 'marketingInsights') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'automationSettings') return ['emails.view', 'direction.view'];
+    if (['customSequences', 'emailBrain'].includes(action)) return ['emails.view', 'direction.view'];
     if (action === 'relanceStats') return ['clients.view', 'emails.view'];
     if (action === 'clientNotes') return 'clients.view';
     if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
@@ -1576,6 +1635,7 @@ function getRequiredOpsPermission(method, action) {
     return 'ai.ops';
   }
   if (action === 'automationSettings') return ['settings.manage', 'emails.send', 'direction.view'];
+  if (['customSequences', 'emailBrain'].includes(action)) return ['settings.manage', 'emails.send', 'direction.view'];
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];

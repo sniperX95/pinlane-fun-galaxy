@@ -11,6 +11,9 @@ const {
   analyzeEmail,
   ingestInboundEmail,
   recordAgentLesson,
+  analyzeByRules,
+  saveEmailBrainOverrides,
+  getEmailBrainDefaults,
 } = require('../lib/email-agent');
 const {
   getAutomationSettings,
@@ -24,6 +27,10 @@ const {
   runBirthdayJ30Sweep,
   runReactivationSweep,
   sendDirectEmail,
+  saveCustomSequence,
+  toggleCustomSequence,
+  deleteCustomSequence,
+  runCustomSequencesSweep,
 } = require('../lib/ops-communications');
 const { createHandler } = require('../api/inbound-email.js');
 
@@ -53,6 +60,13 @@ function makeDeps(state) {
       if (sql.includes('payload = payload ||')) { state.payloadMerges.push(params); return { rows: [] }; }
       if (sql.includes("direction = 'inbound' and idempotency_key")) return { rows: state.inboundDupe ? [{ id: 55 }] : [] };
       if (sql.includes("direction = 'inbound'")) return { rows: state.inboundRow ? [{ payload: state.inboundRow }] : [] };
+      if (sql.includes("jsonb_build_object('email_brain'")) { state.brainSaved = JSON.parse(params[1]); state.settings = { ...(state.settings || {}), email_brain: state.brainSaved }; return { rows: [] }; }
+      if (sql.includes("jsonb_build_object('custom_sequences'")) { state.seqSaved = JSON.parse(params[1]); state.settings = { ...(state.settings || {}), custom_sequences: state.seqSaved }; return { rows: [] }; }
+      if (sql.includes("payload->>'dedupeKey'")) return { rows: state.customDupe ? [{ 1: 1 }] : [] };
+      if (sql.includes('last_visit = ($2::date -')) return { rows: state.afterVisitRows || [] };
+      if (sql.includes('last_visit <= ($2::date -')) return { rows: state.inactiveRows || [] };
+      if (sql.includes('date = ($2::date + (')) return { rows: state.beforeVisitRows || [] };
+      if (sql.includes('as birthdays')) return { rows: state.weeklyRows || [] };
       if (sql.includes('center_automation_settings') && sql.trim().startsWith('select')) {
         return { rows: state.settings ? [{ settings: state.settings }] : [] };
       }
@@ -287,6 +301,71 @@ const anthropicOk = (object) => ({
   const resNoSecret = fakeRes();
   await handler(fakeReq({ from: 'a@b.be', text: 'x' }, 'test-secret'), resNoSecret);
   ok(resNoSecret.statusCode === 401, 'INBOUND_EMAIL_SECRET non configuré → tout refusé');
+
+  console.log('\n[BRAIN ÉDITABLE] « Ce que l\'agent sait » — le gérant possède les textes');
+  const depsBrainSave = makeDeps({});
+  await saveEmailBrainOverrides('libramont', { signature: 'La team FG', extra: 'Parking gratuit derrière le bâtiment.', faq: { horaires: { subject: 'Nos horaires', body: 'Custom horaires du gérant, ouverts sauf lundi.' } } }, depsBrainSave);
+  ok(depsBrainSave.state.brainSaved && depsBrainSave.state.brainSaved.signature === 'La team FG', 'écrit dans settings.email_brain (signature + faq + consignes)');
+  const mergedBrain = await buildEmailBrain('libramont', makeDeps({ settings: { email_brain: depsBrainSave.state.brainSaved } }));
+  ok(mergedBrain.faq.horaires.body.includes('Custom horaires du gérant'), 'la FAQ du gérant GAGNE sur le fichier');
+  ok(mergedBrain.stable.includes('La team FG') && mergedBrain.stable.includes('Parking gratuit'), 'signature + consignes injectées dans le bloc stable (IA)');
+  const rulesCustom = analyzeByRules({ subject: 'Question', body: 'Vous êtes ouverts à quelle heure ?', faq: mergedBrain.faq, client: null });
+  ok(rulesCustom.intent === 'horaires' && rulesCustom.reply.body.includes('Custom horaires'), 'le mode règles répond avec le texte du gérant');
+  let brainThrew = false;
+  try { await saveEmailBrainOverrides('libramont', { faq: { inconnu: { body: 'x' } } }, makeDeps({})); } catch (e) { brainThrew = e.expose === true; }
+  ok(brainThrew, 'sujet FAQ inconnu → rejeté proprement');
+  ok(getEmailBrainDefaults().faq.horaires && getEmailBrainDefaults().intents.horaires, 'défauts exposés (placeholders + reset UI)');
+
+  console.log('\n[SÉQUENCES PERSO] le gérant crée SES automatisations');
+  for (const [bad, label] of [
+    [{ name: '', trigger: { type: 'after_visit', days: 7 }, subject: 'a', body: 'b' }, 'nom vide'],
+    [{ name: 'X', trigger: { type: 'after_visit', days: 400 }, subject: 'a', body: 'b' }, 'délai hors bornes'],
+    [{ name: 'X', trigger: { type: 'after_visit', days: 7 }, subject: 'a', body: 'Salut {{date}}' }, 'variable indisponible pour ce déclencheur'],
+    [{ name: 'X', trigger: { type: 'weekly', weekday: 9 }, subject: 'a', body: 'b' }, 'jour de semaine invalide'],
+  ]) {
+    let threw = false;
+    try { await saveCustomSequence('libramont', bad, makeDeps({})); } catch (e) { threw = e.expose === true; }
+    ok(threw, `séquence invalide rejetée : ${label}`);
+  }
+  const depsSeq = makeDeps({});
+  const seqs = await saveCustomSequence('libramont', { name: 'Relance J+7', trigger: { type: 'after_visit', days: 7 }, subject: 'On se revoit, {{prenom}} ?', body: 'Bonjour {{prenom}},\n\nMerci pour votre venue chez {{centre}} !', cap: 10 }, depsSeq);
+  ok(seqs.length === 1 && seqs[0].id && seqs[0].enabled === true, 'séquence créée (id généré, active)');
+  const seqToggled = await toggleCustomSequence('libramont', seqs[0].id, false, makeDeps({ settings: { custom_sequences: seqs } }));
+  ok(seqToggled[0].enabled === false, 'toggle OFF persisté');
+  seqs[0].enabled = true; // le toggle a muté l'objet partagé du test — on réarme pour le sweep
+  const depsSweepA = makeDeps({ settings: { custom_sequences: seqs }, afterVisitRows: [{ client_key: '+32470111001', email: 'marie@test.be', name: 'Marie Dupont' }] });
+  const sweepA = await runCustomSequencesSweep('libramont', depsSweepA, { today: '2026-07-14' });
+  ok(sweepA.enqueued === 1 && depsSweepA.state.enqueued.length === 1, 'sweep after_visit → 1 email en file');
+  const sentA = depsSweepA.state.enqueued[0];
+  ok(sentA.templateId === `custom_${seqs[0].id}` && sentA.subject === 'On se revoit, Marie ?', 'variables substituées ({{prenom}} → Marie)');
+  ok(sentA.payload.dedupeKey === `${seqs[0].id}:+32470111001:2026-07-14`, 'clé d\'idempotence datée');
+  const depsSweepDupe = makeDeps({ settings: { custom_sequences: seqs }, afterVisitRows: [{ client_key: '+32470111001', email: 'marie@test.be', name: 'Marie Dupont' }], customDupe: true });
+  const sweepDupe = await runCustomSequencesSweep('libramont', depsSweepDupe, { today: '2026-07-14' });
+  ok(sweepDupe.enqueued === 0, 'IDEMPOTENT : déjà envoyé ce jour-là → 0 envoi');
+  const beforeSeq = [{ id: 'cs_b1', name: 'Rappel J-3', enabled: true, trigger: { type: 'before_visit', days: 3 }, subject: 'À {{date}} !', body: 'Bonjour {{prenom}}, rendez-vous le {{date}} à {{heure}} pour {{formule}}.', cap: 20 }];
+  const depsSweepB = makeDeps({ settings: { custom_sequences: beforeSeq }, beforeVisitRows: [{ id: 9, name: 'Lucas Petit', email: 'lucas@test.be', phone: '', date: '2026-07-17', startTime: '15:00:00', formuleId: 'FORMULE 2', pax: 6 }] });
+  const sweepB = await runCustomSequencesSweep('libramont', depsSweepB, { today: '2026-07-14' });
+  const sentB = depsSweepB.state.enqueued[0] || {};
+  ok(sweepB.enqueued === 1 && sentB.payload.textBody.includes('le 2026-07-17 à 15:00'), 'before_visit : variables réservation (date/heure/formule) substituées');
+  const weeklySeq = [{ id: 'cs_w1', name: 'News mardi', enabled: true, trigger: { type: 'weekly', weekday: 2 }, segment: 'all', subject: 'Hello', body: 'Bonjour {{prenom}} !', cap: 5 }];
+  const depsSweepW = makeDeps({ settings: { custom_sequences: weeklySeq }, weeklyRows: [{ client_key: 'a@b.be', email: 'a@b.be', name: 'Ana' }] });
+  const sweepWrongDay = await runCustomSequencesSweep('libramont', depsSweepW, { today: '2026-07-14' }); // 2026-07-14 = mardi ? getUTCDay = 2 → mardi OUI
+  ok(sweepWrongDay.enqueued === 1, 'weekly : envoie le bon jour de semaine');
+  const depsSweepW2 = makeDeps({ settings: { custom_sequences: weeklySeq }, weeklyRows: [{ client_key: 'a@b.be', email: 'a@b.be', name: 'Ana' }] });
+  const sweepOff = await runCustomSequencesSweep('libramont', depsSweepW2, { today: '2026-07-15' }); // mercredi
+  ok(sweepOff.enqueued === 0, 'weekly : silencieux les autres jours');
+  const deleted = await deleteCustomSequence('libramont', seqs[0].id, makeDeps({ settings: { custom_sequences: seqs } }));
+  ok(deleted.length === 0, 'suppression persistée');
+
+  console.log('\n[ENVOI PROGRAMMÉ] composer → plus tard');
+  const depsSched = makeDeps({});
+  const futureAt = new Date(Date.now() + 3600000).toISOString();
+  await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'Programmé', body: 'Contenu', scheduledAt: futureAt }, depsSched);
+  const schedRow = depsSched.state.enqueued[0];
+  ok(schedRow.scheduledAt === futureAt && schedRow.payload.scheduled === true, 'scheduledAt futur → file au moment choisi (pas de dispatch immédiat)');
+  let schedThrew = false;
+  try { await sendDirectEmail({ centerId: 'libramont', to: 'x@y.be', subject: 'a', body: 'b', scheduledAt: 'pas-une-date' }, makeDeps({})); } catch (e) { schedThrew = e.expose === true; }
+  ok(schedThrew, 'date invalide → rejetée');
 
   restoreEnv();
   if (failures) { console.error(`\nemail-agent-check: ${failures} FAIL`); process.exit(1); }

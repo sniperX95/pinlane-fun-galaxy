@@ -98,6 +98,17 @@ async function installMock(page) {
           }
           return J({ ok: true, analysis });
         }
+        if (b.action === 'customSequences') {
+          if (b.op === 'delete') { window.__QA_SEQS__ = []; return J({ ok: true, sequences: [] }); }
+          const saved = { id: 'cs_test1', enabled: true, ...(b.sequence || {}) };
+          window.__QA_SEQS__ = [saved];
+          return J({ ok: true, sequences: [saved] });
+        }
+        if (b.action === 'emailBrain') {
+          return J({ ok: true, overrides: { faq: b.faq || {}, signature: b.signature || '', extra: b.extra || '' }, defaults: { intents: {}, faq: {}, signature: '' } });
+        }
+        if (b.action === 'saveEmailTemplate') return J({ ok: true, template: { id: 8 } });
+        if (b.action === 'saveEmailIdentity') return J({ ok: true, identity: { id: 3 } });
         if (b.action === 'improveEmailWithAi') {
           return J({ ok: true, mode: 'ia', tips: ['Objet un peu court : vise 30-60 caractères.'], subject: 'Sujet amélioré par IA', body: 'Corps amélioré par IA.' });
         }
@@ -105,6 +116,12 @@ async function installMock(page) {
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'automationSettings') {
         return J({ ok: true, settings: JSON.parse(JSON.stringify(autoState)), defaults: autoDefaults, stats: autoStats });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customSequences') {
+        return J({ ok: true, sequences: window.__QA_SEQS__ || [], limits: { maxSequences: 10, cap: [1, 100], triggers: { after_visit: { label: 'X jours après une visite', days: [1, 90], variables: ['prenom', 'centre'] }, before_visit: { label: 'X jours avant une venue prévue', days: [1, 60], variables: ['prenom', 'centre', 'date', 'heure', 'formule', 'pax'] }, inactive: { label: 'Clients plus vus depuis X jours', days: [30, 365], variables: ['prenom', 'centre'] }, weekly: { label: 'Chaque semaine, un jour fixe', variables: ['prenom', 'centre'] } }, segments: { all: 'Tous les clients avec email', dormant: 'Dormants (+90 jours)', loyal: 'Fidèles', birthdays: 'Clients anniversaire' } } });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailBrain') {
+        return J({ ok: true, overrides: { faq: {}, signature: '', extra: '' }, defaults: { intents: { reservation: 'Réservation', annulation: 'Annulation / report', anniversaire: 'Anniversaire', prix: 'Prix & tarifs', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre' }, faq: { horaires: { subject: 'Nos horaires', body: 'Réponse type horaires du fichier.' } }, signature: "L'équipe Fun Galaxy" } });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailTemplates') {
         return J({ ok: true, templates: [{ id: 7, label: 'Modèle maison', subject: 'Sujet du modèle {{prenom}}', body: 'Corps du modèle pour {{prenom}}.' }], identities: [{ id: 1, label: 'Accueil', email: 'contact@fungalaxy.be', isDefault: true }, { id: 2, label: 'Direction', email: 'direction@fungalaxy.be' }], channel: { resendConfigured: true, aiConfigured: false } });
@@ -355,6 +372,70 @@ async function main() {
     if (process.env.EMAILS_SHOT) {
       await page.screenshot({ path: `${process.env.EMAILS_SHOT}/emails-v3-dark.png`, fullPage: false });
     }
+    console.log('\n[V4 SÉQUENCE PERSO] créer sa propre automatisation');
+    const seqRes = await page.evaluate(async () => {
+      pv2SeqNew();
+      await new Promise((r) => setTimeout(r, 150));
+      const editorOpen = !!document.querySelector('.pv2-seq-editor');
+      pv2SeqField('name', 'Relance J+7');
+      pv2SeqField('trigger.days', 7);
+      pv2SeqField('subject', 'On se revoit ?');
+      pv2SeqField('body', 'Bonjour {{prenom}}, revenez nous voir !');
+      pv2SeqField('cap', 15);
+      pv2SeqSave();
+      await new Promise((r) => setTimeout(r, 300));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'customSequences').slice(-1)[0];
+      const card = [...document.querySelectorAll('.pv2-seq-card')].length;
+      return { editorOpen, post, card };
+    });
+    ok(seqRes.editorOpen, 'éditeur de séquence ouvert via + Créer');
+    ok(seqRes.post && seqRes.post.sequence && seqRes.post.sequence.name === 'Relance J+7' && seqRes.post.sequence.trigger.type === 'after_visit' && Number(seqRes.post.sequence.trigger.days) === 7, 'POST customSequences complet (nom, déclencheur, délai)');
+    ok(seqRes.card === 1, 'carte « perso » rendue dans la grille des séquences');
+
+    console.log("\n[V4 RÉGLAGES] modèles, adresses, cerveau de l'agent");
+    const setRes = await page.evaluate(async () => {
+      pv2OpenSettings('agent');
+      await new Promise((r) => setTimeout(r, 350));
+      const panel = !!document.querySelector('.pv2-settings');
+      const faqFields = document.querySelectorAll('.pv2-settings textarea').length;
+      pv2BrainField('signature', null, 'La team FG');
+      pv2BrainField('faq', 'horaires', 'Custom horaires du gérant.');
+      pv2BrainSave();
+      await new Promise((r) => setTimeout(r, 300));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'emailBrain').slice(-1)[0];
+      pv2SettingsView('templates');
+      await new Promise((r) => setTimeout(r, 150));
+      pv2TplEdit(null);
+      await new Promise((r) => setTimeout(r, 150));
+      pv2TplField('name', 'Mon modèle');
+      pv2TplField('subject', 'Sujet perso');
+      pv2TplField('body', 'Corps perso');
+      pv2TplSave();
+      await new Promise((r) => setTimeout(r, 300));
+      const tplPost = window.__QA_POSTS__.filter((p) => p.action === 'saveEmailTemplate').slice(-1)[0];
+      return { panel, faqFields, post, tplPost };
+    });
+    ok(setRes.panel && setRes.faqFields >= 7, 'panneau Réglages → vue Agent avec les réponses par sujet');
+    ok(setRes.post && setRes.post.signature === 'La team FG' && setRes.post.faq && setRes.post.faq.horaires && setRes.post.faq.horaires.body === 'Custom horaires du gérant.', 'POST emailBrain (signature + FAQ modifiée)');
+    ok(setRes.tplPost && setRes.tplPost.name === 'Mon modèle', "création d'un modèle depuis la page (POST saveEmailTemplate)");
+
+    console.log('\n[V4 ENVOI PROGRAMMÉ] composer → plus tard');
+    const schedRes = await page.evaluate(async () => {
+      pv2OpenSettings(); // referme les réglages
+      pv2OpenComposer({ to: 'client@test.be', name: 'Paul Martin' });
+      await new Promise((r) => setTimeout(r, 200));
+      pv2ComposerField('subject', 'Message programmé');
+      pv2ComposerField('body', 'Contenu.');
+      pv2ComposerField('when', 'later');
+      const future = new Date(Date.now() + 86400000);
+      const pad = (n) => String(n).padStart(2, '0');
+      pv2ComposerField('scheduledAt', future.getFullYear() + '-' + pad(future.getMonth() + 1) + '-' + pad(future.getDate()) + 'T10:00');
+      pv2ComposerSend();
+      await new Promise((r) => setTimeout(r, 300));
+      return window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').slice(-1)[0];
+    });
+    ok(schedRes && schedRes.scheduledAt && new Date(schedRes.scheduledAt).getTime() > Date.now(), 'POST sendDirectEmail avec scheduledAt futur');
+
     if (process.env.EM_SHOT) { await page.screenshot({ path: process.env.EM_SHOT + '/emails-v3-dark.png', fullPage: false }); }
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); }
   } catch (e) {

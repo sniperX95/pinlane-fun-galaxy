@@ -175,11 +175,11 @@ async function main() {
     const week = await page.evaluate(() => ({
       days: document.querySelectorAll('#staffCampaignsPage .mk-week-day').length,
       foire: /Foire/.test((document.querySelector('#staffCampaignsPage .mk-week') || {}).textContent || ''),
-      rain: /🌧/.test((document.querySelector('#staffCampaignsPage .mk-week') || {}).textContent || ''),
+      rain: !!document.querySelector('#staffCampaignsPage .mk-week .mk-week-rain'),
       inputs: document.querySelectorAll('#staffCampaignsPage .mk-week-range input[type=date]').length,
     }));
     ok(week.days === 7, 'bande 7 jours par défaut (obtenu ' + week.days + ')');
-    ok(week.foire && week.rain, 'badge Foire + pluie 🌧 visibles');
+    ok(week.foire && week.rain, 'badge Foire + icône pluie visibles');
     ok(week.inputs === 2, 'sélecteur de plage libre (2 dates) présent');
     await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-week-range button')].find((x) => /14/.test(x.textContent)); b.click(); });
     await page.waitForTimeout(500);

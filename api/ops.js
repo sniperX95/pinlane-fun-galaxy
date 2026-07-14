@@ -33,6 +33,7 @@ const {
   saveAgentSuggestions,
 } = require('../lib/database');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
+const { llmProvider } = require('../lib/llm-client');
 const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
 const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
@@ -368,7 +369,7 @@ async function handleGet(req, res, options = {}) {
       identities,
       channel: {
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
-        aiConfigured: Boolean(process.env.OPENAI_API_KEY),
+        aiConfigured: Boolean(llmProvider()),
         defaultFrom: process.env.RESEND_FROM || 'onboarding@resend.dev',
       },
     });

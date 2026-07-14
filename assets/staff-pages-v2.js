@@ -312,7 +312,7 @@
   function crmRowBadge(row, ctx) {
     const relance = getStaffClientRelance(row);
     if (row.nextBooking && (String(row.nextBooking.occasion || '').toLowerCase() === 'anniversaire' || row.hasBirthday)) {
-      return '<span class="crm-pill tone-info">🎂 Anniv à venir</span>';
+      return '<span class="crm-pill tone-info">Anniv. à venir</span>';
     }
     if (ctx.vipThreshold > 0 && Number(row.spent || 0) >= ctx.vipThreshold) return '<span class="crm-pill tone-accent">VIP</span>';
     if (relance.due) return '<span class="crm-pill tone-warn">À relancer</span>';
@@ -327,12 +327,12 @@
       ? `<strong>${esc(formatStaffClientDateText(next.date))}</strong><small>prochaine venue${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</small>`
       : `<strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>`;
     const lastCell = ctx.segment === 'relancer'
-      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}${row.email ? `<button type="button" class="crm-btn crm-btn-sm" onclick="event.stopPropagation();crmOpenRelance('${escJs(row.id)}')">✉️ Relancer</button>` : ''}</td>`
+      ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}${row.email ? `<button type="button" class="pv2-btn sm" onclick="event.stopPropagation();crmOpenRelance('${escJs(row.id)}')">Relancer</button>` : ''}</td>`
       : `<td class="crm-cell-badge">${crmRowBadge(row, ctx)}</td>`;
     return `
       <tr class="${selected && row.id === selected.id ? 'is-selected' : ''}" tabindex="0" role="button" onclick="selectStaffClient('${escJs(row.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectStaffClient('${escJs(row.id)}');}">
         <td class="crm-cell-client">
-          <span class="crm-avatar tone-${esc(row.avatarTone || 'a')}">${esc(row.initials || '–')}</span>
+          <span class="crm-avatar">${esc(row.initials || '–')}</span>
           <span class="crm-client-id"><strong>${esc(row.name || 'Sans nom')}</strong><small>${esc(row.email || row.phone || '')}</small></span>
         </td>
         <td class="crm-cell-visit${next ? ' is-upcoming' : ''}">${visite}</td>
@@ -374,34 +374,34 @@
   function crmCommsBlock(selected) {
     const comms = getStaffClientCommunications(selected);
     const compose = selected.email
-      ? `<button type="button" class="crm-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">✉️ Nouveau message</button>`
+      ? `<button type="button" class="pv2-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">${ci('mail')}Nouveau message</button>`
       : '<span class="crm-muted">Aucune adresse email</span>';
     if (comms === null) {
       const loading = staffClientCommsCache.loading;
       const failed = !!staffClientCommsCache.error;
-      return `<div class="info-block crm-block"><div class="crm-block-head"><h3>Messages & relances</h3></div>
-        <div class="crm-empty">${loading ? 'Chargement de l\'historique…' : failed ? 'Historique des messages indisponible pour ce rôle.' : 'Historique non chargé.'}${!loading ? ` ${compose}` : ''}</div></div>`;
+      return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances</h3></div>
+        <div class="crm-empty">${loading ? 'Chargement de l\'historique…' : failed ? 'Historique des messages indisponible pour ce rôle.' : 'Historique non chargé.'}${!loading ? ` ${compose}` : ''}</div></section>`;
     }
     if (!comms.length) {
-      return `<div class="info-block crm-block"><div class="crm-block-head"><h3>Messages & relances</h3></div>
-        <div class="crm-empty"><strong>Jamais contacté.</strong> Aucun message envoyé à ce client. ${compose}</div></div>`;
+      return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances</h3></div>
+        <div class="crm-empty"><strong>Jamais contacté.</strong> Aucun message envoyé à ce client. ${compose}</div></section>`;
     }
     const sent = comms.filter((c) => ['sent', 'delivered'].includes(c.status)).length;
     const delivered = comms.filter((c) => c.status === 'delivered').length;
     const failedCount = comms.filter((c) => c.status === 'failed').length;
     const last = comms[0];
-    const CHAN = { email: '✉️', sms: '💬', whatsapp: '📲', note: '📝' };
+    const CHAN = { email: 'mail', sms: 'message', whatsapp: 'message', note: 'note' };
     const TONE = { sent: 'info', delivered: 'success', failed: 'warn', queued: 'info', draft: 'muted' };
     const items = comms.slice(0, 40).map((c) => `
       <div class="crm-comm dir-${esc(c.direction || 'outbound')}">
-        <span class="crm-comm-icon">${CHAN[c.channel] || '✉️'}</span>
+        <span class="crm-comm-icon">${ci(CHAN[c.channel] || 'mail')}</span>
         <span class="crm-comm-main"><strong>${esc(c.subject || c.templateId || 'Message')}</strong><small>${esc(c.recipient || '')} · ${esc((typeof formatOpsTimestamp === 'function' && (c.sentAt || c.createdAt)) ? formatOpsTimestamp(c.sentAt || c.createdAt) : (c.sentAt || c.createdAt || ''))}${c.direction === 'inbound' ? ' · reçu' : ''}</small></span>
         <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(c.status || '')}</span>
-        ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">↻</button>` : ''}
+        ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">${ci('refresh')}</button>` : ''}
       </div>`).join('');
-    return `<div class="info-block crm-block"><div class="crm-block-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
+    return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
       <div class="crm-comm-stats">${sent} envoyé${sent > 1 ? 's' : ''} · ${delivered} délivré${delivered > 1 ? 's' : ''} · ${failedCount} échec${failedCount > 1 ? 's' : ''}${last ? ` · dernier ${esc((typeof formatOpsTimestamp === 'function' && (last.sentAt || last.createdAt)) ? formatOpsTimestamp(last.sentAt || last.createdAt) : '')}` : ''}</div>
-      <div class="crm-comm-list">${items}</div></div>`;
+      <div class="crm-comm-list">${items}</div></section>`;
   }
 
   /* ── Relance 1-clic : composer inline prérempli, envoi RÉEL via la queue
@@ -548,8 +548,8 @@
       <textarea class="crm-composer-body" rows="7" oninput="crmRelanceField('body', this.value)" aria-label="Message">${esc(crmRelance.body)}</textarea>
       <div class="crm-composer-actions">
         <span class="crm-muted">→ ${esc(selected.email)}</span>
-        <button type="button" class="crm-btn" onclick="crmCloseRelance()">Annuler</button>
-        <button type="button" class="crm-btn crm-btn-primary" onclick="crmSendRelance('${escJs(selected.id)}')" ${busy ? 'disabled' : ''}>${busy ? 'Envoi…' : 'Envoyer la relance'}</button>
+        <button type="button" class="pv2-btn" onclick="crmCloseRelance()">Annuler</button>
+        <button type="button" class="pv2-btn primary" onclick="crmSendRelance('${escJs(selected.id)}')" ${busy ? 'disabled' : ''}>${busy ? 'Envoi…' : 'Envoyer la relance'}</button>
       </div>
     </div>`;
   }
@@ -557,13 +557,15 @@
   // Fiche client KISS : qui c'est, ce qu'il vaut (3 chiffres), sa prochaine venue
   // (avec la checklist prépa du dossier), pourquoi le relancer, son historique et
   // les messages. Un tap = agir (tel/email cliquables).
+  // Présentation : UNE surface continue, sections séparées par hairlines
+  // (pas de sous-boîtes empilées), iconographie SVG monochrome.
   function crmFiche(selected, ctx = {}) {
     if (!selected) return '<div class="crm-empty crm-empty-lg"><strong>Sélectionnez un client</strong>Cliquez sur une ligne pour voir sa fiche.</div>';
     ensureStaffClientComms();
     const badges = [crmStatusPill(selected)];
     if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push('<span class="crm-pill tone-accent">VIP</span>');
-    if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">🎂 Anniversaire</span>');
-    const kpi = (label, value, sub) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div>${sub ? `<div class="crm-kpi-sub">${esc(sub)}</div>` : ''}</div>`;
+    if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">Anniversaire</span>');
+    const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
     const next = selected.nextBooking;
     const relance = getStaffClientRelance(selected);
     let nextBlock = '';
@@ -575,62 +577,59 @@
       const checks = readiness.items.filter((i) => i.state !== 'na').map((i) =>
         `<button type="button" class="groups-check-toggle${i.state === 'done' ? ' is-done' : ''}" onclick="toggleStaffGroupPrep('${escJs(dossier.id)}','${escJs(i.key)}')" aria-pressed="${i.state === 'done'}">${i.state === 'done' ? '✓' : '○'} ${esc(i.label)}</button>`
       ).join('');
-      nextBlock = `<div class="info-block crm-block crm-next">
-        <div class="crm-block-head"><h3>Prochaine venue</h3><span class="crm-pill tone-${readiness.ready ? 'success' : 'warn'}">${readiness.ready ? 'Prêt' : `${readiness.todo} à préparer`}</span></div>
+      nextBlock = `<section class="crm-sec crm-next">
+        <div class="crm-sec-head"><h3>Prochaine venue</h3><span class="crm-pill tone-${readiness.ready ? 'success' : 'warn'}">${readiness.ready ? 'Prêt' : `${readiness.todo} à préparer`}</span></div>
         <div class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))}${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${Number(next.pax) || 0} joueurs</span></div>
         <div class="groups-check-toggles">${checks}</div>
-      </div>`;
+      </section>`;
     }
     return `
       <div class="crm-fiche">
-        <div class="info-block crm-block crm-head">
-          <span class="crm-avatar crm-avatar-lg tone-${esc(selected.avatarTone || 'a')}">${esc(selected.initials || '–')}</span>
+        <section class="crm-sec crm-head">
+          <span class="crm-avatar crm-avatar-lg">${esc(selected.initials || '–')}</span>
           <div class="crm-head-id">
-            <h2>${esc(selected.name || 'Sans nom')}</h2>
+            <div class="crm-head-row"><h2>${esc(selected.name || 'Sans nom')}</h2><span class="crm-head-badges">${badges.join('')}</span></div>
             <div class="crm-head-contact">
-              ${selected.phone ? `<a href="tel:${esc(selected.phone)}" class="crm-contact-link">📞 ${esc(selected.phone)}</a>` : ''}
-              ${selected.email ? `<a href="mailto:${esc(selected.email)}" class="crm-contact-link">✉️ ${esc(selected.email)}</a>` : ''}
+              ${selected.phone ? `<a href="tel:${esc(selected.phone)}" class="crm-contact-link">${ci('phone')}${esc(selected.phone)}</a>` : ''}
+              ${selected.email ? `<a href="mailto:${esc(selected.email)}" class="crm-contact-link">${ci('mail')}${esc(selected.email)}</a>` : ''}
             </div>
-            <div class="crm-head-badges">${badges.join('')}</div>
           </div>
           <div class="crm-head-actions">
-            <button type="button" class="crm-btn crm-btn-primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>
-            ${selected.email ? `<button type="button" class="crm-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">✉️ Message</button>` : ''}
+            ${selected.email ? `<button type="button" class="pv2-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">${ci('mail')}Message</button>` : ''}
+            <button type="button" class="pv2-btn primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>
           </div>
-        </div>
+        </section>
 
-        <div class="info-block crm-block">
-          <div class="crm-kpis crm-kpis-3">
-            ${kpi('Dépensé', money(selected.spent), '')}
-            ${kpi('Visites', Number(selected.reservations) || 0, '')}
-            ${kpi('Panier moyen', money(selected.avgBasket), '')}
-          </div>
-        </div>
+        <section class="crm-sec crm-kpis crm-kpis-3">
+          ${kpi('Dépensé', money(selected.spent))}
+          ${kpi('Visites', Number(selected.reservations) || 0)}
+          ${kpi('Panier moyen', money(selected.avgBasket))}
+        </section>
 
         ${nextBlock}
 
-        ${relance.due ? `<div class="info-block crm-block crm-relance">
+        ${relance.due ? `<section class="crm-sec crm-relance">
           <div class="crm-relance-row">
-            <span class="crm-relance-why">📣 ${esc(relance.reason)}</span>
-            ${selected.email && crmRelance.openFor !== selected.id ? `<button type="button" class="crm-btn crm-btn-primary" onclick="crmOpenRelance('${escJs(selected.id)}')">✉️ Relancer par email</button>` : ''}
+            <span class="crm-relance-why">${esc(relance.reason)}</span>
+            ${selected.email && crmRelance.openFor !== selected.id ? `<button type="button" class="pv2-btn primary" onclick="crmOpenRelance('${escJs(selected.id)}')">${ci('send')}Relancer par email</button>` : ''}
           </div>
           ${crmRelance.openFor === selected.id ? crmRelanceComposer(selected) : ''}
-        </div>` : ''}
+        </section>` : ''}
 
-        <div class="info-block crm-block">
-          <div class="crm-block-head"><h3>Ses réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
+        <section class="crm-sec">
+          <div class="crm-sec-head"><h3>Réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
           <div class="crm-history">${(selected.history || []).map(crmHistoryItem).join('') || '<div class="crm-muted">Aucune réservation.</div>'}</div>
-        </div>
+        </section>
 
         ${crmCommsBlock(selected)}
 
-        <div class="info-block crm-block crm-note-block">
-          <div class="crm-block-head"><h3>Notes</h3>${crmNotes.saving ? '<span class="crm-muted">Enregistrement…</span>' : ''}</div>
+        <section class="crm-sec crm-note-block">
+          <div class="crm-sec-head"><h3>Notes</h3>${crmNotes.saving ? '<span class="crm-muted">Enregistrement…</span>' : ''}</div>
           <textarea class="crm-note-input" rows="3" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
             ${crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? '' : 'disabled'}
             onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? crmNotes.body : '')}</textarea>
           ${selected.notesConcat ? `<div class="crm-muted crm-note-legacy">Notes des réservations : ${esc(selected.notesConcat)}</div>` : ''}
-        </div>
+        </section>
       </div>`;
   }
 
@@ -675,7 +674,7 @@
       const sortState = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
       const th = (key, label, num) => {
         const on = sortState.key === key;
-        return `<th class="${num ? 'num ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort">${on ? (sortState.dir === 'asc' ? '↑' : '↓') : '↕'}</span></th>`;
+        return `<th class="${num ? 'num ' : ''}crm-th${on ? ' is-active' : ''}" aria-sort="${on ? (sortState.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="setStaffClientSort('${key}')">${esc(label)} <span class="crm-sort">${ci(on ? (sortState.dir === 'asc' ? 'chevronUp' : 'chevronDown') : 'chevrons')}</span></th>`;
       };
       const lastTh = segment === 'relancer'
         ? '<th class="crm-th">Pourquoi</th>'
@@ -684,21 +683,21 @@
       // ROI du CRM : les relances envoyées → venues → € (le CRM prouve sa valeur).
       const roi = ctx.segment !== 'relancer' ? '' : `<section class="crm-roi">
         ${crmRelanceStats.loaded && crmRelanceStats.sent > 0
-          ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} (90 j) → <strong>${crmRelanceStats.converted}</strong> venue${crmRelanceStats.converted > 1 ? 's' : ''} → <strong>${money(crmRelanceStats.revenue)}</strong></span>`
+          ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} sur 90 j<span class="crm-roi-sep"></span><strong>${crmRelanceStats.converted}</strong> venue${crmRelanceStats.converted > 1 ? 's' : ''}<span class="crm-roi-sep"></span><strong>${money(crmRelanceStats.revenue)}</strong> générés</span>`
           : `<span class="crm-roi-figures">Relance ton premier client — je mesure ce que chaque relance rapporte.</span>`}
-        <button type="button" class="crm-btn" onclick="openStaffCampaignForRelance()">📣 Campagne pour ce segment</button>
+        <button type="button" class="pv2-btn" onclick="openStaffCampaignForRelance()">${ci('megaphone')}Campagne pour ce segment</button>
       </section>`;
       body = `${roi}<section class="pv2-split crm-split">
         <article class="pv2-panel crm-list-panel">
           <div class="crm-table-wrap">
             <table class="crm-table">
               <thead><tr>${th('name', 'Client') + th('lastDate', 'Venue') + th('reservations', 'Visites', true) + th('spent', 'Dépensé', true)}${lastTh}</tr></thead>
-              <tbody>${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment. 👍' : 'Aucun résultat.'} <button type="button" class="crm-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
+              <tbody>${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment.' : 'Aucun résultat.'} <button type="button" class="pv2-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
             </table>
           </div>
           <div class="crm-list-foot">
             <span>${shown.length} affiché${shown.length > 1 ? 's' : ''} sur ${rows.length}</span>
-            ${rows.length > shown.length ? `<button type="button" class="crm-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
+            ${rows.length > shown.length ? `<button type="button" class="pv2-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
           </div>
         </article>
         <article class="pv2-panel crm-fiche-panel">
@@ -822,7 +821,7 @@
     const busy = mkAuto.busyKey === meta.key;
     return `<article class="mk-auto${enabled ? ' is-on' : ''}">
       <div class="mk-auto-head">
-        <strong>${meta.star ? '⭐ ' : ''}${esc(meta.label)}</strong>
+        <strong>${meta.star ? `<span class="mk-auto-star" title="Levier n°1 du secteur">${ci('star')}</span>` : ''}${esc(meta.label)}</strong>
         <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(meta.desc)}</p>
@@ -863,7 +862,7 @@
     const tableRows = rows.slice(0, 80).map((row) => {
       const meta = KIND_META[row.statusKind] || KIND_META.draft;
       return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
-        <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small style="display:block;color:var(--v2-text-3);margin-top:1px">${esc(row.recipient || '—')}</small></td>
+        <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '—')}</small></td>
         <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '—')}</span></td>
         <td><span class="pv2-chip ${meta.tone}">${meta.label}</span></td>
         <td class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '—')}</td>
@@ -872,7 +871,7 @@
 
     const payload = selected?.payload || {};
     const detail = selected ? `
-      <div class="pv2-panel-body" style="display:grid;gap:13px">
+      <div class="pv2-panel-body pv2-mail-detail">
         <div class="pv2-kv">
           <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '—')}</dd></div>
           <div><dt>Modèle</dt><dd>${esc(selected.templateLabel || selected.templateId || '—')}</dd></div>
@@ -882,9 +881,9 @@
           ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
           ${selected.attempts ? `<div><dt>Tentatives</dt><dd>${Number(selected.attempts)}</dd></div>` : ''}
         </div>
-        ${selected.lastError ? `<div class="pv2-chip red" style="justify-content:flex-start;white-space:normal;line-height:1.4">${esc(selected.lastError)}</div>` : ''}
+        ${selected.lastError ? `<div class="pv2-mail-error">${esc(selected.lastError)}</div>` : ''}
         <div>
-          <div class="pv2-panel-head" style="border:0;padding:0 0 8px"><h2 style="font-size:13px">Aperçu</h2></div>
+          <div class="pv2-mail-preview-title">Aperçu</div>
           <div class="pv2-mail-preview">${esc(String(payload.textBody || selected.subject || 'Pas de contenu texte.'))}</div>
         </div>
       </div>` : '<div class="pv2-empty"><strong>Aucun message</strong>Sélectionnez une communication.</div>';
@@ -924,7 +923,7 @@
       </section>
 
       <section class="pv2-split">
-        <article class="pv2-panel" style="max-height:560px;overflow:auto">
+        <article class="pv2-panel pv2-mail-list">
           <table class="pv2-table">
             <thead><tr><th>Message</th><th>Modèle</th><th>Statut</th><th class="num">Date</th></tr></thead>
             <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>File vide</strong>Aucune communication pour ce filtre.</div></td></tr>`}</tbody>
@@ -979,6 +978,17 @@
       target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
       wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.8-.7-.7-2.8z"/>',
       flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
+      phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.5 2.8.7a2 2 0 0 1 1.7 2z"/>',
+      mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+      send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+      message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+      note: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+      droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+      bulb: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>',
+      megaphone: '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+      chevrons: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+      chevronUp: '<path d="m18 15-6-6-6 6"/>',
+      chevronDown: '<path d="m6 9 6 6 6-6"/>',
     };
     return `<svg class="pv2-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
   }
@@ -1168,23 +1178,25 @@
       const dow = d.toLocaleDateString('fr-BE', { weekday: 'short' });
       const rain = Number(day.precipMm) >= 10;
       const badge = day.holidayLabel || (day.isSchoolHoliday ? 'Congé scolaire' : '') || (Array.isArray(day.events) && day.events.length ? day.events[0] : '');
-      const ideas = (day.ideas || []).slice(0, 2).map((idea) => `<span class="mk-week-idea" title="${esc(idea.title || '')}">💡</span>`).join('');
+      const ideas = (day.ideas || []).slice(0, 2).map((idea) => `<span class="mk-week-idea" title="${esc(idea.title || '')}"></span>`).join('');
       return `<div class="mk-week-day${badge ? ' has-badge' : ''}">
         <span class="mk-week-dow">${esc(dow)} ${d.getUTCDate()}</span>
-        <span class="mk-week-temp">${day.tmax === null || day.tmax === undefined ? '—' : Math.round(Number(day.tmax)) + '°'}${rain ? ' 🌧' : ''}</span>
+        <span class="mk-week-temp">${day.tmax === null || day.tmax === undefined ? '—' : Math.round(Number(day.tmax)) + '°'}${rain ? `<span class="mk-week-rain" title="Pluie annoncée">${ci('droplet')}</span>` : ''}</span>
         ${badge ? `<span class="mk-week-badge" title="${esc(badge)}">${esc(String(badge).length > 14 ? String(badge).slice(0, 13) + '…' : badge)}</span>` : ''}
         ${ideas}
       </div>`;
     }).join('');
     return `<section class="pv2-panel">
       <div class="pv2-panel-head has-sub">
-        <div><h2>À venir</h2><p class="pv2-panel-sub">Météo prévue, congés et événements — les 💡 sont les idées posées sur leur jour.</p></div>
+        <div><h2>À venir</h2><p class="pv2-panel-sub">Météo prévue, congés et événements — les points bleus sont les idées posées sur leur jour.</p></div>
         <div class="mk-week-range">
-          <button type="button" class="pv2-btn" onclick="mkWeekPreset(7)">7 j</button>
-          <button type="button" class="pv2-btn" onclick="mkWeekPreset(14)">14 j</button>
-          <button type="button" class="pv2-btn" onclick="mkWeekPreset(31)">31 j</button>
+          <div class="mk-week-presets" role="group" aria-label="Période rapide">
+            <button type="button" class="pv2-btn" onclick="mkWeekPreset(7)">7 j</button>
+            <button type="button" class="pv2-btn" onclick="mkWeekPreset(14)">14 j</button>
+            <button type="button" class="pv2-btn" onclick="mkWeekPreset(31)">31 j</button>
+          </div>
           <input type="date" value="${esc(mkWeek.from)}" aria-label="Du" onchange="mkWeekSetRange('from', this.value)">
-          <span aria-hidden="true">→</span>
+          <span class="mk-week-arrow" aria-hidden="true">→</span>
           <input type="date" value="${esc(mkWeek.to)}" aria-label="Au" onchange="mkWeekSetRange('to', this.value)">
         </div>
       </div>
@@ -1226,7 +1238,7 @@
       ? 'pas assez de jours comparables pour trancher'
       : `${delta > 0 ? '+' : ''}${delta} % de visiteurs (avant ~${esc(String(r.before ?? '?'))}/j, après ~${esc(String(r.after ?? '?'))}/j, sur ${esc(String(r.sampleDays ?? '?'))} j comparables)`;
     const redo = insight.status === 'validated'
-      ? `<button type="button" class="pv2-btn mk-redo" onclick="mkIaRedo(${Number(insight.id)})" ${mkIa.busyId ? 'disabled' : ''}>↻ Refaire</button>`
+      ? `<button type="button" class="pv2-btn mk-redo" onclick="mkIaRedo(${Number(insight.id)})" ${mkIa.busyId ? 'disabled' : ''}>${ci('refresh')}Refaire</button>`
       : '';
     return `<li class="mk-learned ${verdict.tone}">
       <span class="mk-learned-badge">${esc(verdict.label)}</span>
@@ -1647,7 +1659,7 @@
         <label class="mk-ask-label" for="mkAskObjective">Demande une idée :</label>
         <select id="mkAskObjective" class="mk-ask-select" aria-label="Objectif">${MK_OBJECTIVES.map(([value, label]) => `<option value="${value}"${(state.staffCampaignObjective || 'anniversaires') === value ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>
         <input id="mkAskBrief" class="mk-ask-brief" placeholder="Précision (optionnel) : « pour le week-end du 15 », « spécial ados »…" value="${esc(state.staffCampaignBrief || '')}">
-        <button type="button" class="pv2-btn primary" onclick="mkIaAsk()" ${running ? 'disabled' : ''}>${running ? 'Analyse…' : '💡 Propose-moi une idée'}</button>
+        <button type="button" class="pv2-btn primary" onclick="mkIaAsk()" ${running ? 'disabled' : ''}>${running ? 'Analyse…' : `${ci('bulb')}Propose-moi une idée`}</button>
       </div>
     </section>`;
 

@@ -5215,7 +5215,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-empty strong { color: var(--text); font-size: 14px; font-weight: 500; }
 
 /* Pipeline emails */
-.pv2-pipeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.pv2-pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
 
 .pv2-pipe {
   padding: 11px 14px;
@@ -8337,6 +8337,57 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mk-week-idea { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
 .mk-week-rain { display: inline-flex; margin-left: 4px; color: var(--info); vertical-align: -1px; }
 .mk-week-rain .pv2-ico { width: 11px; height: 11px; }
+
+/* ── Emails v3 : composer universel + analyse d'un reçu ── */
+.pv2-composer-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.pv2-composer-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.pv2-composer-field > span { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.pv2-composer-field input,
+.pv2-composer-field select,
+.pv2-composer-field textarea { width: 100%; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 0 10px; height: var(--h-md); }
+.pv2-composer-field textarea { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+.pv2-composer-field input:focus-visible,
+.pv2-composer-field select:focus-visible,
+.pv2-composer-field textarea:focus-visible,
+.pv2-inbox-reply-subject:focus-visible,
+.pv2-inbox-reply-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--line-strong); box-shadow: none; }
+.pv2-composer-wide { grid-column: 1 / -1; }
+.pv2-composer-tips { grid-column: 1 / -1; margin: 0; padding: 8px 12px 8px 26px; font-size: 12px; color: var(--muted); background: var(--subtle); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 3px; }
+.pv2-composer-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pv2-composer-spacer { flex: 1; }
+@media (max-width: 900px) { .pv2-composer-grid { grid-template-columns: 1fr; } }
+
+/* ── Emails v3 : boîte de réception (analyse + réponse proposée) ── */
+.pv2-inbox-intent { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--accent-soft); color: var(--accent-strong); white-space: nowrap; }
+.pv2-inbox-urgent { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-full); font-size: 12px; font-weight: 500; background: var(--warning-soft); color: var(--warning); white-space: nowrap; }
+.pv2-inbox-summary { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; padding: 10px 12px; background: var(--subtle); border-radius: var(--radius-md); }
+.pv2-inbox-summary p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text); flex: 1 1 100%; }
+.pv2-inbox-reply { display: flex; flex-direction: column; gap: 8px; }
+.pv2-inbox-reply-subject { width: 100%; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 0 10px; height: var(--h-md); }
+.pv2-inbox-reply-body { width: 100%; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 8px 10px; resize: vertical; line-height: 1.5; }
+
+/* ── Emails v3 : éditeur de séquence (tout modifiable) ── */
+.mk-auto-mod { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; margin-left: 8px; border-radius: var(--radius-full); font-size: 11px; font-weight: 500; background: var(--accent-soft); color: var(--accent-strong); vertical-align: 1px; }
+.mk-auto-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 4px; }
+.mk-auto-foot .mk-auto-stats { margin-top: 0; padding-top: 0; }
+.mk-auto-edit-btn { flex-shrink: 0; }
+/* La carte en édition prend toute la rangée : les cartes sœurs gardent leur
+   hauteur naturelle et l'éditeur respire. */
+.mk-auto.is-editing { grid-column: 1 / -1; }
+.mk-auto-edit { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mk-auto.is-editing .mk-auto-edit { max-width: 640px; }
+.mk-auto-edit-field { display: flex; flex-direction: column; gap: 4px; }
+.mk-auto-edit-field > span { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.mk-auto-edit-field input,
+.mk-auto-edit-field select,
+.mk-auto-edit-field textarea { width: 100%; font-family: inherit; font-size: 12.5px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 0 9px; height: var(--h-md); }
+.mk-auto-edit-field textarea { height: auto; padding: 8px 9px; resize: vertical; line-height: 1.5; }
+.mk-auto-edit-field input:focus-visible,
+.mk-auto-edit-field select:focus-visible,
+.mk-auto-edit-field textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--line-strong); box-shadow: none; }
+.mk-auto-edit-vars { margin: 0; font-size: 11.5px; color: var(--faint); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mk-auto-edit-vars code { font-family: var(--font-data); font-size: 11px; background: var(--subtle); border-radius: var(--radius-sm); padding: 1px 5px; color: var(--muted); }
+.mk-auto-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 
 /* ── Archive des idées + Refaire ── */
 .mk-archive { margin-top: 12px; }

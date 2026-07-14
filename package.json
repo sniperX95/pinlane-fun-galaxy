@@ -25,6 +25,7 @@
     "test:emails-automation": "node scripts/emails-automation-check.js",
     "test:daily-metrics": "node scripts/daily-metrics-check.js",
     "test:llm-client": "node scripts/llm-client-check.js",
+    "test:email-agent": "node scripts/email-agent-check.js",
     "llm:smoke": "node scripts/llm-smoke.js",
     "test:crm-groups": "node scripts/crm-groups-check.js",
     "test:role-refresh": "node scripts/role-refresh-check.js",

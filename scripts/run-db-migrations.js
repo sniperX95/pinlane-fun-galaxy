@@ -95,6 +95,11 @@ const MIGRATIONS = [
     file: 'database/client-notes-schema.sql',
     description: 'Persistent client notes (terrain memory) + per-center automation sequence toggles',
   },
+  {
+    id: '0019_email_agent',
+    file: 'database/email-agent-schema.sql',
+    description: 'Email agent memory (staff-corrected replies) + received status for inbound emails',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

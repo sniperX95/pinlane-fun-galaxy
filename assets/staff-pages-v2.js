@@ -374,7 +374,7 @@
   function crmCommsBlock(selected) {
     const comms = getStaffClientCommunications(selected);
     const compose = selected.email
-      ? `<button type="button" class="pv2-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">${ci('mail')}Nouveau message</button>`
+      ? `<button type="button" class="pv2-btn" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('mail')}Nouveau message</button>`
       : '<span class="crm-muted">Aucune adresse email</span>';
     if (comms === null) {
       const loading = staffClientCommsCache.loading;
@@ -397,7 +397,7 @@
         <span class="crm-comm-icon">${ci(CHAN[c.channel] || 'mail')}</span>
         <span class="crm-comm-main"><strong>${esc(c.subject || c.templateId || 'Message')}</strong><small>${esc(c.recipient || '')} · ${esc((typeof formatOpsTimestamp === 'function' && (c.sentAt || c.createdAt)) ? formatOpsTimestamp(c.sentAt || c.createdAt) : (c.sentAt || c.createdAt || ''))}${c.direction === 'inbound' ? ' · reçu' : ''}</small></span>
         <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(c.status || '')}</span>
-        ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">${ci('refresh')}</button>` : ''}
+        ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('refresh')}</button>` : ''}
       </div>`).join('');
     return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
       <div class="crm-comm-stats">${sent} envoyé${sent > 1 ? 's' : ''} · ${delivered} délivré${delivered > 1 ? 's' : ''} · ${failedCount} échec${failedCount > 1 ? 's' : ''}${last ? ` · dernier ${esc((typeof formatOpsTimestamp === 'function' && (last.sentAt || last.createdAt)) ? formatOpsTimestamp(last.sentAt || last.createdAt) : '')}` : ''}</div>
@@ -595,7 +595,7 @@
             </div>
           </div>
           <div class="crm-head-actions">
-            ${selected.email ? `<button type="button" class="pv2-btn" onclick="composeStaffClientEmail('${escJs(selected.email)}','${escJs(selected.name || '')}')">${ci('mail')}Message</button>` : ''}
+            ${selected.email ? `<button type="button" class="pv2-btn" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('mail')}Message</button>` : ''}
             <button type="button" class="pv2-btn primary" onclick="openStaffClientBooking('${escJs(selected.id)}')">+ Réservation</button>
           </div>
         </section>
@@ -764,17 +764,315 @@
     renderStaffEmailsPage();
   };
 
+  /* ── Composer universel + boîte de réception (Emails v3) ──────────────────
+     Contrats : sendDirectEmail (C3), analyzeInboundEmail (C4), emailTemplates
+     (identités + modèles), improveEmailWithAi. Le composer n'exige AUCUNE
+     réservation ; la fiche client route ici via pv2OpenComposer. ── */
+
+  // Modèles de départ (mêmes contenus que le studio direction — dupliqués
+  // volontairement : admin-mail.js n'est pas chargé côté staff).
+  const PV2_STARTERS = [
+    { key: 'relance-client', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre — les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
+    { key: 'marketing-anniversaire', name: 'Pack anniversaire', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et cruches de boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe Fun Galaxy' },
+    { key: 'promo-semaine', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}} — réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
+    { key: 'serieux-entreprise', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy — proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
+  ];
+
+  const pv2Mail = {
+    composerOpen: false, busy: false, aiBusy: false, aiTips: [],
+    draft: { to: '', name: '', subject: '', body: '', identityId: '', templateRef: '', replyTo: null },
+    identities: [], templates: [], metaLoaded: false, metaLoading: false,
+    analyzeOpen: false, analyzeBusy: false, analyzeDraft: { from: '', body: '' },
+    replyDraft: {}, replyBusy: '', analysisOverride: {},
+  };
+  window.pv2Mail = pv2Mail;
+
+  async function loadPv2MailMeta(force = false) {
+    if (pv2Mail.metaLoading || (pv2Mail.metaLoaded && !force)) return;
+    pv2Mail.metaLoading = true;
+    try {
+      const payload = await apiRequest(`/api/ops?action=emailTemplates&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      pv2Mail.identities = payload.identities || [];
+      pv2Mail.templates = payload.templates || [];
+      const def = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0];
+      if (def && !pv2Mail.draft.identityId) pv2Mail.draft.identityId = String(def.id);
+      pv2Mail.metaLoaded = true;
+    } catch (error) { /* rôle sans accès : selects vides, envoi possible quand même */ } finally {
+      pv2Mail.metaLoading = false;
+      renderStaffEmailsPage();
+    }
+  }
+
+  // API globale : la fiche client (et tout autre module) ouvre le composer
+  // prérempli — remplace le détour console direction / mailto.
+  window.pv2OpenComposer = function (prefill = {}) {
+    pv2Mail.composerOpen = true;
+    pv2Mail.aiTips = [];
+    pv2Mail.draft = {
+      to: String(prefill.to || ''),
+      name: String(prefill.name || ''),
+      subject: String(prefill.subject || ''),
+      body: String(prefill.body || ''),
+      identityId: pv2Mail.draft.identityId || '',
+      templateRef: '',
+      replyTo: prefill.replyTo || null,
+    };
+    if (state.staffMenuPage !== 'emails' && typeof openStaffMenuPage === 'function') {
+      openStaffMenuPage('emails');
+    }
+    renderStaffEmailsPage();
+    setTimeout(() => { const el = document.getElementById('pv2ComposerTo'); if (el && !el.value) el.focus(); }, 60);
+  };
+
+  window.pv2CloseComposer = function () {
+    pv2Mail.composerOpen = false;
+    pv2Mail.aiTips = [];
+    renderStaffEmailsPage();
+  };
+
+  // Champs édités SANS re-render (pattern crmRelanceField : le render complet
+  // détruirait le focus en pleine frappe).
+  window.pv2ComposerField = function (field, value) {
+    pv2Mail.draft[field] = value;
+    if (field === 'to') {
+      const rows = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
+      const match = rows.find((r) => String(r.email || '').toLowerCase() === String(value).trim().toLowerCase());
+      if (match) pv2Mail.draft.name = match.name || '';
+    }
+  };
+
+  // Suggestions destinataire : datalist native (clavier + zéro perte de focus).
+  function pv2ComposerSuggestions() {
+    const rows = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
+    return rows
+      .filter((r) => r.email)
+      .slice(0, 200)
+      .map((r) => `<option value="${esc(r.email)}">${esc(r.name || r.email)}</option>`)
+      .join('');
+  }
+
+  window.pv2ComposerTemplate = function (ref) {
+    pv2Mail.draft.templateRef = ref;
+    const firstName = String(pv2Mail.draft.name || '').trim().split(/\s+/)[0] || '';
+    const fill = (text) => String(text || '').replace(/\{\{\s*prenom\s*\}\}/gi, firstName || 'vous');
+    if (ref.startsWith('starter:')) {
+      const starter = PV2_STARTERS.find((s) => s.key === ref.slice(8));
+      if (starter) { pv2Mail.draft.subject = fill(starter.subject); pv2Mail.draft.body = fill(starter.body); }
+    } else if (ref.startsWith('tpl:')) {
+      const tpl = pv2Mail.templates.find((t) => String(t.id) === ref.slice(4));
+      if (tpl) { pv2Mail.draft.subject = fill(tpl.subject || ''); pv2Mail.draft.body = fill(tpl.body || ''); }
+    }
+    renderStaffEmailsPage();
+  };
+
+  window.pv2ComposerImprove = async function () {
+    if (pv2Mail.aiBusy) return;
+    const d = pv2Mail.draft;
+    if (!d.subject.trim() && !d.body.trim()) { toast('Écris d\'abord un brouillon à améliorer.'); return; }
+    pv2Mail.aiBusy = true;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'improveEmailWithAi', centerId: state.currentCenterId || 'libramont', subject: d.subject, body: d.body, category: 'relance' }),
+      });
+      pv2Mail.aiTips = payload.tips || [];
+      if (payload.mode === 'ia' && payload.subject && payload.body) {
+        pv2Mail.draft.subject = payload.subject;
+        pv2Mail.draft.body = payload.body;
+        toast('Brouillon amélioré par l\'IA — relis avant d\'envoyer.');
+      } else if (pv2Mail.aiTips.length) {
+        toast('Conseils affichés sous le message.');
+      }
+    } catch (error) {
+      toast(error.message || 'Amélioration indisponible.');
+    } finally {
+      pv2Mail.aiBusy = false;
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2ComposerSend = async function () {
+    if (pv2Mail.busy) return;
+    const d = pv2Mail.draft;
+    const to = String(d.to || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Adresse email invalide.'); return; }
+    if (!d.subject.trim() || !d.body.trim()) { toast('Objet et message obligatoires.'); return; }
+    pv2Mail.busy = true;
+    renderStaffEmailsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'sendDirectEmail',
+          centerId: state.currentCenterId || 'libramont',
+          to,
+          name: d.name || '',
+          subject: d.subject,
+          body: d.body,
+          identityId: d.identityId || null,
+          templateRef: d.templateRef || '',
+          replyToCommunicationId: d.replyTo || null,
+        }),
+      });
+      pv2Mail.composerOpen = false;
+      pv2Mail.draft = { to: '', name: '', subject: '', body: '', identityId: pv2Mail.draft.identityId, templateRef: '', replyTo: null };
+      pv2Mail.aiTips = [];
+      toast('Message en file d\'envoi ✓');
+      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Envoi impossible.');
+    } finally {
+      pv2Mail.busy = false;
+      renderStaffEmailsPage();
+    }
+  };
+
+  /* ── « Analyser un reçu » : le staff colle un mail, l'agent le classe et
+     propose la réponse — le chemin sans configuration MX. ── */
+  window.pv2OpenAnalyze = function () {
+    pv2Mail.analyzeOpen = !pv2Mail.analyzeOpen;
+    renderStaffEmailsPage();
+    setTimeout(() => { const el = document.getElementById('pv2AnalyzeFrom'); if (el) el.focus(); }, 60);
+  };
+
+  window.pv2AnalyzeField = function (field, value) {
+    pv2Mail.analyzeDraft[field] = value;
+  };
+
+  window.pv2AnalyzeSubmit = async function () {
+    if (pv2Mail.analyzeBusy) return;
+    const from = String(pv2Mail.analyzeDraft.from || '').trim();
+    const body = String(pv2Mail.analyzeDraft.body || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from)) { toast('Adresse de l\'expéditeur invalide.'); return; }
+    if (!body) { toast('Colle le texte du mail reçu.'); return; }
+    pv2Mail.analyzeBusy = true;
+    renderStaffEmailsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'analyzeInboundEmail', centerId: state.currentCenterId || 'libramont', from, body, store: true }),
+      });
+      pv2Mail.analyzeOpen = false;
+      pv2Mail.analyzeDraft = { from: '', body: '' };
+      state.staffEmailFilter = 'inbound';
+      save();
+      toast('Mail analysé — il est dans les Reçus avec sa réponse proposée.');
+      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Analyse impossible.');
+    } finally {
+      pv2Mail.analyzeBusy = false;
+      renderStaffEmailsPage();
+    }
+  };
+
+  /* ── Détail d'un reçu : réponse proposée éditable, envoi 1-clic, ré-analyse. ── */
+  function pv2InboxAnalysis(row) {
+    return pv2Mail.analysisOverride[row.uid] || (row.payload && row.payload.analysis) || null;
+  }
+
+  function pv2InboxReplyDraft(row) {
+    if (!pv2Mail.replyDraft[row.uid]) {
+      const analysis = pv2InboxAnalysis(row);
+      pv2Mail.replyDraft[row.uid] = {
+        subject: analysis?.reply?.subject || `Re: ${row.subject || ''}`.trim(),
+        body: analysis?.reply?.body || '',
+      };
+    }
+    return pv2Mail.replyDraft[row.uid];
+  }
+
+  window.pv2InboxReplyField = function (uid, field, value) {
+    if (!pv2Mail.replyDraft[uid]) pv2Mail.replyDraft[uid] = { subject: '', body: '' };
+    pv2Mail.replyDraft[uid][field] = value;
+  };
+
+  window.pv2InboxReply = async function (uid) {
+    if (pv2Mail.replyBusy) return;
+    const row = getStaffEmailRows().find((r) => r.uid === uid);
+    if (!row) return;
+    const to = String(row.payload?.from || row.recipient || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Adresse de l\'expéditeur introuvable.'); return; }
+    const draft = pv2InboxReplyDraft(row);
+    if (!String(draft.subject || '').trim() || !String(draft.body || '').trim()) { toast('Objet et réponse obligatoires.'); return; }
+    pv2Mail.replyBusy = uid;
+    renderStaffEmailsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'sendDirectEmail',
+          centerId: state.currentCenterId || 'libramont',
+          to,
+          name: pv2InboxAnalysis(row)?.clientName || '',
+          subject: draft.subject,
+          body: draft.body,
+          identityId: pv2Mail.draft.identityId || null,
+          replyToCommunicationId: row.id || null,
+        }),
+      });
+      toast('Réponse en file d\'envoi ✓');
+      delete pv2Mail.replyDraft[uid];
+      if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Envoi impossible.');
+    } finally {
+      pv2Mail.replyBusy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2InboxReanalyze = async function (uid) {
+    if (pv2Mail.replyBusy) return;
+    const row = getStaffEmailRows().find((r) => r.uid === uid);
+    if (!row) return;
+    pv2Mail.replyBusy = uid;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'analyzeInboundEmail',
+          centerId: state.currentCenterId || 'libramont',
+          from: row.payload?.from || row.recipient || '',
+          subject: row.subject || '',
+          body: row.payload?.textBody || '',
+        }),
+      });
+      if (payload.analysis) {
+        pv2Mail.analysisOverride[uid] = payload.analysis;
+        pv2Mail.replyDraft[uid] = {
+          subject: payload.analysis.reply?.subject || '',
+          body: payload.analysis.reply?.body || '',
+        };
+        toast('Analyse actualisée.');
+      }
+    } catch (error) {
+      toast(error.message || 'Ré-analyse impossible.');
+    } finally {
+      pv2Mail.replyBusy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  const PV2_INTENT_LABELS = {
+    reservation: 'Réservation', annulation: 'Annulation', anniversaire: 'Anniversaire',
+    prix: 'Prix', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre',
+  };
+
   /* ── Séquences automatiques : les emails qui partent tout seuls, pilotés
      ON/OFF depuis ici (contrat automationSettings). Le levier n°1 du secteur
      (anniversaire J-30) vit ici. ── */
+  // timing : bornes du contrat C2 — libellés FR compréhensibles en one-shot.
   const AUTOMATION_META = [
     { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.', preview: 'Votre réservation est confirmée — date, heure, formule et infos pratiques.' },
-    { key: 'reminder_48h', label: 'Rappel 48 h', desc: 'Rappelle la venue 2 jours avant — moins de no-show.', preview: 'Rappel de votre venue après-demain, avec l’heure d’arrivée conseillée.' },
-    { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', preview: 'Merci de votre visite ! Une prochaine fois ? Les créneaux de la semaine sont plus calmes.' },
-    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année — relance toute seule au bon moment, 30 jours avant.', preview: 'L’anniversaire approche — on vous re-réserve la fête ? Gâteau et formule prêts.', star: true },
-    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, max 20/semaine.', preview: 'Ça fait un moment — bowling, laser et arcades vous attendent. Venez en semaine, c’est plus calme.', star: true },
+    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant — moins de no-show.', preview: 'Rappel de votre venue après-demain, avec l’heure d’arrivée conseillée.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
+    { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', preview: 'Merci de votre visite ! Une prochaine fois ? Les créneaux de la semaine sont plus calmes.', timing: { options: [0, 1, 2, 3], label: (n) => (n === 0 ? 'Le jour même' : `${n} jour${n > 1 ? 's' : ''} après la visite`) } },
+    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année — relance toute seule au bon moment.', preview: 'L’anniversaire approche — on vous re-réserve la fête ? Gâteau et formule prêts.', star: true, timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
+    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', preview: 'Ça fait un moment — bowling, laser et arcades vous attendent. Venez en semaine, c’est plus calme.', star: true, cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
   ];
-  const mkAuto = { loaded: false, loading: false, error: '', settings: null, stats: {}, busyKey: '' };
+  const mkAuto = { loaded: false, loading: false, error: '', settings: null, defaults: {}, stats: {}, busyKey: '', editKey: '', editDraft: {} };
 
   async function loadStaffAutomations(force = false) {
     if (mkAuto.loading || (mkAuto.loaded && !force)) return;
@@ -783,6 +1081,7 @@
     try {
       const payload = await apiRequest(`/api/ops?action=automationSettings&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
       mkAuto.settings = payload.settings || {};
+      mkAuto.defaults = payload.defaults || {};
       mkAuto.stats = payload.stats || {};
       mkAuto.loaded = true;
     } catch (error) {
@@ -793,6 +1092,78 @@
     }
   }
   window.loadStaffAutomations = loadStaffAutomations;
+
+  /* ── Édition d'une séquence : sujet, message, timing, cap — tout modifiable
+     (contrat C2), défauts visibles en placeholder, reset 1-clic. ── */
+  window.pv2AutoEdit = function (key) {
+    if (mkAuto.editKey === key) { mkAuto.editKey = ''; renderStaffEmailsPage(); return; }
+    const setting = (mkAuto.settings && mkAuto.settings[key]) || {};
+    const def = mkAuto.defaults[key] || {};
+    mkAuto.editKey = key;
+    mkAuto.editDraft = {
+      subject: setting.subject || '',
+      body: setting.body || '',
+      offsetDays: setting.offsetDays !== undefined ? Number(setting.offsetDays) : (def.offsetDays !== undefined ? Number(def.offsetDays) : undefined),
+      cap: setting.cap !== undefined ? Number(setting.cap) : (def.cap !== undefined ? Number(def.cap) : undefined),
+    };
+    renderStaffEmailsPage();
+  };
+
+  window.pv2AutoEditField = function (field, value) {
+    mkAuto.editDraft[field] = field === 'offsetDays' || field === 'cap' ? Number(value) : value;
+  };
+
+  window.pv2AutoEditSave = async function (key) {
+    if (mkAuto.busyKey) return;
+    const def = mkAuto.defaults[key] || {};
+    const d = mkAuto.editDraft;
+    const body = { action: 'automationSettings', key, centerId: state.currentCenterId || 'libramont' };
+    if (String(d.subject || '').trim() && d.subject !== def.subject) body.subject = d.subject;
+    if (String(d.body || '').trim() && d.body !== def.body) body.body = d.body;
+    if (d.offsetDays !== undefined && Number(d.offsetDays) !== Number(def.offsetDays)) body.offsetDays = Number(d.offsetDays);
+    if (d.cap !== undefined && Number(d.cap) !== Number(def.cap)) body.cap = Number(d.cap);
+    if (Object.keys(body).length === 3) { toast('Rien à enregistrer — tout est déjà au réglage par défaut.'); return; }
+    mkAuto.busyKey = key;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', { method: 'POST', body: JSON.stringify(body) });
+      mkAuto.settings = payload.settings || mkAuto.settings;
+      if (payload.defaults) mkAuto.defaults = payload.defaults;
+      mkAuto.editKey = '';
+      toast('Séquence personnalisée ✓');
+    } catch (error) {
+      toast(error.message || 'Enregistrement impossible.');
+    } finally {
+      mkAuto.busyKey = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2AutoEditReset = async function (key) {
+    if (mkAuto.busyKey) return;
+    mkAuto.busyKey = key;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'automationSettings', key, reset: true, centerId: state.currentCenterId || 'libramont' }),
+      });
+      mkAuto.settings = payload.settings || mkAuto.settings;
+      if (payload.defaults) mkAuto.defaults = payload.defaults;
+      mkAuto.editKey = '';
+      toast('Séquence remise au modèle d\'origine.');
+    } catch (error) {
+      toast(error.message || 'Réinitialisation impossible.');
+    } finally {
+      mkAuto.busyKey = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  function pv2AutoHasOverride(key) {
+    const s = mkAuto.settings && mkAuto.settings[key];
+    return !!(s && (s.subject || s.body || s.offsetDays !== undefined || s.cap !== undefined));
+  }
 
   window.toggleStaffAutomation = async function (key) {
     if (mkAuto.busyKey || !mkAuto.settings) return;
@@ -814,20 +1185,179 @@
     }
   };
 
+  function mkAutoEditor(meta) {
+    const def = mkAuto.defaults[meta.key] || {};
+    const d = mkAuto.editDraft;
+    const busy = mkAuto.busyKey === meta.key;
+    const timingSelect = meta.timing ? `
+      <label class="mk-auto-edit-field">
+        <span>Quand ?</span>
+        <select onchange="pv2AutoEditField('offsetDays', this.value)" aria-label="Timing">
+          ${meta.timing.options.map((n) => `<option value="${n}"${Number(d.offsetDays) === n ? ' selected' : ''}>${esc(meta.timing.label(n))}</option>`).join('')}
+        </select>
+      </label>` : '';
+    const capSelect = meta.cap ? `
+      <label class="mk-auto-edit-field">
+        <span>Plafond</span>
+        <select onchange="pv2AutoEditField('cap', this.value)" aria-label="Plafond hebdomadaire">
+          ${meta.cap.options.map((n) => `<option value="${n}"${Number(d.cap) === n ? ' selected' : ''}>${esc(meta.cap.label(n))}</option>`).join('')}
+        </select>
+      </label>` : '';
+    const variables = Array.isArray(def.variables) && def.variables.length
+      ? `<p class="mk-auto-edit-vars">Variables : ${def.variables.map((v) => `<code>{{${esc(v)}}}</code>`).join(' ')}</p>`
+      : '';
+    return `<div class="mk-auto-edit">
+      <label class="mk-auto-edit-field"><span>Objet</span>
+        <input value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
+      </label>
+      <label class="mk-auto-edit-field"><span>Message</span>
+        <textarea rows="5" placeholder="${esc(def.body || 'Message par défaut')}" oninput="pv2AutoEditField('body', this.value)" aria-label="Corps du message">${esc(d.body)}</textarea>
+      </label>
+      ${variables}
+      ${timingSelect}
+      ${capSelect}
+      <div class="mk-auto-edit-actions">
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
+        <button type="button" class="pv2-btn sm primary" onclick="pv2AutoEditSave('${meta.key}')" ${busy ? 'disabled' : ''}>${busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+      </div>
+    </div>`;
+  }
+
   function mkAutoCard(meta) {
     const setting = mkAuto.settings ? mkAuto.settings[meta.key] : null;
     const enabled = !!(setting && setting.enabled);
     const stats = mkAuto.stats[meta.key] || {};
     const busy = mkAuto.busyKey === meta.key;
-    return `<article class="mk-auto${enabled ? ' is-on' : ''}">
+    const editing = mkAuto.editKey === meta.key;
+    const modified = pv2AutoHasOverride(meta.key);
+    const previewText = (setting && setting.body) || meta.preview;
+    return `<article class="mk-auto${enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
-        <strong>${meta.star ? `<span class="mk-auto-star" title="Levier n°1 du secteur">${ci('star')}</span>` : ''}${esc(meta.label)}</strong>
+        <strong>${meta.star ? `<span class="mk-auto-star" title="Levier n°1 du secteur">${ci('star')}</span>` : ''}${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}</strong>
         <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(meta.desc)}</p>
-      <details class="mk-auto-preview"><summary>Aperçu du message</summary><p>${esc(meta.preview)}</p></details>
-      <div class="mk-auto-stats">${Number(stats.sent30d) || 0} envoyé${(Number(stats.sent30d) || 0) > 1 ? 's' : ''}${Number(stats.failed30d) ? ` · <span class="mk-auto-fail">${Number(stats.failed30d)} échec${Number(stats.failed30d) > 1 ? 's' : ''}</span>` : ''} (30 j)</div>
+      <details class="mk-auto-preview"><summary>Aperçu du message</summary><p>${esc(previewText)}</p></details>
+      <div class="mk-auto-foot">
+        <span class="mk-auto-stats">${Number(stats.sent30d) || 0} envoyé${(Number(stats.sent30d) || 0) > 1 ? 's' : ''}${Number(stats.failed30d) ? ` · <span class="mk-auto-fail">${Number(stats.failed30d)} échec${Number(stats.failed30d) > 1 ? 's' : ''}</span>` : ''} (30 j)</span>
+        <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
+      </div>
+      ${editing ? mkAutoEditor(meta) : ''}
     </article>`;
+  }
+
+  function pv2IsInbound(row) {
+    return row.direction === 'inbound' || row.status === 'received';
+  }
+
+  function pv2ComposerPanel() {
+    const d = pv2Mail.draft;
+    if (!pv2Mail.metaLoaded && !pv2Mail.metaLoading) setTimeout(() => loadPv2MailMeta(), 0);
+    const identityOptions = pv2Mail.identities.length
+      ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(d.identityId) ? ' selected' : ''}>${esc(i.label || i.email)} — ${esc(i.email)}</option>`).join('')
+      : '<option value="">Expéditeur par défaut</option>';
+    const templateOptions = [
+      '<option value="">Partir de zéro…</option>',
+      ...PV2_STARTERS.map((s) => `<option value="starter:${s.key}"${d.templateRef === `starter:${s.key}` ? ' selected' : ''}>${esc(s.name)}</option>`),
+      ...pv2Mail.templates.map((t) => `<option value="tpl:${t.id}"${d.templateRef === `tpl:${t.id}` ? ' selected' : ''}>${esc(t.label || t.name || `Modèle ${t.id}`)}</option>`),
+    ].join('');
+    return `<section class="pv2-panel pv2-composer" aria-label="Nouveau message">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisis le client (ou tape une adresse), l'expéditeur, un modèle si tu veux — et envoie.</p></div>
+        <button type="button" class="pv2-btn sm" onclick="pv2CloseComposer()">Fermer</button>
+      </div>
+      <div class="pv2-panel-body pv2-composer-grid">
+        <label class="pv2-composer-field pv2-composer-to"><span>À</span>
+          <input id="pv2ComposerTo" list="pv2ClientsList" value="${esc(d.to)}" placeholder="Nom ou adresse email du client…" oninput="pv2ComposerField('to', this.value)" autocomplete="off">
+          <datalist id="pv2ClientsList">${pv2ComposerSuggestions()}</datalist>
+        </label>
+        <label class="pv2-composer-field"><span>Expéditeur</span>
+          <select onchange="pv2ComposerField('identityId', this.value)" aria-label="Adresse d'envoi">${identityOptions}</select>
+        </label>
+        <label class="pv2-composer-field"><span>Modèle</span>
+          <select onchange="pv2ComposerTemplate(this.value)" aria-label="Modèle de message">${templateOptions}</select>
+        </label>
+        <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
+          <input id="pv2ComposerSubject" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value)">
+        </label>
+        <label class="pv2-composer-field pv2-composer-wide"><span>Message</span>
+          <textarea id="pv2ComposerBody" rows="8" placeholder="Bonjour…" oninput="pv2ComposerField('body', this.value)">${esc(d.body)}</textarea>
+        </label>
+        ${pv2Mail.aiTips.length ? `<ul class="pv2-composer-tips">${pv2Mail.aiTips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+        <div class="pv2-composer-actions pv2-composer-wide">
+          <button type="button" class="pv2-btn" onclick="pv2ComposerImprove()" ${pv2Mail.aiBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.aiBusy ? 'Analyse…' : 'Améliorer par IA'}</button>
+          <span class="pv2-composer-spacer"></span>
+          <button type="button" class="pv2-btn" onclick="pv2CloseComposer()">Annuler</button>
+          <button type="button" class="pv2-btn primary" onclick="pv2ComposerSend()" ${pv2Mail.busy ? 'disabled' : ''}>${ci('send')}${pv2Mail.busy ? 'Envoi…' : 'Envoyer'}</button>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function pv2AnalyzePanel() {
+    return `<section class="pv2-panel pv2-analyze" aria-label="Analyser un email reçu">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Analyser un email reçu</h2><p class="pv2-panel-sub">Colle un mail de ta boîte : l'agent dit ce que veut le client et prépare la réponse.</p></div>
+        <button type="button" class="pv2-btn sm" onclick="pv2OpenAnalyze()">Fermer</button>
+      </div>
+      <div class="pv2-panel-body pv2-composer-grid">
+        <label class="pv2-composer-field"><span>De (adresse du client)</span>
+          <input id="pv2AnalyzeFrom" value="${esc(pv2Mail.analyzeDraft.from)}" placeholder="client@exemple.be" oninput="pv2AnalyzeField('from', this.value)">
+        </label>
+        <label class="pv2-composer-field pv2-composer-wide"><span>Texte du mail reçu</span>
+          <textarea rows="6" placeholder="Colle ici le contenu du mail…" oninput="pv2AnalyzeField('body', this.value)">${esc(pv2Mail.analyzeDraft.body)}</textarea>
+        </label>
+        <div class="pv2-composer-actions pv2-composer-wide">
+          <button type="button" class="pv2-btn primary" onclick="pv2AnalyzeSubmit()" ${pv2Mail.analyzeBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.analyzeBusy ? 'Analyse…' : 'Analyser'}</button>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function pv2InboundDetail(row) {
+    const analysis = pv2InboxAnalysis(row);
+    const draft = pv2InboxReplyDraft(row);
+    const busy = pv2Mail.replyBusy === row.uid;
+    const replied = !!(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt));
+    const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
+    return `
+      <div class="pv2-panel-body pv2-mail-detail">
+        <div class="pv2-kv">
+          <div><dt>De</dt><dd>${esc(row.payload?.from || row.recipient || '—')}</dd></div>
+          <div><dt>Reçu</dt><dd>${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '—')}</dd></div>
+          ${replied ? '<div><dt>Statut</dt><dd>Répondu</dd></div>' : ''}
+        </div>
+        <div>
+          <div class="pv2-mail-preview-title">Mail reçu</div>
+          <div class="pv2-mail-preview">${esc(String(row.payload?.textBody || row.subject || ''))}</div>
+        </div>
+        ${analysis ? `
+        <div class="pv2-inbox-analysis">
+          <div class="pv2-mail-preview-title">Ce qu'il veut</div>
+          <div class="pv2-inbox-summary">
+            <span class="pv2-inbox-intent">${esc(intentLabel)}</span>
+            ${analysis.urgency === 'haute' ? '<span class="pv2-inbox-urgent">Urgent</span>' : ''}
+            <p>${esc(analysis.summary || '')}</p>
+          </div>
+        </div>
+        <div class="pv2-inbox-reply">
+          <div class="pv2-mail-preview-title">Réponse proposée${analysis.provider && analysis.provider !== 'rules' ? ' (IA)' : ''}</div>
+          <input class="pv2-inbox-reply-subject" value="${esc(draft.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'subject', this.value)">
+          <textarea class="pv2-inbox-reply-body" rows="7" aria-label="Réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'body', this.value)">${esc(draft.body)}</textarea>
+          <div class="pv2-composer-actions">
+            <button type="button" class="pv2-btn" onclick="pv2InboxReanalyze('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('refresh')}Ré-analyser</button>
+            <span class="pv2-composer-spacer"></span>
+            <button type="button" class="pv2-btn primary" onclick="pv2InboxReply('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('send')}${busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
+          </div>
+        </div>` : `
+        <div class="pv2-inbox-analysis">
+          <div class="pv2-mail-preview-title">Pas encore analysé</div>
+          <div class="pv2-composer-actions">
+            <button type="button" class="pv2-btn" onclick="pv2InboxReanalyze('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('sparkles')}${busy ? 'Analyse…' : 'Analyser ce mail'}</button>
+          </div>
+        </div>`}
+      </div>`;
   }
 
   window.renderStaffEmailsPage = function (errorMessage = '') {
@@ -837,12 +1367,19 @@
     // C14 : ops-console.js est injecté à la demande — requestOpsAdminLoad
     // (app-main) charge le script puis déclenche loadOpsAdmin.
     if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
-    const allRows = getStaffEmailRows();
-    const rows = getStaffEmailRowsFiltered();
+    const everyRow = getStaffEmailRows();
+    const inboundRows = everyRow.filter(pv2IsInbound);
+    const allRows = everyRow.filter((row) => !pv2IsInbound(row));
+    const filter = state.staffEmailFilter || 'all';
+    const query = String(state.staffEmailQuery || '').trim().toLowerCase();
+    // Le filtre « Reçus » vit ici (app-main ne connaît que les statuts d'envoi).
+    const rows = filter === 'inbound'
+      ? inboundRows.filter((row) => !query || getStaffEmailText(row).includes(query))
+      : getStaffEmailRowsFiltered().filter((row) => !pv2IsInbound(row));
     const selected = getSelectedStaffEmailRow(rows);
     if (selected && state.staffEmailSelectedId !== selected.uid) state.staffEmailSelectedId = selected.uid;
     const metrics = getStaffEmailMetrics(allRows);
-    const filter = state.staffEmailFilter || 'all';
+    const inboundWaiting = inboundRows.filter((row) => !(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt))).length;
     const updatedAt = opsAdminCache.lastLoadedAt ? formatOpsTimestamp(opsAdminCache.lastLoadedAt) : 'non chargé';
 
     const KIND_META = {
@@ -859,7 +1396,22 @@
       <div class="pv2-pipe-hint">${esc(hint)}</div>
     </div>`;
 
+    const tableHead = filter === 'inbound'
+      ? '<thead><tr><th>De</th><th>Demande</th><th>Statut</th><th class="num">Reçu</th></tr></thead>'
+      : '<thead><tr><th>Message</th><th>Modèle</th><th>Statut</th><th class="num">Date</th></tr></thead>';
+
     const tableRows = rows.slice(0, 80).map((row) => {
+      if (filter === 'inbound') {
+        const analysis = pv2InboxAnalysis(row);
+        const replied = !!(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt));
+        const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
+        return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
+          <td><strong>${esc(analysis?.clientName || row.payload?.from || row.recipient || '—')}</strong><small class="pv2-cell-sub">${esc(row.subject || '')}</small></td>
+          <td>${analysis ? `<span class="pv2-inbox-intent">${esc(intentLabel)}</span>${analysis.urgency === 'haute' ? ' <span class="pv2-inbox-urgent">Urgent</span>' : ''}<small class="pv2-cell-sub">${esc(analysis.summary || '')}</small>` : '<span class="pv2-chip">À analyser</span>'}</td>
+          <td>${replied ? '<span class="pv2-chip green">Répondu</span>' : '<span class="pv2-chip blue">À répondre</span>'}</td>
+          <td class="num">${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '—')}</td>
+        </tr>`;
+      }
       const meta = KIND_META[row.statusKind] || KIND_META.draft;
       return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
         <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '—')}</small></td>
@@ -870,7 +1422,11 @@
     }).join('');
 
     const payload = selected?.payload || {};
-    const detail = selected ? `
+    const detail = !selected
+      ? '<div class="pv2-empty"><strong>Aucun message</strong>Sélectionnez une communication.</div>'
+      : pv2IsInbound(selected)
+        ? pv2InboundDetail(selected)
+        : `
       <div class="pv2-panel-body pv2-mail-detail">
         <div class="pv2-kv">
           <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '—')}</dd></div>
@@ -886,7 +1442,7 @@
           <div class="pv2-mail-preview-title">Aperçu</div>
           <div class="pv2-mail-preview">${esc(String(payload.textBody || selected.subject || 'Pas de contenu texte.'))}</div>
         </div>
-      </div>` : '<div class="pv2-empty"><strong>Aucun message</strong>Sélectionnez une communication.</div>';
+      </div>`;
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
@@ -897,12 +1453,17 @@
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" oninput="setStaffEmailQuery(this.value)"></label>
           <button type="button" class="pv2-btn" onclick="requestOpsAdminLoad(true)">Actualiser</button>
           <button type="button" class="pv2-btn" onclick="exportStaffEmailsCsv()">Exporter</button>
-          <button type="button" class="pv2-btn primary" onclick="requestOpsDispatch()">Envoyer la file</button>`,
+          <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Analyser un reçu</button>
+          <button type="button" class="pv2-btn" onclick="requestOpsDispatch()">Envoyer la file</button>
+          <button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>`,
       })}
+
+      ${pv2Mail.composerOpen ? pv2ComposerPanel() : ''}
+      ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
 
       <section class="pv2-panel mk-auto-panel">
         <div class="pv2-panel-head has-sub">
-          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Active ou coupe chaque séquence — le reste est géré.</p></div>
+          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Active, coupe ou personnalise chaque séquence — texte et timing compris.</p></div>
           ${mkAuto.error ? `<button type="button" class="pv2-btn" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
         </div>
         <div class="pv2-panel-body">
@@ -916,6 +1477,7 @@
 
       <section class="pv2-pipeline">
         ${pipe('all', 'Total', allRows.length, 'toutes communications')}
+        ${pipe('inbound', 'Reçus', inboundRows.length, inboundWaiting ? `${inboundWaiting} sans réponse` : 'boîte de réception')}
         ${pipe('queued', 'En file', metrics.queued, `${metrics.due || 0} prêt(s) à partir`)}
         ${pipe('sent', 'Envoyés', metrics.sent, `${metrics.deliveryRate || 0}% de réussite`)}
         ${pipe('failed', 'Échecs', metrics.failed, `${metrics.attempted || 0} tentative(s)`)}
@@ -925,8 +1487,8 @@
       <section class="pv2-split">
         <article class="pv2-panel pv2-mail-list">
           <table class="pv2-table">
-            <thead><tr><th>Message</th><th>Modèle</th><th>Statut</th><th class="num">Date</th></tr></thead>
-            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>File vide</strong>Aucune communication pour ce filtre.</div></td></tr>`}</tbody>
+            ${tableHead}
+            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Colle un mail via « Analyser un reçu » — l\'agent prépare la réponse.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">
@@ -989,6 +1551,9 @@
       chevrons: '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
       chevronUp: '<path d="m18 15-6-6-6 6"/>',
       chevronDown: '<path d="m6 9 6 6 6-6"/>',
+      inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+      sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
+      pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="m15 5 4 4"/>',
     };
     return `<svg class="pv2-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
   }

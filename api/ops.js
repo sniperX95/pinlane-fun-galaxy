@@ -72,6 +72,7 @@ const {
   sendDirectEmail,
   enqueueCampaign,
   getAutomationSettings,
+  getAutomationDefaults,
   setAutomationSetting,
   getAutomationStats,
   sendClientRelance,
@@ -266,13 +267,14 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
-  // Séquences automatiques : état ON/OFF + stats 30 j (page Emails & relances).
+  // Séquences automatiques : état + textes/timings personnalisés + défauts
+  // (placeholders et « Réinitialiser » de l'éditeur) + stats 30 j.
   if (action === 'automationSettings') {
     const [settings, stats] = await Promise.all([
       getAutomationSettings(centerId),
       getAutomationStats(centerId),
     ]);
-    sendJson(res, 200, { ok: true, centerId, settings, stats });
+    sendJson(res, 200, { ok: true, centerId, settings, stats, defaults: getAutomationDefaults() });
     return;
   }
 
@@ -1203,8 +1205,15 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // Toggle ON/OFF d'une séquence automatique (persisté par centre).
   if (action === 'automationSettings') {
     const concreteCenterId = requireConcreteCenter('séquences automatiques');
-    const settings = await setAutomationSetting(concreteCenterId, body.key, body.enabled);
-    sendJson(res, 200, { ok: true, action, settings });
+    const settings = await setAutomationSetting(concreteCenterId, body.key, {
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+      subject: typeof body.subject === 'string' ? body.subject : undefined,
+      body: typeof body.body === 'string' ? body.body : undefined,
+      offsetDays: body.offsetDays,
+      cap: body.cap,
+      reset: body.reset === true,
+    });
+    sendJson(res, 200, { ok: true, action, settings, defaults: getAutomationDefaults() });
     return;
   }
 
@@ -1307,7 +1316,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
-  // Studio mails — envoi libre : même pipeline que les messages client.
+  // Envoi libre (studio mails + composer page Emails) : même pipeline que les
+  // messages client. `replyToCommunicationId` = réponse à un email reçu
+  // (marque l'inbound répondu + apprentissage de l'agent si texte modifié).
   if (action === 'sendDirectEmail') {
     const studioCenterId = requireConcreteCenter('sendDirectEmail');
     let identity = null;
@@ -1318,6 +1329,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     const result = await sendDirectEmail({
       centerId: studioCenterId,
       to: body.to,
+      name: body.name || '',
       subject: body.subject,
       body: body.body,
       fromEmail: identity?.email || '',
@@ -1325,8 +1337,41 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       category: body.category || 'direct',
       templateRef: body.templateRef || '',
       staffMember: options.session?.member?.name || options.session?.member?.id || 'direction',
+      identityId: body.identityId || null,
+      replyToCommunicationId: body.replyToCommunicationId || null,
     });
     sendJson(res, 200, { ok: true, ...result });
+    return;
+  }
+
+  // Analyse d'un email reçu (collé par le staff, ou ré-analyse depuis l'inbox).
+  // store:true → stocké dans la boîte de réception avec son analyse.
+  if (action === 'analyzeInboundEmail') {
+    const inboundCenterId = requireConcreteCenter('analyse email');
+    const from = String(body.from || '').trim();
+    const text = String(body.body || '').trim();
+    if (!from || !from.includes('@')) throw createHttpError('Adresse de l’expéditeur requise.', 400);
+    if (!text) throw createHttpError('Le contenu du mail est requis.', 400);
+    const { analyzeEmail, ingestInboundEmail } = require('../lib/email-agent');
+    if (body.store === true) {
+      const result = await ingestInboundEmail({
+        centerId: inboundCenterId,
+        from,
+        subject: String(body.subject || ''),
+        body: text,
+        receivedAt: body.receivedAt || null,
+      });
+      sendJson(res, 200, {
+        ok: true,
+        action,
+        communication: result.communication ? { id: result.communication.id } : null,
+        analysis: result.analysis,
+        deduped: Boolean(result.deduped),
+      });
+      return;
+    }
+    const analysis = await analyzeEmail({ from, subject: String(body.subject || ''), body: text, centerId: inboundCenterId });
+    sendJson(res, 200, { ok: true, action, analysis });
     return;
   }
 
@@ -1537,6 +1582,7 @@ function getRequiredOpsPermission(method, action) {
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';
+  if (action === 'analyzeInboundEmail') return ['emails.view', 'emails.send'];
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];

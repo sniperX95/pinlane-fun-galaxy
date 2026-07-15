@@ -2215,6 +2215,321 @@
     </section>`;
   }
 
+  /* ── Cerveau marketing (action=marketingBrain) : prévision 14 j sur les
+     données du centre, explication des jours anormaux, plan d'attaque daté,
+     post Instagram du jour. Le front AFFICHE — tout le calcul est serveur. ── */
+  const mkBrain = { data: null, loading: false, error: '', doneIds: {}, busyId: '' };
+  window.mkBrain = mkBrain;
+
+  async function loadMarketingBrain(force = false) {
+    if (mkBrain.loading || (mkBrain.data && !force)) return;
+    mkBrain.loading = true;
+    mkBrain.error = '';
+    try {
+      mkBrain.data = await apiRequest(`/api/ops?action=marketingBrain&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+    } catch (error) {
+      mkBrain.error = error.message || 'Cerveau marketing indisponible.';
+    } finally {
+      mkBrain.loading = false;
+      renderStaffCampaignsPage();
+    }
+  }
+  window.loadMarketingBrain = loadMarketingBrain;
+
+  const MK_LEVELS = {
+    creux: { label: 'creux', tone: 'creux' },
+    calme: { label: 'calme', tone: 'calme' },
+    normal: { label: '', tone: 'normal' },
+    fort: { label: 'fort', tone: 'fort' },
+  };
+  const MK_DOW_ABBR = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
+
+  function mkOutlookPanel() {
+    const brain = mkBrain.data;
+    if (!brain) {
+      return `<section class="pv2-panel mk-outlook" aria-label="Prévision 14 jours">
+        <div class="pv2-panel-head has-sub"><div><h2>Les 14 prochains jours</h2><p class="pv2-panel-sub">${mkBrain.loading ? 'Prévision en cours…' : (mkBrain.error ? esc(mkBrain.error) : 'Chargement de la prévision…')}</p></div></div>
+      </section>`;
+    }
+    if (!brain.dataDays) {
+      return `<section class="pv2-panel mk-outlook" aria-label="Prévision 14 jours">
+        <div class="pv2-panel-head has-sub"><div><h2>Les 14 prochains jours</h2><p class="pv2-panel-sub">Prévision de fréquentation sur tes propres données.</p></div></div>
+        <div class="pv2-panel-body"><div class="pv2-empty"><strong>Pas encore assez d'historique</strong>La collecte tourne chaque nuit — la prévision apparaît dès les premières semaines de données.</div></div>
+      </section>`;
+    }
+    const maxExpected = Math.max(...brain.outlook.map((day) => day.expected), 1);
+    const cells = brain.outlook.map((day) => {
+      const level = MK_LEVELS[day.level] || MK_LEVELS.normal;
+      const meteo = [
+        day.tmax !== null && day.tmax !== undefined ? `${Math.round(day.tmax)}°` : '',
+        day.precipMm !== null && day.precipMm !== undefined && day.precipMm >= 1 ? `${Math.round(day.precipMm)}mm` : '',
+      ].filter(Boolean).join(' · ');
+      const tooltip = [`${day.label} — ${day.expected} visiteurs attendus (${day.baselineSource})`, ...(day.drivers || [])].join('\n');
+      return `<div class="mk-ol-day lv-${level.tone}" title="${esc(tooltip)}">
+        <span class="mk-ol-dow">${MK_DOW_ABBR[day.dow]}</span>
+        <span class="mk-ol-date">${esc(day.date.slice(8, 10))}/${esc(day.date.slice(5, 7))}</span>
+        <span class="mk-ol-gauge"><span style="height:${Math.max(6, Math.round((day.expected / maxExpected) * 100))}%"></span></span>
+        <span class="mk-ol-num">${day.expected}</span>
+        ${level.label ? `<span class="mk-ol-badge">${level.label}</span>` : '<span class="mk-ol-badge mk-ol-badge-empty"></span>'}
+        ${day.booked && day.booked.pax ? `<span class="mk-ol-booked" title="${day.booked.pax} pers. déjà réservées">${day.booked.pax} rés.</span>` : '<span class="mk-ol-booked mk-ol-booked-empty"></span>'}
+      </div>`;
+    }).join('');
+    const past = (brain.explainPast || []).map((item) => `<li>${esc(item.summary)}</li>`).join('');
+    return `<section class="pv2-panel mk-outlook" aria-label="Prévision 14 jours">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Les 14 prochains jours</h2><p class="pv2-panel-sub">Prévision sur tes propres données (médiane : ${brain.medianVisitors} visiteurs/j, ${brain.dataDays} j d'historique). Les creux, c'est là que le marketing doit frapper.</p></div>
+        <button type="button" class="pv2-btn" onclick="loadMarketingBrain(true)">${ci('refresh')}Actualiser</button>
+      </div>
+      <div class="pv2-panel-body">
+        <div class="mk-ol-strip">${cells}</div>
+        ${past ? `<div class="mk-ol-past"><strong>Pourquoi ces derniers jours ont détonné</strong><ul>${past}</ul></div>` : ''}
+        <p class="mk-roi-method">Base : moyenne de tes jours comparables (même jour de semaine, même statut congé), ajustée par les effets météo démontrés sur ton historique. Les réservations déjà posées remontent le niveau — jamais l'inverse.</p>
+      </div>
+    </section>`;
+  }
+
+  function mkPlanPanel() {
+    const brain = mkBrain.data;
+    if (!brain || !brain.dataDays) return '';
+    const actions = brain.plan || [];
+    const items = actions.map((action, index) => {
+      const done = Boolean(mkBrain.doneIds[action.id]);
+      const busy = mkBrain.busyId === action.id;
+      return `<article class="mk-plan-item ${done ? 'is-done' : ''}">
+        <div class="mk-plan-when">
+          <strong>${esc(frShortDate(action.executeOn))}</strong>
+          ${action.targetDate && action.targetDate !== action.executeOn ? `<small>pour le ${esc(frShortDate(action.targetDate))}</small>` : '<small>jour J</small>'}
+          <span class="pv2-chip">${esc(action.channel)}</span>
+        </div>
+        <div class="mk-plan-main">
+          <strong>${esc(action.title)}</strong>
+          <p class="mk-idea-why">${esc(action.why)}</p>
+          ${action.readyContent ? `<div class="mk-idea-content">${esc(action.readyContent)}</div>` : ''}
+          <div class="mk-idea-actions">
+            ${action.readyContent ? `<button type="button" class="pv2-btn" onclick="mkPlanCopy(${index})">${ci('copy')}Copier</button>` : ''}
+            <button type="button" class="pv2-btn primary" onclick="mkPlanDone(${index})" ${done || busy ? 'disabled' : ''}>${ci('check')}${done ? 'Fait — mesuré à J+14' : 'C’est fait'}</button>
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+    return `<section class="pv2-panel mk-plan" aria-label="Plan marketing">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Ton plan d'attaque</h2><p class="pv2-panel-sub">Chaque creux prévu devient une action datée. Marque « C'est fait » — l'effet est mesuré 14 jours après, à jours comparables.</p></div>
+        ${actions.length ? `<small>${actions.length} action${actions.length > 1 ? 's' : ''}</small>` : ''}
+      </div>
+      <div class="pv2-panel-body">
+        ${actions.length
+          ? `<div class="mk-plan-list">${items}</div>`
+          : '<div class="pv2-empty"><strong>Rien à pousser pour l’instant</strong>Les 14 prochains jours tiennent la route — le plan se remplit dès qu’un creux se profile.</div>'}
+      </div>
+    </section>`;
+  }
+
+  function frShortDate(dateStr) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return String(dateStr || '');
+    return `${MK_DOW_ABBR[new Date(`${dateStr}T12:00:00Z`).getUTCDay()]} ${dateStr.slice(8, 10)}/${dateStr.slice(5, 7)}`;
+  }
+
+  window.mkPlanCopy = async function (index) {
+    const action = ((mkBrain.data || {}).plan || [])[Number(index)];
+    if (!action || !action.readyContent) return;
+    try {
+      await navigator.clipboard.writeText(action.readyContent);
+      toast('Copié — prêt à publier.');
+    } catch (error) {
+      toast('Copie auto impossible — sélectionne le texte à la main.');
+    }
+  };
+
+  // Le champ `action` du POST générique est pris par le routeur ops : l'action
+  // du plan part sous `planAction`.
+  window.mkPlanDone = async function (index) {
+    const action = ((mkBrain.data || {}).plan || [])[Number(index)];
+    if (!action || mkBrain.busyId) return;
+    mkBrain.busyId = action.id;
+    renderStaffCampaignsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'planActionDone',
+          centerId: state.currentCenterId || 'libramont',
+          planAction: {
+            id: action.id,
+            title: action.title,
+            why: action.why,
+            channel: action.channel,
+            targetDate: action.targetDate,
+            readyContent: action.readyContent,
+          },
+        }),
+      });
+      mkBrain.doneIds[action.id] = true;
+      toast('Noté — je mesure l’effet à J+14.');
+      loadMarketingIa(true);
+    } catch (error) {
+      toast(error.message || 'Impossible de marquer l’action.');
+    } finally {
+      mkBrain.busyId = '';
+      renderStaffCampaignsPage();
+    }
+  };
+
+  function mkInstaPanel() {
+    const brain = mkBrain.data;
+    if (!brain || !brain.instagram) return '';
+    const insta = brain.instagram;
+    return `<section class="pv2-panel mk-insta" aria-label="Post Instagram du jour">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Post Instagram du jour</h2><p class="pv2-panel-sub">${esc(insta.reason)}</p></div>
+        <button type="button" class="pv2-btn primary" onclick="mkInstaCopy()">${ci('copy')}Copier le post</button>
+      </div>
+      <div class="pv2-panel-body">
+        <div class="mk-idea-content">${esc(insta.caption)}</div>
+        <p class="mk-insta-brief">${esc(insta.visualBrief)}</p>
+        <div class="mk-insta-meta">
+          <span class="pv2-chip">Meilleur moment : ${esc(insta.bestTime)}</span>
+          ${(insta.hashtags || []).map((tag) => `<span class="pv2-chip mk-insta-tag">${esc(tag)}</span>`).join('')}
+        </div>
+        <p class="mk-roi-method">${esc(insta.bestTimeNote || '')}</p>
+      </div>
+    </section>`;
+  }
+
+  window.mkInstaCopy = async function () {
+    const insta = (mkBrain.data || {}).instagram;
+    if (!insta) return;
+    const text = `${insta.caption}\n\n${(insta.hashtags || []).join(' ')}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Post copié — colle-le dans Instagram.');
+    } catch (error) {
+      toast('Copie auto impossible — sélectionne le texte à la main.');
+    }
+  };
+
+  /* ── Veille concurrence (actions competitors / competitorSave / Delete /
+     Sweep) : les sites sont visités chaque nuit, un changement = une alerte. ── */
+  const mkComp = { data: null, loading: false, busy: false, error: '' };
+  window.mkComp = mkComp;
+
+  async function loadCompetitors(force = false) {
+    if (mkComp.loading || (mkComp.data && !force)) return;
+    mkComp.loading = true;
+    mkComp.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=competitors&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      mkComp.data = payload.competitors || [];
+    } catch (error) {
+      mkComp.error = error.message || 'Veille indisponible.';
+    } finally {
+      mkComp.loading = false;
+      renderStaffCampaignsPage();
+    }
+  }
+  window.loadCompetitors = loadCompetitors;
+
+  function mkCompetitorsPanel() {
+    const rows = (mkComp.data || []).map((competitor) => {
+      let host = '';
+      try { host = competitor.websiteUrl ? new URL(competitor.websiteUrl).hostname.replace(/^www\./, '') : ''; } catch (error) { host = ''; }
+      return `<article class="mk-comp-row">
+        <div class="mk-comp-id">
+          <strong>${esc(competitor.name)}</strong>
+          <small>${host ? esc(host) : 'pas de site'}${competitor.instagramHandle ? ` · @${esc(competitor.instagramHandle)}` : ''}</small>
+        </div>
+        <div class="mk-comp-status">
+          ${competitor.lastCheckedAt
+            ? `<small>Vu le ${esc(String(competitor.lastCheckedAt).slice(0, 10))}</small>${competitor.lastDiff ? `<p>${esc(competitor.lastDiff)}</p>` : ''}`
+            : '<small>Pas encore visité — cette nuit au plus tard.</small>'}
+        </div>
+        <button type="button" class="pv2-btn mk-comp-del" onclick="mkCompDelete(${Number(competitor.id)})" ${mkComp.busy ? 'disabled' : ''} aria-label="Supprimer ${esc(competitor.name)}">Retirer</button>
+      </article>`;
+    }).join('');
+    return `<section class="pv2-panel mk-comp" aria-label="Veille concurrence">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Veille concurrence</h2><p class="pv2-panel-sub">J'inspecte leurs sites chaque nuit et je te signale ce qui change (offres, prix, événements).</p></div>
+        ${(mkComp.data || []).some((competitor) => competitor.websiteUrl) ? `<button type="button" class="pv2-btn" onclick="mkCompSweep()" ${mkComp.busy ? 'disabled' : ''}>${ci('refresh')}${mkComp.busy ? 'Vérification…' : 'Vérifier maintenant'}</button>` : ''}
+      </div>
+      <div class="pv2-panel-body">
+        ${mkComp.error ? `<div class="pv2-empty"><strong>${esc(mkComp.error)}</strong><button type="button" class="pv2-btn" onclick="loadCompetitors(true)">Réessayer</button></div>` : ''}
+        ${rows ? `<div class="mk-comp-list">${rows}</div>` : (!mkComp.error && !mkComp.loading ? '<div class="pv2-empty"><strong>Aucun concurrent suivi</strong>Ajoute les centres qui te prennent des clients — bowling, laser, trampoline, cinéma du coin.</div>' : '')}
+        <div class="mk-comp-add">
+          <input id="mkCompName" class="mk-ask-brief" placeholder="Nom (ex. Bowling de Bastogne)" maxlength="80">
+          <input id="mkCompSite" class="mk-ask-brief" placeholder="Site — https://…" maxlength="300">
+          <input id="mkCompInsta" class="mk-ask-brief" placeholder="Instagram (optionnel)" maxlength="40">
+          <button type="button" class="pv2-btn primary" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>Suivre</button>
+        </div>
+        <p class="mk-roi-method">Instagram ne se laisse pas lire par un robot : le compte est noté pour mémoire, la surveillance automatique porte sur les sites.</p>
+      </div>
+    </section>`;
+  }
+
+  window.mkCompSave = async function () {
+    if (mkComp.busy) return;
+    const name = (document.getElementById('mkCompName') || {}).value || '';
+    const websiteUrl = (document.getElementById('mkCompSite') || {}).value || '';
+    const instagramHandle = (document.getElementById('mkCompInsta') || {}).value || '';
+    if (!name.trim()) { toast('Donne au moins le nom du concurrent.'); return; }
+    mkComp.busy = true;
+    renderStaffCampaignsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'competitorSave',
+          centerId: state.currentCenterId || 'libramont',
+          competitor: { name, websiteUrl, instagramHandle },
+        }),
+      });
+      toast('Concurrent suivi — première visite cette nuit.');
+      mkComp.data = null;
+    } catch (error) {
+      toast(error.message || 'Ajout impossible.');
+    } finally {
+      mkComp.busy = false;
+      loadCompetitors(true);
+    }
+  };
+
+  window.mkCompDelete = async function (id) {
+    if (mkComp.busy) return;
+    mkComp.busy = true;
+    renderStaffCampaignsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'competitorDelete', centerId: state.currentCenterId || 'libramont', id: Number(id) }),
+      });
+      mkComp.data = (mkComp.data || []).filter((competitor) => Number(competitor.id) !== Number(id));
+    } catch (error) {
+      toast(error.message || 'Suppression impossible.');
+    } finally {
+      mkComp.busy = false;
+      renderStaffCampaignsPage();
+    }
+  };
+
+  window.mkCompSweep = async function () {
+    if (mkComp.busy) return;
+    mkComp.busy = true;
+    renderStaffCampaignsPage();
+    try {
+      const result = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'competitorSweep', centerId: state.currentCenterId || 'libramont' }),
+      });
+      const changed = (result.results || []).filter((item) => item.status === 'changed').length;
+      toast(changed ? `${changed} site${changed > 1 ? 's ont' : ' a'} changé — détail dans la liste.` : 'Vérifié — rien de neuf chez eux.');
+      mkComp.data = null;
+    } catch (error) {
+      toast(error.message || 'Vérification impossible.');
+    } finally {
+      mkComp.busy = false;
+      loadCompetitors(true);
+    }
+  };
+
   window.mkIaCopy = async function (id) {
     const insight = mkIa.insights.find((item) => Number(item.id) === Number(id));
     if (!insight) return;
@@ -2837,14 +3152,20 @@
       ${todo}
       ${ask}
       ${mkRoiPanel()}
+      ${mkOutlookPanel()}
+      ${mkPlanPanel()}
+      ${mkInstaPanel()}
       ${mkWeekStrip()}
       ${stats}
       ${learned}
+      ${mkCompetitorsPanel()}
       ${renderPv2RealCampaigns()}
     </div>`;
     mount(root, 'campaigns');
     if (!mkWeek.loaded && !mkWeek.loading) setTimeout(() => loadMarketingWeek(), 0);
     if (!mkRoi.data && !mkRoi.loading) setTimeout(() => loadMarketingRoi(), 0);
+    if (!mkBrain.data && !mkBrain.loading) setTimeout(() => loadMarketingBrain(), 0);
+    if (!mkComp.data && !mkComp.loading) setTimeout(() => loadCompetitors(), 0);
   };
 
   /* ==========================================================================

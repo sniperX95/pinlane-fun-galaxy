@@ -61,9 +61,39 @@ async function installMock(page) {
         window.__QA_POSTS__.push(b);
         if (b.action === 'insightStatus') return J({ ok: true, action: 'insightStatus', insight: { id: b.id, status: b.status } });
         if (b.action === 'insightRedo') return J({ ok: true, insight: { id: 99, status: 'proposed' } });
+        if (b.action === 'planActionDone') return J({ ok: true, result: { ok: true, id: 88, status: 'applied' } });
+        if (b.action === 'competitorSweep') return J({ ok: true, checked: 1, results: [{ id: 1, status: 'unchanged' }] });
+        if (b.action === 'competitorSave') return J({ ok: true, result: { ok: true, id: 2 } });
+        if (b.action === 'competitorDelete') return J({ ok: true, result: { ok: true, id: 1 } });
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingInsights') return J({ ok: true, centerId: 'libramont', insights });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingBrain') {
+        const t0 = new Date();
+        const mkDays = Array.from({ length: 14 }, (_, i) => {
+          const d = new Date(t0.getTime() + i * 864e5);
+          const date = d.toISOString().slice(0, 10);
+          const level = i === 4 ? 'creux' : i === 6 ? 'fort' : 'normal';
+          return { date, label: 'jour ' + date.slice(8, 10) + '/' + date.slice(5, 7), dow: d.getUTCDay(),
+            expected: level === 'creux' ? 12 : level === 'fort' ? 85 : 40, level,
+            baselineSource: 'tes jours comparables', baselineSample: 12,
+            tmax: i === 2 ? 27 : 20, precipMm: i === 3 ? 14 : 0, holidayLabel: '',
+            booked: i === 6 ? { reservations: 4, pax: 120, revenue: 900 } : null,
+            drivers: level === 'creux' ? ['jour structurellement faible'] : [] };
+        });
+        return J({ ok: true, centerId: 'libramont', today: t0.toISOString().slice(0, 10), dataDays: 140, medianVisitors: 40,
+          outlook: mkDays,
+          explainPast: [{ date: mkDays[0].date, label: 'samedi 12/07', actual: 30, expected: 80, deltaPct: -62, causes: ['28 °C ce jour-là'], summary: 'samedi 12/07 : 30 visiteurs (-62 % vs 80 attendus sur tes samedis comparables) — 28 °C ce jour-là.' }],
+          plan: [
+            { id: 'social:D4', type: 'social_push', channel: 'instagram', executeOn: mkDays[1].date, targetDate: mkDays[4].date, title: 'Post pour remplir ' + mkDays[4].label, why: '12 visiteurs attendus (ta médiane : 40). Poster 2-3 jours avant.', readyContent: 'Texte prêt à poster pour le creux.' },
+            { id: 'harvest:D6', type: 'harvest', channel: 'terrain', executeOn: mkDays[6].date, targetDate: mkDays[6].date, title: 'Récolter le jour fort', why: '120 pers. déjà réservées — matière marketing gratuite.', readyContent: 'Checklist du jour fort.' },
+          ],
+          instagram: { date: t0.toISOString().slice(0, 10), themeId: 'heat', reason: '27 °C annoncés — le plan fraîcheur se poste avant le jour J.', caption: '27° annoncés vendredi — chez nous il fait frais toute la journée. Bowling, laser game, arcades.', visualBrief: 'À filmer : arrivée du groupe, bowling en action, sourire final.', bestTime: '17h-19h', bestTimeNote: 'Heuristique d\'audience — à ajuster avec tes stats Instagram.', hashtags: ['#bowling', '#lasergame', '#funGalaxy', '#ardenne', '#libramont'] },
+        });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'competitors') {
+        return J({ ok: true, centerId: 'libramont', competitors: [{ id: 1, name: 'Bowling Star', websiteUrl: 'https://bowlingstar.be', instagramHandle: 'bowlingstar', notes: '', enabled: true, lastCheckedAt: '2026-07-14T02:00:00Z', lastDiff: 'Nouvelle formule anniversaire à 15 €.' }] });
+      }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingRoi') {
         (window.__QA_ROI_CALLS__ = window.__QA_ROI_CALLS__ || []).push(u.searchParams.get('days'));
         return J({ ok: true, centerId: 'libramont', days: Number(u.searchParams.get('days')) || 30, sent: 17, conversions: 5, revenue: 1000, reviewClicks: 4, bySource: [
@@ -256,6 +286,46 @@ async function main() {
       return calls[calls.length - 1];
     });
     ok(roiPeriod === '7', 'le panel suit le sélecteur de période (7/30/90)');
+
+    console.log('\n[CERVEAU] cockpit prévision + plan + insta + veille');
+    await page.evaluate(() => Promise.all([loadMarketingBrain(true), loadCompetitors(true)]));
+    await page.waitForTimeout(500);
+    const brainUi = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      return {
+        cells: root.querySelectorAll('.mk-ol-day').length,
+        creux: root.querySelectorAll('.mk-ol-day.lv-creux').length,
+        fort: root.querySelectorAll('.mk-ol-day.lv-fort').length,
+        booked: [...root.querySelectorAll('.mk-ol-booked')].some((el) => /120/.test(el.textContent)),
+        past: (root.querySelector('.mk-ol-past') || {}).textContent || '',
+        planItems: root.querySelectorAll('.mk-plan-item').length,
+        planDated: (root.querySelector('.mk-plan-when strong') || {}).textContent || '',
+        insta: (root.querySelector('.mk-insta .mk-idea-content') || {}).textContent || '',
+        instaChips: root.querySelectorAll('.mk-insta .pv2-chip').length,
+        compRows: root.querySelectorAll('.mk-comp-row').length,
+        compDiff: (root.querySelector('.mk-comp-status p') || {}).textContent || '',
+        compForm: !!document.getElementById('mkCompName'),
+      };
+    });
+    ok(brainUi.cells === 14, 'bande 14 jours rendue (' + brainUi.cells + ' cellules)');
+    ok(brainUi.creux === 1 && brainUi.fort === 1, 'creux et jour fort mis en évidence');
+    ok(brainUi.booked, 'résas déjà posées visibles sur le jour fort');
+    ok(/samedi 12\/07/.test(brainUi.past), 'explication rétro (« pourquoi c\'était calme ») affichée');
+    ok(brainUi.planItems === 2 && brainUi.planDated.length > 0, 'plan d\'attaque : 2 actions datées');
+    ok(brainUi.insta.includes('frais'), 'post Instagram du jour affiché');
+    ok(brainUi.instaChips >= 5, 'meilleure heure + hashtags en chips');
+    ok(brainUi.compRows === 1 && /anniversaire/.test(brainUi.compDiff), 'veille : concurrent listé avec son dernier changement');
+    ok(brainUi.compForm, 'formulaire d\'ajout de concurrent présent');
+    const planPost = await page.evaluate(async () => {
+      const btn = document.querySelector('#staffCampaignsPage .mk-plan-item button[onclick^="mkPlanDone"]');
+      btn.click();
+      await new Promise((r) => setTimeout(r, 450));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'planActionDone');
+      const item = document.querySelector('#staffCampaignsPage .mk-plan-item');
+      return { count: posts.length, planAction: posts[0] ? posts[0].planAction : null, done: item ? item.className.includes('is-done') : false };
+    });
+    ok(planPost.count === 1 && planPost.planAction && planPost.planAction.id === 'social:D4' && planPost.planAction.title.length > 0, '« C\'est fait » → POST planActionDone avec l\'action complète');
+    ok(planPost.done, 'action marquée faite dans l\'UI (mesure J+14 annoncée)');
 
     // capture visuelle optionnelle
     if (process.env.MK_SHOT) {

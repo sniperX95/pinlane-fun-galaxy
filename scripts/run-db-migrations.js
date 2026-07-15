@@ -100,6 +100,11 @@ const MIGRATIONS = [
     file: 'database/email-agent-schema.sql',
     description: 'Email agent memory (staff-corrected replies) + received status for inbound emails',
   },
+  {
+    id: '0020_competitor_watch',
+    file: 'database/competitor-watch-schema.sql',
+    description: 'Competitor watch: configurable competitors + website snapshots with change detection',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

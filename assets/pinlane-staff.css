@@ -8252,6 +8252,54 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .mk-roi-side { border-left: 0; padding-left: 0; }
 }
 
+/* ── Cerveau marketing : prévision 14 j, plan d'attaque, post du jour, veille ── */
+.mk-ol-strip { display: grid; grid-template-columns: repeat(14, minmax(52px, 1fr)); gap: var(--space-1); overflow-x: auto; padding-bottom: var(--space-1); }
+.mk-ol-day { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: var(--space-2) 4px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); min-width: 52px; }
+.mk-ol-day.lv-creux { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.mk-ol-day.lv-calme { border-color: color-mix(in srgb, var(--warning) 35%, var(--line)); background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }
+.mk-ol-day.lv-fort { border-color: color-mix(in srgb, var(--success) 40%, var(--line)); background: color-mix(in srgb, var(--success) 6%, var(--surface)); }
+.mk-ol-dow { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
+.mk-ol-date { font-size: 11px; color: var(--muted); }
+.mk-ol-gauge { display: flex; align-items: flex-end; width: 8px; height: 34px; border-radius: 4px; background: var(--subtle); overflow: hidden; }
+.mk-ol-gauge > span { display: block; width: 100%; background: var(--accent); border-radius: 4px; }
+.mk-ol-day.lv-creux .mk-ol-gauge > span { background: var(--danger); }
+.mk-ol-day.lv-fort .mk-ol-gauge > span { background: var(--success); }
+.mk-ol-num { font-family: var(--font-data); font-size: 14px; font-variant-numeric: tabular-nums; }
+.mk-ol-badge { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); min-height: 12px; }
+.mk-ol-day.lv-creux .mk-ol-badge { color: var(--danger); font-weight: 600; }
+.mk-ol-day.lv-fort .mk-ol-badge { color: var(--success); font-weight: 600; }
+.mk-ol-booked { font-size: 10px; color: var(--faint); min-height: 13px; }
+.mk-ol-past { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); font-size: 12.5px; }
+.mk-ol-past strong { display: block; margin-bottom: var(--space-1); font-size: 12px; }
+.mk-ol-past ul { margin: 0; padding-left: 18px; color: var(--muted); line-height: 1.6; }
+.mk-plan-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.mk-plan-item { display: grid; grid-template-columns: 130px 1fr; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.mk-plan-item.is-done { opacity: 0.55; }
+.mk-plan-when { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.mk-plan-when strong { font-size: 13.5px; }
+.mk-plan-when small { color: var(--faint); font-size: 11.5px; }
+.mk-plan-main strong { font-size: 13.5px; }
+.mk-insta-brief { margin: var(--space-2) 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.mk-insta-meta { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
+.mk-insta-tag { color: var(--muted); }
+.mk-comp-list { display: flex; flex-direction: column; }
+.mk-comp-row { display: grid; grid-template-columns: 220px 1fr auto; gap: var(--space-3); align-items: center; padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.mk-comp-row:first-child { border-top: 0; }
+.mk-comp-id strong { display: block; font-size: 13px; }
+.mk-comp-id small { color: var(--faint); font-size: 11.5px; }
+.mk-comp-status { font-size: 12px; color: var(--muted); }
+.mk-comp-status small { color: var(--faint); }
+.mk-comp-status p { margin: 2px 0 0; line-height: 1.45; }
+.mk-comp-add { display: grid; grid-template-columns: 1fr 1.4fr 0.8fr auto; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+@media (max-width: 900px) {
+  .mk-ol-strip { grid-template-columns: repeat(7, minmax(48px, 1fr)); }
+  .mk-plan-item { grid-template-columns: 1fr; gap: var(--space-2); }
+  .mk-plan-when { flex-direction: row; align-items: center; gap: var(--space-2); }
+  .mk-comp-row { grid-template-columns: 1fr auto; }
+  .mk-comp-status { grid-column: 1 / -1; }
+  .mk-comp-add { grid-template-columns: 1fr; }
+}
+
 /* ── Emails v4 : séquences personnalisées, réglages, envoi programmé ── */
 .pv2-panel-head-actions { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
 .pv2-seq-pill { display: inline-flex; align-items: center; height: 18px; margin-left: 8px; padding: 0 7px; border-radius: var(--radius-full); font-size: 11px; font-weight: 500; font-style: normal; color: var(--accent-strong); background: var(--accent-soft); vertical-align: 1px; }

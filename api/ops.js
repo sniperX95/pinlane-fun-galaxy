@@ -336,6 +336,24 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // Cerveau marketing : prévision de fréquentation 14 j (baseline apprise ×
+  // météo démontrée), explication des jours anormaux, plan d'actions daté,
+  // post Instagram du jour. Tout dérivé des données réelles du centre.
+  if (action === 'marketingBrain') {
+    const { buildMarketingBrain } = require('../lib/marketing-brain');
+    const brain = await buildMarketingBrain(centerId);
+    sendJson(res, 200, brain);
+    return;
+  }
+
+  // Veille concurrence : liste + dernier changement détecté par concurrent.
+  if (action === 'competitors') {
+    const { listCompetitors } = require('../lib/competitor-watch');
+    const competitors = await listCompetitors(centerId);
+    sendJson(res, 200, { ok: true, centerId, competitors });
+    return;
+  }
+
   // Hub « Données » : agrégats calculés côté serveur (source de vérité unique,
   // le front ne recalcule rien). L'historique complet sert à qualifier
   // nouveau/récurrent au-delà de la fenêtre demandée.
@@ -1233,6 +1251,39 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // « C'est fait » sur une action du plan marketing : insertion en applied →
+  // la mesure avant/après existante tourne à J+14.
+  if (action === 'planActionDone') {
+    const { markPlanActionDone } = require('../lib/marketing-brain');
+    const concreteCenterId = requireConcreteCenter('plan marketing');
+    const result = await markPlanActionDone(concreteCenterId, body.planAction || {});
+    sendJson(res, 200, { ok: true, action, result });
+    return;
+  }
+
+  // CRUD veille concurrence + vérification manuelle immédiate.
+  if (action === 'competitorSave') {
+    const { saveCompetitor } = require('../lib/competitor-watch');
+    const concreteCenterId = requireConcreteCenter('veille concurrence');
+    const result = await saveCompetitor(concreteCenterId, body.competitor || {});
+    sendJson(res, 200, { ok: true, action, result });
+    return;
+  }
+  if (action === 'competitorDelete') {
+    const { deleteCompetitor } = require('../lib/competitor-watch');
+    const concreteCenterId = requireConcreteCenter('veille concurrence');
+    const result = await deleteCompetitor(concreteCenterId, body.id);
+    sendJson(res, 200, { ok: true, action, result });
+    return;
+  }
+  if (action === 'competitorSweep') {
+    const { runCompetitorSweep } = require('../lib/competitor-watch');
+    const concreteCenterId = requireConcreteCenter('veille concurrence');
+    const result = await runCompetitorSweep(concreteCenterId);
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
   // Toggle ON/OFF d'une séquence automatique (persisté par centre).
   if (action === 'automationSettings') {
     const concreteCenterId = requireConcreteCenter('séquences automatiques');
@@ -1640,6 +1691,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'clientNotes') return 'clients.view';
     if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'marketingRoi') return ['campaigns.manage', 'marketing.agents'];
+    if (['marketingBrain', 'competitors'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
@@ -1649,6 +1701,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
+  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

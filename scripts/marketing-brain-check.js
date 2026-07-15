@@ -56,7 +56,13 @@ function buildHistory(todayStr) {
   return rows;
 }
 
-const TODAY = '2026-07-15'; // mercredi — géométrie DOW connue pour les asserts
+const TODAY = '2026-07-15';
+function addDays(dateStr, days) {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+ // mercredi — géométrie DOW connue pour les asserts
 const history = buildHistory(TODAY);
 
 (async () => {
@@ -102,6 +108,13 @@ const history = buildHistory(TODAY);
   ok(sat.expected === 100 && sat.drivers.some((x) => x.includes('pluie')), `pluie apprise appliquée (80 → ${sat.expected})`);
   ok(sat.level === 'fort' && sat.drivers.some((x) => x.includes('120 pers.')), 'résas fermes visibles + niveau au moins fort');
   ok(outlook.medianVisitors === 40, `médiane historique = ${outlook.medianVisitors}`);
+  // Historique trop jeune (10 j) : aucune baseline DOW ancrée → AUCUN verdict
+  // coloré (retour terrain : une bande entière de « FORT » ne dit rien).
+  const youngOutlook = computeAttendanceOutlook({ today: TODAY, history: history.slice(0, 10), forecast: [], bookedByDate: new Map(), facts: [], calendar });
+  ok(youngOutlook.days.every((d) => d.level === 'normal'), 'historique jeune → pas de verdict creux/fort');
+  const youngBooked = computeAttendanceOutlook({ today: TODAY, history: history.slice(0, 10), forecast: [], bookedByDate: new Map([[addDays(TODAY, 3), { reservations: 5, pax: 90, revenue: 700 }]]), facts: [], calendar });
+  ok(youngBooked.days.some((d) => d.level === 'fort'), 'mais les résas fermes comptent toujours');
+
 
   console.log('\n[RÉTRO] pourquoi c\'était calme');
   const histWithAnomaly = [...history];

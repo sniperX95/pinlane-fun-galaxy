@@ -91,11 +91,22 @@
   }
 
   function slideSegPills(root) {
+    // Positionnement INSTANTANÉ : chaque appel suit une reconstruction du DOM
+    // (innerHTML), donc le pill partait de sa position CSS par défaut puis
+    // GLISSAIT vers l'actif — un aller-retour visible à chaque fetch qui
+    // atterrissait (bug vidéo). La transition est neutralisée le temps de
+    // poser la position, puis rendue au CSS.
     root.querySelectorAll('.pv2-seg').forEach((seg) => {
       const active = seg.querySelector('button.active');
+      const pill = seg.querySelector('.pv2-seg-pill');
       if (!active) return;
+      if (pill) pill.style.transition = 'none';
       seg.style.setProperty('--pv2-pill-x', `${active.offsetLeft}px`);
       seg.style.setProperty('--pv2-pill-w', `${active.offsetWidth}px`);
+      if (pill) {
+        void pill.offsetWidth;
+        pill.style.transition = '';
+      }
     });
   }
 
@@ -2277,7 +2288,9 @@
     const past = (brain.explainPast || []).map((item) => `<li>${esc(item.summary)}</li>`).join('');
     return `<section class="pv2-panel mk-outlook" aria-label="Prévision 14 jours">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Les 14 prochains jours</h2><p class="pv2-panel-sub">Prévision sur tes propres données (médiane : ${brain.medianVisitors} visiteurs/j, ${brain.dataDays} j d'historique). Les creux, c'est là que le marketing doit frapper.</p></div>
+        <div><h2>Les 14 prochains jours</h2><p class="pv2-panel-sub">${brain.dataDays < 60
+          ? `Prévision encore jeune (${brain.dataDays} j d'historique) — elle s'affine chaque semaine. Les réservations déjà posées, elles, sont sûres.`
+          : `Prévision sur tes propres données (médiane : ${brain.medianVisitors} visiteurs/j, ${brain.dataDays} j d'historique). Les creux, c'est là que le marketing doit frapper.`}</p></div>
         <button type="button" class="pv2-btn" onclick="loadMarketingBrain(true)">${ci('refresh')}Actualiser</button>
       </div>
       <div class="pv2-panel-body">

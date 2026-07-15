@@ -8529,6 +8529,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-soon { border-style: dashed; }
 .mkw-soon-badge { display: inline-flex; align-items: center; height: 18px; padding: 0 9px; border-radius: var(--radius-full); background: var(--subtle); color: var(--faint); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* Colle-un-post : analyseur concurrent */
+.mkw-textarea { width: 100%; min-height: 84px; padding: 11px 13px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 13.5px; line-height: 1.55; resize: vertical; }
+.mkw-textarea::placeholder { color: var(--faint); }
+.mkw-textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--line-strong); }
+.mkw-riv-analyze { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: var(--space-3); }
+.mkw-quiet-inline { font-size: 12px; color: var(--faint); }
+.mkw-analy { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.mkw-analy-degraded { margin: var(--space-3) 0 0; font-size: 12.5px; color: var(--muted); }
+.mkw-analy-sum { margin: 0; font-size: 14.5px; font-weight: 550; color: var(--text); line-height: 1.5; }
+.mkw-analy-row { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+.mkw-analy-label { flex: 0 0 96px; font-size: 11.5px; color: var(--muted); }
+.mkw-analy-val { color: var(--text); }
+.mkw-analy-counter { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; padding: 12px 14px; background: var(--accent-soft); border-radius: var(--radius-md); }
+.mkw-analy-counter svg { width: 15px; height: 15px; color: var(--accent-strong); flex: none; margin-top: 2px; }
+.mkw-analy-counter > div { display: flex; flex-direction: column; gap: 2px; }
+.mkw-analy-counter .mkw-analy-label { flex: none; color: var(--accent-strong); font-weight: 600; }
+.mkw-analy-counter .mkw-analy-val { color: var(--text); line-height: 1.5; }
+
 /* Skeletons */
 .mkw-skel { height: 15px; margin: 11px 0; border-radius: var(--radius-sm); background: var(--subtle); }
 .mkw-skel-hero { height: 52px; width: 45%; }

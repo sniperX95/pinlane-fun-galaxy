@@ -110,6 +110,7 @@ async function installMock(page) {
         if (b.action === 'insightRedo') return J({ ok: true, insight: { id: 99, status: 'proposed' } });
         if (b.action === 'competitorSave') return J({ ok: true, result: { ok: true, id: 2 } });
         if (b.action === 'competitorDelete') return J({ ok: true, result: { ok: true, id: 1 } });
+        if (b.action === 'competitorAnalyzePost') return J({ ok: true, degraded: false, resume: 'Ils poussent une offre étudiants le mercredi.', offre: 'Mercredi étudiant -30%', prix: '9 €', ton: 'promo prix', riposte: 'Mets en avant ton ambiance et tes anniversaires plutôt que le prix.' });
         if (b.action === 'studioGenerate') return J({ ok: true, pack: { platform: b.platform, theme: 'Foire de Libramont', generationMode: 'ai', long: `Post ${b.platform} complet pour le test.`, short: `Court ${b.platform}.`, story: 'Story test.', photoIdea: 'Filmer un strike.', aiImagePrompt: 'Bowling scene, no text, no logos', hashtags: ['#bowling', '#test'], bestTime: '18h', quality: { score: 86, status: 'ready' } } });
         return J({ ok: true });
       }
@@ -361,7 +362,21 @@ async function main() {
     ok(rivals.rows >= 1 && rivals.name, 'les concurrents surveillés en cartes');
     ok(rivals.diff, 'le changement détecté chez le concurrent est remonté');
     ok(rivals.hasAdd, 'ajout d\'un concurrent (nom + site)');
-    ok(rivals.soon, 'le renseignement approfondi annoncé honnêtement (bientôt)');
+    ok(rivals.soon, 'les briques auto (Google/Ad Library) annoncées honnêtement (bientôt)');
+    // Colle-un-post → analyse IA + riposte.
+    const analyze = await page.evaluate(async () => {
+      const box = document.getElementById('brCompPost');
+      if (!box) return { found: false };
+      box.value = 'Mercredi étudiant : -30% sur le bowling pour toute la promo, sur présentation de la carte étudiant.';
+      const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((el) => /^Analyser$/.test(el.textContent.trim()));
+      btn.click();
+      await new Promise((r) => setTimeout(r, 500));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'competitorAnalyzePost');
+      const panel = (document.querySelector('#staffCampaignsPage .mkw-analy') || {}).textContent || '';
+      return { found: true, posted: posts.length, hadText: Boolean(posts[0] && posts[0].text), panel };
+    });
+    ok(analyze.found && analyze.posted === 1 && analyze.hadText, 'colle-un-post → POST competitorAnalyzePost avec le texte');
+    ok(/étudiants/.test(analyze.panel) && /ambiance/.test(analyze.panel), 'l\'analyse affiche le signal + la riposte');
 
     console.log('\n[RÉSULTATS] le CA généré + les reçus mesurés');
     await go('results');

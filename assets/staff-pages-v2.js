@@ -2747,7 +2747,7 @@
 
   /* ── Footer · Ce que je surveille (la veille) ── */
 
-  const mkComp = { data: null, loading: false, busy: false };
+  const mkComp = { data: null, loading: false, busy: false, postBusy: false, postResult: null };
   window.mkComp = mkComp;
   async function loadCompetitors(force = false) {
     if (mkComp.loading || (mkComp.data && !force)) return;
@@ -3388,12 +3388,53 @@
           <button type="button" class="pv2-btn primary" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>${mkComp.busy ? '…' : 'Suivre'}</button>
         </div>
       </div>
-      <div class="mkw-card mkw-soon">
-        <div class="mkw-block-head"><h3>Renseignement approfondi</h3><span class="mkw-soon-badge">bientôt</span></div>
-        <p class="mkw-quiet">Je prépare : leur note et leurs derniers avis Google, leurs pubs actives dans la bibliothèque Meta, et un « colle-moi un de leurs posts » où j’extrais leur offre, leur prix et leur ton — pour te préparer la riposte.</p>
+      <div class="mkw-card">
+        <div class="mkw-block-head"><h3>Colle-moi un post concurrent</h3><span class="mkw-block-sub">je l’analyse et je te prépare la riposte</span></div>
+        <textarea id="brCompPost" class="mkw-textarea" placeholder="Colle ici le texte d’un post ou d’une offre d’un concurrent que tu as vu (Facebook, Instagram, leur site…)"></textarea>
+        <div class="mkw-riv-analyze">
+          <button type="button" class="pv2-btn primary" onclick="mkCompAnalyze()" ${mkComp.postBusy ? 'disabled' : ''}>${mkComp.postBusy ? 'j’analyse…' : 'Analyser'}</button>
+          <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà — je le transforme en angle.</span>
+        </div>
+        ${mkCompPostResult()}
+        <p class="mkw-method">Bientôt en plus, en automatique : leur note Google, leurs pubs actives (bibliothèque Meta) et la surveillance de leurs offres.</p>
       </div>
     </section>`;
   }
+
+  function mkCompPostResult() {
+    const r = mkComp.postResult;
+    if (!r) return '';
+    if (r.degraded) return `<p class="mkw-analy-degraded">${esc(r.note || 'Analyse indisponible pour l’instant.')}</p>`;
+    const row = (label, value) => (value ? `<div class="mkw-analy-row"><span class="mkw-analy-label">${esc(label)}</span><span class="mkw-analy-val">${esc(value)}</span></div>` : '');
+    return `<div class="mkw-analy">
+      ${r.resume ? `<p class="mkw-analy-sum">${esc(r.resume)}</p>` : ''}
+      ${row('Leur offre', r.offre)}
+      ${row('Prix affiché', r.prix)}
+      ${row('Ton', r.ton)}
+      ${r.riposte ? `<div class="mkw-analy-counter">${ci('bolt')}<div><span class="mkw-analy-label">Ta riposte</span><span class="mkw-analy-val">${esc(r.riposte)}</span></div></div>` : ''}
+    </div>`;
+  }
+
+  window.mkCompAnalyze = async function () {
+    if (mkComp.postBusy) return;
+    const text = (document.getElementById('brCompPost') || {}).value || '';
+    if (text.trim().length < 15) { toast('Colle le texte du post — au moins une phrase.'); return; }
+    mkComp.postBusy = true;
+    mkComp.postResult = null;
+    renderStaffCampaignsPage();
+    try {
+      const result = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'competitorAnalyzePost', centerId: state.currentCenterId || 'libramont', text }),
+      });
+      mkComp.postResult = result;
+    } catch (error) {
+      toast(error.message || 'Je n’ai pas réussi à analyser — réessaie.');
+    } finally {
+      mkComp.postBusy = false;
+      scheduleCampaignsRender();
+    }
+  };
 
   function mkwSurface() {
     switch (mkBrief.tab) {

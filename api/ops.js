@@ -1342,6 +1342,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }
+  if (action === 'competitorAnalyzePost') {
+    const { analyzeCompetitorPost } = require('../lib/competitor-watch');
+    requireConcreteCenter('veille concurrence');
+    const result = await analyzeCompetitorPost(body.text || '');
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
 
   // Toggle ON/OFF d'une séquence automatique (persisté par centre).
   if (action === 'automationSettings') {
@@ -1760,7 +1767,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
-  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'studioGenerate', 'propositionAction', 'propositionCreate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'competitorAnalyzePost', 'studioGenerate', 'propositionAction', 'propositionCreate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

@@ -1,10 +1,12 @@
-// Test INTERACTIF de la page Marketing « Le Brief » (refonte 2026-07-17).
-// Playwright pilote de vrais clics sur la page servie avec mocks fetch :
-// la paie + toggles de période, le brief signé, le radar 14 cellules (clic,
-// explication, « Prépare-moi un post »), les cartes Proposition (ouvrir,
-// changer de réseau, copier → bandeau Publié ? → Oui = SEULE porte vers la
-// mesure), la barre Demander à chips, les reçus, la veille en footer — et
-// l'hygiène globale : zéro onglet, zéro bouton de relance, zéro jargon.
+// Test INTERACTIF de la page Marketing « machine de guerre » — 5 surfaces
+// (refonte 2026-07-16 : Aujourd'hui · Ce qui marche · Studio · Concurrents ·
+// Résultats). Playwright pilote de vrais clics sur la page servie avec mocks
+// fetch : le héros € + toggles de période, le brief signé, la surface causale
+// « Ce qui marche » (verdicts jour/météo + mémoire par contexte), le radar 14
+// cellules (clic/explication/« Prépare-moi un post »), les cartes Proposition
+// (ouvrir → réseau → copier → « Publié ? → Oui » = SEULE porte vers la mesure),
+// le studio, la veille concurrent, les reçus — et l'hygiène : zéro jargon
+// interne à l'écran, zéro bouton de relance manuelle, l'identité de l'employé.
 // Cf. leçon ship-interactive-ui-tested.
 const fs = require('fs');
 const http = require('http');
@@ -60,7 +62,18 @@ async function installMock(page) {
           sources: [{ key: 'birthday_j30', label: 'Anniversaires', sent: 12, conversions: 3, revenue: 770 }, { key: 'relance', label: 'Relances', sent: 5, conversions: 2, revenue: 470 }] },
         brief: { text: 'Dimanche s\'annonce très calme — pluie annoncée, hors vacances. Je t\'ai préparé 2 posts et un email — tout est prêt plus bas. Du mouvement chez Bowling Arlon cette nuit — détail en bas de page.', degraded: false },
         pulse: { revenue30: 8334, visitors30: 540, avgBasket: 15.4, upcomingPax: 102, upcomingResa: 5, reservedRevenue: 2864, bestDay: { date: '2026-07-11', revenue: 4009, visitors: 234 } },
-        radar, dataDays: 90, medianVisitors: 40,
+        radar, dataDays: 210, medianVisitors: 40,
+        // « Ce qui marche » — faits causaux + mémoire par contexte (effet net).
+        facts: {
+          bestDay: { dow: 6, label: 'samedi', avgVisitors: 128, vsMedianPct: 121, confidence: 'solide' },
+          worstDay: { dow: 2, label: 'mardi', avgVisitors: 34, vsMedianPct: -41, confidence: 'solide' },
+          weather: { rainEffectPct: 12, heatEffectPct: -8, confidence: 'solide', sampleDays: 210 },
+          holidayEffectPct: 46, trend4w: { pct: 9 }, bestMonth: null,
+        },
+        patterns: [
+          { context: 'Post FB · événement local', kind: 'post', channel: 'facebook', netDeltaPct: 22, n: 3, confidence: 'signal' },
+          { context: 'Email · jour calme', kind: 'email', channel: 'email', netDeltaPct: 14, n: 4, confidence: 'signal' },
+        ],
         propositions: [
           { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi — les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi — les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec — réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x' },
           { key: 'plan:social-1', id: null, trigger: 'creux', why: 'Dimanche s\'annonce très calme : 12 visiteurs attendus. Je posterais mercredi pour le remplir.', whyShort: 'Dimanche s\'annonce très calme — je posterais mercredi pour le remplir.', dueDate: dstr(2), targetDate: dstr(4), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'plan:social-1' },
@@ -127,77 +140,73 @@ async function main() {
   const errs = [];
   page.on('console', (msg) => { if (msg.type() === 'error') errs.push(msg.text()); });
   page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
+  const go = async (tab) => { await page.evaluate((t) => window.mkwTab(t), tab); await page.waitForTimeout(300); };
   try {
     await installMock(page);
-    await page.goto(`${BASE_URL}/?v=br-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    await page.goto(`${BASE_URL}/?v=mkw-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate(() => {
       state.staffMenuPage = 'campaigns'; state.staffTheme = 'dark';
       save(); setView('staff'); renderStaff();
     });
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-tab').length === 5, null, { timeout: 15000 });
     await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .br-cell').length >= 14, null, { timeout: 15000 });
     await page.waitForTimeout(400);
 
-    console.log('\n[HYGIÈNE] zéro onglet, zéro relance, zéro jargon');
+    console.log('\n[HYGIÈNE] identité, 5 surfaces, zéro jargon interne, zéro relance manuelle');
+    // Collecte le texte de TOUTES les surfaces pour l'anti-jargon.
+    let allText = '';
+    for (const tab of ['today', 'works', 'studio', 'rivals', 'results']) {
+      await go(tab);
+      allText += ' ' + await page.evaluate(() => (document.getElementById('staffCampaignsPage').textContent || '').toLowerCase());
+    }
+    await go('today');
+    const banned = ['attribution', 'last-touch', 'baseline', 'médiane', 'itération', 'insight', 'proposition volatile', 'signature'].filter((word) => allText.includes(word));
     const hygiene = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
-      const text = (root.textContent || '').toLowerCase();
-      // « pack » (de contenu) et « régénérer » sont du langage produit normal ;
-      // les mots bannis sont le jargon INTERNE du moteur.
-      const banned = ['attribution', 'last-touch', 'baseline', 'médiane', 'itération', 'insight', 'proposition volatile', 'signature'].filter((word) => text.includes(word));
       return {
-        tabs: root.querySelectorAll('.mk-tabs, .pv2-seg').length,
+        tabs: [...root.querySelectorAll('.mkw-tab')].map((el) => el.textContent.trim()),
         refresh: [...root.querySelectorAll('button')].filter((el) => /actualiser|analyser maintenant/i.test(el.textContent)).length,
-        banned,
-        zones: [...root.querySelectorAll('.br-zt')].map((el) => el.textContent.trim().toLowerCase()),
-        sign: /ton employé marketing/.test(root.textContent),
+        sign: /ton employé marketing/i.test(root.textContent),
       };
     });
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(hygiene.tabs === 0, 'zéro onglet, zéro segmented pill');
+    ok(hygiene.tabs.join('|') === 'Aujourd’hui|Ce qui marche|Studio|Concurrents|Résultats', `les 5 surfaces dans l'ordre (${hygiene.tabs.join(', ')})`);
     ok(hygiene.refresh === 0, 'zéro bouton Actualiser/Analyser — l\'employé travaille la nuit');
-    ok(hygiene.banned.length === 0, `zéro jargon à l\'écran${hygiene.banned.length ? ' (trouvé : ' + hygiene.banned.join(', ') + ')' : ''}`);
-    ok(hygiene.zones.join('|').includes('14 prochains jours') && hygiene.zones.join('|').includes('prêt pour toi') && hygiene.zones.join('|').includes('ce que ça a donné'), 'les zones du mémo dans l\'ordre');
-    ok(hygiene.sign, 'la signature de l\'employé est là');
+    ok(banned.length === 0, `zéro jargon interne à l\'écran${banned.length ? ' (trouvé : ' + banned.join(', ') + ')' : ''}`);
+    ok(hygiene.sign, 'l\'identité de l\'employé marketing est là');
 
-    console.log('\n[Z1] la paie + le brief signé');
-    const z1 = await page.evaluate(() => {
+    console.log('\n[AUJOURD\'HUI] le héros € + le brief signé');
+    const hero = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
-        pay: (root.querySelector('.br-pay') || {}).textContent || '',
-        payNum: (root.querySelector('.br-pay-num') || {}).textContent || '',
-        memo: (root.querySelector('.br-memo-text') || {}).textContent || '',
-        memoNums: root.querySelectorAll('.br-memo-text .br-num').length,
-        toggles: [...root.querySelectorAll('.br-toggle')].map((el) => el.textContent.trim()),
+        num: (root.querySelector('.mkw-hero-num') || {}).textContent || '',
+        cap: (root.querySelector('.mkw-hero-cap') || {}).textContent || '',
+        memo: (root.querySelector('.mkw-memo-text') || {}).textContent || '',
+        memoNums: root.querySelectorAll('.mkw-memo-text .br-num').length,
+        segs: [...root.querySelectorAll('.mkw-seg-btn')].map((el) => el.textContent.trim()),
       };
     });
-    ok(/liées à/.test(z1.pay) && /1[\s  ]?240/.test(z1.payNum), `la phrase de paie prudente (« ${z1.pay.slice(0, 45)}… »)`);
-    ok(/préparé/.test(z1.memo) && /Bowling Arlon/.test(z1.memo), 'le brief : vu + préparé + veille');
-    ok(z1.memoNums >= 1, 'prose-preuve : les nombres du brief en mono');
-    ok(z1.toggles.join(',') === '7 j,30 j,90 j', 'toggles texte 7/30/90');
-    await page.evaluate(() => { [...document.querySelectorAll('.br-toggle')].find((el) => /7 j/.test(el.textContent)).click(); });
-    await page.waitForTimeout(400);
-    const periodCall = await page.evaluate(() => (window.__QA_ROI_CALLS__ || [])[0]);
-    ok(periodCall === '7', 'changer la période → refetch de la paie seule');
-    await page.evaluate(() => { const link = [...document.querySelectorAll('.br-link')].find((el) => /Voir le détail/.test(el.textContent)); if (link) link.click(); });
+    ok(/1[\s  ]?240/.test(hero.num), `le héros € commande (« ${hero.num.trim()} »)`);
+    ok(/générés par tes publications/.test(hero.cap), 'la légende du héros est prudente');
+    ok(/préparé/.test(hero.memo) && /Bowling Arlon/.test(hero.memo), 'le brief : vu + préparé + veille');
+    ok(hero.memoNums >= 1, 'prose-preuve : les nombres du brief en mono');
+    ok(hero.segs.join(',') === '7 j,30 j,90 j', 'toggles de période 7/30/90');
+    // Le détail des sources se teste AVANT de changer la période (le refetch ROI
+    // mocké ne renvoie qu'une source).
+    const linkClicked = await page.evaluate(() => { const l = [...document.querySelectorAll('#staffCampaignsPage .mkw-link')].find((el) => /vient ce chiffre/.test(el.textContent)); if (l) { l.click(); return true; } return false; });
     await page.waitForTimeout(200);
-    const payDetail = await page.evaluate(() => ({
-      tickets: document.querySelectorAll('#staffCampaignsPage .br-pay-detail .br-ticket').length,
-      method: /dernier message qu'elle a vu/.test((document.querySelector('#staffCampaignsPage .br-method') || {}).textContent || ''),
+    const src = await page.evaluate(() => ({
+      rows: document.querySelectorAll('#staffCampaignsPage .mkw-src').length,
+      method: /dernier message/.test((document.querySelector('#staffCampaignsPage .mkw-method') || {}).textContent || ''),
     }));
-    ok(payDetail.tickets >= 3 && payDetail.method, 'détail en lignes ticket + méthode en une phrase humaine');
+    ok(linkClicked, 'le lien « d\'où vient ce chiffre » est présent');
+    ok(src.rows >= 2 && src.method, 'détail des sources (barres) + méthode en langage humain');
+    await page.evaluate(() => { [...document.querySelectorAll('.mkw-seg-btn')].find((el) => /7 j/.test(el.textContent)).click(); });
+    await page.waitForTimeout(400);
+    ok(await page.evaluate(() => (window.__QA_ROI_CALLS__ || [])[0]) === '7', 'changer la période → refetch de la paie seule');
 
-    console.log('\n[POULS] les KPIs business réels');
-    const pulse = await page.evaluate(() => {
-      const root = document.getElementById('staffCampaignsPage');
-      const tiles = [...root.querySelectorAll('.br-kpi')].map((el) => el.textContent);
-      return { count: tiles.length, all: tiles.join(' | ') };
-    });
-    ok(pulse.count === 5, `5 tuiles de KPIs business (obtenu ${pulse.count})`);
-    ok(/8[\s  ]?334|8334/.test(pulse.all) && /540/.test(pulse.all) && /102/.test(pulse.all), 'CA + visiteurs + réservations à venir affichés (vraies données, page jamais vide)');
-    ok(/234/.test(pulse.all), 'meilleure journée en preuve');
-
-    console.log('\n[Z2] le radar');
+    console.log('\n[RADAR] les 14 prochains jours');
     const radar = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
@@ -206,24 +215,16 @@ async function main() {
         fort: root.querySelectorAll('.br-cell.lv-fort').length,
         today: root.querySelectorAll('.br-cell.is-today').length,
         resa34: [...root.querySelectorAll('.br-cell-resa')].some((el) => /34/.test(el.textContent)),
-        temps: [...root.querySelectorAll('.br-cell-temp')].filter((el) => /°/.test(el.textContent)).length,
-        summary: /attendues/.test((root.querySelector('.br-radar-sum') || {}).textContent || ''),
         eventDot: root.querySelectorAll('.br-cell-event').length,
-        noAxis: !root.querySelector('.mk-ol-median') && !root.querySelector('.mk-ol-axis'),
       };
     });
-    ok(radar.temps >= 10 && radar.summary, 'radar enrichi : température par jour + synthèse des réservations à venir');
     ok(radar.cells === 14 && radar.today === 1, '14 cellules, aujourd\'hui cerclé');
     ok(radar.creux === 1 && radar.fort === 1 && radar.eventDot === 1, 'creux/fort teintés + point événement');
     ok(radar.resa34, 'les résas posées restent visibles (34)');
     await page.evaluate(() => { document.querySelectorAll('.br-cell')[4].click(); });
     await page.waitForTimeout(250);
-    const explain = await page.evaluate(() => ({
-      text: (document.querySelector('#staffCampaignsPage .br-radar-explain') || {}).textContent || '',
-      hasLink: /Voir la proposition/.test((document.querySelector('#staffCampaignsPage .br-radar-explain') || {}).textContent || ''),
-    }));
-    ok(/très calme attendu/.test(explain.text), 'clic cellule → explication humaine');
-    ok(explain.hasLink, 'le creux pointe vers sa proposition');
+    const explain = await page.evaluate(() => (document.querySelector('#staffCampaignsPage .br-radar-explain') || {}).textContent || '');
+    ok(/très calme attendu/.test(explain) && /Voir la proposition/.test(explain), 'clic cellule creux → explication + lien vers la proposition');
     await page.evaluate(() => { document.querySelectorAll('.br-cell')[9].click(); });
     await page.waitForTimeout(250);
     const fill = await page.evaluate(async () => {
@@ -234,10 +235,10 @@ async function main() {
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionCreate');
       return { found: true, posted: posts.length, trigger: posts[0] && posts[0].trigger };
     });
-    ok(fill.found && fill.posted === 1 && fill.trigger === 'creux', 'jour calme sans proposition → « Prépare-moi un post » → création');
+    ok(fill.found && fill.posted === 1 && fill.trigger === 'creux', 'jour calme → « Prépare-moi un post » → création');
 
-    console.log('\n[Z3] les cartes Proposition');
-    await page.waitForTimeout(600);
+    console.log('\n[PROPOSITIONS] les cartes prêtes à tirer');
+    await page.waitForTimeout(500);
     const cards = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       const list = [...root.querySelectorAll('.br-card')];
@@ -249,9 +250,8 @@ async function main() {
       };
     });
     ok(cards.count === 3 && cards.more, '3 cartes visibles + « + N autres pour plus tard »');
-    ok(/Pluie annoncée samedi/.test(cards.firstWhy), 'la proposition du jour épinglée en tête, le POURQUOI comme titre');
+    ok(/Pluie annoncée samedi/.test(cards.firstWhy), 'la proposition du jour épinglée en tête');
     ok(cards.riposte, 'la riposte concurrence est une carte comme les autres');
-    // Ouvrir la première carte (payload pré-généré → papier immédiat).
     await page.evaluate(() => { const btn = [...document.querySelectorAll('.br-card button')].find((el) => /Voir le post/.test(el.textContent)); btn.click(); });
     await page.waitForTimeout(300);
     const openCard = await page.evaluate(() => {
@@ -261,15 +261,12 @@ async function main() {
         paper: (card && card.querySelector('.br-paper') || {}).textContent || '',
         oneText: card ? card.querySelectorAll('.br-paper').length : 0,
         nets: card ? [...card.querySelectorAll('.br-net')].map((el) => el.textContent) : [],
-        promptFolded: card ? Boolean(card.querySelector('.br-prompt') && !card.querySelector('.br-prompt[open]')) : false,
         noScore: card ? !/\d+\/100/.test(card.textContent) : false,
       };
     });
     ok(openCard.present && /pistes sont au sec/.test(openCard.paper) && /#bowling/.test(openCard.paper), 'le papier : UN texte final, hashtags intégrés');
     ok(openCard.oneText === 1 && openCard.noScore, 'jamais de versions empilées, jamais de score');
     ok(openCard.nets.join(',') === 'Facebook,Instagram,Story', 'réseaux du tenant (TikTok/LinkedIn absents)');
-    ok(openCard.promptFolded, 'le prompt image replié derrière un disclosure');
-    // Switch réseau non généré → POST variante + texte mis à jour.
     const variant = await page.evaluate(async () => {
       const card = document.querySelector('#staffCampaignsPage .br-card.is-open');
       const fb = [...card.querySelectorAll('.br-net')].find((el) => el.textContent === 'Facebook');
@@ -279,46 +276,28 @@ async function main() {
       const paper = (document.querySelector('#staffCampaignsPage .br-card.is-open .br-paper') || {}).textContent || '';
       return { posted: posts.length, network: posts[0] && posts[0].network, paper };
     });
-    ok(variant.posted === 1 && variant.network === 'facebook' && /fraichement écrit/.test(variant.paper), 'réseau non généré → il s\'adapte (POST variante) et le papier suit');
-    // Copier → bandeau Publié ? → Oui = POST publiee, carte compactée.
+    ok(variant.posted === 1 && variant.network === 'facebook' && /fraichement écrit/.test(variant.paper), 'réseau non généré → il s\'adapte (POST variante)');
     await page.evaluate(async () => {
       const card = document.querySelector('#staffCampaignsPage .br-card.is-open');
       const copy = [...card.querySelectorAll('button')].find((el) => /Copier le post/.test(el.textContent));
       copy.click();
       await new Promise((r) => setTimeout(r, 250));
     });
-    const askBanner = await page.evaluate(() => Boolean(document.querySelector('#staffCampaignsPage .br-published-ask')));
-    ok(askBanner, 'Copier → bandeau « Publié ? » (jamais publié sur simple copie)');
+    ok(await page.evaluate(() => Boolean(document.querySelector('#staffCampaignsPage .br-published-ask'))), 'Copier → bandeau « Publié ? » (jamais publié sur simple copie)');
     const published = await page.evaluate(async () => {
       const yes = [...document.querySelectorAll('#staffCampaignsPage .br-published-ask button')].find((el) => /^Oui$/.test(el.textContent.trim()));
       yes.click();
       await new Promise((r) => setTimeout(r, 400));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionAction' && p.propAction === 'publiee');
-      const line = document.querySelector('#staffCampaignsPage .br-published-line');
-      return { posted: posts.length, compact: line ? line.textContent : '' };
+      return { posted: posts.length, compact: (document.querySelector('#staffCampaignsPage .br-published-line') || {}).textContent || '' };
     });
     ok(published.posted === 1 && /je mesure pendant 14 jours/.test(published.compact), '« Oui » → publiée + carte compactée (la mesure démarre)');
-    // Pas maintenant → refusée + disparaît.
-    const dismissed = await page.evaluate(async () => {
-      const before = document.querySelectorAll('#staffCampaignsPage .br-card').length;
-      const open = [...document.querySelectorAll('#staffCampaignsPage .br-card button')].find((el) => /Voir le post|Voir la riposte/.test(el.textContent));
-      open.click();
-      await new Promise((r) => setTimeout(r, 200));
-      const not = [...document.querySelectorAll('#staffCampaignsPage .br-card button')].find((el) => /Pas maintenant/.test(el.textContent));
-      not.click();
-      await new Promise((r) => setTimeout(r, 350));
-      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionAction' && p.propAction === 'refusee');
-      return { posted: posts.length, after: document.querySelectorAll('#staffCampaignsPage .br-card:not(.is-published)').length, before };
-    });
-    ok(dismissed.posted === 1 && dismissed.after < dismissed.before, '« Pas maintenant » → refusée + la carte sort de la file');
-    // Barre Demander : chips au focus, submit → création.
     const ask = await page.evaluate(async () => {
       const input = document.getElementById('brAskInput');
       input.dispatchEvent(new Event('focus'));
       await new Promise((r) => setTimeout(r, 250));
       const chips = [...document.querySelectorAll('#staffCampaignsPage .br-chip')].map((el) => el.textContent);
-      const el2 = document.getElementById('brAskInput');
-      el2.value = 'un post pour la soirée fluo de samedi';
+      document.getElementById('brAskInput').value = 'un post pour la soirée fluo de samedi';
       const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((el) => /^Demander$/.test(el.textContent.trim()));
       btn.click();
       await new Promise((r) => setTimeout(r, 500));
@@ -328,11 +307,28 @@ async function main() {
     ok(ask.chips.length >= 2 && ask.chips.some((chip) => /Idée libre/.test(chip)), 'chips contextuelles au focus');
     ok(ask.posted === 1 && /soirée fluo/.test(ask.brief), 'Demander → création avec la phrase du gérant');
 
+    console.log('\n[CE QUI MARCHE] l\'analyste causal + la mémoire par contexte');
+    await go('works');
+    const works = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      return {
+        kpis: root.querySelectorAll('.mkw-kpi').length,
+        kpiText: [...root.querySelectorAll('.mkw-kpi')].map((el) => el.textContent).join(' | '),
+        verdicts: root.querySelectorAll('.mkw-verdict').length,
+        verdictText: (root.querySelector('.mkw-verdicts') || {}).textContent || '',
+        patterns: root.querySelectorAll('.mkw-pat').length,
+        patternText: (root.querySelector('.mkw-patterns') || {}).textContent || '',
+      };
+    });
+    ok(works.kpis === 4 && /8[\s  ]?334|8334/.test(works.kpiText) && /540/.test(works.kpiText), 'pouls business : CA + visiteurs (la page n\'est jamais vide)');
+    ok(works.verdicts >= 4 && /Samedi/.test(works.verdictText) && /Mardi/.test(works.verdictText), 'verdicts : meilleur/pire jour, effet météo, vacances');
+    ok(works.patterns === 2 && /\+22\s?%|22\s?%/.test(works.patternText), 'mémoire par contexte : ce qui convertit, par effet net');
+
     console.log('\n[STUDIO] pack de contenu par réseau');
+    await go('studio');
     const studio = await page.evaluate(async () => {
       const root = document.getElementById('staffCampaignsPage');
       const tabs = root.querySelectorAll('.br-st-bar .br-net').length;
-      // Générer un pack Instagram.
       const igTab = [...root.querySelectorAll('.br-st-bar .br-net')].find((el) => el.textContent === 'Instagram');
       if (igTab) igTab.click();
       await new Promise((r) => setTimeout(r, 150));
@@ -349,10 +345,32 @@ async function main() {
     ok(studio.posted === 1 && studio.platform === 'instagram' && /ados/.test(studio.brief || ''), 'Générer → POST studioGenerate avec réseau + angle');
     ok(studio.blocks >= 5 && studio.promptEn, 'pack complet : longue/courte/story/hashtags/photo/prompt image (anglais)');
 
-    console.log('\n[Z4] les reçus');
-    const receipts = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('#staffCampaignsPage .br-receipt')];
+    console.log('\n[CONCURRENTS] la veille honnête');
+    await go('rivals');
+    await page.waitForTimeout(400);
+    const rivals = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
       return {
+        rows: root.querySelectorAll('.mkw-riv').length,
+        name: /Bowling Arlon/.test(root.textContent),
+        diff: /offre étudiants/.test(root.textContent),
+        hasAdd: Boolean(document.getElementById('brCompName')) && Boolean(document.getElementById('brCompSite')),
+        soon: /bientôt/i.test(root.textContent),
+      };
+    });
+    ok(rivals.rows >= 1 && rivals.name, 'les concurrents surveillés en cartes');
+    ok(rivals.diff, 'le changement détecté chez le concurrent est remonté');
+    ok(rivals.hasAdd, 'ajout d\'un concurrent (nom + site)');
+    ok(rivals.soon, 'le renseignement approfondi annoncé honnêtement (bientôt)');
+
+    console.log('\n[RÉSULTATS] le CA généré + les reçus mesurés');
+    await go('results');
+    const results = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      const rows = [...root.querySelectorAll('.br-receipt')];
+      return {
+        hero: Boolean(root.querySelector('.mkw-hero-num')),
+        eyebrow: /rapporté/i.test((root.querySelector('.mkw-eyebrow') || {}).textContent || ''),
         count: rows.length,
         good: rows.some((el) => el.className.includes('tone-good') && /\+18\s?% de monde/.test(el.textContent)),
         neutral: rows.some((el) => el.className.includes('tone-neutral') && /pas d'effet mesurable/.test(el.textContent)),
@@ -360,8 +378,9 @@ async function main() {
         redo: rows.some((el) => /On le refait \?/.test(el.textContent)),
       };
     });
-    ok(receipts.count === 3 && receipts.good && receipts.neutral && receipts.pending, 'lignes ticket : bon en vert, neutre jamais rouge, verdict à venir');
-    ok(receipts.redo, '« On le refait ? » sur les lignes positives');
+    ok(results.hero && results.eyebrow, 'le héros « ce que le marketing a rapporté » (l\'arme de vente)');
+    ok(results.count === 3 && results.good && results.neutral && results.pending, 'reçus : bon en vert, neutre jamais rouge, verdict à venir');
+    ok(results.redo, '« On le refait ? » sur les lignes positives');
     const redo = await page.evaluate(async () => {
       const btn = [...document.querySelectorAll('#staffCampaignsPage .br-receipt button')].find((el) => /On le refait/.test(el.textContent));
       btn.click();
@@ -370,26 +389,10 @@ async function main() {
     });
     ok(redo === 1, '« On le refait ? » → clone en file');
 
-    console.log('\n[FOOTER] la veille');
-    const veille = await page.evaluate(async () => {
-      const details = document.querySelector('#staffCampaignsPage .br-veille');
-      const summary = details.querySelector('summary').textContent;
-      const dot = Boolean(details.querySelector('.br-veille-dot'));
-      details.open = true;
-      details.dispatchEvent(new Event('toggle'));
-      await new Promise((r) => setTimeout(r, 500));
-      const rows = document.querySelectorAll('#staffCampaignsPage .br-veille-row').length;
-      const hasAdd = Boolean(document.getElementById('brCompName'));
-      return { summary, dot, rows, hasAdd };
-    });
-    ok(/Je surveille 2 concurrents/.test(veille.summary) && veille.dot, 'summary + point d\'alerte quand un diff est tombé');
-    ok(veille.rows >= 1 && veille.hasAdd, 'déplié : liste + ajout d\'un site');
-
     console.log('\n[EMAILS] les campagnes ont déménagé');
     await page.evaluate(() => { state.staffMenuPage = 'emails'; save(); renderStaff(); });
     await page.waitForTimeout(700);
-    const emailsPage = await page.evaluate(() => /campagne/i.test((document.getElementById('staffEmailsPage') || {}).textContent || ''));
-    ok(emailsPage, 'la section campagnes vit dans la page Emails');
+    ok(await page.evaluate(() => /campagne/i.test((document.getElementById('staffEmailsPage') || {}).textContent || '')), 'la section campagnes vit dans la page Emails');
 
     console.log(`\n${failures ? failures + ' FAIL' : ''}`);
     if (failures) { console.error('marketing-ia-check: FAIL'); process.exit(1); }

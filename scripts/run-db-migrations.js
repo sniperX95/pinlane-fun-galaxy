@@ -110,6 +110,11 @@ const MIGRATIONS = [
     file: 'database/proposition-schema.sql',
     description: 'Unified propositions (Le Brief): widen kind check + payload jsonb + due_date on marketing_insights',
   },
+  {
+    id: '0022_marketing_patterns',
+    file: 'database/marketing-patterns-schema.sql',
+    description: 'Learning memory: per-context aggregated net effect of published actions (closes the marketing feedback loop)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

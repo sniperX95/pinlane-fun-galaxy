@@ -2130,7 +2130,7 @@
      ======================================================================== */
 
   const mkBrief = {
-    data: null, loading: false, error: '', period: 30,
+    data: null, loading: false, error: '', period: 30, tab: 'today',
     payOpen: false, radarOpen: null, openCard: null, cardNetwork: {},
     angleOpen: null, publishedAsk: null, moreOpen: false, receiptsAll: false,
     askFocus: false, busy: '', published: {}, dismissed: {},
@@ -3156,27 +3156,264 @@
     </section>`;
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     MARKETING — 5 surfaces (refonte 2026-07-16 « machine de guerre »)
+     Aujourd'hui · Ce qui marche · Studio · Concurrents · Résultats.
+     Même contrat de données (marketingBrief), mêmes handlers d'action ;
+     on recatégorise et on élève le craft. Les nouvelles surfaces
+     dégradent proprement si le champ n'existe pas encore (honnêteté :
+     l'analyse causale profonde arrive en Phase 1 backend).
+     ══════════════════════════════════════════════════════════════════════ */
+
+  const MKW_TABS = [
+    { key: 'today', label: 'Aujourd’hui' },
+    { key: 'works', label: 'Ce qui marche' },
+    { key: 'studio', label: 'Studio' },
+    { key: 'rivals', label: 'Concurrents' },
+    { key: 'results', label: 'Résultats' },
+  ];
+
+  window.mkwTab = function (key) {
+    if (!MKW_TABS.some((t) => t.key === key)) return;
+    mkBrief.tab = key;
+    if (key === 'rivals' && typeof loadCompetitors === 'function') loadCompetitors();
+    renderStaffCampaignsPage();
+    const surf = document.querySelector('.mkw-surface');
+    if (surf && !reducedMotion) { surf.classList.remove('mkw-in'); void surf.offsetWidth; surf.classList.add('mkw-in'); }
+  };
+
+  // Le mark de l'agent — une identité, pas juste du texte gris (SVG inline,
+  // couleur accent, respire « présent »).
+  function mkwAgentMark() {
+    return `<span class="mkw-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z"/></svg></span>`;
+  }
+
+  function mkwHeader() {
+    const b = mkBrief.data;
+    const live = b
+      ? `passé ${new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long' })} à ${new Date(b.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`
+      : 'je prépare ton brief…';
+    return `<header class="mkw-head">
+      <div class="mkw-head-id">
+        ${mkwAgentMark()}
+        <div>
+          <h1 class="mkw-head-title">Ton employé marketing</h1>
+          <p class="mkw-head-sub"><span class="mkw-live" aria-hidden="true"></span>${b ? 'en veille · ' : ''}${esc(live)}</p>
+        </div>
+      </div>
+    </header>`;
+  }
+
+  function mkwTabs() {
+    return `<nav class="mkw-tabs" role="tablist" aria-label="Marketing">
+      ${MKW_TABS.map((t) => `<button type="button" role="tab" aria-selected="${mkBrief.tab === t.key}" class="mkw-tab ${mkBrief.tab === t.key ? 'active' : ''}" onclick="mkwTab('${t.key}')">${esc(t.label)}</button>`).join('')}
+      <span class="mkw-tabs-rail" aria-hidden="true"></span>
+    </nav>`;
+  }
+
+  // ── Le héros : € généré (l'arme). Grand, mono, confiant. ──
+  function mkwHero(context) {
+    const b = mkBrief.data;
+    if (!b) return `<section class="mkw-hero"><div class="mkw-skel mkw-skel-hero"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    const p = b.paie;
+    const periods = [7, 30, 90].map((d) => `<button type="button" class="mkw-seg-btn ${mkBrief.period === d ? 'active' : ''}" onclick="mkBrPeriod(${d})">${d} j</button>`).join('');
+    let fig;
+    if (p.young) {
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">—</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
+    } else if (p.euros > 0) {
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">générés par tes publications · <strong>${p.days} derniers jours</strong></span></div>`;
+    } else {
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis — aucune venue ne leur est encore liée sur ${p.days} j</span></div>`;
+    }
+    const chips = !p.young ? `<div class="mkw-hero-chips">
+      <span class="mkw-hchip"><b>${p.venues}</b> venues liées</span>
+      <span class="mkw-hchip-dot"></span>
+      <span class="mkw-hchip"><b>${p.sent}</b> messages</span>
+      <span class="mkw-hchip-dot"></span>
+      <span class="mkw-hchip"><b>${p.reviewClicks}</b> clics avis Google</span>
+    </div>` : '';
+    const detail = mkBrief.payOpen && !p.young ? mkwSources(p) : '';
+    return `<section class="mkw-hero">
+      <div class="mkw-hero-top">
+        <span class="mkw-eyebrow">${context === 'results' ? 'Ce que le marketing a rapporté' : 'La paie'}</span>
+        <div class="mkw-seg">${periods}</div>
+      </div>
+      ${fig}
+      ${chips}
+      ${!p.young ? `<button type="button" class="mkw-link" onclick="mkBrPayDetail()">${mkBrief.payOpen ? 'Masquer le détail' : 'D’où vient ce chiffre'}</button>` : ''}
+      ${detail}
+    </section>`;
+  }
+
+  function mkwSources(p) {
+    const rows = (p.sources || []).map((s) => {
+      const share = p.euros > 0 ? Math.round((s.revenue / p.euros) * 100) : 0;
+      return `<div class="mkw-src"><span class="mkw-src-name">${esc(s.label)}</span><span class="mkw-src-bar"><span style="width:${Math.max(2, share)}%"></span></span><span class="mkw-src-val">${money(s.revenue)}<em>${share}%</em></span></div>`;
+    }).join('');
+    return `<div class="mkw-src-panel">
+      ${rows || '<p class="mkw-quiet">Pas encore de venue attribuée sur la période.</p>'}
+      <p class="mkw-method">Une venue compte pour le dernier message qu’elle a vu dans les 60 jours — c’est un lien, pas une preuve absolue.</p>
+    </div>`;
+  }
+
+  // ── Le mémo signé du matin ──
+  function mkwBriefMemo() {
+    const b = mkBrief.data;
+    if (!b) return `<section class="mkw-card mkw-memo"><div class="mkw-skel"></div><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    return `<section class="mkw-card mkw-memo">
+      ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin — les chiffres sont exacts, les phrases moins polies.</p>' : ''}
+      <p class="mkw-memo-text">${brProse(b.brief.text)}</p>
+      <p class="mkw-sign">${mkwAgentMark()} ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
+    </section>`;
+  }
+
+  // ── « Ce qui marche » : l'analyste causal + la mémoire par contexte ──
+  function mkwPulseStrip() {
+    const b = mkBrief.data;
+    if (!b || !b.pulse) return '';
+    const pl = b.pulse;
+    const tile = (value, label, foot) => `<div class="mkw-kpi"><span class="mkw-kpi-val">${value}</span><span class="mkw-kpi-label">${esc(label)}</span>${foot ? `<span class="mkw-kpi-foot">${esc(foot)}</span>` : ''}</div>`;
+    return `<div class="mkw-pulse">
+      ${tile(money(pl.revenue30), 'chiffre d’affaires', '30 derniers jours')}
+      ${tile(`${pl.visitors30}`, 'visiteurs', '30 derniers jours')}
+      ${tile(money(pl.avgBasket), 'panier moyen', 'par visiteur')}
+      ${tile(`${pl.upcomingPax}`, 'déjà attendus', `14 j à venir${pl.reservedRevenue ? ` · ${money(pl.reservedRevenue)}` : ''}`)}
+    </div>`;
+  }
+
+  const MKW_CONF = { solide: { label: 'solide', tone: 'ok' }, signal: { label: 'signal', tone: 'mid' }, signal_faible: { label: 'signal faible', tone: 'mid' }, exploratoire: { label: 'à confirmer', tone: 'low' } };
+  function mkwConfBadge(conf) {
+    const c = MKW_CONF[conf] || MKW_CONF.exploratoire;
+    return `<span class="mkw-conf t-${c.tone}">${c.label}</span>`;
+  }
+
+  function mkwFacts() {
+    const b = mkBrief.data;
+    if (!b) return `<section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    const f = b.facts;
+    const young = !f || (f.dataDays || b.dataDays || 0) < 90;
+    // Verdicts « jour / mois / météo » — chacun avec le POURQUOI + la confiance.
+    const verdicts = [];
+    if (f && f.bestDay) {
+      verdicts.push(mkwVerdict('Ton meilleur jour', `${cap(f.bestDay.label)}`, `+${f.bestDay.vsMedianPct}% de monde qu’un jour normal · ${f.bestDay.avgVisitors} visiteurs en moyenne`, f.bestDay.confidence, 'calendar'));
+    }
+    if (f && f.worstDay) {
+      verdicts.push(mkwVerdict('Ton jour le plus creux', `${cap(f.worstDay.label)}`, `${Math.abs(f.worstDay.vsMedianPct)}% de monde en moins qu’un jour normal — la cible n°1 à remplir`, f.worstDay.confidence, 'target', 'danger'));
+    }
+    if (f && f.bestMonth) {
+      const why = (f.bestMonth.whyDrivers || []).join(', ');
+      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `+${f.bestMonth.vsAvgPct}% vs la moyenne${why ? ` — pourquoi : ${why}` : ''}`, 'solide', 'flame'));
+    }
+    if (f && f.weather) {
+      const w = f.weather;
+      const rain = w.rainEffectPct >= 0 ? `+${w.rainEffectPct}%` : `${w.rainEffectPct}%`;
+      verdicts.push(mkwVerdict('Effet de la pluie', rain, `sur ta fréquentation, à jours comparables · ${w.sampleDays} j de recul`, w.confidence, 'droplet'));
+    }
+    if (f && typeof f.holidayEffectPct === 'number') {
+      verdicts.push(mkwVerdict('Effet des vacances scolaires', `+${f.holidayEffectPct}%`, 'de fréquentation pendant les congés FWB', 'solide', 'star'));
+    }
+    // La mémoire par contexte — ce qui convertit, appris sur tes propres mesures.
+    const patterns = (b.patterns || []).slice().sort((a, c) => (c.netDeltaPct || -999) - (a.netDeltaPct || -999));
+    const patternRows = patterns.map((p) => {
+      const d = p.netDeltaPct === null || p.netDeltaPct === undefined
+        ? '<span class="mkw-pat-val is-pending">je mesure</span>'
+        : `<span class="mkw-pat-val ${p.netDeltaPct > 0 ? 'is-good' : 'is-flat'}">${p.netDeltaPct > 0 ? '+' : ''}${p.netDeltaPct}%</span>`;
+      return `<div class="mkw-pat">
+        <span class="mkw-pat-ctx">${esc(p.context)}</span>
+        <span class="mkw-pat-meta">n=${p.n} · ${mkwConfBadge(p.confidence)}</span>
+        ${d}
+      </div>`;
+    }).join('');
+    return `<section class="mkw-works">
+      ${young ? '<p class="mkw-note">Moins de 90 jours de recul : je te donne des signaux, pas encore des certitudes. Plus tu tournes, plus je deviens net.</p>' : ''}
+      <div class="mkw-verdicts">${verdicts.join('') || '<p class="mkw-quiet">Je n’ai pas encore assez de recul pour trancher. Laisse-moi quelques semaines.</p>'}</div>
+      <div class="mkw-card mkw-patterns">
+        <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">effet net mesuré vs. journée comparable</span></div>
+        ${patternRows || '<p class="mkw-quiet">Publie et laisse-moi mesurer — les patterns gagnants s’afficheront ici.</p>'}
+        <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
+      </div>
+    </section>`;
+  }
+
+  function mkwVerdict(label, value, sub, conf, icon, tone) {
+    return `<article class="mkw-verdict ${tone ? `t-${tone}` : ''}">
+      <span class="mkw-verdict-ico">${ci(icon)}</span>
+      <div class="mkw-verdict-body">
+        <span class="mkw-verdict-label">${esc(label)}</span>
+        <span class="mkw-verdict-val">${esc(value)}</span>
+        <span class="mkw-verdict-sub">${brProse(sub)}</span>
+      </div>
+      ${conf ? mkwConfBadge(conf) : ''}
+    </article>`;
+  }
+
+  function cap(s) { return `${String(s || '').charAt(0).toUpperCase()}${String(s || '').slice(1)}`; }
+
+  // ── « Résultats » : le CA généré (l'arme de vente) + les reçus mesurés ──
+  function mkwResults() {
+    return `<section class="mkw-results">
+      ${mkwHero('results')}
+      ${brZ4()}
+    </section>`;
+  }
+
+  // ── « Concurrents » : la veille honnête (site + à venir : avis, Ad Library, colle-un-post) ──
+  function mkwRivals() {
+    const rows = (mkComp.data || []).map((c) => {
+      let host = '';
+      try { host = c.websiteUrl ? new URL(c.websiteUrl).hostname.replace(/^www\./, '') : ''; } catch (e) { host = ''; }
+      const rating = typeof c.rating === 'number' ? `<span class="mkw-riv-stat">${ci('star')}${c.rating.toFixed(1)}${c.reviews ? ` <em>${c.reviews} avis</em>` : ''}</span>` : '';
+      const ads = typeof c.adActive === 'number' && c.adActive > 0 ? `<span class="mkw-riv-stat mkw-riv-ads">${c.adActive} pub${c.adActive > 1 ? 's' : ''} active${c.adActive > 1 ? 's' : ''}</span>` : '';
+      const offer = c.lastOffer ? `<span class="mkw-riv-offer">${ci('megaphone')}${esc(c.lastOffer)}</span>` : '';
+      const checked = c.lastCheckedAt ? `inspecté le ${String(c.lastCheckedAt).slice(8, 10)}/${String(c.lastCheckedAt).slice(5, 7)}` : 'première inspection cette nuit';
+      return `<article class="mkw-riv">
+        <div class="mkw-riv-top">
+          <div><span class="mkw-riv-name">${esc(c.name)}</span>${host ? `<span class="mkw-riv-host">${esc(host)}</span>` : ''}</div>
+          <button type="button" class="mkw-link mkw-link-faint" onclick="mkCompDelete(${Number(c.id)})">Retirer</button>
+        </div>
+        <div class="mkw-riv-stats">${rating}${ads}<span class="mkw-riv-check">${esc(checked)}</span></div>
+        ${offer}
+        ${c.lastDiff ? `<p class="mkw-riv-diff">${ci('bolt')}${esc(c.lastDiff)}</p>` : ''}
+      </article>`;
+    }).join('');
+    return `<section class="mkw-rivals">
+      <div class="mkw-card">
+        <div class="mkw-block-head"><h3>Les centres que je surveille</h3><span class="mkw-block-sub">j’inspecte leurs sites chaque nuit</span></div>
+        <div class="mkw-riv-grid">
+          ${rows || (mkComp.loading ? '<p class="mkw-quiet">un instant…</p>' : '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients — j’inspecte leurs sites, leurs offres et leur note Google.</p>')}
+        </div>
+        <div class="mkw-riv-add">
+          <input id="brCompName" class="mkw-input" placeholder="Nom (ex. Bowling de Bastogne)" maxlength="80">
+          <input id="brCompSite" class="mkw-input" placeholder="Site — https://…" maxlength="300">
+          <button type="button" class="pv2-btn primary" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>${mkComp.busy ? '…' : 'Suivre'}</button>
+        </div>
+      </div>
+      <div class="mkw-card mkw-soon">
+        <div class="mkw-block-head"><h3>Renseignement approfondi</h3><span class="mkw-soon-badge">bientôt</span></div>
+        <p class="mkw-quiet">Je prépare : leur note et leurs derniers avis Google, leurs pubs actives dans la bibliothèque Meta, et un « colle-moi un de leurs posts » où j’extrais leur offre, leur prix et leur ton — pour te préparer la riposte.</p>
+      </div>
+    </section>`;
+  }
+
+  function mkwSurface() {
+    switch (mkBrief.tab) {
+      case 'works': return `${mkwPulseStrip()}${mkwFacts()}`;
+      case 'studio': return brStudio();
+      case 'rivals': return mkwRivals();
+      case 'results': return mkwResults();
+      case 'today':
+      default: return `${mkwHero('today')}${mkwBriefMemo()}${brZ2()}${brZ3()}`;
+    }
+  }
+
   window.renderStaffCampaignsPage = function () {
     const root = document.getElementById('staffCampaignsPage');
     if (!root) return;
     if (!mkBrief.data && !mkBrief.loading && !mkBrief.error) setTimeout(() => loadMarketingBrief(), 0);
-    const b = mkBrief.data;
-    const lastPass = b
-      ? `dernier passage ${new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long' })} à ${new Date(b.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`
-      : 'je prépare ton brief…';
-
-    root.innerHTML = `<div class="pv2-shell br-shell">
-      <section class="br-head">
-        <h1>Marketing</h1>
-        <p class="br-head-sub">Ton employé marketing · ${esc(lastPass)}</p>
-      </section>
-      ${brZ1()}
-      ${brPulse()}
-      ${brZ2()}
-      ${brZ3()}
-      ${brStudio()}
-      ${brZ4()}
-      ${brFooter()}
+    root.innerHTML = `<div class="pv2-shell mkw-shell">
+      ${mkwHeader()}
+      ${mkwTabs()}
+      <div class="mkw-surface mkw-in">${mkwSurface()}</div>
     </div>`;
     mount(root, 'campaigns');
   };

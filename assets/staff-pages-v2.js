@@ -2134,6 +2134,7 @@
     payOpen: false, radarOpen: null, openCard: null, cardNetwork: {},
     angleOpen: null, publishedAsk: null, moreOpen: false, receiptsAll: false,
     askFocus: false, busy: '', published: {}, dismissed: {},
+    studioChannel: 'facebook', studioPacks: {}, studioBusy: false,
   };
   window.mkBrief = mkBrief;
 
@@ -2228,6 +2229,26 @@
     </section>`;
   }
 
+  /* ── Le pouls business (KPIs réels du centre) — la page n'est jamais vide,
+     elle montre l'activité concrète : CA, visiteurs, réservations à venir. ── */
+  function brPulse() {
+    const b = mkBrief.data;
+    if (!b || !b.pulse) return '';
+    const pl = b.pulse;
+    const tile = (value, label, foot) => `<div class="br-kpi"><span class="br-kpi-val">${value}</span><span class="br-kpi-label">${esc(label)}</span>${foot ? `<span class="br-kpi-foot">${esc(foot)}</span>` : ''}</div>`;
+    const bestFoot = pl.bestDay ? `record : ${money(pl.bestDay.revenue)} le ${brFrDay(pl.bestDay.date)}` : '';
+    return `<section class="br-z br-pulse-z">
+      <h2 class="br-zt">Ton activité</h2>
+      <div class="br-pulse">
+        ${tile(money(pl.revenue30), 'chiffre d’affaires', '30 derniers jours')}
+        ${tile(`${pl.visitors30}`, 'visiteurs', '30 derniers jours')}
+        ${tile(money(pl.avgBasket), 'panier moyen', 'par visiteur')}
+        ${tile(`${pl.upcomingPax}`, 'déjà attendus', `sur les 14 prochains jours${pl.reservedRevenue ? ` · ${money(pl.reservedRevenue)}` : ''}`)}
+        ${pl.bestDay ? tile(`${pl.bestDay.visitors}`, 'meilleure journée', bestFoot) : ''}
+      </div>
+    </section>`;
+  }
+
   window.mkBrPeriod = async function (days) {
     mkBrief.period = Number(days) || 30;
     renderStaffCampaignsPage();
@@ -2272,13 +2293,23 @@
     const cells = b.radar.map((day) => {
       const isToday = day.date === b.today;
       const open = mkBrief.radarOpen === day.date;
-      return `<button type="button" class="br-cell lv-${esc(day.level)} ${isToday ? 'is-today' : ''} ${open ? 'is-open' : ''}" aria-expanded="${open}" onclick="mkBrRadar('${escJs(day.date)}')">
+      const temp = day.tmax !== null && day.tmax !== undefined ? `${Math.round(day.tmax)}°` : '';
+      return `<button type="button" class="br-cell lv-${esc(day.level)} ${isToday ? 'is-today' : ''} ${open ? 'is-open' : ''}" aria-expanded="${open}" onclick="mkBrRadar('${escJs(day.date)}')" title="${esc(day.explanation)}">
         <span class="br-cell-day">${isToday ? 'auj.' : `${BR_DOW[day.dow]} ${day.date.slice(8, 10)}`}</span>
         ${brWeatherIcon(day)}
-        <span class="br-cell-resa">${day.resaCount ? day.resaCount : ''}</span>
+        <span class="br-cell-temp">${temp}</span>
+        <span class="br-cell-resa">${day.resaCount ? `${day.resaCount} <em>rés.</em>` : ''}</span>
         ${day.event ? '<span class="br-cell-event" aria-hidden="true"></span>' : ''}
       </button>`;
     }).join('');
+    // Ligne de synthèse : le total des réservations à venir + le prochain événement.
+    const upcoming = b.pulse ? b.pulse.upcomingPax : b.radar.reduce((s, d) => s + (d.resaCount || 0), 0);
+    const eventDay = b.radar.find((d) => d.event);
+    // Texte brut : brProse met le nombre en gras (pas de HTML manuel, il serait échappé).
+    const summary = [
+      upcoming ? `${upcoming} personnes déjà attendues` : '',
+      eventDay ? `${eventDay.event.replace(' (à 5 min)', '')} arrive` : '',
+    ].filter(Boolean).join(' · ');
     const openDay = b.radar.find((day) => day.date === mkBrief.radarOpen);
     let explain = '';
     if (openDay) {
@@ -2293,6 +2324,7 @@
     return `<section class="br-z">
       <h2 class="br-zt">Les 14 prochains jours</h2>
       <div class="br-radar">${cells}</div>
+      ${summary ? `<p class="br-radar-sum">${brProse(summary)}</p>` : ''}
       ${explain}
     </section>`;
   }
@@ -2604,6 +2636,76 @@
       mkBrief.busy = '';
       scheduleCampaignsRender();
     }
+  };
+
+  /* ── Le studio : un pack de contenu complet par réseau, à la demande ── */
+  const BR_STUDIO_CHANNELS = [{ key: 'facebook', label: 'Facebook' }, { key: 'instagram', label: 'Instagram' }, { key: 'tiktok', label: 'TikTok' }, { key: 'linkedin', label: 'LinkedIn' }];
+
+  function brStudio() {
+    const pack = mkBrief.studioPacks[mkBrief.studioChannel] || null;
+    const tabs = BR_STUDIO_CHANNELS.map((c) => `<button type="button" class="br-net ${mkBrief.studioChannel === c.key ? 'active' : ''}" onclick="mkBrStudioChannel('${escJs(c.key)}')">${c.label}</button>`).join('');
+    const block = (label, field, text, opts) => {
+      if (!text) return '';
+      const o = opts || {};
+      return `<div class="br-st-block"><div class="br-st-head"><span class="br-st-label">${esc(label)}</span>${o.note ? `<small>${esc(o.note)}</small>` : ''}<button type="button" class="br-link br-st-copy" onclick="mkBrStudioCopy('${escJs(field)}')">Copier</button></div><div class="br-paper ${o.mono ? 'br-st-mono' : ''}">${esc(text)}</div></div>`;
+    };
+    let body;
+    if (mkBrief.studioBusy) {
+      body = '<div class="br-paper br-paper-shimmer"><p class="br-quiet">j’écris tout le pack — version longue, courte, story, idée photo…</p></div>';
+    } else if (!pack) {
+      body = '<p class="br-quiet">Choisis un réseau et je te prépare un pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags — écrit sur l’angle du jour.</p>';
+    } else {
+      const q = pack.quality || {};
+      body = `${q.score ? `<p class="br-st-badge">${q.status === 'ready' ? 'Prêt à publier' : 'À relire'} · angle : ${esc(pack.theme || '')}</p>` : ''}
+        ${block('Version longue', 'long', pack.long)}
+        ${block('Version courte', 'short', pack.short)}
+        ${block(mkBrief.studioChannel === 'linkedin' ? 'Variante' : 'Story', 'story', pack.story)}
+        ${block('Hashtags', 'hashtags', (pack.hashtags || []).join(' '))}
+        ${block('Idée photo (à shooter sur place)', 'photoIdea', pack.photoIdea)}
+        ${block('Prompt d’image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais — pour ton générateur d’images' })}
+        <p class="br-method">Meilleur moment : ${esc(pack.bestTime || '—')}. Chaque version est notée par le contrôle qualité du centre — je réécris jusqu’à ce que ça passe.</p>`;
+    }
+    return `<section class="br-z">
+      <h2 class="br-zt">Le studio — écris pour chaque réseau</h2>
+      <div class="br-st-bar">
+        <div class="br-nets">${tabs}</div>
+        <div class="br-st-gen">
+          <input id="brStudioBrief" class="br-ask-input" placeholder="Angle (optionnel) : « anniversaires ados », « soirée fluo »…">
+          <button type="button" class="pv2-btn primary" onclick="mkBrStudioGen()" ${mkBrief.studioBusy ? 'disabled' : ''}>${mkBrief.studioBusy ? 'j’écris…' : (pack ? 'Régénérer' : 'Générer le pack')}</button>
+        </div>
+      </div>
+      ${body}
+    </section>`;
+  }
+
+  window.mkBrStudioChannel = function (key) {
+    mkBrief.studioChannel = BR_STUDIO_CHANNELS.some((c) => c.key === key) ? key : 'facebook';
+    renderStaffCampaignsPage();
+  };
+  window.mkBrStudioGen = async function () {
+    if (mkBrief.studioBusy) return;
+    const brief = (document.getElementById('brStudioBrief') || {}).value || '';
+    mkBrief.studioBusy = true;
+    renderStaffCampaignsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'studioGenerate', centerId: state.currentCenterId || 'libramont', platform: mkBrief.studioChannel, brief }),
+      });
+      mkBrief.studioPacks = { ...mkBrief.studioPacks, [mkBrief.studioChannel]: payload.pack };
+    } catch (error) {
+      toast(error.message || 'Je n’ai pas réussi à écrire le pack.');
+    } finally {
+      mkBrief.studioBusy = false;
+      scheduleCampaignsRender();
+    }
+  };
+  window.mkBrStudioCopy = async function (field) {
+    const pack = mkBrief.studioPacks[mkBrief.studioChannel];
+    if (!pack) return;
+    const text = field === 'hashtags' ? (pack.hashtags || []).join(' ') : String(pack[field] || '');
+    if (!text) return;
+    try { await navigator.clipboard.writeText(text); toast('Copié.'); } catch (error) { toast('Copie impossible.'); }
   };
 
   /* ── Z4 · Ce que ça a donné (les reçus) ── */
@@ -3069,8 +3171,10 @@
         <p class="br-head-sub">Ton employé marketing · ${esc(lastPass)}</p>
       </section>
       ${brZ1()}
+      ${brPulse()}
       ${brZ2()}
       ${brZ3()}
+      ${brStudio()}
       ${brZ4()}
       ${brFooter()}
     </div>`;

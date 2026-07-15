@@ -126,10 +126,13 @@ const {
       { id: 22, kind: 'idea', title: 'Post pluie', body: '', channel: 'facebook', ready_content: 'T.', signature: 'rain_forecast:facebook', status: 'validated', applied_at: '2026-07-01T08:00:00Z', result: { deltaPct: 18 }, payload: {} },
     ],
     query: async (text) => (String(text).includes('count(*)') ? { rows: [{ count: 2 }] } : { rows: [{ name: 'Bowling Arlon', diff_summary: 'Nouvelle offre étudiants.', fetched_at: '2026-07-16T02:00:00Z' }] }),
+    listDailyMetrics: async () => ({ totals: { visitors: 540, revenue: 8334 }, bestDay: { date: '2026-07-11', revenue_total: 4009, visitors: 234 }, rows: [] }),
     skipPolish: true,
     llmProvider: () => null,
   });
   ok(bundle.ok && bundle.radar.length === 14 && bundle.paie.euros === 1240, 'bundle : paie + radar 14 j');
+  ok(bundle.pulse.revenue30 === 8334 && bundle.pulse.visitors30 === 540 && bundle.pulse.avgBasket === 15.4, 'POULS : CA + visiteurs + panier moyen réels (page jamais vide)');
+  ok(bundle.pulse.upcomingPax === 34 && bundle.pulse.bestDay.visitors === 234, 'POULS : réservations à venir + meilleure journée');
   ok(bundle.propositions[0].pinned && bundle.propositions.some((p) => p.id === 21), 'file : épinglée en tête + idée cron présente');
   ok(bundle.radar[3].propositionKey === 'plan:social:2026-07-19', 'le radar pointe vers la proposition qui vise le jour creux');
   ok(bundle.brief.text.includes('préparé') && bundle.brief.degraded === true, 'brief composé + flag dégradé sans IA');

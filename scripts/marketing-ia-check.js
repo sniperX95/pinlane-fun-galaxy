@@ -59,7 +59,8 @@ async function installMock(page) {
         paie: { euros: 1240, venues: 5, sent: 17, reviewClicks: 4, days: 30, young: false, firstVerdictDate: 'mardi 28 juillet',
           sources: [{ key: 'birthday_j30', label: 'Anniversaires', sent: 12, conversions: 3, revenue: 770 }, { key: 'relance', label: 'Relances', sent: 5, conversions: 2, revenue: 470 }] },
         brief: { text: 'Dimanche s\'annonce très calme — pluie annoncée, hors vacances. Je t\'ai préparé 2 posts et un email — tout est prêt plus bas. Du mouvement chez Bowling Arlon cette nuit — détail en bas de page.', degraded: false },
-        radar, dataDays: 90,
+        pulse: { revenue30: 8334, visitors30: 540, avgBasket: 15.4, upcomingPax: 102, upcomingResa: 5, reservedRevenue: 2864, bestDay: { date: '2026-07-11', revenue: 4009, visitors: 234 } },
+        radar, dataDays: 90, medianVisitors: 40,
         propositions: [
           { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi — les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi — les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec — réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x' },
           { key: 'plan:social-1', id: null, trigger: 'creux', why: 'Dimanche s\'annonce très calme : 12 visiteurs attendus. Je posterais mercredi pour le remplir.', whyShort: 'Dimanche s\'annonce très calme — je posterais mercredi pour le remplir.', dueDate: dstr(2), targetDate: dstr(4), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'plan:social-1' },
@@ -96,6 +97,7 @@ async function installMock(page) {
         if (b.action === 'insightRedo') return J({ ok: true, insight: { id: 99, status: 'proposed' } });
         if (b.action === 'competitorSave') return J({ ok: true, result: { ok: true, id: 2 } });
         if (b.action === 'competitorDelete') return J({ ok: true, result: { ok: true, id: 1 } });
+        if (b.action === 'studioGenerate') return J({ ok: true, pack: { platform: b.platform, theme: 'Foire de Libramont', generationMode: 'ai', long: `Post ${b.platform} complet pour le test.`, short: `Court ${b.platform}.`, story: 'Story test.', photoIdea: 'Filmer un strike.', aiImagePrompt: 'Bowling scene, no text, no logos', hashtags: ['#bowling', '#test'], bestTime: '18h', quality: { score: 86, status: 'ready' } } });
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingBrief') return J(briefBundle());
@@ -140,7 +142,9 @@ async function main() {
     const hygiene = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       const text = (root.textContent || '').toLowerCase();
-      const banned = ['attribution', 'last-touch', 'baseline', 'médiane', 'itération', 'régénérer', 'insight', ' pack '].filter((word) => text.includes(word));
+      // « pack » (de contenu) et « régénérer » sont du langage produit normal ;
+      // les mots bannis sont le jargon INTERNE du moteur.
+      const banned = ['attribution', 'last-touch', 'baseline', 'médiane', 'itération', 'insight', 'proposition volatile', 'signature'].filter((word) => text.includes(word));
       return {
         tabs: root.querySelectorAll('.mk-tabs, .pv2-seg').length,
         refresh: [...root.querySelectorAll('button')].filter((el) => /actualiser|analyser maintenant/i.test(el.textContent)).length,
@@ -183,6 +187,16 @@ async function main() {
     }));
     ok(payDetail.tickets >= 3 && payDetail.method, 'détail en lignes ticket + méthode en une phrase humaine');
 
+    console.log('\n[POULS] les KPIs business réels');
+    const pulse = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      const tiles = [...root.querySelectorAll('.br-kpi')].map((el) => el.textContent);
+      return { count: tiles.length, all: tiles.join(' | ') };
+    });
+    ok(pulse.count === 5, `5 tuiles de KPIs business (obtenu ${pulse.count})`);
+    ok(/8[\s  ]?334|8334/.test(pulse.all) && /540/.test(pulse.all) && /102/.test(pulse.all), 'CA + visiteurs + réservations à venir affichés (vraies données, page jamais vide)');
+    ok(/234/.test(pulse.all), 'meilleure journée en preuve');
+
     console.log('\n[Z2] le radar');
     const radar = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
@@ -191,11 +205,14 @@ async function main() {
         creux: root.querySelectorAll('.br-cell.lv-creux').length,
         fort: root.querySelectorAll('.br-cell.lv-fort').length,
         today: root.querySelectorAll('.br-cell.is-today').length,
-        resa34: [...root.querySelectorAll('.br-cell-resa')].some((el) => el.textContent === '34'),
+        resa34: [...root.querySelectorAll('.br-cell-resa')].some((el) => /34/.test(el.textContent)),
+        temps: [...root.querySelectorAll('.br-cell-temp')].filter((el) => /°/.test(el.textContent)).length,
+        summary: /attendues/.test((root.querySelector('.br-radar-sum') || {}).textContent || ''),
         eventDot: root.querySelectorAll('.br-cell-event').length,
         noAxis: !root.querySelector('.mk-ol-median') && !root.querySelector('.mk-ol-axis'),
       };
     });
+    ok(radar.temps >= 10 && radar.summary, 'radar enrichi : température par jour + synthèse des réservations à venir');
     ok(radar.cells === 14 && radar.today === 1, '14 cellules, aujourd\'hui cerclé');
     ok(radar.creux === 1 && radar.fort === 1 && radar.eventDot === 1, 'creux/fort teintés + point événement');
     ok(radar.resa34, 'les résas posées restent visibles (34)');
@@ -310,6 +327,27 @@ async function main() {
     });
     ok(ask.chips.length >= 2 && ask.chips.some((chip) => /Idée libre/.test(chip)), 'chips contextuelles au focus');
     ok(ask.posted === 1 && /soirée fluo/.test(ask.brief), 'Demander → création avec la phrase du gérant');
+
+    console.log('\n[STUDIO] pack de contenu par réseau');
+    const studio = await page.evaluate(async () => {
+      const root = document.getElementById('staffCampaignsPage');
+      const tabs = root.querySelectorAll('.br-st-bar .br-net').length;
+      // Générer un pack Instagram.
+      const igTab = [...root.querySelectorAll('.br-st-bar .br-net')].find((el) => el.textContent === 'Instagram');
+      if (igTab) igTab.click();
+      await new Promise((r) => setTimeout(r, 150));
+      document.getElementById('brStudioBrief').value = 'anniversaires ados';
+      const gen = [...root.querySelectorAll('.br-st-bar button')].find((el) => /Générer|Régénérer/.test(el.textContent));
+      gen.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'studioGenerate');
+      const blocks = [...document.querySelectorAll('.br-st-block .br-st-label')].map((el) => el.textContent);
+      const promptEn = /no text, no logos/.test((document.querySelector('.br-st-mono') || {}).textContent || '');
+      return { tabs, posted: posts.length, platform: posts[0] && posts[0].platform, brief: posts[0] && posts[0].brief, blocks: blocks.length, promptEn };
+    });
+    ok(studio.tabs === 4, '4 réseaux dans le studio (Facebook/Instagram/TikTok/LinkedIn)');
+    ok(studio.posted === 1 && studio.platform === 'instagram' && /ados/.test(studio.brief || ''), 'Générer → POST studioGenerate avec réseau + angle');
+    ok(studio.blocks >= 5 && studio.promptEn, 'pack complet : longue/courte/story/hashtags/photo/prompt image (anglais)');
 
     console.log('\n[Z4] les reçus');
     const receipts = await page.evaluate(() => {

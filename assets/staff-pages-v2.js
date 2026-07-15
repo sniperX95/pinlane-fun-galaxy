@@ -2348,10 +2348,19 @@
     const open = mkBrief.openCard === p.key;
     const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
     const dueLabel = p.dueDate ? (p.dueDate === (mkBrief.data && mkBrief.data.today) ? 'aujourd\'hui' : `avant ${brFrDay(p.dueDate)}`) : '';
-    const meta = [dueLabel ? `à publier ${dueLabel}` : '', BR_TRIGGER_LABELS[p.trigger] || ''].filter(Boolean).join(' · ');
-    const verb = p.kind === 'email' ? 'Voir l\'email' : (p.trigger === 'concurrent' ? 'Voir la riposte' : 'Voir le post');
+    // Une « offre »/récolte est un rappel terrain (checklist), pas une
+    // publication : ni « à publier », ni onglets réseau, ni mesure J+14.
+    const isOffre = p.kind === 'offre';
+    const meta = [dueLabel ? `${isOffre ? 'à faire' : 'à publier'} ${dueLabel}` : '', BR_TRIGGER_LABELS[p.trigger] || ''].filter(Boolean).join(' · ');
+    const verb = p.kind === 'email' ? 'Voir l\'email' : (isOffre ? 'Voir la checklist' : (p.trigger === 'concurrent' ? 'Voir la riposte' : 'Voir le post'));
     let body = '';
-    if (open) {
+    if (open && isOffre) {
+      const note = (p.networks && (p.networks.interne || p.networks.facebook) || {}).text || p.why || '';
+      body = `<div class="br-paper">${esc(note)}</div>
+        <div class="br-card-actions">
+          <button type="button" class="pv2-btn primary" onclick="mkBrDismiss('${escJs(p.key)}')">${ci('check')}C’est noté</button>
+        </div>`;
+    } else if (open) {
       const networks = (mkBrief.data.networks || []).filter(() => p.kind !== 'email');
       const current = mkBrief.cardNetwork[p.key] || p.network || (networks[0] || 'facebook');
       const entry = (p.networks || {})[current] || null;
@@ -2495,19 +2504,32 @@
       renderStaffCampaignsPage();
       return;
     }
+    // Garde anti-double-clic : une seule requête de publication par carte, même
+    // si le gérant tape « Oui » deux fois (le serveur a sa garde status, mais on
+    // évite d'insérer deux lignes via ensurePersisted — mitigation finding 5).
+    if (mkBrief.published[key] || mkBrief.busy === `pub:${key}`) { renderStaffCampaignsPage(); return; }
     const p = brVisiblePropositions().find((item) => item.key === key);
     if (!p) return;
+    mkBrief.busy = `pub:${key}`;
+    mkBrief.published[key] = true; // optimiste : la carte se compacte tout de suite
+    renderStaffCampaignsPage();
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
         body: JSON.stringify({ action: 'propositionAction', propAction: 'publiee', centerId: state.currentCenterId || 'libramont', ...brPropPayload(p) }),
       });
-      mkBrief.published[key] = true;
       toast('Noté — verdict dans 14 jours.');
     } catch (error) {
-      toast(error.message || 'Je n\'ai pas pu le noter.');
+      // 409 = déjà traitée (double-clic gagné par la 1re requête) → la carte
+      // reste publiée. Toute autre erreur → on rétablit pour réessayer.
+      if (!/409|plus publiable/i.test(error.message || '')) {
+        mkBrief.published[key] = false;
+        toast(error.message || 'Je n\'ai pas pu le noter.');
+      }
+    } finally {
+      mkBrief.busy = '';
+      scheduleCampaignsRender();
     }
-    renderStaffCampaignsPage();
   };
 
   window.mkBrDismiss = async function (key) {

@@ -59,6 +59,33 @@ const {
   const capped = mergePropositions({ fromDb: Array.from({ length: 10 }, (_, i) => ({ ...cronIdea, key: `db:${i}`, id: i, dueDate: `2026-07-2${i % 10}`, trigger: `t${i}` })), fromPlan: [] });
   ok(capped.length === 6, 'cap à 6 propositions actives');
 
+  console.log('\n[FUSION] les 4 findings de la revue adversariale');
+  // Finding 2 : deux demandes libres SANS date ne s'écrasent plus.
+  const demandeA = propositionFromInsight({ id: 51, kind: 'proposition', title: 'post anniversaire', body: '', channel: 'facebook', ready_content: 'A', signature: 'demande:a', status: 'proposed', payload: { trigger: 'demande' }, due_date: null });
+  const demandeB = propositionFromInsight({ id: 52, kind: 'proposition', title: 'post promo laser', body: '', channel: 'facebook', ready_content: 'B', signature: 'demande:b', status: 'proposed', payload: { trigger: 'demande' }, due_date: null });
+  const twoDemandes = mergePropositions({ fromDb: [demandeA, demandeB], fromPlan: [] });
+  ok(twoDemandes.length === 2, 'finding 2 : deux demandes libres sans date cohabitent (aucune jetée)');
+  // Finding 1 : une volatile dont la signature est déjà ACTIONNÉE ne réapparaît pas.
+  const actioned = new Set(['plan:social:2026-07-18']);
+  const skipped = mergePropositions({ fromDb: [], fromPlan: [planAction], actionedSignatures: actioned });
+  ok(skipped.length === 0, 'finding 1 : plan publié/refusé (signature actionnée) → ne revient JAMAIS');
+  const dailyActioned = mergePropositions({ fromDb: [], fromPlan: [], daily, actionedSignatures: new Set([daily.signature]) });
+  ok(dailyActioned.length === 0, 'finding 1 : post du jour déjà publié → pas de résurrection');
+  // Finding 4 : le plan persisté (après variante) + sa jumelle volatile → UNE carte.
+  const persistedPlan = propositionFromInsight({ id: 61, kind: 'proposition', title: 'Post pour remplir vendredi', body: '', channel: 'instagram', ready_content: 'enrichi', signature: 'plan:social:2026-07-18', status: 'proposed', payload: { trigger: 'creux', targetDate: '2026-07-18', networks: { facebook: { text: 'fb' }, story: { text: 'st' } } }, due_date: '2026-07-16' });
+  const noDup = mergePropositions({ fromDb: [persistedPlan], fromPlan: [planAction] });
+  ok(noDup.length === 1 && noDup[0].id === 61 && noDup[0].networks.story, 'finding 4 : plan persisté enrichi + volatile → UNE carte (la persistée, avec sa variante Story)');
+  // Finding 3 : le post du jour enrichi (persisté) est épinglé, pas écrasé.
+  const persistedDaily = propositionFromInsight({ id: 71, kind: 'proposition', title: 'Pluie — au sec', body: '', channel: 'instagram', ready_content: 'enrichi', signature: daily.signature, status: 'proposed', payload: { trigger: 'pluie', networks: { instagram: { text: 'ig' }, story: { text: 'story' } } }, due_date: '2026-07-16' });
+  const dailyKept = mergePropositions({ fromDb: [persistedDaily], fromPlan: [], daily });
+  ok(dailyKept[0].id === 71 && dailyKept[0].pinned === true && dailyKept[0].networks.story, 'finding 3 : post du jour enrichi épinglé (variante conservée), pas remplacé par la volatile');
+
+  console.log('\n[MAPPING] réseau du plan (finding 8)');
+  const igPlan = propositionFromPlanAction({ id: 'social:x', type: 'social_push', channel: 'instagram', executeOn: '2026-07-16', targetDate: '2026-07-18', title: 'Post', why: 'x', readyContent: 'T' });
+  ok(igPlan.network === 'instagram' && igPlan.networks.instagram, 'social_push Instagram reste Instagram (pas rangé sous Facebook)');
+  const harvest = propositionFromPlanAction({ id: 'harvest:x', type: 'harvest', channel: 'terrain', executeOn: '2026-07-18', targetDate: '2026-07-18', title: 'Récolter', why: 'x', readyContent: 'checklist' });
+  ok(harvest.kind === 'offre' && harvest.network === 'interne', 'récolte/offre = rappel interne, pas un post à publier');
+
   console.log('\n[BRIEF] le composeur de phrases');
   const outlook = [
     { date: '2026-07-17', level: 'normal', drivers: [], precipMm: null, booked: null },
@@ -117,6 +144,8 @@ const {
     log.push({ sql, params });
     if (sql.trim().startsWith('select id from marketing_insights')) return { rows: [] };
     if (sql.trim().startsWith('insert')) return { rows: [{ id: 77 }] };
+    // UPDATE ... RETURNING id : la garde status='proposed' matche → 1 ligne.
+    if (sql.includes('returning id')) return { rows: [{ id: 77 }] };
     return { rows: [] };
   };
   const published = await propositionAction('libramont', {
@@ -125,9 +154,14 @@ const {
   }, { query: actionQuery });
   ok(published.ok && published.status === 'publiee', 'volatile → persistée puis publiée');
   const updateSql = log.find((l) => l.sql.includes("status = 'applied'"));
-  ok(Boolean(updateSql) && updateSql.sql.includes('applied_at = now()'), 'publiée = applied + applied_at (la fenêtre J+14 s\'ouvre)');
+  ok(Boolean(updateSql) && updateSql.sql.includes('applied_at = now()') && updateSql.sql.includes("status = 'proposed'"), 'publiée = applied + applied_at, GARDÉE sur status proposed (finding 6)');
   const refused = await propositionAction('libramont', { action: 'refusee', id: 42 }, { query: actionQuery });
-  ok(refused.status === 'refusee' && log.some((l) => l.sql.includes("'ignored'")), 'refusée → ignored');
+  ok(refused.status === 'refusee' && log.some((l) => l.sql.includes("'ignored'") && l.sql.includes("status = 'proposed'")), 'refusée → ignored, gardée sur proposed');
+  // Republier une carte déjà traitée (0 ligne matchée) → 409, jamais d'écrasement du verdict.
+  const guardQuery = async (text) => (String(text).includes('returning id') ? { rows: [] } : { rows: [{ id: 5 }] });
+  let republishBlocked = false;
+  try { await propositionAction('libramont', { action: 'publiee', id: 5 }, { query: guardQuery }); } catch (e) { republishBlocked = e.statusCode === 409; }
+  ok(republishBlocked, 'republier une carte déjà traitée → 409 (aucun verdict écrasé, findings 6 & 9)');
   let badAction = false;
   try { await propositionAction('libramont', { action: 'hack' }, { query: actionQuery }); } catch (e) { badAction = e.statusCode === 400; }
   ok(badAction, 'action inconnue → 400');

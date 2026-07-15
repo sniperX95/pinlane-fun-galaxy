@@ -7,6 +7,7 @@ const {
   buildPatternRows,
   rankCandidatesByPatterns,
   patternContextKey,
+  computeFactsFromRows,
 } = require('../lib/center-metrics');
 
 let passed = 0;
@@ -104,6 +105,39 @@ check('cohérence clé de contexte candidat ↔ signature stockée', () => {
   const fromCandidate = patternContextKey({ kind: 'post', channel: 'facebook', trigger: 'rain_forecast' });
   const stored = buildPatternRows([{ signature: 'rain_forecast:facebook', channel: 'facebook', payload: {}, result: { netDeltaPct: 9 }, status: 'validated' }])[0].context_key;
   assert.strictEqual(fromCandidate, stored, `clé candidat ${fromCandidate} ≠ clé stockée ${stored}`);
+});
+
+// ── Saisonnalité : quel MOIS marche & pourquoi ───────────────────────────────
+
+check('saisonnalité : détecte le meilleur mois + le pourquoi grounded', () => {
+  // 400 jours ; décembre boosté (100 visiteurs/j vs 40), 2e quinzaine en congé.
+  const rows = [];
+  const start = new Date('2025-01-01T12:00:00Z');
+  for (let i = 0; i < 400; i += 1) {
+    const d = new Date(start.getTime() + i * 864e5);
+    const date = d.toISOString().slice(0, 10);
+    const month = d.getUTCMonth() + 1;
+    const day = d.getUTCDate();
+    rows.push({ date, visitors: month === 12 ? 100 : 40, revenue_total: 0, weather_tmax: 5, weather_precip_mm: 0, is_school_holiday: month === 12 && day >= 22 });
+  }
+  const { facts } = computeFactsFromRows(rows);
+  const month = facts.find((f) => f.id === 'best_month');
+  assert.ok(month, 'fact best_month présent');
+  assert.strictEqual(month.monthLabel, 'décembre');
+  assert.ok(month.value > 0, `décembre au-dessus de la moyenne (obtenu ${month.value})`);
+  assert.ok(month.whyDrivers.includes('vacances scolaires'), 'le pourquoi vient de la donnée (part de congés)');
+  assert.strictEqual(month.confidence, 'solide', '>= 365 j → solide');
+});
+
+check('saisonnalité : pas de verdict mois sur données trop courtes', () => {
+  const rows = [];
+  const start = new Date('2025-01-01T12:00:00Z');
+  for (let i = 0; i < 20; i += 1) {
+    const d = new Date(start.getTime() + i * 864e5);
+    rows.push({ date: d.toISOString().slice(0, 10), visitors: 40, revenue_total: 0, weather_tmax: 5, weather_precip_mm: 0, is_school_holiday: false });
+  }
+  const { facts } = computeFactsFromRows(rows);
+  assert.ok(!facts.find((f) => f.id === 'best_month'), 'moins de 3 mois → pas de verdict mois');
 });
 
 console.log(`\nmarketing-patterns-check: ${passed} tests OK ✓`);

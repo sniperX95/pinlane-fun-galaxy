@@ -3302,7 +3302,7 @@
     }
     if (f && f.bestMonth) {
       const why = (f.bestMonth.whyDrivers || []).join(', ');
-      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `+${f.bestMonth.vsAvgPct}% vs la moyenne${why ? ` — pourquoi : ${why}` : ''}`, 'solide', 'flame'));
+      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `${f.bestMonth.vsAvgPct >= 0 ? '+' : ''}${f.bestMonth.vsAvgPct}% vs la moyenne${why ? ` — pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
     }
     if (f && f.weather) {
       const w = f.weather;

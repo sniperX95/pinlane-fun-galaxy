@@ -2268,35 +2268,60 @@
         <div class="pv2-panel-body"><div class="pv2-empty"><strong>Pas encore assez d'historique</strong>La collecte tourne chaque nuit — la prévision apparaît dès les premières semaines de données.</div></div>
       </section>`;
     }
-    const maxExpected = Math.max(...brain.outlook.map((day) => day.expected), 1);
-    const cells = brain.outlook.map((day) => {
+    // Histogramme : prévision en barre translucide, résas FERMES en barre
+    // solide au premier plan (double lecture « prévu vs sécurisé »), médiane
+    // en ligne pointillée, aujourd'hui marqué, météo au-dessus des barres.
+    const todayIso = brain.today || '';
+    const maxScale = Math.max(...brain.outlook.map((day) => Math.max(day.expected, day.booked ? day.booked.pax : 0)), 1);
+    const totalBooked = brain.outlook.reduce((sum, day) => sum + (day.booked ? day.booked.pax : 0), 0);
+    const medianPct = Math.min(96, Math.round((brain.medianVisitors / maxScale) * 100));
+    const bars = [];
+    const axis = [];
+    for (const day of brain.outlook) {
       const level = MK_LEVELS[day.level] || MK_LEVELS.normal;
-      const meteo = [
-        day.tmax !== null && day.tmax !== undefined ? `${Math.round(day.tmax)}°` : '',
-        day.precipMm !== null && day.precipMm !== undefined && day.precipMm >= 1 ? `${Math.round(day.precipMm)}mm` : '',
-      ].filter(Boolean).join(' · ');
-      const tooltip = [`${day.label} — ${day.expected} visiteurs attendus (${day.baselineSource})`, ...(day.drivers || [])].join('\n');
-      return `<div class="mk-ol-day lv-${level.tone}" title="${esc(tooltip)}">
-        <span class="mk-ol-dow">${MK_DOW_ABBR[day.dow]}</span>
-        <span class="mk-ol-date">${esc(day.date.slice(8, 10))}/${esc(day.date.slice(5, 7))}</span>
-        <span class="mk-ol-gauge"><span style="height:${Math.max(6, Math.round((day.expected / maxExpected) * 100))}%"></span></span>
+      const isToday = day.date === todayIso;
+      const isWeekend = day.dow === 0 || day.dow === 6;
+      const rain = day.precipMm !== null && day.precipMm !== undefined && day.precipMm >= 1;
+      const hot = day.tmax !== null && day.tmax !== undefined && day.tmax >= 25;
+      const meteo = rain ? `${ci('droplet')}${Math.round(day.precipMm)}` : (hot ? `${ci('flame')}${Math.round(day.tmax)}°` : '');
+      const expectedPct = Math.max(4, Math.round((day.expected / maxScale) * 100));
+      const bookedPax = day.booked ? day.booked.pax : 0;
+      const bookedPct = bookedPax ? Math.max(4, Math.round((bookedPax / maxScale) * 100)) : 0;
+      const tooltip = [`${day.label} — ${day.expected} visiteurs attendus (${day.baselineSource})`, bookedPax ? `${bookedPax} pers. déjà réservées` : '', ...(day.drivers || [])].filter(Boolean).join('\n');
+      bars.push(`<div class="mk-ol-day lv-${level.tone} ${isToday ? 'is-today' : ''} ${isWeekend ? 'is-weekend' : ''}" title="${esc(tooltip)}">
+        <span class="mk-ol-meteo">${meteo}</span>
+        <div class="mk-ol-track">
+          <span class="mk-ol-bar" style="height:${expectedPct}%"></span>
+          ${bookedPct ? `<span class="mk-ol-firm" style="height:${bookedPct}%"></span>` : ''}
+        </div>
         <span class="mk-ol-num">${day.expected}</span>
-        ${level.label ? `<span class="mk-ol-badge">${level.label}</span>` : '<span class="mk-ol-badge mk-ol-badge-empty"></span>'}
-        ${day.booked && day.booked.pax ? `<span class="mk-ol-booked" title="${day.booked.pax} pers. déjà réservées">${day.booked.pax} rés.</span>` : '<span class="mk-ol-booked mk-ol-booked-empty"></span>'}
-      </div>`;
-    }).join('');
+      </div>`);
+      axis.push(`<div class="mk-ol-tick lv-${level.tone} ${isToday ? 'is-today' : ''} ${isWeekend ? 'is-weekend' : ''}">
+        <span class="mk-ol-dow">${isToday ? 'auj.' : MK_DOW_ABBR[day.dow]}</span>
+        <span class="mk-ol-date">${esc(day.date.slice(8, 10))}/${esc(day.date.slice(5, 7))}</span>
+        ${level.label ? `<span class="mk-ol-badge">${level.label}</span>` : ''}
+        <span class="mk-ol-booked ${bookedPax ? '' : 'mk-ol-booked-empty'}">${bookedPax ? `${bookedPax} rés.` : ''}</span>
+      </div>`);
+    }
     const past = (brain.explainPast || []).map((item) => `<li>${esc(item.summary)}</li>`).join('');
     return `<section class="pv2-panel mk-outlook" aria-label="Prévision 14 jours">
       <div class="pv2-panel-head has-sub">
         <div><h2>Les 14 prochains jours</h2><p class="pv2-panel-sub">${brain.dataDays < 60
           ? `Prévision encore jeune (${brain.dataDays} j d'historique) — elle s'affine chaque semaine. Les réservations déjà posées, elles, sont sûres.`
           : `Prévision sur tes propres données (médiane : ${brain.medianVisitors} visiteurs/j, ${brain.dataDays} j d'historique). Les creux, c'est là que le marketing doit frapper.`}</p></div>
-        <button type="button" class="pv2-btn" onclick="loadMarketingBrain(true)">${ci('refresh')}Actualiser</button>
+        <div class="mk-ol-head-side">
+          ${totalBooked ? `<div class="mk-ol-kpi"><strong>${totalBooked}</strong><span>pers. déjà réservées<br>sur 14 jours</span></div>` : ''}
+          <button type="button" class="pv2-btn" onclick="loadMarketingBrain(true)">${ci('refresh')}Actualiser</button>
+        </div>
       </div>
       <div class="pv2-panel-body">
-        <div class="mk-ol-strip">${cells}</div>
+        <div class="mk-ol-chart">
+          ${brain.medianVisitors && medianPct > 8 ? `<div class="mk-ol-median" style="bottom:${Math.round(26 + medianPct * 1.1)}px"><span>médiane ${brain.medianVisitors}</span></div>` : ''}
+          <div class="mk-ol-strip">${bars.join('')}</div>
+        </div>
+        <div class="mk-ol-axis">${axis.join('')}</div>
+        <div class="mk-ol-legend"><span class="mk-ol-leg-firm"></span>déjà réservé<span class="mk-ol-leg-soft"></span>prévision<span class="mk-ol-leg-note">survole un jour pour le détail</span></div>
         ${past ? `<details class="mk-ol-past" data-mk-open="olpast"><summary>Pourquoi ces derniers jours ont détonné</summary><ul>${past}</ul></details>` : ''}
-        <p class="mk-roi-method">Prévision basée sur tes jours comparables, ajustée par les effets météo démontrés chez toi. Survole un jour pour le détail.</p>
       </div>
     </section>`;
   }

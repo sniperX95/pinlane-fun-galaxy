@@ -336,6 +336,15 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // « Le Brief » : LE bundle unique de la page Marketing — paie, brief signé,
+  // radar 14 j, propositions unifiées, reçus, veille. Un seul fetch.
+  if (action === 'marketingBrief') {
+    const { buildMarketingBriefBundle } = require('../lib/marketing-brief');
+    const bundle = await buildMarketingBriefBundle(centerId, { days: Number(url.searchParams.get('days') || 30) });
+    sendJson(res, 200, bundle);
+    return;
+  }
+
   // Cerveau marketing : prévision de fréquentation 14 j (baseline apprise ×
   // météo démontrée), explication des jours anormaux, plan d'actions daté,
   // post Instagram du jour. Tout dérivé des données réelles du centre.
@@ -1270,6 +1279,35 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Action sur une proposition : publiée (SEULE porte vers la mesure J+14),
+  // refusée, variante réseau, autre angle.
+  if (action === 'propositionAction') {
+    const { propositionAction } = require('../lib/marketing-brief');
+    const concreteCenterId = requireConcreteCenter('propositions');
+    const result = await propositionAction(concreteCenterId, {
+      action: String(body.propAction || ''),
+      id: body.id || null,
+      proposition: body.proposition || null,
+      network: String(body.network || ''),
+      angle: String(body.angle || ''),
+    });
+    sendJson(res, 200, { ok: true, action, result });
+    return;
+  }
+
+  // Création à la demande (barre « Demander », chips, radar jour creux).
+  if (action === 'propositionCreate') {
+    const { createProposition } = require('../lib/marketing-brief');
+    const concreteCenterId = requireConcreteCenter('propositions');
+    const result = await createProposition(concreteCenterId, {
+      brief: String(body.brief || ''),
+      targetDate: body.targetDate || null,
+      trigger: String(body.trigger || 'demande'),
+    });
+    sendJson(res, 200, { ok: true, action, result });
+    return;
+  }
+
   // Génération d'un pack de contenu (boucle de raffinement côté serveur).
   if (action === 'studioGenerate') {
     const { generateContentPack } = require('../lib/content-studio');
@@ -1712,7 +1750,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'clientNotes') return 'clients.view';
     if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'marketingRoi') return ['campaigns.manage', 'marketing.agents'];
-    if (['marketingBrain', 'competitors', 'studioPacks'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+    if (['marketingBrain', 'competitors', 'studioPacks', 'marketingBrief'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
@@ -1722,7 +1760,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
-  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'studioGenerate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'studioGenerate', 'propositionAction', 'propositionCreate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

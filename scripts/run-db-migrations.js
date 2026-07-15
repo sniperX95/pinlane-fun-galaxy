@@ -105,6 +105,11 @@ const MIGRATIONS = [
     file: 'database/competitor-watch-schema.sql',
     description: 'Competitor watch: configurable competitors + website snapshots with change detection',
   },
+  {
+    id: '0021_propositions',
+    file: 'database/proposition-schema.sql',
+    description: 'Unified propositions (Le Brief): widen kind check + payload jsonb + due_date on marketing_insights',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -327,6 +327,15 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // Retour marketing en euros : attribution last-touch des réservations aux
+  // messages marketing (relances, séquences, campagnes) — la preuve du ROI.
+  if (action === 'marketingRoi') {
+    const { computeMarketingRoi } = require('../lib/marketing-roi');
+    const roi = await computeMarketingRoi(centerId, { days: Number(url.searchParams.get('days') || 30) });
+    sendJson(res, 200, { ok: true, centerId, ...roi });
+    return;
+  }
+
   // Hub « Données » : agrégats calculés côté serveur (source de vérité unique,
   // le front ne recalcule rien). L'historique complet sert à qualifier
   // nouveau/récurrent au-delà de la fenêtre demandée.
@@ -1630,6 +1639,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'relanceStats') return ['clients.view', 'emails.view'];
     if (action === 'clientNotes') return 'clients.view';
     if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
+    if (action === 'marketingRoi') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';

@@ -64,6 +64,17 @@ async function installMock(page) {
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingInsights') return J({ ok: true, centerId: 'libramont', insights });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingRoi') {
+        (window.__QA_ROI_CALLS__ = window.__QA_ROI_CALLS__ || []).push(u.searchParams.get('days'));
+        return J({ ok: true, centerId: 'libramont', days: Number(u.searchParams.get('days')) || 30, sent: 17, conversions: 5, revenue: 1000, reviewClicks: 4, bySource: [
+          { key: 'relance', label: 'Relances 1-clic', sent: 5, conversions: 2, revenue: 380 },
+          { key: 'birthday_j30', label: 'Anniversaires J-30', sent: 12, conversions: 3, revenue: 620 },
+          { key: 'reactivation', label: 'Réactivation dormants', sent: 0, conversions: 0, revenue: 0 },
+          { key: 'custom', label: 'Séquences personnalisées', sent: 0, conversions: 0, revenue: 0 },
+          { key: 'campaign', label: 'Campagnes', sent: 0, conversions: 0, revenue: 0 },
+          { key: 'direct', label: 'Messages directs', sent: 0, conversions: 0, revenue: 0 },
+        ] });
+      }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingWeek') {
         const from = u.searchParams.get('from') || dstr(0);
         const to = u.searchParams.get('to') || dstr(6);
@@ -220,6 +231,31 @@ async function main() {
     });
     ok(arch.archive && arch.items >= 3, 'archive dépliable avec l\'historique (' + arch.items + ' items)');
     ok(arch.redo === 1 && arch.redoId === 5, 'Refaire → POST insightRedo sur l\'idée validée');
+
+    console.log('\n[ROI] panel « Ce que le marketing vous a rapporté »');
+    await page.evaluate(() => loadMarketingRoi(true));
+    await page.waitForTimeout(400);
+    const roiPanel = await page.evaluate(() => {
+      const panel = document.querySelector('#staffCampaignsPage .mk-roi');
+      const value = panel ? (panel.querySelector('.mk-roi-value') || {}).textContent || '' : '';
+      const rows = panel ? panel.querySelectorAll('.mk-roi-row').length : 0;
+      const bars = panel ? panel.querySelectorAll('.mk-roi-bar > span').length : 0;
+      const method = panel ? /dernier message|60 jours/.test((panel.querySelector('.mk-roi-method') || {}).textContent || '') : false;
+      const clicks = panel ? /clic/.test(panel.textContent || '') : false;
+      return { present: !!panel, value, rows, bars, method, clicks };
+    });
+    ok(roiPanel.present, 'panel Retour marketing rendu');
+    ok(/1[\s\u00a0\u202f]?000/.test(roiPanel.value), 'LE chiffre en euros affiché (' + roiPanel.value.trim() + ')');
+    ok(roiPanel.rows === 2 && roiPanel.bars === 2, 'décomposition par source : seulement les sources actives, avec barres');
+    ok(roiPanel.method, 'méthodologie d\'attribution affichée (honnêteté du chiffre)');
+    ok(roiPanel.clicks, 'clics avis Google visibles');
+    const roiPeriod = await page.evaluate(async () => {
+      mkIaSetPeriod(7);
+      await new Promise((r) => setTimeout(r, 400));
+      const calls = window.__QA_ROI_CALLS__ || [];
+      return calls[calls.length - 1];
+    });
+    ok(roiPeriod === '7', 'le panel suit le sélecteur de période (7/30/90)');
 
     // capture visuelle optionnelle
     if (process.env.MK_SHOT) {

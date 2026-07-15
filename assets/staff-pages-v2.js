@@ -1615,6 +1615,7 @@
       body: setting.body || '',
       offsetDays: setting.offsetDays !== undefined ? Number(setting.offsetDays) : (def.offsetDays !== undefined ? Number(def.offsetDays) : undefined),
       cap: setting.cap !== undefined ? Number(setting.cap) : (def.cap !== undefined ? Number(def.cap) : undefined),
+      reviewUrl: setting.reviewUrl || '',
     };
     renderStaffEmailsPage();
   };
@@ -1632,6 +1633,8 @@
     if (String(d.body || '').trim() && d.body !== def.body) body.body = d.body;
     if (d.offsetDays !== undefined && Number(d.offsetDays) !== Number(def.offsetDays)) body.offsetDays = Number(d.offsetDays);
     if (d.cap !== undefined && Number(d.cap) !== Number(def.cap)) body.cap = Number(d.cap);
+    const currentReviewUrl = (mkAuto.settings && mkAuto.settings[key] && mkAuto.settings[key].reviewUrl) || '';
+    if (key === 'post_visit' && String(d.reviewUrl || '').trim() !== currentReviewUrl) body.reviewUrl = String(d.reviewUrl || '').trim();
     if (Object.keys(body).length === 3) { toast('Rien à enregistrer — tout est déjà au réglage par défaut.'); return; }
     mkAuto.busyKey = key;
     renderStaffEmailsPage();
@@ -1672,7 +1675,7 @@
 
   function pv2AutoHasOverride(key) {
     const s = mkAuto.settings && mkAuto.settings[key];
-    return !!(s && (s.subject || s.body || s.offsetDays !== undefined || s.cap !== undefined));
+    return !!(s && (s.subject || s.body || s.offsetDays !== undefined || s.cap !== undefined || s.reviewUrl));
   }
 
   window.toggleStaffAutomation = async function (key) {
@@ -1716,6 +1719,13 @@
     const variables = Array.isArray(def.variables) && def.variables.length
       ? `<p class="mk-auto-edit-vars">Variables : ${def.variables.map((v) => `<code>{{${esc(v)}}}</code>`).join(' ')}</p>`
       : '';
+    // Merci post-visite : le mail peut pousser vers la fiche Google du centre
+    // (bouton tracké — les clics remontent dans le retour marketing).
+    const reviewField = meta.key === 'post_visit' ? `
+      <label class="mk-auto-edit-field">
+        <span>Lien avis Google <small class="mk-auto-edit-hint">le mail ajoute un bouton « Laissez-nous un avis » — les clics sont comptés</small></span>
+        <input value="${esc(d.reviewUrl || '')}" placeholder="https://g.page/r/…" oninput="pv2AutoEditField('reviewUrl', this.value)" aria-label="Lien de la fiche Google">
+      </label>` : '';
     return `<div class="mk-auto-edit">
       <label class="mk-auto-edit-field"><span>Objet</span>
         <input value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
@@ -1726,6 +1736,7 @@
       ${variables}
       ${timingSelect}
       ${capSelect}
+      ${reviewField}
       <div class="mk-auto-edit-actions">
         <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
         <button type="button" class="pv2-btn sm" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
@@ -2138,9 +2149,71 @@
   window.mkIaSetPeriod = function (days) {
     mkIa.period = Number(days) || 30;
     mkIa.metrics = null;
+    mkRoi.data = null;
     renderStaffCampaignsPage();
     loadMarketingMetrics(true);
+    loadMarketingRoi(true);
   };
+
+  /* ── Retour marketing en euros — la preuve (attribution last-touch 60 j,
+     action=marketingRoi). Suit la même période que « Tes chiffres ». ── */
+  const mkRoi = { data: null, loading: false };
+  window.mkRoi = mkRoi;
+
+  async function loadMarketingRoi(force = false) {
+    if (mkRoi.loading || (mkRoi.data && !force)) return;
+    mkRoi.loading = true;
+    try {
+      const payload = await apiRequest(`/api/ops?action=marketingRoi&days=${encodeURIComponent(mkIa.period)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      mkRoi.data = payload;
+    } catch (error) { /* rôle sans accès : panel absent */ } finally {
+      mkRoi.loading = false;
+      renderStaffCampaignsPage();
+    }
+  }
+  window.loadMarketingRoi = loadMarketingRoi;
+
+  // Panel « Ce que le marketing vous a rapporté » : LE chiffre + décomposition
+  // par source avec barres proportionnelles — l'argument des 500-1000 €/mois.
+  function mkRoiPanel() {
+    const r = mkRoi.data;
+    if (!r) {
+      return `<section class="pv2-panel mk-roi" aria-label="Retour marketing">
+        <div class="pv2-panel-head has-sub"><div><h2>Ce que le marketing vous a rapporté</h2><p class="pv2-panel-sub">${mkRoi.loading ? 'Calcul en cours…' : 'Chargement des chiffres…'}</p></div></div>
+      </section>`;
+    }
+    const active = r.bySource.filter((source) => source.sent > 0);
+    const maxRevenue = Math.max(...active.map((source) => source.revenue), 1);
+    const rows = active
+      .sort((a, b) => b.revenue - a.revenue)
+      .map((source) => `
+        <div class="mk-roi-row">
+          <span class="mk-roi-label">${esc(source.label)}</span>
+          <span class="mk-roi-bar"><span style="width:${Math.max(2, Math.round((source.revenue / maxRevenue) * 100))}%"></span></span>
+          <span class="mk-roi-amount">${money(source.revenue)}</span>
+          <span class="mk-roi-detail">${source.conversions} venue${source.conversions > 1 ? 's' : ''} / ${source.sent} envoi${source.sent > 1 ? 's' : ''}</span>
+        </div>`).join('');
+    const empty = !active.length;
+    return `<section class="pv2-panel mk-roi" aria-label="Retour marketing">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Ce que le marketing vous a rapporté</h2><p class="pv2-panel-sub">Réservations revenues après un message marketing — ${r.days} derniers jours.</p></div>
+      </div>
+      <div class="pv2-panel-body">
+        ${empty
+          ? '<div class="pv2-empty"><strong>Pas encore de retour mesuré sur cette période</strong>Envoie une relance ou active une séquence — chaque venue qui suit un message sera comptée ici, en euros.</div>'
+          : `<div class="mk-roi-hero">
+              <div class="mk-roi-figure"><span class="mk-roi-value">+${money(r.revenue)}</span><span class="mk-roi-caption">générés par le marketing</span></div>
+              <div class="mk-roi-side">
+                <div class="mk-roi-stat"><strong>${r.conversions}</strong> venue${r.conversions > 1 ? 's' : ''} attribuée${r.conversions > 1 ? 's' : ''}</div>
+                <div class="mk-roi-stat"><strong>${r.sent}</strong> message${r.sent > 1 ? 's' : ''} envoyé${r.sent > 1 ? 's' : ''}</div>
+                <div class="mk-roi-stat"><strong>${r.reviewClicks}</strong> clic${r.reviewClicks > 1 ? 's' : ''} vers votre fiche Google</div>
+              </div>
+            </div>
+            <div class="mk-roi-rows">${rows}</div>`}
+        <p class="mk-roi-method">Attribution au dernier message reçu avant la réservation, fenêtre 60 jours. Les confirmations et rappels ne comptent jamais — uniquement le marketing.</p>
+      </div>
+    </section>`;
+  }
 
   window.mkIaCopy = async function (id) {
     const insight = mkIa.insights.find((item) => Number(item.id) === Number(id));
@@ -2763,6 +2836,7 @@
       })}
       ${todo}
       ${ask}
+      ${mkRoiPanel()}
       ${mkWeekStrip()}
       ${stats}
       ${learned}
@@ -2770,6 +2844,7 @@
     </div>`;
     mount(root, 'campaigns');
     if (!mkWeek.loaded && !mkWeek.loading) setTimeout(() => loadMarketingWeek(), 0);
+    if (!mkRoi.data && !mkRoi.loading) setTimeout(() => loadMarketingRoi(), 0);
   };
 
   /* ==========================================================================

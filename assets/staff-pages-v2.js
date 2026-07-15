@@ -3357,23 +3357,30 @@
     </section>`;
   }
 
-  // ── « Concurrents » : la veille honnête (site + à venir : avis, Ad Library, colle-un-post) ──
+  // Deep-link public vers la Meta Ad Library — les pubs ACTIVES de l'annonceur
+  // (outil de transparence, consulté par un humain qui clique ; aucun scraping).
+  function mkwAdLibraryUrl(name) {
+    const q = encodeURIComponent(String(name || '').trim());
+    return `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BE&q=${q}&search_type=keyword_unordered&media_type=all`;
+  }
+
+  // ── « Concurrents » : la veille honnête (site structuré + note Google + Ad Library + colle-un-post) ──
   function mkwRivals() {
     const rows = (mkComp.data || []).map((c) => {
       let host = '';
       try { host = c.websiteUrl ? new URL(c.websiteUrl).hostname.replace(/^www\./, '') : ''; } catch (e) { host = ''; }
-      const rating = typeof c.rating === 'number' ? `<span class="mkw-riv-stat">${ci('star')}${c.rating.toFixed(1)}${c.reviews ? ` <em>${c.reviews} avis</em>` : ''}</span>` : '';
-      const ads = typeof c.adActive === 'number' && c.adActive > 0 ? `<span class="mkw-riv-stat mkw-riv-ads">${c.adActive} pub${c.adActive > 1 ? 's' : ''} active${c.adActive > 1 ? 's' : ''}</span>` : '';
-      const offer = c.lastOffer ? `<span class="mkw-riv-offer">${ci('megaphone')}${esc(c.lastOffer)}</span>` : '';
-      const checked = c.lastCheckedAt ? `inspecté le ${String(c.lastCheckedAt).slice(8, 10)}/${String(c.lastCheckedAt).slice(5, 7)}` : 'première inspection cette nuit';
+      const rating = typeof c.rating === 'number' ? `<span class="mkw-riv-stat" title="note Google">${ci('star')}${c.rating.toFixed(1)}${c.reviewsCount ? ` <em>${c.reviewsCount} avis</em>` : ''}</span>` : '';
+      const checked = c.lastCheckedAt ? `site inspecté le ${String(c.lastCheckedAt).slice(8, 10)}/${String(c.lastCheckedAt).slice(5, 7)}` : 'première inspection cette nuit';
+      const signals = (c.signals || []).slice(0, 4).map((s) => `<span class="mkw-riv-sig">${esc(s.label)}${s.price ? ` <b>${esc(s.price)}</b>` : ''}</span>`).join('');
       return `<article class="mkw-riv">
         <div class="mkw-riv-top">
           <div><span class="mkw-riv-name">${esc(c.name)}</span>${host ? `<span class="mkw-riv-host">${esc(host)}</span>` : ''}</div>
           <button type="button" class="mkw-link mkw-link-faint" onclick="mkCompDelete(${Number(c.id)})">Retirer</button>
         </div>
-        <div class="mkw-riv-stats">${rating}${ads}<span class="mkw-riv-check">${esc(checked)}</span></div>
-        ${offer}
+        <div class="mkw-riv-stats">${rating}<span class="mkw-riv-check">${esc(checked)}</span></div>
+        ${signals ? `<div class="mkw-riv-sigs">${signals}</div>` : ''}
         ${c.lastDiff ? `<p class="mkw-riv-diff">${ci('bolt')}${esc(c.lastDiff)}</p>` : ''}
+        <a class="mkw-riv-adlink" href="${esc(mkwAdLibraryUrl(c.name))}" target="_blank" rel="noopener noreferrer">${ci('megaphone')}Chercher leurs pubs (Meta Ad Library)</a>
       </article>`;
     }).join('');
     return `<section class="mkw-rivals">
@@ -3396,7 +3403,7 @@
           <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà — je le transforme en angle.</span>
         </div>
         ${mkCompPostResult()}
-        <p class="mkw-method">Bientôt en plus, en automatique : leur note Google, leurs pubs actives (bibliothèque Meta) et la surveillance de leurs offres.</p>
+        <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque nuit, et j’affiche leur note Google (dès qu’une clé Google Places est configurée).</p>
       </div>
     </section>`;
   }

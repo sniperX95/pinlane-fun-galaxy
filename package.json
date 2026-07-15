@@ -43,7 +43,8 @@
     "test:marketing-brain": "node scripts/marketing-brain-check.js",
     "test:content-studio": "node scripts/content-studio-check.js",
     "test:marketing-brief": "node scripts/marketing-brief-check.js",
-    "test:marketing-patterns": "node scripts/marketing-patterns-check.js"
+    "test:marketing-patterns": "node scripts/marketing-patterns-check.js",
+    "test:competitor-intel": "node scripts/competitor-intel-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

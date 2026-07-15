@@ -115,6 +115,11 @@ const MIGRATIONS = [
     file: 'database/marketing-patterns-schema.sql',
     description: 'Learning memory: per-context aggregated net effect of published actions (closes the marketing feedback loop)',
   },
+  {
+    id: '0023_competitor_intel',
+    file: 'database/competitor-intel-schema.sql',
+    description: 'Competitor intel: structured signals per snapshot + Google Places rating/review-count snapshot per competitor',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

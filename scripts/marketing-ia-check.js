@@ -120,7 +120,7 @@ async function installMock(page) {
         return J({ ok: true, centerId: 'libramont', days: Number(u.searchParams.get('days')) || 30, sent: 9, conversions: 2, revenue: 380, reviewClicks: 1, bySource: [{ key: 'relance', label: 'Relances', sent: 9, conversions: 2, revenue: 380 }] });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'competitors') {
-        return J({ ok: true, competitors: [{ id: 1, name: 'Bowling Arlon', websiteUrl: 'https://bowlingarlon.be', instagramHandle: '', notes: '', enabled: true, lastCheckedAt: '2026-07-17T02:00:00Z', lastDiff: 'Nouvelle offre étudiants le mercredi.' }] });
+        return J({ ok: true, competitors: [{ id: 1, name: 'Bowling Arlon', websiteUrl: 'https://bowlingarlon.be', instagramHandle: '', notes: '', enabled: true, lastCheckedAt: '2026-07-17T02:00:00Z', lastDiff: 'Nouvelle offre étudiants le mercredi.', rating: 4.2, reviewsCount: 210, placeId: 'ChIJxyz', placesCheckedAt: '2026-07-17T02:00:00Z', signals: [{ type: 'offre', label: 'Mercredi étudiant', price: '9 €' }, { type: 'anniversaire', label: 'Formule anniversaire', price: '12 €/enfant' }] }] });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'listCampaigns') return J({ ok: true, campaigns: [], segments: [{ id: 'all', label: 'Tous les clients' }], channel: {} });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], insights: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
@@ -351,18 +351,23 @@ async function main() {
     await page.waitForTimeout(400);
     const rivals = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
+      const adlink = root.querySelector('.mkw-riv-adlink');
       return {
         rows: root.querySelectorAll('.mkw-riv').length,
         name: /Bowling Arlon/.test(root.textContent),
         diff: /offre étudiants/.test(root.textContent),
+        rating: /4[.,]2/.test(root.textContent) && /avis/.test(root.textContent),
+        signals: root.querySelectorAll('.mkw-riv-sig').length,
+        adHref: adlink ? adlink.getAttribute('href') : '',
         hasAdd: Boolean(document.getElementById('brCompName')) && Boolean(document.getElementById('brCompSite')),
-        soon: /bientôt/i.test(root.textContent),
       };
     });
     ok(rivals.rows >= 1 && rivals.name, 'les concurrents surveillés en cartes');
+    ok(rivals.rating, 'la note Google (Places) affichée');
+    ok(rivals.signals >= 1, 'offres/prix extraits du site (signaux structurés)');
+    ok(/facebook\.com\/ads\/library/.test(rivals.adHref) && /q=Bowling%20Arlon/.test(rivals.adHref), 'lien Meta Ad Library (recherche de leurs pubs, sans scraping)');
     ok(rivals.diff, 'le changement détecté chez le concurrent est remonté');
     ok(rivals.hasAdd, 'ajout d\'un concurrent (nom + site)');
-    ok(rivals.soon, 'les briques auto (Google/Ad Library) annoncées honnêtement (bientôt)');
     // Colle-un-post → analyse IA + riposte.
     const analyze = await page.evaluate(async () => {
       const box = document.getElementById('brCompPost');

@@ -2627,20 +2627,37 @@
 
   // Carte d'action UNIFIÉE de la file « À faire » : une ligne titre + une
   // ligne pourquoi, le texte prêt REPLIÉ (zéro mur de texte), actions à droite.
-  function mkActCard({ kind, badge, title, when, why, content, extraHtml = '', actionsHtml, done = false, openLabel = 'Voir le texte prêt' }) {
+  // Le texte prêt s'affiche en typographie HUMAINE (aperçu de post, pas de
+  // mono « terminal ») ; `contentHtml` permet un aperçu structuré (Insta).
+  function mkActCard({ kind, badge, title, when, why, content, contentHtml = '', extraHtml = '', actionsHtml, done = false, openLabel = 'Voir le texte prêt' }) {
+    const preview = contentHtml || (content ? `<div class="mk-act-preview">${esc(content)}</div>` : '');
     return `<article class="mk-act ${done ? 'is-done' : ''}" data-kind="${esc(kind)}">
       <div class="mk-act-main">
         <div class="mk-act-head">
           <span class="mk-act-chip k-${esc(kind)}">${esc(badge)}</span>
-          <strong>${esc(title)}</strong>
+          <strong>${esc(mkFrDates(title))}</strong>
           ${when ? `<span class="mk-act-when">${esc(when)}</span>` : ''}
         </div>
-        ${why ? `<p class="mk-act-why">${esc(why)}</p>` : ''}
-        ${content ? `<details class="mk-act-body"><summary>${esc(openLabel)}</summary><div class="mk-idea-content">${esc(content)}</div>${extraHtml}</details>` : extraHtml}
+        ${why ? `<p class="mk-act-why">${esc(mkFrDates(why))}</p>` : ''}
+        ${preview ? `<details class="mk-act-body" ontoggle="mkActToggle(this)"><summary>${esc(openLabel)}</summary>${preview}${extraHtml}</details>` : extraHtml}
       </div>
       <div class="mk-act-actions">${actionsHtml}</div>
     </article>`;
   }
+
+  // Les phrases venues du serveur (ou d'anciennes idées en DB) peuvent contenir
+  // des dates ISO — jamais montrées telles quelles au gérant.
+  function mkFrDates(text) {
+    return String(text || '').replace(/\b\d{4}-(\d{2})-(\d{2})\b/g, '$2/$1');
+  }
+
+  // Accordéon : un seul texte ouvert à la fois — la file reste scannable.
+  window.mkActToggle = function (details) {
+    if (!details.open) return;
+    document.querySelectorAll('#staffCampaignsPage .mk-act-body[open]').forEach((other) => {
+      if (other !== details) other.open = false;
+    });
+  };
 
   function mkIdeaCard(insight) {
     const busy = mkIa.busyId === Number(insight.id);
@@ -2672,9 +2689,10 @@
         kind: 'insta',
         badge: 'Post du jour',
         title: 'Instagram — à poster aujourd\'hui',
-        when: `avant ${esc(insta.bestTime)}`,
+        when: `idéal ${insta.bestTime}`,
         why: insta.reason,
-        content: `${insta.caption}\n\n${(insta.hashtags || []).join(' ')}\n\n${insta.visualBrief}`,
+        contentHtml: `<div class="mk-act-preview">${esc(insta.caption)}<span class="mk-act-tags">${esc((insta.hashtags || []).join(' '))}</span></div>
+          <p class="mk-act-note"><strong>À filmer :</strong> ${esc(String(insta.visualBrief || '').replace(/^à filmer[^:]*:\s*/i, ''))}</p>`,
         openLabel: 'Voir le post prêt',
         actionsHtml: `<button type="button" class="pv2-btn primary" onclick="mkInstaCopy()">${ci('copy')}Copier le post</button>`,
       }));
@@ -2699,19 +2717,23 @@
     return cards;
   }
 
-  // Bilan compact en tête : LE chiffre + 3 preuves, une seule ligne.
+  // Bilan compact en tête : LE chiffre + 3 preuves, une seule ligne. Zéro
+  // envoi sur la période → un message qui donne le geste, pas trois zéros.
   function mkHeroStrip(periodSeg) {
     const r = mkRoi.data;
-    const hasRevenue = r && r.revenue > 0;
+    const active = r && r.sent > 0;
     return `<section class="pv2-panel mk-hero" aria-label="Retour marketing">
       <div class="pv2-panel-body mk-hero-row">
-        <div class="mk-hero-fig">
-          <span class="mk-hero-value">${hasRevenue ? `+${money(r.revenue)}` : '0 €'}</span>
-          <span class="mk-hero-cap">générés par le marketing · ${r ? r.days : mkIa.period} j</span>
-        </div>
-        <div class="mk-hero-stats">${r
-          ? `<span><strong>${r.conversions}</strong> venue${r.conversions > 1 ? 's' : ''}</span><span><strong>${r.sent}</strong> message${r.sent > 1 ? 's' : ''}</span><span><strong>${r.reviewClicks}</strong> clic${r.reviewClicks > 1 ? 's' : ''} Google</span>`
-          : '<span>Chaque venue qui suit un message sera comptée ici, en euros.</span>'}</div>
+        ${active
+          ? `<div class="mk-hero-fig">
+              <span class="mk-hero-value">${r.revenue > 0 ? `+${money(r.revenue)}` : money(0)}</span>
+              <span class="mk-hero-cap">générés par le marketing · ${r.days} j</span>
+            </div>
+            <div class="mk-hero-stats"><span><strong>${r.conversions}</strong> venue${r.conversions > 1 ? 's' : ''}</span><span><strong>${r.sent}</strong> message${r.sent > 1 ? 's' : ''}</span><span><strong>${r.reviewClicks}</strong> clic${r.reviewClicks > 1 ? 's' : ''} Google</span></div>`
+          : `<div class="mk-hero-empty">
+              <strong>Ton retour marketing s'affichera ici, en euros.</strong>
+              <span>Aucun message marketing envoyé sur la période — lance une relance ou active une séquence (page Emails), chaque venue qui suit sera comptée.</span>
+            </div>`}
         ${periodSeg}
       </div>
     </section>`;

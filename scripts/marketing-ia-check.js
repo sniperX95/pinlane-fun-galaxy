@@ -215,11 +215,24 @@ async function main() {
     console.log('\n[INSTA] post du jour dans la file');
     const instaCard = await page.evaluate(() => {
       const card = document.querySelector('#staffCampaignsPage .mk-act[data-kind="insta"]');
-      const body = card ? (card.querySelector('.mk-idea-content') || {}).textContent || '' : '';
+      const body = card ? (card.querySelector('.mk-act-preview') || {}).textContent || '' : '';
       return { present: !!card, hasCaption: body.includes('frais'), hasTags: body.includes('#bowling'), copyBtn: !!(card && card.querySelector('button[onclick^="mkInstaCopy"]')) };
     });
     ok(instaCard.present && instaCard.hasCaption && instaCard.hasTags, 'post Instagram du jour : l\u00e9gende + hashtags dans le texte repli\u00e9');
     ok(instaCard.copyBtn, 'bouton \u00ab Copier le post \u00bb');
+    const accordion = await page.evaluate(async () => {
+      const bodies = [...document.querySelectorAll('#staffCampaignsPage .mk-act-body')];
+      if (bodies.length < 2) return { enough: false };
+      bodies[0].open = true;
+      await new Promise((r) => setTimeout(r, 100));
+      bodies[1].open = true;
+      await new Promise((r) => setTimeout(r, 100));
+      return { enough: true, openCount: document.querySelectorAll('#staffCampaignsPage .mk-act-body[open]').length };
+    });
+    ok(accordion.enough && accordion.openCount === 1, 'accordéon : un seul texte ouvert à la fois');
+    const monoGone = await page.evaluate(() => !document.querySelector('#staffCampaignsPage .mk-act .mk-idea-content'));
+    ok(monoGone, 'plus de bloc mono « terminal » dans la file');
+
 
     console.log('\n[P\u00c9RIODE] 7 jours \u2192 refetch metrics + ROI');
     const callsBefore = await page.evaluate(() => (window.__QA_METRICS_CALLS__ || []).length);

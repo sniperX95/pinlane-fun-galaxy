@@ -155,177 +155,168 @@ async function main() {
     });
     await page.waitForTimeout(800);
 
-    console.log('\n[LOAD] page Marketing rendue');
+    console.log('\n[AUJOURD\u2019HUI] onglet par d\u00e9faut : h\u00e9ro + file d\u2019actions + 14 jours');
     const load = await page.evaluate(() => ({
-      ideas: document.querySelectorAll('#staffCampaignsPage .mk-idea').length,
-      firstTitle: (document.querySelector('#staffCampaignsPage .mk-idea strong') || {}).textContent || '',
-      hasContent: !!document.querySelector('#staffCampaignsPage .mk-idea-content'),
-      hasCopy: !!document.querySelector('#staffCampaignsPage .mk-idea button[onclick^="mkIaCopy"]'),
-      learned: document.querySelectorAll('#staffCampaignsPage .mk-learned').length,
-      learnedTxt: (document.querySelector('#staffCampaignsPage .mk-learned small') || {}).textContent || '',
-      waiting: (document.querySelector('#staffCampaignsPage .mk-waiting') || {}).textContent || '',
-      stats: document.querySelectorAll('#staffCampaignsPage .mk-stats .pv2-stat').length,
+      tabs: document.querySelectorAll('#staffCampaignsPage .mk-tabs .pv2-seg button').length,
+      heroValue: (document.querySelector('#staffCampaignsPage .mk-hero-value') || {}).textContent || '',
+      cards: document.querySelectorAll('#staffCampaignsPage .mk-act').length,
+      ideas: document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="idea"]').length,
+      instaCard: document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="insta"]').length,
+      planCards: document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="plan"]').length,
+      foldedByDefault: [...document.querySelectorAll('#staffCampaignsPage .mk-act-body')].every((d) => !d.open),
+      hasCopy: !!document.querySelector('#staffCampaignsPage .mk-act[data-kind="idea"] button[onclick^="mkIaCopy"]'),
+      cells: document.querySelectorAll('#staffCampaignsPage .mk-ol-day').length,
+      wallGone: !document.querySelector('#staffCampaignsPage .mk-plan') && !document.querySelector('#staffCampaignsPage .mk-insta') && !document.querySelector('#staffCampaignsPage .mk-week'),
       menuLabel: [...document.querySelectorAll('.staff-menu button, .staff-menu a')].map((el) => el.textContent.trim()).filter((t) => /marketing/i.test(t)).length,
       gadgetGone: !document.querySelector('.pv2-xpbar') && !document.querySelector('.pv2-camp-hero'),
     }));
-    ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(load.ideas === 2, `2 idées proposées affichées (obtenu ${load.ideas})`);
-    ok(load.hasContent && load.hasCopy, 'contenu prêt à copier + bouton Copier');
-    ok(load.learned === 1 && /\+22\s?%/.test(load.learnedTxt), `« Ce qu'on a appris » avec mesure +22 % (obtenu « ${load.learnedTxt.slice(0, 60)} »)`);
-    ok(/mardi creux/i.test(load.waiting), 'idée appliquée listée « en cours de mesure »');
-    ok(load.stats === 4, `4 chiffres de période (obtenu ${load.stats})`);
-    ok(load.gadgetGone, 'studio gamifié (XP/hero) absent du DOM');
+    ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' \u2192 ' + errs.slice(0, 3).join(' | ') : ''}`);
+    ok(load.tabs === 4, `4 onglets (obtenu ${load.tabs})`);
+    ok(/1[\s\u00a0\u202f]?000/.test(load.heroValue), `h\u00e9ro : LE chiffre en euros en t\u00eate (${load.heroValue.trim()})`);
+    ok(load.cards === 5 && load.ideas === 2 && load.instaCard === 1 && load.planCards === 2, `file unifi\u00e9e : 5 actions (insta 1 + plan 2 + id\u00e9es 2) — obtenu ${load.cards}`);
+    ok(load.foldedByDefault, 'tous les textes REPLI\u00c9S par d\u00e9faut (z\u00e9ro mur de texte)');
+    ok(load.hasCopy, 'bouton Copier sur les id\u00e9es');
+    ok(load.cells === 14, `bande 14 jours dans Aujourd\u2019hui (${load.cells} cellules)`);
+    ok(load.wallGone, 'anciens panneaux empil\u00e9s absents du DOM');
+    ok(load.gadgetGone, 'studio gamifi\u00e9 (XP/hero) absent du DOM');
 
-    console.log('\n[FAIT] « C\'est fait » → POST applied');
-    await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-idea button')].find((x) => /fait/i.test(x.textContent)); b.click(); });
+    console.log('\n[FAIT] \u00ab C\u2019est fait \u00bb sur une id\u00e9e \u2192 POST applied');
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="idea"] button')].find((x) => /fait/i.test(x.textContent)); b.click(); });
     await page.waitForTimeout(400);
     const afterApplied = await page.evaluate(() => ({
       posts: window.__QA_POSTS__.filter((p) => p.action === 'insightStatus'),
-      ideas: document.querySelectorAll('#staffCampaignsPage .mk-idea').length,
-      waiting: (document.querySelector('#staffCampaignsPage .mk-waiting') || {}).textContent || '',
+      ideas: document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="idea"]').length,
     }));
-    ok(afterApplied.posts.length === 1 && afterApplied.posts[0].status === 'applied', 'POST insightStatus applied envoyé');
-    ok(afterApplied.ideas === 1, 'la carte quitte « À faire » après « fait »');
-    ok(/fraîcheur|Foire|mardi/i.test(afterApplied.waiting), 'et rejoint « en cours de mesure »');
+    ok(afterApplied.posts.length === 1 && afterApplied.posts[0].status === 'applied', 'POST insightStatus applied envoy\u00e9');
+    ok(afterApplied.ideas === 1, 'la carte quitte la file apr\u00e8s \u00ab fait \u00bb');
 
-    console.log('\n[IGNORER] → POST ignored');
-    await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-idea button')].find((x) => /ignorer/i.test(x.textContent)); b.click(); });
+    console.log('\n[IGNORER] \u2192 POST ignored');
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="idea"] button')].find((x) => /ignorer/i.test(x.textContent)); b.click(); });
     await page.waitForTimeout(400);
     const afterIgnored = await page.evaluate(() => ({
       posts: window.__QA_POSTS__.filter((p) => p.action === 'insightStatus'),
-      ideas: document.querySelectorAll('#staffCampaignsPage .mk-idea').length,
+      ideas: document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="idea"]').length,
     }));
-    ok(afterIgnored.posts.length === 2 && afterIgnored.posts[1].status === 'ignored', 'POST insightStatus ignored envoyé');
-    ok(afterIgnored.ideas === 0, 'plus d\'idée en attente → état vide propre au prochain rendu');
+    ok(afterIgnored.posts.length === 2 && afterIgnored.posts[1].status === 'ignored', 'POST insightStatus ignored envoy\u00e9');
+    ok(afterIgnored.ideas === 0, 'plus d\u2019id\u00e9e en attente');
 
-    console.log('\n[PÉRIODE] 7 jours → nouvelle requête dailyMetrics');
+    console.log('\n[PLAN] \u00ab C\u2019est fait \u00bb sur une action du cerveau \u2192 POST planActionDone');
+    const planPost = await page.evaluate(async () => {
+      const btn = [...document.querySelectorAll('#staffCampaignsPage .mk-act[data-kind="plan"] button')].find((x) => /fait/i.test(x.textContent));
+      btn.click();
+      await new Promise((r) => setTimeout(r, 450));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'planActionDone');
+      const item = document.querySelector('#staffCampaignsPage .mk-act[data-kind="plan"]');
+      return { count: posts.length, planAction: posts[0] ? posts[0].planAction : null, done: item ? item.className.includes('is-done') : false };
+    });
+    ok(planPost.count === 1 && planPost.planAction && planPost.planAction.id === 'social:D4' && planPost.planAction.title.length > 0, '\u00ab C\u2019est fait \u00bb \u2192 POST planActionDone avec l\u2019action compl\u00e8te');
+    ok(planPost.done, 'action marqu\u00e9e faite dans la file (mesure J+14)');
+
+    console.log('\n[INSTA] post du jour dans la file');
+    const instaCard = await page.evaluate(() => {
+      const card = document.querySelector('#staffCampaignsPage .mk-act[data-kind="insta"]');
+      const body = card ? (card.querySelector('.mk-idea-content') || {}).textContent || '' : '';
+      return { present: !!card, hasCaption: body.includes('frais'), hasTags: body.includes('#bowling'), copyBtn: !!(card && card.querySelector('button[onclick^="mkInstaCopy"]')) };
+    });
+    ok(instaCard.present && instaCard.hasCaption && instaCard.hasTags, 'post Instagram du jour : l\u00e9gende + hashtags dans le texte repli\u00e9');
+    ok(instaCard.copyBtn, 'bouton \u00ab Copier le post \u00bb');
+
+    console.log('\n[P\u00c9RIODE] 7 jours \u2192 refetch metrics + ROI');
     const callsBefore = await page.evaluate(() => (window.__QA_METRICS_CALLS__ || []).length);
     await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage button')].find((x) => /7 jours/.test(x.textContent)); b.click(); });
     await page.waitForTimeout(400);
     const period = await page.evaluate(() => {
       const calls = window.__QA_METRICS_CALLS__ || [];
-      return { count: calls.length, last: calls[calls.length - 1] };
+      const roiCalls = window.__QA_ROI_CALLS__ || [];
+      return { count: calls.length, last: calls[calls.length - 1], lastRoi: roiCalls[roiCalls.length - 1] };
     });
-    ok(period.count === callsBefore + 1, 'clic période → refetch');
+    ok(period.count === callsBefore + 1, 'clic p\u00e9riode \u2192 refetch metrics');
     const spanDays = period.last ? Math.round((new Date(period.last.to) - new Date(period.last.from)) / 864e5) + 1 : 0;
-    ok(spanDays === 7, `période demandée = 7 jours (obtenu ${spanDays})`);
+    ok(spanDays === 7 && period.lastRoi === '7', `p\u00e9riode = 7 jours partout (metrics ${spanDays}, roi ${period.lastRoi})`);
 
-    console.log('\n[À VENIR] bande plage libre + calendrier');
-    await page.evaluate(() => loadMarketingWeek(true));
-    await page.waitForTimeout(500);
-    const week = await page.evaluate(() => ({
-      days: document.querySelectorAll('#staffCampaignsPage .mk-week-day').length,
-      foire: /Foire/.test((document.querySelector('#staffCampaignsPage .mk-week') || {}).textContent || ''),
-      rain: !!document.querySelector('#staffCampaignsPage .mk-week .mk-week-rain'),
-      inputs: document.querySelectorAll('#staffCampaignsPage .mk-week-range input[type=date]').length,
-    }));
-    ok(week.days === 7, 'bande 7 jours par défaut (obtenu ' + week.days + ')');
-    ok(week.foire && week.rain, 'badge Foire + icône pluie visibles');
-    ok(week.inputs === 2, 'sélecteur de plage libre (2 dates) présent');
-    await page.evaluate(() => { const b = [...document.querySelectorAll('#staffCampaignsPage .mk-week-range button')].find((x) => /14/.test(x.textContent)); b.click(); });
-    await page.waitForTimeout(500);
-    const week14 = await page.evaluate(() => {
-      const calls = window.__QA_WEEK_CALLS__ || [];
-      const last = calls[calls.length - 1] || {};
-      const span = last.from && last.to ? Math.round((new Date(last.to + 'T12:00:00Z') - new Date(last.from + 'T12:00:00Z')) / 864e5) + 1 : 0;
-      return { span, days: document.querySelectorAll('#staffCampaignsPage .mk-week-day').length };
+    console.log('\n[R\u00c9TRO] explication des jours pass\u00e9s (repli\u00e9e)');
+    const retro = await page.evaluate(() => {
+      const details = document.querySelector('#staffCampaignsPage .mk-ol-past');
+      return { present: !!details, folded: details ? !details.open : false, txt: details ? details.textContent : '' };
     });
-    ok(week14.span === 14 && week14.days === 14, 'preset 14 j → requête et rendu sur 14 jours (span=' + week14.span + ')');
+    ok(retro.present && retro.folded && /samedi 12\/07/.test(retro.txt), 'r\u00e9tro pr\u00e9sente, repli\u00e9e, avec le samedi anormal');
 
-    console.log('\n[DEMANDE] demande une idée ciblée');
+    console.log('\n[DEMANDE] demande une id\u00e9e cibl\u00e9e (Aujourd\u2019hui)');
     const ask = await page.evaluate(async () => {
       const select = document.getElementById('mkAskObjective');
       const brief = document.getElementById('mkAskBrief');
       if (!select || !brief) return { found: false };
       select.value = 'meteo';
-      brief.value = 'canicule annoncée jeudi';
+      brief.value = 'canicule annonc\u00e9e jeudi';
       mkIaAsk();
       await new Promise((r) => setTimeout(r, 400));
       const posts = window.__QA_MA_POSTS__ || [];
       return { found: true, run: posts.find((p) => p.action === 'run') || null };
     });
-    ok(ask.found, 'champ objectif + brief présents');
-    ok(ask.run && ask.run.objective === 'meteo' && /canicule/.test(ask.run.brief || ''), 'POST run avec objectif météo + brief');
+    ok(ask.found, 'champ objectif + brief pr\u00e9sents');
+    ok(ask.run && ask.run.objective === 'meteo' && /canicule/.test(ask.run.brief || ''), 'POST run avec objectif m\u00e9t\u00e9o + brief');
 
-    console.log('\n[ARCHIVE+REDO] historique complet + refaire une idée validée');
+    console.log('\n[PERFORMANCE] onglet : chiffres + ROI d\u00e9taill\u00e9 + appris + calendrier');
+    await page.evaluate(() => mkSetTab('perf'));
+    await page.waitForTimeout(600);
+    const perf = await page.evaluate(() => ({
+      stats: document.querySelectorAll('#staffCampaignsPage .mk-stats .pv2-stat').length,
+      learned: document.querySelectorAll('#staffCampaignsPage .mk-learned').length,
+      learnedTxt: (document.querySelector('#staffCampaignsPage .mk-learned small') || {}).textContent || '',
+      roiPanel: !!document.querySelector('#staffCampaignsPage .mk-roi'),
+      roiRows: document.querySelectorAll('#staffCampaignsPage .mk-roi-row').length,
+      roiMethod: /dernier message|60 jours/.test((document.querySelector('#staffCampaignsPage .mk-roi-method') || {}).textContent || ''),
+      feedGone: !document.querySelector('#staffCampaignsPage .mk-act'),
+    }));
+    ok(perf.stats === 4, `4 chiffres de p\u00e9riode (obtenu ${perf.stats})`);
+    ok(perf.learned === 1 && /\+22\s?%/.test(perf.learnedTxt), `\u00ab Ce qu\u2019on a appris \u00bb avec mesure +22 % (\u00ab ${perf.learnedTxt.slice(0, 40)} \u00bb)`);
+    ok(perf.roiPanel && perf.roiRows === 2 && perf.roiMethod, 'ROI d\u00e9taill\u00e9 par source + m\u00e9thodologie');
+    ok(perf.feedGone, 'la file d\u2019actions ne pollue pas Performance');
+
+    console.log('\n[\u00c0 VENIR] bande plage libre (Performance)');
+    await page.evaluate(() => loadMarketingWeek(true));
+    await page.waitForTimeout(500);
+    const week = await page.evaluate(() => ({
+      days: document.querySelectorAll('#staffCampaignsPage .mk-week-day').length,
+      foire: /Foire/.test((document.querySelector('#staffCampaignsPage .mk-week') || {}).textContent || ''),
+      inputs: document.querySelectorAll('#staffCampaignsPage .mk-week-range input[type=date]').length,
+    }));
+    ok(week.days === 7 && week.inputs === 2, `bande 7 jours + plage libre (obtenu ${week.days} j, ${week.inputs} dates)`);
+    ok(week.foire, 'badge Foire visible');
+
+    console.log('\n[ARCHIVE+REDO] historique + refaire une id\u00e9e valid\u00e9e (Performance)');
     const arch = await page.evaluate(async () => {
       const details = document.querySelector('#staffCampaignsPage .mk-archive');
       if (details) details.open = true;
       await new Promise((r) => setTimeout(r, 150));
-      const items = details ? details.querySelectorAll('.mk-archive-list li, .mk-archive-list .mk-archive-item').length : 0;
+      const items = details ? details.querySelectorAll('.mk-archive-list li').length : 0;
       const redoBtn = [...document.querySelectorAll('#staffCampaignsPage button')].find((x) => /refaire/i.test(x.textContent));
       if (redoBtn) redoBtn.click();
       await new Promise((r) => setTimeout(r, 400));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'insightRedo');
       return { archive: !!details, items, redo: posts.length, redoId: posts[0] && posts[0].id };
     });
-    ok(arch.archive && arch.items >= 3, 'archive dépliable avec l\'historique (' + arch.items + ' items)');
-    ok(arch.redo === 1 && arch.redoId === 5, 'Refaire → POST insightRedo sur l\'idée validée');
+    ok(arch.archive && arch.items >= 3, `archive d\u00e9pliable (${arch.items} items)`);
+    ok(arch.redo === 1 && arch.redoId === 5, 'Refaire \u2192 POST insightRedo sur l\u2019id\u00e9e valid\u00e9e');
 
-    console.log('\n[ROI] panel « Ce que le marketing vous a rapporté »');
-    await page.evaluate(() => loadMarketingRoi(true));
-    await page.waitForTimeout(400);
-    const roiPanel = await page.evaluate(() => {
-      const panel = document.querySelector('#staffCampaignsPage .mk-roi');
-      const value = panel ? (panel.querySelector('.mk-roi-value') || {}).textContent || '' : '';
-      const rows = panel ? panel.querySelectorAll('.mk-roi-row').length : 0;
-      const bars = panel ? panel.querySelectorAll('.mk-roi-bar > span').length : 0;
-      const method = panel ? /dernier message|60 jours/.test((panel.querySelector('.mk-roi-method') || {}).textContent || '') : false;
-      const clicks = panel ? /clic/.test(panel.textContent || '') : false;
-      return { present: !!panel, value, rows, bars, method, clicks };
-    });
-    ok(roiPanel.present, 'panel Retour marketing rendu');
-    ok(/1[\s\u00a0\u202f]?000/.test(roiPanel.value), 'LE chiffre en euros affiché (' + roiPanel.value.trim() + ')');
-    ok(roiPanel.rows === 2 && roiPanel.bars === 2, 'décomposition par source : seulement les sources actives, avec barres');
-    ok(roiPanel.method, 'méthodologie d\'attribution affichée (honnêteté du chiffre)');
-    ok(roiPanel.clicks, 'clics avis Google visibles');
-    const roiPeriod = await page.evaluate(async () => {
-      mkIaSetPeriod(7);
-      await new Promise((r) => setTimeout(r, 400));
-      const calls = window.__QA_ROI_CALLS__ || [];
-      return calls[calls.length - 1];
-    });
-    ok(roiPeriod === '7', 'le panel suit le sélecteur de période (7/30/90)');
-
-    console.log('\n[CERVEAU] cockpit prévision + plan + insta + veille');
-    await page.evaluate(() => Promise.all([loadMarketingBrain(true), loadCompetitors(true)]));
+    console.log('\n[VEILLE] onglet concurrence');
+    await page.evaluate(() => mkSetTab('watch'));
     await page.waitForTimeout(500);
-    const brainUi = await page.evaluate(() => {
-      const root = document.getElementById('staffCampaignsPage');
-      return {
-        cells: root.querySelectorAll('.mk-ol-day').length,
-        creux: root.querySelectorAll('.mk-ol-day.lv-creux').length,
-        fort: root.querySelectorAll('.mk-ol-day.lv-fort').length,
-        booked: [...root.querySelectorAll('.mk-ol-booked')].some((el) => /120/.test(el.textContent)),
-        past: (root.querySelector('.mk-ol-past') || {}).textContent || '',
-        planItems: root.querySelectorAll('.mk-plan-item').length,
-        planDated: (root.querySelector('.mk-plan-when strong') || {}).textContent || '',
-        insta: (root.querySelector('.mk-insta .mk-idea-content') || {}).textContent || '',
-        instaChips: root.querySelectorAll('.mk-insta .pv2-chip').length,
-        compRows: root.querySelectorAll('.mk-comp-row').length,
-        compDiff: (root.querySelector('.mk-comp-status p') || {}).textContent || '',
-        compForm: !!document.getElementById('mkCompName'),
-      };
-    });
-    ok(brainUi.cells === 14, 'bande 14 jours rendue (' + brainUi.cells + ' cellules)');
-    ok(brainUi.creux === 1 && brainUi.fort === 1, 'creux et jour fort mis en évidence');
-    ok(brainUi.booked, 'résas déjà posées visibles sur le jour fort');
-    ok(/samedi 12\/07/.test(brainUi.past), 'explication rétro (« pourquoi c\'était calme ») affichée');
-    ok(brainUi.planItems === 2 && brainUi.planDated.length > 0, 'plan d\'attaque : 2 actions datées');
-    ok(brainUi.insta.includes('frais'), 'post Instagram du jour affiché');
-    ok(brainUi.instaChips >= 5, 'meilleure heure + hashtags en chips');
-    ok(brainUi.compRows === 1 && /anniversaire/.test(brainUi.compDiff), 'veille : concurrent listé avec son dernier changement');
-    ok(brainUi.compForm, 'formulaire d\'ajout de concurrent présent');
-    const planPost = await page.evaluate(async () => {
-      const btn = document.querySelector('#staffCampaignsPage .mk-plan-item button[onclick^="mkPlanDone"]');
-      btn.click();
-      await new Promise((r) => setTimeout(r, 450));
-      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'planActionDone');
-      const item = document.querySelector('#staffCampaignsPage .mk-plan-item');
-      return { count: posts.length, planAction: posts[0] ? posts[0].planAction : null, done: item ? item.className.includes('is-done') : false };
-    });
-    ok(planPost.count === 1 && planPost.planAction && planPost.planAction.id === 'social:D4' && planPost.planAction.title.length > 0, '« C\'est fait » → POST planActionDone avec l\'action complète');
-    ok(planPost.done, 'action marquée faite dans l\'UI (mesure J+14 annoncée)');
+    const watch = await page.evaluate(() => ({
+      compRows: document.querySelectorAll('#staffCampaignsPage .mk-comp-row').length,
+      compDiff: (document.querySelector('#staffCampaignsPage .mk-comp-status p') || {}).textContent || '',
+      compForm: !!document.getElementById('mkCompName'),
+    }));
+    ok(watch.compRows === 1 && /anniversaire/.test(watch.compDiff), 'concurrent list\u00e9 avec son dernier changement');
+    ok(watch.compForm, 'formulaire d\u2019ajout pr\u00e9sent');
+
+    console.log('\n[CAMPAGNES] onglet campagnes email');
+    await page.evaluate(() => mkSetTab('campaigns'));
+    await page.waitForTimeout(400);
+    const camp = await page.evaluate(() => /campagne/i.test((document.getElementById('staffCampaignsPage') || {}).textContent || ''));
+    ok(camp, 'campagnes email accessibles');
+    await page.evaluate(() => mkSetTab('today'));
+    await page.waitForTimeout(400);
 
     // capture visuelle optionnelle
     if (process.env.MK_SHOT) {

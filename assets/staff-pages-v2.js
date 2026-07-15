@@ -2282,45 +2282,8 @@
       </div>
       <div class="pv2-panel-body">
         <div class="mk-ol-strip">${cells}</div>
-        ${past ? `<div class="mk-ol-past"><strong>Pourquoi ces derniers jours ont détonné</strong><ul>${past}</ul></div>` : ''}
-        <p class="mk-roi-method">Base : moyenne de tes jours comparables (même jour de semaine, même statut congé), ajustée par les effets météo démontrés sur ton historique. Les réservations déjà posées remontent le niveau — jamais l'inverse.</p>
-      </div>
-    </section>`;
-  }
-
-  function mkPlanPanel() {
-    const brain = mkBrain.data;
-    if (!brain || !brain.dataDays) return '';
-    const actions = brain.plan || [];
-    const items = actions.map((action, index) => {
-      const done = Boolean(mkBrain.doneIds[action.id]);
-      const busy = mkBrain.busyId === action.id;
-      return `<article class="mk-plan-item ${done ? 'is-done' : ''}">
-        <div class="mk-plan-when">
-          <strong>${esc(frShortDate(action.executeOn))}</strong>
-          ${action.targetDate && action.targetDate !== action.executeOn ? `<small>pour le ${esc(frShortDate(action.targetDate))}</small>` : '<small>jour J</small>'}
-          <span class="pv2-chip">${esc(action.channel)}</span>
-        </div>
-        <div class="mk-plan-main">
-          <strong>${esc(action.title)}</strong>
-          <p class="mk-idea-why">${esc(action.why)}</p>
-          ${action.readyContent ? `<div class="mk-idea-content">${esc(action.readyContent)}</div>` : ''}
-          <div class="mk-idea-actions">
-            ${action.readyContent ? `<button type="button" class="pv2-btn" onclick="mkPlanCopy(${index})">${ci('copy')}Copier</button>` : ''}
-            <button type="button" class="pv2-btn primary" onclick="mkPlanDone(${index})" ${done || busy ? 'disabled' : ''}>${ci('check')}${done ? 'Fait — mesuré à J+14' : 'C’est fait'}</button>
-          </div>
-        </div>
-      </article>`;
-    }).join('');
-    return `<section class="pv2-panel mk-plan" aria-label="Plan marketing">
-      <div class="pv2-panel-head has-sub">
-        <div><h2>Ton plan d'attaque</h2><p class="pv2-panel-sub">Chaque creux prévu devient une action datée. Marque « C'est fait » — l'effet est mesuré 14 jours après, à jours comparables.</p></div>
-        ${actions.length ? `<small>${actions.length} action${actions.length > 1 ? 's' : ''}</small>` : ''}
-      </div>
-      <div class="pv2-panel-body">
-        ${actions.length
-          ? `<div class="mk-plan-list">${items}</div>`
-          : '<div class="pv2-empty"><strong>Rien à pousser pour l’instant</strong>Les 14 prochains jours tiennent la route — le plan se remplit dès qu’un creux se profile.</div>'}
+        ${past ? `<details class="mk-ol-past"><summary>Pourquoi ces derniers jours ont détonné</summary><ul>${past}</ul></details>` : ''}
+        <p class="mk-roi-method">Prévision basée sur tes jours comparables, ajustée par les effets météo démontrés chez toi. Survole un jour pour le détail.</p>
       </div>
     </section>`;
   }
@@ -2374,27 +2337,6 @@
       renderStaffCampaignsPage();
     }
   };
-
-  function mkInstaPanel() {
-    const brain = mkBrain.data;
-    if (!brain || !brain.instagram) return '';
-    const insta = brain.instagram;
-    return `<section class="pv2-panel mk-insta" aria-label="Post Instagram du jour">
-      <div class="pv2-panel-head has-sub">
-        <div><h2>Post Instagram du jour</h2><p class="pv2-panel-sub">${esc(insta.reason)}</p></div>
-        <button type="button" class="pv2-btn primary" onclick="mkInstaCopy()">${ci('copy')}Copier le post</button>
-      </div>
-      <div class="pv2-panel-body">
-        <div class="mk-idea-content">${esc(insta.caption)}</div>
-        <p class="mk-insta-brief">${esc(insta.visualBrief)}</p>
-        <div class="mk-insta-meta">
-          <span class="pv2-chip">Meilleur moment : ${esc(insta.bestTime)}</span>
-          ${(insta.hashtags || []).map((tag) => `<span class="pv2-chip mk-insta-tag">${esc(tag)}</span>`).join('')}
-        </div>
-        <p class="mk-roi-method">${esc(insta.bestTimeNote || '')}</p>
-      </div>
-    </section>`;
-  }
 
   window.mkInstaCopy = async function () {
     const insta = (mkBrain.data || {}).instagram;
@@ -2683,25 +2625,103 @@
     </section>`;
   }
 
+  // Carte d'action UNIFIÉE de la file « À faire » : une ligne titre + une
+  // ligne pourquoi, le texte prêt REPLIÉ (zéro mur de texte), actions à droite.
+  function mkActCard({ kind, badge, title, when, why, content, extraHtml = '', actionsHtml, done = false, openLabel = 'Voir le texte prêt' }) {
+    return `<article class="mk-act ${done ? 'is-done' : ''}" data-kind="${esc(kind)}">
+      <div class="mk-act-main">
+        <div class="mk-act-head">
+          <span class="mk-act-chip k-${esc(kind)}">${esc(badge)}</span>
+          <strong>${esc(title)}</strong>
+          ${when ? `<span class="mk-act-when">${esc(when)}</span>` : ''}
+        </div>
+        ${why ? `<p class="mk-act-why">${esc(why)}</p>` : ''}
+        ${content ? `<details class="mk-act-body"><summary>${esc(openLabel)}</summary><div class="mk-idea-content">${esc(content)}</div>${extraHtml}</details>` : extraHtml}
+      </div>
+      <div class="mk-act-actions">${actionsHtml}</div>
+    </article>`;
+  }
+
   function mkIdeaCard(insight) {
     const busy = mkIa.busyId === Number(insight.id);
     const channel = CHANNEL_LABELS[insight.channel] || (insight.channel ? insight.channel.charAt(0).toUpperCase() + insight.channel.slice(1) : 'Idée');
     const basis = Array.isArray(insight.data_basis) ? insight.data_basis : [];
-    return `<article class="mk-idea">
-      <div class="mk-idea-head">
-        <span class="mk-idea-channel">${esc(channel)}</span>
-        <strong>${esc(insight.title || 'Idée')}</strong>
-      </div>
-      ${insight.body ? `<p class="mk-idea-why">${esc(insight.body)}</p>` : ''}
-      ${insight.ready_content ? `<div class="mk-idea-content">${esc(insight.ready_content)}</div>` : ''}
-      ${basis.length ? `<details class="mk-idea-basis"><summary>Les chiffres derrière cette idée</summary><ul>${basis.slice(0, 5).map((fact) => `<li>${esc(fact.label || fact.id || '')}${fact.sampleSize ? ` <small>(${esc(String(fact.sampleSize))} j)</small>` : ''}</li>`).join('')}</ul></details>` : ''}
-      <div class="mk-idea-actions">
+    return mkActCard({
+      kind: 'idea',
+      badge: channel,
+      title: insight.title || 'Idée',
+      when: '',
+      why: insight.body || '',
+      content: insight.ready_content || '',
+      extraHtml: basis.length ? `<details class="mk-idea-basis"><summary>Les chiffres derrière cette idée</summary><ul>${basis.slice(0, 5).map((fact) => `<li>${esc(fact.label || fact.id || '')}${fact.sampleSize ? ` <small>(${esc(String(fact.sampleSize))} j)</small>` : ''}</li>`).join('')}</ul></details>` : '',
+      actionsHtml: `
         ${insight.ready_content ? `<button type="button" class="pv2-btn" onclick="mkIaCopy(${Number(insight.id)})">${ci('copy')}Copier</button>` : ''}
         <button type="button" class="pv2-btn primary" onclick="mkIaStatus(${Number(insight.id)}, 'applied')" ${busy ? 'disabled' : ''}>${ci('check')}C’est fait</button>
-        <button type="button" class="pv2-btn" onclick="mkIaStatus(${Number(insight.id)}, 'ignored')" ${busy ? 'disabled' : ''}>Ignorer</button>
-      </div>
-    </article>`;
+        <button type="button" class="pv2-btn" onclick="mkIaStatus(${Number(insight.id)}, 'ignored')" ${busy ? 'disabled' : ''}>Ignorer</button>`,
+    });
   }
+
+  // La file « À faire » : post du jour + actions du plan + idées du matin,
+  // UNE liste, triée par urgence. C'est la page.
+  function mkActionFeed(proposed) {
+    const cards = [];
+    const brain = mkBrain.data;
+    if (brain && brain.instagram) {
+      const insta = brain.instagram;
+      cards.push(mkActCard({
+        kind: 'insta',
+        badge: 'Post du jour',
+        title: 'Instagram — à poster aujourd\'hui',
+        when: `avant ${esc(insta.bestTime)}`,
+        why: insta.reason,
+        content: `${insta.caption}\n\n${(insta.hashtags || []).join(' ')}\n\n${insta.visualBrief}`,
+        openLabel: 'Voir le post prêt',
+        actionsHtml: `<button type="button" class="pv2-btn primary" onclick="mkInstaCopy()">${ci('copy')}Copier le post</button>`,
+      }));
+    }
+    ((brain && brain.plan) || []).forEach((action, index) => {
+      const done = Boolean(mkBrain.doneIds[action.id]);
+      const busy = mkBrain.busyId === action.id;
+      cards.push(mkActCard({
+        kind: 'plan',
+        badge: channelLabel(action.channel),
+        title: action.title,
+        when: action.executeOn === brain.today ? 'aujourd\'hui' : `pour ${frShortDate(action.executeOn)}`,
+        why: action.why,
+        content: action.readyContent || '',
+        done,
+        actionsHtml: `
+          ${action.readyContent ? `<button type="button" class="pv2-btn" onclick="mkPlanCopy(${index})">${ci('copy')}Copier</button>` : ''}
+          <button type="button" class="pv2-btn primary" onclick="mkPlanDone(${index})" ${done || busy ? 'disabled' : ''}>${ci('check')}${done ? 'Fait' : 'C’est fait'}</button>`,
+      }));
+    });
+    proposed.forEach((insight) => cards.push(mkIdeaCard(insight)));
+    return cards;
+  }
+
+  // Bilan compact en tête : LE chiffre + 3 preuves, une seule ligne.
+  function mkHeroStrip(periodSeg) {
+    const r = mkRoi.data;
+    const hasRevenue = r && r.revenue > 0;
+    return `<section class="pv2-panel mk-hero" aria-label="Retour marketing">
+      <div class="pv2-panel-body mk-hero-row">
+        <div class="mk-hero-fig">
+          <span class="mk-hero-value">${hasRevenue ? `+${money(r.revenue)}` : '0 €'}</span>
+          <span class="mk-hero-cap">générés par le marketing · ${r ? r.days : mkIa.period} j</span>
+        </div>
+        <div class="mk-hero-stats">${r
+          ? `<span><strong>${r.conversions}</strong> venue${r.conversions > 1 ? 's' : ''}</span><span><strong>${r.sent}</strong> message${r.sent > 1 ? 's' : ''}</span><span><strong>${r.reviewClicks}</strong> clic${r.reviewClicks > 1 ? 's' : ''} Google</span>`
+          : '<span>Chaque venue qui suit un message sera comptée ici, en euros.</span>'}</div>
+        ${periodSeg}
+      </div>
+    </section>`;
+  }
+
+  window.mkSetTab = function (key) {
+    state.staffMarketingTab = ['today', 'perf', 'watch', 'campaigns'].includes(key) ? key : 'today';
+    save();
+    renderStaffCampaignsPage();
+  };
 
   const MK_VERDICTS = {
     validated: { label: 'Ça a marché', tone: 'good' },
@@ -3071,17 +3091,18 @@
       <button type="button" class="pv2-btn" onclick="loadMarketingIa(true)">${ci('refresh')}Actualiser</button>
       <button type="button" class="pv2-btn primary" onclick="runStaffMarketingAgents()" ${running ? 'disabled' : ''}>${ci('bolt')}${running ? 'Analyse…' : 'Analyser maintenant'}</button>`;
 
-    const todo = `<section class="pv2-panel">
+    const feedCards = mkActionFeed(proposed);
+    const todo = `<section class="pv2-panel mk-feed" aria-label="À faire">
       <div class="pv2-panel-head has-sub">
-        <div><h2>À faire cette semaine</h2><p class="pv2-panel-sub">Des idées appuyées sur tes chiffres réels, la météo et le calendrier. Copie, publie, marque « fait » — je mesure l’effet.</p></div>
-        <small>${proposed.length} idée${proposed.length > 1 ? 's' : ''}</small>
+        <div><h2>À faire</h2><p class="pv2-panel-sub">Le texte est prêt derrière chaque ligne. Copie, publie, marque « fait » — l’effet est mesuré 14 jours après.</p></div>
+        <small>${feedCards.length} action${feedCards.length > 1 ? 's' : ''}</small>
       </div>
       <div class="pv2-panel-body">
         ${mkIa.error
           ? `<div class="pv2-empty"><strong>${esc(mkIa.error)}</strong><button type="button" class="pv2-btn" onclick="loadMarketingIa(true)">Réessayer</button></div>`
-          : proposed.length
-            ? `<div class="mk-idea-grid">${proposed.map(mkIdeaCard).join('')}</div>`
-            : `<div class="pv2-empty"><strong>${mkIa.loading ? 'Analyse en cours…' : 'Rien d’urgent pour l’instant'}</strong>${mkIa.loading ? '' : 'J’analyse chaque matin à 8h15. Dès qu’une occasion se présente (météo, vacances, creux, événement local), l’idée apparaît ici, prête à publier.'}</div>`}
+          : feedCards.length
+            ? `<div class="mk-act-list">${feedCards.join('')}</div>`
+            : `<div class="pv2-empty"><strong>${mkIa.loading || mkBrain.loading ? 'Analyse en cours…' : 'Rien d’urgent pour l’instant'}</strong>${mkIa.loading || mkBrain.loading ? '' : 'J’analyse chaque matin à 8h15 : météo, vacances, creux, événements. Dès qu’il y a un coup à jouer, il apparaît ici, prêt à publier.'}</div>`}
       </div>
     </section>`;
 
@@ -3142,27 +3163,40 @@
       </div>
     </section>`;
 
+    const tab = ['today', 'perf', 'watch', 'campaigns'].includes(state.staffMarketingTab) ? state.staffMarketingTab : 'today';
+    const tabs = `<div class="mk-tabs">${seg([
+      { key: 'today', label: 'Aujourd’hui', active: tab === 'today', count: feedCards.length },
+      { key: 'perf', label: 'Performance', active: tab === 'perf' },
+      { key: 'watch', label: 'Veille', active: tab === 'watch' },
+      { key: 'campaigns', label: 'Campagnes', active: tab === 'campaigns' },
+    ], 'mkSetTab')}</div>`;
+
+    // Un onglet = une question du gérant. Aujourd'hui : « je fais quoi ? » ·
+    // Performance : « ça donne quoi ? » · Veille : « et les autres ? » ·
+    // Campagnes : « j'envoie quoi ? ». Zéro empilement, textes repliés.
+    let body = '';
+    if (tab === 'today') {
+      body = `${mkHeroStrip(periodSeg)}${todo}${mkOutlookPanel()}${ask}`;
+    } else if (tab === 'perf') {
+      body = `${stats}${mkRoiPanel()}${learned}${mkWeekStrip()}`;
+    } else if (tab === 'watch') {
+      body = mkCompetitorsPanel();
+    } else {
+      body = renderPv2RealCampaigns();
+    }
+
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
         crumb: 'Clients & Marketing',
         title: 'Marketing',
-        sub: 'Ton conseiller data : il analyse chaque matin tes chiffres, la météo de Libramont et le calendrier scolaire.',
+        sub: 'Ton employé marketing : il analyse tes chiffres, la météo et le calendrier chaque matin — et te dit quoi faire.',
         actions,
       })}
-      ${todo}
-      ${ask}
-      ${mkRoiPanel()}
-      ${mkOutlookPanel()}
-      ${mkPlanPanel()}
-      ${mkInstaPanel()}
-      ${mkWeekStrip()}
-      ${stats}
-      ${learned}
-      ${mkCompetitorsPanel()}
-      ${renderPv2RealCampaigns()}
+      ${tabs}
+      ${body}
     </div>`;
     mount(root, 'campaigns');
-    if (!mkWeek.loaded && !mkWeek.loading) setTimeout(() => loadMarketingWeek(), 0);
+    if (tab === 'perf' && !mkWeek.loaded && !mkWeek.loading) setTimeout(() => loadMarketingWeek(), 0);
     if (!mkRoi.data && !mkRoi.loading) setTimeout(() => loadMarketingRoi(), 0);
     if (!mkBrain.data && !mkBrain.loading) setTimeout(() => loadMarketingBrain(), 0);
     if (!mkComp.data && !mkComp.loading) setTimeout(() => loadCompetitors(), 0);

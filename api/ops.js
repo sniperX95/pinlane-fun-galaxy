@@ -346,6 +346,15 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // Studio de contenu : derniers packs du jour par réseau (lecture seule —
+  // la génération est un POST explicite, jamais déclenchée par l'ouverture).
+  if (action === 'studioPacks') {
+    const { listTodayPacks } = require('../lib/content-studio');
+    const packs = await listTodayPacks(centerId);
+    sendJson(res, 200, { ok: true, centerId, packs });
+    return;
+  }
+
   // Veille concurrence : liste + dernier changement détecté par concurrent.
   if (action === 'competitors') {
     const { listCompetitors } = require('../lib/competitor-watch');
@@ -1261,6 +1270,18 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Génération d'un pack de contenu (boucle de raffinement côté serveur).
+  if (action === 'studioGenerate') {
+    const { generateContentPack } = require('../lib/content-studio');
+    const concreteCenterId = requireConcreteCenter('studio de contenu');
+    const pack = await generateContentPack(concreteCenterId, {
+      platform: String(body.platform || 'facebook'),
+      brief: String(body.brief || ''),
+    });
+    sendJson(res, 200, { ok: true, action, pack });
+    return;
+  }
+
   // CRUD veille concurrence + vérification manuelle immédiate.
   if (action === 'competitorSave') {
     const { saveCompetitor } = require('../lib/competitor-watch');
@@ -1691,7 +1712,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'clientNotes') return 'clients.view';
     if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'marketingRoi') return ['campaigns.manage', 'marketing.agents'];
-    if (['marketingBrain', 'competitors'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+    if (['marketingBrain', 'competitors', 'studioPacks'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
     if (action === 'emailStudio') return ['emails.view', 'direction.view'];
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
@@ -1701,7 +1722,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
-  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'studioGenerate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

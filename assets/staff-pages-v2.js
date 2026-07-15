@@ -2122,7 +2122,7 @@
       mkIa.error = error.message || 'Conseiller marketing indisponible.';
     } finally {
       mkIa.loading = false;
-      renderStaffCampaignsPage();
+      scheduleCampaignsRender();
     }
     loadMarketingMetrics(true);
   }
@@ -2142,7 +2142,7 @@
       mkIa.metrics = null;
     } finally {
       mkIa.metricsLoading = false;
-      renderStaffCampaignsPage();
+      scheduleCampaignsRender();
     }
   }
 
@@ -2168,7 +2168,7 @@
       mkRoi.data = payload;
     } catch (error) { /* rôle sans accès : panel absent */ } finally {
       mkRoi.loading = false;
-      renderStaffCampaignsPage();
+      scheduleCampaignsRender();
     }
   }
   window.loadMarketingRoi = loadMarketingRoi;
@@ -2231,7 +2231,7 @@
       mkBrain.error = error.message || 'Cerveau marketing indisponible.';
     } finally {
       mkBrain.loading = false;
-      renderStaffCampaignsPage();
+      scheduleCampaignsRender();
     }
   }
   window.loadMarketingBrain = loadMarketingBrain;
@@ -2282,7 +2282,7 @@
       </div>
       <div class="pv2-panel-body">
         <div class="mk-ol-strip">${cells}</div>
-        ${past ? `<details class="mk-ol-past"><summary>Pourquoi ces derniers jours ont détonné</summary><ul>${past}</ul></details>` : ''}
+        ${past ? `<details class="mk-ol-past" data-mk-open="olpast"><summary>Pourquoi ces derniers jours ont détonné</summary><ul>${past}</ul></details>` : ''}
         <p class="mk-roi-method">Prévision basée sur tes jours comparables, ajustée par les effets météo démontrés chez toi. Survole un jour pour le détail.</p>
       </div>
     </section>`;
@@ -2366,7 +2366,7 @@
       mkComp.error = error.message || 'Veille indisponible.';
     } finally {
       mkComp.loading = false;
-      renderStaffCampaignsPage();
+      scheduleCampaignsRender();
     }
   }
   window.loadCompetitors = loadCompetitors;
@@ -2625,11 +2625,44 @@
     </section>`;
   }
 
+  // Le re-render reconstruit tout le HTML : sans précaution, un fetch qui se
+  // termine REFERME le texte que le gérant vient d'ouvrir et le scroll saute
+  // (bug vidéo 2026-07-16). Deux défenses :
+  //  1. renders coalescés (un seul render par frame, peu importe combien de
+  //     loaders atterrissent) ;
+  //  2. les <details> portent un id stable (data-mk-open) — l'état ouvert et
+  //     le scroll sont capturés avant innerHTML et restaurés après.
+  let mkRenderQueued = false;
+  function scheduleCampaignsRender() {
+    if (mkRenderQueued) return;
+    mkRenderQueued = true;
+    requestAnimationFrame(() => {
+      mkRenderQueued = false;
+      renderStaffCampaignsPage();
+    });
+  }
+
+  function mkCaptureUiState(root) {
+    return {
+      open: [...root.querySelectorAll('details[data-mk-open][open]')].map((d) => d.getAttribute('data-mk-open')),
+      scrollY: window.scrollY,
+    };
+  }
+
+  function mkRestoreUiState(root, saved) {
+    if (!saved) return;
+    for (const key of saved.open) {
+      const details = root.querySelector(`details[data-mk-open="${CSS.escape(key)}"]`);
+      if (details) details.open = true;
+    }
+    if (saved.scrollY) window.scrollTo(0, saved.scrollY);
+  }
+
   // Carte d'action UNIFIÉE de la file « À faire » : une ligne titre + une
   // ligne pourquoi, le texte prêt REPLIÉ (zéro mur de texte), actions à droite.
   // Le texte prêt s'affiche en typographie HUMAINE (aperçu de post, pas de
   // mono « terminal ») ; `contentHtml` permet un aperçu structuré (Insta).
-  function mkActCard({ kind, badge, title, when, why, content, contentHtml = '', extraHtml = '', actionsHtml, done = false, openLabel = 'Voir le texte prêt' }) {
+  function mkActCard({ kind, actId = '', badge, title, when, why, content, contentHtml = '', extraHtml = '', actionsHtml, done = false, openLabel = 'Voir le texte prêt' }) {
     const preview = contentHtml || (content ? `<div class="mk-act-preview">${esc(content)}</div>` : '');
     return `<article class="mk-act ${done ? 'is-done' : ''}" data-kind="${esc(kind)}">
       <div class="mk-act-main">
@@ -2639,7 +2672,7 @@
           ${when ? `<span class="mk-act-when">${esc(when)}</span>` : ''}
         </div>
         ${why ? `<p class="mk-act-why">${esc(mkFrDates(why))}</p>` : ''}
-        ${preview ? `<details class="mk-act-body" ontoggle="mkActToggle(this)"><summary>${esc(openLabel)}</summary>${preview}${extraHtml}</details>` : extraHtml}
+        ${preview ? `<details class="mk-act-body" data-mk-open="act:${esc(actId || kind)}" ontoggle="mkActToggle(this)"><summary>${esc(openLabel)}</summary>${preview}${extraHtml}</details>` : extraHtml}
       </div>
       <div class="mk-act-actions">${actionsHtml}</div>
     </article>`;
@@ -2665,12 +2698,13 @@
     const basis = Array.isArray(insight.data_basis) ? insight.data_basis : [];
     return mkActCard({
       kind: 'idea',
+      actId: `idea:${Number(insight.id)}`,
       badge: channel,
       title: insight.title || 'Idée',
       when: '',
       why: insight.body || '',
       content: insight.ready_content || '',
-      extraHtml: basis.length ? `<details class="mk-idea-basis"><summary>Les chiffres derrière cette idée</summary><ul>${basis.slice(0, 5).map((fact) => `<li>${esc(fact.label || fact.id || '')}${fact.sampleSize ? ` <small>(${esc(String(fact.sampleSize))} j)</small>` : ''}</li>`).join('')}</ul></details>` : '',
+      extraHtml: basis.length ? `<details class="mk-idea-basis" data-mk-open="basis:${Number(insight.id)}"><summary>Les chiffres derrière cette idée</summary><ul>${basis.slice(0, 5).map((fact) => `<li>${esc(fact.label || fact.id || '')}${fact.sampleSize ? ` <small>(${esc(String(fact.sampleSize))} j)</small>` : ''}</li>`).join('')}</ul></details>` : '',
       actionsHtml: `
         ${insight.ready_content ? `<button type="button" class="pv2-btn" onclick="mkIaCopy(${Number(insight.id)})">${ci('copy')}Copier</button>` : ''}
         <button type="button" class="pv2-btn primary" onclick="mkIaStatus(${Number(insight.id)}, 'applied')" ${busy ? 'disabled' : ''}>${ci('check')}C’est fait</button>
@@ -2702,6 +2736,7 @@
       const busy = mkBrain.busyId === action.id;
       cards.push(mkActCard({
         kind: 'plan',
+        actId: `plan:${action.id}`,
         badge: channelLabel(action.channel),
         title: action.title,
         when: action.executeOn === brain.today ? 'aujourd\'hui' : `pour ${frShortDate(action.executeOn)}`,
@@ -2740,10 +2775,134 @@
   }
 
   window.mkSetTab = function (key) {
-    state.staffMarketingTab = ['today', 'perf', 'watch', 'campaigns'].includes(key) ? key : 'today';
+    state.staffMarketingTab = ['today', 'studio', 'perf', 'watch', 'campaigns'].includes(key) ? key : 'today';
     save();
     renderStaffCampaignsPage();
   };
+
+  /* ── Studio de contenu : un pack complet par réseau (longue/courte/story,
+     idée photo, prompt image IA, hashtags), raffiné en boucle côté serveur. ── */
+  const mkStudio = { channel: 'facebook', packs: null, loading: false, genBusy: false, error: '' };
+  window.mkStudio = mkStudio;
+  const STUDIO_CHANNELS_UI = [
+    { key: 'facebook', label: 'Facebook' },
+    { key: 'instagram', label: 'Instagram' },
+    { key: 'tiktok', label: 'TikTok' },
+    { key: 'linkedin', label: 'LinkedIn' },
+  ];
+
+  async function loadStudioPacks(force = false) {
+    if (mkStudio.loading || (mkStudio.packs && !force)) return;
+    mkStudio.loading = true;
+    mkStudio.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=studioPacks&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      mkStudio.packs = payload.packs || {};
+    } catch (error) {
+      mkStudio.error = error.message || 'Studio indisponible.';
+    } finally {
+      mkStudio.loading = false;
+      scheduleCampaignsRender();
+    }
+  }
+  window.loadStudioPacks = loadStudioPacks;
+
+  window.mkStudioChannel = function (key) {
+    mkStudio.channel = STUDIO_CHANNELS_UI.some((channel) => channel.key === key) ? key : 'facebook';
+    renderStaffCampaignsPage();
+  };
+
+  window.mkStudioGenerate = async function () {
+    if (mkStudio.genBusy) return;
+    // Le brief se lit AVANT le re-render : innerHTML reconstruit l'input et
+    // effacerait la saisie (bug attrapé par le gate).
+    const brief = (document.getElementById('mkStudioBrief') || {}).value || '';
+    mkStudio.genBusy = true;
+    renderStaffCampaignsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'studioGenerate',
+          centerId: state.currentCenterId || 'libramont',
+          platform: mkStudio.channel,
+          brief,
+        }),
+      });
+      mkStudio.packs = { ...(mkStudio.packs || {}), [mkStudio.channel]: payload.pack };
+      toast('Pack généré — chaque bloc se copie d\'un clic.');
+    } catch (error) {
+      toast(error.message || 'Génération impossible.');
+    } finally {
+      mkStudio.genBusy = false;
+      renderStaffCampaignsPage();
+    }
+  };
+
+  window.mkStudioCopy = async function (field) {
+    const pack = (mkStudio.packs || {})[mkStudio.channel];
+    if (!pack) return;
+    const text = field === 'hashtags' ? (pack.hashtags || []).join(' ') : String(pack[field] || '');
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copié.');
+    } catch (error) {
+      toast('Copie auto impossible — sélectionne le texte à la main.');
+    }
+  };
+
+  function mkStudioBlock(label, field, text, { mono = false, note = '' } = {}) {
+    if (!text) return '';
+    return `<div class="mk-st-block">
+      <div class="mk-st-block-head">
+        <span class="mk-st-label">${esc(label)}</span>
+        ${note ? `<small>${esc(note)}</small>` : ''}
+        <button type="button" class="pv2-btn mk-st-copy" onclick="mkStudioCopy('${escJs(field)}')">${ci('copy')}Copier</button>
+      </div>
+      <div class="mk-act-preview ${mono ? 'mk-st-mono' : ''}">${esc(text)}</div>
+    </div>`;
+  }
+
+  function mkStudioPanel() {
+    const channelSeg = seg(STUDIO_CHANNELS_UI.map((channel) => ({
+      key: channel.key,
+      label: channel.label,
+      active: mkStudio.channel === channel.key,
+    })), 'mkStudioChannel');
+    const pack = (mkStudio.packs || {})[mkStudio.channel] || null;
+    const quality = pack && pack.quality ? pack.quality : null;
+    const generator = `<div class="mk-st-gen">
+      <input id="mkStudioBrief" class="mk-ask-brief" placeholder="Angle (optionnel) : « anniversaires ados », « offre du jeudi »…" value="${esc(pack && pack.brief ? pack.brief : '')}">
+      <button type="button" class="pv2-btn primary" onclick="mkStudioGenerate()" ${mkStudio.genBusy ? 'disabled' : ''}>${ci('bolt')}${mkStudio.genBusy ? 'Écriture en cours…' : (pack ? 'Régénérer le pack' : 'Générer le pack du jour')}</button>
+    </div>`;
+    let bodyHtml;
+    if (mkStudio.error) {
+      bodyHtml = `<div class="pv2-empty"><strong>${esc(mkStudio.error)}</strong><button type="button" class="pv2-btn" onclick="loadStudioPacks(true)">Réessayer</button></div>`;
+    } else if (!pack) {
+      bodyHtml = `<div class="pv2-empty"><strong>${mkStudio.loading ? 'Chargement…' : 'Pas encore de pack aujourd\'hui pour ce réseau'}</strong>${mkStudio.loading ? '' : 'Le studio écrit d\'un coup : version longue, version courte, story, idée photo et prompt d\'image — raffinés jusqu\'à passer le contrôle qualité.'}</div>`;
+    } else {
+      bodyHtml = `
+        ${quality ? `<div class="mk-st-quality"><span class="mk-st-badge ${quality.status === 'ready' ? 'ok' : 'mid'}">${quality.status === 'ready' ? 'Prêt à publier' : 'À relire'}</span><small>Angle : ${esc(pack.theme || '')} · contrôle qualité ${Number(quality.score) || 0}/100${pack.generationMode === 'ai' ? ` · ${quality.iterations.filter((it) => String(it.mode).startsWith('ai')).length} passe${quality.iterations.length > 2 ? 's' : ''} d'écriture` : ' · mode règles (IA indisponible)'}</small></div>` : ''}
+        ${mkStudioBlock('Version longue', 'long', pack.long)}
+        ${mkStudioBlock('Version courte', 'short', pack.short)}
+        ${mkStudioBlock(mkStudio.channel === 'linkedin' ? 'Variante' : 'Story', 'story', pack.story)}
+        ${mkStudioBlock('Hashtags', 'hashtags', (pack.hashtags || []).join(' '))}
+        ${mkStudioBlock('Idée photo (à shooter sur place)', 'photoIdea', pack.photoIdea)}
+        ${mkStudioBlock('Prompt image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais — à coller dans ton générateur d\'images' })}
+        <p class="mk-roi-method">Meilleur créneau : ${esc(pack.bestTime || '—')}. Chaque version est notée par le contrôle qualité du centre (vérité des activités, hook, appel à action) — l'IA réécrit jusqu'à passer le seuil.</p>`;
+    }
+    return `<section class="pv2-panel mk-studio" aria-label="Studio de contenu">
+      <div class="pv2-panel-head has-sub">
+        <div><h2>Studio de contenu</h2><p class="pv2-panel-sub">Un pack complet par réseau : longue, courte, story, photo, prompt d'image. Écrit sur l'angle du jour, raffiné en boucle.</p></div>
+        ${channelSeg}
+      </div>
+      <div class="pv2-panel-body">
+        ${generator}
+        ${bodyHtml}
+      </div>
+    </section>`;
+  }
 
   const MK_VERDICTS = {
     validated: { label: 'Ça a marché', tone: 'good' },
@@ -3185,9 +3344,10 @@
       </div>
     </section>`;
 
-    const tab = ['today', 'perf', 'watch', 'campaigns'].includes(state.staffMarketingTab) ? state.staffMarketingTab : 'today';
+    const tab = ['today', 'studio', 'perf', 'watch', 'campaigns'].includes(state.staffMarketingTab) ? state.staffMarketingTab : 'today';
     const tabs = `<div class="mk-tabs">${seg([
       { key: 'today', label: 'Aujourd’hui', active: tab === 'today', count: feedCards.length },
+      { key: 'studio', label: 'Studio', active: tab === 'studio' },
       { key: 'perf', label: 'Performance', active: tab === 'perf' },
       { key: 'watch', label: 'Veille', active: tab === 'watch' },
       { key: 'campaigns', label: 'Campagnes', active: tab === 'campaigns' },
@@ -3199,6 +3359,8 @@
     let body = '';
     if (tab === 'today') {
       body = `${mkHeroStrip(periodSeg)}${todo}${mkOutlookPanel()}${ask}`;
+    } else if (tab === 'studio') {
+      body = mkStudioPanel();
     } else if (tab === 'perf') {
       body = `${stats}${mkRoiPanel()}${learned}${mkWeekStrip()}`;
     } else if (tab === 'watch') {
@@ -3207,6 +3369,7 @@
       body = renderPv2RealCampaigns();
     }
 
+    const uiState = mkCaptureUiState(root);
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
         crumb: 'Clients & Marketing',
@@ -3217,8 +3380,10 @@
       ${tabs}
       ${body}
     </div>`;
+    mkRestoreUiState(root, uiState);
     mount(root, 'campaigns');
     if (tab === 'perf' && !mkWeek.loaded && !mkWeek.loading) setTimeout(() => loadMarketingWeek(), 0);
+    if (tab === 'studio' && !mkStudio.packs && !mkStudio.loading) setTimeout(() => loadStudioPacks(), 0);
     if (!mkRoi.data && !mkRoi.loading) setTimeout(() => loadMarketingRoi(), 0);
     if (!mkBrain.data && !mkBrain.loading) setTimeout(() => loadMarketingBrain(), 0);
     if (!mkComp.data && !mkComp.loading) setTimeout(() => loadCompetitors(), 0);

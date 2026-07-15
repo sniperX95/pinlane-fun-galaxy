@@ -64,6 +64,12 @@ async function installMock(page) {
         if (b.action === 'planActionDone') return J({ ok: true, result: { ok: true, id: 88, status: 'applied' } });
         if (b.action === 'competitorSweep') return J({ ok: true, checked: 1, results: [{ id: 1, status: 'unchanged' }] });
         if (b.action === 'competitorSave') return J({ ok: true, result: { ok: true, id: 2 } });
+        if (b.action === 'studioGenerate') {
+          return J({ ok: true, pack: { platform: b.platform, date: dstr(0), theme: 'Angle test', generationMode: 'ai', brief: b.brief || '',
+            long: 'Pack ' + b.platform + ' fraichement genere pour le test.', short: 'Court ' + b.platform + '.',
+            story: 'Story test.', photoIdea: 'Photo test.', aiImagePrompt: 'Test prompt, no text, no logos',
+            hashtags: ['#test'], bestTime: '18h', quality: { score: 86, longScore: 86, shortScore: 88, status: 'ready', iterations: [] } } });
+        }
         if (b.action === 'competitorDelete') return J({ ok: true, result: { ok: true, id: 1 } });
         return J({ ok: true });
       }
@@ -90,6 +96,15 @@ async function installMock(page) {
           ],
           instagram: { date: t0.toISOString().slice(0, 10), themeId: 'heat', reason: '27 °C annoncés — le plan fraîcheur se poste avant le jour J.', caption: '27° annoncés vendredi — chez nous il fait frais toute la journée. Bowling, laser game, arcades.', visualBrief: 'À filmer : arrivée du groupe, bowling en action, sourire final.', bestTime: '17h-19h', bestTimeNote: 'Heuristique d\'audience — à ajuster avec tes stats Instagram.', hashtags: ['#bowling', '#lasergame', '#funGalaxy', '#ardenne', '#libramont'] },
         });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'studioPacks') {
+        const mkPack = (platform) => ({ platform, date: dstr(0), theme: 'Pluie prévue (14 mm)', generationMode: 'ai', brief: '',
+          long: 'Il pleut samedi ? Nos 8 pistes sont au sec — réserve la tienne.', short: 'Pluie samedi ? Bowling au sec.',
+          story: 'Pluie samedi ? → Réserve ta piste.', photoIdea: 'Filmer un strike au moment fort.',
+          aiImagePrompt: 'Rainy day bowling center, cozy neon, no text, no logos',
+          hashtags: ['#bowling', '#libramont', '#pluie'], bestTime: '17h-19h',
+          quality: { score: 88, longScore: 88, shortScore: 90, status: 'ready', iterations: [{ mode: 'rules', score: 74 }, { mode: 'ai_1', score: 88 }] } });
+        return J({ ok: true, centerId: 'libramont', packs: { facebook: mkPack('facebook'), instagram: null, tiktok: null, linkedin: null } });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'competitors') {
         return J({ ok: true, centerId: 'libramont', competitors: [{ id: 1, name: 'Bowling Star', websiteUrl: 'https://bowlingstar.be', instagramHandle: 'bowlingstar', notes: '', enabled: true, lastCheckedAt: '2026-07-14T02:00:00Z', lastDiff: 'Nouvelle formule anniversaire à 15 €.' }] });
@@ -171,7 +186,7 @@ async function main() {
       gadgetGone: !document.querySelector('.pv2-xpbar') && !document.querySelector('.pv2-camp-hero'),
     }));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' \u2192 ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(load.tabs === 4, `4 onglets (obtenu ${load.tabs})`);
+    ok(load.tabs === 5, `4 onglets (obtenu ${load.tabs})`);
     ok(/1[\s\u00a0\u202f]?000/.test(load.heroValue), `h\u00e9ro : LE chiffre en euros en t\u00eate (${load.heroValue.trim()})`);
     ok(load.cards === 5 && load.ideas === 2 && load.instaCard === 1 && load.planCards === 2, `file unifi\u00e9e : 5 actions (insta 1 + plan 2 + id\u00e9es 2) — obtenu ${load.cards}`);
     ok(load.foldedByDefault, 'tous les textes REPLI\u00c9S par d\u00e9faut (z\u00e9ro mur de texte)');
@@ -330,6 +345,37 @@ async function main() {
     ok(camp, 'campagnes email accessibles');
     await page.evaluate(() => mkSetTab('today'));
     await page.waitForTimeout(400);
+
+    console.log('\n[STUDIO] onglet studio : packs par réseau');
+    await page.evaluate(() => mkSetTab('studio'));
+    await page.waitForTimeout(600);
+    const studio = await page.evaluate(() => ({
+      channels: document.querySelectorAll('#staffCampaignsPage .mk-studio .pv2-seg button').length,
+      blocks: [...document.querySelectorAll('#staffCampaignsPage .mk-st-label')].map((el) => el.textContent),
+      badge: (document.querySelector('#staffCampaignsPage .mk-st-badge') || {}).textContent || '',
+      copies: document.querySelectorAll('#staffCampaignsPage .mk-st-copy').length,
+      promptEn: /no text, no logos/.test((document.querySelector('#staffCampaignsPage .mk-st-mono') || {}).textContent || ''),
+    }));
+    ok(studio.channels === 4, `4 réseaux dans le studio (${studio.channels})`);
+    ok(studio.blocks.length >= 5 && /longue/i.test(studio.blocks[0] || ''), `pack Facebook : ${studio.blocks.length} blocs (longue/courte/story/hashtags/photo/prompt)`);
+    ok(/prêt/i.test(studio.badge), 'badge contrôle qualité « Prêt à publier »');
+    ok(studio.copies >= 5 && studio.promptEn, 'copier par bloc + prompt image IA en anglais');
+    const gen = await page.evaluate(async () => {
+      mkStudioChannel('instagram');
+      await new Promise((r) => setTimeout(r, 200));
+      const empty = !!document.querySelector('#staffCampaignsPage .mk-studio .pv2-empty');
+      document.getElementById('mkStudioBrief').value = 'anniversaires ados';
+      await mkStudioGenerate();
+      await new Promise((r) => setTimeout(r, 300));
+      const posts = (window.__QA_POSTS__ || []).filter((post) => post.action === 'studioGenerate');
+      const longTxt = [...document.querySelectorAll('#staffCampaignsPage .mk-act-preview')].map((el) => el.textContent).join(' ');
+      return { empty, posts: posts.length, platform: posts[0] && posts[0].platform, brief: posts[0] && posts[0].brief, rendered: /instagram/.test(longTxt) };
+    });
+    ok(gen.empty, 'canal sans pack → état vide propre');
+    ok(gen.posts === 1 && gen.platform === 'instagram' && /ados/.test(gen.brief || ''), 'Générer → POST studioGenerate avec canal + brief');
+    ok(gen.rendered, 'le pack généré s’affiche immédiatement');
+    await page.evaluate(() => mkSetTab('today'));
+    await page.waitForTimeout(300);
 
     // capture visuelle optionnelle
     if (process.env.MK_SHOT) {

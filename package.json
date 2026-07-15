@@ -40,7 +40,8 @@
     "worker:ops": "node workers/ops-worker.js",
     "worker:once": "node workers/ops-worker.js --once",
     "test:marketing-roi": "node scripts/marketing-roi-check.js",
-    "test:marketing-brain": "node scripts/marketing-brain-check.js"
+    "test:marketing-brain": "node scripts/marketing-brain-check.js",
+    "test:content-studio": "node scripts/content-studio-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

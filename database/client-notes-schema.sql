@@ -6,7 +6,7 @@
 -- center_automation_settings : ON/OFF des séquences d'emails automatiques
 -- (confirmation, rappel 48 h, merci post-visite, anniversaire J-30,
 -- réactivation dormants). Le jsonb `settings` ne stocke que les écarts aux
--- défauts : les défauts vivent dans lib/ops-communications.js
+-- défauts — les défauts vivent dans lib/ops-communications.js
 -- (AUTOMATION_DEFAULTS) pour rester versionnés avec le code.
 
 create table if not exists client_notes (

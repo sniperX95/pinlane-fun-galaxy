@@ -1,4 +1,4 @@
--- Migration 0011 : Version chiffrée réversible des codes d'accès staff.
+-- Migration 0011 — Version chiffrée réversible des codes d'accès staff.
 -- Additive et idempotente. Le hash SHA-256 (access_code_hash) reste l'unique
 -- référence de vérification au login ; access_code_enc stocke le MÊME code
 -- chiffré (AES-256-GCM, clé dérivée de STAFF_AUTH_SECRET via HKDF) afin de

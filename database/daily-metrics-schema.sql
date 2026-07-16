@@ -4,7 +4,7 @@
 -- readAdminRangeState/buildDirectionAnalytics recalculaient à la volée, ENRICHI
 -- de la météo locale (Open-Meteo) et du calendrier (vacances FWB, fériés BE).
 -- C'est la table sur laquelle l'agent marketing corrèle météo x fréquentation
--- avec contrôle jour-de-semaine : jamais de chiffre hors SQL.
+-- avec contrôle jour-de-semaine — jamais de chiffre hors SQL.
 --
 -- weather_daily_forecast : prévisions J..J+14 rafraîchies par le cron. Sert de
 -- fallback quand l'archive Open-Meteo (délai ~5 jours) n'a pas encore le jour

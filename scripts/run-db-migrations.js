@@ -130,6 +130,11 @@ const MIGRATIONS = [
     file: 'database/marketing-arms-schema.sql',
     description: 'Angle bandit arms (Thompson sampling): per-center success/failure counts fed by measured net effect',
   },
+  {
+    id: '0026_marketing_dna',
+    file: 'database/marketing-dna-schema.sql',
+    description: 'Sector DNA (agents second brain): sourced, adversarially-verified copy rules used as PRIOR when measured patterns are thin',
+  },
 ];
 
 async function ensureMigrationsTable(client) {
@@ -144,8 +149,31 @@ async function ensureMigrationsTable(client) {
   `);
 }
 
-function checksum(content) {
+function sha256(content) {
   return require('crypto').createHash('sha256').update(content).digest('hex');
+}
+
+// Le checksum ignore les fins de ligne.
+//
+// Avant : on hachait les octets bruts. Le meme fichier de migration donnait donc
+// un hash different sous Windows (CRLF) et sous Linux (LF), et git convertit les
+// fins de ligne tout seul au checkout (core.autocrlf). Resultat : une migration
+// appliquee depuis Linux devenait « modifiee apres application » des qu'on
+// rejouait le runner sous Windows, alors que le SQL etait identique au caractere
+// pres. Constate le 2026-07-16 : 0011 appliquee en LF, 0007 en CRLF, plus aucun
+// runner ne passait sur cette machine.
+//
+// Le SQL ne change pas de sens selon la fin de ligne : on normalise avant de
+// hacher. L'immutabilite reste totale sur le CONTENU, qui est la seule chose
+// qu'on veut proteger.
+function checksum(content) {
+  return sha256(String(content).replace(/\r\n/g, '\n'));
+}
+
+// Hash historique (octets bruts), uniquement pour reconnaitre les migrations
+// enregistrees avant cette normalisation et re-sceller leur checksum.
+function legacyChecksum(content) {
+  return sha256(String(content));
 }
 
 function readMigrationFile(migration) {
@@ -155,6 +183,9 @@ function readMigrationFile(migration) {
     absoluteFile,
     sql,
     checksum: checksum(sql),
+    legacyChecksum: legacyChecksum(sql),
+    legacyChecksumLf: legacyChecksum(String(sql).replace(/\r\n/g, '\n')),
+    legacyChecksumCrLf: legacyChecksum(String(sql).replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')),
   };
 }
 
@@ -176,10 +207,17 @@ async function runMigration(client, migration) {
   const hash = file.checksum;
   const existing = await client.query('select id, checksum from schema_migrations where id = $1;', [migration.id]);
   if (existing.rows[0]) {
-    if (existing.rows[0].checksum !== hash) {
-      throw new Error(`Migration ${migration.id} a change apres application. Creer une nouvelle migration.`);
+    const stored = existing.rows[0].checksum;
+    if (stored === hash) return { id: migration.id, status: 'skipped' };
+    // Enregistree avant la normalisation des fins de ligne : le SQL est le meme,
+    // seul l'encodage des sauts de ligne differait. On re-scelle sur le hash
+    // normalise, une fois, puis ce cas disparait pour toujours.
+    const legacyMatch = [file.legacyChecksum, file.legacyChecksumLf, file.legacyChecksumCrLf].includes(stored);
+    if (legacyMatch) {
+      await client.query('update schema_migrations set checksum = $2 where id = $1;', [migration.id, hash]);
+      return { id: migration.id, status: 'resealed' };
     }
-    return { id: migration.id, status: 'skipped' };
+    throw new Error(`Migration ${migration.id} a change apres application. Creer une nouvelle migration.`);
   }
 
   await client.query('BEGIN');

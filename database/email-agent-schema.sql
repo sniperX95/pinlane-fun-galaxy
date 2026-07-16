@@ -1,7 +1,7 @@
 -- Agent email (Emails & relances v3) :
--- 1. Mémoire apprenante : quand le staff corrige une réponse proposée avant
+-- 1. Mémoire apprenante — quand le staff corrige une réponse proposée avant
 --    envoi, la leçon est stockée et réinjectée dans le brain de l'agent.
--- 2. Statut 'received' : les emails ENTRANTS (webhook/collage) vivent dans la
+-- 2. Statut 'received' — les emails ENTRANTS (webhook/collage) vivent dans la
 --    table communications existante (direction='inbound'), il faut donc
 --    étendre la contrainte de statut historique.
 

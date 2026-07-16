@@ -1,5 +1,5 @@
 -- ============================================================================
--- ROW LEVEL SECURITY : tenant isolation (NOT yet wired into run-db-migrations.js)
+-- ROW LEVEL SECURITY — tenant isolation (NOT yet wired into run-db-migrations.js)
 -- ============================================================================
 --
 -- This file is a REVIEWED-BUT-NOT-ENABLED proposal. Enabling RLS blind against

@@ -3,7 +3,7 @@
 -- Le maillon manquant entre le CAPTEUR (mesure J+14 des insights) et le
 -- GÉNÉRATEUR (cerveau + idées). Agrège l'effet NET mesuré (résidu vs baseline
 -- jour × météo × vacances) de chaque action publiée, PAR CONTEXTE, pour répondre
--- « quel type d'action, dans quel contexte, convertit chez CE centre », et pour
+-- « quel type d'action, dans quel contexte, convertit chez CE centre » — et pour
 -- réinjecter ce savoir dans la génération (réinjection déterministe : on priorise
 -- les contextes prouvés positifs).
 --
@@ -17,7 +17,7 @@ create table if not exists marketing_patterns (
   channel       text not null default '',
   trigger       text not null default '',
   avg_net_delta numeric,                      -- effet NET moyen (% de baseline), null si non mesurable
-  avg_raw_delta numeric,                      -- effet BRUT moyen (%), fallback quand le net manque
+  avg_raw_delta numeric,                      -- effet BRUT moyen (%) — fallback quand le net manque
   n             integer not null default 0,   -- observations mesurées (delta non nul) qui alimentent la moyenne
   wins          integer not null default 0,   -- combien de ces actions ont été 'validated'
   confidence    text not null default 'exploratoire', -- exploratoire | signal | solide

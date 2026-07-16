@@ -3,11 +3,11 @@
 -- marketing_competitors : les concurrents que le gérant surveille. Configurable
 -- depuis la page Marketing (nom, site, compte Instagram informatif, notes).
 -- Le sweep quotidien ne visite QUE les sites web (Instagram n'est pas
--- scrapable de façon fiable sans service tiers : les observations Insta se
+-- scrapable de façon fiable sans service tiers — les observations Insta se
 -- saisissent à la main et nourrissent marketing_social_observations).
 --
 -- competitor_snapshots : 1 ligne = 1 visite du site avec changement détecté
--- (le contenu est haché : pas de snapshot si rien n'a bougé). `diff_summary`
+-- (le contenu est haché — pas de snapshot si rien n'a bougé). `diff_summary`
 -- est rempli par l'IA quand une clé LLM est disponible, sinon le changement
 -- est signalé brut. `extracted_text` est borné (8 000 caractères).
 

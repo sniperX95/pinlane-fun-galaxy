@@ -16,9 +16,18 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 // Exclus : dependances, build, clones tiers en lecture seule, et .firecrawl
 // (donnees scrapees brutes = preuve, on ne la reecrit pas).
+//
+// `database` est exclu pour une raison de fond, pas par confort : ces fichiers
+// sont des MIGRATIONS DEJA APPLIQUEES. Leur checksum est scelle en base et
+// l'immutabilite est ce qui garantit qu'une migration jouee en prod ne peut
+// plus changer sous nos pieds. Y toucher, meme pour un tiret dans un
+// commentaire, casse le runner (constate le 2026-07-16 : la purge a modifie 9
+// schemas et plus aucune migration ne passait). Ces tirets ne sortent nulle
+// part : ils vivent dans des commentaires SQL, jamais dans l'UI ni dans un
+// prompt. Une nouvelle migration, elle, doit etre ecrite sans tiret.
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.vercel', '.agents', '.firecrawl',
-  '_mkdev', 'dist', 'build', '.next', 'coverage',
+  '_mkdev', 'dist', 'build', '.next', 'coverage', 'database',
 ]);
 const SKIP_FILES = new Set(['package-lock.json', 'no-em-dash-check.js']);
 const EXT = new Set(['.js', '.mjs', '.cjs', '.html', '.css', '.json', '.md', '.sql']);

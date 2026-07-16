@@ -1,4 +1,4 @@
-// Vérification manuelle vague 5 (C8/C14) — parcours staff v2 + client + admin
+// Vérification manuelle vague 5 (C8/C14) : parcours staff v2 + client + admin
 // lazy-load + direction.html, avec assertions réseau sur admin/ops-console.
 // Réutilise le stub API du harnais visuel (installQaApi de run-visual-qa.js).
 const fs = require('fs');

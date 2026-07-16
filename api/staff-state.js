@@ -54,7 +54,7 @@ module.exports = async (req, res) => {
     }
     res.setHeader('ETag', snapshot.revision);
     // Classification client/groupe du centre (seuils groupe + formules anniversaire),
-    // servie à tout le staff via le poll qu'il fait déjà — pas de requête en plus.
+    // servie à tout le staff via le poll qu'il fait déjà : pas de requête en plus.
     let classification;
     try { classification = normalizeClassification(getCenter(centerId)?.classification); } catch (error) { classification = undefined; }
     sendJson(res, 200, { ok: true, ...snapshot, classification });

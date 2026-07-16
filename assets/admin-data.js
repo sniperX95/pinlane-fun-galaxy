@@ -1,4 +1,4 @@
-// Onglet « Données » de la console direction — hub analytics complet.
+// Onglet « Données » de la console direction : hub analytics complet.
 // Toutes les agrégations viennent du serveur (action directionAnalytics,
 // source de vérité unique) : ce module ne fait que rendre, exporter, et
 // piloter les bilans périodiques. Chargé en lazy avec les autres consoles.
@@ -125,11 +125,11 @@ function dhRefresh() {
 }
 
 // ---------------------------------------------------------------------------
-// Briques visuelles (divs + tokens — palette validée, cf. --chart-1/2/3)
+// Briques visuelles (divs + tokens : palette validée, cf. --chart-1/2/3)
 // ---------------------------------------------------------------------------
 
 function dhDelta(current, previous, { invert = false } = {}) {
-  if (!previous) return '<span class="dh-delta neutral">—</span>';
+  if (!previous) return '<span class="dh-delta neutral">-</span>';
   const delta = Math.round(((current - previous) / previous) * 1000) / 10;
   if (delta === 0) return '<span class="dh-delta neutral">= stable</span>';
   const positive = invert ? delta < 0 : delta > 0;
@@ -156,7 +156,7 @@ function dhColumnChart({ points, color, valueFmt, emptyLabel }) {
   const cols = points.map((p, i) => {
     const h = Math.round((p.value / max) * 100);
     const tick = i % tickEvery === 0 || i === points.length - 1;
-    return `<div class="dh-col" data-tip="${dhEsc(`${p.hint} — ${valueFmt(p.value)}`)}">
+    return `<div class="dh-col" data-tip="${dhEsc(`${p.hint} : ${valueFmt(p.value)}`)}">
       <div class="dh-col-bar" style="height:${Math.max(h, p.value ? 3 : 0)}%;background:${color};"></div>
       <div class="dh-col-tick">${tick ? dhEsc(p.label) : ''}</div>
     </div>`;
@@ -173,7 +173,7 @@ function dhRowBars({ rows, total, valueFmt }) {
   if (!rows.length) return '<div class="dh-chart-empty">Aucune donnée sur la période.</div>';
   const max = Math.max(...rows.map((r) => r.value), 1);
   return `<div class="dh-rows">${rows.map((r) => `
-    <div class="dh-row" data-tip="${dhEsc(`${r.label} — ${valueFmt(r.value)}${total ? ` (${Math.round((r.value / total) * 100)} %)` : ''}`)}">
+    <div class="dh-row" data-tip="${dhEsc(`${r.label} : ${valueFmt(r.value)}${total ? ` (${Math.round((r.value / total) * 100)} %)` : ''}`)}">
       <div class="dh-row-label"><span class="dh-dot" style="background:${r.color}"></span>${dhEsc(r.label)}</div>
       <div class="dh-row-track"><div class="dh-row-bar" style="width:${Math.max((r.value / max) * 100, 2)}%;background:${r.color}"></div></div>
       <div class="dh-row-value">${valueFmt(r.value)}${r.extra ? ` <span class="dh-row-extra">${dhEsc(r.extra)}</span>` : ''}</div>
@@ -202,7 +202,7 @@ function dhHeatmap(heatmap) {
     const cells = hours.map((h) => {
       const v = row[h] || 0;
       const strength = v ? Math.round(18 + (v / maxVal) * 72) : 0;
-      return `<div class="dh-hm-cell" data-tip="${dhEsc(`${DH_WEEKDAYS[wd]} ${h}h — ${v} réservation${v > 1 ? 's' : ''}`)}"
+      return `<div class="dh-hm-cell" data-tip="${dhEsc(`${DH_WEEKDAYS[wd]} ${h}h : ${v} réservation${v > 1 ? 's' : ''}`)}"
         style="background:color-mix(in srgb, var(--accent) ${strength}%, var(--surface))"></div>`;
     }).join('');
     return `<div class="dh-hm-d">${DH_WEEKDAYS[wd]}</div>${cells}`;
@@ -247,7 +247,7 @@ function renderAdminDataTab() {
     <div class="dh-head">
       <div>
         <h2 class="dh-title">Données du centre</h2>
-        <p class="dh-sub">${a ? `Du ${dhDateFr(a.startDate)} au ${dhDateFr(a.endDate)} · comparé à la période précédente de même durée.` : 'Réservations, clients, formules et affluence — comparés à la période précédente.'}</p>
+        <p class="dh-sub">${a ? `Du ${dhDateFr(a.startDate)} au ${dhDateFr(a.endDate)} · comparé à la période précédente de même durée.` : 'Réservations, clients, formules et affluence, comparés à la période précédente.'}</p>
       </div>
       <div class="dh-controls">
         <div class="dh-range">${Object.entries(DH_RANGES).map(([key, r]) => `
@@ -255,10 +255,10 @@ function renderAdminDataTab() {
         </div>
         <button type="button" class="admin-btn" onclick="dhExportMenuToggle(event)">Exporter ▾</button>
         <div class="dh-export-menu hidden" id="dhExportMenu">
-          <button type="button" onclick="dhExportCsv('serie')">CSV — série ${DH_RANGES[dhState.rangeKey].bucket === 'daily' ? 'quotidienne' : DH_RANGES[dhState.rangeKey].bucket === 'weekly' ? 'hebdomadaire' : 'mensuelle'}</button>
-          <button type="button" onclick="dhExportCsv('clients')">CSV — clients</button>
-          <button type="button" onclick="dhExportCsv('formules')">CSV — formules & activités</button>
-          <button type="button" onclick="dhExportCsv('reservations-brutes')">CSV — réservations de la période</button>
+          <button type="button" onclick="dhExportCsv('serie')">CSV : série ${DH_RANGES[dhState.rangeKey].bucket === 'daily' ? 'quotidienne' : DH_RANGES[dhState.rangeKey].bucket === 'weekly' ? 'hebdomadaire' : 'mensuelle'}</button>
+          <button type="button" onclick="dhExportCsv('clients')">CSV : clients</button>
+          <button type="button" onclick="dhExportCsv('formules')">CSV : formules & activités</button>
+          <button type="button" onclick="dhExportCsv('reservations-brutes')">CSV : réservations de la période</button>
           <button type="button" onclick="dhPrintReport()">Rapport imprimable (PDF)</button>
         </div>
       </div>
@@ -286,7 +286,7 @@ function renderAdminDataTab() {
     dhTile({ label: 'Joueurs', value: dhNum(t.pax), delta: dhDelta(t.pax, p?.totals?.pax) }),
     dhTile({ label: 'Clients uniques', value: dhNum(a.clients.unique), delta: dhDelta(a.clients.unique, p?.clients?.unique), sub: `${a.clients.new} nouveaux · ${a.clients.multi} multi-visites` }),
     dhTile({ label: 'Réservations en ligne', value: `${t.reservations ? Math.round((online / t.reservations) * 100) : 0} %`, sub: `${online} sur ${t.reservations}` }),
-    dhTile({ label: 'Occupation bowling', value: a.occupancy.rate === null ? '—' : `${a.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${a.occupancy.bookedLaneHours} h réservées / ${a.occupancy.capacityLaneHours} h ouvertes` }),
+    dhTile({ label: 'Occupation bowling', value: a.occupancy.rate === null ? '-' : `${a.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${a.occupancy.bookedLaneHours} h réservées / ${a.occupancy.capacityLaneHours} h ouvertes` }),
   ].join('');
 
   const typeRows = Object.entries(a.byType).map(([type, v]) => ({
@@ -314,7 +314,7 @@ function renderAdminDataTab() {
           <td class="dh-mono">${dhEuro(c.revenue)}</td>
           <td class="dh-mono">${dhDateFr(c.lastVisit)}</td>
           <td>${dhEsc(DH_TYPE_META[c.favorite]?.label || c.favorite)}</td>
-          <td class="dh-contact">${dhEsc(c.phone || c.email || '—')}</td>
+          <td class="dh-contact">${dhEsc(c.phone || c.email || '-')}</td>
         </tr>`).join('')}
       </tbody>
     </table>` : '<div class="dh-chart-empty">Aucun client identifié sur la période.</div>';
@@ -355,7 +355,7 @@ function renderAdminDataTab() {
     </section>
     <section class="dh-card">
       <h3>Clients fidèles &amp; récurrents</h3>
-      <p class="dh-sub">${dhNum(a.clients.unique)} clients uniques — ${a.clients.new} nouveaux, ${a.clients.returning} déjà venus avant la période, ${a.clients.multi} revenus plusieurs fois pendant la période.</p>
+      <p class="dh-sub">${dhNum(a.clients.unique)} clients uniques : ${a.clients.new} nouveaux, ${a.clients.returning} déjà venus avant la période, ${a.clients.multi} revenus plusieurs fois pendant la période.</p>
       ${clientsTable}
     </section>
     ${renderDhReportsSection()}
@@ -375,7 +375,7 @@ function renderDhReportsSection() {
         <span>${dhDateFr(r.periodStart)} → ${dhDateFr(r.periodEnd)}</span>
         <span class="dh-report-meta">${r.editedAt ? `édité par ${dhEsc(r.editedBy || 'direction')}` : (r.generatedBy === 'ia' ? 'généré par IA' : 'généré automatiquement')}</span>
       </button>`).join('')}
-    </div>` : '<div class="dh-chart-empty">Aucun bilan encore généré. Lancez le premier ci-dessus — chaque chiffre vient des données réelles.</div>';
+    </div>` : '<div class="dh-chart-empty">Aucun bilan encore généré. Lancez le premier ci-dessus, chaque chiffre vient des données réelles.</div>';
 
   let viewer = '';
   if (open) {
@@ -507,7 +507,7 @@ function dhMdToHtml(md) {
 }
 
 // ---------------------------------------------------------------------------
-// Exports — CSV « Excel belge » (séparateur ; virgule décimale, BOM UTF-8)
+// Exports : CSV « Excel belge » (séparateur ; virgule décimale, BOM UTF-8)
 // ---------------------------------------------------------------------------
 
 function dhCsvCell(value) {
@@ -588,7 +588,7 @@ async function dhExportCsv(kind) {
   if (typeof toast === 'function') toast('Export CSV téléchargé.');
 }
 
-// Rapport imprimable — mise en page sobre A4, prêt pour PDF (Ctrl+P).
+// Rapport imprimable : mise en page sobre A4, prêt pour PDF (Ctrl+P).
 function dhPrintReport(reportId = null) {
   const a = dhState.analytics;
   if (!a) {
@@ -611,14 +611,14 @@ function dhPrintReport(reportId = null) {
     ['Panier moyen', dhEuroFull(t.avgBasket)],
     ['Réservations en ligne', `${t.reservations ? Math.round((online / t.reservations) * 100) : 0} %`],
     ['Annulations', `${t.cancelled} (${t.cancelRate} %)`],
-    ['Occupation bowling', a.occupancy.rate === null ? '—' : `${a.occupancy.rate} %`],
+    ['Occupation bowling', a.occupancy.rate === null ? '-' : `${a.occupancy.rate} %`],
   ];
 
   const tableRows = (rows) => rows.map((r) => `<tr>${r.map((c) => `<td>${dhEsc(c)}</td>`).join('')}</tr>`).join('');
   const win = window.open('', '_blank');
   if (!win) { if (typeof toast === 'function') toast('Autorisez les pop-ups pour imprimer le rapport.'); return; }
   win.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
-    <title>Rapport direction — ${dhEsc(centerName)}</title>
+    <title>Rapport direction : ${dhEsc(centerName)}</title>
     <style>
       body { font: 13px/1.55 'Segoe UI', system-ui, sans-serif; color: #0a0a0a; margin: 32px 40px; }
       h1 { font-size: 21px; margin: 0 0 2px; } h2 { font-size: 15px; margin: 26px 0 8px; border-bottom: 1px solid #d9d9d9; padding-bottom: 4px; }
@@ -635,7 +635,7 @@ function dhPrintReport(reportId = null) {
       footer { margin-top: 28px; color: #8a8a8a; font-size: 11px; border-top: 1px solid #ececec; padding-top: 8px; }
       @media print { body { margin: 12mm; } }
     </style></head><body>
-    <h1>Rapport direction — ${dhEsc(centerName)}</h1>
+    <h1>Rapport direction : ${dhEsc(centerName)}</h1>
     <div class="meta">Période : ${dhDateFr(a.startDate)} → ${dhDateFr(a.endDate)} · généré le ${dhDateFr(dhToday())} · Pinlane</div>
     <div class="kpis">${kpis.map(([k, v]) => `<div class="kpi"><span>${dhEsc(k)}</span><b>${dhEsc(v)}</b></div>`).join('')}</div>
     <h2>Activités &amp; formules</h2>
@@ -645,7 +645,7 @@ function dhPrintReport(reportId = null) {
     </tbody></table>
     <h2>Clients fidèles</h2>
     <table><thead><tr><th>Client</th><th>Visites</th><th>Chiffre</th><th>Dernière visite</th><th>Contact</th></tr></thead><tbody>
-      ${tableRows(a.clients.top.slice(0, 10).map((c) => [c.name, c.visits, dhEuroFull(c.revenue), dhDateFr(c.lastVisit), c.phone || c.email || '—']))}
+      ${tableRows(a.clients.top.slice(0, 10).map((c) => [c.name, c.visits, dhEuroFull(c.revenue), dhDateFr(c.lastVisit), c.phone || c.email || '-']))}
     </tbody></table>
     ${report ? `<h2>Bilan ${report.periodType === 'week' ? 'hebdomadaire' : 'mensuel'}</h2><div class="report">${dhMdToHtml(report.bodyMd)}</div>` : ''}
     <footer>Document généré par Pinlane à partir des données réelles de réservation. Diffusion interne.</footer>

@@ -1,4 +1,4 @@
-// Vérification manuelle onglet « Données » (admin-data.js) — rendu complet,
+// Vérification manuelle onglet « Données » (admin-data.js) : rendu complet,
 // interactions bilan, exports, zéro pageerror, light/dark/mobile.
 // Réutilise le stub session du harnais visuel + stubbe les actions direction*.
 const fs = require('fs');
@@ -113,7 +113,7 @@ async function main() {
   const report = {
     id: 41, centerId: 'libramont', periodType: 'week', periodStart: '2026-06-29', periodEnd: '2026-07-05',
     title: 'Bilan de la semaine du 2026-06-29', generatedBy: 'deterministic', generatedAt: '2026-07-11T09:00:00Z', editedAt: null, editedBy: '',
-    bodyMd: '# Bilan de la semaine du 2026-06-29 — Fun Galaxy Libramont\n\n## Synthèse\n- **34 réservations** (en hausse de 12%) pour **1 598 €**.\n- **204 joueurs** accueillis.\n\n## Recommandations\n- Pousser la FORMULE 5 (locomotive).',
+    bodyMd: '# Bilan de la semaine du 2026-06-29, Fun Galaxy Libramont\n\n## Synthèse\n- **34 réservations** (en hausse de 12%) pour **1 598 €**.\n- **204 joueurs** accueillis.\n\n## Recommandations\n- Pousser la FORMULE 5 (locomotive).',
   };
 
   // installQaApi remplace window.fetch : on l'enveloppe (init scripts exécutés

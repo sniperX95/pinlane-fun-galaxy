@@ -1,10 +1,10 @@
-// Budget guard LLM — tests PURS (sans DB, sans réseau). Prouve le calcul de
+// Budget guard LLM : tests PURS (sans DB, sans réseau). Prouve le calcul de
 // coût réel et le plafond dur (au-delà → déterministe).
 const assert = require('assert');
 const budget = require('../lib/llm-budget');
 
 let passed = 0;
-function check(name, fn) { fn(); passed += 1; console.log('  ok —', name); }
+function check(name, fn) { fn(); passed += 1; console.log('  ok ', name); }
 
 check('coût Haiku exact (1000 in + 200 out = 0.002 $)', () => {
   const cost = budget.computeCallCost({ input_tokens: 1000, output_tokens: 200 }, 'claude-haiku-4-5');

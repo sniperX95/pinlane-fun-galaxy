@@ -50,7 +50,7 @@ async function installMock(page) {
         ] },
         activityProgress: {} },
       // F1 avec un plan VIDE : la checklist doit QUAND MÊME montrer les 4 activités
-      // de F1 (bowling, laser, arcades, boissons) — la source est la DÉFINITION, pas le plan.
+      // de F1 (bowling, laser, arcades, boissons), la source est la DÉFINITION, pas le plan.
       { id: 9021, name: 'Groupe Lucas #9021', phone: '+32470860021', email: 'lucas@x.test', date, startTime: '16:00', duration: 1, lanes: [5,6], status: 'confirmed', pax: 6, price: 156, type: 'formule', formuleId: 'f1', label: 'FORMULE 1',
         opsPlan: { staffSummary: 'Formule 1', timeline: [] }, activityProgress: {} },
     ]);
@@ -90,7 +90,7 @@ let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
 
 // Garde-fou SERVEUR (node) : un PATCH partiel (id + activityProgress, SANS name/phone,
-// comme le toggle) ne doit PAS jeter « Champ requis manquant » — sinon le PATCH échoue
+// comme le toggle) ne doit PAS jeter « Champ requis manquant » : sinon le PATCH échoue
 // en 400 et le client annule la coche (« active puis désactive direct »). Teste la VRAIE
 // fonction serveur, pas le mock.
 function serverGuard() {
@@ -161,7 +161,7 @@ async function main() {
       const clientSeq = clientSteps[f.id];
       if (!clientSeq || clientSeq.join('|') !== serverSeq.join('|')) syncMismatch.push(`${f.id}: serveur[${serverSeq.join(',')}] vs client[${clientSeq ? clientSeq.join(',') : 'ABSENT'}]`);
     });
-    ok(syncMismatch.length === 0, `miroir synchronisé pour les ${serverFormulas.length} formules${syncMismatch.length ? ' — DÉRIVE: ' + syncMismatch.join(' ; ') : ''}`);
+    ok(syncMismatch.length === 0, `miroir synchronisé pour les ${serverFormulas.length} formules${syncMismatch.length ? ', DÉRIVE: ' + syncMismatch.join(' ; ') : ''}`);
 
     // [DÉTAIL] ouvrir la résa + cocher « Bowling » par un VRAI clic
     console.log('\n[DÉTAIL] clic réel sur une case');
@@ -211,7 +211,7 @@ async function main() {
       return { bowlingDone: !!(r.activityProgress?.['bowling-1']?.done), summaryDone: getFormulaActivityProgressSummary(r).done, opsPlanIntact: Array.isArray(r.opsPlan?.timeline) && r.opsPlan.timeline.length === 6 };
     });
     ok(afterPoll.bowlingDone && afterPoll.summaryDone === 1, 'bowling toujours fait après le poll');
-    ok(afterPoll.opsPlanIntact, 'opsPlan (timeline) intact — pas de replan destructeur');
+    ok(afterPoll.opsPlanIntact, 'opsPlan (timeline) intact, pas de replan destructeur');
 
     // [PAGE FORMULES] navigation + clic depuis la page dédiée
     console.log('\n[PAGE FORMULES] carte + clic');

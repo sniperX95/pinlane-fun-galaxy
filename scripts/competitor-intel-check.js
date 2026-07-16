@@ -1,4 +1,4 @@
-// Renseignement concurrent (Phase 2 « Éclaireur ») — tests des fonctions backend.
+// Renseignement concurrent (Phase 2 « Éclaireur ») : tests des fonctions backend.
 // Google Places (parsing + fail-soft sans clé), extraction structurée du site
 // (mapping + grounding + fail-soft). Aucun réseau réel (fetch/LLM mockés).
 const assert = require('assert');
@@ -6,7 +6,7 @@ const cw = require('../lib/competitor-watch');
 
 async function main() {
   let passed = 0;
-  const check = async (name, fn) => { await fn(); passed += 1; console.log('  ok —', name); };
+  const check = async (name, fn) => { await fn(); passed += 1; console.log('  ok ', name); };
 
   // ── Google Places (New) ─────────────────────────────────────────────────────
   process.env.GOOGLE_MAPS_API_KEY = 'test-key';
@@ -49,7 +49,7 @@ async function main() {
   // ── Extraction structurée du site ──────────────────────────────────────────
   await check('signaux site : mapping + filtre labels vides + cap 8', async () => {
     const call = async () => ({ items: [{ type: 'prix', label: 'Bowling', price: '6 €' }, { type: 'offre', label: '', price: '' }, ...Array.from({ length: 10 }, () => ({ type: 'x', label: 'y', price: '' }))] });
-    const sigs = await cw.extractCompetitorSignals('Bowling à 6 €, anniversaires, laser game — texte assez long pour dépasser le seuil.', { deps: { callLlmJson: call } });
+    const sigs = await cw.extractCompetitorSignals('Bowling à 6 €, anniversaires, laser game, texte assez long pour dépasser le seuil.', { deps: { callLlmJson: call } });
     assert.ok(sigs.length <= 8, 'cap 8');
     assert.ok(sigs.every((s) => s.label), 'labels vides filtrés');
     assert.ok(sigs.some((s) => s.price === '6 €'), 'prix conservé');

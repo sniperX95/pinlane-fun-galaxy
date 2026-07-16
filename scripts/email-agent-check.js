@@ -1,4 +1,4 @@
-// Gate SERVEUR de l'agent email + automations éditables (Emails v3) — zéro
+// Gate SERVEUR de l'agent email + automations éditables (Emails v3) : zéro
 // réseau, zéro DB : deps.query mockée par fragments SQL, fetch IA mockée.
 // Couvre (spec 2026-07-14-emails-v3) : brain chargé, fallback règles (7
 // intents), grounding anti-chiffres, mémoire apprenante (leçon si diff, cap),
@@ -95,7 +95,7 @@ const anthropicOk = (object) => ({
   ok(Object.keys(brain.faq).length === 7, `FAQ parsée : 7 intents (obtenu ${Object.keys(brain.faq).length})`);
   ok(brain.context.includes('Lundi fermé') && brain.context.includes('Samedi 10h à minuit'), 'horaires RÉELS du centre dans le contexte');
   ok(brain.context.includes('LEÇONS APPRISES') && brain.context.includes('Corps corrigé par le staff'), 'leçons mémoire injectées dans le contexte');
-  ok(!brain.context.includes("Golf O'Clock — disponible") && brain.context.includes('NON proposées'), 'activités indisponibles signalées (jamais promises)');
+  ok(!brain.context.includes("Golf O'Clock : disponible") && brain.context.includes('NON proposées'), 'activités indisponibles signalées (jamais promises)');
 
   console.log('\n[RULES] analyse déterministe sans clé IA (mode jour 1)');
   const cases = [
@@ -136,7 +136,7 @@ const anthropicOk = (object) => ({
   const grounded = await analyzeEmail({
     from: 'x@test.be', subject: 'Groupe', body: 'On serait 8 personnes vendredi.',
     deps: makeDeps({}),
-    fetchImpl: async () => anthropicOk({ intent: 'reservation', summary: 'Réservation pour 8 vendredi', urgency: 'normale', reply: { subject: 'Votre venue à 8', body: 'Avec plaisir pour vos 8 personnes vendredi — réservez en ligne sur www.mngfunglxy.com et c’est confirmé.' } }),
+    fetchImpl: async () => anthropicOk({ intent: 'reservation', summary: 'Réservation pour 8 vendredi', urgency: 'normale', reply: { subject: 'Votre venue à 8', body: 'Avec plaisir pour vos 8 personnes vendredi, réservez en ligne sur www.mngfunglxy.com et c’est confirmé.' } }),
   });
   ok(grounded.provider === 'anthropic' && grounded.summary === 'Réservation pour 8 vendredi', 'chiffres du mail uniquement → réponse IA acceptée');
   const badIntent = await analyzeEmail({
@@ -159,7 +159,7 @@ const anthropicOk = (object) => ({
   const diff = await recordAgentLesson({
     centerId: 'libramont', intent: 'prix', questionExcerpt: 'Combien pour 8 ?',
     original: { subject: 'A', body: 'Bonjour, voici notre réponse standard.' },
-    sent: { subject: 'A', body: 'Bonjour Marie, pour 8 personnes on vous prépare un devis précis — on vous rappelle demain matin.' },
+    sent: { subject: 'A', body: 'Bonjour Marie, pour 8 personnes on vous prépare un devis précis, on vous rappelle demain matin.' },
     deps: depsMemoryDiff,
   });
   ok(diff.recorded === true && depsMemoryDiff.state.memoryInserts.length === 1, 'texte substantiellement modifié → leçon enregistrée');
@@ -198,10 +198,10 @@ const anthropicOk = (object) => ({
   ok(defaultMessage.subject === 'Votre réservation Fun Galaxy est confirmée', 'confirmation sans override : sujet historique exact');
   const custom = buildMessage({
     reservation: resa, templateId: 'confirmation', channel: 'email',
-    overrides: { subject: 'Merci {{prenom}} !', body: 'RDV le {{date}} à {{heure}} pour {{formule}} ({{pax}} pers) — {{centre}}' },
+    overrides: { subject: 'Merci {{prenom}} !', body: 'RDV le {{date}} à {{heure}} pour {{formule}} ({{pax}} pers), {{centre}}' },
   });
   ok(custom.subject === 'Merci Marie !', 'sujet custom : {{prenom}} substitué');
-  ok(custom.body === 'RDV le 20/08/2026 à 15:00 pour FORMULE 4 (12 pers) — Fun Galaxy Libramont', `corps custom : toutes variables substituées (obtenu « ${custom.body} »)`);
+  ok(custom.body === 'RDV le 20/08/2026 à 15:00 pour FORMULE 4 (12 pers), Fun Galaxy Libramont', `corps custom : toutes variables substituées (obtenu « ${custom.body} »)`);
   const subjectOnly = buildMessage({ reservation: resa, templateId: 'confirmation', channel: 'email', overrides: { subject: 'Youpi {{prenom}}' } });
   ok(subjectOnly.subject === 'Youpi Marie' && subjectOnly.body.includes('confirmé pour FORMULE 4'), 'override sujet seul : corps par défaut conservé');
   const smsUntouched = buildMessage({ reservation: resa, templateId: 'reminder_day_sms', channel: 'sms', overrides: { subject: 'X', body: 'Y' } });
@@ -250,10 +250,10 @@ const anthropicOk = (object) => ({
   await sendDirectEmail({ centerId: 'libramont', to: 'georges@test.be', name: 'Georges Dupuis', subject: 'Hello', body: 'Corps du message', identityId: 3 }, depsSend);
   const sentRow = depsSend.state.enqueued[0];
   ok(sentRow.payload.direct === true && sentRow.payload.clientKey === 'georges@test.be' && sentRow.payload.identityId === 3, 'payload direct : clientKey + identité tracés');
-  const proposal = { subject: 'Nos tarifs — Fun Galaxy', body: 'Bonjour,\n\nRéponse proposée standard de l\'agent.' };
+  const proposal = { subject: 'Nos tarifs, Fun Galaxy', body: 'Bonjour,\n\nRéponse proposée standard de l\'agent.' };
   const depsReply = makeDeps({ inboundRow: { textBody: 'Combien pour 8 ?', analysis: { intent: 'prix', reply: proposal } } });
   await sendDirectEmail({
-    centerId: 'libramont', to: 'client@test.be', subject: 'Nos tarifs — Fun Galaxy',
+    centerId: 'libramont', to: 'client@test.be', subject: 'Nos tarifs, Fun Galaxy',
     body: 'Bonjour Marie, pour 8 personnes voici comment on fait : on vous confirme le tarif exact par retour, promis vite.',
     replyToCommunicationId: 42,
   }, depsReply);
@@ -302,7 +302,7 @@ const anthropicOk = (object) => ({
   await handler(fakeReq({ from: 'a@b.be', text: 'x' }, 'test-secret'), resNoSecret);
   ok(resNoSecret.statusCode === 401, 'INBOUND_EMAIL_SECRET non configuré → tout refusé');
 
-  console.log('\n[BRAIN ÉDITABLE] « Ce que l\'agent sait » — le gérant possède les textes');
+  console.log('\n[BRAIN ÉDITABLE] « Ce que l\'agent sait » : le gérant possède les textes');
   const depsBrainSave = makeDeps({});
   await saveEmailBrainOverrides('libramont', { signature: 'La team FG', extra: 'Parking gratuit derrière le bâtiment.', faq: { horaires: { subject: 'Nos horaires', body: 'Custom horaires du gérant, ouverts sauf lundi.' } } }, depsBrainSave);
   ok(depsBrainSave.state.brainSaved && depsBrainSave.state.brainSaved.signature === 'La team FG', 'écrit dans settings.email_brain (signature + faq + consignes)');
@@ -332,7 +332,7 @@ const anthropicOk = (object) => ({
   ok(seqs.length === 1 && seqs[0].id && seqs[0].enabled === true, 'séquence créée (id généré, active)');
   const seqToggled = await toggleCustomSequence('libramont', seqs[0].id, false, makeDeps({ settings: { custom_sequences: seqs } }));
   ok(seqToggled[0].enabled === false, 'toggle OFF persisté');
-  seqs[0].enabled = true; // le toggle a muté l'objet partagé du test — on réarme pour le sweep
+  seqs[0].enabled = true; // le toggle a muté l'objet partagé du test : on réarme pour le sweep
   const depsSweepA = makeDeps({ settings: { custom_sequences: seqs }, afterVisitRows: [{ client_key: '+32470111001', email: 'marie@test.be', name: 'Marie Dupont' }] });
   const sweepA = await runCustomSequencesSweep('libramont', depsSweepA, { today: '2026-07-14' });
   ok(sweepA.enqueued === 1 && depsSweepA.state.enqueued.length === 1, 'sweep after_visit → 1 email en file');

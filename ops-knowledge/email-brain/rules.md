@@ -1,7 +1,7 @@
 # Règles de l'agent email (interdits absolus + posture)
 
 L'agent PROPOSE une réponse ; le staff valide et envoie. La réponse proposée
-doit pouvoir partir telle quelle — donc elle ne promet JAMAIS ce que le staff
+doit pouvoir partir telle quelle : donc elle ne promet JAMAIS ce que le staff
 n'a pas vérifié.
 
 ## Interdits absolus

@@ -36,3 +36,5 @@ fetched.out
 
 # Local crawler state
 .firecrawl/
+
+.env*

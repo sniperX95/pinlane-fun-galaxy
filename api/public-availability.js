@@ -35,7 +35,7 @@ const LASER_ARENA_MINUTES = 25;
 const FORMULA_ARRIVAL_MINUTES = 10;
 const FORMULA_TRANSITION_MINUTES = 5;
 // Règle métier : TOUTE heure proposée au client est une heure pleine ou demie
-// (15:00, 15:30 — jamais 15:15 ni 16:40). Elle s'applique au début du
+// (15:00, 15:30, jamais 15:15 ni 16:40). Elle s'applique au début du
 // PROGRAMME, c'est-à-dire au début de la PREMIÈRE activité, quelle qu'elle
 // soit (bowling, laser, minigolf…). Les activités suivantes à l'intérieur du
 // programme peuvent rester à des heures fines (enchaînement naturel).
@@ -470,7 +470,7 @@ module.exports = async (req, res) => {
         laneStatuses: snapshot.laneStatuses,
       };
       // Modèle « Ancres + Liberté » : la dispo est exposée PAR ANCRE
-      // (bowling/laser — heures :00/:30 vérifiées indépendamment) + une
+      // (bowling/laser : heures :00/:30 vérifiées indépendamment) + une
       // combinaison par défaut valide. Les activités libres restent un pass
       // sans aucune heure, la table suit l'arrivée.
       const anchorModel = getFormulaAnchorModel(formulaDoc);
@@ -595,11 +595,11 @@ module.exports = async (req, res) => {
       }
 
       // Formules sans ancre (table anniversaire + pass liberté) : le client
-      // choisit simplement son heure d'arrivée — la table suit automatiquement.
+      // choisit simplement son heure d'arrivée : la table suit automatiquement.
       const slotsByPlan = new Map();
 
       // Départs de programme proposés au client : uniquement aux heures
-      // pleines ou demies (grille :00/:30) — on recale la borne basse si la
+      // pleines ou demies (grille :00/:30), on recale la borne basse si la
       // config (timeLimit, horaires) l'a désalignée.
       const formulaMinTime = Math.ceil(minTime * 2) / 2;
       for (let value = formulaMinTime; value <= maxTime; value += 0.5) {
@@ -682,7 +682,7 @@ module.exports = async (req, res) => {
       const candidateMinutes = new Set();
 
       // Départs Laser proposés au client : uniquement aux heures pleines ou
-      // demies (grille :00/:30) — on recale la borne basse si la config l'a
+      // demies (grille :00/:30), on recale la borne basse si la config l'a
       // désalignée.
       const laserMinTime = Math.ceil(minTime * 2) / 2;
       for (let value = laserMinTime; value <= maxTime; value += 0.5) {
@@ -764,7 +764,7 @@ module.exports = async (req, res) => {
     }
 
     // Bowling classique : départs uniquement aux heures pleines ou demies
-    // (grille :00/:30) — on recale la borne basse si la config l'a désalignée.
+    // (grille :00/:30), on recale la borne basse si la config l'a désalignée.
     minTime = Math.ceil(minTime * 2) / 2;
     const slots = [];
     for (let value = minTime; value <= maxTime; value += 0.5) {
@@ -798,7 +798,7 @@ module.exports = async (req, res) => {
   } catch (error) {
     // Même politique que staff-reservations : les messages métier (français,
     // contrôlés) passent, les erreurs d'infrastructure (Postgres/Neon/réseau)
-    // ne fuient jamais vers le public — on les log et on renvoie un 503 neutre.
+    // ne fuient jamais vers le public : on les log et on renvoie un 503 neutre.
     const raw = String((error && error.message) || '');
     const isInfra = !raw || /tuple concurrently|data transfer quota|ECONNREFUSED|ETIMEDOUT|terminating connection|too many clients|Connection terminated|relation .* does not exist|column .* does not exist|SQLSTATE|deadlock|current transaction is aborted/i.test(raw);
     if (isInfra) {

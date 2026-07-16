@@ -1,5 +1,5 @@
 /* ============================================================================
-   PINLANE — COUCHE CLIENT (« pinlane-client.css »)
+   PINLANE : COUCHE CLIENT (« pinlane-client.css »)
    Parcours de réservation grand public + public-form.html + direction.html.
    Se charge APRÈS pinlane.css et ne référence que ses tokens.
    Univers client : mêmes composants que la console, plus d'air (spacing ×1.5),
@@ -8,15 +8,15 @@
    noir/blanc, signature du système). L'accent bleu = sélection + états actifs.
    Sections :
      1. Compat tokens legacy (styles inline historiques du JS)
-     2. index.html — #clientView (parcours formule → activité → créneau → OK)
-     3. public-form.html — body.public-form
-     4. direction.html — body.direction (outil interne : densité console)
-     5. Header client — shell public de index.html (body.client-mode)
+     2. index.html : #clientView (parcours formule → activité → créneau → OK)
+     3. public-form.html : body.public-form
+     4. direction.html : body.direction (outil interne : densité console)
+     5. Header client : shell public de index.html (body.client-mode)
      6. Pickers formule (heure d'arrivée, « Ancres + Liberté », occasion)
    ========================================================================== */
 
 /* ----------------------------------------------------------------------------
-   1. COMPAT — alias de tokens legacy encore référencés par des style=""
+   1. COMPAT : alias de tokens legacy encore référencés par des style=""
    inline générés par app-main.js (renderSlots vide/chargement, récap, total).
    Aucun autre usage autorisé.
    -------------------------------------------------------------------------- */
@@ -26,10 +26,10 @@ body {
 }
 
 /* ----------------------------------------------------------------------------
-   0. IDENTITÉ FUN GALAXY — accent magenta de marque (#944292, logo Fun Galaxy)
+   0. IDENTITÉ FUN GALAXY : accent magenta de marque (#944292, logo Fun Galaxy)
    sur le parcours CLIENT uniquement. Le staff/direction gardent l'accent système
    (bleu). Scopé body.client-mode (index #clientView + header public) et
-   body.public-form (formulaire autonome) — jamais body.staff-mode/admin-mode.
+   body.public-form (formulaire autonome) : jamais body.staff-mode/admin-mode.
    Contrastes tenus : boutons magenta + texte blanc (light 6.4:1 / dark ≥3.9:1
    pour libellés bold), accent-strong plus foncé/plus clair pour le texte.
    -------------------------------------------------------------------------- */
@@ -92,7 +92,7 @@ body.client-mode #clientView .btn-primary:hover {
   box-shadow: 0 10px 32px color-mix(in srgb, var(--accent) 48%, transparent);
 }
 
-/* Écran de confirmation Fun Galaxy — badge magenta halo + titre marqué, plus pro. */
+/* Écran de confirmation Fun Galaxy : badge magenta halo + titre marqué, plus pro. */
 body.client-mode #clientView .success-wrap {
   padding: var(--space-10) var(--space-6) var(--space-8);
   gap: var(--space-4);
@@ -128,7 +128,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 /* ============================================================================
-   2. PARCOURS CLIENT — index.html #clientView
+   2. PARCOURS CLIENT : index.html #clientView
    ========================================================================== */
 #clientView {
   padding: var(--space-8) var(--space-4) var(--space-10);
@@ -407,7 +407,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 /* Conteneur du CTA principal d'étape : transparent sur desktop (le bouton
    garde son rendu pleine largeur habituel), transformé en barre sticky en
-   mobile — voir la media query. */
+   mobile : voir la media query. */
 #clientView .step-cta-bar {
   margin-top: var(--space-4);
 }
@@ -917,7 +917,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   color: var(--faint);
 }
 
-/* État panne serveur : distinct de l'état vide (P3-9) — signal danger +
+/* État panne serveur : distinct de l'état vide (P3-9), signal danger +
    action « Réessayer » (le vide suggère seulement de changer de date). */
 #clientView .slot-state-error {
   border-color: var(--danger);
@@ -1577,7 +1577,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   }
 
   /* En-tête en ligne : nom + Best deal à gauche, prix (barré + actuel + /pers) à
-     droite — comme une carte tarif d'app mobile. */
+     droite : comme une carte tarif d'app mobile. */
   #clientView .formule-card-head {
     flex-direction: row;
     align-items: flex-start;
@@ -1594,7 +1594,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   }
 
   /* La liste complète des inclusions reste TOUJOURS visible (aucun masquage),
-     sélectionnée ou non — c'est le cœur de la demande. */
+     sélectionnée ou non : c'est le cœur de la demande. */
   #clientView .formule-card-list {
     font-size: 13px;
     gap: 4px;
@@ -1629,7 +1629,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   }
 
   /* Sélecteur plus spécifique (.anchor-free-pass parent) pour battre la règle de
-     base align-items:center définie plus bas dans le fichier — sinon le badge et
+     base align-items:center définie plus bas dans le fichier, sinon le badge et
      le texte restent centrés sur des x différents (colonne non détectée). */
   #clientView .anchor-free-pass .anchor-free-head {
     flex-direction: column;
@@ -1672,7 +1672,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 /* ============================================================================
-   3. PUBLIC FORM — public-form.html (body.public-form)
+   3. PUBLIC FORM : public-form.html (body.public-form)
    ========================================================================== */
 body.public-form {
   font-size: 15px;
@@ -1768,7 +1768,7 @@ body.public-form {
   font-size: 16px;
 }
 
-/* Sélecteurs (type, durée, créneau) — sélection = accent */
+/* Sélecteurs (type, durée, créneau), sélection = accent */
 .public-form .segmented {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1875,7 +1875,7 @@ body.public-form {
   opacity: 0.85;
 }
 
-/* Cartes formules — sélection = bordure accent + ring */
+/* Cartes formules : sélection = bordure accent + ring */
 .public-form .formula-card {
   display: grid;
   gap: 6px;
@@ -2010,7 +2010,7 @@ body.public-form {
   text-align: right;
 }
 
-/* CTA principal — convention .btn-primary (inversion) */
+/* CTA principal : convention .btn-primary (inversion) */
 .public-form .cta {
   display: inline-flex;
   align-items: center;
@@ -2038,7 +2038,7 @@ body.public-form {
   cursor: not-allowed;
 }
 
-/* display:none par défaut — le JS passe en block après envoi */
+/* display:none par défaut, le JS passe en block après envoi */
 .public-form .success {
   display: none;
   padding: var(--space-4);
@@ -2089,7 +2089,7 @@ body.public-form {
 }
 
 /* ============================================================================
-   4. DIRECTION — direction.html (body.direction)
+   4. DIRECTION : direction.html (body.direction)
    Outil interne : densité console, pas d'aération client.
    ========================================================================== */
 .direction .wrap {
@@ -2311,7 +2311,7 @@ body.public-form {
   color: var(--danger);
 }
 
-/* P2-5 : hiérarchie visible critical > high — critical passe en danger plein
+/* P2-5 : hiérarchie visible critical > high, critical passe en danger plein
    (texte = surface : blanc en light, quasi-noir en dark, AA dans les 2 thèmes) */
 .direction .pill.critical {
   background: var(--danger);
@@ -2472,7 +2472,7 @@ body.public-form {
   line-height: 1.4;
 }
 
-/* Aperçu mail : seule surface flottante — ombre autorisée */
+/* Aperçu mail : seule surface flottante, ombre autorisée */
 .direction .preview {
   position: fixed;
   inset: 0;
@@ -2557,7 +2557,7 @@ body.public-form {
 }
 
 /* ============================================================================
-   5. HEADER CLIENT — shell public de index.html (body.client-mode)
+   5. HEADER CLIENT : shell public de index.html (body.client-mode)
    Logo tenant (SVG inline, seul branding Fun Galaxy conservé), nav externe,
    sélecteur de centre, switch de vue. En staff/admin, le header appartient à
    pinlane-staff.css.
@@ -2581,7 +2581,7 @@ body.client-mode .logo-wrap {
 }
 
 /* Le logo tenant officiel (assets/brand/logo-fun-galaxy.svg) est à texte
-   blanc : en thème clair on lui garantit un socle sombre — var(--text) vaut
+   blanc : en thème clair on lui garantit un socle sombre, var(--text) vaut
    exactement le noir de référence (#0a0a0a) dans ce thème. Pas de halo. */
 [data-theme='light'] body.client-mode .logo-wrap {
   background: var(--text);
@@ -2677,7 +2677,7 @@ body.client-mode #logoutBtn.site-auth-action:hover {
   background: var(--subtle);
 }
 
-/* Entrée staff (P3-7) : plus de bouton flottant au-dessus du flux — un lien
+/* Entrée staff (P3-7) : plus de bouton flottant au-dessus du flux, un lien
    sobre dans le footer du parcours client. */
 body.client-mode .client-footer {
   display: flex;
@@ -2789,9 +2789,9 @@ body.customer-mode .client-footer {
 }
 
 /* ============================================================================
-   6. PICKERS FORMULE — heure d'arrivée & « Ancres + Liberté »
-   (L'ancien bloc « SKIN FUN GALAXY » — tokens --fgx-*, fonts Anton/Montserrat,
-   fond noir figé, halos néon teal, color-scheme:dark forcé — est supprimé :
+   6. PICKERS FORMULE : heure d'arrivée & « Ancres + Liberté »
+   (L'ancien bloc « SKIN FUN GALAXY » : tokens --fgx-*, fonts Anton/Montserrat,
+   fond noir figé, halos néon teal, color-scheme:dark forcé, est supprimé :
    le branding tenant n'existe plus que par le logo du header (DESIGN.md §3)
    et les thèmes light/dark de pinlane.css font foi sur tout le parcours.)
    ========================================================================== */
@@ -3282,4 +3282,4 @@ body.modal-open { overflow: hidden; }
 }
 .cta-secondary:hover { background: var(--subtle); }
 
-/* Modale demande sur mesure — .cr-actions : composant partagé dans pinlane.css */
+/* Modale demande sur mesure : .cr-actions : composant partagé dans pinlane.css */

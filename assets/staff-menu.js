@@ -152,7 +152,7 @@
       .filter(Boolean);
   }
 
-  // Implémentation officielle (app-main.js, globale — chargée avant ce script) ;
+  // Implémentation officielle (app-main.js, globale, chargée avant ce script) ;
   // repli identique quand le module est chargé seul (tests vm).
   const escapeHtml = (typeof window !== 'undefined' && typeof window.escapeHtml === 'function')
     ? window.escapeHtml
@@ -466,7 +466,7 @@
   function toggleCenterMenu(anchor) {
     const selectedId = getSelectedCenterId();
     // Sans la permission centers.switch, le rôle ne voit que son centre courant
-    // (aucun autre centre à sélectionner) — on n'affiche pas d'action interdite.
+    // (aucun autre centre à sélectionner) : on n'affiche pas d'action interdite.
     const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
     const canDirection = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('direction.view');
     const centers = canSwitch ? getMenuCenters() : getMenuCenters().filter(center => center.id === selectedId);

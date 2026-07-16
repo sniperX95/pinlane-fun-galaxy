@@ -44,7 +44,7 @@ async function main() {
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(String(e)));
   await installQaApi(page);
-  // Stub dashboardAnalytics (le stub QA ne le connaît pas) — données réalistes.
+  // Stub dashboardAnalytics (le stub QA ne le connaît pas) : données réalistes.
   await page.addInitScript(() => {
     const attach = () => {
       const prevFetch = window.fetch;

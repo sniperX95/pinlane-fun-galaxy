@@ -98,7 +98,7 @@ function testFormulaPlanning() {
 }
 
 // Modèle « Ancres + Liberté » : les heures choisies par activité (ancres
-// bowling/laser) composent la visite telles quelles — validation serveur de la
+// bowling/laser) composent la visite telles quelles : validation serveur de la
 // combinaison (grille :00/:30, pas de chevauchement, horaires, écart réaliste).
 function testFormulaPreferredTimes() {
   const anchorRequest = (preferredTimes, extra = {}) => planningAgent({
@@ -163,7 +163,7 @@ function testFormulaPreferredTimes() {
   assert.strictEqual(onSitePlan.laserPassPlan.remainingGames, 1);
 
   // Formule à ancre laser unique (f5, 2 parties) : une seule session fixée,
-  // le reste en crédit — jamais deux sessions imposées d'affilée.
+  // le reste en crédit : jamais deux sessions imposées d'affilée.
   const laserOnly = planningAgent({
     centerId: 'libramont',
     date: TEST_DATE,
@@ -179,7 +179,7 @@ function testFormulaPreferredTimes() {
   assert.strictEqual(laserOnlyPlan.laserPassPlan.remainingGames, 1, 'second laser game stays a flexible credit');
 }
 
-// Table anniversaire : jamais une ancre — elle suit l'arrivée et couvre toute
+// Table anniversaire : jamais une ancre, elle suit l'arrivée et couvre toute
 // la visite pour le staff, sans aucune heure à choisir côté client.
 function testPartyTableFollowsArrival() {
   const result = planningAgent({
@@ -624,7 +624,7 @@ function testDelayImpactRelocatesDownstreamWhenDelayedIsStuck() {
   assert.ok(/heure inchangée/.test(downstreamChange.summary), 'staff summary must say the time is unchanged');
 }
 
-// Préférence n°3 : cascade MINIMALE — chaque résa aval décalée du strict
+// Préférence n°3 : cascade MINIMALE, chaque résa aval décalée du strict
 // nécessaire, un trou de planning absorbe une partie du retard.
 function testDelayImpactCascadeUsesMinimalShift() {
   const { delayed, downstream } = delayImpactBaseReservations();
@@ -645,7 +645,7 @@ function testDelayImpactCascadeUsesMinimalShift() {
   assert.strictEqual(downstreamChange.shiftMinutes, 15, 'downstream is shifted by the strict minimum, not the full delay');
 }
 
-// Formule : un retard sur l'ancre bowling recale le programme — la table suit
+// Formule : un retard sur l'ancre bowling recale le programme, la table suit
 // l'arrivée, les ancres aval ne glissent QUE si nécessaire.
 function testDelayImpactFormulaProgramRecomputed() {
   const planned = planningAgent({
@@ -1204,7 +1204,7 @@ function testFormulaChosenTimeIsExactFirstActivityStart() {
 }
 
 // Règle métier 2 : le début du PROGRAMME (première activité, quelle qu'elle
-// soit — bowling, laser, minigolf…) ne tombe que sur :00/:30. Un départ 15:15
+// soit : bowling, laser, minigolf…) ne tombe que sur :00/:30. Un départ 15:15
 // est refusé même si la première activité n'est pas du bowling.
 function testFormulaProgramStartSnapsToHalfHourGrid() {
   const refused = planningAgent({

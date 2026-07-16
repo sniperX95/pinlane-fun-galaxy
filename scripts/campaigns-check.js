@@ -1,4 +1,4 @@
-// Vérification Lot G : campagnes réelles — section rendue, audience live,
+// Vérification Lot G : campagnes réelles, section rendue, audience live,
 // création (brouillon / envoi / programmée), annulation, exports, zéro pageerror.
 const fs = require('fs');
 const http = require('http');

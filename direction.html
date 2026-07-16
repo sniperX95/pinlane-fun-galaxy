@@ -79,7 +79,7 @@
       render();
       if (tab === 'simulation') loadSimulationStatus();
     }
-    // P2-6 : navigation clavier du tablist — flèches gauche/droite (cycliques),
+    // P2-6 : navigation clavier du tablist, flèches gauche/droite (cycliques),
     // Home/End, roving tabindex (l'onglet actif est le seul tabbable).
     document.querySelector('.tabs').addEventListener('keydown', event => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -93,7 +93,7 @@
       setTab(TAB_ORDER[next]);
       document.getElementById(`tab-${TAB_ORDER[next]}`).focus();
     });
-    // allSettled : chaque onglet vit avec SES permissions — un rôle partiel
+    // allSettled : chaque onglet vit avec SES permissions, un rôle partiel
     // (ex. emails.view seul) garde ses onglets légitimes, les autres affichent
     // « Accès restreint » ou « Erreur de chargement » sans tout perdre.
     async function loadDirection(force = false) {
@@ -173,7 +173,7 @@
           <button class="mini" onclick="preview(${index}, 'sample')">Voir</button>
         </div>`).join('')}</div>`;
     }
-    // P3-3 : libellé FR de repli quand l'agent n'a pas fourni de titre —
+    // P3-3 : libellé FR de repli quand l'agent n'a pas fourni de titre 
     // jamais l'ID technique brut (duration_adjustment…) à l'écran.
     const suggestionLabel = type => ({
       duration_adjustment: 'Ajustement de durée recommandé',
@@ -364,7 +364,7 @@
         || (state.tab === 'samples' ? renderSamples() : state.tab === 'suggestions' ? renderSuggestions() : state.tab === 'events' ? renderEvents() : state.tab === 'simulation' ? renderSimulation() : renderCommunications());
       content.innerHTML = errorBanner() + note + html;
     }
-    // P2-6 : la modale d'aperçu est un vrai dialog — Échap ferme, focus piégé
+    // P2-6 : la modale d'aperçu est un vrai dialog, Échap ferme, focus piégé
     // dans la carte, retour de focus au bouton « Voir » déclencheur.
     let previewTrigger = null;
     function closePreview() {

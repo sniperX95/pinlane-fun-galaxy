@@ -253,7 +253,7 @@ function runFixedGuardrailTests(knowledge) {
   assert.strictEqual(splitLaser.plan.recommended.laserSharing.waveCount, 2, '50 laser players should create two waves');
 
   // Départ 15:00 : reste valide quel que soit le jour ouvert retenu (une
-  // formule ne peut pas partir pile à l'ouverture — accueil 10 min avant).
+  // formule ne peut pas partir pile à l'ouverture : accueil 10 min avant).
   const hugeLaserFormula = planningAgent({
     centerId: 'libramont',
     date: formulaGuardDate,

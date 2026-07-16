@@ -1,8 +1,8 @@
 /* ============================================================================
-   PINLANE LANDING — « Precision Tooling » (DESIGN.md v2)
+   PINLANE LANDING : « Precision Tooling » (DESIGN.md v2)
    Couche page pour pro.html. Chargée APRÈS assets/pinlane.css (tokens,
    reset, boutons, inputs). Aucune couleur en dur : uniquement var(--...).
-   Direction : Vercel — monochrome calibré, bordures 1px, accent bleu unique,
+   Direction : Vercel, monochrome calibré, bordures 1px, accent bleu unique,
    typographie Geist énorme et serrée, zéro dégradé décoratif, zéro glow.
    ========================================================================== */
 
@@ -221,7 +221,7 @@ html:not([data-theme='dark']) .mock-sidebar > img {
 }
 
 /* ----------------------------------------------------------------------------
-   4. PRODUCT STAGE — mockup app dans une carte bordée (style Vercel)
+   4. PRODUCT STAGE : mockup app dans une carte bordée (style Vercel)
    -------------------------------------------------------------------------- */
 .product-stage {
   width: 100%;
@@ -335,7 +335,7 @@ html:not([data-theme='dark']) .mock-sidebar > img {
   color: var(--muted);
 }
 
-/* Item actif (Planning) : fond subtle + barre 2px accent — DESIGN.md §6 */
+/* Item actif (Planning) : fond subtle + barre 2px accent, DESIGN.md §6 */
 .mock-sidebar nav b:first-child {
   background: var(--subtle);
   color: var(--text);
@@ -383,7 +383,7 @@ html:not([data-theme='dark']) .mock-sidebar > img {
   letter-spacing: -0.01em;
 }
 
-/* Toggles bowling / laser / direction — segmented control */
+/* Toggles bowling / laser / direction : segmented control */
 .mock-head-actions {
   display: inline-flex;
   gap: 2px;
@@ -585,7 +585,7 @@ html:not([data-theme='dark']) .mock-sidebar > img {
 }
 
 /* ----------------------------------------------------------------------------
-   5. SECTIONS — séparées par bordures 1px, beaucoup d'air
+   5. SECTIONS : séparées par bordures 1px, beaucoup d'air
    -------------------------------------------------------------------------- */
 .section {
   border-top: 1px solid var(--line);
@@ -682,7 +682,7 @@ html:not([data-theme='dark']) .mock-sidebar > img {
   color: var(--muted);
 }
 
-/* Bandeau chiffres — grille bordée, dividers 1px via gap sur fond line */
+/* Bandeau chiffres : grille bordée, dividers 1px via gap sur fond line */
 .outcome-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -760,7 +760,7 @@ html:not([data-theme='dark']) .mock-sidebar > img {
 }
 
 /* ----------------------------------------------------------------------------
-   6. PILOTE — carte + formulaire
+   6. PILOTE : carte + formulaire
    -------------------------------------------------------------------------- */
 .pilot-card {
   display: grid;
@@ -871,11 +871,11 @@ html:not([data-theme='dark']) .mock-sidebar > img {
 }
 
 /* ----------------------------------------------------------------------------
-   8. REVEAL — fade + translateY 8px, une fois, transform/opacity uniquement.
+   8. REVEAL : fade + translateY 8px, une fois, transform/opacity uniquement.
    Progressive enhancement : tout est visible par défaut. .reveal-pending est
    posée par JS (pinlane-landing.js) UNIQUEMENT quand l'IntersectionObserver
    est opérationnel ET au premier scroll réel, sur les éléments encore
-   entièrement sous le fold — un rendu sans scroll (bot, OG, print, screenshot
+   entièrement sous le fold : un rendu sans scroll (bot, OG, print, screenshot
    fullPage) voit 100 % du contenu. prefers-reduced-motion : pinlane.css.
    -------------------------------------------------------------------------- */
 .reveal {

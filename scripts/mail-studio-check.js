@@ -1,4 +1,4 @@
-// Vérification manuelle onglet « Mails » (admin-mail.js) — composer, envoi,
+// Vérification manuelle onglet « Mails » (admin-mail.js) : composer, envoi,
 // IA fallback, historique + aperçu, modèles CRUD, identités, analyse,
 // dark + mobile, zéro pageerror. Stubs API stateful côté page.
 const fs = require('fs');
@@ -237,7 +237,7 @@ async function main() {
   }
 
   // Les init scripts Playwright s'exécutent aussi dans l'iframe sandbox de
-  // l'aperçu et y échouent sur localStorage — artefact du harnais, pas de l'app.
+  // l'aperçu et y échouent sur localStorage : artefact du harnais, pas de l'app.
   const critical = pageErrors.filter((e) => !/ResizeObserver|favicon|lacks the 'allow-same-origin'/i.test(e));
   if (critical.length) {
     console.log('PAGE ERRORS:', JSON.stringify(critical, null, 1));

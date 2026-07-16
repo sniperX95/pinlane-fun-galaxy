@@ -265,7 +265,7 @@ async function testLaneStatusesAreScopedByCenter() {
 }
 
 // Plan de retard : les décalages en cascade (heures + pistes + plans) partent
-// dans UNE transaction et sont validés sur l'état FINAL — un update séquentiel
+// dans UNE transaction et sont validés sur l'état FINAL : un update séquentiel
 // échouerait sur l'état transitoire (A décalé sur le créneau que B occupe
 // encore). Vérifie aussi qu'un plan périmé est refusé AVANT toute écriture.
 async function testApplyReservationScheduleUpdatesIsAtomic() {
@@ -320,7 +320,7 @@ async function testApplyReservationScheduleUpdatesIsAtomic() {
   });
 }
 
-// Chantier 3 — l'email est OBLIGATOIRE à la création (staff ET public). La
+// Chantier 3 : l'email est OBLIGATOIRE à la création (staff ET public). La
 // validation vit dans normalizeReservationRequest (chemin commun POST) : un
 // POST sans email valide est refusé AVANT toute écriture en base.
 function testEmailRequiredOnCreation() {

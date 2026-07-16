@@ -1,9 +1,9 @@
 /* ============================================================================
-   PINLANE V2 — rebuilt page renderers
+   PINLANE V2 : rebuilt page renderers
    Overrides the legacy renderers for Réservations, Clients, Emails,
    Campagnes and Tarifs with from-scratch layouts, plus a global command
    palette (Ctrl/Cmd+K). Data, permissions and mutations keep flowing through
-   the existing battle-tested collectors and actions from app-main.js — this
+   the existing battle-tested collectors and actions from app-main.js : this
    module owns presentation and interaction only.
    ========================================================================== */
 (function () {
@@ -93,7 +93,7 @@
   function slideSegPills(root) {
     // Positionnement INSTANTANÉ : chaque appel suit une reconstruction du DOM
     // (innerHTML), donc le pill partait de sa position CSS par défaut puis
-    // GLISSAIT vers l'actif — un aller-retour visible à chaque fetch qui
+    // GLISSAIT vers l'actif : un aller-retour visible à chaque fetch qui
     // atterrissait (bug vidéo). La transition est neutralisée le temps de
     // poser la position, puis rendue au CSS.
     root.querySelectorAll('.pv2-seg').forEach((seg) => {
@@ -167,7 +167,7 @@
   }
 
   /* ==========================================================================
-     RÉSERVATIONS — occupancy cockpit: heatmap month + day flow
+     RÉSERVATIONS : occupancy cockpit: heatmap month + day flow
      ======================================================================== */
 
   window.pv2SelectResDay = function (dateStr) {
@@ -212,7 +212,7 @@
       const heat = !agg ? 0 : Math.ceil((agg.count / maxCount) * 3);
       cells += `<div class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}" onclick="pv2SelectResDay('${dateStr}')">
         <span class="pv2-cal-day">${day}</span>
-        <span class="pv2-cal-meta">${agg ? `<strong>${agg.count}</strong> résa · ${agg.pax}p` : '—'}</span>
+        <span class="pv2-cal-meta">${agg ? `<strong>${agg.count}</strong> résa · ${agg.pax}p` : '-'}</span>
       </div>`;
     }
 
@@ -284,7 +284,7 @@
   };
 
   /* ==========================================================================
-     CLIENTS — CRM: table + profile
+     CLIENTS : CRM: table + profile
      ======================================================================== */
 
   function pv2AvgBasket(rows) {
@@ -298,7 +298,7 @@
   const crmNum = (value) => (Math.round((Number(value) || 0) * 10) / 10).toLocaleString('fr-BE');
 
   function crmStatusPill(row) {
-    return `<span class="crm-pill tone-${CRM_STATUS_TONE[row.statusClass] || 'muted'}"><span class="crm-dot"></span>${esc(row.status || '—')}</span>`;
+    return `<span class="crm-pill tone-${CRM_STATUS_TONE[row.statusClass] || 'muted'}"><span class="crm-dot"></span>${esc(row.status || '-')}</span>`;
   }
 
   // 4 segments simples (fusion Clients+Groupes, KISS). Une seule vue active,
@@ -319,7 +319,7 @@
     return `<section class="crm-segbar" role="tablist" aria-label="Vue clients">${seg}${count}</section>`;
   }
 
-  // Badge unique par ligne — le plus décisionnel gagne.
+  // Badge unique par ligne : le plus décisionnel gagne.
   function crmRowBadge(row, ctx) {
     const relance = getStaffClientRelance(row);
     if (row.nextBooking && (String(row.nextBooking.occasion || '').toLowerCase() === 'anniversaire' || row.hasBirthday)) {
@@ -336,14 +336,14 @@
     const next = row.nextBooking;
     const visite = next
       ? `<strong>${esc(formatStaffClientDateText(next.date))}</strong><small>prochaine venue${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</small>`
-      : `<strong>${esc(row.lastVisitAgo || '—')}</strong><small>${esc(row.lastVisit || '')}</small>`;
+      : `<strong>${esc(row.lastVisitAgo || '-')}</strong><small>${esc(row.lastVisit || '')}</small>`;
     const lastCell = ctx.segment === 'relancer'
       ? `<td class="crm-cell-why">${esc(getStaffClientRelance(row).reason)}${row.email ? `<button type="button" class="pv2-btn sm" onclick="event.stopPropagation();crmOpenRelance('${escJs(row.id)}')">Relancer</button>` : ''}</td>`
       : `<td class="crm-cell-badge">${crmRowBadge(row, ctx)}</td>`;
     return `
       <tr class="${selected && row.id === selected.id ? 'is-selected' : ''}" tabindex="0" role="button" onclick="selectStaffClient('${escJs(row.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectStaffClient('${escJs(row.id)}');}">
         <td class="crm-cell-client">
-          <span class="crm-avatar">${esc(row.initials || '–')}</span>
+          <span class="crm-avatar">${esc(row.initials || '-')}</span>
           <span class="crm-client-id"><strong>${esc(row.name || 'Sans nom')}</strong><small>${esc(row.email || row.phone || '')}</small></span>
         </td>
         <td class="crm-cell-visit${next ? ' is-upcoming' : ''}">${visite}</td>
@@ -365,13 +365,13 @@
     return `
       <details class="crm-hist status-${cls}">
         <summary>
-          <span class="crm-hist-date">${esc(entry.date || '—')}</span>
+          <span class="crm-hist-date">${esc(entry.date || '-')}</span>
           <span class="crm-hist-main"><strong>${esc(entry.label || 'Réservation')}</strong><small>${Number(r.pax) || 0} joueur${(Number(r.pax) || 0) > 1 ? 's' : ''}${acts.length ? ` · ${acts.join(' + ')}` : ''}</small></span>
           <span class="crm-hist-amount ${entry.amount < 0 ? 'is-neg' : ''}">${money(Math.abs(entry.amount))}</span>
           <span class="crm-pill tone-${r.status === 'paid' ? 'success' : cancelled ? 'warn' : 'muted'} crm-hist-status">${esc(entry.status)}</span>
         </summary>
         <div class="crm-hist-detail">
-          <div><dt>Heure</dt><dd>${esc(r.startTime || '—')}${r.duration ? ` · ${crmNum(r.duration)}h` : ''}</dd></div>
+          <div><dt>Heure</dt><dd>${esc(r.startTime || '-')}${r.duration ? ` · ${crmNum(r.duration)}h` : ''}</dd></div>
           ${lanesTxt ? `<div><dt>Emplacement</dt><dd>${esc(lanesTxt)}</dd></div>` : ''}
           ${occ ? `<div><dt>Occasion</dt><dd>${esc(occ)}</dd></div>` : ''}
           ${r.paymentMethod ? `<div><dt>Paiement</dt><dd>${esc(r.paymentMethod)}</dd></div>` : ''}
@@ -428,14 +428,14 @@
     if (relance.kind === 'anniversaire') {
       return {
         reason: 'birthday',
-        subject: `L'anniversaire approche — on vous re-réserve la fête ? 🎂`,
-        body: `Bonjour ${firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez nous — et c'était un super moment !\nLa date approche : on vous re-réserve la formule ? Les créneaux du week-end partent vite.\n\nRépondez à ce message ou réservez en ligne, on s'occupe du reste.\n\nÀ très vite,\nL'équipe Fun Galaxy`,
+        subject: `L'anniversaire approche, on vous re-réserve la fête ? 🎂`,
+        body: `Bonjour ${firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez nous, et c'était un super moment !\nLa date approche : on vous re-réserve la formule ? Les créneaux du week-end partent vite.\n\nRépondez à ce message ou réservez en ligne, on s'occupe du reste.\n\nÀ très vite,\nL'équipe Fun Galaxy`,
       };
     }
     return {
       reason: 'dormant',
-      subject: 'Ça fait un moment — on vous a gardé une piste 🎳',
-      body: `Bonjour ${firstName},\n\nÇa fait un moment qu'on ne vous a pas vus au centre — bowling, laser, arcades… tout est prêt.\nVenez en semaine, c'est plus calme (et plus tranquille pour jouer).\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe Fun Galaxy`,
+      subject: 'Ça fait un moment, on vous a gardé une piste 🎳',
+      body: `Bonjour ${firstName},\n\nÇa fait un moment qu'on ne vous a pas vus au centre, bowling, laser, arcades… tout est prêt.\nVenez en semaine, c'est plus calme (et plus tranquille pour jouer).\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe Fun Galaxy`,
     };
   }
 
@@ -481,7 +481,7 @@
         }),
       });
       crmRelance.openFor = null;
-      toast('Relance en file d’envoi ✓ — je mesure si le client revient.');
+      toast('Relance en file d’envoi ✓ : je mesure si le client revient.');
       ensureStaffClientComms(true);
       loadCrmRelanceStats(true);
     } catch (error) {
@@ -508,7 +508,7 @@
   }
   window.loadCrmRelanceStats = loadCrmRelanceStats;
 
-  /* Notes client persistantes (allergies, prénom de l'enfant…) — table client_notes. */
+  /* Notes client persistantes (allergies, prénom de l'enfant…), table client_notes. */
   function crmClientKey(row) {
     return String(row.phone || row.email || '').trim().toLowerCase();
   }
@@ -597,7 +597,7 @@
     return `
       <div class="crm-fiche">
         <section class="crm-sec crm-head">
-          <span class="crm-avatar crm-avatar-lg">${esc(selected.initials || '–')}</span>
+          <span class="crm-avatar crm-avatar-lg">${esc(selected.initials || '-')}</span>
           <div class="crm-head-id">
             <div class="crm-head-row"><h2>${esc(selected.name || 'Sans nom')}</h2><span class="crm-head-badges">${badges.join('')}</span></div>
             <div class="crm-head-contact">
@@ -695,7 +695,7 @@
       const roi = ctx.segment !== 'relancer' ? '' : `<section class="crm-roi">
         ${crmRelanceStats.loaded && crmRelanceStats.sent > 0
           ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} sur 90 j<span class="crm-roi-sep"></span><strong>${crmRelanceStats.converted}</strong> venue${crmRelanceStats.converted > 1 ? 's' : ''}<span class="crm-roi-sep"></span><strong>${money(crmRelanceStats.revenue)}</strong> générés</span>`
-          : `<span class="crm-roi-figures">Relance ton premier client — je mesure ce que chaque relance rapporte.</span>`}
+          : `<span class="crm-roi-figures">Relance ton premier client, je mesure ce que chaque relance rapporte.</span>`}
         <button type="button" class="pv2-btn" onclick="openStaffCampaignForRelance()">${ci('megaphone')}Campagne pour ce segment</button>
       </section>`;
       body = `${roi}<section class="pv2-split crm-split">
@@ -760,7 +760,7 @@
   };
 
   /* ==========================================================================
-     EMAILS — communication pipeline
+     EMAILS : communication pipeline
      ======================================================================== */
 
   window.pv2SelectEmail = function (uid) {
@@ -780,13 +780,13 @@
      (identités + modèles), improveEmailWithAi. Le composer n'exige AUCUNE
      réservation ; la fiche client route ici via pv2OpenComposer. ── */
 
-  // Modèles de départ (mêmes contenus que le studio direction — dupliqués
+  // Modèles de départ (mêmes contenus que le studio direction : dupliqués
   // volontairement : admin-mail.js n'est pas chargé côté staff).
   const PV2_STARTERS = [
-    { key: 'relance-client', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre — les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
+    { key: 'relance-client', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
     { key: 'marketing-anniversaire', name: 'Pack anniversaire', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et cruches de boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe Fun Galaxy' },
-    { key: 'promo-semaine', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}} — réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
-    { key: 'serieux-entreprise', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy — proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
+    { key: 'promo-semaine', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
+    { key: 'serieux-entreprise', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
   ];
 
   const pv2Mail = {
@@ -815,7 +815,7 @@
   }
 
   // API globale : la fiche client (et tout autre module) ouvre le composer
-  // prérempli — remplace le détour console direction / mailto.
+  // prérempli : remplace le détour console direction / mailto.
   window.pv2OpenComposer = function (prefill = {}) {
     pv2Mail.composerOpen = true;
     pv2Mail.aiTips = [];
@@ -893,7 +893,7 @@
       if (payload.mode === 'ia' && payload.subject && payload.body) {
         pv2Mail.draft.subject = payload.subject;
         pv2Mail.draft.body = payload.body;
-        toast('Brouillon amélioré par l\'IA — relis avant d\'envoyer.');
+        toast('Brouillon amélioré par l\'IA : relis avant d\'envoyer.');
       } else if (pv2Mail.aiTips.length) {
         toast('Conseils affichés sous le message.');
       }
@@ -942,7 +942,7 @@
       pv2Mail.composerOpen = false;
       pv2Mail.draft = { to: '', name: '', subject: '', body: '', identityId: pv2Mail.draft.identityId, templateRef: '', replyTo: null, when: 'now', scheduledAt: '' };
       pv2Mail.aiTips = [];
-      toast(scheduledAt ? 'Message programmé ✓ — il partira au moment choisi.' : 'Message en file d\'envoi ✓');
+      toast(scheduledAt ? 'Message programmé ✓ : il partira au moment choisi.' : 'Message en file d\'envoi ✓');
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
     } catch (error) {
       toast(error.message || 'Envoi impossible.');
@@ -953,7 +953,7 @@
   };
 
   /* ── « Analyser un reçu » : le staff colle un mail, l'agent le classe et
-     propose la réponse — le chemin sans configuration MX. ── */
+     propose la réponse : le chemin sans configuration MX. ── */
   window.pv2OpenAnalyze = function () {
     pv2Mail.analyzeOpen = !pv2Mail.analyzeOpen;
     renderStaffEmailsPage();
@@ -981,7 +981,7 @@
       pv2Mail.analyzeDraft = { from: '', body: '' };
       state.staffEmailFilter = 'inbound';
       save();
-      toast('Mail analysé — il est dans les Reçus avec sa réponse proposée.');
+      toast('Mail analysé : il est dans les Reçus avec sa réponse proposée.');
       if (typeof requestOpsAdminLoad === 'function') requestOpsAdminLoad(true);
     } catch (error) {
       toast(error.message || 'Analyse impossible.');
@@ -1086,7 +1086,7 @@
   };
 
   /* ── SÉQUENCES PERSONNALISÉES : le gérant crée SES automatisations
-     (déclencheur + cible + message + plafond — contrat customSequences). ── */
+     (déclencheur + cible + message + plafond : contrat customSequences). ── */
   const pv2Seq = { loaded: false, loading: false, sequences: [], limits: null, editId: '', creating: false, draft: {}, busy: false };
   window.pv2Seq = pv2Seq;
   const PV2_WEEKDAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
@@ -1167,7 +1167,7 @@
       pv2Seq.sequences = payload.sequences || pv2Seq.sequences;
       pv2Seq.creating = false;
       pv2Seq.editId = '';
-      toast('Séquence enregistrée ✓ — elle tourne chaque matin avec les autres.');
+      toast('Séquence enregistrée ✓ : elle tourne chaque matin avec les autres.');
     } catch (error) {
       toast(error.message || 'Enregistrement impossible.');
     } finally {
@@ -1280,7 +1280,7 @@
     </div>`;
   }
 
-  /* ── RÉGLAGES EMAILS : modèles, adresses d'envoi, cerveau de l'agent —
+  /* ── RÉGLAGES EMAILS : modèles, adresses d'envoi, cerveau de l'agent 
      un panneau, trois vues. Tout ce que le gérant peut posséder. ── */
   const pv2Settings = {
     open: false, view: 'templates', busy: false,
@@ -1566,13 +1566,13 @@
             <textarea rows="4" placeholder="${esc(brain.defaults.faq[intent]?.body || 'Réponse type…')}" oninput="pv2BrainField('faq', '${escJs(intent)}', this.value)">${esc(brain.draft.faq[intent] || '')}</textarea>
           </label>`).join('')}
           <div class="pv2-composer-actions pv2-composer-wide">
-            <button type="button" class="pv2-btn primary" onclick="pv2BrainSave()" ${pv2Settings.busy ? 'disabled' : ''}>${pv2Settings.busy ? 'Enregistrement…' : 'Enregistrer — l\'agent apprend'}</button>
+            <button type="button" class="pv2-btn primary" onclick="pv2BrainSave()" ${pv2Settings.busy ? 'disabled' : ''}>${pv2Settings.busy ? 'Enregistrement…' : 'Enregistrer, l\'agent apprend'}</button>
           </div>
         </div>`;
     }
     return `<section class="pv2-panel pv2-settings" aria-label="Réglages emails">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Réglages emails</h2><p class="pv2-panel-sub">Modèles, adresses d'envoi et cerveau de l'agent — tout t'appartient.</p></div>
+        <div><h2>Réglages emails</h2><p class="pv2-panel-sub">Modèles, adresses d'envoi et cerveau de l'agent, tout t'appartient.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2OpenSettings()">Fermer</button>
       </div>
       <div class="pv2-panel-body">
@@ -1585,13 +1585,13 @@
   /* ── Séquences automatiques : les emails qui partent tout seuls, pilotés
      ON/OFF depuis ici (contrat automationSettings). Le levier n°1 du secteur
      (anniversaire J-30) vit ici. ── */
-  // timing : bornes du contrat C2 — libellés FR compréhensibles en one-shot.
+  // timing : bornes du contrat C2, libellés FR compréhensibles en one-shot.
   const AUTOMATION_META = [
-    { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.', preview: 'Votre réservation est confirmée — date, heure, formule et infos pratiques.' },
-    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant — moins de no-show.', preview: 'Rappel de votre venue après-demain, avec l’heure d’arrivée conseillée.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
+    { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.', preview: 'Votre réservation est confirmée, date, heure, formule et infos pratiques.' },
+    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant, moins de no-show.', preview: 'Rappel de votre venue après-demain, avec l’heure d’arrivée conseillée.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
     { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', preview: 'Merci de votre visite ! Une prochaine fois ? Les créneaux de la semaine sont plus calmes.', timing: { options: [0, 1, 2, 3], label: (n) => (n === 0 ? 'Le jour même' : `${n} jour${n > 1 ? 's' : ''} après la visite`) } },
-    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année — relance toute seule au bon moment.', preview: 'L’anniversaire approche — on vous re-réserve la fête ? Gâteau et formule prêts.', star: true, timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
-    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', preview: 'Ça fait un moment — bowling, laser et arcades vous attendent. Venez en semaine, c’est plus calme.', star: true, cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
+    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.', preview: 'L’anniversaire approche, on vous re-réserve la fête ? Gâteau et formule prêts.', star: true, timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
+    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', preview: 'Ça fait un moment, bowling, laser et arcades vous attendent. Venez en semaine, c’est plus calme.', star: true, cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
   ];
   const mkAuto = { loaded: false, loading: false, error: '', settings: null, defaults: {}, stats: {}, busyKey: '', editKey: '', editDraft: {} };
 
@@ -1614,7 +1614,7 @@
   }
   window.loadStaffAutomations = loadStaffAutomations;
 
-  /* ── Édition d'une séquence : sujet, message, timing, cap — tout modifiable
+  /* ── Édition d'une séquence : sujet, message, timing, cap, tout modifiable
      (contrat C2), défauts visibles en placeholder, reset 1-clic. ── */
   window.pv2AutoEdit = function (key) {
     if (mkAuto.editKey === key) { mkAuto.editKey = ''; renderStaffEmailsPage(); return; }
@@ -1646,7 +1646,7 @@
     if (d.cap !== undefined && Number(d.cap) !== Number(def.cap)) body.cap = Number(d.cap);
     const currentReviewUrl = (mkAuto.settings && mkAuto.settings[key] && mkAuto.settings[key].reviewUrl) || '';
     if (key === 'post_visit' && String(d.reviewUrl || '').trim() !== currentReviewUrl) body.reviewUrl = String(d.reviewUrl || '').trim();
-    if (Object.keys(body).length === 3) { toast('Rien à enregistrer — tout est déjà au réglage par défaut.'); return; }
+    if (Object.keys(body).length === 3) { toast('Rien à enregistrer : tout est déjà au réglage par défaut.'); return; }
     mkAuto.busyKey = key;
     renderStaffEmailsPage();
     try {
@@ -1700,7 +1700,7 @@
         body: JSON.stringify({ action: 'automationSettings', key, enabled: !current, centerId: state.currentCenterId || 'libramont' }),
       });
       mkAuto.settings = payload.settings || mkAuto.settings;
-      toast(!current ? 'Séquence activée — elle tourne toute seule.' : 'Séquence désactivée.');
+      toast(!current ? 'Séquence activée : elle tourne toute seule.' : 'Séquence désactivée.');
     } catch (error) {
       toast(error.message || 'Impossible de changer la séquence.');
     } finally {
@@ -1731,10 +1731,10 @@
       ? `<p class="mk-auto-edit-vars">Variables : ${def.variables.map((v) => `<code>{{${esc(v)}}}</code>`).join(' ')}</p>`
       : '';
     // Merci post-visite : le mail peut pousser vers la fiche Google du centre
-    // (bouton tracké — les clics remontent dans le retour marketing).
+    // (bouton tracké : les clics remontent dans le retour marketing).
     const reviewField = meta.key === 'post_visit' ? `
       <label class="mk-auto-edit-field">
-        <span>Lien avis Google <small class="mk-auto-edit-hint">le mail ajoute un bouton « Laissez-nous un avis » — les clics sont comptés</small></span>
+        <span>Lien avis Google <small class="mk-auto-edit-hint">le mail ajoute un bouton « Laissez-nous un avis » : les clics sont comptés</small></span>
         <input value="${esc(d.reviewUrl || '')}" placeholder="https://g.page/r/…" oninput="pv2AutoEditField('reviewUrl', this.value)" aria-label="Lien de la fiche Google">
       </label>` : '';
     return `<div class="mk-auto-edit">
@@ -1787,7 +1787,7 @@
     const d = pv2Mail.draft;
     if (!pv2Mail.metaLoaded && !pv2Mail.metaLoading) setTimeout(() => loadPv2MailMeta(), 0);
     const identityOptions = pv2Mail.identities.length
-      ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(d.identityId) ? ' selected' : ''}>${esc(i.label || i.email)} — ${esc(i.email)}</option>`).join('')
+      ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(d.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
       : '<option value="">Expéditeur par défaut</option>';
     const templateOptions = [
       '<option value="">Partir de zéro…</option>',
@@ -1796,7 +1796,7 @@
     ].join('');
     return `<section class="pv2-panel pv2-composer" aria-label="Nouveau message">
       <div class="pv2-panel-head has-sub">
-        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisis le client (ou tape une adresse), l'expéditeur, un modèle si tu veux — et envoie.</p></div>
+        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisis le client (ou tape une adresse), l'expéditeur, un modèle si tu veux, et envoie.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2CloseComposer()">Fermer</button>
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
@@ -1865,8 +1865,8 @@
     return `
       <div class="pv2-panel-body pv2-mail-detail">
         <div class="pv2-kv">
-          <div><dt>De</dt><dd>${esc(row.payload?.from || row.recipient || '—')}</dd></div>
-          <div><dt>Reçu</dt><dd>${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '—')}</dd></div>
+          <div><dt>De</dt><dd>${esc(row.payload?.from || row.recipient || '-')}</dd></div>
+          <div><dt>Reçu</dt><dd>${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '-')}</dd></div>
           ${replied ? '<div><dt>Statut</dt><dd>Répondu</dd></div>' : ''}
         </div>
         <div>
@@ -1906,7 +1906,7 @@
     if (!root) return;
     if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
     if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
-    // C14 : ops-console.js est injecté à la demande — requestOpsAdminLoad
+    // C14 : ops-console.js est injecté à la demande, requestOpsAdminLoad
     // (app-main) charge le script puis déclenche loadOpsAdmin.
     if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
     const everyRow = getStaffEmailRows();
@@ -1948,18 +1948,18 @@
         const replied = !!(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt));
         const intentLabel = analysis ? (analysis.intentLabel || PV2_INTENT_LABELS[analysis.intent] || analysis.intent) : '';
         return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
-          <td><strong>${esc(analysis?.clientName || row.payload?.from || row.recipient || '—')}</strong><small class="pv2-cell-sub">${esc(row.subject || '')}</small></td>
+          <td><strong>${esc(analysis?.clientName || row.payload?.from || row.recipient || '-')}</strong><small class="pv2-cell-sub">${esc(row.subject || '')}</small></td>
           <td>${analysis ? `<span class="pv2-inbox-intent">${esc(intentLabel)}</span>${analysis.urgency === 'haute' ? ' <span class="pv2-inbox-urgent">Urgent</span>' : ''}<small class="pv2-cell-sub">${esc(analysis.summary || '')}</small>` : '<span class="pv2-chip">À analyser</span>'}</td>
           <td>${replied ? '<span class="pv2-chip green">Répondu</span>' : '<span class="pv2-chip blue">À répondre</span>'}</td>
-          <td class="num">${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '—')}</td>
+          <td class="num">${esc(formatOpsTimestamp(row.receivedAt || row.createdAt || row.scheduledAt) || '-')}</td>
         </tr>`;
       }
       const meta = KIND_META[row.statusKind] || KIND_META.draft;
       return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
-        <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '—')}</small></td>
-        <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '—')}</span></td>
+        <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '-')}</small></td>
+        <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '-')}</span></td>
         <td><span class="pv2-chip ${meta.tone}">${meta.label}</span></td>
-        <td class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '—')}</td>
+        <td class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '-')}</td>
       </tr>`;
     }).join('');
 
@@ -1971,11 +1971,11 @@
         : `
       <div class="pv2-panel-body pv2-mail-detail">
         <div class="pv2-kv">
-          <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '—')}</dd></div>
-          <div><dt>Modèle</dt><dd>${esc(selected.templateLabel || selected.templateId || '—')}</dd></div>
+          <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '-')}</dd></div>
+          <div><dt>Modèle</dt><dd>${esc(selected.templateLabel || selected.templateId || '-')}</dd></div>
           <div><dt>Canal</dt><dd>${esc(selected.channel || 'email')}</dd></div>
-          <div><dt>Statut</dt><dd>${esc((KIND_META[selected.statusKind] || {}).label || selected.status || '—')}</dd></div>
-          <div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt) || '—')}</dd></div>
+          <div><dt>Statut</dt><dd>${esc((KIND_META[selected.statusKind] || {}).label || selected.status || '-')}</dd></div>
+          <div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt) || '-')}</dd></div>
           ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
           ${selected.attempts ? `<div><dt>Tentatives</dt><dd>${Number(selected.attempts)}</dd></div>` : ''}
         </div>
@@ -2007,7 +2007,7 @@
 
       <section class="pv2-panel mk-auto-panel">
         <div class="pv2-panel-head has-sub">
-          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Active, coupe, personnalise — ou crée les tiennes de A à Z.</p></div>
+          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Active, coupe, personnalise, ou crée les tiennes de A à Z.</p></div>
           <div class="pv2-panel-head-actions">
             ${mkAuto.error ? `<button type="button" class="pv2-btn" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
             <button type="button" class="pv2-btn" onclick="pv2SeqNew()">+ Créer une séquence</button>
@@ -2036,7 +2036,7 @@
         <article class="pv2-panel pv2-mail-list">
           <table class="pv2-table">
             ${tableHead}
-            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Colle un mail via « Analyser un reçu » — l\'agent prépare la réponse.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
+            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Colle un mail via « Analyser un reçu », l\'agent prépare la réponse.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">
@@ -2051,7 +2051,7 @@
   };
 
   /* ==========================================================================
-     CAMPAGNES — parcours gamifié « agence marketing » (style Duolingo)
+     CAMPAGNES : parcours gamifié « agence marketing » (style Duolingo)
      Consomme le moteur marketing-agents (brand / strategy / missions / drafts /
      summary / agents) exposé PAR CENTRE via staffMarketingAgentsCache.status.
      Aucune donnée inventée : tout vient du collecteur backend.
@@ -2111,13 +2111,13 @@
   const channelLabel = (p) => CHANNEL_LABELS[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Canal');
 
   /* ==========================================================================
-     MARKETING — le conseiller data (insight-only : il propose, tu appliques,
+     MARKETING : le conseiller data (insight-only : il propose, tu appliques,
      il mesure). Les idées viennent du serveur (marketing_insights, générées
      chaque matin par le cron sur les chiffres réels + météo + calendrier).
      ======================================================================== */
 
   /* ==========================================================================
-     MARKETING — « LE BRIEF » (refonte 2026-07-17)
+     MARKETING : « LE BRIEF » (refonte 2026-07-17)
      Le mémo quotidien de l'employé marketing : la paie (euros liés aux
      publications), le brief signé, le radar 14 jours, la file unique de
      Propositions, les reçus (mesures J+14), la veille en footer.
@@ -2174,7 +2174,7 @@
 
   // Motif prose-preuve : les nombres (et leurs unités) passent en mono dans
   // toute phrase de l'employé. Les nombres sont MARQUÉS (sentinelles
-  // \uE000/\uE001, zone privée Unicode) AVANT l'échappement — sinon la regex
+  // \uE000/\uE001, zone privée Unicode) AVANT l'échappement, sinon la regex
   // matchait les chiffres des entités HTML produites par esc()
   // (« &#39; » devenait « &#<strong>39</strong>; », bug du premier rendu).
   function brProse(text) {
@@ -2200,11 +2200,11 @@
     const p = b.paie;
     let payHtml;
     if (p.young) {
-      payHtml = `<p class="br-pay">Encore trop tôt pour un chiffre honnête — premier bilan le ${esc(p.firstVerdictDate)}.</p>`;
+      payHtml = `<p class="br-pay">Encore trop tôt pour un chiffre honnête : premier bilan le ${esc(p.firstVerdictDate)}.</p>`;
     } else if (p.euros > 0) {
       payHtml = `<p class="br-pay">Tes publications sont liées à <span class="br-pay-num is-good">+${money(p.euros)}</span> de réservations ces ${p.days} derniers jours.</p>`;
     } else {
-      payHtml = `<p class="br-pay">Tes <span class="br-pay-num">${p.sent}</span> messages sont partis — aucune réservation ne leur est encore liée sur ${p.days} jours.</p>`;
+      payHtml = `<p class="br-pay">Tes <span class="br-pay-num">${p.sent}</span> messages sont partis : aucune réservation ne leur est encore liée sur ${p.days} jours.</p>`;
     }
     const periods = [7, 30, 90].map((days) => `<button type="button" class="br-toggle ${mkBrief.period === days ? 'active' : ''}" onclick="mkBrPeriod(${days})">${days} j</button>`).join('<span class="br-dot">·</span>');
     const sources = (p.sources || []).map((source) => {
@@ -2222,14 +2222,14 @@
       <div class="br-pay-controls">${periods}${p.young ? '' : `<button type="button" class="br-link" onclick="mkBrPayDetail()">${mkBrief.payOpen ? 'Masquer le détail' : 'Voir le détail'}</button>`}</div>
       ${detail}
       <div class="br-memo">
-        ${b.brief.degraded ? '<p class="br-degraded">Je tourne en mode simple ce matin — les chiffres sont exacts, les phrases moins polies.</p>' : ''}
+        ${b.brief.degraded ? '<p class="br-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
         <p class="br-memo-text">${brProse(b.brief.text)}</p>
-        <p class="br-sign">— ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}, ${esc(new Date(b.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }))}</p>
+        <p class="br-sign"> ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}, ${esc(new Date(b.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }))}</p>
       </div>
     </section>`;
   }
 
-  /* ── Le pouls business (KPIs réels du centre) — la page n'est jamais vide,
+  /* ── Le pouls business (KPIs réels du centre) : la page n'est jamais vide,
      elle montre l'activité concrète : CA, visiteurs, réservations à venir. ── */
   function brPulse() {
     const b = mkBrief.data;
@@ -2252,7 +2252,7 @@
   window.mkBrPeriod = async function (days) {
     mkBrief.period = Number(days) || 30;
     renderStaffCampaignsPage();
-    // Refetch de la paie seule (léger) — le reste du mémo ne dépend pas de la période.
+    // Refetch de la paie seule (léger) : le reste du mémo ne dépend pas de la période.
     try {
       const roi = await apiRequest(`/api/ops?action=marketingRoi&days=${encodeURIComponent(mkBrief.period)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
       if (mkBrief.data) {
@@ -2288,7 +2288,7 @@
     const b = mkBrief.data;
     if (!b) return `<section class="br-z"><h2 class="br-zt">Les 14 prochains jours</h2><div class="br-radar br-radar-skel">${'<span class="br-cell br-cell-skel"></span>'.repeat(14)}</div></section>`;
     if (!b.radar || !b.radar.length) {
-      return `<section class="br-z"><h2 class="br-zt">Les 14 prochains jours</h2><p class="br-quiet">Je n'ai pas de prévision fiable aujourd'hui — je réessaie cette nuit.</p></section>`;
+      return `<section class="br-z"><h2 class="br-zt">Les 14 prochains jours</h2><p class="br-quiet">Je n'ai pas de prévision fiable aujourd'hui : je réessaie cette nuit.</p></section>`;
     }
     const cells = b.radar.map((day) => {
       const isToday = day.date === b.today;
@@ -2355,9 +2355,9 @@
         body: JSON.stringify({ action: 'propositionCreate', centerId: state.currentCenterId || 'libramont', targetDate: date, trigger: 'creux', brief: '' }),
       });
       await loadMarketingBrief(true);
-      toast('C\'est prêt — regarde plus bas.');
+      toast('C\'est prêt : regarde plus bas.');
     } catch (error) {
-      toast(error.message || 'Je n\'ai pas réussi — réessaie.');
+      toast(error.message || 'Je n\'ai pas réussi : réessaie.');
     } finally {
       mkBrief.busy = '';
       scheduleCampaignsRender();
@@ -2375,7 +2375,7 @@
   function brCard(p) {
     const published = mkBrief.published[p.key];
     if (published) {
-      return `<article class="br-card is-published" data-br-card="${esc(p.key)}"><p class="br-published-line">Publié ✓ — je mesure pendant 14 jours.</p></article>`;
+      return `<article class="br-card is-published" data-br-card="${esc(p.key)}"><p class="br-published-line">Publié ✓ : je mesure pendant 14 jours.</p></article>`;
     }
     const open = mkBrief.openCard === p.key;
     const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
@@ -2402,7 +2402,7 @@
         ? `<div class="br-paper br-paper-shimmer"><p class="br-quiet">je l'adapte pour ${BR_NETWORK_LABELS[current] || current}…</p></div>`
         : (entry && entry.text
           ? `<div class="br-paper">${esc(entry.text)}</div>`
-          : `<div class="br-paper"><p class="br-quiet">Le texte arrive — réessaie dans un instant. <button type="button" class="br-link" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(current)}', true)">Réessayer</button></p></div>`);
+          : `<div class="br-paper"><p class="br-quiet">Le texte arrive, réessaie dans un instant. <button type="button" class="br-link" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(current)}', true)">Réessayer</button></p></div>`);
       const photoIdea = (entry && entry.photoIdea) || p.photoIdea;
       const bestSlot = (entry && entry.bestSlot) || p.bestSlot;
       const imagePrompt = (entry && entry.imagePrompt) || p.imagePrompt;
@@ -2426,7 +2426,7 @@
     }
     return `<article class="br-card tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
       <p class="br-card-why">${brProse(p.whyShort || p.why)}</p>
-      <p class="br-card-meta">${esc(meta)}${open ? '' : ` — <button type="button" class="br-link" onclick="mkBrOpenCard('${escJs(p.key)}')">${verb}</button>`}</p>
+      <p class="br-card-meta">${esc(meta)}${open ? '' : `, <button type="button" class="br-link" onclick="mkBrOpenCard('${escJs(p.key)}')">${verb}</button>`}</p>
       ${body}
     </article>`;
   }
@@ -2448,10 +2448,10 @@
     return `<section class="br-z">
       <h2 class="br-zt">Prêt pour toi</h2>
       ${creating ? '<article class="br-card br-card-skel"><div class="br-skel"></div><div class="br-skel br-skel-short"></div></article>' : ''}
-      ${visible.length || creating ? visible.map(brCard).join('') : `<p class="br-quiet">Rien d'urgent aujourd'hui. Je surveille la météo et tes réservations — je te préviens dès que je vois un creux.</p>`}
+      ${visible.length || creating ? visible.map(brCard).join('') : `<p class="br-quiet">Rien d'urgent aujourd'hui. Je surveille la météo et tes réservations, je te préviens dès que je vois un creux.</p>`}
       ${rest > 0 ? `<button type="button" class="br-link" onclick="mkBrMore()">+ ${rest} autre${rest > 1 ? 's' : ''} pour plus tard</button>` : ''}
       <div class="br-ask">
-        <input id="brAskInput" class="br-ask-input" placeholder="Demande-moi quelque chose — « un post pour la soirée fluo de samedi »" onfocus="mkBrAskFocus(true)">
+        <input id="brAskInput" class="br-ask-input" placeholder="Demande-moi quelque chose : « un post pour la soirée fluo de samedi »" onfocus="mkBrAskFocus(true)">
         <button type="button" class="pv2-btn primary" onclick="mkBrAsk()" ${creating ? 'disabled' : ''}>${creating ? 'je prépare…' : 'Demander'}</button>
       </div>
       ${mkBrief.askFocus ? `<div class="br-chips">${chips.map((chip) => `<button type="button" class="br-chip" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>` : ''}
@@ -2497,7 +2497,7 @@
       p.id = payload.result.id;
       p.networks = { ...(p.networks || {}), [network]: payload.result.entry };
     } catch (error) {
-      toast(error.message || 'Le texte n\'est pas venu — réessaie.');
+      toast(error.message || 'Le texte n\'est pas venu : réessaie.');
     } finally {
       mkBrief.busy = '';
       scheduleCampaignsRender();
@@ -2513,7 +2513,7 @@
     try {
       await navigator.clipboard.writeText(entry.text);
     } catch (error) {
-      toast('Copie auto impossible — sélectionne le texte à la main.');
+      toast('Copie auto impossible : sélectionne le texte à la main.');
       return;
     }
     mkBrief.publishedAsk = key;
@@ -2538,7 +2538,7 @@
     }
     // Garde anti-double-clic : une seule requête de publication par carte, même
     // si le gérant tape « Oui » deux fois (le serveur a sa garde status, mais on
-    // évite d'insérer deux lignes via ensurePersisted — mitigation finding 5).
+    // évite d'insérer deux lignes via ensurePersisted : mitigation finding 5).
     if (mkBrief.published[key] || mkBrief.busy === `pub:${key}`) { renderStaffCampaignsPage(); return; }
     const p = brVisiblePropositions().find((item) => item.key === key);
     if (!p) return;
@@ -2550,7 +2550,7 @@
         method: 'POST',
         body: JSON.stringify({ action: 'propositionAction', propAction: 'publiee', centerId: state.currentCenterId || 'libramont', ...brPropPayload(p) }),
       });
-      toast('Noté — verdict dans 14 jours.');
+      toast('Noté : verdict dans 14 jours.');
     } catch (error) {
       // 409 = déjà traitée (double-clic gagné par la 1re requête) → la carte
       // reste publiée. Toute autre erreur → on rétablit pour réessayer.
@@ -2629,9 +2629,9 @@
         body: JSON.stringify({ action: 'propositionCreate', brief, centerId: state.currentCenterId || 'libramont' }),
       });
       await loadMarketingBrief(true);
-      toast('C\'est prêt — première carte de la file.');
+      toast('C\'est prêt : première carte de la file.');
     } catch (error) {
-      toast(error.message || 'Je n\'ai pas réussi — réessaie.');
+      toast(error.message || 'Je n\'ai pas réussi : réessaie.');
     } finally {
       mkBrief.busy = '';
       scheduleCampaignsRender();
@@ -2651,9 +2651,9 @@
     };
     let body;
     if (mkBrief.studioBusy) {
-      body = '<div class="br-paper br-paper-shimmer"><p class="br-quiet">j’écris tout le pack — version longue, courte, story, idée photo…</p></div>';
+      body = '<div class="br-paper br-paper-shimmer"><p class="br-quiet">j’écris tout le pack : version longue, courte, story, idée photo…</p></div>';
     } else if (!pack) {
-      body = '<p class="br-quiet">Choisis un réseau et je te prépare un pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags — écrit sur l’angle du jour.</p>';
+      body = '<p class="br-quiet">Choisis un réseau et je te prépare un pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags, écrit sur l’angle du jour.</p>';
     } else {
       const q = pack.quality || {};
       body = `${q.score ? `<p class="br-st-badge">${q.status === 'ready' ? 'Prêt à publier' : 'À relire'} · angle : ${esc(pack.theme || '')}</p>` : ''}
@@ -2662,11 +2662,11 @@
         ${block(mkBrief.studioChannel === 'linkedin' ? 'Variante' : 'Story', 'story', pack.story)}
         ${block('Hashtags', 'hashtags', (pack.hashtags || []).join(' '))}
         ${block('Idée photo (à shooter sur place)', 'photoIdea', pack.photoIdea)}
-        ${block('Prompt d’image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais — pour ton générateur d’images' })}
-        <p class="br-method">Meilleur moment : ${esc(pack.bestTime || '—')}. Chaque version est notée par le contrôle qualité du centre — je réécris jusqu’à ce que ça passe.</p>`;
+        ${block('Prompt d’image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais, pour ton générateur d’images' })}
+        <p class="br-method">Meilleur moment : ${esc(pack.bestTime || '-')}. Chaque version est notée par le contrôle qualité du centre, je réécris jusqu’à ce que ça passe.</p>`;
     }
     return `<section class="br-z">
-      <h2 class="br-zt">Le studio — écris pour chaque réseau</h2>
+      <h2 class="br-zt">Le studio : écris pour chaque réseau</h2>
       <div class="br-st-bar">
         <div class="br-nets">${tabs}</div>
         <div class="br-st-gen">
@@ -2723,7 +2723,7 @@
     </div>`).join('');
     return `<section class="br-z">
       <h2 class="br-zt">Ce que ça a donné</h2>
-      ${rows || '<p class="br-quiet">Je mesure chaque publication pendant 14 jours — les premiers verdicts arrivent ici.</p>'}
+      ${rows || '<p class="br-quiet">Je mesure chaque publication pendant 14 jours : les premiers verdicts arrivent ici.</p>'}
       ${receipts.length > 5 && !mkBrief.receiptsAll ? `<button type="button" class="br-link" onclick="mkBrReceiptsAll()">Tout voir (${receipts.length})</button>` : ''}
     </section>`;
   }
@@ -2739,7 +2739,7 @@
         body: JSON.stringify({ action: 'insightRedo', id: Number(id), centerId: state.currentCenterId || 'libramont' }),
       });
       await loadMarketingBrief(true);
-      toast('Je l\'ai remis dans la file — première position.');
+      toast('Je l\'ai remis dans la file : première position.');
     } catch (error) {
       toast(error.message || 'Impossible de le relancer.');
     }
@@ -2771,17 +2771,17 @@
       try { host = competitor.websiteUrl ? new URL(competitor.websiteUrl).hostname.replace(/^www\./, '') : ''; } catch (error) { host = ''; }
       return `<div class="br-veille-row">
         <span class="br-veille-name">${esc(competitor.name)}${host ? ` <em>${esc(host)}</em>` : ''}</span>
-        <span class="br-veille-status">${competitor.lastCheckedAt ? `inspecté le ${esc(String(competitor.lastCheckedAt).slice(0, 10)).slice(8, 10)}/${esc(String(competitor.lastCheckedAt).slice(5, 7))}${competitor.lastDiff ? ` — ${esc(competitor.lastDiff)}` : ''}` : 'première inspection cette nuit'}</span>
+        <span class="br-veille-status">${competitor.lastCheckedAt ? `inspecté le ${esc(String(competitor.lastCheckedAt).slice(0, 10)).slice(8, 10)}/${esc(String(competitor.lastCheckedAt).slice(5, 7))}${competitor.lastDiff ? `, ${esc(competitor.lastDiff)}` : ''}` : 'première inspection cette nuit'}</span>
         <button type="button" class="br-link br-link-faint" onclick="mkCompDelete(${Number(competitor.id)})">Retirer</button>
       </div>`;
     }).join('');
     return `<details class="br-veille" data-mk-open="veille" ${hasNews ? 'open' : ''} ontoggle="if (this.open && typeof loadCompetitors === 'function') loadCompetitors()">
       <summary>Je surveille ${count} concurrent${count > 1 ? 's' : ''}${hasNews ? '<span class="br-veille-dot" aria-hidden="true"></span>' : ''}</summary>
       <div class="br-veille-body">
-        ${rows || (mkComp.loading ? '<p class="br-quiet">un instant…</p>' : '<p class="br-quiet">Ajoute les centres qui te prennent des clients — j\'inspecte leurs sites chaque nuit.</p>')}
+        ${rows || (mkComp.loading ? '<p class="br-quiet">un instant…</p>' : '<p class="br-quiet">Ajoute les centres qui te prennent des clients, j\'inspecte leurs sites chaque nuit.</p>')}
         <div class="br-veille-add">
           <input id="brCompName" class="br-ask-input" placeholder="Nom (ex. Bowling de Bastogne)" maxlength="80">
-          <input id="brCompSite" class="br-ask-input" placeholder="Site — https://…" maxlength="300">
+          <input id="brCompSite" class="br-ask-input" placeholder="Site : https://…" maxlength="300">
           <button type="button" class="br-link br-link-accent" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>Suivre</button>
         </div>
       </div>
@@ -2800,7 +2800,7 @@
         method: 'POST',
         body: JSON.stringify({ action: 'competitorSave', centerId: state.currentCenterId || 'libramont', competitor: { name, websiteUrl } }),
       });
-      toast('Je le surveille — première inspection cette nuit.');
+      toast('Je le surveille : première inspection cette nuit.');
       mkComp.data = null;
     } catch (error) {
       toast(error.message || 'Ajout impossible.');
@@ -2937,7 +2937,7 @@
       if (payload.mode === 'ia' && payload.subject && payload.body) {
         pv2Camp.form.subject = payload.subject;
         pv2Camp.form.body = payload.body;
-        if (typeof toast === 'function') toast('Contenu réécrit par l\'IA — relis avant envoi.');
+        if (typeof toast === 'function') toast('Contenu réécrit par l\'IA : relis avant envoi.');
       } else if (typeof toast === 'function') {
         toast(`Conseils : ${(payload.tips || []).slice(0, 2).join(' · ')}`);
       }
@@ -2959,7 +2959,7 @@
     const count = pv2Camp.audience[form.segment]?.count;
     // Jamais d'envoi sans volume connu : le serveur revalide ce nombre (409 si décalage).
     if (mode !== 'draft' && !Number.isInteger(count)) {
-      if (typeof toast === 'function') toast("Audience en cours de calcul — attends le nombre de destinataires avant d'envoyer.");
+      if (typeof toast === 'function') toast("Audience en cours de calcul : attends le nombre de destinataires avant d'envoyer.");
       return;
     }
     if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${count} destinataire(s) du segment sélectionné ?`)) return;
@@ -3105,9 +3105,9 @@
       const audience = pv2Camp.audience[f.segment];
       const audienceLabel = pv2Camp.audienceLoading === f.segment
         ? 'calcul…'
-        : audience ? `${audience.count} destinataire(s)${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '—';
+        : audience ? `${audience.count} destinataire(s)${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '-';
       return `<div class="ms-viewer"><div class="ms-form">
-        ${pv2Camp.editingId ? '<div class="ms-form-note">Édition du brouillon — enregistre tes modifications, ou envoie-le directement.</div>' : ''}
+        ${pv2Camp.editingId ? '<div class="ms-form-note">Édition du brouillon : enregistre tes modifications, ou envoie-le directement.</div>' : ''}
         <div class="ms-grid-2">
           <label class="ms-field"><span>Nom de la campagne *</span><input type="text" class="ms-input" value="${esc(f.name)}" oninput="pv2Camp.form.name = this.value"></label>
           <label class="ms-field"><span>Objectif</span><input type="text" class="ms-input" placeholder="Ex : remplir les mardis soirs" value="${esc(f.objective)}" oninput="pv2Camp.form.objective = this.value"></label>
@@ -3141,9 +3141,9 @@
 
     return `<section class="pv2-panel">
       <div class="pv2-panel-head">
-        <h2>Campagnes email — ciblage réel</h2>
+        <h2>Campagnes email : ciblage réel</h2>
         <div style="display:flex;gap:8px;align-items:center">
-          ${pv2Camp.channel && pv2Camp.channel.resendConfigured === false ? '<small style="color:var(--warning)">canal d\'envoi à configurer — les envois restent en file</small>' : ''}
+          ${pv2Camp.channel && pv2Camp.channel.resendConfigured === false ? '<small style="color:var(--warning)">canal d\'envoi à configurer, les envois restent en file</small>' : ''}
           <button type="button" class="pv2-btn" onclick="loadPv2Campaigns(true)">Actualiser</button>
           <button type="button" class="pv2-btn primary" onclick="pv2CampOpenForm()">+ Nouvelle campagne</button>
         </div>
@@ -3157,7 +3157,7 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════════
-     MARKETING — 5 surfaces (refonte 2026-07-16 « machine de guerre »)
+     MARKETING : 5 surfaces (refonte 2026-07-16 « machine de guerre »)
      Aujourd'hui · Ce qui marche · Studio · Concurrents · Résultats.
      Même contrat de données (marketingBrief), mêmes handlers d'action ;
      on recatégorise et on élève le craft. Les nouvelles surfaces
@@ -3182,7 +3182,7 @@
     if (surf && !reducedMotion) { surf.classList.remove('mkw-in'); void surf.offsetWidth; surf.classList.add('mkw-in'); }
   };
 
-  // Le mark de l'agent — une identité, pas juste du texte gris (SVG inline,
+  // Le mark de l'agent : une identité, pas juste du texte gris (SVG inline,
   // couleur accent, respire « présent »).
   function mkwAgentMark() {
     return `<span class="mkw-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z"/></svg></span>`;
@@ -3219,11 +3219,11 @@
     const periods = [7, 30, 90].map((d) => `<button type="button" class="mkw-seg-btn ${mkBrief.period === d ? 'active' : ''}" onclick="mkBrPeriod(${d})">${d} j</button>`).join('');
     let fig;
     if (p.young) {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">—</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">-</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
     } else if (p.euros > 0) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">générés par tes publications · <strong>${p.days} derniers jours</strong></span></div>`;
     } else {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis — aucune venue ne leur est encore liée sur ${p.days} j</span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune venue ne leur est encore liée sur ${p.days} j</span></div>`;
     }
     const chips = !p.young ? `<div class="mkw-hero-chips">
       <span class="mkw-hchip"><b>${p.venues}</b> venues liées</span>
@@ -3252,7 +3252,7 @@
     }).join('');
     return `<div class="mkw-src-panel">
       ${rows || '<p class="mkw-quiet">Pas encore de venue attribuée sur la période.</p>'}
-      <p class="mkw-method">Une venue compte pour le dernier message qu’elle a vu dans les 60 jours — c’est un lien, pas une preuve absolue.</p>
+      <p class="mkw-method">Une venue compte pour le dernier message qu’elle a vu dans les 60 jours : c’est un lien, pas une preuve absolue.</p>
     </div>`;
   }
 
@@ -3261,7 +3261,7 @@
     const b = mkBrief.data;
     if (!b) return `<section class="mkw-card mkw-memo"><div class="mkw-skel"></div><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
     return `<section class="mkw-card mkw-memo">
-      ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin — les chiffres sont exacts, les phrases moins polies.</p>' : ''}
+      ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
       <p class="mkw-memo-text">${brProse(b.brief.text)}</p>
       <p class="mkw-sign">${mkwAgentMark()} ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
     </section>`;
@@ -3292,17 +3292,17 @@
     if (!b) return `<section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
     const f = b.facts;
     const young = !f || (f.dataDays || b.dataDays || 0) < 90;
-    // Verdicts « jour / mois / météo » — chacun avec le POURQUOI + la confiance.
+    // Verdicts « jour / mois / météo » : chacun avec le POURQUOI + la confiance.
     const verdicts = [];
     if (f && f.bestDay) {
       verdicts.push(mkwVerdict('Ton meilleur jour', `${cap(f.bestDay.label)}`, `+${f.bestDay.vsMedianPct}% de monde qu’un jour normal · ${f.bestDay.avgVisitors} visiteurs en moyenne`, f.bestDay.confidence, 'calendar'));
     }
     if (f && f.worstDay) {
-      verdicts.push(mkwVerdict('Ton jour le plus creux', `${cap(f.worstDay.label)}`, `${Math.abs(f.worstDay.vsMedianPct)}% de monde en moins qu’un jour normal — la cible n°1 à remplir`, f.worstDay.confidence, 'target', 'danger'));
+      verdicts.push(mkwVerdict('Ton jour le plus creux', `${cap(f.worstDay.label)}`, `${Math.abs(f.worstDay.vsMedianPct)}% de monde en moins qu’un jour normal, la cible n°1 à remplir`, f.worstDay.confidence, 'target', 'danger'));
     }
     if (f && f.bestMonth) {
       const why = (f.bestMonth.whyDrivers || []).join(', ');
-      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `${f.bestMonth.vsAvgPct >= 0 ? '+' : ''}${f.bestMonth.vsAvgPct}% vs la moyenne${why ? ` — pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
+      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `${f.bestMonth.vsAvgPct >= 0 ? '+' : ''}${f.bestMonth.vsAvgPct}% vs la moyenne${why ? `, pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
     }
     if (f && f.weather) {
       const w = f.weather;
@@ -3312,7 +3312,7 @@
     if (f && typeof f.holidayEffectPct === 'number') {
       verdicts.push(mkwVerdict('Effet des vacances scolaires', `+${f.holidayEffectPct}%`, 'de fréquentation pendant les congés FWB', 'solide', 'star'));
     }
-    // La mémoire par contexte — ce qui convertit, appris sur tes propres mesures.
+    // La mémoire par contexte : ce qui convertit, appris sur tes propres mesures.
     const patterns = (b.patterns || []).slice().sort((a, c) => (c.netDeltaPct || -999) - (a.netDeltaPct || -999));
     const patternRows = patterns.map((p) => {
       const d = p.netDeltaPct === null || p.netDeltaPct === undefined
@@ -3329,7 +3329,7 @@
       <div class="mkw-verdicts">${verdicts.join('') || '<p class="mkw-quiet">Je n’ai pas encore assez de recul pour trancher. Laisse-moi quelques semaines.</p>'}</div>
       <div class="mkw-card mkw-patterns">
         <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">effet net mesuré vs. journée comparable</span></div>
-        ${patternRows || '<p class="mkw-quiet">Publie et laisse-moi mesurer — les patterns gagnants s’afficheront ici.</p>'}
+        ${patternRows || '<p class="mkw-quiet">Publie et laisse-moi mesurer : les patterns gagnants s’afficheront ici.</p>'}
         <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
       </div>
     </section>`;
@@ -3357,7 +3357,7 @@
     </section>`;
   }
 
-  // Deep-link public vers la Meta Ad Library — les pubs ACTIVES de l'annonceur
+  // Deep-link public vers la Meta Ad Library : les pubs ACTIVES de l'annonceur
   // (outil de transparence, consulté par un humain qui clique ; aucun scraping).
   function mkwAdLibraryUrl(name) {
     const q = encodeURIComponent(String(name || '').trim());
@@ -3387,11 +3387,11 @@
       <div class="mkw-card">
         <div class="mkw-block-head"><h3>Les centres que je surveille</h3><span class="mkw-block-sub">j’inspecte leurs sites chaque nuit</span></div>
         <div class="mkw-riv-grid">
-          ${rows || (mkComp.loading ? '<p class="mkw-quiet">un instant…</p>' : '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients — j’inspecte leurs sites, leurs offres et leur note Google.</p>')}
+          ${rows || (mkComp.loading ? '<p class="mkw-quiet">un instant…</p>' : '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients, j’inspecte leurs sites, leurs offres et leur note Google.</p>')}
         </div>
         <div class="mkw-riv-add">
           <input id="brCompName" class="mkw-input" placeholder="Nom (ex. Bowling de Bastogne)" maxlength="80">
-          <input id="brCompSite" class="mkw-input" placeholder="Site — https://…" maxlength="300">
+          <input id="brCompSite" class="mkw-input" placeholder="Site : https://…" maxlength="300">
           <button type="button" class="pv2-btn primary" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>${mkComp.busy ? '…' : 'Suivre'}</button>
         </div>
       </div>
@@ -3400,7 +3400,7 @@
         <textarea id="brCompPost" class="mkw-textarea" placeholder="Colle ici le texte d’un post ou d’une offre d’un concurrent que tu as vu (Facebook, Instagram, leur site…)"></textarea>
         <div class="mkw-riv-analyze">
           <button type="button" class="pv2-btn primary" onclick="mkCompAnalyze()" ${mkComp.postBusy ? 'disabled' : ''}>${mkComp.postBusy ? 'j’analyse…' : 'Analyser'}</button>
-          <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà — je le transforme en angle.</span>
+          <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà : je le transforme en angle.</span>
         </div>
         ${mkCompPostResult()}
         <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque nuit, et j’affiche leur note Google (dès qu’une clé Google Places est configurée).</p>
@@ -3425,7 +3425,7 @@
   window.mkCompAnalyze = async function () {
     if (mkComp.postBusy) return;
     const text = (document.getElementById('brCompPost') || {}).value || '';
-    if (text.trim().length < 15) { toast('Colle le texte du post — au moins une phrase.'); return; }
+    if (text.trim().length < 15) { toast('Colle le texte du post : au moins une phrase.'); return; }
     mkComp.postBusy = true;
     mkComp.postResult = null;
     renderStaffCampaignsPage();
@@ -3436,7 +3436,7 @@
       });
       mkComp.postResult = result;
     } catch (error) {
-      toast(error.message || 'Je n’ai pas réussi à analyser — réessaie.');
+      toast(error.message || 'Je n’ai pas réussi à analyser : réessaie.');
     } finally {
       mkComp.postBusy = false;
       scheduleCampaignsRender();
@@ -3467,7 +3467,7 @@
   };
 
   /* ==========================================================================
-     TARIFS — catalog grid
+     TARIFS : catalog grid
      ======================================================================== */
 
   window.pv2SelectPricing = function (id) {
@@ -3505,7 +3505,7 @@
         <span><strong>${Number(row.count) || 0}</strong> résa</span>
         <span><strong>${Number(row.players) || 0}</strong> joueurs</span>
         <span><strong>${money(row.revenue)}</strong></span>
-        <span><strong>${Number(row.count) ? money(Number(row.revenue || 0) / Number(row.count)) : '—'}</strong> panier</span>
+        <span><strong>${Number(row.count) ? money(Number(row.revenue || 0) / Number(row.count)) : '-'}</strong> panier</span>
       </div>
     </article>`).join('');
 
@@ -3548,7 +3548,7 @@
   };
 
   /* ==========================================================================
-     GROUPES & ANNIVERSAIRES — chrome V2 (P1-6)
+     GROUPES & ANNIVERSAIRES : chrome V2 (P1-6)
      Dernière page « Clients & marketing » restée en chrome V1 : on remplace le
      header utilitaire 4 lignes par la barre pv2 + stats, en gardant TOUT le
      moteur data existant (renderStaffGroupWorkspaceV2 d'app-main.js : demandes
@@ -3565,7 +3565,7 @@
       if (typeof legacyRenderStaffUtilityPage === 'function') legacyRenderStaffUtilityPage.apply(this, args);
       return;
     }
-    // Fusion Clients+Groupes : « groups » n'est plus une page — accès historique
+    // Fusion Clients+Groupes : « groups » n'est plus une page, accès historique
     // (hash, état sauvegardé) → on bascule vers Clients, segment « À venir ».
     state.staffMenuPage = 'clients';
     state.staffClientSegment = 'avenir';
@@ -3574,7 +3574,7 @@
   };
 
   /* ==========================================================================
-     COMMAND PALETTE — Ctrl/Cmd+K
+     COMMAND PALETTE : Ctrl/Cmd+K
      ======================================================================== */
 
   const PALETTE_PAGES = [
@@ -3615,7 +3615,7 @@
           .slice(0, 5)
           .forEach((row) => items.push({
             section: 'Clients',
-            icon: (row.initials || '–').slice(0, 2),
+            icon: (row.initials || '-').slice(0, 2),
             label: row.name || 'Client',
             hint: row.phone || row.email || '',
             run: () => { openStaffMenuPage('clients'); if (typeof selectStaffClient === 'function') selectStaffClient(row.id); },

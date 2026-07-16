@@ -1,6 +1,6 @@
 // Backfill du warehouse quotidien : métriques (depuis les réservations
 // existantes) + météo archive Open-Meteo, pour toutes les dates ayant des
-// résas (min(date) -> hier). Idempotent (upsert) — relançable sans risque.
+// résas (min(date) -> hier). Idempotent (upsert) : relançable sans risque.
 //
 // Usage : node scripts/backfill-daily-metrics.js [--center=libramont] [--dry-run]
 // Env : DATABASE_URL (chargé depuis .env si absent). AUCUN log de l'URL DB.
@@ -77,7 +77,7 @@ async function main() {
   console.log(`Backfill ${centerId} : ${dates.length} jours (${dates[0]} -> ${dates[dates.length - 1]})${dryRun ? ' [DRY-RUN]' : ''}`);
 
   // 1. Météo archive par plages contiguës (délai archive ~5 j : les tout
-  //    derniers jours peuvent revenir null — la collecte cron les complètera).
+  //    derniers jours peuvent revenir null : la collecte cron les complètera).
   const weatherByDate = new Map();
   const coords = CENTER_COORDS[centerId] || CENTER_COORDS.libramont;
   for (const range of chunkRanges(dates)) {

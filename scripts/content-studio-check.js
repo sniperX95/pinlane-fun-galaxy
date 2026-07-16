@@ -48,8 +48,8 @@ const { resolveOccasion } = require('../lib/fungalaxy-brand');
     story: 's', photoIdea: 'p', aiImagePrompt: 'prompt, no text, no logos', hashtags: ['#a'], bestTime: '17h',
   };
   const strongPack = {
-    long: 'Il pleut samedi ? À Libramont, nos 8 pistes de bowling et le laser game sont bien au sec — note 4.8/5 par les familles du coin.\n\nRéservez votre piste, ça prend 30 secondes.',
-    short: 'Pluie samedi ? Bowling au sec à Libramont — réservez votre piste.',
+    long: 'Il pleut samedi ? À Libramont, nos 8 pistes de bowling et le laser game sont bien au sec, note 4.8/5 par les familles du coin.\n\nRéservez votre piste, ça prend 30 secondes.',
+    short: 'Pluie samedi ? Bowling au sec à Libramont, réservez votre piste.',
     story: 'Pluie samedi ?\n→ Réserve ta piste.',
     photoIdea: 'Filmer l\'arrivée d\'un groupe sous la pluie puis le strike.',
     aiImagePrompt: 'Rainy day outside a bowling center, cozy neon interior, no text, no logos',

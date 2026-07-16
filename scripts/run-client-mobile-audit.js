@@ -151,7 +151,7 @@ async function measure(page, label) {
     });
     // (b) Empilement des blocs label|texte (visit-line, recap-item, pass) : les
     // enfants directs doivent partager le meme x (colonne unique) avec des y
-    // croissants — sinon = colonnes serrees illisibles sur mobile.
+    // croissants : sinon = colonnes serrees illisibles sur mobile.
     const directCol = (el) => {
       const kids = [...el.children].filter(visible);
       if (kids.length < 2) return { stacked: true, sameX: true, inc: true, n: kids.length };
@@ -376,7 +376,7 @@ async function main() {
     if (r.cardCount < 10) failures.push(`peu de cartes formules visibles a ${r.vw}px (${r.cardCount})`);
     // (a) Cartes NON selectionnees : inclusions completes visibles SANS tap (> 1 <li>).
     const truncated = (r.cardContent || []).filter((c) => !c.active && c.liVisible <= 1);
-    if (truncated.length) failures.push(`cartes formules tronquees a ${r.vw}px (${truncated.length} cartes non selectionnees ne montrent qu'une inclusion — tap requis)`);
+    if (truncated.length) failures.push(`cartes formules tronquees a ${r.vw}px (${truncated.length} cartes non selectionnees ne montrent qu'une inclusion : tap requis)`);
   });
   // (b) Blocs label|texte (visit-line / recap-item / pass) empiles pleine largeur
   // a <=640 : enfants en colonne unique (meme x, y croissants).
@@ -412,7 +412,7 @@ async function main() {
   }
   if (consoleErrors.length) failures.push(`erreurs console/page: ${consoleErrors.length}`);
   if (failures.length) { console.error('\nASSERTIONS ECHOUEES:\n- ' + failures.join('\n- ')); process.exit(1); }
-  console.log('\nAssertions: OK — mobile (0 scroll horizontal, inclusions completes sans tap, blocs empiles, CTA non ecrase) + DESKTOP 1280 non regresse.');
+  console.log('\nAssertions: OK, mobile (0 scroll horizontal, inclusions completes sans tap, blocs empiles, CTA non ecrase) + DESKTOP 1280 non regresse.');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

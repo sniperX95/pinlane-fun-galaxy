@@ -471,7 +471,7 @@ function buildAdminExcelXml(payload) {
 }
 
 function exportAdminExcel() {
-  if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement — patientez avant d\'exporter.'); return; }
+  if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const xml = buildAdminExcelXml(payload);
   const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
@@ -617,7 +617,7 @@ function buildFunGalaxyReportHtml(payload) {
 }
 
 function exportAdminReport() {
-  if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement — patientez avant d\'exporter.'); return; }
+  if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const html = buildFunGalaxyReportHtml(payload);
   downloadTextFile(`FunGalaxy_${payload.center.id}_${payload.period.startDate}_${payload.period.endDate}_rapport_direction.html`, html, 'text/html;charset=utf-8');
@@ -1449,7 +1449,7 @@ function renderAdminExports() {
     </div>
     <div class="admin-export-grid">
       <div class="admin-export-card">
-        <div><h3>Rapport direction A4</h3><p>KPIs, activités, formules, clients fidèles et bilan — mise en page sobre, imprimable en PDF.</p></div>
+        <div><h3>Rapport direction A4</h3><p>KPIs, activités, formules, clients fidèles et bilan, mise en page sobre, imprimable en PDF.</p></div>
         <button class="admin-btn" onclick="dhPrintReport()">Imprimer</button>
       </div>
       <div class="admin-export-card">
@@ -1803,7 +1803,7 @@ function startAdminHealthAutoRefresh() {
     buildAdminClientProfiles,
     getAdminExportPayload,
     // C14 : downloadTextFile/csvCell vivent dans app-main.js (globals au
-    // runtime) — référence défensive pour les harnais qui isolent ce module.
+    // runtime) : référence défensive pour les harnais qui isolent ce module.
     downloadTextFile: typeof downloadTextFile === 'function' ? downloadTextFile : undefined,
     downloadBlob,
     csvCell: typeof csvCell === 'function' ? csvCell : undefined,

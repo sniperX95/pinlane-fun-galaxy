@@ -142,8 +142,8 @@ function safeUserMessage(error, fallback = 'Service momentanément indisponible.
   return fallback;
 }
 
-// Le flag d'affichage « retard » (opsPlan.delayFlag) — cumul des minutes,
-// snapshot du créneau d'origine et retrait — vit dans les helpers PURS de
+// Le flag d'affichage « retard » (opsPlan.delayFlag) : cumul des minutes,
+// snapshot du créneau d'origine et retrait : vit dans les helpers PURS de
 // lib/delay-flag.js (importés en tête, testés par scripts/delay-flag-check.js).
 
 function normalizeCenterId(value) {
@@ -249,7 +249,7 @@ async function handleGet(req, res, options = {}) {
   }
 
   // Warehouse quotidien : lignes daily_center_metrics + agrégats de période.
-  // La période est libre (jour/semaine/mois — le front choisit from/to).
+  // La période est libre (jour/semaine/mois : le front choisit from/to).
   if (action === 'dailyMetrics') {
     const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
     const today = new Date().toISOString().slice(0, 10);
@@ -317,7 +317,7 @@ async function handleGet(req, res, options = {}) {
   }
 
   // « Ta période » : plage LIBRE (from/to, défaut aujourd'hui → +6 j, cap 31 j)
-  // — météo + calendrier + idées (page Marketing).
+  // : météo + calendrier + idées (page Marketing).
   if (action === 'marketingWeek') {
     const week = await buildMarketingWeek(centerId, {
       from: url.searchParams.get('from') || null,
@@ -328,7 +328,7 @@ async function handleGet(req, res, options = {}) {
   }
 
   // Retour marketing en euros : attribution last-touch des réservations aux
-  // messages marketing (relances, séquences, campagnes) — la preuve du ROI.
+  // messages marketing (relances, séquences, campagnes), la preuve du ROI.
   if (action === 'marketingRoi') {
     const { computeMarketingRoi } = require('../lib/marketing-roi');
     const roi = await computeMarketingRoi(centerId, { days: Number(url.searchParams.get('days') || 30) });
@@ -336,7 +336,7 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
-  // « Le Brief » : LE bundle unique de la page Marketing — paie, brief signé,
+  // « Le Brief » : LE bundle unique de la page Marketing, paie, brief signé,
   // radar 14 j, propositions unifiées, reçus, veille. Un seul fetch.
   if (action === 'marketingBrief') {
     const { buildMarketingBriefBundle } = require('../lib/marketing-brief');
@@ -355,7 +355,7 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
-  // Studio de contenu : derniers packs du jour par réseau (lecture seule —
+  // Studio de contenu : derniers packs du jour par réseau (lecture seule 
   // la génération est un POST explicite, jamais déclenchée par l'ouverture).
   if (action === 'studioPacks') {
     const { listTodayPacks } = require('../lib/content-studio');
@@ -388,7 +388,7 @@ async function handleGet(req, res, options = {}) {
     const prevWin = previousWindow(startDate, endDate);
     const previous = buildDirectionAnalytics({ history, startDate: prevWin.startDate, endDate: prevWin.endDate, center });
     // dashboardAnalytics est accessible avec dashboard.view seul : on ne sert
-    // que ce que les widgets consomment — jamais le PII direction (top clients).
+    // que ce que les widgets consomment : jamais le PII direction (top clients).
     if (action === 'dashboardAnalytics') {
       analytics = {
         startDate: analytics.startDate,
@@ -760,10 +760,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
           })
           : change.update.opsPlan,
         noteAppend: change.kind === 'delayed'
-        ? `Retard +${impact.delayMinutes} min appliqué (${impact.reason}) — ${strategy.label} — par ${staffMember}.`
+        ? `Retard +${impact.delayMinutes} min appliqué (${impact.reason}) : ${strategy.label}, par ${staffMember}.`
         : change.kind === 'relocate'
-          ? `Changement de piste (${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}) suite au retard de « ${impact.reservationName} » — par ${staffMember}.`
-          : `Décalage de ${change.shiftMinutes} min suite au retard de « ${impact.reservationName} » — par ${staffMember}.`,
+          ? `Changement de piste (${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}) suite au retard de « ${impact.reservationName} », par ${staffMember}.`
+          : `Décalage de ${change.shiftMinutes} min suite au retard de « ${impact.reservationName} », par ${staffMember}.`,
       };
     });
 
@@ -1026,7 +1026,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         reverted: false,
         cleared: true,
         reservation: cleared || reservation,
-        message: 'Indicateur retiré. L\'horaire d\'origine n\'a pas pu être restauré automatiquement (retard posé avant cette mise à jour) — ajustez à la main si besoin.',
+        message: 'Indicateur retiré. L\'horaire d\'origine n\'a pas pu être restauré automatiquement (retard posé avant cette mise à jour), ajustez à la main si besoin.',
       });
       return;
     }
@@ -1043,7 +1043,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         startTime: origin.startTime,
         lanes: restoredLanes,
         opsPlan: restoredPlan,
-        noteAppend: `Retard retiré — créneau d'origine ${origin.startTime} restauré — par ${staffMember}.`,
+        noteAppend: `Retard retiré, créneau d'origine ${origin.startTime} restauré, par ${staffMember}.`,
       }],
     });
     await createOpsEvent({
@@ -1441,7 +1441,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
-  // Génère (ou régénère) le bilan de la dernière semaine/mois complet — ou de
+  // Génère (ou régénère) le bilan de la dernière semaine/mois complet : ou de
   // la période explicitement demandée. Déterministe d'abord, IA si clé dispo.
   if (action === 'generateDirectionReport') {
     const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
@@ -1477,7 +1477,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       periodType,
       periodStart,
       periodEnd,
-      title: `Bilan ${periodLabel} — ${centerName}`,
+      title: `Bilan ${periodLabel}, ${centerName}`,
       bodyMd: aiMd || deterministicMd,
       generatedBy: aiMd ? 'ia' : 'deterministic',
     });
@@ -1620,7 +1620,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       // Anti-doublon : un re-clic / retry ne recrée pas une campagne identique déjà partie.
       const dupId = await findRecentDuplicateCampaign({ centerId: campaignCenterId, segment, subject, body: bodyText });
       if (dupId) {
-        throw createHttpError(`Une campagne identique a déjà été lancée il y a moins de 3 min (#${dupId}) — vérifie la liste avant de renvoyer.`, 409);
+        throw createHttpError(`Une campagne identique a déjà été lancée il y a moins de 3 min (#${dupId}) : vérifie la liste avant de renvoyer.`, 409);
       }
     }
 
@@ -1661,7 +1661,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
-  // Envoi d'un brouillon existant (immédiat ou programmé) — draft → sending.
+  // Envoi d'un brouillon existant (immédiat ou programmé) : draft → sending.
   if (action === 'sendCampaign') {
     const campaignCenterId = requireConcreteCenter('sendCampaign');
     const existing = await getCampaignRow({ id: body.id, centerId: campaignCenterId });
@@ -1725,7 +1725,7 @@ async function prepareCampaignRecipients({ centerId, segment, subject, bodyText,
   }
   const unknownTokens = findUnknownCampaignTokens(`${subject}\n${bodyText}`);
   if (unknownTokens.length) {
-    throw createHttpError(`Variable(s) non reconnue(s) : ${unknownTokens.join(', ')} — seules {{prenom}} et {{nom}} sont remplacées.`, 400);
+    throw createHttpError(`Variable(s) non reconnue(s) : ${unknownTokens.join(', ')}, seules {{prenom}} et {{nom}} sont remplacées.`, 400);
   }
   return recipients;
 }

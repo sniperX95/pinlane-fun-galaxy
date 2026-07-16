@@ -1,4 +1,4 @@
-// Boucle d'apprentissage marketing (2026-07-16) — tests PURS (sans DB).
+// Boucle d'apprentissage marketing (2026-07-16) : tests PURS (sans DB).
 // Prouve : effet NET vs baseline (G1), agrégation par contexte (G2),
 // réinjection déterministe (G3). Ajouté au gate marketing.
 const assert = require('assert');
@@ -11,7 +11,7 @@ const {
 } = require('../lib/center-metrics');
 
 let passed = 0;
-function check(name, fn) { fn(); passed += 1; console.log('  ok —', name); }
+function check(name, fn) { fn(); passed += 1; console.log('  ok ', name); }
 
 // ── G1 : effet net vs baseline ───────────────────────────────────────────────
 
@@ -101,7 +101,7 @@ check('réinjection : ordre stable quand aucun pattern connu', () => {
 
 check('cohérence clé de contexte candidat ↔ signature stockée', () => {
   // Un candidat rain_forecast/facebook doit produire la MÊME clé qu'un insight
-  // dont la signature est 'rain_forecast:facebook' — sinon la boucle ne matche pas.
+  // dont la signature est 'rain_forecast:facebook', sinon la boucle ne matche pas.
   const fromCandidate = patternContextKey({ kind: 'post', channel: 'facebook', trigger: 'rain_forecast' });
   const stored = buildPatternRows([{ signature: 'rain_forecast:facebook', channel: 'facebook', payload: {}, result: { netDeltaPct: 9 }, status: 'validated' }])[0].context_key;
   assert.strictEqual(fromCandidate, stored, `clé candidat ${fromCandidate} ≠ clé stockée ${stored}`);

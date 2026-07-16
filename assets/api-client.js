@@ -47,7 +47,7 @@
   function friendlyMessageForStatus(status, method = 'GET') {
     if (status === 401) return 'Session expirée. Reconnectez-vous pour continuer.';
     if (status === 403) return "Vous n'avez pas l'autorisation pour cette action.";
-    // « déjà supprimé » n'a de sens que sur une vraie suppression (DELETE) —
+    // « déjà supprimé » n'a de sens que sur une vraie suppression (DELETE) : 
     // un endpoint non résolu (GET/POST) reste un 404 neutre.
     if (status === 404) return method === 'DELETE' ? 'Élément introuvable ou déjà supprimé.' : 'Ressource introuvable.';
     if (status === 408 || status === 504) return 'Le serveur a mis trop de temps à répondre. Réessayez.';
@@ -105,7 +105,7 @@
     }
 
     // Corps lu UNE SEULE fois : texte d'abord, puis parse JSON best-effort.
-    // Jamais de response.clone() après consommation du body — c'est un
+    // Jamais de response.clone() après consommation du body : c'est un
     // TypeError brut (« Failed to execute 'clone'… ») garanti côté UI.
     // Fallback .json() : certains runtimes de test n'exposent que json().
     let rawBody = '';

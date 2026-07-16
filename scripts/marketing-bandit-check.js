@@ -1,11 +1,11 @@
-// Bandit d'angles (Phase 3) — tests. Thompson sampling (pur, rng injecté) +
+// Bandit d'angles (Phase 3) : tests. Thompson sampling (pur, rng injecté) +
 // persistance/reward mockés. Aucun réseau, aucune DB réelle.
 const assert = require('assert');
 const bandit = require('../lib/marketing-bandit');
 
 async function main() {
   let passed = 0;
-  const check = async (name, fn) => { await fn(); passed += 1; console.log('  ok —', name); };
+  const check = async (name, fn) => { await fn(); passed += 1; console.log('  ok ', name); };
   const constRng = (value) => () => value;
 
   await check('pickAngle : clé valide même sans données (exploration)', async () => {

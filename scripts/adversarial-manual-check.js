@@ -1,4 +1,4 @@
-// Passe adversariale (2026-07-11) — preuves des fixes ADV-1..6 :
+// Passe adversariale (2026-07-11) : preuves des fixes ADV-1..6 :
 // A. Échec d'injection admin-console → panneau d'erreur + retry fonctionnel,
 //    zéro ReferenceError même en cliquant le chrome statique de #adminView.
 // B. openAdminCenter mémorise le centre avant chargement des consoles.
@@ -89,7 +89,7 @@ const CONTRAST_FN = `(selector) => {
 async function checkContrast(page, selectors, label) {
   for (const sel of selectors) {
     const r = await page.evaluate(`(${CONTRAST_FN})(${JSON.stringify(sel)})`);
-    if (r.missing) { console.log(`  [contraste ${label}] ${sel} : absent du DOM (état non atteint) — skip`); continue; }
+    if (r.missing) { console.log(`  [contraste ${label}] ${sel} : absent du DOM (état non atteint), skip`); continue; }
     console.log(`  [contraste ${label}] ${sel} : ${r.ratio}:1 (${r.color} sur ${r.bg})`);
     assert(r.ratio >= 4.5, `${label} ${sel} : contraste ${r.ratio} < 4.5`);
   }
@@ -120,7 +120,7 @@ async function main() {
     assert(panelVisible, 'lazyfail : panneau adminConsoleLoadError visible');
     await shot(page, 'A1-lazyfail-panneau');
     // Clic réel sur un onclick statique du chrome admin : pointer-events:none
-    // doit l'avaler — zéro ReferenceError.
+    // doit l'avaler : zéro ReferenceError.
     const tab = page.locator('#adminTabOverview');
     await tab.click({ force: true, timeout: 5000 }).catch(() => {});
     await page.locator('.admin-btn:has-text("Excel compta")').click({ force: true, timeout: 5000 }).catch(() => {});
@@ -140,7 +140,7 @@ async function main() {
     assert(recovered.rendered, 'retry : adminContent rendu après réinjection');
     assert(recovered.clicksBack, 'retry : pointer-events restauré');
     await shot(page, 'A2-retry-recovered');
-    console.log('OK A — lazyfail : panneau + zéro ReferenceError + retry fonctionnel');
+    console.log('OK A : lazyfail : panneau + zéro ReferenceError + retry fonctionnel');
 
     // ---- B. openAdminCenter avant chargement des consoles ----------------
     const page2 = await context.newPage();
@@ -158,7 +158,7 @@ async function main() {
     await page2.waitForTimeout(2500);
     const centerAfter = await page2.evaluate(() => state.adminCenterId);
     assert(centerAfter === 'gembloux', `openAdminCenter : centre conservé après injection (reçu ${centerAfter})`);
-    console.log('OK B — premier switch de centre conservé à travers le lazy-load');
+    console.log('OK B : premier switch de centre conservé à travers le lazy-load');
     await page2.close();
     await page.close();
     await context.close();
@@ -190,13 +190,13 @@ async function main() {
     });
     await page.goto(`${BASE_URL}/direction.html`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForTimeout(1500);
-    // D — Modèles vide
+    // D : Modèles vide
     await page.evaluate(() => setTab('samples'));
     await page.waitForTimeout(400);
     const emptyState = await page.evaluate(() => document.querySelector('#content .empty')?.textContent || '');
     assert(emptyState.includes('Aucun modèle'), `Modèles vide : état vide attendu (reçu "${emptyState.slice(0, 60)}")`);
     await shot(page, 'D1-direction-modeles-vide');
-    // C — step 500
+    // C : step 500
     await page.evaluate(() => setTab('simulation'));
     await page.waitForTimeout(600);
     await page.evaluate(() => stepSimulation(8));
@@ -210,7 +210,7 @@ async function main() {
     const dirErrors = pageErrors.filter((e) => e.startsWith('direction:'));
     assert(dirErrors.length === 0, `sim step 500 : unhandled rejection → ${dirErrors.join(' | ')}`);
     await shot(page, 'C1-direction-step500-bannière');
-    console.log('OK C+D — direction : step 500 géré proprement, Modèles a un état vide');
+    console.log('OK C+D : direction : step 500 géré proprement, Modèles a un état vide');
     await page.close();
     await context.close();
   }
@@ -251,7 +251,7 @@ async function main() {
     await page.close();
     await context.close();
   }
-  console.log('OK E — contrastes AA sur les éléments précédemment fautifs (light + dark)');
+  console.log('OK E : contrastes AA sur les éléments précédemment fautifs (light + dark)');
 
   const critical = pageErrors.filter((e) => !/ResizeObserver|favicon/i.test(e));
   if (critical.length) {

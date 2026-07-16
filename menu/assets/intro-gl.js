@@ -1,10 +1,10 @@
-/* Fun Galaxy — INTRO 3D WebGL : vraie sphère de golf éclairée (normal map d'alvéoles bakée),
+/* Fun Galaxy : INTRO 3D WebGL : vraie sphère de golf éclairée (normal map d'alvéoles bakée),
    starfield volumétrique en points GL (taille ∝ profondeur, scintillement), bloom post-process
    (bright-pass 1/4 res + blur gaussien séparable + composite additif), caméra qui PLONGE dans la
    balle (travelling + FOV qui s'ouvre), mouvement 100% physique (springs amortis, masse, rolling).
 
    Self-contained : zéro dépendance, zéro requête externe. Utilisé par viewer.js UNIQUEMENT pour
-   la séquence d'intro — au repos et sur la page carte, seul le canvas 2D tourne (le contexte GL
+   la séquence d'intro : au repos et sur la page carte, seul le canvas 2D tourne (le contexte GL
    est libéré à la fin : dispose() -> WEBGL_lose_context + canvas retiré du DOM).
 
    FALLBACK : si WebGL indisponible (ou ?nogl pour test), createIntro() rend null et viewer.js
@@ -22,7 +22,7 @@
                  (navigator.deviceMemory && navigator.deviceMemory <= 4);
   var DPR_CAP = lowPower ? 1.35 : 1.5;
 
-  /* ---------- easing : cubic-bezier(.45,.08,.7,.45) — MÊME courbe que le warp 2D (phase-lock) ---------- */
+  /* ---------- easing : cubic-bezier(.45,.08,.7,.45), MÊME courbe que le warp 2D (phase-lock) ---------- */
   function makeBezier(x1, y1, x2, y2) {
     function bez(t, a, b) { var A = 1 - 3 * b + 3 * a, B = 3 * b - 6 * a, C = 3 * a; return ((A * t + B) * t + C) * t; }
     function slope(t, a, b) { var A = 1 - 3 * b + 3 * a, B = 3 * b - 6 * a, C = 3 * a; return (3 * A * t + 2 * B) * t + C; }
@@ -448,7 +448,7 @@
     }
 
     /* ================================================================
-       ÉTAT & PHYSIQUE (pas fixe 120Hz — déterministe, seekable)
+       ÉTAT & PHYSIQUE (pas fixe 120Hz : déterministe, seekable)
        ================================================================ */
     var PH = { HIDDEN: 0, IGNITE: 1, FLIGHT: 2, DIVE: 3, HYPER: 4 };
     var D0 = 10;                                                         // profondeur d'ancrage de la balle
@@ -504,7 +504,7 @@
       // renormalise (dérive numérique)
       var qn = 1 / Math.sqrt(s.q[0] * s.q[0] + s.q[1] * s.q[1] + s.q[2] * s.q[2] + s.q[3] * s.q[3] || 1);
       s.q[0] *= qn; s.q[1] *= qn; s.q[2] *= qn; s.q[3] *= qn;
-      // PLONGÉE : caméra DANS la balle — z, FOV qui s'ouvre (vertige), roll, tunnel
+      // PLONGÉE : caméra DANS la balle, z, FOV qui s'ouvre (vertige), roll, tunnel
       if (s.phase >= PH.DIVE && s.diveMs >= 0) {
         var e = diveEase(Math.min((s.simMs - s.diveMs) / 850, 1));
         var R = s.r;
@@ -661,7 +661,7 @@
         drawGlow(s.focalNdc[0], s.focalNdc[1], gi, gk);
       }
 
-      // Ordre : balle OPAQUE d'abord (occlusion correcte du flux) — mais pendant la TRAVERSÉE la
+      // Ordre : balle OPAQUE d'abord (occlusion correcte du flux), mais pendant la TRAVERSÉE la
       // paroi devient translucide : étoiles d'abord, paroi fondue PAR-DESSUS (crossfade réel).
       if (piercing) {
         if (starA > 0.004) drawStarsGlow();

@@ -2,7 +2,7 @@
 -- Additif et idempotent. Deux axes :
 --   1. Extraction STRUCTURÉE du site (prix/offres/événements) par snapshot,
 --      au lieu d'un simple diff texte → nourrit la génération et l'affichage.
---   2. Snapshot Google Places (note + nombre d'avis) par concurrent — on ne
+--   2. Snapshot Google Places (note + nombre d'avis) par concurrent : on ne
 --      stocke QUE la note et le compte (jamais le texte des avis : interdit par
 --      les Maps Platform Terms), rafraîchi périodiquement.
 alter table competitor_snapshots

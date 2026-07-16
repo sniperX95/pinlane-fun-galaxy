@@ -1,4 +1,4 @@
-/* Fun Galaxy — carte digitale premium.
+/* Fun Galaxy : carte digitale premium.
    Canvas spatial vivant (étoiles parallaxe + filantes + nébuleuses), transition cinématique
    (reveal logo + star-warp + flash), bascule Recto/Verso en crossfade. Zoom NATIF. rAF unique. */
 (function () {
@@ -39,7 +39,7 @@
     var lowPower = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
                    (navigator.deviceMemory && navigator.deviceMemory <= 4);
     var DPR_CAP = lowPower ? 1.35 : 1.5;   // mobile : jamais au-delà de 1.5 device px (2 = trop lourd)
-    var STAR_N = lowPower ? 66 : 90;       // (était 150) -40% env., densité visuellement proche — INCHANGÉ au repos
+    var STAR_N = lowPower ? 66 : 90;       // (était 150) -40% env., densité visuellement proche, INCHANGÉ au repos
     var MAX_PARTS = lowPower ? 240 : 800;  // shatter DENSE façon « N » : éclats = quads qui tumble (transitoire, ~1s ; lowPower bridé)
     var parts = [];                    // particules de désintégration du logo (rendues sur l'OVERLAY, devant la sphère)
     // Étoiles de FLUX éphémères : pool recyclé, actif UNIQUEMENT pendant le dive (warp>0.3) -> starfield dense, 0 coût au calme
@@ -74,7 +74,7 @@
 
     function rand(a, b) { return a + Math.random() * (b - a); }
 
-    // Échantillonneur cubic-bezier(.45,.08,.7,.45) (Newton-Raphson) — MÊME courbe que dive3d.
+    // Échantillonneur cubic-bezier(.45,.08,.7,.45) (Newton-Raphson), MÊME courbe que dive3d.
     // Pente initiale NON nulle (.08/.45) : la plongée démarre avec la vitesse résiduelle du settle de l'envol
     // (le rebond devient l'aspiration, jamais d'arrêt), puis sortie très raide (rush).
     var warpEase = (function () {
@@ -203,12 +203,12 @@
         warp += (warpTarget - warp) * Math.min(0.07 * dt, 1);   // décélération douce (retour au calme)
       }
 
-      // fond dégradé (base opaque) — gradient mis en cache
+      // fond dégradé (base opaque) : gradient mis en cache
       ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
 
       drawNebulae();
 
-      // étoiles (en mode GL : toujours calmes — le starfield 3D est rendu par le canvas WebGL au-dessus)
+      // étoiles (en mode GL : toujours calmes, le starfield 3D est rendu par le canvas WebGL au-dessus)
       var calm = warp <= 0.02;
       var warping = !calm && !glStars;
       var boost = warp > 1.02;                  // segment HYPERESPACE (warpTarget 1.35 après le franchissement de la balle)
@@ -217,7 +217,7 @@
       for (var i = 0; i < stars.length; i++) {
         var s = stars[i];
         if (warping) {
-          // STARFIELD 3D (écran de veille Windows / Star Fox) : des POINTS d'étoiles foncent vers nous —
+          // STARFIELD 3D (écran de veille Windows / Star Fox) : des POINTS d'étoiles foncent vers nous, 
           // accélération radiale ∝ distance (perspective : plus près = plus vite), léger GROSSISSEMENT en
           // approchant, queue de mouvement ≤ 6px (lisibilité de la vitesse, PAS une traînée), puis recyclage
           // IMMÉDIAT près du foyer dès la sortie d'écran -> flux dense et continu SANS étoile de plus.
@@ -260,7 +260,7 @@
         }
       }
 
-      // ÉTOILES DE FLUX éphémères : 2e nappe de POINTS émise du foyer PENDANT le dive uniquement — densifie le
+      // ÉTOILES DE FLUX éphémères : 2e nappe de POINTS émise du foyer PENDANT le dive uniquement, densifie le
       // starfield (recyclage express dès la sortie d'écran), mêmes règles que les étoiles : point + queue ≤ 6px.
       if (warp > 0.3 && !glStars) {
         ctx.lineCap = 'round';
@@ -283,7 +283,7 @@
       }
 
       // LUEUR DU DÉBOUCHÉ : point de fuite lumineux au foyer pendant le rush (la lumière au bout du tunnel,
-      // que le whiteout de sortie vient crever) — 1 gradient/frame, uniquement warp>0.45, 0 coût au calme
+      // que le whiteout de sortie vient crever) : 1 gradient/frame, uniquement warp>0.45, 0 coût au calme
       if (warp > 0.45 && !glStars) {
         var glr = 40 + warp * 90;
         var gl = ctx.createRadialGradient(fx, fy, 0, fx, fy, glr);
@@ -377,7 +377,7 @@
     }
 
     function drawStatic() {
-      // rendu unique (mouvement réduit / onglet caché) — gradient mis en cache
+      // rendu unique (mouvement réduit / onglet caché) : gradient mis en cache
       ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
       drawNebulae();
       ctx.globalCompositeOperation = 'lighter';
@@ -488,7 +488,7 @@
 
   function srcFor(i) { return i === 1 ? verso : recto; }
   function srcsetFor(i) { return i === 1 ? versoSet : rectoSet; }
-  function altFor(i) { return altBase + (i === 1 ? ' — verso' : ' — recto'); }
+  function altFor(i) { return altBase + (i === 1 ? ' : verso' : ', recto'); }
   function applyImg(el, src, srcset, alt) {
     el.srcset = srcset; el.src = src;
     if (alt !== undefined) el.alt = alt;
@@ -589,16 +589,16 @@
      ============================================================ */
   // Position NORMALISÉE du CENTRE de la balle de golf (au-dessus du « xy ») dans la boîte du logo.
   // = centre exact de la bbox du disque dans le SVG (getBBox : 341.02..396.42 x 38.93..94.17 de 522.9x354.3)
-  // — cohérent avec transform-origin 70.52%/18.78% du wrap (CSS) et avec le viewBox de golfball.svg.
+  // : cohérent avec transform-origin 70.52%/18.78% du wrap (CSS) et avec le viewBox de golfball.svg.
   var PLANET_FX = 0.7052, PLANET_FY = 0.1878;
   // Diamètre de la balle / largeur du logo (55.4/522.9), majoré de 10% pour couvrir le dessin plat
   // jusqu'au pic du push (1.06 -> 1.14 = +7.5%) : la balle 3D remplace EXACTEMENT la balle dessinée.
   var BALL_W = (55.4 / 522.9) * 1.10;
 
-  // --- Scène 3D « plongée dans la balle » : LA balle de golf du logo, seule — SANS anneau ni décor
+  // --- Scène 3D « plongée dans la balle » : LA balle de golf du logo, seule, SANS anneau ni décor
   //     (on plonge dans une balle de golf, point). Créée dynamiquement (le HTML des 2 centres reste
   //     inchangé). perspective + translateZ = vraie profondeur (pas un aplat).
-  //     Structure : .ball-x > .ball-y > .planet3d — les DEUX wrappers portent l'arc X/Y de l'ENVOL
+  //     Structure : .ball-x > .ball-y > .planet3d, les DEUX wrappers portent l'arc X/Y de l'ENVOL
   //     (profils d'easing différents -> vraie trajectoire COURBE, GPU only), la balle porte scale/dive,
   //     et .planet3d__tex porte la texture golfball SEULE -> les alvéoles tournent SANS entraîner
   //     l'ombrage ni le spéculaire (l'éclairage reste fixe = lecture « sphère qui roule »). ---
@@ -639,7 +639,7 @@
     return { rect: rect, x: rect.left + PLANET_FX * rect.width, y: rect.top + PLANET_FY * rect.height };
   }
 
-  /* SÉQUENCE — une chaîne CAUSALE resserrée : AUCUNE pause, chaque beat MORD sur le suivant (~2,94s clic->carte).
+  /* SÉQUENCE : une chaîne CAUSALE resserrée : AUCUNE pause, chaque beat MORD sur le suivant (~2,94s clic->carte).
      B0    0-280   la scène se vide : nom+bouton s'effacent, le logo s'avance (scale 1->1.06).
      B1   90-690   le REFLET vitré balaye G->D et ATTERRIT sur la balle de golf (cœur posé ~590), puis laisse
                    une BRAISE ~100ms qui s'éteint PENDANT l'ignition (la lumière est absorbée, pas coupée).
@@ -649,10 +649,10 @@
                    (kick d'anticipation, fronde, hook-in) sur 2 wrappers X/Y ; STRETCH dans le sens du mouvement
                    en plein vol puis SQUASH à l'arrivée (masse réelle) ; SPIN des alvéoles (texture seule : elle
                    ROULE) ; grossissement 1 -> ~5x ; derrière elle le logo SE DÉSAGRÈGE en éclats. Le settle se
-                   termine en LÉGER REBOND OUVERT (x1.035) : il N'EST PAS amorti — c'est l'élan de la plongée.
+                   termine en LÉGER REBOND OUVERT (x1.035) : il N'EST PAS amorti, c'est l'élan de la plongée.
      B4 1640-2490  PLONGÉE immédiate : dive3d reprend EXACTEMENT le rebond (0% = scale x1.035 -> aspiration),
                    translateZ à travers la balle, une seule courbe cubic-bezier(.45,.08,.7,.45) à pente initiale
-                   non nulle — warp étoiles même fenêtre (850ms), FOYER = CENTRE ÉCRAN, cœur blanc = on perce.
+                   non nulle : warp étoiles même fenêtre (850ms), FOYER = CENTRE ÉCRAN, cœur blanc = on perce.
      B5 2490-2939  HYPERESPACE : boost warp 1->1.35, plein écran. Points d'étoiles depuis le CENTRE (accélération
                    radiale ∝ distance, queue ≤ 6px), flux doublé par MIROIR + 2e nappe recyclée + lueur du débouché.
      B6 2840-3390  DÉBOUCHÉ : whiteout radial (pic ~2939 = 4ms après la pose de la carte : raccord au frame près).
@@ -698,7 +698,7 @@
     var ballSize = 0, tcx = window.innerWidth / 2, tcy = Math.round(window.innerHeight * 0.46);
     body.classList.add('go');                   // B0 + B1 : la scène se vide, le glint voyage vers la balle
 
-    // B2 — IGNITION (le cœur du glint touche la balle ~590 : la sphère naît SOUS la braise, 30ms avant le contact
+    // B2 : IGNITION (le cœur du glint touche la balle ~590 : la sphère naît SOUS la braise, 30ms avant le contact
     //      elle est encore quasi invisible -> lecture « le glint l'allume », zéro attente)
     at(560, function () {
       var p = planetPoint();
@@ -716,7 +716,7 @@
       body.classList.add('arm');                 // ignite (sphère) + push lent (anticipation) + lettres à 80%
     });
 
-    // B3 — ENVOL (mord la fin du push, ~40ms avant sa fin : l'anticipation se rompt en plein élan) :
+    // B3 : ENVOL (mord la fin du push, ~40ms avant sa fin : l'anticipation se rompt en plein élan) :
     //      la balle s'arrache du logo et vient se centrer (arc + spin + grow + stretch/squash) ;
     //      le logo se désagrège en éclats et s'efface derrière elle. NB : l'origine des transforms du wrap
     //      = le point balle -> le mordre en plein push ne fausse AUCUNE mesure (le point ne bouge jamais).
@@ -747,7 +747,7 @@
       body.classList.add('travel');
     });
 
-    // B4 — PLONGÉE IMMÉDIATE (1640 = fin exacte de l'envol : ballGrow finit en rebond OUVERT x1.035 et
+    // B4 : PLONGÉE IMMÉDIATE (1640 = fin exacte de l'envol : ballGrow finit en rebond OUVERT x1.035 et
     //      dive3d reprend ce rebond à son 0% -> la balle ne pose JAMAIS, le settle EST l'élan de l'aspiration)
     at(1640, function () {
       Space.setWarpOrigin(tcx, tcy);             // FOYER du warp = centre écran (là où la balle arrive)
@@ -755,14 +755,14 @@
       Space.warpRamp(850);                       // même fenêtre + même courbe que dive3d (.85s)
     });
 
-    // B5 — HYPERESPACE : la balle est franchie (fin du dive), l'écran ENTIER est le couloir.
+    // B5 : HYPERESPACE : la balle est franchie (fin du dive), l'écran ENTIER est le couloir.
     // Boost 1 -> 1.35 (approche exponentielle ~230ms de constante = montée en vitesse PUIS pic tenu) :
     // traînées plus longues/lumineuses, doublées par miroir. ~450ms ressenties avant le pic du débouché.
     at(2490, function () { Space.warpTo(1.35); });
 
-    // B6 — DÉBOUCHÉ : pic du whiteout (montée 18% de .55s ≈ 99ms) à ~2939 = 4ms après la pose de la carte
+    // B6 : DÉBOUCHÉ : pic du whiteout (montée 18% de .55s ≈ 99ms) à ~2939 = 4ms après la pose de la carte
     at(2840, function () { body.classList.add('flash'); });
-    at(2935, function () {                       // B7 — carte révélée SOUS le blanc plein + settle/stagger d'arrivée
+    at(2935, function () {                       // B7, carte révélée SOUS le blanc plein + settle/stagger d'arrivée
       markIntroSeen();
       body.classList.remove('pre');
       body.classList.add('land');
@@ -776,7 +776,7 @@
     });
   }
 
-  /* SÉQUENCE WebGL — MÊME storyboard, MÊMES beats (B0..B7), exécution vraie 3D :
+  /* SÉQUENCE WebGL : MÊME storyboard, MÊMES beats (B0..B7), exécution vraie 3D :
      - la balle est une sphère GL éclairée (normal map d'alvéoles, key/rim lights, spéculaire) qui
        naît PILE sur la balle du logo (projection écran->monde au pixel), s'ARRACHE en physique de
        springs (anticipation, fronde, masse, squash/stretch, rolling) et vient se centrer ;
@@ -809,7 +809,7 @@
     };
     // B0 + B1 : la scène se vide, le glint voyage vers la balle (DOM/CSS, inchangé)
     intro.cue(0, function () { body.classList.add('go'); });
-    // B2 : IGNITION — la sphère GL naît sous la braise du glint, pop physique (spring overshoot)
+    // B2 : IGNITION, la sphère GL naît sous la braise du glint, pop physique (spring overshoot)
     intro.cue(560, function () {
       var p = planetPoint();
       if (p) {
@@ -819,7 +819,7 @@
       }
       body.classList.add('arm');
     });
-    // B2.5 : ANTICIPATION — la masse se charge (petit recul physique avant l'arrachement)
+    // B2.5 : ANTICIPATION, la masse se charge (petit recul physique avant l'arrachement)
     intro.cue(900, function () {
       var p = planetPoint();
       if (p) {
@@ -828,7 +828,7 @@
         intro.anticipate(dx / d, dy / d);
       }
     });
-    // B3 : ENVOL — spring sous-amorti vers le centre + kick fronde ; le logo se désagrège derrière
+    // B3 : ENVOL, spring sous-amorti vers le centre + kick fronde ; le logo se désagrège derrière
     intro.cue(980, function () {
       var p = planetPoint();
       tcx = window.innerWidth / 2; tcy = Math.round(window.innerHeight * 0.46);
@@ -838,17 +838,17 @@
       body.style.setProperty('--flash-y', tcy + 'px');
       body.classList.add('travel');
     });
-    // B4 : PLONGÉE — travelling caméra dans la balle ; le ramp 2D reste piloté (éclats synchro)
+    // B4 : PLONGÉE, travelling caméra dans la balle ; le ramp 2D reste piloté (éclats synchro)
     intro.cue(1640, function () {
       Space.setWarpOrigin(tcx, tcy);
       Space.warpRamp(850);
       intro.dive();
     });
-    // B5 : HYPERESPACE — boost du flux d'étoiles 3D
+    // B5 : HYPERESPACE, boost du flux d'étoiles 3D
     intro.cue(2490, function () { Space.warpTo(1.35); intro.hyper(); });
-    // B6 : DÉBOUCHÉ — whiteout DOM + inondation bloom GL (pic ~2939)
+    // B6 : DÉBOUCHÉ, whiteout DOM + inondation bloom GL (pic ~2939)
     intro.cue(2840, function () { body.classList.add('flash'); intro.flood(); });
-    // B7 : ARRIVÉE — carte posée sous le blanc plein, le GL a fini son travail
+    // B7 : ARRIVÉE, carte posée sous le blanc plein, le GL a fini son travail
     intro.cue(2935, function () { markIntroSeen(); body.classList.remove('pre'); body.classList.add('land'); });
     intro.cue(2950, function () { intro.hide(); });
     intro.cue(3050, function () { Space.warpTo(0); });

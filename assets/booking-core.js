@@ -763,7 +763,7 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
     .filter(window => window.duration > 0);
   if (planned.length) return planned;
   // Gestion laser MANUELLE (une partie a été dé-placée vers « à placer ») : on ne
-  // régénère JAMAIS de fenêtre par fallback — l'absence de bloc laser = partie non
+  // régénère JAMAIS de fenêtre par fallback : l'absence de bloc laser = partie non
   // placée (sinon la carte réapparaîtrait aussitôt sur le planning).
   if (resourceType === 'laser_arena' && reservation.opsPlan?.laserManual) return planned;
   if (resourceType === 'bowling_lane' && (reservation.lanes || []).length) {
@@ -1194,7 +1194,7 @@ async function unscheduleLaserPass(reservationId, unitRef) {
     if (typeof markReservationMutation === 'function') markReservationMutation(requestKey, payload.reservation, moveFields);
     save();
     renderStaffData();
-    toast('Partie retirée du planning — à replacer quand tu veux.');
+    toast('Partie retirée du planning : à replacer quand tu veux.');
   } catch (error) {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
@@ -1237,7 +1237,7 @@ const FORMULA_ACTIVITY_LABELS = {
 // arcade…) restent UN item, la quantité est dans le libellé.
 const SESSION_ACTIVITIES = new Set(['laser_game', 'bowling']);
 
-// Étapes d'activités PAR FORMULE — miroir fidèle de ops-knowledge/formulas.json.
+// Étapes d'activités PAR FORMULE : miroir fidèle de ops-knowledge/formulas.json.
 // À garder synchronisé si formulas.json change (c'est la source serveur).
 const FORMULA_ACTIVITY_STEPS = {
   f1: [{ a: 'bowling', c: 1 }, { a: 'laser_game', c: 1 }, { a: 'arcade_time', c: 1 }, { a: 'service_drinks', c: 2, label: '2 cruches boissons' }],
@@ -1269,7 +1269,7 @@ function getFormulaActivitySteps(formuleId) {
 }
 
 // Famille/catégorie d'une formule (ex. « Formules anniversaires » / « Formules
-// spéciales ») — pour regrouper la page Formules par catégorie.
+// spéciales ») : pour regrouper la page Formules par catégorie.
 function getFormulaFamilyLabel(formuleId) {
   const formule = FORMULES.find(item => item.id === String(formuleId || '').trim());
   return formule && formule.family ? formule.family : 'Autres formules';

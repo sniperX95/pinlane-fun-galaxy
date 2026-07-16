@@ -1,6 +1,6 @@
 (function () {
   // Reveal en progressive enhancement : le contenu est VISIBLE par défaut
-  // (bots, OG, print, tout rendu sans scroll — screenshot fullPage compris).
+  // (bots, OG, print, tout rendu sans scroll, screenshot fullPage compris).
   // La classe qui cache (.reveal-pending) n'est posée que si l'Intersection-
   // Observer est opérationnel (1er callback reçu) ET au premier scroll réel,
   // uniquement sur les éléments encore entièrement sous le fold à cet instant :

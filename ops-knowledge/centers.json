@@ -8,22 +8,61 @@
       "timezone": "Europe/Brussels",
       "defaultSchedule": {
         "regular": {
+          "0": {
+            "open": "10:00",
+            "close": "22:00"
+          },
           "1": null,
-          "2": { "open": "14:00", "close": "22:00" },
-          "3": { "open": "12:00", "close": "22:00" },
-          "4": { "open": "14:00", "close": "22:00" },
-          "5": { "open": "14:00", "close": "24:00" },
-          "6": { "open": "10:00", "close": "24:00" },
-          "0": { "open": "10:00", "close": "22:00" }
+          "2": {
+            "open": "14:00",
+            "close": "22:00"
+          },
+          "3": {
+            "open": "12:00",
+            "close": "22:00"
+          },
+          "4": {
+            "open": "14:00",
+            "close": "22:00"
+          },
+          "5": {
+            "open": "14:00",
+            "close": "24:00"
+          },
+          "6": {
+            "open": "10:00",
+            "close": "24:00"
+          }
         },
         "holiday": {
-          "0": { "open": "10:00", "close": "22:00" },
-          "1": { "open": "10:00", "close": "22:00" },
-          "2": { "open": "10:00", "close": "22:00" },
-          "3": { "open": "10:00", "close": "22:00" },
-          "4": { "open": "10:00", "close": "22:00" },
-          "5": { "open": "10:00", "close": "24:00" },
-          "6": { "open": "10:00", "close": "24:00" }
+          "0": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "1": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "2": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "3": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "4": {
+            "open": "10:00",
+            "close": "22:00"
+          },
+          "5": {
+            "open": "10:00",
+            "close": "24:00"
+          },
+          "6": {
+            "open": "10:00",
+            "close": "24:00"
+          }
         }
       },
       "resources": {
@@ -39,7 +78,8 @@
           "parallelLaunches": 1,
           "canSplitGroupsCleanly": false,
           "requiresCompleteGroupBeforeLaunch": true,
-          "riskLevel": "critical"
+          "riskLevel": "critical",
+          "maxPlayers": 30
         },
         "partyTables": {
           "softCapacity": 6,
@@ -60,12 +100,62 @@
         "arcade_time": true,
         "playground": true,
         "duckpin_bowling": true,
-        "axe_throwing": true,
-        "darts": true,
-        "free_roaming_vr": true,
-        "karting_vr": true,
+        "axe_throwing": false,
+        "darts": false,
+        "free_roaming_vr": false,
+        "karting_vr": false,
         "billards": true,
         "fun_run": true
+      },
+      "publicInfo": {
+        "address": "L'Alienau, 100, 6800 Libramont",
+        "city": "Libramont",
+        "phone": "0491/30.16.67",
+        "email": "libramont@fungalaxy.be",
+        "parking": "gratuit"
+      },
+      "activityThemes": {
+        "laser_game": {
+          "theme": "Urban Guerilla",
+          "surfaceM2": 500,
+          "floors": 2,
+          "maxPlayers": 30,
+          "minAge": 7,
+          "minHeightCm": 130,
+          "gameMinutes": 20
+        },
+        "minigolf_blacklight": {
+          "theme": "Jurassic Park",
+          "surfaceM2": 300,
+          "holes": 12,
+          "minAge": 3
+        },
+        "duckpin_bowling": {
+          "lanes": 2,
+          "surfaceM2": 40
+        },
+        "playground": {
+          "surfaceM2": 165,
+          "levels": 3,
+          "ageRange": "3 a 11 ans",
+          "maxChildren": 90,
+          "access": "toute la journee"
+        },
+        "bowling": {
+          "lanes": 8,
+          "surfaceM2": 450,
+          "maxPlayersPerLane": 6
+        },
+        "billards": {
+          "tables": 6,
+          "type": "americains",
+          "minAge": 10
+        }
+      },
+      "publicProof": {
+        "googleRating": null,
+        "googleReviews": null,
+        "note": "Aucune note publiee pour Libramont : ne jamais utiliser celle de Gembloux."
       }
     },
     {
@@ -83,11 +173,12 @@
           "preferAdjacentLanes": true
         },
         "laser": {
-          "weaponCount": 30,
+          "weaponCount": 20,
           "parallelLaunches": 3,
           "canSplitGroupsCleanly": true,
           "requiresCompleteGroupBeforeLaunch": false,
-          "riskLevel": "managed"
+          "riskLevel": "managed",
+          "maxPlayers": 20
         },
         "partyTables": {
           "softCapacity": 6,
@@ -106,14 +197,66 @@
         "minigolf_blacklight": true,
         "golf_oclock": true,
         "arcade_time": true,
-        "playground": true,
-        "duckpin_bowling": true,
-        "axe_throwing": true,
-        "darts": true,
-        "free_roaming_vr": true,
-        "karting_vr": true,
+        "playground": false,
+        "duckpin_bowling": false,
+        "axe_throwing": false,
+        "darts": false,
+        "free_roaming_vr": false,
+        "karting_vr": false,
         "billards": true,
-        "fun_run": true
+        "fun_run": false
+      },
+      "publicInfo": {
+        "address": "Rue des Orchidees, 19, 5030 Gembloux (quartier Enee, a cote du McDonald's)",
+        "city": "Gembloux",
+        "phone": "0472/89.04.11",
+        "email": "gembloux@fungalaxy.be",
+        "parking": "gratuit"
+      },
+      "activityThemes": {
+        "laser_game": {
+          "theme": "Star Wars",
+          "weapon": "FN P90 a capteurs embarques",
+          "surfaceM2": 370,
+          "floors": 2,
+          "maxPlayers": 20,
+          "minAge": 7,
+          "minHeightCm": 130,
+          "gameMinutes": 20
+        },
+        "minigolf_blacklight": {
+          "theme": "mer et pirates",
+          "surfaceM2": 400,
+          "holes": 12,
+          "minAge": 3
+        },
+        "golf_oclock": {
+          "theme": "minigolf 3.0 neonise",
+          "surfaceM2": 300,
+          "holes": 12,
+          "minAge": 7,
+          "maxPlayers": 6,
+          "pricePerPerson": 12.5
+        },
+        "bowling": {
+          "lanes": 8,
+          "surfaceM2": 450,
+          "maxPlayersPerLane": 6
+        },
+        "billards": {
+          "tables": 6,
+          "type": "americains",
+          "minAge": 10
+        },
+        "arcade_time": {
+          "machines": "plus de 40 bornes",
+          "surfaceM2": 200
+        }
+      },
+      "publicProof": {
+        "googleRating": 4.8,
+        "googleReviews": 418,
+        "source": "widget Google Reviews du site (Gembloux)"
       }
     },
     {
@@ -130,5 +273,12 @@
       },
       "activityAvailability": {}
     }
-  ]
+  ],
+  "groupProof": {
+    "team": 12,
+    "activitiesOrganised": 112817,
+    "clientsPerDay": 150,
+    "scope": "groupe Fun Galaxy (les deux centres)",
+    "source": "fungalaxy.be/contact"
+  }
 }

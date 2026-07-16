@@ -1,5 +1,5 @@
 /* ============================================================================
-   PINLANE STAFF/ADMIN v2 — « Precision Tooling » console layer
+   PINLANE STAFF/ADMIN v2 : « Precision Tooling » console layer
    Construit PAR-DESSUS assets/pinlane.css (tokens + composants canoniques).
    Remplace : app-shell.css, staff-*.css, pinlane-v2.css, premium-finish.css,
    promptly-product-theme.css, pro-sober-theme.css, pinlane-kiss-refactor.css,
@@ -17,7 +17,7 @@
    0. COMPAT TOKENS + SHELL
    Alias des anciens noms de variables encore présents dans les style="" inline
    des templates JS historiques (app-main.js, staff-pages-v2.js). Uniquement
-   des références aux tokens pinlane.css — jamais une couleur littérale.
+   des références aux tokens pinlane.css : jamais une couleur littérale.
    -------------------------------------------------------------------------- */
 :root {
   --fgx-sidebar-width: var(--sidebar-w);
@@ -60,7 +60,7 @@ body.admin-mode {
   --v2-amber: var(--warning);
   --v2-red: var(--danger);
   --v2-blue: var(--info);
-  /* Scrim des overlays — token pinlane.css */
+  /* Scrim des overlays : token pinlane.css */
   --scrim: var(--backdrop);
 
   background: var(--page);
@@ -72,10 +72,10 @@ body.admin-mode {
    fichier posant un display sur un élément que le JS toggle avec .hidden est
    gardée par :not(.hidden) pour ne jamais gagner la cascade sur l'état caché. */
 
-/* INVARIANT 1 — audit qualité (porté de app-final-guard) */
+/* INVARIANT 1 : audit qualité (porté de app-final-guard) */
 body.staff-mode #logoutBtn, body.admin-mode #logoutBtn { display: none !important; visibility: hidden !important; pointer-events: none !important; top: auto !important; bottom: auto !important; }
 
-/* INVARIANT 3 — géométrie main vs sidebar */
+/* INVARIANT 3 : géométrie main vs sidebar */
 body.staff-mode main, body.admin-mode main { width: calc(100vw - var(--fgx-sidebar-width)) !important; margin-left: var(--fgx-sidebar-width) !important; }
 
 body.staff-mode main,
@@ -112,7 +112,7 @@ body.admin-mode header > div { display: none !important; } /* override inline */
 body:not(.staff-mode):not(.admin-mode) .ops-sidebar { display: none; }
 
 /* override inline : setView() (app-main.js) pose style="display:flex" sur #nav
-   en mode client — les media queries de pinlane-client.css ne peuvent pas
+   en mode client : les media queries de pinlane-client.css ne peuvent pas
    gagner sans !important. Shell responsive du header global. */
 @media (max-width: 900px) {
   body.client-mode #nav { display: none !important; } /* override inline */
@@ -124,7 +124,7 @@ body:not(.staff-mode):not(.admin-mode) .ops-sidebar { display: none; }
   padding: 20px clamp(16px, 2.2vw, 32px) 48px;
 }
 
-/* Animation d'entrée référencée par le markup — scale-in/shake vivent dans
+/* Animation d'entrée référencée par le markup : scale-in/shake vivent dans
    pinlane.css (couche partagée, DESIGN.md §8). */
 .fade-in { animation: pl-enter var(--dur-slow) var(--ease) both; }
 
@@ -496,7 +496,7 @@ body.staff-menu-collapsed .fgx-menu-icon,
 body.staff-menu-collapsed .fgx-center-dot,
 body.staff-menu-collapsed .fgx-menu-avatar { margin: 0 auto; }
 
-/* --- Popovers sidebar (centres + compte) — surface flottante --- */
+/* --- Popovers sidebar (centres + compte) : surface flottante --- */
 .fgx-menu-popover {
   position: absolute;
   left: 10px;
@@ -512,7 +512,7 @@ body.staff-menu-collapsed .fgx-menu-avatar { margin: 0 auto; }
   box-shadow: var(--shadow-overlay);
 }
 
-/* INVARIANT 2 — le popover ne déborde jamais du viewport */
+/* INVARIANT 2 : le popover ne déborde jamais du viewport */
 .fgx-menu-popover { max-height: min(420px, calc(100dvh - 96px)) !important; overflow: auto !important; }
 
 body.staff-menu-collapsed .fgx-menu-popover {
@@ -616,7 +616,7 @@ body.staff-menu-collapsed .fgx-menu-popover {
 .fgx-account-summary small { color: var(--muted); font-size: 12px; }
 
 /* ----------------------------------------------------------------------------
-   2. AUTH OVERLAY — connexion staff
+   2. AUTH OVERLAY : connexion staff
    -------------------------------------------------------------------------- */
 .auth-overlay:not(.hidden) {
   position: fixed;
@@ -750,7 +750,7 @@ body.staff-menu-collapsed .fgx-menu-popover {
   white-space: nowrap;
 }
 
-/* input date piloté par showPicker() — invisible mais focusable.
+/* input date piloté par showPicker() : invisible mais focusable.
    `input.` pour battre `input[type='date']` de pinlane.css (width:100%),
    clip + ancrage left/top pour ne jamais créer d'overflow horizontal. */
 input.staff-date-input,
@@ -929,7 +929,7 @@ input.dash-date-input {
 
 .resource-filter-btn:hover { background: var(--subtle); }
 
-/* Points de statut (légendes) — Confirmé = bleu, Arrivé = ambre, Payé = vert */
+/* Points de statut (légendes) : Confirmé = bleu, Arrivé = ambre, Payé = vert */
 .dot { width: 8px; height: 8px; border-radius: var(--radius-full); display: inline-block; flex: none; }
 .dot.conf, i.dot.conf { background: var(--info); }
 .dot.arr, i.dot.arr { background: var(--warning); }
@@ -1019,7 +1019,7 @@ input.dash-date-input {
 .planning-move-notice-copy span { color: var(--muted); font-size: 12px; line-height: 1.45; }
 
 /* ----------------------------------------------------------------------------
-   4. PLANNING BOWLING — grille de créneaux (écran critique)
+   4. PLANNING BOWLING : grille de créneaux (écran critique)
    Libre = surface · réservé = fond accent-soft + barre 2px accent ·
    statuts = couleurs fonctionnelles · heures en Geist Mono tabulaire.
    -------------------------------------------------------------------------- */
@@ -1038,7 +1038,7 @@ input.dash-date-input {
 /* Les cellules du planning affichent des données, elles ne sont JAMAIS du texte
    à saisir. Cliquer dans une case plaçait un curseur de texte (trait blanc
    clignotant « comme pour écrire »). On coupe la sélection de texte et on rend
-   le caret transparent sur toute la grille — sans impacter le drag-drop ni les
+   le caret transparent sur toute la grille : sans impacter le drag-drop ni les
    clics (ce sont des events pointeur, indépendants de user-select). Aucun champ
    de saisie ne vit dans ces conteneurs, donc rien de légitime n'est masqué. */
 .planning-grid-wrap,
@@ -1150,7 +1150,7 @@ input.dash-date-input {
 .planning-box.expanded .planning-grid { min-height: 100%; }
 
 /* ----------------------------------------------------------------------------
-   4b. MODE PLEIN ÉCRAN — comptoir grand écran
+   4b. MODE PLEIN ÉCRAN : comptoir grand écran
    Typographie agrandie pour une lecture nette à distance, en-têtes collants,
    bouton fermer explicite. S'applique aussi bien au bowling qu'au laser.
    -------------------------------------------------------------------------- */
@@ -1213,7 +1213,7 @@ input.dash-date-input {
 .planning-box.expanded .laser-group-main small { font-size: 12px; }
 
 /* ----------------------------------------------------------------------------
-   4c. LASER PLEIN ÉCRAN — 2 ZONES
+   4c. LASER PLEIN ÉCRAN : 2 ZONES
    Zone permanente « Parties à placer » (colonne fixe à gauche, ne défile jamais
    hors écran) + zone principale = timeline des lancements (scrollable).
    -------------------------------------------------------------------------- */
@@ -1315,7 +1315,7 @@ input.dash-date-input {
 .activity-check-row.is-done .activity-check-label { text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .activity-check-row.is-done .activity-check-state { color: var(--accent-strong); }
 
-/* Page « Formules » — cartes de suivi */
+/* Page « Formules » : cartes de suivi */
 .formules-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); }
 .formules-card { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-4); display: flex; flex-direction: column; gap: 14px; }
 .formules-card.all-done { box-shadow: inset 0 0 0 1px var(--accent); }
@@ -1538,7 +1538,7 @@ input.dash-date-input {
 }
 .booking-foot .b-tag { flex: 1 1 auto; }
 
-/* Effectif + durée — toujours affichés sur TOUTES les cartes. */
+/* Effectif + durée : toujours affichés sur TOUTES les cartes. */
 .booking-stats {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1550,7 +1550,7 @@ input.dash-date-input {
 }
 .booking-stats .u { opacity: 0.65; font-weight: 500; margin-left: 1px; }
 
-/* Effectif — emphase croissante (gris → pastille inversée) selon le groupe. */
+/* Effectif : emphase croissante (gris → pastille inversée) selon le groupe. */
 .bk-pax {
   display: inline-flex;
   align-items: baseline;
@@ -1575,7 +1575,7 @@ input.dash-date-input {
   font-weight: 700;
 }
 
-/* Durée — 1h neutre, toute autre durée ressort (ambre = attention). Le libellé
+/* Durée : 1h neutre, toute autre durée ressort (ambre = attention). Le libellé
    texte porte l'info, la couleur ne fait que la renforcer. */
 .bk-dur {
   display: inline-flex;
@@ -1596,7 +1596,7 @@ input.dash-date-input {
 /* --- Densité responsive selon la hauteur réelle de la carte (durée × zoom) ---
    dens-lg (défaut) : nom + activité + effectif + durée, aéré.
    dens-md          : idem, compact (les tags secondaires restent masqués).
-   dens-xs (≈30 min): une seule ligne — nom tronqué + effectif + durée. */
+   dens-xs (≈30 min): une seule ligne, nom tronqué + effectif + durée. */
 .booking.dens-xs {
   flex-direction: row;
   align-items: center;
@@ -1756,7 +1756,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .e-sub { font-size: 13px; color: var(--muted); max-width: 380px; }
 
 /* ----------------------------------------------------------------------------
-   5. PLANNING LASER GAME — agenda par lancement
+   5. PLANNING LASER GAME : agenda par lancement
    -------------------------------------------------------------------------- */
 .laser-grid-wrap { overflow-x: auto; }
 
@@ -3475,7 +3475,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-classification-read h3 { color: var(--accent-strong); }
 
 /* ============================================================================
-   ÉTABLISSEMENT v2 — système de configuration premium (tuiles, semaine, badges)
+   ÉTABLISSEMENT v2 : système de configuration premium (tuiles, semaine, badges)
    ========================================================================== */
 .establishment-page { gap: var(--space-5); }
 
@@ -3485,7 +3485,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-page-head .estab-page-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
 .estab-page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* Sélecteur de centres — cartes riches */
+/* Sélecteur de centres : cartes riches */
 .establishment-selector { padding: var(--space-5); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
 .establishment-center-chip {
   min-width: 230px; flex: 1 1 230px; max-width: 320px; gap: var(--space-3);
@@ -3506,7 +3506,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-editor-head { padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); margin-bottom: var(--space-2); }
 .establishment-editor-head h2 { font-size: 20px; }
 
-/* Vue lecture — grille de sections premium */
+/* Vue lecture : grille de sections premium */
 .establishment-readview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
 .estab-section { display: grid; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--page); align-content: start; }
 .estab-section.full { grid-column: 1 / -1; }
@@ -3517,7 +3517,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-section-copy h3 { font-size: 15px; font-weight: 650; }
 .estab-section-copy p { font-size: 12px; color: var(--muted); }
 
-/* Tuiles de ressources — grand chiffre */
+/* Tuiles de ressources : grand chiffre */
 .estab-stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: var(--space-3); }
 .estab-stat { display: grid; gap: 8px; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .estab-stat-top { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 500; }
@@ -3527,7 +3527,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-stat-value small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 5px; }
 .estab-stat-sub { font-size: 11px; color: var(--faint); }
 
-/* Semaine horaires — tableau lisible */
+/* Semaine horaires : tableau lisible */
 .estab-week { display: grid; gap: 3px; }
 .estab-week-head, .estab-week-row { display: grid; grid-template-columns: 96px 1fr 1fr; gap: var(--space-3); align-items: center; }
 .estab-week-head { padding: 0 var(--space-3) 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 600; }
@@ -3556,7 +3556,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-chip-row .estab-tag { padding: 4px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); font-size: 12px; }
 .estab-empty { color: var(--faint); font-size: 13px; }
 
-/* Édition — cartes plus premium + en-tête */
+/* Édition : cartes plus premium + en-tête */
 .establishment-card { padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
 .establishment-card legend { font-size: 14px; }
 .estab-subhead { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); font-weight: 600; margin-top: var(--space-2); }
@@ -3879,7 +3879,7 @@ body.dashboard-detail-open { overflow: hidden; }
 .groups-ledger-head button:hover, .groups-show-more:hover { background: var(--subtle); color: var(--text); }
 .groups-show-more { justify-self: center; }
 
-/* P1-6 : les lignes font min 720px — quand le panneau est plus étroit, le
+/* P1-6 : les lignes font min 720px, quand le panneau est plus étroit, le
    débordement horizontal doit être VISIBLE (colonne Actions atteignable).
    Scrollbar fine toujours dessinée, stylée tokens (Chromium + Firefox). */
 .groups-ledger {
@@ -4306,7 +4306,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
    -------------------------------------------------------------------------- */
 .staff-access-console { display: grid; gap: var(--space-4); }
 
-/* Code couleur des rôles — un tone = un couple token statut/accent existant */
+/* Code couleur des rôles : un tone = un couple token statut/accent existant */
 .staff-access-console .tone-admin { --role-tone: var(--warning); --role-tone-soft: var(--warning-soft); }
 .staff-access-console .tone-manager { --role-tone: var(--accent); --role-tone-soft: var(--accent-soft); }
 .staff-access-console .tone-staff { --role-tone: var(--success); --role-tone-soft: var(--success-soft); }
@@ -4314,7 +4314,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-access-console .tone-tech,
 .staff-access-console .tone-custom { --role-tone: var(--muted); --role-tone-soft: var(--subtle); }
 
-/* Layout — 3 régions : rail rôles | éditeur permissions | panneau latéral */
+/* Layout : 3 régions : rail rôles | éditeur permissions | panneau latéral */
 .staff-access-grid {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) 300px;
@@ -4421,7 +4421,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-preset-btn:hover:not(:disabled) { background: var(--subtle); color: var(--text); }
 .staff-preset-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* Groupes de permissions — repliables (details/summary) */
+/* Groupes de permissions : repliables (details/summary) */
 .staff-permission-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); align-items: start; }
 
 .staff-permission-group {
@@ -4472,7 +4472,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .staff-permission-list { display: grid; gap: 2px; padding: 2px var(--space-3) var(--space-3); }
 
-/* Toggle permission — switch custom 28×16, input masqué mais focusable */
+/* Toggle permission : switch custom 28×16, input masqué mais focusable */
 .staff-permission-toggle {
   display: flex;
   align-items: center;
@@ -4519,7 +4519,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-permission-toggle.is-on .staff-toggle-track::after { transform: translateX(12px); }
 .staff-permission-toggle input:focus-visible + .staff-toggle-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Panneau latéral — « Ce rôle ouvre » */
+/* Panneau latéral : « Ce rôle ouvre » */
 .staff-access-summary {
   display: grid;
   gap: var(--space-2);
@@ -4651,7 +4651,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 /* ----------------------------------------------------------------------------
-   13. CAMPAGNES — agent ops + brouillon centre (rendus dans la page pv2)
+   13. CAMPAGNES : agent ops + brouillon centre (rendus dans la page pv2)
    -------------------------------------------------------------------------- */
 .campaign-agent-ops { display: grid; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .campaign-agent-ops-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
@@ -4761,7 +4761,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 /* ----------------------------------------------------------------------------
-   14. LEGACY FALLBACK — renderers app-main historiques (clients / réservations /
+   14. LEGACY FALLBACK : renderers app-main historiques (clients / réservations /
    emails / tarifs / campagnes) écrasés par staff-pages-v2.js au chargement.
    Styles de survie uniquement : si pv2 ne charge pas, la lecture reste propre.
    -------------------------------------------------------------------------- */
@@ -4832,13 +4832,13 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 /* ----------------------------------------------------------------------------
-   15. PAGES PV2 (staff-pages-v2.js) — Réservations · Clients · Emails ·
+   15. PAGES PV2 (staff-pages-v2.js) : Réservations · Clients · Emails ·
    Campagnes · Tarifs. Géométrie héritée de l'ancien pinlane-v2, langage
    visuel 100 % tokens.
    -------------------------------------------------------------------------- */
 .pv2-shell { display: grid; gap: var(--space-4); padding: 2px 0 var(--space-10); }
 
-/* Entrée de page — gate JS (classe posée une fois par visite, jamais au poll) */
+/* Entrée de page : gate JS (classe posée une fois par visite, jamais au poll) */
 .pv2-enter > * { opacity: 0; transform: translateY(8px); animation: pl-enter var(--dur-slow) var(--ease) forwards; }
 .pv2-enter > *:nth-child(2) { animation-delay: 40ms; }
 .pv2-enter > *:nth-child(3) { animation-delay: 80ms; }
@@ -5125,7 +5125,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-chip.red { background: var(--danger-soft); color: var(--danger); }
 .pv2-chip.accent { background: var(--accent-soft); color: var(--accent); }
 
-/* Calendrier heatmap (Réservations) — intensités dérivées de l'accent */
+/* Calendrier heatmap (Réservations) : intensités dérivées de l'accent */
 .pv2-cal { display: grid; gap: 8px; }
 
 .pv2-cal-head {
@@ -5300,7 +5300,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-price-stats strong { color: var(--text); font-weight: 600; }
 
 /* ----------------------------------------------------------------------------
-   15b. CAMPAGNES — parcours gamifié « agence marketing » (style Duolingo)
+   15b. CAMPAGNES : parcours gamifié « agence marketing » (style Duolingo)
    Structure motivante (niveaux, XP, streak, chemin de missions) sur l'identité
    Precision Tooling. Zéro couleur en dur : tokens + color-mix uniquement.
    -------------------------------------------------------------------------- */
@@ -5409,7 +5409,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 /* ----------------------------------------------------------------------------
-   16. COMMAND PALETTE — Ctrl/Cmd+K (surface flottante)
+   16. COMMAND PALETTE : Ctrl/Cmd+K (surface flottante)
    -------------------------------------------------------------------------- */
 .pv2-palette-overlay {
   position: fixed;
@@ -5518,7 +5518,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-palette-foot kbd { margin-right: 4px; }
 
 /* ----------------------------------------------------------------------------
-   17. OVERLAYS — fiche POS, modale édition, réservation rapide, toast,
+   17. OVERLAYS : fiche POS, modale édition, réservation rapide, toast,
    aperçu email. Seules surfaces à porter --shadow-overlay.
    -------------------------------------------------------------------------- */
 .pos-overlay:not(.hidden) {
@@ -6620,12 +6620,12 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .qb-btn-save:hover { opacity: 0.88; }
 
-/* Notifications « nouvelle réservation du jour » — z-index 950 : au-dessus du
+/* Notifications « nouvelle réservation du jour » : z-index 950 : au-dessus du
    planning plein écran (400), des overlays (480) et du toast (500). position
    fixed → non rognée par l'overflow:hidden du mode agrandi. */
 #newResNotifs {
   position: fixed; top: 16px; right: 16px; z-index: 950;
-  display: none; /* jamais côté client/public — réservé au poste staff */
+  display: none; /* jamais côté client/public, réservé au poste staff */
   flex-direction: column; gap: 10px;
   width: min(340px, calc(100vw - 32px)); pointer-events: none;
 }
@@ -6898,7 +6898,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .ops-tab.active,
 .ops-cockpit-tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm), 0 0 0 1px var(--line); }
 
-/* A9 : en mobile, les 5 onglets restent atteignables au doigt — scroll-x
+/* A9 : en mobile, les 5 onglets restent atteignables au doigt, scroll-x
    fluide avec snap + cibles tactiles ≥ 44px (DESIGN.md §7). */
 @media (max-width: 480px) {
   .admin-period-tabs,
@@ -7098,7 +7098,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .ops-cockpit-bar span { position: absolute; inset: 0 auto 0 0; width: var(--value, 0%); background: var(--accent); border-radius: var(--radius-full); }
 
 /* ----------------------------------------------------------------------------
-   19. OPS CONSOLE (ops-console.js — onglet Mails & agents / simulation / IA)
+   19. OPS CONSOLE (ops-console.js : onglet Mails & agents / simulation / IA)
    -------------------------------------------------------------------------- */
 .ops-admin-head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; }
 .ops-admin-head h2, .ops-admin-head h3 { font-size: 16px; }
@@ -7395,7 +7395,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .email-loading { color: var(--faint); font-size: 12px; padding: var(--space-3); text-align: center; }
 
 /* ----------------------------------------------------------------------------
-   20. RESPONSIVE — ≤1280 (densité) · ≤1100 (sidebar réduite) · ≤768 (mobile)
+   20. RESPONSIVE : ≤1280 (densité) · ≤1100 (sidebar réduite) · ≤768 (mobile)
    -------------------------------------------------------------------------- */
 @media (max-width: 1280px) {
   .dash-grid-main, .dash-grid-bottom { grid-template-columns: 1fr 1fr; }
@@ -7570,7 +7570,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .laser-pass-queue { grid-template-columns: 1fr; }
   .laser-agenda-header, .laser-agenda-row { grid-template-columns: 72px minmax(420px, 1fr) 90px; }
 
-  /* P1-11 — Planning bowling mobile : l'ancien mode « tout tient » (pistes
+  /* P1-11 : Planning bowling mobile : l'ancien mode « tout tient » (pistes
      34px) rendait les libellés illisibles (2-3 caractères). Fix minimal, sans
      refonte : colonnes à largeur LISIBLE + défilement horizontal du wrap
      (.planning-grid-wrap est déjà overflow-x:auto), heures sticky à gauche
@@ -7719,7 +7719,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .cr-badge-handled { background: var(--success-soft); color: var(--success); }
 .cr-badge-archived { background: var(--subtle); color: var(--muted); }
 
-/* C14 : échec de chargement des bundles admin/ops — panneau bloquant + retry.
+/* C14 : échec de chargement des bundles admin/ops, panneau bloquant + retry.
    #adminView est en pointer-events:none ; seul ce panneau se réactive. */
 .admin-load-error {
   pointer-events: auto;
@@ -7739,7 +7739,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .admin-load-error p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 
 /* ============================================================
-   Onglet « Données » — hub analytics direction (admin-data.js)
+   Onglet « Données » : hub analytics direction (admin-data.js)
    ============================================================ */
 .dh-wrap { display: grid; gap: var(--space-5); max-width: 100%; min-width: 0; }
 /* Anti grid-blowout : sans min-width:0, le min-content d'un seul enfant
@@ -7884,7 +7884,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 .groups-action-dismiss:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 
-/* Analyse personnalisée (dashboard) — widgets métrique × visualisation */
+/* Analyse personnalisée (dashboard) : widgets métrique × visualisation */
 .dash-custom-analytics .dash-card-head { flex-wrap: wrap; gap: var(--space-3); }
 .dash-range-controls { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .dash-range-controls input[type="date"] {
@@ -7909,7 +7909,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 
 /* ============================================================
-   Onglet « Mails » — studio (admin-mail.js)
+   Onglet « Mails » : studio (admin-mail.js)
    ============================================================ */
 .ms-note {
   padding: var(--space-3) var(--space-4);
@@ -7974,7 +7974,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   CRM CLIENTS v3 — redesign lisible + data-dense (facettes déselectionnables,
+   CRM CLIENTS v3 : redesign lisible + data-dense (facettes déselectionnables,
    fiche client 360). Raw tokens uniquement ; light + dark via cascade.
    ══════════════════════════════════════════════════════════════════════════ */
 .crm-shell { display: flex; flex-direction: column; gap: var(--space-4); }
@@ -8022,7 +8022,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-table tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .crm-table td { height: 38px; padding: 8px 12px; color: var(--text); vertical-align: middle; }
 /* NB : un <td> en display:flex sort du layout de table (la cellule wrappe sous
-   la ligne) — on garde les td en table-cell et on aligne les enfants inline. */
+   la ligne) : on garde les td en table-cell et on aligne les enfants inline. */
 .crm-cell-client { white-space: nowrap; }
 /* Avatar neutre (initiales monochromes) : l'accent est réservé aux signaux
    actionnables, pas à la décoration de chaque ligne. */
@@ -8039,7 +8039,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-icon-btn:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); color: var(--text); }
 .crm-icon-btn .pv2-ico { width: 13px; height: 13px; }
 
-/* Fiche client — UNE surface, sections séparées par hairlines (pas de
+/* Fiche client : UNE surface, sections séparées par hairlines (pas de
    sous-boîtes empilées : la hiérarchie vient des titres et de l'espace). */
 .crm-fiche-panel { padding: 0; position: sticky; top: 0; overflow: hidden; }
 .crm-fiche { display: flex; flex-direction: column; }
@@ -8049,7 +8049,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-sec-head h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0; text-transform: uppercase; letter-spacing: .04em; }
 .crm-count { display: inline-flex; align-items: center; height: 20px; font-size: 11px; font-weight: 500; color: var(--muted); background: var(--subtle); padding: 0 8px; border-radius: var(--radius-full); }
 /* Le rail fiche est étroit (~330px) : identité en haut, actions en rangée
-   pleine largeur dessous — jamais de boutons en compétition avec le nom. */
+   pleine largeur dessous : jamais de boutons en compétition avec le nom. */
 .crm-head { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding-top: var(--space-5); }
 .crm-avatar-lg { width: 44px; height: 44px; font-size: 15px; border-radius: var(--radius-lg); }
 .crm-head-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -8065,7 +8065,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-cell-visit.is-upcoming strong { color: var(--accent-strong); }
 .crm-head-actions { display: flex; gap: 8px; flex: 1 0 100%; }
 .crm-head-actions .pv2-btn { flex: 1; justify-content: center; }
-/* KPI : bande de chiffres séparés par hairlines verticales — pas de cartes. */
+/* KPI : bande de chiffres séparés par hairlines verticales, pas de cartes. */
 .crm-kpis { flex-direction: row; gap: 0; padding-top: var(--space-3); padding-bottom: var(--space-4); }
 .crm-kpi { flex: 1 1 auto; min-width: 0; padding: 2px 8px 2px var(--space-3); border-left: 1px solid var(--line); }
 .crm-kpi:first-child { border-left: 0; padding-left: 0; }
@@ -8090,13 +8090,13 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-kv-wide { grid-column: 1 / -1; }
 .crm-kv-wide dd { display: flex; gap: 5px; flex-wrap: wrap; }
 /* Historique : lignes hairline compactes (les liserés colorés par statut
-   faisaient du bruit — le statut vit dans la pilule à droite). */
+   faisaient du bruit : le statut vit dans la pilule à droite). */
 .crm-history { display: flex; flex-direction: column; max-height: 360px; overflow: auto; }
 .crm-hist { border-top: 1px solid var(--line); }
 .crm-history .crm-hist:first-child { border-top: 0; }
 .crm-hist.status-cancel { opacity: .6; }
 /* Rail étroit : date + montant + statut sur la ligne 1, libellé pleine
-   largeur sur la ligne 2 — rien ne wrappe, rien ne se bat pour la place. */
+   largeur sur la ligne 2 : rien ne wrappe, rien ne se bat pour la place. */
 .crm-hist summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 1px 10px; padding: 8px 0; cursor: pointer; list-style: none; border-radius: var(--radius-sm); transition: background-color var(--dur-fast) var(--ease); }
 .crm-hist summary:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
 .crm-hist summary::-webkit-details-marker { display: none; }
@@ -8136,7 +8136,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .crm-table .col-secondary, .crm-table td.col-secondary { display: none; }
 }
 
-/* ── Groupes & anniversaires — Radar de préparation (futur proche) ─────────── */
+/* ── Groupes & anniversaires : Radar de préparation (futur proche) ─────────── */
 .groups-cockpit { grid-template-columns: minmax(0, 1.9fr) minmax(340px, 0.9fr); align-items: start; }
 .groups-primary { min-width: 0; }
 .groups-timeline { display: flex; flex-direction: column; gap: var(--space-5); }
@@ -8208,7 +8208,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 .mk-auto-edit-hint { display: block; font-weight: 400; color: var(--faint); text-transform: none; letter-spacing: 0; margin-top: 1px; }
 
-/* ── LE BRIEF — page Marketing (refonte 2026-07-17) ─────────────────────────
+/* ── LE BRIEF : page Marketing (refonte 2026-07-17) ─────────────────────────
    LOI DE DESIGN (silence hiérarchique) : une seule action --accent visible par
    composant ; tout le secondaire en liens texte --muted/--faint ; zéro carte
    imbriquée dans une carte ; hairlines --line uniquement, zéro ombre lourde ;
@@ -8275,7 +8275,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .br-radar-sum { margin: var(--space-3) 0 0; font-size: 12.5px; color: var(--muted); }
 .br-radar-sum .br-num { color: var(--text); }
 
-/* Le pouls — bande de KPIs business réels */
+/* Le pouls : bande de KPIs business réels */
 .br-pulse { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 .br-kpi { display: flex; flex-direction: column; gap: 3px; padding: var(--space-4); background: var(--surface); }
 .br-kpi-val { font-family: var(--font-data); font-size: 24px; font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--text); line-height: 1.1; }
@@ -8376,7 +8376,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   MARKETING — « machine de guerre » : 5 surfaces (refonte 2026-07-16)
+   MARKETING : « machine de guerre » : 5 surfaces (refonte 2026-07-16)
    Langage DESIGN.md strict (Geist, un accent bleu, hairlines, ZÉRO dégradé/
    glow/glass) exécuté au niveau Linear/Vercel/Stripe : héros qui commande,
    hiérarchie typographique tranchée, easing custom, scale-on-press, light/dark.
@@ -8576,7 +8576,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-surface .br-z:first-child { margin-top: 0; }
 .mkw-surface .br-zt { margin: 0 0 var(--space-3); font-size: 14.5px; font-weight: 620; letter-spacing: -0.01em; text-transform: none; color: var(--text); }
 
-/* Radar — data-viz signature : cellules plus grandes, niveaux lisibles,
+/* Radar : data-viz signature : cellules plus grandes, niveaux lisibles,
    barre de charge, marqueur du jour, hover précis. */
 .mkw-surface .br-radar { gap: 6px; padding: 2px; }
 .mkw-surface .br-cell { gap: 6px; padding: 12px 4px 9px; border-radius: var(--radius-lg); border-color: var(--line); background: var(--surface); transition: border-color 140ms var(--mkw-out), transform 140ms var(--mkw-out); }
@@ -8595,7 +8595,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-surface .br-radar-sum { font-size: 13px; color: var(--muted); margin-top: var(--space-4); }
 .mkw-surface .br-radar-explain { background: var(--subtle); border-radius: var(--radius-lg); padding: 12px 14px; margin-top: var(--space-3); }
 
-/* Cartes de proposition — plus de présence, hiérarchie interne nette */
+/* Cartes de proposition : plus de présence, hiérarchie interne nette */
 .mkw-surface .br-card { border-radius: var(--radius-xl); border-color: var(--line); background: var(--surface); padding: var(--space-4) var(--space-5) var(--space-5) calc(var(--space-5) + 6px); }
 [data-theme='dark'] .mkw-surface .br-card { background: var(--raised); }
 .mkw-surface .br-card::before { left: 0; top: 14px; bottom: 14px; width: 3px; }
@@ -8606,7 +8606,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-surface .br-ask-input { height: var(--h-lg); border-radius: var(--radius-md); }
 .mkw-surface .pv2-btn:active { transform: scale(0.97); }
 
-/* Reçus (Résultats) — lignes plus tenues */
+/* Reçus (Résultats) : lignes plus tenues */
 .mkw-results .br-z { margin-top: var(--space-4); }
 .mkw-results .br-ticket { padding: 9px 0; font-size: 13.5px; }
 .mkw-results .br-receipt { border-top: 1px solid var(--line); }
@@ -8639,7 +8639,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .pv2-mail-error { font-size: 12.5px; line-height: 1.45; color: var(--danger); background: var(--danger-soft); border-radius: var(--radius-md); padding: 8px 10px; }
 .pv2-mail-preview-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
 
-/* ── Marketing suite v2 — passe Astryx. L'essentiel (hauteurs uniques, voiles,
+/* ── Marketing suite v2 : passe Astryx. L'essentiel (hauteurs uniques, voiles,
    tables denses, display 400, segments par graisse) vit dans les blocs
    canoniques ; ici : renforts focus, badge cœur, tons dark par surface. ── */
 
@@ -8648,7 +8648,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-cell-why .pv2-btn.sm { margin-left: 8px; }
 .mk-ask-select, .mk-ask-brief { height: var(--h-md); }
 
-/* Focus ring standard (2px accent, offset 2) — renforts explicites contre
+/* Focus ring standard (2px accent, offset 2), renforts explicites contre
    toute surcharge locale. Les champs texte coupent le halo du système. */
 .pv2-btn:focus-visible, .crm-seg:focus-visible, .pv2-pipe:focus-visible,
 .mk-switch:focus-visible, .pv2-seg button:focus-visible, .crm-stat-link:focus-visible,
@@ -8667,7 +8667,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* Cards majeures en radius container */
 .mk-auto { border-radius: var(--radius-xl); }
 
-/* Dark : re-sélection de ton par surface (Astryx) — les cards se détachent du
+/* Dark : re-sélection de ton par surface (Astryx), les cards se détachent du
    fond par un ton raised, pas seulement par la bordure. */
 [data-theme='dark'] .pv2-stat,
 [data-theme='dark'] .pv2-panel:not(.crm-fiche-panel),

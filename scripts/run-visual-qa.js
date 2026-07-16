@@ -1158,7 +1158,7 @@ async function main() {
     // que toute la journée tienne à l'écran. La fenêtre d'ouverture du jour QA
     // varie (10 h à 14 h selon jour/congés) : à 920px de haut, un jour de 14 h
     // donne des cellules de 53px, soit une carte 2h de 98px < seuil dens-lg
-    // (108px) — le test échouait selon la DATE d'exécution, pas selon le code.
+    // (108px) : le test échouait selon la DATE d'exécution, pas selon le code.
     // On garantit donc la hauteur d'écran d'un poste comptoir (1400px) pour
     // vérifier le contrat réel « carte haute = détail complet », puis on
     // restaure le viewport de référence.
@@ -1206,7 +1206,7 @@ async function main() {
     await renderStaffPage(page, 'planning');
     await page.waitForTimeout(500);
 
-    // Volet A.1 — étape notification retard pré-remplie ET éditable, « ne pas
+    // Volet A.1 : étape notification retard pré-remplie ET éditable, « ne pas
     // prévenir » = 0 mail. On ouvre l'analyse d'un retard puis on applique.
     await page.evaluate('window.__PINLANE_QA_DELAY_NOTIFY__ = null;');
     await page.evaluate(() => openDelayImpact(9001, 15));
@@ -1236,7 +1236,7 @@ async function main() {
     await page.waitForTimeout(500);
     await page.evaluate(() => applyDelayPlan());
     await page.waitForTimeout(500);
-    await page.evaluate(() => setDelayNotifyMessage(9001, 'TEXTE EDITE QA — bonjour et merci de votre patience.'));
+    await page.evaluate(() => setDelayNotifyMessage(9001, 'TEXTE EDITE QA, bonjour et merci de votre patience.'));
     await page.evaluate(() => sendDelayNotifications());
     await page.waitForTimeout(400);
     const notifyPost = await page.evaluate(() => window.__PINLANE_QA_DELAY_NOTIFY__);
@@ -1244,7 +1244,7 @@ async function main() {
     const editedMsg = (notifyPost.messages || []).find((m) => Number(m.reservationId) === 9001);
     assert(editedMsg && /TEXTE EDITE QA/.test(editedMsg.body || ''), 'Retard : le texte modifié par le staff est bien transmis.');
 
-    // Volet A.2 — indicateur de retard sur la carte planning + retrait.
+    // Volet A.2 : indicateur de retard sur la carte planning + retrait.
     await page.evaluate(() => { renderPlanning(); if (typeof renderLaserPlanning === 'function') renderLaserPlanning(); });
     await page.waitForTimeout(300);
     // Le flag de retard est appliqué de façon asynchrone après delayApply : on
@@ -1267,7 +1267,7 @@ async function main() {
     const indicatorAfterClear = await page.evaluate(() => document.querySelectorAll('.booking .delay-indicator').length);
     await screenshot(page, 'planning-delay-cleared');
 
-    // Volet B — centre de communication client : modèles, canaux, envoi.
+    // Volet B : centre de communication client : modèles, canaux, envoi.
     await page.evaluate(() => openCommCenter(9001));
     await page.waitForTimeout(600);
     const commState = await page.evaluate(() => ({
@@ -1455,7 +1455,7 @@ async function main() {
     assert(!modalStillOpen, 'La modale de création d accès doit se fermer avec Escape.');
 
     // ------------------------------------------------------------------
-    // Chantier 2 — un rôle limité ne voit dans le menu QUE ses entrées
+    // Chantier 2 : un rôle limité ne voit dans le menu QUE ses entrées
     // autorisées (entrées interdites ABSENTES du DOM, pas juste désactivées).
     // ------------------------------------------------------------------
     const limitedMenu = await page.evaluate(() => {
@@ -1531,7 +1531,7 @@ async function main() {
       'La page Evenements ne doit pas declencher /api/admin-range.'
     );
 
-    // Vue Direction (console CEO) — overview + chaque onglet + sous-onglets ops.
+    // Vue Direction (console CEO) : overview + chaque onglet + sous-onglets ops.
     // Le mock renvoie peu de données admin : on valide surtout la structure
     // (pas d'overflow, pas de texte qui se chevauche) sur Mails & agents / Simulation.
     await page.evaluate(() => setView('admin'));
@@ -1571,14 +1571,14 @@ async function main() {
     const backToClient = await page.locator('#clientView:not(.hidden)').count();
     assert(backToClient === 1, 'Le popover compte staff doit permettre de revenir à l espace client.');
 
-    // Vue client (desktop) — parcours de réservation
+    // Vue client (desktop) : parcours de réservation
     await page.evaluate(() => setView('client'));
     await page.waitForTimeout(700);
     await screenshot(page, 'client-booking-desktop');
     issues.push(...await collectIssues(page, 'client-booking-desktop'));
 
     // ------------------------------------------------------------------
-    // Chantier 1 — icônes du popover compte staff visibles (dark + light)
+    // Chantier 1 : icônes du popover compte staff visibles (dark + light)
     // ------------------------------------------------------------------
     await page.evaluate(() => setView('staff'));
     await renderStaffPage(page, 'dashboard');
@@ -1606,7 +1606,7 @@ async function main() {
     await page.waitForTimeout(200);
 
     // ------------------------------------------------------------------
-    // Chantier 2 — champ date client : une seule icône calendrier
+    // Chantier 2 : champ date client : une seule icône calendrier
     // ------------------------------------------------------------------
     await page.evaluate(() => setView('client'));
     await page.waitForTimeout(500);
@@ -1628,7 +1628,7 @@ async function main() {
     await page.locator('.date-input-wrap').first().screenshot({ path: path.join(OUT_DIR, 'chantier2-date-field.png') });
 
     // ------------------------------------------------------------------
-    // Chantier 3 — section formules compacte + règle vacances par période
+    // Chantier 3 : section formules compacte + règle vacances par période
     // ------------------------------------------------------------------
     await page.evaluate(() => {
       setType('formule');
@@ -1677,7 +1677,7 @@ async function main() {
     await screenshot(page, 'chantier3-formules-summer-open');
 
     // ------------------------------------------------------------------
-    // Chantier 4 — état de chargement/vide des créneaux
+    // Chantier 4 : état de chargement/vide des créneaux
     // ------------------------------------------------------------------
     await page.evaluate(() => {
       goStep(2);
@@ -1707,7 +1707,7 @@ async function main() {
     await page.evaluate(() => goStep(1));
 
     // ------------------------------------------------------------------
-    // Picker formule « Ancres + Liberté » — chips par ancre (:00/:30), défaut
+    // Picker formule « Ancres + Liberté » : chips par ancre (:00/:30), défaut
     // valide pré-sélectionné, revalidation à chaque modification, refus +
     // suggestions, pass liberté SANS heure, payload de réservation correct.
     // ------------------------------------------------------------------
@@ -1881,7 +1881,7 @@ async function main() {
     await page.evaluate(() => resetBooking());
 
     // ------------------------------------------------------------------
-    // Chantier 6 — les horaires alternatifs disparaissent au changement de contexte
+    // Chantier 6 : les horaires alternatifs disparaissent au changement de contexte
     // ------------------------------------------------------------------
     await page.evaluate(() => {
       showBookingAlternatives('Ce créneau ne tient plus.', [
@@ -1908,7 +1908,7 @@ async function main() {
     await screenshot(page, 'chantier6-alternatives-cleared');
 
     // ------------------------------------------------------------------
-    // Chantier 5 — Établissement : horaires vacances, exceptions, offres
+    // Chantier 5 : Établissement : horaires vacances, exceptions, offres
     // ------------------------------------------------------------------
     await page.evaluate(() => setView('staff'));
     await renderStaffPage(page, 'establishment');
@@ -1952,7 +1952,7 @@ async function main() {
     await page.waitForTimeout(400);
 
     // ------------------------------------------------------------------
-    // Réservation rapide contextuelle — UNE base + variantes par point
+    // Réservation rapide contextuelle : UNE base + variantes par point
     // d'entrée : le contexte pré-remplit ET élague (jamais redemander ce
     // qui est déjà su), l'avancé vit replié dans « Plus d'options ».
     // ------------------------------------------------------------------
@@ -2016,8 +2016,8 @@ async function main() {
     const qbGeneric = await readQuickBook();
     assert(qbGeneric, 'Réservation rapide générique : la modale doit s ouvrir.');
     assert(qbGeneric.title === 'Réservation rapide', `Générique : titre attendu « Réservation rapide » (reçu ${qbGeneric.title}).`);
-    assert(qbGeneric.interactive <= 20, `Générique : max 20 éléments interactifs visibles à l ouverture — proche de la moitié de l ancienne modale (reçu ${qbGeneric.interactive}).`);
-    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles — email visible/saisissable (non obligatoire côté staff).');
+    assert(qbGeneric.interactive <= 20, `Générique : max 20 éléments interactifs visibles à l ouverture, proche de la moitié de l ancienne modale (reçu ${qbGeneric.interactive}).`);
+    assert(qbGeneric.hasTypeRow && qbGeneric.hasDateInput && qbGeneric.hasTimeInput && qbGeneric.hasPaxInput && qbGeneric.hasNameInput && qbGeneric.hasEmailInput, 'Générique : les essentiels (activité, date, heure, joueurs, nom, téléphone, email) doivent être visibles, email visible/saisissable (non obligatoire côté staff).');
     assert(!qbGeneric.hasSlotStrip && !qbGeneric.hasLaneGrid && !qbGeneric.hasNotesTextarea, 'Générique : créneaux, pistes et notes internes doivent être repliés à l ouverture (email reste essentiel, visible).');
     assert(qbGeneric.moreToggle, 'Générique : le bouton « Plus d options » est requis.');
     await screenshot(page, 'quickbook-generic');
@@ -2036,7 +2036,7 @@ async function main() {
     await page.waitForTimeout(300);
     const qbCell = await readQuickBook();
     assert(/piste 7/.test(qbCell.title) && /15:00/.test(qbCell.title), `Case planning : titre contextuel « Réserver la piste 7 · 15:00 » attendu (reçu ${qbCell.title}).`);
-    assert(!qbCell.hasTypeRow && !qbCell.hasDateInput && !qbCell.hasTimeInput, 'Case planning : activité, date et heure sont acquises — ne pas les redemander.');
+    assert(!qbCell.hasTypeRow && !qbCell.hasDateInput && !qbCell.hasTimeInput, 'Case planning : activité, date et heure sont acquises, ne pas les redemander.');
     assert(qbCell.chips.includes('Piste') && qbCell.chips.includes('Départ') && qbCell.chips.includes('Date'), 'Case planning : les acquis doivent être rappelés en chips.');
     assert(qbCell.state.lanes.length === 1 && qbCell.state.lanes[0] === 7 && qbCell.state.startTime === '15:00' && qbCell.state.autoAssign === false, 'Case planning : piste 7 et 15:00 doivent être préremplies.');
     assert(qbCell.durBtns >= 4 && qbCell.hasNameInput && qbCell.hasEmailInput && qbCell.hasPaxInput, 'Case planning : l essentiel restant = client (nom, téléphone, email visible), joueurs, durée.');
@@ -2059,7 +2059,7 @@ async function main() {
     await page.waitForTimeout(400);
     const qbPost = await page.evaluate(() => (window.__PINLANE_QA_RES_POSTS__ || [])[0] || null);
     assert(qbPost, 'Case planning : la création doit poster sur /api/staff-reservations.');
-    assert(qbPost.type === 'bowling' && qbPost.startTime === '15:00' && Array.isArray(qbPost.lanes) && qbPost.lanes.length === 1 && Number(qbPost.lanes[0]) === 7, `Case planning : payload préservé (type/heure/piste) — reçu ${JSON.stringify({ type: qbPost.type, startTime: qbPost.startTime, lanes: qbPost.lanes })}.`);
+    assert(qbPost.type === 'bowling' && qbPost.startTime === '15:00' && Array.isArray(qbPost.lanes) && qbPost.lanes.length === 1 && Number(qbPost.lanes[0]) === 7, `Case planning : payload préservé (type/heure/piste), reçu ${JSON.stringify({ type: qbPost.type, startTime: qbPost.startTime, lanes: qbPost.lanes })}.`);
     assert(qbPost.channel === 'staff' && qbPost.status === 'pending' && qbPost.requiresLanes === true && Number(qbPost.laneCount) === 1, 'Case planning : contrat API inchangé (channel, status, laneCount, requiresLanes).');
     assert(Number(qbPost.price) === Number(qbPost.basePrice) && Number(qbPost.pax) === 4 && Number(qbPost.duration) === 1, 'Case planning : montants et durée inchangés par défaut.');
     const qbClosedAfterSave = await page.evaluate(() => document.getElementById('quickBookOverlay').classList.contains('hidden') || !document.querySelector('.qb-modal'));
@@ -2118,7 +2118,7 @@ async function main() {
     await page.waitForTimeout(200);
 
     // ------------------------------------------------------------------
-    // Gestion des retards — preview d'impact AVANT application, choix de
+    // Gestion des retards : preview d'impact AVANT application, choix de
     // stratégie, puis étape « Prévenir les clients ? » jamais automatique.
     // ------------------------------------------------------------------
     await renderStaffPage(page, 'planning');
@@ -2288,7 +2288,7 @@ async function main() {
     issues.push(...await collectIssues(mobilePage, 'formula-anchors-mobile'));
     await mobilePage.evaluate(() => resetBooking());
 
-    // Console Direction (#adminView) en mobile — l'ancienne capture "direction-mobile"
+    // Console Direction (#adminView) en mobile : l'ancienne capture "direction-mobile"
     // ne couvrait que la page legacy direction.html.
     await mobilePage.evaluate(() => setView('admin'));
     await mobilePage.locator('#adminView:not(.hidden)').waitFor({ timeout: 10000 });
@@ -2297,7 +2297,7 @@ async function main() {
     issues.push(...await collectIssues(mobilePage, 'direction-overview-mobile'));
     await mobilePage.close();
 
-    // Pages autonomes : screenshots + overflow (pas d'assertions console — hors app)
+    // Pages autonomes : screenshots + overflow (pas d'assertions console, hors app)
     const standalonePages = [
       ['public-form', '/public-form.html'],
       ['direction', '/direction.html'],
@@ -2310,7 +2310,7 @@ async function main() {
         await standalone.goto(`${BASE_URL}${route}`, { waitUntil: 'networkidle', timeout: 45000 });
         await standalone.waitForTimeout(600);
         // Le screenshot fullPage ne scrolle pas : l'IntersectionObserver du reveal
-        // ne se déclenche jamais sous le fold — on force l'état final.
+        // ne se déclenche jamais sous le fold : on force l'état final.
         await standalone.evaluate(() => {
           document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
         });

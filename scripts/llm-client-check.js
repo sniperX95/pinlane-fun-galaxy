@@ -1,4 +1,4 @@
-// Gate du client LLM unifié (lib/llm-client.js) — zéro réseau, fetch mocké.
+// Gate du client LLM unifié (lib/llm-client.js) : zéro réseau, fetch mocké.
 // Couvre : priorité Anthropic > OpenAI > null, payload Anthropic conforme
 // (headers, modèle Haiku par défaut, cache_control sur le bloc stable,
 // output_config json_schema, max_tokens), extraction/refus/troncature/erreurs,

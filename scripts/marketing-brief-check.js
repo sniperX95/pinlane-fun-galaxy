@@ -1,4 +1,4 @@
-// Gate du Brief (lib/marketing-brief) — l'agrégateur de la refonte Marketing.
+// Gate du Brief (lib/marketing-brief) : l'agrégateur de la refonte Marketing.
 // Zéro réseau, zéro DB : moteurs et query injectés. Couvre EN PRIORITÉ le
 // dédoublonnage brain/cron (exigence de la spec), puis le composeur du brief,
 // les reçus honnêtes, le bundle complet, et l'intégrité des actions (publiée
@@ -53,7 +53,7 @@ const {
   const userWins = mergePropositions({ fromDb: [persisted], fromPlan: [planAction] });
   ok(userWins.length === 1 && userWins[0].id === 13, 'la proposition persistée par le gérant gagne sur le plan volatil');
   // La proposition du jour épinglée passe en tête et absorbe sa collision.
-  const daily = propositionFromDailyPost({ themeId: 'rain', reason: 'Pluie vendredi — on poste avant.', caption: 'Légende.', hashtags: ['#a'], visualBrief: 'À filmer : x', bestTime: '17h' }, '2026-07-16');
+  const daily = propositionFromDailyPost({ themeId: 'rain', reason: 'Pluie vendredi, on poste avant.', caption: 'Légende.', hashtags: ['#a'], visualBrief: 'À filmer : x', bestTime: '17h' }, '2026-07-16');
   const withDaily = mergePropositions({ fromDb: [cronIdea], fromPlan: [planAction], daily });
   ok(withDaily[0].pinned === true && withDaily[0].key === 'daily', 'proposition du jour épinglée en tête');
   const capped = mergePropositions({ fromDb: Array.from({ length: 10 }, (_, i) => ({ ...cronIdea, key: `db:${i}`, id: i, dueDate: `2026-07-2${i % 10}`, trigger: `t${i}` })), fromPlan: [] });
@@ -76,7 +76,7 @@ const {
   const noDup = mergePropositions({ fromDb: [persistedPlan], fromPlan: [planAction] });
   ok(noDup.length === 1 && noDup[0].id === 61 && noDup[0].networks.story, 'finding 4 : plan persisté enrichi + volatile → UNE carte (la persistée, avec sa variante Story)');
   // Finding 3 : le post du jour enrichi (persisté) est épinglé, pas écrasé.
-  const persistedDaily = propositionFromInsight({ id: 71, kind: 'proposition', title: 'Pluie — au sec', body: '', channel: 'instagram', ready_content: 'enrichi', signature: daily.signature, status: 'proposed', payload: { trigger: 'pluie', networks: { instagram: { text: 'ig' }, story: { text: 'story' } } }, due_date: '2026-07-16' });
+  const persistedDaily = propositionFromInsight({ id: 71, kind: 'proposition', title: 'Pluie, au sec', body: '', channel: 'instagram', ready_content: 'enrichi', signature: daily.signature, status: 'proposed', payload: { trigger: 'pluie', networks: { instagram: { text: 'ig' }, story: { text: 'story' } } }, due_date: '2026-07-16' });
   const dailyKept = mergePropositions({ fromDb: [persistedDaily], fromPlan: [], daily });
   ok(dailyKept[0].id === 71 && dailyKept[0].pinned === true && dailyKept[0].networks.story, 'finding 3 : post du jour enrichi épinglé (variante conservée), pas remplacé par la volatile');
 

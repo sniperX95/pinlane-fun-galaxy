@@ -1,4 +1,4 @@
-// Onglet « Mails » de la console direction — studio complet :
+// Onglet « Mails » de la console direction : studio complet :
 // Historique · Composer (envoi libre, identités, amélioration IA) · Modèles
 // personnalisés · Identités d'expéditeur · Analyse des envois.
 // Backend : actions emailStudio / sendDirectEmail / saveEmailTemplate /
@@ -23,10 +23,10 @@ const MS_CATEGORIES = {
 
 // Modèles de départ intégrés : remplissent le composer, éditables ensuite.
 const MS_STARTERS = [
-  { key: 'promo-semaine', category: 'promotion', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}} — réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
+  { key: 'promo-semaine', category: 'promotion', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
   { key: 'marketing-anniversaire', category: 'marketing', name: 'Pack anniversaire', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et cruches de boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe Fun Galaxy' },
-  { key: 'serieux-entreprise', category: 'serieux', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy — proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
-  { key: 'relance-client', category: 'relance', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre — les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
+  { key: 'serieux-entreprise', category: 'serieux', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
+  { key: 'relance-client', category: 'relance', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
 ];
 
 const msState = {
@@ -69,7 +69,7 @@ function msRefresh() {
 }
 
 function msDateFr(iso) {
-  if (!iso) return '—';
+  if (!iso) return '-';
   const d = new Date(iso);
   return d.toLocaleDateString('fr-BE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     + ' ' + d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
@@ -181,11 +181,11 @@ function renderMsCompose() {
   const d = msState.draft;
   const identityOptions = [
     `<option value="">Expéditeur par défaut (${msEsc(msState.channel?.defaultFrom || 'plateforme')})</option>`,
-    ...msState.identities.map((i) => `<option value="${i.id}" ${String(i.id) === d.identityId ? 'selected' : ''}>${msEsc(i.label)} — ${msEsc(i.email)}</option>`),
+    ...msState.identities.map((i) => `<option value="${i.id}" ${String(i.id) === d.identityId ? 'selected' : ''}>${msEsc(i.label)}, ${msEsc(i.email)}</option>`),
   ].join('');
 
   const templateOptions = [
-    '<option value="">— Partir de zéro —</option>',
+    '<option value=""> Partir de zéro </option>',
     `<optgroup label="Modèles de départ">${MS_STARTERS.map((s) => `<option value="starter:${s.key}" ${d.templateRef === `starter:${s.key}` ? 'selected' : ''}>${msEsc(s.name)} (${MS_CATEGORIES[s.category]})</option>`).join('')}</optgroup>`,
     msState.templates.length
       ? `<optgroup label="Vos modèles">${msState.templates.map((t) => `<option value="custom:${t.id}" ${d.templateRef === `custom:${t.id}` ? 'selected' : ''}>${msEsc(t.name)} (${MS_CATEGORIES[t.category] || t.category})</option>`).join('')}</optgroup>`
@@ -194,7 +194,7 @@ function renderMsCompose() {
 
   const tips = msState.aiTips.length ? `
     <div class="ms-tips">
-      <div class="ms-tips-title">${msState.aiMode === 'ia' ? 'Réécrit par l\'IA — points corrigés :' : `Analyse du brouillon${msState.channel?.aiConfigured ? '' : ' (IA non branchée : conseils automatiques)'} :`}</div>
+      <div class="ms-tips-title">${msState.aiMode === 'ia' ? 'Réécrit par l\'IA : points corrigés :' : `Analyse du brouillon${msState.channel?.aiConfigured ? '' : ' (IA non branchée : conseils automatiques)'} :`}</div>
       <ul>${msState.aiTips.map((t) => `<li>${msEsc(t)}</li>`).join('')}</ul>
     </div>` : '';
 
@@ -268,7 +268,7 @@ async function msImproveWithAi(button) {
     if (payload.mode === 'ia' && payload.subject && payload.body) {
       msState.draft.subject = payload.subject;
       msState.draft.body = payload.body;
-      if (typeof toast === 'function') toast('Brouillon réécrit par l\'IA — relis avant envoi.');
+      if (typeof toast === 'function') toast('Brouillon réécrit par l\'IA : relis avant envoi.');
     }
   } catch (error) {
     if (typeof toast === 'function') toast(error.message || 'Analyse impossible pour le moment.');
@@ -310,7 +310,7 @@ async function msSendDirect(button) {
       }),
     });
     const sentNow = payload.resendConfigured;
-    if (typeof toast === 'function') toast(sentNow ? 'Mail envoyé — visible dans l\'historique.' : 'Mail enregistré en file : il partira dès que le canal d\'envoi sera configuré.');
+    if (typeof toast === 'function') toast(sentNow ? 'Mail envoyé : visible dans l\'historique.' : 'Mail enregistré en file : il partira dès que le canal d\'envoi sera configuré.');
     msState.draft = { to: '', subject: '', body: '', identityId: msState.draft.identityId, category: 'marketing', templateRef: '' };
     msState.aiTips = [];
     msState.historyLoaded = false;
@@ -369,7 +369,7 @@ function renderMsHistory() {
       <tbody>${rows.slice(0, 100).map((c) => `
         <tr>
           <td class="dh-mono">${msDateFr(c.sentAt || c.createdAt || c.scheduledAt)}</td>
-          <td>${msEsc(c.recipient || '—')}</td>
+          <td>${msEsc(c.recipient || '-')}</td>
           <td>${msEsc(c.subject || '(sans objet)')}</td>
           <td class="dh-contact">${msEsc((c.templateId || 'direct').replace(/^studio_/, ''))}</td>
           <td><span class="ms-pill ${msEsc(c.status)}">${MS_STATUS_LABELS[c.status] || msEsc(c.status)}</span>${c.lastError ? `<div class="ms-error-hint" title="${msEsc(c.lastError)}">${msEsc(c.lastError.slice(0, 60))}</div>` : ''}</td>
@@ -477,7 +477,7 @@ function renderMsTemplates() {
       <h3>Vos modèles (${msState.templates.length})</h3>
       <button type="button" class="admin-btn primary" onclick="msState.editingTemplate={};msRefresh()">Nouveau modèle</button>
     </div>
-    <p class="dh-sub">Les modèles de départ (promo, anniversaire, entreprise, relance) sont toujours disponibles dans le composer — enregistrez vos propres versions ici.</p>
+    <p class="dh-sub">Les modèles de départ (promo, anniversaire, entreprise, relance) sont toujours disponibles dans le composer, enregistrez vos propres versions ici.</p>
     ${form}
     ${grid}
   </section>`;
@@ -569,7 +569,7 @@ function renderMsIdentities() {
       <h3>Adresses d'expéditeur</h3>
       <button type="button" class="admin-btn primary" onclick="msState.identityForm=true;msRefresh()">Ajouter une adresse</button>
     </div>
-    <p class="dh-sub">Chaque adresse doit être vérifiée chez le fournisseur d'envoi (domaine validé) pour être réellement utilisée — sinon l'envoi retombe sur l'adresse par défaut.</p>
+    <p class="dh-sub">Chaque adresse doit être vérifiée chez le fournisseur d'envoi (domaine validé) pour être réellement utilisée : sinon l'envoi retombe sur l'adresse par défaut.</p>
     ${form}
     ${list}
   </section>`;

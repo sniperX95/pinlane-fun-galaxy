@@ -1,8 +1,8 @@
-// Smoke-test RÉEL du client LLM — 1 appel minuscule (~300 tokens, ~0,001 $).
+// Smoke-test RÉEL du client LLM : 1 appel minuscule (~300 tokens, ~0,001 $).
 // À lancer après avoir posé ANTHROPIC_API_KEY (ou OPENAI_API_KEY) :
 //   node scripts/llm-smoke.js
 // Lit .env local si les variables ne sont pas déjà dans l'environnement.
-// N'affiche JAMAIS une clé — uniquement provider/modèle/résultat.
+// N'affiche JAMAIS une clé : uniquement provider/modèle/résultat.
 const fs = require('fs');
 const path = require('path');
 
@@ -43,5 +43,5 @@ const { llmProvider, callLlmJson } = require('../lib/llm-client');
   }
   console.log(`Modèle : ${result._model}`);
   console.log(`Réponse : ${result.message}`);
-  console.log('llm-smoke: OK — le chemin IA est opérationnel.');
+  console.log('llm-smoke: OK, le chemin IA est opérationnel.');
 })();

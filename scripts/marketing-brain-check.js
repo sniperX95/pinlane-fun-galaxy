@@ -35,7 +35,7 @@ const {
 const { buildCenterFacts } = require('../lib/marketing-agents');
 
 // Historique synthétique : 20 semaines. Samedis forts (80), mardis faibles
-// (12), autres jours 40 — hors congés. Un samedi chaud à 30 visiteurs pour la
+// (12), autres jours 40, hors congés. Un samedi chaud à 30 visiteurs pour la
 // rétro. Dates ancrées pour que la géométrie DOW soit stable.
 function buildHistory(todayStr) {
   const rows = [];
@@ -62,7 +62,7 @@ function addDays(dateStr, days) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
- // mercredi — géométrie DOW connue pour les asserts
+ // mercredi : géométrie DOW connue pour les asserts
 const history = buildHistory(TODAY);
 
 (async () => {
@@ -236,7 +236,7 @@ const history = buildHistory(TODAY);
   ok(first.results[0].status === 'first_snapshot' && state.events.length === 0, 'première visite → snapshot, PAS d\'alerte');
   const second = await runCompetitorSweep('libramont', { fetchImpl: mockFetch, deps });
   ok(second.results[0].status === 'unchanged' && state.snapshots.length === 1, 'site inchangé → aucun snapshot ajouté');
-  state.siteText = '<h1>Bowling 10 EUR la partie — nouvelle formule anniversaire</h1>';
+  state.siteText = '<h1>Bowling 10 EUR la partie : nouvelle formule anniversaire</h1>';
   const third = await runCompetitorSweep('libramont', { fetchImpl: mockFetch, deps });
   ok(third.results[0].status === 'changed' && state.snapshots.length === 2, 'changement → nouveau snapshot');
   ok(state.events.length === 1 && state.events[0].eventType === 'competitor_site_changed', 'alerte émise sur le changement');

@@ -180,7 +180,7 @@ function scrollLaserDragBy(deltaY) {
   // (mode plein écran comptoir : le wrap a une hauteur bornée + overflow:auto).
   // En mode normal, le défilement vertical du planning EST celui de la PAGE :
   // y retomber (ancien comportement) happait toute la page vers le haut dès que
-  // le curseur passait dans la zone de bord pendant un glisser — « ça me remet
+  // le curseur passait dans la zone de bord pendant un glisser : « ça me remet
   // tout en haut ». On ne touche donc jamais au scroll de page pendant le drag :
   // la vue reste là où Movsar l'a laissée. (Cf. journal 2026-07-12.)
   if (activeWrap && activeWrap.scrollHeight > activeWrap.clientHeight) {
@@ -1016,7 +1016,7 @@ function getLaserAvailability(date, startTime, duration, pax, ignoreId) {
       .filter(window => overlap(candidate.start, candidate.duration, window.start, window.duration));
 
     // Le serveur (ops-engine.findJoinableLaserSession) fusionne une nouvelle
-    // demande avec une session laser existante compatible — capacité libre et
+    // demande avec une session laser existante compatible : capacité libre et
     // depart/fin a +/-15 min. On reproduit cette logique cote modale, sinon une
     // session partageable (ex. 18/30 joueurs) etait comptee comme un 2e
     // lancement parallele et affichee « complet » alors qu'il reste des places.
@@ -1311,7 +1311,7 @@ function removeReservationFromState(id) {
 
 // Store partagé : les pages qui lisent le cache mensuel (Réservations v2,
 // Utilitaires, Clients) reflètent IMMÉDIATEMENT chaque mutation locale au lieu
-// d'attendre le bouton « Actualiser » — indispensable pour les suppressions,
+// d'attendre le bouton « Actualiser » : indispensable pour les suppressions,
 // que le merge par id ne peut pas faire disparaître du cache.
 function syncReservationIntoMonthCache(reservation) {
   if (!staffReservationsDataCache.loaded || !reservation) return;
@@ -1428,7 +1428,7 @@ function getSelectedReservationSignature() {
 }
 
 function renderStaffData() {
-  // Fusion Clients+Groupes : « groups » n'est plus une page — tout état legacy
+  // Fusion Clients+Groupes : « groups » n'est plus une page, tout état legacy
   // (onglet sauvegardé, hash) retombe sur Clients, segment « À venir ».
   if (getStaffMenuPage() === 'groups') {
     state.staffMenuPage = 'clients';
@@ -1849,7 +1849,7 @@ async function syncDateReservations(dateStr, opts = {}) {
     if (payload.laneStatuses) state.laneStatuses = payload.laneStatuses;
     if (payload.laneMaintenance) state.laneMaintenance = payload.laneMaintenance;
     // Classification client/groupe du centre (seuils groupe + formules annif),
-    // servie par le poll — pilote isGroup/hasBirthday/tiers côté Clients & Groupes.
+    // servie par le poll : pilote isGroup/hasBirthday/tiers côté Clients & Groupes.
     if (payload.classification) state.staffClassification = payload.classification;
     hydrateSelectedReservation();
     save();
@@ -2257,7 +2257,7 @@ function applyAuthState() {
   // Le menu latéral n'est reconstruit qu'au chargement de page : sans ça, un
   // changement de rôle (directrice → manager) garde les catégories de l'ancien
   // rôle jusqu'à un refresh manuel. On le rebâtit à chaque transition d'auth
-  // (login/logout) — reconstruction DOM pure, aucune requête serveur.
+  // (login/logout) : reconstruction DOM pure, aucune requête serveur.
   if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
   if (!locked) document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
 }
@@ -2348,12 +2348,12 @@ async function submitLogin(ev) {
       renderStaff();
     } else if (state.view === 'admin') {
       // A1 : le rôle fraîchement connecté doit avoir direction.view pour
-      // rester sur la console Direction — sinon retour vue staff.
+      // rester sur la console Direction : sinon retour vue staff.
       if (!canOpenAdminView()) {
         setView('staff');
       } else {
         // C14 : les consoles ne sont pas chargées quand la vue admin n'a
-        // affiché que l'écran de login — injection avant le premier rendu.
+        // affiché que l'écran de login : injection avant le premier rendu.
         await ensureAdminConsolesLoaded();
         await loadAdminDashboard(true);
         renderAdminDashboard();
@@ -2451,7 +2451,7 @@ function ensureOpsConsoleLoaded() {
 }
 
 // C14 : si l'injection échoue, l'UI statique de #adminView (onclick vers des
-// fonctions du bundle absent) serait un piège à ReferenceError — on la laisse
+// fonctions du bundle absent) serait un piège à ReferenceError : on la laisse
 // neutralisée (pointer-events) et on pose un panneau d'erreur avec retry ;
 // la promesse rejetée étant purgée du cache, setView('admin') relance une
 // vraie injection.
@@ -2813,7 +2813,7 @@ const ACTIVITY_LABELS = {
 };
 
 // Modèle « Ancres + Liberté » : le client choisit une heure PAR ANCRE
-// (bowling, laser) — plus d'ordre imposé ni de mode « Fun Galaxy organise /
+// (bowling, laser), plus d'ordre imposé ni de mode « Fun Galaxy organise /
 // Je choisis ». Les activités libres restent un pass sans aucune heure.
 function createDefaultFormulaPreference(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
@@ -2905,7 +2905,7 @@ function ensureFormulaPreferences(formule) {
   state.booking.pauseMinutes = 0;
 }
 
-// Étape 1 : simple annonce du modèle — le vrai choix (une heure par ancre)
+// Étape 1 : simple annonce du modèle, le vrai choix (une heure par ancre)
 // vit à l'étape Créneau. Plus de mode « Fun Galaxy organise / Je choisis ».
 function renderFormulaPreferences() {
   const box = document.getElementById('formulaPrefs');
@@ -2925,8 +2925,8 @@ function renderFormulaPreferences() {
   const hasTable = formulaHasPartyTable(formule);
   box.classList.remove('hidden');
   noteEl.textContent = anchorIds.length
-    ? 'À l’étape suivante, choisissez une heure pour chaque activité à créneau — le reste se vit librement sur place.'
-    : 'À l’étape suivante, choisissez simplement votre heure d’arrivée — tout le reste se vit librement sur place.';
+    ? 'À l’étape suivante, choisissez une heure pour chaque activité à créneau, le reste se vit librement sur place.'
+    : 'À l’étape suivante, choisissez simplement votre heure d’arrivée, tout le reste se vit librement sur place.';
   orderEl.innerHTML = `
     <div class="formula-model-preview">
       ${anchorIds.length ? `
@@ -2942,7 +2942,7 @@ function renderFormulaPreferences() {
       ${freeIds.length ? `
       <div class="formula-model-line">
         <span class="formula-model-tag free">Pass liberté</span>
-        <span>${freeIds.map(id => escapeHtml(getFormulaActivityLabel(formule, id))).join(' · ')} — à votre rythme, quand vous voulez</span>
+        <span>${freeIds.map(id => escapeHtml(getFormulaActivityLabel(formule, id))).join(' · ')}, à votre rythme, quand vous voulez</span>
       </div>` : ''}
     </div>`;
 }
@@ -3205,7 +3205,7 @@ function getFormulaSlotActivityTime(slot, activityId) {
 // serveur pré-sélectionne une combinaison valide (zéro friction) ; chaque
 // ancre reste modifiable indépendamment, avec revalidation serveur en direct.
 // La table suit l'arrivée (jamais choisie) et le pass liberté n'affiche
-// JAMAIS d'heure — ni ici, ni au récap, ni dans le mail.
+// JAMAIS d'heure : ni ici, ni au récap, ni dans le mail.
 let formulaArrivalChoice = '';      // formules sans ancre : heure d'arrivée
 let formulaAnchorData = null;       // bloc `anchors` renvoyé par le serveur
 let formulaAnchorMessage = '';      // message de refus de combinaison
@@ -3221,7 +3221,7 @@ function formulaHasAnchorUi() {
 }
 
 // Défaut zéro friction : à l'arrivée sur l'étape, la combinaison valide
-// proposée par le serveur est pré-sélectionnée — chaque ancre reste modifiable.
+// proposée par le serveur est pré-sélectionnée : chaque ancre reste modifiable.
 function adoptDefaultFormulaAnchors() {
   if (state.booking.type !== 'formule' || !formulaHasAnchorUi()) return;
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
@@ -3334,7 +3334,7 @@ async function resetFormulaAnchorChoices() {
 }
 
 // Carte « votre visite » : les rendez-vous (ancres), la table dès l'arrivée et
-// le pass liberté — sans aucune heure pour les activités libres.
+// le pass liberté : sans aucune heure pour les activités libres.
 function renderFormulaVisitSummary(slot, formule) {
   const plan = slot?.opsPlan;
   if (!plan) return '';
@@ -3363,7 +3363,7 @@ function renderFormulaVisitSummary(slot, formule) {
     rows.push(`<div class="visit-line"><span class="visit-tag table">Table</span><span>Votre table vous attend dès votre arrivée${arrivalTime ? ` (${escapeHtml(arrivalTime)})` : ''}</span></div>`);
   }
   if (passLabels.length) {
-    rows.push(`<div class="visit-line"><span class="visit-tag free">À votre rythme</span><span>${passLabels.map(escapeHtml).join(' · ')} — quand vous voulez</span></div>`);
+    rows.push(`<div class="visit-line"><span class="visit-tag free">À votre rythme</span><span>${passLabels.map(escapeHtml).join(' · ')} : quand vous voulez</span></div>`);
   }
   if (remainingLaser > 0) {
     rows.push(`<div class="visit-line"><span class="visit-tag laser">Laser</span><span>${remainingLaser} partie${remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence</span></div>`);
@@ -3386,7 +3386,7 @@ function renderFormulaAnchorRows(formule) {
       <button type="button" class="anchor-chip ${item.time === selected ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`).join('');
     const detail = isLaser
       ? (activity.count > 1
-        ? `${activity.count} parties incluses — choisissez la 1re, le reste se place sur place`
+        ? `${activity.count} parties incluses : choisissez la 1re, le reste se place sur place`
         : `Session de ${activity.durationMinutes} min`)
       : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
     const onSiteToggle = isLaser && formulaAnchorData.laserOnSiteAvailable ? `
@@ -3417,7 +3417,7 @@ function renderFormulaFreePassBlock(formule) {
     <div class="anchor-free-pass">
       <div class="anchor-free-head">
         <span class="anchor-free-badge">Pass liberté</span>
-        <strong><span class="only-desktop">Inclus, à votre rythme sur place — quand vous voulez</span><span class="only-mobile">Inclus, quand vous voulez</span></strong>
+        <strong><span class="only-desktop">Inclus, à votre rythme sur place, quand vous voulez</span><span class="only-mobile">Inclus, quand vous voulez</span></strong>
       </div>
       <div class="anchor-free-items">
         ${passItems.map(label => `<span class="anchor-free-item">${escapeHtml(label)}</span>`).join('')}
@@ -3458,7 +3458,7 @@ function renderFormulaAnchorPicker(formule) {
     <div class="formula-anchor-picker">
       <div class="formula-arrival-head">
         <strong>Composez votre visite</strong>
-        <span><span class="only-desktop">Choisissez l'heure de chaque activité à créneau — présentez-vous 10 minutes avant votre premier rendez-vous. Le reste de la formule se vit à votre rythme, sans horaire.</span><span class="only-mobile">Choisissez l'heure de chaque activité. Présentez-vous 10 min avant. Le reste, à votre rythme.</span></span>
+        <span><span class="only-desktop">Choisissez l'heure de chaque activité à créneau : présentez-vous 10 minutes avant votre premier rendez-vous. Le reste de la formule se vit à votre rythme, sans horaire.</span><span class="only-mobile">Choisissez l'heure de chaque activité. Présentez-vous 10 min avant. Le reste, à votre rythme.</span></span>
       </div>
       ${renderFormulaAnchorRows(formule)}
       ${statusHtml}
@@ -3467,7 +3467,7 @@ function renderFormulaAnchorPicker(formule) {
 }
 
 // Formules SANS ancre (table anniversaire + pass liberté) : le seul choix est
-// l'heure d'arrivée — la table suit automatiquement.
+// l'heure d'arrivée : la table suit automatiquement.
 function renderFormulaArrivalPicker(formule) {
   const slots = state.availableSlots || [];
   if (!slots.length) return '';
@@ -3482,7 +3482,7 @@ function renderFormulaArrivalPicker(formule) {
     <div class="formula-arrival-picker">
       <div class="formula-arrival-head">
         <strong>Choisissez votre heure d'arrivée</strong>
-        <span><span class="only-desktop">Votre table vous attend dès votre arrivée et les activités incluses se vivent à votre rythme — présentez-vous 10 minutes avant l'heure choisie pour l'accueil.</span><span class="only-mobile">Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.</span></span>
+        <span><span class="only-desktop">Votre table vous attend dès votre arrivée et les activités incluses se vivent à votre rythme : présentez-vous 10 minutes avant l'heure choisie pour l'accueil.</span><span class="only-mobile">Table prête dès l'arrivée, activités à votre rythme. Présentez-vous 10 min avant.</span></span>
       </div>
       <div class="formula-arrival-grid">${chips}</div>
       ${activeSlot ? `
@@ -3511,7 +3511,7 @@ function renderFormulaEmptySlots(formule) {
     </div>`;
 }
 
-// Panne serveur (P3-9) : état distinct du « zéro créneau » — la disponibilité
+// Panne serveur (P3-9) : état distinct du « zéro créneau », la disponibilité
 // n'a pas pu être chargée, on propose de réessayer sans perdre les choix.
 function renderSlotLoadError() {
   return `
@@ -3635,7 +3635,7 @@ function goStep4() {
   if (!phone) fieldErrors.push(['fPhone', 'Indiquez un numéro de téléphone.']);
   else if (phoneDigits.length < 8 || phoneDigits.length > 15) fieldErrors.push(['fPhone', 'Numéro de téléphone invalide.']);
   if (!email) fieldErrors.push(['fEmail', 'Indiquez votre email pour recevoir la confirmation.']);
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.push(['fEmail', 'Adresse email invalide — vérifiez-la pour recevoir votre confirmation.']);
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.push(['fEmail', 'Adresse email invalide, vérifiez-la pour recevoir votre confirmation.']);
   if (fieldErrors.length) {
     fieldErrors.forEach(([inputId, text]) => setFieldError(inputId, text));
     showAlert('Vérifiez les champs signalés avant de continuer.');
@@ -3824,7 +3824,7 @@ function renderRecap() {
     ${formule ? `<div class="recap-item"><span class="recap-label">Temps total estimé</span><span class="recap-value">${formatDurationLabel(totalDuration)}</span></div>` : ''}
     ${isLaser ? `<div class="recap-note"><b>Laser Game :</b> ${laserWaveCount > 1 ? `votre groupe est réparti sur ${laserWaveCount} sessions successives. ` : ''}Votre session peut être complétée avec d'autres joueurs selon l'affluence. ${planLine ? `Plan retenu : ${planLine}.` : ''}</div>` : ''}
     ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
-    ${formule ? `<div class="recap-note"><b>Le reste, à votre rythme :</b> aucune heure imposée pour les activités du pass liberté — vous les vivez quand vous voulez pendant votre visite.</div>` : ''}
+    ${formule ? `<div class="recap-note"><b>Le reste, à votre rythme :</b> aucune heure imposée pour les activités du pass liberté, vous les vivez quand vous voulez pendant votre visite.</div>` : ''}
   `;
 }
 
@@ -3957,7 +3957,7 @@ async function confirmBooking() {
     ? ` Votre table vous attend dès votre arrivée${successRecap.arrivalTime ? ` (<b>${escapeHtml(successRecap.arrivalTime)}</b>)` : ''}.`
     : '';
   const freeLine = successRecap && successRecap.freeLabels.length
-    ? ` À votre rythme sur place : ${successRecap.freeLabels.map(escapeHtml).join(', ')} — quand vous voulez.`
+    ? ` À votre rythme sur place : ${successRecap.freeLabels.map(escapeHtml).join(', ')}, quand vous voulez.`
     : '';
   document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
   releaseBookingSubmit();
@@ -4148,7 +4148,7 @@ function formatDashboardTrend(current, previous) {
 
 
 /* ============================================================================
-   ANALYSE PERSONNALISÉE (dashboard) — widgets modulaires : l'utilisateur
+   ANALYSE PERSONNALISÉE (dashboard) : widgets modulaires : l'utilisateur
    choisit la métrique ET la forme (barres/aire/donut/lignes). Données servies
    par dashboardAnalytics (mêmes agrégats réels que l'onglet Données).
    ========================================================================== */
@@ -4198,7 +4198,7 @@ function dashAnalyticsKey() {
 async function loadDashAnalytics(force = false) {
   const { key, centerId, start, end } = dashAnalyticsKey();
   if (!force && dashAnalyticsCache.key === key && dashAnalyticsCache.analytics) return;
-  // Fetch déjà en vol : on note la plage désirée et on rattrape à la fin —
+  // Fetch déjà en vol : on note la plage désirée et on rattrape à la fin 
   // un changement de plage pendant un chargement n'est jamais silencieusement perdu.
   if (dashAnalyticsCache.loading) { dashAnalyticsCache.pendingKey = key; return; }
   dashAnalyticsCache.pendingKey = null;
@@ -4301,7 +4301,7 @@ function dashWBars(points, color, fmt) {
   const max = Math.max(...points.map(p => p.value), 1);
   const tickEvery = Math.max(1, Math.ceil(points.length / 6));
   return `<div class="dh-chart"><div class="dh-chart-max">${fmt(max)}</div><div class="dh-cols">${points.map((p, i) => `
-    <div class="dh-col" title="${escapeHtml(`${p.hint} — ${fmt(p.value)}`)}">
+    <div class="dh-col" title="${escapeHtml(`${p.hint} : ${fmt(p.value)}`)}">
       <div class="dh-col-bar" style="height:${Math.max(Math.round((p.value / max) * 100), p.value ? 3 : 0)}%;background:${color}"></div>
       <div class="dh-col-tick">${i % tickEvery === 0 || i === points.length - 1 ? escapeHtml(p.label) : ''}</div>
     </div>`).join('')}</div></div>`;
@@ -4359,12 +4359,12 @@ function dashWDonut(parts) {
 function dashWTile(analytics, metricId) {
   const t = analytics.totals;
   const configs = {
-    occupancy: { value: analytics.occupancy.rate === null ? '—' : `${analytics.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${analytics.occupancy.bookedLaneHours} h réservées / ${analytics.occupancy.capacityLaneHours} h ouvertes` },
+    occupancy: { value: analytics.occupancy.rate === null ? '-' : `${analytics.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${analytics.occupancy.bookedLaneHours} h réservées / ${analytics.occupancy.capacityLaneHours} h ouvertes` },
     paymentRate: { value: `${Number(t.paymentRate || 0).toLocaleString('fr-BE')} %`, sub: `${t.paid || 0} payée(s) sur ${t.reservations} · statut binaire (montants partiels non modélisés)` },
     cancelRate: { value: `${t.cancelRate.toLocaleString('fr-BE')} %`, sub: `${t.cancelled} annulation(s)` },
     avgBasket: { value: formatMoney(t.avgBasket), sub: 'par réservation active' },
   };
-  const config = configs[metricId] || { value: '—', sub: '' };
+  const config = configs[metricId] || { value: '-', sub: '' };
   return `<div class="dh-tile" style="margin-top:8px"><div class="dh-tile-value" style="font-size:30px">${config.value}</div><div class="dh-tile-foot"><span class="dh-tile-sub">${escapeHtml(config.sub)}</span></div></div>`;
 }
 
@@ -4889,7 +4889,7 @@ function dashboardDetailReleaseLane(lane, ev) {
   refreshStaffDashboardDetailSoon(220);
 }
 
-// Actions groupées (footer détail) — encaisse ou libère en un clic.
+// Actions groupées (footer détail) : encaisse ou libère en un clic.
 function dashboardDetailPayAllUnpaid(ev) {
   if (ev) ev.stopPropagation();
   const metrics = getStaffDashboardMetrics(todaysReservations());
@@ -5184,11 +5184,11 @@ function getStaffAlertSubsections(alert) {
     const subs = [];
     if (onSite.length) {
       subs.push({ key: 'onsite', tone: 'critical', icon: '⚡', showTotal: true,
-        label: 'Sur place — à encaisser maintenant', rows: onSite });
+        label: 'Sur place, à encaisser maintenant', rows: onSite });
     }
     if (upcoming.length) {
       subs.push({ key: 'upcoming', tone: 'info', showTotal: false,
-        label: 'À venir — confirmés', rows: upcoming });
+        label: 'À venir, confirmés', rows: upcoming });
     }
     return subs;
   }
@@ -5865,7 +5865,7 @@ function getStaffGroupReservations(row = {}) {
     });
 }
 
-// « Aujourd'hui RÉEL » — la page Groupes est ancrée à la date réelle, jamais à la
+// « Aujourd'hui RÉEL » : la page Groupes est ancrée à la date réelle, jamais à la
 // date affichée (state.currentDate). Naviguer dans le calendrier ne change PAS
 // l'à-venir des groupes (distinction nette avec Terrain, qui est le jour affiché).
 function staffGroupToday() {
@@ -6260,7 +6260,7 @@ function renderStaffGroupAgendaPanel(agenda = []) {
   </section>`;
 }
 
-// Une action « traitée » disparaît (persisté) — elle réapparaît uniquement si
+// Une action « traitée » disparaît (persisté) : elle réapparaît uniquement si
 // la donnée régénère une raison différente pour le même profil.
 // Clé d'action groupe SCOPÉE PAR CENTRE : traiter l'action d'un client à
 // Libramont ne doit pas la masquer pour le même client (même tél) à Gembloux.
@@ -6352,7 +6352,7 @@ function renderStaffGroupTable(rows = []) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  GROUPES & ANNIVERSAIRES — RADAR DE PRÉPARATION (futur proche, ancré aujourd'hui
+//  GROUPES & ANNIVERSAIRES : RADAR DE PRÉPARATION (futur proche, ancré aujourd'hui
 //  réel). Unité = LE DOSSIER (événement daté), pas le client. 3 horizons : CRM=passé,
 //  Terrain=présent, ici=FUTUR PROCHE « qu'est-ce qui me tombe dessus, est-ce prêt ? ».
 // ════════════════════════════════════════════════════════════════════════════
@@ -6579,7 +6579,7 @@ function getStaffGroupProspectiveKpis() {
   return [
     ['Dossiers à venir', events.length, 'sur l\'horizon'],
     ['À préparer', toPrepare, 'checklist incomplète'],
-    ['CA prévisionnel', forecast > 0 ? formatMoney(forecast) : '—', 'réel + estimé'],
+    ['CA prévisionnel', forecast > 0 ? formatMoney(forecast) : '-', 'réel + estimé'],
     ['Anniv. à re-booker', rebook, 'échéance < 60 j'],
     ['Leads sur mesure', leadsOpen, 'demandes ouvertes'],
   ];
@@ -6589,7 +6589,7 @@ function getStaffGroupProspectiveKpis() {
 function renderStaffGroupReadinessChips(readiness) {
   const meterPct = readiness.total ? Math.round((readiness.score / readiness.total) * 100) : 0;
   // Mètre de préparation seul + compteur. Les items eux-mêmes sont la rangée de
-  // chips CLIQUABLES juste en dessous (.groups-check-toggles) — pas de doublon.
+  // chips CLIQUABLES juste en dessous (.groups-check-toggles) : pas de doublon.
   return `<div class="groups-readiness">
     <div class="groups-readiness-bar" aria-hidden="true"><span style="width:${meterPct}%"></span></div>
     <span class="groups-readiness-count">${readiness.score}/${readiness.total} prêt</span>
@@ -6631,7 +6631,7 @@ function renderStaffGroupDossierCard(dossier) {
   const readiness = computeStaffGroupReadiness(dossier);
   const tone = readiness.ready ? 'success' : (staffClientDaysBetween(dossier.dateISO, staffGroupToday()) <= 2 && readiness.todo) ? 'danger' : 'warning';
   const val = getStaffGroupDossierValue(dossier);
-  const valLabel = val.value != null ? `${val.estimated ? '≈ ' : ''}${formatMoney(val.value)}` : '—';
+  const valLabel = val.value != null ? `${val.estimated ? '≈ ' : ''}${formatMoney(val.value)}` : '-';
   const memo = getStaffGroupMemo(dossier.row);
   const isVip = Number(dossier.row?.engagementScore || 0) >= 75;
   const noShow = Number(dossier.row?.cancelRate || 0) >= 0.3 && Number(dossier.row?.reservations || 0) >= 2;
@@ -6702,7 +6702,7 @@ function renderStaffGroupPriorityPanel(dossiers) {
   return `<section class="crm-block groups-side-card">
     <div class="groups-side-head"><h3>À confirmer en priorité</h3></div>
     ${shortlist.length ? shortlist.map(({ d, r }) => {
-      const reason = r.todo > 0 ? `${r.todo} à préparer` : 'Annule souvent — confirmer';
+      const reason = r.todo > 0 ? `${r.todo} à préparer` : 'Annule souvent, confirmer';
       return `<button type="button" class="groups-priority-row" onclick="openStaffReservationDetail(${staffClientJs(d.reservation.id)})">
         <span class="groups-jx">${escapeHtml(staffGroupCountdown(d.dateISO))}</span>
         <div><strong>${escapeHtml(d.name)}</strong><small>${escapeHtml(reason)}</small></div>
@@ -7272,7 +7272,7 @@ function collectEstablishmentScheduleBlock(prefix) {
 }
 
 // A3 : bornes alignées sur la validation serveur (lib/center-config.js,
-// clampInt) — le front refuse AVANT envoi ce que le serveur re-clamperait en
+// clampInt) : le front refuse AVANT envoi ce que le serveur re-clamperait en
 // silence. Pattern DESIGN.md §6 : bordure danger (aria-invalid) + message
 // 12px role="alert" sous le champ.
 const ESTABLISHMENT_NUMBER_RULES = [
@@ -7336,7 +7336,7 @@ function validateEstablishmentForm() {
       if (!open || !close) return; // champ vide = jour stocké fermé (comportement existant)
       if (close === '00:00') close = '24:00';
       if (toMinutes(close) <= toMinutes(open)) {
-        markEstablishmentFieldError(closeInput, `${blockLabel} — ${dayLabel} : la fermeture doit être après l'ouverture (00:00 = minuit).`);
+        markEstablishmentFieldError(closeInput, `${blockLabel}, ${dayLabel} : la fermeture doit être après l'ouverture (00:00 = minuit).`);
         invalid.push(closeInput);
       }
     });
@@ -7344,7 +7344,7 @@ function validateEstablishmentForm() {
   return invalid;
 }
 
-// A4 : garde de ré-entrance — un double-clic sur « Enregistrer » ne doit
+// A4 : garde de ré-entrance, un double-clic sur « Enregistrer » ne doit
 // produire qu'UN seul POST, bouton désactivé pendant l'async.
 let submitCenterConfigInFlight = false;
 
@@ -7468,7 +7468,7 @@ async function submitNewCenter() {
 
 async function setEstablishmentCenterStatus(centerId, status) {
   if (!canUseStaffPermission('settings.manage')) { toast('Action réservée à la direction.'); return; }
-  // A5 : archiver coupe la réservation client en direct — confirmation
+  // A5 : archiver coupe la réservation client en direct, confirmation
   // explicite obligatoire, annulation = zéro appel API.
   if (status === 'closed') {
     const center = (staffCenterConfigCache.centers || []).find(item => item.id === centerId);
@@ -7569,7 +7569,7 @@ function renderStaffUtilityEstablishment() {
                  ${center.status !== 'closed'
                    ? `<button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'closed')">Archiver</button>`
                    : `<button type="button" class="btn btn-secondary btn-sm" onclick="setEstablishmentCenterStatus('${escapeJsString(center.id)}', 'active')">Réactiver</button>`}`
-              : `<span class="establishment-readonly">Lecture seule — édition réservée à la direction.</span>`}
+              : `<span class="establishment-readonly">Lecture seule, édition réservée à la direction.</span>`}
         </div>
       </div>
 
@@ -7623,8 +7623,8 @@ function renderStaffUtilityEstablishment() {
         <fieldset class="establishment-card">
           <legend>Tables anniversaire &amp; comptoir</legend>
           <div class="estab-field-row">
-            <div class="field"><label for="estab-tableSoft">Tables — capacité conseillée</label><input type="number" id="estab-tableSoft" min="1" max="100" value="${Number(party.softCapacity || 6)}"></div>
-            <div class="field"><label for="estab-tableHard">Tables — capacité max</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
+            <div class="field"><label for="estab-tableSoft">Tables : capacité conseillée</label><input type="number" id="estab-tableSoft" min="1" max="100" value="${Number(party.softCapacity || 6)}"></div>
+            <div class="field"><label for="estab-tableHard">Tables : capacité max</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
           </div>
           <span class="estab-subhead">Ce que gère le comptoir</span>
           <label class="establishment-toggle"><input type="checkbox" id="estab-bar-booking" ${barDesk.handlesBooking !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Prise de réservation au comptoir</span></label>
@@ -8204,7 +8204,7 @@ function openStaffAccessModal(kind) {
         <input id="staffAccessModalName" type="text" required autocomplete="off" placeholder="${isRole ? 'Ex : Responsable anniversaires' : 'Ex : Camille Dupont'}">
       </div>
       ${isRole ? '' : `<div class="field">
-        <label for="staffAccessModalContact">Contact — email, téléphone ou identifiant interne</label>
+        <label for="staffAccessModalContact">Contact : email, téléphone ou identifiant interne</label>
         <input id="staffAccessModalContact" type="text" autocomplete="off" placeholder="Ex : camille@fungalaxy.be">
       </div>`}
       <div class="staff-access-modal-actions">
@@ -8537,7 +8537,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       ...base,
       layout: 'events',
       eyebrow: 'Terrain',
-      title: 'Formules — suivi des activités',
+      title: 'Formules, suivi des activités',
       subtitle: 'Cochez chaque activité au fur et à mesure : vous voyez d\'un coup d\'œil ce qui reste à faire.',
       panelSubtitle: `${formuleRows.length} formule${formuleRows.length > 1 ? 's' : ''} sur la date · ${totals.done}/${totals.total} activité${totals.total > 1 ? 's' : ''} faite${totals.done > 1 ? 's' : ''}`,
       secondaryAction: "openStaffMenuPage('reservations')",
@@ -8930,7 +8930,7 @@ function getPricingRowsFiltered() {
   return sortPricingRows(filtered);
 }
 
-// Classement rentabilité/demande — agrégats réels des réservations (count,
+// Classement rentabilité/demande : agrégats réels des réservations (count,
 // revenue, players déjà portés par chaque ligne du catalogue).
 function sortPricingRows(rows) {
   const ranking = state.staffPricingSort || 'default';
@@ -8985,7 +8985,7 @@ function openStaffPricingBooking(id) {
   openQuickBook({ date: state.currentDate || todayStr(), type: 'bowling', duration: option.value });
 }
 
-// C14 : utilitaires d'export partagés staff/direction — vivaient dans
+// C14 : utilitaires d'export partagés staff/direction, vivaient dans
 // admin-console.js, désormais ici car ce fichier est chargé pour tous les
 // profils alors que la console admin est injectée à la demande.
 function downloadTextFile(filename, content, mime = 'text/plain;charset=utf-8') {
@@ -9005,7 +9005,7 @@ function csvCell(value) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-// C14 : sélection d'onglet admin sûre même pendant l'injection des consoles —
+// C14 : sélection d'onglet admin sûre même pendant l'injection des consoles 
 // l'onglet est mémorisé et setView('admin') le rend une fois le script chargé.
 function openAdminTab(tab) {
   if (typeof setAdminTab === 'function') {
@@ -9016,7 +9016,7 @@ function openAdminTab(tab) {
   save();
 }
 
-// C14 : sélection de centre sûre pendant l'injection — le centre est mémorisé
+// C14 : sélection de centre sûre pendant l'injection, le centre est mémorisé
 // et le .then() de setView('admin') rend le dashboard avec (sans ce garde, le
 // premier switch de centre était perdu, setAdminCenter n'existant pas encore).
 function openAdminCenter(centerId) {
@@ -9082,7 +9082,7 @@ function getStaffEmailStatusLabel(item = {}) {
 }
 
 function getStaffEmailRows() {
-  // C14 : ops-console.js est injecté à la demande — avant son arrivée, la page
+  // C14 : ops-console.js est injecté à la demande, avant son arrivée, la page
   // Emails rend son état vide (le chargement est déjà déclenché par la page).
   if (typeof getVisibleOpsCommunications !== 'function') return [];
   return getVisibleOpsCommunications()
@@ -9763,7 +9763,7 @@ async function runStaffMarketingAgents() {
     await loadStaffMarketingAgents(true);
     // Le cycle persiste les idées data (marketing_insights) → recharger le conseiller.
     if (typeof loadMarketingIa === 'function') await loadMarketingIa(true);
-    toast('Analyse terminée — les idées du jour sont à jour.');
+    toast('Analyse terminée : les idées du jour sont à jour.');
   } catch (error) {
     staffMarketingAgentsCache.running = false;
     staffMarketingAgentsCache.error = error.message || 'Analyse marketing impossible.';
@@ -9886,7 +9886,7 @@ function ensureStaffClientData() {
   }
 }
 
-// ── Communications par client (mails/relances) — cache page dédié ──────────────
+// ── Communications par client (mails/relances) : cache page dédié ──────────────
 // On charge l'historique des communications du centre (même source que le studio
 // mails) dans un cache propre à la page CRM, puis on filtre par destinataire
 // (email/téléphone) ou par réservation. Découplé de la console admin (pas de
@@ -10180,7 +10180,7 @@ function buildStaffClientRowsFromReservations(reservations = []) {
       const declaredOccasion = declaredOccasionSource
         ? String(declaredOccasionSource.occasion).toLowerCase()
         : '';
-      // hasBirthday : une résa avec une FORMULE anniversaire (f1–f8 par défaut,
+      // hasBirthday : une résa avec une FORMULE anniversaire (f1-f8 par défaut,
       // configurable) compte comme anniversaire ; sinon occasion déclarée ;
       // sinon repli regex (rétrocompat anciennes réservations sans occasion).
       const hasBirthdayFormula = profile.reservationsRaw.some(reservation =>
@@ -10377,7 +10377,7 @@ function getStaffClientRelance(row) {
     .map(reservation => staffClientDaysBetween(today, String(reservation.date || '')))
     .filter(days => days >= 335 && days <= 395);
   if (birthdayPast.length) {
-    return { due: true, kind: 'anniversaire', reason: 'Anniversaire fêté ici il y a ~1 an — ça se re-réserve maintenant' };
+    return { due: true, kind: 'anniversaire', reason: 'Anniversaire fêté ici il y a ~1 an, ça se re-réserve maintenant' };
   }
   const daysSince = Number(row.daysSinceLast || 0);
   if (visits >= 2 && daysSince > 60 && !row.nextBooking) {
@@ -10419,7 +10419,7 @@ function setStaffClientSegment(segment) {
   renderStaffClientsPage();
 }
 
-// Tri CRM : colonne + direction, appliqué APRÈS filtres — chaque colonne de la
+// Tri CRM : colonne + direction, appliqué APRÈS filtres, chaque colonne de la
 // table est triable, valeurs brutes (lastDate ISO, spent numérique).
 function sortStaffClientRows(rows) {
   const { key, dir } = state.staffClientSort || { key: 'lastDate', dir: 'desc' };
@@ -10521,7 +10521,7 @@ function refreshStaffClients() {
 // Export CSV du SEGMENT courant : la liste prête à l'emploi (relance = avec le
 // pourquoi ; marketing = emails). Colonnes réduites à l'utile.
 function exportStaffClientsCsv() {
-  if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement — patientez avant d\'exporter.'); return; }
+  if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement : patientez avant d\'exporter.'); return; }
   const segment = getStaffClientSegment();
   const rows = getFilteredStaffClientRows();
   const relance = segment === 'relancer';
@@ -10572,15 +10572,15 @@ function composeStaffClientEmail(email = '', name = '') {
       msState.draft.to = address;
       msState.draft.category = 'relance';
       msState.draft.templateRef = starter ? 'starter:relance-client' : '';
-      msState.draft.subject = starter ? starter.subject.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || 'vous') : `Fun Galaxy — ${name || 'votre visite'}`;
+      msState.draft.subject = starter ? starter.subject.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || 'vous') : `Fun Galaxy, ${name || 'votre visite'}`;
       msState.draft.body = starter ? starter.body.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || '') : `Bonjour ${name || ''},\n\n`;
       msState.aiTips = [];
       if (typeof setAdminTab === 'function') setAdminTab('mail');
-      toast(`Relance prête pour ${address} — relis et envoie.`);
+      toast(`Relance prête pour ${address} : relis et envoie.`);
     }).catch(() => {});
     return;
   }
-  const subject = `Fun Galaxy — ${name ? name : 'votre réservation'}`;
+  const subject = `Fun Galaxy : ${name ? name : 'votre réservation'}`;
   const body = `Bonjour ${name || ''},\n\n`;
   const href = `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   const link = document.createElement('a');
@@ -10996,7 +10996,7 @@ function getPlanningVisibleReservations(view = getStaffResourceView()) {
 }
 
 // Recherche planning/liste unifiée. Root cause du bug : les champs de recherche
-// n'appelaient que renderTable() — le PLANNING (grille) et le planning Laser ne
+// n'appelaient que renderTable() : le PLANNING (grille) et le planning Laser ne
 // se re-filtraient jamais à la frappe (il fallait recharger), et l'effacement ne
 // re-remplissait pas la grille (elle restait figée). On centralise ici : un seul
 // state.searchTerm, on synchronise les champs jumeaux (bowling/laser/liste) sans
@@ -11126,7 +11126,7 @@ function openStaffDatePicker(ev) {
   picker.value = state.currentDate;
   picker.removeAttribute('min');
   // Le picker natif vit dans .staff-head, masquée (display:none) sur les pages
-  // Terrain — showPicker l'ancre alors au coin haut-gauche. On le déplace sous
+  // Terrain : showPicker l'ancre alors au coin haut-gauche. On le déplace sous
   // le bouton déclencheur pour que le calendrier s'ouvre au bon endroit.
   const trigger = ev && (ev.currentTarget || ev.target);
   const rect = trigger && typeof trigger.getBoundingClientRect === 'function' ? trigger.getBoundingClientRect() : null;
@@ -11319,7 +11319,7 @@ function renderDelayIndicator(reservation) {
   if (!flag) return '';
   const mins = Math.round(Number(flag.minutes) || 0);
   const range = flag.from && flag.to ? ` ${flag.from}→${flag.to}` : '';
-  const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''} — cliquer pour retirer le retard et remettre à l'heure d'origine`;
+  const tip = `Retardée de ${mins} min${range ? ` (${flag.from}→${flag.to})` : ''}, cliquer pour retirer le retard et remettre à l'heure d'origine`;
   return `<button type="button" class="delay-indicator" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}" onmousedown="event.stopPropagation()" onclick="revertDelay(event, ${reservation.id})">`
     + `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/></svg>`
     + `<span class="delay-indicator-label">+${mins}</span></button>`;
@@ -11369,7 +11369,7 @@ async function revertDelay(ev, id) {
     save();
     renderStaffData();
     renderPos();
-    if (payload.reverted) toast('Retard retiré — créneau d\'origine restauré.');
+    if (payload.reverted) toast('Retard retiré : créneau d\'origine restauré.');
     else if (payload.message) toast(payload.message);
     else toast('Aucun retard à retirer.');
   } catch (error) {
@@ -11697,7 +11697,7 @@ function renderPlanning() {
   const closeHour = config.close;
   const totalHours = Math.max(closeHour - startHour, 1);
   const halfSlots = totalHours * 2;
-  // P1-11 — mobile : cellules plus hautes pour des cibles tactiles correctes
+  // P1-11 : mobile : cellules plus hautes pour des cibles tactiles correctes
   // (slot 30 min = HH/2 = 44px). Le zoom horizontal vient du CSS (largeur de
   // piste lisible + scroll du wrap), la hauteur vient d'ici (positions px JS).
   const compactTouch = !state.staffPlanningExpanded
@@ -12008,7 +12008,7 @@ function renderLaserPlanning() {
     const current = isToday && curH >= timeValue && curH < timeValue + 0.5;
     // Occupation par tranche = pic de joueurs simultanés parmi les sessions qui
     // CHEVAUCHENT la tranche [timeValue, +30 min), pas seulement celles qui y
-    // démarrent — sinon une vague qui déborde (ex. 10:55-11:20) laisse la tranche
+    // démarrent : sinon une vague qui déborde (ex. 10:55-11:20) laisse la tranche
     // 11:00 à « 30 armes libres » alors qu'elle est occupée. `max` (pas somme) car
     // deux vagues séquentielles ne tournent jamais en même temps ; exact tant que
     // parallelLaunches === 1 (cas Fun Galaxy).
@@ -12054,15 +12054,15 @@ function renderLaserPlanning() {
   if (nextQueue) nextQueue.scrollTop = prevQueueTop;
 }
 
-// Maintenance datée : fenêtre [du, au] — la piste reste réservable hors
+// Maintenance datée : fenêtre [du, au], la piste reste réservable hors
 // fenêtre et se libère automatiquement après (résolution par date côté
 // serveur, y compris dans le chemin d'écriture des réservations).
 async function toggleMaintDated(i, ev) {
   if (ev) ev.stopPropagation();
   const today = todayStr();
-  const from = window.prompt(`Piste ${i} — début de maintenance (AAAA-MM-JJ, vide = dès maintenant) :`, today);
+  const from = window.prompt(`Piste ${i} : début de maintenance (AAAA-MM-JJ, vide = dès maintenant) :`, today);
   if (from === null) return;
-  const until = window.prompt(`Piste ${i} — fin de maintenance (AAAA-MM-JJ, vide = jusqu'à réactivation manuelle) :`, from || today);
+  const until = window.prompt(`Piste ${i} : fin de maintenance (AAAA-MM-JJ, vide = jusqu'à réactivation manuelle) :`, from || today);
   if (until === null) return;
   const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
   if ((from && !DATE_RX.test(from)) || (until && !DATE_RX.test(until))) { toast('Format de date invalide (AAAA-MM-JJ).'); return; }
@@ -12179,7 +12179,7 @@ function renderReservationRow(r) {
       ${renderStaffOpsMini(r)}
       ${renderGuestOpsMini(r)}
       <div class="res-row-meta">
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${r.phone || '—'}</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${r.phone || '-'}</span>
         <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>${r.pax} joueur${r.pax > 1 ? 's' : ''}</span>
       </div>
     </div>
@@ -12565,7 +12565,7 @@ function renderFormulaActivityChecklist(r, opts = {}) {
   if (!summary.total) return '';
   const pct = Math.round((summary.done / summary.total) * 100);
   const rows = summary.items.map(item => {
-    const time = item.startTime ? `${escapeHtml(item.startTime)}${item.endTime ? ' – ' + escapeHtml(item.endTime) : ''}` : '';
+    const time = item.startTime ? `${escapeHtml(item.startTime)}${item.endTime ? ' : ' + escapeHtml(item.endTime) : ''}` : '';
     const meta = item.done
       ? [item.by ? `par ${escapeHtml(item.by)}` : '', formatActivityDoneTime(item.doneAt)].filter(Boolean).join(' · ')
       : '';
@@ -12938,7 +12938,7 @@ function renderDelayModal() {
       <div class="delay-applied-banner">Plan appliqué. ${escapeHtml(flow.applyResult?.strategyLabel || '')}</div>
       <div class="delay-notify-prominent">
         <div class="delay-notify-step">Étape 2 · Prévenir les clients</div>
-        <div class="delay-notify-intro">Chaque message est <strong>pré-rédigé et personnalisé</strong> — relisez-le et modifiez-le si besoin. Un email part uniquement aux clients cochés, quand vous cliquez sur « Envoyer les emails ». Vous pouvez aussi ne prévenir personne.</div>
+        <div class="delay-notify-intro">Chaque message est <strong>pré-rédigé et personnalisé</strong> : relisez-le et modifiez-le si besoin. Un email part uniquement aux clients cochés, quand vous cliquez sur « Envoyer les emails ». Vous pouvez aussi ne prévenir personne.</div>
       </div>
       <div class="delay-notify-list">
         ${candidates.map(candidate => {
@@ -13182,7 +13182,7 @@ function renderCommCenter() {
       </button>`;
     }).join('');
     const templateOptions = templates.map(template =>
-      `<option value="${template.id}" ${flow.templateId === template.id ? 'selected' : ''}>${escapeHtml(template.category ? `${template.category} — ${template.label}` : template.label)}</option>`
+      `<option value="${template.id}" ${flow.templateId === template.id ? 'selected' : ''}>${escapeHtml(template.category ? `${template.category}, ${template.label}` : template.label)}</option>`
     ).join('');
     const activeTemplate = templates.find(t => t.id === flow.templateId) || null;
     const recipient = flow.channel === 'sms' ? (flow.data.reservation?.phone || '') : (flow.data.reservation?.email || '');
@@ -13507,7 +13507,7 @@ async function pay(method) {
 
 // Contexte d'ouverture de la réservation rapide : ce que le point d'entrée
 // SAIT déjà (activité, date, heure, piste, client...) est considéré « acquis »
-// — affiché en rappel, jamais redemandé — et la modale ne pose que les
+// : affiché en rappel, jamais redemandé, et la modale ne pose que les
 // questions restantes. Dérivé du prefill brut pour ne pas toucher aux
 // dizaines de points d'appel existants.
 function deriveQuickBookContext(prefill = {}) {
@@ -13581,7 +13581,7 @@ function openQuickBook(prefill = {}) {
 
 function quickFromCell(lane, startTime) {
   // Case du planning bowling : la piste, la date et l'heure sont déjà connues
-  // — la modale ne redemande que le client, les joueurs et la durée.
+  // : la modale ne redemande que le client, les joueurs et la durée.
   openQuickBook({
     date: state.currentDate,
     startTime: numToTime(startTime),
@@ -13616,7 +13616,7 @@ function syncQuickBookDuration() {
 // Quand le nombre de joueurs exige plus de pistes que la sélection contextuelle
 // (une piste pré-remplie depuis une case du planning), on étend AUTOMATIQUEMENT
 // la sélection à N pistes disponibles en gardant la piste cliquée. L'extension
-// ne s'applique que si le groupe déborde (N > 1 et sélection incomplète) — les
+// ne s'applique que si le groupe déborde (N > 1 et sélection incomplète) : les
 // petits groupes (1 piste) gardent leur piste pré-remplie, et une sélection
 // manuelle déjà complète n'est jamais modifiée.
 function reconcileQuickLaneSelection() {
@@ -13677,7 +13677,7 @@ function onQuickPaxBlur(el, ev) {
   reconcileQuickLaneSelection();
   // On reflète la valeur normalisée directement dans le champ (pas de re-render :
   // reconstruire la modale ici détruirait « Créer la réservation » avant l'arrivée
-  // du clic — le même piège que le champ téléphone — et volerait le focus si on
+  // du clic : le même piège que le champ téléphone, et volerait le focus si on
   // tabule vers un autre champ). Le « Total estimé » est patché en place.
   if (el) el.value = String(n);
   patchQuickBookPaxDerived();
@@ -13734,7 +13734,7 @@ function onQuickPhoneBlur(elOrValue) {
   // Pas de re-render complet ici : le clic sur « Créer la réservation »
   // déclenche d'abord le blur du téléphone. Un renderQuickBook() reconstruirait
   // la modale (innerHTML) et détruirait le bouton avant que le clic n'atterrisse
-  // — d'où le fameux « il faut cliquer deux fois ». On reflète juste la valeur
+  // : d'où le fameux « il faut cliquer deux fois ». On reflète juste la valeur
   // normalisée dans le champ, sans reconstruire le DOM.
   if (el) el.value = quickBookState.phone;
 }
@@ -13961,10 +13961,10 @@ function getQuickBookHeader(formule) {
   const src = s.context.source;
   if (src === 'planning-bowling') {
     const laneText = s.lanes.length ? `la piste ${s.lanes.join(' & ')}` : 'le bowling';
-    return { eyebrow: 'Planning bowling', title: `Réserver ${laneText}${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Créneau repris du planning — il ne reste que le client à compléter.' };
+    return { eyebrow: 'Planning bowling', title: `Réserver ${laneText}${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Créneau repris du planning, il ne reste que le client à compléter.' };
   }
   if (src === 'laser-session') {
-    return { eyebrow: 'Laser Game', title: `Rejoindre le lancement${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Le groupe complète une session existante — départ verrouillé.' };
+    return { eyebrow: 'Laser Game', title: `Rejoindre le lancement${s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Le groupe complète une session existante, départ verrouillé.' };
   }
   if (src === 'laser-slot' || (src === 'activite' && s.type === 'laser')) {
     return { eyebrow: 'Laser Game', title: `Nouvelle session laser${quickFieldKnown('startTime') && s.startTime ? ` · ${s.startTime}` : ''}`, sub: 'Session laser depuis le planning des lancements.' };
@@ -13973,12 +13973,12 @@ function getQuickBookHeader(formule) {
     return { eyebrow: 'Groupes & anniversaires', title: 'Réservation groupe · anniversaire', sub: 'Choisissez la formule, le reste suit.' };
   }
   if (src === 'client') {
-    return { eyebrow: 'Fiche client', title: `Réserver pour ${s.name || 'ce client'}`, sub: 'Coordonnées reprises de la fiche — choisissez le créneau.' };
+    return { eyebrow: 'Fiche client', title: `Réserver pour ${s.name || 'ce client'}`, sub: 'Coordonnées reprises de la fiche, choisissez le créneau.' };
   }
   if (src === 'activite') {
     return { eyebrow: 'Staff Booking', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
   }
-  return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: 'L’essentiel d’abord — le détail vit dans « Plus d’options ».' };
+  return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: 'L’essentiel d’abord, le détail vit dans « Plus d’options ».' };
 }
 
 function renderQuickBook() {
@@ -14126,7 +14126,7 @@ function renderQuickBook() {
     if (selectedSlot && (selectedSlot.sharedSession || selectedSlot.mayShareSession)) statusParts.push('Session partagée possible selon l’affluence');
   } else if (needsLanes) {
     statusParts.push(laneNeedLabel);
-    statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` — pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
+    statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
     if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste(s) libre(s)`);
   } else if (quickBookState.type === 'formule' && formule) {
     statusParts.push('Sans piste de bowling');
@@ -14284,7 +14284,7 @@ function renderQuickBook() {
 
     <div class="qb-block">
       <div class="blk-label">Notes internes</div>
-      <div class="qb-block-help">Visible par le staff uniquement — jamais envoyé au client.</div>
+      <div class="qb-block-help">Visible par le staff uniquement : jamais envoyé au client.</div>
       <textarea class="qb-input qb-textarea" rows="2" oninput="quickBookState.notes=this.value" placeholder="Ex. anniversaire, gâteau à prévoir, paiement à l'arrivée…">${escapeHtml(quickBookState.notes || '')}</textarea>
     </div>
   ` : '';
@@ -14348,7 +14348,7 @@ function renderQuickBook() {
         ${quickBookState.error ? `<div class="qb-warn danger">${quickBookState.error}</div>` : ''}
 
         <button type="button" class="qb-more-toggle" aria-expanded="${quickBookState.moreOpen ? 'true' : 'false'}" onclick="toggleQuickBookMore()">
-          ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options — créneau, pistes, durée, notes'}
+          ${quickBookState.moreOpen ? 'Masquer les options avancées' : 'Plus d’options, créneau, pistes, durée, notes'}
         </button>
 
         ${advancedHtml}
@@ -14371,7 +14371,7 @@ function renderQuickBook() {
 
 async function saveQuickBook() {
   // Anti double-submit : un seul envoi en vol. Le garde couvre aussi la fenêtre
-  // asynchrone (syncDateReservations/POST) — un 2e clic pendant l'envoi est ignoré.
+  // asynchrone (syncDateReservations/POST) : un 2e clic pendant l'envoi est ignoré.
   if (!quickBookState || quickBookState.submitting) return;
   quickBookState.submitting = true;
   quickBookState.error = '';
@@ -14405,7 +14405,7 @@ async function saveQuickBook() {
 
   // Pas d'aller-retour réseau superflu sur le chemin de création : le poll
   // (4 s) garde la date courante fraîche. On ne re-synchronise ici que si la
-  // donnée locale est vieille (> 10 s) — le serveur re-valide de toute façon.
+  // donnée locale est vieille (> 10 s) : le serveur re-valide de toute façon.
   if (!isDateSyncFresh(quickBookState.date)) {
     await syncDateReservations(quickBookState.date, { silent: true, skipRender: true });
   }
@@ -14485,7 +14485,7 @@ async function saveQuickBook() {
 let toastTimer;
 function toast(msg) {
   const el = document.getElementById('toast');
-  // msg peut contenir des données client (email, nom) — toujours échappé au sink.
+  // msg peut contenir des données client (email, nom), toujours échappé au sink.
   el.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${escapeHtml(String(msg ?? ''))}`;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
@@ -14493,7 +14493,7 @@ function toast(msg) {
 }
 
 /* ============================================================================
-   Notification « nouvelle réservation du jour » — bip + carte, visible même
+   Notification « nouvelle réservation du jour » : bip + carte, visible même
    avec le planning en plein écran (z-index au-dessus). Déclenchée par le poll
    quand une résa du jour apparaît DEPUIS LE SERVEUR (site public / autre poste) ;
    jamais pour une création locale au comptoir (déjà dans l'état avant le poll).
@@ -14691,7 +14691,7 @@ function renderFormules() {
   ));
 
   // Date en grandes vacances : les formules « noHolidays » restent ouvertes
-  // (exception été) — on l'affiche explicitement pour lever l'ambiguïté.
+  // (exception été) : on l'affiche explicitement pour lever l'ambiguïté.
   const dateContext = getSpecialOpeningContext(state.booking.date, state.isHolidayMode);
   const summerOpen = dateContext.active && dateContext.periodType === 'school_summer' && !blockedToday;
 
@@ -14877,7 +14877,7 @@ function applyInitialRouteFromHash() {
     const allowedAdminTabs = ['overview', 'reservations', 'clients', 'ops', 'exports'];
     if (allowedAdminTabs.includes(normalizedAdminTab)) state.adminTab = normalizedAdminTab;
   }
-  // A1 : deep-link #admin/... refusé à un rôle connecté sans direction.view —
+  // A1 : deep-link #admin/... refusé à un rôle connecté sans direction.view 
   // même refus que setView, retombée sur la vue staff.
   if (state.view === 'admin' && !canOpenAdminView()) {
     state.view = 'staff';

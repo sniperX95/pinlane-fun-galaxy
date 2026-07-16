@@ -34,7 +34,7 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'QA', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    // État serveur simulé des séquences — settings = overrides, defaults =
+    // État serveur simulé des séquences : settings = overrides, defaults =
     // textes/timings de référence (contrat C1). Le POST étendu mute ce state.
     const autoState = {
       confirmation: { enabled: true }, reminder_48h: { enabled: true }, post_visit: { enabled: true },
@@ -58,7 +58,7 @@ async function installMock(page) {
       { id: 3, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'birthday_j30', recipient: 'c@x.be', subject: 'L’anniversaire approche 🎂', status: 'failed', lastError: 'Mailbox full', attempts: 2, payload: {} },
       // Boîte de réception : 2 mails reçus analysés (contrat C4/C5).
       { id: 4, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client1@x.be', subject: 'Anniversaire pour mon fils', createdAt: new Date(Date.now() - 7200e3).toISOString(), payload: { from: 'client1@x.be', textBody: 'Bonjour, je voudrais organiser un anniversaire pour mon fils de 8 ans, vous avez de la place samedi ?', analysis: { intent: 'anniversaire', intentLabel: 'Anniversaire', summary: 'Veut organiser un anniversaire (8 ans) et demande la dispo de samedi', urgency: 'normale', reply: { subject: 'Re: Anniversaire pour mon fils', body: 'Bonjour,\n\nAvec plaisir ! Dites-nous la date exacte et le nombre d’enfants, on vous propose la formule adaptée.\n\nL’équipe Fun Galaxy' }, clientName: 'Client Un', provider: 'rules' } } },
-      { id: 5, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client2@x.be', subject: 'Annulation résa de demain', createdAt: new Date(Date.now() - 3600e3).toISOString(), payload: { from: 'client2@x.be', textBody: 'Je dois annuler ma réservation de demain, désolé.', repliedAt: new Date(Date.now() - 1800e3).toISOString(), replyCommunicationId: 77, analysis: { intent: 'annulation', intentLabel: 'Annulation', summary: 'Annule sa réservation de demain', urgency: 'haute', reply: { subject: 'Re: Annulation résa de demain', body: 'Bonjour, c’est noté — votre réservation est annulée.' }, provider: 'rules' } } },
+      { id: 5, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client2@x.be', subject: 'Annulation résa de demain', createdAt: new Date(Date.now() - 3600e3).toISOString(), payload: { from: 'client2@x.be', textBody: 'Je dois annuler ma réservation de demain, désolé.', repliedAt: new Date(Date.now() - 1800e3).toISOString(), replyCommunicationId: 77, analysis: { intent: 'annulation', intentLabel: 'Annulation', summary: 'Annule sa réservation de demain', urgency: 'haute', reply: { subject: 'Re: Annulation résa de demain', body: 'Bonjour, c’est noté, votre réservation est annulée.' }, provider: 'rules' } } },
     ];
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
@@ -240,7 +240,7 @@ async function main() {
       last: window.__QA_POSTS__.filter((p) => p.action === 'automationSettings').slice(-1)[0],
       modified: !!document.querySelector('#staffEmailsPage .mk-auto-mod'),
     }));
-    ok(saved.last && saved.last.key === 'birthday_j30' && saved.last.subject === 'Sujet perso anniversaire' && saved.last.body === undefined, 'POST étendu {key, subject} — champs inchangés non envoyés');
+    ok(saved.last && saved.last.key === 'birthday_j30' && saved.last.subject === 'Sujet perso anniversaire' && saved.last.body === undefined, 'POST étendu {key, subject}, champs inchangés non envoyés');
     ok(saved.modified, 'pilule « modifié » affichée sur la carte');
 
     console.log('\n[ÉDITEUR] réinitialiser → défauts');

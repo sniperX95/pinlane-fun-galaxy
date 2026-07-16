@@ -1,11 +1,11 @@
-// Test INTERACTIF de la page Marketing « machine de guerre » — 5 surfaces
+// Test INTERACTIF de la page Marketing « machine de guerre » : 5 surfaces
 // (refonte 2026-07-16 : Aujourd'hui · Ce qui marche · Studio · Concurrents ·
 // Résultats). Playwright pilote de vrais clics sur la page servie avec mocks
 // fetch : le héros € + toggles de période, le brief signé, la surface causale
 // « Ce qui marche » (verdicts jour/météo + mémoire par contexte), le radar 14
 // cellules (clic/explication/« Prépare-moi un post »), les cartes Proposition
 // (ouvrir → réseau → copier → « Publié ? → Oui » = SEULE porte vers la mesure),
-// le studio, la veille concurrent, les reçus — et l'hygiène : zéro jargon
+// le studio, la veille concurrent, les reçus, et l'hygiène : zéro jargon
 // interne à l'écran, zéro bouton de relance manuelle, l'identité de l'employé.
 // Cf. leçon ship-interactive-ui-tested.
 const fs = require('fs');
@@ -52,7 +52,7 @@ async function installMock(page) {
         const level = i === 4 ? 'creux' : i === 6 ? 'fort' : (i === 9 ? 'calme' : 'normal');
         return { date, dow: d.getDay(), level, tmax: i === 2 ? 27 : 19, precipMm: i === 3 ? 12 : 0,
           event: i === 8 ? 'Foire de Libramont (à 5 min)' : '', resaCount: i === 6 ? 34 : (i === 0 ? 6 : 0),
-          explanation: level === 'creux' ? `Jour ${date.slice(8, 10)} : très calme attendu — jour structurellement faible. Rien de posé.` : `Jour ${date.slice(8, 10)} : journée normale attendue.`,
+          explanation: level === 'creux' ? `Jour ${date.slice(8, 10)} : très calme attendu, jour structurellement faible. Rien de posé.` : `Jour ${date.slice(8, 10)} : journée normale attendue.`,
           propositionKey: i === 4 ? 'plan:social-1' : null };
       });
       return {
@@ -60,10 +60,10 @@ async function installMock(page) {
         networks: ['facebook', 'instagram', 'story'],
         paie: { euros: 1240, venues: 5, sent: 17, reviewClicks: 4, days: 30, young: false, firstVerdictDate: 'mardi 28 juillet',
           sources: [{ key: 'birthday_j30', label: 'Anniversaires', sent: 12, conversions: 3, revenue: 770 }, { key: 'relance', label: 'Relances', sent: 5, conversions: 2, revenue: 470 }] },
-        brief: { text: 'Dimanche s\'annonce très calme — pluie annoncée, hors vacances. Je t\'ai préparé 2 posts et un email — tout est prêt plus bas. Du mouvement chez Bowling Arlon cette nuit — détail en bas de page.', degraded: false },
+        brief: { text: 'Dimanche s\'annonce très calme, pluie annoncée, hors vacances. Je t\'ai préparé 2 posts et un email, tout est prêt plus bas. Du mouvement chez Bowling Arlon cette nuit, détail en bas de page.', degraded: false },
         pulse: { revenue30: 8334, visitors30: 540, avgBasket: 15.4, upcomingPax: 102, upcomingResa: 5, reservedRevenue: 2864, bestDay: { date: '2026-07-11', revenue: 4009, visitors: 234 } },
         radar, dataDays: 210, medianVisitors: 40,
-        // « Ce qui marche » — faits causaux + mémoire par contexte (effet net).
+        // « Ce qui marche » : faits causaux + mémoire par contexte (effet net).
         facts: {
           bestDay: { dow: 6, label: 'samedi', avgVisitors: 128, vsMedianPct: 121, confidence: 'solide' },
           worstDay: { dow: 2, label: 'mardi', avgVisitors: 34, vsMedianPct: -41, confidence: 'solide' },
@@ -75,10 +75,10 @@ async function installMock(page) {
           { context: 'Email · jour calme', kind: 'email', channel: 'email', netDeltaPct: 14, n: 4, confidence: 'signal' },
         ],
         propositions: [
-          { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi — les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi — les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec — réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x' },
-          { key: 'plan:social-1', id: null, trigger: 'creux', why: 'Dimanche s\'annonce très calme : 12 visiteurs attendus. Je posterais mercredi pour le remplir.', whyShort: 'Dimanche s\'annonce très calme — je posterais mercredi pour le remplir.', dueDate: dstr(2), targetDate: dstr(4), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'plan:social-1' },
-          { key: 'db:21', id: 21, trigger: 'concurrent', why: 'Bowling Arlon a lancé une offre étudiants — on répond ?', whyShort: 'Bowling Arlon a lancé une offre étudiants — on répond ?', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Chez nous, pas besoin de carte étudiant pour passer une bonne soirée. 8 pistes, laser game, arcades.\n\n#bowling' } }, photoIdea: '', imagePrompt: '', bestSlot: '18h', status: 'proposed', signature: 'concurrent:x' },
-          { key: 'db:22', id: 22, trigger: 'demande', why: 'Tu m\'as demandé : « soirée fluo » — voilà ce que je posterais.', whyShort: 'Tu m\'as demandé : « soirée fluo » — voilà ce que je posterais.', dueDate: dstr(3), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Soirée fluo samedi.' } }, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'demande:x' },
+          { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec, réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x' },
+          { key: 'plan:social-1', id: null, trigger: 'creux', why: 'Dimanche s\'annonce très calme : 12 visiteurs attendus. Je posterais mercredi pour le remplir.', whyShort: 'Dimanche s\'annonce très calme, je posterais mercredi pour le remplir.', dueDate: dstr(2), targetDate: dstr(4), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'plan:social-1' },
+          { key: 'db:21', id: 21, trigger: 'concurrent', why: 'Bowling Arlon a lancé une offre étudiants, on répond ?', whyShort: 'Bowling Arlon a lancé une offre étudiants, on répond ?', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Chez nous, pas besoin de carte étudiant pour passer une bonne soirée. 8 pistes, laser game, arcades.\n\n#bowling' } }, photoIdea: '', imagePrompt: '', bestSlot: '18h', status: 'proposed', signature: 'concurrent:x' },
+          { key: 'db:22', id: 22, trigger: 'demande', why: 'Tu m\'as demandé : « soirée fluo », voilà ce que je posterais.', whyShort: 'Tu m\'as demandé : « soirée fluo », voilà ce que je posterais.', dueDate: dstr(3), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Soirée fluo samedi.' } }, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'demande:x' },
         ],
         receipts: [
           { id: 31, label: 'Post pluie du 03/07', tone: 'good', result: '+18 % de monde', redoable: true },
@@ -173,7 +173,7 @@ async function main() {
     });
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
     ok(hygiene.tabs.join('|') === 'Aujourd’hui|Ce qui marche|Studio|Concurrents|Résultats', `les 5 surfaces dans l'ordre (${hygiene.tabs.join(', ')})`);
-    ok(hygiene.refresh === 0, 'zéro bouton Actualiser/Analyser — l\'employé travaille la nuit');
+    ok(hygiene.refresh === 0, 'zéro bouton Actualiser/Analyser, l\'employé travaille la nuit');
     ok(banned.length === 0, `zéro jargon interne à l\'écran${banned.length ? ' (trouvé : ' + banned.join(', ') + ')' : ''}`);
     ok(hygiene.sign, 'l\'identité de l\'employé marketing est là');
 
@@ -375,7 +375,12 @@ async function main() {
       box.value = 'Mercredi étudiant : -30% sur le bowling pour toute la promo, sur présentation de la carte étudiant.';
       const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((el) => /^Analyser$/.test(el.textContent.trim()));
       btn.click();
-      await new Promise((r) => setTimeout(r, 500));
+      // Attendre le panneau lui-meme, pas une duree fixe : un sleep de 500 ms
+      // rendait ce test flaky des que la machine etait chargee.
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline && !document.querySelector('#staffCampaignsPage .mkw-analy, #staffCampaignsPage .mkw-analy-degraded')) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'competitorAnalyzePost');
       const panel = (document.querySelector('#staffCampaignsPage .mkw-analy') || {}).textContent || '';
       return { found: true, posted: posts.length, hadText: Boolean(posts[0] && posts[0].text), panel };

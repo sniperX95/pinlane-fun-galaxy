@@ -40,26 +40,26 @@ async function installMock(page) {
     const R = [];
     let id = 7000;
     const add = (o) => { R.push({ id: id++, lanes: [], status: 'paid', duration: 1, centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: iso(0), ...o }); };
-    // A — Marie : 3 visites passées + 1 FUTURE (+6 j, anniversaire, 12 pax) → À venir 7 j + 🎂 + comms
+    // A : Marie : 3 visites passées + 1 FUTURE (+6 j, anniversaire, 12 pax) → À venir 7 j + 🎂 + comms
     add({ name: 'Marie Dupont', phone: '+32470111001', email: 'marie@test.be', date: dstr(-40), startTime: '15:00', pax: 12, price: 468, type: 'formule', formuleId: 'f4', label: 'FORMULE 4', occasion: 'anniversaire' });
     add({ name: 'Marie Dupont', phone: '+32470111001', email: 'marie@test.be', date: dstr(-15), startTime: '16:00', pax: 10, price: 390, type: 'formule', formuleId: 'f1', label: 'FORMULE 1', occasion: 'anniversaire' });
     add({ name: 'Marie Dupont', phone: '+32470111001', email: 'marie@test.be', date: dstr(-3), startTime: '14:00', pax: 8, price: 260, type: 'bowling', label: 'Bowling', lanes: [1, 2] });
     add({ name: 'Marie Dupont', phone: '+32470111001', email: 'marie@test.be', date: dstr(6), startTime: '15:00', pax: 12, price: 468, type: 'formule', formuleId: 'f4', label: 'FORMULE 4', occasion: 'anniversaire', status: 'pending' });
-    // B — Entreprise Nova : gros dépensier → VIP (top 20 %)
+    // B : Entreprise Nova : gros dépensier → VIP (top 20 %)
     add({ name: 'Entreprise Nova', phone: '+32470111002', email: 'contact@nova.be', date: dstr(-8), startTime: '18:00', pax: 30, price: 900, type: 'laser', label: 'Laser', occasion: 'entreprise' });
     add({ name: 'Entreprise Nova', phone: '+32470111002', email: 'contact@nova.be', date: dstr(-60), startTime: '19:00', pax: 24, price: 720, type: 'bowling', label: 'Bowling 2h', lanes: [3, 4, 5], duration: 2, occasion: 'entreprise' });
-    // C — Paul : 1 seule visite ancienne → PAS « à relancer » (contrôle négatif)
+    // C : Paul : 1 seule visite ancienne → PAS « à relancer » (contrôle négatif)
     add({ name: 'Paul Martin', phone: '+32470111003', email: 'paul@test.be', date: dstr(-130), startTime: '17:00', pax: 4, price: 80, type: 'bowling', label: 'Bowling', lanes: [6] });
-    // D — Sophie : nouvelle
+    // D : Sophie : nouvelle
     add({ name: 'Sophie Bernard', phone: '+32470111004', email: 'sophie@test.be', date: dstr(-2), startTime: '14:30', pax: 6, price: 120, type: 'laser', label: 'Laser' });
-    // E — Lucas : multi-visites récentes → pas dormant
+    // E : Lucas : multi-visites récentes → pas dormant
     add({ name: 'Lucas Petit', phone: '+32470111005', email: 'lucas@test.be', date: dstr(-25), startTime: '20:00', pax: 5, price: 100, type: 'bowling', label: 'Bowling', lanes: [7] });
     add({ name: 'Lucas Petit', phone: '+32470111005', email: 'lucas@test.be', date: dstr(-1), startTime: '21:00', pax: 6, price: 130, type: 'bowling', label: 'Bowling', lanes: [8] });
-    // F — Georges : 3 visites, dernière -100 j → DORMANT à relancer
+    // F : Georges : 3 visites, dernière -100 j → DORMANT à relancer
     add({ name: 'Georges Dupuis', phone: '+32470111006', email: 'georges@test.be', date: dstr(-200), startTime: '18:00', pax: 4, price: 90, type: 'bowling', label: 'Bowling', lanes: [1] });
     add({ name: 'Georges Dupuis', phone: '+32470111006', email: 'georges@test.be', date: dstr(-150), startTime: '18:00', pax: 4, price: 85, type: 'bowling', label: 'Bowling', lanes: [2] });
     add({ name: 'Georges Dupuis', phone: '+32470111006', email: 'georges@test.be', date: dstr(-100), startTime: '18:00', pax: 5, price: 110, type: 'bowling', label: 'Bowling', lanes: [3] });
-    // G — Famille Kessler : anniversaire fêté il y a ~370 j → À relancer (ça revient !)
+    // G : Famille Kessler : anniversaire fêté il y a ~370 j → À relancer (ça revient !)
     add({ name: 'Famille Kessler', phone: '+32470111007', email: 'kessler@test.be', date: dstr(-370), startTime: '15:00', pax: 10, price: 350, type: 'formule', formuleId: 'f2', label: 'FORMULE 2', occasion: 'anniversaire' });
     const build = () => R.map((r) => ({ ...r }));
     const comms = [
@@ -285,7 +285,7 @@ async function main() {
       if (rows2[0]) { rows2[0].click(); await new Promise((r) => setTimeout(r, 300)); }
       const input = document.querySelector('#staffClientsPage .crm-note-input');
       if (!input) return { found: false };
-      input.value = 'Allergie arachide — enfant Lina';
+      input.value = 'Allergie arachide : enfant Lina';
       input.dispatchEvent(new Event('blur'));
       await new Promise((r) => setTimeout(r, 350));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'clientNotes');

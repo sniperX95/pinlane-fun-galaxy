@@ -1,10 +1,10 @@
-// Webhook de réception d'emails — POST /api/inbound-email
+// Webhook de réception d'emails : POST /api/inbound-email
 // Alimente la boîte de réception de la page « Emails & relances » : chaque
 // email entrant est stocké (communications direction='inbound') AVEC son
 // analyse par l'agent (intention, résumé, réponse proposée).
 //
 // Auth : header `x-inbound-secret` === env INBOUND_EMAIL_SECRET (posée dans
-// Vercel). Sans configuration, l'endpoint refuse tout (401) — la boîte de
+// Vercel). Sans configuration, l'endpoint refuse tout (401), la boîte de
 // réception reste alimentable à la main via l'action ops `analyzeInboundEmail`.
 //
 // Compatible Resend Inbound (`type: 'email.received'`, données sous `data`)

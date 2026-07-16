@@ -1,6 +1,6 @@
 // Gate INTERACTIF : indépendance des VAGUES laser (Playwright pilote un vrai drag).
 // Un gros groupe joue 1 jeu laser en plusieurs vagues (pas assez d'armes d'un coup) ;
-// chaque vague doit être plaçable SÉPARÉMENT — glisser une vague ne déplace QU'elle.
+// chaque vague doit être plaçable SÉPARÉMENT : glisser une vague ne déplace QU'elle.
 // Couvre le bug "déplacer une vague déplace les deux" + non-régression 2 jeux distincts.
 // SEED=twowaves|distinct, DRAG_UNIT=jeu.vague (défaut 1.2). Cf. ship-interactive-ui-tested.
 const fs = require('fs');
@@ -99,7 +99,7 @@ async function main() {
       const w = getLaserWindowsFromReservation(r).map(x => ({ unit: uf(x), start: x.start, startTime: x.startTime })).sort((a,b)=>a.start-b.start);
       return { windows: w, cardCount: document.querySelectorAll('.laser-group-card[onmousedown*="9500"]').length };
     });
-    console.log('AVANT — unités:', JSON.stringify(beforeReal.windows), '| cartes:', beforeReal.cardCount);
+    console.log('AVANT : unités:', JSON.stringify(beforeReal.windows), '| cartes:', beforeReal.cardCount);
     if (process.env.LASER_SHOT) {
       await page.evaluate(() => {
         const ag = document.querySelector('.laser-planning-box.expanded .laser-agenda');

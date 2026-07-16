@@ -128,8 +128,8 @@ async function main() {
       // (mock renvoyant []) qui écraserait les réservations qu'on vient de semer.
     }, { date: TEST_DATE, reservations });
 
-    // ================= BUG 2 — capacité bowling grand groupe =================
-    console.log('\n[BUG 2] Capacité bowling — grand groupe (40 joueurs → 7 pistes)');
+    // ================= BUG 2 : capacité bowling grand groupe =================
+    console.log('\n[BUG 2] Capacité bowling : grand groupe (40 joueurs → 7 pistes)');
     await seed([]);
     const b2 = await page.evaluate(({ date }) => {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', lanes: [1], allowPastStart: true });
@@ -178,8 +178,8 @@ async function main() {
     }, { date: TEST_DATE });
     assert(b2btn.length === 7 && b2btn.includes(8), `« Compléter les pistes » donne 7 pistes dont la cliquée n°8 (${b2btn.join('-')})`);
 
-    // ================= BUG 3 — capacité laser =================
-    console.log('\n[BUG 3] Capacité laser — session avec places restantes');
+    // ================= BUG 3 : capacité laser =================
+    console.log('\n[BUG 3] Capacité laser : session avec places restantes');
     // Session existante de 20 joueurs (30 armes) → il reste 10 places.
     await seed([{ id: 501, date: TEST_DATE, status: 'confirmed', type: 'laser', pax: 20, startTime: '16:00', duration: 0.5 }]);
     const b3 = await page.evaluate(({ date }) => {
@@ -202,7 +202,7 @@ async function main() {
     assert(b3b.ok13 === false, 'session 18/30 : ajouter 13 (=31) → REFUSÉ');
     assert(b3b.okEmpty === true && b3b.remEmpty === 20, 'créneau vide : 10 joueurs OK, 20 places restantes');
 
-    // ================= BUG 1 — double-clic / anti double-submit =================
+    // ================= BUG 1 : double-clic / anti double-submit =================
     console.log('\n[BUG 1] Un seul clic crée la réservation + anti double-submit');
     await seed([]);
     await page.evaluate(({ date }) => {
@@ -237,7 +237,7 @@ async function main() {
     }, { date: TEST_DATE });
     assert(doubleSubmit === 1, `2 saveQuickBook() concurrents → 1 seul POST (obtenu ${doubleSubmit})`);
 
-    // ============ CHANTIER 1 — recherche planning en direct + effacement ============
+    // ============ CHANTIER 1 : recherche planning en direct + effacement ============
     console.log('\n[CHANTIER 1] Recherche planning : filtre à la frappe + effacement ré-affiche tout');
     const search = await page.evaluate(({ date }) => {
       state.view = 'staff';
@@ -272,7 +272,7 @@ async function main() {
     assert(search.afterClear === 2, `EFFACER la recherche ré-affiche TOUT le planning immédiatement (obtenu ${search.afterClear}, bug « vide » corrigé)`);
     assert(search.afterPhone === 1, `recherche par téléphone « 222222 » filtre aussi le planning (obtenu ${search.afterPhone})`);
 
-    // ============ CHANTIER 2 — synchro live différentielle sobre ============
+    // ============ CHANTIER 2 : synchro live différentielle sobre ============
     console.log('\n[CHANTIER 2] Poll différentiel : une résa serveur apparaît sans action + tick 304 minuscule');
     const live = await page.evaluate(async ({ date }) => {
       state.view = 'staff';
@@ -307,7 +307,7 @@ async function main() {
     assert(live.changed === true && live.inStore, 'la résa prise EN LIGNE entre dans le store au tick suivant, sans action');
     assert(live.after === 1, `la résa en ligne apparaît sur le planning sans rechargement (obtenu ${live.after})`);
 
-    // ============ CHANTIER 3 — contact STAFF libre (email non obligatoire) ============
+    // ============ CHANTIER 3 : contact STAFF libre (email non obligatoire) ============
     console.log('\n[CHANTIER 3] Contact staff libre : email NON obligatoire, badges OBLIGATOIRE absents');
     const emailFront = await page.evaluate(async ({ date }) => {
       const attempt = async (fields) => {
@@ -343,7 +343,7 @@ async function main() {
     assert(!emailFront.hasReqBadge, 'aucun badge « OBLIGATOIRE » (qb-req) dans la modale staff');
     assert(!emailFront.emailRequiredAttr, 'le champ email staff n\'a plus l\'attribut HTML required');
 
-    // ============ CHANTIER 3b — champ Joueurs : saisie sans perte de focus ============
+    // ============ CHANTIER 3b : champ Joueurs : saisie sans perte de focus ============
     console.log('\n[CHANTIER 3b] Champ Joueurs : taper « 40 », backspace jusqu\'à vide, focus conservé');
     await page.evaluate(({ date }) => {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });
@@ -374,7 +374,7 @@ async function main() {
     assert(paxBlur.value === '1' && paxBlur.statePax === 1, `au blur : valeur normalisée à 1 (obtenu val=${paxBlur.value} pax=${paxBlur.statePax})`);
     await page.evaluate(() => closeQuickBook());
 
-    // ============ CHANTIER 4 — « Plus d'options » repensé + email en essentiel ============
+    // ============ CHANTIER 4 : « Plus d'options » repensé + email en essentiel ============
     console.log('\n[CHANTIER 4] Plus d\'options structuré + email remonté en champ essentiel');
     const options = await page.evaluate(({ date }) => {
       openQuickBook({ date, startTime: '16:00', type: 'bowling', allowPastStart: true });

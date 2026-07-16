@@ -68,7 +68,7 @@ if (/<style[^>]*>(?:(?!<\/style>)[\s\S]){200,}<\/style>/i.test(index) || /<scrip
 if (!/assets\/booking-core\.js/.test(index) || !/PinlaneBookingCore/.test(bookingCore)) {
   addFail('Booking constants and planning helpers must stay extracted from index.html.');
 }
-// C14 : la console admin n'est plus chargee au boot — app-main.js l'injecte
+// C14 : la console admin n'est plus chargee au boot, app-main.js l'injecte
 // dynamiquement a l'ouverture de la vue direction (garde de permission).
 if (!/assets\/admin-console\.js/.test(appMain) || !/PinlaneAdminConsole/.test(adminConsole)) {
   addFail('Admin dashboard/rendering helpers must stay extracted and lazy-loaded via app-main.js.');

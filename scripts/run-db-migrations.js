@@ -140,6 +140,11 @@ const MIGRATIONS = [
     file: 'database/marketing-plan-schema.sql',
     description: 'Le Stratege: multi-week marketing plan anchored on the calendar (the only thing solid at 8 weeks while measured patterns are empty)',
   },
+  {
+    id: '0028_ops_jobs_progress',
+    file: 'database/ops-jobs-progress-schema.sql',
+    description: 'Live job progress: timestamped real steps written by job handlers (never by the dispatch loop), nullable additive columns only',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

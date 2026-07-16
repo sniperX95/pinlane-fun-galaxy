@@ -919,6 +919,81 @@ kbd, .kbd {
 @keyframes pl-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 .shake { animation: pl-shake 160ms var(--ease) 2; }
 
+/* Progression live d'un job ops (0028, assets/ops-progress.js) : timeline
+   d'étapes RÉELLES écrites par le serveur, jamais une barre décorative.
+   Composant partagé : les onglets Marketing le branchent (RUN C). */
+.job-progress {
+  display: grid;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.job-progress-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.job-progress-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  animation: pl-enter var(--dur-slow) var(--ease) both;
+}
+
+.job-progress-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--success);
+}
+
+.job-progress-step.is-live .job-progress-dot {
+  background: var(--accent);
+  animation: pl-skeleton 1.4s var(--ease) infinite;
+}
+
+.job-progress-step.is-live .job-progress-label { color: var(--text); font-weight: 500; }
+.job-progress-step.is-done .job-progress-label { color: var(--muted); }
+
+.job-progress-time {
+  margin-left: auto;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.job-progress-note { margin: 0; color: var(--muted); font-size: 12.5px; }
+.job-progress-done { margin: 0; color: var(--success); font-weight: 500; }
+.job-progress-error { margin: 0; color: var(--danger); }
+
+.job-progress-retry {
+  min-height: var(--h-md);
+  padding: 0 var(--space-3);
+  margin-left: var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.job-progress-retry:hover { background: var(--subtle); }
+.job-progress-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (pointer: coarse) {
+  .job-progress-retry { min-height: 44px; }
+}
+
 /* ----------------------------------------------------------------------------
    12. REDUCED MOTION : !important autorisé ici (DESIGN.md §8)
    -------------------------------------------------------------------------- */

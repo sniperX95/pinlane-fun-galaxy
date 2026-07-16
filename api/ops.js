@@ -8,6 +8,7 @@ const {
   getDelayIncidentById,
   getReservationById,
   getOpsHealth,
+  getOpsJob,
   listCommunications,
   listAgentSuggestions,
   listOpsEvents,
@@ -87,7 +88,7 @@ const {
   toggleCustomSequence,
   deleteCustomSequence,
 } = require('../lib/ops-communications');
-const { enqueueReservationAutomation, processDueOpsJobs } = require('../lib/ops-jobs');
+const { enqueueReservationAutomation, processDueOpsJobs, processOpsJobById } = require('../lib/ops-jobs');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
 const {
   listCenterConfigs,
@@ -145,6 +146,22 @@ function safeUserMessage(error, fallback = 'Service momentanément indisponible.
 // Le flag d'affichage « retard » (opsPlan.delayFlag) : cumul des minutes,
 // snapshot du créneau d'origine et retrait : vit dans les helpers PURS de
 // lib/delay-flag.js (importés en tête, testés par scripts/delay-flag-check.js).
+
+// Laisse un travail continuer APRÈS l'envoi de la réponse (progression live).
+// Sur Vercel : waitUntil maintient la fonction en vie jusqu'à la fin de la
+// promesse (dans la limite du maxDuration). Hors Vercel (tests, node local) :
+// la promesse tourne détachée, avec un catch pour ne jamais produire de
+// rejet non géré (le cycle de vie du job gère déjà ses propres erreurs).
+function keepAlive(promise) {
+  const guarded = Promise.resolve(promise).catch((error) => {
+    console.error('[ops] travail détaché échoué', error && (error.message || error));
+  });
+  try {
+    require('@vercel/functions').waitUntil(guarded);
+  } catch (error) {
+    // runtime sans waitUntil : la promesse détachée suffit.
+  }
+}
 
 function normalizeCenterId(value) {
   return String(value || '').trim().toLowerCase();
@@ -245,6 +262,18 @@ async function handleGet(req, res, options = {}) {
       limit: Number(url.searchParams.get('limit') || 20),
     });
     sendJson(res, 200, { ok: true, health });
+    return;
+  }
+
+  // Lecture d'UN job de la queue : la surface du poller de progression (0028).
+  // Le job porte ses etapes reelles (steps), ecrites par son handler. Scope
+  // centre : un job d'un autre centre rend 404, pas une fuite.
+  if (action === 'job') {
+    const jobId = Number(url.searchParams.get('id'));
+    if (!Number.isInteger(jobId) || jobId <= 0) throw createHttpError('Identifiant de job invalide.', 400);
+    const job = await getOpsJob(jobId, { centerId: centerScope(centerId) });
+    if (!job) throw createHttpError('Job introuvable.', 404);
+    sendJson(res, 200, { ok: true, job });
     return;
   }
 
@@ -1360,9 +1389,31 @@ async function handlePost(req, res, providedBody = null, options = {}) {
 
   // Reconstruction a la demande. Idempotent cote SQL (index unique center_id +
   // from_date) : rejouer remplace le plan de la semaine, ne le duplique pas.
+  //
+  // REGLE DE DECISION synchrone contre queue (RUN B, ne pas laisser a
+  // l'intuition) : un travail qui tient dans les 30 s de Vercel RESTE
+  // synchrone. La queue ne sert que quand on veut une PROGRESSION REELLE
+  // observable (body.live) : le job est cree PUIS traite immediatement dans
+  // cette meme invocation (waitUntil), la reponse part tout de suite avec
+  // l'id, et le client suit les etapes via l'action `job`. C'est le reveil de
+  // la queue a l'enfilement exige par la regle : premiere etape visible en
+  // quelques secondes, jamais 10 minutes d'attente du worker. Si l'invocation
+  // meurt, le verrou du job devient obsolete et le worker Railway le reprend.
   if (action === 'marketingPlanBuild') {
     const { generateMarketingPlan } = require('../lib/marketing-strategist');
-    requireConcreteCenter('plan marketing');
+    const concretePlanCenterId = requireConcreteCenter('plan marketing');
+    if (body.live === true) {
+      const job = await createOpsJob({
+        centerId: concretePlanCenterId,
+        jobType: 'marketing_plan',
+        priority: 80,
+        maxAttempts: 2,
+        payload: { centerId: concretePlanCenterId, weeks: 8, trigger: 'manual' },
+      });
+      keepAlive(processOpsJobById(job.id));
+      sendJson(res, 202, { ok: true, action, live: true, jobId: job.id });
+      return;
+    }
     const { plan, saved } = await generateMarketingPlan(centerId, {});
     sendJson(res, 200, { ok: true, action, plan, planId: saved ? saved.id : null, status: 'proposed' });
     return;
@@ -1770,7 +1821,11 @@ async function runCampaignEnqueue({ centerId, campaignId, recipients, subject, b
 function getRequiredOpsPermission(method, action) {
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
+    // `job` = la lecture du poller de progression : mêmes permissions que
+    // health (même surface, même sensibilité), plus les rôles marketing qui
+    // déclenchent les jobs qu'ils suivent (plan marketing en live).
     if (action === 'health') return ['dashboard.view', 'ai.ops'];
+    if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights'].includes(action)) return 'direction.view';

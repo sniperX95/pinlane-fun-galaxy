@@ -6266,7 +6266,7 @@ function renderStaffGroupAgendaPanel(agenda = []) {
 // Libramont ne doit pas la masquer pour le même client (même tél) à Gembloux.
 function staffGroupCenterScope() {
   return (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId())
-    || state.adminCenterId || state.currentCenterId || 'libramont';
+    || state.adminCenterId || 'libramont';
 }
 
 function getStaffGroupActionKey(row, reason) {
@@ -11330,7 +11330,7 @@ function renderDelayIndicator(reservation) {
 async function clearDelayFlag(ev, id) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
   const reservation = state.reservations.find(item => Number(item.id) === Number(id));
-  const centerId = (reservation && reservation.centerId) || state.currentCenterId || 'libramont';
+  const centerId = (reservation && reservation.centerId) || state.adminCenterId || 'libramont';
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
@@ -11356,7 +11356,7 @@ async function clearDelayFlag(ev, id) {
 async function revertDelay(ev, id) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
   const reservation = state.reservations.find(item => Number(item.id) === Number(id));
-  const centerId = (reservation && reservation.centerId) || state.currentCenterId || 'libramont';
+  const centerId = (reservation && reservation.centerId) || state.adminCenterId || 'libramont';
   try {
     const payload = await apiRequest(API_ENDPOINTS.ops, {
       method: 'POST',
@@ -12708,7 +12708,7 @@ async function openDelayImpact(id, delayMinutes, ev) {
     step: 'loading',
     reservationId: Number(id),
     reservationName: reservation.name || '',
-    centerId: reservation.centerId || state.currentCenterId || 'libramont',
+    centerId: reservation.centerId || state.adminCenterId || 'libramont',
     delayMinutes: minutes,
     impact: null,
     selectedStrategyId: '',
@@ -12996,7 +12996,7 @@ function openCommCenter(reservationId, ev) {
   if (ev) ev.stopPropagation();
   const reservation = state.reservations.find(item => Number(item.id) === Number(reservationId))
     || (state.selectedRes && Number(state.selectedRes.id) === Number(reservationId) ? state.selectedRes : null);
-  const centerId = (reservation && reservation.centerId) || state.currentCenterId || 'libramont';
+  const centerId = (reservation && reservation.centerId) || state.adminCenterId || 'libramont';
   commCenterState = {
     step: 'loading',
     reservationId: Number(reservationId),

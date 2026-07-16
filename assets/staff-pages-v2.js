@@ -471,7 +471,7 @@
         method: 'POST',
         body: JSON.stringify({
           action: 'sendClientRelance',
-          centerId: state.currentCenterId || 'libramont',
+          centerId: state.adminCenterId || 'libramont',
           email: row.email,
           name: row.name || '',
           phone: row.phone || '',
@@ -496,7 +496,7 @@
     if (crmRelanceStats.loading || (crmRelanceStats.loaded && !force)) return;
     crmRelanceStats.loading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=relanceStats&days=90&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=relanceStats&days=90&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       crmRelanceStats.sent = Number(payload.sent) || 0;
       crmRelanceStats.converted = Number(payload.converted) || 0;
       crmRelanceStats.revenue = Number(payload.revenue) || 0;
@@ -521,7 +521,7 @@
     crmNotes.loaded = false;
     crmNotes.loading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=clientNotes&clientKey=${encodeURIComponent(key)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=clientNotes&clientKey=${encodeURIComponent(key)}&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       if (crmNotes.key !== key) return; // sélection changée entre-temps
       crmNotes.body = payload.note ? String(payload.note.body || '') : '';
       crmNotes.loaded = true;
@@ -541,7 +541,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'clientNotes', clientKey: key, body, centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'clientNotes', clientKey: key, body, centerId: state.adminCenterId || 'libramont' }),
       });
       crmNotes.body = body;
       toast('Note enregistrée.');
@@ -802,7 +802,7 @@
     if (pv2Mail.metaLoading || (pv2Mail.metaLoaded && !force)) return;
     pv2Mail.metaLoading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=emailTemplates&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=emailTemplates&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       pv2Mail.identities = payload.identities || [];
       pv2Mail.templates = payload.templates || [];
       const def = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0];
@@ -887,7 +887,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'improveEmailWithAi', centerId: state.currentCenterId || 'libramont', subject: d.subject, body: d.body, category: 'relance' }),
+        body: JSON.stringify({ action: 'improveEmailWithAi', centerId: state.adminCenterId || 'libramont', subject: d.subject, body: d.body, category: 'relance' }),
       });
       pv2Mail.aiTips = payload.tips || [];
       if (payload.mode === 'ia' && payload.subject && payload.body) {
@@ -928,7 +928,7 @@
         method: 'POST',
         body: JSON.stringify({
           action: 'sendDirectEmail',
-          centerId: state.currentCenterId || 'libramont',
+          centerId: state.adminCenterId || 'libramont',
           to,
           name: d.name || '',
           subject: d.subject,
@@ -975,7 +975,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'analyzeInboundEmail', centerId: state.currentCenterId || 'libramont', from, body, store: true }),
+        body: JSON.stringify({ action: 'analyzeInboundEmail', centerId: state.adminCenterId || 'libramont', from, body, store: true }),
       });
       pv2Mail.analyzeOpen = false;
       pv2Mail.analyzeDraft = { from: '', body: '' };
@@ -1027,7 +1027,7 @@
         method: 'POST',
         body: JSON.stringify({
           action: 'sendDirectEmail',
-          centerId: state.currentCenterId || 'libramont',
+          centerId: state.adminCenterId || 'libramont',
           to,
           name: pv2InboxAnalysis(row)?.clientName || '',
           subject: draft.subject,
@@ -1058,7 +1058,7 @@
         method: 'POST',
         body: JSON.stringify({
           action: 'analyzeInboundEmail',
-          centerId: state.currentCenterId || 'libramont',
+          centerId: state.adminCenterId || 'libramont',
           from: row.payload?.from || row.recipient || '',
           subject: row.subject || '',
           body: row.payload?.textBody || '',
@@ -1095,7 +1095,7 @@
     if (pv2Seq.loading || (pv2Seq.loaded && !force)) return;
     pv2Seq.loading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=customSequences&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=customSequences&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       pv2Seq.sequences = payload.sequences || [];
       pv2Seq.limits = payload.limits || null;
       pv2Seq.loaded = true;
@@ -1162,7 +1162,7 @@
       if (pv2Seq.editId) sequence.id = pv2Seq.editId;
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'customSequences', centerId: state.currentCenterId || 'libramont', sequence }),
+        body: JSON.stringify({ action: 'customSequences', centerId: state.adminCenterId || 'libramont', sequence }),
       });
       pv2Seq.sequences = payload.sequences || pv2Seq.sequences;
       pv2Seq.creating = false;
@@ -1183,7 +1183,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'customSequences', op: 'toggle', id, enabled, centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'customSequences', op: 'toggle', id, enabled, centerId: state.adminCenterId || 'libramont' }),
       });
       pv2Seq.sequences = payload.sequences || pv2Seq.sequences;
     } catch (error) {
@@ -1204,7 +1204,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'customSequences', op: 'delete', id, centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'customSequences', op: 'delete', id, centerId: state.adminCenterId || 'libramont' }),
       });
       pv2Seq.sequences = payload.sequences || [];
       pv2Seq.editId = '';
@@ -1312,7 +1312,7 @@
     if (brain.loading || (brain.loaded && !force)) return;
     brain.loading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=emailBrain&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=emailBrain&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       brain.overrides = payload.overrides || { faq: {}, signature: '', extra: '' };
       brain.defaults = payload.defaults || { faq: {}, intents: PV2_INTENT_LABELS, signature: '' };
       brain.draft = {
@@ -1355,7 +1355,7 @@
         method: 'POST',
         body: JSON.stringify({
           action: 'emailBrain',
-          centerId: state.currentCenterId || 'libramont',
+          centerId: state.adminCenterId || 'libramont',
           faq: faqPatch,
           signature: brain.draft.signature,
           extra: brain.draft.extra,
@@ -1395,7 +1395,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'saveEmailTemplate', centerId: state.currentCenterId || 'libramont', id: tpl.id, name: tpl.name, category: tpl.category, subject: tpl.subject, body: tpl.body }),
+        body: JSON.stringify({ action: 'saveEmailTemplate', centerId: state.adminCenterId || 'libramont', id: tpl.id, name: tpl.name, category: tpl.category, subject: tpl.subject, body: tpl.body }),
       });
       pv2Settings.tplEditing = null;
       toast('Modèle enregistré ✓');
@@ -1416,7 +1416,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'archiveEmailTemplate', centerId: state.currentCenterId || 'libramont', id }),
+        body: JSON.stringify({ action: 'archiveEmailTemplate', centerId: state.adminCenterId || 'libramont', id }),
       });
       toast('Modèle archivé.');
       await loadPv2MailMeta(true);
@@ -1447,7 +1447,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'saveEmailIdentity', centerId: state.currentCenterId || 'libramont', label: identity.label || identity.email, email: identity.email, isDefault: identity.isDefault }),
+        body: JSON.stringify({ action: 'saveEmailIdentity', centerId: state.adminCenterId || 'libramont', label: identity.label || identity.email, email: identity.email, isDefault: identity.isDefault }),
       });
       pv2Settings.idEditing = null;
       toast('Adresse ajoutée ✓');
@@ -1469,7 +1469,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'saveEmailIdentity', centerId: state.currentCenterId || 'libramont', id: identity.id, label: identity.label, email: identity.email, isDefault: true }),
+        body: JSON.stringify({ action: 'saveEmailIdentity', centerId: state.adminCenterId || 'libramont', id: identity.id, label: identity.label, email: identity.email, isDefault: true }),
       });
       await loadPv2MailMeta(true);
     } catch (error) {
@@ -1488,7 +1488,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'deleteEmailIdentity', centerId: state.currentCenterId || 'libramont', id }),
+        body: JSON.stringify({ action: 'deleteEmailIdentity', centerId: state.adminCenterId || 'libramont', id }),
       });
       toast('Adresse supprimée.');
       await loadPv2MailMeta(true);
@@ -1600,7 +1600,7 @@
     mkAuto.loading = true;
     mkAuto.error = '';
     try {
-      const payload = await apiRequest(`/api/ops?action=automationSettings&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=automationSettings&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       mkAuto.settings = payload.settings || {};
       mkAuto.defaults = payload.defaults || {};
       mkAuto.stats = payload.stats || {};
@@ -1639,7 +1639,7 @@
     if (mkAuto.busyKey) return;
     const def = mkAuto.defaults[key] || {};
     const d = mkAuto.editDraft;
-    const body = { action: 'automationSettings', key, centerId: state.currentCenterId || 'libramont' };
+    const body = { action: 'automationSettings', key, centerId: state.adminCenterId || 'libramont' };
     if (String(d.subject || '').trim() && d.subject !== def.subject) body.subject = d.subject;
     if (String(d.body || '').trim() && d.body !== def.body) body.body = d.body;
     if (d.offsetDays !== undefined && Number(d.offsetDays) !== Number(def.offsetDays)) body.offsetDays = Number(d.offsetDays);
@@ -1670,7 +1670,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'automationSettings', key, reset: true, centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'automationSettings', key, reset: true, centerId: state.adminCenterId || 'libramont' }),
       });
       mkAuto.settings = payload.settings || mkAuto.settings;
       if (payload.defaults) mkAuto.defaults = payload.defaults;
@@ -1697,7 +1697,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'automationSettings', key, enabled: !current, centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'automationSettings', key, enabled: !current, centerId: state.adminCenterId || 'libramont' }),
       });
       mkAuto.settings = payload.settings || mkAuto.settings;
       toast(!current ? 'Séquence activée : elle tourne toute seule.' : 'Séquence désactivée.');
@@ -2153,7 +2153,7 @@
     mkBrief.loading = true;
     mkBrief.error = '';
     try {
-      mkBrief.data = await apiRequest(`/api/ops?action=marketingBrief&days=${encodeURIComponent(mkBrief.period)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      mkBrief.data = await apiRequest(`/api/ops?action=marketingBrief&days=${encodeURIComponent(mkBrief.period)}&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
     } catch (error) {
       mkBrief.error = error.message || 'Je n\'arrive pas à charger le brief.';
     } finally {
@@ -2254,7 +2254,7 @@
     renderStaffCampaignsPage();
     // Refetch de la paie seule (léger) : le reste du mémo ne dépend pas de la période.
     try {
-      const roi = await apiRequest(`/api/ops?action=marketingRoi&days=${encodeURIComponent(mkBrief.period)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const roi = await apiRequest(`/api/ops?action=marketingRoi&days=${encodeURIComponent(mkBrief.period)}&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       if (mkBrief.data) {
         mkBrief.data.paie = {
           ...mkBrief.data.paie,
@@ -2352,7 +2352,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'propositionCreate', centerId: state.currentCenterId || 'libramont', targetDate: date, trigger: 'creux', brief: '' }),
+        body: JSON.stringify({ action: 'propositionCreate', centerId: state.adminCenterId || 'libramont', targetDate: date, trigger: 'creux', brief: '' }),
       });
       await loadMarketingBrief(true);
       toast('C\'est prêt : regarde plus bas.');
@@ -2492,7 +2492,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'propositionAction', propAction: 'variante', network, centerId: state.currentCenterId || 'libramont', ...brPropPayload(p) }),
+        body: JSON.stringify({ action: 'propositionAction', propAction: 'variante', network, centerId: state.adminCenterId || 'libramont', ...brPropPayload(p) }),
       });
       p.id = payload.result.id;
       p.networks = { ...(p.networks || {}), [network]: payload.result.entry };
@@ -2548,7 +2548,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'propositionAction', propAction: 'publiee', centerId: state.currentCenterId || 'libramont', ...brPropPayload(p) }),
+        body: JSON.stringify({ action: 'propositionAction', propAction: 'publiee', centerId: state.adminCenterId || 'libramont', ...brPropPayload(p) }),
       });
       toast('Noté : verdict dans 14 jours.');
     } catch (error) {
@@ -2573,7 +2573,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'propositionAction', propAction: 'refusee', centerId: state.currentCenterId || 'libramont', ...brPropPayload(p) }),
+        body: JSON.stringify({ action: 'propositionAction', propAction: 'refusee', centerId: state.adminCenterId || 'libramont', ...brPropPayload(p) }),
       });
     } catch (error) { /* déjà masquée côté UI */ }
   };
@@ -2594,7 +2594,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'propositionAction', propAction: 'autre_angle', network, angle, centerId: state.currentCenterId || 'libramont', ...brPropPayload(p) }),
+        body: JSON.stringify({ action: 'propositionAction', propAction: 'autre_angle', network, angle, centerId: state.adminCenterId || 'libramont', ...brPropPayload(p) }),
       });
       p.id = payload.result.id;
       p.networks = { ...(p.networks || {}), [payload.result.network]: payload.result.entry };
@@ -2626,7 +2626,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'propositionCreate', brief, centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'propositionCreate', brief, centerId: state.adminCenterId || 'libramont' }),
       });
       await loadMarketingBrief(true);
       toast('C\'est prêt : première carte de la file.');
@@ -2690,7 +2690,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'studioGenerate', centerId: state.currentCenterId || 'libramont', platform: mkBrief.studioChannel, brief }),
+        body: JSON.stringify({ action: 'studioGenerate', centerId: state.adminCenterId || 'libramont', platform: mkBrief.studioChannel, brief }),
       });
       mkBrief.studioPacks = { ...mkBrief.studioPacks, [mkBrief.studioChannel]: payload.pack };
     } catch (error) {
@@ -2736,7 +2736,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'insightRedo', id: Number(id), centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'insightRedo', id: Number(id), centerId: state.adminCenterId || 'libramont' }),
       });
       await loadMarketingBrief(true);
       toast('Je l\'ai remis dans la file : première position.');
@@ -2762,7 +2762,7 @@
     try {
       const result = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'marketingPlanGet', centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'marketingPlanGet', centerId: state.adminCenterId || 'libramont' }),
       });
       mkPlan.data = result && result.plan ? result.plan : null;
     } catch (error) {
@@ -2780,7 +2780,7 @@
     try {
       const result = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'marketingPlanBuild', centerId: state.currentCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'marketingPlanBuild', centerId: state.adminCenterId || 'libramont' }),
       });
       mkPlan.data = result && result.plan ? result.plan : mkPlan.data;
       toast('Plan reconstruit.');
@@ -2795,7 +2795,7 @@
     if (mkComp.loading || (mkComp.data && !force)) return;
     mkComp.loading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=competitors&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=competitors&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       mkComp.data = payload.competitors || [];
     } catch (error) { mkComp.data = []; } finally {
       mkComp.loading = false;
@@ -2840,7 +2840,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'competitorSave', centerId: state.currentCenterId || 'libramont', competitor: { name, websiteUrl } }),
+        body: JSON.stringify({ action: 'competitorSave', centerId: state.adminCenterId || 'libramont', competitor: { name, websiteUrl } }),
       });
       toast('Je le surveille : première inspection cette nuit.');
       mkComp.data = null;
@@ -2857,7 +2857,7 @@
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'competitorDelete', centerId: state.currentCenterId || 'libramont', id: Number(id) }),
+        body: JSON.stringify({ action: 'competitorDelete', centerId: state.adminCenterId || 'libramont', id: Number(id) }),
       });
       mkComp.data = (mkComp.data || []).filter((competitor) => Number(competitor.id) !== Number(id));
     } catch (error) {
@@ -2880,7 +2880,7 @@
     pv2Camp.loading = true;
     pv2Camp.error = '';
     try {
-      const payload = await apiRequest(`/api/ops?action=listCampaigns&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=listCampaigns&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       pv2Camp.campaigns = payload.campaigns || [];
       pv2Camp.segments = payload.segments || [];
       pv2Camp.channel = payload.channel || {};
@@ -2900,7 +2900,7 @@
       pv2Camp.audienceLoading = segment;
       renderStaffEmailsPage();
       try {
-        const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+        const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
         pv2Camp.audience[segment] = { count: payload.count, sample: payload.sample || [] };
       } catch (error) {
         pv2Camp.audience[segment] = { count: null, sample: [] };
@@ -2939,7 +2939,7 @@
   window.pv2CampSendDraft = async function (id) {
     const campaign = pv2Camp.campaigns.find((c) => c.id === id);
     if (!campaign) return;
-    const centerId = state.currentCenterId || 'libramont';
+    const centerId = state.adminCenterId || 'libramont';
     let count = pv2Camp.audience[campaign.segment]?.count;
     if (!Number.isInteger(count)) {
       try {
@@ -2974,7 +2974,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'improveEmailWithAi', centerId: state.currentCenterId || 'libramont', subject: pv2Camp.form.subject, body: pv2Camp.form.body, category: 'marketing' }),
+        body: JSON.stringify({ action: 'improveEmailWithAi', centerId: state.adminCenterId || 'libramont', subject: pv2Camp.form.subject, body: pv2Camp.form.body, category: 'marketing' }),
       });
       if (payload.mode === 'ia' && payload.subject && payload.body) {
         pv2Camp.form.subject = payload.subject;
@@ -3010,7 +3010,7 @@
     if (button) button.disabled = true;
     renderStaffEmailsPage();
     try {
-      const centerId = state.currentCenterId || 'libramont';
+      const centerId = state.adminCenterId || 'libramont';
       const editingId = pv2Camp.editingId;
       const scheduledAt = mode === 'schedule' ? new Date(form.scheduledAt).toISOString() : null;
       let queued = 0;
@@ -3067,7 +3067,7 @@
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'cancelCampaign', centerId: state.currentCenterId || 'libramont', id }),
+        body: JSON.stringify({ action: 'cancelCampaign', centerId: state.adminCenterId || 'libramont', id }),
       });
       if (typeof toast === 'function') toast(`Campagne annulée · ${payload.cancelledCommunications} envoi(s) stoppé(s).`);
       await loadPv2Campaigns(true);
@@ -3088,7 +3088,7 @@
 
   window.pv2CampExportRecipients = async function (segment) {
     try {
-      const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&full=1&centerId=${encodeURIComponent(state.currentCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=campaignAudience&segment=${encodeURIComponent(segment)}&full=1&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       const rows = [['Nom', 'Email', 'Visites', 'Chiffre (EUR)', 'Dernière visite']];
       for (const r of payload.recipients || []) rows.push([r.name, r.email, r.visits, String(r.revenue).replace('.', ','), r.lastDate]);
       const csv = '﻿' + rows.map((row) => row.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
@@ -3477,7 +3477,7 @@
     try {
       const result = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'competitorAnalyzePost', centerId: state.currentCenterId || 'libramont', text }),
+        body: JSON.stringify({ action: 'competitorAnalyzePost', centerId: state.adminCenterId || 'libramont', text }),
       });
       mkComp.postResult = result;
     } catch (error) {

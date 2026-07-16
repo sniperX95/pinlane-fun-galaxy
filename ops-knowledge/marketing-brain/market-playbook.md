@@ -1,5 +1,11 @@
 # Market playbook : cerveau marketing Pinlane (FEC)
 
+> **Statut : document de référence pour HUMAINS et agents de build.** Il n'est
+> injecté dans AUCUN prompt de production (vérifié 2026-07-17 : seul `voice.md`
+> est lu par le code, via `lib/email-agent.js`). Si une règle d'ici doit piloter
+> la génération, elle passe par l'ingestion ADN (`marketing_dna`) APRÈS
+> vérification adverse, jamais par un copier-coller dans un prompt.
+
 Connaissance distillée de 4 recherches sourcées (2026-07-13, détail : vault Projects/pinlane/research/).
 Niveaux : [solide] = sourcé/audité · [plausible] = recoupé faible · [local] = à établir avec NOS données.
 Règle d'or : ce fichier donne des STRATÉGIES ; les CHIFFRES du centre viennent toujours de la base (facts SQL), jamais d'ici.

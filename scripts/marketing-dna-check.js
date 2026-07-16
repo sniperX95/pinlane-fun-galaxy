@@ -1,6 +1,7 @@
 // Tests du second cerveau (ADN sectoriel). Purs, sans DB : on injecte query.
 const {
-  loadDnaRules, renderDnaBlock, buildDnaBlock, ingestDnaRules, normalizeRule, listDnaStats,
+  loadDnaRules, rankDnaRules, renderDnaBlock, buildDnaBlock, ingestDnaRules, normalizeRule, listDnaStats,
+  MAX_RULES_PER_PROMPT,
 } = require('../lib/marketing-dna');
 
 let failures = 0;
@@ -72,6 +73,31 @@ function ok(cond, label, detail) {
   // ── determinisme (le cache de prompt en depend) ────────────────────────────
   console.log('\n[CACHE] le bloc doit etre byte-identique entre deux appels');
   ok(renderDnaBlock(rules) === block, 'rendu deterministe (sinon le cache de prompt saute a chaque generation)');
+
+  // ── classement par pertinence (defaut G de l'audit) ────────────────────────
+  console.log('\n[SELECTION] la pertinence choisit les regles, plus JAMAIS la longueur');
+  const pool = [
+    { id: 1, angle: 'divers', channel: '', nom: 'courte hors sujet', regle: 'Poste tot.', confiance: 'plausible' },
+    { id: 2, angle: 'urgence', channel: 'facebook', nom: 'longue pertinente', regle: 'Quand une pluie est prevue, annonce le refuge indoor la veille avec une fenetre horaire precise et un seul appel a l\'action, sans jargon.', confiance: 'plausible' },
+    { id: 3, angle: 'preuve-sociale', channel: 'email', nom: 'autre canal', regle: 'Cite un avis reel.', confiance: 'plausible' },
+    { id: 4, angle: 'divers', channel: '', nom: 'etablie', regle: 'Une regle etablie tres tres tres tres tres tres tres tres longue qui ne doit jamais etre penalisee pour sa longueur.', confiance: 'solide' },
+  ];
+  ok(pool.length >= 4, 'echantillon non vide (garde anti-echantillon-vide)');
+  const ranked = rankDnaRules(pool, { channel: 'facebook', angle: 'urgence', themeLabel: 'Pluie prevue (12 mm)' });
+  ok(ranked[0].id === 4, 'la confiance prime : la regle solide sort premiere, meme tres longue');
+  ok(ranked[1].id === 2, 'a confiance egale, canal + angle + theme battent la brievete (la longue pertinente sort 2e)');
+  ok(ranked[ranked.length - 1].id === 3 || ranked[ranked.length - 1].id === 1, 'les moins pertinentes sortent en dernier');
+  const rankedAgain = rankDnaRules(pool, { channel: 'facebook', angle: 'urgence', themeLabel: 'Pluie prevue (12 mm)' });
+  ok(JSON.stringify(rankedAgain) === JSON.stringify(ranked), 'classement deterministe (tie-break par id, pas par hasard)');
+  ok(rankDnaRules([], { channel: 'facebook' }).length === 0, 'aucune regle -> [] (pas de crash, pas d\'invention)');
+
+  // loadDnaRules delegue au classement pur et coupe a la limite.
+  const bigPool = Array.from({ length: 30 }, (unused, index) => ({
+    id: index + 1, angle: 'divers', channel: '', nom: `r${index + 1}`, regle: `Regle numero ${index + 1}.`, confiance: 'plausible',
+  }));
+  const loaded = await loadDnaRules('facebook', { query: async () => ({ rows: bigPool }) });
+  ok(loaded.length === MAX_RULES_PER_PROMPT, `le plafond de ${MAX_RULES_PER_PROMPT} regles tient (obtenu ${loaded.length})`);
+  ok(loaded[0].id === 1 && loaded[11].id === 12, 'a pertinence egale, la coupe est stable par id (plus jamais length(regle))');
 
   // ── typographie ────────────────────────────────────────────────────────────
   ok(!new RegExp('[\\u2014\\u2013]').test(block), 'le bloc ne contient aucun tiret cadratin');

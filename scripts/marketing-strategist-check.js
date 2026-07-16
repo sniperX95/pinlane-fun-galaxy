@@ -46,12 +46,24 @@ ok(Boolean(routine), 'les semaines sans fait daté sortent en « routine »');
 ok(routine && /Aucun evenement ni conge date/.test(routine.pourquoi),
   'et le « pourquoi » le dit franchement au lieu d\'inventer un prétexte');
 ok(plan.every((w) => ['mesure', 'calendrier', 'routine'].includes(w.confiance)), 'chaque semaine porte sa confiance');
-ok(s.weekConfidence({ hasAnchor: true }, []) === 'calendrier', 'un fait daté porte la semaine');
-ok(s.weekConfidence({ hasAnchor: false }, []) === 'routine', 'rien de daté, rien de mesuré -> routine');
-ok(s.weekConfidence({ hasAnchor: false }, [{ n: 5, confidence: 'solide' }]) === 'mesure',
-  'un pattern mesuré prime sur le calendrier (le mesuré est le posterior)');
-ok(s.weekConfidence({ hasAnchor: false }, [{ n: 1, confidence: 'exploratoire' }]) === 'routine',
-  'un pattern à n=1 exploratoire ne vaut PAS une mesure');
+ok(s.weekConfidence({ hasAnchor: true, calendarFacts: [] }, []) === 'calendrier', 'un fait daté porte la semaine');
+ok(s.weekConfidence({ hasAnchor: false, calendarFacts: [] }, []) === 'routine', 'rien de daté, rien de mesuré -> routine');
+
+// Défaut B de l'audit : un pattern ne parle QUE du contexte qu'il mesure. Sans
+// scope, UN pattern qualifiant faisait passer les 8 semaines en « mesure ».
+const semaineVacances = { hasAnchor: true, calendarFacts: [{ type: 'conge_scolaire', label: 'Vacances d\'été' }] };
+const semaineNue = { hasAnchor: false, calendarFacts: [] };
+const patternVacances = { n: 4, confidence: 'signal', trigger: 'school_holiday' };
+ok(s.weekConfidence(semaineVacances, [patternVacances]) === 'mesure',
+  'un pattern school_holiday rend « mesure » LA semaine qui a un congé scolaire');
+ok(s.weekConfidence(semaineNue, [patternVacances]) === 'routine',
+  'le MÊME pattern ne dit RIEN d\'une semaine sans congé (le scope, défaut B)');
+ok(s.weekConfidence(semaineVacances, [{ n: 4, confidence: 'signal', trigger: 'local_event' }]) === 'calendrier',
+  'un pattern local_event ne couvre pas une semaine sans événement local');
+ok(s.weekConfidence(semaineVacances, [{ n: 9, confidence: 'solide', trigger: 'rain_forecast' }]) === 'calendrier',
+  'la météo ne porte pas à 8 semaines : rain_forecast ne rend aucune semaine « mesure »');
+ok(s.weekConfidence(semaineVacances, [{ n: 1, confidence: 'exploratoire', trigger: 'school_holiday' }]) === 'calendrier',
+  'un pattern à n=1 exploratoire ne vaut PAS une mesure, même bien scopé');
 
 console.log('\n[GARDE-FOU] le modèle ne crée aucun fait');
 // La leçon du 2026-07-16 : un plan a l'air autoritaire. S'il invente un
@@ -79,9 +91,123 @@ ok(vd.kept.length === 0 && /invente/.test((vd.rejected[0] || {}).motif || ''),
 ok(s.verifyPlanGrounding(plan, h).kept.length === plan.length,
   'le plan déterministe passe intégralement son propre garde-fou');
 
+console.log('\n[GARDE-FOU A] la forme que la PROD produit : faits déclarés par le modèle');
+// Défaut A de l'audit : l'ancien test alimentait `faits` à la main APRÈS que le
+// code l'avait écrasé, une forme que la prod ne produisait jamais. Ici, les
+// semaines sont exactement ce que le schéma PLAN_SCHEMA autorise le modèle à
+// rendre : c'est CE chemin qui doit rejeter.
+const modelShaped = [
+  { index: 1, from: h[0].from, to: h[0].to, objectif: 'ok', pourquoi: 'ok', actions: ['a'], faits: [{ label: 'Salon du jeu à Namur' }] },
+  { index: 2, from: h[1].from, to: h[1].to, objectif: 'ok', pourquoi: 'ok', actions: ['a'], faits: [] },
+];
+const vm2 = s.verifyPlanGrounding(modelShaped, h);
+ok(vm2.rejected.some((r) => r.index === 1 && /invente/.test(r.motif)),
+  'un fait déclaré par le modèle et absent de l\'horizon est rejeté (branche vivante)');
+ok(vm2.kept.some((w) => w.index === 2), 'une semaine à faits vides et texte propre survit');
+ok(vm2.kept.every((w) => Array.isArray(w.faits) && w.faits === h[w.index - 1].calendarFacts),
+  'après vérification, les faits gardés sont la version déterministe canonique');
+
+console.log('\n[GARDE-FOU A] le texte libre est scanné (pourquoi/objectif/actions)');
+// Le champ où le modèle écrit en langue naturelle est celui où une invention
+// fait le plus de dégâts. Un label RÉEL de l'horizon cité dans une semaine qui
+// ne le porte pas est rejeté, même si `faits` est propre.
+const foireWeek = h.find((w) => w.calendarFacts.some((f) => /Foire de Libramont/.test(f.label)));
+ok(Boolean(foireWeek), 'échantillon non vide : la Foire de Libramont est dans l\'horizon de test');
+const sansFoire = h.find((w) => !w.calendarFacts.some((f) => /Foire de Libramont/.test(f.label)));
+ok(Boolean(sansFoire), 'échantillon non vide : une semaine sans la Foire existe');
+const texteDeplace = [{
+  index: sansFoire.index, from: sansFoire.from, to: sansFoire.to,
+  objectif: 'ok', pourquoi: 'Profitez du passage de la Foire de Libramont pour remplir la semaine.',
+  actions: ['a'], faits: [],
+}];
+const vt = s.verifyPlanGrounding(texteDeplace, h);
+ok(vt.kept.length === 0 && /deplace dans le texte/.test((vt.rejected[0] || {}).motif || ''),
+  'un fait réel cité dans le TEXTE d\'une autre semaine est rejeté');
+const textePropre = [{
+  index: foireWeek.index, from: foireWeek.from, to: foireWeek.to,
+  objectif: 'ok', pourquoi: 'La Foire de Libramont amène du monde en ville.',
+  actions: ['a'], faits: [{ label: 'Foire de Libramont' }],
+}];
+ok(s.verifyPlanGrounding(textePropre, h).kept.length === 1,
+  'le même texte dans LA semaine qui porte le fait passe');
+
 console.log('\n[TYPOGRAPHIE]');
 const texte = plan.map((w) => `${w.objectif} ${w.pourquoi} ${w.actions.join(' ')}`).join('\n');
 ok(!new RegExp('[\\u2014\\u2013]').test(texte), 'aucun tiret cadratin dans le plan déterministe');
+ok(texte.length > 200, 'échantillon non vide : le plan déterministe a du texte à contrôler');
 
-console.log(`\nmarketing-strategist-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
-process.exit(failures ? 1 : 0);
+console.log('\n[PROGRESSION] les étapes annoncées sont les phases réellement exécutées');
+(async () => {
+  const baseDeps = {
+    listMarketingPatterns: async () => [],
+    buildCenterFacts: () => ({ city: 'Libramont', activities: ['Bowling'] }),
+  };
+
+  // Sans clé IA : calendrier + mesures, jamais d'étape modèle (elle n'a pas lieu).
+  {
+    const steps = [];
+    const { plan: p } = await s.generateMarketingPlan('libramont', { today: TODAY, persist: false, onStep: (l) => steps.push(l) }, { ...baseDeps, llmProvider: () => null });
+    ok(p.weeks.length === 8, 'échantillon non vide : le plan sans IA a 8 semaines');
+    ok(steps.length === 2, `sans IA : exactement 2 étapes réelles (obtenu ${steps.length})`);
+    ok(/calendrier des 8 prochaines semaines/.test(steps[0] || ''), 'étape 1 = calendrier');
+    ok(/rien d'assez solide/.test(steps[1] || ''), 'étape 2 dit honnêtement qu\'aucune mesure ne porte');
+    ok(!steps.some((l) => /modele/.test(l)), 'aucune étape « modèle » n\'est inventée sans clé IA');
+  }
+
+  // Avec IA propre : rédaction + vérification, pas de rejet annoncé.
+  {
+    const steps = [];
+    const aiWeeks = (idx) => s.buildPlanHorizon('libramont', { today: TODAY, weeks: 8 }).map((w) => ({
+      index: w.index, from: w.from, to: w.to, objectif: `obj ${w.index}`, pourquoi: 'ok', actions: ['a'], faits: [],
+    }));
+    const { plan: p } = await s.generateMarketingPlan('libramont', { today: TODAY, persist: false, onStep: (l) => steps.push(l) }, {
+      ...baseDeps,
+      llmProvider: () => 'anthropic',
+      callLlmJson: async () => ({ weeks: aiWeeks() }),
+    });
+    ok(p.mode === 'ai', 'plan en mode ai');
+    ok(steps.some((l) => /rediger le plan par le modele/.test(l)), 'étape « je fais rédiger »');
+    ok(steps.some((l) => /rien invente/.test(l)), 'étape « je vérifie que le modèle n\'a rien inventé »');
+    ok(!steps.some((l) => /rejete/.test(l)), 'aucun rejet annoncé quand rien n\'est rejeté');
+  }
+
+  // Avec IA qui triche : le rejet est annoncé comme étape réelle.
+  {
+    const steps = [];
+    const cheating = s.buildPlanHorizon('libramont', { today: TODAY, weeks: 8 }).map((w) => ({
+      index: w.index, from: w.from, to: w.to, objectif: `obj ${w.index}`, pourquoi: 'ok', actions: ['a'],
+      faits: w.index === 3 ? [{ label: 'Salon inventé de toutes pièces' }] : [],
+    }));
+    const { plan: p } = await s.generateMarketingPlan('libramont', { today: TODAY, persist: false, onStep: (l) => steps.push(l) }, {
+      ...baseDeps,
+      llmProvider: () => 'anthropic',
+      callLlmJson: async () => ({ weeks: cheating }),
+    });
+    ok(p.context.semainesRejetees === 1, `le garde-fou rejette la semaine qui invente (obtenu ${p.context.semainesRejetees})`);
+    ok(steps.some((l) => /J'ai rejete 1 semaine/.test(l)), 'le rejet est annoncé dans la progression');
+    ok(p.weeks.length === 8, 'le gérant garde 8 semaines : la version calendrier remplace');
+  }
+
+  // onStep qui explose : la génération survit (la progression n'est jamais bloquante).
+  {
+    const { plan: p } = await s.generateMarketingPlan('libramont', { today: TODAY, persist: false, onStep: () => { throw new Error('boom'); } }, { ...baseDeps, llmProvider: () => null });
+    ok(p.weeks.length === 8, 'un onStep qui jette ne casse jamais la génération');
+  }
+
+  // persist : l'enregistrement est une étape réelle.
+  {
+    const steps = [];
+    await s.generateMarketingPlan('libramont', { today: TODAY, persist: true, onStep: (l) => steps.push(l) }, {
+      ...baseDeps,
+      llmProvider: () => null,
+      query: async () => ({ rows: [{ id: 1 }] }),
+    });
+    ok(steps.some((l) => /J'enregistre le plan/.test(l)), 'l\'enregistrement est annoncé');
+  }
+
+  console.log(`\nmarketing-strategist-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
+  process.exit(failures ? 1 : 0);
+})().catch((error) => {
+  console.error('FAIL ', error.message);
+  process.exit(1);
+});

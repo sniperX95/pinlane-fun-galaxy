@@ -45,7 +45,8 @@
     "test:marketing-brief": "node scripts/marketing-brief-check.js",
     "test:marketing-patterns": "node scripts/marketing-patterns-check.js",
     "test:competitor-intel": "node scripts/competitor-intel-check.js",
-    "test:llm-budget": "node scripts/llm-budget-check.js"
+    "test:llm-budget": "node scripts/llm-budget-check.js",
+    "test:marketing-bandit": "node scripts/marketing-bandit-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

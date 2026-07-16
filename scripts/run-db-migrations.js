@@ -125,6 +125,11 @@ const MIGRATIONS = [
     file: 'database/llm-budget-schema.sql',
     description: 'LLM spend ledger (monthly USD cap): hard budget guard, falls back to deterministic at the ceiling',
   },
+  {
+    id: '0025_marketing_arms',
+    file: 'database/marketing-arms-schema.sql',
+    description: 'Angle bandit arms (Thompson sampling): per-center success/failure counts fed by measured net effect',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

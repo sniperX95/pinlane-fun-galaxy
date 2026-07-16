@@ -95,7 +95,18 @@ const anthropicOk = (object) => ({
   ok(Object.keys(brain.faq).length === 7, `FAQ parsée : 7 intents (obtenu ${Object.keys(brain.faq).length})`);
   ok(brain.context.includes('Lundi fermé') && brain.context.includes('Samedi 10h à minuit'), 'horaires RÉELS du centre dans le contexte');
   ok(brain.context.includes('LEÇONS APPRISES') && brain.context.includes('Corps corrigé par le staff'), 'leçons mémoire injectées dans le contexte');
-  ok(!brain.context.includes("Golf O'Clock : disponible") && brain.context.includes('NON proposées'), 'activités indisponibles signalées (jamais promises)');
+  // Libramont n'a pas le Golf o'Clock, mais Gembloux l'a : la question se pose
+  // vraiment, donc on prévient le modèle de ne pas le promettre ICI.
+  ok(!brain.context.includes("Golf O'Clock : disponible") && /PAS ici/.test(brain.context) && /Golf O'Clock/i.test(brain.context),
+    'activité réelle de l\'autre centre signalée comme non proposée ici');
+  // Le piège inverse, payé cash le 15/07 : nommer une activité que Fun Galaxy
+  // n'a NULLE PART, même pour l'interdire, apprend au modèle qu'elle existe
+  // chez nous. Un post de prod a fini par promettre du Karting VR.
+  // Ce qui n'existe pas ne se mentionne pas, dans aucun sens.
+  for (const phantom of ['karting', 'free roaming', 'hache', 'fléchette']) {
+    ok(!new RegExp(phantom, 'i').test(brain.context),
+      `activité inexistante « ${phantom} » absente du contexte (même pas en interdiction)`);
+  }
 
   console.log('\n[RULES] analyse déterministe sans clé IA (mode jour 1)');
   const cases = [

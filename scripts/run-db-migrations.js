@@ -135,6 +135,11 @@ const MIGRATIONS = [
     file: 'database/marketing-dna-schema.sql',
     description: 'Sector DNA (agents second brain): sourced, adversarially-verified copy rules used as PRIOR when measured patterns are thin',
   },
+  {
+    id: '0027_marketing_plans',
+    file: 'database/marketing-plan-schema.sql',
+    description: 'Le Stratege: multi-week marketing plan anchored on the calendar (the only thing solid at 8 weeks while measured patterns are empty)',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

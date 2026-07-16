@@ -1,5 +1,5 @@
-// Test INTERACTIF de la page Marketing « machine de guerre » : 5 surfaces
-// (refonte 2026-07-16 : Aujourd'hui · Ce qui marche · Studio · Concurrents ·
+// Test INTERACTIF de la page Marketing « machine de guerre » : 6 surfaces
+// (refonte 2026-07-16 : Aujourd'hui · Le plan · Ce qui marche · Studio · Concurrents ·
 // Résultats). Playwright pilote de vrais clics sur la page servie avec mocks
 // fetch : le héros € + toggles de période, le brief signé, la surface causale
 // « Ce qui marche » (verdicts jour/météo + mémoire par contexte), le radar 14
@@ -112,6 +112,18 @@ async function installMock(page) {
         if (b.action === 'competitorDelete') return J({ ok: true, result: { ok: true, id: 1 } });
         if (b.action === 'competitorAnalyzePost') return J({ ok: true, degraded: false, resume: 'Ils poussent une offre étudiants le mercredi.', offre: 'Mercredi étudiant -30%', prix: '9 €', ton: 'promo prix', riposte: 'Mets en avant ton ambiance et tes anniversaires plutôt que le prix.' });
         if (b.action === 'studioGenerate') return J({ ok: true, pack: { platform: b.platform, theme: 'Foire de Libramont', generationMode: 'ai', long: `Post ${b.platform} complet pour le test.`, short: `Court ${b.platform}.`, story: 'Story test.', photoIdea: 'Filmer un strike.', aiImagePrompt: 'Bowling scene, no text, no logos', hashtags: ['#bowling', '#test'], bestTime: '18h', quality: { score: 86, status: 'ready' } } });
+        // LE PLAN : un plan realiste, avec les 3 confiances possibles, dont une
+        // semaine « routine » qui DOIT s'afficher honnetement plutot que d'etre
+        // masquee ou maquillee en opportunite.
+        if (b.action === 'marketingPlanGet' || b.action === 'marketingPlanBuild') return J({ ok: true, planId: 7, status: 'proposed', plan: {
+          mode: 'ai', centerId: 'libramont',
+          context: { hasMeasuredEvidence: false, patternsSolides: 0, semainesRejetees: 0, motifsRejet: [] },
+          weeks: [
+            { index: 1, from: '2026-07-13', to: '2026-07-19', confiance: 'calendrier', objectif: 'Remplir les journees des vacances', pourquoi: "Vacances d'ete : les enfants sont libres en journee.", actions: ['Un post formules famille'], faits: [{ type: 'conge_scolaire', label: "Vacances d'ete 2026" }] },
+            { index: 2, from: '2026-07-20', to: '2026-07-26', confiance: 'calendrier', objectif: 'Capter le flux de la Foire', pourquoi: 'Foire de Libramont du 24 au 27, a 5 minutes.', actions: ['Un post avant', 'Un rappel le jour fort'], faits: [{ type: 'evenement_local', label: 'Foire de Libramont' }] },
+            { index: 3, from: '2026-07-27', to: '2026-08-02', confiance: 'routine', objectif: 'Le fond de commerce : anniversaires et groupes', pourquoi: "Aucun evenement ni conge date cette semaine.", actions: ['Un post anniversaire enfant'], faits: [] },
+          ],
+        } });
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingBrief') return J(briefBundle());
@@ -150,14 +162,14 @@ async function main() {
       state.staffMenuPage = 'campaigns'; state.staffTheme = 'dark';
       save(); setView('staff'); renderStaff();
     });
-    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-tab').length === 5, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-tab').length === 6, null, { timeout: 15000 });
     await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .br-cell').length >= 14, null, { timeout: 15000 });
     await page.waitForTimeout(400);
 
     console.log('\n[HYGIÈNE] identité, 5 surfaces, zéro jargon interne, zéro relance manuelle');
     // Collecte le texte de TOUTES les surfaces pour l'anti-jargon.
     let allText = '';
-    for (const tab of ['today', 'works', 'studio', 'rivals', 'results']) {
+    for (const tab of ['today', 'plan', 'works', 'studio', 'rivals', 'results']) {
       await go(tab);
       allText += ' ' + await page.evaluate(() => (document.getElementById('staffCampaignsPage').textContent || '').toLowerCase());
     }
@@ -172,7 +184,7 @@ async function main() {
       };
     });
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(hygiene.tabs.join('|') === 'Aujourd’hui|Ce qui marche|Studio|Concurrents|Résultats', `les 5 surfaces dans l'ordre (${hygiene.tabs.join(', ')})`);
+    ok(hygiene.tabs.join('|') === 'Aujourd’hui|Le plan|Ce qui marche|Studio|Concurrents|Résultats', `les 6 surfaces dans l'ordre (${hygiene.tabs.join(', ')})`);
     ok(hygiene.refresh === 0, 'zéro bouton Actualiser/Analyser, l\'employé travaille la nuit');
     ok(banned.length === 0, `zéro jargon interne à l\'écran${banned.length ? ' (trouvé : ' + banned.join(', ') + ')' : ''}`);
     ok(hygiene.sign, 'l\'identité de l\'employé marketing est là');
@@ -387,6 +399,44 @@ async function main() {
     });
     ok(analyze.found && analyze.posted === 1 && analyze.hadText, 'colle-un-post → POST competitorAnalyzePost avec le texte');
     ok(/étudiants/.test(analyze.panel) && /ambiance/.test(analyze.panel), 'l\'analyse affiche le signal + la riposte');
+
+    console.log('\n[LE PLAN] les 8 prochaines semaines, avec leur confiance affichée');
+    await go('plan');
+    // Le plan se charge en différé : on attend la condition, pas une durée.
+    // Un sleep fixe a déjà rendu ce fichier flaky une fois aujourd'hui.
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-plan-week').length > 0, null, { timeout: 8000 }).catch(() => null);
+    const plan = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      const weeks = [...root.querySelectorAll('.mkw-plan-week')];
+      const txt = root.textContent || '';
+      return {
+        count: weeks.length,
+        posted: (window.__QA_POSTS__ || []).filter((p) => p.action === 'marketingPlanGet').length,
+        confs: weeks.map((w) => (w.querySelector('.mkw-plan-conf') || {}).textContent || ''),
+        tones: weeks.map((w) => w.className),
+        goals: weeks.map((w) => (w.querySelector('.mkw-plan-goal') || {}).textContent || ''),
+        actions: root.querySelectorAll('.mkw-plan-actions li').length,
+        text: txt,
+        rebuild: Boolean([...root.querySelectorAll('button')].find((b) => /Reconstruire le plan/.test(b.textContent))),
+      };
+    });
+    ok(plan.posted === 1, 'ouvrir « Le plan » charge le plan (1 seul appel, pas en boucle)');
+    ok(plan.count === 3, `les 3 semaines du plan sont rendues (obtenu ${plan.count})`);
+    ok(plan.actions >= 4, 'les actions concrètes de chaque semaine sont listées');
+    ok(/Foire de Libramont/.test(plan.text), 'le « pourquoi » cite le fait daté réel');
+    // Le point qui compte : l'honnêteté est VISIBLE, pas enfouie dans un log.
+    ok(/Rien de daté/.test(plan.confs.join('|')), 'une semaine sans fait daté est affichée « Rien de daté »');
+    ok(/fond de commerce/i.test(plan.goals.join('|')), 'et son objectif renvoie au fond de commerce, sans prétexte inventé');
+    ok(plan.tones.some((c) => /tone-muted/.test(c)), 'la semaine « routine » est calme (liseré neutre), pas une alerte');
+    ok(plan.tones.some((c) => /tone-info/.test(c)), 'la semaine datée est mise en avant');
+    ok(/pas encore assez de recul/i.test(plan.text) && /dates certaines/i.test(plan.text),
+      'le plan avoue en tête qu\'il ne sait pas encore ce qui marche ICI (aucune mesure)');
+    ok(plan.rebuild, 'le gérant peut reconstruire le plan à la main');
+    // Jargon : le gérant n'est pas data scientist.
+    for (const mot of ['confiance', 'horizon', 'pattern', 'prior', 'déterministe']) {
+      ok(!new RegExp(mot, 'i').test(plan.text), `zéro jargon « ${mot} » dans la surface`);
+    }
+    ok(!new RegExp('[\\u2014\\u2013]').test(plan.text), 'aucun tiret cadratin dans le plan affiché');
 
     console.log('\n[RÉSULTATS] le CA généré + les reçus mesurés');
     await go('results');

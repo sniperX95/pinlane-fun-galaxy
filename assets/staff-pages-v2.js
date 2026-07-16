@@ -2749,6 +2749,48 @@
 
   const mkComp = { data: null, loading: false, busy: false, postBusy: false, postResult: null };
   window.mkComp = mkComp;
+
+  // LE PLAN (Phase 4). Chargé à la demande : c'est un onglet, pas la page
+  // d'accueil, donc on ne paie rien tant que le gérant ne l'ouvre pas.
+  const mkPlan = { data: null, loading: false, busy: false, error: '' };
+  window.mkPlan = mkPlan;
+
+  async function loadMarketingPlan(force = false) {
+    if (mkPlan.loading || (mkPlan.data && !force)) return;
+    mkPlan.loading = true;
+    mkPlan.error = '';
+    try {
+      const result = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'marketingPlanGet', centerId: state.currentCenterId || 'libramont' }),
+      });
+      mkPlan.data = result && result.plan ? result.plan : null;
+    } catch (error) {
+      mkPlan.error = error.message || 'Chargement impossible.';
+    } finally {
+      mkPlan.loading = false;
+      renderStaffCampaignsPage();
+    }
+  }
+
+  window.mkPlanBuild = async function () {
+    if (mkPlan.busy) return;
+    mkPlan.busy = true;
+    renderStaffCampaignsPage();
+    try {
+      const result = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'marketingPlanBuild', centerId: state.currentCenterId || 'libramont' }),
+      });
+      mkPlan.data = result && result.plan ? result.plan : mkPlan.data;
+      toast('Plan reconstruit.');
+    } catch (error) {
+      toast(error.message || 'Je n’ai pas réussi à construire le plan : réessaie.');
+    } finally {
+      mkPlan.busy = false;
+      renderStaffCampaignsPage();
+    }
+  };
   async function loadCompetitors(force = false) {
     if (mkComp.loading || (mkComp.data && !force)) return;
     mkComp.loading = true;
@@ -3165,8 +3207,11 @@
      l'analyse causale profonde arrive en Phase 1 backend).
      ══════════════════════════════════════════════════════════════════════ */
 
+  // « Le plan » se place juste après « Aujourd'hui » : c'est la lecture
+  // naturelle du gérant, ce que je fais maintenant puis ce qui arrive.
   const MKW_TABS = [
     { key: 'today', label: 'Aujourd’hui' },
+    { key: 'plan', label: 'Le plan' },
     { key: 'works', label: 'Ce qui marche' },
     { key: 'studio', label: 'Studio' },
     { key: 'rivals', label: 'Concurrents' },
@@ -3443,8 +3488,69 @@
     }
   };
 
+  /* ── LE PLAN : les 8 prochaines semaines ─────────────────────────────────
+     Le gérant doit voir en un coup d'oeil : quelle semaine porte quelque chose
+     de daté, et laquelle est une semaine de fond de commerce. La confiance est
+     AFFICHÉE, pas masquée : une semaine « routine » se dit, sinon on vend du
+     vent avec l'assurance d'un plan. */
+
+  const MKW_PLAN_CONF = {
+    mesure: { label: 'Mesuré chez nous', tone: 'good' },
+    calendrier: { label: 'Date confirmée', tone: 'info' },
+    routine: { label: 'Rien de daté', tone: 'muted' },
+  };
+
+  function mkwPlanWeek(week) {
+    const conf = MKW_PLAN_CONF[week.confiance] || MKW_PLAN_CONF.routine;
+    const from = String(week.from || '');
+    const jour = `${from.slice(8, 10)}/${from.slice(5, 7)}`;
+    const actions = (week.actions || []).map((a) => `<li>${esc(a)}</li>`).join('');
+    return `<article class="mkw-plan-week tone-${conf.tone}">
+      <header class="mkw-plan-week-head">
+        <span class="mkw-plan-when"><strong>S${Number(week.index) || 0}</strong><small>dès le ${esc(jour)}</small></span>
+        <span class="mkw-plan-conf">${esc(conf.label)}</span>
+      </header>
+      <h4 class="mkw-plan-goal">${esc(week.objectif || '')}</h4>
+      <p class="mkw-plan-why">${esc(week.pourquoi || '')}</p>
+      ${actions ? `<ul class="mkw-plan-actions">${actions}</ul>` : ''}
+    </article>`;
+  }
+
+  function mkwPlan() {
+    if (!mkPlan.data && !mkPlan.loading && !mkPlan.error) setTimeout(() => loadMarketingPlan(), 0);
+    if (mkPlan.loading) return `<div class="mkw-card"><div class="pv2-empty"><strong>Je construis le plan…</strong>Je regarde les 8 prochaines semaines.</div></div>`;
+    if (mkPlan.error) return `<div class="mkw-card"><div class="pv2-empty"><strong>Le plan n’a pas pu se charger</strong>${esc(mkPlan.error)}</div></div>`;
+    const plan = mkPlan.data;
+    const weeks = (plan && plan.weeks) || [];
+    if (!weeks.length) {
+      return `<div class="mkw-card"><div class="pv2-empty">
+        <strong>Pas encore de plan</strong>Il se construit tout seul chaque lundi. Tu peux aussi le lancer maintenant.
+        <div class="mkw-riv-analyze"><button type="button" class="pv2-btn primary" onclick="mkPlanBuild()">Construire le plan</button></div>
+      </div></div>`;
+    }
+    const dated = weeks.filter((w) => w.confiance !== 'routine').length;
+    // L'honnêteté en tête de surface : tant qu'on n'a rien mesuré, on le dit.
+    // C'est ce qui empêche le gérant de croire que le plan sait ce qui marche.
+    const evidence = plan.context && plan.context.hasMeasuredEvidence
+      ? `Le plan s’appuie sur ce qu’on a mesuré chez toi.`
+      : `Je n’ai pas encore assez de recul pour dire ce qui marche <strong>chez toi</strong>. Ce plan s’appuie sur les dates certaines : congés scolaires, jours fériés, événements près du centre.`;
+    return `<section class="mkw-card">
+      <div class="mkw-block-head">
+        <h3>Les 8 prochaines semaines</h3>
+        <span class="mkw-block-sub">${dated} semaine${dated > 1 ? 's' : ''} avec une date à jouer</span>
+      </div>
+      <p class="mkw-quiet">${evidence}</p>
+      <div class="mkw-plan-grid">${weeks.map(mkwPlanWeek).join('')}</div>
+      <div class="mkw-riv-analyze">
+        <button type="button" class="pv2-btn" onclick="mkPlanBuild()" ${mkPlan.busy ? 'disabled' : ''}>${mkPlan.busy ? 'Je reconstruis…' : 'Reconstruire le plan'}</button>
+        <span class="mkw-quiet-inline">Il se refait tout seul chaque lundi.</span>
+      </div>
+    </section>`;
+  }
+
   function mkwSurface() {
     switch (mkBrief.tab) {
+      case 'plan': return mkwPlan();
       case 'works': return `${mkwPulseStrip()}${mkwFacts()}`;
       case 'studio': return brStudio();
       case 'rivals': return mkwRivals();

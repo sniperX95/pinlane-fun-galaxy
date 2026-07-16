@@ -1342,6 +1342,32 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }
+  // LE PLAN (Phase 4). Lecture : on rend le dernier plan vivant. S'il n'y en a
+  // pas encore (nouveau centre, premier lundi pas passe), on en construit un a
+  // la volee : une page vide n'apprend rien au gerant.
+  if (action === 'marketingPlanGet') {
+    const { listMarketingPlans, generateMarketingPlan } = require('../lib/marketing-strategist');
+    requireConcreteCenter('plan marketing');
+    const [existing] = await listMarketingPlans(centerId, { limit: 1 });
+    if (existing) {
+      sendJson(res, 200, { ok: true, action, plan: existing.payload, planId: existing.id, status: existing.status });
+      return;
+    }
+    const { plan, saved } = await generateMarketingPlan(centerId, {});
+    sendJson(res, 200, { ok: true, action, plan, planId: saved ? saved.id : null, status: 'proposed' });
+    return;
+  }
+
+  // Reconstruction a la demande. Idempotent cote SQL (index unique center_id +
+  // from_date) : rejouer remplace le plan de la semaine, ne le duplique pas.
+  if (action === 'marketingPlanBuild') {
+    const { generateMarketingPlan } = require('../lib/marketing-strategist');
+    requireConcreteCenter('plan marketing');
+    const { plan, saved } = await generateMarketingPlan(centerId, {});
+    sendJson(res, 200, { ok: true, action, plan, planId: saved ? saved.id : null, status: 'proposed' });
+    return;
+  }
+
   if (action === 'competitorAnalyzePost') {
     const { analyzeCompetitorPost } = require('../lib/competitor-watch');
     requireConcreteCenter('veille concurrence');
@@ -1767,7 +1793,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
-  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'competitorAnalyzePost', 'studioGenerate', 'propositionAction', 'propositionCreate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'competitorAnalyzePost', 'marketingPlanGet', 'marketingPlanBuild', 'studioGenerate', 'propositionAction', 'propositionCreate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

@@ -8804,3 +8804,29 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mk-archive-status.st-refuted { background: var(--danger-soft); color: var(--danger); }
 .mk-archive-status.st-applied { background: var(--accent-soft); color: var(--accent-strong); }
 .mk-learned .mk-redo { margin-left: auto; flex-shrink: 0; }
+
+/* ── LE PLAN : les 8 prochaines semaines (Phase 4) ────────────────────────────
+   DESIGN.md : tokens uniquement, hairlines, zero gradient, zero glow, zero
+   ombre douce. La hierarchie se fait par le poids et l'espace, pas par l'effet.
+   La confiance de chaque semaine est PORTEE PAR LA COULEUR DU LISERE, jamais
+   par une pastille criarde : une semaine « rien de date » doit se lire comme
+   une information calme, pas comme une alerte. */
+.mkw-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+.mkw-plan-week { padding: var(--space-4); border: 1px solid var(--line); border-left: 2px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); }
+[data-theme='dark'] .mkw-plan-week { background: var(--raised); }
+.mkw-plan-week.tone-good { border-left-color: var(--ok, var(--accent-strong)); }
+.mkw-plan-week.tone-info { border-left-color: var(--accent-strong); }
+.mkw-plan-week.tone-muted { border-left-color: var(--line-strong); }
+
+.mkw-plan-week-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.mkw-plan-when { display: flex; align-items: baseline; gap: 6px; }
+.mkw-plan-when strong { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+.mkw-plan-when small { font-size: 11.5px; color: var(--muted); }
+.mkw-plan-conf { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+.mkw-plan-goal { margin: var(--space-3) 0 0; font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--ink); }
+.mkw-plan-why { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.mkw-plan-actions { margin: var(--space-3) 0 0; padding-left: 16px; display: grid; gap: 4px; }
+.mkw-plan-actions li { font-size: 12.5px; color: var(--ink); line-height: 1.5; }
+
+@media (max-width: 640px) { .mkw-plan-grid { grid-template-columns: 1fr; } }

@@ -24,6 +24,31 @@ check('écriture cache facturée ~1.25x input', () => {
 check('usage absent → 0 (jamais de NaN)', () => {
   assert.strictEqual(budget.computeCallCost(null, 'claude-haiku-4-5'), 0);
   assert.strictEqual(budget.computeCallCost({}, 'modele-inconnu'), 0);
+  assert.strictEqual(budget.computeOpenAiCallCost(null, 'gpt-4.1-mini'), 0);
+});
+
+check('coût OpenAI exact (cached_tokens séparés du plein tarif)', () => {
+  // gpt-4.1-mini : 1000 in dont 200 cachés + 500 out
+  // = 800×0.40/M + 200×0.10/M + 500×1.60/M = 0.00114 $
+  const cost = budget.computeOpenAiCallCost(
+    { input_tokens: 1000, input_tokens_details: { cached_tokens: 200 }, output_tokens: 500 },
+    'gpt-4.1-mini',
+  );
+  assert.ok(Math.abs(cost - 0.00114) < 1e-9, `attendu 0.00114, obtenu ${cost}`);
+});
+
+check('modèle inconnu → tarif le plus CHER (défaut E : sous-facturer troue le plafond)', () => {
+  const unknownIn = budget.computeCallCost({ input_tokens: 1e6 }, 'modele-mystere');
+  const unknownOut = budget.computeCallCost({ output_tokens: 1e6 }, 'modele-mystere');
+  const knownRates = [
+    ['claude-haiku-4-5', 1, 5], ['claude-sonnet-4-5', 3, 15], ['gpt-4.1-mini', 0.4, 1.6], ['gpt-4.1', 2, 8],
+  ];
+  for (const [model, inRate, outRate] of knownRates) {
+    assert.ok(unknownIn >= inRate, `inconnu (${unknownIn}) >= input de ${model}`);
+    assert.ok(unknownOut >= outRate, `inconnu (${unknownOut}) >= output de ${model}`);
+  }
+  const unknownOpenAi = budget.computeOpenAiCallCost({ input_tokens: 1e6, output_tokens: 1e6 }, 'autre-mystere');
+  assert.ok(unknownOpenAi >= unknownIn, 'le repli OpenAI est aussi au plus cher');
 });
 
 check('paliers de dégradation', () => {

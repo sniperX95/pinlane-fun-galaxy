@@ -3,7 +3,7 @@
 // (headers, modèle Haiku par défaut, cache_control sur le bloc stable,
 // output_config json_schema, max_tokens), extraction/refus/troncature/erreurs,
 // payload OpenAI inchangé (Responses API, json_schema strict, openaiModel).
-const { llmProvider, anthropicModel, callLlm, callLlmJson } = require('../lib/llm-client');
+const { llmProvider, anthropicModel, callLlm, callLlmJson, estimateTokens, cacheableMinTokens } = require('../lib/llm-client');
 
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
@@ -81,7 +81,7 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   console.log('\n[OPENAI] chemin conservé à l\'identique');
   delete process.env.ANTHROPIC_API_KEY;
   process.env.OPENAI_API_KEY = 'test-key-openai';
-  const fxO = makeFetch(() => ({ ok: true, json: async () => ({ output_text: '{"subject":"Objet","body":"Corps"}' }) }));
+  const fxO = makeFetch(() => ({ ok: true, json: async () => ({ output_text: '{"subject":"Objet","body":"Corps"}', usage: { input_tokens: 1000, output_tokens: 500 } }) }));
   const emailSchema = { type: 'object', additionalProperties: false, properties: { subject: { type: 'string' }, body: { type: 'string' } }, required: ['subject', 'body'] };
   const rO = await callLlmJson({
     stableSystem: 'REGLES', system: 'volatile', user: '{"a":1}',
@@ -94,6 +94,29 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   ok(callO.body.input[0].role === 'system' && callO.body.input[0].content.includes('REGLES') && callO.body.input[0].content.includes('volatile'), 'system = stable + volatile concaténés');
   ok(callO.body.text.format.type === 'json_schema' && callO.body.text.format.strict === true && callO.body.text.format.name === 'improved_email', 'json_schema strict + name (format OpenAI)');
   ok(rO && rO.subject === 'Objet' && rO._provider === 'openai', 'réponse OpenAI parsée + _provider');
+
+  console.log('\n[BUDGET] le chemin OpenAI débite le budget (défaut E)');
+  const llmBudget = require('../lib/llm-budget');
+  llmBudget.__resetForTests();
+  const before = llmBudget.getMonthlySpend();
+  const fxSpend = makeFetch(() => ({ ok: true, json: async () => ({ output_text: 'texte', usage: { input_tokens: 100000, output_tokens: 50000 } }) }));
+  const rSpend = await callLlm({ user: 'u', openaiModel: 'gpt-4.1-mini', fetchImpl: fxSpend.impl });
+  ok(rSpend && rSpend.provider === 'openai', 'appel OpenAI mocké passé');
+  const spent = llmBudget.getMonthlySpend() - before;
+  // 100k in × 0.40/M + 50k out × 1.60/M = 0.04 + 0.08 = 0.12 $
+  ok(Math.abs(spent - 0.12) < 1e-9, `dépense enregistrée exacte sur le chemin OpenAI (attendu 0.12, obtenu ${spent})`);
+  llmBudget.__resetForTests();
+
+  console.log('\n[CACHE] la taille du bloc stable est MESURÉE contre le seuil cacheable (défaut D)');
+  ok(estimateTokens('abcd'.repeat(1000)) === 1000, 'estimation ~4 caractères par token');
+  ok(estimateTokens('') === 0, 'texte vide → 0 token');
+  ok(cacheableMinTokens('claude-haiku-4-5') === 4096, 'minimum cacheable Haiku 4.5 = 4096');
+  ok(cacheableMinTokens('claude-sonnet-4-5') === 1024, 'minimum cacheable Sonnet = 1024');
+  ok(cacheableMinTokens('modele-inconnu') === 4096, 'modèle inconnu → seuil conservateur (4096)');
+  // Le cas réel mesuré dans l'audit : bloc stable de 8 281 caractères ≈ 2 071
+  // tokens, sous les 4 096 de Haiku → le cache dort et on doit le SAVOIR.
+  ok(estimateTokens('x'.repeat(8281)) < cacheableMinTokens('claude-haiku-4-5'),
+    'le bloc stable réel de la prod est bien sous le seuil : le log prompt_cache_inactive a une raison d\'exister');
 
   console.log('\n[SITES] câblage des consommateurs');
   delete process.env.OPENAI_API_KEY;

@@ -69,8 +69,10 @@ const CENTERS = {
 
   for (const [centerId, spec] of Object.entries(CENTERS)) {
     console.log(`\n[${centerId.toUpperCase()}] generation reelle (facebook)`);
-    const facts = await buildCenterFacts(centerId, deps).catch(() => null);
-    if (!facts) { ok(false, `${centerId} : faits du centre construits`); continue; }
+    // buildCenterFacts est SYNCHRONE et prend la connaissance ops en 2e
+    // argument (pas des deps) : il lit ops-knowledge/centers.json sur disque.
+    const facts = buildCenterFacts(centerId);
+    ok(facts.activities.length > 0, `${centerId} : les activites reelles sont chargees`);
 
     let pack = null;
     try {
@@ -87,8 +89,12 @@ const CENTERS = {
     console.log(`      mode: ${pack.generationMode} | score: ${pack.quality && pack.quality.score}`);
     console.log(`      "${(pack.long || '').split('\n')[0].slice(0, 100)}"`);
 
-    ok(!/[—–]/.test(text), `${centerId} : zero tiret cadratin dans la sortie IA`,
-      /[—–]/.test(text) ? text.split('\n').find((l) => /[—–]/.test(l)) : '');
+    // Echappements Unicode et non les caracteres eux-memes : ce fichier est
+    // scanne par no-em-dash-check, qui refuse un tiret cadratin litteral meme
+    // dans le test qui le traque.
+    const DASH_RE = new RegExp('[\\u2014\\u2013]');
+    ok(!DASH_RE.test(text), `${centerId} : zero tiret cadratin dans la sortie IA`,
+      DASH_RE.test(text) ? text.split('\n').find((l) => DASH_RE.test(l)) : '');
 
     const hit = spec.banned.find((re) => re.test(text));
     ok(!hit, `${centerId} : aucune activite/preuve inventee`,

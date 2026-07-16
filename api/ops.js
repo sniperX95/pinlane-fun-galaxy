@@ -1345,7 +1345,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   if (action === 'competitorAnalyzePost') {
     const { analyzeCompetitorPost } = require('../lib/competitor-watch');
     requireConcreteCenter('veille concurrence');
-    const result = await analyzeCompetitorPost(body.text || '');
+    const result = await analyzeCompetitorPost(body.text || '', { centerId });
     sendJson(res, 200, { ok: true, action, ...result });
     return;
   }

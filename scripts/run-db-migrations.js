@@ -120,6 +120,11 @@ const MIGRATIONS = [
     file: 'database/competitor-intel-schema.sql',
     description: 'Competitor intel: structured signals per snapshot + Google Places rating/review-count snapshot per competitor',
   },
+  {
+    id: '0024_llm_spend',
+    file: 'database/llm-budget-schema.sql',
+    description: 'LLM spend ledger (monthly USD cap): hard budget guard, falls back to deterministic at the ceiling',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

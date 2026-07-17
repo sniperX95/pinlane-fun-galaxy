@@ -690,6 +690,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (!reservationId) throw createHttpError('Réservation manquante pour analyser le retard.', 400);
     const reservation = await getReservationById(reservationId);
     if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    // Isolation par centre : getReservationById ne filtre pas le centre, donc on
+    // revérifie la permission sur le VRAI centre de la réservation (sinon un staff
+    // pourrait analyser une réservation d'un autre centre via un id deviné).
+    const scopedSession = await requireStaffPermission(req, res, ['planning.view', 'ai.ops'], {
+      centerId: reservation.centerId || 'libramont',
+    });
+    if (!scopedSession) return;
     const context = await buildContext({
       ...body,
       centerId: reservation.centerId || centerId,
@@ -901,6 +908,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (!incidentId) throw createHttpError('Incident retard manquant pour notifier les clients.', 400);
     const incident = await getDelayIncidentById(incidentId);
     if (!incident) throw createHttpError('Incident retard introuvable.', 404);
+    // Isolation par centre : l'incident (et les réservations liées) sont chargés
+    // sans filtre centre ; on revérifie la permission sur le vrai centre de
+    // l'incident avant tout envoi (sinon notification cross-centre via un id deviné).
+    const scopedSession = await requireStaffPermission(req, res, ['emails.send', 'reservations.edit'], {
+      centerId: incident.centerId || 'libramont',
+    });
+    if (!scopedSession) return;
     const changes = Array.isArray(incident.impact?.changes) ? incident.impact.changes : [];
     const requestedIds = Array.isArray(body.reservationIds) ? body.reservationIds.map(Number) : [];
     if (!requestedIds.length) throw createHttpError('Aucun client sélectionné pour la notification.', 400);
@@ -1095,6 +1109,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (!reservationId) throw createHttpError('Réservation manquante pour composer un message.', 400);
     const reservation = await getReservationById(reservationId);
     if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    // Isolation par centre : la réservation est chargée sans filtre centre, on
+    // revérifie la permission sur son vrai centre avant d'exposer nom/email/phone
+    // et l'historique de communications (sinon fuite PII cross-centre).
+    const scopedSession = await requireStaffPermission(req, res, ['emails.view'], {
+      centerId: reservation.centerId || 'libramont',
+    });
+    if (!scopedSession) return;
     const templates = listClientMessageTemplates().map((template) => ({
       ...template,
       email: buildClientMessage({ reservation, templateId: template.id, channel: 'email' }),
@@ -1140,6 +1161,13 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (!reservationId) throw createHttpError('Réservation manquante pour envoyer le message.', 400);
     const reservation = await getReservationById(reservationId);
     if (!reservation) throw createHttpError('Réservation introuvable.', 404);
+    // Isolation par centre : sans ce second contrôle sur le vrai centre de la
+    // réservation, un staff pourrait déclencher l'envoi d'un message arbitraire
+    // à un client d'un AUTRE centre via un id deviné (écriture cross-centre).
+    const scopedSession = await requireStaffPermission(req, res, ['emails.send'], {
+      centerId: reservation.centerId || 'libramont',
+    });
+    if (!scopedSession) return;
     const channel = body.channel === 'sms' ? 'sms' : 'email';
     const staffMember = sendSession.member?.name || sendSession.member?.id || 'staff';
     let result;

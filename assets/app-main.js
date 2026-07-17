@@ -13360,7 +13360,7 @@ function renderPosEdit(r) {
             </div>
             <div class="edit-inline-note" style="margin-top:10px;">
               <span class="n">Affectation</span>
-              <span class="v" id="editAssignmentValue">${e.lanesStr ? `${e.lanesStr}` : 'Hors piste'}</span>
+              <span class="v" id="editAssignmentValue">${e.lanesStr ? escapeHtml(e.lanesStr) : 'Hors piste'}</span>
             </div>
           </div>
         </div>

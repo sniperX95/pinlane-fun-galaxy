@@ -521,8 +521,12 @@ html:not([data-theme='dark']) .mock-sidebar > img {
   border-bottom: 1px solid var(--line);
 }
 
-/* Créneaux réservés : fond -soft + bordure gauche 2px statut (DESIGN.md §6) */
+/* Créneaux réservés : fond -soft + bordure gauche 2px statut (DESIGN.md §6).
+   --row/--col sont posés inline par pro.html (position dans la grille) ; les
+   défauts ci-dessous garantissent un rendu sain même sans style inline. */
 .booking-card {
+  --row: 1;
+  --col: 1;
   grid-row: calc(var(--row) + 1) / span 1;
   grid-column: var(--col);
   display: flex;

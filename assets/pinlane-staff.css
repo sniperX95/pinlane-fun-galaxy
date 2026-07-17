@@ -8343,7 +8343,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .br-receipt .br-link { margin-left: var(--space-2); white-space: nowrap; }
 
 /* Footer · la veille */
-.br-veille { margin: var(--space-4) 0 var(--space-7); }
+.br-veille { margin: var(--space-4) 0 var(--space-8); }
 .br-veille summary { font-size: 12.5px; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .br-veille-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .br-veille-body { margin-top: var(--space-3); }
@@ -8814,19 +8814,19 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
 .mkw-plan-week { padding: var(--space-4); border: 1px solid var(--line); border-left: 2px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); }
 [data-theme='dark'] .mkw-plan-week { background: var(--raised); }
-.mkw-plan-week.tone-good { border-left-color: var(--ok, var(--accent-strong)); }
+.mkw-plan-week.tone-good { border-left-color: var(--success); }
 .mkw-plan-week.tone-info { border-left-color: var(--accent-strong); }
 .mkw-plan-week.tone-muted { border-left-color: var(--line-strong); }
 
 .mkw-plan-week-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .mkw-plan-when { display: flex; align-items: baseline; gap: 6px; }
-.mkw-plan-when strong { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+.mkw-plan-when strong { font-family: var(--font-data); font-size: 13px; color: var(--text); }
 .mkw-plan-when small { font-size: 11.5px; color: var(--muted); }
 .mkw-plan-conf { font-size: 11px; color: var(--muted); white-space: nowrap; }
 
-.mkw-plan-goal { margin: var(--space-3) 0 0; font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--ink); }
+.mkw-plan-goal { margin: var(--space-3) 0 0; font-size: 14.5px; font-weight: 600; line-height: 1.35; color: var(--text); }
 .mkw-plan-why { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
 .mkw-plan-actions { margin: var(--space-3) 0 0; padding-left: 16px; display: grid; gap: 4px; }
-.mkw-plan-actions li { font-size: 12.5px; color: var(--ink); line-height: 1.5; }
+.mkw-plan-actions li { font-size: 12.5px; color: var(--text); line-height: 1.5; }
 
 @media (max-width: 640px) { .mkw-plan-grid { grid-template-columns: 1fr; } }

@@ -37,7 +37,7 @@
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
     "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",
     "test:no-em-dash": "node scripts/no-em-dash-check.js",
-    "test:ops:all": "npm run test:no-em-dash && npm run test:ops && npm run test:backend-data && npm run test:security-config && npm run test:browser-modules && npm run test:agent-stack && npm run test:agent-orchestration && npm run test:marketing-agents && npm run test:marketing-dna && npm run test:marketing-strategist && npm run test:simulation && npm run test:center-config && npm run test:delay-flag && npm run test:ops:stress && npm run test:ops-progress && npm run test:center-source && npm run test:communications-contract && npm run test:quality",
+    "test:ops:all": "npm run test:no-em-dash && npm run test:ops && npm run test:backend-data && npm run test:security-config && npm run test:browser-modules && npm run test:agent-stack && npm run test:agent-orchestration && npm run test:marketing-agents && npm run test:marketing-dna && npm run test:marketing-strategist && npm run test:simulation && npm run test:center-config && npm run test:delay-flag && npm run test:ops:stress && npm run test:ops-progress && npm run test:center-source && npm run test:communications-contract && npm run test:ghost-tokens && npm run test:quality",
     "worker:ops": "node workers/ops-worker.js",
     "worker:once": "node workers/ops-worker.js --once",
     "test:marketing-roi": "node scripts/marketing-roi-check.js",
@@ -52,7 +52,8 @@
     "test:marketing-strategist": "node scripts/marketing-strategist-check.js",
     "test:ops-progress": "node scripts/ops-progress-check.js",
     "test:center-source": "node scripts/center-source-check.js",
-    "test:communications-contract": "node scripts/communications-status-contract-check.js"
+    "test:communications-contract": "node scripts/communications-status-contract-check.js",
+    "test:ghost-tokens": "node scripts/ghost-token-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

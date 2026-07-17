@@ -151,10 +151,20 @@ const OPS_AGENT_DEPARTMENT_ORDER = ['operations', 'customer', 'direction', 'risk
 
 const OPS_EVENT_TYPE_LABELS = {
   reservation_updated: 'Réservation modifiée',
+  reservation_created: 'Réservation créée',
+  reservation_deleted: 'Réservation supprimée',
   delay_applied: 'Retard appliqué',
   delay_cascade_applied: 'Cascade de retard',
+  delay_clients_notified: 'Clients prévenus du retard',
+  delay_indicator_cleared: 'Indicateur de retard levé',
+  delay_reverted: 'Retard annulé',
   client_message_sent: 'Message client envoyé',
-  simulation_reservation_created: 'Réservation simulée'
+  simulation_reservation_created: 'Réservation simulée',
+  simulation_status_update: 'Statut simulé',
+  simulation_delay: 'Retard simulé',
+  marketing_feedback_recorded: 'Retour marketing enregistré',
+  marketing_agent_cycle: 'Cycle agent marketing',
+  no_show_watch_due: 'Surveillance no-show'
 };
 
 const OPS_ACTIVITY_TYPE_LABELS = {
@@ -735,7 +745,7 @@ function renderOpsEvents() {
     ${events.map(item => `
       <div class="ops-row">
         <div>
-          <span class="ops-pill">${escapeHtml(OPS_EVENT_TYPE_LABELS[item.eventType] || 'Événement')}</span>
+          <span class="ops-pill">${escapeHtml(OPS_EVENT_TYPE_LABELS[item.eventType] || String(item.eventType || 'Événement').replace(/_/g, ' '))}</span>
           <div class="meta" style="margin-top:7px;">${escapeHtml(formatOpsTimestamp(item.createdAt))}</div>
         </div>
         <div>

@@ -59,6 +59,7 @@
       failed: 'Échec'
     }[s] || s);
     const severityLabel = s => ({
+      info: 'Info',
       low: 'Faible',
       medium: 'Moyen',
       high: 'Élevé',
@@ -66,12 +67,31 @@
     }[s] || s);
     const eventLabel = t => ({
       delay_reported: 'Retard signalé',
+      delay_applied: 'Retard appliqué',
+      delay_cascade_applied: 'Cascade de retard',
+      delay_clients_notified: 'Clients prévenus du retard',
+      delay_indicator_cleared: 'Indicateur de retard levé',
+      delay_reverted: 'Retard annulé',
       client_message_sent: 'Message client envoyé',
       no_show_watch_due: 'Surveillance no-show',
-      reservation_updated: 'Réservation modifiée'
+      reservation_updated: 'Réservation modifiée',
+      reservation_created: 'Réservation créée',
+      reservation_deleted: 'Réservation supprimée',
+      marketing_feedback_recorded: 'Retour marketing enregistré',
+      marketing_agent_cycle: 'Cycle agent marketing'
     }[t] || String(t ?? '').replace(/_/g, ' '));
     const decisionLabel = type => {
       const fr = {
+        simulation_started: 'Simulation démarrée',
+        simulation_finished: 'Simulation terminée',
+        simulation_booking_accepted: 'Réservation acceptée (simulation)',
+        simulation_status_skipped: 'Statut ignoré (simulation)',
+        simulation_field_status: 'Statut terrain (simulation)',
+        simulation_delay_skipped: 'Retard ignoré (simulation)',
+        simulation_orchestrator_read: 'Lecture orchestrateur (simulation)',
+        simulation_unknown_step: 'Étape inconnue (simulation)',
+        simulation_step_error: 'Erreur d’étape (simulation)',
+        simulation_staff_review_decision: 'Décision revue staff (simulation)'
       }[type];
       if (fr) return fr;
       const text = String(type ?? '').replace(/_/g, ' ').trim();

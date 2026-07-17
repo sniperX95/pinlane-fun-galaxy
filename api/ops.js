@@ -1286,14 +1286,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // Cycle de vie d'une idée de l'agent : le gérant l'applique ou l'ignore.
   // `applied` pose applied_at → la mesure avant/après tourne à J+14 (cron).
   if (action === 'insightStatus') {
-    const insight = await setInsightStatus(body.id, body.status);
+    const insight = await setInsightStatus(body.id, body.status, { centerId: centerScope(scopedCenterId || centerId) });
     sendJson(res, 200, { ok: true, action, insight });
     return;
   }
 
   // « Refaire » une idée mesurée « ça a marché » : clone en nouvelle proposition.
   if (action === 'insightRedo') {
-    const insight = await redoInsight(body.id);
+    const insight = await redoInsight(body.id, { centerId: centerScope(scopedCenterId || centerId) });
     sendJson(res, 200, { ok: true, action, insight });
     return;
   }

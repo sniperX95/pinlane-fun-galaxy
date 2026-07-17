@@ -145,6 +145,11 @@ const MIGRATIONS = [
     file: 'database/ops-jobs-progress-schema.sql',
     description: 'Live job progress: timestamped real steps written by job handlers (never by the dispatch loop), nullable additive columns only',
   },
+  {
+    id: '0029_communications_status_repair',
+    file: 'database/communications-status-repair-schema.sql',
+    description: 'Repair communications dispatch broken by 0019: restore processing (worker claim status) lost when received was added',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

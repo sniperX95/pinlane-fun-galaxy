@@ -82,6 +82,11 @@ async function installMock(page) {
           { key: 'plan:social-1', id: null, trigger: 'creux', why: 'Dimanche s\'annonce très calme : 12 visiteurs attendus. Je posterais mercredi pour le remplir.', whyShort: 'Dimanche s\'annonce très calme, je posterais mercredi pour le remplir.', dueDate: dstr(2), targetDate: dstr(4), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'plan:social-1' },
           { key: 'db:21', id: 21, trigger: 'concurrent', why: 'Bowling Arlon a lancé une offre étudiants, on répond ?', whyShort: 'Bowling Arlon a lancé une offre étudiants, on répond ?', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Chez nous, pas besoin de carte étudiant pour passer une bonne soirée. 8 pistes, laser game, arcades.\n\n#bowling' } }, photoIdea: '', imagePrompt: '', bestSlot: '18h', status: 'proposed', signature: 'concurrent:x' },
           { key: 'db:22', id: 22, trigger: 'demande', why: 'Tu m\'as demandé : « soirée fluo », voilà ce que je posterais.', whyShort: 'Tu m\'as demandé : « soirée fluo », voilà ce que je posterais.', dueDate: dstr(3), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: 'Soirée fluo samedi.' } }, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'demande:x' },
+          // Hygiène de file (bug prod 17/07) : une consigne PÉRIMÉE et un
+          // DOUBLON mot pour mot injectés exprès : ils ne doivent JAMAIS
+          // s'afficher (le serveur filtre désormais, le front reste le filet).
+          { key: 'db:97', id: 97, trigger: 'evenement', why: 'PERIME ne doit pas apparaitre.', whyShort: 'PERIME ne doit pas apparaitre.', dueDate: dstr(-2), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'perime:x' },
+          { key: 'db:98', id: 98, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'doublon:x' },
         ],
         receipts: [
           { id: 31, label: 'Post pluie du 03/07', tone: 'good', result: '+18 % de monde', redoable: true },
@@ -264,6 +269,17 @@ async function main() {
     ok(cards.count === 3 && cards.more, '3 cartes visibles + « + N autres pour plus tard »');
     ok(/Pluie annoncée samedi/.test(cards.firstWhy), 'la proposition du jour épinglée en tête');
     ok(cards.riposte, 'la riposte concurrence est une carte comme les autres');
+    // Hygiène de file (bug prod 17/07) : le mock injecte une consigne périmée
+    // et un doublon mot pour mot : ils ne doivent JAMAIS apparaître.
+    const hygiene2 = await page.evaluate(() => {
+      const txt = document.getElementById('staffCampaignsPage').textContent || '';
+      const all = window.mkBrief.data.propositions.length;
+      const dupCount = [...document.querySelectorAll('.mkw-prop')].filter((el) => /Pluie annoncée samedi/.test(el.textContent)).length;
+      return { perime: /PERIME/.test(txt), dupCount, all };
+    });
+    ok(hygiene2.all >= 6, 'échantillon non vide : le mock contient bien la périmée et le doublon');
+    ok(!hygiene2.perime, 'une consigne dont l\'échéance est passée ne s\'affiche JAMAIS');
+    ok(hygiene2.dupCount === 1, 'le même conseil mot pour mot ne s\'affiche qu\'une seule fois');
     await page.evaluate(() => { const btn = [...document.querySelectorAll('.mkw-prop button')].find((el) => /Voir le post/.test(el.textContent)); btn.click(); });
     await page.waitForTimeout(300);
     const openCard = await page.evaluate(() => {

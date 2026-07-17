@@ -2358,7 +2358,20 @@
   function brVisiblePropositions() {
     const b = mkBrief.data;
     if (!b) return [];
-    return (b.propositions || []).filter((p) => !mkBrief.dismissed[p.key]);
+    // Filet d'hygiene, meme doctrine que le serveur (bug prod 17/07) : une
+    // consigne datee perimee ne s'affiche jamais (« a publier avant mer
+    // 15/07 » un 17/07 est un reproche, pas un conseil), et le meme conseil
+    // mot pour mot ne s'affiche qu'une fois.
+    const today = b.today || '';
+    const seen = new Set();
+    return (b.propositions || []).filter((p) => {
+      if (mkBrief.dismissed[p.key]) return false;
+      if (p.dueDate && today && p.dueDate < today) return false;
+      const key = String(p.whyShort || p.why || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 90);
+      if (key && seen.has(key)) return false;
+      if (key) seen.add(key);
+      return true;
+    });
   }
 
   function mkwPropCard(p) {

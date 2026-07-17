@@ -1,12 +1,16 @@
-// Test INTERACTIF de la page Marketing « machine de guerre » : 6 surfaces
-// (refonte 2026-07-16 : Aujourd'hui · Le plan · Ce qui marche · Studio · Concurrents ·
-// Résultats). Playwright pilote de vrais clics sur la page servie avec mocks
-// fetch : le héros € + toggles de période, le brief signé, la surface causale
-// « Ce qui marche » (verdicts jour/météo + mémoire par contexte), le radar 14
-// cellules (clic/explication/« Prépare-moi un post »), les cartes Proposition
-// (ouvrir → réseau → copier → « Publié ? → Oui » = SEULE porte vers la mesure),
-// le studio, la veille concurrent, les reçus, et l'hygiène : zéro jargon
-// interne à l'écran, zéro bouton de relance manuelle, l'identité de l'employé.
+// Test INTERACTIF de la page Marketing : 5 surfaces (RUN C, 2026-07-17 :
+// Aujourd'hui · Le plan · Studio · Concurrents · Résultats : « Ce qui marche »
+// a fusionné dans Résultats, la maison unique de la preuve). Playwright pilote
+// de vrais clics sur la page servie avec mocks fetch : la ligne de voix + la
+// paie compacte, le radar 14 cellules (clic/explication/valeur du creux en
+// euros/« Prépare-moi un post »), les cartes Proposition (ouvrir → réseau →
+// copier → « Publié ? → Oui » = SEULE porte vers la mesure), la barre de
+// demande qui SURVIT à un re-render, le plan avec ses poignées (« C'est
+// fait » → planActionDone, pont Studio, fraîcheur affichée), l'atelier Studio
+// (badge honnête note+mode, fabrication réelle), la veille (erreur dite,
+// apprentissage montré, riposte → Studio), le héros € dans Résultats avec ses
+// libellés exacts, les reçus, les verdicts causaux, la mémoire par contexte.
+// Et l'hygiène : zéro jargon interne, zéro bouton de relance, l'identité.
 // Cf. leçon ship-interactive-ui-tested.
 const fs = require('fs');
 const http = require('http');
@@ -58,21 +62,20 @@ async function installMock(page) {
       return {
         ok: true, centerId: 'libramont', today: dstr(0), generatedAt: new Date().toISOString(),
         networks: ['facebook', 'instagram', 'story'],
-        paie: { euros: 1240, venues: 5, sent: 17, reviewClicks: 4, days: 30, young: false, firstVerdictDate: 'mardi 28 juillet',
+        paie: { euros: 1240, venues: 5, sent: 17, reviewClicks: 4, days: 30, young: false, quietWindow: false, firstVerdictDate: 'mardi 28 juillet',
           sources: [{ key: 'birthday_j30', label: 'Anniversaires', sent: 12, conversions: 3, revenue: 770 }, { key: 'relance', label: 'Relances', sent: 5, conversions: 2, revenue: 470 }] },
-        brief: { text: 'Dimanche s\'annonce très calme, pluie annoncée, hors vacances. Je t\'ai préparé 2 posts et un email, tout est prêt plus bas. Du mouvement chez Bowling Arlon cette nuit, détail en bas de page.', degraded: false },
+        brief: { text: 'Dimanche s\'annonce très calme, pluie annoncée, hors vacances. Je t\'ai préparé 2 posts et un email, tout est prêt plus bas. Du mouvement chez Bowling Arlon ce matin, détail dans l\'onglet Concurrents.', degraded: false },
         pulse: { revenue30: 8334, visitors30: 540, avgBasket: 15.4, upcomingPax: 102, upcomingResa: 5, reservedRevenue: 2864, bestDay: { date: '2026-07-11', revenue: 4009, visitors: 234 } },
         radar, dataDays: 210, medianVisitors: 40,
-        // « Ce qui marche » : faits causaux + mémoire par contexte (effet net).
         facts: {
           bestDay: { dow: 6, label: 'samedi', avgVisitors: 128, vsMedianPct: 121, confidence: 'solide' },
           worstDay: { dow: 2, label: 'mardi', avgVisitors: 34, vsMedianPct: -41, confidence: 'solide' },
           weather: { rainEffectPct: 12, heatEffectPct: -8, confidence: 'solide', sampleDays: 210 },
-          holidayEffectPct: 46, trend4w: { pct: 9 }, bestMonth: null,
+          holidayEffectPct: -6, holidayEffectConfidence: 'signal', trend4w: { pct: 9 }, bestMonth: null,
         },
         patterns: [
-          { context: 'Post FB · événement local', kind: 'post', channel: 'facebook', netDeltaPct: 22, n: 3, confidence: 'signal' },
-          { context: 'Email · jour calme', kind: 'email', channel: 'email', netDeltaPct: 14, n: 4, confidence: 'signal' },
+          { context: 'Post FB · événement local', kind: 'post', channel: 'facebook', netDeltaPct: 22, basis: 'net', n: 3, confidence: 'signal' },
+          { context: 'Email · jour calme', kind: 'email', channel: 'email', netDeltaPct: 14, basis: 'brut', n: 4, confidence: 'signal' },
         ],
         propositions: [
           { key: 'daily', id: null, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(0), kind: 'post', pinned: true, network: 'instagram', networks: { instagram: { text: 'Il pleut samedi ? Nos 8 pistes sont au sec, réserve la tienne.\n\n#bowling #libramont' } }, photoIdea: 'arrivée du groupe sous la pluie, strike final', imagePrompt: 'Rainy day bowling, no text, no logos', bestSlot: '17h-19h', status: 'proposed', signature: 'daily:x' },
@@ -108,25 +111,32 @@ async function installMock(page) {
         }
         if (b.action === 'propositionCreate') return J({ ok: true, result: { ok: true, id: 99 } });
         if (b.action === 'insightRedo') return J({ ok: true, insight: { id: 99, status: 'proposed' } });
+        if (b.action === 'planActionDone') return J({ ok: true, result: { ok: true, id: 55, status: 'applied' } });
         if (b.action === 'competitorSave') return J({ ok: true, result: { ok: true, id: 2 } });
         if (b.action === 'competitorDelete') return J({ ok: true, result: { ok: true, id: 1 } });
-        if (b.action === 'competitorAnalyzePost') return J({ ok: true, degraded: false, resume: 'Ils poussent une offre étudiants le mercredi.', offre: 'Mercredi étudiant -30%', prix: '9 €', ton: 'promo prix', riposte: 'Mets en avant ton ambiance et tes anniversaires plutôt que le prix.' });
-        if (b.action === 'studioGenerate') return J({ ok: true, pack: { platform: b.platform, theme: 'Foire de Libramont', generationMode: 'ai', long: `Post ${b.platform} complet pour le test.`, short: `Court ${b.platform}.`, story: 'Story test.', photoIdea: 'Filmer un strike.', aiImagePrompt: 'Bowling scene, no text, no logos', hashtags: ['#bowling', '#test'], bestTime: '18h', quality: { score: 86, status: 'ready' } } });
+        if (b.action === 'competitorAnalyzePost') return J({ ok: true, degraded: false, resume: 'Ils poussent une offre étudiants le mercredi.', offre: 'Mercredi étudiant -30%', prix: '9 €', ton: 'promo prix', riposte: 'Mets en avant ton ambiance et tes anniversaires plutôt que le prix.', adn: [{ nom: 'creneau precis', regle: 'Annoncer un créneau précis rend l\'offre concrète.' }, { nom: 'urgence datee', regle: 'Une échéance datée déclenche la décision.' }], dnaLearned: 2 });
+        if (b.action === 'studioGenerate') return J({ ok: true, pack: { platform: b.platform, theme: 'Foire de Libramont', generationMode: 'ai', long: `Post ${b.platform} complet pour le test.`, short: `Court ${b.platform}.`, story: 'Story test.', photoIdea: 'Filmer un strike.', aiImagePrompt: 'Bowling scene, no text, no logos', hashtags: ['#bowling', '#test'], bestTime: '18h', quality: { score: 86, status: 'ready', iterations: [{ mode: 'rules', score: 84 }, { mode: 'ai_1', score: 86, blocked: false }] } } });
         // LE PLAN : un plan realiste, avec les 3 confiances possibles, dont une
         // semaine « routine » qui DOIT s'afficher honnetement plutot que d'etre
-        // masquee ou maquillee en opportunite.
-        if (b.action === 'marketingPlanGet' || b.action === 'marketingPlanBuild') return J({ ok: true, planId: 7, status: 'proposed', plan: {
-          mode: 'ai', centerId: 'libramont',
-          context: { hasMeasuredEvidence: false, patternsSolides: 0, semainesRejetees: 0, motifsRejet: [] },
-          weeks: [
-            { index: 1, from: '2026-07-13', to: '2026-07-19', confiance: 'calendrier', objectif: 'Remplir les journees des vacances', pourquoi: "Vacances d'ete : les enfants sont libres en journee.", actions: ['Un post formules famille'], faits: [{ type: 'conge_scolaire', label: "Vacances d'ete 2026" }] },
-            { index: 2, from: '2026-07-20', to: '2026-07-26', confiance: 'calendrier', objectif: 'Capter le flux de la Foire', pourquoi: 'Foire de Libramont du 24 au 27, a 5 minutes.', actions: ['Un post avant', 'Un rappel le jour fort'], faits: [{ type: 'evenement_local', label: 'Foire de Libramont' }] },
-            { index: 3, from: '2026-07-27', to: '2026-08-02', confiance: 'routine', objectif: 'Le fond de commerce : anniversaires et groupes', pourquoi: "Aucun evenement ni conge date cette semaine.", actions: ['Un post anniversaire enfant'], faits: [] },
-          ],
-        } });
+        // masquee ou maquillee en opportunite. Semaines calees sur AUJOURD'HUI
+        // pour tester les etats passee / cette semaine / a venir.
+        if (b.action === 'marketingPlanGet' || b.action === 'marketingPlanBuild') {
+          const monday = (() => { const d = new Date(); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d; })();
+          const w = (offset) => { const from = new Date(monday); from.setDate(from.getDate() + offset * 7); const to = new Date(from); to.setDate(to.getDate() + 6); return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }; };
+          return J({ ok: true, planId: 7, status: 'proposed', plan: {
+            mode: 'ai', centerId: 'libramont', generatedAt: new Date().toISOString(),
+            context: { hasMeasuredEvidence: false, patternsSolides: 0, semainesRejetees: 0, motifsRejet: [] },
+            weeks: [
+              { index: 1, ...w(0), confiance: 'calendrier', objectif: 'Remplir les journees des vacances', pourquoi: "Vacances d'ete : les enfants sont libres en journee.", actions: ['Un post formules famille'], faits: [{ type: 'conge_scolaire', label: "Vacances d'ete 2026" }] },
+              { index: 2, ...w(1), confiance: 'calendrier', objectif: 'Capter le flux de la Foire', pourquoi: 'Foire de Libramont du 24 au 27, a 5 minutes.', actions: ['Un post avant', 'Un rappel le jour fort'], faits: [{ type: 'evenement_local', label: 'Foire de Libramont' }] },
+              { index: 3, ...w(2), confiance: 'routine', objectif: 'Le fond de commerce : anniversaires et groupes', pourquoi: "Aucun evenement ni conge date cette semaine.", actions: ['Un post anniversaire enfant'], faits: [] },
+            ],
+          } });
+        }
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingBrief') return J(briefBundle());
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'studioPacks') return J({ ok: true, packs: { facebook: null, instagram: null, tiktok: null, linkedin: null } });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'marketingRoi') {
         window.__QA_ROI_CALLS__.push(u.searchParams.get('days'));
         return J({ ok: true, centerId: 'libramont', days: Number(u.searchParams.get('days')) || 30, sent: 9, conversions: 2, revenue: 380, reviewClicks: 1, bySource: [{ key: 'relance', label: 'Relances', sent: 9, conversions: 2, revenue: 380 }] });
@@ -162,14 +172,13 @@ async function main() {
       state.staffMenuPage = 'campaigns'; state.staffTheme = 'dark';
       save(); setView('staff'); renderStaff();
     });
-    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-tab').length === 6, null, { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .br-cell').length >= 14, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-tab').length === 5, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-cell').length >= 14, null, { timeout: 15000 });
     await page.waitForTimeout(400);
 
     console.log('\n[HYGIÈNE] identité, 5 surfaces, zéro jargon interne, zéro relance manuelle');
-    // Collecte le texte de TOUTES les surfaces pour l'anti-jargon.
     let allText = '';
-    for (const tab of ['today', 'plan', 'works', 'studio', 'rivals', 'results']) {
+    for (const tab of ['today', 'plan', 'studio', 'rivals', 'results']) {
       await go(tab);
       allText += ' ' + await page.evaluate(() => (document.getElementById('staffCampaignsPage').textContent || '').toLowerCase());
     }
@@ -181,67 +190,57 @@ async function main() {
         tabs: [...root.querySelectorAll('.mkw-tab')].map((el) => el.textContent.trim()),
         refresh: [...root.querySelectorAll('button')].filter((el) => /actualiser|analyser maintenant/i.test(el.textContent)).length,
         sign: /ton employé marketing/i.test(root.textContent),
+        kpis: root.querySelectorAll('.mkw-kpi').length,
       };
     });
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(hygiene.tabs.join('|') === 'Aujourd’hui|Le plan|Ce qui marche|Studio|Concurrents|Résultats', `les 6 surfaces dans l'ordre (${hygiene.tabs.join(', ')})`);
+    ok(hygiene.tabs.join('|') === 'Aujourd’hui|Le plan|Studio|Concurrents|Résultats', `les 5 surfaces dans l'ordre (${hygiene.tabs.join(', ')})`);
     ok(hygiene.refresh === 0, 'zéro bouton Actualiser/Analyser, l\'employé travaille la nuit');
     ok(banned.length === 0, `zéro jargon interne à l\'écran${banned.length ? ' (trouvé : ' + banned.join(', ') + ')' : ''}`);
     ok(hygiene.sign, 'l\'identité de l\'employé marketing est là');
+    ok(hygiene.kpis === 0, 'le pulse business a quitté la zone Marketing (il vit en Direction)');
 
-    console.log('\n[AUJOURD\'HUI] le héros € + le brief signé');
-    const hero = await page.evaluate(() => {
+    console.log('\n[AUJOURD\'HUI] la voix + la paie compacte');
+    const today = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
-        num: (root.querySelector('.mkw-hero-num') || {}).textContent || '',
-        cap: (root.querySelector('.mkw-hero-cap') || {}).textContent || '',
-        memo: (root.querySelector('.mkw-memo-text') || {}).textContent || '',
-        memoNums: root.querySelectorAll('.mkw-memo-text .br-num').length,
-        segs: [...root.querySelectorAll('.mkw-seg-btn')].map((el) => el.textContent.trim()),
+        voice: (root.querySelector('.mkw-voice-text') || {}).textContent || '',
+        voiceNums: root.querySelectorAll('.mkw-voice-text .br-num').length,
+        payline: (root.querySelector('.mkw-payline-text') || {}).textContent || '',
+        paylineLink: [...root.querySelectorAll('.mkw-payline button')].some((el) => /Voir le détail/.test(el.textContent)),
+        hero: root.querySelectorAll('.mkw-hero').length,
       };
     });
-    ok(/1[\s  ]?240/.test(hero.num), `le héros € commande (« ${hero.num.trim()} »)`);
-    ok(/générés par tes publications/.test(hero.cap), 'la légende du héros est prudente');
-    ok(/préparé/.test(hero.memo) && /Bowling Arlon/.test(hero.memo), 'le brief : vu + préparé + veille');
-    ok(hero.memoNums >= 1, 'prose-preuve : les nombres du brief en mono');
-    ok(hero.segs.join(',') === '7 j,30 j,90 j', 'toggles de période 7/30/90');
-    // Le détail des sources se teste AVANT de changer la période (le refetch ROI
-    // mocké ne renvoie qu'une source).
-    const linkClicked = await page.evaluate(() => { const l = [...document.querySelectorAll('#staffCampaignsPage .mkw-link')].find((el) => /vient ce chiffre/.test(el.textContent)); if (l) { l.click(); return true; } return false; });
-    await page.waitForTimeout(200);
-    const src = await page.evaluate(() => ({
-      rows: document.querySelectorAll('#staffCampaignsPage .mkw-src').length,
-      method: /dernier message/.test((document.querySelector('#staffCampaignsPage .mkw-method') || {}).textContent || ''),
-    }));
-    ok(linkClicked, 'le lien « d\'où vient ce chiffre » est présent');
-    ok(src.rows >= 2 && src.method, 'détail des sources (barres) + méthode en langage humain');
-    await page.evaluate(() => { [...document.querySelectorAll('.mkw-seg-btn')].find((el) => /7 j/.test(el.textContent)).click(); });
-    await page.waitForTimeout(400);
-    ok(await page.evaluate(() => (window.__QA_ROI_CALLS__ || [])[0]) === '7', 'changer la période → refetch de la paie seule');
+    ok(/préparé/.test(today.voice) && /Bowling Arlon/.test(today.voice), 'la voix : vu + préparé + veille');
+    ok(today.voiceNums >= 1, 'prose-preuve : les nombres de la voix en mono');
+    ok(/1[\s  ]?240/.test(today.payline) && /30 derniers jours/.test(today.payline), 'la paie compacte rappelle le chiffre');
+    ok(today.paylineLink, 'et pointe vers Résultats (la maison de la preuve)');
+    ok(today.hero === 0, 'le héros € ne vit PAS dans Aujourd\'hui (une seule maison)');
 
     console.log('\n[RADAR] les 14 prochains jours');
     const radar = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
-        cells: root.querySelectorAll('.br-cell').length,
-        creux: root.querySelectorAll('.br-cell.lv-creux').length,
-        fort: root.querySelectorAll('.br-cell.lv-fort').length,
-        today: root.querySelectorAll('.br-cell.is-today').length,
-        resa34: [...root.querySelectorAll('.br-cell-resa')].some((el) => /34/.test(el.textContent)),
-        eventDot: root.querySelectorAll('.br-cell-event').length,
+        cells: root.querySelectorAll('.mkw-cell').length,
+        creux: root.querySelectorAll('.mkw-cell.lv-creux').length,
+        fort: root.querySelectorAll('.mkw-cell.lv-fort').length,
+        today: root.querySelectorAll('.mkw-cell.is-today').length,
+        resa34: [...root.querySelectorAll('.mkw-cell-resa')].some((el) => /34/.test(el.textContent)),
+        eventDot: root.querySelectorAll('.mkw-cell-event').length,
       };
     });
     ok(radar.cells === 14 && radar.today === 1, '14 cellules, aujourd\'hui cerclé');
     ok(radar.creux === 1 && radar.fort === 1 && radar.eventDot === 1, 'creux/fort teintés + point événement');
     ok(radar.resa34, 'les résas posées restent visibles (34)');
-    await page.evaluate(() => { document.querySelectorAll('.br-cell')[4].click(); });
+    await page.evaluate(() => { document.querySelectorAll('.mkw-cell')[4].click(); });
     await page.waitForTimeout(250);
-    const explain = await page.evaluate(() => (document.querySelector('#staffCampaignsPage .br-radar-explain') || {}).textContent || '');
+    const explain = await page.evaluate(() => (document.querySelector('#staffCampaignsPage .mkw-radar-explain') || {}).textContent || '');
     ok(/très calme attendu/.test(explain) && /Voir la proposition/.test(explain), 'clic cellule creux → explication + lien vers la proposition');
-    await page.evaluate(() => { document.querySelectorAll('.br-cell')[9].click(); });
+    ok(/panier moyen mesuré/.test(explain) && /15\s?€/.test(explain), 'la valeur du creux est dite en euros (panier moyen mesuré, pas une projection)');
+    await page.evaluate(() => { document.querySelectorAll('.mkw-cell')[9].click(); });
     await page.waitForTimeout(250);
     const fill = await page.evaluate(async () => {
-      const btn = [...document.querySelectorAll('#staffCampaignsPage .br-radar-explain button')].find((el) => /Prépare-moi un post/.test(el.textContent));
+      const btn = [...document.querySelectorAll('#staffCampaignsPage .mkw-radar-explain button')].find((el) => /Prépare-moi un post/.test(el.textContent));
       if (!btn) return { found: false };
       btn.click();
       await new Promise((r) => setTimeout(r, 400));
@@ -254,10 +253,10 @@ async function main() {
     await page.waitForTimeout(500);
     const cards = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
-      const list = [...root.querySelectorAll('.br-card')];
+      const list = [...root.querySelectorAll('.mkw-prop')];
       return {
         count: list.length,
-        firstWhy: (list[0] && list[0].querySelector('.br-card-why') || {}).textContent || '',
+        firstWhy: (list[0] && list[0].querySelector('.mkw-prop-why') || {}).textContent || '',
         more: [...root.querySelectorAll('button')].some((el) => /autre.*pour plus tard/i.test(el.textContent)),
         riposte: list.some((el) => /Bowling Arlon a lancé/.test(el.textContent)),
       };
@@ -265,98 +264,103 @@ async function main() {
     ok(cards.count === 3 && cards.more, '3 cartes visibles + « + N autres pour plus tard »');
     ok(/Pluie annoncée samedi/.test(cards.firstWhy), 'la proposition du jour épinglée en tête');
     ok(cards.riposte, 'la riposte concurrence est une carte comme les autres');
-    await page.evaluate(() => { const btn = [...document.querySelectorAll('.br-card button')].find((el) => /Voir le post/.test(el.textContent)); btn.click(); });
+    await page.evaluate(() => { const btn = [...document.querySelectorAll('.mkw-prop button')].find((el) => /Voir le post/.test(el.textContent)); btn.click(); });
     await page.waitForTimeout(300);
     const openCard = await page.evaluate(() => {
-      const card = document.querySelector('#staffCampaignsPage .br-card.is-open');
+      const card = document.querySelector('#staffCampaignsPage .mkw-prop.is-open');
       return {
         present: Boolean(card),
-        paper: (card && card.querySelector('.br-paper') || {}).textContent || '',
-        oneText: card ? card.querySelectorAll('.br-paper').length : 0,
-        nets: card ? [...card.querySelectorAll('.br-net')].map((el) => el.textContent) : [],
+        paper: (card && card.querySelector('.mkw-paper') || {}).textContent || '',
+        oneText: card ? card.querySelectorAll('.mkw-paper').length : 0,
+        nets: card ? [...card.querySelectorAll('.mkw-net')].map((el) => el.textContent) : [],
         noScore: card ? !/\d+\/100/.test(card.textContent) : false,
       };
     });
     ok(openCard.present && /pistes sont au sec/.test(openCard.paper) && /#bowling/.test(openCard.paper), 'le papier : UN texte final, hashtags intégrés');
-    ok(openCard.oneText === 1 && openCard.noScore, 'jamais de versions empilées, jamais de score');
+    ok(openCard.oneText === 1 && openCard.noScore, 'jamais de versions empilées, jamais de score sur une proposition');
     ok(openCard.nets.join(',') === 'Facebook,Instagram,Story', 'réseaux du tenant (TikTok/LinkedIn absents)');
     const variant = await page.evaluate(async () => {
-      const card = document.querySelector('#staffCampaignsPage .br-card.is-open');
-      const fb = [...card.querySelectorAll('.br-net')].find((el) => el.textContent === 'Facebook');
+      const card = document.querySelector('#staffCampaignsPage .mkw-prop.is-open');
+      const fb = [...card.querySelectorAll('.mkw-net')].find((el) => el.textContent === 'Facebook');
       fb.click();
       await new Promise((r) => setTimeout(r, 500));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionAction' && p.propAction === 'variante');
-      const paper = (document.querySelector('#staffCampaignsPage .br-card.is-open .br-paper') || {}).textContent || '';
+      const paper = (document.querySelector('#staffCampaignsPage .mkw-prop.is-open .mkw-paper') || {}).textContent || '';
       return { posted: posts.length, network: posts[0] && posts[0].network, paper };
     });
     ok(variant.posted === 1 && variant.network === 'facebook' && /fraichement écrit/.test(variant.paper), 'réseau non généré → il s\'adapte (POST variante)');
     await page.evaluate(async () => {
-      const card = document.querySelector('#staffCampaignsPage .br-card.is-open');
+      const card = document.querySelector('#staffCampaignsPage .mkw-prop.is-open');
       const copy = [...card.querySelectorAll('button')].find((el) => /Copier le post/.test(el.textContent));
       copy.click();
       await new Promise((r) => setTimeout(r, 250));
     });
-    ok(await page.evaluate(() => Boolean(document.querySelector('#staffCampaignsPage .br-published-ask'))), 'Copier → bandeau « Publié ? » (jamais publié sur simple copie)');
+    ok(await page.evaluate(() => Boolean(document.querySelector('#staffCampaignsPage .mkw-published-ask'))), 'Copier → bandeau « Publié ? » (jamais publié sur simple copie)');
     const published = await page.evaluate(async () => {
-      const yes = [...document.querySelectorAll('#staffCampaignsPage .br-published-ask button')].find((el) => /^Oui$/.test(el.textContent.trim()));
+      const yes = [...document.querySelectorAll('#staffCampaignsPage .mkw-published-ask button')].find((el) => /^Oui$/.test(el.textContent.trim()));
       yes.click();
       await new Promise((r) => setTimeout(r, 400));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionAction' && p.propAction === 'publiee');
-      return { posted: posts.length, compact: (document.querySelector('#staffCampaignsPage .br-published-line') || {}).textContent || '' };
+      return { posted: posts.length, compact: (document.querySelector('#staffCampaignsPage .mkw-prop-published') || {}).textContent || '' };
     });
     ok(published.posted === 1 && /je mesure pendant 14 jours/.test(published.compact), '« Oui » → publiée + carte compactée (la mesure démarre)');
+
+    console.log('\n[DEMANDE] la barre qui survit aux re-renders (le bug focus est mort)');
     const ask = await page.evaluate(async () => {
       const input = document.getElementById('brAskInput');
-      input.dispatchEvent(new Event('focus'));
-      await new Promise((r) => setTimeout(r, 250));
-      const chips = [...document.querySelectorAll('#staffCampaignsPage .br-chip')].map((el) => el.textContent);
-      document.getElementById('brAskInput').value = 'un post pour la soirée fluo de samedi';
+      input.focus();
+      await new Promise((r) => setTimeout(r, 150));
+      const wrap = document.getElementById('mkwAsk');
+      const focusVisible = wrap && wrap.classList.contains('is-focused');
+      const chips = [...document.querySelectorAll('#staffCampaignsPage .mkw-chip')].map((el) => el.textContent);
+      // On tape, puis on force un RE-RENDER complet (clic radar) : le texte
+      // doit survivre : c'était le bug bloquant de l'audit (4.1).
+      input.value = 'un post pour la soirée fluo de samedi';
+      input.dispatchEvent(new Event('input'));
+      document.querySelectorAll('.mkw-cell')[2].click();
+      await new Promise((r) => setTimeout(r, 300));
+      const survived = (document.getElementById('brAskInput') || {}).value || '';
       const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((el) => /^Demander$/.test(el.textContent.trim()));
       btn.click();
       await new Promise((r) => setTimeout(r, 500));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionCreate' && p.brief);
-      return { chips, posted: posts.length, brief: posts[0] && posts[0].brief };
+      return { focusVisible, chips, survived, posted: posts.length, brief: posts[0] && posts[0].brief };
     });
-    ok(ask.chips.length >= 2 && ask.chips.some((chip) => /Idée libre/.test(chip)), 'chips contextuelles au focus');
+    ok(ask.focusVisible, 'le focus révèle les chips SANS re-render (classe, pas innerHTML)');
+    ok(ask.chips.length >= 2 && ask.chips.some((chip) => /Idée libre/.test(chip)), 'chips contextuelles présentes');
+    ok(ask.survived === 'un post pour la soirée fluo de samedi', 'le texte tapé SURVIT à un re-render complet');
     ok(ask.posted === 1 && /soirée fluo/.test(ask.brief), 'Demander → création avec la phrase du gérant');
 
-    console.log('\n[CE QUI MARCHE] l\'analyste causal + la mémoire par contexte');
-    await go('works');
-    const works = await page.evaluate(() => {
-      const root = document.getElementById('staffCampaignsPage');
-      return {
-        kpis: root.querySelectorAll('.mkw-kpi').length,
-        kpiText: [...root.querySelectorAll('.mkw-kpi')].map((el) => el.textContent).join(' | '),
-        verdicts: root.querySelectorAll('.mkw-verdict').length,
-        verdictText: (root.querySelector('.mkw-verdicts') || {}).textContent || '',
-        patterns: root.querySelectorAll('.mkw-pat').length,
-        patternText: (root.querySelector('.mkw-patterns') || {}).textContent || '',
-      };
-    });
-    ok(works.kpis === 4 && /8[\s  ]?334|8334/.test(works.kpiText) && /540/.test(works.kpiText), 'pouls business : CA + visiteurs (la page n\'est jamais vide)');
-    ok(works.verdicts >= 4 && /Samedi/.test(works.verdictText) && /Mardi/.test(works.verdictText), 'verdicts : meilleur/pire jour, effet météo, vacances');
-    ok(works.patterns === 2 && /\+22\s?%|22\s?%/.test(works.patternText), 'mémoire par contexte : ce qui convertit, par effet net');
-
-    console.log('\n[STUDIO] pack de contenu par réseau');
+    console.log('\n[STUDIO] l\'atelier honnête');
     await go('studio');
     const studio = await page.evaluate(async () => {
       const root = document.getElementById('staffCampaignsPage');
-      const tabs = root.querySelectorAll('.br-st-bar .br-net').length;
-      const igTab = [...root.querySelectorAll('.br-st-bar .br-net')].find((el) => el.textContent === 'Instagram');
+      const tabs = root.querySelectorAll('.mkw-st-bar .mkw-net').length;
+      const packsLoaded = (window.__QA_POSTS__ || []).length >= 0; // GET studioPacks est passe par fetch mock
+      const igTab = [...root.querySelectorAll('.mkw-st-bar .mkw-net')].find((el) => el.textContent === 'Instagram');
       if (igTab) igTab.click();
       await new Promise((r) => setTimeout(r, 150));
-      document.getElementById('brStudioBrief').value = 'anniversaires ados';
-      const gen = [...root.querySelectorAll('.br-st-bar button')].find((el) => /Générer|Régénérer/.test(el.textContent));
+      const brief = document.getElementById('brStudioBrief');
+      brief.value = 'anniversaires ados';
+      brief.dispatchEvent(new Event('input'));
+      const gen = [...root.querySelectorAll('.mkw-st-gen button')].find((el) => /Générer|Régénérer/.test(el.textContent));
       gen.click();
       await new Promise((r) => setTimeout(r, 400));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'studioGenerate');
-      const blocks = [...document.querySelectorAll('.br-st-block .br-st-label')].map((el) => el.textContent);
-      const promptEn = /no text, no logos/.test((document.querySelector('.br-st-mono') || {}).textContent || '');
-      return { tabs, posted: posts.length, platform: posts[0] && posts[0].platform, brief: posts[0] && posts[0].brief, blocks: blocks.length, promptEn };
+      const blocks = [...document.querySelectorAll('.mkw-st-block .mkw-st-label')].map((el) => el.textContent);
+      const promptEn = /no text, no logos/.test((document.querySelector('.mkw-st-mono') || {}).textContent || '');
+      const badge = (document.querySelector('.mkw-st-badge') || {}).textContent || '';
+      const craft = (document.querySelector('.mkw-craft') || {}).textContent || '';
+      const briefSurvived = (document.getElementById('brStudioBrief') || {}).value || '';
+      return { tabs, packsLoaded, posted: posts.length, platform: posts[0] && posts[0].platform, brief: posts[0] && posts[0].brief, blocks: blocks.length, promptEn, badge, craft, briefSurvived };
     });
     ok(studio.tabs === 4, '4 réseaux dans le studio (Facebook/Instagram/TikTok/LinkedIn)');
     ok(studio.posted === 1 && studio.platform === 'instagram' && /ados/.test(studio.brief || ''), 'Générer → POST studioGenerate avec réseau + angle');
     ok(studio.blocks >= 5 && studio.promptEn, 'pack complet : longue/courte/story/hashtags/photo/prompt image (anglais)');
+    ok(/note 86\/100/.test(studio.badge) && /écrit par l’IA|écrit par l'IA/.test(studio.badge), 'le badge dit la note ET l\'auteur réel (IA ou filet)');
+    ok(/fabrication/.test(studio.craft) && /84/.test(studio.craft) && /86/.test(studio.craft), 'la fabrication réelle est montrée (chaque passage noté)');
+    ok(!/je réécris jusqu/.test((await page.evaluate(() => document.getElementById('staffCampaignsPage').textContent))), 'la surpromesse « je réécris jusqu\'à ce que ça passe » est morte');
+    ok(studio.briefSurvived === 'anniversaires ados', 'l\'angle tapé survit à la génération');
 
     console.log('\n[CONCURRENTS] la veille honnête');
     await go('rivals');
@@ -371,7 +375,8 @@ async function main() {
         rating: /4[.,]2/.test(root.textContent) && /avis/.test(root.textContent),
         signals: root.querySelectorAll('.mkw-riv-sig').length,
         adHref: adlink ? adlink.getAttribute('href') : '',
-        hasAdd: Boolean(document.getElementById('brCompName')) && Boolean(document.getElementById('brCompSite')),
+        labels: root.querySelectorAll('.mkw-label').length,
+        matin: /chaque matin/.test(root.textContent) && !/chaque nuit/.test(root.textContent),
       };
     });
     ok(rivals.rows >= 1 && rivals.name, 'les concurrents surveillés en cartes');
@@ -379,31 +384,32 @@ async function main() {
     ok(rivals.signals >= 1, 'offres/prix extraits du site (signaux structurés)');
     ok(/facebook\.com\/ads\/library/.test(rivals.adHref) && /q=Bowling%20Arlon/.test(rivals.adHref), 'lien Meta Ad Library (recherche de leurs pubs, sans scraping)');
     ok(rivals.diff, 'le changement détecté chez le concurrent est remonté');
-    ok(rivals.hasAdd, 'ajout d\'un concurrent (nom + site)');
-    // Colle-un-post → analyse IA + riposte.
+    ok(rivals.labels >= 2, 'les champs d\'ajout portent de vrais labels (accessibilité)');
+    ok(rivals.matin, 'l\'inspection est dite « chaque matin » (le sweep tourne à ~10h15, pas la nuit)');
     const analyze = await page.evaluate(async () => {
       const box = document.getElementById('brCompPost');
       if (!box) return { found: false };
       box.value = 'Mercredi étudiant : -30% sur le bowling pour toute la promo, sur présentation de la carte étudiant.';
+      box.dispatchEvent(new Event('input'));
       const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((el) => /^Analyser$/.test(el.textContent.trim()));
       btn.click();
-      // Attendre le panneau lui-meme, pas une duree fixe : un sleep de 500 ms
-      // rendait ce test flaky des que la machine etait chargee.
       const deadline = Date.now() + 8000;
       while (Date.now() < deadline && !document.querySelector('#staffCampaignsPage .mkw-analy, #staffCampaignsPage .mkw-analy-degraded')) {
         await new Promise((r) => setTimeout(r, 50));
       }
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'competitorAnalyzePost');
       const panel = (document.querySelector('#staffCampaignsPage .mkw-analy') || {}).textContent || '';
-      return { found: true, posted: posts.length, hadText: Boolean(posts[0] && posts[0].text), panel };
+      const learned = (document.querySelector('#staffCampaignsPage .mkw-analy-learned') || {}).textContent || '';
+      const toStudio = [...document.querySelectorAll('#staffCampaignsPage .mkw-analy button')].some((el) => /En faire un post/.test(el.textContent));
+      return { found: true, posted: posts.length, hadText: Boolean(posts[0] && posts[0].text), panel, learned, toStudio };
     });
     ok(analyze.found && analyze.posted === 1 && analyze.hadText, 'colle-un-post → POST competitorAnalyzePost avec le texte');
     ok(/étudiants/.test(analyze.panel) && /ambiance/.test(analyze.panel), 'l\'analyse affiche le signal + la riposte');
+    ok(/J’ai retenu 2 techniques|J'ai retenu 2 techniques/.test(analyze.learned), 'l\'apprentissage est MONTRÉ (« J\'ai retenu N techniques »)');
+    ok(analyze.toStudio, 'la riposte n\'est plus un cul-de-sac : « En faire un post » → Studio');
 
-    console.log('\n[LE PLAN] les 8 prochaines semaines, avec leur confiance affichée');
+    console.log('\n[LE PLAN] les 8 semaines, avec leurs poignées');
     await go('plan');
-    // Le plan se charge en différé : on attend la condition, pas une durée.
-    // Un sleep fixe a déjà rendu ce fichier flaky une fois aujourd'hui.
     await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-plan-week').length > 0, null, { timeout: 8000 }).catch(() => null);
     const plan = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
@@ -415,16 +421,21 @@ async function main() {
         confs: weeks.map((w) => (w.querySelector('.mkw-plan-conf') || {}).textContent || ''),
         tones: weeks.map((w) => w.className),
         goals: weeks.map((w) => (w.querySelector('.mkw-plan-goal') || {}).textContent || ''),
-        actions: root.querySelectorAll('.mkw-plan-actions li').length,
+        checks: root.querySelectorAll('.mkw-plan-check').length,
+        current: root.querySelectorAll('.mkw-plan-week.is-current').length,
+        bridges: [...root.querySelectorAll('button')].filter((b) => /Préparer ce post au Studio/.test(b.textContent)).length,
+        freshness: /construit le/.test(txt),
         text: txt,
         rebuild: Boolean([...root.querySelectorAll('button')].find((b) => /Reconstruire le plan/.test(b.textContent))),
       };
     });
     ok(plan.posted === 1, 'ouvrir « Le plan » charge le plan (1 seul appel, pas en boucle)');
     ok(plan.count === 3, `les 3 semaines du plan sont rendues (obtenu ${plan.count})`);
-    ok(plan.actions >= 4, 'les actions concrètes de chaque semaine sont listées');
+    ok(plan.checks >= 4, 'chaque action porte sa case « C\'est fait » (le plan n\'est plus une image)');
+    ok(plan.current === 1, 'la semaine en cours est marquée « cette semaine »');
+    ok(plan.bridges >= 3, 'chaque semaine a son pont « Préparer ce post au Studio »');
+    ok(plan.freshness, 'la fraîcheur du plan est affichée (« construit le … »)');
     ok(/Foire de Libramont/.test(plan.text), 'le « pourquoi » cite le fait daté réel');
-    // Le point qui compte : l'honnêteté est VISIBLE, pas enfouie dans un log.
     ok(/Rien de daté/.test(plan.confs.join('|')), 'une semaine sans fait daté est affichée « Rien de daté »');
     ok(/fond de commerce/i.test(plan.goals.join('|')), 'et son objectif renvoie au fond de commerce, sans prétexte inventé');
     ok(plan.tones.some((c) => /tone-muted/.test(c)), 'la semaine « routine » est calme (liseré neutre), pas une alerte');
@@ -432,32 +443,85 @@ async function main() {
     ok(/pas encore assez de recul/i.test(plan.text) && /dates certaines/i.test(plan.text),
       'le plan avoue en tête qu\'il ne sait pas encore ce qui marche ICI (aucune mesure)');
     ok(plan.rebuild, 'le gérant peut reconstruire le plan à la main');
-    // Jargon : le gérant n'est pas data scientist.
     for (const mot of ['confiance', 'horizon', 'pattern', 'prior', 'déterministe']) {
       ok(!new RegExp(mot, 'i').test(plan.text), `zéro jargon « ${mot} » dans la surface`);
     }
     ok(!new RegExp('[\\u2014\\u2013]').test(plan.text), 'aucun tiret cadratin dans le plan affiché');
+    // La poignée : « C'est fait » → planActionDone avec un id conforme au
+    // contrat serveur, et l'état devient « noté, je mesure ».
+    const done = await page.evaluate(async () => {
+      const check = document.querySelector('#staffCampaignsPage .mkw-plan-check:not(.is-done)');
+      if (!check) return { found: false };
+      check.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'planActionDone');
+      const noted = /noté, je mesure/.test(document.getElementById('staffCampaignsPage').textContent);
+      return { found: true, posted: posts.length, id: posts[0] && posts[0].planAction && posts[0].planAction.id, noted };
+    });
+    ok(done.found && done.posted === 1 && /^strategist:/.test(done.id || ''), '« C\'est fait » → planActionDone (id au contrat serveur)');
+    ok(done.noted, 'l\'action cochée dit « noté, je mesure » (la boucle J+14 démarre)');
+    // Le pont : « Préparer ce post au Studio » ouvre l'atelier pré-rempli.
+    const bridge = await page.evaluate(async () => {
+      const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((b) => /Préparer ce post au Studio/.test(b.textContent));
+      btn.click();
+      await new Promise((r) => setTimeout(r, 400));
+      return {
+        tab: window.mkBrief.tab,
+        brief: (document.getElementById('brStudioBrief') || {}).value || '',
+      };
+    });
+    ok(bridge.tab === 'studio' && bridge.brief.length > 5, 'le pont Plan → Studio pré-remplit l\'angle');
 
-    console.log('\n[RÉSULTATS] le CA généré + les reçus mesurés');
+    console.log('\n[RÉSULTATS] la maison unique de la preuve');
     await go('results');
     const results = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
-      const rows = [...root.querySelectorAll('.br-receipt')];
+      const rows = [...root.querySelectorAll('.mkw-receipt')];
       return {
         hero: Boolean(root.querySelector('.mkw-hero-num')),
+        heroNum: (root.querySelector('.mkw-hero-num') || {}).textContent || '',
         eyebrow: /rapporté/i.test((root.querySelector('.mkw-eyebrow') || {}).textContent || ''),
+        cap: (root.querySelector('.mkw-hero-cap') || {}).textContent || '',
+        chips: (root.querySelector('.mkw-hero-chips') || {}).textContent || '',
+        segs: [...root.querySelectorAll('.mkw-seg-btn')].map((el) => el.textContent.trim()),
         count: rows.length,
         good: rows.some((el) => el.className.includes('tone-good') && /\+18\s?% de monde/.test(el.textContent)),
         neutral: rows.some((el) => el.className.includes('tone-neutral') && /pas d'effet mesurable/.test(el.textContent)),
         pending: rows.some((el) => /verdict le 26 juillet/.test(el.textContent)),
         redo: rows.some((el) => /On le refait \?/.test(el.textContent)),
+        verdicts: root.querySelectorAll('.mkw-verdict').length,
+        verdictText: (root.querySelector('.mkw-verdicts') || {}).textContent || '',
+        patterns: root.querySelectorAll('.mkw-pat').length,
+        patternText: (root.querySelector('.mkw-patterns') || {}).textContent || '',
+        basis: root.querySelectorAll('.mkw-pat-basis').length,
       };
     });
-    ok(results.hero && results.eyebrow, 'le héros « ce que le marketing a rapporté » (l\'arme de vente)');
+    ok(results.hero && results.eyebrow && /1[\s  ]?240/.test(results.heroNum), 'le héros € vit ICI, seul exemplaire');
+    ok(/réservations liées à tes messages/.test(results.cap), 'libellé exact : des MESSAGES, des réservations liées (pas « publications », pas « venues »)');
+    ok(/réservations liées/.test(results.chips) && !/clics avis Google/.test(results.chips), 'les chips ne mélangent plus les clics avis (transactionnels) au ROI');
+    ok(results.segs.join(',') === '7 j,30 j,90 j', 'toggles de période 7/30/90');
     ok(results.count === 3 && results.good && results.neutral && results.pending, 'reçus : bon en vert, neutre jamais rouge, verdict à venir');
     ok(results.redo, '« On le refait ? » sur les lignes positives');
+    ok(results.verdicts >= 4 && /Samedi/.test(results.verdictText) && /Mardi/.test(results.verdictText), 'les verdicts causaux ont déménagé ici (meilleur/pire jour, météo, vacances)');
+    ok(/-6%/.test(results.verdictText) && !/\+-/.test(results.verdictText), 'un effet vacances négatif s\'affiche -6%, jamais « +-6% »');
+    ok(results.patterns === 2 && /\+22\s?%|22\s?%/.test(results.patternText), 'mémoire par contexte : ce qui convertit, par effet net');
+    ok(results.basis === 1, 'une ligne au delta brut est étiquetée « brut » (l\'en-tête ne ment plus)');
+    // Le détail des sources + la méthode honnête (« reçu », pas « vu »).
+    await page.evaluate(() => { const l = [...document.querySelectorAll('#staffCampaignsPage .mkw-link')].find((el) => /vient ce chiffre/.test(el.textContent)); if (l) l.click(); });
+    await page.waitForTimeout(200);
+    const src = await page.evaluate(() => ({
+      rows: document.querySelectorAll('#staffCampaignsPage .mkw-src').length,
+      method: (document.querySelector('#staffCampaignsPage .mkw-src-panel .mkw-method') || {}).textContent || '',
+      extra: (document.querySelector('#staffCampaignsPage .mkw-src-extra') || {}).textContent || '',
+    }));
+    ok(src.rows >= 2, 'détail des sources (barres)');
+    ok(/dernier message que le client a reçu/.test(src.method) && /annulées sont exclues/.test(src.method), 'la méthode dit « reçu » (pas « vu ») et exclut les annulées');
+    ok(/emails de suivi post-visite/.test(src.extra), 'les clics avis Google sont affichés avec leur vraie origine (hors ROI)');
+    await page.evaluate(() => { [...document.querySelectorAll('.mkw-seg-btn')].find((el) => /7 j/.test(el.textContent)).click(); });
+    await page.waitForTimeout(400);
+    ok(await page.evaluate(() => (window.__QA_ROI_CALLS__ || [])[0]) === '7', 'changer la période → refetch de la paie seule');
     const redo = await page.evaluate(async () => {
-      const btn = [...document.querySelectorAll('#staffCampaignsPage .br-receipt button')].find((el) => /On le refait/.test(el.textContent));
+      const btn = [...document.querySelectorAll('#staffCampaignsPage .mkw-receipt button')].find((el) => /On le refait/.test(el.textContent));
       btn.click();
       await new Promise((r) => setTimeout(r, 400));
       return (window.__QA_POSTS__ || []).filter((p) => p.action === 'insightRedo').length;

@@ -2186,81 +2186,60 @@
   const BR_TRIGGER_TONE = { creux: 'danger', jour_fort: 'success' };
   const BR_NETWORK_LABELS = { facebook: 'Facebook', instagram: 'Instagram', story: 'Story', email: 'Email' };
 
-  /* ── Z1 · La paie + le brief signé ── */
+  /* ── Aujourd'hui · la ligne de voix (ex-mémo, une phrase, signée) ──
+     L'audit (4.1) : trois zones disaient le même fait le même matin. La voix
+     reste, la redondance meurt : UNE phrase, la signature, rien d'autre. ── */
 
-  function brZ1() {
+  function mkwVoice() {
     const b = mkBrief.data;
-    if (!b) {
-      return `<section class="br-z br-z1">
-        ${mkBrief.error
-          ? `<p class="br-error">${esc(mkBrief.error)} <button type="button" class="br-link" onclick="loadMarketingBrief(true)">Réessayer</button></p>`
-          : '<div class="br-skel br-skel-pay"></div><div class="br-skel"></div><div class="br-skel"></div><div class="br-skel br-skel-short"></div>'}
-      </section>`;
-    }
-    const p = b.paie;
-    let payHtml;
-    if (p.young) {
-      payHtml = `<p class="br-pay">Encore trop tôt pour un chiffre honnête : premier bilan le ${esc(p.firstVerdictDate)}.</p>`;
-    } else if (p.euros > 0) {
-      payHtml = `<p class="br-pay">Tes publications sont liées à <span class="br-pay-num is-good">+${money(p.euros)}</span> de réservations ces ${p.days} derniers jours.</p>`;
-    } else {
-      payHtml = `<p class="br-pay">Tes <span class="br-pay-num">${p.sent}</span> messages sont partis : aucune réservation ne leur est encore liée sur ${p.days} jours.</p>`;
-    }
-    const periods = [7, 30, 90].map((days) => `<button type="button" class="br-toggle ${mkBrief.period === days ? 'active' : ''}" onclick="mkBrPeriod(${days})">${days} j</button>`).join('<span class="br-dot">·</span>');
-    const sources = (p.sources || []).map((source) => {
-      const share = p.euros > 0 ? Math.round((source.revenue / p.euros) * 100) : 0;
-      return `<div class="br-ticket"><span class="br-ticket-label">${esc(source.label)}</span><span class="br-ticket-fill"></span><span class="br-ticket-val">${share} % · ${money(source.revenue)}</span></div>`;
-    }).join('');
-    const detail = mkBrief.payOpen && !p.young ? `<div class="br-pay-detail">
-      ${sources || '<p class="br-quiet">Pas encore de venue attribuée sur la période.</p>'}
-      <div class="br-ticket br-ticket-sub"><span class="br-ticket-label">venues liées</span><span class="br-ticket-fill"></span><span class="br-ticket-val">${p.venues}</span></div>
-      <div class="br-ticket br-ticket-sub"><span class="br-ticket-label">clics vers ta fiche Google</span><span class="br-ticket-fill"></span><span class="br-ticket-val">${p.reviewClicks}</span></div>
-      <p class="br-method">Une venue compte pour le dernier message qu'elle a vu dans les 60 jours.</p>
-    </div>` : '';
-    return `<section class="br-z br-z1">
-      ${payHtml}
-      <div class="br-pay-controls">${periods}${p.young ? '' : `<button type="button" class="br-link" onclick="mkBrPayDetail()">${mkBrief.payOpen ? 'Masquer le détail' : 'Voir le détail'}</button>`}</div>
-      ${detail}
-      <div class="br-memo">
-        ${b.brief.degraded ? '<p class="br-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
-        <p class="br-memo-text">${brProse(b.brief.text)}</p>
-        <p class="br-sign"> ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}, ${esc(new Date(b.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }))}</p>
-      </div>
+    if (!b) return `<section class="mkw-card mkw-voice"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    return `<section class="mkw-card mkw-voice">
+      ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
+      <p class="mkw-voice-text">${brProse(b.brief.text)}</p>
+      <p class="mkw-sign">${mkwAgentMark()} ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
     </section>`;
   }
 
-  /* ── Le pouls business (KPIs réels du centre) : la page n'est jamais vide,
-     elle montre l'activité concrète : CA, visiteurs, réservations à venir. ── */
-  function brPulse() {
+  /* ── Aujourd'hui · la ligne de paie compacte ──
+     Le héros euros vit UNE fois, dans Résultats (audit §6.2). Ici : le rappel
+     quotidien en une ligne, qui pointe vers la maison de la preuve. ── */
+
+  function mkwPayLine() {
     const b = mkBrief.data;
-    if (!b || !b.pulse) return '';
-    const pl = b.pulse;
-    const tile = (value, label, foot) => `<div class="br-kpi"><span class="br-kpi-val">${value}</span><span class="br-kpi-label">${esc(label)}</span>${foot ? `<span class="br-kpi-foot">${esc(foot)}</span>` : ''}</div>`;
-    const bestFoot = pl.bestDay ? `record : ${money(pl.bestDay.revenue)} le ${brFrDay(pl.bestDay.date)}` : '';
-    return `<section class="br-z br-pulse-z">
-      <h2 class="br-zt">Ton activité</h2>
-      <div class="br-pulse">
-        ${tile(money(pl.revenue30), 'chiffre d’affaires', '30 derniers jours')}
-        ${tile(`${pl.visitors30}`, 'visiteurs', '30 derniers jours')}
-        ${tile(money(pl.avgBasket), 'panier moyen', 'par visiteur')}
-        ${tile(`${pl.upcomingPax}`, 'déjà attendus', `sur les 14 prochains jours${pl.reservedRevenue ? ` · ${money(pl.reservedRevenue)}` : ''}`)}
-        ${pl.bestDay ? tile(`${pl.bestDay.visitors}`, 'meilleure journée', bestFoot) : ''}
-      </div>
-    </section>`;
+    if (!b) return '<div class="mkw-skel mkw-skel-short"></div>';
+    const p = b.paie;
+    let text;
+    if (p.young) {
+      text = `Premier bilan honnête le <strong>${esc(p.firstVerdictDate)}</strong>.`;
+    } else if (p.quietWindow) {
+      text = `Rien envoyé ces <strong>${p.days} derniers jours</strong>.`;
+    } else if (p.euros > 0) {
+      text = `Ton marketing est lié à <strong class="is-good">${money(p.euros)}</strong> de réservations ces <strong>${p.days} derniers jours</strong>.`;
+    } else {
+      text = `<strong>${p.sent}</strong> messages partis ces ${p.days} derniers jours, pas encore de réservation liée.`;
+    }
+    return `<div class="mkw-payline">
+      <span class="mkw-payline-text">${text}</span>
+      <button type="button" class="mkw-link" onclick="mkwTab('results')">Voir le détail</button>
+    </div>`;
   }
 
   window.mkBrPeriod = async function (days) {
     mkBrief.period = Number(days) || 30;
     renderStaffCampaignsPage();
-    // Refetch de la paie seule (léger) : le reste du mémo ne dépend pas de la période.
+    // Refetch de la paie seule (léger) : le reste du brief ne dépend pas de la période.
     try {
       const roi = await apiRequest(`/api/ops?action=marketingRoi&days=${encodeURIComponent(mkBrief.period)}&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       if (mkBrief.data) {
+        const measuredCount = (mkBrief.data.receipts || []).length;
         mkBrief.data.paie = {
           ...mkBrief.data.paie,
           euros: roi.revenue, venues: roi.conversions, sent: roi.sent, reviewClicks: roi.reviewClicks, days: roi.days,
           sources: (roi.bySource || []).filter((s) => s.sent > 0).sort((a, b) => b.revenue - a.revenue),
-          young: roi.sent === 0,
+          // Même doctrine que le serveur : jeune = rien envoyé ET rien jamais
+          // mesuré ; fenêtre calme = un historique existe, cette période est vide.
+          young: roi.sent === 0 && measuredCount === 0,
+          quietWindow: roi.sent === 0 && measuredCount > 0,
         };
       }
     } catch (error) { /* la paie précédente reste */ } finally {
@@ -2284,22 +2263,22 @@
     return `<svg class="br-wx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${BR_WEATHER[kind]}</svg>`;
   }
 
-  function brZ2() {
+  function mkwRadar() {
     const b = mkBrief.data;
-    if (!b) return `<section class="br-z"><h2 class="br-zt">Les 14 prochains jours</h2><div class="br-radar br-radar-skel">${'<span class="br-cell br-cell-skel"></span>'.repeat(14)}</div></section>`;
+    if (!b) return `<section class="mkw-block"><h2 class="mkw-bt">Les 14 prochains jours</h2><div class="mkw-radar">${'<span class="mkw-cell mkw-cell-skel"></span>'.repeat(14)}</div></section>`;
     if (!b.radar || !b.radar.length) {
-      return `<section class="br-z"><h2 class="br-zt">Les 14 prochains jours</h2><p class="br-quiet">Je n'ai pas de prévision fiable aujourd'hui : je réessaie cette nuit.</p></section>`;
+      return `<section class="mkw-block"><h2 class="mkw-bt">Les 14 prochains jours</h2><p class="mkw-quiet">Je n'ai pas de prévision fiable aujourd'hui : je réessaie cette nuit.</p></section>`;
     }
     const cells = b.radar.map((day) => {
       const isToday = day.date === b.today;
       const open = mkBrief.radarOpen === day.date;
       const temp = day.tmax !== null && day.tmax !== undefined ? `${Math.round(day.tmax)}°` : '';
-      return `<button type="button" class="br-cell lv-${esc(day.level)} ${isToday ? 'is-today' : ''} ${open ? 'is-open' : ''}" aria-expanded="${open}" onclick="mkBrRadar('${escJs(day.date)}')" title="${esc(day.explanation)}">
-        <span class="br-cell-day">${isToday ? 'auj.' : `${BR_DOW[day.dow]} ${day.date.slice(8, 10)}`}</span>
+      return `<button type="button" class="mkw-cell lv-${esc(day.level)} ${isToday ? 'is-today' : ''} ${open ? 'is-open' : ''}" aria-expanded="${open}" onclick="mkBrRadar('${escJs(day.date)}')" title="${esc(day.explanation)}">
+        <span class="mkw-cell-day">${isToday ? 'auj.' : `${BR_DOW[day.dow]} ${day.date.slice(8, 10)}`}</span>
         ${brWeatherIcon(day)}
-        <span class="br-cell-temp">${temp}</span>
-        <span class="br-cell-resa">${day.resaCount ? `${day.resaCount} <em>rés.</em>` : ''}</span>
-        ${day.event ? '<span class="br-cell-event" aria-hidden="true"></span>' : ''}
+        <span class="mkw-cell-temp">${temp}</span>
+        <span class="mkw-cell-resa">${day.resaCount ? `${day.resaCount} <em>rés.</em>` : ''}</span>
+        ${day.event ? '<span class="mkw-cell-event" aria-hidden="true"></span>' : ''}
       </button>`;
     }).join('');
     // Ligne de synthèse : le total des réservations à venir + le prochain événement.
@@ -2315,16 +2294,22 @@
     if (openDay) {
       const linked = openDay.propositionKey && (b.propositions || []).some((p) => p.key === openDay.propositionKey && !mkBrief.dismissed[p.key]);
       const canFill = (openDay.level === 'creux' || openDay.level === 'calme') && !linked;
-      explain = `<div class="br-radar-explain">
-        <span>${brProse(openDay.explanation)}</span>
-        ${linked ? `<button type="button" class="br-link" onclick="mkBrGoCard('${escJs(openDay.propositionKey)}')">Voir la proposition →</button>` : ''}
-        ${canFill ? `<button type="button" class="br-link br-link-accent" onclick="mkBrRadarFill('${escJs(openDay.date)}')" ${mkBrief.busy === `fill:${openDay.date}` ? 'disabled' : ''}>${mkBrief.busy === `fill:${openDay.date}` ? 'je prépare…' : 'Prépare-moi un post pour remplir ce jour'}</button>` : ''}
+      // La valeur du creux, en euros, là où la décision se prend (audit §7) :
+      // le panier moyen est MESURÉ (30 j), on ne projette rien, on rappelle un fait.
+      const basket = b.pulse && b.pulse.avgBasket > 0 ? b.pulse.avgBasket : 0;
+      const worth = (openDay.level === 'creux' || openDay.level === 'calme') && basket
+        ? ` Chaque visiteur récupéré ce jour-là vaut environ ${money(basket)} (ton panier moyen mesuré).`
+        : '';
+      explain = `<div class="mkw-radar-explain">
+        <span>${brProse(openDay.explanation + worth)}</span>
+        ${linked ? `<button type="button" class="mkw-link" onclick="mkBrGoCard('${escJs(openDay.propositionKey)}')">Voir la proposition</button>` : ''}
+        ${canFill ? `<button type="button" class="mkw-link" onclick="mkBrRadarFill('${escJs(openDay.date)}')" ${mkBrief.busy === `fill:${openDay.date}` ? 'disabled' : ''}>${mkBrief.busy === `fill:${openDay.date}` ? 'je prépare…' : 'Prépare-moi un post pour remplir ce jour'}</button>` : ''}
       </div>`;
     }
-    return `<section class="br-z">
-      <h2 class="br-zt">Les 14 prochains jours</h2>
-      <div class="br-radar">${cells}</div>
-      ${summary ? `<p class="br-radar-sum">${brProse(summary)}</p>` : ''}
+    return `<section class="mkw-block">
+      <h2 class="mkw-bt">Les 14 prochains jours</h2>
+      <div class="mkw-radar">${cells}</div>
+      ${summary ? `<p class="mkw-radar-sum">${brProse(summary)}</p>` : ''}
       ${explain}
     </section>`;
   }
@@ -2335,13 +2320,17 @@
   };
   window.mkBrGoCard = function (key) {
     mkBrief.openCard = key;
+    // Fix audit 4.1 : si la cible est au-delà des 3 cartes visibles, le
+    // querySelector ne trouvait rien et le clic était silencieusement inopérant.
+    const index = brVisiblePropositions().findIndex((p) => p.key === key);
+    if (index >= 3) mkBrief.moreOpen = true;
     renderStaffCampaignsPage();
     setTimeout(() => {
       const el = document.querySelector(`[data-br-card="${CSS.escape(key)}"]`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('br-flash');
-        setTimeout(() => el.classList.remove('br-flash'), 1100);
+        el.classList.add('mkw-flash');
+        setTimeout(() => el.classList.remove('mkw-flash'), 1100);
       }
     }, 50);
   };
@@ -2372,10 +2361,10 @@
     return (b.propositions || []).filter((p) => !mkBrief.dismissed[p.key]);
   }
 
-  function brCard(p) {
+  function mkwPropCard(p) {
     const published = mkBrief.published[p.key];
     if (published) {
-      return `<article class="br-card is-published" data-br-card="${esc(p.key)}"><p class="br-published-line">Publié ✓ : je mesure pendant 14 jours.</p></article>`;
+      return `<article class="mkw-prop is-published" data-br-card="${esc(p.key)}"><p class="mkw-prop-published">${ci('check')}Publié : je mesure pendant 14 jours, le reçu arrive dans Résultats.</p></article>`;
     }
     const open = mkBrief.openCard === p.key;
     const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
@@ -2388,8 +2377,8 @@
     let body = '';
     if (open && isOffre) {
       const note = (p.networks && (p.networks.interne || p.networks.facebook) || {}).text || p.why || '';
-      body = `<div class="br-paper">${esc(note)}</div>
-        <div class="br-card-actions">
+      body = `<div class="mkw-paper">${esc(note)}</div>
+        <div class="mkw-prop-actions">
           <button type="button" class="pv2-btn primary" onclick="mkBrDismiss('${escJs(p.key)}')">${ci('check')}C’est noté</button>
         </div>`;
     } else if (open) {
@@ -2397,43 +2386,43 @@
       const current = mkBrief.cardNetwork[p.key] || p.network || (networks[0] || 'facebook');
       const entry = (p.networks || {})[current] || null;
       const generating = mkBrief.busy === `net:${p.key}:${current}`;
-      const netTabs = p.kind === 'email' ? '' : `<div class="br-nets">${networks.map((network) => `<button type="button" class="br-net ${current === network ? 'active' : ''}" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(network)}')">${BR_NETWORK_LABELS[network] || network}</button>`).join('')}</div>`;
+      const netTabs = p.kind === 'email' ? '' : `<div class="mkw-nets" role="tablist">${networks.map((network) => `<button type="button" role="tab" aria-selected="${current === network}" class="mkw-net ${current === network ? 'active' : ''}" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(network)}')">${BR_NETWORK_LABELS[network] || network}</button>`).join('')}</div>`;
       const paper = generating
-        ? `<div class="br-paper br-paper-shimmer"><p class="br-quiet">je l'adapte pour ${BR_NETWORK_LABELS[current] || current}…</p></div>`
+        ? `<div class="mkw-paper mkw-shimmer"><p class="mkw-quiet">je l'adapte pour ${BR_NETWORK_LABELS[current] || current}…</p></div>`
         : (entry && entry.text
-          ? `<div class="br-paper">${esc(entry.text)}</div>`
-          : `<div class="br-paper"><p class="br-quiet">Le texte arrive, réessaie dans un instant. <button type="button" class="br-link" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(current)}', true)">Réessayer</button></p></div>`);
+          ? `<div class="mkw-paper">${esc(entry.text)}</div>`
+          : `<div class="mkw-paper"><p class="mkw-quiet">Le texte n’est pas venu. <button type="button" class="mkw-link" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(current)}', true)">Réessayer</button></p></div>`);
       const photoIdea = (entry && entry.photoIdea) || p.photoIdea;
       const bestSlot = (entry && entry.bestSlot) || p.bestSlot;
       const imagePrompt = (entry && entry.imagePrompt) || p.imagePrompt;
       const under = [
-        photoIdea ? `<p class="br-under">Idée photo : ${esc(photoIdea)}</p>` : '',
-        bestSlot ? `<p class="br-under br-under-mono">Meilleur moment : ${esc(bestSlot)}</p>` : '',
-        imagePrompt ? `<details class="br-prompt"><summary>prompt pour une image IA</summary><div class="br-prompt-text">${esc(imagePrompt)}</div><button type="button" class="br-link" onclick="mkBrCopyPrompt('${escJs(p.key)}')">Copier</button></details>` : '',
+        photoIdea ? `<p class="mkw-under">Idée photo : ${esc(photoIdea)}</p>` : '',
+        bestSlot ? `<p class="mkw-under mkw-under-mono">Meilleur moment : ${esc(bestSlot)}</p>` : '',
+        imagePrompt ? `<details class="mkw-prompt"><summary>prompt pour une image IA</summary><div class="mkw-prompt-text">${esc(imagePrompt)}</div><button type="button" class="mkw-link" onclick="mkBrCopyPrompt('${escJs(p.key)}')">Copier</button></details>` : '',
       ].join('');
       const angleOpen = mkBrief.angleOpen === p.key;
       const askPublished = mkBrief.publishedAsk === p.key;
       const footer = p.kind === 'email'
-        ? `<div class="br-card-actions"><button type="button" class="pv2-btn primary" onclick="state.staffMenuPage = 'emails'; save(); renderStaff();">Ouvrir dans Emails</button><button type="button" class="br-link br-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button></div>`
-        : `<div class="br-card-actions">
+        ? `<div class="mkw-prop-actions"><button type="button" class="pv2-btn primary" onclick="state.staffMenuPage = 'emails'; save(); renderStaff();">Ouvrir dans Emails</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button></div>`
+        : `<div class="mkw-prop-actions">
             <button type="button" class="pv2-btn primary" onclick="mkBrCopy('${escJs(p.key)}')" ${generating || !(entry && entry.text) ? 'disabled' : ''}>${ci('copy')}Copier le post</button>
-            <button type="button" class="br-link" onclick="mkBrAngle('${escJs(p.key)}')">Autre angle</button>
-            <button type="button" class="br-link br-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button>
+            <button type="button" class="mkw-link" onclick="mkBrAngle('${escJs(p.key)}')">Autre angle</button>
+            <button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button>
           </div>
-          ${angleOpen ? `<div class="br-angle"><input id="brAngle-${esc(p.key)}" class="br-angle-input" placeholder="précise l'angle (optionnel) : « spécial ados », « plus court »…"><button type="button" class="br-link br-link-accent" onclick="mkBrRegen('${escJs(p.key)}')" ${mkBrief.busy === `regen:${p.key}` ? 'disabled' : ''}>${mkBrief.busy === `regen:${p.key}` ? 'je réécris…' : 'Refaire'}</button></div>` : ''}
-          ${askPublished ? `<div class="br-published-ask" role="status">Publié ? <button type="button" class="br-link br-link-accent" onclick="mkBrPublished('${escJs(p.key)}', true)">Oui</button><button type="button" class="br-link" onclick="mkBrPublished('${escJs(p.key)}', false)">Pas encore</button></div>` : ''}`;
-      body = `${netTabs}${paper}${under}${footer}<div class="br-cycle" aria-hidden="true"><span class="on"></span><span></span><span></span></div>`;
+          ${angleOpen ? `<div class="mkw-angle"><input id="brAngle-${esc(p.key)}" class="mkw-input" placeholder="précise l'angle (optionnel) : « spécial ados », « plus court »…"><button type="button" class="mkw-link" onclick="mkBrRegen('${escJs(p.key)}')" ${mkBrief.busy === `regen:${p.key}` ? 'disabled' : ''}>${mkBrief.busy === `regen:${p.key}` ? 'je réécris…' : 'Refaire'}</button></div>` : ''}
+          ${askPublished ? `<div class="mkw-published-ask" role="status">Publié ? <button type="button" class="mkw-link" onclick="mkBrPublished('${escJs(p.key)}', true)">Oui</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrPublished('${escJs(p.key)}', false)">Pas encore</button></div>` : ''}`;
+      body = `${netTabs}${paper}${under}${footer}`;
     }
-    return `<article class="br-card tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
-      <p class="br-card-why">${brProse(p.whyShort || p.why)}</p>
-      <p class="br-card-meta">${esc(meta)}${open ? '' : `, <button type="button" class="br-link" onclick="mkBrOpenCard('${escJs(p.key)}')">${verb}</button>`}</p>
+    return `<article class="mkw-prop tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
+      <p class="mkw-prop-why">${brProse(p.whyShort || p.why)}</p>
+      <p class="mkw-prop-meta">${esc(meta)}${open ? '' : `, <button type="button" class="mkw-link" onclick="mkBrOpenCard('${escJs(p.key)}')">${verb}</button>`}</p>
       ${body}
     </article>`;
   }
 
-  function brZ3() {
+  function mkwQueue() {
     const b = mkBrief.data;
-    if (!b) return `<section class="br-z"><h2 class="br-zt">Prêt pour toi</h2><div class="br-skel br-skel-card"></div><div class="br-skel br-skel-card"></div></section>`;
+    if (!b) return `<section class="mkw-block"><h2 class="mkw-bt">Prêt pour toi</h2><div class="mkw-skel mkw-skel-card"></div><div class="mkw-skel mkw-skel-card"></div></section>`;
     const all = brVisiblePropositions();
     const visible = mkBrief.moreOpen ? all : all.slice(0, 3);
     const rest = all.length - visible.length;
@@ -2445,16 +2434,26 @@
       else if (day.precipMm !== null && day.precipMm >= 10) chips.push({ label: `Profiter de la pluie de ${brFrDay(day.date).split(' ')[0]}`, text: `un post sur la pluie annoncée ${brFrDay(day.date)}` });
     }
     chips.push({ label: 'Idée libre', text: '' });
-    return `<section class="br-z">
-      <h2 class="br-zt">Prêt pour toi</h2>
-      ${creating ? '<article class="br-card br-card-skel"><div class="br-skel"></div><div class="br-skel br-skel-short"></div></article>' : ''}
-      ${visible.length || creating ? visible.map(brCard).join('') : `<p class="br-quiet">Rien d'urgent aujourd'hui. Je surveille la météo et tes réservations, je te préviens dès que je vois un creux.</p>`}
-      ${rest > 0 ? `<button type="button" class="br-link" onclick="mkBrMore()">+ ${rest} autre${rest > 1 ? 's' : ''} pour plus tard</button>` : ''}
-      <div class="br-ask">
-        <input id="brAskInput" class="br-ask-input" placeholder="Demande-moi quelque chose : « un post pour la soirée fluo de samedi »" onfocus="mkBrAskFocus(true)">
-        <button type="button" class="pv2-btn primary" onclick="mkBrAsk()" ${creating ? 'disabled' : ''}>${creating ? 'je prépare…' : 'Demander'}</button>
+    // La barre de demande : le focus ne re-rend JAMAIS la page (audit 4.1 :
+    // l'ancien onfocus déclenchait un re-render innerHTML qui détruisait
+    // l'input focalisé et effaçait le texte en boucle). Les chips vivent dans
+    // le DOM en permanence et s'affichent par une classe, sans re-render ; le
+    // texte tapé est conservé dans l'état entre deux renders.
+    return `<section class="mkw-block">
+      <h2 class="mkw-bt">Prêt pour toi</h2>
+      ${creating ? '<article class="mkw-prop mkw-prop-skel"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></article>' : ''}
+      ${visible.length || creating ? visible.map(mkwPropCard).join('') : `<p class="mkw-quiet">Rien d'urgent aujourd'hui. Je surveille la météo et tes réservations, je te préviens dès que je vois un creux.</p>`}
+      ${rest > 0 ? `<button type="button" class="mkw-link" onclick="mkBrMore()">+ ${rest} autre${rest > 1 ? 's' : ''} pour plus tard</button>` : ''}
+      <div class="mkw-ask ${mkBrief.askFocus ? 'is-focused' : ''}" id="mkwAsk">
+        <div class="mkw-ask-bar">
+          <input id="brAskInput" class="mkw-input mkw-ask-input" value="${esc(mkBrief.askDraft || '')}"
+            placeholder="Demande-moi quelque chose : « un post pour la soirée fluo de samedi »"
+            aria-label="Demander une proposition à l’employé marketing"
+            oninput="mkBrief.askDraft = this.value" onfocus="mkBrAskFocus(true)">
+          <button type="button" class="pv2-btn primary" onclick="mkBrAsk()" ${creating ? 'disabled' : ''}>${creating ? 'je prépare…' : 'Demander'}</button>
+        </div>
+        <div class="mkw-chips" aria-hidden="${!mkBrief.askFocus}">${chips.map((chip) => `<button type="button" class="mkw-chip" tabindex="${mkBrief.askFocus ? 0 : -1}" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>
       </div>
-      ${mkBrief.askFocus ? `<div class="br-chips">${chips.map((chip) => `<button type="button" class="br-chip" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>` : ''}
     </section>`;
   }
 
@@ -2607,18 +2606,28 @@
     }
   };
 
+  // Le focus n'appelle JAMAIS le render (audit 4.1 : la boucle focus →
+  // innerHTML → input détruit → refocus rendait la barre inutilisable). On
+  // bascule une classe sur le DOM existant, c'est tout.
   window.mkBrAskFocus = function (on) {
     mkBrief.askFocus = Boolean(on);
-    renderStaffCampaignsPage();
-    if (on) setTimeout(() => { const el = document.getElementById('brAskInput'); if (el) el.focus(); }, 30);
+    const wrap = document.getElementById('mkwAsk');
+    if (!wrap) return;
+    wrap.classList.toggle('is-focused', mkBrief.askFocus);
+    const chips = wrap.querySelector('.mkw-chips');
+    if (chips) {
+      chips.setAttribute('aria-hidden', String(!mkBrief.askFocus));
+      chips.querySelectorAll('.mkw-chip').forEach((chip) => chip.setAttribute('tabindex', mkBrief.askFocus ? '0' : '-1'));
+    }
   };
   window.mkBrChip = function (text) {
+    mkBrief.askDraft = text;
     const input = document.getElementById('brAskInput');
     if (input) { input.value = text; input.focus(); }
   };
   window.mkBrAsk = async function () {
     if (mkBrief.busy) return;
-    const brief = (document.getElementById('brAskInput') || {}).value || '';
+    const brief = (document.getElementById('brAskInput') || {}).value || mkBrief.askDraft || '';
     if (!brief.trim()) { toast('Dis-moi ce que tu veux, même en trois mots.'); return; }
     mkBrief.busy = 'ask';
     mkBrief.askFocus = false;
@@ -2628,9 +2637,11 @@
         method: 'POST',
         body: JSON.stringify({ action: 'propositionCreate', brief, centerId: state.adminCenterId || 'libramont' }),
       });
+      mkBrief.askDraft = '';
       await loadMarketingBrief(true);
       toast('C\'est prêt : première carte de la file.');
     } catch (error) {
+      // Le texte tapé reste dans askDraft : l'échec ne coûte pas la saisie.
       toast(error.message || 'Je n\'ai pas réussi : réessaie.');
     } finally {
       mkBrief.busy = '';
@@ -2638,40 +2649,91 @@
     }
   };
 
-  /* ── Le studio : un pack de contenu complet par réseau, à la demande ── */
+  /* ── Le Studio : l'atelier. Un pack complet par réseau, et la matière qui
+     se fabrique est MONTRÉE (audit 4.4) : le serveur persiste chaque
+     itération (quality.iterations) et le pack du jour (studioPacks) : on
+     affiche les deux au lieu de les jeter. ── */
   const BR_STUDIO_CHANNELS = [{ key: 'facebook', label: 'Facebook' }, { key: 'instagram', label: 'Instagram' }, { key: 'tiktok', label: 'TikTok' }, { key: 'linkedin', label: 'LinkedIn' }];
 
-  function brStudio() {
+  // Le pack du jour se recharge depuis le serveur : régénérer un pack déjà en
+  // base ne repaie plus un appel IA après un simple reload (audit 4.4).
+  async function loadStudioPacks(force = false) {
+    if (mkBrief.studioPacksLoaded && !force) return;
+    mkBrief.studioPacksLoaded = true;
+    try {
+      const payload = await apiRequest(`/api/ops?action=studioPacks&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
+      const packs = payload.packs || {};
+      for (const key of Object.keys(packs)) {
+        if (packs[key] && !mkBrief.studioPacks[key]) mkBrief.studioPacks[key] = packs[key];
+      }
+      scheduleCampaignsRender();
+    } catch (error) { /* pas de pack en base : l'atelier reste vide, honnête */ }
+  }
+
+  // L'atelier : la timeline REELLE des itérations (v1 notée X, corrections,
+  // v2 notée Y). La matière existe côté serveur, on l'affiche, on n'invente rien.
+  function mkwStudioCraft(pack) {
+    const q = pack.quality || {};
+    const iterations = q.iterations || [];
+    if (iterations.length < 1) return '';
+    const label = (mode) => (mode === 'rules' ? 'filet (modèle maison)' : `écriture IA v${String(mode).replace('ai_', '')}`);
+    // L'itération RETENUE : celle dont la note est la note finale, côté auteur
+    // final (generationMode). Tout vient du serveur, rien n'est déduit à vide.
+    const kept = (it) => (pack.generationMode === 'ai'
+      ? String(it.mode).indexOf('ai') === 0 && Number(it.score) === Number(q.score)
+      : it.mode === 'rules');
+    const rows = iterations.map((it) => `<span class="mkw-craft-step ${kept(it) ? 'is-kept' : ''}">
+      <em>${esc(label(it.mode))}</em><b>${Number(it.score) || 0}</b>${it.blocked ? '<i>bloquée</i>' : ''}
+    </span>`).join('<span class="mkw-craft-arrow" aria-hidden="true">&rsaquo;</span>');
+    return `<div class="mkw-craft"><span class="mkw-craft-label">fabrication</span>${rows}</div>`;
+  }
+
+  function mkwStudio() {
+    if (!mkBrief.studioPacksLoaded) setTimeout(() => loadStudioPacks(), 0);
     const pack = mkBrief.studioPacks[mkBrief.studioChannel] || null;
-    const tabs = BR_STUDIO_CHANNELS.map((c) => `<button type="button" class="br-net ${mkBrief.studioChannel === c.key ? 'active' : ''}" onclick="mkBrStudioChannel('${escJs(c.key)}')">${c.label}</button>`).join('');
+    const busy = mkBrief.studioBusy;
+    const tabs = BR_STUDIO_CHANNELS.map((c) => `<button type="button" role="tab" aria-selected="${mkBrief.studioChannel === c.key}" class="mkw-net ${mkBrief.studioChannel === c.key ? 'active' : ''}" onclick="mkBrStudioChannel('${escJs(c.key)}')" ${busy ? 'disabled' : ''}>${c.label}</button>`).join('');
     const block = (label, field, text, opts) => {
       if (!text) return '';
       const o = opts || {};
-      return `<div class="br-st-block"><div class="br-st-head"><span class="br-st-label">${esc(label)}</span>${o.note ? `<small>${esc(o.note)}</small>` : ''}<button type="button" class="br-link br-st-copy" onclick="mkBrStudioCopy('${escJs(field)}')">Copier</button></div><div class="br-paper ${o.mono ? 'br-st-mono' : ''}">${esc(text)}</div></div>`;
+      return `<div class="mkw-st-block"><div class="mkw-st-head"><span class="mkw-st-label">${esc(label)}</span>${o.note ? `<small>${esc(o.note)}</small>` : ''}<button type="button" class="mkw-link mkw-st-copy" onclick="mkBrStudioCopy('${escJs(field)}')">Copier</button></div><div class="mkw-paper ${o.mono ? 'mkw-st-mono' : ''}">${esc(text)}</div></div>`;
     };
     let body;
-    if (mkBrief.studioBusy) {
-      body = '<div class="br-paper br-paper-shimmer"><p class="br-quiet">j’écris tout le pack : version longue, courte, story, idée photo…</p></div>';
+    if (busy) {
+      // Attente honnête : UNE phrase vraie (un appel serveur unique, 10-20 s),
+      // zéro étape inventée : le vrai déroulé s'affiche APRÈS, depuis les
+      // itérations que le serveur a réellement faites.
+      body = '<div class="mkw-paper mkw-shimmer"><p class="mkw-quiet">j’écris le pack complet, ça prend 10 à 20 secondes…</p></div>';
     } else if (!pack) {
-      body = '<p class="br-quiet">Choisis un réseau et je te prépare un pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags, écrit sur l’angle du jour.</p>';
+      body = `<div class="empty-state">
+        <div class="empty-state-title">L’atelier est prêt</div>
+        <div class="empty-state-text">Choisis un réseau et je fabrique le pack complet : version longue, version courte, story, idée photo, prompt d’image IA et hashtags, écrits sur l’angle du jour.</div>
+      </div>`;
     } else {
       const q = pack.quality || {};
-      body = `${q.score ? `<p class="br-st-badge">${q.status === 'ready' ? 'Prêt à publier' : 'À relire'} · angle : ${esc(pack.theme || '')}</p>` : ''}
+      const mode = pack.generationMode === 'ai' ? 'écrit par l’IA' : 'modèle maison (filet)';
+      const badge = q.score
+        ? `<p class="mkw-st-badge ${q.status === 'ready' ? 'is-ready' : 'is-review'}">${q.status === 'ready' ? 'Prêt à publier' : 'À relire avant de publier'} · note ${Number(q.score)}/100 · ${esc(mode)}${pack.theme ? ` · angle : ${esc(pack.theme)}` : ''}</p>`
+        : '';
+      body = `${badge}
+        ${mkwStudioCraft(pack)}
         ${block('Version longue', 'long', pack.long)}
         ${block('Version courte', 'short', pack.short)}
         ${block(mkBrief.studioChannel === 'linkedin' ? 'Variante' : 'Story', 'story', pack.story)}
         ${block('Hashtags', 'hashtags', (pack.hashtags || []).join(' '))}
         ${block('Idée photo (à shooter sur place)', 'photoIdea', pack.photoIdea)}
         ${block('Prompt d’image IA', 'aiImagePrompt', pack.aiImagePrompt, { mono: true, note: 'en anglais, pour ton générateur d’images' })}
-        <p class="br-method">Meilleur moment : ${esc(pack.bestTime || '-')}. Chaque version est notée par le contrôle qualité du centre, je réécris jusqu’à ce que ça passe.</p>`;
+        <p class="mkw-method">Meilleur moment : ${esc(pack.bestTime || '-')}. Chaque version est notée par le contrôle qualité du centre ; la fabrication ci-dessus montre ce qui s’est réellement passé.</p>`;
     }
-    return `<section class="br-z">
-      <h2 class="br-zt">Le studio : écris pour chaque réseau</h2>
-      <div class="br-st-bar">
-        <div class="br-nets">${tabs}</div>
-        <div class="br-st-gen">
-          <input id="brStudioBrief" class="br-ask-input" placeholder="Angle (optionnel) : « anniversaires ados », « soirée fluo »…">
-          <button type="button" class="pv2-btn primary" onclick="mkBrStudioGen()" ${mkBrief.studioBusy ? 'disabled' : ''}>${mkBrief.studioBusy ? 'j’écris…' : (pack ? 'Régénérer' : 'Générer le pack')}</button>
+    return `<section class="mkw-card">
+      <div class="mkw-block-head"><h3>L’atelier : écris pour chaque réseau</h3><span class="mkw-block-sub">un pack complet par réseau, sur l’angle du jour</span></div>
+      <div class="mkw-st-bar">
+        <div class="mkw-nets" role="tablist">${tabs}</div>
+        <div class="mkw-st-gen">
+          <input id="brStudioBrief" class="mkw-input" value="${esc(mkBrief.studioBrief || '')}"
+            placeholder="Angle (optionnel) : « anniversaires ados », « soirée fluo »…"
+            aria-label="Angle du pack à écrire" oninput="mkBrief.studioBrief = this.value">
+          <button type="button" class="pv2-btn primary" onclick="mkBrStudioGen()" ${busy ? 'disabled' : ''}>${busy ? 'j’écris…' : (pack ? 'Régénérer' : 'Générer le pack')}</button>
         </div>
       </div>
       ${body}
@@ -2679,20 +2741,27 @@
   }
 
   window.mkBrStudioChannel = function (key) {
+    // Verrou pendant la génération (audit 4.4) : changer de canal en cours de
+    // route rangeait le résultat sous le mauvais onglet.
+    if (mkBrief.studioBusy) return;
     mkBrief.studioChannel = BR_STUDIO_CHANNELS.some((c) => c.key === key) ? key : 'facebook';
     renderStaffCampaignsPage();
   };
   window.mkBrStudioGen = async function () {
     if (mkBrief.studioBusy) return;
-    const brief = (document.getElementById('brStudioBrief') || {}).value || '';
+    const brief = (document.getElementById('brStudioBrief') || {}).value || mkBrief.studioBrief || '';
+    // Le canal est CAPTURÉ au clic : le résultat est rangé sous le canal
+    // demandé, quoi qu'il arrive pendant l'attente (audit 4.4).
+    const channel = mkBrief.studioChannel;
+    mkBrief.studioBrief = brief;
     mkBrief.studioBusy = true;
     renderStaffCampaignsPage();
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'studioGenerate', centerId: state.adminCenterId || 'libramont', platform: mkBrief.studioChannel, brief }),
+        body: JSON.stringify({ action: 'studioGenerate', centerId: state.adminCenterId || 'libramont', platform: channel, brief }),
       });
-      mkBrief.studioPacks = { ...mkBrief.studioPacks, [mkBrief.studioChannel]: payload.pack };
+      mkBrief.studioPacks = { ...mkBrief.studioPacks, [channel]: payload.pack };
     } catch (error) {
       toast(error.message || 'Je n’ai pas réussi à écrire le pack.');
     } finally {
@@ -2708,23 +2777,23 @@
     try { await navigator.clipboard.writeText(text); toast('Copié.'); } catch (error) { toast('Copie impossible.'); }
   };
 
-  /* ── Z4 · Ce que ça a donné (les reçus) ── */
+  /* ── Résultats · les reçus (mesures J+14 réelles) ── */
 
-  function brZ4() {
+  function mkwReceipts() {
     const b = mkBrief.data;
-    if (!b) return `<section class="br-z"><h2 class="br-zt">Ce que ça a donné</h2><div class="br-skel"></div><div class="br-skel"></div></section>`;
+    if (!b) return `<section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel"></div></section>`;
     const receipts = b.receipts || [];
     const visible = mkBrief.receiptsAll ? receipts : receipts.slice(0, 5);
-    const rows = visible.map((receipt) => `<div class="br-ticket br-receipt tone-${esc(receipt.tone)}">
-      <span class="br-ticket-label">${esc(brFrDates(receipt.label))}</span>
-      <span class="br-ticket-fill"></span>
-      <span class="br-ticket-val">${esc(receipt.result)}</span>
-      ${receipt.redoable ? `<button type="button" class="br-link" onclick="mkBrRedo(${Number(receipt.id)})">On le refait ?</button>` : ''}
+    const rows = visible.map((receipt) => `<div class="mkw-receipt tone-${esc(receipt.tone)}">
+      <span class="mkw-receipt-label">${esc(brFrDates(receipt.label))}</span>
+      <span class="mkw-receipt-fill"></span>
+      <span class="mkw-receipt-val">${esc(receipt.result)}</span>
+      ${receipt.redoable ? `<button type="button" class="mkw-link" onclick="mkBrRedo(${Number(receipt.id)})">On le refait ?</button>` : ''}
     </div>`).join('');
-    return `<section class="br-z">
-      <h2 class="br-zt">Ce que ça a donné</h2>
-      ${rows || '<p class="br-quiet">Je mesure chaque publication pendant 14 jours : les premiers verdicts arrivent ici.</p>'}
-      ${receipts.length > 5 && !mkBrief.receiptsAll ? `<button type="button" class="br-link" onclick="mkBrReceiptsAll()">Tout voir (${receipts.length})</button>` : ''}
+    return `<section class="mkw-card">
+      <div class="mkw-block-head"><h3>Ce que ça a donné</h3><span class="mkw-block-sub">chaque publication mesurée pendant 14 jours</span></div>
+      ${rows || '<p class="mkw-quiet">Je mesure chaque publication pendant 14 jours : les premiers verdicts arrivent ici.</p>'}
+      ${receipts.length > 5 && !mkBrief.receiptsAll ? `<button type="button" class="mkw-link" onclick="mkBrReceiptsAll()">Tout voir (${receipts.length})</button>` : ''}
     </section>`;
   }
 
@@ -2739,7 +2808,9 @@
         body: JSON.stringify({ action: 'insightRedo', id: Number(id), centerId: state.adminCenterId || 'libramont' }),
       });
       await loadMarketingBrief(true);
-      toast('Je l\'ai remis dans la file : première position.');
+      // Le clone porte due_date = aujourd'hui (serveur) : il est dans la file
+      // du jour. On ne promet pas une position qu'on ne controle pas.
+      toast('Je l\'ai remis dans la file d\'aujourd\'hui.');
     } catch (error) {
       toast(error.message || 'Impossible de le relancer.');
     }
@@ -2747,16 +2818,20 @@
 
   /* ── Footer · Ce que je surveille (la veille) ── */
 
-  const mkComp = { data: null, loading: false, busy: false, postBusy: false, postResult: null };
+  const mkComp = { data: null, loading: false, busy: false, error: '', postBusy: false, postResult: null, postDraft: '' };
   window.mkComp = mkComp;
 
   // LE PLAN (Phase 4). Chargé à la demande : c'est un onglet, pas la page
   // d'accueil, donc on ne paie rien tant que le gérant ne l'ouvre pas.
-  const mkPlan = { data: null, loading: false, busy: false, error: '' };
+  const mkPlan = { data: null, loaded: false, loading: false, busy: false, error: '', jobId: null, watcher: null, done: {} };
   window.mkPlan = mkPlan;
 
   async function loadMarketingPlan(force = false) {
-    if (mkPlan.loading || (mkPlan.data && !force)) return;
+    if (mkPlan.loading || (mkPlan.loaded && !force)) return;
+    // `loaded` = une tentative a eu lieu, quel que soit son resultat. Sans ce
+    // flag, un serveur qui rend un plan vide faisait boucler render -> load ->
+    // render a l'infini (l'animation d'entree repartait a chaque frame et la
+    // surface restait figee a opacite 0 : vu au harnais, pas en theorie).
     mkPlan.loading = true;
     mkPlan.error = '';
     try {
@@ -2768,25 +2843,55 @@
     } catch (error) {
       mkPlan.error = error.message || 'Chargement impossible.';
     } finally {
+      mkPlan.loaded = true;
       mkPlan.loading = false;
       renderStaffCampaignsPage();
     }
   }
 
+  // Construction LIVE (RUN B) : le serveur enfile le job, répond tout de
+  // suite avec son id, et le composant partagé (assets/ops-progress.js)
+  // affiche chaque étape que le Stratège franchit RÉELLEMENT : « je pose le
+  // calendrier », « je fais rédiger le modèle », « je vérifie qu'il n'a rien
+  // inventé »… Zéro étape inventée : c'est le contraire du chargement Monty.
   window.mkPlanBuild = async function () {
     if (mkPlan.busy) return;
     mkPlan.busy = true;
+    mkPlan.jobId = null;
     renderStaffCampaignsPage();
+    const centerId = state.adminCenterId || 'libramont';
+    const finish = () => {
+      if (mkPlan.watcher) { try { mkPlan.watcher.stop(); } catch (e) { /* déjà arrêté */ } mkPlan.watcher = null; }
+      mkPlan.busy = false;
+      mkPlan.jobId = null;
+      loadMarketingPlan(true);
+    };
     try {
       const result = await apiRequest('/api/ops', {
         method: 'POST',
-        body: JSON.stringify({ action: 'marketingPlanBuild', centerId: state.adminCenterId || 'libramont' }),
+        body: JSON.stringify({ action: 'marketingPlanBuild', centerId, live: true }),
       });
+      if (result && result.live && result.jobId && window.PinlaneOpsProgress) {
+        mkPlan.jobId = result.jobId;
+        renderStaffCampaignsPage();
+        const mount = document.getElementById('mkPlanProgress');
+        mkPlan.watcher = window.PinlaneOpsProgress.watchJobProgress({
+          jobId: result.jobId,
+          centerId,
+          mount,
+          onDone: () => { toast('Plan reconstruit.'); finish(); },
+          onFail: () => { toast('La construction a échoué : réessaie.'); finish(); },
+        });
+        return;
+      }
+      // Repli (vieux serveur pendant la fenêtre de déploiement) : réponse
+      // synchrone classique, le plan est déjà dans la réponse.
       mkPlan.data = result && result.plan ? result.plan : mkPlan.data;
       toast('Plan reconstruit.');
+      mkPlan.busy = false;
+      renderStaffCampaignsPage();
     } catch (error) {
       toast(error.message || 'Je n’ai pas réussi à construire le plan : réessaie.');
-    } finally {
       mkPlan.busy = false;
       renderStaffCampaignsPage();
     }
@@ -2794,41 +2899,22 @@
   async function loadCompetitors(force = false) {
     if (mkComp.loading || (mkComp.data && !force)) return;
     mkComp.loading = true;
+    mkComp.error = '';
     try {
       const payload = await apiRequest(`/api/ops?action=competitors&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       mkComp.data = payload.competitors || [];
-    } catch (error) { mkComp.data = []; } finally {
+    } catch (error) {
+      // Audit §2 : l'erreur était avalée (data = []) et COLLANTE : un échec
+      // réseau s'affichait « aucun concurrent » pour toute la session. Une
+      // erreur réseau se dit, et data reste null pour permettre le retry.
+      mkComp.data = null;
+      mkComp.error = error.message || 'Je n\'arrive pas à charger la veille.';
+    } finally {
       mkComp.loading = false;
       scheduleCampaignsRender();
     }
   }
   window.loadCompetitors = loadCompetitors;
-
-  function brFooter() {
-    const b = mkBrief.data;
-    const count = b ? b.veille.count : 0;
-    const hasNews = b && b.veille.changed.length > 0;
-    const rows = (mkComp.data || []).map((competitor) => {
-      let host = '';
-      try { host = competitor.websiteUrl ? new URL(competitor.websiteUrl).hostname.replace(/^www\./, '') : ''; } catch (error) { host = ''; }
-      return `<div class="br-veille-row">
-        <span class="br-veille-name">${esc(competitor.name)}${host ? ` <em>${esc(host)}</em>` : ''}</span>
-        <span class="br-veille-status">${competitor.lastCheckedAt ? `inspecté le ${esc(String(competitor.lastCheckedAt).slice(0, 10)).slice(8, 10)}/${esc(String(competitor.lastCheckedAt).slice(5, 7))}${competitor.lastDiff ? `, ${esc(competitor.lastDiff)}` : ''}` : 'première inspection cette nuit'}</span>
-        <button type="button" class="br-link br-link-faint" onclick="mkCompDelete(${Number(competitor.id)})">Retirer</button>
-      </div>`;
-    }).join('');
-    return `<details class="br-veille" data-mk-open="veille" ${hasNews ? 'open' : ''} ontoggle="if (this.open && typeof loadCompetitors === 'function') loadCompetitors()">
-      <summary>Je surveille ${count} concurrent${count > 1 ? 's' : ''}${hasNews ? '<span class="br-veille-dot" aria-hidden="true"></span>' : ''}</summary>
-      <div class="br-veille-body">
-        ${rows || (mkComp.loading ? '<p class="br-quiet">un instant…</p>' : '<p class="br-quiet">Ajoute les centres qui te prennent des clients, j\'inspecte leurs sites chaque nuit.</p>')}
-        <div class="br-veille-add">
-          <input id="brCompName" class="br-ask-input" placeholder="Nom (ex. Bowling de Bastogne)" maxlength="80">
-          <input id="brCompSite" class="br-ask-input" placeholder="Site : https://…" maxlength="300">
-          <button type="button" class="br-link br-link-accent" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>Suivre</button>
-        </div>
-      </div>
-    </details>`;
-  }
 
   window.mkCompSave = async function () {
     if (mkComp.busy) return;
@@ -3207,12 +3293,14 @@
      l'analyse causale profonde arrive en Phase 1 backend).
      ══════════════════════════════════════════════════════════════════════ */
 
-  // « Le plan » se place juste après « Aujourd'hui » : c'est la lecture
-  // naturelle du gérant, ce que je fais maintenant puis ce qui arrive.
+  // 5 onglets : une question du gérant = UNE maison (AUDIT-MARKETING.md §6).
+  // « Ce qui marche » a disparu comme onglet : à 18 jours de données et 0
+  // pattern, il répondait « je ne sais pas encore » à chaque visite ; ses
+  // contenus VIVANTS (verdicts causaux, mémoire par contexte) vivent dans
+  // « Résultats », la maison unique de la preuve, aux côtés des reçus J+14.
   const MKW_TABS = [
     { key: 'today', label: 'Aujourd’hui' },
     { key: 'plan', label: 'Le plan' },
-    { key: 'works', label: 'Ce qui marche' },
     { key: 'studio', label: 'Studio' },
     { key: 'rivals', label: 'Concurrents' },
     { key: 'results', label: 'Résultats' },
@@ -3235,8 +3323,11 @@
 
   function mkwHeader() {
     const b = mkBrief.data;
+    // Honnêteté de fraîcheur (audit 4.1) : plus de « passé à HH:MM » qui
+    // affichait l'heure du fetch HTTP comme une tournée planifiée. Le brief
+    // est recalculé à l'ouverture : on dit la date, pas une heure de passage.
     const live = b
-      ? `passé ${new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long' })} à ${new Date(b.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`
+      ? `brief du ${new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' })}`
       : 'je prépare ton brief…';
     return `<header class="mkw-head">
       <div class="mkw-head-id">
@@ -3256,8 +3347,10 @@
     </nav>`;
   }
 
-  // ── Le héros : € généré (l'arme). Grand, mono, confiant. ──
-  function mkwHero(context) {
+  // ── Résultats · le héros euros : SEUL exemplaire (audit §6.2). Libellés
+  // exacts : des MESSAGES (relances, anniversaires, campagnes), pas des
+  // publications ; des réservations liées, pas des « venues » ; reçu, pas vu. ──
+  function mkwHero() {
     const b = mkBrief.data;
     if (!b) return `<section class="mkw-hero"><div class="mkw-skel mkw-skel-hero"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
     const p = b.paie;
@@ -3265,22 +3358,22 @@
     let fig;
     if (p.young) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">-</span><span class="mkw-hero-cap">Encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.</span></div>`;
+    } else if (p.quietWindow) {
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">0</span><span class="mkw-hero-cap">message envoyé sur les <strong>${p.days} derniers jours</strong>. Tes mesures passées restent plus bas.</span></div>`;
     } else if (p.euros > 0) {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">générés par tes publications · <strong>${p.days} derniers jours</strong></span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">de réservations liées à tes messages · <strong>${p.days} derniers jours</strong></span></div>`;
     } else {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune venue ne leur est encore liée sur ${p.days} j</span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune réservation ne leur est encore liée sur ${p.days} j</span></div>`;
     }
-    const chips = !p.young ? `<div class="mkw-hero-chips">
-      <span class="mkw-hchip"><b>${p.venues}</b> venues liées</span>
+    const chips = !p.young && !p.quietWindow ? `<div class="mkw-hero-chips">
+      <span class="mkw-hchip"><b>${p.venues}</b> réservations liées</span>
       <span class="mkw-hchip-dot"></span>
-      <span class="mkw-hchip"><b>${p.sent}</b> messages</span>
-      <span class="mkw-hchip-dot"></span>
-      <span class="mkw-hchip"><b>${p.reviewClicks}</b> clics avis Google</span>
+      <span class="mkw-hchip"><b>${p.sent}</b> messages envoyés</span>
     </div>` : '';
     const detail = mkBrief.payOpen && !p.young ? mkwSources(p) : '';
     return `<section class="mkw-hero">
       <div class="mkw-hero-top">
-        <span class="mkw-eyebrow">${context === 'results' ? 'Ce que le marketing a rapporté' : 'La paie'}</span>
+        <span class="mkw-eyebrow">Ce que le marketing a rapporté</span>
         <div class="mkw-seg">${periods}</div>
       </div>
       ${fig}
@@ -3295,89 +3388,103 @@
       const share = p.euros > 0 ? Math.round((s.revenue / p.euros) * 100) : 0;
       return `<div class="mkw-src"><span class="mkw-src-name">${esc(s.label)}</span><span class="mkw-src-bar"><span style="width:${Math.max(2, share)}%"></span></span><span class="mkw-src-val">${money(s.revenue)}<em>${share}%</em></span></div>`;
     }).join('');
+    // Les clics avis Google viennent des emails post-visite (transactionnels,
+    // hors sources marketing) : ils s'affichent avec leur vraie origine, pas
+    // en chip du héros comme s'ils étaient du ROI de publication (audit 4.6).
     return `<div class="mkw-src-panel">
-      ${rows || '<p class="mkw-quiet">Pas encore de venue attribuée sur la période.</p>'}
-      <p class="mkw-method">Une venue compte pour le dernier message qu’elle a vu dans les 60 jours : c’est un lien, pas une preuve absolue.</p>
+      ${rows || '<p class="mkw-quiet">Pas encore de réservation attribuée sur la période.</p>'}
+      ${p.reviewClicks ? `<p class="mkw-src-extra"><b>${p.reviewClicks}</b> clics vers ta fiche Google (emails de suivi post-visite, hors chiffre ci-dessus)</p>` : ''}
+      <p class="mkw-method">Une réservation compte pour le dernier message que le client a reçu dans les 60 jours (les réservations annulées sont exclues) : c’est un lien, pas une preuve absolue.</p>
     </div>`;
   }
 
-  // ── Le mémo signé du matin ──
-  function mkwBriefMemo() {
-    const b = mkBrief.data;
-    if (!b) return `<section class="mkw-card mkw-memo"><div class="mkw-skel"></div><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
-    return `<section class="mkw-card mkw-memo">
-      ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
-      <p class="mkw-memo-text">${brProse(b.brief.text)}</p>
-      <p class="mkw-sign">${mkwAgentMark()} ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
-    </section>`;
-  }
-
-  // ── « Ce qui marche » : l'analyste causal + la mémoire par contexte ──
-  function mkwPulseStrip() {
-    const b = mkBrief.data;
-    if (!b || !b.pulse) return '';
-    const pl = b.pulse;
-    const tile = (value, label, foot) => `<div class="mkw-kpi"><span class="mkw-kpi-val">${value}</span><span class="mkw-kpi-label">${esc(label)}</span>${foot ? `<span class="mkw-kpi-foot">${esc(foot)}</span>` : ''}</div>`;
-    return `<div class="mkw-pulse">
-      ${tile(money(pl.revenue30), 'chiffre d’affaires', '30 derniers jours')}
-      ${tile(`${pl.visitors30}`, 'visiteurs', '30 derniers jours')}
-      ${tile(money(pl.avgBasket), 'panier moyen', 'par visiteur')}
-      ${tile(`${pl.upcomingPax}`, 'déjà attendus', `14 j à venir${pl.reservedRevenue ? ` · ${money(pl.reservedRevenue)}` : ''}`)}
-    </div>`;
-  }
-
-  const MKW_CONF = { solide: { label: 'solide', tone: 'ok' }, signal: { label: 'signal', tone: 'mid' }, signal_faible: { label: 'signal faible', tone: 'mid' }, exploratoire: { label: 'à confirmer', tone: 'low' } };
+  // Vocabulaire de confiance : UNIQUEMENT les niveaux que le backend émet
+  // (exploratoire / signal / solide, lib/center-metrics.js).
+  const MKW_CONF = { solide: { label: 'solide', tone: 'ok' }, signal: { label: 'signal', tone: 'mid' }, exploratoire: { label: 'à confirmer', tone: 'low' } };
   function mkwConfBadge(conf) {
     const c = MKW_CONF[conf] || MKW_CONF.exploratoire;
     return `<span class="mkw-conf t-${c.tone}">${c.label}</span>`;
   }
 
-  function mkwFacts() {
+  // Format signé honnête : -12 % rend « -12% », jamais « +-12% » (audit 4.3).
+  function mkwSignedPct(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return `${n > 0 ? '+' : ''}${n}%`;
+  }
+
+  // ── Résultats · les verdicts causaux (ex « Ce qui marche », audit §6.1 :
+  // la même question à deux granularités vit dans UNE maison). ──
+  function mkwVerdictsBlock() {
     const b = mkBrief.data;
-    if (!b) return `<section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    if (!b) return '';
     const f = b.facts;
-    const young = !f || (f.dataDays || b.dataDays || 0) < 90;
-    // Verdicts « jour / mois / météo » : chacun avec le POURQUOI + la confiance.
     const verdicts = [];
     if (f && f.bestDay) {
-      verdicts.push(mkwVerdict('Ton meilleur jour', `${cap(f.bestDay.label)}`, `+${f.bestDay.vsMedianPct}% de monde qu’un jour normal · ${f.bestDay.avgVisitors} visiteurs en moyenne`, f.bestDay.confidence, 'calendar'));
+      const vs = f.bestDay.vsMedianPct === null ? '' : `${mkwSignedPct(f.bestDay.vsMedianPct)} de monde qu’un jour normal · `;
+      verdicts.push(mkwVerdict('Ton meilleur jour', `${cap(f.bestDay.label)}`, `${vs}${f.bestDay.avgVisitors} visiteurs en moyenne`, f.bestDay.confidence, 'calendar'));
     }
     if (f && f.worstDay) {
-      verdicts.push(mkwVerdict('Ton jour le plus creux', `${cap(f.worstDay.label)}`, `${Math.abs(f.worstDay.vsMedianPct)}% de monde en moins qu’un jour normal, la cible n°1 à remplir`, f.worstDay.confidence, 'target', 'danger'));
+      const vs = f.worstDay.vsMedianPct === null ? 'la cible n°1 à remplir' : `${Math.abs(f.worstDay.vsMedianPct)}% de monde en moins qu’un jour normal, la cible n°1 à remplir`;
+      verdicts.push(mkwVerdict('Ton jour le plus creux', `${cap(f.worstDay.label)}`, vs, f.worstDay.confidence, 'target', 'danger'));
     }
     if (f && f.bestMonth) {
       const why = (f.bestMonth.whyDrivers || []).join(', ');
-      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `${f.bestMonth.vsAvgPct >= 0 ? '+' : ''}${f.bestMonth.vsAvgPct}% vs la moyenne${why ? `, pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
+      verdicts.push(mkwVerdict('Ton meilleur mois', cap(f.bestMonth.label), `${mkwSignedPct(f.bestMonth.vsAvgPct)} vs la moyenne${why ? `, pourquoi : ${why}` : ''}`, f.bestMonth.confidence || 'signal', 'flame'));
     }
     if (f && f.weather) {
       const w = f.weather;
-      const rain = w.rainEffectPct >= 0 ? `+${w.rainEffectPct}%` : `${w.rainEffectPct}%`;
-      verdicts.push(mkwVerdict('Effet de la pluie', rain, `sur ta fréquentation, à jours comparables · ${w.sampleDays} j de recul`, w.confidence, 'droplet'));
+      verdicts.push(mkwVerdict('Effet de la pluie', mkwSignedPct(w.rainEffectPct) || '-', `sur ta fréquentation, à jours comparables · ${w.sampleDays} j de recul`, w.confidence, 'droplet'));
     }
     if (f && typeof f.holidayEffectPct === 'number') {
-      verdicts.push(mkwVerdict('Effet des vacances scolaires', `+${f.holidayEffectPct}%`, 'de fréquentation pendant les congés FWB', 'solide', 'star'));
+      // Signe honnête + la confiance CALCULÉE (plus jamais « solide » en dur).
+      verdicts.push(mkwVerdict('Effet des vacances scolaires', mkwSignedPct(f.holidayEffectPct), 'de fréquentation pendant les congés FWB', f.holidayEffectConfidence || 'exploratoire', 'star'));
     }
-    // La mémoire par contexte : ce qui convertit, appris sur tes propres mesures.
-    const patterns = (b.patterns || []).slice().sort((a, c) => (c.netDeltaPct || -999) - (a.netDeltaPct || -999));
-    const patternRows = patterns.map((p) => {
+    if (!verdicts.length) {
+      // Pas un onglet entier de promesses : UNE ligne honnête (audit §7).
+      return '<p class="mkw-note">J’apprends encore : mes verdicts « quel jour, quel mois, quelle météo » arrivent dès que j’ai 90 jours de recul.</p>';
+    }
+    return `<div class="mkw-card">
+      <div class="mkw-block-head"><h3>Ce que je sais de ton centre</h3><span class="mkw-block-sub">calculé sur tes propres journées, météo et congés déduits</span></div>
+      <div class="mkw-verdicts">${verdicts.join('')}</div>
+    </div>`;
+  }
+
+  // ── Résultats · la mémoire par contexte (patterns mesurés) ──
+  function mkwPatternsBlock() {
+    const b = mkBrief.data;
+    if (!b) return '';
+    // Tri honnête : 0 % est une mesure, pas une absence (audit 4.3 : le
+    // « || -999 » traitait un effet net nul comme un trou).
+    const patterns = (b.patterns || []).slice().sort((a, c) => {
+      const av = a.netDeltaPct === null || a.netDeltaPct === undefined ? -Infinity : a.netDeltaPct;
+      const cv = c.netDeltaPct === null || c.netDeltaPct === undefined ? -Infinity : c.netDeltaPct;
+      return cv - av;
+    });
+    if (!patterns.length) {
+      return `<div class="mkw-card mkw-patterns">
+        <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">appris sur tes propres mesures</span></div>
+        <p class="mkw-quiet">Publie et laisse-moi mesurer : les patterns gagnants s’afficheront ici, avec leur effet net.</p>
+      </div>`;
+    }
+    const rows = patterns.map((p) => {
       const d = p.netDeltaPct === null || p.netDeltaPct === undefined
         ? '<span class="mkw-pat-val is-pending">je mesure</span>'
-        : `<span class="mkw-pat-val ${p.netDeltaPct > 0 ? 'is-good' : 'is-flat'}">${p.netDeltaPct > 0 ? '+' : ''}${p.netDeltaPct}%</span>`;
+        : `<span class="mkw-pat-val ${p.netDeltaPct > 0 ? 'is-good' : 'is-flat'}">${mkwSignedPct(p.netDeltaPct)}</span>`;
+      // La base est AFFICHÉE par ligne : « effet net » ne couvre jamais un
+      // delta brut en silence (audit 4.3, champ basis du serveur).
+      const basis = p.basis === 'brut' ? '<span class="mkw-pat-basis">brut</span>' : '';
       return `<div class="mkw-pat">
-        <span class="mkw-pat-ctx">${esc(p.context)}</span>
+        <span class="mkw-pat-ctx">${esc(p.context)}${basis}</span>
         <span class="mkw-pat-meta">n=${p.n} · ${mkwConfBadge(p.confidence)}</span>
         ${d}
       </div>`;
     }).join('');
-    return `<section class="mkw-works">
-      ${young ? '<p class="mkw-note">Moins de 90 jours de recul : je te donne des signaux, pas encore des certitudes. Plus tu tournes, plus je deviens net.</p>' : ''}
-      <div class="mkw-verdicts">${verdicts.join('') || '<p class="mkw-quiet">Je n’ai pas encore assez de recul pour trancher. Laisse-moi quelques semaines.</p>'}</div>
-      <div class="mkw-card mkw-patterns">
-        <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">effet net mesuré vs. journée comparable</span></div>
-        ${patternRows || '<p class="mkw-quiet">Publie et laisse-moi mesurer : les patterns gagnants s’afficheront ici.</p>'}
-        <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
-      </div>
-    </section>`;
+    return `<div class="mkw-card mkw-patterns">
+      <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">effet net mesuré vs. journée comparable · une ligne « brut » n’a pas encore sa journée de comparaison</span></div>
+      ${rows}
+      <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
+    </div>`;
   }
 
   function mkwVerdict(label, value, sub, conf, icon, tone) {
@@ -3394,11 +3501,16 @@
 
   function cap(s) { return `${String(s || '').charAt(0).toUpperCase()}${String(s || '').slice(1)}`; }
 
-  // ── « Résultats » : le CA généré (l'arme de vente) + les reçus mesurés ──
+  // ── « Résultats » : la maison UNIQUE de la preuve (audit §6) : le héros
+  // euros, ses sources, les reçus J+14, les verdicts causaux et la mémoire
+  // par contexte. La même question (« qu'est-ce que ça rapporte ? ») à toutes
+  // ses granularités, à UN seul endroit. ──
   function mkwResults() {
     return `<section class="mkw-results">
-      ${mkwHero('results')}
-      ${brZ4()}
+      ${mkwHero()}
+      ${mkwReceipts()}
+      ${mkwVerdictsBlock()}
+      ${mkwPatternsBlock()}
     </section>`;
   }
 
@@ -3415,7 +3527,7 @@
       let host = '';
       try { host = c.websiteUrl ? new URL(c.websiteUrl).hostname.replace(/^www\./, '') : ''; } catch (e) { host = ''; }
       const rating = typeof c.rating === 'number' ? `<span class="mkw-riv-stat" title="note Google">${ci('star')}${c.rating.toFixed(1)}${c.reviewsCount ? ` <em>${c.reviewsCount} avis</em>` : ''}</span>` : '';
-      const checked = c.lastCheckedAt ? `site inspecté le ${String(c.lastCheckedAt).slice(8, 10)}/${String(c.lastCheckedAt).slice(5, 7)}` : 'première inspection cette nuit';
+      const checked = c.lastCheckedAt ? `site inspecté le ${String(c.lastCheckedAt).slice(8, 10)}/${String(c.lastCheckedAt).slice(5, 7)}` : 'première inspection demain matin';
       const signals = (c.signals || []).slice(0, 4).map((s) => `<span class="mkw-riv-sig">${esc(s.label)}${s.price ? ` <b>${esc(s.price)}</b>` : ''}</span>`).join('');
       return `<article class="mkw-riv">
         <div class="mkw-riv-top">
@@ -3428,27 +3540,33 @@
         <a class="mkw-riv-adlink" href="${esc(mkwAdLibraryUrl(c.name))}" target="_blank" rel="noopener noreferrer">${ci('megaphone')}Chercher leurs pubs (Meta Ad Library)</a>
       </article>`;
     }).join('');
+    // L'état de la liste : erreur DITE avec retry (plus jamais un échec réseau
+    // déguisé en « aucun concurrent », audit §2), chargement, vide honnête.
+    let listState;
+    if (rows) listState = `<div class="mkw-riv-grid">${rows}</div>`;
+    else if (mkComp.loading) listState = '<div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div>';
+    else if (mkComp.error) listState = `<p class="mkw-quiet mkw-inline-error">${esc(mkComp.error)} <button type="button" class="mkw-link" onclick="loadCompetitors(true)">Réessayer</button></p>`;
+    else listState = '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients : j’inspecte leurs sites, leurs offres et leur note Google.</p>';
     return `<section class="mkw-rivals">
       <div class="mkw-card">
-        <div class="mkw-block-head"><h3>Les centres que je surveille</h3><span class="mkw-block-sub">j’inspecte leurs sites chaque nuit</span></div>
-        <div class="mkw-riv-grid">
-          ${rows || (mkComp.loading ? '<p class="mkw-quiet">un instant…</p>' : '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients, j’inspecte leurs sites, leurs offres et leur note Google.</p>')}
-        </div>
+        <div class="mkw-block-head"><h3>Les centres que je surveille</h3><span class="mkw-block-sub">j’inspecte leurs sites chaque matin</span></div>
+        ${listState}
         <div class="mkw-riv-add">
-          <input id="brCompName" class="mkw-input" placeholder="Nom (ex. Bowling de Bastogne)" maxlength="80">
-          <input id="brCompSite" class="mkw-input" placeholder="Site : https://…" maxlength="300">
+          <div class="mkw-field"><label class="mkw-label" for="brCompName">Nom du concurrent</label><input id="brCompName" class="mkw-input" placeholder="Bowling de Bastogne" maxlength="80"></div>
+          <div class="mkw-field"><label class="mkw-label" for="brCompSite">Son site</label><input id="brCompSite" class="mkw-input" placeholder="https://…" maxlength="300"></div>
           <button type="button" class="pv2-btn primary" onclick="mkCompSave()" ${mkComp.busy ? 'disabled' : ''}>${mkComp.busy ? '…' : 'Suivre'}</button>
         </div>
       </div>
       <div class="mkw-card">
-        <div class="mkw-block-head"><h3>Colle-moi un post concurrent</h3><span class="mkw-block-sub">je l’analyse et je te prépare la riposte</span></div>
-        <textarea id="brCompPost" class="mkw-textarea" placeholder="Colle ici le texte d’un post ou d’une offre d’un concurrent que tu as vu (Facebook, Instagram, leur site…)"></textarea>
+        <div class="mkw-block-head"><h3>Colle-moi un post concurrent</h3><span class="mkw-block-sub">je l’analyse, je te prépare la riposte, et je retiens leurs techniques</span></div>
+        <label class="mkw-label" for="brCompPost">Le texte du post ou de l’offre</label>
+        <textarea id="brCompPost" class="mkw-textarea" placeholder="Colle ici le texte d’un post ou d’une offre d’un concurrent que tu as vu (Facebook, Instagram, leur site…)" oninput="mkComp.postDraft = this.value">${esc(mkComp.postDraft || '')}</textarea>
         <div class="mkw-riv-analyze">
           <button type="button" class="pv2-btn primary" onclick="mkCompAnalyze()" ${mkComp.postBusy ? 'disabled' : ''}>${mkComp.postBusy ? 'j’analyse…' : 'Analyser'}</button>
           <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà : je le transforme en angle.</span>
         </div>
         ${mkCompPostResult()}
-        <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque nuit, et j’affiche leur note Google (dès qu’une clé Google Places est configurée).</p>
+        <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque matin, et j’affiche leur note Google (dès qu’une clé Google Places est configurée).</p>
       </div>
     </section>`;
   }
@@ -3458,19 +3576,37 @@
     if (!r) return '';
     if (r.degraded) return `<p class="mkw-analy-degraded">${esc(r.note || 'Analyse indisponible pour l’instant.')}</p>`;
     const row = (label, value) => (value ? `<div class="mkw-analy-row"><span class="mkw-analy-label">${esc(label)}</span><span class="mkw-analy-val">${esc(value)}</span></div>` : '');
+    // L'apprentissage est MONTRÉ (audit 4.5) : le geste le plus rentable de
+    // l'onglet nourrit le cerveau : le gérant doit voir ce que j'ai retenu.
+    const learned = r.dnaLearned > 0
+      ? `<div class="mkw-analy-learned">${ci('sparkles')}<div>
+          <span class="mkw-analy-label">J’ai retenu ${r.dnaLearned} technique${r.dnaLearned > 1 ? 's' : ''} de ce post</span>
+          ${(r.adn || []).slice(0, 3).map((a) => `<span class="mkw-analy-val">${esc(a.regle)}</span>`).join('')}
+          <span class="mkw-analy-foot">Elles nourrissent mes prochains posts pour toi.</span>
+        </div></div>`
+      : '';
+    // La riposte n'est plus un cul-de-sac : elle part au Studio en un clic.
+    const counter = r.riposte
+      ? `<div class="mkw-analy-counter">${ci('bolt')}<div>
+          <span class="mkw-analy-label">Ta riposte</span><span class="mkw-analy-val">${esc(r.riposte)}</span>
+          <button type="button" class="mkw-link" onclick="mkwGoStudio('${escJs(String(r.riposte || '').slice(0, 280))}')">En faire un post</button>
+        </div></div>`
+      : '';
     return `<div class="mkw-analy">
       ${r.resume ? `<p class="mkw-analy-sum">${esc(r.resume)}</p>` : ''}
       ${row('Leur offre', r.offre)}
       ${row('Prix affiché', r.prix)}
       ${row('Ton', r.ton)}
-      ${r.riposte ? `<div class="mkw-analy-counter">${ci('bolt')}<div><span class="mkw-analy-label">Ta riposte</span><span class="mkw-analy-val">${esc(r.riposte)}</span></div></div>` : ''}
+      ${counter}
+      ${learned}
     </div>`;
   }
 
   window.mkCompAnalyze = async function () {
     if (mkComp.postBusy) return;
-    const text = (document.getElementById('brCompPost') || {}).value || '';
+    const text = (document.getElementById('brCompPost') || {}).value || mkComp.postDraft || '';
     if (text.trim().length < 15) { toast('Colle le texte du post : au moins une phrase.'); return; }
+    mkComp.postDraft = text;
     mkComp.postBusy = true;
     mkComp.postResult = null;
     renderStaffCampaignsPage();
@@ -3480,7 +3616,10 @@
         body: JSON.stringify({ action: 'competitorAnalyzePost', centerId: state.adminCenterId || 'libramont', text }),
       });
       mkComp.postResult = result;
+      // Analyse réussie : le texte a fait son travail, on libère la zone.
+      mkComp.postDraft = '';
     } catch (error) {
+      // Le texte collé RESTE (audit 4.5 : le re-render l'effaçait sur échec).
       toast(error.message || 'Je n’ai pas réussi à analyser : réessaie.');
     } finally {
       mkComp.postBusy = false;
@@ -3500,33 +3639,108 @@
     routine: { label: 'Rien de daté', tone: 'muted' },
   };
 
+  // L'id d'action pour markPlanActionDone (contrat serveur : kind:slug,
+  // /^[a-z_]+:[0-9a-z-]+$/i). Il porte le lundi de la semaine : le plan de la
+  // semaine suivante repart avec des signatures fraîches.
+  function mkwPlanActionId(week, actionIndex) {
+    return `strategist:w${Number(week.index) || 0}-a${actionIndex}-${String(week.from || '').replace(/-/g, '')}`;
+  }
+
   function mkwPlanWeek(week) {
     const conf = MKW_PLAN_CONF[week.confiance] || MKW_PLAN_CONF.routine;
+    const today = (mkBrief.data && mkBrief.data.today) || new Date().toISOString().slice(0, 10);
+    // L'état temporel de la semaine, calculé sur ses vraies dates : passée /
+    // cette semaine / à venir (audit §7 : « un etat visible par semaine »).
+    const state_ = week.to < today ? 'past' : (week.from <= today ? 'current' : 'coming');
+    const stateLabel = state_ === 'past' ? 'passée' : (state_ === 'current' ? 'cette semaine' : '');
     const from = String(week.from || '');
     const jour = `${from.slice(8, 10)}/${from.slice(5, 7)}`;
-    const actions = (week.actions || []).map((a) => `<li>${esc(a)}</li>`).join('');
-    return `<article class="mkw-plan-week tone-${conf.tone}">
+    const actions = (week.actions || []).map((a, i) => {
+      const actionId = mkwPlanActionId(week, i);
+      const done = mkPlan.done[actionId];
+      if (state_ === 'past') return `<li class="is-inert">${esc(a)}</li>`;
+      return `<li class="${done ? 'is-done' : ''}">
+        <button type="button" class="mkw-plan-check ${done ? 'is-done' : ''}" ${done ? 'disabled' : ''} aria-label="Marquer faite : ${esc(a)}"
+          onclick="mkPlanActionDone('${escJs(actionId)}', ${Number(week.index) || 0}, ${i})">${done ? ci('check') : ''}</button>
+        <span>${esc(a)}</span>
+        ${done ? '<em class="mkw-plan-done-note">noté, je mesure</em>' : ''}
+      </li>`;
+    }).join('');
+    return `<article class="mkw-plan-week tone-${conf.tone} ${state_ === 'past' ? 'is-past' : ''} ${state_ === 'current' ? 'is-current' : ''}">
       <header class="mkw-plan-week-head">
-        <span class="mkw-plan-when"><strong>S${Number(week.index) || 0}</strong><small>dès le ${esc(jour)}</small></span>
+        <span class="mkw-plan-when"><strong>S${Number(week.index) || 0}</strong><small>dès le ${esc(jour)}</small>${stateLabel ? `<span class="mkw-plan-state">${stateLabel}</span>` : ''}</span>
         <span class="mkw-plan-conf">${esc(conf.label)}</span>
       </header>
       <h4 class="mkw-plan-goal">${esc(week.objectif || '')}</h4>
       <p class="mkw-plan-why">${esc(week.pourquoi || '')}</p>
       ${actions ? `<ul class="mkw-plan-actions">${actions}</ul>` : ''}
+      ${state_ !== 'past' ? `<button type="button" class="mkw-link mkw-plan-studio" onclick="mkwGoStudio('${escJs(String(week.objectif || '').slice(0, 280))}')">Préparer ce post au Studio</button>` : ''}
     </article>`;
   }
 
+  // « C'est fait » : la poignée qui ferme la boucle (audit 4.2 : planActionDone
+  // existait côté serveur et AUCUN écran ne l'appelait : la mémoire
+  // marketing_patterns ne pouvait jamais se remplir depuis le plan).
+  window.mkPlanActionDone = async function (actionId, weekIndex, actionIndex) {
+    if (mkPlan.done[actionId]) return;
+    const week = ((mkPlan.data || {}).weeks || []).find((w) => Number(w.index) === Number(weekIndex));
+    if (!week) return;
+    mkPlan.done[actionId] = true;
+    renderStaffCampaignsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'planActionDone',
+          centerId: state.adminCenterId || 'libramont',
+          planAction: {
+            id: actionId,
+            title: String((week.actions || [])[actionIndex] || 'Action du plan'),
+            why: String(week.pourquoi || ''),
+            channel: 'interne',
+            targetDate: week.from,
+          },
+        }),
+      });
+      toast('Noté : je mesure l\'effet pendant 14 jours, le reçu arrive dans Résultats.');
+    } catch (error) {
+      // 409 = déjà notée côté serveur (il garde 7 jours de mémoire) : l'état
+      // coché est donc VRAI. Toute autre erreur rétablit la case.
+      if (!/409|deja|déjà/i.test(error.message || '')) {
+        mkPlan.done[actionId] = false;
+        toast(error.message || 'Je n\'ai pas pu le noter.');
+      }
+    } finally {
+      scheduleCampaignsRender();
+    }
+  };
+
   function mkwPlan() {
-    if (!mkPlan.data && !mkPlan.loading && !mkPlan.error) setTimeout(() => loadMarketingPlan(), 0);
-    if (mkPlan.loading) return `<div class="mkw-card"><div class="pv2-empty"><strong>Je construis le plan…</strong>Je regarde les 8 prochaines semaines.</div></div>`;
-    if (mkPlan.error) return `<div class="mkw-card"><div class="pv2-empty"><strong>Le plan n’a pas pu se charger</strong>${esc(mkPlan.error)}</div></div>`;
+    if (!mkPlan.loaded && !mkPlan.loading) setTimeout(() => loadMarketingPlan(), 0);
+    // Construction live en cours : la timeline REELLE du Stratège (RUN B).
+    if (mkPlan.jobId) {
+      return `<section class="mkw-card">
+        <div class="mkw-block-head"><h3>Je construis le plan</h3><span class="mkw-block-sub">chaque étape ci-dessous a réellement eu lieu</span></div>
+        <div id="mkPlanProgress" class="mkw-plan-progress"></div>
+      </section>`;
+    }
+    if (mkPlan.loading) {
+      return `<section class="mkw-card">
+        <div class="mkw-block-head"><h3>Les 8 prochaines semaines</h3></div>
+        <div class="mkw-skel"></div><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div>
+      </section>`;
+    }
+    if (mkPlan.error) {
+      return mkwErrorPanel(mkPlan.error, 'loadMarketingPlan(true)');
+    }
     const plan = mkPlan.data;
     const weeks = (plan && plan.weeks) || [];
     if (!weeks.length) {
-      return `<div class="mkw-card"><div class="pv2-empty">
-        <strong>Pas encore de plan</strong>Il se construit tout seul chaque lundi. Tu peux aussi le lancer maintenant.
-        <div class="mkw-riv-analyze"><button type="button" class="pv2-btn primary" onclick="mkPlanBuild()">Construire le plan</button></div>
-      </div></div>`;
+      return `<section class="mkw-card"><div class="empty-state">
+        <div class="empty-state-title">Pas encore de plan</div>
+        <div class="empty-state-text">Il se construit tout seul chaque lundi. Tu peux aussi le lancer maintenant et me regarder travailler.</div>
+        <button type="button" class="pv2-btn primary" onclick="mkPlanBuild()">Construire le plan</button>
+      </div></section>`;
     }
     const dated = weeks.filter((w) => w.confiance !== 'routine').length;
     // L'honnêteté en tête de surface : tant qu'on n'a rien mesuré, on le dit.
@@ -3534,10 +3748,14 @@
     const evidence = plan.context && plan.context.hasMeasuredEvidence
       ? `Le plan s’appuie sur ce qu’on a mesuré chez toi.`
       : `Je n’ai pas encore assez de recul pour dire ce qui marche <strong>chez toi</strong>. Ce plan s’appuie sur les dates certaines : congés scolaires, jours fériés, événements près du centre.`;
+    // La fraîcheur est AFFICHÉE (audit 4.2 : generatedAt existait, jamais rendu).
+    const freshness = plan.generatedAt
+      ? `construit le ${new Date(plan.generatedAt).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' })} à ${new Date(plan.generatedAt).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}`
+      : '';
     return `<section class="mkw-card">
       <div class="mkw-block-head">
         <h3>Les 8 prochaines semaines</h3>
-        <span class="mkw-block-sub">${dated} semaine${dated > 1 ? 's' : ''} avec une date à jouer</span>
+        <span class="mkw-block-sub">${dated} semaine${dated > 1 ? 's' : ''} avec une date à jouer${freshness ? ` · ${freshness}` : ''}</span>
       </div>
       <p class="mkw-quiet">${evidence}</p>
       <div class="mkw-plan-grid">${weeks.map(mkwPlanWeek).join('')}</div>
@@ -3548,15 +3766,46 @@
     </section>`;
   }
 
+  // Panneau d'erreur PARTAGÉ (audit §2 : l'état d'erreur était mort sur toute
+  // la zone : squelettes à vie, aucun retry). Une erreur réseau dit qu'il y a
+  // une erreur réseau, partout, avec un vrai bouton.
+  function mkwErrorPanel(message, retryJs) {
+    return `<section class="mkw-card mkw-error" role="alert">
+      <div class="mkw-error-body">
+        <span class="mkw-error-ico">${ci('inbox')}</span>
+        <div>
+          <p class="mkw-error-title">Je n’arrive pas à charger.</p>
+          <p class="mkw-error-text">${esc(message || 'Le serveur n’a pas répondu.')}</p>
+        </div>
+      </div>
+      <button type="button" class="pv2-btn primary" onclick="${retryJs}">Réessayer</button>
+    </section>`;
+  }
+
+  // Pont universel vers le Studio (plan « Préparer ce post », riposte
+  // concurrent « En faire un post ») : pré-remplit le brief et ouvre l'atelier.
+  window.mkwGoStudio = function (brief) {
+    mkBrief.studioBrief = String(brief || '').slice(0, 300);
+    mkBrief.tab = 'studio';
+    renderStaffCampaignsPage();
+    const surf = document.querySelector('.mkw-surface');
+    if (surf && !reducedMotion) { surf.classList.remove('mkw-in'); void surf.offsetWidth; surf.classList.add('mkw-in'); }
+    setTimeout(() => { const el = document.getElementById('brStudioBrief'); if (el) el.focus(); }, 60);
+  };
+
   function mkwSurface() {
+    // Le chargement central a échoué et rien n'est affichable : une erreur
+    // franche remplace la page entière, quel que soit l'onglet.
+    if (!mkBrief.data && mkBrief.error) {
+      return mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)');
+    }
     switch (mkBrief.tab) {
       case 'plan': return mkwPlan();
-      case 'works': return `${mkwPulseStrip()}${mkwFacts()}`;
-      case 'studio': return brStudio();
+      case 'studio': return mkwStudio();
       case 'rivals': return mkwRivals();
       case 'results': return mkwResults();
       case 'today':
-      default: return `${mkwHero('today')}${mkwBriefMemo()}${brZ2()}${brZ3()}`;
+      default: return `${mkwVoice()}${mkwPayLine()}${mkwRadar()}${mkwQueue()}`;
     }
   }
 

@@ -158,8 +158,17 @@ function buildTasks() {
   if (envBool('OPS_WORKER_RUN_AGENTS', true)) {
     tasks.push({
       name: 'agents',
-      baseIntervalMs: envNumber('OPS_WORKER_AGENT_INTERVAL_MS', 15 * 60_000, { min: 60_000 }),
-      maxIdleIntervalMs: envNumber('OPS_WORKER_AGENT_MAX_IDLE_MS', 30 * 60_000, { min: 5 * 60_000 }),
+      // Cadence 3 h / repli 6 h (avant : 15/30 min). Les intervalles courts
+      // dataient de l'epoque zero-cle : le cycle etait gratuit (templates).
+      // Depuis que le worker a une cle IA (16/07), chaque cycle paie ~6 appels
+      // LLM : a 48 cycles/jour le plafond mensuel de 5 USD tombait en 3 jours
+      // et TOUT le produit retombait en mode templates jusqu'au 1er du mois.
+      // 4 cycles/jour suffisent largement : les sequences (anniversaire J-30,
+      // reactivation) sont datees au jour, le warehouse est quotidien, et le
+      // cron Vercel de 08:15 fait deja le cycle complet du matin. Override
+      // possible sans redeploiement via les variables d'environnement.
+      baseIntervalMs: envNumber('OPS_WORKER_AGENT_INTERVAL_MS', 3 * 60 * 60_000, { min: 60_000 }),
+      maxIdleIntervalMs: envNumber('OPS_WORKER_AGENT_MAX_IDLE_MS', 6 * 60 * 60_000, { min: 5 * 60_000 }),
       lastRunAt: 0,
       running: false,
       // L'orchestrateur « travaille » toujours en apparence : on le laisse

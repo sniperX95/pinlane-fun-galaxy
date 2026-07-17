@@ -19,7 +19,7 @@
       <div>
         <div class="eyebrow">Direction</div>
         <h1>Centre de contrôle</h1>
-        <div class="sub">Suivi des confirmations, mails, recommandations IA et signaux terrain. Cette page n’est pas affichée dans le staff opérationnel.</div>
+        <div class="sub">Suivi des confirmations, mails, recommandations IA et signaux terrain. Accès réservé à la direction.</div>
       </div>
       <div class="actions">
         <a class="btn" href="/">Retour planning</a>
@@ -52,6 +52,31 @@
       reminder_48h: 'Relance',
       staff_review_request: 'Validation direction'
     }[template] || template || 'Message');
+    const statusLabel = s => ({
+      queued: 'En file',
+      sent: 'Envoyé',
+      delivered: 'Délivré',
+      failed: 'Échec'
+    }[s] || s);
+    const severityLabel = s => ({
+      low: 'Faible',
+      medium: 'Moyen',
+      high: 'Élevé',
+      critical: 'Critique'
+    }[s] || s);
+    const eventLabel = t => ({
+      delay_reported: 'Retard signalé',
+      client_message_sent: 'Message client envoyé',
+      no_show_watch_due: 'Surveillance no-show',
+      reservation_updated: 'Réservation modifiée'
+    }[t] || String(t ?? '').replace(/_/g, ' '));
+    const decisionLabel = type => {
+      const fr = {
+      }[type];
+      if (fr) return fr;
+      const text = String(type ?? '').replace(/_/g, ' ').trim();
+      return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+    };
     function when(value) {
       if (!value) return 'Non planifié';
       const date = new Date(value);
@@ -158,7 +183,7 @@
       if (!communications.length) return '<div class="empty">Aucun message pour le moment.</div>';
       return `${stats(communications)}<div class="list">${communications.map((item, index) => `
         <div class="row">
-          <div><span class="pill ${esc(item.status)}">${esc(item.status)}</span><div class="meta">${esc(when(item.scheduledAt || item.createdAt))}</div></div>
+          <div><span class="pill ${esc(item.status)}">${esc(statusLabel(item.status))}</span><div class="meta">${esc(when(item.scheduledAt || item.createdAt))}</div></div>
           <div><div class="title">${esc(item.subject || label(item.templateId))}</div><div class="meta">${esc(label(item.templateId))} • ${esc(item.channel)}</div></div>
           <div class="meta">${esc(item.recipient || 'Destinataire manquant')}<br>${item.lastError ? esc(item.lastError) : `${Number(item.attempts || 0)} tentative(s)`}</div>
           <button class="mini" onclick="preview(${index}, 'communication-visible')">Voir</button>
@@ -185,7 +210,7 @@
       return `<div class="list">${state.suggestions.map(item => {
         const payload = item.payload || {};
         return `<div class="row">
-          <div><span class="pill ${esc(item.severity)}">${esc(item.severity)}</span><div class="meta">Confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div></div>
+          <div><span class="pill ${esc(item.severity)}">${esc(severityLabel(item.severity))}</span><div class="meta">Confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div></div>
           <div><div class="title">${esc(payload.title || suggestionLabel(item.suggestionType))}</div><div class="meta">${esc(item.agentId)} • ${esc(item.status)}</div></div>
           <div class="meta">${esc(payload.recommendation || payload.reason || payload.message || 'À examiner.')}</div>
           <span class="pill">Agent</span>
@@ -195,7 +220,7 @@
     function renderEvents() {
       if (!state.events.length) return '<div class="empty">Journal vide. Les retards, bugs laser/bowling et no-shows apparaîtront ici.</div>';
       return `<div class="list">${state.events.map(item => `<div class="row">
-        <div><span class="pill">${esc(item.eventType)}</span><div class="meta">${esc(when(item.createdAt))}</div></div>
+        <div><span class="pill">${esc(eventLabel(item.eventType))}</span><div class="meta">${esc(when(item.createdAt))}</div></div>
         <div><div class="title">${esc(item.activityType || item.activityId || 'Opération')}</div><div class="meta">${esc(item.reasonId || 'Signal terrain')}</div></div>
         <div class="meta">${esc(`${item.plannedStart || '--:--'} → ${item.actualEnd || item.actualStart || '--:--'} • ${item.actualMinutes || item.plannedMinutes || 0} min`)}</div>
         <span class="pill">${esc(item.centerId)}</span>
@@ -247,7 +272,7 @@
       ${simStats(stats, run)}
       <div class="sim-layout">
         <div class="sim-card"><h3>Timeline</h3><div class="sim-timeline">${timeline.length ? timeline.slice(-10).reverse().map(item => `<div><strong>${esc(item.label || item.kind)}</strong><span>${esc(`${item.kind || 'event'} · minute ${item.minute ?? '--'} · ${item.detail || ''}`)}</span></div>`).join('') : '<p>Aucune action jouée.</p>'}</div></div>
-        <div class="sim-card"><h3>Décisions récentes</h3>${logs.length ? logs.slice(0, 10).map(log => `<div class="sim-log"><div><span class="pill ${esc(log.severity)}">${esc(log.severity)}</span><div class="meta">${esc(when(log.createdAt))}</div></div><div><div class="title">${esc(log.decisionType)}</div><div class="meta">${esc(log.payload?.summary || log.payload?.error || log.payload?.action || 'Décision journalisée.')}</div></div><div class="meta">${esc(log.agentId)}${log.reservationId ? `<br>#${esc(log.reservationId)}` : ''}</div></div>`).join('') : '<p>Aucun log.</p>'}</div>
+        <div class="sim-card"><h3>Décisions récentes</h3>${logs.length ? logs.slice(0, 10).map(log => `<div class="sim-log"><div><span class="pill ${esc(log.severity)}">${esc(log.severity)}</span><div class="meta">${esc(when(log.createdAt))}</div></div><div><div class="title">${esc(decisionLabel(log.decisionType))}</div><div class="meta">${esc(log.payload?.summary || log.payload?.error || log.payload?.action || 'Décision journalisée.')}</div></div><div class="meta">${esc(log.agentId)}${log.reservationId ? `<br>#${esc(log.reservationId)}` : ''}</div></div>`).join('') : '<p>Aucun log.</p>'}</div>
       </div>`;
     }
     async function loadSimulationStatus() {

@@ -143,7 +143,7 @@ function renderAdminMailTab() {
   </div>`;
 
   const channelNote = msState.channel && !msState.channel.resendConfigured
-    ? '<div class="ms-note warn" role="alert">Canal d\'envoi non configuré (RESEND_API_KEY) : les mails sont enregistrés en file et partiront dès que le canal sera branché.</div>'
+    ? '<div class="ms-note warn" role="alert">Canal d\'envoi email non configuré : les mails sont enregistrés en file et partiront dès que l\'envoi sera activé.</div>'
     : '';
 
   const header = `<div class="dh-head">

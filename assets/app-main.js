@@ -337,7 +337,7 @@ function onLaserPointerUp(event) {
     return;
   }
   if (!target) {
-    showPlanningMoveNotice('Aucun lancement choisi', 'Deposez la carte sur une ligne Laser Game disponible, ou sur « Parties à placer » pour la retirer du planning.', 'warning');
+    showPlanningMoveNotice('Aucun lancement choisi', 'Déposez la carte sur une ligne Laser Game disponible, ou sur « Parties à placer » pour la retirer du planning.', 'warning');
     return;
   }
   const targetStart = Number(target.dataset.laserDropStart);
@@ -612,21 +612,21 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
   const currentLanes = sourceWindow?.lanes?.length ? sourceWindow.lanes : (reservation.lanes || []);
   const slotCheck = validateSlotWindow(reservation.date, startTime, duration, { allowPastStart: true });
   if (!slotCheck.ok) {
-    showPlanningMoveNotice('Deplacement impossible', slotCheck.message || 'Ce creneau ne peut pas etre utilise.', 'warning');
+    showPlanningMoveNotice('Déplacement impossible', slotCheck.message || 'Ce créneau ne peut pas être utilisé.', 'warning');
     return;
   }
   const lanes = getTargetBowlingLanes(requiredCount, targetLane, reservation.date, startTime, duration, reservation.id, currentLanes, sourceLane, splitLane);
   if (!lanes || lanes.length < requiredCount) {
     showPlanningMoveNotice(
       'Conflit de pistes',
-      `Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} libre${requiredCount > 1 ? 's' : ''} sur ce creneau.`,
+      `Il faut ${requiredCount} piste${requiredCount > 1 ? 's' : ''} libre${requiredCount > 1 ? 's' : ''} sur ce créneau.`,
       'warning'
     );
     return;
   }
   const movedOpsPlan = moveBowlingOpsPlan(reservation, targetStart, lanes, duration);
   if (lanesConflict(reservation.date, startTime, duration, lanes, reservation.id, movedOpsPlan).length) {
-    showPlanningMoveNotice('Conflit detecte', 'Une autre reservation occupe deja cette piste ou cet horaire.', 'warning');
+    showPlanningMoveNotice('Conflit détecté', 'Une autre réservation occupe déjà cette piste ou cet horaire.', 'warning');
     return;
   }
   // On déplace la résa ENTIÈRE du même delta que le bloc bowling attrapé, pour
@@ -697,7 +697,7 @@ async function scheduleBowlingDrag(reservationId, targetLane, targetStart, sourc
     if (!isLatestRequest()) return;
     applyOptimisticReservation(previous, { preserveEditState: true });
     clearReservationMutation(requestKey);
-    showPlanningMoveNotice('Deplacement annule', error.message || 'Le serveur a refuse ce placement.', 'warning');
+    showPlanningMoveNotice('Déplacement annulé', error.message || 'Le serveur a refusé ce placement.', 'warning');
     return;
   } finally {
     clearLatestRequest();
@@ -783,7 +783,7 @@ function onBowlingPointerUp(event) {
   const target = getBowlingDropTargetFromPoint(event.clientX, event.clientY) || bowlingDragDropTarget;
   clearBowlingDragDropTarget();
   if (!target) {
-    showPlanningMoveNotice('Aucun creneau choisi', 'Deposez la carte sur une cellule piste/heure disponible.', 'warning');
+    showPlanningMoveNotice('Aucun créneau choisi', 'Déposez la carte sur une cellule piste/heure disponible.', 'warning');
     return;
   }
   scheduleBowlingDrag(
@@ -2414,10 +2414,10 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260711m';
-const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260710w5';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260717f';
+const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260717f';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
-const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260711m';
+const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
 const dynamicConsoleScripts = {};
 
 function loadConsoleScriptOnce(src) {
@@ -2722,7 +2722,7 @@ function updatePaxAlert() {
     el.innerHTML = `
       <div class="pax-alert ${waveCount > 1 ? 'warning' : ''}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${waveCount > 1 ? '2.5' : '2'}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg>
-        <span>${waveCount > 1 ? `Groupe de <b>${pax} joueurs</b> : l'agent prépare <b>${waveCount} sessions Laser</b> d'environ ${waveSize} joueurs.` : `Vous réservez <b>${pax} place${pax > 1 ? 's' : ''}</b>. Dans une session vide, il restera <b>${remainingIfEmpty}</b> place${remainingIfEmpty > 1 ? 's' : ''}.`}</span>
+        <span>${waveCount > 1 ? `Groupe de <b>${pax} joueurs</b> : nous préparons <b>${waveCount} sessions Laser</b> d'environ ${waveSize} joueurs.` : `Vous réservez <b>${pax} place${pax > 1 ? 's' : ''}</b>. Dans une session vide, il restera <b>${remainingIfEmpty}</b> place${remainingIfEmpty > 1 ? 's' : ''}.`}</span>
       </div>`;
     return;
   }
@@ -4360,7 +4360,7 @@ function dashWTile(analytics, metricId) {
   const t = analytics.totals;
   const configs = {
     occupancy: { value: analytics.occupancy.rate === null ? '-' : `${analytics.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${analytics.occupancy.bookedLaneHours} h réservées / ${analytics.occupancy.capacityLaneHours} h ouvertes` },
-    paymentRate: { value: `${Number(t.paymentRate || 0).toLocaleString('fr-BE')} %`, sub: `${t.paid || 0} payée(s) sur ${t.reservations} · statut binaire (montants partiels non modélisés)` },
+    paymentRate: { value: `${Number(t.paymentRate || 0).toLocaleString('fr-BE')} %`, sub: `${t.paid || 0} payée(s) sur ${t.reservations}` },
     cancelRate: { value: `${t.cancelRate.toLocaleString('fr-BE')} %`, sub: `${t.cancelled} annulation(s)` },
     avgBasket: { value: formatMoney(t.avgBasket), sub: 'par réservation active' },
   };
@@ -6475,7 +6475,7 @@ function computeStaffGroupReadiness(dossier) {
     { key: 'joueurs', label: 'Joueurs', state: (Number(r.pax || 0) > 0 ? 'done' : 'todo') },
     { key: 'ressource', label: 'Ressource', state: (needsLanes ? (hasResource ? 'done' : 'todo') : 'na') },
     { key: 'contact', label: 'Contact', state: ((row.phone && row.email) ? 'done' : 'todo') },
-    { key: 'acompte', label: 'Acompte', state: (r.status === 'paid' ? 'done' : 'todo') },
+    { key: 'acompte', label: 'Paiement', state: (r.status === 'paid' ? 'done' : 'todo') },
     { key: 'activites', label: 'Activités', state: (isFormula ? (activityDone ? 'done' : 'todo') : 'na') },
   ];
   // Coche manuelle du staff → force 'done'.
@@ -11683,7 +11683,7 @@ function renderPlanning() {
       wrap.innerHTML = `<div class="planning-closed-exception">
         <div>
           <strong>Centre fermé, réservations existantes</strong>
-          <span>Ces dossiers restent visibles pour contrôle staff. Aucune nouvelle disponibilité publique ne sera proposée.</span>
+          <span>À contrôler par le staff.</span>
         </div>
         <div class="closed-planning-list">${rows}</div>
       </div>`;
@@ -12643,7 +12643,7 @@ function renderPosDetails(r) {
     </div>
     <div class="info-block delay-control-block">
       <div class="info-label">Retard client</div>
-      <div class="delay-control-copy">Le moteur calcule l'impact sur les réservations suivantes et propose la meilleure option (autre piste, ou décalage minimal). Rien ne bouge sans votre validation, et les clients ne sont prévenus que si vous le demandez.</div>
+      <div class="delay-control-copy">Choisissez le retard : le meilleur plan s'affiche avant validation.</div>
       <div class="delay-control-actions">
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 5, event)">+5 min</button>
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 10, event)">+10 min</button>
@@ -13978,7 +13978,7 @@ function getQuickBookHeader(formule) {
   if (src === 'activite') {
     return { eyebrow: 'Staff Booking', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
   }
-  return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: 'L’essentiel d’abord, le détail vit dans « Plus d’options ».' };
+  return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: '' };
 }
 
 function renderQuickBook() {
@@ -14297,7 +14297,7 @@ function renderQuickBook() {
         <div>
           <div class="ticket-id">${header.eyebrow}</div>
           <h3>${header.title}</h3>
-          <div class="sub">${header.sub}</div>
+          ${header.sub ? `<div class="sub">${header.sub}</div>` : ''}
         </div>
         <button class="close-btn" onclick="closeQuickBook()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -14761,7 +14761,7 @@ function renderPos() {
   const isEdit = state.activeTab === 'modifier';
   const title = isEdit ? 'Modifier la réservation' : r.name;
   const subtitle = isEdit
-    ? 'Un seul pop-up centré pour corriger le client, l’horaire, les pistes ou le statut.'
+    ? ''
     : `${getReservationLabel(r)} • ${r.startTime} • ${r.pax} joueur${r.pax > 1 ? 's' : ''}`;
   const bodyHtml = isEdit ? renderPosEdit(r) : renderPosDetails(r);
   overlay.classList.remove('hidden');
@@ -14771,7 +14771,7 @@ function renderPos() {
       <div class="edit-modal-head">
         <div>
           <h3>${title}</h3>
-          <p>${subtitle}</p>
+          ${subtitle ? `<p>${subtitle}</p>` : ''}
           <div class="modal-tabs">
             <button class="tab ${state.activeTab === 'details' ? 'active' : ''}" onclick="setTab('details')">Infos</button>
             <button class="tab ${state.activeTab === 'modifier' ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>

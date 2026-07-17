@@ -332,7 +332,6 @@ function buildAdminExcelXml(payload) {
   const summaryRows = [
     excelRow(['FUN GALAXY - RAPPORT DIRECTION'], 'Title'),
     excelRow([center.name, periodLabel, `Export ${new Date(payload.exportedAt).toLocaleString('fr-BE')}`], 'Subtle'),
-    excelRow(['Logo officiel', FUN_GALAXY_LOGO_URL, 'Source: fungalaxy.be']),
     excelRow([]),
     excelRow(['Indicateur', 'Valeur', 'Lecture'], 'Header'),
     excelRow(['Réservations', metrics.reservations, `${metrics.pendingCount} à venir / ${metrics.arrivedCount} sur place / ${metrics.paidCount} payées`]),
@@ -551,7 +550,7 @@ function buildFunGalaxyReportHtml(payload) {
     </section>
     <div class="company">
       <strong>Fun Galaxy - document interne direction.</strong><br>
-      Centres suivis: Libramont, Gembloux, Ciney. Site: fungalaxy.be. Siège administratif et informations légales: à compléter dans les paramètres société avant envoi externe.
+      Centres suivis: Libramont, Gembloux. Site: fungalaxy.be.
     </div>
     <section class="kpis">
       <div class="kpi"><div class="k">Réservations</div><div class="v">${metrics.reservations}</div></div>

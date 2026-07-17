@@ -59,7 +59,7 @@ const STAFF_CAMPAIGN_CENTERS = {
       'Mini Golf Blacklight et arcades: activités utiles pour compléter une sortie sans bloquer le planning.',
       'Anniversaires: formules avec activités, arcades et boissons selon la formule choisie.'
     ],
-    forbiddenClaims: ['Golf oClock', 'plusieurs lancements Laser Game en parallèle', 'cinéma', 'karting', 'réalité virtuelle', 'escape game'],
+    forbiddenClaims: ['Golf oClock', "Golf o'Clock", 'plusieurs lancements Laser Game en parallèle', 'cinéma', 'karting', 'réalité virtuelle', 'escape game'],
     localAngle: 'centre indoor pratique pour les familles, écoles, clubs et entreprises autour de Libramont',
     laserAdvice: 'prévenir que les sessions Laser Game peuvent être partagées selon l’affluence'
   },
@@ -72,7 +72,7 @@ const STAFF_CAMPAIGN_CENTERS = {
     practicalFacts: [
       'Bowling: 8 pistes, 6 joueurs conseillés par piste.',
       'Laser Game: 30 armes, organisation plus souple grâce aux lancements multiples.',
-      'Golf oClock est disponible à Gembloux.',
+      "Golf o'Clock est disponible à Gembloux.",
       'Anniversaires: formules avec activités, arcades et boissons selon la formule choisie.'
     ],
     forbiddenClaims: ["Golf o'Clock à Libramont", 'cinéma', 'karting', 'réalité virtuelle', 'escape game'],
@@ -1227,9 +1227,6 @@ const FORMULA_ACTIVITY_LABELS = {
   party_table: 'Table anniversaire',
   service_drinks: 'Boissons',
   duckpin_bowling: 'Duckpin Bowling',
-  axe_throwing: 'Lancer de haches',
-  free_roaming_vr: 'VR Free Roaming',
-  karting_vr: 'Karting VR',
 };
 
 // Activités « à sessions » : chaque unité est une session distincte à suivre

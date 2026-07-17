@@ -149,6 +149,44 @@ const OPS_AGENT_DEPARTMENT_LABELS = {
 
 const OPS_AGENT_DEPARTMENT_ORDER = ['operations', 'customer', 'direction', 'risk_quality', 'product_market'];
 
+const OPS_EVENT_TYPE_LABELS = {
+  reservation_updated: 'Réservation modifiée',
+  delay_applied: 'Retard appliqué',
+  delay_cascade_applied: 'Cascade de retard',
+  client_message_sent: 'Message client envoyé',
+  simulation_reservation_created: 'Réservation simulée'
+};
+
+const OPS_ACTIVITY_TYPE_LABELS = {
+  bowling: 'Bowling',
+  laser_game: 'Laser Game',
+  minigolf_blacklight: 'Minigolf blacklight',
+  duckpin_bowling: 'Duckpin',
+  golf_oclock: "Golf o'Clock",
+  arcade_time: 'Arcade',
+  playground: 'Plaine de jeux',
+  billards: 'Billards',
+  fun_run: 'Fun Run'
+};
+
+const OPS_EVENT_REASON_LABELS = {
+  late_customer: 'Retard client',
+  client_late: 'Retard client',
+  incomplete_group: 'Groupe incomplet'
+};
+
+const OPS_REVIEW_STATUS_LABELS = {
+  approved: 'Approuvée',
+  rejected: 'Rejetée',
+  alternatives_sent: 'Alternatives envoyées'
+};
+
+const OPS_REVIEW_DECISION_LABELS = {
+  approve: 'approuver',
+  reject: 'rejeter',
+  send_alternatives: 'envoyer des alternatives'
+};
+
 const OPS_AGENT_WORK_TRIGGERS = {
   'executive-director-agent': 'Travaille quand la direction ouvre Stack IA, lance l’orchestrateur ou demande une lecture multi-centres.',
   'orchestrator-agent': 'Travaille à chaque actualisation Ops: il lit réservations, mails, événements et suggestions avant de router les agents.',
@@ -622,12 +660,12 @@ function renderOpsAgentStack() {
       <div>
         <div class="ops-eyebrow">Stack IA</div>
         <h3>Agents, orchestration et signaux</h3>
-        <p>Lecture en direct du registre agents/skills sur la période ouverte.</p>
+        <p>État des agents IA sur la période ouverte.</p>
       </div>
       <button class="ops-admin-btn primary" onclick="runAdminOrchestratorNow()">Relancer l’orchestrateur</button>
     </div>`;
   if (!stack) {
-    return `${stackHead}<div class="empty-state"><div class="e-title">Stack IA indisponible</div><div class="e-sub">Aucun agent enregistré pour le moment. Lancez « Analyser maintenant » pour peupler le registre.</div></div>`;
+    return `${stackHead}<div class="empty-state"><div class="e-title">Stack IA indisponible</div><div class="e-sub">Aucun agent enregistré pour le moment. Lancez « Relancer l’orchestrateur » pour charger les agents.</div></div>`;
   }
   const audit = payload.audit || {};
   const activations = orchestration?.activations || [];
@@ -697,12 +735,12 @@ function renderOpsEvents() {
     ${events.map(item => `
       <div class="ops-row">
         <div>
-          <span class="ops-pill">${escapeHtml(item.eventType || 'event')}</span>
+          <span class="ops-pill">${escapeHtml(OPS_EVENT_TYPE_LABELS[item.eventType] || 'Événement')}</span>
           <div class="meta" style="margin-top:7px;">${escapeHtml(formatOpsTimestamp(item.createdAt))}</div>
         </div>
         <div>
-          <div class="title">${escapeHtml(item.activityType || 'Opération')}</div>
-          <div class="meta">${escapeHtml(item.reasonId || 'Signal terrain')}</div>
+          <div class="title">${escapeHtml(OPS_ACTIVITY_TYPE_LABELS[item.activityType] || 'Opération')}</div>
+          <div class="meta">${escapeHtml(OPS_EVENT_REASON_LABELS[item.reasonId] || 'Signal terrain')}</div>
         </div>
         <div class="meta">${escapeHtml(`${item.plannedStart || '--:--'} → ${item.actualEnd || item.actualStart || '--:--'} • ${item.actualMinutes || item.plannedMinutes || 0} min`)}</div>
         <span class="ops-pill">${escapeHtml(item.centerId || 'centre')}</span>
@@ -946,7 +984,7 @@ function renderOpsSimulationReviews(payload = {}) {
     return `
       <div class="ops-review-item ${escapeHtml(review.risk || '')}">
         <div class="ops-review-main">
-          <span class="ops-pill ${escapeHtml(review.risk || '')}">${escapeHtml(review.type || 'review')}</span>
+          <span class="ops-pill ${escapeHtml(review.risk || '')}">${escapeHtml(review.type === 'staff_review' ? 'Revue staff' : 'Revue')}</span>
           <strong>${escapeHtml(review.title || 'Décision staff')}</strong>
           <p>${escapeHtml(review.summary || review.reason || '')}</p>
           ${alternatives.length ? `<div class="ops-review-alt-list">
@@ -988,7 +1026,7 @@ function renderOpsSimulationReviews(payload = {}) {
           ${resolved.length ? resolved.map(review => `
             <div class="ops-sim-timeline-item">
               <strong>${escapeHtml(review.title || review.id)}</strong>
-              <span>${escapeHtml(`${review.status} - ${review.decision || review.recommendation || ''}`)}</span>
+              <span>${escapeHtml(`${OPS_REVIEW_STATUS_LABELS[review.status] || review.status} - ${(() => { const d = review.decision || review.recommendation || ''; return OPS_REVIEW_DECISION_LABELS[d] || d; })()}`)}</span>
             </div>
           `).join('') : '<p>Aucune décision traitée pour le moment.</p>'}
         </div>
@@ -1143,7 +1181,7 @@ function renderOpsTrainingLab(payload = {}) {
       <div class="ops-training-card">
         <span class="ops-pill">Training Lab IA</span>
         <h3>Banc d'essai visible</h3>
-        <p>On n'entraîne pas un modèle en secret : on fait tourner des scénarios, on mesure les erreurs, on journalise les décisions, puis les agents proposent des corrections approuvables.</p>
+        <p>Ce banc d'essai rejoue des scénarios pour vérifier les agents avant mise en production.</p>
         <div class="ops-training-score">
           <strong>${report.score}</strong>
           <small>/100 robustesse actuelle</small>
@@ -1232,8 +1270,8 @@ function renderOpsSimulation() {
       <div class="ops-sim-card">
         <span class="ops-pill">Pilote terrain</span>
         <h3>Ce que ça prouve</h3>
-        <p>${escapeHtml(run?.payload?.fieldPilot?.mission || 'Le système doit montrer si l’algo aide le staff au lieu de rajouter une couche.')}</p>
-        <p style="margin-top:8px;">Sécurité : ${escapeHtml(safetyLabel)} Le canal mobile reste prêt côté code, mais il est masqué tant qu’aucun fournisseur n’est branché.</p>
+        <p>${escapeHtml(run?.payload?.fieldPilot?.mission || 'Vérifiez que les suggestions aident vraiment le staff avant de généraliser.')}</p>
+        <p style="margin-top:8px;">Sécurité : ${escapeHtml(safetyLabel)} Le SMS sera activé dès qu’un fournisseur sera choisi.</p>
       </div>
     </div>
     ${renderOpsSimulationCommandMap(stats, payload || {})}

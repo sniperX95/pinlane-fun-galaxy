@@ -10,8 +10,8 @@
   };
   const PLATFORM_BRAND = {
     name: 'Pinlane',
-    subtitle: 'Venue Operating System',
-    accountRole: 'Propriétaire plateforme'
+    subtitle: 'Console du centre',
+    accountRole: 'Accès complet'
   };
   const FALLBACK_CENTERS = [
     {
@@ -633,7 +633,7 @@
     const roleLabel = getRoleLabel();
     root.innerHTML = `
       <div class="fgx-menu-top">
-        <button type="button" class="fgx-menu-brand" data-fgx-menu-key="dashboard" title="Dashboard Pinlane">
+        <button type="button" class="fgx-menu-brand" data-fgx-menu-key="dashboard" title="Tableau de bord Pinlane">
           <span class="fgx-menu-logo-frame">
             <img class="fgx-menu-logo" src="${PLATFORM_MARK_SRC}" alt="" aria-hidden="true">
           </span>

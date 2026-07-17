@@ -206,22 +206,32 @@ async function main() {
     ok(hygiene.sign, 'l\'identité de l\'employé marketing est là');
     ok(hygiene.kpis === 0, 'le pulse business a quitté la zone Marketing (il vit en Direction)');
 
-    console.log('\n[AUJOURD\'HUI] la voix + la paie compacte');
+    console.log('\n[AUJOURD\'HUI] la voix + les 4 chiffres qui commandent');
     const today = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
         voice: (root.querySelector('.mkw-voice-text') || {}).textContent || '',
         voiceNums: root.querySelectorAll('.mkw-voice-text .br-num').length,
-        payline: (root.querySelector('.mkw-payline-text') || {}).textContent || '',
-        paylineLink: [...root.querySelectorAll('.mkw-payline button')].some((el) => /Voir le détail/.test(el.textContent)),
+        stats: [...root.querySelectorAll('.mkw-stat')].map((el) => el.textContent),
         hero: root.querySelectorAll('.mkw-hero').length,
       };
     });
     ok(/préparé/.test(today.voice) && /Bowling Arlon/.test(today.voice), 'la voix : vu + préparé + veille');
     ok(today.voiceNums >= 1, 'prose-preuve : les nombres de la voix en mono');
-    ok(/1[\s  ]?240/.test(today.payline) && /30 derniers jours/.test(today.payline), 'la paie compacte rappelle le chiffre');
-    ok(today.paylineLink, 'et pointe vers Résultats (la maison de la preuve)');
+    ok(today.stats.length === 4, `4 stat-cards décisionnelles (obtenu ${today.stats.length})`);
+    ok(/1[\s  ]?240/.test(today.stats[0] || '') && /30 derniers jours/.test(today.stats[0] || ''), 'la carte euros rappelle le chiffre et sa fenêtre');
+    ok(/Prêts à publier/.test(today.stats.join('|')) && /Concurrents suivis/.test(today.stats.join('|')), 'file + veille en cartes');
     ok(today.hero === 0, 'le héros € ne vit PAS dans Aujourd\'hui (une seule maison)');
+    // Chaque carte navigue : la carte euros ouvre Résultats.
+    const statNav = await page.evaluate(async () => {
+      document.querySelector('.mkw-stat').click();
+      await new Promise((r) => setTimeout(r, 350));
+      const tab = window.mkBrief.tab;
+      window.mkwTab('today');
+      await new Promise((r) => setTimeout(r, 350));
+      return tab;
+    });
+    ok(statNav === 'results', 'la carte euros navigue vers Résultats (la maison de la preuve)');
 
     console.log('\n[RADAR] les 14 prochains jours');
     const radar = await page.evaluate(() => {
@@ -323,14 +333,15 @@ async function main() {
     });
     ok(published.posted === 1 && /je mesure pendant 14 jours/.test(published.compact), '« Oui » → publiée + carte compactée (la mesure démarre)');
 
-    console.log('\n[DEMANDE] la barre qui survit aux re-renders (le bug focus est mort)');
+    console.log('\n[COMMAND BAR] la barre qui survit aux re-renders (le bug focus est mort)');
     const ask = await page.evaluate(async () => {
       const input = document.getElementById('brAskInput');
+      const chips = [...document.querySelectorAll('#staffCampaignsPage .mkw-chip')].map((el) => el.textContent);
+      const primary = document.querySelectorAll('#staffCampaignsPage .mkw-chip-primary').length;
       input.focus();
       await new Promise((r) => setTimeout(r, 150));
       const wrap = document.getElementById('mkwAsk');
-      const focusVisible = wrap && wrap.classList.contains('is-focused');
-      const chips = [...document.querySelectorAll('#staffCampaignsPage .mkw-chip')].map((el) => el.textContent);
+      const ringOnFocus = wrap && wrap.classList.contains('is-focused');
       // On tape, puis on force un RE-RENDER complet (clic radar) : le texte
       // doit survivre : c'était le bug bloquant de l'audit (4.1).
       input.value = 'un post pour la soirée fluo de samedi';
@@ -338,16 +349,16 @@ async function main() {
       document.querySelectorAll('.mkw-cell')[2].click();
       await new Promise((r) => setTimeout(r, 300));
       const survived = (document.getElementById('brAskInput') || {}).value || '';
-      const btn = [...document.querySelectorAll('#staffCampaignsPage button')].find((el) => /^Demander$/.test(el.textContent.trim()));
-      btn.click();
+      document.querySelector('#staffCampaignsPage .mkw-cmd-send').click();
       await new Promise((r) => setTimeout(r, 500));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionCreate' && p.brief);
-      return { focusVisible, chips, survived, posted: posts.length, brief: posts[0] && posts[0].brief };
+      return { chips, primary, ringOnFocus, survived, posted: posts.length, brief: posts[0] && posts[0].brief };
     });
-    ok(ask.focusVisible, 'le focus révèle les chips SANS re-render (classe, pas innerHTML)');
-    ok(ask.chips.length >= 2 && ask.chips.some((chip) => /Idée libre/.test(chip)), 'chips contextuelles présentes');
+    ok(ask.chips.length >= 2 && ask.chips.some((chip) => /Idée libre/.test(chip)), 'chips de suggestion TOUJOURS visibles au-dessus de la barre');
+    ok(ask.primary === 1, 'la suggestion primaire porte le sheen (une seule)');
+    ok(ask.ringOnFocus, 'le focus pose le ring accent SANS re-render');
     ok(ask.survived === 'un post pour la soirée fluo de samedi', 'le texte tapé SURVIT à un re-render complet');
-    ok(ask.posted === 1 && /soirée fluo/.test(ask.brief), 'Demander → création avec la phrase du gérant');
+    ok(ask.posted === 1 && /soirée fluo/.test(ask.brief), 'la flèche envoie → création avec la phrase du gérant');
 
     console.log('\n[STUDIO] l\'atelier honnête');
     await go('studio');

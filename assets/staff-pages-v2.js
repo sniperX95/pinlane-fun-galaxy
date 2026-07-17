@@ -2200,27 +2200,38 @@
     </section>`;
   }
 
-  /* ── Aujourd'hui · la ligne de paie compacte ──
-     Le héros euros vit UNE fois, dans Résultats (audit §6.2). Ici : le rappel
-     quotidien en une ligne, qui pointe vers la maison de la preuve. ── */
+  /* ── Aujourd'hui · les 4 chiffres qui commandent (ref Vercel Usage) ──
+     Chaque carte est une DECISION et navigue vers sa maison : les euros vers
+     Résultats, la file vers les cartes, le jour à remplir vers le radar, la
+     veille vers Concurrents. Le héros euros détaillé vit dans Résultats. ── */
 
-  function mkwPayLine() {
+  function mkwStatCards() {
     const b = mkBrief.data;
-    if (!b) return '<div class="mkw-skel mkw-skel-short"></div>';
+    if (!b) return `<div class="mkw-stats">${'<div class="mkw-stat"><div class="mkw-skel mkw-skel-short"></div><div class="mkw-skel"></div></div>'.repeat(4)}</div>`;
     const p = b.paie;
-    let text;
-    if (p.young) {
-      text = `Premier bilan honnête le <strong>${esc(p.firstVerdictDate)}</strong>.`;
-    } else if (p.quietWindow) {
-      text = `Rien envoyé ces <strong>${p.days} derniers jours</strong>.`;
-    } else if (p.euros > 0) {
-      text = `Ton marketing est lié à <strong class="is-good">${money(p.euros)}</strong> de réservations ces <strong>${p.days} derniers jours</strong>.`;
-    } else {
-      text = `<strong>${p.sent}</strong> messages partis ces ${p.days} derniers jours, pas encore de réservation liée.`;
-    }
-    return `<div class="mkw-payline">
-      <span class="mkw-payline-text">${text}</span>
-      <button type="button" class="mkw-link" onclick="mkwTab('results')">Voir le détail</button>
+    const card = (onclick, label, value, foot, valueClass = '') => `<button type="button" class="mkw-stat" onclick="${onclick}">
+      <span class="mkw-stat-label">${esc(label)}</span>
+      <span class="mkw-stat-val ${valueClass}">${value}</span>
+      <span class="mkw-stat-foot">${foot}</span>
+    </button>`;
+    // 1. L'argent : la raison de payer. États honnêtes (jeune / fenêtre calme).
+    let payVal = money(p.euros); let payClass = p.euros > 0 ? 'is-good' : ''; let payFoot = `${p.days} derniers jours · voir le détail`;
+    if (p.young) { payVal = 'bientôt'; payClass = 'is-quiet'; payFoot = `premier bilan le ${esc(p.firstVerdictDate)}`; }
+    else if (p.quietWindow) { payVal = '0 envoi'; payClass = 'is-quiet'; payFoot = `rien envoyé sur ${p.days} jours`; }
+    // 2. La file : ce qui est prêt à publier maintenant.
+    const ready = brVisiblePropositions().length;
+    // 3. Le jour à remplir : le prochain creux réel du radar.
+    const risk = (b.radar || []).find((d) => d.level === 'creux' || d.level === 'calme');
+    // 4. La veille : le mouvement chez les concurrents.
+    const watchCount = b.veille ? b.veille.count : 0;
+    const watchNews = b.veille && b.veille.changed.length > 0;
+    return `<div class="mkw-stats">
+      ${card("mkwTab('results')", 'Lié à tes messages', payVal, payFoot, payClass)}
+      ${card('document.getElementById(\'mkwQueueTop\') && document.getElementById(\'mkwQueueTop\').scrollIntoView({behavior:\'smooth\'})', 'Prêts à publier', `${ready}`, ready ? 'dans la file, plus bas' : 'rien d’urgent aujourd’hui')}
+      ${risk
+        ? card(`mkBrRadar('${escJs(risk.date)}')`, 'Jour à remplir', esc(brFrDay(risk.date)), `${risk.resaCount || 0} rés. posées · voir le radar`)
+        : card("mkwTab('plan')", 'Jour à remplir', 'aucun', '14 prochains jours corrects', 'is-quiet')}
+      ${card("mkwTab('rivals')", 'Concurrents suivis', `${watchCount}`, watchNews ? '<b>du mouvement ce matin</b>' : 'rien à signaler')}
     </div>`;
   }
 
@@ -2455,25 +2466,28 @@
       else if (day.precipMm !== null && day.precipMm >= 10) chips.push({ label: `Profiter de la pluie de ${brFrDay(day.date).split(' ')[0]}`, text: `un post sur la pluie annoncée ${brFrDay(day.date)}` });
     }
     chips.push({ label: 'Idée libre', text: '' });
-    // La barre de demande : le focus ne re-rend JAMAIS la page (audit 4.1 :
-    // l'ancien onfocus déclenchait un re-render innerHTML qui détruisait
-    // l'input focalisé et effaçait le texte en boucle). Les chips vivent dans
-    // le DOM en permanence et s'affichent par une classe, sans re-render ; le
-    // texte tapé est conservé dans l'état entre deux renders.
-    return `<section class="mkw-block">
+    // La command bar (ref Vercel « Ask anything ») : chips TOUJOURS visibles
+    // (la première porte le sheen), input XL, envoi par flèche circulaire.
+    // Le focus ne re-rend JAMAIS la page (audit 4.1) : il pose juste le ring.
+    // Le texte tapé est conservé dans l'état entre deux renders.
+    return `<section class="mkw-block" id="mkwQueueTop">
       <h2 class="mkw-bt">Prêt pour toi</h2>
       ${creating ? '<article class="mkw-prop mkw-prop-skel"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></article>' : ''}
-      ${visible.length || creating ? visible.map(mkwPropCard).join('') : `<p class="mkw-quiet">Rien d'urgent aujourd'hui. Je surveille la météo et tes réservations, je te préviens dès que je vois un creux.</p>`}
+      ${visible.length || creating ? visible.map(mkwPropCard).join('') : `<div class="empty-state"><div class="empty-state-title">Rien d’urgent aujourd’hui</div><div class="empty-state-text">Je surveille la météo, tes réservations et tes concurrents. Dès que je vois un creux ou une occasion, une carte apparaît ici.</div></div>`}
       ${rest > 0 ? `<button type="button" class="mkw-link" onclick="mkBrMore()">+ ${rest} autre${rest > 1 ? 's' : ''} pour plus tard</button>` : ''}
-      <div class="mkw-ask ${mkBrief.askFocus ? 'is-focused' : ''}" id="mkwAsk">
-        <div class="mkw-ask-bar">
-          <input id="brAskInput" class="mkw-input mkw-ask-input" value="${esc(mkBrief.askDraft || '')}"
+      <div class="mkw-cmd ${mkBrief.askFocus ? 'is-focused' : ''}" id="mkwAsk">
+        <div class="mkw-chips">${chips.map((chip, index) => `<button type="button" class="mkw-chip ${index === 0 ? 'mkw-chip-primary' : ''}" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>
+        <div class="mkw-cmd-bar">
+          <input id="brAskInput" class="mkw-cmd-input" value="${esc(mkBrief.askDraft || '')}"
             placeholder="Demande-moi quelque chose : « un post pour la soirée fluo de samedi »"
             aria-label="Demander une proposition à l’employé marketing"
-            oninput="mkBrief.askDraft = this.value" onfocus="mkBrAskFocus(true)">
-          <button type="button" class="pv2-btn primary" onclick="mkBrAsk()" ${creating ? 'disabled' : ''}>${creating ? 'je prépare…' : 'Demander'}</button>
+            oninput="mkBrief.askDraft = this.value" onfocus="mkBrAskFocus(true)" onblur="mkBrAskFocus(false)"
+            onkeydown="if (event.key === 'Enter') mkBrAsk()">
+          <button type="button" class="mkw-cmd-send" onclick="mkBrAsk()" ${creating ? 'disabled' : ''} aria-label="${creating ? 'Je prépare ta proposition' : 'Demander'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+          </button>
         </div>
-        <div class="mkw-chips" aria-hidden="${!mkBrief.askFocus}">${chips.map((chip) => `<button type="button" class="mkw-chip" tabindex="${mkBrief.askFocus ? 0 : -1}" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>
+        <p class="mkw-cmd-note">Il propose, tu valides : rien ne part jamais tout seul.</p>
       </div>
     </section>`;
   }
@@ -2628,18 +2642,12 @@
   };
 
   // Le focus n'appelle JAMAIS le render (audit 4.1 : la boucle focus →
-  // innerHTML → input détruit → refocus rendait la barre inutilisable). On
-  // bascule une classe sur le DOM existant, c'est tout.
+  // innerHTML → input détruit → refocus rendait la barre inutilisable). Il ne
+  // fait qu'une chose : poser le ring accent sur la command bar.
   window.mkBrAskFocus = function (on) {
     mkBrief.askFocus = Boolean(on);
     const wrap = document.getElementById('mkwAsk');
-    if (!wrap) return;
-    wrap.classList.toggle('is-focused', mkBrief.askFocus);
-    const chips = wrap.querySelector('.mkw-chips');
-    if (chips) {
-      chips.setAttribute('aria-hidden', String(!mkBrief.askFocus));
-      chips.querySelectorAll('.mkw-chip').forEach((chip) => chip.setAttribute('tabindex', mkBrief.askFocus ? '0' : '-1'));
-    }
+    if (wrap) wrap.classList.toggle('is-focused', mkBrief.askFocus);
   };
   window.mkBrChip = function (text) {
     mkBrief.askDraft = text;
@@ -3512,6 +3520,7 @@
       : 'effet net mesuré vs. journée comparable';
     return `<div class="mkw-card mkw-patterns">
       <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">${sub}</span></div>
+      <div class="mkw-thead mkw-thead-pat" aria-hidden="true"><span>Action · déclencheur</span><span>Preuve</span><span>Effet</span></div>
       ${rows}
       <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
     </div>`;
@@ -3835,7 +3844,7 @@
       case 'rivals': return mkwRivals();
       case 'results': return mkwResults();
       case 'today':
-      default: return `${mkwVoice()}${mkwPayLine()}${mkwRadar()}${mkwQueue()}`;
+      default: return `${mkwVoice()}${mkwStatCards()}${mkwRadar()}${mkwQueue()}`;
     }
   }
 

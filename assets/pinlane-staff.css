@@ -8216,34 +8216,93 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    motion 120-200ms transform/opacity. */
 
 /* Sections d'« Aujourd'hui » (voix, radar, file) */
-.mkw-block { margin-top: var(--space-5); }
+.mkw-block { margin-top: var(--space-6); }
 .mkw-block:first-child { margin-top: 0; }
 .mkw-bt { margin: 0 0 var(--space-3); font-size: 14.5px; font-weight: 620; letter-spacing: -0.01em; color: var(--text); }
+
+/* Texture signature (ref Vercel Agent) : une nappe de points derriere la
+   tete de page, fondue au masque. Purement decorative, aria-hidden implicite
+   (pseudo-element), zero impact layout, desactivable en reduced-motion non
+   necessaire (statique). */
+.mkw-shell { position: relative; }
+.mkw-shell::before {
+  content: '';
+  position: absolute;
+  top: -8px; left: -40px; right: -40px; height: 210px;
+  pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--text) 14%, transparent) 1px, transparent 1px);
+  background-size: 14px 14px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, black 20%, transparent 78%);
+  mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, black 20%, transparent 78%);
+}
+.mkw-shell > * { position: relative; }
+
+/* Stat-cards decisionnelles (ref Vercel Usage) : valeur mono qui commande,
+   label, note de bas de carte, hover par fond/bordure, cliquables (chaque
+   carte navigue vers sa maison). */
+.mkw-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
+.mkw-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: var(--space-4) var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); font-family: var(--font-ui); text-align: left; cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+[data-theme='dark'] .mkw-stat { background: var(--raised); }
+.mkw-stat:hover { border-color: var(--line-strong); background: var(--subtle); }
+.mkw-stat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mkw-stat:active { transform: scale(0.99); }
+.mkw-stat-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.mkw-stat-val { font-family: var(--font-data); font-size: 24px; font-weight: 460; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); }
+.mkw-stat-val.is-good { color: var(--success); }
+.mkw-stat-val.is-quiet { color: var(--faint); font-size: 18px; }
+.mkw-stat-foot { font-size: 11.5px; color: var(--faint); }
+.mkw-stat-foot b { font-weight: 600; color: var(--accent-strong); }
+
+/* La command bar (ref Vercel « Ask anything ») : le geste central du produit.
+   Input XL, bouton fleche circulaire, ring accent au focus, note de confiance. */
+.mkw-cmd { margin-top: var(--space-8); }
+.mkw-cmd-bar { position: relative; display: flex; align-items: center; gap: var(--space-2); padding: 6px 6px 6px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-xl); background: var(--surface); transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+[data-theme='dark'] .mkw-cmd-bar { background: var(--raised); }
+.mkw-cmd.is-focused .mkw-cmd-bar { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.mkw-cmd-input { flex: 1; height: 46px; border: 0; background: transparent; color: var(--text); font-family: var(--font-ui); font-size: 14px; }
+.mkw-cmd-input::placeholder { color: var(--faint); }
+.mkw-cmd-input:focus-visible { outline: none; }
+.mkw-cmd-send { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 0; border-radius: var(--radius-full); background: var(--text); color: var(--surface); cursor: pointer; transition: opacity var(--dur) var(--ease), transform var(--dur-fast) var(--ease); }
+.mkw-cmd-send:hover { opacity: 0.88; }
+.mkw-cmd-send:active { transform: scale(0.94); }
+.mkw-cmd-send:disabled { opacity: 0.45; cursor: default; }
+.mkw-cmd-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mkw-cmd-send svg { width: 16px; height: 16px; }
+.mkw-cmd-note { margin: var(--space-2) 0 0; text-align: center; font-size: 11.5px; color: var(--faint); }
+
+/* Chips de suggestion : TOUJOURS visibles au-dessus de la barre ; la
+   primaire porte un sheen anime (ref pastille « Enable Agent to analyze… »). */
+.mkw-cmd .mkw-chips { margin: 0 0 var(--space-2); opacity: 1; transform: none; pointer-events: auto; }
+.mkw-chip-primary { position: relative; overflow: hidden; border-color: var(--line-strong); color: var(--text); font-weight: 500; }
+.mkw-chip-primary::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(100deg, transparent 32%, color-mix(in srgb, var(--accent) 16%, transparent) 50%, transparent 68%); animation: mkwSheen 2.6s var(--ease) infinite; pointer-events: none; }
+@keyframes mkwSheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* Table (ref Vercel Requests) : header 12px muted, rangees hairline. */
+.mkw-thead { display: grid; align-items: baseline; gap: 14px; padding: 0 0 8px; border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 500; color: var(--faint); }
 
 /* La ligne de voix (ex-mémo : UNE phrase, signée) */
 .mkw-voice { padding: var(--space-4) var(--space-5); }
 .mkw-voice-text { margin: 0; font-size: 15.5px; line-height: 1.6; color: var(--text); max-width: 62ch; }
 .mkw-voice .mkw-sign { margin-top: var(--space-3); }
 
-/* La ligne de paie compacte (le héros vit dans Résultats) */
-.mkw-payline { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
-[data-theme='dark'] .mkw-payline { background: var(--raised); }
-.mkw-payline-text { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
-.mkw-payline-text strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; color: var(--text); }
-.mkw-payline-text strong.is-good { color: var(--success); }
+/* En-tetes de table pour les patterns (colonnes de .mkw-pat) */
+.mkw-thead-pat { grid-template-columns: 1fr auto auto; display: grid; }
+.mkw-thead-pat span:last-child { text-align: right; min-width: 56px; }
 
 /* Le radar 14 jours */
 .mkw-radar { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; }
-.mkw-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font-family: var(--font-ui); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.mkw-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 11px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font-family: var(--font-ui); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
 [data-theme='dark'] .mkw-cell { background: var(--raised); }
 .mkw-cell:hover { border-color: var(--line-strong); background: var(--subtle); }
-.mkw-cell.lv-calme { background: var(--subtle); }
-.mkw-cell.lv-creux { background: color-mix(in srgb, var(--danger) 9%, var(--surface)); border-color: color-mix(in srgb, var(--danger) 22%, var(--line)); }
-.mkw-cell.lv-fort { background: color-mix(in srgb, var(--success) 9%, var(--surface)); border-color: color-mix(in srgb, var(--success) 22%, var(--line)); }
-/* Dark : 9 % sur un fond quasi noir est invisible (verdict sceptique) : le
-   signal creux/fort, qui dit OU agir, doit lire aussi fort que le light. */
-[data-theme='dark'] .mkw-cell.lv-creux { background: color-mix(in srgb, var(--danger) 20%, var(--raised)); border-color: color-mix(in srgb, var(--danger) 38%, var(--line)); }
-[data-theme='dark'] .mkw-cell.lv-fort { background: color-mix(in srgb, var(--success) 18%, var(--raised)); border-color: color-mix(in srgb, var(--success) 36%, var(--line)); }
+/* Doctrine un-accent (ref heatmap Observability, juge V2) : chips NEUTRES
+   uniformes ; le niveau se lit par une barre 2px en tete de chip, identique
+   dans les deux themes. Fini les fonds pastel = 3 teintes actives. */
+.mkw-cell::before { content: ''; position: absolute; top: 4px; left: 10px; right: 10px; height: 2px; border-radius: 2px; background: transparent; }
+.mkw-cell.lv-calme::before { background: var(--line-strong); }
+.mkw-cell.lv-creux::before { background: var(--danger); }
+.mkw-cell.lv-fort::before { background: var(--success); }
+.mkw-cell.lv-creux .mkw-cell-resa { color: var(--danger); }
+.mkw-cell.lv-fort .mkw-cell-resa { color: var(--success); }
 .mkw-cell.is-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .mkw-cell.is-open { border-color: var(--accent); }
 .mkw-cell-day { font-family: var(--font-data); font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; }
@@ -8251,7 +8310,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-cell .br-wx { width: 17px; height: 17px; color: var(--muted); }
 .mkw-cell.lv-creux .br-wx { color: color-mix(in srgb, var(--danger) 60%, var(--muted)); }
 .mkw-cell-temp { font-family: var(--font-data); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--faint); }
-.mkw-cell-resa { font-family: var(--font-data); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); min-height: 14px; }
+.mkw-cell-resa { font-family: var(--font-data); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); min-height: 14px; white-space: nowrap; }
 .mkw-cell-resa em { font-style: normal; color: var(--faint); font-size: 9.5px; }
 .mkw-cell-event { position: absolute; top: 6px; right: 6px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
 .mkw-cell-skel { height: 76px; border-radius: var(--radius-lg); background: var(--subtle); animation: pl-skeleton 1.4s var(--ease) infinite; }
@@ -8259,8 +8318,13 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-radar-explain { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); padding: 12px 14px; background: var(--subtle); border-radius: var(--radius-lg); font-size: 13px; color: var(--text); line-height: 1.5; }
 .br-num { font-family: var(--font-data); font-weight: 500; font-variant-numeric: tabular-nums; font-size: 0.95em; }
 
-/* Les cartes de proposition (la file « Prêt pour toi ») */
-.mkw-prop { position: relative; margin-top: var(--space-3); padding: var(--space-4) var(--space-5) var(--space-5) calc(var(--space-5) + 6px); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); transition: border-color var(--dur) var(--ease); }
+/* Les cartes de proposition (la file « Prêt pour toi ») : fermée = une
+   RANGÉE dense (ref Vercel Tasks) ; ouverte = l'atelier déployé. */
+.mkw-prop { position: relative; margin-top: var(--space-2); padding: var(--space-4) var(--space-5) var(--space-5) calc(var(--space-5) + 6px); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.mkw-prop:not(.is-open):not(.is-published) { display: flex; align-items: baseline; gap: var(--space-4); padding-top: 13px; padding-bottom: 13px; }
+.mkw-prop:not(.is-open):not(.is-published) .mkw-prop-why { flex: 1; font-size: 14px; margin: 0; }
+.mkw-prop:not(.is-open):not(.is-published) .mkw-prop-meta { margin: 0; white-space: nowrap; flex: none; }
+.mkw-prop.is-open { border-radius: var(--radius-xl); margin-top: var(--space-3); }
 [data-theme='dark'] .mkw-prop { background: var(--raised); }
 .mkw-prop:hover { border-color: var(--line-strong); }
 .mkw-prop::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 3px; background: var(--accent); }
@@ -8299,9 +8363,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* La barre de demande : les chips vivent dans le DOM, visibles au focus
    (le focus ne re-rend jamais la page : voir mkBrAskFocus). */
-.mkw-ask { margin-top: var(--space-4); }
-.mkw-ask-bar { display: flex; gap: var(--space-2); }
-.mkw-ask-input { flex: 1; height: 44px; font-size: 13.5px; }
+/* (la barre de demande vit dans .mkw-cmd, la command bar) */
 .mkw-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
 .mkw-ask.is-focused .mkw-chips { opacity: 1; transform: none; pointer-events: auto; }
 .mkw-chip { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-full); padding: 5px 12px; min-height: var(--h-sm); font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); cursor: pointer; transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
@@ -8397,12 +8459,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .mkw-radar { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: none; }
   .mkw-cell { min-width: 52px; scroll-snap-align: start; }
   .mkw-prop-actions { flex-wrap: wrap; gap: var(--space-3); }
-  /* La barre de demande garde sa hierarchie en mobile : un vrai champ (48px,
-     bordure visible) et un bouton a sa taille, pas un pill ecrase sous un CTA
-     massif (verdict sceptique). */
-  .mkw-ask-bar { flex-direction: column; align-items: stretch; gap: var(--space-2); }
-  .mkw-ask-input { height: 48px; border-color: var(--line-strong); }
-  .mkw-ask-bar .pv2-btn { align-self: flex-end; min-height: 44px; padding: 0 var(--space-5); }
+  /* Mobile : la meta s'empile SOUS le titre (ref rangees Requests), jamais
+     entrelacee avec un titre qui wrappe. */
+  .mkw-prop:not(.is-open):not(.is-published) { flex-direction: column; align-items: stretch; gap: 5px; }
+  .mkw-stat-val { font-size: 20px; }
+  .mkw-cmd-send { width: 44px; height: 44px; }
   .mkw-st-bar { flex-direction: column; align-items: stretch; }
   .mkw-payline { flex-direction: column; gap: var(--space-2); }
   .mkw-chip { min-height: 44px; }
@@ -8415,7 +8476,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .mkw-verdicts .mkw-verdict .mkw-verdict-body { flex: 1; padding-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .mkw-flash, .mkw-shimmer::after, .mkw-cell-skel { animation: none !important; }
+  .mkw-flash, .mkw-shimmer::after, .mkw-cell-skel, .mkw-chip-primary::after { animation: none !important; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -8506,8 +8567,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-sign .mkw-mark { width: 20px; height: 20px; border-radius: var(--radius-sm); }
 .mkw-sign .mkw-mark svg { width: 12px; height: 12px; }
 
-/* Verdicts (l'analyste : jour/mois/météo & pourquoi) */
+/* Verdicts (l'analyste : jour/mois/météo & pourquoi). Grille toujours
+   RESOLUE (ref Observability) : une carte orpheline en fin de rangée passe
+   pleine largeur au lieu de laisser une case vide. */
 .mkw-verdicts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-3); }
+.mkw-verdicts > .mkw-verdict:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .mkw-verdict { position: relative; display: flex; gap: 12px; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 [data-theme='dark'] .mkw-verdict { background: var(--raised); }
 .mkw-verdict-ico { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent-strong); flex: none; }

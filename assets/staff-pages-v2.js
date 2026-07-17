@@ -2292,7 +2292,9 @@
     const openDay = b.radar.find((day) => day.date === mkBrief.radarOpen);
     let explain = '';
     if (openDay) {
-      const linked = openDay.propositionKey && (b.propositions || []).some((p) => p.key === openDay.propositionKey && !mkBrief.dismissed[p.key]);
+      // La liste FILTREE fait foi : un lien vers une carte perimee ou
+      // dedoublonnee pointerait dans le vide.
+      const linked = openDay.propositionKey && brVisiblePropositions().some((p) => p.key === openDay.propositionKey);
       const canFill = (openDay.level === 'creux' || openDay.level === 'calme') && !linked;
       // La valeur du creux, en euros, là où la décision se prend (audit §7) :
       // le panier moyen est MESURÉ (30 j), on ne projette rien, on rappelle un fait.
@@ -2367,6 +2369,7 @@
     return (b.propositions || []).filter((p) => {
       if (mkBrief.dismissed[p.key]) return false;
       if (p.dueDate && today && p.dueDate < today) return false;
+      if (p.targetDate && today && p.targetDate < today) return false;
       const key = String(p.whyShort || p.why || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 90);
       if (key && seen.has(key)) return false;
       if (key) seen.add(key);
@@ -2385,7 +2388,12 @@
     // Une « offre »/récolte est un rappel terrain (checklist), pas une
     // publication : ni « à publier », ni onglets réseau, ni mesure J+14.
     const isOffre = p.kind === 'offre';
-    const meta = [dueLabel ? `${isOffre ? 'à faire' : 'à publier'} ${dueLabel}` : '', BR_TRIGGER_LABELS[p.trigger] || ''].filter(Boolean).join(' · ');
+    // La carte quotidienne se nomme : « le post du jour » est SA nature (il se
+    // renouvelle chaque matin), pas une urgence qui crie tous les jours.
+    const meta = [
+      p.pinned ? 'le post du jour' : (dueLabel ? `${isOffre ? 'à faire' : 'à publier'} ${dueLabel}` : ''),
+      BR_TRIGGER_LABELS[p.trigger] || '',
+    ].filter(Boolean).join(' · ');
     const verb = p.kind === 'email' ? 'Voir l\'email' : (isOffre ? 'Voir la checklist' : (p.trigger === 'concurrent' ? 'Voir la riposte' : 'Voir le post'));
     let body = '';
     if (open && isOffre) {

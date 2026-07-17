@@ -109,7 +109,13 @@ const rainIdea = deriveIdeaCandidates({
   forecast: [{ date: '2026-07-12', tmax: 18, precipMm: 15 }],
 });
 ok(rainIdea.length === 1 && rainIdea[0].trigger === 'rain_forecast', 'pluie J+2 → idée plan pluie');
-ok(rainIdea[0].signature === makeIdeaSignature('rain_forecast', 'facebook'), 'signature = trigger:channel');
+// Lifecycle (refonte 17/07) : une idée datée porte son jour visé DANS la
+// signature (le dédupe 7 j ne bloque plus les jours suivants) ET en
+// targetDate (la péremption la tue à la fin de son jour).
+ok(rainIdea[0].targetDate === '2026-07-12', 'l\'idée pluie porte son jour visé (targetDate)');
+ok(rainIdea[0].signature === makeIdeaSignature('rain_forecast', 'facebook', '2026-07-12'), 'signature = trigger:channel:jour visé');
+ok(rainIdea[0].signature !== makeIdeaSignature('rain_forecast', 'facebook', '2026-07-19'),
+  'une pluie un autre jour = une autre signature (le dédupe ne bloque plus la semaine)');
 ok(rainIdea[0].readyContent.includes('15 mm'), 'contenu prêt cite la prévision exacte');
 
 const heatIdea = deriveIdeaCandidates({
@@ -130,6 +136,8 @@ const eventIdea = deriveIdeaCandidates({
   localEvents: [{ from: '2026-07-24', to: '2026-07-27', label: 'Foire de Libramont' }],
 });
 ok(eventIdea.length === 1 && eventIdea[0].trigger === 'local_event', 'Foire de Libramont à ≤14 j → idée dédiée');
+ok(eventIdea[0].targetDate === '2026-07-27', 'l\'idée événement meurt à la FIN de l\'événement');
+ok(holidayIdea[0].targetDate === '2026-07-03', 'l\'idée congé meurt au DÉBUT du congé (après, « ça commence le X » est périmé)');
 
 const quietTuesday = deriveIdeaCandidates({
   today: '2026-03-10',

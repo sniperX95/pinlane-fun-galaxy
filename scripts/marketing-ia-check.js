@@ -86,6 +86,7 @@ async function installMock(page) {
           // DOUBLON mot pour mot injectés exprès : ils ne doivent JAMAIS
           // s'afficher (le serveur filtre désormais, le front reste le filet).
           { key: 'db:97', id: 97, trigger: 'evenement', why: 'PERIME ne doit pas apparaitre.', whyShort: 'PERIME ne doit pas apparaitre.', dueDate: dstr(-2), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'perime:x' },
+          { key: 'db:96', id: 96, trigger: 'chaleur', why: 'JOURVISEPASSE ne doit pas apparaitre.', whyShort: 'JOURVISEPASSE ne doit pas apparaitre.', dueDate: null, targetDate: dstr(-1), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'vise:x' },
           { key: 'db:98', id: 98, trigger: 'pluie', why: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', whyShort: 'Pluie annoncée samedi, les familles vont chercher un plan au sec.', dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: {}, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: 'doublon:x' },
         ],
         receipts: [
@@ -275,10 +276,11 @@ async function main() {
       const txt = document.getElementById('staffCampaignsPage').textContent || '';
       const all = window.mkBrief.data.propositions.length;
       const dupCount = [...document.querySelectorAll('.mkw-prop')].filter((el) => /Pluie annoncée samedi/.test(el.textContent)).length;
-      return { perime: /PERIME/.test(txt), dupCount, all };
+      return { perime: /PERIME/.test(txt), vise: /JOURVISEPASSE/.test(txt), dupCount, all };
     });
-    ok(hygiene2.all >= 6, 'échantillon non vide : le mock contient bien la périmée et le doublon');
+    ok(hygiene2.all >= 7, 'échantillon non vide : le mock contient bien la périmée, la visée-passée et le doublon');
     ok(!hygiene2.perime, 'une consigne dont l\'échéance est passée ne s\'affiche JAMAIS');
+    ok(!hygiene2.vise, 'une consigne dont le JOUR VISÉ est passé ne s\'affiche JAMAIS (le « pour jeudi 16/07 » du 17)');
     ok(hygiene2.dupCount === 1, 'le même conseil mot pour mot ne s\'affiche qu\'une seule fois');
     await page.evaluate(() => { const btn = [...document.querySelectorAll('.mkw-prop button')].find((el) => /Voir le post/.test(el.textContent)); btn.click(); });
     await page.waitForTimeout(300);

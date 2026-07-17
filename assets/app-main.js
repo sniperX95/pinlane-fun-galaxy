@@ -2976,7 +2976,7 @@ function updateProgress() {
 
 function showAlert(msg) {
   const el = document.getElementById('alertBox');
-  el.innerHTML = `<div class="alert shake"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg}</div>`;
+  el.innerHTML = `<div class="alert shake"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${escapeHtml(msg)}</div>`;
   setTimeout(() => { el.innerHTML = ''; }, 4500);
 }
 
@@ -11782,7 +11782,7 @@ function renderPlanning() {
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
         ${renderReservationTags(r)}
         <div class="booking-foot">
-          <span class="b-tag">${getReservationLabel(r)}</span>
+          <span class="b-tag">${escapeHtml(getReservationLabel(r))}</span>
           ${renderActivityProgressPill(r)}
           ${statsHtml}
         </div>
@@ -12172,14 +12172,14 @@ function renderReservationRow(r) {
         <span class="res-row-name">${escapeHtml(r.name)}</span>
         <span class="type-badge ${isFormule ? 'formule' : isLaser ? 'laser' : 'bowling'}">
           ${isFormule ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>' : isLaser ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' : '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="14" cy="10" r="1.2" fill="currentColor"/></svg>'}
-          ${typeLabel}
+          ${escapeHtml(typeLabel)}
         </span>
       </div>
       ${renderReservationTags(r)}
       ${renderStaffOpsMini(r)}
       ${renderGuestOpsMini(r)}
       <div class="res-row-meta">
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${r.phone || '-'}</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${escapeHtml(r.phone || '-')}</span>
         <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>${r.pax} joueur${r.pax > 1 ? 's' : ''}</span>
       </div>
     </div>
@@ -12620,7 +12620,7 @@ function renderPosDetails(r) {
   ` : '';
   return `<div class="fade-in">
     <div class="info-block">
-      <div class="info-label">${getReservationLabel(r)}</div>
+      <div class="info-label">${escapeHtml(getReservationLabel(r))}</div>
       <div class="info-grid">
         <div class="info-row"><div class="lbl">Horaire</div><div class="val">${r.startTime} <small>(${r.duration}H)</small></div></div>
         <div class="info-row"><div class="lbl">Participants</div><div class="val">${r.pax} <small>Joueurs</small></div></div>
@@ -12657,8 +12657,8 @@ function renderPosDetails(r) {
     </div>
     <div class="info-block">
       <div class="info-label">Contact client</div>
-      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span style="font-weight:600;">${r.phone || 'Non renseigné'}</span></div>
-      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><span style="font-weight:600;">${r.email || 'Non renseigné'}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span style="font-weight:600;">${escapeHtml(r.phone || 'Non renseigné')}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><span style="font-weight:600;">${escapeHtml(r.email || 'Non renseigné')}</span></div>
       <button type="button" class="comm-open-btn" onclick="openCommCenter(${r.id}, event)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Envoyer un message
@@ -13257,7 +13257,7 @@ function renderPosCaisse(r) {
         <div style="color:var(--text-3);font-size:11px;margin-top:4px;">Ticket #${String(r.id).slice(-5)}</div>
       </div>
       <div>
-        <div class="receipt-line"><span style="font-weight:700;flex:1;">${getReservationLabel(r)}</span><span style="font-weight:700;">${basePrice}€</span></div>
+        <div class="receipt-line"><span style="font-weight:700;flex:1;">${escapeHtml(getReservationLabel(r))}</span><span style="font-weight:700;">${basePrice}€</span></div>
         ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${ex.name}</span></div><span>${ex.price}€</span></div>`).join('')}
       </div>
       <div class="receipt-total">
@@ -13296,8 +13296,8 @@ function renderPosEdit(r) {
     <div class="edit-summary">
       <div class="edit-summary-card">
         <div class="info-label" style="margin-bottom:6px;">Réservation en cours</div>
-        <h4 id="editSummaryName">${e.name}</h4>
-        <p id="editSummaryMeta">${getReservationLabel(r)} • ${e.startTime || '--:--'} • ${e.lanesStr ? `pistes ${e.lanesStr}` : 'hors piste'}</p>
+        <h4 id="editSummaryName">${escapeHtml(e.name)}</h4>
+        <p id="editSummaryMeta">${escapeHtml(getReservationLabel(r))} • ${e.startTime || '--:--'} • ${e.lanesStr ? `pistes ${escapeHtml(e.lanesStr)}` : 'hors piste'}</p>
       </div>
       <div class="edit-summary-stat">
         <span class="k">Joueurs</span>
@@ -13315,11 +13315,11 @@ function renderPosEdit(r) {
             <div class="field-stack">
               <div>
                 <label class="lbl">Client</label>
-                <input class="input" value="${e.name}" oninput="setEditField('name', this.value)" required>
+                <input class="input" value="${escapeHtml(e.name)}" oninput="setEditField('name', this.value)" required>
               </div>
               <div>
                 <label class="lbl">Téléphone</label>
-                <input class="input" value="${e.phone}" oninput="setEditField('phone', this.value)" required>
+                <input class="input" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
               </div>
             </div>
           </div>
@@ -13349,14 +13349,14 @@ function renderPosEdit(r) {
               </div>
               <div>
                 <label class="lbl">Pistes</label>
-                <input id="editLanesInput" class="input" value="${e.lanesStr}" oninput="setEditLanes(this.value)" placeholder="Ex: 1,2">
+                <input id="editLanesInput" class="input" value="${escapeHtml(e.lanesStr)}" oninput="setEditLanes(this.value)" placeholder="Ex: 1,2">
               </div>
             </div>
           </div>
           <div class="info-block soft compact">
             <div class="edit-inline-note">
               <span class="n">Type</span>
-              <span class="v">${getReservationLabel(r)}</span>
+              <span class="v">${escapeHtml(getReservationLabel(r))}</span>
             </div>
             <div class="edit-inline-note" style="margin-top:10px;">
               <span class="n">Affectation</span>
@@ -14311,11 +14311,11 @@ function renderQuickBook() {
           <div class="qb-row two">
             <div>
               <label class="qb-mini-label">Nom</label>
-              <input class="qb-input" value="${quickBookState.name}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
+              <input class="qb-input" value="${escapeHtml(quickBookState.name)}" oninput="quickBookState.name=this.value" placeholder="Marie Dupont">
             </div>
             <div>
               <label class="qb-mini-label">Téléphone</label>
-              <input class="qb-input" value="${quickBookState.phone}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
+              <input class="qb-input" value="${escapeHtml(quickBookState.phone)}" onfocus="onQuickPhoneFocus()" oninput="onQuickPhoneInput(this.value)" onblur="onQuickPhoneBlur(this)" placeholder="+32 470 00 00 00">
             </div>
           </div>
           <div class="qb-row" style="margin-top:12px;">
@@ -14759,10 +14759,10 @@ function renderPos() {
   const r = state.selectedRes;
   const overlay = document.getElementById('posOverlay');
   const isEdit = state.activeTab === 'modifier';
-  const title = isEdit ? 'Modifier la réservation' : r.name;
+  const title = isEdit ? 'Modifier la réservation' : escapeHtml(r.name);
   const subtitle = isEdit
     ? ''
-    : `${getReservationLabel(r)} • ${r.startTime} • ${r.pax} joueur${r.pax > 1 ? 's' : ''}`;
+    : `${escapeHtml(getReservationLabel(r))} • ${r.startTime} • ${r.pax} joueur${r.pax > 1 ? 's' : ''}`;
   const bodyHtml = isEdit ? renderPosEdit(r) : renderPosDetails(r);
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');

@@ -348,7 +348,10 @@ module.exports = async (req, res) => {
     const centerLaneCount = Number(centerBowlingConfig?.laneCount) || TOTAL_LANES;
     const rawType = String(url.searchParams.get('type') || 'bowling');
     const type = rawType === 'formule' ? 'formule' : rawType === 'laser' ? 'laser' : 'bowling';
-    const pax = Math.max(1, Number(url.searchParams.get('pax') || 1));
+    // Borne haute alignée sur la contrainte SQL reservations_pax_check (pax <= 240) :
+    // un pax géant non authentifié déclencherait des allocations de tableau
+    // proportionnelles dans le moteur de planning (DoS). Le trunc neutralise aussi NaN.
+    const pax = Math.min(240, Math.max(1, Math.trunc(Number(url.searchParams.get('pax')) || 1)));
     const formuleId = String(url.searchParams.get('formuleId') || '');
     const requestedDuration = Number(url.searchParams.get('duration') || (type === 'laser' ? 0.5 : 1));
     const formule = FORMULES.find((item) => item.id === formuleId) || null;

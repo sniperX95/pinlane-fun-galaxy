@@ -358,7 +358,7 @@ async function main() {
     ok(studio.posted === 1 && studio.platform === 'instagram' && /ados/.test(studio.brief || ''), 'Générer → POST studioGenerate avec réseau + angle');
     ok(studio.blocks >= 5 && studio.promptEn, 'pack complet : longue/courte/story/hashtags/photo/prompt image (anglais)');
     ok(/note 86\/100/.test(studio.badge) && /écrit par l’IA|écrit par l'IA/.test(studio.badge), 'le badge dit la note ET l\'auteur réel (IA ou filet)');
-    ok(/fabrication/.test(studio.craft) && /84/.test(studio.craft) && /86/.test(studio.craft), 'la fabrication réelle est montrée (chaque passage noté)');
+    ok(/comment il s’est fait|comment il s'est fait/.test(studio.craft) && /84/.test(studio.craft) && /86/.test(studio.craft), 'la fabrication réelle est montrée, en langage humain (chaque passage noté)');
     ok(!/je réécris jusqu/.test((await page.evaluate(() => document.getElementById('staffCampaignsPage').textContent))), 'la surpromesse « je réécris jusqu\'à ce que ça passe » est morte');
     ok(studio.briefSurvived === 'anniversaires ados', 'l\'angle tapé survit à la génération');
 

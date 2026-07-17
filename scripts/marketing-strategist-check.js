@@ -43,7 +43,7 @@ const ctx = { centerId: 'libramont', city: 'Libramont', activities: ['Bowling'],
 const plan = s.composeDeterministicPlan(h, ctx);
 const routine = plan.find((w) => w.confiance === 'routine');
 ok(Boolean(routine), 'les semaines sans fait daté sortent en « routine »');
-ok(routine && /Aucun evenement ni conge date/.test(routine.pourquoi),
+ok(routine && /Aucun événement ni congé daté/.test(routine.pourquoi),
   'et le « pourquoi » le dit franchement au lieu d\'inventer un prétexte');
 ok(plan.every((w) => ['mesure', 'calendrier', 'routine'].includes(w.confiance)), 'chaque semaine porte sa confiance');
 ok(s.weekConfidence({ hasAnchor: true, calendarFacts: [] }, []) === 'calendrier', 'un fait daté porte la semaine');
@@ -166,8 +166,8 @@ console.log('\n[PROGRESSION] les étapes annoncées sont les phases réellement 
       callLlmJson: async () => ({ weeks: aiWeeks() }),
     });
     ok(p.mode === 'ai', 'plan en mode ai');
-    ok(steps.some((l) => /rediger le plan par le modele/.test(l)), 'étape « je fais rédiger »');
-    ok(steps.some((l) => /rien invente/.test(l)), 'étape « je vérifie que le modèle n\'a rien inventé »');
+    ok(steps.some((l) => /rédiger le plan par le modèle/.test(l)), 'étape « je fais rédiger »');
+    ok(steps.some((l) => /rien inventé/.test(l)), 'étape « je vérifie que le modèle n\'a rien inventé »');
     ok(!steps.some((l) => /rejete/.test(l)), 'aucun rejet annoncé quand rien n\'est rejeté');
   }
 
@@ -184,7 +184,7 @@ console.log('\n[PROGRESSION] les étapes annoncées sont les phases réellement 
       callLlmJson: async () => ({ weeks: cheating }),
     });
     ok(p.context.semainesRejetees === 1, `le garde-fou rejette la semaine qui invente (obtenu ${p.context.semainesRejetees})`);
-    ok(steps.some((l) => /J'ai rejete 1 semaine/.test(l)), 'le rejet est annoncé dans la progression');
+    ok(steps.some((l) => /J'ai rejeté 1 semaine/.test(l)), 'le rejet est annoncé dans la progression');
     ok(p.weeks.length === 8, 'le gérant garde 8 semaines : la version calendrier remplace');
   }
 

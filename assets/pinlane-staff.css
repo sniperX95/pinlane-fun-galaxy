@@ -8238,6 +8238,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-cell.lv-calme { background: var(--subtle); }
 .mkw-cell.lv-creux { background: color-mix(in srgb, var(--danger) 9%, var(--surface)); border-color: color-mix(in srgb, var(--danger) 22%, var(--line)); }
 .mkw-cell.lv-fort { background: color-mix(in srgb, var(--success) 9%, var(--surface)); border-color: color-mix(in srgb, var(--success) 22%, var(--line)); }
+/* Dark : 9 % sur un fond quasi noir est invisible (verdict sceptique) : le
+   signal creux/fort, qui dit OU agir, doit lire aussi fort que le light. */
+[data-theme='dark'] .mkw-cell.lv-creux { background: color-mix(in srgb, var(--danger) 20%, var(--raised)); border-color: color-mix(in srgb, var(--danger) 38%, var(--line)); }
+[data-theme='dark'] .mkw-cell.lv-fort { background: color-mix(in srgb, var(--success) 18%, var(--raised)); border-color: color-mix(in srgb, var(--success) 36%, var(--line)); }
 .mkw-cell.is-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .mkw-cell.is-open { border-color: var(--accent); }
 .mkw-cell-day { font-family: var(--font-data); font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; }
@@ -8323,6 +8327,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-craft-step em { font-style: normal; }
 .mkw-craft-step b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; color: var(--text); }
 .mkw-craft-step i { font-style: normal; font-size: 10.5px; color: var(--danger); }
+.mkw-craft-step i.is-ok { color: var(--success); }
 .mkw-craft-step.is-kept { color: var(--text); font-weight: 500; }
 .mkw-craft-step.is-kept b { color: var(--success); }
 .mkw-craft-arrow { color: var(--faint); }
@@ -8390,11 +8395,22 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .mkw-radar { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: none; }
   .mkw-cell { min-width: 52px; scroll-snap-align: start; }
   .mkw-prop-actions { flex-wrap: wrap; gap: var(--space-3); }
-  .mkw-ask-bar { flex-direction: column; }
+  /* La barre de demande garde sa hierarchie en mobile : un vrai champ (48px,
+     bordure visible) et un bouton a sa taille, pas un pill ecrase sous un CTA
+     massif (verdict sceptique). */
+  .mkw-ask-bar { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+  .mkw-ask-input { height: 48px; border-color: var(--line-strong); }
+  .mkw-ask-bar .pv2-btn { align-self: flex-end; min-height: 44px; padding: 0 var(--space-5); }
   .mkw-st-bar { flex-direction: column; align-items: stretch; }
   .mkw-payline { flex-direction: column; gap: var(--space-2); }
   .mkw-chip { min-height: 44px; }
   .mkw-plan-check { width: 24px; height: 24px; }
+  /* Le badge de confiance quitte l'absolu : troisieme colonne du flux, plus
+     jamais en collision avec un titre (verdict sceptique, carte vacances).
+     Specificite volontairement superieure : la regle absolue de base est
+     ecrite PLUS LOIN dans le fichier et gagnait a egalite. */
+  .mkw-verdicts .mkw-verdict .mkw-conf { position: static; margin-left: auto; align-self: flex-start; flex: none; }
+  .mkw-verdicts .mkw-verdict .mkw-verdict-body { flex: 1; padding-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mkw-flash, .mkw-shimmer::after, .mkw-cell-skel { animation: none !important; }

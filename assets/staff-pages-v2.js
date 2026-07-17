@@ -2676,16 +2676,17 @@
     const q = pack.quality || {};
     const iterations = q.iterations || [];
     if (iterations.length < 1) return '';
-    const label = (mode) => (mode === 'rules' ? 'filet (modèle maison)' : `écriture IA v${String(mode).replace('ai_', '')}`);
-    // L'itération RETENUE : celle dont la note est la note finale, côté auteur
-    // final (generationMode). Tout vient du serveur, rien n'est déduit à vide.
+    // Langage humain, pas de codes internes (verdict sceptique : « filet »,
+    // « ai_1 » etaient cryptiques). Le processus reste montre : c'est la
+    // demande produit (« un atelier ou l'on voit la matiere se fabriquer »).
+    const label = (mode) => (mode === 'rules' ? 'modèle maison' : (String(mode) === 'ai_1' ? 'l’IA écrit' : 'l’IA réécrit'));
     const kept = (it) => (pack.generationMode === 'ai'
       ? String(it.mode).indexOf('ai') === 0 && Number(it.score) === Number(q.score)
       : it.mode === 'rules');
     const rows = iterations.map((it) => `<span class="mkw-craft-step ${kept(it) ? 'is-kept' : ''}">
-      <em>${esc(label(it.mode))}</em><b>${Number(it.score) || 0}</b>${it.blocked ? '<i>bloquée</i>' : ''}
+      <em>${esc(label(it.mode))}</em><b>${Number(it.score) || 0}/100</b>${it.blocked ? '<i>refusée</i>' : (kept(it) ? '<i class="is-ok">retenue</i>' : '')}
     </span>`).join('<span class="mkw-craft-arrow" aria-hidden="true">&rsaquo;</span>');
-    return `<div class="mkw-craft"><span class="mkw-craft-label">fabrication</span>${rows}</div>`;
+    return `<div class="mkw-craft"><span class="mkw-craft-label">comment il s’est fait</span>${rows}</div>`;
   }
 
   function mkwStudio() {
@@ -3467,6 +3468,7 @@
         <p class="mkw-quiet">Publie et laisse-moi mesurer : les patterns gagnants s’afficheront ici, avec leur effet net.</p>
       </div>`;
     }
+    const hasBrut = patterns.some((p) => p.basis === 'brut');
     const rows = patterns.map((p) => {
       const d = p.netDeltaPct === null || p.netDeltaPct === undefined
         ? '<span class="mkw-pat-val is-pending">je mesure</span>'
@@ -3474,14 +3476,21 @@
       // La base est AFFICHÉE par ligne : « effet net » ne couvre jamais un
       // delta brut en silence (audit 4.3, champ basis du serveur).
       const basis = p.basis === 'brut' ? '<span class="mkw-pat-basis">brut</span>' : '';
+      // « 3 mesures », pas « n=3 » : le gérant n'est pas data scientist
+      // (verdict sceptique tour 2).
       return `<div class="mkw-pat">
         <span class="mkw-pat-ctx">${esc(p.context)}${basis}</span>
-        <span class="mkw-pat-meta">n=${p.n} · ${mkwConfBadge(p.confidence)}</span>
+        <span class="mkw-pat-meta">${Number(p.n) || 0} mesure${Number(p.n) > 1 ? 's' : ''} · ${mkwConfBadge(p.confidence)}</span>
         ${d}
       </div>`;
     }).join('');
+    // La note « brut » ne s'affiche que si une ligne brut EXISTE : un
+    // avertissement sur un cas absent est du bruit (verdict sceptique tour 2).
+    const sub = hasBrut
+      ? 'effet net mesuré vs. journée comparable · une ligne « brut » n’a pas encore sa journée de comparaison'
+      : 'effet net mesuré vs. journée comparable';
     return `<div class="mkw-card mkw-patterns">
-      <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">effet net mesuré vs. journée comparable · une ligne « brut » n’a pas encore sa journée de comparaison</span></div>
+      <div class="mkw-block-head"><h3>Ce qui convertit chez toi</h3><span class="mkw-block-sub">${sub}</span></div>
       ${rows}
       <p class="mkw-method">Effet net = fréquentation réelle moins ce que j’attendais ce jour-là (météo, jour, vacances déduits). Pas encore un test avec groupe témoin.</p>
     </div>`;
@@ -3566,7 +3575,7 @@
           <span class="mkw-quiet-inline">Tu colles ce que tu regardes déjà : je le transforme en angle.</span>
         </div>
         ${mkCompPostResult()}
-        <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque matin, et j’affiche leur note Google (dès qu’une clé Google Places est configurée).</p>
+        <p class="mkw-method">En automatique aussi : j’extrais leurs offres et prix de leur site chaque matin, et j’affiche leur note Google dès qu’elle est disponible.</p>
       </div>
     </section>`;
   }
@@ -3818,6 +3827,14 @@
       ${mkwTabs()}
       <div class="mkw-surface mkw-in">${mkwSurface()}</div>
     </div>`;
+    // Mobile : la barre d'onglets defile ; l'onglet ACTIF doit toujours etre
+    // visible (verdict sceptique : etre sur Resultats sans le voir dans la
+    // nav). Scroll horizontal du conteneur seulement, jamais de la page.
+    const nav = root.querySelector('.mkw-tabs');
+    const active = nav && nav.querySelector('.mkw-tab.active');
+    if (nav && active && nav.scrollWidth > nav.clientWidth) {
+      nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2);
+    }
     mount(root, 'campaigns');
   };
 

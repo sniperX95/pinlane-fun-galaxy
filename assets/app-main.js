@@ -11484,37 +11484,6 @@ function renderStaffOpsMini(reservation) {
   return `<div class="res-ops-mini">${lines.join('')}</div>`;
 }
 
-function renderOpsPlanInsightBlock(reservation) {
-  const plan = reservation?.opsPlan;
-  if (!plan) return '';
-  const fixed = getOpsPlanFixedCommitments(plan).slice(0, 6);
-  const flexible = getOpsPlanFlexibleEntitlements(plan)
-    .map(item => item.label || item.type)
-    .filter(Boolean);
-  const flexibleUnique = [...new Set(flexible)].slice(0, 5);
-  const checklist = [
-    ...(Array.isArray(plan.operationsChecklist) ? plan.operationsChecklist : []),
-    ...(Array.isArray(plan.marketIntelligence?.warnings) ? plan.marketIntelligence.warnings : []),
-  ].slice(0, 4);
-  const quality = plan.marketIntelligence?.qualityScore;
-  const cards = [];
-  if (fixed.length) {
-    cards.push(`<div class="ops-plan-card"><div class="k">Réservé</div><div class="v">${fixed.map(formatOpsCommitment).map(escapeHtml).join('<br>')}</div></div>`);
-  }
-  if (flexibleUnique.length) {
-    cards.push(`<div class="ops-plan-card"><div class="k">Libre sur place</div><div class="v">${escapeHtml(flexibleUnique.join(' · '))}</div></div>`);
-  }
-  if (Number.isFinite(Number(quality))) {
-    cards.push(`<div class="ops-plan-card"><div class="k">Qualité planning</div><div class="v">${Math.round(Number(quality))}/100</div></div>`);
-  }
-  if (!cards.length && !checklist.length) return '';
-  return `<div class="info-block">
-    <div class="info-label">Lecture opérationnelle</div>
-    ${cards.length ? `<div class="ops-plan-grid">${cards.join('')}</div>` : ''}
-    ${checklist.length ? `<div class="ops-checklist">${checklist.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>` : ''}
-  </div>`;
-}
-
 function renderStaffShell(dayReservations = todaysReservations()) {
   const normalizedPage = normalizeStaffMenuPage(state.staffMenuPage);
   if (state.staffMenuPage !== normalizedPage) {
@@ -12629,7 +12598,6 @@ function renderPosDetails(r) {
     </div>
     ${activityChecklistHtml}
     ${opsPlanHtml}
-    ${renderOpsPlanInsightBlock(r)}
     <div class="info-block">
       <div class="info-label">Suivi rapide</div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">

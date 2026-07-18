@@ -740,8 +740,17 @@ body.staff-menu-collapsed .fgx-menu-popover {
 .date-nav button:hover { background: var(--subtle); color: var(--text); }
 .date-nav button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.staff-date-label {
+/* Label du widget date : desormais un vrai <button> (clavier + a11y), il ouvre
+   le calendrier custom. Bat `.date-nav button` (min-width/couleur) par
+   specificite pour garder son rendu texte. */
+.staff-date-label,
+.date-nav button.staff-date-label {
+  min-width: auto;
   padding: 0 12px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
   font-size: 13px;
@@ -749,23 +758,144 @@ body.staff-menu-collapsed .fgx-menu-popover {
   cursor: pointer;
   white-space: nowrap;
 }
+.date-nav button.staff-date-label:hover { background: var(--subtle); color: var(--text); }
 
-/* input date piloté par showPicker() : invisible mais focusable.
-   `input.` pour battre `input[type='date']` de pinlane.css (width:100%),
-   clip + ancrage left/top pour ne jamais créer d'overflow horizontal. */
-input.staff-date-input,
-input.dash-date-input {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  padding: 0;
+/* Widget date unifie : ‹ date › + Aujourd'hui, partage par le Planning, le
+   Dashboard et les pages Terrain (Arrivees, Sessions, Evenements). */
+.staff-date-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.staff-today-btn {
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.staff-today-btn:hover { background: var(--subtle); }
+
+/* Calendrier custom (popover) : position calculee en JS, ancree sous le
+   declencheur, jamais au coin haut-gauche. Surface flottante aux tokens. */
+.staff-calendar-pop {
+  position: fixed;
+  z-index: 320;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  padding: var(--space-3);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.staff-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.staff-cal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  flex: 1;
+}
+
+.staff-cal-nav {
+  height: 32px;
+  width: 32px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.staff-cal-nav:hover { background: var(--subtle); color: var(--text); }
+
+.staff-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.staff-cal-dow {
+  text-align: center;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+.staff-cal-day {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
-  opacity: 0;
-  clip: rect(0, 0, 0, 0);
-  pointer-events: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.staff-cal-day:hover { background: var(--subtle); }
+.staff-cal-day.is-out { background: transparent; cursor: default; pointer-events: none; }
+.staff-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); font-weight: 600; }
+.staff-cal-day.is-selected { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+.staff-cal-day.is-selected:hover { background: var(--accent-strong); }
+
+.staff-cal-foot {
+  margin-top: var(--space-2);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.staff-cal-today-btn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.staff-cal-today-btn:hover { background: var(--subtle); }
+
+.staff-calendar-pop button:focus-visible,
+button.staff-date-label:focus-visible,
+.staff-today-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn-new {
@@ -7562,8 +7692,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
   .planning-search-inline input { height: 44px; width: 150px; }
   .search-wrap { width: 100%; }
-  .search-wrap input, .date-nav, .btn-new, .dash-new-btn, .dash-period-btn, .admin-date-nav { height: 44px; }
+  .search-wrap input, .date-nav, .btn-new, .dash-new-btn, .dash-period-btn, .admin-date-nav, .staff-today-btn { height: 44px; }
   .date-nav button { min-width: 44px; }
+  .date-nav button.staff-date-label { min-width: auto; }
+  .staff-cal-day, .staff-cal-nav, .staff-cal-today-btn { min-height: 44px; }
 
   .staff-head:not(.hidden), .dash-hero, .pv2-bar, .admin-hero { align-items: flex-start; flex-direction: column; }
   .resource-strip-actions { margin-left: 0; }

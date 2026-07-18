@@ -5376,8 +5376,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       <div class="dash-actions">
         <div class="dash-date-control">
           <span>${escapeHtml(formattedDate)}</span>
-          <button type="button" onclick="openStaffDatePicker(event)" aria-label="Choisir une date">${renderDashboardIcon('date')}</button>
-          <input id="dashboardDatePicker" class="dash-date-input" type="date" onchange="setStaffDateFromPicker(this.value)" aria-label="Choisir une date">
+          <button type="button" onclick="openStaffCalendar(event)" aria-haspopup="dialog" aria-label="Choisir une date">${renderDashboardIcon('date')}</button>
         </div>
         <button type="button" class="dash-period-btn" onclick="setStaffToday()">Aujourd'hui</button>
         <button type="button" class="dash-new-btn" onclick="openQuickBook()">+ Réservation rapide</button>
@@ -8766,7 +8765,7 @@ function renderStaffUtilityPage() {
         <p>${heroSubtitle}</p>
       </div>
       <div class="utility-actions">
-        ${model.hideDateAction ? '' : `<button type="button" onclick="openStaffDatePicker(event)">Changer date</button>`}
+        ${model.hideDateAction ? '' : staffDateNavHtml()}
         ${model.secondaryAction ? `<button type="button" onclick="${model.secondaryAction}">${escapeHtml(model.secondaryLabel)}</button>` : ''}
         ${model.primaryAction ? `<button type="button" class="primary" onclick="${model.primaryAction}">${escapeHtml(model.primaryLabel)}</button>` : ''}
       </div>
@@ -11120,36 +11119,170 @@ function setStaffResourceView(view) {
   renderStaff();
 }
 
-function openStaffDatePicker(ev) {
-  const picker = document.getElementById(isStaffDashboardActive() ? 'dashboardDatePicker' : 'staffDatePicker') || document.getElementById('staffDatePicker');
-  if (!picker) return;
-  picker.value = state.currentDate;
-  picker.removeAttribute('min');
-  // Le picker natif vit dans .staff-head, masquée (display:none) sur les pages
-  // Terrain : showPicker l'ancre alors au coin haut-gauche. On le déplace sous
-  // le bouton déclencheur pour que le calendrier s'ouvre au bon endroit.
-  const trigger = ev && (ev.currentTarget || ev.target);
-  const rect = trigger && typeof trigger.getBoundingClientRect === 'function' ? trigger.getBoundingClientRect() : null;
-  if (rect) {
-    if (picker.parentElement !== document.body) document.body.appendChild(picker);
-    picker.style.position = 'fixed';
-    picker.style.left = `${Math.round(rect.left)}px`;
-    picker.style.top = `${Math.round(rect.bottom + 4)}px`;
-    picker.style.width = '1px';
-    picker.style.height = '1px';
-    picker.style.margin = '0';
-    picker.style.opacity = '0';
-    picker.style.pointerEvents = 'none';
-    picker.style.zIndex = '1';
+// Calendrier custom (popover) : remplace le picker natif <input type=date>
+// dont showPicker() ancrait la surface au coin haut-gauche quand l'input etait
+// masque sur les pages Terrain. Ici la position est calculee et CONTROLEE
+// (positionStaffCalendar : ancree sous le declencheur, maintenue dans le
+// viewport), la surface est stylee aux tokens, clavier + aria.
+let staffCalTrigger = null;
+let staffCalAnchor = null;
+let staffCalMonth = null;
+
+const STAFF_CAL_CHEVRON_LEFT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
+const STAFF_CAL_CHEVRON_RIGHT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
+
+// Widget date reutilisable : navigation jour (fleches), label cliquable qui
+// ouvre le calendrier custom, bouton Aujourd'hui. Le MEME controle sur toutes
+// les surfaces staff (planning, dashboard, pages Terrain).
+function staffDateNavHtml() {
+  const d = parseLocalDate(state.currentDate || todayStr());
+  const shortText = d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
+  const label = shortText.charAt(0).toUpperCase() + shortText.slice(1);
+  return `<div class="staff-date-widget">
+      <div class="date-nav">
+        <button type="button" aria-label="Jour précédent" onclick="shiftDate(-1)">${STAFF_CAL_CHEVRON_LEFT}</button>
+        <button type="button" class="staff-date-label" aria-haspopup="dialog" title="Choisir une date" onclick="openStaffCalendar(event)">${escapeHtml(label)}</button>
+        <button type="button" aria-label="Jour suivant" onclick="shiftDate(1)">${STAFF_CAL_CHEVRON_RIGHT}</button>
+      </div>
+      <button type="button" class="staff-today-btn" onclick="setStaffToday()">Aujourd'hui</button>
+    </div>`;
+}
+
+function renderStaffCalendar(dateISO) {
+  const selected = dateISO || state.currentDate || todayStr();
+  const view = staffCalMonth || getMonthKey(selected);
+  const [vy, vm] = view.split('-').map(Number);
+  const today = todayStr();
+  const months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const title = `${months[vm - 1]} ${vy}`;
+  const first = new Date(vy, vm - 1, 1);
+  const startOffset = (first.getDay() + 6) % 7; // grille lundi -> dimanche
+  const daysInMonth = new Date(vy, vm, 0).getDate();
+  const dows = ['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di'];
+  const cells = [];
+  for (let i = 0; i < startOffset; i += 1) cells.push('');
+  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
+  const dayCells = cells.map(day => {
+    if (day === '') return '<span class="staff-cal-day is-out" aria-hidden="true"></span>';
+    const iso = `${vy}-${String(vm).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const classes = ['staff-cal-day'];
+    if (iso === today) classes.push('is-today');
+    if (iso === selected) classes.push('is-selected');
+    const current = iso === selected ? ' aria-current="date"' : '';
+    return `<button type="button" class="${classes.join(' ')}"${current} onclick="staffCalendarPick('${iso}')">${day}</button>`;
+  }).join('');
+  return `<div class="staff-cal-head">
+      <button type="button" class="staff-cal-nav" aria-label="Mois précédent" onclick="staffCalendarShiftMonth(-1)">${STAFF_CAL_CHEVRON_LEFT}</button>
+      <div class="staff-cal-title">${escapeHtml(title.charAt(0).toUpperCase() + title.slice(1))}</div>
+      <button type="button" class="staff-cal-nav" aria-label="Mois suivant" onclick="staffCalendarShiftMonth(1)">${STAFF_CAL_CHEVRON_RIGHT}</button>
+    </div>
+    <div class="staff-cal-grid" role="grid">
+      ${dows.map(dow => `<div class="staff-cal-dow" role="columnheader">${dow}</div>`).join('')}
+      ${dayCells}
+    </div>
+    <div class="staff-cal-foot">
+      <button type="button" class="staff-cal-today-btn" onclick="staffCalendarPickToday()">Aujourd'hui</button>
+    </div>`;
+}
+
+// Positionnement FIABLE : ancre sous le declencheur (rect capture a l'ouverture)
+// et reste dans le viewport (rabat a gauche/au-dessus si ca deborde).
+function positionStaffCalendar(pop, anchor) {
+  const margin = 8;
+  const gap = 6;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const width = pop.offsetWidth || 300;
+  const height = pop.offsetHeight || 320;
+  let left = anchor.left;
+  if (left + width > vw - margin) left = vw - margin - width;
+  if (left < margin) left = margin;
+  let top = anchor.bottom + gap;
+  if (top + height > vh - margin && anchor.top - gap - height >= margin) {
+    top = anchor.top - gap - height;
   }
-  try {
-    if (typeof picker.showPicker === 'function') {
-      picker.showPicker();
-      return;
-    }
-  } catch (error) {}
-  picker.focus();
-  picker.click();
+  if (top + height > vh - margin) top = Math.max(margin, vh - margin - height);
+  if (top < margin) top = margin;
+  pop.style.left = `${Math.round(left)}px`;
+  pop.style.top = `${Math.round(top)}px`;
+}
+
+function openStaffCalendar(ev) {
+  ev?.preventDefault?.();
+  ev?.stopPropagation?.();
+  const trigger = ev && (ev.currentTarget || ev.target);
+  const existing = document.querySelector('.staff-calendar-pop');
+  if (existing) {
+    const sameTrigger = staffCalTrigger === trigger;
+    closeStaffCalendar();
+    if (sameTrigger) return; // re-clic sur le meme declencheur = fermer
+  }
+  const rect = trigger && typeof trigger.getBoundingClientRect === 'function' ? trigger.getBoundingClientRect() : null;
+  staffCalTrigger = trigger || null;
+  staffCalAnchor = rect
+    ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
+    : { left: 12, right: 12, top: 12, bottom: 12 };
+  staffCalMonth = getMonthKey(state.currentDate || todayStr());
+  const pop = document.createElement('div');
+  pop.className = 'staff-calendar-pop';
+  pop.setAttribute('role', 'dialog');
+  pop.setAttribute('aria-modal', 'false');
+  pop.setAttribute('aria-label', 'Choisir une date');
+  pop.innerHTML = renderStaffCalendar(state.currentDate || todayStr());
+  document.body.appendChild(pop);
+  positionStaffCalendar(pop, staffCalAnchor);
+  const focusTarget = pop.querySelector('.staff-cal-day.is-selected')
+    || pop.querySelector('.staff-cal-day.is-today')
+    || pop.querySelector('.staff-cal-day');
+  if (focusTarget) focusTarget.focus();
+  setTimeout(() => {
+    document.addEventListener('click', staffCalendarOutside, true);
+    document.addEventListener('keydown', staffCalendarKeydown, true);
+  }, 0);
+}
+
+function staffCalendarShiftMonth(delta) {
+  const view = staffCalMonth || getMonthKey(state.currentDate || todayStr());
+  const [vy, vm] = view.split('-').map(Number);
+  const moved = new Date(vy, vm - 1 + delta, 1);
+  staffCalMonth = `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, '0')}`;
+  const pop = document.querySelector('.staff-calendar-pop');
+  if (!pop) return;
+  pop.innerHTML = renderStaffCalendar(state.currentDate || todayStr());
+  if (staffCalAnchor) positionStaffCalendar(pop, staffCalAnchor);
+}
+
+function staffCalendarPick(dateISO) {
+  closeStaffCalendar();
+  setStaffDateFromPicker(dateISO); // logique existante : currentDate + save + renderStaff + sync
+}
+
+function staffCalendarPickToday() {
+  staffCalendarPick(todayStr());
+}
+
+function staffCalendarOutside(ev) {
+  const pop = document.querySelector('.staff-calendar-pop');
+  if (!pop) return;
+  if (pop.contains(ev.target)) return;
+  if (staffCalTrigger && staffCalTrigger.contains && staffCalTrigger.contains(ev.target)) return;
+  closeStaffCalendar();
+}
+
+function staffCalendarKeydown(ev) {
+  if (ev.key !== 'Escape' && ev.key !== 'Esc') return;
+  ev.preventDefault();
+  const trigger = staffCalTrigger;
+  closeStaffCalendar();
+  if (trigger && typeof trigger.focus === 'function') trigger.focus();
+}
+
+function closeStaffCalendar() {
+  document.querySelectorAll('.staff-calendar-pop').forEach(pop => pop.remove());
+  document.removeEventListener('click', staffCalendarOutside, true);
+  document.removeEventListener('keydown', staffCalendarKeydown, true);
+  staffCalTrigger = null;
+  staffCalAnchor = null;
 }
 
 function setStaffDateFromPicker(value) {
@@ -11547,11 +11680,6 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   if (dateShort) {
     const shortDateText = d.toLocaleDateString('fr-BE', { weekday:'short', day:'numeric', month:'short', year:'numeric' }).replace(',', '');
     dateShort.textContent = shortDateText.charAt(0).toUpperCase() + shortDateText.slice(1);
-  }
-  const datePicker = document.getElementById('staffDatePicker');
-  if (datePicker) {
-    datePicker.value = state.currentDate;
-    datePicker.removeAttribute('min');
   }
   const prevBtn = document.getElementById('staffPrevDateBtn');
   if (prevBtn) prevBtn.disabled = false;

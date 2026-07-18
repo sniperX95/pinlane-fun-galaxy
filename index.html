@@ -9,7 +9,7 @@
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260717b">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260718c">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260719a">
 <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260716b">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
@@ -17,7 +17,7 @@
 <script defer src="./assets/booking-core.js?v=20260717f"></script>
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
-<script defer src="./assets/app-main.js?v=20260718d"></script>
+<script defer src="./assets/app-main.js?v=20260719a"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260717f"></script>
 <script defer src="./assets/staff-pages-v2.js?v=20260718c"></script>
@@ -430,11 +430,13 @@
           <div class="sub" id="staffDateLabel"></div>
         </div>
         <div class="staff-head-actions">
-          <div class="date-nav">
-            <button id="staffPrevDateBtn" aria-label="Jour precedent" onclick="shiftDate(-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
-            <span id="staffDateShort" class="staff-date-label" onclick="openStaffDatePicker(event)" title="Choisir une date"></span>
-            <input id="staffDatePicker" class="staff-date-input" type="date" onchange="setStaffDateFromPicker(this.value)" aria-label="Choisir une date">
-            <button id="staffNextDateBtn" aria-label="Jour suivant" onclick="shiftDate(1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+          <div class="staff-date-widget">
+            <div class="date-nav">
+              <button id="staffPrevDateBtn" type="button" aria-label="Jour precedent" onclick="shiftDate(-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+              <button id="staffDateShort" type="button" class="staff-date-label" aria-haspopup="dialog" onclick="openStaffCalendar(event)" title="Choisir une date"></button>
+              <button id="staffNextDateBtn" type="button" aria-label="Jour suivant" onclick="shiftDate(1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+            </div>
+            <button type="button" class="staff-today-btn" onclick="setStaffToday()">Aujourd'hui</button>
           </div>
           <button class="btn-new" onclick="openQuickBook()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

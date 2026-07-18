@@ -4103,9 +4103,9 @@
     const rgb = (color.match(/\d+(\.\d+)?/g) || []).map(Number);
     const lum = rgb.length >= 3 ? (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 : 255;
     const darkTheme = lum > 127;
-    mkwDots.base = darkTheme ? 0.21 : 0.16;
-    mkwDots.wave = darkTheme ? 0.36 : 0.26;
-    const twk = darkTheme ? 1 : 0.7;
+    mkwDots.base = darkTheme ? 0.12 : 0.09;
+    mkwDots.wave = darkTheme ? 0.20 : 0.15;
+    const twk = darkTheme ? 0.7 : 0.5;
     // Grille carrée régulière centrée. Chaque point porte son fondu de bord
     // (le panneau a une forme claire, des bords doux) et, pour ~1 sur 8, un
     // scintillement doux à phase/vitesse propres.

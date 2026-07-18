@@ -33,6 +33,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/api/healthz",
+      "destination": "/api/public-booking-meta"
+    },
+    {
       "source": "/api/pilot-lead",
       "destination": "/api/public-booking-meta"
     },

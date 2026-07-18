@@ -175,6 +175,29 @@ module.exports = async (req, res) => {
     return;
   }
 
+  // GET /api/healthz (rewrite vercel.json) : sonde publique pour le monitoring.
+  // Aucune donnee metier : juste la vitalite fonction + DB (select 1 borne).
+  {
+    const probeUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+    if (probeUrl.pathname.endsWith('/healthz')) {
+      if (enforceRateLimit(req, res, { scope: 'healthz', limit: 30, windowMs: 60_000 })) {
+        return;
+      }
+      let db = false;
+      try {
+        await Promise.race([
+          getPool().query('select 1'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+        ]);
+        db = true;
+      } catch (error) {
+        db = false;
+      }
+      sendJson(res, db ? 200 : 503, { ok: db, db });
+      return;
+    }
+  }
+
   // Config publique du centre (horaires staff, regime vacances/feries, offres
   // activees) pour que l'affichage client reflete la meme verite que le moteur.
   // Fail-soft : sans DB ou centre inconnu, le client retombe sur la grille locale.

@@ -69,6 +69,7 @@ export default function middleware(request: Request) {
     '/api/public-reservations',
     '/api/public-availability',
     '/api/public-booking-meta',
+    '/api/healthz',
     '/api/admin-range',
     '/api/inbound-email',
     '/api/marketing-agents',

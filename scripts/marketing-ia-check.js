@@ -221,6 +221,9 @@ async function main() {
         suggestGo: Boolean(root.querySelector('.mkw-suggest-go svg')),
         resultsTurn: (root.querySelector('.mkw-turn-results') || {}).textContent || '',
         heroInFeed: root.querySelectorAll('.mkw-hero').length,
+        veilleName: (root.querySelector('.mkw-turn-veille .mkw-inline-lead span') || {}).textContent || '',
+        veilleSub: (root.querySelector('.mkw-turn-veille .mkw-inline-sub') || {}).textContent || '',
+        veilleNameHtml: (root.querySelector('.mkw-turn-veille .mkw-inline-lead span') || {}).innerHTML || '',
       };
     });
     ok(/préparé/.test(feed.voice) && /Bowling Arlon/.test(feed.voice), 'la voix d\'accueil : vu + préparé + veille');
@@ -228,6 +231,8 @@ async function main() {
     ok(Boolean(feed.suggest) && feed.suggestGo, 'la pastille de suggestion (liseré animé + chevron) met en avant LA chose du jour');
     ok(/1[\s  ]?240/.test(feed.resultsTurn) && /réservations liées/.test(feed.resultsTurn), 'le tour résultat rappelle le chiffre lié aux messages');
     ok(feed.heroInFeed === 0, 'le héros € ne vit PAS dans le fil (il vit dans Résultats, une seule maison)');
+    ok(/Bowling Arlon/.test(feed.veilleName) && /offre étudiants/.test(feed.veilleSub), 'le tour veille rend le concurrent (nom + diff) dans sa carte inline');
+    ok(feed.veilleNameHtml.length > 0 && !/[<>]/.test(feed.veilleNameHtml), 'le nom du concurrent est échappé (texte pur dans le span, aucune balise brute)');
     // Le fil renvoie vers la profondeur : le tour résultat ouvre Résultats.
     const feedNav = await page.evaluate(async () => {
       const link = [...document.querySelectorAll('#staffCampaignsPage .mkw-turn-results .mkw-link')].find((el) => /détail des résultats/i.test(el.textContent));

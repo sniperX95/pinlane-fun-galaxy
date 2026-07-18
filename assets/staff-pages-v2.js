@@ -2130,13 +2130,18 @@
      ======================================================================== */
 
   const mkBrief = {
-    data: null, loading: false, error: '', period: 30, tab: 'today',
+    data: null, loading: false, error: '', period: 30, tab: 'feed',
     payOpen: false, radarOpen: null, openCard: null, cardNetwork: {},
     angleOpen: null, publishedAsk: null, moreOpen: false, receiptsAll: false,
     askFocus: false, busy: '', published: {}, dismissed: {},
     studioChannel: 'facebook', studioPacks: {}, studioBusy: false,
   };
   window.mkBrief = mkBrief;
+
+  // Motion à un coup : la toile ne se refade qu'en ARRIVANT sur une vue (ou à
+  // la première donnée), jamais sur chaque clic in-view (ouvrir une carte,
+  // toggler un jour). Sinon tout le fil clignote à chaque interaction.
+  let mkwPrevTab = null;
 
   let mkRenderQueued = false;
   function scheduleCampaignsRender() {
@@ -2186,54 +2191,12 @@
   const BR_TRIGGER_TONE = { creux: 'danger', jour_fort: 'success' };
   const BR_NETWORK_LABELS = { facebook: 'Facebook', instagram: 'Instagram', story: 'Story', email: 'Email' };
 
-  /* ── Aujourd'hui · la ligne de voix (ex-mémo, une phrase, signée) ──
-     L'audit (4.1) : trois zones disaient le même fait le même matin. La voix
-     reste, la redondance meurt : UNE phrase, la signature, rien d'autre. ── */
-
-  function mkwVoice() {
-    const b = mkBrief.data;
-    if (!b) return `<section class="mkw-card mkw-voice"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
-    return `<section class="mkw-card mkw-voice">
-      ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
-      <p class="mkw-voice-text">${brProse(b.brief.text)}</p>
-      <p class="mkw-sign">${mkwAgentMark()} ton employé marketing · ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
-    </section>`;
-  }
-
-  /* ── Aujourd'hui · les 4 chiffres qui commandent (ref Vercel Usage) ──
-     Chaque carte est une DECISION et navigue vers sa maison : les euros vers
-     Résultats, la file vers les cartes, le jour à remplir vers le radar, la
-     veille vers Concurrents. Le héros euros détaillé vit dans Résultats. ── */
-
-  function mkwStatCards() {
-    const b = mkBrief.data;
-    if (!b) return `<div class="mkw-stats">${'<div class="mkw-stat"><div class="mkw-skel mkw-skel-short"></div><div class="mkw-skel"></div></div>'.repeat(4)}</div>`;
-    const p = b.paie;
-    const card = (onclick, label, value, foot, valueClass = '') => `<button type="button" class="mkw-stat" onclick="${onclick}">
-      <span class="mkw-stat-label">${esc(label)}</span>
-      <span class="mkw-stat-val ${valueClass}">${value}</span>
-      <span class="mkw-stat-foot">${foot}</span>
-    </button>`;
-    // 1. L'argent : la raison de payer. États honnêtes (jeune / fenêtre calme).
-    let payVal = money(p.euros); let payClass = p.euros > 0 ? 'is-good' : ''; let payFoot = `${p.days} derniers jours · voir le détail`;
-    if (p.young) { payVal = 'bientôt'; payClass = 'is-quiet'; payFoot = `premier bilan le ${esc(p.firstVerdictDate)}`; }
-    else if (p.quietWindow) { payVal = '0 envoi'; payClass = 'is-quiet'; payFoot = `rien envoyé sur ${p.days} jours`; }
-    // 2. La file : ce qui est prêt à publier maintenant.
-    const ready = brVisiblePropositions().length;
-    // 3. Le jour à remplir : le prochain creux réel du radar.
-    const risk = (b.radar || []).find((d) => d.level === 'creux' || d.level === 'calme');
-    // 4. La veille : le mouvement chez les concurrents.
-    const watchCount = b.veille ? b.veille.count : 0;
-    const watchNews = b.veille && b.veille.changed.length > 0;
-    return `<div class="mkw-stats">
-      ${card("mkwTab('results')", 'Lié à tes messages', payVal, payFoot, payClass)}
-      ${card('document.getElementById(\'mkwQueueTop\') && document.getElementById(\'mkwQueueTop\').scrollIntoView({behavior:\'smooth\'})', 'Prêts à publier', `${ready}`, ready ? 'dans la file, plus bas' : 'rien d’urgent aujourd’hui')}
-      ${risk
-        ? card(`mkBrRadar('${escJs(risk.date)}')`, 'Jour à remplir', esc(brFrDay(risk.date)), `${risk.resaCount || 0} rés. posées · voir le radar`)
-        : card("mkwTab('plan')", 'Jour à remplir', 'aucun', '14 prochains jours corrects', 'is-quiet')}
-      ${card("mkwTab('rivals')", 'Concurrents suivis', `${watchCount}`, watchNews ? '<b>du mouvement ce matin</b>' : 'rien à signaler')}
-    </div>`;
-  }
+  // NB (refonte agent-natif 2026-07-18) : la ligne de voix (ex-mkwVoice) et les
+  // 4 stat-cards « dashboard » (ex-mkwStatCards) ont disparu comme composants
+  // plats. Leur substance vit désormais dans le FIL : la voix devient le tour
+  // d'accueil (mkwGreeting), et les 4 chiffres sont distribués dans les tours
+  // (résultat = euros, radar = jour à remplir, veille = concurrents), un fait à
+  // la fois, dans la conversation. mkBrPeriod/mkBrPayDetail restent (Résultats).
 
   window.mkBrPeriod = async function (days) {
     mkBrief.period = Number(days) || 30;
@@ -2274,11 +2237,14 @@
     return `<svg class="br-wx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${BR_WEATHER[kind]}</svg>`;
   }
 
+  // Le radar 14 jours : builder NU (sans titre de section : dans le fil
+  // agent-natif, la phrase de l'agent porte le contexte, la grille est la carte
+  // inline). Réutilisé tel quel par mkwRadarTurn().
   function mkwRadar() {
     const b = mkBrief.data;
-    if (!b) return `<section class="mkw-block"><h2 class="mkw-bt">Les 14 prochains jours</h2><div class="mkw-radar">${'<span class="mkw-cell mkw-cell-skel"></span>'.repeat(14)}</div></section>`;
+    if (!b) return `<div class="mkw-radar">${'<span class="mkw-cell mkw-cell-skel"></span>'.repeat(14)}</div>`;
     if (!b.radar || !b.radar.length) {
-      return `<section class="mkw-block"><h2 class="mkw-bt">Les 14 prochains jours</h2><p class="mkw-quiet">Je n'ai pas de prévision fiable aujourd'hui : je réessaie cette nuit.</p></section>`;
+      return `<p class="mkw-quiet">Je n'ai pas de prévision fiable aujourd'hui : je réessaie cette nuit.</p>`;
     }
     const cells = b.radar.map((day) => {
       const isToday = day.date === b.today;
@@ -2319,12 +2285,9 @@
         ${canFill ? `<button type="button" class="mkw-link" onclick="mkBrRadarFill('${escJs(openDay.date)}')" ${mkBrief.busy === `fill:${openDay.date}` ? 'disabled' : ''}>${mkBrief.busy === `fill:${openDay.date}` ? 'je prépare…' : 'Prépare-moi un post pour remplir ce jour'}</button>` : ''}
       </div>`;
     }
-    return `<section class="mkw-block">
-      <h2 class="mkw-bt">Les 14 prochains jours</h2>
-      <div class="mkw-radar">${cells}</div>
+    return `<div class="mkw-radar">${cells}</div>
       ${summary ? `<p class="mkw-radar-sum">${brProse(summary)}</p>` : ''}
-      ${explain}
-    </section>`;
+      ${explain}`;
   }
 
   window.mkBrRadar = function (date) {
@@ -2388,10 +2351,65 @@
     });
   }
 
+  // ── Le TOUR de proposition (fil agent-natif) ────────────────────────────
+  // Le corps déployé d'une proposition (l'atelier : onglets réseau, papier,
+  // copier, autre angle, publié ?). Extrait pour être PARTAGÉ entre la carte de
+  // tour (mkwPropCard) et la pastille de suggestion en tête de fil
+  // (mkwHeroSuggest). Tout le câblage d'origine est identique (handlers, ids).
+  function mkwPropOpenBody(p) {
+    if (p.kind === 'offre') {
+      const note = (p.networks && (p.networks.interne || p.networks.facebook) || {}).text || p.why || '';
+      return `<div class="mkw-prop-body"><div class="mkw-paper">${esc(note)}</div>
+        <div class="mkw-prop-actions">
+          <button type="button" class="pv2-btn primary" onclick="mkBrDismiss('${escJs(p.key)}')">${ci('check')}C'est noté</button>
+          <button type="button" class="mkw-link mkw-link-faint" onclick="mkBrOpenCard('${escJs(p.key)}')">Réduire</button>
+        </div></div>`;
+    }
+    const networks = (mkBrief.data.networks || []).filter(() => p.kind !== 'email');
+    const current = mkBrief.cardNetwork[p.key] || p.network || (networks[0] || 'facebook');
+    const entry = (p.networks || {})[current] || null;
+    const generating = mkBrief.busy === `net:${p.key}:${current}`;
+    const netTabs = p.kind === 'email' ? '' : `<div class="mkw-nets" role="tablist">${networks.map((network) => `<button type="button" role="tab" aria-selected="${current === network}" class="mkw-net ${current === network ? 'active' : ''}" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(network)}')">${BR_NETWORK_LABELS[network] || network}</button>`).join('')}</div>`;
+    const paper = generating
+      ? `<div class="mkw-paper mkw-shimmer"><p class="mkw-quiet">je l'adapte pour ${BR_NETWORK_LABELS[current] || current}…</p></div>`
+      : (entry && entry.text
+        ? `<div class="mkw-paper">${esc(entry.text)}</div>`
+        : `<div class="mkw-paper"><p class="mkw-quiet">Le texte n’est pas venu. <button type="button" class="mkw-link" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(current)}', true)">Réessayer</button></p></div>`);
+    const photoIdea = (entry && entry.photoIdea) || p.photoIdea;
+    const bestSlot = (entry && entry.bestSlot) || p.bestSlot;
+    const imagePrompt = (entry && entry.imagePrompt) || p.imagePrompt;
+    const under = [
+      photoIdea ? `<p class="mkw-under">Idée photo : ${esc(photoIdea)}</p>` : '',
+      bestSlot ? `<p class="mkw-under mkw-under-mono">Meilleur moment : ${esc(bestSlot)}</p>` : '',
+      imagePrompt ? `<details class="mkw-prompt"><summary>prompt pour une image IA</summary><div class="mkw-prompt-text">${esc(imagePrompt)}</div><button type="button" class="mkw-link" onclick="mkBrCopyPrompt('${escJs(p.key)}')">Copier</button></details>` : '',
+    ].join('');
+    const angleOpen = mkBrief.angleOpen === p.key;
+    const askPublished = mkBrief.publishedAsk === p.key;
+    const footer = p.kind === 'email'
+      ? `<div class="mkw-prop-actions"><button type="button" class="pv2-btn primary" onclick="state.staffMenuPage = 'emails'; save(); renderStaff();">Ouvrir dans Emails</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrOpenCard('${escJs(p.key)}')">Réduire</button></div>`
+      : `<div class="mkw-prop-actions">
+          <button type="button" class="pv2-btn primary" onclick="mkBrCopy('${escJs(p.key)}')" ${generating || !(entry && entry.text) ? 'disabled' : ''}>${ci('copy')}Copier le post</button>
+          <button type="button" class="mkw-link" onclick="mkBrAngle('${escJs(p.key)}')">Autre angle</button>
+          <button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button>
+          <button type="button" class="mkw-link mkw-link-faint" onclick="mkBrOpenCard('${escJs(p.key)}')">Réduire</button>
+        </div>
+        ${angleOpen ? `<div class="mkw-angle"><input id="brAngle-${esc(p.key)}" class="mkw-input" placeholder="précise l'angle (optionnel) : « spécial ados », « plus court »…"><button type="button" class="mkw-link" onclick="mkBrRegen('${escJs(p.key)}')" ${mkBrief.busy === `regen:${p.key}` ? 'disabled' : ''}>${mkBrief.busy === `regen:${p.key}` ? 'je réécris…' : 'Refaire'}</button></div>` : ''}
+        ${askPublished ? `<div class="mkw-published-ask" role="status">Publié ? <button type="button" class="mkw-link" onclick="mkBrPublished('${escJs(p.key)}', true)">Oui</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrPublished('${escJs(p.key)}', false)">Pas encore</button></div>` : ''}`;
+    return `<div class="mkw-prop-body">${netTabs}${paper}${under}${footer}</div>`;
+  }
+
+  // La proposition NAÎT comme un message de l'agent : avatar + bulle (sa voix,
+  // première personne) + sa base honnête (le déclencheur : jour calme,
+  // événement, chaleur…) + actions inline [Voir] [Ignorer]. Ouverte, elle
+  // déploie l'atelier (onglets réseau, papier, copier, autre angle, publié ?).
+  // Tout le câblage d'origine est PRÉSERVÉ à l'identique (handlers, ids, état).
   function mkwPropCard(p) {
     const published = mkBrief.published[p.key];
     if (published) {
-      return `<article class="mkw-prop is-published" data-br-card="${esc(p.key)}"><p class="mkw-prop-published">${ci('check')}Publié : je mesure pendant 14 jours, le reçu arrive dans Résultats.</p></article>`;
+      return `<article class="mkw-turn mkw-turn-prop is-published" data-br-card="${esc(p.key)}">
+        <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+        <div class="mkw-turn-body"><p class="mkw-prop-published">${ci('check')}C'est publié : je mesure pendant 14 jours, le reçu arrive dans Résultats.</p></div>
+      </article>`;
     }
     const open = mkBrief.openCard === p.key;
     const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
@@ -2401,96 +2419,37 @@
     const isOffre = p.kind === 'offre';
     // La carte quotidienne se nomme : « le post du jour » est SA nature (il se
     // renouvelle chaque matin), pas une urgence qui crie tous les jours.
-    const meta = [
-      p.pinned ? 'le post du jour' : (dueLabel ? `${isOffre ? 'à faire' : 'à publier'} ${dueLabel}` : ''),
-      BR_TRIGGER_LABELS[p.trigger] || '',
-    ].filter(Boolean).join(' · ');
+    const when = p.pinned ? 'le post du jour' : (dueLabel ? `${isOffre ? 'à faire' : 'à publier'} ${dueLabel}` : '');
+    // La base honnête du message = le déclencheur réel (le backend n'émet pas
+    // de niveau de confiance par proposition : on montre le POURQUOI, pas un
+    // score inventé). C'est l'indice de confiance de l'agent : sa raison.
+    const reason = BR_TRIGGER_LABELS[p.trigger] || '';
     const verb = p.kind === 'email' ? 'Voir l\'email' : (isOffre ? 'Voir la checklist' : (p.trigger === 'concurrent' ? 'Voir la riposte' : 'Voir le post'));
-    let body = '';
-    if (open && isOffre) {
-      const note = (p.networks && (p.networks.interne || p.networks.facebook) || {}).text || p.why || '';
-      body = `<div class="mkw-paper">${esc(note)}</div>
-        <div class="mkw-prop-actions">
-          <button type="button" class="pv2-btn primary" onclick="mkBrDismiss('${escJs(p.key)}')">${ci('check')}C’est noté</button>
-        </div>`;
-    } else if (open) {
-      const networks = (mkBrief.data.networks || []).filter(() => p.kind !== 'email');
-      const current = mkBrief.cardNetwork[p.key] || p.network || (networks[0] || 'facebook');
-      const entry = (p.networks || {})[current] || null;
-      const generating = mkBrief.busy === `net:${p.key}:${current}`;
-      const netTabs = p.kind === 'email' ? '' : `<div class="mkw-nets" role="tablist">${networks.map((network) => `<button type="button" role="tab" aria-selected="${current === network}" class="mkw-net ${current === network ? 'active' : ''}" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(network)}')">${BR_NETWORK_LABELS[network] || network}</button>`).join('')}</div>`;
-      const paper = generating
-        ? `<div class="mkw-paper mkw-shimmer"><p class="mkw-quiet">je l'adapte pour ${BR_NETWORK_LABELS[current] || current}…</p></div>`
-        : (entry && entry.text
-          ? `<div class="mkw-paper">${esc(entry.text)}</div>`
-          : `<div class="mkw-paper"><p class="mkw-quiet">Le texte n’est pas venu. <button type="button" class="mkw-link" onclick="mkBrNetwork('${escJs(p.key)}', '${escJs(current)}', true)">Réessayer</button></p></div>`);
-      const photoIdea = (entry && entry.photoIdea) || p.photoIdea;
-      const bestSlot = (entry && entry.bestSlot) || p.bestSlot;
-      const imagePrompt = (entry && entry.imagePrompt) || p.imagePrompt;
-      const under = [
-        photoIdea ? `<p class="mkw-under">Idée photo : ${esc(photoIdea)}</p>` : '',
-        bestSlot ? `<p class="mkw-under mkw-under-mono">Meilleur moment : ${esc(bestSlot)}</p>` : '',
-        imagePrompt ? `<details class="mkw-prompt"><summary>prompt pour une image IA</summary><div class="mkw-prompt-text">${esc(imagePrompt)}</div><button type="button" class="mkw-link" onclick="mkBrCopyPrompt('${escJs(p.key)}')">Copier</button></details>` : '',
-      ].join('');
-      const angleOpen = mkBrief.angleOpen === p.key;
-      const askPublished = mkBrief.publishedAsk === p.key;
-      const footer = p.kind === 'email'
-        ? `<div class="mkw-prop-actions"><button type="button" class="pv2-btn primary" onclick="state.staffMenuPage = 'emails'; save(); renderStaff();">Ouvrir dans Emails</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button></div>`
-        : `<div class="mkw-prop-actions">
-            <button type="button" class="pv2-btn primary" onclick="mkBrCopy('${escJs(p.key)}')" ${generating || !(entry && entry.text) ? 'disabled' : ''}>${ci('copy')}Copier le post</button>
-            <button type="button" class="mkw-link" onclick="mkBrAngle('${escJs(p.key)}')">Autre angle</button>
-            <button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Pas maintenant</button>
-          </div>
-          ${angleOpen ? `<div class="mkw-angle"><input id="brAngle-${esc(p.key)}" class="mkw-input" placeholder="précise l'angle (optionnel) : « spécial ados », « plus court »…"><button type="button" class="mkw-link" onclick="mkBrRegen('${escJs(p.key)}')" ${mkBrief.busy === `regen:${p.key}` ? 'disabled' : ''}>${mkBrief.busy === `regen:${p.key}` ? 'je réécris…' : 'Refaire'}</button></div>` : ''}
-          ${askPublished ? `<div class="mkw-published-ask" role="status">Publié ? <button type="button" class="mkw-link" onclick="mkBrPublished('${escJs(p.key)}', true)">Oui</button><button type="button" class="mkw-link mkw-link-faint" onclick="mkBrPublished('${escJs(p.key)}', false)">Pas encore</button></div>` : ''}`;
-      body = `${netTabs}${paper}${under}${footer}`;
-    }
-    return `<article class="mkw-prop tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
-      <p class="mkw-prop-why">${brProse(p.whyShort || p.why)}</p>
-      <p class="mkw-prop-meta">${esc(meta)}${open ? '' : `, <button type="button" class="mkw-link" onclick="mkBrOpenCard('${escJs(p.key)}')">${verb}</button>`}</p>
-      ${body}
+    const body = open ? mkwPropOpenBody(p) : '';
+    const chips = [
+      when ? `<span class="mkw-chip-inline">${esc(when)}</span>` : '',
+      reason ? `<span class="mkw-chip-inline mkw-chip-reason">${esc(reason)}</span>` : '',
+    ].join('');
+    return `<article class="mkw-turn mkw-turn-prop tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
+      <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+      <div class="mkw-turn-body">
+        <div class="mkw-bubble">
+          <p class="mkw-prop-why">${brProse(p.whyShort || p.why)}</p>
+          ${chips ? `<p class="mkw-prop-meta">${chips}</p>` : ''}
+        </div>
+        ${open ? '' : `<div class="mkw-cta">
+          <button type="button" class="pv2-btn primary" onclick="mkBrOpenCard('${escJs(p.key)}')">${verb}</button>
+          <button type="button" class="mkw-link mkw-link-faint" onclick="mkBrDismiss('${escJs(p.key)}')">Ignorer</button>
+        </div>`}
+        ${body}
+      </div>
     </article>`;
   }
 
-  function mkwQueue() {
-    const b = mkBrief.data;
-    if (!b) return `<section class="mkw-block"><h2 class="mkw-bt">Prêt pour toi</h2><div class="mkw-skel mkw-skel-card"></div><div class="mkw-skel mkw-skel-card"></div></section>`;
-    const all = brVisiblePropositions();
-    const visible = mkBrief.moreOpen ? all : all.slice(0, 3);
-    const rest = all.length - visible.length;
-    const creating = mkBrief.busy === 'ask';
-    const chips = [];
-    for (const day of (b.radar || [])) {
-      if (chips.length >= 2) break;
-      if ((day.level === 'creux' || day.level === 'calme') && !day.propositionKey) chips.push({ label: `Remplir ${brFrDay(day.date).split(' ')[0]} ${day.date.slice(8, 10)}`, text: `un post pour remplir ${brFrDay(day.date)}` });
-      else if (day.precipMm !== null && day.precipMm >= 10) chips.push({ label: `Profiter de la pluie de ${brFrDay(day.date).split(' ')[0]}`, text: `un post sur la pluie annoncée ${brFrDay(day.date)}` });
-    }
-    chips.push({ label: 'Idée libre', text: '' });
-    // La command bar (ref Vercel « Ask anything ») : chips TOUJOURS visibles
-    // (la première porte le sheen), input XL, envoi par flèche circulaire.
-    // Le focus ne re-rend JAMAIS la page (audit 4.1) : il pose juste le ring.
-    // Le texte tapé est conservé dans l'état entre deux renders.
-    return `<section class="mkw-block" id="mkwQueueTop">
-      <h2 class="mkw-bt">Prêt pour toi</h2>
-      ${creating ? '<article class="mkw-prop mkw-prop-skel"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></article>' : ''}
-      ${visible.length || creating ? visible.map(mkwPropCard).join('') : `<div class="empty-state"><div class="empty-state-title">Rien d’urgent aujourd’hui</div><div class="empty-state-text">Je surveille la météo, tes réservations et tes concurrents. Dès que je vois un creux ou une occasion, une carte apparaît ici.</div></div>`}
-      ${rest > 0 ? `<button type="button" class="mkw-link" onclick="mkBrMore()">+ ${rest} autre${rest > 1 ? 's' : ''} pour plus tard</button>` : ''}
-      <div class="mkw-cmd ${mkBrief.askFocus ? 'is-focused' : ''}" id="mkwAsk">
-        <div class="mkw-chips">${chips.map((chip, index) => `<button type="button" class="mkw-chip ${index === 0 ? 'mkw-chip-primary' : ''}" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>
-        <div class="mkw-cmd-bar">
-          <input id="brAskInput" class="mkw-cmd-input" value="${esc(mkBrief.askDraft || '')}"
-            placeholder="Demande-moi quelque chose : « un post pour la soirée fluo de samedi »"
-            aria-label="Demander une proposition à l’employé marketing"
-            oninput="mkBrief.askDraft = this.value" onfocus="mkBrAskFocus(true)" onblur="mkBrAskFocus(false)"
-            onkeydown="if (event.key === 'Enter') mkBrAsk()">
-          <button type="button" class="mkw-cmd-send" onclick="mkBrAsk()" ${creating ? 'disabled' : ''} aria-label="${creating ? 'Je prépare ta proposition' : 'Demander'}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
-          </button>
-        </div>
-        <p class="mkw-cmd-note">Il propose, tu valides : rien ne part jamais tout seul.</p>
-      </div>
-    </section>`;
-  }
+  // NB (refonte agent-natif) : ex-mkwQueue (la file « Prêt pour toi » + la
+  // command bar) est dissoute. Les propositions sont désormais des tours du fil
+  // (mkwPropCard, appelé par mkwFeed) et la command bar est le composer sticky
+  // (mkwComposer). Mêmes chips, mêmes ids (#mkwAsk/#brAskInput), mêmes handlers.
 
   window.mkBrOpenCard = function (key) {
     mkBrief.openCard = mkBrief.openCard === key ? null : key;
@@ -3323,26 +3282,29 @@
      l'analyse causale profonde arrive en Phase 1 backend).
      ══════════════════════════════════════════════════════════════════════ */
 
-  // 5 onglets : une question du gérant = UNE maison (AUDIT-MARKETING.md §6).
-  // « Ce qui marche » a disparu comme onglet : à 18 jours de données et 0
-  // pattern, il répondait « je ne sais pas encore » à chaque visite ; ses
-  // contenus VIVANTS (verdicts causaux, mémoire par contexte) vivent dans
-  // « Résultats », la maison unique de la preuve, aux côtés des reçus J+14.
+  // AGENT-NATIF (refonte 2026-07-18) : la landing n'est plus une grille de 5
+  // onglets co-égaux, c'est la CONVERSATION de l'agent (feed). La profondeur
+  // (plan, studio, concurrents, résultats) reste accessible mais SUBORDONNÉE :
+  // un rail discret + des liens depuis le fil. `feed` est la maison.
   const MKW_TABS = [
-    { key: 'today', label: 'Aujourd’hui' },
+    { key: 'feed', label: 'Conversation' },
     { key: 'plan', label: 'Le plan' },
     { key: 'studio', label: 'Studio' },
     { key: 'rivals', label: 'Concurrents' },
     { key: 'results', label: 'Résultats' },
   ];
+  // Les entrées de profondeur du rail (tout sauf la maison conversation).
+  const MKW_DEPTH = MKW_TABS.filter((t) => t.key !== 'feed');
 
   window.mkwTab = function (key) {
     if (!MKW_TABS.some((t) => t.key === key)) return;
+    if (mkBrief.tab === key) return;
     mkBrief.tab = key;
     if (key === 'rivals' && typeof loadCompetitors === 'function') loadCompetitors();
+    // L'entrée en scène de la vue est gérée une-fois-par-navigation par le
+    // render (classe mkw-in calculée sur le changement d'onglet) : plus de
+    // toggle manuel qui rejouait le fade à chaque clic in-view.
     renderStaffCampaignsPage();
-    const surf = document.querySelector('.mkw-surface');
-    if (surf && !reducedMotion) { surf.classList.remove('mkw-in'); void surf.offsetWidth; surf.classList.add('mkw-in'); }
   };
 
   // Le mark de l'agent : une identité, pas juste du texte gris (SVG inline,
@@ -3351,29 +3313,46 @@
     return `<span class="mkw-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z"/></svg></span>`;
   }
 
+  // L'en-tête d'accueil (langage Vercel « Agent ») : fil d'Ariane discret,
+  // grande identité de l'agent + pastille d'état vivant, une phrase mutée qui
+  // dit ce qu'il fait, et un « En savoir plus » qui déplie (vraie révélation,
+  // jamais un lien mort : Product Rule §9). La texture de points vit derrière.
   function mkwHeader() {
     const b = mkBrief.data;
-    // Honnêteté de fraîcheur (audit 4.1) : plus de « passé à HH:MM » qui
-    // affichait l'heure du fetch HTTP comme une tournée planifiée. Le brief
-    // est recalculé à l'ouverture : on dit la date, pas une heure de passage.
-    const live = b
-      ? `brief du ${new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' })}`
-      : 'je prépare ton brief…';
+    const fresh = b ? `Brief du ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}.` : '';
     return `<header class="mkw-head">
+      <p class="mkw-crumb">Marketing</p>
       <div class="mkw-head-id">
-        ${mkwAgentMark()}
-        <div>
-          <h1 class="mkw-head-title">Ton employé marketing</h1>
-          <p class="mkw-head-sub"><span class="mkw-live" aria-hidden="true"></span>${b ? 'en veille · ' : ''}${esc(live)}</p>
+        <span class="mkw-head-mark">${mkwAgentMark()}</span>
+        <div class="mkw-head-main">
+          <div class="mkw-head-titlerow">
+            <h1 class="mkw-head-title">Ton agent marketing</h1>
+            <span class="mkw-head-badge"><span class="mkw-live" aria-hidden="true"></span>en veille</span>
+          </div>
+          <p class="mkw-head-desc">Je surveille ta météo, tes réservations et tes concurrents chaque matin, et je te prépare des posts prêts à publier. ${fresh} <button type="button" class="mkw-more-link" onclick="mkwAbout()" aria-expanded="${mkBrief.aboutOpen ? 'true' : 'false'}">En savoir plus</button></p>
+          ${mkBrief.aboutOpen ? '<p class="mkw-head-about">Je travaille la nuit sur tes chiffres réels : je te propose, tu valides, rien ne part jamais tout seul. Chaque publication est ensuite mesurée pendant 14 jours, et le résultat arrive dans Résultats.</p>' : ''}
         </div>
       </div>
     </header>`;
   }
+  window.mkwAbout = function () {
+    mkBrief.aboutOpen = !mkBrief.aboutOpen;
+    renderStaffCampaignsPage();
+  };
 
-  function mkwTabs() {
-    return `<nav class="mkw-tabs" role="tablist" aria-label="Marketing">
-      ${MKW_TABS.map((t) => `<button type="button" role="tab" aria-selected="${mkBrief.tab === t.key}" class="mkw-tab ${mkBrief.tab === t.key ? 'active' : ''}" onclick="mkwTab('${t.key}')">${esc(t.label)}</button>`).join('')}
-      <span class="mkw-tabs-rail" aria-hidden="true"></span>
+  // Le RAIL secondaire : discret, subordonné à la conversation. À gauche, la
+  // maison (« Conversation ») ; à droite, les 4 profondeurs en liens sobres.
+  // Ce n'est plus une grille d'onglets co-égaux : la voix par défaut est le fil.
+  function mkwRail() {
+    const onFeed = mkBrief.tab === 'feed';
+    return `<nav class="mkw-rail" aria-label="Marketing">
+      <button type="button" class="mkw-rail-home ${onFeed ? 'active' : ''}" aria-current="${onFeed ? 'page' : 'false'}" onclick="mkwTab('feed')">
+        ${mkwAgentMark()}<span>Conversation</span>
+      </button>
+      <span class="mkw-rail-sep" aria-hidden="true"></span>
+      <div class="mkw-rail-depth">
+        ${MKW_DEPTH.map((t) => `<button type="button" class="mkw-rail-link ${mkBrief.tab === t.key ? 'active' : ''}" aria-current="${mkBrief.tab === t.key ? 'page' : 'false'}" onclick="mkwTab('${t.key}')">${esc(t.label)}</button>`).join('')}
+      </div>
     </nav>`;
   }
 
@@ -3827,41 +3806,428 @@
     mkBrief.studioBrief = String(brief || '').slice(0, 300);
     mkBrief.tab = 'studio';
     renderStaffCampaignsPage();
-    const surf = document.querySelector('.mkw-surface');
-    if (surf && !reducedMotion) { surf.classList.remove('mkw-in'); void surf.offsetWidth; surf.classList.add('mkw-in'); }
     setTimeout(() => { const el = document.getElementById('brStudioBrief'); if (el) el.focus(); }, 60);
   };
 
-  function mkwSurface() {
-    // Le chargement central a échoué et rien n'est affichable : une erreur
-    // franche remplace la page entière, quel que soit l'onglet.
-    if (!mkBrief.data && mkBrief.error) {
-      return mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)');
+  /* ── LE FIL DE L'AGENT (surface primaire, refonte agent-natif 2026-07-18) ──
+     L'IA est le cœur de l'écran : elle parle, en première personne, et fait
+     remonter ce qui compte AUJOURD'HUI sous forme de tours de conversation, le
+     plus important d'abord. Les cartes (proposition, radar, veille, résultat)
+     NAISSENT dans le fil : plus d'onglets plats co-égaux. Le composer
+     « Demande-moi » est toujours au bas de la toile. Tout le câblage
+     (mkBrief/mkComp, handlers valider/ignorer/variante/publier/analyser/
+     demander) est PRÉSERVÉ : c'est une ré-architecture de PRÉSENTATION. */
+
+  // Un tour générique de l'agent : avatar + bulle (sa voix) + carte inline
+  // optionnelle. `text` est du HTML DÉJÀ SÛR (le caller échappe via esc/brProse).
+  function mkwTurn(opts) {
+    const o = opts || {};
+    return `<article class="mkw-turn ${o.cls || ''}">
+      <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+      <div class="mkw-turn-body">
+        <div class="mkw-bubble"><p class="mkw-turn-text">${o.text || ''}</p></div>
+        ${o.card || ''}
+      </div>
+    </article>`;
+  }
+
+  // Le tour d'accueil : la voix signée du matin (ex-mémo), + le compteur
+  // honnête de propositions prêtes plus bas.
+  function mkwGreeting() {
+    const b = mkBrief.data;
+    if (!b) {
+      return `<article class="mkw-turn mkw-turn-greeting">
+        <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+        <div class="mkw-turn-body"><div class="mkw-bubble"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></div></div>
+      </article>`;
     }
+    const date = esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }));
+    const ready = brVisiblePropositions().length;
+    return `<article class="mkw-turn mkw-turn-greeting">
+      <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+      <div class="mkw-turn-body">
+        <div class="mkw-bubble">
+          ${b.brief.degraded ? '<p class="mkw-degraded">Je tourne en mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
+          <p class="mkw-voice-text">${brProse(b.brief.text)}</p>
+        </div>
+        <p class="mkw-turn-time">brief du ${date}${ready ? ` · <span class="mkw-turn-tag">${ready} prêt${ready > 1 ? 's' : ''} pour toi, plus bas</span>` : ''}</p>
+      </div>
+    </article>`;
+  }
+
+  // Le tour radar : le prochain jour calme + la carte des 14 jours inline.
+  function mkwRadarTurn() {
+    const b = mkBrief.data;
+    if (!b || !b.radar || !b.radar.length) return '';
+    const creux = b.radar.find((d) => (d.level === 'creux' || d.level === 'calme') && d.date >= (b.today || ''));
+    const text = creux
+      ? brProse(`${cap(brFrDay(creux.date))} est ton prochain jour calme. Voici comment s'annoncent tes 14 jours, dis-moi si on le remplit.`)
+      : 'Tes 14 prochains jours s\'annoncent corrects, rien d\'urgent à remplir. Voici la carte quand même.';
+    return mkwTurn({ cls: 'mkw-turn-radar', text, card: `<div class="mkw-inline-card mkw-inline-radar">${mkwRadar()}</div>` });
+  }
+
+  // Le tour veille : un concurrent a bougé cette nuit → carte + accès à tous.
+  function mkwVeilleTurn() {
+    const b = mkBrief.data;
+    if (!b || !b.veille || !b.veille.changed || !b.veille.changed.length) return '';
+    const first = b.veille.changed[0];
+    const others = b.veille.changed.length - 1;
+    const text = `Du mouvement chez <strong>${esc(first.name)}</strong> cette nuit : ${esc(first.diff)}.${others > 0 ? ` Et ${others} autre${others > 1 ? 's centres ont' : ' centre a'} bougé.` : ''}`;
+    return mkwTurn({
+      cls: 'mkw-turn-veille',
+      text,
+      card: `<div class="mkw-inline-card">
+        <p class="mkw-inline-lead">${ci('bolt')}<span>${esc(first.name)}</span></p>
+        <p class="mkw-inline-sub">${esc(first.diff)}</p>
+        <div class="mkw-cta"><button type="button" class="pv2-btn primary" onclick="mkwTab('rivals')">Voir tous les concurrents</button></div>
+      </div>`,
+    });
+  }
+
+  // Le tour résultat : ce que le marketing a rapporté, résumé, + accès au détail.
+  function mkwResultsTurn() {
+    const b = mkBrief.data;
+    if (!b) return '';
+    const p = b.paie;
+    let text;
+    let fig = '';
+    if (p.young) {
+      text = `On vient de commencer ensemble : encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.`;
+    } else if (p.quietWindow) {
+      text = brProse(`Rien envoyé sur les ${p.days} derniers jours. Tes mesures passées restent dans Résultats.`);
+    } else if (p.euros > 0) {
+      text = brProse(`Sur ${p.days} jours, tes messages ont rapporté ${money(p.euros)} de réservations liées.`);
+      fig = `<div class="mkw-inline-fig">
+        <span class="mkw-inline-num">${money(p.euros)}</span>
+        <div class="mkw-inline-chips"><span><b>${p.venues}</b> réservations liées</span><span class="mkw-hchip-dot"></span><span><b>${p.sent}</b> messages envoyés</span></div>
+      </div>`;
+    } else {
+      text = brProse(`${p.sent} messages partis, aucune réservation ne leur est encore liée sur ${p.days} jours.`);
+    }
+    return mkwTurn({
+      cls: 'mkw-turn-results',
+      text,
+      card: `<div class="mkw-inline-card">${fig}
+        <div class="mkw-cta"><button type="button" class="mkw-link" onclick="mkwTab('results')">Voir le détail des résultats</button></div>
+      </div>`,
+    });
+  }
+
+  // Le COMPOSER « Demande-moi quelque chose » : signature du produit, toujours
+  // au bas de la toile (sticky). Input XL, flèche circulaire, halo au focus,
+  // chips toujours visibles, Enter pour envoyer. Ids/handlers d'origine intacts
+  // (mkBrChip/mkBrAskFocus/mkBrAsk) : le focus ne re-rend JAMAIS la page.
+  function mkwComposer() {
+    const b = mkBrief.data;
+    const creating = mkBrief.busy === 'ask';
+    const chips = [];
+    for (const day of ((b && b.radar) || [])) {
+      if (chips.length >= 2) break;
+      if ((day.level === 'creux' || day.level === 'calme') && !day.propositionKey) chips.push({ label: `Remplir ${brFrDay(day.date).split(' ')[0]} ${day.date.slice(8, 10)}`, text: `un post pour remplir ${brFrDay(day.date)}` });
+      else if (day.precipMm !== null && day.precipMm >= 10) chips.push({ label: `Profiter de la pluie de ${brFrDay(day.date).split(' ')[0]}`, text: `un post sur la pluie annoncée ${brFrDay(day.date)}` });
+    }
+    chips.push({ label: 'Idée libre', text: '' });
+    return `<div class="mkw-composer">
+      <div class="mkw-cmd ${mkBrief.askFocus ? 'is-focused' : ''}" id="mkwAsk">
+        <div class="mkw-chips">${chips.map((chip, index) => `<button type="button" class="mkw-chip ${index === 0 ? 'mkw-chip-primary' : ''}" onclick="mkBrChip('${escJs(chip.text)}')">${esc(chip.label)}</button>`).join('')}</div>
+        <div class="mkw-cmd-bar">
+          <input id="brAskInput" class="mkw-cmd-input" value="${esc(mkBrief.askDraft || '')}"
+            placeholder="Demande-moi quelque chose : « un post pour la soirée fluo de samedi »"
+            aria-label="Demander une proposition à l'employé marketing"
+            oninput="mkBrief.askDraft = this.value" onfocus="mkBrAskFocus(true)" onblur="mkBrAskFocus(false)"
+            onkeydown="if (event.key === 'Enter') mkBrAsk()">
+          <button type="button" class="mkw-cmd-send" onclick="mkBrAsk()" ${creating ? 'disabled' : ''} aria-label="${creating ? 'Je prépare ta proposition' : 'Demander'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+          </button>
+        </div>
+        <p class="mkw-cmd-note">Il propose, tu valides : rien ne part jamais tout seul.</p>
+      </div>
+    </div>`;
+  }
+
+  // Petit chevron dans un cercle (signature « suggestion » du look Agent Vercel).
+  const MKW_GO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
+
+  // LA PASTILLE DE SUGGESTION (élément-clé du look) : barre pleine largeur,
+  // arrondie, LISERÉ ANIMÉ (sheen qui balaye le bord), texte à gauche, chevron
+  // dans un cercle à droite. Elle met en avant LA chose la plus importante du
+  // jour (la proposition en tête). Ouverte, elle déploie le même atelier que la
+  // carte de tour (mkwPropOpenBody) : câblage identique.
+  function mkwHeroSuggest(p) {
+    // La proposition en tête peut être publiée depuis sa propre pastille : on
+    // montre alors l'état compact « c'est publié » (la mesure J+14 démarre),
+    // comme la carte de tour (mkwPropCard).
+    if (mkBrief.published[p.key]) {
+      return `<div class="mkw-suggest-wrap is-published" data-br-card="${esc(p.key)}">
+        <p class="mkw-prop-published">${ci('check')}C'est publié : je mesure pendant 14 jours, le reçu arrive dans Résultats.</p>
+      </div>`;
+    }
+    const open = mkBrief.openCard === p.key;
+    const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
+    return `<div class="mkw-suggest-wrap tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
+      <button type="button" class="mkw-suggest" onclick="mkBrOpenCard('${escJs(p.key)}')" aria-expanded="${open}">
+        <span class="mkw-suggest-mark">${mkwAgentMark()}</span>
+        <span class="mkw-suggest-text">${brProse(p.whyShort || p.why)}</span>
+        <span class="mkw-suggest-go" aria-hidden="true">${MKW_GO}</span>
+      </button>
+      ${open ? mkwPropOpenBody(p) : ''}
+    </div>`;
+  }
+
+  // Repli quand aucune proposition n'est prête mais qu'un jour calme réclame un
+  // post : la pastille propose de le préparer (action réelle, mkBrRadarFill).
+  function mkwFillSuggest(day) {
+    const busy = mkBrief.busy === `fill:${day.date}`;
+    return `<div class="mkw-suggest-wrap tone-danger">
+      <button type="button" class="mkw-suggest" onclick="mkBrRadarFill('${escJs(day.date)}')" ${busy ? 'disabled' : ''} aria-label="Préparer un post pour remplir ce jour">
+        <span class="mkw-suggest-mark">${mkwAgentMark()}</span>
+        <span class="mkw-suggest-text">${brProse(`${cap(brFrDay(day.date))} est ton prochain jour calme. Je peux te préparer un post pour le remplir.`)}</span>
+        <span class="mkw-suggest-go" aria-hidden="true">${busy ? '' : MKW_GO}</span>
+      </button>
+    </div>`;
+  }
+
+  // La toile conversationnelle : la landing par défaut du marketing.
+  function mkwFeed() {
+    const b = mkBrief.data;
+    if (!b && mkBrief.error) {
+      return `<div class="mkw-feed" id="mkwFeed">${mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)')}</div>`;
+    }
+    const turns = [mkwGreeting()];
+    if (!b) {
+      // Chargement : des tours squelette, jamais l'état vide (honnêteté).
+      turns.push(`<div class="mkw-suggest-wrap"><div class="mkw-suggest"><span class="mkw-suggest-mark">${mkwAgentMark()}</span><span class="mkw-suggest-text"><span class="mkw-skel mkw-skel-short"></span></span></div></div>`);
+      turns.push(`<article class="mkw-turn"><span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span><div class="mkw-turn-body"><div class="mkw-bubble"><div class="mkw-skel"></div></div></div></article>`);
+      return `<div class="mkw-feed" id="mkwFeed">${turns.join('')}</div>${mkwComposer()}`;
+    }
+    const props = brVisiblePropositions();
+    const creating = mkBrief.busy === 'ask';
+    // La chose la plus importante en TÊTE, en pastille de suggestion : la
+    // proposition de tête, sinon un jour calme à remplir. Elle n'est PAS
+    // redoublée en tour plus bas (une seule chose importante à la fois).
+    const lead = props.length ? props[0] : null;
+    const restProps = lead ? props.slice(1) : props;
+    let suggest = '';
+    if (lead) suggest = mkwHeroSuggest(lead);
+    else {
+      const fillDay = (b.radar || []).find((d) => (d.level === 'creux' || d.level === 'calme') && d.date >= (b.today || '') && !(d.propositionKey && props.some((p) => p.key === d.propositionKey)));
+      if (fillDay) suggest = mkwFillSuggest(fillDay);
+    }
+    if (suggest) turns.push(suggest);
+    if (creating) {
+      turns.push(`<article class="mkw-turn mkw-turn-prop"><span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span><div class="mkw-turn-body"><div class="mkw-bubble"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></div></div></article>`);
+    }
+    const visible = mkBrief.moreOpen ? restProps : restProps.slice(0, 3);
+    const rest = restProps.length - visible.length;
+    if (visible.length) {
+      for (const p of visible) turns.push(mkwPropCard(p));
+      if (rest > 0) turns.push(`<div class="mkw-feed-more"><button type="button" class="mkw-link" onclick="mkBrMore()">+ ${rest} proposition${rest > 1 ? 's' : ''} de plus</button></div>`);
+    } else if (!suggest && !creating) {
+      turns.push(mkwTurn({ cls: 'mkw-turn-quiet', text: 'Rien d\'urgent à publier aujourd\'hui. Je surveille ta météo, tes réservations et tes concurrents : dès que je vois une occasion, elle apparaît ici.' }));
+    }
+    const radar = mkwRadarTurn(); if (radar) turns.push(radar);
+    const veille = mkwVeilleTurn(); if (veille) turns.push(veille);
+    turns.push(mkwResultsTurn());
+    return `<div class="mkw-feed" id="mkwFeed">${turns.join('')}</div>${mkwComposer()}`;
+  }
+
+  // Une vue de PROFONDEUR (plan, studio, concurrents, résultats) : subordonnée
+  // au fil, ouverte DEPUIS la conversation, avec un retour explicite.
+  function mkwDepth(html) {
+    return `<div class="mkw-depth">
+      <button type="button" class="mkw-back" onclick="mkwTab('feed')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Retour à la conversation</button>
+      ${html}
+    </div>`;
+  }
+
+  function mkwSurface() {
+    // Résultats et fil dépendent du brief central : s'il a échoué et que rien
+    // n'est affichable, une erreur franche avec retry (jamais des squelettes à vie).
+    const briefDown = !mkBrief.data && mkBrief.error;
     switch (mkBrief.tab) {
-      case 'plan': return mkwPlan();
-      case 'studio': return mkwStudio();
-      case 'rivals': return mkwRivals();
-      case 'results': return mkwResults();
+      case 'plan': return mkwDepth(mkwPlan());
+      case 'studio': return mkwDepth(mkwStudio());
+      case 'rivals': return mkwDepth(mkwRivals());
+      case 'results': return mkwDepth(briefDown ? mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)') : mkwResults());
+      case 'feed':
       case 'today':
-      default: return `${mkwVoice()}${mkwStatCards()}${mkwRadar()}${mkwQueue()}`;
+      default: return mkwFeed();
     }
   }
+
+  /* ── LE PANNEAU DE POINTS VIVANT (texture signature, look Agent Vercel) ────
+     Une grille carrée de points nets dessinée sur le canvas #mkwDots : une
+     onde lumineuse douce la traverse en continu (les points s'allument à son
+     passage puis retombent au niveau de base), et quelques points épars
+     scintillent à peine. Calme, lent, jamais clignotant.
+     Règles dures :
+     : la couleur est la valeur CALCULÉE de var(--text) portée par le canvas
+       (CSS `color: var(--text)`) : zéro couleur en dur ici, parité light/dark
+       automatique ; seules les intensités (alpha) sont calibrées par thème.
+     : prefers-reduced-motion : AUCUNE boucle ne démarre, une grille statique
+       propre est dessinée une fois.
+     : onglet caché (visibilitychange) : rAF coupé, reprise au retour.
+     : canvas hors DOM (navigation) ou masqué (autre page staff) : la boucle
+       s'arrête d'elle-même ; le retour sur la page ré-initialise tout via
+       renderStaffCampaignsPage. Zéro fuite, zéro rAF à vide hors écran.
+     : ~30 fps plafonnés, peinture sautée quand le panneau est scrollé hors
+       du viewport (le temps continue, la phase reste juste). */
+  const mkwDots = {
+    raf: 0, canvas: null, ctx: null, dots: [], t0: 0, last: 0, sizedAt: 0,
+    w: 0, h: 0, color: '', base: 0.2, wave: 0.3, smin: 0, srange: 1, T: 6.5,
+  };
+
+  function mkwDotsStop() {
+    if (mkwDots.raf) cancelAnimationFrame(mkwDots.raf);
+    mkwDots.raf = 0;
+  }
+
+  function mkwDotsSetup() {
+    const canvas = mkwDots.canvas;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (!w || !h) return false;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mkwDots.ctx = ctx;
+    mkwDots.w = w;
+    mkwDots.h = h;
+    // La couleur des points = la valeur calculée du token --text (CSS du
+    // canvas). La luminance dit le thème : texte clair = fond sombre.
+    const color = getComputedStyle(canvas).color || '';
+    mkwDots.color = color;
+    const rgb = (color.match(/\d+(\.\d+)?/g) || []).map(Number);
+    const lum = rgb.length >= 3 ? (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 : 255;
+    const darkTheme = lum > 127;
+    mkwDots.base = darkTheme ? 0.21 : 0.16;
+    mkwDots.wave = darkTheme ? 0.36 : 0.26;
+    const twk = darkTheme ? 1 : 0.7;
+    // Grille carrée régulière centrée. Chaque point porte son fondu de bord
+    // (le panneau a une forme claire, des bords doux) et, pour ~1 sur 8, un
+    // scintillement doux à phase/vitesse propres.
+    const gap = 15;
+    const cols = Math.max(1, Math.floor((w - 8) / gap));
+    const rows = Math.max(1, Math.floor((h - 8) / gap));
+    const ox = (w - (cols - 1) * gap) / 2;
+    const oy = 6;
+    const dirX = Math.cos(0.30);
+    const dirY = Math.sin(0.30);
+    const ss = (v) => { const x = Math.min(1, Math.max(0, v)); return x * x * (3 - 2 * x); };
+    const dots = [];
+    let smin = Infinity;
+    let smax = -Infinity;
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        const x = ox + c * gap;
+        const y = oy + r * gap;
+        const edge = ss(Math.min(x, w - x) / 76) * ss(Math.min(y, h - y) / 64);
+        if (edge <= 0.03) continue;
+        const s = x * dirX + y * dirY;
+        if (s < smin) smin = s;
+        if (s > smax) smax = s;
+        dots.push({
+          x, y, s, e: edge,
+          tw: Math.random() < 0.12 ? { a: (0.12 + Math.random() * 0.18) * twk, v: 0.5 + Math.random() * 0.9, p: Math.random() * 6.283 } : null,
+        });
+      }
+    }
+    mkwDots.dots = dots;
+    mkwDots.smin = smin - 150;
+    mkwDots.srange = (smax - smin) + 300;
+    return true;
+  }
+
+  function mkwDotsPaint(t, animated) {
+    const d = mkwDots;
+    const ctx = d.ctx;
+    ctx.clearRect(0, 0, d.w, d.h);
+    ctx.fillStyle = d.color;
+    const c = d.smin + ((t % d.T) / d.T) * d.srange;
+    const inv = 1 / (2 * 70 * 70);
+    for (const dot of d.dots) {
+      let a = d.base;
+      if (animated) {
+        const delta = dot.s - c;
+        a += d.wave * Math.exp(-delta * delta * inv);
+        if (dot.tw) {
+          const sn = Math.sin(dot.tw.v * t + dot.tw.p);
+          if (sn > 0) a += dot.tw.a * sn * sn * sn;
+        }
+      }
+      ctx.globalAlpha = Math.min(0.85, a * dot.e);
+      ctx.beginPath();
+      ctx.arc(dot.x, dot.y, 1.15, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function mkwDotsFrame(now) {
+    const d = mkwDots;
+    const canvas = d.canvas;
+    // Canvas hors DOM (navigation) ou masqué (autre page staff) : arrêt net.
+    if (!canvas || !canvas.isConnected || canvas.offsetParent === null) { mkwDotsStop(); return; }
+    d.raf = requestAnimationFrame(mkwDotsFrame);
+    if (now - d.last < 32) return; // ~30 fps : fluide, sobre en CPU
+    d.last = now;
+    if (now - d.sizedAt > 600) {
+      d.sizedAt = now;
+      if (Math.abs(canvas.clientWidth - d.w) > 1 || Math.abs(canvas.clientHeight - d.h) > 1) mkwDotsSetup();
+    }
+    // Panneau scrollé hors viewport : on saute la peinture, pas l'horloge.
+    const rect = canvas.getBoundingClientRect();
+    if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+    mkwDotsPaint((now - d.t0) / 1000, true);
+  }
+
+  function mkwDotsInit() {
+    mkwDotsStop();
+    const canvas = document.getElementById('mkwDots');
+    mkwDots.canvas = canvas;
+    if (!canvas || !mkwDotsSetup()) return;
+    if (reducedMotion) { mkwDotsPaint(0, false); return; }
+    mkwDots.t0 = performance.now();
+    mkwDots.last = 0;
+    mkwDots.sizedAt = mkwDots.t0;
+    mkwDotsPaint(0, true);
+    mkwDots.raf = requestAnimationFrame(mkwDotsFrame);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { mkwDotsStop(); return; }
+    const canvas = mkwDots.canvas;
+    if (!mkwDots.raf && canvas && canvas.isConnected && !reducedMotion) {
+      mkwDots.last = 0;
+      mkwDots.raf = requestAnimationFrame(mkwDotsFrame);
+    }
+  });
 
   window.renderStaffCampaignsPage = function () {
     const root = document.getElementById('staffCampaignsPage');
     if (!root) return;
     if (!mkBrief.data && !mkBrief.loading && !mkBrief.error) setTimeout(() => loadMarketingBrief(), 0);
+    // Entrée en scène UNE fois : en changeant de vue, ou à l'arrivée de la
+    // première donnée. Jamais sur un clic in-view (sinon tout le fil clignote).
+    const gotFirstData = mkBrief.data && !mkBrief._seenData;
+    if (mkBrief.data) mkBrief._seenData = true;
+    const enter = !reducedMotion && (mkwPrevTab !== mkBrief.tab || gotFirstData);
+    mkwPrevTab = mkBrief.tab;
     root.innerHTML = `<div class="pv2-shell mkw-shell">
+      <canvas class="mkw-dots" id="mkwDots" aria-hidden="true"></canvas>
       ${mkwHeader()}
-      ${mkwTabs()}
-      <div class="mkw-surface mkw-in">${mkwSurface()}</div>
+      ${mkwRail()}
+      <div class="mkw-surface ${enter ? 'mkw-in' : ''}">${mkwSurface()}</div>
     </div>`;
-    // Mobile : la barre d'onglets defile ; l'onglet ACTIF doit toujours etre
-    // visible (verdict sceptique : etre sur Resultats sans le voir dans la
-    // nav). Scroll horizontal du conteneur seulement, jamais de la page.
-    const nav = root.querySelector('.mkw-tabs');
-    const active = nav && nav.querySelector('.mkw-tab.active');
+    // La texture vivante : (re)démarrée sur le canvas fraîchement rendu
+    // (l'ancienne boucle est coupée dans l'init : zéro doublon, zéro fuite).
+    mkwDotsInit();
+    // Mobile : le rail des profondeurs défile ; l'entrée active reste visible.
+    const nav = root.querySelector('.mkw-rail-depth');
+    const active = nav && nav.querySelector('.mkw-rail-link.active');
     if (nav && active && nav.scrollWidth > nav.clientWidth) {
       nav.scrollLeft = Math.max(0, active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2);
     }

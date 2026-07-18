@@ -8225,17 +8225,22 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    (pseudo-element), zero impact layout, desactivable en reduced-motion non
    necessaire (statique). */
 .mkw-shell { position: relative; }
-.mkw-shell::before {
-  content: '';
-  position: absolute;
-  top: -8px; left: -40px; right: -40px; height: 210px;
-  pointer-events: none;
-  background-image: radial-gradient(color-mix(in srgb, var(--text) 14%, transparent) 1px, transparent 1px);
-  background-size: 14px 14px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, black 20%, transparent 78%);
-  mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, black 20%, transparent 78%);
-}
 .mkw-shell > * { position: relative; }
+/* Texture signature (look Agent Vercel) : le PANNEAU DE POINTS VIVANT.
+   Une vraie grille carrée de points nets, CONTENUE et centrée en haut de la
+   toile, dessinée par le canvas #mkwDots (staff-pages-v2.js) : une onde
+   lumineuse douce la traverse en continu, quelques points scintillent à
+   peine. La couleur des points est la valeur CALCULÉE de var(--text) portée
+   ici (parité light/dark automatique, zéro couleur en dur) ; l'intensité de
+   base et l'onde sont calibrées par thème côté canvas. Purement décoratif :
+   pointer-events none, aria-hidden, derrière le contenu (premier enfant du
+   shell, les frères positionnés peignent au-dessus). Reduced-motion : le
+   canvas dessine une grille STATIQUE propre, aucune boucle ne démarre. */
+/* Centrage par marges auto (left+right posés), JAMAIS par transform : les
+   animations d'entrée (pv2-enter, fill forwards) écrasent le transform des
+   enfants du shell et décentreraient le panneau. */
+.mkw-shell > .mkw-dots { position: absolute; top: -20px; left: 0; right: 0; margin-inline: auto; width: min(66%, 640px); height: 320px; pointer-events: none; color: var(--text); }
+@media (max-width: 720px) { .mkw-shell > .mkw-dots { width: 88%; height: 250px; } }
 
 /* Stat-cards decisionnelles (ref Vercel Usage) : valeur mono qui commande,
    label, note de bas de carte, hover par fond/bordure, cliquables (chaque
@@ -8258,7 +8263,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-cmd { margin-top: var(--space-8); }
 .mkw-cmd-bar { position: relative; display: flex; align-items: center; gap: var(--space-2); padding: 6px 6px 6px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-xl); background: var(--surface); transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 [data-theme='dark'] .mkw-cmd-bar { background: var(--raised); }
-.mkw-cmd.is-focused .mkw-cmd-bar { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.mkw-cmd.is-focused .mkw-cmd-bar { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 1px var(--accent); }
 .mkw-cmd-input { flex: 1; height: 46px; border: 0; background: transparent; color: var(--text); font-family: var(--font-ui); font-size: 14px; }
 .mkw-cmd-input::placeholder { color: var(--faint); }
 .mkw-cmd-input:focus-visible { outline: none; }
@@ -8291,9 +8296,9 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* Le radar 14 jours */
 .mkw-radar { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; }
-.mkw-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 11px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font-family: var(--font-ui); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.mkw-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 11px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font-family: var(--font-ui); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform 180ms var(--mkw-out); }
 [data-theme='dark'] .mkw-cell { background: var(--raised); }
-.mkw-cell:hover { border-color: var(--line-strong); background: var(--subtle); }
+.mkw-cell:hover { border-color: var(--line-strong); background: var(--subtle); transform: translateY(-1px); }
 /* Doctrine un-accent (ref heatmap Observability, juge V2) : chips NEUTRES
    uniformes ; le niveau se lit par une barre 2px en tete de chip, identique
    dans les deux themes. Fini les fonds pastel = 3 teintes actives. */
@@ -8487,15 +8492,32 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    `--mkw-out` = ease-out fort (emil). Réutilise les builders br-* (radar,
    cartes, studio, reçus) en les remettant à niveau plus bas.
    ══════════════════════════════════════════════════════════════════════════ */
-.mkw-shell { --mkw-out: cubic-bezier(0.23, 1, 0.32, 1); max-width: 960px; margin: 0 auto; padding: 0 24px var(--space-10); }
+/* La toile est un grid mono-colonne (héritage .pv2-shell). Sa colonne
+   implicite est `auto` = max-content : le fil (bulles à texte long, radar) la
+   ferait déborder au-delà du viewport sur mobile. minmax(0, 1fr) verrouille la
+   colonne à la largeur du conteneur : plus jamais de scroll horizontal de page. */
+/* Courbes premium : expo-out (entrées en scène), spring doux (déploiements),
+   in-out (balayages en boucle). Jamais de linear. */
+.mkw-shell { --mkw-out: cubic-bezier(0.16, 1, 0.3, 1); --mkw-spring: cubic-bezier(0.34, 1.25, 0.5, 1); --mkw-io: cubic-bezier(0.45, 0.05, 0.55, 0.95); grid-template-columns: minmax(0, 1fr); max-width: 960px; margin: 0 auto; padding: 0 24px var(--space-10); overflow-x: clip; }
 
-/* En-tête : identité de l'agent */
-.mkw-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-5) 0 var(--space-4); }
-.mkw-head-id { display: flex; align-items: center; gap: 12px; }
+/* En-tête d'accueil (langage Vercel « Agent ») : fil d'Ariane, grande identité,
+   pastille d'état vivant, une phrase de description mutée, « En savoir plus ». */
+.mkw-head { display: flex; flex-direction: column; gap: 10px; padding: var(--space-8) 0 var(--space-6); }
+.mkw-crumb { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.mkw-head-id { display: flex; align-items: flex-start; gap: 14px; }
+.mkw-head-mark { flex: none; }
 .mkw-mark { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--accent-strong); flex: none; }
 .mkw-mark svg { width: 18px; height: 18px; }
-.mkw-head-title { margin: 0; font-size: 19px; font-weight: 640; letter-spacing: -0.015em; color: var(--text); line-height: 1.1; }
-.mkw-head-sub { margin: 3px 0 0; display: flex; align-items: center; gap: 7px; font-family: var(--font-data); font-size: 12px; color: var(--faint); }
+.mkw-head-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.mkw-head-titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mkw-head-title { margin: 0; font-size: 22px; font-weight: 640; letter-spacing: -0.02em; color: var(--text); line-height: 1.1; }
+.mkw-head-badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-full); font-family: var(--font-data); font-size: 11px; font-weight: 500; color: var(--muted); background: var(--surface); }
+[data-theme='dark'] .mkw-head-badge { background: var(--raised); }
+.mkw-head-desc { margin: 0; max-width: 62ch; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+.mkw-more-link { border: 0; background: transparent; padding: 0; font-family: var(--font-ui); font-size: 13.5px; font-weight: 500; color: var(--accent-strong); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.mkw-more-link:hover { text-decoration-color: var(--accent); }
+.mkw-more-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.mkw-head-about { margin: 4px 0 0; max-width: 62ch; padding: 12px 14px; font-size: 13px; line-height: 1.6; color: var(--muted); background: var(--subtle); border-radius: var(--radius-md); border-left: 2px solid var(--line-strong); }
 .mkw-live { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent); animation: mkwPulse 2.4s var(--ease) infinite; }
 @keyframes mkwPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent); } 70% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 
@@ -8509,11 +8531,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* Surface active : fade-up une fois par changement */
-.mkw-surface.mkw-in > * { animation: mkwUp 320ms var(--mkw-out) both; }
-.mkw-surface.mkw-in > *:nth-child(2) { animation-delay: 45ms; }
-.mkw-surface.mkw-in > *:nth-child(3) { animation-delay: 90ms; }
-.mkw-surface.mkw-in > *:nth-child(n+4) { animation-delay: 130ms; }
-@keyframes mkwUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.mkw-surface.mkw-in > * { animation: mkwUp 420ms var(--mkw-out) both; }
+.mkw-surface.mkw-in > *:nth-child(2) { animation-delay: 60ms; }
+.mkw-surface.mkw-in > *:nth-child(3) { animation-delay: 120ms; }
+.mkw-surface.mkw-in > *:nth-child(n+4) { animation-delay: 170ms; }
+@keyframes mkwUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 /* Primitive carte */
 .mkw-card { padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); }
@@ -8670,6 +8692,215 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* Le langage est UN : les composants natifs mkw-* vivent plus haut ; le shim
    de compat .mkw-surface .br-* est mort avec la couche br-* (RUN C). */
 .mkw-surface .pv2-btn:active { transform: scale(0.97); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MARKETING · AGENT-NATIF (refonte 2026-07-18)
+   L'IA est le cœur de l'écran : la landing est une TOILE CONVERSATIONNELLE.
+   Rail secondaire discret · fil de tours (avatar + bulle + carte inline) ·
+   composer « Demande-moi » sticky en bas. Tokens uniquement, un seul accent,
+   parité light/dark automatique, motion soignée coupée en reduced-motion.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Le RAIL : subordonné au fil. La maison « Conversation » à gauche, les 4
+   profondeurs en liens sobres à droite. Plus une grille d'onglets co-égaux. */
+.mkw-rail { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-8); padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.mkw-rail::-webkit-scrollbar { display: none; }
+.mkw-rail-home { display: inline-flex; align-items: center; gap: 8px; flex: none; border: 1px solid var(--line-strong); background: var(--surface); border-radius: var(--radius-full); padding: 4px 15px 4px 5px; min-height: 36px; font-family: var(--font-ui); font-size: 13px; font-weight: 550; color: var(--text); cursor: pointer; white-space: nowrap; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+[data-theme='dark'] .mkw-rail-home { background: var(--raised); }
+.mkw-rail-home:hover { border-color: var(--accent); }
+.mkw-rail-home.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.mkw-rail-home .mkw-mark { width: 26px; height: 26px; border-radius: var(--radius-full); }
+.mkw-rail-home .mkw-mark svg { width: 15px; height: 15px; }
+.mkw-rail-sep { flex: none; width: 1px; height: 18px; background: var(--line-strong); }
+.mkw-rail-depth { display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.mkw-rail-depth::-webkit-scrollbar { display: none; }
+.mkw-rail-link { flex: none; border: 0; background: transparent; padding: 8px 12px; min-height: 36px; border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.mkw-rail-link:hover { color: var(--text); background: var(--subtle); }
+.mkw-rail-link.active { color: var(--text); background: var(--subtle); font-weight: 600; }
+.mkw-rail-home:focus-visible, .mkw-rail-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* LE FIL : la conversation de l'agent. Le rythme vertical est LE luxe :
+   32px entre les tours, la focale du jour (pastille) encore plus dégagée. */
+.mkw-feed { display: flex; flex-direction: column; gap: var(--space-8); padding-bottom: var(--space-5); }
+.mkw-feed > .mkw-suggest-wrap { margin: var(--space-2) 0; }
+
+/* LA PASTILLE DE SUGGESTION (signature Vercel « Enable Agent to… ») : barre
+   pleine largeur arrondie, LISERÉ ANIMÉ (un band accent qui balaye le bord via
+   un dégradé masqué en anneau), texte à gauche, chevron dans un cercle à droite.
+   Met en avant LA chose la plus importante du jour. Tokens uniquement. */
+.mkw-suggest-wrap { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.mkw-suggest { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 14px 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); color: var(--text); font-family: var(--font-ui); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+[data-theme='dark'] .mkw-suggest { background: var(--raised); }
+.mkw-suggest:hover { border-color: var(--accent); }
+.mkw-suggest:disabled { cursor: default; opacity: 0.7; }
+.mkw-suggest:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Le liseré animé : un anneau de 1.6px, dégradé accent qui balaye en boucle
+   (background-position, sans @property : marche partout). Masque composite pour
+   ne peindre QUE le bord. */
+.mkw-suggest-wrap:not(.is-open) .mkw-suggest::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px;
+  background: linear-gradient(105deg, transparent 24%, color-mix(in srgb, var(--accent) 40%, transparent) 40%, var(--accent) 50%, color-mix(in srgb, var(--accent) 40%, transparent) 60%, transparent 76%);
+  background-size: 240% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: mkwBorderSweep 3s var(--mkw-io) infinite;
+  pointer-events: none;
+}
+@keyframes mkwBorderSweep { from { background-position: 200% 0; } to { background-position: -100% 0; } }
+.mkw-suggest-mark { flex: none; }
+.mkw-suggest-mark .mkw-mark { width: 28px; height: 28px; }
+.mkw-suggest-mark .mkw-mark svg { width: 15px; height: 15px; }
+.mkw-suggest-text { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; line-height: 1.45; color: var(--text); }
+.mkw-suggest-go { flex: none; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-full); background: var(--text); color: var(--surface); transition: transform 200ms var(--mkw-out); }
+.mkw-suggest-go svg { width: 15px; height: 15px; }
+.mkw-suggest-wrap:not(.is-open) .mkw-suggest:hover .mkw-suggest-go { transform: translateX(2px); }
+.mkw-suggest-wrap.is-open .mkw-suggest-go { transform: rotate(90deg); }
+.mkw-suggest-wrap.is-open .mkw-suggest { border-radius: var(--radius-xl); }
+.mkw-suggest-wrap .mkw-prop-body { margin-top: 6px; padding: 0 4px; }
+.mkw-suggest-wrap.is-open .mkw-prop-body { animation: mkwExpand 320ms var(--mkw-spring) both; }
+.mkw-suggest-wrap.is-published .mkw-prop-published { padding: 13px 16px; border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--surface); }
+[data-theme='dark'] .mkw-suggest-wrap.is-published .mkw-prop-published { background: var(--raised); }
+
+/* Un TOUR = avatar (identité de l'agent) + corps (bulle + carte inline).
+   Hiérarchie par la couleur : seuls l'accueil et la pastille portent l'accent,
+   les autres avatars sont neutres : la couleur veut dire « important ». */
+.mkw-turn { display: flex; gap: 12px; align-items: flex-start; }
+.mkw-turn-avatar { flex: none; }
+.mkw-turn-avatar .mkw-mark { width: 30px; height: 30px; background: var(--subtle); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.mkw-turn-greeting .mkw-turn-avatar .mkw-mark { background: var(--accent-soft); color: var(--accent-strong); box-shadow: none; }
+.mkw-turn-avatar .mkw-mark svg { width: 16px; height: 16px; }
+.mkw-turn-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; max-width: 660px; }
+
+/* La bulle : coin haut-gauche pincé vers l'avatar (langage chat). */
+.mkw-bubble { padding: 14px 18px; border: 1px solid var(--line); border-radius: 5px var(--radius-lg) var(--radius-lg) var(--radius-lg); background: var(--surface); }
+[data-theme='dark'] .mkw-bubble { background: var(--raised); }
+.mkw-turn-text { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text); }
+.mkw-turn-text strong { font-weight: 600; }
+.mkw-turn-quiet .mkw-turn-text { color: var(--muted); }
+
+/* Le tour d'accueil : LA voix du matin, la focale du fil. Elle parle sur la
+   toile, sans boîte : plus grande, plus aérée, rien ne la concurrence. */
+.mkw-turn-greeting .mkw-bubble { padding: 3px 0 0; border: 0; border-radius: 0; background: transparent; }
+[data-theme='dark'] .mkw-turn-greeting .mkw-bubble { background: transparent; }
+.mkw-turn-greeting .mkw-voice-text { font-size: 17px; line-height: 1.65; letter-spacing: -0.008em; max-width: 56ch; }
+.mkw-turn-time { margin: 0; font-family: var(--font-data); font-size: 11.5px; color: var(--faint); padding-left: 2px; }
+.mkw-turn-tag { color: var(--accent-strong); font-weight: 500; }
+
+/* Les tours d'ambiance (radar, veille, résultat) : en retrait, une voix plus
+   basse : le fil garde UNE focale (l'accueil + la pastille du jour). */
+.mkw-turn-radar .mkw-turn-text, .mkw-turn-veille .mkw-turn-text,
+.mkw-turn-results .mkw-turn-text, .mkw-turn-quiet .mkw-turn-text { font-size: 13.5px; color: var(--muted); }
+.mkw-turn-radar .mkw-turn-text strong, .mkw-turn-veille .mkw-turn-text strong,
+.mkw-turn-results .mkw-turn-text strong { color: var(--text); }
+
+/* Le tour proposition : sa voix + sa base honnête (le déclencheur) + actions. */
+.mkw-turn-prop .mkw-prop-why { font-size: 14.5px; font-weight: 550; margin: 0; }
+.mkw-turn-prop .mkw-prop-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 0; }
+.mkw-chip-inline { display: inline-flex; align-items: center; height: 20px; padding: 0 9px; border-radius: var(--radius-full); background: var(--subtle); font-family: var(--font-ui); font-size: 11px; font-weight: 500; color: var(--muted); }
+.mkw-chip-reason { background: var(--accent-soft); color: var(--accent-strong); }
+.mkw-turn-prop.tone-danger .mkw-chip-reason { background: var(--danger-soft); color: var(--danger); }
+.mkw-turn-prop.tone-success .mkw-chip-reason { background: var(--success-soft); color: var(--success); }
+
+/* La rangée d'actions inline sous une bulle (cibles >= 40px). */
+.mkw-cta { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.mkw-cta .pv2-btn { height: 40px; padding: 0 16px; }
+
+/* Le corps déployé d'une proposition (atelier : réseaux, papier, copier). */
+.mkw-prop-body { margin-top: 2px; transform-origin: top center; }
+.mkw-turn.is-open .mkw-prop-body { animation: mkwExpand 320ms var(--mkw-spring) both; }
+@keyframes mkwExpand { from { opacity: 0; transform: translateY(-8px) scale(0.99); } to { opacity: 1; transform: none; } }
+
+/* La carte inline (naît dans le fil) : radar, veille, résultat. */
+.mkw-inline-card { padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+[data-theme='dark'] .mkw-inline-card { background: var(--raised); }
+.mkw-inline-lead { display: flex; align-items: center; gap: 8px; margin: 0 0 5px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.mkw-inline-lead svg { width: 14px; height: 14px; color: var(--accent-strong); flex: none; }
+.mkw-inline-sub { margin: 0 0 var(--space-3); font-size: 13px; color: var(--muted); line-height: 1.5; }
+.mkw-inline-fig { display: flex; flex-direction: column; gap: 8px; margin-bottom: var(--space-3); }
+.mkw-inline-num { font-family: var(--font-data); font-size: 30px; font-weight: 460; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; color: var(--success); line-height: 1; }
+.mkw-inline-chips { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.mkw-inline-chips b { font-family: var(--font-data); font-weight: 500; color: var(--text); }
+.mkw-inline-radar .mkw-radar-sum { margin-top: var(--space-3); }
+
+/* Tour publié : la bulle de confirmation (mesure J+14 en cours). */
+.mkw-turn.is-published .mkw-prop-published { padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+[data-theme='dark'] .mkw-turn.is-published .mkw-prop-published { background: var(--raised); }
+
+/* « + N de plus » aligné sur le corps des tours (avatar 30 + gap 12). */
+.mkw-feed-more { padding-left: 42px; }
+
+/* LE COMPOSER : signature du produit, ÉPINGLÉ au bas du viewport. Sticky
+   bottom:0 + plus AUCUN espace sous lui dans son contexte de scroll (les
+   paddings de .staff-wrap et du shell sont annulés via :has) : il reste collé
+   en bas sur TOUTE la course du scroll, le fil défile derrière et se fond
+   dans un voile dégradé (le ::before), jamais de hairline sèche. */
+.staff-wrap:has(.mkw-composer) { padding-bottom: 0; }
+.mkw-shell:has(.mkw-composer) { padding-bottom: 0; }
+/* Fil court (chargement, jour vide) : la surface s'étire et pousse quand même
+   le composer vers le bas de l'écran, jamais au milieu du fil. */
+.mkw-surface:has(> .mkw-composer) { display: flex; flex-direction: column; min-height: calc(100vh - 360px); min-height: calc(100dvh - 360px); }
+.mkw-surface > .mkw-composer { margin-top: auto; }
+.mkw-composer { position: sticky; bottom: 0; z-index: 5; margin: var(--space-3) -24px 0; padding: var(--space-2) 24px calc(var(--space-4) + env(safe-area-inset-bottom, 0px)); background: var(--page); }
+.mkw-composer::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 36px; background: linear-gradient(to top, var(--page), transparent); pointer-events: none; }
+.mkw-composer .mkw-cmd { margin-top: 0; max-width: 720px; margin-left: auto; margin-right: auto; }
+.mkw-composer .mkw-cmd-bar { box-shadow: var(--shadow-sm); }
+.mkw-composer .mkw-cmd.is-focused .mkw-cmd-bar { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 1px var(--accent); }
+
+/* Micro-pulse du bouton d'envoi au repos (halo accent qui respire), coupé au
+   hover/focus où il répond à la main : léger grossissement, presse au clic. */
+@keyframes mkwSendPulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 26%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); } }
+.mkw-cmd-send:not(:disabled) { animation: mkwSendPulse 2.8s var(--mkw-io) infinite; }
+.mkw-cmd-send:hover, .mkw-cmd-send:focus-visible { animation: none; }
+.mkw-cmd-send:hover:not(:disabled) { opacity: 1; transform: scale(1.06); }
+.mkw-cmd-send:active:not(:disabled) { transform: scale(0.92); }
+.mkw-cmd.is-focused .mkw-cmd-send { animation: none; }
+
+/* Vue de PROFONDEUR : retour explicite vers la conversation. */
+.mkw-depth { display: flex; flex-direction: column; gap: var(--space-4); }
+.mkw-back { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; border: 0; background: transparent; padding: 6px 6px 6px 2px; min-height: 36px; font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: color var(--dur) var(--ease); }
+.mkw-back:hover { color: var(--text); }
+.mkw-back svg { width: 16px; height: 16px; }
+.mkw-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* MOTION : entrée en scène du fil. Chaque tour se lève en fondu + translation
+   (expo-out, 480ms), décalé de 70ms : une vague fluide, jamais un bloc qui
+   claque. Le composer monte en dernier, avec le voile. Coupée in-view (le
+   re-render d'un clic ne rejoue JAMAIS l'entrée) et sous reduced-motion. */
+.mkw-surface.mkw-in > .mkw-feed { animation: none; }
+.mkw-surface.mkw-in .mkw-feed > .mkw-turn,
+.mkw-surface.mkw-in .mkw-feed > .mkw-suggest-wrap,
+.mkw-surface.mkw-in .mkw-feed > .mkw-feed-more { animation: mkwUp 480ms var(--mkw-out) both; }
+.mkw-surface.mkw-in .mkw-feed > *:nth-child(1) { animation-delay: 0ms; }
+.mkw-surface.mkw-in .mkw-feed > *:nth-child(2) { animation-delay: 70ms; }
+.mkw-surface.mkw-in .mkw-feed > *:nth-child(3) { animation-delay: 140ms; }
+.mkw-surface.mkw-in .mkw-feed > *:nth-child(4) { animation-delay: 210ms; }
+.mkw-surface.mkw-in .mkw-feed > *:nth-child(n+5) { animation-delay: 270ms; }
+.mkw-surface.mkw-in > .mkw-composer { animation: mkwRise 420ms var(--mkw-out) 240ms both; }
+@keyframes mkwFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mkwRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 720px) {
+  .mkw-turn-body { max-width: 100%; }
+  .mkw-feed { gap: var(--space-6); }
+  .mkw-head { padding-top: var(--space-6); }
+  .mkw-rail { margin-bottom: var(--space-6); }
+  .mkw-turn-greeting .mkw-voice-text { font-size: 16px; }
+  .mkw-composer { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+  .mkw-cta .pv2-btn { height: 44px; }
+  .mkw-inline-num { font-size: 26px; }
+  /* Le rail reste LISIBLE : la maison « Conversation » garde icône + label
+     (le rail défile horizontalement), et chaque cible passe à 44px. */
+  .mkw-rail { gap: var(--space-2); }
+  .mkw-rail-home { min-height: 44px; padding: 4px 16px 4px 6px; }
+  .mkw-rail-link { min-height: 44px; }
+}
+/* Reduced-motion : couverture TOTALE de la zone mkw (toute animation, y
+   compris pseudo-éléments : liseré, sheen, pulses, staggers, shimmers). */
+@media (prefers-reduced-motion: reduce) {
+  .mkw-shell *, .mkw-shell *::before, .mkw-shell *::after { animation: none !important; }
+}
 
 /* ── Emails v4 : séquences personnalisées, réglages, envoi programmé ── */
 .pv2-panel-head-actions { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }

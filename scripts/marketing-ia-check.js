@@ -179,9 +179,10 @@ async function main() {
       save(); setView('staff'); renderStaff();
     });
     // AGENT-NATIF : la landing est la CONVERSATION (le fil), plus une grille
-    // d'onglets. On attend le fil + le radar inline (14 cellules dans une carte).
+    // d'onglets. Le radar est REPLIÉ par défaut (fix densité 2026-07-18) : on
+    // attend le fil + sa ligne-résumé, la grille 14 cellules se déplie plus bas.
     await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-feed') && document.querySelector('#staffCampaignsPage .mkw-rail-home'), null, { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-cell').length >= 14, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-turn-radar .mkw-fold'), null, { timeout: 15000 });
     await page.waitForTimeout(400);
 
     console.log('\n[HYGIÈNE] identité, le fil + les 4 profondeurs, zéro jargon interne, zéro relance manuelle');
@@ -211,7 +212,26 @@ async function main() {
     ok(hygiene.sign, 'l\'identité de l\'agent marketing est là');
     ok(hygiene.kpis === 0, 'le pulse business a quitté la zone Marketing (il vit en Direction)');
 
-    console.log('\n[LE FIL] la voix d\'accueil + la pastille de suggestion + le tour résultat');
+    console.log('\n[LE FIL] la voix d\'accueil + la pastille + les tours d\'ambiance repliés');
+    // Fix densité (retour client) : à l'ouverture, le fil est CALME. Radar,
+    // veille et résultats sont des lignes-résumé repliées, pas des blocs ouverts.
+    const calm = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      return {
+        folds: root.querySelectorAll('.mkw-fold').length,
+        radarClosed: root.querySelectorAll('.mkw-cell').length === 0 && (root.querySelector('.mkw-turn-radar .mkw-fold') || {}).getAttribute && root.querySelector('.mkw-turn-radar .mkw-fold').getAttribute('aria-expanded') === 'false',
+        veilleClosed: !root.querySelector('.mkw-turn-veille .mkw-inline-card'),
+        resultsClosed: !root.querySelector('.mkw-turn-results .mkw-inline-card'),
+      };
+    });
+    ok(calm.folds === 3, `radar, veille et résultats sont 3 lignes-résumé (obtenu ${calm.folds})`);
+    ok(calm.radarClosed, 'le radar 14 jours est REPLIÉ par défaut (zéro cellule ouverte, aria-expanded=false)');
+    ok(calm.veilleClosed && calm.resultsClosed, 'veille et résultats repliés par défaut : le fil s\'ouvre calme');
+    // On déplie veille + résultats : rien n'est perdu, tout reste accessible.
+    await page.evaluate(() => { document.querySelector('#staffCampaignsPage .mkw-turn-veille .mkw-fold').click(); });
+    await page.waitForTimeout(200);
+    await page.evaluate(() => { document.querySelector('#staffCampaignsPage .mkw-turn-results .mkw-fold').click(); });
+    await page.waitForTimeout(200);
     const feed = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
@@ -246,7 +266,9 @@ async function main() {
     });
     ok(feedNav === 'results', 'le tour résultat navigue vers Résultats (la maison de la preuve)');
 
-    console.log('\n[RADAR] les 14 prochains jours');
+    console.log('\n[RADAR] les 14 prochains jours (dépliés à la demande)');
+    await page.evaluate(() => { document.querySelector('#staffCampaignsPage .mkw-turn-radar .mkw-fold').click(); });
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-cell').length >= 14, null, { timeout: 8000 });
     const radar = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
@@ -291,9 +313,18 @@ async function main() {
       };
     });
     ok(/Pluie annoncée samedi/.test(cards.lead), 'la proposition épinglée du jour est la pastille de suggestion en tête');
-    ok(cards.turns === 3, `les 3 autres propositions en tours de conversation (obtenu ${cards.turns})`);
+    // Fix densité : 2 tours visibles au plus, le reste replié derrière « + N ».
+    ok(cards.turns === 2, `2 tours de proposition visibles par défaut, le reste replié (obtenu ${cards.turns})`);
     ok(/Dimanche/.test(cards.firstTurnWhy), 'le premier tour suit la pastille (le creux du plan)');
     ok(cards.riposte, 'la riposte concurrence est un tour comme les autres');
+    const more = await page.evaluate(async () => {
+      const btn = document.querySelector('#staffCampaignsPage .mkw-feed-more button');
+      const label = btn ? btn.textContent.trim() : '';
+      if (btn) btn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      return { label, turns: document.querySelectorAll('#staffCampaignsPage .mkw-turn-prop').length };
+    });
+    ok(/^\+ 1 proposition de plus$/.test(more.label) && more.turns === 3, `« + N de plus » déplie le reste (${more.label} -> ${more.turns} tours)`);
     // Hygiène de file (bug prod 17/07) : le mock injecte une consigne périmée
     // et un doublon mot pour mot : ils ne doivent JAMAIS apparaître.
     const hygiene2 = await page.evaluate(() => {
@@ -376,6 +407,56 @@ async function main() {
     ok(ask.ringOnFocus, 'le focus pose le ring accent SANS re-render');
     ok(ask.survived === 'un post pour la soirée fluo de samedi', 'le texte tapé SURVIT à un re-render complet');
     ok(ask.posted === 1 && /soirée fluo/.test(ask.brief), 'la flèche envoie → création avec la phrase du gérant');
+
+    console.log('\n[CHAT] demander = un vrai échange : bulle utilisateur, « je prépare ça… », réponse');
+    // L'envoi ci-dessus est encore en vol (délai UI minimal ~900 ms) : la
+    // question doit déjà être une bulle utilisateur, l'indicateur animé dessous,
+    // et la vue doit avoir défilé sur l'échange.
+    const chatPending = await page.evaluate(() => {
+      const ex = [...document.querySelectorAll('#staffCampaignsPage .mkw-exchange')];
+      const last = ex[ex.length - 1];
+      if (!last) return { found: false };
+      const bub = last.querySelector('.mkw-bubble-user');
+      const rect = last.getBoundingClientRect();
+      return {
+        found: true,
+        userText: bub ? bub.textContent : '',
+        thinking: Boolean(last.querySelector('.mkw-thinking')),
+        dots: last.querySelectorAll('.mkw-think-dots i').length,
+        inView: rect.top < window.innerHeight && rect.bottom > 0,
+      };
+    });
+    ok(chatPending.found && /soirée fluo/.test(chatPending.userText), 'la question envoyée devient une bulle utilisateur dans le fil');
+    ok(chatPending.thinking && chatPending.dots === 3, 'l\'indicateur « je prépare ça… » (3 points animés) est visible sous la bulle');
+    ok(chatPending.inView, 'la vue a défilé sur l\'échange (bulle dans le viewport)');
+    await page.waitForFunction(() => {
+      const ex = document.querySelectorAll('#staffCampaignsPage .mkw-exchange');
+      const last = ex[ex.length - 1];
+      return last && !last.querySelector('.mkw-thinking');
+    }, null, { timeout: 8000 });
+    const chatDone = await page.evaluate(() => {
+      const ex = [...document.querySelectorAll('#staffCampaignsPage .mkw-exchange')];
+      const last = ex[ex.length - 1];
+      const reply = last.querySelector('.mkw-chat-reply');
+      return { reply: reply ? reply.textContent.trim() : '', error: Boolean(last.querySelector('.mkw-turn-chat-error')) };
+    });
+    ok(chatDone.reply.length > 0 && !chatDone.error, 'la réponse de l\'agent remplace l\'indicateur (ni erreur, ni silence)');
+    // La question est de l'INPUT UTILISATEUR : elle est échappée avant la bulle.
+    const chatEsc = await page.evaluate(async () => {
+      const input = document.getElementById('brAskInput');
+      input.value = 'un post <b>fluo</b> & fort';
+      input.dispatchEvent(new Event('input'));
+      document.querySelector('#staffCampaignsPage .mkw-cmd-send').click();
+      await new Promise((r) => setTimeout(r, 150));
+      const ex = document.querySelectorAll('#staffCampaignsPage .mkw-exchange');
+      const last = ex[ex.length - 1];
+      const bub = last && last.querySelector('.mkw-bubble-user');
+      // Le render a recréé la barre : on relit l'input COURANT du DOM.
+      return { html: bub ? bub.innerHTML : '', cleared: (document.getElementById('brAskInput') || {}).value === '' };
+    });
+    ok(/&lt;b&gt;/.test(chatEsc.html) && !/<b>/.test(chatEsc.html), 'la question du gérant est échappée avant d\'entrer dans la bulle');
+    ok(chatEsc.cleared, 'l\'envoi vide la barre : le texte vit dans la bulle, pas perdu');
+    await page.waitForFunction(() => !window.mkBrief.busy, null, { timeout: 8000 });
 
     console.log('\n[STUDIO] l\'atelier honnête');
     await go('studio');

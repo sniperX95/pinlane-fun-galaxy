@@ -2135,6 +2135,12 @@
     angleOpen: null, publishedAsk: null, moreOpen: false, receiptsAll: false,
     askFocus: false, busy: '', published: {}, dismissed: {},
     studioChannel: 'facebook', studioPacks: {}, studioBusy: false,
+    // Le chat de demande (fix client 2026-07-18) : chaque envoi du composer
+    // devient un ECHANGE du fil (bulle utilisateur -> je prépare -> réponse).
+    chat: [],
+    // Les tours d'ambiance (radar, veille, résultats) sont repliés par défaut
+    // en une ligne-résumé : le fil s'ouvre calme, le détail reste à un tap.
+    folds: { radar: false, veille: false, results: false },
   };
   window.mkBrief = mkBrief;
 
@@ -2613,27 +2619,86 @@
     const input = document.getElementById('brAskInput');
     if (input) { input.value = text; input.focus(); }
   };
+  // ── LE CHAT DE DEMANDE (fix client 2026-07-18) ────────────────────────────
+  // « Demander » n'était qu'un rechargement silencieux : zéro animation, la
+  // réponse perdue dans le fil. Désormais c'est un vrai échange : la question
+  // devient une BULLE UTILISATEUR (à droite), un indicateur « je prépare ça… »
+  // pulse dessous, la vue descend dessus, et la réponse (la proposition créée
+  // par propositionCreate) remplace l'indicateur, animée. La logique métier
+  // (POST propositionCreate + reload du brief) est INCHANGÉE : tout ceci est
+  // un état d'UI autour.
+  let mkwChatSeq = 0;
+  // Délai UI minimal : le mock/serveur rapide répond en <100 ms, l'indicateur
+  // doit rester perceptible (jamais prolongé sous reduced-motion).
+  const MKW_THINK_MIN_MS = 900;
+
+  function mkwChatScrollTo(id) {
+    setTimeout(() => {
+      const el = document.querySelector(`[data-chat-id="${CSS.escape(id)}"]`);
+      if (el) el.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    }, 60);
+  }
+
+  // Le plancher d'attente s'applique AVANT de basculer le statut : un render
+  // intermédiaire (le reload du brief) repeint le fil pendant l'attente, et
+  // l'indicateur doit y survivre jusqu'au bout du plancher.
+  async function mkwThinkFloor(started) {
+    const remaining = MKW_THINK_MIN_MS - (Date.now() - started);
+    if (remaining > 0 && !reducedMotion) await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+
+  // Rejouer une demande échouée : l'échange raté disparaît, la question
+  // repart telle quelle (même chemin que l'envoi normal).
+  window.mkBrAskRetry = function (id) {
+    const index = mkBrief.chat.findIndex((entry) => entry.id === id);
+    if (index === -1 || mkBrief.busy) return;
+    const q = mkBrief.chat[index].q;
+    mkBrief.chat.splice(index, 1);
+    mkBrief.askDraft = q;
+    const input = document.getElementById('brAskInput');
+    if (input) input.value = q;
+    window.mkBrAsk();
+  };
+
   window.mkBrAsk = async function () {
     if (mkBrief.busy) return;
-    const brief = (document.getElementById('brAskInput') || {}).value || mkBrief.askDraft || '';
-    if (!brief.trim()) { toast('Dis-moi ce que tu veux, même en trois mots.'); return; }
+    const brief = ((document.getElementById('brAskInput') || {}).value || mkBrief.askDraft || '').trim();
+    if (!brief) { toast('Dis-moi ce que tu veux, même en trois mots.'); return; }
+    mkwChatSeq += 1;
+    const entry = { id: `chat-${mkwChatSeq}`, q: brief, status: 'pending', error: '', propKey: '', fresh: true };
+    mkBrief.chat.push(entry);
     mkBrief.busy = 'ask';
     mkBrief.askFocus = false;
+    mkBrief.askDraft = '';
     renderStaffCampaignsPage();
+    mkwChatScrollTo(entry.id);
+    setTimeout(() => { entry.fresh = false; }, 900);
+    const started = Date.now();
+    const before = new Set(brVisiblePropositions().map((p) => p.key));
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
         body: JSON.stringify({ action: 'propositionCreate', brief, centerId: state.adminCenterId || 'libramont' }),
       });
-      mkBrief.askDraft = '';
       await loadMarketingBrief(true);
-      toast('C\'est prêt : première carte de la file.');
+      // La réponse de l'agent = la proposition qui n'existait pas avant.
+      const created = brVisiblePropositions().find((p) => !before.has(p.key));
+      await mkwThinkFloor(started);
+      entry.propKey = created ? created.key : '';
+      entry.status = 'done';
     } catch (error) {
-      // Le texte tapé reste dans askDraft : l'échec ne coûte pas la saisie.
-      toast(error.message || 'Je n\'ai pas réussi : réessaie.');
+      await mkwThinkFloor(started);
+      entry.status = 'error';
+      entry.error = error.message || 'Je n\'ai pas réussi à préparer ta proposition : réessaie.';
+      // Le texte tapé revient dans la barre : l'échec ne coûte pas la saisie.
+      mkBrief.askDraft = entry.q;
     } finally {
+      entry.fresh = true;
+      setTimeout(() => { entry.fresh = false; }, 900);
       mkBrief.busy = '';
       scheduleCampaignsRender();
+      // La réponse (ou l'erreur) reste dans la vue : on garde l'échange centré.
+      mkwChatScrollTo(entry.id);
     }
   };
 
@@ -3855,62 +3920,131 @@
     </article>`;
   }
 
-  // Le tour radar : le prochain jour calme + la carte des 14 jours inline.
+  // ── LES TOURS D'AMBIANCE REPLIÉS (fix client 2026-07-18 : « trop d'info
+  // d'un coup ») : radar, veille et résultats ne sont plus des blocs ouverts à
+  // poids égal avec les propositions. Chacun devient une LIGNE-RÉSUMÉ compacte
+  // et mutée, repliée par défaut, qui se déploie au tap. Toute l'info reste
+  // accessible, elle n'est juste plus déversée. ──────────────────────────────
+
+  window.mkwFoldToggle = function (key) {
+    if (!(key in mkBrief.folds)) return;
+    mkBrief.folds[key] = !mkBrief.folds[key];
+    // L'entrée du corps ne s'anime qu'au VRAI dépliage : un re-render in-view
+    // (clic sur une cellule du radar ouvert) ne rejoue rien.
+    mkBrief._foldAnim = mkBrief.folds[key] ? key : '';
+    if (mkBrief.folds[key]) setTimeout(() => { if (mkBrief._foldAnim === key) mkBrief._foldAnim = ''; }, 450);
+    renderStaffCampaignsPage();
+  };
+
+  // `sum` est du HTML DÉJÀ SÛR (le caller échappe via esc/brProse).
+  function mkwFoldTurn(key, cls, ico, label, sum, body) {
+    const open = mkBrief.folds[key];
+    return `<section class="mkw-ambient ${cls} ${open ? 'is-open' : ''}">
+      <button type="button" class="mkw-fold" aria-expanded="${open}" onclick="mkwFoldToggle('${key}')">
+        <span class="mkw-fold-ico" aria-hidden="true">${ci(ico)}</span>
+        <span class="mkw-fold-label">${esc(label)}</span>
+        <span class="mkw-fold-sum">${sum}</span>
+        <span class="mkw-fold-chev" aria-hidden="true">${ci('chevronDown')}</span>
+      </button>
+      ${open ? `<div class="mkw-fold-body ${mkBrief._foldAnim === key ? 'is-entering' : ''}">${body}</div>` : ''}
+    </section>`;
+  }
+
+  // Le radar 14 jours : replié en « prochain jour calme : ven 17/07 » ;
+  // déplié, la grille complète (mêmes cellules, mêmes handlers).
   function mkwRadarTurn() {
     const b = mkBrief.data;
     if (!b || !b.radar || !b.radar.length) return '';
     const creux = b.radar.find((d) => (d.level === 'creux' || d.level === 'calme') && d.date >= (b.today || ''));
-    const text = creux
-      ? brProse(`${cap(brFrDay(creux.date))} est ton prochain jour calme. Voici comment s'annoncent tes 14 jours, dis-moi si on le remplit.`)
-      : 'Tes 14 prochains jours s\'annoncent corrects, rien d\'urgent à remplir. Voici la carte quand même.';
-    return mkwTurn({ cls: 'mkw-turn-radar', text, card: `<div class="mkw-inline-card mkw-inline-radar">${mkwRadar()}</div>` });
+    const sum = creux
+      ? brProse(`prochain jour calme : ${brFrDay(creux.date)}`)
+      : 'rien d\'urgent à remplir sur 14 jours';
+    return mkwFoldTurn('radar', 'mkw-turn-radar', 'calendar', 'Radar 14 jours', sum,
+      `<div class="mkw-inline-card mkw-inline-radar">${mkwRadar()}</div>`);
   }
 
-  // Le tour veille : un concurrent a bougé cette nuit → carte + accès à tous.
+  // La veille : repliée en « du mouvement chez X » ; dépliée, le détail + tous.
   function mkwVeilleTurn() {
     const b = mkBrief.data;
     if (!b || !b.veille || !b.veille.changed || !b.veille.changed.length) return '';
     const first = b.veille.changed[0];
     const others = b.veille.changed.length - 1;
-    const text = `Du mouvement chez <strong>${esc(first.name)}</strong> cette nuit : ${esc(first.diff)}.${others > 0 ? ` Et ${others} autre${others > 1 ? 's centres ont' : ' centre a'} bougé.` : ''}`;
-    return mkwTurn({
-      cls: 'mkw-turn-veille',
-      text,
-      card: `<div class="mkw-inline-card">
+    const sum = `du mouvement chez <strong>${esc(first.name)}</strong>${others > 0 ? ` et ${others} autre${others > 1 ? 's' : ''}` : ''}`;
+    return mkwFoldTurn('veille', 'mkw-turn-veille', 'bolt', 'Veille concurrents', sum,
+      `<div class="mkw-inline-card">
         <p class="mkw-inline-lead">${ci('bolt')}<span>${esc(first.name)}</span></p>
         <p class="mkw-inline-sub">${esc(first.diff)}</p>
-        <div class="mkw-cta"><button type="button" class="pv2-btn primary" onclick="mkwTab('rivals')">Voir tous les concurrents</button></div>
-      </div>`,
-    });
+        <div class="mkw-cta"><button type="button" class="mkw-link" onclick="mkwTab('rivals')">Voir tous les concurrents</button></div>
+      </div>`);
   }
 
-  // Le tour résultat : ce que le marketing a rapporté, résumé, + accès au détail.
+  // Les résultats : repliés en un chiffre honnête ; dépliés, la figure + le
+  // pont vers la maison de la preuve (Résultats).
   function mkwResultsTurn() {
     const b = mkBrief.data;
     if (!b) return '';
     const p = b.paie;
-    let text;
+    let sum;
     let fig = '';
     if (p.young) {
-      text = `On vient de commencer ensemble : encore trop tôt pour un chiffre honnête. Premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>.`;
+      sum = `premier bilan le <strong>${esc(p.firstVerdictDate)}</strong>`;
     } else if (p.quietWindow) {
-      text = brProse(`Rien envoyé sur les ${p.days} derniers jours. Tes mesures passées restent dans Résultats.`);
+      sum = brProse(`rien envoyé sur les ${p.days} derniers jours`);
     } else if (p.euros > 0) {
-      text = brProse(`Sur ${p.days} jours, tes messages ont rapporté ${money(p.euros)} de réservations liées.`);
+      sum = brProse(`${money(p.euros)} de réservations liées · ${p.days} j`);
       fig = `<div class="mkw-inline-fig">
         <span class="mkw-inline-num">${money(p.euros)}</span>
         <div class="mkw-inline-chips"><span><b>${p.venues}</b> réservations liées</span><span class="mkw-hchip-dot"></span><span><b>${p.sent}</b> messages envoyés</span></div>
       </div>`;
     } else {
-      text = brProse(`${p.sent} messages partis, aucune réservation ne leur est encore liée sur ${p.days} jours.`);
+      sum = brProse(`${p.sent} messages partis, rien d'encore lié sur ${p.days} j`);
     }
-    return mkwTurn({
-      cls: 'mkw-turn-results',
-      text,
-      card: `<div class="mkw-inline-card">${fig}
+    return mkwFoldTurn('results', 'mkw-turn-results', 'target', 'Résultats', sum,
+      `<div class="mkw-inline-card">${fig}
         <div class="mkw-cta"><button type="button" class="mkw-link" onclick="mkwTab('results')">Voir le détail des résultats</button></div>
-      </div>`,
-    });
+      </div>`);
+  }
+
+  // ── LES TOURS DU CHAT : l'échange né du composer (bulle utilisateur à
+  // droite, réponse de l'agent dessous). La réponse « done » est la VRAIE
+  // carte proposition (mkwPropCard : mêmes handlers, même atelier). ──────────
+  function mkwChatAnswer(entry) {
+    if (entry.status === 'pending') {
+      return `<article class="mkw-turn mkw-turn-thinking" role="status">
+        <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+        <div class="mkw-turn-body"><div class="mkw-bubble">
+          <p class="mkw-thinking"><span class="mkw-think-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>je prépare ça…</span></p>
+        </div></div>
+      </article>`;
+    }
+    if (entry.status === 'error') {
+      return `<article class="mkw-turn mkw-turn-chat-error" role="alert">
+        <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
+        <div class="mkw-turn-body"><div class="mkw-bubble">
+          <p class="mkw-turn-text mkw-chat-error-text">${esc(entry.error)}</p>
+          <p class="mkw-turn-text mkw-chat-error-sub">Ta demande est revenue dans la barre, elle n'est pas perdue.</p>
+          <div class="mkw-cta"><button type="button" class="mkw-link" onclick="mkBrAskRetry('${escJs(entry.id)}')">Réessayer</button></div>
+        </div></div>
+      </article>`;
+    }
+    const p = entry.propKey ? brVisiblePropositions().find((item) => item.key === entry.propKey) : null;
+    if (p) return mkwPropCard(p);
+    if (entry.propKey && mkBrief.dismissed[entry.propKey]) {
+      return mkwTurn({ cls: 'mkw-turn-quiet', text: 'Tu as écarté cette proposition : je n\'insiste pas.' });
+    }
+    return mkwTurn({ text: 'C\'est prêt : ta proposition est dans le fil, avec les autres du jour.' });
+  }
+
+  function mkwChatTurns() {
+    return mkBrief.chat.map((entry) => `<div class="mkw-exchange ${entry.fresh ? 'is-fresh' : ''}" data-chat-id="${esc(entry.id)}">
+      <article class="mkw-turn mkw-turn-user">
+        <div class="mkw-turn-body">
+          <div class="mkw-bubble mkw-bubble-user"><p class="mkw-turn-text">${esc(entry.q)}</p></div>
+          <p class="mkw-turn-time mkw-turn-time-user">toi</p>
+        </div>
+      </article>
+      <div class="mkw-chat-reply">${mkwChatAnswer(entry)}</div>
+    </div>`).join('');
   }
 
   // Le COMPOSER « Demande-moi quelque chose » : signature du produit, toujours
@@ -4001,12 +4135,15 @@
       return `<div class="mkw-feed" id="mkwFeed">${turns.join('')}</div>${mkwComposer()}`;
     }
     const props = brVisiblePropositions();
-    const creating = mkBrief.busy === 'ask';
+    // Une proposition déjà « réponse » d'un échange du chat vit DANS son
+    // échange (plus bas) : on ne la redouble pas dans les tours du jour.
+    const claimed = new Set(mkBrief.chat.filter((entry) => entry.propKey).map((entry) => entry.propKey));
+    const dayProps = props.filter((p) => !claimed.has(p.key));
     // La chose la plus importante en TÊTE, en pastille de suggestion : la
     // proposition de tête, sinon un jour calme à remplir. Elle n'est PAS
     // redoublée en tour plus bas (une seule chose importante à la fois).
-    const lead = props.length ? props[0] : null;
-    const restProps = lead ? props.slice(1) : props;
+    const lead = dayProps.length ? dayProps[0] : null;
+    const restProps = lead ? dayProps.slice(1) : dayProps;
     let suggest = '';
     if (lead) suggest = mkwHeroSuggest(lead);
     else {
@@ -4014,20 +4151,23 @@
       if (fillDay) suggest = mkwFillSuggest(fillDay);
     }
     if (suggest) turns.push(suggest);
-    if (creating) {
-      turns.push(`<article class="mkw-turn mkw-turn-prop"><span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span><div class="mkw-turn-body"><div class="mkw-bubble"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></div></div></article>`);
-    }
-    const visible = mkBrief.moreOpen ? restProps : restProps.slice(0, 3);
+    // Le fil s'ouvre CALME : 2 tours de proposition au plus, le reste derrière
+    // « + N de plus » (fix client 2026-07-18 : « trop d'info d'un coup »).
+    const visible = mkBrief.moreOpen ? restProps : restProps.slice(0, 2);
     const rest = restProps.length - visible.length;
     if (visible.length) {
       for (const p of visible) turns.push(mkwPropCard(p));
       if (rest > 0) turns.push(`<div class="mkw-feed-more"><button type="button" class="mkw-link" onclick="mkBrMore()">+ ${rest} proposition${rest > 1 ? 's' : ''} de plus</button></div>`);
-    } else if (!suggest && !creating) {
+    } else if (!suggest && !mkBrief.chat.length) {
       turns.push(mkwTurn({ cls: 'mkw-turn-quiet', text: 'Rien d\'urgent à publier aujourd\'hui. Je surveille ta météo, tes réservations et tes concurrents : dès que je vois une occasion, elle apparaît ici.' }));
     }
     const radar = mkwRadarTurn(); if (radar) turns.push(radar);
     const veille = mkwVeilleTurn(); if (veille) turns.push(veille);
     turns.push(mkwResultsTurn());
+    // Les échanges du chat vivent en BAS du fil, juste au-dessus du composer :
+    // la question tombe là où l'utilisateur regarde, la réponse arrive dessous.
+    const chat = mkwChatTurns();
+    if (chat) turns.push(chat);
     return `<div class="mkw-feed" id="mkwFeed">${turns.join('')}</div>${mkwComposer()}`;
   }
 

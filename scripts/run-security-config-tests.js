@@ -26,6 +26,17 @@ function readProjectFile(file) {
   return fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
 }
 
+// Decoupe le bloc d'UNE fonction (du header jusqu'a l'accolade fermante en
+// colonne 0) pour borner les assertions statiques : on ne veut surtout pas
+// matcher n'importe quel === ailleurs dans le fichier.
+function extractBlock(source, header, label) {
+  const start = source.indexOf(header);
+  assert.ok(start > -1, `${label} : bloc introuvable (${header})`);
+  const end = source.indexOf('\n}', start);
+  assert.ok(end > start, `${label} : fin de bloc introuvable`);
+  return source.slice(start, end + 2);
+}
+
 function resetEnv(values = {}) {
   for (const key of ENV_KEYS) {
     if (originalEnv[key] === undefined) delete process.env[key];
@@ -218,6 +229,106 @@ try {
     staffAuthLibSource,
     /addAccessEvent\([^)]*payload:\s*\{[^}]*code[^}]*\}/,
     'revealed access codes must never be written to the audit event payload',
+  );
+
+  // --- Comparaisons de secrets a temps constant (P2-9) ------------------------
+  // Un === sur un secret fuit un signal de timing proportionnel au prefixe
+  // correct. Le Basic Auth du middleware protege TOUT le site : c'est la
+  // comparaison la plus exposee du projet.
+  const middlewareSource = readProjectFile('middleware.ts');
+
+  // Le middleware tourne sur le runtime Edge : node:crypto n'y est pas garanti.
+  assert.doesNotMatch(
+    middlewareSource,
+    /require\(['"](node:)?crypto['"]\)|from\s+['"](node:)?crypto['"]/,
+    'le middleware Edge ne doit jamais importer node:crypto',
+  );
+
+  const middlewareCompare = extractBlock(
+    middlewareSource,
+    'async function timingSafeEqualText',
+    'middleware.ts timingSafeEqualText',
+  );
+  assert.match(
+    middlewareCompare,
+    /crypto\.subtle\.digest\('SHA-256'/,
+    'la comparaison Edge doit passer par des empreintes SHA-256 de longueur fixe',
+  );
+  assert.match(
+    middlewareCompare,
+    /diff \|= leftBytes\[index\] \^ rightBytes\[index\]/,
+    'la comparaison Edge doit accumuler un XOR sur toute la longueur',
+  );
+  assert.doesNotMatch(
+    middlewareCompare,
+    /break|return false/,
+    'la boucle de comparaison ne doit jamais court-circuiter',
+  );
+
+  const credentialsBlock = extractBlock(
+    middlewareSource,
+    'async function credentialsMatch',
+    'middleware.ts credentialsMatch',
+  );
+  assert.doesNotMatch(
+    credentialsBlock,
+    /credentials\.(username|password)\s*===/,
+    'le Basic Auth ne doit plus comparer les identifiants avec ===',
+  );
+  assert.match(
+    credentialsBlock,
+    /timingSafeEqualText\(credentials\.username, username\)/,
+    'le nom d utilisateur doit passer par la primitive a temps constant',
+  );
+  assert.match(
+    credentialsBlock,
+    /timingSafeEqualText\(credentials\.password, password\)/,
+    'le mot de passe doit passer par la primitive a temps constant',
+  );
+
+  assert.doesNotMatch(
+    middlewareSource,
+    /get\('authorization'\)\s*===\s*`Bearer/,
+    'le Bearer cron du middleware ne doit plus etre compare avec ===',
+  );
+  assert.match(
+    middlewareSource,
+    /timingSafeEqualText\(request\.headers\.get\('authorization'\) \|\| '', `Bearer \$\{cronSecret\}`\)/,
+    'le Bearer cron du middleware doit passer par la primitive a temps constant',
+  );
+
+  const cronSource = readProjectFile('api/cron.js');
+  const cronAuthBlock = extractBlock(cronSource, 'function isAuthorized(req)', 'api/cron.js isAuthorized');
+  assert.doesNotMatch(
+    cronAuthBlock,
+    /===\s*`Bearer/,
+    'le Bearer cron ne doit plus etre compare avec ===',
+  );
+  assert.match(
+    cronAuthBlock,
+    /timingSafeEqualText\(req\.headers\.authorization \|\| '', `Bearer \$\{expected\}`\)/,
+    'le Bearer cron doit passer par la primitive a temps constant',
+  );
+
+  const cronCompare = extractBlock(
+    cronSource,
+    'function timingSafeEqualText(left, right)',
+    'api/cron.js timingSafeEqualText',
+  );
+  assert.match(
+    cronCompare,
+    /crypto\.timingSafeEqual\(leftDigest, rightDigest\)/,
+    'le cron Node doit utiliser crypto.timingSafeEqual',
+  );
+  assert.match(
+    cronCompare,
+    /createHash\('sha256'\)[\s\S]{0,200}createHash\('sha256'\)/,
+    'les deux cotes doivent etre haches pour obtenir une longueur fixe',
+  );
+  assert.doesNotMatch(
+    cronCompare,
+    /\.length\s*!==/,
+    'aucun court-circuit sur la longueur : timingSafeEqual leverait et refuirait la taille du secret',
   );
 
   console.log('security-config-tests-ok');

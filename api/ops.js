@@ -1306,7 +1306,9 @@ async function handlePost(req, res, providedBody = null, options = {}) {
 
   // Mise à jour du statut d'une demande sur mesure (nouvelle → traitée…).
   if (action === 'customRequestStatus') {
-    const request = await updateCustomRequestStatus(body.id, body.status);
+    // Scope centre : un staff ne mute (ni ne relit) que les demandes de SON centre.
+    // 'all' (accès plateforme) garde le prédicat neutre, cohérent avec listCustomRequests.
+    const request = await updateCustomRequestStatus(body.id, body.status, { centerId: scopedCenterId });
     sendJson(res, 200, { ok: true, action, customRequest: request });
     return;
   }
@@ -1594,11 +1596,15 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     if (!body.id || typeof body.bodyMd !== 'string' || !body.bodyMd.trim()) {
       throw createHttpError('Bilan invalide : contenu requis.', 400);
     }
+    // Écrire un bilan de direction en scope 'all' n'a aucun sens métier : on exige
+    // un centre précis (400 explicite) plutôt qu'un prédicat neutre qui laisserait
+    // passer l'édition du bilan d'un autre centre.
     const report = await updateDirectionReportBody({
       id: body.id,
       bodyMd: body.bodyMd,
       title: body.title,
       editedBy: options.session?.member?.name || options.session?.member?.id || 'direction',
+      centerId: requireConcreteCenter('saveDirectionReport'),
     });
     sendJson(res, 200, { ok: true, report });
     return;

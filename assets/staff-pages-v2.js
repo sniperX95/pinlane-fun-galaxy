@@ -691,10 +691,16 @@
         ? '<th class="crm-th">Pourquoi</th>'
         : '<th class="crm-th"></th>';
       const tableRows = shown.map((row) => crmListRow(row, selected, ctx)).join('');
-      // ROI du CRM : les relances envoyées → venues → € (le CRM prouve sa valeur).
+      // ROI du CRM : relances envoyées → réservations liées → € (le CRM prouve
+      // sa valeur). ATTENTION au vocabulaire : la source (getRelanceStats,
+      // lib/ops-communications.js) ne filtre QUE les annulées, elle ne prouve
+      // aucune venue réelle. Le libellé dit donc « réservation liée », jamais
+      // « venue ». Le héros marketing, lui, est plus strict (visites honorées) :
+      // les deux chiffres ne sont pas comparables et ne doivent pas le laisser
+      // croire.
       const roi = ctx.segment !== 'relancer' ? '' : `<section class="crm-roi">
         ${crmRelanceStats.loaded && crmRelanceStats.sent > 0
-          ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} sur 90 j<span class="crm-roi-sep"></span><strong>${crmRelanceStats.converted}</strong> venue${crmRelanceStats.converted > 1 ? 's' : ''}<span class="crm-roi-sep"></span><strong>${money(crmRelanceStats.revenue)}</strong> générés</span>`
+          ? `<span class="crm-roi-figures"><strong>${crmRelanceStats.sent}</strong> relance${crmRelanceStats.sent > 1 ? 's' : ''} sur 90 j<span class="crm-roi-sep"></span><strong>${crmRelanceStats.converted}</strong> réservation${crmRelanceStats.converted > 1 ? 's' : ''} liée${crmRelanceStats.converted > 1 ? 's' : ''}<span class="crm-roi-sep"></span><strong>${money(crmRelanceStats.revenue)}</strong> de réservations liées</span>`
           : `<span class="crm-roi-figures">Relance ton premier client, je mesure ce que chaque relance rapporte.</span>`}
         <button type="button" class="pv2-btn" onclick="openStaffCampaignForRelance()">${ci('megaphone')}Campagne pour ce segment</button>
       </section>`;
@@ -3423,7 +3429,8 @@
 
   // ── Résultats · le héros euros : SEUL exemplaire (audit §6.2). Libellés
   // exacts : des MESSAGES (relances, anniversaires, campagnes), pas des
-  // publications ; des réservations liées, pas des « venues » ; reçu, pas vu. ──
+  // publications ; des visites réellement honorées, pas de simples réservations
+  // enregistrées ; reçu, pas vu. ──
   function mkwHero() {
     const b = mkBrief.data;
     if (!b) return `<section class="mkw-hero"><div class="mkw-skel mkw-skel-hero"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
@@ -3435,12 +3442,12 @@
     } else if (p.quietWindow) {
       fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-quiet">0</span><span class="mkw-hero-cap">message envoyé sur les <strong>${p.days} derniers jours</strong>. Tes mesures passées restent plus bas.</span></div>`;
     } else if (p.euros > 0) {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">de réservations liées à tes messages · <strong>${p.days} derniers jours</strong></span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num is-good">${money(p.euros)}</span><span class="mkw-hero-cap">de visites honorées liées à tes messages · <strong>${p.days} derniers jours</strong></span></div>`;
     } else {
-      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune réservation ne leur est encore liée sur ${p.days} j</span></div>`;
+      fig = `<div class="mkw-hero-fig"><span class="mkw-hero-num">${p.sent}</span><span class="mkw-hero-cap">messages partis : aucune visite honorée ne leur est encore liée sur ${p.days} j</span></div>`;
     }
     const chips = !p.young && !p.quietWindow ? `<div class="mkw-hero-chips">
-      <span class="mkw-hchip"><b>${p.venues}</b> réservations liées</span>
+      <span class="mkw-hchip"><b>${p.venues}</b> visites honorées</span>
       <span class="mkw-hchip-dot"></span>
       <span class="mkw-hchip"><b>${p.sent}</b> messages envoyés</span>
     </div>` : '';
@@ -3466,9 +3473,9 @@
     // hors sources marketing) : ils s'affichent avec leur vraie origine, pas
     // en chip du héros comme s'ils étaient du ROI de publication (audit 4.6).
     return `<div class="mkw-src-panel">
-      ${rows || '<p class="mkw-quiet">Pas encore de réservation attribuée sur la période.</p>'}
+      ${rows || '<p class="mkw-quiet">Pas encore de visite honorée attribuée sur la période.</p>'}
       ${p.reviewClicks ? `<p class="mkw-src-extra"><b>${p.reviewClicks}</b> clics vers ta fiche Google (emails de suivi post-visite, hors chiffre ci-dessus)</p>` : ''}
-      <p class="mkw-method">Une réservation compte pour le dernier message que le client a reçu dans les 60 jours (les réservations annulées sont exclues) : c’est un lien, pas une preuve absolue.</p>
+      <p class="mkw-method">Ne comptent que les visites <strong>déjà passées et réellement honorées</strong> (client marqué arrivé ou payé) : les réservations annulées, les demandes en attente de validation, les clients qui ne sont jamais venus et les réservations à venir sont tous exclus. Chaque visite est créditée au dernier message reçu dans les 60 jours : c’est un lien, pas une preuve absolue.</p>
     </div>`;
   }
 
@@ -3991,10 +3998,10 @@
     } else if (p.quietWindow) {
       sum = brProse(`rien envoyé sur les ${p.days} derniers jours`);
     } else if (p.euros > 0) {
-      sum = brProse(`${money(p.euros)} de réservations liées · ${p.days} j`);
+      sum = brProse(`${money(p.euros)} de visites honorées · ${p.days} j`);
       fig = `<div class="mkw-inline-fig">
         <span class="mkw-inline-num">${money(p.euros)}</span>
-        <div class="mkw-inline-chips"><span><b>${p.venues}</b> réservations liées</span><span class="mkw-hchip-dot"></span><span><b>${p.sent}</b> messages envoyés</span></div>
+        <div class="mkw-inline-chips"><span><b>${p.venues}</b> visites honorées</span><span class="mkw-hchip-dot"></span><span><b>${p.sent}</b> messages envoyés</span></div>
       </div>`;
     } else {
       sum = brProse(`${p.sent} messages partis, rien d'encore lié sur ${p.days} j`);

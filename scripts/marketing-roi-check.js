@@ -61,10 +61,86 @@ const opsJobs = require('../lib/ops-jobs');
 
   const roiSql = dbState.sqlLog.find((entry) => entry.sql.includes('marketing_msgs')).sql;
   ok(roiSql.includes('distinct on (res.id)') && roiSql.includes('order by res.id, m.created_at desc'), 'INVARIANT : attribution last-touch (une résa = un seul message, le dernier)');
-  ok(roiSql.includes("res.status != 'cancelled'"), 'INVARIANT : réservations annulées exclues');
+  // Les annulées ne sont plus exclues par une liste noire ('!= cancelled') mais
+  // par une liste BLANCHE des statuts qui prouvent une venue : plus strict, et
+  // vérifié pour de vrai par les cas de comportement plus bas.
+  ok(roiSql.includes("res.status in ('arrived', 'paid')"), 'INVARIANT : seuls les statuts prouvant une venue comptent (annulées exclues par construction)');
   ok(roiSql.includes("interval '60 days'"), 'INVARIANT : fenêtre 60 jours');
   ok(roiSql.includes("status in ('sent', 'delivered')"), 'INVARIANT : seuls les messages partis comptent');
   ok(!roiSql.includes("'confirmation'") && !roiSql.includes("reminder"), 'INVARIANT : les transactionnels ne sont jamais attribués');
+
+  // ── HONNÊTETÉ DU CHIFFRE : « réservé » n'est PAS « venu » ─────────────────
+  // Le filtre vit dans le SQL, donc l'assertion de sous-chaîne ne prouve rien
+  // sur le COMPORTEMENT. On extrait les clauses réelles du join et on les
+  // ÉVALUE contre des réservations simulées. Toute forme de clause que le
+  // test ne sait pas interpréter fait ÉCHOUER : jamais de vert silencieux
+  // parce que le parseur n'a pas compris la requête.
+  //
+  // Statuts réels (database/schema.sql:14 + lib/database.js:10) :
+  //   status            : pending | arrived | paid | cancelled
+  //   validation_status : draft | requested | staff_review | confirmed | rejected
+  // Il n'existe AUCUN statut 'no_show' : un client qui ne vient jamais reste
+  // 'pending' à vie. C'est donc 'pending sur une date passée' qui joue le rôle
+  // du no-show dans les cas ci-dessous.
+  const HONESTY_CLAUSE_RE = /and\s+(res\.(?:status|validation_status|date))\s*(!=|<=|>=|=|<|>|in)\s*(\([^)]*\)|'[^']*'|current_date)/gi;
+
+  function honestyClauses(sql) {
+    const found = [];
+    let match;
+    HONESTY_CLAUSE_RE.lastIndex = 0;
+    while ((match = HONESTY_CLAUSE_RE.exec(sql))) {
+      found.push({ column: match[1].toLowerCase(), op: match[2].toLowerCase(), operand: match[3].toLowerCase() });
+    }
+    return found;
+  }
+
+  function clauseAccepts(clause, row) {
+    const literals = (clause.operand.match(/'([^']*)'/g) || []).map((raw) => raw.slice(1, -1));
+    if (clause.column === 'res.status' || clause.column === 'res.validation_status') {
+      const value = clause.column === 'res.status' ? row.status : row.validationStatus;
+      if (clause.op === 'in') return literals.includes(value);
+      if (clause.op === '=') return value === literals[0];
+      if (clause.op === '!=') return value !== literals[0];
+    }
+    if (clause.column === 'res.date' && clause.operand === 'current_date') {
+      if (clause.op === '<') return row.daysFromToday < 0;
+      if (clause.op === '<=') return row.daysFromToday <= 0;
+    }
+    throw new Error(`clause non interprétable par le test : ${clause.column} ${clause.op} ${clause.operand}`);
+  }
+
+  // → true (comptée en €), false (exclue), ou null si le filtre est incomplet
+  //   ou illisible (le test refuse alors de conclure et passe au rouge).
+  let lastHonestyError = '';
+  function countedAsRevenue(sql, row) {
+    try {
+      const clauses = honestyClauses(sql);
+      if (clauses.length < 3) {
+        throw new Error(`filtre incomplet : ${clauses.length} clause(s) statut/validation/date trouvée(s), 3 attendues`);
+      }
+      return clauses.every((clause) => clauseAccepts(clause, row));
+    } catch (error) {
+      lastHonestyError = error.message;
+      return null;
+    }
+  }
+
+  const PAST = -3;
+  const FUTURE = 5;
+  const honoredPaid = { status: 'paid', validationStatus: 'confirmed', daysFromToday: PAST };
+  const honoredArrived = { status: 'arrived', validationStatus: 'confirmed', daysFromToday: PAST };
+  const neverCame = { status: 'pending', validationStatus: 'confirmed', daysFromToday: PAST };
+  const awaitingStaff = { status: 'arrived', validationStatus: 'staff_review', daysFromToday: PAST };
+  const futureBooking = { status: 'paid', validationStatus: 'confirmed', daysFromToday: FUTURE };
+  const cancelled = { status: 'cancelled', validationStatus: 'confirmed', daysFromToday: PAST };
+
+  ok(countedAsRevenue(roiSql, honoredPaid) === true, 'COMPTÉE : visite passée réellement honorée (payée)');
+  ok(countedAsRevenue(roiSql, honoredArrived) === true, 'COMPTÉE : visite passée réellement honorée (client arrivé)');
+  ok(countedAsRevenue(roiSql, neverCame) === false, 'EXCLUE : réservation passée restée « pending » (le no-show, faute de statut dédié)');
+  ok(countedAsRevenue(roiSql, awaitingStaff) === false, 'EXCLUE : demande encore en « staff_review », pas encore approuvée');
+  ok(countedAsRevenue(roiSql, futureBooking) === false, 'EXCLUE : réservation à une date FUTURE (attendue, pas rapportée)');
+  ok(countedAsRevenue(roiSql, cancelled) === false, 'EXCLUE : réservation annulée');
+  if (lastHonestyError) console.log(`      (dernier refus de conclure : ${lastHonestyError})`);
 
   const clamped = await computeMarketingRoi('libramont', { days: 9999 });
   ok(clamped.days === 365, 'fenêtre bornée à 365 j');

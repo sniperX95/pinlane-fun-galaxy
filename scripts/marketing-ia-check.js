@@ -249,7 +249,7 @@ async function main() {
     ok(/préparé/.test(feed.voice) && /Bowling Arlon/.test(feed.voice), 'la voix d\'accueil : vu + préparé + veille');
     ok(feed.voiceNums >= 1, 'prose-preuve : les nombres de la voix en mono');
     ok(Boolean(feed.suggest) && feed.suggestGo, 'la pastille de suggestion (liseré animé + chevron) met en avant LA chose du jour');
-    ok(/1[\s  ]?240/.test(feed.resultsTurn) && /réservations liées/.test(feed.resultsTurn), 'le tour résultat rappelle le chiffre lié aux messages');
+    ok(/1[\s  ]?240/.test(feed.resultsTurn) && /visites honorées/.test(feed.resultsTurn), 'le tour résultat rappelle le chiffre lié aux messages');
     ok(feed.heroInFeed === 0, 'le héros € ne vit PAS dans le fil (il vit dans Résultats, une seule maison)');
     ok(/Bowling Arlon/.test(feed.veilleName) && /offre étudiants/.test(feed.veilleSub), 'le tour veille rend le concurrent (nom + diff) dans sa carte inline');
     ok(feed.veilleNameHtml.length > 0 && !/[<>]/.test(feed.veilleNameHtml), 'le nom du concurrent est échappé (texte pur dans le span, aucune balise brute)');
@@ -624,8 +624,8 @@ async function main() {
       };
     });
     ok(results.hero && results.eyebrow && /1[\s  ]?240/.test(results.heroNum), 'le héros € vit ICI, seul exemplaire');
-    ok(/réservations liées à tes messages/.test(results.cap), 'libellé exact : des MESSAGES, des réservations liées (pas « publications », pas « venues »)');
-    ok(/réservations liées/.test(results.chips) && !/clics avis Google/.test(results.chips), 'les chips ne mélangent plus les clics avis (transactionnels) au ROI');
+    ok(/visites honorées liées à tes messages/.test(results.cap), 'libellé exact : des MESSAGES (pas « publications ») et des VISITES HONORÉES (pas de simples réservations enregistrées)');
+    ok(/visites honorées/.test(results.chips) && !/clics avis Google/.test(results.chips), 'les chips ne mélangent plus les clics avis (transactionnels) au ROI');
     ok(results.segs.join(',') === '7 j,30 j,90 j', 'toggles de période 7/30/90');
     ok(results.count === 3 && results.good && results.neutral && results.pending, 'reçus : bon en vert, neutre jamais rouge, verdict à venir');
     ok(results.redo, '« On le refait ? » sur les lignes positives');
@@ -642,7 +642,8 @@ async function main() {
       extra: (document.querySelector('#staffCampaignsPage .mkw-src-extra') || {}).textContent || '',
     }));
     ok(src.rows >= 2, 'détail des sources (barres)');
-    ok(/dernier message que le client a reçu/.test(src.method) && /annulées sont exclues/.test(src.method), 'la méthode dit « reçu » (pas « vu ») et exclut les annulées');
+    ok(/dernier message reçu/.test(src.method) && !/message (vu|ouvert)/.test(src.method), 'la méthode dit « reçu » (pas « vu » : on ne prétend pas savoir si le client a lu)');
+    ok(/annulées/.test(src.method) && /exclus/.test(src.method) && /honorées/.test(src.method) && /à venir/.test(src.method), 'la méthode exclut explicitement les annulées, les non-venus, les demandes en attente ET les réservations à venir');
     ok(/emails de suivi post-visite/.test(src.extra), 'les clics avis Google sont affichés avec leur vraie origine (hors ROI)');
     await page.evaluate(() => { [...document.querySelectorAll('.mkw-seg-btn')].find((el) => /7 j/.test(el.textContent)).click(); });
     await page.waitForTimeout(400);

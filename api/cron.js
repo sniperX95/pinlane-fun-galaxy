@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { sendError, sendJson } = require('../lib/http');
 const {
   runAgentOrchestratorCron,
@@ -5,10 +6,20 @@ const {
   runOpsJobsCron,
 } = require('../lib/cron-tasks');
 
+// Comparaison a temps constant. On hache les deux cotes avant de comparer :
+// crypto.timingSafeEqual leve si les tailles different, ce qui refuirait la
+// longueur du secret. Deux empreintes SHA-256 font toujours 32 octets, donc la
+// duree de la comparaison ne depend ni du contenu ni de la longueur.
+function timingSafeEqualText(left, right) {
+  const leftDigest = crypto.createHash('sha256').update(String(left), 'utf8').digest();
+  const rightDigest = crypto.createHash('sha256').update(String(right), 'utf8').digest();
+  return crypto.timingSafeEqual(leftDigest, rightDigest);
+}
+
 function isAuthorized(req) {
   const expected = process.env.CRON_SECRET;
   if (!expected) return false;
-  return req.headers.authorization === `Bearer ${expected}`;
+  return timingSafeEqualText(req.headers.authorization || '', `Bearer ${expected}`);
 }
 
 function getAction(req) {

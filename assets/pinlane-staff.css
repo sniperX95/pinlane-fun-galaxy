@@ -9107,8 +9107,28 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .pv2-cell-sub { display: block; color: var(--faint); margin-top: 1px; }
 .pv2-mail-list { max-height: 560px; overflow: auto; padding: 0; }
 .pv2-mail-detail { display: grid; gap: 13px; }
-.pv2-mail-error { font-size: 12.5px; line-height: 1.45; color: var(--danger); background: var(--danger-soft); border-radius: var(--radius-md); padding: 8px 10px; }
+.pv2-mail-error { font-size: 12.5px; line-height: 1.45; color: var(--danger); background: var(--danger-soft); border-radius: var(--radius-md); padding: 10px 12px; display: grid; gap: 6px; }
+.pv2-mail-error strong { font-size: 13px; }
+.pv2-mail-error p { margin: 0; color: var(--text); }
+.pv2-mail-error-raw summary { cursor: pointer; color: var(--muted); font-size: 11.5px; }
+.pv2-mail-error-raw code { display: block; margin-top: 5px; font-size: 11.5px; color: var(--muted); word-break: break-word; }
+.pv2-mail-error-actions { margin-top: 2px; }
+.pv2-mail-error-actions small { color: var(--muted); }
+.pv2-cell-fail { color: var(--danger); font-weight: 600; }
+.pv2-table tbody tr.is-failed td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
 .pv2-mail-preview-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+
+/* Bandeau d'alerte échecs : la seule surface qui va CHERCHER la directrice.
+   Un mail qui ne part pas ne doit pas attendre qu'on pense à le chercher. */
+.pv2-alert { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  border: 1px solid var(--danger); border-left-width: 4px; background: var(--danger-soft);
+  border-radius: var(--radius-lg); padding: 13px 16px; }
+.pv2-alert-main { display: grid; gap: 3px; min-width: 240px; flex: 1 1 320px; }
+.pv2-alert strong { font-size: 14px; color: var(--danger); }
+.pv2-alert p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+.pv2-alert-other { color: var(--muted) !important; font-size: 11.5px !important; }
+.mk-auto-edit-warn { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--muted);
+  border-left: 2px solid var(--warning, var(--muted)); padding-left: 8px; }
 
 /* ── Marketing suite v2 : passe Astryx. L'essentiel (hauteurs uniques, voiles,
    tables denses, display 400, segments par graisse) vit dans les blocs

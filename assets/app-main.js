@@ -1737,14 +1737,100 @@ function formatOpsTimestamp(value) {
 }
 
 function getOpsTemplateLabel(templateId = '') {
+  const id = String(templateId || '');
+  // Les 13 modèles réellement envoyés en prod. Sans entrée ici, la colonne
+  // « Modèle » affichait l'identifiant technique brut (`delay_staff_attention`)
+  // à la directrice.
   const labels = {
     request_received: 'Demande reçue',
     confirmation: 'Confirmation client',
-    reminder_48h: 'Rappel 48h',
+    reminder_48h: 'Rappel avant la venue',
+    reminder_day_sms: 'Rappel SMS du jour',
+    post_visit_followup: 'Merci post-visite',
+    birthday_j30: 'Anniversaire J-30',
+    reactivation: 'Réactivation dormants',
+    relance_dormant: 'Relance client',
     staff_review_request: 'Validation staff',
-    staff_alert: 'Alerte staff'
+    staff_alert: 'Alerte staff',
+    delay_staff_attention: 'Retard : décision staff',
+    delay_update: 'Ajustement horaire client',
+    delay_change: 'Changement annoncé au client',
+    client_thanks: 'Remerciement client',
+    campaign_1: 'Campagne',
+    studio_direct: 'Message direct',
+    inbound_email: 'Mail reçu'
   };
-  return labels[templateId] || templateId || 'Message';
+  if (labels[id]) return labels[id];
+  // Envois de test du staff : `test_<séquence>`.
+  if (id.startsWith('test_')) return `Test : ${labels[id.slice(5)] || id.slice(5)}`;
+  return id || 'Message';
+}
+
+/* ── Pourquoi un mail n'est pas parti, en français ─────────────────────────
+   `last_error` est le message brut du fournisseur, en anglais et écrit pour un
+   développeur. Tel quel, il ne dit pas à la directrice ce qu'elle doit FAIRE.
+   Chaque entrée traduit la cause ET donne le geste de réparation. Le message
+   brut reste affiché en dessous : on traduit, on ne cache pas.
+   ─────────────────────────────────────────────────────────────────────── */
+const STAFF_EMAIL_FAILURE_RULES = [
+  {
+    match: /only send testing emails to your own email address|verify a domain/i,
+    label: 'Domaine d\'envoi pas encore vérifié',
+    fix: 'Le compte d\'envoi est en mode test : il n\'accepte que l\'adresse du propriétaire du compte. Tant que le domaine du centre n\'est pas vérifié chez le fournisseur, aucun mail ne peut partir vers un client.'
+  },
+  {
+    match: /invalid `?to`? field|invalid recipient|no recipients|destinataire manquant/i,
+    label: 'Adresse email du client invalide',
+    fix: 'L\'adresse enregistrée sur la réservation n\'est pas une adresse valide (faute de frappe, champ vide). Corrigez-la sur la fiche client, puis renvoyez.'
+  },
+  {
+    match: /rate limit|too many requests|429/i,
+    label: 'Trop d\'envois d\'un coup',
+    fix: 'Le fournisseur a bridé le rythme d\'envoi. Les mails repartent d\'eux-mêmes un peu plus tard ; vous pouvez aussi renvoyer manuellement.'
+  },
+  {
+    match: /api[_ ]?key|unauthorized|401|403|forbidden/i,
+    label: 'Clé d\'envoi refusée',
+    fix: 'La clé du service d\'envoi est absente, expirée ou révoquée. C\'est un réglage technique : rien ne partira tant qu\'elle n\'est pas remise en place.'
+  },
+  {
+    match: /bounce|mailbox (not found|unavailable)|does not exist|550/i,
+    label: 'Boîte du client inexistante',
+    fix: 'Le serveur du client a refusé le message : l\'adresse n\'existe plus. Demandez la bonne adresse avant de renvoyer.'
+  },
+  {
+    match: /timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|network|fetch failed/i,
+    label: 'Le service d\'envoi n\'a pas répondu',
+    fix: 'Incident réseau passager côté fournisseur. Un renvoi suffit en général.'
+  },
+  {
+    match: /configuration|manquant|non configur/i,
+    label: 'Canal pas configuré',
+    fix: 'Le canal (email ou SMS) n\'a pas de configuration valide sur ce centre.'
+  }
+];
+
+function getStaffEmailFailureReason(row = {}) {
+  const raw = String(row.lastError || '').trim();
+  if (!raw) {
+    return { label: 'Cause inconnue', fix: 'Le fournisseur n\'a pas donné de raison. Renvoyez le message : si l\'échec se répète, la cause sera enregistrée.', raw: '' };
+  }
+  const rule = STAFF_EMAIL_FAILURE_RULES.find(entry => entry.match.test(raw));
+  if (rule) return { label: rule.label, fix: rule.fix, raw };
+  return { label: 'Échec d\'envoi', fix: 'Message renvoyé par le service d\'envoi, texte d\'origine ci-dessous.', raw };
+}
+
+// Échecs regroupés par cause, la plus fréquente d'abord. Agrégé côté client sur
+// les lignes déjà chargées : aucune requête ni permission supplémentaire.
+function getStaffEmailFailureGroups(rows = []) {
+  const groups = new Map();
+  rows.filter(row => row.statusKind === 'failed').forEach(row => {
+    const reason = getStaffEmailFailureReason(row);
+    const entry = groups.get(reason.label) || { label: reason.label, fix: reason.fix, count: 0, raw: reason.raw };
+    entry.count += 1;
+    groups.set(reason.label, entry);
+  });
+  return [...groups.values()].sort((a, b) => b.count - a.count);
 }
 
 function getAdminCenters() {
@@ -2415,7 +2501,7 @@ function canOpenAdminView() {
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
 const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260717f';
-const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260717g';
+const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260719c';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
 const dynamicConsoleScripts = {};

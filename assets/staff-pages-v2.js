@@ -800,7 +800,7 @@
     draft: { to: '', name: '', subject: '', body: '', identityId: '', templateRef: '', replyTo: null },
     identities: [], templates: [], metaLoaded: false, metaLoading: false,
     analyzeOpen: false, analyzeBusy: false, analyzeDraft: { from: '', body: '' },
-    replyDraft: {}, replyBusy: '', analysisOverride: {},
+    replyDraft: {}, replyBusy: '', analysisOverride: {}, retryingId: '',
   };
   window.pv2Mail = pv2Mail;
 
@@ -1593,11 +1593,12 @@
      (anniversaire J-30) vit ici. ── */
   // timing : bornes du contrat C2, libellés FR compréhensibles en one-shot.
   const AUTOMATION_META = [
-    { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.', preview: 'Votre réservation est confirmée, date, heure, formule et infos pratiques.' },
-    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant, moins de no-show.', preview: 'Rappel de votre venue après-demain, avec l’heure d’arrivée conseillée.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
-    { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', preview: 'Merci de votre visite ! Une prochaine fois ? Les créneaux de la semaine sont plus calmes.', timing: { options: [0, 1, 2, 3], label: (n) => (n === 0 ? 'Le jour même' : `${n} jour${n > 1 ? 's' : ''} après la visite`) } },
-    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.', preview: 'L’anniversaire approche, on vous re-réserve la fête ? Gâteau et formule prêts.', star: true, timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
-    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', preview: 'Ça fait un moment, bowling, laser et arcades vous attendent. Venez en semaine, c’est plus calme.', star: true, cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
+    { key: 'request_received', label: 'Demande reçue', desc: 'Accuse réception au client quand sa demande part en validation.' },
+    { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.' },
+    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant, moins de no-show.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
+    { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', timing: { options: [0, 1, 2, 3], label: (n) => (n === 0 ? 'Le jour même' : `${n} jour${n > 1 ? 's' : ''} après la visite`) } },
+    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.', star: true, timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
+    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', star: true, cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
   ];
   const mkAuto = { loaded: false, loading: false, error: '', settings: null, defaults: {}, stats: {}, busyKey: '', editKey: '', editDraft: {} };
 
@@ -1690,6 +1691,83 @@
     }
   };
 
+  /* ── Aperçu et test : le brouillon EN COURS, rendu par le serveur ────────
+     Le corps de l'éditeur part tel quel, non enregistré : la directrice voit
+     ce qu'elle est en train d'écrire. Le serveur le valide avec les mêmes
+     règles que la sauvegarde, donc un aperçu qui s'affiche est un texte qui
+     s'enregistrera. ── */
+  function pv2AutoDraftBody(key) {
+    const d = mkAuto.editDraft;
+    const body = { action: '', key, centerId: state.adminCenterId || 'libramont' };
+    if (String(d.subject || '').trim()) body.subject = d.subject;
+    if (String(d.body || '').trim()) body.body = d.body;
+    if (key === 'post_visit' && String(d.reviewUrl || '').trim()) body.reviewUrl = String(d.reviewUrl).trim();
+    return body;
+  }
+
+  window.pv2AutoPreview = async function (key) {
+    if (mkAuto.busyKey) return;
+    mkAuto.busyKey = key;
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ ...pv2AutoDraftBody(key), action: 'automationPreview' }),
+      });
+      // L'overlay iframe sandboxée de la console est réutilisé tel quel : le
+      // HTML du mail n'est jamais injecté dans le document de la page.
+      previewOpsEmailHtml(payload.html || '', payload.subject || 'Aperçu du mail');
+    } catch (error) {
+      toast(error.message || 'Aperçu impossible.');
+    } finally {
+      mkAuto.busyKey = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2AutoSendTest = async function (key) {
+    if (mkAuto.busyKey) return;
+    mkAuto.busyKey = key;
+    renderStaffEmailsPage();
+    try {
+      // Aucune adresse n'est envoyée : le serveur envoie au membre connecté.
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ ...pv2AutoDraftBody(key), action: 'sendAutomationTest' }),
+      });
+      if (payload.status === 'sent') toast(`Test envoyé à ${payload.recipient}`);
+      else toast(`Le test n'est pas parti : ${payload.error || 'cause inconnue'}`);
+      requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Envoi de test impossible.');
+    } finally {
+      mkAuto.busyKey = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  // Renvoi d'un mail en échec. Le serveur re-vérifie que la ligne appartient
+  // bien au centre courant et qu'elle est bien en échec.
+  window.pv2RetryEmail = async function (id) {
+    if (!id || pv2Mail.retryingId) return;
+    pv2Mail.retryingId = String(id);
+    renderStaffEmailsPage();
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'retryCommunication', id: Number(id), centerId: state.adminCenterId || 'libramont' }),
+      });
+      if (payload.status === 'sent') toast('Mail renvoyé ✓');
+      else toast(`Toujours pas parti : ${payload.error || 'même cause'}`);
+      requestOpsAdminLoad(true);
+    } catch (error) {
+      toast(error.message || 'Renvoi impossible.');
+    } finally {
+      pv2Mail.retryingId = '';
+      renderStaffEmailsPage();
+    }
+  };
+
   function pv2AutoHasOverride(key) {
     const s = mkAuto.settings && mkAuto.settings[key];
     return !!(s && (s.subject || s.body || s.offsetDays !== undefined || s.cap !== undefined || s.reviewUrl));
@@ -1743,6 +1821,15 @@
         <span>Lien avis Google <small class="mk-auto-edit-hint">le mail ajoute un bouton « Laissez-nous un avis » : les clics sont comptés</small></span>
         <input value="${esc(d.reviewUrl || '')}" placeholder="https://g.page/r/…" oninput="pv2AutoEditField('reviewUrl', this.value)" aria-label="Lien de la fiche Google">
       </label>` : '';
+    // Un corps personnalisé REMPLACE tout le message : le tableau récapitulatif
+    // (date, heure, formule, participants) disparaît. C'est le comportement
+    // voulu (le texte du gérant EST le message), mais il est contre-intuitif et
+    // se paie en appels clients. On le dit avant, plutôt que de le corriger en
+    // douce ou de laisser la découverte se faire en production.
+    const hasDetails = ['request_received', 'confirmation', 'reminder_48h'].includes(meta.key);
+    const warning = hasDetails && String(d.body || '').trim()
+      ? `<p class="mk-auto-edit-warn">Votre texte remplace le message entier : le récapitulatif (date, heure, formule, participants) ne sera plus affiché. Pensez à y remettre les infos utiles, avec les variables ci-dessus.</p>`
+      : '';
     return `<div class="mk-auto-edit">
       <label class="mk-auto-edit-field"><span>Objet</span>
         <input value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
@@ -1754,8 +1841,11 @@
       ${timingSelect}
       ${capSelect}
       ${reviewField}
+      ${warning}
       <div class="mk-auto-edit-actions">
         <button type="button" class="pv2-btn sm" onclick="pv2AutoEditReset('${meta.key}')" ${busy ? 'disabled' : ''}>Réinitialiser</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoPreview('${meta.key}')" ${busy ? 'disabled' : ''}>Voir le mail</button>
+        <button type="button" class="pv2-btn sm" onclick="pv2AutoSendTest('${meta.key}')" ${busy ? 'disabled' : ''}>M'envoyer un test</button>
         <button type="button" class="pv2-btn sm" onclick="pv2AutoEdit('${meta.key}')">Fermer</button>
         <button type="button" class="pv2-btn sm primary" onclick="pv2AutoEditSave('${meta.key}')" ${busy ? 'disabled' : ''}>${busy ? 'Enregistrement…' : 'Enregistrer'}</button>
       </div>
@@ -1769,7 +1859,12 @@
     const busy = mkAuto.busyKey === meta.key;
     const editing = mkAuto.editKey === meta.key;
     const modified = pv2AutoHasOverride(meta.key);
-    const previewText = (setting && setting.body) || meta.preview;
+    // L'aperçu de la carte montrait une phrase CODÉE EN DUR qui ne
+    // correspondait à aucun texte réellement envoyé. On affiche maintenant le
+    // vrai texte : celui du gérant s'il en a écrit un, sinon le texte d'usine
+    // servi par le serveur. Le rendu HTML complet est derrière « Voir le mail ».
+    const def = mkAuto.defaults[meta.key] || {};
+    const previewText = (setting && setting.body) || def.body || '';
     return `<article class="mk-auto${enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
         <strong>${meta.star ? `<span class="mk-auto-star" title="Levier n°1 du secteur">${ci('star')}</span>` : ''}${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}</strong>
@@ -1944,6 +2039,23 @@
       <div class="pv2-pipe-hint">${esc(hint)}</div>
     </div>`;
 
+    /* Un mail qui ne part pas ne se voyait NULLE PART : le pipe « Échecs »
+       existait, mais il fallait déjà savoir qu'il y avait un problème pour
+       aller cliquer dessus. Personne ne le faisait, et 51 mails sont restés
+       invisibles. Ce bandeau est la réponse : il s'impose en tête de page,
+       nomme la cause dominante en français et dit quoi faire. */
+    const failureGroups = getStaffEmailFailureGroups(allRows);
+    const topFailure = failureGroups[0];
+    const failureBanner = metrics.failed > 0 ? `
+      <section class="pv2-alert" role="alert">
+        <div class="pv2-alert-main">
+          <strong>${metrics.failed} mail${metrics.failed > 1 ? 's ne sont jamais partis' : ' n\'est jamais parti'}</strong>
+          ${topFailure ? `<p class="pv2-alert-cause"><b>${esc(topFailure.label)}</b>${failureGroups.length > 1 ? ` (${topFailure.count} sur ${metrics.failed})` : ''} : ${esc(topFailure.fix)}</p>` : ''}
+          ${failureGroups.length > 1 ? `<p class="pv2-alert-other">Autres causes : ${failureGroups.slice(1).map((g) => `${esc(g.label)} (${g.count})`).join(' · ')}</p>` : ''}
+        </div>
+        <button type="button" class="pv2-btn" onclick="pv2EmailFilter('failed')">Voir les ${metrics.failed} échecs</button>
+      </section>` : '';
+
     const tableHead = filter === 'inbound'
       ? '<thead><tr><th>De</th><th>Demande</th><th>Statut</th><th class="num">Reçu</th></tr></thead>'
       : '<thead><tr><th>Message</th><th>Modèle</th><th>Statut</th><th class="num">Date</th></tr></thead>';
@@ -1961,10 +2073,13 @@
         </tr>`;
       }
       const meta = KIND_META[row.statusKind] || KIND_META.draft;
-      return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
+      // La cause de l'échec se lit dans la LISTE, pas seulement après avoir
+      // sélectionné la ligne : c'est ce qui rend un échec impossible à rater.
+      const failure = row.statusKind === 'failed' ? getStaffEmailFailureReason(row) : null;
+      return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}${failure ? ' is-failed' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
         <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '-')}</small></td>
         <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '-')}</span></td>
-        <td><span class="pv2-chip ${meta.tone}">${meta.label}</span></td>
+        <td><span class="pv2-chip ${meta.tone}">${meta.label}</span>${failure ? `<small class="pv2-cell-sub pv2-cell-fail">${esc(failure.label)}</small>` : ''}</td>
         <td class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '-')}</td>
       </tr>`;
     }).join('');
@@ -1985,7 +2100,25 @@
           ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
           ${selected.attempts ? `<div><dt>Tentatives</dt><dd>${Number(selected.attempts)}</dd></div>` : ''}
         </div>
-        ${selected.lastError ? `<div class="pv2-mail-error">${esc(selected.lastError)}</div>` : ''}
+        ${selected.statusKind === 'failed' ? (() => {
+          const failure = getStaffEmailFailureReason(selected);
+          // Le renvoi n'est proposé que si le mail garde un sens aujourd'hui :
+          // remettre en file la confirmation d'une réservation passée enverrait
+          // au client un message absurde. Au-delà de 7 jours, on explique
+          // pourquoi le bouton n'est pas là plutôt que de le griser sans mot.
+          const ageDays = (Date.now() - new Date(selected.createdAt || selected.scheduledAt || Date.now()).getTime()) / 86400000;
+          const retryable = ageDays <= 7;
+          return `<div class="pv2-mail-error">
+            <strong>${esc(failure.label)}</strong>
+            <p>${esc(failure.fix)}</p>
+            ${failure.raw ? `<details class="pv2-mail-error-raw"><summary>Message technique</summary><code>${esc(failure.raw)}</code></details>` : ''}
+            <div class="pv2-mail-error-actions">
+              ${retryable
+                ? `<button type="button" class="pv2-btn sm" onclick="pv2RetryEmail('${escJs(String(selected.id || ''))}')" ${pv2Mail.retryingId === String(selected.id) ? 'disabled' : ''}>${pv2Mail.retryingId === String(selected.id) ? 'Renvoi…' : 'Renvoyer ce mail'}</button>`
+                : `<small>Ce message date de plus de 7 jours : le renvoyer maintenant n\'aurait plus de sens pour le client.</small>`}
+            </div>
+          </div>`;
+        })() : ''}
         <div>
           <div class="pv2-mail-preview-title">Aperçu</div>
           <div class="pv2-mail-preview">${esc(String(payload.textBody || selected.subject || 'Pas de contenu texte.'))}</div>
@@ -2006,6 +2139,8 @@
           <button type="button" class="pv2-btn" onclick="requestOpsDispatch()">Envoyer la file</button>
           <button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>`,
       })}
+
+      ${failureBanner}
 
       ${pv2Mail.composerOpen ? pv2ComposerPanel() : ''}
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}

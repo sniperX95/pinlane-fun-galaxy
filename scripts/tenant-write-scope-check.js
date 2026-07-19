@@ -31,6 +31,19 @@ const customRequests = [
   { id: 2, center_id: 'arlon', contact_name: 'Prospect Arlon', email: 'autre@exemple.be', phone: '+32470000002', message: 'Autre centre', status: 'new' },
 ];
 
+// Renvoi d'un mail en echec depuis la page Emails : ecriture PAR ID, donc meme
+// exigence de scope que les deux autres. `sent` est present pour verifier qu'un
+// mail deja parti ne peut pas etre remis en file (double envoi au client).
+const communications = [
+  { id: 20, center_id: 'libramont', status: 'failed', attempts: 3, last_error: 'boom', channel: 'email', recipient: 'a@x.be', payload: {} },
+  { id: 21, center_id: 'arlon', status: 'failed', attempts: 3, last_error: 'boom', channel: 'email', recipient: 'b@x.be', payload: {} },
+  { id: 22, center_id: 'libramont', status: 'sent', attempts: 1, last_error: '', channel: 'email', recipient: 'c@x.be', payload: {} },
+  // `cancelled` n'est PAS un echec : cancelReservationCommunications l'applique
+  // quand une reservation est modifiee ou annulee. Remettre cette ligne en file
+  // enverrait au client la confirmation d'une reservation qui n'existe plus.
+  { id: 23, center_id: 'libramont', status: 'cancelled', attempts: 0, last_error: 'reservation_changed', channel: 'email', recipient: 'd@x.be', payload: {} },
+];
+
 const directionReports = [
   { id: 10, center_id: 'libramont', period_type: 'week', period_start: '2026-07-06', period_end: '2026-07-12', title: 'Bilan Libramont', body_md: 'texte', generated_by: 'deterministic' },
   { id: 11, center_id: 'arlon', period_type: 'week', period_start: '2026-07-06', period_end: '2026-07-12', title: 'Bilan Arlon', body_md: 'texte', generated_by: 'deterministic' },
@@ -64,6 +77,25 @@ class FakePool {
       return { rows: matched, rowCount: matched.length };
     }
 
+    if (/update\s+communications/i.test(sql)) {
+      // Le faux moteur obeit au texte : sans predicat center_id ($2) et sans
+      // filtre de statut, la mutation trans-centre passerait et le gate
+      // virerait au rouge. C'est ce qui le rend capable d'echouer.
+      const scoped = selectRows(communications, params[0], centerParamFor(sql, params, 2));
+      // Le faux moteur mime la SEMANTIQUE du predicat de statut, quelle que soit
+      // sa forme d'ecriture. `status = 'failed'` et `status in ('failed', ...)`
+      // sont tous deux reconnus : sinon, resserrer le predicat cote production
+      // ferait rougir le gate pour une raison purement syntaxique.
+      // Seul `failed` est repris : `cancelled` est une suppression VOULUE
+      // (reservation modifiee ou annulee), pas un echec, et `sent` ferait un
+      // doublon chez le client.
+      const statuts = [...sql.matchAll(/status\s*(?:=|in\s*\()\s*((?:'[a-z_]+'\s*,?\s*)+)/gi)]
+        .flatMap((m) => [...m[1].matchAll(/'([a-z_]+)'/g)].map((s) => s[1]));
+      const matched = statuts.length ? scoped.filter((row) => statuts.includes(row.status)) : scoped;
+      matched.forEach((row) => { row.status = 'queued'; row.attempts = 0; row.last_error = ''; });
+      return { rows: matched, rowCount: matched.length };
+    }
+
     if (/update\s+direction_reports/i.test(sql)) {
       const matched = selectRows(directionReports, params[0], centerParamFor(sql, params, 5));
       matched.forEach((row) => { row.body_md = params[1]; row.edited_by = params[3]; });
@@ -93,7 +125,7 @@ process.env.DATABASE_SSL = 'disable';
 // On teste le DEFAUT du code, pas la config de la machine qui lance le gate.
 delete process.env.DATABASE_POOL_MAX;
 
-const { updateCustomRequestStatus, updateDirectionReportBody, getPool } = require('../lib/database');
+const { updateCustomRequestStatus, updateDirectionReportBody, requeueCommunication, getPool } = require('../lib/database');
 
 function readProjectFile(relative) {
   return fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
@@ -146,6 +178,34 @@ async function captureError(run) {
   ok(crossReport && crossReport.expose === true, `erreur exposee au staff (obtenu expose=${crossReport && crossReport.expose})`);
   ok(directionReports[1].body_md === 'texte', 'le bilan de l autre centre n a PAS ete ecrase');
 
+  // -- [MAILS] requeueCommunication (renvoi d un mail en echec) --------------
+  console.log('\n[MAILS] requeueCommunication');
+  sqlLog.length = 0;
+  const requeued = await requeueCommunication(20, 'libramont');
+  const mailSql = sqlLog[0] || { sql: '', params: [] };
+  ok(/center_id\s*=\s*\$2/.test(mailSql.sql), 'le SQL porte un predicat center_id parametre');
+  ok(!/center_id\s*=\s*'/.test(mailSql.sql), 'le centre voyage en parametre, jamais concatene dans le SQL');
+  ok(mailSql.params[1] === 'libramont', `le centre est bien passe en parametre (obtenu ${JSON.stringify(mailSql.params[1])})`);
+  ok(requeued && requeued.status === 'queued', 'un mail en echec de SON centre repart en file');
+
+  const crossMail = await captureError(() => requeueCommunication(21, 'libramont'));
+  ok(crossMail && crossMail.statusCode === 404 && crossMail.expose === true,
+    `renvoyer le mail d un AUTRE centre rend 404 expose (obtenu ${crossMail && crossMail.statusCode})`);
+  ok(communications[1].status === 'failed', 'le mail de l autre centre n a PAS ete remis en file');
+
+  const alreadySent = await captureError(() => requeueCommunication(22, 'libramont'));
+  ok(alreadySent && alreadySent.statusCode === 404,
+    'un mail DEJA envoye ne peut pas etre remis en file (pas de double envoi client)');
+  ok(communications[2].status === 'sent', 'le mail envoye reste intact');
+
+  // `cancelled` = suppression VOULUE, pas echec. Une premiere version reprenait
+  // ('failed', 'cancelled') : le bouton Renvoyer aurait expedie au client la
+  // confirmation d'une reservation annulee ou modifiee entre-temps.
+  const annule = await captureError(() => requeueCommunication(23, 'libramont'));
+  ok(annule && annule.statusCode === 404,
+    'un mail ANNULE (reservation modifiee ou annulee) ne peut pas etre remis en file');
+  ok(communications[3].status === 'cancelled', 'le mail annule reste annule');
+
   // -- [CABLAGE] les appelants passent bien le centre ------------------------
   // Un predicat SQL correct ne sert a rien si api/ops.js oublie de l alimenter.
   console.log('\n[CABLAGE] api/ops.js alimente le scope');
@@ -159,6 +219,17 @@ async function captureError(run) {
     opsSource.indexOf("if (action === 'saveDirectionReport')") + 900);
   ok(/centerId:\s*requireConcreteCenter\(/.test(saveBlock),
     'saveDirectionReport exige un centre precis (400 explicite, pas de scope all)');
+  ok(/requeueCommunication\(Number\(body\.id\),\s*concreteCenterId\)/.test(opsSource),
+    'retryCommunication scope sur le centre resolu serveur, pas sur body.centerId');
+  // L'envoi de test ne doit tirer son destinataire QUE de la session serveur.
+  // `to: body.to` ferait de l action un relais d envoi anonyme signe du domaine
+  // du centre : c est la regression que cette assertion interdit.
+  const testBlock = opsSource.slice(opsSource.indexOf("if (action === 'sendAutomationTest')"),
+    opsSource.indexOf("if (action === 'sendAutomationTest')") + 600);
+  ok(/member:\s*options\.session\?\.member/.test(testBlock),
+    'sendAutomationTest derive le destinataire de la session');
+  ok(!/\b(to|recipient|email)\s*:\s*body\./.test(testBlock),
+    'sendAutomationTest ne lit AUCUNE adresse depuis le corps de la requete');
 
   // -- [POOL] plafond de connexions explicite (P2-10) ------------------------
   console.log('\n[POOL] plafond de connexions');

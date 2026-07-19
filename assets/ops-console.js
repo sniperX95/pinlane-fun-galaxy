@@ -1547,6 +1547,14 @@ function previewOpsEmail(index, type = 'sample') {
   if (!item) return;
   const html = item.html || item.body || `<pre>${escapeHtml(item.textBody || item.subject || '')}</pre>`;
   const title = item.subject || getOpsTemplateLabel(item.templateId);
+  previewOpsEmailHtml(html, title);
+}
+
+// Overlay d'aperçu à partir d'un HTML déjà rendu (aperçu d'un brouillon de
+// séquence, page Emails), sans passer par un index dans un tableau de cache.
+// L'iframe est `sandbox=""` : le HTML du mail ne peut ni exécuter de script ni
+// toucher au document de la console.
+function previewOpsEmailHtml(html = '', title = 'Aperçu du mail') {
   let overlay = document.getElementById('emailPreviewOverlay');
   if (!overlay) {
     overlay = document.createElement('div');

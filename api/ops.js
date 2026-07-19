@@ -75,6 +75,9 @@ const {
   getAutomationSettings,
   getAutomationDefaults,
   setAutomationSetting,
+  buildAutomationPatch,
+  buildAutomationPreview,
+  sendAutomationTest,
   getAutomationStats,
   sendClientRelance,
   getRelanceStats,
@@ -1457,18 +1460,57 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
-  // Toggle ON/OFF d'une séquence automatique (persisté par centre).
+  // Toggle ON/OFF + texte + timing d'une séquence automatique (persisté par
+  // centre). Le patch est construit par `buildAutomationPatch` (lib) et non à
+  // la main : c'est une fonction pure, testée sans réseau, ce qui évite qu'un
+  // champ de l'éditeur soit jeté en silence comme l'a été `reviewUrl`.
   if (action === 'automationSettings') {
     const concreteCenterId = requireConcreteCenter('séquences automatiques');
-    const settings = await setAutomationSetting(concreteCenterId, body.key, {
-      enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
-      subject: typeof body.subject === 'string' ? body.subject : undefined,
-      body: typeof body.body === 'string' ? body.body : undefined,
-      offsetDays: body.offsetDays,
-      cap: body.cap,
-      reset: body.reset === true,
-    });
+    const settings = await setAutomationSetting(concreteCenterId, body.key, buildAutomationPatch(body));
     sendJson(res, 200, { ok: true, action, settings, defaults: getAutomationDefaults() });
+    return;
+  }
+
+  // Aperçu du mail d'une séquence AVANT enregistrement : même builders, même
+  // gabarit que la prod, donc aperçu == test == mail réellement reçu.
+  if (action === 'automationPreview') {
+    const concreteCenterId = requireConcreteCenter('aperçu des séquences');
+    const preview = await buildAutomationPreview(concreteCenterId, body.key, buildAutomationPatch(body));
+    sendJson(res, 200, { ok: true, action, ...preview });
+    return;
+  }
+
+  // « M'envoyer un test ». Le destinataire vient de la SESSION serveur et
+  // jamais du corps de la requête : sans cette contrainte, l'action serait un
+  // relais d'envoi vers n'importe quelle adresse, signé du domaine du centre.
+  if (action === 'sendAutomationTest') {
+    const concreteCenterId = requireConcreteCenter('envoi de test');
+    const result = await sendAutomationTest({
+      centerId: concreteCenterId,
+      key: body.key,
+      patch: buildAutomationPatch(body),
+      member: options.session?.member || null,
+    });
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
+  // Remettre en file un mail qui a échoué. Écriture PAR ID : la portée centre
+  // est re-vérifiée sur la ligne réelle en base (un id d'un autre centre rend
+  // 404), jamais sur le centre demandé par le client.
+  if (action === 'retryCommunication') {
+    const concreteCenterId = requireConcreteCenter('renvoi d’un mail');
+    const { requeueCommunication } = require('../lib/database');
+    const communication = await requeueCommunication(Number(body.id), concreteCenterId);
+    const dispatch = await dispatchDueCommunications({ limit: 1, centerId: concreteCenterId });
+    const line = (dispatch?.results || []).find((row) => row.id === communication.id) || {};
+    sendJson(res, 200, {
+      ok: true,
+      action,
+      id: communication.id,
+      status: line.status || communication.status,
+      error: line.error || '',
+    });
     return;
   }
 
@@ -1878,6 +1920,10 @@ function getRequiredOpsPermission(method, action) {
     return 'ai.ops';
   }
   if (action === 'automationSettings') return ['settings.manage', 'emails.send', 'direction.view'];
+  // L'aperçu ne fait que rendre un gabarit : il suffit de savoir lire les mails.
+  // L'envoi de test et le renvoi font partir un vrai mail : `emails.send`.
+  if (action === 'automationPreview') return ['emails.view', 'direction.view'];
+  if (['sendAutomationTest', 'retryCommunication'].includes(action)) return 'emails.send';
   if (['customSequences', 'emailBrain'].includes(action)) return ['settings.manage', 'emails.send', 'direction.view'];
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];

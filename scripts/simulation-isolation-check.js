@@ -222,9 +222,13 @@ ok(commsUses >= 5, `lib/ops-communications.js applique l'exclusion a ses 5 reque
 // DOIT etre en SQL, un filtre JS en aval serait impossible.
 const metricsBody = functionBody(loadSource('lib/center-metrics.js'), 'buildDailyMetricsForDate');
 // Garde anti-corps-vide : un corps tronque satisferait "0 filtre interdit"
-// aussi bien qu'un corps correct. On exige un corps de taille plausible.
-ok(metricsBody !== null && metricsBody.length > 400,
-  `buildDailyMetricsForDate localisee avec un corps plausible (${metricsBody ? metricsBody.length : 0} octets)`);
+// aussi bien qu'un corps correct.
+// ANCRE plutot que TAILLE : un seuil en octets compte aussi les fins de ligne,
+// donc une simple conversion CRLF -> LF faisait tomber la garde sous le seuil
+// alors que la fonction n'avait pas bouge d'une virgule. On exige desormais que
+// le corps contienne ce qu'il DOIT contenir : une lecture de reservations.
+ok(metricsBody !== null && /from\s+reservations/i.test(metricsBody),
+  `buildDailyMetricsForDate localisee avec un corps qui lit bien reservations (${metricsBody ? metricsBody.length : 0} octets)`);
 if (metricsBody) {
   const metricsUses = (metricsBody.match(/simulationSqlExclusion\(/g) || []).length;
   ok(metricsUses >= 2, `buildDailyMetricsForDate filtre SES DEUX requetes (jour + premiere visite), obtenu ${metricsUses}`);
@@ -397,10 +401,13 @@ function runCapacityChecks() {
   const FORBIDDEN_IN_CAPACITY = /simulationSqlExclusion|excludeSimulationRows|isSimulationReservation|sim-client|sim-staff|includeSimulation/;
   for (const reader of CAPACITY_READERS) {
     const body = functionBody(loadSource(reader.file), reader.fn);
-    // Meme garde : sans taille minimale, un corps mal extrait (donc vide) ferait
-    // passer l'assertion d'absence ci-dessous pour une bonne raison.
-    if (!ok(body !== null && body.length > 400,
-      `${reader.fn} localisee dans ${reader.file} avec un corps plausible (${body ? body.length : 0} octets)`)) continue;
+    // Meme garde, et meme raison de preferer une ANCRE a une TAILLE : un corps
+    // mal extrait (donc vide) ferait passer l'assertion d'absence ci-dessous
+    // pour une mauvaise raison, mais un seuil en octets casse sur un simple
+    // changement de fins de ligne. Un lecteur de capacite lit forcement la
+    // table reservations : c'est ca, la preuve que l'extraction a marche.
+    if (!ok(body !== null && /from\s+reservations/i.test(body),
+      `${reader.fn} localisee dans ${reader.file} avec un corps qui lit bien reservations (${body ? body.length : 0} octets)`)) continue;
     ok(!FORBIDDEN_IN_CAPACITY.test(body),
       `${reader.fn} ne filtre PAS la simulation : ${reader.why}`);
   }

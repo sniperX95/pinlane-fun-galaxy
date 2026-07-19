@@ -37,11 +37,12 @@ async function installMock(page) {
     // État serveur simulé des séquences : settings = overrides, defaults =
     // textes/timings de référence (contrat C1). Le POST étendu mute ce state.
     const autoState = {
-      confirmation: { enabled: true }, reminder_48h: { enabled: true }, post_visit: { enabled: true },
+      request_received: { enabled: true }, confirmation: { enabled: true }, reminder_48h: { enabled: true }, post_visit: { enabled: true },
       birthday_j30: { enabled: true }, reactivation: { enabled: false },
     };
     const VARS = ['prenom', 'date', 'heure', 'formule', 'pax', 'centre'];
     const autoDefaults = {
+      request_received: { enabled: true, subject: 'On a bien reçu votre demande', body: 'Bonjour {{prenom}}, votre demande du {{date}} est bien arrivée.', variables: VARS },
       confirmation: { enabled: true, subject: 'Votre réservation est confirmée', body: 'Bonjour {{prenom}}, votre réservation du {{date}} à {{heure}} est confirmée.', variables: VARS },
       reminder_48h: { enabled: true, subject: 'Rappel de votre venue', body: 'Bonjour {{prenom}}, on vous attend le {{date}} à {{heure}}.', offsetDays: 2, variables: VARS },
       post_visit: { enabled: true, subject: 'Merci de votre visite', body: 'Merci {{prenom}} ! Revenez quand vous voulez.', offsetDays: 1, variables: VARS },
@@ -49,13 +50,13 @@ async function installMock(page) {
       reactivation: { enabled: false, subject: 'Ça fait un moment', body: 'Bonjour {{prenom}}, bowling et laser vous attendent.', cap: 20, variables: VARS },
     };
     const autoStats = {
-      confirmation: { sent30d: 42, failed30d: 1 }, reminder_48h: { sent30d: 31, failed30d: 0 },
+      request_received: { sent30d: 37, failed30d: 20 }, confirmation: { sent30d: 42, failed30d: 1 }, reminder_48h: { sent30d: 31, failed30d: 0 },
       post_visit: { sent30d: 28, failed30d: 2 }, birthday_j30: { sent30d: 4, failed30d: 0 }, reactivation: { sent30d: 0, failed30d: 0 },
     };
     const comms = [
       { id: 1, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'confirmation', recipient: 'a@x.be', subject: 'Votre réservation est confirmée', status: 'delivered', sentAt: new Date(Date.now() - 3600e3).toISOString(), payload: { textBody: 'Bonjour, votre réservation est confirmée.' } },
       { id: 2, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'reminder_48h', recipient: 'b@x.be', subject: 'Rappel de votre venue', status: 'queued', scheduledAt: new Date(Date.now() + 3600e3).toISOString(), payload: {} },
-      { id: 3, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'birthday_j30', recipient: 'c@x.be', subject: 'L’anniversaire approche 🎂', status: 'failed', lastError: 'Mailbox full', attempts: 2, payload: {} },
+      { id: 3, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: 'birthday_j30', recipient: 'c@x.be', subject: 'L’anniversaire approche 🎂', status: 'failed', lastError: 'You can only send testing emails to your own email address (proprio@example.com). To send emails to other recipients, please verify a domain at resend.com/domains', attempts: 2, payload: {} },
       // Boîte de réception : 2 mails reçus analysés (contrat C4/C5).
       { id: 4, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client1@x.be', subject: 'Anniversaire pour mon fils', createdAt: new Date(Date.now() - 7200e3).toISOString(), payload: { from: 'client1@x.be', textBody: 'Bonjour, je voudrais organiser un anniversaire pour mon fils de 8 ans, vous avez de la place samedi ?', analysis: { intent: 'anniversaire', intentLabel: 'Anniversaire', summary: 'Veut organiser un anniversaire (8 ans) et demande la dispo de samedi', urgency: 'normale', reply: { subject: 'Re: Anniversaire pour mon fils', body: 'Bonjour,\n\nAvec plaisir ! Dites-nous la date exacte et le nombre d’enfants, on vous propose la formule adaptée.\n\nL’équipe Fun Galaxy' }, clientName: 'Client Un', provider: 'rules' } } },
       { id: 5, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client2@x.be', subject: 'Annulation résa de demain', createdAt: new Date(Date.now() - 3600e3).toISOString(), payload: { from: 'client2@x.be', textBody: 'Je dois annuler ma réservation de demain, désolé.', repliedAt: new Date(Date.now() - 1800e3).toISOString(), replyCommunicationId: 77, analysis: { intent: 'annulation', intentLabel: 'Annulation', summary: 'Annule sa réservation de demain', urgency: 'haute', reply: { subject: 'Re: Annulation résa de demain', body: 'Bonjour, c’est noté, votre réservation est annulée.' }, provider: 'rules' } } },
@@ -89,6 +90,19 @@ async function installMock(page) {
         }
         if (b.action === 'sendDirectEmail') {
           return J({ ok: true, communication: { id: 99, status: 'queued' } });
+        }
+        // Aperçu et test rendus par le serveur : le front ne fabrique jamais le
+        // HTML du mail lui-même.
+        if (b.action === 'automationPreview') {
+          return J({ ok: true, subject: `Aperçu ${b.key}`, html: `<html><body><p>Rendu serveur de ${b.key}</p></body></html>`, textBody: 'texte' });
+        }
+        if (b.action === 'sendAutomationTest') {
+          return J({ ok: true, recipient: 'qa@fungalaxy.be', subject: `[TEST] ${b.key}`, status: 'sent', error: '' });
+        }
+        if (b.action === 'retryCommunication') {
+          const target = comms.find((c) => Number(c.id) === Number(b.id));
+          if (target) { target.status = 'sent'; target.lastError = ''; target.sentAt = new Date().toISOString(); }
+          return J({ ok: true, id: b.id, status: 'sent', error: '' });
         }
         if (b.action === 'analyzeInboundEmail') {
           const analysis = { intent: 'prix', intentLabel: 'Prix', summary: 'Demande le prix pour un groupe', urgency: 'normale', reply: { subject: 'Re: votre demande', body: 'Bonjour, on vous confirme le tarif par retour.' }, provider: 'rules' };
@@ -173,18 +187,50 @@ async function main() {
       tableRows: document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr').length,
       newMsgBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Nouveau message/.test(b.textContent)),
       analyzeBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Analyser un reçu/.test(b.textContent)),
+      alert: (document.querySelector('#staffEmailsPage .pv2-alert') || {}).textContent || '',
+      failedCellTxt: [...document.querySelectorAll('#staffEmailsPage .pv2-cell-fail')].map((el) => el.textContent).join(' | '),
     }));
     if (missed.size) console.log('URLs 404 :', [...missed].slice(0, 5).join(' · '));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(load.cards === 5, `5 cartes séquences (obtenu ${load.cards})`);
+    ok(load.cards === 6, `6 cartes séquences, Demande recue incluse (obtenu ${load.cards})`);
     ok(load.labels.some((l) => /Anniversaire J-30/.test(l)) && load.labels.some((l) => /Réactivation/.test(l)), 'Anniversaire J-30 + Réactivation présentes');
-    ok(load.onCount === 4, `4 séquences ON au départ (obtenu ${load.onCount})`);
-    ok(/42 envoyés/.test(load.statsTxt), `stats 30 j affichées (${load.statsTxt.trim().slice(0, 40)})`);
+    ok(load.onCount === 5, `5 séquences ON au départ (obtenu ${load.onCount})`);
+    ok(/37 envoyés/.test(load.statsTxt), `stats 30 j affichées (${load.statsTxt.trim().slice(0, 40)})`);
     ok(load.preview, 'aperçu du message dépliable');
-    ok(load.editBtns === 5, `bouton Modifier sur chaque carte (obtenu ${load.editBtns})`);
+    ok(load.editBtns === 6, `bouton Modifier sur chaque carte (obtenu ${load.editBtns})`);
     ok(load.pipeline === 6, `pipeline avec pipe Reçus (obtenu ${load.pipeline})`);
     ok(load.tableRows === 3, `file d'envoi = 3 lignes, reçus exclus (obtenu ${load.tableRows})`);
     ok(load.newMsgBtn && load.analyzeBtn, 'boutons « Nouveau message » + « Analyser un reçu » dans la bar');
+
+    // Un mail qui n'est pas parti doit se voir SANS avoir a le chercher : la
+    // fixture contient 1 echec (« Mailbox full »), le bandeau doit s'imposer en
+    // tete de page et nommer la cause en francais.
+    console.log('\n[ECHECS] remontee proactive en tete de page');
+    ok(/1 mail n'est jamais parti|1 mail n’est jamais parti/.test(load.alert), `bandeau d'alerte affiche (${load.alert.trim().slice(0, 60)})`);
+    ok(/Domaine d.envoi pas encore vérifié/.test(load.alert), 'cause traduite en francais, pas le message brut du fournisseur');
+    ok(!/resend.com.domains/.test(load.alert), 'le message technique brut ne remonte pas dans le bandeau');
+    ok(/Domaine d.envoi pas encore vérifié/.test(load.failedCellTxt), `cause lisible directement dans la liste (${load.failedCellTxt})`);
+
+    console.log('\n[ECHECS] renvoyer un mail en echec');
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr')].find((r) => /Échec/.test(r.textContent));
+      row.click();
+    });
+    await page.waitForTimeout(300);
+    const failDetail = await page.evaluate(() => ({
+      fix: (document.querySelector('#staffEmailsPage .pv2-mail-error') || {}).textContent || '',
+      rawHidden: !!document.querySelector('#staffEmailsPage .pv2-mail-error-raw'),
+      retryBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-mail-error-actions button')].some((b) => /Renvoyer/.test(b.textContent)),
+    }));
+    ok(/domaine du centre n.est pas vérifié/.test(failDetail.fix), 'le detail dit QUOI FAIRE, pas seulement que ca a rate');
+    ok(failDetail.rawHidden, 'message technique conserve, replie sous « Message technique »');
+    ok(failDetail.retryBtn, 'bouton « Renvoyer ce mail » propose sur un echec recent');
+    await page.evaluate(() => {
+      [...document.querySelectorAll('#staffEmailsPage .pv2-mail-error-actions button')].find((b) => /Renvoyer/.test(b.textContent)).click();
+    });
+    await page.waitForTimeout(400);
+    const retried = await page.evaluate(() => window.__QA_POSTS__.filter((p) => p.action === 'retryCommunication').slice(-1)[0]);
+    ok(retried && Number(retried.id) === 3, `POST retryCommunication {id} (obtenu ${JSON.stringify(retried)})`);
 
     console.log('\n[TOGGLE] activer Réactivation → POST + switch ON');
     await page.evaluate(() => {
@@ -197,7 +243,7 @@ async function main() {
       onCount: document.querySelectorAll('#staffEmailsPage .mk-switch.is-on').length,
     }));
     ok(afterOn.posts.length === 1 && afterOn.posts[0].key === 'reactivation' && afterOn.posts[0].enabled === true, 'POST automationSettings {reactivation, true}');
-    ok(afterOn.onCount === 5, 'switch Réactivation passé ON');
+    ok(afterOn.onCount === 6, 'switch Réactivation passé ON');
 
     console.log('\n[TOGGLE] couper Anniversaire J-30 → POST enabled:false');
     await page.evaluate(() => {
@@ -210,7 +256,7 @@ async function main() {
       onCount: document.querySelectorAll('#staffEmailsPage .mk-switch.is-on').length,
     }));
     ok(afterOff.last && afterOff.last.key === 'birthday_j30' && afterOff.last.enabled === false, 'POST {birthday_j30, false}');
-    ok(afterOff.onCount === 4, 'switch repassé OFF');
+    ok(afterOff.onCount === 5, 'switch repassé OFF');
 
     console.log('\n[ÉDITEUR] personnaliser la séquence anniversaire');
     await page.evaluate(() => {
@@ -242,6 +288,40 @@ async function main() {
     }));
     ok(saved.last && saved.last.key === 'birthday_j30' && saved.last.subject === 'Sujet perso anniversaire' && saved.last.body === undefined, 'POST étendu {key, subject}, champs inchangés non envoyés');
     ok(saved.modified, 'pilule « modifié » affichée sur la carte');
+
+    // L'apercu doit montrer le VRAI mail rendu par le serveur, avec le texte en
+    // cours de saisie et non encore enregistre. Et l'envoi de test ne doit
+    // JAMAIS transporter d'adresse : le serveur envoie au membre connecte.
+    console.log('\n[APERCU + TEST] le brouillon en cours, rendu par le serveur');
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => /Anniversaire J-30/.test(c.textContent));
+      card.querySelector('.mk-auto-edit-btn').click();
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      pv2AutoEditField('body', 'Brouillon pas encore enregistre');
+      [...document.querySelectorAll('#staffEmailsPage .mk-auto-edit-actions button')].find((b) => /Voir le mail/.test(b.textContent)).click();
+    });
+    await page.waitForTimeout(400);
+    const previewed = await page.evaluate(() => ({
+      post: window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').slice(-1)[0],
+      overlay: !!document.getElementById('emailPreviewOverlay'),
+      frameSandboxed: (document.querySelector('#emailPreviewOverlay iframe') || {}).getAttribute
+        ? document.querySelector('#emailPreviewOverlay iframe').getAttribute('sandbox') === ''
+        : false,
+    }));
+    ok(previewed.post && previewed.post.body === 'Brouillon pas encore enregistre', `apercu demande avec le brouillon en cours (${JSON.stringify(previewed.post && previewed.post.body)})`);
+    ok(previewed.overlay && previewed.frameSandboxed, 'mail rendu dans une iframe sandboxee, jamais injecte dans la page');
+    await page.evaluate(() => closeEmailPreview());
+
+    await page.evaluate(() => {
+      [...document.querySelectorAll('#staffEmailsPage .mk-auto-edit-actions button')].find((b) => /envoyer un test/.test(b.textContent)).click();
+    });
+    await page.waitForTimeout(400);
+    const tested = await page.evaluate(() => window.__QA_POSTS__.filter((p) => p.action === 'sendAutomationTest').slice(-1)[0]);
+    ok(tested && tested.key === 'birthday_j30', 'POST sendAutomationTest {key}');
+    ok(tested && tested.to === undefined && tested.recipient === undefined && tested.email === undefined,
+      `SECURITE : aucune adresse destinataire dans la requete (champs envoyes : ${Object.keys(tested || {}).join(', ')})`);
 
     console.log('\n[ÉDITEUR] réinitialiser → défauts');
     await page.evaluate(() => {

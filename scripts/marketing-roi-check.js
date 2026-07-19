@@ -222,10 +222,17 @@ const opsJobs = require('../lib/ops-jobs');
   settingsState.stored = {};
   dbState.route = (sql) => (sql.trim().startsWith('select') && sql.includes('center_automation_settings') ? [{ settings: settingsState.stored }] : []);
   dbState.created.length = 0;
-  await followup({ payload: { reservation: { email: 'marie@test.be', name: 'Marie <b>Dupont</b>', centerId: 'libramont', id: 9, date: '2026-07-14' } } });
+  // Le balisage hostile est place sur le PRENOM : depuis la refonte des
+  // gabarits (2026-07-19) le mail post-visite salue par le prenom seul, donc un
+  // nom de famille piege ne traverserait plus le rendu et l'assert ci-dessous
+  // passerait sans rien prouver.
+  await followup({ payload: { reservation: { email: 'marie@test.be', name: '<b>Marie</b> Dupont', centerId: 'libramont', id: 9, date: '2026-07-14' } } });
   const plain = dbState.created[0];
   ok(plain && !plain.payload.reviewToken && !plain.body.includes('/api/r?k='), 'sans lien configuré → aucun bouton, aucun token');
-  ok(plain.body.includes('&lt;b&gt;') && !plain.body.includes('<b>Dupont'), 'nom du client ÉCHAPPÉ dans le HTML (fix injection)');
+  // L'assertion negative doit porter sur la charge REELLEMENT injectee. Elle
+  // visait `<b>Dupont`, absent du payload depuis que la charge est passee sur le
+  // prenom : elle etait donc vraie par construction et ne prouvait plus rien.
+  ok(plain.body.includes('&lt;b&gt;') && !plain.body.includes('<b>Marie</b>'), 'nom du client ÉCHAPPÉ dans le HTML (fix injection)');
   ok(plain.payload.textBody.includes('Marie'), 'texte brut intact dans le payload');
   // Avec lien : token 32 hex + bouton tracké + URL stockée.
   settingsState.stored = { post_visit: { reviewUrl: 'https://g.page/r/fungalaxy-avis' } };

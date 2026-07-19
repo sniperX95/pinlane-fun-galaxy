@@ -206,7 +206,33 @@ const anthropicOk = (object) => ({
   console.log('\n[BUILDERS] overrides consommés, défauts intacts (non-régression)');
   const resa = { centerId: 'libramont', name: 'Marie Dupont', email: 'm@test.be', phone: '', date: '2026-08-20', startTime: '15:00', pax: 12, price: 468, type: 'formule', formuleId: 'f4', label: 'FORMULE 4' };
   const defaultMessage = buildMessage({ reservation: resa, templateId: 'confirmation', channel: 'email' });
-  ok(defaultMessage.subject === 'Votre réservation Fun Galaxy est confirmée', 'confirmation sans override : sujet historique exact');
+  // Ces asserts testent le MECANISME d'override (defaut applique sans reglage,
+  // substitution des variables avec), pas la copie exacte. Figer une phrase
+  // editoriale dans un assert interdit toute reecriture de la copie sans casser
+  // la suite (constate le 2026-07-19, refonte des gabarits mail).
+  ok(defaultMessage.subject.length > 10 && /confirm/i.test(defaultMessage.subject), 'confirmation sans override : sujet par défaut du gabarit');
+
+  // Garde-fou des TROIS VARIANTES. Le 2026-07-19, une refonte de la copie a
+  // livre « votre bowling est confirmée » et « votre Laser Game est confirmée »
+  // parce qu'une seule variante (une formule, donc feminine) avait ete rendue
+  // et relue. `offer` vaut aussi 'bowling', 'Laser Game' ou 'votre formule'
+  // (lib/ops-communications.js:591) : toute tournure qui accorde sur lui casse.
+  // Ce test rend les trois et bloque la classe entiere de defaut, sans figer
+  // une seule phrase editoriale.
+  const variantes = [
+    { nom: 'formule', resa: { ...resa } },
+    { nom: 'bowling', resa: { ...resa, type: 'bowling', formuleId: null, label: '' } },
+    { nom: 'laser', resa: { ...resa, type: 'laser', formuleId: null, label: '' } },
+  ];
+  for (const variante of variantes) {
+    const rendu = buildMessage({ reservation: variante.resa, templateId: 'confirmation', channel: 'email' });
+    const texte = `${rendu.subject}\n${rendu.body}`;
+    ok(!/undefined|\[object|NaN/.test(texte), `confirmation ${variante.nom} : aucune valeur non résolue`);
+    ok(!/\{\{/.test(texte), `confirmation ${variante.nom} : aucun token de gabarit laissé brut`);
+    ok(!/\bvotre votre\b/i.test(texte), `confirmation ${variante.nom} : pas de déterminant doublé`);
+    ok(!/votre (bowling|Laser Game|formule) est confirmée/i.test(texte),
+      `confirmation ${variante.nom} : pas d'accord fautif sur le libellé d'offre (masculin traité au féminin)`);
+  }
   const custom = buildMessage({
     reservation: resa, templateId: 'confirmation', channel: 'email',
     overrides: { subject: 'Merci {{prenom}} !', body: 'RDV le {{date}} à {{heure}} pour {{formule}} ({{pax}} pers), {{centre}}' },
@@ -214,7 +240,7 @@ const anthropicOk = (object) => ({
   ok(custom.subject === 'Merci Marie !', 'sujet custom : {{prenom}} substitué');
   ok(custom.body === 'RDV le 20/08/2026 à 15:00 pour FORMULE 4 (12 pers), Fun Galaxy Libramont', `corps custom : toutes variables substituées (obtenu « ${custom.body} »)`);
   const subjectOnly = buildMessage({ reservation: resa, templateId: 'confirmation', channel: 'email', overrides: { subject: 'Youpi {{prenom}}' } });
-  ok(subjectOnly.subject === 'Youpi Marie' && subjectOnly.body.includes('confirmé pour FORMULE 4'), 'override sujet seul : corps par défaut conservé');
+  ok(subjectOnly.subject === 'Youpi Marie' && subjectOnly.body === defaultMessage.body, 'override sujet seul : corps par défaut conservé à l\'identique');
   const smsUntouched = buildMessage({ reservation: resa, templateId: 'reminder_day_sms', channel: 'sms', overrides: { subject: 'X', body: 'Y' } });
   ok(smsUntouched.body.startsWith('Fun Galaxy:'), 'SMS jamais touché par les overrides email');
 
@@ -225,7 +251,7 @@ const anthropicOk = (object) => ({
   const reactivationCustom = buildReactivationMessage({ name: 'Léa Petit', centerName: 'Fun Galaxy Libramont' }, { body: 'Reviens {{prenom}}, le {{centre}} t’attend !' });
   ok(reactivationCustom.body === 'Reviens Léa, le Fun Galaxy Libramont t’attend !', 'réactivation : corps custom substitué');
   const postVisitDefault = buildPostVisitMessage({ name: 'Marie Dupont' });
-  ok(postVisitDefault.subject === 'Merci pour votre visite chez Fun Galaxy' && postVisitDefault.body.includes('Merci d etre venu'), 'merci post-visite : défaut byte-identique à l\'historique');
+  ok(postVisitDefault.subject.length > 5 && /merci/i.test(postVisitDefault.body), 'merci post-visite : texte par défaut du gabarit');
   const postVisitCustom = buildPostVisitMessage({ name: 'Marie Dupont' }, { body: 'Merci {{prenom}}, à bientôt chez {{centre}} !' });
   ok(postVisitCustom.body === 'Merci Marie, à bientôt chez Fun Galaxy !', 'merci post-visite : corps custom substitué');
 

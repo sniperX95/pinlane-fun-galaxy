@@ -855,10 +855,14 @@ function testDelayEmailTemplate() {
     },
   });
 
-  assert.ok(message.subject.includes('Ajustement'));
-  assert.ok(message.body.includes('15:00'));
-  assert.ok(message.body.includes('15:10'));
-  assert.ok(message.body.includes('reste confirmee'));
+  // On teste le CONTRAT du message (les deux horaires sont dits, le client est
+  // rassure sur le maintien de sa reservation, le sujet porte le nouvel
+  // horaire), pas une formulation exacte : figer la copie dans un assert
+  // interdit toute reecriture editoriale sans casser la suite.
+  assert.ok(message.subject.includes('15:10'), 'le sujet porte le nouvel horaire');
+  assert.ok(message.body.includes('15:00'), "l'ancien horaire est rappele");
+  assert.ok(message.body.includes('15:10'), 'le nouvel horaire est annonce');
+  assert.ok(/reste confirm/i.test(message.body), 'le client est rassure : la reservation tient');
 }
 
 function testLearningAgent() {

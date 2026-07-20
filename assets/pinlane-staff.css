@@ -9498,9 +9498,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    6px pour les controles, 8px pour les cartes, 12px pour les panneaux. La
    pilule (--radius-full) est la forme de la charte CLIENT : elle reste dans
    les mails et sur le parcours public, elle n'entre pas dans la console. */
-#staffEmailsPage .pv2-panel { border-radius: var(--radius-lg); }
+#staffEmailsPage .pv2-panel,
+#staffCockpitPage .pv2-panel { border-radius: var(--radius-lg); }
 #staffEmailsPage .mk-auto { border-radius: var(--radius-md); }
-#staffEmailsPage .pv2-btn { border-radius: var(--radius-sm); }
+#staffEmailsPage .pv2-btn,
+#staffCockpitPage .pv2-btn { border-radius: var(--radius-sm); }
 #staffEmailsPage .pv2-search { border-radius: var(--radius-sm); }
 
 /* --- 21.2 Typographie : la hierarchie vient de la taille et de la graisse ---
@@ -9508,9 +9510,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    sur la capture : le h2 du panneau de detail porte l'OBJET DU MAIL, c'est-a-
    dire du texte saisi par un humain, et sortait en « VOTRE RESERVATION EST
    CONFIRMEE ». On criait une donnee au lieu de titrer une section. */
-#staffEmailsPage .pv2-bar h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-transform: none; }
+#staffEmailsPage .pv2-bar h1,
+#staffCockpitPage .pv2-bar h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-transform: none; }
 #staffEmailsPage .pv2-panel-head h2,
-#staffEmailsPage .pv2-list-head h2 { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; text-transform: none; }
+#staffEmailsPage .pv2-list-head h2,
+#staffCockpitPage .pv2-panel-head h2 { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; text-transform: none; }
 #staffEmailsPage .pv2-mail-preview-title,
 #staffEmailsPage .mk-auto-edit-field > span { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
 /* Tout compteur en chiffres tabulaires : une colonne de nombres qui ne danse
@@ -9520,12 +9524,17 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 #staffEmailsPage .pv2-table td.num { font-variant-numeric: tabular-nums; }
 
 /* --- 21.3 Etat actif = blanc, jamais vert ---------------------------------
-   .mk-switch ne vit que sur cette page (sequences systeme + sequences perso) :
-   la regle est donc portee ici, au plus pres de son seul usage. */
-#staffEmailsPage .mk-switch.is-on { background: var(--text); border-color: var(--text); }
-#staffEmailsPage .mk-switch.is-on span { background: var(--surface); }
-#staffEmailsPage .mk-switch:not(.is-on) { background: transparent; border-color: var(--line-strong); }
-#staffEmailsPage .mk-switch:not(.is-on) span { background: var(--faint); }
+   .mk-switch vit sur la page Emails (sequences) et sur le cockpit fondateur
+   (matrice sequences par centre) : etat actif = blanc, le vert reste reserve
+   aux statuts (succes), pas aux etats. */
+#staffEmailsPage .mk-switch.is-on,
+#staffCockpitPage .mk-switch.is-on { background: var(--text); border-color: var(--text); }
+#staffEmailsPage .mk-switch.is-on span,
+#staffCockpitPage .mk-switch.is-on span { background: var(--surface); }
+#staffEmailsPage .mk-switch:not(.is-on),
+#staffCockpitPage .mk-switch:not(.is-on) { background: transparent; border-color: var(--line-strong); }
+#staffEmailsPage .mk-switch:not(.is-on) span,
+#staffCockpitPage .mk-switch:not(.is-on) span { background: var(--faint); }
 /* La carte d'une sequence active ne se repeint pas non plus en vert : elle
    remonte d'un cran de filet, c'est tout ce qu'il faut pour la distinguer. */
 #staffEmailsPage .mk-auto.is-on { border-color: var(--line-strong); }
@@ -9977,7 +9986,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   padding: 12px;
   background: var(--surface);
 }
-#staffCockpitPage .fck-center-card header {
+#staffCockpitPage .fck-center-card .fck-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;

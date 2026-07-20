@@ -11815,8 +11815,8 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   if (allCountEl) allCountEl.textContent = dayReservations.length;
   if (bowlingCountEl) bowlingCountEl.textContent = bowlingReservations.length;
   if (laserCountEl) laserCountEl.textContent = laserReservations.length;
-  document.getElementById('planningBox')?.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || view === 'laser');
-  document.getElementById('laserPlanningBox')?.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || view === 'bowling');
+  document.getElementById('planningBox')?.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive || view === 'laser');
+  document.getElementById('laserPlanningBox')?.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive || view === 'bowling');
 }
 
 function renderKpis() {

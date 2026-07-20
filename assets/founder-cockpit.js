@@ -196,11 +196,13 @@
   };
 
   function panel(title, subtitle, body, aside = '') {
+    // <div>, pas <header> : en mode console, `body.staff-mode header` ecrase
+    // tous les <header> a hauteur 0 (regle qui masque l'en-tete du site).
     return `<section class="pv2-panel">
-      <header class="pv2-panel-head">
+      <div class="pv2-panel-head">
         <div><h2>${esc(title)}</h2>${subtitle ? `<p class="pv2-panel-sub">${subtitle}</p>` : ''}</div>
         ${aside}
-      </header>
+      </div>
       ${body}
     </section>`;
   }
@@ -275,7 +277,7 @@
       const a = byId.get(center.id) || { lastStaffAction: null, actions7d: 0, actions30d: 0, lastLogin: null, activeSessions: 0 };
       const silent = !a.lastStaffAction;
       return `<article class="fck-center-card">
-        <header><strong>${esc(center.name)}</strong>${a.activeSessions ? chip('green', `${a.activeSessions} en ligne`) : ''}</header>
+        <div class="fck-card-head"><strong>${esc(center.name)}</strong>${a.activeSessions ? chip('green', `${a.activeSessions} en ligne`) : ''}</div>
         <dl class="fck-kv">
           <div><dt>Derniere action staff</dt><dd>${silent ? chip('amber', 'aucune enregistree') : esc(when(a.lastStaffAction))}</dd></div>
           <div><dt>Actions 7 j / 30 j</dt><dd class="fck-num">${a.actions7d} / ${a.actions30d}</dd></div>
@@ -303,7 +305,7 @@
     const d = agents.decisions || {};
     const plans = (agents.plans || []).map((p) => `<tr>
       <td>${esc(p.centerId)}<div class="pv2-cell-sub">${esc(p.fromDate)} -> ${esc(p.toDate)} · ${esc(p.mode)}</div></td>
-      <td>${chip(p.status === 'proposed' ? 'amber' : 'green', esc(p.status))}</td>
+      <td>${chip(p.status === 'proposed' ? 'amber' : 'green', esc({ proposed: 'propose', applied: 'applique', active: 'actif' }[p.status] || p.status))}</td>
       <td class="pv2-quiet">${esc(when(p.createdAt))}</td>
     </tr>`).join('');
     const insights = (agents.insights && agents.insights.perCenter || []).map((i) => `<tr>
@@ -377,7 +379,7 @@
     if (!leads.total) return panel('Vos prospects', '', emptyLine('Aucun prospect enregistre pour le moment.'));
     const rows = (leads.recent || []).map((l) => `<tr>
       <td>${esc(l.centerName || '(sans nom)')}</td>
-      <td>${chip(l.status === 'new' ? 'amber' : '', esc(l.status))}</td>
+      <td>${chip(l.status === 'new' ? 'amber' : '', esc({ new: 'nouveau', contacted: 'contacte', converted: 'converti', rejected: 'ecarte' }[l.status] || l.status))}</td>
       <td class="pv2-quiet">${esc(when(l.createdAt))}</td>
     </tr>`).join('');
     return panel(
@@ -421,16 +423,16 @@
     const generated = d.generatedAt ? when(d.generatedAt) : '';
 
     root.innerHTML = `<div class="pv2-shell fck-shell">
-      <header class="pv2-bar">
+      <section class="pv2-bar">
         <div>
-          <p class="pv2-crumb">Plateforme</p>
+          <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
           <h1>Cockpit fondateur</h1>
           <p class="pv2-bar-sub">Tout le SaaS : ce qui casse, l'usage, les agents, le cout, le journal.${generated ? ` · actualise ${esc(generated)}` : ''}</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fckReload()">Actualiser</button>
         </div>
-      </header>
+      </section>
 
       ${d.testData ? `<aside class="fck-testdata" role="note">
         Donnees de TEST : le SaaS n'est pas lance, tout ce qui suit vient des essais internes.

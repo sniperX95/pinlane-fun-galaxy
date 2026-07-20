@@ -1,4 +1,7 @@
-// Test INTERACTIF de la surface de lecture du journal d'audit (page Emails).
+// Test INTERACTIF de la surface de lecture du journal d'audit. Le panneau est
+// UN code (pv2AuditPanel, staff-pages-v2.js) monte sur DEUX pages : la page
+// Emails et l'onglet Journal de la console Direction. Les deux montages sont
+// pilotes ici, dans la meme session, avec les memes donnees hostiles.
 //
 // Playwright pilote de VRAIS clics. Une assertion qui verifierait la PRESENCE
 // d'une fonction dans le fichier source serait un faux vert : ce depot en a
@@ -11,7 +14,11 @@
 //   3. un refus est visuellement distingue (c'est le signal securite) ;
 //   4. le detail avant/apres s'ouvre au clic et montre les DEUX valeurs ;
 //   5. XSS : un nom d'acteur hostile est ECHAPPE, pas execute ;
-//   6. la page n'envoie jamais un centre different de celui de la session.
+//   6. la page n'envoie jamais un centre different de celui de la session ;
+//   7. le montage Direction (onglet Journal) s'ouvre au clic, re-rend SA page
+//      hote via le hook pv2AuditRerender, garde le scope centre et echappe le
+//      meme nom hostile ;
+//   8. filtrer depuis Direction refait un appel scope et re-rend Direction.
 //
 // Lancement : node scripts/audit-ui-check.js
 
@@ -233,6 +240,87 @@ async function main() {
     const filtered = await page.evaluate(() => document.querySelector('[data-pv2-mount="audit"]').innerText);
     ok(!filtered.includes('saveCenterConfig'), 'la liste filtree ne montre plus les succes');
     ok(filtered.includes('accessDenied'), 'elle montre le refus');
+
+    console.log('\n[7] SECOND MONTAGE : onglet Journal de la console Direction');
+    // Le panneau est UN code monte sur DEUX pages. On remet l'etat du panneau
+    // a zero (ferme, sans filtre, cache vide) puis on monte le montage
+    // Direction : s'il heritait de l'etat ouvert du test precedent, on ne
+    // prouverait ni l'ouverture au clic ni l'appel reseau du second montage.
+    await page.evaluate(() => {
+      state.staffAuditOpen = false;
+      pv2Audit.loaded = false;
+      pv2Audit.entries = [];
+      pv2Audit.filterKind = '';
+      pv2Audit.filterOutcome = '';
+      pv2Audit.expanded = '';
+      window.__AUDIT_CALLS__.length = 0;
+      // Marqueur pose sur un ENFANT de la page Emails : si le hook re-rendait
+      // la page Emails au lieu de Direction, son innerHTML serait reconstruit
+      // et le marqueur disparaitrait. Un innerHTML fige garde son marqueur.
+      const child = document.querySelector('#staffEmailsPage .pv2-panel');
+      if (child) child.setAttribute('data-qa-marker', '1');
+      state.adminTab = 'journal';
+      save();
+      setView('admin');
+    });
+    await page.waitForFunction(
+      () => Boolean(document.querySelector('#adminContent .pv2-panel h2')),
+      null,
+      { timeout: 15000 },
+    );
+    const dirClosed = await page.evaluate(() => ({
+      title: [...document.querySelectorAll('#adminContent .pv2-panel h2')].some((h) => h.textContent.includes('Journal des modifications')),
+      body: Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"]')),
+      calls: window.__AUDIT_CALLS__.length,
+    }));
+    ok(dirClosed.title, 'le panneau « Journal des modifications » est monte dans l onglet Journal de Direction');
+    ok(!dirClosed.body, 'il est replie au depart sur ce montage aussi');
+    ok(dirClosed.calls === 0, `aucun appel au journal avant ouverture (obtenu ${dirClosed.calls})`);
+
+    await page.evaluate(() => {
+      const head = [...document.querySelectorAll('#adminContent .pv2-panel')].find((p) => p.textContent.includes('Journal des modifications'));
+      head.querySelector('button').click();
+    });
+    await page.waitForTimeout(700);
+    const dirOpen = await page.evaluate(() => ({
+      // Le corps doit s'ouvrir DANS le montage Direction : c'est la preuve que
+      // le hook pv2AuditRerender re-rend la page hote, pas la page Emails.
+      inAdmin: Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"]')),
+      emailsMarker: Boolean(document.querySelector('#staffEmailsPage .pv2-panel[data-qa-marker="1"]')),
+      calls: window.__AUDIT_CALLS__.slice(),
+      text: (document.querySelector('#adminContent [data-pv2-mount="audit"]') || {}).innerText || '',
+    }));
+    ok(dirOpen.inAdmin, 'le clic ouvre le corps du panneau dans Direction');
+    ok(dirOpen.emailsMarker, 'la page Emails (cachee) n a pas ete reconstruite a sa place (marqueur intact)');
+    ok(dirOpen.calls.length >= 1, `l ouverture declenche l appel au journal (obtenu ${dirOpen.calls.length})`);
+    ok(dirOpen.calls.every((c) => c.includes('centerId=libramont')),
+      'chaque appel du montage Direction porte le centre de la session');
+    ok(dirOpen.text.includes('Sophie Direction') && dirOpen.text.includes('saveCenterConfig'),
+      'les lignes (acteur, action) se lisent dans Direction');
+    ok(dirOpen.text.includes('Refuse'), 'un refus reste visuellement distingue dans Direction');
+
+    const dirXss = await page.evaluate(() => ({
+      fired: Boolean(window.__XSS_AUDIT__),
+      rawImg: Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"] img[onerror]')),
+      readable: document.querySelector('#adminContent [data-pv2-mount="audit"]').innerText.includes('Pirate'),
+    }));
+    ok(!dirXss.fired && !dirXss.rawImg, 'XSS : le nom hostile est echappe sur le second montage aussi');
+    ok(dirXss.readable, 'le nom hostile reste lisible une fois echappe');
+
+    console.log('\n[8] filtre depuis Direction : nouvel appel scope, rendu au bon endroit');
+    const dirCallsBefore = await page.evaluate(() => window.__AUDIT_CALLS__.length);
+    await page.selectOption('#adminContent #pv2AuditOutcome', 'denied');
+    await page.waitForTimeout(700);
+    const dirFiltered = await page.evaluate(() => ({
+      calls: window.__AUDIT_CALLS__.slice(),
+      text: (document.querySelector('#adminContent [data-pv2-mount="audit"]') || {}).innerText || '',
+    }));
+    ok(dirFiltered.calls.length > dirCallsBefore, 'changer le filtre depuis Direction declenche un nouvel appel');
+    ok(/outcome=denied/.test(dirFiltered.calls[dirFiltered.calls.length - 1]), 'le filtre voyage dans la requete');
+    ok(dirFiltered.calls[dirFiltered.calls.length - 1].includes('centerId=libramont'),
+      'le scope centre est toujours present depuis Direction');
+    ok(!dirFiltered.text.includes('saveCenterConfig') && dirFiltered.text.includes('accessDenied'),
+      'la liste filtree du montage Direction ne montre plus que le refus');
 
     const fatal = errs.filter((e) => !/localStorage|sandboxed/i.test(e));
     ok(fatal.length === 0, `aucune erreur console fatale (obtenu ${fatal.length}${fatal.length ? ' : ' + fatal[0] : ''})`);

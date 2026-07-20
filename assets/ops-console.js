@@ -114,6 +114,14 @@ function renderOpsSamples() {
   </div>`;
 }
 
+const OPS_SEVERITY_LABELS = {
+  info: 'Info',
+  low: 'Faible',
+  medium: 'Moyen',
+  high: 'Priorité haute',
+  critical: 'Critique',
+};
+
 function renderOpsSuggestions() {
   const suggestions = opsAdminCache.suggestions || [];
   if (!suggestions.length) {
@@ -122,18 +130,16 @@ function renderOpsSuggestions() {
   return `<div class="ops-list">
     ${suggestions.map(item => {
       const payload = item.payload || {};
+      const severity = String(item.severity || 'info');
+      const tone = severity === 'critical' ? 'err' : severity === 'high' ? 'warn' : '';
       return `
-        <div class="ops-row">
-          <div>
-            <span class="ops-pill ${escapeHtml(item.severity)}">${escapeHtml(item.severity || 'info')}</span>
-            <div class="meta" style="margin-top:7px;">Confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div>
-          </div>
+        <div class="ops-row activity">
           <div>
             <div class="title">${escapeHtml(payload.title || item.suggestionType || 'Suggestion agent')}</div>
-            <div class="meta">${escapeHtml(item.agentId || 'agent')} • ${escapeHtml(item.status || 'pending')}</div>
+            <div class="meta">${escapeHtml(item.agentId || 'agent')} · confiance ${Math.round(Number(item.confidence || 0) * 100)}%</div>
           </div>
           <div class="meta">${escapeHtml(payload.recommendation || payload.reason || payload.message || 'À examiner par le staff.')}</div>
-          <span class="ops-pill">Live</span>
+          <span class="ops-pill ${tone}">${escapeHtml(OPS_SEVERITY_LABELS[severity] || severity)}</span>
         </div>`;
     }).join('')}
   </div>`;
@@ -736,6 +742,31 @@ function renderOpsAgentStack() {
     </div>`;
 }
 
+// Vue « Activité du centre » : signaux agents + journal terrain sur UN écran,
+// scope centre. C'est la seule vue du panneau pour une directrice ; les
+// harnais plateforme (Stack IA, Simulation rush) restent des sous-onglets
+// gates platform.admin. Chaque bloc annonce son périmètre : ces listes sont
+// les dernières entrées enregistrées pour le centre, pas un total historique.
+function renderOpsActivity() {
+  const suggestions = opsAdminCache.suggestions || [];
+  const events = opsAdminCache.events || [];
+  return `
+    <section class="ops-activity-block">
+      <div class="ops-activity-head">
+        <h3>Signaux des agents</h3>
+        <span>${suggestions.length ? `${suggestions.length} ${suggestions.length > 1 ? 'signaux récents' : 'signal récent'} pour ce centre` : 'derniers signaux enregistrés pour ce centre'}</span>
+      </div>
+      ${renderOpsSuggestions()}
+    </section>
+    <section class="ops-activity-block">
+      <div class="ops-activity-head">
+        <h3>Journal terrain</h3>
+        <span>${events.length ? `${events.length} événement${events.length > 1 ? 's' : ''} récent${events.length > 1 ? 's' : ''} : retards, incidents, corrections staff` : 'derniers événements terrain enregistrés pour ce centre'}</span>
+      </div>
+      ${renderOpsEvents()}
+    </section>`;
+}
+
 function renderOpsEvents() {
   const events = opsAdminCache.events || [];
   if (!events.length) {
@@ -743,17 +774,12 @@ function renderOpsEvents() {
   }
   return `<div class="ops-list">
     ${events.map(item => `
-      <div class="ops-row">
+      <div class="ops-row activity">
         <div>
-          <span class="ops-pill">${escapeHtml(OPS_EVENT_TYPE_LABELS[item.eventType] || String(item.eventType || 'Événement').replace(/_/g, ' '))}</span>
-          <div class="meta" style="margin-top:7px;">${escapeHtml(formatOpsTimestamp(item.createdAt))}</div>
-        </div>
-        <div>
-          <div class="title">${escapeHtml(OPS_ACTIVITY_TYPE_LABELS[item.activityType] || 'Opération')}</div>
-          <div class="meta">${escapeHtml(OPS_EVENT_REASON_LABELS[item.reasonId] || 'Signal terrain')}</div>
+          <div class="title">${escapeHtml(OPS_EVENT_TYPE_LABELS[item.eventType] || String(item.eventType || 'Événement').replace(/_/g, ' '))} · ${escapeHtml(OPS_ACTIVITY_TYPE_LABELS[item.activityType] || 'Opération')}</div>
+          <div class="meta">${escapeHtml(OPS_EVENT_REASON_LABELS[item.reasonId] || 'Signal terrain')} · ${escapeHtml(formatOpsTimestamp(item.createdAt))}</div>
         </div>
         <div class="meta">${escapeHtml(`${item.plannedStart || '--:--'} → ${item.actualEnd || item.actualStart || '--:--'} • ${item.actualMinutes || item.plannedMinutes || 0} min`)}</div>
-        <span class="ops-pill">${escapeHtml(item.centerId || 'centre')}</span>
       </div>
     `).join('')}
   </div>`;
@@ -1509,13 +1535,21 @@ async function reviewOpsSimulation(reviewId, decision, alternativeIndex = 0) {
 function renderOpsAdmin(errorMessage = '') {
   const panel = document.getElementById('opsAdminContent');
   if (!panel) return;
-  const activeTab = state.opsPanelTab || 'communications';
-  ['Communications', 'Samples', 'Suggestions', 'Stack', 'Events', 'Simulation'].forEach(name => {
+  // La vue par défaut est l'activité du centre (signaux + terrain fusionnés).
+  // Stack IA et Simulation rush sont l'outillage de test du fondateur : ils
+  // n'existent que pour platform.admin, même si un vieux state.opsPanelTab les
+  // réclame encore. Les anciennes clés (communications, samples, suggestions,
+  // events) retombent aussi sur l'activité : les mails vivent dans l'onglet
+  // Mails, un seul endroit par usage.
+  const isPlatform = typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
+  const allowedTabs = isPlatform ? ['activity', 'stack', 'simulation'] : ['activity'];
+  const activeTab = allowedTabs.includes(state.opsPanelTab) ? state.opsPanelTab : 'activity';
+  ['Activity', 'Stack', 'Simulation'].forEach(name => {
     const button = document.getElementById(`opsTab${name}`);
     if (button) button.classList.toggle('active', activeTab === name.toLowerCase());
   });
   if (!opsAdminCache.loaded && opsAdminCache.loading) {
-    panel.innerHTML = `<div class="empty-state"><div class="e-title">Chargement discret</div><div class="e-sub">La console prépare les mails, les modèles et les signaux agents.</div></div>`;
+    panel.innerHTML = `<div class="empty-state"><div class="e-title">Chargement discret</div><div class="e-sub">La console prépare les signaux agents et le journal terrain.</div></div>`;
     return;
   }
   if (errorMessage) {
@@ -1523,17 +1557,11 @@ function renderOpsAdmin(errorMessage = '') {
     return;
   }
   const updatedAt = opsAdminCache.lastLoadedAt ? `<div class="ops-refresh-note">Actualisé ${escapeHtml(formatOpsTimestamp(opsAdminCache.lastLoadedAt))}</div>` : '';
-  const content = activeTab === 'samples'
-    ? renderOpsSamples()
-    : activeTab === 'suggestions'
-      ? renderOpsSuggestions()
-      : activeTab === 'stack'
-        ? renderOpsAgentStack()
-        : activeTab === 'events'
-          ? renderOpsEvents()
-          : activeTab === 'simulation'
-            ? renderOpsSimulation()
-            : renderOpsCommunications();
+  const content = activeTab === 'stack'
+    ? renderOpsAgentStack()
+    : activeTab === 'simulation'
+      ? renderOpsSimulation()
+      : renderOpsActivity();
   panel.innerHTML = `${updatedAt}${content}`;
 }
 
@@ -1639,6 +1667,7 @@ async function dispatchOpsEmails() {
     renderOpsAgentLiveBoard,
     renderOpsAgentEcosystem,
     renderOpsAgentStack,
+    renderOpsActivity,
     renderOpsEvents,
     getSimulationDate,
     storeOpsSimulationPayload,

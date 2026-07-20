@@ -279,7 +279,12 @@ async function handleGet(req, res, options = {}) {
     // donc lisible depuis les deux cockpits. Sans cette remontee, un echec de
     // journalisation ne vivrait que dans les logs Vercel et la phrase "tout est
     // tracable" deviendrait fausse sans que personne ne le voie.
-    sendJson(res, 200, { ok: true, health, audit: getAuditHealth() });
+    // testData : meme doctrine que le bundle du cockpit fondateur
+    // (lib/founder-cockpit.js) : le SaaS n'est pas lance, tout chiffre vient
+    // des essais internes. Le cockpit du centre affiche ce flag en bandeau au
+    // lieu de presenter les tests comme du reel. A passer a false au lancement,
+    // en meme temps que celui du fondateur.
+    sendJson(res, 200, { ok: true, health, audit: getAuditHealth(), testData: true });
     return;
   }
 
@@ -2035,6 +2040,11 @@ function getRequiredOpsPermission(method, action) {
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
   if (['founderCockpit', 'founderAuditLog', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
+  // une permission DE CENTRE que tout role Direction verrouille possede. Une
+  // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le
+  // serveur repondait quand meme a une directrice. Meme regle que le cockpit.
+  if (['agentStack', 'agentStackAudit'].includes(action)) return 'platform.admin';
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
     // `job` = la lecture du poller de progression : mêmes permissions que

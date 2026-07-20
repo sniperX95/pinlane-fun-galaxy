@@ -7138,9 +7138,15 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   white-space: nowrap;
 }
 
-.admin-pill.formule { background: var(--accent-soft); color: var(--accent); }
-.admin-pill.laser { background: var(--info-soft); color: var(--info); }
-.admin-pill.pending, .admin-pill.confirmed { background: var(--info-soft); color: var(--info); }
+/* Le TYPE d'offre (formule, laser) n'est pas un etat : une etiquette neutre,
+   pas une couleur. Les STATUTS gardent la semantique etablie partout ailleurs
+   dans la console : ambre = attente (pending), vert = acquis (confirme, paye),
+   rouge = echec/annule. Le bleu ne sert qu'a l'information, et rien ici n'en
+   est. Une premiere version peignait formule/laser/pending/confirmed en bleu :
+   quatre sens differents, une seule couleur, zero information. */
+.admin-pill.formule, .admin-pill.laser { background: var(--subtle); color: var(--muted); }
+.admin-pill.pending { background: var(--warning-soft); color: var(--warning); }
+.admin-pill.confirmed { background: var(--success-soft); color: var(--success); }
 .admin-pill.arrived { background: var(--warning-soft); color: var(--warning); }
 .admin-pill.paid { background: var(--success-soft); color: var(--success); }
 .admin-pill.cancelled { background: var(--danger-soft); color: var(--danger); }
@@ -7186,11 +7192,19 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 
 .admin-health-card-top { display: flex; align-items: center; gap: 7px; font-weight: 500; color: var(--text); }
+/* La pastille dit un ETAT : elle doit connaitre TOUS les etats que le code
+   emet (ok/warn/danger/unknown, buildAdminOperationalChecks). Une premiere
+   version ne stylait que warn : un statut danger retombait sur le vert par
+   defaut, et la carte Reservations en alerte portait une pastille VERTE.
+   Une pastille qui ment est pire que pas de pastille. */
 .admin-health-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--success); flex: none; }
 .admin-health-dot.warn { background: var(--warning); }
+.admin-health-dot.danger { background: var(--danger); }
+.admin-health-dot.unknown { background: var(--muted); }
 .admin-health-value { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; color: var(--text); }
 .admin-health-summary { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--success); }
 .admin-health-summary.warn { color: var(--warning); }
+.admin-health-summary.danger { color: var(--danger); }
 .admin-health-foot { color: var(--faint); font-size: 11px; }
 .admin-health-clear { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
@@ -7230,7 +7244,71 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .ops-cockpit-meter-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; font-size: 11px; }
 
 .ops-cockpit-bar { position: relative; grid-column: 1 / -1; height: 6px; border-radius: var(--radius-full); background: var(--subtle); overflow: hidden; }
-.ops-cockpit-bar span { position: absolute; inset: 0 auto 0 0; width: var(--value, 0%); background: var(--accent); border-radius: var(--radius-full); }
+/* Une jauge d'occupation n'est pas une information a signaler : c'est une
+   mesure neutre. Le bleu accent etait de la couleur DECORATIVE (discipline :
+   monochrome sauf le sens). Le remplissage est neutre ; seule une jauge
+   au-dessus du seuil d'alerte a le droit de prendre une couleur. */
+.ops-cockpit-bar span { position: absolute; inset: 0 auto 0 0; width: var(--value, 0%); background: var(--text); opacity: 0.75; border-radius: var(--radius-full); }
+
+/* ── Cockpit du centre : reskin pv2 ──────────────────────────────────────────
+   Meme discipline que la page Emails et le cockpit fondateur : monochrome sauf
+   le sens, filets 1px, mouvement porte par des ETATS. Le contenu se
+   reconstruit par innerHTML : l'entree n'est jouee que par .admin-mount, une
+   classe posee UNIQUEMENT quand l'onglet vient de changer (garde JS,
+   markAdminTabMount) : jamais sur un poll ou une frappe. */
+
+/* Bandeau d'honnetete : memes traits que .fck-testdata du cockpit fondateur
+   (ambre = attention, filet 1px, pas d'aplat criard). */
+.admin-testdata {
+  border: 1px solid var(--warning);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+/* Activite du centre : deux blocs (signaux agents, journal terrain), chacun
+   annonce son perimetre dans la tete. */
+.ops-activity-block { display: grid; gap: var(--space-2); }
+.ops-activity-block + .ops-activity-block { margin-top: var(--space-3); }
+.ops-activity-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ops-activity-head h3 { font-size: 14px; font-weight: 600; }
+.ops-activity-head span { color: var(--muted); font-size: 12px; }
+
+/* Onglet Journal : le panneau pv2 REUTILISE de la page Emails, monte dans le
+   shell admin. Le pv2-shell global reserve un grand padding bas de page :
+   inutile ici, le shell admin gere le sien. */
+.admin-journal-shell { padding: 0; }
+
+/* Entree d'onglet, gardee par JS (Famille B) : translation 4px + fondu,
+   transform/opacity seulement, ease-out, < 300 ms. */
+@keyframes admin-mount-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+#adminContent.admin-mount { animation: admin-mount-in var(--dur-enter) var(--ease-out-strong) both; }
+
+/* Pression : le geste rend l'etat, 160 ms, jamais depuis scale(0). */
+.admin-btn:active,
+.ops-admin-btn:active,
+.admin-period-tabs button:active,
+.admin-tabs button:active,
+.ops-tab:active,
+.ops-cockpit-tab:active,
+.admin-center-card:active { transform: scale(0.97); transition: transform var(--dur-press) var(--ease-out-strong); }
+
+@media (prefers-reduced-motion: reduce) {
+  #adminContent.admin-mount { animation: none; }
+  .admin-btn:active,
+  .ops-admin-btn:active,
+  .admin-period-tabs button:active,
+  .admin-tabs button:active,
+  .ops-tab:active,
+  .ops-cockpit-tab:active,
+  .admin-center-card:active { transform: none; }
+}
 
 /* ----------------------------------------------------------------------------
    19. OPS CONSOLE (ops-console.js : onglet Mails & agents / simulation / IA)
@@ -7271,6 +7349,19 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 .ops-row.template { grid-template-columns: minmax(0, 1fr) auto; }
 .ops-row .meta, .ops-row small { color: var(--faint); font-size: 11px; }
+
+/* Lignes de l'onglet Activite (signaux agents, journal terrain) : qui/quoi a
+   gauche, lecture au centre, etat a droite. Les colonnes vides s'ecrasent
+   (auto = 0) : la ligne a deux cellules du journal terrain garde sa lecture
+   collee a droite. */
+.ops-row.activity { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto; }
+.ops-row.activity > .meta:last-child { justify-self: end; text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px) {
+  .ops-row.activity { grid-template-columns: minmax(0, 1fr); }
+  .ops-row.activity > .meta:last-child { justify-self: start; text-align: left; }
+  .ops-row.activity > .ops-pill { justify-self: start; }
+}
 
 .ops-pill {
   display: inline-flex;

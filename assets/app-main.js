@@ -2034,7 +2034,7 @@ function loadState() {
     staffResourceView: 'bowling',
     staffStatusFilter: 'all',
     staffTheme: 'dark',
-    opsPanelTab: 'communications',
+    opsPanelTab: 'activity',
     adminCenterId: 'libramont',
     adminDate: today,
     adminPeriod: 'day',
@@ -2117,7 +2117,7 @@ try {
 } catch (error) {}
 state.staffStatusFilter = state.staffStatusFilter || 'all';
 state.staffTheme = state.staffTheme === 'light' ? 'light' : 'dark';
-state.opsPanelTab = state.opsPanelTab || 'communications';
+state.opsPanelTab = state.opsPanelTab || 'activity';
 state.adminCenterId = state.adminCenterId || 'libramont';
 state.adminDate = state.adminDate || todayStr();
 state.adminPeriod = ['day', 'week', 'month', 'year'].includes(state.adminPeriod) ? state.adminPeriod : 'day';
@@ -2515,8 +2515,8 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260717f';
-const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720a';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260720e';
+const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
 const dynamicConsoleScripts = {};
@@ -15080,9 +15080,10 @@ function applyInitialRouteFromHash() {
     if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
   }
   if (view === 'admin') {
-    const adminPageAliases = { period: 'overview' };
+    // « clients » (onglet retiré : doublon du CRM v2) retombe sur la vue période.
+    const adminPageAliases = { period: 'overview', clients: 'overview' };
     const normalizedAdminTab = adminPageAliases[page] || page;
-    const allowedAdminTabs = ['overview', 'reservations', 'clients', 'ops', 'exports'];
+    const allowedAdminTabs = ['overview', 'data', 'mail', 'reservations', 'journal', 'ops', 'exports'];
     if (allowedAdminTabs.includes(normalizedAdminTab)) state.adminTab = normalizedAdminTab;
   }
   // A1 : deep-link #admin/... refusé à un rôle connecté sans direction.view 

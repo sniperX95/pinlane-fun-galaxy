@@ -58,6 +58,10 @@ function mergeAdminOpsIntoDashboard(base, opsCache = null) {
     agentStack: ops.agentStack || base.agentStack || null,
     opsHealth: ops.opsHealth || base.opsHealth || null,
     simulation: ops.simulation || base.simulation || null,
+    // Honnêteté : le serveur dit si les chiffres viennent des essais internes
+    // (même doctrine que bundle.testData du cockpit fondateur). Tant que le
+    // flag n'est pas arrivé, on n'affirme rien (undefined = pas de bandeau).
+    testData: ops.testData !== undefined ? ops.testData : base.testData,
     lastLoadedAt: ops.lastLoadedAt || base.lastLoadedAt || ''
   };
 }
@@ -893,19 +897,24 @@ function buildAdminOperationalChecks(snapshot = { reservations: [] }, metrics = 
 function renderAdminOperationalHealth(snapshot, metrics, center) {
   const checks = buildAdminOperationalChecks(snapshot, metrics, center);
   const generatedAt = adminDashboardCache.opsHealth?.generatedAt || opsAdminCache.opsHealth?.generatedAt || adminDashboardCache.lastLoadedAt;
-  const hasIssue = checks.some(item => item.status === 'danger' || item.status === 'warn');
+  // Trois niveaux, pas deux : un danger ne se resume pas en « A surveiller »
+  // ambre. Le resume porte le PIRE etat present, sinon il ment par litote.
+  const hasDanger = checks.some(item => item.status === 'danger');
+  const hasWarn = checks.some(item => item.status === 'warn');
+  const summaryTone = hasDanger ? 'danger' : (hasWarn ? 'warn' : 'ok');
+  const summaryLabel = hasDanger ? 'Action requise' : (hasWarn ? 'À surveiller' : 'Tout est stable');
   return `<div class="admin-panel admin-health-panel">
     <div class="admin-section-title admin-health-head">
       <div>
         <h2>Vérifications continues</h2>
         <p>Mails, bowling, laser, réservations et retards contrôlés sur les données actives.</p>
       </div>
-      <span class="admin-health-summary ${hasIssue ? 'warn' : 'ok'}">
-        <span class="admin-health-dot ${hasIssue ? 'warn' : 'ok'}"></span>
-        ${hasIssue ? 'À surveiller' : 'Tout est stable'}
+      <span class="admin-health-summary ${summaryTone}">
+        <span class="admin-health-dot ${summaryTone}"></span>
+        ${summaryLabel}
       </span>
     </div>
-    ${hasIssue ? `<div class="admin-health-grid">
+    ${(hasDanger || hasWarn) ? `<div class="admin-health-grid">
       ${checks.map(item => `<article class="admin-health-card ${escapeHtml(item.status)}">
         <div class="admin-health-card-top">
           <span class="admin-health-dot ${escapeHtml(item.status)}"></span>
@@ -1162,8 +1171,13 @@ function renderAdminCockpit(metrics, center, reservations = [], marketMetrics = 
           <div class="ops-cockpit-meter">
             ${renderAdminCockpitMetricBar('Bowling', metrics.bowlingOccupancy, 'bowling')}
             ${renderAdminCockpitMetricBar('Laser', metrics.laserOccupancy, 'laser')}
-            ${renderAdminCockpitMetricBar('Mails', mailHealth, 'mail')}
           </div>
+          ${mailTotal
+            /* Le taux d'envoi n'est PAS de la capacite : sorti de la jauge, dit
+               en toutes lettres avec son perimetre. « Mails 50% » sans fenetre
+               ne repondait pas a « 50 % de quoi, sur quand ? ». */
+            ? `<p class="ops-cockpit-mail-note">Mails de la période (${escapeHtml(formatAdminPeriodLabel())}) : ${metrics.sentMails} parti(s) sur ${mailTotal}${metrics.failedMails ? `, dont ${metrics.failedMails} en échec` : ''}.</p>`
+            : ''}
         </div>
         <div class="ops-cockpit-card">
           <span class="label">Staff</span>
@@ -1216,6 +1230,11 @@ async function runAdminOrchestratorNow() {
 function renderAdminCenterGrid() {
   const grid = document.getElementById('adminCenterGrid');
   if (!grid) return;
+  // Même règle que le menu staff (centers.switch) : une directrice mono-centre
+  // n'a aucun autre centre à choisir, la grille ne montre donc rien d'interdit.
+  const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
+  grid.classList.toggle('hidden', !canSwitch);
+  if (!canSwitch) { grid.innerHTML = ''; return; }
   const centers = getAdminCenters();
   grid.innerHTML = centers.map(center => {
     const bowling = center.resources?.bowling;
@@ -1236,25 +1255,44 @@ function renderAdminCenterGrid() {
   }).join('');
 }
 
+// Le bandeau d'honnêteté ne s'affiche que si le serveur a DIT que les données
+// sont des essais internes (flag testData de l'action health, doctrine du
+// cockpit fondateur). Pas de flag reçu = pas d'affirmation, dans un sens
+// comme dans l'autre.
+function renderAdminHonestyNote() {
+  const note = document.getElementById('adminHonestyNote');
+  if (!note) return;
+  const flag = adminDashboardCache.testData !== undefined
+    ? adminDashboardCache.testData
+    : opsAdminCache?.testData;
+  const show = flag === true && state.staffMenuPage !== 'establishment';
+  note.innerHTML = show
+    ? `<aside class="admin-testdata" role="note">Données de TEST : le SaaS n'est pas lancé, les chiffres de ce cockpit viennent des essais internes, pas de vrais clients.</aside>`
+    : '';
+}
+
 function renderAdminHeader() {
   const input = document.getElementById('adminDateInput');
   if (input) input.value = state.adminDate;
   renderAdminCenterGrid();
+  renderAdminHonestyNote();
   const center = getAdminCenter();
   const range = getAdminPeriodRange();
+  // Le cockpit porte le nom du centre : c'est SA console, pas celle du SaaS.
+  // La variante Établissement partage ce shell et garde son propre titre.
   const heroTitle = document.getElementById('adminHeroTitle');
-  if (heroTitle) heroTitle.textContent = state.staffMenuPage === 'establishment' ? 'Établissement client' : 'Console CEO';
+  if (heroTitle) heroTitle.textContent = state.staffMenuPage === 'establishment' ? 'Établissement client' : center.name;
   const heroSub = document.getElementById('adminHeroSub');
   if (heroSub) {
     heroSub.textContent = state.staffMenuPage === 'establishment'
       ? `${center.name} • configuration, ressources et données opérationnelles du centre.`
-      : `${center.name} • ${formatAdminPeriodLabel(range)} • réservations, communications, agents et exports.`;
+      : `Cockpit du centre • ${formatAdminPeriodLabel(range)} • réservations, mails, activité et exports.`;
   }
   ['Day', 'Week', 'Month', 'Year'].forEach(name => {
     const button = document.getElementById(`adminPeriod${name}`);
     if (button) button.classList.toggle('active', state.adminPeriod === name.toLowerCase());
   });
-  ['Overview', 'Data', 'Mail', 'Reservations', 'Clients', 'Ops', 'Exports'].forEach(name => {
+  ['Overview', 'Data', 'Mail', 'Reservations', 'Journal', 'Ops', 'Exports'].forEach(name => {
     const button = document.getElementById(`adminTab${name}`);
     if (button) button.classList.toggle('active', state.adminTab === name.toLowerCase());
   });
@@ -1275,9 +1313,13 @@ function renderAdminOverview() {
         </div>
       </div>
       <div class="admin-kpi-grid">
-        <div class="admin-kpi"><div class="k">Réservations</div><div class="v">${metrics.reservations}</div><div class="s">${metrics.pendingCount} à venir · ${metrics.arrivedCount} sur place</div></div>
-        <div class="admin-kpi"><div class="k">Joueurs</div><div class="v">${metrics.players}</div><div class="s">${metrics.formulaCount} formule(s)</div></div>
-        <div class="admin-kpi"><div class="k">Chiffre jour</div><div class="v">${formatMoney(metrics.revenue)}</div><div class="s">${formatMoney(metrics.collected)} encaissé</div></div>
+        ${/* Les sous-lignes doivent BOUCLER : une directrice va compter.
+             « 3 dont 1 a venir · 1 sur place » laissait la payee invisible et la
+             somme ne faisait pas le total ; « Joueurs 22, 1 formule(s) » annotait
+             une autre unite que le chiffre. */''}
+        <div class="admin-kpi"><div class="k">Réservations</div><div class="v">${metrics.reservations}</div><div class="s">${metrics.pendingCount} à venir · ${metrics.arrivedCount} sur place · ${metrics.paidCount} payée${metrics.paidCount > 1 ? 's' : ''}</div></div>
+        <div class="admin-kpi"><div class="k">Joueurs</div><div class="v">${metrics.players}</div><div class="s">sur ${metrics.reservations} réservation${metrics.reservations > 1 ? 's' : ''}</div></div>
+        <div class="admin-kpi"><div class="k">Chiffre ${state.adminPeriod === 'day' ? 'du jour' : 'de la période'}</div><div class="v">${formatMoney(metrics.revenue)}</div><div class="s">${formatMoney(metrics.collected)} encaissé</div></div>
         <div class="admin-kpi"><div class="k">Ticket moyen</div><div class="v">${formatMoney(metrics.avgTicket)}</div><div class="s">sur réservations actives</div></div>
         <div class="admin-kpi"><div class="k">Bowling</div><div class="v">${formatAdminPercent(metrics.bowlingOccupancy)}</div><div class="s">${Math.round(metrics.laneHours)}h piste / ${Math.round(metrics.bowlingCapacity)}h capacité</div></div>
         <div class="admin-kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div><div class="s">${metrics.laserLaunches} lancement(s) · ${metrics.laserPlayers} passages</div></div>
@@ -1348,66 +1390,37 @@ function renderAdminReservationsTable(reservations = [], title = 'Réservations 
   </div>`;
 }
 
-function renderAdminClients() {
-  const snapshot = adminDashboardCache.snapshot || { reservations: [] };
-  const reservations = snapshot.reservations || [];
-  const profiles = buildAdminClientProfiles(reservations);
-  const totalRevenue = profiles.reduce((sum, profile) => sum + Number(profile.revenue || 0), 0);
-  const vipCount = profiles.filter(profile => profile.segment === 'VIP').length;
-  const groupCount = profiles.filter(profile => profile.segment === 'Groupe').length;
-  const openActions = profiles.filter(profile => profile.waiversOpen).length;
-  return `<div class="admin-panel">
-    <div class="admin-section-title">
-      <div>
-        <h2>Clientèle & engagement</h2>
-        <p>CRM léger, consignes laser, check-in et prochaines actions commerciales.</p>
-      </div>
-    </div>
-    <div class="admin-client-grid">
-      <div class="admin-client-kpi"><div class="k">Clients uniques</div><div class="v">${profiles.length}</div><div class="s">sur la période sélectionnée</div></div>
-      <div class="admin-client-kpi"><div class="k">Valeur suivie</div><div class="v">${formatMoney(totalRevenue)}</div><div class="s">CA rattaché aux profils</div></div>
-      <div class="admin-client-kpi"><div class="k">Profils forts</div><div class="v">${vipCount + groupCount}</div><div class="s">${vipCount} VIP · ${groupCount} groupes</div></div>
-      <div class="admin-client-kpi"><div class="k">Actions ouvertes</div><div class="v">${openActions}</div><div class="s">consignes à terminer</div></div>
-    </div>
-    ${profiles.length ? `<div class="admin-table-wrap"><table class="admin-table">
-      <thead><tr><th>Client</th><th>Segment</th><th>Historique</th><th>Valeur</th><th>Engagement</th><th>Action suivante</th></tr></thead>
-      <tbody>
-        ${profiles.slice(0, 80).map(profile => `<tr>
-          <td><strong>${escapeHtml(profile.name)}</strong><br>${escapeHtml(profile.phone || profile.email || 'Contact incomplet')}</td>
-          <td><span class="admin-pill">${escapeHtml(profile.segment)}</span></td>
-          <td>${profile.visits} visite(s)<br>${profile.players} joueur(s) · ${profile.formulas} formule(s)</td>
-          <td><strong>${formatMoney(profile.revenue)}</strong><br>Dernière : ${escapeHtml(profile.lastDate && profile.lastDate !== '--' ? new Date(profile.lastDate).toLocaleDateString('fr-BE') : '--')}</td>
-          <td><div class="engagement-cell">
-            <span class="guest-chip ${profile.waiversOpen ? 'warn' : 'ok'}">${profile.waiversOpen ? `${profile.waiversOpen} consigne` : 'Consignes OK'}</span>
-          </div></td>
-          <td>${escapeHtml(profile.action)}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>` : `<div class="empty-state"><div class="e-title">Aucun profil client</div><div class="e-sub">Les profils apparaissent dès que la période contient des réservations.</div></div>`}
-  </div>`;
+// L'onglet Clients de Direction a ete retire : c'etait un doublon appauvri du
+// CRM v2 (page Clients du menu staff, renderStaffClientsPage). Les profils
+// clients restent calcules par buildAdminClientProfiles pour la feuille Excel
+// « Clients CRM » et le rapport direction.
+
+// L'onglet Activité est scope CENTRE : signaux agents + journal terrain, en un
+// seul écran. L'outillage plateforme (Stack IA, Simulation rush) n'apparaît
+// que pour platform.admin : c'est l'outillage de test du fondateur, pas un
+// outil de directrice. Les sous-onglets Mails/Modèles ont été retirés :
+// doublons de l'onglet Mails (un seul endroit pour les mails).
+function isAdminPlatformOwner() {
+  return typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
 }
 
 function renderAdminOpsPanel() {
+  const platformTabs = isAdminPlatformOwner()
+    ? `<div class="ops-admin-tabs">
+      <button class="ops-tab" id="opsTabActivity" onclick="setOpsTab('activity')">Activité du centre</button>
+      <button class="ops-tab" id="opsTabStack" onclick="setOpsTab('stack')">Stack IA</button>
+      <button class="ops-tab" id="opsTabSimulation" onclick="setOpsTab('simulation')">Simulation rush</button>
+    </div>`
+    : '';
   return `<div class="admin-panel">
     <div class="ops-admin-head">
       <div>
-        <div class="ops-eyebrow">Messages, agents et suivi</div>
-        <h2>Communication opérationnelle</h2>
-        <p>File des mails, modèles, suggestions agents et journal terrain pour le centre sélectionné.</p>
-      </div>
-      <div class="ops-admin-actions">
-        <button class="ops-admin-btn" onclick="loadAdminDashboard(true)">Actualiser</button>
-        <button class="ops-admin-btn primary" onclick="dispatchOpsEmails()">Envoyer la file</button>
+        <div class="ops-eyebrow">Ce qui s'est passé chez vous</div>
+        <h2>Activité du centre</h2>
+        <p>Signaux remontés par les agents et événements terrain du centre sélectionné, sur la période ouverte.</p>
       </div>
     </div>
-    <div class="ops-admin-tabs">
-      <button class="ops-tab" id="opsTabCommunications" onclick="setOpsTab('communications')">Mails</button>
-      <button class="ops-tab" id="opsTabSamples" onclick="setOpsTab('samples')">Modèles</button>
-      <button class="ops-tab" id="opsTabSuggestions" onclick="setOpsTab('suggestions')">Agents</button>
-      <button class="ops-tab" id="opsTabStack" onclick="setOpsTab('stack')">Stack IA</button>
-      <button class="ops-tab" id="opsTabEvents" onclick="setOpsTab('events')">Journal</button>
-      <button class="ops-tab" id="opsTabSimulation" onclick="setOpsTab('simulation')">Simulation rush</button>
-    </div>
+    ${platformTabs}
     <div class="ops-admin-content" id="opsAdminContent"></div>
   </div>`;
 }
@@ -1428,12 +1441,11 @@ function renderAdminExports() {
         <button class="admin-btn" onclick="exportAdminExcel()">Télécharger</button>
       </div>
       <div class="admin-export-card">
-        <div><h3>Rapport direction blanc</h3><p>Document HTML professionnel avec logo, KPIs, signaux et aperçu des réservations. Imprimable en PDF.</p></div>
+        ${/* « blanc » etait du jargon interne ; et le bouton primaire de la barre
+             (« Rapport executif ») appelait la MEME fonction sous un autre nom.
+             Un seul nom par action : « Rapport direction », decline web/A4. */''}
+        <div><h3>Rapport direction</h3><p>Document HTML professionnel avec logo, KPIs, signaux et aperçu des réservations. Imprimable en PDF.</p></div>
         <button class="admin-btn" onclick="exportAdminReport()">Télécharger</button>
-      </div>
-      <div class="admin-export-card">
-        <div><h3>Archive JSON complète</h3><p>Snapshot technique complet : métriques, réservations, mails, agents, événements et connaissance centre.</p></div>
-        <button class="admin-btn" onclick="exportAdminJson()">Télécharger</button>
       </div>
       <div class="admin-export-card">
         <div><h3>Résumé du jour</h3><p>${metrics.reservations} réservation(s), ${metrics.players} joueurs, ${formatMoney(metrics.revenue)} prévu, ${metrics.failedMails} mail(s) en échec.</p></div>
@@ -1467,10 +1479,59 @@ function renderAdminExports() {
   </div>`;
 }
 
+// FAMILLE B (patron PV2_EMAILS_MOTION) : le contenu se reconstruit par
+// innerHTML à chaque rendu (poll 45 s compris). L'animation d'entrée ne se
+// pose que quand l'ONGLET vient de changer, jamais sur une simple
+// reconstruction : sinon la page « respirerait » toute seule à chaque poll.
+const ADMIN_TAB_MOTION = { lastTab: null };
+
+function markAdminTabMount(content) {
+  const tab = `${state.staffMenuPage === 'establishment' ? 'establishment' : 'admin'}:${state.adminTab || 'overview'}`;
+  const changed = ADMIN_TAB_MOTION.lastTab !== null && ADMIN_TAB_MOTION.lastTab !== tab;
+  ADMIN_TAB_MOTION.lastTab = tab;
+  content.classList.remove('admin-mount');
+  if (!changed) return;
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // Reflow forcé pour que le retrait de classe soit commité avant la repose :
+  // sans lui, reposer la même classe ne rejoue pas l'animation.
+  void content.offsetWidth;
+  content.classList.add('admin-mount');
+}
+
+// Onglets retirés de Direction : « clients » (doublon du CRM v2, la vraie page
+// Clients vit dans le menu staff). Un état persisté sur un onglet disparu
+// retombe sur la vue période au lieu d'un écran vide.
+function normalizeAdminTab(tab) {
+  const allowed = ['overview', 'data', 'mail', 'reservations', 'journal', 'ops', 'exports'];
+  return allowed.includes(tab) ? tab : 'overview';
+}
+
+// Montage Direction du Journal des modifications : RÉUTILISE le panneau de la
+// page Emails (pv2AuditPanel, staff-pages-v2.js), zéro copie. Le hook
+// pv2AuditRerender fait revenir les interactions du panneau (ouvrir, filtrer,
+// déplier) vers CE rendu tant que Direction est la page hôte.
+function renderAdminJournalTab() {
+  window.pv2AuditRerender = function () {
+    if (state.view === 'admin' && state.adminTab === 'journal') renderAdminDashboard();
+  };
+  if (typeof pv2AuditPanel !== 'function') {
+    return '<div class="admin-panel"><div class="empty-state"><div class="e-title">Journal indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
+  }
+  return `<div class="pv2-shell admin-journal-shell">${pv2AuditPanel()}</div>`;
+}
+
 function renderAdminDashboard() {
+  state.adminTab = normalizeAdminTab(state.adminTab);
   renderAdminHeader();
   const content = document.getElementById('adminContent');
   if (!content) return;
+  markAdminTabMount(content);
+  // Le Journal ne dépend pas du snapshot période : il se rend même pendant un
+  // chargement, comme Données et Mails.
+  if (state.adminTab === 'journal') {
+    content.innerHTML = renderAdminJournalTab();
+    return;
+  }
   const cacheIsCurrent = isAdminDashboardCacheCurrent();
   if (adminDashboardCache.loading && (!adminDashboardCache.loaded || !cacheIsCurrent)) {
     content.innerHTML = `<div class="admin-panel"><div class="empty-state"><div class="e-title">Chargement direction</div><div class="e-sub">Récupération du centre, des réservations, des mails et des signaux agents.</div></div></div>`;
@@ -1506,10 +1567,6 @@ function renderAdminDashboard() {
   }
   if (state.adminTab === 'reservations') {
     content.innerHTML = renderAdminReservationsTable(adminDashboardCache.snapshot?.reservations || []);
-    return;
-  }
-  if (state.adminTab === 'clients') {
-    content.innerHTML = renderAdminClients();
     return;
   }
   if (state.adminTab === 'ops') {
@@ -1561,15 +1618,36 @@ async function loadAdminOpsForCenter(centerId = state.adminCenterId || 'libramon
     const startDate = encodeURIComponent(range.startDate);
     const endDate = encodeURIComponent(range.endDate);
     const simDate = encodeURIComponent(state.adminDate || range.startDate);
-    const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload, healthPayload, simulationPayload] = await Promise.all([
+    // DEUX CORRECTIONS D'UNE REVUE ADVERSE, a ne pas defaire :
+    // 1. L'outillage FONDATEUR (stack IA, simulation) n'est plus fetche que par
+    //    un porteur de platform.admin. Avant, TOUTE directrice le telechargait a
+    //    chaque chargement : masque a l'ecran mais present dans opsAdminCache,
+    //    lisible en devtools. Masquer n'est pas cloisonner.
+    // 2. allSettled et non all : un 403 sur UNE lecture (role sans ai.ops, ou
+    //    outillage fondateur refuse) ne doit pas tuer l'onglet Activite et le
+    //    bandeau d'honnetete avec lui. Chaque panneau degrade seul.
+    const isPlatformAdmin = typeof canUseStaffPermission === 'function' && canUseStaffPermission('platform.admin');
+    const settled = await Promise.allSettled([
       apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${centerQuery}&limit=180`),
       apiRequest(`${API_ENDPOINTS.ops}?action=emailSamples`),
       apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerQuery}&limit=120`),
       apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerQuery}&limit=160`),
-      apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerQuery}&startDate=${startDate}&endDate=${endDate}`),
+      isPlatformAdmin
+        ? apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerQuery}&startDate=${startDate}&endDate=${endDate}`)
+        : Promise.resolve(null),
       apiRequest(`${API_ENDPOINTS.ops}?action=health&centerId=${centerQuery}&limit=40`),
-      apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerQuery}&date=${simDate}`)
+      isPlatformAdmin
+        ? apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerQuery}&date=${simDate}`)
+        : Promise.resolve(null),
     ]);
+    const settledValue = (index) => (settled[index] && settled[index].status === 'fulfilled' ? settled[index].value : null);
+    const communicationsPayload = settledValue(0) || {};
+    const samplesPayload = settledValue(1) || {};
+    const suggestionsPayload = settledValue(2) || {};
+    const eventsPayload = settledValue(3) || {};
+    const agentStackPayload = settledValue(4);
+    const healthPayload = settledValue(5) || {};
+    const simulationPayload = settledValue(6);
     const ops = {
       communications: communicationsPayload.communications || [],
       samples: samplesPayload.samples || [],
@@ -1577,6 +1655,9 @@ async function loadAdminOpsForCenter(centerId = state.adminCenterId || 'libramon
       events: eventsPayload.events || [],
       agentStack: agentStackPayload || null,
       opsHealth: healthPayload.health || null,
+      // Flag serveur « données de test » (health, scope centre) : source du
+      // bandeau d'honnêteté du cockpit, jamais inventé côté client.
+      testData: healthPayload.testData === true,
       simulation: simulationPayload || null,
       loaded: true,
       loading: false,
@@ -1762,10 +1843,23 @@ function setAdminTab(tab) {
   state.adminTab = tab || 'overview';
   save();
   renderAdminDashboard();
+  // Mobile : la barre d'onglets defile horizontalement et le re-rendu repart du
+  // scroll residuel. Mesure a 390px : apres navigation, l'onglet ACTIF pouvait
+  // etre entierement hors champ (scrollLeft=218, activeTabVisible=false), et
+  // rien n'indiquait ou l'on etait. On ramene le bouton actif en vue, sans
+  // animation (le defilement d'ancrage n'est pas une animation d'interface).
+  const activeTab = document.querySelector('.admin-tabs .active');
+  if (activeTab && typeof activeTab.scrollIntoView === 'function') {
+    activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
 }
 
 function setOpsTab(tab) {
-  state.opsPanelTab = tab || 'communications';
+  // Sous-onglets plateforme (Stack IA, Simulation rush) : refusés hors
+  // platform.admin, même par appel direct. Toute autre clé, anciennes valeurs
+  // persistées comprises (communications, samples...), retombe sur l'activité.
+  const platformTabs = ['stack', 'simulation'];
+  state.opsPanelTab = platformTabs.includes(tab) && isAdminPlatformOwner() ? tab : 'activity';
   save();
   renderOpsAdmin();
   if (state.opsPanelTab === 'simulation') loadOpsSimulationStatus();
@@ -1841,9 +1935,12 @@ function startAdminHealthAutoRefresh() {
     runAdminOrchestratorNow,
     renderAdminCenterGrid,
     renderAdminHeader,
+    renderAdminHonestyNote,
     renderAdminOverview,
     renderAdminReservationsTable,
-    renderAdminClients,
+    isAdminPlatformOwner,
+    normalizeAdminTab,
+    renderAdminJournalTab,
     renderAdminOpsPanel,
     renderAdminExports,
     renderAdminDashboard,

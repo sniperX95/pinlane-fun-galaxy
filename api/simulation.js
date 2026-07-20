@@ -124,7 +124,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const query = getQuery(req);
       const requestedCenterId = normalizeCenterId(query.get('centerId') || '');
-      const session = await requireStaffPermission(req, res, 'ai.ops', { centerId: requestedCenterId });
+      const session = await requireStaffPermission(req, res, 'platform.admin', { centerId: requestedCenterId });
       if (!session) return;
       await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId) });
       return;
@@ -132,7 +132,7 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const body = await readJson(req);
       const requestedCenterId = normalizeCenterId(body.centerId || body.center_id || '');
-      const session = await requireStaffPermission(req, res, 'ai.ops', { centerId: requestedCenterId });
+      const session = await requireStaffPermission(req, res, 'platform.admin', { centerId: requestedCenterId });
       if (!session) return;
       await handlePost(req, res, body, { centerId: resolveEffectiveCenterId(session, requestedCenterId) });
       return;

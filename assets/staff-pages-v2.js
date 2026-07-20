@@ -1949,8 +1949,20 @@
   };
   window.pv2Audit = pv2Audit;
 
+  /* Le panneau est monté sur DEUX pages (Emails, et l'onglet Journal de la
+     console Direction) : le rendu à rejouer après une interaction dépend de la
+     page HÔTE. Elle s'inscrit via window.pv2AuditRerender ; sans hôte inscrit,
+     la page Emails reste le défaut historique. renderStaffEmailsPage reprend
+     le hook à chaque rendu : le dernier hôte affiché gagne, et un rendu parti
+     vers une page cachée (early-return du hôte) ne casse rien. */
+  window.pv2AuditRerender = null;
+  function pv2AuditRerenderHost() {
+    if (typeof window.pv2AuditRerender === 'function') { window.pv2AuditRerender(); return; }
+    renderStaffEmailsPage();
+  }
+
   const PV2_AUDIT_ACTOR = {
-    staff: 'Humain', public: 'Client', cron: 'Cron', worker: 'Worker', system: 'Systeme',
+    staff: 'Humain', public: 'Client', cron: 'Cron', worker: 'Worker', system: 'Système',
   };
   const PV2_AUDIT_DENIED = {
     '401_no_session': 'Sans session',
@@ -1977,7 +1989,7 @@
       pv2Audit.error = error.message || 'Journal indisponible.';
     } finally {
       pv2Audit.loading = false;
-      renderStaffEmailsPage();
+      pv2AuditRerenderHost();
     }
   }
   window.loadPv2Audit = loadPv2Audit;
@@ -1990,14 +2002,14 @@
 
   window.pv2AuditToggleRow = function (id) {
     pv2Audit.expanded = pv2Audit.expanded === String(id) ? '' : String(id);
-    renderStaffEmailsPage();
+    pv2AuditRerenderHost();
   };
 
   window.pv2ToggleAudit = function () {
     state.staffAuditOpen = !state.staffAuditOpen;
     save();
     if (state.staffAuditOpen && !pv2Audit.loaded && !pv2Audit.loading) loadPv2Audit();
-    renderStaffEmailsPage();
+    pv2AuditRerenderHost();
   };
 
   /* Rend une valeur de diff lisible. Les objets sont serialises courts : le
@@ -2039,7 +2051,7 @@
       const outcomeChip = isDenied
         ? `<span class="pv2-chip" style="color:var(--v2-red,#c00);border-color:var(--v2-red,#c00)">Refuse${entry.deniedReason ? ` · ${esc(PV2_AUDIT_DENIED[entry.deniedReason] || entry.deniedReason)}` : ''}</span>`
         : isError
-          ? '<span class="pv2-chip">Echec</span>'
+          ? '<span class="pv2-chip">Échec</span>'
           : '<span class="pv2-chip">Fait</span>';
       const detail = expanded
         ? `<tr><td colspan="6" style="background:var(--v2-subtle,#fafafa);padding:14px;">
@@ -2072,19 +2084,19 @@
       ${open ? `<div class="pv2-panel-body" data-pv2-mount="audit">
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
           <label class="pv2-panel-sub" for="pv2AuditKind">Auteur</label>
-          <select id="pv2AuditKind" onchange="pv2AuditFilter('kind', this.value)" style="padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+          <select id="pv2AuditKind" onchange="pv2AuditFilter('kind', this.value)" style="width:auto;height:34px;font-size:13px;padding:0 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
             <option value="" ${pv2Audit.filterKind === '' ? 'selected' : ''}>Tous</option>
             <option value="staff" ${pv2Audit.filterKind === 'staff' ? 'selected' : ''}>Humain</option>
             <option value="cron" ${pv2Audit.filterKind === 'cron' ? 'selected' : ''}>Cron</option>
             <option value="worker" ${pv2Audit.filterKind === 'worker' ? 'selected' : ''}>Worker</option>
             <option value="public" ${pv2Audit.filterKind === 'public' ? 'selected' : ''}>Client</option>
           </select>
-          <label class="pv2-panel-sub" for="pv2AuditOutcome">Resultat</label>
-          <select id="pv2AuditOutcome" onchange="pv2AuditFilter('outcome', this.value)" style="padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+          <label class="pv2-panel-sub" for="pv2AuditOutcome">Résultat</label>
+          <select id="pv2AuditOutcome" onchange="pv2AuditFilter('outcome', this.value)" style="width:auto;height:34px;font-size:13px;padding:0 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
             <option value="" ${pv2Audit.filterOutcome === '' ? 'selected' : ''}>Tout</option>
             <option value="success" ${pv2Audit.filterOutcome === 'success' ? 'selected' : ''}>Fait</option>
-            <option value="denied" ${pv2Audit.filterOutcome === 'denied' ? 'selected' : ''}>Refuse</option>
-            <option value="error" ${pv2Audit.filterOutcome === 'error' ? 'selected' : ''}>Echec</option>
+            <option value="denied" ${pv2Audit.filterOutcome === 'denied' ? 'selected' : ''}>Refusé</option>
+            <option value="error" ${pv2Audit.filterOutcome === 'error' ? 'selected' : ''}>Échec</option>
           </select>
           <button type="button" class="pv2-btn sm ghost" onclick="loadPv2Audit(true)">Actualiser</button>
         </div>
@@ -2094,10 +2106,10 @@
             ? '<div class="pv2-empty"><strong>Chargement du journal…</strong></div>'
             : pv2Audit.entries.length
               ? `<table class="pv2-table">
-                  <thead><tr><th class="num">Quand</th><th>Qui</th><th>Action</th><th>Resultat</th><th class="num">Champs</th><th></th></tr></thead>
+                  <thead><tr><th class="num">Quand</th><th>Qui</th><th>Action</th><th>Résultat</th><th class="num">Champs</th><th></th></tr></thead>
                   <tbody>${rows}</tbody>
                 </table>`
-              : '<div class="pv2-empty"><strong>Rien pour l\'instant</strong>Aucune modification enregistree pour ce centre avec ces filtres.</div>'}
+              : '<div class="pv2-empty"><strong>Rien pour l\'instant</strong>Aucune modification enregistrée pour ce centre avec ces filtres.</div>'}
       </div>` : ''}
     </section>`;
   }
@@ -2609,6 +2621,9 @@
   window.renderStaffEmailsPage = function (errorMessage = '') {
     const root = document.getElementById('staffEmailsPage');
     if (!root) return;
+    // La page Emails redevient l'hôte du Journal des modifications dès qu'elle
+    // se rend : le hook posé par la console Direction ne doit pas lui survivre.
+    window.pv2AuditRerender = null;
     if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
     if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
     // Chargé à l'ouverture de la page, pas seulement à l'ouverture du panneau :

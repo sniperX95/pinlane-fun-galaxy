@@ -128,6 +128,23 @@
   --dur-fast: 120ms;
   --dur: 160ms;
   --dur-slow: 200ms;
+  /* Extension du meme systeme (pas un systeme parallele) : les courbes CSS
+     natives sont trop molles pour de l'interface, elles font trainer la fin du
+     mouvement. Deux courbes fortes suffisent a tout couvrir.
+     --ease-out-strong  : entrees et retours d'action. Jamais d'ease-in sur de
+       l'interface : ca demarre lentement au moment precis ou l'oeil regarde.
+     --ease-in-out-strong : deplacement d'un point A a un point B (indicateur
+       qui glisse d'un segment a l'autre).
+     Durees : --dur-press pour ce qui se presse (vu des dizaines de fois par
+     jour), --dur-enter pour une surface vue occasionnellement, --dur-exit
+     TOUJOURS plus court que --dur-enter : a l'entree on decouvre, a la sortie
+     on a deja decide. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 160ms;
+  --dur-move: 180ms;
+  --dur-enter: 240ms;
+  --dur-exit: 150ms;
 
   /* Layout */
   --sidebar-w: 248px;

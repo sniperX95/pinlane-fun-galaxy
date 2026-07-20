@@ -110,6 +110,181 @@
     });
   }
 
+  /* ── MOUVEMENT DE LA PAGE EMAILS ────────────────────────────────────────────
+     Contrainte centrale : cette page se reconstruit ENTIEREMENT
+     (root.innerHTML) a chaque frappe dans la recherche, a chaque bascule
+     d'interrupteur, a chaque arrivee de donnees. Deux consequences dures :
+       - une animation d'ENTREE posee sur un noeud interieur REJOUE a chaque
+         reconstruction. Ca clignote, et c'est pire que pas d'animation ;
+       - une animation de SORTIE est impossible telle quelle : on n'anime pas
+         un noeud deja detruit.
+     D'ou deux familles, tenues separees dans tout ce fichier :
+       FAMILLE A (le coeur du travail) : transitions CSS pilotees par un ETAT
+         (:hover, :active, :focus-visible, .active, .is-on). Elles survivent
+         aux reconstructions parce qu'elles ne dependent pas du montage. C'est
+         la que se joue la sensation « l'interface me repond ».
+       FAMILLE B (rare) : un element qui apparait VRAIMENT sur action de la
+         gerante (panneau replie, editeur, inventaire). Une entree y est
+         legitime, mais SEULEMENT derriere une garde de premiere apparition.
+     Les memoires ci-dessous SONT cette garde : elles vivent hors du DOM, donc
+     elles survivent a innerHTML.
+     Ce qui est reellement anime sur cette page (releve exhaustif, pas une
+     intention) : transform et opacity, plus trois proprietes de PEINTURE
+     (background-color, border-color, color) sur les survols et les etats.
+     Aucune transition ne porte sur height, width, margin, padding, top ou left :
+     c'est ca qui compte, aucune ne declenche de reflow. Une version precedente
+     de ce commentaire affirmait « transform et opacity UNIQUEMENT », ce que la
+     mesure a dementi. ── */
+  const PV2_EMAILS_MOTION = { open: {}, pipeRail: null, switches: {}, pipeScroll: 0, resizeBound: false };
+
+  /* FAMILLE B : on ne pose la classe d'entree que si l'etat du panneau vient
+     de passer de ferme a ouvert. Sur une simple reconstruction (frappe
+     clavier, poll de donnees), l'etat n'a pas change : la classe n'est pas
+     posee, rien ne rejoue. Verifiable, et verifie par le gate. */
+  function markEmailsMounts(root, opened) {
+    Object.keys(opened).forEach((key) => {
+      const now = !!opened[key];
+      const was = !!PV2_EMAILS_MOTION.open[key];
+      PV2_EMAILS_MOTION.open[key] = now;
+      if (!now || was || reducedMotion) return;
+      const node = root.querySelector(`[data-pv2-mount="${key}"]`);
+      if (node) node.classList.add('pv2-mount');
+    });
+  }
+
+  /* L'indicateur qui GLISSE d'un segment de filtre a l'autre est la signature
+     la plus reconnaissable de ce style. Pose naivement, il repartirait de la
+     gauche a CHAQUE rendu, y compris quand la gerante tape une lettre dans la
+     recherche. La position precedente est donc memorisee hors du DOM : on
+     repose le rail dessus sans transition, on force un reflow, puis on le
+     laisse glisser vers la nouvelle position. Si le filtre n'a pas change,
+     ancienne == nouvelle et le rail ne bouge pas d'un pixel : c'est ce que
+     `data-moved` expose au gate.
+     Seul transform est anime (translateX + scaleX sur une base de 100 px) :
+     animer left/width declencherait un layout a chaque frame. */
+  /* `instant` : un changement de largeur de fenetre n'est pas une action de la
+     gerante, le rail s'y RECALE sans glisser. Mesure faite a 390 px : sans ce
+     recalage, le rail gardait la largeur du segment large et debordait de
+     trois segments, et le fondu de bord restait eteint alors que la barre
+     debordait vraiment.
+
+     GARDE DE VIVACITE (correctif du defaut mesure D1/D2). Cette fonction lit
+     offsetLeft/offsetWidth, qui valent ZERO sur un noeud detache du document.
+     Un ResizeObserver cree a chaque rendu, jamais deconnecte, se declenchait
+     ensuite sur la barre DETACHEE du rendu precedent, lisait cette geometrie
+     nulle et ECRASAIT la memoire hors DOM : au clic suivant le rail repartait
+     de scaleX(0) au bord gauche au lieu de glisser depuis le segment
+     precedent. Mesure a t+30 ms : largeur de depart 4.62 px puis 0.98 px,
+     contre 179 et 183 px attendus.
+     On ne memorise donc QUE ce qu'on a pu vraiment mesurer. */
+  function positionPipeRail(barEl, instant) {
+    const rail = barEl.querySelector('.pv2-pipe-rail');
+    const active = barEl.querySelector('.pv2-pipe.active');
+    if (!rail || !active) return;
+    const from = PV2_EMAILS_MOTION.pipeRail;
+    const place = (p) => { rail.style.transform = `translateX(${p.x}px) scaleX(${p.w / 100})`; };
+    // Noeud detache, ou page repliee : la geometrie lisible est du neant. On
+    // repose la derniere geometrie CONNUE et on ne touche pas a la memoire.
+    if (!document.contains(barEl) || !active.offsetWidth) {
+      if (from) { rail.style.transition = 'none'; place(from); void rail.offsetWidth; rail.style.transition = ''; }
+      rail.setAttribute('data-moved', '0');
+      return;
+    }
+    const to = { key: active.getAttribute('data-pipe'), x: active.offsetLeft, w: active.offsetWidth };
+    // La memoire est indexee sur le SEGMENT CHOISI, pas sur des pixels. Sur des
+    // pixels, le rail glissait aussi quand la largeur de la barre bougeait
+    // pour une raison etrangere au filtre : l'ouverture d'un panneau fait
+    // apparaitre la barre de defilement de la page, la largeur change de
+    // quelques pixels, et le rail se mettait a glisser sans que personne
+    // n'ait rien demande (assertion instable au gate, une fois sur deux).
+    // La regle voulue s'ecrit exactement ainsi : le rail glisse si et
+    // seulement si le segment choisi a change. Tout le reste se repose sec.
+    const moved = !instant && !!(from && from.key && from.key !== to.key) && !reducedMotion;
+    rail.style.transition = 'none';
+    place(moved ? from : to);
+    void rail.offsetWidth;
+    // La transition est TOUJOURS rendue au CSS apres le reflow, meme quand le
+    // rail n'a pas bouge : sinon le `transition: none` pose ici restait colle
+    // en style en ligne et le glissement suivant se faisait en un saut.
+    rail.style.transition = '';
+    if (moved) place(to);
+    PV2_EMAILS_MOTION.pipeRail = to;
+    rail.setAttribute('data-moved', moved ? '1' : '0');
+  }
+
+  /* Le defilement horizontal du segmente est lui aussi detruit a chaque
+     rendu : sans cette restitution, le filtre choisi sur mobile ressortait du
+     champ des qu'une donnee arrivait. `can-scroll-x` allume le fondu de bord
+     qui dit qu'il reste des segments a droite (defaut releve a 390 px :
+     « Echecs » etait coupe et RIEN ne l'annoncait). */
+  function syncPipeFade(barEl) {
+    PV2_EMAILS_MOTION.pipeScroll = barEl.scrollLeft;
+    barEl.classList.toggle('can-scroll-x', barEl.scrollWidth - barEl.clientWidth - barEl.scrollLeft > 4);
+  }
+
+  function slidePipeRail(root) {
+    const barEl = root.querySelector('.pv2-pipeline');
+    if (!barEl) return;
+    positionPipeRail(barEl, false);
+    barEl.scrollLeft = PV2_EMAILS_MOTION.pipeScroll;
+    syncPipeFade(barEl);
+    // Cet ecouteur-la est pose SUR le noeud : il meurt avec lui, donc il ne
+    // s'accumule pas d'un rendu au suivant.
+    barEl.addEventListener('scroll', () => syncPipeFade(barEl), { passive: true });
+    // UN SEUL ecouteur de redimensionnement pour toute la vie de la page, pose
+    // une fois. C'est la solution la plus simple qui tienne : il n'a rien a
+    // deconnecter, il ne peut pas s'accumuler, et il retrouve la barre VIVANTE
+    // a chaque appel au lieu de retenir celle du rendu ou il a ete cree.
+    // Mesure de la version precedente (un observateur par rendu) : 10 frappes
+    // dans la recherche => 10 ResizeObserver crees, 0 deconnecte, 10 rappels
+    // sur un noeud detache, 17 observateurs encore vivants.
+    if (!PV2_EMAILS_MOTION.resizeBound) {
+      PV2_EMAILS_MOTION.resizeBound = true;
+      window.addEventListener('resize', () => {
+        const live = document.querySelector('#staffEmailsPage .pv2-pipeline');
+        if (!live) return;
+        positionPipeRail(live, true);
+        syncPipeFade(live);
+      }, { passive: true });
+    }
+  }
+
+  /* FAMILLE A rendue possible malgre la reconstruction. Le bouton d'un
+     interrupteur est DETRUIT puis recree deja dans sa nouvelle position : la
+     transition CSS du curseur n'avait donc jamais lieu, l'etat sautait. On
+     repose la classe dans son ancien etat, on force un reflow pour que le
+     navigateur commite ce style, puis on rend l'etat reel : la transition CSS
+     joue alors normalement. Un interrupteur dont l'etat n'a pas bouge n'est
+     pas touche du tout. */
+  function replaySwitchKnobs(root) {
+    if (reducedMotion) return;
+    root.querySelectorAll('.mk-switch[data-switch-key]').forEach((sw) => {
+      const key = sw.getAttribute('data-switch-key');
+      const knob = sw.firstElementChild;
+      const now = sw.classList.contains('is-on');
+      const was = PV2_EMAILS_MOTION.switches[key];
+      PV2_EMAILS_MOTION.switches[key] = now;
+      if (!knob || was === undefined || was === now) return;
+      // Le noeud est insere DEJA dans son etat final : reposer la classe
+      // d'origine sans precaution declenchait une transition vers l'ancienne
+      // position, aussitot inversee par le retour a la nouvelle. Mesure faite
+      // via document.getAnimations() : la transition sortait a 65 ms au lieu de
+      // 160 (facteur de raccourcissement d'inversion du spec CSS) et le curseur
+      // partait a GAUCHE avant de revenir. Un aller-retour, pas une bascule.
+      // Le remede est celui du rail : on neutralise la transition pendant qu'on
+      // repose l'ancien etat, on force le reflow SUR LE CURSEUR (le transform
+      // est une propriete de composition : lire offsetWidth du parent ne le
+      // commite pas), puis on rend la transition au CSS avant de basculer.
+      knob.style.transition = 'none';
+      sw.style.transition = 'none';
+      sw.classList.toggle('is-on', was);
+      void knob.offsetWidth;
+      knob.style.transition = '';
+      sw.style.transition = '';
+      sw.classList.toggle('is-on', now);
+    });
+  }
+
   /* ---- Shared building blocks ---------------------------------------------- */
 
   function bar({ crumb, title, sub, actions = '' }) {
@@ -1228,10 +1403,10 @@
     return `<article class="mk-auto pv2-seq-card${sequence.enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
         <strong>${esc(sequence.name)}<span class="pv2-seq-pill">perso</span></strong>
-        <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
+        <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(pv2SeqTriggerLabel(sequence))} · max ${Number(sequence.cap) || 0} envois</p>
-      <details class="mk-auto-preview"><summary>Aperçu du message</summary><p>${esc(sequence.body || '')}</p></details>
+      <details class="mk-auto-preview"><summary><span class="pv2-caret" aria-hidden="true"></span>Aperçu du message</summary><p>${esc(sequence.body || '')}</p></details>
       <div class="mk-auto-stats">
         <button type="button" class="pv2-btn sm" onclick="pv2SeqEdit('${escJs(sequence.id)}')">${ci('pencil')}Modifier</button>
         <button type="button" class="pv2-btn sm" onclick="pv2SeqDelete('${escJs(sequence.id)}')">Supprimer</button>
@@ -1250,7 +1425,7 @@
     const segmentOptions = Object.entries(limits.segments || {})
       .map(([key, label]) => `<option value="${key}"${d.segment === key ? ' selected' : ''}>${esc(label)}</option>`).join('');
     const daysBounds = meta.days || [1, 90];
-    return `<div class="pv2-seq-editor" aria-label="Éditeur de séquence">
+    return `<div class="pv2-seq-editor" data-pv2-mount="seqEditor" aria-label="Éditeur de séquence">
       <div class="pv2-composer-grid">
         <label class="pv2-composer-field"><span>Nom de la séquence</span>
           <input id="pv2SeqName" value="${esc(d.name || '')}" placeholder="Ex. Relance une semaine après la visite" oninput="pv2SeqField('name', this.value)">
@@ -1576,9 +1751,9 @@
           </div>
         </div>`;
     }
-    return `<section class="pv2-panel pv2-settings" aria-label="Réglages emails">
+    return `<section class="pv2-panel pv2-settings" data-pv2-mount="settings" aria-label="Réglages emails">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Réglages emails</h2><p class="pv2-panel-sub">Modèles, adresses d'envoi et cerveau de l'agent, tout t'appartient.</p></div>
+        <div><h2>Réglages emails</h2><p class="pv2-panel-sub">Modèles, adresses d'envoi et cerveau de l'agent : tout vous appartient.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2OpenSettings()">Fermer</button>
       </div>
       <div class="pv2-panel-body">
@@ -1595,10 +1770,16 @@
   const AUTOMATION_META = [
     { key: 'request_received', label: 'Demande reçue', desc: 'Accuse réception au client quand sa demande part en validation.' },
     { key: 'confirmation', label: 'Confirmation', desc: 'Confirme la réservation au client dès qu’elle est validée.' },
-    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant, moins de no-show.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
+    // « no-show » etait le dernier anglicisme d'un ecran par ailleurs
+    // entierement traduit, sur la carte lue le plus souvent.
+    { key: 'reminder_48h', label: 'Rappel avant la venue', desc: 'Rappelle la venue quelques jours avant : moins d’absences le jour J.', timing: { options: [1, 2, 3, 4], label: (n) => `${n} jour${n > 1 ? 's' : ''} avant la venue` } },
     { key: 'post_visit', label: 'Merci post-visite', desc: 'Remercie après la visite et invite à revenir.', timing: { options: [0, 1, 2, 3], label: (n) => (n === 0 ? 'Le jour même' : `${n} jour${n > 1 ? 's' : ''} après la visite`) } },
-    { key: 'birthday_j30', label: 'Anniversaire J-30', desc: 'L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.', star: true, timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
-    { key: 'reactivation', label: 'Réactivation dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', star: true, cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
+    // « Anniversaire J-30 » et « Réactivation dormants » étaient du jargon de
+    // marketeur sur un écran lu par une gérante de centre de loisirs : « J-30 »
+    // ne se lit pas, « dormants » est un mot de CRM. Le libellé dit maintenant
+    // ce que fait la séquence, en français.
+    { key: 'birthday_j30', label: '30 jours avant l’anniversaire', desc: 'L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.', timing: { options: [15, 21, 30, 45, 60], label: (n) => `${n} jours avant la date anniversaire` } },
+    { key: 'reactivation', label: 'Réactiver les clients dormants', desc: 'Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.', cap: { options: [5, 10, 20, 30, 50], label: (n) => `${n} envois max / semaine` } },
   ];
   const mkAuto = { loaded: false, loading: false, error: '', settings: null, defaults: {}, stats: {}, busyKey: '', editKey: '', editDraft: {} };
 
@@ -1830,7 +2011,7 @@
     const warning = hasDetails && String(d.body || '').trim()
       ? `<p class="mk-auto-edit-warn">Votre texte remplace le message entier : le récapitulatif (date, heure, formule, participants) ne sera plus affiché. Pensez à y remettre les infos utiles, avec les variables ci-dessus.</p>`
       : '';
-    return `<div class="mk-auto-edit">
+    return `<div class="mk-auto-edit" data-pv2-mount="autoEditor">
       <label class="mk-auto-edit-field"><span>Objet</span>
         <input value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
       </label>
@@ -1865,15 +2046,25 @@
     // servi par le serveur. Le rendu HTML complet est derrière « Voir le mail ».
     const def = mkAuto.defaults[meta.key] || {};
     const previewText = (setting && setting.body) || def.body || '';
+    // ÉTOILE AMBRE SUPPRIMÉE : elle ne portait aucune information lisible (son
+    // seul sens vivait dans un title=, invisible), et elle dépensait l'ambre
+    // que cet écran réserve à l'ATTENTE. Couleur = sens, sinon rien.
+    // NBSP entre un nombre et son unité : « 37 envoyés · 20 / échecs (30 j) »
+    // laissait le nombre seul en fin de ligne dans 3 cartes sur 6, séparé de
+    // ce qu'il compte. Un nombre ne se lit pas sans son unité.
+    const sent30 = Number(stats.sent30d) || 0;
+    const failed30 = Number(stats.failed30d) || 0;
+    const NB = ' ';
+    const statsTxt = `${sent30}${NB}envoyé${sent30 > 1 ? 's' : ''}${failed30 ? ` · <span class="mk-auto-fail">${failed30}${NB}échec${failed30 > 1 ? 's' : ''}</span>` : ''} sur 30${NB}jours`;
     return `<article class="mk-auto${enabled ? ' is-on' : ''}${editing ? ' is-editing' : ''}">
       <div class="mk-auto-head">
-        <strong>${meta.star ? `<span class="mk-auto-star" title="Levier n°1 du secteur">${ci('star')}</span>` : ''}${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}</strong>
-        <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
+        <strong>${esc(meta.label)}${modified ? '<span class="mk-auto-mod">modifié</span>' : ''}</strong>
+        <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(meta.desc)}</p>
-      <details class="mk-auto-preview"><summary>Aperçu du message</summary><p>${esc(previewText)}</p></details>
+      <details class="mk-auto-preview"><summary><span class="pv2-caret" aria-hidden="true"></span>Aperçu du message</summary><p>${esc(previewText)}</p></details>
       <div class="mk-auto-foot">
-        <span class="mk-auto-stats">${Number(stats.sent30d) || 0} envoyé${(Number(stats.sent30d) || 0) > 1 ? 's' : ''}${Number(stats.failed30d) ? ` · <span class="mk-auto-fail">${Number(stats.failed30d)} échec${Number(stats.failed30d) > 1 ? 's' : ''}</span>` : ''} (30 j)</span>
+        <span class="mk-auto-stats">${statsTxt}</span>
         <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
       </div>
       ${editing ? mkAutoEditor(meta) : ''}
@@ -1895,9 +2086,9 @@
       ...PV2_STARTERS.map((s) => `<option value="starter:${s.key}"${d.templateRef === `starter:${s.key}` ? ' selected' : ''}>${esc(s.name)}</option>`),
       ...pv2Mail.templates.map((t) => `<option value="tpl:${t.id}"${d.templateRef === `tpl:${t.id}` ? ' selected' : ''}>${esc(t.label || t.name || `Modèle ${t.id}`)}</option>`),
     ].join('');
-    return `<section class="pv2-panel pv2-composer" aria-label="Nouveau message">
+    return `<section class="pv2-panel pv2-composer" data-pv2-mount="composer" aria-label="Nouveau message">
       <div class="pv2-panel-head has-sub">
-        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisis le client (ou tape une adresse), l'expéditeur, un modèle si tu veux, et envoie.</p></div>
+        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisissez le client (ou tapez une adresse), l'expéditeur, un modèle si vous voulez, et envoyez.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2CloseComposer()">Fermer</button>
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
@@ -1938,9 +2129,9 @@
   }
 
   function pv2AnalyzePanel() {
-    return `<section class="pv2-panel pv2-analyze" aria-label="Analyser un email reçu">
+    return `<section class="pv2-panel pv2-analyze" data-pv2-mount="analyze" aria-label="Coller un mail reçu">
       <div class="pv2-panel-head has-sub">
-        <div><h2>Analyser un email reçu</h2><p class="pv2-panel-sub">Colle un mail de ta boîte : l'agent dit ce que veut le client et prépare la réponse.</p></div>
+        <div><h2>Coller un mail reçu</h2><p class="pv2-panel-sub">Collez un mail reçu dans votre boîte : l'agent dit ce que veut le client et prépare la réponse.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2OpenAnalyze()">Fermer</button>
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
@@ -1948,7 +2139,7 @@
           <input id="pv2AnalyzeFrom" value="${esc(pv2Mail.analyzeDraft.from)}" placeholder="client@exemple.be" oninput="pv2AnalyzeField('from', this.value)">
         </label>
         <label class="pv2-composer-field pv2-composer-wide"><span>Texte du mail reçu</span>
-          <textarea rows="6" placeholder="Colle ici le contenu du mail…" oninput="pv2AnalyzeField('body', this.value)">${esc(pv2Mail.analyzeDraft.body)}</textarea>
+          <textarea rows="6" placeholder="Collez ici le contenu du mail…" oninput="pv2AnalyzeField('body', this.value)">${esc(pv2Mail.analyzeDraft.body)}</textarea>
         </label>
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn primary" onclick="pv2AnalyzeSubmit()" ${pv2Mail.analyzeBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.analyzeBusy ? 'Analyse…' : 'Analyser'}</button>
@@ -2002,6 +2193,118 @@
       </div>`;
   }
 
+  // Accord singulier/pluriel des compteurs. « 1 prêt(s) à partir » et
+  // « 2 tentative(s) » traînaient sur un écran lu tous les jours par la
+  // direction : le français se décide ici une fois, plus dans chaque template.
+  function plural(n, one, many) {
+    const count = Number(n) || 0;
+    return `${count} ${count > 1 ? many : one}`;
+  }
+
+  /* ── INVENTAIRE DES MAILS ────────────────────────────────────────────────
+     « Tout doit être gérable et pilotable depuis la catégorie. » Encore
+     faut-il savoir ce qui existe : jusqu'ici la page ne montrait que les six
+     séquences pilotables, et les cinq autres mails que le centre envoie
+     vraiment (changement d'horaire client, SMS du jour, trois alertes staff)
+     n'apparaissaient NULLE PART. Un mail invisible est un mail qu'on découvre
+     par un appel client.
+
+     Cette table est le miroir des branches réelles de buildMessage()
+     (lib/ops-communications.js) : rien n'est inventé ici, et rien n'y est
+     modifiable, c'est une carte. Chaque ligne dit qui le reçoit, quand il
+     part, et où il se pilote. Quand il ne se pilote pas, elle dit POURQUOI
+     à l'écran plutôt que de laisser la question ouverte. ── */
+  const MAIL_INVENTORY = [
+    { group: 'client', key: 'request_received', label: 'Accusé de réception', when: 'Quand la demande part en validation' },
+    { group: 'client', key: 'confirmation', label: 'Confirmation de réservation', when: 'Dès que la réservation est validée' },
+    { group: 'client', key: 'reminder_48h', label: 'Rappel avant la venue', when: 'Quelques jours avant la date' },
+    { group: 'client', key: 'post_visit', label: 'Merci post-visite', when: 'Après la visite' },
+    { group: 'client', key: 'birthday_j30', label: '30 jours avant l’anniversaire', when: 'Avant la date anniversaire fêtée ici' },
+    { group: 'client', key: 'reactivation', label: 'Réactiver les clients dormants', when: 'Client fidèle plus vu depuis 2-3 mois' },
+    {
+      group: 'auto', label: 'Changement d\'horaire', to: 'Client', channel: 'Email',
+      when: 'Quand un retard décale l\'heure d\'arrivée du groupe',
+      why: 'Ce message porte le nouvel horaire du client. Un texte libre pourrait effacer l\'heure : il reste écrit par le système, mot pour mot, et part à chaque décalage validé.',
+    },
+    {
+      group: 'auto', label: 'Rappel SMS le jour même', to: 'Client', channel: 'SMS',
+      when: 'Le matin de la venue, si un numéro est enregistré',
+      why: 'Un SMS se facture à l\'envoi et ne tient qu\'en deux lignes. Il se coupe en retirant le numéro d\'expéditeur dans Réglages, pas depuis cette page.',
+    },
+    {
+      group: 'staff', label: 'Réservation à valider', to: 'Équipe', channel: 'Email',
+      when: 'Quand aucun créneau automatique n\'est assez sûr',
+    },
+    {
+      group: 'staff', label: 'Info retard terrain', to: 'Équipe', channel: 'Email',
+      when: 'Retard constaté pendant le service, le plan tient',
+    },
+    {
+      group: 'staff', label: 'Retard : décision à prendre', to: 'Équipe', channel: 'Email',
+      when: 'Retard que le planning n\'a pas pu absorber',
+    },
+  ];
+
+  function mailInventoryRow(entry) {
+    const isSeq = entry.group === 'client';
+    const setting = isSeq && mkAuto.settings ? mkAuto.settings[entry.key] : null;
+    const meta = isSeq ? AUTOMATION_META.find((m) => m.key === entry.key) : null;
+    const label = isSeq && meta ? meta.label : entry.label;
+    // Même règle que les interrupteurs : ACTIF n'est pas un statut de réussite.
+    // Ces badges étaient verts, c'est-à-dire de la couleur de « Envoyé ». Une
+    // séquence active peut très bien échouer à chaque envoi : peindre son état
+    // en vert répond à la mauvaise question, et à force de vert partout, le
+    // vert de « Envoyé » ne se voit plus dans la file juste au-dessus.
+    // HIÉRARCHIE REMISE À L'ENDROIT. Les onze « Active » sortaient en blanc gras
+    // et l'unique « Coupée » en gris effacé : l'écran criait la normalité et
+    // chuchotait l'exception. C'est l'inverse qu'il faut. « Active » est l'état
+    // attendu de onze lignes sur douze, il redevient discret ; « Coupée » est la
+    // seule ligne qui demande une décision, elle prend le contraste et le point
+    // plein. Ni vert ni rouge : ce n'est pas un statut d'envoi.
+    const enabled = isSeq ? !!(setting && setting.enabled) : true;
+    const state_ = enabled
+      ? '<span class="pv2-chip is-live">Active</span>'
+      : '<span class="pv2-chip is-off">Coupée</span>';
+    const control = isSeq
+      ? '<span class="mail-inv-pilot">Modifiable ci-dessus</span>'
+      : '<span class="mail-inv-pilot is-fixed">Texte fixe</span>';
+    return `<tr${enabled ? '' : ' class="is-exception"'}>
+      <td><strong>${esc(label)}</strong>${entry.why ? `<small class="pv2-cell-sub">${esc(entry.why)}</small>` : ''}</td>
+      <td><span class="pv2-chip" data-audience="${entry.group === 'staff' ? 'equipe' : 'client'}">${esc(isSeq ? 'Client' : entry.to)}</span></td>
+      <td class="mail-inv-when">${esc(entry.when)}</td>
+      <td>${state_}</td>
+      <td>${control}</td>
+    </tr>`;
+  }
+
+  function mailInventoryPanel() {
+    const open = !!state.staffEmailInventoryOpen;
+    const total = MAIL_INVENTORY.length;
+    const staffCount = MAIL_INVENTORY.filter((e) => e.group === 'staff').length;
+    return `<section class="pv2-panel mail-inv">
+      <div class="pv2-panel-head has-sub">
+        <div>
+          <h2>Tous les mails du centre</h2>
+          <p class="pv2-panel-sub">${total} messages partent d'ici : ${total - staffCount} au client, ${staffCount} à l'équipe. Aucun autre.</p>
+        </div>
+        <button type="button" class="pv2-btn sm" onclick="pv2ToggleMailInventory()" aria-expanded="${open}">${open ? 'Masquer la liste' : 'Voir la liste'}</button>
+      </div>
+      ${open ? `<div class="pv2-panel-body" data-pv2-mount="inventory">
+        <table class="mail-inv-table">
+          <thead><tr><th>Message</th><th>Pour qui</th><th>Quand il part</th><th>État</th><th>Pilotage</th></tr></thead>
+          <tbody>${MAIL_INVENTORY.map(mailInventoryRow).join('')}</tbody>
+        </table>
+        <p class="mail-inv-note">Les trois mails à l'équipe ne se coupent pas depuis cette page, et c'est voulu : ils ne partent jamais à un client, et couper l'alerte d'un retard reviendrait à laisser un groupe sur le terrain sans personne pour trancher. Leur texte est écrit par le système pour tenir en trois lignes lues debout entre deux groupes.</p>
+      </div>` : ''}
+    </section>`;
+  }
+
+  window.pv2ToggleMailInventory = function () {
+    state.staffEmailInventoryOpen = !state.staffEmailInventoryOpen;
+    save();
+    renderStaffEmailsPage();
+  };
+
   window.renderStaffEmailsPage = function (errorMessage = '') {
     const root = document.getElementById('staffEmailsPage');
     if (!root) return;
@@ -2025,19 +2328,43 @@
     const inboundWaiting = inboundRows.filter((row) => !(row.payload && (row.payload.replyCommunicationId || row.payload.repliedAt))).length;
     const updatedAt = opsAdminCache.lastLoadedAt ? formatOpsTimestamp(opsAdminCache.lastLoadedAt) : 'non chargé';
 
+    /* « En file » était BLEU, c'est-à-dire de la couleur réservée à
+       l'information, alors qu'un mail programmé pas encore parti est un état
+       d'ATTENTE : sa couleur est l'ambre. Et « en file » est du vocabulaire de
+       serveur de mails ; pour une gérante c'est « en attente ». */
     const KIND_META = {
-      queued: { label: 'En file', tone: 'blue' },
+      queued: { label: 'En attente', tone: 'amber' },
       sent: { label: 'Envoyé', tone: 'green' },
       failed: { label: 'Échec', tone: 'red' },
       draft: { label: 'Brouillon', tone: '' },
       cancelled: { label: 'Annulé', tone: '' },
     };
 
-    const pipe = (key, label, value, hint) => `<div class="pv2-pipe ${filter === key ? 'active' : ''}" onclick="pv2EmailFilter('${key}')">
-      <div class="pv2-pipe-label">${esc(label)}</div>
-      <div class="pv2-pipe-value" ${PV2.lastPage !== 'emails' ? `data-pv2-count="${Number(value) || 0}"` : ''}>${Number(value) || 0}</div>
-      <div class="pv2-pipe-hint">${esc(hint)}</div>
-    </div>`;
+    /* Les six tuiles occupaient une bande pleine largeur et pesaient autant que
+       la file elle-même, alors que ce sont des FILTRES : on clique dessus pour
+       restreindre la liste. Rendues comme telles (bande de chips, chiffre puis
+       libellé sur une ligne), elles descendent de ~120 px à ~52 px et la file
+       remonte d'autant. Aucune n'est supprimée : chacune est le seul chemin
+       vers son filtre, « Tout » compris (c'est le retour à la vue complète).
+       <button> plutôt que <div> : le filtre devient atteignable au clavier. */
+    /* ACCORDS. « 1 Échecs », « 1 Envoyés », « 3 Tout » traînaient sur un écran
+       relu tous les jours. Le libellé s'accorde donc au compteur, et « Tout »,
+       qui est invariable, ne se met plus DERRIÈRE un nombre (« 3 Tout » ne veut
+       rien dire) : il s'écrit « Tout (3) ». */
+    const pipe = (key, one, many, value, hint, opts = {}) => {
+      const n = Number(value) || 0;
+      const label = esc(n > 1 ? many : one);
+      // Le compte-à-rebours animé écrase le textContent : il ne peut pas porter
+      // les parenthèses. Le total ne s'anime donc pas, et c'est sans importance,
+      // il ne change quasiment jamais.
+      const valueHtml = opts.paren
+        ? `<span class="pv2-pipe-value">(${n})</span>`
+        : `<span class="pv2-pipe-value" ${PV2.lastPage !== 'emails' ? `data-pv2-count="${n}"` : ''}>${n}</span>`;
+      return `<button type="button" class="pv2-pipe ${filter === key ? 'active' : ''}" data-pipe="${key}" onclick="pv2EmailFilter('${key}')" aria-pressed="${filter === key}">
+      ${opts.paren ? `<span class="pv2-pipe-label">${label}</span>${valueHtml}` : `${valueHtml}<span class="pv2-pipe-label">${label}</span>`}
+      ${hint ? `<span class="pv2-pipe-hint">${esc(hint)}</span>` : ''}
+    </button>`;
+    };
 
     /* Un mail qui ne part pas ne se voyait NULLE PART : le pipe « Échecs »
        existait, mais il fallait déjà savoir qu'il y avait un problème pour
@@ -2049,11 +2376,11 @@
     const failureBanner = metrics.failed > 0 ? `
       <section class="pv2-alert" role="alert">
         <div class="pv2-alert-main">
-          <strong>${metrics.failed} mail${metrics.failed > 1 ? 's ne sont jamais partis' : ' n\'est jamais parti'}</strong>
+          <strong>${metrics.failed} mail${metrics.failed > 1 ? 's ne sont jamais partis' : ' n\'est jamais parti'} <span class="pv2-alert-scope">sur les ${allRows.length} messages de la file</span></strong>
           ${topFailure ? `<p class="pv2-alert-cause"><b>${esc(topFailure.label)}</b>${failureGroups.length > 1 ? ` (${topFailure.count} sur ${metrics.failed})` : ''} : ${esc(topFailure.fix)}</p>` : ''}
           ${failureGroups.length > 1 ? `<p class="pv2-alert-other">Autres causes : ${failureGroups.slice(1).map((g) => `${esc(g.label)} (${g.count})`).join(' · ')}</p>` : ''}
         </div>
-        <button type="button" class="pv2-btn" onclick="pv2EmailFilter('failed')">Voir les ${metrics.failed} échecs</button>
+        <button type="button" class="pv2-btn" onclick="pv2EmailFilter('failed')">${metrics.failed > 1 ? `Voir les ${metrics.failed} échecs` : 'Voir cet échec'}</button>
       </section>` : '';
 
     const tableHead = filter === 'inbound'
@@ -2129,29 +2456,102 @@
       ${bar({
         crumb: 'Clients & Marketing / Communications',
         title: 'Emails & relances',
-        sub: `File opérationnelle · actualisé ${esc(updatedAt)}${errorMessage ? ` · <span style="color:var(--v2-red)">${esc(errorMessage)}</span>` : ''}`,
+        /* « File opérationnelle · actualisé 20/07 01:06 » : deux termes de
+           jargon interne pour une gérante de centre. Le sous-titre dit
+           maintenant ce que la page contient, en français, et l'heure de
+           fraîcheur passe en fin de ligne où elle ne bloque plus la lecture. */
+        sub: `Ce qui part, ce qui arrive, ce qui n'est pas parti <span class="pv2-bar-stamp">· à jour à ${esc(updatedAt)}</span>${errorMessage ? ` · <span style="color:var(--v2-red)">${esc(errorMessage)}</span>` : ''}`,
+        /* Six boutons de poids identique = aucune hiérarchie : l'œil ne sait
+           pas par où commencer, et « Analyser un reçu » se lisait comme un
+           reçu de caisse alors que le panneau sert à COLLER un mail reçu d'un
+           client. Trois niveaux désormais : une seule action primaire
+           (Nouveau message), une secondaire (Coller un mail reçu), le reste en
+           discret. « Exporter » et « Envoyer la file » quittent la tête pour
+           se poser sur la file, l'objet sur lequel ils agissent. */
         actions: `
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" oninput="setStaffEmailQuery(this.value)"></label>
-          <button type="button" class="pv2-btn" onclick="requestOpsAdminLoad(true)">Actualiser</button>
-          <button type="button" class="pv2-btn" onclick="exportStaffEmailsCsv()">Exporter</button>
-          <button type="button" class="pv2-btn" onclick="pv2OpenSettings()">${ci('wrench')}Réglages</button>
-          <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Analyser un reçu</button>
-          <button type="button" class="pv2-btn" onclick="requestOpsDispatch()">Envoyer la file</button>
+          <button type="button" class="pv2-btn sm ghost" onclick="requestOpsAdminLoad(true)" title="Recharger les données">${ci('refresh')}Actualiser</button>
+          <button type="button" class="pv2-btn sm ghost" onclick="pv2OpenSettings()">${ci('wrench')}Réglages</button>
+          <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>
           <button type="button" class="pv2-btn primary" onclick="pv2OpenComposer()">${ci('send')}Nouveau message</button>`,
       })}
 
       ${failureBanner}
 
+      <!-- FAMILLE B. Ces trois panneaux apparaissent VRAIMENT sur une action de
+           la gerante, mais ils sont aussi re-rendus a chaque frappe dans la
+           recherche : sans la garde de markEmailsMounts(), leur entree
+           rejouerait a chaque lettre tapee. -->
       ${pv2Mail.composerOpen ? pv2ComposerPanel() : ''}
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
       ${pv2Settings.open ? pv2SettingsPanel() : ''}
 
+      <!-- Le rail est le SEUL element stable du segmente : il ne porte aucun
+           texte, donc aucune donnee ne le detruit. slidePipeRail() le
+           repositionne apres chaque reconstruction depuis une memoire hors
+           DOM : il GLISSE quand la gerante change de filtre, et il ne bouge
+           pas d'un pixel quand seules les donnees ont change. -->
+      <section class="pv2-pipeline" role="group" aria-label="Filtrer la file">
+        <span class="pv2-pipe-rail" aria-hidden="true"></span>
+        ${pipe('all', 'Tout', 'Tout', allRows.length, '', { paren: true })}
+        ${pipe('inbound', 'Reçu', 'Reçus', inboundRows.length, inboundWaiting ? plural(inboundWaiting, 'sans réponse', 'sans réponse') : '')}
+        ${pipe('queued', 'En attente', 'En attente', metrics.queued, plural(metrics.due || 0, 'prêt à partir', 'prêts à partir'))}
+        ${pipe('sent', 'Envoyé', 'Envoyés', metrics.sent, `${metrics.deliveryRate || 0} % de réussite`)}
+        ${pipe('failed', 'Échec', 'Échecs', metrics.failed, plural(metrics.attempted || 0, 'tentative d’envoi', 'tentatives d’envoi'))}
+        ${pipe('review', 'À valider', 'À valider', metrics.review, '')}
+      </section>
+      <!-- TROIS CHIFFRES DIFFERENTS POUR LA MEME CHOSE sur le meme ecran : le
+           bandeau comptait les echecs de la file, le segmente comptait des
+           tentatives, les cartes de sequences comptent sur 30 jours. Aucun des
+           trois perimetres n'etait annonce. Une gerante qui voit trois chiffres
+           pour une seule question cesse de faire confiance a l'ecran : chaque
+           perimetre est desormais ecrit a cote de son chiffre. -->
+      <!-- LA LEGENDE MENTAIT SUR SON PROPRE PERIMETRE : « ces compteurs portent
+           sur les N messages de la file » englobait « Reçus », qui est
+           precisement ce qui n'est PAS dans la file sortante. Une legende
+           censee lever une confusion en creait une autre. Les deux perimetres
+           sont donc annonces separement, chacun avec son chiffre, et les deux
+           chiffres sont ceux affiches sur les segments (verifie au gate). -->
+      <p class="pv2-pipeline-scope">Tout, En attente, Envoyés, Échecs et À valider portent sur les ${allRows.length} messages de la file ci-dessous. Reçus compte à part les ${inboundRows.length} mails arrivés dans la boîte du centre. Les cartes de séquences, plus bas, comptent sur les 30 derniers jours.</p>
+
+      <section class="pv2-split">
+        <article class="pv2-panel pv2-mail-list">
+          <div class="pv2-panel-head pv2-list-head">
+            <h2>${filter === 'inbound' ? 'Mails reçus' : 'La file'}</h2>
+            <div class="pv2-panel-head-actions">
+              <button type="button" class="pv2-btn sm ghost" onclick="exportStaffEmailsCsv()">Exporter</button>
+              <button type="button" class="pv2-btn sm" onclick="requestOpsDispatch()">Envoyer la file</button>
+            </div>
+          </div>
+          <table class="pv2-table">
+            ${tableHead}
+            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
+          </table>
+        </article>
+        <article class="pv2-panel">
+          <div class="pv2-panel-head"><h2>${esc(selected?.subject || 'Détail')}</h2></div>
+          ${detail}
+        </article>
+      </section>
+
+      <!-- ORDRE DE LECTURE (défaut n°7 de la capture : « trop de défilement »).
+           L'ancien ordre était séquences → inventaire → filtres → file :
+           il fallait passer deux sections de RÉGLAGE avant de voir ce qui se
+           passe AUJOURD'HUI. Or la page se consulte tous les jours pour deux
+           questions (« qu'est-ce qui n'est pas parti ? », « qu'est-ce qui part
+           maintenant ? ») et se règle trois fois par an. Ce qui se consulte
+           passe donc devant ce qui se règle : échecs, filtres, file, détail
+           tiennent haut ; les séquences, l'inventaire et les campagnes suivent
+           pour qui descend les chercher. -->
       <section class="pv2-panel mk-auto-panel">
         <div class="pv2-panel-head has-sub">
-          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Active, coupe, personnalise, ou crée les tiennes de A à Z.</p></div>
+          <!-- Le reste de la page vouvoie la directrice, cette phrase la
+               tutoyait (« Active, coupe, personnalise, ou crée les tiennes »).
+               Un seul registre sur tout l'écran. -->
+          <div><h2>Séquences automatiques</h2><p class="pv2-panel-sub">Les emails qui partent tout seuls, au bon moment. Activez, coupez, personnalisez, ou créez les vôtres. Les compteurs de chaque carte portent sur les 30 derniers jours.</p></div>
           <div class="pv2-panel-head-actions">
-            ${mkAuto.error ? `<button type="button" class="pv2-btn" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
-            <button type="button" class="pv2-btn" onclick="pv2SeqNew()">+ Créer une séquence</button>
+            ${mkAuto.error ? `<button type="button" class="pv2-btn sm" onclick="loadStaffAutomations(true)">Réessayer</button>` : ''}
+            <button type="button" class="pv2-btn sm" onclick="pv2SeqNew()">+ Créer une séquence</button>
           </div>
         </div>
         <div class="pv2-panel-body">
@@ -2164,30 +2564,24 @@
         </div>
       </section>
 
-      <section class="pv2-pipeline">
-        ${pipe('all', 'Total', allRows.length, 'toutes communications')}
-        ${pipe('inbound', 'Reçus', inboundRows.length, inboundWaiting ? `${inboundWaiting} sans réponse` : 'boîte de réception')}
-        ${pipe('queued', 'En file', metrics.queued, `${metrics.due || 0} prêt(s) à partir`)}
-        ${pipe('sent', 'Envoyés', metrics.sent, `${metrics.deliveryRate || 0}% de réussite`)}
-        ${pipe('failed', 'Échecs', metrics.failed, `${metrics.attempted || 0} tentative(s)`)}
-        ${pipe('review', 'Validations', metrics.review, 'demandes staff')}
-      </section>
-
-      <section class="pv2-split">
-        <article class="pv2-panel pv2-mail-list">
-          <table class="pv2-table">
-            ${tableHead}
-            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Colle un mail via « Analyser un reçu », l\'agent prépare la réponse.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
-          </table>
-        </article>
-        <article class="pv2-panel">
-          <div class="pv2-panel-head"><h2>${esc(selected?.subject || 'Détail')}</h2></div>
-          ${detail}
-        </article>
-      </section>
+      ${mailInventoryPanel()}
       ${typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : ''}
     </div>`;
     mount(root, 'emails');
+    // Le mouvement se recale APRES la reconstruction, jamais pendant : les trois
+    // appels lisent une memoire hors DOM, comparent, et ne bougent que ce qui a
+    // reellement change d'etat. C'est ce qui rend la page animee sans qu'aucune
+    // animation ne rejoue quand seules les donnees ont bouge.
+    slidePipeRail(root);
+    replaySwitchKnobs(root);
+    markEmailsMounts(root, {
+      composer: pv2Mail.composerOpen,
+      analyze: pv2Mail.analyzeOpen,
+      settings: pv2Settings.open,
+      seqEditor: pv2Seq.creating || pv2Seq.editId,
+      autoEditor: mkAuto.editKey,
+      inventory: state.staffEmailInventoryOpen,
+    });
     if (typeof pv2Camp !== 'undefined' && !pv2Camp.loaded && !pv2Camp.loading) setTimeout(() => loadPv2Campaigns(), 0);
   };
 
@@ -3233,7 +3627,7 @@
       }
     }
     if (!Number.isInteger(count) || count < 1) { if (typeof toast === 'function') toast('Ce segment ne contient aucun destinataire.'); return; }
-    if (!window.confirm(`Envoyer le brouillon « ${campaign.name} » maintenant à ${count} destinataire(s) ?`)) return;
+    if (!window.confirm(`Envoyer le brouillon « ${campaign.name} » maintenant à ${plural(count, 'destinataire', 'destinataires')} ?`)) return;
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
@@ -3285,7 +3679,7 @@
       if (typeof toast === 'function') toast("Audience en cours de calcul : attends le nombre de destinataires avant d'envoyer.");
       return;
     }
-    if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${count} destinataire(s) du segment sélectionné ?`)) return;
+    if (mode === 'now' && !window.confirm(`Envoyer maintenant à ${plural(count, 'destinataire', 'destinataires')} du segment sélectionné ?`)) return;
     if (mode === 'schedule' && !form.scheduledAt) { if (typeof toast === 'function') toast('Choisis la date et l\'heure d\'envoi.'); return; }
     pv2Camp.busy = true;
     if (button) button.disabled = true;
@@ -3374,7 +3768,8 @@
       for (const r of payload.recipients || []) rows.push([r.name, r.email, r.visits, String(r.revenue).replace('.', ','), r.lastDate]);
       const csv = '﻿' + rows.map((row) => row.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
       pv2CampDownload(`destinataires-${segment}.csv`, csv, 'text/csv;charset=utf-8');
-      if (typeof toast === 'function') toast(`${(payload.recipients || []).length} destinataire(s) exporté(s).`);
+      const exported = (payload.recipients || []).length;
+      if (typeof toast === 'function') toast(exported > 1 ? `${exported} destinataires exportés.` : `${exported} destinataire exporté.`);
     } catch (error) {
       if (typeof toast === 'function') toast(error.message || 'Export impossible.');
     }
@@ -3401,7 +3796,7 @@
     const segLabel = (id) => (pv2Camp.segments.find((s) => s.id === id) || {}).label || id;
 
     const list = pv2Camp.campaigns.length ? `<table class="pv2-table">
-      <thead><tr><th>Campagne</th><th>Segment</th><th>Statut</th><th class="num">Cibles</th><th class="num">Envoyés</th><th class="num">Échecs</th><th class="num">En file</th><th>Suivi</th><th></th></tr></thead>
+      <thead><tr><th>Campagne</th><th>Segment</th><th>Statut</th><th class="num">Cibles</th><th class="num">Envoyés</th><th class="num">Échecs</th><th class="num">En attente</th><th>Suivi</th><th></th></tr></thead>
       <tbody>${pv2Camp.campaigns.map((c) => {
         const [label, tone] = PV2_CAMP_STATUS[c.status] || [c.status, ''];
         return `<tr>
@@ -3428,7 +3823,7 @@
       const audience = pv2Camp.audience[f.segment];
       const audienceLabel = pv2Camp.audienceLoading === f.segment
         ? 'calcul…'
-        : audience ? `${audience.count} destinataire(s)${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '-';
+        : audience ? `${plural(audience.count, 'destinataire', 'destinataires')}${audience.sample?.length ? ` · ex : ${audience.sample.slice(0, 3).join(', ')}` : ''}` : '-';
       return `<div class="ms-viewer"><div class="ms-form">
         ${pv2Camp.editingId ? '<div class="ms-form-note">Édition du brouillon : enregistre tes modifications, ou envoie-le directement.</div>' : ''}
         <div class="ms-grid-2">
@@ -3462,12 +3857,30 @@
       </div></div>`;
     })() : '';
 
+    /* Zéro campagne occupait un bloc plein (titre, deux boutons, grand vide
+       centré) : autant de hauteur qu'une section pleine, pour dire « il n'y a
+       rien ». Tant qu'il n'y a rien à montrer et rien d'ouvert, la section se
+       replie sur une seule ligne qui garde l'entrée en main. Dès qu'une
+       campagne existe, ou que le formulaire est ouvert, elle reprend sa
+       taille normale. */
+    const isIdleEmpty = !pv2Camp.error && !form && !pv2Camp.loading && !(pv2Camp.campaigns || []).length;
+    if (isIdleEmpty) {
+      return `<section class="pv2-panel pv2-camp-slim">
+        <div class="pv2-camp-slim-row">
+          <div>
+            <strong>Campagnes email</strong>
+            <span>Aucune campagne. Le ciblage se fait sur votre base clients réelle.</span>
+          </div>
+          <button type="button" class="pv2-btn sm" onclick="pv2CampOpenForm()">Créer la première</button>
+        </div>
+      </section>`;
+    }
     return `<section class="pv2-panel">
       <div class="pv2-panel-head">
         <h2>Campagnes email : ciblage réel</h2>
         <div style="display:flex;gap:8px;align-items:center">
           ${pv2Camp.channel && pv2Camp.channel.resendConfigured === false ? '<small style="color:var(--warning)">canal d\'envoi à configurer, les envois restent en file</small>' : ''}
-          <button type="button" class="pv2-btn" onclick="loadPv2Campaigns(true)">Actualiser</button>
+          <button type="button" class="pv2-btn sm ghost" onclick="loadPv2Campaigns(true)">Actualiser</button>
           <button type="button" class="pv2-btn primary" onclick="pv2CampOpenForm()">+ Nouvelle campagne</button>
         </div>
       </div>

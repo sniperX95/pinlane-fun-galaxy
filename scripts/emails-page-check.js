@@ -2,7 +2,7 @@
 // Playwright pilote de vrais clics : séquences automatiques (toggle + éditeur
 // complet sujet/corps/timing + reset), composer universel (autocomplete client,
 // identités, modèles, envoi sendDirectEmail), boîte de réception (pipe Reçus,
-// analyse IA, réponse 1-clic avec replyToCommunicationId), « Analyser un
+// analyse IA, réponse 1-clic avec replyToCommunicationId), « Coller un mail
 // reçu », pv2OpenComposer préfill. Contrats : spec emails-v3 (C1-C5, C8, C9).
 const fs = require('fs');
 const http = require('http');
@@ -174,6 +174,42 @@ async function main() {
     await page.waitForFunction(() => typeof opsAdminCache !== 'undefined' && (opsAdminCache.communications || []).length > 0, null, { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(200);
 
+    // Captures optionnelles : PINLANE_EMAILS_SHOTS=<dossier> pour REGARDER la
+    // page au lieu de la deviner. Le harnais est deja monte (mock, session,
+    // navigation) : le dupliquer ailleurs le ferait diverger silencieusement.
+    // N'altere ni les assertions ni le code de sortie.
+    if (process.env.PINLANE_EMAILS_SHOTS) {
+      const shotDir = process.env.PINLANE_EMAILS_SHOTS;
+      fs.mkdirSync(shotDir, { recursive: true });
+      // setStaffTheme() est le SEUL chemin qui pose data-theme sur <html>
+      // (app-main.js, applyStaffTheme). Affecter state.staffTheme a la main
+      // change la variable et rien d'autre : les deux captures sortaient
+      // identiques, en sombre, et le theme clair n'etait jamais regarde.
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate((t) => { setStaffTheme(t); }, theme);
+        await page.waitForTimeout(500);
+        await page.setViewportSize({ width: 1400, height: 900 });
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: path.join(shotDir, `emails-${theme}-desktop.png`), fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(shotDir, `emails-${theme}-mobile.png`), fullPage: true });
+      }
+      // L'inventaire « Tous les mails du centre » est replie par defaut : sans
+      // cette capture, son etat deplie n'est jamais regarde par personne.
+      await page.setViewportSize({ width: 1400, height: 900 });
+      await page.evaluate(() => { setStaffTheme('dark'); pv2ToggleMailInventory(); });
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(shotDir, 'emails-dark-inventaire.png'), fullPage: true });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: path.join(shotDir, 'emails-dark-inventaire-mobile.png'), fullPage: true });
+      await page.setViewportSize({ width: 1400, height: 900 });
+      await page.evaluate(() => { pv2ToggleMailInventory(); });
+      await page.waitForTimeout(400);
+      console.log(`[SHOTS] captures ecrites dans ${shotDir}`);
+    }
+
     console.log('\n[LOAD] page Emails v3');
     const load = await page.evaluate(() => ({
       cards: document.querySelectorAll('#staffEmailsPage .mk-auto').length,
@@ -186,25 +222,110 @@ async function main() {
       pipeline: document.querySelectorAll('#staffEmailsPage .pv2-pipe').length,
       tableRows: document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr').length,
       newMsgBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Nouveau message/.test(b.textContent)),
-      analyzeBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Analyser un reçu/.test(b.textContent)),
+      // Libelle renomme : « Analyser un reçu » se lisait comme un reçu de
+      // caisse. Le panneau sert a COLLER un mail reçu d'un client.
+      analyzeBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Coller un mail reçu/.test(b.textContent)),
       alert: (document.querySelector('#staffEmailsPage .pv2-alert') || {}).textContent || '',
       failedCellTxt: [...document.querySelectorAll('#staffEmailsPage .pv2-cell-fail')].map((el) => el.textContent).join(' | '),
+      pageText: (document.getElementById('staffEmailsPage') || {}).textContent || '',
+      pipeAll: ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="all"]') || {}).textContent || '').trim().replace(/\s+/g, ' '),
+      pipeSent: ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="sent"] .pv2-pipe-value') || {}).textContent || '') + ' ' + ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="sent"] .pv2-pipe-label') || {}).textContent || ''),
+      pipeFailed: ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="failed"] .pv2-pipe-value') || {}).textContent || '') + ' ' + ((document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="failed"] .pv2-pipe-label') || {}).textContent || ''),
+      pipeQueuedTone: [...document.querySelectorAll('#staffEmailsPage .pv2-table tbody .pv2-chip')].map((c) => (/En attente/.test(c.textContent) ? [...c.classList].find((k) => k !== 'pv2-chip') : '')).filter(Boolean)[0] || '',
     }));
     if (missed.size) console.log('URLs 404 :', [...missed].slice(0, 5).join(' · '));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
     ok(load.cards === 6, `6 cartes séquences, Demande recue incluse (obtenu ${load.cards})`);
-    ok(load.labels.some((l) => /Anniversaire J-30/.test(l)) && load.labels.some((l) => /Réactivation/.test(l)), 'Anniversaire J-30 + Réactivation présentes');
+    ok(load.labels.some((l) => /30 jours avant l’anniversaire/.test(l)) && load.labels.some((l) => /Réactiver les clients dormants/.test(l)), 'séquences anniversaire + réactivation présentes, libellées en français lisible');
+    // F6 : aucun jargon ne doit revenir par la fenêtre sur cet écran.
+    // « no-show » a survécu à la passe précédente ALORS QU'une assertion de
+    // non-régression existait déjà sur le sujet : elle ne listait pas le mot.
+    // Une assertion qui ne nomme pas la propriété qui échoue reste verte pour
+    // rien. Le seul anglicisme restant de l'écran est donc nommé ici.
+    ok(!/J-30|En file|no.?show/i.test(load.pageText), `aucun jargon résiduel (J-30 / En file / no-show) sur la page`);
     ok(load.onCount === 5, `5 séquences ON au départ (obtenu ${load.onCount})`);
-    ok(/37 envoyés/.test(load.statsTxt), `stats 30 j affichées (${load.statsTxt.trim().slice(0, 40)})`);
+    ok(/37\u00a0envoyés/.test(load.statsTxt), `stats 30 j affichées avec espace insécable (${JSON.stringify(load.statsTxt.trim().slice(0, 30))})`);
+    ok(/sur 30\u00a0jours/.test(load.statsTxt), 'période explicite sur la carte de séquence (F8), unité insécable');
     ok(load.preview, 'aperçu du message dépliable');
     ok(load.editBtns === 6, `bouton Modifier sur chaque carte (obtenu ${load.editBtns})`);
     ok(load.pipeline === 6, `pipeline avec pipe Reçus (obtenu ${load.pipeline})`);
+    ok(/^1 Échec$/.test(load.pipeFailed), `accord du libellé au compteur : « ${load.pipeFailed} » et non « 1 Échecs »`);
+    ok(/^1 Envoyé$/.test(load.pipeSent), `accord du libellé au compteur : « ${load.pipeSent} »`);
+    ok(/^Tout\s*\(3\)$/.test(load.pipeAll), `total invariable écrit « Tout (3) » et non « 3 Tout » (obtenu « ${load.pipeAll} »)`);
+    ok(load.pipeQueuedTone === 'amber', `« En attente » est un état d'attente, donc ambre et non bleu (obtenu ${load.pipeQueuedTone || 'aucun'})`);
     ok(load.tableRows === 3, `file d'envoi = 3 lignes, reçus exclus (obtenu ${load.tableRows})`);
-    ok(load.newMsgBtn && load.analyzeBtn, 'boutons « Nouveau message » + « Analyser un reçu » dans la bar');
+    ok(load.newMsgBtn && load.analyzeBtn, 'boutons « Nouveau message » + « Coller un mail reçu » dans la bar');
 
     // Un mail qui n'est pas parti doit se voir SANS avoir a le chercher : la
     // fixture contient 1 echec (« Mailbox full »), le bandeau doit s'imposer en
     // tete de page et nommer la cause en francais.
+    /* ══ G2 : LE CABLAGE DES FILTRES ═══════════════════════════════════════
+       Trou demontre par mutation : un relecteur a recable le segment « Echecs »
+       sur la cle de filtre des envoyes (les echecs devenaient INATTEIGNABLES
+       depuis la barre) et le gate sortait ALL OK. Il ne verifiait que la
+       PRESENCE de six boutons, jamais ce qu'un clic produit.
+       On CLIQUE donc chaque segment, et on lit la file obtenue : nombre de
+       lignes, colonne de tete, ET statut lu dans chaque ligne. Une regex sur le
+       source ne verrait pas la difference ; un vrai clic suivi d'un vrai releve,
+       si. */
+    console.log('\n[G2 CABLAGE DES FILTRES] un clic par segment, on lit la file obtenue');
+    // Les comptes ATTENDUS sont derives des donnees vivantes, pas ecrits en dur :
+    // le scenario precedent a deja envoye des mails et colle un mail recu, donc
+    // un chiffre fige serait faux. Ils sont calcules par un chemin INDEPENDANT
+    // du cablage teste (on lit le statut brut de chaque ligne de donnees, on ne
+    // rappelle pas le filtre de l'application).
+    const expected = await page.evaluate(() => {
+      const rows = getStaffEmailRows();
+      const inbound = (r) => r.direction === 'inbound' || r.status === 'received';
+      const out = rows.filter((r) => !inbound(r));
+      return {
+        all: out.length,
+        failed: out.filter((r) => r.statusKind === 'failed').length,
+        sent: out.filter((r) => r.statusKind === 'sent').length,
+        queued: out.filter((r) => r.statusKind === 'queued').length,
+        inbound: rows.filter(inbound).length,
+        review: out.filter((r) => r.templateId === 'staff_review_request').length,
+      };
+    });
+    const segCases = [
+      { key: 'all', status: null, head: 'Message' },
+      { key: 'failed', status: 'Échec', head: 'Message' },
+      { key: 'sent', status: 'Envoyé', head: 'Message' },
+      { key: 'queued', status: 'En attente', head: 'Message' },
+      { key: 'inbound', status: null, head: 'De' },
+      { key: 'review', status: null, head: 'Message' },
+    ];
+    // Un jeu de donnees ou tous les segments seraient vides validerait tout et
+    // ne prouverait rien : on exige au moins un segment non vide avant de lire.
+    ok(expected.failed + expected.sent + expected.queued + expected.inbound > 0,
+      'echantillon non vide : ' + JSON.stringify(expected));
+    for (const c of segCases) {
+      const seen = await page.evaluate(async (key) => {
+        const btn = document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="' + key + '"]');
+        if (!btn) return { missing: true, rows: -1, head: '', statuses: [], activeKey: '' };
+        btn.click();
+        await new Promise((r) => setTimeout(r, 250));
+        const body = [...document.querySelectorAll('#staffEmailsPage .pv2-mail-list .pv2-table tbody tr')];
+        const dataRows = body.filter((tr) => !tr.querySelector('.pv2-empty'));
+        const active = document.querySelector('#staffEmailsPage .pv2-pipe.active');
+        return {
+          missing: false,
+          activeKey: active ? active.getAttribute('data-pipe') : '',
+          rows: dataRows.length,
+          head: ((document.querySelector('#staffEmailsPage .pv2-mail-list thead th') || {}).textContent || '').trim(),
+          statuses: dataRows.map((tr) => (tr.children[tr.children.length - 2].textContent || '').trim()),
+        };
+      }, c.key);
+      ok(!seen.missing && seen.activeKey === c.key, 'segment « ' + c.key + ' » : c\'est bien lui qui devient actif (obtenu ' + (seen.activeKey || 'aucun') + ')');
+      ok(seen.rows === expected[c.key], 'segment « ' + c.key + ' » : la file affichee correspond au segment (' + expected[c.key] + ' attendue(s), ' + seen.rows + ' affichee(s))');
+      ok(seen.head === c.head, 'segment « ' + c.key + ' » : colonne de tete « ' + c.head + ' » (obtenu « ' + seen.head + ' »)');
+      if (c.status) {
+        ok(seen.statuses.length > 0 && seen.statuses.every((t) => t.includes(c.status)),
+          'segment « ' + c.key + ' » : chaque ligne affichee porte le statut « ' + c.status + ' » (obtenu ' + JSON.stringify(seen.statuses) + ')');
+      }
+    }
+    await page.evaluate(() => { pv2EmailFilter('all'); });
+    await page.waitForTimeout(250);
     console.log('\n[ECHECS] remontee proactive en tete de page');
     ok(/1 mail n'est jamais parti|1 mail n’est jamais parti/.test(load.alert), `bandeau d'alerte affiche (${load.alert.trim().slice(0, 60)})`);
     ok(/Domaine d.envoi pas encore vérifié/.test(load.alert), 'cause traduite en francais, pas le message brut du fournisseur');
@@ -234,7 +355,7 @@ async function main() {
 
     console.log('\n[TOGGLE] activer Réactivation → POST + switch ON');
     await page.evaluate(() => {
-      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => /Réactivation/.test(c.textContent));
+      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => c.querySelector('[data-switch-key="auto:reactivation"]'));
       card.querySelector('.mk-switch').click();
     });
     await page.waitForTimeout(400);
@@ -247,7 +368,7 @@ async function main() {
 
     console.log('\n[TOGGLE] couper Anniversaire J-30 → POST enabled:false');
     await page.evaluate(() => {
-      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => /Anniversaire J-30/.test(c.textContent));
+      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => c.querySelector('[data-switch-key="auto:birthday_j30"]'));
       card.querySelector('.mk-switch').click();
     });
     await page.waitForTimeout(400);
@@ -260,7 +381,7 @@ async function main() {
 
     console.log('\n[ÉDITEUR] personnaliser la séquence anniversaire');
     await page.evaluate(() => {
-      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => /Anniversaire J-30/.test(c.textContent));
+      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => c.querySelector('[data-switch-key="auto:birthday_j30"]'));
       card.querySelector('.mk-auto-edit-btn').click();
     });
     await page.waitForTimeout(300);
@@ -294,7 +415,7 @@ async function main() {
     // JAMAIS transporter d'adresse : le serveur envoie au membre connecte.
     console.log('\n[APERCU + TEST] le brouillon en cours, rendu par le serveur');
     await page.evaluate(() => {
-      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => /Anniversaire J-30/.test(c.textContent));
+      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => c.querySelector('[data-switch-key="auto:birthday_j30"]'));
       card.querySelector('.mk-auto-edit-btn').click();
     });
     await page.waitForTimeout(300);
@@ -325,7 +446,7 @@ async function main() {
 
     console.log('\n[ÉDITEUR] réinitialiser → défauts');
     await page.evaluate(() => {
-      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => /Anniversaire J-30/.test(c.textContent));
+      const card = [...document.querySelectorAll('#staffEmailsPage .mk-auto')].find((c) => c.querySelector('[data-switch-key="auto:birthday_j30"]'));
       card.querySelector('.mk-auto-edit-btn').click();
     });
     await page.waitForTimeout(250);
@@ -421,7 +542,7 @@ async function main() {
 
     console.log('\n[ANALYSER UN REÇU] coller un mail → store → Reçus');
     await page.evaluate(() => {
-      [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].find((b) => /Analyser un reçu/.test(b.textContent)).click();
+      [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].find((b) => /Coller un mail reçu/.test(b.textContent)).click();
     });
     await page.waitForTimeout(300);
     const analyzeOpen = await page.evaluate(() => !!document.querySelector('#staffEmailsPage .pv2-analyze'));
@@ -499,6 +620,233 @@ async function main() {
     ok(setRes.post && setRes.post.signature === 'La team FG' && setRes.post.faq && setRes.post.faq.horaires && setRes.post.faq.horaires.body === 'Custom horaires du gérant.', 'POST emailBrain (signature + FAQ modifiée)');
     ok(setRes.tplPost && setRes.tplPost.name === 'Mon modèle', "création d'un modèle depuis la page (POST saveEmailTemplate)");
 
+
+
+    /* ══ G1 : L'INVENTAIRE DES MAILS ═══════════════════════════════════════
+       Trou demontre par mutation : un relecteur a SUPPRIME l'appel
+       mailInventoryPanel() du rendu ; l'inventaire disparaissait entierement de
+       la page et le gate sortait ALL OK avec 61 assertions vertes. Or « tout
+       doit etre visible et pilotable depuis cet ecran » est une demande
+       explicite : c'est le SEUL endroit qui dit quels mails existent, y compris
+       les cinq qu'aucun autre ecran ne montre.
+       Assertion COMPORTEMENTALE : on clique le vrai bouton, on compte les vraies
+       lignes, et on verifie que l'inventaire DISTINGUE ce qui part au client de
+       ce qui part a l'equipe. */
+    console.log('\n[G1 INVENTAIRE] la liste de tous les mails du centre, ouverte par un clic');
+    const inv = await page.evaluate(async () => {
+      const find = () => [...document.querySelectorAll('#staffEmailsPage .mail-inv button')].find((b) => /Voir la liste|Masquer la liste/.test(b.textContent));
+      let btn = find();
+      if (!btn) return { noButton: true, rows: -1, client: -1, equipe: -1, labels: [], offWeight: null };
+      if (/Masquer/.test(btn.textContent)) { btn.click(); await new Promise((r) => setTimeout(r, 250)); btn = find(); }
+      btn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const rows = [...document.querySelectorAll('#staffEmailsPage .mail-inv-table tbody tr')];
+      const audience = (tr) => { const el = tr.querySelector('[data-audience]'); return el ? el.getAttribute('data-audience') : ''; };
+      const off = document.querySelector('#staffEmailsPage .mail-inv-table .pv2-chip.is-off');
+      const live = document.querySelector('#staffEmailsPage .mail-inv-table .pv2-chip.is-live');
+      return {
+        noButton: false,
+        rows: rows.length,
+        client: rows.filter((tr) => audience(tr) === 'client').length,
+        equipe: rows.filter((tr) => audience(tr) === 'equipe').length,
+        labels: rows.map((tr) => ((tr.querySelector('strong') || {}).textContent || '')),
+        offWeight: (off && live) ? { off: Number(getComputedStyle(off).fontWeight), live: Number(getComputedStyle(live).fontWeight) } : null,
+      };
+    });
+    ok(!inv.noButton, 'l\'inventaire « Tous les mails du centre » existe et s\'ouvre depuis la page');
+    ok(inv.rows === 11, 'l\'inventaire liste bien les 11 mails reellement envoyes (obtenu ' + inv.rows + ')');
+    ok(inv.client === 8 && inv.equipe === 3, 'il distingue ce qui part au CLIENT (8) de ce qui part a l\'EQUIPE (3) : obtenu ' + inv.client + '/' + inv.equipe);
+    ok(inv.labels.some((l) => /Retard : décision à prendre/.test(l)) && inv.labels.some((l) => /Changement d.horaire/.test(l)),
+      'les mails NON pilotables y figurent aussi (alerte retard, changement d\'horaire) : ce sont ceux qu\'aucun autre ecran ne montre');
+    ok(!!inv.offWeight && inv.offWeight.off > inv.offWeight.live,
+      'hierarchie remise a l\'endroit : l\'exception « Coupee » (' + (inv.offWeight && inv.offWeight.off) + ') pese plus que l\'etat normal « Active » (' + (inv.offWeight && inv.offWeight.live) + ')');
+
+    /* ══ MOUVEMENT : la garde de non-rejeu ═════════════════════════════════
+       Une animation d'entree posee sur un noeud interieur de cette page
+       REJOUERAIT a chaque reconstruction (chaque frappe dans la recherche,
+       chaque arrivee de donnees) : c'est le defaut le plus visible de tous, et
+       c'est ce qui fait qu'une interface « animee » a l'air baclee.
+       On le VERIFIE au lieu de l'affirmer. */
+    console.log('\n[MOUVEMENT] aucune entree ne rejoue sur un simple re-rendu');
+    const motion = await page.evaluate(async () => {
+      pv2CloseComposer();
+      await new Promise((r) => setTimeout(r, 250));
+      pv2OpenComposer({ to: 'motion@test.be' });
+      await new Promise((r) => setTimeout(r, 250));
+      const onOpen = !!document.querySelector('[data-pv2-mount="composer"].pv2-mount');
+      renderStaffEmailsPage();
+      await new Promise((r) => setTimeout(r, 150));
+      const onRerender = !!document.querySelector('[data-pv2-mount="composer"].pv2-mount');
+      renderStaffEmailsPage();
+      await new Promise((r) => setTimeout(r, 100));
+      const railEl = () => document.querySelector('#staffEmailsPage .pv2-pipe-rail');
+      const railStill = railEl() ? railEl().getAttribute('data-moved') : 'absent';
+
+      /* ══ D3 : LE GATE MESURE D'OU LE RAIL PART, PAS SEULEMENT QU'IL PART ═══
+         Les deux assertions data-moved (railStill=0, railMoved=1) sont restees
+         VERTES pendant que l'animation etait visiblement cassee : le rail
+         surgissait de scaleX(~0) au bord gauche au lieu de glisser depuis le
+         segment precedent. Un booleen « il a bouge » ne peut pas voir ca.
+         On lit donc la MATRICE calculee du rail a la premiere frame apres le
+         clic. Le rail fait 100 px de base, transform-origin 0 50% : m41 est sa
+         position de depart, m11*100 sa largeur de depart. --dur-move vaut
+         180 ms et la courbe (0.77, 0, 0.175, 1) demarre tres lentement, donc a
+         la premiere frame le rail n'a pratiquement pas encore avance : la
+         valeur lue est bien la geometrie de DEPART. */
+      pv2EmailFilter('sent');
+      await new Promise((r) => setTimeout(r, 320));
+      const bar = document.querySelector('#staffEmailsPage .pv2-pipeline');
+      const prevSeg = bar.querySelector('.pv2-pipe.active');
+      const fromSeg = { key: prevSeg.getAttribute('data-pipe'), x: prevSeg.offsetLeft, w: prevSeg.offsetWidth };
+      const targetSeg = bar.querySelector('.pv2-pipe[data-pipe="failed"]');
+      const toSeg = { x: targetSeg.offsetLeft, w: targetSeg.offsetWidth };
+      const railGeo = () => {
+        const m = new DOMMatrixReadOnly(getComputedStyle(railEl()).transform);
+        return { x: Math.round(m.m41 * 100) / 100, w: Math.round(m.a * 100 * 100) / 100 };
+      };
+      targetSeg.click();
+      const railStart = await new Promise((res) => requestAnimationFrame(() => res(railGeo())));
+      await new Promise((r) => setTimeout(r, 400));
+      const railEnd = railGeo();
+      const railMoved = railEl() ? railEl().getAttribute('data-moved') : 'absent';
+      pv2CloseComposer();
+      pv2EmailFilter('all');
+      await new Promise((r) => setTimeout(r, 200));
+      return { onOpen, onRerender, railStill, railMoved, fromSeg, toSeg, railStart, railEnd };
+    });
+    ok(motion.onOpen, 'l\'entree du composer est animee a sa VRAIE apparition (classe .pv2-mount posee)');
+    ok(motion.onRerender === false, 'elle ne rejoue PAS sur un simple re-rendu : c\'est ce qui evite le clignotement');
+    ok(motion.railStill === '0', 'l\'indicateur du segmente ne bouge pas quand seules les donnees changent (data-moved=' + motion.railStill + ')');
+    ok(motion.railMoved === '1', 'il GLISSE quand la gerante change de filtre (data-moved=' + motion.railMoved + ')');
+    // Le segment de depart est choisi LOIN du bord gauche (« Envoyes ») : une
+    // geometrie nulle ne peut donc pas passer pour une geometrie juste.
+    ok(motion.fromSeg.x > 100 && motion.fromSeg.w > 100,
+      'point de depart mesurable : le segment precedent « ' + motion.fromSeg.key + ' » est a x=' + motion.fromSeg.x + ' et large de ' + motion.fromSeg.w + ' px');
+    ok(Math.abs(motion.railStart.w - motion.fromSeg.w) <= 6,
+      'GEOMETRIE DE DEPART : le rail part de la LARGEUR du segment precedent (' + motion.fromSeg.w + ' px attendus, ' + motion.railStart.w + ' px mesures) et non de ~0');
+    ok(Math.abs(motion.railStart.x - motion.fromSeg.x) <= 6,
+      'GEOMETRIE DE DEPART : le rail part de la POSITION du segment precedent (' + motion.fromSeg.x + ' px attendus, ' + motion.railStart.x + ' px mesures) et non du bord gauche');
+    ok(Math.abs(motion.railEnd.w - motion.toSeg.w) <= 2 && Math.abs(motion.railEnd.x - motion.toSeg.x) <= 2,
+      'et il ARRIVE sur le segment choisi (attendu x=' + motion.toSeg.x + ' w=' + motion.toSeg.w + ', mesure x=' + motion.railEnd.x + ' w=' + motion.railEnd.w + ')');
+
+    /* ══ D2 : LE CYCLE DE VIE DE L'OBSERVATEUR SUIT CELUI DU NOEUD ══════════
+       La page se reconstruit ENTIEREMENT a chaque frappe. Un observateur cree
+       par rendu et jamais deconnecte s'accumule lineairement, retient un
+       sous-arbre detache, et surtout se declenche ensuite sur ce noeud mort :
+       c'est la cause racine mesuree du defaut de geometrie ci-dessus.
+       Mesure : on instrumente ResizeObserver, on tape 10 caracteres, on compte. */
+    const roLeak = await page.evaluate(async () => {
+      const Native = window.ResizeObserver;
+      const seen = { created: 0, detachedCallbacks: 0, live: new Set() };
+      window.ResizeObserver = class extends Native {
+        constructor(cb) {
+          super((entries, obs) => {
+            for (const e of entries) if (!document.contains(e.target)) seen.detachedCallbacks += 1;
+            return cb(entries, obs);
+          });
+          seen.created += 1; seen.live.add(this);
+        }
+        disconnect() { seen.live.delete(this); return super.disconnect(); }
+      };
+      const before = String(state.staffEmailQuery || '');
+      for (const c of 'abcdefghij') {
+        setStaffEmailQuery((state.staffEmailQuery || '') + c);
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      await new Promise((r) => setTimeout(r, 400));
+      window.ResizeObserver = Native;
+      setStaffEmailQuery(before);
+      await new Promise((r) => setTimeout(r, 250));
+      return { created: seen.created, detached: seen.detachedCallbacks, live: seen.live.size };
+    });
+    ok(roLeak.created <= 1,
+      'FUITE : 10 frappes dans la recherche ne laissent au plus 1 observateur vivant (obtenu ' + roLeak.created + ' cree(s), ' + roLeak.live + ' vivant(s))');
+    ok(roLeak.detached === 0,
+      'et AUCUN rappel ne porte sur un noeud detache du document (obtenu ' + roLeak.detached + ')');
+
+    /* ══ D4 : TOUT SURVOL DE CETTE PAGE EST DERRIERE (hover: hover) ═════════
+       Le rapport precedent AFFIRMAIT « survols derriere media query » ; la
+       mesure l'a dementi (3 des 5 regles ajoutees etaient dehors). On ne
+       l'affirme plus, on le compte, en parcourant le CSSOM reellement charge.
+       Sur des segments defilables au doigt, un :hover non garde reste colle
+       apres le toucher. */
+    const hoverAudit = await page.evaluate(() => {
+      const out = { total: 0, guarded: 0, unguarded: [] };
+      // Ordre des tests : le selecteur D'ABORD. Depuis le CSS imbrique, une
+      // CSSStyleRule expose elle aussi un `cssRules` (vide) : tester `cssRules`
+      // en premier faisait tomber TOUTES les regles dans la branche recursive
+      // et l'audit renvoyait 0 regle trouvee, donc 0 regle en faute. C'est
+      // exactement le trou qu'on est en train de corriger ailleurs, d'ou
+      // l'assertion de non-vacuite qui accompagne celle-ci.
+      const walk = (rules, guarded) => {
+        for (const r of rules) {
+          if (r instanceof CSSMediaRule) {
+            walk(r.cssRules, guarded || /hover\s*:\s*hover/.test(r.media.mediaText));
+            continue;
+          }
+          if (r.selectorText && /#staffEmailsPage/.test(r.selectorText) && /:hover/.test(r.selectorText)) {
+            out.total += 1;
+            if (guarded) out.guarded += 1; else out.unguarded.push(r.selectorText);
+          }
+          if (r.cssRules && r.cssRules.length) walk(r.cssRules, guarded);
+        }
+      };
+      for (const sheet of document.styleSheets) { try { walk(sheet.cssRules, false); } catch (e) { /* feuille externe */ } }
+      return out;
+    });
+    ok(hoverAudit.total >= 5, 'la page declare bien ses regles de survol (' + hoverAudit.total + ' trouvees dans le CSSOM)');
+    ok(hoverAudit.unguarded.length === 0,
+      'AUCUNE regle de survol hors @media (hover: hover) : ' + hoverAudit.guarded + '/' + hoverAudit.total + ' gardees'
+      + (hoverAudit.unguarded.length ? ' (dehors : ' + hoverAudit.unguarded.join(' | ') + ')' : ''));
+
+    /* ══ D5 : ORDRE DE TABULATION = ORDRE VISUEL (WCAG 1.3.2 et 2.4.3) ══════
+       Les segments sont des <button> : ils sont dans le parcours clavier. Une
+       passe precedente les reordonnait visuellement a 640 px avec order:-2 /
+       order:-1, sans toucher le DOM : au clavier on sautait dans le desordre.
+       On mesure a 390 px, la largeur ou le defaut vivait. */
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(400);
+    const tabOrder = await page.evaluate(() => {
+      const segs = [...document.querySelectorAll('#staffEmailsPage .pv2-pipeline .pv2-pipe')];
+      return {
+        dom: segs.map((s) => s.getAttribute('data-pipe')),
+        lefts: segs.map((s) => s.offsetLeft),
+        orders: segs.map((s) => getComputedStyle(s).order),
+        allButtons: segs.every((s) => s.tagName === 'BUTTON'),
+      };
+    });
+    const visualFollowsDom = tabOrder.lefts.every((v, i) => i === 0 || v > tabOrder.lefts[i - 1]);
+    ok(tabOrder.allButtons, 'les segments sont atteignables au clavier (tous des <button>)');
+    ok(visualFollowsDom,
+      'a 390 px l\'ordre VISUEL suit l\'ordre du DOM, donc l\'ordre de tabulation : ' + tabOrder.dom.join(' < ') + ' aux abscisses ' + tabOrder.lefts.join(', '));
+    ok(tabOrder.orders.every((o) => Number(o) === 0),
+      'aucune propriete order ne desynchronise le visuel du DOM (obtenu ' + JSON.stringify(tabOrder.orders) + ')');
+    await page.setViewportSize({ width: 1400, height: 950 });
+    await page.waitForTimeout(300);
+
+    /* ══ D7 : CHAQUE CHIFFRE AFFICHE EST COUVERT PAR UNE LEGENDE JUSTE ══════
+       La legende ajoutee par la passe precedente englobait « Recus » dans « les
+       N messages de la file », alors que les recus sont precisement ce qui
+       n'est PAS dans la file sortante : la phrase censee lever la confusion en
+       creait une autre. On verifie les DEUX perimetres contre les DEUX chiffres
+       reellement affiches sur les segments. */
+    const scope = await page.evaluate(() => {
+      const p = document.querySelector('#staffEmailsPage .pv2-pipeline-scope');
+      const val = (k) => {
+        const el = document.querySelector('#staffEmailsPage .pv2-pipe[data-pipe="' + k + '"] .pv2-pipe-value');
+        return el ? Number(String(el.textContent).replace(/\D/g, '')) : null;
+      };
+      return { text: p ? p.textContent.replace(/\s+/g, ' ').trim() : '', all: val('all'), inbound: val('inbound') };
+    });
+    const fileClaim = scope.text.match(/portent sur les (\d+) messages de la file/);
+    const inboundClaim = scope.text.match(/Reçus compte à part les (\d+) mails/);
+    ok(!!fileClaim && Number(fileClaim[1]) === scope.all,
+      'le perimetre « file » annonce le meme chiffre que le segment Tout (' + scope.all + ' affiche, ' + (fileClaim ? fileClaim[1] : 'aucun') + ' annonce)');
+    ok(!!inboundClaim && Number(inboundClaim[1]) === scope.inbound,
+      'le perimetre « recus » est annonce A PART, avec le chiffre du segment Recus (' + scope.inbound + ' affiche, ' + (inboundClaim ? inboundClaim[1] : 'aucun') + ' annonce)');
+    ok(!/Reçus/.test(scope.text.split('.')[0] || ''),
+      'la phrase qui decrit la file ne compte pas « Recus » dedans : « ' + (scope.text.split('.')[0] || '').slice(0, 90) + ' »');
+
     console.log('\n[V4 ENVOI PROGRAMMÉ] composer → plus tard');
     const schedRes = await page.evaluate(async () => {
       pv2OpenSettings(); // referme les réglages
@@ -529,4 +877,8 @@ async function main() {
   if (failures) { console.error(`\nemails-page-check: ${failures} FAIL`); process.exit(1); }
   console.log('\nemails-page-check: ALL OK');
 }
-main();
+// Le harnais (serveur statique + mock complet) est reutilisable par une sonde
+// externe : elle importe installMock/serveStatic au lieu de les dupliquer, ce
+// qui les ferait diverger silencieusement.
+if (require.main === module) main();
+module.exports = { serveStatic, installMock, BASE_URL, BROWSER_PATH, PORT };

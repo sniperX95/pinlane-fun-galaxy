@@ -1561,7 +1561,15 @@ function previewOpsEmailHtml(html = '', title = 'Aperçu du mail') {
     overlay.id = 'emailPreviewOverlay';
     document.body.appendChild(overlay);
   }
-  overlay.className = 'email-preview-overlay';
+  // FAMILLE B, le seul vrai montage/demontage de la page Emails : ce noeud est
+  // cree et retire a la main, pas reconstruit par innerHTML. C'est donc le seul
+  // endroit ou une entree ET une sortie animees sont legitimes. La classe
+  // d'ouverture est posee a la frame suivante pour que l'etat initial du CSS
+  // (opacite 0, echelle 0.98) soit commite avant la transition.
+  // Reouverture pendant la sortie : le retrait differe doit etre annule, sinon
+  // le nouvel apercu disparaitrait tout seul 150 ms plus tard.
+  if (overlay.__closeTimer) { clearTimeout(overlay.__closeTimer); overlay.__closeTimer = 0; }
+  overlay.className = 'email-preview-overlay is-opening';
   overlay.innerHTML = `
     <div class="email-preview-card">
       <div class="email-preview-head">
@@ -1572,11 +1580,26 @@ function previewOpsEmailHtml(html = '', title = 'Aperçu du mail') {
       </div>
       <iframe class="email-preview-frame" sandbox="" srcdoc="${escapeHtml(html)}"></iframe>
     </div>`;
+  // Reflow FORCE, pas requestAnimationFrame : mesure faite, le rAF s'executait
+  // avant que l'etat initial (opacite 0, echelle 0.98) ne soit commite, et
+  // l'overlay apparaissait d'un coup a pleine opacite. Lire offsetWidth force le
+  // navigateur a calculer ce style avant qu'on retire la classe : la transition
+  // a alors un point de depart et joue reellement.
+  void overlay.offsetWidth;
+  overlay.classList.remove('is-opening');
 }
 
 function closeEmailPreview() {
   const overlay = document.getElementById('emailPreviewOverlay');
-  if (overlay) overlay.remove();
+  if (!overlay || overlay.classList.contains('is-closing')) return;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) { overlay.remove(); return; }
+  // La SORTIE n'est possible que parce qu'on retarde le retrait du noeud : on ne
+  // peut pas animer ce qui est deja detruit. Elle est plus courte que l'entree
+  // (150 ms contre 240) : a l'ouverture la gerante decouvre le mail, a la
+  // fermeture elle a deja decide. Le delai est cale sur --dur-exit.
+  overlay.classList.add('is-closing');
+  overlay.__closeTimer = setTimeout(() => { overlay.remove(); }, 150);
 }
 
 async function dispatchOpsEmails() {

@@ -1747,7 +1747,9 @@ function getOpsTemplateLabel(templateId = '') {
     reminder_48h: 'Rappel avant la venue',
     reminder_day_sms: 'Rappel SMS du jour',
     post_visit_followup: 'Merci post-visite',
-    birthday_j30: 'Anniversaire J-30',
+    // « J-30 » est du jargon de marketeur : illisible pour une gerante, et il
+    // s'affiche dans la colonne « Modele » de la file, sur l'ecran Emails.
+    birthday_j30: 'Rappel anniversaire',
     reactivation: 'Réactivation dormants',
     relance_dormant: 'Relance client',
     staff_review_request: 'Validation staff',
@@ -2501,7 +2503,7 @@ function canOpenAdminView() {
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
 const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260717f';
-const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260719c';
+const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720a';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
 const dynamicConsoleScripts = {};

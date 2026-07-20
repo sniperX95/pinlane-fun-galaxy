@@ -5251,7 +5251,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .pv2-chip.green { background: var(--success-soft); color: var(--success); }
 .pv2-chip.amber { background: var(--warning-soft); color: var(--warning); }
-.pv2-chip.blue { background: var(--info-soft); color: var(--info); }
+/* --info-strong, pas --info : #0070f3 sur #e8f1fd ne donne que 4.00:1 en theme
+   clair, sous le seuil AA de 4.5 pour un texte de 12px. Meme correctif que sur
+   la page Emails, applique a la source pour ne pas laisser le meme echec vivre
+   sur les autres pages. */
+.pv2-chip.blue { background: var(--info-soft); color: var(--info-strong); }
 .pv2-chip.red { background: var(--danger-soft); color: var(--danger); }
 .pv2-chip.accent { background: var(--accent-soft); color: var(--accent); }
 
@@ -5356,7 +5360,8 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 
-.pv2-pipe:hover { border-color: var(--line-strong); }
+/* .pv2-pipe:hover vit desormais dans le bloc A.2 (@media hover: hover) : les
+   segments sont defilables au doigt, l'etat restait colle apres le toucher. */
 .pv2-pipe.active { border-color: var(--accent); background: var(--accent-soft); }
 .pv2-pipe-label { color: var(--muted); font-size: 11px; font-weight: 500; }
 .pv2-pipe-value { margin-top: 4px; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 400; color: var(--text); }
@@ -9190,8 +9195,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* ── Séquences automatiques (page Emails) ── */
 .mk-auto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--space-4); }
-.mk-auto-star { display: inline-flex; margin-right: 6px; color: var(--warning); vertical-align: -2px; }
-.mk-auto-star .pv2-ico { width: 13px; height: 13px; }
+/* .mk-auto-star supprimee : deux etoiles AMBRE decoraient « Anniversaire J-30 »
+   et « Reactivation dormants ». Leur seul sens vivait dans un title=, donc
+   invisible, et elles depensaient l'ambre que cette page reserve a l'ATTENTE.
+   Couleur = sens, sinon rien : le markup et la regle partent ensemble. */
 .mk-auto { display: flex; flex-direction: column; gap: 8px; padding: var(--space-4); background: var(--surface); border: 1px solid var(--line); }
 .mk-auto.is-on { border-color: color-mix(in srgb, var(--success) 45%, var(--line)); }
 .mk-auto-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -9321,3 +9328,512 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-plan-actions li { font-size: 12.5px; color: var(--text); line-height: 1.5; }
 
 @media (max-width: 640px) { .mkw-plan-grid { grid-template-columns: 1fr; } }
+
+/* ============================================================================
+   21. PAGE EMAILS & RELANCES : discipline de console (monochrome + sens)
+   ----------------------------------------------------------------------------
+   POURQUOI CETTE SECTION A CHANGE DE NATURE
+   Une passe precedente avait peint cette page aux couleurs de Fun Galaxy
+   (magenta et turquoise de marque) : interrupteurs, bouton primaire,
+   filtres, filets de section, titres en capitales, boutons en pilule.
+   C'est une faute structurelle, pas une affaire de gout. Pinlane est un
+   PRODUIT vendu a plusieurs centres de loisirs : la console est l'interface du
+   produit, les mails sont la voix du client. Habiller la console de la charte
+   d'un seul locataire rend le produit invendable au suivant, et fait lire une
+   couleur de marque comme une couleur d'etat. La charte Fun Galaxy reste ou
+   elle a un sens : dans les mails (lib/ops-communications.js) et sur le
+   parcours client (pinlane-client.css). Ici, plus une seule occurrence.
+
+   LA REGLE QUI REMPLACE LA MARQUE : monochrome par defaut, couleur par
+   exception. Le fond est noir, le texte blanc casse, tout le reste est une
+   nuance de gris. Une couleur n'apparait que si elle PORTE UN SENS :
+     --success (vert)  = « c'est parti »        (statut Envoye)
+     --danger  (rouge) = « ce n'est pas parti » (statut Echec)
+     --warning (ambre) = « ca attend »
+     --accent  (bleu)  = information / focus clavier
+   Rien d'autre n'est colore. Aucun degrade, aucune lueur, aucune ombre : les
+   surfaces se separent par un filet de 1px et un fond a peine plus clair.
+
+   L'ETAT ACTIF N'EST PAS UN STATUT (le defaut n°1 de la capture)
+   Les interrupteurs de sequence etaient peints en --success. Or :
+     --success  = « cette chose a REUSSI »
+     etat actif = « cette sequence TOURNE » (elle peut tres bien echouer)
+   Les confondre fait lire un interrupteur comme un statut, et rend le vert de
+   « Envoye » invisible puisqu'il est partout. L'etat actif se dit donc en
+   BLANC (--text), comme un bouton primaire inverse : c'est la valeur la plus
+   forte de l'ecran, et elle ne ment sur rien.
+
+   HIERARCHIE DES ACTIONS : un seul primaire par surface. Le primaire est le
+   bouton inverse (fond --text, texte --surface) deja defini par le systeme
+   (.pv2-btn.primary) : la surcharge magenta est supprimee, rien a ajouter.
+   Le secondaire est un filet 1px sur fond de surface, le tertiaire est un
+   .ghost sans filet. Dans la barre de page : Nouveau message (primaire),
+   Coller un mail recu (secondaire), Actualiser et Reglages (ghost).
+
+   CONTRASTES MESURES (WCAG 2.2), RECALCULES sur le FOND REEL de chaque badge.
+   L'ancien tableau ici mesurait tous les badges contre --surface : c'est le
+   mauvais fond. Un .pv2-chip.blue ne se pose pas sur --surface mais sur
+   --info-soft, et c'est precisement la que le seuil tombait. Le badge fait
+   11.5px, donc texte NORMAL au sens WCAG : seuil 4.5:1, pas 3:1.
+     CLAIR    .pv2-chip.green   #0f7b3c / #e6f4ea ......  4.72:1  AA
+              .pv2-chip.red     #cb2a2f / #fdecec ......  4.70:1  AA
+              .pv2-chip.amber   #a35200 / #fff3e0 ......  5.09:1  AA
+              .pv2-chip.blue    #0070f3 / #e8f1fd ......  4.00:1  ECHEC
+              .pv2-chip.blue    #0761d1 / #e8f1fd ......  5.06:1  AA  <- corrige
+              .pv2-chip neutre  #666666 / #ffffff ......  5.74:1  AA
+              .pv2-chip.is-off  #0a0a0a / #ffffff ...... 19.80:1  AAA
+              .pv2-chip.is-live #666666 / #ffffff ......  5.74:1  AA
+     SOMBRE   .pv2-chip.green   #3dd68c / #0e2517 ......  8.64:1  AAA
+              .pv2-chip.red     #f75555 / #2c1213 ......  5.31:1  AA
+              .pv2-chip.amber   #f5a623 / #2a1e05 ......  8.05:1  AAA
+              .pv2-chip.blue    #3291ff / #0d2137 ......  5.14:1  AA
+              .pv2-chip.blue    #52a8ff / #0d2137 ......  6.52:1  AA  <- corrige
+              .pv2-chip neutre  #a1a1a1 / #0a0a0a ......  7.66:1  AAA
+              .pv2-chip.is-off  #ededed / #0a0a0a ...... 16.91:1  AAA
+              .pv2-chip.is-live #a1a1a1 / #0a0a0a ......  7.66:1  AAA
+   Le correctif est le token --info-strong, declare pour exactement ce cas
+   (texte info sur fond -soft). Il vaut --accent-strong dans les deux themes,
+   donc la teinte ne bouge pas, seule la luminosite est ramenee au seuil.
+     Le theme clair est le meme systeme inverse : primaire = fond #0a0a0a et
+     texte blanc, etat actif = #0a0a0a. Aucune regle n'est reservee au sombre.
+
+   CE QUI EST GARDE de la passe precedente : la STRUCTURE (inventaire des mails
+   .mail-inv-*, ligne de campagne compacte, horodatage de barre). Le JS en
+   depend et elle repond a « tout doit etre pilotable ». Seules les COULEURS de
+   marque partent.
+   ========================================================================== */
+
+/* --- 21.1 Formes : rayons petits et constants, jamais de pilule ------------
+   6px pour les controles, 8px pour les cartes, 12px pour les panneaux. La
+   pilule (--radius-full) est la forme de la charte CLIENT : elle reste dans
+   les mails et sur le parcours public, elle n'entre pas dans la console. */
+#staffEmailsPage .pv2-panel { border-radius: var(--radius-lg); }
+#staffEmailsPage .mk-auto { border-radius: var(--radius-md); }
+#staffEmailsPage .pv2-btn { border-radius: var(--radius-sm); }
+#staffEmailsPage .pv2-search { border-radius: var(--radius-sm); }
+
+/* --- 21.2 Typographie : la hierarchie vient de la taille et de la graisse ---
+   Aucune capitale decorative. Les capitales avaient un effet pervers mesure
+   sur la capture : le h2 du panneau de detail porte l'OBJET DU MAIL, c'est-a-
+   dire du texte saisi par un humain, et sortait en « VOTRE RESERVATION EST
+   CONFIRMEE ». On criait une donnee au lieu de titrer une section. */
+#staffEmailsPage .pv2-bar h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-transform: none; }
+#staffEmailsPage .pv2-panel-head h2,
+#staffEmailsPage .pv2-list-head h2 { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; text-transform: none; }
+#staffEmailsPage .pv2-mail-preview-title,
+#staffEmailsPage .mk-auto-edit-field > span { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+/* Tout compteur en chiffres tabulaires : une colonne de nombres qui ne danse
+   pas quand la valeur change. */
+#staffEmailsPage .pv2-pipe-value,
+#staffEmailsPage .mk-auto-stats,
+#staffEmailsPage .pv2-table td.num { font-variant-numeric: tabular-nums; }
+
+/* --- 21.3 Etat actif = blanc, jamais vert ---------------------------------
+   .mk-switch ne vit que sur cette page (sequences systeme + sequences perso) :
+   la regle est donc portee ici, au plus pres de son seul usage. */
+#staffEmailsPage .mk-switch.is-on { background: var(--text); border-color: var(--text); }
+#staffEmailsPage .mk-switch.is-on span { background: var(--surface); }
+#staffEmailsPage .mk-switch:not(.is-on) { background: transparent; border-color: var(--line-strong); }
+#staffEmailsPage .mk-switch:not(.is-on) span { background: var(--faint); }
+/* La carte d'une sequence active ne se repeint pas non plus en vert : elle
+   remonte d'un cran de filet, c'est tout ce qu'il faut pour la distinguer. */
+#staffEmailsPage .mk-auto.is-on { border-color: var(--line-strong); }
+
+/* --- 21.4 Badges : petits, desatures, filet 1px ---------------------------
+   Un badge n'est jamais un pave de couleur vive. Fond tres sombre teinte,
+   texte de la meme famille, filet de la meme famille. Le neutre n'a pas de
+   fond du tout : c'est une etiquette, pas un statut. */
+#staffEmailsPage .pv2-chip {
+  height: 20px; padding: 0 7px; border-radius: var(--radius-sm);
+  font-size: 11.5px; font-weight: 500;
+  background: transparent; border: 1px solid var(--line-strong); color: var(--muted);
+}
+#staffEmailsPage .pv2-chip.green { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 30%, transparent); color: var(--success); }
+#staffEmailsPage .pv2-chip.red { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 30%, transparent); color: var(--danger); }
+#staffEmailsPage .pv2-chip.amber { background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning) 30%, transparent); color: var(--warning); }
+/* --info-strong (= --accent-strong) et pas --info : sur --info-soft en theme
+   CLAIR, --info donne 4.00:1 a 11.5px, sous le seuil AA de 4.5. Meme teinte,
+   luminosite ramenee au seuil (5.06:1 clair, 6.52:1 sombre). */
+#staffEmailsPage .pv2-chip.blue { background: var(--info-soft); border-color: color-mix(in srgb, var(--info) 30%, transparent); color: var(--info-strong); }
+/* ETAT d'une ligne d'inventaire. HIERARCHIE INVERSEE, corrigee : les onze
+   « Active » sortaient en blanc gras et l'unique « Coupee » en gris efface.
+   L'ecran criait la normalite et chuchotait l'exception. C'est l'exception qui
+   demande une decision, c'est donc elle qui prend le contraste et le point
+   plein ; l'etat attendu redevient discret. Ni vert ni rouge : ce n'est pas un
+   statut d'envoi. Le libelle dit l'etat en toutes lettres et la forme du point
+   le double (WCAG 1.4.1 : jamais la couleur seule). */
+#staffEmailsPage .pv2-chip.is-live { color: var(--muted); border-color: var(--line); font-weight: 400; }
+#staffEmailsPage .pv2-chip.is-off { color: var(--text); border-color: var(--line-strong); font-weight: 600; }
+#staffEmailsPage .pv2-chip.is-live::before,
+#staffEmailsPage .pv2-chip.is-off::before {
+  content: ''; width: 5px; height: 5px; border-radius: var(--radius-full);
+  background: currentColor; flex: none;
+}
+#staffEmailsPage .pv2-chip.is-live::before { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+/* La LIGNE de l'exception se signale aussi, sinon il faut la chercher parmi
+   douze : un filet a gauche, rien de plus. */
+#staffEmailsPage .mail-inv-table tr.is-exception td:first-child { box-shadow: inset 2px 0 0 var(--text); }
+#staffEmailsPage .mail-inv-table tr.is-exception strong { color: var(--text); }
+
+/* « modifie » sur une carte de sequence : information de service, pas statut. */
+#staffEmailsPage .mk-auto-mod {
+  border-radius: var(--radius-sm); background: var(--subtle); color: var(--muted);
+  border: 1px solid var(--line); font-size: 11px;
+}
+
+/* --- 21.5 Actions : trois poids, un seul primaire -------------------------
+   .pv2-btn.primary reste celui du systeme (fond --text, texte --surface) :
+   c'est deja la signature inversee, la surcharge de marque est supprimee. */
+#staffEmailsPage .pv2-btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+/* Survol : voir A.2 (bloc MOUVEMENT). Toutes les regles de survol de cette page vivent
+   derriere @media (hover: hover) and (pointer: fine), sans exception. */
+
+/* --- 21.6 Filtres de file : un segmente, pas six tuiles -------------------
+   Six tuiles encadrees de meme poids se lisaient comme six indicateurs a
+   comparer, alors que ce sont des FILTRES : on clique dessus pour restreindre
+   la liste. Rendus en controle segmente (un seul filet autour, des cloisons
+   1px), ils descendent d'environ 120 px a 42 px, ne pesent plus que ce qu'ils
+   valent, et la file remonte d'autant. Aucun n'est supprime : chacun est le
+   seul chemin vers son filtre, « Tout » compris. */
+#staffEmailsPage .pv2-pipeline {
+  display: flex; flex-wrap: nowrap; gap: 0;
+  grid-template-columns: none;
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface); overflow-x: auto; scrollbar-width: thin;
+}
+#staffEmailsPage .pv2-pipe {
+  flex: 1 1 0; min-width: max-content;
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 10px 14px; width: auto; text-align: left;
+  border: 0; border-right: 1px solid var(--line); border-radius: 0;
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 12.5px; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+#staffEmailsPage .pv2-pipe:last-child { border-right: 0; }
+#staffEmailsPage .pv2-pipe .pv2-pipe-value {
+  margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums;
+  font-size: 13.5px; font-weight: 500; color: var(--muted);
+}
+#staffEmailsPage .pv2-pipe .pv2-pipe-label { margin: 0; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+#staffEmailsPage .pv2-pipe .pv2-pipe-hint { margin: 0; font-size: 11.5px; color: var(--faint); }
+/* Le survol des segments est DELIBEREMENT absent ici : ces segments sont
+   defilables au doigt (overflow-x), et un :hover pose hors media query reste
+   colle apres le toucher. Il vit en A.2, derriere (pointer: fine). */
+#staffEmailsPage .pv2-pipe.active { background: var(--subtle); border-color: var(--line); }
+#staffEmailsPage .pv2-pipe.active .pv2-pipe-label,
+#staffEmailsPage .pv2-pipe.active .pv2-pipe-value { color: var(--text); }
+/* Le halo de focus se pose A L'INTERIEUR du segmente : pose dehors, il etait
+   rogne par l'overflow du conteneur et devenait invisible au clavier. */
+#staffEmailsPage .pv2-pipe:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+/* --- 21.7 Echecs : la seule surface qui va CHERCHER la directrice ---------
+   Un aplat rouge plein largeur criait plus fort que le contenu qu'il annonce.
+   Filet rouge desature de 1px sur fond de surface : la couleur reste portee
+   par le titre et la cause, ou elle veut dire quelque chose. */
+#staffEmailsPage .pv2-alert {
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+  border-left-width: 2px; border-left-color: var(--danger);
+  background: var(--surface); border-radius: var(--radius-md); padding: 12px 14px;
+}
+#staffEmailsPage .pv2-alert strong { font-size: 13.5px; font-weight: 600; color: var(--danger); }
+#staffEmailsPage .pv2-alert p { color: var(--muted); }
+#staffEmailsPage .pv2-alert-cause b { color: var(--text); font-weight: 600; }
+#staffEmailsPage .pv2-mail-error {
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+  border-radius: var(--radius-sm);
+}
+#staffEmailsPage .pv2-mail-error p { color: var(--muted); }
+
+/* --- 21.8 Tableaux : filets 1px discrets, l'important en blanc ------------ */
+#staffEmailsPage .pv2-table th { font-size: 11.5px; font-weight: 500; color: var(--faint); }
+#staffEmailsPage .pv2-table tbody tr.selected { background: var(--subtle); box-shadow: inset 2px 0 0 var(--text); }
+#staffEmailsPage .pv2-list-head { border-bottom: 1px solid var(--line); }
+
+/* --- 21.9 Inventaire des mails -------------------------------------------
+   « Tout doit etre gerable et pilotable depuis la categorie » : encore faut-il
+   savoir ce qui existe. Cette table est le miroir des branches reelles
+   d'envoi ; ce qui ne se pilote pas le DIT ici au lieu d'etre absent. */
+.mail-inv-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mail-inv-table th {
+  text-align: left; padding: 8px 10px; font-size: 11.5px; font-weight: 500;
+  text-transform: none; letter-spacing: 0; color: var(--faint);
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.mail-inv-table td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--muted); }
+.mail-inv-table tr:last-child td { border-bottom: 0; }
+.mail-inv-table strong { font-size: 13px; font-weight: 600; color: var(--text); }
+.mail-inv-table .pv2-cell-sub { display: block; margin-top: 3px; max-width: 46ch; line-height: 1.45; color: var(--faint); }
+.mail-inv-when { color: var(--muted); max-width: 30ch; line-height: 1.45; }
+.mail-inv-pilot { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.mail-inv-pilot.is-fixed { color: var(--faint); }
+.mail-inv-note {
+  margin: var(--space-3) 0 0; font-size: 12px; line-height: 1.55; color: var(--faint);
+  border-left: 1px solid var(--line-strong); padding-left: 10px; max-width: 78ch;
+}
+
+/* --- 21.10 Campagnes vides : une ligne, pas un bloc ------------------------
+   Zero campagne occupait une section pleine hauteur pour dire « il n'y a
+   rien ». Un etat vide est une ligne discrete. */
+.pv2-camp-slim-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); flex-wrap: wrap; padding: 12px var(--space-4);
+}
+.pv2-camp-slim-row strong { font-size: 13px; font-weight: 600; color: var(--text); }
+.pv2-camp-slim-row span { margin-left: 10px; font-size: 12.5px; color: var(--muted); }
+/* Meme doctrine pour la file vide : deux lignes centrees, pas un pave. */
+#staffEmailsPage .pv2-mail-list .pv2-empty { padding: var(--space-6) var(--space-4); }
+
+/* --- 21.11 Fraicheur des donnees : information de service, pas un titre ---- */
+.pv2-bar-stamp { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* --- 21.12 Couleur decorative : il n'y en a pas -----------------------------
+   Un point VERT precedait le fil d'Ariane. Il ne signifiait rien (ni un
+   statut, ni une connexion : juste un point), et il depensait le vert que
+   cette page reserve a « c'est parti ». A force de vert decoratif, le vert de
+   « Envoye » dans la file juste en dessous ne se voit plus. */
+#staffEmailsPage .pv2-live { display: none; }
+
+/* Perimetre des compteurs, ecrit a cote des compteurs (voir F8 dans le JS). */
+.pv2-pipeline-scope { margin: 6px 2px 0; font-size: 11.5px; line-height: 1.5; color: var(--faint); }
+.pv2-alert-scope { font-weight: 400; color: var(--muted); }
+
+/* ============================================================================
+   21.13 MOUVEMENT
+   Deux familles, jamais melangees.
+
+   FAMILLE A - IMMUNISEE. Transitions pilotees par un ETAT (:hover, :active,
+   :focus-visible, .active, .is-on). Elles survivent aux reconstructions
+   innerHTML de la page parce qu'elles ne dependent pas de l'apparition du
+   noeud. C'est le coeur du travail : c'est ce qui fait que l'interface repond.
+
+   FAMILLE B - MONTAGE REEL. Un element qui apparait vraiment sur action. Ici
+   il faut une garde de premiere apparition (classe .pv2-mount posee par
+   markEmailsMounts()), sinon l'entree rejoue a chaque frappe clavier.
+
+   Regles tenues partout dans ce bloc (verifiees par mesure, pas affirmees) :
+     - RIEN qui declenche un layout : aucune transition sur height, width,
+       margin, top, left. Le releve exhaustif des proprietes animees de cette
+       section donne exactement transform, opacity, background-color,
+       border-color et color. Les trois dernieres sont des changements de
+       peinture, sans reflow ; ecrire ici « transform et opacity UNIQUEMENT »
+       serait faux, et c'est ce que disait la version precedente ;
+     - jamais d'ease-in : ca demarre lentement pile quand l'oeil regarde ;
+     - jamais depuis scale(0) : rien ne surgit du neant. Cette regle etait
+       AFFIRMEE et FAUSSE : le rail du segmente partait bel et bien de
+       scaleX(0) au bord gauche (largeur de depart mesuree a t+30 ms : 4.62 px
+       puis 0.98 px, contre 179 et 183 px attendus). Ce n'etait pas une faute
+       de CSS mais un observateur perime qui ecrasait la memoire hors DOM ;
+       corrige dans positionPipeRail(), et desormais MESURE par le gate ;
+     - la sortie est plus courte que l'entree (150 ms contre 240) ;
+     - transition ciblee, proprietes nommees, jamais `transition: all` ;
+     - survol derriere (hover: hover) and (pointer: fine) : au doigt, :hover se
+       declenche au toucher et laisse des etats colles. Regle AFFIRMEE et
+       FAUSSE elle aussi : 3 des 5 regles de survol de la page etaient dehors.
+       Elles sont toutes regroupees en A.2, et le gate compte le rapport
+       gardees/total dans le CSSOM (2/5 avant, 5/5 apres) ;
+     - AUCUN stagger n'est ajoute : un stagger qui rejoue est le defaut le plus
+       visible de tous, et rien ici ne peut garantir qu'il ne rejouerait pas.
+   ========================================================================== */
+
+/* --- A.1 Tout ce qui se presse repond. 160 ms, vu des dizaines de fois par
+   jour : c'est le detail qui fait le plus pour la sensation de qualite, et
+   c'est aussi celui qui devient une LENTEUR s'il dure trop. --- */
+#staffEmailsPage .pv2-btn,
+#staffEmailsPage .pv2-pipe,
+#staffEmailsPage .mk-switch,
+#staffEmailsPage .mk-auto-preview summary {
+  transition: background-color var(--dur-fast) var(--ease-out-strong),
+              border-color var(--dur-fast) var(--ease-out-strong),
+              color var(--dur-fast) var(--ease-out-strong),
+              opacity var(--dur-fast) var(--ease-out-strong),
+              transform var(--dur-press) var(--ease-out-strong);
+}
+#staffEmailsPage .pv2-btn:active:not(:disabled) { transform: scale(0.97); }
+/* Un segment de filtre est large : a 0.97 il se deforme. 0.985 suffit a se
+   sentir sous le doigt sans que la bande entiere bouge. */
+#staffEmailsPage .pv2-pipe:active { transform: scale(0.985); }
+#staffEmailsPage .mk-switch:active:not(:disabled) { transform: scale(0.94); }
+
+/* --- A.2 Survol au pointeur fin uniquement : sur tactile, :hover se declenche
+   au toucher et laisse l'etat allume apres le depart du doigt.
+
+   PERIMETRE EXACT, parce que deux versions de ce commentaire ont deja affirme
+   faux : ce bloc regroupe les regles de survol AJOUTEES POUR CETTE PAGE, plus
+   .pv2-pipe:hover qui etait preexistant et qui est le cas le plus couteux (les
+   segments sont defilables au doigt via overflow-x : l'etat de survol restait
+   colle sur le segment touche pendant le defilement, en plus de l'etat .active
+   du vrai filtre, donc deux segments avaient l'air selectionnes ensemble).
+   CE N'EST PAS le seul endroit de la page ou un :hover est declare, et le
+   pretendre serait faux : une dizaine de regles de survol PREEXISTANTES portent
+   sur des composants pv2 partages (.pv2-btn:hover, .pv2-table tbody tr:hover,
+   .pv2-chip-btn:hover...) et s'appliquent donc aussi ici. Elles sont laissees
+   en place a dessein : elles servent TOUTES les pages de la console, les
+   deplacer depuis un chantier qui ne concerne que la page Emails changerait le
+   comportement d'ecrans non testes par ce lot. A traiter comme un chantier
+   propre, a l'echelle de la console. --- */
+@media (hover: hover) and (pointer: fine) {
+  /* Mesure : --line-strong ne DIT RIEN au survol, parce que la carte d'une
+     sequence active porte deja ce filet (regle 21.3). Le survol monte donc un
+     cran au-dessus, sinon il n'existe que sur les cartes coupees. */
+  #staffEmailsPage .mk-auto:hover { border-color: color-mix(in srgb, var(--text) 32%, var(--line)); }
+  #staffEmailsPage .pv2-table tbody tr:hover .pv2-cell-sub { color: var(--muted); }
+  #staffEmailsPage .pv2-btn.ghost:hover { color: var(--text); border-color: var(--line); }
+  /* border-color repris de l'ancienne regle globale (ex-ligne 5363) : en la
+     deplacant ici il ne faut pas perdre ce qu'elle donnait. */
+  #staffEmailsPage .pv2-pipe:hover { background: var(--subtle); border-color: var(--line-strong); }
+  #staffEmailsPage .pv2-pipe:hover .pv2-pipe-label,
+  #staffEmailsPage .pv2-pipe:hover .pv2-pipe-value { color: var(--text); }
+}
+#staffEmailsPage .mk-auto { transition: border-color var(--dur) var(--ease-out-strong); }
+#staffEmailsPage .pv2-table tbody tr {
+  transition: background-color var(--dur-fast) var(--ease-out-strong),
+              box-shadow var(--dur-fast) var(--ease-out-strong);
+}
+#staffEmailsPage .pv2-cell-sub { transition: color var(--dur-fast) var(--ease-out-strong); }
+
+/* --- A.3 L'interrupteur de sequence. Le curseur glisse, le fond suit. Le
+   bouton etant DETRUIT puis recree a chaque bascule, cette transition ne
+   pouvait jamais jouer : replaySwitchKnobs() (staff-pages-v2.js) repose
+   l'ancien etat, force un reflow, puis rend l'etat reel. C'est ce qui rend la
+   transition ci-dessous effective au lieu de decorative. --- */
+#staffEmailsPage .mk-switch span {
+  transition: transform var(--dur-press) var(--ease-out-strong),
+              background-color var(--dur-press) var(--ease-out-strong);
+}
+
+/* --- A.4 L'indicateur qui glisse d'un segment a l'autre : la signature du
+   style. Il est porte par un noeud STABLE et repositionne par slidePipeRail()
+   depuis une memoire hors DOM. Verdict assume : il ne glisse QUE si le filtre
+   a change ; si seules les donnees ont bouge, il est repose sans transition
+   exactement au meme pixel. Anime en translateX + scaleX (base 100px) pour ne
+   toucher ni left ni width, qui declencheraient un layout par frame. --- */
+#staffEmailsPage .pv2-pipeline { position: relative; }
+#staffEmailsPage .pv2-pipe-rail {
+  position: absolute; left: 0; bottom: 0; width: 100px; height: 2px;
+  transform-origin: 0 50%; background: var(--text); pointer-events: none;
+  transition: transform var(--dur-move) var(--ease-in-out-strong);
+}
+/* Le fond du segment actif reste, mais il ne porte plus seul la selection :
+   le rail la porte, le fond la confirme. */
+#staffEmailsPage .pv2-pipe.active { background: var(--subtle); }
+
+/* --- A.5 Le chevron du depliant « Apercu du message ». L'attribut [open]
+   change SUR PLACE (le summary n'est jamais re-monte pendant la bascule) :
+   la transition joue donc vraiment. Famille A. --- */
+#staffEmailsPage .mk-auto-preview summary { list-style: none; display: flex; align-items: center; gap: 6px; }
+#staffEmailsPage .mk-auto-preview summary::-webkit-details-marker { display: none; }
+#staffEmailsPage .pv2-caret {
+  width: 0; height: 0; flex: none;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform var(--dur-fast) var(--ease-out-strong);
+}
+#staffEmailsPage .mk-auto-preview[open] .pv2-caret { transform: rotate(90deg); }
+/* Le corps du depliant est un vrai montage (famille B) mais il ne peut pas
+   rejouer sur un rafraichissement : apres un re-rendu le <details> repart
+   ferme, donc rien n'est monte tant que la gerante n'a pas clique. */
+#staffEmailsPage .mk-auto-preview[open] p { animation: pv2-reveal var(--dur-slow) var(--ease-out-strong) both; }
+
+/* --- B.1 Panneaux qui apparaissent sur action : composer, coller un mail,
+   reglages, editeur de sequence, editeur inline, inventaire deplie. 240 ms,
+   vus occasionnellement. Depuis 0.98 et 6px, jamais depuis scale(0). La
+   classe n'est posee QUE sur une transition ferme -> ouvert. --- */
+@keyframes pv2-mount-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pv2-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+#staffEmailsPage .pv2-mount { animation: pv2-mount-in var(--dur-enter) var(--ease-out-strong) both; }
+
+/* --- B.2 L'apercu du mail : le seul vrai montage/demontage de la page (noeud
+   cree et retire a la main par ops-console.js). Seul endroit ou une SORTIE est
+   possible, parce qu'on retarde le retrait du noeud. Entree 240 ms, sortie
+   150 ms : a l'ouverture on decouvre, a la fermeture on a deja decide. --- */
+.email-preview-overlay {
+  transition: opacity var(--dur-enter) var(--ease-out-strong);
+}
+.email-preview-overlay .email-preview-card {
+  transition: opacity var(--dur-enter) var(--ease-out-strong),
+              transform var(--dur-enter) var(--ease-out-strong);
+}
+.email-preview-overlay.is-opening,
+.email-preview-overlay.is-closing { opacity: 0; }
+.email-preview-overlay.is-opening .email-preview-card { opacity: 0; transform: translateY(8px) scale(0.98); }
+.email-preview-overlay.is-closing { transition-duration: var(--dur-exit); }
+.email-preview-overlay.is-closing .email-preview-card {
+  opacity: 0; transform: translateY(4px) scale(0.98);
+  transition-duration: var(--dur-exit);
+}
+
+/* --- Mouvement reduit. On GARDE les fondus d'opacite, qui aident a
+   comprendre qu'une surface est apparue ; on retire tout deplacement et toute
+   mise a l'echelle. Meme convention que les 7 blocs deja en place. --- */
+@media (prefers-reduced-motion: reduce) {
+  #staffEmailsPage .pv2-btn:active:not(:disabled),
+  #staffEmailsPage .pv2-pipe:active,
+  #staffEmailsPage .mk-switch:active:not(:disabled) { transform: none; }
+  #staffEmailsPage .pv2-pipe-rail,
+  #staffEmailsPage .mk-switch span,
+  #staffEmailsPage .pv2-caret { transition: none; }
+  #staffEmailsPage .pv2-mount { animation: none; }
+  #staffEmailsPage .mk-auto-preview[open] p { animation-name: pv2-fade-only; }
+  .email-preview-overlay .email-preview-card { transition-property: opacity; }
+  .email-preview-overlay.is-opening .email-preview-card,
+  .email-preview-overlay.is-closing .email-preview-card { transform: none; }
+}
+@keyframes pv2-fade-only { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- 21.14 390px : la page reste utilisable a une main --------------------- */
+@media (max-width: 640px) {
+  #staffEmailsPage .pv2-pipe { flex: 0 0 auto; }
+  #staffEmailsPage .pv2-pipe .pv2-pipe-hint { display: none; }
+  /* DEFAUT RELEVE A 390 px : l'onglet « Echecs » etait coupe au bord droit (on
+     lisait « 1 Ec ») et RIEN n'indiquait qu'il fallait faire defiler.
+     L'information la plus importante de l'ecran etait hors champ.
+     Le fondu de bord ci-dessous dit qu'il reste des segments a droite. Il n'est
+     allume que si le contenu depasse REELLEMENT (classe can-scroll-x posee par
+     slidePipeRail au rendu et au defilement), sinon il mentirait en annoncant
+     un ailleurs qui n'existe pas.
+
+     LE REORDONNANCEMENT VISUEL A ETE RETIRE (regression WCAG 1.3.2 et 2.4.3
+     introduite par la passe precedente). Elle posait order:-2 / order:-1 sur
+     « Tout » et « Echecs » DANS LE MEME DIFF qui convertissait ces segments de
+     <div> en <button> : l'ordre de tabulation, qui suit le DOM, ne suivait donc
+     plus l'ordre visuel, et un utilisateur au clavier sautait dans le desordre.
+     Trois raisons de renoncer plutot que de reordonner le markup :
+       1. l'ordre du DOM est le cycle de vie d'un mail (Tout, Recus, En attente,
+          Envoyes, Echecs, A valider). Le casser pour tous les ecrans afin de
+          reparer un seul coute la comprehension partout ;
+       2. le probleme vise (« un echec passe inapercu ») est deja resolu, et
+          mieux, par le bandeau d'alerte en TETE de page : il est au-dessus du
+          segmente, il nomme la cause en francais et il ne demande aucun
+          defilement ;
+       3. un ordre de DOM qui dependrait de la largeur ne pourrait pas rester
+          juste : la page se reconstruit sur les donnees et les frappes, pas sur
+          une rotation d'ecran. Il serait faux exactement quand la largeur
+          change. C'est la classe de bug qu'on vient de corriger sur le rail. */
+  #staffEmailsPage .pv2-pipeline.can-scroll-x {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent 100%);
+  }
+  #staffEmailsPage .pv2-bar-actions { width: 100%; }
+  #staffEmailsPage .pv2-bar-actions .pv2-search { flex: 1 1 100%; }
+  #staffEmailsPage .pv2-list-head { flex-wrap: wrap; gap: 8px; }
+  /* A 390px la colonne « Modele » volait la largeur a la colonne « Statut »,
+     et la cause d'echec y tombait a un mot par ligne (« Domaine / d'envoi /
+     pas / encore / verifie »). Le modele est deja lisible dans l'objet du
+     message juste a cote : on le retire ici, la cause redevient lisible. */
+  #staffEmailsPage .pv2-mail-list .pv2-table th:nth-child(2),
+  #staffEmailsPage .pv2-mail-list .pv2-table td:nth-child(2) { display: none; }
+  #staffEmailsPage .pv2-mail-list .pv2-table td:nth-child(3) { min-width: 118px; }
+  .mail-inv-table, .mail-inv-table tbody, .mail-inv-table tr, .mail-inv-table td { display: block; width: 100%; }
+  .mail-inv-table thead { display: none; }
+  .mail-inv-table tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .mail-inv-table td { border-bottom: 0; padding: 2px 0; }
+  .mail-inv-table .pv2-cell-sub, .mail-inv-when { max-width: none; }
+}

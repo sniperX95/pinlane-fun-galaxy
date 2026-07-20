@@ -92,6 +92,7 @@ const {
   deleteCustomSequence,
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs, processOpsJobById } = require('../lib/ops-jobs');
+const { listSuppressions, suppressEmail, removeSuppression } = require('../lib/marketing-suppression');
 const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
 const {
   listCenterConfigs,
@@ -336,6 +337,15 @@ async function handleGet(req, res, options = {}) {
   if (action === 'relanceStats') {
     const stats = await getRelanceStats(centerId, { days: Number(url.searchParams.get('days') || 90) });
     sendJson(res, 200, { ok: true, centerId, ...stats });
+    return;
+  }
+
+  // Liste de suppression marketing : qui ne veut plus de marketing pour CE
+  // centre, depuis quand, pourquoi (console page Emails). Lecture scopée au
+  // centre : jamais la liste d'un autre centre.
+  if (action === 'suppressions') {
+    const data = await listSuppressions(centerId, { limit: Number(url.searchParams.get('limit') || 200) });
+    sendJson(res, 200, { ok: true, ...data });
     return;
   }
 
@@ -1316,6 +1326,30 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Console liste de suppression (M5). Ecriture SCOPÉE au centre résolu serveur
+  // (requireConcreteCenter), jamais body.centerId : un IDOR inter-centres a déjà
+  // été corrigé ici, le même verrou s'applique. La directrice ajoute une adresse
+  // à la main (demande orale, réclamation) ou en retire une qui redemande à
+  // recevoir.
+  if (action === 'suppressionAdd') {
+    const concreteCenterId = requireConcreteCenter('liste de suppression');
+    const result = await suppressEmail({
+      centerId: concreteCenterId,
+      email: body.email,
+      source: 'staff',
+      reason: String(body.reason || '').slice(0, 500),
+    });
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
+  if (action === 'suppressionRemove') {
+    const concreteCenterId = requireConcreteCenter('liste de suppression');
+    const result = await removeSuppression({ centerId: concreteCenterId, email: body.email });
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
   // Cycle de vie d'une idée de l'agent : le gérant l'applique ou l'ignore.
   // `applied` pose applied_at → la mesure avant/après tourne à J+14 (cron).
   if (action === 'insightStatus') {
@@ -1911,6 +1945,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'automationSettings') return ['emails.view', 'direction.view'];
     if (['customSequences', 'emailBrain'].includes(action)) return ['emails.view', 'direction.view'];
     if (action === 'relanceStats') return ['clients.view', 'emails.view'];
+    if (action === 'suppressions') return ['emails.view', 'direction.view'];
     if (action === 'clientNotes') return 'clients.view';
     if (action === 'marketingWeek') return ['campaigns.manage', 'marketing.agents'];
     if (action === 'marketingRoi') return ['campaigns.manage', 'marketing.agents'];
@@ -1938,6 +1973,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   if (action === 'insightStatus') return ['campaigns.manage', 'marketing.agents'];
+  if (['suppressionAdd', 'suppressionRemove'].includes(action)) return ['campaigns.manage', 'emails.send'];
   if (['communicationDraft', 'clientMessageComposer'].includes(action)) return 'emails.view';
   if (['enqueueReservation', 'dispatchDue', 'clientMessageSend'].includes(action)) return 'emails.send';
   if (['processJobs', 'enqueueJob'].includes(action)) return 'ai.ops';

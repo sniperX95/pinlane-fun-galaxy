@@ -150,6 +150,11 @@ const MIGRATIONS = [
     file: 'database/communications-status-repair-schema.sql',
     description: 'Repair communications dispatch broken by 0019: restore processing (worker claim status) lost when received was added',
   },
+  {
+    id: '0030_marketing_suppressions',
+    file: 'database/marketing-suppressions-schema.sql',
+    description: 'Marketing suppression list per center (unsubscribe link, staff add, complaint): filters marketing sends only, never transactional',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -101,6 +101,7 @@ export default async function middleware(request: Request) {
     '/api/inbound-email',
     '/api/marketing-agents',
     '/api/r',
+    '/api/u',
     '/api/ops',
     '/api/pilot-lead',
     '/api/simulation',

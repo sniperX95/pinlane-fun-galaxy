@@ -1802,6 +1802,133 @@
   }
   window.loadStaffAutomations = loadStaffAutomations;
 
+  /* ── LISTE DE SUPPRESSION MARKETING ────────────────────────────────────────
+     Qui ne veut plus recevoir de marketing pour ce centre. Section discrète :
+     ce n'est pas le sujet principal de l'écran, mais elle n'est pas cachée.
+     Style Vercel neutre, cohérent avec le reste de la page (aucune couleur de
+     marque). La suppression ne touche QUE le marketing : les transactionnels
+     (confirmation, rappel) continuent de partir, c'est écrit dans le panneau. */
+  const pv2Suppress = { loaded: false, loading: false, error: '', entries: [], total: 0, busy: '', addEmail: '', addReason: '' };
+  window.pv2Suppress = pv2Suppress;
+  const PV2_SUPPRESS_SOURCE = { link: 'Lien de retrait', staff: 'Ajout manuel', complaint: 'Plainte' };
+
+  async function loadPv2Suppressions(force = false) {
+    if (pv2Suppress.loading || (pv2Suppress.loaded && !force)) return;
+    pv2Suppress.loading = true;
+    pv2Suppress.error = '';
+    try {
+      const payload = await apiRequest(`/api/ops?action=suppressions&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
+      pv2Suppress.entries = payload.entries || [];
+      pv2Suppress.total = payload.total || pv2Suppress.entries.length;
+      pv2Suppress.loaded = true;
+    } catch (error) {
+      pv2Suppress.error = error.message || 'Liste indisponible.';
+    } finally {
+      pv2Suppress.loading = false;
+      renderStaffEmailsPage();
+    }
+  }
+  window.loadPv2Suppressions = loadPv2Suppressions;
+
+  window.pv2SuppressSetAdd = function (field, value) {
+    if (field === 'email') pv2Suppress.addEmail = value;
+    if (field === 'reason') pv2Suppress.addReason = value;
+  };
+
+  window.pv2SuppressAdd = async function () {
+    const email = String(pv2Suppress.addEmail || '').trim();
+    if (!email.includes('@')) { toast('Entrez une adresse email valide.'); return; }
+    if (pv2Suppress.busy) return;
+    pv2Suppress.busy = 'add';
+    renderStaffEmailsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'suppressionAdd', email, reason: pv2Suppress.addReason || '', centerId: state.adminCenterId || 'libramont' }),
+      });
+      pv2Suppress.addEmail = '';
+      pv2Suppress.addReason = '';
+      toast('Adresse retirée du marketing ✓');
+      await loadPv2Suppressions(true);
+    } catch (error) {
+      toast(error.message || 'Ajout impossible.');
+    } finally {
+      pv2Suppress.busy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  window.pv2SuppressRemove = async function (email) {
+    if (pv2Suppress.busy) return;
+    pv2Suppress.busy = `rm:${email}`;
+    renderStaffEmailsPage();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'suppressionRemove', email, centerId: state.adminCenterId || 'libramont' }),
+      });
+      toast('Adresse remise dans le marketing ✓');
+      await loadPv2Suppressions(true);
+    } catch (error) {
+      toast(error.message || 'Retrait impossible.');
+    } finally {
+      pv2Suppress.busy = '';
+      renderStaffEmailsPage();
+    }
+  };
+
+  function pv2SuppressionPanel() {
+    const open = !!state.staffSuppressOpen;
+    const count = pv2Suppress.loaded ? pv2Suppress.total : (pv2Suppress.entries.length || 0);
+    const rows = pv2Suppress.entries.map((entry) => {
+      const when = formatOpsTimestamp(entry.createdAt) || '-';
+      const src = PV2_SUPPRESS_SOURCE[entry.source] || entry.source || '-';
+      const busy = pv2Suppress.busy === `rm:${entry.email}`;
+      return `<tr>
+        <td><strong>${esc(entry.email)}</strong>${entry.reason ? `<small class="pv2-cell-sub">${esc(entry.reason)}</small>` : ''}</td>
+        <td><span class="pv2-chip">${esc(src)}</span></td>
+        <td class="num">${esc(when)}</td>
+        <td><button type="button" class="pv2-btn sm ghost" onclick="pv2SuppressRemove('${escJs(entry.email)}')" ${busy ? 'disabled' : ''}>${busy ? 'Retrait…' : 'Réinscrire'}</button></td>
+      </tr>`;
+    }).join('');
+    return `<section class="pv2-panel mk-auto-panel">
+      <div class="pv2-panel-head has-sub">
+        <div>
+          <h2>Ne plus recevoir de marketing</h2>
+          <p class="pv2-panel-sub">${pv2Suppress.loaded
+            ? `${count} adresse${count > 1 ? 's' : ''} exclue${count > 1 ? 's' : ''} des envois marketing (campagnes, anniversaire, réactivation).`
+            : 'Les adresses qui se sont retirées des envois marketing (campagnes, anniversaire, réactivation).'} Elles continuent de recevoir les confirmations et rappels de leurs réservations.</p>
+        </div>
+        <button type="button" class="pv2-btn sm" onclick="pv2ToggleSuppress()" aria-expanded="${open}">${open ? 'Masquer' : 'Voir la liste'}</button>
+      </div>
+      ${open ? `<div class="pv2-panel-body" data-pv2-mount="suppress">
+        <div class="pv2-suppress-add" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
+          <input type="email" value="${esc(pv2Suppress.addEmail)}" placeholder="adresse@exemple.be" oninput="pv2SuppressSetAdd('email', this.value)" style="flex:1 1 220px;min-width:180px;padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+          <input type="text" value="${esc(pv2Suppress.addReason)}" placeholder="Motif (facultatif)" oninput="pv2SuppressSetAdd('reason', this.value)" style="flex:1 1 160px;min-width:140px;padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+          <button type="button" class="pv2-btn sm" onclick="pv2SuppressAdd()" ${pv2Suppress.busy === 'add' ? 'disabled' : ''}>${pv2Suppress.busy === 'add' ? 'Ajout…' : 'Ajouter à la liste'}</button>
+        </div>
+        ${pv2Suppress.error
+          ? `<div class="pv2-empty"><strong>${esc(pv2Suppress.error)}</strong></div>`
+          : !pv2Suppress.loaded
+            ? '<div class="pv2-empty"><strong>Chargement…</strong></div>'
+            : pv2Suppress.entries.length
+              ? `<table class="pv2-table">
+                  <thead><tr><th>Adresse</th><th>Origine</th><th class="num">Depuis</th><th></th></tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>`
+              : '<div class="pv2-empty"><strong>Personne pour l\'instant</strong>Aucune adresse ne s\'est retirée du marketing.</div>'}
+      </div>` : ''}
+    </section>`;
+  }
+  window.pv2SuppressionPanel = pv2SuppressionPanel;
+
+  window.pv2ToggleSuppress = function () {
+    state.staffSuppressOpen = !state.staffSuppressOpen;
+    save();
+    if (state.staffSuppressOpen && !pv2Suppress.loaded && !pv2Suppress.loading) loadPv2Suppressions();
+    renderStaffEmailsPage();
+  };
+
   /* ── Édition d'une séquence : sujet, message, timing, cap, tout modifiable
      (contrat C2), défauts visibles en placeholder, reset 1-clic. ── */
   window.pv2AutoEdit = function (key) {
@@ -2310,6 +2437,10 @@
     if (!root) return;
     if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
     if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
+    // Chargé à l'ouverture de la page, pas seulement à l'ouverture du panneau :
+    // le compteur est le seul signal utile quand la section est repliée, et
+    // afficher « 0 » sans avoir demandé serait un chiffre inventé.
+    if (!pv2Suppress.loaded && !pv2Suppress.loading) setTimeout(() => loadPv2Suppressions(), 0);
     // C14 : ops-console.js est injecté à la demande, requestOpsAdminLoad
     // (app-main) charge le script puis déclenche loadOpsAdmin.
     if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
@@ -2564,6 +2695,7 @@
         </div>
       </section>
 
+      ${pv2SuppressionPanel()}
       ${mailInventoryPanel()}
       ${typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : ''}
     </div>`;

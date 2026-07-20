@@ -33,6 +33,15 @@ const {
   readStaffState,
   saveAgentSuggestions,
 } = require('../lib/database');
+const {
+  writeAuditLog,
+  writeAuditLogOrThrow,
+  readAuditLog,
+  actorFromSession,
+  isBlockingAction,
+  getAuditHealth,
+  newRequestId,
+} = require('../lib/audit-log');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
 const { llmProvider } = require('../lib/llm-client');
 const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
@@ -265,7 +274,33 @@ async function handleGet(req, res, options = {}) {
       centerId,
       limit: Number(url.searchParams.get('limit') || 20),
     });
-    sendJson(res, 200, { ok: true, health });
+    // T4 point (b) : le compteur d'ecritures d'audit perdues est expose ici,
+    // donc lisible depuis les deux cockpits. Sans cette remontee, un echec de
+    // journalisation ne vivrait que dans les logs Vercel et la phrase "tout est
+    // tracable" deviendrait fausse sans que personne ne le voie.
+    sendJson(res, 200, { ok: true, health, audit: getAuditHealth() });
+    return;
+  }
+
+  // Lecture du journal d'audit. Scopee au centre : `centerId` vaut ici la
+  // valeur deja resolue par resolveEffectiveCenterId, donc la valeur de
+  // SESSION, jamais celle demandee par le client. Une directrice qui reclame
+  // un autre centre a ete arretee bien plus haut par requireStaffPermission
+  // (403 'Acces centre insuffisant', lui-meme trace par PP2).
+  if (action === 'auditLog') {
+    const rows = await readAuditLog({
+      centerId,
+      limit: Number(url.searchParams.get('limit') || 100),
+      offset: Number(url.searchParams.get('offset') || 0),
+      actorMemberId: url.searchParams.get('actorMemberId') || '',
+      action: url.searchParams.get('auditAction') || '',
+      actorKind: url.searchParams.get('actorKind') || '',
+      outcome: url.searchParams.get('outcome') || '',
+      entityType: url.searchParams.get('entityType') || '',
+      entityId: url.searchParams.get('entityId') || '',
+      since: url.searchParams.get('since') || '',
+    });
+    sendJson(res, 200, { ok: true, centerId, entries: rows, audit: getAuditHealth() });
     return;
   }
 
@@ -1935,6 +1970,13 @@ function getRequiredOpsPermission(method, action) {
     // health (même surface, même sensibilité), plus les rôles marketing qui
     // déclenchent les jobs qu'ils suivent (plan marketing en live).
     if (action === 'health') return ['dashboard.view', 'ai.ops'];
+    // Le journal d'audit se lit avec les droits de DIRECTION, pas avec
+    // dashboard.view. Il contient qui a fait quoi dans le centre, y compris les
+    // tentatives refusees : c'est un instrument de controle hierarchique, pas
+    // une donnee d'exploitation. Un membre du bar n'a pas a lire la piste
+    // d'activite de ses collegues. settings.manage est accepte en plus car
+    // c'est le droit que porte deja la personne qui configure le centre.
+    if (action === 'auditLog') return ['direction.view', 'settings.manage'];
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
@@ -1981,6 +2023,61 @@ function getRequiredOpsPermission(method, action) {
   return 'ai.ops';
 }
 
+// ---- PP1 : le point de passage du journal d'audit ---------------------------
+//
+// UN SEUL endroit instrumente couvre les 57 actions POST de ce fichier ET
+// toute action ajoutee plus tard a la chaine de `if (action === ...)`, par
+// construction. C'est la raison d'etre de ce placement : instrumenter les
+// actions une par une garantissait qu'on en oublierait, et que la 58e, ecrite
+// dans six mois, ne serait pas tracee.
+//
+// POLARITE VOLONTAIRE : tout ce qui est POST est trace PAR DEFAUT. La liste
+// ci-dessous est une liste d'EXCLUSION, pas d'inclusion. Une action nouvelle
+// est donc tracee sans que son auteur ait a y penser ; l'oubli va dans le sens
+// de la tracabilite, jamais contre elle.
+//
+// Ces actions ne mutent rien : elles calculent et renvoient. Les tracer
+// remplirait le journal de bruit et noierait les vraies modifications, ce qui
+// degrade la lecture pour la directrice sans rien apporter en securite.
+//
+// TOUTE ENTREE DE CETTE LISTE EST UNE PROMESSE VERIFIABLE : "cette action
+// n'ecrit rien". Une exclusion fausse cree un trou PERMANENT et INVISIBLE dans
+// la tracabilite, ce qui est pire qu'une action bruyante. Avant d'en ajouter
+// une, suivre le handler jusqu'au bout, y compris les valeurs PAR DEFAUT des
+// fonctions qu'il appelle.
+// Cas reel : marketingPlanGet figurait ici sous le libelle "lecture du plan".
+// Son handler (ligne ~1479) appelle generateMarketingPlan(centerId, {}) quand
+// aucun plan n'existe, or `persist` y vaut true PAR DEFAUT
+// (lib/marketing-strategist.js) : le premier appel ECRIT un plan marketing en
+// base. Une modification sans trace. Retiree de la liste, donc tracee.
+const NON_MUTATING_POST_ACTIONS = new Set([
+  'plan',              // planningAgent : calcul pur
+  'delay',             // idem
+  'delayImpact',       // computeDelayImpact : calcul pur
+  'clientMessageComposer',
+  'communicationDraft',
+  'automationPreview', // previsualisation
+  'agentStackAudit',   // audit de lecture
+]);
+
+// Type d'objet touche, pour la piste "l'historique de CET objet". Deduit de
+// l'action : les dispatchers ne connaissent pas les entites, mais le nom de
+// l'action, lui, est stable.
+function auditEntityFor(action, body = {}) {
+  if (/^(saveCenterConfig|saveCenter|setCenterStatus)$/.test(action)) {
+    return { entityType: 'center', entityId: body.centerId || body.center_id || '' };
+  }
+  if (/Campaign/i.test(action)) return { entityType: 'campaign', entityId: body.id || body.campaignId || '' };
+  if (/EmailTemplate/i.test(action)) return { entityType: 'email_template', entityId: body.id || body.templateId || '' };
+  if (/EmailIdentity/i.test(action)) return { entityType: 'email_identity', entityId: body.id || body.identityId || '' };
+  if (/^suppression/.test(action)) return { entityType: 'marketing_suppression', entityId: '' };
+  if (/^competitor/.test(action)) return { entityType: 'competitor', entityId: body.id || body.competitorId || '' };
+  if (/Reservation|reservation/.test(action)) return { entityType: 'reservation', entityId: body.reservationId || (body.reservation && body.reservation.id) || '' };
+  if (/^delay/.test(action)) return { entityType: 'delay_incident', entityId: body.incidentId || body.id || '' };
+  if (/DirectionReport/i.test(action)) return { entityType: 'direction_report', entityId: body.id || '' };
+  return { entityType: 'ops_action', entityId: body.id !== undefined && body.id !== null ? String(body.id) : '' };
+}
+
 module.exports = async (req, res) => {
   setCors(res, 'GET,POST,OPTIONS');
 
@@ -2011,7 +2108,67 @@ module.exports = async (req, res) => {
       });
       if (!session) return;
       const effectiveCenterId = resolveEffectiveCenterId(session, requestedCenterId);
-      await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session });
+
+      const audited = !NON_MUTATING_POST_ACTIONS.has(action);
+      const requestId = newRequestId();
+      const entity = auditEntityFor(action, body);
+      // Liste BLANCHE du contexte conserve. On ne journalise JAMAIS le corps de
+      // requete entier de facon generique : ce fichier recoit des sujets et des
+      // corps de mails, et surtout la reponse de certaines actions porte des
+      // codes d'acces en clair. Le corps est de toute facon re-expurge par
+      // redactSecrets dans lib/audit-log.js, mais la liste blanche est la
+      // premiere barriere et la seule qui ne depende pas d'un motif.
+      const auditContext = {
+        requestedCenterId: requestedCenterId || '',
+        hasBody: Boolean(body && Object.keys(body).length),
+        bodyKeys: Object.keys(body || {}).slice(0, 40),
+        id: body && body.id !== undefined ? String(body.id) : '',
+        status: body && body.status ? String(body.status) : '',
+      };
+      const auditBase = {
+        centerId: effectiveCenterId || 'libramont',
+        ...actorFromSession(session),
+        surface: 'api/ops.js',
+        action,
+        method: 'POST',
+        entityType: entity.entityType,
+        entityId: entity.entityId,
+        requestId,
+        context: auditContext,
+      };
+
+      // REGIME BLOQUANT : la trace s'ecrit AVANT la mutation. Si elle echoue,
+      // writeAuditLogOrThrow jette et handlePost n'est jamais appele : rien
+      // n'est modifie sans trace. C'est l'ordre qui porte la garantie, pas
+      // l'intention. Ces actions (config, tarifs, statut de centre, envoi de
+      // masse) sont rares et hors chemin chaud : le surcout d'un aller-retour
+      // avant l'action est sans consequence, l'absence de trace en aurait une.
+      if (audited && isBlockingAction(action)) {
+        await writeAuditLogOrThrow({ ...auditBase, outcome: 'success' });
+      }
+
+      try {
+        await handlePost(req, res, withCenter(body, effectiveCenterId), { centerId: effectiveCenterId, session });
+      } catch (error) {
+        // Une action qui echoue est une information d'audit : elle distingue
+        // "personne n'a essaye" de "quelqu'un a essaye et ca a casse".
+        if (audited) {
+          await writeAuditLog({
+            ...auditBase,
+            outcome: 'error',
+            context: { ...auditContext, erreur: String((error && error.message) || 'erreur').slice(0, 300) },
+          });
+        }
+        throw error;
+      }
+
+      // REGIME NON BLOQUANT : la reponse est deja partie (handlePost a fait
+      // sendJson). On ecrit apres, donc sans ajouter la moindre latence percue
+      // par le staff. Un echec ici ne casse pas l'action, mais il crie :
+      // console.error a prefixe stable + compteur expose dans l'action health.
+      if (audited && !isBlockingAction(action)) {
+        await writeAuditLog({ ...auditBase, outcome: 'success' });
+      }
       return;
     }
     sendError(res, 405, 'Méthode non autorisée.');

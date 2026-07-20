@@ -1929,6 +1929,180 @@
     renderStaffEmailsPage();
   };
 
+  /* ── JOURNAL DES MODIFICATIONS ───────────────────────────────────────────
+     La premiere brique visible des deux cockpits. Elle repond, pour le centre
+     en cours et lui seul, aux questions : qui a modifie quoi, quand, et
+     qu'est-ce qui a change exactement.
+
+     Scope : le serveur decide. La page envoie le centre courant, mais
+     api/ops.js re-resout le centre depuis la SESSION avant de lire
+     (resolveEffectiveCenterId), donc une directrice qui bricolerait le
+     parametre ne verrait toujours que son centre. Le filtre affiche ici n'est
+     pas une securite, c'est du confort de lecture.
+
+     Style Vercel neutre : monochrome sauf le sens (un refus est rouge parce
+     qu'un refus EST un signal), filets 1px, rayons 6-8px, aucun bouton primaire
+     dans ce panneau qui est une surface de lecture. Aucune couleur de marque. */
+  const pv2Audit = {
+    loaded: false, loading: false, error: '', entries: [],
+    filterKind: '', filterOutcome: '', expanded: '',
+  };
+  window.pv2Audit = pv2Audit;
+
+  const PV2_AUDIT_ACTOR = {
+    staff: 'Humain', public: 'Client', cron: 'Cron', worker: 'Worker', system: 'Systeme',
+  };
+  const PV2_AUDIT_DENIED = {
+    '401_no_session': 'Sans session',
+    '403_center_scope': 'Autre centre',
+    '403_permission': 'Droits insuffisants',
+  };
+
+  async function loadPv2Audit(force = false) {
+    if (pv2Audit.loading || (pv2Audit.loaded && !force)) return;
+    pv2Audit.loading = true;
+    pv2Audit.error = '';
+    try {
+      const params = new URLSearchParams({
+        action: 'auditLog',
+        centerId: state.adminCenterId || 'libramont',
+        limit: '80',
+      });
+      if (pv2Audit.filterKind) params.set('actorKind', pv2Audit.filterKind);
+      if (pv2Audit.filterOutcome) params.set('outcome', pv2Audit.filterOutcome);
+      const payload = await apiRequest(`/api/ops?${params.toString()}`);
+      pv2Audit.entries = payload.entries || [];
+      pv2Audit.loaded = true;
+    } catch (error) {
+      pv2Audit.error = error.message || 'Journal indisponible.';
+    } finally {
+      pv2Audit.loading = false;
+      renderStaffEmailsPage();
+    }
+  }
+  window.loadPv2Audit = loadPv2Audit;
+
+  window.pv2AuditFilter = function (field, value) {
+    if (field === 'kind') pv2Audit.filterKind = value;
+    if (field === 'outcome') pv2Audit.filterOutcome = value;
+    loadPv2Audit(true);
+  };
+
+  window.pv2AuditToggleRow = function (id) {
+    pv2Audit.expanded = pv2Audit.expanded === String(id) ? '' : String(id);
+    renderStaffEmailsPage();
+  };
+
+  window.pv2ToggleAudit = function () {
+    state.staffAuditOpen = !state.staffAuditOpen;
+    save();
+    if (state.staffAuditOpen && !pv2Audit.loaded && !pv2Audit.loading) loadPv2Audit();
+    renderStaffEmailsPage();
+  };
+
+  /* Rend une valeur de diff lisible. Les objets sont serialises courts : le
+     detail complet est dans le depliage, pas dans la cellule. */
+  function pv2AuditValue(value) {
+    if (value === null || value === undefined || value === '') return '(vide)';
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '(aucun)';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  function pv2AuditChangesTable(changes) {
+    const keys = Object.keys(changes || {});
+    if (!keys.length) return '<p class="pv2-panel-sub">Aucun detail de modification enregistre pour cette action.</p>';
+    const rows = keys.map((key) => `<tr>
+      <td><strong>${esc(key)}</strong></td>
+      <td>${esc(pv2AuditValue(changes[key] && changes[key].before))}</td>
+      <td>${esc(pv2AuditValue(changes[key] && changes[key].after))}</td>
+    </tr>`).join('');
+    return `<table class="pv2-table">
+      <thead><tr><th>Champ</th><th>Avant</th><th>Apres</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function pv2AuditPanel() {
+    const open = !!state.staffAuditOpen;
+    const rows = pv2Audit.entries.map((entry) => {
+      const when = formatOpsTimestamp(entry.occurredAt) || '-';
+      const actor = entry.actorLabel || PV2_AUDIT_ACTOR[entry.actorKind] || entry.actorKind || '-';
+      const kind = PV2_AUDIT_ACTOR[entry.actorKind] || entry.actorKind || '';
+      const isDenied = entry.outcome === 'denied';
+      const isError = entry.outcome === 'error';
+      const changeCount = Object.keys(entry.changes || {}).length;
+      const expanded = pv2Audit.expanded === String(entry.id);
+      /* Le refus porte la seule couleur du tableau. C'est deliberé : c'est le
+         signal le plus interessant en securite, et il doit sauter aux yeux dans
+         une liste ou tout le reste est du gris. */
+      const outcomeChip = isDenied
+        ? `<span class="pv2-chip" style="color:var(--v2-red,#c00);border-color:var(--v2-red,#c00)">Refuse${entry.deniedReason ? ` · ${esc(PV2_AUDIT_DENIED[entry.deniedReason] || entry.deniedReason)}` : ''}</span>`
+        : isError
+          ? '<span class="pv2-chip">Echec</span>'
+          : '<span class="pv2-chip">Fait</span>';
+      const detail = expanded
+        ? `<tr><td colspan="6" style="background:var(--v2-subtle,#fafafa);padding:14px;">
+             ${pv2AuditChangesTable(entry.changes)}
+             <p class="pv2-panel-sub" style="margin-top:10px;">
+               Surface ${esc(entry.surface || '-')} · methode ${esc(entry.method || '-')}
+               ${entry.entityType ? ` · objet ${esc(entry.entityType)}${entry.entityId ? ` #${esc(entry.entityId)}` : ''}` : ''}
+               ${entry.requestId ? ` · requete ${esc(entry.requestId)}` : ''}
+             </p>
+           </td></tr>`
+        : '';
+      return `<tr>
+        <td class="num">${esc(when)}</td>
+        <td><strong>${esc(actor)}</strong><small class="pv2-cell-sub">${esc(kind)}${entry.actorRoleId ? ` · ${esc(entry.actorRoleId)}` : ''}</small></td>
+        <td><strong>${esc(entry.action || '-')}</strong>${entry.entityType ? `<small class="pv2-cell-sub">${esc(entry.entityType)}${entry.entityId ? ` #${esc(entry.entityId)}` : ''}</small>` : ''}</td>
+        <td>${outcomeChip}</td>
+        <td class="num">${changeCount || ''}</td>
+        <td><button type="button" class="pv2-btn sm ghost" onclick="pv2AuditToggleRow('${escJs(String(entry.id))}')" aria-expanded="${expanded}">${expanded ? 'Masquer' : 'Detail'}</button></td>
+      </tr>${detail}`;
+    }).join('');
+
+    return `<section class="pv2-panel mk-auto-panel">
+      <div class="pv2-panel-head has-sub">
+        <div>
+          <h2>Journal des modifications</h2>
+          <p class="pv2-panel-sub">Qui a change quoi dans ce centre, quand, et ce qui a change exactement. Les tentatives refusees y figurent aussi. Ce journal ne s'efface pas.</p>
+        </div>
+        <button type="button" class="pv2-btn sm" onclick="pv2ToggleAudit()" aria-expanded="${open}">${open ? 'Masquer' : 'Ouvrir le journal'}</button>
+      </div>
+      ${open ? `<div class="pv2-panel-body" data-pv2-mount="audit">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
+          <label class="pv2-panel-sub" for="pv2AuditKind">Auteur</label>
+          <select id="pv2AuditKind" onchange="pv2AuditFilter('kind', this.value)" style="padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+            <option value="" ${pv2Audit.filterKind === '' ? 'selected' : ''}>Tous</option>
+            <option value="staff" ${pv2Audit.filterKind === 'staff' ? 'selected' : ''}>Humain</option>
+            <option value="cron" ${pv2Audit.filterKind === 'cron' ? 'selected' : ''}>Cron</option>
+            <option value="worker" ${pv2Audit.filterKind === 'worker' ? 'selected' : ''}>Worker</option>
+            <option value="public" ${pv2Audit.filterKind === 'public' ? 'selected' : ''}>Client</option>
+          </select>
+          <label class="pv2-panel-sub" for="pv2AuditOutcome">Resultat</label>
+          <select id="pv2AuditOutcome" onchange="pv2AuditFilter('outcome', this.value)" style="padding:8px 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+            <option value="" ${pv2Audit.filterOutcome === '' ? 'selected' : ''}>Tout</option>
+            <option value="success" ${pv2Audit.filterOutcome === 'success' ? 'selected' : ''}>Fait</option>
+            <option value="denied" ${pv2Audit.filterOutcome === 'denied' ? 'selected' : ''}>Refuse</option>
+            <option value="error" ${pv2Audit.filterOutcome === 'error' ? 'selected' : ''}>Echec</option>
+          </select>
+          <button type="button" class="pv2-btn sm ghost" onclick="loadPv2Audit(true)">Actualiser</button>
+        </div>
+        ${pv2Audit.error
+          ? `<div class="pv2-empty"><strong>${esc(pv2Audit.error)}</strong></div>`
+          : !pv2Audit.loaded
+            ? '<div class="pv2-empty"><strong>Chargement du journal…</strong></div>'
+            : pv2Audit.entries.length
+              ? `<table class="pv2-table">
+                  <thead><tr><th class="num">Quand</th><th>Qui</th><th>Action</th><th>Resultat</th><th class="num">Champs</th><th></th></tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>`
+              : '<div class="pv2-empty"><strong>Rien pour l\'instant</strong>Aucune modification enregistree pour ce centre avec ces filtres.</div>'}
+      </div>` : ''}
+    </section>`;
+  }
+  window.pv2AuditPanel = pv2AuditPanel;
+
   /* ── Édition d'une séquence : sujet, message, timing, cap, tout modifiable
      (contrat C2), défauts visibles en placeholder, reset 1-clic. ── */
   window.pv2AutoEdit = function (key) {
@@ -2696,6 +2870,7 @@
       </section>
 
       ${pv2SuppressionPanel()}
+      ${pv2AuditPanel()}
       ${mailInventoryPanel()}
       ${typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : ''}
     </div>`;

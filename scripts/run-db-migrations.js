@@ -155,6 +155,11 @@ const MIGRATIONS = [
     file: 'database/marketing-suppressions-schema.sql',
     description: 'Marketing suppression list per center (unsubscribe link, staff add, complaint): filters marketing sends only, never transactional',
   },
+  {
+    id: '0031_audit_log',
+    file: 'database/audit-log-schema.sql',
+    description: 'Journal des modifications (qui/quoi/avant/apres/refus): fondation tracabilite des deux cockpits. Append-only, aucune purge automatique.',
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -38,7 +38,14 @@ declare
     'staff_members',
     'staff_access_events',
     'ops_jobs',
-    'ops_delay_incidents'
+    'ops_delay_incidents',
+    -- Journal des modifications (migration 0031). Present ici pour que la
+    -- lecture du journal soit cloisonnee par le meme mecanisme que le reste le
+    -- jour ou RLS sera active. Attention au cas 'all' (action de portee
+    -- plateforme) : la policy ci-dessous ne le laisse passer QUE via
+    -- app.center_scope = 'all', ce qui est le comportement voulu (une
+    -- directrice ne doit pas lire les lignes de portee plateforme).
+    'audit_log'
   ];
 begin
   foreach target in array tenant_tables loop

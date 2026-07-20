@@ -2,8 +2,15 @@ const {
   runAgentOrchestratorCron,
   runDispatchCommunicationsCron,
   runOpsJobsCron,
+  setAuditRuntime,
 } = require('../lib/cron-tasks');
 const { getPool } = require('../lib/database');
+
+// Ce process EST le worker Railway. Les trois taches sont partagees avec
+// api/cron.js (Vercel) : sans cette declaration, le journal ne pourrait pas
+// dire lequel des deux runtimes a agi, alors que c'est une des six questions
+// auxquelles il doit repondre.
+setAuditRuntime('worker');
 
 const once = process.argv.includes('--once');
 let shuttingDown = false;
@@ -103,6 +110,21 @@ async function runTask(task) {
 // à l'infini (elles étaient montées à ~20k lignes). Ne touche PAS aux données
 // métier (réservations, membres, config). S'exécute rarement (toutes les ~6 h).
 const OPS_LOG_RETENTION_DAYS = envNumber('OPS_WORKER_LOG_RETENTION_DAYS', 7, { min: 2, max: 90 });
+// NE JAMAIS AJOUTER audit_log A CE TABLEAU.
+//
+// Ces tables sont des logs d'exploitation : leur valeur est recente, les purger
+// a 7 jours est sain. audit_log est un journal d'AUDIT : sa valeur est
+// justement d'etre ancien. L'ajouter ici par reflexe de symetrie ferait
+// disparaitre chaque semaine la reponse a "qui a modifie ce prix en mars", sans
+// aucun signal, et la promesse de tracabilite serait morte sans que personne ne
+// s'en apercoive avant d'en avoir besoin.
+//
+// Aucune purge automatique n'est prevue pour audit_log. Effacer un journal
+// d'audit est une decision, pas une tache de maintenance : la note de
+// dimensionnement et le point de decision a 12 mois sont en tete de
+// database/audit-log-schema.sql. Si une compression devient necessaire, elle
+// prend la forme d'un archivage froid (export puis suppression elle-meme
+// tracee), jamais d'un DELETE dans cette boucle.
 const OPS_LOG_TABLES = [
   ['ops_worker_runs', 'started_at'],
   ['marketing_agent_runs', 'created_at'],

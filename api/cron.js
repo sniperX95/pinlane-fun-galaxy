@@ -4,7 +4,12 @@ const {
   runAgentOrchestratorCron,
   runDispatchCommunicationsCron,
   runOpsJobsCron,
+  setAuditRuntime,
 } = require('../lib/cron-tasks');
+
+// Runtime Vercel : les memes taches que le worker Railway, declenchees par le
+// planificateur de Vercel. Le journal doit les distinguer.
+setAuditRuntime('cron');
 
 // Comparaison a temps constant. On hache les deux cotes avant de comparer :
 // crypto.timingSafeEqual leve si les tailles different, ce qui refuirait la

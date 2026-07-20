@@ -14,6 +14,54 @@ const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { requireStaffPermission } = require('../lib/staff-auth');
+const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
+
+// ---- PP4 : le chemin chaud -------------------------------------------------
+//
+// Champs dont la modification doit apparaitre en avant/apres. C'est la question
+// numero 1 du mandat ("qui a modifie ce prix, cette reservation").
+//
+// Le cout de lecture est NUL : `current` est deja charge par getReservationById
+// pour les besoins de la validation (PATCH et DELETE). L'etat AVANT est en
+// memoire, il etait simplement jete.
+//
+// `notes` est volontairement ABSENT de cette liste (regle T2) : c'est du texte
+// libre saisi au comptoir, qui contient regulierement des informations
+// personnelles sur le client. On journalise qu'il a change et sa longueur, pas
+// son contenu. Voir buildReservationAuditChanges plus bas.
+const AUDITED_RESERVATION_FIELDS = [
+  'price',
+  'basePrice',
+  'date',
+  'startTime',
+  'duration',
+  'totalDuration',
+  'pax',
+  'lanes',
+  'status',
+  'validationStatus',
+  'formuleId',
+  'paymentMethod',
+  'occasion',
+  'extras',
+  'clientName',
+  'email',
+];
+
+function buildReservationAuditChanges(before, after) {
+  const changes = buildChanges(before, after, AUDITED_RESERVATION_FIELDS);
+  const noteAvant = String((before && before.notes) || '');
+  const noteApres = String((after && after.notes) || '');
+  if (noteAvant !== noteApres) {
+    // Le CONTENU ne sort pas. La longueur suffit a prouver qu'une note a ete
+    // videe ou remplacee, ce qui est le seul usage d'audit legitime ici.
+    changes.notes = {
+      before: { modifiee: true, longueur: noteAvant.length },
+      after: { modifiee: true, longueur: noteApres.length },
+    };
+  }
+  return changes;
+}
 
 const REPLAN_FIELDS = [
   'date',
@@ -128,6 +176,32 @@ module.exports = async (req, res) => {
         channel: request.channel || 'staff',
       });
       const postCreate = await afterReservationCreated(reservation, request);
+
+      // T5 : l'ecriture du journal a lieu ICI, apres le retour de
+      // createReservation, donc APRES le COMMIT et hors du
+      // pg_advisory_xact_lock que lockDate tient par (centre, date) jusqu'a la
+      // fin de la transaction. La placer dans la transaction ajouterait un
+      // aller-retour Neon a la fenetre de detention du verrou et serialiserait
+      // toutes les creations d'une meme date. Meme placement que le
+      // createOpsEvent qui existait deja ; ce qui n'est PAS repris, c'est son
+      // `.catch(() => null)`.
+      const auditCreate = await writeAuditLog({
+        centerId: reservation.centerId || 'libramont',
+        ...actorFromSession(session),
+        surface: 'api/staff-reservations.js',
+        action: 'createReservation',
+        method: 'POST',
+        entityType: 'reservation',
+        entityId: reservation.id,
+        outcome: 'success',
+        changes: buildReservationAuditChanges({}, reservation),
+        context: {
+          canal: reservation.channel || 'staff',
+          validationStatus: reservation.validationStatus || '',
+        },
+        requestId: newRequestId(),
+      });
+
       sendJson(res, 201, {
         ok: true,
         reservation,
@@ -139,7 +213,13 @@ module.exports = async (req, res) => {
           autoDecision: ops.requiresHumanReview ? 'human_review_required' : 'auto_confirmed',
         },
         communications: postCreate.communications,
-        warnings: postCreate.warnings,
+        // T4 point (c) : l'echec de trace remonte a l'ecran, dans le champ
+        // `warnings` qui existait deja. La personne qui vient de creer la
+        // reservation voit que sa trace a saute. C'est ce qui distingue
+        // "non bloquant" de "silencieux".
+        warnings: auditCreate.warning
+          ? [...(postCreate.warnings || []), auditCreate.warning]
+          : postCreate.warnings,
       });
       return;
     }
@@ -170,7 +250,32 @@ module.exports = async (req, res) => {
           current.centerId || 'libramont',
           body.activityProgress ?? body.activity_progress,
         );
-        sendJson(res, 200, { ok: true, reservation: updated, automation: { communications: 0, jobs: 0, refreshed: false } });
+        // Ce chemin rapide sortait AVANT toute journalisation : cocher une
+        // activite de formule est une vraie modification (elle change ce que le
+        // client a consomme) et serait restee invisible. Regime non bloquant :
+        // c'est une action de comptoir, repetee, sur le chemin chaud.
+        const auditProgress = await writeAuditLog({
+          centerId: current.centerId || 'libramont',
+          ...actorFromSession(session),
+          surface: 'api/staff-reservations.js',
+          action: 'setReservationActivityProgress',
+          method: 'PATCH',
+          entityType: 'reservation',
+          entityId: current.id,
+          outcome: 'success',
+          changes: buildChanges(
+            { activityProgress: current.activityProgress },
+            { activityProgress: updated.activityProgress },
+            ['activityProgress'],
+          ),
+          requestId: newRequestId(),
+        });
+        sendJson(res, 200, {
+          ok: true,
+          reservation: updated,
+          automation: { communications: 0, jobs: 0, refreshed: false },
+          ...(auditProgress.warning ? { warnings: [auditProgress.warning] } : {}),
+        });
         return;
       }
 
@@ -203,7 +308,31 @@ module.exports = async (req, res) => {
           automation,
         },
       }).catch(() => null);
-      sendJson(res, 200, { ok: true, reservation, automation });
+
+      // L'avant/apres reel. `current` a ete charge ligne ~150 pour la
+      // validation : le diff ne coute aucune lecture supplementaire. C'est
+      // precisement ce que l'ops_event ci-dessus ne dit pas (il ne porte que
+      // les NOMS des champs touches, et aucun acteur).
+      const auditPatch = await writeAuditLog({
+        centerId: reservation.centerId || current.centerId || 'libramont',
+        ...actorFromSession(session),
+        surface: 'api/staff-reservations.js',
+        action: 'updateReservation',
+        method: 'PATCH',
+        entityType: 'reservation',
+        entityId: reservation.id,
+        outcome: 'success',
+        changes: buildReservationAuditChanges(current, reservation),
+        context: { champsDemandes: Object.keys(body || {}).slice(0, 40) },
+        requestId: newRequestId(),
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        reservation,
+        automation,
+        ...(auditPatch.warning ? { warnings: [auditPatch.warning] } : {}),
+      });
       return;
     }
 
@@ -222,7 +351,29 @@ module.exports = async (req, res) => {
         eventType: 'reservation_deleted',
         payload: { source: 'staff', automation },
       }).catch(() => null);
-      sendJson(res, 200, { ok: true, automation });
+
+      // Une suppression est la modification la plus destructrice du produit :
+      // l'objet n'existe plus, donc le journal est le SEUL endroit ou son etat
+      // final subsiste. On conserve l'etat complet en `before`.
+      const auditDelete = await writeAuditLog({
+        centerId: current.centerId || 'libramont',
+        ...actorFromSession(session),
+        surface: 'api/staff-reservations.js',
+        action: 'deleteReservation',
+        method: 'DELETE',
+        entityType: 'reservation',
+        entityId: current.id,
+        outcome: 'success',
+        changes: buildReservationAuditChanges(current, {}),
+        context: { automation },
+        requestId: newRequestId(),
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        automation,
+        ...(auditDelete.warning ? { warnings: [auditDelete.warning] } : {}),
+      });
       return;
     }
 

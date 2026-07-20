@@ -2092,7 +2092,8 @@ const STAFF_MENU_PAGES = [
   'campaigns',
   'establishment',
   'users',
-  'settings'
+  'settings',
+  'cockpit'
 ];
 function normalizeStaffMenuPage(page) {
   const key = String(page || 'planning').trim();
@@ -2204,8 +2205,16 @@ const STAFF_PAGE_PERMISSION_MAP = {
   campaigns: ['campaigns.manage', 'marketing.agents'],
   establishment: ['settings.manage', 'direction.view'],
   users: ['users.manage'],
-  settings: ['settings.manage']
+  settings: ['settings.manage'],
+  cockpit: ['platform.admin']
 };
+
+// Permissions de niveau PLATEFORME : jamais conférées par un rôle verrouillé
+// (Direction = tous les droits DU CENTRE, pas ceux de la plateforme). Miroir
+// exact de la règle serveur (sessionHasPermission, lib/staff-auth.js) : le
+// serveur reste l'autorité, ce Set ne fait que cacher l'entrée de menu aux
+// non-porteurs.
+const PLATFORM_STAFF_PERMISSIONS = new Set(['platform.admin']);
 
 function normalizeStaffSession(rawSession) {
   if (window.PinlaneStaffAuthSession?.normalize) {
@@ -2276,10 +2285,14 @@ function hasSavedAuth() {
 function canUseStaffPermission(permission) {
   const session = normalizeStaffSession(state.staffAuthSession) || readStoredStaffSession();
   if (!session) return false;
-  if (session.role?.locked) return true;
   const permissions = new Set(session.permissions || []);
-  if (Array.isArray(permission)) return permission.some(item => permissions.has(item));
-  return permissions.has(permission);
+  const has = item => {
+    if (PLATFORM_STAFF_PERMISSIONS.has(item)) return permissions.has(item);
+    if (session.role?.locked) return true;
+    return permissions.has(item);
+  };
+  if (Array.isArray(permission)) return permission.some(has);
+  return has(permission);
 }
 
 function canUseStaffPage(page) {
@@ -4104,6 +4117,10 @@ function isStaffEmailsActive() {
 
 function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
+}
+
+function isStaffCockpitActive() {
+  return state.view === 'staff' && getStaffMenuPage() === 'cockpit';
 }
 
 const STAFF_UTILITY_MENU_PAGES = [
@@ -10985,6 +11002,11 @@ function renderStaff() {
     renderStaffCampaignsPage();
     return;
   }
+  if (isStaffCockpitActive()) {
+    document.body.style.overflow = '';
+    if (typeof renderStaffFounderCockpitPage === 'function') renderStaffFounderCockpitPage();
+    return;
+  }
   if (isStaffUtilityActive()) {
     document.body.style.overflow = '';
     renderStaffUtilityPage();
@@ -11726,6 +11748,7 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   const emailsActive = isStaffEmailsActive();
   const campaignsActive = isStaffCampaignsActive();
   const utilityActive = isStaffUtilityActive();
+  const cockpitActive = isStaffCockpitActive();
   setPageVisibility('staffDashboardPage', dashboardActive);
   setPageVisibility('staffReservationsPage', reservationsActive);
   setPageVisibility('staffClientsPage', clientsActive);
@@ -11733,8 +11756,9 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   setPageVisibility('staffEmailsPage', emailsActive);
   setPageVisibility('staffCampaignsPage', campaignsActive);
   setPageVisibility('staffUtilityPage', utilityActive);
+  setPageVisibility('staffCockpitPage', cockpitActive);
   ['.staff-head', '.kpi-grid', '.staff-resource-tabs', '#planningBox', '#laserPlanningBox', '.table-box'].forEach(selector => {
-    document.querySelectorAll(`#staffView ${selector}`).forEach(element => element.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive));
+    document.querySelectorAll(`#staffView ${selector}`).forEach(element => element.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive));
   });
   const d = parseLocalDate(state.currentDate);
   const view = getStaffResourceView();

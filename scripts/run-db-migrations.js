@@ -160,6 +160,11 @@ const MIGRATIONS = [
     file: 'database/audit-log-schema.sql',
     description: 'Journal des modifications (qui/quoi/avant/apres/refus): fondation tracabilite des deux cockpits. Append-only, aucune purge automatique.',
   },
+  {
+    id: '0032_platform_owner_role',
+    file: 'database/platform-owner-role-schema.sql',
+    description: "Role plateforme 'platform-owner' porteur de platform.admin (cockpit fondateur): seed du role par centre + rattachement des membres proprietaires. Jamais confere par role.locked.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

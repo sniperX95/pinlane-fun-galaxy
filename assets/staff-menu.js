@@ -114,6 +114,15 @@
         { key: 'users', label: 'Équipe & accès', icon: 'users' },
         { key: 'establishment', label: 'Établissement', icon: 'establishment' }
       ]
+    },
+    {
+      // Groupe PLATEFORME : visible uniquement pour les porteurs de
+      // platform.admin (le filtrage par permission ci-dessous retire l'entrée
+      // du DOM pour tous les autres ; le serveur reste l'autorité).
+      title: 'Plateforme',
+      items: [
+        { key: 'cockpit', label: 'Cockpit fondateur', icon: 'establishment' }
+      ]
     }
   ];
 

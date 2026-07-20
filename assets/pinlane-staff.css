@@ -9837,3 +9837,93 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .mail-inv-table td { border-bottom: 0; padding: 2px 0; }
   .mail-inv-table .pv2-cell-sub, .mail-inv-when { max-width: none; }
 }
+
+/* ============================================================================
+   22. COCKPIT FONDATEUR (#staffCockpitPage, permission platform.admin)
+   ----------------------------------------------------------------------------
+   Meme discipline que la page Emails : composants pv2 reutilises, monochrome
+   sauf le sens, filets 1px, aucun jeton nouveau. Seules les classes propres a
+   cette page vivent ici, toutes prefixees fck- et scopees.
+   ========================================================================== */
+#staffCockpitPage .fck-shell { display: flex; flex-direction: column; gap: 14px; }
+
+/* Bandeau verite : les donnees sont des tests. Ambre = attente/attention,
+   filet 1px, pas d'aplat criard : il doit se lire sans hurler. */
+#staffCockpitPage .fck-testdata {
+  border: 1px solid var(--warning);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+#staffCockpitPage .fck-sub {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: none;
+}
+
+#staffCockpitPage .fck-line { margin: 8px 0; font-size: 13.5px; }
+#staffCockpitPage .fck-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+#staffCockpitPage .fck-table td { vertical-align: top; padding: 8px 10px 8px 0; }
+#staffCockpitPage .fck-row-action { text-align: right; white-space: nowrap; }
+#staffCockpitPage .fck-num { font-variant-numeric: tabular-nums; }
+
+/* Cartes centre (adoption) : la grille respire, chaque carte est un filet. */
+#staffCockpitPage .fck-center-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+#staffCockpitPage .fck-center-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+}
+#staffCockpitPage .fck-center-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+#staffCockpitPage .fck-kv { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+#staffCockpitPage .fck-kv div { display: flex; justify-content: space-between; gap: 10px; }
+#staffCockpitPage .fck-kv dt { color: var(--muted); font-size: 12.5px; }
+#staffCockpitPage .fck-kv dd { margin: 0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* Statistiques agents : deux grands nombres, hierarchie par la taille. */
+#staffCockpitPage .fck-stats { display: flex; gap: 22px; flex-wrap: wrap; margin: 6px 0 4px; }
+#staffCockpitPage .fck-stat { display: flex; flex-direction: column; gap: 2px; }
+#staffCockpitPage .fck-stat-num {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+#staffCockpitPage .fck-stat-cap { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+#staffCockpitPage .fck-audit-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+#staffCockpitPage .fck-audit-bar .pv2-input { max-width: 220px; }
+
+/* Table des sequences : la premiere colonne est le libelle, les suivantes un
+   interrupteur par centre. En-tetes en gris moyen, discipline pv2. */
+#staffCockpitPage .fck-seq-table th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: left;
+  padding: 6px 10px 6px 0;
+}
+
+@media (max-width: 640px) {
+  #staffCockpitPage .fck-center-grid { grid-template-columns: 1fr; }
+  #staffCockpitPage .fck-audit-bar .pv2-input { max-width: none; flex: 1; }
+  #staffCockpitPage .fck-seq-table { display: block; overflow-x: auto; }
+}

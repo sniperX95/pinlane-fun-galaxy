@@ -109,9 +109,10 @@ const {
   upsertCenter,
   setCenterStatus,
 } = require('../lib/center-config');
-const { getPool, listCustomRequests, updateCustomRequestStatus } = require('../lib/database');
+const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
+const { buildFounderCockpit } = require('../lib/founder-cockpit');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -301,6 +302,41 @@ async function handleGet(req, res, options = {}) {
       since: url.searchParams.get('since') || '',
     });
     sendJson(res, 200, { ok: true, centerId, entries: rows, audit: getAuditHealth() });
+    return;
+  }
+
+  // ── COCKPIT FONDATEUR (platform.admin uniquement, voir
+  //    getRequiredOpsPermission). Ces deux lectures sont les SEULES surfaces
+  //    cross-centres du cockpit : tout le reste (renvoyer un mail, couper une
+  //    sequence) passe par les actions existantes, deja tracees. ──────────────
+
+  // Le bundle unique de la page cockpit : pannes, adoption par centre, agents,
+  // couts, prospects, premiere page du journal global. Un fetch, zero N+1.
+  if (action === 'founderCockpit') {
+    const bundle = await buildFounderCockpit();
+    sendJson(res, 200, bundle);
+    return;
+  }
+
+  // Journal d'audit GLOBAL (tous centres) avec filtres et pagination. Meme
+  // lecteur que l'action auditLog (lib/audit-log.readAuditLog) : on ne
+  // reinvente pas la lecture, on ne change que le scope, et ce scope n'est
+  // atteignable que derriere platform.admin. Le filtre centre voyage dans
+  // `auditCenter` (jamais `centerId`, qui porte le scope de session).
+  if (action === 'founderAuditLog') {
+    const rawCenter = String(url.searchParams.get('auditCenter') || 'all').trim().toLowerCase();
+    const auditCenter = /^[a-z0-9-]{1,40}$/.test(rawCenter) ? rawCenter : 'all';
+    const rows = await readAuditLog({
+      centerId: auditCenter,
+      limit: Number(url.searchParams.get('limit') || 50),
+      offset: Number(url.searchParams.get('offset') || 0),
+      actorMemberId: url.searchParams.get('actorMemberId') || '',
+      action: url.searchParams.get('auditAction') || '',
+      actorKind: url.searchParams.get('actorKind') || '',
+      outcome: url.searchParams.get('outcome') || '',
+      since: url.searchParams.get('since') || '',
+    });
+    sendJson(res, 200, { ok: true, auditCenter, entries: rows, audit: getAuditHealth() });
     return;
   }
 
@@ -1286,6 +1322,37 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // ── COCKPIT FONDATEUR : relancer un job RATE (platform.admin). ────────────
+  // Un job 'failed' a epuise ses tentatives : ni listDueOpsJobs ni claimOpsJob
+  // ne le reprennent jamais. Ce chemin le remet en file par les fonctions
+  // EXISTANTES (updateOpsJobStatus remet queued + attempts a zero,
+  // processOpsJobById le traite immediatement, le worker Railway sert de
+  // filet). Trace par PP1 comme tout POST : action requeueOpsJob, entite
+  // ops_job. Portee plateforme assumee : la ligne est relue par id AVANT la
+  // mutation et seul un statut 'failed' passe (pas de rejeu d'un job vivant).
+  if (action === 'requeueOpsJob') {
+    const jobId = Number(body.id);
+    if (!Number.isInteger(jobId) || jobId <= 0) throw createHttpError('Identifiant de job invalide.', 400);
+    const job = await getOpsJob(jobId, { centerId: '' });
+    if (!job) throw createHttpError('Job introuvable.', 404);
+    if (job.status !== 'failed') {
+      throw createHttpError(`Seul un job en échec se relance d'ici (celui-ci est « ${job.status} »).`, 409);
+    }
+    const requeued = await updateOpsJobStatus(jobId, {
+      status: 'queued',
+      incrementAttempts: -Number(job.attempts || 0),
+      runAt: new Date().toISOString(),
+      lastError: null,
+    });
+    keepAlive(processOpsJobById(jobId));
+    sendJson(res, 202, {
+      ok: true,
+      action,
+      job: { id: requeued.id, centerId: requeued.centerId, status: requeued.status, attempts: requeued.attempts },
+    });
+    return;
+  }
+
   if (action === 'enqueueJob') {
     const concreteCenterId = requireConcreteCenter('job');
     const jobPayload = body.job ? { ...body.job, centerId: concreteCenterId || body.job.centerId || 'libramont' } : withCenter(body, concreteCenterId);
@@ -1964,6 +2031,10 @@ async function runCampaignEnqueue({ centerId, campaignId, recipients, subject, b
 }
 
 function getRequiredOpsPermission(method, action) {
+  // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
+  // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
+  // session Direction recoit ici un 403, trace outcome=denied par PP2.
+  if (['founderCockpit', 'founderAuditLog', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   if (method === 'GET') {
     if (['communications', 'emailSamples'].includes(action)) return 'emails.view';
     // `job` = la lecture du poller de progression : mêmes permissions que
@@ -2072,6 +2143,7 @@ function auditEntityFor(action, body = {}) {
   if (/EmailIdentity/i.test(action)) return { entityType: 'email_identity', entityId: body.id || body.identityId || '' };
   if (/^suppression/.test(action)) return { entityType: 'marketing_suppression', entityId: '' };
   if (/^competitor/.test(action)) return { entityType: 'competitor', entityId: body.id || body.competitorId || '' };
+  if (/OpsJob/i.test(action)) return { entityType: 'ops_job', entityId: body.id || '' };
   if (/Reservation|reservation/.test(action)) return { entityType: 'reservation', entityId: body.reservationId || (body.reservation && body.reservation.id) || '' };
   if (/^delay/.test(action)) return { entityType: 'delay_incident', entityId: body.incidentId || body.id || '' };
   if (/DirectionReport/i.test(action)) return { entityType: 'direction_report', entityId: body.id || '' };

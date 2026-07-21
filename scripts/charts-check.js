@@ -90,9 +90,9 @@ const DATA = {
 // La restauration est l'edition inverse exacte (replace -> find).
 const MUTATIONS = [
   {
-    name: 'linePathD saute le premier point de la serie',
-    find: 'pts.map(function (p, i)',
-    replace: 'pts.slice(1).map(function (p, i)',
+    name: 'smoothPathD saute le dernier segment de la courbe (un sommet en moins)',
+    find: 'for (var t = 0; t < n - 1; t += 1) {',
+    replace: 'for (var t = 0; t < n - 2; t += 1) {',
     expect: 'line-points',
   },
   {
@@ -355,10 +355,15 @@ async function runSuite(browser, quiet) {
     // ---- Assertions page normale -----------------------------------------
     ok(t0.api, 'api', 'les 5 fonctions du contrat doivent exister');
     ok(t0.threw.length === 0, 'sans-exception', t0.threw.join(' | '));
-    const dPoints = (t0.lineD.match(/[ML]/g) || []).length;
+    // Courbe lissee monotone : chaque sommet est l'ancre M (1) ou la fin d'une
+    // commande cubique C (n-1). La ligne passe donc par M + nb(C) sommets, et
+    // porte 2 + 6*nb(C) nombres, tous finis.
+    const dCurves = (t0.lineD.match(/C/g) || []).length;
+    const dStarts = (t0.lineD.match(/M/g) || []).length;
+    const dPoints = dStarts + dCurves;
     const dNums = (t0.lineD.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
-    ok(dPoints === DATA.line.length && dNums.length === DATA.line.length * 2 && dNums.every(Number.isFinite),
-      'line-points', `attendu ${DATA.line.length} points finis, trouve ${dPoints} (${dNums.length} nombres)`);
+    ok(dPoints === DATA.line.length && dNums.length === 2 + dCurves * 6 && dNums.every(Number.isFinite),
+      'line-points', `attendu ${DATA.line.length} sommets finis, trouve ${dPoints} (${dNums.length} nombres)`);
     ok(t0.lineOff0 > 900, 'line-anim-start', `dashoffset t0 = ${t0.lineOff0}`);
     ok(Number.isFinite(t250.lineOff) && t250.lineOff < t0.lineOff0 - 50, 'line-anim-progress', `t0 ${t0.lineOff0} -> t250 ${t250.lineOff} : doit avoir bouge`);
     ok(settled.lineOffEnd < 1, 'line-anim-end', `dashoffset final = ${settled.lineOffEnd}`);

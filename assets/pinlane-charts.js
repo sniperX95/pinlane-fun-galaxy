@@ -36,7 +36,7 @@
   window.PINLANE_CHARTS_SEEN = SEEN;
 
   var EMPTY_TEXT = 'Pas encore de donnees sur la periode.';
-  var VB_W = 640;
+  var VB_W = 560;
   var PAD = { l: 48, r: 16, t: 20, b: 28 };
   var TONES = { success: 'plc-tone-success', warning: 'plc-tone-warning', danger: 'plc-tone-danger' };
   var FADE = [1, 0.66, 0.44, 0.3, 0.2, 0.14];
@@ -144,10 +144,16 @@
   function buildScale(maxValue, format) {
     if (!(maxValue > 0)) return { top: 1, ticks: [0] };
     if (format === 'percent' && maxValue <= 100) return { top: 100, ticks: [0, 50, 100] };
-    var rough = maxValue / 3;
+    // Vise ~15% de marge au-dessus du pic (rough = max/2.6) : le sommet de la
+    // courbe respire sans coller au plafond, et sans laisser trop de vide.
+    var rough = maxValue / 2.6;
     var pow = Math.pow(10, Math.floor(Math.log(rough) / Math.LN10));
     var base = rough / pow;
-    var mult = base <= 1 ? 1 : base <= 2 ? 2 : base <= 2.5 ? 2.5 : base <= 5 ? 5 : 10;
+    // Paliers entiers uniquement : jamais de graduation a virgule sur des
+    // donnees entieres (0/2/3/5 illisible) -> pas de 1.5 ni 2.5.
+    var stops = [1, 2, 3, 4, 5, 6, 8, 10];
+    var mult = stops[stops.length - 1];
+    for (var si = 0; si < stops.length; si += 1) { if (base <= stops[si]) { mult = stops[si]; break; } }
     var step = mult * pow;
     return { top: step * 3, ticks: [0, step, step * 2, step * 3] };
   }
@@ -205,6 +211,52 @@
     return pts.map(function (p, i) {
       return (i === 0 ? 'M' : 'L') + round2(p.x) + ' ' + round2(p.y);
     }).join(' ');
+  }
+
+  // Courbe lissee monotone (tangentes de Fritsch-Carlson) : rendu pro, sans
+  // les segments brises "en dents de scie", et SANS depassement (la courbe ne
+  // sort jamais de l'intervalle de ses voisins -> pas d'artefact sous la
+  // baseline ni au-dessus du plafond, donc pas de bug graphique). Retombe sur
+  // linePathD sous 3 points (ou l'interpolation cubique n'apporte rien).
+  function smoothPathD(pts) {
+    var n = pts.length;
+    if (n < 3) return linePathD(pts);
+    var dx = [], slope = [];
+    for (var i = 0; i < n - 1; i += 1) {
+      var h = pts[i + 1].x - pts[i].x;
+      dx.push(h);
+      slope.push(h === 0 ? 0 : (pts[i + 1].y - pts[i].y) / h);
+    }
+    var m = new Array(n);
+    m[0] = slope[0];
+    m[n - 1] = slope[n - 2];
+    for (var j = 1; j < n - 1; j += 1) {
+      if (slope[j - 1] * slope[j] <= 0) { m[j] = 0; }
+      else { m[j] = (slope[j - 1] + slope[j]) / 2; }
+    }
+    // Clamp de monotonie : borne les tangentes pour interdire tout depassement.
+    for (var k = 0; k < n - 1; k += 1) {
+      if (slope[k] === 0) { m[k] = 0; m[k + 1] = 0; continue; }
+      var a = m[k] / slope[k];
+      var b = m[k + 1] / slope[k];
+      var s = a * a + b * b;
+      if (s > 9) {
+        var tau = 3 / Math.sqrt(s);
+        m[k] = tau * a * slope[k];
+        m[k + 1] = tau * b * slope[k];
+      }
+    }
+    var d = 'M' + round2(pts[0].x) + ' ' + round2(pts[0].y);
+    for (var t = 0; t < n - 1; t += 1) {
+      var h3 = dx[t] / 3;
+      var c1x = pts[t].x + h3;
+      var c1y = pts[t].y + m[t] * h3;
+      var c2x = pts[t + 1].x - h3;
+      var c2y = pts[t + 1].y - m[t + 1] * h3;
+      d += ' C' + round2(c1x) + ' ' + round2(c1y) + ' ' + round2(c2x) + ' ' + round2(c2y)
+        + ' ' + round2(pts[t + 1].x) + ' ' + round2(pts[t + 1].y);
+    }
+    return d;
   }
 
   // ---- Survol : infobulle + mise en avant ---------------------------------
@@ -330,7 +382,7 @@
         label: p.label,
       };
     });
-    var d = linePathD(pts);
+    var d = smoothPathD(pts);
     var baseY = round2(PAD.t + innerH);
     var last = pts[n - 1];
     var area = d + ' L' + round2(last.x) + ' ' + baseY + ' L' + round2(pts[0].x) + ' ' + baseY + ' Z';

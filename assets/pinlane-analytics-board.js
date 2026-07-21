@@ -54,15 +54,26 @@
     avgBasket: { kind: 'stat', label: 'Panier moyen', format: 'euro', viz: ['tile'] },
   };
 
-  // Ordre d'affichage dans le choix d'ajout, groupe par famille.
+  // Ordre d'affichage dans le choix d'ajout, groupe par famille. `hint` = la
+  // legende ASCII qui explique la famille sous son titre dans le selecteur.
   var PICKER_GROUPS = [
-    { title: 'Series', metrics: ['revenue', 'reservations', 'pax'] },
-    { title: 'Repartitions', metrics: ['byType', 'byChannel'] },
-    { title: 'Indicateurs', metrics: ['occupancy', 'paymentRate', 'cancelRate', 'avgBasket'] },
+    { title: 'Evolutions', hint: 'suivi jour par jour', metrics: ['revenue', 'reservations', 'pax'] },
+    { title: 'Repartitions', hint: 'la part de chaque categorie', metrics: ['byType', 'byChannel'] },
+    { title: 'Indicateurs', hint: 'un chiffre cle sur la periode', metrics: ['occupancy', 'paymentRate', 'cancelRate', 'avgBasket'] },
   ];
   var VIZ_LABEL = { line: 'Courbe', bars: 'Barres', donut: 'Anneau', tile: 'Grand chiffre' };
+  // Mini-glyphes 20x20 (currentColor) pour donner un apercu de chaque forme.
+  var VIZ_ICON = {
+    line: '<path d="M2 15 C5 15 5 7 8 7 C11 7 10 12 13 12 C16 12 15 5 18 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>',
+    bars: '<rect x="3" y="10" width="3.2" height="7" rx="1"></rect><rect x="8.4" y="5" width="3.2" height="12" rx="1"></rect><rect x="13.8" y="12" width="3.2" height="5" rx="1"></rect>',
+    donut: '<circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-opacity="0.28"></circle><path d="M10 4 A6 6 0 0 1 15.2 12.8" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"></path>',
+    tile: '<rect x="3" y="5" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"></rect><rect x="5.5" y="8" width="6" height="1.8" rx="0.9"></rect><rect x="5.5" y="11" width="9" height="1.8" rx="0.9"></rect>',
+  };
+  function vizIcon(v) {
+    return '<svg class="pab-viz-ico" viewBox="0 0 20 20" aria-hidden="true" focusable="false">' + (VIZ_ICON[v] || '') + '</svg>';
+  }
 
-  var CHART_H = 170;
+  var CHART_H = 190;
   var LONG_PRESS_MS = 450;
   var DRAG_THRESHOLD_SQ = 25; // (5px)^2 : au-dela on considere un glisser
   var PRESS_MOVE_SQ = 64; // (8px)^2 : au-dela l'appui long est annule
@@ -175,6 +186,10 @@
   function closeSVG() {
     return '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">'
       + '<path d="M3 3 L9 9 M9 3 L3 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>';
+  }
+  function checkSVG() {
+    return '<svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true" focusable="false">'
+      + '<path d="M2.5 7 L5 9.5 L10.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
   }
 
   // ==========================================================================
@@ -343,17 +358,23 @@
       var metricsHtml = PICKER_GROUPS.map(function (g) {
         var btns = g.metrics.map(function (m) {
           return '<button type="button" class="pab-pick-metric" data-pick-metric="' + m + '" aria-pressed="'
-            + (m === selMetric ? 'true' : 'false') + '">' + esc(CATALOG[m].label) + '</button>';
+            + (m === selMetric ? 'true' : 'false') + '"><span class="pab-pick-metric-label">'
+            + esc(CATALOG[m].label) + '</span><span class="pab-pick-check" aria-hidden="true">' + checkSVG() + '</span></button>';
         }).join('');
-        return '<div class="pab-picker-group-title">' + esc(g.title) + '</div>' + btns;
+        return '<div class="pab-picker-group"><div class="pab-picker-group-title">' + esc(g.title)
+          + '</div><div class="pab-picker-group-hint">' + esc(g.hint) + '</div>' + btns + '</div>';
       }).join('');
 
       picker.innerHTML = ''
-        + '<div class="pab-picker-col pab-picker-metrics">' + metricsHtml + '</div>'
-        + '<div class="pab-picker-col pab-picker-forms">'
-        + '  <div class="pab-picker-label">Forme</div>'
-        + '  <div class="pab-picker-viz"></div>'
-        + '  <button type="button" class="pab-picker-add">Ajouter</button>'
+        + '<div class="pab-picker-head"><span class="pab-picker-head-title">Ajouter un widget</span>'
+        + '<span class="pab-picker-head-sub">Choisis une donnee, puis sa forme</span></div>'
+        + '<div class="pab-picker-body">'
+        + '  <div class="pab-picker-col pab-picker-metrics">' + metricsHtml + '</div>'
+        + '  <div class="pab-picker-col pab-picker-forms">'
+        + '    <div class="pab-picker-label">Forme</div>'
+        + '    <div class="pab-picker-viz"></div>'
+        + '    <button type="button" class="pab-picker-add">Ajouter</button>'
+        + '  </div>'
         + '</div>';
 
       root.appendChild(picker);
@@ -363,7 +384,8 @@
       function renderViz() {
         vizWrap.innerHTML = CATALOG[selMetric].viz.map(function (v) {
           return '<button type="button" class="pab-pick-viz" data-pick-viz="' + v + '" aria-pressed="'
-            + (v === selViz ? 'true' : 'false') + '">' + esc(VIZ_LABEL[v]) + '</button>';
+            + (v === selViz ? 'true' : 'false') + '">' + vizIcon(v)
+            + '<span class="pab-viz-name">' + esc(VIZ_LABEL[v]) + '</span></button>';
         }).join('');
       }
       renderViz();

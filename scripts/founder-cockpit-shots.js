@@ -143,7 +143,7 @@ async function installMock(page) {
     });
     await page.waitForFunction(() => document.querySelectorAll('#staffCockpitPage .pv2-panel').length >= 3, null, { timeout: 15000 });
     await page.waitForTimeout(500);
-    // Garde-fous issus des defauts corriges le 2026-07-21 — verifications
+    // Garde-fous issus des defauts corriges le 2026-07-21 : verifications
     // COMPORTEMENTALES (hauteur reelle, couleur calculee, classe posee),
     // pas des presences de chaines :
     // 1. la barre de titre ne doit pas s'effondrer (body.staff-mode header

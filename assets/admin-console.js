@@ -1853,6 +1853,13 @@ const directionDecisionCache = {};
 const directionDecisionLoading = {};
 let dirRangeHandle = null;
 let DIR_ENTRANCE_SEEN = false;
+// Vue Analyse : tableau d'analyse PERSONNALISABLE (window.PinlaneAnalyticsBoard),
+// hote PERSISTANT + handle gardes en variables de module. Le board est monte UNE
+// seule fois ; changer de vue puis revenir DEPLACE le meme noeud (appendChild)
+// sans le detruire ni le re-monter -> config, edition et graphes survivent (motif
+// de l'app-main dashboard). storageKey DISTINCT du dashboard : config independante.
+let dirAnalyseHandle = null;
+let dirAnalyseContainer = null;
 
 // Metrique du grand graphique focus : chaque tuile pointe vers UN champ de serie
 // reellement servi par le serveur (jamais un ratio recalcule cote front). Les
@@ -1902,6 +1909,7 @@ const DIR_VIEW_META = [
   { key: 'clients', label: 'Clients' },
   { key: 'centres', label: 'Mes centres' },
   { key: 'provenance', label: 'Provenance' },
+  { key: 'analyse', label: 'Analyse' },
 ];
 const DIR_VIEWS = DIR_VIEW_META.map((v) => v.key);
 
@@ -2726,8 +2734,66 @@ function dirViewHtml(view, entry) {
   if (view === 'clients') return dirTablesHtml(entry) + dirRetentionHtml();
   if (view === 'centres') return dirComparisonHtml();
   if (view === 'provenance') return dirProvenanceHtml();
+  if (view === 'analyse') return dirAnalyseHtml();
   // synthese (defaut) : la rangee de KPI cliquables + le grand graphe focus.
   return dirKpisHtml(entry) + dirFocusHtml();
+}
+
+// Vue Analyse : un SLOT vide. Le contenu (window.PinlaneAnalyticsBoard) vit dans
+// un hote PERSISTANT deplace ici par mountDirAnalyseBoard a chaque rendu, jamais
+// re-cree. Pas de <header> (piege body.admin-mode header{height:0}) : section/div.
+function dirAnalyseHtml() {
+  return `<section class="dir-analyse" aria-label="Analyse personnalisee">
+    <div class="dir-analyse-slot" id="dirAnalyseSlot"></div>
+  </section>`;
+}
+
+// Le board fetch SA PROPRE plage : getAnalytics(startISO, endISO) frappe
+// directionAnalytics du centre courant et renvoie payload.analytics (zero
+// recalcul cote front, meme contrat que loadDirectionInsights).
+async function dirBoardGetAnalytics(start, end) {
+  const centerId = state.adminCenterId || 'libramont';
+  const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=directionAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`);
+  return (payload && payload.analytics) || null;
+}
+
+// Montage ROBUSTE aux re-rendus (mirroir de mountDashAnalyticsBoard) : l'hote
+// PERSISTANT est cree UNE fois (data-board-instance stable = preuve d'identite
+// du noeud), DEPLACE dans le slot de la vue active par appendChild, et le board
+// n'est monte QU'UNE fois. Revenir sur Analyse re-utilise le meme noeud : aucun
+// re-fetch, aucun scintillement, config du board preservee.
+function mountDirAnalyseBoard() {
+  const slot = document.getElementById('dirAnalyseSlot');
+  if (!slot) return;
+  if (!dirAnalyseContainer) {
+    dirAnalyseContainer = document.createElement('div');
+    dirAnalyseContainer.className = 'dir-analyse-host';
+    dirAnalyseContainer.setAttribute('data-board-instance', 'dir-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  }
+  if (dirAnalyseContainer.parentNode !== slot) slot.appendChild(dirAnalyseContainer);
+  if (!dirAnalyseHandle && typeof window !== 'undefined' && window.PinlaneAnalyticsBoard && typeof window.PinlaneAnalyticsBoard.mount === 'function') {
+    dirAnalyseHandle = window.PinlaneAnalyticsBoard.mount(dirAnalyseContainer, {
+      storageKey: 'pinlane-direction-board',
+      getAnalytics: dirBoardGetAnalytics,
+      defaultWidgets: [
+        { metric: 'revenue', viz: 'line' },
+        { metric: 'reservations', viz: 'bars' },
+        { metric: 'byType', viz: 'donut' },
+        { metric: 'occupancy', viz: 'tile' },
+      ],
+      maxDate: todayStr(),
+    });
+  }
+}
+
+// La vue Analyse apporte SA PROPRE barre de plage libre (le board est un outil
+// d'analyse personnalise) : on masque la barre de plage GLOBALE de Direction pour
+// ne pas presenter deux selecteurs de periode aux semantiques differentes. Les
+// autres vues la gardent (fenetre globale commune, hors #dirBody, jamais re-rendue).
+function syncDirControlsForView() {
+  const controls = document.getElementById('dirControls');
+  if (!controls) return;
+  controls.hidden = getDirView() === 'analyse';
 }
 
 function renderDirectionBody() {
@@ -2739,6 +2805,7 @@ function renderDirectionBody() {
   if (!entry.analytics) { body.innerHTML = dirNoteHtml('Pas encore de donnees sur cette periode.'); return; }
   const view = getDirView();
   body.innerHTML = `${dirNavHtml(view)}<div class="dir-view" id="dirViewContent">${dirViewHtml(view, entry)}</div>`;
+  syncDirControlsForView();
 }
 
 // Changer de vue : etat persiste (save), l'indicateur glisse (variable CSS mise a
@@ -2750,6 +2817,7 @@ function setDirView(view) {
   if (!DIR_VIEWS.includes(view) || getDirView() === view) return;
   state.adminView = view;
   save();
+  syncDirControlsForView();
   const nav = document.getElementById('dirNav');
   if (nav) {
     nav.style.setProperty('--dir-nav-index', String(DIR_VIEWS.indexOf(view)));
@@ -2865,6 +2933,11 @@ function mountDirectionCharts() {
   mountDirCmpChart();
   mountDirRetChart();
   mountDirProvCharts();
+
+  // Vue Analyse : deplace l'hote persistant du board dans son slot (no-op si le
+  // slot n'est pas dans le DOM, c.-a-d. une autre vue est active). Monte le board
+  // une seule fois ; ne le detruit jamais au changement de vue.
+  mountDirAnalyseBoard();
 }
 
 // Interaction coeur : cliquer une tuile choisit la metrique du grand graphique.
@@ -3367,6 +3440,11 @@ function startAdminHealthAutoRefresh() {
     dirFocusHtml,
     dirGridHtml,
     dirTablesHtml,
+    // Vue Analyse (tableau personnalisable window.PinlaneAnalyticsBoard)
+    dirAnalyseHtml,
+    dirBoardGetAnalytics,
+    mountDirAnalyseBoard,
+    syncDirControlsForView,
     // Sections de decision (Comparer mes centres + Retention et clients)
     dirDaysAgoLabel,
     dirCmpValue,

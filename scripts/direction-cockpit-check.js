@@ -736,6 +736,78 @@ async function probeDirProvenance(browser) {
   }
 }
 
+// Signal de MONTAGE du board de la vue Analyse : un widget trace (SVG hauteur>0)
+// OU la barre de plage propre du board avec au moins un controle. Reutilise par
+// la phase verte et la contre-preuve.
+async function waitDirAnalyseMounted(page) {
+  await page.waitForFunction(() => {
+    const slot = document.getElementById('dirAnalyseSlot');
+    if (!slot || !slot.querySelector('.pab')) return false;
+    const svg = slot.querySelector('.pab-widget-body svg');
+    const svgOk = Boolean(svg) && svg.getBoundingClientRect().height > 0;
+    const range = slot.querySelector('.pab-range');
+    const rangeOk = Boolean(range) && range.querySelectorAll('button, input, select').length > 0;
+    return svgOk || rangeOk;
+  }, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+}
+
+function readDirAnalyseState(page) {
+  return page.evaluate(() => {
+    const slot = document.getElementById('dirAnalyseSlot');
+    const host = slot ? slot.querySelector('[data-board-instance]') : null;
+    const svg = slot ? slot.querySelector('.pab-widget-body svg') : null;
+    const range = slot ? slot.querySelector('.pab-range') : null;
+    const controls = document.getElementById('dirControls');
+    let storageKey = '';
+    try { storageKey = window.localStorage.getItem('pinlane-direction-board') ? 'pinlane-direction-board' : ''; } catch (e) { storageKey = ''; }
+    return {
+      id: host ? host.getAttribute('data-board-instance') : '',
+      widgetSvgH: svg ? Math.round(svg.getBoundingClientRect().height) : 0,
+      rangeControls: range ? range.querySelectorAll('button, input, select').length : 0,
+      globalControlsHidden: controls ? (controls.hidden === true || controls.offsetHeight === 0) : false,
+      storageKey,
+    };
+  });
+}
+
+// Invariants de la vue ANALYSE, sur une page fraiche : le board se monte (widget
+// trace OU barre de plage propre) et, apres un aller-retour Synthese -> Analyse,
+// l'hote PERSISTE (meme data-board-instance : aucun re-montage). Sonde partagee
+// entre la phase verte [12] et la contre-preuve : une mutation qui recree l'hote
+// a chaque rendu fait diverger l'identifiant (sameNode passe a false).
+async function probeDirAnalyse(browser) {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  try {
+    await bootDirection(page);
+    await switchDirView(page, 'analyse');
+    await waitDirAnalyseMounted(page);
+    const first = await readDirAnalyseState(page);
+    // Aller-retour : la barre de plage globale doit revenir sur Synthese, puis on
+    // relit l'hote au retour sur Analyse (sans exiger un board plein : une
+    // mutation peut le vider, seul l'identifiant du noeud est compare).
+    await switchDirView(page, 'synthese');
+    await page.waitForTimeout(200);
+    await switchDirView(page, 'analyse');
+    await page.waitForFunction(() => {
+      const slot = document.getElementById('dirAnalyseSlot');
+      return Boolean(slot && slot.querySelector('[data-board-instance]'));
+    }, null, { timeout: 10000 });
+    await page.waitForTimeout(200);
+    const second = await readDirAnalyseState(page);
+    return {
+      mounted: first.widgetSvgH > 0 || first.rangeControls > 0,
+      sameNode: Boolean(first.id) && first.id === second.id,
+      id1: first.id,
+      id2: second.id,
+      widgetSvgH: first.widgetSvgH,
+      rangeControls: first.rangeControls,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
 async function main() {
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
@@ -908,8 +980,8 @@ async function main() {
         gridPresent: Boolean(document.querySelector('#dirChartResas')),
       };
     });
-    ok(navState.pills.length === 5 && ['synthese', 'activite', 'clients', 'centres', 'provenance'].every((v, i) => navState.pills[i] === v),
-      `le segmented nav offre 5 vues dans l'ordre (obtenu ${JSON.stringify(navState.pills)})`);
+    ok(navState.pills.length === 6 && ['synthese', 'activite', 'clients', 'centres', 'provenance', 'analyse'].every((v, i) => navState.pills[i] === v),
+      `le segmented nav offre 6 vues dans l'ordre, Analyse en dernier (obtenu ${JSON.stringify(navState.pills)})`);
     ok(navState.view === 'synthese' && navState.activeView === 'synthese', `vue par defaut = Synthese (pilule active « ${navState.activeView} »)`);
     ok(navState.focusPresent && !navState.gridPresent, 'Synthese montre le grand graphe focus et PAS la grille d activite');
     ok(await rangeVisible(), 'la barre de plage est visible sur la vue Synthese');
@@ -1035,6 +1107,41 @@ async function main() {
     await switchDirView(page, 'synthese');
     await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
 
+    console.log('\n[12] VUE ANALYSE : 6e onglet, board personnalisable monte, hote PERSISTANT au retour, plage propre');
+    // Le segmented nav offre maintenant 6 vues, Analyse en derniere position.
+    const navSix = await page.evaluate(() => [...document.querySelectorAll('#adminContent .dir-nav-pill')].map((b) => b.getAttribute('data-view')));
+    ok(navSix.length === 6 && navSix[5] === 'analyse', `le segmented nav offre 6 vues, Analyse en dernier (obtenu ${JSON.stringify(navSix)})`);
+
+    // Cliquer Analyse monte le board reel (window.PinlaneAnalyticsBoard, deja
+    // charge par la page) : au moins un widget trace (SVG hauteur>0) OU sa barre
+    // de plage propre presente. Sa donnee vient du mock directionAnalytics via
+    // getAnalytics -> apiRequest (meme chemin que le poste d'observation).
+    await switchDirView(page, 'analyse');
+    await waitDirAnalyseMounted(page);
+    const analyse1 = await readDirAnalyseState(page);
+    ok(analyse1.widgetSvgH > 0 || analyse1.rangeControls > 0,
+      `Analyse monte le board (widget SVG ${analyse1.widgetSvgH}px OU barre de plage ${analyse1.rangeControls} controles)`);
+    ok(Boolean(analyse1.id), `le board pose une reference stable au montage (data-board-instance « ${analyse1.id} »)`);
+    ok(analyse1.storageKey === 'pinlane-direction-board', 'le board persiste sa config sous la cle DISTINCTE pinlane-direction-board');
+    ok(analyse1.globalControlsHidden, 'la barre de plage GLOBALE est masquee sur Analyse (le board apporte la sienne)');
+
+    // Aller-retour : Synthese puis Analyse. La barre GLOBALE revient sur Synthese,
+    // et revenir sur Analyse conserve le MEME noeud (data-board-instance identique)
+    // : le board n'est PAS recree, donc sa config/edition survivrait.
+    await switchDirView(page, 'synthese');
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
+    ok(await rangeVisible(), 'la barre de plage GLOBALE revient sur Synthese apres un passage par Analyse');
+    await switchDirView(page, 'analyse');
+    await page.waitForFunction(() => {
+      const slot = document.getElementById('dirAnalyseSlot');
+      return Boolean(slot && slot.querySelector('[data-board-instance]'));
+    }, null, { timeout: 10000 });
+    const analyse2 = await readDirAnalyseState(page);
+    ok(Boolean(analyse2.id) && analyse2.id === analyse1.id,
+      `revenir sur Analyse conserve le MEME noeud de board (« ${analyse1.id} » -> « ${analyse2.id} »)`);
+    await switchDirView(page, 'synthese');
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
+
     if (process.env.PINLANE_DIRECTION_SHOTS) {
       const shotDir = process.env.PINLANE_DIRECTION_SHOTS;
       fs.mkdirSync(shotDir, { recursive: true });
@@ -1044,7 +1151,7 @@ async function main() {
       for (const theme of ['dark', 'light']) {
         await page.evaluate((t) => { setStaffTheme(t); }, theme);
         await page.waitForTimeout(300);
-        for (const view of ['synthese', 'activite', 'clients', 'centres', 'provenance']) {
+        for (const view of ['synthese', 'activite', 'clients', 'centres', 'provenance', 'analyse']) {
           await switchDirView(page, view);
           await page.setViewportSize({ width: 1400, height: 950 });
           await page.waitForTimeout(300);
@@ -1160,6 +1267,25 @@ async function main() {
       }
       ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
     };
+    // Contre-preuve de la vue ANALYSE : casser la persistance de l'hote du board
+    // (recreer un conteneur a chaque rendu au lieu d'en garder UN) doit faire
+    // diverger le data-board-instance entre l'aller et le retour. Sonde =
+    // probeDirAnalyse (invariant sameNode). Une mutation sans effet fait sortir
+    // le script en erreur.
+    const runAnalyseMutation = async (anchor, replacement, invariantKey, label) => {
+      const original = applyMutation(anchor, replacement, label);
+      let probe = null;
+      try {
+        probe = await probeDirAnalyse(browser);
+      } finally {
+        fs.writeFileSync(consolePath, original);
+      }
+      if (!probe || probe[invariantKey] !== false) {
+        console.error(`direction-cockpit-check: MUTATION SANS EFFET (analyse), le gate ne sait pas rougir : ${label} (${JSON.stringify(probe)})`);
+        process.exit(1);
+      }
+      ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
+    };
     await runMutation(
       'return dirDays.map((row) => (asLabels',
       'return dirDays.slice(0, -1).map((row) => (asLabels',
@@ -1214,6 +1340,12 @@ async function main() {
       'noFakeAudienceNumber',
       'faux chiffre demographique injecte dans la carte Audience',
     );
+    await runAnalyseMutation(
+      'if (!dirAnalyseContainer) {',
+      'if (true) {',
+      'sameNode',
+      'hote du board Analyse recree a chaque rendu (plus de noeud persistant : la config du board serait perdue au retour)',
+    );
     const restored = await probeDirInvariants(browser);
     ok(restored.svgVisible && restored.focusPointsMatch && restored.deltaExact,
       'restauration inverse : les invariants du poste d observation tiennent de nouveau sur une page fraiche');
@@ -1229,6 +1361,9 @@ async function main() {
     const restoredProv = await probeDirProvenance(browser);
     ok(restoredProv.occChartTraced && restoredProv.occRowsMatch && restoredProv.sourcesRowsMatch && restoredProv.audienceHonest,
       'restauration inverse : Provenance retrace ses occasions, ses sources et sa carte Audience honnete sur une page fraiche');
+    const restoredAnalyse = await probeDirAnalyse(browser);
+    ok(restoredAnalyse.mounted && restoredAnalyse.sameNode,
+      `restauration inverse : le board Analyse se monte et son hote persiste au retour sur une page fraiche (${restoredAnalyse.id1} -> ${restoredAnalyse.id2})`);
   } finally {
     await browser.close();
     server.close();

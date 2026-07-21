@@ -12144,3 +12144,22 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .dir-prov-body { animation: none; }
 }
+
+/* --- 32. Direction : vue Analyse (board customisable, dir-analyse-) ------- */
+/* Vue Analyse du poste d'observation Direction (6e onglet du segmented nav).
+   Le contenu est window.PinlaneAnalyticsBoard : le gros du style vient de
+   pinlane-analytics-board.css (classes pab-). Ici on ne cadre que le slot et
+   l'hote persistant pour qu'ils remplissent la vue sans debordement horizontal.
+   Monochrome, variables de theme, aucun <header> (piege body.admin-mode). */
+
+.dir-analyse {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dir-analyse-slot,
+.dir-analyse-host {
+  min-width: 0;
+  width: 100%;
+}

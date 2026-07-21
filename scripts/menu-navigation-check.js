@@ -43,9 +43,10 @@ const MIME = {
 //  - cockpit-clients -> PAGE_META.title 'Clients'
 const PLATFORM_PAGES = [
   { key: 'cockpit', title: 'Cockpit fondateur' },
+  { key: 'cockpit-centres', title: 'Centres' },
+  { key: 'cockpit-team', title: 'Equipe et acces' },
   { key: 'cockpit-agents', title: 'Agents IA' },
   { key: 'cockpit-incidents', title: 'Incidents' },
-  { key: 'cockpit-clients', title: 'Clients' },
 ];
 
 // ---- Journal des verifications --------------------------------------------
@@ -179,6 +180,18 @@ async function installMock(page) {
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderAgents') return J(agentsBundle);
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderIncidents') return J(incidentsBundle);
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderClients') return J(clientsBundle);
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderCenters') return J({
+        ok: true, testData: true,
+        resourceModel: { statusValues: ['active', 'planned', 'closed'], resources: {}, defaultSchedule: {} },
+        centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', config: { status: 'active', timezone: 'Europe/Brussels', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30 } } }, members: 3, reservations30d: 40, revenue30d: 6000 }],
+      });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderTeam') return J({
+        ok: true, testData: true,
+        permissionsCatalog: [{ key: 'reservations.view', label: 'Voir les reservations', group: 'Reservations', assignable: true }, { key: 'platform.admin', label: 'Admin plateforme', group: 'Plateforme', assignable: false }],
+        centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont' }],
+        roles: [{ id: 'staff', name: 'Staff', centerId: 'libramont', locked: false, permissions: ['reservations.view'], memberCount: 2 }],
+        members: [{ id: 'libramont:demo', name: 'Demo', centerId: 'libramont', roleId: 'staff', roleName: 'Staff', status: 'active', lastLoginAt: null, hasCode: true }],
+      });
       if (u.pathname === '/api/ops') return J({ ok: true });
       if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], laneStatuses: {}, communications: [] });
       return nf(input, init);
@@ -376,12 +389,12 @@ async function probeCockpitClick(browser) {
     mutationOriginal = original;
     const nl = original.includes('\r\n') ? '\r\n' : '\n';
     const ANCHOR = [
-      "    if (['cockpit', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-centres', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('staff');",
     ].join(nl);
     const MUTATED = [
-      "    if (['cockpit', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-centres', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('admin');",
     ].join(nl);

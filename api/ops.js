@@ -113,6 +113,7 @@ const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStat
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
+const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -358,6 +359,21 @@ async function handleGet(req, res, options = {}) {
   }
   if (action === 'founderClients') {
     sendJson(res, 200, await buildFounderClients());
+    return;
+  }
+
+  // Panneau de controle fondateur : lecteurs cross-centres de la gestion
+  // (centres editables, equipe/roles/permissions). Les ECRITURES passent par
+  // les actions existantes deja tracees (saveCenterConfig, setCenterStatus,
+  // saveCenter cote ops ; createMember, updateMemberRole, updateRolePermissions
+  // ... cote staff-auth), autorisees inter-centres par centers.switch du role
+  // verrouille platform-owner.
+  if (action === 'founderCenters') {
+    sendJson(res, 200, await buildFounderCenters());
+    return;
+  }
+  if (action === 'founderTeam') {
+    sendJson(res, 200, await buildFounderTeam());
     return;
   }
 
@@ -2082,7 +2098,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le

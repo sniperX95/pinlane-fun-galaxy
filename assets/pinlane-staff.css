@@ -10353,3 +10353,494 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .dir-controls { flex-direction: column; align-items: stretch; }
   .dir-window { align-items: flex-start; text-align: left; }
 }
+
+/* ===========================================================================
+   25. PANNEAU FONDATEUR : gestion Centres (fca-) + Equipe/acces (fte-)
+   Surfaces de GESTION no-code (creer/configurer/suspendre un centre ;
+   membres/roles/permissions/codes). Meme langage visuel que le cockpit
+   (pv2-*/fck-*), plus les modales et formulaires de gestion. ============= */
+/* ============================================================================
+   FRONT-CENTRES : panneau plateforme de gestion no-code des centres.
+   ----------------------------------------------------------------------------
+   Rendu dans #staffCockpitPage (meme hote que founder-cockpit.js). Discipline
+   Vercel/Linear identique : monochrome, le SENS seul porte la couleur (vert =
+   actif, ambre = en preparation, rouge = ferme), filets 1px var(--line),
+   rayons var(--radius-*), chiffres tabulaires var(--font-data), etats vides
+   calmes. On reutilise pv2-*/fck-* quand ca colle (grille de cartes, chips,
+   boutons, interrupteurs) ; les classes fca-* n'ajoutent que le manquant :
+   resume de config, controle de statut inline, et la MODALE de configuration.
+   Motion (Emil Kowalski) : transform/opacity, ease-out, JAMAIS ease-in ni
+   scale(0). Etat final immediat sous prefers-reduced-motion.
+   AUCUNE balise <header> cote JS : la regle body.staff-mode header l'ecraserait.
+   ========================================================================== */
+
+/* --- Resume de config sur la carte ---------------------------------------- */
+#staffCockpitPage .fca-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 2px 0 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+#staffCockpitPage .fca-summary span { display: inline-flex; align-items: center; gap: 5px; }
+#staffCockpitPage .fca-summary .fca-sep { color: var(--faint); margin: 0; }
+#staffCockpitPage .fca-summary strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Compteurs de la carte : membres / resas 30j / CA 30j. */
+#staffCockpitPage .fca-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fca-metric { display: flex; flex-direction: column; gap: 1px; }
+#staffCockpitPage .fca-metric-num {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+#staffCockpitPage .fca-metric-cap { font-size: 11px; color: var(--faint); }
+
+/* Pied de carte : controle de statut inline (un clic) + bouton Configurer.
+   Empile en colonne : le segmente 3 etats + le bouton ne tiennent pas sur une
+   ligne dans une carte de grille (le bouton Configurer sortait de la carte). */
+#staffCockpitPage .fca-card-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fca-card-foot > .pv2-btn { width: 100%; }
+
+/* Statut changeable en un clic : segmente 3 etats, le seul actif porte le sens. */
+#staffCockpitPage .fca-status-seg { display: flex; flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+#staffCockpitPage .fca-seg-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 5px 9px;
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#staffCockpitPage .fca-seg-btn + .fca-seg-btn { border-left: 1px solid var(--line); }
+#staffCockpitPage .fca-seg-btn:hover:not(.is-active):not(:disabled) { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); color: var(--text); }
+#staffCockpitPage .fca-seg-btn:active:not(:disabled) { transform: scale(0.97); }
+#staffCockpitPage .fca-seg-btn:disabled { cursor: default; }
+#staffCockpitPage .fca-seg-btn.is-active { color: var(--text); font-weight: 600; }
+#staffCockpitPage .fca-seg-btn.is-active.tone-success { background: var(--success-soft); color: var(--success); }
+#staffCockpitPage .fca-seg-btn.is-active.tone-warning { background: var(--warning-soft); color: var(--warning); }
+#staffCockpitPage .fca-seg-btn.is-active.tone-danger { background: var(--danger-soft); color: var(--danger); }
+/* Label au-dessus du segmente : mis en ligne, "Statut" mangeait la largeur et
+   "en preparation" chevauchait "ferme". Pleine largeur = chaque etat respire. */
+#staffCockpitPage .fca-seg-wrap { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+#staffCockpitPage .fca-seg-label { font-size: 11px; color: var(--faint); }
+
+/* --- Modale de configuration ---------------------------------------------- */
+/* Overlay opacite + panneau translateY(8px)->0. L'animation d'entree ne joue
+   qu'a la PREMIERE apparition (classe is-in posee par le JS), jamais sur un
+   re-rendu partiel du corps. */
+#staffCockpitPage .fca-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 16px 24px;
+  overflow-y: auto;
+  background: var(--backdrop);
+}
+#staffCockpitPage .fca-overlay.is-in { animation: fca-overlay-in var(--dur-enter, 240ms) var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)); }
+#staffCockpitPage .fca-panel {
+  width: min(640px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+#staffCockpitPage .fca-overlay.is-in .fca-panel { animation: fca-panel-in var(--dur-enter, 240ms) var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)); }
+@keyframes fca-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fca-panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+#staffCockpitPage .fca-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+#staffCockpitPage .fca-modal-head h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+#staffCockpitPage .fca-modal-head p { margin-top: 3px; font-size: 12px; color: var(--muted); }
+#staffCockpitPage .fca-close {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#staffCockpitPage .fca-close:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); color: var(--text); }
+#staffCockpitPage .fca-close:active { transform: scale(0.97); }
+
+#staffCockpitPage .fca-modal-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+
+#staffCockpitPage .fca-section { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px 4px; }
+#staffCockpitPage .fca-section > .fca-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+#staffCockpitPage .fca-section-note { font-size: 12px; color: var(--muted); margin: -2px 0 10px; }
+
+#staffCockpitPage .fca-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-bottom: 8px; }
+#staffCockpitPage .fca-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#staffCockpitPage .fca-field.fca-span2 { grid-column: 1 / -1; }
+#staffCockpitPage .fca-field > label { font-size: 12px; color: var(--muted); }
+#staffCockpitPage .fca-field input,
+#staffCockpitPage .fca-field select { height: 34px; font-size: 13px; }
+#staffCockpitPage .fca-hint { font-size: 11px; color: var(--faint); }
+#staffCockpitPage .fca-field input:focus,
+#staffCockpitPage .fca-field select:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent); }
+#staffCockpitPage .fca-field input:invalid { border-color: var(--danger); }
+
+/* Lignes d'interrupteur : libelle + mk-switch (reutilise, deja anime/monochrome). */
+#staffCockpitPage .fca-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fca-toggle-row:first-of-type { border-top: 0; }
+#staffCockpitPage .fca-toggle-row .fca-toggle-label { font-size: 12.5px; color: var(--text); }
+#staffCockpitPage .fca-toggle-row .fca-toggle-sub { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
+
+/* Grille horaire : 7 jours, chaque ligne ouvert/ferme + heures. */
+#staffCockpitPage .fca-days { display: flex; flex-direction: column; gap: 2px; }
+#staffCockpitPage .fca-day {
+  display: grid;
+  grid-template-columns: 96px auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fca-day:first-child { border-top: 0; }
+#staffCockpitPage .fca-day-name { font-size: 12.5px; color: var(--text); }
+#staffCockpitPage .fca-day-times { display: flex; align-items: center; gap: 6px; justify-self: end; }
+#staffCockpitPage .fca-day-times input[type='time'] { width: 104px; height: 32px; font-size: 12.5px; }
+#staffCockpitPage .fca-day-times .fca-dash { color: var(--faint); }
+#staffCockpitPage .fca-day-closed { justify-self: end; font-size: 12px; color: var(--faint); }
+#staffCockpitPage .fca-schedule-marker { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+#staffCockpitPage .fca-modal-error {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+#staffCockpitPage .fca-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fca-modal-foot .fca-foot-note { margin-right: auto; font-size: 11.5px; color: var(--faint); }
+
+/* Boutons : :active scale(0.97) sur les boutons de la surface. */
+#staffCockpitPage .fca-panel .pv2-btn:active { transform: scale(0.97); }
+
+@media (max-width: 640px) {
+  #staffCockpitPage .fca-metrics { grid-template-columns: 1fr 1fr; }
+  #staffCockpitPage .fca-fields { grid-template-columns: 1fr; }
+  #staffCockpitPage .fca-card-foot { flex-direction: column; align-items: stretch; }
+  #staffCockpitPage .fca-day { grid-template-columns: 80px auto; grid-auto-rows: min-content; }
+  #staffCockpitPage .fca-day-times { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* Etat final immediat : pas de mouvement pour qui le refuse. */
+@media (prefers-reduced-motion: reduce) {
+  #staffCockpitPage .fca-overlay.is-in,
+  #staffCockpitPage .fca-overlay.is-in .fca-panel { animation: none; }
+  #staffCockpitPage .fca-seg-btn:active:not(:disabled),
+  #staffCockpitPage .fca-close:active,
+  #staffCockpitPage .fca-panel .pv2-btn:active { transform: none; }
+}
+
+/* ============================================================================
+   COCKPIT FONDATEUR : PAGE EQUIPE (#staffCockpitPage, permission platform.admin)
+   ----------------------------------------------------------------------------
+   Membres, roles, permissions et codes, sur TOUS les centres. Meme discipline
+   que le reste de la categorie Plateforme : composants pv2- et fck- reutilises,
+   monochrome sauf le SENS (vert = actif/reussi, rouge = desactive/echec, ambre =
+   attente/absent), filets 1px var(--line), rayons var(--radius-*), chiffres
+   tabulaires var(--font-data). Classes propres prefixees fte-, tout scope sous
+   .fte-shell pour ne rien changer aux quatre pages cockpit voisines (.fck-shell).
+   Motion (Emil Kowalski) : transform/opacity, ease-out, jamais ease-in/scale(0).
+   ========================================================================== */
+
+#staffCockpitPage .fte-shell { display: flex; flex-direction: column; gap: 14px; }
+
+/* pv2-quiet / pv2-input / pv2-btn.ghost n'ont pas de base hors de la page
+   Emails : on les pose ICI, scopees a .fte-shell, sans toucher le voisinage. */
+#staffCockpitPage .fte-shell .pv2-quiet { color: var(--muted); font-size: 12.5px; }
+
+#staffCockpitPage .fte-shell .pv2-input,
+#staffCockpitPage .fte-shell .fte-input {
+  height: var(--h-md);
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  transition: border-color var(--dur-fast) var(--ease-out-strong),
+              box-shadow var(--dur-fast) var(--ease-out-strong);
+}
+#staffCockpitPage .fte-shell .pv2-input:focus,
+#staffCockpitPage .fte-shell .fte-input:focus {
+  outline: none;
+  border-color: var(--text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+#staffCockpitPage .fte-shell .pv2-btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+#staffCockpitPage .fte-shell .pv2-btn.ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line);
+}
+#staffCockpitPage .fte-shell .pv2-btn:active:not(:disabled) { transform: scale(0.97); }
+#staffCockpitPage .fte-shell .pv2-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* --- Barre de filtre par centre ------------------------------------------- */
+#staffCockpitPage .fte-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+#staffCockpitPage .fte-filter label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+#staffCockpitPage .fte-filter .pv2-input { min-width: 200px; }
+
+/* --- Cellules de table ----------------------------------------------------- */
+#staffCockpitPage .fte-shell .fck-table td { vertical-align: middle; }
+#staffCockpitPage .fte-role-select { min-width: 150px; }
+#staffCockpitPage .fte-col-action { text-align: right; white-space: nowrap; }
+#staffCockpitPage .fte-status-cell { display: inline-flex; align-items: center; gap: 8px; }
+#staffCockpitPage .fte-status-cell span.fte-status-txt { font-size: 12.5px; color: var(--muted); }
+
+/* mk-switch : press feedback reel sur l'element persistant (avant re-rendu). */
+#staffCockpitPage .fte-shell .mk-switch:active:not(:disabled) { transform: scale(0.94); }
+#staffCockpitPage .fte-shell .mk-switch span {
+  transition: transform var(--dur) var(--ease-out-strong), background-color var(--dur) var(--ease-out-strong);
+}
+
+/* --- Revele de code (a la demande, temporaire) ----------------------------- */
+#staffCockpitPage .fte-reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+#staffCockpitPage .fte-reveal code {
+  font-family: var(--font-data);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+#staffCockpitPage .fte-reveal button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+#staffCockpitPage .fte-reveal button:hover { color: var(--text); }
+#staffCockpitPage .fte-reveal-warn { display: block; margin-top: 3px; font-size: 11px; color: var(--warning); }
+
+/* --- Grille des roles ------------------------------------------------------ */
+#staffCockpitPage .fte-role-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+#staffCockpitPage .fte-role-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  background: var(--surface);
+  transition: border-color var(--dur) var(--ease-out-strong);
+}
+#staffCockpitPage .fte-role-card:hover { border-color: var(--line-strong); }
+#staffCockpitPage .fte-role-card .fck-card-head { margin: 0; }
+#staffCockpitPage .fte-role-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+#staffCockpitPage .fte-role-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+#staffCockpitPage .fte-role-actions .pv2-btn { flex: 1 1 auto; justify-content: center; }
+
+/* --- Modale (overlay + panneau) : Emil Kowalski ---------------------------- */
+#staffCockpitPage .fte-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 16px 16px;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--text) 34%, transparent);
+}
+#staffCockpitPage .fte-modal {
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+/* Garde de premiere apparition : l'animation ne vit que sur .fte-anim, posee
+   une seule fois a l'ouverture. Un re-rendu (etat busy) ne la rejoue pas. */
+#staffCockpitPage .fte-anim .fte-overlay { animation: fte-overlay-in 220ms var(--ease-out-strong) both; }
+#staffCockpitPage .fte-anim .fte-modal { animation: fte-modal-in 220ms var(--ease-out-strong) both; }
+
+@keyframes fte-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fte-modal-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+#staffCockpitPage .fte-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+#staffCockpitPage .fte-modal-head h2 { font-size: 15px; }
+#staffCockpitPage .fte-modal-head p { margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+#staffCockpitPage .fte-modal-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+#staffCockpitPage .fte-modal-close:hover { color: var(--text); }
+#staffCockpitPage .fte-modal-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 60vh; overflow-y: auto; }
+#staffCockpitPage .fte-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* Champs de formulaire */
+#staffCockpitPage .fte-field { display: flex; flex-direction: column; gap: 5px; }
+#staffCockpitPage .fte-field label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+#staffCockpitPage .fte-field .pv2-input,
+#staffCockpitPage .fte-field .fte-input { width: 100%; }
+
+/* Permissions groupees */
+#staffCockpitPage .fte-perm-group { display: flex; flex-direction: column; gap: 4px; }
+#staffCockpitPage .fte-perm-group > h3 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+#staffCockpitPage .fte-perm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out-strong), background-color var(--dur-fast) var(--ease-out-strong);
+}
+#staffCockpitPage .fte-perm-row:hover:not(.is-locked) { border-color: var(--line-strong); }
+#staffCockpitPage .fte-perm-row.is-on { border-color: var(--text); background: color-mix(in srgb, var(--text) 5%, var(--surface)); }
+#staffCockpitPage .fte-perm-row.is-locked { cursor: default; opacity: 0.6; }
+#staffCockpitPage .fte-perm-row input { margin: 2px 0 0; accent-color: var(--text); width: 15px; height: 15px; flex: none; }
+#staffCockpitPage .fte-perm-row .fte-perm-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+#staffCockpitPage .fte-perm-row .fte-perm-lbl { font-size: 13px; color: var(--text); }
+#staffCockpitPage .fte-perm-row .fte-perm-key { font-size: 11px; color: var(--faint); font-family: var(--font-data); }
+
+/* Bandeau avertissement (revele de code, action sensible) */
+#staffCockpitPage .fte-warn {
+  border: 1px solid var(--warning);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 12.5px;
+}
+
+#staffCockpitPage .fte-empty { padding: 18px; text-align: center; }
+
+@media (max-width: 640px) {
+  #staffCockpitPage .fte-role-grid { grid-template-columns: 1fr; }
+  #staffCockpitPage .fte-shell .fck-table { display: block; overflow-x: auto; }
+  #staffCockpitPage .fte-filter .pv2-input { flex: 1; min-width: 0; }
+}
+
+/* Etat final immediat, pas d'animation d'entree en mouvement reduit. */
+@media (prefers-reduced-motion: reduce) {
+  #staffCockpitPage .fte-anim .fte-overlay,
+  #staffCockpitPage .fte-anim .fte-modal { animation: none; }
+  #staffCockpitPage .fte-shell .pv2-btn:active:not(:disabled),
+  #staffCockpitPage .fte-shell .mk-switch:active:not(:disabled) { transform: none; }
+  #staffCockpitPage .fte-shell .mk-switch span { transition: none; }
+}

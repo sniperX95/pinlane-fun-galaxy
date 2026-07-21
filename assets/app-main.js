@@ -15136,8 +15136,13 @@ function applyInitialRouteFromHash() {
   const normalizedPage = staffPageAliases[page] || page;
   if (['client', 'staff', 'admin'].includes(view)) state.view = view;
   if (view === 'staff') {
-    const allowedPages = ['dashboard', 'planning', 'reservations', 'formules', 'sessions', 'arrivals', 'events', 'clients', 'groups', 'contacts', 'lanes', 'prices', 'laserGame', 'emails', 'campaigns', 'establishment', 'users', 'settings'];
-    if (allowedPages.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
+    // Source de verite UNIQUE : STAFF_MENU_PAGES (la meme que normalizeStaffMenuPage).
+    // Une liste blanche dupliquee vivait ici et avait deja diverge : les 4 pages
+    // de la categorie Plateforme (cockpit, cockpit-agents, cockpit-incidents,
+    // cockpit-clients) y manquaient, donc un deep-link/bookmark vers
+    // #/staff/cockpit-incidents retombait sur planning. On ne redonne jamais
+    // deux listes a maintenir en parallele.
+    if (typeof STAFF_MENU_PAGES !== 'undefined' && STAFF_MENU_PAGES.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
     if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
   }
   if (view === 'admin') {

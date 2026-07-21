@@ -928,9 +928,25 @@
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }
-    if (typeof setView === 'function') setView('admin');
-    if (typeof openAdminTab === 'function') openAdminTab('overview');
-    else if (typeof setAdminTab === 'function') setAdminTab('overview');
+    // Categorie PLATEFORME (cockpit fondateur + ses 3 pages) : ce sont des pages
+    // de la vue STAFF (renderStaffFounderCockpitPage). Sans ce cas, elles
+    // tombaient dans le fallback ci-dessous et ouvraient la Direction (vue
+    // admin) : le menu surlignait Cockpit mais l'ecran montrait le poste
+    // d'observation. La vue Direction ne s'atteint QUE par le menu compte
+    // (action "direction"), jamais par une entree de la barre laterale.
+    if (['cockpit', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {
+      setMenuPage(key);
+      if (typeof setView === 'function') setView('staff');
+      if (typeof renderStaff === 'function') renderStaff();
+      return;
+    }
+    // Fallback DEFENSIF : une entree de menu non reconnue reste dans la vue
+    // staff. Aucune cle legitime de la barre laterale n'ouvre la vue admin
+    // (c'est le role du menu compte) : basculer en admin sur une cle inconnue
+    // etait le piege qui cassait la categorie Plateforme.
+    setMenuPage(key);
+    if (typeof setView === 'function') setView('staff');
+    if (typeof renderStaff === 'function') renderStaff();
   }
 
   function syncStaffMenuState() {

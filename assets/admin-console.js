@@ -1845,6 +1845,12 @@ function renderAdminJournalTab() {
 
 const directionInsightCache = {};
 const directionInsightLoading = {};
+// Caches des SECTIONS DE DECISION (Comparer mes centres + Retention et clients),
+// SEPARES du cache analytique : leur cycle est independant (chargement parallele,
+// panne isolee), ils ne conditionnent JAMAIS le court-circuit du cache principal.
+// Meme cle que dirInsightKey (centre + fenetre, sans le mode de comparaison).
+const directionDecisionCache = {};
+const directionDecisionLoading = {};
 let dirRangeHandle = null;
 let DIR_ENTRANCE_SEEN = false;
 
@@ -2100,6 +2106,284 @@ function dirTablesHtml(entry) {
   </div>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTIONS DE DECISION (2026-07-21) : deux capacites AJOUTEES au poste
+// d'observation, DISTINCTES de la config Etablissement.
+//   1) Comparer mes centres  -> GET action=directionComparison
+//   2) Retention et clients  -> GET action=directionRetention
+// Discipline identique au reste : ZERO recalcul metier cote front (tout vient du
+// serveur), degrade calme PAR SECTION (une panne isole sa section, jamais le
+// rendu principal). Rendues a la FIN de renderDirectionBody, dans le meme style
+// dir-*. Elles lisent directionDecisionCache (charge en parallele du directionAnalytics).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// « Il y a X » a partir d'une date de dernier passage (jours entiers, calme).
+function dirDaysAgoLabel(dateStr) {
+  if (!dateStr) return 'date inconnue';
+  const then = parseLocalDate(dateStr);
+  const now = new Date();
+  then.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+  const days = Math.max(0, Math.round((now.getTime() - then.getTime()) / 86400000));
+  if (days === 0) return "aujourd'hui";
+  if (days === 1) return 'il y a 1 jour';
+  if (days < 30) return `il y a ${days} jours`;
+  if (days < 365) { const mo = Math.round(days / 30); return `il y a ${mo} mois`; }
+  const yr = Math.round(days / 365);
+  return yr <= 1 ? 'il y a 1 an' : `il y a ${yr} ans`;
+}
+
+// Valeur de cellule de comparaison : jamais un recalcul, juste un formatage
+// honnete du champ serveur. Champ absent/nul -> « n/d » calme (ex : occupation
+// non calculable pour un centre sans capacite declaree).
+function dirCmpValue(value, format) {
+  if (value == null || value === '' || Number.isNaN(Number(value))) return 'n/d';
+  return dirFormatValue(value, format);
+}
+
+// Colonnes comparees (l'ordre = la lecture) : CA d'abord, occupation en fin.
+const DIR_CMP_COLS = [
+  { key: 'revenue', label: 'CA', format: 'euro' },
+  { key: 'reservations', label: 'Resas', format: 'int' },
+  { key: 'pax', label: 'Joueurs', format: 'int' },
+  { key: 'avgBasket', label: 'Ticket moyen', format: 'euro' },
+  { key: 'occupancy', label: 'Occupation', format: 'percent' },
+];
+
+// Meilleure valeur PAR colonne (max des champs finis). Sert a marquer le leader
+// de chaque colonne discretement. null si aucune valeur exploitable.
+function dirCmpBest(centers) {
+  const best = {};
+  DIR_CMP_COLS.forEach((col) => {
+    let max = null;
+    centers.forEach((center) => {
+      if (center.error) return;
+      const v = Number(center[col.key]);
+      if (Number.isFinite(v) && (max === null || v > max)) max = v;
+    });
+    best[col.key] = max;
+  });
+  return best;
+}
+
+function dirCmpRowHtml(center, best, currentId) {
+  const isCurrent = center.isCurrent === true || (currentId != null && center.id === currentId);
+  const cells = DIR_CMP_COLS.map((col) => {
+    const v = Number(center[col.key]);
+    const isBest = !center.error
+      && Number.isFinite(v)
+      && best[col.key] != null
+      && best[col.key] > 0
+      && v === best[col.key];
+    const text = center.error ? 'n/d' : dirCmpValue(center[col.key], col.format);
+    const inner = isBest
+      ? `<span class="dir-cmp-best-mark" title="Meilleur sur cette colonne">${escapeHtml(text)}</span>`
+      : escapeHtml(text);
+    return `<td class="dir-num${isBest ? ' dir-cmp-best' : ''}">${inner}</td>`;
+  }).join('');
+  return `<tr class="dir-cmp-row${isCurrent ? ' is-current' : ''}">
+    <th scope="row" class="dir-cmp-name">
+      <span class="dir-cmp-center">${escapeHtml(center.name || center.id || 'Centre')}</span>
+      ${isCurrent ? '<span class="dir-cmp-badge">Votre centre</span>' : ''}
+      ${center.error ? '<span class="dir-cmp-warn">Donnees indisponibles</span>' : ''}
+    </th>
+    ${cells}
+  </tr>`;
+}
+
+function dirComparisonInner() {
+  const cmp = (directionDecisionCache[dirInsightKey()] || {}).comparison;
+  if (!cmp || !cmp.loaded) return '<div class="dir-note dir-note-loading">Chargement de la comparaison des centres...</div>';
+  if (cmp.error) return dirNoteHtml('Comparaison momentanement indisponible. Elle reviendra au prochain rafraichissement.');
+  const data = cmp.data || {};
+  const centers = Array.isArray(data.centers) ? data.centers.slice() : [];
+  if (!centers.length) return dirNoteHtml('Aucune donnee de centre a comparer sur cette periode.');
+  const currentId = data.currentCenterId == null ? null : data.currentCenterId;
+  const best = dirCmpBest(centers);
+  const head = DIR_CMP_COLS.map((col) => `<th scope="col" class="dir-num">${escapeHtml(col.label)}</th>`).join('');
+  const rows = centers.map((center) => dirCmpRowHtml(center, best, currentId)).join('');
+  const single = centers.length < 2
+    ? '<p class="dir-cmp-single">La comparaison prend tout son sens avec plusieurs centres.</p>'
+    : '';
+  const chart = centers.length >= 2
+    ? '<div class="dir-cmp-chart" id="dirCmpChart" aria-hidden="true"></div>'
+    : '';
+  return `${single}<div class="dir-cmp-scroll">
+      <table class="dir-table dir-cmp-table">
+        <thead><tr><th scope="col">Centre</th>${head}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>${chart}`;
+}
+
+function dirComparisonHtml() {
+  return `<section class="dir-cmp" aria-label="Comparer mes centres">
+    <div class="dir-cmp-head">
+      <h2 class="dir-cmp-title">Comparer mes centres</h2>
+      <p class="dir-cmp-sub">Vos centres cote a cote sur la periode active.</p>
+    </div>
+    <div class="dir-cmp-body" id="dirCmpBody">${dirComparisonInner()}</div>
+  </section>`;
+}
+
+function dirRetLapsedRowHtml(client) {
+  const contact = client.phone || client.email || '';
+  return `<tr class="dir-ret-lapsed-row">
+    <th scope="row"><span class="dir-client-name">${escapeHtml(client.name || 'Client')}</span>${contact ? `<span class="dir-client-contact">${escapeHtml(contact)}</span>` : ''}</th>
+    <td class="dir-num">${Number(client.visits) || 0}</td>
+    <td class="dir-num">${escapeHtml(formatMoney(client.revenue))}</td>
+    <td class="dir-ret-last">${escapeHtml(dirDaysAgoLabel(client.lastVisit))}</td>
+  </tr>`;
+}
+
+function dirRetentionInner() {
+  const ret = (directionDecisionCache[dirInsightKey()] || {}).retention;
+  if (!ret || !ret.loaded) return '<div class="dir-note dir-note-loading">Chargement des donnees clients...</div>';
+  if (ret.error) return dirNoteHtml('Donnees clients momentanement indisponibles. Elles reviendront au prochain rafraichissement.');
+  const data = ret.data || {};
+  const seg = data.segment || {};
+  const newCount = Number(seg.new) || 0;
+  const returning = Number(seg.returning) || 0;
+  const unique = Number(seg.unique) || 0;
+  const returningRate = seg.returningRate == null ? null : Number(seg.returningRate);
+  const segStats = [
+    { label: 'Clients uniques', value: dirFormatValue(unique, 'int') },
+    { label: 'Nouveaux', value: dirFormatValue(newCount, 'int') },
+    { label: 'Deja venus', value: dirFormatValue(returning, 'int') },
+    { label: 'Taux de fidelite', value: returningRate == null ? 'n/d' : formatAdminPercent(returningRate) },
+    { label: 'Panier moyen nouveaux', value: seg.avgBasketNew == null ? 'n/d' : formatMoney(seg.avgBasketNew) },
+    { label: 'Panier moyen recurrents', value: seg.avgBasketReturning == null ? 'n/d' : formatMoney(seg.avgBasketReturning) },
+  ].map((stat) => `<div class="dir-ret-stat"><span class="dir-ret-stat-label">${escapeHtml(stat.label)}</span><span class="dir-ret-stat-value">${escapeHtml(stat.value)}</span></div>`).join('');
+  const hasSegment = (newCount + returning) > 0;
+  const segBlock = `<div class="dir-ret-seg">
+    <h3 class="dir-card-title">Nouveaux vs recurrents</h3>
+    ${hasSegment ? '<div class="dir-ret-seg-chart" id="dirRetChart" aria-hidden="true"></div>' : dirNoteHtml('Pas encore de repartition clients sur cette periode.')}
+    <div class="dir-ret-stats">${segStats}</div>
+  </div>`;
+
+  const lapsed = Array.isArray(data.lapsed) ? data.lapsed.slice() : [];
+  const since = Number(data.lapsedSinceDays) || 0;
+  let lapsedBlock;
+  if (!lapsed.length) {
+    lapsedBlock = `<div class="dir-ret-lapsed">
+      <h3 class="dir-card-title">Clients a relancer</h3>
+      ${dirNoteHtml('Aucun habitue dormant a relancer sur cette periode. Vos reguliers reviennent.')}
+    </div>`;
+  } else {
+    const count = lapsed.length;
+    const headline = count > 1
+      ? `${count} habitues ne sont pas revenus depuis plus de ${since} jours.`
+      : `1 habitue n'est pas revenu depuis plus de ${since} jours.`;
+    const rows = lapsed.map((client) => dirRetLapsedRowHtml(client)).join('');
+    lapsedBlock = `<div class="dir-ret-lapsed">
+      <h3 class="dir-card-title">Clients a relancer</h3>
+      <p class="dir-ret-lapsed-head">${escapeHtml(headline)}</p>
+      <div class="dir-ret-lapsed-scroll">
+        <table class="dir-table dir-ret-lapsed-table">
+          <thead><tr><th scope="col">Client</th><th scope="col" class="dir-num">Visites</th><th scope="col" class="dir-num">CA cumule</th><th scope="col">Dernier passage</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+  return `<div class="dir-ret-grid">${segBlock}${lapsedBlock}</div>`;
+}
+
+function dirRetentionHtml() {
+  return `<section class="dir-ret" aria-label="Retention et clients">
+    <div class="dir-ret-head">
+      <h2 class="dir-ret-title">Retention et clients</h2>
+      <p class="dir-ret-sub">Qui revient, qui s'eloigne, sur la periode active.</p>
+    </div>
+    <div class="dir-ret-body" id="dirRetBody">${dirRetentionInner()}</div>
+  </section>`;
+}
+
+// Graphiques des sections de decision : degrade calme sans librairie, jamais
+// bloquants. Le barChart du CA par centre n'a de sens qu'a partir de 2 centres.
+function mountDirCmpChart() {
+  const host = document.getElementById('dirCmpChart');
+  if (!host) return;
+  const cmp = (directionDecisionCache[dirInsightKey()] || {}).comparison;
+  const centers = cmp && cmp.data && Array.isArray(cmp.data.centers) ? cmp.data.centers : [];
+  const charts = dirCharts();
+  if (!charts || typeof charts.barChart !== 'function' || centers.length < 2) return;
+  const range = getDirRange();
+  charts.barChart(host, {
+    series: centers.map((center) => ({ label: center.name || center.id || 'Centre', value: Number(center.revenue) || 0 })),
+    format: 'euro',
+    motionKey: `dir|cmp|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|ca`,
+  });
+}
+
+function mountDirRetChart() {
+  const host = document.getElementById('dirRetChart');
+  if (!host) return;
+  const ret = (directionDecisionCache[dirInsightKey()] || {}).retention;
+  const seg = ret && ret.data && ret.data.segment ? ret.data.segment : null;
+  const charts = dirCharts();
+  if (!charts || typeof charts.donutChart !== 'function' || !seg) return;
+  const range = getDirRange();
+  charts.donutChart(host, {
+    parts: [
+      { label: 'Nouveaux', value: Number(seg.new) || 0 },
+      { label: 'Deja venus', value: Number(seg.returning) || 0 },
+    ],
+    format: 'int',
+    motionKey: `dir|ret|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|seg`,
+  });
+}
+
+// Mise a jour CIBLEE des deux sections de decision (sans re-rendre tout le corps :
+// on ne perturbe ni les KPI ni le graphique focus). No-op si le corps n'est pas
+// encore monte (donnee de decision arrivee avant l'analytique principale).
+function renderDirectionDecision() {
+  const cmpBody = document.getElementById('dirCmpBody');
+  if (cmpBody) cmpBody.innerHTML = dirComparisonInner();
+  const retBody = document.getElementById('dirRetBody');
+  if (retBody) retBody.innerHTML = dirRetentionInner();
+  mountDirCmpChart();
+  mountDirRetChart();
+}
+
+// Chargement PARALLELE des deux endpoints de decision (Promise.all), cache par
+// centre+fenetre. Panne isolee : chaque section garde son propre etat (calme).
+// Ne rejette jamais : chaque appel est neutralise en resultat { status } pour que
+// l'echec de l'un n'emporte pas l'autre.
+async function loadDirectionDecision(centerId, range, key, force) {
+  const existing = directionDecisionCache[key];
+  const haveCmp = Boolean(existing && existing.comparison && existing.comparison.loaded);
+  const haveRet = Boolean(existing && existing.retention && existing.retention.loaded);
+  if (!force && haveCmp && haveRet) return;
+  if (directionDecisionLoading[key]) return;
+  directionDecisionLoading[key] = true;
+  const cid = encodeURIComponent(centerId);
+  const s = encodeURIComponent(range.start);
+  const e = encodeURIComponent(range.end);
+  const guard = (promise) => promise.then(
+    (value) => ({ status: 'fulfilled', value }),
+    (reason) => ({ status: 'rejected', reason }),
+  );
+  const settle = (result, fallbackMessage) => (result.status === 'fulfilled'
+    ? { loaded: true, error: '', data: result.value || null }
+    : { loaded: true, error: (result.reason && result.reason.message) || fallbackMessage, data: null });
+  try {
+    const [cmpRes, retRes] = await Promise.all([
+      guard(apiRequest(`${API_ENDPOINTS.ops}?action=directionComparison&centerId=${cid}&startDate=${s}&endDate=${e}`)),
+      guard(apiRequest(`${API_ENDPOINTS.ops}?action=directionRetention&centerId=${cid}&startDate=${s}&endDate=${e}`)),
+    ]);
+    directionDecisionCache[key] = {
+      comparison: settle(cmpRes, 'Comparaison indisponible.'),
+      retention: settle(retRes, 'Donnees clients indisponibles.'),
+    };
+  } finally {
+    directionDecisionLoading[key] = false;
+  }
+  if (state.view === 'admin' && dirInsightKey() === key) {
+    renderDirectionDecision();
+  }
+}
+
 function renderDirectionShell() {
   const range = getDirRange();
   return `<section class="dir-root" id="dirRoot">
@@ -2202,6 +2486,10 @@ async function loadDirectionInsights(force) {
   const needYear = range.compare === 'year';
   const haveBase = Boolean(existing && existing.loaded && existing.analytics);
   const haveYear = !needYear || Boolean(existing && existing.yearAnalytics);
+  // Les sections de decision suivent leur PROPRE cycle (fetch parallele, panne
+  // isolee) : lancees sans await, elles ne bloquent ni ne conditionnent le rendu
+  // principal. Elles gerent leur cache/court-circuit en interne.
+  loadDirectionDecision(centerId, range, key, force);
   if (!force && haveBase && haveYear) {
     renderDirectionBody();
     mountDirectionCharts();
@@ -2246,7 +2534,8 @@ function renderDirectionBody() {
   if (!entry) { body.innerHTML = dirLoadingHtml(); return; }
   if (entry.error) { body.innerHTML = dirNoteHtml('Analytique momentanement indisponible. Elle reviendra au prochain rafraichissement.'); return; }
   if (!entry.analytics) { body.innerHTML = dirNoteHtml('Pas encore de donnees sur cette periode.'); return; }
-  body.innerHTML = dirKpisHtml(entry) + dirFocusHtml() + dirGridHtml() + dirTablesHtml(entry);
+  body.innerHTML = dirKpisHtml(entry) + dirFocusHtml() + dirGridHtml() + dirTablesHtml(entry)
+    + dirComparisonHtml() + dirRetentionHtml();
 }
 
 function dirCharts() {
@@ -2333,6 +2622,11 @@ function mountDirectionCharts() {
       motionKey: `${motionBase}|heatmap`,
     });
   }
+
+  // Graphiques des sections de decision (montes si leur donnee est deja la ;
+  // sinon renderDirectionDecision les montera a l'arrivee du fetch parallele).
+  mountDirCmpChart();
+  mountDirRetChart();
 }
 
 // Interaction coeur : cliquer une tuile choisit la metrique du grand graphique.
@@ -2831,6 +3125,20 @@ function startAdminHealthAutoRefresh() {
     dirFocusHtml,
     dirGridHtml,
     dirTablesHtml,
+    // Sections de decision (Comparer mes centres + Retention et clients)
+    dirDaysAgoLabel,
+    dirCmpValue,
+    dirCmpBest,
+    dirCmpRowHtml,
+    dirComparisonInner,
+    dirComparisonHtml,
+    dirRetLapsedRowHtml,
+    dirRetentionInner,
+    dirRetentionHtml,
+    mountDirCmpChart,
+    mountDirRetChart,
+    renderDirectionDecision,
+    loadDirectionDecision,
     renderDirectionShell,
     updateDirWindowLabel,
     onDirRangeChange,
@@ -2871,6 +3179,9 @@ function startAdminHealthAutoRefresh() {
     applyRange: onDirRangeChange,
     setFocusMetric: setDirFocusMetric,
     cache: directionInsightCache,
+    decisionCache: directionDecisionCache,
+    loadDecision: loadDirectionDecision,
+    renderDecision: renderDirectionDecision,
   };
   startAdminHealthAutoRefresh();
 })(typeof window !== 'undefined' ? window : globalThis);

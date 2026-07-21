@@ -11619,3 +11619,219 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   #staffCockpitPage .fcp-close:active:not(:disabled),
   #staffCockpitPage .fcp-panel .pv2-btn:active:not(:disabled) { transform: none; }
 }
+
+/* --- 29. Direction : Comparer mes centres (dir-cmp-) + Retention (dir-ret-) - */
+/* ============================================================================
+   POSTE D'OBSERVATION DIRECTION : sections de DECISION (2026-07-21)
+   ----------------------------------------------------------------------------
+   Deux capacites AJOUTEES au tableau de bord Direction, distinctes de la config
+   Etablissement :
+     1) Comparer mes centres  (.dir-cmp-*)
+     2) Retention et clients  (.dir-ret-*)
+   Meme langage visuel que le reste du namespace dir-* (Vercel/Linear) :
+   monochrome, le SENS seul porte la couleur (vert = leader/fidele), filets 1px
+   var(--line), rayons var(--radius-*), chiffres tabulaires var(--font-data),
+   etats vides calmes. On REUTILISE dir-note / dir-table / dir-num /
+   dir-client-name / dir-card-title ; ces classes n'ajoutent que le manquant.
+   Motion (Emil Kowalski) : transform/opacity seulement, ease-out, jamais ease-in.
+   Etat final immediat sous prefers-reduced-motion.
+   A COLLER dans assets/pinlane-staff.css, a la suite du bloc dir-* existant.
+   ========================================================================== */
+
+/* --- Coque commune des deux sections : carte bordee facon .dir-focus -------- */
+.dir-cmp,
+.dir-ret {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 18px 20px 20px;
+}
+.dir-cmp-head,
+.dir-ret-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.dir-cmp-title,
+.dir-ret-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dir-cmp-sub,
+.dir-ret-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+/* --- Comparer mes centres : tableau une ligne par centre ------------------- */
+.dir-cmp-scroll { overflow-x: auto; }
+.dir-cmp-table { width: 100%; }
+.dir-cmp-table td,
+.dir-cmp-table th[scope="row"] {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+/* Nom de centre : colonne de tete, non tronquee. */
+.dir-cmp-name {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+.dir-cmp-center { font-weight: 600; }
+
+/* Centre COURANT : filet gauche renforce + fond a peine teinte, aucune couleur
+   de marque (discipline dir-kpi.is-active). */
+.dir-cmp-row.is-current > * { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+.dir-cmp-row.is-current > .dir-cmp-name { box-shadow: inset 2px 0 0 0 var(--text); }
+.dir-cmp-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--subtle);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.dir-cmp-warn {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* Leader d'une colonne : marque DISCRETE (pastille verte + graisse), le sens
+   seul colore. */
+.dir-cmp-best-mark {
+  position: relative;
+  font-weight: 600;
+  color: var(--success);
+  padding-left: 13px;
+}
+.dir-cmp-best-mark::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+/* Un seul centre : note calme au-dessus du tableau. */
+.dir-cmp-single {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--subtle);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md, 8px);
+}
+
+/* barChart du CA par centre : draw-in gere par la librairie (plc-*). */
+.dir-cmp-chart { margin-top: 16px; min-height: 200px; }
+.dir-cmp-chart:empty { min-height: 0; margin-top: 0; }
+
+/* --- Retention et clients : segment (donut + stats) | dormants ------------- */
+.dir-ret-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 20px;
+  align-items: start;
+}
+.dir-ret-seg { min-width: 0; }
+.dir-ret-seg-chart { min-height: 180px; }
+.dir-ret-seg-chart:empty { min-height: 0; }
+
+.dir-ret-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.dir-ret-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface);
+  transition: border-color 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (hover: hover) {
+  .dir-ret-stat:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+}
+.dir-ret-stat-label { font-size: 11.5px; color: var(--faint); font-weight: 500; }
+.dir-ret-stat-value {
+  font-family: var(--font-data);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Dormants : la phrase actionnable domine, la table suit. */
+.dir-ret-lapsed { min-width: 0; }
+.dir-ret-lapsed-head {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: color-mix(in srgb, var(--warning, #d97706) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warning, #d97706) 26%, var(--line));
+  border-radius: var(--radius-md, 8px);
+}
+.dir-ret-lapsed-scroll { overflow-x: auto; }
+.dir-ret-lapsed-table { width: 100%; }
+.dir-ret-lapsed-table th[scope="row"] { text-align: left; font-weight: 500; }
+.dir-ret-last { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* --- Entree douce des deux sections : montee unique translateY + opacity. --- */
+.dir-cmp,
+.dir-ret {
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+}
+.dir-cmp-body,
+.dir-ret-body {
+  animation: dir-decision-in 360ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes dir-decision-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Ligne de comparaison : leger stagger au survol de la table (feedback calme). */
+@media (hover: hover) {
+  .dir-cmp-row { transition: background-color 140ms ease-out; }
+  .dir-cmp-table tbody tr:hover > * { background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
+  .dir-ret-lapsed-table tbody tr:hover > * { background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
+}
+
+/* --- Responsive : la retention passe en une colonne, la comparaison scrolle. */
+@media (max-width: 860px) {
+  .dir-ret-grid { grid-template-columns: 1fr; }
+  .dir-cmp,
+  .dir-ret { padding: 16px 14px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dir-cmp-body,
+  .dir-ret-body { animation: none; }
+  .dir-ret-stat { transition: none; }
+  .dir-cmp,
+  .dir-ret { transition: none; }
+}

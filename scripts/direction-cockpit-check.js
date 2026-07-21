@@ -303,6 +303,32 @@ async function installMock(page) {
           window.__DIR_SERVED__[winKey] = record;
           return J({ ok: true, centerId: 'libramont', analytics: fixture.analytics, previous: fixture.previous });
         }
+        // SECTIONS DE DECISION : fixtures DETERMINISTES (2 centres, 1 dormant),
+        // servies pour toute fenetre. Le front ne recalcule rien : ces chiffres
+        // atterrissent tels quels dans le DOM. Elles alimentent la contre-preuve.
+        if (action === 'directionComparison') {
+          return J({
+            ok: true,
+            testData: true,
+            currentCenterId: 'libramont',
+            centers: [
+              { id: 'libramont', name: 'Libramont', reservations: 30, revenue: 4200, pax: 180, avgBasket: 42, occupancy: 61, clientsUnique: 24, isCurrent: true },
+              { id: 'marche', name: 'Marche-en-Famenne', reservations: 22, revenue: 5100, pax: 150, avgBasket: 51, occupancy: 48, clientsUnique: 19, isCurrent: false },
+            ],
+          });
+        }
+        if (action === 'directionRetention') {
+          return J({
+            ok: true,
+            testData: true,
+            segment: { unique: 24, new: 14, returning: 10, returningRate: 41.7, multi: 4, avgBasketNew: 38, avgBasketReturning: 52 },
+            lapsed: [
+              { name: 'Famille Martin', phone: '+32470000020', email: 'martin@x.be', visits: 5, revenue: 640, lastVisit: dirAddDays(today, -95) },
+            ],
+            lapsedSinceDays: 60,
+            topClients: [],
+          });
+        }
         if (action === 'directionReports') return J({ ok: true, centerId: 'libramont', reports: [] });
         return J({ ok: true, entries: [], communications: [], samples: [], suggestions: [], events: [] });
       }
@@ -447,6 +473,44 @@ async function probeDirInvariants(browser) {
       pointCounts: m.focusPointCounts,
       chip: m.chips.revenue,
       expectedChip: m.expected ? m.expected.revenueChip : '',
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+// Attend que le cache des sections de decision de la fenetre COURANTE soit
+// charge (comparaison ET retention), quel que soit le NOMBRE de lignes rendues :
+// une mutation qui ampute une liste laisse le cache « loaded » mais change le DOM.
+async function waitDirDecisionLoaded(page) {
+  await page.waitForFunction(() => {
+    const D = window.PinlaneDirection;
+    if (!D || !D.decisionCache || typeof D.getInsightKey !== 'function') return false;
+    const slot = D.decisionCache[D.getInsightKey()];
+    return Boolean(slot && slot.comparison && slot.comparison.loaded && slot.retention && slot.retention.loaded);
+  }, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+}
+
+// Mesures des sections de decision sur une PAGE FRAICHE (fenetre par defaut).
+// Sonde partagee entre la phase verte [10] et la contre-preuve par mutation :
+// le mock sert 2 centres et 1 dormant, donc 2 lignes de comparaison et 1 ligne
+// de relance sont attendues. Une mutation qui casse le rendu fait mentir ces
+// comptes -> l'invariant passe a false -> le gate ROUGIRAIT.
+async function probeDirDecision(browser) {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  try {
+    await bootDirection(page);
+    await waitDirDecisionLoaded(page);
+    const r = await page.evaluate(() => ({
+      cmpRows: document.querySelectorAll('#adminContent .dir-cmp-row').length,
+      lapsedRows: document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length,
+    }));
+    return {
+      cmpRowsMatch: r.cmpRows === 2,
+      lapsedRowsMatch: r.lapsedRows === 1,
+      cmpRows: r.cmpRows,
+      lapsedRows: r.lapsedRows,
     };
   } finally {
     await page.close();
@@ -604,6 +668,46 @@ async function main() {
     const fatal = errs.filter((e) => !/localStorage|sandboxed|favicon|cdn\.vercel-insights/i.test(e));
     ok(fatal.length === 0, `[8] aucune erreur console fatale (obtenu ${fatal.length}${fatal.length ? ' : ' + fatal[0] : ''})`);
 
+    console.log('\n[10] SECTIONS DE DECISION : Comparer mes centres (2 lignes) + Clients a relancer (1 dormant)');
+    // Le mock sert 2 centres et 1 dormant pour toute fenetre : apres le
+    // chargement PARALLELE des endpoints, les deux sections doivent porter
+    // EXACTEMENT ces comptes, le centre courant surligne, la phrase actionnable
+    // presente. Comptes lus dans le DOM (jamais une presence de chaine).
+    await waitDirDecisionLoaded(page);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#adminContent .dir-cmp-row').length === 2
+        && document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length === 1,
+      null,
+      { timeout: 15000 },
+    );
+    const decision = await page.evaluate(() => {
+      const cmpRows = [...document.querySelectorAll('#adminContent .dir-cmp-row')];
+      const lapsedRows = [...document.querySelectorAll('#adminContent .dir-ret-lapsed-row')];
+      const cmpSection = document.querySelector('#adminContent .dir-cmp');
+      const retSection = document.querySelector('#adminContent .dir-ret');
+      return {
+        cmpSectionPresent: Boolean(cmpSection),
+        retSectionPresent: Boolean(retSection),
+        cmpRowCount: cmpRows.length,
+        lapsedRowCount: lapsedRows.length,
+        currentHighlighted: cmpRows.filter((r) => r.classList.contains('is-current')).length,
+        currentIsLibramont: (document.querySelector('#adminContent .dir-cmp-row.is-current .dir-cmp-center') || {}).textContent || '',
+        bestMarks: document.querySelectorAll('#adminContent .dir-cmp-best-mark').length,
+        lapsedHead: (document.querySelector('#adminContent .dir-ret-lapsed-head') || {}).textContent || '',
+        lapsedContact: (document.querySelector('#adminContent .dir-ret-lapsed-row .dir-client-contact') || {}).textContent || '',
+        lapsedLast: (document.querySelector('#adminContent .dir-ret-lapsed-row .dir-ret-last') || {}).textContent || '',
+        segStats: document.querySelectorAll('#adminContent .dir-ret-stat').length,
+      };
+    });
+    ok(decision.cmpSectionPresent && decision.retSectionPresent, 'les deux sections de decision sont rendues sous les tables existantes');
+    ok(decision.cmpRowCount === 2, `« Comparer mes centres » contient EXACTEMENT 2 lignes de centre (obtenu ${decision.cmpRowCount})`);
+    ok(decision.currentHighlighted === 1 && /Libramont/.test(decision.currentIsLibramont), `le centre courant (isCurrent) est surligne, un seul (« ${decision.currentIsLibramont} »)`);
+    ok(decision.bestMarks > 0, `le meilleur de chaque colonne est marque discretement (obtenu ${decision.bestMarks} marques)`);
+    ok(decision.lapsedRowCount === 1, `« Clients a relancer » contient EXACTEMENT 1 dormant (obtenu ${decision.lapsedRowCount})`);
+    ok(/pas revenu.*plus de 60 jours/.test(decision.lapsedHead), `la phrase actionnable annonce le seuil de dormance (« ${decision.lapsedHead.trim()} »)`);
+    ok(/il y a/.test(decision.lapsedLast), `le dernier passage est rendu en relatif « il y a X » (obtenu « ${decision.lapsedLast.trim()} »)`);
+    ok(decision.segStats >= 4, `le bloc segment nouveaux vs recurrents expose ses statistiques (obtenu ${decision.segStats} tuiles)`);
+
     if (process.env.PINLANE_DIRECTION_SHOTS) {
       const shotDir = process.env.PINLANE_DIRECTION_SHOTS;
       fs.mkdirSync(shotDir, { recursive: true });
@@ -654,6 +758,23 @@ async function main() {
       }
       ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
     };
+    // Meme protocole pour les SECTIONS DE DECISION : la sonde est le compte de
+    // lignes rendues (2 centres / 1 dormant). Amputer une liste doit faire mentir
+    // ce compte ; une mutation sans effet fait sortir le script en erreur.
+    const runDecisionMutation = async (anchor, replacement, invariantKey, label) => {
+      const original = applyMutation(anchor, replacement, label);
+      let probe = null;
+      try {
+        probe = await probeDirDecision(browser);
+      } finally {
+        fs.writeFileSync(consolePath, original);
+      }
+      if (!probe || probe[invariantKey] !== false) {
+        console.error(`direction-cockpit-check: MUTATION SANS EFFET (decision), le gate ne sait pas rougir : ${label} (${JSON.stringify(probe)})`);
+        process.exit(1);
+      }
+      ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
+    };
     await runMutation(
       'return dirDays.map((row) => (asLabels',
       'return dirDays.slice(0, -1).map((row) => (asLabels',
@@ -666,9 +787,24 @@ async function main() {
       'deltaExact',
       'delta decale de 1 (plus la difference exacte des totals)',
     );
+    await runDecisionMutation(
+      'centers.map((center) => dirCmpRowHtml(center, best, currentId))',
+      'centers.slice(0, -1).map((center) => dirCmpRowHtml(center, best, currentId))',
+      'cmpRowsMatch',
+      'comparaison amputee d un centre (plus 2 lignes rendues)',
+    );
+    await runDecisionMutation(
+      'lapsed.map((client) => dirRetLapsedRowHtml(client))',
+      'lapsed.slice(0, -1).map((client) => dirRetLapsedRowHtml(client))',
+      'lapsedRowsMatch',
+      'liste de dormants amputee (plus 1 ligne a relancer)',
+    );
     const restored = await probeDirInvariants(browser);
     ok(restored.svgVisible && restored.focusPointsMatch && restored.deltaExact,
       'restauration inverse : les invariants du poste d observation tiennent de nouveau sur une page fraiche');
+    const restoredDecision = await probeDirDecision(browser);
+    ok(restoredDecision.cmpRowsMatch && restoredDecision.lapsedRowsMatch,
+      'restauration inverse : 2 lignes de comparaison et 1 dormant reviennent sur une page fraiche');
   } finally {
     await browser.close();
     server.close();

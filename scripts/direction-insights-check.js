@@ -15,14 +15,14 @@ function daysAgo(n) { const d = new Date(`${END}T00:00:00`); d.setDate(d.getDate
 const RES = {
   libramont: [
     // Client dormant : 3 visites, derniere il y a 200 j (habitue parti).
-    { name: 'Habitue Parti', phone: '111', status: 'paid', price: 60, date: daysAgo(400) },
-    { name: 'Habitue Parti', phone: '111', status: 'paid', price: 60, date: daysAgo(300) },
-    { name: 'Habitue Parti', phone: '111', status: 'paid', price: 60, date: daysAgo(200) },
-    // Recurrent recent : 2 visites, derniere il y a 10 j (PAS dormant).
-    { name: 'Fidele Recent', phone: '333', status: 'paid', price: 80, date: daysAgo(40) },
-    { name: 'Fidele Recent', phone: '333', status: 'paid', price: 90, date: daysAgo(10) },
+    { name: 'Habitue Parti', phone: '111', status: 'paid', price: 60, date: daysAgo(400), occasion: 'anniversaire', channel: 'public', utm_source: 'facebook' },
+    { name: 'Habitue Parti', phone: '111', status: 'paid', price: 60, date: daysAgo(300), occasion: 'anniversaire', channel: 'public' },
+    { name: 'Habitue Parti', phone: '111', status: 'paid', price: 60, date: daysAgo(200), occasion: 'anniversaire', channel: 'public' },
+    // Recurrent recent : 2 visites, derniere il y a 10 j (PAS dormant). Dans la fenetre.
+    { name: 'Fidele Recent', phone: '333', status: 'paid', price: 80, date: daysAgo(40), occasion: 'entreprise', channel: 'staff' },
+    { name: 'Fidele Recent', phone: '333', status: 'paid', price: 90, date: daysAgo(10), occasion: 'entreprise', channel: 'public', utm_source: 'facebook' },
     // Nouveau de la periode : 1 visite il y a 5 j.
-    { name: 'Nouveau', phone: '222', status: 'confirmed', price: 50, date: daysAgo(5) },
+    { name: 'Nouveau', phone: '222', status: 'confirmed', price: 50, date: daysAgo(5), occasion: 'anniversaire', channel: 'public', utm_source: 'google' },
   ],
   gembloux: [
     { name: 'X', phone: '999', status: 'paid', price: 30, date: daysAgo(3) },
@@ -60,7 +60,7 @@ const pool = {
   },
 };
 
-const { buildDirectionComparison, buildDirectionRetention } = require(resolve('lib/direction-insights.js'));
+const { buildDirectionComparison, buildDirectionRetention, buildDirectionAudience } = require(resolve('lib/direction-insights.js'));
 
 const checks = []; let passed = 0;
 function ok(n, c, d) { checks.push({ n, c: !!c }); console.log(`  [${c ? 'PASS' : 'FAIL'}] ${n}${d ? ' :: ' + d : ''}`); if (c) passed += 1; }
@@ -95,6 +95,18 @@ function ok(n, c, d) { checks.push({ n, c: !!c }); console.log(`  [${c ? 'PASS' 
   // logique de seuil est bien active (pas un filtre en dur).
   const retLoose = await buildDirectionRetention('libramont', daysAgo(29), END, { lapsedSinceDays: 5 });
   ok('seuil 5 j : le fidele recent (10 j) devient dormant', retLoose.lapsed.map((c) => c.name).includes('Fidele Recent'));
+
+  console.log('\n[E] Provenance & public : occasions/canaux calcules, demographie honnete');
+  const aud = await buildDirectionAudience('libramont', daysAgo(29), END);
+  // Fenetre = 29 derniers jours : Fidele Recent (10 j, entreprise, public+utm google? non facebook), Nouveau (5 j, anniversaire, google). Fidele Recent 40 j est HORS fenetre.
+  const occKeys = aud.occasions.map((o) => o.key);
+  ok('occasions calculees sur la fenetre', occKeys.includes('anniversaire') && occKeys.includes('entreprise'), occKeys.join(','));
+  const anniv = aud.occasions.find((o) => o.key === 'anniversaire');
+  ok('l occasion porte compte + CA + part', anniv && typeof anniv.revenue === 'number' && typeof anniv.share === 'number' && anniv.count >= 1);
+  ok('canaux calcules (en ligne / staff)', aud.channels.some((c) => c.key === 'public') || aud.channels.some((c) => c.key === 'staff'));
+  ok('sources marketing calculees quand utm present', aud.hasSource === true && aud.sources.some((s) => ['google', 'facebook'].includes(s.key)), JSON.stringify(aud.sources.map((s) => s.key)));
+  ok('demographie HONNETE : marquee non connectee (Google Analytics)', aud.demographicsConnected === false && aud.demographicsSource === 'google-analytics');
+  ok('aucune donnee demographique inventee', !('age' in aud) && !('gender' in aud) && !('sexe' in aud));
 
   const failed = checks.filter((c) => !c.c);
   console.log(`\ndirection-insights-check: ${passed}/${checks.length} verts.`);

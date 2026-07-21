@@ -9,7 +9,7 @@
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260720a">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260721i">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260721j">
 <link rel="stylesheet" href="./assets/pinlane-charts.css?v=20260721b">
 <link rel="stylesheet" href="./assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260720a">
@@ -19,7 +19,7 @@
 <script defer src="./assets/booking-core.js?v=20260717f"></script>
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
-<script defer src="./assets/app-main.js?v=20260721g"></script>
+<script defer src="./assets/app-main.js?v=20260721h"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260721e"></script>
 <script defer src="./assets/staff-pages-v2.js?v=20260720e"></script>
@@ -292,9 +292,10 @@
             <label class="lbl">Type de réservation / occasion <span class="lbl-optional">(optionnel)</span></label>
             <div class="occasion-chips" id="occasionChips" role="group" aria-label="Type de réservation ou occasion">
               <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false" onclick="setBookingOccasion('anniversaire')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/><path d="M7 4h.01"/><path d="M12 4h.01"/><path d="M17 4h.01"/></svg> Anniversaire</button>
-              <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false" onclick="setBookingOccasion('amis')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Entre amis</button>
-              <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false" onclick="setBookingOccasion('entreprise')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Entreprise</button>
-              <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false" onclick="setBookingOccasion('ecole')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg> École / asso</button>
+              <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false" onclick="setBookingOccasion('entreprise')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Entreprise / team building</button>
+              <button type="button" class="occasion-chip" data-occasion="groupe" aria-pressed="false" onclick="setBookingOccasion('groupe')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Sortie groupe</button>
+              <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false" onclick="setBookingOccasion('ecole')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg> École / jeunesse</button>
+              <button type="button" class="occasion-chip" data-occasion="evg" aria-pressed="false" onclick="setBookingOccasion('evg')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 22h8"/><path d="M12 11v11"/><path d="M5 3h14l-1 8a6 6 0 0 1-12 0z"/></svg> EVG / EVJF</button>
               <button type="button" class="occasion-chip" data-occasion="autre" aria-pressed="false" onclick="setBookingOccasion('autre')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg> Autre</button>
             </div>
           </div>

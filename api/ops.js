@@ -594,17 +594,19 @@ async function handleGet(req, res, options = {}) {
   // Capacites de DECISION de la page Direction (distinctes de la config
   // Etablissement) : comparer les centres DU CLIENT (isolation par client_id)
   // et la retention / clients dormants du centre courant.
-  if (action === 'directionComparison' || action === 'directionRetention') {
+  if (action === 'directionComparison' || action === 'directionRetention' || action === 'directionAudience') {
     const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
     const today = new Date().toISOString().slice(0, 10);
     const endDate = DATE_RX.test(url.searchParams.get('endDate') || '') ? url.searchParams.get('endDate') : today;
     const startDate = DATE_RX.test(url.searchParams.get('startDate') || '') ? url.searchParams.get('startDate') : addDays(endDate, -29);
     if (startDate > endDate) throw createHttpError('Période invalide.', 400);
-    const { buildDirectionComparison, buildDirectionRetention } = require('../lib/direction-insights');
+    const { buildDirectionComparison, buildDirectionRetention, buildDirectionAudience } = require('../lib/direction-insights');
     if (action === 'directionComparison') {
       sendJson(res, 200, await buildDirectionComparison(getPool(), centerId, startDate, endDate));
-    } else {
+    } else if (action === 'directionRetention') {
       sendJson(res, 200, await buildDirectionRetention(centerId, startDate, endDate));
+    } else {
+      sendJson(res, 200, await buildDirectionAudience(centerId, startDate, endDate));
     }
     return;
   }
@@ -2206,7 +2208,7 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
-    if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention'].includes(action)) return 'direction.view';
+    if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
     if (action === 'dailyMetrics') return ['dashboard.view', 'direction.view'];
     if (action === 'marketingInsights') return ['campaigns.manage', 'marketing.agents'];

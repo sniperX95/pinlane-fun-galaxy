@@ -2581,7 +2581,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260721d';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260721e';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -3821,7 +3821,7 @@ function goStep4() {
 
 // Occasion DÉCLARÉE par le client (anniversaire, amis, entreprise, ecole,
 // autre). '' = non précisé. Propagée au serveur → catégorisation staff déclarée.
-const BOOKING_OCCASIONS = ['anniversaire', 'amis', 'entreprise', 'ecole', 'autre'];
+const BOOKING_OCCASIONS = ['anniversaire', 'entreprise', 'groupe', 'ecole', 'evg', 'autre'];
 function setBookingOccasion(value) {
   const next = BOOKING_OCCASIONS.includes(value)
     ? (state.booking.occasion === value ? '' : value)
@@ -6054,9 +6054,13 @@ function getStaffGroupNextReservation(row = {}) {
 // Libellés d'occasion DÉCLARÉE (source de vérité de la catégorisation staff).
 const STAFF_OCCASION_LABELS = {
   anniversaire: 'Anniversaire',
+  entreprise: 'Entreprise / team building',
+  groupe: 'Sortie groupe',
+  ecole: 'École / jeunesse',
+  evg: 'EVG / EVJF',
+  // Anciennes valeurs conservées pour l'affichage des réservations historiques.
   amis: 'Entre amis',
-  entreprise: 'Entreprise',
-  ecole: 'École / association',
+  famille: 'Sortie famille',
   autre: 'Autre',
 };
 
@@ -6538,7 +6542,7 @@ function renderStaffGroupHost() {
 
 function getStaffGroupHorizon() { return ['week', 'next', '30', 'all'].includes(state.staffGroupHorizon) ? state.staffGroupHorizon : 'all'; }
 function getStaffGroupHorizonDays() { const h = getStaffGroupHorizon(); return h === 'week' ? 7 : h === 'next' ? 14 : h === '30' ? 30 : 3650; }
-function getStaffGroupFacet() { return ['all', 'anniversaire', 'amis', 'entreprise', 'ecole', 'sur-mesure'].includes(state.staffGroupFacet) ? state.staffGroupFacet : 'all'; }
+function getStaffGroupFacet() { return ['all', 'anniversaire', 'entreprise', 'groupe', 'ecole', 'evg', 'amis', 'sur-mesure'].includes(state.staffGroupFacet) ? state.staffGroupFacet : 'all'; }
 function getStaffGroupPrepMap() { return (state.staffGroupPrep && typeof state.staffGroupPrep === 'object') ? state.staffGroupPrep : {}; }
 
 function setStaffGroupHorizon(value) { state.staffGroupHorizon = value; save(); renderStaffGroupHost(); }

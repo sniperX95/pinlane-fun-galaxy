@@ -110,6 +110,11 @@ const GATE_DIR_SIZING_CSS = `
     pointer-events: none;
   }
   .dir-nav-pill { position: relative; z-index: 1; border: 0; background: transparent; padding: 8px 16px; cursor: pointer; font-family: inherit; }
+  .dir-prov-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .dir-prov-card-wide { grid-column: 1 / -1; }
+  .dir-prov-occ { height: 240px; margin-bottom: 14px; }
+  .dir-prov-occ > * { height: 100%; }
+  .dir-prov-occ .plc-svg { width: 100%; height: 100%; }
 `;
 
 let failures = 0;
@@ -375,6 +380,34 @@ async function installMock(page) {
             topClients: [],
           });
         }
+        // PROVENANCE : occasion declaree, canal, source marketing. Fixtures
+        // DETERMINISTES (2 occasions, 2 canaux, 1 source), servies pour toute
+        // fenetre. hasDeclaredOccasion/hasSource vrais (il y a de quoi tracer).
+        // demographicsConnected FAUX : la carte Audience doit rester « a
+        // connecter » (aucun chiffre d'age/sexe/zone). Le front ne recalcule
+        // rien : ces chiffres atterrissent tels quels dans le DOM.
+        if (action === 'directionAudience') {
+          return J({
+            ok: true,
+            testData: true,
+            totalReservations: 30,
+            occasions: [
+              { key: 'anniversaire', label: 'Anniversaire', count: 18, revenue: 2160, pax: 96, share: 60 },
+              { key: 'team-building', label: 'Team building', count: 12, revenue: 1440, pax: 60, share: 40 },
+            ],
+            channels: [
+              { key: 'en-ligne', label: 'En ligne', count: 21, revenue: 2520, share: 70 },
+              { key: 'staff', label: 'Staff (sur place / tel.)', count: 9, revenue: 1080, share: 30 },
+            ],
+            sources: [
+              { key: 'utm:meta-anniv', label: 'Meta Ads (anniversaire)', count: 7, revenue: 840, share: 100 },
+            ],
+            hasDeclaredOccasion: true,
+            hasSource: true,
+            demographicsSource: 'google-analytics',
+            demographicsConnected: false,
+          });
+        }
         if (action === 'directionReports') return J({ ok: true, centerId: 'libramont', reports: [] });
         return J({ ok: true, entries: [], communications: [], samples: [], suggestions: [], events: [] });
       }
@@ -557,6 +590,19 @@ async function waitDirDecisionLoaded(page) {
   await page.waitForTimeout(300);
 }
 
+// Attend que la PROVENANCE de la fenetre COURANTE soit chargee (meme cache que
+// les sections de decision, fetch parallele action=directionAudience). Utilise
+// par la vue Provenance et sa contre-preuve.
+async function waitDirAudienceLoaded(page) {
+  await page.waitForFunction(() => {
+    const D = window.PinlaneDirection;
+    if (!D || !D.decisionCache || typeof D.getInsightKey !== 'function') return false;
+    const slot = D.decisionCache[D.getInsightKey()];
+    return Boolean(slot && slot.audience && slot.audience.loaded);
+  }, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+}
+
 // Mesures des sections de decision sur une PAGE FRAICHE (fenetre par defaut).
 // Sonde partagee entre la phase verte [10] et la contre-preuve par mutation :
 // le mock sert 2 centres et 1 dormant, donc 2 lignes de comparaison et 1 ligne
@@ -637,6 +683,53 @@ async function probeDirGridHeights(browser) {
       equalHeights: valid.length === 4 && spread <= 3,
       heights,
       spread,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+// Invariants de la vue PROVENANCE, sur une page fraiche : occasions (barChart
+// trace + 2 lignes de table), sources (1 ligne), et carte Audience « a
+// connecter » qui cite Google Analytics SANS aucun chiffre (honnetete
+// demographique). Sonde partagee entre la phase verte [11] et la contre-preuve :
+// une mutation qui casse un de ces blocs fait mentir un de ces booleens.
+async function probeDirProvenance(browser) {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  try {
+    await bootDirection(page);
+    await switchDirView(page, 'provenance');
+    await waitDirAudienceLoaded(page);
+    await page.waitForFunction(
+      () => Boolean(document.querySelector('#adminContent .dir-prov-audience')),
+      null,
+      { timeout: 10000 },
+    );
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const occSvg = document.querySelector('#dirProvOccChart svg');
+      const audCard = document.querySelector('#adminContent .dir-prov-audience');
+      const audText = audCard ? (audCard.textContent || '') : '';
+      return {
+        occChartH: occSvg ? Math.round(occSvg.getBoundingClientRect().height) : 0,
+        occRows: document.querySelectorAll('#adminContent [aria-label="Pourquoi ils viennent"] tbody tr').length,
+        srcRows: document.querySelectorAll('#adminContent [aria-label="Sources marketing"] tbody tr').length,
+        audiencePresent: Boolean(audCard),
+        audienceMentionsGA: /google analytics/i.test(audText),
+        audiencePillPresent: Boolean(audCard && audCard.querySelector('.dir-prov-audience-pill')),
+        audienceHasDigit: /\d/.test(audText),
+      };
+    });
+    return {
+      occChartTraced: r.occChartH > 0,
+      occRowsMatch: r.occRows === 2,
+      sourcesRowsMatch: r.srcRows === 1,
+      audienceHonest: r.audiencePresent && r.audienceMentionsGA && r.audiencePillPresent && r.audienceHasDigit === false,
+      noFakeAudienceNumber: r.audiencePresent && r.audienceHasDigit === false,
+      occChartH: r.occChartH,
+      occRows: r.occRows,
+      srcRows: r.srcRows,
+      audienceHasDigit: r.audienceHasDigit,
     };
   } finally {
     await page.close();
@@ -815,8 +908,8 @@ async function main() {
         gridPresent: Boolean(document.querySelector('#dirChartResas')),
       };
     });
-    ok(navState.pills.length === 4 && ['synthese', 'activite', 'clients', 'centres'].every((v, i) => navState.pills[i] === v),
-      `le segmented nav offre 4 vues dans l'ordre (obtenu ${JSON.stringify(navState.pills)})`);
+    ok(navState.pills.length === 5 && ['synthese', 'activite', 'clients', 'centres', 'provenance'].every((v, i) => navState.pills[i] === v),
+      `le segmented nav offre 5 vues dans l'ordre (obtenu ${JSON.stringify(navState.pills)})`);
     ok(navState.view === 'synthese' && navState.activeView === 'synthese', `vue par defaut = Synthese (pilule active « ${navState.activeView} »)`);
     ok(navState.focusPresent && !navState.gridPresent, 'Synthese montre le grand graphe focus et PAS la grille d activite');
     ok(await rangeVisible(), 'la barre de plage est visible sur la vue Synthese');
@@ -905,6 +998,43 @@ async function main() {
     ok(backToSynthese.view === 'synthese' && backToSynthese.focusPresent, 'retour a Synthese : le grand focus est de nouveau la');
     ok(backToSynthese.windowLabel === m1.windowLabel, `la fenetre globale a tenu a travers les vues (« ${backToSynthese.windowLabel} »)`);
 
+    console.log('\n[11] VUE PROVENANCE : occasions (barChart + table), canaux (donut), sources (table), et carte Audience « a connecter » SANS faux chiffre');
+    await switchDirView(page, 'provenance');
+    await waitDirAudienceLoaded(page);
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirProvOccChart svg'))
+      && Boolean(document.querySelector('#adminContent .dir-prov-audience')), null, { timeout: 12000 });
+    await page.waitForTimeout(300);
+    const prov = await page.evaluate(() => {
+      const occSvg = document.querySelector('#dirProvOccChart svg');
+      const chanSvg = document.querySelector('#dirProvChanChart svg');
+      const audCard = document.querySelector('#adminContent .dir-prov-audience');
+      const audText = audCard ? (audCard.textContent || '') : '';
+      const pill = audCard ? audCard.querySelector('.dir-prov-audience-pill') : null;
+      return {
+        provSectionPresent: Boolean(document.querySelector('#adminContent .dir-prov')),
+        occChartH: occSvg ? Math.round(occSvg.getBoundingClientRect().height) : 0,
+        occRows: document.querySelectorAll('#adminContent [aria-label="Pourquoi ils viennent"] tbody tr').length,
+        chanChartH: chanSvg ? Math.round(chanSvg.getBoundingClientRect().height) : 0,
+        srcRows: document.querySelectorAll('#adminContent [aria-label="Sources marketing"] tbody tr').length,
+        audiencePresent: Boolean(audCard),
+        audienceMentionsGA: /google analytics/i.test(audText),
+        audiencePillText: pill ? (pill.textContent || '') : '',
+        audienceHasDigit: /\d/.test(audText),
+        focusPresent: Boolean(document.querySelector('#dirFocusChart')),
+      };
+    });
+    ok(prov.provSectionPresent && !prov.focusPresent, 'Provenance montre sa section et PAS le grand focus');
+    ok(prov.occChartH > 0, `« Pourquoi ils viennent » : le barChart des occasions est trace (${prov.occChartH}px)`);
+    ok(prov.occRows === 2, `la table des occasions liste les 2 occasions servies (obtenu ${prov.occRows})`);
+    ok(prov.chanChartH > 0, `« Canaux de reservation » : le donutChart des canaux est trace (${prov.chanChartH}px)`);
+    ok(prov.srcRows === 1, `« Sources marketing » : la table liste la source servie (obtenu ${prov.srcRows})`);
+    ok(prov.audiencePresent && prov.audienceMentionsGA, 'la carte Audience « a connecter » cite Google Analytics');
+    ok(/a venir/i.test(prov.audiencePillText), `la pilule inerte annonce « Connecter Google Analytics (a venir) » (obtenu « ${prov.audiencePillText.trim()} »)`);
+    ok(prov.audienceHasDigit === false, 'AUCUN chiffre (age/sexe/zone) dans la carte Audience (honnetete demographique)');
+    ok(await rangeVisible(), 'la barre de plage reste visible sur la vue Provenance');
+    await switchDirView(page, 'synthese');
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
+
     if (process.env.PINLANE_DIRECTION_SHOTS) {
       const shotDir = process.env.PINLANE_DIRECTION_SHOTS;
       fs.mkdirSync(shotDir, { recursive: true });
@@ -914,7 +1044,7 @@ async function main() {
       for (const theme of ['dark', 'light']) {
         await page.evaluate((t) => { setStaffTheme(t); }, theme);
         await page.waitForTimeout(300);
-        for (const view of ['synthese', 'activite', 'clients', 'centres']) {
+        for (const view of ['synthese', 'activite', 'clients', 'centres', 'provenance']) {
           await switchDirView(page, view);
           await page.setViewportSize({ width: 1400, height: 950 });
           await page.waitForTimeout(300);
@@ -1012,6 +1142,24 @@ async function main() {
       }
       ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
     };
+    // Contre-preuve de la vue PROVENANCE : casser un bloc (chart des occasions,
+    // table des sources, ou INJECTER un faux chiffre dans la carte Audience) doit
+    // faire mentir la sonde probeDirProvenance. Une mutation sans effet fait
+    // sortir le script en erreur.
+    const runProvenanceMutation = async (anchor, replacement, invariantKey, label) => {
+      const original = applyMutation(anchor, replacement, label);
+      let probe = null;
+      try {
+        probe = await probeDirProvenance(browser);
+      } finally {
+        fs.writeFileSync(consolePath, original);
+      }
+      if (!probe || probe[invariantKey] !== false) {
+        console.error(`direction-cockpit-check: MUTATION SANS EFFET (provenance), le gate ne sait pas rougir : ${label} (${JSON.stringify(probe)})`);
+        process.exit(1);
+      }
+      ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
+    };
     await runMutation(
       'return dirDays.map((row) => (asLabels',
       'return dirDays.slice(0, -1).map((row) => (asLabels',
@@ -1048,6 +1196,24 @@ async function main() {
       'equalHeights',
       'un hote de grille sans gabarit de hauteur (dir-chart -> dir-chart-x)',
     );
+    await runProvenanceMutation(
+      'id="dirProvOccChart"></div>',
+      'id="dirProvOccChartX"></div>',
+      'occChartTraced',
+      'hote du barChart des occasions renomme (le graphe ne se monte plus)',
+    );
+    await runProvenanceMutation(
+      'sources.map((row) => ',
+      'sources.slice(0, -1).map((row) => ',
+      'sourcesRowsMatch',
+      'table des sources amputee de sa derniere ligne',
+    );
+    await runProvenanceMutation(
+      "pas encore connectee.",
+      "pas encore connectee. Age moyen 34 ans.",
+      'noFakeAudienceNumber',
+      'faux chiffre demographique injecte dans la carte Audience',
+    );
     const restored = await probeDirInvariants(browser);
     ok(restored.svgVisible && restored.focusPointsMatch && restored.deltaExact,
       'restauration inverse : les invariants du poste d observation tiennent de nouveau sur une page fraiche');
@@ -1060,6 +1226,9 @@ async function main() {
     const restoredHeights = await probeDirGridHeights(browser);
     ok(restoredHeights.equalHeights,
       `restauration inverse : les graphes de grille reviennent a hauteur egale (ecart ${restoredHeights.spread}px)`);
+    const restoredProv = await probeDirProvenance(browser);
+    ok(restoredProv.occChartTraced && restoredProv.occRowsMatch && restoredProv.sourcesRowsMatch && restoredProv.audienceHonest,
+      'restauration inverse : Provenance retrace ses occasions, ses sources et sa carte Audience honnete sur une page fraiche');
   } finally {
     await browser.close();
     server.close();

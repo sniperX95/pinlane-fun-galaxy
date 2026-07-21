@@ -1901,6 +1901,7 @@ const DIR_VIEW_META = [
   { key: 'activite', label: 'Activite' },
   { key: 'clients', label: 'Clients' },
   { key: 'centres', label: 'Mes centres' },
+  { key: 'provenance', label: 'Provenance' },
 ];
 const DIR_VIEWS = DIR_VIEW_META.map((v) => v.key);
 
@@ -2354,6 +2355,153 @@ function mountDirRetChart() {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VUE PROVENANCE (2026-07-21) : POURQUOI les gens viennent (occasion declaree)
+// et D'OU vient la reservation (canal, source marketing). Donnee REELLE et
+// calculable, servie par GET action=directionAudience (chargee en parallele des
+// autres sections de decision, meme cache par centre+fenetre, panne isolee).
+// La demographie (age, sexe, zone) N'EST PAS collectee par Pinlane : elle
+// viendra de Google Analytics -> carte HONNETE « a connecter », AUCUN faux
+// chiffre. Zero recalcul metier cote front : les chiffres du serveur atterrissent
+// tels quels dans le DOM.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Part servie par le serveur, formatee en pourcentage entier. Jamais un recalcul :
+// une part absente rend une cellule calme « n/d ».
+function dirProvSharePct(share) {
+  if (share == null || share === '' || Number.isNaN(Number(share))) return 'n/d';
+  return `${Math.round(Number(share))}%`;
+}
+
+// Occasions declarees sur le formulaire de reservation : barChart par nombre de
+// resas + table (occasion, resas, CA, part). Etat calme si rien n'est declare.
+function dirProvOccasionsBlock(data) {
+  const occasions = Array.isArray(data.occasions) ? data.occasions.slice() : [];
+  const has = data.hasDeclaredOccasion === true && occasions.length > 0;
+  const rows = occasions.map((row) => `<tr>
+      <td>${escapeHtml(row.label || row.key || 'Occasion')}</td>
+      <td class="dir-num">${Number(row.count) || 0}</td>
+      <td class="dir-num">${escapeHtml(formatMoney(row.revenue))}</td>
+      <td class="dir-num">${escapeHtml(dirProvSharePct(row.share))}</td>
+    </tr>`).join('');
+  return `<article class="dir-card dir-prov-card dir-prov-card-wide" aria-label="Pourquoi ils viennent">
+    <h3 class="dir-card-title">Pourquoi ils viennent</h3>
+    ${has
+      ? `<div class="dir-chart dir-prov-occ" id="dirProvOccChart"></div>
+         <table class="dir-table dir-prov-table"><thead><tr><th>Occasion</th><th class="dir-num">Resas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${rows}</tbody></table>`
+      : dirNoteHtml('Aucune occasion declaree sur la periode.')}
+  </article>`;
+}
+
+// Canaux de reservation (En ligne vs Staff) : donutChart + valeurs chiffrees.
+function dirProvChannelsBlock(data) {
+  const channels = Array.isArray(data.channels) ? data.channels.slice() : [];
+  const has = channels.length > 0;
+  const values = channels.map((row) => `<li class="dir-prov-chan">
+      <span class="dir-prov-chan-label">${escapeHtml(row.label || row.key || 'Canal')}</span>
+      <span class="dir-prov-chan-value">${Number(row.count) || 0} resas · ${escapeHtml(formatMoney(row.revenue))} · ${escapeHtml(dirProvSharePct(row.share))}</span>
+    </li>`).join('');
+  return `<article class="dir-card dir-prov-card" aria-label="Canaux de reservation">
+    <h3 class="dir-card-title">Canaux de reservation</h3>
+    ${has
+      ? `<div class="dir-chart" id="dirProvChanChart"></div>
+         <ul class="dir-prov-chan-list">${values}</ul>`
+      : dirNoteHtml('Aucun canal de reservation sur la periode.')}
+  </article>`;
+}
+
+// Sources marketing (utm / referrer) : table resas + CA. Etat calme si aucune
+// source captee, avec la promesse honnete que les campagnes UTM y apparaitront.
+function dirProvSourcesBlock(data) {
+  const sources = Array.isArray(data.sources) ? data.sources.slice() : [];
+  const has = data.hasSource === true && sources.length > 0;
+  const rows = sources.map((row) => `<tr>
+      <td>${escapeHtml(row.label || row.key || 'Source')}</td>
+      <td class="dir-num">${Number(row.count) || 0}</td>
+      <td class="dir-num">${escapeHtml(formatMoney(row.revenue))}</td>
+      <td class="dir-num">${escapeHtml(dirProvSharePct(row.share))}</td>
+    </tr>`).join('');
+  return `<article class="dir-card dir-prov-card" aria-label="Sources marketing">
+    <h3 class="dir-card-title">Sources marketing</h3>
+    ${has
+      ? `<table class="dir-table dir-prov-table"><thead><tr><th>Source</th><th class="dir-num">Resas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${rows}</tbody></table>`
+      : dirNoteHtml('Aucune source marketing captee sur la periode (les campagnes UTM apparaitront ici).')}
+  </article>`;
+}
+
+// Carte HONNETE : la demographie n'est pas collectee par Pinlane. Tant que
+// demographicsConnected est faux, on affiche un bloc « a connecter » (source
+// Google Analytics) et une pilule INERTE, jamais un chiffre d'age/sexe/zone.
+function dirProvAudienceBlock(data) {
+  const connected = data.demographicsConnected === true;
+  if (connected) {
+    return `<article class="dir-card dir-prov-card dir-prov-card-wide dir-prov-audience" aria-label="Audience">
+      <h3 class="dir-card-title">Audience</h3>
+      ${dirNoteHtml('Source demographique connectee. La repartition age, sexe et zone apparaitra ici.')}
+    </article>`;
+  }
+  return `<article class="dir-card dir-prov-card dir-prov-card-wide dir-prov-audience" aria-label="Audience">
+    <h3 class="dir-card-title">Audience</h3>
+    <p class="dir-prov-audience-text">L'age, le sexe et la zone geographique de vos visiteurs viendront de Google Analytics. Cette source n'est pas encore connectee.</p>
+    <span class="dir-prov-audience-pill" role="note" aria-disabled="true">Connecter Google Analytics (a venir)</span>
+  </article>`;
+}
+
+function dirProvenanceInner() {
+  const aud = (directionDecisionCache[dirInsightKey()] || {}).audience;
+  if (!aud || !aud.loaded) return '<div class="dir-note dir-note-loading">Chargement de la provenance...</div>';
+  if (aud.error) return dirNoteHtml('Provenance momentanement indisponible. Elle reviendra au prochain rafraichissement.');
+  const data = aud.data || {};
+  return `<div class="dir-prov-grid">
+    ${dirProvOccasionsBlock(data)}
+    ${dirProvChannelsBlock(data)}
+    ${dirProvSourcesBlock(data)}
+    ${dirProvAudienceBlock(data)}
+  </div>`;
+}
+
+function dirProvenanceHtml() {
+  return `<section class="dir-prov" aria-label="Provenance des reservations">
+    <div class="dir-prov-head">
+      <h2 class="dir-prov-title">Provenance</h2>
+      <p class="dir-prov-sub">Pourquoi vos clients viennent et d'ou arrive la reservation, sur la periode active.</p>
+    </div>
+    <div class="dir-prov-body" id="dirProvBody">${dirProvenanceInner()}</div>
+  </section>`;
+}
+
+// Graphiques de la vue Provenance : degrade calme sans librairie, jamais
+// bloquants. barChart des occasions (par nombre de resas) + donutChart des
+// canaux (En ligne vs Staff). Les hotes n'existent que quand la vue est active
+// et que la donnee porte de quoi tracer (has* vrai) : sinon montage no-op.
+function mountDirProvCharts() {
+  const aud = (directionDecisionCache[dirInsightKey()] || {}).audience;
+  const data = aud && aud.data ? aud.data : null;
+  if (!data) return;
+  const charts = dirCharts();
+  if (!charts) return;
+  const range = getDirRange();
+  const motionBase = `dir|prov|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}`;
+  const occHost = document.getElementById('dirProvOccChart');
+  if (occHost && typeof charts.barChart === 'function') {
+    const occasions = Array.isArray(data.occasions) ? data.occasions : [];
+    charts.barChart(occHost, {
+      series: occasions.map((row) => ({ label: row.label || row.key || 'Occasion', value: Number(row.count) || 0 })),
+      format: 'int',
+      motionKey: `${motionBase}|occasions`,
+    });
+  }
+  const chanHost = document.getElementById('dirProvChanChart');
+  if (chanHost && typeof charts.donutChart === 'function') {
+    const channels = Array.isArray(data.channels) ? data.channels : [];
+    charts.donutChart(chanHost, {
+      parts: channels.map((row) => ({ label: row.label || row.key || 'Canal', value: Number(row.count) || 0 })),
+      format: 'int',
+      motionKey: `${motionBase}|channels`,
+    });
+  }
+}
+
 // Mise a jour CIBLEE des deux sections de decision (sans re-rendre tout le corps :
 // on ne perturbe ni les KPI ni le graphique focus). No-op si le corps n'est pas
 // encore monte (donnee de decision arrivee avant l'analytique principale).
@@ -2362,8 +2510,11 @@ function renderDirectionDecision() {
   if (cmpBody) cmpBody.innerHTML = dirComparisonInner();
   const retBody = document.getElementById('dirRetBody');
   if (retBody) retBody.innerHTML = dirRetentionInner();
+  const provBody = document.getElementById('dirProvBody');
+  if (provBody) provBody.innerHTML = dirProvenanceInner();
   mountDirCmpChart();
   mountDirRetChart();
+  mountDirProvCharts();
 }
 
 // Chargement PARALLELE des deux endpoints de decision (Promise.all), cache par
@@ -2374,7 +2525,8 @@ async function loadDirectionDecision(centerId, range, key, force) {
   const existing = directionDecisionCache[key];
   const haveCmp = Boolean(existing && existing.comparison && existing.comparison.loaded);
   const haveRet = Boolean(existing && existing.retention && existing.retention.loaded);
-  if (!force && haveCmp && haveRet) return;
+  const haveAud = Boolean(existing && existing.audience && existing.audience.loaded);
+  if (!force && haveCmp && haveRet && haveAud) return;
   if (directionDecisionLoading[key]) return;
   directionDecisionLoading[key] = true;
   const cid = encodeURIComponent(centerId);
@@ -2388,13 +2540,15 @@ async function loadDirectionDecision(centerId, range, key, force) {
     ? { loaded: true, error: '', data: result.value || null }
     : { loaded: true, error: (result.reason && result.reason.message) || fallbackMessage, data: null });
   try {
-    const [cmpRes, retRes] = await Promise.all([
+    const [cmpRes, retRes, audRes] = await Promise.all([
       guard(apiRequest(`${API_ENDPOINTS.ops}?action=directionComparison&centerId=${cid}&startDate=${s}&endDate=${e}`)),
       guard(apiRequest(`${API_ENDPOINTS.ops}?action=directionRetention&centerId=${cid}&startDate=${s}&endDate=${e}`)),
+      guard(apiRequest(`${API_ENDPOINTS.ops}?action=directionAudience&centerId=${cid}&startDate=${s}&endDate=${e}`)),
     ]);
     directionDecisionCache[key] = {
       comparison: settle(cmpRes, 'Comparaison indisponible.'),
       retention: settle(retRes, 'Donnees clients indisponibles.'),
+      audience: settle(audRes, 'Provenance indisponible.'),
     };
   } finally {
     directionDecisionLoading[key] = false;
@@ -2571,6 +2725,7 @@ function dirViewHtml(view, entry) {
   if (view === 'activite') return dirGridHtml();
   if (view === 'clients') return dirTablesHtml(entry) + dirRetentionHtml();
   if (view === 'centres') return dirComparisonHtml();
+  if (view === 'provenance') return dirProvenanceHtml();
   // synthese (defaut) : la rangee de KPI cliquables + le grand graphe focus.
   return dirKpisHtml(entry) + dirFocusHtml();
 }
@@ -2709,6 +2864,7 @@ function mountDirectionCharts() {
   // sinon renderDirectionDecision les montera a l'arrivee du fetch parallele).
   mountDirCmpChart();
   mountDirRetChart();
+  mountDirProvCharts();
 }
 
 // Interaction coeur : cliquer une tuile choisit la metrique du grand graphique.
@@ -3223,6 +3379,15 @@ function startAdminHealthAutoRefresh() {
     dirRetentionHtml,
     mountDirCmpChart,
     mountDirRetChart,
+    // Vue Provenance (occasions, canaux, sources, audience a connecter)
+    dirProvSharePct,
+    dirProvOccasionsBlock,
+    dirProvChannelsBlock,
+    dirProvSourcesBlock,
+    dirProvAudienceBlock,
+    dirProvenanceInner,
+    dirProvenanceHtml,
+    mountDirProvCharts,
     renderDirectionDecision,
     loadDirectionDecision,
     renderDirectionShell,

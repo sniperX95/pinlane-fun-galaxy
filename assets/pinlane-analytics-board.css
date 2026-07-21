@@ -1,0 +1,397 @@
+/* ==========================================================================
+   Pinlane Analytics Board (classes pab-) : styles et motion du tableau
+   d'analyse personnalisable window.PinlaneAnalyticsBoard
+   (assets/pinlane-analytics-board.js). Discipline console (Vercel / Linear) :
+   - monochrome, le SENS seul porte la couleur : ici tout est structurel, donc
+     uniquement --text / --muted / --faint et surfaces / filets. AUCUNE couleur
+     en dur, light et dark via les tokens theme ;
+   - filets 1px var(--line) / var(--line-strong), rayons var(--radius-*),
+     chiffres tabulaires (var(--font-data)) ;
+   - motion (Emil Kowalski) : transform / opacity uniquement, ease-out
+     var(--ease-out-strong), jamais ease-in, jamais scale(0), <= 300ms.
+     Mode edition : oscillation legere (jiggle) des cartes. Le glisser fige le
+     jiggle (data-dragging) pour des rects stables ;
+   - prefers-reduced-motion : etat final immediat, aucune oscillation.
+   ========================================================================== */
+
+.pab {
+  font-family: var(--font-ui);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* ---- Barre d'entete : plage a gauche, Personnaliser a droite -------------- */
+
+.pab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.pab-customize {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease-out-strong),
+    border-color var(--dur) var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+.pab-customize:hover {
+  background: var(--subtle);
+  border-color: var(--faint);
+}
+
+.pab-customize:active { transform: scale(0.97); }
+
+.pab-customize:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.pab[data-editing="true"] .pab-customize {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+}
+
+/* ---- Grille responsive : tailles coherentes, 1 colonne en mobile --------- */
+
+.pab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+/* ---- Carte widget -------------------------------------------------------- */
+
+.pab-widget {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 240px;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.pab-widget-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 20px;
+}
+
+.pab-widget-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pab-widget-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 180px;
+}
+
+/* Poignee de deplacement : masquee hors edition, grip visible en edition. */
+.pab-handle {
+  display: none;
+  align-items: center;
+  color: var(--faint);
+  cursor: grab;
+  flex: none;
+  touch-action: none;
+}
+.pab-handle svg { fill: currentColor; }
+
+.pab[data-editing="true"] .pab-handle { display: inline-flex; }
+.pab[data-editing="true"] .pab-widget.pab-dragging .pab-handle { cursor: grabbing; }
+
+/* Badge Supprimer : coin haut gauche facon iOS, masque hors edition. */
+.pab-remove {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 3;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+  cursor: pointer;
+  transition:
+    background-color 120ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+.pab-remove svg { display: block; }
+.pab-remove:hover { background: var(--subtle); }
+.pab-remove:active { transform: scale(0.9); }
+.pab-remove:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.pab[data-editing="true"] .pab-remove { display: inline-flex; }
+
+/* ---- Tuile ajouter (+) : visible en edition seulement -------------------- */
+
+.pab-add-tile {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 240px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background-color var(--dur) var(--ease-out-strong),
+    border-color var(--dur) var(--ease-out-strong),
+    color var(--dur) var(--ease-out-strong);
+}
+.pab-add-tile:hover {
+  background: var(--subtle);
+  border-color: var(--faint);
+  color: var(--text);
+}
+.pab-add-tile:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.pab[data-editing="true"] .pab-add-tile { display: flex; }
+
+.pab-add-plus {
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* ---- Grande tuile chiffree (stat) ---------------------------------------- */
+
+.pab-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.pab-tile-value {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+}
+.pab-tile-caption {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- Placeholder d'insertion pendant le glisser -------------------------- */
+
+.pab-placeholder {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--subtle);
+}
+
+/* ---- Carte en cours de glisser : suit le pointeur, soulevee -------------- */
+
+.pab-widget.pab-dragging {
+  position: fixed;
+  z-index: 100;
+  margin: 0;
+  box-shadow: var(--shadow-overlay);
+  cursor: grabbing;
+  pointer-events: none;
+  transform: scale(1.03);
+  animation: none;
+}
+
+/* ---- Mode edition : oscillation legere (jiggle iOS) ---------------------- */
+
+@keyframes pab-jiggle {
+  0% { transform: rotate(-0.5deg) translateY(0); }
+  50% { transform: rotate(0.5deg) translateY(-0.5px); }
+  100% { transform: rotate(-0.5deg) translateY(0); }
+}
+@keyframes pab-jiggle-alt {
+  0% { transform: rotate(0.5deg) translateY(-0.5px); }
+  50% { transform: rotate(-0.5deg) translateY(0); }
+  100% { transform: rotate(0.5deg) translateY(-0.5px); }
+}
+
+.pab[data-editing="true"] .pab-widget {
+  animation: pab-jiggle 300ms var(--ease-out-strong) infinite;
+  user-select: none;
+}
+.pab[data-editing="true"] .pab-widget:nth-child(2n) {
+  animation-name: pab-jiggle-alt;
+  animation-delay: -90ms;
+}
+.pab[data-editing="true"] .pab-widget:nth-child(3n) {
+  animation-delay: -150ms;
+}
+
+/* Le glisser fige le jiggle : les rects des voisins restent stables pour le
+   calcul d'insertion. */
+.pab[data-dragging="true"] .pab-widget { animation: none; }
+.pab-widget.pab-dragging { animation: none; }
+
+/* ---- Popover de choix (metrique + forme) --------------------------------- */
+
+.pab-picker {
+  position: absolute;
+  z-index: 120;
+  display: flex;
+  gap: var(--space-3);
+  max-width: calc(100% - 8px);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  transform-origin: top left;
+  animation: pab-pop 180ms var(--ease-out-strong);
+}
+@keyframes pab-pop {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.pab-picker[data-reduced="true"] { animation: none; }
+
+.pab-picker-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 168px;
+}
+.pab-picker-forms {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--line);
+  gap: var(--space-2);
+}
+
+.pab-picker-group-title,
+.pab-picker-label {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.pab-picker-group-title:first-child,
+.pab-picker-label:first-child { margin-top: 0; }
+
+.pab-pick-metric,
+.pab-pick-viz {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms var(--ease-out-strong);
+}
+.pab-pick-metric:hover,
+.pab-pick-viz:hover { background: var(--subtle); }
+
+.pab-pick-metric[aria-pressed="true"],
+.pab-pick-viz[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  font-weight: 600;
+}
+.pab-pick-metric:focus-visible,
+.pab-pick-viz:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.pab-picker-add {
+  margin-top: auto;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    opacity 120ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+.pab-picker-add:hover { opacity: 0.9; }
+.pab-picker-add:active { transform: scale(0.97); }
+.pab-picker-add:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* ---- Reduced motion : etat final immediat, zero oscillation -------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .pab-customize,
+  .pab-remove,
+  .pab-add-tile,
+  .pab-pick-metric,
+  .pab-pick-viz,
+  .pab-picker-add {
+    transition: none !important;
+  }
+  .pab-customize:active,
+  .pab-remove:active,
+  .pab-picker-add:active { transform: none; }
+  .pab[data-editing="true"] .pab-widget,
+  .pab[data-editing="true"] .pab-widget:nth-child(2n),
+  .pab[data-editing="true"] .pab-widget:nth-child(3n) {
+    animation: none !important;
+  }
+  .pab-widget.pab-dragging { transform: none; }
+  .pab-picker { animation: none !important; }
+}

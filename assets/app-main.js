@@ -5614,7 +5614,10 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
     </section>
 
-    ${renderDashboardCustomAnalytics()}
+    <section class="dash-card dash-board-section">
+      <div class="dash-card-head"><h2>Analyse personnalisée</h2></div>
+      <div id="dashBoardSlot" class="dash-board-slot"></div>
+    </section>
 
     <section class="dash-status-strip">
       <div><span>${renderDashboardIcon('lanes')}</span><small>Pistes disponibles</small><strong>${availableLanes} / ${TOTAL_LANES}</strong><em>${TOTAL_LANES ? Math.round((availableLanes / TOTAL_LANES) * 100) : 0}%</em></div>
@@ -5628,9 +5631,40 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   setupStaffDashboardCharts();
 }
 
+// Analyse personnalisee = tableau de widgets customisable (window.Pinlane
+// AnalyticsBoard). Hote PERSISTANT deplace dans le slot a chaque rendu :
+// appendChild MEUT le noeud existant (etat, edition, config preserves), le
+// board n'est monte QU'UNE fois -> aucun re-fetch ni scintillement quand le
+// dashboard se re-rend (ticks de synchro).
+let dashBoardHandle = null;
+let dashBoardContainer = null;
+async function fetchDashboardAnalyticsForBoard(start, end) {
+  const centerId = (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId()) || 'libramont';
+  const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=dashboardAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`);
+  return (payload && payload.analytics) || payload;
+}
+function mountDashAnalyticsBoard() {
+  const slot = document.getElementById('dashBoardSlot');
+  if (!slot) return;
+  if (!dashBoardContainer) {
+    dashBoardContainer = document.createElement('div');
+    dashBoardContainer.className = 'dash-board-container';
+  }
+  if (dashBoardContainer.parentNode !== slot) slot.appendChild(dashBoardContainer);
+  if (!dashBoardHandle && window.PinlaneAnalyticsBoard && typeof window.PinlaneAnalyticsBoard.mount === 'function') {
+    dashBoardHandle = window.PinlaneAnalyticsBoard.mount(dashBoardContainer, {
+      storageKey: 'pinlane-dashboard-board',
+      getAnalytics: fetchDashboardAnalyticsForBoard,
+      defaultWidgets: [{ metric: 'revenue', viz: 'line' }, { metric: 'byType', viz: 'donut' }, { metric: 'reservations', viz: 'bars' }],
+      maxDate: todayStr(),
+    });
+  }
+}
+
 function setupStaffDashboardCharts() {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
+  mountDashAnalyticsBoard();
   const hourly = root.querySelector('.dash-line-chart[data-hourly-chart]');
   if (hourly) setupHourlyChartInteraction(hourly);
   const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');

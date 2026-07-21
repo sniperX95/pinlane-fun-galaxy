@@ -1,0 +1,425 @@
+// Gate du moteur de graphiques window.PinlaneCharts (assets/pinlane-charts.js
+// + assets/pinlane-charts.css). Page HTML minimale servie en memoire, rendu
+// reel dans Edge headless (playwright-core), et preuves COMPORTEMENTALES :
+//   1. le path de la ligne contient le bon nombre de points, coordonnees finies ;
+//   2. l'animation SE PRODUIT : stroke-dashoffset et transform mesures a t0
+//      puis t+250ms, valeurs differentes ;
+//   3. prefers-reduced-motion emule (page.emulateMedia) : etat final IMMEDIAT ;
+//   4. re-rendu avec le meme motionKey : etat final direct, pas de rejeu ;
+//   5. donnees vides : message calme, aucune exception ;
+//   6. extremes (tout a 0, un seul point, valeurs negatives ramenees a 0) ;
+//   7. aucune erreur console.
+// Contre-preuve par mutation : le script mute assets/pinlane-charts.js, verifie
+// que le gate ROUGIT sur le check attendu, puis restaure par edition inverse
+// (JAMAIS git checkout). Mutation sans effet = sortie en erreur.
+// Lancement : node scripts/charts-check.js
+
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const { chromium } = require('playwright-core');
+const PORT = Number(process.env.PINLANE_CHARTS_PORT || 4263);
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const LIB = path.join(ROOT, 'assets', 'pinlane-charts.js');
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+};
+
+// Page de test : UNIQUEMENT les tokens theme (pinlane.css) + le moteur.
+// Pas de balise <header> (body.staff-mode header l'ecraserait a hauteur 0).
+const PAGE_HTML = `<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gate pinlane-charts</title>
+<link rel="stylesheet" href="/assets/pinlane.css">
+<link rel="stylesheet" href="/assets/pinlane-charts.css">
+</head>
+<body>
+<main style="max-width:720px;margin:0 auto;padding:24px;display:grid;gap:24px">
+  <div id="hostLine"></div>
+  <div id="hostBar"></div>
+  <div id="hostBarDates"></div>
+  <div id="hostDonut"></div>
+  <div id="hostDonutZero"></div>
+  <div id="hostHeat"></div>
+  <div id="hostEmpty"></div>
+  <div id="hostZero"></div>
+  <div id="hostSingle"></div>
+  <div id="hostNeg"></div>
+  <p><span id="hostCount"></span> <span id="hostCountPercent"></span></p>
+</main>
+<script src="/assets/pinlane-charts.js"></script>
+</body>
+</html>`;
+
+const heatMatrix = Array.from({ length: 7 }, () => Array.from({ length: 10 }, () => 0));
+heatMatrix[2][3] = 9;
+heatMatrix[4][6] = 3;
+
+const DATA = {
+  line: [120, 180, 90, 240, 300, 260, 410, 380, 220, 510, 470, 530, 610, 720]
+    .map((value, i) => ({ date: `2026-07-${String(i + 1).padStart(2, '0')}`, value })),
+  bar: [
+    { label: 'Lun', value: 120 }, { label: 'Mar', value: 260 }, { label: 'Mer', value: 90 },
+    { label: 'Jeu', value: 500 }, { label: 'Ven', value: 340 }, { label: 'Sam', value: 180 },
+  ],
+  donut: [
+    { label: 'Bowling', value: 5200 },
+    { label: 'Laser Game', value: 3100, tone: 'success' },
+    { label: 'Formules', value: 1700 },
+  ],
+  heat: {
+    matrix: heatMatrix,
+    rows: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+    cols: ['12h', '13h', '14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h'],
+  },
+  zero: Array.from({ length: 5 }, (_, i) => ({ date: `2026-07-0${i + 1}`, value: 0 })),
+  single: [{ date: '2026-07-10', value: 42 }],
+  neg: [{ label: 'A', value: -5 }, { label: 'B', value: 10 }],
+  countValue: 1234,
+};
+
+// Contre-preuves : chaque mutation doit faire rougir un check PRECIS.
+// La restauration est l'edition inverse exacte (replace -> find).
+const MUTATIONS = [
+  {
+    name: 'linePathD saute le premier point de la serie',
+    find: 'pts.map(function (p, i)',
+    replace: 'pts.slice(1).map(function (p, i)',
+    expect: 'line-points',
+  },
+  {
+    name: 'garde de premiere apparition neutralisee (wasSeen)',
+    find: 'return Boolean(key) && SEEN.has(key);',
+    replace: 'return Boolean(key) && false;',
+    expect: 'replay-guard',
+  },
+];
+
+function serveStatic() {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, BASE_URL);
+    if (url.pathname === '/__charts-check') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(PAGE_HTML);
+      return;
+    }
+    const filePath = path.join(ROOT, decodeURIComponent(url.pathname));
+    if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
+    fs.readFile(filePath, (err, content) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+      res.end(content);
+    });
+  });
+  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
+}
+
+function applyEdit(file, find, replace) {
+  const src = fs.readFileSync(file, 'utf8');
+  const count = src.split(find).length - 1;
+  if (count !== 1) throw new Error(`ancre introuvable ou non unique (${count} occurrence(s)) : ${find}`);
+  fs.writeFileSync(file, src.replace(find, replace));
+}
+
+async function runSuite(browser, quiet) {
+  const failures = [];
+  const ok = (cond, id, detail) => {
+    const good = Boolean(cond);
+    if (!quiet || !good) console.log(`${good ? 'ok  ' : 'FAIL'}  ${id}${good || !detail ? '' : `  [${detail}]`}`);
+    if (!good) failures.push(id);
+  };
+
+  const consoleErrors = [];
+  const page = await browser.newPage({ viewport: { width: 1100, height: 1600 } });
+  page.on('pageerror', (e) => consoleErrors.push(`PAGEERROR: ${e.message}`));
+  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`CONSOLE: ${msg.text()}`); });
+  try {
+    await page.goto(`${BASE_URL}/__charts-check?ts=${Date.now()}`, { waitUntil: 'load', timeout: 30000 });
+    await page.waitForFunction(() => window.PinlaneCharts && typeof window.PinlaneCharts.lineChart === 'function', null, { timeout: 10000 });
+
+    // t0 : montage + mesures SYNCHRONES (aucun rAF n'a pu tourner : l'etat
+    // initial de l'animation est encore pose).
+    const t0 = await page.evaluate((D) => {
+      const g = (id) => document.getElementById(id);
+      const out = { threw: [] };
+      const P = window.PinlaneCharts;
+      out.api = ['lineChart', 'barChart', 'donutChart', 'heatmapChart', 'countUp'].every((k) => typeof P[k] === 'function');
+      const scaleOf = (el) => {
+        const t = el ? getComputedStyle(el).transform : '';
+        if (!t || t === 'none') return 1;
+        const v = t.match(/-?[\d.]+/g);
+        return v && v.length >= 4 ? parseFloat(v[3]) : NaN;
+      };
+      try { P.lineChart(g('hostLine'), { series: D.line, format: 'euro', motionKey: 'gate|line' }); } catch (e) { out.threw.push(`line:${e.message}`); }
+      try { P.barChart('hostBar', { series: D.bar, format: 'int', motionKey: 'gate|bar', height: 180 }); } catch (e) { out.threw.push(`bar:${e.message}`); }
+      try { P.barChart(g('hostBarDates'), { series: D.line.slice(0, 5), format: 'int', motionKey: 'gate|bardates' }); } catch (e) { out.threw.push(`bardates:${e.message}`); }
+      try { P.donutChart(g('hostDonut'), { parts: D.donut, format: 'euro', motionKey: 'gate|donut' }); } catch (e) { out.threw.push(`donut:${e.message}`); }
+      try { P.donutChart(g('hostDonutZero'), { parts: [{ label: 'X', value: 0 }], format: 'int', motionKey: 'gate|donutzero' }); } catch (e) { out.threw.push(`donutzero:${e.message}`); }
+      try { P.heatmapChart(g('hostHeat'), { matrix: D.heat.matrix, rowLabels: D.heat.rows, colLabels: D.heat.cols, motionKey: 'gate|heat' }); } catch (e) { out.threw.push(`heat:${e.message}`); }
+      try { P.lineChart(g('hostEmpty'), { series: [], format: 'int', motionKey: 'gate|empty' }); } catch (e) { out.threw.push(`empty:${e.message}`); }
+      try { P.lineChart(g('hostZero'), { series: D.zero, format: 'int', motionKey: 'gate|zero' }); } catch (e) { out.threw.push(`zero:${e.message}`); }
+      try { P.lineChart(g('hostSingle'), { series: D.single, format: 'int', motionKey: 'gate|single' }); } catch (e) { out.threw.push(`single:${e.message}`); }
+      try { P.barChart(g('hostNeg'), { series: D.neg, format: 'int', motionKey: 'gate|neg' }); } catch (e) { out.threw.push(`neg:${e.message}`); }
+      try { P.lineChart('hoteInexistant', { series: D.line, format: 'int', motionKey: 'gate|absent' }); P.lineChart(null, { series: D.line }); } catch (e) { out.threw.push(`absent:${e.message}`); }
+      try { P.countUp(g('hostCount'), D.countValue, { format: 'euro' }); } catch (e) { out.threw.push(`count:${e.message}`); }
+      out.countT0 = g('hostCount').textContent;
+
+      const pathEl = g('hostLine').querySelector('.plc-line-path');
+      out.lineD = pathEl ? pathEl.getAttribute('d') || '' : '';
+      out.lineOff0 = pathEl ? parseFloat(getComputedStyle(pathEl).strokeDashoffset) : NaN;
+      out.lineStroke = pathEl ? getComputedStyle(pathEl).stroke : '';
+      out.yticks = g('hostLine').querySelectorAll('.plc-ytick').length;
+      out.xticks = g('hostLine').querySelectorAll('.plc-xtick').length;
+      out.hasDot = Boolean(g('hostLine').querySelector('.plc-line-dot'));
+      out.lastValueText = (g('hostLine').querySelector('.plc-line-value') || { textContent: '' }).textContent.trim();
+
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--text)';
+      probe.style.background = 'var(--success)';
+      document.body.appendChild(probe);
+      const pc = getComputedStyle(probe);
+      out.tokenText = pc.color;
+      out.tokenSuccess = pc.backgroundColor;
+      probe.remove();
+
+      const bars = g('hostBar').querySelectorAll('.plc-bar');
+      out.barCount = bars.length;
+      out.barScale0 = bars.length ? scaleOf(bars[0]) : NaN;
+      out.barHeights = Array.from(bars).map((b) => parseFloat(b.getAttribute('height')));
+      out.barDatesLabels = Array.from(g('hostBarDates').querySelectorAll('.plc-xtick')).map((t) => t.textContent.trim()).filter(Boolean).length;
+
+      const segs = g('hostDonut').querySelectorAll('.plc-donut-seg');
+      out.segCount = segs.length;
+      out.segOff0 = segs.length ? parseFloat(getComputedStyle(segs[0]).strokeDashoffset) : NaN;
+      out.legendShares = Array.from(g('hostDonut').querySelectorAll('.plc-legend-share')).map((e) => e.textContent);
+      const swSuccess = g('hostDonut').querySelector('.plc-swatch.plc-tone-success');
+      out.swatchSuccessColor = swSuccess ? getComputedStyle(swSuccess).backgroundColor : '';
+      const swDefault = g('hostDonut').querySelector('.plc-swatch:not(.plc-tone-success)');
+      out.swatchDefaultColor = swDefault ? getComputedStyle(swDefault).backgroundColor : '';
+      out.donutZeroEmpty = Boolean(g('hostDonutZero').querySelector('.plc-empty')) && !g('hostDonutZero').querySelector('svg');
+
+      out.heatCells = g('hostHeat').querySelectorAll('.plc-heat-cell').length;
+      out.emptyText = (g('hostEmpty').querySelector('.plc-empty') || { textContent: '' }).textContent;
+      out.emptyHasSvg = Boolean(g('hostEmpty').querySelector('svg'));
+      out.zeroHasSvg = Boolean(g('hostZero').querySelector('svg'));
+      out.zeroNaN = /NaN/.test(g('hostZero').innerHTML);
+      out.singleDot = Boolean(g('hostSingle').querySelector('.plc-line-dot'));
+      out.singleNaN = /NaN/.test(g('hostSingle').innerHTML);
+      out.negHeights = Array.from(g('hostNeg').querySelectorAll('.plc-bar')).map((b) => parseFloat(b.getAttribute('height')));
+
+      const nf = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 });
+      out.expectedEuro720 = `${nf.format(720)} €`;
+      out.expectedEuro1234 = `${nf.format(D.countValue)} €`;
+      return out;
+    }, DATA);
+
+    // t+250ms : l'animation est en cours, les valeurs ont change.
+    await page.waitForTimeout(250);
+    const t250 = await page.evaluate(() => {
+      const g = (id) => document.getElementById(id);
+      const pathEl = g('hostLine').querySelector('.plc-line-path');
+      const bar = g('hostBar').querySelector('.plc-bar');
+      const t = bar ? getComputedStyle(bar).transform : '';
+      const v = t && t !== 'none' ? t.match(/-?[\d.]+/g) : null;
+      return {
+        lineOff: pathEl ? parseFloat(getComputedStyle(pathEl).strokeDashoffset) : NaN,
+        barScale: !t || t === 'none' ? 1 : (v && v.length >= 4 ? parseFloat(v[3]) : NaN),
+      };
+    });
+
+    // Etat pose (~950ms) : fin d'animation + re-rendu meme motionKey + countUp.
+    await page.waitForTimeout(700);
+    const settled = await page.evaluate((D) => {
+      const g = (id) => document.getElementById(id);
+      const out = {};
+      const scaleOf = (el) => {
+        const t = el ? getComputedStyle(el).transform : '';
+        if (!t || t === 'none') return 1;
+        const v = t.match(/-?[\d.]+/g);
+        return v && v.length >= 4 ? parseFloat(v[3]) : NaN;
+      };
+      const pathEl = g('hostLine').querySelector('.plc-line-path');
+      out.lineOffEnd = pathEl ? parseFloat(getComputedStyle(pathEl).strokeDashoffset) : NaN;
+      const area = g('hostLine').querySelector('.plc-line-area');
+      out.areaOpacity = area ? parseFloat(getComputedStyle(area).opacity) : NaN;
+      const segs = Array.from(g('hostDonut').querySelectorAll('.plc-donut-seg'));
+      out.segOffEnd = segs.length ? Math.max(...segs.map((s) => parseFloat(getComputedStyle(s).strokeDashoffset))) : NaN;
+      const fills = g('hostHeat').querySelectorAll('.plc-heat-cell .plc-heat-fill');
+      const op = (i) => (fills[i] ? parseFloat(getComputedStyle(fills[i]).opacity) : NaN);
+      out.heatMax = op(2 * 10 + 3);
+      out.heatMid = op(4 * 10 + 6);
+      out.heatZero = op(0);
+      const cells = g('hostHeat').querySelectorAll('.plc-heat-cell');
+      out.heatTitle = cells[2 * 10 + 3] ? cells[2 * 10 + 3].getAttribute('title') : '';
+      out.countFinal = g('hostCount').textContent;
+      // Re-rendu innerHTML avec le MEME motionKey : etat final immediat.
+      const P = window.PinlaneCharts;
+      P.lineChart(g('hostLine'), { series: D.line, format: 'euro', motionKey: 'gate|line' });
+      const p2 = g('hostLine').querySelector('.plc-line-path');
+      out.offReplay = p2 ? parseFloat(getComputedStyle(p2).strokeDashoffset) : NaN;
+      P.barChart('hostBar', { series: D.bar, format: 'int', motionKey: 'gate|bar', height: 180 });
+      out.scaleReplay = scaleOf(g('hostBar').querySelector('.plc-bar'));
+      return out;
+    }, DATA);
+
+    // ---- Assertions page normale -----------------------------------------
+    ok(t0.api, 'api', 'les 5 fonctions du contrat doivent exister');
+    ok(t0.threw.length === 0, 'sans-exception', t0.threw.join(' | '));
+    const dPoints = (t0.lineD.match(/[ML]/g) || []).length;
+    const dNums = (t0.lineD.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    ok(dPoints === DATA.line.length && dNums.length === DATA.line.length * 2 && dNums.every(Number.isFinite),
+      'line-points', `attendu ${DATA.line.length} points finis, trouve ${dPoints} (${dNums.length} nombres)`);
+    ok(t0.lineOff0 > 900, 'line-anim-start', `dashoffset t0 = ${t0.lineOff0}`);
+    ok(Number.isFinite(t250.lineOff) && t250.lineOff < t0.lineOff0 - 50, 'line-anim-progress', `t0 ${t0.lineOff0} -> t250 ${t250.lineOff} : doit avoir bouge`);
+    ok(settled.lineOffEnd < 1, 'line-anim-end', `dashoffset final = ${settled.lineOffEnd}`);
+    ok(settled.areaOpacity > 0.99, 'line-area-end', `opacity aire = ${settled.areaOpacity}`);
+    ok(t0.yticks >= 3 && t0.yticks <= 5, 'line-yticks', `${t0.yticks} graduations Y`);
+    ok(t0.xticks >= 2 && t0.xticks <= 7, 'line-xticks', `${t0.xticks} labels X`);
+    ok(t0.hasDot && t0.lastValueText === t0.expectedEuro720, 'line-last-value', `"${t0.lastValueText}" vs "${t0.expectedEuro720}"`);
+    ok(t0.lineStroke === t0.tokenText, 'line-color-token', `stroke ${t0.lineStroke} vs var(--text) ${t0.tokenText}`);
+    ok(t0.barCount === DATA.bar.length, 'bar-count', `${t0.barCount} barres`);
+    ok(t0.barScale0 < 0.6 && Number.isFinite(t250.barScale) && t250.barScale > t0.barScale0 + 0.2,
+      'bar-anim', `scaleY t0 ${t0.barScale0} -> t250 ${t250.barScale}`);
+    ok(t0.barHeights.length === 6 && t0.barHeights[3] > t0.barHeights[0] && t0.barHeights[0] > t0.barHeights[2] && t0.barHeights.every((h) => Number.isFinite(h) && h >= 0),
+      'bar-geometry', `hauteurs ${t0.barHeights.join(', ')}`);
+    ok(t0.barDatesLabels >= 2, 'bar-date-labels', 'les series {date, value} doivent produire des labels X');
+    ok(t0.segCount === DATA.donut.length, 'donut-segments', `${t0.segCount} segments`);
+    ok(t0.segOff0 > 95 && settled.segOffEnd < 1, 'donut-draw', `offset t0 ${t0.segOff0} -> final ${settled.segOffEnd}`);
+    ok(t0.legendShares.length === 3 && t0.legendShares[0].includes('52%') && t0.legendShares[1].includes('31%') && t0.legendShares[2].includes('17%'),
+      'donut-shares', t0.legendShares.join(' | '));
+    ok(t0.swatchSuccessColor === t0.tokenSuccess && t0.swatchDefaultColor === t0.tokenText,
+      'donut-tone', `success ${t0.swatchSuccessColor} vs ${t0.tokenSuccess} ; defaut ${t0.swatchDefaultColor} vs ${t0.tokenText}`);
+    ok(t0.donutZeroEmpty, 'donut-empty', 'parts a zero -> message calme sans anneau');
+    ok(t0.heatCells === 70, 'heat-cells', `${t0.heatCells} cellules`);
+    ok(settled.heatMax > 0.95 && settled.heatZero < 0.01 && settled.heatMid > 0.1 && settled.heatMid < settled.heatMax,
+      'heat-intensity', `max ${settled.heatMax}, mid ${settled.heatMid}, zero ${settled.heatZero}`);
+    ok(settled.heatTitle === 'Mer 15h : 9', 'heat-title', `"${settled.heatTitle}"`);
+    ok(t0.emptyText === 'Pas encore de donnees sur la periode.' && !t0.emptyHasSvg, 'empty-calm', `"${t0.emptyText}"`);
+    ok(t0.zeroHasSvg && !t0.zeroNaN, 'zero-flat', 'serie toute a 0 : SVG fini, pas de NaN');
+    ok(t0.singleDot && !t0.singleNaN, 'single-point', 'un seul point : dot present, pas de NaN');
+    ok(t0.negHeights.length === 2 && t0.negHeights[0] === 0 && t0.negHeights[1] > 0,
+      'neg-clamped', `hauteurs ${t0.negHeights.join(', ')} (negatif attendu a 0)`);
+    ok(settled.offReplay < 1 && settled.scaleReplay > 0.99,
+      'replay-guard', `re-rendu meme motionKey : dashoffset ${settled.offReplay}, scaleY ${settled.scaleReplay} (etat final attendu)`);
+    ok(t0.countT0 !== settled.countFinal && settled.countFinal === t0.expectedEuro1234,
+      'countup', `t0 "${t0.countT0}" -> final "${settled.countFinal}" (attendu "${t0.expectedEuro1234}")`);
+  } catch (error) {
+    ok(false, 'suite-exception', error.message);
+  } finally {
+    await page.close();
+  }
+
+  // ---- Page reduced-motion : etat final IMMEDIAT ------------------------
+  const pageRm = await browser.newPage({ viewport: { width: 1100, height: 1600 } });
+  pageRm.on('pageerror', (e) => consoleErrors.push(`PAGEERROR(rm): ${e.message}`));
+  pageRm.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(`CONSOLE(rm): ${msg.text()}`); });
+  try {
+    await pageRm.emulateMedia({ reducedMotion: 'reduce' });
+    await pageRm.goto(`${BASE_URL}/__charts-check?rm=${Date.now()}`, { waitUntil: 'load', timeout: 30000 });
+    await pageRm.waitForFunction(() => window.PinlaneCharts && typeof window.PinlaneCharts.lineChart === 'function', null, { timeout: 10000 });
+    const rm = await pageRm.evaluate((D) => {
+      const g = (id) => document.getElementById(id);
+      const out = { threw: [] };
+      const P = window.PinlaneCharts;
+      try { P.lineChart(g('hostLine'), { series: D.line, format: 'euro', motionKey: 'rm|line' }); } catch (e) { out.threw.push(`line:${e.message}`); }
+      try { P.barChart(g('hostBar'), { series: D.bar, format: 'int', motionKey: 'rm|bar' }); } catch (e) { out.threw.push(`bar:${e.message}`); }
+      try { P.heatmapChart(g('hostHeat'), { matrix: D.heat.matrix, rowLabels: D.heat.rows, colLabels: D.heat.cols, motionKey: 'rm|heat' }); } catch (e) { out.threw.push(`heat:${e.message}`); }
+      try { P.countUp(g('hostCount'), D.countValue, { format: 'euro' }); } catch (e) { out.threw.push(`count:${e.message}`); }
+      try { P.countUp(g('hostCountPercent'), 72, { format: 'percent' }); } catch (e) { out.threw.push(`countp:${e.message}`); }
+      const pathEl = g('hostLine').querySelector('.plc-line-path');
+      out.lineOff = pathEl ? parseFloat(getComputedStyle(pathEl).strokeDashoffset) : NaN;
+      const bar = g('hostBar').querySelector('.plc-bar');
+      const t = bar ? getComputedStyle(bar).transform : '';
+      const v = t && t !== 'none' ? t.match(/-?[\d.]+/g) : null;
+      out.barScale = !t || t === 'none' ? 1 : (v && v.length >= 4 ? parseFloat(v[3]) : NaN);
+      const fills = g('hostHeat').querySelectorAll('.plc-heat-cell .plc-heat-fill');
+      out.heatMax = fills[2 * 10 + 3] ? parseFloat(getComputedStyle(fills[2 * 10 + 3]).opacity) : NaN;
+      out.countText = g('hostCount').textContent;
+      out.countPercentText = g('hostCountPercent').textContent;
+      out.expectedEuro = `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(D.countValue)} €`;
+      return out;
+    }, DATA);
+    ok(rm.threw.length === 0, 'rm-sans-exception', rm.threw.join(' | '));
+    ok(rm.lineOff < 0.5, 'rm-line-immediat', `dashoffset a t0 = ${rm.lineOff} (0 attendu sans animation)`);
+    ok(rm.barScale > 0.99, 'rm-bar-immediat', `scaleY a t0 = ${rm.barScale}`);
+    ok(rm.heatMax > 0.95, 'rm-heat-immediat', `opacite max a t0 = ${rm.heatMax}`);
+    ok(rm.countText === rm.expectedEuro, 'rm-countup-immediat', `"${rm.countText}" vs "${rm.expectedEuro}"`);
+    ok(rm.countPercentText === '72%', 'rm-countup-percent', `"${rm.countPercentText}"`);
+  } catch (error) {
+    ok(false, 'rm-suite-exception', error.message);
+  } finally {
+    await pageRm.close();
+  }
+
+  const fatal = consoleErrors.filter((e) => !/favicon|vercel-insights/i.test(e));
+  ok(fatal.length === 0, 'console-clean', fatal.slice(0, 3).join(' | '));
+
+  return failures;
+}
+
+(async () => {
+  const original = fs.readFileSync(LIB, 'utf8');
+  const server = await serveStatic();
+  const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
+  try {
+    console.log('--- passe 1 : gate nominal ---');
+    const base = await runSuite(browser, false);
+    if (base.length) {
+      console.error(`charts-check: ROUGE en nominal (${base.join(', ')})`);
+      process.exitCode = 1;
+      return;
+    }
+
+    for (const m of MUTATIONS) {
+      console.log(`--- contre-preuve par mutation : ${m.name} ---`);
+      applyEdit(LIB, m.find, m.replace);
+      let red;
+      try {
+        red = await runSuite(browser, true);
+      } finally {
+        // Edition inverse exacte, jamais git checkout.
+        applyEdit(LIB, m.replace, m.find);
+      }
+      if (fs.readFileSync(LIB, 'utf8') !== original) {
+        console.error('charts-check: restauration ratee, le fichier differe de l\'original lu au demarrage');
+        process.exitCode = 1;
+        return;
+      }
+      if (!red.length) {
+        console.error(`charts-check: MUTATION SANS EFFET (${m.name}) : le gate est reste vert, il ne prouve rien`);
+        process.exitCode = 1;
+        return;
+      }
+      if (!red.includes(m.expect)) {
+        console.error(`charts-check: la mutation "${m.name}" devait faire rougir "${m.expect}" ; rouges observes : ${red.join(', ')}`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`mutation detectee comme prevu ("${m.expect}" ROUGE), code restaure a l'identique`);
+    }
+
+    console.log('--- passe finale : gate nominal apres restauration ---');
+    const finalRun = await runSuite(browser, true);
+    if (finalRun.length) {
+      console.error(`charts-check: ROUGE apres restauration (${finalRun.join(', ')})`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log('charts-check: ALL OK (points finis, animation mesuree t0/t250, reduced-motion immediat, garde motionKey, vides calmes, extremes, console propre, 2 contre-preuves par mutation)');
+  } finally {
+    await browser.close();
+    server.close();
+    if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+  }
+})().catch((error) => {
+  console.error('charts-check: exception', error.message);
+  process.exit(1);
+});

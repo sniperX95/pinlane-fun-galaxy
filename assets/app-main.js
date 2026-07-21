@@ -1635,6 +1635,58 @@ async function apiRequest(url, options = {}) {
   return payload;
 }
 
+// ── Telemetrie d'erreurs console (staff uniquement) ─────────────────────────
+// Quand une erreur JS non rattrapee frappe la console d'un membre du staff,
+// elle part vers logClientError : le fondateur la voit dans Plateforme >
+// Incidents AVANT qu'on la lui signale. Contraintes non negociables :
+// jamais de reentrance (une erreur du rapporteur ne se rapporte pas), dedupe
+// locale, plafond par session d'onglet, et echec toujours silencieux.
+const CLIENT_ERROR_REPORT = { seen: new Set(), sent: 0, max: 10, busy: false };
+function reportClientError(payload) {
+  if (CLIENT_ERROR_REPORT.busy || CLIENT_ERROR_REPORT.sent >= CLIENT_ERROR_REPORT.max) return;
+  if (typeof getStaffSessionToken !== 'function' || !getStaffSessionToken()) return;
+  const message = String(payload.message || '').slice(0, 500);
+  if (!message) return;
+  const key = `${message}|${payload.source || ''}|${payload.lineno || 0}`;
+  if (CLIENT_ERROR_REPORT.seen.has(key)) return;
+  CLIENT_ERROR_REPORT.seen.add(key);
+  CLIENT_ERROR_REPORT.sent += 1;
+  CLIENT_ERROR_REPORT.busy = true;
+  try {
+    apiRequest('/api/ops?action=logClientError', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'logClientError',
+        page: typeof getStaffMenuPage === 'function' ? getStaffMenuPage() : '',
+        message,
+        source: String(payload.source || '').slice(0, 300),
+        lineno: Number(payload.lineno) || 0,
+        colno: Number(payload.colno) || 0,
+        stack: String(payload.stack || '').slice(0, 2000),
+      }),
+    }).catch(() => {}).finally(() => { CLIENT_ERROR_REPORT.busy = false; });
+  } catch (error) {
+    CLIENT_ERROR_REPORT.busy = false;
+  }
+}
+window.addEventListener('error', (event) => {
+  reportClientError({
+    message: event.message,
+    source: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    stack: event.error && event.error.stack,
+  });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  reportClientError({
+    message: (reason && reason.message) || String(reason || 'promesse rejetee'),
+    source: 'unhandledrejection',
+    stack: reason && reason.stack,
+  });
+});
+
 function getRemoteSyncBaseDelay() {
   // Cadence de synchro serveur. Volontairement modérée : chaque tick interroge
   // la base (staff-state). À 1,2 s on générait ~72k requêtes/jour/onglet et on
@@ -2093,7 +2145,10 @@ const STAFF_MENU_PAGES = [
   'establishment',
   'users',
   'settings',
-  'cockpit'
+  'cockpit',
+  'cockpit-agents',
+  'cockpit-incidents',
+  'cockpit-clients'
 ];
 function normalizeStaffMenuPage(page) {
   const key = String(page || 'planning').trim();
@@ -2206,7 +2261,10 @@ const STAFF_PAGE_PERMISSION_MAP = {
   establishment: ['settings.manage', 'direction.view'],
   users: ['users.manage'],
   settings: ['settings.manage'],
-  cockpit: ['platform.admin']
+  cockpit: ['platform.admin'],
+  'cockpit-agents': ['platform.admin'],
+  'cockpit-incidents': ['platform.admin'],
+  'cockpit-clients': ['platform.admin']
 };
 
 // Permissions de niveau PLATEFORME : jamais conférées par un rôle verrouillé
@@ -2515,7 +2573,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260720e';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260721a';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -4119,8 +4177,9 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
 function isStaffCockpitActive() {
-  return state.view === 'staff' && getStaffMenuPage() === 'cockpit';
+  return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }
 
 const STAFF_UTILITY_MENU_PAGES = [
@@ -11004,7 +11063,9 @@ function renderStaff() {
   }
   if (isStaffCockpitActive()) {
     document.body.style.overflow = '';
-    if (typeof renderStaffFounderCockpitPage === 'function') renderStaffFounderCockpitPage();
+    if (typeof renderStaffFounderCockpitPage === 'function') {
+      renderStaffFounderCockpitPage(document.getElementById('staffCockpitPage'), getStaffMenuPage());
+    }
     return;
   }
   if (isStaffUtilityActive()) {

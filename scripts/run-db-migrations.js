@@ -165,6 +165,11 @@ const MIGRATIONS = [
     file: 'database/platform-owner-role-schema.sql',
     description: "Role plateforme 'platform-owner' porteur de platform.admin (cockpit fondateur): seed du role par centre + rattachement des membres proprietaires. Jamais confere par role.locked.",
   },
+  {
+    id: '0033_client_errors',
+    file: 'database/client-errors-schema.sql',
+    description: "Telemetrie d'erreurs des consoles staff (Plateforme > Incidents): le fondateur voit un bug avant qu'on le lui signale. Caps de taille + regroupement par stack_hash, rate-limit applicatif dans lib/client-errors.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -105,6 +105,48 @@ async function installMock(page) {
       ] },
     };
 
+    // Les trois pages dediees de la categorie Plateforme. Fixtures VIVANTES :
+    // un agent silencieux, une erreur console fraiche (<24 h) avec stack, des
+    // centres inegalement configures : le rendu se juge sur du contraste.
+    const recent = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const vieux = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    const agentsBundle = {
+      ok: true, generatedAt: now, testData: true,
+      agents: {
+        marketing: { lastAt: hier, count7d: 3, count30d: 11, detail: 'insight : pluie annoncee samedi, promo laser proposee' },
+        emails: { lastAt: null, count7d: 0, count30d: 0 },
+        suggestions: { lastAt: hier, count7d: 2, count30d: 12 },
+        decisions: { lastAt: now, count7d: 4, count30d: 19 },
+      },
+      cost: {
+        budgetUsd: 5, costPerAgentMeasured: false,
+        months: [{ month: '2026-06', costUsd: 2.1, calls: 300 }, { month: '2026-07', costUsd: 4.0023, calls: 645 }],
+      },
+    };
+    const incidentsBundle = {
+      ok: true, generatedAt: now, testData: true,
+      console: { window: '14 derniers jours', groups: [
+        { message: "TypeError: cannot read properties of undefined (reading 'lanes')", count: 6, lastAt: recent, centers: ['libramont'], pages: ['planning'], stack: "TypeError: cannot read properties of undefined (reading 'lanes')\n    at renderPlanning (app-main.js:N:N)\n    at renderStaff (app-main.js:N:N)" },
+        { message: 'NetworkError when attempting to fetch resource /api/ops', count: 2, lastAt: vieux, centers: ['gembloux'], pages: ['emails', 'clients'] },
+      ] },
+      breakage: bundle.breakage,
+    };
+    const clientsBundle = {
+      ok: true, generatedAt: now, testData: true,
+      centers: [
+        { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', config: { done: 9, total: 10 },
+          adoption: { lastStaffAction: hier, actions7d: 14, actions30d: 61, lastLogin: hier, activeSessions: 1 },
+          topActors: [{ label: 'Directrice Demo', count30d: 41 }, { label: 'Bar - Sam', count30d: 12 }],
+          mails: { sent30d: 118, failed30d: 3 }, sequences: { active: 3, total: 3 } },
+        { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', config: { done: 6, total: 10 },
+          adoption: { lastStaffAction: null, actions7d: 0, actions30d: 0, lastLogin: null, activeSessions: 0 },
+          topActors: [], mails: { sent30d: 0, failed30d: 0 }, sequences: { active: 1, total: 3 } },
+        { id: 'ciney', name: 'Fun Galaxy Ciney', status: 'planned', config: { done: 2, total: 10 },
+          adoption: { lastStaffAction: null, actions7d: 0, actions30d: 0, lastLogin: null, activeSessions: 0 },
+          topActors: [], mails: null, sequences: { active: 0, total: 3 } },
+      ],
+    };
+
     const nf = window.fetch.bind(window);
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : (input && input.url) || '';
@@ -112,6 +154,9 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderCockpit') return J(bundle);
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderAuditLog') return J({ ok: true, entries: bundle.audit.entries });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderAgents') return J(agentsBundle);
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderIncidents') return J(incidentsBundle);
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderClients') return J(clientsBundle);
       if (u.pathname === '/api/ops') return J({ ok: true });
       if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], laneStatuses: {}, communications: [] });
       return nf(input, init);
@@ -174,6 +219,46 @@ async function installMock(page) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(OUT, 'founder-dark-mobile.png'), fullPage: true });
+
+    // ── Les trois pages dediees (Agents IA, Incidents, Clients) ────────────
+    // Meme exigence que la page cockpit : garde-fous COMPORTEMENTAUX par page
+    // (comptes exacts sur les fixtures, barre de titre non effondree), puis
+    // capture. Un compte faux = un normaliseur front desaccorde du serveur.
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const SOUS_PAGES = [
+      { key: 'cockpit-agents', shot: 'founder-agents-dark.png', attendu: { sel: '#staffCockpitPage .fck-agent-card', count: 4 } },
+      { key: 'cockpit-incidents', shot: 'founder-incidents-dark.png', attendu: { sel: '#staffCockpitPage .fck-incident', count: 2 } },
+      { key: 'cockpit-clients', shot: 'founder-clients-dark.png', attendu: { sel: '#staffCockpitPage .fck-client-card', count: 3 } },
+    ];
+    for (const sp of SOUS_PAGES) {
+      await page.evaluate((key) => {
+        state.staffMenuPage = key;
+        save();
+        renderStaff();
+      }, sp.key);
+      await page.waitForFunction(
+        ({ sel, count }) => document.querySelectorAll(sel).length === count,
+        { sel: sp.attendu.sel, count: sp.attendu.count },
+        { timeout: 15000 },
+      );
+      await page.waitForTimeout(400);
+      const etatPage = await page.evaluate(() => {
+        const bar = document.querySelector('#staffCockpitPage .pv2-bar');
+        const h2 = document.querySelector('#staffCockpitPage .pv2-panel-head h2');
+        const pb = document.getElementById('planningBox');
+        return {
+          barreTitreVisible: Boolean(bar) && bar.offsetHeight > 0,
+          titresPanneauxVisibles: Boolean(h2) && h2.offsetHeight > 0,
+          planningCache: !pb || pb.classList.contains('hidden'),
+        };
+      });
+      const ratesPage = Object.entries(etatPage).filter(([, ok]) => !ok).map(([nom]) => nom);
+      if (ratesPage.length) {
+        console.error(`RENDU CASSE (${sp.key}):`, ratesPage.join(', '));
+        process.exit(1);
+      }
+      await page.screenshot({ path: path.join(OUT, sp.shot), fullPage: true });
+    }
     const fatal = errs.filter((e) => !/localStorage|sandboxed|favicon|cdn\.vercel-insights/i.test(e));
     if (fatal.length) {
       console.error('ERREURS PAGE:', fatal.slice(0, 5));

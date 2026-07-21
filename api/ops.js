@@ -112,7 +112,7 @@ const {
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
-const { buildFounderCockpit } = require('../lib/founder-cockpit');
+const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -342,6 +342,22 @@ async function handleGet(req, res, options = {}) {
       since: url.searchParams.get('since') || '',
     });
     sendJson(res, 200, { ok: true, auditCenter, entries: rows, audit: getAuditHealth() });
+    return;
+  }
+
+  // Les trois pages dediees de la categorie Plateforme (agents IA, incidents,
+  // clients). Meme regle que le bundle cockpit : un fetch par page, agregats
+  // en SQL, permission plateforme (refus trace outcome=denied par PP2).
+  if (action === 'founderAgents') {
+    sendJson(res, 200, await buildFounderAgents());
+    return;
+  }
+  if (action === 'founderIncidents') {
+    sendJson(res, 200, await buildFounderIncidents());
+    return;
+  }
+  if (action === 'founderClients') {
+    sendJson(res, 200, await buildFounderClients());
     return;
   }
 
@@ -1335,6 +1351,33 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // filet). Trace par PP1 comme tout POST : action requeueOpsJob, entite
   // ops_job. Portee plateforme assumee : la ligne est relue par id AVANT la
   // mutation et seul un statut 'failed' passe (pas de rejeu d'un job vivant).
+  // Telemetrie d'erreurs des consoles staff : le fondateur voit un bug AVANT
+  // qu'on le lui signale. Caps de taille et rate-limit (20/membre/heure) dans
+  // lib/client-errors. Le rapporteur ne remonte JAMAIS d'echec au navigateur :
+  // un systeme de rapport d'erreurs qui produit des erreurs s'auto-alimente.
+  if (action === 'logClientError') {
+    let dropped = true;
+    try {
+      const { recordClientError } = require('../lib/client-errors');
+      const out = await recordClientError({
+        centerId: scopedCenterId || 'libramont',
+        memberId: (options.session && options.session.member && options.session.member.id) || '',
+        page: body.page,
+        message: body.message,
+        source: body.source,
+        lineno: body.lineno,
+        colno: body.colno,
+        stack: body.stack,
+        userAgent: req.headers['user-agent'] || '',
+      });
+      dropped = Boolean(out && out.dropped);
+    } catch (error) {
+      console.error('[client-errors] enregistrement impossible :', error.message);
+    }
+    sendJson(res, 200, { ok: true, dropped });
+    return;
+  }
+
   if (action === 'requeueOpsJob') {
     const jobId = Number(body.id);
     if (!Number.isInteger(jobId) || jobId <= 0) throw createHttpError('Identifiant de job invalide.', 400);
@@ -2039,7 +2082,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le
@@ -2077,6 +2120,10 @@ function getRequiredOpsPermission(method, action) {
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
   }
+  // Telemetrie d'erreurs : TOUT membre du staff peut rapporter (chaque role
+  // reel porte au moins une permission de vue). Pas de permission dediee :
+  // le rapport d'un bug ne doit jamais echouer pour cause de droits.
+  if (action === 'logClientError') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
   if (action === 'automationSettings') return ['settings.manage', 'emails.send', 'direction.view'];
   // L'aperçu ne fait que rendre un gabarit : il suffit de savoir lire les mails.
   // L'envoi de test et le renvoi font partir un vrai mail : `emails.send`.
@@ -2139,6 +2186,9 @@ const NON_MUTATING_POST_ACTIONS = new Set([
   'communicationDraft',
   'automationPreview', // previsualisation
   'agentStackAudit',   // audit de lecture
+  'logClientError',    // telemetrie plafonnee : le journal d'audit trace les
+                       // actes de gestion, pas la meteo des consoles : le
+                       // volume noierait la piste qui sert au controle.
 ]);
 
 // Type d'objet touche, pour la piste "l'historique de CET objet". Deduit de

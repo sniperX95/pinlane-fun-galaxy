@@ -23,6 +23,26 @@
 //  10. l'export « Archive JSON » a disparu, les exports utiles restent ;
 //  11. sans flag serveur, le bandeau de test ne s'affiche PAS (pas
 //      d'affirmation sans mesure).
+//  12. TENDANCES (Vue periode) : les 3 graphiques (CA, reservations, joueurs)
+//      sont des SVG a hauteur reelle > 0 ; le path du CA compte EXACTEMENT un
+//      point par jour servi par le mock (fenetre honnete : periode Jour = 14
+//      jours, Semaine = 7) ; chaque chip de delta est la DIFFERENCE EXACTE des
+//      totals mockes (previous.totals, jamais un pourcentage sur base 0) ; le
+//      fetch directionAnalytics est UNIQUE par fenetre sur toute la session ;
+//  13. onglet Donnees : la lecture visuelle (donut par activite, barres par
+//      canal, heatmap 7 jours x heures elargie 12h-21h) se monte a partir du
+//      MEME etat dhState, sans fetch supplementaire ;
+//  14. CONTRE-PREUVE PAR MUTATION : on mute assets/admin-console.js (serie
+//      quotidienne amputee, delta decale de 1), on verifie que les invariants
+//      12 ROUGISSENT sur une page fraiche, puis restauration par edition
+//      inverse (reecriture du contenu exact d'origine, jamais git checkout) et
+//      re-verte. Une mutation sans effet fait sortir le script en erreur.
+//
+// NOTE pinlane-charts : window.PinlaneCharts (assets/pinlane-charts.js) est
+// construit en parallele contre le contrat partage. Si le fichier existe, le
+// gate le sert tel quel ; sinon le serveur statique sert un STUB minimal
+// conforme au contrat (SVG basique, path ligne avec un point par item de
+// serie) pour que les assertions de comptage restent vraies dans les deux cas.
 //
 // Captures : PINLANE_DIRECTION_SHOTS=<dossier> ecrit desktop 1400 + mobile 390
 // dans les deux themes (bascule par setStaffTheme, le SEUL chemin qui pose
@@ -53,6 +73,91 @@ function ok(cond, label) {
   return cond;
 }
 
+// Stub minimal CONFORME AU CONTRAT window.PinlaneCharts, servi uniquement si
+// assets/pinlane-charts.js n'existe pas encore (librairie construite en
+// parallele). Il dessine de vrais SVG : le lineChart emet un path ligne
+// fill="none" avec exactement un point M/L par item de serie (c'est ce que le
+// gate compte), plus un path d'aire et le dot du dernier point.
+const STUB_CHARTS_JS = [
+  '(function () {',
+  '  function resolveHost(h) { return typeof h === "string" ? document.getElementById(h) : h; }',
+  '  function empty(el) { el.innerHTML = "<p class=\\"plc-empty\\">Pas encore de donnees sur la periode.</p>"; }',
+  '  function lineChart(target, opts) {',
+  '    var el = resolveHost(target); if (!el) return;',
+  '    opts = opts || {};',
+  '    var series = Array.isArray(opts.series) ? opts.series : [];',
+  '    if (!series.length) { empty(el); return; }',
+  '    var w = 600, h = Number(opts.height) || 160;',
+  '    var max = Math.max.apply(null, series.map(function (p) { return Number(p.value) || 0; }).concat([1]));',
+  '    var pts = series.map(function (p, i) {',
+  '      var x = series.length === 1 ? w / 2 : (i / (series.length - 1)) * w;',
+  '      var y = h - 5 - ((Number(p.value) || 0) / max) * (h - 10);',
+  '      return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];',
+  '    });',
+  '    var d = pts.map(function (p, i) { return (i ? "L" : "M") + p[0] + " " + p[1]; }).join(" ");',
+  '    var last = pts[pts.length - 1];',
+  '    el.innerHTML = "<svg viewBox=\\"0 0 " + w + " " + h + "\\" style=\\"width:100%;height:auto;display:block\\" role=\\"img\\">"',
+  '      + "<path d=\\"" + d + " L" + last[0] + " " + h + " L" + pts[0][0] + " " + h + " Z\\" fill=\\"currentColor\\" opacity=\\"0.08\\"></path>"',
+  '      + "<path d=\\"" + d + "\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\"></path>"',
+  '      + "<circle cx=\\"" + last[0] + "\\" cy=\\"" + last[1] + "\\" r=\\"3\\" fill=\\"currentColor\\"></circle>"',
+  '      + "</svg>";',
+  '  }',
+  '  function barChart(target, opts) {',
+  '    var el = resolveHost(target); if (!el) return;',
+  '    opts = opts || {};',
+  '    var series = Array.isArray(opts.series) ? opts.series : [];',
+  '    if (!series.length) { empty(el); return; }',
+  '    var w = 600, h = Number(opts.height) || 160;',
+  '    var max = Math.max.apply(null, series.map(function (p) { return Number(p.value) || 0; }).concat([1]));',
+  '    var bw = w / series.length;',
+  '    var bars = series.map(function (p, i) {',
+  '      var bh = ((Number(p.value) || 0) / max) * (h - 24);',
+  '      return "<rect x=\\"" + (i * bw + bw * 0.15) + "\\" y=\\"" + (h - 16 - bh) + "\\" width=\\"" + (bw * 0.7) + "\\" height=\\"" + bh + "\\" fill=\\"currentColor\\"></rect>"',
+  '        + "<text x=\\"" + (i * bw + bw / 2) + "\\" y=\\"" + (h - 4) + "\\" font-size=\\"9\\" text-anchor=\\"middle\\" fill=\\"currentColor\\">" + String(p.label == null ? "" : p.label).replace(/[<>&]/g, "") + "</text>";',
+  '    }).join("");',
+  '    el.innerHTML = "<svg viewBox=\\"0 0 " + w + " " + h + "\\" style=\\"width:100%;height:auto;display:block\\" role=\\"img\\">" + bars + "</svg>";',
+  '  }',
+  '  function donutChart(target, opts) {',
+  '    var el = resolveHost(target); if (!el) return;',
+  '    opts = opts || {};',
+  '    var parts = (Array.isArray(opts.parts) ? opts.parts : []).filter(function (p) { return (Number(p.value) || 0) > 0; });',
+  '    if (!parts.length) { empty(el); return; }',
+  '    var total = parts.reduce(function (s, p) { return s + (Number(p.value) || 0); }, 0);',
+  '    var legend = parts.map(function (p) {',
+  '      var pct = total ? Math.round(((Number(p.value) || 0) / total) * 100) : 0;',
+  '      return "<li>" + String(p.label == null ? "" : p.label).replace(/[<>&]/g, "") + " : " + Math.round(Number(p.value) || 0) + " (" + pct + " %)</li>";',
+  '    }).join("");',
+  '    el.innerHTML = "<svg viewBox=\\"0 0 42 42\\" style=\\"width:120px;height:auto;display:block\\" role=\\"img\\">"',
+  '      + "<circle cx=\\"21\\" cy=\\"21\\" r=\\"15.9\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"6\\" opacity=\\"0.25\\"></circle>"',
+  '      + "</svg><ul class=\\"plc-legend\\">" + legend + "</ul>";',
+  '  }',
+  '  function heatmapChart(target, opts) {',
+  '    var el = resolveHost(target); if (!el) return;',
+  '    opts = opts || {};',
+  '    var matrix = Array.isArray(opts.matrix) ? opts.matrix : [];',
+  '    if (!matrix.length) { empty(el); return; }',
+  '    var rows = matrix.map(function (row, r) {',
+  '      var cells = (row || []).map(function (v, c) {',
+  '        var label = ((opts.rowLabels || [])[r] || "") + " " + ((opts.colLabels || [])[c] || "");',
+  '        return "<span title=\\"" + label + " : " + (Number(v) || 0) + "\\" style=\\"display:inline-block;width:14px;height:14px;opacity:" + (0.15 + 0.85 * Math.min(1, (Number(v) || 0) / 5)) + "\\">.</span>";',
+  '      }).join("");',
+  '      return "<div>" + (((opts.rowLabels || [])[r] || "")) + " " + cells + "</div>";',
+  '    }).join("");',
+  '    el.innerHTML = "<div class=\\"plc-heatmap\\">" + rows + "</div>";',
+  '  }',
+  '  function countUp(target, value, opts) {',
+  '    var el = resolveHost(target); if (!el) return;',
+  '    el.textContent = String(Math.round(Number(value) || 0));',
+  '  }',
+  '  window.PinlaneCharts = { lineChart: lineChart, barChart: barChart, donutChart: donutChart, heatmapChart: heatmapChart, countUp: countUp };',
+  '})();',
+].join('\n');
+
+const STUB_ASSETS = {
+  '/assets/pinlane-charts.js': { type: 'text/javascript; charset=utf-8', body: STUB_CHARTS_JS },
+  '/assets/pinlane-charts.css': { type: 'text/css; charset=utf-8', body: '/* stub gate : librairie en cours de construction */' },
+};
+
 function serveStatic() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, BASE_URL);
@@ -60,7 +165,17 @@ function serveStatic() {
     if (url.pathname === '/' || url.pathname === '') filePath = path.join(ROOT, 'index.html');
     if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
     fs.readFile(filePath, (err, content) => {
-      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      if (err) {
+        // Librairie de graphiques pas encore ecrite par l'agent parallele :
+        // stub conforme au contrat, pour zero 404 et des assertions vraies.
+        const stub = STUB_ASSETS[url.pathname];
+        if (stub) {
+          res.writeHead(200, { 'Content-Type': stub.type, 'Cache-Control': 'no-store' });
+          res.end(stub.body);
+          return;
+        }
+        res.writeHead(404); res.end('Not found'); return;
+      }
       res.writeHead(200, {
         'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
         'Cache-Control': 'no-store',
@@ -115,7 +230,66 @@ async function installMock(page) {
       { id: 21, centerId: 'libramont', eventType: 'delay_applied', activityType: 'bowling', reasonId: 'late_customer', plannedStart: '18:00', actualStart: '18:10', plannedMinutes: 60, actualMinutes: 70, createdAt: new Date().toISOString() },
     ];
 
+    // Fixtures DETERMINISTES directionAnalytics : le mock genere une ligne par
+    // jour de la fenetre DEMANDEE (formules fixes, aucune part d'aleatoire) et
+    // enregistre dans window.__DIR_SERVED__ ce qu'il a servi (jours, totals,
+    // previous.totals, nombre d'appels) : les assertions comparent le DOM a ce
+    // registre, jamais a des valeurs recopiees a la main.
+    const dirAddDays = (dateStr, days) => {
+      const d = new Date(`${dateStr}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+    const buildDirectionFixture = (startDate, endDate) => {
+      const daily = [];
+      const monthlyMap = {};
+      for (let d = startDate, i = 0; d <= endDate; d = dirAddDays(d, 1), i += 1) {
+        const row = { date: d, count: 2 + (i % 4), revenue: 100 + i * 10, pax: 8 + (i % 5), cancelled: i % 2 };
+        daily.push(row);
+        const mk = d.slice(0, 7);
+        monthlyMap[mk] = monthlyMap[mk] || { month: mk, count: 0, revenue: 0, pax: 0, cancelled: 0 };
+        monthlyMap[mk].count += row.count; monthlyMap[mk].revenue += row.revenue;
+        monthlyMap[mk].pax += row.pax; monthlyMap[mk].cancelled += row.cancelled;
+      }
+      const sum = (pick) => daily.reduce((s, r) => s + pick(r), 0);
+      const totals = {
+        reservations: sum((r) => r.count), revenue: sum((r) => r.revenue), pax: sum((r) => r.pax),
+        cancelled: sum((r) => r.cancelled), cancelRate: 4.2, avgBasket: 38.5, paid: 10, paymentRate: 40, days: daily.length,
+      };
+      const prevTotals = {
+        reservations: totals.reservations - 7, revenue: totals.revenue - 640, pax: totals.pax - 25,
+        cancelled: 0, cancelRate: 0, avgBasket: 0, paid: 0, paymentRate: 0, days: daily.length,
+      };
+      const heatmap = Array.from({ length: 7 }, (_, wd) => ({ 14: wd + 1, 18: 2 + (wd % 3), 20: 1 }));
+      return {
+        analytics: {
+          startDate, endDate, totals, daily, monthly: Object.values(monthlyMap),
+          weekly: [{ weekStart: startDate, label: 'S1', count: totals.reservations, revenue: totals.revenue, pax: totals.pax, cancelled: totals.cancelled }],
+          byType: {
+            bowling: { count: 12, revenue: 720, pax: 44 },
+            laser: { count: 6, revenue: 480, pax: 40 },
+            formule: { count: 4, revenue: 640, pax: 30 },
+          },
+          byFormule: [{ id: 'f1', label: 'Anniversaire', count: 3, revenue: 420, pax: 24 }],
+          byOccasion: [{ occasion: 'anniversaire', count: 3 }],
+          byChannel: [{ channel: 'en ligne', count: 14 }, { channel: 'staff', count: 10 }],
+          heatmap,
+          occupancy: { scope: 'bowling', bookedLaneHours: 42, capacityLaneHours: 320, rate: 13.1 },
+          clients: {
+            unique: 9, new: 4, returning: 5, returningRate: 55.6, multi: 2,
+            top: [{ key: 'p:470000009', name: 'Famille Test', phone: '+32470000009', email: 't@x.be', visits: 3, revenue: 210, pax: 6, firstVisit: startDate, lastVisit: endDate, favorite: 'bowling' }],
+          },
+        },
+        previous: {
+          startDate: dirAddDays(startDate, -daily.length), endDate: dirAddDays(startDate, -1),
+          totals: prevTotals,
+          clients: { unique: 5, returning: 3 },
+        },
+      };
+    };
+
     window.__OPS_CALLS__ = [];
+    window.__DIR_SERVED__ = {};
     const nf = window.fetch.bind(window);
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
@@ -141,6 +315,22 @@ async function installMock(page) {
         if (action === 'health') return J({ ok: true, health: { communications: { sent: 1, queued: 1, failed: 0 }, delayIncidents: [] }, audit: { ok: true }, testData: true });
         if (action === 'auditLog') return J({ ok: true, centerId: 'libramont', entries: [], audit: { written: 0, failed: 0 } });
         if (action === 'knowledge') return J({ ok: true });
+        if (action === 'directionAnalytics') {
+          const winStart = u.searchParams.get('startDate') || today;
+          const winEnd = u.searchParams.get('endDate') || today;
+          const fixture = buildDirectionFixture(winStart, winEnd);
+          const winKey = `${winStart}|${winEnd}`;
+          const record = window.__DIR_SERVED__[winKey] || {
+            days: fixture.analytics.daily.length,
+            totals: fixture.analytics.totals,
+            prevTotals: fixture.previous.totals,
+            calls: 0,
+          };
+          record.calls += 1;
+          window.__DIR_SERVED__[winKey] = record;
+          return J({ ok: true, centerId: 'libramont', analytics: fixture.analytics, previous: fixture.previous });
+        }
+        if (action === 'directionReports') return J({ ok: true, centerId: 'libramont', reports: [] });
         return J({ ok: true, entries: [], communications: [], samples: [], suggestions: [], events: [] });
       }
       if (u.pathname === '/api/ops' && m === 'POST') return J({ ok: true });
@@ -155,6 +345,113 @@ async function installMock(page) {
     };
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
   }, { expiresAt, XSS_TITLE });
+}
+
+// Compte les points ON-CURVE d'un attribut d de path SVG (M/L/H/V/C/S/Q/T,
+// repetitions implicites comprises). Compter des points, pas des sous-chaines :
+// l'assertion tient que la librairie trace en segments droits ou en courbes.
+function countPathPoints(d) {
+  const tokens = String(d || '').replace(/,/g, ' ').match(/[A-DF-Za-df-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g) || [];
+  const paramsPerPoint = { M: 2, L: 2, T: 2, H: 1, V: 1, C: 6, S: 4, Q: 4 };
+  let cmd = '';
+  let points = 0;
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (/^[A-Za-z]$/.test(t)) {
+      cmd = t.toUpperCase();
+      i += 1;
+      continue;
+    }
+    const need = paramsPerPoint[cmd];
+    if (!need) break;
+    i += need;
+    points += 1;
+    if (cmd === 'M') cmd = 'L';
+  }
+  return points;
+}
+
+// Mesures brutes des Tendances sur une page DEJA rendue en Vue periode : ce que
+// le DOM montre + ce que le mock a servi pour la fenetre courante. Les chips
+// attendues sont reconstruites depuis le registre du mock et le formatMoney de
+// l'app : difference EXACTE des totals, jamais une valeur recopiee a la main.
+async function collectTrendMeasures(page) {
+  return page.evaluate(() => {
+    const win = getAdminTrendWindow();
+    const served = (window.__DIR_SERVED__ || {})[`${win.startDate}|${win.endDate}`] || null;
+    const hostMeasure = (id) => {
+      const svg = document.querySelector(`#${id} svg`);
+      return {
+        present: Boolean(svg),
+        height: svg ? svg.getBoundingClientRect().height : 0,
+        paths: svg ? [...svg.querySelectorAll('path')].map((p) => p.getAttribute('d') || '') : [],
+      };
+    };
+    const chipText = (index) => {
+      const cards = document.querySelectorAll('#admTrendPanel .adm-trend-card');
+      const chip = cards[index] ? cards[index].querySelector('.adm-trend-chip') : null;
+      return chip ? chip.textContent.trim() : '';
+    };
+    let expectedRevenueChip = '';
+    let expectedResasChip = '';
+    if (served) {
+      const revDiff = served.totals.revenue - served.prevTotals.revenue;
+      const resaDiff = served.totals.reservations - served.prevTotals.reservations;
+      const revPct = Math.round((Math.abs(revDiff) / served.prevTotals.revenue) * 100);
+      const resaPct = Math.round((Math.abs(resaDiff) / served.prevTotals.reservations) * 100);
+      expectedRevenueChip = `▲ +${formatMoney(revDiff)} (+${revPct}%) vs période précédente`;
+      expectedResasChip = `▲ +${resaDiff} (+${resaPct}%) vs période précédente`;
+    }
+    return {
+      windowKey: `${win.startDate}|${win.endDate}`,
+      windowLabel: win.label,
+      served,
+      revenue: hostMeasure('admTrendRevenue'),
+      count: hostMeasure('admTrendCount'),
+      pax: hostMeasure('admTrendPax'),
+      chips: { revenue: chipText(0), resas: chipText(1) },
+      expectedRevenueChip,
+      expectedResasChip,
+      servedAll: Object.entries(window.__DIR_SERVED__ || {}).map(([key, rec]) => ({ key, calls: rec.calls })),
+    };
+  });
+}
+
+// Invariants de la section [12], reevalues sur une PAGE FRAICHE : c'est la
+// sonde partagee entre la phase verte et la contre-preuve par mutation.
+async function probeTrendInvariants(browser) {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  try {
+    await installMock(page);
+    await page.goto(`${BASE_URL}/?v=dm-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+    await page.evaluate(() => {
+      state.adminTab = 'overview';
+      state.adminPeriod = 'day';
+      state.staffMenuPage = 'dashboard';
+      save();
+      setView('admin');
+    });
+    await page.waitForFunction(
+      () => Boolean(document.querySelector('#admTrendRevenue svg path')),
+      null,
+      { timeout: 20000 },
+    );
+    const m = await collectTrendMeasures(page);
+    const pointCounts = m.revenue.paths.map(countPathPoints);
+    return {
+      svgVisible: m.revenue.height > 0 && m.count.height > 0 && m.pax.height > 0,
+      pointsMatch: Boolean(m.served) && pointCounts.includes(m.served.days),
+      deltaExact: Boolean(m.served) && m.chips.revenue === m.expectedRevenueChip,
+      pointCounts,
+      days: m.served ? m.served.days : -1,
+      chip: m.chips.revenue,
+      expectedChip: m.expectedRevenueChip,
+    };
+  } finally {
+    await page.close();
+  }
 }
 
 async function main() {
@@ -346,6 +643,94 @@ async function main() {
     });
     ok(honestyOff, 'le bandeau disparait quand le serveur n a rien affirme (pas de chiffre invente, pas de bandeau invente)');
 
+    console.log('\n[12] Tendances (Vue periode) : SVG reels, un point par jour servi, deltas exacts');
+    await page.evaluate(() => { setAdminTab('overview'); });
+    await page.waitForFunction(
+      () => Boolean(document.querySelector('#admTrendRevenue svg path')),
+      null,
+      { timeout: 20000 },
+    );
+    const trendDay = await collectTrendMeasures(page);
+    ok(trendDay.revenue.height > 0 && trendDay.count.height > 0 && trendDay.pax.height > 0,
+      `les 3 graphiques Tendances sont des SVG a hauteur reelle > 0 (CA ${Math.round(trendDay.revenue.height)}px, resas ${Math.round(trendDay.count.height)}px, joueurs ${Math.round(trendDay.pax.height)}px)`);
+    ok(Boolean(trendDay.served) && trendDay.served.days === 14,
+      `periode Jour : la fenetre honnete demandee au serveur fait 14 jours (obtenu ${trendDay.served ? trendDay.served.days : 'aucun fetch'})`);
+    ok(/14 derniers jours/.test(trendDay.windowLabel),
+      `le panneau annonce la fenetre reellement tracee (« ${trendDay.windowLabel} »)`);
+    const dayPoints = trendDay.revenue.paths.map(countPathPoints);
+    ok(Boolean(trendDay.served) && dayPoints.includes(trendDay.served.days),
+      `le path du CA compte un point par jour servi par le mock (points par path : ${JSON.stringify(dayPoints)}, jours servis : ${trendDay.served ? trendDay.served.days : '?'})`);
+    ok(Boolean(trendDay.served) && trendDay.chips.revenue === trendDay.expectedRevenueChip,
+      `chip CA = difference exacte des totals mockes (obtenu « ${trendDay.chips.revenue} », attendu « ${trendDay.expectedRevenueChip} »)`);
+    ok(Boolean(trendDay.served) && trendDay.chips.resas === trendDay.expectedResasChip,
+      `chip Reservations = difference exacte des totals mockes (obtenu « ${trendDay.chips.resas} »)`);
+
+    // Changement de fenetre : Semaine = 7 jours servis, 7 points, autre cle.
+    await page.evaluate(() => setAdminPeriod('week'));
+    await page.waitForFunction(() => {
+      const win = getAdminTrendWindow();
+      const served = (window.__DIR_SERVED__ || {})[`${win.startDate}|${win.endDate}`];
+      const label = document.querySelector('#admTrendPanel .admin-section-title p');
+      return Boolean(served && label && label.textContent.includes('Semaine')
+        && document.querySelector('#admTrendRevenue svg path'));
+    }, null, { timeout: 20000 });
+    const trendWeek = await collectTrendMeasures(page);
+    const weekPoints = trendWeek.revenue.paths.map(countPathPoints);
+    ok(Boolean(trendWeek.served) && trendWeek.served.days === 7 && weekPoints.includes(7),
+      `periode Semaine : 7 jours servis, 7 points traces (points par path : ${JSON.stringify(weekPoints)})`);
+    ok(trendWeek.windowKey !== trendDay.windowKey,
+      'la fenetre change avec la periode (et la motionKey avec elle : l animation peut rejouer)');
+    await page.evaluate(() => setAdminPeriod('day'));
+    await page.waitForTimeout(500);
+    const dedup = await page.evaluate(() => Object.entries(window.__DIR_SERVED__)
+      .map(([key, rec]) => ({ key, calls: rec.calls })));
+    ok(dedup.length >= 2 && dedup.every((w) => w.calls === 1),
+      `fetch directionAnalytics UNIQUE par fenetre sur toute la session (${dedup.map((w) => `${w.key.slice(5, 10)}->${w.key.slice(16, 21)}=${w.calls}`).join(', ')})`);
+
+    console.log('\n[13] onglet Donnees : lecture visuelle depuis le MEME etat dhState, sans fetch en plus');
+    const dirCallsBeforeData = await page.evaluate(
+      () => window.__OPS_CALLS__.filter((c) => c.includes('directionAnalytics')).length,
+    );
+    await page.click('#adminTabData');
+    await page.waitForFunction(() => Boolean(document.querySelector('#admDataTypes svg')), null, { timeout: 20000 });
+    const dataCharts = await page.evaluate(() => {
+      const h = (id) => {
+        const el = document.getElementById(id);
+        const svg = el ? el.querySelector('svg') : null;
+        return {
+          svg: Boolean(svg),
+          height: svg ? svg.getBoundingClientRect().height : 0,
+          text: el ? el.textContent : '',
+        };
+      };
+      const heatmapHost = document.getElementById('admDataHeatmap');
+      return {
+        panel: Boolean(document.getElementById('admDataChartsPanel')),
+        dhLoaded: Boolean(typeof dhState !== 'undefined' && dhState.analytics),
+        types: h('admDataTypes'),
+        channels: h('admDataChannels'),
+        heatmapCells: heatmapHost
+          ? heatmapHost.querySelectorAll('[title]').length + heatmapHost.querySelectorAll('svg title').length
+          : 0,
+        heatmapText: heatmapHost ? heatmapHost.textContent : '',
+        heatmapHeight: heatmapHost && heatmapHost.firstElementChild
+          ? heatmapHost.firstElementChild.getBoundingClientRect().height
+          : 0,
+      };
+    });
+    ok(dataCharts.panel && dataCharts.dhLoaded, 'la section « Lecture visuelle de la periode » est montee dans le hub Donnees charge');
+    ok(dataCharts.types.svg && dataCharts.types.height > 0 && /Bowling/.test(dataCharts.types.text) && /720/.test(dataCharts.types.text),
+      'donut par activite : SVG a hauteur > 0, legende Bowling avec le chiffre du serveur (720)');
+    ok(dataCharts.channels.svg && dataCharts.channels.height > 0 && /En ligne/.test(dataCharts.channels.text),
+      'barres par canal : SVG a hauteur > 0, canal « En ligne » etiquete');
+    ok(dataCharts.heatmapCells === 70 && dataCharts.heatmapHeight > 0 && /Lun/.test(dataCharts.heatmapText),
+      `heatmap frequentation : 7 jours x 10 heures (12h-21h elargies) = 70 cellules a tooltip natif, rendue (obtenu ${dataCharts.heatmapCells})`);
+    const dirCallsAfterData = await page.evaluate(
+      () => window.__OPS_CALLS__.filter((c) => c.includes('directionAnalytics')).length,
+    );
+    ok(dirCallsAfterData - dirCallsBeforeData === 1,
+      `l onglet Donnees n a declenche QU UN fetch directionAnalytics (le sien) : la lecture visuelle reutilise dhState (obtenu ${dirCallsAfterData - dirCallsBeforeData})`);
+
     // Captures : REGARDER la page avant de la rendre. Meme patron que
     // emails-page-check (PINLANE_EMAILS_SHOTS).
     if (process.env.PINLANE_DIRECTION_SHOTS) {
@@ -384,6 +769,55 @@ async function main() {
 
     const fatal = errs.filter((e) => !/localStorage|sandboxed|favicon|cdn\.vercel-insights/i.test(e));
     ok(fatal.length === 0, `aucune erreur console fatale (obtenu ${fatal.length}${fatal.length ? ' : ' + fatal[0] : ''})`);
+
+    console.log('\n[14] contre-preuve par MUTATION : le gate sait rougir, puis restauration inverse');
+    const consolePath = path.join(ROOT, 'assets', 'admin-console.js');
+    const applyMutation = (anchor, replacement, label) => {
+      const original = fs.readFileSync(consolePath, 'utf8');
+      const occurrences = original.split(anchor).length - 1;
+      if (occurrences !== 1) {
+        console.error(`direction-cockpit-check: ancre de mutation introuvable ou ambigue (${occurrences} occurrence(s)) : ${label}`);
+        process.exit(1);
+      }
+      const mutated = original.replace(anchor, replacement);
+      if (mutated === original) {
+        console.error(`direction-cockpit-check: la mutation n'a rien change au fichier : ${label}`);
+        process.exit(1);
+      }
+      fs.writeFileSync(consolePath, mutated);
+      return original;
+    };
+    const runMutation = async (anchor, replacement, invariantKey, label) => {
+      const original = applyMutation(anchor, replacement, label);
+      let probe = null;
+      try {
+        probe = await probeTrendInvariants(browser);
+      } finally {
+        // Restauration par EDITION INVERSE : reecriture du contenu exact
+        // d'origine, jamais git checkout.
+        fs.writeFileSync(consolePath, original);
+      }
+      if (!probe || probe[invariantKey] !== false) {
+        console.error(`direction-cockpit-check: MUTATION SANS EFFET, le gate ne sait pas rougir : ${label} (${JSON.stringify(probe)})`);
+        process.exit(1);
+      }
+      ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
+    };
+    await runMutation(
+      'return (analytics.daily || []).map(row => (asLabels',
+      'return (analytics.daily || []).slice(0, -1).map(row => (asLabels',
+      'pointsMatch',
+      'serie quotidienne amputee de son dernier jour',
+    );
+    await runMutation(
+      'const diff = cur - prev;',
+      'const diff = cur - prev - 1;',
+      'deltaExact',
+      'delta decale de 1 (plus la difference exacte des totals)',
+    );
+    const restoredProbe = await probeTrendInvariants(browser);
+    ok(restoredProbe.svgVisible && restoredProbe.pointsMatch && restoredProbe.deltaExact,
+      'restauration inverse : les invariants Tendances tiennent de nouveau sur une page fraiche');
   } finally {
     await browser.close();
     server.close();

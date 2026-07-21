@@ -10027,3 +10027,134 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   #staffCockpitPage .fck-audit-bar .pv2-input { max-width: none; flex: 1; }
   #staffCockpitPage .fck-seq-table { display: block; overflow-x: auto; }
 }
+
+/* --- 22.b Pages dediees de la categorie Plateforme (Agents IA, Incidents,
+   Clients). Meme discipline que le cockpit : filets 1px, monochrome sauf
+   sens, chiffres tabulaires. Les cartes reutilisent .fck-center-card. --- */
+#staffCockpitPage .fck-client-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+#staffCockpitPage .fck-chart { min-height: 160px; margin: 4px 0 10px; }
+#staffCockpitPage .fck-cost-note { margin: 8px 0 0; font-size: 12.5px; }
+#staffCockpitPage .fck-incident-list { display: flex; flex-direction: column; gap: 10px; }
+#staffCockpitPage .fck-incident {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+#staffCockpitPage .fck-incident-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+#staffCockpitPage .fck-incident-msg {
+  font-size: 13.5px;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#staffCockpitPage .fck-stack { margin-top: 8px; }
+#staffCockpitPage .fck-stack summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12.5px;
+  user-select: none;
+}
+#staffCockpitPage .fck-stack pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--subtle);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  max-height: 260px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  #staffCockpitPage .fck-client-grid { grid-template-columns: 1fr; }
+}
+
+/* --- 23. Tendances Direction + lecture visuelle Donnees (adm-trend-*) ------
+   Graphiques animes de la categorie Direction : monochrome, sens uniquement
+   sur les chips (vert hausse, rouge baisse), bordures 1px, rayons 6-8px,
+   chiffres tabulaires, themes clair/sombre via variables. Le moteur de rendu
+   vit dans assets/pinlane-charts.js (classes plc-, styles dedies). */
+.adm-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.adm-trend-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 14px 16px;
+  min-width: 0;
+}
+.adm-trend-wide { grid-column: 1 / -1; }
+.adm-trend-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.adm-trend-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.adm-trend-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.adm-trend-chart {
+  margin-top: 10px;
+  min-height: 40px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.adm-trend-chip {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: var(--muted);
+  background: var(--subtle);
+}
+.adm-trend-chip.up,
+.adm-trend-chip.new {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+}
+.adm-trend-chip.down {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+.adm-trend-chip.flat { color: var(--muted); }
+.adm-trend-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+/* Hote de graphique pas encore monte : hauteur calme reservee, pas de saut
+   de layout au dessin. */
+.adm-trend-chart:empty,
+#staffCockpitPage .fck-chart:empty {
+  min-height: 120px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+@media (max-width: 700px) {
+  .adm-trend-grid { grid-template-columns: 1fr; }
+}

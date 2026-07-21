@@ -1298,6 +1298,311 @@ function renderAdminHeader() {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tendances Direction : graphiques animés via window.PinlaneCharts
+// (assets/pinlane-charts.js, chargé AVANT ce fichier). Le front ne recalcule
+// AUCUNE agrégation : le serveur envoie directionAnalytics (daily/monthly,
+// totals + previous de même durée), ce bloc ne fait que mettre en forme.
+// Dégradé calme si la librairie ou la donnée manque.
+//
+// RÈGLE de fenêtre honnête :
+//   - période Jour  -> série des 14 jours finissant au jour choisi, LABELLISÉE
+//                      « 14 derniers jours » (un point unique ne fait pas une
+//                      tendance) ;
+//   - Semaine/Mois  -> daily de la fenêtre affichée ;
+//   - Année         -> monthly de l'année affichée.
+// Le label de fenêtre est TOUJOURS affiché à côté des graphiques.
+const adminTrendCache = {};
+const adminTrendLoadingKeys = {};
+const ADMIN_TREND_TYPE_LABELS = { bowling: 'Bowling', laser: 'Laser Game', formule: 'Formules' };
+const ADMIN_TREND_CHANNEL_LABELS = { 'en ligne': 'En ligne (site)', staff: 'Staff (sur place / tél.)' };
+
+function formatAdminTrendDate(dateStr, withYear = false) {
+  const options = withYear
+    ? { day: '2-digit', month: 'short', year: 'numeric' }
+    : { day: '2-digit', month: 'short' };
+  return parseLocalDate(dateStr).toLocaleDateString('fr-BE', options);
+}
+
+function getAdminTrendWindow(range = getAdminPeriodRange()) {
+  if (range.period === 'day') {
+    const startDate = addDays(range.endDate, -13);
+    return {
+      startDate,
+      endDate: range.endDate,
+      granularity: 'daily',
+      label: `14 derniers jours (du ${formatAdminTrendDate(startDate)} au ${formatAdminTrendDate(range.endDate)})`,
+    };
+  }
+  if (range.period === 'year') {
+    return {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      granularity: 'monthly',
+      label: `Année ${range.label} · mois par mois`,
+    };
+  }
+  const prefix = range.period === 'week' ? 'Semaine' : range.label;
+  return {
+    startDate: range.startDate,
+    endDate: range.endDate,
+    granularity: 'daily',
+    label: `${prefix} · du ${formatAdminTrendDate(range.startDate)} au ${formatAdminTrendDate(range.endDate)} · jour par jour`,
+  };
+}
+
+function getAdminTrendKey(centerId = state.adminCenterId || 'libramont', win = getAdminTrendWindow()) {
+  return `${centerId}|${win.startDate}|${win.endDate}`;
+}
+
+async function loadAdminTrends() {
+  const centerId = state.adminCenterId || 'libramont';
+  const win = getAdminTrendWindow();
+  const key = getAdminTrendKey(centerId, win);
+  if (adminTrendLoadingKeys[key]) return;
+  if (adminTrendCache[key]?.loaded) return;
+  // UN seul fetch par fenêtre : si l'onglet Données (dhState) a déjà chargé
+  // EXACTEMENT cette fenêtre pour ce centre, on réutilise son état au lieu de
+  // redemander la même chose au serveur.
+  if (typeof dhState !== 'undefined' && dhState.analytics
+    && String(dhState.loadedKey || '').split('|')[0] === centerId
+    && dhState.analytics.startDate === win.startDate
+    && dhState.analytics.endDate === win.endDate) {
+    adminTrendCache[key] = { loaded: true, error: '', analytics: dhState.analytics, previous: dhState.previous };
+    if (state.view === 'admin' && normalizeAdminTab(state.adminTab) === 'overview') renderAdminDashboard();
+    return;
+  }
+  adminTrendLoadingKeys[key] = true;
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=directionAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(win.startDate)}&endDate=${encodeURIComponent(win.endDate)}`);
+    adminTrendCache[key] = { loaded: true, error: '', analytics: payload.analytics || null, previous: payload.previous || null };
+  } catch (error) {
+    adminTrendCache[key] = { loaded: false, error: error.message || 'Tendances indisponibles.', analytics: null, previous: null };
+  } finally {
+    adminTrendLoadingKeys[key] = false;
+  }
+  if (state.view === 'admin' && normalizeAdminTab(state.adminTab) === 'overview') renderAdminDashboard();
+}
+
+// Chip honnête : flèche + valeur exacte (différence des totals serveur) +
+// « vs période précédente ». Pas de pourcentage quand la base est 0 : on écrit
+// « nouvelle activité » au lieu d'inventer un ratio.
+function buildAdminTrendDeltaChip(current, previous, format = 'int') {
+  const cur = Number(current) || 0;
+  const prev = Number(previous) || 0;
+  const diff = cur - prev;
+  const magnitude = (value) => (format === 'euro' ? formatMoney(Math.abs(value)) : String(Math.abs(Math.round(value))));
+  if (prev === 0 && cur > 0) {
+    return `<span class="adm-trend-chip new">▲ +${magnitude(diff)} · nouvelle activité</span>`;
+  }
+  if (prev === 0 && cur === 0) {
+    return '<span class="adm-trend-chip flat">= aucune activité sur les deux périodes</span>';
+  }
+  if (diff === 0) {
+    return '<span class="adm-trend-chip flat">= stable vs période précédente</span>';
+  }
+  const arrow = diff > 0 ? '▲' : '▼';
+  const sign = diff > 0 ? '+' : '-';
+  const percent = Math.round((Math.abs(diff) / prev) * 100);
+  return `<span class="adm-trend-chip ${diff > 0 ? 'up' : 'down'}">${arrow} ${sign}${magnitude(diff)} (${sign}${percent}%) vs période précédente</span>`;
+}
+
+// asLabels : le contrat barChart n'accepte que des items { label, value } (la
+// forme { date, value } est réservée à lineChart) : les séries quotidiennes
+// destinées aux barres sont donc étiquetées ici.
+function buildAdminTrendSeries(analytics, granularity, pick, asLabels = false) {
+  if (!analytics) return [];
+  if (granularity === 'monthly') {
+    return (analytics.monthly || []).map(row => ({ label: String(row.month || ''), value: Number(pick(row)) || 0 }));
+  }
+  return (analytics.daily || []).map(row => (asLabels
+    ? { label: formatAdminTrendDate(row.date), value: Number(pick(row)) || 0 }
+    : { date: row.date, value: Number(pick(row)) || 0 }));
+}
+
+function renderAdminTrendsPanel() {
+  const win = getAdminTrendWindow();
+  const entry = adminTrendCache[getAdminTrendKey()] || null;
+  const head = `<div class="admin-section-title">
+    <div>
+      <h2>Tendances</h2>
+      <p>${escapeHtml(win.label)} · comparé à la période précédente de même durée (chiffres serveur).</p>
+    </div>
+  </div>`;
+  let body = '';
+  if (!entry) {
+    body = '<p class="adm-trend-note">Chargement des tendances…</p>';
+  } else if (entry.error) {
+    body = '<p class="adm-trend-note">Tendances momentanément indisponibles. Elles reviendront au prochain rafraîchissement.</p>';
+  } else if (!entry.analytics) {
+    body = '<p class="adm-trend-note">Pas encore de données sur la période.</p>';
+  } else {
+    const totals = entry.analytics.totals || {};
+    const prevTotals = (entry.previous && entry.previous.totals) || {};
+    const unit = win.granularity === 'monthly' ? 'par mois' : 'par jour';
+    const cards = [
+      { id: 'admTrendRevenue', title: 'Chiffre d\'affaires', sub: `CA ${unit}`, chip: buildAdminTrendDeltaChip(totals.revenue, prevTotals.revenue, 'euro') },
+      { id: 'admTrendCount', title: 'Réservations', sub: `réservations ${unit}`, chip: buildAdminTrendDeltaChip(totals.reservations, prevTotals.reservations, 'int') },
+      { id: 'admTrendPax', title: 'Joueurs', sub: `joueurs ${unit}`, chip: buildAdminTrendDeltaChip(totals.pax, prevTotals.pax, 'int') },
+    ];
+    // Occupation bowling : le serveur n'envoie qu'un taux AGRÉGÉ de période
+    // (occupancy.rate), pas de série par jour. Pas de ligne % honnête possible
+    // sans recalcul métier côté front : la courbe est donc omise.
+    body = `<div class="adm-trend-grid">
+      ${cards.map(card => `<article class="adm-trend-card">
+        <div class="adm-trend-head">
+          <h3>${escapeHtml(card.title)}</h3>
+          ${card.chip}
+        </div>
+        <div class="adm-trend-sub">${escapeHtml(card.sub)}</div>
+        <div class="adm-trend-chart" id="${card.id}"></div>
+      </article>`).join('')}
+    </div>`;
+  }
+  return `<div class="admin-panel adm-trend-panel" id="admTrendPanel">${head}${body}</div>`;
+}
+
+// Montage des graphiques : appelé APRÈS l'écriture innerHTML (les hosts doivent
+// exister). motionKey = onglet + centre + fenêtre : l'animation rejoue quand la
+// fenêtre change, jamais sur un re-rendu identique (garde interne de la lib).
+function mountAdminTrendCharts() {
+  const panel = document.getElementById('admTrendPanel');
+  if (!panel) return;
+  const key = getAdminTrendKey();
+  const entry = adminTrendCache[key] || null;
+  if (!entry && !adminTrendLoadingKeys[key]) loadAdminTrends();
+  if (!entry || !entry.analytics) return;
+  const hosts = ['admTrendRevenue', 'admTrendCount', 'admTrendPax']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  if (!hosts.length) return;
+  const charts = typeof window !== 'undefined' ? window.PinlaneCharts : null;
+  if (!charts) {
+    hosts.forEach(host => { host.textContent = 'Graphiques indisponibles pour le moment.'; });
+    return;
+  }
+  const win = getAdminTrendWindow();
+  const motionBase = `direction|overview|${state.adminCenterId || 'libramont'}|${win.startDate}|${win.endDate}`;
+  const analytics = entry.analytics;
+  if (typeof charts.lineChart === 'function') {
+    charts.lineChart(document.getElementById('admTrendRevenue'), {
+      series: buildAdminTrendSeries(analytics, win.granularity, row => row.revenue),
+      format: 'euro',
+      motionKey: `${motionBase}|revenue`,
+    });
+    charts.lineChart(document.getElementById('admTrendPax'), {
+      series: buildAdminTrendSeries(analytics, win.granularity, row => row.pax),
+      format: 'int',
+      motionKey: `${motionBase}|pax`,
+    });
+  }
+  if (typeof charts.barChart === 'function') {
+    charts.barChart(document.getElementById('admTrendCount'), {
+      series: buildAdminTrendSeries(analytics, win.granularity, row => row.count, true),
+      format: 'int',
+      motionKey: `${motionBase}|count`,
+    });
+  }
+}
+
+// Onglet Données : lecture visuelle servie par le MÊME état que le hub
+// (dhState, un seul fetch directionAnalytics par période, admin-data.js).
+// Rendu ici car cette section appartient à la console Direction : donut du
+// chiffre par activité, canaux, affluence jour x heure.
+function renderAdminDataChartsSection() {
+  if (typeof dhState === 'undefined' || !dhState.analytics) return '';
+  const analytics = dhState.analytics;
+  return `<div class="admin-panel adm-trend-panel adm-trend-data" id="admDataChartsPanel">
+    <div class="admin-section-title">
+      <div>
+        <h2>Lecture visuelle de la période</h2>
+        <p>Du ${escapeHtml(formatAdminTrendDate(analytics.startDate, true))} au ${escapeHtml(formatAdminTrendDate(analytics.endDate, true))} · répartition du chiffre, canaux et affluence (chiffres serveur).</p>
+      </div>
+    </div>
+    <div class="adm-trend-grid">
+      <article class="adm-trend-card">
+        <div class="adm-trend-head"><h3>Chiffre par activité</h3></div>
+        <div class="adm-trend-chart" id="admDataTypes"></div>
+      </article>
+      <article class="adm-trend-card">
+        <div class="adm-trend-head"><h3>Canaux de réservation</h3></div>
+        <div class="adm-trend-chart" id="admDataChannels"></div>
+      </article>
+      <article class="adm-trend-card adm-trend-wide">
+        <div class="adm-trend-head"><h3>Affluence par jour et heure</h3></div>
+        <div class="adm-trend-chart" id="admDataHeatmap"></div>
+      </article>
+    </div>
+  </div>`;
+}
+
+// Mise en forme du heatmap serveur (7 lignes lun-dim x heures) vers le contrat
+// heatmapChart : bornes horaires mesurées puis élargies au créneau 12h-21h,
+// même lecture que l'affluence de l'onglet Données. Aucune agrégation ici.
+function buildAdminHeatmapModel(heatmap) {
+  const rows = Array.isArray(heatmap) ? heatmap : [];
+  let minHour = 24;
+  let maxHour = 0;
+  let maxVal = 0;
+  rows.forEach(row => Object.entries(row || {}).forEach(([hour, value]) => {
+    const h = Number(hour);
+    const v = Number(value) || 0;
+    if (!v || !Number.isFinite(h)) return;
+    minHour = Math.min(minHour, h);
+    maxHour = Math.max(maxHour, h);
+    maxVal = Math.max(maxVal, v);
+  }));
+  if (!maxVal) return { matrix: [], rowLabels: [], colLabels: [] };
+  minHour = Math.min(minHour, 12);
+  maxHour = Math.max(maxHour, 21);
+  const hours = [];
+  for (let h = minHour; h <= maxHour; h += 1) hours.push(h);
+  return {
+    matrix: rows.map(row => hours.map(h => Number((row || {})[h]) || 0)),
+    rowLabels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+    colLabels: hours.map(h => `${h}h`),
+  };
+}
+
+function mountAdminDataCharts() {
+  const panel = document.getElementById('admDataChartsPanel');
+  if (!panel || typeof dhState === 'undefined' || !dhState.analytics) return;
+  const hosts = ['admDataTypes', 'admDataChannels', 'admDataHeatmap']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  if (!hosts.length) return;
+  const charts = typeof window !== 'undefined' ? window.PinlaneCharts : null;
+  if (!charts) {
+    hosts.forEach(host => { host.textContent = 'Graphiques indisponibles pour le moment.'; });
+    return;
+  }
+  const analytics = dhState.analytics;
+  const motionBase = `direction|data|${state.adminCenterId || 'libramont'}|${analytics.startDate}|${analytics.endDate}`;
+  if (typeof charts.donutChart === 'function') {
+    const parts = Object.entries(analytics.byType || {}).map(([type, row]) => ({
+      label: ADMIN_TREND_TYPE_LABELS[type] || type,
+      value: Number(row?.revenue) || 0,
+    }));
+    charts.donutChart(document.getElementById('admDataTypes'), { parts, format: 'euro', motionKey: `${motionBase}|types` });
+  }
+  if (typeof charts.barChart === 'function') {
+    const series = (analytics.byChannel || []).map(row => ({
+      label: ADMIN_TREND_CHANNEL_LABELS[row.channel] || String(row.channel || 'autre'),
+      value: Number(row.count) || 0,
+    }));
+    charts.barChart(document.getElementById('admDataChannels'), { series, format: 'int', motionKey: `${motionBase}|channels` });
+  }
+  if (typeof charts.heatmapChart === 'function') {
+    const model = buildAdminHeatmapModel(analytics.heatmap);
+    charts.heatmapChart(document.getElementById('admDataHeatmap'), {
+      matrix: model.matrix,
+      rowLabels: model.rowLabels,
+      colLabels: model.colLabels,
+      motionKey: `${motionBase}|heatmap`,
+    });
+  }
+}
+
 function renderAdminOverview() {
   const snapshot = adminDashboardCache.snapshot || { reservations: [] };
   const center = getAdminCenter();
@@ -1325,6 +1630,7 @@ function renderAdminOverview() {
         <div class="admin-kpi"><div class="k">Laser</div><div class="v">${formatAdminPercent(metrics.laserOccupancy)}</div><div class="s">${metrics.laserLaunches} lancement(s) · ${metrics.laserPlayers} passages</div></div>
       </div>
     </div>
+    ${renderAdminTrendsPanel()}
     <div class="admin-dashboard-grid">
       <div class="admin-panel">
         <div class="admin-section-title">
@@ -1542,7 +1848,18 @@ function renderAdminDashboard() {
   if (state.adminTab === 'data') {
     if (typeof renderAdminDataTab === 'function') {
       content.innerHTML = renderAdminDataTab();
+      // Lecture visuelle : section Direction insérée dans le hub Données à
+      // partir du MÊME état dhState (zéro fetch supplémentaire), avant les
+      // bilans pour rester dans le flux de lecture chiffres -> visuel -> bilan.
+      const dataWrap = content.querySelector('.dh-wrap');
+      const dataChartsSection = renderAdminDataChartsSection();
+      if (dataWrap && dataChartsSection) {
+        const reportsSection = dataWrap.querySelector('#dhReports');
+        if (reportsSection) reportsSection.insertAdjacentHTML('beforebegin', dataChartsSection);
+        else dataWrap.insertAdjacentHTML('beforeend', dataChartsSection);
+      }
       if (typeof initAdminDataTab === 'function') initAdminDataTab();
+      mountAdminDataCharts();
     } else {
       content.innerHTML = '<div class="admin-panel"><div class="empty-state"><div class="e-title">Module Données indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
     }
@@ -1579,6 +1896,9 @@ function renderAdminDashboard() {
     return;
   }
   content.innerHTML = renderAdminOverview();
+  // Montage APRES l'écriture innerHTML : les hôtes des graphiques existent.
+  // Déclenche aussi le premier fetch directionAnalytics de la fenêtre.
+  mountAdminTrendCharts();
 }
 
 async function refreshAdminKnowledge(force = false, requestId = adminLoadRequestId) {
@@ -1716,6 +2036,14 @@ async function loadAdminDashboard(force = false) {
   const requestId = ++adminLoadRequestId;
   const centerId = state.adminCenterId || 'libramont';
   const range = getAdminPeriodRange();
+  // Tendances en échec : purge de l'entrée pour que le prochain montage
+  // refetche (c'est CE chemin qui rend vraie la promesse « elles reviendront
+  // au prochain rafraîchissement » ; jamais de retry depuis le montage, sinon
+  // boucle infinie fetch raté -> re-rendu -> fetch).
+  const failedTrendKey = getAdminTrendKey(centerId, getAdminTrendWindow(range));
+  if (adminTrendCache[failedTrendKey] && adminTrendCache[failedTrendKey].error) {
+    delete adminTrendCache[failedTrendKey];
+  }
   const cacheKey = getAdminRangeCacheKey(centerId, range);
   const opsKey = getAdminOpsCacheKey(centerId);
   const cachedSnapshot = adminSnapshotCache[cacheKey];
@@ -1936,6 +2264,16 @@ function startAdminHealthAutoRefresh() {
     renderAdminCenterGrid,
     renderAdminHeader,
     renderAdminHonestyNote,
+    getAdminTrendWindow,
+    getAdminTrendKey,
+    loadAdminTrends,
+    buildAdminTrendDeltaChip,
+    buildAdminTrendSeries,
+    renderAdminTrendsPanel,
+    mountAdminTrendCharts,
+    renderAdminDataChartsSection,
+    buildAdminHeatmapModel,
+    mountAdminDataCharts,
     renderAdminOverview,
     renderAdminReservationsTable,
     isAdminPlatformOwner,

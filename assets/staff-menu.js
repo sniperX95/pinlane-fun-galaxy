@@ -121,7 +121,10 @@
       // du DOM pour tous les autres ; le serveur reste l'autorité).
       title: 'Plateforme',
       items: [
-        { key: 'cockpit', label: 'Cockpit fondateur', icon: 'establishment' }
+        { key: 'cockpit', label: 'Cockpit', icon: 'dashboard' },
+        { key: 'cockpit-agents', label: 'Agents IA', icon: 'campaigns' },
+        { key: 'cockpit-incidents', label: 'Incidents', icon: 'sessions' },
+        { key: 'cockpit-clients', label: 'Clients', icon: 'clients' }
       ]
     }
   ];

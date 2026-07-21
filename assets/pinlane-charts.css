@@ -1,0 +1,269 @@
+/* ==========================================================================
+   Pinlane Charts (classes plc-) : styles et motion du moteur de graphiques
+   staff (assets/pinlane-charts.js). Discipline console :
+   - monochrome sauf sens (vert = succes, ambre = attente, rouge = echec) ;
+   - AUCUNE couleur en dur : variables theme + currentColor, light/dark auto ;
+   - motion : transform / opacity / stroke-dashoffset uniquement, ease-out
+     cubic-bezier(0.23, 1, 0.32, 1), jamais ease-in, jamais scale(0) ;
+     dessin de ligne/anneau 600ms (decoratif tolere), le reste <= 300ms ;
+   - prefers-reduced-motion : etat final immediat, aucune transition.
+   Mecanique : le JS pose .plc-anim (etat initial), puis .plc-in en double
+   requestAnimationFrame declenche les transitions. Un motionKey deja vu rend
+   .plc-done : etat final direct, aucun rejeu au re-rendu innerHTML.
+   ========================================================================== */
+
+.plc-chart {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.plc-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Etat vide calme : une phrase, pas de squelette qui clignote. */
+.plc-empty {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  padding: 18px 14px;
+  text-align: center;
+}
+
+/* ---- Axes ---------------------------------------------------------------- */
+
+.plc-grid { stroke: var(--line); stroke-width: 1; }
+.plc-baseline { stroke: var(--line-strong); stroke-width: 1; }
+
+.plc-ytick,
+.plc-xtick {
+  fill: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Ligne + aire -------------------------------------------------------- */
+
+.plc-line-area { fill: currentColor; fill-opacity: 0.06; stroke: none; }
+
+.plc-line-path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.plc-line-dot { fill: currentColor; }
+
+.plc-line-value {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.plc-anim .plc-line-path {
+  transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* !important : gagne sur le style inline initial (dashoffset:1000). */
+.plc-anim.plc-in .plc-line-path { stroke-dashoffset: 0 !important; }
+
+.plc-anim .plc-line-area,
+.plc-anim .plc-line-dot,
+.plc-anim .plc-line-value {
+  opacity: 0;
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1) 340ms;
+}
+.plc-anim.plc-in .plc-line-area,
+.plc-anim.plc-in .plc-line-dot,
+.plc-anim.plc-in .plc-line-value { opacity: 1; }
+
+/* ---- Barres -------------------------------------------------------------- */
+
+.plc-bar {
+  fill: currentColor;
+  fill-opacity: 0.82;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.plc-bar-value {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Croissance depuis le bas, sans scale(0) : 0.35 -> 1 + fondu. Le decalage
+   par barre (--plc-d, <= 80ms) garde le total sous 300ms. */
+.plc-anim .plc-bar {
+  opacity: 0;
+  transform: scaleY(0.35);
+  transition:
+    transform 220ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition-delay: var(--plc-d, 0ms);
+}
+.plc-anim.plc-in .plc-bar { opacity: 1; transform: scaleY(1); }
+
+.plc-anim .plc-bar-value {
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1) 100ms;
+}
+.plc-anim.plc-in .plc-bar-value { opacity: 1; }
+
+/* ---- Donut + legende ----------------------------------------------------- */
+
+.plc-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.plc-donut { width: 132px; height: 132px; flex: none; }
+
+.plc-donut-track { fill: none; stroke: var(--subtle); stroke-width: 13; }
+
+.plc-donut-seg { fill: none; stroke: currentColor; stroke-width: 13; }
+
+.plc-donut-seg.plc-tone-success { stroke: var(--success); }
+.plc-donut-seg.plc-tone-warning { stroke: var(--warning); }
+.plc-donut-seg.plc-tone-danger { stroke: var(--danger); }
+
+.plc-anim .plc-donut-seg {
+  transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.plc-anim.plc-in .plc-donut-seg { stroke-dashoffset: 0 !important; }
+
+.plc-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.plc-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.plc-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plc-legend-share {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plc-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: currentColor;
+  flex: none;
+}
+
+.plc-swatch.plc-tone-success { background: var(--success); }
+.plc-swatch.plc-tone-warning { background: var(--warning); }
+.plc-swatch.plc-tone-danger { background: var(--danger); }
+
+.plc-anim .plc-legend li {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition-delay: var(--plc-d, 0ms);
+}
+.plc-anim.plc-in .plc-legend li { opacity: 1; transform: translateY(0); }
+
+/* ---- Heatmap ------------------------------------------------------------- */
+
+.plc-heat-grid {
+  display: grid;
+  gap: 3px;
+  align-items: stretch;
+}
+
+.plc-heat-corner { min-height: 14px; }
+
+.plc-heat-col,
+.plc-heat-row {
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.plc-heat-col { text-align: center; padding-bottom: 2px; }
+.plc-heat-row { display: flex; align-items: center; padding-right: 6px; }
+
+.plc-heat-cell {
+  position: relative;
+  background: var(--subtle);
+  border-radius: 4px;
+  min-height: 18px;
+  overflow: hidden;
+}
+
+/* Intensite = opacite de la couleur texte (--plc-o pose par le JS). */
+.plc-heat-fill {
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  border-radius: 4px;
+  opacity: var(--plc-o, 0);
+}
+
+.plc-anim .plc-heat-fill {
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition-delay: var(--plc-d, 0ms);
+}
+.plc-anim:not(.plc-in) .plc-heat-fill { opacity: 0; }
+
+/* ---- countUp ------------------------------------------------------------- */
+
+.plc-countup { font-variant-numeric: tabular-nums; }
+
+/* ---- Reduced motion : etat final immediat, zero transition --------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .plc-anim .plc-line-path,
+  .plc-anim .plc-line-area,
+  .plc-anim .plc-line-dot,
+  .plc-anim .plc-line-value,
+  .plc-anim .plc-bar,
+  .plc-anim .plc-bar-value,
+  .plc-anim .plc-donut-seg,
+  .plc-anim .plc-legend li,
+  .plc-anim .plc-heat-fill {
+    transition: none !important;
+  }
+  .plc-anim .plc-line-path { stroke-dashoffset: 0 !important; }
+  .plc-anim .plc-donut-seg { stroke-dashoffset: 0 !important; }
+  .plc-anim .plc-line-area,
+  .plc-anim .plc-line-dot,
+  .plc-anim .plc-line-value,
+  .plc-anim .plc-bar-value,
+  .plc-anim .plc-legend li { opacity: 1; }
+  .plc-anim .plc-bar { opacity: 1; transform: none; }
+  .plc-anim .plc-legend li { transform: none; }
+  .plc-anim:not(.plc-in) .plc-heat-fill { opacity: var(--plc-o, 0); }
+}

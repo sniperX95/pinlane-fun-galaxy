@@ -11835,3 +11835,155 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .dir-cmp,
   .dir-ret { transition: none; }
 }
+
+/* --- 30. Direction : navigation en vues + tailles de graphes coherentes --- */
+/* ============================================================================
+   POSTE D'OBSERVATION DIRECTION - VUES (refonte 2026-07-21)
+   A COLLER dans assets/pinlane-staff.css (apres le bloc dir-* existant : ces
+   regles ont une specificite >= aux regles d'origine ou arrivent plus tard,
+   elles GAGNENT sans toucher au reste).
+
+   Objet : la page Direction ne s'empile plus en un long scroll aux tailles de
+   graphes disparates. On classe le contenu en 4 vues (segmented nav facon
+   Linear) et on STANDARDISE la hauteur des graphes (grille = meme hauteur pour
+   toutes les cartes ; grand focus a part).
+
+   Discipline console (Vercel/Linear + Emil Kowalski) :
+   - monochrome, le SENS seul porte la couleur ; filets 1px var(--line) ;
+   - variables theme UNIQUEMENT (clair + sombre), aucune couleur en dur ;
+   - motion : transform / opacity uniquement, ease-out, <= 300ms UI ;
+     l'indicateur qui glisse d'une pilule a l'autre = --ease-in-out-strong
+     (deplacement A -> B) ; prefers-reduced-motion : etat final immediat.
+   Classes : dir-nav-* (nouveau) ; reutilise dir-* pour le reste.
+   ============================================================================ */
+
+/* --- Corps : rythme vertical entre le nav et la vue, et entre les sections
+   d'une meme vue (KPI + focus, tables + retention...). --------------------- */
+.dir-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.dir-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+/* --- Segmented nav : une pilule par vue, indicateur actif coulissant. -------
+   Le conteneur porte --dir-nav-count (nombre de vues) et --dir-nav-index (vue
+   active). L'indicateur lit ces variables : sur un changement de vue, seule
+   --dir-nav-index bouge -> l'indicateur GLISSE (transform), le nav n'est pas
+   re-rendu. Grille a colonnes egales : toutes les pilules ont la meme largeur,
+   donc translateX(index * 100%) tombe pile sur chaque segment. */
+.dir-nav {
+  --dir-nav-pad: 4px;
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: var(--dir-nav-pad);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+  max-width: 100%;
+  width: fit-content;
+}
+
+.dir-nav-indicator {
+  position: absolute;
+  top: var(--dir-nav-pad);
+  bottom: var(--dir-nav-pad);
+  left: var(--dir-nav-pad);
+  width: calc((100% - 2 * var(--dir-nav-pad)) / var(--dir-nav-count, 4));
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);
+  transform: translateX(calc(var(--dir-nav-index, 0) * 100%));
+  transition: transform var(--dur-move) var(--ease-in-out-strong);
+  pointer-events: none;
+}
+
+.dir-nav-pill {
+  position: relative;
+  z-index: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: center;
+  transition: color var(--dur) var(--ease-out-strong);
+}
+@media (hover: hover) {
+  .dir-nav-pill:hover { color: var(--text); }
+}
+.dir-nav-pill.is-active { color: var(--text); font-weight: 600; }
+.dir-nav-pill:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* --- Grand graphe focus (vue Synthese, seul, pleine largeur) : viewBox large
+   et plat cote JS (height:170) -> hauteur rendue ~320px au bureau, jamais le
+   graphe demesure d'avant. On garde une hauteur mini pour l'etat vide. ------ */
+.dir-focus-chart {
+  min-height: 200px;
+}
+
+/* --- Grille de graphes : hauteur STANDARDISEE. Toutes les cartes de la grille
+   ont la MEME hauteur de graphe (240px), quel que soit le type (barres, ligne,
+   donut). Le graphe est centre dans sa boite : les series lignes/barres
+   remplissent la largeur (hauteur naturelle < 240 aux largeurs de colonne),
+   le donut compact se centre. Fini le melange enorme / tout fin. ----------- */
+.dir-grid {
+  align-items: stretch;
+}
+.dir-grid .dir-chart {
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.dir-grid .dir-chart > * {
+  width: 100%;
+}
+/* Heatmap : pleine largeur, forme differente (grille jour x heure) -> hauteur
+   propre, hors du gabarit 240px des graphes de colonne. */
+.dir-grid .dir-chart.dir-chart-heat {
+  height: auto;
+  min-height: 180px;
+  display: block;
+  overflow: visible;
+}
+
+/* --- Mobile : la grille passe a une colonne (regle existante) ; on relache la
+   hauteur fixe (graphes empiles, hauteur naturelle) et le nav prend toute la
+   largeur pour rester tapable. -------------------------------------------- */
+@media (max-width: 860px) {
+  .dir-nav {
+    width: 100%;
+  }
+  .dir-grid .dir-chart {
+    height: auto;
+    min-height: 180px;
+    display: block;
+    overflow: visible;
+  }
+}
+
+/* --- prefers-reduced-motion : l'indicateur se pose a sa place sans glisser. - */
+@media (prefers-reduced-motion: reduce) {
+  .dir-nav-indicator { transition: none; }
+  .dir-nav-pill { transition: none; }
+}

@@ -1890,6 +1890,26 @@ const DIR_KPIS = [
   { key: 'cancelRate', label: "Taux d'annulation", format: 'percent', cur: (t) => t.cancelRate, ref: (r) => (r ? r.cancelRate : null), spark: 'cancelled', invert: true },
 ];
 
+// VUES du poste d'observation (refonte 2026-07-21) : la page ne s'empile plus en
+// un seul long scroll aux tailles disparates. On classe le contenu en 4 vues
+// nettes, choisies par un segmented nav (pilules facon Linear) sous la barre de
+// plage. La plage de dates reste GLOBALE (elle change la fenetre pour toutes les
+// vues) ; seule la vue active est rendue + montee (motionKey inclut la vue, donc
+// la premiere apparition d'une vue anime ses graphes). L'ordre = la lecture.
+const DIR_VIEW_META = [
+  { key: 'synthese', label: 'Synthese' },
+  { key: 'activite', label: 'Activite' },
+  { key: 'clients', label: 'Clients' },
+  { key: 'centres', label: 'Mes centres' },
+];
+const DIR_VIEWS = DIR_VIEW_META.map((v) => v.key);
+
+// Vue active persistee (state.adminView), defaut 'synthese'. Valeur inconnue
+// (donnee corrompue, ancienne session) -> repli calme sur la synthese.
+function getDirView() {
+  return DIR_VIEWS.includes(state.adminView) ? state.adminView : 'synthese';
+}
+
 function getDirDefaultRange() {
   const end = todayStr();
   return { start: addDays(end, -29), end, granularity: 'day', compare: 'previous' };
@@ -2055,7 +2075,7 @@ function dirGridHtml(range = getDirRange()) {
     <article class="dir-card"><h3 class="dir-card-title">Joueurs par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartPax"></div></article>
     <article class="dir-card"><h3 class="dir-card-title">Repartition par activite</h3><div class="dir-chart" id="dirChartTypes"></div></article>
     <article class="dir-card"><h3 class="dir-card-title">Canaux de reservation</h3><div class="dir-chart" id="dirChartChannels"></div></article>
-    <article class="dir-card dir-card-wide"><h3 class="dir-card-title">Affluence par jour et heure</h3><div class="dir-chart" id="dirChartHeatmap"></div></article>
+    <article class="dir-card dir-card-wide"><h3 class="dir-card-title">Affluence par jour et heure</h3><div class="dir-chart dir-chart-heat" id="dirChartHeatmap"></div></article>
   </div>`;
 }
 
@@ -2527,6 +2547,34 @@ async function loadDirectionInsights(force) {
   }
 }
 
+// Segmented nav (pilules facon Linear) : une pilule par vue, indicateur actif
+// coulissant. L'indicateur lit --dir-nav-index / --dir-nav-count sur le conteneur
+// (transform pilote par CSS) : sur un changement de vue on ne re-rend PAS le nav,
+// on deplace juste la variable -> l'indicateur glisse (transform/opacity, ease-out,
+// prefers-reduced-motion neutralise dans le CSS). aria : role tablist/tab.
+function dirNavHtml(activeView) {
+  const view = DIR_VIEWS.includes(activeView) ? activeView : 'synthese';
+  const index = DIR_VIEWS.indexOf(view);
+  const pills = DIR_VIEW_META.map((meta) => {
+    const on = meta.key === view;
+    return `<button type="button" role="tab" class="dir-nav-pill${on ? ' is-active' : ''}" data-view="${meta.key}" aria-selected="${on ? 'true' : 'false'}" onclick="setDirView('${meta.key}')">${escapeHtml(meta.label)}</button>`;
+  }).join('');
+  return `<div class="dir-nav" id="dirNav" role="tablist" aria-label="Vues du poste d'observation" style="--dir-nav-count:${DIR_VIEW_META.length};--dir-nav-index:${index}">
+    <span class="dir-nav-indicator" aria-hidden="true"></span>
+    ${pills}
+  </div>`;
+}
+
+// Le contenu de la SEULE vue active. Chaque vue reste calme par section (chaque
+// bloc gere son propre vide/erreur) et ne recalcule aucune metrique cote front.
+function dirViewHtml(view, entry) {
+  if (view === 'activite') return dirGridHtml();
+  if (view === 'clients') return dirTablesHtml(entry) + dirRetentionHtml();
+  if (view === 'centres') return dirComparisonHtml();
+  // synthese (defaut) : la rangee de KPI cliquables + le grand graphe focus.
+  return dirKpisHtml(entry) + dirFocusHtml();
+}
+
 function renderDirectionBody() {
   const body = document.getElementById('dirBody');
   if (!body) return;
@@ -2534,8 +2582,33 @@ function renderDirectionBody() {
   if (!entry) { body.innerHTML = dirLoadingHtml(); return; }
   if (entry.error) { body.innerHTML = dirNoteHtml('Analytique momentanement indisponible. Elle reviendra au prochain rafraichissement.'); return; }
   if (!entry.analytics) { body.innerHTML = dirNoteHtml('Pas encore de donnees sur cette periode.'); return; }
-  body.innerHTML = dirKpisHtml(entry) + dirFocusHtml() + dirGridHtml() + dirTablesHtml(entry)
-    + dirComparisonHtml() + dirRetentionHtml();
+  const view = getDirView();
+  body.innerHTML = `${dirNavHtml(view)}<div class="dir-view" id="dirViewContent">${dirViewHtml(view, entry)}</div>`;
+}
+
+// Changer de vue : etat persiste (save), l'indicateur glisse (variable CSS mise a
+// jour sur le nav EXISTANT, sans re-rendre le nav), et SEUL le contenu de la vue
+// est reconstruit puis remonte (graphes de la vue active). No-op si la vue ne
+// change pas (on ne rejoue pas l'animation ni un fetch). La barre de plage reste
+// intacte (elle vit hors du #dirBody, dans #dirControls).
+function setDirView(view) {
+  if (!DIR_VIEWS.includes(view) || getDirView() === view) return;
+  state.adminView = view;
+  save();
+  const nav = document.getElementById('dirNav');
+  if (nav) {
+    nav.style.setProperty('--dir-nav-index', String(DIR_VIEWS.indexOf(view)));
+    nav.querySelectorAll('.dir-nav-pill').forEach((pill) => {
+      const on = pill.getAttribute('data-view') === view;
+      pill.classList.toggle('is-active', on);
+      pill.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  const content = document.getElementById('dirViewContent');
+  const entry = directionInsightCache[dirInsightKey()];
+  if (!content || !entry || !entry.analytics) return;
+  content.innerHTML = dirViewHtml(view, entry);
+  mountDirectionCharts();
 }
 
 function dirCharts() {
@@ -2550,11 +2623,15 @@ function mountDirFocusChart(entry) {
   const range = getDirRange();
   const focus = getDirFocusMetric();
   const cfg = DIR_FOCUS[focus];
+  // Le grand graphe focus est SEUL dans la vue Synthese : viewBox large et plat
+  // (hauteur ~320px a la largeur bureau typique) au lieu de l'ancien 300 qui, en
+  // pleine largeur, produisait un graphe demesure. Le CSS (.dir-focus-chart) le
+  // cadre ; la vue entre dans le motionKey pour animer a la premiere apparition.
   charts.lineChart(host, {
     series: dirMetricSeries(entry.analytics, range.granularity, cfg.field),
     format: cfg.format,
-    height: 300,
-    motionKey: `dir|focus|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|${range.granularity}|${focus}`,
+    height: 170,
+    motionKey: `dir|focus|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|${range.granularity}|${getDirView()}|${focus}`,
   });
 }
 
@@ -2564,7 +2641,12 @@ function mountDirectionCharts() {
   const analytics = entry.analytics;
   const range = getDirRange();
   const charts = dirCharts();
-  const motionBase = `dir|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|${range.granularity}`;
+  // La vue entre dans le motionKey : la premiere apparition d'une vue anime ses
+  // graphes ; y revenir ne les rejoue pas (garde SEEN de PinlaneCharts). Les
+  // hotes des vues inactives ne sont pas dans le DOM : leur montage est un no-op
+  // silencieux (resolveHost renvoie null), donc appeler tous les montages ici
+  // reste sur (seule la vue active a des hotes reels a peindre).
+  const motionBase = `dir|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|${range.granularity}|${getDirView()}`;
 
   // Valeurs KPI (countUp) + mini-sparklines : degrade calme sans librairie.
   DIR_KPIS.forEach((kpi) => {
@@ -3115,6 +3197,10 @@ function startAdminHealthAutoRefresh() {
     getDirDefaultRange,
     getDirRange,
     getDirFocusMetric,
+    getDirView,
+    dirNavHtml,
+    dirViewHtml,
+    setDirView,
     dirShiftYear,
     dirFormatValue,
     dirRangeText,
@@ -3174,6 +3260,8 @@ function startAdminHealthAutoRefresh() {
   global.PinlaneDirection = {
     getRange: getDirRange,
     getFocusMetric: getDirFocusMetric,
+    getView: getDirView,
+    setView: setDirView,
     getInsightKey: dirInsightKey,
     loadInsights: loadDirectionInsights,
     applyRange: onDirRangeChange,

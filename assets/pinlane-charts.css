@@ -13,6 +13,7 @@
    ========================================================================== */
 
 .plc-chart {
+  position: relative;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -242,6 +243,78 @@
 
 .plc-countup { font-variant-numeric: tabular-nums; }
 
+/* ---- Survol : infobulle + mise en avant ---------------------------------- */
+
+/* Infobulle : element HTML dans le conteneur (.plc-chart est position:relative).
+   Surface + filet + ombre theme, chiffres tabulaires, jamais debordante (le JS
+   ramene sa position dans les bords). Fondu <= 120ms, pointer-events none pour
+   ne pas voler le survol. */
+.plc-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: calc(100% - 12px);
+  padding: 6px 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-overlay);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.plc-chart.plc-hovering .plc-tip { opacity: 1; }
+
+.plc-tip-label {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plc-tip-value {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ligne : crosshair vertical + dot agrandi cales sur le point le plus proche. */
+.plc-line-hover { opacity: 0; }
+.plc-line-wrap .plc-line-hover {
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.plc-chart.plc-hovering .plc-line-hover { opacity: 1; }
+
+.plc-crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.plc-dot-hover {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+/* Barre survolee : plus contrastee (fill-opacity 0.82 -> 1). */
+.plc-bar { transition: fill-opacity 120ms cubic-bezier(0.23, 1, 0.32, 1); }
+.plc-bar:hover { fill-opacity: 1; }
+
+/* Segment survole : mis en avant, les autres attenues. */
+.plc-donut-seg { transition: stroke-opacity 120ms cubic-bezier(0.23, 1, 0.32, 1); }
+.plc-donut:hover .plc-donut-seg { stroke-opacity: 0.3; }
+.plc-donut:hover .plc-donut-seg:hover { stroke-opacity: 1; }
+
 /* ---- Reduced motion : etat final immediat, zero transition --------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -266,4 +339,9 @@
   .plc-anim .plc-bar { opacity: 1; transform: none; }
   .plc-anim .plc-legend li { transform: none; }
   .plc-anim:not(.plc-in) .plc-heat-fill { opacity: var(--plc-o, 0); }
+  /* Survol : affichage immediat, aucune transition d'infobulle ni de crosshair. */
+  .plc-tip,
+  .plc-line-hover,
+  .plc-bar,
+  .plc-donut-seg { transition: none !important; }
 }

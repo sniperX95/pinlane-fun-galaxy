@@ -101,6 +101,12 @@ const MUTATIONS = [
     replace: 'return Boolean(key) && false;',
     expect: 'replay-guard',
   },
+  {
+    name: 'calcul du point le plus proche de la ligne neutralise (idx fige a 0)',
+    find: '{ best = dx; idx = i; }',
+    replace: '{ best = dx; idx = 0; }',
+    expect: 'hover-line-last',
+  },
 ];
 
 function serveStatic() {
@@ -270,6 +276,82 @@ async function runSuite(browser, quiet) {
       return out;
     }, DATA);
 
+    // ---- Survol : infobulles pilotees a la vraie souris ------------------
+    // Geometrie ecran des cibles (l'etat est pose apres settled : hostLine et
+    // hostBar re-rendus, listeners de survol re-attaches). On deplace ensuite
+    // le pointeur pour de vrai (page.mouse.move) et on lit le TEXTE + l'opacite
+    // de l'infobulle .plc-tip.
+    const geo = await page.evaluate(() => {
+      const g = (id) => document.getElementById(id);
+      const svgRect = (host) => {
+        const s = g(host).querySelector('.plc-svg');
+        if (!s) return null;
+        const r = s.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      const barCenters = Array.from(g('hostBar').querySelectorAll('.plc-bar')).map((b) => {
+        const r = b.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      });
+      // Point sur la mediane du trait de l'arc (getPointAtLength + CTM ecran) :
+      // le centre de la bbox du segment tomberait dans le trou du donut.
+      const segMids = Array.from(g('hostDonut').querySelectorAll('.plc-donut-seg')).map((s) => {
+        const len = s.getTotalLength();
+        const pt = s.getPointAtLength(len / 2);
+        const m = s.getScreenCTM();
+        return { x: m.a * pt.x + m.c * pt.y + m.e, y: m.b * pt.x + m.d * pt.y + m.f };
+      });
+      return { line: svgRect('hostLine'), barCenters, segMids };
+    });
+
+    const readTip = (host) => page.evaluate((h) => {
+      const g = (id) => document.getElementById(id);
+      const chart = g(h).querySelector('.plc-chart');
+      const tip = g(h).querySelector('.plc-tip');
+      return {
+        text: tip ? tip.textContent.trim() : '',
+        opacity: tip ? parseFloat(getComputedStyle(tip).opacity) : 0,
+        hovering: chart ? chart.classList.contains('plc-hovering') : false,
+      };
+    }, host);
+
+    const euro120 = `${new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(120)} €`;
+    let lineTipLast = { text: '', opacity: 0, hovering: false };
+    let lineTipFirst = { text: '', opacity: 0 };
+    let lineTipLeave = { opacity: 1 };
+    let barTip = { text: '', opacity: 0 };
+    let barTipLeave = { opacity: 1 };
+    let donutTip = { text: '', opacity: 0 };
+    let donutTipLeave = { opacity: 1 };
+    if (geo.line) {
+      const midY = geo.line.top + geo.line.height / 2;
+      await page.mouse.move(geo.line.right - 6, midY);
+      await page.waitForTimeout(110);
+      lineTipLast = await readTip('hostLine');
+      await page.mouse.move(geo.line.left + 4, midY);
+      await page.waitForTimeout(110);
+      lineTipFirst = await readTip('hostLine');
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(170);
+      lineTipLeave = await readTip('hostLine');
+    }
+    if (geo.barCenters[3]) {
+      await page.mouse.move(geo.barCenters[3].x, geo.barCenters[3].y);
+      await page.waitForTimeout(110);
+      barTip = await readTip('hostBar');
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(170);
+      barTipLeave = await readTip('hostBar');
+    }
+    if (geo.segMids[0]) {
+      await page.mouse.move(geo.segMids[0].x, geo.segMids[0].y);
+      await page.waitForTimeout(110);
+      donutTip = await readTip('hostDonut');
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(170);
+      donutTipLeave = await readTip('hostDonut');
+    }
+
     // ---- Assertions page normale -----------------------------------------
     ok(t0.api, 'api', 'les 5 fonctions du contrat doivent exister');
     ok(t0.threw.length === 0, 'sans-exception', t0.threw.join(' | '));
@@ -311,6 +393,22 @@ async function runSuite(browser, quiet) {
       'replay-guard', `re-rendu meme motionKey : dashoffset ${settled.offReplay}, scaleY ${settled.scaleReplay} (etat final attendu)`);
     ok(t0.countT0 !== settled.countFinal && settled.countFinal === t0.expectedEuro1234,
       'countup', `t0 "${t0.countT0}" -> final "${settled.countFinal}" (attendu "${t0.expectedEuro1234}")`);
+
+    // ---- Survol : preuves comportementales -------------------------------
+    ok(lineTipLast.opacity > 0.5 && lineTipLast.hovering && lineTipLast.text.includes(t0.expectedEuro720),
+      'hover-line-last', `survol point droit -> "${lineTipLast.text}" op ${lineTipLast.opacity} (attendu contient "${t0.expectedEuro720}")`);
+    ok(lineTipFirst.opacity > 0.5 && lineTipFirst.text.includes(euro120),
+      'hover-line-first', `survol point gauche -> "${lineTipFirst.text}" (attendu contient "${euro120}")`);
+    ok(lineTipLeave.opacity < 0.5,
+      'hover-line-leave', `sortie -> infobulle cachee, opacity ${lineTipLeave.opacity}`);
+    ok(barTip.opacity > 0.5 && barTip.text.includes('500'),
+      'hover-bar', `survol barre 500 -> "${barTip.text}" op ${barTip.opacity}`);
+    ok(barTipLeave.opacity < 0.5,
+      'hover-bar-leave', `sortie barre -> infobulle cachee, opacity ${barTipLeave.opacity}`);
+    ok(donutTip.opacity > 0.5 && donutTip.text.includes('52%'),
+      'hover-donut', `survol segment -> "${donutTip.text}" op ${donutTip.opacity} (part 52% attendue)`);
+    ok(donutTipLeave.opacity < 0.5,
+      'hover-donut-leave', `sortie segment -> infobulle cachee, opacity ${donutTipLeave.opacity}`);
   } catch (error) {
     ok(false, 'suite-exception', error.message);
   } finally {

@@ -158,15 +158,17 @@
 
   function mountChart(el, extraClass, innerHtml, animate) {
     el.innerHTML = '<div class="plc-chart ' + extraClass + ' ' + (animate ? 'plc-anim' : 'plc-done') + '">' + innerHtml + '</div>';
-    if (!animate) return;
     var wrap = el.firstElementChild;
-    // Double rAF : l'etat initial est peint, PUIS la classe declenche la
-    // transition. Si la page a ete re-rendue entre-temps, on ne fait rien.
-    window.requestAnimationFrame(function () {
+    if (animate && wrap) {
+      // Double rAF : l'etat initial est peint, PUIS la classe declenche la
+      // transition. Si la page a ete re-rendue entre-temps, on ne fait rien.
       window.requestAnimationFrame(function () {
-        if (wrap && wrap.isConnected) wrap.classList.add('plc-in');
+        window.requestAnimationFrame(function () {
+          if (wrap && wrap.isConnected) wrap.classList.add('plc-in');
+        });
       });
-    });
+    }
+    return wrap;
   }
 
   function chartFrame(inner, height, ariaLabel) {
@@ -205,6 +207,106 @@
     }).join(' ');
   }
 
+  // ---- Survol : infobulle + mise en avant ---------------------------------
+  // Une infobulle HTML par graphe, enfant de .plc-chart (position:relative en
+  // CSS). Les positions des points sont pre-calculees au montage ; le mousemove
+  // ne fait que lire (nearest par x pour la ligne, index de l'element pour barre
+  // et donut). Apparition/disparition en opacite <= 120ms (CSS), immediate sous
+  // prefers-reduced-motion. Listeners poses une fois par montage de graphe.
+
+  function makeTip(wrap) {
+    var tip = document.createElement('div');
+    tip.className = 'plc-tip';
+    tip.setAttribute('aria-hidden', 'true');
+    wrap.appendChild(tip);
+    return tip;
+  }
+
+  function tipHtml(label, value) {
+    return '<span class="plc-tip-label">' + esc(label) + '</span><span class="plc-tip-value">' + esc(value) + '</span>';
+  }
+
+  // px, py : point d'ancrage en pixels relatifs au conteneur. L'infobulle est
+  // centree au-dessus du point puis ramenee dans les bords : aucun debordement.
+  function showTip(wrap, tip, html, px, py) {
+    tip.innerHTML = html;
+    tip.setAttribute('aria-hidden', 'false');
+    var pad = 6;
+    var w = tip.offsetWidth;
+    var h = tip.offsetHeight;
+    var ww = wrap.clientWidth;
+    var wh = wrap.clientHeight;
+    var left = px - w / 2;
+    var top = py - h - 12;
+    if (top < pad) top = py + 16;
+    if (left < pad) left = pad;
+    if (left + w > ww - pad) left = ww - pad - w;
+    if (left < pad) left = pad;
+    if (top + h > wh - pad) top = wh - pad - h;
+    if (top < pad) top = pad;
+    tip.style.left = Math.round(left) + 'px';
+    tip.style.top = Math.round(top) + 'px';
+    wrap.classList.add('plc-hovering');
+  }
+
+  function hideTip(wrap, tip) {
+    wrap.classList.remove('plc-hovering');
+    tip.setAttribute('aria-hidden', 'true');
+  }
+
+  // Ligne : crosshair vertical + dot agrandi cales sur le point le plus proche
+  // en x ; l'infobulle affiche le label X + la valeur formatee.
+  function wireLine(wrap, pts, height) {
+    if (!wrap) return;
+    var svg = wrap.querySelector('.plc-svg');
+    var cross = wrap.querySelector('.plc-crosshair');
+    var hdot = wrap.querySelector('.plc-dot-hover');
+    if (!svg || !cross || !hdot || !pts.length) return;
+    var tip = makeTip(wrap);
+    var onMove = function (ev) {
+      var srect = svg.getBoundingClientRect();
+      if (!(srect.width > 0) || !(srect.height > 0)) return;
+      var sx = (ev.clientX - srect.left) / srect.width * VB_W;
+      var idx = 0;
+      var best = Infinity;
+      for (var i = 0; i < pts.length; i += 1) {
+        var dx = Math.abs(pts[i].x - sx);
+        if (dx < best) { best = dx; idx = i; }
+      }
+      var p = pts[idx];
+      cross.setAttribute('x1', round2(p.x));
+      cross.setAttribute('x2', round2(p.x));
+      hdot.setAttribute('cx', round2(p.x));
+      hdot.setAttribute('cy', round2(p.y));
+      var wrect = wrap.getBoundingClientRect();
+      var px = (p.x / VB_W) * srect.width + (srect.left - wrect.left);
+      var py = (p.y / height) * srect.height + (srect.top - wrect.top);
+      showTip(wrap, tip, tipHtml(p.label, p.vtext), px, py);
+    };
+    wrap.addEventListener('mousemove', onMove);
+    wrap.addEventListener('mouseleave', function () { hideTip(wrap, tip); });
+  }
+
+  // Barres et donut : l'element survole porte data-i ; l'info (label + valeur
+  // [+ part] pour le donut) est pre-calculee. L'infobulle suit le pointeur. La
+  // mise en avant visuelle (barre contrastee, autres segments attenues) vit en
+  // CSS :hover.
+  function wireSegments(wrap, selector, info) {
+    if (!wrap) return;
+    var tip = makeTip(wrap);
+    var onMove = function (ev) {
+      var el = ev.target && ev.target.closest ? ev.target.closest(selector) : null;
+      if (!el) { hideTip(wrap, tip); return; }
+      var idx = Number(el.getAttribute('data-i'));
+      var d = info[idx];
+      if (!d) { hideTip(wrap, tip); return; }
+      var wrect = wrap.getBoundingClientRect();
+      showTip(wrap, tip, tipHtml(d.label, d.value), ev.clientX - wrect.left, ev.clientY - wrect.top);
+    };
+    wrap.addEventListener('mousemove', onMove);
+    wrap.addEventListener('mouseleave', function () { hideTip(wrap, tip); });
+  }
+
   function lineChart(host, opts) {
     var el = resolveHost(host);
     if (!el) return;
@@ -240,7 +342,10 @@
     var vx = vAnchor === 'end' ? last.x - 8 : last.x + 8;
     var vy = last.y - 8 < 14 ? last.y + 18 : last.y - 8;
     parts.push('<text class="plc-line-value" x="' + round2(vx) + '" y="' + round2(vy) + '" text-anchor="' + vAnchor + '">' + esc(formatValue(last.value, format)) + '</text>');
-    mountChart(el, 'plc-line-wrap', chartFrame(parts.join(''), height, 'Evolution sur la periode'), animate);
+    parts.push('<g class="plc-line-hover" aria-hidden="true"><line class="plc-crosshair" x1="0" x2="0" y1="' + round2(PAD.t) + '" y2="' + baseY + '"></line><circle class="plc-dot-hover" cx="0" cy="0" r="4.5"></circle></g>');
+    pts.forEach(function (p) { p.vtext = formatValue(p.value, format); });
+    var wrap = mountChart(el, 'plc-line-wrap', chartFrame(parts.join(''), height, 'Evolution sur la periode'), animate);
+    wireLine(wrap, pts, height);
   }
 
   function barChart(host, opts) {
@@ -271,13 +376,15 @@
       var x = PAD.l + slot * i + (slot - barW) / 2;
       var y = baseY - h;
       centers.push({ x: x + barW / 2, label: p.label });
-      bars.push('<rect class="plc-bar" x="' + round2(x) + '" y="' + round2(y) + '" width="' + round2(barW) + '" height="' + round2(h) + '" rx="2" style="--plc-d:' + Math.round(stepDelay * i) + 'ms"><title>' + esc((p.label ? p.label + ' : ' : '') + formatValue(p.value, format)) + '</title></rect>');
+      bars.push('<rect class="plc-bar" data-i="' + i + '" x="' + round2(x) + '" y="' + round2(y) + '" width="' + round2(barW) + '" height="' + round2(h) + '" rx="2" style="--plc-d:' + Math.round(stepDelay * i) + 'ms"><title>' + esc((p.label ? p.label + ' : ' : '') + formatValue(p.value, format)) + '</title></rect>');
       if (n <= 8) {
         valueTexts.push('<text class="plc-bar-value" x="' + round2(x + barW / 2) + '" y="' + round2(Math.max(12, y - 6)) + '" text-anchor="middle">' + esc(formatTick(p.value, format)) + '</text>');
       }
     });
     var parts = [gridMarkup(scale, format, height), xLabelsMarkup(centers, height), bars.join(''), valueTexts.join('')];
-    mountChart(el, 'plc-bar-wrap', chartFrame(parts.join(''), height, 'Volumes sur la periode'), animate);
+    var barInfo = series.map(function (p) { return { label: p.label, value: formatValue(p.value, format) }; });
+    var wrap = mountChart(el, 'plc-bar-wrap', chartFrame(parts.join(''), height, 'Volumes sur la periode'), animate);
+    wireSegments(wrap, '.plc-bar', barInfo);
   }
 
   function polar(cx, cy, r, deg) {
@@ -316,17 +423,20 @@
     var angle = 0;
     var segs = [];
     var items = [];
+    var donutInfo = [];
     parts.forEach(function (p, i) {
       var frac = p.value / total;
       var sweep = frac * 360;
       var toneClass = TONES[p.tone] || '';
       var alpha = toneClass ? 1 : FADE[Math.min(i, FADE.length - 1)];
-      segs.push('<path class="plc-donut-seg' + (toneClass ? ' ' + toneClass : '') + '" d="' + arcPath(60, 60, 45, angle, sweep) + '" pathLength="100" stroke-opacity="' + alpha + '"' + (animate ? ' style="stroke-dasharray:100;stroke-dashoffset:100"' : '') + '><title>' + esc(p.label + ' : ' + formatValue(p.value, format)) + '</title></path>');
+      segs.push('<path class="plc-donut-seg' + (toneClass ? ' ' + toneClass : '') + '" data-i="' + i + '" d="' + arcPath(60, 60, 45, angle, sweep) + '" pathLength="100" stroke-opacity="' + alpha + '"' + (animate ? ' style="stroke-dasharray:100;stroke-dashoffset:100"' : '') + '><title>' + esc(p.label + ' : ' + formatValue(p.value, format)) + '</title></path>');
       items.push('<li style="--plc-d:' + Math.round(liDelay * i) + 'ms"><span class="plc-swatch' + (toneClass ? ' ' + toneClass : '') + '"' + (toneClass ? '' : ' style="opacity:' + alpha + '"') + '></span><span class="plc-legend-label">' + esc(p.label) + '</span><span class="plc-legend-share">' + esc(formatValue(p.value, format)) + ' · ' + Math.round(frac * 100) + '%</span></li>');
+      donutInfo.push({ label: p.label, value: formatValue(p.value, format) + ' · ' + Math.round(frac * 100) + '%' });
       angle += sweep;
     });
     var svg = '<svg class="plc-donut" viewBox="0 0 120 120" role="img" aria-label="Repartition" focusable="false"><circle class="plc-donut-track" cx="60" cy="60" r="45"></circle>' + segs.join('') + '</svg>';
-    mountChart(el, 'plc-donut-wrap', svg + '<ul class="plc-legend">' + items.join('') + '</ul>', animate);
+    var wrap = mountChart(el, 'plc-donut-wrap', svg + '<ul class="plc-legend">' + items.join('') + '</ul>', animate);
+    wireSegments(wrap, '.plc-donut-seg', donutInfo);
   }
 
   function heatmapChart(host, opts) {

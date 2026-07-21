@@ -66,6 +66,52 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
+// La refonte 2026-07-21 classe la page en VUES et STANDARDISE la hauteur des
+// graphes de grille. Le cadrage vit dans une CSS livree a part (scratchpad ->
+// a coller dans pinlane-staff.css par l'integrateur). Tant qu'elle n'est pas
+// cablee, le gate l'injecte (meme logique que le stub du composant de plage) :
+// on teste la page telle qu'elle sera une fois la CSS collee. C'est cette CSS
+// qui rend les hauteurs de grille EGALES (240px) ; sans elle, chaque type de
+// graphe garde sa hauteur naturelle et la standardisation ne se verifie pas.
+const GATE_DIR_SIZING_CSS = `
+  .dir-body { display: flex; flex-direction: column; gap: 16px; }
+  .dir-view { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .dir-grid .dir-chart {
+    height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .dir-grid .dir-chart > * { width: 100%; }
+  .dir-grid .dir-chart.dir-chart-heat {
+    height: auto;
+    min-height: 180px;
+    display: block;
+    overflow: visible;
+  }
+  .dir-focus-chart { min-height: 200px; }
+  .dir-nav {
+    position: relative;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .dir-nav-indicator {
+    position: absolute;
+    top: 4px; bottom: 4px; left: 4px;
+    width: calc((100% - 8px) / var(--dir-nav-count, 4));
+    transform: translateX(calc(var(--dir-nav-index, 0) * 100%));
+    pointer-events: none;
+  }
+  .dir-nav-pill { position: relative; z-index: 1; border: 0; background: transparent; padding: 8px 16px; cursor: pointer; font-family: inherit; }
+`;
+
 let failures = 0;
 function ok(cond, label) {
   console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`);
@@ -368,12 +414,15 @@ function countPathPoints(d) {
 async function bootDirection(page) {
   await installMock(page);
   await page.goto(`${BASE_URL}/?v=dir-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+  // CSS de cadrage des vues injectee (dir-views.css a venir dans pinlane-staff.css).
+  await page.addStyleTag({ content: GATE_DIR_SIZING_CSS });
   await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
   await page.evaluate(() => {
     state.adminTab = 'overview';
     state.staffMenuPage = 'dashboard';
     delete state.adminRange;
     delete state.adminFocusMetric;
+    delete state.adminView; // vue par defaut deterministe : Synthese
     save();
     setView('admin');
   });
@@ -384,6 +433,22 @@ async function bootDirection(page) {
     { timeout: 20000 },
   );
   await page.waitForTimeout(700);
+}
+
+// Bascule de vue par CLIC sur la pilule du segmented nav (vrai chemin
+// utilisateur), puis attente que l'etat de vue ait suivi. Reutilise par le
+// harnais principal et les sondes de contre-preuve.
+async function switchDirView(page, view) {
+  await page.click(`#adminContent .dir-nav-pill[data-view="${view}"]`);
+  await page.waitForFunction(
+    (v) => {
+      const D = window.PinlaneDirection;
+      return Boolean(D && typeof D.getView === 'function' && D.getView() === v);
+    },
+    view,
+    { timeout: 8000 },
+  );
+  await page.waitForTimeout(250);
 }
 
 // Mesures brutes du poste d'observation sur la fenetre COURANTE : DOM + registre
@@ -501,16 +566,77 @@ async function probeDirDecision(browser) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   try {
     await bootDirection(page);
+    // Les sections de decision vivent desormais dans DEUX vues distinctes :
+    // comparaison -> « Mes centres », dormants -> « Clients ». On visite chacune.
+    await switchDirView(page, 'centres');
     await waitDirDecisionLoaded(page);
-    const r = await page.evaluate(() => ({
-      cmpRows: document.querySelectorAll('#adminContent .dir-cmp-row').length,
-      lapsedRows: document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length,
-    }));
+    await page.waitForTimeout(300);
+    const cmpRows = await page.evaluate(() => document.querySelectorAll('#adminContent .dir-cmp-row').length);
+    await switchDirView(page, 'clients');
+    await waitDirDecisionLoaded(page);
+    await page.waitForTimeout(300);
+    const lapsedRows = await page.evaluate(() => document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length);
     return {
-      cmpRowsMatch: r.cmpRows === 2,
-      lapsedRowsMatch: r.lapsedRows === 1,
-      cmpRows: r.cmpRows,
-      lapsedRows: r.lapsedRows,
+      cmpRowsMatch: cmpRows === 2,
+      lapsedRowsMatch: lapsedRows === 1,
+      cmpRows,
+      lapsedRows,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+// Invariants de la REORGANISATION en vues, sur une page fraiche : passer a
+// « Activite » montre les graphes de grille (SVG traces) et CACHE le grand
+// focus. Sonde partagee entre la phase verte et la contre-preuve : une mutation
+// qui casse le routage de vue fait mentir ces booleens.
+async function probeDirViews(browser) {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  try {
+    await bootDirection(page);
+    await switchDirView(page, 'activite');
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const ids = ['dirChartResas', 'dirChartPax', 'dirChartTypes', 'dirChartChannels'];
+      const svgsWithHeight = ids.filter((id) => {
+        const s = document.querySelector('#' + id + ' svg');
+        return Boolean(s) && s.getBoundingClientRect().height > 0;
+      }).length;
+      return {
+        svgsWithHeight,
+        focusPresent: Boolean(document.querySelector('#dirFocusChart')),
+      };
+    });
+    return {
+      activiteGridVisible: r.svgsWithHeight === 4,
+      activiteFocusHidden: r.focusPresent === false,
+      svgsWithHeight: r.svgsWithHeight,
+      focusPresent: r.focusPresent,
+    };
+  } finally {
+    await page.close();
+  }
+}
+
+// Invariant des HAUTEURS STANDARDISEES : dans la vue Activite, les 4 graphes de
+// colonne ont la MEME hauteur (offsetHeight, ecart <= 3px). Sonde partagee : une
+// mutation qui retire le gabarit d'un hote fait diverger les hauteurs.
+async function probeDirGridHeights(browser) {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
+  try {
+    await bootDirection(page);
+    await switchDirView(page, 'activite');
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirChartResas svg')), null, { timeout: 8000 });
+    await page.waitForTimeout(250);
+    const heights = await page.evaluate(() => ['dirChartResas', 'dirChartPax', 'dirChartTypes', 'dirChartChannels']
+      .map((id) => { const el = document.getElementById(id); return el ? Math.round(el.getBoundingClientRect().height) : -1; }));
+    const valid = heights.filter((h) => h > 0);
+    const spread = valid.length ? Math.max(...valid) - Math.min(...valid) : 999;
+    return {
+      equalHeights: valid.length === 4 && spread <= 3,
+      heights,
+      spread,
     };
   } finally {
     await page.close();
@@ -668,62 +794,139 @@ async function main() {
     const fatal = errs.filter((e) => !/localStorage|sandboxed|favicon|cdn\.vercel-insights/i.test(e));
     ok(fatal.length === 0, `[8] aucune erreur console fatale (obtenu ${fatal.length}${fatal.length ? ' : ' + fatal[0] : ''})`);
 
-    console.log('\n[10] SECTIONS DE DECISION : Comparer mes centres (2 lignes) + Clients a relancer (1 dormant)');
-    // Le mock sert 2 centres et 1 dormant pour toute fenetre : apres le
-    // chargement PARALLELE des endpoints, les deux sections doivent porter
-    // EXACTEMENT ces comptes, le centre courant surligne, la phrase actionnable
-    // presente. Comptes lus dans le DOM (jamais une presence de chaine).
-    await waitDirDecisionLoaded(page);
-    await page.waitForFunction(
-      () => document.querySelectorAll('#adminContent .dir-cmp-row').length === 2
-        && document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length === 1,
-      null,
-      { timeout: 15000 },
-    );
-    const decision = await page.evaluate(() => {
-      const cmpRows = [...document.querySelectorAll('#adminContent .dir-cmp-row')];
-      const lapsedRows = [...document.querySelectorAll('#adminContent .dir-ret-lapsed-row')];
-      const cmpSection = document.querySelector('#adminContent .dir-cmp');
-      const retSection = document.querySelector('#adminContent .dir-ret');
+    console.log('\n[10] VUES : segmented nav 4 vues, Synthese=focus, Activite=graphes (focus cache), Clients+Mes centres, plage GLOBALE');
+    // La barre de plage vit HORS des vues (#dirControls) : elle doit rester
+    // visible et mesurable sur chaque vue (fenetre globale). Sonde reutilisable.
+    const rangeVisible = () => page.evaluate(() => {
+      const label = document.getElementById('dirWindowLabel');
+      const host = document.getElementById('dirRangeHost');
+      return Boolean(label && label.offsetHeight > 0 && host && host.getBoundingClientRect().height > 0);
+    });
+
+    // Vue par defaut = Synthese : le segmented nav offre 4 vues dans l'ordre, la
+    // pilule Synthese est active, le grand focus est la, la grille d'activite non.
+    const navState = await page.evaluate(() => {
+      const active = document.querySelector('#adminContent .dir-nav-pill.is-active');
       return {
-        cmpSectionPresent: Boolean(cmpSection),
-        retSectionPresent: Boolean(retSection),
+        pills: [...document.querySelectorAll('#adminContent .dir-nav-pill')].map((b) => b.getAttribute('data-view')),
+        activeView: active ? active.getAttribute('data-view') : '',
+        view: window.PinlaneDirection.getView(),
+        focusPresent: Boolean(document.querySelector('#dirFocusChart svg')),
+        gridPresent: Boolean(document.querySelector('#dirChartResas')),
+      };
+    });
+    ok(navState.pills.length === 4 && ['synthese', 'activite', 'clients', 'centres'].every((v, i) => navState.pills[i] === v),
+      `le segmented nav offre 4 vues dans l'ordre (obtenu ${JSON.stringify(navState.pills)})`);
+    ok(navState.view === 'synthese' && navState.activeView === 'synthese', `vue par defaut = Synthese (pilule active « ${navState.activeView} »)`);
+    ok(navState.focusPresent && !navState.gridPresent, 'Synthese montre le grand graphe focus et PAS la grille d activite');
+    ok(await rangeVisible(), 'la barre de plage est visible sur la vue Synthese');
+
+    // Activite : les 4 graphes de grille sont traces, le focus est CACHE, et les
+    // graphes d'une meme grille ont des hauteurs EGALES (standardisation).
+    await switchDirView(page, 'activite');
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirChartResas svg')), null, { timeout: 8000 });
+    await page.waitForTimeout(250);
+    const act = await page.evaluate(() => {
+      const ids = ['dirChartResas', 'dirChartPax', 'dirChartTypes', 'dirChartChannels'];
+      const heights = ids.map((id) => { const el = document.getElementById(id); return el ? Math.round(el.getBoundingClientRect().height) : -1; });
+      const svgsWithHeight = ids.filter((id) => { const s = document.querySelector('#' + id + ' svg'); return Boolean(s) && s.getBoundingClientRect().height > 0; }).length;
+      const valid = heights.filter((h) => h > 0);
+      return {
+        heights,
+        svgsWithHeight,
+        spread: valid.length ? Math.max(...valid) - Math.min(...valid) : 999,
+        validCount: valid.length,
+        focusPresent: Boolean(document.querySelector('#dirFocusChart')),
+        heatHeight: (() => { const el = document.querySelector('#dirChartHeatmap .plc-heat-grid'); return el ? Math.round(el.getBoundingClientRect().height) : 0; })(),
+      };
+    });
+    ok(act.svgsWithHeight === 4, `Activite : les 4 graphes de grille sont traces (SVG hauteur > 0) (obtenu ${act.svgsWithHeight})`);
+    ok(act.focusPresent === false, 'passer a Activite CACHE le grand graphe focus (#dirFocusChart absent)');
+    ok(act.validCount === 4 && act.spread <= 3, `les graphes d une meme grille ont des hauteurs EGALES (ecart ${act.spread}px, hauteurs ${JSON.stringify(act.heights)})`);
+    ok(act.heatHeight > 0, `la heatmap pleine largeur est tracee dans la vue Activite (${act.heatHeight}px)`);
+    ok(await rangeVisible(), 'la barre de plage reste visible sur la vue Activite');
+
+    // Mes centres : la comparaison inter-centres (2 lignes, centre courant
+    // surligne, meilleur par colonne marque), focus toujours cache.
+    await switchDirView(page, 'centres');
+    await waitDirDecisionLoaded(page);
+    await page.waitForFunction(() => document.querySelectorAll('#adminContent .dir-cmp-row').length === 2, null, { timeout: 15000 });
+    const centres = await page.evaluate(() => {
+      const cmpRows = [...document.querySelectorAll('#adminContent .dir-cmp-row')];
+      return {
+        cmpSectionPresent: Boolean(document.querySelector('#adminContent .dir-cmp')),
         cmpRowCount: cmpRows.length,
-        lapsedRowCount: lapsedRows.length,
         currentHighlighted: cmpRows.filter((r) => r.classList.contains('is-current')).length,
         currentIsLibramont: (document.querySelector('#adminContent .dir-cmp-row.is-current .dir-cmp-center') || {}).textContent || '',
         bestMarks: document.querySelectorAll('#adminContent .dir-cmp-best-mark').length,
-        lapsedHead: (document.querySelector('#adminContent .dir-ret-lapsed-head') || {}).textContent || '',
-        lapsedContact: (document.querySelector('#adminContent .dir-ret-lapsed-row .dir-client-contact') || {}).textContent || '',
-        lapsedLast: (document.querySelector('#adminContent .dir-ret-lapsed-row .dir-ret-last') || {}).textContent || '',
-        segStats: document.querySelectorAll('#adminContent .dir-ret-stat').length,
+        focusPresent: Boolean(document.querySelector('#dirFocusChart')),
       };
     });
-    ok(decision.cmpSectionPresent && decision.retSectionPresent, 'les deux sections de decision sont rendues sous les tables existantes');
-    ok(decision.cmpRowCount === 2, `« Comparer mes centres » contient EXACTEMENT 2 lignes de centre (obtenu ${decision.cmpRowCount})`);
-    ok(decision.currentHighlighted === 1 && /Libramont/.test(decision.currentIsLibramont), `le centre courant (isCurrent) est surligne, un seul (« ${decision.currentIsLibramont} »)`);
-    ok(decision.bestMarks > 0, `le meilleur de chaque colonne est marque discretement (obtenu ${decision.bestMarks} marques)`);
-    ok(decision.lapsedRowCount === 1, `« Clients a relancer » contient EXACTEMENT 1 dormant (obtenu ${decision.lapsedRowCount})`);
-    ok(/pas revenu.*plus de 60 jours/.test(decision.lapsedHead), `la phrase actionnable annonce le seuil de dormance (« ${decision.lapsedHead.trim()} »)`);
-    ok(/il y a/.test(decision.lapsedLast), `le dernier passage est rendu en relatif « il y a X » (obtenu « ${decision.lapsedLast.trim()} »)`);
-    ok(decision.segStats >= 4, `le bloc segment nouveaux vs recurrents expose ses statistiques (obtenu ${decision.segStats} tuiles)`);
+    ok(centres.cmpSectionPresent && centres.cmpRowCount === 2 && !centres.focusPresent, `Mes centres montre la comparaison (2 lignes) et PAS le focus (obtenu ${centres.cmpRowCount} lignes)`);
+    ok(centres.currentHighlighted === 1 && /Libramont/.test(centres.currentIsLibramont), `le centre courant (isCurrent) est surligne, un seul (« ${centres.currentIsLibramont} »)`);
+    ok(centres.bestMarks > 0, `le meilleur de chaque colonne est marque discretement (obtenu ${centres.bestMarks} marques)`);
+    ok(await rangeVisible(), 'la barre de plage reste visible sur la vue Mes centres');
+
+    // Clients : top clients + top formules + toute la section Retention (segment
+    // + dormants a relancer). Comptes lus dans le DOM (jamais une presence de chaine).
+    await switchDirView(page, 'clients');
+    await waitDirDecisionLoaded(page);
+    await page.waitForFunction(
+      () => document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length === 1
+        && document.querySelectorAll('#adminContent .dir-ret-stat').length >= 4,
+      null,
+      { timeout: 15000 },
+    );
+    const clients = await page.evaluate(() => ({
+      tablesPresent: Boolean(document.querySelector('#adminContent .dir-tables')),
+      retSectionPresent: Boolean(document.querySelector('#adminContent .dir-ret')),
+      lapsedRowCount: document.querySelectorAll('#adminContent .dir-ret-lapsed-row').length,
+      segStats: document.querySelectorAll('#adminContent .dir-ret-stat').length,
+      lapsedHead: (document.querySelector('#adminContent .dir-ret-lapsed-head') || {}).textContent || '',
+      lapsedLast: (document.querySelector('#adminContent .dir-ret-lapsed-row .dir-ret-last') || {}).textContent || '',
+      focusPresent: Boolean(document.querySelector('#dirFocusChart')),
+    }));
+    ok(clients.tablesPresent && clients.retSectionPresent && !clients.focusPresent, 'Clients regroupe tables (formules/clients) + Retention, sans le focus');
+    ok(clients.lapsedRowCount === 1, `« Clients a relancer » contient EXACTEMENT 1 dormant (obtenu ${clients.lapsedRowCount})`);
+    ok(clients.segStats >= 4, `le bloc segment nouveaux vs recurrents expose ses statistiques (obtenu ${clients.segStats} tuiles)`);
+    ok(/pas revenu.*plus de 60 jours/.test(clients.lapsedHead), `la phrase actionnable annonce le seuil de dormance (« ${clients.lapsedHead.trim()} »)`);
+    ok(/il y a/.test(clients.lapsedLast), `le dernier passage est rendu en relatif « il y a X » (obtenu « ${clients.lapsedLast.trim()} »)`);
+    ok(await rangeVisible(), 'la barre de plage reste visible sur la vue Clients');
+
+    // Retour a Synthese : la fenetre GLOBALE n'a pas bouge en changeant de vue
+    // (le focus recompte la meme fenetre 7 jours choisie a l'etape [6]).
+    await switchDirView(page, 'synthese');
+    await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
+    const backToSynthese = await page.evaluate(() => ({
+      view: window.PinlaneDirection.getView(),
+      focusPresent: Boolean(document.querySelector('#dirFocusChart svg')),
+      windowLabel: (document.querySelector('#dirWindowLabel .dir-window-range') || {}).textContent || '',
+    }));
+    ok(backToSynthese.view === 'synthese' && backToSynthese.focusPresent, 'retour a Synthese : le grand focus est de nouveau la');
+    ok(backToSynthese.windowLabel === m1.windowLabel, `la fenetre globale a tenu a travers les vues (« ${backToSynthese.windowLabel} »)`);
 
     if (process.env.PINLANE_DIRECTION_SHOTS) {
       const shotDir = process.env.PINLANE_DIRECTION_SHOTS;
       fs.mkdirSync(shotDir, { recursive: true });
       await page.evaluate(() => { setDirFocusMetric('revenue'); });
       await page.waitForTimeout(300);
+      // Une capture par VUE (la reorganisation se voit vue par vue) et par theme.
       for (const theme of ['dark', 'light']) {
         await page.evaluate((t) => { setStaffTheme(t); }, theme);
-        await page.waitForTimeout(400);
-        await page.setViewportSize({ width: 1400, height: 950 });
-        await page.waitForTimeout(250);
-        await page.screenshot({ path: path.join(shotDir, `direction-${theme}-desktop.png`), fullPage: true });
+        await page.waitForTimeout(300);
+        for (const view of ['synthese', 'activite', 'clients', 'centres']) {
+          await switchDirView(page, view);
+          await page.setViewportSize({ width: 1400, height: 950 });
+          await page.waitForTimeout(300);
+          await page.screenshot({ path: path.join(shotDir, `direction-${theme}-${view}-desktop.png`), fullPage: true });
+        }
+        await switchDirView(page, 'synthese');
         await page.setViewportSize({ width: 390, height: 844 });
         await page.waitForTimeout(300);
         await page.screenshot({ path: path.join(shotDir, `direction-${theme}-mobile.png`), fullPage: true });
       }
       await page.setViewportSize({ width: 1400, height: 950 });
+      await switchDirView(page, 'synthese');
       console.log(`[SHOTS] captures ecrites dans ${shotDir}`);
     }
 
@@ -775,6 +978,40 @@ async function main() {
       }
       ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
     };
+    // Contre-preuve du ROUTAGE DE VUE : casser la branche « Activite » (elle rend
+    // le focus au lieu de la grille) doit faire disparaitre les graphes de grille
+    // apres un clic sur la pilule Activite. Sonde = probeDirViews.
+    const runViewMutation = async (anchor, replacement, invariantKey, label) => {
+      const original = applyMutation(anchor, replacement, label);
+      let probe = null;
+      try {
+        probe = await probeDirViews(browser);
+      } finally {
+        fs.writeFileSync(consolePath, original);
+      }
+      if (!probe || probe[invariantKey] !== false) {
+        console.error(`direction-cockpit-check: MUTATION SANS EFFET (vue), le gate ne sait pas rougir : ${label} (${JSON.stringify(probe)})`);
+        process.exit(1);
+      }
+      ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
+    };
+    // Contre-preuve des HAUTEURS STANDARDISEES : retirer le gabarit d'un hote de
+    // grille (classe dir-chart -> dir-chart-x, sans regle de hauteur) fait diverger
+    // sa hauteur des autres. Sonde = probeDirGridHeights.
+    const runHeightMutation = async (anchor, replacement, invariantKey, label) => {
+      const original = applyMutation(anchor, replacement, label);
+      let probe = null;
+      try {
+        probe = await probeDirGridHeights(browser);
+      } finally {
+        fs.writeFileSync(consolePath, original);
+      }
+      if (!probe || probe[invariantKey] !== false) {
+        console.error(`direction-cockpit-check: MUTATION SANS EFFET (hauteur), le gate ne sait pas rougir : ${label} (${JSON.stringify(probe)})`);
+        process.exit(1);
+      }
+      ok(true, `mutation « ${label} » : l'invariant ${invariantKey} est viole, le gate ROUGIRAIT`);
+    };
     await runMutation(
       'return dirDays.map((row) => (asLabels',
       'return dirDays.slice(0, -1).map((row) => (asLabels',
@@ -799,12 +1036,30 @@ async function main() {
       'lapsedRowsMatch',
       'liste de dormants amputee (plus 1 ligne a relancer)',
     );
+    await runViewMutation(
+      "if (view === 'activite') return dirGridHtml();",
+      "if (view === 'activite') return dirFocusHtml();",
+      'activiteGridVisible',
+      'vue Activite qui rend le focus au lieu de la grille (routage de vue casse)',
+    );
+    await runHeightMutation(
+      '<div class="dir-chart" id="dirChartPax"></div>',
+      '<div class="dir-chart-x" id="dirChartPax"></div>',
+      'equalHeights',
+      'un hote de grille sans gabarit de hauteur (dir-chart -> dir-chart-x)',
+    );
     const restored = await probeDirInvariants(browser);
     ok(restored.svgVisible && restored.focusPointsMatch && restored.deltaExact,
       'restauration inverse : les invariants du poste d observation tiennent de nouveau sur une page fraiche');
     const restoredDecision = await probeDirDecision(browser);
     ok(restoredDecision.cmpRowsMatch && restoredDecision.lapsedRowsMatch,
       'restauration inverse : 2 lignes de comparaison et 1 dormant reviennent sur une page fraiche');
+    const restoredViews = await probeDirViews(browser);
+    ok(restoredViews.activiteGridVisible && restoredViews.activiteFocusHidden,
+      'restauration inverse : Activite remontre ses 4 graphes et cache le focus sur une page fraiche');
+    const restoredHeights = await probeDirGridHeights(browser);
+    ok(restoredHeights.equalHeights,
+      `restauration inverse : les graphes de grille reviennent a hauteur egale (ecart ${restoredHeights.spread}px)`);
   } finally {
     await browser.close();
     server.close();

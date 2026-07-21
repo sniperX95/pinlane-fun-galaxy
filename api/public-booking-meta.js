@@ -3,6 +3,8 @@ const {
   DURATION_OPTIONS,
   FORMULES,
   LASER_GAME_OPTIONS,
+  getEffectiveFormules,
+  refreshFormuleOverrides,
   resolveBowlingCapacity,
   todayStr,
 } = require('../lib/booking-config');
@@ -205,6 +207,7 @@ module.exports = async (req, res) => {
   const centerId = String(url.searchParams.get('centerId') || 'libramont');
   try {
     await refreshCenterOverrides(getPool());
+    await refreshFormuleOverrides(getPool());
   } catch (error) {
     // Baseline fichier conservee.
   }
@@ -224,7 +227,9 @@ module.exports = async (req, res) => {
     ok: true,
     today: todayStr(),
     durationOptions: DURATION_OPTIONS,
-    formules: FORMULES,
+    // Formules avec overrides catalogue appliques (prix/nom/retrait) pour ce
+    // centre ; sans override, strictement identique a FORMULES.
+    formules: getEffectiveFormules(centerId),
     laserOptions: LASER_GAME_OPTIONS,
     bowlingPrices: BOWLING_PRICES,
     center: center

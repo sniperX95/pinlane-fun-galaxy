@@ -170,6 +170,11 @@ const MIGRATIONS = [
     file: 'database/client-errors-schema.sql',
     description: "Telemetrie d'erreurs des consoles staff (Plateforme > Incidents): le fondateur voit un bug avant qu'on le lui signale. Caps de taille + regroupement par stack_hash, rate-limit applicatif dans lib/client-errors.",
   },
+  {
+    id: '0034_catalog_overrides',
+    file: 'database/catalog-overrides-schema.sql',
+    description: "Overrides catalogue no-code (formule_overrides) fusionnes par-dessus formulas.json / booking-config (prix, nom, retrait, par centre ou 'all'); + dismiss incidents console (resolved_at/resolved_by sur client_errors). Override vide = comportement identique au fichier.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -284,6 +284,30 @@
     }
   };
 
+  // Ecarter un incident console resolu : action dismissIncident (platform.admin,
+  // tracee). Le groupe (par stack_hash) recoit resolved_at et disparait du
+  // triage ouvert. Sans stackHash, aucun bouton ne mene ici.
+  window.fckDismissIncident = async function (stackHash) {
+    const hash = String(stackHash || '');
+    if (!hash || fck.busy) return;
+    fck.busy = `incident:${hash}`;
+    render();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'dismissIncident', stackHash: hash }),
+      });
+      toast('Incident ecarte.');
+      reloadActive();
+    } catch (error) {
+      toast((error && error.userMessage) || 'L\'incident n\'a pas pu etre ecarte.');
+      fck.busy = '';
+      render();
+    } finally {
+      fck.busy = '';
+    }
+  };
+
   // ---- Petits formateurs ----------------------------------------------------
 
   function when(iso) {
@@ -722,6 +746,7 @@
       centers: toLabelList(g.centers || g.centerIds),
       pages: toLabelList(g.pages || g.urls),
       stack: String(g.stack || g.stackSample || g.sample || ''),
+      stackHash: g.id != null ? String(g.id) : (g.stackHash ? String(g.stackHash) : ''),
     }));
   }
 
@@ -731,10 +756,14 @@
     const rows = groups.map((g) => {
       const fresh = isFresh24h(g.lastAt);
       const open = Boolean(fck.openSections[g.key]);
+      const dismissing = fck.busy === `incident:${g.stackHash}`;
       return `<div class="fck-incident">
         <div class="fck-incident-head">
           <strong class="fck-incident-msg">${esc(g.message)}</strong>
-          ${chip(fresh ? 'red' : '', `${g.count} occurrence${g.count > 1 ? 's' : ''}`)}
+          <div class="fck-incident-head-right">
+            ${chip(fresh ? 'red' : '', `${g.count} occurrence${g.count > 1 ? 's' : ''}`)}
+            ${g.stackHash ? `<button type="button" class="pv2-btn ghost sm" ${fck.busy ? 'disabled' : ''} onclick="fckDismissIncident('${escJs(g.stackHash)}')">${dismissing ? 'En cours…' : 'Ecarter'}</button>` : ''}
+          </div>
         </div>
         <div class="pv2-cell-sub">derniere ${esc(when(g.lastAt))} · centre${g.centers.length > 1 ? 's' : ''} : ${esc(g.centers.join(', ') || 'inconnu')} · page${g.pages.length > 1 ? 's' : ''} : ${esc(g.pages.slice(0, 3).join(', ') || 'inconnue')}</div>
         ${g.stack ? `<details class="fck-stack" ${open ? 'open' : ''} ontoggle="fckToggleSection('${escJs(g.key)}', this.open)">

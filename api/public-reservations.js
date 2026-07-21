@@ -1,8 +1,9 @@
-const { createReservation } = require('../lib/database');
+const { createReservation, getPool } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
+const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
@@ -27,6 +28,10 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
+    // Carte d'overrides catalogue chaude AVANT le calcul du prix (sync) : une
+    // instance serverless fraiche doit facturer le meme prix que celui affiche
+    // par le tunnel (public-booking-meta). Fail-soft : sans base, prix fichier.
+    try { await refreshFormuleOverrides(getPool()); } catch (error) { /* prix fichier */ }
     request = normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
     const ops = await prepareReservationOps(request, 'public');
     if (ops.blockOnlineConfirmation) {

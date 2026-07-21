@@ -114,6 +114,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
+const { buildFounderCatalog, upsertFormuleOverride, resetFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -374,6 +375,13 @@ async function handleGet(req, res, options = {}) {
   }
   if (action === 'founderTeam') {
     sendJson(res, 200, await buildFounderTeam());
+    return;
+  }
+
+  // Catalogue no-code : le socle (formulas.json / booking-config) reste la
+  // verite ; buildFounderCatalog montre base + overrides pour l'editeur.
+  if (action === 'founderCatalog') {
+    sendJson(res, 200, await buildFounderCatalog(getPool()));
     return;
   }
 
@@ -1394,6 +1402,30 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Catalogue no-code : editer/retirer une formule (override par-dessus le
+  // socle), remettre a zero, ou ecarter un incident console resolu. Tout est
+  // gate platform.admin et trace au journal d'audit (dispatcher POST).
+  if (action === 'saveFormuleOverride') {
+    const out = await upsertFormuleOverride(getPool(), {
+      formuleId: body.formuleId,
+      centerId: body.centerId || 'all',
+      patch: body.patch || {},
+    });
+    sendJson(res, 200, { ok: true, action, override: out });
+    return;
+  }
+  if (action === 'resetFormuleOverride') {
+    const out = await resetFormuleOverride(getPool(), { formuleId: body.formuleId, centerId: body.centerId || 'all' });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'dismissIncident') {
+    const actor = actorFromSession(options.session || {});
+    const out = await dismissClientErrorGroup(getPool(), { stackHash: body.stackHash, resolvedBy: actor.actorLabel || actor.actorMemberId || 'fondateur' });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+
   if (action === 'requeueOpsJob') {
     const jobId = Number(body.id);
     if (!Number.isInteger(jobId) || jobId <= 0) throw createHttpError('Identifiant de job invalide.', 400);
@@ -2098,7 +2130,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le

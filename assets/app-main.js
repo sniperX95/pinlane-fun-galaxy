@@ -2147,6 +2147,7 @@ const STAFF_MENU_PAGES = [
   'settings',
   'cockpit',
   'cockpit-centres',
+  'cockpit-tarifs',
   'cockpit-team',
   'cockpit-agents',
   'cockpit-incidents',
@@ -2265,6 +2266,7 @@ const STAFF_PAGE_PERMISSION_MAP = {
   settings: ['settings.manage'],
   cockpit: ['platform.admin'],
   'cockpit-centres': ['platform.admin'],
+  'cockpit-tarifs': ['platform.admin'],
   'cockpit-team': ['platform.admin'],
   'cockpit-agents': ['platform.admin'],
   'cockpit-incidents': ['platform.admin'],
@@ -4181,7 +4183,7 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
-const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-centres', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
 function isStaffCockpitActive() {
   return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }
@@ -11074,6 +11076,8 @@ function renderStaff() {
     // par founder-cockpit.js.
     if (cockpitPage === 'cockpit-centres' && typeof window.renderFounderCentresPage === 'function') {
       window.renderFounderCentresPage(cockpitHost);
+    } else if (cockpitPage === 'cockpit-tarifs' && typeof window.renderFounderTarifsPage === 'function') {
+      window.renderFounderTarifsPage(cockpitHost);
     } else if (cockpitPage === 'cockpit-team' && typeof window.renderFounderTeamPage === 'function') {
       window.renderFounderTeamPage(cockpitHost);
     } else if (typeof renderStaffFounderCockpitPage === 'function') {

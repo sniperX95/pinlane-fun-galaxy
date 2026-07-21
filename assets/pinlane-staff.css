@@ -10946,21 +10946,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* --- 26.4 Modales : verre depoli + bord lumineux + entree ressort ---------- */
 .fca-overlay,
-.fte-overlay {
+.fte-overlay,
+.ftr-overlay {
   backdrop-filter: blur(7px) saturate(1.15);
   -webkit-backdrop-filter: blur(7px) saturate(1.15);
   animation: pl-overlay-in 220ms ease-out;
 }
 @keyframes pl-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 .fca-panel,
-.fte-modal {
+.fte-modal,
+.ftr-panel {
   position: relative;
   box-shadow: var(--shadow-overlay);
   animation: pl-modal-in 340ms var(--ease-out-strong);
 }
 /* Filet de lumiere en tete de modale : un degrade qui capte l'oeil sans crier. */
 .fca-panel::before,
-.fte-modal::before {
+.fte-modal::before,
+.ftr-panel::before {
   content: '';
   position: absolute;
   top: 0;
@@ -11044,4 +11047,267 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   #staffCockpitPage .fck-center-card::after,
   #staffCockpitPage .fte-role-card::after,
   .dir-card::after, .dir-table-card::after, .dir-kpi::after { transition: none !important; }
+}
+
+/* Incident : cote droit de l'en-tete (compteur + bouton Ecarter). */
+#staffCockpitPage .fck-incident-head-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+/* --- 27. Tarifs & formules (ftr-) : editeur catalogue no-code ------------- */
+/* ============================================================================
+   TARIFS ET FORMULES : editeur no-code du catalogue (panneau fondateur).
+   ----------------------------------------------------------------------------
+   Rendu dans #staffCockpitPage (meme hote que founder-cockpit.js /
+   founder-centres.js). Meme langage visuel : monochrome, le SENS seul porte la
+   couleur (ambre = modifie, rouge = retiree), filets 1px var(--line), rayons
+   var(--radius-*), chiffres tabulaires. On reutilise pv2-*/fck- (grille de
+   cartes, chips, boutons, mk-switch) ; les classes ftr- n'ajoutent que le
+   manquant : selecteur de portee, prix affiche, resume d'etapes, et la MODALE.
+   Motion (Emil Kowalski) : transform/opacity, ease-out, jamais ease-in ni
+   scale(0). Etat final immediat sous prefers-reduced-motion.
+   AUCUNE balise <header> cote JS : la regle body.staff-mode header l'ecraserait.
+   ========================================================================== */
+
+/* --- Selecteur de portee dans la barre ------------------------------------ */
+#staffCockpitPage .ftr-scope { display: flex; align-items: center; gap: 8px; }
+#staffCockpitPage .ftr-scope > label { font-size: 11px; color: var(--faint); white-space: nowrap; }
+#staffCockpitPage .ftr-scope-select {
+  height: 32px;
+  min-width: 220px;
+  max-width: 100%;
+  font-size: 12.5px;
+}
+
+/* --- Grille + carte de formule (reutilise .fck-center-card : hover, reflet) - */
+#staffCockpitPage .ftr-grid { align-items: start; }
+#staffCockpitPage .ftr-card { display: flex; flex-direction: column; gap: 8px; }
+#staffCockpitPage .ftr-card-head { align-items: flex-start; gap: 10px; }
+#staffCockpitPage .ftr-card-title { min-width: 0; }
+#staffCockpitPage .ftr-card-title strong { font-weight: 600; letter-spacing: -0.005em; }
+#staffCockpitPage .ftr-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; flex: none; }
+
+/* Formule retiree : la carte se retire du regard sans disparaitre (elle reste
+   editable pour la reactiver). */
+#staffCockpitPage .ftr-card.is-removed { opacity: 0.62; }
+#staffCockpitPage .ftr-card.is-removed .ftr-price-now { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+#staffCockpitPage .ftr-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+#staffCockpitPage .ftr-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Prix : le chiffre courant domine, l'ancien prix barre le suit, gris. */
+#staffCockpitPage .ftr-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 2px 0; }
+#staffCockpitPage .ftr-price-now {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+#staffCockpitPage .ftr-price-old {
+  font-size: 13px;
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  font-variant-numeric: tabular-nums;
+}
+#staffCockpitPage .ftr-price-unit { font-size: 12px; color: var(--muted); }
+
+/* Resume des etapes (activites du socle) : petit, en une ou deux lignes. */
+#staffCockpitPage .ftr-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .ftr-step { display: inline-flex; align-items: center; gap: 5px; }
+#staffCockpitPage .ftr-step-dur { color: var(--faint); font-variant-numeric: tabular-nums; }
+#staffCockpitPage .ftr-step-crit {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--danger);
+}
+#staffCockpitPage .ftr-sep { color: var(--faint); }
+
+#staffCockpitPage .ftr-card-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+#staffCockpitPage .ftr-card-foot > .pv2-btn { width: 100%; }
+
+/* Note d'honnetete : filet neutre, se lit sans hurler (distinct du bandeau
+   ambre .fck-testdata qui signale la donnee de test). */
+#staffCockpitPage .ftr-note {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* --- Modale d'edition ------------------------------------------------------ */
+/* Overlay opacite + panneau translateY(8px)->0. L'animation d'entree ne joue
+   qu'a la PREMIERE apparition (classe is-in posee par le JS), jamais sur un
+   re-rendu partiel du corps ou du pied. */
+#staffCockpitPage .ftr-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 16px 24px;
+  overflow-y: auto;
+  background: var(--backdrop);
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
+}
+#staffCockpitPage .ftr-overlay.is-in { animation: ftr-overlay-in 220ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)); }
+#staffCockpitPage .ftr-panel {
+  position: relative;
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+#staffCockpitPage .ftr-overlay.is-in .ftr-panel { animation: ftr-panel-in 340ms var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)); }
+/* Filet de lumiere en tete de modale : capte l'oeil sans crier (meme geste que
+   .fca-panel::before / .fte-modal::before). */
+#staffCockpitPage .ftr-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    color-mix(in srgb, var(--text) 30%, transparent),
+    transparent);
+  background-size: 220% 100%;
+  animation: ftr-edge-glow 5s ease-in-out infinite;
+}
+@keyframes ftr-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ftr-panel-in { from { opacity: 0; transform: translateY(12px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes ftr-edge-glow { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
+
+#staffCockpitPage .ftr-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+#staffCockpitPage .ftr-modal-head h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+#staffCockpitPage .ftr-modal-head p { margin-top: 3px; font-size: 12px; color: var(--muted); }
+#staffCockpitPage .ftr-close {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#staffCockpitPage .ftr-close:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); color: var(--text); }
+#staffCockpitPage .ftr-close:active { transform: scale(0.97); }
+#staffCockpitPage .ftr-close:disabled { opacity: 0.5; cursor: default; }
+
+#staffCockpitPage .ftr-modal-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+
+#staffCockpitPage .ftr-section { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px 4px; }
+#staffCockpitPage .ftr-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+#staffCockpitPage .ftr-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-bottom: 8px; }
+#staffCockpitPage .ftr-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#staffCockpitPage .ftr-field.ftr-span2 { grid-column: 1 / -1; }
+#staffCockpitPage .ftr-field > label { font-size: 12px; color: var(--muted); }
+#staffCockpitPage .ftr-field input { height: 34px; font-size: 13px; }
+#staffCockpitPage .ftr-hint { font-size: 11px; color: var(--faint); }
+#staffCockpitPage .ftr-field input:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent);
+}
+#staffCockpitPage .ftr-field input:invalid { border-color: var(--danger); }
+
+/* Prix avec suffixe EUR colle a l'interieur du champ. */
+#staffCockpitPage .ftr-price-input { position: relative; display: flex; align-items: center; }
+#staffCockpitPage .ftr-price-input input { width: 100%; padding-right: 44px; }
+#staffCockpitPage .ftr-price-input .ftr-unit {
+  position: absolute;
+  right: 10px;
+  font-size: 11.5px;
+  color: var(--faint);
+  pointer-events: none;
+}
+
+/* Ligne d'interrupteur (retrait) : reutilise mk-switch (deja anime/monochrome). */
+#staffCockpitPage .ftr-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+#staffCockpitPage .ftr-toggle-label { font-size: 12.5px; color: var(--text); }
+#staffCockpitPage .ftr-toggle-sub { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
+
+#staffCockpitPage .ftr-modal-error {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+#staffCockpitPage .ftr-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+#staffCockpitPage .ftr-modal-foot .ftr-foot-note { margin-right: auto; font-size: 11.5px; color: var(--faint); }
+
+#staffCockpitPage .ftr-panel .pv2-btn:active { transform: scale(0.97); }
+
+@media (max-width: 640px) {
+  #staffCockpitPage .ftr-fields { grid-template-columns: 1fr; }
+  #staffCockpitPage .ftr-scope { width: 100%; }
+  #staffCockpitPage .ftr-scope-select { flex: 1; min-width: 0; }
+}
+
+/* Etat final immediat : pas de mouvement pour qui le refuse. */
+@media (prefers-reduced-motion: reduce) {
+  #staffCockpitPage .ftr-overlay.is-in,
+  #staffCockpitPage .ftr-overlay.is-in .ftr-panel,
+  #staffCockpitPage .ftr-panel::before { animation: none !important; }
+  #staffCockpitPage .ftr-close:active,
+  #staffCockpitPage .ftr-panel .pv2-btn:active { transform: none; }
 }

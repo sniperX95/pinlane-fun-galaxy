@@ -123,6 +123,7 @@
       items: [
         { key: 'cockpit', label: 'Cockpit', icon: 'dashboard' },
         { key: 'cockpit-centres', label: 'Centres', icon: 'establishment' },
+        { key: 'cockpit-tarifs', label: 'Tarifs & formules', icon: 'prices' },
         { key: 'cockpit-team', label: 'Équipe & accès', icon: 'users' },
         { key: 'cockpit-agents', label: 'Agents IA', icon: 'campaigns' },
         { key: 'cockpit-incidents', label: 'Incidents', icon: 'sessions' }
@@ -935,7 +936,7 @@
     // admin) : le menu surlignait Cockpit mais l'ecran montrait le poste
     // d'observation. La vue Direction ne s'atteint QUE par le menu compte
     // (action "direction"), jamais par une entree de la barre laterale.
-    if (['cockpit', 'cockpit-centres', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {
+    if (['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {
       setMenuPage(key);
       if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();

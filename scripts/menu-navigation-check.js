@@ -44,6 +44,7 @@ const MIME = {
 const PLATFORM_PAGES = [
   { key: 'cockpit', title: 'Cockpit fondateur' },
   { key: 'cockpit-centres', title: 'Centres' },
+  { key: 'cockpit-tarifs', title: 'Tarifs et formules' },
   { key: 'cockpit-team', title: 'Equipe et acces' },
   { key: 'cockpit-agents', title: 'Agents IA' },
   { key: 'cockpit-incidents', title: 'Incidents' },
@@ -184,6 +185,11 @@ async function installMock(page) {
         ok: true, testData: true,
         resourceModel: { statusValues: ['active', 'planned', 'closed'], resources: {}, defaultSchedule: {} },
         centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', config: { status: 'active', timezone: 'Europe/Brussels', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30 } } }, members: 3, reservations30d: 40, revenue30d: 6000 }],
+      });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderCatalog') return J({
+        ok: true, testData: true,
+        centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont' }],
+        formulas: [{ id: 'f1', name: 'FORMULE 1', family: 'Anniversaire', minPax: 6, price: { value: 26, oldValue: 34 }, steps: [{ activityId: 'bowling', count: 1 }], override: null, perCenter: {} }],
       });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderTeam') return J({
         ok: true, testData: true,
@@ -389,12 +395,12 @@ async function probeCockpitClick(browser) {
     mutationOriginal = original;
     const nl = original.includes('\r\n') ? '\r\n' : '\n';
     const ANCHOR = [
-      "    if (['cockpit', 'cockpit-centres', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('staff');",
     ].join(nl);
     const MUTATED = [
-      "    if (['cockpit', 'cockpit-centres', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('admin');",
     ].join(nl);

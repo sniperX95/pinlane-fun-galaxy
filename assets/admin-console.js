@@ -1826,12 +1826,554 @@ function renderAdminJournalTab() {
   return `<div class="pv2-shell admin-journal-shell">${pv2AuditPanel()}</div>`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POSTE D'OBSERVATION Direction (refonte 2026-07-21, namespace dir-*).
+//
+// Rupture nette avec l'ancienne page (onglets, cockpit, signaux, verifications
+// continues) : rejetee par Movsar. La nouvelle page est un tableau de lecture
+// facon Vercel Analytics : une barre de plage de dates (window.PinlaneDateRange),
+// une rangee de tuiles KPI interactives, un grand graphique focus pilote par la
+// tuile choisie, une grille de graphiques, puis deux tables (formules, clients).
+//
+// SOURCE UNIQUE : GET /api/ops?action=directionAnalytics (le front ne recalcule
+// AUCUNE agregation). La comparaison suit adminRange.compare :
+//   - 'previous' : bloc previous.totals deja renvoye ;
+//   - 'year'     : second fetch decale de -1 an, ses totals servent de reference ;
+//   - 'none'     : pas de reference.
+// Degrade calme partout : librairie absente, host absent, serie vide.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const directionInsightCache = {};
+const directionInsightLoading = {};
+let dirRangeHandle = null;
+let DIR_ENTRANCE_SEEN = false;
+
+// Metrique du grand graphique focus : chaque tuile pointe vers UN champ de serie
+// reellement servi par le serveur (jamais un ratio recalcule cote front). Les
+// tuiles "taux" empruntent la serie de volume qui les porte, le titre le dit.
+const DIR_FOCUS = {
+  reservations: { field: 'count', format: 'int', label: 'Reservations sur la periode' },
+  pax: { field: 'pax', format: 'int', label: 'Joueurs sur la periode' },
+  revenue: { field: 'revenue', format: 'euro', label: "Chiffre d'affaires sur la periode" },
+  avgBasket: { field: 'revenue', format: 'euro', label: "Ticket moyen (base: chiffre d'affaires)" },
+  occupancy: { field: 'count', format: 'int', label: 'Taux de remplissage (base: reservations)' },
+  cancelRate: { field: 'cancelled', format: 'int', label: 'Annulations sur la periode' },
+};
+
+function dirOccupancyRate(analytics) {
+  const rate = analytics && analytics.occupancy ? analytics.occupancy.rate : null;
+  return rate == null ? null : Number(rate);
+}
+
+function dirOccupancyRef(entry) {
+  // La reference n'existe que pour 'annee precedente' (le bloc previous du
+  // serveur ne porte pas d'occupation). Sinon : pas de delta, chip neutre.
+  const year = entry && entry.yearAnalytics ? entry.yearAnalytics : null;
+  return year && year.occupancy ? (year.occupancy.rate == null ? null : Number(year.occupancy.rate)) : null;
+}
+
+// Les six tuiles KPI. cur(totals, analytics) = valeur courante ; ref(refTotals,
+// entry) = valeur de reference (null si aucune) ; spark = champ de serie de la
+// mini-courbe ; invert = un sens croissant est un ECHEC (taux d'annulation).
+const DIR_KPIS = [
+  { key: 'reservations', label: 'Reservations', format: 'int', cur: (t) => t.reservations, ref: (r) => (r ? r.reservations : null), spark: 'count' },
+  { key: 'pax', label: 'Joueurs', format: 'int', cur: (t) => t.pax, ref: (r) => (r ? r.pax : null), spark: 'pax' },
+  { key: 'revenue', label: "Chiffre d'affaires", format: 'euro', cur: (t) => t.revenue, ref: (r) => (r ? r.revenue : null), spark: 'revenue' },
+  { key: 'avgBasket', label: 'Ticket moyen', format: 'euro', cur: (t) => t.avgBasket, ref: (r) => (r ? r.avgBasket : null), spark: 'revenue' },
+  { key: 'occupancy', label: 'Taux de remplissage', format: 'percent', cur: (t, a) => dirOccupancyRate(a), ref: (r, entry) => dirOccupancyRef(entry), spark: 'count' },
+  { key: 'cancelRate', label: "Taux d'annulation", format: 'percent', cur: (t) => t.cancelRate, ref: (r) => (r ? r.cancelRate : null), spark: 'cancelled', invert: true },
+];
+
+function getDirDefaultRange() {
+  const end = todayStr();
+  return { start: addDays(end, -29), end, granularity: 'day', compare: 'previous' };
+}
+
+function getDirRange() {
+  const r = state.adminRange;
+  if (r && r.start && r.end) {
+    return {
+      start: r.start,
+      end: r.end,
+      granularity: ['day', 'week', 'month'].includes(r.granularity) ? r.granularity : 'day',
+      compare: ['none', 'previous', 'year'].includes(r.compare) ? r.compare : 'previous',
+    };
+  }
+  return getDirDefaultRange();
+}
+
+function getDirFocusMetric() {
+  return DIR_FOCUS[state.adminFocusMetric] ? state.adminFocusMetric : 'revenue';
+}
+
+function dirShiftYear(dateStr) {
+  const d = parseLocalDate(dateStr);
+  d.setFullYear(d.getFullYear() - 1);
+  return toLocalDateStr(d);
+}
+
+function dirFormatValue(value, format) {
+  const n = Math.round(Number(value) || 0);
+  if (format === 'euro') return formatMoney(n);
+  if (format === 'percent') return formatAdminPercent(n);
+  return new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(n);
+}
+
+function dirRangeText(range = getDirRange()) {
+  const fmt = (value) => parseLocalDate(value).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${fmt(range.start)} → ${fmt(range.end)}`;
+}
+
+function dirGranularityLabel(granularity) {
+  return { day: 'Par jour', week: 'Par semaine', month: 'Par mois' }[granularity] || 'Par jour';
+}
+
+function dirUnitWord(granularity) {
+  return { day: 'jour', week: 'semaine', month: 'mois' }[granularity] || 'jour';
+}
+
+function dirCompareLabel(compare) {
+  return { none: 'sans comparaison', previous: 'vs periode precedente', year: 'vs annee precedente' }[compare] || 'sans comparaison';
+}
+
+function getDirReferenceTotals(entry, compare) {
+  if (!entry) return null;
+  if (compare === 'previous') return (entry.previous && entry.previous.totals) || null;
+  if (compare === 'year') return (entry.yearAnalytics && entry.yearAnalytics.totals) || null;
+  return null;
+}
+
+// Chip de delta honnete : difference EXACTE des totals serveur (jamais un
+// pourcentage sur base 0 : "nouvelle activite" a la place). Le sens porte la
+// couleur (vert = reussite, rouge = echec) : pour un taux d'annulation (invert),
+// une baisse est une reussite.
+function buildDirDeltaChip(curVal, refVal, format, compare, invert) {
+  if (compare === 'none' || refVal === null || refVal === undefined) {
+    return '<span class="dir-chip dir-chip-mute">sur la periode</span>';
+  }
+  const cur = Number(curVal) || 0;
+  const ref = Number(refVal) || 0;
+  const dirDiff = cur - ref;
+  const refLabel = compare === 'year' ? 'vs annee precedente' : 'vs periode precedente';
+  const mag = (value) => {
+    const av = Math.abs(value);
+    if (format === 'euro') return formatMoney(av);
+    if (format === 'percent') return formatAdminPercent(av);
+    return new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(Math.round(av));
+  };
+  if (ref === 0 && cur > 0) {
+    return `<span class="dir-chip ${invert ? 'dir-chip-down' : 'dir-chip-up'}">▲ +${mag(dirDiff)} : nouvelle activite</span>`;
+  }
+  if (ref === 0 && cur === 0) {
+    return '<span class="dir-chip dir-chip-flat">= aucune activite</span>';
+  }
+  if (Math.round(dirDiff * 100) / 100 === 0) {
+    return `<span class="dir-chip dir-chip-flat">= stable ${refLabel}</span>`;
+  }
+  const up = dirDiff > 0;
+  const arrow = up ? '▲' : '▼';
+  const sign = up ? '+' : '-';
+  const good = invert ? !up : up;
+  const pct = Math.round((Math.abs(dirDiff) / Math.abs(ref)) * 100);
+  return `<span class="dir-chip ${good ? 'dir-chip-up' : 'dir-chip-down'}">${arrow} ${sign}${mag(dirDiff)} (${sign}${pct}%) ${refLabel}</span>`;
+}
+
+// Serie de metrique suivant la granularite : day -> daily, week -> weekly,
+// month -> monthly. Forme { date, value } pour lineChart, { label, value } pour
+// barChart (asLabels). Aucune agregation : lecture directe du champ serveur.
+function dirMetricSeries(analytics, granularity, field, asLabels) {
+  if (!analytics) return [];
+  if (granularity === 'month') {
+    return (analytics.monthly || []).map((row) => ({ label: String(row.month || ''), value: Number(row[field]) || 0 }));
+  }
+  if (granularity === 'week') {
+    return (analytics.weekly || []).map((row) => ({ label: String(row.label || row.weekStart || ''), value: Number(row[field]) || 0 }));
+  }
+  const dirDays = analytics.daily || [];
+  return dirDays.map((row) => (asLabels
+    ? { label: dirDayLabel(row.date), value: Number(row[field]) || 0 }
+    : { date: row.date, value: Number(row[field]) || 0 }));
+}
+
+function dirDayLabel(dateStr) {
+  return parseLocalDate(dateStr).toLocaleDateString('fr-BE', { day: '2-digit', month: 'short' });
+}
+
+function dirLoadingHtml() {
+  return '<div class="dir-note dir-note-loading">Chargement de l\'analytique de la periode...</div>';
+}
+
+function dirNoteHtml(text) {
+  return `<div class="dir-note">${escapeHtml(text)}</div>`;
+}
+
+function dirKpisHtml(entry) {
+  const analytics = entry.analytics;
+  const totals = analytics.totals || {};
+  const compare = getDirRange().compare;
+  const ref = getDirReferenceTotals(entry, compare);
+  const activeFocus = getDirFocusMetric();
+  const tiles = DIR_KPIS.map((kpi) => {
+    const cur = kpi.cur(totals, analytics);
+    const refVal = kpi.ref ? kpi.ref(ref, entry) : null;
+    const chip = buildDirDeltaChip(cur, refVal, kpi.format, compare, kpi.invert);
+    const active = kpi.key === activeFocus;
+    return `<button type="button" class="dir-kpi${active ? ' is-active' : ''}" data-metric="${kpi.key}" data-focus="${kpi.key}" aria-pressed="${active ? 'true' : 'false'}" onclick="setDirFocusMetric('${kpi.key}')">
+      <span class="dir-kpi-label">${escapeHtml(kpi.label)}</span>
+      <span class="dir-kpi-value" id="dirKpiVal-${kpi.key}">${escapeHtml(dirFormatValue(cur == null ? 0 : cur, kpi.format))}</span>
+      <span class="dir-kpi-delta">${chip}</span>
+      <span class="dir-kpi-spark" id="dirKpiSpark-${kpi.key}" aria-hidden="true"></span>
+    </button>`;
+  }).join('');
+  return `<div class="dir-kpis" id="dirKpis" role="group" aria-label="Indicateurs cles de la periode">${tiles}</div>`;
+}
+
+function dirFocusHtml() {
+  const focus = getDirFocusMetric();
+  const cfg = DIR_FOCUS[focus];
+  const range = getDirRange();
+  const sub = `${dirRangeText(range)} · ${dirGranularityLabel(range.granularity).toLowerCase()}`;
+  return `<section class="dir-focus" aria-label="Graphique principal">
+    <div class="dir-focus-head">
+      <h2 class="dir-focus-title">${escapeHtml(cfg.label)}</h2>
+      <p class="dir-focus-sub" id="dirFocusSub">${escapeHtml(sub)}</p>
+    </div>
+    <div class="dir-focus-chart" id="dirFocusChart"></div>
+  </section>`;
+}
+
+function dirGridHtml(range = getDirRange()) {
+  const unit = dirUnitWord(range.granularity);
+  return `<div class="dir-grid">
+    <article class="dir-card"><h3 class="dir-card-title">Reservations par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartResas"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Joueurs par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartPax"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Repartition par activite</h3><div class="dir-chart" id="dirChartTypes"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Canaux de reservation</h3><div class="dir-chart" id="dirChartChannels"></div></article>
+    <article class="dir-card dir-card-wide"><h3 class="dir-card-title">Affluence par jour et heure</h3><div class="dir-chart" id="dirChartHeatmap"></div></article>
+  </div>`;
+}
+
+function dirTablesHtml(entry) {
+  const analytics = entry.analytics;
+  const formules = (analytics.byFormule || []).slice().sort((a, b) => (Number(b.revenue) || 0) - (Number(a.revenue) || 0));
+  const totalFormuleRevenue = formules.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
+  const clients = ((analytics.clients && analytics.clients.top) || analytics.topClients || []).slice().sort((a, b) => (Number(b.revenue) || 0) - (Number(a.revenue) || 0)).slice(0, 10);
+
+  const formuleRows = formules.length
+    ? formules.slice(0, 10).map((row) => {
+        const share = totalFormuleRevenue ? Math.round(((Number(row.revenue) || 0) / totalFormuleRevenue) * 100) : 0;
+        return `<tr>
+          <td>${escapeHtml(row.label || row.id || 'Formule')}</td>
+          <td class="dir-num">${Number(row.count) || 0}</td>
+          <td class="dir-num">${escapeHtml(formatMoney(row.revenue))}</td>
+          <td class="dir-num">${share}%</td>
+        </tr>`;
+      }).join('')
+    : '';
+
+  const clientRows = clients.length
+    ? clients.map((row) => {
+        const favorite = ADMIN_TREND_TYPE_LABELS[row.favorite] || row.favorite || '';
+        const contact = row.phone || row.email || '';
+        return `<tr>
+          <td><span class="dir-client-name">${escapeHtml(row.name || 'Client')}</span>${contact ? `<span class="dir-client-contact">${escapeHtml(contact)}</span>` : ''}</td>
+          <td class="dir-num">${Number(row.visits) || 0}</td>
+          <td class="dir-num">${escapeHtml(formatMoney(row.revenue))}</td>
+          <td>${escapeHtml(favorite)}</td>
+        </tr>`;
+      }).join('')
+    : '';
+
+  return `<div class="dir-tables">
+    <section class="dir-table-card" aria-label="Top formules">
+      <h3 class="dir-card-title">Top formules</h3>
+      ${formuleRows
+        ? `<table class="dir-table"><thead><tr><th>Formule</th><th class="dir-num">Resas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${formuleRows}</tbody></table>`
+        : '<div class="dir-note">Aucune formule reservee sur cette periode.</div>'}
+    </section>
+    <section class="dir-table-card" aria-label="Top clients">
+      <h3 class="dir-card-title">Top clients</h3>
+      ${clientRows
+        ? `<table class="dir-table"><thead><tr><th>Client</th><th class="dir-num">Visites</th><th class="dir-num">CA</th><th>Activite favorite</th></tr></thead><tbody>${clientRows}</tbody></table>`
+        : '<div class="dir-note">Aucun client identifie sur cette periode.</div>'}
+    </section>
+  </div>`;
+}
+
+function renderDirectionShell() {
+  const range = getDirRange();
+  return `<section class="dir-root" id="dirRoot">
+    <div class="dir-controls" id="dirControls">
+      <div class="dir-range-mount" id="dirRangeHost"></div>
+      <div class="dir-window" id="dirWindowLabel">
+        <span class="dir-window-range">${escapeHtml(dirRangeText(range))}</span>
+        <span class="dir-window-meta">${escapeHtml(`${dirGranularityLabel(range.granularity)} · ${dirCompareLabel(range.compare)}`)}</span>
+      </div>
+    </div>
+    <div class="dir-body" id="dirBody">${dirLoadingHtml()}</div>
+  </section>`;
+}
+
+function updateDirWindowLabel() {
+  const range = getDirRange();
+  const host = document.getElementById('dirWindowLabel');
+  if (!host) return;
+  const rangeEl = host.querySelector('.dir-window-range');
+  const metaEl = host.querySelector('.dir-window-meta');
+  if (rangeEl) rangeEl.textContent = dirRangeText(range);
+  if (metaEl) metaEl.textContent = `${dirGranularityLabel(range.granularity)} · ${dirCompareLabel(range.compare)}`;
+}
+
+function onDirRangeChange(next) {
+  if (!next || !next.start || !next.end) return;
+  // start <= end <= maxDate est garanti par le composant : on ne re-normalise
+  // que le vocabulaire (granularite/compare) pour rester dans le contrat.
+  state.adminRange = {
+    start: next.start,
+    end: next.end,
+    granularity: ['day', 'week', 'month'].includes(next.granularity) ? next.granularity : 'day',
+    compare: ['none', 'previous', 'year'].includes(next.compare) ? next.compare : 'none',
+  };
+  save();
+  updateDirWindowLabel();
+  loadDirectionInsights(false);
+}
+
+function mountDirRangeControl() {
+  const host = document.getElementById('dirRangeHost');
+  if (!host) return;
+  if (dirRangeHandle && typeof dirRangeHandle.destroy === 'function') {
+    try { dirRangeHandle.destroy(); } catch (error) { /* handle deja detache */ }
+  }
+  dirRangeHandle = null;
+  const range = getDirRange();
+  const daterange = typeof window !== 'undefined' ? window.PinlaneDateRange : null;
+  if (!daterange || typeof daterange.mount !== 'function') {
+    // Degrade calme : la periode reste lisible dans le libelle de fenetre.
+    host.innerHTML = '<div class="dir-range-fallback">Selecteur de periode indisponible pour le moment. La periode active reste affichee a droite.</div>';
+    return;
+  }
+  dirRangeHandle = daterange.mount(host, {
+    value: { start: range.start, end: range.end, granularity: range.granularity, compare: range.compare },
+    maxDate: todayStr(),
+    onChange: onDirRangeChange,
+  });
+}
+
+function dirPlayEntrance() {
+  const root = document.getElementById('dirRoot');
+  if (!root || DIR_ENTRANCE_SEEN) return;
+  DIR_ENTRANCE_SEEN = true;
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return;
+  root.classList.add('dir-enter-init');
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    root.classList.remove('dir-enter-init');
+    root.classList.add('dir-enter-active');
+  }));
+}
+
+function mountDirection() {
+  if (!state.adminRange || !state.adminRange.start) {
+    state.adminRange = getDirDefaultRange();
+    save();
+  }
+  updateDirWindowLabel();
+  mountDirRangeControl();
+  dirPlayEntrance();
+  loadDirectionInsights(false);
+}
+
+// Cle par (centre, fenetre), SANS le mode de comparaison : le bloc previous est
+// toujours servi avec l'analytique, donc basculer none/precedente ne coute AUCUN
+// fetch. Seule 'annee precedente' demande un second appel (fenetre decalee),
+// mis en cache sur la meme entree. Changer la fenetre (dates) = un fetch.
+function dirInsightKey(centerId, range) {
+  const cid = centerId || state.adminCenterId || 'libramont';
+  const win = range || getDirRange();
+  return `${cid}|${win.start}|${win.end}`;
+}
+
+async function loadDirectionInsights(force) {
+  const centerId = state.adminCenterId || 'libramont';
+  const range = getDirRange();
+  const key = dirInsightKey(centerId, range);
+  const existing = directionInsightCache[key];
+  const needYear = range.compare === 'year';
+  const haveBase = Boolean(existing && existing.loaded && existing.analytics);
+  const haveYear = !needYear || Boolean(existing && existing.yearAnalytics);
+  if (!force && haveBase && haveYear) {
+    renderDirectionBody();
+    mountDirectionCharts();
+    return;
+  }
+  if (directionInsightLoading[key]) return;
+  directionInsightLoading[key] = true;
+  // Squelette de chargement seulement quand rien n'est encore a l'ecran : un
+  // rafraichissement garde la donnee precedente jusqu'a l'arrivee de la neuve.
+  if (!existing) renderDirectionBody();
+  try {
+    let analytics = existing && !force ? existing.analytics : null;
+    let previous = existing && !force ? existing.previous : null;
+    if (!analytics || force) {
+      const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=directionAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`);
+      analytics = payload.analytics || null;
+      previous = payload.previous || null;
+    }
+    let yearAnalytics = existing && !force ? existing.yearAnalytics : null;
+    if (needYear && !yearAnalytics) {
+      const ys = dirShiftYear(range.start);
+      const ye = dirShiftYear(range.end);
+      const yearPayload = await apiRequest(`${API_ENDPOINTS.ops}?action=directionAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(ys)}&endDate=${encodeURIComponent(ye)}`);
+      yearAnalytics = yearPayload.analytics || null;
+    }
+    directionInsightCache[key] = { loaded: true, error: '', analytics, previous, yearAnalytics };
+  } catch (error) {
+    directionInsightCache[key] = { loaded: false, error: error.message || 'Analytique indisponible.', analytics: null, previous: null, yearAnalytics: null };
+  } finally {
+    directionInsightLoading[key] = false;
+  }
+  if (state.view === 'admin' && dirInsightKey() === key) {
+    renderDirectionBody();
+    mountDirectionCharts();
+  }
+}
+
+function renderDirectionBody() {
+  const body = document.getElementById('dirBody');
+  if (!body) return;
+  const entry = directionInsightCache[dirInsightKey()];
+  if (!entry) { body.innerHTML = dirLoadingHtml(); return; }
+  if (entry.error) { body.innerHTML = dirNoteHtml('Analytique momentanement indisponible. Elle reviendra au prochain rafraichissement.'); return; }
+  if (!entry.analytics) { body.innerHTML = dirNoteHtml('Pas encore de donnees sur cette periode.'); return; }
+  body.innerHTML = dirKpisHtml(entry) + dirFocusHtml() + dirGridHtml() + dirTablesHtml(entry);
+}
+
+function dirCharts() {
+  return typeof window !== 'undefined' ? window.PinlaneCharts : null;
+}
+
+function mountDirFocusChart(entry) {
+  const host = document.getElementById('dirFocusChart');
+  if (!host) return;
+  const charts = dirCharts();
+  if (!charts || typeof charts.lineChart !== 'function') { host.textContent = 'Graphique indisponible pour le moment.'; return; }
+  const range = getDirRange();
+  const focus = getDirFocusMetric();
+  const cfg = DIR_FOCUS[focus];
+  charts.lineChart(host, {
+    series: dirMetricSeries(entry.analytics, range.granularity, cfg.field),
+    format: cfg.format,
+    height: 300,
+    motionKey: `dir|focus|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|${range.granularity}|${focus}`,
+  });
+}
+
+function mountDirectionCharts() {
+  const entry = directionInsightCache[dirInsightKey()];
+  if (!entry || !entry.analytics) return;
+  const analytics = entry.analytics;
+  const range = getDirRange();
+  const charts = dirCharts();
+  const motionBase = `dir|${state.adminCenterId || 'libramont'}|${range.start}|${range.end}|${range.granularity}`;
+
+  // Valeurs KPI (countUp) + mini-sparklines : degrade calme sans librairie.
+  DIR_KPIS.forEach((kpi) => {
+    const valueEl = document.getElementById(`dirKpiVal-${kpi.key}`);
+    const cur = kpi.cur(analytics.totals || {}, analytics);
+    if (valueEl) {
+      if (charts && typeof charts.countUp === 'function') charts.countUp(valueEl, cur == null ? 0 : cur, { format: kpi.format });
+      else valueEl.textContent = dirFormatValue(cur == null ? 0 : cur, kpi.format);
+    }
+    const sparkEl = document.getElementById(`dirKpiSpark-${kpi.key}`);
+    if (sparkEl && charts && typeof charts.lineChart === 'function') {
+      charts.lineChart(sparkEl, {
+        series: dirMetricSeries(analytics, range.granularity, kpi.spark),
+        format: kpi.format === 'euro' ? 'euro' : 'int',
+        height: 120,
+        motionKey: `${motionBase}|spark|${kpi.key}`,
+      });
+    }
+  });
+
+  mountDirFocusChart(entry);
+
+  if (charts && typeof charts.barChart === 'function') {
+    charts.barChart(document.getElementById('dirChartResas'), {
+      series: dirMetricSeries(analytics, range.granularity, 'count', true),
+      format: 'int',
+      motionKey: `${motionBase}|resas`,
+    });
+    charts.barChart(document.getElementById('dirChartChannels'), {
+      series: (analytics.byChannel || []).map((row) => ({ label: ADMIN_TREND_CHANNEL_LABELS[row.channel] || String(row.channel || 'autre'), value: Number(row.count) || 0 })),
+      format: 'int',
+      motionKey: `${motionBase}|channels`,
+    });
+  }
+  if (charts && typeof charts.lineChart === 'function') {
+    charts.lineChart(document.getElementById('dirChartPax'), {
+      series: dirMetricSeries(analytics, range.granularity, 'pax'),
+      format: 'int',
+      motionKey: `${motionBase}|pax`,
+    });
+  }
+  if (charts && typeof charts.donutChart === 'function') {
+    charts.donutChart(document.getElementById('dirChartTypes'), {
+      parts: Object.entries(analytics.byType || {}).map(([type, row]) => ({ label: ADMIN_TREND_TYPE_LABELS[type] || type, value: Number(row && row.revenue) || 0 })),
+      format: 'euro',
+      motionKey: `${motionBase}|types`,
+    });
+  }
+  if (charts && typeof charts.heatmapChart === 'function') {
+    const model = buildAdminHeatmapModel(analytics.heatmap);
+    charts.heatmapChart(document.getElementById('dirChartHeatmap'), {
+      matrix: model.matrix,
+      rowLabels: model.rowLabels,
+      colLabels: model.colLabels,
+      motionKey: `${motionBase}|heatmap`,
+    });
+  }
+}
+
+// Interaction coeur : cliquer une tuile choisit la metrique du grand graphique.
+// On ne re-anime pas toute la page (les KPI restent) : mise a jour ciblee des
+// tuiles actives, du titre focus, et remontage du seul graphique focus.
+function setDirFocusMetric(metric) {
+  if (!DIR_FOCUS[metric]) return;
+  state.adminFocusMetric = metric;
+  save();
+  const tiles = document.querySelectorAll('#dirKpis .dir-kpi');
+  tiles.forEach((tile) => {
+    const on = tile.getAttribute('data-focus') === metric;
+    tile.classList.toggle('is-active', on);
+    tile.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const entry = directionInsightCache[dirInsightKey()];
+  if (!entry || !entry.analytics) return;
+  const cfg = DIR_FOCUS[metric];
+  const titleEl = document.querySelector('.dir-focus-title');
+  if (titleEl) titleEl.textContent = cfg.label;
+  mountDirFocusChart(entry);
+}
+
 function renderAdminDashboard() {
   state.adminTab = normalizeAdminTab(state.adminTab);
   renderAdminHeader();
   const content = document.getElementById('adminContent');
   if (!content) return;
   markAdminTabMount(content);
+  // POSTE D'OBSERVATION (refonte dir-*) : route par defaut, montee AVANT les
+  // gardes de chargement du cache periode. Sa donnee vient de directionAnalytics
+  // (loadDirectionInsights), independante de adminDashboardCache : la page
+  // s'affiche tout de suite et charge son analytique en propre. Les anciens
+  // panneaux (Synthese/Signaux/Verifications/Cockpit/Tendances) ne sont plus
+  // rendus. Les routes ci-dessous restent pour les acces hors barre d'onglets
+  // (relance -> Mails, deep-link) tant que l'integrateur n'a pas retire la barre.
+  if (state.adminTab === 'overview') {
+    content.innerHTML = renderDirectionShell();
+    mountDirection();
+    return;
+  }
   // Le Journal ne dépend pas du snapshot période : il se rend même pendant un
   // chargement, comme Données et Mails.
   if (state.adminTab === 'journal') {
@@ -2275,6 +2817,31 @@ function startAdminHealthAutoRefresh() {
     buildAdminHeatmapModel,
     mountAdminDataCharts,
     renderAdminOverview,
+    // POSTE D'OBSERVATION Direction (dir-*)
+    getDirDefaultRange,
+    getDirRange,
+    getDirFocusMetric,
+    dirShiftYear,
+    dirFormatValue,
+    dirRangeText,
+    getDirReferenceTotals,
+    buildDirDeltaChip,
+    dirMetricSeries,
+    dirKpisHtml,
+    dirFocusHtml,
+    dirGridHtml,
+    dirTablesHtml,
+    renderDirectionShell,
+    updateDirWindowLabel,
+    onDirRangeChange,
+    mountDirRangeControl,
+    mountDirection,
+    dirInsightKey,
+    loadDirectionInsights,
+    renderDirectionBody,
+    mountDirFocusChart,
+    mountDirectionCharts,
+    setDirFocusMetric,
     renderAdminReservationsTable,
     isAdminPlatformOwner,
     normalizeAdminTab,
@@ -2292,6 +2859,18 @@ function startAdminHealthAutoRefresh() {
     setAdminPeriod,
     setAdminTab,
     setOpsTab,
+  };
+  // Surface de debug/test du poste d'observation : lecture de l'etat courant et
+  // rejeu deterministe du chemin onChange (utile aux harnais, quel que soit le
+  // composant de plage monte).
+  global.PinlaneDirection = {
+    getRange: getDirRange,
+    getFocusMetric: getDirFocusMetric,
+    getInsightKey: dirInsightKey,
+    loadInsights: loadDirectionInsights,
+    applyRange: onDirRangeChange,
+    setFocusMetric: setDirFocusMetric,
+    cache: directionInsightCache,
   };
   startAdminHealthAutoRefresh();
 })(typeof window !== 'undefined' ? window : globalThis);

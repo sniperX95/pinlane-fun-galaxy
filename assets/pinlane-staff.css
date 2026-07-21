@@ -10158,3 +10158,198 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 @media (max-width: 700px) {
   .adm-trend-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+   24. DIRECTION : poste d'observation analytics (namespace dir-)
+   ----------------------------------------------------------------------------
+   Refonte totale de la categorie Direction : une seule page, analytics-first,
+   facon Vercel Analytics / Linear Insights. Rupture visuelle nette avec les
+   anciens admin-panel/admin-kpi (supprimes du rendu). Aere, calme, la
+   hierarchie vient de la taille et de la graisse, la couleur ne dit que le
+   sens (vert = hausse/reussi, rouge = baisse, le reste monochrome). Le moteur
+   window.PinlaneCharts (classes plc-) dessine, window.PinlaneDateRange (pdr-)
+   choisit la fenetre. ======================================================= */
+.dir-root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* Entree : la page monte une fois, discretement, translateY + opacity. */
+.dir-enter-init { opacity: 0; transform: translateY(8px); }
+.dir-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 320ms cubic-bezier(0.23, 1, 0.32, 1), transform 320ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dir-enter-init { opacity: 1; transform: none; }
+  .dir-enter-active { transition: none; }
+}
+
+/* --- Barre de controle : la plage de dates a gauche, la fenetre active a
+   droite, toujours lisible meme si le composant tombe. --- */
+.dir-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+}
+.dir-range-mount { min-width: 0; }
+.dir-window {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+.dir-window-range { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.dir-window-meta { font-size: 12px; color: var(--faint); }
+.dir-range-fallback { font-size: 13px; color: var(--muted); }
+
+.dir-note {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.dir-note-loading { color: var(--faint); }
+
+/* --- Rangee de KPI : tuiles cliquables, chacune pilote le grand graphique.
+   Grand chiffre en Geist Mono, delta en chip, sparkline en pied. --- */
+.dir-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(184px, 1fr));
+  gap: 12px;
+}
+.dir-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 160ms ease-out, transform 160ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 160ms ease-out;
+}
+@media (hover: hover) {
+  .dir-kpi:hover { border-color: var(--line-strong); }
+}
+.dir-kpi:active { transform: scale(0.99); }
+/* Tuile active = celle qui alimente le grand graphique : anneau discret, pas
+   de couleur de marque, juste un filet renforce et un fond a peine teinte. */
+.dir-kpi.is-active {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+.dir-kpi-label { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.dir-kpi-value {
+  font-family: var(--font-data);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.dir-kpi-delta { min-height: 20px; }
+.dir-kpi-spark { display: block; height: 40px; margin-top: 2px; }
+.dir-kpi-spark:empty { min-height: 40px; }
+
+/* --- Chips de delta : le sens porte la couleur, jamais la decoration. --- */
+.dir-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--subtle);
+}
+.dir-chip-up {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 32%, var(--line));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+}
+.dir-chip-down {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--line));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+.dir-chip-flat, .dir-chip-mute { color: var(--muted); }
+
+/* --- Grand graphique focus : la metrique choisie, pleine largeur. --- */
+.dir-focus {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 18px 20px 20px;
+}
+.dir-focus-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.dir-focus-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.dir-focus-sub { margin: 0; font-size: 12.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.dir-focus-chart { min-height: 300px; }
+
+/* --- Grille de graphiques secondaires. --- */
+.dir-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.dir-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 16px 18px 18px;
+  min-width: 0;
+}
+.dir-card-wide { grid-column: 1 / -1; }
+.dir-card-title { margin: 0 0 12px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.dir-chart { min-height: 180px; }
+.dir-chart:empty { min-height: 180px; }
+
+/* --- Tables (voir : top formules, top clients). --- */
+.dir-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+.dir-table-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 16px 18px 8px;
+  min-width: 0;
+}
+.dir-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dir-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--faint);
+  font-size: 12px;
+  padding: 6px 10px 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.dir-table td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); color: var(--text); vertical-align: top; }
+.dir-table tbody tr:last-child td { border-bottom: 0; }
+.dir-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dir-table th.dir-num { text-align: right; }
+.dir-client-name { display: block; font-weight: 500; }
+.dir-client-contact { display: block; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 860px) {
+  .dir-grid { grid-template-columns: 1fr; }
+  .dir-controls { flex-direction: column; align-items: stretch; }
+  .dir-window { align-items: flex-start; text-align: left; }
+}

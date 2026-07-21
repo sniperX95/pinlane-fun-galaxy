@@ -1,0 +1,315 @@
+/* ==========================================================================
+   Pinlane Date Range (classes pdr-) : styles et motion du selecteur de plage
+   window.PinlaneDateRange (assets/pinlane-daterange.js). Barre facon Vercel
+   Analytics : pilule Plage de dates, pilule granularite, toggle Comparer.
+   Discipline console :
+   - monochrome, le SENS seul porte la couleur : ici tout est neutre (aucune
+     hausse/baisse a exprimer), donc uniquement --text / --muted / --faint et
+     surfaces ; AUCUNE couleur en dur, light et dark via les tokens ;
+   - motion (Emil Kowalski) : transform / opacity uniquement, ease-out
+     cubic-bezier(0.23, 1, 0.32, 1), jamais ease-in, jamais scale(0). Popover
+     origine au declencheur (transform-origin), 180ms, scale(0.97)->1 + opacity ;
+     boutons :active scale(0.97) 160ms ;
+   - prefers-reduced-motion : etat final immediat, aucune transition.
+   Mecanique du popover : le JS injecte le panneau avec .pdr-anim (etat initial :
+   opacity 0, scale 0.97), puis pose .pdr-in en double requestAnimationFrame
+   pour declencher la transition. Fermeture : le panneau est retire du DOM.
+   ========================================================================== */
+
+.pdr-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.pdr-group {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- Pilules et toggle --------------------------------------------------- */
+
+.pdr-pill,
+.pdr-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pdr-pill:hover,
+.pdr-toggle:hover {
+  background: var(--subtle);
+  border-color: var(--faint);
+}
+
+.pdr-pill:active,
+.pdr-toggle:active {
+  transform: scale(0.97);
+}
+
+.pdr-pill:focus-visible,
+.pdr-toggle:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.pdr-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pdr-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--line);
+  flex: none;
+}
+
+.pdr-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pdr-caret {
+  color: var(--faint);
+  flex: none;
+}
+
+/* ---- Toggle Comparer (interrupteur) -------------------------------------- */
+
+.pdr-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  flex: none;
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pdr-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pdr-compare-toggle[aria-pressed="true"] .pdr-switch {
+  background: var(--text);
+}
+
+.pdr-compare-toggle[aria-pressed="true"] .pdr-switch-knob {
+  transform: translateX(12px);
+}
+
+.pdr-compare-extra {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.pdr-compare-extra[hidden] {
+  display: none;
+}
+
+/* ---- Popover / menu ------------------------------------------------------ */
+
+.pdr-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+}
+
+.pdr-panel {
+  transform-origin: top left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.pdr-panel.pdr-anim {
+  opacity: 0;
+  transform: scale(0.97);
+  transition:
+    opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pdr-panel.pdr-anim.pdr-in {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ---- Menu simple (granularite, comparaison) ------------------------------ */
+
+.pdr-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  min-width: 168px;
+}
+
+.pdr-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pdr-item:hover {
+  background: var(--subtle);
+}
+
+.pdr-item[aria-checked="true"] {
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  font-weight: 600;
+}
+
+.pdr-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+/* ---- Popover Plage : presets + champs personnalises ---------------------- */
+
+.pdr-range-panel {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  min-width: 328px;
+}
+
+.pdr-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 152px;
+}
+
+.pdr-preset {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pdr-preset:hover {
+  background: var(--subtle);
+}
+
+.pdr-preset[aria-current="true"] {
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  font-weight: 600;
+}
+
+.pdr-preset:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+.pdr-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  min-width: 150px;
+}
+
+.pdr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pdr-date {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color-scheme: light dark;
+}
+
+.pdr-date:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text);
+}
+
+/* ---- Reduced motion : etat final immediat, zero transition --------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .pdr-pill,
+  .pdr-toggle,
+  .pdr-switch,
+  .pdr-switch-knob,
+  .pdr-item,
+  .pdr-preset {
+    transition: none !important;
+  }
+  .pdr-pill:active,
+  .pdr-toggle:active {
+    transform: none;
+  }
+  .pdr-panel.pdr-anim {
+    transition: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}

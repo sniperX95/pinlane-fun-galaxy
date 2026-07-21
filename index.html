@@ -9,8 +9,9 @@
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260720a">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260721b">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260721c">
 <link rel="stylesheet" href="./assets/pinlane-charts.css?v=20260721a">
+<link rel="stylesheet" href="./assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="./assets/pinlane-client.css?v=20260720a">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
@@ -23,6 +24,7 @@
 <script defer src="./assets/staff-menu.js?v=20260721a"></script>
 <script defer src="./assets/staff-pages-v2.js?v=20260720e"></script>
 <script defer src="./assets/pinlane-charts.js?v=20260721a"></script>
+<script defer src="./assets/pinlane-daterange.js?v=20260721a"></script>
 <script defer src="./assets/founder-cockpit.js?v=20260721b"></script>
 <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
 </head>
@@ -584,15 +586,6 @@
           </div>
         </div>
         <div class="admin-actions">
-          <div class="admin-date-nav">
-            <button onclick="shiftAdminDate(-1)" aria-label="Jour précédent">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-            </button>
-            <input id="adminDateInput" type="date" onchange="setAdminDate(this.value)">
-            <button onclick="shiftAdminDate(1)" aria-label="Jour suivant">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-          </div>
           <button class="admin-btn" onclick="loadAdminDashboard(true)">Actualiser</button>
           <button class="admin-btn" onclick="exportAdminExcel()">Excel compta</button>
           <button class="admin-btn primary" onclick="exportAdminReport()">Rapport direction</button>
@@ -602,23 +595,6 @@
       <div id="adminHonestyNote"></div>
 
       <div class="admin-center-grid" id="adminCenterGrid"></div>
-
-      <div class="admin-period-tabs">
-        <button id="adminPeriodDay" onclick="setAdminPeriod('day')">Jour</button>
-        <button id="adminPeriodWeek" onclick="setAdminPeriod('week')">Semaine</button>
-        <button id="adminPeriodMonth" onclick="setAdminPeriod('month')">Mois</button>
-        <button id="adminPeriodYear" onclick="setAdminPeriod('year')">Année</button>
-      </div>
-
-      <div class="admin-tabs">
-        <button id="adminTabOverview" onclick="setAdminTab('overview')">Vue période</button>
-        <button id="adminTabData" onclick="setAdminTab('data')">Données</button>
-        <button id="adminTabMail" onclick="setAdminTab('mail')">Mails</button>
-        <button id="adminTabReservations" onclick="setAdminTab('reservations')">Réservations</button>
-        <button id="adminTabOps" onclick="setAdminTab('ops')">Activité</button>
-        <button id="adminTabJournal" onclick="setAdminTab('journal')">Journal</button>
-        <button id="adminTabExports" onclick="setAdminTab('exports')">Exports</button>
-      </div>
 
       <div id="adminContent"></div>
     </div>

@@ -162,13 +162,14 @@ Contraste ≥ 4.5:1 (texte) et 3:1 (UI) dans les **deux** thèmes · focus visib
 
 ## 8. Architecture CSS
 
-5 fichiers, ordre de chargement fixe, aucune autre feuille autorisée :
+6 fichiers, ordre de chargement fixe, aucune autre feuille autorisée :
 
 | Fichier | Rôle | Pages |
 |---|---|---|
 | `assets/pinlane.css` | @font-face, tokens light/dark, reset, base, composants (§6) | toutes |
 | `assets/pinlane-staff.css` | console staff + admin (sidebar, dashboard, planning, pages pv2, groupes) | index.html |
 | `assets/pinlane-charts.css` | moteur de graphiques `window.PinlaneCharts` (classes `plc-`, ne consomme que les tokens) | index.html |
+| `assets/pinlane-daterange.css` | sélecteur de plage de dates `window.PinlaneDateRange` (classes `pdr-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-client.css` | parcours résa client + public-form + direction.html | index.html, public-form.html, direction.html |
 | `assets/pinlane-landing.css` | landing marketing (reconstruite sur les tokens) | pro.html |
 

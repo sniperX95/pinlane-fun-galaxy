@@ -10844,3 +10844,204 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   #staffCockpitPage .fte-shell .mk-switch:active:not(:disabled) { transform: none; }
   #staffCockpitPage .fte-shell .mk-switch span { transition: none; }
 }
+
+/* ============================================================================
+   26. FINITION PREMIUM : reflets animes, hovers ressort, modales glass
+   ----------------------------------------------------------------------------
+   Qualite Vercel / Linear / Figma. Effets GPU uniquement (transform / opacity /
+   filter), coupes proprement sous prefers-reduced-motion. Scope au panneau
+   fondateur (#staffCockpitPage) et aux cartes de la Direction (dir-) : le
+   reste de l'app garde sa sobriete. Le "reflet qui bouge" est une bande de
+   lumiere diagonale qui balaie une carte au survol, et un sheen ambiant tres
+   lent sur les barres de titre. ============================================ */
+
+/* --- 26.1 Barre de titre : sheen ambiant lent (la lumiere respire) --------- */
+#staffCockpitPage .pv2-bar {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+#staffCockpitPage .pv2-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(115deg,
+    transparent 42%,
+    color-mix(in srgb, var(--text) 5%, transparent) 48%,
+    color-mix(in srgb, var(--text) 8%, transparent) 50%,
+    color-mix(in srgb, var(--text) 5%, transparent) 52%,
+    transparent 58%);
+  transform: translateX(-35%);
+  animation: pl-hero-sheen 11s ease-in-out infinite;
+}
+@keyframes pl-hero-sheen {
+  0%, 100% { transform: translateX(-35%); }
+  50% { transform: translateX(35%); }
+}
+
+/* --- 26.2 Cartes : elevation ressort + reflet qui balaie au survol --------- */
+#staffCockpitPage .fck-center-card,
+#staffCockpitPage .fte-role-card,
+.dir-card,
+.dir-table-card,
+.dir-focus,
+.dir-kpi {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 280ms var(--ease-out-strong),
+    border-color 200ms ease-out,
+    box-shadow 280ms var(--ease-out-strong);
+}
+/* La bande de lumiere : cachee hors carte, revele et traverse au survol. */
+#staffCockpitPage .fck-center-card::after,
+#staffCockpitPage .fte-role-card::after,
+.dir-card::after,
+.dir-table-card::after,
+.dir-kpi::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(105deg,
+    transparent,
+    color-mix(in srgb, var(--text) 9%, transparent),
+    transparent);
+  transform: translateX(-140%) skewX(-14deg);
+}
+@media (hover: hover) {
+  #staffCockpitPage .fck-center-card:hover,
+  #staffCockpitPage .fte-role-card:hover,
+  .dir-card:hover,
+  .dir-table-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-overlay);
+  }
+  .dir-kpi:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+  #staffCockpitPage .fck-center-card:hover::after,
+  #staffCockpitPage .fte-role-card:hover::after,
+  .dir-card:hover::after,
+  .dir-table-card:hover::after,
+  .dir-kpi:hover::after {
+    opacity: 1;
+    transform: translateX(260%) skewX(-14deg);
+    transition: transform 760ms var(--ease-out-strong), opacity 760ms ease-out;
+  }
+}
+
+/* --- 26.3 Boutons : pression tactile + halo au survol ---------------------- */
+#staffCockpitPage .pv2-btn,
+.dir-focus .pv2-btn {
+  transition: transform 150ms var(--ease-out-strong), opacity 150ms ease-out, background-image 150ms ease-out, border-color 150ms ease-out;
+}
+#staffCockpitPage .pv2-btn:active { transform: scale(0.97); }
+#staffCockpitPage .pv2-btn.primary:hover { opacity: 1; box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 40%, transparent), 0 6px 18px color-mix(in srgb, var(--text) 22%, transparent); }
+
+/* --- 26.4 Modales : verre depoli + bord lumineux + entree ressort ---------- */
+.fca-overlay,
+.fte-overlay {
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
+  animation: pl-overlay-in 220ms ease-out;
+}
+@keyframes pl-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+.fca-panel,
+.fte-modal {
+  position: relative;
+  box-shadow: var(--shadow-overlay);
+  animation: pl-modal-in 340ms var(--ease-out-strong);
+}
+/* Filet de lumiere en tete de modale : un degrade qui capte l'oeil sans crier. */
+.fca-panel::before,
+.fte-modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    color-mix(in srgb, var(--text) 30%, transparent),
+    transparent);
+  background-size: 220% 100%;
+  animation: pl-edge-glow 5s ease-in-out infinite;
+}
+@keyframes pl-modal-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pl-edge-glow {
+  0%, 100% { background-position: 100% 0; }
+  50% { background-position: 0 0; }
+}
+
+/* --- 26.5 Entree de menu active : accent anime (le fil qui vit) ------------ */
+.ops-sidebar .fgx-menu-item.is-active,
+.ops-sidebar .fgx-menu-subitem.is-active {
+  position: relative;
+}
+.ops-sidebar .fgx-menu-item.is-active::before,
+.ops-sidebar .fgx-menu-subitem.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 70%, transparent),
+    color-mix(in srgb, var(--text) 45%, transparent),
+    color-mix(in srgb, var(--accent) 70%, transparent));
+  background-size: 100% 220%;
+  animation: pl-rail-glow 4.5s ease-in-out infinite;
+}
+@keyframes pl-rail-glow {
+  0%, 100% { background-position: 0 100%; }
+  50% { background-position: 0 0; }
+}
+
+/* --- 26.6 Shimmer : squelette de chargement premium (utilitaire) ----------- */
+.pl-shimmer {
+  background: linear-gradient(90deg,
+    var(--subtle) 25%,
+    color-mix(in srgb, var(--text) 7%, var(--subtle)) 37%,
+    var(--subtle) 63%);
+  background-size: 400% 100%;
+  animation: pl-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes pl-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* --- 26.7 Respect absolu de prefers-reduced-motion ------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  #staffCockpitPage .pv2-bar::after,
+  .fca-panel::before,
+  .fte-modal::before,
+  .ops-sidebar .fgx-menu-item.is-active::before,
+  .ops-sidebar .fgx-menu-subitem.is-active::before,
+  .pl-shimmer,
+  .fca-overlay,
+  .fte-overlay,
+  .fca-panel,
+  .fte-modal { animation: none !important; }
+  #staffCockpitPage .fck-center-card,
+  #staffCockpitPage .fte-role-card,
+  .dir-card, .dir-table-card, .dir-focus, .dir-kpi,
+  #staffCockpitPage .fck-center-card::after,
+  #staffCockpitPage .fte-role-card::after,
+  .dir-card::after, .dir-table-card::after, .dir-kpi::after { transition: none !important; }
+}

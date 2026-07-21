@@ -255,6 +255,35 @@
     }
   };
 
+  // Arbitrage d'une idee de l'agent depuis la page Agents IA : action EXISTANTE
+  // insightStatus (gate campaigns.manage + marketing.agents, portee par le role
+  // verrouille platform-owner, deja tracee au journal). Le serveur n'accepte que
+  // 'applied' ou 'ignored' et coerce l'id en Number : sans id numerique, aucun
+  // bouton ne mene ici (voir collectActionableInsights).
+  window.fckInsightAction = async function (id, status) {
+    const numId = Number(id);
+    if (!Number.isFinite(numId) || numId <= 0) return; // pas d'id exploitable, pas d'action
+    if (status !== 'applied' && status !== 'ignored') return; // hors contrat serveur
+    const busyKey = `insight:${numId}:${status}`;
+    if (fck.busy) return;
+    fck.busy = busyKey;
+    render();
+    try {
+      await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'insightStatus', id: numId, status }),
+      });
+      toast(status === 'applied' ? 'Idee appliquee.' : 'Idee ignoree.');
+      reloadActive();
+    } catch (error) {
+      toast((error && error.userMessage) || 'L\'action n\'a pas ete enregistree.');
+      fck.busy = '';
+      render();
+    } finally {
+      fck.busy = '';
+    }
+  };
+
   // ---- Petits formateurs ----------------------------------------------------
 
   function when(iso) {
@@ -598,9 +627,68 @@
     );
   }
 
+  // Idees de l'agent encore en attente d'arbitrage, remontees comme items
+  // ACTIONNABLES : chacune doit porter un id numerique (insightStatus le coerce
+  // en Number et scope au centre), sinon pas de bouton. Le bundle founderAgents
+  // actuel n'expose que des agregats (agents.marketing.byStatus est un compte
+  // par statut, pas des lignes) : tant qu'il ne joint pas les lignes en attente
+  // (ex. `insights: [...]` issu de listMarketingInsights status 'pending'),
+  // cette liste reste vide et aucun bouton n'apparait. On ne fabrique rien.
+  function collectActionableInsights(d) {
+    const out = [];
+    const consider = (list) => {
+      if (!Array.isArray(list)) return;
+      list.forEach((raw) => {
+        if (!raw || typeof raw !== 'object') return;
+        const numId = Number(raw.id);
+        if (!Number.isFinite(numId) || numId <= 0) return; // sans id, pas d'action
+        if (String(raw.status || '') !== 'pending') return;
+        out.push({
+          id: numId,
+          title: raw.title || raw.label || raw.message || raw.kind || '(sans titre)',
+          centerId: raw.centerId || raw.center_id || '',
+          kind: raw.kind || '',
+          proposedAt: raw.proposedAt || raw.proposed_at || raw.createdAt || raw.created_at || null,
+        });
+      });
+    };
+    const ins = d.insights;
+    consider(Array.isArray(ins) ? ins : (ins && (ins.rows || ins.items)));
+    consider(d.pendingInsights);
+    return out;
+  }
+
+  function renderPendingInsights(d) {
+    const items = collectActionableInsights(d);
+    if (!items.length) return ''; // pas d'item porteur d'id : aucun panneau, aucun bouton
+    const rows = items.map((it) => {
+      const busyApplied = `insight:${it.id}:applied`;
+      const busyIgnored = `insight:${it.id}:ignored`;
+      const itemBusy = fck.busy === busyApplied || fck.busy === busyIgnored;
+      return `<tr>
+        <td>${esc(it.title)}<div class="pv2-cell-sub">${esc(it.centerId || 'centre inconnu')}${it.kind ? ` · ${esc(it.kind)}` : ''}${it.proposedAt ? ` · ${esc(when(it.proposedAt))}` : ''}</div></td>
+        <td>${chip('amber', 'en attente')}</td>
+        <td class="fck-row-action">
+          <button type="button" class="pv2-btn ghost" ${itemBusy ? 'disabled' : ''} onclick="fckInsightAction(${it.id}, 'applied')">${fck.busy === busyApplied ? 'En cours…' : 'Appliquer'}</button>
+          <button type="button" class="pv2-btn ghost" ${itemBusy ? 'disabled' : ''} onclick="fckInsightAction(${it.id}, 'ignored')">${fck.busy === busyIgnored ? 'En cours…' : 'Ignorer'}</button>
+        </td>
+      </tr>`;
+    }).join('');
+    return panel(
+      'Idees en attente de decision',
+      'Les idees de l\'agent qui attendent un arbitrage. Appliquer ou ignorer : chaque geste passe par insightStatus et part au journal.',
+      `<table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`,
+      '', 'data-fck-panel="agents-insights"',
+    );
+  }
+
+  // Note plans : la page Agents IA ne porte PAS d'action sur les plans. Le
+  // bundle (loadMarketingPlanRows) ne selectionne aucun id, et propositionAction
+  // agit sur des propositions marketing (marketing-brief), pas sur marketing_plans.
+  // Aucun des deux bouts ne permet un bouton honnete : on n'en fabrique pas.
   function renderAgentsPage(st) {
     const d = st.data || {};
-    return renderAgentCards(d) + renderAgentsCost(d.cost);
+    return renderAgentCards(d) + renderPendingInsights(d) + renderAgentsCost(d.cost);
   }
 
   // Les graphiques se montent APRES l'innerHTML, sur les hotes marques.

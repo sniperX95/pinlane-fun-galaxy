@@ -175,6 +175,11 @@ const MIGRATIONS = [
     file: 'database/catalog-overrides-schema.sql',
     description: "Overrides catalogue no-code (formule_overrides) fusionnes par-dessus formulas.json / booking-config (prix, nom, retrait, par centre ou 'all'); + dismiss incidents console (resolved_at/resolved_by sur client_errors). Override vide = comportement identique au fichier.",
   },
+  {
+    id: '0035_clients',
+    file: 'database/clients-schema.sql',
+    description: "Couche CLIENT (locataire Pinlane) au-dessus des centres : table clients + centers.client_id. Les 3 centres existants rattaches a un client 'fungalaxy' seed (comportement inchange). Base du provisioning cle en main cote proprietaire.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

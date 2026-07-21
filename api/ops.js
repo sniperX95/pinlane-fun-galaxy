@@ -115,6 +115,7 @@ const { requireStaffPermission } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, upsertFormuleOverride, resetFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
+const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient } = require('../lib/platform-clients');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -382,6 +383,13 @@ async function handleGet(req, res, options = {}) {
   // verite ; buildFounderCatalog montre base + overrides pour l'editeur.
   if (action === 'founderCatalog') {
     sendJson(res, 200, await buildFounderCatalog(getPool()));
+    return;
+  }
+
+  // Vue PROPRIETAIRE : les clients (entreprises) de Pinlane avec leurs centres.
+  // C'est le niveau au-dessus des centres, propre au proprietaire (pas au client).
+  if (action === 'platformClients') {
+    sendJson(res, 200, await buildPlatformClients());
     return;
   }
 
@@ -1402,6 +1410,34 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Proprietaire Pinlane : provisionner un client CLE EN MAIN (client + centre
+  // + roles + codes uniques), ajouter un centre a un client, changer le statut.
+  // Les codes d'acces retournes ne sont montres qu'UNE fois (a remettre au
+  // client). Gate platform.admin, trace au journal.
+  if (action === 'createClient') {
+    const out = await provisionClient(getPool(), {
+      id: body.id,
+      name: body.name,
+      status: body.status,
+      plan: body.plan,
+      contactEmail: body.contactEmail,
+      contactPhone: body.contactPhone,
+      center: body.center || null,
+    });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'addClientCenter') {
+    const out = await addCenterToClient(getPool(), { clientId: body.clientId, center: body.center || {} });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'updateClientStatus') {
+    const out = await updateClientStatus(getPool(), { id: body.id, status: body.status });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+
   // Catalogue no-code : editer/retirer une formule (override par-dessus le
   // socle), remettre a zero, ou ecarter un incident console resolu. Tout est
   // gate platform.admin et trace au journal d'audit (dispatcher POST).
@@ -2130,7 +2166,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le

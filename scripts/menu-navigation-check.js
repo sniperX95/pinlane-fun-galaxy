@@ -42,6 +42,7 @@ const MIME = {
 //  - cockpit-incidents -> PAGE_META.title 'Incidents'
 //  - cockpit-clients -> PAGE_META.title 'Clients'
 const PLATFORM_PAGES = [
+  { key: 'cockpit-clients-platform', title: 'Clients Pinlane' },
   { key: 'cockpit', title: 'Cockpit fondateur' },
   { key: 'cockpit-centres', title: 'Centres' },
   { key: 'cockpit-tarifs', title: 'Tarifs et formules' },
@@ -185,6 +186,11 @@ async function installMock(page) {
         ok: true, testData: true,
         resourceModel: { statusValues: ['active', 'planned', 'closed'], resources: {}, defaultSchedule: {} },
         centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', config: { status: 'active', timezone: 'Europe/Brussels', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30 } } }, members: 3, reservations30d: 40, revenue30d: 6000 }],
+      });
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'platformClients') return J({
+        ok: true, testData: true,
+        clients: [{ id: 'fungalaxy', name: 'Fun Galaxy', status: 'active', plan: 'standard', contactEmail: '', contactPhone: '', notes: '', createdAt: new Date().toISOString(), centers: [{ id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', staff: 4 }], centerCount: 1, staffCount: 4 }],
+        orphanCenters: [],
       });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'founderCatalog') return J({
         ok: true, testData: true,
@@ -395,12 +401,12 @@ async function probeCockpitClick(browser) {
     mutationOriginal = original;
     const nl = original.includes('\r\n') ? '\r\n' : '\n';
     const ANCHOR = [
-      "    if (['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('staff');",
     ].join(nl);
     const MUTATED = [
-      "    if (['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('admin');",
     ].join(nl);

@@ -10947,7 +10947,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* --- 26.4 Modales : verre depoli + bord lumineux + entree ressort ---------- */
 .fca-overlay,
 .fte-overlay,
-.ftr-overlay {
+.ftr-overlay,
+.fcp-overlay {
   backdrop-filter: blur(7px) saturate(1.15);
   -webkit-backdrop-filter: blur(7px) saturate(1.15);
   animation: pl-overlay-in 220ms ease-out;
@@ -10955,7 +10956,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 @keyframes pl-overlay-in { from { opacity: 0; } to { opacity: 1; } }
 .fca-panel,
 .fte-modal,
-.ftr-panel {
+.ftr-panel,
+.fcp-panel {
   position: relative;
   box-shadow: var(--shadow-overlay);
   animation: pl-modal-in 340ms var(--ease-out-strong);
@@ -10963,7 +10965,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* Filet de lumiere en tete de modale : un degrade qui capte l'oeil sans crier. */
 .fca-panel::before,
 .fte-modal::before,
-.ftr-panel::before {
+.ftr-panel::before,
+.fcp-panel::before {
   content: '';
   position: absolute;
   top: 0;
@@ -11310,4 +11313,309 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   #staffCockpitPage .ftr-panel::before { animation: none !important; }
   #staffCockpitPage .ftr-close:active,
   #staffCockpitPage .ftr-panel .pv2-btn:active { transform: none; }
+}
+
+/* --- 28. Clients Pinlane (fcp-) : gestion proprietaire des locataires ------ */
+/* ============================================================================
+   CLIENTS PLATEFORME (platform.admin) : l'outil du PROPRIETAIRE de Pinlane pour
+   gerer ses ENTREPRISES clientes. Rendu par assets/founder-clients-platform.js,
+   monte dans #staffCockpitPage. Meme langage visuel que founder-centres.js :
+   monochrome, le SENS seul porte la couleur (vert actif, bleu essai, ambre
+   suspendu, rouge parti), filets 1px var(--line), rayons var(--radius-*),
+   chiffres tabulaires var(--font-data). Classes propres prefixees fcp- ; on
+   reutilise pv2-*, fck-* et .mk-switch deja definis dans pinlane-staff.css.
+   Motion : transform/opacity, ease-out, animation d'entree UNIQUEMENT a la
+   premiere apparition (classe is-in posee par le JS). Tout est scope sous
+   #staffCockpitPage pour ne rien changer aux pages cockpit voisines.
+   ========================================================================== */
+
+#staffCockpitPage .fcp-shell { display: flex; flex-direction: column; gap: 14px; }
+
+/* Note d'honnetete en tete : neutre, filet 1px, se lit sans hurler. */
+#staffCockpitPage .fcp-note {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-left-color: var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Grille de clients : cartes larges (plan/contact/centres). */
+#staffCockpitPage .fcp-client-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+
+#staffCockpitPage .fcp-client-card { display: flex; flex-direction: column; gap: 10px; }
+#staffCockpitPage .fcp-client-card .fck-card-head { margin-bottom: 0; }
+
+/* Ligne meta : plan, email, telephone. Le plan porte un leger relief. */
+#staffCockpitPage .fcp-client-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+#staffCockpitPage .fcp-client-meta .fcp-sep { color: var(--faint); }
+#staffCockpitPage .fcp-meta-plan {
+  font-weight: 600;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  padding: 1px 9px;
+  font-size: 11.5px;
+}
+
+/* Les deux compteurs (centres / effectif) reutilisent .fca-metrics ; on cadre
+   juste a deux colonnes ici. */
+#staffCockpitPage .fcp-metrics { grid-template-columns: 1fr 1fr; }
+
+/* Liste des centres du client. */
+#staffCockpitPage .fcp-centers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+#staffCockpitPage .fcp-centers-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+#staffCockpitPage .fcp-centers-empty { margin: 0; font-size: 12.5px; }
+#staffCockpitPage .fcp-center-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+}
+#staffCockpitPage .fcp-center-row:first-of-type { border-top: 0; }
+#staffCockpitPage .fcp-center-name { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+#staffCockpitPage .fcp-center-tail { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+#staffCockpitPage .fcp-center-staff { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Pied de carte : selecteur de statut + bouton "Ajouter un centre". */
+#staffCockpitPage .fcp-card-foot {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fcp-status-pick { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+#staffCockpitPage .fcp-status-lab { font-size: 11px; color: var(--faint); }
+#staffCockpitPage .fcp-status-select {
+  height: 34px;
+  width: 100%;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+#staffCockpitPage .fcp-status-select:hover:not(:disabled) { border-color: var(--line-strong); }
+#staffCockpitPage .fcp-status-select:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent); }
+#staffCockpitPage .fcp-status-select:disabled { opacity: 0.6; cursor: default; }
+#staffCockpitPage .fcp-card-foot > .pv2-btn { flex: none; white-space: nowrap; }
+
+/* Section centres orphelins : meme filet, discret. */
+#staffCockpitPage .fcp-orphans .fcp-centers { border-top: 0; padding-top: 0; }
+
+/* ============================================================================
+   MODALE : creation client / ajout de centre, puis "acces crees". Overlay
+   opacite + panneau translateY(8px)->0, uniquement a la PREMIERE apparition
+   (classe is-in). Le head/corps/pied se rafraichissent en place, jamais le
+   panneau : l'animation ne rejoue pas entre l'etape formulaire et l'etape codes.
+   ========================================================================== */
+#staffCockpitPage .fcp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 16px 24px;
+  overflow-y: auto;
+  background: var(--backdrop);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+#staffCockpitPage .fcp-overlay.is-in { animation: fcp-overlay-in var(--dur-enter, 240ms) var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)); }
+#staffCockpitPage .fcp-panel {
+  width: min(560px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+#staffCockpitPage .fcp-overlay.is-in .fcp-panel { animation: fcp-panel-in var(--dur-enter, 240ms) var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)); }
+@keyframes fcp-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fcp-panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+#staffCockpitPage .fcp-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+#staffCockpitPage .fcp-modal-head h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.005em; }
+#staffCockpitPage .fcp-modal-head p { margin-top: 3px; font-size: 12px; color: var(--muted); }
+#staffCockpitPage .fcp-close {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+#staffCockpitPage .fcp-close:hover:not(:disabled) { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); color: var(--text); }
+#staffCockpitPage .fcp-close:active:not(:disabled) { transform: scale(0.97); }
+#staffCockpitPage .fcp-close:disabled { opacity: 0.5; cursor: default; }
+
+#staffCockpitPage .fcp-modal-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+
+#staffCockpitPage .fcp-section { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 12px 12px 4px; }
+#staffCockpitPage .fcp-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+#staffCockpitPage .fcp-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-bottom: 8px; }
+#staffCockpitPage .fcp-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#staffCockpitPage .fcp-field.fcp-span2 { grid-column: 1 / -1; }
+#staffCockpitPage .fcp-field > label { font-size: 12px; color: var(--muted); }
+#staffCockpitPage .fcp-field input,
+#staffCockpitPage .fcp-field select { height: 34px; font-size: 13px; }
+#staffCockpitPage .fcp-hint { font-size: 11px; color: var(--faint); }
+#staffCockpitPage .fcp-field input:focus,
+#staffCockpitPage .fcp-field select:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent); }
+#staffCockpitPage .fcp-field input:invalid { border-color: var(--danger); }
+
+#staffCockpitPage .fcp-modal-error {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+/* --- Etape "acces crees" : l'avertissement fort, puis les codes en clair. --- */
+#staffCockpitPage .fcp-codes-warn {
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+#staffCockpitPage .fcp-codes-warn strong { display: block; color: var(--text); margin-bottom: 2px; }
+
+#staffCockpitPage .fcp-codes { display: flex; flex-direction: column; gap: 8px; }
+#staffCockpitPage .fcp-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+/* Le code Direction est celui qu'on remet au client : filet renforce, un anneau
+   discret, jamais une couleur de marque criarde. */
+#staffCockpitPage .fcp-code-row.is-primary {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+#staffCockpitPage .fcp-code-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#staffCockpitPage .fcp-code-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+#staffCockpitPage .fcp-code-tag {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  padding: 0 8px;
+}
+#staffCockpitPage .fcp-code-value {
+  font-family: var(--font-data);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+#staffCockpitPage .fcp-code-missing { font-family: inherit; font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--faint); }
+#staffCockpitPage .fcp-code-copy { flex: none; height: var(--h-sm, 32px); padding: 0 12px; font-size: 12px; }
+#staffCockpitPage .fcp-code-copy.is-copied { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--line)); }
+
+#staffCockpitPage .fcp-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+}
+#staffCockpitPage .fcp-modal-foot .fcp-foot-note { margin-right: auto; font-size: 11.5px; color: var(--faint); }
+#staffCockpitPage .fcp-panel .pv2-btn:active:not(:disabled) { transform: scale(0.97); }
+
+@media (max-width: 640px) {
+  #staffCockpitPage .fcp-client-grid { grid-template-columns: 1fr; }
+  #staffCockpitPage .fcp-fields { grid-template-columns: 1fr; }
+  #staffCockpitPage .fcp-card-foot { flex-direction: column; align-items: stretch; }
+  #staffCockpitPage .fcp-card-foot > .pv2-btn { width: 100%; }
+  #staffCockpitPage .fcp-code-row { flex-direction: column; align-items: stretch; }
+  #staffCockpitPage .fcp-code-copy { width: 100%; }
+}
+
+/* Etat final immediat pour qui refuse le mouvement. */
+@media (prefers-reduced-motion: reduce) {
+  #staffCockpitPage .fcp-overlay.is-in,
+  #staffCockpitPage .fcp-overlay.is-in .fcp-panel { animation: none; }
+  #staffCockpitPage .fcp-close:active:not(:disabled),
+  #staffCockpitPage .fcp-panel .pv2-btn:active:not(:disabled) { transform: none; }
 }

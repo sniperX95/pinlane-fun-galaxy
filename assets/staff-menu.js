@@ -121,6 +121,7 @@
       // du DOM pour tous les autres ; le serveur reste l'autorité).
       title: 'Plateforme',
       items: [
+        { key: 'cockpit-clients-platform', label: 'Clients Pinlane', icon: 'clients' },
         { key: 'cockpit', label: 'Cockpit', icon: 'dashboard' },
         { key: 'cockpit-centres', label: 'Centres', icon: 'establishment' },
         { key: 'cockpit-tarifs', label: 'Tarifs & formules', icon: 'prices' },
@@ -936,7 +937,7 @@
     // admin) : le menu surlignait Cockpit mais l'ecran montrait le poste
     // d'observation. La vue Direction ne s'atteint QUE par le menu compte
     // (action "direction"), jamais par une entree de la barre laterale.
-    if (['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {
+    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {
       setMenuPage(key);
       if (typeof setView === 'function') setView('staff');
       if (typeof renderStaff === 'function') renderStaff();

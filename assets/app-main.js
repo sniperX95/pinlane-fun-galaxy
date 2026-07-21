@@ -2146,6 +2146,7 @@ const STAFF_MENU_PAGES = [
   'users',
   'settings',
   'cockpit',
+  'cockpit-clients-platform',
   'cockpit-centres',
   'cockpit-tarifs',
   'cockpit-team',
@@ -2265,6 +2266,7 @@ const STAFF_PAGE_PERMISSION_MAP = {
   users: ['users.manage'],
   settings: ['settings.manage'],
   cockpit: ['platform.admin'],
+  'cockpit-clients-platform': ['platform.admin'],
   'cockpit-centres': ['platform.admin'],
   'cockpit-tarifs': ['platform.admin'],
   'cockpit-team': ['platform.admin'],
@@ -4183,7 +4185,7 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
-const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
 function isStaffCockpitActive() {
   return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }
@@ -11074,7 +11076,9 @@ function renderStaff() {
     // Les surfaces de GESTION (Centres, Equipe) sont des modules dedies ; les
     // pages d'observation (cockpit, agents, incidents, clients) restent servies
     // par founder-cockpit.js.
-    if (cockpitPage === 'cockpit-centres' && typeof window.renderFounderCentresPage === 'function') {
+    if (cockpitPage === 'cockpit-clients-platform' && typeof window.renderPlatformClientsPage === 'function') {
+      window.renderPlatformClientsPage(cockpitHost);
+    } else if (cockpitPage === 'cockpit-centres' && typeof window.renderFounderCentresPage === 'function') {
       window.renderFounderCentresPage(cockpitHost);
     } else if (cockpitPage === 'cockpit-tarifs' && typeof window.renderFounderTarifsPage === 'function') {
       window.renderFounderTarifsPage(cockpitHost);

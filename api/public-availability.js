@@ -29,6 +29,13 @@ const {
   getFormulaAnchorModel,
 } = require('../lib/ops-engine');
 const { getCenter, getFormula, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const {
+  isCenterClosedAt,
+  isActivityBlockedAt,
+  isFormulaBlockedOn,
+  isFormulaFullyBlockedOn,
+  isLaneBlockedAt,
+} = require('../lib/availability-blocks');
 
 const LASER_ARENA_MINUTES = 25;
 // Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
@@ -179,11 +186,17 @@ function centerLaneBound(centerId) {
   }
 }
 
-function getFreeCount(reservations, laneStatuses, startTime, duration, laneCount = TOTAL_LANES) {
+function getFreeCount(reservations, laneStatuses, startTime, duration, laneCount = TOTAL_LANES, blocks = [], dateISO = '') {
   const occupied = getOccupiedLanes(reservations, startTime, duration);
+  const startMin = Math.round(timeToNum(startTime) * 60);
+  const endMin = startMin + Math.round(Number(duration || 0) * 60);
   let count = 0;
   for (let lane = 1; lane <= laneCount; lane += 1) {
-    if (!occupied.has(lane) && laneStatuses[lane] !== 'maintenance') {
+    // Une piste bloquee (scope 'lane') sur la fenetre ne compte pas comme libre,
+    // comme la maintenance. Sans blocage la liste est vide : compte inchange.
+    if (!occupied.has(lane)
+      && laneStatuses[lane] !== 'maintenance'
+      && !isLaneBlockedAt(blocks, dateISO, lane, startMin, endMin)) {
       count += 1;
     }
   }
@@ -207,7 +220,7 @@ function toFormulaSlot(scenario, snapshot, duration) {
   return {
     time: scenario.startTime,
     lanes: scenario.assignedLanes || [],
-    freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, laneStart, laneDuration, centerLaneBound(snapshot.centerId)),
+    freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, laneStart, laneDuration, centerLaneBound(snapshot.centerId), snapshot.blocks || [], snapshot.date || ''),
     opsPlan: {
       startTime: scenario.startTime,
       endTime: scenario.endTime,
@@ -300,6 +313,11 @@ function slotPassesFinalGuards(slot, context) {
       },
       context.snapshot.reservations || [],
       context.snapshot.laneStatuses || {},
+      // Blocages resolus a la date : la garde finale retire les creneaux dont le
+      // centre est ferme, la piste/l'activite/la formule est bloquee. Sans
+      // blocage (liste vide) la garde est strictement identique a aujourd'hui.
+      context.snapshot.blocks || [],
+      context.date || context.snapshot.date || '',
     );
     return true;
   } catch (error) {
@@ -480,6 +498,26 @@ module.exports = async (req, res) => {
     }
 
     const snapshot = await readAvailabilitySnapshot(date, centerId);
+    // Formule bloquee TOUTE la journee (scope 'formula', jour entier) : message
+    // clair et aucun creneau, comme un refus de getFormuleAvailability. Un blocage
+    // de PLAGE horaire ne coupe pas ici : ses creneaux sont retires par la garde
+    // finale (validateReservationResources), au slot pres. Sans blocage : rien.
+    if (type === 'formule' && isFormulaFullyBlockedOn(snapshot.blocks || [], date, formuleId)) {
+      sendJson(res, 200, {
+        ok: true,
+        date,
+        ...scheduleMeta,
+        slots: [],
+        laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
+        duration: getFormuleLaneDuration(formule),
+        totalDuration: getFormuleTotalDuration(formule),
+        price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),
+        requiresLanes: reservationNeedsLanes(type, formuleId),
+        label: formule.name,
+        message: 'Formule indisponible ce jour.',
+      });
+      return;
+    }
     const laserOption = getLaserOptionFromRequest(url, requestedDuration);
     const duration = type === 'formule' ? getFormuleLaneDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
     const totalDuration = type === 'formule' ? getFormuleTotalDuration(formule) : type === 'laser' ? laserOption.value : requestedDuration;
@@ -502,6 +540,7 @@ module.exports = async (req, res) => {
       const engineContext = {
         reservations: snapshot.reservations,
         laneStatuses: snapshot.laneStatuses,
+        blocks: snapshot.blocks || [],
       };
       // Modèle « Ancres + Liberté » : la dispo est exposée PAR ANCRE
       // (bowling/laser : heures :00/:30 vérifiées indépendamment) + une
@@ -605,6 +644,7 @@ module.exports = async (req, res) => {
             candidatesByActivity,
             reservations: snapshot.reservations,
             laneStatuses: snapshot.laneStatuses,
+            blocks: snapshot.blocks || [],
             firstStart,
           });
           if (!anchorTimes) return;
@@ -617,6 +657,7 @@ module.exports = async (req, res) => {
             laserPlacement: 'scheduled',
             reservations: snapshot.reservations,
             laneStatuses: snapshot.laneStatuses,
+            blocks: snapshot.blocks || [],
           });
           if (combo.ok) defaultSlots.push(toFormulaSlot(combo.scenario, snapshot, duration));
         });
@@ -658,6 +699,7 @@ module.exports = async (req, res) => {
           {
             reservations: snapshot.reservations,
             laneStatuses: snapshot.laneStatuses,
+            blocks: snapshot.blocks || [],
           },
         );
         const recommended = plan?.plan?.recommended;
@@ -754,6 +796,7 @@ module.exports = async (req, res) => {
           {
             reservations: snapshot.reservations,
             laneStatuses: snapshot.laneStatuses,
+            blocks: snapshot.blocks || [],
           },
         );
         const recommended = plan?.plan?.recommended;
@@ -800,19 +843,35 @@ module.exports = async (req, res) => {
     // Bowling classique : départs uniquement aux heures pleines ou demies
     // (grille :00/:30), on recale la borne basse si la config l'a désalignée.
     minTime = Math.ceil(minTime * 2) / 2;
+    const blocks = snapshot.blocks || [];
+    // Le bowling standalone ne passe PAS par le moteur (planningAgent) : il
+    // faut donc y lire ici l'activation permanente 'bowling' (activityAvailability,
+    // le on/off no-code du centre) que le moteur applique deja au laser. Decocher
+    // le bowling => aucun creneau. Sans config le defaut reste actif (inchange).
+    const bowlingActivityOff = centerDoc && centerDoc.activityAvailability
+      && centerDoc.activityAvailability.bowling === false;
     const slots = [];
-    for (let value = minTime; value <= maxTime; value += 0.5) {
-      const startTime = numToTime(value);
-      const lanes = requiresLanes
-        ? allocateLanes(laneCount, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount)
-        : [];
+    if (!bowlingActivityOff) {
+      for (let value = minTime; value <= maxTime; value += 0.5) {
+        const startTime = numToTime(value);
+        const startMin = Math.round(value * 60);
+        const endMin = startMin + Math.round(Number(totalDuration || duration) * 60);
+        // Centre ferme (scope 'center') a l'heure du depart, ou activite 'bowling'
+        // bloquee (scope 'activity') sur la fenetre : creneau retire. Sans blocage
+        // (liste vide) les predicats rendent false : grille strictement identique.
+        if (isCenterClosedAt(blocks, date, startMin)) continue;
+        if (isActivityBlockedAt(blocks, date, 'bowling', startMin, endMin)) continue;
+        const lanes = requiresLanes
+          ? allocateLanes(laneCount, snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date)
+          : [];
 
-      if (!requiresLanes || lanes !== null) {
-        slots.push({
-          time: startTime,
-          lanes: lanes || [],
-          freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount),
-        });
+        if (!requiresLanes || lanes !== null) {
+          slots.push({
+            time: startTime,
+            lanes: lanes || [],
+            freeCount: getFreeCount(snapshot.reservations, snapshot.laneStatuses, startTime, duration, centerLaneCount, blocks, date),
+          });
+        }
       }
     }
 

@@ -116,6 +116,7 @@ const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFou
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
 const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient, setClientBilling } = require('../lib/platform-clients');
+const { upsertAvailabilityBlock, deleteAvailabilityBlock, listAvailabilityBlocks, refreshAvailabilityBlocks } = require('../lib/availability-blocks');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -398,6 +399,19 @@ async function handleGet(req, res, options = {}) {
       throw createHttpError('Choisissez un centre precis pour editer ses tarifs.', 400);
     }
     sendJson(res, 200, await buildClientCatalog(getPool(), scoped));
+    return;
+  }
+
+  // Liste des blocages de disponibilite du centre (editeur de blocage, permission
+  // settings.manage). Scope au centre de SESSION (jamais un parametre brut) ;
+  // 'all'/vide refuse : un blocage appartient toujours a un centre precis.
+  if (action === 'listAvailabilityBlocks') {
+    const scoped = centerScope(centerId);
+    if (!scoped) {
+      throw createHttpError('Choisissez un centre precis pour lister ses blocages.', 400);
+    }
+    const blocks = await listAvailabilityBlocks(getPool(), scoped);
+    sendJson(res, 200, { ok: true, centerId: scoped, blocks });
     return;
   }
 
@@ -1529,6 +1543,55 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Blocage granulaire de la disponibilite (permission settings.manage). Le
+  // centre est FORCE a celui de la session (withCenter a deja ecrase body.centerId,
+  // requireConcreteCenter rejette 'all'/vide) : un centre ne bloque que chez lui,
+  // meme classe de garde que la config centre. upsertAvailabilityBlock refuse 'all'
+  // une seconde fois cote lib. Apres ecriture, on rechauffe le cache (force) comme
+  // saveCenterConfig force refreshCenterOverrides. Trace au journal par PP1.
+  if (action === 'saveAvailabilityBlock') {
+    const targetCenter = requireConcreteCenter('blocage de disponibilite');
+    const pool = getPool();
+    const actor = actorFromSession(options.session || {});
+    let block;
+    try {
+      block = await upsertAvailabilityBlock(pool, {
+        id: body.id,
+        centerId: targetCenter,
+        scopeType: body.scopeType,
+        scopeRef: body.scopeRef,
+        recurrence: body.recurrence,
+        date: body.date,
+        dayOfWeek: body.dayOfWeek,
+        dateFrom: body.dateFrom,
+        dateUntil: body.dateUntil,
+        startTime: body.startTime,
+        endTime: body.endTime,
+        reason: body.reason,
+        createdBy: actor.actorLabel || actor.actorMemberId || '',
+      });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Enregistrement du blocage impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    await refreshAvailabilityBlocks(pool, { centerId: targetCenter, force: true });
+    sendJson(res, 200, { ok: true, action, block });
+    return;
+  }
+
+  if (action === 'deleteAvailabilityBlock') {
+    const targetCenter = requireConcreteCenter('blocage de disponibilite');
+    const pool = getPool();
+    let out;
+    try {
+      out = await deleteAvailabilityBlock(pool, { centerId: targetCenter, id: body.id });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Suppression du blocage impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    await refreshAvailabilityBlocks(pool, { centerId: targetCenter, force: true });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+
   if (action === 'requeueOpsJob') {
     const jobId = Number(body.id);
     if (!Number.isInteger(jobId) || jobId <= 0) throw createHttpError('Identifiant de job invalide.', 400);
@@ -2256,6 +2319,10 @@ function getRequiredOpsPermission(method, action) {
     // ecritures (saveClientFormuleOverride), JAMAIS platform.admin. Le fondateur
     // lit founderCatalog (platform.admin), le client lit clientCatalog.
     if (action === 'clientCatalog') return 'pricing.manage';
+    // Lecture de l'editeur de blocage : meme permission de CENTRE que la config
+    // et que ses ecritures (saveAvailabilityBlock), la personne qui parametre le
+    // centre. Jamais platform.admin : c'est un reglage d'exploitation du centre.
+    if (action === 'listAvailabilityBlocks') return 'settings.manage';
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
@@ -2280,6 +2347,10 @@ function getRequiredOpsPermission(method, action) {
   // est forcee au centre de session (withCenter) et l'override global 'all' est
   // refuse cote lib (upsertClientFormuleOverride) : un tenant n'edite que SON tarif.
   if (['saveClientFormuleOverride', 'resetClientFormuleOverride'].includes(action)) return 'pricing.manage';
+  // Blocage granulaire de la disponibilite : permission de CENTRE settings.manage,
+  // la meme que la config du centre (saveCenterConfig). Centre force a la session,
+  // 'all' refuse (requireConcreteCenter + garde lib). Jamais platform.admin.
+  if (['saveAvailabilityBlock', 'deleteAvailabilityBlock'].includes(action)) return 'settings.manage';
   // Telemetrie d'erreurs : TOUT membre du staff peut rapporter (chaque role
   // reel porte au moins une permission de vue). Pas de permission dediee :
   // le rapport d'un bug ne doit jamais echouer pour cause de droits.

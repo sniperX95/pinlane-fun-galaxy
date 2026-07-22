@@ -185,6 +185,11 @@ const MIGRATIONS = [
     file: 'database/clients-billing-schema.sql',
     description: "Prix mensuel par client (clients.monthly_price, numeric nullable) : socle du MRR proprietaire et du revenu par client. Null = a definir, jamais compte comme un chiffre invente. Additive et idempotente.",
   },
+  {
+    id: '0037_availability_blocks',
+    file: 'database/availability-blocks-schema.sql',
+    description: "Blocage granulaire de la disponibilite (availability_blocks) : centre/piste/activite/formule, ponctuel (once) ou hebdo (weekly), jour entier ou plage horaire. Aucune ligne = dispo identique au comportement historique. Lecture fail-soft, re-verifiee dans la transaction de creation (anti-course). Additive et idempotente.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

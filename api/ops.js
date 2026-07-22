@@ -118,6 +118,10 @@ const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFor
 const catalogStore = require('../lib/catalog-store');
 const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient, setClientBilling } = require('../lib/platform-clients');
 const { upsertAvailabilityBlock, deleteAvailabilityBlock, listAvailabilityBlocks, refreshAvailabilityBlocks } = require('../lib/availability-blocks');
+// refreshFormuleOverrides : la carte des overrides catalogue (prix / retrait)
+// vit dans lib/booking-config ; action=plan doit la rafraichir comme le fait
+// public-availability, sinon le board staff peut voir un catalogue perime.
+const { refreshFormuleOverrides } = require('../lib/booking-config');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -809,6 +813,18 @@ async function handlePost(req, res, providedBody = null, options = {}) {
 
   if (action === 'plan') {
     requireConcreteCenter('planification');
+    // Sur Vercel, api/ops est une fonction serverless SEPAREE de
+    // public-availability : sans ce rafraichissement, le board de planning staff
+    // pouvait servir une capacite centre / un catalogue / des blocs de dispo
+    // perimes. On applique EXACTEMENT le meme reflexe fail-soft que
+    // public-availability, AVANT le calcul du plan : un incident base ne doit
+    // jamais empecher la reponse, on retombe alors sur le socle fichier / le
+    // dernier etat connu.
+    const planPool = getPool();
+    try { await refreshCenterOverrides(planPool); } catch (error) { /* socle fichier */ }
+    try { await refreshFormuleOverrides(planPool); } catch (error) { /* dernier etat connu */ }
+    try { await refreshCatalog(planPool); } catch (error) { /* socle fichier */ }
+    try { await refreshAvailabilityBlocks(planPool); } catch (error) { /* socle fichier */ }
     const scopedBody = withCenter(body, centerId);
     const context = await buildContext(scopedBody);
     const result = planningAgent(scopedBody, context);

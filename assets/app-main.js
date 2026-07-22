@@ -8805,6 +8805,26 @@ function getAvailabilityLaneCount() {
   return Number.isFinite(count) && count > 0 ? Math.min(Math.trunc(count), 200) : TOTAL_LANES;
 }
 
+// Capacite laser (armes par lancement) du centre affiche, depuis la config staff
+// chargee. Fallback sur la constante historique si la config est absente. Sert au
+// planning laser pour ne plus afficher 30 armes en dur quand le centre en a moins.
+function getAvailabilityLaserCapacity() {
+  const center = getAvailabilitySessionCenter();
+  const count = Number(center?.resources?.laser?.weaponCount || 0);
+  return Number.isFinite(count) && count > 0 ? Math.min(Math.trunc(count), 200) : LASER_GAME_MAX_PLAYERS;
+}
+
+// Declenche (au plus une fois) le chargement de la config centre pour que le
+// planning reflete la vraie capacite. Idempotent et sans risque : loadStaffCenterConfig
+// s'auto-garde (deja charge / en cours / permission) et ne fait AUCUNE requete pour
+// un staff sans droit de configuration (repli silencieux sur les constantes). Le
+// prochain re-render du polling reprend la config une fois chargee.
+function ensureStaffCenterConfigForPlanning() {
+  if (!staffCenterConfigCache.loaded && !staffCenterConfigCache.loading) {
+    loadStaffCenterConfig(false);
+  }
+}
+
 function getAvailabilityActivities() {
   const center = getAvailabilitySessionCenter();
   const all = staffCenterConfigCache.activities || [];
@@ -12457,6 +12477,7 @@ function renderKpis() {
 
 function renderPlanning() {
   ensureAvailabilityBlocksForPlanning();
+  ensureStaffCenterConfigForPlanning();
   const wrap = document.getElementById('planningGridWrap');
   const planningBox = document.getElementById('planningBox');
   // Le re-render (polling 4s / 60s) reconstruit innerHTML et remet le scroll à 0.
@@ -12543,8 +12564,13 @@ function renderPlanning() {
   hoursHtml += `<div class="hour-cell end"><span class="hour-label-end">${formatClockDisplay(closeHour)}</span></div>`;
 
   const laneBlockWindows = getBowlingBlockWindows(state.currentDate, startHour, closeHour);
+  // Nombre de pistes REEL du centre affiche (config staff chargee), avec repli sur
+  // la constante historique quand la config n'est pas encore disponible. Corrige le
+  // planning qui affichait 8 pistes en dur meme pour un centre a 6 pistes. Ne touche
+  // QUE le nombre de lignes rendues : l'allocation et le drag-drop restent inchanges.
+  const planningLaneCount = getAvailabilityLaneCount();
   let lanesHtml = '';
-  for (let i = 1; i <= TOTAL_LANES; i++) {
+  for (let i = 1; i <= planningLaneCount; i++) {
     const maint = state.laneStatuses[i] === 'maintenance';
     const bookings = res.flatMap(r => getBowlingWindowsFromReservation(r)
       .filter(window => window.lanes.includes(i))
@@ -12642,6 +12668,7 @@ function getPlanningBookingDisplayName(reservation) {
 
 function renderLaserPlanning() {
   ensureAvailabilityBlocksForPlanning();
+  ensureStaffCenterConfigForPlanning();
   const wrap = document.getElementById('laserPlanningGridWrap');
   const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
@@ -12678,7 +12705,8 @@ function renderLaserPlanning() {
   });
   const sessions = [...sessionGroups.values()].sort((a, b) => a.start - b.start);
   const players = windows.reduce((sum, window) => sum + Number(window.players || window.reservation?.pax || 0), 0);
-  const capacity = LASER_GAME_MAX_PLAYERS;
+  // Capacite REELLE (armes) du centre affiche, repli sur la constante si config absente.
+  const capacity = getAvailabilityLaserCapacity();
   const pendingPasses = getPendingLaserPasses(state.currentDate);
   if (sub) sub.textContent = `${sessions.length} lancement${sessions.length > 1 ? 's' : ''} • ${players} passages • ${pendingPasses.length} partie${pendingPasses.length > 1 ? 's' : ''} à placer • capacité ${capacity} armes`;
 

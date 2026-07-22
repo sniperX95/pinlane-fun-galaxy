@@ -84,7 +84,9 @@
     "test:ops-progress": "node scripts/ops-progress-check.js",
     "test:center-source": "node scripts/center-source-check.js",
     "test:communications-contract": "node scripts/communications-status-contract-check.js",
-    "test:ghost-tokens": "node scripts/ghost-token-check.js"
+    "test:ghost-tokens": "node scripts/ghost-token-check.js",
+    "test:capacity-cleanup": "node scripts/capacity-cleanup-check.js",
+    "test:planning-capacity-ui": "node scripts/planning-capacity-ui-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

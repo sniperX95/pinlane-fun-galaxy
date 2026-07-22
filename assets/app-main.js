@@ -3818,13 +3818,19 @@ function goStep4() {
   state.booking.email = email;
   const specialRequestInput = document.getElementById('fSpecialRequest');
   state.booking.specialRequest = specialRequestInput ? specialRequestInput.value.trim().slice(0, 500) : '';
+  const occasionOtherInput = document.getElementById('fOccasionOther');
+  state.booking.occasionOther = (occasionOtherInput && state.booking.occasion === 'autre')
+    ? occasionOtherInput.value.trim().slice(0, 160)
+    : '';
   renderRecap();
   goStep(4);
 }
 
-// Occasion DÉCLARÉE par le client (anniversaire, amis, entreprise, ecole,
-// autre). '' = non précisé. Propagée au serveur → catégorisation staff déclarée.
-const BOOKING_OCCASIONS = ['anniversaire', 'entreprise', 'groupe', 'ecole', 'evg', 'autre'];
+// Occasion DÉCLARÉE par le client. Les clés alignées sur l'enum serveur
+// (anniversaire, amis, entreprise, ecole, autre) sont stockées telles quelles ;
+// 'evg' reste déclaratif côté client (l'enum serveur ne le retient pas encore).
+// '' = non précisé. Propagée au serveur → catégorisation staff déclarée.
+const BOOKING_OCCASIONS = ['anniversaire', 'amis', 'entreprise', 'ecole', 'evg', 'autre'];
 function setBookingOccasion(value) {
   const next = BOOKING_OCCASIONS.includes(value)
     ? (state.booking.occasion === value ? '' : value)
@@ -3835,6 +3841,25 @@ function setBookingOccasion(value) {
     chip.classList.toggle('active', active);
     chip.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
+  // « Autre » ouvre un champ de précision libre (stocké et joint aux notes de la
+  // réservation pour l'analyse direction). Toute autre valeur le referme/efface.
+  const otherWrap = document.getElementById('occasionOtherWrap');
+  const otherInput = document.getElementById('fOccasionOther');
+  const showOther = next === 'autre';
+  if (otherWrap) otherWrap.classList.toggle('hidden', !showOther);
+  if (!showOther) {
+    state.booking.occasionOther = '';
+    if (otherInput) otherInput.value = '';
+  } else if (otherInput) {
+    setTimeout(() => { try { otherInput.focus(); } catch (e) {} }, 30);
+  }
+  save();
+}
+
+// Texte libre de l'occasion « Autre » (max 160). Conservé sur le booking et
+// injecté dans les notes de la réservation à la confirmation.
+function setBookingOccasionOther(value) {
+  state.booking.occasionOther = String(value || '').slice(0, 160);
   save();
 }
 
@@ -4075,9 +4100,14 @@ async function confirmBooking() {
     preference: b.preference || {},
     pauseMinutes: 0,
     opsPlan: b.opsPlan || null,
-    // Champs ADDITIFS optionnels : occasion déclarée + demande particulière.
+    // Champs ADDITIFS optionnels : occasion déclarée + demande particulière. Le
+    // texte libre de l'occasion « Autre » est joint aux notes (l'enum serveur ne
+    // stocke que la clé) pour rester lisible côté direction.
     occasion: b.occasion || '',
-    notes: b.specialRequest || '',
+    notes: [
+      (b.occasion === 'autre' && b.occasionOther) ? `Occasion : ${b.occasionOther}` : '',
+      b.specialRequest || ''
+    ].filter(Boolean).join('. '),
     extras: []
   };
 
@@ -4143,6 +4173,7 @@ function resetBooking() {
     preference: createDefaultFormulaPreference(),
     pauseMinutes: 0,
     occasion: '',
+    occasionOther: '',
     specialRequest: '',
     opsPlan: null,
     opsResult: null
@@ -15651,6 +15682,33 @@ function renderPos() {
   `;
 }
 
+// Contact public du centre (téléphone + email) servi par
+// /api/public-booking-meta (center.contact), affiché en permanence sous le
+// parcours client avec des liens cliquables (tel: / mailto:). Absent => barre
+// masquée : fallback discret, jamais de coordonnées inventées.
+function renderCenterContact(contact) {
+  const bar = document.getElementById('clientContactBar');
+  const links = document.getElementById('clientContactLinks');
+  if (!bar || !links) return;
+  const phone = contact && typeof contact.phone === 'string' ? contact.phone.trim() : '';
+  const email = contact && typeof contact.email === 'string' ? contact.email.trim() : '';
+  const parts = [];
+  if (phone) {
+    const telHref = phone.replace(/[^0-9+]/g, '');
+    parts.push(`<a class="client-contact-link" href="tel:${escapeHtml(telHref)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>${escapeHtml(phone)}</span></a>`);
+  }
+  if (email) {
+    parts.push(`<a class="client-contact-link" href="mailto:${escapeHtml(email)}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>${escapeHtml(email)}</span></a>`);
+  }
+  if (!parts.length) {
+    bar.hidden = true;
+    links.innerHTML = '';
+    return;
+  }
+  links.innerHTML = parts.join('');
+  bar.hidden = false;
+}
+
 // Recupere la config publique du centre (horaires staff, vacances/feries,
 // offres activees) et la pousse dans booking-core pour que l'affichage client
 // (hint "Ouvert...", formules) reflete la meme verite que le serveur.
@@ -15667,6 +15725,9 @@ async function loadCenterScheduleConfig() {
     }
     if (payload?.center && typeof setCenterScheduleConfig === 'function') {
       setCenterScheduleConfig(payload.center);
+    }
+    if (payload?.center) {
+      renderCenterContact(payload.center.contact || null);
     }
     if (state.view === 'client' && (payload?.center || Array.isArray(payload?.formules))) {
       updateSchedHint();

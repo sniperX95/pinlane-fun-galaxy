@@ -150,16 +150,16 @@ function addDays(dateStr, delta) {
 // Conges scolaires FWB verifies (enseignement.be). kind: 'summer' = grandes
 // vacances, 'short' = petits conges. Miroir de lib/booking-config.js.
 const WALLONIA_SCHOOL_HOLIDAYS = [
-  { start: '2025-10-20', end: '2025-11-02', label: 'Conge d\'automne', kind: 'short' },
+  { start: '2025-10-20', end: '2025-11-02', label: 'Congé d\'automne', kind: 'short' },
   { start: '2025-12-22', end: '2026-01-04', label: 'Vacances d\'hiver', kind: 'short' },
-  { start: '2026-02-16', end: '2026-03-01', label: 'Conge de detente', kind: 'short' },
+  { start: '2026-02-16', end: '2026-03-01', label: 'Congé de détente', kind: 'short' },
   { start: '2026-04-27', end: '2026-05-10', label: 'Vacances de printemps', kind: 'short' },
-  { start: '2026-07-04', end: '2026-08-23', label: 'Vacances d\'ete', kind: 'summer' },
-  { start: '2026-10-19', end: '2026-11-01', label: 'Conge d\'automne', kind: 'short' },
+  { start: '2026-07-04', end: '2026-08-23', label: 'Vacances d\'été', kind: 'summer' },
+  { start: '2026-10-19', end: '2026-11-01', label: 'Congé d\'automne', kind: 'short' },
   { start: '2026-12-21', end: '2027-01-03', label: 'Vacances d\'hiver', kind: 'short' },
-  { start: '2027-02-22', end: '2027-03-07', label: 'Conge de detente', kind: 'short' },
+  { start: '2027-02-22', end: '2027-03-07', label: 'Congé de détente', kind: 'short' },
   { start: '2027-04-26', end: '2027-05-09', label: 'Vacances de printemps', kind: 'short' },
-  { start: '2027-07-03', end: '2027-08-22', label: 'Vacances d\'ete', kind: 'summer' }
+  { start: '2027-07-03', end: '2027-08-22', label: 'Vacances d\'été', kind: 'summer' }
 ];
 const BELGIAN_PUBLIC_HOLIDAY_CACHE = new Map();
 const BUSINESS_TIME_ZONE = 'Europe/Brussels';
@@ -289,15 +289,15 @@ function getBelgianPublicHolidayMap(year) {
     const easterSunday = getEasterSunday(year);
     const entries = [
       ['01-01', 'Jour de l\'An'],
-      [toLocalDateStr(addDaysToDate(easterSunday, 1)).slice(5), 'Lundi de Paques'],
-      ['05-01', 'Fete du Travail'],
+      [toLocalDateStr(addDaysToDate(easterSunday, 1)).slice(5), 'Lundi de Pâques'],
+      ['05-01', 'Fête du Travail'],
       [toLocalDateStr(addDaysToDate(easterSunday, 39)).slice(5), 'Ascension'],
-      [toLocalDateStr(addDaysToDate(easterSunday, 50)).slice(5), 'Lundi de Pentecote'],
-      ['07-21', 'Fete nationale'],
+      [toLocalDateStr(addDaysToDate(easterSunday, 50)).slice(5), 'Lundi de Pentecôte'],
+      ['07-21', 'Fête nationale'],
       ['08-15', 'Assomption'],
       ['11-01', 'Toussaint'],
       ['11-11', 'Armistice'],
-      ['12-25', 'Noel']
+      ['12-25', 'Noël']
     ];
     BELGIAN_PUBLIC_HOLIDAY_CACHE.set(year, new Map(entries.map(([monthDay, label]) => [`${year}-${monthDay}`, label])));
   }

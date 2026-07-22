@@ -9,21 +9,21 @@
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260720a">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260722h">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260722i">
 <link rel="stylesheet" href="./assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="./assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="./assets/pinlane-analytics-board.css?v=20260722a">
-<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260720a">
+<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260722a">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260710a"></script>
-<script defer src="./assets/booking-core.js?v=20260722a"></script>
+<script defer src="./assets/booking-core.js?v=20260722b"></script>
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
-<script defer src="./assets/app-main.js?v=20260722f"></script>
+<script defer src="./assets/app-main.js?v=20260722g"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260722a"></script>
-<script defer src="./assets/staff-pages-v2.js?v=20260722c"></script>
+<script defer src="./assets/staff-pages-v2.js?v=20260722d"></script>
 <script defer src="./assets/pinlane-charts.js?v=20260722a"></script>
 <script defer src="./assets/pinlane-daterange.js?v=20260721a"></script>
 <script defer src="./assets/pinlane-analytics-board.js?v=20260722a"></script>
@@ -294,17 +294,22 @@
             <label class="lbl">Type de réservation / occasion <span class="lbl-optional">(optionnel)</span></label>
             <div class="occasion-chips" id="occasionChips" role="group" aria-label="Type de réservation ou occasion">
               <button type="button" class="occasion-chip" data-occasion="anniversaire" aria-pressed="false" onclick="setBookingOccasion('anniversaire')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3"/><path d="M12 8v3"/><path d="M17 8v3"/><path d="M7 4h.01"/><path d="M12 4h.01"/><path d="M17 4h.01"/></svg> Anniversaire</button>
+              <button type="button" class="occasion-chip" data-occasion="amis" aria-pressed="false" onclick="setBookingOccasion('amis')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Groupe / amis</button>
               <button type="button" class="occasion-chip" data-occasion="entreprise" aria-pressed="false" onclick="setBookingOccasion('entreprise')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> Entreprise / team building</button>
-              <button type="button" class="occasion-chip" data-occasion="groupe" aria-pressed="false" onclick="setBookingOccasion('groupe')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Sortie groupe</button>
               <button type="button" class="occasion-chip" data-occasion="ecole" aria-pressed="false" onclick="setBookingOccasion('ecole')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg> École / jeunesse</button>
               <button type="button" class="occasion-chip" data-occasion="evg" aria-pressed="false" onclick="setBookingOccasion('evg')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 22h8"/><path d="M12 11v11"/><path d="M5 3h14l-1 8a6 6 0 0 1-12 0z"/></svg> EVG / EVJF</button>
               <button type="button" class="occasion-chip" data-occasion="autre" aria-pressed="false" onclick="setBookingOccasion('autre')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg> Autre</button>
+            </div>
+            <div class="occasion-other-wrap hidden" id="occasionOtherWrap">
+              <label class="lbl" for="fOccasionOther">Précisez votre occasion</label>
+              <input id="fOccasionOther" class="input" maxlength="160" placeholder="Ex. réussite d'examen, retrouvailles, fête de fin d'année..." oninput="setBookingOccasionOther(this.value)" />
             </div>
           </div>
 
           <div class="occasion-field" style="margin-top:16px;">
             <label class="lbl" for="fSpecialRequest">Demande particulière <span class="lbl-optional">(optionnel)</span></label>
-            <textarea id="fSpecialRequest" class="input" rows="2" maxlength="500" placeholder="Gâteau, décoration, allergie, chaise haute, info utile…"></textarea>
+            <textarea id="fSpecialRequest" class="input" rows="2" maxlength="500" placeholder="Occasion, contrainte horaire, groupe à répartir, info utile pour l'accueil..."></textarea>
+            <p class="field-honest-note">Ces demandes ne sont pas garanties : on fait au mieux selon nos possibilités.</p>
           </div>
 
           <div class="info-box" style="margin-top:22px;">
@@ -370,6 +375,11 @@
         </div>
       </div>
 
+      <div class="client-contact-bar" id="clientContactBar" hidden>
+        <span class="client-contact-intro">Une question ou une précision sur votre réservation ?</span>
+        <div class="client-contact-links" id="clientContactLinks"></div>
+      </div>
+
       <footer class="client-footer">
         <button id="clientDemoAccess" class="client-demo-access" onclick="openSaasAccess('staff')">Espace équipe</button>
       </footer>
@@ -383,7 +393,7 @@
       </button>
       <div class="bespoke-modal-head">
         <h2 id="bespokeTitle">Demande sur mesure</h2>
-        <p>Décrivez votre besoin (entreprise, privatisation, événement…). Ce n'est pas une réservation ferme : on revient vers vous rapidement.</p>
+        <p>Groupe, entreprise, privatisation ou besoin particulier : décrivez votre projet, on revient vers vous. C'est une simple demande de contact, pas une réservation ferme, et rien n'est encore garanti.</p>
       </div>
       <div id="bespokeSuccess" class="bespoke-success hidden"></div>
       <div id="bespokeForm">
@@ -418,6 +428,7 @@
           <textarea id="crMessage" class="input" rows="4" maxlength="2000" placeholder="Privatisation, traiteur, facture entreprise, budget, contraintes horaires…"></textarea>
         </div>
         <div id="bespokeError" class="bespoke-error hidden" role="alert"></div>
+        <p class="bespoke-fineprint">Réponse sous 1 à 2 jours ouvrables. Aucune date n'est bloquée tant que nous ne l'avons pas confirmée avec vous.</p>
         <div class="cr-actions">
           <button type="button" class="btn-secondary" onclick="closeCustomRequestModal()">Annuler</button>
           <button type="button" class="btn-primary" id="crSubmit" onclick="submitCustomRequest()">Envoyer ma demande</button>

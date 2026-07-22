@@ -224,6 +224,18 @@ module.exports = async (req, res) => {
   // le fallback (mêmes valeurs sans override).
   const bowlingCapacity = resolveBowlingCapacity(center?.resources?.bowling);
 
+  // Contact public du centre (téléphone + email), lu depuis centers.json
+  // (publicInfo). Servi au client pour un point de contact toujours visible sur
+  // le parcours de réservation. Absent (ex. centre "planned") => null, le front
+  // masque la ligne de contact au lieu d'afficher une valeur inventée.
+  const centerPublicInfo = center && typeof center.publicInfo === 'object' && center.publicInfo ? center.publicInfo : null;
+  const centerContact = centerPublicInfo
+    ? {
+      phone: typeof centerPublicInfo.phone === 'string' ? centerPublicInfo.phone : '',
+      email: typeof centerPublicInfo.email === 'string' ? centerPublicInfo.email : '',
+    }
+    : null;
+
   sendJson(res, 200, {
     ok: true,
     today: todayStr(),
@@ -237,6 +249,7 @@ module.exports = async (req, res) => {
       ? {
         id: center.id,
         status: center.status || 'active',
+        contact: centerContact,
         defaultSchedule: center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : null,
         holidaySettings: center.holidaySettings && typeof center.holidaySettings === 'object'
           ? center.holidaySettings

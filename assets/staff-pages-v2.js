@@ -5072,31 +5072,70 @@
     }
   }
 
-  /* ── LE PANNEAU DE POINTS VIVANT (texture signature, look Agent Vercel) ────
-     Une grille carrée de points nets dessinée sur le canvas #mkwDots : une
-     onde lumineuse douce la traverse en continu (les points s'allument à son
-     passage puis retombent au niveau de base), et quelques points épars
-     scintillent à peine. Calme, lent, jamais clignotant.
-     Règles dures :
-     : la couleur est la valeur CALCULÉE de var(--text) portée par le canvas
-       (CSS `color: var(--text)`) : zéro couleur en dur ici, parité light/dark
-       automatique ; seules les intensités (alpha) sont calibrées par thème.
-     : prefers-reduced-motion : AUCUNE boucle ne démarre, une grille statique
-       propre est dessinée une fois.
-     : onglet caché (visibilitychange) : rAF coupé, reprise au retour.
-     : canvas hors DOM (navigation) ou masqué (autre page staff) : la boucle
-       s'arrête d'elle-même ; le retour sur la page ré-initialise tout via
-       renderStaffCampaignsPage. Zéro fuite, zéro rAF à vide hors écran.
-     : ~30 fps plafonnés, peinture sautée quand le panneau est scrollé hors
-       du viewport (le temps continue, la phase reste juste). */
+  /* ── LE CHAMP DE POINTS VIVANT (fond de la toile, look "agent IA vivant") ──
+     Un champ clairseme de points repartis sur TOUTE la toile (#mkwDots en
+     position absolute inset:0 dans .mkw-shell, derriere le contenu). Trois
+     comportements, tous tres discrets :
+       (a) DERIVE : chaque point respire en continu (petite oscillation lente,
+           amplitude de 1 a 3 px), le champ n'est jamais fige.
+       (b) CURSEUR : les points proches du pointeur s'illuminent, grossissent
+           un peu et sont doucement attires vers lui (fondu d'entree/sortie).
+       (c) SCINTILLEMENT : ~1 point sur 6 voit son opacite osciller lentement.
+     Regles dures (contrainte proprietaire : clairseme, jamais envahissant) :
+       : couleur = valeur CALCULEE de var(--text) portee par le canvas (CSS
+         `color: var(--text)`) : zero couleur en dur, parite light/dark auto ;
+         seules les intensites (alpha) sont calibrees par theme, et TRES basses.
+       : opacite plafonnee : le champ ne concurrence JAMAIS la lisibilite.
+       : prefers-reduced-motion : AUCUNE boucle, aucun suivi curseur, un champ
+         statique propre dessine une fois.
+       : onglet cache (visibilitychange) : rAF coupe + listeners retires, repris
+         au retour. Canvas hors DOM ou masque : la boucle s'arrete d'elle-meme.
+         Zero fuite, zero rAF a vide, zero listener orphelin.
+       : ~30 fps plafonnes, DPR-aware, culling vertical (on ne peint que la
+         bande visible meme si la toile est plus haute que le viewport). */
   const mkwDots = {
     raf: 0, canvas: null, ctx: null, dots: [], t0: 0, last: 0, sizedAt: 0,
-    w: 0, h: 0, color: '', base: 0.2, wave: 0.3, smin: 0, srange: 1, T: 6.5,
+    w: 0, h: 0, genW: 0, genRows: 0, regen: false, color: '', base: 0.055, twk: 0.1, boost: 0.24, cap: 0.52,
+    px: null, py: null, infl: 0, lpx: 0, lpy: 0, rect: null, onMove: null, onLeave: null,
   };
+  const MKW_R = 130;              // rayon d'influence du curseur (px)
+  const MKW_R2 = MKW_R * MKW_R;
 
   function mkwDotsStop() {
     if (mkwDots.raf) cancelAnimationFrame(mkwDots.raf);
     mkwDots.raf = 0;
+    // Listeners curseur retires : zero fuite, jamais de doublon au remontage.
+    if (mkwDots.onMove) { window.removeEventListener('pointermove', mkwDots.onMove); mkwDots.onMove = null; }
+    if (mkwDots.onLeave) { document.removeEventListener('mouseleave', mkwDots.onLeave); window.removeEventListener('blur', mkwDots.onLeave); mkwDots.onLeave = null; }
+    mkwDots.px = null; mkwDots.py = null; mkwDots.infl = 0;
+  }
+
+  const MKW_GAP = 46;            // maille du champ (px)
+  const MKW_JIT = 7;             // jitter de position (px)
+  // Champ CLAIRSEME : maille large + trous aleatoires + jitter = un scatter
+  // regulier mais jamais rigide, jamais dense. Grille ANCREE EN HAUT (y = f(r)
+  // seul, jamais de la hauteur totale) : quand la toile grandit (un fold qui
+  // s'ouvre), on APPEND juste des rangees en bas, les points existants ne
+  // bougent pas. Chaque point porte sa derive propre (phase/vitesse) et, pour
+  // ~1 sur 6, un scintillement lent. `tw.m` = multiplicateur : l'amplitude
+  // finale (twk du theme x m) est calculee a la peinture (theme sans rebuild).
+  function mkwDotsAddRows(w, r0, r1, out) {
+    const cols = Math.max(2, Math.round(w / MKW_GAP));
+    const ox = (w - (cols - 1) * MKW_GAP) / 2;
+    const oy = MKW_GAP / 2;
+    for (let r = r0; r < r1; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        if (Math.random() < 0.14) continue;
+        out.push({
+          x: ox + c * MKW_GAP + (Math.random() * 2 - 1) * MKW_JIT,
+          y: oy + r * MKW_GAP + (Math.random() * 2 - 1) * MKW_JIT,
+          dpx: Math.random() * 6.283, dpy: Math.random() * 6.283,
+          dsx: 0.10 + Math.random() * 0.16, dsy: 0.10 + Math.random() * 0.16,
+          damp: 1.3 + Math.random() * 1.8,
+          tw: Math.random() < 0.16 ? { m: 0.6 + Math.random() * 0.7, spd: 0.45 + Math.random() * 0.7, ph: Math.random() * 6.283 } : null,
+        });
+      }
+    }
   }
 
   function mkwDotsSetup() {
@@ -5111,50 +5150,43 @@
     if (!ctx) return false;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     mkwDots.ctx = ctx;
+    // Couleur des points = valeur calculee du token --text (CSS du canvas). La
+    // luminance dit le theme : texte clair = fond sombre. Recalcule a chaque
+    // (re)montage : un changement de theme met a jour les intensites.
+    const color = getComputedStyle(canvas).color || 'rgb(128,128,128)';
+    mkwDots.color = color;
+    const rgb = (color.match(/[\d.]+/g) || []).map(Number);
+    const lum = rgb.length >= 3 ? (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 : 200;
+    const dark = lum > 140;
+    // Intensites TRES basses (le champ ne doit jamais gener la lecture). Le
+    // dark porte un peu plus car le contraste sur fond noir est plus doux.
+    mkwDots.base = dark ? 0.06 : 0.05;
+    mkwDots.twk = dark ? 0.10 : 0.075;
+    mkwDots.boost = dark ? 0.26 : 0.18;
+    mkwDots.cap = dark ? 0.54 : 0.42;
     mkwDots.w = w;
     mkwDots.h = h;
-    // La couleur des points = la valeur calculée du token --text (CSS du
-    // canvas). La luminance dit le thème : texte clair = fond sombre.
-    const color = getComputedStyle(canvas).color || '';
-    mkwDots.color = color;
-    const rgb = (color.match(/\d+(\.\d+)?/g) || []).map(Number);
-    const lum = rgb.length >= 3 ? (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 : 255;
-    const darkTheme = lum > 127;
-    mkwDots.base = darkTheme ? 0.12 : 0.09;
-    mkwDots.wave = darkTheme ? 0.20 : 0.15;
-    const twk = darkTheme ? 0.7 : 0.5;
-    // Grille carrée régulière centrée. Chaque point porte son fondu de bord
-    // (le panneau a une forme claire, des bords doux) et, pour ~1 sur 8, un
-    // scintillement doux à phase/vitesse propres.
-    const gap = 15;
-    const cols = Math.max(1, Math.floor((w - 8) / gap));
-    const rows = Math.max(1, Math.floor((h - 8) / gap));
-    const ox = (w - (cols - 1) * gap) / 2;
-    const oy = 6;
-    const dirX = Math.cos(0.30);
-    const dirY = Math.sin(0.30);
-    const ss = (v) => { const x = Math.min(1, Math.max(0, v)); return x * x * (3 - 2 * x); };
-    const dots = [];
-    let smin = Infinity;
-    let smax = -Infinity;
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
-        const x = ox + c * gap;
-        const y = oy + r * gap;
-        const edge = ss(Math.min(x, w - x) / 76) * ss(Math.min(y, h - y) / 64);
-        if (edge <= 0.03) continue;
-        const s = x * dirX + y * dirY;
-        if (s < smin) smin = s;
-        if (s > smax) smax = s;
-        dots.push({
-          x, y, s, e: edge,
-          tw: Math.random() < 0.12 ? { a: (0.12 + Math.random() * 0.18) * twk, v: 0.5 + Math.random() * 0.9, p: Math.random() * 6.283 } : null,
-        });
+    // Positions STABLES entre deux rendus : un clic re-rend la page et recree le
+    // canvas, mais le champ ne doit JAMAIS se reshuffler (ca clignoterait).
+    //  : largeur changee (rare : sidebar, resize) -> champ neuf (regen).
+    //  : hauteur qui grandit (un fold s'ouvre) -> on ajoute juste des rangees en
+    //    bas, les points existants restent en place, l'horloge continue.
+    //  : hauteur qui retrecit -> on garde les points (peints hors canvas, sans
+    //    frais visible), l'horloge continue.
+    const rowsNeeded = Math.max(2, Math.ceil((h - MKW_GAP / 2) / MKW_GAP) + 1);
+    if (mkwDots.genW !== w || !mkwDots.dots.length) {
+      mkwDots.dots = [];
+      mkwDotsAddRows(w, 0, rowsNeeded, mkwDots.dots);
+      mkwDots.genW = w;
+      mkwDots.genRows = rowsNeeded;
+      mkwDots.regen = true;
+    } else {
+      if (rowsNeeded > mkwDots.genRows) {
+        mkwDotsAddRows(w, mkwDots.genRows, rowsNeeded, mkwDots.dots);
+        mkwDots.genRows = rowsNeeded;
       }
+      mkwDots.regen = false;
     }
-    mkwDots.dots = dots;
-    mkwDots.smin = smin - 150;
-    mkwDots.srange = (smax - smin) + 300;
     return true;
   }
 
@@ -5163,21 +5195,49 @@
     const ctx = d.ctx;
     ctx.clearRect(0, 0, d.w, d.h);
     ctx.fillStyle = d.color;
-    const c = d.smin + ((t % d.T) / d.T) * d.srange;
-    const inv = 1 / (2 * 70 * 70);
+    const infl = d.infl;
+    const hasPt = animated && infl > 0.002;
+    const px = d.lpx;
+    const py = d.lpy;
+    // Culling vertical : la toile peut etre plus haute que le viewport. On ne
+    // peint que la bande visible (+ marge pour la derive), l'horloge continue.
+    let top = -24;
+    let bot = d.h + 24;
+    if (animated && d.rect) {
+      const vis = -d.rect.top;
+      top = vis - 48;
+      bot = vis + window.innerHeight + 48;
+    }
     for (const dot of d.dots) {
-      let a = d.base;
+      let x = dot.x;
+      let y = dot.y;
       if (animated) {
-        const delta = dot.s - c;
-        a += d.wave * Math.exp(-delta * delta * inv);
-        if (dot.tw) {
-          const sn = Math.sin(dot.tw.v * t + dot.tw.p);
-          if (sn > 0) a += dot.tw.a * sn * sn * sn;
+        x += Math.sin(t * dot.dsx + dot.dpx) * dot.damp;
+        y += Math.cos(t * dot.dsy + dot.dpy) * dot.damp;
+      }
+      if (y < top || y > bot) continue;
+      let a = d.base;
+      let r = 1.05;
+      if (animated && dot.tw) {
+        const s = 0.5 + 0.5 * Math.sin(t * dot.tw.spd + dot.tw.ph);
+        a += d.twk * dot.tw.m * s * s;
+      }
+      if (hasPt) {
+        const dx = px - x;
+        const dy = py - y;
+        const dd = dx * dx + dy * dy;
+        if (dd < MKW_R2) {
+          const ff = (1 - dd / MKW_R2) * infl;   // 0..1, fondu par la presence
+          a += d.boost * ff;
+          r += 1.35 * ff;
+          x += dx * 0.16 * ff;                    // attraction douce
+          y += dy * 0.16 * ff;
         }
       }
-      ctx.globalAlpha = Math.min(0.85, a * dot.e);
+      if (a <= 0.012) continue;
+      ctx.globalAlpha = a < d.cap ? a : d.cap;
       ctx.beginPath();
-      ctx.arc(dot.x, dot.y, 1.15, 0, 6.2832);
+      ctx.arc(x, y, r, 0, 6.2832);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -5186,18 +5246,24 @@
   function mkwDotsFrame(now) {
     const d = mkwDots;
     const canvas = d.canvas;
-    // Canvas hors DOM (navigation) ou masqué (autre page staff) : arrêt net.
+    // Canvas hors DOM (navigation) ou masque (autre page staff) : arret net.
     if (!canvas || !canvas.isConnected || canvas.offsetParent === null) { mkwDotsStop(); return; }
     d.raf = requestAnimationFrame(mkwDotsFrame);
     if (now - d.last < 32) return; // ~30 fps : fluide, sobre en CPU
     d.last = now;
-    if (now - d.sizedAt > 600) {
+    if (now - d.sizedAt > 500) {
       d.sizedAt = now;
       if (Math.abs(canvas.clientWidth - d.w) > 1 || Math.abs(canvas.clientHeight - d.h) > 1) mkwDotsSetup();
     }
-    // Panneau scrollé hors viewport : on saute la peinture, pas l'horloge.
     const rect = canvas.getBoundingClientRect();
+    d.rect = rect;
+    // Toile hors viewport : on saute la peinture, pas l'horloge.
     if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+    // Influence du curseur : fondu doux vers present (1) / absent (0). On garde
+    // la derniere position locale pour que la sortie s'eteigne en douceur.
+    const target = d.px !== null ? 1 : 0;
+    d.infl += (target - d.infl) * 0.09;
+    if (d.px !== null) { d.lpx = d.px - rect.left; d.lpy = d.py - rect.top; }
     mkwDotsPaint((now - d.t0) / 1000, true);
   }
 
@@ -5206,10 +5272,23 @@
     const canvas = document.getElementById('mkwDots');
     mkwDots.canvas = canvas;
     if (!canvas || !mkwDotsSetup()) return;
-    if (reducedMotion) { mkwDotsPaint(0, false); return; }
-    mkwDots.t0 = performance.now();
+    if (reducedMotion) { mkwDots.rect = null; mkwDotsPaint(0, false); return; }
+    // Horloge PRESERVEE tant que le champ vit : un re-render (clic) ne remet pas
+    // la derive a zero, sinon les points sauteraient. On repart de t0 seulement
+    // pour un champ fraichement genere (premier montage ou changement de taille).
+    const now = performance.now();
+    if (mkwDots.regen || !mkwDots.t0) mkwDots.t0 = now;
     mkwDots.last = 0;
-    mkwDots.sizedAt = mkwDots.t0;
+    mkwDots.sizedAt = now;
+    mkwDots.px = null; mkwDots.py = null; mkwDots.infl = 0;
+    mkwDots.rect = canvas.getBoundingClientRect();
+    // Suivi du curseur : listeners GLOBAUX (le canvas est pointer-events:none),
+    // retires proprement dans mkwDotsStop (zero fuite, jamais de doublon).
+    mkwDots.onMove = (e) => { mkwDots.px = e.clientX; mkwDots.py = e.clientY; };
+    mkwDots.onLeave = () => { mkwDots.px = null; mkwDots.py = null; };
+    window.addEventListener('pointermove', mkwDots.onMove, { passive: true });
+    document.addEventListener('mouseleave', mkwDots.onLeave, { passive: true });
+    window.addEventListener('blur', mkwDots.onLeave, { passive: true });
     mkwDotsPaint(0, true);
     mkwDots.raf = requestAnimationFrame(mkwDotsFrame);
   }
@@ -5217,10 +5296,9 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { mkwDotsStop(); return; }
     const canvas = mkwDots.canvas;
-    if (!mkwDots.raf && canvas && canvas.isConnected && !reducedMotion) {
-      mkwDots.last = 0;
-      mkwDots.raf = requestAnimationFrame(mkwDotsFrame);
-    }
+    // Retour d'onglet : on re-initialise tout (setup + listeners + boucle),
+    // jamais un simple redemarrage de rAF qui laisserait les listeners morts.
+    if (!mkwDots.raf && canvas && canvas.isConnected && !reducedMotion) mkwDotsInit();
   });
 
   window.renderStaffCampaignsPage = function () {

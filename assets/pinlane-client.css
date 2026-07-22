@@ -565,11 +565,23 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   margin-top: 2px;
 }
 
+/* Grille de formules : 3 colonnes desktop (demande patron : rangées de 3, pas
+   2 colonnes qui s'étirent). align-items: stretch => hauteurs de cartes égales
+   par rangée. Responsive 3 -> 2 -> 1 (bornes plus bas). */
 #clientView .formule-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
+  align-items: stretch;
+}
+
+/* Écran intermédiaire (tablette / petit laptop) : 2 colonnes. Borne basse à
+   641px pour laisser le bloc mobile (<=640px, 1 colonne) faire foi en dessous. */
+@media (min-width: 641px) and (max-width: 820px) {
+  #clientView .formule-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 #clientView .formule-card {
@@ -2250,6 +2262,57 @@ body.client-mode .client-demo-access.hidden {
   display: none;
 }
 
+/* --- Contact du centre : toujours accessible sous le parcours -------------
+   Visible en mode client ET en mode client pur (/reserver) : un point de
+   contact (téléphone + email du centre) « pour toute question/precision ».
+   Alimenté par renderCenterContact() depuis /api/public-booking-meta ; masqué
+   tant qu'aucune coordonnée n'est servie (fallback discret, aucune valeur
+   inventée). Placé DANS #clientView => disparaît en vue staff/direction. */
+.client-contact-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.client-contact-bar[hidden] { display: none; }
+.client-contact-intro {
+  font-size: 13px;
+  color: var(--muted);
+}
+.client-contact-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+}
+.client-contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 6px;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--dur) var(--ease);
+}
+.client-contact-link svg { color: var(--accent); flex-shrink: 0; }
+.client-contact-link:hover { color: var(--accent); text-decoration: underline; }
+.client-contact-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+/* En mode client pur, la barre de contact reste (le footer "Espace équipe"
+   est masqué ailleurs). On retire la double bordure en collant la barre au
+   flux quand le footer disparaît. */
+body.customer-mode .client-contact-bar { margin-top: var(--space-6); }
+
 /* --- Mode client pur (/reserver) : zéro commande staff ------------------- */
 /* Entrée partageable aux clients finaux. Masque totalement le switch de vue,
    la Déconnexion et l'Accès SaaS. Le staff continue d'utiliser / ou #staff. */
@@ -2684,14 +2747,14 @@ body.customer-mode .client-footer {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
 }
 .occasion-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-height: 44px;
-  padding: 0 14px;
+  padding: 0 15px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
   background: var(--surface);
@@ -2699,14 +2762,30 @@ body.customer-mode .client-footer {
   font-family: var(--font-ui);
   font-size: 13.5px;
   font-weight: 500;
+  line-height: 1.2;
   cursor: pointer;
   transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.occasion-chip:hover { background: var(--subtle); }
+.occasion-chip svg { color: var(--muted); flex-shrink: 0; transition: color var(--dur) var(--ease); }
+.occasion-chip:hover { background: var(--subtle); border-color: var(--muted); }
+.occasion-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .occasion-chip.active {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
+}
+.occasion-chip.active svg { color: var(--accent-contrast); }
+
+/* Champ de précision « Autre » (révélé quand le chip Autre est actif). */
+.occasion-other-wrap { margin-top: var(--space-3); }
+.occasion-other-wrap.hidden { display: none; }
+
+/* Note honnête discrète sous un champ (demande particulière, etc.). */
+.field-honest-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
 }
 
 /* Entrée « demande sur mesure » sous l'étape 1 */
@@ -2807,6 +2886,50 @@ body.modal-open { overflow: hidden; }
   font-weight: 500;
 }
 .bespoke-modal .hidden { display: none; }
+
+/* La modale vit hors de #clientView : sa grille de champs a besoin de ses
+   propres règles (le .grid-2 de #clientView ne s'y applique pas). Champs alignés
+   sur 2 colonnes, empilés sous 520px. */
+.bespoke-modal .grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+.bespoke-modal .grid-2 > * { min-width: 0; }
+@media (max-width: 520px) {
+  .bespoke-modal .grid-2 { grid-template-columns: 1fr; }
+}
+.bespoke-fineprint {
+  margin: var(--space-3) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* Actions de la modale : primaire accent plein, secondaire bordé, alignées à
+   droite (le .cr-actions générique de pinlane.css les aplatirait sinon). */
+.bespoke-modal .cr-actions { justify-content: flex-end; margin-top: var(--space-4); }
+.bespoke-modal .cr-actions .btn-primary,
+.bespoke-modal .cr-actions .btn-secondary {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.bespoke-modal .cr-actions .btn-primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.bespoke-modal .cr-actions .btn-primary:hover { opacity: 0.9; border-color: var(--accent); }
+.bespoke-modal .cr-actions .btn-secondary {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+.bespoke-modal .cr-actions .btn-secondary:hover { background: var(--subtle); border-color: var(--line-strong); }
 
 /* Type déclaré affiché sur une fiche réservation client */
 .occasion-field textarea.input { resize: vertical; min-height: 46px; }

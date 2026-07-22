@@ -46,60 +46,55 @@ function readProjectFile(relative) {
 // [3] forceExtraLaneAtPax cable dans lib/booking-config.js
 // ===========================================================================
 function testForceExtraLane() {
-  console.log('\n[3] forceExtraLaneAtPax cable (lib/booking-config)');
+  console.log('\n[3] nombre de pistes = pax / capacite confort (forceExtra RETIRE)');
   const bc = require('../lib/booking-config');
 
-  // Doctrine defaut : SANS config (fallback constantes) le calcul est inchange.
-  ok(bc.getRequiredLaneCount('bowling', 8) === 2, 'defaut sans config: 8 pax -> 2 pistes (inchange)');
-  ok(bc.getRequiredLaneCount('bowling', 55) === 8, 'defaut sans config: 55 pax -> 8 pistes (inchange)');
-  ok(bc.getRequiredLaneCount('bowling', 6) === 1, 'defaut sans config: 6 pax -> 1 piste (inchange)');
+  // Defaut SANS config (fallback constantes 8 pistes / 6 confort / 7 secours).
+  ok(bc.getRequiredLaneCount('bowling', 8) === 2, 'defaut: 8 pax -> 2 pistes');
+  ok(bc.getRequiredLaneCount('bowling', 55) === 8, 'defaut: 55 pax -> 8 pistes (borne au parc)');
+  ok(bc.getRequiredLaneCount('bowling', 6) === 1, 'defaut: 6 pax -> 1 piste');
 
-  // SANS le champ forceExtraLaneAtPax dans la config -> IDENTIQUE a aujourd hui.
-  const noForce = { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7 };
-  ok(bc.getRequiredLaneCount('bowling', 8, undefined, noForce) === 2, 'config sans forceExtra: 8 pax -> 2 (doctrine)');
-  ok(bc.getRequiredLaneCount('bowling', 13, undefined, noForce) === 3, 'config sans forceExtra: 13 pax -> 3 (doctrine)');
+  // Le nombre de pistes suit la CONFIG du centre (joueurs confort / piste).
+  const cfg6 = { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7 };
+  ok(bc.getRequiredLaneCount('bowling', 11, undefined, cfg6) === 2, '6 confort/piste: 11 pax -> 2 pistes (cas reporte par Movsar)');
+  ok(bc.getRequiredLaneCount('bowling', 12, undefined, cfg6) === 2, '6 confort/piste: 12 pax -> 2 pistes');
+  ok(bc.getRequiredLaneCount('bowling', 13, undefined, cfg6) === 3, '6 confort/piste: 13 pax -> 3 pistes');
 
-  // AVEC forceExtraLaneAtPax = 8 -> une piste de plus a partir du seuil.
+  // Changer "joueurs max / piste" CHANGE le moteur (ce que Movsar demande).
+  const cfg8 = { laneCount: 8, normalCapacityPerLane: 8, emergencyCapacityPerLane: 9 };
+  ok(bc.getRequiredLaneCount('bowling', 13, undefined, cfg8) === 2, '8 confort/piste: 13 pax -> 2 pistes (vs 3 a 6/piste)');
+  ok(bc.getRequiredLaneCount('bowling', 16, undefined, cfg8) === 2, '8 confort/piste: 16 pax -> 2 pistes');
+  ok(bc.getRequiredLaneCount('bowling', 17, undefined, cfg8) === 3, '8 confort/piste: 17 pax -> 3 pistes');
+
+  // Changer le NOMBRE de pistes change le repli de secours.
+  const cfg6lanes = { laneCount: 6, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7 };
+  ok(bc.getRequiredLaneCount('bowling', 40, undefined, cfg6lanes) === 6, '6 pistes: 40 pax -> borne a 6 (secours)');
+
+  // GARDE ANTI-REGRESSION : le champ forceExtraLaneAtPax (meme present) N A AUCUN
+  // effet -> il n ajoute JAMAIS de piste. 11 pax a 6/piste = 2, jamais 3.
   const withForce = { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, forceExtraLaneAtPax: 8 };
-  ok(bc.getRequiredLaneCount('bowling', 8, undefined, withForce) === 3, 'forceExtra=8: 8 pax -> normal(2)+1 = 3');
-  ok(bc.getRequiredLaneCount('bowling', 7, undefined, withForce) === 2, 'forceExtra=8: 7 pax (< seuil) -> inchange (2)');
-  ok(bc.getRequiredLaneCount('bowling', 13, undefined, withForce) === 4, 'forceExtra=8: 13 pax -> normal(3)+1 = 4');
+  ok(bc.getRequiredLaneCount('bowling', 11, undefined, withForce) === 2, 'forceExtra ignore: 11 pax -> 2 (pas 3)');
+  ok(bc.getRequiredLaneCount('bowling', 8, undefined, withForce) === 2, 'forceExtra ignore: 8 pax -> 2 (pas 3)');
+  ok(bc.getRequiredLaneCount('bowling', 13, undefined, withForce) === 3, 'forceExtra ignore: 13 pax -> 3 (pas 4)');
+  ok(bc.getRequiredLaneCount('bowling', 11, undefined, withForce) === bc.getRequiredLaneCount('bowling', 11, undefined, cfg6),
+    'contre-preuve: avec ou sans forceExtra, meme nombre de pistes');
 
-  // Borne au nombre total de pistes : +1 ne depasse JAMAIS laneCount.
-  ok(bc.getRequiredLaneCount('bowling', 48, undefined, withForce) === 8, 'forceExtra=8: 48 pax (deja 8 pistes) -> borne a 8, jamais 9');
-  ok(bc.getRequiredLaneCount('bowling', 55, undefined, withForce) === 8, 'forceExtra=8: 55 pax -> borne a 8');
+  // Les FORMULES ne sont pas impactees non plus (aucun +1 nulle part).
+  ok(bc.getRequiredLaneCount('formule', 10, 'f1', withForce) === bc.getRequiredLaneCount('formule', 10, 'f1', cfg6),
+    'formule f1 10 pax: identique avec/sans forceExtra');
 
-  // Seuil neutralise (0 / null / negatif / NaN) -> comportement historique.
-  ok(bc.getRequiredLaneCount('bowling', 8, undefined, { ...noForce, forceExtraLaneAtPax: 0 }) === 2, 'forceExtra=0 -> neutre');
-  ok(bc.getRequiredLaneCount('bowling', 8, undefined, { ...noForce, forceExtraLaneAtPax: null }) === 2, 'forceExtra=null -> neutre');
-  ok(bc.getRequiredLaneCount('bowling', 8, undefined, { ...noForce, forceExtraLaneAtPax: -3 }) === 2, 'forceExtra<0 -> neutre');
-
-  // resolveBowlingCapacity expose bien le seuil normalise (0 si absent/invalide).
-  ok(bc.resolveBowlingCapacity(withForce).forceExtraLaneAtPax === 8, 'resolveBowlingCapacity expose forceExtraLaneAtPax=8');
-  ok(bc.resolveBowlingCapacity(noForce).forceExtraLaneAtPax === 0, 'resolveBowlingCapacity: champ absent -> 0');
-  ok(bc.resolveBowlingCapacity(null).forceExtraLaneAtPax === 0, 'resolveBowlingCapacity(null) -> 0');
-
-  // Un seuil bas ne double pas la piste : on ajoute UNE seule piste, pas +1 par tranche.
-  const lowSeuil = { laneCount: 8, normalCapacityPerLane: 6, emergencyCapacityPerLane: 7, forceExtraLaneAtPax: 1 };
-  ok(bc.getRequiredLaneCount('bowling', 6, undefined, lowSeuil) === 2, 'forceExtra=1: 6 pax -> normal(1)+1 = 2 (une seule piste ajoutee)');
-
-  // SCOPING : forceExtra vaut pour le BOWLING DIRECT, PAS pour une formule (package
-  // fixe). Ainsi la disponibilite et le prix des formules existantes ne bougent pas
-  // (doctrine defaut = inchange, et run-ops-tests formula-availability reste vert).
-  ok(bc.getRequiredLaneCount('bowling', 10, '', withForce) === 3, 'bowling direct 10 pax + forceExtra=8 -> 3 (piste de confort)');
-  ok(bc.getRequiredLaneCount('formule', 10, 'f1', withForce) === 2, 'formule f1 10 pax + forceExtra=8 -> 2 (INCHANGE : pas de confort sur les formules)');
-  ok(bc.getRequiredLaneCount('formule', 10, 'f1', withForce) === bc.getRequiredLaneCount('formule', 10, 'f1', noForce),
-    'contre-preuve scoping: une formule rend le meme nombre de pistes avec ou sans forceExtra');
-
-  // Contre-preuve par MUTATION LOGIQUE : une implementation NON cablee (qui
-  // ignore forceExtra) rendrait 2 pour 8 pax avec forceExtra=8. La vraie rend 3.
-  // Si le cablage saute un jour, les assertions ci-dessus virent au rouge.
-  const uncabled = (pax, cfg) => {
+  // GARDE ANTI-REGRESSION : getRequiredLaneCount doit EGALER le calcul pur
+  // pax / confort-par-piste (avec repli secours) pour TOUTE config, y compris
+  // quand forceExtraLaneAtPax est present. Si un jour on re-injecte un "+1 piste"
+  // quelque part, une de ces egalites casse et le gate rougit.
+  const pure = (pax, cfg) => {
     const n = Math.ceil(pax / cfg.normalCapacityPerLane);
     return (n > cfg.laneCount && pax <= cfg.laneCount * cfg.emergencyCapacityPerLane) ? cfg.laneCount : n;
   };
-  ok(uncabled(8, withForce) === 2 && bc.getRequiredLaneCount('bowling', 8, undefined, withForce) === 3,
-    'contre-preuve mutation: non-cable=2, cable=3 (le champ change bien le calcul)');
+  [[8, withForce], [11, withForce], [13, withForce], [40, cfg6lanes], [17, cfg8]].forEach(([pax, cfg]) => {
+    ok(bc.getRequiredLaneCount('bowling', pax, undefined, cfg) === pure(pax, cfg),
+      `garde anti-regression: ${pax} pax = calcul pur pax/confort (forceExtra sans effet)`);
+  });
 }
 
 // ===========================================================================

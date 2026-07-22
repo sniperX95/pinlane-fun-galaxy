@@ -115,6 +115,7 @@ const { requireStaffPermission } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
+const catalogStore = require('../lib/catalog-store');
 const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient, setClientBilling } = require('../lib/platform-clients');
 const { upsertAvailabilityBlock, deleteAvailabilityBlock, listAvailabilityBlocks, refreshAvailabilityBlocks } = require('../lib/availability-blocks');
 
@@ -1517,6 +1518,94 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // ── CRUD CATALOGUE DB (phase 2b-1, permission settings.manage) ──────────────
+  // Ces actions editent le catalogue PARTAGE : les formulas sont GLOBALES
+  // aujourd hui (pas de center_id), owner ET client agissent dessus. Le scoping
+  // per-centre des formules custom est un raffinement ulterieur, HORS phase.
+  // requireConcreteCenter force un centre de SESSION concret ('all'/vide refuse)
+  // pour la coherence et le futur scoping, meme si l ecriture reste globale.
+  // catalog-store rafraichit le cache (refreshCatalog force) apres chaque
+  // ecriture ; l audit est automatique (PP1, action mutante non exclue). Les
+  // bornes (name<=120, prix 0..1000, minPax>=1, steps non vide, priceType
+  // per_pax|per_lane) vivent dans lib/catalog-store (erreurs exposees).
+  if (action === 'createFormula') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.createFormula(getPool(), body.formula || {});
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Creation de la formule impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'updateFormula') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.updateFormula(getPool(), { id: body.id, ...(body.patch || {}) });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Mise a jour de la formule impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'setFormulaSteps') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.setFormulaSteps(getPool(), { id: body.id, steps: body.steps });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Mise a jour des etapes impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'deleteFormula') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.deleteFormula(getPool(), { id: body.id });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Retrait de la formule impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'createActivity') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.createActivity(getPool(), body.activity || {});
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Creation de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'updateActivity') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.updateActivity(getPool(), { id: body.id, ...(body.patch || {}) });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Mise a jour de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'deleteActivity') {
+    requireConcreteCenter('catalogue');
+    let out;
+    try {
+      out = await catalogStore.deleteActivity(getPool(), { id: body.id });
+    } catch (error) {
+      throw createHttpError(safeUserMessage(error, 'Retrait de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
+    }
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+
   // Edition tarifaire CLIENT (cockpit centre, permission pricing.manage) : le
   // centre de SESSION fait foi (withCenter a deja ecrase body.centerId), et
   // l'override global 'all' est refuse : un tenant n'edite QUE son propre tarif,
@@ -2351,6 +2440,11 @@ function getRequiredOpsPermission(method, action) {
   // est forcee au centre de session (withCenter) et l'override global 'all' est
   // refuse cote lib (upsertClientFormuleOverride) : un tenant n'edite que SON tarif.
   if (['saveClientFormuleOverride', 'resetClientFormuleOverride'].includes(action)) return 'pricing.manage';
+  // CRUD catalogue DB (formules/activites) : permission de CENTRE settings.manage,
+  // la meme que la config du centre (saveCenterConfig). Le catalogue est partage
+  // (formulas globales) aujourd hui ; le scoping per-centre est un raffinement
+  // ulterieur. Jamais platform.admin : c est une edition d exploitation du centre.
+  if (['createFormula', 'updateFormula', 'setFormulaSteps', 'deleteFormula', 'createActivity', 'updateActivity', 'deleteActivity'].includes(action)) return 'settings.manage';
   // Blocage granulaire de la disponibilite : permission de CENTRE settings.manage,
   // la meme que la config du centre (saveCenterConfig). Centre force a la session,
   // 'all' refuse (requireConcreteCenter + garde lib). Jamais platform.admin.
@@ -2433,6 +2527,10 @@ function auditEntityFor(action, body = {}) {
   if (/^(saveCenterConfig|saveCenter|setCenterStatus)$/.test(action)) {
     return { entityType: 'center', entityId: body.centerId || body.center_id || '' };
   }
+  // CRUD catalogue : l entite est la formule / l activite editee (id dans le
+  // corps, ou dans l objet cree). Rend la piste "l historique de CET objet" utile.
+  if (/Formula/.test(action)) return { entityType: 'formula', entityId: body.id || (body.formula && body.formula.id) || '' };
+  if (/Activity/.test(action)) return { entityType: 'activity', entityId: body.id || (body.activity && body.activity.id) || '' };
   if (/Campaign/i.test(action)) return { entityType: 'campaign', entityId: body.id || body.campaignId || '' };
   if (/EmailTemplate/i.test(action)) return { entityType: 'email_template', entityId: body.id || body.templateId || '' };
   if (/EmailIdentity/i.test(action)) return { entityType: 'email_identity', entityId: body.id || body.identityId || '' };

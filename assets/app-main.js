@@ -2896,6 +2896,17 @@ function updatePaxAlert() {
       </div>`;
     return;
   }
+  // Formule : le nombre de pistes depend de la formule (et de son bowling). Tant
+  // qu aucune formule n est choisie (ou qu elle n utilise pas de piste), on
+  // n affiche PAS de compte de pistes (evite un absurde "0 pistes cote a cote").
+  if (state.booking.type === 'formule' && (!state.booking.formuleId || needed <= 0)) {
+    el.innerHTML = `
+      <div class="pax-alert">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>Vous serez <b>${pax} personne${pax > 1 ? 's' : ''}</b>. Choisissez une formule ci-dessous : elle s'adapte à votre groupe.</span>
+      </div>`;
+    return;
+  }
   if (impossibleBowlingGroup) {
     el.innerHTML = `
       <div class="pax-alert warning">

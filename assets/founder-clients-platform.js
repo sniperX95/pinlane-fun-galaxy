@@ -175,13 +175,6 @@
       </aside>`;
   }
 
-  function honestNote() {
-    return `<aside class="fcp-note" role="note">
-        Ici tu geres les entreprises clientes de Pinlane. Ajouter un client cree son centre,
-        ses roles (Direction, Staff) et leurs codes d'acces. Le SaaS n'est pas lance.
-      </aside>`;
-  }
-
   function metaLine(client) {
     const parts = [];
     if (client.plan) parts.push(`<span class="fcp-meta-plan">${esc(client.plan)}</span>`);
@@ -210,21 +203,25 @@
     </div>`;
   }
 
+  // Statut editable en un geste : select du kit fondateur (.fck-status-*),
+  // identique cote Centres. Un select tient a toute largeur (contrairement a
+  // l'ancien segmente 3 etats qui se chevauchait dans les cartes etroites).
   function statusSelect(client) {
     const busy = fcp.statusBusy === client.id;
     const cur = client.status || '';
     const options = STATUS_ORDER.map((k) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${esc(STATUS[k].label)}</option>`).join('');
     const extra = (cur && !STATUS[cur]) ? `<option value="${esc(cur)}" selected>${esc(cur)}</option>` : '';
-    return `<label class="fcp-status-pick">
-      <span class="fcp-status-lab">Statut</span>
-      <select class="fcp-status-select" ${busy ? 'disabled' : ''} aria-label="Statut du client"
+    return `<label class="fck-status-pick">
+      <span class="fck-status-lab">Statut</span>
+      <select class="fck-status-select" ${busy ? 'disabled' : ''} aria-label="Statut du client"
         onchange="fcpSetStatus('${escJs(client.id)}', this.value)">${extra}${options}</select>
     </label>`;
   }
 
-  // Bloc facturation d'une carte : prix mensuel EDITABLE (POST setClientBilling)
-  // et CA reel 30 j du client (somme du CA de ses centres, fourni par le
-  // backend). Le prix vide vaut "a definir" : on n'affiche jamais un faux 0.
+  // Bloc facturation d'une carte : prix mensuel EDITABLE (POST setClientBilling).
+  // Le prix vide vaut "a definir" : on n'affiche jamais un faux 0. Le CA 30 j
+  // reel du client vit dans la ligne de metriques de la carte (avec centres et
+  // effectif), aligne en Geist Mono : ici on ne garde que le CONTROLE editable.
   function billingBlock(client) {
     const c = client || {};
     const id = String(c.id || '');
@@ -232,24 +229,16 @@
     const hasPrice = price != null && Number.isFinite(Number(price));
     const priceVal = hasPrice ? String(Number(price)) : '';
     const busy = fcp.billingBusy === id;
-    const rev = c.revenue30d;
-    const revText = (rev == null) ? '-' : money(rev);
     return `<div class="fcp-billing">
-      <div class="fcp-billing-price">
-        <label class="fcp-billing-lab" for="fcp-price-${esc(id)}">Prix mensuel</label>
-        <div class="fcp-billing-edit">
-          <input type="number" id="fcp-price-${esc(id)}" class="fcp-price-input" min="0" max="100000" step="1"
-            inputmode="numeric" placeholder="a definir" value="${esc(priceVal)}" ${busy ? 'disabled' : ''}
-            data-client="${esc(id)}" aria-label="Prix mensuel en euros de ${esc(c.name || id)}">
-          <span class="fcp-price-unit">EUR/mois</span>
-          <button type="button" class="pv2-btn sm fcp-price-save" ${busy ? 'disabled' : ''} onclick="fcpSaveBilling(this, '${escJs(id)}')">${busy ? '...' : 'Enregistrer'}</button>
-        </div>
-        ${hasPrice ? '' : '<span class="fcp-hint">Aucun prix pose : ce client ne compte pas dans le MRR.</span>'}
+      <label class="fcp-billing-lab" for="fcp-price-${esc(id)}">Prix mensuel</label>
+      <div class="fcp-billing-edit">
+        <input type="number" id="fcp-price-${esc(id)}" class="fcp-price-input" min="0" max="100000" step="1"
+          inputmode="numeric" placeholder="a definir" value="${esc(priceVal)}" ${busy ? 'disabled' : ''}
+          data-client="${esc(id)}" aria-label="Prix mensuel en euros de ${esc(c.name || id)}">
+        <span class="fcp-price-unit">EUR/mois</span>
+        <button type="button" class="pv2-btn sm fcp-price-save" ${busy ? 'disabled' : ''} onclick="fcpSaveBilling(this, '${escJs(id)}')">${busy ? '...' : 'Enregistrer'}</button>
       </div>
-      <div class="fcp-revenue">
-        <span class="fcp-revenue-cap">CA 30 j</span>
-        <span class="fcp-revenue-num">${esc(revText)}</span>
-      </div>
+      ${hasPrice ? '' : '<span class="fcp-hint">Aucun prix pose : ce client ne compte pas dans le MRR.</span>'}
     </div>`;
   }
 
@@ -261,19 +250,25 @@
     const staffCount = Number.isFinite(Number(c.staffCount))
       ? Number(c.staffCount)
       : centers.reduce((sum, x) => sum + (Number(x && x.staff) || 0), 0);
+    const rev = c.revenue30d;
+    const revText = (rev == null) ? '-' : money(rev);
+    // Ligne de metriques scannable : les 3 chiffres qui comptent (CA reel 30 j,
+    // nombre de centres, effectif), memes primitives .fca-metric que les cartes
+    // Centres pour que les deux pages se lisent pareil, alignes en Geist Mono.
     return `<section class="fck-center-card fcp-client-card">
       <div class="fck-card-head">
         <div><strong>${esc(c.name || id || '(sans nom)')}</strong> <span class="pv2-quiet">· ${esc(id)}</span></div>
         ${statusChip(c.status)}
       </div>
       ${metaLine(c)}
-      <div class="fca-metrics fcp-metrics">
+      <div class="fca-metrics">
+        <div class="fca-metric"><span class="fca-metric-num">${esc(revText)}</span><span class="fca-metric-cap">CA 30 j</span></div>
         <div class="fca-metric"><span class="fca-metric-num">${esc(num(centerCount))}</span><span class="fca-metric-cap">centre${centerCount > 1 ? 's' : ''}</span></div>
         <div class="fca-metric"><span class="fca-metric-num">${esc(num(staffCount))}</span><span class="fca-metric-cap">effectif</span></div>
       </div>
       ${billingBlock(c)}
       ${centersBlock(centers)}
-      <div class="fcp-card-foot">
+      <div class="fck-card-foot">
         ${statusSelect(c)}
         <button type="button" class="pv2-btn" onclick="fcpAddCenter('${escJs(id)}')">Ajouter un centre</button>
       </div>
@@ -298,29 +293,34 @@
 
   // En-tete KPI plateforme : MRR (regle d'honnetete), clients/centres actifs,
   // CA 30 j agrege. Tout vient de platformClients.platform ; on n'invente rien.
+  // Reutilise la ligne KPI du kit fondateur (.fck-stats.fck-biz-stats > .fck-stat)
+  // exactement comme le Cockpit refondu : meme grille cadree, memes chiffres en
+  // Geist Mono tabulaires. On garde les hooks du gate (data-kpi, .fcp-kpi-num,
+  // .fcp-kpi-hint) en double-classe sur les spans.
   function kpiHtml() {
     const p = fcp.data && fcp.data.platform;
     if (!p) return '';
     const mrr = mrrView(p);
-    return `<section class="pv2-panel fcp-kpi-panel" data-fcp-panel="kpis">
-      <div class="fcp-kpis">
-        <div class="fcp-kpi" data-kpi="mrr">
-          <span class="fcp-kpi-cap">MRR</span>
-          <span class="fcp-kpi-num">${esc(mrr.display)}</span>
-          <span class="fcp-kpi-hint">${esc(mrr.hint)}</span>
+    const cells = [
+      { kpi: 'mrr', cap: 'MRR', num: mrr.display, hint: mrr.hint },
+      { kpi: 'clients', cap: 'Clients actifs', num: num(p.activeClients) },
+      { kpi: 'centers', cap: 'Centres actifs', num: num(p.activeCenters) },
+      { kpi: 'ca', cap: 'CA 30 j', num: money(p.revenue30dAll) },
+    ];
+    const stats = cells.map((c) => `<div class="fck-stat" data-kpi="${esc(c.kpi)}">
+        <span class="fck-stat-cap">${esc(c.cap)}</span>
+        <span class="fck-stat-num fcp-kpi-num">${esc(c.num)}</span>
+        ${c.hint ? `<span class="fck-stat-hint fcp-kpi-hint">${esc(c.hint)}</span>` : ''}
+      </div>`).join('');
+    return `<section class="pv2-panel" data-fcp-panel="kpis">
+      <div class="pv2-panel-head has-sub">
+        <div>
+          <h2>Activite plateforme</h2>
+          <p class="pv2-panel-sub">Clients, MRR et CA a l'echelle du SaaS. Le MRR reste "a definir" tant qu'aucun prix n'est pose.</p>
         </div>
-        <div class="fcp-kpi" data-kpi="clients">
-          <span class="fcp-kpi-cap">Clients actifs</span>
-          <span class="fcp-kpi-num">${esc(num(p.activeClients))}</span>
-        </div>
-        <div class="fcp-kpi" data-kpi="centers">
-          <span class="fcp-kpi-cap">Centres actifs</span>
-          <span class="fcp-kpi-num">${esc(num(p.activeCenters))}</span>
-        </div>
-        <div class="fcp-kpi" data-kpi="ca">
-          <span class="fcp-kpi-cap">CA 30 j</span>
-          <span class="fcp-kpi-num">${esc(money(p.revenue30dAll))}</span>
-        </div>
+      </div>
+      <div class="pv2-panel-body">
+        <div class="fck-stats fck-biz-stats">${stats}</div>
       </div>
     </section>`;
   }
@@ -348,10 +348,10 @@
     const sf = fcp.statusFilter || 'all';
     const opts = [['all', 'Tous les statuts']].concat(STATUS_ORDER.map((k) => [k, STATUS[k].label]))
       .map(([v, l]) => `<option value="${esc(v)}" ${sf === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
-    return `<div class="fcp-filter" data-fcp-panel="filter">
-      <input type="search" class="pv2-input fcp-search" placeholder="Rechercher un client (nom ou identifiant)"
+    return `<div class="fck-filterbar" data-fcp-panel="filter">
+      <input type="search" class="pv2-input fck-filter-search fcp-search" placeholder="Rechercher un client (nom ou identifiant)"
         value="${esc(fcp.search || '')}" aria-label="Rechercher un client" oninput="fcpSetSearch(this.value)">
-      <select class="pv2-input fcp-status-filter" aria-label="Filtrer par statut" onchange="fcpSetStatusFilter(this.value)">${opts}</select>
+      <select class="pv2-input fck-filter-select fcp-status-filter" aria-label="Filtrer par statut" onchange="fcpSetStatusFilter(this.value)">${opts}</select>
     </div>`;
   }
 
@@ -387,7 +387,6 @@
       </section>
 
       ${kpiHtml()}
-      ${honestNote()}
       ${d.testData ? testDataBanner() : ''}
 
       ${fcp.error ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">${esc(fcp.error)}</p>

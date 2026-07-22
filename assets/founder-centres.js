@@ -229,16 +229,21 @@
     return parts.length ? parts.join('<span class="fca-sep" aria-hidden="true">·</span>') : '<span class="pv2-quiet">Configuration minimale</span>';
   }
 
-  function statusSeg(center) {
+  // Statut editable en un geste. ANCIEN BUG : un segmente 3 etats (actif / en
+  // preparation / ferme) tassait "en preparation" et "ferme" dans les cartes
+  // etroites (ils se chevauchaient, illisibles). Un select du kit fondateur
+  // (.fck-status-*, identique cote Clients Pinlane) tient a TOUTE largeur et
+  // rend les deux pages coherentes.
+  function statusSelect(center) {
     const busy = fca.statusBusy === center.id;
-    const btns = STATUS_ORDER.map((key) => {
-      const s = STATUS[key];
-      const on = center.status === key;
-      return `<button type="button" class="fca-seg-btn ${on ? `is-active ${s.toneClass}` : ''}"
-        aria-pressed="${on ? 'true' : 'false'}" ${busy ? 'disabled' : ''}
-        onclick="fcaSetStatus('${escJs(center.id)}', '${escJs(key)}')">${esc(s.label)}</button>`;
-    }).join('');
-    return `<div class="fca-seg-wrap"><span class="fca-seg-label">Statut</span><div class="fca-status-seg" role="group" aria-label="Statut du centre">${btns}</div></div>`;
+    const cur = center.status || '';
+    const options = STATUS_ORDER.map((k) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${esc(STATUS[k].label)}</option>`).join('');
+    const extra = (cur && !STATUS[cur]) ? `<option value="${esc(cur)}" selected>${esc(cur)}</option>` : '';
+    return `<label class="fck-status-pick">
+      <span class="fck-status-lab">Statut</span>
+      <select class="fck-status-select" ${busy ? 'disabled' : ''} aria-label="Statut du centre"
+        onchange="fcaSetStatus('${escJs(center.id)}', this.value)">${extra}${options}</select>
+    </label>`;
   }
 
   // A quel client (entreprise) appartient le centre. clientName null = centre
@@ -253,7 +258,7 @@
 
   function centerCard(center) {
     const id = String(center.id || '');
-    return `<section class="fck-center-card">
+    return `<section class="fck-center-card fca-center-card">
       <div class="fck-card-head">
         <div><strong>${esc(center.name || id || '(sans nom)')}</strong> <span class="pv2-quiet">· ${esc(id)}</span></div>
         ${statusChip(center.status)}
@@ -265,8 +270,8 @@
         <div class="fca-metric"><span class="fca-metric-num">${esc(num(center.reservations30d))}</span><span class="fca-metric-cap">resas 30 j</span></div>
         <div class="fca-metric"><span class="fca-metric-num">${esc(money(center.revenue30d))}</span><span class="fca-metric-cap">CA 30 j</span></div>
       </div>
-      <div class="fca-card-foot">
-        ${statusSeg(center)}
+      <div class="fck-card-foot">
+        ${statusSelect(center)}
         <button type="button" class="pv2-btn" onclick="fcaOpenConfig('${escJs(id)}')">Configurer</button>
       </div>
     </section>`;
@@ -274,14 +279,26 @@
 
   // Ligne de TOTAUX plateforme (bundle.totals) : somme membres / resas 30 j /
   // CA 30 j / nombre de centres. Tout vient du serveur, aucun recalcul.
+  // Reutilise la ligne KPI du kit fondateur (.fck-stats.fck-biz-stats) : meme
+  // grille cadree et memes chiffres Geist Mono que le Cockpit et Clients Pinlane.
   function totalsBar(totals) {
     if (!totals || typeof totals !== 'object') return '';
-    return `<section class="pv2-panel fca-totals-panel" data-fca-panel="totals">
-      <div class="fca-totals">
-        <div class="fca-total"><span class="fca-total-num">${esc(num(totals.centerCount))}</span><span class="fca-total-cap">centres</span></div>
-        <div class="fca-total"><span class="fca-total-num">${esc(num(totals.members))}</span><span class="fca-total-cap">membres</span></div>
-        <div class="fca-total"><span class="fca-total-num">${esc(num(totals.reservations30d))}</span><span class="fca-total-cap">resas 30 j</span></div>
-        <div class="fca-total"><span class="fca-total-num">${esc(money(totals.revenue30d))}</span><span class="fca-total-cap">CA 30 j</span></div>
+    const cells = [
+      { cap: 'centres', num: num(totals.centerCount) },
+      { cap: 'membres', num: num(totals.members) },
+      { cap: 'resas 30 j', num: num(totals.reservations30d) },
+      { cap: 'CA 30 j', num: money(totals.revenue30d) },
+    ];
+    const stats = cells.map((c) => `<div class="fck-stat"><span class="fck-stat-cap">${esc(c.cap)}</span><span class="fck-stat-num">${esc(c.num)}</span></div>`).join('');
+    return `<section class="pv2-panel" data-fca-panel="totals">
+      <div class="pv2-panel-head has-sub">
+        <div>
+          <h2>Parc de centres</h2>
+          <p class="pv2-panel-sub">Tous clients confondus, sur les 30 derniers jours.</p>
+        </div>
+      </div>
+      <div class="pv2-panel-body">
+        <div class="fck-stats fck-biz-stats">${stats}</div>
       </div>
     </section>`;
   }
@@ -333,11 +350,11 @@
       .concat(list.map((nm) => `<option value="${esc(nm)}" ${cf === nm ? 'selected' : ''}>${esc(nm)}</option>`))
       .concat(hasOrphan ? [`<option value="__none__" ${cf === '__none__' ? 'selected' : ''}>Sans client</option>`] : [])
       .join('');
-    return `<div class="fck-audit-bar fca-filter" data-fca-panel="filter">
-      <input type="search" class="pv2-input fca-search" placeholder="Rechercher un centre (nom ou identifiant)"
+    return `<div class="fck-filterbar" data-fca-panel="filter">
+      <input type="search" class="pv2-input fck-filter-search fca-search" placeholder="Rechercher un centre (nom ou identifiant)"
         value="${esc(fca.search || '')}" aria-label="Rechercher un centre" oninput="fcaSetSearch(this.value)">
-      <select class="pv2-input fca-client-filter" aria-label="Filtrer par client" onchange="fcaSetClientFilter(this.value)">${clientOpts}</select>
-      <select class="pv2-input fca-status-filter" aria-label="Filtrer par statut" onchange="fcaSetStatusFilter(this.value)">${statusOpts}</select>
+      <select class="pv2-input fck-filter-select fca-client-filter" aria-label="Filtrer par client" onchange="fcaSetClientFilter(this.value)">${clientOpts}</select>
+      <select class="pv2-input fck-filter-select fca-status-filter" aria-label="Filtrer par statut" onchange="fcaSetStatusFilter(this.value)">${statusOpts}</select>
     </div>`;
   }
 
@@ -345,7 +362,7 @@
     const total = (fca.data && Array.isArray(fca.data.centers)) ? fca.data.centers.length : 0;
     const centers = filteredCenters();
     if (centers.length) {
-      return `<div class="fck-center-grid">${centers.map(centerCard).join('')}</div>`;
+      return `<div class="fck-center-grid fca-center-grid">${centers.map(centerCard).join('')}</div>`;
     }
     if (total) {
       return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre ne correspond a la recherche.</p></div></section>`;

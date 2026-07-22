@@ -197,9 +197,18 @@ body.admin-mode .ops-sidebar {
   border-radius: var(--radius-md);
   background: var(--subtle);
   border: 1px solid var(--line);
+  transition: border-color var(--dur) var(--ease);
 }
 
+.fgx-menu-brand:hover .fgx-menu-logo-frame,
+.fgx-menu-brand:focus-visible .fgx-menu-logo-frame { border-color: var(--line-strong); }
+
 .fgx-menu-logo { width: 26px; height: 26px; object-fit: contain; }
+
+/* Logo personnalise (data-URI localStorage) : il occupe tout le cadre, sans le
+   fond subtle reserve a la marque par defaut. */
+.fgx-menu-logo-frame.is-custom { background: var(--surface); }
+.fgx-menu-logo-frame.is-custom .fgx-menu-logo { width: 100%; height: 100%; object-fit: cover; }
 
 .fgx-menu-brand-copy,
 .fgx-menu-account-copy,
@@ -231,17 +240,21 @@ body.admin-mode .ops-sidebar {
 
 .fgx-menu-collapse:hover { background: var(--subtle); color: var(--text); }
 
-.fgx-menu-collapse::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-left: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateX(1px) rotate(45deg);
+/* Icone "panneau lateral" (SVG inline dans le markup) : le volet interne se
+   reflete quand la barre est repliee, transform seul (compositable). */
+.fgx-menu-collapse svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   transition: transform var(--dur) var(--ease);
 }
 
-body.staff-menu-collapsed .fgx-menu-collapse::before { transform: translateX(-1px) rotate(225deg); }
+body.staff-menu-collapsed .fgx-menu-collapse svg { transform: scaleX(-1); }
 
 .fgx-menu-center,
 .fgx-menu-account {
@@ -263,7 +276,9 @@ body.staff-menu-collapsed .fgx-menu-collapse::before { transform: translateX(-1p
 }
 
 .fgx-menu-center:hover,
-.fgx-menu-account:hover {
+.fgx-menu-account:hover,
+.fgx-menu-center[aria-expanded='true'],
+.fgx-menu-account[aria-expanded='true'] {
   background: var(--subtle);
   border-color: var(--line);
 }
@@ -375,10 +390,11 @@ body.staff-menu-collapsed .fgx-menu-collapse::before { transform: translateX(-1p
   color: var(--text);
 }
 
-/* Item actif = barre 2px accent à gauche (recette .nav-item) */
-.fgx-menu-item.active::before,
-.fgx-menu-subitem.active::before,
-.fgx-menu-group.active .fgx-menu-item-parent::before {
+/* Item actif = barre 2px accent à gauche (recette .nav-item). La barre existe
+   sur tous les items (invisible, scaleY(0)) et se deploie a l'activation :
+   transform + opacity seulement, transition compositable. */
+.fgx-menu-item::before,
+.fgx-menu-subitem::before {
   content: '';
   position: absolute;
   left: 0;
@@ -387,6 +403,17 @@ body.staff-menu-collapsed .fgx-menu-collapse::before { transform: translateX(-1p
   width: 2px;
   border-radius: var(--radius-full);
   background: var(--accent);
+  opacity: 0;
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+
+.fgx-menu-item.active::before,
+.fgx-menu-subitem.active::before,
+.fgx-menu-group.active .fgx-menu-item-parent::before {
+  opacity: 1;
+  transform: scaleY(1);
 }
 
 .fgx-menu-icon { width: 15px; height: 15px; flex: 0 0 15px; color: var(--faint); }
@@ -451,6 +478,7 @@ body.staff-menu-collapsed .fgx-menu-collapse::before { transform: translateX(-1p
 }
 
 .fgx-menu-avatar {
+  position: relative;
   width: 30px;
   height: 30px;
   display: grid;
@@ -458,14 +486,56 @@ body.staff-menu-collapsed .fgx-menu-collapse::before { transform: translateX(-1p
   border-radius: var(--radius-full);
   background: var(--subtle);
   border: 1px solid var(--line);
+  /* Anneau subtil qui detache l'avatar de la surface (tokens seulement). */
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--line) 35%, transparent);
   color: var(--text);
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.fgx-menu-account:hover .fgx-menu-avatar,
+.fgx-menu-account[aria-expanded='true'] .fgx-menu-avatar { border-color: var(--line-strong); }
+
+/* Point de presence "en ligne" : information doublee par le libelle de role,
+   jamais portee par la couleur seule. */
+.fgx-menu-avatar-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--success);
+  border: 2px solid var(--surface);
 }
 
 .fgx-menu-account-copy strong { color: var(--text); font-size: 12px; font-weight: 600; line-height: 1.2; }
 .fgx-menu-account-copy small { margin-top: 2px; color: var(--faint); font-size: 11px; line-height: 1.15; }
-.fgx-menu-more { color: var(--faint); font-size: 14px; line-height: 1; text-align: center; }
+
+.fgx-menu-more {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--faint);
+  transition: color var(--dur) var(--ease);
+}
+
+.fgx-menu-more svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fgx-menu-account:hover .fgx-menu-more,
+.fgx-menu-account[aria-expanded='true'] .fgx-menu-more { color: var(--text); }
 
 /* --- Sidebar réduite (64px) --- */
 body.staff-menu-collapsed .ops-sidebar { padding: 12px 8px 10px; }
@@ -497,6 +567,9 @@ body.staff-menu-collapsed .fgx-center-dot,
 body.staff-menu-collapsed .fgx-menu-avatar { margin: 0 auto; }
 
 /* --- Popovers sidebar (centres + compte) : surface flottante --- */
+/* Entree : fade + legere montee/scale DEPUIS l'ancre (transform-origin cote
+   ancre), sortie inverse plus courte. transform/opacity uniquement ;
+   prefers-reduced-motion neutralise tout (pinlane.css §12 + bloc dedie). */
 .fgx-menu-popover {
   position: absolute;
   left: 10px;
@@ -510,6 +583,41 @@ body.staff-menu-collapsed .fgx-menu-avatar { margin: 0 auto; }
   background: var(--raised);
   color: var(--text);
   box-shadow: var(--shadow-overlay);
+  transform-origin: 50% 0;
+  animation: fgx-menu-pop-in var(--dur-slow) var(--ease-out-strong) both;
+}
+
+/* Le popover compte est ancre au bloc profil EN BAS : il monte depuis lui. */
+.fgx-menu-popover.account {
+  transform-origin: 50% 100%;
+  animation-name: fgx-menu-pop-in-up;
+}
+
+.fgx-menu-popover.is-closing {
+  pointer-events: none;
+  animation: fgx-menu-pop-out var(--dur-fast) var(--ease) both;
+}
+
+.fgx-menu-popover.account.is-closing { animation-name: fgx-menu-pop-out-up; }
+
+@keyframes fgx-menu-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes fgx-menu-pop-in-up {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes fgx-menu-pop-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+
+@keyframes fgx-menu-pop-out-up {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(4px) scale(0.98); }
 }
 
 /* INVARIANT 2 : le popover ne déborde jamais du viewport */
@@ -519,7 +627,11 @@ body.staff-menu-collapsed .fgx-menu-popover {
   left: calc(100% + 8px);
   right: auto;
   width: 272px;
+  /* Barre repliee : le popover sort a DROITE de la barre, l'ancre est a gauche. */
+  transform-origin: 0 20px;
 }
+
+body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; }
 
 .fgx-menu-popover-title {
   padding: 6px 8px 4px;
@@ -554,7 +666,17 @@ body.staff-menu-collapsed .fgx-menu-popover {
   background: var(--surface);
   color: var(--muted);
   padding: 5px;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
+
+.fgx-menu-option:hover .fgx-menu-option-icon,
+.fgx-menu-option:focus-visible .fgx-menu-option-icon {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.fgx-menu-option.danger .fgx-menu-option-icon { color: var(--danger); }
+.fgx-menu-option.danger:hover .fgx-menu-option-icon { border-color: var(--danger); }
 
 /* Icônes au trait du popover compte : sans cette règle, les <path> héritent du
    fill noir SVG par défaut = invisibles sur fond sombre. Même pattern que
@@ -571,6 +693,21 @@ body.staff-menu-collapsed .fgx-menu-popover {
 }
 
 .fgx-menu-option:has(.fgx-menu-option-icon) { grid-template-columns: 26px minmax(0, 1fr); }
+
+/* Variante compacte (popover compte) : une seule ligne, densite Vercel.
+   Le detail passe en title (tooltip natif). */
+.fgx-menu-option.compact {
+  min-height: 34px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 9px;
+  padding: 4px 9px;
+}
+
+.fgx-menu-option.compact .fgx-menu-option-icon {
+  width: 24px;
+  height: 24px;
+  padding: 4.5px;
+}
 
 .fgx-menu-option:hover,
 .fgx-menu-option:focus-visible { background: var(--subtle); }
@@ -603,17 +740,138 @@ body.staff-menu-collapsed .fgx-menu-popover {
   font-weight: 500;
 }
 
-.fgx-account-summary {
+/* En-tete de groupe du switcher (vue proprietaire : centres groupes par client). */
+.fgx-center-group-head {
+  padding: 8px 9px 2px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Centre actif : le badge de statut passe en accent (en plus du fond + bordure,
+   l'etat n'est jamais porte par la couleur seule). */
+.fgx-center-option.is-active em { background: var(--accent-soft); color: var(--accent-strong); }
+
+/* Carte d'identite en tete du popover compte : avatar + nom + role/acces. */
+.fgx-account-card {
   display: grid;
-  gap: 1px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
   padding: 8px 9px 10px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 2px;
 }
 
-.fgx-account-summary span { color: var(--faint); font-size: 11px; font-weight: 500; }
-.fgx-account-summary strong { font-size: 13px; font-weight: 600; }
-.fgx-account-summary small { color: var(--muted); font-size: 12px; }
+.fgx-account-card-avatar {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  border: 1px solid var(--line);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--line) 35%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.fgx-account-card-copy { min-width: 0; }
+
+.fgx-account-card-copy strong,
+.fgx-account-card-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fgx-account-card-copy strong { font-size: 13px; font-weight: 600; line-height: 1.25; }
+.fgx-account-card-copy small { margin-top: 1px; color: var(--muted); font-size: 12px; line-height: 1.2; }
+
+/* Separateur discret entre groupes d'actions du popover compte. */
+.fgx-menu-divider { height: 1px; margin: 2px 0; background: var(--line); }
+
+/* Le popover compte est plus dense que le switcher : il doit tenir sous le
+   plafond de 420px meme avec l'option "Reinitialiser le logo" affichee. */
+.fgx-menu-popover.account { gap: 2px; }
+
+/* Ligne theme : label + vrai toggle segmente clair/sombre (un seul actif). */
+.fgx-menu-theme-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 9px;
+}
+
+.fgx-menu-theme-label { color: var(--muted); font-size: 13px; font-weight: 500; }
+
+.fgx-menu-theme-seg {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+}
+
+.fgx-menu-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 4px; /* radius-sm (6) - 2 : rayon interne du segment */
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.fgx-menu-theme-btn svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.fgx-menu-theme-btn:hover { color: var(--text); }
+
+.fgx-menu-theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.fgx-menu-theme-btn.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
+/* Menu : neutralisation locale du mouvement (double filet avec pinlane.css §12). */
+@media (prefers-reduced-motion: reduce) {
+  .fgx-menu-popover,
+  .fgx-menu-popover.is-closing { animation: none; }
+  .fgx-menu-subnav,
+  .fgx-menu-chevron svg,
+  .fgx-menu-collapse svg,
+  .fgx-menu-item::before,
+  .fgx-menu-subitem::before { transition: none; }
+}
 
 /* ----------------------------------------------------------------------------
    2. AUTH OVERLAY : connexion staff

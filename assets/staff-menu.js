@@ -2,6 +2,14 @@
   const PLATFORM_MARK_SRC = './assets/brand/pinlane-mark.svg';
   const COLLAPSE_KEY = 'fgx:staff-menu-collapsed';
   const GROUPS_KEY = 'fgx:staff-menu-groups';
+  // Logo de marque personnalisable : choix MVP ASSUME, persistance localStorage
+  // UNIQUEMENT (device-local, non synchronise entre machines/navigateurs).
+  // Une version synchronisee serveur (par centre) est un follow-up.
+  const BRAND_LOGO_KEY = 'fgx:staff-brand-logo';
+  const MAX_BRAND_LOGO_BYTES = 512 * 1024;
+  // Duree de sortie des popovers : DOIT couvrir l'animation CSS fgx-menu-pop-out
+  // (--dur-fast = 120ms) avant le retrait du DOM.
+  const POPOVER_EXIT_MS = 140;
   const DEFAULT_OPEN_GROUPS = { planning: false, field: false, activities: false };
   const GROUP_DEFAULT_TARGETS = {
     planning: 'planning',
@@ -58,7 +66,15 @@
     establishment: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M6 20V8l6-4 6 4v12"/><path d="M10 20v-6h4v6M8 10h2M14 10h2"/></svg>',
     users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3.4 2.7-5.2 5.5-5.2s4.9 1.8 5.5 5.2"/><path d="M16 11h4M18 9v4"/></svg>',
     settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.9-1.1L14.3 3h-4.6l-.3 2.9A7 7 0 0 0 7.5 7L5.1 6 3.1 9.4l2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.1l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.9 1.1l.3 2.9h4.6l.3-2.9a7 7 0 0 0 1.9-1.1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1.1Z"/></svg>',
-    center: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M12 21V11M4 7l8 4 8-4"/></svg>'
+    center: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M12 21V11M4 7l8 4 8-4"/></svg>',
+    panel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M9.5 5v14"/></svg>',
+    kebab: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.6" r="0.6"/><circle cx="12" cy="12" r="0.6"/><circle cx="12" cy="18.4" r="0.6"/></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8 8 0 0 1 10.5 4 8 8 0 1 0 20 13.5Z"/></svg>',
+    image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.6"/><path d="m5 18 5-5 3 3 2.5-2.5L20 18"/></svg>',
+    reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10a8 8 0 1 1 2.3 6.5"/><path d="M4 5v5h5"/></svg>',
+    store: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16l-1-4H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg>',
+    logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/><path d="m15 8 4 4-4 4M19 12H10"/></svg>'
   };
 
   const menuSections = [
@@ -178,6 +194,100 @@
         "'": '&#39;'
       }[char]));
     };
+
+  function prefersReducedMenuMotion() {
+    try {
+      return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // --- Logo de marque changeable (device-local, voir BRAND_LOGO_KEY) ---------
+  function readBrandLogo() {
+    try {
+      const stored = localStorage.getItem(BRAND_LOGO_KEY);
+      // Seule une data-URI image est acceptee : tout autre contenu est ignore.
+      if (typeof stored === 'string' && stored.startsWith('data:image/')) return stored;
+    } catch (error) {}
+    return null;
+  }
+
+  function hasCustomBrandLogo() {
+    return readBrandLogo() !== null;
+  }
+
+  function getBrandLogoSrc() {
+    return readBrandLogo() || PLATFORM_MARK_SRC;
+  }
+
+  function notifyMenu(message) {
+    if (typeof toast === 'function') toast(message);
+  }
+
+  function storeBrandLogo(dataUri) {
+    try {
+      localStorage.setItem(BRAND_LOGO_KEY, dataUri);
+    } catch (error) {
+      notifyMenu('Impossible d\'enregistrer le logo (stockage local plein).');
+      return;
+    }
+    renderMenu();
+    notifyMenu('Logo mis à jour sur cet appareil.');
+  }
+
+  function resetBrandLogo() {
+    try {
+      localStorage.removeItem(BRAND_LOGO_KEY);
+    } catch (error) {}
+    renderMenu();
+    notifyMenu('Logo Pinlane restauré.');
+  }
+
+  // Ouvre un selecteur de fichier image, valide type + poids (512 Ko max),
+  // lit en data-URI et persiste en localStorage (device-local, choix MVP).
+  function promptBrandLogo() {
+    if (typeof document === 'undefined' || typeof FileReader === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (input.parentNode) input.parentNode.removeChild(input);
+      if (!file) return;
+      if (!/^image\//.test(file.type || '')) {
+        notifyMenu('Fichier refusé : choisissez une image.');
+        return;
+      }
+      if (file.size > MAX_BRAND_LOGO_BYTES) {
+        notifyMenu('Image trop lourde : 512 Ko maximum.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUri = String(reader.result || '');
+        if (!dataUri.startsWith('data:image/')) {
+          notifyMenu('Lecture de l\'image impossible.');
+          return;
+        }
+        storeBrandLogo(dataUri);
+      };
+      reader.onerror = () => notifyMenu('Lecture de l\'image impossible.');
+      reader.readAsDataURL(file);
+    }, { once: true });
+    if (document.body) document.body.appendChild(input);
+    input.click();
+  }
+
+  function getInitials(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return 'PL';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+  }
 
   function getMenuCenters() {
     try {
@@ -451,10 +561,25 @@
     `;
   }
 
-  function closeMenuPopover() {
+  function closeMenuPopover(options = {}) {
     const root = document.querySelector('[data-staff-menu-root]');
     if (!root) return;
-    root.querySelectorAll('.fgx-menu-popover').forEach(popover => popover.remove());
+    // Sortie animee (fade + retombee vers l'ancre) puis retrait du DOM.
+    // prefers-reduced-motion ou options.immediate : retrait immediat.
+    const immediate = options.immediate === true || prefersReducedMenuMotion();
+    root.querySelectorAll('.fgx-menu-popover').forEach(popover => {
+      if (immediate) {
+        popover.remove();
+        return;
+      }
+      if (popover.dataset.closing === '1') return;
+      popover.dataset.closing = '1';
+      popover.classList.add('is-closing');
+      popover.setAttribute('aria-hidden', 'true');
+      setTimeout(() => {
+        if (popover.isConnected) popover.remove();
+      }, POPOVER_EXIT_MS);
+    });
     root.querySelectorAll('[data-fgx-center-menu][aria-expanded="true"], [data-fgx-account-menu][aria-expanded="true"]').forEach(button => button.setAttribute('aria-expanded', 'false'));
   }
 
@@ -475,9 +600,15 @@
   function openMenuPopover(kind, anchor, html) {
     const root = document.querySelector('[data-staff-menu-root]');
     if (!root || !anchor) return;
-    const alreadyOpen = root.querySelector(`.fgx-menu-popover[data-popover-kind="${kind}"]`);
+    // Un popover deja en cours de fermeture ne compte pas comme "ouvert" :
+    // sans ce filtre, rouvrir pendant la sortie animee serait refuse.
+    const alreadyOpen = root.querySelector(`.fgx-menu-popover[data-popover-kind="${kind}"]:not(.is-closing)`);
     closeMenuPopover();
     if (alreadyOpen) return;
+    // Jamais deux popovers superposes : ceux en sortie sont retires tout de
+    // suite quand un nouveau s'ouvre (l'animation de sortie ne joue que quand
+    // rien ne la remplace).
+    root.querySelectorAll('.fgx-menu-popover').forEach(popover => popover.remove());
     const popover = document.createElement('div');
     popover.className = `fgx-menu-popover ${kind}`;
     popover.dataset.popoverKind = kind;
@@ -531,7 +662,7 @@
     // (vue proprietaire). Un client garde une liste plate.
     const options = groups.length > 1
       ? groups.map(group => `
-        <div class="fgx-center-group-head" style="padding:8px 12px 2px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.55">${escapeHtml(group.clientName || 'Sans client')}</div>
+        <div class="fgx-center-group-head" role="presentation">${escapeHtml(group.clientName || 'Sans client')}</div>
         ${group.centers.map(center => centerOptionMarkup(center, selectedId)).join('')}
       `).join('')
       : centers.map(center => centerOptionMarkup(center, selectedId)).join('');
@@ -554,53 +685,56 @@
     const accessSummary = getAccessSummary();
     const themeSummary = getThemeSummary();
     const canOpen = key => (typeof canUseStaffPage === 'function' ? canUseStaffPage(key) : true);
+    const isLight = document.body.classList.contains('staff-light');
+    // Le sous-titre de la carte evite la redondance role/acces (souvent egaux
+    // pour un role verrouille).
+    const cardMeta = accessSummary && accessSummary !== roleLabel
+      ? `${roleLabel} · ${accessSummary}`
+      : roleLabel;
     openMenuPopover('account', anchor, `
-      <div class="fgx-account-summary compact" role="presentation">
-        <span>Compte</span>
-        <strong>${escapeHtml(displayName)}</strong>
-        <small>${escapeHtml(roleLabel)} · ${escapeHtml(accessSummary)}</small>
+      <div class="fgx-account-card" role="presentation">
+        <span class="fgx-account-card-avatar" aria-hidden="true">${escapeHtml(getInitials(displayName))}</span>
+        <span class="fgx-account-card-copy">
+          <strong>${escapeHtml(displayName)}</strong>
+          <small>${escapeHtml(cardMeta)}</small>
+        </span>
       </div>
-      ${canOpen('users') ? `<button type="button" class="fgx-menu-option" data-fgx-menu-action="users" role="menuitem">
+      ${canOpen('users') ? `<button type="button" class="fgx-menu-option compact" data-fgx-menu-action="users" role="menuitem" title="Codes, rôles et permissions">
         <span class="fgx-menu-option-icon">${icons.users}</span>
-        <span>
-          <strong>Équipe & accès</strong>
-          <small>Codes, rôles et permissions</small>
-        </span>
+        <span><strong>Équipe & accès</strong></span>
       </button>` : ''}
-      ${canOpen('establishment') ? `<button type="button" class="fgx-menu-option" data-fgx-menu-action="establishment" role="menuitem">
+      ${canOpen('establishment') ? `<button type="button" class="fgx-menu-option compact" data-fgx-menu-action="establishment" role="menuitem" title="Centre, horaires et capacité">
         <span class="fgx-menu-option-icon">${icons.establishment}</span>
-        <span>
-          <strong>Établissement</strong>
-          <small>Centre, horaires et capacité</small>
-        </span>
+        <span><strong>Établissement</strong></span>
       </button>` : ''}
-      ${canOpen('settings') ? `<button type="button" class="fgx-menu-option" data-fgx-menu-action="settings" role="menuitem">
+      ${canOpen('settings') ? `<button type="button" class="fgx-menu-option compact" data-fgx-menu-action="settings" role="menuitem" title="Poste staff et exports">
         <span class="fgx-menu-option-icon">${icons.settings}</span>
-        <span>
-          <strong>Pr&eacute;f&eacute;rences</strong>
-          <small>Poste staff et exports</small>
-        </span>
+        <span><strong>Pr&eacute;f&eacute;rences</strong></span>
       </button>` : ''}
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="theme" role="menuitem">
-        <span class="fgx-menu-option-icon">${icons.settings}</span>
-        <span>
-          <strong>Changer de thème</strong>
-          <small>${escapeHtml(themeSummary)}</small>
-        </span>
+      <button type="button" class="fgx-menu-option compact" data-fgx-menu-action="logo" role="menuitem" title="Image, 512 Ko max · propre à cet appareil">
+        <span class="fgx-menu-option-icon">${icons.image}</span>
+        <span><strong>Changer le logo</strong></span>
       </button>
-      <button type="button" class="fgx-menu-option" data-fgx-menu-action="client" role="menuitem">
-        <span class="fgx-menu-option-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16l-1-4H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg></span>
-        <span>
-          <strong>Espace client</strong>
-          <small>Site de r&eacute;servation public</small>
+      ${hasCustomBrandLogo() ? `<button type="button" class="fgx-menu-option compact" data-fgx-menu-action="logo-reset" role="menuitem" title="Revenir à la marque Pinlane">
+        <span class="fgx-menu-option-icon">${icons.reset}</span>
+        <span><strong>Réinitialiser le logo</strong></span>
+      </button>` : ''}
+      <div class="fgx-menu-divider" role="presentation"></div>
+      <div class="fgx-menu-theme-row" role="presentation" title="${escapeHtml(themeSummary)}">
+        <span class="fgx-menu-theme-label">Thème</span>
+        <span class="fgx-menu-theme-seg" role="group" aria-label="Choisir le thème">
+          <button type="button" class="fgx-menu-theme-btn${isLight ? ' is-active' : ''}" data-fgx-menu-action="theme" data-fgx-theme-value="light" role="menuitemradio" aria-checked="${isLight ? 'true' : 'false'}">${icons.sun}<span>Clair</span></button>
+          <button type="button" class="fgx-menu-theme-btn${isLight ? '' : ' is-active'}" data-fgx-menu-action="theme" data-fgx-theme-value="dark" role="menuitemradio" aria-checked="${isLight ? 'false' : 'true'}">${icons.moon}<span>Sombre</span></button>
         </span>
+      </div>
+      <div class="fgx-menu-divider" role="presentation"></div>
+      <button type="button" class="fgx-menu-option compact" data-fgx-menu-action="client" role="menuitem" title="Site de r&eacute;servation public">
+        <span class="fgx-menu-option-icon">${icons.store}</span>
+        <span><strong>Espace client</strong></span>
       </button>
-      <button type="button" class="fgx-menu-option danger" data-fgx-menu-action="logout" role="menuitem">
-        <span class="fgx-menu-option-icon">${icons.arrivals}</span>
-        <span>
-          <strong>D&eacute;connexion</strong>
-          <small>Fermer la session staff</small>
-        </span>
+      <button type="button" class="fgx-menu-option compact danger" data-fgx-menu-action="logout" role="menuitem" title="Fermer la session staff">
+        <span class="fgx-menu-option-icon">${icons.logout}</span>
+        <span><strong>D&eacute;connexion</strong></span>
       </button>
     `);
   }
@@ -651,7 +785,37 @@
     renderMenu();
   }
 
-  function handleMenuAction(action) {
+  function handleMenuAction(action, trigger) {
+    if (action === 'theme') {
+      // Toggle segmente : un segment porte data-fgx-theme-value (choix
+      // explicite), sinon on bascule. Le popover RESTE ouvert : les segments
+      // sont synchronises en place pour un vrai comportement de switch.
+      const requested = trigger && trigger.dataset ? trigger.dataset.fgxThemeValue : '';
+      const nextTheme = requested === 'light' || requested === 'dark'
+        ? requested
+        : (document.body.classList.contains('staff-light') ? 'dark' : 'light');
+      if (typeof setStaffTheme === 'function') {
+        setStaffTheme(nextTheme);
+      } else {
+        document.body.classList.toggle('staff-light', nextTheme === 'light');
+      }
+      document.querySelectorAll('.fgx-menu-popover[data-popover-kind="account"] [data-fgx-theme-value]').forEach(button => {
+        const active = button.dataset.fgxThemeValue === nextTheme;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-checked', active ? 'true' : 'false');
+      });
+      return;
+    }
+    if (action === 'logo') {
+      closeMenuPopover();
+      promptBrandLogo();
+      return;
+    }
+    if (action === 'logo-reset') {
+      closeMenuPopover();
+      resetBrandLogo();
+      return;
+    }
     closeMenuPopover();
     if (action === 'center') {
       const anchor = document.querySelector('[data-fgx-center-menu]');
@@ -674,15 +838,6 @@
       navigateMenu(action);
       return;
     }
-    if (action === 'theme') {
-      const nextTheme = document.body.classList.contains('staff-light') ? 'dark' : 'light';
-      if (typeof setStaffTheme === 'function') {
-        setStaffTheme(nextTheme);
-      } else {
-        document.body.classList.toggle('staff-light', nextTheme === 'light');
-      }
-      return;
-    }
     if (action === 'logout') {
       if (typeof logout === 'function') logout();
     }
@@ -697,15 +852,15 @@
     root.innerHTML = `
       <div class="fgx-menu-top">
         <button type="button" class="fgx-menu-brand" data-fgx-menu-key="dashboard" title="Tableau de bord Pinlane">
-          <span class="fgx-menu-logo-frame">
-            <img class="fgx-menu-logo" src="${PLATFORM_MARK_SRC}" alt="" aria-hidden="true">
+          <span class="fgx-menu-logo-frame${hasCustomBrandLogo() ? ' is-custom' : ''}">
+            <img class="fgx-menu-logo" src="${escapeHtml(getBrandLogoSrc())}" alt="" aria-hidden="true">
           </span>
           <span class="fgx-menu-brand-copy">
             <strong>${escapeHtml(PLATFORM_BRAND.name)}</strong>
             <small>${escapeHtml(PLATFORM_BRAND.subtitle)}</small>
           </span>
         </button>
-        <button type="button" class="fgx-menu-collapse" data-fgx-menu-collapse aria-label="R\u00e9duire le menu" title="R\u00e9duire le menu"></button>
+        <button type="button" class="fgx-menu-collapse" data-fgx-menu-collapse aria-label="R\u00e9duire le menu" title="R\u00e9duire le menu">${icons.panel}</button>
       </div>
 
       <button type="button" class="fgx-menu-center" data-fgx-center-menu aria-haspopup="menu" aria-expanded="false" title="Changer de centre">
@@ -719,12 +874,12 @@
       </nav>
 
       <button type="button" class="fgx-menu-account" data-fgx-account-menu aria-haspopup="menu" aria-expanded="false" title="Options du compte">
-        <span class="fgx-menu-avatar">FG</span>
+        <span class="fgx-menu-avatar">${escapeHtml(getInitials(displayName))}<span class="fgx-menu-avatar-dot" aria-hidden="true"></span></span>
         <span class="fgx-menu-account-copy">
           <strong>${escapeHtml(displayName)}</strong>
           <small>${escapeHtml(roleLabel)}</small>
         </span>
-        <span class="fgx-menu-more" aria-hidden="true">...</span>
+        <span class="fgx-menu-more" aria-hidden="true">${icons.kebab}</span>
       </button>
     `;
 
@@ -800,7 +955,7 @@
     if (menuAction) {
       event.preventDefault();
       event.stopPropagation();
-      handleMenuAction(menuAction.dataset.fgxMenuAction);
+      handleMenuAction(menuAction.dataset.fgxMenuAction, menuAction);
       return;
     }
 
@@ -1040,7 +1195,9 @@
       item.classList.toggle('active', planningActive && item.dataset.opsResource === resource);
     });
 
-    root.querySelector('[data-fgx-menu-key="dashboard"]')?.classList.toggle('active', dashboardActive);
+    // Scope .fgx-menu-nav : la marque porte aussi data-fgx-menu-key="dashboard"
+    // et interceptait la classe active a la place de l'item de nav.
+    root.querySelector('.fgx-menu-nav [data-fgx-menu-key="dashboard"]')?.classList.toggle('active', dashboardActive);
     root.querySelector('[data-fgx-menu-toggle="planning"]')?.classList.toggle('active', planningActive);
     root.querySelector('[data-fgx-menu-toggle="field"]')?.classList.toggle('active', fieldActive);
     root.querySelector('[data-fgx-menu-toggle="activities"]')?.classList.toggle('active', activitiesActive);
@@ -1052,11 +1209,11 @@
     });
 
     if (directStaffPageActive) {
-      root.querySelector(`[data-fgx-menu-key="${page}"]`)?.classList.add('active');
+      root.querySelector(`.fgx-menu-nav [data-fgx-menu-key="${page}"]`)?.classList.add('active');
     }
     if (view === 'admin') {
-      const adminKey = page && root.querySelector(`[data-fgx-menu-key="${page}"]`) ? page : 'dashboard';
-      root.querySelector(`[data-fgx-menu-key="${adminKey}"]`)?.classList.add('active');
+      const adminKey = page && root.querySelector(`.fgx-menu-nav [data-fgx-menu-key="${page}"]`) ? page : 'dashboard';
+      root.querySelector(`.fgx-menu-nav [data-fgx-menu-key="${adminKey}"]`)?.classList.add('active');
     }
   }
 

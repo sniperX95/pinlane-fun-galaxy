@@ -2227,7 +2227,7 @@ function dirComparisonInner() {
   const data = cmp.data || {};
   const centers = Array.isArray(data.centers) ? data.centers.slice() : [];
   if (!centers.length) return dirNoteHtml('Aucune donnee de centre a comparer sur cette periode.');
-  const currentId = data.currentCenterId == null ? null : data.currentCenterId;
+  const currentId = data.selfCenterId == null ? null : data.selfCenterId;
   const best = dirCmpBest(centers);
   const head = DIR_CMP_COLS.map((col) => `<th scope="col" class="dir-num">${escapeHtml(col.label)}</th>`).join('');
   const rows = centers.map((center) => dirCmpRowHtml(center, best, currentId)).join('');

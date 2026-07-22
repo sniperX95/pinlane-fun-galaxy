@@ -361,7 +361,7 @@ async function installMock(page) {
           return J({
             ok: true,
             testData: true,
-            currentCenterId: 'libramont',
+            selfCenterId: 'libramont',
             centers: [
               { id: 'libramont', name: 'Libramont', reservations: 30, revenue: 4200, pax: 180, avgBasket: 42, occupancy: 61, clientsUnique: 24, isCurrent: true },
               { id: 'marche', name: 'Marche-en-Famenne', reservations: 22, revenue: 5100, pax: 150, avgBasket: 51, occupancy: 48, clientsUnique: 19, isCurrent: false },

@@ -2577,7 +2577,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260721f';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260722a';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -7952,6 +7952,7 @@ function renderStaffUtilityEstablishment() {
         </fieldset>
       </div>` : renderEstablishmentReadView(center)}
     </section>
+    ${renderAvailabilityBlocksPanel()}
   </div>`;
 }
 
@@ -8779,6 +8780,397 @@ function renderStaffUtilityUsers() {
       </aside>
     </section>
   </div>`;
+}
+
+// ===========================================================================
+// Blocages de disponibilite (page Etablissement, permission settings.manage).
+// Le centre est celui de la SESSION : le serveur le force, on ne l'envoie
+// jamais dans le corps. Lecture via listAvailabilityBlocks, ecritures via
+// saveAvailabilityBlock / deleteAvailabilityBlock (meme apiRequest que la
+// config centre). Le planning consomme le meme cache pour marquer, en lecture
+// seule, les ressources bloquees le jour affiche.
+// ===========================================================================
+let availabilityBlocksCache = { loaded: false, loading: false, error: '', blocks: [] };
+const AVAILABILITY_DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+function getAvailabilitySessionCenter() {
+  const centers = staffCenterConfigCache.centers || [];
+  const id = getCurrentStaffCenterId();
+  return centers.find(center => center.id === id) || centers[0] || null;
+}
+
+function getAvailabilityLaneCount() {
+  const center = getAvailabilitySessionCenter();
+  const count = Number(center?.resources?.bowling?.laneCount || 0);
+  return Number.isFinite(count) && count > 0 ? Math.min(Math.trunc(count), 200) : TOTAL_LANES;
+}
+
+function getAvailabilityActivities() {
+  const center = getAvailabilitySessionCenter();
+  const all = staffCenterConfigCache.activities || [];
+  const enabled = all.filter(activity => center?.activityAvailability?.[activity.id]);
+  return enabled.length ? enabled : all;
+}
+
+function availabilityActivityLabel(id) {
+  const found = (staffCenterConfigCache.activities || []).find(activity => activity.id === id);
+  return found ? found.label : String(id || '');
+}
+
+function availabilityFormulaLabel(id) {
+  const found = FORMULES.find(formule => formule.id === id);
+  return found ? found.name : String(id || '');
+}
+
+// La liste serveur renvoie startMin/endMin (minutes, ou null pour jour entier).
+// On tolere aussi startTime/endTime au cas ou la forme evoluerait.
+function availabilityBlockStartMin(block) {
+  if (typeof block.startMin === 'number') return block.startMin;
+  if (block.startTime) { const [h, m] = String(block.startTime).split(':').map(Number); return (h * 60) + (m || 0); }
+  return null;
+}
+
+function availabilityBlockEndMin(block) {
+  if (typeof block.endMin === 'number') return block.endMin;
+  if (block.endTime) { const [h, m] = String(block.endTime).split(':').map(Number); return (h * 60) + (m || 0); }
+  return null;
+}
+
+function availabilityMinutesToHHMM(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function availabilityScopeText(block) {
+  if (block.scopeType === 'center') return 'Centre ferme';
+  if (block.scopeType === 'lane') return `Piste ${block.scopeRef} bloquee`;
+  if (block.scopeType === 'activity') return `${availabilityActivityLabel(block.scopeRef)} bloque`;
+  if (block.scopeType === 'formula') return `${availabilityFormulaLabel(block.scopeRef)} bloquee`;
+  return 'Blocage';
+}
+
+function availabilityRecurrenceText(block) {
+  if (block.recurrence === 'weekly') {
+    const name = AVAILABILITY_DAY_NAMES[Number(block.dayOfWeek)] || 'jour inconnu';
+    let text = `tous les ${name}s`;
+    if (block.dateFrom && block.dateUntil) text += ` (du ${block.dateFrom} au ${block.dateUntil})`;
+    else if (block.dateFrom) text += ` (a partir du ${block.dateFrom})`;
+    else if (block.dateUntil) text += ` (jusqu'au ${block.dateUntil})`;
+    return text;
+  }
+  return `le ${block.date || ''}`.trim();
+}
+
+function availabilityTimeText(block) {
+  const start = availabilityBlockStartMin(block);
+  const end = availabilityBlockEndMin(block);
+  if (start === null && end === null) return '(toute la journee)';
+  if (start === null || end === null) return '';
+  return `${availabilityMinutesToHHMM(start)}-${availabilityMinutesToHHMM(end)}`;
+}
+
+// Libelle humain : "Piste 3 bloquee tous les mardis 14:00-16:00",
+// "Centre ferme le 2026-08-15 (toute la journee)", etc.
+function describeAvailabilityBlock(block) {
+  const parts = [availabilityScopeText(block), availabilityRecurrenceText(block), availabilityTimeText(block)].filter(Boolean);
+  let label = parts.join(' ');
+  if (block.reason) label += ` - motif : ${block.reason}`;
+  return label;
+}
+
+async function loadAvailabilityBlocks(force = false) {
+  if (availabilityBlocksCache.loading) return;
+  if (availabilityBlocksCache.loaded && !force) return;
+  if (!canUseStaffPermission('settings.manage')) return;
+  availabilityBlocksCache.loading = true;
+  if (force) availabilityBlocksCache.error = '';
+  try {
+    const centerId = getCurrentStaffCenterId();
+    const response = await apiRequest(`${API_ENDPOINTS.ops}?action=listAvailabilityBlocks&centerId=${encodeURIComponent(centerId)}`);
+    availabilityBlocksCache = {
+      loaded: true,
+      loading: false,
+      error: '',
+      blocks: Array.isArray(response.blocks) ? response.blocks : []
+    };
+  } catch (error) {
+    availabilityBlocksCache.loading = false;
+    availabilityBlocksCache.loaded = true;
+    availabilityBlocksCache.error = error?.message || 'Lecture des blocages impossible.';
+  }
+  refreshAvailabilityBlocksUi();
+}
+
+// Charge une seule fois pour le planning (center-wide, filtre client par date).
+function ensureAvailabilityBlocksForPlanning() {
+  if (!canUseStaffPermission('settings.manage')) return;
+  if (availabilityBlocksCache.loaded || availabilityBlocksCache.loading) return;
+  loadAvailabilityBlocks(false);
+}
+
+function refreshAvailabilityBlocksUi() {
+  const list = document.getElementById('avbList');
+  if (list) list.innerHTML = renderAvailabilityBlocksList();
+  if (state.view === 'staff') {
+    if (document.getElementById('planningGridWrap')) renderPlanning();
+    if (document.getElementById('laserPlanningGridWrap')) renderLaserPlanning();
+  }
+}
+
+function getAvailabilityBlocksForDate(dateStr) {
+  const blocks = availabilityBlocksCache.blocks || [];
+  if (!dateStr) return [];
+  const dow = parseLocalDate(dateStr).getDay();
+  return blocks.filter(block => {
+    if (block.recurrence === 'weekly') {
+      if (Number(block.dayOfWeek) !== dow) return false;
+      if (block.dateFrom && dateStr < block.dateFrom) return false;
+      if (block.dateUntil && dateStr > block.dateUntil) return false;
+      return true;
+    }
+    return block.date === dateStr;
+  });
+}
+
+// Fenetres de blocage bowling (heures decimales) par piste, pour le jour
+// affiche. center + activite bowling => toutes les pistes ; lane => la piste ;
+// formula => pas de piste physique (non marque ici). Jour entier => plage
+// complete d'ouverture.
+function getBowlingBlockWindows(dateStr, openHour, closeHour) {
+  const perLane = {};
+  const push = (lane, win) => { (perLane[lane] = perLane[lane] || []).push(win); };
+  const toWindow = (block) => {
+    const startMin = availabilityBlockStartMin(block);
+    const endMin = availabilityBlockEndMin(block);
+    const full = startMin === null && endMin === null;
+    const startH = full ? openHour : Math.max(openHour, startMin / 60);
+    const endH = full ? closeHour : Math.min(closeHour, endMin / 60);
+    return { startH, endH, reason: block.reason || '', full };
+  };
+  getAvailabilityBlocksForDate(dateStr).forEach(block => {
+    if (block.scopeType === 'center' || (block.scopeType === 'activity' && (block.scopeRef === 'bowling' || block.scopeRef === 'duckpin_bowling'))) {
+      for (let lane = 1; lane <= TOTAL_LANES; lane += 1) push(lane, toWindow(block));
+    } else if (block.scopeType === 'lane') {
+      const lane = Number(block.scopeRef);
+      if (Number.isFinite(lane) && lane >= 1 && lane <= TOTAL_LANES) push(lane, toWindow(block));
+    }
+  });
+  Object.keys(perLane).forEach(key => {
+    perLane[key] = perLane[key].filter(win => win.endH > win.startH && win.endH > openHour && win.startH < closeHour);
+    if (!perLane[key].length) delete perLane[key];
+  });
+  return perLane;
+}
+
+// Banniere laser : le planning laser est un agenda (pas une grille par piste),
+// on signale donc au niveau du jour les blocages laser/centre actifs.
+function renderLaserBlockBanner(dateStr) {
+  if (!availabilityBlocksCache.loaded) return '';
+  const blocks = getAvailabilityBlocksForDate(dateStr).filter(block =>
+    block.scopeType === 'center' || (block.scopeType === 'activity' && block.scopeRef === 'laser_game'));
+  if (!blocks.length) return '';
+  const items = blocks.map(block => {
+    const scope = block.scopeType === 'center' ? 'Centre ferme' : 'Laser Game bloque';
+    const time = availabilityTimeText(block) || '(toute la journee)';
+    const reason = block.reason ? ` (${escapeHtml(block.reason)})` : '';
+    return `<li data-blocked-laser="1">${escapeHtml(scope)} ${escapeHtml(time)}${reason}</li>`;
+  }).join('');
+  return `<div class="planning-blocked-banner" role="status"><strong>Blocage actif ce jour</strong><ul>${items}</ul></div>`;
+}
+
+function renderAvailabilityBlocksList() {
+  if (availabilityBlocksCache.loading && !availabilityBlocksCache.loaded) {
+    return '<div class="availability-empty">Lecture des blocages...</div>';
+  }
+  if (availabilityBlocksCache.error) {
+    return `<div class="availability-empty availability-error">${escapeHtml(availabilityBlocksCache.error)} <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Reessayer</button></div>`;
+  }
+  const blocks = availabilityBlocksCache.blocks || [];
+  if (!blocks.length) {
+    return '<div class="availability-empty">Aucun blocage actif. Le centre suit ses horaires normaux.</div>';
+  }
+  return `<ul class="availability-list">${blocks.map(block => `
+    <li class="availability-item" data-block-id="${escapeHtml(String(block.id))}">
+      <span class="availability-dot scope-${escapeHtml(block.scopeType)}" aria-hidden="true"></span>
+      <span class="availability-item-label">${escapeHtml(describeAvailabilityBlock(block))}</span>
+      <button type="button" class="btn btn-ghost btn-sm availability-del" onclick="deleteAvailabilityBlockUi(${Number(block.id)})">Supprimer</button>
+    </li>`).join('')}</ul>`;
+}
+
+function updateAvailabilityFormVisibility() {
+  const scope = document.getElementById('avb-scope')?.value || 'center';
+  const recurrence = document.getElementById('avb-recurrence')?.value || 'once';
+  const setDisplay = (selector, on) => document.querySelectorAll(selector).forEach(el => { el.style.display = on ? '' : 'none'; });
+  setDisplay('.avb-cond-lane', scope === 'lane');
+  setDisplay('.avb-cond-activity', scope === 'activity');
+  setDisplay('.avb-cond-formula', scope === 'formula');
+  setDisplay('.avb-cond-once', recurrence === 'once');
+  setDisplay('.avb-cond-weekly', recurrence === 'weekly');
+}
+
+function resetAvailabilityForm() {
+  ['avb-date', 'avb-from', 'avb-until', 'avb-start', 'avb-end', 'avb-reason'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
+async function submitAvailabilityBlock() {
+  if (!canUseStaffPermission('settings.manage')) { toast('Reserve a la direction.'); return; }
+  const value = id => (document.getElementById(id)?.value || '').trim();
+  const scopeType = value('avb-scope') || 'center';
+  const recurrence = value('avb-recurrence') || 'once';
+  // Le centre est FORCE par le serveur : on n'envoie JAMAIS centerId.
+  const body = { action: 'saveAvailabilityBlock', scopeType, recurrence };
+  if (scopeType === 'lane') {
+    const lane = value('avb-lane');
+    if (!lane) { toast('Choisissez une piste.'); return; }
+    body.scopeRef = lane;
+  } else if (scopeType === 'activity') {
+    const activity = value('avb-activity');
+    if (!activity) { toast('Choisissez une activite.'); return; }
+    body.scopeRef = activity;
+  } else if (scopeType === 'formula') {
+    const formula = value('avb-formula');
+    if (!formula) { toast('Choisissez une formule.'); return; }
+    body.scopeRef = formula;
+  }
+  if (recurrence === 'once') {
+    const date = value('avb-date');
+    if (!date) { toast('Choisissez une date.'); return; }
+    body.date = date;
+  } else {
+    body.dayOfWeek = Number(value('avb-dow'));
+    const from = value('avb-from');
+    const until = value('avb-until');
+    if (from) body.dateFrom = from;
+    if (until) body.dateUntil = until;
+  }
+  const start = value('avb-start');
+  const end = value('avb-end');
+  if ((start && !end) || (!start && end)) { toast('Renseignez les deux heures, ou aucune.'); return; }
+  if (start && end) {
+    if (end <= start) { toast("L'heure de fin doit suivre le debut."); return; }
+    body.startTime = start;
+    body.endTime = end;
+  }
+  const reason = value('avb-reason');
+  if (reason) body.reason = reason;
+  const submitBtn = document.getElementById('avbSubmit');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Ajout...'; }
+  try {
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify(body) });
+    toast('Blocage ajoute.');
+    resetAvailabilityForm();
+    await loadAvailabilityBlocks(true);
+  } catch (error) {
+    toast(error?.message || 'Ajout du blocage impossible.');
+  } finally {
+    const btn = document.getElementById('avbSubmit');
+    if (btn) { btn.disabled = false; btn.textContent = 'Ajouter le blocage'; }
+  }
+}
+
+async function deleteAvailabilityBlockUi(id) {
+  if (!canUseStaffPermission('settings.manage')) { toast('Reserve a la direction.'); return; }
+  const block = (availabilityBlocksCache.blocks || []).find(item => Number(item.id) === Number(id));
+  const label = block ? describeAvailabilityBlock(block) : `blocage numero ${id}`;
+  if (!window.confirm(`Supprimer ce blocage ?\n${label}`)) return;
+  try {
+    await apiRequest(API_ENDPOINTS.ops, { method: 'POST', body: JSON.stringify({ action: 'deleteAvailabilityBlock', id: Number(id) }) });
+    toast('Blocage supprime.');
+    await loadAvailabilityBlocks(true);
+  } catch (error) {
+    toast(error?.message || 'Suppression impossible.');
+  }
+}
+
+function renderAvailabilityBlocksPanel() {
+  if (!canUseStaffPermission('settings.manage')) return '';
+  if (!availabilityBlocksCache.loaded && !availabilityBlocksCache.loading) {
+    setTimeout(() => loadAvailabilityBlocks(false), 0);
+  }
+  const center = getAvailabilitySessionCenter();
+  const centerName = center?.name || getCurrentStaffCenterId();
+  const laneCount = getAvailabilityLaneCount();
+  const activities = getAvailabilityActivities();
+  const lanesOptions = Array.from({ length: laneCount }, (unused, index) => index + 1)
+    .map(lane => `<option value="${lane}">Piste ${lane}</option>`).join('');
+  const activitiesOptions = activities.length
+    ? activities.map(activity => `<option value="${escapeHtml(activity.id)}">${escapeHtml(activity.label)}</option>`).join('')
+    : '<option value="">Aucune activite disponible</option>';
+  const formulesOptions = FORMULES.map(formule => `<option value="${escapeHtml(formule.id)}">${escapeHtml(formule.name)}</option>`).join('');
+  const dowOptions = [1, 2, 3, 4, 5, 6, 0]
+    .map(day => `<option value="${day}">${escapeHtml(AVAILABILITY_DAY_NAMES[day].charAt(0).toUpperCase() + AVAILABILITY_DAY_NAMES[day].slice(1))}</option>`).join('');
+  return `<section class="availability-blocks" aria-label="Blocages de disponibilite">
+    <div class="availability-blocks-head">
+      <div>
+        <span class="establishment-eyebrow">Disponibilites</span>
+        <h2>Blocages &amp; fermetures</h2>
+        <p>Fermez le centre, une piste, une activite ou une formule, sur une date precise ou chaque semaine. Le moteur applique le blocage et le planning le montre. Centre concerne : <strong>${escapeHtml(centerName)}</strong>.</p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Actualiser</button>
+    </div>
+    <div class="availability-blocks-grid">
+      <fieldset class="establishment-card availability-form">
+        <legend>Nouveau blocage</legend>
+        <div class="field">
+          <label for="avb-scope">Que bloquer ?</label>
+          <select id="avb-scope" onchange="updateAvailabilityFormVisibility()">
+            <option value="center">Fermer le centre</option>
+            <option value="lane">Bloquer une piste</option>
+            <option value="activity">Bloquer une activite</option>
+            <option value="formula">Bloquer une formule</option>
+          </select>
+        </div>
+        <div class="field avb-cond avb-cond-lane" style="display:none">
+          <label for="avb-lane">Piste</label>
+          <select id="avb-lane">${lanesOptions}</select>
+        </div>
+        <div class="field avb-cond avb-cond-activity" style="display:none">
+          <label for="avb-activity">Activite</label>
+          <select id="avb-activity">${activitiesOptions}</select>
+        </div>
+        <div class="field avb-cond avb-cond-formula" style="display:none">
+          <label for="avb-formula">Formule</label>
+          <select id="avb-formula">${formulesOptions}</select>
+        </div>
+        <div class="field">
+          <label for="avb-recurrence">Quand ?</label>
+          <select id="avb-recurrence" onchange="updateAvailabilityFormVisibility()">
+            <option value="once">Une date precise</option>
+            <option value="weekly">Toutes les semaines</option>
+          </select>
+        </div>
+        <div class="field avb-cond avb-cond-once">
+          <label for="avb-date">Date</label>
+          <input type="date" id="avb-date">
+        </div>
+        <div class="avb-cond avb-cond-weekly" style="display:none">
+          <div class="field">
+            <label for="avb-dow">Jour de la semaine</label>
+            <select id="avb-dow">${dowOptions}</select>
+          </div>
+          <div class="estab-field-row">
+            <div class="field"><label for="avb-from">A partir du (optionnel)</label><input type="date" id="avb-from"></div>
+            <div class="field"><label for="avb-until">Jusqu'au (optionnel)</label><input type="date" id="avb-until"></div>
+          </div>
+        </div>
+        <div class="estab-field-row">
+          <div class="field"><label for="avb-start">De (optionnel)</label><input type="time" id="avb-start"></div>
+          <div class="field"><label for="avb-end">A (optionnel)</label><input type="time" id="avb-end"></div>
+        </div>
+        <p class="avb-hint">Heures vides : le blocage couvre toute la journee.</p>
+        <div class="field"><label for="avb-reason">Motif (optionnel)</label><input type="text" id="avb-reason" maxlength="200" placeholder="Ex : maintenance, evenement prive"></div>
+        <button type="button" id="avbSubmit" class="btn btn-primary" onclick="submitAvailabilityBlock()">Ajouter le blocage</button>
+      </fieldset>
+      <div class="availability-list-wrap">
+        <h3>Blocages actifs</h3>
+        <div id="avbList">${renderAvailabilityBlocksList()}</div>
+      </div>
+    </div>
+  </section>`;
 }
 
 function renderStaffUtilitySettings() {
@@ -12064,6 +12456,7 @@ function renderKpis() {
 }
 
 function renderPlanning() {
+  ensureAvailabilityBlocksForPlanning();
   const wrap = document.getElementById('planningGridWrap');
   const planningBox = document.getElementById('planningBox');
   // Le re-render (polling 4s / 60s) reconstruit innerHTML et remet le scroll à 0.
@@ -12149,6 +12542,7 @@ function renderPlanning() {
   }
   hoursHtml += `<div class="hour-cell end"><span class="hour-label-end">${formatClockDisplay(closeHour)}</span></div>`;
 
+  const laneBlockWindows = getBowlingBlockWindows(state.currentDate, startHour, closeHour);
   let lanesHtml = '';
   for (let i = 1; i <= TOTAL_LANES; i++) {
     const maint = state.laneStatuses[i] === 'maintenance';
@@ -12195,7 +12589,15 @@ function renderPlanning() {
         </div>
       </div>`;
     });
-    lanesHtml += `<div class="lane-col ${maint ? 'maint' : ''}" data-lane="${i}">
+    const laneWins = laneBlockWindows[i] || [];
+    let blockHtml = '';
+    laneWins.forEach(w => {
+      const blkTop = (w.startH - startHour) * HH + HEADER_H;
+      const blkHeight = Math.max((w.endH - w.startH) * HH, 16);
+      const blkReason = w.reason ? w.reason : (w.full ? 'Bloque toute la journee' : 'Creneau bloque');
+      blockHtml += `<div class="planning-blocked${w.full ? ' full' : ''}" data-blocked-lane="${i}" style="top:${blkTop}px;height:${blkHeight}px;" title="${escapeHtml(blkReason)}"><span>${escapeHtml(blkReason)}</span></div>`;
+    });
+    lanesHtml += `<div class="lane-col ${maint ? 'maint' : ''}${laneWins.length ? ' has-block' : ''}" data-lane="${i}"${laneWins.length ? ' data-blocked="1"' : ''}>
       <div class="lane-header">
         <span class="pl">Piste</span>
         <span class="num">${i}</span>
@@ -12205,6 +12607,7 @@ function renderPlanning() {
       </div>
       ${cells}
       ${bkHtml}
+      ${blockHtml}
     </div>`;
   }
 
@@ -12238,6 +12641,7 @@ function getPlanningBookingDisplayName(reservation) {
 }
 
 function renderLaserPlanning() {
+  ensureAvailabilityBlocksForPlanning();
   const wrap = document.getElementById('laserPlanningGridWrap');
   const sub = document.getElementById('laserPlanningSub');
   if (!wrap) return;
@@ -12440,8 +12844,10 @@ function renderLaserPlanning() {
     </div>`;
   }
 
+  const laserBlockBanner = renderLaserBlockBanner(state.currentDate);
   wrap.innerHTML = `
     ${pendingQueueHtml}
+    ${laserBlockBanner}
     <div class="laser-agenda">
       <div class="laser-agenda-header">
         <div>Heure</div>

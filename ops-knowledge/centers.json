@@ -70,7 +70,6 @@
           "laneCount": 8,
           "normalCapacityPerLane": 6,
           "emergencyCapacityPerLane": 7,
-          "forceExtraLaneAtPax": 8,
           "preferAdjacentLanes": true
         },
         "laser": {
@@ -169,7 +168,6 @@
           "laneCount": 8,
           "normalCapacityPerLane": 6,
           "emergencyCapacityPerLane": 7,
-          "forceExtraLaneAtPax": 8,
           "preferAdjacentLanes": true
         },
         "laser": {

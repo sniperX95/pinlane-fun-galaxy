@@ -105,7 +105,7 @@
 
   const RESOURCE_KEYS = ['bowling', 'laser', 'partyTables', 'barDesk'];
   const RESOURCE_DEFAULTS = {
-    bowling: { laneCount: 1, normalCapacityPerLane: 6, emergencyCapacityPerLane: 8, forceExtraLaneAtPax: 7, preferAdjacentLanes: true },
+    bowling: { laneCount: 1, normalCapacityPerLane: 6, emergencyCapacityPerLane: 8, preferAdjacentLanes: true },
     laser: { weaponCount: 20, parallelLaunches: 1, canSplitGroupsCleanly: false, requiresCompleteGroupBeforeLaunch: true, riskLevel: 'managed' },
     partyTables: { softCapacity: 40, hardCapacity: 60 },
     barDesk: { handlesBooking: true, handlesBriefing: false, handlesFoodAndDrink: true, activityEscort: false },
@@ -539,7 +539,6 @@
         ${fieldNum('Nombre de pistes', 'resources.bowling.laneCount', ['resources', 'bowling', 'laneCount'], 1, 60)}
         ${fieldNum('Capacite normale / piste', 'resources.bowling.normalCapacityPerLane', ['resources', 'bowling', 'normalCapacityPerLane'], 1, 20)}
         ${fieldNum('Capacite exceptionnelle / piste', 'resources.bowling.emergencyCapacityPerLane', ['resources', 'bowling', 'emergencyCapacityPerLane'], 1, 30)}
-        ${fieldNum('Piste supplementaire des (pax)', 'resources.bowling.forceExtraLaneAtPax', ['resources', 'bowling', 'forceExtraLaneAtPax'], 1, 30, 'Au-dela de ce nombre de joueurs, on ouvre une piste de plus.')}
       </div>
       ${toggleRow('Preferer les pistes adjacentes', 'Regroupe un meme groupe sur des pistes cote a cote.', 'resources.bowling.preferAdjacentLanes')}`;
     }

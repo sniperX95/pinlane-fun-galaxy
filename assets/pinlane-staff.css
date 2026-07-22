@@ -10253,6 +10253,30 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    Meme discipline que la page Emails : composants pv2 reutilises, monochrome
    sauf le sens, filets 1px, aucun jeton nouveau. Seules les classes propres a
    cette page vivent ici, toutes prefixees fck- et scopees.
+
+   ---- KIT DE COMPOSANTS FONDATEUR (langage visuel partage) ------------------
+   Toutes les pages proprietaire (Cockpit, Agents, Incidents, Clients, Centres,
+   editeurs) montent dans #staffCockpitPage et partagent EXACTEMENT ces briques.
+   Un nouveau lot fondateur reutilise ce vocabulaire, il n'en invente pas :
+     - En-tete de page ..... .pv2-bar (crumb + h1 20px + .pv2-bar-sub + actions
+                             a droite dans .pv2-bar-actions)
+     - Bandeau donnees test  .fck-testdata (filet ambre, calme, jamais criard)
+     - Carte / section ..... .pv2-panel + .pv2-panel-head>h2 (15/600) +
+                             .pv2-panel-sub (12 muted) ; sous-carte : .fck-center-card
+     - Sous-titre de bloc .. .fck-sub (12/600 muted)
+     - Ligne de KPI ........ .fck-stats > .fck-stat (label .fck-stat-cap muted
+                             au-dessus, nombre .fck-stat-num en Geist Mono
+                             tabular-nums, indice .fck-stat-hint faint) ;
+                             variante d'en-tete business : .fck-biz-stats
+     - Liste cle/valeur .... .fck-kv (dt muted / dd mono tabular-nums)
+     - Badge statut ........ .pv2-chip[.green|.amber|.red|.blue] (pill, fond
+                             -soft + texte couleur, jamais l'info par la couleur
+                             seule : le libelle porte le sens)
+     - Etat sain ........... .fck-allgood (confirmation calme, vert soft + point)
+     - Tableau / liste ..... .pv2-table + .fck-table (header 12 muted, lignes
+                             separees par --line, colonnes num a droite en mono)
+     - Boutons ............. .pv2-btn (primaire = fond .primary ; secondaire =
+                             filet ; discret = .ghost)
    ========================================================================== */
 #staffCockpitPage .fck-shell { display: flex; flex-direction: column; gap: 14px; }
 
@@ -10278,6 +10302,21 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 #staffCockpitPage .fck-line { margin: 8px 0; font-size: 13.5px; }
 #staffCockpitPage .fck-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Etat sain de la sante ("Ce qui casse" quand rien ne casse) : confirmation
+   calme, pas un simple texte gris. Vert soft + point : le sens est porte par le
+   libelle ET le point (jamais la couleur seule). */
+#staffCockpitPage .fck-allgood {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 13px;
+}
 
 #staffCockpitPage .fck-table td { vertical-align: top; padding: 8px 10px 8px 0; }
 #staffCockpitPage .fck-row-action { text-align: right; white-space: nowrap; }
@@ -10307,16 +10346,23 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 #staffCockpitPage .fck-kv dt { color: var(--muted); font-size: 12.5px; }
 #staffCockpitPage .fck-kv dd { margin: 0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 
-/* Statistiques agents : deux grands nombres, hierarchie par la taille. */
+/* Ligne de KPI fondateur : label muted au-dessus, grand nombre en Geist Mono
+   tabular-nums en dessous (DESIGN.md sect.4 : toute donnee passe en mono).
+   Base partagee par les stats agents et cout ; la variante .fck-biz-stats en
+   fait la grille d'en-tete business du cockpit. */
 #staffCockpitPage .fck-stats { display: flex; gap: 22px; flex-wrap: wrap; margin: 6px 0 4px; }
-#staffCockpitPage .fck-stat { display: flex; flex-direction: column; gap: 2px; }
+#staffCockpitPage .fck-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 #staffCockpitPage .fck-stat-num {
+  font-family: var(--font-data);
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1.15;
+  color: var(--text);
 }
 #staffCockpitPage .fck-stat-cap { font-size: 12px; color: var(--muted); line-height: 1.5; }
+#staffCockpitPage .fck-stat-hint { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; line-height: 1.4; }
 
 #staffCockpitPage .fck-audit-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 #staffCockpitPage .fck-audit-bar .pv2-input { max-width: 220px; }
@@ -10341,7 +10387,15 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    Clients). Meme discipline que le cockpit : filets 1px, monochrome sauf
    sens, chiffres tabulaires. Les cartes reutilisent .fck-center-card. --- */
 #staffCockpitPage .fck-client-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-#staffCockpitPage .fck-chart { min-height: 160px; margin: 4px 0 10px; }
+/* Graphes fondateur (moteur PinlaneCharts) : le viewBox du moteur fait 560 de
+   large ; dans un panneau fondateur pleine largeur (~960px) le SVG serait scale
+   ~1.7x et son texte d'axes / labels de mois grossirait d'autant (bug "texte
+   enorme"). On BORNE la largeur de rendu a 600px (aligne a gauche) : le SVG
+   reste proche de son echelle native, donc les graduations et labels gardent
+   une taille normale et lisible. Le board Direction n'est pas concerne : ses
+   hotes (.adm-trend-chart, widgets .pab-) vivent deja dans des cartes etroites
+   ou l'echelle est bonne, et ce style est scope #staffCockpitPage .fck-chart. */
+#staffCockpitPage .fck-chart { min-height: 160px; margin: 4px 0 10px; max-width: 600px; }
 #staffCockpitPage .fck-cost-note { margin: 8px 0 0; font-size: 12.5px; }
 #staffCockpitPage .fck-incident-list { display: flex; flex-direction: column; gap: 10px; }
 #staffCockpitPage .fck-incident {
@@ -12580,7 +12634,26 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 
 /* --- Cockpit : ligne KPI business + note de dedup Incidents --------------- */
-#staffCockpitPage .fck-biz-stats { gap: 28px; }
+/* En-tete business du cockpit : la ligne de KPI devient une grille cadree a 4
+   colonnes separees par un filet, pour repondre "comment va mon business ?" en
+   un coup d'oeil. Label muted au-dessus, nombre Geist Mono en dessous. */
+#staffCockpitPage .fck-biz-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin: 2px 0;
+}
+#staffCockpitPage .fck-biz-stats .fck-stat {
+  gap: 6px;
+  padding: 2px 20px;
+  border-left: 1px solid var(--line);
+}
+#staffCockpitPage .fck-biz-stats .fck-stat:first-child { border-left: 0; padding-left: 0; }
+#staffCockpitPage .fck-biz-stats .fck-stat-num { font-size: 26px; }
+@media (max-width: 640px) {
+  #staffCockpitPage .fck-biz-stats { grid-template-columns: 1fr 1fr; gap: 16px 0; }
+  #staffCockpitPage .fck-biz-stats .fck-stat:nth-child(odd) { border-left: 0; padding-left: 0; }
+}
 #staffCockpitPage .fck-insight-sum { color: var(--muted); }
 #staffCockpitPage .fck-incidents-note { margin: 12px 0 0; }
 

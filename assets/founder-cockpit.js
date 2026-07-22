@@ -422,6 +422,12 @@
     return `<p class="pv2-quiet">${esc(text)}</p>`;
   }
 
+  // Etat sain : confirmation calme (vert soft + point), pas un texte gris. Le
+  // sens est porte par le libelle ET le point, jamais la couleur seule.
+  function okLine(text) {
+    return `<p class="fck-allgood"><span class="pv2-dot green"></span>${esc(text)}</p>`;
+  }
+
   function sectionError(section) {
     return section && section.error ? emptyLine(section.error) : '';
   }
@@ -456,7 +462,7 @@
       body += sectionError(mails) + sectionError(jobs) + sectionError(worker) + sectionError(denied);
     }
     if (!problems) {
-      body += emptyLine('Rien ne casse en ce moment. Mails, jobs, worker et acces sont sains.');
+      body += okLine('Rien ne casse en ce moment. Mails, jobs, worker et acces sont sains.');
     }
     if (Number(mails.failed) > 0) {
       const rows = (mails.recent || []).map((m) => `<tr>
@@ -1007,8 +1013,9 @@
       { cap: 'Centres actifs', num: intFmt(p.activeCenters) },
     ];
     const stats = cells.map((c) => `<div class="fck-stat"${c.kpi ? ` data-kpi="${esc(c.kpi)}"` : ''}>
+        <span class="fck-stat-cap">${esc(c.cap)}</span>
         <span class="fck-stat-num">${esc(c.num)}</span>
-        <span class="fck-stat-cap">${esc(c.cap)}${c.hint ? `<br>${esc(c.hint)}` : ''}</span>
+        ${c.hint ? `<span class="fck-stat-hint">${esc(c.hint)}</span>` : ''}
       </div>`).join('');
     return panel(
       'Activite plateforme',
@@ -1087,15 +1094,17 @@
       ${d.testData ? testDataBanner() : ''}
 
       ${renderBizKpis()}
-      ${renderCaChart()}
 
       ${fck.error ? `<section class="pv2-panel"><p class="pv2-quiet">${esc(fck.error)}</p>
         <button type="button" class="pv2-btn" onclick="fckReload()">Reessayer</button></section>` : ''}
 
       ${fck.loading && !fck.data ? `<section class="pv2-panel"><p class="pv2-quiet">Chargement du cockpit…</p></section>` : ''}
 
+      ${fck.data ? renderBreakage(d.breakage) : ''}
+
+      ${renderCaChart()}
+
       ${fck.data ? [
-        renderBreakage(d.breakage),
         renderAdoption(d.adoption, d.centers),
         renderAgents(d.agents),
         renderCost(d.cost),

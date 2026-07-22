@@ -2812,7 +2812,10 @@ function initClient() {
   updatePaxAlert();
   renderFormules();
   renderFormulaPreferences();
-  updateProgress();
+  // Demarre TOUJOURS a l'etape 1 (et synchronise le DOM avec state.step) : sinon
+  // un state.step persiste (ex. 4) affichait l'etape 4 dans la barre de progression
+  // alors que le contenu montrait l'etape 1 -> desynchro visible sur le formulaire.
+  goStep(1);
 }
 
 // Stepper tactile du nombre de joueurs (boutons +/- mobile). On reste sur le
@@ -2875,7 +2878,11 @@ function updateSchedHint() {
 function updatePaxAlert() {
   const pax = Number(state.booking.pax) || 0;
   const needed = getRequiredLaneCount(state.booking.type || 'bowling', pax, state.booking.formuleId);
-  const impossibleBowlingGroup = state.booking.type !== 'laser' && needed > TOTAL_LANES;
+  // Capacite LIVE du centre (config, pas les constantes) : ainsi changer le nombre
+  // de pistes ou les joueurs/piste dans Etablissement se reflete ici.
+  const maxPerLane = getMaxPerLane();
+  const totalLanes = getTotalLanes();
+  const impossibleBowlingGroup = state.booking.type !== 'laser' && needed > totalLanes;
   const el = document.getElementById('paxAlert');
   if (pax <= 0) { el.innerHTML = ''; return; }
   if (state.booking.type === 'laser') {
@@ -2893,19 +2900,19 @@ function updatePaxAlert() {
     el.innerHTML = `
       <div class="pax-alert warning">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>Groupe de <b>${pax} joueurs</b> : impossible sur 8 pistes en même temps. Le staff devra proposer deux vagues ou un autre horaire.</span>
+        <span>Groupe de <b>${pax} joueurs</b> : impossible sur ${totalLanes} pistes en même temps. Le staff devra proposer deux vagues ou un autre horaire.</span>
       </div>`;
-  } else if (pax > MAX_PER_LANE) {
+  } else if (pax > maxPerLane) {
     el.innerHTML = `
       <div class="pax-alert warning">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>Maximum conseillé : <b>${MAX_PER_LANE} joueurs par piste</b>. Avec ${pax} joueurs, nous réservons <b>${needed} pistes</b>${pax > TOTAL_LANES * MAX_PER_LANE ? ' avec répartition serrée validée staff' : ' côte à côte'}.</span>
+        <span>Maximum conseillé : <b>${maxPerLane} joueurs par piste</b>. Avec ${pax} joueurs, nous réservons <b>${needed} pistes</b>${pax > totalLanes * maxPerLane ? ' avec répartition serrée validée staff' : ' côte à côte'}.</span>
       </div>`;
   } else {
     el.innerHTML = `
       <div class="pax-alert">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <span>Allocation : <b>${needed} piste${needed > 1 ? 's' : ''}</b> (max ${MAX_PER_LANE}/piste)</span>
+        <span>Allocation : <b>${needed} piste${needed > 1 ? 's' : ''}</b> (max ${maxPerLane}/piste)</span>
       </div>`;
   }
 }
@@ -15664,6 +15671,9 @@ async function loadCenterScheduleConfig() {
     if (state.view === 'client' && (payload?.center || Array.isArray(payload?.formules))) {
       updateSchedHint();
       renderFormules();
+      // La config (capacite pistes/joueurs) arrive en async : re-render le cadre
+      // pax pour qu'il reflete la vraie capacite au lieu des constantes de repli.
+      if (typeof updatePaxAlert === 'function') updatePaxAlert();
     }
   } catch (error) {
     // Grille locale conservee.

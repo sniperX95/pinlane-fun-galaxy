@@ -59,15 +59,6 @@
   ],
   "headers": [
     {
-      "source": "/public-form.html",
-      "headers": [
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.vercel-insights.com; style-src 'self' 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fungalaxy.be; img-src 'self' data: blob: https:; connect-src 'self' https://vitals.vercel-insights.com https://cdn.vercel-insights.com; frame-src 'self' about: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors https://fungalaxy.be https://www.fungalaxy.be https://mngfunglxy.com https://www.mngfunglxy.com; upgrade-insecure-requests"
-        }
-      ]
-    },
-    {
       "source": "/(.*)",
       "headers": [
         {

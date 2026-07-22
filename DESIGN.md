@@ -171,7 +171,7 @@ Contraste ≥ 4.5:1 (texte) et 3:1 (UI) dans les **deux** thèmes · focus visib
 | `assets/pinlane-charts.css` | moteur de graphiques `window.PinlaneCharts` (classes `plc-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-daterange.css` | sélecteur de plage de dates `window.PinlaneDateRange` (classes `pdr-`, ne consomme que les tokens) | index.html |
 | `assets/pinlane-analytics-board.css` | tableau d'analyse customisable `window.PinlaneAnalyticsBoard` (classes `pab-`, widgets iOS-style) | index.html |
-| `assets/pinlane-client.css` | parcours résa client + public-form + direction.html | index.html, public-form.html, direction.html |
+| `assets/pinlane-client.css` | parcours résa client (tunnel de réservation dans index.html) + direction.html | index.html, direction.html |
 | `assets/pinlane-landing.css` | landing marketing (reconstruite sur les tokens) | pro.html |
 
 Règles : zéro `!important` sauf `prefers-reduced-motion` et override d'un `style=""` inline historique (commenter la raison) · zéro couleur en dur hors définition des tokens · un composant nouveau se crée dans `pinlane.css`, jamais dans une couche page.

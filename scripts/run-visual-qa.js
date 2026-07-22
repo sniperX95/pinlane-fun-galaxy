@@ -2298,8 +2298,7 @@ async function main() {
     await mobilePage.close();
 
     // Pages autonomes : screenshots + overflow (pas d'assertions console, hors app)
-    const standalonePages = [
-      ['public-form', '/public-form.html'],
+    const standalonePages = [
       ['direction', '/direction.html'],
       ['pro-landing', '/pro.html'],
     ];

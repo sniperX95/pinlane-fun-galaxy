@@ -25,7 +25,6 @@ function walk(dir) {
 function productionFiles() {
   const files = [
     'index.html',
-    'public-form.html',
     'pro.html',
     'direction.html',
     'package.json',
@@ -234,7 +233,7 @@ for (const sheet of obsoleteStylesheets) {
     addFail(`Obsolete legacy stylesheet must be deleted: assets/${sheet}`);
   }
 }
-for (const page of ['index.html', 'public-form.html', 'pro.html', 'direction.html']) {
+for (const page of ['index.html', 'pro.html', 'direction.html']) {
   const html = read(page);
   if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(html)) {
     addFail(`${page} must not load remote Google Fonts; Geist is self-hosted (DESIGN.md §4).`);

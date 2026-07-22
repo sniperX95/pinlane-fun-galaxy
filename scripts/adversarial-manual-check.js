@@ -244,10 +244,6 @@ async function main() {
       ], `client-formules-${scheme}`);
       await shot(page, `E2-client-formules-${scheme}`);
     }
-    // public-form : eyebrow.
-    await page.goto(`${BASE_URL}/public-form.html`, { waitUntil: 'load', timeout: 45000 });
-    await page.waitForTimeout(1200);
-    await checkContrast(page, ['.public-form .eyebrow', '.public-form .duration-list button.active strong'], `public-form-${scheme}`);
     await page.close();
     await context.close();
   }

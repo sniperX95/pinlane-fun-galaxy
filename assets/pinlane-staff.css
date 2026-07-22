@@ -3606,8 +3606,11 @@ body.dashboard-detail-open { overflow: hidden; }
 /* Panneau Blocages & fermetures (Etablissement, settings.manage) */
 .availability-blocks { display: grid; gap: var(--space-4); margin-top: var(--space-4); padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .availability-blocks-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
-.availability-blocks-head h2 { font-size: 18px; margin-top: 3px; }
-.availability-blocks-head p { color: var(--muted); font-size: 13px; max-width: 62ch; margin-top: 4px; }
+.availability-blocks-headline { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.avb-head-ico { flex: none; }
+.avb-head-ico svg { width: 20px; height: 20px; }
+.availability-blocks-head h2 { font-size: 18px; margin-top: 2px; letter-spacing: -0.01em; }
+.availability-blocks-head p { color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 62ch; margin-top: 4px; }
 .availability-blocks-grid { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: var(--space-4); align-items: start; }
 @media (max-width: 760px) { .availability-blocks-grid { grid-template-columns: 1fr; } }
 .availability-form { margin: 0; }
@@ -3616,10 +3619,14 @@ body.dashboard-detail-open { overflow: hidden; }
 .availability-list-wrap { display: grid; gap: 10px; align-content: start; }
 .availability-list-wrap h3 { font-size: 13px; font-weight: 600; }
 .availability-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.availability-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); }
-.availability-item-label { flex: 1 1 auto; min-width: 0; font-size: 13px; }
-.availability-del { flex: none; }
-.availability-dot { width: 8px; height: 8px; border-radius: 999px; flex: none; background: var(--muted); }
+.availability-item { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--page); transition: border-color var(--dur-fast) var(--ease); }
+.availability-item:hover { border-color: var(--line-strong); }
+.availability-item-body { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.availability-item-label { min-width: 0; font-size: 13px; font-weight: 500; color: var(--text); }
+.availability-item-reason { font-size: 12px; color: var(--muted); }
+.availability-del { flex: none; color: var(--muted); }
+.availability-del:hover { color: var(--danger); background: var(--danger-soft); }
+.availability-dot { width: 9px; height: 9px; margin-top: 4px; border-radius: 999px; flex: none; background: var(--muted); }
 .availability-dot.scope-center { background: var(--danger); }
 .availability-dot.scope-lane { background: var(--accent); }
 .availability-dot.scope-activity { background: var(--warning); }
@@ -5602,21 +5609,38 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .pev-grid2 { grid-template-columns: 1fr; }
 }
 
-/* -- Editeur du CATALOGUE partage (structure des formules + steps) ---------- */
-/* Distinct visuellement de "mon centre" : un bandeau de portee separe les deux. */
+/* -- Editeur "mon centre" : en-tete de niveau 1 (prix/dispo par centre) ------ */
+/* Niveau 1 (accent) vs niveau 2 catalogue partage (neutre) : deux en-tetes
+   nettement distincts pour que l'operateur sache toujours ce qu'il edite. */
 .cev-scope-note {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
-  background: var(--subtle);
+  background: var(--accent-soft);
 }
+.cev-scope-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.cev-scope-copy { display: grid; gap: 2px; min-width: 0; }
 .cev-scope-note strong { font-size: 13px; font-weight: 600; color: var(--text); }
-.cev-scope-note span { font-size: 12px; color: var(--muted); }
+.cev-scope-note span { font-size: 12px; line-height: 1.45; color: var(--muted); }
 
+/* -- Editeur du CATALOGUE partage : niveau 2 (structure des formules) -------- */
 .cev-catalog-block {
   margin-top: var(--space-5);
   padding-top: var(--space-5);
@@ -5631,28 +5655,54 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+.cev-block-copy { display: grid; gap: 4px; min-width: 0; }
+.cev-block-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .cev-block-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
-.cev-block-head p { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 62ch; }
+.cev-block-head p { font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 62ch; }
 
 .cev-rows { display: grid; gap: var(--space-2); }
 .cev-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
-  padding: 12px 14px;
+  gap: var(--space-3) var(--space-4);
+  padding: 12px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface);
   flex-wrap: wrap;
+  transition: border-color var(--dur-fast) var(--ease);
 }
-.cev-row-main { display: grid; gap: 2px; min-width: 0; }
-.cev-row-main strong { font-size: 14px; font-weight: 600; color: var(--text); }
+.cev-row:hover { border-color: var(--line-strong); }
+.cev-row-main { flex: 1 1 260px; display: grid; gap: 3px; min-width: 0; }
+.cev-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cev-row-title strong { font-size: 14px; font-weight: 600; color: var(--text); }
 .cev-row-meta { font-size: 12px; color: var(--muted); }
+.cev-row-acts { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+.cev-row-price {
+  flex: none;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.cev-row-price small { font-size: 11px; font-weight: 400; color: var(--faint); margin-left: 2px; }
 .cev-row-side { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.cev-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cev-row-actions { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
 .cev-danger { color: var(--danger); }
 .cev-danger:hover { border-color: var(--danger); }
+
+/* Legendes de section dans la modale (Informations / Tarif / Conditions) */
+.cev-form-legend {
+  margin: 4px 0 -6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.cev-form-legend:first-child { margin-top: 0; }
 
 /* Modale catalogue : plus large que pev (formulaire + editeur de steps). */
 .cev-modal { max-width: 560px; }
@@ -5692,7 +5742,22 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   border-radius: var(--radius-md);
   background: var(--subtle);
 }
-.cev-step-order { display: grid; gap: 4px; flex: none; }
+.cev-step-order { display: grid; gap: 4px; flex: none; justify-items: center; }
+.cev-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+}
 .cev-step-move {
   width: 26px;
   height: 22px;

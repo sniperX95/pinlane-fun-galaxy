@@ -5629,6 +5629,7 @@
       : '';
     return `<div class="cev-step" data-cev-step="${index}">
       <div class="cev-step-order">
+        <span class="cev-step-num" aria-hidden="true">${index + 1}</span>
         <button type="button" class="cev-step-move" data-cev-move-up="${index}" aria-label="Monter l activite" ${index === 0 ? 'disabled' : ''} onclick="cevStepMove(${index}, -1)">&uarr;</button>
         <button type="button" class="cev-step-move" data-cev-move-down="${index}" aria-label="Descendre l activite" ${index === total - 1 ? 'disabled' : ''} onclick="cevStepMove(${index}, 1)">&darr;</button>
       </div>
@@ -5741,7 +5742,8 @@
     const f = catalogEditor.fields || {};
     const validDays = Array.isArray(f.validDays) ? f.validDays : [];
     const dayBoxes = CEV_DAY_LABELS.map((label, day) => `<label class="cev-day"><input type="checkbox" id="cevDay${day}" ${validDays.indexOf(day) !== -1 ? 'checked' : ''} onchange="cevFieldDay(${day}, this.checked)"><span>${label}</span></label>`).join('');
-    return `<div class="field">
+    return `<p class="cev-form-legend">Informations</p>
+      <div class="field">
         <label for="cevName">Nom de la formule</label>
         <input id="cevName" type="text" maxlength="120" value="${f.name == null ? '' : esc(f.name)}" data-autofocus oninput="cevFieldSet('name', this.value)">
       </div>
@@ -5758,6 +5760,7 @@
           </select>
         </div>
       </div>
+      <p class="cev-form-legend">Tarif</p>
       <div class="pev-grid2">
         <div class="field">
           <label for="cevPrice">Prix (EUR)</label>
@@ -5768,6 +5771,7 @@
           <input id="cevOldPrice" type="number" min="0" max="1000" step="1" value="${f.priceOld == null ? '' : esc(f.priceOld)}" placeholder="aucun" oninput="cevFieldNum('priceOld', this.value)">
         </div>
       </div>
+      <p class="cev-form-legend">Conditions</p>
       <div class="pev-grid2">
         <div class="field">
           <label for="cevMinPax">Personnes minimum</label>
@@ -6065,24 +6069,40 @@
     const canManage = cevCanManage();
     const formulas = Array.from(pricingEditor.byId.values());
     const rows = formulas.map((entry) => {
-      const source = entry.source === 'custom' ? '<span class="pv2-chip">Ajoutee</span>' : '<span class="pv2-chip">Socle</span>';
+      const source = entry.source === 'custom' ? '<span class="pv2-chip amber">Ajoutee</span>' : '<span class="pv2-chip">Socle</span>';
       const stepCount = Array.isArray(entry.steps) ? entry.steps.length : 0;
-      const priceLabel = entry.priceType === 'per_lane' ? 'par piste' : 'par personne';
-      const meta = `${esc(entry.family || 'Formule')} &middot; ${entry.minPax || 1}+ pers &middot; ${esc(priceLabel)} &middot; ${stepCount} activite${stepCount > 1 ? 's' : ''}`;
+      const priceLabel = entry.priceType === 'per_lane' ? '/piste' : '/pers';
+      const priceValue = entry.base && entry.base.priceValue != null ? entry.base.priceValue : null;
+      const meta = `${esc(entry.family || 'Formule')} &middot; ${entry.minPax || 1}+ pers &middot; ${stepCount} activite${stepCount > 1 ? 's' : ''}`;
+      const actNames = (Array.isArray(entry.steps) ? entry.steps : []).map((step) => {
+        const act = (pricingEditor.activities || []).find((a) => a.id === step.activityId);
+        return act ? act.name : step.activityId;
+      }).filter(Boolean);
+      const actSummary = actNames.length
+        ? `${actNames.slice(0, 3).map((n) => esc(n)).join(', ')}${actNames.length > 3 ? '...' : ''}`
+        : 'Aucune activite';
+      const priceHtml = priceValue != null
+        ? `<div class="cev-row-price">${money(priceValue)}<small>${esc(priceLabel)}</small></div>`
+        : '';
       const actions = canManage ? `<div class="cev-row-actions">
           <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(entry.id)}" onclick="cevOpenFields('${escJs(entry.id)}')">Structure</button>
           <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(entry.id)}" onclick="cevOpenSteps('${escJs(entry.id)}')">Modifier les activites</button>
           <button type="button" class="pv2-btn sm cev-danger" data-cev-delete="${escJs(entry.id)}" onclick="cevDelete('${escJs(entry.id)}')">Supprimer</button>
         </div>` : '';
       return `<article class="cev-row" data-cev-formula="${escJs(entry.id)}">
-        <div class="cev-row-main"><strong>${esc(entry.name || 'Formule')}</strong><span class="cev-row-meta">${meta}</span></div>
-        <div class="cev-row-side">${source}${actions}</div>
+        <div class="cev-row-main">
+          <div class="cev-row-title"><strong>${esc(entry.name || 'Formule')}</strong>${source}</div>
+          <span class="cev-row-meta">${meta}</span>
+          <span class="cev-row-acts">${actSummary}</span>
+        </div>
+        ${priceHtml}
+        ${actions}
       </article>`;
     }).join('');
     return `<section class="cev-catalog-block" id="cevCatalogBlock">
       <div class="cev-block-head">
-        <div>
-          <h2>Catalogue partage</h2>
+        <div class="cev-block-copy">
+          <div class="cev-block-title"><h2>Catalogue partage</h2><span class="pv2-chip amber">Tous les centres</span></div>
           <p>${canManage ? 'Structure des formules et de leurs activites, partagee par tous les centres du reseau. Modifier ici change l\'offre partout.' : 'Structure des formules, partagee par tous les centres. Lecture seule (edition reservee a la direction).'}</p>
         </div>
         ${canManage ? '<button type="button" class="pv2-btn primary" id="cevAddFormula" onclick="cevOpenCreate()">+ Ajouter une formule</button>' : ''}
@@ -6159,8 +6179,11 @@
       </div>
 
       <div class="cev-scope-note">
-        <strong>Reglages de mon centre</strong>
-        <span>Prix, disponibilite et retrait pour CE centre uniquement. Cliquez sur Modifier sur une offre ci-dessous.</span>
+        <span class="cev-scope-badge">Mon centre</span>
+        <div class="cev-scope-copy">
+          <strong>Reglages de mon centre</strong>
+          <span>Prix, disponibilite et retrait pour CE centre uniquement. Cliquez sur Modifier sur une offre pour l ajuster.</span>
+        </div>
       </div>
 
       <section class="pv2-catalog">${cards || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</section>

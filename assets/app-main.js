@@ -9010,12 +9010,22 @@ function renderAvailabilityBlocksList() {
   if (!blocks.length) {
     return '<div class="availability-empty">Aucun blocage actif. Le centre suit ses horaires normaux.</div>';
   }
-  return `<ul class="availability-list">${blocks.map(block => `
-    <li class="availability-item" data-block-id="${escapeHtml(String(block.id))}">
+  // Libelle scannable : ligne primaire (portee + quand + plage) dans
+  // .availability-item-label (les gates comportementaux lisent ce span), motif
+  // sur une ligne muette dessous. describeAvailabilityBlock reste la source du
+  // libelle de confirmation (suppression), inchangee.
+  return `<ul class="availability-list">${blocks.map(block => {
+    const primary = [availabilityScopeText(block), availabilityRecurrenceText(block), availabilityTimeText(block)].filter(Boolean).join(' ');
+    const reason = block.reason ? `<span class="availability-item-reason">Motif : ${escapeHtml(block.reason)}</span>` : '';
+    return `<li class="availability-item" data-block-id="${escapeHtml(String(block.id))}">
       <span class="availability-dot scope-${escapeHtml(block.scopeType)}" aria-hidden="true"></span>
-      <span class="availability-item-label">${escapeHtml(describeAvailabilityBlock(block))}</span>
+      <span class="availability-item-body">
+        <span class="availability-item-label">${escapeHtml(primary)}</span>
+        ${reason}
+      </span>
       <button type="button" class="btn btn-ghost btn-sm availability-del" onclick="deleteAvailabilityBlockUi(${Number(block.id)})">Supprimer</button>
-    </li>`).join('')}</ul>`;
+    </li>`;
+  }).join('')}</ul>`;
 }
 
 function updateAvailabilityFormVisibility() {
@@ -9125,10 +9135,13 @@ function renderAvailabilityBlocksPanel() {
     .map(day => `<option value="${day}">${escapeHtml(AVAILABILITY_DAY_NAMES[day].charAt(0).toUpperCase() + AVAILABILITY_DAY_NAMES[day].slice(1))}</option>`).join('');
   return `<section class="availability-blocks" aria-label="Blocages de disponibilite">
     <div class="availability-blocks-head">
-      <div>
-        <span class="establishment-eyebrow">Disponibilites</span>
-        <h2>Blocages &amp; fermetures</h2>
-        <p>Fermez le centre, une piste, une activite ou une formule, sur une date precise ou chaque semaine. Le moteur applique le blocage et le planning le montre. Centre concerne : <strong>${escapeHtml(centerName)}</strong>.</p>
+      <div class="availability-blocks-headline">
+        <span class="estab-section-ico avb-head-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m6.3 6.3 11.4 11.4"/></svg></span>
+        <div>
+          <span class="establishment-eyebrow">Disponibilites</span>
+          <h2>Blocages &amp; fermetures</h2>
+          <p>Fermez le centre, une piste, une activite ou une formule, sur une date precise ou chaque semaine. Le moteur applique le blocage et le planning le montre. Centre concerne : <strong>${escapeHtml(centerName)}</strong>.</p>
+        </div>
       </div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Actualiser</button>
     </div>

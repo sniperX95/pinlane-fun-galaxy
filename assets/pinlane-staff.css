@@ -4717,8 +4717,17 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-member-last-seen { color: var(--faint); font-size: 11px; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 
 .staff-member-card select { height: 32px; font-size: 13px; padding: 0 8px; }
+.staff-member-card select:disabled { opacity: 0.6; cursor: not-allowed; }
 .staff-member-card footer { display: flex; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
 .staff-member-code { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* Actions role (renommer / supprimer) sous l'identite du role selectionne */
+.staff-role-admin-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+
+/* Bouton destructif : reste un bouton fantome, teinte danger au survol. */
+.staff-danger-btn { color: var(--danger); }
+.staff-danger-btn:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); color: #fff; }
+.staff-danger-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Journal sécurité */
 .staff-access-log {

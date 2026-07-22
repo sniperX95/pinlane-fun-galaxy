@@ -8393,6 +8393,14 @@ function openStaffAccessModal(kind) {
   const access = ensureStaffAccessControl();
   const selectedRole = getStaffAccessRole(access.selectedRoleId);
   const isRole = kind === 'role';
+  // Roles assignables a un membre = roles NON verrouilles (comme founder-team) :
+  // un role systeme verrouille (Direction, proprietaire plateforme) n'est jamais
+  // offert a la creation. Defaut = role du rail s'il est assignable, sinon le
+  // premier assignable.
+  const assignableRoles = access.roles.filter(role => !role.locked);
+  const defaultRoleId = assignableRoles.some(role => role.id === access.selectedRoleId)
+    ? access.selectedRoleId
+    : (assignableRoles[0] && assignableRoles[0].id) || '';
   const overlay = document.createElement('div');
   overlay.id = 'staffAccessModalOverlay';
   overlay.className = 'overlay-backdrop staff-access-modal-overlay';
@@ -8402,7 +8410,7 @@ function openStaffAccessModal(kind) {
         <h3 id="staffAccessModalTitle">${isRole ? 'Créer un rôle' : 'Créer un accès staff'}</h3>
         <p>${isRole
           ? 'Le rôle démarre avec Dashboard et Réservations, puis s’affine permission par permission.'
-          : `Le membre reçoit le rôle « ${escapeHtml(selectedRole.name)} » et un code d’accès personnel.`}</p>
+          : 'Choisissez le rôle du membre ; il reçoit un code d’accès personnel.'}</p>
       </div>
       <div class="field">
         <label for="staffAccessModalName">${isRole ? 'Nom du rôle' : 'Nom du membre'}</label>
@@ -8411,6 +8419,12 @@ function openStaffAccessModal(kind) {
       ${isRole ? '' : `<div class="field">
         <label for="staffAccessModalContact">Contact : email, téléphone ou identifiant interne</label>
         <input id="staffAccessModalContact" type="text" autocomplete="off" placeholder="Ex : camille@fungalaxy.be">
+      </div>
+      <div class="field">
+        <label for="staffAccessModalRole">Rôle attribué</label>
+        <select id="staffAccessModalRole">${assignableRoles.length
+          ? assignableRoles.map(role => `<option value="${escapeHtml(role.id)}" ${role.id === defaultRoleId ? 'selected' : ''}>${escapeHtml(role.name)}</option>`).join('')
+          : '<option value="">Aucun rôle assignable</option>'}</select>
       </div>`}
       <div class="staff-access-modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeStaffAccessModal()">Annuler</button>
@@ -8430,6 +8444,9 @@ async function submitStaffAccessModal(event, kind) {
   const name = String(document.getElementById('staffAccessModalName')?.value || '').trim();
   if (!name) return;
   const contact = String(document.getElementById('staffAccessModalContact')?.value || '').trim();
+  // Le role choisi doit etre lu AVANT la fermeture : closeStaffAccessModal
+  // retire l'overlay du DOM.
+  const chosenRoleId = String(document.getElementById('staffAccessModalRole')?.value || '').trim();
   closeStaffAccessModal();
   if (kind === 'role') {
     await runStaffAuthAction('createRole', {
@@ -8439,11 +8456,15 @@ async function submitStaffAccessModal(event, kind) {
     return;
   }
   const access = ensureStaffAccessControl();
-  const selectedRole = getStaffAccessRole(access.selectedRoleId);
+  const assignableRoles = access.roles.filter(role => !role.locked);
+  const roleId = assignableRoles.some(role => role.id === chosenRoleId)
+    ? chosenRoleId
+    : (assignableRoles[0] && assignableRoles[0].id) || '';
+  if (!roleId) { toast('Aucun rôle assignable disponible.'); return; }
   await runStaffAuthAction('createMember', {
     name,
     contact,
-    roleId: selectedRole.id
+    roleId
   }, 'Accès staff créé.');
 }
 
@@ -8462,11 +8483,59 @@ async function updateStaffMemberRole(memberId, roleId) {
   await runStaffAuthAction('updateMemberRole', { memberId, roleId }, 'Rôle du membre mis à jour.');
 }
 
+function getStaffSessionMemberId() {
+  return (state.staffAuthSession && state.staffAuthSession.member && state.staffAuthSession.member.id) || '';
+}
+
 async function toggleStaffMemberStatus(memberId) {
   const access = ensureStaffAccessControl();
   const member = access.members.find(item => item.id === memberId);
   if (!member) return;
+  // Reflet UI de la garde anti-lockout G2 (le serveur reste l'autorite) : on ne
+  // se bloque pas soi-meme.
+  if (memberId === getStaffSessionMemberId() && member.status === 'active') {
+    toast('Vous ne pouvez pas bloquer votre propre acces.');
+    return;
+  }
   await runStaffAuthAction('toggleMemberStatus', { memberId }, member.status === 'blocked' ? 'Accès activé.' : 'Accès bloqué.');
+}
+
+async function renameStaffRole(roleId) {
+  const role = getStaffAccessRole(roleId);
+  if (!role) return;
+  if (role.locked) { toast('Ce role systeme ne peut pas etre renomme.'); return; }
+  const next = window.prompt('Nouveau nom du role', role.name || '');
+  if (next === null) return;
+  const name = String(next).trim();
+  if (!name || name === role.name) return;
+  await runStaffAuthAction('renameRole', { roleId, name }, 'Role renomme.');
+}
+
+async function deleteStaffRole(roleId) {
+  const role = getStaffAccessRole(roleId);
+  if (!role) return;
+  if (role.locked) { toast('Ce role systeme ne peut pas etre supprime.'); return; }
+  const access = ensureStaffAccessControl();
+  const memberCount = access.members.filter(item => item.roleId === roleId).length;
+  if (memberCount > 0) {
+    toast(`Reassignez d'abord les ${memberCount} membre(s) de ce role avant de le supprimer.`);
+    return;
+  }
+  if (!window.confirm(`Supprimer le role "${role.name}" ? Cette action est definitive.`)) return;
+  await runStaffAuthAction('deleteRole', { roleId }, 'Role supprime.');
+}
+
+async function deleteStaffMember(memberId) {
+  const access = ensureStaffAccessControl();
+  const member = access.members.find(item => item.id === memberId);
+  if (!member) return;
+  // Reflet UI de la garde G2 : pas d'auto-suppression (le serveur refuse aussi).
+  if (memberId === getStaffSessionMemberId()) {
+    toast('Vous ne pouvez pas supprimer votre propre acces.');
+    return;
+  }
+  if (!window.confirm(`Supprimer definitivement l'acces de ${member.name} ? Ses sessions seront revoquees.`)) return;
+  await runStaffAuthAction('deleteMember', { memberId }, 'Acces supprime.');
 }
 
 async function regenerateStaffAccessCode(roleId) {
@@ -8605,6 +8674,10 @@ function renderStaffUtilityUsers() {
               <span>Rôle sélectionné</span>
               <h3>${escapeHtml(selectedRole.name)}</h3>
               <p>${escapeHtml(selectedRole.description || selectedRole.summary || '')}</p>
+              ${selectedRole.locked ? '' : `<div class="staff-role-admin-actions">
+                <button type="button" class="btn btn-ghost btn-sm" onclick='renameStaffRole(${staffClientJs(selectedRole.id)})'>Renommer</button>
+                <button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffRole(${staffClientJs(selectedRole.id)})'>Supprimer le rôle</button>
+              </div>`}
             </div>
           </div>
           <div class="staff-code-card">
@@ -8668,6 +8741,18 @@ function renderStaffUtilityUsers() {
               const role = getStaffAccessRole(member.roleId);
               const [statusLabel, statusBadge] = STAFF_MEMBER_STATUS_META[member.status] || ['Statut inconnu', 'badge-neutral'];
               const lastSeenLabel = member.lastSeen ? `Vu ${formatOpsTimestamp(member.lastSeen)}` : 'Jamais connecté';
+              const isSelf = member.id === getStaffSessionMemberId();
+              // Reassignation : mêmes règles que la page fondateur. Les rôles
+              // verrouillés (Direction, propriétaire plateforme) ne sont jamais
+              // proposés ; si le membre en porte un, il reste visible en option
+              // sélectionnée désactivée, non réassignable à la volée.
+              const assignableRoles = access.roles.filter(roleOption => !roleOption.locked);
+              const currentRoleLocked = !assignableRoles.some(roleOption => roleOption.id === member.roleId);
+              const currentRoleName = (getStaffAccessRole(member.roleId) || {}).name || 'rôle verrouillé';
+              const memberRoleOptions = (currentRoleLocked
+                ? `<option value="${escapeHtml(member.roleId)}" selected disabled>${escapeHtml(currentRoleName)}</option>`
+                : '')
+                + assignableRoles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${!currentRoleLocked && roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('');
               return `<article class="staff-member-card ${escapeHtml(member.status || 'active')}">
                 <div class="staff-member-top">
                   <span class="staff-person-icon tone-${escapeHtml(role.tone || 'custom')}">${escapeHtml(getStaffClientInitials(member.name || role.name))}</span>
@@ -8675,12 +8760,13 @@ function renderStaffUtilityUsers() {
                   <span class="badge ${statusBadge}">${statusLabel}</span>
                 </div>
                 <span class="staff-member-last-seen">${escapeHtml(lastSeenLabel)}</span>
-                <select aria-label="Rôle de ${escapeHtml(member.name)}" onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
-                  ${access.roles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('')}
+                <select aria-label="Rôle de ${escapeHtml(member.name)}" ${currentRoleLocked ? 'disabled' : ''} onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
+                  ${memberRoleOptions}
                 </select>
                 <footer>
                   <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffMemberCode(${staffClientJs(member.id)})'>${escapeHtml(member.code || 'Copier code')}</button>
-                  <button type="button" class="btn btn-ghost btn-sm" onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
+                  <button type="button" class="btn btn-ghost btn-sm" ${isSelf ? 'disabled title="Vous ne pouvez pas bloquer votre propre acces"' : ''} onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
+                  ${isSelf ? '' : `<button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffMember(${staffClientJs(member.id)})'>Supprimer</button>`}
                 </footer>
               </article>`;
             }).join('')}

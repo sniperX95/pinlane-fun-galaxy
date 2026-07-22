@@ -3,6 +3,9 @@ const {
   createEmergencyAccessControl,
   createEmergencyOwnerSession,
   createRole,
+  renameRole,
+  deleteRole,
+  deleteMember,
   getAuditSubjectSnapshot,
   STAFF_SESSION_COOKIE,
   getStaffSessionFromRequest,
@@ -245,9 +248,9 @@ module.exports = async (req, res) => {
     const targetMemberId = String(body.memberId || '');
 
     let auditBefore = null;
-    if (['updateRolePermissions', 'setRolePreset', 'regenerateRoleCode', 'revealRoleCode'].includes(action) && targetRoleId) {
+    if (['updateRolePermissions', 'setRolePreset', 'regenerateRoleCode', 'revealRoleCode', 'renameRole', 'deleteRole'].includes(action) && targetRoleId) {
       auditBefore = await getAuditSubjectSnapshot({ centerId, roleId: targetRoleId });
-    } else if (['updateMemberRole', 'toggleMemberStatus', 'revealMemberCode'].includes(action) && targetMemberId) {
+    } else if (['updateMemberRole', 'toggleMemberStatus', 'revealMemberCode', 'deleteMember'].includes(action) && targetMemberId) {
       auditBefore = await getAuditSubjectSnapshot({ centerId, memberId: targetMemberId });
     }
 
@@ -275,6 +278,12 @@ module.exports = async (req, res) => {
     } else if (action === 'toggleMemberStatus') {
       const before = (auditBefore && auditBefore.status) || '';
       auditChanges = buildChanges({ status: before }, { status: before === 'blocked' ? 'active' : 'blocked' }, ['status']);
+    } else if (action === 'renameRole') {
+      auditChanges = buildChanges(
+        { name: (auditBefore && auditBefore.name) || '' },
+        { name: String(body.name || '') },
+        ['name'],
+      );
     }
 
     const auditEntity = targetMemberId
@@ -375,6 +384,28 @@ module.exports = async (req, res) => {
         memberId: body.memberId,
       });
       extra = { updatedMember: member };
+    } else if (action === 'renameRole') {
+      const result = await renameRole({
+        centerId,
+        actorMemberId: session.member.id,
+        roleId: body.roleId,
+        name: body.name,
+      });
+      extra = { updatedRole: { id: result.id, name: result.name } };
+    } else if (action === 'deleteRole') {
+      await deleteRole({
+        centerId,
+        actorMemberId: session.member.id,
+        roleId: body.roleId,
+      });
+      extra = { deletedRoleId: String(body.roleId || '') };
+    } else if (action === 'deleteMember') {
+      await deleteMember({
+        centerId,
+        actorMemberId: session.member.id,
+        memberId: body.memberId,
+      });
+      extra = { deletedMemberId: String(body.memberId || '') };
     } else if (action === 'snapshot') {
       extra = {};
     } else {

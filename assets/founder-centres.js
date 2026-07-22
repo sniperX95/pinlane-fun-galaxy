@@ -35,6 +35,9 @@
     error: '',
     data: null,
     statusBusy: '',      // id du centre dont on change le statut (un clic)
+    search: '',          // filtre texte (nom de centre)
+    statusFilter: 'all', // filtre statut
+    clientFilter: 'all', // filtre client proprietaire
     modal: null,         // null | { mode:'config'|'new', centerId }
     original: null,      // snapshot config a l'ouverture (pour le diff)
     draft: null,         // config en cours d'edition (ou fiche du nouveau centre)
@@ -238,6 +241,16 @@
     return `<div class="fca-seg-wrap"><span class="fca-seg-label">Statut</span><div class="fca-status-seg" role="group" aria-label="Statut du centre">${btns}</div></div>`;
   }
 
+  // A quel client (entreprise) appartient le centre. clientName null = centre
+  // orphelin (pas encore rattache). On n'invente pas de nom : "sans client".
+  function ownerLine(center) {
+    const hasClient = center.clientName != null && String(center.clientName) !== '';
+    return `<div class="fca-owner" data-owner="${hasClient ? esc(center.clientName) : ''}">
+      <span class="fca-owner-lab">Client</span>
+      <span class="fca-owner-name ${hasClient ? '' : 'fca-owner-none'}">${hasClient ? esc(center.clientName) : 'sans client'}</span>
+    </div>`;
+  }
+
   function centerCard(center) {
     const id = String(center.id || '');
     return `<section class="fck-center-card">
@@ -245,6 +258,7 @@
         <div><strong>${esc(center.name || id || '(sans nom)')}</strong> <span class="pv2-quiet">· ${esc(id)}</span></div>
         ${statusChip(center.status)}
       </div>
+      ${ownerLine(center)}
       <div class="fca-summary">${summaryHtml(center.config)}</div>
       <div class="fca-metrics">
         <div class="fca-metric"><span class="fca-metric-num">${esc(num(center.members))}</span><span class="fca-metric-cap">membres</span></div>
@@ -258,19 +272,95 @@
     </section>`;
   }
 
+  // Ligne de TOTAUX plateforme (bundle.totals) : somme membres / resas 30 j /
+  // CA 30 j / nombre de centres. Tout vient du serveur, aucun recalcul.
+  function totalsBar(totals) {
+    if (!totals || typeof totals !== 'object') return '';
+    return `<section class="pv2-panel fca-totals-panel" data-fca-panel="totals">
+      <div class="fca-totals">
+        <div class="fca-total"><span class="fca-total-num">${esc(num(totals.centerCount))}</span><span class="fca-total-cap">centres</span></div>
+        <div class="fca-total"><span class="fca-total-num">${esc(num(totals.members))}</span><span class="fca-total-cap">membres</span></div>
+        <div class="fca-total"><span class="fca-total-num">${esc(num(totals.reservations30d))}</span><span class="fca-total-cap">resas 30 j</span></div>
+        <div class="fca-total"><span class="fca-total-num">${esc(money(totals.revenue30d))}</span><span class="fca-total-cap">CA 30 j</span></div>
+      </div>
+    </section>`;
+  }
+
+  // Liste des clients presents (pour le filtre par client). null -> "sans client".
+  function clientOptions() {
+    const centers = (fca.data && Array.isArray(fca.data.centers)) ? fca.data.centers : [];
+    const seen = new Map();
+    let hasOrphan = false;
+    centers.forEach((c) => {
+      const nm = c && c.clientName != null && String(c.clientName) !== '' ? String(c.clientName) : null;
+      if (nm) seen.set(nm, nm);
+      else hasOrphan = true;
+    });
+    const list = [...seen.keys()].sort((a, b) => (a < b ? -1 : 1));
+    return { list, hasOrphan };
+  }
+
+  function filteredCenters() {
+    const centers = (fca.data && Array.isArray(fca.data.centers)) ? fca.data.centers : [];
+    const q = (fca.search || '').trim().toLowerCase();
+    const sf = fca.statusFilter || 'all';
+    const cf = fca.clientFilter || 'all';
+    return centers.filter((c) => {
+      if (!c) return false;
+      if (sf !== 'all' && String(c.status || '') !== sf) return false;
+      if (cf !== 'all') {
+        const nm = c.clientName != null && String(c.clientName) !== '' ? String(c.clientName) : '__none__';
+        if (cf === '__none__') { if (nm !== '__none__') return false; }
+        else if (nm !== cf) return false;
+      }
+      if (q) {
+        const hay = `${c.name || ''} ${c.id || ''}`.toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function filterBar() {
+    const centers = (fca.data && Array.isArray(fca.data.centers)) ? fca.data.centers : [];
+    if (!centers.length) return '';
+    const sf = fca.statusFilter || 'all';
+    const cf = fca.clientFilter || 'all';
+    const statusOpts = [['all', 'Tous les statuts']].concat(STATUS_ORDER.map((k) => [k, STATUS[k].label]))
+      .map(([v, l]) => `<option value="${esc(v)}" ${sf === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
+    const { list, hasOrphan } = clientOptions();
+    const clientOpts = [`<option value="all" ${cf === 'all' ? 'selected' : ''}>Tous les clients</option>`]
+      .concat(list.map((nm) => `<option value="${esc(nm)}" ${cf === nm ? 'selected' : ''}>${esc(nm)}</option>`))
+      .concat(hasOrphan ? [`<option value="__none__" ${cf === '__none__' ? 'selected' : ''}>Sans client</option>`] : [])
+      .join('');
+    return `<div class="fck-audit-bar fca-filter" data-fca-panel="filter">
+      <input type="search" class="pv2-input fca-search" placeholder="Rechercher un centre (nom ou identifiant)"
+        value="${esc(fca.search || '')}" aria-label="Rechercher un centre" oninput="fcaSetSearch(this.value)">
+      <select class="pv2-input fca-client-filter" aria-label="Filtrer par client" onchange="fcaSetClientFilter(this.value)">${clientOpts}</select>
+      <select class="pv2-input fca-status-filter" aria-label="Filtrer par statut" onchange="fcaSetStatusFilter(this.value)">${statusOpts}</select>
+    </div>`;
+  }
+
+  function gridHtml() {
+    const total = (fca.data && Array.isArray(fca.data.centers)) ? fca.data.centers.length : 0;
+    const centers = filteredCenters();
+    if (centers.length) {
+      return `<div class="fck-center-grid">${centers.map(centerCard).join('')}</div>`;
+    }
+    if (total) {
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre ne correspond a la recherche.</p></div></section>`;
+    }
+    if (fca.loaded && !fca.error) {
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre enregistre pour le moment. Creez le premier avec "Nouveau centre".</p></div></section>`;
+    }
+    return '';
+  }
+
   function listHtml() {
     const d = fca.data || {};
-    const centers = Array.isArray(d.centers) ? d.centers : [];
     const cardsOrError = [];
     if (d.centersError) cardsOrError.push(`<p class="pv2-quiet">${esc(d.centersError)}</p>`);
     if (d.volumesError) cardsOrError.push(`<p class="pv2-quiet">${esc(d.volumesError)}</p>`);
-
-    let grid = '';
-    if (centers.length) {
-      grid = `<div class="fck-center-grid">${centers.map(centerCard).join('')}</div>`;
-    } else if (fca.loaded && !fca.error) {
-      grid = `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun centre enregistre pour le moment. Creez le premier avec "Nouveau centre".</p></div></section>`;
-    }
 
     return `<div class="pv2-shell fck-shell">
       <section class="pv2-bar">
@@ -293,7 +383,9 @@
       ${fca.loading && !fca.data ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Chargement des centres...</p></div></section>` : ''}
 
       ${cardsOrError.length ? `<section class="pv2-panel"><div style="padding:16px">${cardsOrError.join('')}</div></section>` : ''}
-      ${grid}
+      ${totalsBar(d.totals)}
+      ${filterBar()}
+      <div id="fcaGrid">${gridHtml()}</div>
     </div>`;
   }
 
@@ -309,6 +401,17 @@
     if (!fca.loaded && !fca.loading && !fca.error) setTimeout(() => load(), 0);
     page.innerHTML = listHtml();
   }
+
+  // Filtres : re-rend UNIQUEMENT la grille (#fcaGrid) pour que le champ de
+  // recherche garde le focus pendant la frappe.
+  function renderGridOnly() {
+    const root = getRoot();
+    const host = root && root.querySelector('#fcaGrid');
+    if (host) host.innerHTML = gridHtml();
+  }
+  window.fcaSetSearch = function (value) { fca.search = value == null ? '' : String(value); renderGridOnly(); };
+  window.fcaSetStatusFilter = function (value) { fca.statusFilter = value || 'all'; renderGridOnly(); };
+  window.fcaSetClientFilter = function (value) { fca.clientFilter = value || 'all'; renderGridOnly(); };
 
   function render() {
     renderList();

@@ -55,11 +55,14 @@ const isoAgo = (ms) => new Date(NOW - ms).toISOString();
 
 // Agent marketing : 4 insights. Attendus : d7 = 1, d30 = 3 (le 4e a 40 j),
 // valides = 2, refutes = 1, dernier propose = 'Idee pluie samedi'.
+// id + body ajoutes pour la section pendingInsights (le panneau
+// Appliquer/Ignorer) : seul l'insight 'proposed' est actionnable. Les autres
+// statuts (validated/refuted) ne doivent JAMAIS remonter comme en attente.
 const MARKETING_INSIGHTS = [
-  { center_id: 'libramont', kind: 'idea', status: 'proposed', title: 'Idee pluie samedi', channel: 'email', at: NOW - 2 * DAY },
-  { center_id: 'libramont', kind: 'insight', status: 'validated', title: 'Meteo et frequentation', channel: '', at: NOW - 10 * DAY },
-  { center_id: 'gembloux', kind: 'idea', status: 'refuted', title: 'Idee refutee', channel: 'sms', at: NOW - 20 * DAY },
-  { center_id: 'libramont', kind: 'experiment', status: 'validated', title: 'Vieille experience', channel: '', at: NOW - 40 * DAY },
+  { id: 101, center_id: 'libramont', kind: 'idea', status: 'proposed', title: 'Idee pluie samedi', body: 'Promo pluie samedi', channel: 'email', at: NOW - 2 * DAY },
+  { id: 102, center_id: 'libramont', kind: 'insight', status: 'validated', title: 'Meteo et frequentation', body: '', channel: '', at: NOW - 10 * DAY },
+  { id: 103, center_id: 'gembloux', kind: 'idea', status: 'refuted', title: 'Idee refutee', body: '', channel: 'sms', at: NOW - 20 * DAY },
+  { id: 104, center_id: 'libramont', kind: 'experiment', status: 'validated', title: 'Vieille experience', body: '', channel: '', at: NOW - 40 * DAY },
 ];
 
 // Suggestions terrain : total 3, pending 2, d7 = 1, d30 = 2 (la 3e a 45 j).
@@ -199,6 +202,27 @@ function marketingLatestRow() {
     : [];
 }
 
+// Lignes actionnables : OBEIT au statut demande par le SQL (le filtre est lu
+// dans la requete, pas suppose), pour qu'une mutation du statut cible fasse
+// virer l'assertion au rouge.
+function pendingInsightRows(sql) {
+  const m = sql.match(/status = '(\w+)'/);
+  const wanted = m ? m[1] : 'proposed';
+  return MARKETING_INSIGHTS
+    .filter((row) => row.status === wanted)
+    .slice()
+    .sort((a, b) => (b.at - a.at) || (b.id - a.id))
+    .map((row) => ({
+      id: row.id,
+      center_id: row.center_id,
+      kind: row.kind,
+      title: row.title,
+      body: row.body || '',
+      proposed_at: new Date(row.at).toISOString(),
+      created_at: new Date(row.at).toISOString(),
+    }));
+}
+
 function countAggregate(rows) {
   const within = (days) => rows.filter((r) => r.at > NOW - days * DAY).length;
   const last = rows.length ? Math.max(...rows.map((r) => r.at)) : 0;
@@ -298,6 +322,11 @@ function fakeRowsFor(sql, params) {
   // ── Fixtures des trois builders ──
   if (/group by status, kind/i.test(sql)) return marketingStatusKindRows();
   if (/from marketing_insights/i.test(sql) && /::int as d7/i.test(sql)) return marketingPerCenterRows();
+  // La requete des lignes actionnables selectionne `, body,` : marqueur stable
+  // (independant de la valeur du statut, donc la mutation du filtre garde son
+  // effet). A tester AVANT la requete "dernier propose" (elles partagent
+  // `order by proposed_at desc`).
+  if (/from marketing_insights/i.test(sql) && /, body,/.test(sql)) return pendingInsightRows(sql);
   if (/from marketing_insights/i.test(sql) && /order by proposed_at desc/i.test(sql)) return marketingLatestRow();
   if (/from ops_agent_suggestions/i.test(sql)) {
     const agg = countAggregate(SUGGESTION_ROWS);
@@ -505,6 +534,15 @@ async function probeConsoleMapping(mod) {
     && groups[0].count === 3;
 }
 
+async function probePendingInsights(mod) {
+  const bundle = await mod.buildFounderAgents();
+  const list = bundle.pendingInsights || [];
+  return list.length === 1
+    && list[0] && list[0].id === 101
+    && list[0].status === 'pending'
+    && list[0].title === 'Idee pluie samedi';
+}
+
 (async () => {
   // =========================================================================
   console.log('[A] une session DIRECTION est refusee sur CHAQUE action du cockpit');
@@ -582,6 +620,26 @@ async function probeConsoleMapping(mod) {
   ok(planRows.length === 1 && planRows[0].centerId === 'libramont'
     && planRows[0].status === 'proposed' && planRows[0].fromDate === '2026-07-20' && planRows[0].mode === 'rules',
   'plans marketing : la ligne fixture ressort avec les champs du front (centerId, status, fromDate, mode)');
+
+  // pendingInsights : les lignes ACTIONNABLES du panneau Appliquer/Ignorer.
+  // Seul l'insight 'proposed' remonte ; son etat de base est traduit dans le
+  // 'pending' que le front asservit (collectActionableInsights). Un id
+  // NUMERIQUE est indispensable (sinon aucun bouton cote front).
+  const pendingInsights = agentsBundle.pendingInsights || [];
+  ok(Array.isArray(pendingInsights) && pendingInsights.length === 1,
+    `pendingInsights : 1 ligne actionnable (le seul insight 'proposed'), obtenu ${Array.isArray(pendingInsights) ? pendingInsights.length : 'non-tableau'}`);
+  const pend = pendingInsights[0] || {};
+  ok(typeof pend.id === 'number' && Number.isFinite(pend.id) && pend.id === 101,
+    `pendingInsights : id NUMERIQUE de la ligne (obtenu ${pend.id}) : sans lui, le front n affiche aucun bouton`);
+  ok(pend.status === 'pending',
+    `pendingInsights : l etat 'proposed' de la base est traduit en 'pending' attendu par le front (obtenu "${pend.status}")`);
+  ok(pend.title === 'Idee pluie samedi' && pend.centerId === 'libramont' && pend.kind === 'idea',
+    `pendingInsights : titre, centre et kind mappes (obtenu ${JSON.stringify({ title: pend.title, centerId: pend.centerId, kind: pend.kind })})`);
+  ok(pend.proposedAt === isoAgo(2 * DAY),
+    'pendingInsights : proposedAt = la date REELLE du propose (pas un faux zero de date)');
+  ok(!pendingInsights.some((p) => ['validated', 'refuted', 'applied', 'ignored'].includes(String(p.title).toLowerCase()))
+    && !pendingInsights.some((p) => p.id === 102 || p.id === 103 || p.id === 104),
+  'pendingInsights : aucun insight deja arbitre (valide/refute) ne fuite dans la file en attente');
 
   const cost = agentsBundle.cost || {};
   ok(cost.budgetUsd === 5,
@@ -751,6 +809,16 @@ async function probeConsoleMapping(mod) {
     "message: '',",
     probeConsoleMapping,
     'mapping du message des groupes console casse',
+  );
+
+  // pendingInsights : deviner le filtre de statut vers un etat deja arbitre
+  // (validated) ferait remonter 2 lignes non actionnables dans le panneau
+  // Appliquer/Ignorer -> la sonde (1 seule ligne, l insight propose) rougit.
+  await withMutation(
+    "where status = 'proposed'",
+    "where status = 'validated'",
+    probePendingInsights,
+    'filtre des insights actionnables devie vers un statut deja arbitre',
   );
 
   if (failures) {

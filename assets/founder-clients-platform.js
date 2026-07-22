@@ -46,6 +46,9 @@
     error: '',
     data: null,
     statusBusy: '',      // id du client dont on change le statut
+    billingBusy: '',     // id du client dont on enregistre le prix mensuel
+    search: '',          // filtre texte de la grille (nom + identifiant)
+    statusFilter: 'all', // filtre statut de la grille
     modal: null,         // null | { mode:'new'|'addCenter', step:'form'|'codes', clientId }
     draft: null,         // fiche en cours de saisie
     result: null,        // { accessCodes, client, center } renvoye par le serveur
@@ -72,6 +75,32 @@
   function num(n) {
     const v = Number(n);
     return Number.isFinite(v) ? String(v) : '0';
+  }
+
+  // Montant en euros, format fr-BE sans centimes. Les prix et le CA de cette
+  // page sont des grandeurs metier : Geist Mono + tabular-nums cote CSS.
+  function money(n) {
+    const v = Number(n) || 0;
+    try {
+      return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+    } catch (_) {
+      return `${Math.round(v)} EUR`;
+    }
+  }
+
+  // Regle d'HONNETETE du MRR : tant qu'AUCUN prix n'est pose (clientsWithPrice
+  // === 0), le MRR n'est pas une mesure -> "a definir", jamais un faux "0 EUR".
+  // Des qu'un prix existe, on affiche la somme reelle des clients actifs.
+  function mrrView(platform) {
+    const p = platform || {};
+    const withPrice = Number(p.clientsWithPrice) || 0;
+    const clients = (fcp.data && Array.isArray(fcp.data.clients)) ? fcp.data.clients.length : 0;
+    const clientCount = Number(p.clientCount != null ? p.clientCount : clients) || 0;
+    const honest = withPrice <= 0; // aucun prix pose : le MRR n'est pas une mesure
+    return {
+      display: honest ? 'a definir' : money(p.mrr),
+      hint: `${withPrice}/${clientCount} prix renseignes`,
+    };
   }
 
   // ---- Reseau ---------------------------------------------------------------
@@ -193,6 +222,37 @@
     </label>`;
   }
 
+  // Bloc facturation d'une carte : prix mensuel EDITABLE (POST setClientBilling)
+  // et CA reel 30 j du client (somme du CA de ses centres, fourni par le
+  // backend). Le prix vide vaut "a definir" : on n'affiche jamais un faux 0.
+  function billingBlock(client) {
+    const c = client || {};
+    const id = String(c.id || '');
+    const price = c.monthlyPrice;
+    const hasPrice = price != null && Number.isFinite(Number(price));
+    const priceVal = hasPrice ? String(Number(price)) : '';
+    const busy = fcp.billingBusy === id;
+    const rev = c.revenue30d;
+    const revText = (rev == null) ? '-' : money(rev);
+    return `<div class="fcp-billing">
+      <div class="fcp-billing-price">
+        <label class="fcp-billing-lab" for="fcp-price-${esc(id)}">Prix mensuel</label>
+        <div class="fcp-billing-edit">
+          <input type="number" id="fcp-price-${esc(id)}" class="fcp-price-input" min="0" max="100000" step="1"
+            inputmode="numeric" placeholder="a definir" value="${esc(priceVal)}" ${busy ? 'disabled' : ''}
+            data-client="${esc(id)}" aria-label="Prix mensuel en euros de ${esc(c.name || id)}">
+          <span class="fcp-price-unit">EUR/mois</span>
+          <button type="button" class="pv2-btn sm fcp-price-save" ${busy ? 'disabled' : ''} onclick="fcpSaveBilling(this, '${escJs(id)}')">${busy ? '...' : 'Enregistrer'}</button>
+        </div>
+        ${hasPrice ? '' : '<span class="fcp-hint">Aucun prix pose : ce client ne compte pas dans le MRR.</span>'}
+      </div>
+      <div class="fcp-revenue">
+        <span class="fcp-revenue-cap">CA 30 j</span>
+        <span class="fcp-revenue-num">${esc(revText)}</span>
+      </div>
+    </div>`;
+  }
+
   function clientCard(client) {
     const c = client || {};
     const id = String(c.id || '');
@@ -211,6 +271,7 @@
         <div class="fca-metric"><span class="fca-metric-num">${esc(num(centerCount))}</span><span class="fca-metric-cap">centre${centerCount > 1 ? 's' : ''}</span></div>
         <div class="fca-metric"><span class="fca-metric-num">${esc(num(staffCount))}</span><span class="fca-metric-cap">effectif</span></div>
       </div>
+      ${billingBlock(c)}
       ${centersBlock(centers)}
       <div class="fcp-card-foot">
         ${statusSelect(c)}
@@ -235,17 +296,83 @@
     </section>`;
   }
 
-  function listHtml() {
+  // En-tete KPI plateforme : MRR (regle d'honnetete), clients/centres actifs,
+  // CA 30 j agrege. Tout vient de platformClients.platform ; on n'invente rien.
+  function kpiHtml() {
+    const p = fcp.data && fcp.data.platform;
+    if (!p) return '';
+    const mrr = mrrView(p);
+    return `<section class="pv2-panel fcp-kpi-panel" data-fcp-panel="kpis">
+      <div class="fcp-kpis">
+        <div class="fcp-kpi" data-kpi="mrr">
+          <span class="fcp-kpi-cap">MRR</span>
+          <span class="fcp-kpi-num">${esc(mrr.display)}</span>
+          <span class="fcp-kpi-hint">${esc(mrr.hint)}</span>
+        </div>
+        <div class="fcp-kpi" data-kpi="clients">
+          <span class="fcp-kpi-cap">Clients actifs</span>
+          <span class="fcp-kpi-num">${esc(num(p.activeClients))}</span>
+        </div>
+        <div class="fcp-kpi" data-kpi="centers">
+          <span class="fcp-kpi-cap">Centres actifs</span>
+          <span class="fcp-kpi-num">${esc(num(p.activeCenters))}</span>
+        </div>
+        <div class="fcp-kpi" data-kpi="ca">
+          <span class="fcp-kpi-cap">CA 30 j</span>
+          <span class="fcp-kpi-num">${esc(money(p.revenue30dAll))}</span>
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function filteredClients() {
     const d = fcp.data || {};
     const clients = Array.isArray(d.clients) ? d.clients : [];
+    const q = (fcp.search || '').trim().toLowerCase();
+    const sf = fcp.statusFilter || 'all';
+    return clients.filter((c) => {
+      if (!c) return false;
+      if (sf !== 'all' && String(c.status || '') !== sf) return false;
+      if (q) {
+        const hay = `${c.name || ''} ${c.id || ''}`.toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
 
-    let grid = '';
+  function filterBar() {
+    const d = fcp.data || {};
+    const total = Array.isArray(d.clients) ? d.clients.length : 0;
+    if (!total) return '';
+    const sf = fcp.statusFilter || 'all';
+    const opts = [['all', 'Tous les statuts']].concat(STATUS_ORDER.map((k) => [k, STATUS[k].label]))
+      .map(([v, l]) => `<option value="${esc(v)}" ${sf === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
+    return `<div class="fcp-filter" data-fcp-panel="filter">
+      <input type="search" class="pv2-input fcp-search" placeholder="Rechercher un client (nom ou identifiant)"
+        value="${esc(fcp.search || '')}" aria-label="Rechercher un client" oninput="fcpSetSearch(this.value)">
+      <select class="pv2-input fcp-status-filter" aria-label="Filtrer par statut" onchange="fcpSetStatusFilter(this.value)">${opts}</select>
+    </div>`;
+  }
+
+  function gridHtml() {
+    const d = fcp.data || {};
+    const total = Array.isArray(d.clients) ? d.clients.length : 0;
+    const clients = filteredClients();
     if (clients.length) {
-      grid = `<div class="fck-center-grid fcp-client-grid">${clients.map(clientCard).join('')}</div>`;
-    } else if (fcp.loaded && !fcp.error) {
-      grid = `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client enregistre pour le moment. Cree le premier avec "Nouveau client".</p></div></section>`;
+      return `<div class="fck-center-grid fcp-client-grid">${clients.map(clientCard).join('')}</div>`;
     }
+    if (total) {
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client ne correspond a la recherche.</p></div></section>`;
+    }
+    if (fcp.loaded && !fcp.error) {
+      return `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Aucun client enregistre pour le moment. Cree le premier avec "Nouveau client".</p></div></section>`;
+    }
+    return '';
+  }
 
+  function listHtml() {
+    const d = fcp.data || {};
     return `<div class="pv2-shell fck-shell fcp-shell">
       <section class="pv2-bar">
         <div>
@@ -259,6 +386,7 @@
         </div>
       </section>
 
+      ${kpiHtml()}
       ${honestNote()}
       ${d.testData ? testDataBanner() : ''}
 
@@ -267,9 +395,62 @@
 
       ${fcp.loading && !fcp.data ? `<section class="pv2-panel"><div style="padding:16px"><p class="pv2-quiet">Chargement des clients...</p></div></section>` : ''}
 
-      ${grid}
+      ${filterBar()}
+      <div id="fcpGrid">${gridHtml()}</div>
       ${orphansBlock()}
     </div>`;
+  }
+
+  // Filtres : re-rend UNIQUEMENT la grille (#fcpGrid), pas toute la page. La
+  // barre de filtre reste dans le DOM -> le champ de recherche garde le focus
+  // et le curseur pendant la frappe.
+  function renderGridOnly() {
+    const root = getRoot();
+    const host = root && root.querySelector('#fcpGrid');
+    if (host) host.innerHTML = gridHtml();
+  }
+  window.fcpSetSearch = function (value) { fcp.search = value == null ? '' : String(value); renderGridOnly(); };
+  window.fcpSetStatusFilter = function (value) { fcp.statusFilter = value || 'all'; renderGridOnly(); };
+
+  // Edition du prix mensuel d'un client : lit le champ de la carte, borne, puis
+  // POST setClientBilling (meme helper apiRequest que createClient) et recharge.
+  window.fcpSaveBilling = function (btn, clientId) {
+    const wrap = btn && btn.closest ? btn.closest('.fcp-billing') : null;
+    const input = wrap ? wrap.querySelector('.fcp-price-input') : null;
+    saveClientBilling(clientId, input ? input.value : '');
+  };
+
+  async function saveClientBilling(clientId, raw) {
+    if (fcp.billingBusy) return;
+    const client = findClient(clientId);
+    if (!client) { toast('Client introuvable. Actualise la liste.'); return; }
+    const value = String(raw == null ? '' : raw).trim();
+    let monthlyPrice;
+    if (value === '') {
+      monthlyPrice = null; // vide : efface le prix, retour a "a definir"
+    } else {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) {
+        toast('Prix invalide : un nombre entre 0 et 100000, ou vide pour effacer.');
+        return;
+      }
+      monthlyPrice = n;
+    }
+    fcp.billingBusy = clientId;
+    renderGridOnly();
+    try {
+      await window.apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'setClientBilling', clientId, monthlyPrice }),
+      });
+      toast('Prix mis a jour.');
+      fcp.billingBusy = '';
+      reload();
+    } catch (error) {
+      fcp.billingBusy = '';
+      toast((error && error.userMessage) || (error && error.message) || 'Le prix n\'a pas ete enregistre.');
+      renderGridOnly();
+    }
   }
 
   function renderList() {

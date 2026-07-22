@@ -115,7 +115,7 @@ const { requireStaffPermission } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
-const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient } = require('../lib/platform-clients');
+const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient, setClientBilling } = require('../lib/platform-clients');
 
 async function buildContext(body) {
   if (body.context) return body.context;
@@ -1472,6 +1472,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 200, { ok: true, action, ...out });
     return;
   }
+  // Prix mensuel que le client paie a Pinlane (le socle du MRR proprietaire).
+  // monthlyPrice null / vide efface le prix ; sinon borne 0..100000 EUR cote
+  // lib. Gate platform.admin, trace au journal comme updateClientStatus.
+  if (action === 'setClientBilling') {
+    const out = await setClientBilling(getPool(), { clientId: body.clientId, monthlyPrice: body.monthlyPrice });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
 
   // Catalogue no-code : editer/retirer une formule (override par-dessus le
   // socle), remettre a zero, ou ecarter un incident console resolu. Tout est
@@ -2225,7 +2233,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'setClientBilling', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le

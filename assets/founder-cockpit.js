@@ -66,6 +66,16 @@
   };
   fck.pages = pageStates;
 
+  // Deux petits bundles metier consommes UNIQUEMENT par la page 'cockpit' : la
+  // ligne de KPI plateforme (platformClients.platform) et le graphe CA par
+  // centre (founderCenters). Caches dedies, chargement non bloquant : une
+  // panne ici n'empeche pas le reste du cockpit de s'afficher.
+  const fckBiz = {
+    platform: { loaded: false, loading: false, data: null },
+    centres: { loaded: false, loading: false, data: null },
+  };
+  fck.biz = fckBiz;
+
   // Page active + racine memorisee : les rendus internes (fin de fetch, busy)
   // redessinent la page reellement affichee, pas une autre.
   let activePageKey = 'cockpit';
@@ -166,7 +176,33 @@
     }
   }
 
-  window.fckReload = function () { fck.loaded = false; load(true); };
+  // Bundles metier de la page cockpit (KPI plateforme + CA par centre). On ne
+  // fabrique aucun chiffre : en cas d'echec, la ligne KPI et le graphe restent
+  // discrets (message calme), ils n'affichent pas de faux zero.
+  async function loadBiz(key, action) {
+    const st = fckBiz[key];
+    if (!st || st.loading || st.loaded) return;
+    st.loading = true;
+    try {
+      const payload = await apiRequest(`/api/ops?action=${action}`);
+      st.data = payload || null;
+    } catch (error) {
+      st.data = null;
+    } finally {
+      st.loaded = true;
+      st.loading = false;
+      if (activePageKey === 'cockpit') render();
+    }
+  }
+
+  window.fckReload = function () {
+    fck.loaded = false;
+    fckBiz.platform.loaded = false;
+    fckBiz.platform.data = null;
+    fckBiz.centres.loaded = false;
+    fckBiz.centres.data = null;
+    load(true);
+  };
 
   window.fckPageReload = function (key) {
     const st = pageStates[key];
@@ -333,6 +369,35 @@
 
   function chip(tone, label) {
     return `<span class="pv2-chip ${tone}">${esc(label)}</span>`;
+  }
+
+  function intFmt(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '0';
+    try { return new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(v); } catch (_) { return String(Math.round(v)); }
+  }
+
+  function money(n) {
+    const v = Number(n) || 0;
+    try {
+      return new Intl.NumberFormat('fr-BE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+    } catch (_) {
+      return `${Math.round(v)} EUR`;
+    }
+  }
+
+  // Meme regle d'honnetete que la page Clients Pinlane : tant qu'aucun prix
+  // n'est pose (clientsWithPrice === 0), le MRR est "a definir", jamais un faux
+  // "0 EUR". Des qu'un prix existe, on affiche la somme reelle.
+  function mrrView(platform) {
+    const p = platform || {};
+    const withPrice = Number(p.clientsWithPrice) || 0;
+    const clientCount = Number(p.clientCount) || 0;
+    const honest = withPrice <= 0;
+    return {
+      display: honest ? 'a definir' : money(p.mrr),
+      hint: `${withPrice}/${clientCount} prix renseignes`,
+    };
   }
 
   const OUTCOME_CHIP = {
@@ -670,6 +735,7 @@
         out.push({
           id: numId,
           title: raw.title || raw.label || raw.message || raw.kind || '(sans titre)',
+          summary: raw.summary || raw.body || '',
           centerId: raw.centerId || raw.center_id || '',
           kind: raw.kind || '',
           proposedAt: raw.proposedAt || raw.proposed_at || raw.createdAt || raw.created_at || null,
@@ -690,7 +756,7 @@
       const busyIgnored = `insight:${it.id}:ignored`;
       const itemBusy = fck.busy === busyApplied || fck.busy === busyIgnored;
       return `<tr>
-        <td>${esc(it.title)}<div class="pv2-cell-sub">${esc(it.centerId || 'centre inconnu')}${it.kind ? ` · ${esc(it.kind)}` : ''}${it.proposedAt ? ` · ${esc(when(it.proposedAt))}` : ''}</div></td>
+        <td>${esc(it.title)}${it.summary ? `<div class="pv2-cell-sub fck-insight-sum">${esc(it.summary)}</div>` : ''}<div class="pv2-cell-sub">${esc(it.centerId || 'centre inconnu')}${it.kind ? ` · ${esc(it.kind)}` : ''}${it.proposedAt ? ` · ${esc(when(it.proposedAt))}` : ''}</div></td>
         <td>${chip('amber', 'en attente')}</td>
         <td class="fck-row-action">
           <button type="button" class="pv2-btn ghost" ${itemBusy ? 'disabled' : ''} onclick="fckInsightAction(${it.id}, 'applied')">${fck.busy === busyApplied ? 'En cours…' : 'Appliquer'}</button>
@@ -735,15 +801,26 @@
 
   // ---- Page Incidents (founderIncidents) ------------------------------------
 
+  // Carte id -> nom de centre, si le bundle expose la liste. Sert a resoudre
+  // les IDs bruts en NOMS dans les groupes d'erreurs (quand c'est trivial). Si
+  // le bundle ne porte pas les noms, on garde l'id : jamais de nom invente.
+  function centerNameMap(d) {
+    const map = new Map();
+    const list = Array.isArray(d && d.centers) ? d.centers : [];
+    list.forEach((c) => { if (c && c.id != null) map.set(String(c.id), c.name || String(c.id)); });
+    return map;
+  }
+
   function normalizeConsoleGroups(d) {
     const src = d.console || d.consoleErrors || d.clientErrors || {};
     const groups = Array.isArray(src) ? src : (Array.isArray(src.groups) ? src.groups : []);
+    const names = centerNameMap(d);
     return groups.map((g, index) => ({
       key: `inc:${g.id != null ? g.id : index}`,
       message: String(g.message || g.error || g.title || '(erreur sans message)').split('\n')[0].slice(0, 180),
       count: Number(g.count) || 0,
       lastAt: g.lastSeenAt || g.lastAt || null,
-      centers: toLabelList(g.centers || g.centerIds),
+      centers: toLabelList(g.centers || g.centerIds).map((cid) => names.get(String(cid)) || cid),
       pages: toLabelList(g.pages || g.urls),
       stack: String(g.stack || g.stackSample || g.sample || ''),
       stackHash: g.id != null ? String(g.id) : (g.stackHash ? String(g.stackHash) : ''),
@@ -783,15 +860,12 @@
   function renderIncidentsPage(st) {
     const d = st.data || {};
     const consolePanel = renderConsoleErrors(d);
-    const b = d.breakage || ((d.mails || d.jobs || d.worker || d.denied)
-      ? { mails: d.mails, jobs: d.jobs, worker: d.worker, denied: d.denied }
-      : null);
-    // Les erreurs console passent AU-DESSUS : c'est le signal que personne
-    // d'autre ne remonte. Mails/jobs/worker/refus suivent, avec leurs actions.
-    const rest = b
-      ? renderBreakage(b, 'Mails, jobs, worker, refus', 'Le reste du triage. Ce qui demande une action passe devant.', 'data-fck-panel="breakage"')
-      : '';
-    return consolePanel + rest;
+    // DEDUP : le triage mails / jobs / worker / refus vit deja sur le Cockpit
+    // (renderBreakage, panneau "Ce qui casse"). On ne le DUPLIQUE plus ici :
+    // Incidents ne garde que sa vraie valeur, les erreurs console des ecrans.
+    // Un simple renvoi vers l'exploitation, sans bouton menteur (Product Rule).
+    const link = `<p class="fck-incidents-note pv2-quiet" data-fck-panel="ops-link">Mails, jobs, worker et refus d'acces sont regroupes sur le Cockpit fondateur.</p>`;
+    return consolePanel + link;
   }
 
   // ---- Page Clients (founderClients) ----------------------------------------
@@ -910,10 +984,90 @@
     );
   }
 
+  // ---- Ligne de KPI business + graphe de tendance (page 'cockpit') ----------
+
+  // Ligne d'indicateurs plateforme, en TETE du cockpit : clients actifs, MRR
+  // (regle d'honnetete), CA 30 j agrege, centres actifs. Vient du bundle
+  // platformClients ; tant qu'il charge, message calme, jamais de faux zero.
+  function renderBizKpis() {
+    const st = fckBiz.platform;
+    const p = st.data && st.data.platform;
+    if (!p) {
+      if (!st.loaded) {
+        return panel('Activite plateforme', 'Clients, MRR et CA a l\'echelle du SaaS.',
+          emptyLine('Chargement des indicateurs plateforme...'), '', 'data-fck-panel="biz-kpis"');
+      }
+      return ''; // charge mais rien d'exploitable : on n'affiche pas un cadre vide
+    }
+    const mrr = mrrView(p);
+    const cells = [
+      { cap: 'Clients actifs', num: intFmt(p.activeClients) },
+      { cap: 'MRR', num: mrr.display, hint: mrr.hint, kpi: 'mrr' },
+      { cap: 'CA 30 j', num: money(p.revenue30dAll) },
+      { cap: 'Centres actifs', num: intFmt(p.activeCenters) },
+    ];
+    const stats = cells.map((c) => `<div class="fck-stat"${c.kpi ? ` data-kpi="${esc(c.kpi)}"` : ''}>
+        <span class="fck-stat-num">${esc(c.num)}</span>
+        <span class="fck-stat-cap">${esc(c.cap)}${c.hint ? `<br>${esc(c.hint)}` : ''}</span>
+      </div>`).join('');
+    return panel(
+      'Activite plateforme',
+      'Clients, MRR et CA a l\'echelle du SaaS. Le MRR reste "a definir" tant qu\'aucun prix n\'est pose.',
+      `<div class="fck-stats fck-biz-stats">${stats}</div>`,
+      '', 'data-fck-panel="biz-kpis"',
+    );
+  }
+
+  // Graphe de tendance : CA reel 30 j par centre, en barres, via le moteur
+  // window.PinlaneCharts (aucun SVG maison). Source : founderCenters.
+  function renderCaChart() {
+    const st = fckBiz.centres;
+    const chartsReady = Boolean(window.PinlaneCharts && typeof window.PinlaneCharts.barChart === 'function');
+    const centres = (st.data && Array.isArray(st.data.centers)) ? st.data.centers : [];
+    const hasSeries = centres.some((c) => Number(c && c.revenue30d) > 0);
+    let body;
+    if (!chartsReady) {
+      body = emptyLine('Le moteur de graphiques n\'est pas disponible.');
+    } else if (!st.loaded) {
+      body = emptyLine('Chargement du graphique...');
+    } else if (!hasSeries) {
+      body = emptyLine('Aucun chiffre d\'affaires sur 30 jours a afficher.');
+    } else {
+      body = '<div class="fck-chart" data-fck-chart="cockpit-ca"></div>';
+    }
+    return panel(
+      'CA 30 j par centre',
+      'Le chiffre d\'affaires reel des 30 derniers jours, centre par centre. Le graphique arrondit, la valeur exacte vit dans la page Centres.',
+      body, '', 'data-fck-panel="biz-chart"',
+    );
+  }
+
+  // Montage du graphe APRES l'innerHTML, sur l'hote marque. Le moteur porte sa
+  // propre garde de premiere apparition (motionKey) : un re-rendu ne rejoue pas
+  // le dessin.
+  function mountCockpitCharts(root) {
+    const charts = window.PinlaneCharts;
+    if (!charts || typeof charts.barChart !== 'function') return;
+    const host = root.querySelector('[data-fck-chart="cockpit-ca"]');
+    if (!host) return;
+    const centres = (fckBiz.centres.data && Array.isArray(fckBiz.centres.data.centers)) ? fckBiz.centres.data.centers : [];
+    const series = centres
+      .map((c) => ({ label: String(c.name || c.id || ''), value: Number(c.revenue30d) || 0 }))
+      .filter((s) => s.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 12);
+    if (!series.length) return;
+    try {
+      charts.barChart(host, { series, format: 'euro', motionKey: 'fck-cockpit-ca', height: 200 });
+    } catch (error) { /* un graphique rate ne couche pas la page */ }
+  }
+
   // ---- Rendu ----------------------------------------------------------------
 
   function renderCockpitPage(root) {
     if (!fck.loaded && !fck.loading && !fck.error) setTimeout(() => load(), 0);
+    if (!fckBiz.platform.loaded && !fckBiz.platform.loading) setTimeout(() => loadBiz('platform', 'platformClients'), 0);
+    if (!fckBiz.centres.loaded && !fckBiz.centres.loading) setTimeout(() => loadBiz('centres', 'founderCenters'), 0);
 
     const d = fck.data || {};
     const generated = d.generatedAt ? when(d.generatedAt) : '';
@@ -932,6 +1086,9 @@
 
       ${d.testData ? testDataBanner() : ''}
 
+      ${renderBizKpis()}
+      ${renderCaChart()}
+
       ${fck.error ? `<section class="pv2-panel"><p class="pv2-quiet">${esc(fck.error)}</p>
         <button type="button" class="pv2-btn" onclick="fckReload()">Reessayer</button></section>` : ''}
 
@@ -947,6 +1104,8 @@
         renderLeads(d.leads),
       ].join('') : ''}
     </div>`;
+
+    mountCockpitCharts(root);
   }
 
   const PAGE_BODY_RENDERERS = {

@@ -52,11 +52,15 @@ const isoAgo = (ms) => new Date(NOW - ms).toISOString();
 // OVERRIDE (settings.config.resources.laser.weaponCount = 25) : il prouve que
 // l'override est fusionne. namur porte un override de statut : il prouve que le
 // statut affiche vient de la config, pas de la colonne brute.
+// client_id / client_name simulent la sortie du LEFT JOIN clients (coalesce ->
+// chaine vide quand le centre n'a pas de client). libramont, gembloux, ciney
+// appartiennent a 'fungalaxy' ; namur est ORPHELIN (client_id vide) : il prouve
+// que le LEFT JOIN garde la ligne et rend clientId null, sans la perdre.
 const CENTER_ROWS = [
-  { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', settings: null },
-  { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', timezone: 'Europe/Brussels', settings: { config: { resources: { laser: { weaponCount: 25 } } } } },
-  { id: 'ciney', name: 'Fun Galaxy Ciney', status: 'planned', timezone: 'Europe/Brussels', settings: null },
-  { id: 'namur', name: 'Fun Galaxy Namur', status: 'active', timezone: 'Europe/Brussels', settings: { config: { status: 'planned' } } },
+  { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', timezone: 'Europe/Brussels', settings: null, client_id: 'fungalaxy', client_name: 'Fun Galaxy' },
+  { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', timezone: 'Europe/Brussels', settings: { config: { resources: { laser: { weaponCount: 25 } } } }, client_id: 'fungalaxy', client_name: 'Fun Galaxy' },
+  { id: 'ciney', name: 'Fun Galaxy Ciney', status: 'planned', timezone: 'Europe/Brussels', settings: null, client_id: 'fungalaxy', client_name: 'Fun Galaxy' },
+  { id: 'namur', name: 'Fun Galaxy Namur', status: 'active', timezone: 'Europe/Brussels', settings: { config: { status: 'planned' } }, client_id: '', client_name: '' },
 ];
 
 // Membres. Le marqueur SECRET-ENC-* dans access_code_enc est le PIEGE du scan :
@@ -215,6 +219,18 @@ async function probePlatformNotAssignable(mod) {
   return Boolean(entry) && entry.assignable === false;
 }
 
+async function probeClientLink(mod) {
+  const bundle = await mod.buildFounderCenters();
+  const libr = (bundle.centers || []).find((c) => c.id === 'libramont') || {};
+  return libr.clientId === 'fungalaxy' && libr.clientName === 'Fun Galaxy';
+}
+
+async function probeTotals(mod) {
+  const bundle = await mod.buildFounderCenters();
+  const totals = bundle.totals || {};
+  return totals.members === 4 && totals.reservations30d === 3 && totals.revenue30d === 180 && totals.centerCount === 4;
+}
+
 (async () => {
   const mod = freshFounderAdmin();
 
@@ -275,6 +291,18 @@ async function probePlatformNotAssignable(mod) {
     'ciney : aucune activite (zeros francs, pas de fuite d un autre centre)');
   ok(libr.members === 3 && gemb.members === 1,
     `membres actifs : libramont ${libr.members}, gembloux ${gemb.members} (le bloque d libramont ne compte pas ; attendu 3 et 1)`);
+
+  // ── Rattachement centre <-> client (LEFT JOIN clients) + totaux agreges ──
+  ok(libr.clientId === 'fungalaxy' && libr.clientName === 'Fun Galaxy'
+    && gemb.clientId === 'fungalaxy' && gemb.clientName === 'Fun Galaxy',
+  `chaque centre porte son client : libramont/gembloux -> ${libr.clientName} (${libr.clientId})`);
+  ok(namur.clientId === null && namur.clientName === null,
+    'centre ORPHELIN (namur, sans client_id) : le LEFT JOIN garde la ligne, clientId/clientName null (jamais perdue, jamais une chaine vide)');
+  const totals = centersBundle.totals || {};
+  ok(totals.members === 4 && totals.reservations30d === 3 && totals.revenue30d === 180 && totals.centerCount === 4,
+    `totals agreges tous centres : ${JSON.stringify(totals)} (attendu members 4, resa30d 3, CA30d 180, centres 4)`);
+  ok(Math.abs(totals.revenue30d - (libr.revenue30d + gemb.revenue30d + ciney.revenue30d + namur.revenue30d)) < 1e-9,
+    'le total CA 30 j EGALE la somme des lignes centre (coherent au centime, pas un calcul parallele)');
 
   // =========================================================================
   console.log('\n[C] buildFounderTeam : comptes par role, catalogue, aucun secret');
@@ -390,6 +418,24 @@ async function probePlatformNotAssignable(mod) {
     'group: \'Plateforme\', assignable: true',
     probePlatformNotAssignable,
     'platform.admin repasse assignable (garde d escalade inversee)',
+  );
+
+  // Rattachement client neutralise (le JOIN ne remonte plus le client) -> tous
+  // les centres perdent leur clientId, la page Centres ne sait plus a qui ils
+  // appartiennent.
+  await withMutation(
+    'clientId: row.client_id || null,',
+    'clientId: null,',
+    probeClientLink,
+    'rattachement centre -> client neutralise',
+  );
+
+  // Agregation du CA total cassee -> le total ne reflete plus les lignes.
+  await withMutation(
+    'acc.revenue30d += center.revenue30d || 0;',
+    'acc.revenue30d += 0;',
+    probeTotals,
+    'total CA 30 j tous centres neutralise',
   );
 
   if (failures) {

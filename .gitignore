@@ -38,3 +38,4 @@ fetched.out
 .firecrawl/
 
 .env*
+.captures-founder/

@@ -180,6 +180,11 @@ const MIGRATIONS = [
     file: 'database/clients-schema.sql',
     description: "Couche CLIENT (locataire Pinlane) au-dessus des centres : table clients + centers.client_id. Les 3 centres existants rattaches a un client 'fungalaxy' seed (comportement inchange). Base du provisioning cle en main cote proprietaire.",
   },
+  {
+    id: '0036_clients_billing',
+    file: 'database/clients-billing-schema.sql',
+    description: "Prix mensuel par client (clients.monthly_price, numeric nullable) : socle du MRR proprietaire et du revenu par client. Null = a definir, jamais compte comme un chiffre invente. Additive et idempotente.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

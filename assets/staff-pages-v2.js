@@ -952,6 +952,25 @@
 
   window.pv2EmailFilter = function (key) {
     state.staffEmailFilter = key;
+    // Les deux segmentés (statut + origine) restent d'accord entre eux :
+    // « Reçus » est la même vue des deux côtés, et revenir sur un statut
+    // d'envoi quitte la vue Reçus du segmenté d'origine.
+    if (key === 'inbound') state.staffEmailOriginFilter = 'inbound';
+    else if (state.staffEmailOriginFilter === 'inbound') state.staffEmailOriginFilter = 'all';
+    save();
+    renderStaffEmailsPage();
+  };
+
+  // Segmenté d'ORIGINE (demande du proprio : dissocier les mails partis tout
+  // seuls des mails envoyés par l'équipe). Combinable avec les statuts : le
+  // choix vit dans state.staffEmailOriginFilter et getStaffEmailRowsFiltered
+  // (app-main.js) le cumule avec le filtre de statut.
+  window.pv2EmailOriginFilter = function (key) {
+    const allowed = ['all', 'auto', 'manual', 'inbound'];
+    state.staffEmailOriginFilter = allowed.includes(key) ? key : 'all';
+    if (state.staffEmailOriginFilter === 'inbound') state.staffEmailFilter = 'inbound';
+    else if (state.staffEmailFilter === 'inbound') state.staffEmailFilter = 'all';
+    state.staffEmailSelectedId = '';
     save();
     renderStaffEmailsPage();
   };
@@ -1930,9 +1949,11 @@
   };
 
   /* ── JOURNAL DES MODIFICATIONS ───────────────────────────────────────────
-     La premiere brique visible des deux cockpits. Elle repond, pour le centre
-     en cours et lui seul, aux questions : qui a modifie quoi, quand, et
-     qu'est-ce qui a change exactement.
+     Surface d'AUDIT de la Direction : qui a modifie quoi dans ce centre,
+     quand, et qu'est-ce qui a change exactement. Depuis 2026-07-22 le panneau
+     n'a plus qu'UN hote, l'onglet Journal de la console Direction
+     (renderAdminJournalTab, admin-console.js) : il n'apparait plus sur la
+     page Emails, ou il n'avait rien a faire (demande du proprio).
 
      Scope : le serveur decide. La page envoie le centre courant, mais
      api/ops.js re-resout le centre depuis la SESSION avant de lire
@@ -1945,20 +1966,16 @@
      dans ce panneau qui est une surface de lecture. Aucune couleur de marque. */
   const pv2Audit = {
     loaded: false, loading: false, error: '', entries: [],
-    filterKind: '', filterOutcome: '', expanded: '',
+    filterKind: '', filterOutcome: '', filterSince: '', expanded: '',
   };
   window.pv2Audit = pv2Audit;
 
-  /* Le panneau est monté sur DEUX pages (Emails, et l'onglet Journal de la
-     console Direction) : le rendu à rejouer après une interaction dépend de la
-     page HÔTE. Elle s'inscrit via window.pv2AuditRerender ; sans hôte inscrit,
-     la page Emails reste le défaut historique. renderStaffEmailsPage reprend
-     le hook à chaque rendu : le dernier hôte affiché gagne, et un rendu parti
-     vers une page cachée (early-return du hôte) ne casse rien. */
+  /* L'hote (Direction) s'inscrit via window.pv2AuditRerender a chaque rendu de
+     son onglet Journal. Sans hote inscrit, une interaction ne re-rend RIEN :
+     le panneau ne vit plus sur la page Emails, il n'y a pas de defaut. */
   window.pv2AuditRerender = null;
   function pv2AuditRerenderHost() {
-    if (typeof window.pv2AuditRerender === 'function') { window.pv2AuditRerender(); return; }
-    renderStaffEmailsPage();
+    if (typeof window.pv2AuditRerender === 'function') window.pv2AuditRerender();
   }
 
   const PV2_AUDIT_ACTOR = {
@@ -1982,6 +1999,12 @@
       });
       if (pv2Audit.filterKind) params.set('actorKind', pv2Audit.filterKind);
       if (pv2Audit.filterOutcome) params.set('outcome', pv2Audit.filterOutcome);
+      // Fenetre temporelle : jours -> borne ISO, portee par le parametre
+      // `since` que l'action auditLog lit deja cote serveur (api/ops.js).
+      const sinceDays = Number(pv2Audit.filterSince);
+      if (Number.isFinite(sinceDays) && sinceDays > 0) {
+        params.set('since', new Date(Date.now() - sinceDays * 86400000).toISOString());
+      }
       const payload = await apiRequest(`/api/ops?${params.toString()}`);
       pv2Audit.entries = payload.entries || [];
       pv2Audit.loaded = true;
@@ -1997,18 +2020,12 @@
   window.pv2AuditFilter = function (field, value) {
     if (field === 'kind') pv2Audit.filterKind = value;
     if (field === 'outcome') pv2Audit.filterOutcome = value;
+    if (field === 'since') pv2Audit.filterSince = value;
     loadPv2Audit(true);
   };
 
   window.pv2AuditToggleRow = function (id) {
     pv2Audit.expanded = pv2Audit.expanded === String(id) ? '' : String(id);
-    pv2AuditRerenderHost();
-  };
-
-  window.pv2ToggleAudit = function () {
-    state.staffAuditOpen = !state.staffAuditOpen;
-    save();
-    if (state.staffAuditOpen && !pv2Audit.loaded && !pv2Audit.loading) loadPv2Audit();
     pv2AuditRerenderHost();
   };
 
@@ -2036,8 +2053,10 @@
   }
 
   function pv2AuditPanel() {
-    const open = !!state.staffAuditOpen;
-    const rows = pv2Audit.entries.map((entry) => {
+    const entries = pv2Audit.entries || [];
+    const deniedCount = entries.filter((entry) => entry.outcome === 'denied').length;
+    const errorCount = entries.filter((entry) => entry.outcome === 'error').length;
+    const rows = entries.map((entry) => {
       const when = formatOpsTimestamp(entry.occurredAt) || '-';
       const actor = entry.actorLabel || PV2_AUDIT_ACTOR[entry.actorKind] || entry.actorKind || '-';
       const kind = PV2_AUDIT_ACTOR[entry.actorKind] || entry.actorKind || '';
@@ -2049,12 +2068,12 @@
          signal le plus interessant en securite, et il doit sauter aux yeux dans
          une liste ou tout le reste est du gris. */
       const outcomeChip = isDenied
-        ? `<span class="pv2-chip" style="color:var(--v2-red,#c00);border-color:var(--v2-red,#c00)">Refuse${entry.deniedReason ? ` · ${esc(PV2_AUDIT_DENIED[entry.deniedReason] || entry.deniedReason)}` : ''}</span>`
+        ? `<span class="pv2-chip red">Refuse${entry.deniedReason ? ` · ${esc(PV2_AUDIT_DENIED[entry.deniedReason] || entry.deniedReason)}` : ''}</span>`
         : isError
           ? '<span class="pv2-chip">Échec</span>'
           : '<span class="pv2-chip">Fait</span>';
       const detail = expanded
-        ? `<tr><td colspan="6" style="background:var(--v2-subtle,#fafafa);padding:14px;">
+        ? `<tr class="pv2-audit-detail"><td colspan="6">
              ${pv2AuditChangesTable(entry.changes)}
              <p class="pv2-panel-sub" style="margin-top:10px;">
                Surface ${esc(entry.surface || '-')} · methode ${esc(entry.method || '-')}
@@ -2063,7 +2082,7 @@
              </p>
            </td></tr>`
         : '';
-      return `<tr>
+      return `<tr${isDenied ? ' class="is-denied"' : ''}>
         <td class="num">${esc(when)}</td>
         <td><strong>${esc(actor)}</strong><small class="pv2-cell-sub">${esc(kind)}${entry.actorRoleId ? ` · ${esc(entry.actorRoleId)}` : ''}</small></td>
         <td><strong>${esc(entry.action || '-')}</strong>${entry.entityType ? `<small class="pv2-cell-sub">${esc(entry.entityType)}${entry.entityId ? ` #${esc(entry.entityId)}` : ''}</small>` : ''}</td>
@@ -2073,18 +2092,24 @@
       </tr>${detail}`;
     }).join('');
 
-    return `<section class="pv2-panel mk-auto-panel">
+    /* Meta honnete : on ne compte que ce qui est CHARGÉ (80 dernieres entrees
+       max, filtres compris), et on le dit. Aucun total inventé. */
+    const metaLine = pv2Audit.loaded
+      ? `${entries.length} ${entries.length > 1 ? 'entrées affichées' : 'entrée affichée'}${deniedCount ? ` · ${deniedCount} refus` : ''}${errorCount ? ` · ${errorCount} ${errorCount > 1 ? 'échecs' : 'échec'}` : ''}`
+      : '';
+
+    return `<section class="pv2-panel pv2-audit-panel">
       <div class="pv2-panel-head has-sub">
         <div>
           <h2>Journal des modifications</h2>
-          <p class="pv2-panel-sub">Qui a change quoi dans ce centre, quand, et ce qui a change exactement. Les tentatives refusees y figurent aussi. Ce journal ne s'efface pas.</p>
+          <p class="pv2-panel-sub">Qui a changé quoi dans ce centre, quand, et ce qui a changé exactement. Les tentatives refusées y figurent aussi. Ce journal ne s'efface pas.</p>
         </div>
-        <button type="button" class="pv2-btn sm" onclick="pv2ToggleAudit()" aria-expanded="${open}">${open ? 'Masquer' : 'Ouvrir le journal'}</button>
+        ${metaLine ? `<span class="pv2-audit-meta">${esc(metaLine)}</span>` : ''}
       </div>
-      ${open ? `<div class="pv2-panel-body" data-pv2-mount="audit">
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center;">
+      <div class="pv2-panel-body" data-pv2-mount="audit">
+        <div class="pv2-audit-filters">
           <label class="pv2-panel-sub" for="pv2AuditKind">Auteur</label>
-          <select id="pv2AuditKind" onchange="pv2AuditFilter('kind', this.value)" style="width:auto;height:34px;font-size:13px;padding:0 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+          <select id="pv2AuditKind" class="pv2-audit-select" onchange="pv2AuditFilter('kind', this.value)">
             <option value="" ${pv2Audit.filterKind === '' ? 'selected' : ''}>Tous</option>
             <option value="staff" ${pv2Audit.filterKind === 'staff' ? 'selected' : ''}>Humain</option>
             <option value="cron" ${pv2Audit.filterKind === 'cron' ? 'selected' : ''}>Cron</option>
@@ -2092,11 +2117,18 @@
             <option value="public" ${pv2Audit.filterKind === 'public' ? 'selected' : ''}>Client</option>
           </select>
           <label class="pv2-panel-sub" for="pv2AuditOutcome">Résultat</label>
-          <select id="pv2AuditOutcome" onchange="pv2AuditFilter('outcome', this.value)" style="width:auto;height:34px;font-size:13px;padding:0 10px;border:1px solid var(--v2-border,#e2e2e2);border-radius:6px;">
+          <select id="pv2AuditOutcome" class="pv2-audit-select" onchange="pv2AuditFilter('outcome', this.value)">
             <option value="" ${pv2Audit.filterOutcome === '' ? 'selected' : ''}>Tout</option>
             <option value="success" ${pv2Audit.filterOutcome === 'success' ? 'selected' : ''}>Fait</option>
             <option value="denied" ${pv2Audit.filterOutcome === 'denied' ? 'selected' : ''}>Refusé</option>
             <option value="error" ${pv2Audit.filterOutcome === 'error' ? 'selected' : ''}>Échec</option>
+          </select>
+          <label class="pv2-panel-sub" for="pv2AuditSince">Période</label>
+          <select id="pv2AuditSince" class="pv2-audit-select" onchange="pv2AuditFilter('since', this.value)">
+            <option value="" ${pv2Audit.filterSince === '' ? 'selected' : ''}>Tout l'historique</option>
+            <option value="1" ${pv2Audit.filterSince === '1' ? 'selected' : ''}>Dernières 24 h</option>
+            <option value="7" ${pv2Audit.filterSince === '7' ? 'selected' : ''}>7 derniers jours</option>
+            <option value="30" ${pv2Audit.filterSince === '30' ? 'selected' : ''}>30 derniers jours</option>
           </select>
           <button type="button" class="pv2-btn sm ghost" onclick="loadPv2Audit(true)">Actualiser</button>
         </div>
@@ -2104,13 +2136,13 @@
           ? `<div class="pv2-empty"><strong>${esc(pv2Audit.error)}</strong></div>`
           : !pv2Audit.loaded
             ? '<div class="pv2-empty"><strong>Chargement du journal…</strong></div>'
-            : pv2Audit.entries.length
+            : entries.length
               ? `<table class="pv2-table">
                   <thead><tr><th class="num">Quand</th><th>Qui</th><th>Action</th><th>Résultat</th><th class="num">Champs</th><th></th></tr></thead>
                   <tbody>${rows}</tbody>
                 </table>`
               : '<div class="pv2-empty"><strong>Rien pour l\'instant</strong>Aucune modification enregistrée pour ce centre avec ces filtres.</div>'}
-      </div>` : ''}
+      </div>
     </section>`;
   }
   window.pv2AuditPanel = pv2AuditPanel;
@@ -2621,9 +2653,6 @@
   window.renderStaffEmailsPage = function (errorMessage = '') {
     const root = document.getElementById('staffEmailsPage');
     if (!root) return;
-    // La page Emails redevient l'hôte du Journal des modifications dès qu'elle
-    // se rend : le hook posé par la console Direction ne doit pas lui survivre.
-    window.pv2AuditRerender = null;
     if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
     if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
     // Chargé à l'ouverture de la page, pas seulement à l'ouverture du panneau :
@@ -2635,7 +2664,23 @@
     if (!opsAdminCache.loaded && !opsAdminCache.loading) setTimeout(() => requestOpsAdminLoad(false), 0);
     const everyRow = getStaffEmailRows();
     const inboundRows = everyRow.filter(pv2IsInbound);
-    const allRows = everyRow.filter((row) => !pv2IsInbound(row));
+    /* ORIGINE (demande du proprio) : dissocier les mails partis TOUT SEULS
+       (séquences, rappels, worker) des mails envoyés PAR L'ÉQUIPE (messages,
+       relances, campagnes, tests). Le classifieur est getStaffEmailOrigin
+       (app-main.js), ancré sur les champs payload posés par le serveur.
+       Compteurs : le VRAI nombre par catégorie, sur toutes les communications
+       chargées, indépendamment des filtres de statut. */
+    const originFilter = ['all', 'auto', 'manual', 'inbound'].includes(state.staffEmailOriginFilter)
+      ? state.staffEmailOriginFilter
+      : 'all';
+    const originCounts = { auto: 0, manual: 0, inbound: 0 };
+    everyRow.forEach((row) => { originCounts[getStaffEmailOrigin(row)] += 1; });
+    // La file (et ses compteurs de statut) se restreint à l'origine choisie :
+    // les chiffres des segments de statut collent toujours à la liste affichée.
+    const scopedRows = originFilter === 'auto' || originFilter === 'manual'
+      ? everyRow.filter((row) => getStaffEmailOrigin(row) === originFilter)
+      : everyRow;
+    const allRows = scopedRows.filter((row) => !pv2IsInbound(row));
     const filter = state.staffEmailFilter || 'all';
     const query = String(state.staffEmailQuery || '').trim().toLowerCase();
     // Le filtre « Reçus » vit ici (app-main ne connaît que les statuts d'envoi).
@@ -2723,9 +2768,12 @@
       // La cause de l'échec se lit dans la LISTE, pas seulement après avoir
       // sélectionné la ligne : c'est ce qui rend un échec impossible à rater.
       const failure = row.statusKind === 'failed' ? getStaffEmailFailureReason(row) : null;
+      // Badge d'origine discret sur chaque ligne : Auto (parti tout seul) ou
+      // Manuel (envoyé par l'équipe). Étiquette, pas statut : chip neutre.
+      const rowOrigin = getStaffEmailOrigin(row);
       return `<tr class="${selected && row.uid === selected.uid ? 'selected' : ''}${failure ? ' is-failed' : ''}" onclick="pv2SelectEmail('${escJs(row.uid)}')">
         <td><strong>${esc(row.subject || row.templateLabel || 'Message')}</strong><small class="pv2-cell-sub">${esc(row.recipient || '-')}</small></td>
-        <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '-')}</span></td>
+        <td><span class="pv2-chip">${esc(row.templateLabel || row.templateId || '-')}</span><span class="pv2-chip pv2-origin-badge" data-origin="${rowOrigin}">${rowOrigin === 'manual' ? 'Manuel' : 'Auto'}</span></td>
         <td><span class="pv2-chip ${meta.tone}">${meta.label}</span>${failure ? `<small class="pv2-cell-sub pv2-cell-fail">${esc(failure.label)}</small>` : ''}</td>
         <td class="num">${esc(formatOpsTimestamp(row.sentAt || row.scheduledAt || row.createdAt) || '-')}</td>
       </tr>`;
@@ -2741,6 +2789,9 @@
         <div class="pv2-kv">
           <div><dt>Destinataire</dt><dd>${esc(selected.recipient || '-')}</dd></div>
           <div><dt>Modèle</dt><dd>${esc(selected.templateLabel || selected.templateId || '-')}</dd></div>
+          <div><dt>Origine</dt><dd>${esc(getStaffEmailOrigin(selected) === 'manual'
+            ? `Envoi manuel${payload.staffMember ? ` · ${payload.staffMember}` : ''}`
+            : 'Automatique · parti tout seul')}</dd></div>
           <div><dt>Canal</dt><dd>${esc(selected.channel || 'email')}</dd></div>
           <div><dt>Statut</dt><dd>${esc((KIND_META[selected.statusKind] || {}).label || selected.status || '-')}</dd></div>
           <div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt) || '-')}</dd></div>
@@ -2806,6 +2857,21 @@
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
       ${pv2Settings.open ? pv2SettingsPanel() : ''}
 
+      <!-- ORIGINE (demande du proprio) : dissocier ce qui part TOUT SEUL de ce
+           que l'equipe envoie ELLE-MEME. Segmente a part du segmente de statut :
+           les deux se COMBINENT (ex. Envois manuels + Echecs). Compteurs reels
+           par categorie, calcules sur toutes les communications chargees. -->
+      <section class="pv2-origins" role="group" aria-label="Origine des messages">
+        <span class="pv2-origins-label">Origine</span>
+        ${[
+          { key: 'all', label: 'Tous', count: null },
+          { key: 'auto', label: 'Automatiques', count: originCounts.auto },
+          { key: 'manual', label: 'Envois manuels', count: originCounts.manual },
+          { key: 'inbound', label: 'Reçus', count: originCounts.inbound },
+        ].map((seg) => `<button type="button" class="pv2-chip-btn pv2-origin-seg${originFilter === seg.key ? ' active' : ''}" onclick="pv2EmailOriginFilter('${seg.key}')" aria-pressed="${originFilter === seg.key}">${esc(seg.label)}${seg.count === null ? '' : `<span class="pv2-origin-count">(${seg.count})</span>`}</button>`).join('')}
+        <span class="pv2-origins-hint">Automatiques : partis tout seuls (séquences, rappels). Envois manuels : envoyés par vous ou l'équipe (messages, relances, campagnes, tests).</span>
+      </section>
+
       <!-- Le rail est le SEUL element stable du segmente : il ne porte aucun
            texte, donc aucune donnee ne le detruit. slidePipeRail() le
            repositionne apres chaque reconstruction depuis une memoire hors
@@ -2845,7 +2911,7 @@
           </div>
           <table class="pv2-table">
             ${tableHead}
-            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
+            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.' : originFilter === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : originFilter === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">
@@ -2884,8 +2950,10 @@
         </div>
       </section>
 
+      <!-- Le Journal des modifications ne vit PLUS ici : il n'a rien a faire
+           dans Mail marketing. Il vit dans la console Direction, onglet
+           Journal (renderAdminJournalTab, admin-console.js). -->
       ${pv2SuppressionPanel()}
-      ${pv2AuditPanel()}
       ${mailInventoryPanel()}
       ${typeof renderPv2RealCampaigns === 'function' ? renderPv2RealCampaigns() : ''}
     </div>`;

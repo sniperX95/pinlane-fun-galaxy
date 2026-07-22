@@ -1817,6 +1817,14 @@ function getOpsTemplateLabel(templateId = '') {
   if (labels[id]) return labels[id];
   // Envois de test du staff : `test_<séquence>`.
   if (id.startsWith('test_')) return `Test : ${labels[id.slice(5)] || id.slice(5)}`;
+  // Familles à suffixe variable : sans ces retombées, la colonne « Modèle »
+  // montrait l'identifiant technique brut (`campaign_3`, `client_confirmation`)
+  // à la directrice, surtout visible depuis la vue « Envois manuels ».
+  if (id.startsWith('campaign_')) return 'Campagne';
+  if (id.startsWith('studio_')) return 'Message direct';
+  if (id.startsWith('relance_')) return 'Relance client';
+  if (id.startsWith('client_')) return 'Message client';
+  if (id.startsWith('custom_')) return 'Séquence personnalisée';
   return id || 'Message';
 }
 
@@ -2141,6 +2149,7 @@ function loadState() {
     staffPricingQuery: '',
     staffPricingSelectedId: '',
     staffEmailFilter: 'all',
+    staffEmailOriginFilter: 'all',
     staffEmailQuery: '',
     staffEmailTemplateFilter: 'all',
     staffEmailSelectedId: '',
@@ -2254,6 +2263,9 @@ state.staffPricingFilter = ['all', 'bowling', 'laser', 'formula', 'special'].inc
 state.staffPricingQuery = state.staffPricingQuery || '';
 state.staffPricingSelectedId = state.staffPricingSelectedId || '';
 state.staffEmailFilter = ['all', 'queued', 'sent', 'failed', 'review'].includes(state.staffEmailFilter) ? state.staffEmailFilter : 'all';
+// 'inbound' suit la meme regle que staffEmailFilter (qui retombe sur 'all' au
+// boot) : les deux etats voyagent ensemble a l'ecran, ils retombent ensemble.
+state.staffEmailOriginFilter = ['all', 'auto', 'manual'].includes(state.staffEmailOriginFilter) ? state.staffEmailOriginFilter : 'all';
 state.staffEmailQuery = state.staffEmailQuery || '';
 state.staffEmailTemplateFilter = state.staffEmailTemplateFilter || 'all';
 state.staffEmailSelectedId = state.staffEmailSelectedId || '';
@@ -2626,7 +2638,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260722a';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260722b';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -10052,6 +10064,41 @@ function getStaffEmailRows() {
     }));
 }
 
+// ── Origine d'une communication : QUI l'a déclenchée ─────────────────────────
+// Classifieur ancré sur les champs payload RÉELLEMENT posés par chaque chemin
+// d'envoi serveur (vérifiés un à un sur les enqueue de lib/ops-communications.js,
+// lib/ops-jobs.js et lib/email-agent.js) :
+//   'inbound' : mail REÇU (ingestInboundEmail : direction='inbound', status
+//               'received'). Ni auto ni manuel : c'est le client qui écrit.
+//   'manual'  : une action humaine directe a déclenché CET envoi :
+//               payload.direct/directEmail → sendDirectEmail (composer, studio_*)
+//               payload.relance            → sendClientRelance (relance 1-clic, relance_*)
+//               payload.clientMessage      → sendClientMessage (message depuis une résa, client_*)
+//               payload.test               → sendAutomationTest (test au staff connecté, test_*)
+//               payload.campaignId         → enqueueCampaign (campagne lancée par l'équipe, campaign_*)
+//   'auto'    : tout le reste, parti tout seul (worker/cron/séquences) :
+//               request_received, confirmation, reminder_48h, reminder_day_sms,
+//               staff_review_request, delay_change, post_visit_followup,
+//               birthday_j30, reactivation, custom_* et les rangées de
+//               simulation. AUCUN de ces chemins ne pose les flags ci-dessus.
+function getStaffEmailOrigin(row = {}) {
+  if (row.direction === 'inbound' || row.status === 'received') return 'inbound';
+  const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+  const flag = (value) => value === true || value === 'true';
+  if (flag(payload.direct) || flag(payload.directEmail)) return 'manual';
+  if (flag(payload.relance)) return 'manual';
+  if (flag(payload.clientMessage)) return 'manual';
+  if (flag(payload.test)) return 'manual';
+  if (payload.campaignId) return 'manual';
+  return 'auto';
+}
+
+function getStaffEmailOriginLabel(row = {}) {
+  const origin = getStaffEmailOrigin(row);
+  if (origin === 'inbound') return 'Reçu';
+  return origin === 'manual' ? 'Envoi manuel' : 'Automatique';
+}
+
 function getStaffEmailText(row = {}) {
   const payload = row.payload || {};
   return [
@@ -10071,8 +10118,13 @@ function getStaffEmailText(row = {}) {
 function getStaffEmailRowsFiltered() {
   const filter = state.staffEmailFilter || 'all';
   const template = state.staffEmailTemplateFilter || 'all';
+  // Origine (auto/manuel) COMBINABLE avec les statuts : les deux filtres se
+  // cumulent (ex. « Envois manuels » + « Échecs »). 'inbound' est géré par la
+  // page (pv2EmailFilter), pas ici.
+  const origin = ['auto', 'manual'].includes(state.staffEmailOriginFilter) ? state.staffEmailOriginFilter : 'all';
   const query = String(state.staffEmailQuery || '').trim().toLowerCase();
   return getStaffEmailRows().filter(row => {
+    if (origin !== 'all' && getStaffEmailOrigin(row) !== origin) return false;
     if (filter === 'review' && row.templateId !== 'staff_review_request') return false;
     if (filter !== 'all' && filter !== 'review' && row.statusKind !== filter) return false;
     if (template !== 'all' && row.templateId !== template) return false;
@@ -10109,9 +10161,10 @@ function getSelectedStaffEmailRow(rows = getStaffEmailRowsFiltered()) {
 
 function exportStaffEmailsCsv() {
   const rows = getStaffEmailRowsFiltered();
-  const header = ['Statut', 'Modele', 'Sujet', 'Destinataire', 'Canal', 'Planifie', 'Envoye', 'Tentatives', 'Erreur'];
+  const header = ['Statut', 'Origine', 'Modele', 'Sujet', 'Destinataire', 'Canal', 'Planifie', 'Envoye', 'Tentatives', 'Erreur'];
   const body = rows.map(row => [
     getStaffEmailStatusLabel(row),
+    getStaffEmailOriginLabel(row),
     getOpsTemplateLabel(row.templateId),
     row.subject || '',
     row.recipient || '',

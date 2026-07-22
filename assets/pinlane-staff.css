@@ -5771,6 +5771,24 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .pv2-empty strong { color: var(--text); font-size: 14px; font-weight: 500; }
 
+/* Segmente d'ORIGINE (page Emails) : dissocie les mails partis tout seuls des
+   envois de l'equipe. Chips-boutons (pv2-chip-btn) + compteurs tabulaires ;
+   la phrase d'aide passe a la ligne et reste discrete. */
+.pv2-origins {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.pv2-origins-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.pv2-origin-seg { display: inline-flex; align-items: center; gap: 5px; }
+.pv2-origin-count { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--faint); }
+.pv2-origin-seg.active .pv2-origin-count { color: var(--accent-strong); }
+.pv2-origins-hint { flex-basis: 100%; font-size: 11.5px; color: var(--faint); }
+/* Badge Auto/Manuel des lignes de la file : etiquette, pas statut. */
+.pv2-origin-badge { margin-left: 6px; }
+
 /* Pipeline emails */
 .pv2-pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
 
@@ -7986,10 +8004,47 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .ops-activity-head h3 { font-size: 14px; font-weight: 600; }
 .ops-activity-head span { color: var(--muted); font-size: 12px; }
 
-/* Onglet Journal : le panneau pv2 REUTILISE de la page Emails, monte dans le
-   shell admin. Le pv2-shell global reserve un grand padding bas de page :
-   inutile ici, le shell admin gere le sien. */
+/* Onglet Journal : le panneau pv2 (staff-pages-v2.js), dont la Direction est
+   l'UNIQUE hote depuis son retrait de la page Emails. Le pv2-shell global
+   reserve un grand padding bas de page : inutile ici, le shell admin gere le
+   sien. */
 .admin-journal-shell { padding: 0; }
+.admin-journal-nav { display: flex; justify-content: flex-start; margin-bottom: 12px; }
+
+/* Panneau Journal des modifications (surface de lecture Direction). */
+.pv2-audit-meta {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pv2-audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.pv2-audit-select {
+  width: auto;
+  height: 34px;
+  font-size: 13px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+/* Dates et compteurs du journal en chiffres tabulaires : une colonne qui ne
+   danse pas quand la valeur change. */
+.pv2-audit-panel .pv2-table td.num,
+.pv2-audit-panel .pv2-table th.num { font-variant-numeric: tabular-nums; }
+/* Le refus est LA ligne a voir : un filet a gauche double le chip rouge
+   (jamais la couleur seule, le chip porte le libelle « Refuse »). */
+.pv2-audit-panel tr.is-denied td:first-child { box-shadow: inset 2px 0 0 var(--danger); }
+/* Depliage avant/apres : fond en retrait, il se lit comme un detail. */
+.pv2-audit-panel tr.pv2-audit-detail td { background: var(--subtle); padding: 14px; }
 
 /* Entree d'onglet, gardee par JS (Famille B) : translation 4px + fondu,
    transform/opacity seulement, ease-out, < 300 ms. */
@@ -10966,6 +11021,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .dir-window-range { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .dir-window-meta { font-size: 12px; color: var(--faint); }
 .dir-range-fallback { font-size: 13px; color: var(--muted); }
+
+/* Acces au Journal des modifications depuis la barre de controle Direction :
+   bouton secondaire (bordure 1px, radius 6), jamais primaire, il navigue. */
+.dir-controls-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.dir-journal-btn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: 500 13px var(--font-ui);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+@media (hover: hover) {
+  .dir-journal-btn:hover { background: var(--subtle); }
+}
 
 .dir-note {
   padding: 40px 20px;

@@ -1812,10 +1812,11 @@ function normalizeAdminTab(tab) {
   return allowed.includes(tab) ? tab : 'overview';
 }
 
-// Montage Direction du Journal des modifications : RÉUTILISE le panneau de la
-// page Emails (pv2AuditPanel, staff-pages-v2.js), zéro copie. Le hook
-// pv2AuditRerender fait revenir les interactions du panneau (ouvrir, filtrer,
-// déplier) vers CE rendu tant que Direction est la page hôte.
+// Onglet Journal de la Direction : UNIQUE hôte du Journal des modifications
+// (pv2AuditPanel, staff-pages-v2.js) depuis son retrait de la page Emails, où
+// il n'avait rien à faire. Le hook pv2AuditRerender fait revenir les
+// interactions du panneau (filtrer, déplier, actualiser) vers CE rendu.
+// L'onglet EST le journal : il charge ses données dès l'arrivée, sans clic.
 function renderAdminJournalTab() {
   window.pv2AuditRerender = function () {
     if (state.view === 'admin' && state.adminTab === 'journal') renderAdminDashboard();
@@ -1823,7 +1824,18 @@ function renderAdminJournalTab() {
   if (typeof pv2AuditPanel !== 'function') {
     return '<div class="admin-panel"><div class="empty-state"><div class="e-title">Journal indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
   }
-  return `<div class="pv2-shell admin-journal-shell">${pv2AuditPanel()}</div>`;
+  // Pas de retry automatique sur erreur (le rendu d'erreur re-passerait ici en
+  // boucle via le hook) : l'echec s'affiche calmement, « Actualiser » relance.
+  if (typeof window.loadPv2Audit === 'function' && window.pv2Audit
+    && !window.pv2Audit.loaded && !window.pv2Audit.loading && !window.pv2Audit.error) {
+    setTimeout(() => window.loadPv2Audit(), 0);
+  }
+  return `<div class="pv2-shell admin-journal-shell">
+    <div class="admin-journal-nav">
+      <button type="button" class="dir-journal-btn" onclick="setAdminTab('overview')">Retour au poste d'observation</button>
+    </div>
+    ${pv2AuditPanel()}
+  </div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2568,12 +2580,19 @@ async function loadDirectionDecision(centerId, range, key, force) {
 
 function renderDirectionShell() {
   const range = getDirRange();
+  // Le Journal des modifications (onglet adminTab='journal') n'est plus expose
+  // que par la Direction : cette entree est SON chemin d'acces dans la barre de
+  // controle (sinon l'onglet deviendrait orphelin, atteignable par deep-link
+  // seulement).
   return `<section class="dir-root" id="dirRoot">
     <div class="dir-controls" id="dirControls">
       <div class="dir-range-mount" id="dirRangeHost"></div>
-      <div class="dir-window" id="dirWindowLabel">
-        <span class="dir-window-range">${escapeHtml(dirRangeText(range))}</span>
-        <span class="dir-window-meta">${escapeHtml(`${dirGranularityLabel(range.granularity)} · ${dirCompareLabel(range.compare)}`)}</span>
+      <div class="dir-controls-right">
+        <div class="dir-window" id="dirWindowLabel">
+          <span class="dir-window-range">${escapeHtml(dirRangeText(range))}</span>
+          <span class="dir-window-meta">${escapeHtml(`${dirGranularityLabel(range.granularity)} · ${dirCompareLabel(range.compare)}`)}</span>
+        </div>
+        <button type="button" class="dir-journal-btn" onclick="setAdminTab('journal')">Journal des modifications</button>
       </div>
     </div>
     <div class="dir-body" id="dirBody">${dirLoadingHtml()}</div>

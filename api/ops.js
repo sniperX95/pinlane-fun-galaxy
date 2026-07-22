@@ -102,7 +102,7 @@ const {
 } = require('../lib/ops-communications');
 const { enqueueReservationAutomation, processDueOpsJobs, processOpsJobById } = require('../lib/ops-jobs');
 const { listSuppressions, suppressEmail, removeSuppression } = require('../lib/marketing-suppression');
-const { loadOpsKnowledge, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { loadOpsKnowledge, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
 const {
   listCenterConfigs,
   saveCenterConfigOverride,
@@ -383,6 +383,8 @@ async function handleGet(req, res, options = {}) {
   // Catalogue no-code : le socle (formulas.json / booking-config) reste la
   // verite ; buildFounderCatalog montre base + overrides pour l'editeur.
   if (action === 'founderCatalog') {
+    // Catalogue unifie chaud a l'ouverture de l'editeur (fail-soft, TTL 30 s).
+    try { await refreshCatalog(getPool()); } catch (error) { /* socle fichier */ }
     sendJson(res, 200, await buildFounderCatalog(getPool()));
     return;
   }
@@ -398,6 +400,8 @@ async function handleGet(req, res, options = {}) {
     if (!scoped) {
       throw createHttpError('Choisissez un centre precis pour editer ses tarifs.', 400);
     }
+    // Catalogue unifie chaud a l'ouverture de l'editeur (fail-soft, TTL 30 s).
+    try { await refreshCatalog(getPool()); } catch (error) { /* socle fichier */ }
     sendJson(res, 200, await buildClientCatalog(getPool(), scoped));
     return;
   }

@@ -190,6 +190,11 @@ const MIGRATIONS = [
     file: 'database/availability-blocks-schema.sql',
     description: "Blocage granulaire de la disponibilite (availability_blocks) : centre/piste/activite/formule, ponctuel (once) ou hebdo (weekly), jour entier ou plage horaire. Aucune ligne = dispo identique au comportement historique. Lecture fail-soft, re-verifiee dans la transaction de creation (anti-course). Additive et idempotente.",
   },
+  {
+    id: '0038_catalog',
+    file: 'database/catalog-schema.sql',
+    description: "Catalogue unifie (activities / formulas / formula_steps) : source DB unique fusionnee par-dessus les fichiers socle (activities.json, formulas.json, booking-config FORMULES) par lib/catalog-store.js. time_limit canonique en minutes depuis minuit ; is_birthday_formula remplace le regex famille ; hasBowling derive des steps. Aucune ligne = comportement identique aux fichiers ; apres backfill seed, comportement identique (prix/dispo/ancrage). Additive et idempotente.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

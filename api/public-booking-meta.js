@@ -11,7 +11,7 @@ const {
 const { getPool, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { enforceRateLimit } = require('../lib/rate-limit');
-const { getCenter, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { getCenter, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
 const { sendCustomRequestAck } = require('../lib/ops-communications');
 
 // This function serves several public surfaces to stay under the Vercel Hobby
@@ -208,6 +208,7 @@ module.exports = async (req, res) => {
   try {
     await refreshCenterOverrides(getPool());
     await refreshFormuleOverrides(getPool());
+    await refreshCatalog(getPool());
   } catch (error) {
     // Baseline fichier conservee.
   }

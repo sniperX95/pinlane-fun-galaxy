@@ -4,6 +4,7 @@ const { afterReservationCreated, prepareReservationOps } = require('../lib/reser
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
+const { refreshCatalog } = require('../lib/catalog-store');
 const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
@@ -32,6 +33,9 @@ module.exports = async (req, res) => {
     // instance serverless fraiche doit facturer le meme prix que celui affiche
     // par le tunnel (public-booking-meta). Fail-soft : sans base, prix fichier.
     try { await refreshFormuleOverrides(getPool()); } catch (error) { /* prix fichier */ }
+    // Catalogue unifie chaud AVANT le calcul de prix et l'ancrage (sync). Meme
+    // instance serverless fraiche facture / ancre comme le tunnel. Fail-soft.
+    try { await refreshCatalog(getPool()); } catch (error) { /* catalogue fichier */ }
     request = normalizeReservationRequest(body, { channel: 'public', requireEmail: true });
     const ops = await prepareReservationOps(request, 'public');
     if (ops.blockOnlineConfirmation) {

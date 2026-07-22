@@ -28,7 +28,7 @@ const {
   getFormulaAnchorAvailability,
   getFormulaAnchorModel,
 } = require('../lib/ops-engine');
-const { getCenter, getFormula, refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
 const {
   isCenterClosedAt,
   isActivityBlockedAt,
@@ -364,6 +364,13 @@ module.exports = async (req, res) => {
     // garde le dernier etat connu / le fichier socle.
     try {
       await refreshFormuleOverrides(getPool());
+    } catch (error) {
+      // Ignore: dernier etat connu / fichier.
+    }
+    // Catalogue unifie (formules / activites / steps) chaud AVANT tout calcul de
+    // prix et d'ancrage. Fail-soft : sans base on garde le socle fichier.
+    try {
+      await refreshCatalog(getPool());
     } catch (error) {
       // Ignore: dernier etat connu / fichier.
     }

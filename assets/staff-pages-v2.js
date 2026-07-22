@@ -5285,6 +5285,7 @@
     loading: false,
     error: '',
     byId: new Map(),      // formuleId -> entree clientCatalog
+    activities: [],       // liste [{id, name, resourceType}] pour l'editeur de steps
     modal: null,          // null | { formuleId }
     original: null,       // snapshot effectif a l'ouverture (pour le diff)
     draft: null,          // valeurs en cours d'edition
@@ -5336,6 +5337,7 @@
       const payload = await apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}?action=clientCatalog`, { method: 'GET' });
       const list = payload && Array.isArray(payload.formulas) ? payload.formulas : [];
       pricingEditor.byId = new Map(list.map((f) => [String(f.id), f]));
+      pricingEditor.activities = payload && Array.isArray(payload.activities) ? payload.activities : [];
       pricingEditor.loaded = true;
     } catch (error) {
       pricingEditor.error = (error && error.message) || 'Catalogue indisponible.';
@@ -5576,6 +5578,519 @@
     });
   }
 
+  /* ==========================================================================
+     CATALOGUE PARTAGE : editeur de STRUCTURE (permission settings.manage)
+     Distinct de l'editeur "mon centre" (pev, prix/dispo/retrait par centre) :
+     ici on edite le CATALOGUE lui-meme (formules, activites d'une formule),
+     partage par TOUS les centres. Branche sur le CRUD backend deja deploye
+     (createFormula / updateFormula / setFormulaSteps / deleteFormula). Aucune
+     ecriture n'envoie de centerId : le serveur force le centre de session, et le
+     catalogue est global. Meme mecanique modale que pev : etat hors DOM
+     (catalogEditor), modale montee dans document.body pour survivre aux
+     reconstructions innerHTML de la page. Lit clientCatalog via pricingEditor
+     (meme source), re-fetch via pevReload apres chaque ecriture.
+     ======================================================================== */
+
+  const CEV_DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+  const catalogEditor = {
+    modal: null,   // null | { mode: 'create'|'steps'|'fields', formuleId }
+    fields: null,  // brouillon des champs de structure (create/fields)
+    steps: null,   // brouillon de la liste ordonnee des steps (create/steps)
+    saving: false,
+    error: '',
+  };
+
+  function cevCanManage() {
+    return typeof canUseStaffPermission === 'function' ? canUseStaffPermission('settings.manage') : true;
+  }
+
+  function cevMinutesToHhmm(min) {
+    if (min == null || min === '') return '';
+    const total = Math.max(0, Math.trunc(Number(min)));
+    if (!Number.isFinite(total)) return '';
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
+  function cevHhmmToMinutes(value) {
+    if (!value) return null;
+    const [h, m] = String(value).split(':');
+    const total = (Number(h) || 0) * 60 + (Number(m) || 0);
+    return Number.isFinite(total) ? total : null;
+  }
+
+  // ── Editeur de STEPS (liste ordonnee d'activites) ─────────────────────────
+  function cevStepRowHtml(step, index, activities, total) {
+    const known = activities.some((a) => a.id === step.activityId);
+    const options = activities.map((a) => `<option value="${escJs(a.id)}"${a.id === step.activityId ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+    // Activite absente de la liste (pseudo-activite typee a la main, ou activite
+    // retiree) : on l'ajoute pour NE PAS perdre la valeur courante a l'enregistrement.
+    const extra = (!known && step.activityId)
+      ? `<option value="${escJs(step.activityId)}" selected>${esc(step.activityId)} (hors catalogue)</option>`
+      : '';
+    return `<div class="cev-step" data-cev-step="${index}">
+      <div class="cev-step-order">
+        <button type="button" class="cev-step-move" data-cev-move-up="${index}" aria-label="Monter l activite" ${index === 0 ? 'disabled' : ''} onclick="cevStepMove(${index}, -1)">&uarr;</button>
+        <button type="button" class="cev-step-move" data-cev-move-down="${index}" aria-label="Descendre l activite" ${index === total - 1 ? 'disabled' : ''} onclick="cevStepMove(${index}, 1)">&darr;</button>
+      </div>
+      <div class="cev-step-grid">
+        <label class="cev-step-field cev-step-activity"><span>Activite</span>
+          <select data-cev-field="activityId" data-cev-idx="${index}" onchange="cevStepSetActivity(${index}, this.value)">
+            <option value="">Choisir une activite</option>
+            ${options}${extra}
+          </select>
+        </label>
+        <label class="cev-step-field cev-step-count"><span>Nombre</span>
+          <input type="number" min="1" max="99" step="1" data-cev-field="count" data-cev-idx="${index}" value="${step.count == null ? 1 : esc(step.count)}" oninput="cevStepSetCount(${index}, this.value)">
+        </label>
+        <label class="cev-step-field cev-step-duration"><span>Duree (min)</span>
+          <input type="number" min="0" max="1440" step="5" data-cev-field="duration" data-cev-idx="${index}" value="${step.durationMinutes == null ? '' : esc(step.durationMinutes)}" placeholder="auto" oninput="cevStepSetDuration(${index}, this.value)">
+        </label>
+        <label class="cev-step-crit"><input type="checkbox" data-cev-field="critical" data-cev-idx="${index}" ${step.critical ? 'checked' : ''} onchange="cevStepToggleCritical(${index}, this.checked)"><span>Critique</span></label>
+      </div>
+      <button type="button" class="cev-step-remove" data-cev-remove="${index}" aria-label="Retirer l activite" onclick="cevStepRemove(${index})">&times;</button>
+    </div>`;
+  }
+
+  function cevStepsListHtml() {
+    const steps = catalogEditor.steps || [];
+    const activities = pricingEditor.activities || [];
+    return steps.length
+      ? steps.map((step, index) => cevStepRowHtml(step, index, activities, steps.length)).join('')
+      : '<p class="cev-steps-empty">Aucune activite. Ajoutez-en une.</p>';
+  }
+
+  function cevStepsEditorHtml() {
+    return `<div class="cev-steps">
+      <div class="cev-steps-head"><span>Activites de la formule</span><small>L'ordre est le deroule reel. Au moins une activite.</small></div>
+      <div class="cev-steps-list" id="cevStepsList">${cevStepsListHtml()}</div>
+      <button type="button" class="btn btn-secondary btn-sm" id="cevAddStep" onclick="cevStepAdd()">+ Ajouter une activite</button>
+    </div>`;
+  }
+
+  function cevRefreshSteps() {
+    const list = document.getElementById('cevStepsList');
+    if (list) list.innerHTML = cevStepsListHtml();
+  }
+
+  window.cevStepAdd = function () {
+    if (!catalogEditor.steps) catalogEditor.steps = [];
+    catalogEditor.steps.push({ activityId: '', count: 1, durationMinutes: null, label: null, critical: false, resourceType: null });
+    cevRefreshSteps();
+  };
+  window.cevStepRemove = function (index) {
+    if (!catalogEditor.steps) return;
+    catalogEditor.steps.splice(index, 1);
+    cevRefreshSteps();
+  };
+  window.cevStepMove = function (index, dir) {
+    const steps = catalogEditor.steps;
+    if (!steps) return;
+    const target = index + dir;
+    if (target < 0 || target >= steps.length) return;
+    const moved = steps[index];
+    steps[index] = steps[target];
+    steps[target] = moved;
+    cevRefreshSteps();
+  };
+  window.cevStepSetActivity = function (index, value) {
+    const step = catalogEditor.steps && catalogEditor.steps[index];
+    if (!step) return;
+    step.activityId = String(value || '');
+    // Une activite REELLE du catalogue porte son propre resourceType : on efface
+    // le resourceType herite d'une pseudo-activite pour ne pas le renvoyer a tort.
+    if ((pricingEditor.activities || []).some((a) => a.id === step.activityId)) step.resourceType = null;
+  };
+  window.cevStepSetCount = function (index, raw) {
+    const step = catalogEditor.steps && catalogEditor.steps[index];
+    if (!step) return;
+    const n = Math.trunc(Number(raw));
+    step.count = Number.isFinite(n) && n >= 1 ? n : 1;
+  };
+  window.cevStepSetDuration = function (index, raw) {
+    const step = catalogEditor.steps && catalogEditor.steps[index];
+    if (!step) return;
+    if (raw === '' || raw == null) { step.durationMinutes = null; return; }
+    const n = Math.trunc(Number(raw));
+    step.durationMinutes = Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  window.cevStepToggleCritical = function (index, checked) {
+    const step = catalogEditor.steps && catalogEditor.steps[index];
+    if (step) step.critical = Boolean(checked);
+  };
+
+  // Liste au format API : chaque step designe une activite ; on ignore les lignes
+  // sans activite (l'utilisateur a ajoute une ligne vide).
+  function cevCollectSteps() {
+    const steps = catalogEditor.steps || [];
+    const out = [];
+    for (const step of steps) {
+      const activityId = String(step.activityId || '').trim();
+      if (!activityId) continue;
+      const item = { activityId, count: Number(step.count) || 1 };
+      if (step.durationMinutes != null) item.durationMinutes = Number(step.durationMinutes);
+      if (step.label) item.label = String(step.label);
+      if (step.critical) item.critical = true;
+      if (step.resourceType) item.resourceType = String(step.resourceType);
+      out.push(item);
+    }
+    return out;
+  }
+
+  // ── Formulaire de STRUCTURE (create/fields) ───────────────────────────────
+  function cevFieldsHtml() {
+    const f = catalogEditor.fields || {};
+    const validDays = Array.isArray(f.validDays) ? f.validDays : [];
+    const dayBoxes = CEV_DAY_LABELS.map((label, day) => `<label class="cev-day"><input type="checkbox" id="cevDay${day}" ${validDays.indexOf(day) !== -1 ? 'checked' : ''} onchange="cevFieldDay(${day}, this.checked)"><span>${label}</span></label>`).join('');
+    return `<div class="field">
+        <label for="cevName">Nom de la formule</label>
+        <input id="cevName" type="text" maxlength="120" value="${f.name == null ? '' : esc(f.name)}" data-autofocus oninput="cevFieldSet('name', this.value)">
+      </div>
+      <div class="pev-grid2">
+        <div class="field">
+          <label for="cevFamily">Famille</label>
+          <input id="cevFamily" type="text" maxlength="120" value="${f.family == null ? '' : esc(f.family)}" placeholder="Anniversaire, Speciale..." oninput="cevFieldSet('family', this.value)">
+        </div>
+        <div class="field">
+          <label for="cevPriceType">Type de prix</label>
+          <select id="cevPriceType" onchange="cevFieldSet('priceType', this.value)">
+            <option value="per_pax"${f.priceType === 'per_lane' ? '' : ' selected'}>Par personne</option>
+            <option value="per_lane"${f.priceType === 'per_lane' ? ' selected' : ''}>Par piste</option>
+          </select>
+        </div>
+      </div>
+      <div class="pev-grid2">
+        <div class="field">
+          <label for="cevPrice">Prix (EUR)</label>
+          <input id="cevPrice" type="number" min="0" max="1000" step="1" value="${f.priceValue == null ? '' : esc(f.priceValue)}" oninput="cevFieldNum('priceValue', this.value)">
+        </div>
+        <div class="field">
+          <label for="cevOldPrice">Ancien prix barre (EUR)</label>
+          <input id="cevOldPrice" type="number" min="0" max="1000" step="1" value="${f.priceOld == null ? '' : esc(f.priceOld)}" placeholder="aucun" oninput="cevFieldNum('priceOld', this.value)">
+        </div>
+      </div>
+      <div class="pev-grid2">
+        <div class="field">
+          <label for="cevMinPax">Personnes minimum</label>
+          <input id="cevMinPax" type="number" min="1" max="999" step="1" value="${f.minPax == null ? '' : esc(f.minPax)}" oninput="cevFieldNum('minPax', this.value)">
+        </div>
+        <div class="field">
+          <label>Formule anniversaire</label>
+          <label class="cev-inline-check"><input id="cevBirthday" type="checkbox" ${f.isBirthdayFormula ? 'checked' : ''} onchange="cevFieldSet('isBirthdayFormula', this.checked)"><span>Oui</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Jours valides <span class="cev-hint-inline">(aucun coche = tous les jours)</span></label>
+        <div class="cev-days">${dayBoxes}</div>
+      </div>
+      <div class="pev-grid2">
+        <div class="field">
+          <label for="cevTimeMin">Heure min (optionnel)</label>
+          <input id="cevTimeMin" type="time" value="${esc(cevMinutesToHhmm(f.timeLimitMin))}" onchange="cevFieldTime('timeLimitMin', this.value)">
+        </div>
+        <div class="field">
+          <label for="cevTimeMax">Heure max (optionnel)</label>
+          <input id="cevTimeMax" type="time" value="${esc(cevMinutesToHhmm(f.timeLimitMax))}" onchange="cevFieldTime('timeLimitMax', this.value)">
+        </div>
+      </div>`;
+  }
+
+  window.cevFieldSet = function (key, value) {
+    if (!catalogEditor.fields) return;
+    if (key === 'isBirthdayFormula') catalogEditor.fields[key] = Boolean(value);
+    else catalogEditor.fields[key] = value == null ? '' : String(value);
+  };
+  window.cevFieldNum = function (key, raw) {
+    if (!catalogEditor.fields) return;
+    if (raw === '' || raw == null) { catalogEditor.fields[key] = null; return; }
+    const n = Number(raw);
+    catalogEditor.fields[key] = Number.isFinite(n) ? n : null;
+  };
+  window.cevFieldTime = function (key, value) {
+    if (!catalogEditor.fields) return;
+    catalogEditor.fields[key] = cevHhmmToMinutes(value);
+  };
+  window.cevFieldDay = function (day, checked) {
+    if (!catalogEditor.fields) return;
+    const set = new Set(catalogEditor.fields.validDays || []);
+    if (checked) set.add(Number(day)); else set.delete(Number(day));
+    catalogEditor.fields.validDays = Array.from(set).sort((a, b) => a - b);
+  };
+
+  function cevFieldsToApi() {
+    const f = catalogEditor.fields || {};
+    const out = {
+      name: String(f.name == null ? '' : f.name).trim(),
+      family: String(f.family == null ? '' : f.family).trim(),
+      priceType: f.priceType === 'per_lane' ? 'per_lane' : 'per_pax',
+      priceValue: f.priceValue,
+      minPax: f.minPax,
+      isBirthdayFormula: Boolean(f.isBirthdayFormula),
+    };
+    return out;
+  }
+
+  // ── Ouverture des modales ─────────────────────────────────────────────────
+  window.cevOpenCreate = function () {
+    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    catalogEditor.fields = { name: '', family: '', priceType: 'per_pax', priceValue: null, priceOld: null, minPax: 6, isBirthdayFormula: false, validDays: [], timeLimitMin: null, timeLimitMax: null };
+    catalogEditor.steps = [{ activityId: '', count: 1, durationMinutes: null, label: null, critical: false, resourceType: null }];
+    catalogEditor.error = '';
+    catalogEditor.saving = false;
+    catalogEditor.modal = { mode: 'create', formuleId: null };
+    cevSyncModal();
+  };
+  window.cevOpenSteps = function (formuleId) {
+    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    const entry = pevEntry(formuleId);
+    if (!entry) { pevToast('Catalogue en cours de chargement, reessaie dans un instant.'); pevEnsureLoaded(); return; }
+    catalogEditor.fields = null;
+    catalogEditor.steps = (entry.steps || []).map((s) => ({
+      activityId: s.activityId != null ? String(s.activityId) : '',
+      count: Number(s.count) || 1,
+      durationMinutes: s.durationMinutes != null ? Number(s.durationMinutes) : null,
+      label: s.label != null ? String(s.label) : null,
+      critical: s.critical === true,
+      resourceType: s.resourceType != null ? String(s.resourceType) : null,
+    }));
+    if (!catalogEditor.steps.length) catalogEditor.steps.push({ activityId: '', count: 1, durationMinutes: null, label: null, critical: false, resourceType: null });
+    catalogEditor.error = '';
+    catalogEditor.saving = false;
+    catalogEditor.modal = { mode: 'steps', formuleId: String(formuleId) };
+    cevSyncModal();
+  };
+  window.cevOpenFields = function (formuleId) {
+    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    const entry = pevEntry(formuleId);
+    if (!entry) { pevToast('Catalogue en cours de chargement, reessaie dans un instant.'); pevEnsureLoaded(); return; }
+    catalogEditor.fields = {
+      name: entry.name != null ? String(entry.name) : '',
+      family: entry.family != null ? String(entry.family) : '',
+      priceType: entry.priceType === 'per_lane' ? 'per_lane' : 'per_pax',
+      priceValue: entry.base && entry.base.priceValue != null ? Number(entry.base.priceValue) : null,
+      priceOld: entry.base && entry.base.priceOld != null ? Number(entry.base.priceOld) : null,
+      minPax: entry.minPax != null ? Number(entry.minPax) : null,
+      isBirthdayFormula: Boolean(entry.isBirthdayFormula),
+      validDays: Array.isArray(entry.validDays) ? entry.validDays.slice() : [],
+      timeLimitMin: entry.timeLimitMinMinutes != null ? Number(entry.timeLimitMinMinutes) : null,
+      timeLimitMax: entry.timeLimitMaxMinutes != null ? Number(entry.timeLimitMaxMinutes) : null,
+    };
+    catalogEditor.steps = null;
+    catalogEditor.error = '';
+    catalogEditor.saving = false;
+    catalogEditor.modal = { mode: 'fields', formuleId: String(formuleId) };
+    cevSyncModal();
+  };
+
+  // ── Enregistrement ────────────────────────────────────────────────────────
+  window.cevSave = function () {
+    if (catalogEditor.saving || !catalogEditor.modal) return;
+    const mode = catalogEditor.modal.mode;
+    if (mode === 'create') { cevSaveCreate(); return; }
+    if (mode === 'steps') { cevSaveSteps(); return; }
+    cevSaveFields();
+  };
+
+  function cevSaveCreate() {
+    const f = catalogEditor.fields || {};
+    if (!String(f.name || '').trim()) { cevFail('Donne un nom a la formule.'); return; }
+    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indique un prix entre 0 et 1000 EUR.'); return; }
+    const createSteps = cevCollectSteps();
+    if (!createSteps.length) { cevFail('Ajoute au moins une activite (selectionne une activite dans la liste).'); return; }
+    const formula = cevFieldsToApi();
+    formula.steps = createSteps;
+    if (f.priceOld != null) formula.priceOld = f.priceOld;
+    if (Array.isArray(f.validDays) && f.validDays.length) formula.validDays = f.validDays.slice();
+    if (f.timeLimitMin != null) formula.timeLimitMinMinutes = f.timeLimitMin;
+    if (f.timeLimitMax != null) formula.timeLimitMaxMinutes = f.timeLimitMax;
+    cevSubmit({ action: 'createFormula', formula }, 'Formule ajoutee au catalogue.');
+  }
+
+  function cevSaveSteps() {
+    const id = catalogEditor.modal && catalogEditor.modal.formuleId;
+    if (!id) return;
+    const stepList = cevCollectSteps();
+    if (!stepList.length) { cevFail('Ajoute au moins une activite (selectionne une activite dans la liste).'); return; }
+    cevSubmit({ action: 'setFormulaSteps', id, steps: stepList }, 'Activites de la formule mises a jour.');
+  }
+
+  function cevSaveFields() {
+    const id = catalogEditor.modal && catalogEditor.modal.formuleId;
+    if (!id) return;
+    const f = catalogEditor.fields || {};
+    if (!String(f.name || '').trim()) { cevFail('Le nom ne peut pas etre vide.'); return; }
+    if (f.priceValue == null || !Number.isFinite(Number(f.priceValue))) { cevFail('Indique un prix entre 0 et 1000 EUR.'); return; }
+    const api = cevFieldsToApi();
+    const patch = {
+      name: api.name,
+      family: api.family,
+      priceType: api.priceType,
+      priceValue: api.priceValue,
+      minPax: api.minPax,
+      isBirthdayFormula: api.isBirthdayFormula,
+      priceOld: f.priceOld != null ? f.priceOld : null,
+      validDays: (Array.isArray(f.validDays) && f.validDays.length) ? f.validDays.slice() : null,
+      timeLimitMinMinutes: f.timeLimitMin != null ? f.timeLimitMin : null,
+      timeLimitMaxMinutes: f.timeLimitMax != null ? f.timeLimitMax : null,
+    };
+    cevSubmit({ action: 'updateFormula', id, patch }, 'Structure de la formule mise a jour.');
+  }
+
+  function cevSubmit(body, successMessage) {
+    catalogEditor.saving = true;
+    catalogEditor.error = '';
+    cevRefreshFoot();
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }).then(() => {
+      pevToast(successMessage);
+      cevDismiss();
+      pevReload();
+    }).catch((error) => {
+      catalogEditor.saving = false;
+      catalogEditor.error = (error && error.message) || 'Enregistrement refuse. Reessaie.';
+      cevRefreshBody();
+      cevRefreshFoot();
+    });
+  }
+
+  function cevFail(message) {
+    catalogEditor.error = message;
+    cevRefreshBody();
+    cevRefreshFoot();
+  }
+
+  window.cevDelete = function (formuleId) {
+    if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
+    const entry = pevEntry(formuleId);
+    const name = entry && entry.name ? entry.name : formuleId;
+    if (!window.confirm(`Supprimer la formule "${name}" du catalogue partage ? Elle disparait pour tous les centres.`)) return;
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteFormula', id: String(formuleId) }),
+    }).then(() => {
+      pevToast('Formule retiree du catalogue.');
+      pevReload();
+    }).catch((error) => {
+      pevToast((error && error.message) || 'Suppression refusee. Reessaie.');
+    });
+  };
+
+  // ── Modale (montee dans document.body, comme pev) ─────────────────────────
+  function cevModalTitle() {
+    const mode = catalogEditor.modal && catalogEditor.modal.mode;
+    if (mode === 'create') return 'Ajouter une formule';
+    const entry = pevEntry(catalogEditor.modal && catalogEditor.modal.formuleId);
+    const name = entry && entry.name ? entry.name : 'Formule';
+    return mode === 'steps' ? `Activites : ${name}` : `Structure : ${name}`;
+  }
+  function cevModalSub() {
+    return 'Catalogue partage : cette modification change l\'offre pour TOUS les centres, pas seulement le tien.';
+  }
+  function cevModalBodyHtml() {
+    if (!catalogEditor.modal) return '';
+    const mode = catalogEditor.modal.mode;
+    const err = catalogEditor.error ? `<div class="pev-modal-error" role="alert">${esc(catalogEditor.error)}</div>` : '';
+    if (mode === 'steps') return `${err}${cevStepsEditorHtml()}`;
+    if (mode === 'fields') return `${err}${cevFieldsHtml()}`;
+    return `${err}${cevFieldsHtml()}<div class="cev-sep"></div>${cevStepsEditorHtml()}`;
+  }
+  function cevModalFootHtml() {
+    const busy = catalogEditor.saving;
+    return `<span class="pev-foot-note">Catalogue partage. Chaque enregistrement est trace au journal.</span>
+      <button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="cevCloseModal()">Annuler</button>
+      <button type="button" class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="cevSave()">${busy ? 'Enregistrement...' : 'Enregistrer'}</button>`;
+  }
+
+  function cevSyncModal() {
+    const existing = document.getElementById('cevOverlay');
+    if (!catalogEditor.modal) { if (existing) existing.remove(); return; }
+    if (existing) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'cevOverlay';
+    overlay.className = 'overlay-backdrop pev-overlay';
+    overlay.innerHTML = `<div class="modal-surface pev-modal cev-modal" role="dialog" aria-modal="true" aria-labelledby="cevModalTitle">
+      <div class="pev-modal-head">
+        <div><h3 id="cevModalTitle">${esc(cevModalTitle())}</h3><p>${esc(cevModalSub())}</p></div>
+        <button type="button" class="pev-close" aria-label="Fermer" ${catalogEditor.saving ? 'disabled' : ''} onclick="cevCloseModal()">&times;</button>
+      </div>
+      <div class="pev-modal-body">${cevModalBodyHtml()}</div>
+      <div class="pev-modal-foot">${cevModalFootHtml()}</div>
+    </div>`;
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay && !catalogEditor.saving) window.cevCloseModal();
+    });
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => {
+      const f = overlay.querySelector('[data-autofocus]');
+      if (f) { try { f.focus(); } catch (_) { /* focus best effort */ } }
+    });
+  }
+  function cevRefreshBody() {
+    const body = document.querySelector('#cevOverlay .pev-modal-body');
+    if (body) body.innerHTML = cevModalBodyHtml();
+  }
+  function cevRefreshFoot() {
+    const foot = document.querySelector('#cevOverlay .pev-modal-foot');
+    if (foot) foot.innerHTML = cevModalFootHtml();
+    const close = document.querySelector('#cevOverlay .pev-close');
+    if (close) close.disabled = catalogEditor.saving;
+  }
+  function cevDismiss() {
+    catalogEditor.modal = null;
+    catalogEditor.fields = null;
+    catalogEditor.steps = null;
+    catalogEditor.saving = false;
+    catalogEditor.error = '';
+    const overlay = document.getElementById('cevOverlay');
+    if (overlay) overlay.remove();
+  }
+  window.cevCloseModal = function () {
+    if (catalogEditor.saving) return;
+    cevDismiss();
+  };
+
+  if (!window.__cevKeydownBound) {
+    window.__cevKeydownBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && catalogEditor.modal && !catalogEditor.saving) {
+        e.preventDefault();
+        window.cevCloseModal();
+      }
+    });
+  }
+
+  // ── Section "Catalogue partage" (rendue dans la page prices) ──────────────
+  function cevCatalogSectionHtml() {
+    const canManage = cevCanManage();
+    const formulas = Array.from(pricingEditor.byId.values());
+    const rows = formulas.map((entry) => {
+      const source = entry.source === 'custom' ? '<span class="pv2-chip">Ajoutee</span>' : '<span class="pv2-chip">Socle</span>';
+      const stepCount = Array.isArray(entry.steps) ? entry.steps.length : 0;
+      const priceLabel = entry.priceType === 'per_lane' ? 'par piste' : 'par personne';
+      const meta = `${esc(entry.family || 'Formule')} &middot; ${entry.minPax || 1}+ pers &middot; ${esc(priceLabel)} &middot; ${stepCount} activite${stepCount > 1 ? 's' : ''}`;
+      const actions = canManage ? `<div class="cev-row-actions">
+          <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(entry.id)}" onclick="cevOpenFields('${escJs(entry.id)}')">Structure</button>
+          <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(entry.id)}" onclick="cevOpenSteps('${escJs(entry.id)}')">Modifier les activites</button>
+          <button type="button" class="pv2-btn sm cev-danger" data-cev-delete="${escJs(entry.id)}" onclick="cevDelete('${escJs(entry.id)}')">Supprimer</button>
+        </div>` : '';
+      return `<article class="cev-row" data-cev-formula="${escJs(entry.id)}">
+        <div class="cev-row-main"><strong>${esc(entry.name || 'Formule')}</strong><span class="cev-row-meta">${meta}</span></div>
+        <div class="cev-row-side">${source}${actions}</div>
+      </article>`;
+    }).join('');
+    return `<section class="cev-catalog-block" id="cevCatalogBlock">
+      <div class="cev-block-head">
+        <div>
+          <h2>Catalogue partage</h2>
+          <p>${canManage ? 'Structure des formules et de leurs activites, partagee par tous les centres du reseau. Modifier ici change l\'offre partout.' : 'Structure des formules, partagee par tous les centres. Lecture seule (edition reservee a la direction).'}</p>
+        </div>
+        ${canManage ? '<button type="button" class="pv2-btn primary" id="cevAddFormula" onclick="cevOpenCreate()">+ Ajouter une formule</button>' : ''}
+      </div>
+      <div class="cev-rows">${rows || '<div class="pv2-empty"><strong>Catalogue vide</strong>Ajoutez une premiere formule.</div>'}</div>
+    </section>`;
+  }
+
   window.renderStaffPricingPage = function () {
     const root = document.getElementById('staffPricingPage');
     if (!root) return;
@@ -5643,10 +6158,18 @@
         ${ranking !== 'default' ? '<button type="button" class="pv2-chip-btn" onclick="setStaffPricingSort(state.staffPricingSort)">Ordre catalogue</button>' : ''}
       </div>
 
+      <div class="cev-scope-note">
+        <strong>Reglages de mon centre</strong>
+        <span>Prix, disponibilite et retrait pour CE centre uniquement. Cliquez sur Modifier sur une offre ci-dessous.</span>
+      </div>
+
       <section class="pv2-catalog">${cards || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</section>
+
+      ${cevCatalogSectionHtml()}
     </div>`;
     mount(root, 'pricing');
     pevSyncModal();
+    cevSyncModal();
   };
 
   /* ==========================================================================

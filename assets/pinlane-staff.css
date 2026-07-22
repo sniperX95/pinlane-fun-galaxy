@@ -5602,6 +5602,147 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .pev-grid2 { grid-template-columns: 1fr; }
 }
 
+/* -- Editeur du CATALOGUE partage (structure des formules + steps) ---------- */
+/* Distinct visuellement de "mon centre" : un bandeau de portee separe les deux. */
+.cev-scope-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+.cev-scope-note strong { font-size: 13px; font-weight: 600; color: var(--text); }
+.cev-scope-note span { font-size: 12px; color: var(--muted); }
+
+.cev-catalog-block {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-4);
+}
+.cev-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.cev-block-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.cev-block-head p { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 62ch; }
+
+.cev-rows { display: grid; gap: var(--space-2); }
+.cev-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+.cev-row-main { display: grid; gap: 2px; min-width: 0; }
+.cev-row-main strong { font-size: 14px; font-weight: 600; color: var(--text); }
+.cev-row-meta { font-size: 12px; color: var(--muted); }
+.cev-row-side { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.cev-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cev-danger { color: var(--danger); }
+.cev-danger:hover { border-color: var(--danger); }
+
+/* Modale catalogue : plus large que pev (formulaire + editeur de steps). */
+.cev-modal { max-width: 560px; }
+.cev-sep { height: 1px; background: var(--line); margin: 2px 0; }
+.cev-hint-inline { font-weight: 400; font-size: 11px; color: var(--faint); }
+.cev-inline-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; color: var(--text); height: 40px; }
+.cev-inline-check input { width: 16px; height: 16px; }
+
+.cev-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.cev-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.cev-day input { width: 15px; height: 15px; }
+
+.cev-steps { display: grid; gap: 10px; }
+.cev-steps-head { display: flex; flex-direction: column; gap: 2px; }
+.cev-steps-head span { font-size: 13px; font-weight: 500; color: var(--text); }
+.cev-steps-head small { font-size: 11px; color: var(--faint); }
+.cev-steps-list { display: grid; gap: 8px; }
+.cev-steps-empty { font-size: 12px; color: var(--muted); padding: 8px 0; }
+
+.cev-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+.cev-step-order { display: grid; gap: 4px; flex: none; }
+.cev-step-move {
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 12px;
+}
+.cev-step-move:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.cev-step-move:disabled { opacity: 0.4; cursor: default; }
+
+.cev-step-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 80px 96px auto;
+  gap: 8px;
+  align-items: end;
+}
+.cev-step-field { display: grid; gap: 4px; min-width: 0; }
+.cev-step-field > span { font-size: 11px; font-weight: 500; color: var(--muted); }
+.cev-step-field select,
+.cev-step-field input { height: 36px; }
+.cev-step-crit { display: flex; align-items: center; gap: 6px; height: 36px; font-size: 12px; color: var(--text); white-space: nowrap; }
+.cev-step-crit input { width: 15px; height: 15px; }
+
+.cev-step-remove {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cev-step-remove:hover { border-color: var(--danger); color: var(--danger); }
+
+@media (max-width: 620px) {
+  .cev-step { flex-wrap: wrap; }
+  .cev-step-grid { grid-template-columns: 1fr 1fr; }
+  .cev-step-field.cev-step-activity { grid-column: 1 / -1; }
+  .cev-row { align-items: flex-start; }
+}
+
 /* ----------------------------------------------------------------------------
    15b. CAMPAGNES : parcours gamifié « agence marketing » (style Duolingo)
    Structure motivante (niveaux, XP, streak, chemin de missions) sur l'identité

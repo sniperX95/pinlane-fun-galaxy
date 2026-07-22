@@ -56,6 +56,7 @@
     "test:client-tarifs": "node scripts/client-tarifs-check.js",
     "test:client-catalog": "node scripts/client-catalog-check.js",
     "test:client-tarifs-ui": "node scripts/client-tarifs-ui-check.js",
+    "test:catalog-editor-ui": "node scripts/catalog-editor-ui-check.js",
     "test:availability-blocks-ui": "node scripts/availability-blocks-ui-check.js",
     "test:staff-team-crud": "node scripts/staff-team-crud-check.js",
     "test:platform-clients": "node scripts/platform-clients-check.js",

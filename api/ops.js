@@ -620,6 +620,8 @@ async function handleGet(req, res, options = {}) {
     const previous = buildDirectionAnalytics({ history, startDate: prevWin.startDate, endDate: prevWin.endDate, center });
     // dashboardAnalytics est accessible avec dashboard.view seul : on ne sert
     // que ce que les widgets consomment : jamais le PII direction (top clients).
+    // byFormule / byOccasion / heatmap sont des agrégats anonymes (comptes et
+    // CA par formule / occasion / créneau), sans aucune identité client.
     if (action === 'dashboardAnalytics') {
       analytics = {
         startDate: analytics.startDate,
@@ -630,6 +632,9 @@ async function handleGet(req, res, options = {}) {
         monthly: analytics.monthly,
         byType: analytics.byType,
         byChannel: analytics.byChannel,
+        byFormule: analytics.byFormule,
+        byOccasion: analytics.byOccasion,
+        heatmap: analytics.heatmap,
         occupancy: analytics.occupancy,
       };
     }

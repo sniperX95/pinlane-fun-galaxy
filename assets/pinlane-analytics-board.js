@@ -15,14 +15,15 @@
        analytics = { totals:{ reservations, revenue, pax, avgBasket,
          paymentRate, cancelRate }, daily:[{date,count,revenue,pax}],
          byType:{ '<type>':{count,revenue,pax} },
-         byChannel:[{channel,count}], occupancy:{ rate } }.
+         byChannel:[{channel,count}], byFormule:[{id,label,count,revenue}],
+         byOccasion:[{occasion,count}], occupancy:{ rate } }.
      defaultWidgets : liste initiale si rien en storage,
        ex [{metric:'revenue',viz:'line'},{metric:'byType',viz:'donut'}].
      maxDate : 'YYYY-MM-DD' (defaut aujourd'hui, borne du selecteur de plage).
 
    Catalogue :
    - series : revenue / reservations / pax  -> viz 'line' | 'bars'
-   - split  : byType / byChannel            -> viz 'donut' | 'bars'
+   - split  : byType / byChannel / byFormule / byOccasion -> 'donut' | 'bars'
    - stat   : occupancy / paymentRate / cancelRate / avgBasket -> viz 'tile'
 
    Rendu delegue a window.PinlaneCharts (lineChart / barChart / donutChart /
@@ -48,6 +49,8 @@
     pax: { kind: 'series', label: 'Joueurs', format: 'int', field: 'pax', viz: ['line', 'bars'] },
     byType: { kind: 'split', label: 'Repartition par activite', format: 'int', viz: ['donut', 'bars'] },
     byChannel: { kind: 'split', label: 'Canaux', format: 'int', viz: ['donut', 'bars'] },
+    byFormule: { kind: 'split', label: 'Top formules', format: 'int', viz: ['donut', 'bars'] },
+    byOccasion: { kind: 'split', label: 'Occasions', format: 'int', viz: ['donut', 'bars'] },
     occupancy: { kind: 'stat', label: 'Taux de remplissage', format: 'percent', viz: ['tile'] },
     paymentRate: { kind: 'stat', label: "Taux d'encaissement", format: 'percent', viz: ['tile'] },
     cancelRate: { kind: 'stat', label: "Taux d'annulation", format: 'percent', viz: ['tile'] },
@@ -58,10 +61,24 @@
   // legende ASCII qui explique la famille sous son titre dans le selecteur.
   var PICKER_GROUPS = [
     { title: 'Evolutions', hint: 'suivi jour par jour', metrics: ['revenue', 'reservations', 'pax'] },
-    { title: 'Repartitions', hint: 'la part de chaque categorie', metrics: ['byType', 'byChannel'] },
+    { title: 'Repartitions', hint: 'la part de chaque categorie', metrics: ['byType', 'byChannel', 'byFormule', 'byOccasion'] },
     { title: 'Indicateurs', hint: 'un chiffre cle sur la periode', metrics: ['occupancy', 'paymentRate', 'cancelRate', 'avgBasket'] },
   ];
   var VIZ_LABEL = { line: 'Courbe', bars: 'Barres', donut: 'Anneau', tile: 'Grand chiffre' };
+  // Libelles lisibles des cles serveur ; toute cle inconnue s'affiche brute
+  // (jamais de donnee cachee par un dictionnaire incomplet).
+  var TYPE_LABELS = { bowling: 'Bowling', laser: 'Laser Game', formule: 'Formules' };
+  var CHANNEL_LABELS = { 'en ligne': 'En ligne', staff: 'Staff' };
+  var OCCASION_LABELS = {
+    anniversaire: 'Anniversaire',
+    entreprise: 'Entreprise / team building',
+    groupe: 'Sortie groupe',
+    ecole: 'Ecole / jeunesse',
+    evg: 'EVG / EVJF',
+    amis: 'Entre amis',
+    famille: 'Sortie famille',
+    autre: 'Autre',
+  };
   // Mini-glyphes 20x20 (currentColor) pour donner un apercu de chaque forme.
   var VIZ_ICON = {
     line: '<path d="M2 15 C5 15 5 7 8 7 C11 7 10 12 13 12 C16 12 15 5 18 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>',
@@ -455,10 +472,21 @@
     function splitData(metric) {
       if (metric === 'byType') {
         var obj = currentAnalytics && currentAnalytics.byType && typeof currentAnalytics.byType === 'object' ? currentAnalytics.byType : {};
-        return Object.keys(obj).map(function (k) { var row = obj[k] || {}; return { label: k, value: Number(row.count) || 0 }; });
+        return Object.keys(obj).map(function (k) { var row = obj[k] || {}; return { label: TYPE_LABELS[k] || k, value: Number(row.count) || 0 }; });
+      }
+      if (metric === 'byFormule') {
+        var formules = currentAnalytics && Array.isArray(currentAnalytics.byFormule) ? currentAnalytics.byFormule : [];
+        return formules.map(function (r) { return { label: String((r && (r.label || r.id)) || 'Formule'), value: Number(r && r.count) || 0 }; });
+      }
+      if (metric === 'byOccasion') {
+        var occ = currentAnalytics && Array.isArray(currentAnalytics.byOccasion) ? currentAnalytics.byOccasion : [];
+        return occ.map(function (r) {
+          var key = String((r && r.occasion) || '').toLowerCase();
+          return { label: OCCASION_LABELS[key] || (r && r.occasion) || 'Autre', value: Number(r && r.count) || 0 };
+        });
       }
       var arr = currentAnalytics && Array.isArray(currentAnalytics.byChannel) ? currentAnalytics.byChannel : [];
-      return arr.map(function (r) { return { label: r && r.channel, value: Number(r && r.count) || 0 }; });
+      return arr.map(function (r) { return { label: CHANNEL_LABELS[r && r.channel] || (r && r.channel), value: Number(r && r.count) || 0 }; });
     }
     function statValue(metric) {
       if (metric === 'occupancy') {

@@ -4364,10 +4364,23 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     lane: index + 1,
     value: bowlingWindows.reduce((sum, window) => sum + ((window.lanes || []).includes(index + 1) ? Number(window.duration || 0) : 0), 0)
   })).sort((left, right) => right.value - left.value);
+  // Mini-séries 7 jours HONNÊTES : chaque point vient des réservations réelles
+  // du jour (state.reservations), jamais d'une interpolation fabriquée.
   const days = Array.from({ length: 7 }, (_, index) => addDays(state.currentDate, index - 6));
-  const revenueSeries = days.map(date => state.reservations
-    .filter(reservation => reservation.date === date && reservation.status !== 'cancelled')
-    .reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0));
+  const dayRows = days.map(date => state.reservations.filter(reservation => reservation.date === date && reservation.status !== 'cancelled'));
+  const revenueSeries = dayRows.map(rows => rows.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0));
+  const reservationSeries = dayRows.map(rows => rows.length);
+  const playerSeries = dayRows.map(rows => rows.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0));
+  const occupancySeries = days.map((date, index) => {
+    const window = getPlanningWindow(date);
+    const open = window.closed ? 0 : Math.max(window.close - window.open, 0);
+    const capacity = TOTAL_LANES * open;
+    if (!capacity) return 0;
+    const usedLaneHours = dayRows[index]
+      .flatMap(reservation => getBowlingWindowsFromReservation(reservation))
+      .reduce((sum, win) => sum + ((Number(win.duration) || 0) * Math.max((win.lanes || []).length, 1)), 0);
+    return Math.min(100, Math.round((usedLaneHours / capacity) * 100));
+  });
   const currentIndex = days.length - 1;
   const previousRevenue = revenueSeries.slice(0, currentIndex).reduce((sum, value) => sum + value, 0);
   const revenueTrend = previousRevenue ? Math.round(((revenue - (previousRevenue / Math.max(currentIndex, 1))) / (previousRevenue / Math.max(currentIndex, 1))) * 100) : 0;
@@ -4395,6 +4408,9 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     completeCount,
     laneUsage,
     revenueSeries,
+    reservationSeries,
+    playerSeries,
+    occupancySeries,
     revenueTrend,
     previousReservationsCount: previousActiveReservations.length,
     previousRevenueToday,
@@ -4710,88 +4726,245 @@ function renderDashboardCustomAnalytics() {
   </section>`;
 }
 
-function renderStaffDashboardHourly(metrics) {
-  const { planningWindow, bowlingWindows } = metrics;
-  if (planningWindow.closed) return `<div class="dash-empty">Centre fermé sur cette date.</div>`;
-  const startHour = Math.floor(planningWindow.open);
-  const endHour = Math.ceil(planningWindow.close);
-  const hours = [];
-  for (let hour = startHour; hour <= endHour; hour++) {
-    const bucket = { hour, confirmed: 0, arrived: 0, paid: 0 };
-    bowlingWindows.forEach(window => {
-      const overlap = Math.max(0, Math.min(hour + 1, window.end) - Math.max(hour, window.start));
-      if (!overlap) return;
-      const value = overlap * Math.max((window.lanes || []).length, 1);
-      if (window.reservation.status === 'paid') bucket.paid += value;
-      else if (window.reservation.status === 'arrived') bucket.arrived += value;
-      else bucket.confirmed += value;
-    });
-    bucket.total = bucket.confirmed + bucket.arrived + bucket.paid;
-    hours.push(bucket);
+
+/* ============================================================================
+   CARTES PERMUTABLES du dashboard (Vue d'ensemble). Deux emplacements :
+   - carte large (state.dashMainChart) : affluence / tendance / CA / semaine ;
+   - carte latérale (state.dashSideChart) : formules / canal / occasions / mix.
+   Données : dashAnalyticsCache (agrégats serveur RÉELS de la plage, action
+   dashboardAnalytics). Aucune valeur fabriquée : donnée absente = état de
+   chargement ou message vide honnête. Graphes délégués à window.PinlaneCharts.
+   ========================================================================== */
+const DASH_MAIN_CHART_OPTIONS = [
+  { id: 'heatmap', label: 'Affluence par créneau' },
+  { id: 'trend', label: 'Tendance réservations' },
+  { id: 'revenue', label: "Chiffre d'affaires" },
+  { id: 'weekday', label: 'Réservations par jour de semaine' },
+];
+const DASH_SIDE_CHART_OPTIONS = [
+  { id: 'formules', label: 'Top formules' },
+  { id: 'channel', label: 'Canal de réservation' },
+  { id: 'occasions', label: 'Occasions' },
+  { id: 'activity', label: 'Répartition par activité' },
+];
+const DASH_WEEKDAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+// Etat d'ouverture du menu ('main' | 'side' | null) : variable de module, pas
+// un noeud : il survit aux re-rendus innerHTML du dashboard (poll de synchro).
+let dashChartMenuOpen = null;
+
+function getDashChartSelection(which) {
+  const options = which === 'side' ? DASH_SIDE_CHART_OPTIONS : DASH_MAIN_CHART_OPTIONS;
+  const stored = which === 'side' ? state.dashSideChart : state.dashMainChart;
+  return options.some(option => option.id === stored) ? stored : options[0].id;
+}
+
+function setDashChart(which, id) {
+  if (which === 'side') state.dashSideChart = id;
+  else state.dashMainChart = id;
+  dashChartMenuOpen = null;
+  save();
+  renderStaffDashboard();
+  document.querySelector(`[data-dash-picker="${which}"] .dash-chart-picker-btn`)?.focus();
+}
+
+function toggleDashChartMenu(which, ev) {
+  if (ev) ev.stopPropagation();
+  dashChartMenuOpen = dashChartMenuOpen === which ? null : which;
+  renderStaffDashboard();
+  if (dashChartMenuOpen === which) {
+    const menu = document.querySelector(`[data-dash-picker="${which}"] .dash-chart-menu`);
+    (menu?.querySelector('button[aria-checked="true"]') || menu?.querySelector('button'))?.focus();
   }
-  const chart = { width: 620, height: 238, left: 42, right: 16, top: 18, bottom: 34 };
-  const innerWidth = chart.width - chart.left - chart.right;
-  const innerHeight = chart.height - chart.top - chart.bottom;
-  const plotBottom = chart.height - chart.bottom;
-  const lanes = Math.max(TOTAL_LANES, 1);
-  const toPercent = value => Math.max(0, Math.min(100, (value / lanes) * 100));
-  const xFor = index => chart.left + (hours.length <= 1 ? 0 : (index / (hours.length - 1)) * innerWidth);
-  const yFor = percent => chart.top + innerHeight - ((Math.max(0, Math.min(100, percent)) / 100) * innerHeight);
-  const seriesMeta = [
-    { key: 'confirmed', cls: 'confirmed', name: 'Confirmé' },
-    { key: 'arrived', cls: 'arrived', name: 'Arrivé' },
-    { key: 'paid', cls: 'paid', name: 'Payé' }
-  ];
-  const pointsFor = key => hours.map((hour, index) => `${xFor(index).toFixed(1)},${yFor(toPercent(hour[key])).toFixed(1)}`).join(' ');
-  const peak = hours.reduce((best, hour, index) => hour.total > best.total ? { ...hour, index } : best, { total: -1, index: 0 });
-  const peakX = xFor(peak.index || 0);
-  const peakPercent = Math.round(toPercent(peak.total || 0));
-  const peakY = yFor(peakPercent);
-  const xLabels = hours.map((hour, index) => {
-    const show = index === 0 || index === hours.length - 1 || Math.floor(hour.hour) % 2 === 0;
-    return show ? `<text x="${xFor(index).toFixed(1)}" y="${chart.height - 7}" text-anchor="middle">${String(Math.floor(hour.hour)).padStart(2, '0')}h</text>` : '';
-  }).join('');
-  const yTicks = [100, 75, 50, 25, 0].map(percent => {
-    const y = yFor(percent);
-    return `<g class="dash-line-grid"><line x1="${chart.left}" x2="${chart.width - chart.right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"></line><text x="4" y="${(y + 4).toFixed(1)}">${percent}%</text></g>`;
-  }).join('');
-  const chartData = {
-    w: chart.width,
-    h: chart.height,
-    top: chart.top,
-    bottom: plotBottom,
-    pts: hours.map((hour, index) => ({
-      x: Number(xFor(index).toFixed(1)),
-      label: `${String(Math.floor(hour.hour)).padStart(2, '0')}h`,
-      s: seriesMeta.map(meta => ({
-        n: meta.name,
-        c: meta.cls,
-        v: Math.round(toPercent(hour[meta.key])),
-        y: Number(yFor(toPercent(hour[meta.key])).toFixed(1))
-      }))
-    }))
-  };
-  return `<div class="dash-line-chart" aria-label="Occupations par heure" data-hourly-chart="${escapeHtml(JSON.stringify(chartData))}">
-    <svg viewBox="0 0 ${chart.width} ${chart.height}" role="img" aria-hidden="true">
-      ${yTicks}
-      <polyline class="confirmed" points="${pointsFor('confirmed')}"></polyline>
-      <polyline class="arrived" points="${pointsFor('arrived')}"></polyline>
-      <polyline class="paid" points="${pointsFor('paid')}"></polyline>
-      ${peak.total > 0 ? `<line class="dash-line-marker" x1="${peakX.toFixed(1)}" x2="${peakX.toFixed(1)}" y1="${chart.top}" y2="${plotBottom.toFixed(1)}"></line>
-        <circle class="dash-line-point" cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="5"></circle>
-        <g class="dash-line-badge">
-          <rect x="${Math.max(chart.left, Math.min(peakX - 18, chart.width - chart.right - 42)).toFixed(1)}" y="${Math.max(6, peakY - 35).toFixed(1)}" width="44" height="24" rx="8"></rect>
-          <text x="${Math.max(chart.left + 22, Math.min(peakX + 4, chart.width - chart.right - 20)).toFixed(1)}" y="${Math.max(22, peakY - 18).toFixed(1)}" text-anchor="middle">${peakPercent}%</text>
-        </g>` : ''}
-      <g class="dash-line-x">${xLabels}</g>
-      <g class="dash-line-cursor" aria-hidden="true" style="display:none;">
-        <line x1="0" x2="0" y1="${chart.top}" y2="${plotBottom.toFixed(1)}"></line>
-        <circle class="confirmed" r="4"></circle>
-        <circle class="arrived" r="4"></circle>
-        <circle class="paid" r="4"></circle>
-      </g>
-    </svg>
+}
+
+function closeDashChartMenu(refocus) {
+  if (!dashChartMenuOpen) return;
+  const which = dashChartMenuOpen;
+  dashChartMenuOpen = null;
+  renderStaffDashboard();
+  if (refocus) document.querySelector(`[data-dash-picker="${which}"] .dash-chart-picker-btn`)?.focus();
+}
+
+function dashChartPickerKeydown(ev, which) {
+  if (ev.key === 'Escape') {
+    if (dashChartMenuOpen === which) { ev.stopPropagation(); closeDashChartMenu(true); }
+    return;
+  }
+  const menu = ev.currentTarget.querySelector('.dash-chart-menu');
+  if (!menu) return;
+  const items = Array.from(menu.querySelectorAll('button[role="menuitemradio"]'));
+  if (!items.length) return;
+  const index = items.indexOf(document.activeElement);
+  if (ev.key === 'ArrowDown') { ev.preventDefault(); items[(index + 1) % items.length].focus(); }
+  else if (ev.key === 'ArrowUp') { ev.preventDefault(); items[(index - 1 + items.length) % items.length].focus(); }
+  else if (ev.key === 'Home') { ev.preventDefault(); items[0].focus(); }
+  else if (ev.key === 'End') { ev.preventDefault(); items[items.length - 1].focus(); }
+}
+
+// Fermeture au clic hors du sélecteur.
+document.addEventListener('click', ev => {
+  if (dashChartMenuOpen && !(ev.target && ev.target.closest && ev.target.closest('.dash-chart-picker'))) closeDashChartMenu(false);
+});
+
+function renderDashChartPicker(which, currentId) {
+  const options = which === 'side' ? DASH_SIDE_CHART_OPTIONS : DASH_MAIN_CHART_OPTIONS;
+  const open = dashChartMenuOpen === which;
+  const check = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+  return `<div class="dash-chart-picker" data-dash-picker="${which}" onkeydown="dashChartPickerKeydown(event, '${which}')">
+    <button type="button" class="dash-chart-picker-btn" aria-haspopup="menu" aria-expanded="${open ? 'true' : 'false'}" onclick="toggleDashChartMenu('${which}', event)">
+      Graphique
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6.5 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </button>
+    ${open ? `<div class="dash-chart-menu" role="menu" aria-label="Choisir le graphique">
+      ${options.map(option => `<button type="button" role="menuitemradio" aria-checked="${option.id === currentId ? 'true' : 'false'}" onclick="setDashChart('${which}', '${option.id}')">
+        <span>${escapeHtml(option.label)}</span><span class="dash-menu-check" aria-hidden="true">${check}</span>
+      </button>`).join('')}
+    </div>` : ''}
   </div>`;
+}
+
+function dashChartPeriodLabel() {
+  const { range } = getDashWidgetConfig();
+  const labels = { '7j': '7 derniers jours', '30j': '30 derniers jours', '90j': '90 derniers jours' };
+  if (labels[range.key]) return labels[range.key];
+  const { start, end } = dashRangeDates();
+  const fmt = iso => parseLocalDate(iso).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' });
+  return `du ${fmt(start)} au ${fmt(end)}`;
+}
+
+// Etat des agrégats de plage : donnée périmée (centre / plage changés) = re-
+// fetch en arrière-plan et JAMAIS les chiffres d'une autre plage à l'écran.
+// En erreur, pas de re-fetch automatique (le bouton Réessayer s'en charge).
+function getDashRangeAnalytics() {
+  const { key } = dashAnalyticsKey();
+  const stale = dashAnalyticsCache.key !== key;
+  if (stale && !dashAnalyticsCache.loading && !dashAnalyticsCache.error) setTimeout(() => loadDashAnalytics(), 0);
+  return {
+    analytics: stale ? null : dashAnalyticsCache.analytics,
+    loading: stale || dashAnalyticsCache.loading,
+    error: dashAnalyticsCache.error,
+  };
+}
+
+function dashRangeErrorHtml(message) {
+  return `<div class="dash-empty" role="alert">${escapeHtml(message)}<br><button type="button" class="dash-retry-btn" onclick="loadDashAnalytics(true)">Réessayer</button></div>`;
+}
+
+// heatmap serveur = 7 objets {heure: nombre} (index 0 = lundi). On resserre
+// les colonnes sur la plage horaire réellement fréquentée.
+function buildDashHeatmap(analytics) {
+  const raw = Array.isArray(analytics.heatmap) ? analytics.heatmap : [];
+  if (raw.length !== 7) return null;
+  let minHour = 24;
+  let maxHour = -1;
+  raw.forEach(row => Object.keys(row || {}).forEach(key => {
+    const hour = Number(key);
+    if (!Number.isFinite(hour) || !(Number(row[key]) > 0)) return;
+    if (hour < minHour) minHour = hour;
+    if (hour > maxHour) maxHour = hour;
+  }));
+  if (maxHour < minHour) return null;
+  const hours = [];
+  for (let hour = minHour; hour <= maxHour; hour += 1) hours.push(hour);
+  return {
+    matrix: raw.map(row => hours.map(hour => Number((row || {})[hour]) || 0)),
+    colLabels: hours.map(hour => `${hour}h`),
+  };
+}
+
+function buildDashWeekdaySeries(analytics) {
+  const totals = Array.from({ length: 7 }, () => 0);
+  (Array.isArray(analytics.daily) ? analytics.daily : []).forEach(day => {
+    const d = parseLocalDate(day.date);
+    if (!d || Number.isNaN(d.getTime())) return;
+    totals[(d.getDay() + 6) % 7] += Number(day.count) || 0;
+  });
+  return totals.map((value, index) => ({ label: DASH_WEEKDAY_LABELS[index], value }));
+}
+
+// Corps de la carte large. host rempli APRES le innerHTML du dashboard : le
+// moteur PinlaneCharts monte ses SVG dans un élément vivant.
+function renderDashMainChartBody(host) {
+  if (!host) return;
+  const current = getDashChartSelection('main');
+  const { analytics, loading, error } = getDashRangeAnalytics();
+  if (error) { host.innerHTML = dashRangeErrorHtml(error); return; }
+  if (loading || !analytics) { host.innerHTML = '<div class="dash-empty">Chargement des données de la période…</div>'; return; }
+  const charts = window.PinlaneCharts;
+  if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
+  const motion = `dash|main|${current}|${dashAnalyticsKey().key}`;
+  if (current === 'heatmap') {
+    const heat = buildDashHeatmap(analytics);
+    if (!heat) { host.innerHTML = '<div class="dash-empty">Aucune réservation sur la période.</div>'; return; }
+    charts.heatmapChart(host, { matrix: heat.matrix, rowLabels: DASH_WEEKDAY_LABELS, colLabels: heat.colLabels, motionKey: motion });
+    return;
+  }
+  if (current === 'weekday') {
+    charts.barChart(host, { series: buildDashWeekdaySeries(analytics), format: 'int', motionKey: motion, height: 230 });
+    return;
+  }
+  const daily = Array.isArray(analytics.daily) ? analytics.daily : [];
+  const useWeekly = daily.length > 35;
+  const source = useWeekly ? (Array.isArray(analytics.weekly) ? analytics.weekly : []) : daily;
+  const field = current === 'revenue' ? 'revenue' : 'count';
+  const series = source.map(item => (useWeekly
+    ? { label: `S${String(item.label || '').split('S')[1] || ''}`, value: Number(item[field]) || 0 }
+    : { date: item.date, value: Number(item[field]) || 0 }));
+  charts.lineChart(host, { series, format: current === 'revenue' ? 'euro' : 'int', motionKey: motion, height: 230 });
+}
+
+function dashSplitRowsHtml(rows) {
+  const max = Math.max(...rows.map(row => Number(row.value) || 0), 1);
+  return `<div class="dash-split-rows">${rows.map(row => `
+    <div class="dash-split-row">
+      <strong>${escapeHtml(row.label)}</strong>
+      <span class="dash-split-value">${escapeHtml(row.valueText)}</span>
+      <span class="dash-split-track"><i style="width:${Math.max(4, Math.round(((Number(row.value) || 0) / max) * 100))}%"></i></span>
+    </div>`).join('')}</div>`;
+}
+
+// Corps de la carte latérale : chaque valeur vient de byFormule / byOccasion /
+// byChannel / byType servis par dashboardAnalytics.
+function renderDashSideChartBody(host) {
+  if (!host) return;
+  const current = getDashChartSelection('side');
+  const { analytics, loading, error } = getDashRangeAnalytics();
+  if (error) { host.innerHTML = dashRangeErrorHtml(error); return; }
+  if (loading || !analytics) { host.innerHTML = '<div class="dash-empty">Chargement des données de la période…</div>'; return; }
+  const motion = `dash|side|${current}|${dashAnalyticsKey().key}`;
+  if (current === 'formules') {
+    const rows = (Array.isArray(analytics.byFormule) ? analytics.byFormule : []).slice(0, 6).map(row => ({
+      label: String(row.label || row.id || 'Formule'),
+      value: Number(row.count) || 0,
+      valueText: `${Number(row.count) || 0} résa${(Number(row.count) || 0) > 1 ? 's' : ''} · ${formatMoney(row.revenue || 0)}`,
+    }));
+    host.innerHTML = rows.length ? dashSplitRowsHtml(rows) : '<div class="dash-empty">Aucune formule vendue sur la période.</div>';
+    return;
+  }
+  if (current === 'occasions') {
+    const rows = (Array.isArray(analytics.byOccasion) ? analytics.byOccasion : []).slice(0, 6).map(row => {
+      const key = String(row.occasion || '').toLowerCase();
+      const label = STAFF_OCCASION_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'Autre');
+      return { label, value: Number(row.count) || 0, valueText: `${Number(row.count) || 0}` };
+    });
+    host.innerHTML = rows.length ? dashSplitRowsHtml(rows) : '<div class="dash-empty">Aucune occasion déclarée sur la période.</div>';
+    return;
+  }
+  const charts = window.PinlaneCharts;
+  if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
+  if (current === 'channel') {
+    const channelLabels = { 'en ligne': 'En ligne', staff: 'Staff' };
+    const parts = (Array.isArray(analytics.byChannel) ? analytics.byChannel : []).map(row => ({
+      label: channelLabels[row.channel] || String(row.channel || ''),
+      value: Number(row.count) || 0,
+    }));
+    charts.donutChart(host, { parts, format: 'int', motionKey: motion });
+    return;
+  }
+  const typeLabels = { bowling: 'Bowling', laser: 'Laser Game', formule: 'Formules' };
+  const parts = Object.entries(analytics.byType && typeof analytics.byType === 'object' ? analytics.byType : {})
+    .map(([type, agg]) => ({ label: typeLabels[type] || type, value: Number(agg && agg.count) || 0 }));
+  charts.donutChart(host, { parts, format: 'int', motionKey: motion });
 }
 
 function renderStaffDashboardActivity(metrics) {
@@ -4813,20 +4986,6 @@ function renderStaffDashboardActivity(metrics) {
   </div>`;
 }
 
-function renderStaffDashboardTopLanes(metrics) {
-  const sortMode = state.dashboardLaneSort === 'low' ? 'low' : 'high';
-  const items = [...metrics.laneUsage].sort((left, right) => sortMode === 'low' ? left.value - right.value : right.value - left.value);
-  const openHours = metrics.planningWindow.closed ? 0 : Math.max(metrics.planningWindow.close - metrics.planningWindow.open, 1);
-  return items.slice(0, 5).map(item => {
-    const percent = Math.min(100, Math.round((item.value / openHours) * 100));
-    return `<div class="dash-lane-row">
-      <small>${item.lane}</small>
-      <strong>Piste ${item.lane}</strong>
-      <span><i style="width:${percent}%"></i></span>
-      <em>${percent}%</em>
-    </div>`;
-  }).join('');
-}
 
 function renderStaffDashboardArrivals(metrics) {
   const rows = metrics.upcoming.slice(0, 3);
@@ -5609,15 +5768,7 @@ function openStaffDashboardRevenue() {
   openStaffDashboardDetail('revenue');
 }
 
-function cycleDashboardLaneSort() {
-  state.dashboardLaneSort = state.dashboardLaneSort === 'low' ? 'high' : 'low';
-  save();
-  renderStaffDashboard();
-}
 
-function getDashboardLaneSortLabel() {
-  return state.dashboardLaneSort === 'low' ? 'Moins occupées' : 'Par occupation';
-}
 
 function renderStaffDashboard(dayReservations = todaysReservations()) {
   const root = document.getElementById('staffDashboardPage');
@@ -5654,13 +5805,13 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <div class="dash-icon">${renderDashboardIcon('calendar')}</div>
         <div class="dash-kpi-copy"><span>Réservations aujourd'hui</span><strong>${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(reservationTrendText)}</strong><span>vs hier</span></div>
-        ${renderDashboardSpark([metrics.previousReservationsCount, Math.max(0, metrics.activeReservations.length - 3), metrics.activeReservations.length, metrics.upcoming.length, metrics.activeNow.length, metrics.activeReservations.length], 'purple')}
+        ${renderDashboardSpark(metrics.reservationSeries, 'purple')}
       </article>
       <article class="dash-kpi blue">
         <div class="dash-icon">${renderDashboardIcon('users')}</div>
         <div class="dash-kpi-copy"><span>Joueurs aujourd'hui</span><strong>${metrics.players}</strong><small>personnes</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(playerTrendText)}</strong><span>vs hier</span></div>
-        ${renderDashboardSpark([metrics.previousPlayers, Math.max(0, metrics.players - 12), metrics.players, metrics.players * .72, metrics.players * .9, metrics.players], 'blue')}
+        ${renderDashboardSpark(metrics.playerSeries, 'blue')}
       </article>
       <article class="dash-kpi green">
         <div class="dash-icon">${renderDashboardIcon('euro')}</div>
@@ -5672,23 +5823,28 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <div class="dash-icon">${renderDashboardIcon('activity')}</div>
         <div class="dash-kpi-copy"><span>Taux d'occupation</span><strong>${metrics.occupancy}%</strong><small>${availableLanes} pistes disponibles</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(occupancyTrendText)}</strong><span>vs hier</span></div>
-        ${renderDashboardSpark([metrics.previousOccupancy, Math.max(0, metrics.occupancy - 14), metrics.occupancy * .82, metrics.occupancy, metrics.occupancy * .76, metrics.occupancy], 'orange')}
+        ${renderDashboardSpark(metrics.occupancySeries, 'orange')}
       </article>
     </section>
 
     <section class="dash-grid-main">
-      <article class="dash-card dash-card-wide">
-        <div class="dash-card-head"><h2>Occupations par heure</h2><button type="button" onclick="openStaffDashboardDetail('occupation')">${TOTAL_LANES} pistes</button></div>
-        <div class="dash-chart-legend"><span class="confirmed"></span>Confirmé <span class="arrived"></span>Arrivé <span class="paid"></span>Payé</div>
-        ${renderStaffDashboardHourly(metrics)}
+      <article class="dash-card dash-card-wide dash-card-pickable">
+        <div class="dash-card-head">
+          <div class="dash-card-titles"><h2>${escapeHtml((DASH_MAIN_CHART_OPTIONS.find(option => option.id === getDashChartSelection('main')) || DASH_MAIN_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">${escapeHtml(dashChartPeriodLabel())}</span></div>
+          ${renderDashChartPicker('main', getDashChartSelection('main'))}
+        </div>
+        <div class="dash-range-chart dash-range-chart-main" id="dashMainChartBody"></div>
       </article>
       <article class="dash-card">
         <div class="dash-card-head"><h2>Réservations par activité</h2><button type="button" onclick="openStaffDashboardDetail('activity')">Détails</button></div>
         ${renderStaffDashboardActivity(metrics)}
       </article>
-      <article class="dash-card">
-        <div class="dash-card-head"><h2>Top pistes</h2><button type="button" onclick="cycleDashboardLaneSort()">${escapeHtml(getDashboardLaneSortLabel())}</button></div>
-        <div class="dash-lanes">${renderStaffDashboardTopLanes(metrics)}</div>
+      <article class="dash-card dash-card-pickable">
+        <div class="dash-card-head">
+          <div class="dash-card-titles"><h2>${escapeHtml((DASH_SIDE_CHART_OPTIONS.find(option => option.id === getDashChartSelection('side')) || DASH_SIDE_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">${escapeHtml(dashChartPeriodLabel())}</span></div>
+          ${renderDashChartPicker('side', getDashChartSelection('side'))}
+        </div>
+        <div class="dash-range-chart dash-range-chart-side" id="dashSideChartBody"></div>
       </article>
     </section>
 
@@ -5759,66 +5915,12 @@ function setupStaffDashboardCharts() {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
   mountDashAnalyticsBoard();
-  const hourly = root.querySelector('.dash-line-chart[data-hourly-chart]');
-  if (hourly) setupHourlyChartInteraction(hourly);
+  renderDashMainChartBody(document.getElementById('dashMainChartBody'));
+  renderDashSideChartBody(document.getElementById('dashSideChartBody'));
   const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');
   if (revenue) setupRevenueChartInteraction(revenue);
 }
 
-function setupHourlyChartInteraction(container) {
-  let data;
-  try { data = JSON.parse(container.dataset.hourlyChart || '{}'); } catch (_) { return; }
-  const points = Array.isArray(data.pts) ? data.pts : [];
-  const svg = container.querySelector('svg');
-  const cursor = container.querySelector('.dash-line-cursor');
-  if (!points.length || !svg || !cursor) return;
-  const cursorLine = cursor.querySelector('line');
-  const cursorDots = Array.from(cursor.querySelectorAll('circle'));
-  const tip = document.createElement('div');
-  tip.className = 'dash-chart-tip';
-  tip.setAttribute('role', 'status');
-  tip.hidden = true;
-  container.appendChild(tip);
-  let frame = null;
-  let pendingX = null;
-  const hide = () => { cursor.style.display = 'none'; tip.hidden = true; };
-  const render = clientX => {
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width) return;
-    const svgX = ((clientX - rect.left) / rect.width) * data.w;
-    let nearest = points[0];
-    let bestDist = Infinity;
-    points.forEach(point => {
-      const dist = Math.abs(point.x - svgX);
-      if (dist < bestDist) { bestDist = dist; nearest = point; }
-    });
-    cursor.style.display = '';
-    cursorLine.setAttribute('x1', nearest.x);
-    cursorLine.setAttribute('x2', nearest.x);
-    nearest.s.forEach((series, index) => {
-      const dot = cursorDots[index];
-      if (!dot) return;
-      dot.setAttribute('cx', nearest.x);
-      dot.setAttribute('cy', series.y);
-    });
-    tip.innerHTML = `<strong>${escapeHtml(nearest.label)}</strong>${nearest.s.map(series => `<span class="dash-chart-tip-row"><i class="${escapeHtml(series.c)}"></i>${escapeHtml(series.n)}<b>${series.v}%</b></span>`).join('')}`;
-    tip.hidden = false;
-    const contRect = container.getBoundingClientRect();
-    const pxX = (nearest.x / data.w) * contRect.width;
-    const left = Math.max(4, Math.min(pxX - tip.offsetWidth / 2, contRect.width - tip.offsetWidth - 4));
-    tip.style.left = `${left}px`;
-    tip.style.top = `${(data.top / data.h) * contRect.height}px`;
-  };
-  const schedule = clientX => {
-    pendingX = clientX;
-    if (frame) return;
-    frame = requestAnimationFrame(() => { frame = null; if (pendingX != null) render(pendingX); });
-  };
-  svg.addEventListener('pointermove', event => schedule(event.clientX));
-  svg.addEventListener('pointerdown', event => schedule(event.clientX));
-  svg.addEventListener('pointerleave', hide);
-  svg.addEventListener('pointercancel', hide);
-}
 
 function setupRevenueChartInteraction(container) {
   let bars;

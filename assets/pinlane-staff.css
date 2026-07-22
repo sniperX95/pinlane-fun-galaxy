@@ -2928,6 +2928,83 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-chart-legend span.arrived { background: var(--warning); }
 .dash-chart-legend span.paid { background: var(--success); }
 
+/* ── Cartes permutables (graphe au choix, persisté) ─────────────────────── */
+/* Le menu du sélecteur déborde de la carte : overflow libéré sur ces cartes. */
+.dash-card.dash-card-pickable { overflow: visible; }
+
+.dash-card-titles { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; min-width: 0; }
+.dash-card-titles h2 { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-card-meta { color: var(--faint); font-size: 12px; white-space: nowrap; }
+
+.dash-chart-picker { position: relative; flex-shrink: 0; }
+.dash-chart-picker-btn svg { width: 14px; height: 14px; }
+.dash-chart-picker-btn[aria-expanded="true"] { background: var(--subtle); color: var(--text); }
+
+.dash-chart-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 240px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.dash-chart-menu button[role="menuitemradio"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+
+.dash-chart-menu button[role="menuitemradio"]:hover,
+.dash-chart-menu button[role="menuitemradio"]:focus-visible { background: var(--subtle); }
+
+.dash-menu-check { display: inline-flex; visibility: hidden; color: var(--accent); }
+.dash-menu-check svg { width: 14px; height: 14px; }
+.dash-chart-menu button[aria-checked="true"] .dash-menu-check { visibility: visible; }
+
+.dash-range-chart { min-height: 180px; }
+.dash-range-chart-main { min-height: 240px; }
+
+.dash-split-rows { display: grid; gap: 12px; margin-top: 4px; }
+.dash-split-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 5px; font-size: 13px; }
+.dash-split-row strong { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-split-value { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap; }
+.dash-split-track { grid-column: 1 / -1; display: block; height: 6px; border-radius: var(--radius-full); background: var(--subtle); overflow: hidden; }
+.dash-split-track i { display: block; height: 100%; border-radius: var(--radius-full); background: var(--accent); }
+
+.dash-retry-btn {
+  margin-top: 10px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.dash-retry-btn:hover { background: var(--subtle); }
+
 .dash-line-chart svg { width: 100%; height: auto; display: block; }
 .dash-line-chart polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .dash-line-chart polyline.confirmed { stroke: var(--info); }

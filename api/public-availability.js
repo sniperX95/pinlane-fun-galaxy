@@ -3,6 +3,7 @@ const {
   LASER_GAME_OPTIONS,
   currentTimeDecimal,
   getBasePrice,
+  getEffectiveFormules,
   getFormuleAvailability,
   getFormuleLaneDuration,
   getFormuleTotalDuration,
@@ -10,6 +11,7 @@ const {
   getRequiredLaneCount,
   getSchedule,
   numToTime,
+  refreshFormuleOverrides,
   reservationNeedsLanes,
   roundUpHalfHour,
   timeToNum,
@@ -338,6 +340,15 @@ module.exports = async (req, res) => {
     } catch (error) {
       // Ignore: fall back to the file baseline.
     }
+    // Carte d'overrides catalogue (prix / retrait) chaude AVANT tout calcul de
+    // prix : l'apercu de creneau doit facturer le meme prix que la reservation
+    // (public-reservations, lib/reservation-request). Fail-soft : sans base on
+    // garde le dernier etat connu / le fichier socle.
+    try {
+      await refreshFormuleOverrides(getPool());
+    } catch (error) {
+      // Ignore: dernier etat connu / fichier.
+    }
     let centerDoc = null;
     try {
       centerDoc = getCenter(centerId) || null;
@@ -429,6 +440,26 @@ module.exports = async (req, res) => {
     }
 
     if (type === 'formule') {
+      // Une formule retiree/desactivee par override catalogue (removed:true ou
+      // enabled:false) sort de getEffectiveFormules : elle ne doit alors etre ni
+      // recherchable ni reservable par formuleId direct. Meme reponse
+      // "indisponible" que getFormuleAvailability, aucun creneau reservable.
+      if (!getEffectiveFormules(centerId).some((item) => item.id === formuleId)) {
+        sendJson(res, 200, {
+          ok: true,
+          date,
+          ...scheduleMeta,
+          slots: [],
+          laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
+          duration: getFormuleLaneDuration(formule),
+          totalDuration: getFormuleTotalDuration(formule),
+          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),
+          requiresLanes: reservationNeedsLanes(type, formuleId),
+          label: formule.name,
+          message: 'Offre momentanement indisponible',
+        });
+        return;
+      }
       const availability = getFormuleAvailability(formule, date, pax, '', centerDoc);
       if (!availability.ok) {
         sendJson(res, 200, {
@@ -439,7 +470,7 @@ module.exports = async (req, res) => {
           laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
           duration: getFormuleLaneDuration(formule),
           totalDuration: getFormuleTotalDuration(formule),
-          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId),
+          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),
           requiresLanes: reservationNeedsLanes(type, formuleId),
           label: formule.name,
           message: availability.message,
@@ -505,7 +536,7 @@ module.exports = async (req, res) => {
           laneCount,
           duration,
           totalDuration,
-          price: getBasePrice(type, duration, laneCount, pax, formuleId),
+          price: getBasePrice(type, duration, laneCount, pax, formuleId, centerId),
           requiresLanes,
           label: formule.name,
           anchors: anchorMeta,
@@ -757,7 +788,7 @@ module.exports = async (req, res) => {
         laneCount: 0,
         duration,
         totalDuration,
-        price: getBasePrice(type, duration, 0, pax, ''),
+        price: getBasePrice(type, duration, 0, pax, '', centerId),
         requiresLanes: false,
         label: `${laserOption.label} Laser Game`,
         laserGames: laserOption.games,
@@ -793,7 +824,7 @@ module.exports = async (req, res) => {
       laneCount,
       duration,
       totalDuration,
-      price: getBasePrice(type, duration, laneCount, pax, formuleId),
+      price: getBasePrice(type, duration, laneCount, pax, formuleId, centerId),
       requiresLanes,
       label: type === 'formule' ? formule.name : 'Bowling Classique',
       message: slots.length ? '' : 'Aucun créneau disponible pour ces critères.',

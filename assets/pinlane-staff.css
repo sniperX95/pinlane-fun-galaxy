@@ -5434,6 +5434,93 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .pv2-price-stats strong { color: var(--text); font-weight: 600; }
 
+/* -- Editeur tarifaire client (badges sur la carte + modale) --------------- */
+.pev-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.pev-card-foot { padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+.pev-removed { opacity: 0.62; }
+.pev-removed .pv2-price-amount { text-decoration: line-through; text-decoration-thickness: 1px; }
+
+/* La modale reutilise .overlay-backdrop (scrim, z-index) + .modal-surface. */
+.pev-overlay { display: grid; place-items: center; padding: var(--space-4); }
+
+.pev-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: min(88vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pev-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.pev-modal-head h3 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.pev-modal-head p { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 4px; }
+
+.pev-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pev-close:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+.pev-close:disabled { opacity: 0.5; cursor: default; }
+
+.pev-modal-body {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  overflow-y: auto;
+}
+
+.pev-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.pev-field { gap: 6px; }
+
+.pev-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.pev-toggle-label { display: grid; gap: 2px; font-size: 13px; font-weight: 500; color: var(--text); }
+.pev-toggle-label small { font-weight: 400; font-size: 11px; color: var(--faint); }
+
+.pev-modal-error {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pev-modal-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--line);
+}
+.pev-foot-note { margin-right: auto; color: var(--faint); font-size: 11px; }
+
+@media (max-width: 520px) {
+  .pev-grid2 { grid-template-columns: 1fr; }
+}
+
 /* ----------------------------------------------------------------------------
    15b. CAMPAGNES : parcours gamifié « agence marketing » (style Duolingo)
    Structure motivante (niveaux, XP, streak, chemin de missions) sur l'identité

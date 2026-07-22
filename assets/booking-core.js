@@ -385,6 +385,24 @@ function getRequiredLaneCount(type, pax, formuleId) {
   if (normal > laneCount && players <= laneCount * getEmergencyMaxPerLane()) return laneCount;
   return normal;
 }
+// Resolution d'une formule pour l'AFFICHAGE prix/nom : si l'app a charge le
+// catalogue effectif du centre (window.__pinlaneDisplayFormules, aligne sur le
+// serveur et le formulaire public via getEffectiveFormules), on lit CE prix la ;
+// sinon fallback sur le catalogue statique. Garde la carte formule ET la ligne
+// total du recap coherentes avec le prix reellement facture par le serveur.
+// (Le montant facture reste recalcule cote serveur : ceci ne corrige QUE
+// l'affichage client, jamais la source de verite.)
+function resolveDisplayFormule(formuleId) {
+  if (!formuleId) return null;
+  const display = (typeof window !== 'undefined' && Array.isArray(window.__pinlaneDisplayFormules))
+    ? window.__pinlaneDisplayFormules
+    : null;
+  if (display) {
+    const hit = display.find(x => x && x.id === formuleId);
+    if (hit) return hit;
+  }
+  return FORMULES.find(x => x.id === formuleId) || null;
+}
 function getBasePrice(type, duration, laneCount, pax, formuleId) {
   if (type === 'bowling') return (getBowlingPrices()[duration] || 0) * laneCount;
   if (type === 'laser') {
@@ -392,7 +410,7 @@ function getBasePrice(type, duration, laneCount, pax, formuleId) {
     const option = options.find(x => Number(x.value) === Number(duration)) || options[0];
     return option.price * pax;
   }
-  const formule = FORMULES.find(x => x.id === formuleId);
+  const formule = resolveDisplayFormule(formuleId);
   if (!formule) return 0;
   return formule.type === 'per_lane' ? formule.price * laneCount : formule.price * pax;
 }

@@ -2148,8 +2148,6 @@ const STAFF_MENU_PAGES = [
   'cockpit',
   'cockpit-clients-platform',
   'cockpit-centres',
-  'cockpit-tarifs',
-  'cockpit-team',
   'cockpit-agents',
   'cockpit-incidents',
   'cockpit-clients'
@@ -2268,8 +2266,6 @@ const STAFF_PAGE_PERMISSION_MAP = {
   cockpit: ['platform.admin'],
   'cockpit-clients-platform': ['platform.admin'],
   'cockpit-centres': ['platform.admin'],
-  'cockpit-tarifs': ['platform.admin'],
-  'cockpit-team': ['platform.admin'],
   'cockpit-agents': ['platform.admin'],
   'cockpit-incidents': ['platform.admin'],
   'cockpit-clients': ['platform.admin']
@@ -4185,7 +4181,7 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
-const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
 function isStaffCockpitActive() {
   return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }
@@ -11118,10 +11114,6 @@ function renderStaff() {
       window.renderPlatformClientsPage(cockpitHost);
     } else if (cockpitPage === 'cockpit-centres' && typeof window.renderFounderCentresPage === 'function') {
       window.renderFounderCentresPage(cockpitHost);
-    } else if (cockpitPage === 'cockpit-tarifs' && typeof window.renderFounderTarifsPage === 'function') {
-      window.renderFounderTarifsPage(cockpitHost);
-    } else if (cockpitPage === 'cockpit-team' && typeof window.renderFounderTeamPage === 'function') {
-      window.renderFounderTeamPage(cockpitHost);
     } else if (typeof renderStaffFounderCockpitPage === 'function') {
       renderStaffFounderCockpitPage(cockpitHost, cockpitPage);
     }
@@ -14987,7 +14979,12 @@ function renderFormules() {
   };
 
   // Les offres désactivées par le staff (Établissement) sont masquées côté client.
-  const processed = FORMULES.filter(f => isOfferEnabled(f.id)).map(f => {
+  // Catalogue override-aware poussé par loadCenterScheduleConfig (prix/nom édités,
+  // formules retirées déjà exclues) ; fallback sur FORMULES statique si absent.
+  const catalogFormules = Array.isArray(window.__pinlaneDisplayFormules) && window.__pinlaneDisplayFormules.length
+    ? window.__pinlaneDisplayFormules
+    : FORMULES;
+  const processed = catalogFormules.filter(f => isOfferEnabled(f.id)).map(f => {
     const availability = getFormuleAvailability(f, state.booking.date, pax);
     const validDay = !f.validDays || f.validDays.includes(day);
     let status = '';
@@ -15121,12 +15118,19 @@ function renderPos() {
 async function loadCenterScheduleConfig() {
   try {
     const payload = await apiRequest(`${API_ENDPOINTS.publicBookingMeta || '/api/public-booking-meta'}?centerId=${encodeURIComponent(getCurrentStaffCenterId ? getCurrentStaffCenterId() : 'libramont')}`, { method: 'GET' });
+    // payload.formules est deja override-aware (prix/nom edites appliques,
+    // formules retirees exclues). On l'expose pour que renderFormules affiche au
+    // tunnel de resa staff la MEME chose que le catalogue public (fix d'affichage).
+    // Fallback sur la constante FORMULES statique si absent, pour ne rien casser.
+    if (Array.isArray(payload?.formules)) {
+      window.__pinlaneDisplayFormules = payload.formules;
+    }
     if (payload?.center && typeof setCenterScheduleConfig === 'function') {
       setCenterScheduleConfig(payload.center);
-      if (state.view === 'client') {
-        updateSchedHint();
-        renderFormules();
-      }
+    }
+    if (state.view === 'client' && (payload?.center || Array.isArray(payload?.formules))) {
+      updateSchedHint();
+      renderFormules();
     }
   } catch (error) {
     // Grille locale conservee.

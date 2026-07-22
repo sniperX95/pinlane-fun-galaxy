@@ -114,7 +114,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
-const { buildFounderCatalog, upsertFormuleOverride, resetFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
+const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
 const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient } = require('../lib/platform-clients');
 
 async function buildContext(body) {
@@ -383,6 +383,21 @@ async function handleGet(req, res, options = {}) {
   // verite ; buildFounderCatalog montre base + overrides pour l'editeur.
   if (action === 'founderCatalog') {
     sendJson(res, 200, await buildFounderCatalog(getPool()));
+    return;
+  }
+
+  // Editeur tarifaire CLIENT (cockpit centre, permission pricing.manage) : le
+  // catalogue scope au centre de SESSION (base + override du centre), pour
+  // prefiller l'editeur avec l'etat courant, formules retirees comprises. Le
+  // centre vient de la session (centerId resolu par resolveEffectiveCenterId au
+  // dispatcher), JAMAIS d'un parametre brut. 'all'/vide est refuse : le
+  // proprietaire platform.admin utilise founderCatalog, pas cette vue.
+  if (action === 'clientCatalog') {
+    const scoped = centerScope(centerId);
+    if (!scoped) {
+      throw createHttpError('Choisissez un centre precis pour editer ses tarifs.', 400);
+    }
+    sendJson(res, 200, await buildClientCatalog(getPool(), scoped));
     return;
   }
 
@@ -1475,6 +1490,30 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 200, { ok: true, action, ...out });
     return;
   }
+
+  // Edition tarifaire CLIENT (cockpit centre, permission pricing.manage) : le
+  // centre de SESSION fait foi (withCenter a deja ecrase body.centerId), et
+  // l'override global 'all' est refuse : un tenant n'edite QUE son propre tarif,
+  // jamais le tarif partage (meme classe de faille que l'escalade de role
+  // updateMemberRole). requireConcreteCenter rejette 'all'/vide (400 sans
+  // ecriture) ; upsertClientFormuleOverride le rejette une seconde fois cote lib
+  // avant toute mutation. Trace au journal par PP1 comme les autres POST.
+  if (action === 'saveClientFormuleOverride') {
+    const targetCenter = requireConcreteCenter('tarif');
+    const out = await upsertClientFormuleOverride(getPool(), {
+      formuleId: body.formuleId,
+      centerId: targetCenter,
+      patch: body.patch || {},
+    });
+    sendJson(res, 200, { ok: true, action, override: out });
+    return;
+  }
+  if (action === 'resetClientFormuleOverride') {
+    const targetCenter = requireConcreteCenter('tarif');
+    const out = await resetClientFormuleOverride(getPool(), { formuleId: body.formuleId, centerId: targetCenter });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
   if (action === 'dismissIncident') {
     const actor = actorFromSession(options.session || {});
     const out = await dismissClientErrorGroup(getPool(), { stackHash: body.stackHash, resolvedBy: actor.actorLabel || actor.actorMemberId || 'fondateur' });
@@ -2205,6 +2244,10 @@ function getRequiredOpsPermission(method, action) {
     // d'activite de ses collegues. settings.manage est accepte en plus car
     // c'est le droit que porte deja la personne qui configure le centre.
     if (action === 'auditLog') return ['direction.view', 'settings.manage'];
+    // Lecture de l'editeur tarifaire CLIENT : meme permission de CENTRE que ses
+    // ecritures (saveClientFormuleOverride), JAMAIS platform.admin. Le fondateur
+    // lit founderCatalog (platform.admin), le client lit clientCatalog.
+    if (action === 'clientCatalog') return 'pricing.manage';
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
@@ -2224,6 +2267,11 @@ function getRequiredOpsPermission(method, action) {
     if (['campaignAudience', 'listCampaigns'].includes(action)) return 'campaigns.manage';
     return 'ai.ops';
   }
+  // Edition tarifaire CLIENT (cockpit centre) : permission de CENTRE
+  // `pricing.manage`, JAMAIS platform.admin (reserve au fondateur). La portee
+  // est forcee au centre de session (withCenter) et l'override global 'all' est
+  // refuse cote lib (upsertClientFormuleOverride) : un tenant n'edite que SON tarif.
+  if (['saveClientFormuleOverride', 'resetClientFormuleOverride'].includes(action)) return 'pricing.manage';
   // Telemetrie d'erreurs : TOUT membre du staff peut rapporter (chaque role
   // reel porte au moins une permission de vue). Pas de permission dediee :
   // le rapport d'un bug ne doit jamais echouer pour cause de droits.

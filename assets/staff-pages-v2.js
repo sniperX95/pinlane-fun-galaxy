@@ -5267,9 +5267,319 @@
     renderStaffPricingPage();
   };
 
+  /* ==========================================================================
+     TARIFS : editeur client (override par centre, permission pricing.manage)
+     Branche sur GET clientCatalog (prefill) + POST saveClientFormuleOverride /
+     resetClientFormuleOverride. Le serveur force le centre de session : l'UI
+     n'envoie JAMAIS de centerId. La modale vit dans document.body pour survivre
+     aux reconstructions innerHTML de la page. Etat hors DOM (pricingEditor),
+     encapsule dans cet IIFE, pas de variable globale sauvage.
+     ======================================================================== */
+
+  const PEV_PRICE_MIN = 0;
+  const PEV_PRICE_MAX = 1000;
+  const PEV_NAME_MAX = 120;
+
+  const pricingEditor = {
+    loaded: false,
+    loading: false,
+    error: '',
+    byId: new Map(),      // formuleId -> entree clientCatalog
+    modal: null,          // null | { formuleId }
+    original: null,       // snapshot effectif a l'ouverture (pour le diff)
+    draft: null,          // valeurs en cours d'edition
+    saving: false,
+    resetting: false,
+    modalError: '',
+  };
+
+  function pevEq(a, b) {
+    return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+  }
+  function pevClampPrice(raw) {
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return null;
+    return Math.min(PEV_PRICE_MAX, Math.max(PEV_PRICE_MIN, v));
+  }
+  function pevToast(message) {
+    if (typeof toast === 'function') toast(message);
+  }
+  function pevEntry(formuleId) {
+    return formuleId ? (pricingEditor.byId.get(String(formuleId)) || null) : null;
+  }
+
+  // Vue d'une ligne du catalogue analytics enrichie de l'etat editable courant
+  // (nom/prix effectifs + badges), sans jamais casser l'analytics existante :
+  // sans entree chargee, on retombe sur les valeurs statiques de la ligne.
+  function pevRowView(row) {
+    const sourceId = row && row.sourceId ? String(row.sourceId) : '';
+    const entry = pevEntry(sourceId);
+    if (!entry || !entry.effective) {
+      return { editable: Boolean(sourceId), sourceId, title: row.title, price: row.price, personnalise: false, removed: false };
+    }
+    const eff = entry.effective;
+    return {
+      editable: true,
+      sourceId,
+      title: eff.name != null ? eff.name : row.title,
+      price: eff.priceValue != null ? eff.priceValue : row.price,
+      personnalise: Boolean(entry.centerOverride),
+      removed: Boolean(eff.removed),
+    };
+  }
+
+  async function pevLoad(force) {
+    if (pricingEditor.loading || (pricingEditor.loaded && !force)) return;
+    pricingEditor.loading = true;
+    pricingEditor.error = '';
+    try {
+      const payload = await apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}?action=clientCatalog`, { method: 'GET' });
+      const list = payload && Array.isArray(payload.formulas) ? payload.formulas : [];
+      pricingEditor.byId = new Map(list.map((f) => [String(f.id), f]));
+      pricingEditor.loaded = true;
+    } catch (error) {
+      pricingEditor.error = (error && error.message) || 'Catalogue indisponible.';
+    } finally {
+      pricingEditor.loading = false;
+      if (typeof isStaffPricingActive === 'function' && isStaffPricingActive()) renderStaffPricingPage();
+    }
+  }
+
+  // Re-fetch + re-render : apres chaque ecriture, la ligne montre immediatement
+  // la nouvelle valeur.
+  function pevReload() {
+    pricingEditor.loaded = false;
+    pevLoad(true);
+  }
+  function pevEnsureLoaded() {
+    if (!pricingEditor.loaded && !pricingEditor.loading && !pricingEditor.error) pevLoad(false);
+  }
+
+  function pevModalBody() {
+    if (!pricingEditor.modal || !pricingEditor.draft) return '';
+    const d = pricingEditor.draft;
+    return `${pricingEditor.modalError ? `<div class="pev-modal-error" role="alert">${esc(pricingEditor.modalError)}</div>` : ''}
+      <div class="field pev-field">
+        <label for="pevName">Nom affiché</label>
+        <input id="pevName" type="text" maxlength="${PEV_NAME_MAX}" value="${d.name == null ? '' : esc(d.name)}" data-autofocus oninput="pevSet('name', this.value)">
+        <span class="field-hint">Laisse le nom du catalogue si tu ne veux pas le changer.</span>
+      </div>
+      <div class="pev-grid2">
+        <div class="field pev-field">
+          <label for="pevPrice">Prix par personne (EUR)</label>
+          <input id="pevPrice" type="number" step="1" min="${PEV_PRICE_MIN}" max="${PEV_PRICE_MAX}" value="${d.priceValue == null ? '' : esc(d.priceValue)}" oninput="pevSetNum('priceValue', this.value)">
+        </div>
+        <div class="field pev-field">
+          <label for="pevOld">Ancien prix barré (EUR)</label>
+          <input id="pevOld" type="number" step="1" min="${PEV_PRICE_MIN}" max="${PEV_PRICE_MAX}" value="${d.priceOld == null ? '' : esc(d.priceOld)}" oninput="pevSetNum('priceOld', this.value)">
+          <span class="field-hint">Affiché barré à côté du prix. Vide = aucun.</span>
+        </div>
+      </div>
+      <div class="pev-toggle-row">
+        <span class="pev-toggle-label">Disponible à la réservation<small>Coupe l'offre pour ton centre sans la retirer du catalogue.</small></span>
+        <button type="button" class="mk-switch ${d.enabled ? 'is-on' : ''}" role="switch" aria-checked="${d.enabled ? 'true' : 'false'}" aria-label="Disponible à la réservation" onclick="pevToggle('enabled', this)"><span></span></button>
+      </div>
+      <div class="pev-toggle-row">
+        <span class="pev-toggle-label">Retirer du catalogue<small>La formule disparaît du tunnel de réservation de ce centre.</small></span>
+        <button type="button" class="mk-switch ${d.removed ? 'is-on' : ''}" role="switch" aria-checked="${d.removed ? 'true' : 'false'}" aria-label="Retirer du catalogue" onclick="pevToggle('removed', this)"><span></span></button>
+      </div>`;
+  }
+
+  function pevModalFoot() {
+    if (!pricingEditor.modal) return '';
+    const entry = pevEntry(pricingEditor.modal.formuleId);
+    const hasOverride = Boolean(entry && entry.centerOverride);
+    const busy = pricingEditor.saving || pricingEditor.resetting;
+    return `<span class="pev-foot-note">Chaque enregistrement est tracé au journal.</span>
+      ${hasOverride ? `<button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="pevReset()">${pricingEditor.resetting ? 'Réinitialisation...' : 'Réinitialiser'}</button>` : ''}
+      <button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="pevCloseModal()">Annuler</button>
+      <button type="button" class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="pevSave()">${pricingEditor.saving ? 'Enregistrement...' : 'Enregistrer'}</button>`;
+  }
+
+  function pevModalTitle() {
+    const entry = pevEntry(pricingEditor.modal && pricingEditor.modal.formuleId);
+    const draftName = pricingEditor.draft && pricingEditor.draft.name;
+    return draftName || (entry && entry.name) || 'Formule';
+  }
+
+  function pevSyncModal() {
+    const existing = document.getElementById('pevOverlay');
+    if (!pricingEditor.modal) { if (existing) existing.remove(); return; }
+    if (existing) return; // deja monte : corps/pied rafraichis en place
+    const overlay = document.createElement('div');
+    overlay.id = 'pevOverlay';
+    overlay.className = 'overlay-backdrop pev-overlay';
+    overlay.innerHTML = `<div class="modal-surface pev-modal" role="dialog" aria-modal="true" aria-labelledby="pevModalTitle">
+      <div class="pev-modal-head">
+        <div><h3 id="pevModalTitle">${esc(pevModalTitle())}</h3><p>Ajuste le tarif de cette formule pour ton centre. Le prix par personne va de 0 à 1000 EUR.</p></div>
+        <button type="button" class="pev-close" aria-label="Fermer" ${pricingEditor.saving || pricingEditor.resetting ? 'disabled' : ''} onclick="pevCloseModal()">&times;</button>
+      </div>
+      <div class="pev-modal-body">${pevModalBody()}</div>
+      <div class="pev-modal-foot">${pevModalFoot()}</div>
+    </div>`;
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay && !pricingEditor.saving && !pricingEditor.resetting) window.pevCloseModal();
+    });
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => {
+      const f = overlay.querySelector('[data-autofocus]');
+      if (f) { try { f.focus(); } catch (_) { /* focus best effort */ } }
+    });
+  }
+
+  function pevRefreshBody() {
+    const body = document.querySelector('#pevOverlay .pev-modal-body');
+    if (body) body.innerHTML = pevModalBody();
+  }
+  function pevRefreshFoot() {
+    const foot = document.querySelector('#pevOverlay .pev-modal-foot');
+    if (foot) foot.innerHTML = pevModalFoot();
+    const close = document.querySelector('#pevOverlay .pev-close');
+    if (close) close.disabled = pricingEditor.saving || pricingEditor.resetting;
+  }
+
+  // Ferme sans garde (apres une ecriture reussie : les flags busy sont remis).
+  function pevDismissModal() {
+    pricingEditor.modal = null;
+    pricingEditor.original = null;
+    pricingEditor.draft = null;
+    pricingEditor.saving = false;
+    pricingEditor.resetting = false;
+    pricingEditor.modalError = '';
+    const overlay = document.getElementById('pevOverlay');
+    if (overlay) overlay.remove();
+  }
+
+  window.pevOpenEdit = function (formuleId) {
+    const entry = pevEntry(formuleId);
+    if (!entry || !entry.effective) {
+      pevToast('Catalogue en cours de chargement, réessaie dans un instant.');
+      pevEnsureLoaded();
+      return;
+    }
+    const eff = entry.effective;
+    const snapshot = {
+      name: eff.name != null ? String(eff.name) : '',
+      priceValue: eff.priceValue != null ? Number(eff.priceValue) : null,
+      priceOld: eff.priceOld != null ? Number(eff.priceOld) : null,
+      enabled: eff.enabled !== false,
+      removed: Boolean(eff.removed),
+    };
+    pricingEditor.original = { ...snapshot };
+    pricingEditor.draft = { ...snapshot };
+    pricingEditor.modalError = '';
+    pricingEditor.saving = false;
+    pricingEditor.resetting = false;
+    pricingEditor.modal = { formuleId: String(formuleId) };
+    pevSyncModal();
+  };
+
+  window.pevSet = function (path, value) {
+    if (!pricingEditor.draft) return;
+    if (path === 'name') pricingEditor.draft.name = String(value == null ? '' : value);
+  };
+  window.pevSetNum = function (path, raw) {
+    if (!pricingEditor.draft) return;
+    if (path !== 'priceValue' && path !== 'priceOld') return;
+    if (raw === '' || raw == null) { pricingEditor.draft[path] = null; return; }
+    pricingEditor.draft[path] = pevClampPrice(raw);
+  };
+  window.pevToggle = function (path, btn) {
+    if (!pricingEditor.draft) return;
+    if (path !== 'enabled' && path !== 'removed') return;
+    const next = !pricingEditor.draft[path];
+    pricingEditor.draft[path] = next;
+    if (btn && btn.classList) {
+      btn.classList.toggle('is-on', next);
+      btn.setAttribute('aria-checked', String(next));
+    }
+  };
+  window.pevCloseModal = function () {
+    if (pricingEditor.saving || pricingEditor.resetting) return;
+    pevDismissModal();
+  };
+
+  // Patch PARTIEL : seuls les champs reellement changes voyagent. Les cles
+  // suivent le contrat serveur (name, priceValue, priceOld, enabled, removed).
+  // JAMAIS de centerId : le serveur force le centre de session.
+  function pevComputePatch() {
+    const o = pricingEditor.original || {};
+    const d = pricingEditor.draft || {};
+    const patch = {};
+    if (!pevEq(d.name, o.name)) patch.name = String(d.name == null ? '' : d.name).trim().slice(0, PEV_NAME_MAX);
+    if (!pevEq(d.priceValue, o.priceValue)) patch.priceValue = d.priceValue;
+    if (!pevEq(d.priceOld, o.priceOld)) patch.priceOld = d.priceOld;
+    if (!pevEq(d.enabled, o.enabled)) patch.enabled = Boolean(d.enabled);
+    if (!pevEq(d.removed, o.removed)) patch.removed = Boolean(d.removed);
+    return patch;
+  }
+
+  window.pevSave = function () {
+    if (pricingEditor.saving || pricingEditor.resetting || !pricingEditor.modal) return;
+    const patch = pevComputePatch();
+    if (!Object.keys(patch).length) { pevToast('Aucun changement à enregistrer.'); return; }
+    if ('priceValue' in patch && (patch.priceValue == null || !Number.isFinite(patch.priceValue))) {
+      pricingEditor.modalError = 'Indique un prix par personne entre 0 et 1000 EUR.';
+      pevRefreshBody(); pevRefreshFoot();
+      return;
+    }
+    if ('name' in patch && !patch.name) {
+      pricingEditor.modalError = 'Le nom ne peut pas être vide. Réinitialise pour revenir au nom du catalogue.';
+      pevRefreshBody(); pevRefreshFoot();
+      return;
+    }
+    pricingEditor.saving = true;
+    pricingEditor.modalError = '';
+    pevRefreshFoot();
+    const formuleId = pricingEditor.modal.formuleId;
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveClientFormuleOverride', formuleId, patch }),
+    }).then(() => {
+      pevToast('Tarif mis à jour.');
+      pevDismissModal();
+      pevReload();
+    }).catch((error) => {
+      pricingEditor.saving = false;
+      pricingEditor.modalError = (error && error.message) || 'Enregistrement refusé. Réessaie.';
+      pevRefreshBody(); pevRefreshFoot();
+    });
+  };
+
+  window.pevReset = function () {
+    if (pricingEditor.saving || pricingEditor.resetting || !pricingEditor.modal) return;
+    pricingEditor.resetting = true;
+    pricingEditor.modalError = '';
+    pevRefreshFoot();
+    const formuleId = pricingEditor.modal.formuleId;
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'resetClientFormuleOverride', formuleId }),
+    }).then(() => {
+      pevToast('Tarif réinitialisé.');
+      pevDismissModal();
+      pevReload();
+    }).catch((error) => {
+      pricingEditor.resetting = false;
+      pricingEditor.modalError = (error && error.message) || 'Réinitialisation refusée. Réessaie.';
+      pevRefreshBody(); pevRefreshFoot();
+    });
+  };
+
+  if (!window.__pevKeydownBound) {
+    window.__pevKeydownBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && pricingEditor.modal && !pricingEditor.saving && !pricingEditor.resetting) {
+        e.preventDefault();
+        window.pevCloseModal();
+      }
+    });
+  }
+
   window.renderStaffPricingPage = function () {
     const root = document.getElementById('staffPricingPage');
     if (!root) return;
+    pevEnsureLoaded();
     const allRows = getPricingRows();
     const rows = getPricingRowsFiltered();
     const selected = getSelectedPricingRow(rows);
@@ -5279,11 +5589,15 @@
     const countByType = (type) => allRows.filter((row) => row.type === type).length;
 
     const ranking = state.staffPricingSort || 'default';
-    const cards = rows.map((row, index) => `<article class="pv2-price-card ${selected && row.id === selected.id ? 'selected' : ''}" onclick="pv2SelectPricing('${escJs(row.id)}')">
+    const cards = rows.map((row, index) => {
+      const view = pevRowView(row);
+      const badges = `${view.removed ? '<span class="pv2-chip red">retirée</span>' : ''}${view.personnalise ? '<span class="pv2-chip amber">personnalisé</span>' : ''}`;
+      return `<article class="pv2-price-card ${selected && row.id === selected.id ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}" onclick="pv2SelectPricing('${escJs(row.id)}')">
       <div class="pv2-price-head">
-        <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(row.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
-        <div class="pv2-price-amount">${money(row.price)}<small> ${esc(row.type === 'formula' ? '/pers' : row.type === 'bowling' ? '/piste' : '')}</small></div>
+        <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(view.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
+        <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.type === 'formula' ? '/pers' : row.type === 'bowling' ? '/piste' : '')}</small></div>
       </div>
+      ${badges ? `<div class="pev-badges">${badges}</div>` : ''}
       <p class="pv2-price-desc">${esc(row.description || '')}</p>
       <div class="pv2-price-tags">${(row.tags || []).slice(0, 4).map((tag) => `<span class="pv2-chip">${esc(tag)}</span>`).join('')}</div>
       <div class="pv2-price-stats">
@@ -5292,7 +5606,9 @@
         <span><strong>${money(row.revenue)}</strong></span>
         <span><strong>${Number(row.count) ? money(Number(row.revenue || 0) / Number(row.count)) : '-'}</strong> panier</span>
       </div>
-    </article>`).join('');
+      ${view.editable ? `<div class="pev-card-foot"><button type="button" class="pv2-btn" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Modifier</button></div>` : ''}
+    </article>`;
+    }).join('');
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
@@ -5330,6 +5646,7 @@
       <section class="pv2-catalog">${cards || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</section>
     </div>`;
     mount(root, 'pricing');
+    pevSyncModal();
   };
 
   /* ==========================================================================

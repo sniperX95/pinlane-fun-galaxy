@@ -45,8 +45,6 @@ const PLATFORM_PAGES = [
   { key: 'cockpit-clients-platform', title: 'Clients Pinlane' },
   { key: 'cockpit', title: 'Cockpit fondateur' },
   { key: 'cockpit-centres', title: 'Centres' },
-  { key: 'cockpit-tarifs', title: 'Tarifs et formules' },
-  { key: 'cockpit-team', title: 'Equipe et acces' },
   { key: 'cockpit-agents', title: 'Agents IA' },
   { key: 'cockpit-incidents', title: 'Incidents' },
 ];
@@ -401,12 +399,12 @@ async function probeCockpitClick(browser) {
     mutationOriginal = original;
     const nl = original.includes('\r\n') ? '\r\n' : '\n';
     const ANCHOR = [
-      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('staff');",
     ].join(nl);
     const MUTATED = [
-      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-tarifs', 'cockpit-team', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('admin');",
     ].join(nl);

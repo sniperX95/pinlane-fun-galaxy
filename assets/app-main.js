@@ -1887,8 +1887,53 @@ function getStaffEmailFailureGroups(rows = []) {
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
 
+// Liste des centres SCOPEE au tenant (action ops=menuCenters, filtree serveur).
+// C'est la SOURCE de verite du switcher de centre et des cartes centre : un
+// client n'y voit que ses centres, le proprietaire (owner=true) tous les
+// centres avec clientId/clientName pour les grouper. Tant qu'elle n'est pas
+// chargee, on retombe sur knowledge.centers (deja scope serveur) puis sur les
+// replis statiques : aucune de ces sources ne provient d'un autre tenant.
+let scopedCentersCache = { loaded: false, loading: false, error: '', centers: [], owner: false };
+
+async function loadMenuCenters(force = false) {
+  if (scopedCentersCache.loading) return;
+  if (scopedCentersCache.loaded && !force) return;
+  if (!hasSavedAuth()) return;
+  scopedCentersCache.loading = true;
+  try {
+    const response = await apiRequest(`${API_ENDPOINTS.ops}?action=menuCenters`);
+    scopedCentersCache = {
+      loaded: true,
+      loading: false,
+      error: '',
+      centers: Array.isArray(response.centers) ? response.centers : [],
+      owner: !!response.owner
+    };
+    if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
+  } catch (error) {
+    scopedCentersCache.loading = false;
+    scopedCentersCache.error = error?.message || 'Lecture des centres impossible.';
+  }
+}
+if (typeof window !== 'undefined') window.loadMenuCenters = loadMenuCenters;
+
+function getScopedCenters() {
+  return scopedCentersCache.loaded && scopedCentersCache.centers.length ? scopedCentersCache.centers : null;
+}
+
+function isCenterScopeOwner() {
+  return !!scopedCentersCache.owner;
+}
+
 function getAdminCenters() {
-  return adminDashboardCache.knowledge?.centers?.length ? adminDashboardCache.knowledge.centers : ADMIN_CENTER_FALLBACKS;
+  // Repli statique = SEULEMENT le centre courant de la session (jamais la liste
+  // codee en dur des 3 centres Fun Galaxy). Fun Galaxy y retrouve son centre
+  // avec ses ressources ; un autre tenant obtient une liste vide plutot que les
+  // noms Fun Galaxy en flash avant que la liste scopee serveur reponde.
+  return getScopedCenters()
+    || (adminDashboardCache.knowledge?.centers?.length
+      ? adminDashboardCache.knowledge.centers
+      : ADMIN_CENTER_FALLBACKS.filter(center => center.id === state.adminCenterId));
 }
 
 function getAdminCenter(centerId = state.adminCenterId) {
@@ -2398,6 +2443,10 @@ async function loadStaffAuthSession(options = {}) {
     storeStaffAuthSession(payload.session);
     if (payload.accessControl) state.staffAccessControl = payload.accessControl;
     save();
+    // Charge la liste des centres SCOPEE au tenant des que la session est prete,
+    // pour que le switcher n'affiche jamais un centre d'un autre client (meme
+    // avant l'ouverture de la Direction). Non bloquant.
+    loadMenuCenters(true);
     return true;
   } catch (error) {
     if (!options.silent) toast(error.message || 'Session staff invalide.');
@@ -7401,6 +7450,53 @@ function selectEstablishmentCenter(id) {
   renderStaffUtilityPage();
 }
 
+// Groupe une liste de centres par client. Sert au groupement de la vue
+// PROPRIETAIRE (plusieurs clients) ; pour un client (un seul groupe) le rendu
+// reste une liste plate. Trie : clients par nom, orphelins (sans client) en fin.
+function groupCentersByClient(centers = []) {
+  const groups = new Map();
+  centers.forEach(c => {
+    const key = c.clientId || '';
+    if (!groups.has(key)) groups.set(key, { clientId: c.clientId || null, clientName: c.clientName || null, centers: [] });
+    groups.get(key).centers.push(c);
+  });
+  return [...groups.values()].sort((a, b) => {
+    if (!a.clientName && b.clientName) return 1;
+    if (a.clientName && !b.clientName) return -1;
+    return String(a.clientName || '').localeCompare(String(b.clientName || ''), 'fr');
+  });
+}
+
+function establishmentCenterChip(c, activeId, statusLabels) {
+  return `<button type="button" class="establishment-center-chip ${c.id === activeId ? 'active' : ''}" onclick="selectEstablishmentCenter('${escapeJsString(c.id)}')">
+          <span class="establishment-chip-top">
+            <strong>${escapeHtml(c.name)}</strong>
+            <span class="establishment-status establishment-status-${escapeHtml(c.status)}">${escapeHtml(statusLabels[c.status] || c.status)}</span>
+          </span>
+          <small>${Number(c.resources?.bowling?.laneCount || 0)} pistes · ${Number(c.resources?.laser?.weaponCount || 0)} armes laser</small>
+        </button>`;
+}
+
+// En-tete de groupe client : element pleine largeur (flex-basis 100%) insere
+// dans le conteneur flex existant (aucune modif CSS requise), qui force un
+// retour a la ligne avant les centres du client.
+function establishmentClientHeader(label) {
+  return `<span class="establishment-center-group-head" style="flex:0 0 100%;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin:6px 2px 0">${escapeHtml(label)}</span>`;
+}
+
+// Rendu des chips de centre : plat pour un client, groupe par client pour le
+// proprietaire (des que la liste couvre plusieurs clients).
+function renderEstablishmentCenterChips(centers, activeId, statusLabels) {
+  const groups = groupCentersByClient(centers);
+  if (groups.length <= 1) {
+    return centers.map(c => establishmentCenterChip(c, activeId, statusLabels)).join('');
+  }
+  return groups.map(group =>
+    establishmentClientHeader(group.clientName || 'Sans client')
+    + group.centers.map(c => establishmentCenterChip(c, activeId, statusLabels)).join('')
+  ).join('');
+}
+
 // Brouillon des overrides ponctuels (jour forcé vacances/normal) pendant
 // l'édition : manipulé en direct dans le DOM pour ne pas perdre les autres
 // champs non sauvegardés à chaque ajout/retrait.
@@ -7792,13 +7888,7 @@ function renderStaffUtilityEstablishment() {
         <div><h2>Centres</h2><p>${centers.length} centre${centers.length > 1 ? 's' : ''} · sélectionne un centre pour voir ou modifier sa configuration</p></div>
       </div>
       <div class="establishment-center-list">
-        ${centers.map(c => `<button type="button" class="establishment-center-chip ${c.id === center.id ? 'active' : ''}" onclick="selectEstablishmentCenter('${escapeJsString(c.id)}')">
-          <span class="establishment-chip-top">
-            <strong>${escapeHtml(c.name)}</strong>
-            <span class="establishment-status establishment-status-${escapeHtml(c.status)}">${escapeHtml(statusLabels[c.status] || c.status)}</span>
-          </span>
-          <small>${Number(c.resources?.bowling?.laneCount || 0)} pistes · ${Number(c.resources?.laser?.weaponCount || 0)} armes laser</small>
-        </button>`).join('')}
+        ${renderEstablishmentCenterChips(centers, center.id, statusLabels)}
         ${canEdit ? `<div class="establishment-add">
           <span>Ajouter un centre</span>
           <input type="text" id="estab-new-id" placeholder="Identifiant (ex : namur)" autocomplete="off">

@@ -109,6 +109,8 @@ const {
   upsertCenter,
   setCenterStatus,
 } = require('../lib/center-config');
+const { listCentersForSession } = require('../lib/center-scope');
+const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { requireStaffPermission } = require('../lib/staff-auth');
@@ -241,15 +243,40 @@ async function handleGet(req, res, options = {}) {
 
   if (action === 'knowledge') {
     const knowledge = loadOpsKnowledge();
+    // Isolation multi-tenant : la liste `centers` est SCOPEE a la session, jamais
+    // la liste complete du fichier baseline. Sans ce scope, un client non-Fun
+    // Galaxy recevrait dans la reponse brute les centres d'un autre tenant. Le
+    // reste du bundle (activites/formules/regles) est agnostique au centre.
+    let centers;
+    try {
+      centers = await listCentersForSession(getPool(), options.session);
+    } catch (error) {
+      // Fail-soft interne au helper deja ; ici on retombe sur le seul centre de
+      // session par prudence, jamais sur la liste complete.
+      centers = knowledge.centers.filter((c) => c && c.id === (options.session && options.session.centerId));
+    }
     sendJson(res, 200, {
       ok: true,
       schemaVersion: knowledge.schemaVersion,
-      centers: knowledge.centers,
+      centers,
       activities: knowledge.activities,
       formulas: knowledge.formulas,
       rules: knowledge.rules,
       competitivePlaybook: knowledge.competitivePlaybook,
     });
+    return;
+  }
+
+  // Liste des centres SCOPEE au tenant, source dediee du SWITCHER de centre du
+  // menu staff (assets/staff-menu.js). Action GET AUTHENTIFIEE (le dispatcher
+  // exige une session pour toute action ops, voir getRequiredOpsPermission :
+  // menuCenters requiert au moins une permission de lecture, donc tout role
+  // reel). Un client ne recoit QUE ses centres ; le proprietaire (platform.admin)
+  // recoit TOUS les centres avec clientId + clientName pour les grouper.
+  if (action === 'menuCenters') {
+    const centers = await listCentersForSession(getPool(), options.session);
+    const owner = sessionHasPermission(options.session, 'platform.admin');
+    sendJson(res, 200, { ok: true, centers, owner });
     return;
   }
 
@@ -734,7 +761,11 @@ async function handleGet(req, res, options = {}) {
     } catch (error) {
       // Fall back to file baseline if the refresh fails.
     }
-    const centers = await listCenterConfigs(pool);
+    // Isolation multi-tenant : la page Etablissement ne recoit QUE les centres
+    // du client de la session (ou tous, avec clientId/clientName, pour le
+    // proprietaire platform.admin). Remplace listCenterConfigs (qui rendait TOUS
+    // les centres, dont ceux d'autres clients) par la liste scopee serveur.
+    const centers = await listCentersForSession(pool, session);
     const knowledge = loadOpsKnowledge();
     const activities = (knowledge.activities || []).map((activity) => ({
       id: activity.id,
@@ -2434,6 +2465,10 @@ function getRequiredOpsPermission(method, action) {
     if (action === 'listAvailabilityBlocks') return 'settings.manage';
     if (action === 'job') return ['dashboard.view', 'ai.ops', 'campaigns.manage', 'marketing.agents'];
     if (action === 'knowledge') return ['dashboard.view', 'planning.view', 'ai.ops'];
+    // Le switcher de centre doit se peupler pour TOUT role reel (chaque preset
+    // porte au moins une permission de vue). La liste renvoyee est deja scopee
+    // au tenant par listCentersForSession : aucune fuite meme au plus bas droit.
+    if (action === 'menuCenters') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
     if (action === 'customRequests') return ['clients.view', 'reservations.view', 'dashboard.view'];
     if (['directionAnalytics', 'directionReports', 'emailInsights', 'directionComparison', 'directionRetention', 'directionAudience'].includes(action)) return 'direction.view';
     if (action === 'dashboardAnalytics') return ['dashboard.view', 'direction.view'];
@@ -2577,7 +2612,7 @@ module.exports = async (req, res) => {
         centerId: requestedCenterId,
       });
       if (!session) return;
-      await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId) });
+      await handleGet(req, res, { centerId: resolveEffectiveCenterId(session, requestedCenterId), session });
       return;
     }
     if (req.method === 'POST') {

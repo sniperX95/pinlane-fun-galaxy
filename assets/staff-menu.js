@@ -188,15 +188,23 @@
             id: center.id || center.slug || 'libramont',
             name: center.name || center.label || 'Fun Galaxy Centre',
             label: center.shortName || center.label || center.name || 'Fun Galaxy Centre',
-            meta: center.meta || center.summary || `${center.bowlingLanes || 8} pistes · ${center.laserGuns || 30} armes laser`,
-            status: center.status === 'planned' ? 'Prévu' : 'Actif'
+            meta: center.meta || center.summary || `${Number(center.resources?.bowling?.laneCount || center.bowlingLanes || 8)} pistes · ${Number(center.resources?.laser?.weaponCount || center.laserGuns || 30)} armes laser`,
+            status: center.status === 'planned' ? 'Prévu' : (center.status === 'closed' ? 'Archivé' : 'Actif'),
+            // clientId/clientName : sert au GROUPEMENT par client cote proprietaire.
+            // Un client n'a qu'un seul clientId dans sa liste (deja scopee serveur),
+            // donc son switcher reste une liste plate.
+            clientId: center.clientId || null,
+            clientName: center.clientName || null
           }));
         }
       }
     } catch (error) {
       console.warn('[staff-menu] centres fallback', error);
     }
-    return FALLBACK_CENTERS;
+    // Repli ultime : SEULEMENT le centre courant de la session, jamais la liste
+    // codee en dur des centres Fun Galaxy (un autre tenant ne doit pas les voir
+    // meme en flash avant la reponse scopee serveur).
+    return FALLBACK_CENTERS.filter(center => center.id === getSelectedCenterId());
   }
 
   function getSelectedCenterId() {
@@ -212,11 +220,15 @@
 
   function getSelectedCenter() {
     const centers = getMenuCenters();
-    return centers.find(center => center.id === getSelectedCenterId()) || centers[0] || FALLBACK_CENTERS[0];
+    const selectedId = getSelectedCenterId();
+    return centers.find(center => center.id === selectedId)
+      || centers[0]
+      || FALLBACK_CENTERS.find(center => center.id === selectedId)
+      || { id: selectedId, name: 'Centre actuel', label: 'Centre actuel', status: 'Actif' };
   }
 
   function centerDisplayName(center = getSelectedCenter()) {
-    return center?.name || center?.label || 'Fun Galaxy Centre';
+    return center?.name || center?.label || 'Centre actuel';
   }
 
   function getCurrentSession() {
@@ -476,16 +488,27 @@
     positionPopover(popover, anchor, kind);
   }
 
-  function toggleCenterMenu(anchor) {
-    const selectedId = getSelectedCenterId();
-    // Sans la permission centers.switch, le rôle ne voit que son centre courant
-    // (aucun autre centre à sélectionner) : on n'affiche pas d'action interdite.
-    const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
-    const canDirection = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('direction.view');
-    const centers = canSwitch ? getMenuCenters() : getMenuCenters().filter(center => center.id === selectedId);
-    const options = centers.map(center => {
-      const isActive = center.id === selectedId;
-      return `
+  // Groupe les centres par client. Pour un CLIENT, la liste (deja scopee
+  // serveur) ne couvre qu'un client -> un seul groupe -> liste plate. Pour le
+  // PROPRIETAIRE, plusieurs clients -> groupes avec en-tete client. Orphelins
+  // (sans client) en fin.
+  function groupMenuCentersByClient(centers) {
+    const groups = new Map();
+    centers.forEach(center => {
+      const key = center.clientId || '';
+      if (!groups.has(key)) groups.set(key, { clientName: center.clientName || null, centers: [] });
+      groups.get(key).centers.push(center);
+    });
+    return [...groups.values()].sort((a, b) => {
+      if (!a.clientName && b.clientName) return 1;
+      if (a.clientName && !b.clientName) return -1;
+      return String(a.clientName || '').localeCompare(String(b.clientName || ''), 'fr');
+    });
+  }
+
+  function centerOptionMarkup(center, selectedId) {
+    const isActive = center.id === selectedId;
+    return `
         <button type="button" class="fgx-menu-option fgx-center-option${isActive ? ' is-active' : ''}" data-fgx-center-option="${escapeHtml(center.id)}" role="menuitem">
           <span>
             <strong>${escapeHtml(centerDisplayName(center))}</strong>
@@ -494,7 +517,24 @@
           <em>${escapeHtml(center.status || 'Actif')}</em>
         </button>
       `;
-    }).join('');
+  }
+
+  function toggleCenterMenu(anchor) {
+    const selectedId = getSelectedCenterId();
+    // Sans la permission centers.switch, le rôle ne voit que son centre courant
+    // (aucun autre centre à sélectionner) : on n'affiche pas d'action interdite.
+    const canSwitch = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('centers.switch');
+    const canDirection = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('direction.view');
+    const centers = canSwitch ? getMenuCenters() : getMenuCenters().filter(center => center.id === selectedId);
+    const groups = groupMenuCentersByClient(centers);
+    // Groupement par client seulement quand la liste couvre PLUSIEURS clients
+    // (vue proprietaire). Un client garde une liste plate.
+    const options = groups.length > 1
+      ? groups.map(group => `
+        <div class="fgx-center-group-head" style="padding:8px 12px 2px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.55">${escapeHtml(group.clientName || 'Sans client')}</div>
+        ${group.centers.map(center => centerOptionMarkup(center, selectedId)).join('')}
+      `).join('')
+      : centers.map(center => centerOptionMarkup(center, selectedId)).join('');
     openMenuPopover('center', anchor, `
       <div class="fgx-menu-popover-title">${canSwitch ? 'Changer de centre' : 'Centre'}</div>
       <div class="fgx-menu-options">${options}</div>
@@ -573,9 +613,15 @@
       closeMenuPopover();
       return;
     }
+    const previousId = getSelectedCenterId();
+    closeMenuPopover();
+    if (centerId === previousId) return;
     try {
       if (typeof state !== 'undefined') {
         state.adminCenterId = centerId;
+        // La page Etablissement suit le centre actif du switcher.
+        state.establishmentCenterId = centerId;
+        // Force la re-lecture des droits/config pour le nouveau centre.
         state.staffAccessControl = null;
       }
       if (typeof save === 'function') {
@@ -584,19 +630,23 @@
     } catch (error) {
       console.warn('[staff-menu] center save failed', error);
     }
-    closeMenuPopover();
-    if (typeof loadStaffAuthSession === 'function') {
-      loadStaffAuthSession({ silent: true }).then(() => {
+    // On RESTE dans la vue courante : changer de centre ne doit pas ejecter
+    // l'utilisateur vers la Direction (ancien bug : tout centre != libramont
+    // forcait setView('admin')). On rafraichit seulement les donnees du centre.
+    const applyActiveView = () => {
+      if (typeof state !== 'undefined' && state.view === 'admin') {
+        if (typeof setAdminCenter === 'function') setAdminCenter(centerId);
+        else if (typeof openAdminCenter === 'function') openAdminCenter(centerId);
+      } else {
+        if (typeof loadStaffCenterConfig === 'function') loadStaffCenterConfig(true);
         if (typeof renderStaff === 'function' && typeof state !== 'undefined' && state.view === 'staff') renderStaff();
-        renderMenu();
-      });
-    }
-    if (centerId !== 'libramont') {
-      if (typeof setView === 'function') setView('admin');
-      if (typeof openAdminCenter === 'function') openAdminCenter(centerId);
-      else if (typeof setAdminCenter === 'function') setAdminCenter(centerId);
-    } else if (typeof renderStaff === 'function' && typeof state !== 'undefined' && state.view === 'staff') {
-      renderStaff();
+      }
+      renderMenu();
+    };
+    if (typeof loadStaffAuthSession === 'function') {
+      loadStaffAuthSession({ silent: true }).then(applyActiveView).catch(applyActiveView);
+    } else {
+      applyActiveView();
     }
     renderMenu();
   }

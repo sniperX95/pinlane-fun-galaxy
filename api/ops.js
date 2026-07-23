@@ -118,7 +118,7 @@ const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFou
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
 const catalogStore = require('../lib/catalog-store');
-const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient, setClientBilling } = require('../lib/platform-clients');
+const { buildPlatformClients, provisionClient, updateClientStatus, addCenterToClient, setClientBilling, deleteCenter, deleteClient } = require('../lib/platform-clients');
 const { upsertAvailabilityBlock, deleteAvailabilityBlock, listAvailabilityBlocks, refreshAvailabilityBlocks } = require('../lib/availability-blocks');
 // refreshFormuleOverrides : la carte des overrides catalogue (prix / retrait)
 // vit dans lib/booking-config ; action=plan doit la rafraichir comme le fait
@@ -1551,6 +1551,27 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     sendJson(res, 200, { ok: true, action, ...out });
     return;
   }
+  // Suppression PROPRIETAIRE (nettoyage des donnees de test avant lancement).
+  // Gate platform.admin (getRequiredOpsPermission), trace au journal par PP1.
+  // La politique d'integrite vit dans lib/platform-clients : centre baseline
+  // (fichier) refuse, centre avec reservations refuse, client avec centres
+  // refuse (bloque, jamais de cascade silencieuse). L'id cible voyage dans
+  // body.id (comme updateClientStatus), JAMAIS dans body.centerId : withCenter
+  // ecrase ce champ avec le centre de session.
+  if (action === 'deleteClient') {
+    const out = await deleteClient(getPool(), { id: body.id });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
+  if (action === 'deleteCenter') {
+    const pool = getPool();
+    const out = await deleteCenter(pool, { id: body.id });
+    // Le cache centres (fusion baseline + overrides DB) doit oublier le centre
+    // supprime, meme reflexe que saveCenter / setCenterStatus.
+    await refreshCenterOverrides(pool, { force: true });
+    sendJson(res, 200, { ok: true, action, ...out });
+    return;
+  }
 
   // Catalogue no-code : editer/retirer une formule (override par-dessus le
   // socle), remettre a zero, ou ecarter un incident console resolu. Tout est
@@ -2441,7 +2462,7 @@ function getRequiredOpsPermission(method, action) {
   // Cockpit fondateur : permission de niveau PLATEFORME, jamais conferee par
   // un role verrouille (voir sessionHasPermission, lib/staff-auth.js). Une
   // session Direction recoit ici un 403, trace outcome=denied par PP2.
-  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'setClientBilling', 'requeueOpsJob'].includes(action)) return 'platform.admin';
+  if (['founderCockpit', 'founderAuditLog', 'founderAgents', 'founderIncidents', 'founderClients', 'founderCenters', 'founderTeam', 'founderCatalog', 'saveFormuleOverride', 'resetFormuleOverride', 'dismissIncident', 'platformClients', 'createClient', 'updateClientStatus', 'addClientCenter', 'setClientBilling', 'deleteClient', 'deleteCenter', 'requeueOpsJob'].includes(action)) return 'platform.admin';
   // Outillage FONDATEUR (stack IA, audit de stack) : longtemps derriere ai.ops,
   // une permission DE CENTRE que tout role Direction verrouille possede. Une
   // revue adverse a montre le trou : l'ecran cachait ces panneaux mais le
@@ -2583,6 +2604,10 @@ function auditEntityFor(action, body = {}) {
   if (/^(saveCenterConfig|saveCenter|setCenterStatus)$/.test(action)) {
     return { entityType: 'center', entityId: body.centerId || body.center_id || '' };
   }
+  // Suppressions proprietaire : l'id cible est body.id (withCenter ecrase
+  // body.centerId avec le centre de session, voir le handler).
+  if (action === 'deleteCenter') return { entityType: 'center', entityId: body.id || '' };
+  if (action === 'deleteClient') return { entityType: 'client', entityId: body.id || '' };
   // CRUD catalogue : l entite est la formule / l activite editee (id dans le
   // corps, ou dans l objet cree). Rend la piste "l historique de CET objet" utile.
   if (/Formula/.test(action)) return { entityType: 'formula', entityId: body.id || (body.formula && body.formula.id) || '' };

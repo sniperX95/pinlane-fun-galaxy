@@ -272,6 +272,7 @@
       </div>
       <div class="fck-card-foot">
         ${statusSelect(center)}
+        <button type="button" class="pv2-btn fck-danger-btn" onclick="fcaDeleteCenter('${escJs(id)}')" aria-label="Supprimer le centre ${esc(center.name || id)}">Supprimer</button>
         <button type="button" class="pv2-btn" onclick="fcaOpenConfig('${escJs(id)}')">Configurer</button>
       </div>
     </section>`;
@@ -440,6 +441,10 @@
   function modalTitleSub() {
     if (fca.modal && fca.modal.mode === 'new') {
       return { title: 'Nouveau centre', sub: 'Cree une fiche centre. Les ressources et horaires se reglent ensuite.' };
+    }
+    if (fca.modal && fca.modal.mode === 'delete') {
+      const c = findCenter(fca.modal.centerId) || {};
+      return { title: 'Supprimer le centre', sub: `${esc(c.name || fca.modal.centerId || '')} · action definitive.` };
     }
     const c = findCenter(fca.modal && fca.modal.centerId) || {};
     return { title: c.name || (fca.modal && fca.modal.centerId) || 'Centre', sub: `Configuration du centre (${esc(c.id || (fca.modal && fca.modal.centerId) || '')}).` };
@@ -702,14 +707,40 @@
       </div>`;
   }
 
+  // Confirmation de suppression : NOMME le centre, son client, ce qui part avec
+  // lui (acces staff, journaux techniques), et repete honnetement la politique
+  // serveur (reservations = refus, centre baseline fichier = refus).
+  function deleteBody() {
+    const c = findCenter(fca.modal.centerId) || { id: fca.modal.centerId };
+    const members = Number(c.members) || 0;
+    const resas = Number(c.reservations30d) || 0;
+    const label = `<strong>${esc(c.name || c.id || '')}</strong> <span class="pv2-quiet">· ${esc(c.id || '')}</span>`;
+    const owner = c.clientName ? ` (client <strong>${esc(c.clientName)}</strong>)` : '';
+    return `${fca.modalError ? `<div class="fca-modal-error">${esc(fca.modalError)}</div>` : ''}
+      <div class="fck-confirm-warn" role="alert">
+        Le centre ${label}${owner} sera supprime definitivement de la plateforme,
+        avec ses roles et acces staff${members > 0 ? ` (<strong>${esc(num(members))} membre${members > 1 ? 's' : ''}</strong> perdront leur acces)` : ''}
+        et ses journaux techniques.
+        ${resas > 0 ? `Il porte <strong>${esc(num(resas))} reservation(s)</strong> sur 30 jours : le serveur <strong>refusera</strong> tant qu'elles existent.` : `S'il porte des reservations, le serveur <strong>refusera</strong> plutot que de les effacer.`}
+        Un centre de base du fichier (socle Fun Galaxy) n'est pas supprimable ici.
+        <span class="fck-confirm-irrev">Cette action est irreversible.</span>
+      </div>`;
+  }
+
   function modalBodyHtml() {
     if (!fca.modal) return '';
+    if (fca.modal.mode === 'delete') return deleteBody();
     return fca.modal.mode === 'new' ? newBody() : configBody();
   }
 
   function modalFootHtml() {
     if (!fca.modal) return '';
     const saving = fca.saving;
+    if (fca.modal.mode === 'delete') {
+      return `<span class="fca-foot-note">Suppression tracee au journal d'audit.</span>
+        <button type="button" class="pv2-btn ghost" ${saving ? 'disabled' : ''} onclick="fcaCloseModal()">Annuler</button>
+        <button type="button" class="pv2-btn fck-confirm-danger" ${saving ? 'disabled' : ''} onclick="fcaConfirmDelete()">${saving ? 'Suppression...' : 'Supprimer definitivement'}</button>`;
+    }
     const isNew = fca.modal.mode === 'new';
     const primaryLabel = isNew ? (saving ? 'Creation...' : 'Creer le centre') : (saving ? 'Enregistrement...' : 'Enregistrer');
     return `${!isNew ? '<span class="fca-foot-note">Chaque ecriture est tracee au journal d\'audit.</span>' : ''}
@@ -742,6 +773,42 @@
     fca.saving = false;
     fca.modal = { mode: 'new', centerId: null };
     syncModal();
+  };
+
+  // ---- Suppression (confirmation obligatoire, jamais en un clic) ------------
+
+  window.fcaDeleteCenter = function (centerId) {
+    const center = findCenter(centerId);
+    if (!center) { toast('Centre introuvable. Actualisez la liste.'); return; }
+    fca.original = null;
+    fca.draft = null;
+    fca.modalError = '';
+    fca.saving = false;
+    fca.modal = { mode: 'delete', centerId: center.id };
+    syncModal();
+  };
+
+  window.fcaConfirmDelete = async function () {
+    if (!fca.modal || fca.modal.mode !== 'delete' || fca.saving) return;
+    fca.saving = true;
+    fca.modalError = '';
+    refreshFoot();
+    try {
+      await window.apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'deleteCenter', id: fca.modal.centerId }),
+      });
+      toast('Centre supprime.');
+      closeModal();
+      reload(); // la liste et les totaux plateforme suivent
+    } catch (error) {
+      // Refus serveur (baseline fichier, reservations presentes...) : le
+      // message expose s'affiche DANS la modale, rien n'a ete supprime.
+      fca.saving = false;
+      fca.modalError = (error && error.userMessage) || (error && error.message) || 'Suppression refusee. Reessayez.';
+      refreshBody();
+      refreshFoot();
+    }
   };
 
   window.fcaSet = function (path, value) {

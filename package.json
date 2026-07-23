@@ -62,6 +62,7 @@
     "test:staff-team-crud": "node scripts/staff-team-crud-check.js",
     "test:users-page": "node scripts/users-page-check.js",
     "test:platform-clients": "node scripts/platform-clients-check.js",
+    "test:platform-delete": "node scripts/platform-delete-check.js",
     "test:direction-insights": "node scripts/direction-insights-check.js",
     "test:charts": "node scripts/charts-check.js",
     "test:daterange": "node scripts/daterange-check.js",

@@ -166,6 +166,19 @@
     return list.find((c) => c && c.id === id) || null;
   }
 
+  // Retrouve un centre PARTOUT ou la page le montre : dans les cartes clients
+  // et dans le bloc "Centres sans client". Renvoie { center, client|null }.
+  function findAnyCenter(centerId) {
+    const d = fcp.data || {};
+    const clients = Array.isArray(d.clients) ? d.clients : [];
+    for (const c of clients) {
+      const hit = (Array.isArray(c.centers) ? c.centers : []).find((x) => x && x.id === centerId);
+      if (hit) return { center: hit, client: c };
+    }
+    const orphan = (Array.isArray(d.orphanCenters) ? d.orphanCenters : []).find((x) => x && x.id === centerId);
+    return orphan ? { center: orphan, client: null } : null;
+  }
+
   // ---- Rendu : liste --------------------------------------------------------
 
   function testDataBanner() {
@@ -187,9 +200,14 @@
   function centerRow(center) {
     const c = center || {};
     const staff = c.staff == null ? '' : `<span class="fcp-center-staff">${esc(num(c.staff))} pers.</span>`;
+    // Retirer = action DESTRUCTIVE : ghost teinte danger, et jamais en un clic
+    // (fcpDeleteCenter ouvre une modale de confirmation qui NOMME le centre).
+    const del = c.id
+      ? `<button type="button" class="pv2-btn sm fck-danger-btn fcp-center-del" onclick="fcpDeleteCenter('${escJs(c.id)}')" aria-label="Retirer le centre ${esc(c.name || c.id)}">Retirer</button>`
+      : '';
     return `<div class="fcp-center-row">
       <span class="fcp-center-name">${esc(c.name || c.id || '(centre)')}</span>
-      <span class="fcp-center-tail">${staff}${centerStatusChip(c.status)}</span>
+      <span class="fcp-center-tail">${staff}${centerStatusChip(c.status)}${del}</span>
     </div>`;
   }
 
@@ -270,6 +288,7 @@
       ${centersBlock(centers)}
       <div class="fck-card-foot">
         ${statusSelect(c)}
+        <button type="button" class="pv2-btn fck-danger-btn" onclick="fcpDeleteClient('${escJs(id)}')">Supprimer le client</button>
         <button type="button" class="pv2-btn" onclick="fcpAddCenter('${escJs(id)}')">Ajouter un centre</button>
       </div>
     </section>`;
@@ -476,7 +495,18 @@
     let title = 'Client';
     let sub = '';
     if (fcp.modal) {
-      if (fcp.modal.step === 'codes') {
+      if (fcp.modal.step === 'confirm') {
+        if (fcp.modal.mode === 'deleteClient') {
+          const cl = findClient(fcp.modal.clientId) || {};
+          title = 'Supprimer le client';
+          sub = `${esc(cl.name || fcp.modal.clientId || '')} · action definitive.`;
+        } else {
+          const hit = findAnyCenter(fcp.modal.centerId);
+          const name = hit && hit.center ? (hit.center.name || hit.center.id) : fcp.modal.centerId;
+          title = 'Retirer le centre';
+          sub = `${esc(name || '')} · action definitive.`;
+        }
+      } else if (fcp.modal.step === 'codes') {
         title = 'Acces crees';
         sub = 'Copie ces codes maintenant. Ils ne seront plus jamais affiches.';
       } else if (fcp.modal.mode === 'new') {
@@ -657,14 +687,78 @@
       <div class="fcp-codes">${rows}</div>`;
   }
 
+  // ---- Modale : confirmation de suppression ---------------------------------
+  // Une suppression NOMME ce qu'elle detruit avant d'agir : le client (et
+  // pourquoi elle serait bloquee), ou le centre (et ce qui part avec lui).
+  // La politique serveur est repetee ici pour que la confirmation soit honnete :
+  // client avec centres = BLOQUE, centre avec reservations = REFUSE, centre
+  // baseline (fichier) = REFUSE.
+
+  function deleteClientBody() {
+    const cl = findClient(fcp.modal.clientId) || {};
+    const centers = Array.isArray(cl.centers) ? cl.centers : [];
+    const n = Number.isFinite(Number(cl.centerCount)) ? Number(cl.centerCount) : centers.length;
+    const label = `<strong>${esc(cl.name || fcp.modal.clientId || '')}</strong> <span class="pv2-quiet">· ${esc(cl.id || fcp.modal.clientId || '')}</span>`;
+    if (n > 0) {
+      const names = centers.map((x) => x && (x.name || x.id)).filter(Boolean).map((x) => esc(x)).join(', ');
+      return `${fcp.modalError ? `<div class="fcp-modal-error" role="alert">${esc(fcp.modalError)}</div>` : ''}
+        <div class="fck-confirm-warn" role="alert">
+          ${label} possede encore <strong>${esc(num(n))} centre${n > 1 ? 's' : ''}</strong>${names ? ` (${names})` : ''} :
+          la suppression est <strong>bloquee</strong>. Retire d'abord chacun de ses centres
+          (bouton Retirer sur la carte), puis supprime le client.
+        </div>`;
+    }
+    return `${fcp.modalError ? `<div class="fcp-modal-error" role="alert">${esc(fcp.modalError)}</div>` : ''}
+      <div class="fck-confirm-warn" role="alert">
+        Le client ${label} sera supprime definitivement de la plateforme.
+        Aucun centre ne lui est rattache : seule sa fiche (statut, plan, contact, prix mensuel) disparait.
+        <span class="fck-confirm-irrev">Cette action est irreversible.</span>
+      </div>`;
+  }
+
+  function deleteCenterBody() {
+    const hit = findAnyCenter(fcp.modal.centerId);
+    const c = (hit && hit.center) || { id: fcp.modal.centerId };
+    const owner = hit && hit.client ? `${esc(hit.client.name || hit.client.id)}` : '';
+    const staff = Number(c.staff) || 0;
+    const label = `<strong>${esc(c.name || c.id || '')}</strong> <span class="pv2-quiet">· ${esc(c.id || '')}</span>`;
+    return `${fcp.modalError ? `<div class="fcp-modal-error" role="alert">${esc(fcp.modalError)}</div>` : ''}
+      <div class="fck-confirm-warn" role="alert">
+        Le centre ${label}${owner ? ` (client ${owner})` : ''} sera supprime definitivement,
+        avec ses roles et acces staff${staff > 0 ? ` (<strong>${esc(num(staff))} personne${staff > 1 ? 's' : ''}</strong> perdront leur acces)` : ''}
+        et ses journaux techniques.
+        S'il porte des reservations, le serveur <strong>refusera</strong> plutot que de les effacer.
+        Un centre de base du fichier (socle Fun Galaxy) n'est pas supprimable ici.
+        <span class="fck-confirm-irrev">Cette action est irreversible.</span>
+      </div>`;
+  }
+
   function modalBodyHtml() {
     if (!fcp.modal) return '';
+    if (fcp.modal.step === 'confirm') {
+      return fcp.modal.mode === 'deleteClient' ? deleteClientBody() : deleteCenterBody();
+    }
     if (fcp.modal.step === 'codes') return codesBody();
     return fcp.modal.mode === 'new' ? newClientBody() : addCenterBody();
   }
 
   function modalFootHtml() {
     if (!fcp.modal) return '';
+    if (fcp.modal.step === 'confirm') {
+      const saving = fcp.saving;
+      // Client encore porteur de centres : la politique serveur BLOQUE ; la
+      // modale ne propose donc aucun bouton destructif, seulement Fermer.
+      if (fcp.modal.mode === 'deleteClient') {
+        const cl = findClient(fcp.modal.clientId) || {};
+        const n = Number.isFinite(Number(cl.centerCount)) ? Number(cl.centerCount) : (Array.isArray(cl.centers) ? cl.centers.length : 0);
+        if (n > 0) {
+          return `<button type="button" class="pv2-btn" onclick="fcpCloseModal()">Fermer</button>`;
+        }
+      }
+      const label = fcp.modal.mode === 'deleteClient' ? 'Supprimer definitivement' : 'Retirer definitivement';
+      return `<button type="button" class="pv2-btn ghost" ${saving ? 'disabled' : ''} onclick="fcpCloseModal()">Annuler</button>
+        <button type="button" class="pv2-btn fck-confirm-danger" ${saving ? 'disabled' : ''} onclick="fcpConfirmDelete()">${saving ? 'Suppression...' : label}</button>`;
+    }
     if (fcp.modal.step === 'codes') {
       return `<span class="fcp-foot-note">Un centre, ses roles et ses codes ont ete crees.</span>
         <button type="button" class="pv2-btn primary" onclick="fcpCloseModal()">Fermer</button>`;
@@ -700,6 +794,57 @@
     fcp.saving = false;
     fcp.modal = { mode: 'addCenter', step: 'form', clientId: client.id };
     syncModal();
+  };
+
+  // ---- Suppression (confirmation obligatoire, jamais en un clic) ------------
+
+  window.fcpDeleteClient = function (clientId) {
+    const client = findClient(clientId);
+    if (!client) { toast('Client introuvable. Actualise la liste.'); return; }
+    fcp.draft = null;
+    fcp.result = null;
+    fcp.needsReload = false;
+    fcp.modalError = '';
+    fcp.saving = false;
+    fcp.modal = { mode: 'deleteClient', step: 'confirm', clientId: client.id };
+    syncModal();
+  };
+
+  window.fcpDeleteCenter = function (centerId) {
+    const hit = findAnyCenter(centerId);
+    if (!hit) { toast('Centre introuvable. Actualise la liste.'); return; }
+    fcp.draft = null;
+    fcp.result = null;
+    fcp.needsReload = false;
+    fcp.modalError = '';
+    fcp.saving = false;
+    fcp.modal = { mode: 'deleteCenter', step: 'confirm', centerId: hit.center.id };
+    syncModal();
+  };
+
+  window.fcpConfirmDelete = async function () {
+    if (!fcp.modal || fcp.modal.step !== 'confirm' || fcp.saving) return;
+    const isClient = fcp.modal.mode === 'deleteClient';
+    const body = isClient
+      ? { action: 'deleteClient', id: fcp.modal.clientId }
+      : { action: 'deleteCenter', id: fcp.modal.centerId };
+    fcp.saving = true;
+    fcp.modalError = '';
+    refreshFoot();
+    try {
+      await window.apiRequest('/api/ops', { method: 'POST', body: JSON.stringify(body) });
+      fcp.saving = false;
+      fcp.needsReload = true; // closeModal recharge la liste (compteurs inclus)
+      toast(isClient ? 'Client supprime.' : 'Centre retire.');
+      closeModal();
+    } catch (error) {
+      // Refus serveur (baseline, reservations, centres restants...) : le
+      // message expose s'affiche DANS la modale, rien n'a ete supprime.
+      fcp.saving = false;
+      fcp.modalError = (error && error.userMessage) || (error && error.message) || 'Suppression refusee. Reessaye.';
+      refreshBody();
+      refreshFoot();
+    }
   };
 
   window.fcpSet = function (path, value) {

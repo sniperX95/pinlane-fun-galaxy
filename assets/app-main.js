@@ -4452,9 +4452,9 @@ function formatDashboardTrend(current, previous) {
    une forme inventée. Graphes délégués à window.PinlaneCharts.
    ========================================================================== */
 const DASH_MAIN_CHART_OPTIONS = [
-  { id: 'affluence', label: "Affluence par heure (aujourd'hui)" },
-  { id: 'sessions', label: "Réservations par heure (aujourd'hui)" },
-  { id: 'lanes', label: "Charge par piste (aujourd'hui)" },
+  { id: 'affluence', label: 'Affluence par heure' },
+  { id: 'sessions', label: 'Réservations par heure' },
+  { id: 'lanes', label: 'Charge par piste' },
 ];
 const DASH_SIDE_CHART_OPTIONS = [
   { id: 'formules', label: 'Formules du jour' },
@@ -4562,28 +4562,27 @@ function renderDashMainChartBody(host, metrics) {
   if (!activeReservations.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
   const open = planningWindow.open;
   const close = planningWindow.close;
-  const perReservation = activeReservations.map(reservation => {
-    const hours = new Set();
-    getStaffResourceWindows(reservation, 'all').forEach(win => {
-      const start = Number(win.start);
-      const end = Number(win.end);
-      for (let hour = open; hour < close; hour += 1) {
-        if (start < hour + 1 && end > hour) hours.add(hour);
-      }
-    });
-    return { pax: Number(reservation.pax) || 0, hours };
+  // Chaque reservation compte UNE fois, a son heure d'ARRIVEE (debut du premier
+  // creneau, tous types confondus). Sans ca, un groupe qui enchaine bowling puis
+  // laser a deux heures differentes apparaissait a CHAQUE heure occupee (un seul
+  // groupe de 16 compte a 18h ET 20h). L'arrivee = une entree par groupe.
+  const buckets = new Map();
+  for (let hour = open; hour < close; hour += 1) buckets.set(hour, { players: 0, sessions: 0 });
+  activeReservations.forEach(reservation => {
+    const windows = getStaffResourceWindows(reservation, 'all');
+    if (!windows.length) return;
+    const startHour = Math.floor(Math.min(...windows.map(win => Number(win.start))));
+    const hour = Math.min(Math.max(startHour, open), close - 1);
+    const bucket = buckets.get(hour);
+    if (bucket) { bucket.players += Number(reservation.pax) || 0; bucket.sessions += 1; }
   });
   const series = [];
   for (let hour = open; hour < close; hour += 1) {
-    let players = 0;
-    let sessions = 0;
-    perReservation.forEach(entry => {
-      if (entry.hours.has(hour)) { players += entry.pax; sessions += 1; }
-    });
-    series.push({ label: formatClockDisplay(hour), value: current === 'sessions' ? sessions : players });
+    const bucket = buckets.get(hour);
+    series.push({ label: formatClockDisplay(hour), value: current === 'sessions' ? bucket.sessions : bucket.players });
   }
   if (series.every(point => !point.value)) { host.innerHTML = '<div class="dash-empty">Aucune activité planifiée sur les heures d\'ouverture d\'aujourd\'hui.</div>'; return; }
-  charts.barChart(host, { series, format: 'int', motionKey: motion, height: 230 });
+  charts.lineChart(host, { series, format: 'int', motionKey: motion, height: 230 });
 }
 
 function dashSplitRowsHtml(rows) {

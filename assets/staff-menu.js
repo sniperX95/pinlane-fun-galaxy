@@ -768,11 +768,26 @@
     // l'utilisateur vers la Direction (ancien bug : tout centre != libramont
     // forcait setView('admin')). On rafraichit seulement les donnees du centre.
     const applyActiveView = () => {
+      // Re-affirme le centre CIBLE apres le re-auth : storeStaffAuthSession
+      // (app-main) reecrit state.adminCenterId avec le centre de la session
+      // renvoyee par le serveur, ce qui annulait le changement en vue staff
+      // (la vue admin, elle, etait deja re-imposee par setAdminCenter). Le choix
+      // explicite de l'utilisateur doit gagner.
+      if (typeof state !== 'undefined') {
+        state.adminCenterId = centerId;
+        state.establishmentCenterId = centerId;
+      }
       if (typeof state !== 'undefined' && state.view === 'admin') {
         if (typeof setAdminCenter === 'function') setAdminCenter(centerId);
         else if (typeof openAdminCenter === 'function') openAdminCenter(centerId);
       } else {
         if (typeof loadStaffCenterConfig === 'function') loadStaffCenterConfig(true);
+        // Le poll staff-state est scope par centerId : sans refetch force, la vue
+        // garde les reservations de l'ancien centre. On recharge la date courante
+        // pour le nouveau centre (revisionKey inclut centerId -> jamais un 304).
+        if (typeof syncDateReservations === 'function' && typeof state !== 'undefined' && state.currentDate) {
+          syncDateReservations(state.currentDate, { silent: true });
+        }
         if (typeof renderStaff === 'function' && typeof state !== 'undefined' && state.view === 'staff') renderStaff();
       }
       renderMenu();

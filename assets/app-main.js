@@ -8118,6 +8118,31 @@ function cloneStaffRolePreset(preset) {
   };
 }
 
+// Un role PLATEFORME (proprietaire Pinlane : id 'platform-owner' ou permission
+// platform.admin) est un acces de supervision produit, pas un role d'equipe du
+// centre. La page Utilisateurs ne doit JAMAIS l'afficher, le compter ni le
+// manipuler : ce serait un compteur absurde (30/29) et une fuite de l'acces
+// proprietaire chez le client. Le serveur reste l'autorite ; ici on rend la
+// page logique pour tous. On ne filtre QUE les roles plateforme, pas tous les
+// roles verrouilles (Direction est un role legitime du centre).
+function isPlatformStaffRole(role) {
+  return Boolean(role && (role.id === 'platform-owner'
+    || (Array.isArray(role.permissions) && role.permissions.includes('platform.admin'))));
+}
+
+function isPlatformStaffMember(access, member) {
+  if (!member) return false;
+  return isPlatformStaffRole((access?.roles || []).find(role => role.id === member.roleId));
+}
+
+function getVisibleStaffAccessRoles(access) {
+  return (access?.roles || []).filter(role => !isPlatformStaffRole(role));
+}
+
+function getVisibleStaffAccessMembers(access) {
+  return (access?.members || []).filter(member => !isPlatformStaffMember(access, member));
+}
+
 function ensureStaffAccessControl() {
   const current = state.staffAccessControl && typeof state.staffAccessControl === 'object'
     ? state.staffAccessControl
@@ -8136,7 +8161,15 @@ function ensureStaffAccessControl() {
     });
   });
   const roles = [...roleMap.values()];
-  const selectedRoleId = roles.some(role => role.id === current.selectedRoleId) ? current.selectedRoleId : 'manager';
+  // Resolution SURE de la selection : jamais un role plateforme, et la
+  // selection courante est gardee tant qu'elle reste valide. A defaut, le
+  // premier role visible du centre (l'ordre commence par les presets), sinon
+  // 'direction'. L'ancien repli en dur sur 'manager' teleportait la selection
+  // apres chaque rafraichissement serveur.
+  const visibleRoles = roles.filter(role => !isPlatformStaffRole(role));
+  const selectedRoleId = visibleRoles.some(role => role.id === current.selectedRoleId)
+    ? current.selectedRoleId
+    : ((visibleRoles[0] && visibleRoles[0].id) || 'direction');
   state.staffAccessControl = {
     selectedRoleId,
     selectedMemberId: current.selectedMemberId || 'admin-local',
@@ -8203,7 +8236,25 @@ async function runStaffAuthAction(action, payload = {}, successMessage = 'Accès
       })
     });
     if (response.session) storeStaffAuthSession(response.session);
-    if (response.accessControl) state.staffAccessControl = response.accessControl;
+    if (response.accessControl) {
+      // selectedRoleId / selectedMemberId sont un etat purement UI, jamais
+      // renvoye par le serveur : remplacer l'objet sans les reporter faisait
+      // retomber ensureStaffAccessControl sur son defaut apres CHAQUE action
+      // (editer une permission de "Technique" sautait sur "Manager"). On les
+      // re-applique s'ils existent toujours dans la reponse, sans jamais
+      // reprendre un role plateforme.
+      const previousRoleId = state.staffAccessControl?.selectedRoleId;
+      const previousMemberId = state.staffAccessControl?.selectedMemberId;
+      state.staffAccessControl = response.accessControl;
+      const nextRoles = Array.isArray(response.accessControl.roles) ? response.accessControl.roles : [];
+      if (previousRoleId && nextRoles.some(role => role.id === previousRoleId && !isPlatformStaffRole(role))) {
+        state.staffAccessControl.selectedRoleId = previousRoleId;
+      }
+      const nextMembers = Array.isArray(response.accessControl.members) ? response.accessControl.members : [];
+      if (previousMemberId && nextMembers.some(member => member.id === previousMemberId)) {
+        state.staffAccessControl.selectedMemberId = previousMemberId;
+      }
+    }
     if (response.createdRole?.id && state.staffAccessControl) state.staffAccessControl.selectedRoleId = response.createdRole.id;
     if (response.createdMember?.id && state.staffAccessControl) state.staffAccessControl.selectedMemberId = response.createdMember.id;
     save();
@@ -8226,7 +8277,8 @@ async function runStaffAuthAction(action, payload = {}, successMessage = 'Accès
 
 function setStaffAccessSelectedRole(roleId) {
   const access = ensureStaffAccessControl();
-  if (!access.roles.some(role => role.id === roleId)) return;
+  const role = access.roles.find(item => item.id === roleId);
+  if (!role || isPlatformStaffRole(role)) return;
   access.selectedRoleId = roleId;
   save();
   renderStaffUtilityPage();
@@ -8234,6 +8286,11 @@ function setStaffAccessSelectedRole(roleId) {
 
 async function toggleStaffRolePermission(roleId, permission, checked) {
   const role = getStaffAccessRole(roleId);
+  if (isPlatformStaffRole(role)) {
+    toast('Cet accès plateforme ne se gère pas depuis cette page.');
+    renderStaffUtilityPage();
+    return;
+  }
   if (!role || role.id === 'direction') {
     toast('La direction garde toujours tous les accès.');
     renderStaffUtilityPage();
@@ -8254,7 +8311,7 @@ async function toggleStaffRolePermission(roleId, permission, checked) {
 async function setStaffRolePreset(roleId, presetId) {
   const role = getStaffAccessRole(roleId);
   const preset = STAFF_ROLE_PRESETS.find(item => item.id === presetId);
-  if (!role || !preset || role.id === 'direction') return;
+  if (!role || !preset || role.id === 'direction' || isPlatformStaffRole(role)) return;
   await runStaffAuthAction('setRolePreset', { roleId, presetId }, 'Preset appliqué.');
 }
 
@@ -8284,11 +8341,11 @@ function openStaffAccessModal(kind) {
   const access = ensureStaffAccessControl();
   const selectedRole = getStaffAccessRole(access.selectedRoleId);
   const isRole = kind === 'role';
-  // Roles assignables a un membre = roles NON verrouilles (comme founder-team) :
-  // un role systeme verrouille (Direction, proprietaire plateforme) n'est jamais
-  // offert a la creation. Defaut = role du rail s'il est assignable, sinon le
-  // premier assignable.
-  const assignableRoles = access.roles.filter(role => !role.locked);
+  // Roles assignables a un membre = roles NON verrouilles (comme founder-team)
+  // et JAMAIS un role plateforme : un role systeme verrouille (Direction,
+  // proprietaire plateforme) n'est jamais offert a la creation. Defaut = role
+  // du rail s'il est assignable, sinon le premier assignable.
+  const assignableRoles = access.roles.filter(role => !role.locked && !isPlatformStaffRole(role));
   const defaultRoleId = assignableRoles.some(role => role.id === access.selectedRoleId)
     ? access.selectedRoleId
     : (assignableRoles[0] && assignableRoles[0].id) || '';
@@ -8347,7 +8404,7 @@ async function submitStaffAccessModal(event, kind) {
     return;
   }
   const access = ensureStaffAccessControl();
-  const assignableRoles = access.roles.filter(role => !role.locked);
+  const assignableRoles = access.roles.filter(role => !role.locked && !isPlatformStaffRole(role));
   const roleId = assignableRoles.some(role => role.id === chosenRoleId)
     ? chosenRoleId
     : (assignableRoles[0] && assignableRoles[0].id) || '';
@@ -8370,7 +8427,14 @@ function createStaffMember() {
 async function updateStaffMemberRole(memberId, roleId) {
   const access = ensureStaffAccessControl();
   const member = access.members.find(item => item.id === memberId);
-  if (!member || !access.roles.some(role => role.id === roleId)) return;
+  const targetRole = access.roles.find(role => role.id === roleId);
+  if (!member || !targetRole) return;
+  // Defense en profondeur : un acces plateforme n'est ni une cible ni une
+  // destination valide depuis la page centre, meme en appel direct.
+  if (isPlatformStaffMember(access, member) || isPlatformStaffRole(targetRole)) {
+    toast('Cet accès plateforme ne se gère pas depuis cette page.');
+    return;
+  }
   await runStaffAuthAction('updateMemberRole', { memberId, roleId }, 'Rôle du membre mis à jour.');
 }
 
@@ -8382,6 +8446,12 @@ async function toggleStaffMemberStatus(memberId) {
   const access = ensureStaffAccessControl();
   const member = access.members.find(item => item.id === memberId);
   if (!member) return;
+  // Defense en profondeur : l'acces proprietaire plateforme n'est jamais
+  // blocable depuis la page centre, meme en appel direct.
+  if (isPlatformStaffMember(access, member)) {
+    toast('Cet accès plateforme ne peut pas être bloqué depuis le centre.');
+    return;
+  }
   // Reflet UI de la garde anti-lockout G2 (le serveur reste l'autorite) : on ne
   // se bloque pas soi-meme.
   if (memberId === getStaffSessionMemberId() && member.status === 'active') {
@@ -8394,7 +8464,7 @@ async function toggleStaffMemberStatus(memberId) {
 async function renameStaffRole(roleId) {
   const role = getStaffAccessRole(roleId);
   if (!role) return;
-  if (role.locked) { toast('Ce role systeme ne peut pas etre renomme.'); return; }
+  if (role.locked || isPlatformStaffRole(role)) { toast('Ce role systeme ne peut pas etre renomme.'); return; }
   const next = window.prompt('Nouveau nom du role', role.name || '');
   if (next === null) return;
   const name = String(next).trim();
@@ -8405,7 +8475,7 @@ async function renameStaffRole(roleId) {
 async function deleteStaffRole(roleId) {
   const role = getStaffAccessRole(roleId);
   if (!role) return;
-  if (role.locked) { toast('Ce role systeme ne peut pas etre supprime.'); return; }
+  if (role.locked || isPlatformStaffRole(role)) { toast('Ce role systeme ne peut pas etre supprime.'); return; }
   const access = ensureStaffAccessControl();
   const memberCount = access.members.filter(item => item.roleId === roleId).length;
   if (memberCount > 0) {
@@ -8420,6 +8490,12 @@ async function deleteStaffMember(memberId) {
   const access = ensureStaffAccessControl();
   const member = access.members.find(item => item.id === memberId);
   if (!member) return;
+  // Defense en profondeur : l'acces proprietaire plateforme n'est jamais
+  // supprimable depuis la page centre, meme en appel direct.
+  if (isPlatformStaffMember(access, member)) {
+    toast('Cet accès plateforme ne peut pas être supprimé depuis le centre.');
+    return;
+  }
   // Reflet UI de la garde G2 : pas d'auto-suppression (le serveur refuse aussi).
   if (memberId === getStaffSessionMemberId()) {
     toast('Vous ne pouvez pas supprimer votre propre acces.');
@@ -8432,6 +8508,7 @@ async function deleteStaffMember(memberId) {
 async function regenerateStaffAccessCode(roleId) {
   const role = getStaffAccessRole(roleId);
   if (!role) return;
+  if (isPlatformStaffRole(role)) { toast('Cet accès plateforme ne se gère pas depuis cette page.'); return; }
   await runStaffAuthAction('regenerateRoleCode', { roleId }, 'Nouveau code généré.');
 }
 
@@ -8453,6 +8530,7 @@ async function copyStaffRoleCode(roleId) {
   if (!canUseStaffPermission('users.manage')) { toast('Copie du code réservée à la direction.'); return; }
   const role = getStaffAccessRole(roleId);
   if (!role) return;
+  if (isPlatformStaffRole(role)) { toast('Cet accès plateforme ne se gère pas depuis cette page.'); return; }
   try {
     const response = await apiRequest(API_ENDPOINTS.staffAuth, {
       method: 'POST',
@@ -8525,13 +8603,75 @@ const STAFF_MEMBER_STATUS_META = {
   pending: ['En attente', 'badge-warning']
 };
 
+function renderStaffMemberCard(access, member) {
+  const role = getStaffAccessRole(member.roleId);
+  const [statusLabel, statusBadge] = STAFF_MEMBER_STATUS_META[member.status] || ['Statut inconnu', 'badge-neutral'];
+  const lastSeenLabel = member.lastSeen ? `Vu ${formatOpsTimestamp(member.lastSeen)}` : 'Jamais connecté';
+  const isSelf = member.id === getStaffSessionMemberId();
+  // Reassignation : mêmes règles que la page fondateur. Les rôles verrouillés
+  // (Direction) et les rôles plateforme ne sont jamais proposés ; si le membre
+  // en porte un, il reste visible en option sélectionnée désactivée, non
+  // réassignable à la volée.
+  const assignableRoles = access.roles.filter(roleOption => !roleOption.locked && !isPlatformStaffRole(roleOption));
+  const currentRoleLocked = !assignableRoles.some(roleOption => roleOption.id === member.roleId);
+  const currentRoleName = (getStaffAccessRole(member.roleId) || {}).name || 'rôle verrouillé';
+  const memberRoleOptions = (currentRoleLocked
+    ? `<option value="${escapeHtml(member.roleId)}" selected disabled>${escapeHtml(currentRoleName)}</option>`
+    : '')
+    + assignableRoles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${!currentRoleLocked && roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('');
+  return `<article class="staff-member-card ${escapeHtml(member.status || 'active')}">
+    <div class="staff-member-top">
+      <span class="staff-person-icon tone-${escapeHtml(role.tone || 'custom')}">${escapeHtml(getStaffClientInitials(member.name || role.name))}</span>
+      <div><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.contact || member.code || 'Code interne')}</small></div>
+      <span class="badge ${statusBadge}">${statusLabel}</span>
+    </div>
+    <span class="staff-member-last-seen">${escapeHtml(lastSeenLabel)}</span>
+    <select aria-label="Rôle de ${escapeHtml(member.name)}" ${currentRoleLocked ? 'disabled' : ''} onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
+      ${memberRoleOptions}
+    </select>
+    <footer>
+      <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffMemberCode(${staffClientJs(member.id)})'>${escapeHtml(member.code || 'Copier code')}</button>
+      <button type="button" class="btn btn-ghost btn-sm" ${isSelf ? 'disabled title="Vous ne pouvez pas bloquer votre propre acces"' : ''} onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
+      ${isSelf ? '' : `<button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffMember(${staffClientJs(member.id)})'>Supprimer</button>`}
+    </footer>
+  </article>`;
+}
+
+// Liste des membres groupee par contexte : d'abord ceux du role selectionne
+// (le panneau de droite eclaire le role en cours d'edition), puis les autres.
+// Toutes les actions restent disponibles pour chaque carte.
+function renderStaffMemberListSections(access, visibleMembers, selectedRole) {
+  if (!visibleMembers.length) {
+    return `<div class="staff-member-empty">
+      <strong>Aucun membre</strong>
+      <span>Créez un accès staff : chaque membre reçoit un code personnel.</span>
+    </div>`;
+  }
+  const selectedRoleMembers = visibleMembers.filter(member => member.roleId === selectedRole.id);
+  const otherMembers = visibleMembers.filter(member => member.roleId !== selectedRole.id);
+  const selectedBlock = `<span class="staff-member-group-label">${escapeHtml(selectedRole.name)}<em>${selectedRoleMembers.length}</em></span>`
+    + (selectedRoleMembers.length
+      ? selectedRoleMembers.map(member => renderStaffMemberCard(access, member)).join('')
+      : '<p class="staff-member-group-empty">Aucun membre sur ce rôle.</p>');
+  const othersBlock = otherMembers.length
+    ? `<span class="staff-member-group-label">Autres rôles<em>${otherMembers.length}</em></span>`
+      + otherMembers.map(member => renderStaffMemberCard(access, member)).join('')
+    : '';
+  return `<div class="staff-member-list">${selectedBlock}${othersBlock}</div>`;
+}
+
 function renderStaffUtilityUsers() {
   const access = ensureStaffAccessControl();
+  // La page ne montre QUE l'equipe du centre : les roles/membres plateforme
+  // (proprietaire Pinlane) sont exclus de tout affichage et de tout compteur.
+  const visibleRoles = getVisibleStaffAccessRoles(access);
+  const visibleMembers = getVisibleStaffAccessMembers(access);
   const selectedRole = getStaffAccessRole(access.selectedRoleId);
   const selectedPermissions = getStaffRolePermissionSet(selectedRole.id);
   const allPermissions = getStaffPermissionKeys();
-  const activeMembers = access.members.filter(member => member.status === 'active');
+  const activeMembers = visibleMembers.filter(member => member.status === 'active');
   const accessiblePages = getStaffRoleAccessiblePages(selectedRole.id);
+  const openPagesCount = accessiblePages.filter(page => page.allowed).length;
   const rawAccessCode = String(selectedRole.accessCode || '');
   const codeAlreadyMasked = rawAccessCode.includes('••');
   const displayedCode = rawAccessCode
@@ -8540,9 +8680,13 @@ function renderStaffUtilityUsers() {
   return `<div class="staff-access-console">
     <section class="staff-access-grid">
       <aside class="staff-role-rail" aria-label="Rôles staff">
-        ${access.roles.map(role => {
+        <div class="staff-role-rail-head">
+          <strong>Rôles du centre</strong>
+          <em>${visibleRoles.length}</em>
+        </div>
+        ${visibleRoles.map(role => {
           const count = (role.permissions || []).length;
-          const activeCount = access.members.filter(member => member.roleId === role.id && member.status === 'active').length;
+          const activeCount = visibleMembers.filter(member => member.roleId === role.id && member.status === 'active').length;
           return `<button type="button" class="staff-role-pill ${role.id === selectedRole.id ? 'active' : ''} tone-${escapeHtml(role.tone || 'custom')}" onclick='setStaffAccessSelectedRole(${staffClientJs(role.id)})' ${role.id === selectedRole.id ? 'aria-current="true"' : ''}>
             <span class="staff-person-icon" aria-hidden="true">${escapeHtml(role.code || role.name.slice(0, 2).toUpperCase())}</span>
             <span class="staff-role-pill-copy">
@@ -8617,51 +8761,20 @@ function renderStaffUtilityUsers() {
 
       <aside class="staff-access-side">
         <section class="staff-access-summary">
-          <span>Ce rôle ouvre</span>
+          <div class="staff-access-summary-head">
+            <span>Ce rôle ouvre</span>
+            <em>${openPagesCount}/${accessiblePages.length}</em>
+          </div>
           <div class="staff-access-page-list">
             ${accessiblePages.map(page => `<span class="${page.allowed ? 'allowed' : 'blocked'}">${escapeHtml(page.label)}</span>`).join('')}
           </div>
         </section>
         <section class="staff-member-panel">
           <div class="staff-member-head">
-            <div><strong>Membres</strong><small>${activeMembers.length} actif${activeMembers.length > 1 ? 's' : ''} · ${access.members.length} total</small></div>
+            <div><strong>Membres</strong><small>${activeMembers.length} actif${activeMembers.length > 1 ? 's' : ''} · ${visibleMembers.length} total</small></div>
             <button type="button" class="btn btn-secondary btn-sm" onclick="createStaffMember()">Ajouter</button>
           </div>
-          <div class="staff-member-list">
-            ${access.members.map(member => {
-              const role = getStaffAccessRole(member.roleId);
-              const [statusLabel, statusBadge] = STAFF_MEMBER_STATUS_META[member.status] || ['Statut inconnu', 'badge-neutral'];
-              const lastSeenLabel = member.lastSeen ? `Vu ${formatOpsTimestamp(member.lastSeen)}` : 'Jamais connecté';
-              const isSelf = member.id === getStaffSessionMemberId();
-              // Reassignation : mêmes règles que la page fondateur. Les rôles
-              // verrouillés (Direction, propriétaire plateforme) ne sont jamais
-              // proposés ; si le membre en porte un, il reste visible en option
-              // sélectionnée désactivée, non réassignable à la volée.
-              const assignableRoles = access.roles.filter(roleOption => !roleOption.locked);
-              const currentRoleLocked = !assignableRoles.some(roleOption => roleOption.id === member.roleId);
-              const currentRoleName = (getStaffAccessRole(member.roleId) || {}).name || 'rôle verrouillé';
-              const memberRoleOptions = (currentRoleLocked
-                ? `<option value="${escapeHtml(member.roleId)}" selected disabled>${escapeHtml(currentRoleName)}</option>`
-                : '')
-                + assignableRoles.map(roleOption => `<option value="${escapeHtml(roleOption.id)}" ${!currentRoleLocked && roleOption.id === member.roleId ? 'selected' : ''}>${escapeHtml(roleOption.name)}</option>`).join('');
-              return `<article class="staff-member-card ${escapeHtml(member.status || 'active')}">
-                <div class="staff-member-top">
-                  <span class="staff-person-icon tone-${escapeHtml(role.tone || 'custom')}">${escapeHtml(getStaffClientInitials(member.name || role.name))}</span>
-                  <div><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.contact || member.code || 'Code interne')}</small></div>
-                  <span class="badge ${statusBadge}">${statusLabel}</span>
-                </div>
-                <span class="staff-member-last-seen">${escapeHtml(lastSeenLabel)}</span>
-                <select aria-label="Rôle de ${escapeHtml(member.name)}" ${currentRoleLocked ? 'disabled' : ''} onchange='updateStaffMemberRole(${staffClientJs(member.id)}, this.value)'>
-                  ${memberRoleOptions}
-                </select>
-                <footer>
-                  <button type="button" class="btn btn-secondary btn-sm staff-member-code" onclick='copyStaffMemberCode(${staffClientJs(member.id)})'>${escapeHtml(member.code || 'Copier code')}</button>
-                  <button type="button" class="btn btn-ghost btn-sm" ${isSelf ? 'disabled title="Vous ne pouvez pas bloquer votre propre acces"' : ''} onclick='toggleStaffMemberStatus(${staffClientJs(member.id)})'>${member.status === 'active' ? 'Bloquer' : 'Activer'}</button>
-                  ${isSelf ? '' : `<button type="button" class="btn btn-ghost btn-sm staff-danger-btn" onclick='deleteStaffMember(${staffClientJs(member.id)})'>Supprimer</button>`}
-                </footer>
-              </article>`;
-            }).join('')}
-          </div>
+          ${renderStaffMemberListSections(access, visibleMembers, selectedRole)}
         </section>
         <section class="staff-access-log">
           <strong>Journal sécurité</strong>
@@ -9297,11 +9410,15 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   }
   if (page === 'users') {
     const access = ensureStaffAccessControl();
+    // Entete "Acces" : memes exclusions que la page (les roles/membres
+    // plateforme ne sont ni affiches ni comptes).
+    const visibleRoles = getVisibleStaffAccessRoles(access);
+    const visibleMembers = getVisibleStaffAccessMembers(access);
     const selectedRole = getStaffAccessRole(access.selectedRoleId);
     const permissionTotal = getStaffPermissionKeys().length;
     const selectedPermissionCount = new Set(selectedRole.permissions || []).size;
-    const activeMembers = access.members.filter(member => member.status === 'active').length;
-    const pendingMembers = access.members.filter(member => member.status === 'pending').length;
+    const activeMembers = visibleMembers.filter(member => member.status === 'active').length;
+    const pendingMembers = visibleMembers.filter(member => member.status === 'pending').length;
     return {
       ...base,
       layout: 'users',
@@ -9315,10 +9432,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       secondaryLabel: 'Créer rôle',
       secondaryAction: 'createStaffCustomRole()',
       kpis: [
-        ['Rôles', access.roles.length, 'presets + personnalisés'],
+        ['Rôles', visibleRoles.length, 'presets + personnalisés'],
         ['Staff actif', activeMembers, `${pendingMembers} en attente`],
         ['Permissions du rôle', `${selectedPermissionCount}/${permissionTotal}`, selectedRole.name],
-        ['Codes actifs', access.roles.filter(role => role.accessCode).length + access.members.filter(member => member.code).length, 'rôles et membres']
+        ['Codes actifs', visibleRoles.filter(role => role.accessCode).length + visibleMembers.filter(member => member.code).length, 'rôles et membres']
       ],
       body: renderStaffUtilityUsers()
     };

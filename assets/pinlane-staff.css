@@ -4868,10 +4868,41 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 .staff-role-rail { grid-area: rail; display: grid; gap: var(--space-2); align-content: start; }
-.staff-permission-editor { grid-area: editor; display: grid; gap: var(--space-3); min-width: 0; }
+
+/* L'éditeur du rôle sélectionné est UNE carte : identité + code, presets,
+   groupes de permissions, séparés par des filets 1px (hiérarchie Vercel :
+   bordures, pas d'ombres). */
+.staff-permission-editor {
+  grid-area: editor;
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
 .staff-access-side { grid-area: side; display: grid; gap: var(--space-3); align-items: start; min-width: 0; }
 
 /* Rail rôles */
+.staff-role-rail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px 2px 4px;
+}
+
+.staff-role-rail-head strong { color: var(--muted); font-size: 12px; font-weight: 500; }
+.staff-role-rail-head em {
+  font-style: normal;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--faint);
+}
+
 .staff-role-pill {
   display: flex;
   align-items: center;
@@ -4894,6 +4925,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .staff-role-pill:hover { background: var(--subtle); color: var(--text); }
 .staff-role-pill.active { background: var(--accent-soft); border-color: var(--accent); border-left-color: var(--role-tone, var(--accent)); color: var(--text); }
+.staff-role-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .staff-role-pill-copy { display: grid; gap: 1px; min-width: 0; flex: 1 1 auto; }
 .staff-role-pill-copy strong { color: var(--text); font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4932,18 +4964,26 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-code-card {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--subtle);
+  align-content: start;
 }
 
 .staff-code-card > span { color: var(--muted); font-size: 11px; font-weight: 500; }
 .staff-code-card > strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
 .staff-code-card > div { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 
-/* Presets */
-.staff-preset-strip { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+/* Presets : filet 1px au-dessus pour séparer l'identité de la configuration */
+.staff-preset-strip {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
 .staff-preset-kicker { color: var(--muted); font-size: 12px; font-weight: 500; margin-right: 2px; }
 
 .staff-preset-btn {
@@ -4963,6 +5003,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 .staff-preset-btn:hover:not(:disabled) { background: var(--subtle); color: var(--text); }
+.staff-preset-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .staff-preset-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Groupes de permissions : repliables (details/summary) */
@@ -5073,7 +5114,15 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   background: var(--surface);
 }
 
-.staff-access-summary > span { color: var(--muted); font-size: 11px; font-weight: 500; }
+.staff-access-summary-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.staff-access-summary-head span { color: var(--muted); font-size: 11px; font-weight: 500; }
+.staff-access-summary-head em {
+  font-style: normal;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--faint);
+}
 
 .staff-access-page-list { display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -5102,6 +5151,42 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 .staff-member-list { display: grid; gap: var(--space-2); }
+
+/* Groupes de membres : d'abord ceux du rôle sélectionné, puis les autres */
+.staff-member-group-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.staff-member-group-label:first-child { margin-top: 0; }
+.staff-member-group-label em {
+  font-style: normal;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.staff-member-group-empty { color: var(--faint); font-size: 12px; padding: 2px 0 4px; }
+
+.staff-member-empty {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.staff-member-empty strong { font-size: 13px; font-weight: 500; }
+.staff-member-empty span { color: var(--muted); font-size: 12px; }
+
 .staff-member-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
 .staff-member-head strong { font-size: 14px; font-weight: 600; }
 .staff-member-head small { display: block; color: var(--faint); font-size: 11px; }

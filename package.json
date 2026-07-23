@@ -60,6 +60,7 @@
     "test:catalog-editor-ui": "node scripts/catalog-editor-ui-check.js",
     "test:availability-blocks-ui": "node scripts/availability-blocks-ui-check.js",
     "test:staff-team-crud": "node scripts/staff-team-crud-check.js",
+    "test:users-page": "node scripts/users-page-check.js",
     "test:platform-clients": "node scripts/platform-clients-check.js",
     "test:direction-insights": "node scripts/direction-insights-check.js",
     "test:charts": "node scripts/charts-check.js",

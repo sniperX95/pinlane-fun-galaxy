@@ -45,9 +45,9 @@
   // Catalogue des metriques : kind pilote le rendu, viz les formes offertes.
   var CATALOG = {
     revenue: { kind: 'series', label: "Chiffre d'affaires", format: 'euro', field: 'revenue', viz: ['line', 'bars'] },
-    reservations: { kind: 'series', label: 'Reservations', format: 'int', field: 'count', viz: ['line', 'bars'] },
+    reservations: { kind: 'series', label: 'Réservations', format: 'int', field: 'count', viz: ['line', 'bars'] },
     pax: { kind: 'series', label: 'Joueurs', format: 'int', field: 'pax', viz: ['line', 'bars'] },
-    byType: { kind: 'split', label: 'Repartition par activite', format: 'int', viz: ['donut', 'bars'] },
+    byType: { kind: 'split', label: 'Répartition par activité', format: 'int', viz: ['donut', 'bars'] },
     byChannel: { kind: 'split', label: 'Canaux', format: 'int', viz: ['donut', 'bars'] },
     byFormule: { kind: 'split', label: 'Top formules', format: 'int', viz: ['donut', 'bars'] },
     byOccasion: { kind: 'split', label: 'Occasions', format: 'int', viz: ['donut', 'bars'] },
@@ -60,9 +60,9 @@
   // Ordre d'affichage dans le choix d'ajout, groupe par famille. `hint` = la
   // legende ASCII qui explique la famille sous son titre dans le selecteur.
   var PICKER_GROUPS = [
-    { title: 'Evolutions', hint: 'suivi jour par jour', metrics: ['revenue', 'reservations', 'pax'] },
-    { title: 'Repartitions', hint: 'la part de chaque categorie', metrics: ['byType', 'byChannel', 'byFormule', 'byOccasion'] },
-    { title: 'Indicateurs', hint: 'un chiffre cle sur la periode', metrics: ['occupancy', 'paymentRate', 'cancelRate', 'avgBasket'] },
+    { title: 'Évolutions', hint: 'suivi jour par jour', metrics: ['revenue', 'reservations', 'pax'] },
+    { title: 'Répartitions', hint: 'la part de chaque catégorie', metrics: ['byType', 'byChannel', 'byFormule', 'byOccasion'] },
+    { title: 'Indicateurs', hint: 'un chiffre clé sur la période', metrics: ['occupancy', 'paymentRate', 'cancelRate', 'avgBasket'] },
   ];
   var VIZ_LABEL = { line: 'Courbe', bars: 'Barres', donut: 'Anneau', tile: 'Grand chiffre' };
   // Libelles lisibles des cles serveur ; toute cle inconnue s'affiche brute
@@ -523,7 +523,7 @@
     function renderTile(bodyEl, w, meta, key) {
       var value = statValue(w.metric);
       bodyEl.innerHTML = '<div class="pab-tile"><span class="pab-tile-value" data-role="v"></span>'
-        + '<span class="pab-tile-caption">sur la periode</span></div>';
+        + '<span class="pab-tile-caption">sur la période</span></div>';
       var vEl = bodyEl.querySelector('[data-role="v"]');
       var charts = window.PinlaneCharts;
       if (SEEN_TILES.has(key) || !charts || typeof charts.countUp !== 'function') {

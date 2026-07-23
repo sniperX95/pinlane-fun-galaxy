@@ -501,7 +501,7 @@ async function collectDirMeasures(page) {
       const el = document.getElementById(`dirKpiVal-${metric}`);
       return el ? el.textContent.trim() : '';
     };
-    const refLabel = 'vs periode precedente';
+    const refLabel = 'vs période précédente';
     const euroChip = (cur, prev) => {
       const diff = cur - prev; const up = diff > 0;
       const pct = Math.round((Math.abs(diff) / Math.abs(prev)) * 100);
@@ -780,15 +780,15 @@ async function probeDirAnalyse(browser) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 950 } });
   try {
     await bootDirection(page);
-    await switchDirView(page, 'analyse');
+    await switchDirView(page, 'activite');
     await waitDirAnalyseMounted(page);
     const first = await readDirAnalyseState(page);
-    // Aller-retour : la barre de plage globale doit revenir sur Synthese, puis on
-    // relit l'hote au retour sur Analyse (sans exiger un board plein : une
-    // mutation peut le vider, seul l'identifiant du noeud est compare).
+    // Aller-retour : passage par Synthese, puis on relit l'hote au retour sur
+    // Activite (sans exiger un board plein : une mutation peut le vider, seul
+    // l'identifiant du noeud est compare -> preuve de persistance de l'hote).
     await switchDirView(page, 'synthese');
     await page.waitForTimeout(200);
-    await switchDirView(page, 'analyse');
+    await switchDirView(page, 'activite');
     await page.waitForFunction(() => {
       const slot = document.getElementById('dirAnalyseSlot');
       return Boolean(slot && slot.querySelector('[data-board-instance]'));
@@ -935,7 +935,7 @@ async function main() {
       chip: (document.querySelector('.dir-kpi[data-metric="revenue"] .dir-chip') || {}).textContent || '',
     }), { k: `${targetWin.start}|${targetWin.end}`, before: compareToggle.before });
     ok(afterCompare.calls === afterCompare.before, `basculer la comparaison ne coute AUCUN fetch (calls ${afterCompare.before} -> ${afterCompare.calls})`);
-    ok(/sur la periode/.test(afterCompare.chip), `comparaison OFF => delta neutre « sur la periode » (obtenu « ${afterCompare.chip.trim()} »)`);
+    ok(/sur la période/.test(afterCompare.chip), `comparaison OFF => delta neutre « sur la période » (obtenu « ${afterCompare.chip.trim()} »)`);
 
     console.log('\n[7] ABSENCE : plus d onglet ni pave de l ancienne page dans #adminContent');
     const absence = await page.evaluate(() => ({
@@ -959,7 +959,7 @@ async function main() {
     const fatal = errs.filter((e) => !/localStorage|sandboxed|favicon|cdn\.vercel-insights/i.test(e));
     ok(fatal.length === 0, `[8] aucune erreur console fatale (obtenu ${fatal.length}${fatal.length ? ' : ' + fatal[0] : ''})`);
 
-    console.log('\n[10] VUES : segmented nav 4 vues, Synthese=focus, Activite=graphes (focus cache), Clients+Mes centres, plage GLOBALE');
+    console.log('\n[10] VUES : segmented nav 5 vues, Synthese=focus, Activite=graphes enrichis + board (focus cache), Clients+Mes centres, plage GLOBALE');
     // La barre de plage vit HORS des vues (#dirControls) : elle doit rester
     // visible et mesurable sur chaque vue (fenetre globale). Sonde reutilisable.
     const rangeVisible = () => page.evaluate(() => {
@@ -980,8 +980,9 @@ async function main() {
         gridPresent: Boolean(document.querySelector('#dirChartResas')),
       };
     });
-    ok(navState.pills.length === 6 && ['synthese', 'activite', 'clients', 'centres', 'provenance', 'analyse'].every((v, i) => navState.pills[i] === v),
-      `le segmented nav offre 6 vues dans l'ordre, Analyse en dernier (obtenu ${JSON.stringify(navState.pills)})`);
+    ok(navState.pills.length === 5 && ['synthese', 'activite', 'clients', 'centres', 'provenance'].every((v, i) => navState.pills[i] === v)
+      && !navState.pills.includes('analyse'),
+      `le segmented nav offre 5 vues dans l'ordre, plus aucune vue Analyse orpheline (obtenu ${JSON.stringify(navState.pills)})`);
     ok(navState.view === 'synthese' && navState.activeView === 'synthese', `vue par defaut = Synthese (pilule active « ${navState.activeView} »)`);
     ok(navState.focusPresent && !navState.gridPresent, 'Synthese montre le grand graphe focus et PAS la grille d activite');
     ok(await rangeVisible(), 'la barre de plage est visible sur la vue Synthese');
@@ -1101,44 +1102,45 @@ async function main() {
     ok(prov.chanChartH > 0, `« Canaux de reservation » : le donutChart des canaux est trace (${prov.chanChartH}px)`);
     ok(prov.srcRows === 1, `« Sources marketing » : la table liste la source servie (obtenu ${prov.srcRows})`);
     ok(prov.audiencePresent && prov.audienceMentionsGA, 'la carte Audience « a connecter » cite Google Analytics');
-    ok(/a venir/i.test(prov.audiencePillText), `la pilule inerte annonce « Connecter Google Analytics (a venir) » (obtenu « ${prov.audiencePillText.trim()} »)`);
+    ok(/à venir/i.test(prov.audiencePillText), `la pilule inerte annonce « Connecter Google Analytics (à venir) » (obtenu « ${prov.audiencePillText.trim()} »)`);
     ok(prov.audienceHasDigit === false, 'AUCUN chiffre (age/sexe/zone) dans la carte Audience (honnetete demographique)');
     ok(await rangeVisible(), 'la barre de plage reste visible sur la vue Provenance');
     await switchDirView(page, 'synthese');
     await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
 
-    console.log('\n[12] VUE ANALYSE : 6e onglet, board personnalisable monte, hote PERSISTANT au retour, plage propre');
-    // Le segmented nav offre maintenant 6 vues, Analyse en derniere position.
-    const navSix = await page.evaluate(() => [...document.querySelectorAll('#adminContent .dir-nav-pill')].map((b) => b.getAttribute('data-view')));
-    ok(navSix.length === 6 && navSix[5] === 'analyse', `le segmented nav offre 6 vues, Analyse en dernier (obtenu ${JSON.stringify(navSix)})`);
+    console.log('\n[12] BOARD DANS ACTIVITE (fusion) : plus de vue Analyse, board personnalisable monte EN BAS d Activite, hote PERSISTANT au retour, plage GLOBALE visible');
+    // Fusion 2026-07-23 : le segmented nav n'offre plus que 5 vues, PLUS aucune
+    // pilule Analyse. Le board (ex-vue Analyse) vit desormais dans la vue Activite.
+    const navFive = await page.evaluate(() => [...document.querySelectorAll('#adminContent .dir-nav-pill')].map((b) => b.getAttribute('data-view')));
+    ok(navFive.length === 5 && !navFive.includes('analyse'), `le segmented nav offre 5 vues, plus aucune pilule Analyse (obtenu ${JSON.stringify(navFive)})`);
 
-    // Cliquer Analyse monte le board reel (window.PinlaneAnalyticsBoard, deja
+    // Aller sur Activite monte le board reel (window.PinlaneAnalyticsBoard, deja
     // charge par la page) : au moins un widget trace (SVG hauteur>0) OU sa barre
     // de plage propre presente. Sa donnee vient du mock directionAnalytics via
     // getAnalytics -> apiRequest (meme chemin que le poste d'observation).
-    await switchDirView(page, 'analyse');
+    await switchDirView(page, 'activite');
     await waitDirAnalyseMounted(page);
     const analyse1 = await readDirAnalyseState(page);
     ok(analyse1.widgetSvgH > 0 || analyse1.rangeControls > 0,
-      `Analyse monte le board (widget SVG ${analyse1.widgetSvgH}px OU barre de plage ${analyse1.rangeControls} controles)`);
+      `Activite monte le board en bas (widget SVG ${analyse1.widgetSvgH}px OU barre de plage ${analyse1.rangeControls} controles)`);
     ok(Boolean(analyse1.id), `le board pose une reference stable au montage (data-board-instance « ${analyse1.id} »)`);
     ok(analyse1.storageKey === 'pinlane-direction-board', 'le board persiste sa config sous la cle DISTINCTE pinlane-direction-board');
-    ok(analyse1.globalControlsHidden, 'la barre de plage GLOBALE est masquee sur Analyse (le board apporte la sienne)');
+    ok(!analyse1.globalControlsHidden, 'la barre de plage GLOBALE reste VISIBLE sur Activite (le board porte SA propre plage libre, sans conflit)');
 
-    // Aller-retour : Synthese puis Analyse. La barre GLOBALE revient sur Synthese,
-    // et revenir sur Analyse conserve le MEME noeud (data-board-instance identique)
-    // : le board n'est PAS recree, donc sa config/edition survivrait.
+    // Aller-retour : Synthese puis Activite. La barre GLOBALE reste sur Synthese,
+    // et revenir sur Activite conserve le MEME noeud (data-board-instance identique)
+    // : le board n'est PAS recree, donc sa config/edition/plage libre survivent.
     await switchDirView(page, 'synthese');
     await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
-    ok(await rangeVisible(), 'la barre de plage GLOBALE revient sur Synthese apres un passage par Analyse');
-    await switchDirView(page, 'analyse');
+    ok(await rangeVisible(), 'la barre de plage GLOBALE est sur Synthese apres un passage par Activite');
+    await switchDirView(page, 'activite');
     await page.waitForFunction(() => {
       const slot = document.getElementById('dirAnalyseSlot');
       return Boolean(slot && slot.querySelector('[data-board-instance]'));
     }, null, { timeout: 10000 });
     const analyse2 = await readDirAnalyseState(page);
     ok(Boolean(analyse2.id) && analyse2.id === analyse1.id,
-      `revenir sur Analyse conserve le MEME noeud de board (« ${analyse1.id} » -> « ${analyse2.id} »)`);
+      `revenir sur Activite conserve le MEME noeud de board (« ${analyse1.id} » -> « ${analyse2.id} »)`);
     await switchDirView(page, 'synthese');
     await page.waitForFunction(() => Boolean(document.querySelector('#dirFocusChart svg path')), null, { timeout: 8000 });
 
@@ -1151,7 +1153,7 @@ async function main() {
       for (const theme of ['dark', 'light']) {
         await page.evaluate((t) => { setStaffTheme(t); }, theme);
         await page.waitForTimeout(300);
-        for (const view of ['synthese', 'activite', 'clients', 'centres', 'provenance', 'analyse']) {
+        for (const view of ['synthese', 'activite', 'clients', 'centres', 'provenance']) {
           await switchDirView(page, view);
           await page.setViewportSize({ width: 1400, height: 950 });
           await page.waitForTimeout(300);
@@ -1311,7 +1313,7 @@ async function main() {
       'liste de dormants amputee (plus 1 ligne a relancer)',
     );
     await runViewMutation(
-      "if (view === 'activite') return dirGridHtml();",
+      "if (view === 'activite') return dirGridHtml() + dirAnalyseHtml();",
       "if (view === 'activite') return dirFocusHtml();",
       'activiteGridVisible',
       'vue Activite qui rend le focus au lieu de la grille (routage de vue casse)',
@@ -1335,8 +1337,8 @@ async function main() {
       'table des sources amputee de sa derniere ligne',
     );
     await runProvenanceMutation(
-      "pas encore connectee.",
-      "pas encore connectee. Age moyen 34 ans.",
+      "pas encore connectée.",
+      "pas encore connectée. Age moyen 34 ans.",
       'noFakeAudienceNumber',
       'faux chiffre demographique injecte dans la carte Audience',
     );

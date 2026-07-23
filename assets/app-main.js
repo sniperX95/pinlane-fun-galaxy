@@ -2638,7 +2638,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260722b';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260723a';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -4442,324 +4442,25 @@ function formatDashboardTrend(current, previous) {
 
 
 /* ============================================================================
-   ANALYSE PERSONNALISÉE (dashboard) : widgets modulaires : l'utilisateur
-   choisit la métrique ET la forme (barres/aire/donut/lignes). Données servies
-   par dashboardAnalytics (mêmes agrégats réels que l'onglet Données).
-   ========================================================================== */
-const DASH_RANGES = { '7j': 7, '30j': 30, '90j': 90 };
-const dashAnalyticsCache = { key: '', loading: false, error: '', analytics: null, previous: null };
-
-const DASH_METRICS = [
-  { id: 'revenue', label: "Chiffre d'affaires", kind: 'series', color: 'var(--chart-2)', fmt: v => formatMoney(v) },
-  { id: 'reservations', label: 'Réservations', kind: 'series', color: 'var(--chart-1)', fmt: v => `${v}` },
-  { id: 'pax', label: 'Joueurs', kind: 'series', color: 'var(--chart-3)', fmt: v => `${v}` },
-  { id: 'byType', label: 'Répartition par activité', kind: 'split' },
-  { id: 'byChannel', label: 'Canal de réservation', kind: 'split' },
-  { id: 'occupancy', label: 'Taux d’occupation bowling', kind: 'stat' },
-  { id: 'paymentRate', label: 'Taux d’encaissement', kind: 'stat' },
-  { id: 'cancelRate', label: "Taux d'annulation", kind: 'stat' },
-  { id: 'avgBasket', label: 'Panier moyen', kind: 'stat' },
-];
-const DASH_VIZ = { series: [['bars', 'Histogramme'], ['area', 'Courbe']], split: [['donut', 'Donut'], ['rows', 'Barres']] };
-const DASH_TYPE_META = {
-  bowling: { label: 'Bowling', color: 'var(--chart-1)' },
-  laser: { label: 'Laser Game', color: 'var(--chart-2)' },
-  formule: { label: 'Formules', color: 'var(--chart-3)' },
-};
-
-function getDashWidgetConfig() {
-  if (!Array.isArray(state.dashWidgets) || state.dashWidgets.length !== 2) {
-    state.dashWidgets = [{ metric: 'revenue', viz: 'bars' }, { metric: 'byType', viz: 'donut' }];
-  }
-  if (!state.dashRange || !state.dashRange.key) state.dashRange = { key: '30j', start: '', end: '' };
-  return { widgets: state.dashWidgets, range: state.dashRange };
-}
-
-function dashRangeDates() {
-  const { range } = getDashWidgetConfig();
-  const today = todayStr();
-  if (range.key === 'custom' && range.start && range.end) return { start: range.start, end: range.end };
-  const days = DASH_RANGES[range.key] || 30;
-  return { start: addDays(today, -(days - 1)), end: today };
-}
-
-function dashAnalyticsKey() {
-  const { start, end } = dashRangeDates();
-  const centerId = (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId()) || 'libramont';
-  return { key: `${centerId}|${start}|${end}`, centerId, start, end };
-}
-
-async function loadDashAnalytics(force = false) {
-  const { key, centerId, start, end } = dashAnalyticsKey();
-  if (!force && dashAnalyticsCache.key === key && dashAnalyticsCache.analytics) return;
-  // Fetch déjà en vol : on note la plage désirée et on rattrape à la fin 
-  // un changement de plage pendant un chargement n'est jamais silencieusement perdu.
-  if (dashAnalyticsCache.loading) { dashAnalyticsCache.pendingKey = key; return; }
-  dashAnalyticsCache.pendingKey = null;
-  dashAnalyticsCache.loading = true;
-  dashAnalyticsCache.error = '';
-  renderStaffIfDashboard();
-  try {
-    const payload = await apiRequest(`/api/ops?action=dashboardAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${start}&endDate=${end}`);
-    dashAnalyticsCache.analytics = payload.analytics;
-    dashAnalyticsCache.previous = payload.previous;
-    dashAnalyticsCache.key = key;
-  } catch (error) {
-    dashAnalyticsCache.error = error.message || 'Analyse momentanément indisponible.';
-  } finally {
-    dashAnalyticsCache.loading = false;
-    renderStaffIfDashboard();
-    // La plage a changé pendant ce fetch → on relance sur la nouvelle.
-    if (dashAnalyticsCache.pendingKey && dashAnalyticsCache.pendingKey !== dashAnalyticsCache.key) {
-      dashAnalyticsCache.pendingKey = null;
-      loadDashAnalytics();
-    }
-  }
-}
-
-function renderStaffIfDashboard() {
-  if (state.view === 'staff' && (state.staffMenuPage === 'dashboard' || !state.staffMenuPage)) renderStaff();
-}
-
-function dashSetRange(key) {
-  getDashWidgetConfig();
-  state.dashRange = { key, start: state.dashRange.start, end: state.dashRange.end };
-  save();
-  loadDashAnalytics();
-  renderStaffIfDashboard();
-}
-
-// Saisie de date en cours conservée dans l'état → un re-render de fond (sync
-// 4 s) ne l'efface plus avant que l'utilisateur ait cliqué « Appliquer ».
-function dashTypeRange(which, value) {
-  getDashWidgetConfig();
-  if (which === 'start') state.dashRange.typedStart = value;
-  else state.dashRange.typedEnd = value;
-}
-
-function dashRangeInputValue(which, computed) {
-  const range = state.dashRange || {};
-  if (which === 'start') return range.typedStart != null ? range.typedStart : (range.key === 'custom' ? range.start : computed);
-  return range.typedEnd != null ? range.typedEnd : (range.key === 'custom' ? range.end : computed);
-}
-
-function dashSetCustomRange() {
-  const range = state.dashRange || {};
-  const start = range.typedStart || document.getElementById('dashRangeStart')?.value || '';
-  const end = range.typedEnd || document.getElementById('dashRangeEnd')?.value || '';
-  if (!start || !end) { toast('Choisis les deux dates.'); return; }
-  if (end < start) { toast('La fin précède le début.'); return; }
-  state.dashRange = { key: 'custom', start, end };
-  save();
-  loadDashAnalytics();
-  renderStaffIfDashboard();
-}
-
-// Bouton « Aujourd'hui » : ramène le dashboard (jour courant) ET l'analyse
-// sur la fenêtre la plus courte, avec données re-fetchées.
-function dashGoToday() {
-  state.currentDate = todayStr();
-  state.dashRange = { key: '7j', start: '', end: '' };
-  save();
-  loadDashAnalytics(true);
-  renderStaff();
-  syncDateReservations(state.currentDate, { silent: true });
-}
-
-function dashSetWidget(index, field, value) {
-  const { widgets } = getDashWidgetConfig();
-  const widget = widgets[index];
-  if (!widget) return;
-  widget[field] = value;
-  if (field === 'metric') {
-    const metric = DASH_METRICS.find(m => m.id === value);
-    widget.viz = metric?.kind === 'split' ? 'donut' : metric?.kind === 'stat' ? 'tile' : 'bars';
-  }
-  save();
-  renderStaffIfDashboard();
-}
-
-function dashWidgetSeries(analytics, metricId) {
-  const useWeekly = analytics.daily.length > 35;
-  const source = useWeekly ? analytics.weekly : analytics.daily;
-  const key = metricId === 'revenue' ? 'revenue' : metricId === 'pax' ? 'pax' : 'count';
-  return source.map(item => ({
-    label: useWeekly ? String(item.weekStart || '').slice(5) : item.date.slice(5),
-    hint: useWeekly ? `Semaine du ${item.weekStart}` : item.date,
-    value: Number(item[key] || 0),
-  }));
-}
-
-function dashWBars(points, color, fmt) {
-  if (points.every(p => !p.value)) return '<div class="dh-chart-empty">Aucune donnée sur cette période.</div>';
-  const max = Math.max(...points.map(p => p.value), 1);
-  const tickEvery = Math.max(1, Math.ceil(points.length / 6));
-  return `<div class="dh-chart"><div class="dh-chart-max">${fmt(max)}</div><div class="dh-cols">${points.map((p, i) => `
-    <div class="dh-col" title="${escapeHtml(`${p.hint} : ${fmt(p.value)}`)}">
-      <div class="dh-col-bar" style="height:${Math.max(Math.round((p.value / max) * 100), p.value ? 3 : 0)}%;background:${color}"></div>
-      <div class="dh-col-tick">${i % tickEvery === 0 || i === points.length - 1 ? escapeHtml(p.label) : ''}</div>
-    </div>`).join('')}</div></div>`;
-}
-
-function dashWArea(points, color, fmt) {
-  if (points.every(p => !p.value)) return '<div class="dh-chart-empty">Aucune donnée sur cette période.</div>';
-  const max = Math.max(...points.map(p => p.value), 1);
-  const W = 100, H = 40;
-  const step = points.length > 1 ? W / (points.length - 1) : W;
-  const coords = points.map((p, i) => `${(i * step).toFixed(2)},${(H - (p.value / max) * (H - 4)).toFixed(2)}`);
-  return `<div class="dh-chart"><div class="dh-chart-max">${fmt(max)}</div>
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:150px;display:block" role="img" aria-label="Courbe">
-      <polygon points="0,${H} ${coords.join(' ')} ${W},${H}" fill="${color}" fill-opacity="0.14"></polygon>
-      <polyline points="${coords.join(' ')}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline>
-    </svg>
-    <div class="dash-area-ticks"><span>${escapeHtml(points[0].label)}</span><span>${escapeHtml(points[points.length - 1].label)}</span></div></div>`;
-}
-
-function dashSplitParts(analytics, metricId) {
-  if (metricId === 'byChannel') {
-    return analytics.byChannel.map((c, i) => ({
-      label: c.channel === 'en ligne' ? 'En ligne' : 'Staff',
-      value: c.count,
-      color: i === 0 ? 'var(--chart-1)' : 'var(--chart-2)',
-    }));
-  }
-  return Object.entries(analytics.byType).map(([type, v]) => ({
-    label: DASH_TYPE_META[type] ? DASH_TYPE_META[type].label : type,
-    value: v.count,
-    color: DASH_TYPE_META[type] ? DASH_TYPE_META[type].color : 'var(--chart-1)',
-  })).sort((a, b) => b.value - a.value);
-}
-
-function dashWDonut(parts) {
-  const total = parts.reduce((s, p) => s + p.value, 0);
-  if (!total) return '<div class="dh-chart-empty">Aucune donnée sur cette période.</div>';
-  let offset = 25;
-  const circles = parts.map(p => {
-    const pct = (p.value / total) * 100;
-    const html = `<circle r="15.9155" cx="21" cy="21" fill="none" stroke="${p.color}" stroke-width="5.4" stroke-dasharray="${pct.toFixed(2)} ${(100 - pct).toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>`;
-    offset -= pct;
-    return html;
-  }).join('');
-  const rows = parts.map(p => `
-      <div class="dh-row"><div class="dh-row-label"><span class="dh-dot" style="background:${p.color}"></span>${escapeHtml(p.label)}</div>
-      <div class="dh-row-track"><div class="dh-row-bar" style="width:${Math.max((p.value / total) * 100, 2)}%;background:${p.color}"></div></div>
-      <div class="dh-row-value">${p.value} <span class="dh-row-extra">${Math.round((p.value / total) * 100)} %</span></div></div>`).join('');
-  return `<div class="dash-w-donut">
-    <svg viewBox="0 0 42 42" role="img" aria-label="Répartition">${circles}</svg>
-    <div class="dh-rows">${rows}</div>
-  </div>`;
-}
-
-function dashWTile(analytics, metricId) {
-  const t = analytics.totals;
-  const configs = {
-    occupancy: { value: analytics.occupancy.rate === null ? '-' : `${analytics.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${analytics.occupancy.bookedLaneHours} h réservées / ${analytics.occupancy.capacityLaneHours} h ouvertes` },
-    paymentRate: { value: `${Number(t.paymentRate || 0).toLocaleString('fr-BE')} %`, sub: `${t.paid || 0} payée(s) sur ${t.reservations}` },
-    cancelRate: { value: `${t.cancelRate.toLocaleString('fr-BE')} %`, sub: `${t.cancelled} annulation(s)` },
-    avgBasket: { value: formatMoney(t.avgBasket), sub: 'par réservation active' },
-  };
-  const config = configs[metricId] || { value: '-', sub: '' };
-  return `<div class="dh-tile" style="margin-top:8px"><div class="dh-tile-value" style="font-size:30px">${config.value}</div><div class="dh-tile-foot"><span class="dh-tile-sub">${escapeHtml(config.sub)}</span></div></div>`;
-}
-
-function renderDashboardCustomAnalytics() {
-  const { widgets, range } = getDashWidgetConfig();
-  // Cache périmé (centre ou plage changés) = on ne montre JAMAIS les chiffres
-  // d'un autre centre : état de chargement + re-fetch.
-  const stale = dashAnalyticsCache.key !== dashAnalyticsKey().key;
-  const analytics = stale ? null : dashAnalyticsCache.analytics;
-  if (stale && !dashAnalyticsCache.loading) setTimeout(() => loadDashAnalytics(), 0);
-  const { start, end } = dashRangeDates();
-  const previous = stale ? null : dashAnalyticsCache.previous;
-
-  const deltaChip = (current, prev) => {
-    if (!prev) return '';
-    const delta = Math.round(((current - prev) / prev) * 1000) / 10;
-    if (!Number.isFinite(delta)) return '';
-    const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'neutral';
-    const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '=';
-    return `<span class="dh-delta ${cls}">${arrow} ${Math.abs(delta).toLocaleString('fr-BE')} %</span>`;
-  };
-
-  let body;
-  if (dashAnalyticsCache.error) {
-    body = `<div class="dh-error" role="alert">${escapeHtml(dashAnalyticsCache.error)} <button type="button" class="admin-btn" onclick="loadDashAnalytics(true)">Réessayer</button></div>`;
-  } else if (!analytics) {
-    body = '<div class="dh-chart-empty">Chargement de l’analyse…</div>';
-  } else {
-    body = `<div class="dash-widgets">${widgets.map((widget, index) => {
-      const metric = DASH_METRICS.find(m => m.id === widget.metric) || DASH_METRICS[0];
-      const vizOptions = DASH_VIZ[metric.kind] || [];
-      let chart = '';
-      if (metric.kind === 'series') {
-        const points = dashWidgetSeries(analytics, metric.id);
-        chart = widget.viz === 'area' ? dashWArea(points, metric.color, metric.fmt) : dashWBars(points, metric.color, metric.fmt);
-      } else if (metric.kind === 'split') {
-        const parts = dashSplitParts(analytics, metric.id);
-        if (widget.viz === 'rows') {
-          const total = parts.reduce((s, x) => s + x.value, 0) || 1;
-          chart = `<div class="dh-rows" style="margin-top:8px">${parts.map(p => `
-            <div class="dh-row"><div class="dh-row-label"><span class="dh-dot" style="background:${p.color}"></span>${escapeHtml(p.label)}</div>
-            <div class="dh-row-track"><div class="dh-row-bar" style="width:${Math.max((p.value / total) * 100, 2)}%;background:${p.color}"></div></div>
-            <div class="dh-row-value">${p.value}</div></div>`).join('')}</div>`;
-        } else {
-          chart = dashWDonut(parts);
-        }
-      } else {
-        chart = dashWTile(analytics, metric.id);
-      }
-      return `<article class="dash-card">
-        <div class="dash-widget-controls">
-          <select onchange="dashSetWidget(${index}, 'metric', this.value)" aria-label="Métrique du widget ${index + 1}">
-            ${DASH_METRICS.map(m => `<option value="${m.id}" ${widget.metric === m.id ? 'selected' : ''}>${m.label}</option>`).join('')}
-          </select>
-          ${vizOptions.length ? `<select onchange="dashSetWidget(${index}, 'viz', this.value)" aria-label="Type de graphique du widget ${index + 1}">
-            ${vizOptions.map(([id, label]) => `<option value="${id}" ${widget.viz === id ? 'selected' : ''}>${label}</option>`).join('')}
-          </select>` : ''}
-        </div>
-        ${chart}
-      </article>`;
-    }).join('')}</div>`;
-  }
-
-  return `<section class="dash-card dash-custom-analytics">
-    <div class="dash-card-head">
-      <h2>Analyse personnalisée</h2>
-      <div class="dash-range-controls">
-        ${analytics && previous ? `<span class="dash-range-deltas">Résa ${deltaChip(analytics.totals.reservations, previous.totals.reservations)} · CA ${deltaChip(analytics.totals.revenue, previous.totals.revenue)} vs période préc.</span>` : ''}
-        <button type="button" class="admin-btn" onclick="dashGoToday()">Aujourd'hui</button>
-        <div class="dh-range">${Object.keys(DASH_RANGES).map(key => `<button type="button" class="${range.key === key ? 'active' : ''}" onclick="dashSetRange('${key}')">${key}</button>`).join('')}</div>
-        <input type="date" id="dashRangeStart" value="${dashRangeInputValue('start', start)}" oninput="dashTypeRange('start', this.value)" aria-label="Début de période">
-        <input type="date" id="dashRangeEnd" value="${dashRangeInputValue('end', end)}" oninput="dashTypeRange('end', this.value)" aria-label="Fin de période">
-        <button type="button" class="admin-btn" onclick="dashSetCustomRange()">Appliquer</button>
-      </div>
-    </div>
-    ${body}
-  </section>`;
-}
-
-
-/* ============================================================================
-   CARTES PERMUTABLES du dashboard (Vue d'ensemble). Deux emplacements :
-   - carte large (state.dashMainChart) : affluence / tendance / CA / semaine ;
-   - carte latérale (state.dashSideChart) : formules / canal / occasions / mix.
-   Données : dashAnalyticsCache (agrégats serveur RÉELS de la plage, action
-   dashboardAnalytics). Aucune valeur fabriquée : donnée absente = état de
-   chargement ou message vide honnête. Graphes délégués à window.PinlaneCharts.
+   CARTES PERMUTABLES du dashboard (Vue d'ensemble). Deux emplacements, tous les
+   deux scopés à la JOURNÉE courante (state.currentDate) :
+   - carte large (state.dashMainChart) : affluence par heure / réservations par
+     heure / charge par piste, du jour ;
+   - carte latérale (state.dashSideChart) : formules / canal / occasions du jour.
+   Données : getStaffDashboardMetrics (réservations actives d'aujourd'hui, côté
+   client). Aucune valeur fabriquée : journée calme = message vide honnête, jamais
+   une forme inventée. Graphes délégués à window.PinlaneCharts.
    ========================================================================== */
 const DASH_MAIN_CHART_OPTIONS = [
-  { id: 'heatmap', label: 'Affluence par créneau' },
-  { id: 'trend', label: 'Tendance réservations' },
-  { id: 'revenue', label: "Chiffre d'affaires" },
-  { id: 'weekday', label: 'Réservations par jour de semaine' },
+  { id: 'affluence', label: "Affluence par heure (aujourd'hui)" },
+  { id: 'sessions', label: "Réservations par heure (aujourd'hui)" },
+  { id: 'lanes', label: "Charge par piste (aujourd'hui)" },
 ];
 const DASH_SIDE_CHART_OPTIONS = [
-  { id: 'formules', label: 'Top formules' },
+  { id: 'formules', label: 'Formules du jour' },
   { id: 'channel', label: 'Canal de réservation' },
-  { id: 'occasions', label: 'Occasions' },
-  { id: 'activity', label: 'Répartition par activité' },
+  { id: 'occasions', label: 'Occasions du jour' },
 ];
-const DASH_WEEKDAY_LABELS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 // Etat d'ouverture du menu ('main' | 'side' | null) : variable de module, pas
 // un noeud : il survit aux re-rendus innerHTML du dashboard (poll de synchro).
 let dashChartMenuOpen = null;
@@ -4835,94 +4536,54 @@ function renderDashChartPicker(which, currentId) {
   </div>`;
 }
 
-function dashChartPeriodLabel() {
-  const { range } = getDashWidgetConfig();
-  const labels = { '7j': '7 derniers jours', '30j': '30 derniers jours', '90j': '90 derniers jours' };
-  if (labels[range.key]) return labels[range.key];
-  const { start, end } = dashRangeDates();
-  const fmt = iso => parseLocalDate(iso).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' });
-  return `du ${fmt(start)} au ${fmt(end)}`;
-}
-
-// Etat des agrégats de plage : donnée périmée (centre / plage changés) = re-
-// fetch en arrière-plan et JAMAIS les chiffres d'une autre plage à l'écran.
-// En erreur, pas de re-fetch automatique (le bouton Réessayer s'en charge).
-function getDashRangeAnalytics() {
-  const { key } = dashAnalyticsKey();
-  const stale = dashAnalyticsCache.key !== key;
-  if (stale && !dashAnalyticsCache.loading && !dashAnalyticsCache.error) setTimeout(() => loadDashAnalytics(), 0);
-  return {
-    analytics: stale ? null : dashAnalyticsCache.analytics,
-    loading: stale || dashAnalyticsCache.loading,
-    error: dashAnalyticsCache.error,
-  };
-}
-
-function dashRangeErrorHtml(message) {
-  return `<div class="dash-empty" role="alert">${escapeHtml(message)}<br><button type="button" class="dash-retry-btn" onclick="loadDashAnalytics(true)">Réessayer</button></div>`;
-}
-
-// heatmap serveur = 7 objets {heure: nombre} (index 0 = lundi). On resserre
-// les colonnes sur la plage horaire réellement fréquentée.
-function buildDashHeatmap(analytics) {
-  const raw = Array.isArray(analytics.heatmap) ? analytics.heatmap : [];
-  if (raw.length !== 7) return null;
-  let minHour = 24;
-  let maxHour = -1;
-  raw.forEach(row => Object.keys(row || {}).forEach(key => {
-    const hour = Number(key);
-    if (!Number.isFinite(hour) || !(Number(row[key]) > 0)) return;
-    if (hour < minHour) minHour = hour;
-    if (hour > maxHour) maxHour = hour;
-  }));
-  if (maxHour < minHour) return null;
-  const hours = [];
-  for (let hour = minHour; hour <= maxHour; hour += 1) hours.push(hour);
-  return {
-    matrix: raw.map(row => hours.map(hour => Number((row || {})[hour]) || 0)),
-    colLabels: hours.map(hour => `${hour}h`),
-  };
-}
-
-function buildDashWeekdaySeries(analytics) {
-  const totals = Array.from({ length: 7 }, () => 0);
-  (Array.isArray(analytics.daily) ? analytics.daily : []).forEach(day => {
-    const d = parseLocalDate(day.date);
-    if (!d || Number.isNaN(d.getTime())) return;
-    totals[(d.getDay() + 6) % 7] += Number(day.count) || 0;
-  });
-  return totals.map((value, index) => ({ label: DASH_WEEKDAY_LABELS[index], value }));
-}
-
-// Corps de la carte large. host rempli APRES le innerHTML du dashboard : le
-// moteur PinlaneCharts monte ses SVG dans un élément vivant.
-function renderDashMainChartBody(host) {
+// Corps de la carte large : lecture du JOUR courant (state.currentDate). Les
+// trois options (affluence par heure, réservations par heure, charge par piste)
+// sont calculées depuis getStaffDashboardMetrics : aucune donnée de période.
+// host rempli APRÈS le innerHTML du dashboard : PinlaneCharts monte ses SVG dans
+// un noeud vivant. Journée calme = message vide honnête, jamais une forme feinte.
+function renderDashMainChartBody(host, metrics) {
   if (!host) return;
   const current = getDashChartSelection('main');
-  const { analytics, loading, error } = getDashRangeAnalytics();
-  if (error) { host.innerHTML = dashRangeErrorHtml(error); return; }
-  if (loading || !analytics) { host.innerHTML = '<div class="dash-empty">Chargement des données de la période…</div>'; return; }
   const charts = window.PinlaneCharts;
   if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
-  const motion = `dash|main|${current}|${dashAnalyticsKey().key}`;
-  if (current === 'heatmap') {
-    const heat = buildDashHeatmap(analytics);
-    if (!heat) { host.innerHTML = '<div class="dash-empty">Aucune réservation sur la période.</div>'; return; }
-    charts.heatmapChart(host, { matrix: heat.matrix, rowLabels: DASH_WEEKDAY_LABELS, colLabels: heat.colLabels, motionKey: motion });
+  const { planningWindow, activeReservations, laneUsage } = metrics;
+  const motion = `dash|main|${current}|${state.currentDate}|${activeReservations.length}`;
+  if (current === 'lanes') {
+    const openHours = planningWindow.closed ? 0 : Math.max(planningWindow.close - planningWindow.open, 0);
+    const booked = laneUsage.filter(row => (Number(row.value) || 0) > 0);
+    if (!openHours || !booked.length) { host.innerHTML = '<div class="dash-empty">Aucune piste réservée aujourd\'hui.</div>'; return; }
+    const series = [...laneUsage]
+      .sort((left, right) => left.lane - right.lane)
+      .map(row => ({ label: `P${row.lane}`, value: Math.min(100, Math.round(((Number(row.value) || 0) / openHours) * 100)) }));
+    charts.barChart(host, { series, format: 'percent', motionKey: motion, height: 230 });
     return;
   }
-  if (current === 'weekday') {
-    charts.barChart(host, { series: buildDashWeekdaySeries(analytics), format: 'int', motionKey: motion, height: 230 });
-    return;
+  if (planningWindow.closed) { host.innerHTML = '<div class="dash-empty">Centre fermé aujourd\'hui.</div>'; return; }
+  if (!activeReservations.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
+  const open = planningWindow.open;
+  const close = planningWindow.close;
+  const perReservation = activeReservations.map(reservation => {
+    const hours = new Set();
+    getStaffResourceWindows(reservation, 'all').forEach(win => {
+      const start = Number(win.start);
+      const end = Number(win.end);
+      for (let hour = open; hour < close; hour += 1) {
+        if (start < hour + 1 && end > hour) hours.add(hour);
+      }
+    });
+    return { pax: Number(reservation.pax) || 0, hours };
+  });
+  const series = [];
+  for (let hour = open; hour < close; hour += 1) {
+    let players = 0;
+    let sessions = 0;
+    perReservation.forEach(entry => {
+      if (entry.hours.has(hour)) { players += entry.pax; sessions += 1; }
+    });
+    series.push({ label: formatClockDisplay(hour), value: current === 'sessions' ? sessions : players });
   }
-  const daily = Array.isArray(analytics.daily) ? analytics.daily : [];
-  const useWeekly = daily.length > 35;
-  const source = useWeekly ? (Array.isArray(analytics.weekly) ? analytics.weekly : []) : daily;
-  const field = current === 'revenue' ? 'revenue' : 'count';
-  const series = source.map(item => (useWeekly
-    ? { label: `S${String(item.label || '').split('S')[1] || ''}`, value: Number(item[field]) || 0 }
-    : { date: item.date, value: Number(item[field]) || 0 }));
-  charts.lineChart(host, { series, format: current === 'revenue' ? 'euro' : 'int', motionKey: motion, height: 230 });
+  if (series.every(point => !point.value)) { host.innerHTML = '<div class="dash-empty">Aucune activité planifiée sur les heures d\'ouverture d\'aujourd\'hui.</div>'; return; }
+  charts.barChart(host, { series, format: 'int', motionKey: motion, height: 230 });
 }
 
 function dashSplitRowsHtml(rows) {
@@ -4935,48 +4596,60 @@ function dashSplitRowsHtml(rows) {
     </div>`).join('')}</div>`;
 }
 
-// Corps de la carte latérale : chaque valeur vient de byFormule / byOccasion /
-// byChannel / byType servis par dashboardAnalytics.
-function renderDashSideChartBody(host) {
+// Corps de la carte latérale : répartition du JOUR courant. Chaque valeur vient
+// des réservations actives d'aujourd'hui (formule / canal / occasion déclarée),
+// jamais d'un agrégat de période.
+function renderDashSideChartBody(host, metrics) {
   if (!host) return;
   const current = getDashChartSelection('side');
-  const { analytics, loading, error } = getDashRangeAnalytics();
-  if (error) { host.innerHTML = dashRangeErrorHtml(error); return; }
-  if (loading || !analytics) { host.innerHTML = '<div class="dash-empty">Chargement des données de la période…</div>'; return; }
-  const motion = `dash|side|${current}|${dashAnalyticsKey().key}`;
-  if (current === 'formules') {
-    const rows = (Array.isArray(analytics.byFormule) ? analytics.byFormule : []).slice(0, 6).map(row => ({
-      label: String(row.label || row.id || 'Formule'),
-      value: Number(row.count) || 0,
-      valueText: `${Number(row.count) || 0} résa${(Number(row.count) || 0) > 1 ? 's' : ''} · ${formatMoney(row.revenue || 0)}`,
-    }));
-    host.innerHTML = rows.length ? dashSplitRowsHtml(rows) : '<div class="dash-empty">Aucune formule vendue sur la période.</div>';
+  const rows = metrics.activeReservations;
+  if (current === 'channel') {
+    const charts = window.PinlaneCharts;
+    if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
+    let staff = 0;
+    let online = 0;
+    rows.forEach(reservation => { if (reservation.channel === 'staff') staff += 1; else online += 1; });
+    if (!staff && !online) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
+    const parts = [];
+    if (online) parts.push({ label: 'En ligne', value: online });
+    if (staff) parts.push({ label: 'Staff', value: staff });
+    charts.donutChart(host, { parts, format: 'int', motionKey: `dash|side|channel|${state.currentDate}|${rows.length}` });
     return;
   }
   if (current === 'occasions') {
-    const rows = (Array.isArray(analytics.byOccasion) ? analytics.byOccasion : []).slice(0, 6).map(row => {
-      const key = String(row.occasion || '').toLowerCase();
-      const label = STAFF_OCCASION_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : 'Autre');
-      return { label, value: Number(row.count) || 0, valueText: `${Number(row.count) || 0}` };
+    const counts = new Map();
+    rows.forEach(reservation => {
+      const occasion = getReservationOccasion(reservation);
+      if (!occasion) return;
+      counts.set(occasion, (counts.get(occasion) || 0) + 1);
     });
-    host.innerHTML = rows.length ? dashSplitRowsHtml(rows) : '<div class="dash-empty">Aucune occasion déclarée sur la période.</div>';
+    const list = [...counts.entries()]
+      .map(([occasion, count]) => ({ label: STAFF_OCCASION_LABELS[occasion] || occasion, value: count, valueText: `${count}` }))
+      .sort((left, right) => right.value - left.value);
+    host.innerHTML = list.length ? dashSplitRowsHtml(list) : '<div class="dash-empty">Aucune occasion déclarée aujourd\'hui.</div>';
     return;
   }
-  const charts = window.PinlaneCharts;
-  if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
-  if (current === 'channel') {
-    const channelLabels = { 'en ligne': 'En ligne', staff: 'Staff' };
-    const parts = (Array.isArray(analytics.byChannel) ? analytics.byChannel : []).map(row => ({
-      label: channelLabels[row.channel] || String(row.channel || ''),
-      value: Number(row.count) || 0,
-    }));
-    charts.donutChart(host, { parts, format: 'int', motionKey: motion });
-    return;
-  }
-  const typeLabels = { bowling: 'Bowling', laser: 'Laser Game', formule: 'Formules' };
-  const parts = Object.entries(analytics.byType && typeof analytics.byType === 'object' ? analytics.byType : {})
-    .map(([type, agg]) => ({ label: typeLabels[type] || type, value: Number(agg && agg.count) || 0 }));
-  charts.donutChart(host, { parts, format: 'int', motionKey: motion });
+  const counts = new Map();
+  rows.forEach(reservation => {
+    const isFormule = reservation.type === 'formule' || reservation.formuleId;
+    if (!isFormule || !reservation.formuleId) return;
+    const entry = counts.get(reservation.formuleId) || { count: 0, revenue: 0 };
+    entry.count += 1;
+    entry.revenue += Number(reservation.price) || 0;
+    counts.set(reservation.formuleId, entry);
+  });
+  const list = [...counts.entries()]
+    .map(([id, entry]) => {
+      const formule = FORMULES.find(item => item.id === id);
+      return {
+        label: formule ? formule.name : id,
+        value: entry.count,
+        valueText: `${entry.count} résa${entry.count > 1 ? 's' : ''} · ${formatMoney(entry.revenue)}`,
+      };
+    })
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 6);
+  host.innerHTML = list.length ? dashSplitRowsHtml(list) : '<div class="dash-empty">Aucune formule vendue aujourd\'hui.</div>';
 }
 
 function renderStaffDashboardActivity(metrics) {
@@ -5842,7 +5515,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     <section class="dash-grid-main">
       <article class="dash-card dash-card-wide dash-card-pickable">
         <div class="dash-card-head">
-          <div class="dash-card-titles"><h2>${escapeHtml((DASH_MAIN_CHART_OPTIONS.find(option => option.id === getDashChartSelection('main')) || DASH_MAIN_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">${escapeHtml(dashChartPeriodLabel())}</span></div>
+          <div class="dash-card-titles"><h2>${escapeHtml((DASH_MAIN_CHART_OPTIONS.find(option => option.id === getDashChartSelection('main')) || DASH_MAIN_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">Aujourd'hui</span></div>
           ${renderDashChartPicker('main', getDashChartSelection('main'))}
         </div>
         <div class="dash-range-chart dash-range-chart-main" id="dashMainChartBody"></div>
@@ -5853,7 +5526,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
       <article class="dash-card dash-card-pickable">
         <div class="dash-card-head">
-          <div class="dash-card-titles"><h2>${escapeHtml((DASH_SIDE_CHART_OPTIONS.find(option => option.id === getDashChartSelection('side')) || DASH_SIDE_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">${escapeHtml(dashChartPeriodLabel())}</span></div>
+          <div class="dash-card-titles"><h2>${escapeHtml((DASH_SIDE_CHART_OPTIONS.find(option => option.id === getDashChartSelection('side')) || DASH_SIDE_CHART_OPTIONS[0]).label)}</h2><span class="dash-card-meta">Aujourd'hui</span></div>
           ${renderDashChartPicker('side', getDashChartSelection('side'))}
         </div>
         <div class="dash-range-chart dash-range-chart-side" id="dashSideChartBody"></div>
@@ -5876,11 +5549,6 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
     </section>
 
-    <section class="dash-card dash-board-section">
-      <div class="dash-card-head"><h2>Analyse personnalisée</h2></div>
-      <div id="dashBoardSlot" class="dash-board-slot"></div>
-    </section>
-
     <section class="dash-status-strip">
       <div><span>${renderDashboardIcon('lanes')}</span><small>Pistes disponibles</small><strong>${availableLanes} / ${TOTAL_LANES}</strong><em>${TOTAL_LANES ? Math.round((availableLanes / TOTAL_LANES) * 100) : 0}%</em></div>
       <div><span>${renderDashboardIcon('prep')}</span><small>En préparation</small><strong>${metrics.upcoming.length} session${metrics.upcoming.length > 1 ? 's' : ''}</strong></div>
@@ -5890,45 +5558,14 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       <div><span>${renderDashboardIcon('wrench')}</span><small>Maintenance</small><strong>${Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length}</strong></div>
     </section>
   `;
-  setupStaffDashboardCharts();
+  setupStaffDashboardCharts(metrics);
 }
 
-// Analyse personnalisee = tableau de widgets customisable (window.Pinlane
-// AnalyticsBoard). Hote PERSISTANT deplace dans le slot a chaque rendu :
-// appendChild MEUT le noeud existant (etat, edition, config preserves), le
-// board n'est monte QU'UNE fois -> aucun re-fetch ni scintillement quand le
-// dashboard se re-rend (ticks de synchro).
-let dashBoardHandle = null;
-let dashBoardContainer = null;
-async function fetchDashboardAnalyticsForBoard(start, end) {
-  const centerId = (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId()) || 'libramont';
-  const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=dashboardAnalytics&centerId=${encodeURIComponent(centerId)}&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`);
-  return (payload && payload.analytics) || payload;
-}
-function mountDashAnalyticsBoard() {
-  const slot = document.getElementById('dashBoardSlot');
-  if (!slot) return;
-  if (!dashBoardContainer) {
-    dashBoardContainer = document.createElement('div');
-    dashBoardContainer.className = 'dash-board-container';
-  }
-  if (dashBoardContainer.parentNode !== slot) slot.appendChild(dashBoardContainer);
-  if (!dashBoardHandle && window.PinlaneAnalyticsBoard && typeof window.PinlaneAnalyticsBoard.mount === 'function') {
-    dashBoardHandle = window.PinlaneAnalyticsBoard.mount(dashBoardContainer, {
-      storageKey: 'pinlane-dashboard-board',
-      getAnalytics: fetchDashboardAnalyticsForBoard,
-      defaultWidgets: [{ metric: 'revenue', viz: 'line' }, { metric: 'byType', viz: 'donut' }, { metric: 'reservations', viz: 'bars' }],
-      maxDate: todayStr(),
-    });
-  }
-}
-
-function setupStaffDashboardCharts() {
+function setupStaffDashboardCharts(metrics) {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
-  mountDashAnalyticsBoard();
-  renderDashMainChartBody(document.getElementById('dashMainChartBody'));
-  renderDashSideChartBody(document.getElementById('dashSideChartBody'));
+  renderDashMainChartBody(document.getElementById('dashMainChartBody'), metrics);
+  renderDashSideChartBody(document.getElementById('dashSideChartBody'), metrics);
   const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');
   if (revenue) setupRevenueChartInteraction(revenue);
 }

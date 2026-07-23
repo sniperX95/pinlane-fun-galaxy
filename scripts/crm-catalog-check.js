@@ -118,33 +118,11 @@ async function main() {
   assert(basketCells > 0, 'panier moyen affiché par carte');
   await page.screenshot({ path: path.join(OUT, '02-catalogue-classement.png'), fullPage: true });
 
-  // ---- Dashboard : widgets modulaires + navigation temporelle --------------
-  await page.goto(`${BASE_URL}/#staff/dashboard`, { waitUntil: 'load', timeout: 45000 });
-  await page.waitForTimeout(2000);
-  assert(await page.locator('.dash-custom-analytics').count() === 1, 'section Analyse personnalisée présente');
-  assert(await page.locator('.dash-widgets .dash-card').count() === 2, '2 widgets rendus');
-  assert(await page.locator('.dash-widgets .dh-col').count() >= 20, 'widget 1 : histogramme réel');
-  assert(await page.locator('.dash-w-donut svg circle').count() === 3, 'widget 2 : donut 3 activités');
-  assert((await page.locator('.dash-range-deltas').textContent()).includes('▲'), 'deltas vs période précédente affichés');
-  assert(await page.locator('button:has-text("Aujourd\'hui")').count() >= 1, 'bouton Aujourd\'hui');
-  // Changement de visualisation : donut → barres
-  await page.locator('.dash-widgets .dash-card').nth(1).locator('select').nth(1).selectOption('rows');
-  await page.waitForTimeout(500);
-  assert(await page.locator('.dash-w-donut').count() === 0, 'donut remplacé');
-  assert(await page.locator('.dash-widgets .dh-row').count() === 3, 'répartition en barres');
-  // Changement de métrique : stat tile
-  await page.locator('.dash-widgets .dash-card').nth(1).locator('select').first().selectOption('paymentRate');
-  await page.waitForTimeout(500);
-  const tile = await page.locator('.dash-widgets .dh-tile').textContent();
-  assert(tile.includes('70') && tile.includes('%'), `taux d'encaissement réel affiché (reçu "${tile.slice(0, 60)}")`);
-  // Plage personnalisée
-  await page.locator('#dashRangeStart').fill('2026-07-01');
-  await page.locator('#dashRangeEnd').fill('2026-07-11');
-  await page.locator('button:has-text("Appliquer")').click();
-  await page.waitForTimeout(800);
-  const rangeKey = await page.evaluate(() => state.dashRange.key);
-  assert(rangeKey === 'custom', 'plage personnalisée appliquée');
-  await page.screenshot({ path: path.join(OUT, '04-dashboard-widgets.png'), fullPage: true });
+  // ---- Dashboard : board modulaire RETIRE (refonte 2026-07-23) --------------
+  // Le tableau d'analyse personnalisable ne vit plus sur le dashboard (devenu
+  // vue "du jour") : il a ete deplace dans la vue Activite de la Direction. Sa
+  // couverture d'edition/persistance est prouvee par analytics-board-check.js et
+  // direction-cockpit-check.js. Plus rien a verifier ici cote dashboard.
 
   // ---- Groupes : actions réelles + dismiss persisté ------------------------
   await page.goto(`${BASE_URL}/#staff/groups`, { waitUntil: 'load', timeout: 45000 });

@@ -1877,12 +1877,12 @@ let dirAnalyseContainer = null;
 // reellement servi par le serveur (jamais un ratio recalcule cote front). Les
 // tuiles "taux" empruntent la serie de volume qui les porte, le titre le dit.
 const DIR_FOCUS = {
-  reservations: { field: 'count', format: 'int', label: 'Reservations sur la periode' },
-  pax: { field: 'pax', format: 'int', label: 'Joueurs sur la periode' },
-  revenue: { field: 'revenue', format: 'euro', label: "Chiffre d'affaires sur la periode" },
-  avgBasket: { field: 'revenue', format: 'euro', label: "Ticket moyen (base: chiffre d'affaires)" },
-  occupancy: { field: 'count', format: 'int', label: 'Taux de remplissage (base: reservations)' },
-  cancelRate: { field: 'cancelled', format: 'int', label: 'Annulations sur la periode' },
+  reservations: { field: 'count', format: 'int', label: 'Réservations sur la période' },
+  pax: { field: 'pax', format: 'int', label: 'Joueurs sur la période' },
+  revenue: { field: 'revenue', format: 'euro', label: "Chiffre d'affaires sur la période" },
+  avgBasket: { field: 'revenue', format: 'euro', label: "Ticket moyen (base : chiffre d'affaires)" },
+  occupancy: { field: 'count', format: 'int', label: 'Taux de remplissage (base : réservations)' },
+  cancelRate: { field: 'cancelled', format: 'int', label: 'Annulations sur la période' },
 };
 
 function dirOccupancyRate(analytics) {
@@ -1901,7 +1901,7 @@ function dirOccupancyRef(entry) {
 // entry) = valeur de reference (null si aucune) ; spark = champ de serie de la
 // mini-courbe ; invert = un sens croissant est un ECHEC (taux d'annulation).
 const DIR_KPIS = [
-  { key: 'reservations', label: 'Reservations', format: 'int', cur: (t) => t.reservations, ref: (r) => (r ? r.reservations : null), spark: 'count' },
+  { key: 'reservations', label: 'Réservations', format: 'int', cur: (t) => t.reservations, ref: (r) => (r ? r.reservations : null), spark: 'count' },
   { key: 'pax', label: 'Joueurs', format: 'int', cur: (t) => t.pax, ref: (r) => (r ? r.pax : null), spark: 'pax' },
   { key: 'revenue', label: "Chiffre d'affaires", format: 'euro', cur: (t) => t.revenue, ref: (r) => (r ? r.revenue : null), spark: 'revenue' },
   { key: 'avgBasket', label: 'Ticket moyen', format: 'euro', cur: (t) => t.avgBasket, ref: (r) => (r ? r.avgBasket : null), spark: 'revenue' },
@@ -1909,25 +1909,30 @@ const DIR_KPIS = [
   { key: 'cancelRate', label: "Taux d'annulation", format: 'percent', cur: (t) => t.cancelRate, ref: (r) => (r ? r.cancelRate : null), spark: 'cancelled', invert: true },
 ];
 
-// VUES du poste d'observation (refonte 2026-07-21) : la page ne s'empile plus en
-// un seul long scroll aux tailles disparates. On classe le contenu en 4 vues
-// nettes, choisies par un segmented nav (pilules facon Linear) sous la barre de
-// plage. La plage de dates reste GLOBALE (elle change la fenetre pour toutes les
-// vues) ; seule la vue active est rendue + montee (motionKey inclut la vue, donc
-// la premiere apparition d'une vue anime ses graphes). L'ordre = la lecture.
+// VUES du poste d'observation (refonte 2026-07-21, fusion 2026-07-23) : la page
+// ne s'empile plus en un seul long scroll aux tailles disparates. On classe le
+// contenu en 5 vues nettes, choisies par un segmented nav (pilules facon Linear)
+// sous la barre de plage. La plage de dates reste GLOBALE (elle change la fenetre
+// pour toutes les vues) ; seule la vue active est rendue + montee (motionKey
+// inclut la vue, donc la premiere apparition d'une vue anime ses graphes).
+// L'ordre = la lecture. La vue Activite absorbe desormais le board personnalisable
+// (ex-vue 'analyse') : grille de graphes ancres ENRICHIE + analyse libre.
 const DIR_VIEW_META = [
-  { key: 'synthese', label: 'Synthese' },
-  { key: 'activite', label: 'Activite' },
+  { key: 'synthese', label: 'Synthèse' },
+  { key: 'activite', label: 'Activité' },
   { key: 'clients', label: 'Clients' },
   { key: 'centres', label: 'Mes centres' },
   { key: 'provenance', label: 'Provenance' },
-  { key: 'analyse', label: 'Analyse' },
 ];
 const DIR_VIEWS = DIR_VIEW_META.map((v) => v.key);
 
 // Vue active persistee (state.adminView), defaut 'synthese'. Valeur inconnue
 // (donnee corrompue, ancienne session) -> repli calme sur la synthese.
+// Fusion 2026-07-23 : l'ancienne vue 'analyse' (board personnalisable) a rejoint
+// 'activite' ; un etat/deep-link qui pointait sur 'analyse' retombe donc sur
+// 'activite' (jamais une vue orpheline).
 function getDirView() {
+  if (state.adminView === 'analyse') return 'activite';
   return DIR_VIEWS.includes(state.adminView) ? state.adminView : 'synthese';
 }
 
@@ -1980,7 +1985,7 @@ function dirUnitWord(granularity) {
 }
 
 function dirCompareLabel(compare) {
-  return { none: 'sans comparaison', previous: 'vs periode precedente', year: 'vs annee precedente' }[compare] || 'sans comparaison';
+  return { none: 'sans comparaison', previous: 'vs période précédente', year: 'vs année précédente' }[compare] || 'sans comparaison';
 }
 
 function getDirReferenceTotals(entry, compare) {
@@ -1996,12 +2001,12 @@ function getDirReferenceTotals(entry, compare) {
 // une baisse est une reussite.
 function buildDirDeltaChip(curVal, refVal, format, compare, invert) {
   if (compare === 'none' || refVal === null || refVal === undefined) {
-    return '<span class="dir-chip dir-chip-mute">sur la periode</span>';
+    return '<span class="dir-chip dir-chip-mute">sur la période</span>';
   }
   const cur = Number(curVal) || 0;
   const ref = Number(refVal) || 0;
   const dirDiff = cur - ref;
-  const refLabel = compare === 'year' ? 'vs annee precedente' : 'vs periode precedente';
+  const refLabel = compare === 'year' ? 'vs année précédente' : 'vs période précédente';
   const mag = (value) => {
     const av = Math.abs(value);
     if (format === 'euro') return formatMoney(av);
@@ -2009,10 +2014,10 @@ function buildDirDeltaChip(curVal, refVal, format, compare, invert) {
     return new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(Math.round(av));
   };
   if (ref === 0 && cur > 0) {
-    return `<span class="dir-chip ${invert ? 'dir-chip-down' : 'dir-chip-up'}">▲ +${mag(dirDiff)} : nouvelle activite</span>`;
+    return `<span class="dir-chip ${invert ? 'dir-chip-down' : 'dir-chip-up'}">▲ +${mag(dirDiff)} : nouvelle activité</span>`;
   }
   if (ref === 0 && cur === 0) {
-    return '<span class="dir-chip dir-chip-flat">= aucune activite</span>';
+    return '<span class="dir-chip dir-chip-flat">= aucune activité</span>';
   }
   if (Math.round(dirDiff * 100) / 100 === 0) {
     return `<span class="dir-chip dir-chip-flat">= stable ${refLabel}</span>`;
@@ -2047,7 +2052,7 @@ function dirDayLabel(dateStr) {
 }
 
 function dirLoadingHtml() {
-  return '<div class="dir-note dir-note-loading">Chargement de l\'analytique de la periode...</div>';
+  return '<div class="dir-note dir-note-loading">Chargement de l\'analytique de la période...</div>';
 }
 
 function dirNoteHtml(text) {
@@ -2089,15 +2094,76 @@ function dirFocusHtml() {
   </section>`;
 }
 
+// Sous-bande de qualite (Activite) : 6 micro-stats REELLES, non cliquables, tirees
+// des totals + clients deja servis par directionAnalytics (aucun calcul front,
+// aucun appel serveur). Champ absent -> « n/d » calme.
+function dirActivityMicroBand(analytics) {
+  const totals = (analytics && analytics.totals) || {};
+  const clients = (analytics && analytics.clients) || {};
+  const stats = [
+    { label: "Taux d'encaissement", value: totals.paymentRate == null ? 'n/d' : formatAdminPercent(totals.paymentRate) },
+    { label: 'Réservations payées', value: dirFormatValue(totals.paid || 0, 'int') },
+    { label: 'Clients uniques', value: dirFormatValue(clients.unique || 0, 'int') },
+    { label: 'Nouveaux clients', value: dirFormatValue(clients.new || 0, 'int') },
+    { label: 'Déjà venus', value: dirFormatValue(clients.returning || 0, 'int') },
+    { label: 'Taux de fidélité', value: clients.returningRate == null ? 'n/d' : formatAdminPercent(clients.returningRate) },
+  ].map((s) => `<div class="dir-micro"><span class="dir-micro-label">${escapeHtml(s.label)}</span><span class="dir-micro-value">${escapeHtml(s.value)}</span></div>`).join('');
+  return `<div class="dir-microband" role="group" aria-label="Indicateurs de qualité de la période">${stats}</div>`;
+}
+
+// Une section d'activite = un fin label de chapitre + sa grille de cartes. Le
+// rythme vertical entre chapitres vient de .dir-view (gap) ; le label colle a sa
+// grille (marge dans le CSS). L'ordre = la lecture : ce qui arrive, ce qui remplit,
+// de quoi c'est fait, ce qui tire, le rythme.
+function dirActSection(label, gridInner) {
+  return `<section class="dir-actsec"><h3 class="dir-section-label">${escapeHtml(label)}</h3><div class="dir-grid">${gridInner}</div></section>`;
+}
+
+// Reduit une liste { label, value } a <= limit parts pour un donut lisible :
+// au-dela, les 5 premieres + « Autres » (somme du reste). Deja tri decroissant.
+function dirTopParts(rows, labelKey, valueKey, limit) {
+  const mapped = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({ label: String((row && row[labelKey]) || 'Autre'), value: Number(row && row[valueKey]) || 0 }))
+    .filter((part) => part.value > 0)
+    .sort((a, b) => b.value - a.value);
+  if (mapped.length <= limit) return mapped;
+  const top = mapped.slice(0, limit - 1);
+  const rest = mapped.slice(limit - 1).reduce((sum, part) => sum + part.value, 0);
+  top.push({ label: 'Autres', value: rest });
+  return top;
+}
+
+// Premiere lettre en capitale (motifs de visite servis en minuscules : anniversaire...).
+function dirCapitalize(text) {
+  const s = String(text || '');
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// Vue Activite = surface analytique poussee : sous-bande de qualite + grille de
+// graphes ancres (chacun trace UN champ reel de directionAnalytics deja en cache,
+// zero appel serveur), en chapitres, puis le board personnalisable (dirAnalyseHtml
+// concatene par dirViewHtml). Les 4 hotes historiques (dirChartResas/Pax/Types/
+// Channels) sont conserves tels quels ; le reste ENRICHIT.
 function dirGridHtml(range = getDirRange()) {
   const unit = dirUnitWord(range.granularity);
-  return `<div class="dir-grid">
-    <article class="dir-card"><h3 class="dir-card-title">Reservations par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartResas"></div></article>
+  const entry = directionInsightCache[dirInsightKey()];
+  const analytics = (entry && entry.analytics) || {};
+  const trend = dirActSection('Tendances', `
+    <article class="dir-card"><h3 class="dir-card-title">Chiffre d'affaires par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartRevenue"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Réservations par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartResas"></div></article>
     <article class="dir-card"><h3 class="dir-card-title">Joueurs par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartPax"></div></article>
-    <article class="dir-card"><h3 class="dir-card-title">Repartition par activite</h3><div class="dir-chart" id="dirChartTypes"></div></article>
-    <article class="dir-card"><h3 class="dir-card-title">Canaux de reservation</h3><div class="dir-chart" id="dirChartChannels"></div></article>
-    <article class="dir-card dir-card-wide"><h3 class="dir-card-title">Affluence par jour et heure</h3><div class="dir-chart dir-chart-heat" id="dirChartHeatmap"></div></article>
-  </div>`;
+    <article class="dir-card"><h3 class="dir-card-title">Annulations par ${escapeHtml(unit)}</h3><div class="dir-chart" id="dirChartCancelled"></div></article>`);
+  const split = dirActSection('Répartition', `
+    <article class="dir-card"><h3 class="dir-card-title">Répartition par activité (chiffre d'affaires)</h3><div class="dir-chart" id="dirChartTypes"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Répartition par activité (volume)</h3><div class="dir-chart" id="dirChartTypesVol"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Canaux de réservation</h3><div class="dir-chart" id="dirChartChannels"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Motifs de visite</h3><div class="dir-chart" id="dirChartOccasions"></div></article>`);
+  const detail = dirActSection('Formules et capacité', `
+    <article class="dir-card"><h3 class="dir-card-title">Top formules par chiffre d'affaires</h3><div class="dir-chart" id="dirChartFormules"></div></article>
+    <article class="dir-card"><h3 class="dir-card-title">Occupation du bowling</h3><div class="dir-chart" id="dirChartOccupancy"></div></article>`);
+  const rhythm = dirActSection('Rythme', `
+    <article class="dir-card dir-card-wide"><h3 class="dir-card-title">Affluence par jour et heure</h3><div class="dir-chart dir-chart-heat" id="dirChartHeatmap"></div></article>`);
+  return dirActivityMicroBand(analytics) + trend + split + detail + rhythm;
 }
 
 function dirTablesHtml(entry) {
@@ -2135,14 +2201,14 @@ function dirTablesHtml(entry) {
     <section class="dir-table-card" aria-label="Top formules">
       <h3 class="dir-card-title">Top formules</h3>
       ${formuleRows
-        ? `<table class="dir-table"><thead><tr><th>Formule</th><th class="dir-num">Resas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${formuleRows}</tbody></table>`
-        : '<div class="dir-note">Aucune formule reservee sur cette periode.</div>'}
+        ? `<table class="dir-table"><thead><tr><th>Formule</th><th class="dir-num">Résas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${formuleRows}</tbody></table>`
+        : '<div class="dir-note">Aucune formule réservée sur cette période.</div>'}
     </section>
     <section class="dir-table-card" aria-label="Top clients">
       <h3 class="dir-card-title">Top clients</h3>
       ${clientRows
-        ? `<table class="dir-table"><thead><tr><th>Client</th><th class="dir-num">Visites</th><th class="dir-num">CA</th><th>Activite favorite</th></tr></thead><tbody>${clientRows}</tbody></table>`
-        : '<div class="dir-note">Aucun client identifie sur cette periode.</div>'}
+        ? `<table class="dir-table"><thead><tr><th>Client</th><th class="dir-num">Visites</th><th class="dir-num">CA</th><th>Activité favorite</th></tr></thead><tbody>${clientRows}</tbody></table>`
+        : '<div class="dir-note">Aucun client identifié sur cette période.</div>'}
     </section>
   </div>`;
 }
@@ -2185,7 +2251,7 @@ function dirCmpValue(value, format) {
 // Colonnes comparees (l'ordre = la lecture) : CA d'abord, occupation en fin.
 const DIR_CMP_COLS = [
   { key: 'revenue', label: 'CA', format: 'euro' },
-  { key: 'reservations', label: 'Resas', format: 'int' },
+  { key: 'reservations', label: 'Résas', format: 'int' },
   { key: 'pax', label: 'Joueurs', format: 'int' },
   { key: 'avgBasket', label: 'Ticket moyen', format: 'euro' },
   { key: 'occupancy', label: 'Occupation', format: 'percent' },
@@ -2226,7 +2292,7 @@ function dirCmpRowHtml(center, best, currentId) {
     <th scope="row" class="dir-cmp-name">
       <span class="dir-cmp-center">${escapeHtml(center.name || center.id || 'Centre')}</span>
       ${isCurrent ? '<span class="dir-cmp-badge">Votre centre</span>' : ''}
-      ${center.error ? '<span class="dir-cmp-warn">Donnees indisponibles</span>' : ''}
+      ${center.error ? '<span class="dir-cmp-warn">Données indisponibles</span>' : ''}
     </th>
     ${cells}
   </tr>`;
@@ -2261,7 +2327,7 @@ function dirComparisonHtml() {
   return `<section class="dir-cmp" aria-label="Comparer mes centres">
     <div class="dir-cmp-head">
       <h2 class="dir-cmp-title">Comparer mes centres</h2>
-      <p class="dir-cmp-sub">Vos centres cote a cote sur la periode active.</p>
+      <p class="dir-cmp-sub">Vos centres côte à côte sur la période active.</p>
     </div>
     <div class="dir-cmp-body" id="dirCmpBody">${dirComparisonInner()}</div>
   </section>`;
@@ -2290,15 +2356,15 @@ function dirRetentionInner() {
   const segStats = [
     { label: 'Clients uniques', value: dirFormatValue(unique, 'int') },
     { label: 'Nouveaux', value: dirFormatValue(newCount, 'int') },
-    { label: 'Deja venus', value: dirFormatValue(returning, 'int') },
-    { label: 'Taux de fidelite', value: returningRate == null ? 'n/d' : formatAdminPercent(returningRate) },
+    { label: 'Déjà venus', value: dirFormatValue(returning, 'int') },
+    { label: 'Taux de fidélité', value: returningRate == null ? 'n/d' : formatAdminPercent(returningRate) },
     { label: 'Panier moyen nouveaux', value: seg.avgBasketNew == null ? 'n/d' : formatMoney(seg.avgBasketNew) },
-    { label: 'Panier moyen recurrents', value: seg.avgBasketReturning == null ? 'n/d' : formatMoney(seg.avgBasketReturning) },
+    { label: 'Panier moyen récurrents', value: seg.avgBasketReturning == null ? 'n/d' : formatMoney(seg.avgBasketReturning) },
   ].map((stat) => `<div class="dir-ret-stat"><span class="dir-ret-stat-label">${escapeHtml(stat.label)}</span><span class="dir-ret-stat-value">${escapeHtml(stat.value)}</span></div>`).join('');
   const hasSegment = (newCount + returning) > 0;
   const segBlock = `<div class="dir-ret-seg">
-    <h3 class="dir-card-title">Nouveaux vs recurrents</h3>
-    ${hasSegment ? '<div class="dir-ret-seg-chart" id="dirRetChart" aria-hidden="true"></div>' : dirNoteHtml('Pas encore de repartition clients sur cette periode.')}
+    <h3 class="dir-card-title">Nouveaux vs récurrents</h3>
+    ${hasSegment ? '<div class="dir-ret-seg-chart" id="dirRetChart" aria-hidden="true"></div>' : dirNoteHtml('Pas encore de répartition clients sur cette période.')}
     <div class="dir-ret-stats">${segStats}</div>
   </div>`;
 
@@ -2307,21 +2373,21 @@ function dirRetentionInner() {
   let lapsedBlock;
   if (!lapsed.length) {
     lapsedBlock = `<div class="dir-ret-lapsed">
-      <h3 class="dir-card-title">Clients a relancer</h3>
-      ${dirNoteHtml('Aucun habitue dormant a relancer sur cette periode. Vos reguliers reviennent.')}
+      <h3 class="dir-card-title">Clients à relancer</h3>
+      ${dirNoteHtml('Aucun habitué dormant à relancer sur cette période. Vos réguliers reviennent.')}
     </div>`;
   } else {
     const count = lapsed.length;
     const headline = count > 1
-      ? `${count} habitues ne sont pas revenus depuis plus de ${since} jours.`
-      : `1 habitue n'est pas revenu depuis plus de ${since} jours.`;
+      ? `${count} habitués ne sont pas revenus depuis plus de ${since} jours.`
+      : `1 habitué n'est pas revenu depuis plus de ${since} jours.`;
     const rows = lapsed.map((client) => dirRetLapsedRowHtml(client)).join('');
     lapsedBlock = `<div class="dir-ret-lapsed">
-      <h3 class="dir-card-title">Clients a relancer</h3>
+      <h3 class="dir-card-title">Clients à relancer</h3>
       <p class="dir-ret-lapsed-head">${escapeHtml(headline)}</p>
       <div class="dir-ret-lapsed-scroll">
         <table class="dir-table dir-ret-lapsed-table">
-          <thead><tr><th scope="col">Client</th><th scope="col" class="dir-num">Visites</th><th scope="col" class="dir-num">CA cumule</th><th scope="col">Dernier passage</th></tr></thead>
+          <thead><tr><th scope="col">Client</th><th scope="col" class="dir-num">Visites</th><th scope="col" class="dir-num">CA cumulé</th><th scope="col">Dernier passage</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -2333,8 +2399,8 @@ function dirRetentionInner() {
 function dirRetentionHtml() {
   return `<section class="dir-ret" aria-label="Retention et clients">
     <div class="dir-ret-head">
-      <h2 class="dir-ret-title">Retention et clients</h2>
-      <p class="dir-ret-sub">Qui revient, qui s'eloigne, sur la periode active.</p>
+      <h2 class="dir-ret-title">Rétention et clients</h2>
+      <p class="dir-ret-sub">Qui revient, qui s'éloigne, sur la période active.</p>
     </div>
     <div class="dir-ret-body" id="dirRetBody">${dirRetentionInner()}</div>
   </section>`;
@@ -2408,8 +2474,8 @@ function dirProvOccasionsBlock(data) {
     <h3 class="dir-card-title">Pourquoi ils viennent</h3>
     ${has
       ? `<div class="dir-chart dir-prov-occ" id="dirProvOccChart"></div>
-         <table class="dir-table dir-prov-table"><thead><tr><th>Occasion</th><th class="dir-num">Resas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${rows}</tbody></table>`
-      : dirNoteHtml('Aucune occasion declaree sur la periode.')}
+         <table class="dir-table dir-prov-table"><thead><tr><th>Occasion</th><th class="dir-num">Résas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${rows}</tbody></table>`
+      : dirNoteHtml('Aucune occasion déclarée sur la période.')}
   </article>`;
 }
 
@@ -2421,8 +2487,8 @@ function dirProvChannelsBlock(data) {
       <span class="dir-prov-chan-label">${escapeHtml(row.label || row.key || 'Canal')}</span>
       <span class="dir-prov-chan-value">${Number(row.count) || 0} resas · ${escapeHtml(formatMoney(row.revenue))} · ${escapeHtml(dirProvSharePct(row.share))}</span>
     </li>`).join('');
-  return `<article class="dir-card dir-prov-card" aria-label="Canaux de reservation">
-    <h3 class="dir-card-title">Canaux de reservation</h3>
+  return `<article class="dir-card dir-prov-card" aria-label="Canaux de réservation">
+    <h3 class="dir-card-title">Canaux de réservation</h3>
     ${has
       ? `<div class="dir-chart" id="dirProvChanChart"></div>
          <ul class="dir-prov-chan-list">${values}</ul>`
@@ -2444,8 +2510,8 @@ function dirProvSourcesBlock(data) {
   return `<article class="dir-card dir-prov-card" aria-label="Sources marketing">
     <h3 class="dir-card-title">Sources marketing</h3>
     ${has
-      ? `<table class="dir-table dir-prov-table"><thead><tr><th>Source</th><th class="dir-num">Resas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${rows}</tbody></table>`
-      : dirNoteHtml('Aucune source marketing captee sur la periode (les campagnes UTM apparaitront ici).')}
+      ? `<table class="dir-table dir-prov-table"><thead><tr><th>Source</th><th class="dir-num">Résas</th><th class="dir-num">CA</th><th class="dir-num">Part</th></tr></thead><tbody>${rows}</tbody></table>`
+      : dirNoteHtml('Aucune source marketing captée sur la période (les campagnes UTM apparaîtront ici).')}
   </article>`;
 }
 
@@ -2457,13 +2523,13 @@ function dirProvAudienceBlock(data) {
   if (connected) {
     return `<article class="dir-card dir-prov-card dir-prov-card-wide dir-prov-audience" aria-label="Audience">
       <h3 class="dir-card-title">Audience</h3>
-      ${dirNoteHtml('Source demographique connectee. La repartition age, sexe et zone apparaitra ici.')}
+      ${dirNoteHtml('Source démographique connectée. La répartition âge, sexe et zone apparaîtra ici.')}
     </article>`;
   }
   return `<article class="dir-card dir-prov-card dir-prov-card-wide dir-prov-audience" aria-label="Audience">
     <h3 class="dir-card-title">Audience</h3>
-    <p class="dir-prov-audience-text">L'age, le sexe et la zone geographique de vos visiteurs viendront de Google Analytics. Cette source n'est pas encore connectee.</p>
-    <span class="dir-prov-audience-pill" role="note" aria-disabled="true">Connecter Google Analytics (a venir)</span>
+    <p class="dir-prov-audience-text">L'âge, le sexe et la zone géographique de vos visiteurs viendront de Google Analytics. Cette source n'est pas encore connectée.</p>
+    <span class="dir-prov-audience-pill" role="note" aria-disabled="true">Connecter Google Analytics (à venir)</span>
   </article>`;
 }
 
@@ -2484,7 +2550,7 @@ function dirProvenanceHtml() {
   return `<section class="dir-prov" aria-label="Provenance des reservations">
     <div class="dir-prov-head">
       <h2 class="dir-prov-title">Provenance</h2>
-      <p class="dir-prov-sub">Pourquoi vos clients viennent et d'ou arrive la reservation, sur la periode active.</p>
+      <p class="dir-prov-sub">Pourquoi vos clients viennent et d'où arrive la réservation, sur la période active.</p>
     </div>
     <div class="dir-prov-body" id="dirProvBody">${dirProvenanceInner()}</div>
   </section>`;
@@ -2635,7 +2701,7 @@ function mountDirRangeControl() {
   const daterange = typeof window !== 'undefined' ? window.PinlaneDateRange : null;
   if (!daterange || typeof daterange.mount !== 'function') {
     // Degrade calme : la periode reste lisible dans le libelle de fenetre.
-    host.innerHTML = '<div class="dir-range-fallback">Selecteur de periode indisponible pour le moment. La periode active reste affichee a droite.</div>';
+    host.innerHTML = '<div class="dir-range-fallback">Sélecteur de période indisponible pour le moment. La période active reste affichée à droite.</div>';
     return;
   }
   dirRangeHandle = daterange.mount(host, {
@@ -2749,20 +2815,29 @@ function dirNavHtml(activeView) {
 // Le contenu de la SEULE vue active. Chaque vue reste calme par section (chaque
 // bloc gere son propre vide/erreur) et ne recalcule aucune metrique cote front.
 function dirViewHtml(view, entry) {
-  if (view === 'activite') return dirGridHtml();
+  // Fusion 2026-07-23 : 'activite' = grille de graphes ancres ENRICHIE + board
+  // personnalisable (l'ancienne vue 'analyse'). L'hote persistant du board est
+  // deplace dans le slot par mountDirAnalyseBoard (jamais re-cree).
+  if (view === 'activite') return dirGridHtml() + dirAnalyseHtml();
   if (view === 'clients') return dirTablesHtml(entry) + dirRetentionHtml();
   if (view === 'centres') return dirComparisonHtml();
   if (view === 'provenance') return dirProvenanceHtml();
-  if (view === 'analyse') return dirAnalyseHtml();
   // synthese (defaut) : la rangee de KPI cliquables + le grand graphe focus.
   return dirKpisHtml(entry) + dirFocusHtml();
 }
 
-// Vue Analyse : un SLOT vide. Le contenu (window.PinlaneAnalyticsBoard) vit dans
-// un hote PERSISTANT deplace ici par mountDirAnalyseBoard a chaque rendu, jamais
-// re-cree. Pas de <header> (piege body.admin-mode header{height:0}) : section/div.
+// Board personnalisable (window.PinlaneAnalyticsBoard) : un SLOT vide sous un
+// separateur « Mon analyse ». Le contenu vit dans un hote PERSISTANT deplace ici
+// par mountDirAnalyseBoard a chaque rendu, jamais re-cree (config/edition/plage
+// libre survivent au changement de vue). Le board porte SA PROPRE barre de plage
+// (analyse libre, periode independante de la fenetre globale du cockpit). Pas de
+// <header> (piege body.admin-mode header{height:0}) : section/div.
 function dirAnalyseHtml() {
-  return `<section class="dir-analyse" aria-label="Analyse personnalisee">
+  return `<section class="dir-analyse" aria-label="Mon analyse personnalisée">
+    <div class="dir-analyse-head">
+      <h2 class="dir-analyse-title">Mon analyse</h2>
+      <p class="dir-analyse-sub">Analyse libre, période indépendante : ajoutez les cartes qui répondent à vos questions.</p>
+    </div>
     <div class="dir-analyse-slot" id="dirAnalyseSlot"></div>
   </section>`;
 }
@@ -2776,11 +2851,11 @@ async function dirBoardGetAnalytics(start, end) {
   return (payload && payload.analytics) || null;
 }
 
-// Montage ROBUSTE aux re-rendus (mirroir de mountDashAnalyticsBoard) : l'hote
-// PERSISTANT est cree UNE fois (data-board-instance stable = preuve d'identite
-// du noeud), DEPLACE dans le slot de la vue active par appendChild, et le board
-// n'est monte QU'UNE fois. Revenir sur Analyse re-utilise le meme noeud : aucun
-// re-fetch, aucun scintillement, config du board preservee.
+// Montage ROBUSTE aux re-rendus : l'hote PERSISTANT est cree UNE fois
+// (data-board-instance stable = preuve d'identite du noeud), DEPLACE dans le slot
+// de la vue Activite par appendChild, et le board n'est monte QU'UNE fois.
+// Revenir sur Activite re-utilise le meme noeud : aucun re-fetch, aucun
+// scintillement, config du board preservee.
 function mountDirAnalyseBoard() {
   const slot = document.getElementById('dirAnalyseSlot');
   if (!slot) return;
@@ -2805,14 +2880,14 @@ function mountDirAnalyseBoard() {
   }
 }
 
-// La vue Analyse apporte SA PROPRE barre de plage libre (le board est un outil
-// d'analyse personnalise) : on masque la barre de plage GLOBALE de Direction pour
-// ne pas presenter deux selecteurs de periode aux semantiques differentes. Les
-// autres vues la gardent (fenetre globale commune, hors #dirBody, jamais re-rendue).
+// La barre de plage GLOBALE (fenetre commune du cockpit) reste visible sur TOUTES
+// les vues depuis la fusion 2026-07-23 : la vue Activite l'utilise pour ses graphes
+// ancres, et le board personnalisable (integre en bas d'Activite) porte SA PROPRE
+// barre de plage libre (periode independante), sans conflit de semantique.
 function syncDirControlsForView() {
   const controls = document.getElementById('dirControls');
   if (!controls) return;
-  controls.hidden = getDirView() === 'analyse';
+  controls.hidden = false;
 }
 
 function renderDirectionBody() {
@@ -2911,6 +2986,10 @@ function mountDirectionCharts() {
 
   mountDirFocusChart(entry);
 
+  // GRILLE ACTIVITE ENRICHIE : chaque graphe trace UN champ reel de directionAnalytics
+  // deja en cache (daily/weekly/monthly, byType, byChannel, byOccasion, byFormule,
+  // occupancy). Aucun appel serveur, aucun agregat front (les series sont lues telles
+  // quelles ; occupation = 2 scalaires servis dont on soustrait la capacite libre).
   if (charts && typeof charts.barChart === 'function') {
     charts.barChart(document.getElementById('dirChartResas'), {
       series: dirMetricSeries(analytics, range.granularity, 'count', true),
@@ -2922,6 +3001,18 @@ function mountDirectionCharts() {
       format: 'int',
       motionKey: `${motionBase}|channels`,
     });
+    // Annulations dans le temps : champ 'cancelled' de la meme serie temporelle.
+    charts.barChart(document.getElementById('dirChartCancelled'), {
+      series: dirMetricSeries(analytics, range.granularity, 'cancelled', true),
+      format: 'int',
+      motionKey: `${motionBase}|cancelled`,
+    });
+    // Top formules par CA (deja trie serveur) : top 6 pour rester sous 6 labels X.
+    charts.barChart(document.getElementById('dirChartFormules'), {
+      series: dirTopParts(analytics.byFormule, 'label', 'revenue', 6),
+      format: 'euro',
+      motionKey: `${motionBase}|formules`,
+    });
   }
   if (charts && typeof charts.lineChart === 'function') {
     charts.lineChart(document.getElementById('dirChartPax'), {
@@ -2929,12 +3020,44 @@ function mountDirectionCharts() {
       format: 'int',
       motionKey: `${motionBase}|pax`,
     });
+    // Chiffre d'affaires dans le temps : champ 'revenue' de la serie temporelle.
+    charts.lineChart(document.getElementById('dirChartRevenue'), {
+      series: dirMetricSeries(analytics, range.granularity, 'revenue'),
+      format: 'euro',
+      motionKey: `${motionBase}|revenue`,
+    });
   }
   if (charts && typeof charts.donutChart === 'function') {
     charts.donutChart(document.getElementById('dirChartTypes'), {
       parts: Object.entries(analytics.byType || {}).map(([type, row]) => ({ label: ADMIN_TREND_TYPE_LABELS[type] || type, value: Number(row && row.revenue) || 0 })),
       format: 'euro',
       motionKey: `${motionBase}|types`,
+    });
+    // Meme repartition par activite, mais en VOLUME (nombre de resas) : le mix
+    // argent (formules) differe du mix volume (laser) -> l'insight le plus actionnable.
+    charts.donutChart(document.getElementById('dirChartTypesVol'), {
+      parts: Object.entries(analytics.byType || {}).map(([type, row]) => ({ label: ADMIN_TREND_TYPE_LABELS[type] || type, value: Number(row && row.count) || 0 })),
+      format: 'int',
+      motionKey: `${motionBase}|typesvol`,
+    });
+    // Motifs de visite declares (byOccasion) : donut plafonne a 6 parts.
+    charts.donutChart(document.getElementById('dirChartOccasions'), {
+      parts: dirTopParts(analytics.byOccasion, 'occasion', 'count', 6).map((part) => ({ label: dirCapitalize(part.label), value: part.value })),
+      format: 'int',
+      motionKey: `${motionBase}|occasions`,
+    });
+    // Occupation du bowling : piste-heures reservees (succes) vs capacite libre
+    // (capacite - reservees). rate=null / capacite 0 -> donut vide calme.
+    const occ = analytics.occupancy || {};
+    const bookedLaneHours = Number(occ.bookedLaneHours) || 0;
+    const capacityLaneHours = Number(occ.capacityLaneHours) || 0;
+    charts.donutChart(document.getElementById('dirChartOccupancy'), {
+      parts: [
+        { label: 'Piste-heures réservées', value: bookedLaneHours, tone: 'success' },
+        { label: 'Capacité libre', value: Math.max(0, capacityLaneHours - bookedLaneHours) },
+      ],
+      format: 'int',
+      motionKey: `${motionBase}|occupancy`,
     });
   }
   if (charts && typeof charts.heatmapChart === 'function') {

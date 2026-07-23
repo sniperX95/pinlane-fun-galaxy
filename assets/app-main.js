@@ -1254,9 +1254,24 @@ function sortReservations(list = []) {
   });
 }
 
+// Reconcilie le cache mensuel (source des compteurs du calendrier Reservations)
+// avec le snapshot serveur d'un jour poll : sans ca, une resa supprimee ou
+// deplacee cote serveur restait dans le cache (fusion par union d'id) et gonflait
+// le compteur de la case ("15 resa" affiche alors que le clic charge le reel).
+// On remplace les entrees du cache pour CETTE date par la liste serveur du jour.
+function reconcileMonthCacheForDate(dateStr, reservations) {
+  if (!staffReservationsDataCache.loaded) return;
+  const others = (staffReservationsDataCache.reservations || []).filter(r => r.date !== dateStr);
+  staffReservationsDataCache = {
+    ...staffReservationsDataCache,
+    reservations: [...others, ...(reservations || [])]
+  };
+}
+
 function replaceReservationsForDate(dateStr, reservations) {
   const others = state.reservations.filter(r => r.date !== dateStr);
   const serverList = reservations || [];
+  reconcileMonthCacheForDate(dateStr, serverList);
   if (!pendingReservationMutations.size) {
     state.reservations = sortReservations([...others, ...serverList]);
     return;

@@ -58,11 +58,20 @@
     'cockpit-agents': { title: 'Agents IA', sub: 'Ce que chaque agent produit reellement, et ce que l\'IA coute.' },
     'cockpit-incidents': { title: 'Incidents', sub: 'Triage unifie : les erreurs console des ecrans d\'abord, puis mails, jobs, worker et refus.' },
     'cockpit-clients': { title: 'Clients', sub: 'Comment chaque centre gere son etablissement : configuration, adoption, acteurs.' },
+    // Journal des modifications : outil PLATEFORME. Il vivait dans la barre de
+    // controle de la Direction, cote client, alors qu'il expose les actions des
+    // crons, des workers et les tentatives refusees - la vie interne de Pinlane,
+    // pas le tableau de bord d'un gerant.
+    'cockpit-journal': { title: 'Journal des modifications', sub: 'Qui a change quoi, quand, et ce qui a change exactement. Les tentatives refusees y figurent aussi.' },
   };
   const pageStates = {
     'cockpit-agents': { loaded: false, loading: false, error: '', data: null },
     'cockpit-incidents': { loaded: false, loading: false, error: '', data: null },
     'cockpit-clients': { loaded: false, loading: false, error: '', data: null },
+    // Pas d'action API dediee : le panneau (pv2AuditPanel) charge lui-meme ses
+    // lignes. On le declare 'loaded' pour que le gabarit affiche son corps sans
+    // attendre un chargement qui n'existe pas.
+    'cockpit-journal': { loaded: true, loading: false, error: '', data: {} },
   };
   fck.pages = pageStates;
 
@@ -207,6 +216,10 @@
   window.fckPageReload = function (key) {
     const st = pageStates[key];
     if (!st) return;
+    if (key === 'cockpit-journal') {
+      if (typeof window.loadPv2Audit === 'function') window.loadPv2Audit(true);
+      return;
+    }
     st.loaded = false;
     st.error = '';
     loadPage(key, true);
@@ -1121,6 +1134,23 @@
     'cockpit-agents': renderAgentsPage,
     'cockpit-incidents': renderIncidentsPage,
     'cockpit-clients': renderClientsPage,
+    'cockpit-journal': () => {
+      // Les interactions du panneau (filtrer, deplier, actualiser) rappellent ce
+      // hook : il doit desormais re-rendre la page Plateforme, plus l'onglet
+      // Direction qui n'existe plus.
+      window.pv2AuditRerender = function () {
+        if (typeof state !== 'undefined' && state.staffMenuPage === 'cockpit-journal') {
+          window.renderStaffFounderCockpitPage(null, 'cockpit-journal');
+        }
+      };
+      if (typeof window.loadPv2Audit === 'function' && window.pv2Audit
+        && !window.pv2Audit.loaded && !window.pv2Audit.loading && !window.pv2Audit.error) {
+        setTimeout(() => window.loadPv2Audit(), 0);
+      }
+      return (typeof window.pv2AuditPanel === 'function'
+      ? window.pv2AuditPanel()
+        : '<section class="pv2-panel"><p class="pv2-quiet">Journal indisponible. Rechargez la page.</p></section>');
+    },
   };
 
   function renderSubPage(root, pageKey) {
@@ -1170,9 +1200,9 @@
   window.renderStaffFounderCockpitPage = function (root, pageKey) {
     if (root && root.nodeType === 1) activeRoot = root;
     let key = typeof pageKey === 'string' ? pageKey : '';
-    if (key !== 'cockpit' && !PAGE_ACTIONS[key]) {
+    if (key !== 'cockpit' && !PAGE_META[key]) {
       const fromMenu = (typeof state !== 'undefined' && state.staffMenuPage) || '';
-      key = (fromMenu === 'cockpit' || PAGE_ACTIONS[fromMenu]) ? fromMenu : 'cockpit';
+      key = (fromMenu === 'cockpit' || PAGE_META[fromMenu]) ? fromMenu : 'cockpit';
     }
     activePageKey = key;
     render();

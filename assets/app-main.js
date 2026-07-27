@@ -2207,6 +2207,7 @@ const STAFF_MENU_PAGES = [
   'cockpit-centres',
   'cockpit-agents',
   'cockpit-incidents',
+  'cockpit-journal',
   'cockpit-clients'
 ];
 function normalizeStaffMenuPage(page) {
@@ -2328,6 +2329,9 @@ const STAFF_PAGE_PERMISSION_MAP = {
   'cockpit-centres': ['platform.admin'],
   'cockpit-agents': ['platform.admin'],
   'cockpit-incidents': ['platform.admin'],
+  // Journal des modifications : outil PLATEFORME (retire de la Direction client
+  // le 2026-07-28). Le serveur exige aussi platform.admin sur l'action auditLog.
+  'cockpit-journal': ['platform.admin'],
   'cockpit-clients': ['platform.admin']
 };
 
@@ -2641,7 +2645,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260727b';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260728a';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -4415,7 +4419,7 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
-const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'];
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal'];
 function isStaffCockpitActive() {
   return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }
@@ -16448,7 +16452,9 @@ function applyInitialRouteFromHash() {
     // « clients » (onglet retiré : doublon du CRM v2) retombe sur la vue période.
     const adminPageAliases = { period: 'overview', clients: 'overview' };
     const normalizedAdminTab = adminPageAliases[page] || page;
-    const allowedAdminTabs = ['overview', 'data', 'mail', 'reservations', 'journal', 'ops', 'exports'];
+    // 'journal' n'est plus un onglet Direction : un vieux lien #/admin/journal
+    // retombe sur la synthese, et le journal se lit dans Plateforme > Journal.
+    const allowedAdminTabs = ['overview', 'data', 'mail', 'reservations', 'ops', 'exports'];
     if (allowedAdminTabs.includes(normalizedAdminTab)) state.adminTab = normalizedAdminTab;
   }
   // A1 : deep-link #admin/... refusé à un rôle connecté sans direction.view 

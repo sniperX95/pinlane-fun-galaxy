@@ -399,12 +399,12 @@ async function probeCockpitClick(browser) {
     mutationOriginal = original;
     const nl = original.includes('\r\n') ? '\r\n' : '\n';
     const ANCHOR = [
-      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('staff');",
     ].join(nl);
     const MUTATED = [
-      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients'].includes(key)) {",
+      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal'].includes(key)) {",
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('admin');",
     ].join(nl);

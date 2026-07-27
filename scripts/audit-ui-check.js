@@ -77,7 +77,9 @@ const XSS_NAME = '<img src=x onerror="window.__XSS_AUDIT__=1">Pirate';
 async function installMock(page) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt, XSS_NAME }) => {
-    const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents', 'settings.manage', 'direction.view'];
+    // platform.admin : depuis le 2026-07-28 le Journal des modifications est une
+    // page PLATEFORME (Pinlane), plus un onglet de la Direction du client.
+    const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view', 'emails.send', 'campaigns.manage', 'marketing.agents', 'settings.manage', 'direction.view', 'platform.admin'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'QA', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
@@ -199,23 +201,24 @@ async function main() {
       // le marqueur disparaitrait. Un innerHTML fige garde son marqueur.
       const child = document.querySelector('#staffEmailsPage .pv2-panel');
       if (child) child.setAttribute('data-qa-marker', '1');
-      state.adminTab = 'journal';
+      state.staffMenuPage = 'cockpit-journal';
       save();
-      setView('admin');
+      setView('staff');
+      renderStaff();
     });
     // L'onglet EST le journal : il charge ses donnees sans clic supplementaire.
     await page.waitForFunction(
-      () => Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"] tbody tr')),
+      () => Boolean(document.querySelector('#staffCockpitPage [data-pv2-mount="audit"] tbody tr')),
       null,
       { timeout: 15000 },
     );
     const dirOpen = await page.evaluate(() => ({
-      title: [...document.querySelectorAll('#adminContent .pv2-panel h2')].some((h) => h.textContent.includes('Journal des modifications')),
+      title: [...document.querySelectorAll('#staffCockpitPage .pv2-panel h2')].some((h) => h.textContent.includes('Journal des modifications')),
       calls: window.__AUDIT_CALLS__.slice(),
-      text: (document.querySelector('#adminContent [data-pv2-mount="audit"]') || {}).innerText || '',
-      meta: (document.querySelector('#adminContent .pv2-audit-meta') || {}).textContent || '',
+      text: (document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]') || {}).innerText || '',
+      meta: (document.querySelector('#staffCockpitPage .pv2-audit-meta') || {}).textContent || '',
     }));
-    ok(dirOpen.title, 'le panneau « Journal des modifications » est monte dans l onglet Journal de Direction');
+    ok(dirOpen.title, 'le panneau « Journal des modifications » est monte dans la page Plateforme > Journal');
     ok(dirOpen.calls.length >= 1, `l arrivee sur l onglet declenche l appel au journal (obtenu ${dirOpen.calls.length})`);
     ok(dirOpen.calls.every((c) => c.includes('centerId=libramont')),
       'chaque appel porte le centre de la session, jamais un autre');
@@ -230,20 +233,20 @@ async function main() {
     ok(dirOpen.text.includes('Cron Vercel'), 'l acteur automatique est affiche et nomme');
     ok(dirOpen.text.includes('Refuse'), 'un refus est affiche comme tel');
     ok(dirOpen.text.includes('Autre centre'), 'le motif du refus est traduit en francais lisible');
-    const deniedRow = await page.evaluate(() => Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"] tr.is-denied')));
+    const deniedRow = await page.evaluate(() => Boolean(document.querySelector('#staffCockpitPage [data-pv2-mount="audit"] tr.is-denied')));
     ok(deniedRow, 'la ligne du refus est distinguee (classe is-denied, filet + chip rouge)');
 
-    console.log('\n[4] le detail avant/apres s ouvre au CLIC et re-rend Direction');
-    const beforeDetail = await page.evaluate(() => document.querySelector('#adminContent [data-pv2-mount="audit"]').innerText.includes('Avant'));
+    console.log('\n[4] le detail avant/apres s ouvre au CLIC et re-rend la page Plateforme');
+    const beforeDetail = await page.evaluate(() => document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]').innerText.includes('Avant'));
     ok(!beforeDetail, 'le detail est replie au depart');
     await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('#adminContent [data-pv2-mount="audit"] tbody tr')];
+      const rows = [...document.querySelectorAll('#staffCockpitPage [data-pv2-mount="audit"] tbody tr')];
       const target = rows.find((r) => r.textContent.includes('saveCenterConfig'));
       target.querySelector('button').click();
     });
     await page.waitForTimeout(500);
     const afterDetail = await page.evaluate(() => ({
-      text: document.querySelector('#adminContent [data-pv2-mount="audit"]').innerText,
+      text: document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]').innerText,
       // Le hook pv2AuditRerender doit re-rendre Direction, PAS la page Emails.
       emailsMarker: Boolean(document.querySelector('#staffEmailsPage .pv2-panel[data-qa-marker="1"]')),
     }));
@@ -255,58 +258,63 @@ async function main() {
     console.log('\n[5] XSS : le nom hostile est echappe, pas execute');
     const xssFired = await page.evaluate(() => Boolean(window.__XSS_AUDIT__));
     ok(!xssFired, 'aucun script injecte via le nom d acteur ne s est execute');
-    const hasRawImg = await page.evaluate(() => Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"] img[onerror]')));
+    const hasRawImg = await page.evaluate(() => Boolean(document.querySelector('#staffCockpitPage [data-pv2-mount="audit"] img[onerror]')));
     ok(!hasRawImg, 'aucune balise img hostile n a ete construite dans le DOM');
     ok(afterDetail.text.includes('Pirate'), 'le nom reste LISIBLE une fois echappe (on echappe, on ne supprime pas)');
 
     console.log('\n[6] filtres : resultat et periode refont un appel scope, rendu dans Direction');
     const callsBeforeFilter = await page.evaluate(() => window.__AUDIT_CALLS__.length);
-    await page.selectOption('#adminContent #pv2AuditOutcome', 'denied');
+    await page.selectOption('#staffCockpitPage #pv2AuditOutcome', 'denied');
     await page.waitForTimeout(700);
     const callsAfter = await page.evaluate(() => window.__AUDIT_CALLS__.slice());
     ok(callsAfter.length > callsBeforeFilter, 'changer le filtre « Resultat » declenche un nouvel appel');
     ok(callsAfter[callsAfter.length - 1].includes('outcome=denied'), 'le filtre voyage bien dans la requete');
     ok(callsAfter[callsAfter.length - 1].includes('centerId=libramont'),
       'le scope centre est TOUJOURS present, meme avec un filtre actif');
-    const filtered = await page.evaluate(() => document.querySelector('#adminContent [data-pv2-mount="audit"]').innerText);
+    const filtered = await page.evaluate(() => document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]').innerText);
     ok(!filtered.includes('saveCenterConfig'), 'la liste filtree ne montre plus les succes');
     ok(filtered.includes('accessDenied'), 'elle montre le refus');
 
     // Periode : le parametre `since` (reellement lu par api/ops.js) voyage avec
     // une borne ISO coherente (~7 jours en arriere).
-    await page.selectOption('#adminContent #pv2AuditSince', '7');
+    await page.selectOption('#staffCockpitPage #pv2AuditSince', '7');
     await page.waitForTimeout(700);
     const sinceCall = await page.evaluate(() => window.__AUDIT_CALLS__[window.__AUDIT_CALLS__.length - 1] || '');
     const sinceMatch = sinceCall.match(/since=([^&]+)/);
     const sinceAge = sinceMatch ? (Date.now() - new Date(decodeURIComponent(sinceMatch[1])).getTime()) / 86400000 : -1;
     ok(Boolean(sinceMatch), `le filtre « Periode » voyage via since (requete ${sinceCall.slice(0, 80)})`);
     ok(sinceAge > 6.9 && sinceAge < 7.1, `la borne since vaut ~7 jours en arriere (obtenu ${sinceAge.toFixed(2)} j)`);
-    await page.selectOption('#adminContent #pv2AuditSince', '');
-    await page.selectOption('#adminContent #pv2AuditOutcome', '');
+    await page.selectOption('#staffCockpitPage #pv2AuditSince', '');
+    await page.selectOption('#staffCockpitPage #pv2AuditOutcome', '');
     await page.waitForTimeout(700);
 
-    console.log('\n[7] ATTEIGNABILITE : entree dans la barre Direction + retour');
-    await page.evaluate(() => { setAdminTab('overview'); });
-    await page.waitForFunction(() => Boolean(document.querySelector('#adminContent .dir-root')), null, { timeout: 15000 });
-    const entry = await page.evaluate(() => {
-      const btn = [...document.querySelectorAll('#adminContent .dir-journal-btn')].find((b) => /Journal des modifications/.test(b.textContent));
-      return { present: Boolean(btn), visible: Boolean(btn && btn.getClientRects().length) };
-    });
-    ok(entry.present && entry.visible, 'la barre de controle Direction porte une entree « Journal des modifications » visible');
-    await page.evaluate(() => {
-      [...document.querySelectorAll('#adminContent .dir-journal-btn')].find((b) => /Journal des modifications/.test(b.textContent)).click();
-    });
+    console.log(String.fromCharCode(10) + "[7] ATTEIGNABILITE : Plateforme oui, Direction du client NON");
+    // Le journal a quitte la console Direction le 2026-07-28 : il expose les
+    // actions des crons, des workers et les tentatives refusees. On prouve les
+    // DEUX sens : atteignable cote Plateforme, absent cote client.
+    await page.evaluate(() => { state.staffMenuPage = 'dashboard'; save(); setView('admin'); });
+    await page.waitForFunction(() => Boolean(document.querySelector('.dir-root')), null, { timeout: 15000 });
+    const dirBar = await page.evaluate(() => ({
+      journalBtn: [...document.querySelectorAll('.dir-controls button, .dir-controls a')].some((b) => /Journal des modifications/i.test(b.textContent || '')),
+      tabs: [...document.querySelectorAll('.admin-tabs button')].map((b) => b.textContent.trim()),
+    }));
+    ok(dirBar.journalBtn === false, 'la barre de controle Direction n expose PLUS le Journal des modifications');
+    ok(!dirBar.tabs.some((t) => /Journal/i.test(t)), 'aucun onglet Journal dans la Direction (onglets : ' + (dirBar.tabs.join(' / ') || 'aucun') + ')');
+
+    await page.evaluate(() => { state.staffMenuPage = 'cockpit-journal'; save(); setView('staff'); renderStaff(); });
     await page.waitForFunction(
-      () => Boolean(document.querySelector('#adminContent [data-pv2-mount="audit"]')),
+      () => Boolean(document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]')),
       null,
       { timeout: 15000 },
     );
     const reached = await page.evaluate(() => ({
-      journal: [...document.querySelectorAll('#adminContent .pv2-panel h2')].some((h) => h.textContent.includes('Journal des modifications')),
-      backBtn: [...document.querySelectorAll('#adminContent .dir-journal-btn')].some((b) => /Retour/.test(b.textContent)),
+      journal: [...document.querySelectorAll('#staffCockpitPage .pv2-panel h2')].some((h) => h.textContent.includes('Journal des modifications')),
+      crumb: (document.querySelector('#staffCockpitPage .pv2-bar-crumb') || {}).textContent || '',
+      rows: document.querySelectorAll('#staffCockpitPage [data-pv2-mount="audit"] tbody tr').length,
     }));
-    ok(reached.journal, 'le clic sur l entree ouvre bien l onglet Journal');
-    ok(reached.backBtn, 'le journal offre le retour vers le poste d observation');
+    ok(reached.journal, 'la page Plateforme > Journal monte bien le panneau');
+    ok(/Plateforme/i.test(reached.crumb), 'la page s annonce comme une page Plateforme (' + reached.crumb.trim() + ')');
+    ok(reached.rows > 0, 'les entrees du journal sont listees (' + reached.rows + ' ligne(s))');
 
     const fatal = errs.filter((e) => !/localStorage|sandboxed/i.test(e));
     ok(fatal.length === 0, `aucune erreur console fatale (obtenu ${fatal.length}${fatal.length ? ' : ' + fatal[0] : ''})`);

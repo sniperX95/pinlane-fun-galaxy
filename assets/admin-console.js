@@ -1808,35 +1808,12 @@ function markAdminTabMount(content) {
 // Clients vit dans le menu staff). Un état persisté sur un onglet disparu
 // retombe sur la vue période au lieu d'un écran vide.
 function normalizeAdminTab(tab) {
-  const allowed = ['overview', 'data', 'mail', 'reservations', 'journal', 'ops', 'exports'];
+  // 'journal' retire : le Journal des modifications est une page Plateforme.
+  // Un ancien lien #/admin/journal retombe donc calmement sur la synthese.
+  const allowed = ['overview', 'data', 'mail', 'reservations', 'ops', 'exports'];
   return allowed.includes(tab) ? tab : 'overview';
 }
 
-// Onglet Journal de la Direction : UNIQUE hôte du Journal des modifications
-// (pv2AuditPanel, staff-pages-v2.js) depuis son retrait de la page Emails, où
-// il n'avait rien à faire. Le hook pv2AuditRerender fait revenir les
-// interactions du panneau (filtrer, déplier, actualiser) vers CE rendu.
-// L'onglet EST le journal : il charge ses données dès l'arrivée, sans clic.
-function renderAdminJournalTab() {
-  window.pv2AuditRerender = function () {
-    if (state.view === 'admin' && state.adminTab === 'journal') renderAdminDashboard();
-  };
-  if (typeof pv2AuditPanel !== 'function') {
-    return '<div class="admin-panel"><div class="empty-state"><div class="e-title">Journal indisponible</div><div class="e-sub">Rechargez la page.</div></div></div>';
-  }
-  // Pas de retry automatique sur erreur (le rendu d'erreur re-passerait ici en
-  // boucle via le hook) : l'echec s'affiche calmement, « Actualiser » relance.
-  if (typeof window.loadPv2Audit === 'function' && window.pv2Audit
-    && !window.pv2Audit.loaded && !window.pv2Audit.loading && !window.pv2Audit.error) {
-    setTimeout(() => window.loadPv2Audit(), 0);
-  }
-  return `<div class="pv2-shell admin-journal-shell">
-    <div class="admin-journal-nav">
-      <button type="button" class="dir-journal-btn" onclick="setAdminTab('overview')">Retour au poste d'observation</button>
-    </div>
-    ${pv2AuditPanel()}
-  </div>`;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POSTE D'OBSERVATION Direction (refonte 2026-07-21, namespace dir-*).
@@ -2649,10 +2626,10 @@ async function loadDirectionDecision(centerId, range, key, force) {
 
 function renderDirectionShell() {
   const range = getDirRange();
-  // Le Journal des modifications (onglet adminTab='journal') n'est plus expose
-  // que par la Direction : cette entree est SON chemin d'acces dans la barre de
-  // controle (sinon l'onglet deviendrait orphelin, atteignable par deep-link
-  // seulement).
+  // Le Journal des modifications a QUITTE cette barre le 2026-07-28 : c'est un
+  // outil plateforme (actions des crons, des workers, tentatives refusees), pas
+  // le tableau de bord d'un gerant. Il vit desormais dans la categorie
+  // Plateforme (page 'cockpit-journal', platform.admin).
   return `<section class="dir-root" id="dirRoot">
     <div class="dir-controls" id="dirControls">
       <div class="dir-range-mount" id="dirRangeHost"></div>
@@ -2661,7 +2638,6 @@ function renderDirectionShell() {
           <span class="dir-window-range">${escapeHtml(dirRangeText(range))}</span>
           <span class="dir-window-meta">${escapeHtml(`${dirGranularityLabel(range.granularity)} · ${dirCompareLabel(range.compare)}`)}</span>
         </div>
-        <button type="button" class="dir-journal-btn" onclick="setAdminTab('journal')">Journal des modifications</button>
       </div>
     </div>
     <div class="dir-body" id="dirBody">${dirLoadingHtml()}</div>
@@ -3138,12 +3114,6 @@ function renderAdminDashboard() {
   if (state.adminTab === 'overview') {
     content.innerHTML = renderDirectionShell();
     mountDirection();
-    return;
-  }
-  // Le Journal ne dépend pas du snapshot période : il se rend même pendant un
-  // chargement, comme Données et Mails.
-  if (state.adminTab === 'journal') {
-    content.innerHTML = renderAdminJournalTab();
     return;
   }
   const cacheIsCurrent = isAdminDashboardCacheCurrent();
@@ -3646,7 +3616,6 @@ function startAdminHealthAutoRefresh() {
     renderAdminReservationsTable,
     isAdminPlatformOwner,
     normalizeAdminTab,
-    renderAdminJournalTab,
     renderAdminOpsPanel,
     renderAdminExports,
     renderAdminDashboard,

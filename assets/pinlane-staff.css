@@ -11201,23 +11201,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .dir-window-meta { font-size: 12px; color: var(--faint); }
 .dir-range-fallback { font-size: 13px; color: var(--muted); }
 
-/* Acces au Journal des modifications depuis la barre de controle Direction :
-   bouton secondaire (bordure 1px, radius 6), jamais primaire, il navigue. */
+/* Barre de controle Direction. Le bouton « Journal des modifications » vivait
+   ici ; il est parti dans la categorie Plateforme le 2026-07-28 (outil Pinlane,
+   pas tableau de bord du gerant), son style part avec lui. */
 .dir-controls-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.dir-journal-btn {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font: 500 13px var(--font-ui);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
-}
-@media (hover: hover) {
-  .dir-journal-btn:hover { background: var(--subtle); }
-}
 
 .dir-note {
   padding: 40px 20px;

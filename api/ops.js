@@ -2480,7 +2480,12 @@ function getRequiredOpsPermission(method, action) {
     // une donnee d'exploitation. Un membre du bar n'a pas a lire la piste
     // d'activite de ses collegues. settings.manage est accepte en plus car
     // c'est le droit que porte deja la personne qui configure le centre.
-    if (action === 'auditLog') return ['direction.view', 'settings.manage'];
+    // Journal des modifications : outil PLATEFORME (2026-07-28). Il expose les
+    // actions des crons, des workers et les tentatives refusees - la vie interne
+    // de Pinlane. Il etait lisible par le gerant du centre (direction.view) ;
+    // l'UI l'a quitte cote client, la permission serveur suit, sinon l'appel
+    // resterait ouvert par lien direct.
+    if (action === 'auditLog') return 'platform.admin';
     // Lecture de l'editeur tarifaire CLIENT : meme permission de CENTRE que ses
     // ecritures (saveClientFormuleOverride), JAMAIS platform.admin. Le fondateur
     // lit founderCatalog (platform.admin), le client lit clientCatalog.

@@ -2796,23 +2796,11 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .dash-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
-.dash-date-control {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 6px 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-
-.dash-date-control > span { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 500; }
-
-.dash-date-control button,
-.dash-card-head button,
-.dash-period-btn {
+/* Le Dashboard portait son PROPRE controle de date (boite + icone calendrier,
+   bouton « Aujourd'hui » separe), different de celui de toutes les autres pages.
+   Il utilise desormais le widget partage staffDateNavHtml : memes fleches, meme
+   calendrier, meme bouton, un seul comportement a maintenir. */
+.dash-card-head button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2830,11 +2818,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
-.dash-date-control button:hover,
 .dash-card-head button:hover { background: var(--subtle); color: var(--text); }
-
-.dash-period-btn { height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); }
-.dash-period-btn:hover { background: var(--subtle); }
 
 .dash-new-btn {
   display: inline-flex;
@@ -8738,7 +8722,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
   .planning-search-inline input { height: 44px; width: 150px; }
   .search-wrap { width: 100%; }
-  .search-wrap input, .date-nav, .btn-new, .dash-new-btn, .dash-period-btn, .admin-date-nav, .staff-today-btn { height: 44px; }
+  .search-wrap input, .date-nav, .btn-new, .dash-new-btn, .admin-date-nav, .staff-today-btn { height: 44px; }
   .date-nav button { min-width: 44px; }
   .date-nav button.staff-date-label { min-width: auto; }
   .staff-cal-day, .staff-cal-nav, .staff-cal-today-btn { min-height: 44px; }
@@ -11359,7 +11343,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   border-bottom: 1px solid var(--line);
 }
 .dir-table td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); color: var(--text); vertical-align: top; }
-.dir-table tbody tr:last-child td { border-bottom: 0; }
+/* La derniere ligne perd son filet du bas - y COMPRIS sur la cellule d en-tete
+   de ligne (th scope=row). Sans le th, l underline s arretait au bord du nom et
+   dessinait un demi-cadre sous la premiere colonne : lu comme un bug. */
+.dir-table tbody tr:last-child td,
+.dir-table tbody tr:last-child th { border-bottom: 0; }
 .dir-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dir-table th.dir-num { text-align: right; }
 .dir-client-name { display: block; font-weight: 500; }
@@ -12616,19 +12604,38 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   padding-top: 11px;
   padding-bottom: 11px;
 }
-/* Nom de centre : colonne de tete, non tronquee. */
+/* Nom de centre : colonne de tete, non tronquee. Le padding gauche laisse la
+   place au filet du centre courant - sans lui, le trait touchait la premiere
+   lettre et la ligne paraissait cassee. */
 .dir-cmp-name {
   text-align: left;
   font-weight: 500;
   color: var(--text);
   white-space: nowrap;
+  padding-left: 12px;
+  padding-right: var(--space-4);
 }
 .dir-cmp-center { font-weight: 600; }
+.dir-cmp-table thead th { padding-left: 12px; }
+.dir-cmp-table thead th.dir-num { padding-left: 0; }
+
+/* Pas de separateur ajoute ici : .dir-table pose deja un border-bottom sur
+   chaque cellule. En doubler un par le haut dessinait un cadre autour de la
+   ligne teintee (celle du centre courant) - ce que Movsar a vu comme un bug. */
+@media (hover: hover) {
+  .dir-cmp-table tbody tr:hover > * { background: color-mix(in srgb, var(--text) 3%, transparent); }
+}
 
 /* Centre COURANT : filet gauche renforce + fond a peine teinte, aucune couleur
    de marque (discipline dir-kpi.is-active). */
-.dir-cmp-row.is-current > * { background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
-.dir-cmp-row.is-current > .dir-cmp-name { box-shadow: inset 2px 0 0 0 var(--text); }
+/* Teinte posee sur la LIGNE, pas cellule par cellule : en peignant chaque
+   cellule avec une couleur opaque, la bande s'arretait net au bord du premier
+   td et dessinait un rectangle au milieu de la ligne. */
+.dir-cmp-row.is-current { background: color-mix(in srgb, var(--text) 4%, transparent); }
+/* Filet du centre courant en BORDURE, pas en box-shadow : dans une cellule de
+   tableau, Chromium peint l ombre interne sur tout le perimetre de la cellule -
+   d ou le rectangle clair autour du nom, pris pour un bug d affichage. */
+.dir-cmp-row.is-current > .dir-cmp-name { border-left: 2px solid var(--line-strong); padding-left: 10px; }
 .dir-cmp-badge {
   display: inline-block;
   margin-left: 8px;

@@ -108,6 +108,31 @@ function ok(n, c, d) { checks.push({ n, c: !!c }); console.log(`  [${c ? 'PASS' 
   ok('demographie HONNETE : marquee non connectee (Google Analytics)', aud.demographicsConnected === false && aud.demographicsSource === 'google-analytics');
   ok('aucune donnee demographique inventee', !('age' in aud) && !('gender' in aud) && !('sexe' in aud));
 
+  // --- Nom des formules : le CATALOGUE fait autorite -------------------------
+  // La colonne label est du texte libre fige a la creation. Le 2026-07-28,
+  // "Top formules" listait dix lignes "Bowling Classique" pour dix formules
+  // differentes : les libelles valaient leur defaut alors que formule_id etait
+  // juste. On agrege desormais sur l identifiant et on nomme par le catalogue.
+  const { buildDirectionAnalytics } = require(resolve('lib/direction-analytics'));
+  const { getCenter } = require(resolve('lib/ops-knowledge'));
+  const fx = (id, formuleId, label, name) => ({
+    id, date: '2026-07-10', startTime: '15:00', duration: 1, pax: 8, price: 200, status: 'paid',
+    type: 'formule', formuleId, label, centerId: 'libramont', channel: 'public', name, phone: '+3247000000' + id, lanes: [],
+  });
+  const nameCheck = buildDirectionAnalytics({
+    history: [
+      fx(1, 'f2', 'Bowling Classique', 'Client A'),
+      fx(2, 'f2', 'Bowling Classique', 'Client A'),
+      fx(3, 'kfd', 'libelle perime', 'Client B'),
+    ],
+    startDate: '2026-07-01', endDate: '2026-07-31', center: getCenter('libramont'),
+  });
+  const byF = Object.fromEntries(nameCheck.byFormule.map((r) => [r.id, r.label]));
+  ok('le libelle par defaut ne masque plus la formule (f2 -> FORMULE 2)', byF.f2 === 'FORMULE 2', byF.f2);
+  ok('un libelle perime en base est ignore (kfd -> KIDS FUN DAY)', byF.kfd === 'KIDS FUN DAY', byF.kfd);
+  const clientA = nameCheck.clients.top.find((c) => c.name === 'Client A');
+  ok('activite favorite = la formule PRECISE, pas le mot Formules', clientA && clientA.favoriteFormule === 'FORMULE 2', clientA && clientA.favoriteFormule);
+
   const failed = checks.filter((c) => !c.c);
   console.log(`\ndirection-insights-check: ${passed}/${checks.length} verts.`);
   if (failed.length) { console.error(`direction-insights-check: ECHEC (${failed.length}).`); process.exit(1); }

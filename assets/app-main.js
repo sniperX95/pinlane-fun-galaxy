@@ -2645,7 +2645,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260728a';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260728b';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -5621,8 +5621,6 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
   const metrics = getStaffDashboardMetrics(dayReservations);
   const d = parseLocalDate(state.currentDate);
-  const dateShort = d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
-  const formattedDate = dateShort.charAt(0).toUpperCase() + dateShort.slice(1);
   const revenueTrendText = metrics.revenueTrend > 0 ? `+${metrics.revenueTrend}%` : `${metrics.revenueTrend}%`;
   const reservationTrendText = formatDashboardTrend(metrics.activeReservations.length, metrics.previousReservationsCount);
   const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
@@ -5637,11 +5635,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <p>Vue d'ensemble de votre activité <span class="dash-live-dot${syncIndicator.tone === 'live' ? '' : ` ${syncIndicator.tone}`}"></span><span>${escapeHtml(syncIndicator.label)}</span></p>
       </div>
       <div class="dash-actions">
-        <div class="dash-date-control">
-          <span>${escapeHtml(formattedDate)}</span>
-          <button type="button" onclick="openStaffCalendar(event)" aria-haspopup="dialog" aria-label="Choisir une date">${renderDashboardIcon('date')}</button>
-        </div>
-        <button type="button" class="dash-period-btn" onclick="setStaffToday()">Aujourd'hui</button>
+        ${staffDateNavHtml()}
         <button type="button" class="dash-new-btn" onclick="openQuickBook()">+ Réservation rapide</button>
       </div>
     </section>

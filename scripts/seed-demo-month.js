@@ -147,7 +147,10 @@ function buildCandidate(dateISO, index) {
     const formule = pick(usable);
     const laneCount = getRequiredLaneCount('formule', pax, formule.id, center?.resources?.bowling);
     return {
-      type: 'formule', formuleId: formule.id, pax, startTime, duration: 1, laneCount, channel,
+      // label : le nom de la formule. Sans lui, la colonne prend son defaut
+      // ('Bowling Classique') et toute agregation qui lit le libelle au lieu de
+      // l'identifiant raconte n'importe quoi.
+      type: 'formule', formuleId: formule.id, label: formule.name, pax, startTime, duration: 1, laneCount, channel,
       occasion: /anniversaire/i.test(formule.family || '') && rnd() < 0.75 ? 'birthday' : '',
       name: rnd() < 0.35 ? pick(GROUP_LABELS) : client.name,
       email: client.email, phone: client.phone,

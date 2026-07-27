@@ -2166,7 +2166,12 @@ function dirTablesHtml(entry) {
 
   const clientRows = clients.length
     ? clients.map((row) => {
-        const favorite = ADMIN_TREND_TYPE_LABELS[row.favorite] || row.favorite || '';
+        // « Formules » ne disait pas LAQUELLE : inutilisable pour rappeler un
+        // client. Le serveur renvoie desormais la formule la plus prise
+        // (favoriteFormule) ; on la montre quand elle existe.
+        const favorite = (row.favorite === 'formule' && row.favoriteFormule)
+          ? row.favoriteFormule
+          : (ADMIN_TREND_TYPE_LABELS[row.favorite] || row.favorite || '');
         const contact = row.phone || row.email || '';
         return `<tr>
           <td><span class="dir-client-name">${escapeHtml(row.name || 'Client')}</span>${contact ? `<span class="dir-client-contact">${escapeHtml(contact)}</span>` : ''}</td>
@@ -2241,6 +2246,14 @@ const DIR_CMP_COLS = [
 // de chaque colonne discretement. null si aucune valeur exploitable.
 function dirCmpBest(centers) {
   const best = {};
+  // Un seul centre porte des donnees ? Alors il n'y a RIEN a comparer : marquer
+  // ses six colonnes en "meilleur" ne dit rien et remplit la ligne de pastilles
+  // vertes. On ne marque un leader qu'a partir de deux centres compares.
+  const scored = centers.filter((center) => !center.error && DIR_CMP_COLS.some((col) => Number.isFinite(Number(center[col.key])) && Number(center[col.key]) > 0));
+  if (scored.length < 2) {
+    DIR_CMP_COLS.forEach((col) => { best[col.key] = null; });
+    return best;
+  }
   DIR_CMP_COLS.forEach((col) => {
     let max = null;
     centers.forEach((center) => {

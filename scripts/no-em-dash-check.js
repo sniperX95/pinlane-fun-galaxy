@@ -25,9 +25,15 @@ const ROOT = path.resolve(__dirname, '..');
 // schemas et plus aucune migration ne passait). Ces tirets ne sortent nulle
 // part : ils vivent dans des commentaires SQL, jamais dans l'UI ni dans un
 // prompt. Une nouvelle migration, elle, doit etre ecrite sans tiret.
+// 'artifacts' : dossier de SORTIE (gitignore) - backups de base, captures, logs
+// de diagnostic. Ce sont des DONNEES, pas du code : un backup de production
+// contient forcement le texte tel que les utilisateurs l'ont saisi, tirets
+// compris. Le scanner reviendrait a interdire un caractere aux clients.
+// (Constate le 2026-07-27 : un backup de purge a fait rougir ce gate avec
+// 41 tirets provenant de notes de reservation.)
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.vercel', '.agents', '.firecrawl',
-  '_mkdev', 'dist', 'build', '.next', 'coverage', 'database',
+  '_mkdev', 'dist', 'build', '.next', 'coverage', 'database', 'artifacts',
 ]);
 const SKIP_FILES = new Set(['package-lock.json', 'no-em-dash-check.js']);
 const EXT = new Set(['.js', '.mjs', '.cjs', '.html', '.css', '.json', '.md', '.sql']);

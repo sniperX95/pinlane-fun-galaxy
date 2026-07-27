@@ -476,13 +476,12 @@
     parts.push('<path class="plc-line-path" d="' + d + '" pathLength="1000"' + (animate ? ' style="stroke-dasharray:1000;stroke-dashoffset:1000"' : '') + '></path>');
     if (!spark) {
       parts.push('<circle class="plc-line-dot" cx="' + round2(last.x) + '" cy="' + round2(last.y) + '" r="3.5"></circle>');
-      // La valeur du dernier point se pose AU-DESSUS de la zone tracee, jamais a
-      // cote du point. Collee au point, elle tombait SUR la courbe des que la
-      // fin de serie remontait : chiffres illisibles, superposes au trait
-      // (« 945 € » et « 1 703 € » ecrases sur la ligne). La bande du haut
-      // (0 -> pad.t) est le seul endroit ou la courbe ne va JAMAIS, puisque la
-      // zone de dessin commence a pad.t.
-      parts.push('<text class="plc-line-value" x="' + round2(vbW - pad.r) + '" y="' + round2(Math.max(11, pad.t - 7)) + '" text-anchor="end">' + esc(formatValue(last.value, format)) + '</text>');
+      // AUCUNE valeur imprimee dans le graphe. Collee au dernier point, elle
+      // tombait sur la courbe ; posee dans un coin, elle flottait sans rien a
+      // quoi se rattacher. Un graphe porte une FORME : l'axe donne l'echelle,
+      // le survol donne la valeur exacte, et le total vit dans l'en-tete de la
+      // carte (tuiles KPI de la Direction, titre de la carte ailleurs). C'est
+      // aussi ce que font les consoles de reference.
       parts.push('<g class="plc-line-hover" aria-hidden="true"><line class="plc-crosshair" x1="0" x2="0" y1="' + round2(pad.t) + '" y2="' + baseY + '"></line><circle class="plc-dot-hover" cx="0" cy="0" r="4.5"></circle></g>');
     }
     pts.forEach(function (p) { p.vtext = formatValue(p.value, format); });

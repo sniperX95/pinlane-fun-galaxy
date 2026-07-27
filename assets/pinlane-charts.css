@@ -61,13 +61,6 @@
 
 .plc-line-dot { fill: currentColor; }
 
-.plc-line-value {
-  fill: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .plc-anim .plc-line-path {
   transition: stroke-dashoffset 600ms cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -75,14 +68,12 @@
 .plc-anim.plc-in .plc-line-path { stroke-dashoffset: 0 !important; }
 
 .plc-anim .plc-line-area,
-.plc-anim .plc-line-dot,
-.plc-anim .plc-line-value {
+.plc-anim .plc-line-dot {
   opacity: 0;
   transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1) 340ms;
 }
 .plc-anim.plc-in .plc-line-area,
-.plc-anim.plc-in .plc-line-dot,
-.plc-anim.plc-in .plc-line-value { opacity: 1; }
+.plc-anim.plc-in .plc-line-dot { opacity: 1; }
 
 /* ---- Barres -------------------------------------------------------------- */
 
@@ -321,7 +312,6 @@
   .plc-anim .plc-line-path,
   .plc-anim .plc-line-area,
   .plc-anim .plc-line-dot,
-  .plc-anim .plc-line-value,
   .plc-anim .plc-bar,
   .plc-anim .plc-bar-value,
   .plc-anim .plc-donut-seg,
@@ -333,7 +323,6 @@
   .plc-anim .plc-donut-seg { stroke-dashoffset: 0 !important; }
   .plc-anim .plc-line-area,
   .plc-anim .plc-line-dot,
-  .plc-anim .plc-line-value,
   .plc-anim .plc-bar-value,
   .plc-anim .plc-legend li { opacity: 1; }
   .plc-anim .plc-bar { opacity: 1; transform: none; }

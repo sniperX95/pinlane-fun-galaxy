@@ -210,7 +210,9 @@ async function runSuite(browser, quiet) {
       out.yticks = g('hostLine').querySelectorAll('.plc-ytick').length;
       out.xticks = g('hostLine').querySelectorAll('.plc-xtick').length;
       out.hasDot = Boolean(g('hostLine').querySelector('.plc-line-dot'));
-      out.lastValueText = (g('hostLine').querySelector('.plc-line-value') || { textContent: '' }).textContent.trim();
+      // Plus AUCUN chiffre imprime dans la zone tracee : la valeur se lit sur
+      // l'axe et au survol, le total vit dans l'en-tete de la carte.
+      out.plotTexts = [...g('hostLine').querySelectorAll('svg text')].map((t) => t.getAttribute('class') || '');
 
       const probe = document.createElement('span');
       probe.style.color = 'var(--text)';
@@ -406,7 +408,12 @@ async function runSuite(browser, quiet) {
     ok(settled.areaOpacity > 0.99, 'line-area-end', `opacity aire = ${settled.areaOpacity}`);
     ok(t0.yticks >= 3 && t0.yticks <= 5, 'line-yticks', `${t0.yticks} graduations Y`);
     ok(t0.xticks >= 2 && t0.xticks <= 7, 'line-xticks', `${t0.xticks} labels X`);
-    ok(t0.hasDot && t0.lastValueText === t0.expectedEuro720, 'line-last-value', `"${t0.lastValueText}" vs "${t0.expectedEuro720}"`);
+    // Le dot marque la fin de serie ; les seuls textes du SVG sont les axes.
+    // Une valeur collee au point tombait SUR la courbe, et dans un coin elle
+    // flottait sans rattachement : le graphe porte une forme, pas un chiffre.
+    const plotClasses = [...new Set(t0.plotTexts)].sort();
+    ok(t0.hasDot && plotClasses.every((c) => c === 'plc-ytick' || c === 'plc-xtick'),
+      'line-no-value-in-plot', `textes du trace : ${plotClasses.join(', ') || 'aucun'}`);
     ok(t0.lineStroke === t0.tokenText, 'line-color-token', `stroke ${t0.lineStroke} vs var(--text) ${t0.tokenText}`);
     ok(t0.barCount === DATA.bar.length, 'bar-count', `${t0.barCount} barres`);
     ok(t0.barScale0 < 0.6 && Number.isFinite(t250.barScale) && t250.barScale > t0.barScale0 + 0.2,

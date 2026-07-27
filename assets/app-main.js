@@ -1482,19 +1482,7 @@ function renderStaffData() {
   }
   renderKpis();
   const view = getStaffResourceView();
-  const bowlingReservations = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0);
-  const laserReservations = dayReservations.filter(r => getLaserWindowsFromReservation(r).length > 0);
-  document.getElementById('staffTabAll')?.classList.toggle('active', view === 'all');
-  document.getElementById('staffTabBowling')?.classList.toggle('active', view === 'bowling');
-  document.getElementById('staffTabLaser')?.classList.toggle('active', view === 'laser');
-  const allCountEl = document.getElementById('staffAllCount');
-  const bowlingCountEl = document.getElementById('staffBowlingCount');
-  const laserCountEl = document.getElementById('staffLaserCount');
-  if (allCountEl) allCountEl.textContent = dayReservations.length;
-  if (bowlingCountEl) bowlingCountEl.textContent = bowlingReservations.length;
-  if (laserCountEl) laserCountEl.textContent = laserReservations.length;
-  document.getElementById('planningBox')?.classList.toggle('hidden', view === 'laser');
-  document.getElementById('laserPlanningBox')?.classList.toggle('hidden', view === 'bowling');
+  syncStaffResourceTabs(dayReservations, view);
   renderPlanning();
   renderLaserPlanning();
   renderTable();
@@ -5286,7 +5274,7 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       body: renderStaffDashboardActivityDetail(metrics),
       actions: [
         { label: 'Voir réservations', onclick: openReservations },
-        { label: 'Ouvrir planning complet', onclick: "closeStaffDashboardDetail(); setStaffResourceView('all');", className: 'secondary' }
+        { label: 'Voir toutes les réservations', onclick: "closeStaffDashboardDetail(); setStaffResourceView('all');", className: 'secondary' }
       ]
     };
   }
@@ -7237,7 +7225,7 @@ function renderStaffUtilityEventsBoard(rows = []) {
         <section>
           <h3>Actions terrain</h3>
           <button type="button" onclick="openStaffMenuPage('arrivals')">Ouvrir les arrivees</button>
-          <button type="button" onclick="openStaffPlanningResource('all')">Voir planning complet</button>
+          <button type="button" onclick="openStaffPlanningResource('all')">Voir toutes les réservations</button>
           <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'formule' })">Nouvelle formule</button>
         </section>
       </aside>
@@ -12351,8 +12339,55 @@ function reservationMatchesStaffResource(reservation, view = getStaffResourceVie
   return getStaffResourceWindows(reservation, view).length > 0;
 }
 
+// « Hors planning » : la reservation n'occupe NI piste bowling NI zone laser,
+// donc elle n'apparait sur AUCUNE des deux grilles. C'est le cas des formules
+// table + plaine de jeux (f6/f7/f8) et du Kids Fun Day : le staff ne les voyait
+// nulle part, noyees dans la liste du jour. Elles ont maintenant leur zone en
+// tete de l'onglet « Toutes les reservations ».
+// Exception VOULUE : une partie laser non encore placee n'est pas hors planning,
+// elle attend deja dans le tiroir « a placer » du planning laser.
+function isOffPlanningReservation(reservation) {
+  if (!reservation) return false;
+  if (getBowlingWindowsFromReservation(reservation).length) return false;
+  if (getLaserWindowsFromReservation(reservation).length) return false;
+  return getLaserGameCountForReservation(reservation) === 0;
+}
+
 function scopedStaffReservations(view = getStaffResourceView()) {
   return todaysReservations().filter(r => reservationMatchesStaffResource(r, view));
+}
+
+// UN SEUL endroit qui synchronise la bande d'onglets (onglet actif, compteurs,
+// alerte hors planning, visibilite des grilles). renderStaffShell et
+// renderStaffData en tenaient chacun une copie : deux verites qui pouvaient
+// diverger en silence au premier changement de regle.
+// Regle de visibilite : une grille ne s'affiche que sur SON onglet. « Toutes les
+// reservations » n'est plus un empilement des deux plannings mais la liste du
+// jour, hors planning en tete.
+function syncStaffResourceTabs(dayReservations = todaysReservations(), view = getStaffResourceView(), hiddenByPage = false) {
+  const bowlingCount = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0).length;
+  const laserCount = dayReservations.filter(r => getLaserWindowsFromReservation(r).length > 0).length;
+  const offPlanningCount = dayReservations.filter(isOffPlanningReservation).length;
+  const allTab = document.getElementById('staffTabAll');
+  allTab?.classList.toggle('active', view === 'all');
+  allTab?.classList.toggle('has-alert', offPlanningCount > 0);
+  document.getElementById('staffTabBowling')?.classList.toggle('active', view === 'bowling');
+  document.getElementById('staffTabLaser')?.classList.toggle('active', view === 'laser');
+  const allSub = document.getElementById('staffAllSub');
+  if (allSub) {
+    allSub.textContent = offPlanningCount
+      ? `${offPlanningCount} hors planning`
+      : 'Le jour au complet';
+    allSub.classList.toggle('is-alert', offPlanningCount > 0);
+  }
+  const allCountEl = document.getElementById('staffAllCount');
+  const bowlingCountEl = document.getElementById('staffBowlingCount');
+  const laserCountEl = document.getElementById('staffLaserCount');
+  if (allCountEl) allCountEl.textContent = dayReservations.length;
+  if (bowlingCountEl) bowlingCountEl.textContent = bowlingCount;
+  if (laserCountEl) laserCountEl.textContent = laserCount;
+  document.getElementById('planningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'bowling');
+  document.getElementById('laserPlanningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'laser');
 }
 
 function getReservationFirstResourceStart(reservation, view = getStaffResourceView()) {
@@ -12733,7 +12768,6 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   if (prevBtn) prevBtn.disabled = false;
 
   const bowlingReservations = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0);
-  const laserReservations = dayReservations.filter(r => getLaserWindowsFromReservation(r).length > 0);
   const planningWindow = getPlanningWindow(state.currentDate);
   const bowlingPlayers = bowlingReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0);
   const planningSub = document.getElementById('planningSub');
@@ -12742,17 +12776,7 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   if (planningSearchInput && planningSearchInput !== document.activeElement) planningSearchInput.value = state.searchTerm || '';
   const laserPlanningSearchInput = document.getElementById('laserPlanningSearchInput');
   if (laserPlanningSearchInput && laserPlanningSearchInput !== document.activeElement) laserPlanningSearchInput.value = state.searchTerm || '';
-  document.getElementById('staffTabAll')?.classList.toggle('active', view === 'all');
-  document.getElementById('staffTabBowling')?.classList.toggle('active', view === 'bowling');
-  document.getElementById('staffTabLaser')?.classList.toggle('active', view === 'laser');
-  const allCountEl = document.getElementById('staffAllCount');
-  const bowlingCountEl = document.getElementById('staffBowlingCount');
-  const laserCountEl = document.getElementById('staffLaserCount');
-  if (allCountEl) allCountEl.textContent = dayReservations.length;
-  if (bowlingCountEl) bowlingCountEl.textContent = bowlingReservations.length;
-  if (laserCountEl) laserCountEl.textContent = laserReservations.length;
-  document.getElementById('planningBox')?.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive || view === 'laser');
-  document.getElementById('laserPlanningBox')?.classList.toggle('hidden', dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive || view === 'bowling');
+  syncStaffResourceTabs(dayReservations, view, dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive);
 }
 
 function renderKpis() {
@@ -13329,7 +13353,7 @@ function renderReservationRow(r) {
   const bowlingChipHtml = bowlingLanes.length ? bowlingLanes.map(l => `<span class="res-lane-chip">${l}</span>`).join('') : '';
   const laserChipHtml = getLaserWindowsFromReservation(r).map(window => `<span class="res-lane-chip laser">${formatClockDisplay(window.start)}-${formatClockDisplay(window.end)}</span>`).join('');
   const lanesHtml = view === 'all'
-    ? `<div class="res-row-lanes">${bowlingChipHtml}${laserChipHtml || ''}${!bowlingChipHtml && !laserChipHtml ? '<span class="res-lanes-empty">Hors ressource</span>' : ''}</div>`
+    ? `<div class="res-row-lanes">${bowlingChipHtml}${laserChipHtml || ''}${!bowlingChipHtml && !laserChipHtml ? `<span class="res-lanes-empty">${isOffPlanningReservation(r) ? 'Hors planning' : 'À placer'}</span>` : ''}</div>`
     : view === 'laser'
       ? `<div class="res-row-lanes"><span class="res-lane-chip laser">${laserWindow ? `${formatClockDisplay(laserWindow.start)}-${formatClockDisplay(laserWindow.end)}` : 'Laser'}</span></div>`
       : bowlingLanes.length
@@ -13418,8 +13442,11 @@ function renderTable() {
   if (tableTitle) tableTitle.textContent = view === 'all' ? 'Toutes les réservations' : view === 'laser' ? 'Réservations Laser Game' : 'Réservations Bowling';
   document.getElementById('tableCount').textContent = res.length;
   const list = document.getElementById('resList');
+  // Hors planning : calculé sur le JOUR (pas sur `filtered`) pour que le résumé
+  // annonce le même nombre que l'onglet, quel que soit le filtre de statut actif.
+  const offPlanningDay = view === 'all' ? res.filter(isOffPlanningReservation).length : 0;
   const resourceSummary = view === 'all'
-    ? `Vue complète • ${res.length}/${todaysReservations().length} visibles`
+    ? `Toutes activités • ${res.length} réservation${res.length > 1 ? 's' : ''}${offPlanningDay ? ` • ${offPlanningDay} hors planning` : ''}`
     : view === 'laser'
       ? 'Laser Game uniquement'
       : 'Bowling uniquement';
@@ -13444,11 +13471,18 @@ function renderTable() {
     </div>`;
     return;
   }
+  // Les réservations hors planning sortent des sections de statut et remontent en
+  // tête : elles n'apparaissent sur aucune grille, donc c'est ICI ou nulle part.
+  const offPlanningRows = view === 'all' ? filtered.filter(isOffPlanningReservation) : [];
+  const offPlanningIds = new Set(offPlanningRows.map(r => r.id));
+  const inStatus = status => filtered.filter(r => r.status === status && !offPlanningIds.has(r.id));
   const sections = [
-    { key: 'arrived', title: 'Sur place', subtitle: 'Clients présents, à suivre maintenant', rows: filtered.filter(r => r.status === 'arrived') },
-    { key: 'pending', title: 'À venir', subtitle: 'Réservations confirmées, triées par horaire', rows: filtered.filter(r => r.status === 'pending') },
-    { key: 'paid', title: 'Terminées', subtitle: 'Clôturées et descendues en bas de liste', rows: filtered.filter(r => r.status === 'paid') }
+    { key: 'offplanning', title: 'Hors planning', subtitle: "Ni piste bowling ni zone laser : visibles nulle part ailleurs", rows: offPlanningRows },
+    { key: 'arrived', title: 'Sur place', subtitle: 'Clients présents, à suivre maintenant', rows: inStatus('arrived') },
+    { key: 'pending', title: 'À venir', subtitle: 'Réservations confirmées, triées par horaire', rows: inStatus('pending') },
+    { key: 'paid', title: 'Terminées', subtitle: 'Clôturées et descendues en bas de liste', rows: inStatus('paid') }
   ].filter(section => {
+    if (section.key === 'offplanning') return true;
     if (state.staffStatusFilter === 'arrived') return section.key === 'arrived';
     if (state.staffStatusFilter === 'pending') return section.key === 'pending';
     if (state.staffStatusFilter === 'paid') return section.key === 'paid';

@@ -1279,6 +1279,12 @@ button.staff-date-label:focus-visible,
 .staff-resource-tab .main { display: block; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: inherit; }
 .staff-resource-tab .sub { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
 
+/* Alerte « hors planning » : ces reservations n'occupent ni piste ni zone laser,
+   elles n'apparaissent donc sur AUCUNE grille. Le signal doit se voir depuis les
+   deux autres onglets, sinon la reservation reste invisible jusqu'a l'arrivee. */
+.staff-resource-tab .sub.is-alert { color: var(--warning); font-weight: 600; }
+.staff-resource-tab.has-alert { border-color: var(--warning); }
+
 .staff-resource-tab > span:last-child:not(:first-child) {
   display: inline-grid;
   place-items: center;
@@ -2554,6 +2560,10 @@ body.staff-mode.laser-dragging * { user-select: none; }
   align-items: center;
   padding: 4px 6px 10px;
 }
+
+.res-section.offplanning { border-color: var(--warning); }
+.res-section.offplanning .res-section-head .label { color: var(--warning); }
+.res-section.offplanning .res-section-head .count { background: var(--warning-soft); color: var(--warning); }
 
 .res-section-head .label { font-size: 13px; font-weight: 600; color: var(--text); }
 .res-section-head .table-summary { margin-top: 1px; }

@@ -89,7 +89,7 @@
           children: [
             { key: 'bowling', label: 'Bowling', resource: 'bowling' },
             { key: 'laser', label: 'Laser Game', resource: 'laser' },
-            { key: 'complete', label: 'Complet', resource: 'all' }
+            { key: 'complete', label: 'Toutes', resource: 'all' }
           ]
         },
         { key: 'reservations', label: 'Réservations', icon: 'reservations' },

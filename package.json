@@ -34,6 +34,7 @@
     "test:reservation-bugs": "node scripts/run-reservation-bugs-test.js",
     "test:delay-flag": "node scripts/delay-flag-check.js",
     "test:reservation-notes": "node scripts/reservation-notes-check.js",
+    "test:off-planning": "node scripts/off-planning-check.js",
     "test:ops:stress": "node scripts/run-ops-stress.js",
     "test:ops:nuclear": "node scripts/run-ops-stress.js --iterations=200000",
     "test:agent:nuclear": "node scripts/run-agent-orchestration-tests.js --iterations=200000",

@@ -215,6 +215,107 @@ async function clickNth(page, container, n, label) {
   return ok;
 }
 
+// Cible un element par son TEXTE visible. Les cartes de sequences d'emails
+// (« Confirmation », « Rappel avant la venue »…) sont generees et n'ont pas
+// d'identifiant stable : c'est leur libelle qui les designe, et c'est ce meme
+// libelle que la voix prononce dans le film.
+async function clickByText(page, text, label, settle = 620) {
+  const sel = await page.evaluate((needle) => {
+    // Sans depouiller les accents, « Reactiver » ne trouve pas « Réactiver » :
+    // la sequence nommee par la voix off serait absente de l'image.
+    const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ').trim().toLowerCase();
+    const want = norm(needle);
+    const cands = [...document.querySelectorAll('button, a, [role="button"], .card, .seq-card, li, div')]
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width < 40 || r.height < 18) return false;
+        if (r.top < 0 || r.top > window.innerHeight) return false;
+        return norm(el.textContent).includes(want);
+      });
+    // Le plus PETIT element qui contient le texte : sinon on cible le body.
+    const el = cands.sort((a, b) => (a.getBoundingClientRect().width * a.getBoundingClientRect().height)
+      - (b.getBoundingClientRect().width * b.getBoundingClientRect().height))[0];
+    if (!el) return null;
+    el.setAttribute('data-promo-txt', '1');
+    return '[data-promo-txt="1"]';
+  }, text);
+  if (!sel) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
+  const ok = await clickAt(page, sel, label, settle);
+  await page.evaluate(() => document.querySelectorAll('[data-promo-txt]').forEach((e) => e.removeAttribute('data-promo-txt')));
+  return ok;
+}
+
+// Survol appuye : sur un plan serre, voir l'element REAGIR sous le curseur
+// vaut mieux qu'un clic qui change de page trop vite.
+async function hoverText(page, text, label) {
+  const box = await page.evaluate((needle) => {
+    // Sans depouiller les accents, « Reactiver » ne trouve pas « Réactiver » :
+    // la sequence nommee par la voix off serait absente de l'image.
+    const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ').trim().toLowerCase();
+    const want = norm(needle);
+    const el = [...document.querySelectorAll('button, a, [role="button"], .card, li, div')]
+      .filter((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 60 && r.height > 24 && r.top > 0 && r.top < window.innerHeight
+          && norm(e.textContent).includes(want);
+      })
+      .sort((a, b) => (a.getBoundingClientRect().width * a.getBoundingClientRect().height)
+        - (b.getBoundingClientRect().width * b.getBoundingClientRect().height))[0];
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, text);
+  if (!box) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
+  await moveTo(page, box.x, box.y);
+  await page.mouse.move(box.x, box.y);
+  await page.waitForTimeout(760);
+  DONE.push(label);
+  console.log(`   survol ${label}`);
+  return true;
+}
+
+// Ferme le panneau ouvert en cliquant SUR LE FOND, comme un vrai utilisateur
+// (`posOverlay` ecoute exactement ce clic). `Escape` ne fait rien ici : sans
+// cette fermeture, la fiche reservation restait a l'ecran 19 s sur 24 et
+// masquait toutes les pages suivantes du film.
+async function closeOverlay(page, label = 'fermeture du panneau') {
+  const pt = await page.evaluate(() => {
+    const ov = [...document.querySelectorAll('[id$="Overlay"], [id$="Modal"]')]
+      .find((o) => {
+        const s = getComputedStyle(o);
+        const r = o.getBoundingClientRect();
+        return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > .05
+          && r.width > 200 && r.height > 200;
+      });
+    if (!ov) return null;
+    const or = ov.getBoundingClientRect();
+    // Le panneau est l'enfant le plus grand : on vise a cote, sur le fond.
+    const panel = [...ov.children]
+      .map((c) => c.getBoundingClientRect())
+      .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+    const y = Math.max(or.top + 30, Math.min(or.bottom - 30, or.top + or.height / 2));
+    const x = panel && panel.left - or.left > 90 ? or.left + 45 : or.right - 45;
+    return { x, y, id: ov.id };
+  });
+  if (!pt) return false;
+  await moveTo(page, pt.x, pt.y, 14);
+  await page.evaluate(([a, b]) => window.__promoClick(a, b), [pt.x, pt.y]);
+  await page.mouse.click(pt.x, pt.y);
+  await page.waitForTimeout(620);
+  const still = await page.evaluate((id) => {
+    const o = document.getElementById(id);
+    if (!o) return false;
+    const s = getComputedStyle(o);
+    return s.display !== 'none' && s.visibility !== 'hidden' && Number(s.opacity) > .05;
+  }, pt.id);
+  if (still) { MISSED.push(label + ' (reste ouvert)'); console.log(`   PANNEAU TOUJOURS OUVERT : ${pt.id}`); return false; }
+  DONE.push(label);
+  console.log(`   ${label} (${pt.id})`);
+  return true;
+}
+
 (async () => {
   const installQaApi = loadFromVisualQa('installQaApi');
   const seedStressDay = loadFromVisualQa('seedStressDay');
@@ -278,27 +379,55 @@ async function clickNth(page, container, n, label) {
     await page.waitForTimeout(1100);
     await installCursor(page);
 
-    console.log('SCENARIO 2 - l equipe pilote');
-    // Les entrees du menu sont generees : on lit celles qui EXISTENT vraiment
-    // plutot que de coder en dur des cles qui pourraient avoir change.
-    const keys = await page.evaluate(() => [...document.querySelectorAll('.fgx-menu-nav [data-fgx-menu-key]')]
+    console.log('SCENARIO 2 - on SUIT une reservation');
+    // Le film raconte une histoire, pas une visite guidee des menus :
+    // la reservation tombe, elle se pose dans le planning, la confirmation
+    // part, le rappel avant la venue suit, la relance reveille les dormants.
+    // Chaque etape ci-dessous est nommee par la voix off au montage.
+    const menu = await page.evaluate(() => [...document.querySelectorAll('.fgx-menu-nav [data-fgx-menu-key]')]
       .map((el) => ({ key: el.getAttribute('data-fgx-menu-key'), label: (el.getAttribute('title') || '').trim() }))
       .filter((k) => k.key && k.key !== 'dashboard'));
-    console.log(`   ${keys.length} entrees de menu trouvees`);
-    const WANT = ['reservations', 'clients', 'emails', 'campaigns', 'communications', 'marketing', 'formules', 'planning'];
-    const visit = WANT.map((w) => keys.find((k) => k.key === w)).filter(Boolean).slice(0, 6);
-    for (const item of (visit.length ? visit : keys.slice(0, 6))) {
-      await clickAt(page, `.fgx-menu-nav [data-fgx-menu-key="${item.key}"]`, item.label || item.key, 780);
-      // Un survol apres l'arrivee : la page respire, on voit les etats reagir.
-      await page.mouse.move(CSS_W * .55, CSS_H * .45);
-      await page.waitForTimeout(260);
-    }
+    console.log(`   ${menu.length} entrees de menu trouvees`);
+    const go = async (key, label) => {
+      const item = menu.find((k) => k.key === key);
+      if (!item) { MISSED.push(label); console.log(`   (menu absent) ${label}`); return false; }
+      return clickAt(page, `.fgx-menu-nav [data-fgx-menu-key="${item.key}"]`, item.label || label, 820);
+    };
 
-    // Retour au planning : le coeur du produit, et une reservation ouverte.
+    // 1. « Elle se pose dans votre planning » : la reservation, ouverte.
     await renderStaffPage(page, 'planning');
-    await page.waitForTimeout(900);
-    await clickAt(page, '.booking', 'une reservation du planning', 1500);
+    await page.waitForTimeout(800);
+    await hoverText(page, 'Famille Lambert', 'survol de la reservation');
+    await clickAt(page, '.booking', 'ouverture de la reservation', 1600);
+    await closeOverlay(page, 'fermeture de la fiche');
+
+    // 2. La liste des reservations : la meme resa, vue autrement.
+    await go('reservations', 'Reservations');
+    await hoverText(page, 'Famille Lambert', 'la resa dans la liste');
+
+    // 3-5. Les sequences d'emails, une par une, dans l'ordre du texte dit.
+    await go('emails', 'Emails & relances');
+    await page.waitForTimeout(400);
+    for (const [txt, label] of [
+      ['Confirmation', 'sequence Confirmation'],
+      ['Rappel avant la venue', 'sequence Rappel avant la venue'],
+      ['Reactiver les clients dormants', 'sequence Reactiver les dormants'],
+    ]) {
+      // Le survol d'abord (la carte reagit), le clic ensuite si la carte existe.
+      const seen = await hoverText(page, txt, label);
+      if (seen) await page.waitForTimeout(320);
+    }
+    await clickByText(page, 'Nouveau message', 'ouvrir un nouveau message', 1300);
+    await closeOverlay(page, 'fermeture du message');
+
+    // 6. Marketing : la couche qui fait revenir les gens.
+    await go('campaigns', 'Marketing');
+    await page.mouse.move(CSS_W * .5, CSS_H * .42);
     await page.waitForTimeout(700);
+
+    // 7. Retour au planning : la boucle est bouclee.
+    await renderStaffPage(page, 'planning');
+    await page.waitForTimeout(1100);
     await ctx.close();
   }
 

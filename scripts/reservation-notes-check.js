@@ -35,7 +35,12 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'clients.view', 'clients.edit', 'emails.view', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    const today = new Date().toISOString().slice(0, 10);
+    // Date LOCALE, comme todayStr() de l'app. toISOString() rend la date UTC :
+    // entre minuit et 2h (heure d'ete belge), le jeu d'essai etait date de la
+    // VEILLE pendant que la page affichait le jour meme -> liste vide et 10
+    // assertions rouges, chaque nuit. Defaut du banc d'essai, pas du produit.
+    const nowLocal = new Date();
+    const today = new Date(nowLocal.getTime() - nowLocal.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     let id = 9100;
     const R = [];
     const add = (o) => { R.push({ id: id++, date: today, lanes: [], status: 'pending', duration: 1, centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, type: 'bowling', label: 'Bowling', price: 100, pax: 6, ...o }); };

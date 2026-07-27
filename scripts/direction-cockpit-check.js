@@ -501,17 +501,22 @@ async function collectDirMeasures(page) {
       const el = document.getElementById(`dirKpiVal-${metric}`);
       return el ? el.textContent.trim() : '';
     };
-    const refLabel = 'vs période précédente';
+    // La reference (« vs periode precedente ») a quitte la pastille le
+    // 2026-07-27 : repetee dans six tuiles de 178 px, elle debordait
+    // (« ...vs année précéden »). Elle est annoncee une fois en tete de page et
+    // reste dans l'attribut title. Le CHIFFRE exact, lui, reste dans la
+    // pastille - c'est ce que ce gate verifie.
+    const refLabel = '';
     const euroChip = (cur, prev) => {
       const diff = cur - prev; const up = diff > 0;
       const pct = Math.round((Math.abs(diff) / Math.abs(prev)) * 100);
-      return `${up ? '▲' : '▼'} ${up ? '+' : '-'}${formatMoney(Math.abs(diff))} (${up ? '+' : '-'}${pct}%) ${refLabel}`;
+      return `${up ? '▲' : '▼'} ${up ? '+' : '-'}${formatMoney(Math.abs(diff))} (${up ? '+' : '-'}${pct}%)`;
     };
     const intChip = (cur, prev) => {
       const diff = cur - prev; const up = diff > 0;
       const pct = Math.round((Math.abs(diff) / Math.abs(prev)) * 100);
       const mag = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 }).format(Math.round(Math.abs(diff)));
-      return `${up ? '▲' : '▼'} ${up ? '+' : '-'}${mag} (${up ? '+' : '-'}${pct}%) ${refLabel}`;
+      return `${up ? '▲' : '▼'} ${up ? '+' : '-'}${mag} (${up ? '+' : '-'}${pct}%)`;
     };
     return {
       windowKey: `${range.start}|${range.end}`,

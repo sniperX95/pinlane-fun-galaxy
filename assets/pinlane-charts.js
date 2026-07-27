@@ -35,8 +35,20 @@
   var SEEN = window.PINLANE_CHARTS_SEEN instanceof Set ? window.PINLANE_CHARTS_SEEN : new Set();
   window.PINLANE_CHARTS_SEEN = SEEN;
 
-  var EMPTY_TEXT = 'Pas encore de donnees sur la periode.';
+  var EMPTY_TEXT = 'Pas encore de données sur la période.';
+  // Serie presente mais entierement nulle : ce n'est pas un manque de donnees,
+  // c'est une absence de valeur. Une ligne plate a zero sur sept mois occupe
+  // 200 px et laisse croire a une panne du graphe.
+  var FLAT_TEXT = 'Aucune valeur sur cette période.';
+  // Largeur de repli quand l'hote n'est pas encore mesurable (hors flux, onglet
+  // masque). Le rendu normal utilise la largeur REELLE : voir hostWidth.
   var VB_W = 560;
+  // Plancher bas expres : une sparkline vit dans une tuile de ~180 px. A 320,
+  // son viewBox etait plus large que la tuile et le SVG se re-echelonnait vers
+  // le BAS (40 px demandes, 22 px rendus). 140 = la largeur sous laquelle un
+  // graphe avec axes (48 px de marge gauche) n'a plus de place utile.
+  var VB_MIN = 140;
+  var VB_MAX = 1600;
   var PAD = { l: 48, r: 16, t: 20, b: 28 };
   var TONES = { success: 'plc-tone-success', warning: 'plc-tone-warning', danger: 'plc-tone-danger' };
   var FADE = [1, 0.66, 0.44, 0.3, 0.2, 0.14];
@@ -139,6 +151,14 @@
     return Number.isFinite(v) && v >= 120 && v <= 420 ? Math.round(v) : fallback;
   }
 
+  // Une sparkline vit dans une tuile : sa hauteur se compte en dizaines de px,
+  // pas en centaines. Marges quasi nulles, sinon la courbe n'a plus de place.
+  var SPARK_PAD = { l: 2, r: 2, t: 6, b: 6 };
+  function clampSparkHeight(h, fallback) {
+    var v = Number(h);
+    return Number.isFinite(v) && v >= 24 && v <= 120 ? Math.round(v) : fallback;
+  }
+
   // 3-4 graduations rondes qui contiennent le max (pas de courbe qui creve
   // le plafond, pas d'axe menteur).
   function buildScale(maxValue, format) {
@@ -158,8 +178,60 @@
     return { top: step * 3, ticks: [0, step, step * 2, step * 3] };
   }
 
-  function renderEmpty(el) {
-    el.innerHTML = '<div class="plc-empty">' + EMPTY_TEXT + '</div>';
+  function renderEmpty(el, text) {
+    el.innerHTML = '<div class="plc-empty">' + esc(text || EMPTY_TEXT) + '</div>';
+  }
+
+  function hasValue(series) {
+    return series.some(function (p) { return p.value > 0; });
+  }
+
+  // ── Echelle 1:1 ───────────────────────────────────────────────────────────
+  // Le SVG etait dessine dans un viewBox de largeur FIXE (560) puis etire a la
+  // largeur du conteneur par `width: 100%`. Un SVG s'agrandit en entier : sur
+  // une carte de 1100 px, tout etait multiplie par ~2 - le TEXTE des axes
+  // (11 px devenus 22 px) et la HAUTEUR (200 px devenus ~400 px). D'ou des
+  // graphes geants au texte disproportionne sur la page Direction.
+  // On dessine desormais a la taille reelle : le viewBox vaut la largeur
+  // mesuree, donc l'echelle est 1 et les tailles de la CSS sont respectees.
+  function hostWidth(el) {
+    var w = 0;
+    try { w = Math.round((el && el.clientWidth) || 0); } catch (e) { w = 0; }
+    if (!w) return VB_W;
+    return Math.max(VB_MIN, Math.min(VB_MAX, w));
+  }
+
+  // Re-rendu au redimensionnement : sans lui, elargir la fenetre re-etirerait le
+  // dessin (retour du defaut qu'on vient de corriger). Hysteresis de 24 px pour
+  // ne pas redessiner a chaque pixel, et largeur memorisee AVANT le rendu pour
+  // qu'un redessin ne puisse pas se re-declencher lui-meme.
+  var resizeObserver = null;
+  function keepScaled(el, render) {
+    if (!el) return;
+    el.__plcRender = render;
+    el.__plcWidth = hostWidth(el);
+    if (typeof ResizeObserver === 'undefined') return;
+    if (!resizeObserver) {
+      resizeObserver = new ResizeObserver(function (entries) {
+        entries.forEach(function (entry) {
+          var target = entry.target;
+          if (!target || typeof target.__plcRender !== 'function') return;
+          // La PREMIERE notification arrive juste apres observe() : elle ne
+          // signale aucun changement. La rejouer re-rendrait le graphe (donc
+          // remplacerait le DOM et ses ecouteurs de survol) pour rien.
+          if (target.__plcFirstResize) { target.__plcFirstResize = false; return; }
+          var width = Math.round(entry.contentRect ? entry.contentRect.width : 0);
+          if (!width || Math.abs(width - (target.__plcWidth || 0)) < 24) return;
+          target.__plcWidth = width;
+          target.__plcRender();
+        });
+      });
+    }
+    if (!el.__plcObserved) {
+      el.__plcObserved = true;
+      el.__plcFirstResize = true;
+      resizeObserver.observe(el);
+    }
   }
 
   function mountChart(el, extraClass, innerHtml, animate) {
@@ -177,31 +249,36 @@
     return wrap;
   }
 
-  function chartFrame(inner, height, ariaLabel) {
-    return '<svg class="plc-svg" viewBox="0 0 ' + VB_W + ' ' + height + '" role="img" aria-label="' + esc(ariaLabel) + '" focusable="false">' + inner + '</svg>';
+  function chartFrame(inner, height, ariaLabel, vbW) {
+    return '<svg class="plc-svg" viewBox="0 0 ' + (vbW || VB_W) + ' ' + height + '" role="img" aria-label="' + esc(ariaLabel) + '" focusable="false">' + inner + '</svg>';
   }
 
-  function gridMarkup(scale, format, height) {
+  function gridMarkup(scale, format, height, vbW) {
     var innerH = height - PAD.t - PAD.b;
     var out = [];
     scale.ticks.forEach(function (t) {
       var y = round2(PAD.t + innerH * (1 - t / scale.top));
       var cls = t === 0 ? 'plc-baseline' : 'plc-grid';
-      out.push('<line class="' + cls + '" x1="' + PAD.l + '" x2="' + (VB_W - PAD.r) + '" y1="' + y + '" y2="' + y + '"></line>');
+      out.push('<line class="' + cls + '" x1="' + PAD.l + '" x2="' + ((vbW || VB_W) - PAD.r) + '" y1="' + y + '" y2="' + y + '"></line>');
       out.push('<text class="plc-ytick" x="' + (PAD.l - 8) + '" y="' + round2(y + 3.5) + '" text-anchor="end">' + esc(formatTick(t, format)) + '</text>');
     });
     return out.join('');
   }
 
   // Labels X espaces : jamais plus de ~6, sinon ils se marchent dessus.
-  function xLabelsMarkup(points, height) {
+  // Nombre de labels DEDUIT de la largeur reelle (~1 tous les 96 px) au lieu
+  // d'un 6 fixe : dans une carte etroite, six dates se chevauchaient
+  // ("01 ja04 fevr.").
+  function xLabelsMarkup(points, height, vbW) {
     var n = points.length;
-    var step = Math.max(1, Math.ceil(n / 6));
+    var usable = (vbW || VB_W) - PAD.l - PAD.r;
+    var maxLabels = Math.max(2, Math.min(6, Math.floor(usable / 96)));
+    var step = Math.max(1, Math.ceil(n / maxLabels));
     var y = height - 10;
     var out = [];
     points.forEach(function (p, i) {
       if (i % step !== 0 || !p.label) return;
-      var anchor = p.x > VB_W - 80 ? 'end' : (p.x < 80 ? 'start' : 'middle');
+      var anchor = p.x > (vbW || VB_W) - 80 ? 'end' : (p.x < 80 ? 'start' : 'middle');
       out.push('<text class="plc-xtick" x="' + round2(p.x) + '" y="' + y + '" text-anchor="' + anchor + '">' + esc(p.label) + '</text>');
     });
     return out.join('');
@@ -308,7 +385,7 @@
 
   // Ligne : crosshair vertical + dot agrandi cales sur le point le plus proche
   // en x ; l'infobulle affiche le label X + la valeur formatee.
-  function wireLine(wrap, pts, height) {
+  function wireLine(wrap, pts, height, vbW) {
     if (!wrap) return;
     var svg = wrap.querySelector('.plc-svg');
     var cross = wrap.querySelector('.plc-crosshair');
@@ -318,7 +395,7 @@
     var onMove = function (ev) {
       var srect = svg.getBoundingClientRect();
       if (!(srect.width > 0) || !(srect.height > 0)) return;
-      var sx = (ev.clientX - srect.left) / srect.width * VB_W;
+      var sx = (ev.clientX - srect.left) / srect.width * (vbW || VB_W);
       var idx = 0;
       var best = Infinity;
       for (var i = 0; i < pts.length; i += 1) {
@@ -331,7 +408,7 @@
       hdot.setAttribute('cx', round2(p.x));
       hdot.setAttribute('cy', round2(p.y));
       var wrect = wrap.getBoundingClientRect();
-      var px = (p.x / VB_W) * srect.width + (srect.left - wrect.left);
+      var px = (p.x / (vbW || VB_W)) * srect.width + (srect.left - wrect.left);
       var py = (p.y / height) * srect.height + (srect.top - wrect.top);
       showTip(wrap, tip, tipHtml(p.label, p.vtext), px, py);
     };
@@ -363,41 +440,56 @@
     var el = resolveHost(host);
     if (!el) return;
     var o = opts || {};
+    // Mode sparkline : la courbe SEULE, dans une tuile de 40 px. Aucun axe,
+    // aucun label, aucune valeur - une sparkline qui porte des graduations de
+    // 11 px dans 40 px de haut ne se lit pas, elle salit la tuile.
+    var spark = o.sparkline === true;
     var series = normalizeSeries(o.series);
+    if (spark && !hasValue(series)) { el.innerHTML = ''; return; }
     if (!series.length) { renderEmpty(el); return; }
+    if (!hasValue(series)) { renderEmpty(el, FLAT_TEXT); return; }
+    var pad = spark ? SPARK_PAD : PAD;
     var format = o.format || 'int';
-    var height = clampHeight(o.height, 200);
+    var height = spark ? clampSparkHeight(o.height, 40) : clampHeight(o.height, 200);
     var animate = shouldAnimate(o.motionKey);
     var max = 0;
     series.forEach(function (p) { if (p.value > max) max = p.value; });
     var scale = buildScale(max, format);
-    var innerW = VB_W - PAD.l - PAD.r;
-    var innerH = height - PAD.t - PAD.b;
+    var vbW = hostWidth(el);
+    var innerW = vbW - pad.l - pad.r;
+    var innerH = height - pad.t - pad.b;
     var n = series.length;
     var pts = series.map(function (p, i) {
       return {
-        x: n === 1 ? PAD.l + innerW / 2 : PAD.l + (innerW * i) / (n - 1),
-        y: PAD.t + innerH * (1 - p.value / scale.top),
+        x: n === 1 ? pad.l + innerW / 2 : pad.l + (innerW * i) / (n - 1),
+        y: pad.t + innerH * (1 - p.value / scale.top),
         value: p.value,
         label: p.label,
       };
     });
     var d = smoothPathD(pts);
-    var baseY = round2(PAD.t + innerH);
+    var baseY = round2(pad.t + innerH);
     var last = pts[n - 1];
     var area = d + ' L' + round2(last.x) + ' ' + baseY + ' L' + round2(pts[0].x) + ' ' + baseY + ' Z';
-    var parts = [gridMarkup(scale, format, height), xLabelsMarkup(pts, height)];
+    var parts = spark ? [] : [gridMarkup(scale, format, height, vbW), xLabelsMarkup(pts, height, vbW)];
     parts.push('<path class="plc-line-area" d="' + area + '"></path>');
     parts.push('<path class="plc-line-path" d="' + d + '" pathLength="1000"' + (animate ? ' style="stroke-dasharray:1000;stroke-dashoffset:1000"' : '') + '></path>');
-    parts.push('<circle class="plc-line-dot" cx="' + round2(last.x) + '" cy="' + round2(last.y) + '" r="3.5"></circle>');
-    var vAnchor = last.x < PAD.l + 60 ? 'start' : 'end';
-    var vx = vAnchor === 'end' ? last.x - 8 : last.x + 8;
-    var vy = last.y - 8 < 14 ? last.y + 18 : last.y - 8;
-    parts.push('<text class="plc-line-value" x="' + round2(vx) + '" y="' + round2(vy) + '" text-anchor="' + vAnchor + '">' + esc(formatValue(last.value, format)) + '</text>');
-    parts.push('<g class="plc-line-hover" aria-hidden="true"><line class="plc-crosshair" x1="0" x2="0" y1="' + round2(PAD.t) + '" y2="' + baseY + '"></line><circle class="plc-dot-hover" cx="0" cy="0" r="4.5"></circle></g>');
+    if (!spark) {
+      parts.push('<circle class="plc-line-dot" cx="' + round2(last.x) + '" cy="' + round2(last.y) + '" r="3.5"></circle>');
+      var vAnchor = last.x < pad.l + 60 ? 'start' : 'end';
+      var vx = vAnchor === 'end' ? last.x - 8 : last.x + 8;
+      var vy = last.y - 8 < 14 ? last.y + 18 : last.y - 8;
+      // Serie dense : l'etiquette du dernier point tombe SUR la courbe. Au-dela
+      // de 60 points elle est retiree (la valeur reste au survol).
+      if (n <= 60) {
+        parts.push('<text class="plc-line-value" x="' + round2(vx) + '" y="' + round2(vy) + '" text-anchor="' + vAnchor + '">' + esc(formatValue(last.value, format)) + '</text>');
+      }
+      parts.push('<g class="plc-line-hover" aria-hidden="true"><line class="plc-crosshair" x1="0" x2="0" y1="' + round2(pad.t) + '" y2="' + baseY + '"></line><circle class="plc-dot-hover" cx="0" cy="0" r="4.5"></circle></g>');
+    }
     pts.forEach(function (p) { p.vtext = formatValue(p.value, format); });
-    var wrap = mountChart(el, 'plc-line-wrap', chartFrame(parts.join(''), height, 'Evolution sur la periode'), animate);
-    wireLine(wrap, pts, height);
+    var wrap = mountChart(el, 'plc-line-wrap' + (spark ? ' plc-spark' : ''), chartFrame(parts.join(''), height, spark ? 'Tendance' : 'Evolution sur la periode', vbW), animate);
+    if (!spark) wireLine(wrap, pts, height, vbW);
+    keepScaled(el, function () { lineChart(host, opts); });
   }
 
   function barChart(host, opts) {
@@ -406,13 +498,15 @@
     var o = opts || {};
     var series = normalizeSeries(o.series);
     if (!series.length) { renderEmpty(el); return; }
+    if (!hasValue(series)) { renderEmpty(el, FLAT_TEXT); return; }
     var format = o.format || 'int';
     var height = clampHeight(o.height, 200);
     var animate = shouldAnimate(o.motionKey);
     var max = 0;
     series.forEach(function (p) { if (p.value > max) max = p.value; });
     var scale = buildScale(max, format);
-    var innerW = VB_W - PAD.l - PAD.r;
+    var vbW = hostWidth(el);
+    var innerW = vbW - PAD.l - PAD.r;
     var innerH = height - PAD.t - PAD.b;
     var baseY = PAD.t + innerH;
     var n = series.length;
@@ -433,10 +527,11 @@
         valueTexts.push('<text class="plc-bar-value" x="' + round2(x + barW / 2) + '" y="' + round2(Math.max(12, y - 6)) + '" text-anchor="middle">' + esc(formatTick(p.value, format)) + '</text>');
       }
     });
-    var parts = [gridMarkup(scale, format, height), xLabelsMarkup(centers, height), bars.join(''), valueTexts.join('')];
+    var parts = [gridMarkup(scale, format, height, vbW), xLabelsMarkup(centers, height, vbW), bars.join(''), valueTexts.join('')];
     var barInfo = series.map(function (p) { return { label: p.label, value: formatValue(p.value, format) }; });
-    var wrap = mountChart(el, 'plc-bar-wrap', chartFrame(parts.join(''), height, 'Volumes sur la periode'), animate);
+    var wrap = mountChart(el, 'plc-bar-wrap', chartFrame(parts.join(''), height, 'Volumes sur la periode', vbW), animate);
     wireSegments(wrap, '.plc-bar', barInfo);
+    keepScaled(el, function () { barChart(host, opts); });
   }
 
   function polar(cx, cy, r, deg) {

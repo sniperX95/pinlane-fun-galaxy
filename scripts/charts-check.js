@@ -55,6 +55,13 @@ const PAGE_HTML = `<!DOCTYPE html>
   <div id="hostNeg"></div>
   <p><span id="hostCount"></span> <span id="hostCountPercent"></span></p>
 </main>
+<!-- Hotes d'ECHELLE, hors du main etroit : un enfant de 1100 px dans un main
+     de 720 px faisait deborder la page, decalait la mise en page apres mesure et
+     faisait rater les survols. Ici, alignes a gauche, ils ne decalent rien. -->
+<div style="padding:0 0 24px">
+  <div id="hostWide" style="width:1100px"></div>
+  <div id="hostSpark" style="width:200px"></div>
+</div>
 <script src="/assets/pinlane-charts.js"></script>
 </body>
 </html>`;
@@ -100,6 +107,20 @@ const MUTATIONS = [
     find: 'return Boolean(key) && SEEN.has(key);',
     replace: 'return Boolean(key) && false;',
     expect: 'replay-guard',
+  },
+  {
+    // Le defaut d'origine : viewBox fixe + width:100% -> tout le dessin (texte
+    // compris) etire par le rapport largeur_conteneur / 560.
+    name: 'retour au viewBox fixe de 560 (SVG etire par la largeur du conteneur)',
+    find: '    if (!w) return VB_W;',
+    replace: '    if (w) return VB_W;',
+    expect: 'scale-texte',
+  },
+  {
+    name: 'sparkline redessinee avec les axes (mode spark ignore)',
+    find: '    var spark = o.sparkline === true;',
+    replace: '    var spark = false;',
+    expect: 'sparkline',
   },
   {
     name: 'calcul du point le plus proche de la ligne neutralise (idx fige a 0)',
@@ -172,6 +193,10 @@ async function runSuite(browser, quiet) {
       try { P.heatmapChart(g('hostHeat'), { matrix: D.heat.matrix, rowLabels: D.heat.rows, colLabels: D.heat.cols, motionKey: 'gate|heat' }); } catch (e) { out.threw.push(`heat:${e.message}`); }
       try { P.lineChart(g('hostEmpty'), { series: [], format: 'int', motionKey: 'gate|empty' }); } catch (e) { out.threw.push(`empty:${e.message}`); }
       try { P.lineChart(g('hostZero'), { series: D.zero, format: 'int', motionKey: 'gate|zero' }); } catch (e) { out.threw.push(`zero:${e.message}`); }
+      // ECHELLE 1:1 : un graphe de 170 px dans un conteneur de 1100 px doit
+      // mesurer 170 px et garder ses libelles a la taille de la CSS.
+      try { P.lineChart(g('hostWide'), { series: D.line, format: 'euro', height: 170, motionKey: 'gate|wide' }); } catch (e) { out.threw.push(`wide:${e.message}`); }
+      try { P.lineChart(g('hostSpark'), { series: D.line, format: 'int', sparkline: true, height: 40, motionKey: 'gate|spark' }); } catch (e) { out.threw.push(`spark:${e.message}`); }
       try { P.lineChart(g('hostSingle'), { series: D.single, format: 'int', motionKey: 'gate|single' }); } catch (e) { out.threw.push(`single:${e.message}`); }
       try { P.barChart(g('hostNeg'), { series: D.neg, format: 'int', motionKey: 'gate|neg' }); } catch (e) { out.threw.push(`neg:${e.message}`); }
       try { P.lineChart('hoteInexistant', { series: D.line, format: 'int', motionKey: 'gate|absent' }); P.lineChart(null, { series: D.line }); } catch (e) { out.threw.push(`absent:${e.message}`); }
@@ -217,6 +242,17 @@ async function runSuite(browser, quiet) {
       out.emptyHasSvg = Boolean(g('hostEmpty').querySelector('svg'));
       out.zeroHasSvg = Boolean(g('hostZero').querySelector('svg'));
       out.zeroNaN = /NaN/.test(g('hostZero').innerHTML);
+      out.zeroText = (g('hostZero').querySelector('.plc-empty') || { textContent: '' }).textContent;
+      var wideSvg = g('hostWide').querySelector('svg');
+      var wideTick = g('hostWide').querySelector('.plc-ytick');
+      out.wideViewBox = wideSvg ? wideSvg.getAttribute('viewBox') : '';
+      out.wideHostW = Math.round(g('hostWide').clientWidth);
+      out.wideSvgH = wideSvg ? Math.round(wideSvg.getBoundingClientRect().height) : 0;
+      out.wideTickH = wideTick ? Math.round(wideTick.getBoundingClientRect().height * 10) / 10 : 0;
+      var sparkSvg = g('hostSpark').querySelector('svg');
+      out.sparkH = sparkSvg ? Math.round(sparkSvg.getBoundingClientRect().height) : 0;
+      out.sparkTexts = g('hostSpark').querySelectorAll('text').length;
+      out.sparkPath = Boolean(g('hostSpark').querySelector('.plc-line-path'));
       out.singleDot = Boolean(g('hostSingle').querySelector('.plc-line-dot'));
       out.singleNaN = /NaN/.test(g('hostSingle').innerHTML);
       out.negHeights = Array.from(g('hostNeg').querySelectorAll('.plc-bar')).map((b) => parseFloat(b.getAttribute('height')));
@@ -389,9 +425,28 @@ async function runSuite(browser, quiet) {
     ok(settled.heatMax > 0.95 && settled.heatZero < 0.01 && settled.heatMid > 0.1 && settled.heatMid < settled.heatMax,
       'heat-intensity', `max ${settled.heatMax}, mid ${settled.heatMid}, zero ${settled.heatZero}`);
     ok(settled.heatTitle === 'Mer 15h : 9', 'heat-title', `"${settled.heatTitle}"`);
-    ok(t0.emptyText === 'Pas encore de donnees sur la periode.' && !t0.emptyHasSvg, 'empty-calm', `"${t0.emptyText}"`);
-    ok(t0.zeroHasSvg && !t0.zeroNaN, 'zero-flat', 'serie toute a 0 : SVG fini, pas de NaN');
+    ok(t0.emptyText === 'Pas encore de données sur la période.' && !t0.emptyHasSvg, 'empty-calm', `"${t0.emptyText}"`);
+    // Serie presente mais TOUTE A ZERO : depuis 2026-07-27 on ne trace plus une
+    // ligne plate a zero (200 px de vide qui laissent croire a une panne), on
+    // ecrit la seule chose vraie. Le message est distinct de « pas de donnees ».
+    ok(!t0.zeroHasSvg && !t0.zeroNaN && t0.zeroText === 'Aucune valeur sur cette période.',
+      'zero-flat', `serie toute a 0 -> "${t0.zeroText}" (svg: ${t0.zeroHasSvg})`);
     ok(t0.singleDot && !t0.singleNaN, 'single-point', 'un seul point : dot present, pas de NaN');
+
+    // ECHELLE 1:1 (2026-07-27). Le SVG etait dessine dans un viewBox fixe de
+    // 560 px puis etire par 'width: 100%' : dans une carte de 1100 px tout etait
+    // multiplie par ~2, texte compris (graduations de 11 px rendues a 22) et
+    // hauteur comprise (170 px rendus a ~334). C'est ce que Movsar voyait sur la
+    // page Direction : 'les graphs sont bugges et super gros'.
+    const vbWide = Number(String(t0.wideViewBox).split(' ')[2] || 0);
+    ok(Math.abs(vbWide - t0.wideHostW) <= 2,
+      'scale-viewbox', `viewBox ${vbWide} vs conteneur ${t0.wideHostW} px`);
+    ok(Math.abs(t0.wideSvgH - 170) <= 2,
+      'scale-hauteur', `hauteur rendue ${t0.wideSvgH} px (demandee 170)`);
+    ok(t0.wideTickH > 8 && t0.wideTickH < 16,
+      'scale-texte', `graduation rendue a ${t0.wideTickH} px (CSS 11 px ; ~22 px = SVG etire)`);
+    ok(t0.sparkPath && t0.sparkTexts === 0 && Math.abs(t0.sparkH - 40) <= 2,
+      'sparkline', `courbe seule, ${t0.sparkTexts} texte(s), hauteur ${t0.sparkH} px`);
     ok(t0.negHeights.length === 2 && t0.negHeights[0] === 0 && t0.negHeights[1] > 0,
       'neg-clamped', `hauteurs ${t0.negHeights.join(', ')} (negatif attendu a 0)`);
     ok(settled.offReplay < 1 && settled.scaleReplay > 0.99,

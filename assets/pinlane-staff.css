@@ -11232,11 +11232,30 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* --- Rangee de KPI : tuiles cliquables, chacune pilote le grand graphique.
    Grand chiffre en Geist Mono, delta en chip, sparkline en pied. --- */
+/* 6 tuiles : 2, 3 ou 6 colonnes - jamais 4 ni 5, qui laissaient une tuile
+   orpheline seule sur sa rangee (auto-fit choisissait 5 en 1440 px). */
 .dir-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(184px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+@media (min-width: 760px) { .dir-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1320px) { .dir-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+/* Etat vide du grand graphe : une phrase calme au lieu d'une ligne plate. */
+.dir-focus-empty {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  justify-items: center;
+  min-height: 170px;
+  padding: var(--space-5);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+.dir-focus-empty strong { font-size: 14px; font-weight: 600; color: var(--text); }
+.dir-focus-empty span { font-size: 12.5px; color: var(--muted); max-width: 46ch; }
 .dir-kpi {
   display: flex;
   flex-direction: column;
@@ -12890,6 +12909,12 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 .dir-grid .dir-chart > * {
   width: 100%;
+}
+/* Carte sans valeur : elle ne reserve plus la hauteur d'un graphe. Neuf cartes
+   vides a 240 px, c'etait 2 000 px de page pour une phrase repetee neuf fois. */
+.dir-grid .dir-chart:has(.plc-empty) {
+  height: auto;
+  min-height: 0;
 }
 /* Heatmap : pleine largeur, forme differente (grille jour x heure) -> hauteur
    propre, hors du gabarit 240px des graphes de colonne. */

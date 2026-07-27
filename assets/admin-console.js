@@ -2019,15 +2019,18 @@ function buildDirDeltaChip(curVal, refVal, format, compare, invert) {
   if (ref === 0 && cur === 0) {
     return '<span class="dir-chip dir-chip-flat">= aucune activité</span>';
   }
+  // La reference est deja annoncee UNE fois en tete de page (« vs annee
+  // precedente ») : la repeter dans les six tuiles la faisait deborder de la
+  // pastille (« ...vs année précéden »). Elle reste dans le title au survol.
   if (Math.round(dirDiff * 100) / 100 === 0) {
-    return `<span class="dir-chip dir-chip-flat">= stable ${refLabel}</span>`;
+    return `<span class="dir-chip dir-chip-flat" title="${escapeHtml(`stable ${refLabel}`)}">= stable</span>`;
   }
   const up = dirDiff > 0;
   const arrow = up ? '▲' : '▼';
   const sign = up ? '+' : '-';
   const good = invert ? !up : up;
   const pct = Math.round((Math.abs(dirDiff) / Math.abs(ref)) * 100);
-  return `<span class="dir-chip ${good ? 'dir-chip-up' : 'dir-chip-down'}">${arrow} ${sign}${mag(dirDiff)} (${sign}${pct}%) ${refLabel}</span>`;
+  return `<span class="dir-chip ${good ? 'dir-chip-up' : 'dir-chip-down'}" title="${escapeHtml(`${sign}${mag(dirDiff)} (${sign}${pct}%) ${refLabel}`)}">${arrow} ${sign}${mag(dirDiff)} (${sign}${pct}%)</span>`;
 }
 
 // Serie de metrique suivant la granularite : day -> daily, week -> weekly,
@@ -2940,6 +2943,18 @@ function mountDirFocusChart(entry) {
   const range = getDirRange();
   const focus = getDirFocusMetric();
   const cfg = DIR_FOCUS[focus];
+  // Periode SANS aucune activite : une courbe plate a zero sur sept mois
+  // n'informe pas, elle occupe 200 px et laisse croire a une panne. On le dit
+  // en une phrase. « Aucune activite » et non « pas de donnees » : la donnee est
+  // la, c'est l'activite qui est nulle.
+  const totals = (entry && entry.analytics && entry.analytics.totals) || {};
+  const noActivity = !Number(totals.reservations) && !Number(totals.pax)
+    && !Number(totals.revenue) && !Number(totals.cancelled);
+  if (noActivity) {
+    host.innerHTML = '<div class="dir-focus-empty"><strong>Aucune activité sur cette période.</strong>'
+      + '<span>Change la plage de dates, ou reviens quand les premières réservations seront enregistrées.</span></div>';
+    return;
+  }
   // Le grand graphe focus est SEUL dans la vue Synthese : viewBox large et plat
   // (hauteur ~320px a la largeur bureau typique) au lieu de l'ancien 300 qui, en
   // pleine largeur, produisait un graphe demesure. Le CSS (.dir-focus-chart) le
@@ -2978,7 +2993,11 @@ function mountDirectionCharts() {
       charts.lineChart(sparkEl, {
         series: dirMetricSeries(analytics, range.granularity, kpi.spark),
         format: kpi.format === 'euro' ? 'euro' : 'int',
-        height: 120,
+        // Vraie sparkline : 40 px, sans axe ni label. La hauteur 120 datait du
+        // temps ou le SVG etait re-echelonne par la largeur de la tuile ; il
+        // portait alors des graduations de 11 px reduites a l'illisible.
+        sparkline: true,
+        height: 40,
         motionKey: `${motionBase}|spark|${kpi.key}`,
       });
     }

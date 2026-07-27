@@ -2,14 +2,16 @@
 //
 // Les versions precedentes faisaient panner des captures FIXES : on voyait le
 // produit, jamais quelqu'un s'en servir. Ici Playwright pilote reellement
-// l'application (remplir le formulaire, cliquer dans le planning, naviguer) et
-// enregistre la video de la session. Ce qui est a l'ecran EST le produit en
-// fonctionnement, pas une reconstitution.
+// l'application (remplir le formulaire, choisir un creneau, taper ses
+// coordonnees, naviguer dans le back-office) et enregistre la session. Ce qui
+// est a l'ecran EST le produit en fonctionnement, pas une reconstitution.
 //
-// Sortie : un webm par scenario dans artifacts/promo-clips/, converti ensuite
-// en mp4 par le montage.
+// Le film final est rendu en 3840x2160 ; ce clip y vit dans une carte reduite.
+// Voir la note sur recordVideo plus bas : la capture reste a sa taille native.
 //
-// Usage : node scripts/promo-record.js [--w 2560] [--h 1440]
+// Sortie : un webm par scenario dans artifacts/promo-clips/.
+//
+// Usage : node scripts/promo-record.js [--cssw 2560] [--cssh 1440]
 
 const fs = require('fs');
 const http = require('http');
@@ -18,8 +20,24 @@ const { chromium } = require('playwright-core');
 
 const ROOT = path.resolve(__dirname, '..');
 const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i === -1 ? d : process.argv[i + 1]; };
-const W = Number(arg('w', 2560));
-const H = Number(arg('h', 1440));
+// DEUX PIEGES PAYES ICI, ne pas les rejouer :
+//
+// 1. Ouvrir l'application a 3840 pixels CSS ne donne pas une belle image : elle
+//    a une largeur de contenu maximale, elle se retrouve minuscule au milieu de
+//    marges vides. La bonne mise en page est a 2560.
+//
+// 2. `deviceScaleFactor` N'AUGMENTE PAS la definition de recordVideo. Playwright
+//    capture le viewport a sa taille CSS et le POSE en haut a gauche d'un cadre
+//    de la taille demandee, le reste en gris. Demander 3840x2160 sur un viewport
+//    de 2560 donne donc 33 % de gris a droite et en bas, pas du 4K.
+//    -> la video est enregistree a sa taille naturelle.
+//
+// Ce n'est pas une perte : le clip vit dans une carte de ~1500 px CSS, soit
+// 2250 px reels dans un rendu 4K. Une source de 2560 y est encore REDUITE.
+const CSS_W = Number(arg('cssw', 2560));
+const CSS_H = Number(arg('cssh', 1440));
+const W = CSS_W;
+const H = CSS_H;
 const OUT = path.join(ROOT, 'artifacts/promo-clips');
 const PORT = 4601;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -27,6 +45,11 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.woff2': 'font/woff2', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
+
+// Journal des gestes REELLEMENT joues. Un scenario qui rate en silence donnerait
+// un clip ou il ne se passe rien : on le saurait trop tard, au montage.
+const DONE = [];
+const MISSED = [];
 
 function loadFromVisualQa(name) {
   const src = fs.readFileSync(path.join(ROOT, 'scripts/run-visual-qa.js'), 'utf8');
@@ -60,10 +83,10 @@ const serve = () => new Promise((resolve) => {
 // Un curseur visible est INDISPENSABLE : sans lui, les elements changent d'etat
 // tout seuls et le spectateur ne comprend pas qu'on manipule le produit.
 const CURSOR_CSS = `
-  #__promoCursor{position:fixed;width:28px;height:28px;z-index:2147483647;pointer-events:none;
-    left:0;top:0;transition:none;filter:drop-shadow(0 3px 8px rgba(0,0,0,.95))}
-  #__promoRipple{position:fixed;width:18px;height:18px;border-radius:50%;z-index:2147483646;
-    pointer-events:none;border:3px solid #3291ff;opacity:0}`;
+  #__promoCursor{position:fixed;width:42px;height:42px;z-index:2147483647;pointer-events:none;
+    left:0;top:0;transition:none;filter:drop-shadow(0 4px 12px rgba(0,0,0,.95))}
+  #__promoRipple{position:fixed;width:26px;height:26px;border-radius:50%;z-index:2147483646;
+    pointer-events:none;border:4px solid #3291ff;opacity:0}`;
 
 async function installCursor(page) {
   await page.evaluate((css) => {
@@ -72,14 +95,14 @@ async function installCursor(page) {
     document.head.appendChild(s);
     const c = document.createElement('div');
     c.id = '__promoCursor';
-    c.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28"><path d="M5 2l14 10.5-6.2.6 3.4 6.9-2.9 1.4-3.3-6.9L5 19z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    c.innerHTML = '<svg viewBox="0 0 24 24" width="42" height="42"><path d="M5 2l14 10.5-6.2.6 3.4 6.9-2.9 1.4-3.3-6.9L5 19z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>';
     document.body.appendChild(c);
     const r = document.createElement('div');
     r.id = '__promoRipple';
     document.body.appendChild(r);
     window.__promoMove = (x, y) => { c.style.transform = `translate(${x}px, ${y}px)`; };
     window.__promoClick = (x, y) => {
-      r.style.left = (x - 9) + 'px'; r.style.top = (y - 9) + 'px';
+      r.style.left = (x - 13) + 'px'; r.style.top = (y - 13) + 'px';
       r.style.transition = 'none'; r.style.opacity = '.95'; r.style.transform = 'scale(1)';
       requestAnimationFrame(() => {
         r.style.transition = 'transform .5s cubic-bezier(.2,.8,.3,1), opacity .5s';
@@ -93,8 +116,8 @@ async function installCursor(page) {
 
 // Deplacement humain : courbe, acceleration puis freinage. Une souris ne va
 // jamais en ligne droite a vitesse constante.
-async function moveTo(page, x, y, steps = 26) {
-  const from = await page.evaluate(() => window.__promoAt || { x: 200, y: 200 });
+async function moveTo(page, x, y, steps = 22) {
+  const from = await page.evaluate(() => window.__promoAt || { x: 300, y: 300 });
   const cx = (from.x + x) / 2 + (y - from.y) * .22;
   const cy = (from.y + y) / 2 - (x - from.x) * .22;
   for (let i = 1; i <= steps; i++) {
@@ -104,27 +127,92 @@ async function moveTo(page, x, y, steps = 26) {
     const px = u * u * from.x + 2 * u * e * cx + e * e * x;
     const py = u * u * from.y + 2 * u * e * cy + e * e * y;
     await page.evaluate(([a, b]) => { window.__promoMove(a, b); window.__promoAt = { x: a, y: b }; }, [px, py]);
-    await page.waitForTimeout(11);
+    await page.waitForTimeout(9);
   }
 }
 
-async function clickAt(page, sel, label) {
-  const box = await page.evaluate((s) => {
+async function boxOf(page, sel) {
+  // Un champ sous la ligne de flottaison n'est pas « absent » : il faut y aller.
+  // Sans ce defilement, l'etape 3 du parcours (nom, telephone) etait sautee.
+  const near = await page.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    if (r.top < 0 || r.bottom > window.innerHeight) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    return true;
+  }, sel);
+  if (!near) return null;
+  await page.waitForTimeout(520);            // le defilement doit finir
+  return page.evaluate((s) => {
     const el = document.querySelector(s);
     if (!el) return null;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return null;
+    if (r.top > window.innerHeight || r.bottom < 0) return null;
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }, sel);
-  if (!box) { console.log(`   (absent) ${label}`); return false; }
+}
+
+async function clickAt(page, sel, label, settle = 560) {
+  const box = await boxOf(page, sel);
+  if (!box) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
   await moveTo(page, box.x, box.y);
-  await page.waitForTimeout(170);
+  await page.waitForTimeout(150);        // temps de survol : l'etat hover se voit
   await page.evaluate(([a, b]) => window.__promoClick(a, b), [box.x, box.y]);
-  await page.waitForTimeout(90);
+  await page.waitForTimeout(80);
   await page.evaluate((s) => { const el = document.querySelector(s); if (el) el.click(); }, sel);
-  await page.waitForTimeout(620);
+  await page.waitForTimeout(settle);
+  DONE.push(label);
   console.log(`   clic ${label}`);
   return true;
+}
+
+// La frappe caractere par caractere : c'est ce qui fait « quelqu'un utilise le
+// produit » plutot que « une valeur est apparue ».
+async function typeInto(page, sel, text, label) {
+  const box = await boxOf(page, sel);
+  if (!box) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
+  await moveTo(page, box.x, box.y);
+  await page.evaluate(([a, b]) => window.__promoClick(a, b), [box.x, box.y]);
+  await page.evaluate((s) => { const el = document.querySelector(s); if (el) { el.focus(); el.value = ''; } }, sel);
+  for (const ch of text) {
+    await page.evaluate(([s, c]) => {
+      const el = document.querySelector(s);
+      if (!el) return;
+      el.value += c;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, [sel, ch]);
+    await page.waitForTimeout(52);
+  }
+  await page.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
+  }, sel);
+  await page.waitForTimeout(300);
+  DONE.push(label);
+  console.log(`   saisie ${label} = "${text}"`);
+  return true;
+}
+
+// Clique le n-ieme enfant visible d'un conteneur : les options (durees,
+// formules, creneaux) sont generees, on ne peut pas les cibler en dur.
+async function clickNth(page, container, n, label) {
+  const sel = await page.evaluate(([c, i]) => {
+    const host = document.querySelector(c);
+    if (!host) return null;
+    const kids = [...host.children].filter((k) => k.getBoundingClientRect().height > 8);
+    const el = kids[i];
+    if (!el) return null;
+    el.setAttribute('data-promo-pick', '1');
+    return `${c} > [data-promo-pick="1"]`;
+  }, [container, n]);
+  if (!sel) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
+  const ok = await clickAt(page, sel, label);
+  await page.evaluate(() => document.querySelectorAll('[data-promo-pick]').forEach((e) => e.removeAttribute('data-promo-pick')));
+  return ok;
 }
 
 (async () => {
@@ -138,10 +226,11 @@ async function clickAt(page, sel, label) {
 
   const browser = await chromium.launch();
 
-  // ---- SCENARIO 1 : le client reserve --------------------------------------
+  // ---- SCENARIO 1 : le client reserve VRAIMENT ------------------------------
   {
     const ctx = await browser.newContext({
-      viewport: { width: W, height: H },
+      viewport: { width: CSS_W, height: CSS_H },
+
       recordVideo: { dir: path.join(OUT, 'raw-client'), size: { width: W, height: H } },
     });
     const page = await ctx.newPage();
@@ -153,22 +242,30 @@ async function clickAt(page, sel, label) {
       if (typeof setView === 'function') setView('client');
     });
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1100);
+    await page.waitForTimeout(1000);
     await installCursor(page);
 
     console.log('SCENARIO 1 - le client reserve');
-    await page.waitForTimeout(500);
-    await clickAt(page, '#fPax, [id="fPax"]', 'nombre de joueurs');
-    await clickAt(page, '[data-type="laser"], [onclick*="laser"]', 'Laser Game');
-    await clickAt(page, '#btnCheck, [onclick*="goStep2"], .btn-primary', 'Verifier les disponibilites');
-    await page.waitForTimeout(1400);
+    await page.waitForTimeout(400);
+    await typeInto(page, '#fPax', '6', 'nombre de joueurs');
+    await clickAt(page, '#segFormule', 'onglet Nos Formules');
+    await clickNth(page, '#formuleGrid', 1, 'une formule');
+    await clickAt(page, '#segBowling', 'retour Bowling simple');
+    await clickNth(page, '#durGrid', 2, 'duree de jeu');
+    await clickAt(page, '#btnStep1', 'Verifier les disponibilites', 1100);
+    // Etape 2 : le creneau. C'est LE moment ou le produit prouve sa valeur.
+    await clickNth(page, '#slotList', 0, 'un creneau disponible', 900);
+    await typeInto(page, '#fName', 'Camille Dubois', 'nom du client');
+    await typeInto(page, '#fPhone', '0470112233', 'telephone');
+    await page.waitForTimeout(900);
     await ctx.close();
   }
 
   // ---- SCENARIO 2 : l'equipe pilote le centre ------------------------------
   {
     const ctx = await browser.newContext({
-      viewport: { width: W, height: H },
+      viewport: { width: CSS_W, height: CSS_H },
+
       recordVideo: { dir: path.join(OUT, 'raw-staff'), size: { width: W, height: H } },
     });
     const page = await ctx.newPage();
@@ -178,25 +275,30 @@ async function clickAt(page, sel, label) {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await seedStressDay(page);
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(1100);
     await installCursor(page);
 
     console.log('SCENARIO 2 - l equipe pilote');
-    // On NAVIGUE dans le menu comme un utilisateur, on ne saute pas d'ecran.
-    for (const [sel, label] of [
-      ['[data-fgx-menu-key="reservations"]', 'Reservations'],
-      ['[data-fgx-menu-key="clients"]', 'Clients'],
-      ['[data-fgx-menu-key="emails"]', 'Emails & relances'],
-      ['[data-fgx-menu-key="campaigns"]', 'Marketing'],
-    ]) {
-      await clickAt(page, sel, label);
-      await page.waitForTimeout(700);
+    // Les entrees du menu sont generees : on lit celles qui EXISTENT vraiment
+    // plutot que de coder en dur des cles qui pourraient avoir change.
+    const keys = await page.evaluate(() => [...document.querySelectorAll('.fgx-menu-nav [data-fgx-menu-key]')]
+      .map((el) => ({ key: el.getAttribute('data-fgx-menu-key'), label: (el.getAttribute('title') || '').trim() }))
+      .filter((k) => k.key && k.key !== 'dashboard'));
+    console.log(`   ${keys.length} entrees de menu trouvees`);
+    const WANT = ['reservations', 'clients', 'emails', 'campaigns', 'communications', 'marketing', 'formules', 'planning'];
+    const visit = WANT.map((w) => keys.find((k) => k.key === w)).filter(Boolean).slice(0, 6);
+    for (const item of (visit.length ? visit : keys.slice(0, 6))) {
+      await clickAt(page, `.fgx-menu-nav [data-fgx-menu-key="${item.key}"]`, item.label || item.key, 780);
+      // Un survol apres l'arrivee : la page respire, on voit les etats reagir.
+      await page.mouse.move(CSS_W * .55, CSS_H * .45);
+      await page.waitForTimeout(260);
     }
-    // Retour au planning et clic sur une reservation reelle.
+
+    // Retour au planning : le coeur du produit, et une reservation ouverte.
     await renderStaffPage(page, 'planning');
     await page.waitForTimeout(900);
-    await clickAt(page, '.booking', 'une reservation du planning');
-    await page.waitForTimeout(1500);
+    await clickAt(page, '.booking', 'une reservation du planning', 1500);
+    await page.waitForTimeout(700);
     await ctx.close();
   }
 
@@ -212,11 +314,14 @@ async function clickAt(page, sel, label) {
       const src = path.join(dir, f);
       const dst = path.join(OUT, `${d.replace('raw-', '')}.webm`);
       fs.renameSync(src, dst);
-      const sec = (fs.statSync(dst).size / 1024).toFixed(0);
-      clips.push(`${path.basename(dst)} (${sec} Ko)`);
+      clips.push(`${path.basename(dst)} (${(fs.statSync(dst).size / 1048576).toFixed(1)} Mo)`);
     }
     fs.rmSync(dir, { recursive: true, force: true });
   }
-  console.log('\nclips enregistres : ' + (clips.join(', ') || 'AUCUN'));
+  console.log(`\nclips ${W}x${H} (natif, sans remplissage) : ` + (clips.join(', ') || 'AUCUN'));
+  console.log(`gestes joues : ${DONE.length}  -  ${DONE.join(' | ')}`);
+  if (MISSED.length) console.log(`gestes MANQUES : ${MISSED.join(' | ')}`);
   if (!clips.length) process.exit(1);
+  // Un clip sans geste, c'est un screencast fixe : autant le savoir ici.
+  if (DONE.length < 8) { console.error(`\nECHEC : ${DONE.length} gestes seulement, le clip serait statique`); process.exit(1); }
 })().catch((e) => { console.error('promo-record:', e.message); process.exit(1); });

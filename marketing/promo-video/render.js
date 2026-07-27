@@ -57,6 +57,16 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
   for (let i = 0; i < total; i++) {
     const t = i / FPS;
     await page.evaluate((time) => window.renderFrame(time), t);
+    // Une <video> scrubbee ne se repositionne pas instantanement. C'est la
+    // SCENE qui sait si ses clips sont a la bonne image (window.SCRUB_SETTLED) :
+    // attendre 'loadeddata' ici ne suffisait pas, l'evenement arrive avant que
+    // le seek differe d'un clip fraichement cree soit termine, et la premiere
+    // frame de l'acte sortait vide.
+    if (await page.evaluate(() => typeof window.SCRUB_SETTLED === 'function')) {
+      await page.waitForFunction(() => window.SCRUB_SETTLED(), null, { timeout: 4000 })
+        .catch(() => console.warn(`
+  clip non stabilise a la frame ${i}`));
+    }
     await page.screenshot({
       path: path.join(FRAME_DIR, `f${String(i).padStart(5, '0')}.png`),
       animations: 'disabled',
@@ -109,25 +119,29 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
   const web = path.join(OUT_DIR, `${NAME}-web.mp4`);
   execFileSync('ffmpeg', [
     '-y', '-i', mp4,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '28',
-    '-maxrate', '900k', '-bufsize', '1800k',
-    '-vf', 'scale=1280:720:flags=lanczos',
-    '-c:a', 'aac', '-b:a', '112k',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '25',
+    '-maxrate', '2600k', '-bufsize', '5200k',
+    '-vf', 'scale=1920:-2:flags=lanczos',
+    '-c:a', 'aac', '-b:a', '128k',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', web,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
-  console.log(`Web  : ${path.relative(REPO, web)} (${(fs.statSync(web).size / 1048576).toFixed(1)} Mo, 720p)`);
+  console.log(`Web  : ${path.relative(REPO, web)} (${(fs.statSync(web).size / 1048576).toFixed(1)} Mo, 1080p)`);
 
-  // Version carree : seulement depuis un master paysage.
+  // Version carree : seulement depuis un master paysage. Le recadrage se
+  // deduit des dimensions REELLES du master (largeur x scale) — code en dur
+  // pour du 1920, il taillait une vignette au hasard dans un master 4K.
   if (H <= W) {
-  const square = path.join(OUT_DIR, NAME + '-1080x1080.mp4');
+  const outW = W * SCALE, outH = H * SCALE;
+  const side = Math.floor(outH / 2) * 2;
+  const square = path.join(OUT_DIR, `${NAME}-${side}x${side}.mp4`);
   execFileSync('ffmpeg', [
     '-y', '-i', mp4,
-    '-vf', 'crop=1080:1080:420:0',
+    '-vf', `crop=${side}:${side}:${Math.round((outW - side) / 2)}:0`,
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     square,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
-  console.log(`Carre: ${path.relative(REPO, square)}`);
+  console.log(`Carre: ${path.relative(REPO, square)} (${side}x${side})`);
   }
 
   // Poster : la miniature est souvent l'image la plus vue d'un film promo.

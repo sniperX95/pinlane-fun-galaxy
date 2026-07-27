@@ -3459,6 +3459,9 @@ function setAdminPeriod(period) {
 function setAdminTab(tab) {
   state.adminTab = tab || 'overview';
   save();
+  // L'URL suit l'onglet de Direction, comme elle suit la page staff : sans ca,
+  // on pouvait lire un hash « #/staff/... » en pleine console Direction.
+  if (typeof syncViewUrl === 'function') syncViewUrl('admin');
   renderAdminDashboard();
   // Mobile : la barre d'onglets defile horizontalement et le re-rendu repart du
   // scroll residuel. Mesure a 390px : apres navigation, l'onglet ACTIF pouvait

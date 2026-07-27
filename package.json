@@ -73,6 +73,7 @@
     "test:charts": "node scripts/charts-check.js",
     "test:daterange": "node scripts/daterange-check.js",
     "test:menu-navigation": "node scripts/menu-navigation-check.js",
+    "test:route-url": "node scripts/route-url-check.js",
     "test:analytics-board": "node scripts/analytics-board-check.js",
     "test:founder-pages-ui": "node scripts/founder-pages-ui-check.js",
     "test:direction-cockpit": "node scripts/direction-cockpit-check.js",

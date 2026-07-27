@@ -2641,7 +2641,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260723a';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260727a';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -2727,7 +2727,11 @@ function setView(v) {
     toast('Accès non autorisé pour ce rôle.');
     v = 'staff';
   }
+  const viewChanged = state.view !== v;
   state.view = v;
+  // L'URL suit la vue. push seulement quand on CHANGE de vue : le bouton Retour
+  // ramene alors a la vue precedente, sans empiler une entree par re-rendu.
+  syncViewUrl(v, { push: viewChanged });
   document.body.classList.toggle('client-mode', v === 'client');
   document.body.classList.toggle('staff-mode', v === 'staff' || v === 'admin');
   document.body.classList.toggle('admin-mode', v === 'admin');
@@ -5809,9 +5813,59 @@ function setStaffRouteHash(page = getStaffMenuPage(), resource = '') {
   const route = cleanPage === 'planning' && ['all', 'bowling', 'laser'].includes(cleanResource)
     ? `#/staff/planning/${cleanResource}`
     : `#/staff/${cleanPage}`;
-  if (window.location.hash !== route) {
-    window.history.replaceState(null, '', route);
+  writeAppUrl(APP_ROUTE_PATH, route);
+}
+
+// ── URL <-> vue ────────────────────────────────────────────────────────────
+// Avant, SEULE la partie staff ecrivait dans l'URL. Consequence visible : on
+// lisait « mngfunglxy.com/#/staff/users » au-dessus du parcours de reservation
+// CLIENT, et le parcours client n'avait aucune adresse a lui. Desormais chaque
+// vue a son adresse :
+//   client    -> /reserver          (page publique, deja dans le sitemap)
+//   staff     -> /#/staff/<page>    (inchange : le hash n'est pas envoye au
+//                                    serveur, donc aucun impact sur le Basic
+//                                    Auth du middleware)
+//   direction -> /#/admin/<onglet>
+const CLIENT_ROUTE_PATH = '/reserver';
+const APP_ROUTE_PATH = '/';
+
+function getCurrentPathname() {
+  try { return String(window.location.pathname || '/').replace(/\/+$/, '') || '/'; } catch (error) { return '/'; }
+}
+
+function writeAppUrl(pathname, hash = '', { push = false } = {}) {
+  if (typeof window === 'undefined' || !window.history) return;
+  // La query string est PRESERVEE : elle peut porter un parametre de campagne ou
+  // de centre, et la perdre en changeant d'onglet casserait le suivi.
+  let search = '';
+  try { search = String(window.location.search || ''); } catch (error) { search = ''; }
+  const target = `${pathname}${search}${hash || ''}`;
+  const current = `${getCurrentPathname()}${search}${window.location.hash || ''}`;
+  if (current === target) return;
+  try {
+    if (push) window.history.pushState(null, '', target);
+    else window.history.replaceState(null, '', target);
+  } catch (error) {
+    // Un contexte sans History API (fichier local, bac a sable) ne doit jamais
+    // empecher la bascule de vue.
   }
+}
+
+function syncViewUrl(view = state.view, { push = false } = {}) {
+  if (view === 'client') {
+    writeAppUrl(CLIENT_ROUTE_PATH, '', { push });
+    return;
+  }
+  if (view === 'admin') {
+    const tab = String(state.adminTab || 'overview').trim() || 'overview';
+    writeAppUrl(APP_ROUTE_PATH, `#/admin/${tab}`, { push });
+    return;
+  }
+  const page = String(getStaffMenuPage() || 'dashboard').trim();
+  const resource = page === 'planning' && ['all', 'bowling', 'laser'].includes(state.staffResourceView)
+    ? `/${state.staffResourceView}`
+    : '';
+  writeAppUrl(APP_ROUTE_PATH, `#/staff/${page}${resource}`, { push });
 }
 
 function getStaffUtilityReservations() {
@@ -16314,6 +16368,14 @@ async function loadCenterScheduleConfig(dateOverride = '') {
 function detectCustomerMode() {
   let path = '';
   try { path = String(window.location.pathname || '').toLowerCase().replace(/\/+$/, ''); } catch (e) { path = ''; }
+  // Une session staff annule le mode client pur. Depuis que la vue client a son
+  // adresse a elle (/reserver), un membre du staff qui clique « Réserver » y
+  // arrive aussi : le verrouiller en mode client lui retirerait les bascules de
+  // vue pour tout l'onglet, sans moyen de revenir au staff.
+  if (typeof hasSavedAuth === 'function' && hasSavedAuth()) {
+    try { sessionStorage.removeItem('pinlane-customer-mode'); } catch (e) {}
+    return false;
+  }
   if (path === '/reserver') {
     try { sessionStorage.setItem('pinlane-customer-mode', '1'); } catch (e) {}
     return true;
@@ -16355,6 +16417,12 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function applyInitialRouteFromHash() {
+  // Le CHEMIN prime sur le hash : /reserver est l'adresse de la vue client, quel
+  // que soit l'etat sauvegarde ou un hash staff herite d'une session precedente.
+  if (getCurrentPathname().toLowerCase() === CLIENT_ROUTE_PATH) {
+    state.view = 'client';
+    return;
+  }
   const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
   if (!rawHash) return;
   const [view, page, resource] = rawHash.split('/').filter(Boolean);

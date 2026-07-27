@@ -1658,10 +1658,15 @@ async function main() {
     assert(autumnState.f1Disabled, 'Congé d automne : les formules anniversaires doivent être désactivées.');
     assert(autumnState.repeatedNote === 0, 'La mention vacances ne doit plus être répétée sur chaque carte.');
     await screenshot(page, 'chantier3-formules-autumn-blocked');
-    // Date pendant les grandes vacances : formules anniversaires accessibles
+    // Date pendant les grandes vacances : formules anniversaires accessibles.
+    // La date doit rester DANS LE FUTUR : une date passee declenche
+    // isPastBusinessDate et le hint affiche "Date passee", ce qui fait tomber
+    // l assertion de periode plus bas sans rien prouver sur les vacances.
+    // 2026-08-20 : jeudi, dans les vacances d ete (04/07 -> 23/08/2026).
+    // A rafraichir avant cette date (ancienne valeur 2026-07-15, perimee).
     await page.evaluate(() => {
-      state.booking.date = '2026-07-15';
-      document.getElementById('fDate').value = '2026-07-15';
+      state.booking.date = '2026-08-20';
+      document.getElementById('fDate').value = '2026-08-20';
       updateSchedHint();
       renderFormules();
     });

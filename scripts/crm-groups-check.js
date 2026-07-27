@@ -108,7 +108,7 @@ async function main() {
       page: state.staffMenuPage,
       segment: state.staffClientSegment,
       visible: !!document.getElementById('staffClientsPage') && !document.getElementById('staffClientsPage').classList.contains('hidden'),
-      activeSeg: ((document.querySelector('#staffClientsPage .crm-seg.is-active') || {}).textContent || '').trim(),
+      activeSeg: ((document.querySelector('#staffClientsPage .crm-seg.is-active .crm-seg-label') || {}).textContent || '').trim(),
       menuGroups: !![...document.querySelectorAll('button, a')].find((el) => /groupes & anniversaires/i.test(el.textContent || '')),
     }));
     ok(redir.page === 'clients', `staffMenuPage = clients (obtenu ${redir.page})`);

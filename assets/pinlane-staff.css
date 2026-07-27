@@ -416,7 +416,20 @@ body.staff-menu-collapsed .fgx-menu-collapse svg { transform: scaleX(-1); }
   transform: scaleY(1);
 }
 
-.fgx-menu-icon { width: 15px; height: 15px; flex: 0 0 15px; color: var(--faint); }
+.fgx-menu-icon { position: relative; width: 15px; height: 15px; flex: 0 0 15px; color: var(--faint); }
+/* Le badge chiffré est display:none menu replié (voir plus bas) et sous 1100 px.
+   Ce point-là survit : il vit DANS l'icône. Il ne remplace pas l'alerte du
+   dashboard, il la rappelle. */
+.fgx-menu-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
+}
 
 .fgx-menu-item:hover .fgx-menu-icon,
 .fgx-menu-item.active .fgx-menu-icon,
@@ -2065,6 +2078,12 @@ button.staff-date-label:focus-visible,
   white-space: nowrap;
 }
 
+/* Occasion déclarée et présence d'une note : les deux seuls signaux qui
+   changent la préparation d'une réservation. « Note » porte la couleur
+   d'attention, l'occasion reste factuelle. */
+.reservation-tag.occasion { background: var(--accent-soft); color: var(--accent-strong); }
+.reservation-tag.note { background: var(--warning-soft); color: var(--warning); font-weight: 600; }
+
 /* Ligne temps réel */
 .current-line {
   position: absolute;
@@ -2503,6 +2522,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .status-chip.active.arrived { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
 .status-chip.active.pending { background: var(--info-soft); border-color: var(--info); color: var(--info); }
 .status-chip.active.paid { background: var(--success-soft); border-color: var(--success); color: var(--success); }
+.status-chip.active.notes { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
 
 .status-chip span {
   display: inline-grid;
@@ -3148,6 +3168,9 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-alert-dot.formula { background: var(--accent); }
 .dash-alert-dot.info { background: var(--line-strong); }
 .dash-alert-dot.review { background: var(--info); }
+/* Distinct de .formula (--accent) : deux pastilles identiques dans la meme
+   liste ne distinguent rien. */
+.dash-alert-dot.lead { background: var(--accent-strong); }
 
 /* Alerte compacte : bouton d'action rapide (CTA) + « Voir » côte à côte. */
 .dash-alert-actions { display: flex; gap: 6px; align-items: center; }
@@ -8688,7 +8711,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   display: inline-flex;
   align-items: center;
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.5;
@@ -8696,22 +8719,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   color: var(--accent-strong, var(--accent));
   white-space: nowrap;
 }
-.res-occasion-anniversaire { background: #fde8f3; color: #b3266b; }
-.res-occasion-entreprise { background: #e5edff; color: #2647b3; }
-.res-occasion-ecole { background: #e6f6ec; color: #1c7a44; }
-.res-occasion-amis { background: #fff2e0; color: #a85a12; }
-.res-occasion-autre { background: var(--subtle); color: var(--text-2); }
-[data-theme="dark"] .res-occasion-anniversaire { background: rgba(179,38,107,0.22); color: #f7a8cf; }
-[data-theme="dark"] .res-occasion-entreprise { background: rgba(38,71,179,0.24); color: #a8bef7; }
-[data-theme="dark"] .res-occasion-ecole { background: rgba(28,122,68,0.24); color: #93e0b0; }
-[data-theme="dark"] .res-occasion-amis { background: rgba(168,90,18,0.24); color: #f3c58a; }
+/* Le MOT porte le sens. Cinq pastels que personne n'apprend, c'est du bruit -
+   et ces couleurs étaient en dur (8 valeurs hexadécimales + 4 rgba de dark),
+   donc hors du design system. Elles laissaient aussi « evg » (index.html:296)
+   sans style du tout. La règle de base .res-occasion-tag prend le relais pour
+   toutes les valeurs, evg compris. */
+.res-occasion-autre { background: var(--subtle); color: var(--muted); }
+/* Icône trait comme partout ailleurs (l'emoji bloc-notes rendait une police
+   système étrangère au reste de l'interface, de taille variable selon l'OS). */
 .res-special-request {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   margin-top: 4px;
-  color: var(--text-2);
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
 }
+.res-special-request svg { flex: 0 0 auto; margin-top: 2px; color: var(--warning); }
 
 /* File des demandes sur mesure (leads hors planning) */
 .cr-panel {
@@ -8773,7 +8798,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   background: var(--bg-2);
 }
 .cr-card.cr-status-new { border-left-color: var(--accent); }
-.cr-card.cr-status-in_progress { border-left-color: #a85a12; }
+.cr-card.cr-status-in_progress { border-left-color: var(--warning); }
 .cr-card.cr-status-handled { border-left-color: var(--success); opacity: 0.82; }
 .cr-card-head {
   display: flex;
@@ -9060,6 +9085,21 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-seg:hover { color: var(--text); background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
 .crm-seg.is-active { color: var(--text); font-weight: 600; }
 .crm-seg.is-active::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: var(--radius-full); background: var(--accent); }
+/* Un nombre n'est jamais nu : « 3 nouvelles », pas « 3 ». */
+.crm-seg-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: 600;
+}
 .crm-seg-count { margin-left: auto; font-size: 12.5px; color: var(--muted); }
 .crm-seg-count strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .crm-stats .crm-stat-link { cursor: pointer; border-radius: var(--radius-lg); transition: transform var(--dur) var(--ease); }

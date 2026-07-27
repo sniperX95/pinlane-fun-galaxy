@@ -2850,6 +2850,9 @@ function initClient() {
     } else {
       state.booking.date = nextDate;
     }
+    // Le verdict de l'ancienne date ne dit plus rien de la nouvelle : on l'efface
+    // AVANT de peindre, sinon un "Fermé" (ou un "Ouvert") de la veille survit.
+    if (typeof setCenterDayStatus === 'function') setCenterDayStatus(null);
     clearBookingAlternatives();
     state.booking.formuleId = '';
     state.booking.startTime = '';
@@ -2859,7 +2862,12 @@ function initClient() {
     state.booking.preference = createDefaultFormulaPreference();
     state.booking.pauseMinutes = 0;
     state.booking.opsPlan = null;
+    // Verdict du jour demande au serveur AVANT de peindre : updateSchedHint
+    // affichera "Vérification des horaires..." tant qu'il n'a pas repondu,
+    // jamais un "Ouvert" que la reponse va contredire.
+    loadCenterScheduleConfig(state.booking.date);
     updateSchedHint();
+    syncBookingTypeUi();
     renderFormules();
     renderFormulaPreferences();
     updatePaxAlert();
@@ -2940,15 +2948,78 @@ function setLaserDuration(v) {
   save();
 }
 
+// Bloc d'etat du jour. Asymetrie VOULUE : ouvert = une ligne (aucune decision a
+// prendre), tout ce qui empeche ou limite une reservation = un bloc borde. C'est
+// la forme, pas la nuance de couleur, qui porte l'info a deux metres.
+function renderDayStatusBlock(variant, title, copy) {
+  const icon = variant === 'is-closed'
+    ? '<circle cx="12" cy="12" r="10"/><line x1="8" y1="8" x2="16" y2="16"/><line x1="16" y1="8" x2="8" y2="16"/>'
+    : '<circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M12 16h.01"/>';
+  return `<div class="day-status ${variant}">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>
+    <span class="day-status-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(copy)}</span></span>
+  </div>`;
+}
+
+function formatBookingDateLong(dateStr) {
+  try {
+    return parseLocalDate(dateStr).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  } catch (error) { return dateStr; }
+}
+
+// '16:00' -> '16h', '16:30' -> '16h30'
+function formatClockShort(hhmm) {
+  const parts = String(hhmm || '').split(':');
+  const h = Number(parts[0]);
+  const m = parts[1] || '';
+  return Number(m) ? `${h}h${m}` : `${h}h`;
+}
+
 function updateSchedHint() {
+  const el = document.getElementById('schedHint');
+  if (!el) return;
+  const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(state.booking.date) : null;
+  // day.schedule fait foi quand il est la (calcul serveur) : cela supprime la
+  // dependance a la grille en dur pour les centres dont defaultSchedule n'est
+  // pas encore renseigne.
   const sch = getSchedule(state.booking.date, state.isHolidayMode);
   const context = getSpecialOpeningContext(state.booking.date, state.isHolidayMode);
-  const el = document.getElementById('schedHint');
+
   if (isPastBusinessDate(state.booking.date)) {
     el.innerHTML = '<span class="closed">Date passée - réservations terminées</span>';
+    return;
   }
-  else if (!sch) el.innerHTML = '<span class="closed">Fermé ce jour</span>';
-  else el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>${context.active && context.label ? `<span class="sched-holiday">${escapeHtml(context.label)}</span>` : ''}`;
+  if (dayStatus && dayStatus.open === false) {
+    const jour = formatBookingDateLong(state.booking.date);
+    const titre = dayStatus.closedLabel === 'Fermé exceptionnellement ce jour'
+      ? `Fermé exceptionnellement le ${jour}`
+      : `Fermé le ${jour}`;
+    el.innerHTML = renderDayStatusBlock('is-closed', titre, 'Le centre n’ouvre pas ce jour. Choisissez une autre date.');
+    return;
+  }
+  if (!sch) {
+    el.innerHTML = '<span class="closed">Fermé ce jour</span>';
+    return;
+  }
+  // Verdict serveur en vol pour cette date : on ne promet rien tant qu'il n'a
+  // pas repondu. Annoncer "Ouvert" puis se dedire une demi-seconde plus tard,
+  // c'est exactement le faux "Ouvert" qu'on corrige.
+  if (typeof isCenterDayPending === 'function' && isCenterDayPending(state.booking.date)) {
+    el.innerHTML = '<span class="sched-checking">Vérification des horaires...</span>';
+    return;
+  }
+  const holiday = context.active && context.label ? `<span class="sched-holiday">${escapeHtml(context.label)}</span>` : '';
+  const windows = dayStatus && Array.isArray(dayStatus.closedWindows) ? dayStatus.closedWindows : [];
+  if (windows.length) {
+    const coupure = windows.map(w => `de ${formatClockShort(w.start)} à ${formatClockShort(w.end)}`).join(' et ');
+    el.innerHTML = renderDayStatusBlock(
+      'is-partial',
+      `Ouvert ${sch.label}, fermé ${coupure}`,
+      `Aucune réservation possible ${coupure} ce jour.`
+    );
+    return;
+  }
+  el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>${holiday}`;
 }
 
 function updatePaxAlert() {
@@ -3009,7 +3080,13 @@ function normalizeBookingType(type) {
 }
 
 function syncBookingTypeUi() {
-  const type = normalizeBookingType(state.booking.type);
+  const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(state.booking.date) : null;
+  const off = dayStatus && Array.isArray(dayStatus.unavailableActivityIds) ? dayStatus.unavailableActivityIds : [];
+  // L'ecran ne reste jamais sur un choix mort : on bascule avant de peindre.
+  let type = normalizeBookingType(state.booking.type);
+  if ((type === 'bowling' && off.includes('bowling')) || (type === 'laser' && off.includes('laser_game'))) {
+    type = off.includes('bowling') ? (off.includes('laser_game') ? 'formule' : 'laser') : 'bowling';
+  }
   state.booking.type = type;
   document.getElementById('segBowling').classList.toggle('active', type === 'bowling');
   document.getElementById('segLaser').classList.toggle('active', type === 'laser');
@@ -3017,6 +3094,41 @@ function syncBookingTypeUi() {
   document.getElementById('bowlingBlock').classList.toggle('hidden', type !== 'bowling');
   document.getElementById('laserBlock').classList.toggle('hidden', type !== 'laser');
   document.getElementById('formuleBlock').classList.toggle('hidden', type !== 'formule');
+  // segFormule n'est JAMAIS eteint : une formule sans l'activite fermee reste
+  // vendable, c'est renderFormules qui tranche carte par carte.
+  applySegmentOffState('segBowling', off.includes('bowling'));
+  applySegmentOffState('segLaser', off.includes('laser_game'));
+  renderTypeAlert(off, dayStatus);
+}
+
+// Un segment ferme est DESACTIVE (disabled natif : le onclick inline ne part
+// pas) ET porte le mot "Fermé". Jamais l'un sans l'autre.
+function applySegmentOffState(id, isOff) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.classList.toggle('is-off', !!isOff);
+  btn.disabled = !!isOff;
+  btn.setAttribute('aria-disabled', isOff ? 'true' : 'false');
+  let pill = btn.querySelector('.seg-btn-off');
+  if (isOff && !pill) {
+    pill = document.createElement('span');
+    pill.className = 'seg-btn-off';
+    pill.textContent = 'Fermé';
+    btn.appendChild(pill);
+  }
+  if (pill) pill.hidden = !isOff;
+}
+
+function renderTypeAlert(off, dayStatus) {
+  const el = document.getElementById('typeAlert');
+  if (!el) return;
+  if (!dayStatus || !off.length) { el.innerHTML = ''; return; }
+  const labels = { bowling: 'Bowling', laser_game: 'Laser Game' };
+  const noms = off.map(id => labels[id] || id).join(' et ');
+  const reste = off.length >= 2
+    ? 'Les formules sans ces activités restent réservables ce jour.'
+    : 'Le reste du centre et les formules restent réservables ce jour.';
+  el.innerHTML = renderDayStatusBlock('is-partial', `${noms} fermé${off.length > 1 ? 's' : ''} le ${formatBookingDateLong(dayStatus.date)}`, reste);
 }
 
 function clearCurrentBookingChoice() {
@@ -3027,9 +3139,12 @@ function clearCurrentBookingChoice() {
 }
 
 function setType(t) {
-  const type = normalizeBookingType(t);
-  state.booking.type = type;
+  state.booking.type = normalizeBookingType(t);
+  // syncBookingTypeUi peut REFUSER l'activite demandee (fermee ce jour) et
+  // basculer sur une autre : on relit le type reellement retenu, sinon la
+  // normalisation ci-dessous s'appliquerait au mauvais type.
   syncBookingTypeUi();
+  const type = state.booking.type;
   clearCurrentBookingChoice();
   clearBookingAlternatives();
   if (type === 'bowling') {
@@ -3355,8 +3470,10 @@ async function goStep2() {
     showAlert('Cette date est déjà passée. Vous ne pouvez plus réserver pour ce jour.');
     return;
   }
+  // getSchedule integre desormais le verdict serveur du jour : une fermeture
+  // ponctuelle posee depuis le cockpit rend null ici, exactement comme un lundi.
   const schedule = getSchedule(state.booking.date, state.isHolidayMode);
-  if (!schedule) { showAlert('Le centre est fermé à cette date.'); return; }
+  if (!schedule) { showAlert('Le centre est fermé à cette date. Choisissez une autre date.'); return; }
   const pax = Number(state.booking.pax) || 0;
   if (pax < 1) { showAlert('Nombre de joueurs invalide.'); return; }
   if (state.booking.type === 'formule') {
@@ -4713,8 +4830,10 @@ function renderStaffDashboardAlerts(metrics) {
     <span class="dash-alert-dot ${escapeHtml(alert.kind)}" aria-hidden="true"></span>
     <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
     <div class="dash-alert-actions">
-      <button type="button" class="dash-alert-cta" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>
-      <button type="button" class="dash-alert-see" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">Voir</button>
+      ${alert.cta
+        ? `<button type="button" class="dash-alert-cta" onclick="${escapeHtml(alert.cta)}">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>`
+        : `<button type="button" class="dash-alert-cta" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>
+           <button type="button" class="dash-alert-see" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">Voir</button>`}
     </div>
   </div>`).join('');
 }
@@ -4727,7 +4846,8 @@ function getStaffAlertCtaLabel(kind) {
     review: 'Vérifier',
     warning: 'Traiter',
     maintenance: 'Libérer',
-    formula: 'Cadencer'
+    formula: 'Cadencer',
+    lead: 'Ouvrir les demandes'
   }[kind] || 'Résoudre';
 }
 
@@ -4891,6 +5011,20 @@ function getStaffDashboardAlertDefinitions(metrics) {
       text: `${comboRows.length} formule${comboRows.length > 1 ? 's' : ''} bowling + laser à cadencer aujourd'hui`,
       rows: comboRows,
       action: 'Surveiller le passage bowling → laser pour éviter les retards de groupe.'
+    });
+  }
+  // Un lead sur mesure est de l'argent qui attend une réponse : il passe EN
+  // TÊTE, renderStaffDashboardAlerts ne montrant que les 4 premières.
+  const newLeads = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
+  if (newLeads > 0) {
+    alerts.unshift({
+      kind: 'lead',
+      priority: 'critical',
+      title: `${newLeads} nouvelle${newLeads > 1 ? 's' : ''} demande${newLeads > 1 ? 's' : ''} sur mesure`,
+      text: 'Anniversaires, groupes et entreprises qui attendent une réponse.',
+      rows: [],
+      cta: "openStaffMenuPage('groups')",
+      action: 'Répondre à chaque demande depuis Clients, vue « À venir ».'
     });
   }
   return alerts;
@@ -5256,6 +5390,9 @@ function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
   if (kind === 'maintenance' && canUseStaffPermission(['planning.drag', 'settings.manage'])) {
     actions.push({ label: 'Libérer toutes les pistes', onclick: 'dashboardDetailReleaseAllLanes(event)', className: 'primary' });
   }
+  if (kind === 'lead') {
+    actions.push({ label: 'Ouvrir les demandes', onclick: "closeStaffDashboardDetail(); openStaffMenuPage('groups')", className: 'primary' });
+  }
   actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
   actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
   return actions;
@@ -5347,17 +5484,26 @@ function renderStaffDashboardAlertsDetail(alerts = []) {
     const meta = getStaffAlertPriorityMeta(alert);
     const rows = alert.rows || [];
     const total = sumStaffRowsAmount(rows);
-    const count = alert.kind === 'maintenance' ? (alert.lanes || []).length : rows.length;
+    // Une demande sur mesure n'est PAS une réservation : elle n'occupe aucun
+    // créneau. Le compteur du détail doit dire « demande », jamais « résa ».
+    const leadCount = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
+    const count = alert.kind === 'maintenance' ? (alert.lanes || []).length
+      : alert.kind === 'lead' ? leadCount
+        : rows.length;
     const countLabel = alert.kind === 'maintenance'
       ? `${count} piste${count > 1 ? 's' : ''}`
-      : `${count} résa${count > 1 ? 's' : ''}`;
+      : alert.kind === 'lead'
+        ? `${count} demande${count > 1 ? 's' : ''}`
+        : `${count} résa${count > 1 ? 's' : ''}`;
     const laneChips = alert.lanes?.length
       ? `<div class="dashboard-detail-lane-chips">${alert.lanes.map(lane => `<span class="lane-chip">Piste ${Number(lane)}${canRelease ? `<button type="button" class="lane-release" onclick="dashboardDetailReleaseLane(${Number(lane)}, event)">Libérer</button>` : ''}</span>`).join('')}</div>`
       : '';
     const subsections = getStaffAlertSubsections(alert);
     const body = subsections.length
       ? subsections.map(sub => renderStaffAlertSubsection(sub, alert.kind)).join('')
-      : (laneChips ? '' : `<div class="dashboard-detail-empty">Pas de réservation liée à ce signal.</div>`);
+      : alert.kind === 'lead'
+        ? `<div class="dashboard-detail-empty">Ces demandes n'occupent aucun créneau tant qu'elles ne sont pas confirmées. Elles se traitent dans Clients, vue « À venir ».</div>`
+        : (laneChips ? '' : `<div class="dashboard-detail-empty">Pas de réservation liée à ce signal.</div>`);
     return `<section class="dashboard-detail-section alert-section pr-${meta.tone} alert-${escapeHtml(alert.kind)}">
       <div class="alert-section-head">
         <div class="alert-section-heading">
@@ -5472,6 +5618,11 @@ function openStaffDashboardRevenue() {
 function renderStaffDashboard(dayReservations = todaysReservations()) {
   const root = document.getElementById('staffDashboardPage');
   if (!root) return;
+  // La file des demandes sur mesure n'était chargée QUE depuis la page Clients :
+  // sans cet appel, l'alerte « demandes sur mesure » resterait invisible pour
+  // quelqu'un qui n'ouvre jamais le bon filtre. Sans effet de bord de rendu
+  // ici : loadStaffCustomRequests repasse par renderStaffGroupHost.
+  if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
   const metrics = getStaffDashboardMetrics(dayReservations);
   const d = parseLocalDate(state.currentDate);
   const dateShort = d.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(',', '');
@@ -5620,15 +5771,18 @@ function setupRevenueChartInteraction(container) {
 
 function openStaffMenuPage(page, resource = '') {
   const requestedPage = String(page || 'dashboard').trim();
-  let cleanPage = normalizeStaffMenuPage(requestedPage);
   // Fusion Clients+Groupes : l'ancienne page « groups » vit dans Clients,
-  // segment « À venir ». Tous les liens historiques continuent de marcher.
-  if (cleanPage === 'groups') {
-    cleanPage = 'clients';
+  // segment « À venir ». L'alias est résolu AVANT la normalisation, sinon la
+  // comparaison de fin (cleanPage !== requestedPage) prend le remap pour une
+  // page inconnue et affiche « Page indisponible » sur un lien parfaitement
+  // valide - c'est exactement le chemin qu'emprunte l'alerte « demandes ».
+  const aliasedPage = requestedPage === 'groups' ? 'clients' : requestedPage;
+  const cleanPage = normalizeStaffMenuPage(aliasedPage);
+  if (requestedPage === 'groups' && cleanPage === 'clients') {
     state.staffClientSegment = 'avenir';
     if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
   }
-  if (cleanPage !== requestedPage) {
+  if (cleanPage !== aliasedPage) {
     if (typeof showPlanningMoveNotice === 'function') {
       showPlanningMoveNotice('Page indisponible', 'Cette section n existe pas encore dans le back-office. Ouverture du planning.', 'warning');
     } else {
@@ -5831,7 +5985,7 @@ function renderStaffUtilityReservationCard(reservation, options = {}) {
       </div>
       <p>${escapeHtml(getReservationLabel(reservation))}</p>
       <small>${escapeHtml(getStaffUtilityResourceSummary(reservation))}</small>
-      ${reservation.notes ? `<small class="res-special-request">📝 ${escapeHtml(reservation.notes)}</small>` : ''}
+      ${hasReservationNote(reservation) ? `<small class="res-special-request"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5"/><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M9 13h6M9 17h4"/></svg>${escapeHtml(getReservationNoteText(reservation))}</small>` : ''}
     </div>
     <div class="utility-res-meta">
       <span>${Number(reservation.pax || 0)} pers.</span>
@@ -6430,6 +6584,11 @@ function renderStaffGroupTable(rows = []) {
 // fusion : ses actions re-rendent la page hôte, quelle qu'elle soit.
 function renderStaffGroupHost() {
   if (getStaffMenuPage() === 'clients') { renderStaffClientsPage(); return; }
+  // Le dashboard affiche désormais l'alerte « demandes sur mesure » : il doit
+  // être re-peint quand la file arrive, sinon l'alerte n'apparaît qu'au
+  // prochain rendu fortuit. Pas de boucle : ensureStaffCustomRequests sort
+  // immédiatement sur `loading` ou sur le TTL.
+  if (state.view === 'staff' && getStaffMenuPage() === 'dashboard') { renderStaffDashboard(); return; }
   if (isStaffUtilityActive()) renderStaffUtilityPage();
 }
 
@@ -6492,7 +6651,7 @@ function buildStaffGroupDossiers() {
       });
     });
   });
-  (staffCustomRequestsCache.items || []).filter(item => item.status !== 'archived').forEach(lead => {
+  getStaffCustomRequestItems().filter(item => item.status !== 'archived').forEach(lead => {
     const requested = String(lead.requestedDate || '');
     // rapprochement heuristique lead↔client (hint seulement, jamais fusion sur vide)
     const email = String(lead.email || '').trim().toLowerCase();
@@ -10726,17 +10885,27 @@ function getStaffClientCommsCount(row) {
 }
 
 // ── File staff des DEMANDES SUR MESURE (leads hors planning) ───────────────
-let staffCustomRequestsCache = { loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
+// Clé centre OBLIGATOIRE : ce cache alimente maintenant des compteurs visibles
+// (alerte dashboard, badge menu, badge de segment, tuile Clients). Sans clé, le
+// TTL de 60 s afficherait les leads de l'ancien centre après un changement de
+// centre (selectMenuCenter ne purge pas ce cache). Même mécanique que
+// staffReservationsDataCache.
+let staffCustomRequestsCache = { key: '', loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
 
 async function loadStaffCustomRequests(force = false) {
+  const centerKey = String(getActiveOpsCenterId());
+  if (staffCustomRequestsCache.key !== centerKey) {
+    staffCustomRequestsCache = { key: centerKey, loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
+  }
   if (!force && staffCustomRequestsCache.loading) return;
   if (!force && staffCustomRequestsCache.loaded && (Date.now() - staffCustomRequestsCache.loadedAt) < 60000) return;
-  staffCustomRequestsCache = { ...staffCustomRequestsCache, loading: true, error: '' };
+  staffCustomRequestsCache = { ...staffCustomRequestsCache, key: centerKey, loading: true, error: '' };
   renderStaffGroupHost();
   try {
-    const centerQuery = encodeURIComponent(getActiveOpsCenterId());
+    const centerQuery = encodeURIComponent(centerKey);
     const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=customRequests&centerId=${centerQuery}&limit=100`);
     staffCustomRequestsCache = {
+      key: centerKey,
       loading: false,
       loaded: true,
       error: '',
@@ -10746,16 +10915,36 @@ async function loadStaffCustomRequests(force = false) {
   } catch (error) {
     staffCustomRequestsCache = {
       ...staffCustomRequestsCache,
+      key: centerKey,
       loading: false,
       error: error.message || 'Chargement des demandes impossible.'
     };
   }
   renderStaffGroupHost();
+  // Le menu ne se reconstruit que sur appel explicite : sans ça le badge
+  // « Clients » resterait figé sur la valeur du dernier rendu d'auth.
+  if (typeof window.renderStaffMenu === 'function') window.renderStaffMenu();
 }
 
 function ensureStaffCustomRequests() {
+  if (staffCustomRequestsCache.key !== String(getActiveOpsCenterId())) { loadStaffCustomRequests(false); return; }
   if (!staffCustomRequestsCache.loaded && !staffCustomRequestsCache.loading) loadStaffCustomRequests(false);
 }
+
+// Items du centre ACTIF uniquement. Toute lecture passe par ici : un cache
+// resté sur l'ancien centre ne doit jamais alimenter un affichage.
+function getStaffCustomRequestItems() {
+  if (staffCustomRequestsCache.key !== String(getActiveOpsCenterId())) return [];
+  return staffCustomRequestsCache.items || [];
+}
+
+// Source UNIQUE du chiffre « nouvelles demandes ». Toute surface qui affiche un
+// nombre de leads passe par ici : un seul endroit à corriger si la définition
+// change.
+function getStaffNewCustomRequestCount() {
+  return getStaffCustomRequestItems().filter(item => item.status === 'new').length;
+}
+window.getStaffNewCustomRequestCount = getStaffNewCustomRequestCount;
 
 async function setStaffCustomRequestStatus(id, status) {
   try {
@@ -10817,8 +11006,8 @@ function renderStaffCustomRequestCard(item) {
 
 function renderStaffCustomRequestsPanel() {
   const cache = staffCustomRequestsCache;
-  const items = (cache.items || []).filter(item => item.status !== 'archived');
-  const newCount = (cache.items || []).filter(item => item.status === 'new').length;
+  const items = getStaffCustomRequestItems().filter(item => item.status !== 'archived');
+  const newCount = getStaffNewCustomRequestCount();
   const head = `<div class="cr-panel-head">
     <div>
       <strong>Demandes sur mesure${newCount ? ` <span class="cr-count">${newCount}</span>` : ''}</strong>
@@ -11778,6 +11967,7 @@ function setStaffStatusFilter(filter) {
 
 function getPlanningVisibleReservations(view = getStaffResourceView()) {
   let reservations = todaysReservations().filter(r => reservationMatchesStaffResource(r, view));
+  releaseDeadNoteFilter();
   reservations = filterReservationsForStaff(reservations, state.staffStatusFilter || 'all');
   const query = String(state.searchTerm || '').trim().toLowerCase();
   if (query) {
@@ -12217,6 +12407,20 @@ function getReservationHighlightClasses(reservation) {
   return classes.join(' ');
 }
 
+// `notes` MÉLANGE plusieurs sources : demande particulière du client, libellé
+// libre d'une occasion « autre », note staff saisie au QuickBook, ajouts
+// serveur (noteAppend) et marqueurs de simulation [SIM:<runId>]. Le libellé
+// affiché dit donc « Note », jamais « Demande du client » : l'UI n'affirme que
+// ce que la donnée prouve. Les marqueurs de simulation sont retirés, sinon une
+// réservation simulée compterait comme une vraie demande.
+function getReservationNoteText(reservation = {}) {
+  return String(reservation.notes || '').replace(/\[SIM:[^\]]*\]/g, '').trim();
+}
+
+function hasReservationNote(reservation) {
+  return !!getReservationNoteText(reservation);
+}
+
 function renderReservationTags(reservation) {
   const tags = [];
   const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
@@ -12227,6 +12431,11 @@ function renderReservationTags(reservation) {
   }
   const laserGames = getLaserGameCountForReservation(reservation);
   if (laserGames > 1) tags.push({ cls: 'laser-plus', label: `Laser x${laserGames}` });
+  // Occasion + note : sans ça, la liste dense du jour n'affiche RIEN d'une
+  // réservation qui porte une demande particulière.
+  const occasion = getReservationOccasion(reservation);
+  if (occasion) tags.push({ cls: 'occasion', label: (STAFF_OCCASION_LABELS[occasion] || '').split(' / ')[0] });
+  if (hasReservationNote(reservation)) tags.push({ cls: 'note', label: 'Note à lire' });
   if (!tags.length) return '';
   return `<div class="reservation-tags">${tags.map(tag => `<span class="reservation-tag ${tag.cls}">${tag.label}</span>`).join('')}</div>`;
 }
@@ -13032,8 +13241,21 @@ async function toggleMaint(i, ev) {
   }
 }
 
+// La puce « Avec note » n'apparaît que s'il y a des notes. Sans ce relâchement,
+// un changement de date laisserait le filtre actif sur une puce disparue de
+// l'écran : le planning et la liste sembleraient vides sans raison visible.
+// Le verdict porte sur LA JOURNÉE ENTIÈRE, jamais sur la ressource affichée :
+// bowling, laser et table sont peints dans le même tick, et un scope laser vide
+// relâcherait le filtre que le staff vient de poser depuis la table bowling.
+function releaseDeadNoteFilter() {
+  if (state.staffStatusFilter === 'notes' && !todaysReservations().some(hasReservationNote)) {
+    state.staffStatusFilter = 'all';
+  }
+}
+
 function filterReservationsForStaff(reservations, filter) {
   if (filter === 'open') return reservations.filter(r => r.status !== 'paid');
+  if (filter === 'notes') return reservations.filter(hasReservationNote);
   if (filter === 'all') return reservations;
   return reservations.filter(r => r.status === filter);
 }
@@ -13047,7 +13269,8 @@ function getStaffStatusCounts(reservations) {
     open: pending + arrived,
     pending,
     arrived,
-    paid
+    paid,
+    notes: reservations.filter(hasReservationNote).length
   };
 }
 
@@ -13141,6 +13364,7 @@ function renderReservationSection(statusKey, title, subtitle, reservations) {
 function renderTable() {
   const view = getStaffResourceView();
   const res = scopedStaffReservations(view);
+  releaseDeadNoteFilter();
   const counts = getStaffStatusCounts(res);
   let filtered = res;
   if (state.searchTerm) {
@@ -13166,6 +13390,7 @@ function renderTable() {
       <button class="status-chip ${state.staffStatusFilter === 'arrived' ? 'active arrived' : ''}" onclick="setStaffStatusFilter('arrived')">Sur place <span>${counts.arrived}</span></button>
       <button class="status-chip ${state.staffStatusFilter === 'pending' ? 'active pending' : ''}" onclick="setStaffStatusFilter('pending')">À venir <span>${counts.pending}</span></button>
       <button class="status-chip ${state.staffStatusFilter === 'paid' ? 'active paid' : ''}" onclick="setStaffStatusFilter('paid')">Terminées <span>${counts.paid}</span></button>
+      ${(counts.notes || state.staffStatusFilter === 'notes') ? `<button class="status-chip ${state.staffStatusFilter === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')">Avec note <span>${counts.notes}</span></button>` : ''}
     </div>
     <div class="table-summary">${resourceSummary} • ${counts.open} à gérer maintenant • ${counts.paid} terminées</div>
   </div>`;
@@ -15527,11 +15752,28 @@ document.addEventListener('input', e => {
   }
 });
 
+// Vocabulaire FERME. Le code vient du serveur ('formula' | 'bowling' | 'laser_game').
+// Le champ reason saisi par le staff n'arrive jamais ici et ne doit jamais y arriver :
+// c'est du texte libre qui peut contenir un nom de client.
+function formulaDayBlockLabel(dayStatus, formuleId) {
+  const code = dayStatus && dayStatus.unavailableFormulaReason ? dayStatus.unavailableFormulaReason[formuleId] : '';
+  if (code === 'laser_game') return 'Laser Game fermé ce jour';
+  if (code === 'bowling') return 'Bowling fermé ce jour';
+  return 'Indisponible à cette date';
+}
+
 function getFormuleAvailability(formule, dateStr, pax, startTime = '') {
   const day = parseLocalDate(dateStr).getDay();
   const schedule = getSchedule(dateStr, state.isHolidayMode);
   const totalDuration = getFormuleTotalDuration(formule);
   if (!isOfferEnabled(formule.id)) return { ok: false, message: 'Offre momentanément indisponible' };
+  // Verdict serveur du jour. La garde d'egalite de date est portee par
+  // getCenterDayStatusFor : cette fonction sert aussi le QuickBook staff, qui
+  // travaille sur sa propre date. Sans verdict, comportement historique.
+  const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(dateStr) : null;
+  if (dayStatus && Array.isArray(dayStatus.unavailableFormulaIds) && dayStatus.unavailableFormulaIds.includes(formule.id)) {
+    return { ok: false, message: formulaDayBlockLabel(dayStatus, formule.id) };
+  }
   if (pax < formule.minPax) return { ok: false, message: `Min. ${formule.minPax} personnes` };
   if (formule.noHolidays && isFormulaBlockedDate(dateStr, state.isHolidayMode)) return { ok: false, message: 'Indisponible vacances/fériés' };
   if (formule.validDays && !formule.validDays.includes(day)) return { ok: false, message: 'Indisponible ce jour' };
@@ -15579,12 +15821,21 @@ function renderFormules() {
   const catalogFormules = Array.isArray(window.__pinlaneDisplayFormules) && window.__pinlaneDisplayFormules.length
     ? window.__pinlaneDisplayFormules
     : FORMULES;
+  // Verdict serveur du jour (fermeture ponctuelle, activite bloquee). `day`
+  // ci-dessus est le jour de SEMAINE : le verdict s'appelle donc dayStatus.
+  const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(state.booking.date) : null;
+  const centerClosed = !getSchedule(state.booking.date, state.isHolidayMode);
+  const blockedFormulaIds = dayStatus && Array.isArray(dayStatus.unavailableFormulaIds) ? dayStatus.unavailableFormulaIds : [];
   const processed = catalogFormules.filter(f => isOfferEnabled(f.id)).map(f => {
     const availability = getFormuleAvailability(f, state.booking.date, pax);
     const validDay = !f.validDays || f.validDays.includes(day);
     let status = '';
     let cls = 'ok';
-    if (!validDay) { status = formatDays(f.validDays); cls = 'warn'; }
+    // Le motif du JOUR prime sur tous les autres : inutile d'annoncer
+    // "Min. 12 personnes" quand le centre est ferme.
+    if (centerClosed) { status = ''; cls = 'warn'; }
+    else if (blockedFormulaIds.includes(f.id)) { status = formulaDayBlockLabel(dayStatus, f.id); cls = 'warn'; }
+    else if (!validDay) { status = formatDays(f.validDays); cls = 'warn'; }
     else if (f.noHolidays && blockedToday) { status = 'Indisponible à cette date (vacances/férié)'; cls = 'warn'; }
     else if (pax < f.minPax) { status = `Min. ${f.minPax} personnes (vous : ${pax})`; cls = 'warn'; }
     else if (!availability.ok) { status = availability.message; cls = 'warn'; }
@@ -15615,7 +15866,14 @@ function renderFormules() {
   const dateContext = getSpecialOpeningContext(state.booking.date, state.isHolidayMode);
   const summerOpen = dateContext.active && dateContext.periodType === 'school_summer' && !blockedToday;
 
-  grid.innerHTML = families.map(group => {
+  // Repeter la meme raison sur quinze cartes est du bruit : quand le centre est
+  // ferme, une seule phrase en tete et des cartes muettes mais visiblement inertes.
+  const closedBanner = centerClosed ? `<div class="formule-group-alert formule-day-alert" role="status">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span>Le centre est fermé le ${escapeHtml(formatBookingDateLong(state.booking.date))} : aucune formule n’est réservable. Choisissez une autre date.</span>
+  </div>` : '';
+
+  grid.innerHTML = closedBanner + families.map(group => {
     const sharedNotes = (group.items[0].notes || []).filter(note =>
       group.items.length > 1 && group.items.every(item => (item.notes || []).includes(note)));
     const groupBlocked = blockedToday && group.items.length > 1 && group.items.every(item => item.noHolidays);
@@ -15646,7 +15904,7 @@ function renderFormules() {
           // niveau de la famille : pas de redite par carte.
           const cardStatus = groupBlocked && f.noHolidays ? '' : f.status;
           return `
-        <button type="button" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
+        <button type="button" data-formule-id="${escapeHtml(f.id)}" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
           <span class="formule-card-head">
             <span class="formule-card-title">
               <span class="formule-name">${f.name}</span>
@@ -15662,7 +15920,7 @@ function renderFormules() {
             ${f.desc.map(line => `<li>${line}</li>`).join('')}
           </ul>
           ${meta.length ? `<span class="formule-card-meta">${meta.join(' · ')}</span>` : ''}
-          ${cardStatus ? `<span class="formule-card-status ${f.cls}">${cardStatus}</span>` : ''}
+          ${cardStatus ? `<span class="formule-card-status ${f.cls}">${f.cls === 'warn' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="8" y1="8" x2="16" y2="16"/><line x1="16" y1="8" x2="8" y2="16"/></svg>' : ''}${escapeHtml(cardStatus)}</span>` : ''}
           <span class="formule-card-check" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </span>
@@ -15737,9 +15995,19 @@ function renderCenterContact(contact) {
 // offres activees) et la pousse dans booking-core pour que l'affichage client
 // (hint "Ouvert...", formules) reflete la meme verite que le serveur.
 // Fail-soft : sans reponse, la grille locale historique reste utilisee.
-async function loadCenterScheduleConfig() {
+async function loadCenterScheduleConfig(dateOverride = '') {
+  const wanted = String(dateOverride || state.booking.date || '');
+  const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(wanted) ? `&date=${encodeURIComponent(wanted)}` : '';
+  if (dateParam && typeof setCenterDayPending === 'function') {
+    setCenterDayPending(wanted);
+    // Repeint DANS LE MEME TICK : au boot, initClient a deja ecrit "Ouvert ..."
+    // avant que la requete parte. Sans ce repaint, un centre ferme aujourd'hui
+    // afficherait un faux "Ouvert" jusqu'a la reponse du serveur.
+    if (state.view === 'client') updateSchedHint();
+  }
   try {
-    const payload = await apiRequest(`${API_ENDPOINTS.publicBookingMeta || '/api/public-booking-meta'}?centerId=${encodeURIComponent(getCurrentStaffCenterId ? getCurrentStaffCenterId() : 'libramont')}`, { method: 'GET' });
+    const centerKey = String(getCurrentStaffCenterId ? getCurrentStaffCenterId() : 'libramont');
+    const payload = await apiRequest(`${API_ENDPOINTS.publicBookingMeta || '/api/public-booking-meta'}?centerId=${encodeURIComponent(centerKey)}${dateParam}`, { method: 'GET' });
     // payload.formules est deja override-aware (prix/nom edites appliques,
     // formules retirees exclues). On l'expose pour que renderFormules affiche au
     // tunnel de resa staff la MEME chose que le catalogue public (fix d'affichage).
@@ -15750,11 +16018,19 @@ async function loadCenterScheduleConfig() {
     if (payload?.center && typeof setCenterScheduleConfig === 'function') {
       setCenterScheduleConfig(payload.center);
     }
+    // Anti-course : une reponse pour une date que l'utilisateur a deja quittee
+    // est jetee. Sans `day` dans le payload, on efface : mieux vaut le rendu
+    // historique qu'un verdict perime.
+    if (typeof setCenterDayStatus === 'function') {
+      const day = payload?.center?.day || null;
+      setCenterDayStatus(day && day.date === state.booking.date ? day : null, centerKey);
+    }
     if (payload?.center) {
       renderCenterContact(payload.center.contact || null);
     }
     if (state.view === 'client' && (payload?.center || Array.isArray(payload?.formules))) {
       updateSchedHint();
+      syncBookingTypeUi();
       renderFormules();
       // La config (capacite pistes/joueurs) arrive en async : re-render le cadre
       // pax pour qu'il reflete la vraie capacite au lieu des constantes de repli.
@@ -15762,6 +16038,11 @@ async function loadCenterScheduleConfig() {
     }
   } catch (error) {
     // Grille locale conservee.
+  } finally {
+    // Toujours relacher l'attente : une panne reseau ne doit pas figer le
+    // parcours sur "Vérification des horaires...".
+    if (dateParam && typeof clearCenterDayPending === 'function') clearCenterDayPending(wanted);
+    if (state.view === 'client') updateSchedHint();
   }
 }
 

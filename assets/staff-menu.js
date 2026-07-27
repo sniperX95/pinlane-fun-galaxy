@@ -109,7 +109,9 @@
     {
       title: 'Clients & marketing',
       items: [
-        { key: 'clients', label: 'Clients', icon: 'clients' },
+        // badge = FONCTION : menuSections est une const évaluée une seule fois,
+        // une valeur figée resterait bloquée sur le compte du premier rendu.
+        { key: 'clients', label: 'Clients', icon: 'clients', badge: () => (typeof window.getStaffNewCustomRequestCount === 'function' ? (window.getStaffNewCustomRequestCount() || '') : '') },
         { key: 'emails', label: 'Emails & relances', icon: 'emails' },
         { key: 'campaigns', label: 'Marketing', icon: 'campaigns' }
       ]
@@ -552,11 +554,18 @@
       `;
     }
 
+    const badge = typeof item.badge === 'function' ? item.badge() : (item.badge || '');
+    const badgeCount = Number(badge) || 0;
+    // Le titre porte le chiffre : le badge visuel est masqué menu replié et sous
+    // 1100 px, le title reste lisible au survol et pour un lecteur d'écran.
+    const itemTitle = badgeCount
+      ? `${item.label}, ${badgeCount} nouvelle${badgeCount > 1 ? 's' : ''} demande${badgeCount > 1 ? 's' : ''}`
+      : item.label;
     return `
-      <button type="button" class="fgx-menu-item" title="${escapeHtml(item.label)}" data-fgx-menu-key="${escapeHtml(item.key)}">
-        <span class="fgx-menu-icon">${icons[item.icon] || ''}</span>
+      <button type="button" class="fgx-menu-item" title="${escapeHtml(itemTitle)}" data-fgx-menu-key="${escapeHtml(item.key)}">
+        <span class="fgx-menu-icon">${icons[item.icon] || ''}${badge ? '<span class="fgx-menu-dot" aria-hidden="true"></span>' : ''}</span>
         <span class="fgx-menu-label">${escapeHtml(item.label)}</span>
-        ${item.badge ? `<span class="fgx-menu-badge">${escapeHtml(item.badge)}</span>` : ''}
+        ${badge ? `<span class="fgx-menu-badge">${escapeHtml(String(badge))}</span>` : ''}
       </button>
     `;
   }

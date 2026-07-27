@@ -487,9 +487,18 @@
 
   function crmSegmentBar(filteredCount, totalCount) {
     const active = getStaffClientSegment();
-    const seg = CRM_SEGMENTS.map(([key, label]) =>
-      `<button type="button" class="crm-seg${active === key ? ' is-active' : ''}" aria-pressed="${active === key}" onclick="setStaffClientSegment('${key}')">${esc(label)}</button>`
-    ).join('');
+    // Le badge est posé sur « À venir » QUEL QUE SOIT le segment actif : c'est
+    // tout l'intérêt, le chiffre se voit sans être déjà dans le bon filtre.
+    const leads = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
+    const seg = CRM_SEGMENTS.map(([key, label]) => {
+      const badge = key === 'avenir' && leads
+        ? `<span class="crm-seg-badge">${leads} nouvelle${leads > 1 ? 's' : ''}</span>`
+        : '';
+      // data-crm-seg : identifiant STABLE du segment. Le libellé visible porte
+      // maintenant un badge, il ne peut plus servir de clé (ni au code, ni aux
+      // gates qui pilotent ces boutons).
+      return `<button type="button" class="crm-seg${active === key ? ' is-active' : ''}" data-crm-seg="${key}" aria-pressed="${active === key}" onclick="setStaffClientSegment('${key}')"><span class="crm-seg-label">${esc(label)}</span>${badge}</button>`;
+    }).join('');
     const count = active === 'avenir' ? '' : `<span class="crm-seg-count"><strong>${filteredCount}</strong>${active === 'tous' ? ` / ${totalCount}` : ''} client${filteredCount > 1 ? 's' : ''}</span>`;
     return `<section class="crm-segbar" role="tablist" aria-label="Vue clients">${seg}${count}</section>`;
   }
@@ -840,7 +849,7 @@
     const within = (d, days) => d.dateISO && staffClientDaysBetween(d.dateISO, today) <= days;
     const upcoming7 = dossiers.filter((d) => within(d, 7));
     const upcoming7Value = upcoming7.reduce((sum, d) => { const v = getStaffGroupDossierValue(d); return sum + (v.value || 0); }, 0);
-    const birthdays30 = dossiers.filter((d) => within(d, 30) && getStaffGroupDossierOccasion(d) === 'anniversaire').length;
+    const newLeads = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
     const relancer = allRows.filter((row) => getStaffClientRelance(row).due).length;
     const statBtn = (seg, html) => `<div class="crm-stat-link${segment === seg ? ' is-active' : ''}" role="button" tabindex="0" onclick="setStaffClientSegment('${seg}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setStaffClientSegment('${seg}');}">${html}</div>`;
 
@@ -912,7 +921,7 @@
 
       <section class="pv2-stats crm-stats">
         ${statBtn('avenir', stat({ label: 'À venir 7 j', count: upcoming7.length, foot: upcoming7Value ? `${money(upcoming7Value)} attendus` : 'dossiers à préparer' }))}
-        ${statBtn('avenir', stat({ label: 'Anniversaires 30 j', count: birthdays30, foot: 'fêtes à préparer' }))}
+        ${statBtn('avenir', stat({ label: 'Demandes sur mesure', count: newLeads, foot: newLeads ? 'à répondre aujourd’hui' : 'aucune en attente' }))}
         ${statBtn('relancer', stat({ label: 'À relancer', count: relancer, foot: 'clients à récupérer' }))}
         ${statBtn('vip', stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' }))}
       </section>
@@ -923,7 +932,10 @@
     </div>`;
     mount(root, 'clients');
     if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
-    if (segment === 'avenir' && typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
+    // Inconditionnel : le badge de segment et la tuile « Demandes sur mesure »
+    // sont visibles depuis TOUS les segments, ils resteraient à zéro tant qu'on
+    // n'aurait pas déjà ouvert la vue « À venir ».
+    if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
     if (segment === 'relancer' && !crmRelanceStats.loaded && !crmRelanceStats.loading) setTimeout(() => loadCrmRelanceStats(), 0);
     if (selected && crmNotes.key !== crmClientKey(selected) && !crmNotes.loading) setTimeout(() => loadCrmClientNote(selected), 0);
   };
@@ -4371,7 +4383,9 @@
   // enregistrées ; reçu, pas vu. ──
   function mkwHero() {
     const b = mkBrief.data;
-    if (!b) return `<section class="mkw-hero"><div class="mkw-skel mkw-skel-hero"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    // Meme garde que sur b : un brief sans bloc `paie` faisait planter p.young,
+    // et l exception cassait la page Marketing entiere.
+    if (!b || !b.paie) return `<section class="mkw-hero"><div class="mkw-skel mkw-skel-hero"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
     const p = b.paie;
     const periods = [7, 30, 90].map((d) => `<button type="button" class="mkw-seg-btn ${mkBrief.period === d ? 'active' : ''}" onclick="mkBrPeriod(${d})">${d} j</button>`).join('');
     let fig;
@@ -4845,7 +4859,10 @@
   // honnête de propositions prêtes plus bas.
   function mkwGreeting() {
     const b = mkBrief.data;
-    if (!b) {
+    // `!b.brief` autant que `!b` : une reponse presente mais sans brief (agent
+    // degrade, payload partiel) faisait planter le rendu sur b.brief.degraded,
+    // et une exception ici casse TOUTE la page Marketing, pas juste ce bloc.
+    if (!b || !b.brief) {
       return `<article class="mkw-turn mkw-turn-greeting">
         <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
         <div class="mkw-turn-body"><div class="mkw-bubble"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></div></div>
@@ -4927,7 +4944,7 @@
   // pont vers la maison de la preuve (Résultats).
   function mkwResultsTurn() {
     const b = mkBrief.data;
-    if (!b) return '';
+    if (!b || !b.paie) return '';
     const p = b.paie;
     let sum;
     let fig = '';

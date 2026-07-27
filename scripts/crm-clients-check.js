@@ -89,7 +89,10 @@ async function installMock(page) {
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'relanceStats') return J({ ok: true, sent: 3, converted: 1, revenue: 180 });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'clientNotes') return J({ ok: true, note: null });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'communications') return J({ ok: true, communications: comms });
-      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, customRequests: leads });
+      // __QA_NO_LEADS__ : interrupteur de CONTRE-PREUVE. Il permet de vider la
+      // file en cours de test et de prouver que les compteurs suivent la donnée
+      // au lieu d'être décoratifs.
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, customRequests: window.__QA_NO_LEADS__ ? [] : leads });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
       if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { '0': { open: '10:00', close: '22:00' }, '1': { open: '10:00', close: '22:00' }, '2': { open: '14:00', close: '22:00' }, '3': { open: '12:00', close: '22:00' }, '4': { open: '14:00', close: '22:00' }, '5': { open: '14:00', close: '24:00' }, '6': { open: '10:00', close: '24:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
       return nf(input, init);
@@ -125,8 +128,8 @@ async function main() {
     const load = await page.evaluate(() => ({
       root: !!document.getElementById('staffClientsPage'),
       rows: document.querySelectorAll('#staffClientsPage table tbody tr').length,
-      segs: [...document.querySelectorAll('#staffClientsPage .crm-seg')].map((b) => b.textContent.trim()),
-      activeSeg: (document.querySelector('#staffClientsPage .crm-seg.is-active') || {}).textContent,
+      segs: [...document.querySelectorAll('#staffClientsPage .crm-seg .crm-seg-label')].map((b) => b.textContent.trim()),
+      activeSeg: (document.querySelector('#staffClientsPage .crm-seg.is-active .crm-seg-label') || {}).textContent,
       statLinks: document.querySelectorAll('#staffClientsPage .crm-stat-link').length,
       clients: (typeof getStaffClientRows === 'function') ? getStaffClientRows().length : -1,
       groupsInMenu: !![...document.querySelectorAll('.staff-menu button, .staff-menu a')].find((el) => /groupes/i.test(el.textContent)),
@@ -141,23 +144,62 @@ async function main() {
     ok(load.cols === 5, `table 5 colonnes max (obtenu ${load.cols})`);
     ok(!load.groupsInMenu, 'entrée « Groupes & anniversaires » retirée du menu');
 
+    // BUG 3 : le compteur de demandes sur mesure doit se voir SANS être déjà
+    // dans le segment « À venir ». On est ici sur « Tous » (défaut).
+    console.log('\n[LEADS] compteur de demandes visible hors du filtre « À venir »');
+    await page.waitForTimeout(400);
+    const readLeadSignals = () => page.evaluate(() => {
+      const seg = document.querySelector('#staffClientsPage .crm-seg[data-crm-seg="avenir"]');
+      const tile = [...document.querySelectorAll('#staffClientsPage .crm-stat-link')].find((s) => /Demandes sur mesure/.test(s.textContent));
+      const menuItem = document.querySelector('[data-fgx-menu-key="clients"]');
+      return {
+        segment: typeof getStaffClientSegment === 'function' ? getStaffClientSegment() : '',
+        count: typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : -1,
+        segBadge: seg?.querySelector('.crm-seg-badge')?.textContent.trim() || '',
+        tile: tile ? tile.textContent.replace(/\s+/g, ' ').trim() : '',
+        menuItems: document.querySelectorAll('[data-fgx-menu-key]').length,
+        menuBadge: menuItem?.querySelector('.fgx-menu-badge')?.textContent.trim() || '',
+        menuDot: !!menuItem?.querySelector('.fgx-menu-dot'),
+      };
+    });
+    const leadOn = await readLeadSignals();
+    ok(leadOn.segment === 'tous', `segment actif = « tous », pas « avenir » (obtenu ${leadOn.segment})`);
+    ok(leadOn.count === 1, `1 demande « new » comptée (obtenu ${leadOn.count})`);
+    ok(/^1 nouvelle$/.test(leadOn.segBadge), `badge sur le segment « À venir » (obtenu « ${leadOn.segBadge} »)`);
+    ok(/Demandes sur mesure/.test(leadOn.tile) && /\b1\b/.test(leadOn.tile), `tuile « Demandes sur mesure » chiffrée (« ${leadOn.tile} »)`);
+    ok(leadOn.menuItems > 0, `menu staff rendu (${leadOn.menuItems} entrées)`);
+    ok(leadOn.menuBadge === '1', `badge sidebar sur « Clients » (obtenu « ${leadOn.menuBadge} »)`);
+    ok(leadOn.menuDot, 'point de rappel dans l\'icône (survit au menu replié et sous 1100px)');
+
+    // CONTRE-PREUVE : file vidée côté serveur → les 4 signaux doivent tomber.
+    // Sans ça, un badge codé en dur passerait le test ci-dessus.
+    await page.evaluate(() => { window.__QA_NO_LEADS__ = true; loadStaffCustomRequests(true); });
+    await page.waitForTimeout(500);
+    const leadOff = await readLeadSignals();
+    ok(leadOff.count === 0, `file vidée : compteur à 0 (obtenu ${leadOff.count})`);
+    ok(!leadOff.segBadge, `file vidée : plus de badge de segment (obtenu « ${leadOff.segBadge} »)`);
+    ok(/aucune en attente/.test(leadOff.tile), `file vidée : tuile « aucune en attente » (« ${leadOff.tile} »)`);
+    ok(!leadOff.menuBadge && !leadOff.menuDot, 'file vidée : plus de badge ni de point dans la sidebar');
+    await page.evaluate(() => { window.__QA_NO_LEADS__ = false; loadStaffCustomRequests(true); });
+    await page.waitForTimeout(400);
+
     console.log('\n[VIP] clic segment VIP filtre, re-clic → retour Tous');
-    await page.evaluate(() => [...document.querySelectorAll('.crm-seg')].find((b) => b.textContent.trim() === 'VIP').click());
+    await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="vip"]').click());
     await page.waitForTimeout(200);
     const vip = await page.evaluate(() => ({
       names: [...document.querySelectorAll('#staffClientsPage tbody .crm-client-id strong')].map((s) => s.textContent),
-      active: (document.querySelector('.crm-seg.is-active') || {}).textContent,
+      active: (document.querySelector('.crm-seg.is-active .crm-seg-label') || {}).textContent,
     }));
     ok((vip.active || '').trim() === 'VIP', 'segment VIP actif');
     ok(vip.names.includes('Entreprise Nova'), 'VIP contient le top dépensier (Nova)');
     ok(!vip.names.includes('Paul Martin'), 'VIP exclut les petits clients');
-    await page.evaluate(() => [...document.querySelectorAll('.crm-seg')].find((b) => b.textContent.trim() === 'VIP').click());
+    await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="vip"]').click());
     await page.waitForTimeout(200);
-    const back = await page.evaluate(() => ((document.querySelector('.crm-seg.is-active') || {}).textContent || '').trim());
+    const back = await page.evaluate(() => ((document.querySelector('.crm-seg.is-active .crm-seg-label') || {}).textContent || '').trim());
     ok(back === 'Tous', `re-clic sur VIP → retour à Tous (obtenu ${back})`);
 
     console.log('\n[AVENIR] segment À venir = dossiers groupes + checklist + leads (ex-page Groupes)');
-    await page.evaluate(() => [...document.querySelectorAll('.crm-seg')].find((b) => b.textContent.trim() === 'À venir').click());
+    await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="avenir"]').click());
     await page.waitForTimeout(400);
     const avenir = await page.evaluate(() => ({
       dossiers: document.querySelectorAll('#staffClientsPage .groups-dossier').length,
@@ -186,7 +228,7 @@ async function main() {
     ok(prepAfter.stillClients, 'toujours sur la page clients après la coche');
 
     console.log('\n[RELANCER] la liste qui rapporte : dormants + anniversaires ~1 an, avec le pourquoi');
-    await page.evaluate(() => [...document.querySelectorAll('.crm-seg')].find((b) => b.textContent.trim() === 'À relancer').click());
+    await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="relancer"]').click());
     await page.waitForTimeout(250);
     const rel = await page.evaluate(() => {
       const rows = [...document.querySelectorAll('#staffClientsPage tbody tr')].map((tr) => tr.textContent);
@@ -209,7 +251,7 @@ async function main() {
     const stats = await page.evaluate(() => [...document.querySelectorAll('#staffClientsPage .crm-stat-link')].map((s) => s.textContent));
     ok(stats.some((t) => /À relancer/.test(t) && /2/.test(t)), 'stat « À relancer » compte 2 clients');
     ok(stats.some((t) => /À venir 7 j/.test(t)), 'stat « À venir 7 j » présente');
-    ok(stats.some((t) => /Anniversaires 30 j/.test(t)), 'stat « Anniversaires 30 j » présente');
+    ok(stats.some((t) => /Demandes sur mesure/.test(t) && /1/.test(t)), 'stat « Demandes sur mesure » compte le lead en attente');
 
     console.log('\n[FICHE] fiche KISS : 3 chiffres, prochaine venue + checklist, contacts cliquables');
     await page.evaluate(() => { setStaffClientSegment('tous'); });

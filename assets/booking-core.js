@@ -178,6 +178,62 @@ function getCenterScheduleConfig() {
   return centerScheduleConfig;
 }
 
+// Verdict serveur DU JOUR (cle center.day de /api/public-booking-meta?date=...).
+// Le serveur est le seul a connaitre les blocages ponctuels poses depuis le
+// cockpit (fermeture exceptionnelle, activite en panne, formule suspendue) :
+// la grille hebdo locale ne les voit pas. Null = aucun verdict connu, on
+// retombe strictement sur le rendu historique.
+let centerDayStatus = null;
+// Centre pour lequel le verdict a ete rendu. Un verdict est valable pour UN
+// centre : le switcher staff ne recharge pas la config publique, sans cette cle
+// la fermeture du centre A serait annoncee sur le centre B.
+let centerDayStatusCenter = '';
+// Date pour laquelle un verdict est EN COURS de chargement. Sert a ne jamais
+// annoncer "Ouvert" pendant l'aller-retour reseau qui va peut-etre dire "Ferme".
+let centerDayPendingDate = '';
+
+function currentDayCenterKey() {
+  try {
+    return typeof getCurrentStaffCenterId === 'function' ? String(getCurrentStaffCenterId() || '') : '';
+  } catch (error) { return ''; }
+}
+
+// centerKey = centre REELLEMENT interroge. L'appelant le connait ; s'en remettre
+// au centre courant serait faux quand l'utilisateur a switche pendant le vol.
+function setCenterDayStatus(day, centerKey) {
+  centerDayStatus = day && typeof day === 'object' && typeof day.date === 'string' ? day : null;
+  if (!centerDayStatus) { centerDayStatusCenter = ''; return; }
+  centerDayStatusCenter = centerKey === undefined ? currentDayCenterKey() : String(centerKey || '');
+}
+
+function getCenterDayStatus() {
+  return centerDayStatus;
+}
+
+function setCenterDayPending(dateStr) {
+  centerDayPendingDate = String(dateStr || '');
+}
+
+// Ne relache que SA propre attente : deux changements de date rapides ne
+// doivent pas laisser la seconde requete sans etat d'attente.
+function clearCenterDayPending(dateStr) {
+  if (centerDayPendingDate === String(dateStr || '')) centerDayPendingDate = '';
+}
+
+// Verdict applicable a CETTE date uniquement. La garde d'egalite de date est
+// obligatoire : le meme module sert le tunnel client et le QuickBook staff, qui
+// travaillent sur deux dates differentes.
+function getCenterDayStatusFor(dateStr) {
+  if (!centerDayStatus) return null;
+  if (centerDayStatusCenter !== currentDayCenterKey()) return null; // centre change : verdict perime
+  return centerDayStatus.date === String(dateStr || '') ? centerDayStatus : null;
+}
+
+function isCenterDayPending(dateStr) {
+  const wanted = String(dateStr || '');
+  return !!wanted && centerDayPendingDate === wanted && !getCenterDayStatusFor(wanted);
+}
+
 // Config bookable poussée par /api/public-booking-meta (center.booking) ou par
 // la config staff (resources.bowling). Absente = constantes historiques.
 function getBookingCatalogConfig() {
@@ -714,6 +770,21 @@ function scheduleFromConfigBlock(block, day) {
   return { open, close, label: buildScheduleLabel(open, close) };
 }
 function getSchedule(dateStr, manualHolidayOverride = false) {
+  // 1. VERDICT SERVEUR pour cette date exacte. Il sait ce que la grille hebdo
+  //    ignore : fermeture ponctuelle, coupure posee depuis le cockpit. Quand il
+  //    dit ferme, aucune grille locale ne peut le contredire - c'est la regle
+  //    qui interdit le faux "Ouvert" du parcours client.
+  const verdict = getCenterDayStatusFor(dateStr);
+  if (verdict) {
+    if (verdict.open === false) return null;
+    const open = Number(verdict.schedule && verdict.schedule.open);
+    const close = Number(verdict.schedule && verdict.schedule.close);
+    if (Number.isFinite(open) && Number.isFinite(close) && close > open) {
+      return { open, close, label: verdict.schedule.label || buildScheduleLabel(open, close) };
+    }
+  }
+  // 2. Config du centre poussee par le serveur (grille hebdo + regime vacances).
+  // 3. Grille en dur : dernier recours fail-soft (hors ligne, centre sans config).
   const d = parseLocalDate(dateStr);
   const day = d.getDay();
   const holidayActive = isHolidayScheduleDate(dateStr, manualHolidayOverride);
@@ -1412,6 +1483,12 @@ function getFormulaActivityProgressSummary(reservation) {
     isOfferEnabled,
     setCenterScheduleConfig,
     getCenterScheduleConfig,
+    setCenterDayStatus,
+    getCenterDayStatus,
+    getCenterDayStatusFor,
+    setCenterDayPending,
+    clearCenterDayPending,
+    isCenterDayPending,
     getTotalLanes,
     getMaxPerLane,
     getEmergencyMaxPerLane,

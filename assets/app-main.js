@@ -10768,11 +10768,45 @@ function mergeReservationsById(lists = []) {
   return sortReservations([...map.values()]);
 }
 
+// Le serveur fait AUTORITE dans la fenetre qu'il vient de servir.
+//
+// state.reservations est persiste en localStorage (save() serialise tout state).
+// Le fusionner par simple union avec une reponse serveur ressuscite donc, a
+// chaque rendu, des reservations que le serveur ne renvoie plus - une union ne
+// peut jamais RETIRER une ligne. Symptome vu le 2026-07-27 : apres la purge de
+// la base, le calendrier affichait encore 24 resas et 4956 EUR, et les
+// compteurs ne se corrigeaient qu'au clic sur chaque jour (seul chemin qui
+// appelait replaceReservationsForDate).
+//
+// Regle : a l'interieur de [windowStart, windowEnd], une resa locale absente de
+// la reponse serveur est consideree SUPPRIMEE. Deux exceptions gardees :
+//   - hors fenetre, le serveur n'a rien dit : on conserve le local ;
+//   - une mutation locale en vol (creation/edition optimiste) survit, sinon la
+//     ligne clignoterait le temps de l'aller-retour.
+function keepLocalWithinServerAuthority(localList, serverList, windowStart, windowEnd) {
+  const serverIds = new Set((serverList || []).map(r => String(r && r.id)));
+  return (localList || []).filter(reservation => {
+    if (!reservation) return false;
+    const date = String(reservation.date || '');
+    const inWindow = !!date && (!windowStart || date >= windowStart) && (!windowEnd || date <= windowEnd);
+    if (!inWindow) return true;
+    if (serverIds.has(String(reservation.id))) return true;
+    return pendingReservationMutations.has(getReservationWriteKey(reservation.id));
+  });
+}
+
 function getStaffClientSourceReservations() {
   const centerId = getActiveOpsCenterId();
   const cacheReservations = staffClientDataCache.loaded ? (staffClientDataCache.reservations || []) : [];
   const reservationCache = staffReservationsDataCache.loaded ? (staffReservationsDataCache.reservations || []) : [];
-  return mergeReservationsById([cacheReservations, reservationCache, state.reservations || []])
+  // Autorite serveur sur la fenetre du cache clients (anchor +/- 120 j). Sans
+  // ca, le CRM comptait des clients dont toutes les resas avaient disparu.
+  let local = state.reservations || [];
+  if (staffClientDataCache.loaded) {
+    const range = getStaffClientRange();
+    local = keepLocalWithinServerAuthority(local, cacheReservations, range.startDate, range.endDate);
+  }
+  return mergeReservationsById([cacheReservations, reservationCache, local])
     .filter(reservation => (reservation.centerId || reservation.center_id || centerId) === centerId);
 }
 
@@ -11603,7 +11637,15 @@ function getStaffReservationsCacheKey() {
 function getStaffReservationsSourceReservations() {
   const centerId = getActiveOpsCenterId();
   const cacheReservations = staffReservationsDataCache.loaded ? (staffReservationsDataCache.reservations || []) : [];
-  return mergeReservationsById([cacheReservations, state.reservations || []])
+  // Le calendrier lit la plage servie par /api/admin-range : dans cette
+  // fenetre, ce que le serveur ne renvoie pas n'existe plus. C'est ce qui
+  // supprime les compteurs fantomes sans avoir a cliquer chaque jour.
+  let local = state.reservations || [];
+  if (staffReservationsDataCache.loaded) {
+    const range = getStaffReservationsRange();
+    local = keepLocalWithinServerAuthority(local, cacheReservations, range.previousMonthStart, range.gridEnd);
+  }
+  return mergeReservationsById([cacheReservations, local])
     .filter(reservation => (reservation.centerId || reservation.center_id || centerId) === centerId);
 }
 

@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - dark</title>
+
+<!-- Les VRAIS CSS du produit. On ne re-dessine rien : les couleurs, rayons,
+     ombres et espacements sont ceux de l'application. Si le design du produit
+     bouge, la video suit. -->
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<link rel="stylesheet" href="../../assets/pinlane-staff.css">
+
+<style>
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:#000}
+  body{font-family:var(--font-ui);color:var(--text);-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:#000}
+
+  /* Un seul halo, tres sourd. Le produit est noir : la video doit l'etre aussi.
+     Pas de mesh colore - ca trahirait la marque. */
+  #glow{position:absolute;width:1500px;height:1500px;border-radius:50%;
+    background:radial-gradient(circle,rgba(50,145,255,.13),transparent 62%);
+    filter:blur(70px);left:210px;top:-330px;will-change:transform}
+
+  .plan{position:absolute;inset:0;visibility:hidden;opacity:0}
+
+  .kick{font-family:var(--font-data);letter-spacing:.26em;text-transform:uppercase;
+    font-size:18px;color:var(--faint)}
+  .ttl{font-weight:600;letter-spacing:-.045em;color:var(--text);line-height:1.03}
+  .sub{font-size:27px;line-height:1.4;color:var(--muted);letter-spacing:-.012em}
+
+  /* ===== FENETRE APP ====================================================
+     Reproduit le chrome de l'app : rail de menu a gauche, contenu a droite. */
+  .app{position:absolute;border-radius:18px;overflow:hidden;background:var(--page);
+    border:1px solid var(--line);box-shadow:0 40px 120px rgba(0,0,0,.9);display:flex}
+  .rail{width:286px;flex:0 0 286px;background:var(--surface);border-right:1px solid var(--line);
+    padding:20px 14px;display:flex;flex-direction:column;gap:5px;overflow:hidden}
+  .rail-brand{display:flex;align-items:center;gap:12px;padding:8px 10px 16px}
+  .rail-logo{width:36px;height:36px;border-radius:11px;background:var(--accent);position:relative;flex:0 0 36px}
+  .rail-logo::after{content:'';position:absolute;left:11px;top:11px;width:14px;height:14px;border-radius:4px;background:var(--page)}
+  .rail-brand b{font-size:16px;font-weight:600;letter-spacing:-.01em;display:block}
+  .rail-brand span{font-size:12px;color:var(--faint)}
+  .rail-sec{font-family:var(--font-data);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--faint);padding:16px 12px 7px}
+  /* L'item reprend la geometrie de .fgx-menu-item du produit. */
+  .mi{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;
+    font-size:14.5px;color:var(--muted);cursor:default;position:relative;
+    transition:none}
+  .mi svg{width:18px;height:18px;flex:0 0 18px;opacity:.85}
+  .mi.hot{background:var(--subtle);color:var(--text)}
+  .mi.on{background:var(--subtle);color:var(--text);font-weight:500}
+  .mi.on::before{content:'';position:absolute;left:0;top:9px;bottom:9px;width:3px;
+    border-radius:0 3px 3px 0;background:var(--accent)}
+  .mi .cnt{margin-left:auto;font-family:var(--font-data);font-size:11px;
+    background:var(--accent);color:#fff;border-radius:99px;padding:2px 8px}
+
+  .body{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--page)}
+  .top{height:66px;flex:0 0 66px;border-bottom:1px solid var(--line);display:flex;align-items:center;
+    padding:0 26px;gap:16px;background:var(--surface)}
+  .top h3{font-size:17px;font-weight:600;letter-spacing:-.015em}
+  .top .crumb{font-family:var(--font-data);font-size:11.5px;color:var(--faint);letter-spacing:.05em}
+  .top .spacer{flex:1}
+  .chipx{font-size:12.5px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:6px 14px}
+  .btnx{font-size:13px;color:#fff;background:var(--accent);border-radius:9px;padding:9px 16px;font-weight:500}
+  .content{flex:1;padding:26px;overflow:hidden;position:relative}
+
+  /* --- planning : grille pistes x heures ------------------------------- */
+  .pl-head{display:grid;grid-template-columns:96px repeat(9,1fr);gap:7px;margin-bottom:9px}
+  .pl-head div{font-family:var(--font-data);font-size:11px;color:var(--faint);text-align:center}
+  .pl-row{display:grid;grid-template-columns:96px repeat(9,1fr);gap:7px;margin-bottom:7px;align-items:center}
+  .pl-lane{font-size:12.5px;color:var(--muted);font-family:var(--font-data)}
+  .pl-cell{height:44px;border-radius:8px;background:var(--subtle);border:1px solid var(--line)}
+  .pl-bk{height:44px;border-radius:8px;display:flex;align-items:center;padding:0 11px;
+    font-size:12px;color:#fff;font-weight:500;overflow:hidden;white-space:nowrap;
+    background:linear-gradient(120deg,var(--accent),#2a6fd0);border:1px solid rgba(255,255,255,.14)}
+  .pl-bk.g{background:linear-gradient(120deg,#0f7b3c,#0b5c2d)}
+  .pl-bk.p{background:linear-gradient(120deg,#7c5cff,#5b3fd6)}
+
+  /* --- liste (reservations / clients) ---------------------------------- */
+  .tb{width:100%;border-collapse:collapse}
+  .tb th{font-family:var(--font-data);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--faint);text-align:left;padding:0 14px 11px;font-weight:400}
+  .tb td{padding:13px 14px;border-top:1px solid var(--line);font-size:14px;color:var(--text)}
+  .tb tr td:first-child{font-weight:500}
+  .tb .m{color:var(--muted);font-family:var(--font-data);font-size:12.5px}
+  .tag{display:inline-block;font-size:11px;padding:3px 10px;border-radius:99px;
+    background:var(--success-soft);color:var(--success)}
+  .tag.w{background:var(--warning-soft);color:var(--warning)}
+
+  /* --- cartes stats ----------------------------------------------------- */
+  .st{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+  .stc{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:18px 20px}
+  .stc .l{font-size:12.5px;color:var(--faint)}
+  .stc .v{font-family:var(--font-data);font-size:30px;letter-spacing:-.03em;margin-top:6px}
+  .stc .d{font-size:11.5px;color:var(--success);margin-top:3px}
+
+  /* --- marketing -------------------------------------------------------- */
+  .mk{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:20px 22px;margin-bottom:14px}
+  .mk .h{display:flex;align-items:center;gap:11px;font-size:14px;color:var(--muted)}
+  .mk .h .dot{width:8px;height:8px;border-radius:99px;background:var(--accent)}
+  .mk .t{font-size:16px;margin-top:9px;line-height:1.5;color:var(--text)}
+  .mk .act{display:flex;gap:10px;margin-top:14px}
+  .mk .act span{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:7px 13px;color:var(--muted)}
+  .mk .act span.pri{background:var(--accent);color:#fff;border-color:transparent}
+
+  /* ===== CURSEUR : hover -> appui -> effet ==============================
+     Le defaut des versions precedentes : le clic ne PRODUISAIT rien. Ici il
+     allume l'item, change l'ecran, et laisse une onde. */
+  #cur{position:absolute;width:24px;height:24px;z-index:50;opacity:0;pointer-events:none;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.95))}
+  #rip{position:absolute;width:14px;height:14px;border-radius:99px;z-index:49;opacity:0;
+    border:2px solid var(--accent);pointer-events:none}
+
+  #flash{position:absolute;inset:0;background:#cfe2ff;opacity:0;z-index:60;pointer-events:none}
+  #vig{position:absolute;inset:0;z-index:40;pointer-events:none;
+    background:radial-gradient(135% 100% at 50% 45%,transparent 54%,rgba(0,0,0,.72) 100%)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+
+  <!-- P0 -->
+  <section class="plan" id="p0">
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <div id="p0m" style="display:flex;align-items:center;gap:24px">
+        <div style="width:76px;height:76px;border-radius:21px;background:var(--accent);position:relative">
+          <div style="position:absolute;left:23px;top:23px;width:30px;height:30px;border-radius:8px;background:#000"></div>
+        </div>
+        <div class="ttl" style="font-size:86px">Pinlane</div>
+      </div>
+      <div class="sub" id="p0s" style="margin-top:22px">Le logiciel qui fait tourner votre centre.</div>
+    </div>
+  </section>
+
+  <!-- P1 : la console -->
+  <section class="plan" id="p1">
+    <div class="app" id="app1" style="left:150px;top:112px;width:1620px;height:856px"></div>
+    <div id="p1cap" style="position:absolute;left:150px;top:1000px;width:1620px;text-align:center">
+      <span class="kick" id="p1k"></span>
+    </div>
+  </section>
+
+  <!-- P2 : suspens -->
+  <section class="plan" id="p2">
+    <div id="p2d" style="position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;
+      border-radius:99px;background:var(--accent)"></div>
+  </section>
+
+  <!-- P3 : fin -->
+  <section class="plan" id="p3">
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <div id="p3m" style="display:flex;align-items:center;gap:24px">
+        <div style="width:84px;height:84px;border-radius:23px;background:var(--accent);position:relative">
+          <div style="position:absolute;left:25px;top:25px;width:34px;height:34px;border-radius:9px;background:#000"></div>
+        </div>
+        <div class="ttl" style="font-size:94px">Pinlane</div>
+      </div>
+      <div class="sub" id="p3s" style="margin-top:24px;font-size:30px">Tout votre centre. Un seul outil.</div>
+    </div>
+  </section>
+
+  <div id="rip"></div>
+  <svg id="cur" viewBox="0 0 24 24"><path d="M5 2l14 10.5-6.2.6 3.4 6.9-2.9 1.4-3.3-6.9L5 19z"
+    fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+
+<script src="gen/icons.js"></script>
+<script>
+const DUR = 22;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const eInOut = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const lerp = (a, b, x) => a + (b - a) * x;
+
+// Menu reel du produit (labels et icones repris tels quels).
+const MENU = [
+  ['Journée', [
+    ['dashboard', "Vue d'ensemble", 'dash'],
+    ['planning', 'Planning', 'planning'],
+    ['reservations', 'Réservations', 'resa'],
+    ['offers', 'Formules', 'formules'],
+  ]],
+  ['Clients & marketing', [
+    ['clients', 'Clients', 'clients'],
+    ['emails', 'Emails & relances', 'emails'],
+    ['campaigns', 'Marketing', 'mkt'],
+  ]],
+  ['Administration', [
+    ['prices', 'Activités & tarifs', 'tarifs'],
+    ['users', 'Équipe & accès', 'equipe'],
+    ['establishment', 'Établissement', 'etab'],
+  ]],
+];
+
+// --- ecrans ---------------------------------------------------------------
+function screenPlanning() {
+  const H = ['14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h'];
+  const B = [
+    [0, 1, 3, '', 'Anniversaire Lucas · 12 p.'],
+    [1, 4, 2, 'g', 'Team building Delhaize'],
+    [2, 0, 2, 'p', 'Groupe scolaire'],
+    [3, 5, 3, '', 'Soirée entreprise'],
+    [4, 2, 2, 'g', 'Famille Martin'],
+    [5, 6, 2, '', 'Ligue du jeudi'],
+  ];
+  let rows = '';
+  for (let l = 0; l < 6; l++) {
+    let cells = '';
+    const bk = B.filter((b) => b[0] === l);
+    let c = 0;
+    while (c < 9) {
+      const b = bk.find((x) => x[1] === c);
+      if (b) {
+        cells += `<div class="pl-bk ${b[3]}" style="grid-column:span ${b[2]}">${b[4]}</div>`;
+        c += b[2];
+      } else { cells += '<div class="pl-cell"></div>'; c++; }
+    }
+    rows += `<div class="pl-row"><div class="pl-lane">Piste ${l + 1}</div>${cells}</div>`;
+  }
+  return `<div class="pl-head"><div></div>${H.map((h) => `<div>${h}</div>`).join('')}</div>${rows}`;
+}
+
+function screenReservations() {
+  const R = [
+    ['Lucas Berger', 'Anniversaire', '15:30', '12', '312 EUR', 'Confirmée'],
+    ['Delhaize Libramont', 'Team building', '17:00', '24', '648 EUR', 'Confirmée'],
+    ['École Saint-Joseph', 'Groupe scolaire', '14:00', '31', '465 EUR', 'Acompte', 'w'],
+    ['Famille Martin', 'Bowling', '16:00', '6', '156 EUR', 'Confirmée'],
+    ['Ligue du jeudi', 'Bowling', '20:00', '8', '208 EUR', 'Confirmée'],
+    ['Sarah Dubois', 'Laser game', '18:30', '10', '190 EUR', 'Acompte', 'w'],
+    ['Comité des fêtes', 'Privatisation', '19:00', '40', '1 240 EUR', 'Confirmée'],
+    ['Thomas Leroy', 'Anniversaire', '15:00', '9', '234 EUR', 'Confirmée'],
+  ];
+  return `<table class="tb"><thead><tr>
+    <th>Client</th><th>Type</th><th>Heure</th><th>Pers.</th><th>Montant</th><th>Statut</th></tr></thead><tbody>
+    ${R.map((r) => `<tr><td>${r[0]}</td><td class="m">${r[1]}</td><td class="m">${r[2]}</td>
+      <td class="m">${r[3]}</td><td class="m">${r[4]}</td>
+      <td><span class="tag ${r[6] || ''}">${r[5]}</span></td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+function screenClients() {
+  const C = [
+    ['Famille Martin', '7 visites', '1 240 EUR', 'il y a 6 j'],
+    ['Delhaize Libramont', '4 visites', '2 590 EUR', 'il y a 12 j'],
+    ['Lucas Berger', '3 visites', '780 EUR', 'il y a 3 j'],
+    ['École Saint-Joseph', '2 visites', '930 EUR', 'il y a 28 j'],
+    ['Ligue du jeudi', '19 visites', '3 950 EUR', 'hier'],
+    ['Sarah Dubois', '5 visites', '640 EUR', 'il y a 9 j'],
+    ['Comité des fêtes', '3 visites', '1 180 EUR', 'il y a 21 j'],
+    ['Thomas Leroy', '11 visites', '1 720 EUR', 'il y a 2 j'],
+  ];
+  return `<div class="st">
+      <div class="stc"><div class="l">Clients actifs</div><div class="v">248</div><div class="d">+18 ce mois</div></div>
+      <div class="stc"><div class="l">Panier moyen</div><div class="v">186 EUR</div><div class="d">+12 %</div></div>
+      <div class="stc"><div class="l">À relancer</div><div class="v">31</div><div class="d">sans visite 60 j</div></div>
+      <div class="stc"><div class="l">Anniversaires 30 j</div><div class="v">14</div><div class="d">à préparer</div></div>
+    </div>
+    <table class="tb"><thead><tr><th>Client</th><th>Fidélité</th><th>Total dépensé</th><th>Dernière visite</th></tr></thead><tbody>
+    ${C.map((c) => `<tr><td>${c[0]}</td><td class="m">${c[1]}</td><td class="m">${c[2]}</td><td class="m">${c[3]}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+
+function screenMarketing() {
+  return `<div class="st" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stc"><div class="l">CA généré par le marketing</div><div class="v">2 340 EUR</div><div class="d">30 derniers jours</div></div>
+      <div class="stc"><div class="l">Relances envoyées</div><div class="v">184</div><div class="d">taux d'ouverture 42 %</div></div>
+      <div class="stc"><div class="l">Clients revenus</div><div class="v">27</div><div class="d">après relance</div></div>
+    </div>
+    <div class="mk"><div class="h"><span class="dot"></span>Idée du jour</div>
+      <div class="t">Mardi prochain s'annonce pluvieux et les vacances scolaires commencent.
+        Tes mardis sont à 31 % d'occupation : propose un tarif famille 16h-18h.</div>
+      <div class="act"><span class="pri">Créer la campagne</span><span>Voir le détail</span><span>Plus tard</span></div>
+    </div>
+    <div class="mk"><div class="h"><span class="dot"></span>Mesure</div>
+      <div class="t">La relance "anniversaires" de la semaine dernière a rapporté <b>460 EUR</b> sur 9 réservations.</div>
+    </div>`;
+}
+
+const SCREENS = {
+  planning: ['Planning', 'Opérations / Planning', screenPlanning],
+  resa: ['Réservations', 'Opérations / Réservations', screenReservations],
+  clients: ['Clients', 'Clients & marketing / Clients', screenClients],
+  mkt: ['Marketing', 'Clients & marketing / Marketing', screenMarketing],
+};
+
+function buildApp(activeKey) {
+  const [title, crumb, body] = SCREENS[activeKey] || SCREENS.planning;
+  let rail = `<div class="rail">
+    <div class="rail-brand"><div class="rail-logo"></div><div><b>Pinlane</b><span>Console du centre</span></div></div>`;
+  MENU.forEach(([sec, items]) => {
+    rail += `<div class="rail-sec">${sec}</div>`;
+    items.forEach(([icon, label, key]) => {
+      const cnt = key === 'clients' ? '<span class="cnt">3</span>' : '';
+      rail += `<div class="mi" data-k="${key}">${icons[icon] || ''}<span>${label}</span>${cnt}</div>`;
+    });
+  });
+  rail += '</div>';
+  return rail + `<div class="body">
+    <div class="top"><span class="crumb">${crumb}</span><h3>${title}</h3><div class="spacer"></div>
+      <span class="chipx">Fun Galaxy Libramont</span><span class="chipx">Aujourd'hui</span><span class="btnx">Nouvelle réservation</span></div>
+    <div class="content" id="content">${body()}</div></div>`;
+}
+
+// --- curseur : trajectoire courbe + hover + appui + onde ------------------
+// Une souris ne suit pas une droite. La courbe de Bezier et le decalage
+// hover/clic sont ce qui separe une vraie demo d'un pointeur qui teleporte.
+function bez(p0, p1, t) {
+  const cx = (p0[0] + p1[0]) / 2 + (p1[1] - p0[1]) * .18;
+  const cy = (p0[1] + p1[1]) / 2 - (p1[0] - p0[0]) * .18;
+  const u = 1 - t;
+  return [u*u*p0[0] + 2*u*t*cx + t*t*p1[0], u*u*p0[1] + 2*u*t*cy + t*t*p1[1]];
+}
+
+let lastBuilt = '';
+function ensureApp(key) {
+  if (lastBuilt === key) return;
+  $('app1').innerHTML = buildApp(key);
+  lastBuilt = key;
+}
+
+function driveCursor(t, steps, activeAt) {
+  const cur = $('cur'), rip = $('rip');
+  const first = steps[0], last = steps[steps.length - 1];
+  if (t < first.at - .55 || t > last.at + 1.4) return;
+  cur.style.opacity = Math.min(seg(t, first.at - .55, first.at - .15), 1 - seg(t, last.at + .9, last.at + 1.4));
+
+  let x = first.x, y = first.y, clicked = null, hovering = null;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i], n = steps[i + 1];
+    if (t >= s.at - .38) hovering = s;          // le survol precede le clic
+    if (t >= s.at) { x = s.x; y = s.y; if (t <= s.at + .4) clicked = s; }
+    if (n && t >= s.at && t < n.at) {
+      // Depart apres une courte pause, arrivee amortie : geste humain.
+      const p = eInOut(seg(t, s.at + .22, n.at - .34));
+      const q = bez([s.x, s.y], [n.x, n.y], p);
+      x = q[0]; y = q[1];
+      break;
+    }
+    if (i === 0 && t < s.at) {
+      const p = eOut(seg(t, s.at - .55, s.at));
+      const q = bez([s.x - 210, s.y + 130], [s.x, s.y], p);
+      x = q[0]; y = q[1];
+    }
+  }
+  const press = clicked ? Math.exp(-16 * (t - clicked.at)) : 0;
+  cur.style.transform = `translate(${x}px, ${y}px) scale(${1 - press * .26})`;
+
+  // Etat visuel des items : survol puis actif. C'est L'EFFET du clic.
+  document.querySelectorAll('#app1 .mi').forEach((el) => {
+    el.classList.remove('hot', 'on');
+    if (hovering && el.dataset.k === hovering.k && t < hovering.at) el.classList.add('hot');
+    if (el.dataset.k === activeAt) el.classList.add('on');
+  });
+
+  if (clicked) {
+    const p = seg(t, clicked.at, clicked.at + .5);
+    rip.style.opacity = (1 - p) * .95;
+    rip.style.left = `${x - 7}px`; rip.style.top = `${y - 7}px`;
+    rip.style.transform = `scale(${lerp(1, 6, eOut(p))})`;
+  }
+}
+
+// Le clic CHANGE l'ecran : sans ca, l'interaction ne raconte rien.
+const NAV = [
+  { at: 3.25, k: 'planning', x: 236, y: 348, screen: 'planning' },
+  { at: 6.10, k: 'resa',     x: 236, y: 392, screen: 'resa' },
+  { at: 9.00, k: 'clients',  x: 236, y: 506, screen: 'clients' },
+  { at: 12.4, k: 'mkt',      x: 236, y: 594, screen: 'mkt' },
+];
+const CAPS = [[3.25, 'Le planning de la journée'], [6.10, 'Chaque réservation, en clair'],
+              [9.00, 'Vos clients et leur valeur'], [12.4, "L'agent marketing qui mesure"]];
+
+const PLANS = [['p0', 0, 2.3], ['p1', 2.3, 16.4], ['p2', 16.4, 18.2], ['p3', 18.2, 22]];
+const curPlan = (t) => PLANS.find(([, a, b]) => t >= a && t < b) || PLANS[PLANS.length - 1];
+
+function render(t) {
+  PLANS.forEach(([id]) => { const e = $(id); e.style.visibility = 'hidden'; e.style.opacity = 0; });
+  ['cur', 'rip'].forEach((i) => { $(i).style.opacity = 0; });
+  $('flash').style.opacity = 0;
+
+  $('glow').style.transform = `translate(${Math.sin(t * .26) * 190}px, ${Math.cos(t * .2) * 130}px)`;
+
+  const [id, a, b] = curPlan(t);
+  const el = $(id);
+  el.style.visibility = 'visible';
+  el.style.opacity = 1;
+
+  const cut = PLANS.find(([, s]) => Math.abs(t - s) < .07 && s > 0);
+  if (cut) $('flash').style.opacity = (1 - Math.abs(t - cut[1]) / .07) * .13;
+
+  if (id === 'p0') {
+    const p = eQuint(seg(t, .05, .8));
+    $('p0m').style.opacity = p;
+    $('p0m').style.transform = `scale(${lerp(.9, 1, p)})`;
+    const q = eOut(seg(t, .55, 1.15));
+    $('p0s').style.opacity = q;
+    $('p0s').style.transform = `translateY(${lerp(16, 0, q)}px)`;
+  }
+
+  if (id === 'p1') {
+    // L'ecran affiche correspond au DERNIER clic effectue.
+    let active = 'planning';
+    for (const n of NAV) if (t >= n.at) active = n.screen;
+    ensureApp(active);
+
+    const p = eQuint(seg(t, a, a + .7));
+    $('app1').style.opacity = p;
+    $('app1').style.transform = `translateY(${lerp(26, 0, p)}px) scale(${lerp(.985, 1, p) + seg(t, a, b) * .012})`;
+
+    driveCursor(t, NAV, active);
+
+    // Le contenu entre en fondu court a chaque bascule : on voit que ca charge.
+    const last = [...NAV].reverse().find((n) => t >= n.at);
+    if (last) {
+      const cp = seg(t, last.at, last.at + .34);
+      const c = $('content');
+      if (c) { c.style.opacity = cp; c.style.transform = `translateY(${lerp(10, 0, eOut(cp))}px)`; }
+    }
+    const cap = [...CAPS].reverse().find(([s]) => t >= s);
+    if (cap) {
+      const cp = seg(t, cap[0] + .15, cap[0] + .6);
+      $('p1k').textContent = cap[1];
+      $('p1cap').style.opacity = cp * (1 - seg(t, b - .5, b));
+      $('p1cap').style.transform = `translateY(${lerp(12, 0, eOut(cp))}px)`;
+    } else { $('p1cap').style.opacity = 0; }
+  }
+
+  if (id === 'p2') {
+    const d = seg(t, a, b);
+    const dot = $('p2d');
+    const pulse = Math.sin(d * d * 28) * .5 + .5;
+    dot.style.transform = `scale(${lerp(1, 3, d) * (1 + pulse * .4)})`;
+    dot.style.boxShadow = `0 0 ${lerp(24, 120, d)}px ${lerp(7, 34, d)}px rgba(50,145,255,${lerp(.28, .6, d)})`;
+  }
+
+  if (id === 'p3') {
+    if (t - a < .17) $('flash').style.opacity = (1 - (t - a) / .17) * .9;
+    const p = eQuint(seg(t, a, a + .55));
+    $('p3m').style.opacity = 1;
+    $('p3m').style.transform = `scale(${lerp(1.45, 1, p)})`;
+    const q = eOut(seg(t, a + .45, a + 1.0));
+    $('p3s').style.opacity = q;
+    $('p3s').style.transform = `translateY(${lerp(16, 0, q)}px)`;
+    el.style.opacity = 1 - seg(t, DUR - .5, DUR);
+  }
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

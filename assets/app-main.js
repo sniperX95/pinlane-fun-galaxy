@@ -7349,6 +7349,74 @@ async function loadStaffCenterConfig(force = false) {
   if (state.view === 'staff' && getStaffMenuPage() === 'establishment') renderStaffUtilityPage();
 }
 
+// Page Etablissement : 5 categories au lieu d'un mur. Chaque onglet repond a UNE
+// question ("qu'est-ce que ce centre ?", "quand est-il ouvert ?"...). Tous les
+// panneaux restent dans le DOM (masques par [hidden]) : submitCenterConfig lit
+// les champs par ID, donc on enregistre depuis n'importe quel onglet sans perdre
+// ce qui est saisi ailleurs.
+const ESTABLISHMENT_TABS = [
+  ['centre', 'Le centre'],
+  ['horaires', 'Horaires & fermetures'],
+  ['offres', 'Offres & activités'],
+  ['clients', 'Clients & groupes'],
+  ['regles', 'Règles & comptoir'],
+];
+
+function getEstablishmentTab() {
+  return ESTABLISHMENT_TABS.some(([key]) => key === state.establishmentTab) ? state.establishmentTab : 'centre';
+}
+
+// Bascule d'onglet SANS re-render : en edition, reconstruire le HTML relirait la
+// config serveur et effacerait ce qui vient d'etre tape dans les autres onglets.
+function setEstablishmentTab(key) {
+  const next = ESTABLISHMENT_TABS.some(([item]) => item === key) ? key : 'centre';
+  state.establishmentTab = next;
+  save();
+  const panels = document.querySelectorAll('.estab-panel');
+  if (!panels.length) { renderStaffUtilityPage(); return; }
+  panels.forEach(panel => { panel.hidden = panel.id !== `estabPanel-${next}`; });
+  document.querySelectorAll('.estab-tabs button').forEach(button => {
+    const on = button.id === `estabTab-${next}`;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
+function establishmentTabsHtml(active) {
+  return `<div class="admin-tabs estab-tabs" role="tablist" aria-label="Sections de configuration du centre">
+    ${ESTABLISHMENT_TABS.map(([key, label]) => `<button type="button" role="tab" id="estabTab-${key}" aria-selected="${key === active ? 'true' : 'false'}" aria-controls="estabPanel-${key}" class="${key === active ? 'active' : ''}" onclick="setEstablishmentTab('${key}')">${escapeHtml(label)}</button>`).join('')}
+  </div>`;
+}
+
+function establishmentPanel(key, active, body) {
+  return `<div class="estab-panel" id="estabPanel-${key}" role="tabpanel" aria-labelledby="estabTab-${key}"${key === active ? '' : ' hidden'}>${body}</div>`;
+}
+
+// Un champ invalide peut se trouver sous un onglet ferme : sans ca, le toast
+// "corrigez les champs" pointerait vers un champ que personne ne voit.
+function focusEstablishmentField(input) {
+  if (!input) return;
+  const panel = input.closest('.estab-panel');
+  const key = panel ? String(panel.id || '').replace('estabPanel-', '') : '';
+  if (key && key !== getEstablishmentTab()) {
+    setEstablishmentTab(key);
+    const again = document.getElementById(input.id);
+    if (again) { again.focus(); return; }
+  }
+  input.focus();
+}
+
+function toggleEstablishmentAddCenter() {
+  state.establishmentAdding = !state.establishmentAdding;
+  save();
+  // Meme raison que les onglets : on ne remplace QUE la carte d'ajout, jamais la
+  // page (une edition en cours survivrait mal a un re-render).
+  const slot = document.getElementById('estabAddSlot');
+  if (slot) slot.innerHTML = renderEstablishmentAddCard();
+  else renderStaffUtilityPage();
+  if (state.establishmentAdding) setTimeout(() => document.getElementById('estab-new-id')?.focus(), 0);
+}
+
 function getEstablishmentCenter() {
   const centers = staffCenterConfigCache.centers || [];
   if (!centers.length) return null;
@@ -7615,7 +7683,7 @@ async function submitCenterConfig(centerId) {
   if (submitCenterConfigInFlight) return;
   const invalidFields = validateEstablishmentForm();
   if (invalidFields.length) {
-    invalidFields[0].focus();
+    focusEstablishmentField(invalidFields[0]);
     toast('Corrigez les champs en erreur avant d’enregistrer.');
     return;
   }
@@ -7794,6 +7862,7 @@ function renderStaffUtilityEstablishment() {
     ? holidaySettings.formulaBlockedPeriods
     : ['public', 'school_short', 'manual'];
   const statusLabels = { active: 'Actif', planned: 'Prévu', closed: 'Archivé' };
+  const tab = getEstablishmentTab();
   return `<div class="establishment-page">
     <section class="establishment-selector">
       <div class="establishment-selector-head">
@@ -7801,12 +7870,7 @@ function renderStaffUtilityEstablishment() {
       </div>
       <div class="establishment-center-list">
         ${renderEstablishmentCenterChips(centers, center.id, statusLabels)}
-        ${canEdit ? `<div class="establishment-add">
-          <span>Ajouter un centre</span>
-          <input type="text" id="estab-new-id" placeholder="Identifiant (ex : namur)" autocomplete="off">
-          <input type="text" id="estab-new-name" placeholder="Nom du centre" autocomplete="off">
-          <button type="button" class="btn btn-secondary btn-sm" onclick="submitNewCenter()">Ajouter</button>
-        </div>` : ''}
+        ${canEdit ? `<div id="estabAddSlot" class="establishment-add-slot">${renderEstablishmentAddCard()}</div>` : ''}
       </div>
     </section>
 
@@ -7829,185 +7893,265 @@ function renderStaffUtilityEstablishment() {
         </div>
       </div>
 
-      ${editing ? `<div class="establishment-grid">
-        <fieldset class="establishment-card">
-          <legend>Identité</legend>
-          <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
-          <div class="estab-field-row">
-            <div class="field"><label for="estab-status">Statut</label>
-              <select id="estab-status">
-                <option value="active" ${center.status === 'active' ? 'selected' : ''}>Actif</option>
-                <option value="planned" ${center.status === 'planned' ? 'selected' : ''}>Prévu</option>
-                <option value="closed" ${center.status === 'closed' ? 'selected' : ''}>Archivé</option>
-              </select>
-            </div>
-            <div class="field"><label for="estab-timezone">Fuseau horaire</label>
-              <select id="estab-timezone">
-                ${['Europe/Brussels', 'Europe/Paris', 'Europe/Luxembourg', 'Europe/Amsterdam'].map(tz => `<option value="${tz}" ${timezone === tz ? 'selected' : ''}>${tz}</option>`).join('')}
-              </select>
-            </div>
-          </div>
-        </fieldset>
+      ${establishmentTabsHtml(tab)}
+      ${editing ? '<p class="estab-edit-hint">Vous modifiez la configuration. « Enregistrer » enregistre les cinq sections d\'un coup, pas seulement celle affichée.</p>' : ''}
 
-        <fieldset class="establishment-card">
-          <legend>Bowling</legend>
-          <div class="estab-field-row">
-            <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}"></div>
-            <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}"></div>
-            <div class="field"><label for="estab-emergencyCap">Joueurs max / piste (secours)</label><input type="number" id="estab-emergencyCap" min="1" max="15" value="${Number(bowling.emergencyCapacityPerLane || 7)}"></div>
-          </div>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-preferAdjacent" ${bowling.preferAdjacentLanes !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Préférer des pistes adjacentes pour un même groupe</span></label>
-        </fieldset>
-
-        <fieldset class="establishment-card">
-          <legend>Laser Game</legend>
-          <div class="estab-field-row">
-            <div class="field"><label for="estab-weaponCount">Nombre d'armes</label><input type="number" id="estab-weaponCount" min="0" max="200" value="${Number(laser.weaponCount || 0)}"></div>
-            <div class="field"><label for="estab-launches">Lancements parallèles</label><input type="number" id="estab-launches" min="1" max="20" value="${Number(laser.parallelLaunches || 1)}"></div>
-            <div class="field"><label for="estab-laserRisk">Niveau de risque</label>
-              <select id="estab-laserRisk">
-                <option value="low" ${laserRisk === 'low' ? 'selected' : ''}>Faible</option>
-                <option value="managed" ${laserRisk === 'managed' ? 'selected' : ''}>Maîtrisé</option>
-                <option value="critical" ${laserRisk === 'critical' ? 'selected' : ''}>Critique</option>
-              </select>
-            </div>
-          </div>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-requiresComplete" ${laser.requiresCompleteGroupBeforeLaunch !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Exiger le groupe complet avant de lancer une partie</span></label>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-canSplit" ${laser.canSplitGroupsCleanly === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Autoriser à scinder proprement les groupes</span></label>
-        </fieldset>
-
-        <fieldset class="establishment-card">
-          <legend>Tables anniversaire &amp; comptoir</legend>
-          <div class="estab-field-row">
-            <div class="field"><label for="estab-tableSoft">Tables : capacité conseillée</label><input type="number" id="estab-tableSoft" min="1" max="100" value="${Number(party.softCapacity || 6)}"></div>
-            <div class="field"><label for="estab-tableHard">Tables : capacité max</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
-          </div>
-          <span class="estab-subhead">Ce que gère le comptoir</span>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-bar-booking" ${barDesk.handlesBooking !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Prise de réservation au comptoir</span></label>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-bar-briefing" ${barDesk.handlesBriefing !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Briefing / consignes de jeu</span></label>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-bar-food" ${barDesk.handlesFoodAndDrink !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Boissons &amp; restauration</span></label>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-bar-escort" ${barDesk.activityEscort === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Accompagnement pendant l'activité</span></label>
-        </fieldset>
-
-        <fieldset class="establishment-card establishment-hours">
-          <legend>Horaires normaux</legend>
-          ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label)).join('')}
-        </fieldset>
-
-        <fieldset class="establishment-card establishment-hours establishment-holiday-hours">
-          <legend>Horaires vacances &amp; fériés</legend>
-          <label class="establishment-toggle">
-            <input type="checkbox" id="estab-holiday-enabled" ${holidaySettings.enabled !== false ? 'checked' : ''}>
-            <span class="estab-check-box" aria-hidden="true"></span>
-            <span>Appliquer automatiquement ces horaires les jours fériés belges et pendant les congés scolaires FWB</span>
-          </label>
-          ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label, 'holiday', 'estab-hday')).join('')}
-          <div class="estab-subsection">
-            <h4>Formules « non valables vacances/fériés » bloquées pendant :</h4>
-            <div class="estab-period-grid">
-              <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-public" ${blockedPeriods.includes('public') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Jours fériés</span></label>
-              <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-short" ${blockedPeriods.includes('school_short') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Petits congés (automne, hiver, détente, printemps)</span></label>
-              <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-summer" ${blockedPeriods.includes('school_summer') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Grandes vacances (juillet-août)</span></label>
-            </div>
-          </div>
-          <div class="estab-subsection">
-            <h4>Exceptions ponctuelles (jour forcé)</h4>
-            <div class="estab-override-form">
-              <input type="date" id="estab-override-date" aria-label="Date de l'exception">
-              <select id="estab-override-mode" aria-label="Type d'exception">
-                <option value="holiday">Traiter comme vacances/férié</option>
-                <option value="normal">Traiter comme jour normal</option>
-              </select>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentHolidayOverride()">Ajouter</button>
-            </div>
-            <div id="estabHolidayOverridesList" class="estab-overrides-list">${renderEstablishmentOverridesList()}</div>
-          </div>
-        </fieldset>
-
-        <fieldset class="establishment-card establishment-classification">
-          <legend>Classification clients &amp; groupes</legend>
-          <p class="estab-card-hint">Définit à partir de quand une réservation devient un « groupe », et quelles formules valent « anniversaire ». S'applique en direct aux pages Clients et Groupes.</p>
-          <div class="estab-field-row">
-            <div class="field"><label for="estab-groupMinPax">Groupe dès (joueurs / résa)</label><input type="number" id="estab-groupMinPax" min="2" max="200" value="${Number(classification.groupMinPax || 10)}"></div>
-            <div class="field"><label for="estab-groupMinCumulative">… ou joueurs cumulés</label><input type="number" id="estab-groupMinCumulative" min="2" max="5000" value="${Number(classification.groupMinCumulative || 18)}"></div>
-          </div>
-          <label class="establishment-toggle"><input type="checkbox" id="estab-countFormulaAsGroup" ${classification.countFormulaAsGroup !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec formule compte comme groupe</span></label>
-          <div class="estab-subsection">
-            <h4>Paliers de taille (badges groupes)</h4>
-            <div class="estab-field-row">
-              <div class="field"><label for="estab-tier-medium">Moyen dès</label><input type="number" id="estab-tier-medium" min="2" max="500" value="${Number(classTiers.medium || 12)}"></div>
-              <div class="field"><label for="estab-tier-large">Grand dès</label><input type="number" id="estab-tier-large" min="2" max="1000" value="${Number(classTiers.large || 30)}"></div>
-              <div class="field"><label for="estab-tier-xl">XL dès</label><input type="number" id="estab-tier-xl" min="2" max="2000" value="${Number(classTiers.xl || 60)}"></div>
-            </div>
-          </div>
-          <div class="estab-subsection">
-            <h4>Formules considérées « anniversaire »</h4>
-            <label class="establishment-toggle"><input type="checkbox" id="estab-birthdayFromFormula" ${classification.birthdayFromFormula !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec une de ces formules est classée anniversaire (même sans le déclarer)</span></label>
-            <div class="establishment-activity-grid">
-              ${FORMULES.map(formule => {
-                const on = birthdayFormulaIds.includes(formule.id);
-                return `<label class="establishment-activity ${on ? 'on' : ''}">
-                  <input type="checkbox" id="estab-bday-${escapeHtml(formule.id)}" ${on ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-                  <span>${escapeHtml(formule.name)}</span>
-                </label>`;
-              }).join('')}
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset class="establishment-card establishment-offers">
-          <legend>Offres &amp; formules</legend>
-          <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
-          ${(() => {
-            const families = [];
-            FORMULES.forEach(formule => {
-              const familyName = formule.family || 'Formules';
-              let group = families.find(item => item.name === familyName);
-              if (!group) { group = { name: familyName, items: [] }; families.push(group); }
-              group.items.push(formule);
-            });
-            return families.map(group => `
-              <div class="estab-offer-group">
-                <h4>${escapeHtml(group.name)}</h4>
-                <div class="establishment-activity-grid">
-                  ${group.items.map(formule => {
-                    const enabled = center.offerAvailability?.[formule.id] !== false;
-                    return `<label class="establishment-activity ${enabled ? 'on' : ''}">
-                      <input type="checkbox" id="estab-offer-${escapeHtml(formule.id)}" ${enabled ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-                      <span>${escapeHtml(formule.name)} · ${Number(formule.price)}€/${formule.type === 'per_lane' ? 'piste' : 'pers.'}</span>
-                    </label>`;
-                  }).join('')}
-                </div>
-              </div>`).join('');
-          })()}
-        </fieldset>
-
-        <fieldset class="establishment-card establishment-activities">
-          <legend>Activités disponibles</legend>
-          <p class="estab-card-hint">Coche les activités du catalogue proposées sur ce centre.</p>
-          <div class="establishment-activity-grid">
-            ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
-              <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-              <span>${escapeHtml(activity.label)}</span>
-            </label>`).join('')}
-          </div>
-          <div class="estab-subsection">
-            <h4>Activités personnalisées de ce centre</h4>
-            <p class="estab-card-hint">Ajoute une activité propre au centre (au-delà du catalogue). Retire-la avec la croix.</p>
-            <div class="estab-override-form">
-              <input type="text" id="estab-new-activity" placeholder="Nom (ex : Réalité Virtuelle)" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}">
-              <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentCustomActivity()">Ajouter</button>
-            </div>
-            <div id="estabCustomActivitiesList" class="estab-custom-activities-list">${renderEstablishmentCustomActivities()}</div>
-          </div>
-        </fieldset>
-      </div>` : renderEstablishmentReadView(center)}
+      <div class="estab-panels">
+        ${editing ? renderEstablishmentEditPanels(center, tab) : renderEstablishmentReadPanels(center, tab)}
+      </div>
     </section>
-    ${renderAvailabilityBlocksPanel()}
   </div>`;
 }
 
-function renderEstablishmentReadView(center) {
+// Ajouter un centre etait une 4e carte au milieu des centres : on croyait lire un
+// centre nomme « Ajouter un centre ». C'est maintenant une carte d'action en
+// pointilles qui ouvre le formulaire a la demande.
+function renderEstablishmentAddCard() {
+  if (!state.establishmentAdding) {
+    return `<button type="button" class="establishment-add-card" onclick="toggleEstablishmentAddCenter()">
+      <span class="establishment-add-plus" aria-hidden="true">+</span>
+      <span>Ajouter un centre</span>
+    </button>`;
+  }
+  return `<div class="establishment-add">
+    <div class="establishment-add-head"><span>Nouveau centre</span><button type="button" class="estab-override-remove" aria-label="Fermer" onclick="toggleEstablishmentAddCenter()">×</button></div>
+    <input type="text" id="estab-new-id" placeholder="Identifiant (ex : namur)" autocomplete="off">
+    <input type="text" id="estab-new-name" placeholder="Nom du centre" autocomplete="off">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="submitNewCenter()">Ajouter</button>
+  </div>`;
+}
+
+// EDITION : memes champs, memes IDs qu'avant (submitCenterConfig lit par ID),
+// regroupes par question plutot qu'empiles. Les chiffres de capacite vivent dans
+// « Le centre », les comportements du moteur dans « Regles & comptoir ».
+function renderEstablishmentEditPanels(center, active) {
+  const bowling = center.resources?.bowling || {};
+  const laser = center.resources?.laser || {};
+  const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
+  const barDesk = center.resources?.barDesk && typeof center.resources.barDesk === 'object' ? center.resources.barDesk : {};
+  const timezone = center.timezone || 'Europe/Brussels';
+  const laserRisk = ['critical', 'managed', 'low'].includes(laser.riskLevel) ? laser.riskLevel : 'managed';
+  const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
+  const classTiers = classification.sizeTiers && typeof classification.sizeTiers === 'object' ? classification.sizeTiers : {};
+  const birthdayFormulaIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
+  const holidaySettings = center.holidaySettings && typeof center.holidaySettings === 'object'
+    ? center.holidaySettings
+    : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] };
+  const blockedPeriods = Array.isArray(holidaySettings.formulaBlockedPeriods)
+    ? holidaySettings.formulaBlockedPeriods
+    : ['public', 'school_short', 'manual'];
+
+  const formulaGrid = (idPrefix, isOn, labelOf) => `<div class="establishment-activity-grid">
+    ${FORMULES.map(formule => {
+      const on = isOn(formule);
+      return `<label class="establishment-activity ${on ? 'on' : ''}">
+        <input type="checkbox" id="${idPrefix}-${escapeHtml(formule.id)}" ${on ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+        <span>${escapeHtml(labelOf(formule))}</span>
+      </label>`;
+    }).join('')}
+  </div>`;
+
+  const centrePanel = `<div class="estab-edit-grid">
+    <fieldset class="establishment-card">
+      <legend>Identité</legend>
+      <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-status">Statut</label>
+          <select id="estab-status">
+            <option value="active" ${center.status === 'active' ? 'selected' : ''}>Actif</option>
+            <option value="planned" ${center.status === 'planned' ? 'selected' : ''}>Prévu</option>
+            <option value="closed" ${center.status === 'closed' ? 'selected' : ''}>Archivé</option>
+          </select>
+        </div>
+        <div class="field"><label for="estab-timezone">Fuseau horaire</label>
+          <select id="estab-timezone">
+            ${['Europe/Brussels', 'Europe/Paris', 'Europe/Luxembourg', 'Europe/Amsterdam'].map(tz => `<option value="${tz}" ${timezone === tz ? 'selected' : ''}>${tz}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Bowling</legend>
+      <p class="estab-card-hint">Ce que le moteur peut allouer. Les comportements (pistes adjacentes…) sont dans « Règles &amp; comptoir ».</p>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-laneCount">Nombre de pistes</label><input type="number" id="estab-laneCount" min="1" max="40" value="${Number(bowling.laneCount || 8)}"></div>
+        <div class="field"><label for="estab-normalCap">Joueurs confort / piste</label><input type="number" id="estab-normalCap" min="1" max="12" value="${Number(bowling.normalCapacityPerLane || 6)}"></div>
+        <div class="field"><label for="estab-emergencyCap">Joueurs max / piste (secours)</label><input type="number" id="estab-emergencyCap" min="1" max="15" value="${Number(bowling.emergencyCapacityPerLane || 7)}"></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Laser Game</legend>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-weaponCount">Nombre d'armes</label><input type="number" id="estab-weaponCount" min="0" max="200" value="${Number(laser.weaponCount || 0)}"></div>
+        <div class="field"><label for="estab-launches">Lancements parallèles</label><input type="number" id="estab-launches" min="1" max="20" value="${Number(laser.parallelLaunches || 1)}"></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Tables anniversaire</legend>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-tableSoft">Capacité conseillée</label><input type="number" id="estab-tableSoft" min="1" max="100" value="${Number(party.softCapacity || 6)}"></div>
+        <div class="field"><label for="estab-tableHard">Capacité max</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
+      </div>
+    </fieldset>
+  </div>`;
+
+  const horairesPanel = `<div class="estab-edit-stack">
+    <fieldset class="establishment-card establishment-hours">
+      <legend>Horaires normaux</legend>
+      ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label)).join('')}
+    </fieldset>
+
+    <fieldset class="establishment-card establishment-hours establishment-holiday-hours">
+      <legend>Horaires vacances &amp; fériés</legend>
+      <label class="establishment-toggle">
+        <input type="checkbox" id="estab-holiday-enabled" ${holidaySettings.enabled !== false ? 'checked' : ''}>
+        <span class="estab-check-box" aria-hidden="true"></span>
+        <span>Appliquer automatiquement ces horaires les jours fériés belges et pendant les congés scolaires FWB</span>
+      </label>
+      ${ESTABLISHMENT_DAYS.map(([key, label]) => renderEstablishmentDayRow(center, key, label, 'holiday', 'estab-hday')).join('')}
+      <div class="estab-subsection">
+        <h4>Formules « non valables vacances/fériés » bloquées pendant :</h4>
+        <div class="estab-period-grid">
+          <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-public" ${blockedPeriods.includes('public') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Jours fériés</span></label>
+          <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-short" ${blockedPeriods.includes('school_short') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Petits congés (automne, hiver, détente, printemps)</span></label>
+          <label class="establishment-toggle"><input type="checkbox" id="estab-fbp-summer" ${blockedPeriods.includes('school_summer') ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Grandes vacances (juillet-août)</span></label>
+        </div>
+      </div>
+      <div class="estab-subsection">
+        <h4>Exceptions ponctuelles (jour forcé)</h4>
+        <div class="estab-override-form">
+          <input type="date" id="estab-override-date" aria-label="Date de l'exception">
+          <select id="estab-override-mode" aria-label="Type d'exception">
+            <option value="holiday">Traiter comme vacances/férié</option>
+            <option value="normal">Traiter comme jour normal</option>
+          </select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentHolidayOverride()">Ajouter</button>
+        </div>
+        <div id="estabHolidayOverridesList" class="estab-overrides-list">${renderEstablishmentOverridesList()}</div>
+      </div>
+    </fieldset>
+
+    ${renderAvailabilityBlocksPanel()}
+  </div>`;
+
+  const offresPanel = `<div class="estab-edit-stack">
+    <fieldset class="establishment-card establishment-offers">
+      <legend>Offres &amp; formules</legend>
+      <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
+      ${(() => {
+        const families = [];
+        FORMULES.forEach(formule => {
+          const familyName = formule.family || 'Formules';
+          let group = families.find(item => item.name === familyName);
+          if (!group) { group = { name: familyName, items: [] }; families.push(group); }
+          group.items.push(formule);
+        });
+        return families.map(group => `
+          <div class="estab-offer-group">
+            <h4>${escapeHtml(group.name)}</h4>
+            <div class="establishment-activity-grid">
+              ${group.items.map(formule => {
+                const enabled = center.offerAvailability?.[formule.id] !== false;
+                return `<label class="establishment-activity ${enabled ? 'on' : ''}">
+                  <input type="checkbox" id="estab-offer-${escapeHtml(formule.id)}" ${enabled ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+                  <span>${escapeHtml(formule.name)} · ${Number(formule.price)}€/${formule.type === 'per_lane' ? 'piste' : 'pers.'}</span>
+                </label>`;
+              }).join('')}
+            </div>
+          </div>`).join('');
+      })()}
+    </fieldset>
+
+    <fieldset class="establishment-card establishment-activities">
+      <legend>Activités disponibles</legend>
+      <p class="estab-card-hint">Coche les activités du catalogue proposées sur ce centre.</p>
+      <div class="establishment-activity-grid">
+        ${(staffCenterConfigCache.activities || []).map(activity => `<label class="establishment-activity ${center.activityAvailability?.[activity.id] ? 'on' : ''}">
+          <input type="checkbox" id="estab-act-${escapeHtml(activity.id)}" ${center.activityAvailability?.[activity.id] ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+          <span>${escapeHtml(activity.label)}</span>
+        </label>`).join('')}
+      </div>
+      <div class="estab-subsection">
+        <h4>Activités personnalisées de ce centre</h4>
+        <p class="estab-card-hint">Ajoute une activité propre au centre (au-delà du catalogue). Retire-la avec la croix.</p>
+        <div class="estab-override-form">
+          <input type="text" id="estab-new-activity" placeholder="Nom (ex : Réalité Virtuelle)" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentCustomActivity();}">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentCustomActivity()">Ajouter</button>
+        </div>
+        <div id="estabCustomActivitiesList" class="estab-custom-activities-list">${renderEstablishmentCustomActivities()}</div>
+      </div>
+    </fieldset>
+  </div>`;
+
+  const clientsPanel = `<div class="estab-edit-stack">
+    <fieldset class="establishment-card establishment-classification">
+      <legend>Quand une réservation devient un groupe</legend>
+      <p class="estab-card-hint">S'applique en direct à la page Clients.</p>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-groupMinPax">Groupe dès (joueurs / résa)</label><input type="number" id="estab-groupMinPax" min="2" max="200" value="${Number(classification.groupMinPax || 10)}"></div>
+        <div class="field"><label for="estab-groupMinCumulative">… ou joueurs cumulés</label><input type="number" id="estab-groupMinCumulative" min="2" max="5000" value="${Number(classification.groupMinCumulative || 18)}"></div>
+      </div>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-countFormulaAsGroup" ${classification.countFormulaAsGroup !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec formule compte comme groupe</span></label>
+      <div class="estab-subsection">
+        <h4>Paliers de taille (badges groupes)</h4>
+        <div class="estab-field-row">
+          <div class="field"><label for="estab-tier-medium">Moyen dès</label><input type="number" id="estab-tier-medium" min="2" max="500" value="${Number(classTiers.medium || 12)}"></div>
+          <div class="field"><label for="estab-tier-large">Grand dès</label><input type="number" id="estab-tier-large" min="2" max="1000" value="${Number(classTiers.large || 30)}"></div>
+          <div class="field"><label for="estab-tier-xl">XL dès</label><input type="number" id="estab-tier-xl" min="2" max="2000" value="${Number(classTiers.xl || 60)}"></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Formules considérées « anniversaire »</legend>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-birthdayFromFormula" ${classification.birthdayFromFormula !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec une de ces formules est classée anniversaire (même sans le déclarer)</span></label>
+      ${formulaGrid('estab-bday', formule => birthdayFormulaIds.includes(formule.id), formule => formule.name)}
+    </fieldset>
+  </div>`;
+
+  const reglesPanel = `<div class="estab-edit-grid">
+    <fieldset class="establishment-card">
+      <legend>Moteur : bowling</legend>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-preferAdjacent" ${bowling.preferAdjacentLanes !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Préférer des pistes adjacentes pour un même groupe</span></label>
+    </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Moteur : laser</legend>
+      <div class="field"><label for="estab-laserRisk">Niveau de risque</label>
+        <select id="estab-laserRisk">
+          <option value="low" ${laserRisk === 'low' ? 'selected' : ''}>Faible</option>
+          <option value="managed" ${laserRisk === 'managed' ? 'selected' : ''}>Maîtrisé</option>
+          <option value="critical" ${laserRisk === 'critical' ? 'selected' : ''}>Critique</option>
+        </select>
+      </div>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-requiresComplete" ${laser.requiresCompleteGroupBeforeLaunch !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Exiger le groupe complet avant de lancer une partie</span></label>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-canSplit" ${laser.canSplitGroupsCleanly === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Autoriser à scinder proprement les groupes</span></label>
+    </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Ce que gère le comptoir</legend>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-booking" ${barDesk.handlesBooking !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Prise de réservation au comptoir</span></label>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-briefing" ${barDesk.handlesBriefing !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Briefing / consignes de jeu</span></label>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-food" ${barDesk.handlesFoodAndDrink !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Boissons &amp; restauration</span></label>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-bar-escort" ${barDesk.activityEscort === true ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Accompagnement pendant l'activité</span></label>
+    </fieldset>
+  </div>`;
+
+  return [
+    establishmentPanel('centre', active, centrePanel),
+    establishmentPanel('horaires', active, horairesPanel),
+    establishmentPanel('offres', active, offresPanel),
+    establishmentPanel('clients', active, clientsPanel),
+    establishmentPanel('regles', active, reglesPanel),
+  ].join('');
+}
+
+// LECTURE : meme decoupage que l'edition, pour qu'on retrouve au meme endroit ce
+// qu'on vient de modifier.
+function renderEstablishmentReadPanels(center, active) {
   const bowling = center.resources?.bowling || {};
   const laser = center.resources?.laser || {};
   const schedule = center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : {};
@@ -8026,11 +8170,11 @@ function renderEstablishmentReadView(center) {
   const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
   const customList = Array.isArray(center.customActivities) ? center.customActivities : [];
   const disabledOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] === false);
+  const activeOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] !== false);
   const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
   const classTiers = classification.sizeTiers && typeof classification.sizeTiers === 'object' ? classification.sizeTiers : {};
   const birthdayIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
   const birthdayNames = FORMULES.filter(formule => birthdayIds.includes(formule.id)).map(formule => formule.name);
-  // Champs opérationnels servis par le moteur (défauts alignés center-config.js).
   const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
   const barDesk = center.resources?.barDesk && typeof center.resources.barDesk === 'object' ? center.resources.barDesk : {};
   const timezone = center.timezone || 'Europe/Brussels';
@@ -8052,6 +8196,7 @@ function renderEstablishmentReadView(center) {
     cake: svg('<path d="M4 21h16M5 21v-7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7M5 15h14M12 12V8M12 5.5V3.5M9 8.5V6"/>'),
     tag: svg('<path d="M20.6 13.4 12 22l-9-9V4a1 1 0 0 1 1-1h9l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4"/>'),
     grid: svg('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
+    id: svg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.4"/><path d="M5.5 17c.7-1.6 2-2.4 3.5-2.4s2.8.8 3.5 2.4M15 9.5h4M15 13h4"/>'),
   };
   const stat = (ico, label, value, sub) => `<div class="estab-stat"><div class="estab-stat-top"><span class="estab-stat-ico">${ico}</span>${escapeHtml(label)}</div><div class="estab-stat-value">${escapeHtml(String(value))}</div>${sub ? `<div class="estab-stat-sub">${escapeHtml(sub)}</div>` : ''}</div>`;
   const section = (ico, title, desc, body, extra = '') => `<section class="estab-section ${extra}"><div class="estab-section-head"><span class="estab-section-ico">${ico}</span><div class="estab-section-copy"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(desc)}</p></div></div>${body}</section>`;
@@ -8063,7 +8208,7 @@ function renderEstablishmentReadView(center) {
   const weekRows = ESTABLISHMENT_DAYS.map(([key, label]) =>
     `<div class="estab-week-row"><span class="estab-week-day">${escapeHtml(label)}</span>${hourCell(regular[key], '')}${hourCell(holiday[key], 'holiday')}</div>`).join('');
 
-  return `<div class="establishment-readview">
+  const centrePanel = `<div class="estab-read-stack">
     ${section(ICO.resources, 'Ressources & capacité', 'Ce que le moteur utilise pour allouer pistes, armes et tables.', `
       <div class="estab-stat-grid">
         ${stat(ICO.pin, 'Pistes bowling', Number(bowling.laneCount || 0), '')}
@@ -8072,9 +8217,17 @@ function renderEstablishmentReadView(center) {
         ${stat(ICO.target, 'Armes laser', Number(laser.weaponCount || 0), '')}
         ${stat(ICO.bolt, 'Lancements //', Number(laser.parallelLaunches || 0), 'simultanés')}
         ${stat(ICO.cake, 'Tables anniv.', softCap, `capacité max ${hardCap}`)}
-      </div>`, 'full')}
+      </div>`)}
+    ${section(ICO.id, 'Identité', 'Ce qui identifie le centre dans la plateforme.', `
+      <div class="estab-rules">
+        ${rule('Nom', `<span>${escapeHtml(center.name)}</span>`)}
+        ${rule('Identifiant technique', `<span class="num">${escapeHtml(center.id)}</span>`, 'utilisé par le moteur et les URL')}
+        ${rule('Fuseau horaire', `<span class="num">${escapeHtml(timezone)}</span>`)}
+      </div>`)}
+  </div>`;
 
-    ${section(ICO.clock, 'Horaires d\'ouverture', 'Horaires normaux et pendant les vacances / jours fériés.', `
+  const horairesPanel = `<div class="estab-read-stack">
+    ${section(ICO.clock, "Horaires d'ouverture", 'Horaires normaux et pendant les vacances / jours fériés.', `
       <div class="estab-week">
         <div class="estab-week-head"><span>Jour</span><span>Normal</span><span>Vacances / férié</span></div>
         ${weekRows}
@@ -8083,25 +8236,25 @@ function renderEstablishmentReadView(center) {
         ${rule('Application automatique fériés & congés FWB', holidaySettings.enabled !== false ? '<span class="estab-badge on">Activée</span>' : '<span class="estab-badge off">Manuelle</span>')}
         ${rule('Formules anniversaires bloquées', blockedLabel.length ? `<span class="estab-badge warn">${escapeHtml(blockedLabel.join(', '))}</span>` : '<span class="estab-badge off">jamais</span>')}
       </div>
-      ${overrides.length ? `<div class="estab-chip-row">${overrides.map(item => `<span class="estab-tag">${escapeHtml(item.date)} · ${item.mode === 'holiday' ? 'vacances/férié' : 'jour normal'}</span>`).join('')}</div>` : ''}`, 'full')}
+      ${overrides.length ? `<div class="estab-chip-row">${overrides.map(item => `<span class="estab-tag">${escapeHtml(item.date)} · ${item.mode === 'holiday' ? 'vacances/férié' : 'jour normal'}</span>`).join('')}</div>` : ''}`)}
+    ${renderAvailabilityBlocksPanel()}
+  </div>`;
 
-    ${section(ICO.rules, 'Règles opérationnelles', 'Comportement du moteur pour le laser et le bowling.', `
+  const offresPanel = `<div class="estab-read-stack">
+    ${section(ICO.tag, 'Offres & formules', 'Formules réservables côté client.', `
       <div class="estab-rules">
-        ${rule('Groupe complet avant lancement laser', yesNo(laser.requiresCompleteGroupBeforeLaunch !== false), 'sinon départ possible en sous-groupe')}
-        ${rule('Peut scinder les groupes proprement', yesNo(laser.canSplitGroupsCleanly === true))}
-        ${rule('Niveau de risque laser', `<span class="estab-badge ${riskMeta[riskLevel][0]}">${riskMeta[riskLevel][1]}</span>`)}
-        ${rule('Pistes bowling adjacentes préférées', yesNo(bowling.preferAdjacentLanes !== false))}
-        ${rule('Fuseau horaire', `<span class="num">${escapeHtml(timezone)}</span>`)}
-      </div>`)}
+        ${rule('Formules réservables', `<span class="num">${activeOffers.length}</span> / ${FORMULES.length}`)}
+      </div>
+      ${disabledOffers.length
+        ? `<div><p class="estab-empty" style="margin-bottom:6px">Désactivées côté client :</p><div class="estab-chip-row">${disabledOffers.map(formule => `<span class="estab-tag estab-tag-off">${escapeHtml(formule.name)}</span>`).join('')}</div></div>`
+        : '<p class="estab-empty">Toutes les offres sont actives côté client.</p>'}`)}
+    ${section(ICO.grid, 'Activités disponibles', 'Catalogue proposé sur ce centre + activités personnalisées.', `
+      ${(enabled.length || customList.length)
+        ? `<div class="estab-chip-row">${enabled.map(activity => `<span class="estab-tag">${escapeHtml(activity.label)}</span>`).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
+        : '<p class="estab-empty">Aucune activité activée.</p>'}`)}
+  </div>`;
 
-    ${section(ICO.desk, 'Comptoir & bar', 'Ce que gère le comptoir sur ce centre.', `
-      <div class="estab-rules">
-        ${rule('Prise de réservation', yesNo(barDesk.handlesBooking !== false))}
-        ${rule('Briefing / consignes', yesNo(barDesk.handlesBriefing !== false))}
-        ${rule('Boissons & restauration', yesNo(barDesk.handlesFoodAndDrink !== false))}
-        ${rule('Accompagnement activité', yesNo(barDesk.activityEscort === true))}
-      </div>`)}
-
+  const clientsPanel = `<div class="estab-read-stack">
     ${section(ICO.users, 'Classification clients & groupes', 'Seuils groupe et formules « anniversaire ».', `
       <div class="estab-rules">
         ${rule('Groupe dès', `<span class="num">${Number(classification.groupMinPax || 10)}</span> joueurs / résa`, `ou ${Number(classification.groupMinCumulative || 18)} cumulés${classification.countFormulaAsGroup !== false ? ' · ou 1 formule' : ''}`)}
@@ -8109,18 +8262,33 @@ function renderEstablishmentReadView(center) {
       </div>
       ${classification.birthdayFromFormula !== false
         ? `<div><p class="estab-empty" style="margin-bottom:6px">Formules classées « anniversaire » :</p><div class="estab-chip-row">${birthdayNames.length ? birthdayNames.map(name => `<span class="estab-tag">${escapeHtml(name)}</span>`).join('') : '<span class="estab-tag">aucune</span>'}</div></div>`
-        : '<p class="estab-empty">L\'anniversaire n\'est déterminé que par l\'occasion déclarée par le client.</p>'}`, 'estab-section-accent')}
-
-    ${section(ICO.tag, 'Offres & formules', 'Formules réservables côté client.', `
-      ${disabledOffers.length
-        ? `<p class="estab-empty" style="margin-bottom:6px">Désactivées côté client :</p><div class="estab-chip-row">${disabledOffers.map(formule => `<span class="estab-tag">${escapeHtml(formule.name)}</span>`).join('')}</div>`
-        : '<p class="estab-empty">Toutes les offres sont actives côté client.</p>'}`)}
-
-    ${section(ICO.grid, 'Activités disponibles', 'Catalogue proposé sur ce centre + activités personnalisées.', `
-      ${(enabled.length || customList.length)
-        ? `<div class="estab-chip-row">${enabled.map(activity => `<span class="estab-tag">${escapeHtml(activity.label)}</span>`).join('')}${customList.map(activity => `<span class="estab-tag estab-tag-custom">${escapeHtml(activity.label)}</span>`).join('')}</div>`
-        : '<p class="estab-empty">Aucune activité activée.</p>'}`)}
+        : '<p class="estab-empty">L\'anniversaire n\'est déterminé que par l\'occasion déclarée par le client.</p>'}`)}
   </div>`;
+
+  const reglesPanel = `<div class="estab-read-stack estab-read-duo">
+    ${section(ICO.rules, 'Règles opérationnelles', 'Comportement du moteur pour le laser et le bowling.', `
+      <div class="estab-rules">
+        ${rule('Groupe complet avant lancement laser', yesNo(laser.requiresCompleteGroupBeforeLaunch !== false), 'sinon départ possible en sous-groupe')}
+        ${rule('Peut scinder les groupes proprement', yesNo(laser.canSplitGroupsCleanly === true))}
+        ${rule('Niveau de risque laser', `<span class="estab-badge ${riskMeta[riskLevel][0]}">${riskMeta[riskLevel][1]}</span>`)}
+        ${rule('Pistes bowling adjacentes préférées', yesNo(bowling.preferAdjacentLanes !== false))}
+      </div>`)}
+    ${section(ICO.desk, 'Comptoir & bar', 'Ce que gère le comptoir sur ce centre.', `
+      <div class="estab-rules">
+        ${rule('Prise de réservation', yesNo(barDesk.handlesBooking !== false))}
+        ${rule('Briefing / consignes', yesNo(barDesk.handlesBriefing !== false))}
+        ${rule('Boissons & restauration', yesNo(barDesk.handlesFoodAndDrink !== false))}
+        ${rule('Accompagnement activité', yesNo(barDesk.activityEscort === true))}
+      </div>`)}
+  </div>`;
+
+  return [
+    establishmentPanel('centre', active, centrePanel),
+    establishmentPanel('horaires', active, horairesPanel),
+    establishmentPanel('offres', active, offresPanel),
+    establishmentPanel('clients', active, clientsPanel),
+    establishmentPanel('regles', active, reglesPanel),
+  ].join('');
 }
 
 const STAFF_PERMISSION_GROUPS = [

@@ -3877,12 +3877,51 @@ body.dashboard-detail-open { overflow: hidden; }
 .establishment-status-planned { background: var(--warning-soft); color: var(--warning); }
 .establishment-status-closed { background: var(--subtle); color: var(--muted); }
 
+/* Ajouter un centre : c'etait une 4e carte au milieu des centres, on la lisait
+   comme un centre nomme « Ajouter un centre ». Carte d'action en pointilles, le
+   formulaire n'apparait qu'a la demande. */
+.establishment-add-slot { display: flex; min-width: 210px; flex: 0 1 240px; }
+.establishment-add-card {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 62px; padding: 9px 12px;
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: transparent;
+  color: var(--muted); font-family: var(--font-ui); font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.establishment-add-card:hover { border-color: var(--accent); color: var(--accent); }
+.establishment-add-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.establishment-add-plus {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; flex: none;
+  border-radius: var(--radius-full); background: var(--subtle); font-size: 16px; line-height: 1;
+}
+.establishment-add-card:hover .establishment-add-plus { background: var(--accent-soft); }
+
 .establishment-add {
-  display: grid; gap: 6px; align-content: start; min-width: 210px; flex: 0 1 240px; padding: 9px 12px;
+  display: grid; gap: 6px; align-content: start; width: 100%; padding: 9px 12px;
   border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: var(--page);
 }
+.establishment-add-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .establishment-add span { color: var(--muted); font-size: 11px; font-weight: 500; }
 .establishment-add input { height: 34px; }
+
+/* ── Configuration du centre : 5 categories, une question par onglet ──────
+   Avant : 7 sections empilees en lecture et 9 fieldsets en grille auto-fit en
+   edition (4900 px de haut, colonnes de hauteurs inegales, trous). */
+.estab-tabs { justify-self: start; }
+.estab-panel[hidden] { display: none; }
+.estab-edit-hint { color: var(--muted); font-size: 12px; margin-top: -6px; }
+.estab-read-stack, .estab-edit-stack { display: grid; gap: var(--space-4); }
+/* Les cartes d'une meme rangee ont la meme hauteur : c'est l'align-items: start
+   qui donnait l'impression de blocs poses au hasard. */
+.estab-edit-grid, .estab-read-duo {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-4); align-items: stretch;
+}
+.estab-edit-grid > .establishment-card { align-content: start; }
+/* Le panneau Blocages vit desormais DANS l'onglet Horaires : plus de double
+   cadre, il est une carte de l'onglet et non une section orpheline en bas. */
+.estab-read-stack > .availability-blocks, .estab-edit-stack > .availability-blocks {
+  margin-top: 0; padding: var(--space-5); background: var(--page);
+}
 
 .establishment-editor { display: grid; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
 .establishment-editor-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); flex-wrap: wrap; }
@@ -4108,7 +4147,9 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-week { display: grid; gap: 3px; }
 .estab-week-head, .estab-week-row { display: grid; grid-template-columns: 96px 1fr 1fr; gap: var(--space-3); align-items: center; }
 .estab-week-head { padding: 0 var(--space-3) 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 600; }
-.estab-week-row { padding: 9px var(--space-3); border-radius: var(--radius-sm); }
+/* justify-items: start, sinon la pastille d'horaire s'etire sur toute la colonne
+   et la semaine devient sept barres pleines bleues et oranges. */
+.estab-week-row { padding: 9px var(--space-3); border-radius: var(--radius-sm); justify-items: start; }
 .estab-week-row:nth-child(odd) { background: var(--surface); }
 .estab-week-day { font-size: 13px; font-weight: 550; }
 .estab-hour-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-strong); font: 550 12px var(--font-data); font-variant-numeric: tabular-nums; }

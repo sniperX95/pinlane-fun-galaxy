@@ -22,7 +22,7 @@ const arg = (name, def) => {
 
 const FPS = Number(arg('fps', 30));
 const SCALE = Number(arg('scale', 1));
-const W = 1920, H = 1080;
+const W = Number(arg('w', 1920)), H = Number(arg('h', 1080));
 const OUT_DIR = path.join(REPO, 'artifacts', 'promo-video');
 const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
 
@@ -86,7 +86,7 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
   // -- Bande-son ------------------------------------------------------------
   // Muxee si soundtrack.js a ete lance pour ce nom. -shortest evite qu'une
   // piste audio plus longue que l'image rallonge la video d'une seconde noire.
-  const wav = path.join(OUT_DIR, `${NAME}-audio.wav`);
+  const wav = arg('audio', path.join(OUT_DIR, `${NAME}-audio.wav`));
   if (fs.existsSync(wav)) {
     const withSound = path.join(OUT_DIR, `${NAME}-1080p-son.mp4`);
     execFileSync('ffmpeg', [
@@ -117,7 +117,8 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   console.log(`Web  : ${path.relative(REPO, web)} (${(fs.statSync(web).size / 1048576).toFixed(1)} Mo, 720p)`);
 
-  // Version carree 1:1, recadree au centre : format des posts LinkedIn / X.
+  // Version carree : seulement depuis un master paysage.
+  if (H <= W) {
   const square = path.join(OUT_DIR, NAME + '-1080x1080.mp4');
   execFileSync('ffmpeg', [
     '-y', '-i', mp4,
@@ -126,7 +127,8 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     square,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
-  console.log(`Carre: ${path.relative(REPO, square)} (${(fs.statSync(square).size / 1048576).toFixed(1)} Mo)`);
+  console.log(`Carre: ${path.relative(REPO, square)}`);
+  }
 
   // Poster : la miniature est souvent l'image la plus vue d'un film promo.
   // On la prend a 92 % de la duree (scene finale) quelle que soit la scene.

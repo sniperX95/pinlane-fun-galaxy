@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - ads 9:16</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1920px;overflow:hidden;background:#000}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:#000}
+
+  #glow{position:absolute;width:1500px;height:1500px;border-radius:50%;left:-210px;top:-300px;
+    background:radial-gradient(circle,rgba(50,145,255,.20),transparent 60%);filter:blur(80px);will-change:transform}
+
+  /* Les captures sont en 4320 px de large : affichees ici a 940 px, elles sont
+     sur-echantillonnees 4,6x. Zero flou, meme en plein ecran YouTube. */
+  .shot{position:absolute;left:40px;width:1000px;border-radius:24px;overflow:hidden;
+    border:1px solid #262626;background:#0a0a0a;
+    box-shadow:0 50px 140px rgba(0,0,0,.95), 0 0 0 1px rgba(255,255,255,.05);
+    will-change:transform,opacity}
+  .shot img{position:absolute;left:-26%;top:0;width:152%;display:block}
+  /* Le produit est teinte pour appartenir a l'image au lieu d'y etre colle. */
+  .shot::after{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(175deg,rgba(50,145,255,.10),transparent 40%,rgba(0,0,0,.55))}
+
+  /* Etiquette qui nomme l'ecran : le spectateur sait CE QU'IL REGARDE. */
+  .tagx{position:absolute;left:40px;font-family:var(--font-data);font-size:26px;
+    letter-spacing:.18em;text-transform:uppercase;color:#fff;
+    background:var(--accent);padding:12px 22px;border-radius:10px;white-space:nowrap;
+    box-shadow:0 14px 40px rgba(50,145,255,.5)}
+
+  #subs{position:absolute;left:50px;right:50px;top:1470px;text-align:center}
+  .w{display:inline-block;font-size:78px;line-height:1.14;font-weight:700;letter-spacing:-.038em;
+    margin:0 13px 8px 0;color:#fff;text-shadow:0 6px 34px rgba(0,0,0,.95)}
+  .w.hi{color:#59a7ff}
+  .w.win{color:#3dd68c}
+  .w.bad{color:#f75555}
+
+  .badge{position:absolute;left:50%;top:110px;transform:translateX(-50%);
+    font-family:var(--font-data);font-size:24px;letter-spacing:.34em;text-transform:uppercase;
+    color:rgba(255,255,255,.5)}
+
+  .big{position:absolute;left:0;right:0;top:560px;text-align:center}
+  .big .n{font-family:var(--font-data);font-size:150px;letter-spacing:-.05em;line-height:1;
+    color:#3dd68c;text-shadow:0 0 110px rgba(61,214,140,.5)}
+  .big .u{font-size:36px;color:rgba(255,255,255,.55);margin-top:12px}
+
+  .cta{position:absolute;left:50%;top:820px;transform:translateX(-50%);
+    background:var(--accent);color:#fff;font-size:44px;font-weight:700;letter-spacing:-.02em;
+    padding:34px 74px;border-radius:99px;white-space:nowrap;
+    box-shadow:0 30px 80px rgba(50,145,255,.6)}
+  .logo{position:absolute;left:50%;top:560px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:26px}
+  .logo .m{width:96px;height:96px;border-radius:26px;background:var(--accent);position:relative}
+  .logo .m::after{content:'';position:absolute;left:29px;top:29px;width:38px;height:38px;border-radius:10px;background:#000}
+  .logo .t{font-size:96px;font-weight:600;letter-spacing:-.045em}
+
+  #flash{position:absolute;inset:0;background:#dceaff;opacity:0;z-index:60;pointer-events:none}
+  #vig{position:absolute;inset:0;z-index:40;pointer-events:none;
+    background:radial-gradient(115% 78% at 50% 40%,transparent 50%,rgba(0,0,0,.8) 100%)}
+  #art{position:absolute;inset:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div class="badge" id="badge">Pinlane</div>
+  <div id="art"></div>
+  <div id="subs"></div>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+
+<script>
+const DUR = 15;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const eInOut = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const eBack = (x) => { const c = 2.4; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+// Cale sur les silences MESURES dans voix-15.mp3 (silencedetect) + 120 ms de
+// delai au mixage. Les sous-titres ne peuvent donc pas deriver de la voix.
+const LINES = [
+  { a: 0.12, b: 2.05, t: 'Samedi : COMPLET.', hi: ['COMPLET.'] },
+  { a: 2.15, b: 4.10, t: 'Mardi : VIDE.', bad: ['VIDE.'] },
+  { a: 4.45, b: 6.90, t: 'PERSONNE ne rappelle vos clients.', bad: ['PERSONNE'] },
+  { a: 7.15, b: 9.75, t: 'Planning, clients, relances : UN SEUL OUTIL.', hi: ['UN', 'SEUL', 'OUTIL.'] },
+  { a: 9.95, b: 12.25, t: 'Un agent qui vend et qui le PROUVE.', win: ['PROUVE.'] },
+  { a: 12.55, b: 15.0, t: 'Demandez votre demo.', hi: ['demo.'] },
+];
+
+// Un acte par idee. Coupes franches, jamais deux plans a la fois.
+const ACTS = [
+  ['plein',  0.00, 2.10],
+  ['vide',   2.10, 4.40],
+  ['perte',  4.40, 7.10],
+  ['outil',  7.10, 9.90],
+  ['preuve', 9.90, 12.50],
+  ['cta',   12.50, DUR],
+];
+const curAct = (t) => ACTS.find(([, a, b]) => t >= a && t < b) || ACTS[ACTS.length - 1];
+
+const SHOT = (n) => `../../artifacts/promo-shots/${n}.png`;
+// hauteur d'affichage = 940 * (2700/4320) pour respecter le ratio de capture
+// Hauteur d'affichage volontairement PLUS HAUTE que le ratio : l'image est
+// zoomee et recadree dedans, sinon la capture 16:10 laisse du noir partout
+// dans un cadre 9:16.
+const SH = 980;
+
+let artKey = '';
+function setArt(key, html) { if (artKey !== key) { $('art').innerHTML = html; artKey = key; } }
+
+function drawArt(t) {
+  const [key, a, b] = curAct(t);
+  const d = seg(t, a, b);
+  const inP = eQuint(seg(t, a, a + .42));
+
+  if (key === 'plein' || key === 'vide') {
+    setArt('planning', `
+      <div class="shot" id="s1" style="top:250px;height:${SH}px"><img src="${SHOT('planning')}"></div>
+      <div class="tagx" id="tg" style="top:${250 + SH + 30}px">Votre planning</div>`);
+    const s = $('s1'), img = s && s.querySelector('img');
+    if (s) {
+      s.style.opacity = inP;
+      // Zoom lent + derive : l'image n'est jamais immobile.
+      s.style.transform = `translateY(${lerp(60, 0, inP)}px) scale(${lerp(.9, 1, inP) + d * .05})`;
+    }
+    // On descend dans le planning : on voit vraiment les creneaux defiler.
+    if (img) img.style.transform = `translateY(${lerp(-6, -34, eInOut(d))}%)`;
+    const tg = $('tg');
+    if (tg) {
+      const p = seg(t, a + .25, a + .6);
+      tg.style.opacity = p;
+      tg.style.transform = `translateX(${lerp(-40, 0, eBack(p))}px)`;
+      // Le meme ecran, deux lectures : plein le samedi, vide le mardi.
+      tg.textContent = key === 'plein' ? 'Samedi - complet' : 'Mardi - 3 reservations';
+      tg.style.background = key === 'plein' ? 'var(--accent)' : '#3a1414';
+    }
+    if (s) s.style.filter = key === 'vide' ? `saturate(${lerp(1, .35, d)}) brightness(${lerp(1, .7, d)})` : 'none';
+  }
+
+  if (key === 'perte') {
+    setArt('perte', `
+      <div class="shot" id="s1" style="top:250px;height:${SH}px"><img src="${SHOT('clients')}"></div>
+      <div class="tagx" id="tg" style="top:${250 + SH + 30}px;background:#3a1414">Ils ne reviennent pas</div>`);
+    const s = $('s1'), img = s && s.querySelector('img');
+    if (s) {
+      s.style.opacity = inP;
+      s.style.transform = `translateY(${lerp(50, 0, inP)}px) scale(${lerp(.92, 1, inP) + d * .045}) rotate(${lerp(1.2, 0, inP)}deg)`;
+      s.style.filter = `saturate(${lerp(.5, .85, d)})`;
+    }
+    if (img) img.style.transform = `translateY(${lerp(-4, -26, eInOut(d))}%)`;
+    const tg = $('tg');
+    if (tg) { const p = seg(t, a + .2, a + .55); tg.style.opacity = p; tg.style.transform = `translateX(${lerp(-40, 0, eBack(p))}px)`; }
+  }
+
+  // Le coeur de la pub : les ecrans defilent vite, un par idee.
+  if (key === 'outil') {
+    const NAMES = [['reservations', 'Reservations'], ['clients', 'Clients'], ['emails', 'Emails & relances'], ['dashboard', 'Vue d ensemble']];
+    setArt('outil', NAMES.map(([n], i) => `
+      <div class="shot" id="o${i}" style="top:250px;height:${SH}px;opacity:0"><img src="${SHOT(n)}"></div>`).join('')
+      + `<div class="tagx" id="tg" style="top:${250 + SH + 30}px"></div>`);
+    const step = (b - a) / NAMES.length;
+    const idx = Math.min(NAMES.length - 1, Math.floor((t - a) / step));
+    NAMES.forEach(([, label], i) => {
+      const el = $('o' + i); if (!el) return;
+      const s0 = a + i * step, s1 = s0 + step;
+      const on = t >= s0 && t < s1;
+      el.style.opacity = on ? 1 : 0;
+      if (!on) return;
+      const p = eQuint(seg(t, s0, s0 + .26));
+      const dd = seg(t, s0, s1);
+      // Entree laterale alternee : le montage se sent, sans fondu mou.
+      const dir = i % 2 ? -1 : 1;
+      el.style.transform = `translateX(${lerp(150 * dir, 0, p)}px) scale(${lerp(.93, 1, p) + dd * .04})`;
+      const img = el.querySelector('img');
+      if (img) img.style.transform = `translateY(${lerp(-8, -22, eInOut(dd))}%)`;
+      const tg = $('tg');
+      if (tg) {
+        tg.textContent = label;
+        tg.style.background = 'var(--accent)';
+        const q = seg(t, s0 + .08, s0 + .3);
+        tg.style.opacity = q;
+        tg.style.transform = `translateX(${lerp(-30, 0, eBack(q))}px)`;
+      }
+    });
+  }
+
+  if (key === 'preuve') {
+    setArt('preuve', `
+      <div class="shot" id="s1" style="top:210px;height:760px"><img src="${SHOT('dashboard')}"></div>
+      <div class="big" style="top:1010px"><div class="n" id="pn">0</div>
+        <div class="u">genere par les relances</div></div>`);
+    const s = $('s1'), img = s && s.querySelector('img');
+    if (s) { s.style.opacity = inP; s.style.transform = `translateY(${lerp(44, 0, inP)}px) scale(${lerp(.93, 1, inP) + d * .035})`; }
+    if (img) img.style.transform = `translateY(${lerp(-6, -20, eInOut(d))}%)`;
+    const n = $('pn');
+    if (n) {
+      const p = eOut(seg(t, a + .35, a + 1.7));
+      n.textContent = Math.round(lerp(0, 2340, p)).toLocaleString('fr-FR').replace(/ | /g, ' ') + ' EUR';
+      const pop = clamp01(seg(t, a + .3, a + .62));
+      n.parentElement.style.opacity = pop;
+      n.parentElement.style.transform = `scale(${lerp(.7, 1, eBack(pop))})`;
+    }
+  }
+
+  if (key === 'cta') {
+    setArt('cta', `<div class="logo" id="lg"><div class="m"></div><div class="t">Pinlane</div></div>
+      <div class="cta" id="cb">Demandez votre demo</div>`);
+    if (t - a < .16) $('flash').style.opacity = (1 - (t - a) / .16) * .85;
+    const lg = $('lg'), cb = $('cb');
+    if (lg) { const p = eQuint(seg(t, a, a + .45)); lg.style.opacity = p; lg.style.transform = `translateX(-50%) scale(${lerp(1.5, 1, p)})`; }
+    if (cb) {
+      const p = clamp01(seg(t, a + .38, a + .78));
+      cb.style.opacity = p;
+      const br = 1 + Math.sin((t - a) * 4.6) * .028;   // respiration : l'oeil y revient
+      cb.style.transform = `translateX(-50%) scale(${lerp(.72, 1, eBack(p)) * br})`;
+    }
+  }
+}
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .1 && t < l.b + .3);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : (L.win || []).includes(w) ? ' win' : (L.bad || []).includes(w) ? ' bad' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const words = [...host.children];
+  const span = Math.max(.3, (L.b - L.a) * .6);
+  words.forEach((el, i) => {
+    // Mot a mot : l'oeil suit la voix au lieu de lire un bloc d'un coup.
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const p = clamp01(seg(t, st, st + .15));
+    el.style.opacity = Math.min(1, p * 2.6);
+    el.style.transform = `translateY(${lerp(30, 0, eBack(p))}px) scale(${lerp(.82, 1, eBack(p))})`;
+  });
+  const out = seg(t, L.b + .04, L.b + .3);
+  host.style.opacity = 1 - out;
+  host.style.transform = `translateY(${lerp(0, -26, out)}px)`;
+}
+
+function render(t) {
+  $('flash').style.opacity = 0;
+  $('glow').style.transform = `translate(${Math.sin(t * .62) * 150}px, ${Math.cos(t * .47) * 120}px) scale(${1 + Math.sin(t * .4) * .1})`;
+  $('badge').style.opacity = .5 + Math.sin(t * 1.6) * .14;
+
+  const cut = ACTS.find(([, s]) => Math.abs(t - s) < .06 && s > 0);
+  if (cut) $('flash').style.opacity = (1 - Math.abs(t - cut[1]) / .06) * .2;
+
+  drawArt(t);
+  drawSubs(t);
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

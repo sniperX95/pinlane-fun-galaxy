@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - UGC 9:16</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1080px;height:1920px;overflow:hidden;background:#000}
+  body{font-family:var(--font-ui);color:var(--text);-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:#000}
+
+  #glow{position:absolute;width:1400px;height:1400px;border-radius:50%;left:-160px;top:-260px;
+    background:radial-gradient(circle,rgba(50,145,255,.16),transparent 62%);filter:blur(80px)}
+
+  /* Zone sure : les interfaces sociales mangent le haut et le bas. Tout ce qui
+     porte du sens vit entre 300 et 1560 px. */
+  #art{position:absolute;left:0;right:0;top:250px;height:900px}
+  #subs{position:absolute;left:70px;right:70px;top:1240px;text-align:center}
+
+  /* Sous-titres UGC : gros, centres, mot par mot. C'est ce qui retient dans un
+     fil ou 85 % des vues demarrent sans le son. */
+  .w{display:inline-block;font-size:76px;line-height:1.16;font-weight:700;letter-spacing:-.035em;
+    margin:0 12px 10px 0;color:#fff;text-shadow:0 4px 28px rgba(0,0,0,.9)}
+  .w.hi{color:var(--accent)}
+  .w.win{color:#3dd68c}
+
+  .badge{position:absolute;left:50%;top:150px;transform:translateX(-50%);
+    font-family:var(--font-data);font-size:22px;letter-spacing:.3em;text-transform:uppercase;
+    color:rgba(255,255,255,.42)}
+
+  /* --- calendrier (plein / vide) --------------------------------------- */
+  .cal{position:absolute;left:90px;right:90px;top:60px;display:grid;
+    grid-template-columns:repeat(7,1fr);gap:14px}
+  .cal .d{aspect-ratio:1;border-radius:16px;background:#111;border:1px solid #262626;
+    display:flex;align-items:center;justify-content:center;font-family:var(--font-data);
+    font-size:26px;color:#555}
+  .cal .d.f{background:linear-gradient(140deg,var(--accent),#1f5fb0);border-color:transparent;color:#fff}
+  .cal .d.e{background:#0d0d0d;border-color:#222;color:#3a3a3a}
+  .cal-lb{position:absolute;left:0;right:0;top:520px;text-align:center;
+    font-family:var(--font-data);font-size:30px;letter-spacing:.2em;text-transform:uppercase}
+
+  /* --- clients qui partent ---------------------------------------------- */
+  .ppl{position:absolute;left:0;right:0;top:180px;display:flex;justify-content:center;gap:34px}
+  .p{width:110px;height:110px;border-radius:50%;background:#161616;border:2px solid #2a2a2a;
+    display:grid;place-items:center;font-size:42px;color:#666;font-weight:600}
+
+  /* --- app compacte ------------------------------------------------------ */
+  .mini{position:absolute;left:70px;right:70px;top:40px;height:820px;border-radius:26px;
+    background:var(--page);border:1px solid var(--line);overflow:hidden;
+    box-shadow:0 40px 120px rgba(0,0,0,.9)}
+  .mini-top{height:74px;border-bottom:1px solid var(--line);background:var(--surface);
+    display:flex;align-items:center;padding:0 26px;gap:14px}
+  .mini-top .lg{width:34px;height:34px;border-radius:10px;background:var(--accent);position:relative}
+  .mini-top .lg::after{content:'';position:absolute;left:11px;top:11px;width:12px;height:12px;border-radius:4px;background:var(--page)}
+  .mini-top b{font-size:20px;font-weight:600}
+  .tabs{display:flex;gap:10px;padding:20px 22px 0;flex-wrap:wrap}
+  .tab{font-size:21px;padding:12px 20px;border-radius:12px;background:var(--subtle);
+    color:var(--muted);border:1px solid var(--line)}
+  .tab.on{background:var(--accent);color:#fff;border-color:transparent;font-weight:600}
+  .rows{padding:20px 22px}
+  .row{display:flex;align-items:center;gap:16px;padding:18px 18px;border-radius:14px;
+    background:var(--surface);border:1px solid var(--line);margin-bottom:12px}
+  .row .nm{font-size:23px;font-weight:500;flex:1}
+  .row .mt{font-family:var(--font-data);font-size:19px;color:var(--muted)}
+  .row .ok{font-size:17px;padding:5px 14px;border-radius:99px;background:var(--success-soft);color:var(--success)}
+
+  /* --- compteur ---------------------------------------------------------- */
+  .big{position:absolute;left:0;right:0;top:300px;text-align:center}
+  .big .n{font-family:var(--font-data);font-size:190px;letter-spacing:-.05em;line-height:1;
+    color:#3dd68c;text-shadow:0 0 90px rgba(61,214,140,.42)}
+  .big .u{font-size:44px;color:var(--muted);margin-top:14px}
+
+  /* --- CTA --------------------------------------------------------------- */
+  .cta{position:absolute;left:50%;top:640px;transform:translateX(-50%);
+    background:var(--accent);color:#fff;font-size:38px;font-weight:600;
+    padding:28px 60px;border-radius:99px;white-space:nowrap;
+    box-shadow:0 26px 70px rgba(50,145,255,.5)}
+
+  .plan{position:absolute;inset:0;visibility:hidden;opacity:0}
+  #flash{position:absolute;inset:0;background:#dceaff;opacity:0;z-index:60;pointer-events:none}
+  #vig{position:absolute;inset:0;z-index:40;pointer-events:none;
+    background:radial-gradient(120% 80% at 50% 42%,transparent 52%,rgba(0,0,0,.75) 100%)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div class="badge" id="badge">Pinlane</div>
+  <div id="art"></div>
+  <div id="subs"></div>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+
+<script>
+const DUR = 17.6;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const eInOut = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const eBack = (x) => { const c = 2.2; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+// Phrases calees sur les silences MESURES dans la voix (silencedetect), plus
+// les 150 ms d'adelay du mixage. Les sous-titres ne peuvent donc pas deriver.
+const LINES = [
+  { a: 0.15, b: 1.74,  t: 'Le samedi, votre centre est PLEIN.', hi: ['PLEIN.'] },
+  { a: 2.08, b: 3.42,  t: 'Le mardi, il est VIDE.', hi: ['VIDE.'] },
+  { a: 3.64, b: 5.71,  t: 'Et personne ne rappelle ceux qui sont deja venus.', hi: ['personne'] },
+  { a: 6.01, b: 9.72,  t: 'Un seul outil pour vos reservations, votre planning et vos clients.', hi: ['Un', 'seul', 'outil'] },
+  { a: 10.04, b: 12.59, t: 'Un agent marketing qui relance a votre place.', hi: ['relance'] },
+  { a: 12.90, b: 14.32, t: 'Puis il vous prouve, chiffre a l appui,', hi: ['prouve,'] },
+  { a: 14.66, b: 15.76, t: 'ce que ca vous a rapporte.', win: ['rapporte.'] },
+  { a: 16.00, b: 17.6,  t: 'Demandez votre demo.', hi: ['demo.'] },
+];
+
+// Scenes visuelles, alignees sur les memes bornes.
+const ACTS = [
+  ['cal-full', 0.00, 2.00],
+  ['cal-empty', 2.00, 3.58],
+  ['people', 3.58, 5.95],
+  ['app', 5.95, 9.98],
+  ['agent', 9.98, 12.84],
+  ['proof', 12.84, 15.90],
+  ['cta', 15.90, DUR],
+];
+const curAct = (t) => ACTS.find(([, a, b]) => t >= a && t < b) || ACTS[ACTS.length - 1];
+
+// --- rendu des sous-titres, mot par mot ----------------------------------
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .12 && t < l.b + .34);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  const key = String(L.a);
+  if (subKey !== key) {
+    const words = L.t.split(' ');
+    host.innerHTML = words.map((w) => {
+      const cls = (L.hi || []).includes(w) ? ' hi' : (L.win || []).includes(w) ? ' win' : '';
+      return `<span class="w${cls}">${w}</span>`;
+    }).join('');
+    subKey = key;
+  }
+  host.style.opacity = 1;
+  const words = [...host.children];
+  const span = Math.max(.28, (L.b - L.a) * .62);
+  words.forEach((el, i) => {
+    // Chaque mot arrive a son tour : l'oeil suit la voix au lieu de lire d'un bloc.
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const p = clamp01(seg(t, st, st + .17));
+    el.style.opacity = Math.min(1, p * 2.4);
+    el.style.transform = `translateY(${lerp(26, 0, eBack(p))}px) scale(${lerp(.86, 1, eBack(p))})`;
+  });
+  // Sortie groupee, plus rapide que l'entree.
+  const out = seg(t, L.b + .06, L.b + .34);
+  host.style.opacity = 1 - out;
+  host.style.transform = `translateY(${lerp(0, -22, out)}px)`;
+}
+
+// --- visuels --------------------------------------------------------------
+let artKey = '';
+function setArt(key, html) {
+  if (artKey === key) return;
+  $('art').innerHTML = html;
+  artKey = key;
+}
+
+function drawArt(t) {
+  const [key, a, b] = curAct(t);
+  const d = seg(t, a, b);
+
+  if (key === 'cal-full' || key === 'cal-empty') {
+    const full = key === 'cal-full';
+    setArt('cal', `<div class="cal">${Array.from({ length: 21 }, (_, i) => `<div class="d" data-i="${i}">${i + 1}</div>`).join('')}</div>
+      <div class="cal-lb" id="callb"></div>`);
+    const busy = [5, 6, 12, 13, 19, 20];              // samedis / dimanches
+    const cells = [...document.querySelectorAll('.cal .d')];
+    cells.forEach((c, i) => {
+      const isW = busy.includes(i);
+      const st = a + .04 + (i % 7) * .035 + Math.floor(i / 7) * .05;
+      const p = clamp01(seg(t, st, st + .3));
+      c.style.opacity = Math.min(1, p * 2);
+      c.style.transform = `scale(${lerp(.6, 1, eBack(p))})`;
+      c.className = 'd' + (full ? (isW ? ' f' : '') : (isW ? '' : ' e'));
+    });
+    const lb = $('callb');
+    if (lb) {
+      lb.textContent = full ? 'Samedi : complet' : 'Mardi : 3 reservations';
+      lb.style.color = full ? 'var(--accent)' : '#666';
+      const lp = seg(t, a + .5, a + .9);
+      lb.style.opacity = lp;
+      lb.style.transform = `translateY(${lerp(14, 0, eOut(lp))}px)`;
+    }
+  }
+
+  if (key === 'people') {
+    setArt('people', `<div class="ppl">${['A', 'M', 'L', 'S', 'T'].map((x) => `<div class="p">${x}</div>`).join('')}</div>
+      <div class="cal-lb" style="top:400px;color:#666">Ils ne reviennent pas.</div>`);
+    [...document.querySelectorAll('.p')].forEach((el, i) => {
+      const st = a + .1 + i * .1;
+      const p = clamp01(seg(t, st, st + .34));
+      // Ils apparaissent puis s'effacent un par un : le probleme se voit.
+      const gone = clamp01(seg(t, a + 1.0 + i * .17, a + 1.5 + i * .17));
+      el.style.opacity = Math.min(1, p * 2) * (1 - gone * .88);
+      el.style.transform = `translateY(${lerp(30, 0, eBack(p)) + gone * 26}px) scale(${lerp(.7, 1, eBack(p)) * (1 - gone * .2)})`;
+      el.style.filter = `blur(${gone * 5}px)`;
+    });
+  }
+
+  if (key === 'app') {
+    setArt('app', `<div class="mini">
+      <div class="mini-top"><div class="lg"></div><b>Pinlane</b></div>
+      <div class="tabs">
+        <div class="tab" data-x="0">Planning</div><div class="tab" data-x="1">Reservations</div>
+        <div class="tab" data-x="2">Clients</div><div class="tab" data-x="3">Marketing</div></div>
+      <div class="rows">
+        <div class="row"><span class="nm">Anniversaire Lucas</span><span class="mt">15:30</span><span class="ok">12 p.</span></div>
+        <div class="row"><span class="nm">Team building Delhaize</span><span class="mt">17:00</span><span class="ok">24 p.</span></div>
+        <div class="row"><span class="nm">Famille Martin</span><span class="mt">16:00</span><span class="ok">6 p.</span></div>
+        <div class="row"><span class="nm">Ligue du jeudi</span><span class="mt">20:00</span><span class="ok">8 p.</span></div>
+      </div></div>`);
+    const mini = document.querySelector('.mini');
+    if (mini) {
+      const p = eQuint(seg(t, a, a + .5));
+      mini.style.opacity = p;
+      mini.style.transform = `translateY(${lerp(50, 0, p)}px) scale(${lerp(.94, 1, p) + d * .02})`;
+    }
+    // L'onglet actif change au rythme de la phrase : ca bouge en permanence.
+    const on = Math.min(3, Math.floor(seg(t, a + .5, b) * 4.4));
+    [...document.querySelectorAll('.tab')].forEach((el, i) => {
+      const st = a + .35 + i * .1;
+      const q = clamp01(seg(t, st, st + .26));
+      el.style.opacity = q;
+      el.style.transform = `translateY(${lerp(16, 0, eBack(q))}px)`;
+      el.className = 'tab' + (i === on ? ' on' : '');
+    });
+    [...document.querySelectorAll('.row')].forEach((el, i) => {
+      const st = a + .62 + i * .11;
+      const q = clamp01(seg(t, st, st + .3));
+      el.style.opacity = q;
+      el.style.transform = `translateX(${lerp(46, 0, eBack(q))}px)`;
+    });
+  }
+
+  if (key === 'agent') {
+    setArt('agent', `<div class="mini" style="height:640px;top:90px">
+      <div class="mini-top"><div class="lg"></div><b>Agent marketing</b></div>
+      <div style="padding:26px 26px 0">
+        <div class="row" style="display:block" id="ag1">
+          <div style="font-size:19px;color:var(--muted);margin-bottom:10px">Idee du jour</div>
+          <div style="font-size:24px;line-height:1.45">Mardi s'annonce pluvieux et les vacances commencent.
+            Tes mardis sont a 31 % : propose un tarif famille 16h-18h.</div>
+        </div>
+        <div class="row" style="display:block" id="ag2">
+          <div style="font-size:19px;color:var(--muted);margin-bottom:10px">Envoye</div>
+          <div style="font-size:24px">184 clients relances automatiquement.</div>
+        </div>
+      </div></div>`);
+    const mini = document.querySelector('.mini');
+    if (mini) {
+      const p = eQuint(seg(t, a, a + .45));
+      mini.style.opacity = p;
+      mini.style.transform = `translateY(${lerp(44, 0, p)}px) scale(${lerp(.95, 1, p) + d * .022})`;
+    }
+    ['ag1', 'ag2'].forEach((id, i) => {
+      const el = $(id); if (!el) return;
+      const q = clamp01(seg(t, a + .45 + i * .55, a + .95 + i * .55));
+      el.style.opacity = q;
+      el.style.transform = `translateY(${lerp(28, 0, eBack(q))}px)`;
+    });
+  }
+
+  if (key === 'proof') {
+    setArt('proof', `<div class="big"><div class="n" id="pn">0</div><div class="u">generes par les relances</div></div>`);
+    const n = $('pn');
+    if (n) {
+      const p = eOut(seg(t, a + .1, a + 1.5));
+      n.textContent = Math.round(lerp(0, 2340, p)).toLocaleString('fr-FR').replace(/ | /g, ' ') + ' EUR';
+      const pop = clamp01(seg(t, a, a + .35));
+      n.parentElement.style.opacity = pop;
+      n.parentElement.style.transform = `scale(${lerp(.72, 1, eBack(pop))})`;
+    }
+  }
+
+  if (key === 'cta') {
+    setArt('cta', `<div class="cta" id="ctab">Demandez votre demo</div>`);
+    const c = $('ctab');
+    if (c) {
+      const p = clamp01(seg(t, a, a + .4));
+      c.style.opacity = p;
+      // Respiration : le bouton attire l'oeil jusqu'a la derniere image.
+      const br = 1 + Math.sin((t - a) * 4.2) * .022;
+      c.style.transform = `translateX(-50%) scale(${lerp(.7, 1, eBack(p)) * br})`;
+    }
+  }
+}
+
+function render(t) {
+  $('flash').style.opacity = 0;
+  // Le fond respire en continu : jamais d'image morte.
+  $('glow').style.transform = `translate(${Math.sin(t * .5) * 130}px, ${Math.cos(t * .38) * 110}px) scale(${1 + Math.sin(t * .33) * .09})`;
+  $('badge').style.opacity = .55 + Math.sin(t * 1.4) * .12;
+
+  // Flash court a chaque bascule d'acte : rythme.
+  const cut = ACTS.find(([, s]) => Math.abs(t - s) < .07 && s > 0);
+  if (cut) $('flash').style.opacity = (1 - Math.abs(t - cut[1]) / .07) * .17;
+
+  drawArt(t);
+  drawSubs(t);
+
+  // Le cadre entier pousse legerement a chaque acte : energie constante.
+  const [, a, b] = curAct(t);
+  const d = seg(t, a, b);
+  $('art').style.transform = `scale(${1 + d * .026})`;
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

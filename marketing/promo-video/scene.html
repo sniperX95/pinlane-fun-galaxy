@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - film promo</title>
+<style>
+  /* Polices de la marque, auto-hebergees par le produit : la video parle la
+     meme langue visuelle que l'app. */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+
+  /* Palette = DESIGN.md (theme dark), aucune couleur inventee. */
+  :root{
+    --page:#000000; --surface:#0a0a0a; --raised:#111111; --subtle:#1a1a1a;
+    --line:#262626; --line-strong:#3d3d3d;
+    --text:#ededed; --muted:#a1a1a1; --faint:#7d7d7d;
+    --accent:#3291ff; --accent-strong:#52a8ff; --accent-soft:#0d2137;
+    --success:#3dd68c; --warning:#f5a623;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:var(--page)}
+  body{font-family:'Geist',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden}
+  .scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 180px;will-change:opacity,transform}
+
+  h1{font-size:104px;line-height:1.02;letter-spacing:-.045em;font-weight:600}
+  h2{font-size:64px;line-height:1.1;letter-spacing:-.035em;font-weight:600}
+  .kicker{font-family:'Geist Mono',monospace;font-size:20px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+  .sub{font-size:34px;line-height:1.4;color:var(--muted);letter-spacing:-.015em;max-width:1150px}
+  .accent{color:var(--accent)}
+  .win{color:var(--success)}
+
+  /* Vignette + grain : evite l'aplat numerique, donne de la matiere. */
+  #vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(120% 85% at 50% 45%,transparent 42%,rgba(0,0,0,.62) 100%)}
+  #grain{position:absolute;inset:-50%;pointer-events:none;opacity:.05;mix-blend-mode:overlay}
+
+  /* --- briques reutilisables ------------------------------------------- */
+  .cost-row{display:flex;align-items:center;gap:34px;margin-top:30px}
+  .cost-label{font-size:29px;color:var(--muted);width:430px;text-align:right;letter-spacing:-.01em}
+  .cost-track{position:relative;height:16px;flex:1;background:var(--subtle);border-radius:99px;overflow:hidden}
+  .cost-fill{position:absolute;inset:0;transform-origin:left center;border-radius:99px}
+  /* nowrap + largeur suffisante : sans ca "2 500 - 10 000" et "€/mois" se
+     separent sur deux lignes et le montant perd sa lisibilite d'un coup d'oeil. */
+  .cost-val{font-family:'Geist Mono',monospace;font-size:26px;width:330px;color:var(--text);white-space:nowrap;flex:0 0 330px}
+
+  .pill{display:inline-flex;align-items:center;gap:14px;padding:16px 30px;border:1px solid var(--line);
+    border-radius:99px;background:var(--raised);font-size:27px;color:var(--muted)}
+  .pill .dot{width:9px;height:9px;border-radius:99px;background:var(--accent)}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:44px 52px}
+  .card-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:26px}
+  .card-t{font-size:26px;color:var(--muted);letter-spacing:-.01em}
+  .metric{font-family:'Geist Mono',monospace;font-size:132px;letter-spacing:-.05em;line-height:1}
+  .spark{display:block;width:100%;height:120px;margin-top:26px}
+
+  .logo{display:flex;align-items:center;gap:26px}
+  .logo-mark{width:74px;height:74px;border-radius:20px;background:var(--accent);position:relative}
+  .logo-mark::after{content:'';position:absolute;left:22px;top:22px;width:30px;height:30px;border-radius:8px;background:var(--page)}
+  .logo-txt{font-size:82px;letter-spacing:-.045em;font-weight:600}
+
+  .note{position:absolute;left:180px;bottom:88px;font-family:'Geist Mono',monospace;
+    font-size:17px;color:var(--faint);letter-spacing:.05em}
+  #progress{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);width:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <!-- 1. LE PROBLEME -->
+  <section class="scene" id="s1">
+    <div class="kicker" id="s1k">Centres de loisirs</div>
+    <h1 style="margin-top:34px">Un client vient.<br><span id="s1b" style="color:var(--faint)">Puis plus rien.</span></h1>
+    <div class="sub" style="margin-top:40px" id="s1s">Le planning est plein le samedi. Le mardi est vide.<br>Personne ne rappelle ceux qui sont déjà venus.</div>
+  </section>
+
+  <!-- 2. CE QUE COUTE LE MARKETING (chiffres reels, research/07) -->
+  <section class="scene" id="s2">
+    <div class="kicker" id="s2k">Faire revenir les clients, aujourd'hui</div>
+    <h2 style="margin-top:30px;max-width:1300px" id="s2t">Il faut quelqu'un dont c'est le métier.</h2>
+    <div style="margin-top:56px">
+      <div class="cost-row" id="c1">
+        <div class="cost-label">Mi-temps community manager</div>
+        <div class="cost-track"><div class="cost-fill" style="background:var(--line-strong)"></div></div>
+        <div class="cost-val">300 - 1 500 €<span style="color:var(--faint)">/mois</span></div>
+      </div>
+      <div class="cost-row" id="c2">
+        <div class="cost-label">Agence marketing locale</div>
+        <div class="cost-track"><div class="cost-fill" style="background:var(--warning)"></div></div>
+        <div class="cost-val">2 500 - 10 000 €<span style="color:var(--faint)">/mois</span></div>
+      </div>
+    </div>
+    <div class="note" id="s2n">Fourchettes marché 2026 - retainers agences et salaires chargés.</div>
+  </section>
+
+  <!-- 3. PINLANE : L'AGENT -->
+  <section class="scene" id="s3">
+    <div class="kicker" id="s3k">Pinlane</div>
+    <h1 style="margin-top:34px;max-width:1400px" id="s3t">Un employé marketing<br>qui ne dort jamais.</h1>
+    <div style="display:flex;gap:22px;margin-top:56px" id="s3p">
+      <div class="pill"><span class="dot"></span>Météo du centre</div>
+      <div class="pill"><span class="dot"></span>Calendrier scolaire</div>
+      <div class="pill"><span class="dot"></span>Vos réservations</div>
+    </div>
+    <div class="sub" style="margin-top:44px" id="s3s">Il lit vos chiffres chaque matin, repère les creux<br>et vous propose l'offre à envoyer. Prête à publier.</div>
+  </section>
+
+  <!-- 4. LA PREUVE (le vrai differenciant) -->
+  <section class="scene" id="s4">
+    <div class="kicker" id="s4k">Ce que personne d'autre ne fait</div>
+    <h2 style="margin-top:28px" id="s4t">Il ne promet pas. <span class="win">Il prouve.</span></h2>
+    <div class="card" style="margin-top:46px;max-width:1560px" id="s4c">
+      <div class="card-h">
+        <div class="card-t">Chiffre d'affaires généré par le marketing</div>
+        <div class="card-t" style="font-family:'Geist Mono',monospace">30 derniers jours</div>
+      </div>
+      <div class="metric"><span id="s4num">0</span> <span style="font-size:64px;color:var(--muted)">€</span></div>
+      <svg class="spark" viewBox="0 0 1450 120" preserveAspectRatio="none">
+        <path id="s4path" fill="none" stroke="var(--success)" stroke-width="3.5" stroke-linecap="round"/>
+        <path id="s4area" fill="url(#g4)" opacity=".18"/>
+        <defs><linearGradient id="g4" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--success)"/><stop offset="100%" stop-color="var(--success)" stop-opacity="0"/>
+        </linearGradient></defs>
+      </svg>
+    </div>
+    <div class="note" id="s4n">Illustration du tableau de bord - chaque euro affiché est rattaché à une relance envoyée.</div>
+  </section>
+
+  <!-- 5. CLOSING -->
+  <section class="scene" id="s5" style="align-items:center;text-align:center">
+    <div class="logo" id="s5l" style="justify-content:center">
+      <div class="logo-mark"></div><div class="logo-txt">Pinlane</div>
+    </div>
+    <div class="sub" style="margin-top:38px;text-align:center;max-width:100%" id="s5s">Le marketing qui se mesure.</div>
+    <div class="kicker" style="margin-top:54px" id="s5k">Bowling - Laser game - Anniversaires</div>
+  </section>
+
+  <div id="vignette"></div>
+  <canvas id="grain" width="480" height="270"></canvas>
+  <div id="progress"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Moteur d'animation DETERMINISTE : aucune animation CSS, aucun requestAnimation
+// Frame. render(t) doit produire exactement la meme image pour un meme t, sinon
+// le rendu image par image serait instable d'une frame a l'autre.
+// ---------------------------------------------------------------------------
+const DUR = 25;                                  // duree totale, secondes
+const $ = (id) => document.getElementById(id);
+
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+// Progression locale d'un segment [a,b] du temps global.
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const lerp = (a, b, x) => a + (b - a) * x;
+
+// Apparition : monte de dy px en fondu. Le decalage (stagger) donne le rythme.
+function rise(el, t, start, dur = .7, dy = 26) {
+  if (!el) return;
+  const p = easeOut(seg(t, start, start + dur));
+  el.style.opacity = p;
+  el.style.transform = `translateY(${lerp(dy, 0, p)}px)`;
+}
+
+// Fenetre d'affichage d'une scene, avec fondu entrant/sortant.
+function scene(el, t, from, to, fade = .55) {
+  if (!el) return false;
+  const on = t >= from - fade && t <= to + fade;
+  if (!on) { el.style.opacity = 0; el.style.visibility = 'hidden'; return false; }
+  el.style.visibility = 'visible';
+  const inP = easeInOut(seg(t, from - fade, from));
+  const outP = 1 - easeInOut(seg(t, to, to + fade));
+  el.style.opacity = Math.min(inP, outP);
+  // Derive lente : la scene continue d'avancer meme a l'arret, ca evite l'effet diapo.
+  el.style.transform = `translateY(${lerp(14, -14, seg(t, from - fade, to + fade))}px)`;
+  return true;
+}
+
+const fmt = (n) => Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ');
+
+function render(t) {
+  // ---- 1. le probleme (0 -> 4.6) ----
+  if (scene($('s1'), t, 0, 4.6)) {
+    rise($('s1k'), t, 0.15);
+    rise($('s1b'), t, 0.85);
+    rise($('s1s'), t, 1.5);
+    // "Puis plus rien." s'eteint : la couleur porte le sens, pas un effet.
+    const dim = seg(t, 1.9, 3.2);
+    $('s1b').style.color = `color-mix(in srgb, var(--text) ${(1-dim)*100}%, var(--faint))`;
+  }
+
+  // ---- 2. le cout (4.6 -> 10.4) ----
+  if (scene($('s2'), t, 4.6, 10.4)) {
+    rise($('s2k'), t, 4.7);
+    rise($('s2t'), t, 5.0);
+    rise($('s2n'), t, 8.6, .8, 12);
+    // Les barres se remplissent a des vitesses differentes : l'ecart de cout se
+    // LIT dans le mouvement avant meme de lire les chiffres.
+    [['c1', 5.8, .28], ['c2', 6.4, 1]].forEach(([id, start, scale]) => {
+      const row = $(id); if (!row) return;
+      rise(row, t, start, .6, 18);
+      const p = easeOut(seg(t, start + .15, start + 1.5));
+      row.querySelector('.cost-fill').style.transform = `scaleX(${p * scale})`;
+      row.querySelector('.cost-val').style.opacity = seg(t, start + .9, start + 1.4);
+    });
+  }
+
+  // ---- 3. l'agent (10.4 -> 16.2) ----
+  if (scene($('s3'), t, 10.4, 16.2)) {
+    rise($('s3k'), t, 10.5);
+    rise($('s3t'), t, 10.8);
+    rise($('s3s'), t, 12.9);
+    const pills = $('s3p');
+    pills.style.opacity = 1;
+    [...pills.children].forEach((pill, i) => {
+      const start = 11.9 + i * .22;             // stagger : les sources arrivent l'une apres l'autre
+      const p = easeOut(seg(t, start, start + .55));
+      pill.style.opacity = p;
+      pill.style.transform = `translateY(${lerp(20, 0, p)}px) scale(${lerp(.96, 1, p)})`;
+      // La pastille s'allume quand la source est "branchee".
+      pill.querySelector('.dot').style.opacity = seg(t, start + .35, start + .8);
+    });
+  }
+
+  // ---- 4. la preuve (16.2 -> 21.6) ----
+  if (scene($('s4'), t, 16.2, 21.6)) {
+    rise($('s4k'), t, 16.3);
+    rise($('s4t'), t, 16.6);
+    rise($('s4c'), t, 17.2, .8, 34);
+    rise($('s4n'), t, 20.2, .8, 12);
+
+    // Compteur : easeOut pour qu'il "atterrisse" au lieu de s'arreter net.
+    const cp = easeOut(seg(t, 17.7, 20.4));
+    $('s4num').textContent = fmt(lerp(0, 2340, cp));
+
+    // Courbe qui se trace. Serie fixe (pas de random) : le rendu doit etre
+    // identique a chaque execution, sinon deux frames voisines divergeraient.
+    const serie = [14, 22, 18, 34, 29, 46, 41, 58, 52, 71, 66, 84, 79, 96, 104];
+    const W = 1450, H = 120, maxV = 110;
+    const pts = serie.map((v, i) => [ (i / (serie.length - 1)) * W, H - (v / maxV) * (H - 12) - 6 ]);
+    const drawn = Math.max(2, Math.round(pts.length * easeOut(seg(t, 17.9, 20.6))));
+    const sub = pts.slice(0, drawn);
+    const d = sub.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+    $('s4path').setAttribute('d', d);
+    $('s4area').setAttribute('d', `${d} L${sub[sub.length-1][0].toFixed(1)} ${H} L0 ${H} Z`);
+  }
+
+  // ---- 5. closing (21.6 -> 25) ----
+  if (scene($('s5'), t, 21.6, DUR, .5)) {
+    rise($('s5l'), t, 21.8, .9, 30);
+    rise($('s5s'), t, 22.5);
+    rise($('s5k'), t, 23.1, .8, 14);
+  }
+
+  // Barre de progression : repere discret, pas un element de design.
+  $('progress').style.width = `${(t / DUR) * 100}%`;
+}
+
+// Grain fige : genere UNE fois, sinon il scintillerait entre deux frames.
+(function grain() {
+  const c = $('grain'), x = c.getContext('2d');
+  const img = x.createImageData(c.width, c.height);
+  let s = 123456789;                              // PRNG deterministe
+  for (let i = 0; i < img.data.length; i += 4) {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    const v = s % 255;
+    img.data[i] = img.data[i+1] = img.data[i+2] = v;
+    img.data[i+3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+})();
+
+window.renderFrame = render;
+render(0);
+</script>
+</body>
+</html>

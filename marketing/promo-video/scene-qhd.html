@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - QHD 2560x1440</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:2560px;height:1440px;overflow:hidden;background:#000}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#000}
+
+  /* ===== LE PRODUIT REMPLIT LE CADRE ==================================
+     Les captures font 4320x2700 (ratio 1.6). Le cadre est en 1.777. On les
+     affiche en largeur PLEINE et on laisse deborder en hauteur : plus aucune
+     bande noire, et le sur-echantillonnage reste de 1.7x donc c'est net.
+     L'ancienne version zoomait a 152 % dans une vignette : ca recadrait au
+     hasard et ca paraissait casse. */
+  .full{position:absolute;inset:0;overflow:hidden;will-change:transform,opacity}
+  .full img{position:absolute;left:0;width:100%;display:block}
+  /* Assombrissement progressif vers le bas : le texte reste lisible sans
+     poser de bandeau opaque sur le produit. */
+  .full::after{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.10) 26%,rgba(0,0,0,.20) 52%,rgba(0,0,0,.92) 100%)}
+
+  #tint{position:absolute;inset:0;pointer-events:none;z-index:12;
+    background:radial-gradient(70% 55% at 50% 38%,rgba(50,145,255,.12),transparent 70%)}
+
+  .tagx{position:absolute;left:96px;top:96px;z-index:20;font-family:var(--font-data);
+    font-size:30px;letter-spacing:.2em;text-transform:uppercase;color:#fff;
+    background:var(--accent);padding:15px 28px;border-radius:12px;white-space:nowrap;
+    box-shadow:0 18px 50px rgba(50,145,255,.55)}
+
+  .badge{position:absolute;right:96px;top:100px;z-index:20;font-family:var(--font-data);
+    font-size:28px;letter-spacing:.36em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+
+  #subs{position:absolute;left:140px;right:140px;bottom:120px;text-align:center;z-index:22}
+  .w{display:inline-block;font-size:92px;line-height:1.1;font-weight:700;letter-spacing:-.04em;
+    margin:0 16px 6px 0;color:#fff;text-shadow:0 8px 40px rgba(0,0,0,.98)}
+  .w.hi{color:#59a7ff}
+  .w.win{color:#3dd68c}
+  .w.bad{color:#ff6b6b}
+
+  /* Chiffre : coin haut droit, il ne peut donc jamais chevaucher le texte. */
+  .kpi{position:absolute;right:110px;top:250px;z-index:21;text-align:right}
+  .kpi .n{font-family:var(--font-data);font-size:180px;letter-spacing:-.05em;line-height:1;
+    color:#3dd68c;text-shadow:0 0 120px rgba(61,214,140,.55)}
+  .kpi .u{font-size:34px;color:rgba(255,255,255,.7);margin-top:10px}
+
+  .cta{position:absolute;left:50%;top:830px;transform:translateX(-50%);z-index:22;
+    background:var(--accent);color:#fff;font-size:52px;font-weight:700;letter-spacing:-.02em;
+    padding:38px 88px;border-radius:99px;white-space:nowrap;
+    box-shadow:0 36px 100px rgba(50,145,255,.65)}
+  .logo{position:absolute;left:50%;top:520px;transform:translateX(-50%);z-index:22;
+    display:flex;align-items:center;gap:32px}
+  .logo .m{width:120px;height:120px;border-radius:32px;background:var(--accent);position:relative}
+  .logo .m::after{content:'';position:absolute;left:36px;top:36px;width:48px;height:48px;border-radius:13px;background:#000}
+  .logo .t{font-size:124px;font-weight:600;letter-spacing:-.045em}
+
+  #flash{position:absolute;inset:0;background:#dceaff;opacity:0;z-index:60;pointer-events:none}
+  #vig{position:absolute;inset:0;z-index:30;pointer-events:none;
+    background:radial-gradient(125% 90% at 50% 45%,transparent 56%,rgba(0,0,0,.72) 100%)}
+  #art{position:absolute;inset:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="art"></div>
+  <div id="tint"></div>
+  <div class="badge" id="badge">Pinlane</div>
+  <div id="subs"></div>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+
+<script>
+const DUR = 15;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const eInOut = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const eBack = (x) => { const c = 2.3; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+const LINES = [
+  { a: 0.12, b: 2.05, t: 'Samedi : COMPLET.', hi: ['COMPLET.'] },
+  { a: 2.15, b: 4.10, t: 'Mardi : VIDE.', bad: ['VIDE.'] },
+  { a: 4.45, b: 6.90, t: 'PERSONNE ne rappelle vos clients.', bad: ['PERSONNE'] },
+  { a: 7.15, b: 9.75, t: 'Planning, clients, relances : UN SEUL OUTIL.', hi: ['UN', 'SEUL', 'OUTIL.'] },
+  { a: 9.95, b: 12.25, t: 'Un agent qui vend et qui le PROUVE.', win: ['PROUVE.'] },
+  { a: 12.55, b: 15.0, t: 'Demandez votre demo.', hi: ['demo.'] },
+];
+
+const ACTS = [
+  ['plein',  0.00, 2.10],
+  ['vide',   2.10, 4.40],
+  ['perte',  4.40, 7.10],
+  ['outil',  7.10, 9.90],
+  ['preuve', 9.90, 12.50],
+  ['cta',   12.50, DUR],
+];
+const curAct = (t) => ACTS.find(([, a, b]) => t >= a && t < b) || ACTS[ACTS.length - 1];
+const SHOT = (n) => `../../artifacts/promo-shots/${n}.png`;
+// 2560 de large sur un ratio 1.6 = 1600 px de haut pour un cadre de 1440 :
+// 160 px de marge verticale a faire glisser, sans jamais montrer de vide.
+const IMG_H = Math.round(2560 * 2700 / 4320);
+const SLACK = IMG_H - 1440;
+
+let artKey = '';
+function setArt(key, html) { if (artKey !== key) { $('art').innerHTML = html; artKey = key; } }
+
+// Panoramique vertical borne : on reste TOUJOURS dans l'image.
+function pan(img, d, from, to) {
+  if (!img) return;
+  img.style.top = `${-lerp(SLACK * from, SLACK * to, eInOut(d))}px`;
+}
+
+function drawArt(t) {
+  const [key, a, b] = curAct(t);
+  const d = seg(t, a, b);
+  const inP = eQuint(seg(t, a, a + .4));
+
+  const frame = (name, tag, tagBg) => {
+    setArt(name + tag, `<div class="full" id="fl"><img src="${SHOT(name)}"></div>
+      <div class="tagx" id="tg"${tagBg ? ` style="background:${tagBg}"` : ''}>${tag}</div>`);
+    const fl = $('fl');
+    if (fl) {
+      fl.style.opacity = inP;
+      // Leger zoom continu : le plan avance meme quand l'image est fixe.
+      fl.style.transform = `scale(${lerp(1.06, 1.0, inP) + d * .035})`;
+    }
+    const tg = $('tg');
+    if (tg) {
+      const p = seg(t, a + .18, a + .5);
+      tg.style.opacity = p;
+      tg.style.transform = `translateX(${lerp(-50, 0, eBack(p))}px)`;
+    }
+    return fl && fl.querySelector('img');
+  };
+
+  if (key === 'plein') { pan(frame('planning', 'Samedi - complet'), d, .1, .55); }
+
+  if (key === 'vide') {
+    const img = frame('planning', 'Mardi - 3 reservations', '#3a1414');
+    pan(img, d, .55, 1);
+    const fl = $('fl');
+    // Desaturation progressive : le meme ecran, mais l'activite s'eteint.
+    if (fl) fl.style.filter = `saturate(${lerp(1, .25, d)}) brightness(${lerp(1, .62, d)})`;
+  }
+
+  if (key === 'perte') {
+    const img = frame('clients', 'Ils ne reviennent pas', '#3a1414');
+    pan(img, d, .15, .7);
+    const fl = $('fl');
+    if (fl) fl.style.filter = `saturate(${lerp(.4, .85, d)})`;
+  }
+
+  // Coeur de la pub : 4 ecrans qui defilent, un par sous-idee.
+  if (key === 'outil') {
+    const N = [['reservations', 'Reservations'], ['clients', 'Clients'], ['planning', 'Planning du jour'], ['dashboard', 'Vue d ensemble']];
+    setArt('outil', N.map(([n], i) => `<div class="full" id="o${i}" style="opacity:0"><img src="${SHOT(n)}"></div>`).join('')
+      + '<div class="tagx" id="tg"></div>');
+    const step = (b - a) / N.length;
+    N.forEach(([, label], i) => {
+      const el = $('o' + i); if (!el) return;
+      const s0 = a + i * step, s1 = s0 + step;
+      const on = t >= s0 && t < s1;
+      el.style.opacity = on ? 1 : 0;
+      if (!on) return;
+      const p = eQuint(seg(t, s0, s0 + .24));
+      const dd = seg(t, s0, s1);
+      // Glissement lateral alterne : la coupe se sent sans fondu mou.
+      el.style.transform = `translateX(${lerp(140 * (i % 2 ? -1 : 1), 0, p)}px) scale(${lerp(1.05, 1, p) + dd * .03})`;
+      pan(el.querySelector('img'), dd, .2, .6);
+      const tg = $('tg');
+      if (tg) {
+        tg.textContent = label;
+        tg.style.background = 'var(--accent)';
+        const q = seg(t, s0 + .06, s0 + .26);
+        tg.style.opacity = q;
+        tg.style.transform = `translateX(${lerp(-40, 0, eBack(q))}px)`;
+      }
+    });
+  }
+
+  if (key === 'preuve') {
+    setArt('preuve', `<div class="full" id="fl"><img src="${SHOT('dashboard')}"></div>
+      <div class="tagx" id="tg">Ce que ca rapporte</div>
+      <div class="kpi" id="kp"><div class="n" id="pn">0</div><div class="u">genere par les relances</div></div>`);
+    const fl = $('fl');
+    if (fl) { fl.style.opacity = inP; fl.style.transform = `scale(${lerp(1.06, 1, inP) + d * .03})`; }
+    pan(fl && fl.querySelector('img'), d, .25, .65);
+    const tg = $('tg');
+    if (tg) { const p = seg(t, a + .18, a + .5); tg.style.opacity = p; tg.style.transform = `translateX(${lerp(-50, 0, eBack(p))}px)`; }
+    const n = $('pn'), kp = $('kp');
+    if (n && kp) {
+      const p = eOut(seg(t, a + .3, a + 1.7));
+      n.textContent = Math.round(lerp(0, 2340, p)).toLocaleString('fr-FR').replace(/ | /g, ' ') + ' EUR';
+      const pop = clamp01(seg(t, a + .25, a + .6));
+      kp.style.opacity = pop;
+      kp.style.transform = `scale(${lerp(.74, 1, eBack(pop))})`;
+    }
+  }
+
+  if (key === 'cta') {
+    setArt('cta', `<div class="logo" id="lg"><div class="m"></div><div class="t">Pinlane</div></div>
+      <div class="cta" id="cb">Demandez votre demo</div>`);
+    if (t - a < .16) $('flash').style.opacity = (1 - (t - a) / .16) * .88;
+    const lg = $('lg'), cb = $('cb');
+    if (lg) { const p = eQuint(seg(t, a, a + .45)); lg.style.opacity = p; lg.style.transform = `translateX(-50%) scale(${lerp(1.45, 1, p)})`; }
+    if (cb) {
+      const p = clamp01(seg(t, a + .35, a + .75));
+      cb.style.opacity = p;
+      const br = 1 + Math.sin((t - a) * 4.4) * .026;
+      cb.style.transform = `translateX(-50%) scale(${lerp(.74, 1, eBack(p)) * br})`;
+    }
+  }
+}
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .1 && t < l.b + .3);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : (L.win || []).includes(w) ? ' win' : (L.bad || []).includes(w) ? ' bad' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const words = [...host.children];
+  const span = Math.max(.3, (L.b - L.a) * .58);
+  words.forEach((el, i) => {
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const p = clamp01(seg(t, st, st + .14));
+    el.style.opacity = Math.min(1, p * 2.8);
+    el.style.transform = `translateY(${lerp(32, 0, eBack(p))}px) scale(${lerp(.84, 1, eBack(p))})`;
+  });
+  const out = seg(t, L.b + .04, L.b + .3);
+  host.style.opacity = 1 - out;
+  host.style.transform = `translateY(${lerp(0, -28, out)}px)`;
+}
+
+function render(t) {
+  $('flash').style.opacity = 0;
+  $('badge').style.opacity = .45 + Math.sin(t * 1.6) * .14;
+  const cut = ACTS.find(([, s]) => Math.abs(t - s) < .06 && s > 0);
+  if (cut) $('flash').style.opacity = (1 - Math.abs(t - cut[1]) / .06) * .2;
+  drawArt(t);
+  drawSubs(t);
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

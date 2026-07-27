@@ -1918,11 +1918,24 @@ async function main() {
     await page.evaluate(() => setView('staff'));
     await renderStaffPage(page, 'establishment');
     await page.waitForTimeout(500);
-    const readViewState = await page.evaluate(() => ({
-      sectionTitles: Array.from(document.querySelectorAll('.estab-section h3')).map(el => el.textContent.trim()),
-      hasHolidayHours: /vacances/i.test(document.querySelector('.establishment-readview')?.textContent || ''),
-    }));
-    assert(readViewState.hasHolidayHours, 'Vue lecture Établissement : horaires vacances/fériés requis.');
+    // La page est decoupee en 5 onglets : on verifie la barre, puis on ouvre
+    // « Horaires & fermetures » comme le ferait un humain avant d'exiger d'y voir
+    // les horaires de vacances (un panneau masque ne prouve rien).
+    const readViewState = await page.evaluate(() => {
+      const visibleText = () => Array.from(document.querySelectorAll('.estab-panel'))
+        .filter(panel => !panel.hidden).map(panel => panel.textContent).join(' ');
+      const before = visibleText();
+      setEstablishmentTab('horaires');
+      return {
+        tabs: Array.from(document.querySelectorAll('.estab-tabs button')).map(el => el.textContent.trim()),
+        sectionTitles: Array.from(document.querySelectorAll('.estab-section h3')).map(el => el.textContent.trim()),
+        hasHolidayHours: /vacances/i.test(visibleText()),
+        holidayHiddenBeforeTab: !/vacances \/ férié/i.test(before),
+      };
+    });
+    assert(readViewState.tabs.length === 5, 'Vue lecture Établissement : 5 onglets de configuration requis.');
+    assert(readViewState.holidayHiddenBeforeTab, 'Vue lecture Établissement : les horaires ne doivent pas fuir hors de leur onglet.');
+    assert(readViewState.hasHolidayHours, 'Vue lecture Établissement : horaires vacances/fériés requis dans l onglet Horaires.');
     assert(readViewState.sectionTitles.some(title => /Offres/i.test(title)), 'Vue lecture Établissement : section offres requise.');
     assert(readViewState.sectionTitles.some(title => /Ressources/i.test(title)), 'Vue lecture Établissement : section ressources requise.');
     await screenshot(page, 'chantier5-establishment-read');
@@ -2303,7 +2316,7 @@ async function main() {
     await mobilePage.close();
 
     // Pages autonomes : screenshots + overflow (pas d'assertions console, hors app)
-    const standalonePages = [
+    const standalonePages = [
       ['direction', '/direction.html'],
       ['pro-landing', '/pro.html'],
     ];

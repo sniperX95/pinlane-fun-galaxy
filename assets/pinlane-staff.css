@@ -3913,9 +3913,15 @@ body.dashboard-detail-open { overflow: hidden; }
 /* Les cartes d'une meme rangee ont la meme hauteur : c'est l'align-items: start
    qui donnait l'impression de blocs poses au hasard. */
 .estab-edit-grid, .estab-read-duo {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--space-4); align-items: stretch;
 }
+/* Le nombre de colonnes est DECIDE par panneau (4 cartes -> 2x2, 3 cartes -> 3x1)
+   au lieu d'etre subi par auto-fit : c'est ce qui laissait une carte orpheline
+   seule sur sa rangee. */
+.estab-edit-grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+.estab-edit-grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.estab-read-duo { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
 .estab-edit-grid > .establishment-card { align-content: start; }
 /* Le panneau Blocages vit desormais DANS l'onglet Horaires : plus de double
    cadre, il est une carte de l'onglet et non une section orpheline en bas. */
@@ -4083,8 +4089,12 @@ body.dashboard-detail-open { overflow: hidden; }
 .estab-period-grid { display: grid; gap: 6px; }
 .estab-card-hint { color: var(--muted); font-size: 12px; margin-bottom: var(--space-2); }
 /* Champs numériques côte à côte (classification, paliers) */
-.estab-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
-.estab-field-row .field input[type='number'] { max-width: none; }
+/* align-items: end -> les champs restent alignes meme quand un libelle passe sur
+   deux lignes (« Joueurs max / piste (secours) »). */
+.estab-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: var(--space-3); align-items: end; }
+/* Un champ de 300 px pour saisir « 8 » : le max-width: none datait des colonnes
+   etroites. La cellule fait la largeur, pas le nombre. */
+.estab-field-row .field input[type='number'] { max-width: 100%; }
 /* Section Classification : léger accent pour la distinguer (nouvelle, business) */
 .establishment-classification { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
 .establishment-classification legend { color: var(--accent-strong); }
@@ -4145,7 +4155,9 @@ body.dashboard-detail-open { overflow: hidden; }
 
 /* Semaine horaires : tableau lisible */
 .estab-week { display: grid; gap: 3px; }
-.estab-week-head, .estab-week-row { display: grid; grid-template-columns: 96px 1fr 1fr; gap: var(--space-3); align-items: center; }
+/* Colonnes serrees : « normal » et « vacances » se comparent d'un coup d'oeil.
+   En 1fr 1fr, 300 px separaient les deux horaires du meme jour. */
+.estab-week-head, .estab-week-row { display: grid; grid-template-columns: 110px minmax(0, 190px) minmax(0, 190px); gap: var(--space-3); align-items: center; }
 .estab-week-head { padding: 0 var(--space-3) 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 600; }
 /* justify-items: start, sinon la pastille d'horaire s'etire sur toute la colonne
    et la semaine devient sept barres pleines bleues et oranges. */
@@ -4184,6 +4196,7 @@ body.dashboard-detail-open { overflow: hidden; }
 
 /* Activités personnalisées (tag marqué + liste éditable) */
 .estab-tag-custom { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); color: var(--accent-strong); }
+.estab-tag-off { border-style: dashed; color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-strong); }
 .estab-custom-activities-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .estab-custom-activity {
   display: inline-flex; align-items: center; gap: 8px; padding: 5px 8px 5px 12px;
@@ -4201,6 +4214,8 @@ body.dashboard-detail-open { overflow: hidden; }
 }
 
 .estab-override-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* Le champ « nom d'activite » prenait toute la largeur de l'onglet. */
+.estab-override-form input[type='text'] { height: 34px; max-width: 320px; }
 .estab-override-form input[type='date'] { height: 34px; max-width: 160px; }
 .estab-override-form input[type='date']::-webkit-calendar-picker-indicator { opacity: 0.55; }
 [data-theme='dark'] .estab-override-form input[type='date']::-webkit-calendar-picker-indicator { filter: invert(1); }

@@ -194,6 +194,10 @@ async function bootEstablishment(page) {
     state.currentDate = '2026-09-01'; // mardi normal (hors vacances)
     state.isHolidayMode = false;
     state.staffMenuPage = 'establishment';
+    // La page Etablissement est desormais decoupee en 5 onglets : les fermetures
+    // vivent sous « Horaires & fermetures ». On navigue comme un humain, sinon on
+    // testerait un panneau que personne ne voit.
+    state.establishmentTab = 'horaires';
     setView('staff');
   });
   // Panneau rendu (config chargee) puis blocages charges (liste peuplee).

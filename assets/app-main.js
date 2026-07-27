@@ -7951,7 +7951,7 @@ function renderEstablishmentEditPanels(center, active) {
     }).join('')}
   </div>`;
 
-  const centrePanel = `<div class="estab-edit-grid">
+  const centrePanel = `<div class="estab-edit-grid cols-2">
     <fieldset class="establishment-card">
       <legend>Identité</legend>
       <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
@@ -8112,7 +8112,7 @@ function renderEstablishmentEditPanels(center, active) {
     </fieldset>
   </div>`;
 
-  const reglesPanel = `<div class="estab-edit-grid">
+  const reglesPanel = `<div class="estab-edit-grid cols-3">
     <fieldset class="establishment-card">
       <legend>Moteur : bowling</legend>
       <label class="establishment-toggle"><input type="checkbox" id="estab-preferAdjacent" ${bowling.preferAdjacentLanes !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Préférer des pistes adjacentes pour un même groupe</span></label>
@@ -9461,7 +9461,7 @@ function renderAvailabilityBlocksPanel() {
     .map(lane => `<option value="${lane}">Piste ${lane}</option>`).join('');
   const activitiesOptions = activities.length
     ? activities.map(activity => `<option value="${escapeHtml(activity.id)}">${escapeHtml(activity.label)}</option>`).join('')
-    : '<option value="">Aucune activite disponible</option>';
+    : '<option value="">Aucune activité disponible</option>';
   const formulesOptions = FORMULES.map(formule => `<option value="${escapeHtml(formule.id)}">${escapeHtml(formule.name)}</option>`).join('');
   const dowOptions = [1, 2, 3, 4, 5, 6, 0]
     .map(day => `<option value="${day}">${escapeHtml(AVAILABILITY_DAY_NAMES[day].charAt(0).toUpperCase() + AVAILABILITY_DAY_NAMES[day].slice(1))}</option>`).join('');
@@ -9470,9 +9470,9 @@ function renderAvailabilityBlocksPanel() {
       <div class="availability-blocks-headline">
         <span class="estab-section-ico avb-head-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m6.3 6.3 11.4 11.4"/></svg></span>
         <div>
-          <span class="establishment-eyebrow">Disponibilites</span>
+          <span class="establishment-eyebrow">Disponibilités</span>
           <h2>Blocages &amp; fermetures</h2>
-          <p>Fermez le centre, une piste, une activite ou une formule, sur une date precise ou chaque semaine. Le moteur applique le blocage et le planning le montre. Centre concerne : <strong>${escapeHtml(centerName)}</strong>.</p>
+          <p>Fermez le centre, une piste, une activité ou une formule, sur une date précise ou chaque semaine. Le moteur applique le blocage et le planning le montre. Centre concerné : <strong>${escapeHtml(centerName)}</strong>.</p>
         </div>
       </div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="loadAvailabilityBlocks(true)">Actualiser</button>
@@ -9485,7 +9485,7 @@ function renderAvailabilityBlocksPanel() {
           <select id="avb-scope" onchange="updateAvailabilityFormVisibility()">
             <option value="center">Fermer le centre</option>
             <option value="lane">Bloquer une piste</option>
-            <option value="activity">Bloquer une activite</option>
+            <option value="activity">Bloquer une activité</option>
             <option value="formula">Bloquer une formule</option>
           </select>
         </div>
@@ -9504,7 +9504,7 @@ function renderAvailabilityBlocksPanel() {
         <div class="field">
           <label for="avb-recurrence">Quand ?</label>
           <select id="avb-recurrence" onchange="updateAvailabilityFormVisibility()">
-            <option value="once">Une date precise</option>
+            <option value="once">Une date précise</option>
             <option value="weekly">Toutes les semaines</option>
           </select>
         </div>
@@ -9526,8 +9526,8 @@ function renderAvailabilityBlocksPanel() {
           <div class="field"><label for="avb-start">De (optionnel)</label><input type="time" id="avb-start"></div>
           <div class="field"><label for="avb-end">A (optionnel)</label><input type="time" id="avb-end"></div>
         </div>
-        <p class="avb-hint">Heures vides : le blocage couvre toute la journee.</p>
-        <div class="field"><label for="avb-reason">Motif (optionnel)</label><input type="text" id="avb-reason" maxlength="200" placeholder="Ex : maintenance, evenement prive"></div>
+        <p class="avb-hint">Heures vides : le blocage couvre toute la journée.</p>
+        <div class="field"><label for="avb-reason">Motif (optionnel)</label><input type="text" id="avb-reason" maxlength="200" placeholder="Ex : maintenance, événement privé"></div>
         <button type="button" id="avbSubmit" class="btn btn-primary" onclick="submitAvailabilityBlock()">Ajouter le blocage</button>
       </fieldset>
       <div class="availability-list-wrap">

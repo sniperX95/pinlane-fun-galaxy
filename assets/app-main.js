@@ -8414,14 +8414,21 @@ const STAFF_ROLE_PRESETS = [
       'reports.export'
     ]
   },
+  // id ALIGNE sur lib/staff-auth.js : le bouton « preset » n'envoie que l'id et
+  // c'est le SERVEUR qui applique les permissions. L'id local 'maintenance' ne
+  // correspondait a rien la-bas -> « Preset introuvable » a chaque clic, sur
+  // tous les roles. Le gate staff-role-presets-check verrouille l'alignement.
   {
-    id: 'maintenance',
+    id: 'technique',
     name: 'Technique',
     code: 'TE',
-    summary: 'Pistes, laser et incidents',
+    summary: 'Accès maintenance',
     description: 'Pour signaler une piste ou une session sans accès commercial.',
     tone: 'tech',
-    permissions: ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view']
+    permissions: [
+      'dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag',
+      'reservations.view', 'settings.manage', 'ai.ops'
+    ]
   }
 ];
 
@@ -8477,19 +8484,27 @@ function ensureStaffAccessControl() {
     ? state.staffAccessControl
     : {};
   const presetRoles = STAFF_ROLE_PRESETS.map(cloneStaffRolePreset);
-  const roleMap = new Map(presetRoles.map(role => [role.id, role]));
-  (Array.isArray(current.roles) ? current.roles : []).forEach(role => {
-    if (!role || !role.id) return;
-    const preset = roleMap.get(role.id);
-    roleMap.set(role.id, {
-      ...(preset || {}),
-      ...role,
-      permissions: Array.isArray(role.permissions) ? [...new Set(role.permissions)] : (preset?.permissions || []),
-      accessCode: role.accessCode || createStaffAccessCode(role.code || role.name || 'FG'),
-      updatedAt: role.updatedAt || new Date().toISOString()
-    });
-  });
-  const roles = [...roleMap.values()];
+  const presetById = new Map(presetRoles.map(role => [role.id, role]));
+  const serverRoles = (Array.isArray(current.roles) ? current.roles : []).filter(role => role && role.id);
+  // LE SERVEUR FAIT AUTORITE sur la liste des roles. Les presets locaux sont un
+  // repli de demarrage (premiere ouverture, hors ligne), PAS un complement.
+  // Les fusionner par id ajoutait a la liste tout preset sans equivalent en
+  // base : un role qui n'existe QUE dans le navigateur, impossible a supprimer,
+  // renommer ou modifier puisque le serveur repond « Role introuvable ». C'est
+  // ce qui faisait apparaitre deux « Technique » a Fun Galaxy, dont un
+  // intouchable (preset 'maintenance', jamais cree en base).
+  const roles = serverRoles.length
+    ? serverRoles.map(role => {
+      const preset = presetById.get(role.id);
+      return {
+        ...(preset || {}),
+        ...role,
+        permissions: Array.isArray(role.permissions) ? [...new Set(role.permissions)] : (preset?.permissions || []),
+        accessCode: role.accessCode || createStaffAccessCode(role.code || role.name || 'FG'),
+        updatedAt: role.updatedAt || new Date().toISOString()
+      };
+    })
+    : presetRoles;
   // Resolution SURE de la selection : jamais un role plateforme, et la
   // selection courante est gardee tant qu'elle reste valide. A defaut, le
   // premier role visible du centre (l'ordre commence par les presets), sinon

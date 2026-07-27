@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - demo produit</title>
+<style>
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+
+  :root{
+    --page:#000; --surface:#0a0a0a; --raised:#111; --subtle:#1a1a1a;
+    --line:#262626; --line-strong:#3d3d3d;
+    --text:#ededed; --muted:#a1a1a1; --faint:#7d7d7d;
+    --accent:#3291ff; --accent-strong:#52a8ff; --success:#3dd68c; --warning:#f5a623;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:var(--page)}
+  body{font-family:'Geist',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden}
+
+  /* ---- typo ---------------------------------------------------------- */
+  .kicker{font-family:'Geist Mono',monospace;font-size:19px;letter-spacing:.24em;text-transform:uppercase;color:var(--accent)}
+  .title{font-size:76px;line-height:1.03;letter-spacing:-.042em;font-weight:600}
+  .lead{font-size:29px;line-height:1.42;color:var(--muted);letter-spacing:-.012em}
+
+  /* ---- cadre navigateur : donne le contexte "logiciel" sans decor inutile */
+  .frame{position:absolute;border-radius:16px;background:var(--surface);border:1px solid var(--line);
+    overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.03)}
+  .bar{height:44px;background:var(--raised);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;padding:0 18px;gap:9px}
+  .bar i{width:11px;height:11px;border-radius:99px;background:var(--line-strong);display:block}
+  .bar .url{margin-left:16px;font-family:'Geist Mono',monospace;font-size:14px;color:var(--faint);
+    background:var(--subtle);border-radius:7px;padding:5px 16px}
+  .shot{position:relative;overflow:hidden}
+  .shot img{position:absolute;left:0;top:0;width:100%;display:block}
+
+  /* ---- annotation : un point, une ligne, un mot ------------------------ */
+  .ann{position:absolute;display:flex;align-items:center;gap:0;pointer-events:none}
+  .ann .pt{width:14px;height:14px;border-radius:99px;background:var(--accent);flex:0 0 14px;
+    box-shadow:0 0 0 6px rgba(50,145,255,.22)}
+  .ann .ln{height:2px;background:var(--accent);transform-origin:left center}
+  .ann .lb{font-family:'Geist Mono',monospace;font-size:19px;color:var(--text);white-space:nowrap;
+    background:rgba(10,10,10,.94);border:1px solid var(--accent);border-radius:9px;padding:9px 16px;margin-left:-1px}
+
+  /* ---- tuiles de la sequence rapide ----------------------------------- */
+  .tile{position:absolute;border-radius:13px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+  .tile img{position:absolute;left:0;top:0;width:100%}
+  .tile-lb{position:absolute;left:0;right:0;bottom:0;padding:20px 22px;
+    background:linear-gradient(transparent,rgba(0,0,0,.93) 55%);font-size:23px;font-weight:600;letter-spacing:-.01em}
+
+  .chip{display:inline-flex;align-items:center;gap:11px;padding:12px 22px;border:1px solid var(--line);
+    border-radius:99px;background:var(--raised);font-size:22px;color:var(--muted);margin-right:12px}
+  .chip b{color:var(--text);font-weight:600}
+
+  /* ---- curseur simule : c'est lui qui transforme une capture en DEMO ---- */
+  #cursor{position:absolute;width:26px;height:26px;pointer-events:none;z-index:40;opacity:0;
+    filter:drop-shadow(0 3px 7px rgba(0,0,0,.85))}
+  #ripple{position:absolute;width:16px;height:16px;border-radius:99px;pointer-events:none;z-index:39;
+    border:2.5px solid var(--accent);opacity:0}
+  /* Halo pose sur la zone cliquee : montre CE QUI a ete choisi, pas seulement
+     que quelque chose a ete clique. */
+  #focus{position:absolute;border:2px solid var(--accent);border-radius:11px;pointer-events:none;z-index:38;
+    opacity:0;box-shadow:0 0 0 4px rgba(50,145,255,.16), 0 0 34px rgba(50,145,255,.30)}
+
+  #vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(125% 90% at 50% 45%,transparent 46%,rgba(0,0,0,.58) 100%)}
+  #progress{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);width:0}
+  .note{position:absolute;left:150px;bottom:64px;font-family:'Geist Mono',monospace;font-size:16px;color:var(--faint);letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- ================= 0. HOOK : mosaique qui s'assemble ================ -->
+  <section id="s0" style="position:absolute;inset:0">
+    <div id="mosaic" style="position:absolute;inset:0"></div>
+    <div id="hookTxt" style="position:absolute;inset:0;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;text-align:center;z-index:5">
+      <div class="kicker" id="h0k">Pinlane</div>
+      <div class="title" style="margin-top:22px;font-size:92px" id="h0t">Tout votre centre.<br>Un seul outil.</div>
+    </div>
+  </section>
+
+  <!-- ================= 1. LA PAGE DE RESERVATION ======================== -->
+  <section id="s1" style="position:absolute;inset:0">
+    <div style="position:absolute;left:150px;top:190px;width:600px" id="s1txt">
+      <div class="kicker" id="s1k">01 - Vos clients réservent</div>
+      <div class="title" style="margin-top:26px;font-size:66px" id="s1t">Une page de<br>réservation<br>à votre image.</div>
+      <div class="lead" style="margin-top:32px" id="s1l">Vos activités, vos formules, vos prix,<br>vos horaires. Pas un formulaire générique.</div>
+      <div style="margin-top:34px" id="s1c">
+        <span class="chip"><b>Bowling</b></span><span class="chip"><b>Laser game</b></span><span class="chip"><b>Anniversaires</b></span>
+      </div>
+    </div>
+    <div class="frame" id="s1f" style="left:820px;top:120px;width:960px;height:840px">
+      <div class="bar"><i></i><i></i><i></i><div class="url">reservation.votre-centre.be</div></div>
+      <!-- La page client est centree sur elle-meme (colonne etroite au milieu
+           d'une capture 1440) : affichee a 100 %, elle laisse deux bandes
+           noires. On zoome sur la colonne utile au lieu de montrer du vide. -->
+      <div class="shot" style="height:796px"><img id="s1img" src="../../artifacts/qa/client-booking-desktop.png" style="width:196%;left:-48%"></div>
+    </div>
+    <div class="ann" id="s1a1" style="left:0;top:0"><div class="pt"></div><div class="ln"></div><div class="lb">Vos activités et vos prix</div></div>
+  </section>
+
+  <!-- ================= 2. LE PLANNING =================================== -->
+  <section id="s2" style="position:absolute;inset:0">
+    <div style="position:absolute;left:150px;top:200px;width:560px" id="s2txt">
+      <div class="kicker" id="s2k">02 - Tout tombe au bon endroit</div>
+      <div class="title" style="margin-top:26px;font-size:66px" id="s2t">La réservation<br>prend sa piste.</div>
+      <div class="lead" style="margin-top:32px" id="s2l">Le moteur place chaque groupe sur la bonne<br>ressource, au bon créneau. Sans double-booking.</div>
+    </div>
+    <div class="frame" id="s2f" style="left:780px;top:110px;width:1000px;height:860px">
+      <div class="bar"><i></i><i></i><i></i><div class="url">Planning - aujourd'hui</div></div>
+      <div class="shot" style="height:816px"><img id="s2img" src="../../artifacts/qa/staff-planning-stress.png"></div>
+    </div>
+    <div class="ann" id="s2a1" style="left:0;top:0"><div class="pt"></div><div class="ln"></div><div class="lb">Une piste, un groupe</div></div>
+  </section>
+
+  <!-- ================= 3. PILOTER LE CENTRE (rythme rapide) ============= -->
+  <section id="s3" style="position:absolute;inset:0">
+    <div style="position:absolute;left:0;right:0;top:96px;text-align:center" id="s3h">
+      <div class="kicker" id="s3k">03 - Vous pilotez tout au même endroit</div>
+      <div class="title" style="margin-top:20px;font-size:62px" id="s3t">Un centre, six écrans.</div>
+    </div>
+    <div id="s3grid" style="position:absolute;inset:0"></div>
+  </section>
+
+  <!-- ================= 4. LA DIRECTION ================================== -->
+  <section id="s4" style="position:absolute;inset:0">
+    <div style="position:absolute;left:150px;top:210px;width:580px" id="s4txt">
+      <div class="kicker" id="s4k">04 - Et vous, vous voyez</div>
+      <div class="title" style="margin-top:26px;font-size:66px" id="s4t">Ce que ça<br>rapporte.</div>
+      <div class="lead" style="margin-top:32px" id="s4l">Le chiffre d'affaires, l'occupation, les creux,<br>et ce que chaque relance a rapporté.</div>
+      <div style="margin-top:34px" id="s4c">
+        <span class="chip"><b>CA</b></span><span class="chip"><b>Occupation</b></span><span class="chip"><b>Exports</b></span>
+      </div>
+    </div>
+    <div class="frame" id="s4f" style="left:800px;top:150px;width:980px;height:780px">
+      <div class="bar"><i></i><i></i><i></i><div class="url">Direction - vue d'ensemble</div></div>
+      <div class="shot" style="height:736px"><img id="s4img" src="../../artifacts/qa/direction-desktop.png"></div>
+    </div>
+  </section>
+
+  <!-- ================= 5. CLOSING ======================================= -->
+  <section id="s5" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+    <div id="s5l" style="display:flex;align-items:center;gap:26px">
+      <div style="width:78px;height:78px;border-radius:21px;background:var(--accent);position:relative">
+        <div style="position:absolute;left:23px;top:23px;width:32px;height:32px;border-radius:9px;background:var(--page)"></div>
+      </div>
+      <div style="font-size:88px;letter-spacing:-.045em;font-weight:600">Pinlane</div>
+    </div>
+    <div class="lead" style="margin-top:34px;font-size:34px" id="s5s">Le logiciel qui fait tourner votre centre.</div>
+    <div class="kicker" style="margin-top:46px;color:var(--faint)" id="s5k">Bowling - Laser game - Anniversaires - Groupes</div>
+  </section>
+
+  <div id="focus"></div>
+  <div id="ripple"></div>
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M5 2l14 10.5-6.2.6 3.4 6.9-2.9 1.4-3.3-6.9L5 19z"
+    fill="#fff" stroke="#0a0a0a" stroke-width="1.4" stroke-linejoin="round"/></svg>
+
+  <div id="vignette"></div>
+  <div id="progress"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Rendu DETERMINISTE : render(t) seul pilote l'image. Aucune animation CSS,
+// aucun requestAnimationFrame - sinon deux frames voisines divergeraient et la
+// video "baverait".
+// ---------------------------------------------------------------------------
+const DUR = 52;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeOutQuint = (x) => 1 - Math.pow(1 - x, 5);
+const easeInOut = (x) => x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const lerp = (a, b, x) => a + (b - a) * x;
+
+function rise(el, t, start, dur = .6, dy = 26) {
+  if (!el) return;
+  const p = easeOut(seg(t, start, start + dur));
+  el.style.opacity = p;
+  el.style.transform = `translateY(${lerp(dy, 0, p)}px)`;
+}
+
+function scene(el, t, from, to, fade = .45) {
+  if (!el) return false;
+  if (t < from - fade || t > to + fade) { el.style.opacity = 0; el.style.visibility = 'hidden'; return false; }
+  el.style.visibility = 'visible';
+  el.style.opacity = Math.min(easeInOut(seg(t, from - fade, from)), 1 - easeInOut(seg(t, to, to + fade)));
+  return true;
+}
+
+// Cadre navigateur : entree en glissement + leger scale. Le mouvement continue
+// pendant toute la scene (derive lente) pour que l'image ne soit jamais figee.
+function frameIn(el, t, start, opts = {}) {
+  if (!el) return;
+  const { dx = 90, dy = 0, from = .955, to = 1, dur = 1.0, drift = 0, until = start + 6 } = opts;
+  const p = easeOutQuint(seg(t, start, start + dur));
+  const d = seg(t, start, until);
+  const sc = lerp(from, to, p) + drift * d;
+  el.style.opacity = p;
+  el.style.transform = `translate(${lerp(dx, 0, p)}px, ${lerp(dy, 0, p) - d * 14}px) scale(${sc})`;
+}
+
+// Defilement DANS la capture : c'est ce qui donne l'impression qu'on parcourt
+// vraiment l'ecran au lieu de regarder une image fixe.
+function scrollShot(img, t, start, end, fromPct, toPct) {
+  if (!img) return;
+  const p = easeInOut(seg(t, start, end));
+  img.style.transform = `translateY(${lerp(fromPct, toPct, p)}%)`;
+}
+
+// ---- CURSEUR SIMULE -------------------------------------------------------
+// Une capture fixe montre un produit ; un curseur qui vise, clique et allume la
+// zone choisie montre qu'on S'EN SERT. C'est ce qui distingue une demo d'un
+// diaporama. Le deplacement est en easeInOut (un vrai geste accelere puis
+// ralentit), et le clic est marque par trois signaux simultanes : la fleche se
+// retracte, une onde part du point, la zone s'entoure.
+function cursorMove(t, steps) {
+  const cur = $('cursor'), rip = $('ripple'), foc = $('focus');
+  const first = steps[0], last = steps[steps.length - 1];
+  if (t < first.at - .5 || t > last.at + 2.2) { cur.style.opacity = 0; rip.style.opacity = 0; foc.style.opacity = 0; return; }
+
+  cur.style.opacity = Math.min(seg(t, first.at - .5, first.at - .1), 1 - seg(t, last.at + 1.5, last.at + 2.2));
+
+  // Position : on interpole entre l'etape courante et la suivante.
+  let x = first.x, y = first.y, clicked = null;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i], n = steps[i + 1];
+    if (t >= s.at) { x = s.x; y = s.y; if (t <= s.at + .55) clicked = s; }
+    if (n && t >= s.at && t < n.at) {
+      const p = easeInOut(seg(t, s.at + .28, n.at));   // pause avant de repartir
+      x = lerp(s.x, n.x, p); y = lerp(s.y, n.y, p);
+      break;
+    }
+  }
+  // Le clic ecrase legerement la fleche : micro-detail, mais c'est lui qui rend
+  // le geste credible.
+  const press = clicked ? Math.exp(-14 * (t - clicked.at)) : 0;
+  cur.style.transform = `translate(${x}px, ${y}px) scale(${1 - press * .22})`;
+
+  if (clicked) {
+    const p = seg(t, clicked.at, clicked.at + .75);
+    rip.style.opacity = (1 - p) * .9;
+    rip.style.left = `${x - 8}px`;
+    rip.style.top = `${y - 8}px`;
+    rip.style.transform = `scale(${lerp(1, 5.2, easeOut(p))})`;
+    if (clicked.box) {
+      const [bx, by, bw, bh] = clicked.box;
+      const fp = seg(t, clicked.at + .05, clicked.at + .4);
+      foc.style.opacity = easeOut(fp) * (1 - seg(t, clicked.at + 2.0, clicked.at + 2.6));
+      foc.style.left = `${bx}px`; foc.style.top = `${by}px`;
+      foc.style.width = `${bw}px`; foc.style.height = `${bh}px`;
+      foc.style.transform = `scale(${lerp(1.035, 1, easeOut(fp))})`;
+    }
+  } else {
+    rip.style.opacity = 0;
+  }
+}
+
+// Annotation : le point apparait, la ligne se trace, le mot arrive.
+function annotate(el, t, start, x, y, len = 150) {
+  if (!el) return;
+  const p = seg(t, start, start + .5);
+  if (p <= 0) { el.style.opacity = 0; return; }
+  el.style.opacity = Math.min(1, p * 2) * (1 - seg(t, start + 3.0, start + 3.5));
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  el.style.transform = `scale(${lerp(.88, 1, easeOut(p))})`;
+  el.querySelector('.ln').style.width = `${lerp(0, len, easeOut(seg(t, start + .18, start + .62)))}px`;
+  el.querySelector('.lb').style.opacity = seg(t, start + .5, start + .8);
+}
+
+// ---- mosaique du hook : construite une fois, animee ensuite --------------
+const MOSAIC = [
+  'staff-planning-stress', 'staff-clients-stress', 'staff-emails-stress',
+  'direction-desktop', 'client-booking-desktop', 'staff-campaigns-stress',
+  'comm-center', 'staff-groups-stress', 'staff-users',
+];
+(function buildMosaic() {
+  const host = $('mosaic');
+  MOSAIC.forEach((name, i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const d = document.createElement('div');
+    d.className = 'tile';
+    d.dataset.i = i;
+    d.style.left = `${140 + col * 560}px`;
+    d.style.top = `${60 + row * 340}px`;
+    d.style.width = '520px';
+    d.style.height = '300px';
+    d.innerHTML = `<img src="../../artifacts/qa/${name}.png" style="width:100%">`;
+    host.appendChild(d);
+  });
+})();
+
+// ---- sequence des 6 ecrans du bloc 3 ------------------------------------
+const SIX = [
+  ['staff-reservations-stress', 'Réservations', 0],
+  ['staff-clients-stress', 'Clients et groupes', -6],
+  ['staff-emails-stress', 'Emails et relances', -10],
+  ['staff-campaigns-stress', 'Marketing', 0],
+  ['staff-users', 'Équipe et accès', -14],
+  ['staff-establishment', 'Établissement', -18],
+];
+(function buildSix() {
+  const host = $('s3grid');
+  SIX.forEach(([name, label], i) => {
+    const d = document.createElement('div');
+    d.className = 'frame';
+    d.id = `six${i}`;
+    d.style.cssText = 'left:410px;top:268px;width:1100px;height:700px;opacity:0';
+    d.innerHTML = `
+      <div class="bar"><i></i><i></i><i></i><div class="url">${label}</div></div>
+      <div class="shot" style="height:656px"><img id="six${i}img" src="../../artifacts/qa/${name}.png"></div>`;
+    host.appendChild(d);
+    const lb = document.createElement('div');
+    lb.id = `six${i}lb`;
+    lb.style.cssText = 'position:absolute;left:0;right:0;top:1000px;text-align:center;font-size:34px;font-weight:600;letter-spacing:-.02em;opacity:0';
+    lb.textContent = label;
+    host.appendChild(lb);
+  });
+})();
+
+function render(t) {
+  // ===== 0. HOOK (0 -> 6.4) : la mosaique se resserre derriere le titre ====
+  if (scene($('s0'), t, 0, 6.4, .5)) {
+    const host = $('mosaic');
+    const grow = easeOutQuint(seg(t, 0, 2.6));
+    // La grille recule et s'assombrit : elle sert de decor, pas de sujet.
+    host.style.opacity = lerp(0, .5, seg(t, .15, 1.4)) * (1 - seg(t, 5.4, 6.4) * .7);
+    host.style.transform = `scale(${lerp(1.16, 1.0, grow)}) rotate(${lerp(-1.2, 0, grow)}deg)`;
+    [...host.children].forEach((tile, i) => {
+      const p = easeOut(seg(t, .1 + i * .07, .8 + i * .07));
+      tile.style.opacity = p;
+      tile.style.transform = `translateY(${lerp(34, 0, p)}px) scale(${lerp(.94, 1, p)})`;
+    });
+    rise($('h0k'), t, 1.5);
+    rise($('h0t'), t, 1.8, .8, 30);
+    // Le titre se rapproche legerement : mouvement continu, jamais fige.
+    $('hookTxt').style.transform = `scale(${lerp(1, 1.035, seg(t, 1.8, 6.4))})`;
+  }
+
+  // ===== 1. PAGE DE RESERVATION (6.4 -> 15.4) ============================
+  if (scene($('s1'), t, 6.4, 15.4)) {
+    rise($('s1k'), t, 6.5);
+    rise($('s1t'), t, 6.8, .7, 30);
+    rise($('s1l'), t, 7.6);
+    rise($('s1c'), t, 8.2);
+    frameIn($('s1f'), t, 6.7, { dx: 120, drift: .035, until: 15.4 });
+    // Parallaxe : le texte remonte plus lentement que le cadre. Deux vitesses
+    // suffisent a donner de la profondeur, sans effet 3D gadget.
+    $('s1txt').style.transform = `translateY(${lerp(0, -26, seg(t, 6.5, 15.4))}px)`;
+    // Le defilement n'est lance QU'APRES les clics : sinon le curseur viserait
+    // une zone qui a deja glisse sous lui.
+    scrollShot($('s1img'), t, 11.4, 14.6, 0, -26);
+    // Deux gestes : on choisit l'activite, puis la duree. C'est exactement le
+    // parcours que fait un vrai client.
+    // Positions relevees sur la capture reelle a scroll 0 : on remplit la date,
+    // puis le nombre de joueurs. Le defilement vers les activites vient apres.
+    cursorMove(t, [
+      { at: 8.6, x: 1150, y: 790, box: [833, 745, 455, 57] },
+      { at: 10.2, x: 1520, y: 790, box: [1310, 745, 455, 57] },
+    ]);
+    annotate($('s1a1'), t, 12.4, 1180, 430, 150);
+  }
+
+  // ===== 2. PLANNING (15.4 -> 23.8) ======================================
+  if (scene($('s2'), t, 15.4, 23.8)) {
+    rise($('s2k'), t, 15.5);
+    rise($('s2t'), t, 15.8, .7, 30);
+    rise($('s2l'), t, 16.6);
+    frameIn($('s2f'), t, 15.7, { dx: -120, drift: .04, until: 23.8 });
+    $('s2txt').style.transform = `translateY(${lerp(0, -24, seg(t, 15.6, 23.8))}px)`;
+    scrollShot($('s2img'), t, 19.6, 23.2, -4, -26);
+    // Un clic sur une case du planning : on ouvre une reservation, comme le
+    // ferait la personne a l'accueil.
+    cursorMove(t, [{ at: 17.6, x: 1120, y: 520, box: [1010, 470, 300, 96] }]);
+    annotate($('s2a1'), t, 20.6, 980, 430, 175);
+  }
+
+  // ===== 3. LES SIX ECRANS (23.8 -> 39.4) : coupes courtes ===============
+  if (scene($('s3'), t, 23.8, 39.4)) {
+    rise($('s3k'), t, 23.9);
+    rise($('s3t'), t, 24.1, .7, 24);
+    const START = 25.0, HOLD = 2.35;      // 6 x 2.35 = 14.1 s
+    SIX.forEach(([, label], i) => {
+      const a = START + i * HOLD, b = a + HOLD;
+      const el = $(`six${i}`), lb = $(`six${i}lb`);
+      const on = t >= a - .3 && t <= b + .3;
+      el.style.opacity = on ? Math.min(easeOut(seg(t, a - .3, a + .25)), 1 - easeOut(seg(t, b - .1, b + .3))) : 0;
+      lb.style.opacity = el.style.opacity;
+      if (!on) return;
+      // Chaque ecran entre par la droite et continue d'avancer : le rythme
+      // vient du mouvement, pas seulement de la coupe.
+      const p = easeOutQuint(seg(t, a - .3, a + .55));
+      const d = seg(t, a, b);
+      el.style.transform = `translateX(${lerp(150, 0, p)}px) scale(${lerp(.965, 1, p) + d * .028})`;
+      lb.style.transform = `translateY(${lerp(18, 0, p)}px)`;
+      // Defilement interne proportionnel a la hauteur reelle de la capture.
+      const off = SIX[i][2];
+      const img = $(`six${i}img`);
+      if (img) img.style.transform = `translateY(${lerp(0, off, easeInOut(d))}%)`;
+    });
+  }
+
+  // ===== 4. DIRECTION (39.4 -> 46.6) =====================================
+  if (scene($('s4'), t, 39.4, 46.6)) {
+    rise($('s4k'), t, 39.5);
+    rise($('s4t'), t, 39.8, .7, 30);
+    rise($('s4l'), t, 40.6);
+    rise($('s4c'), t, 41.2);
+    frameIn($('s4f'), t, 39.7, { dx: 110, drift: .045, until: 46.6 });
+    scrollShot($('s4img'), t, 40.6, 45.6, 0, -12);
+  }
+
+  // ===== 5. CLOSING (46.6 -> 52) =========================================
+  if (scene($('s5'), t, 46.6, DUR, .5)) {
+    rise($('s5l'), t, 46.8, .9, 30);
+    rise($('s5s'), t, 47.6);
+    rise($('s5k'), t, 48.2, .8, 16);
+  }
+
+  $('progress').style.width = `${(t / DUR) * 100}%`;
+}
+
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

@@ -24,7 +24,7 @@ const FPS = Number(arg('fps', 30));
 const SCALE = Number(arg('scale', 1));
 const W = 1920, H = 1080;
 const OUT_DIR = path.join(REPO, 'artifacts', 'promo-video');
-const FRAME_DIR = path.join(OUT_DIR, 'frames');
+const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
 
 (async () => {
   fs.rmSync(FRAME_DIR, { recursive: true, force: true });
@@ -36,17 +36,20 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames');
     deviceScaleFactor: SCALE,
   });
 
-  const url = 'file://' + path.join(__dirname, 'scene.html').replace(/\\/g, '/');
+  const SCENE = arg('scene', 'scene.html');
+  const url = 'file://' + path.join(__dirname, SCENE).replace(/\\/g, '/');
   await page.goto(url, { waitUntil: 'networkidle' });
+  // Les captures produit sont chargees en <img> : sans cette attente, les
+  // premieres frames sortiraient avec des cadres vides.
+  await page.evaluate(() => Promise.all(
+    [...document.images].filter((i) => !i.complete).map((i) => new Promise((r) => { i.onload = i.onerror = r; })),
+  ));
   // Les woff2 doivent etre pretes AVANT la premiere capture, sinon les
   // premieres frames sortent avec la police de repli.
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(400);
 
-  const DUR = await page.evaluate(() => {
-    // DUR est une const du module de scene : on la relit sans la dupliquer ici.
-    return Number(/const DUR = ([\d.]+)/.exec(document.querySelector('script:last-of-type').textContent)[1]);
-  });
+  const DUR = await page.evaluate(() => window.SCENE_DURATION || 25);
   const total = Math.round(DUR * FPS);
   console.log(`Rendu : ${DUR}s x ${FPS} fps = ${total} frames, ${W * SCALE}x${H * SCALE}`);
 
@@ -70,7 +73,8 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames');
   // -- Assemblage ------------------------------------------------------------
   // yuv420p + dimensions paires : sans ca, le fichier ne lit pas sur les
   // lecteurs materiels ni dans la plupart des apps sociales.
-  const mp4 = path.join(OUT_DIR, 'pinlane-promo-1080p.mp4');
+  const NAME = arg('out', 'pinlane-promo');
+  const mp4 = path.join(OUT_DIR, NAME + '-1080p.mp4');
   execFileSync('ffmpeg', [
     '-y', '-framerate', String(FPS),
     '-i', path.join(FRAME_DIR, 'f%05d.png'),
@@ -79,11 +83,42 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames');
     mp4,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
+  // -- Bande-son ------------------------------------------------------------
+  // Muxee si soundtrack.js a ete lance pour ce nom. -shortest evite qu'une
+  // piste audio plus longue que l'image rallonge la video d'une seconde noire.
+  const wav = path.join(OUT_DIR, `${NAME}-audio.wav`);
+  if (fs.existsSync(wav)) {
+    const withSound = path.join(OUT_DIR, `${NAME}-1080p-son.mp4`);
+    execFileSync('ffmpeg', [
+      '-y', '-i', mp4, '-i', wav,
+      '-map', '0:v:0', '-map', '1:a:0',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest',
+      '-movflags', '+faststart', withSound,
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    fs.renameSync(withSound, mp4);
+    console.log('Bande-son muxee (aac 192k)');
+  } else {
+    console.log('Pas de bande-son : lancer soundtrack.js --out ' + NAME);
+  }
+
   const sizeMb = (fs.statSync(mp4).size / 1048576).toFixed(1);
   console.log(`MP4  : ${path.relative(REPO, mp4)} (${sizeMb} Mo)`);
 
+  // Version LEGERE pour l'envoi et le web : meme image, debit plafonne. Un
+  // master a 14 Mo ne passe pas dans une messagerie ni dans un mail.
+  const web = path.join(OUT_DIR, `${NAME}-web.mp4`);
+  execFileSync('ffmpeg', [
+    '-y', '-i', mp4,
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '28',
+    '-maxrate', '900k', '-bufsize', '1800k',
+    '-vf', 'scale=1280:720:flags=lanczos',
+    '-c:a', 'aac', '-b:a', '112k',
+    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', web,
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  console.log(`Web  : ${path.relative(REPO, web)} (${(fs.statSync(web).size / 1048576).toFixed(1)} Mo, 720p)`);
+
   // Version carree 1:1, recadree au centre : format des posts LinkedIn / X.
-  const square = path.join(OUT_DIR, 'pinlane-promo-1080x1080.mp4');
+  const square = path.join(OUT_DIR, NAME + '-1080x1080.mp4');
   execFileSync('ffmpeg', [
     '-y', '-i', mp4,
     '-vf', 'crop=1080:1080:420:0',
@@ -93,10 +128,11 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames');
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   console.log(`Carre: ${path.relative(REPO, square)} (${(fs.statSync(square).size / 1048576).toFixed(1)} Mo)`);
 
-  // Poster : la premiere image d'un film promo est souvent celle qu'on voit
-  // le plus (miniature, lien partage). On prend une frame de la scene finale.
-  const poster = path.join(OUT_DIR, 'pinlane-promo-poster.png');
-  fs.copyFileSync(path.join(FRAME_DIR, `f${String(Math.round(23 * FPS)).padStart(5, '0')}.png`), poster);
+  // Poster : la miniature est souvent l'image la plus vue d'un film promo.
+  // On la prend a 92 % de la duree (scene finale) quelle que soit la scene.
+  const poster = path.join(OUT_DIR, NAME + '-poster.png');
+  const posterFrame = Math.min(total - 1, Math.round(DUR * 0.92 * FPS));
+  fs.copyFileSync(path.join(FRAME_DIR, `f${String(posterFrame).padStart(5, '0')}.png`), poster);
   console.log(`Poster: ${path.relative(REPO, poster)}`);
 })().catch((error) => {
   console.error('render: erreur', error.message);

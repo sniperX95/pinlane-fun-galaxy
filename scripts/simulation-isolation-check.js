@@ -271,6 +271,15 @@ ok(orphans.length === 0, `chaque appelant importe lib/simulation-filter${orphans
 // ALLOWLIST : seuls ces fichiers peuvent lire reservations sans predicat,
 // chacun pour une raison ECRITE. Toute autre lecture non filtree decouverte
 // dans lib/, api/ ou workers/ fait echouer le gate.
+//
+//   3. Granularite. L'allowlist est par FICHIER : elle ne sait pas decrire un
+//      module mixte. lib/platform-clients.js porte une lecture de CA (a filtrer)
+//      ET un garde-fou de suppression (a ne pas filtrer) ; l'y inscrire
+//      desarmerait la surveillance du CA. Une lecture legitimement non filtree
+//      se marque donc SUR PLACE avec `sim-unfiltered: <raison>`, ce qui met la
+//      justification a cote du SQL au lieu d'un fichier de config lointain.
+//      Le nombre de derogations est plafonne plus bas : sans plafond, le
+//      marqueur deviendrait un moyen commode de faire taire le gate.
 const UNFILTERED_ALLOWLIST = new Map([
   ['lib/database.js', 'lectures de CAPACITE (readStaffState, readAvailabilitySnapshot, listReservationsForDate), acces par id, et le delete glouton de resetSimulation ; couvert nommement par le SENS 2'],
   ['lib/simulation-filter.js', 'porte le predicat lui-meme'],
@@ -294,6 +303,7 @@ ok(discovered.length >= 20, `balayage par decouverte : arborescence de productio
 
 let scannedReads = 0;
 let scannedFiles = 0;
+let markedReads = 0;
 const offenders = [];
 for (const relative of discovered) {
   const content = fs.readFileSync(path.join(root, relative), 'utf8');
@@ -303,14 +313,26 @@ for (const relative of discovered) {
   scannedReads += reads;
   if (UNFILTERED_ALLOWLIST.has(relative)) continue;
   const exclusions = (content.match(/simulationSqlExclusion\s*\(/g) || []).length;
-  if (exclusions < reads) {
-    offenders.push(`${relative} (${reads} lecture(s) pour ${exclusions} exclusion(s))`);
+  // Derogation par LECTURE, pas par fichier. L'allowlist par fichier ne sait
+  // pas exprimer un module mixte : lib/platform-clients.js porte a la fois une
+  // lecture de CA (qui DOIT etre filtree) et un garde-fou de suppression (qui
+  // ne doit pas l'etre). Allowlister le fichier entier desarmerait la
+  // protection sur le CA - exactement l'actif que ce gate defend.
+  const markers = (content.match(/sim-unfiltered:/g) || []).length;
+  markedReads += markers;
+  if (exclusions + markers < reads) {
+    offenders.push(`${relative} (${reads} lecture(s) pour ${exclusions} exclusion(s) + ${markers} derogation(s))`);
   }
 }
 ok(scannedFiles >= 5, `plusieurs modules lisant reservations ont ete inspectes (obtenu ${scannedFiles})`);
 ok(scannedReads >= 9, `balayage sur un echantillon reel de lectures (obtenu ${scannedReads})`);
 ok(offenders.length === 0,
   `chaque lecture analytique porte AUTANT d'exclusions que de lectures${offenders.length ? ` (manquantes: ${offenders.join(' | ')})` : ''}`);
+// Plafond des derogations : un mecanisme d'exception sans limite finit par
+// vider le gate de sa substance. Au-dela de ce seuil, c'est que la regle ne
+// decrit plus le code - il faut revoir la regle, pas ajouter un marqueur.
+ok(markedReads <= 3,
+  `les derogations "sim-unfiltered" restent l'exception (obtenu ${markedReads}, plafond 3)`);
 
 // La console de simulation doit garder la vue sur ses propres lignes.
 const simContent = loadSource('lib/ops-simulation.js');

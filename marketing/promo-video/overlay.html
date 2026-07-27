@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - couche graphique</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  /* FOND TRANSPARENT : cette page est composee PAR-DESSUS la video des vraies
+     interactions. Tout ce qui est ici est de la DA Pinlane ajoutee au produit,
+     jamais un remplacement du produit. */
+  html,body{width:2560px;height:1440px;overflow:hidden;background:transparent}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden}
+
+  /* Degrade bas : rend les sous-titres lisibles sur n'importe quel ecran du
+     produit, sans poser un bandeau plein qui masquerait l'interface. */
+  #shade{position:absolute;left:0;right:0;bottom:0;height:620px;
+    background:linear-gradient(180deg,transparent,rgba(0,0,0,.55) 42%,rgba(0,0,0,.93))}
+  #shadeTop{position:absolute;left:0;right:0;top:0;height:250px;
+    background:linear-gradient(180deg,rgba(0,0,0,.75),transparent)}
+
+  .tagx{position:absolute;left:90px;top:88px;font-family:var(--font-data);
+    font-size:32px;letter-spacing:.2em;text-transform:uppercase;color:#fff;
+    background:var(--accent);padding:16px 30px;border-radius:12px;white-space:nowrap;
+    box-shadow:0 20px 56px rgba(50,145,255,.6)}
+
+  .badge{position:absolute;right:90px;top:92px;font-family:var(--font-data);
+    font-size:30px;letter-spacing:.36em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+
+  #subs{position:absolute;left:150px;right:150px;bottom:110px;text-align:center}
+  .w{display:inline-block;font-size:96px;line-height:1.08;font-weight:700;letter-spacing:-.04em;
+    margin:0 17px 4px 0;color:#fff;text-shadow:0 8px 42px rgba(0,0,0,1)}
+  .w.hi{color:#59a7ff}
+  .w.win{color:#3dd68c}
+  .w.bad{color:#ff6b6b}
+
+  /* Encadre qui suit l'action : attire l'oeil sur la zone manipulee. */
+  .ring{position:absolute;border:4px solid var(--accent);border-radius:16px;opacity:0;
+    box-shadow:0 0 0 8px rgba(50,145,255,.18), 0 0 60px rgba(50,145,255,.5)}
+
+  .kpi{position:absolute;right:110px;top:270px;text-align:right}
+  .kpi .n{font-family:var(--font-data);font-size:170px;letter-spacing:-.05em;line-height:1;
+    color:#3dd68c;text-shadow:0 0 130px rgba(61,214,140,.6)}
+  .kpi .u{font-size:36px;color:rgba(255,255,255,.75);margin-top:8px}
+
+  .cta{position:absolute;left:50%;bottom:330px;transform:translateX(-50%);
+    background:var(--accent);color:#fff;font-size:56px;font-weight:700;letter-spacing:-.02em;
+    padding:40px 92px;border-radius:99px;white-space:nowrap;
+    box-shadow:0 40px 110px rgba(50,145,255,.7)}
+  .logo{position:absolute;left:50%;bottom:560px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:34px}
+  .logo .m{width:128px;height:128px;border-radius:34px;background:var(--accent);position:relative}
+  .logo .m::after{content:'';position:absolute;left:38px;top:38px;width:52px;height:52px;border-radius:14px;background:#000}
+  .logo .t{font-size:132px;font-weight:600;letter-spacing:-.045em}
+  #endveil{position:absolute;inset:0;background:#000;opacity:0}
+
+  #flash{position:absolute;inset:0;background:#cfe2ff;opacity:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="shadeTop"></div>
+  <div id="shade"></div>
+  <div class="badge" id="badge">Pinlane</div>
+  <div class="tagx" id="tag">Planning</div>
+  <div class="ring" id="ring"></div>
+  <div class="kpi" id="kpi" style="opacity:0"><div class="n" id="kn">0</div><div class="u">genere par les relances</div></div>
+  <div id="endveil"></div>
+  <div class="logo" id="logo" style="opacity:0"><div class="m"></div><div class="t">Pinlane</div></div>
+  <div class="cta" id="cta" style="opacity:0">Demandez votre demo</div>
+  <div id="subs"></div>
+  <div id="flash"></div>
+</div>
+
+<script>
+const DUR = 15;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const eBack = (x) => { const c = 2.4; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+// Cale sur voix-15.mp3 (silences mesures) + 120 ms de delai au mixage.
+const LINES = [
+  { a: 0.12, b: 2.05, t: 'Samedi : COMPLET.', hi: ['COMPLET.'] },
+  { a: 2.15, b: 4.10, t: 'Mardi : VIDE.', bad: ['VIDE.'] },
+  { a: 4.45, b: 6.90, t: 'PERSONNE ne rappelle vos clients.', bad: ['PERSONNE'] },
+  { a: 7.15, b: 9.75, t: 'Planning, clients, relances : UN SEUL OUTIL.', hi: ['UN', 'SEUL', 'OUTIL.'] },
+  { a: 9.95, b: 12.25, t: 'Un agent qui vend et qui le PROUVE.', win: ['PROUVE.'] },
+  { a: 12.55, b: 15.0, t: 'Demandez votre demo.', hi: ['demo.'] },
+];
+
+// Etiquettes alignees sur les segments du montage (edit-ads.js).
+const TAGS = [
+  [0.0,  1.9, 'Le planning du jour'],
+  [1.9,  3.6, 'Vos clients reservent'],
+  [3.6,  5.0, 'Reservations'],
+  [5.0,  6.3, 'Clients'],
+  [6.3,  7.6, 'Emails & relances'],
+  [7.6,  9.1, 'Marketing'],
+  [9.1, 12.3, 'Une reservation, un clic'],
+];
+
+function drawTag(t) {
+  const cur = TAGS.find(([a, b]) => t >= a && t < b);
+  const el = $('tag');
+  if (!cur || t > 12.4) { el.style.opacity = 0; return; }
+  const [a, b, label] = cur;
+  el.textContent = label;
+  const inP = seg(t, a + .05, a + .3);
+  const outP = seg(t, b - .22, b);
+  el.style.opacity = inP * (1 - outP);
+  el.style.transform = `translateX(${lerp(-60, 0, eBack(inP))}px) translateY(${lerp(0, -18, outP)}px)`;
+}
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .1 && t < l.b + .3);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : (L.win || []).includes(w) ? ' win' : (L.bad || []).includes(w) ? ' bad' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const words = [...host.children];
+  const span = Math.max(.3, (L.b - L.a) * .55);
+  words.forEach((el, i) => {
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const p = clamp01(seg(t, st, st + .13));
+    el.style.opacity = Math.min(1, p * 3);
+    el.style.transform = `translateY(${lerp(34, 0, eBack(p))}px) scale(${lerp(.8, 1, eBack(p))})`;
+  });
+  const out = seg(t, L.b + .04, L.b + .3);
+  host.style.opacity = 1 - out;
+  host.style.transform = `translateY(${lerp(0, -30, out)}px)`;
+}
+
+function render(t) {
+  $('flash').style.opacity = 0;
+  $('badge').style.opacity = .45 + Math.sin(t * 1.7) * .13;
+
+  // Flash court aux bascules d'etiquette : marque la coupe du montage.
+  const cut = TAGS.find(([a]) => Math.abs(t - a) < .05 && a > 0);
+  if (cut) $('flash').style.opacity = (1 - Math.abs(t - cut[0]) / .05) * .13;
+
+  drawTag(t);
+  drawSubs(t);
+
+  // Chiffre : n'apparait que sur la phrase qui parle de resultat.
+  const kpi = $('kpi'), kn = $('kn');
+  const kp = clamp01(seg(t, 9.95, 10.35)) * (1 - clamp01(seg(t, 12.1, 12.4)));
+  kpi.style.opacity = kp;
+  if (kp > 0) {
+    const p = eOut(seg(t, 10.0, 11.5));
+    kn.textContent = Math.round(lerp(0, 2340, p)).toLocaleString('fr-FR').replace(/ | /g, ' ') + ' EUR';
+    kpi.style.transform = `scale(${lerp(.76, 1, eBack(clamp01(seg(t, 9.95, 10.35))))})`;
+  }
+
+  // Fin : on couvre le produit et on ferme sur la marque.
+  const endP = clamp01(seg(t, 12.45, 12.85));
+  $('endveil').style.opacity = endP * .96;
+  const lg = $('logo'), cb = $('cta');
+  const lp = clamp01(seg(t, 12.6, 13.1));
+  lg.style.opacity = lp;
+  lg.style.transform = `translateX(-50%) scale(${lerp(1.4, 1, eQuint(lp))})`;
+  const cp = clamp01(seg(t, 13.0, 13.45));
+  cb.style.opacity = cp;
+  const br = 1 + Math.sin(t * 4.6) * .025;
+  cb.style.transform = `translateX(-50%) scale(${lerp(.74, 1, eBack(cp)) * br})`;
+  if (t > 12.5) { $('shade').style.opacity = 0; $('shadeTop').style.opacity = 0; }
+  else { $('shade').style.opacity = 1; $('shadeTop').style.opacity = 1; }
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

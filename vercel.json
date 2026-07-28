@@ -1,7 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "regions": ["fra1"],
+  "regions": [
+    "fra1"
+  ],
   "functions": {
     "api/marketing-agents.js": {
       "maxDuration": 60
@@ -28,6 +30,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/demo",
+      "destination": "/index.html"
+    },
     {
       "source": "/reserver",
       "destination": "/index.html"

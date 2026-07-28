@@ -161,6 +161,10 @@ export default async function middleware(request: Request) {
     '/reserver',
     '/robots.txt',
     '/sitemap.xml',
+    // Mode demonstration public de la vitrine : la VRAIE application, avec des
+    // donnees fabriquees cote navigateur (assets/demo-mode.js coupe le reseau,
+    // aucun appel /api/ ne quitte le navigateur).
+    '/demo',
     // Le script d'installation est charge par le SITE DU CLIENT : il doit
     // etre lisible sans identifiants, comme le parcours qu'il embarque.
     '/embed.js',

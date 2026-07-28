@@ -3082,27 +3082,9 @@ body.modal-open { overflow: hidden; }
 /* ── Demande particulière ───────────────────────────────────────────────────
    Le champ grandit à la frappe (JS), donc AUCUNE poignée de redimensionnement :
    elle était le seul indice que le texte pouvait être long, et elle donnait à
-   la zone un air d'ébauche. Les suggestions au-dessus donnent le premier mot ;
-   le compteur ne paraît qu'en approche de la limite. */
-.request-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
-.request-chip {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
-  background: var(--surface);
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background-color var(--dur) var(--ease);
-}
-@media (hover: hover) {
-  .request-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-}
-.request-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
+   la zone un air d'ébauche. Le compteur ne paraît qu'en approche de la limite.
+   (Les suggestions cliquables ont été retirées le 2026-07-28 : elles
+   proposaient des services que le centre ne rend pas.) */
 .request-box { position: relative; }
 .request-field textarea.input {
   resize: none;

@@ -4067,10 +4067,11 @@ function setBookingOccasionOther(value) {
 // ── Champ « Demande particuliere » ─────────────────────────────────────────
 // Une zone de texte vide ne dit pas quoi ecrire, et sa poignee de
 // redimensionnement est le seul indice que le texte peut etre long. Ici : le
-// champ grandit tout seul a la frappe (aucune poignee), le compteur ne
-// s affiche qu en approche de la limite (un compteur permanent met la
-// pression pour rien), et les suggestions donnent le premier mot - c est la
-// partie difficile pour un client.
+// champ grandit tout seul a la frappe (aucune poignee) et le compteur ne
+// s affiche qu en approche de la limite (un compteur permanent met la pression
+// pour rien). L exemple du placeholder porte le reste du travail : il montre
+// une demande que le centre peut REELLEMENT traiter (deposer un gateau au
+// frais), pas un service qu il ne rend pas.
 const SPECIAL_REQUEST_MAX = 500;
 
 function autoGrowSpecialRequest(field) {
@@ -4088,25 +4089,6 @@ function handleSpecialRequestInput(field) {
   const showFrom = SPECIAL_REQUEST_MAX - 120;
   counter.textContent = used >= showFrom ? `${used} / ${SPECIAL_REQUEST_MAX}` : "";
   counter.classList.toggle('is-close', used >= SPECIAL_REQUEST_MAX - 20);
-}
-
-// Suggestion cliquee : on AJOUTE au texte existant sans jamais l ecraser, et
-// on rend le curseur au client pour qu il complete sa phrase.
-function addSpecialRequestHint(text) {
-  const field = document.getElementById('fSpecialRequest');
-  if (!field) return;
-  const current = String(field.value || "").trim();
-  const addition = String(text || "").trim();
-  if (!addition) return;
-  if (current.toLowerCase().includes(addition.toLowerCase())) {
-    field.focus();
-    return;
-  }
-  const joined = current ? `${current}, ${addition}` : addition;
-  field.value = joined.slice(0, SPECIAL_REQUEST_MAX);
-  handleSpecialRequestInput(field);
-  field.focus();
-  try { field.setSelectionRange(field.value.length, field.value.length); } catch (error) { /* champ non focusable */ }
 }
 
 // Crée un LEAD (hors planning), pas une réservation. POST /api/custom-request.

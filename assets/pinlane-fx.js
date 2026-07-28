@@ -27,6 +27,19 @@
 (function () {
   'use strict';
 
+  // Le canvas est-il encore a l'ecran ? `offsetParent === null` est le test
+  // habituel, mais il vaut TOUJOURS null pour un element en `position: fixed`
+  // (specification). En passant la trame en fond plein ecran, ce test a donc
+  // coupe la boucle des la premiere image : le fond peignait une fois puis
+  // restait fige. Mesure : trois captures a une seconde d'intervalle,
+  // identiques octet pour octet. On teste desormais la BOITE : un ancetre en
+  // display:none (page staff masquee) donne un rectangle nul, ce qui coupe la
+  // boucle comme voulu.
+  function isLive(node) {
+    if (!node || !node.isConnected) return false;
+    const box = node.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
+  }
   const FRAME_MS = 32;           // ~30 fps : fluide, sobre en CPU/GPU
   const reduced = typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -86,6 +99,7 @@ uniform vec3 uColorB;
 uniform vec2 uMouse;      // position du curseur en pixels de canvas (-1 = absent)
 uniform float uMouseOn;   // fondu de presence 0..1 : l'entree et la sortie sont douces
 uniform float uMouseR;    // rayon d'influence en pixels de canvas
+uniform float uDrift;     // amplitude de la derive du plan d'echantillonnage
 out vec4 fragColor;
 
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -154,7 +168,17 @@ void main() {
   // Le champ se creuse legerement autour du pointeur : la matiere reagit a la
   // main, elle ne se contente pas de briller.
   vec2 warp = uResolution.x > 0.0 ? (center - uMouse) / uResolution : vec2(0.0);
-  float gray = abs(snoise(vec3(p * uFreq + warp * infl * 0.9, uTime * uSpeed)));
+  // MOUVEMENT. Faire evoluer le bruit sur son seul axe z fait PULSER les points
+  // sur place : de loin, ca se lit comme une image fixe. On ajoute donc une
+  // DERIVE du plan d'echantillonnage : le motif traverse l'ecran au lieu de
+  // respirer. Deux harmoniques de periodes incommensurables (0.31/0.13 et
+  // 0.27/0.11) : la trajectoire ne boucle pas a l'oeil, le mouvement parait
+  // aleatoire alors qu'il reste parfaitement deterministe (donc reproductible
+  // et sans etat a garder d'une image a l'autre).
+  float t = uTime * uSpeed;
+  vec2 drift = vec2(sin(t * 0.31) + 0.6 * sin(t * 0.13 + 1.7),
+                    cos(t * 0.27) + 0.6 * cos(t * 0.11 + 0.4)) * uDrift;
+  float gray = abs(snoise(vec3(p * uFreq + drift + warp * infl * 0.9, t)));
   gray = pow(clamp(gray, 0.0001, 1.0), uGamma);
 
   vec2 cellUv = fract(pix / cell) - 0.5;
@@ -212,7 +236,7 @@ void main() {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     const u = {};
-    ['uResolution', 'uTime', 'uCell', 'uFreq', 'uSpeed', 'uGamma', 'uBias', 'uAlpha', 'uColorA', 'uColorB', 'uMouse', 'uMouseOn', 'uMouseR']
+    ['uResolution', 'uTime', 'uCell', 'uFreq', 'uSpeed', 'uGamma', 'uBias', 'uAlpha', 'uColorA', 'uColorB', 'uMouse', 'uMouseOn', 'uMouseR', 'uDrift']
       .forEach((name) => { u[name] = gl.getUniformLocation(program, name); });
 
     const state = {
@@ -267,7 +291,7 @@ void main() {
 
     function frame(now) {
       if (state.stopped) return;
-      if (!canvas.isConnected || canvas.offsetParent === null) { stop(); return; }
+      if (!isLive(canvas)) { stop(); return; }
       state.raf = requestAnimationFrame(frame);
       if (now - state.last < FRAME_MS) return;
       state.last = now;
@@ -320,6 +344,7 @@ void main() {
     gl.uniform1f(u.uSpeed, opts.speed != null ? opts.speed : 0.16);
     gl.uniform1f(u.uGamma, opts.gamma != null ? opts.gamma : 3.4);
     gl.uniform1f(u.uBias, opts.bias != null ? opts.bias : -0.16);
+    gl.uniform1f(u.uDrift, opts.drift != null ? opts.drift : 0.45);
     gl.uniform1f(u.uMouseOn, 0);
     gl.uniform2f(u.uMouse, -9999, -9999);
     readTheme();
@@ -466,7 +491,7 @@ void main() {
 
     function frame(now) {
       if (state.stopped) return;
-      if (!canvas.isConnected || canvas.offsetParent === null) { stop(); return; }
+      if (!isLive(canvas)) { stop(); return; }
       state.raf = requestAnimationFrame(frame);
       if (now - state.last < FRAME_MS) return;
       state.last = now;

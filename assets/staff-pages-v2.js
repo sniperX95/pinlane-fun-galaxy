@@ -5439,7 +5439,7 @@
     let canvas = document.getElementById('mkwDots');
     if (!canvas) return;
     if (typeof window.plFxHalftone === 'function') {
-      mkwFxStop = window.plFxHalftone(canvas, { cell: 10, frequency: 5, speed: 0.2, gamma: 2, bias: 0, mouseRadius: 170, alpha: 0.42 });
+      mkwFxStop = window.plFxHalftone(canvas, { cell: 10, frequency: 5, speed: 0.5, gamma: 2, bias: 0, drift: 0.5, mouseRadius: 170, alpha: 0.42 });
       if (mkwFxStop) { mkwDots.canvas = null; return; }
       // Echec APRES la prise du contexte (shader refuse) : ce noeud est marque
       // « webgl » a vie, getContext('2d') y rendrait null et la page perdrait

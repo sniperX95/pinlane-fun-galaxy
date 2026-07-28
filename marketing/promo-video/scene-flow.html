@@ -222,7 +222,7 @@ const PLANS = [
     chips: [{ x: 120, y: 560, t: 'Panier moyen' }, { x: 2120, y: 560, t: 'Visites' }] },
   // Dernier plan : la carte s'eloigne en douceur, la marque prend la place.
   { k: 'a8', a: 22.93, clip: 'staff',  fen: FEN.clients,
-    box: [1010, 690, 1560, 878], ry: 16, rx: 6, sortie: true, bloc: null, chips: [] },
+    box: [1420, 1010, 1560, 878], ry: 20, rx: 8, sortie: true, bloc: null, chips: [] },
 ];
 const finDe = (i) => (i < PLANS.length - 1 ? PLANS[i + 1].a : DUR);
 const ETAPE = { a1: -1, a2: 0, a3: 1, a4: 2, a5: 3, a6: 4, a7: 5, a8: 5 };
@@ -316,9 +316,12 @@ function drawScene(t) {
   // quand on passe du back-office au parcours client. Le changement de source
   // se lit alors comme un fondu, pas comme une coupe.
   const opClient = lerp(prevClient ? 1 : 0, estClient ? 1 : 0, e.u);
-  const sortie = p.sortie ? eInOut(clamp01((t - p.a) / 1.1)) : 0;
-  poseCarte($('cStaff'), e, (1 - opClient) * (1 - sortie * .92));
-  poseCarte($('cClient'), e, opClient * (1 - sortie * .92));
+  // Sortie COMPLETE sur le plan de marque : la carte gardait 8 % d'opacite et
+  // restait visible en bas a droite pendant « Demandez votre demo ». Le fondu
+  // va jusqu'a zero — la frame reste pleine, le logo et le bouton l'occupent.
+  const sortie = p.sortie ? eInOut(clamp01((t - p.a) / 0.9)) : 0;
+  poseCarte($('cStaff'), e, (1 - opClient) * (1 - sortie));
+  poseCarte($('cClient'), e, opClient * (1 - sortie));
 
   // Scrub : chaque carte suit la fenetre du plan qui la concerne.
   if (p.fen) scrub($('vStaff'), p.fen[0] + e.vie * (p.fen[1] - p.fen[0]));

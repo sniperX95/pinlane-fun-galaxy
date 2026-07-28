@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - tout le centre</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  /* Scene en 2560x1440 CSS, rendue avec --scale 1.5 -> 3840x2160.
+     Parti pris CARRE : rien ne flotte, tout est aligne, chaque mouvement va
+     d'un point A a un point B sur un axe. */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:2560px;height:1440px;overflow:hidden;background:#04060b}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#05070c;perspective:3000px}
+
+  #wash{position:absolute;inset:0;
+    background:radial-gradient(120% 80% at 50% 0%,rgba(24,58,110,.55),transparent 62%),
+               radial-gradient(90% 70% at 50% 110%,rgba(12,30,62,.5),transparent 60%)}
+  #rule{position:absolute;inset:0;opacity:.055;
+    background-image:linear-gradient(90deg,rgba(140,180,240,.9) 1px,transparent 1px);
+    background-size:160px 100%}
+
+  .corner{position:absolute;width:56px;height:56px;border:2px solid rgba(255,255,255,.20)}
+  #cTL{left:70px;top:70px;border-right:0;border-bottom:0}
+  #cTR{right:70px;top:70px;border-left:0;border-bottom:0}
+  #cBL{left:70px;bottom:70px;border-right:0;border-top:0}
+  #cBR{right:70px;bottom:70px;border-left:0;border-top:0}
+
+  .card{position:absolute;border-radius:20px;overflow:hidden;background:#080a0e;
+    border:1px solid rgba(255,255,255,.14);will-change:transform,opacity;
+    box-shadow:0 60px 160px rgba(0,0,0,.92), 0 0 0 1px rgba(255,255,255,.04)}
+  .card video{position:absolute;display:block}
+  .card::after{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(160deg,rgba(255,255,255,.06),transparent 40%,rgba(4,6,11,.34))}
+
+  .mark{position:absolute;border:3px solid var(--accent);border-radius:10px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 0 40px rgba(50,145,255,.55);
+    pointer-events:none;will-change:opacity,transform}
+  .mark .tag{position:absolute;left:0;top:-52px;background:var(--accent);color:#fff;
+    font-size:26px;font-weight:700;padding:8px 18px;border-radius:8px;white-space:nowrap}
+
+  .kick{position:absolute;font-family:var(--font-data);letter-spacing:.34em;
+    text-transform:uppercase;font-size:24px;color:rgba(120,175,255,.95)}
+  .ttl{position:absolute;font-weight:600;letter-spacing:-.035em;line-height:1.06;
+    text-shadow:0 8px 40px rgba(0,0,0,.9);will-change:transform,opacity}
+  .bar{position:absolute;height:3px;background:var(--accent);will-change:transform}
+
+  /* Compteur d'etapes : on sait toujours ou on en est dans la demonstration. */
+  #steps{position:absolute;left:70px;bottom:96px;display:flex;gap:10px}
+  #steps i{display:block;width:52px;height:4px;background:rgba(255,255,255,.16);border-radius:2px}
+  #steps i.on{background:var(--accent)}
+
+  #subs{position:absolute;left:200px;right:200px;bottom:130px;text-align:center}
+  .w{display:inline-block;font-size:66px;line-height:1.14;font-weight:600;letter-spacing:-.03em;
+    margin:0 13px 2px 0;color:rgba(255,255,255,.96);text-shadow:0 6px 34px rgba(0,0,0,1)}
+  .w.hi{color:#6cb0ff}
+
+  #prog{position:absolute;left:70px;right:70px;bottom:52px;height:2px;background:rgba(255,255,255,.10)}
+  #progIn{position:absolute;left:0;top:0;bottom:0;background:rgba(120,175,255,.85);width:0}
+
+  .badge{position:absolute;right:150px;top:82px;font-family:var(--font-data);
+    font-size:24px;letter-spacing:.34em;text-transform:uppercase;color:rgba(255,255,255,.34)}
+
+  .logo{position:absolute;left:50%;top:560px;transform:translateX(-50%);display:flex;align-items:center;gap:32px}
+  .logo .m{width:124px;height:124px;border-radius:34px;background:var(--accent);position:relative}
+  .logo .m::after{content:'';position:absolute;left:37px;top:37px;width:50px;height:50px;border-radius:13px;background:#05070c}
+  .logo .t{font-size:136px;font-weight:600;letter-spacing:-.05em}
+  .cta{position:absolute;left:50%;top:830px;transform:translateX(-50%);
+    background:var(--accent);color:#fff;font-size:52px;font-weight:700;
+    padding:36px 84px;border-radius:14px;white-space:nowrap;
+    box-shadow:0 36px 100px rgba(50,145,255,.55)}
+
+  #vig{position:absolute;inset:0;z-index:50;pointer-events:none;
+    background:radial-gradient(135% 100% at 50% 46%,transparent 52%,rgba(0,0,0,.78) 100%)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wash"></div>
+  <div id="rule"></div>
+  <div class="corner" id="cTL"></div><div class="corner" id="cTR"></div>
+  <div class="corner" id="cBL"></div><div class="corner" id="cBR"></div>
+  <div class="badge" id="badge">Pinlane</div>
+  <div id="scene"></div>
+  <div id="subs"></div>
+  <div id="steps"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="prog"><div id="progIn"></div></div>
+  <div id="vig"></div>
+</div>
+
+<script>
+// ===========================================================================
+// SIX CAPACITES EN 26 SECONDES, SANS UN BLANC.
+//
+// La voix a d'abord ete RESSERREE (voice-tighten.js) : 30,40 s -> 25,44 s,
+// 4,96 s de blanc retire, aucun mot touche. Les bornes ci-dessous sont les
+// debuts de phrase reportes sur cette piste resserree.
+//   0.00-2.78  Pinlane, c'est tout votre centre dans un seul outil.
+//   2.86-6.60  Le planning en direct : vous voyez et contrôlez chaque piste.
+//   6.69-9.82  Un formulaire de reservation fait sur mesure.
+//  10.16-13.04 Confirmations, rappels, relances : automatiques.
+//  13.30-16.28 Une IA marketing qui vous suit et vous guide sur les reseaux.
+//  16.37-20.09 Tarifs, equipes, etablissement : vous gerez tout vous-meme.
+//  20.18-23.57 Et toute votre data est stockee et analysee, jour apres jour.
+//  23.66-25.44 Pinlane. Demandez votre demo.
+// ===========================================================================
+const DUR = 26.0;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const lerp = (a, b, x) => a + (b - a) * x;
+
+const LINES = [
+  { a: 0.02, b: 2.70, t: "Pinlane, c'est tout votre centre dans un seul outil.", hi: ['Pinlane,'] },
+  { a: 2.86, b: 6.52, t: 'Le planning en direct : vous voyez et contrôlez chaque piste.', hi: ['planning'] },
+  { a: 6.69, b: 9.74, t: 'Un formulaire de réservation fait sur mesure.', hi: ['mesure.'] },
+  { a: 10.16, b: 12.96, t: 'Confirmations, rappels, relances : automatiques.', hi: ['automatiques.'] },
+  { a: 13.30, b: 16.20, t: 'Une IA marketing qui vous guide sur les réseaux.', hi: ['IA', 'marketing'] },
+  { a: 16.37, b: 20.01, t: 'Tarifs, équipes, établissement : vous gérez tout.', hi: ['tout.'] },
+  { a: 20.18, b: 23.49, t: 'Toute votre data, stockée et analysée.', hi: ['data,'] },
+  { a: 23.66, b: DUR, t: 'Demandez votre démo.', hi: ['démo.'] },
+];
+
+const ACTS = [
+  ['a1',  0.00,  2.86], ['a2',  2.86,  6.69], ['a3',  6.69, 10.16],
+  ['a4', 10.16, 13.30], ['a5', 13.30, 16.37], ['a6', 16.37, 20.18],
+  ['a7', 20.18, 23.66], ['a8', 23.66, DUR],
+];
+const curAct = (t) => ACTS.find(([, a, b]) => t >= a && t < b) || ACTS[ACTS.length - 1];
+// Quelle etape de la demonstration est en cours (pour le compteur du bas).
+const ETAPE = { a1: -1, a2: 0, a3: 1, a4: 2, a5: 3, a6: 4, a7: 5, a8: 5 };
+
+const CLIP = { staff: '../../artifacts/promo-clips/staff.webm', client: '../../artifacts/promo-clips/client.webm' };
+const SRC_W = 2560, SRC_H = 1440;
+
+// Fenetres UTILES relevees sur planche-contact du clip staff (45,16 s) :
+//   0-7.5 planning · 8.4-11.5 reservations · 12.5-19.0 sequences d'emails
+//   21.5-29.5 agent marketing · 30.3-38.5 etablissement · 39.2-45.0 clients
+// Scruber hors de ces fenetres donnerait un ecran de transition.
+
+// Position REELLE des sequences dans l'application, mesuree au navigateur.
+const ROW = { x: 620, y: 400, w: 1570, h: 561 };
+const SEQ = {
+  confirmation: { x: 900, y: 588, w: 246, h: 218, tag: 'Confirmation' },
+  rappel:       { x: 1152, y: 588, w: 246, h: 218, tag: 'Rappel avant la venue' },
+  dormants:     { x: 1906, y: 588, w: 252, h: 218, tag: 'Réactiver les dormants' },
+};
+
+let built = '';
+function build(key, html) {
+  if (built === key) return;
+  $('scene').innerHTML = html;
+  built = key;
+  $('scene').querySelectorAll('video').forEach((v) => { v.muted = true; v.preload = 'auto'; v.load(); });
+}
+
+let WAIT = [];
+function seekTo(v, time) {
+  WAIT.push(v);
+  const done = () => { WAIT = WAIT.filter((x) => x !== v); };
+  v.addEventListener('seeked', done, { once: true });
+  v.addEventListener('error', done, { once: true });
+  try { v.currentTime = time; } catch (e) { done(); }
+}
+function scrub(sel, time) {
+  const v = document.querySelector(sel);
+  if (!v) return;
+  if (v.readyState < 1) {
+    WAIT.push(v);
+    v.addEventListener('loadedmetadata', () => { WAIT = WAIT.filter((x) => x !== v); seekTo(v, time); }, { once: true });
+    return;
+  }
+  if (Math.abs(v.currentTime - time) > 0.02) seekTo(v, time);
+}
+window.SCRUB_SETTLED = () => WAIT.length === 0
+  && [...document.querySelectorAll('video')].every((v) => v.readyState >= 2 && !v.seeking);
+
+// Cadrage par COORDONNEES SOURCE : on nomme la region de l'application a
+// montrer, l'echelle en decoule, et le meme facteur sert a poser les reperes.
+const FRAMES = {};
+function card(id, x, y, w, h, clip, focus) {
+  const f = focus || { x: 0, y: 0, w: SRC_W, h: SRC_H };
+  const s = Math.max(w / f.w, h / f.h);
+  const vw = SRC_W * s;
+  const left = w / 2 - (f.x + f.w / 2) * s;
+  const top = h / 2 - (f.y + f.h / 2) * s;
+  FRAMES[id] = { s, left, top, w, h, x, y };
+  return `<div class="card" id="${id}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px">
+    <video id="${id}v" src="${clip}" style="width:${vw}px;left:${left}px;top:${top}px"></video></div>`;
+}
+function markHtml(cardId, id, rect, tag) {
+  const F = FRAMES[cardId];
+  if (!F) return '';
+  const x = F.x + F.left + rect.x * F.s, y = F.y + F.top + rect.y * F.s;
+  return `<div class="mark" id="${id}" style="left:${Math.round(x)}px;top:${Math.round(y)}px;
+    width:${Math.round(rect.w * F.s)}px;height:${Math.round(rect.h * F.s)}px;opacity:0">
+    <div class="tag">${tag}</div></div>`;
+}
+function place(id, opts) {
+  const el = $(id); if (!el) return;
+  const { p = 1, ry = 0, rx = 0, sc = 1, dx = 0, dy = 0 } = opts;
+  el.style.opacity = p;
+  el.style.transform = `translate3d(${dx}px, ${dy}px, 0) rotateX(${rx}deg) rotateY(${ry}deg) scale(${sc})`;
+}
+function reveal(id, t, a, dly, dur, dx) {
+  const el = $(id); if (!el) return 0;
+  const p = eOut(seg(t, a + dly, a + dly + dur));
+  el.style.opacity = p;
+  el.style.transform = `translateX(${lerp(dx, 0, p)}px)`;
+  return p;
+}
+// Un plan standard : titre a gauche, produit a droite, arrivee franche.
+function planLarge(t, a, b, key, from, to, focus, clip) {
+  const d = seg(t, a, b);
+  const settle = eQuint(seg(t, a, a + .30));
+  scrub('#c1v', from + d * (to - from));
+  place('c1', { rx: 1.2, ry: -2.5, sc: lerp(.975, 1, settle), dx: lerp(-28, 0, settle), dy: lerp(10, -8, d) });
+  return d;
+}
+
+function drawScene(t) {
+  const [key, a, b] = curAct(t);
+  const d = seg(t, a, b);
+  const settle = eQuint(seg(t, a, a + .30));
+
+  // ---- A1 : « Pinlane, c'est tout votre centre dans un seul outil. » -----
+  if (key === 'a1') {
+    build('b1', card('c1', 530, 240, 1500, 844, CLIP.staff)
+      + `<div class="kick" id="k1" style="left:200px;top:200px">La console du centre</div>`);
+    scrub('#c1v', 0.5 + d * 1.6);
+    place('c1', { rx: 1.4, ry: -2, sc: lerp(.95, 1, settle), dy: lerp(16, -10, d) });
+    reveal('k1', t, a, .04, .24, -26);
+  }
+
+  // ---- A2 : le planning, en direct ---------------------------------------
+  if (key === 'a2') {
+    build('b2', card('c1', 480, 230, 1600, 900, CLIP.staff)
+      + `<div class="kick" id="k2" style="left:480px;top:150px">Planning &amp; contrôle</div>`);
+    // On traverse planning puis liste des reservations : le controle complet.
+    scrub('#c1v', 2.6 + d * 8.6);
+    place('c1', { rx: 1.2, ry: 2, sc: lerp(.978, 1, settle), dx: lerp(26, 0, settle), dy: lerp(12, -8, d) });
+    reveal('k2', t, a, .04, .22, 26);
+  }
+
+  // ---- A3 : le formulaire client, sur mesure -----------------------------
+  if (key === 'a3') {
+    build('b3', card('c1', 900, 250, 1420, 799, CLIP.client, { x: 640, y: 150, w: 1500, h: 844 })
+      + `<div class="kick" id="k3" style="left:180px;top:470px">Côté client</div>
+         <div class="bar" id="bar3" style="left:180px;top:516px;width:180px"></div>
+         <div class="ttl" id="t3" style="left:180px;top:556px;font-size:74px;width:600px">Un parcours<br>fait sur mesure.</div>`);
+    // Formulaire puis grille des formules : « sur mesure » se VOIT.
+    scrub('#c1v', 1.4 + d * 5.2);
+    place('c1', { rx: 1.2, ry: -4, sc: lerp(.972, 1, settle), dx: lerp(30, 0, settle), dy: lerp(12, -8, d) });
+    reveal('k3', t, a, .04, .22, -26);
+    reveal('t3', t, a, .10, .26, -26);
+    const bar = $('bar3');
+    if (bar) { const p = eOut(seg(t, a + .07, a + .34)); bar.style.opacity = p; bar.style.transformOrigin = 'left'; bar.style.transform = `scaleX(${p})`; }
+  }
+
+  // ---- A4 : les trois sequences, designees en rafale ----------------------
+  if (key === 'a4') {
+    build('b4', card('c1', 300, 300, 1960, 700, CLIP.staff, ROW)
+      + markHtml('c1', 'm1', SEQ.confirmation, SEQ.confirmation.tag)
+      + markHtml('c1', 'm2', SEQ.rappel, SEQ.rappel.tag)
+      + markHtml('c1', 'm3', SEQ.dormants, SEQ.dormants.tag)
+      + `<div class="kick" id="k4" style="left:300px;top:210px">Séquences automatiques</div>`);
+    scrub('#c1v', 13.0 + d * 5.4);
+    place('c1', { sc: lerp(.985, 1, settle), dy: lerp(8, -6, d) });
+    const k = $('k4'); if (k) k.style.opacity = 1;
+    // Une pastille par mot enonce : « Confirmations, rappels, relances ».
+    [['m1', a + .10], ['m2', a + 1.00], ['m3', a + 1.85]].forEach(([id, st]) => {
+      const el = $(id); if (!el) return;
+      const p = eOut(clamp01(seg(t, st, st + .18)));
+      const out = seg(t, st + .82, st + .98);
+      el.style.opacity = p * (1 - out);
+      el.style.transform = `scale(${lerp(1.08, 1, p)})`;
+    });
+  }
+
+  // ---- A5 : l'agent marketing --------------------------------------------
+  // Carte HAUTE : la conversation de l'agent est une colonne, pas un tableau.
+  if (key === 'a5') {
+    // Cadre sur le bloc HAUT (onglets + message de l'agent) : la conversation
+    // est courte, une carte carree laissait la moitie basse vide.
+    build('b5', card('c1', 1020, 360, 1380, 776, CLIP.staff, { x: 900, y: 25, w: 880, h: 495 })
+      + `<div class="kick" id="k5" style="left:200px;top:470px">Marketing</div>
+         <div class="bar" id="bar5" style="left:200px;top:516px;width:180px"></div>
+         <div class="ttl" id="t5" style="left:200px;top:556px;font-size:74px;width:820px">Une IA qui<br>vous guide.</div>`);
+    scrub('#c1v', 21.8 + d * 6.4);
+    place('c1', { rx: 1, ry: -4, sc: lerp(.972, 1, settle), dx: lerp(34, 0, settle), dy: lerp(10, -8, d) });
+    reveal('k5', t, a, .04, .22, -26);
+    reveal('t5', t, a, .10, .26, -26);
+    const bar = $('bar5');
+    if (bar) { const p = eOut(seg(t, a + .07, a + .34)); bar.style.opacity = p; bar.style.transformOrigin = 'left'; bar.style.transform = `scaleX(${p})`; }
+  }
+
+  // ---- A6 : etablissement, tout se regle ---------------------------------
+  if (key === 'a6') {
+    build('b6', card('c1', 480, 230, 1600, 900, CLIP.staff, { x: 560, y: 20, w: 1700, h: 957 })
+      + `<div class="kick" id="k6" style="left:480px;top:150px">Vous gérez tout</div>`);
+    scrub('#c1v', 30.5 + d * 7.4);
+    place('c1', { rx: 1.2, ry: -2, sc: lerp(.978, 1, settle), dx: lerp(-26, 0, settle), dy: lerp(12, -8, d) });
+    reveal('k6', t, a, .04, .22, -26);
+  }
+
+  // ---- A7 : la data, analysee --------------------------------------------
+  if (key === 'a7') {
+    build('b7', card('c1', 480, 230, 1600, 900, CLIP.staff, { x: 560, y: 20, w: 1700, h: 957 })
+      + `<div class="kick" id="k7" style="left:480px;top:150px">Clients &amp; analyses</div>`);
+    scrub('#c1v', 39.4 + d * 5.4);
+    place('c1', { rx: 1.2, ry: 2, sc: lerp(.978, 1, settle), dx: lerp(26, 0, settle), dy: lerp(12, -8, d) });
+    reveal('k7', t, a, .04, .22, 26);
+  }
+
+  // ---- A8 : la marque, puis l'appel a l'action ---------------------------
+  if (key === 'a8') {
+    build('b8', `<div class="logo" id="lg"><div class="m"></div><div class="t">Pinlane</div></div>
+      <div class="cta" id="cb">Réserver une démo</div>`);
+    const lg = $('lg'), cb = $('cb');
+    // Arrivee PLEINE : un fondu depuis zero laisserait une frame noire pile
+    // sur la revelation de marque.
+    if (lg) { const p = eQuint(seg(t, a, a + .32)); lg.style.opacity = 1; lg.style.transform = `translateX(-50%) scale(${lerp(1.16, 1, p)})`; }
+    if (cb) {
+      const p = eOut(seg(t, a + .55, a + .85));
+      cb.style.opacity = p;
+      cb.style.transform = `translateX(-50%) translateY(${lerp(24, 0, p)}px)`;
+    }
+  }
+}
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .06 && t < l.b + .2);
+  const host = $('subs');
+  if (!L || L.sub === false) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const words = [...host.children];
+  const span = Math.max(.22, (L.b - L.a) * .5);
+  words.forEach((el, i) => {
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const p = eOut(clamp01(seg(t, st, st + .13)));
+    el.style.opacity = p;
+    el.style.transform = `translateY(${lerp(14, 0, p)}px)`;
+  });
+  const out = seg(t, L.b + .02, L.b + .18);
+  host.style.opacity = 1 - out;
+}
+
+function render(t) {
+  $('badge').style.opacity = .34;
+  $('progIn').style.width = (clamp01(t / DUR) * 100).toFixed(2) + '%';
+  const cp = eOut(clamp01(seg(t, 0, .45)));
+  ['cTL', 'cTR', 'cBL', 'cBR'].forEach((id) => { $(id).style.opacity = cp * .75; });
+  const etape = ETAPE[curAct(t)[0]];
+  [...$('steps').children].forEach((el, i) => el.classList.toggle('on', i <= etape));
+  drawScene(t);
+  drawSubs(t);
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

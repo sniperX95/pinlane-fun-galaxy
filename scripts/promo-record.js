@@ -316,6 +316,50 @@ async function closeOverlay(page, label = 'fermeture du panneau') {
   return true;
 }
 
+// La console Direction interroge /api/admin-range sur une periode de 30 jours.
+// Le mock QA ne repond que pour la date de depart, donc la console affichait
+// « Pas encore de donnees sur cette periode » : aucun graphique a filmer.
+// On etend le mock a toute la periode, avec un volume plus fort le week-end
+// pour que la courbe ressemble a un vrai centre. C'est de la donnee de DEMO,
+// au meme titre que la journee seedee pour le planning.
+async function seedDirectionRange(page) {
+  const ok = await page.evaluate(() => {
+    const build = window.__PINLANE_QA_RESERVATIONS__;
+    if (typeof build !== 'function') return false;
+    const precedent = window.fetch;
+    window.fetch = (input, init) => {
+      const href = typeof input === 'string' ? input : (input && input.url) || '';
+      let url;
+      try { url = new URL(href, location.origin); } catch (e) { return precedent(input, init); }
+      if (url.pathname !== '/api/admin-range') return precedent(input, init);
+      const debut = url.searchParams.get('startDate');
+      const fin = url.searchParams.get('endDate');
+      const out = [];
+      const d = new Date(debut + 'T00:00:00Z');
+      const stop = new Date(fin + 'T00:00:00Z');
+      let jour = 0;
+      while (d <= stop && jour < 120) {
+        const iso = d.toISOString().slice(0, 10);
+        const s = d.getUTCDay();
+        const n = s === 6 ? 5 : s === 0 ? 4 : s === 5 ? 3 : 2;
+        build(iso).slice(0, n).forEach((r, k) => {
+          out.push({ ...r, id: (jour + 1) * 100 + k, date: iso });
+        });
+        d.setUTCDate(d.getUTCDate() + 1);
+        jour += 1;
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ ok: true, reservations: out, emails: [], agentEvents: [],
+          centerId: url.searchParams.get('centerId') || 'libramont' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+    };
+    return true;
+  });
+  console.log(ok ? '   periode Direction alimentee' : '   ATTENTION : mock QA introuvable, Direction restera vide');
+  return ok;
+}
+
 (async () => {
   const installQaApi = loadFromVisualQa('installQaApi');
   const seedStressDay = loadFromVisualQa('seedStressDay');
@@ -420,14 +464,47 @@ async function closeOverlay(page, label = 'fermeture du panneau') {
     await clickByText(page, 'Nouveau message', 'ouvrir un nouveau message', 1300);
     await closeOverlay(page, 'fermeture du message');
 
-    // 6. Marketing : la couche qui fait revenir les gens.
+    // 6. Marketing : l'agent IA. On lui PARLE, c'est tout l'interet.
     await go('campaigns', 'Marketing');
-    await page.mouse.move(CSS_W * .5, CSS_H * .42);
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(500);
+    await typeInto(page, '[placeholder*="Demande-moi"], #mkwAsk, textarea',
+      'un post pour la soiree fluo de samedi', 'demande a l agent marketing');
+    await page.waitForTimeout(600);
+    for (const onglet of ['Le plan', 'Concurrents', 'Résultats']) {
+      await clickByText(page, onglet, `onglet marketing ${onglet}`, 820);
+    }
 
-    // 7. Retour au planning : la boucle est bouclee.
-    await renderStaffPage(page, 'planning');
-    await page.waitForTimeout(1100);
+    // 7. Etablissement : tout se regle depuis l'interface.
+    await go('establishment', 'Etablissement');
+    await page.waitForTimeout(500);
+    for (const onglet of ['Horaires & fermetures', 'Offres & activités']) {
+      await clickByText(page, onglet, `onglet etablissement ${onglet}`, 900);
+    }
+    await hoverText(page, 'Fun Galaxy Gembloux', 'un autre centre');
+
+    // 8. La data analysee.
+    //
+    // La console Direction (`setView('admin')`) N'EST PAS filmable ici : elle
+    // agrege /api/admin-range, et le mock QA ne produit rien qu'elle sache
+    // exploiter — elle affiche « Pas encore de donnees sur cette periode »
+    // meme apres avoir alimente la periode et force `loadAdminDashboard(true)`.
+    // Ses graphiques demandent le vrai pipeline de donnees.
+    //
+    // On filme donc la page Clients, qui rend de VRAIES analyses sur les
+    // memes donnees : panier moyen, visites et depense par client, a relancer.
+    // Montrer un ecran vide « parce que c'etait dans le script » serait pire
+    // que de montrer une autre surface qui, elle, prouve le propos.
+    await go('clients', 'Clients');
+    await page.waitForTimeout(600);
+    await hoverText(page, 'Panier moyen', 'le panier moyen');
+    await clickNth(page, '.table tbody, tbody', 0, 'une fiche client', 1200);
+    await page.mouse.move(CSS_W * .62, CSS_H * .42);
+    await page.waitForTimeout(800);
+
+    // 9. Vue d'ensemble : les compteurs du jour.
+    await go('dashboard', "Vue d'ensemble");
+    await page.mouse.move(CSS_W * .5, CSS_H * .3);
+    await page.waitForTimeout(1400);
     await ctx.close();
   }
 

@@ -162,7 +162,11 @@ void main() {
   float radius = clamp(gray + uBias + infl * 0.34, 0.0, 1.0) * 0.5;
   float aa = fwidth(dist) + 1e-4;
   float mark = 1.0 - smoothstep(radius - aa, radius + aa, dist);
-  vec3 col = mix(uColorA, uColorB, clamp(gray + infl * 0.5, 0.0, 1.0));
+  // La couleur ne suit PLUS le gris du bruit : apres le gamma, meme un point
+  // bien visible garde un gris faible (0.2-0.3), donc tout le champ sortait
+  // teinte accent alors que la reference montre des points BLANCS. Le champ
+  // porte donc la couleur du texte, et l'accent n'apparait que sous la main.
+  vec3 col = mix(uColorB, uColorA, clamp(infl * 1.3, 0.0, 1.0));
   fragColor = vec4(col, mark * uAlpha * (1.0 + infl * 0.85));
 }`;
 
@@ -224,11 +228,14 @@ void main() {
       const dark = isDarkTheme(cs.color);
       const accent = rgb01(cs.getPropertyValue('--accent') || cs.color);
       const text = rgb01(cs.color);
-      gl.uniform3f(u.uColorA, text[0], text[1], text[2]);
-      gl.uniform3f(u.uColorB, accent[0], accent[1], accent[2]);
+      // Biais negatif : seuls les gris ELEVES allument un point. C'est donc la
+      // couleur B qui se voit vraiment - elle porte le texte (blanc en sombre),
+      // l'accent ne teinte que les points de seuil.
+      gl.uniform3f(u.uColorA, accent[0], accent[1], accent[2]);
+      gl.uniform3f(u.uColorB, text[0], text[1], text[2]);
       // Intensites TRES basses : la texture ne concurrence jamais la lecture.
       // Le dark porte un peu plus (contraste plus doux sur fond sombre).
-      gl.uniform1f(u.uAlpha, opts.alpha != null ? opts.alpha : (dark ? 0.55 : 0.34));
+      gl.uniform1f(u.uAlpha, opts.alpha != null ? opts.alpha : (dark ? 0.85 : 0.5));
     }
 
     function resize() {

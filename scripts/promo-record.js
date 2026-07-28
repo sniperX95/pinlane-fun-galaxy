@@ -84,36 +84,136 @@ const serve = () => new Promise((resolve) => {
 
 // Un curseur visible est INDISPENSABLE : sans lui, les elements changent d'etat
 // tout seuls et le spectateur ne comprend pas qu'on manipule le produit.
+// CURSEUR DE DEMONSTRATION, modele « pastille qui traine ».
+//
+// Le clic doit se VOIR : dans le film, ce clip vit reduit dans une carte, un
+// petit curseur systeme y disparait. Trois elements, trois ressorts distincts :
+//   - la fleche, ancree a sa POINTE, sur un ressort nerveux ;
+//   - une pastille Pinlane qui TRAINE derriere sur un ressort plus mou et
+//     bascule selon la vitesse — c'est elle qui donne la sensation de geste ;
+//   - un halo d'impact au clic, plus l'enfoncement des deux.
+// Les ressorts sont integres a la main (pas de bibliotheque dans la page).
+const CURSEUR_TAILLE = 62;
 const CURSOR_CSS = `
-  #__promoCursor{position:fixed;width:42px;height:42px;z-index:2147483647;pointer-events:none;
-    left:0;top:0;transition:none;filter:drop-shadow(0 4px 12px rgba(0,0,0,.95))}
-  #__promoRipple{position:fixed;width:26px;height:26px;border-radius:50%;z-index:2147483646;
-    pointer-events:none;border:4px solid #3291ff;opacity:0}`;
+  #__pcArrow{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;
+    width:${CURSEUR_TAILLE}px;height:${CURSEUR_TAILLE}px;transform-origin:0% 0%;
+    filter:drop-shadow(0 8px 20px rgba(0,0,0,.75))}
+  #__pcLabel{position:fixed;left:0;top:0;z-index:2147483646;pointer-events:none;
+    transform-origin:0% 50%;background:#3291ff;color:#fff;border-radius:999px;
+    padding:${Math.round(CURSEUR_TAILLE * .18)}px ${Math.round(CURSEUR_TAILLE * .36)}px;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:${Math.max(12, Math.round(CURSEUR_TAILLE * .43))}px;font-weight:600;
+    line-height:1.1;letter-spacing:.1px;white-space:nowrap;
+    box-shadow:0 8px 22px rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.22),
+               inset 0 1px 0 rgba(255,255,255,.35)}
+  #__pcRing{position:fixed;width:56px;height:56px;border-radius:50%;z-index:2147483645;
+    pointer-events:none;border:7px solid #3291ff;opacity:0;
+    box-shadow:0 0 40px rgba(50,145,255,.9), inset 0 0 24px rgba(50,145,255,.5)}`;
 
 async function installCursor(page) {
-  await page.evaluate((css) => {
+  await page.evaluate(([css, T]) => {
     const s = document.createElement('style');
     s.textContent = css;
-    document.head.appendChild(s);
-    const c = document.createElement('div');
-    c.id = '__promoCursor';
-    c.innerHTML = '<svg viewBox="0 0 24 24" width="42" height="42"><path d="M5 2l14 10.5-6.2.6 3.4 6.9-2.9 1.4-3.3-6.9L5 19z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-    document.documentElement.appendChild(c);
-    const r = document.createElement('div');
-    r.id = '__promoRipple';
-    document.documentElement.appendChild(r);
-    window.__promoMove = (x, y) => { c.style.transform = `translate(${x}px, ${y}px)`; };
-    window.__promoClick = (x, y) => {
-      r.style.left = (x - 13) + 'px'; r.style.top = (y - 13) + 'px';
-      r.style.transition = 'none'; r.style.opacity = '.95'; r.style.transform = 'scale(1)';
-      requestAnimationFrame(() => {
-        r.style.transition = 'transform .5s cubic-bezier(.2,.8,.3,1), opacity .5s';
-        r.style.opacity = '0'; r.style.transform = 'scale(5)';
-      });
-      c.style.transform = `translate(${x}px, ${y}px) scale(.78)`;
-      setTimeout(() => { c.style.transform = `translate(${x}px, ${y}px) scale(1)`; }, 130);
+    (document.head || document.documentElement).appendChild(s);
+
+    // Les trois elements vivent sur <html> et non <body> : le body est zoome
+    // pour la nettete, et le curseur doit rester a l'echelle de la souris.
+    const arrow = document.createElement('div');
+    arrow.id = '__pcArrow';
+    // Fleche ancree a sa POINTE (0,0) : le point chaud est le coin, pas le
+    // centre, sinon le clic semble se produire a cote de la cible.
+    arrow.innerHTML = `<svg width="${T}" height="${T}" viewBox="0 0 28 28" fill="none"
+      style="display:block;overflow:visible">
+      <path d="M5 3 L23 14 L14 16 L11 24 Z" fill="#ffffff"
+        stroke="rgba(0,0,0,.35)" stroke-width=".8" stroke-linejoin="round"/></svg>`;
+    document.documentElement.appendChild(arrow);
+
+    const label = document.createElement('div');
+    label.id = '__pcLabel';
+    label.textContent = 'Pinlane';
+    document.documentElement.appendChild(label);
+
+    const ring = document.createElement('div');
+    ring.id = '__pcRing';
+    document.documentElement.appendChild(ring);
+
+    // --- ressorts integres a la main ---------------------------------------
+    // La page n'a pas de bibliotheque d'animation : un ressort amorti se
+    // calcule en trois lignes, et rester en JS pur evite d'injecter une
+    // dependance dans l'application filmee.
+    // x = position, v = vitesse. La vitesse part de ZERO : l'initialiser a la
+    // position projetait le curseur a l'autre bout de l'ecran a la 1re frame.
+    const ressort = (x0) => ({ x: x0, v: 0 });
+    const pas = (e, cible, dt, k, c, m) => {
+      const a = (-k * (e.x - cible) - c * e.v) / m;
+      e.v += a * dt;
+      e.x += e.v * dt;
     };
-  }, CURSOR_CSS);
+
+    const cible = { x: -9999, y: -9999 };
+    const fleche = { x: ressort(-9999), y: ressort(-9999) };
+    const pastille = { x: ressort(-9999), y: ressort(-9999) };
+    const inclin = ressort(0);
+    const echelle = ressort(1);
+    let presse = 0;                             // instant du dernier appui
+    let dernier = null;                         // echantillon pour la vitesse
+
+    // Decalage de la pastille : elle se pose en bas a droite de la pointe.
+    const DX = T * 0.9, DY = T * 0.2 + 6;
+    const INCLIN_MAX = 25;                      // degres
+
+    let precedent = performance.now();
+    function boucle(now) {
+      const dt = Math.min(0.032, (now - precedent) / 1000);
+      precedent = now;
+      // Fleche : nerveuse. Pastille : plus molle, donc elle TRAINE.
+      pas(fleche.x, cible.x, dt, 380, 32, 0.6);
+      pas(fleche.y, cible.y, dt, 380, 32, 0.6);
+      pas(pastille.x, cible.x, dt, 220, 26, 0.7);
+      pas(pastille.y, cible.y, dt, 220, 26, 0.7);
+      pas(inclin, inclin.cible || 0, dt, 200, 24, 0.6);
+      // Appui : la pression retombe toute seule apres 150 ms.
+      const enfonce = presse && (now - presse) < 150 ? 0.92 : 1;
+      pas(echelle, enfonce, dt, 500, 28, 0.5);
+
+      arrow.style.transform = `translate(${fleche.x.x}px, ${fleche.y.x}px) scale(${echelle.x})`;
+      label.style.transform = `translate(${pastille.x.x + DX}px, ${pastille.y.x + DY}px) `
+        + `rotate(${inclin.x}deg) scale(${echelle.x})`;
+      requestAnimationFrame(boucle);
+    }
+    requestAnimationFrame(boucle);
+
+    window.__promoMove = (x, y) => {
+      const now = performance.now();
+      if (dernier) {
+        const dt = Math.max(1, now - dernier.t);
+        const vx = ((x - dernier.x) / dt) * 1000;
+        const vy = ((y - dernier.y) / dt) * 1000;
+        // La pastille bascule dans le sens du deplacement, d'autant plus fort
+        // qu'on va vite. C'est ce basculement qui fait « geste » et non
+        // « element qui se teleporte ».
+        const vitesse = Math.hypot(vx, vy);
+        const signe = vx === 0 ? 0 : (vx > 0 ? 1 : -1);
+        inclin.cible = signe * Math.min(1, vitesse / 1500) * INCLIN_MAX;
+      }
+      dernier = { x, y, t: now };
+      cible.x = x; cible.y = y;
+    };
+
+    window.__promoClick = (x, y) => {
+      presse = performance.now();
+      ring.style.left = (x - 28) + 'px';
+      ring.style.top = (y - 28) + 'px';
+      ring.style.transition = 'none';
+      ring.style.opacity = '1';
+      ring.style.transform = 'scale(.32)';
+      requestAnimationFrame(() => {
+        ring.style.transition = 'transform .6s cubic-bezier(.16,.9,.3,1), opacity .6s';
+        ring.style.opacity = '0';
+        ring.style.transform = 'scale(4)';
+      });
+    };
+  }, [CURSOR_CSS, CURSEUR_TAILLE]);
 }
 
 // Deplacement humain : courbe, acceleration puis freinage. Une souris ne va

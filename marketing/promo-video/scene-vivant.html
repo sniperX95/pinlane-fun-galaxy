@@ -286,24 +286,60 @@ function markHtml(cardId, id, rect, tag) {
 // Vie    : derive lente et continue, elle ne se fige jamais.
 // Sortie : elle repart vers le spectateur en tournant dans l'autre sens.
 // ---------------------------------------------------------------------------
-function planMove(id, t, a, b, sens) {
+// ---------------------------------------------------------------------------
+// LE RYTHME INTERNE D'UN PLAN.
+//
+// Une entree et une sortie animees ne suffisent pas : entre les deux, l'image
+// restait posee et le spectateur decroche. On ajoute donc trois choses qui
+// tournent EN PERMANENCE dans chaque plan :
+//   - une poussee continue (l'echelle monte du debut a la fin, jamais fixe) ;
+//   - des « coups de poing » : un sursaut d'echelle bref, cale sur les temps
+//     forts de la phrase ;
+//   - une derive de parallaxe qui ne repasse jamais deux fois au meme endroit.
+// ---------------------------------------------------------------------------
+function punch(t, a, beats) {
+  let p = 0;
+  for (const b of beats) {
+    const u = t - (a + b);
+    if (u >= 0 && u < .34) p = Math.max(p, u < .07 ? u / .07 : 1 - (u - .07) / .27);
+  }
+  return p;
+}
+// Secousse courte a l'impact de la coupe : c'est ce qui donne le « choc ».
+function secousse(t, a) {
+  const u = t - a;
+  if (u < 0 || u > .22) return { x: 0, y: 0, r: 0 };
+  const k = (1 - u / .22) ** 2;
+  return { x: Math.sin(u * 118) * 16 * k, y: Math.cos(u * 97) * 11 * k, r: Math.sin(u * 132) * 1.1 * k };
+}
+
+function planMove(id, t, a, b, sens, beats) {
   const el = $(id); if (!el) return;
   const IN = .52, OUT = .40;
   const ein = eOut(seg(t, a, a + IN));           // 0 -> 1 a l'arrivee
   const eout = eQuint(seg(t, b - OUT, b));       // 0 -> 1 au depart
   const vie = seg(t, a, b);
-  const z = lerp(-620, 0, ein) + lerp(0, 340, eout);
+  const z = lerp(-430, 0, ein) + lerp(0, 340, eout);
   // La carte NE SE REMET PAS DROITE : elle garde son orientation 3D au repos.
   // Une image posee de biais lit comme un objet dans l'espace, pas comme une
   // capture d'ecran collee sur le fond.
   const ry = lerp(26 * sens, 7.5 * sens, ein) + lerp(0, -17 * sens, eout);
   const rx = lerp(9, 2.6, ein) + lerp(0, -5, eout);
-  const dx = lerp(150 * sens, 0, ein) + lerp(0, -110 * sens, eout);
-  const dy = lerp(48, 0, ein) + lerp(0, 40, eout) + Math.sin(vie * 2.1) * 5;
-  const sc = lerp(.94, 1, ein) * lerp(1, 1.05, eout) + vie * .012;
+  const sk = secousse(t, a);
+  const cp = punch(t, a, beats || []);
+  // Parallaxe continue : deux sinusoides de periodes differentes, donc la
+  // carte ne repasse jamais exactement au meme endroit.
+  const par = { x: Math.sin(vie * 3.4) * 13 + Math.sin(vie * 1.3) * 9,
+    y: Math.cos(vie * 2.6) * 10 + Math.sin(vie * 1.1) * 7 };
+  const dx = lerp(150 * sens, 0, ein) + lerp(0, -110 * sens, eout) + par.x + sk.x;
+  const dy = lerp(48, 0, ein) + lerp(0, 40, eout) + par.y + sk.y;
+  // Poussee continue : +7 % du debut a la fin du plan, plus le coup de poing.
+  const sc = lerp(.94, 1, ein) * lerp(1, 1.05, eout) + vie * .07 + cp * .075;
   el.style.opacity = 1;
   el.style.transform =
-    `translate3d(${dx}px, ${dy}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${sc})`;
+    `translate3d(${dx}px, ${dy}px, ${z + cp * 90}px) `
+    + `rotateX(${rx + sk.r * .5}deg) rotateY(${ry + sk.r - cp * 2.4 * sens}deg) `
+    + `rotateZ(${sk.r * .6 + Math.sin(vie * 1.7) * .5}deg) scale(${sc})`;
   // Le reflet balaie la vitre juste apres l'arrivee.
   const sp = $(id + 's');
   if (sp) {
@@ -345,7 +381,7 @@ function drawScene(t) {
          <div class="kick" id="k1" style="left:168px;top:516px">La console du centre</div>
          <div class="ttl" id="t1" style="left:168px;top:556px;font-size:64px;width:440px">Tout votre<br>centre.</div>`);
     scrub('#c1v', 0.5 + d * 1.8);
-    planMove('c1', t, a, b, 1);
+    planMove('c1', t, a, b, 1, [.7, 1.6, 2.4]);
     textMove('p1', t, a, b, .10, 1);
     textMove('k1', t, a, b, .16, 1);
     textMove('t1', t, a, b, .22, 1);
@@ -359,7 +395,7 @@ function drawScene(t) {
          <div class="chip" id="q2" style="left:110px;top:640px"><span class="dot"></span>38 joueurs</div>
          <div class="chip" id="q3" style="left:2130px;top:520px"><span class="dot"></span>601 EUR</div>`);
     scrub('#c1v', 2.6 + d * 8.4);
-    planMove('c1', t, a, b, -1);
+    planMove('c1', t, a, b, -1, [.6, 1.5, 2.4, 3.2]);
     textMove('k2', t, a, b, .10, -1);
     chipMove('q1', t, a, b, a + .55, 0, -1);
     chipMove('q2', t, a, b, a + .78, 1, -1);
@@ -374,7 +410,7 @@ function drawScene(t) {
          <div class="bar" id="bar3" style="left:180px;top:530px;width:180px"></div>
          <div class="ttl" id="t3" style="left:180px;top:566px;font-size:66px;width:560px">Un parcours<br>sur mesure.</div>`);
     scrub('#c1v', 1.4 + d * 5.4);
-    planMove('c1', t, a, b, 1);
+    planMove('c1', t, a, b, 1, [.6, 1.4, 2.3, 3.0]);
     textMove('p3', t, a, b, .10, 1);
     textMove('k3', t, a, b, .16, 1);
     textMove('t3', t, a, b, .24, 1);
@@ -396,7 +432,7 @@ function drawScene(t) {
       + `<div class="kick" id="k4" style="left:480px;top:170px">Séquences automatiques</div>`);
     // Instants releves PAR L'ENREGISTREUR au moment ou il a survole les cartes.
     scrub('#c1v', (M['sequence Confirmation'] ? M['sequence Confirmation'].t - 0.6 : 13.4) + d * 3.9);
-    planMove('c1', t, a, b, -1);
+    planMove('c1', t, a, b, -1, [.5, 1.2, 1.9, 2.6]);
     textMove('k4', t, a, b, .08, -1);
     [['m1', a + .55], ['m2', a + 1.35], ['m3', a + 2.10]].forEach(([id, st]) => {
       const el = $(id); if (!el) return;
@@ -415,7 +451,7 @@ function drawScene(t) {
          <div class="bar" id="bar5" style="left:180px;top:520px;width:180px"></div>
          <div class="ttl" id="t5" style="left:180px;top:556px;font-size:66px;width:620px">Une IA qui<br>vous guide.</div>`);
     scrub('#c1v', 21.8 + d * 6.4);
-    planMove('c1', t, a, b, 1);
+    planMove('c1', t, a, b, 1, [.6, 1.4, 2.2, 2.9]);
     textMove('p5', t, a, b, .10, 1);
     textMove('k5', t, a, b, .16, 1);
     textMove('t5', t, a, b, .24, 1);
@@ -430,7 +466,7 @@ function drawScene(t) {
          <div class="chip" id="e1" style="left:110px;top:560px"><span class="dot"></span>Horaires</div>
          <div class="chip" id="e2" style="left:2130px;top:560px"><span class="dot"></span>Tarifs</div>`);
     scrub('#c1v', 30.5 + d * 7.4);
-    planMove('c1', t, a, b, -1);
+    planMove('c1', t, a, b, -1, [.6, 1.5, 2.4, 3.1]);
     textMove('k6', t, a, b, .10, -1);
     chipMove('e1', t, a, b, a + .60, 0, -1);
     chipMove('e2', t, a, b, a + .85, 1, 1);
@@ -443,7 +479,7 @@ function drawScene(t) {
          <div class="chip" id="d1" style="left:110px;top:560px"><span class="dot"></span>Panier moyen</div>
          <div class="chip" id="d2" style="left:2130px;top:560px"><span class="dot"></span>Visites</div>`);
     scrub('#c1v', 39.4 + d * 5.4);
-    planMove('c1', t, a, b, 1);
+    planMove('c1', t, a, b, 1, [.6, 1.5, 2.3, 3.0]);
     textMove('k7', t, a, b, .10, 1);
     chipMove('d1', t, a, b, a + .60, 0, -1);
     chipMove('d2', t, a, b, a + .85, 1, 1);
@@ -483,26 +519,35 @@ function drawSubs(t) {
     subKey = String(L.a);
   }
   const words = [...host.children];
-  const span = Math.max(.22, (L.b - L.a) * .48);
-  const out = eQuint(seg(t, L.b - .22, L.b + .10));
+  const span = Math.max(.20, (L.b - L.a) * .44);
+  const out = eQuint(seg(t, L.b - .20, L.b + .08));
   words.forEach((el, i) => {
     const st = L.a + (i / Math.max(1, words.length)) * span;
-    const p = eBack(clamp01(seg(t, st, st + .16)));
-    // Bascule 3D a l'arrivee, envol vers le haut a la sortie.
-    el.style.opacity = clamp01(p) * (1 - out);
-    el.style.transform = `translateY(${lerp(30, 0, clamp01(p)) - out * 40}px) `
-      + `rotateX(${lerp(-72, 0, clamp01(p))}deg) scale(${lerp(.84, 1, clamp01(p))})`;
+    const p = clamp01(seg(t, st, st + .13));
+    const pb = eBack(p);
+    // Chaque mot CLAQUE : il arrive en surcharge d'echelle, bascule en 3D, et
+    // continue de respirer une fois pose. Un mot qui s'affiche puis se fige
+    // est exactement ce qui rendait le texte mou.
+    const vivant = p >= 1 ? 1 + Math.sin((t - st) * 6.2) * .012 : 1;
+    const fort = el.classList.contains('hi');
+    el.style.opacity = clamp01(pb) * (1 - out);
+    el.style.transform = `translateY(${lerp(44, 0, pb) - out * 52}px) `
+      + `rotateX(${lerp(-84, 0, pb)}deg) `
+      + `scale(${lerp(fort ? .62 : .74, 1, pb) * vivant * (1 + (1 - Math.abs(p * 2 - 1)) * (fort ? .10 : .05))})`;
   });
   host.style.opacity = 1;
 }
 
 function render(t) {
   const [key, a] = curAct(t);
+  // Le decor bouge plus vite : la nappe respire, la grille file, le faisceau
+  // traverse deux fois plus souvent.
+
   // Fond : la nappe respire et tourne lentement, la grille derive, un faisceau
   // traverse. Le decor n'est jamais fixe.
-  $('wash').style.transform = `translate(${Math.sin(t * .29) * 90}px, ${Math.cos(t * .23) * 70}px) rotate(${Math.sin(t * .16) * 5}deg) scale(${1 + Math.sin(t * .21) * .05})`;
-  $('grid').style.transform = `translate(${(t * 20) % 120}px, ${(t * 11) % 120}px)`;
-  $('beam').style.transform = `translateX(${((t * 300) % 3400) - 700}px)`;
+  $('wash').style.transform = `translate(${Math.sin(t * .52) * 150}px, ${Math.cos(t * .44) * 115}px) rotate(deg) scale()`;
+  $('grid').style.transform = `translate(${(t * 46) % 120}px, ${(t * 27) % 120}px)`;
+  $('beam').style.transform = `translateX(${((t * 620) % 3400) - 700}px)`;
   $('badge').style.transform = `translateY(${Math.sin(t * 1.5) * 4}px)`;
   $('progIn').style.width = (clamp01(t / DUR) * 100).toFixed(2) + '%';
 
@@ -516,7 +561,24 @@ function render(t) {
 
   // Eclair court a chaque coupe.
   const cut = ACTS.find(([, s]) => t >= s && t < s + .16 && s > 0);
-  $('flash').style.opacity = cut ? (1 - (t - cut[1]) / .16) * .16 : 0;
+  $('flash').style.opacity = cut ? (1 - (t - cut[1]) / .16) * .22 : 0;
+
+  // COUP DE FOUET a la coupe : flou directionnel + decalage, sur 5 images.
+  // C'est ce qui fait qu'un changement de plan CLAQUE au lieu d'apparaitre.
+  const whip = ACTS.find(([, s]) => t >= s && t < s + .17 && s > 0);
+  const sc = $('scene');
+  if (whip) {
+    const u = (t - whip[1]) / .17;
+    const k = (1 - u) ** 2;
+    // 13 px de flou sur une carte encore loin en profondeur effacait toutes
+    // les hautes lumieres : le controle a trouve une frame vide a la coupe.
+    // 7 px suffisent a vendre le mouvement sans eteindre l'image.
+    sc.style.filter = `blur(${(k * 7).toFixed(2)}px)`;
+    sc.style.transform = `translateX(${(k * 90 * (ACTS.indexOf(whip) % 2 ? -1 : 1)).toFixed(1)}px) scale(${1 + k * .03})`;
+  } else {
+    sc.style.filter = 'none';
+    sc.style.transform = 'none';
+  }
 
   const etape = ETAPE[key];
   [...$('steps').children].forEach((el, i) => {

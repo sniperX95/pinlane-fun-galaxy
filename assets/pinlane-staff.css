@@ -9382,7 +9382,14 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    decoratif : position absolute inset:0 (couvre la boite de contenu du shell,
    jamais de debordement horizontal), pointer-events none, aria-hidden, DERRIERE
    le contenu (z-index 0). Reduced-motion : champ STATIQUE, aucune boucle. */
-.mkw-shell > .mkw-dots { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; pointer-events: none; color: var(--text); }
+/* Toile de fond PLEIN ECRAN (2026-07-28). Elle etait bornee a la boite de
+   contenu du shell ; Movsar la voulait sur toute la page. `position: fixed`
+   l'ancre au viewport (elle ne defile pas, c'est un fond), `z-index: -1` la
+   place SOUS le contenu en flux tout en restant AU-DESSUS du fond de page :
+   avec z-index 0 elle serait passee par-dessus le texte. Elle n'intercepte
+   rien (pointer-events: none) et porte les deux tokens dont le module a
+   besoin (color = --text, --accent lu par-dessus). */
+.mkw-dots { position: fixed; inset: 0; z-index: -1; width: 100vw; height: 100vh; height: 100dvh; pointer-events: none; color: var(--text); }
 
 /* Stat-cards decisionnelles (ref Vercel Usage) : valeur mono qui commande,
    label, note de bas de carte, hover par fond/bordure, cliquables (chaque

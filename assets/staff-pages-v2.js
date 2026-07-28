@@ -5439,7 +5439,7 @@
     let canvas = document.getElementById('mkwDots');
     if (!canvas) return;
     if (typeof window.plFxHalftone === 'function') {
-      mkwFxStop = window.plFxHalftone(canvas, { cell: 22, frequency: 1.9, speed: 0.13, gamma: 2.6, bias: -0.06 });
+      mkwFxStop = window.plFxHalftone(canvas, { cell: 30, frequency: 1.7, speed: 0.12, gamma: 1.6, bias: 0.06, mouseRadius: 200 });
       if (mkwFxStop) { mkwDots.canvas = null; return; }
       // Echec APRES la prise du contexte (shader refuse) : ce noeud est marque
       // « webgl » a vie, getContext('2d') y rendrait null et la page perdrait
@@ -5504,8 +5504,12 @@
     if (mkBrief.data) mkBrief._seenData = true;
     const enter = !reducedMotion && (mkwPrevTab !== mkBrief.tab || gotFirstData);
     mkwPrevTab = mkBrief.tab;
-    root.innerHTML = `<div class="pv2-shell mkw-shell">
-      <canvas class="mkw-dots" id="mkwDots" aria-hidden="true"></canvas>
+    // La toile de fond vit HORS du shell : elle est en position fixe et couvre
+    // tout l'ecran (demande de Movsar du 2026-07-28 : « ca doit prendre tout le
+    // fond de la page, vraiment tout »). Elle reste enfant de la page Marketing
+    // pour mourir avec elle : aucune texture ne survit quand on change de page.
+    root.innerHTML = `<canvas class="mkw-dots" id="mkwDots" aria-hidden="true"></canvas>
+    <div class="pv2-shell mkw-shell">
       ${mkwHead()}
       ${mkwCounters()}
       ${mkwRail()}

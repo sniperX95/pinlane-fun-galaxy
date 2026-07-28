@@ -83,6 +83,9 @@ uniform float uBias;
 uniform float uAlpha;
 uniform vec3 uColorA;
 uniform vec3 uColorB;
+uniform vec2 uMouse;      // position du curseur en pixels de canvas (-1 = absent)
+uniform float uMouseOn;   // fondu de presence 0..1 : l'entree et la sortie sont douces
+uniform float uMouseR;    // rayon d'influence en pixels de canvas
 out vec4 fragColor;
 
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -137,18 +140,30 @@ void main() {
   float cell = max(uCell, 1.0);
   vec2 pix = gl_FragCoord.xy;
   vec2 center = (floor(pix / cell) + 0.5) * cell;
+
+  // INFLUENCE DU CURSEUR : une gaussienne centree sur le pointeur, calculee sur
+  // le CENTRE DE CELLULE (et non sur le pixel) pour que tous les pixels d'un
+  // meme point recoivent exactement la meme poussee : sinon le disque se
+  // deforme au lieu de grossir.
+  float md = distance(center, uMouse);
+  float infl = uMouseOn * exp(-(md * md) / (2.0 * uMouseR * uMouseR));
+
   vec2 uv = center / uResolution;
   float aspect = uResolution.x / max(uResolution.y, 1.0);
   vec2 p = (uv - 0.5) * vec2(aspect, 1.0) + 0.5;
-  float gray = abs(snoise(vec3(p * uFreq, uTime * uSpeed)));
+  // Le champ se creuse legerement autour du pointeur : la matiere reagit a la
+  // main, elle ne se contente pas de briller.
+  vec2 warp = uResolution.x > 0.0 ? (center - uMouse) / uResolution : vec2(0.0);
+  float gray = abs(snoise(vec3(p * uFreq + warp * infl * 0.9, uTime * uSpeed)));
   gray = pow(clamp(gray, 0.0001, 1.0), uGamma);
+
   vec2 cellUv = fract(pix / cell) - 0.5;
   float dist = length(cellUv);
-  float radius = clamp(gray + uBias, 0.0, 1.0) * 0.5;
+  float radius = clamp(gray + uBias + infl * 0.34, 0.0, 1.0) * 0.5;
   float aa = fwidth(dist) + 1e-4;
   float mark = 1.0 - smoothstep(radius - aa, radius + aa, dist);
-  vec3 col = mix(uColorA, uColorB, gray);
-  fragColor = vec4(col, mark * uAlpha);
+  vec3 col = mix(uColorA, uColorB, clamp(gray + infl * 0.5, 0.0, 1.0));
+  fragColor = vec4(col, mark * uAlpha * (1.0 + infl * 0.85));
 }`;
 
   function compile(gl, type, source) {
@@ -193,10 +208,16 @@ void main() {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     const u = {};
-    ['uResolution', 'uTime', 'uCell', 'uFreq', 'uSpeed', 'uGamma', 'uBias', 'uAlpha', 'uColorA', 'uColorB']
+    ['uResolution', 'uTime', 'uCell', 'uFreq', 'uSpeed', 'uGamma', 'uBias', 'uAlpha', 'uColorA', 'uColorB', 'uMouse', 'uMouseOn', 'uMouseR']
       .forEach((name) => { u[name] = gl.getUniformLocation(program, name); });
 
-    const state = { raf: 0, last: 0, t0: 0, w: 0, h: 0, dpr: 1, stopped: false };
+    const state = {
+      raf: 0, last: 0, t0: 0, w: 0, h: 0, dpr: 1, stopped: false,
+      // Curseur : position visee (px CSS, repere page) et position LISSEE. Le
+      // lissage evite que la tache saute d'un bout a l'autre sur un mouvement
+      // rapide ; le fondu `on` fait entrer et sortir l'influence en douceur.
+      px: null, py: null, mx: 0, my: 0, on: 0,
+    };
 
     function readTheme() {
       const cs = getComputedStyle(canvas);
@@ -207,7 +228,7 @@ void main() {
       gl.uniform3f(u.uColorB, accent[0], accent[1], accent[2]);
       // Intensites TRES basses : la texture ne concurrence jamais la lecture.
       // Le dark porte un peu plus (contraste plus doux sur fond sombre).
-      gl.uniform1f(u.uAlpha, opts.alpha != null ? opts.alpha : (dark ? 0.34 : 0.22));
+      gl.uniform1f(u.uAlpha, opts.alpha != null ? opts.alpha : (dark ? 0.55 : 0.34));
     }
 
     function resize() {
@@ -221,14 +242,17 @@ void main() {
       canvas.height = Math.round(h * dpr);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(u.uResolution, canvas.width, canvas.height);
-      // La maille est donnee en px CSS : elle doit garder la meme taille a
-      // l'ecran quel que soit le DPR.
+      // La maille et le rayon d'influence sont donnes en px CSS : ils doivent
+      // garder la meme taille a l'ecran quel que soit le DPR.
       gl.uniform1f(u.uCell, (opts.cell || 26) * dpr);
+      gl.uniform1f(u.uMouseR, (opts.mouseRadius || 170) * dpr);
       return true;
     }
 
     function paint(seconds) {
       gl.uniform1f(u.uTime, seconds);
+      gl.uniform2f(u.uMouse, state.mx * state.dpr, (state.h - state.my) * state.dpr); // gl_FragCoord a l'origine en BAS
+      gl.uniform1f(u.uMouseOn, state.on);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -243,13 +267,33 @@ void main() {
       const rect = canvas.getBoundingClientRect();
       if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;   // hors ecran : on saute la peinture, pas l'horloge
       if (Math.abs(rect.width - state.w) > 1 || Math.abs(rect.height - state.h) > 1) resize();
+      // Curseur : cible en coordonnees LOCALES du canvas, puis lissage.
+      const target = state.px !== null ? 1 : 0;
+      state.on += (target - state.on) * 0.12;
+      if (state.px !== null) {
+        const lx = state.px - rect.left;
+        const ly = state.py - rect.top;
+        // Premiere entree : on se pose directement, sinon la tache traverse
+        // l'ecran en diagonale a chaque retour du pointeur.
+        if (state.on < 0.02) { state.mx = lx; state.my = ly; }
+        else { state.mx += (lx - state.mx) * 0.18; state.my += (ly - state.my) * 0.18; }
+      }
       paint((now - state.t0) / 1000);
     }
+
+    function onMove(event) {
+      state.px = event.clientX;
+      state.py = event.clientY;
+    }
+    function onLeave() { state.px = null; state.py = null; }
 
     function stop() {
       state.stopped = true;
       if (state.raf) cancelAnimationFrame(state.raf);
       state.raf = 0;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('blur', onLeave);
+      document.removeEventListener('mouseleave', onLeave);
       document.removeEventListener('visibilitychange', onVisibility);
     }
 
@@ -269,12 +313,19 @@ void main() {
     gl.uniform1f(u.uSpeed, opts.speed != null ? opts.speed : 0.16);
     gl.uniform1f(u.uGamma, opts.gamma != null ? opts.gamma : 3.4);
     gl.uniform1f(u.uBias, opts.bias != null ? opts.bias : -0.16);
+    gl.uniform1f(u.uMouseOn, 0);
+    gl.uniform2f(u.uMouse, -9999, -9999);
     readTheme();
     if (!resize()) return null;
-    if (reduced) { paint(0); return stop; }     // image fixe : aucune boucle
+    if (reduced) { paint(0); return stop; }     // image fixe : aucune boucle, aucun suivi du curseur
     state.t0 = performance.now();
     state.last = 0;
     paint(0);
+    // Listeners GLOBAUX : le canvas est en pointer-events:none (il ne doit rien
+    // intercepter), donc c'est la fenetre qui rapporte la position.
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('blur', onLeave, { passive: true });
+    document.addEventListener('mouseleave', onLeave, { passive: true });
     document.addEventListener('visibilitychange', onVisibility);
     state.raf = requestAnimationFrame(frame);
     return stop;

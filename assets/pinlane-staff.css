@@ -9647,7 +9647,12 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-head { display: flex; flex-direction: column; gap: 10px; padding: var(--space-8) 0 var(--space-6); }
 .mkw-crumb { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .mkw-head-id { display: flex; align-items: flex-start; gap: 14px; }
-.mkw-head-mark { flex: none; }
+/* La vignette de marque : un canvas de particules (pinlane-fx.js) qui reforme
+   le dessin de l'agent et fuit le curseur. `color` porte le token pour le
+   module (zero couleur en dur cote JS) ; sans le module, la case reste vide et
+   l'en-tete tient tout seul. */
+.mkw-head-mark { flex: none; width: 64px; height: 64px; display: block; border-radius: var(--radius-lg); background: var(--accent-soft); }
+.mkw-mark-fx { display: block; width: 100%; height: 100%; color: var(--accent-strong); }
 .mkw-mark { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--accent-strong); flex: none; }
 .mkw-mark svg { width: 18px; height: 18px; }
 .mkw-head-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -9916,6 +9921,14 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-turn-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; max-width: 660px; }
 
 /* La bulle : coin haut-gauche pincé vers l'avatar (langage chat). */
+/* L'apercu du texte dans une carte fermee : deux lignes du vrai post, pour
+   savoir ce qui partira sans avoir a ouvrir la carte. Le nom du reseau est
+   pose en tete de ligne, en mono discret. */
+.mkw-prop-preview { margin: 8px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mkw-prop-net { font-family: var(--font-data); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); margin-right: 8px; }
+/* Le fil respirait dans 660 px au milieu d'une colonne de 912 : le tiers droit
+   restait vide. Les bulles prennent la largeur disponible. */
+.mkw-turn-body { max-width: 780px; }
 .mkw-bubble { padding: 14px 18px; border: 1px solid var(--line); border-radius: 5px var(--radius-lg) var(--radius-lg) var(--radius-lg); background: var(--surface); }
 [data-theme='dark'] .mkw-bubble { background: var(--raised); }
 .mkw-turn-text { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text); }
@@ -10906,6 +10919,28 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 #staffCockpitPage .fck-line { margin: 8px 0; font-size: 13.5px; }
 #staffCockpitPage .fck-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Page Apprentissage de l'IA : les criteres de la grille, en ligne sous le nom
+   de la plateforme. Sans mise en forme ils se collaient les uns aux autres
+   (« Verite centre 2Garde-fou 1.8Impact humain 1.4 » : illisible). Le poids est
+   en mono, et un critere VENU DU TERRAIN se distingue par son fond accentue -
+   jamais par la couleur seule, il porte aussi une bordure. */
+#staffCockpitPage .fck-crit {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 3px 6px 0 0;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#staffCockpitPage .fck-crit em { font-family: var(--font-data); font-style: normal; color: var(--faint); }
+#staffCockpitPage .fck-crit.is-learned { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); color: var(--accent-strong); }
+#staffCockpitPage .fck-crit.is-learned em { color: var(--accent-strong); }
+#staffCockpitPage .fck-chart-host { margin: 4px 0 2px; }
 
 /* Etat sain de la sante ("Ce qui casse" quand rien ne casse) : confirmation
    calme, pas un simple texte gris. Vert soft + point : le sens est porte par le

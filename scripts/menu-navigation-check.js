@@ -398,13 +398,23 @@ async function probeCockpitClick(browser) {
     const original = fs.readFileSync(MENU_SRC, 'utf8');
     mutationOriginal = original;
     const nl = original.includes('\r\n') ? '\r\n' : '\n';
+    // La liste des pages Plateforme n'est PAS recopiee ici : elle grandit (ajout
+    // de 'cockpit-ia' le 2026-07-28) et une copie figee faisait rougir ce gate
+    // pour une raison qui n'a rien a voir avec ce qu'il teste. On lit la ligne
+    // reelle et on ne mute que la DECISION DE VUE, qui est le vrai sujet.
+    const listLine = (original.match(/^ *if \(\[[^\]]*'cockpit-journal'[^\]]*\]\.includes\(key\)\) \{$/m) || [])[0];
+    if (!listLine) {
+      console.error('menu-navigation-check: la ligne des pages Plateforme est introuvable dans staff-menu.js.');
+      process.exitCode = 1;
+      return;
+    }
     const ANCHOR = [
-      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal'].includes(key)) {",
+      listLine,
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('staff');",
     ].join(nl);
     const MUTATED = [
-      "    if (['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal'].includes(key)) {",
+      listLine,
       '      setMenuPage(key);',
       "      if (typeof setView === 'function') setView('admin');",
     ].join(nl);

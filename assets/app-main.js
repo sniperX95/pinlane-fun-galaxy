@@ -2218,6 +2218,7 @@ const STAFF_MENU_PAGES = [
   'cockpit-agents',
   'cockpit-incidents',
   'cockpit-journal',
+  'cockpit-ia',
   'cockpit-clients'
 ];
 function normalizeStaffMenuPage(page) {
@@ -2361,6 +2362,9 @@ const STAFF_PAGE_PERMISSION_MAP = {
   // Journal des modifications : outil PLATEFORME (retire de la Direction client
   // le 2026-07-28). Le serveur exige aussi platform.admin sur l'action auditLog.
   'cockpit-journal': ['platform.admin'],
+  // Apprentissage de l'IA marketing : meme niveau. L'action serveur
+  // aiLearning exige aussi platform.admin, l'UI n'est pas la seule barriere.
+  'cockpit-ia': ['platform.admin'],
   'cockpit-clients': ['platform.admin']
 };
 
@@ -4475,7 +4479,7 @@ function isStaffCampaignsActive() {
   return state.view === 'staff' && getStaffMenuPage() === 'campaigns';
 }
 
-const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal'];
+const STAFF_COCKPIT_MENU_PAGES = ['cockpit', 'cockpit-clients-platform', 'cockpit-centres', 'cockpit-agents', 'cockpit-incidents', 'cockpit-clients', 'cockpit-journal', 'cockpit-ia'];
 function isStaffCockpitActive() {
   return state.view === 'staff' && STAFF_COCKPIT_MENU_PAGES.includes(getStaffMenuPage());
 }
@@ -5242,14 +5246,14 @@ function openStaffDashboardDetail(type = 'arrivals', kind = '') {
   };
   overlay.innerHTML = `
     <section class="dashboard-detail-modal" aria-labelledby="dashboardDetailTitle">
-      <header class="dashboard-detail-head">
+      <div class="dashboard-detail-head">
         <div>
           <span>${escapeHtml(config.eyebrow)}</span>
           <h2 id="dashboardDetailTitle">${escapeHtml(config.title)}</h2>
           <p>${escapeHtml(dateLong)} · ${escapeHtml(config.subtitle)}</p>
         </div>
         <button type="button" class="dashboard-detail-close" onclick="closeStaffDashboardDetail()" aria-label="Fermer">×</button>
-      </header>
+      </div>
       <div class="dashboard-detail-summary">
         ${config.stats.map(stat => `<article><span>${escapeHtml(stat.label)}</span><strong>${escapeHtml(stat.value)}</strong><small>${escapeHtml(stat.note || '')}</small></article>`).join('')}
       </div>
@@ -16285,11 +16289,11 @@ function renderFormules() {
     const groupSummerOpen = summerOpen && group.items.length > 1 && group.items.every(item => item.noHolidays);
     return `
     <section class="formule-group">
-      <header class="formule-group-head">
+      <div class="formule-group-head">
         <h3>${group.name}</h3>
         ${sharedNotes.length ? `<p class="formule-group-notes">${sharedNotes.join(' · ')}</p>` : ''}
         ${groupSummerOpen ? '<p class="formule-group-info">Exception grandes vacances : ces formules sont bien disponibles à la date choisie.</p>' : ''}
-      </header>
+      </div>
       ${groupBlocked ? `<div class="formule-group-alert" role="status">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         <span>Ces formules ne sont pas disponibles à la date choisie (vacances scolaires ou jour férié). Choisissez une autre date pour les réserver.</span>

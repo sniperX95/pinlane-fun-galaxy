@@ -576,6 +576,17 @@ async function handleGet(req, res, options = {}) {
     return;
   }
 
+  // Ce que l'IA marketing a APPRIS : grille de jugement, auto-évaluation,
+  // ADN d'écriture, apprentissage par les résultats. Outil PLATEFORME
+  // (platform.admin) : c'est la mécanique interne de Pinlane, pas une donnée
+  // d'exploitation du centre. Demande de Movsar du 2026-07-28.
+  if (action === 'aiLearning') {
+    const { buildMarketingLearning } = require('../lib/marketing-learning');
+    const learning = await buildMarketingLearning(centerId, { days: Number(url.searchParams.get('days') || 90) });
+    sendJson(res, 200, learning);
+    return;
+  }
+
   // Cerveau marketing : prévision de fréquentation 14 j (baseline apprise ×
   // météo démontrée), explication des jours anormaux, plan d'actions daté,
   // post Instagram du jour. Tout dérivé des données réelles du centre.
@@ -2486,6 +2497,12 @@ function getRequiredOpsPermission(method, action) {
     // l'UI l'a quitte cote client, la permission serveur suit, sinon l'appel
     // resterait ouvert par lien direct.
     if (action === 'auditLog') return 'platform.admin';
+    // Meme raisonnement pour l'apprentissage de l'IA : grille de jugement,
+    // scores d'auto-evaluation, ADN d'ecriture. C'est le fonctionnement interne
+    // du produit, lisible par la plateforme seule (demande du 2026-07-28 :
+    // « cote admin uniquement »). Un gerant de centre n'a pas a y acceder,
+    // meme par lien direct.
+    if (action === 'aiLearning') return 'platform.admin';
     // Lecture de l'editeur tarifaire CLIENT : meme permission de CENTRE que ses
     // ecritures (saveClientFormuleOverride), JAMAIS platform.admin. Le fondateur
     // lit founderCatalog (platform.admin), le client lit clientCatalog.

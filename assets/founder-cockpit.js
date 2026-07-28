@@ -53,6 +53,7 @@
     'cockpit-agents': 'founderAgents',
     'cockpit-incidents': 'founderIncidents',
     'cockpit-clients': 'founderClients',
+    'cockpit-ia': 'aiLearning',
   };
   const PAGE_META = {
     'cockpit-agents': { title: 'Agents IA', sub: 'Ce que chaque agent produit reellement, et ce que l\'IA coute.' },
@@ -63,6 +64,11 @@
     // crons, des workers et les tentatives refusees - la vie interne de Pinlane,
     // pas le tableau de bord d'un gerant.
     'cockpit-journal': { title: 'Journal des modifications', sub: 'Qui a change quoi, quand, et ce qui a change exactement. Les tentatives refusees y figurent aussi.' },
+    // Apprentissage de l'IA marketing : outil PLATEFORME (demande du
+    // 2026-07-28, « cote admin uniquement »). Il montre la mecanique interne du
+    // produit : la grille de jugement des agents, leurs notes, l'ADN d'ecriture
+    // et ce qui a ete appris des resultats reels.
+    'cockpit-ia': { title: 'Apprentissage de l\'IA', sub: 'Ce que l\'agent marketing a appris, ce qu\'il s\'est mis a surveiller, et ce qu\'il ne sait pas encore.' },
   };
   const pageStates = {
     'cockpit-agents': { loaded: false, loading: false, error: '', data: null },
@@ -72,6 +78,7 @@
     // lignes. On le declare 'loaded' pour que le gabarit affiche son corps sans
     // attendre un chargement qui n'existe pas.
     'cockpit-journal': { loaded: true, loading: false, error: '', data: {} },
+    'cockpit-ia': { loaded: false, loading: false, error: '', data: null },
   };
   fck.pages = pageStates;
 
@@ -1130,8 +1137,177 @@
     mountCockpitCharts(root);
   }
 
+  /* ---- Page Apprentissage de l'IA (aiLearning) -----------------------------
+     Regle de la page : elle montre l'apprentissage REEL, et elle nomme ce qui
+     est encore vide. Un tableau de bord d'IA qui n'affiche que des courbes qui
+     montent est un tableau de bord de confort : ici, la note moyenne des
+     brouillons est mise EN FACE du nombre de criteres appris, parce qu'un score
+     qui grimpe sur une grille figee ne prouve rien (l'agent apprend a passer
+     son propre examen). Zero chiffre invente : tout vient de lib/marketing-learning.js. */
+
+  const IA_CONF_TONE = { solide: 'green', plausible: 'amber', speculatif: 'grey' };
+
+  function iaStat(label, value, foot) {
+    return `<article class="pv2-stat">
+      <div class="pv2-stat-label"><span>${esc(label)}</span></div>
+      <div class="pv2-stat-value">${esc(String(value))}</div>
+      ${foot ? `<div class="pv2-stat-foot">${esc(foot)}</div>` : ''}
+    </article>`;
+  }
+
+  function renderIaMeasurement(measurement, proposals) {
+    const patterns = Array.isArray(measurement.patterns) ? measurement.patterns : [];
+    const arms = Array.isArray(measurement.arms) ? measurement.arms : [];
+    if (measurement.empty) {
+      // L'etat vide dit POURQUOI et ce qui le debloque. C'est le seul
+      // apprentissage qui vaut de l'argent : il ne demarre pas tout seul.
+      const measured = Number(proposals.measured) || 0;
+      const applied = Number(proposals.applied) || 0;
+      return panel('Ce qu\'il a appris des résultats', 'Le seul apprentissage qui rapporte : un post publié, mesuré 14 jours, puis crédité ou non.',
+        `<p class="fck-line">Rien pour l'instant, et c'est normal : ${applied === 0
+          ? 'aucune proposition n\'a encore été publiée depuis la page Marketing'
+          : `${applied} proposition${applied > 1 ? 's' : ''} publiée${applied > 1 ? 's' : ''}, ${measured} mesurée${measured > 1 ? 's' : ''}`}.
+          Tant qu'une publication n'a pas vécu ses 14 jours de mesure, l'agent n'a aucun résultat à généraliser.</p>
+        <p class="pv2-quiet">Ce panneau se remplit tout seul dès la première mesure : angle joué, contexte, écart de fréquentation constaté.</p>`);
+    }
+    const rows = patterns.map((p) => `<tr>
+      <td>${esc(p.contextKey || '')}<div class="pv2-cell-sub">${esc([p.kind, p.channel, p.trigger].filter(Boolean).join(' · '))}</div></td>
+      <td>${esc(String(p.avgNetDelta))}</td>
+      <td>${esc(`${p.wins}/${p.n}`)}</td>
+      <td>${chip(p.confidence === 'solide' ? 'green' : 'amber', esc(p.confidence || 'exploratoire'))}</td>
+    </tr>`).join('');
+    const armRows = arms.map((a) => `<tr>
+      <td>${esc(a.angleKey)}</td>
+      <td>${esc(`${a.successes} réussite${a.successes > 1 ? 's' : ''} · ${a.failures} échec${a.failures > 1 ? 's' : ''}`)}</td>
+      <td>${esc(a.updatedAt)}</td>
+    </tr>`).join('');
+    return panel('Ce qu\'il a appris des résultats', 'Motifs retenus après mesure réelle des publications.',
+      `${rows ? `<table class="pv2-table fck-table"><tbody>${rows}</tbody></table>` : emptyLine('Aucun motif retenu.')}
+       ${armRows ? `<h3 class="fck-sub">Angles testés</h3><table class="pv2-table fck-table"><tbody>${armRows}</tbody></table>` : ''}`);
+  }
+
+  function renderIaGrid(grid) {
+    const platforms = Array.isArray(grid.platforms) ? grid.platforms : [];
+    if (!platforms.length) return panel('Sa grille de jugement', '', emptyLine('Aucun critère enregistré pour ce centre.'));
+    const rows = platforms.map((p) => {
+      const top = (p.top || []).slice(0, 4).map((c) => `<span class="fck-crit ${c.learned ? 'is-learned' : ''}">${esc(c.label)} <em>${esc(String(c.weight))}</em></span>`).join('');
+      return `<tr>
+        <td>${esc(p.platform)}<div class="pv2-cell-sub">${top}</div></td>
+        <td>${esc(`${p.learned}/${p.count}`)}</td>
+        <td>${esc(String(p.avgWeight))}</td>
+        <td>${esc(p.updatedAt ? when(p.updatedAt) : '')}</td>
+      </tr>`;
+    }).join('');
+    return panel('Sa grille de jugement', 'Les critères sur lesquels chaque agent note ses propres brouillons. En couleur : ceux qu\'il s\'est ajoutés lui-même à partir de ce qu\'il a observé.',
+      `<table class="pv2-table fck-table">
+        <thead><tr><th>Plateforme</th><th>Appris / total</th><th>Poids moyen</th><th>Dernière revue</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+       <p class="pv2-quiet">${esc(`${grid.learned} critère${grid.learned > 1 ? 's' : ''} sur ${grid.total} viennent du terrain ; les autres ont été posés au départ.`)}</p>`);
+  }
+
+  function renderIaQuality(quality, grid) {
+    const series = Array.isArray(quality.series) ? quality.series : [];
+    const platforms = Array.isArray(quality.platforms) ? quality.platforms : [];
+    if (!quality.runs) {
+      return panel('Ses notes', '', emptyLine(`Aucune évaluation sur les ${Number(quality.days) || 90} derniers jours.`));
+    }
+    const rows = platforms.map((p) => `<tr>
+      <td>${esc(p.platform)}</td>
+      <td>${esc(String(p.avg === null ? '-' : p.avg))}</td>
+      <td>${esc(String(p.last === null ? '-' : p.last))}</td>
+      <td>${esc(`${p.runs} évaluation${p.runs > 1 ? 's' : ''}`)}</td>
+    </tr>`).join('');
+    // La tendance ne s'affiche qu'avec au moins deux jours de mesure : sinon
+    // c'est une droite tracee sur un seul point.
+    const trendLine = series.length >= 2 && quality.trend !== null
+      ? `<p class="fck-line">Tendance sur la période : ${esc(quality.trend > 0 ? `+${quality.trend}` : String(quality.trend))} point${Math.abs(quality.trend) > 1 ? 's' : ''}.</p>`
+      : `<p class="pv2-quiet">Trop peu de jours mesurés pour parler de tendance.</p>`;
+    return panel('Ses notes', 'L\'agent note chaque brouillon sur sa propre grille, avant toute relecture humaine.',
+      `<div data-fck-chart="ia-scores" class="fck-chart-host"></div>
+       ${trendLine}
+       <table class="pv2-table fck-table">
+         <thead><tr><th>Plateforme</th><th>Moyenne</th><th>Dernière</th><th>Volume</th></tr></thead>
+         <tbody>${rows}</tbody></table>
+       <p class="pv2-quiet">${esc(`À lire avec la grille : une note qui monte pendant que la grille ne bouge pas veut seulement dire que l'agent apprend à passer son propre examen. Ici, ${Number(grid.learned) || 0} critère(s) sur ${Number(grid.total) || 0} viennent du terrain.`)}</p>
+       ${quality.failures ? `<p class="fck-line">${chip('red', `${quality.failures} run${quality.failures > 1 ? 's' : ''} non terminé${quality.failures > 1 ? 's' : ''}`)}</p>` : ''}`);
+  }
+
+  function renderIaDna(dna) {
+    const origins = Array.isArray(dna.byOrigin) ? dna.byOrigin : [];
+    const recent = Array.isArray(dna.recent) ? dna.recent : [];
+    if (!dna.total) return panel('Son ADN d\'écriture', '', emptyLine('Aucune règle enregistrée.'));
+    const originRows = origins.map((o) => `<tr>
+      <td>${esc(o.origine)}</td>
+      <td>${esc(`${o.actifs}/${o.total} active${o.actifs > 1 ? 's' : ''}`)}</td>
+      <td>${o.solide ? chip('green', `${o.solide} solide`) : ''}${o.plausible ? chip('amber', `${o.plausible} plausible`) : ''}${o.speculatif ? chip('grey', `${o.speculatif} spéculatif`) : ''}</td>
+    </tr>`).join('');
+    const recentRows = recent.map((r) => `<tr>
+      <td>${esc(r.nom)}<div class="pv2-cell-sub">${esc([r.angle, r.channel].filter(Boolean).join(' · '))}</div></td>
+      <td>${chip(IA_CONF_TONE[String(r.confiance).toLowerCase()] || 'grey', esc(r.confiance || 'sans niveau'))}</td>
+      <td>${r.actif ? chip('green', 'active') : chip('grey', 'en veille')}</td>
+    </tr>`).join('');
+    return panel('Son ADN d\'écriture', 'Les règles de style et d\'angle qu\'il applique, avec leur niveau de preuve.',
+      `<table class="pv2-table fck-table"><tbody>${originRows}</tbody></table>
+       <h3 class="fck-sub">Dernières règles</h3>
+       <table class="pv2-table fck-table"><tbody>${recentRows}</tbody></table>`);
+  }
+
+  function renderIaObservations(observations, days) {
+    const rows = Array.isArray(observations.rows) ? observations.rows : [];
+    if (!rows.length) {
+      return panel('Ce qu\'il observe', '', emptyLine(`Aucun signal collecté sur les ${Number(days) || 90} derniers jours.`));
+    }
+    const body = rows.map((r) => `<tr>
+      <td>${esc(r.platform)}<div class="pv2-cell-sub">${esc(r.signalType)}</div></td>
+      <td>${esc(String(r.n))}</td>
+      <td>${esc(r.lastAt)}</td>
+    </tr>`).join('');
+    return panel('Ce qu\'il observe', 'Les signaux bruts qui alimentent sa grille.',
+      `<table class="pv2-table fck-table"><tbody>${body}</tbody></table>`);
+  }
+
+  function renderIaPage(st) {
+    const d = st.data || {};
+    const grid = d.grid || {};
+    const quality = d.quality || {};
+    const dna = d.dna || {};
+    const proposals = d.proposals || {};
+    const lastDay = Array.isArray(quality.series) && quality.series.length
+      ? quality.series[quality.series.length - 1]
+      : null;
+    const stats = `<section class="pv2-stats">
+      ${iaStat('Critères venus du terrain', `${Number(grid.learned) || 0} / ${Number(grid.total) || 0}`, 'le reste a été posé au départ')}
+      ${iaStat('Note moyenne des brouillons', lastDay && lastDay.avg !== null ? String(lastDay.avg) : '-', lastDay ? `${lastDay.n} évaluation${lastDay.n > 1 ? 's' : ''} le ${lastDay.day}` : 'aucune évaluation')}
+      ${iaStat('Règles d\'écriture actives', `${Number(dna.actifs) || 0} / ${Number(dna.total) || 0}`, 'ADN partagé par tous les centres')}
+      ${iaStat('Propositions mesurées', `${Number(proposals.measured) || 0} / ${Number(proposals.total) || 0}`, 'mesure à 14 jours après publication')}
+    </section>`;
+    return stats
+      + renderIaMeasurement(d.measurement || {}, proposals)
+      + renderIaGrid(grid)
+      + renderIaQuality(quality, grid)
+      + renderIaDna(dna)
+      + renderIaObservations(d.observations || {}, d.days);
+  }
+
+  // Le graphe des notes se monte APRES l'innerHTML, comme celui des couts.
+  function mountIaChart(root) {
+    const charts = window.PinlaneCharts;
+    if (!charts || typeof charts.barChart !== 'function') return;
+    const host = root.querySelector('[data-fck-chart="ia-scores"]');
+    if (!host) return;
+    const st = pageStates['cockpit-ia'];
+    const series = ((st.data && st.data.quality && st.data.quality.series) || [])
+      .filter((point) => point.avg !== null)
+      .map((point) => ({ label: String(point.day).slice(5), value: Number(point.avg) || 0 }));
+    if (!series.length) return;
+    try {
+      charts.barChart(host, { series, format: 'int', motionKey: 'fck-ia-scores', height: 150 });
+    } catch (error) { /* un graphique rate ne doit pas coucher la page */ }
+  }
+
   const PAGE_BODY_RENDERERS = {
     'cockpit-agents': renderAgentsPage,
+    'cockpit-ia': renderIaPage,
     'cockpit-incidents': renderIncidentsPage,
     'cockpit-clients': renderClientsPage,
     'cockpit-journal': () => {
@@ -1185,6 +1361,7 @@
     </div>`;
 
     if (pageKey === 'cockpit-agents' && st.data) mountCharts(root);
+    if (pageKey === 'cockpit-ia' && st.data) mountIaChart(root);
   }
 
   function render() {

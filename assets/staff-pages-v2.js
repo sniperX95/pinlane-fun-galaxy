@@ -3081,6 +3081,9 @@
     chat: [],
     // Les tours d'ambiance (radar, veille, résultats) sont repliés par défaut
     // en une ligne-résumé : le fil s'ouvre calme, le détail reste à un tap.
+    // (Ouvrir le radar par défaut a été tenté le 2026-07-28 puis annulé : le
+    // fil calme est une demande explicite du client du 2026-07-18, « trop
+    // d'info d'un coup ». La densité se règle ailleurs, pas en la rétablissant.)
     folds: { radar: false, veille: false, results: false },
   };
   window.mkBrief = mkBrief;
@@ -3377,11 +3380,23 @@
       when ? `<span class="mkw-chip-inline">${esc(when)}</span>` : '',
       reason ? `<span class="mkw-chip-inline mkw-chip-reason">${esc(reason)}</span>` : '',
     ].join('');
+    // L'APERCU DU TEXTE, carte fermee (2026-07-28). Elle n'affichait que le
+    // pourquoi et deux pastilles : une boite a moitie vide qui obligeait a
+    // ouvrir chaque carte pour savoir ce qui serait publie. Le texte est deja
+    // dans le brief, on en montre les deux premieres lignes.
+    const previewNets = p.networks || {};
+    const previewKey = p.network && previewNets[p.network] ? p.network : Object.keys(previewNets)[0];
+    const previewEntry = previewKey ? previewNets[previewKey] : null;
+    const previewText = String((previewEntry && previewEntry.text) || p.text || '').trim();
+    const preview = !open && previewText
+      ? `<p class="mkw-prop-preview">${previewKey ? `<span class="mkw-prop-net">${esc(BR_NETWORK_LABELS[previewKey] || previewKey)}</span>` : ''}${esc(previewText)}</p>`
+      : '';
     return `<article class="mkw-turn mkw-turn-prop tone-${tone} ${open ? 'is-open' : ''}" data-br-card="${esc(p.key)}">
       <span class="mkw-turn-avatar" aria-hidden="true">${mkwAgentMark()}</span>
       <div class="mkw-turn-body">
         <div class="mkw-bubble">
           <p class="mkw-prop-why">${brProse(p.whyShort || p.why)}</p>
+          ${preview}
           ${chips ? `<p class="mkw-prop-meta">${chips}</p>` : ''}
         </div>
         ${open ? '' : `<div class="mkw-cta">
@@ -4342,13 +4357,29 @@
   // grande identité de l'agent + pastille d'état vivant, une phrase mutée qui
   // dit ce qu'il fait, et un « En savoir plus » qui déplie (vraie révélation,
   // jamais un lien mort : Product Rule §9). La texture de points vit derrière.
-  function mkwHeader() {
+  // Le path de la marque (meme dessin que mkwAgentMark) : reutilise tel quel
+  // par le champ de particules pour que la texture PORTE l'identite de la page
+  // au lieu d'etre un decor generique.
+  const MKW_MARK_PATH = 'M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8z';
+
+  // <section> et JAMAIS <header> : en mode console, la regle
+  // `body.staff-mode header { width: 0; height: 0 }` (elle masque l'en-tete du
+  // site public) ecrasait TOUT ce bloc a hauteur zero. Le titre, la pastille
+  // d'etat et la description etaient donc invisibles en production depuis la
+  // refonte du 2026-07-18 : la page Marketing s'ouvrait sur des onglets nus.
+  // Mesure : getBoundingClientRect().height === 0 sur .mkw-head. Le piege est
+  // documente dans 6 autres fichiers du bundle ; un gate le verrouille
+  // maintenant pour tout le monde (scripts/no-header-tag-check.js).
+  function mkwHead() {
     const b = mkBrief.data;
-    const fresh = b ? `Brief du ${esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}.` : '';
-    return `<header class="mkw-head">
-      <p class="mkw-crumb">Marketing</p>
+    const generated = b && b.generatedAt ? new Date(b.generatedAt) : null;
+    const fresh = generated && !Number.isNaN(generated.getTime())
+      ? `Brief du ${esc(generated.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}.`
+      : '';
+    return `<section class="mkw-head">
+      <p class="mkw-crumb"><span class="pv2-live"></span>Clients &amp; marketing / Marketing</p>
       <div class="mkw-head-id">
-        <span class="mkw-head-mark">${mkwAgentMark()}</span>
+        <span class="mkw-head-mark"><canvas id="mkwMarkFx" class="mkw-mark-fx" aria-hidden="true"></canvas></span>
         <div class="mkw-head-main">
           <div class="mkw-head-titlerow">
             <h1 class="mkw-head-title">Ton agent marketing</h1>
@@ -4358,7 +4389,45 @@
           ${mkBrief.aboutOpen ? '<p class="mkw-head-about">Je travaille la nuit sur tes chiffres réels : je te propose, tu valides, rien ne part jamais tout seul. Chaque publication est ensuite mesurée pendant 14 jours, et le résultat arrive dans Résultats.</p>' : ''}
         </div>
       </div>
-    </header>`;
+    </section>`;
+  }
+
+  // ── LE BANDEAU D'ETAT ─────────────────────────────────────────────────────
+  // La page s'ouvrait sur une conversation et rien d'autre : au-dessus du fil,
+  // aucune idee de ce que l'agent a en main. Ce bandeau donne l'etat en quatre
+  // nombres, avec DEUX interdits tenus :
+  //   : aucun chiffre d'exploitation (CA, visiteurs, panier). Ils vivent en
+  //     Direction, et un meme fait affiche a deux endroits finit par diverger
+  //     (c'est exactement ce qui s'est produit ici : la page Marketing lisait
+  //     l'entrepot quotidien et affichait 7 654 EUR pendant que la Direction en
+  //     annoncait 44 159 pour la meme periode). Un fait, une autorite.
+  //   : aucun montant d'attribution. La figure en euros du marketing n'existe
+  //     qu'a UN exemplaire, dans Resultats (audit 6.2).
+  // Il ne reste donc ici que ce qui appartient a cette page : ce qui est pret,
+  // ce qu'il reste a remplir, la veille, et l'etat de la mesure.
+  function mkwCounters() {
+    const b = mkBrief.data;
+    if (!b) {
+      return `<section class="pv2-stats mkw-counters">${'<article class="pv2-stat"><div class="mkw-skel mkw-skel-short"></div><div class="mkw-skel"></div></article>'.repeat(4)}</section>`;
+    }
+    const props = brVisiblePropositions();
+    const today = b.today || '';
+    const quiet = (b.radar || []).filter((day) => (day.level === 'creux' || day.level === 'calme') && day.date >= today);
+    const veille = b.veille || {};
+    const paie = b.paie || {};
+    const receipts = (b.receipts || []).length;
+    // Etat de la mesure : tant qu'aucune publication n'a vecu ses 14 jours, on
+    // annonce la DATE du premier verdict au lieu d'un zero qui ressemble a un
+    // echec.
+    const measure = receipts > 0
+      ? { value: String(receipts), foot: 'publications mesurées à 14 jours' }
+      : { value: '-', foot: paie.firstVerdictDate ? `premier bilan le ${paie.firstVerdictDate}` : 'la mesure démarre à la première publication' };
+    return `<section class="pv2-stats mkw-counters">
+      ${stat({ label: 'Prêt à publier', count: props.length, foot: props.length ? 'validé par toi avant tout envoi' : 'rien d\'urgent aujourd\'hui' })}
+      ${stat({ label: 'Jours creux à remplir', count: quiet.length, foot: 'sur les 14 prochains jours' })}
+      ${stat({ label: 'Concurrents suivis', count: Number(veille.count) || 0, foot: (veille.changed || []).length ? `${veille.changed.length} ont bougé ce matin` : 'rien de neuf ce matin' })}
+      ${stat({ label: 'Mesure', value: measure.value, foot: measure.foot })}
+    </section>`;
   }
   window.mkwAbout = function () {
     mkBrief.aboutOpen = !mkBrief.aboutOpen;
@@ -4713,10 +4782,10 @@
       </li>`;
     }).join('');
     return `<article class="mkw-plan-week tone-${conf.tone} ${state_ === 'past' ? 'is-past' : ''} ${state_ === 'current' ? 'is-current' : ''}">
-      <header class="mkw-plan-week-head">
+      <div class="mkw-plan-week-head">
         <span class="mkw-plan-when"><strong>S${Number(week.index) || 0}</strong><small>dès le ${esc(jour)}</small>${stateLabel ? `<span class="mkw-plan-state">${stateLabel}</span>` : ''}</span>
         <span class="mkw-plan-conf">${esc(conf.label)}</span>
-      </header>
+      </div>
       <h4 class="mkw-plan-goal">${esc(week.objectif || '')}</h4>
       <p class="mkw-plan-why">${esc(week.pourquoi || '')}</p>
       ${actions ? `<ul class="mkw-plan-actions">${actions}</ul>` : ''}
@@ -5356,11 +5425,32 @@
     mkwDotsPaint((now - d.t0) / 1000, true);
   }
 
+  // La texture de fond a DEUX implementations, dans cet ordre :
+  //   1. le halftone WebGL2 (pinlane-fx.js) : la trame de points pilotee par du
+  //      bruit simplex, demandee par Movsar le 2026-07-28 ;
+  //   2. a defaut (pas de WebGL2, contexte refuse, shader qui ne compile pas),
+  //      le champ de points canvas 2D historique, inchange.
+  // La bascule est silencieuse : la page a toujours une texture, jamais un trou.
+  let mkwFxStop = null;
+
   function mkwDotsInit() {
     mkwDotsStop();
-    const canvas = document.getElementById('mkwDots');
+    if (mkwFxStop) { mkwFxStop(); mkwFxStop = null; }
+    let canvas = document.getElementById('mkwDots');
+    if (!canvas) return;
+    if (typeof window.plFxHalftone === 'function') {
+      mkwFxStop = window.plFxHalftone(canvas, { cell: 22, frequency: 1.9, speed: 0.13, gamma: 2.6, bias: -0.06 });
+      if (mkwFxStop) { mkwDots.canvas = null; return; }
+      // Echec APRES la prise du contexte (shader refuse) : ce noeud est marque
+      // « webgl » a vie, getContext('2d') y rendrait null et la page perdrait
+      // toute texture. On lui substitue un canvas neuf pour que le champ 2D
+      // puisse reprendre la main.
+      const fresh = canvas.cloneNode(false);
+      if (canvas.parentNode) canvas.parentNode.replaceChild(fresh, canvas);
+      canvas = fresh;
+    }
     mkwDots.canvas = canvas;
-    if (!canvas || !mkwDotsSetup()) return;
+    if (!mkwDotsSetup()) return;
     if (reducedMotion) { mkwDots.rect = null; mkwDotsPaint(0, false); return; }
     // Horloge PRESERVEE tant que le champ vit : un re-render (clic) ne remet pas
     // la derive a zero, sinon les points sauteraient. On repart de t0 seulement
@@ -5380,6 +5470,20 @@
     window.addEventListener('blur', mkwDots.onLeave, { passive: true });
     mkwDotsPaint(0, true);
     mkwDots.raf = requestAnimationFrame(mkwDotsFrame);
+  }
+
+  // La marque de l'agent en particules (pinlane-fx.js) : les points arrivent
+  // disperses, s'assemblent en la marque, et fuient le curseur avant de se
+  // reformer. La forme echantillonnee est le PATH de mkwAgentMark : la texture
+  // porte l'identite de la page, elle n'est pas un decor interchangeable.
+  // Sans le module (fichier absent, Path2D indisponible), la vignette reste
+  // vide et l'en-tete tient tout seul : aucune dependance dure.
+  let mkwMarkStop = null;
+  function mkwMarkInit() {
+    if (mkwMarkStop) { mkwMarkStop(); mkwMarkStop = null; }
+    const canvas = document.getElementById('mkwMarkFx');
+    if (!canvas || typeof window.plFxMark !== 'function') return;
+    mkwMarkStop = window.plFxMark(canvas, { path: MKW_MARK_PATH, viewBox: 24, gap: 2, radius: 46 });
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -5402,13 +5506,15 @@
     mkwPrevTab = mkBrief.tab;
     root.innerHTML = `<div class="pv2-shell mkw-shell">
       <canvas class="mkw-dots" id="mkwDots" aria-hidden="true"></canvas>
-      ${mkwHeader()}
+      ${mkwHead()}
+      ${mkwCounters()}
       ${mkwRail()}
       <div class="mkw-surface ${enter ? 'mkw-in' : ''}">${mkwSurface()}</div>
     </div>`;
     // La texture vivante : (re)démarrée sur le canvas fraîchement rendu
     // (l'ancienne boucle est coupée dans l'init : zéro doublon, zéro fuite).
     mkwDotsInit();
+    mkwMarkInit();
     // Mobile : le rail des profondeurs défile ; l'entrée active reste visible.
     const nav = root.querySelector('.mkw-rail-depth');
     const active = nav && nav.querySelector('.mkw-rail-link.active');

@@ -278,6 +278,52 @@
     }, 100);
   }
 
+  /* ---- LA MISE EN SCENE ---------------------------------------------------
+     Le produit ne doit pas apparaitre DEJA REMPLI : un planning fige ne prouve
+     pas qu'un planning vit. Les reservations se posent une par une, comme si la
+     journee se remplissait sous les yeux du visiteur, puis la demonstration
+     passe a la page suivante et recommence.
+
+     Tout se joue dans l'APPLICATION REELLE : ce sont ses vrais composants, ses
+     vraies couleurs, son vrai planning. Aucune maquette ne peut faire ca.
+
+     `?loop=1` (pose par la vitrine) active l'enchainement. Sans lui, /demo
+     reste une page normale qu'on peut explorer a la main. */
+  var SUITE = ['planning', 'reservations', 'clients', 'campaigns'];
+  var DUREE_PAGE = 9000;
+  var minuteries = [];
+  function plusTard(fn, delai) { minuteries.push(setTimeout(fn, delai)); }
+  function stopScene() { minuteries.forEach(clearTimeout); minuteries = []; }
+
+  function rendre() {
+    try { if (typeof window.renderStaff === 'function') window.renderStaff(); } catch (error) { /* pas pret */ }
+  }
+
+  function remplirProgressivement(etat) {
+    if (!etat) return;
+    etat.reservations = [];
+    rendre();
+    DEMO.forEach(function (resa, i) {
+      plusTard(function () {
+        etat.reservations = DEMO.slice(0, i + 1);
+        rendre();
+      }, 260 + i * 230);
+    });
+  }
+
+  function scene(index) {
+    stopScene();
+    var etat = etatApp();
+    if (!etat) { plusTard(function () { scene(index); }, 300); return; }
+    var page = SUITE[index % SUITE.length];
+    etat.staffMenuPage = page;
+    // Le planning est le seul ecran ou le remplissage progressif raconte
+    // quelque chose : ailleurs, la donnee est posee et c'est la page qui parle.
+    if (page === 'planning') remplirProgressivement(etat);
+    else { etat.reservations = DEMO.slice(); rendre(); }
+    plusTard(function () { scene(index + 1); }, DUREE_PAGE);
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     document.body.classList.add('pinlane-demo');
     document.head.appendChild(style);
@@ -286,8 +332,16 @@
     // modules de page) ne sont pas encore executes au DOMContentLoaded, et
     // renderStaff() appelait alors une fonction inexistante - erreur reelle
     // constatee en ligne sur la page Reservations.
-    if (document.readyState === 'complete') forcerVueStaff();
-    else window.addEventListener('load', forcerVueStaff);
+    if (document.readyState === 'complete') demarrer();
+    else window.addEventListener('load', demarrer);
+
+    function demarrer() {
+      forcerVueStaff();
+      // La mise en scene attend que la vue staff tienne : lancee trop tot, elle
+      // ecrivait dans un etat que le demarrage de l'application ecrasait juste
+      // apres.
+      if (params.get('loop') === '1') setTimeout(function () { scene(0); }, 1400);
+    }
     // Un rendu ulterieur peut reintroduire un libelle : on surveille.
     new MutationObserver(neutraliserPage).observe(document.body, { childList: true, subtree: true, characterData: true });
   });

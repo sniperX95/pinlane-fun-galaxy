@@ -104,6 +104,12 @@ export default async function middleware(request: Request) {
     '/api/u',
     '/api/ops',
     '/api/pilot-lead',
+    // Demande sur mesure du parcours CLIENT (groupe, entreprise, privatisation).
+    // Elle manquait ici : le middleware repondait 401 avec un en-tete
+    // WWW-Authenticate, et le navigateur ouvrait sa fenetre « Se connecter » a
+    // la figure du client au moment d'envoyer sa demande. Aucun client ne peut
+    // avoir d'identifiants : l'envoi echouait a tous les coups.
+    '/api/custom-request',
     '/api/simulation',
     '/api/staff-auth',
     '/api/staff-lanes',

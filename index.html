@@ -9,21 +9,21 @@
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260720a">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260728b">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260728c">
 <link rel="stylesheet" href="./assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="./assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="./assets/pinlane-analytics-board.css?v=20260722a">
-<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260722a">
+<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260728a">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260710a"></script>
 <script defer src="./assets/booking-core.js?v=20260722b"></script>
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
-<script defer src="./assets/app-main.js?v=20260728b"></script>
+<script defer src="./assets/app-main.js?v=20260728c"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260728a"></script>
-<script defer src="./assets/staff-pages-v2.js?v=20260722e"></script>
+<script defer src="./assets/staff-pages-v2.js?v=20260728a"></script>
 <script defer src="./assets/pinlane-charts.js?v=20260728b"></script>
 <script defer src="./assets/pinlane-daterange.js?v=20260721a"></script>
 <script defer src="./assets/pinlane-analytics-board.js?v=20260723a"></script>
@@ -63,26 +63,26 @@
 <div id="authOverlay" class="auth-overlay hidden">
   <div class="auth-card auth-card-single scale-in">
     <section class="auth-form-panel" aria-label="Connexion Pinlane">
+      <!-- Un ecran de connexion ne nomme pas le client : cette page est servie
+           avant toute authentification, donc a n'importe qui. Le champ
+           « Organisation ou centre » etait par ailleurs DECORATIF (submitLogin
+           n'envoie que le code) : un champ qui ne sert a rien fait douter de
+           celui qui sert. Le code seul ouvre le centre, le role et les droits. -->
       <div class="auth-shell-head">
         <img class="auth-brand-logo" src="./assets/brand/pinlane-logo.svg" alt="Pinlane" width="170" height="50">
-        <span class="auth-client-pill">Client : Fun Galaxy Centre</span>
       </div>
       <div class="auth-kicker">Accès sécurisé</div>
       <h2>Connexion</h2>
-      <p>Entrez le code attribué à votre rôle. Pinlane ouvre automatiquement le centre, les permissions et les données autorisées.</p>
+      <p>Entrez votre code d'accès : il ouvre votre centre, votre rôle et les données autorisées.</p>
       <form class="auth-form" onsubmit="submitLogin(event)">
         <div class="auth-field">
-          <label for="loginUser">Organisation ou centre</label>
-          <input id="loginUser" class="auth-input" autocomplete="username" placeholder="Fun Galaxy Centre">
-        </div>
-        <div class="auth-field">
           <label for="loginPass">Code d'accès</label>
-          <input id="loginPass" class="auth-input" type="password" autocomplete="one-time-code" required>
+          <input id="loginPass" class="auth-input" type="password" autocomplete="one-time-code" required autofocus>
         </div>
         <div id="authError" class="auth-error"></div>
         <button type="submit" class="btn-primary">Se connecter</button>
       </form>
-      <div class="auth-note">Client actif : Fun Galaxy Centre. Les rôles staff, manager, direction et propriétaire plateforme sont vérifiés côté serveur.</div>
+      <div class="auth-note">Chaque code ouvre un rôle précis. Les accès sont vérifiés côté serveur.</div>
     </section>
   </div>
 </div>
@@ -307,9 +307,23 @@
             </div>
           </div>
 
-          <div class="occasion-field" style="margin-top:16px;">
+          <!-- Demande particuliere : un champ libre ne dit pas quoi ecrire. Les
+               suggestions donnent le premier mot (c'est la partie difficile), le
+               champ grandit a la frappe (pas de poignee a tirer) et le compteur
+               n'apparait qu'en approche de la limite. -->
+          <div class="occasion-field request-field" style="margin-top:16px;">
             <label class="lbl" for="fSpecialRequest">Demande particulière <span class="lbl-optional">(optionnel)</span></label>
-            <textarea id="fSpecialRequest" class="input" rows="2" maxlength="500" placeholder="Occasion, contrainte horaire, groupe à répartir, info utile pour l'accueil..."></textarea>
+            <div class="request-chips" role="group" aria-label="Suggestions de demande">
+              <button type="button" class="request-chip" onclick="addSpecialRequestHint('Gâteau à prévoir')">Gâteau</button>
+              <button type="button" class="request-chip" onclick="addSpecialRequestHint('Allergie à signaler')">Allergie</button>
+              <button type="button" class="request-chip" onclick="addSpecialRequestHint('Table décorée')">Table décorée</button>
+              <button type="button" class="request-chip" onclick="addSpecialRequestHint('Groupe à répartir sur plusieurs pistes')">Groupe à répartir</button>
+              <button type="button" class="request-chip" onclick="addSpecialRequestHint('Arrivée décalée')">Arrivée décalée</button>
+            </div>
+            <div class="request-box">
+              <textarea id="fSpecialRequest" class="input" rows="3" maxlength="500" oninput="handleSpecialRequestInput(this)" placeholder="Ex. : on arrive à 15 h mais le gâteau est pour 16 h 30, et un enfant est allergique aux noix."></textarea>
+              <span class="request-count" id="specialRequestCount" aria-live="polite"></span>
+            </div>
             <p class="field-honest-note">Ces demandes ne sont pas garanties : on fait au mieux selon nos possibilités.</p>
           </div>
 

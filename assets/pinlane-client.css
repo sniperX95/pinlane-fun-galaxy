@@ -3079,6 +3079,51 @@ body.modal-open { overflow: hidden; }
 /* Type déclaré affiché sur une fiche réservation client */
 .occasion-field textarea.input { resize: vertical; min-height: 46px; }
 
+/* ── Demande particulière ───────────────────────────────────────────────────
+   Le champ grandit à la frappe (JS), donc AUCUNE poignée de redimensionnement :
+   elle était le seul indice que le texte pouvait être long, et elle donnait à
+   la zone un air d'ébauche. Les suggestions au-dessus donnent le premier mot ;
+   le compteur ne paraît qu'en approche de la limite. */
+.request-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.request-chip {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+@media (hover: hover) {
+  .request-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+}
+.request-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.request-box { position: relative; }
+.request-field textarea.input {
+  resize: none;
+  min-height: 96px;
+  max-height: 220px;
+  padding: 12px 14px 26px;
+  line-height: 1.55;
+  overflow-y: auto;
+}
+.request-count {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.request-count.is-close { color: var(--warning); }
+
 /* Libellé de groupe occasion sur le formulaire public standalone */
 .occasion-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
 .cta-secondary {

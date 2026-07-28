@@ -202,7 +202,7 @@ function buildAdminClientProfiles(reservations = []) {
     });
   return [...groups.values()].map(profile => {
     const segment = profile.revenue >= 500 || profile.visits >= 4
-      ? 'VIP'
+      ? 'Client cle'
       : profile.formulas >= 2 || profile.players >= 18
         ? 'Groupe'
         : profile.visits >= 2

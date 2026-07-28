@@ -57,10 +57,17 @@ async function installMock(page) {
     add({ name: 'Lucas Petit', phone: '+32470111005', email: 'lucas@test.be', date: dstr(-1), startTime: '21:00', pax: 6, price: 130, type: 'bowling', label: 'Bowling', lanes: [8] });
     // F : Georges : 3 visites, dernière -100 j → DORMANT à relancer
     add({ name: 'Georges Dupuis', phone: '+32470111006', email: 'georges@test.be', date: dstr(-200), startTime: '18:00', pax: 4, price: 90, type: 'bowling', label: 'Bowling', lanes: [1] });
+
     add({ name: 'Georges Dupuis', phone: '+32470111006', email: 'georges@test.be', date: dstr(-150), startTime: '18:00', pax: 4, price: 85, type: 'bowling', label: 'Bowling', lanes: [2] });
     add({ name: 'Georges Dupuis', phone: '+32470111006', email: 'georges@test.be', date: dstr(-100), startTime: '18:00', pax: 5, price: 110, type: 'bowling', label: 'Bowling', lanes: [3] });
     // G : Famille Kessler : anniversaire fêté il y a ~370 j → À relancer (ça revient !)
     add({ name: 'Famille Kessler', phone: '+32470111007', email: 'kessler@test.be', date: dstr(-370), startTime: '15:00', pax: 10, price: 350, type: 'formule', formuleId: 'f2', label: 'FORMULE 2', occasion: 'anniversaire' });
+    // H : CONTROLE NEGATIF du badge anniversaire. Formule anniversaire PASSEE
+    // (f6) mais prochaine reservation ordinaire : aucun « Anniv. a venir ».
+    // Telephone DISTINCT des autres : la cle client est le telephone, un
+    // doublon fusionnerait ce temoin avec un client existant.
+    add({ name: 'Nadia Klein', phone: '+32470111008', email: 'nadia@test.be', date: dstr(-30), startTime: '15:00', pax: 10, price: 280, type: 'formule', formuleId: 'f6', label: 'FORMULE 6' });
+    add({ name: 'Nadia Klein', phone: '+32470111008', email: 'nadia@test.be', date: dstr(9), startTime: '19:00', pax: 4, price: 78, type: 'bowling', label: 'Bowling', lanes: [2], status: 'pending' });
     const build = () => R.map((r) => ({ ...r }));
     const comms = [
       { id: 1, recipient: 'marie@test.be', reservationId: 7000, templateId: 'confirmation', subject: 'Votre réservation est confirmée', sentAt: iso(-40), status: 'delivered', direction: 'outbound', channel: 'email' },
@@ -137,8 +144,21 @@ async function main() {
     }));
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' → ' + errs.slice(0, 3).join(' | ') : ''}`);
     ok(load.root, 'conteneur présent');
-    ok(load.clients === 7, `7 clients agrégés (obtenu ${load.clients})`);
-    ok(load.segs.length === 4 && load.segs.join(',') === 'Tous,À venir,À relancer,VIP', `4 segments (${load.segs.join(', ')})`);
+    ok(load.clients === 8, `8 clients agrégés (obtenu ${load.clients})`);
+    ok(load.segs.length === 4 && load.segs.join(',') === 'Tous,À venir,À relancer,Clients clés', `4 segments (${load.segs.join(', ')})`);
+
+    // Badge « Anniv. a venir » : il parle de l'AVENIR, il doit donc se decider
+    // sur la prochaine reservation, jamais sur l historique du client.
+    const bday = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#staffClientsPage tbody tr')];
+      const read = (name) => {
+        const tr = rows.find((r) => (r.textContent || '').includes(name));
+        return tr ? /Anniv\. à venir/.test(tr.textContent || '') : null;
+      };
+      return { marie: read('Marie Dupont'), nadia: read('Nadia Klein') };
+    });
+    ok(bday.marie === true, `prochaine resa = formule anniversaire -> badge affiche (${bday.marie})`);
+    ok(bday.nadia === false, `anniversaire PASSE + prochaine resa ordinaire -> aucun badge (${bday.nadia})`);
     ok((load.activeSeg || '').trim() === 'Tous', 'segment « Tous » actif par défaut');
     ok(load.statLinks === 4, '4 stats cliquables');
     ok(load.cols === 5, `table 5 colonnes max (obtenu ${load.cols})`);
@@ -190,7 +210,9 @@ async function main() {
       names: [...document.querySelectorAll('#staffClientsPage tbody .crm-client-id strong')].map((s) => s.textContent),
       active: (document.querySelector('.crm-seg.is-active .crm-seg-label') || {}).textContent,
     }));
-    ok((vip.active || '').trim() === 'VIP', 'segment VIP actif');
+    // « VIP » renomme « Clients cles » le 2026-07-28 : sonorite d'agence, et le
+    // seuil est desormais un montant reglable dans Etablissement.
+    ok((vip.active || '').trim() === 'Clients clés', 'segment Clients cles actif');
     ok(vip.names.includes('Entreprise Nova'), 'VIP contient le top dépensier (Nova)');
     ok(!vip.names.includes('Paul Martin'), 'VIP exclut les petits clients');
     await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="vip"]').click());

@@ -2645,7 +2645,7 @@ function canOpenAdminView() {
 // ouverture de la vue admin (après le garde canOpenAdminView) et, pour
 // ops-console seul, au premier besoin Ops côté staff (page Emails, dashboard,
 // réglages). Promesse partagée : une seule balise <script> par fichier.
-const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260728b';
+const ADMIN_CONSOLE_SRC = './assets/admin-console.js?v=20260728c';
 const OPS_CONSOLE_SRC = './assets/ops-console.js?v=20260720b';
 const ADMIN_DATA_SRC = './assets/admin-data.js?v=20260711m';
 const ADMIN_MAIL_SRC = './assets/admin-mail.js?v=20260717f';
@@ -4064,6 +4064,51 @@ function setBookingOccasionOther(value) {
 }
 
 // ── Demande SUR MESURE (lead entreprise / besoin spécial) ──────────────────
+// ── Champ « Demande particuliere » ─────────────────────────────────────────
+// Une zone de texte vide ne dit pas quoi ecrire, et sa poignee de
+// redimensionnement est le seul indice que le texte peut etre long. Ici : le
+// champ grandit tout seul a la frappe (aucune poignee), le compteur ne
+// s affiche qu en approche de la limite (un compteur permanent met la
+// pression pour rien), et les suggestions donnent le premier mot - c est la
+// partie difficile pour un client.
+const SPECIAL_REQUEST_MAX = 500;
+
+function autoGrowSpecialRequest(field) {
+  if (!field) return;
+  field.style.height = 'auto';
+  // Plafond : au-dela, le champ defile au lieu de pousser le bouton hors ecran.
+  field.style.height = Math.min(field.scrollHeight, 220) + 'px';
+}
+
+function handleSpecialRequestInput(field) {
+  autoGrowSpecialRequest(field);
+  const counter = document.getElementById('specialRequestCount');
+  if (!counter) return;
+  const used = String(field.value || "").length;
+  const showFrom = SPECIAL_REQUEST_MAX - 120;
+  counter.textContent = used >= showFrom ? `${used} / ${SPECIAL_REQUEST_MAX}` : "";
+  counter.classList.toggle('is-close', used >= SPECIAL_REQUEST_MAX - 20);
+}
+
+// Suggestion cliquee : on AJOUTE au texte existant sans jamais l ecraser, et
+// on rend le curseur au client pour qu il complete sa phrase.
+function addSpecialRequestHint(text) {
+  const field = document.getElementById('fSpecialRequest');
+  if (!field) return;
+  const current = String(field.value || "").trim();
+  const addition = String(text || "").trim();
+  if (!addition) return;
+  if (current.toLowerCase().includes(addition.toLowerCase())) {
+    field.focus();
+    return;
+  }
+  const joined = current ? `${current}, ${addition}` : addition;
+  field.value = joined.slice(0, SPECIAL_REQUEST_MAX);
+  handleSpecialRequestInput(field);
+  field.focus();
+  try { field.setSelectionRange(field.value.length, field.value.length); } catch (error) { /* champ non focusable */ }
+}
+
 // Crée un LEAD (hors planning), pas une réservation. POST /api/custom-request.
 const customRequestState = { occasion: '' };
 
@@ -6275,6 +6320,9 @@ const DEFAULT_STAFF_CLASSIFICATION = {
   sizeTiers: { medium: 12, large: 30, xl: 60 },
   birthdayFromFormula: true,
   birthdayFormulaIds: ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'],
+  // 0 = seuil automatique (top 20 % des depensiers). Reglable depuis
+  // Etablissement > Clients & groupes.
+  keyClientMinSpend: 0,
 };
 
 function getStaffClassification() {
@@ -6292,6 +6340,7 @@ function getStaffClassification() {
     },
     birthdayFromFormula: c.birthdayFromFormula !== false,
     birthdayFormulaIds: Array.isArray(c.birthdayFormulaIds) ? c.birthdayFormulaIds : DEFAULT_STAFF_CLASSIFICATION.birthdayFormulaIds,
+    keyClientMinSpend: Math.max(0, Number(c.keyClientMinSpend) || 0),
   };
 }
 
@@ -6914,7 +6963,7 @@ function renderStaffGroupDossierCard(dossier) {
       </div>
       <span class="admin-pill groups-occ-${escapeHtml(occ)}">${escapeHtml(getStaffGroupOccasionLabel(occ))}</span>
       <span class="groups-pax">${dossier.pax} pers.</span>
-      ${isVip ? '<span class="groups-flag groups-flag-vip" title="Bon client">★ VIP</span>' : ''}
+      ${isVip ? '<span class="groups-flag groups-flag-vip" title="Depense cumulee au-dessus du seuil reglable dans Etablissement">★ Client clé</span>' : ''}
       ${noShow ? '<span class="groups-flag groups-flag-risk" title="Annule souvent">⚠ Risque no-show</span>' : ''}
       <span class="groups-dossier-val">${valLabel}</span>
     </div>
@@ -7768,6 +7817,7 @@ async function submitCenterConfig(centerId) {
     },
     birthdayFromFormula: !!document.getElementById('estab-birthdayFromFormula')?.checked,
     birthdayFormulaIds,
+    keyClientMinSpend: Number(establishmentInputValue('estab-keyClientMinSpend', 0)) || 0,
   };
   const chk = (id) => !!document.getElementById(id)?.checked;
   const config = {
@@ -8147,6 +8197,11 @@ function renderEstablishmentEditPanels(center, active) {
         <div class="field"><label for="estab-groupMinCumulative">… ou joueurs cumulés</label><input type="number" id="estab-groupMinCumulative" min="2" max="5000" value="${Number(classification.groupMinCumulative || 18)}"></div>
       </div>
       <label class="establishment-toggle"><input type="checkbox" id="estab-countFormulaAsGroup" ${classification.countFormulaAsGroup !== false ? 'checked' : ''}><span class="estab-check-box" aria-hidden="true"></span><span>Une réservation avec formule compte comme groupe</span></label>
+      <div class="estab-subsection">
+        <h4>Client clé</h4>
+        <p class="estab-card-hint">Le badge « Client clé » signale vos gros budgets sur la page Clients. À 0, le seuil est calculé tout seul : les 20 % qui dépensent le plus.</p>
+        <div class="field"><label for="estab-keyClientMinSpend">Client clé à partir de (€ cumulés)</label><input type="number" id="estab-keyClientMinSpend" min="0" max="100000" step="50" value="${Number(classification.keyClientMinSpend || 0)}"></div>
+      </div>
       <div class="estab-subsection">
         <h4>Paliers de taille (badges groupes)</h4>
         <div class="estab-field-row">
@@ -11501,6 +11556,16 @@ function buildStaffClientRowsFromReservations(reservations = []) {
       const nextBooking = [...activeRes]
         .filter(reservation => reservation.date && reservation.date > todayStr())
         .sort((a, b) => `${a.date} ${a.startTime || ''}`.localeCompare(`${b.date} ${b.startTime || ''}`))[0] || null;
+      // « Anniversaire À VENIR » ne se decide que sur la PROCHAINE reservation.
+      // Avant, le badge sortait des que le client avait DEJA pris une formule
+      // anniversaire un jour (hasBirthday, historique) : sur un fichier client
+      // ou la moitie des resas sont des formules f1-f8, toutes les lignes
+      // portaient « Anniv. a venir ». Un badge que tout le monde porte
+      // n'informe plus personne.
+      const nextIsBirthday = Boolean(nextBooking) && (
+        String(nextBooking.occasion || '').toLowerCase() === 'anniversaire'
+        || isStaffBirthdayFormulaReservation(nextBooking, classification)
+      );
       const recencyScore = daysSinceLast <= 14 ? 100 : daysSinceLast <= 30 ? 80 : daysSinceLast <= 90 ? 55 : daysSinceLast <= 180 ? 30 : 10;
       const frequencyScore = Math.min(100, profile.visits * 20);
       const monetaryScore = Math.min(100, profile.revenue / 10);
@@ -11565,6 +11630,7 @@ function buildStaffClientRowsFromReservations(reservations = []) {
         activityCompletionRate,
         notesConcat: notesParts.join(' · ').slice(0, 400),
         nextBooking,
+        nextIsBirthday,
         engagementScore,
         maxPax: profile.maxPax,
         firstBooking: sortedReservations.length ? sortedReservations[sortedReservations.length - 1] : null
@@ -11610,8 +11676,13 @@ function getStaffClientRelance(row) {
   return { due: false, kind: '', reason: '' };
 }
 
-// Seuil VIP = top 20 % des dépensiers du centre.
+// Seuil « client cle » : le MONTANT regle par le centre (Etablissement >
+// Clients & groupes). A 0, repli automatique sur les 20 % qui depensent le
+// plus : un seuil relatif vaut mieux que rien, mais il ne se DECIDE pas -
+// d'ou le reglage demande par Movsar.
 function getStaffClientVipThreshold(allRows) {
+  const configured = Number(getStaffClassification().keyClientMinSpend) || 0;
+  if (configured > 0) return configured;
   const spends = allRows.map(row => Number(row.spent || 0)).sort((a, b) => b - a);
   return spends.length ? (spends[Math.max(0, Math.floor(spends.length * 0.2) - 1)] || spends[0] || 0) : 0;
 }

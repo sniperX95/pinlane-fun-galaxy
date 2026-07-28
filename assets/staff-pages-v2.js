@@ -482,7 +482,7 @@
     ['tous', 'Tous'],
     ['avenir', 'À venir'],
     ['relancer', 'À relancer'],
-    ['vip', 'VIP'],
+    ['vip', 'Clients clés'],
   ];
 
   function crmSegmentBar(filteredCount, totalCount) {
@@ -506,10 +506,14 @@
   // Badge unique par ligne : le plus décisionnel gagne.
   function crmRowBadge(row, ctx) {
     const relance = getStaffClientRelance(row);
-    if (row.nextBooking && (String(row.nextBooking.occasion || '').toLowerCase() === 'anniversaire' || row.hasBirthday)) {
+    // « A venir » se decide sur la PROCHAINE reservation seulement (formule
+    // anniversaire ou occasion declaree). L'ancien test acceptait aussi
+    // row.hasBirthday, qui est un fait HISTORIQUE : tout client ayant deja pris
+    // une formule f1-f8 portait le badge, sur toutes les lignes.
+    if (row.nextIsBirthday) {
       return '<span class="crm-pill tone-info">Anniv. à venir</span>';
     }
-    if (ctx.vipThreshold > 0 && Number(row.spent || 0) >= ctx.vipThreshold) return '<span class="crm-pill tone-accent">VIP</span>';
+    if (ctx.vipThreshold > 0 && Number(row.spent || 0) >= ctx.vipThreshold) return `<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`;
     if (relance.due) return '<span class="crm-pill tone-warn">À relancer</span>';
     if (row.statusClass === 'new') return '<span class="crm-pill tone-info">Nouveau</span>';
     return '';
@@ -758,7 +762,7 @@
     if (!selected) return '<div class="crm-empty crm-empty-lg"><strong>Sélectionnez un client</strong>Cliquez sur une ligne pour voir sa fiche.</div>';
     ensureStaffClientComms();
     const badges = [crmStatusPill(selected)];
-    if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push('<span class="crm-pill tone-accent">VIP</span>');
+    if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push(`<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`);
     if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">Anniversaire</span>');
     const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
     const next = selected.nextBooking;

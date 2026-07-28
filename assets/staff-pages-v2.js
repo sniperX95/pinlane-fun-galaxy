@@ -361,7 +361,7 @@
       ? 'Synchronisation…'
       : staffReservationsDataCache.loaded
         ? `Synchronisé ${formatOpsTimestamp(staffReservationsDataCache.syncedAt)}`
-        : 'Données locales';
+        : 'En attente du serveur…';
 
     // Per-day aggregates for the heatmap.
     const byDay = new Map();
@@ -845,7 +845,7 @@
     const rows = getFilteredStaffClientRows();
     const vipThreshold = getStaffClientVipThreshold(allRows);
     const ctx = { vipThreshold, segment };
-    const sync = staffClientDataCache.loading ? 'Synchronisation…' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'Données locales';
+    const sync = staffClientDataCache.loading ? 'Synchronisation…' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'En attente du serveur…';
 
     // 4 chiffres qui déclenchent chacun UNE décision (cliquables → segment).
     const dossiers = (typeof buildStaffGroupDossiers === 'function' ? buildStaffGroupDossiers() : []).filter((d) => d.kind === 'reservation');

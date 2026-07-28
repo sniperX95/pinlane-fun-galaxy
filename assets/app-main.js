@@ -2108,17 +2108,27 @@ function loadState() {
     const storedState = window.PinlaneStorage?.getJson
       ? window.PinlaneStorage.getJson(STORAGE_KEY, null)
       : JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (storedState) return storedState;
+    if (storedState) {
+      // Les collections du serveur repartent VIDES a chaque chargement, meme si
+      // une ancienne version les avait ecrites dans ce navigateur : c'est la
+      // migration des postes deja ouverts. Le premier poll (immediat) les
+      // remplit avec ce que le serveur confirme, et rien d'autre.
+      return {
+        ...storedState,
+        reservations: [],
+        laneStatuses: Array.from({ length: TOTAL_LANES }).reduce((acc, unused, index) => ({ ...acc, [index + 1]: 'active' }), {}),
+      };
+    }
   } catch (error) {}
   const today = todayStr();
   return {
     view: 'client',
-    reservations: [
-      { id: 1042, name:'Sophie Renard', phone:'0470 111 222', email:'', date: today, startTime:'14:00', duration:1, lanes:[1,2], status:'paid', pax:6, price:78, basePrice:78, type:'bowling', label:'Bowling Classique', paymentMethod:'Carte Bancaire', extras:[] },
-      { id: 1043, name:'Marc Dubois', phone:'0470 333 444', email:'', date: today, startTime:'16:00', duration:2, lanes:[3,4], status:'paid', pax:8, price:156, basePrice:156, type:'bowling', label:'Bowling Classique', paymentMethod:'Espèces', extras:[] },
-      { id: 1044, name:'Laura Petit', phone:'0470 555 666', email:'', date: today, startTime:'19:00', duration:1, lanes:[5,6], status:'pending', pax:4, price:78, basePrice:78, type:'bowling', label:'Bowling Classique', extras:[] },
-      { id: 1045, name:'Equipe Delta', phone:'0471 987 654', email:'', date: today, startTime:'20:00', duration:2, lanes:[7,8], status:'arrived', pax:10, price:156, basePrice:156, type:'bowling', label:'Bowling Classique', extras:[] },
-    ],
+    // AUCUNE reservation par defaut. Quatre lignes de demonstration etaient
+    // ecrites en dur ici (« Sophie Renard », « Marc Dubois »…) : sur un poste
+    // neuf, ou apres un vidage du navigateur, le planning affichait des clients
+    // qui n'existent pas - et ils restaient a l'ecran si le serveur ne repondait
+    // pas. Une console de gestion ne montre que ce que le serveur a confirme.
+    reservations: [],
     laneStatuses: Array.from({ length: TOTAL_LANES }).reduce((acc, _, i) => ({ ...acc, [i + 1]: 'active' }), {}),
     isHolidayMode: false,
     currentDate: today,
@@ -2284,12 +2294,31 @@ state.booking = state.booking || {};
 state.booking.preference = createDefaultFormulaPreference(state.booking.preference || {});
 state.booking.pauseMinutes = Number(state.booking.pauseMinutes || 0);
 state.booking.opsPlan = state.booking.opsPlan || null;
+// Ce que le SERVEUR possede ne s'ecrit plus dans le navigateur. Le stockage
+// local ne garde que des preferences d'affichage (theme, date affichee, filtres,
+// brouillon de reservation du client).
+//
+// Pourquoi : une copie locale des reservations ne sait pas RETIRER une ligne.
+// Elle a deja ressuscite des reservations supprimees (journal 2026-07-27,
+// entrees 23 et 32 : 24 resas fantomes et 4 956 EUR affiches sur une base vide).
+// Tant qu'elle existe, la classe de bug revient. Le poll re-demande la journee
+// toutes les 4 s et au retour sur l'onglet : la reprise apres un rechargement se
+// compte en centaines de millisecondes.
+const SERVER_OWNED_STATE_KEYS = ['reservations', 'laneStatuses'];
+
+function statePersistablePayload() {
+  const payload = { ...state };
+  SERVER_OWNED_STATE_KEYS.forEach((key) => { delete payload[key]; });
+  return payload;
+}
+
 function save() {
+  const payload = statePersistablePayload();
   if (window.PinlaneStorage?.setJson) {
-    window.PinlaneStorage.setJson(STORAGE_KEY, state);
+    window.PinlaneStorage.setJson(STORAGE_KEY, payload);
     return;
   }
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (error) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (error) {}
 }
 function applyStaffTheme() {
   const isLight = state.staffTheme === 'light';
@@ -5907,15 +5936,18 @@ function isStaffUtilityEventReservation(reservation) {
     || /anniversaire|birthday|groupe|ecole|école|team|entreprise|event|evenement|événement/.test(text);
 }
 
+// Sous-titre des pages staff. Il annoncait la PLOMBERIE : « Données API +
+// locales · 12 réservations visibles · lecture locale ». Personne n'a besoin
+// de savoir d'ou sortent les octets - et « lecture locale » laissait croire
+// que le poste travaillait sur une copie perimee alors que le serveur fait
+// autorite des qu'il a repondu.
+// Regle : SILENCE quand tout va bien ; on ne parle que si la connexion au
+// serveur est perdue, parce que la, ca change ce que le staff doit croire de
+// ce qu'il voit.
 function getStaffUtilitySyncLabel() {
-  const apiText = staffReservationsDataCache.loading || staffClientDataCache.loading || opsAdminCache.loading
-    ? 'Synchronisation en cours'
-    : (staffReservationsDataCache.loaded || staffClientDataCache.loaded || opsAdminCache.loaded)
-      ? 'Données API + locales'
-      : 'Données locales disponibles';
-  const visibleRows = getStaffUtilityReservations().length;
-  const syncState = staffRevisionByDate?.[state.currentDate] ? 'mise à jour active' : 'lecture locale';
-  return `${apiText} · ${visibleRows} réservation${visibleRows === 1 ? '' : 's'} visibles · ${syncState}`;
+  const indicator = getRemoteSyncIndicator();
+  if (indicator.tone === 'live') return '';
+  return indicator.label;
 }
 
 function renderStaffUtilityKpi(label, value, detail = '', tone = '') {
@@ -9885,8 +9917,10 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       secondaryLabel: 'Exporter planning',
       secondaryAction: 'exportStaffPlanningCsv()',
       kpis: [
-        ['Thème', state.staffTheme === 'light' ? 'Clair' : 'Sombre', 'préférence locale'],
-        ['Réservations', state.reservations.length, 'local + API'],
+        ['Thème', state.staffTheme === 'light' ? 'Clair' : 'Sombre', 'ce poste'],
+        // « local + API » decrivait la plomberie. Ce qui compte pour le staff :
+        // combien de reservations sont chargees pour la date affichee.
+        ['Réservations', state.reservations.length, 'chargées'],
         ['Mails Ops', opsAdminCache.communications?.length || 0, 'chargés'],
         ['Date', state.currentDate, 'contexte staff']
       ],
@@ -9901,15 +9935,22 @@ function renderStaffUtilityPage() {
   if (!root) return;
   const model = getStaffUtilityPageModel();
   const dateLabel = parseLocalDate(state.currentDate).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  // Sans texte de synchro (cas normal), la date reste seule : pas de « · » en
+  // tete de ligne, pas de separateur qui pend.
+  const prettyDate = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1);
   const heroSubtitle = model.hidePanelHead
     ? escapeHtml(model.subtitle)
-    : `${escapeHtml(model.subtitle)} · ${escapeHtml(dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1))}`;
+    : [model.subtitle, prettyDate].filter(Boolean).map(escapeHtml).join(' · ');
   const overviewPages = new Set(['users', 'settings']);
   const archivePages = new Set(['groups', 'contacts']);
+  // Le sous-titre du panneau ne s'affiche que s'il DIT quelque chose : sans
+  // texte propre a la page ni alerte de connexion, la ligne disparait au lieu
+  // de rester vide sous le titre.
+  const panelSubtitle = model.panelSubtitle || getStaffUtilitySyncLabel();
   const panelHead = model.hidePanelHead ? '' : `<div class="utility-panel-head">
         <div>
           <h2>${escapeHtml(model.title)}</h2>
-          <p>${escapeHtml(model.panelSubtitle || getStaffUtilitySyncLabel())}</p>
+          ${panelSubtitle ? `<p>${escapeHtml(panelSubtitle)}</p>` : ''}
         </div>
         <button type="button" onclick="renderStaffUtilityPage()">Rafraîchir</button>
       </div>`;

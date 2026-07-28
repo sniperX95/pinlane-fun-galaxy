@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - outro</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  /* OUTRO de remplacement pour le film illustre.
+     Le film d'origine se termine sur la marque de l'outil qui l'a genere ;
+     ces 5 dernieres secondes deviennent celles de Pinlane.
+     Parti pris : rester DANS le film. Meme fond papier clair (#fefefe releve
+     au pixel sur l'outro d'origine), meme rythme calme, meme navire
+     typographique. Une fin en DA sombre aurait claque comme un corps etranger. */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1280px;height:720px;overflow:hidden;background:#fefefe}
+  body{font-family:var(--font-ui);-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:1280px;height:720px;overflow:hidden;background:#fefefe}
+
+  /* Grain tres leger : l'illustration d'origine a une texture papier, un aplat
+     parfaitement lisse trahirait le raccord. */
+  #grain{position:absolute;inset:0;opacity:.05;pointer-events:none;
+    background-image:radial-gradient(#8b8377 1px,transparent 1px);
+    background-size:3px 3px}
+
+  #logo{position:absolute;left:50%;top:150px;width:520px;margin-left:-260px;
+    will-change:transform,opacity}
+  #logo img{display:block;width:100%;height:auto}
+
+  #cta{position:absolute;left:0;right:0;top:582px;text-align:center;
+    font-size:31px;font-weight:600;letter-spacing:-.01em;color:#16233d;
+    will-change:transform,opacity}
+  #rule{position:absolute;left:50%;top:548px;width:150px;height:2px;margin-left:-75px;
+    background:#2563eb;transform-origin:50% 50%;will-change:transform,opacity}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="logo"><img src="../../artifacts/promo-video/logo-pinlane-clair.png" alt="Pinlane"></div>
+  <div id="rule"></div>
+  <div id="cta">Demandez votre démo</div>
+  <div id="grain"></div>
+</div>
+<script>
+const DUR = 5.0;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eInOut = (x) => (x < .5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2);
+const lerp = (a, b, x) => a + (b - a) * x;
+
+function render(t) {
+  // Le logo prend sa place en douceur, sans rebond : le film precedent n'a
+  // aucun mouvement brusque, l'outro ne doit pas en introduire un.
+  const l = eInOut(clamp01(t / 1.05));
+  $('logo').style.opacity = l;
+  $('logo').style.transform = `translateY(${lerp(26, 0, l)}px) scale(${lerp(.955, 1, l)})`;
+
+  // Le filet se trace du centre vers les bords.
+  const r = eOut(clamp01((t - .75) / .65));
+  $('rule').style.opacity = r;
+  $('rule').style.transform = `scaleX(${r})`;
+
+  const c = eInOut(clamp01((t - .95) / .7));
+  $('cta').style.opacity = c;
+  $('cta').style.transform = `translateY(${lerp(18, 0, c)}px)`;
+
+  // Fondu au blanc sur la toute fin, pour que le film se referme au lieu de
+  // s'interrompre.
+  const sortie = clamp01((t - (DUR - .5)) / .5);
+  $('stage').style.opacity = 1 - sortie * .18;
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

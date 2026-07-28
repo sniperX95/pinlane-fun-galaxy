@@ -197,6 +197,15 @@
     /* La barre laterale et l'en-tete du site n'ont rien a faire dans une
        vitrine : le prospect regarde le planning, pas le menu du logiciel. */
     'body.pinlane-demo .ops-sidebar, body.pinlane-demo header, body.pinlane-demo #logoutBtn { display: none !important; }',
+    /* JUSTE LE PLANNING (demande de Movsar, 2026-07-29). Le cadre de la vitrine
+       fait 640 px : le titre de page, les quatre cartes de chiffres et les
+       onglets de ressource mangeaient 480 px, et le prospect voyait deux lignes
+       de grille. On ne garde que ce qu'on est venu montrer.
+       Effet de bord assume et souhaitable : le « taux d'occupation » sort de la
+       vitrine tant que son calcul n'est pas corrige (813 % affiches pour 13
+       reservations sur 8 pistes). */
+    'body.pinlane-demo .staff-head, body.pinlane-demo .kpi-grid, body.pinlane-demo .staff-resource-tabs { display: none !important; }',
+    'body.pinlane-demo .staff-wrap > *:first-child { margin-top: 0 !important; }',
     'body.pinlane-demo { --fgx-sidebar-width: 0px !important; }',
     'body.pinlane-demo .staff-wrap, body.pinlane-demo main { padding-left: 0 !important; margin-left: 0 !important; }',
     /* Une demonstration ne se defile pas toute seule dans son cadre : la

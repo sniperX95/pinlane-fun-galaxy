@@ -183,15 +183,19 @@ void main() {
 
   vec2 cellUv = fract(pix / cell) - 0.5;
   float dist = length(cellUv);
-  float radius = clamp(gray + uBias + infl * 0.34, 0.0, 1.0) * 0.5;
+  float radius = clamp(gray + uBias + infl * 0.26, 0.0, 1.0) * 0.5;
   float aa = fwidth(dist) + 1e-4;
   float mark = 1.0 - smoothstep(radius - aa, radius + aa, dist);
   // La couleur ne suit PLUS le gris du bruit : apres le gamma, meme un point
   // bien visible garde un gris faible (0.2-0.3), donc tout le champ sortait
   // teinte accent alors que la reference montre des points BLANCS. Le champ
   // porte donc la couleur du texte, et l'accent n'apparait que sous la main.
-  vec3 col = mix(uColorB, uColorA, clamp(infl * 1.3, 0.0, 1.0));
-  fragColor = vec4(col, mark * uAlpha * (1.0 + infl * 0.85));
+  // La teinte d'accent sous le curseur est PLAFONNEE : a pleine puissance elle
+  // posait une tache bleue franche par-dessus le texte survole. La reaction
+  // reste sensible (les points grossissent), mais la couleur ne prend jamais
+  // le dessus sur la lisibilite.
+  vec3 col = mix(uColorB, uColorA, clamp(infl * 0.9, 0.0, 0.4));
+  fragColor = vec4(col, mark * uAlpha * (1.0 + infl * 0.3));
 }`;
 
   function compile(gl, type, source) {

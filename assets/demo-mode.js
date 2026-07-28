@@ -205,6 +205,10 @@
        vitrine tant que son calcul n'est pas corrige (813 % affiches pour 13
        reservations sur 8 pistes). */
     'body.pinlane-demo .staff-head, body.pinlane-demo .kpi-grid, body.pinlane-demo .staff-resource-tabs { display: none !important; }',
+    /* Les pages refondues (Reservations, Clients, Marketing) portent leur titre
+       dans .pv2-bar : meme regle, on ne garde que le contenu utile. */
+    'body.pinlane-demo .pv2-bar { display: none !important; }',
+    'body.pinlane-demo .pv2-shell { padding-top: 0 !important; }',
     'body.pinlane-demo .staff-wrap > *:first-child { margin-top: 0 !important; }',
     'body.pinlane-demo { --fgx-sidebar-width: 0px !important; }',
     'body.pinlane-demo .staff-wrap, body.pinlane-demo main { padding-left: 0 !important; margin-left: 0 !important; }',
@@ -278,7 +282,12 @@
     document.body.classList.add('pinlane-demo');
     document.head.appendChild(style);
     neutraliserPage();
-    forcerVueStaff();
+    // Le forcage attend `load` : les scripts DIFFERES (staff-pages-v2 et les
+    // modules de page) ne sont pas encore executes au DOMContentLoaded, et
+    // renderStaff() appelait alors une fonction inexistante - erreur reelle
+    // constatee en ligne sur la page Reservations.
+    if (document.readyState === 'complete') forcerVueStaff();
+    else window.addEventListener('load', forcerVueStaff);
     // Un rendu ulterieur peut reintroduire un libelle : on surveille.
     new MutationObserver(neutraliserPage).observe(document.body, { childList: true, subtree: true, characterData: true });
   });

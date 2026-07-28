@@ -93,13 +93,20 @@
   .badge{position:absolute;right:146px;top:78px;font-family:var(--font-data);
     font-size:24px;letter-spacing:.34em;text-transform:uppercase;color:rgba(255,255,255,.36)}
 
-  .logo{position:absolute;left:50%;top:540px;display:flex;align-items:center;gap:34px;
-    will-change:transform,opacity}
-  .logo .m{width:132px;height:132px;border-radius:36px;background:var(--accent);position:relative;
-    box-shadow:0 26px 80px rgba(50,145,255,.6), inset 0 2px 0 rgba(255,255,255,.4)}
-  .logo .m::after{content:'';position:absolute;left:40px;top:40px;width:52px;height:52px;border-radius:14px;background:#05070c}
-  .logo .t{font-size:142px;font-weight:600;letter-spacing:-.05em}
-  .cta{position:absolute;left:50%;top:820px;background:var(--accent);color:#fff;
+  /* MARQUE — le fichier officiel, pas une reconstruction.
+     Le noir du fichier n'est PAS un fond a detourer : c'est le papier du
+     calendrier dans le monogramme. Le detourer creve le dessin (essaye et
+     verifie). On garde donc la plaque et on FOND ses bords : sur le fond
+     tres sombre du film, la jonction devient invisible. */
+  /* left:50% seul — c'est le script qui applique translateX(-50%) ; une marge
+     negative en plus decalait le logo d'une demi-largeur vers la gauche.
+
+     L'ALPHA EST GRAVEE DANS LE PNG, pas posee en CSS : mask-image ne s'applique
+     pas dans le Chromium de Playwright (verifie — la plaque gardait ses angles
+     nets). Un canal alpha dans le fichier ne depend d'aucun moteur. */
+  .logo{position:absolute;left:50%;top:210px;width:1060px;will-change:transform,opacity}
+  .logo img{display:block;width:100%;height:auto}
+  .cta{position:absolute;left:50%;top:930px;background:var(--accent);color:#fff;
     font-size:52px;font-weight:700;padding:36px 84px;border-radius:16px;white-space:nowrap;
     box-shadow:0 40px 110px rgba(50,145,255,.65), inset 0 2px 0 rgba(255,255,255,.35);
     will-change:transform,opacity}
@@ -125,7 +132,7 @@
   <div id="blocs"></div>
   <div id="chips"></div>
 
-  <div class="logo" id="lg"><div class="m"></div><div class="t">Pinlane</div></div>
+  <div class="logo" id="lg"><img src="../../artifacts/promo-video/logo-pinlane.png" alt="Pinlane"></div>
   <div class="cta" id="cb">Réserver une démo</div>
 
   <div id="subs"></div>

@@ -58,7 +58,12 @@
   var NOMS = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo', 'Groupe amis', 'Sarah Lemaire',
     'Ecole Saint-Joseph', 'Famille Martin', 'EVJF Camille', 'Club Padel', 'Famille Rousseau',
     'Duo Verhaegen', 'Soiree ligue', 'Famille Nowak'];
-  var HEURES = ['14:00', '14:30', '15:00', '16:00', '16:30', '17:00', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'];
+  // Les creneaux commencent DES L'OUVERTURE : le cadre de la vitrine ne montre
+  // que le haut du planning, et des reservations qui demarrent a 14h laissaient
+  // voir une grille vide au prospect - exactement l'inverse de ce qu'on veut
+  // prouver.
+  var HEURES = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00',
+    '13:30', '14:00', '14:30', '15:00', '15:30', '16:00'];
 
   function reservations() {
     return NOMS.map(function (nom, i) {

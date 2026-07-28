@@ -27,6 +27,10 @@ const DEFAULT_EMBED_ORIGINS = [
   'https://www.fungalaxy.be',
   'https://mngfunglxy.com',
   'https://www.mngfunglxy.com',
+  // La vitrine Pinlane embarque l'application en mode demonstration (/demo) :
+  // sans ces origines, le prospect voit un cadre vide a la place du produit.
+  'https://pinlane.be',
+  'https://www.pinlane.be',
 ];
 
 function embedAncestors(): string {

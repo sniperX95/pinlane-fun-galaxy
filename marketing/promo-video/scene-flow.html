@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - flow</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  /* Scene 2560x1440 CSS, rendue avec --scale 1.5 -> 3840x2160.
+     PAS DE COUPE. La carte produit n'est jamais detruite ni recreee : elle
+     GLISSE d'une composition a la suivante. Les textes se croisent en fondu
+     glisse. Rien n'apparait ni ne disparait d'un bloc. */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:2560px;height:1440px;overflow:hidden;background:#04060b}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#05070c;
+    perspective:2400px;perspective-origin:50% 46%}
+
+  #wash{position:absolute;inset:-20%;
+    background:radial-gradient(50% 50% at 30% 30%,rgba(38,96,190,.55),transparent 60%),
+               radial-gradient(45% 45% at 72% 62%,rgba(16,54,120,.5),transparent 62%),
+               radial-gradient(60% 60% at 50% 110%,rgba(10,26,58,.6),transparent 60%);
+    will-change:transform}
+  #beam{position:absolute;top:-30%;bottom:-30%;left:0;width:640px;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(120,180,255,.16),transparent);
+    filter:blur(50px);will-change:transform}
+  #grid{position:absolute;inset:-14%;opacity:.10;
+    background-image:linear-gradient(rgba(120,175,255,.55) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(120,175,255,.55) 1px,transparent 1px);
+    background-size:120px 120px;will-change:transform}
+
+  .corner{position:absolute;width:60px;height:60px;border:2px solid rgba(160,200,255,.28)}
+  #cTL{left:66px;top:66px;border-right:0;border-bottom:0}
+  #cTR{right:66px;top:66px;border-left:0;border-bottom:0}
+  #cBL{left:66px;bottom:66px;border-right:0;border-top:0}
+  #cBR{right:66px;bottom:66px;border-left:0;border-top:0}
+
+  /* La carte : construite UNE FOIS, jamais remplacee. */
+  .card{position:absolute;border-radius:26px;overflow:hidden;background:#080a0e;
+    will-change:transform,opacity,width,height,left,top;
+    border:1px solid rgba(190,220,255,.22);
+    box-shadow:0 70px 190px rgba(0,0,0,.95),
+               0 0 0 1px rgba(255,255,255,.05),
+               inset 0 1px 0 rgba(255,255,255,.30),
+               0 0 110px rgba(50,145,255,.20)}
+  /* object-fit:cover : la video suit la taille de la carte sans calcul. */
+  .card video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  .card .glass{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(158deg,rgba(255,255,255,.13),rgba(255,255,255,.02) 34%,rgba(4,8,16,.40))}
+  .card .spec{position:absolute;top:-40%;bottom:-40%;width:420px;left:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.26),transparent);
+    filter:blur(16px);transform:skewX(-16deg);will-change:transform,opacity}
+
+  .bloc{position:absolute;will-change:transform,opacity}
+  .glasspanel{position:absolute;inset:0;border-radius:22px;
+    background:rgba(140,180,240,.10);
+    backdrop-filter:blur(26px) saturate(1.5);
+    -webkit-backdrop-filter:blur(26px) saturate(1.5);
+    border:1px solid rgba(200,225,255,.26);
+    box-shadow:0 30px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.34)}
+  .kick{position:absolute;left:48px;top:44px;font-family:var(--font-data);letter-spacing:.34em;
+    text-transform:uppercase;font-size:24px;color:rgba(150,195,255,.98)}
+  .ttl{position:absolute;left:48px;top:86px;font-weight:600;letter-spacing:-.038em;
+    line-height:1.06;font-size:64px;text-shadow:0 10px 44px rgba(0,0,0,.95)}
+
+  .chip{position:absolute;display:inline-flex;align-items:center;gap:14px;
+    padding:18px 30px;border-radius:99px;white-space:nowrap;
+    background:rgba(150,190,250,.12);
+    backdrop-filter:blur(22px) saturate(1.5);
+    -webkit-backdrop-filter:blur(22px) saturate(1.5);
+    border:1px solid rgba(200,225,255,.30);
+    box-shadow:0 20px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.36);
+    font-size:31px;font-weight:600;color:#fff;will-change:transform,opacity}
+  .chip .dot{width:14px;height:14px;border-radius:99px;background:var(--accent);flex:0 0 14px;
+    box-shadow:0 0 20px rgba(50,145,255,.95)}
+
+  #steps{position:absolute;left:66px;bottom:92px;display:flex;gap:9px}
+  #steps i{display:block;width:48px;height:5px;border-radius:3px;background:rgba(255,255,255,.14);
+    transition:none}
+  #steps i.on{background:var(--accent);box-shadow:0 0 18px rgba(50,145,255,.9)}
+
+  #subs{position:absolute;left:170px;right:170px;bottom:126px;text-align:center;perspective:900px}
+  .w{display:inline-block;font-size:66px;line-height:1.15;font-weight:600;letter-spacing:-.032em;
+    margin:0 12px 2px 0;color:rgba(255,255,255,.97);text-shadow:0 8px 36px rgba(0,0,0,1);
+    will-change:transform,opacity}
+  .w.hi{color:#6cb0ff;text-shadow:0 8px 40px rgba(40,120,230,.8)}
+
+  #prog{position:absolute;left:66px;right:66px;bottom:50px;height:2px;background:rgba(255,255,255,.10)}
+  #progIn{position:absolute;left:0;top:0;bottom:0;width:0;
+    background:linear-gradient(90deg,rgba(120,175,255,.5),var(--accent));
+    box-shadow:0 0 14px rgba(50,145,255,.8)}
+  .badge{position:absolute;right:146px;top:78px;font-family:var(--font-data);
+    font-size:24px;letter-spacing:.34em;text-transform:uppercase;color:rgba(255,255,255,.36)}
+
+  .logo{position:absolute;left:50%;top:540px;display:flex;align-items:center;gap:34px;
+    will-change:transform,opacity}
+  .logo .m{width:132px;height:132px;border-radius:36px;background:var(--accent);position:relative;
+    box-shadow:0 26px 80px rgba(50,145,255,.6), inset 0 2px 0 rgba(255,255,255,.4)}
+  .logo .m::after{content:'';position:absolute;left:40px;top:40px;width:52px;height:52px;border-radius:14px;background:#05070c}
+  .logo .t{font-size:142px;font-weight:600;letter-spacing:-.05em}
+  .cta{position:absolute;left:50%;top:820px;background:var(--accent);color:#fff;
+    font-size:52px;font-weight:700;padding:36px 84px;border-radius:16px;white-space:nowrap;
+    box-shadow:0 40px 110px rgba(50,145,255,.65), inset 0 2px 0 rgba(255,255,255,.35);
+    will-change:transform,opacity}
+
+  #vig{position:absolute;inset:0;z-index:50;pointer-events:none;
+    background:radial-gradient(140% 105% at 50% 46%,transparent 50%,rgba(0,0,0,.80) 100%)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wash"></div>
+  <div id="grid"></div>
+  <div id="beam"></div>
+  <div class="corner" id="cTL"></div><div class="corner" id="cTR"></div>
+  <div class="corner" id="cBL"></div><div class="corner" id="cBR"></div>
+  <div class="badge">Pinlane</div>
+
+  <!-- Construits UNE SEULE FOIS. Aucun innerHTML n'est reecrit pendant le film :
+       c'est ce qui rendait les transitions seches. -->
+  <div class="card" id="cStaff"><video id="vStaff" src="../../artifacts/promo-clips/staff.webm" muted preload="auto"></video><div class="glass"></div><div class="spec" id="sStaff"></div></div>
+  <div class="card" id="cClient"><video id="vClient" src="../../artifacts/promo-clips/client.webm" muted preload="auto"></video><div class="glass"></div><div class="spec" id="sClient"></div></div>
+
+  <div id="blocs"></div>
+  <div id="chips"></div>
+
+  <div class="logo" id="lg"><div class="m"></div><div class="t">Pinlane</div></div>
+  <div class="cta" id="cb">Réserver une démo</div>
+
+  <div id="subs"></div>
+  <div id="steps"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="prog"><div id="progIn"></div></div>
+  <div id="vig"></div>
+</div>
+
+<script src="../../artifacts/promo-clips/marks.js"></script>
+<script>
+// ===========================================================================
+// TRANSITIONS CONTINUES.
+//
+// Les versions precedentes reconstruisaient la scene a chaque plan : l'ancien
+// disparaissait d'un bloc, d'ou la coupure seche et le flash qui la masquait.
+// Ici la carte produit existe du debut a la fin et se DEPLACE d'une
+// composition a la suivante. Les blocs de texte se croisent : le sortant part
+// pendant que l'entrant arrive. Aucun element n'est cree ni detruit en cours
+// de film.
+//
+// Bornes de la voix (voix-pro-serree.mp3, blancs resserres) :
+//   0.00-2.98 / 3.04-6.77 / 6.83-10.16 / 10.22-13.15
+//   13.21-16.26 / 16.32-19.56 / 19.62-22.87 / 22.93-24.66
+// ===========================================================================
+const DUR = 25.2;
+const TRANS = 0.85;          // duree de la fusion entre deux plans
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+// Fondu-glisse : demarre doucement, finit doucement. C'est cette courbe qui
+// donne la sensation « smooth » ; un ease-out seul part trop sec.
+const eInOut = (x) => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, x) => a + (b - a) * x;
+
+const LINES = [
+  { a: 0.02, b: 2.92, t: "Pinlane, c'est tout votre centre dans un seul outil.", hi: ['Pinlane,'] },
+  { a: 3.04, b: 6.71, t: 'Le planning en direct : vous contrôlez chaque piste.', hi: ['planning'] },
+  { a: 6.83, b: 10.10, t: 'Un formulaire de réservation fait sur mesure.', hi: ['mesure.'] },
+  { a: 10.22, b: 13.09, t: 'Confirmations, rappels, relances : automatiques.', hi: ['automatiques.'] },
+  { a: 13.21, b: 16.20, t: 'Une IA marketing qui vous guide sur les réseaux.', hi: ['IA', 'marketing'] },
+  { a: 16.32, b: 19.50, t: 'Tarifs, équipes, établissement : vous gérez tout.', hi: ['tout.'] },
+  { a: 19.62, b: 22.81, t: 'Toute votre data, stockée et analysée.', hi: ['data,'] },
+  { a: 22.93, b: DUR, t: 'Demandez votre démo.', hi: ['démo.'] },
+];
+
+const M = (typeof window !== 'undefined' && window.PROMO_MARKS) || {};
+const A = (cle, defaut) => (M[cle] ? M[cle].t : defaut);
+// Fenetres du clip CALCULEES depuis les instants releves au tournage : ecrites
+// en dur, elles se desynchronisaient des que le clip changeait de duree.
+const FEN = {
+  planning:      [A('survol de la reservation', 3.63) - 3.0, A('survol de la reservation', 3.63) - 0.4],
+  planningFiche: [A('survol de la reservation', 3.63) - 0.6, A('la resa dans la liste', 10.5) - 2.9],
+  emails:        [A('sequence Confirmation', 14.0) - 0.4, A('sequence Reactiver les dormants', 16.93) + 1.5],
+  marketing:     [A('page marketing', 21.68) - 0.3, A('page marketing', 21.68) + 4.8],
+  etablissement: [A('un autre centre', 36.71) - 5.2, A('un autre centre', 36.71) - 0.2],
+  clients:       [A('le panier moyen', 40.46) - 1.4, A('le panier moyen', 40.46) + 4.0],
+};
+window.SCRUB_ERRORS = [];
+
+// Chaque plan : ou se pose la carte, quel clip, quelle fenetre, quel texte.
+// Les positions alternent gauche/droite pour que le glissement se voie.
+const PLANS = [
+  { k: 'a1', a: 0.00,  clip: 'staff',  fen: FEN.planning,
+    // TOUTES LES CARTES ONT LA MEME TAILLE : seules la position et la rotation
+  // changent. Une taille qui varie entre deux plans, meme interpolee, reste un
+  // zoom a l'ecran — et c'est precisement ce qu'on veut supprimer.
+  box: [560, 262, 1560, 878], ry: 8, rx: 2.4,
+    bloc: { x: 120, y: 470, w: 520, h: 240, kick: 'La console du centre', ttl: 'Tout votre<br>centre.' }, chips: [] },
+  { k: 'a2', a: 3.04,  clip: 'staff',  fen: FEN.planningFiche,
+    box: [470, 244, 1560, 878], ry: -8, rx: 2.2,
+    bloc: null, kick2: { x: 500, y: 140, txt: 'Planning & contrôle' },
+    chips: [{ x: 120, y: 520, t: '8 pistes' }, { x: 120, y: 640, t: '38 joueurs' }, { x: 2120, y: 520, t: '601 EUR' }] },
+  { k: 'a3', a: 6.83,  clip: 'client', fen: null,
+    box: [940, 262, 1560, 878], ry: 8, rx: 2.4,
+    bloc: { x: 130, y: 440, w: 640, h: 300, kick: 'Côté client', ttl: 'Un parcours<br>sur mesure.' }, chips: [] },
+  { k: 'a4', a: 10.22, clip: 'staff',  fen: FEN.emails,
+    box: [470, 256, 1560, 878], ry: -8, rx: 2.2,
+    bloc: null, kick2: { x: 500, y: 170, txt: 'Séquences automatiques' }, chips: [] },
+  { k: 'a5', a: 13.21, clip: 'staff',  fen: FEN.marketing,
+    box: [960, 250, 1560, 878], ry: 8, rx: 2.4,
+    bloc: { x: 130, y: 430, w: 660, h: 300, kick: 'Marketing', ttl: 'Une IA qui<br>vous guide.' }, chips: [] },
+  { k: 'a6', a: 16.32, clip: 'staff',  fen: FEN.etablissement,
+    box: [455, 240, 1560, 878], ry: -8, rx: 2.2,
+    bloc: null, kick2: { x: 500, y: 140, txt: 'Vous gérez tout' },
+    chips: [{ x: 120, y: 560, t: 'Horaires' }, { x: 2120, y: 560, t: 'Tarifs' }] },
+  { k: 'a7', a: 19.62, clip: 'staff',  fen: FEN.clients,
+    box: [530, 252, 1560, 878], ry: 8, rx: 2.2,
+    bloc: null, kick2: { x: 500, y: 140, txt: 'Clients & analyses' },
+    chips: [{ x: 120, y: 560, t: 'Panier moyen' }, { x: 2120, y: 560, t: 'Visites' }] },
+  // Dernier plan : la carte s'eloigne en douceur, la marque prend la place.
+  { k: 'a8', a: 22.93, clip: 'staff',  fen: FEN.clients,
+    box: [1010, 690, 1560, 878], ry: 16, rx: 6, sortie: true, bloc: null, chips: [] },
+];
+const finDe = (i) => (i < PLANS.length - 1 ? PLANS[i + 1].a : DUR);
+const ETAPE = { a1: -1, a2: 0, a3: 1, a4: 2, a5: 3, a6: 4, a7: 5, a8: 5 };
+
+// --- construction UNIQUE des blocs de texte et des pastilles ---------------
+const blocsHtml = [];
+const chipsHtml = [];
+PLANS.forEach((p, i) => {
+  if (p.bloc) {
+    blocsHtml.push(`<div class="bloc" id="b${i}" style="left:${p.bloc.x}px;top:${p.bloc.y}px;width:${p.bloc.w}px;height:${p.bloc.h}px">
+      <div class="glasspanel"></div>
+      <div class="kick">${p.bloc.kick}</div>
+      <div class="ttl">${p.bloc.ttl}</div></div>`);
+  }
+  if (p.kick2) {
+    blocsHtml.push(`<div class="bloc kick" id="b${i}" style="left:${p.kick2.x}px;top:${p.kick2.y}px">${p.kick2.txt}</div>`);
+  }
+  (p.chips || []).forEach((c, j) => {
+    chipsHtml.push(`<div class="chip" id="c${i}_${j}" style="left:${c.x}px;top:${c.y}px"><span class="dot"></span>${c.t}</div>`);
+  });
+});
+$('blocs').innerHTML = blocsHtml.join('');
+$('chips').innerHTML = chipsHtml.join('');
+
+// --- scrub ----------------------------------------------------------------
+let WAIT = [];
+function seekTo(v, time) {
+  WAIT.push(v);
+  const done = () => { WAIT = WAIT.filter((x) => x !== v); };
+  v.addEventListener('seeked', done, { once: true });
+  v.addEventListener('error', done, { once: true });
+  try { v.currentTime = time; } catch (e) { done(); }
+}
+function scrub(v, time) {
+  if (!v) return;
+  if (v.duration && time > v.duration - 0.05) {
+    window.SCRUB_ERRORS.push({ src: v.id, t: +time.toFixed(2), duree: +v.duration.toFixed(2) });
+    time = Math.max(0, v.duration - 0.1);
+  }
+  if (v.readyState < 1) {
+    WAIT.push(v);
+    v.addEventListener('loadedmetadata', () => { WAIT = WAIT.filter((x) => x !== v); seekTo(v, time); }, { once: true });
+    return;
+  }
+  if (Math.abs(v.currentTime - time) > 0.02) seekTo(v, time);
+}
+window.SCRUB_SETTLED = () => WAIT.length === 0
+  && [...document.querySelectorAll('video')].every((v) => v.readyState >= 2 && !v.seeking);
+
+// --- etat interpole de la carte -------------------------------------------
+// Le coeur du « smooth » : a chaque image on melange le plan sortant et le
+// plan entrant sur TRANS secondes, au lieu de basculer d'un coup.
+function etatCarte(t) {
+  let i = 0;
+  for (let n = 0; n < PLANS.length; n++) if (t >= PLANS[n].a) i = n;
+  const p = PLANS[i];
+  const prev = PLANS[i - 1] || p;
+  const u = eInOut(clamp01((t - p.a) / TRANS));      // 0 = encore le precedent
+  const vie = clamp01((t - p.a) / Math.max(.5, finDe(i) - p.a));
+
+  const mix = (kd, kf) => lerp(prev.box[kd], p.box[kf], u);
+  // Derive lente pendant le plan : l'image ne se fige jamais.
+  const drift = { x: Math.sin(vie * 1.5 + i) * 15, y: Math.cos(vie * 1.15 + i) * 10 };
+  return {
+    plan: p, index: i, u, vie,
+    x: mix(0, 0) + drift.x,
+    y: mix(1, 1) + drift.y,
+    w: mix(2, 2), h: mix(3, 3),
+    ry: lerp(prev.ry, p.ry, u) + Math.sin(vie * .85) * .7,
+    rx: lerp(prev.rx, p.rx, u),
+    rz: Math.sin(vie * .95 + i) * .5,
+  };
+}
+
+function poseCarte(el, e, opacite) {
+  el.style.left = e.x + 'px';
+  el.style.top = e.y + 'px';
+  el.style.width = e.w + 'px';
+  el.style.height = e.h + 'px';
+  el.style.opacity = opacite;
+  el.style.transform = `rotateX(${e.rx}deg) rotateY(${e.ry}deg) rotateZ(${e.rz}deg)`;
+}
+
+function drawScene(t) {
+  const e = etatCarte(t);
+  const p = e.plan;
+  const estClient = p.clip === 'client';
+  const prevClient = (PLANS[e.index - 1] || p).clip === 'client';
+
+  // Les deux cartes occupent la MEME place ; seule leur opacite se croise
+  // quand on passe du back-office au parcours client. Le changement de source
+  // se lit alors comme un fondu, pas comme une coupe.
+  const opClient = lerp(prevClient ? 1 : 0, estClient ? 1 : 0, e.u);
+  const sortie = p.sortie ? eInOut(clamp01((t - p.a) / 1.1)) : 0;
+  poseCarte($('cStaff'), e, (1 - opClient) * (1 - sortie * .92));
+  poseCarte($('cClient'), e, opClient * (1 - sortie * .92));
+
+  // Scrub : chaque carte suit la fenetre du plan qui la concerne.
+  if (p.fen) scrub($('vStaff'), p.fen[0] + e.vie * (p.fen[1] - p.fen[0]));
+  if (estClient) scrub($('vClient'), 1.4 + e.vie * 5.4);
+  else if (prevClient && e.u < 1) scrub($('vClient'), 1.4 + 5.4);
+
+  // Reflet qui balaie la vitre a chaque arrivee.
+  [['sStaff', 1 - opClient], ['sClient', opClient]].forEach(([id, vis]) => {
+    const sp = $(id); if (!sp) return;
+    const s = clamp01((t - p.a) / .9);
+    sp.style.opacity = s > 0 && s < 1 ? (1 - Math.abs(s - .5) * 2) * .85 * vis : 0;
+    sp.style.transform = `translateX(${lerp(-500, e.w + 220, eOut(s))}px) skewX(-16deg)`;
+  });
+
+  // --- blocs de texte : le sortant PART pendant que l'entrant ARRIVE -------
+  PLANS.forEach((pl, i) => {
+    const el = $('b' + i); if (!el) return;
+    const debut = pl.a, fin = finDe(i);
+    // Entree sur TRANS, sortie sur TRANS : les deux se recouvrent.
+    const dedans = eInOut(clamp01((t - debut) / TRANS));
+    const dehors = eInOut(clamp01((t - (fin - TRANS * .8)) / (TRANS * .8)));
+    const vis = dedans * (1 - dehors);
+    el.style.opacity = vis;
+    const cote = i % 2 ? 1 : -1;
+    el.style.transform = `translate3d(${lerp(120 * cote, 0, dedans) + dehors * -90 * cote}px, `
+      + `${lerp(28, 0, dedans) - dehors * 26}px, 0) `
+      + `rotateY(${lerp(14 * cote, 0, dedans) - dehors * 10 * cote}deg)`;
+  });
+
+  // --- pastilles : arrivee decalee, depart decale --------------------------
+  PLANS.forEach((pl, i) => {
+    (pl.chips || []).forEach((c, j) => {
+      const el = $(`c${i}_${j}`); if (!el) return;
+      const debut = pl.a + .35 + j * .22, fin = finDe(i);
+      const dedans = eInOut(clamp01((t - debut) / (TRANS * .8)));
+      const dehors = eInOut(clamp01((t - (fin - TRANS * .7)) / (TRANS * .7)));
+      const vis = dedans * (1 - dehors);
+      const cote = c.x > 1280 ? 1 : -1;
+      const flot = Math.sin((t - pl.a) * 1.6 + j) * 7;
+      el.style.opacity = vis;
+      el.style.transform = `translate3d(${lerp(130 * cote, 0, dedans) + dehors * 110 * cote}px, ${flot}px, 0)`;
+    });
+  });
+
+  // --- marque et appel a l'action -----------------------------------------
+  const p8 = PLANS[PLANS.length - 1];
+  const venue = eInOut(clamp01((t - p8.a) / 1.0));
+  $('lg').style.opacity = venue;
+  $('lg').style.transform = `translateX(-50%) translateY(${lerp(60, 0, venue)}px) scale(${lerp(.92, 1, venue)})`;
+  const vcb = eInOut(clamp01((t - (p8.a + .75)) / .8));
+  $('cb').style.opacity = vcb;
+  $('cb').style.transform = `translateX(-50%) translateY(${lerp(52, 0, vcb)}px)`;
+
+  return e;
+}
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .5 && t < l.b + .5);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const words = [...host.children];
+  const span = Math.max(.24, (L.b - L.a) * .42);
+  const out = eInOut(clamp01((t - (L.b - .18)) / .5));
+  words.forEach((el, i) => {
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const pb = eInOut(clamp01((t - st) / .34));
+    el.style.opacity = pb * (1 - out);
+    el.style.transform = `translateY(${lerp(46, 0, pb) - out * 44}px) rotateX(${lerp(-62, 0, pb)}deg)`;
+  });
+  host.style.opacity = 1;
+}
+
+function render(t) {
+  $('wash').style.transform = `translate(${Math.sin(t * .38) * 130}px, ${Math.cos(t * .31) * 95}px) rotate(${Math.sin(t * .22) * 7}deg) scale(${1 + Math.sin(t * .27) * .07})`;
+  $('grid').style.transform = `translate(${(t * 34) % 120}px, ${(t * 19) % 120}px)`;
+  $('beam').style.transform = `translateX(${((t * 430) % 3400) - 700}px)`;
+  $('progIn').style.width = (clamp01(t / DUR) * 100).toFixed(2) + '%';
+  const cp = eOut(clamp01(t / .6));
+  ['cTL', 'cTR', 'cBL', 'cBR'].forEach((id) => { $(id).style.opacity = cp * .8; });
+
+  const e = drawScene(t);
+  drawSubs(t);
+  // Le compteur d'etapes suit la fusion, il ne saute pas.
+  const etape = ETAPE[e.plan.k];
+  [...$('steps').children].forEach((el, i) => el.classList.toggle('on', i <= etape));
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

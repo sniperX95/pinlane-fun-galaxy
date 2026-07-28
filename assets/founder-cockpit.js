@@ -426,16 +426,31 @@
     denied: () => chip('red', 'Refus'),
   };
 
-  function panel(title, subtitle, body, aside = '', attrs = '') {
+  // `cls` porte la PORTEE du panneau dans la grille 12 colonnes de la console
+  // (is-half, is-third, is-two-thirds). Un panneau qui ne declare rien reste
+  // pleine largeur : aucun rendu existant ne change tant qu'on ne le demande pas.
+  function panel(title, subtitle, body, aside = '', attrs = '', cls = '') {
     // <div>, pas <header> : en mode console, `body.staff-mode header` ecrase
     // tous les <header> a hauteur 0 (regle qui masque l'en-tete du site).
-    return `<section class="pv2-panel"${attrs ? ` ${attrs}` : ''}>
+    return `<section class="pv2-panel${cls ? ` ${cls}` : ''}"${attrs ? ` ${attrs}` : ''}>
       <div class="pv2-panel-head">
         <div><h2>${esc(title)}</h2>${subtitle ? `<p class="pv2-panel-sub">${subtitle}</p>` : ''}</div>
         ${aside}
       </div>
       ${body}
     </section>`;
+  }
+
+  // L'intertitre qui range les panneaux : « ce qui casse », « le business »,
+  // « l'IA ». Sans lui, neuf panneaux au meme poids visuel ne donnent aucun
+  // ordre de lecture - c'est ce que la page etait devenue.
+  function groupTitle(title, note) {
+    return `<div class="fck2-group"><h2>${esc(title)}</h2>${note ? `<p>${esc(note)}</p>` : ''}</div>`;
+  }
+
+  // Etat vide qui DIT quelque chose : ce qui manque, et pourquoi c'est normal.
+  function emptyState(title, detail) {
+    return `<div class="fck2-empty"><strong>${esc(title)}</strong><span>${esc(detail)}</span></div>`;
   }
 
   function emptyLine(text) {
@@ -510,17 +525,35 @@
       body += `<p class="fck-line">Worker : ${chip('amber', 'aucun passage enregistre')}</p>`;
     }
     if (Number(denied.count) > 0) {
-      const rows = (denied.recent || []).map((d) => `<tr>
-        <td>${esc(d.actorLabel || d.actorKind)}<div class="pv2-cell-sub">${esc(d.surface)} · ${esc(d.centerId)}${d.requestedCenter ? ` -> ${esc(d.requestedCenter)}` : ''} · ${esc(when(d.occurredAt))}</div></td>
-        <td>${chip('red', esc(d.deniedReason || 'refus'))}</td>
+      // AGREGATION. La liste brute affichait huit fois « Direction partage /
+      // /api/ops · libramont -> libramont · 403_permission » : le meme refus,
+      // repete, qui occupait un tiers du panneau et ne disait rien de plus que
+      // « ca arrive souvent ». On regroupe par signature (qui, ou, pourquoi),
+      // on compte, et on garde la date la plus recente.
+      const groups = new Map();
+      for (const d of (denied.recent || [])) {
+        const key = [d.actorLabel || d.actorKind, d.surface, d.deniedReason].join('|');
+        const found = groups.get(key);
+        if (found) {
+          found.n += 1;
+          if (String(d.occurredAt) > String(found.last)) found.last = d.occurredAt;
+        } else {
+          groups.set(key, { n: 1, last: d.occurredAt, row: d });
+        }
+      }
+      const rows = [...groups.values()].sort((a, b) => b.n - a.n).map((g) => `<tr>
+        <td><span class="fck2-count">${g.n}x</span> ${esc(g.row.actorLabel || g.row.actorKind)}
+          <span class="pv2-cell-sub">${esc(g.row.surface)} · ${esc(g.row.centerId)}${g.row.requestedCenter ? ` -> ${esc(g.row.requestedCenter)}` : ''}</span></td>
+        <td>${chip('red', esc(g.row.deniedReason || 'refus'))}</td>
+        <td>${esc(when(g.last))}</td>
       </tr>`).join('');
-      body += `<h3 class="fck-sub">${denied.count} acces refuse${denied.count > 1 ? 's' : ''} <span class="pv2-quiet">(${esc(denied.window)})</span></h3>
+      body += `<h3 class="fck-sub">${denied.count} acces refuse${denied.count > 1 ? 's' : ''} <span class="pv2-quiet">(${esc(denied.window)} · ${groups.size} cause${groups.size > 1 ? 's' : ''} distincte${groups.size > 1 ? 's' : ''})</span></h3>
         <table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`;
     }
     return panel(title, subtitle, body, '', attrs);
   }
 
-  function renderAdoption(adoption, centers) {
+  function renderAdoption(adoption, centers, cls = '') {
     if (!adoption) return '';
     if (adoption.error) return panel('Vos clients s\'en servent-ils ?', '', sectionError(adoption));
     const byId = new Map((adoption.perCenter || []).map((c) => [c.centerId, c]));
@@ -546,12 +579,13 @@
       `Le proprietaire plateforme est exclu de ces compteurs (${esc(adoption.window)}). ${used.size} action${used.size > 1 ? 's' : ''} distincte${used.size > 1 ? 's' : ''} utilisee${used.size > 1 ? 's' : ''} sur 30 jours.`,
       `<div class="fck-center-grid">${cards}</div>
        ${top ? `<h3 class="fck-sub">Les plus utilisees</h3><p class="fck-chips">${top}</p>` : emptyLine('Aucune action staff enregistree sur 30 jours.')}`,
+      '', '', cls,
     );
   }
 
-  function renderAgents(agents) {
+  function renderAgents(agents, cls = '') {
     if (!agents) return '';
-    if (agents.error) return panel('Vos agents IA', '', sectionError(agents));
+    if (agents.error) return panel('Vos agents IA', '', sectionError(agents), '', '', cls);
     const s = agents.suggestions || {};
     const d = agents.decisions || {};
     const plans = (agents.plans || []).map((p) => `<tr>
@@ -573,10 +607,11 @@
        </div>
        ${insights ? `<h3 class="fck-sub">Insights marketing par centre</h3><table class="pv2-table fck-table"><tbody>${insights}</tbody></table>` : ''}
        ${plans ? `<h3 class="fck-sub">Plans marketing actifs</h3><table class="pv2-table fck-table"><tbody>${plans}</tbody></table>` : emptyLine('Aucun plan marketing actif.')}`,
+      '', '', cls,
     );
   }
 
-  function renderCost(cost) {
+  function renderCost(cost, cls = '') {
     if (!cost) return '';
     if (cost.error) return panel('Ce que coute l\'IA', '', sectionError(cost));
     const spent = Number(cost.spentUsd) || 0;
@@ -595,6 +630,7 @@
         : emptyLine('Aucune depense enregistree ce mois-ci.')}
        <p class="pv2-quiet">Cout par jour : pas encore mesure (le registre est mensuel).</p>
        ${months ? `<table class="pv2-table fck-table"><tbody>${months}</tbody></table>` : ''}`,
+      '', '', cls,
     );
   }
 
@@ -624,10 +660,10 @@
     );
   }
 
-  function renderLeads(leads) {
+  function renderLeads(leads, cls = '') {
     if (!leads) return '';
-    if (leads.error) return panel('Vos prospects', '', sectionError(leads));
-    if (!leads.total) return panel('Vos prospects', '', emptyLine('Aucun prospect enregistre pour le moment.'));
+    if (leads.error) return panel('Vos prospects', '', sectionError(leads), '', '', cls);
+    if (!leads.total) return panel('Vos prospects', "Personne n'a encore laisse ses coordonnees depuis le site.", emptyState('Aucun prospect', "Le formulaire public alimente cette liste des qu'un visiteur le remplit."), '', '', cls);
     const rows = (leads.recent || []).map((l) => `<tr>
       <td>${esc(l.centerName || '(sans nom)')}</td>
       <td>${chip(l.status === 'new' ? 'amber' : '', esc({ new: 'nouveau', contacted: 'contacte', converted: 'converti', rejected: 'ecarte' }[l.status] || l.status))}</td>
@@ -637,6 +673,7 @@
       'Vos prospects',
       `${leads.total} au total (${esc(leads.window)}) · dernier ${esc(when(leads.lastAt))}`,
       `<table class="pv2-table fck-table"><tbody>${rows}</tbody></table>`,
+      '', '', cls,
     );
   }
 
@@ -1027,27 +1064,26 @@
     }
     const mrr = mrrView(p);
     const cells = [
-      { cap: 'Clients actifs', num: intFmt(p.activeClients) },
-      { cap: 'MRR', num: mrr.display, hint: mrr.hint, kpi: 'mrr' },
-      { cap: 'CA 30 j', num: money(p.revenue30dAll) },
-      { cap: 'Centres actifs', num: intFmt(p.activeCenters) },
+      { cap: 'Clients facturables', num: intFmt(p.activeClients),
+        foot: Number(p.activeClients) ? 'enregistres dans la facturation' : 'aucun contrat enregistre : les centres tournent hors facturation' },
+      { cap: 'MRR', num: mrr.display, foot: mrr.hint || 'aucun prix pose', kpi: 'mrr' },
+      { cap: 'CA des centres · 30 j', num: money(p.revenue30dAll), foot: 'ce que les centres encaissent, pas ce que Pinlane facture' },
+      { cap: 'Centres actifs', num: intFmt(p.activeCenters), foot: 'connectes et servis par la prod' },
     ];
-    const stats = cells.map((c) => `<div class="fck-stat"${c.kpi ? ` data-kpi="${esc(c.kpi)}"` : ''}>
-        <span class="fck-stat-cap">${esc(c.cap)}</span>
-        <span class="fck-stat-num">${esc(c.num)}</span>
-        ${c.hint ? `<span class="fck-stat-hint">${esc(c.hint)}</span>` : ''}
-      </div>`).join('');
-    return panel(
-      'Activite plateforme',
-      'Clients, MRR et CA a l\'echelle du SaaS. Le MRR reste "a definir" tant qu\'aucun prix n\'est pose.',
-      `<div class="fck-stats fck-biz-stats">${stats}</div>`,
-      '', 'data-fck-panel="biz-kpis"',
-    );
+    // Les quatre chiffres de tete sont des CARTES, pas un panneau qui contient
+    // des colonnes : un cadre autour d'un cadre coutait 60 px de hauteur pour
+    // rien et donnait au bandeau le meme poids visuel qu'une section entiere.
+    const stats = cells.map((c) => `<article class="pv2-stat"${c.kpi ? ` data-kpi="${esc(c.kpi)}"` : ''}>
+        <div class="pv2-stat-label"><span>${esc(c.cap)}</span></div>
+        <div class="pv2-stat-value">${esc(c.num)}</div>
+        ${c.foot ? `<div class="pv2-stat-foot">${esc(c.foot)}</div>` : ''}
+      </article>`).join('');
+    return `<section class="pv2-stats" data-fck-panel="biz-kpis">${stats}</section>`;
   }
 
   // Graphe de tendance : CA reel 30 j par centre, en barres, via le moteur
   // window.PinlaneCharts (aucun SVG maison). Source : founderCenters.
-  function renderCaChart() {
+  function renderCaChart(cls = '') {
     const st = fckBiz.centres;
     const chartsReady = Boolean(window.PinlaneCharts && typeof window.PinlaneCharts.barChart === 'function');
     const centres = (st.data && Array.isArray(st.data.centers)) ? st.data.centers : [];
@@ -1065,7 +1101,7 @@
     return panel(
       'CA 30 j par centre',
       'Le chiffre d\'affaires reel des 30 derniers jours, centre par centre. Le graphique arrondit, la valeur exacte vit dans la page Centres.',
-      body, '', 'data-fck-panel="biz-chart"',
+      body, '', 'data-fck-panel="biz-chart"', cls,
     );
   }
 
@@ -1099,12 +1135,23 @@
     const d = fck.data || {};
     const generated = d.generatedAt ? when(d.generatedAt) : '';
 
+    // COMPOSITION DE LA PAGE (refonte 2026-07-28). Avant : neuf panneaux
+    // empiles pleine largeur, 5 057 px mesures, sans ordre de lecture. Trois
+    // changements de fond :
+    //   1. des GROUPES titres : on repond a « qu'est-ce qui va mal », puis
+    //      « ou en est le business », puis « que fait l'IA » ;
+    //   2. le JOURNAL D'AUDIT SORT d'ici. Il occupait pres de la moitie de la
+    //      hauteur en lignes brutes, et il a sa propre page dans le menu depuis
+    //      le 2026-07-28 : le garder ici, c'etait maintenir deux surfaces pour
+    //      la meme donnee (et faire defiler le patron sur du log) ;
+    //   3. les panneaux courts se rangent COTE A COTE (grille 12 colonnes) au
+    //      lieu d'occuper chacun une bande vide de 1 100 px.
     root.innerHTML = `<div class="pv2-shell fck-shell">
       <section class="pv2-bar">
         <div>
           <div class="pv2-bar-crumb"><span class="pv2-live"></span>Plateforme</div>
-          <h1>Cockpit fondateur</h1>
-          <p class="pv2-bar-sub">Tout le SaaS : ce qui casse, l'usage, les agents, le cout, le journal.${generated ? ` · actualise ${esc(generated)}` : ''}</p>
+          <h1>Cockpit</h1>
+          <p class="pv2-bar-sub">L'etat du SaaS en une page : ce qui casse, ce que ca rapporte, ce que l'IA produit et ce qu'elle coute.${generated ? ` Actualise ${esc(generated)}.` : ''}</p>
         </div>
         <div class="pv2-bar-actions">
           <button type="button" class="pv2-btn ghost" onclick="fckReload()">Actualiser</button>
@@ -1120,18 +1167,16 @@
 
       ${fck.loading && !fck.data ? `<section class="pv2-panel"><p class="pv2-quiet">Chargement du cockpit…</p></section>` : ''}
 
-      ${fck.data ? renderBreakage(d.breakage) : ''}
+      ${fck.data ? groupTitle('Ce qui casse', 'Mails, jobs, worker, acces refuses') + renderBreakage(d.breakage, 'Etat des services', 'Ce qui demande une action passe devant.') : ''}
 
-      ${renderCaChart()}
+      ${fck.data ? groupTitle('Le business', 'Ce que les centres produisent et comment ils se servent du produit')
+        + renderCaChart('is-half') + renderAdoption(d.adoption, d.centers, 'is-half') : ''}
 
-      ${fck.data ? [
-        renderAdoption(d.adoption, d.centers),
-        renderAgents(d.agents),
-        renderCost(d.cost),
-        renderAudit(d.audit, d.centers),
-        renderSequences(d.sequences, d.centers),
-        renderLeads(d.leads),
-      ].join('') : ''}
+      ${fck.data ? groupTitle('L\'IA', 'Ce qu\'elle propose, ce qu\'elle coute')
+        + renderAgents(d.agents, 'is-half') + renderCost(d.cost, 'is-half') : ''}
+
+      ${fck.data ? groupTitle('Les commandes', 'Ce que tu peux changer d\'ici')
+        + renderSequences(d.sequences, d.centers) + renderLeads(d.leads, 'is-half') : ''}
     </div>`;
 
     mountCockpitCharts(root);

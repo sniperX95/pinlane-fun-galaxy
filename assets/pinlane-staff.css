@@ -13415,3 +13415,237 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 }
 #staffCockpitPage .fck-confirm-warn strong { color: var(--text); font-weight: 600; }
 #staffCockpitPage .fck-confirm-irrev { display: block; margin-top: 6px; color: var(--danger); font-weight: 500; }
+
+/* ==========================================================================
+   22. CONSOLE PLATEFORME v2 (2026-07-28) : la console du chef, refaite.
+   ==========================================================================
+   Demande de Movsar : « ameliore drastiquement tout le design frontend, c'est
+   vraiment moche, recommence de 0, pour le cote admin Pinlane ».
+
+   CE QUI N'ALLAIT PAS, mesure sur les 7 pages avec les vraies donnees de prod :
+   une page de 5 057 px (le Cockpit) et six pages entre 331 et 978 px. Neuf
+   panneaux empiles pleine largeur, tous au meme poids visuel, aucun ordre de
+   lecture. Le journal d'audit occupait la moitie du Cockpit alors qu'il a sa
+   propre page. Les etats vides tenaient en une phrase grise dans un cadre de
+   300 px de haut.
+
+   LE SYSTEME :
+   1. GRILLE 12 COLONNES. Un panneau n'est plus forcement pleine largeur : il
+      declare sa portee (`is-half`, `is-third`, `is-two-thirds`). Le contenu
+      court cesse d'occuper une bande vide de 1 100 px.
+   2. HIERARCHIE PAR GROUPES. Les panneaux se rangent sous un intertitre
+      (`fck2-group`) qui dit de quoi on parle : ce qui casse, le business,
+      l'IA. On lit une page, plus une pile.
+   3. DENSITE CALIBREE. 13 px de base, tables a 12,5 px, chiffres tabulaires.
+      Le padding des panneaux tombe de 20 a 16 px : plus de lignes a l'ecran
+      sans reduire la lisibilite.
+   4. ZERO COULEUR EN DUR. Tout passe par les tokens, parite light/dark.
+   ========================================================================== */
+
+#staffCockpitPage .fck-shell {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-content: start;
+  max-width: 1320px;
+}
+/* Par defaut un enfant direct prend toute la largeur : les blocs qui ne
+   declarent rien gardent le comportement d'avant, aucune regression. */
+#staffCockpitPage .fck-shell > * { grid-column: 1 / -1; }
+#staffCockpitPage .fck-shell > .is-half { grid-column: span 6; }
+#staffCockpitPage .fck-shell > .is-third { grid-column: span 4; }
+#staffCockpitPage .fck-shell > .is-two-thirds { grid-column: span 8; }
+@media (max-width: 1100px) {
+  #staffCockpitPage .fck-shell > .is-half,
+  #staffCockpitPage .fck-shell > .is-third,
+  #staffCockpitPage .fck-shell > .is-two-thirds { grid-column: 1 / -1; }
+}
+
+/* --- 22.1 L'en-tete de page : sobre, informatif, sans ceremonie ----------- */
+#staffCockpitPage .pv2-bar {
+  align-items: flex-end;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
+}
+#staffCockpitPage .pv2-bar h1 { font-size: 24px; font-weight: 620; letter-spacing: -0.02em; margin: 2px 0 4px; }
+#staffCockpitPage .pv2-bar-crumb { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+#staffCockpitPage .pv2-bar-sub { font-size: 13px; line-height: 1.5; color: var(--muted); max-width: 76ch; }
+
+/* --- 22.2 L'intertitre de groupe : ce qui donne un ordre de lecture ------- */
+#staffCockpitPage .fck2-group {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: var(--space-5) 0 calc(var(--space-2) * -1);
+}
+#staffCockpitPage .fck2-group h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+#staffCockpitPage .fck2-group p { margin: 0; font-size: 12.5px; color: var(--faint); }
+#staffCockpitPage .fck2-group::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* --- 22.3 Panneaux : plus denses, bord discret, titre qui ne crie pas ----- */
+#staffCockpitPage .pv2-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 0;
+  overflow: hidden;
+}
+[data-theme='dark'] #staffCockpitPage .pv2-panel { background: var(--raised); }
+#staffCockpitPage .pv2-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 14px 16px 10px;
+}
+#staffCockpitPage .pv2-panel-head h2 { font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+#staffCockpitPage .pv2-panel-sub { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--faint); max-width: 68ch; }
+#staffCockpitPage .pv2-panel > *:not(.pv2-panel-head) { padding-left: 16px; padding-right: 16px; }
+#staffCockpitPage .pv2-panel > *:last-child { padding-bottom: 14px; }
+#staffCockpitPage .pv2-panel > table,
+#staffCockpitPage .pv2-panel > .fck2-flush { padding-left: 0; padding-right: 0; }
+
+/* --- 22.4 Chiffres : la carte de stat, unique et tabulaire ---------------- */
+#staffCockpitPage .pv2-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-3);
+}
+#staffCockpitPage .pv2-stat {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 14px 16px 16px;
+}
+[data-theme='dark'] #staffCockpitPage .pv2-stat { background: var(--raised); }
+#staffCockpitPage .pv2-stat-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+#staffCockpitPage .pv2-stat-value {
+  margin-top: 6px;
+  font-family: var(--font-data);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+#staffCockpitPage .pv2-stat-foot { margin-top: 6px; font-size: 11.5px; line-height: 1.45; color: var(--faint); }
+
+/* --- 22.5 Tables : lisibles a la ligne, chiffres alignes ------------------ */
+#staffCockpitPage .pv2-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+#staffCockpitPage .pv2-table thead th {
+  padding: 6px 16px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+#staffCockpitPage .pv2-table td {
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  vertical-align: top;
+  line-height: 1.45;
+}
+#staffCockpitPage .pv2-table tbody tr:last-child td { border-bottom: 0; }
+#staffCockpitPage .pv2-table tbody tr:hover td { background: var(--subtle); }
+#staffCockpitPage .pv2-table td:not(:first-child) { font-variant-numeric: tabular-nums; }
+#staffCockpitPage .pv2-cell-sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--faint); }
+
+/* --- 22.6 Etats vides : une phrase qui DIT, pas un cadre gris ------------- */
+#staffCockpitPage .fck2-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 16px 20px;
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+#staffCockpitPage .fck2-empty strong { font-size: 13px; font-weight: 600; color: var(--text); }
+#staffCockpitPage .fck2-empty span { font-size: 12.5px; line-height: 1.5; color: var(--faint); }
+
+/* --- 22.7 Ligne de refus agregee (« ce qui casse ») ----------------------- */
+#staffCockpitPage .fck2-hit {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+#staffCockpitPage .fck2-count {
+  min-width: 34px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- 22.8 Clients Pinlane : la table du contrat ---------------------------
+   La page listait des CARTES de 370 px dans une colonne de 1 130 : 75 % de vide
+   mesure, et deux clients ne se comparaient pas. Une table les aligne, tient
+   50 lignes, et garde les memes actions. Les centres d'un client vivent dans
+   une sous-ligne : ils lui appartiennent, ils ne meritent pas une colonne. */
+#staffCockpitPage .fcp-table td { vertical-align: middle; }
+#staffCockpitPage .fcp-row td { border-bottom: 0; }
+#staffCockpitPage .fcp-row-centers td { padding-top: 0; padding-bottom: 12px; }
+#staffCockpitPage .fcp-centers { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; border-top: 0; padding: 0; }
+#staffCockpitPage .fcp-center-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--subtle);
+}
+#staffCockpitPage .fcp-center-pill em { font-style: normal; font-family: var(--font-data); color: var(--faint); }
+#staffCockpitPage .fcp-mini {
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--faint);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#staffCockpitPage .fcp-mini:hover { color: var(--danger); }
+#staffCockpitPage .fcp-actions { white-space: nowrap; }
+#staffCockpitPage .fcp-actions > * + * { margin-left: 6px; }
+#staffCockpitPage .fcp-billing-lab.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+#staffCockpitPage .fcp-billing-edit { display: flex; align-items: center; gap: 6px; }
+#staffCockpitPage .fcp-price-input { width: 88px; }
+#staffCockpitPage .fcp-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--faint); }

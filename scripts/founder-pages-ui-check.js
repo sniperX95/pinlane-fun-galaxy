@@ -244,7 +244,9 @@ async function runSuite(browser, quiet) {
     await page.waitForSelector('#staffCockpitPage [data-fck-panel="biz-kpis"] [data-kpi="mrr"]', { timeout: 10000 });
     await page.waitForSelector('#staffCockpitPage [data-fck-panel="biz-chart"] .plc-svg', { timeout: 10000 });
     const cp = await page.evaluate(() => {
-      const mrr = document.querySelector('[data-fck-panel="biz-kpis"] [data-kpi="mrr"] .fck-stat-num');
+      // Le bandeau du cockpit n'est plus un panneau qui contient des colonnes
+      // .fck-stat : ce sont les cartes de stat de la console (refonte 2026-07-28).
+      const mrr = document.querySelector('[data-fck-panel="biz-kpis"] [data-kpi="mrr"] .pv2-stat-value');
       const svg = document.querySelector('[data-fck-panel="biz-chart"] .plc-svg');
       return {
         kpis: !!document.querySelector('[data-fck-panel="biz-kpis"]'),
@@ -405,6 +407,16 @@ async function runSuite(browser, quiet) {
     if (finalRun.length) {
       console.error(`founder-pages-ui-check: ROUGE apres restauration (${finalRun.join(', ')})`);
       process.exitCode = 1;
+      return;
+    }
+    // Un gate qui conclut « ALL OK » alors que des assertions ont rougi est pire
+    // qu'une absence de gate : on lit la derniere ligne et on deploie. Le code
+    // de sortie etait bien 1, mais le message disait le contraire (constate le
+    // 2026-07-28 : mrr-adefinir et billing-clientid rouges, « ALL OK » imprime).
+    // `failures` vit dans une autre portee : on lit le code de sortie, qui est
+    // deja pose a 1 par les blocs d'assertion.
+    if (process.exitCode) {
+      console.error('founder-pages-ui-check: FAIL - des assertions ont rougi (voir les lignes FAIL ci-dessus).');
       return;
     }
     console.log('founder-pages-ui-check: ALL OK (Clients KPI MRR honnete + edition prix + filtre statut ; Cockpit ligne KPI + graphe PinlaneCharts + pendingInsights/Appliquer ; Incidents dedup ; Centres clientName + totaux + filtre ; console propre ; 2 contre-preuves par mutation)');

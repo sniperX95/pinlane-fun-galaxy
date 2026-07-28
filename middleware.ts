@@ -6,6 +6,47 @@ declare const process:
     }
   | undefined;
 
+/* QUI A LE DROIT D'EMBARQUER LE PARCOURS DE RESERVATION.
+   Le tunnel client n'est pas fait pour vivre sur le domaine de Pinlane : il
+   s'installe DANS le site de chaque client (iframe). C'est `frame-ancestors`
+   qui autorise cet embarquement, et il vivait en dur dans vercel.json - donc
+   chaque nouveau client demandait un DEPLOIEMENT pour que son site cesse
+   d'afficher un cadre vide. Un SaaS ne peut pas facturer un deploiement par
+   installation.
+   La liste vient desormais de la variable d'environnement EMBED_ORIGINS
+   (origines separees par des virgules) : ajouter un client = ajouter une
+   origine dans Vercel, sans toucher au code. En l'absence de variable, on
+   retombe EXACTEMENT sur la liste historique : aucune installation existante
+   ne casse le jour du deploiement.
+   Note : `vercel.json` ne sait pas lire de variable d'environnement, d'ou le
+   passage par le middleware. La directive a donc ete RETIREE de vercel.json -
+   deux en-tetes CSP se cumulent en intersection, et la garder aux deux endroits
+   aurait fige la liste la plus restrictive. */
+const DEFAULT_EMBED_ORIGINS = [
+  'https://fungalaxy.be',
+  'https://www.fungalaxy.be',
+  'https://mngfunglxy.com',
+  'https://www.mngfunglxy.com',
+];
+
+function embedAncestors(): string {
+  const raw = (process && process.env && process.env.EMBED_ORIGINS) || '';
+  const configured = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    // Une origine, pas une URL : on refuse tout ce qui porte un chemin, et tout
+    // ce qui n'est pas en https (une origine http autoriserait un site non
+    // chiffre a encadrer le parcours de paiement d'un client).
+    .filter((value) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(value));
+  const all = Array.from(new Set([...configured, ...DEFAULT_EMBED_ORIGINS]));
+  return `frame-ancestors 'self' ${all.join(' ')}`;
+}
+
+function passThrough() {
+  return next({ headers: { 'Content-Security-Policy': embedAncestors() } });
+}
+
 function unauthorized() {
   return new Response('Acces restreint.', {
     status: 401,
@@ -87,7 +128,7 @@ export default async function middleware(request: Request) {
     cronSecret &&
     await timingSafeEqualText(request.headers.get('authorization') || '', `Bearer ${cronSecret}`)
   ) {
-    return next();
+    return passThrough();
   }
 
   const publicPaths = new Set([
@@ -120,6 +161,9 @@ export default async function middleware(request: Request) {
     '/reserver',
     '/robots.txt',
     '/sitemap.xml',
+    // Le script d'installation est charge par le SITE DU CLIENT : il doit
+    // etre lisible sans identifiants, comme le parcours qu'il embarque.
+    '/embed.js',
     '/favicon.ico',
   ]);
 
@@ -129,7 +173,7 @@ export default async function middleware(request: Request) {
     || pathname === '/menu'
     || pathname.startsWith('/menu/')
   ) {
-    return next();
+    return passThrough();
   }
 
   const directionOnly = pathname === '/direction.html';
@@ -139,7 +183,7 @@ export default async function middleware(request: Request) {
     if (!await credentialsMatch(request, directorUsername, directorPassword)) {
       return forbiddenDirection();
     }
-    return next();
+    return passThrough();
   }
 
   const expectedUsername = process.env.SITE_USERNAME;
@@ -159,7 +203,7 @@ export default async function middleware(request: Request) {
     return unauthorized();
   }
 
-  return next();
+  return passThrough();
 }
 
 export const config = {

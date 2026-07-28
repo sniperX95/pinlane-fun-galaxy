@@ -16593,3 +16593,52 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
   }
 });
+
+/* ==========================================================================
+   MODE EMBARQUE : la hauteur remonte au site du client.
+   ==========================================================================
+   Quand le parcours tourne dans l'iframe d'un client (embed.js pose ?embed=1),
+   le site hote ne peut PAS mesurer notre contenu : une iframe est opaque. Sans
+   ce message, le client choisit une hauteur fixe et se retrouve avec un
+   ascenseur interne sur les etapes longues, ou un trou blanc sur les courtes.
+   On poste donc la hauteur reelle a chaque changement (etape suivante, message
+   d'erreur, liste de creneaux qui se remplit).
+   Regles : rien ne part hors mode embarque, le message est cible sur l'origine
+   du PARENT (jamais '*' : ca diffuserait la taille de notre contenu a tout site
+   capable de nous encadrer), et l'observation s'arrete si le navigateur n'a pas
+   ResizeObserver (repli sur les evenements de redimensionnement). */
+(function () {
+  'use strict';
+  if (typeof window === 'undefined' || window.parent === window) return;
+  var params;
+  try { params = new URLSearchParams(window.location.search); } catch (error) { return; }
+  if (params.get('embed') !== '1') return;
+
+  // L'origine du parent n'est pas lisible (cross-origin) : le referrer la
+  // donne, et il est pose par le navigateur, pas par la page hote.
+  var parentOrigin = '';
+  try { parentOrigin = document.referrer ? new URL(document.referrer).origin : ''; } catch (error) { parentOrigin = ''; }
+  if (!parentOrigin) return;
+
+  var last = 0;
+  function post() {
+    var body = document.body;
+    var doc = document.documentElement;
+    if (!body || !doc) return;
+    var height = Math.max(body.scrollHeight, body.offsetHeight, doc.scrollHeight, doc.offsetHeight);
+    if (!height || Math.abs(height - last) < 8) return; // hysteresis : pas de flot de messages au pixel pres
+    last = height;
+    try { window.parent.postMessage({ type: 'pinlane:height', height: height }, parentOrigin); } catch (error) { /* parent parti */ }
+  }
+
+  if (typeof ResizeObserver === 'function') {
+    var observer = new ResizeObserver(post);
+    if (document.body) observer.observe(document.body);
+    else document.addEventListener('DOMContentLoaded', function () { observer.observe(document.body); });
+  } else {
+    window.addEventListener('resize', post, { passive: true });
+    setInterval(post, 800);
+  }
+  document.addEventListener('DOMContentLoaded', post);
+  window.addEventListener('load', post);
+}());

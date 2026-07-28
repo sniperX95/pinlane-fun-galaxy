@@ -40,6 +40,42 @@ const CSS_W = Number(arg('cssw', 2560));
 const CSS_H = Number(arg('cssh', 1440));
 const W = CSS_W;
 const H = CSS_H;
+
+// ===========================================================================
+// POURQUOI LA CAPTURE SE FAIT IMAGE PAR IMAGE, ET PLUS PAR recordVideo.
+//
+// L'enregistreur video de Playwright encode en VP8 a debit modeste. Sur une
+// interface sombre pleine de petit texte, c'est ruineux : compare cote a cote
+// avec une capture PNG du MEME ecran, le texte est bave et cerne d'artefacts
+// de bloc. C'etait la cause dominante du « flou », pas le cadrage ni l'echelle.
+//
+// On capture donc des PNG a densite 1.5 (3840x2160) puis on assemble en VP9
+// quasi sans perte. Un PNG de cette interface pese ~0,3 Mo : 900 images tiennent
+// dans 270 Mo, c'est negligeable.
+//
+// Consequence : le temps n'avance plus tout seul. Le curseur est pilote par une
+// HORLOGE VIRTUELLE avancee d'exactement 1/FPS par image — la capture devient
+// aussi reproductible que le rendu du montage.
+// ===========================================================================
+const FPS = Number(arg('fps', 25));
+const DSF = Number(arg('dsf', 1.5));
+const SEQ = path.join(ROOT, 'artifacts/promo-clips/seq');
+let frameIdx = 0;
+
+async function snap(page) {
+  await page.evaluate((dt) => { if (window.__pcTick) window.__pcTick(dt); }, 1 / FPS);
+  await page.screenshot({ path: path.join(SEQ, `f${String(frameIdx).padStart(5, '0')}.png`) });
+  frameIdx += 1;
+}
+
+// Remplace waitForTimeout : au lieu d'attendre, on FILME l'attente.
+async function pause(page, ms) {
+  const n = Math.max(1, Math.round((ms / 1000) * FPS));
+  for (let i = 0; i < n; i++) await snap(page);
+}
+
+// Instant courant du clip, en secondes — c'est le compteur d'images qui fait foi.
+const instant = () => frameIdx / FPS;
 const OUT = path.join(ROOT, 'artifacts/promo-clips');
 const PORT = 4601;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -167,36 +203,55 @@ async function installCursor(page) {
     const pastille = { x: ressort(-9999), y: ressort(-9999) };
     const inclin = ressort(0);
     const echelle = ressort(1);
-    let presse = 0;                             // instant du dernier appui
     let dernier = null;                         // echantillon pour la vitesse
 
     // Decalage de la pastille : elle se pose en bas a droite de la pointe.
     const DX = T * 0.9, DY = T * 0.2 + 6;
     const INCLIN_MAX = 25;                      // degres
 
-    let precedent = performance.now();
-    function boucle(now) {
-      const dt = Math.min(0.032, (now - precedent) / 1000);
-      precedent = now;
-      // Fleche : nerveuse. Pastille : plus molle, donc elle TRAINE.
+    // HORLOGE VIRTUELLE.
+    //
+    // La capture se fait image par image : le temps reel ne veut plus rien dire
+    // entre deux screenshots (une capture PNG 4K prend ~250 ms). Le montage
+    // avance donc l'horloge lui-meme, d'exactement 1/FPS par image. Meme
+    // methode que le rendu de la scene : c'est ce qui rend le clip reproductible
+    // et le curseur regulier.
+    let horloge = 0;         // secondes ecoulees dans le clip
+    let presseA = -99;       // instant de l'appui, sur la meme horloge
+    let ringA = -99;         // instant du halo
+    window.__pcTick = (dt) => {
+      horloge += dt;
       pas(fleche.x, cible.x, dt, 380, 32, 0.6);
       pas(fleche.y, cible.y, dt, 380, 32, 0.6);
       pas(pastille.x, cible.x, dt, 220, 26, 0.7);
       pas(pastille.y, cible.y, dt, 220, 26, 0.7);
       pas(inclin, inclin.cible || 0, dt, 200, 24, 0.6);
-      // Appui : la pression retombe toute seule apres 150 ms.
-      const enfonce = presse && (now - presse) < 150 ? 0.92 : 1;
+      const enfonce = (horloge - presseA) < 0.15 ? 0.92 : 1;
       pas(echelle, enfonce, dt, 500, 28, 0.5);
 
       arrow.style.transform = `translate(${fleche.x.x}px, ${fleche.y.x}px) scale(${echelle.x})`;
       label.style.transform = `translate(${pastille.x.x + DX}px, ${pastille.y.x + DY}px) `
         + `rotate(${inclin.x}deg) scale(${echelle.x})`;
-      requestAnimationFrame(boucle);
-    }
-    requestAnimationFrame(boucle);
+
+      // Le halo est dessine a la main lui aussi : une transition CSS suivrait
+      // l'horloge murale et ne bougerait pas d'une image a l'autre.
+      const u = (horloge - ringA) / 0.62;
+      if (u >= 0 && u <= 1) {
+        const e = 1 - Math.pow(1 - u, 3);
+        ring.style.opacity = String(1 - u);
+        ring.style.transform = `scale(${0.32 + e * 3.7})`;
+      } else {
+        ring.style.opacity = '0';
+      }
+    };
+    window.__pcNow = () => horloge;
+    window.__pcPress = () => { presseA = horloge; };
+    window.__pcRing = () => { ringA = horloge; };
 
     window.__promoMove = (x, y) => {
-      const now = performance.now();
+      // Vitesse mesuree sur l'horloge VIRTUELLE : sur l'horloge murale, le
+      // temps passe a ecrire un PNG ferait croire a un deplacement lent.
+      const now = horloge * 1000;
       if (dernier) {
         const dt = Math.max(1, now - dernier.t);
         const vx = ((x - dernier.x) / dt) * 1000;
@@ -213,17 +268,14 @@ async function installCursor(page) {
     };
 
     window.__promoClick = (x, y) => {
-      presse = performance.now();
+      // Aucune transition CSS ici : elles suivent l'horloge murale et seraient
+      // deja terminees (ou pas commencees) au moment de la capture suivante.
+      // C'est __pcTick qui dessine le halo, image par image.
+      ring.style.transition = 'none';
       ring.style.left = (x - 28) + 'px';
       ring.style.top = (y - 28) + 'px';
-      ring.style.transition = 'none';
-      ring.style.opacity = '1';
-      ring.style.transform = 'scale(.32)';
-      requestAnimationFrame(() => {
-        ring.style.transition = 'transform .6s cubic-bezier(.16,.9,.3,1), opacity .6s';
-        ring.style.opacity = '0';
-        ring.style.transform = 'scale(4)';
-      });
+      window.__pcPress();
+      window.__pcRing();
     };
   }, [CURSOR_CSS, CURSEUR_TAILLE]);
 }
@@ -241,7 +293,7 @@ async function moveTo(page, x, y, steps = 22) {
     const px = u * u * from.x + 2 * u * e * cx + e * e * x;
     const py = u * u * from.y + 2 * u * e * cy + e * e * y;
     await page.evaluate(([a, b]) => { window.__promoMove(a, b); window.__promoAt = { x: a, y: b }; }, [px, py]);
-    await page.waitForTimeout(9);
+    await pause(page, 9);
   }
 }
 
@@ -259,7 +311,7 @@ async function boxOf(page, sel) {
     return true;
   }, sel);
   if (!near) return null;
-  await page.waitForTimeout(520);            // le defilement doit finir
+  await pause(page, 520);            // le defilement doit finir
   return page.evaluate((s) => {
     const el = document.querySelector(s);
     if (!el) return null;
@@ -274,11 +326,11 @@ async function clickAt(page, sel, label, settle = 560) {
   const box = await boxOf(page, sel);
   if (!box) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
   await moveTo(page, box.x, box.y);
-  await page.waitForTimeout(150);        // temps de survol : l'etat hover se voit
+  await pause(page, 150);        // temps de survol : l'etat hover se voit
   await page.evaluate(([a, b]) => window.__promoClick(a, b), [box.x, box.y]);
-  await page.waitForTimeout(80);
+  await pause(page, 80);
   await page.evaluate((s) => { const el = document.querySelector(s); if (el) el.click(); }, sel);
-  await page.waitForTimeout(settle);
+  await pause(page, settle);
   DONE.push(label);
   console.log(`   clic ${label}`);
   return true;
@@ -299,13 +351,13 @@ async function typeInto(page, sel, text, label) {
       el.value += c;
       el.dispatchEvent(new Event('input', { bubbles: true }));
     }, [sel, ch]);
-    await page.waitForTimeout(52);
+    await pause(page, 52);
   }
   await page.evaluate((s) => {
     const el = document.querySelector(s);
     if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
   }, sel);
-  await page.waitForTimeout(300);
+  await pause(page, 300);
   DONE.push(label);
   console.log(`   saisie ${label} = "${text}"`);
   return true;
@@ -370,7 +422,7 @@ async function clickByText(page, text, label, settle = 620) {
 const MARQUES = {};
 let T0 = 0;
 function noterMarque(cle, rect) {
-  MARQUES[cle] = { ...rect, t: (Date.now() - T0) / 1000 };
+  MARQUES[cle] = { ...rect, t: instant() };
 }
 
 // Survol appuye : sur un plan serre, voir l'element REAGIR sous le curseur
@@ -400,10 +452,10 @@ async function hoverText(page, text, label, minW = 60, minH = 24) {
   const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
   await moveTo(page, cx, cy);
   await page.mouse.move(cx, cy);
-  await page.waitForTimeout(760);
+  await pause(page, 760);
   noterMarque(label, box);
   DONE.push(label);
-  console.log(`   survol ${label}  [${box.x},${box.y} ${box.w}x${box.h} @${((Date.now() - T0) / 1000).toFixed(1)}s]`);
+  console.log(`   survol ${label}  [${box.x},${box.y} ${box.w}x${box.h} @${instant().toFixed(1)}s]`);
   return true;
 }
 
@@ -434,7 +486,7 @@ async function closeOverlay(page, label = 'fermeture du panneau') {
   await moveTo(page, pt.x, pt.y, 14);
   await page.evaluate(([a, b]) => window.__promoClick(a, b), [pt.x, pt.y]);
   await page.mouse.click(pt.x, pt.y);
-  await page.waitForTimeout(620);
+  await pause(page, 620);
   const still = await page.evaluate((id) => {
     const o = document.getElementById(id);
     if (!o) return false;
@@ -614,6 +666,30 @@ async function verifierAnonymat(page, etiquette) {
   return true;
 }
 
+// Assemble la sequence PNG en VP9 quasi sans perte.
+//
+// VP9 et non H.264 : le Chromium livre avec Playwright n'embarque pas les
+// codecs proprietaires, et c'est ce meme Chromium qui lira le clip pendant le
+// rendu du montage. crf 15 sur une interface sombre = pas d'artefact visible,
+// a des annees-lumiere du VP8 basse qualite de recordVideo.
+function assembler(nom) {
+  const sortie = path.join(OUT, nom + '.webm');
+  execSync([
+    'ffmpeg -y -hide_banner -loglevel error',
+    '-framerate ' + FPS,
+    '-i "' + path.join(SEQ, 'f%05d.png') + '"',
+    '-c:v libvpx-vp9 -crf 15 -b:v 0 -row-mt 1 -cpu-used 2',
+    '-pix_fmt yuv420p',
+    '"' + sortie + '"',
+  ].join(' '), { stdio: ['ignore', 'ignore', 'pipe'] });
+  const mo = (fs.statSync(sortie).size / 1048576).toFixed(1);
+  console.log(`   ${nom}.webm : ${frameIdx} images a ${FPS} ips `
+    + `(${(frameIdx / FPS).toFixed(1)}s, ${mo} Mo)`);
+  fs.rmSync(SEQ, { recursive: true, force: true });
+  fs.mkdirSync(SEQ, { recursive: true });
+  frameIdx = 0;
+}
+
 (async () => {
   const installQaApi = loadFromVisualQa('installQaApi');
   const seedStressDay = loadFromVisualQa('seedStressDay');
@@ -621,6 +697,7 @@ async function verifierAnonymat(page, etiquette) {
 
   const server = await serve();
   fs.rmSync(OUT, { recursive: true, force: true });
+  fs.mkdirSync(SEQ, { recursive: true });
   fs.mkdirSync(OUT, { recursive: true });
 
   const browser = await chromium.launch();
@@ -630,7 +707,7 @@ async function verifierAnonymat(page, etiquette) {
     const ctx = await browser.newContext({
       viewport: { width: CSS_W, height: CSS_H },
 
-      recordVideo: { dir: path.join(OUT, 'raw-client'), size: { width: W, height: H } },
+      deviceScaleFactor: DSF,
     });
     await ctx.addInitScript(SCRIPT_INIT, ZOOM);
     const page = await ctx.newPage();
@@ -642,12 +719,12 @@ async function verifierAnonymat(page, etiquette) {
       if (typeof setView === 'function') setView('client');
     });
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1000);
+    await pause(page, 1000);
     await installCursor(page);
     await anonymiser(page);
 
     console.log('SCENARIO 1 - le client reserve');
-    await page.waitForTimeout(400);
+    await pause(page, 400);
     await typeInto(page, '#fPax', '6', 'nombre de joueurs');
     await clickAt(page, '#segFormule', 'onglet Nos Formules');
     await clickNth(page, '#formuleGrid', 1, 'une formule');
@@ -658,9 +735,10 @@ async function verifierAnonymat(page, etiquette) {
     await clickNth(page, '#slotList', 0, 'un creneau disponible', 900);
     await typeInto(page, '#fName', 'Camille Dubois', 'nom du client');
     await typeInto(page, '#fPhone', '0470112233', 'telephone');
-    await page.waitForTimeout(900);
+    await pause(page, 900);
     await verifierAnonymat(page, 'client');
     await ctx.close();
+    assembler('client');
   }
 
   // ---- SCENARIO 2 : l'equipe pilote le centre ------------------------------
@@ -668,7 +746,7 @@ async function verifierAnonymat(page, etiquette) {
     const ctx = await browser.newContext({
       viewport: { width: CSS_W, height: CSS_H },
 
-      recordVideo: { dir: path.join(OUT, 'raw-staff'), size: { width: W, height: H } },
+      deviceScaleFactor: DSF,
     });
     await ctx.addInitScript(SCRIPT_INIT, ZOOM);
     const page = await ctx.newPage();
@@ -678,13 +756,13 @@ async function verifierAnonymat(page, etiquette) {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await seedStressDay(page);
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1100);
+    await pause(page, 1100);
     await installCursor(page);
     await anonymiser(page);
 
     // Origine des temps du clip staff : tout ce qui suit est date par rapport
     // a cet instant, ce qui permet au montage de scruber pile sur le geste.
-    T0 = Date.now();
+    frameIdx = 0;   // origine des temps du clip staff
     console.log('SCENARIO 2 - on SUIT une reservation');
     // Le film raconte une histoire, pas une visite guidee des menus :
     // la reservation tombe, elle se pose dans le planning, la confirmation
@@ -702,7 +780,7 @@ async function verifierAnonymat(page, etiquette) {
 
     // 1. « Elle se pose dans votre planning » : la reservation, ouverte.
     await renderStaffPage(page, 'planning');
-    await page.waitForTimeout(800);
+    await pause(page, 800);
     await hoverText(page, 'Famille Lambert', 'survol de la reservation');
     await clickAt(page, '.booking', 'ouverture de la reservation', 1600);
     await closeOverlay(page, 'fermeture de la fiche');
@@ -713,7 +791,7 @@ async function verifierAnonymat(page, etiquette) {
 
     // 3-5. Les sequences d'emails, une par une, dans l'ordre du texte dit.
     await go('emails', 'Emails & relances');
-    await page.waitForTimeout(400);
+    await pause(page, 400);
     // On cible chaque carte par sa PHRASE DE DESCRIPTION, pas par son titre :
     // « Confirmation » apparait aussi dans des lignes de tableau et dans le
     // texte d'introduction, et le repere se posait alors a cote. La description
@@ -725,7 +803,7 @@ async function verifierAnonymat(page, etiquette) {
       ['Clients fideles plus vus depuis', 'sequence Reactiver les dormants'],
     ]) {
       const seen = await hoverText(page, txt, label, 150, 120);
-      if (seen) await page.waitForTimeout(320);
+      if (seen) await pause(page, 320);
     }
     await clickByText(page, 'Nouveau message', 'ouvrir un nouveau message', 1300);
     await closeOverlay(page, 'fermeture du message');
@@ -745,20 +823,20 @@ async function verifierAnonymat(page, etiquette) {
       MISSED.push('contenu agent marketing');
       console.log('   AGENT MARKETING VIDE : le plan « IA marketing » serait sans image');
     } else {
-      console.log(`   agent marketing charge @${((Date.now() - T0) / 1000).toFixed(1)}s`);
+      console.log(`   agent marketing charge @${instant().toFixed(1)}s`);
       noterMarque('page marketing', { x: 0, y: 0, w: CSS_W, h: CSS_H });
     }
-    await page.waitForTimeout(700);
+    await pause(page, 700);
     await typeInto(page, '[placeholder*="Demande-moi"], #mkwAsk, textarea',
       'un post pour la soiree fluo de samedi', 'demande a l agent marketing');
-    await page.waitForTimeout(600);
+    await pause(page, 600);
     for (const onglet of ['Le plan', 'Concurrents', 'Résultats']) {
       await clickByText(page, onglet, `onglet marketing ${onglet}`, 820);
     }
 
     // 7. Etablissement : tout se regle depuis l'interface.
     await go('establishment', 'Etablissement');
-    await page.waitForTimeout(500);
+    await pause(page, 500);
     for (const onglet of ['Horaires & fermetures', 'Offres & activités']) {
       await clickByText(page, onglet, `onglet etablissement ${onglet}`, 900);
     }
@@ -777,52 +855,38 @@ async function verifierAnonymat(page, etiquette) {
     // Montrer un ecran vide « parce que c'etait dans le script » serait pire
     // que de montrer une autre surface qui, elle, prouve le propos.
     await go('clients', 'Clients');
-    await page.waitForTimeout(600);
+    await pause(page, 600);
     await hoverText(page, 'Panier moyen', 'le panier moyen');
     await clickNth(page, '.table tbody, tbody', 0, 'une fiche client', 1200);
     await page.mouse.move(CSS_W * .62, CSS_H * .42);
-    await page.waitForTimeout(800);
+    await pause(page, 800);
 
     // 9. Vue d'ensemble : les compteurs du jour.
     await go('dashboard', "Vue d'ensemble");
     await page.mouse.move(CSS_W * .5, CSS_H * .3);
     await verifierAnonymat(page, 'staff');
-    await page.waitForTimeout(1400);
+    await pause(page, 1400);
     await ctx.close();
+    assembler('staff');
   }
 
   await browser.close();
   server.close();
 
-  const clips = [];
-  for (const d of ['raw-client', 'raw-staff']) {
-    const dir = path.join(OUT, d);
-    if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.webm')) continue;
-      const src = path.join(dir, f);
-      const dst = path.join(OUT, `${d.replace('raw-', '')}.webm`);
-      fs.renameSync(src, dst);
-      clips.push(`${path.basename(dst)} (${(fs.statSync(dst).size / 1048576).toFixed(1)} Mo)`);
-    }
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  const clips = ['client.webm', 'staff.webm']
+    .filter((f) => fs.existsSync(path.join(OUT, f)))
+    .map((f) => `${f} (${(fs.statSync(path.join(OUT, f)).size / 1048576).toFixed(1)} Mo)`);
+  fs.rmSync(SEQ, { recursive: true, force: true });
+
   // Fichier de reperes lu par la scene de montage. Ecrit en .js et non .json :
   // la scene est chargee en file:// et un fetch() y est bloque, alors qu'un
   // <script src> passe.
   //
-  // Les instants sont mesures depuis le debut du SCENARIO, pas depuis le debut
-  // de l'enregistrement video (qui demarre a la creation du contexte). On les
-  // recale en comparant la duree ecoulee a la duree reelle du clip.
-  const clipStaff = path.join(OUT, 'staff.webm');
-  let decalage = 0;
-  if (fs.existsSync(clipStaff) && T0) {
-    try {
-      const dureeClip = Number(execSync(`ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "${clipStaff}"`).toString().trim());
-      const ecoule = (Date.now() - T0) / 1000;
-      decalage = Math.max(0, dureeClip - ecoule);   // ce qui a ete filme AVANT T0
-    } catch (e) { /* sans ffprobe on garde 0 : les reperes restent utilisables */ }
-  }
+  // Plus aucun recalage a faire : les instants sont le compteur d'images divise
+  // par la cadence, donc exactement la position dans le clip assemble. C'est
+  // l'avantage cache de la capture image par image — avant, il fallait estimer
+  // le decalage entre le debut de l'enregistrement et le debut du scenario.
+  const decalage = 0;
   const marques = {};
   for (const [k, v] of Object.entries(MARQUES)) marques[k] = { ...v, t: Number((v.t + decalage).toFixed(2)) };
   fs.writeFileSync(path.join(OUT, 'marks.js'),

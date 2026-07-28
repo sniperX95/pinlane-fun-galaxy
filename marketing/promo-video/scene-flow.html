@@ -176,8 +176,12 @@ const M = (typeof window !== 'undefined' && window.PROMO_MARKS) || {};
 const A = (cle, defaut) => (M[cle] ? M[cle].t : defaut);
 // Fenetres du clip CALCULEES depuis les instants releves au tournage : ecrites
 // en dur, elles se desynchronisaient des que le clip changeait de duree.
+// Borne a zero : le repere « survol de la reservation » peut tomber tres tot
+// dans le clip (2,44 s au dernier tournage), et une fenetre qui demarre en
+// negatif fige l'image sur la premiere frame.
+const dep = (v) => Math.max(0, v);
 const FEN = {
-  planning:      [A('survol de la reservation', 3.63) - 3.0, A('survol de la reservation', 3.63) - 0.4],
+  planning:      [dep(A('survol de la reservation', 3.63) - 3.0), A('survol de la reservation', 3.63) - 0.4],
   planningFiche: [A('survol de la reservation', 3.63) - 0.6, A('la resa dans la liste', 10.5) - 2.9],
   emails:        [A('sequence Confirmation', 14.0) - 0.4, A('sequence Reactiver les dormants', 16.93) + 1.5],
   marketing:     [A('page marketing', 21.68) - 0.3, A('page marketing', 21.68) + 4.8],
@@ -339,8 +343,11 @@ function drawScene(t) {
     const vis = dedans * (1 - dehors);
     el.style.opacity = vis;
     const cote = i % 2 ? 1 : -1;
-    el.style.transform = `translate3d(${lerp(120 * cote, 0, dedans) + dehors * -90 * cote}px, `
-      + `${lerp(28, 0, dedans) - dehors * 26}px, 0) `
+    // Derive tres lente une fois pose : un bloc parfaitement immobile a cote
+    // d'une carte qui glisse trahit le montage.
+    const flot = { x: Math.sin((t - debut) * .55 + i) * 6, y: Math.cos((t - debut) * .42 + i) * 5 };
+    el.style.transform = `translate3d(${lerp(120 * cote, 0, dedans) + dehors * -90 * cote + flot.x}px, `
+      + `${lerp(28, 0, dedans) - dehors * 26 + flot.y}px, 0) `
       + `rotateY(${lerp(14 * cote, 0, dedans) - dehors * 10 * cote}deg)`;
   });
 

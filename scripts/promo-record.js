@@ -17,6 +17,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { chromium } = require('playwright-core');
+const { execSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i === -1 ? d : process.argv[i + 1]; };
@@ -34,6 +35,7 @@ const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i === -
 //
 // Ce n'est pas une perte : le clip vit dans une carte de ~1500 px CSS, soit
 // 2250 px reels dans un rendu 4K. Une source de 2560 y est encore REDUITE.
+const ZOOM = Number(arg('zoom', 1.2));
 const CSS_W = Number(arg('cssw', 2560));
 const CSS_H = Number(arg('cssh', 1440));
 const W = CSS_W;
@@ -96,10 +98,10 @@ async function installCursor(page) {
     const c = document.createElement('div');
     c.id = '__promoCursor';
     c.innerHTML = '<svg viewBox="0 0 24 24" width="42" height="42"><path d="M5 2l14 10.5-6.2.6 3.4 6.9-2.9 1.4-3.3-6.9L5 19z" fill="#fff" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-    document.body.appendChild(c);
+    document.documentElement.appendChild(c);
     const r = document.createElement('div');
     r.id = '__promoRipple';
-    document.body.appendChild(r);
+    document.documentElement.appendChild(r);
     window.__promoMove = (x, y) => { c.style.transform = `translate(${x}px, ${y}px)`; };
     window.__promoClick = (x, y) => {
       r.style.left = (x - 13) + 'px'; r.style.top = (y - 13) + 'px';
@@ -246,10 +248,23 @@ async function clickByText(page, text, label, settle = 620) {
   return ok;
 }
 
+// REPERES POUR LE MONTAGE.
+//
+// Mesurer les coordonnees d'un element dans une session separee ne marche pas :
+// la page n'est jamais dans le meme etat qu'au tournage (defilement, onglet
+// actif, zoom, re-rendus). Le seul moment ou l'on connait la position exacte
+// d'un element, c'est quand on le filme. L'enregistreur note donc lui-meme ou
+// et QUAND, et le montage lit ce fichier au lieu de deviner.
+const MARQUES = {};
+let T0 = 0;
+function noterMarque(cle, rect) {
+  MARQUES[cle] = { ...rect, t: (Date.now() - T0) / 1000 };
+}
+
 // Survol appuye : sur un plan serre, voir l'element REAGIR sous le curseur
 // vaut mieux qu'un clic qui change de page trop vite.
-async function hoverText(page, text, label) {
-  const box = await page.evaluate((needle) => {
+async function hoverText(page, text, label, minW = 60, minH = 24) {
+  const box = await page.evaluate(([needle, mw, mh]) => {
     // Sans depouiller les accents, « Reactiver » ne trouve pas « Réactiver » :
     // la sequence nommee par la voix off serait absente de l'image.
     const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -258,21 +273,25 @@ async function hoverText(page, text, label) {
     const el = [...document.querySelectorAll('button, a, [role="button"], .card, li, div')]
       .filter((e) => {
         const r = e.getBoundingClientRect();
-        return r.width > 60 && r.height > 24 && r.top > 0 && r.top < window.innerHeight
+        return r.width > mw && r.height > mh && r.top > 0 && r.top < window.innerHeight
           && norm(e.textContent).includes(want);
       })
       .sort((a, b) => (a.getBoundingClientRect().width * a.getBoundingClientRect().height)
         - (b.getBoundingClientRect().width * b.getBoundingClientRect().height))[0];
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, text);
+    // Le RECTANGLE complet, pas seulement le centre : le montage a besoin du
+    // cadre exact pour poser son repere dessus.
+    return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+  }, [text, minW, minH]);
   if (!box) { MISSED.push(label); console.log(`   (absent) ${label}`); return false; }
-  await moveTo(page, box.x, box.y);
-  await page.mouse.move(box.x, box.y);
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  await moveTo(page, cx, cy);
+  await page.mouse.move(cx, cy);
   await page.waitForTimeout(760);
+  noterMarque(label, box);
   DONE.push(label);
-  console.log(`   survol ${label}`);
+  console.log(`   survol ${label}  [${box.x},${box.y} ${box.w}x${box.h} @${((Date.now() - T0) / 1000).toFixed(1)}s]`);
   return true;
 }
 
@@ -360,6 +379,129 @@ async function seedDirectionRange(page) {
   return ok;
 }
 
+// ANONYMISATION DE L'ENSEIGNE.
+//
+// Le jeu de demo porte le nom d'un client reel. Une pub Pinlane qui affiche
+// l'enseigne d'un client partout, c'est le client qu'elle met en avant, pas le
+// produit — et c'est une exposition qu'il n'a pas demandee. On substitue donc
+// un nom neutre a l'affichage, en continu : l'application se re-rend sans
+// arret, une passe unique serait effacee au premier changement de page.
+const ENSEIGNE_INTERDITE = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
+
+// Le meme traitement, mais pose AVANT le premier rendu de la page.
+//
+// L'enregistrement demarre a la creation du contexte, donc AVANT qu'un
+// page.evaluate ait pu tourner : les premieres secondes du clip montraient
+// l'enseigne et le logo du client. Injecte ici, le nettoyage est actif des la
+// premiere image.
+//
+// ZOOM : l'application est rendue a 1,4x dans la meme capture 2560x1440. Chaque
+// element d'interface recoit donc 1,4x plus de pixels, et le film 4K n'a plus a
+// l'agrandir — c'est ce qui rendait les captures floues. Le zoom porte sur
+// <body> et non <html> : le curseur de demonstration, ajoute a <html>, reste
+// hors du zoom et ses coordonnees continuent de coincider avec la souris.
+const SCRIPT_INIT = (zoom) => {
+  const REGLES = [
+    [/Fun\s*Galaxy\s+Libramont/gi, 'Bowling Central'],
+    [/Fun\s*Galaxy\s+Gembloux/gi, 'Bowling Nord'],
+    [/Fun\s*Galaxy\s+Ciney/gi, 'Bowling Sud'],
+    [/Fun\s*Galaxy/gi, 'Bowling Central'],
+    [/fungalaxy/gi, 'democentre'],
+    [/mngfunglxy/gi, 'democentre'],
+  ];
+  const suspect = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
+  const reecrire = (v) => { let s = v; for (const [re, to] of REGLES) s = s.replace(re, to); return s; };
+  const passe = () => {
+    if (!document.body) return;
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const cibles = [];
+    while (w.nextNode()) {
+      const n = w.currentNode;
+      if (n.nodeValue && suspect.test(n.nodeValue)) cibles.push(n);
+    }
+    cibles.forEach((n) => { n.nodeValue = reecrire(n.nodeValue); });
+    // Theme sombre re-impose a chaque rendu : la page publique du client
+    // s'ouvre en clair et ecrase le reglage pose au chargement.
+    if (document.documentElement.getAttribute('data-theme') !== 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    document.querySelectorAll('[title],[alt],[placeholder],[aria-label]').forEach((el) => {
+      for (const attr of ['title', 'alt', 'placeholder', 'aria-label']) {
+        const v = el.getAttribute(attr);
+        if (v && suspect.test(v)) el.setAttribute(attr, reecrire(v));
+      }
+    });
+  };
+  const poser = () => {
+    if (!document.body) { requestAnimationFrame(poser); return; }
+    const st = document.createElement('style');
+    st.textContent = `img[src*="galaxy" i], img[src*="fun-galaxy" i], img.logo[alt*="Galaxy" i],
+       a:has(> img[src*="galaxy" i]), *:has(> img.logo[src*="galaxy" i])
+        { visibility:hidden !important }
+      body { zoom: }`;
+    (document.head || document.documentElement).appendChild(st);
+    passe();
+    new MutationObserver(passe).observe(document.body, { childList: true, subtree: true, characterData: true });
+  };
+  poser();
+};
+
+async function anonymiser(page) {
+  await page.evaluate(() => {
+    const REGLES = [
+      [/Fun\s*Galaxy\s+Libramont/gi, 'Bowling Central'],
+      [/Fun\s*Galaxy\s+Gembloux/gi, 'Bowling Nord'],
+      [/Fun\s*Galaxy\s+Ciney/gi, 'Bowling Sud'],
+      [/Fun\s*Galaxy/gi, 'Bowling Central'],
+      [/fungalaxy/gi, 'democentre'],
+      [/mngfunglxy/gi, 'democentre'],
+    ];
+    const suspect = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
+    const reecrire = (v) => { let s = v; for (const [re, to] of REGLES) s = s.replace(re, to); return s; };
+    const passe = () => {
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const cibles = [];
+      while (w.nextNode()) {
+        const n = w.currentNode;
+        if (n.nodeValue && suspect.test(n.nodeValue)) cibles.push(n);
+      }
+      // Le remplacement rend le noeud non-suspect : l'observateur qui se
+      // redeclenche ne trouve plus rien, la boucle s'arrete d'elle-meme.
+      cibles.forEach((n) => { n.nodeValue = reecrire(n.nodeValue); });
+      document.querySelectorAll('[title],[alt],[placeholder],[aria-label]').forEach((el) => {
+        for (const attr of ['title', 'alt', 'placeholder', 'aria-label']) {
+          const v = el.getAttribute(attr);
+          if (v && suspect.test(v)) el.setAttribute(attr, reecrire(v));
+        }
+      });
+    };
+    passe();
+    new MutationObserver(passe).observe(document.body, { childList: true, subtree: true, characterData: true });
+    // Le logo de l'enseigne est une image : on la masque sans casser la mise
+    // en page (visibility, pas display).
+    const st = document.createElement('style');
+    st.textContent = `img[src*="galaxy" i], img[src*="fgx" i], img[alt*="galaxy" i],
+      .client-logo img, .fgx-menu-brand img { visibility:hidden !important }`;
+    document.head.appendChild(st);
+  });
+}
+
+// Contre-controle : si l'enseigne survit quelque part, le clip est inutilisable
+// et il vaut mieux le savoir avant le montage.
+async function verifierAnonymat(page, etiquette) {
+  const restes = await page.evaluate(() => {
+    const m = document.body.innerText.match(/fun\s*galaxy|fungalaxy|mngfunglxy/gi);
+    return m ? m.slice(0, 5) : [];
+  });
+  if (restes.length) {
+    MISSED.push(`anonymat ${etiquette} : ${restes.join(', ')}`);
+    console.log(`   ENSEIGNE VISIBLE (${etiquette}) : ${restes.join(', ')}`);
+    return false;
+  }
+  console.log(`   anonymat verifie (${etiquette})`);
+  return true;
+}
+
 (async () => {
   const installQaApi = loadFromVisualQa('installQaApi');
   const seedStressDay = loadFromVisualQa('seedStressDay');
@@ -378,6 +520,7 @@ async function seedDirectionRange(page) {
 
       recordVideo: { dir: path.join(OUT, 'raw-client'), size: { width: W, height: H } },
     });
+    await ctx.addInitScript(SCRIPT_INIT, ZOOM);
     const page = await ctx.newPage();
     await installQaApi(page);
     await page.goto(`${BASE_URL}/?v=rec-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
@@ -389,6 +532,7 @@ async function seedDirectionRange(page) {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1000);
     await installCursor(page);
+    await anonymiser(page);
 
     console.log('SCENARIO 1 - le client reserve');
     await page.waitForTimeout(400);
@@ -403,6 +547,7 @@ async function seedDirectionRange(page) {
     await typeInto(page, '#fName', 'Camille Dubois', 'nom du client');
     await typeInto(page, '#fPhone', '0470112233', 'telephone');
     await page.waitForTimeout(900);
+    await verifierAnonymat(page, 'client');
     await ctx.close();
   }
 
@@ -413,6 +558,7 @@ async function seedDirectionRange(page) {
 
       recordVideo: { dir: path.join(OUT, 'raw-staff'), size: { width: W, height: H } },
     });
+    await ctx.addInitScript(SCRIPT_INIT, ZOOM);
     const page = await ctx.newPage();
     await installQaApi(page);
     await page.goto(`${BASE_URL}/?v=rec2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
@@ -422,7 +568,11 @@ async function seedDirectionRange(page) {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1100);
     await installCursor(page);
+    await anonymiser(page);
 
+    // Origine des temps du clip staff : tout ce qui suit est date par rapport
+    // a cet instant, ce qui permet au montage de scruber pile sur le geste.
+    T0 = Date.now();
     console.log('SCENARIO 2 - on SUIT une reservation');
     // Le film raconte une histoire, pas une visite guidee des menus :
     // la reservation tombe, elle se pose dans le planning, la confirmation
@@ -452,13 +602,17 @@ async function seedDirectionRange(page) {
     // 3-5. Les sequences d'emails, une par une, dans l'ordre du texte dit.
     await go('emails', 'Emails & relances');
     await page.waitForTimeout(400);
+    // On cible chaque carte par sa PHRASE DE DESCRIPTION, pas par son titre :
+    // « Confirmation » apparait aussi dans des lignes de tableau et dans le
+    // texte d'introduction, et le repere se posait alors a cote. La description
+    // n'existe qu'une fois, dans sa carte. Taille minimale exigee pour attraper
+    // la carte entiere et non la ligne de texte qu'elle contient.
     for (const [txt, label] of [
-      ['Confirmation', 'sequence Confirmation'],
-      ['Rappel avant la venue', 'sequence Rappel avant la venue'],
-      ['Reactiver les clients dormants', 'sequence Reactiver les dormants'],
+      ['Confirme la reservation au client', 'sequence Confirmation'],
+      ['Rappelle la venue quelques jours', 'sequence Rappel avant la venue'],
+      ['Clients fideles plus vus depuis', 'sequence Reactiver les dormants'],
     ]) {
-      // Le survol d'abord (la carte reagit), le clic ensuite si la carte existe.
-      const seen = await hoverText(page, txt, label);
+      const seen = await hoverText(page, txt, label, 150, 120);
       if (seen) await page.waitForTimeout(320);
     }
     await clickByText(page, 'Nouveau message', 'ouvrir un nouveau message', 1300);
@@ -480,7 +634,7 @@ async function seedDirectionRange(page) {
     for (const onglet of ['Horaires & fermetures', 'Offres & activités']) {
       await clickByText(page, onglet, `onglet etablissement ${onglet}`, 900);
     }
-    await hoverText(page, 'Fun Galaxy Gembloux', 'un autre centre');
+    await hoverText(page, 'Bowling Nord', 'un autre centre');
 
     // 8. La data analysee.
     //
@@ -504,6 +658,7 @@ async function seedDirectionRange(page) {
     // 9. Vue d'ensemble : les compteurs du jour.
     await go('dashboard', "Vue d'ensemble");
     await page.mouse.move(CSS_W * .5, CSS_H * .3);
+    await verifierAnonymat(page, 'staff');
     await page.waitForTimeout(1400);
     await ctx.close();
   }
@@ -524,6 +679,30 @@ async function seedDirectionRange(page) {
     }
     fs.rmSync(dir, { recursive: true, force: true });
   }
+  // Fichier de reperes lu par la scene de montage. Ecrit en .js et non .json :
+  // la scene est chargee en file:// et un fetch() y est bloque, alors qu'un
+  // <script src> passe.
+  //
+  // Les instants sont mesures depuis le debut du SCENARIO, pas depuis le debut
+  // de l'enregistrement video (qui demarre a la creation du contexte). On les
+  // recale en comparant la duree ecoulee a la duree reelle du clip.
+  const clipStaff = path.join(OUT, 'staff.webm');
+  let decalage = 0;
+  if (fs.existsSync(clipStaff) && T0) {
+    try {
+      const dureeClip = Number(execSync(`ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "${clipStaff}"`).toString().trim());
+      const ecoule = (Date.now() - T0) / 1000;
+      decalage = Math.max(0, dureeClip - ecoule);   // ce qui a ete filme AVANT T0
+    } catch (e) { /* sans ffprobe on garde 0 : les reperes restent utilisables */ }
+  }
+  const marques = {};
+  for (const [k, v] of Object.entries(MARQUES)) marques[k] = { ...v, t: Number((v.t + decalage).toFixed(2)) };
+  fs.writeFileSync(path.join(OUT, 'marks.js'),
+    '// Genere par scripts/promo-record.js — coordonnees et instants releves PENDANT le tournage.\n'
+    + `window.PROMO_MARKS = ${JSON.stringify(marques, null, 1)};\n`);
+  console.log(`\nreperes : ${Object.keys(marques).length} (decalage clip ${decalage.toFixed(2)}s) -> artifacts/promo-clips/marks.js`);
+  for (const [k, v] of Object.entries(marques)) console.log(`   ${k.padEnd(34)} ${v.x},${v.y} ${v.w}x${v.h} @${v.t}s`);
+
   console.log(`\nclips ${W}x${H} (natif, sans remplissage) : ` + (clips.join(', ') || 'AUCUN'));
   console.log(`gestes joues : ${DONE.length}  -  ${DONE.join(' | ')}`);
   if (MISSED.length) console.log(`gestes MANQUES : ${MISSED.join(' | ')}`);

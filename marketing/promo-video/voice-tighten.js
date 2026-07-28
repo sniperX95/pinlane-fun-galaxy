@@ -21,8 +21,8 @@ const DST = process.argv[3];
 if (!SRC || !DST) { console.error('usage: voice-tighten.js <in.mp3> <out.mp3>'); process.exit(2); }
 
 const SEUIL_DB = -38;      // en dessous : c'est du silence
-const MIN_S = 0.14;        // un blanc plus court n'est pas une pause, on le garde
-const PLANCHER_S = 0.09;   // ce qu'il reste d'une pause apres resserrage
+const MIN_S = 0.11;        // un blanc plus court n'est pas une pause, on le garde
+const PLANCHER_S = 0.06;   // ce qu'il reste d'une pause apres resserrage
 
 const inFile = path.resolve(ROOT, SRC);
 const outFile = path.resolve(ROOT, DST);

@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane - vivant</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  /* Scene en 2560x1440 CSS, rendue avec --scale 1.5 -> 3840x2160.
+     TOUT BOUGE : chaque element a une entree, une vie et une sortie. Rien
+     n'apparait ni ne disparait sur place. */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:2560px;height:1440px;overflow:hidden;background:#04060b}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#05070c;
+    perspective:2200px;perspective-origin:50% 45%}
+
+  /* ===== FOND ANIME ================================================== */
+  #wash{position:absolute;inset:-20%;
+    background:radial-gradient(50% 50% at 30% 30%,rgba(38,96,190,.55),transparent 60%),
+               radial-gradient(45% 45% at 72% 62%,rgba(16,54,120,.5),transparent 62%),
+               radial-gradient(60% 60% at 50% 110%,rgba(10,26,58,.6),transparent 60%);
+    will-change:transform,filter}
+  #beam{position:absolute;top:-30%;bottom:-30%;left:0;width:640px;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(120,180,255,.16),transparent);
+    filter:blur(50px);will-change:transform}
+  #grid{position:absolute;inset:-14%;opacity:.10;
+    background-image:linear-gradient(rgba(120,175,255,.55) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(120,175,255,.55) 1px,transparent 1px);
+    background-size:120px 120px;will-change:transform}
+
+  .corner{position:absolute;width:60px;height:60px;border:2px solid rgba(160,200,255,.30);
+    will-change:transform,opacity}
+  #cTL{left:66px;top:66px;border-right:0;border-bottom:0}
+  #cTR{right:66px;top:66px;border-left:0;border-bottom:0}
+  #cBL{left:66px;bottom:66px;border-right:0;border-top:0}
+  #cBR{right:66px;bottom:66px;border-left:0;border-top:0}
+
+  /* ===== LA CARTE PRODUIT, EN VERRE ==================================
+     Le clip vit derriere une vitre : bord clair, reflet specular qui balaie
+     a l'entree, ombre portee profonde. */
+  .card{position:absolute;border-radius:26px;overflow:hidden;background:#080a0e;
+    transform-style:preserve-3d;will-change:transform,opacity;
+    border:1px solid rgba(190,220,255,.22);
+    box-shadow:0 70px 190px rgba(0,0,0,.95),
+               0 0 0 1px rgba(255,255,255,.05),
+               inset 0 1px 0 rgba(255,255,255,.30),
+               0 0 110px rgba(50,145,255,.20)}
+  .card video{position:absolute;display:block}
+  .card .glass{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(158deg,rgba(255,255,255,.14),rgba(255,255,255,.02) 34%,rgba(4,8,16,.42))}
+  /* Reflet qui traverse la vitre : c'est ce qui fait « verre » et pas « image ». */
+  .card .spec{position:absolute;top:-40%;bottom:-40%;width:420px;left:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.30),transparent);
+    filter:blur(14px);transform:skewX(-16deg);will-change:transform,opacity}
+
+  /* ===== PANNEAUX DE VERRE (textes, pastilles) ======================= */
+  .glasspanel{position:absolute;border-radius:22px;
+    background:rgba(140,180,240,.10);
+    backdrop-filter:blur(26px) saturate(1.5);
+    -webkit-backdrop-filter:blur(26px) saturate(1.5);
+    border:1px solid rgba(200,225,255,.26);
+    box-shadow:0 30px 90px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.34);
+    will-change:transform,opacity}
+
+  .chip{position:absolute;display:inline-flex;align-items:center;gap:14px;
+    padding:18px 30px;border-radius:99px;white-space:nowrap;
+    background:rgba(150,190,250,.12);
+    backdrop-filter:blur(22px) saturate(1.5);
+    -webkit-backdrop-filter:blur(22px) saturate(1.5);
+    border:1px solid rgba(200,225,255,.30);
+    box-shadow:0 20px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.36);
+    font-size:31px;font-weight:600;color:#fff;will-change:transform,opacity}
+  .chip .dot{width:14px;height:14px;border-radius:99px;background:var(--accent);flex:0 0 14px;
+    box-shadow:0 0 20px rgba(50,145,255,.95)}
+
+  .mark{position:absolute;border:3px solid var(--accent);border-radius:12px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 0 46px rgba(50,145,255,.7);
+    pointer-events:none;will-change:opacity,transform}
+  .mark .tag{position:absolute;left:0;top:-54px;background:var(--accent);color:#fff;
+    font-size:26px;font-weight:700;padding:9px 18px;border-radius:9px;white-space:nowrap;
+    box-shadow:0 14px 40px rgba(50,145,255,.55)}
+
+  .kick{position:absolute;font-family:var(--font-data);letter-spacing:.34em;
+    text-transform:uppercase;font-size:24px;color:rgba(150,195,255,.98);will-change:transform,opacity}
+  .ttl{position:absolute;font-weight:600;letter-spacing:-.038em;line-height:1.05;
+    text-shadow:0 10px 44px rgba(0,0,0,.95);will-change:transform,opacity}
+  .bar{position:absolute;height:3px;background:linear-gradient(90deg,var(--accent),rgba(120,180,255,0));
+    will-change:transform,opacity}
+
+  #steps{position:absolute;left:66px;bottom:92px;display:flex;gap:9px}
+  #steps i{display:block;width:48px;height:5px;border-radius:3px;background:rgba(255,255,255,.14);
+    will-change:transform,background}
+  #steps i.on{background:var(--accent);box-shadow:0 0 18px rgba(50,145,255,.9)}
+
+  /* Sous-titres : chaque mot bascule en 3D a son arrivee. */
+  #subs{position:absolute;left:170px;right:170px;bottom:126px;text-align:center;
+    perspective:900px}
+  .w{display:inline-block;font-size:66px;line-height:1.15;font-weight:600;letter-spacing:-.032em;
+    margin:0 12px 2px 0;color:rgba(255,255,255,.97);text-shadow:0 8px 36px rgba(0,0,0,1);
+    will-change:transform,opacity}
+  .w.hi{color:#6cb0ff;text-shadow:0 8px 40px rgba(40,120,230,.8)}
+
+  #prog{position:absolute;left:66px;right:66px;bottom:50px;height:2px;background:rgba(255,255,255,.10)}
+  #progIn{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,rgba(120,175,255,.5),var(--accent));width:0;
+    box-shadow:0 0 14px rgba(50,145,255,.8)}
+
+  .badge{position:absolute;right:146px;top:78px;font-family:var(--font-data);
+    font-size:24px;letter-spacing:.34em;text-transform:uppercase;color:rgba(255,255,255,.36);
+    will-change:transform}
+
+  .logo{position:absolute;left:50%;top:540px;display:flex;align-items:center;gap:34px;
+    will-change:transform,opacity}
+  .logo .m{width:132px;height:132px;border-radius:36px;background:var(--accent);position:relative;
+    box-shadow:0 26px 80px rgba(50,145,255,.6), inset 0 2px 0 rgba(255,255,255,.4)}
+  .logo .m::after{content:'';position:absolute;left:40px;top:40px;width:52px;height:52px;border-radius:14px;background:#05070c}
+  .logo .t{font-size:142px;font-weight:600;letter-spacing:-.05em}
+  .cta{position:absolute;left:50%;top:820px;
+    background:var(--accent);color:#fff;font-size:52px;font-weight:700;
+    padding:36px 84px;border-radius:16px;white-space:nowrap;
+    box-shadow:0 40px 110px rgba(50,145,255,.65), inset 0 2px 0 rgba(255,255,255,.35);
+    will-change:transform,opacity}
+
+  #flash{position:absolute;inset:0;background:#dcebff;opacity:0;z-index:70;pointer-events:none}
+  #vig{position:absolute;inset:0;z-index:50;pointer-events:none;
+    background:radial-gradient(140% 105% at 50% 46%,transparent 50%,rgba(0,0,0,.80) 100%)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wash"></div>
+  <div id="grid"></div>
+  <div id="beam"></div>
+  <div class="corner" id="cTL"></div><div class="corner" id="cTR"></div>
+  <div class="corner" id="cBL"></div><div class="corner" id="cBR"></div>
+  <div class="badge" id="badge">Pinlane</div>
+  <div id="scene"></div>
+  <div id="subs"></div>
+  <div id="steps"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="prog"><div id="progIn"></div></div>
+  <div id="vig"></div>
+  <div id="flash"></div>
+</div>
+
+<script src="../../artifacts/promo-clips/marks.js"></script>
+<script>
+// ===========================================================================
+// SIX CAPACITES, TOUT EN MOUVEMENT.
+//
+// Bornes prises sur la voix RESSERREE (voice-tighten.js) : 30,88 s -> 24,66 s,
+// 6,22 s de blanc retire, parole intacte (22,77 s -> 22,80 s).
+//   0.00-2.98  Pinelane, c'est tout votre centre dans un seul outil.
+//   3.04-6.77  Le planning en direct : vous voyez et contrôlez chaque piste.
+//   6.83-10.16 Un formulaire de reservation fait sur mesure.
+//  10.22-13.15 Confirmations, rappels, relances : automatiques.
+//  13.21-16.26 Une IA marketing qui vous guide sur les reseaux.
+//  16.32-19.56 Tarifs, equipes, etablissement : vous gerez tout.
+//  19.62-22.87 Toute votre data, stockee et analysee.
+//  22.93-24.66 Pinelane. Demandez votre demo.
+//
+// REGLE ANTI-TROU : aucune entree ni sortie ne passe par l'opacite 0. Les
+// plans arrivent et repartent en MOUVEMENT, a pleine opacite. Un fondu depuis
+// le noir laisserait des frames vides aux coutures (defaut deja paye).
+// ===========================================================================
+const DUR = 25.2;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eQuint = (x) => 1 - Math.pow(1 - x, 5);
+const eBack = (x) => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+
+const LINES = [
+  { a: 0.02, b: 2.92, t: "Pinlane, c'est tout votre centre dans un seul outil.", hi: ['Pinlane,'] },
+  { a: 3.04, b: 6.71, t: 'Le planning en direct : vous contrôlez chaque piste.', hi: ['planning'] },
+  { a: 6.83, b: 10.10, t: 'Un formulaire de réservation fait sur mesure.', hi: ['mesure.'] },
+  { a: 10.22, b: 13.09, t: 'Confirmations, rappels, relances : automatiques.', hi: ['automatiques.'] },
+  { a: 13.21, b: 16.20, t: 'Une IA marketing qui vous guide sur les réseaux.', hi: ['IA', 'marketing'] },
+  { a: 16.32, b: 19.50, t: 'Tarifs, équipes, établissement : vous gérez tout.', hi: ['tout.'] },
+  { a: 19.62, b: 22.81, t: 'Toute votre data, stockée et analysée.', hi: ['data,'] },
+  { a: 22.93, b: DUR, t: 'Demandez votre démo.', hi: ['démo.'] },
+];
+
+const ACTS = [
+  ['a1',  0.00,  3.04], ['a2',  3.04,  6.83], ['a3',  6.83, 10.22],
+  ['a4', 10.22, 13.21], ['a5', 13.21, 16.32], ['a6', 16.32, 19.62],
+  ['a7', 19.62, 22.93], ['a8', 22.93, DUR],
+];
+const curAct = (t) => ACTS.find(([, a, b]) => t >= a && t < b) || ACTS[ACTS.length - 1];
+const ETAPE = { a1: -1, a2: 0, a3: 1, a4: 2, a5: 3, a6: 4, a7: 5, a8: 5 };
+
+const CLIP = { staff: '../../artifacts/promo-clips/staff.webm', client: '../../artifacts/promo-clips/client.webm' };
+const SRC_W = 2560, SRC_H = 1440;
+
+// REPERES FOURNIS PAR L'ENREGISTREUR (artifacts/promo-clips/marks.js).
+//
+// C'est le tournage qui sait ou etaient les elements. Les mesurer dans une
+// session separee donne des valeurs fausses : defilement, onglet actif et
+// re-rendus n'y sont jamais identiques. Trois choses apprises ici :
+//
+//  1. Le clip est filme avec l'application zoomee a 1,2 (chaque element recoit
+//     1,2x plus de pixels, ce qui supprime le flou en 4K).
+//  2. getBoundingClientRect rend des coordonnees de MISE EN PAGE, non zoomees.
+//     La video, elle, est rendue a l'echelle du zoom : il faut multiplier.
+//  3. Le releve donne le CONTENEUR de la rangee, pas chaque carte. On derive
+//     donc les colonnes : la rangee en compte six.
+const ZOOM_TOURNAGE = 1.2;
+const M = (typeof window !== 'undefined' && window.PROMO_MARKS) || {};
+function src(r) {
+  if (!r) return null;
+  return { x: r.x * ZOOM_TOURNAGE, y: r.y * ZOOM_TOURNAGE, w: r.w * ZOOM_TOURNAGE, h: r.h * ZOOM_TOURNAGE };
+}
+const RANGEE = src(M['sequence Confirmation']) || { x: 760, y: 708, w: 1850, h: 257 };
+const COL = 6;
+function colonne(i, tag) {
+  const l = RANGEE.w / COL;
+  return { x: RANGEE.x + l * i + 7, y: RANGEE.y - 5, w: l - 14, h: RANGEE.h + 10, tag };
+}
+// La region cadree doit suivre le FORMAT de la carte (1600x572 = 2.797),
+// sinon le cadrage « couvre » par la hauteur et rogne les cotes.
+const ROW_W = RANGEE.w + 70;
+const ROW = { x: RANGEE.x - 35, y: RANGEE.y + RANGEE.h / 2 - (ROW_W / 2.797) / 2, w: ROW_W, h: ROW_W / 2.797 };
+const SEQ = {
+  confirmation: colonne(1, 'Confirmation'),
+  rappel:       colonne(2, 'Rappel avant la venue'),
+  dormants:     colonne(5, 'Réactiver les dormants'),
+};
+
+let built = '';
+function build(key, html) {
+  if (built === key) return;
+  $('scene').innerHTML = html;
+  built = key;
+  $('scene').querySelectorAll('video').forEach((v) => { v.muted = true; v.preload = 'auto'; v.load(); });
+}
+
+let WAIT = [];
+function seekTo(v, time) {
+  WAIT.push(v);
+  const done = () => { WAIT = WAIT.filter((x) => x !== v); };
+  v.addEventListener('seeked', done, { once: true });
+  v.addEventListener('error', done, { once: true });
+  try { v.currentTime = time; } catch (e) { done(); }
+}
+function scrub(sel, time) {
+  const v = document.querySelector(sel);
+  if (!v) return;
+  if (v.readyState < 1) {
+    WAIT.push(v);
+    v.addEventListener('loadedmetadata', () => { WAIT = WAIT.filter((x) => x !== v); seekTo(v, time); }, { once: true });
+    return;
+  }
+  if (Math.abs(v.currentTime - time) > 0.02) seekTo(v, time);
+}
+window.SCRUB_SETTLED = () => WAIT.length === 0
+  && [...document.querySelectorAll('video')].every((v) => v.readyState >= 2 && !v.seeking);
+
+// Cadrage par COORDONNEES SOURCE : on nomme la region a montrer, l'echelle en
+// decoule, et le meme facteur sert a poser les reperes.
+const FRAMES = {};
+function card(id, x, y, w, h, clip, focus) {
+  const f = focus || { x: 0, y: 0, w: SRC_W, h: SRC_H };
+  const s = Math.max(w / f.w, h / f.h);
+  const vw = SRC_W * s;
+  const left = w / 2 - (f.x + f.w / 2) * s;
+  const top = h / 2 - (f.y + f.h / 2) * s;
+  FRAMES[id] = { s, left, top, w, h, x, y };
+  return `<div class="card" id="${id}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px">
+    <video id="${id}v" src="${clip}" style="width:${vw}px;left:${left}px;top:${top}px"></video>
+    <div class="glass"></div><div class="spec" id="${id}s"></div></div>`;
+}
+function markHtml(cardId, id, rect, tag) {
+  const F = FRAMES[cardId];
+  if (!F) return '';
+  const x = F.x + F.left + rect.x * F.s, y = F.y + F.top + rect.y * F.s;
+  return `<div class="mark" id="${id}" style="left:${Math.round(x)}px;top:${Math.round(y)}px;
+    width:${Math.round(rect.w * F.s)}px;height:${Math.round(rect.h * F.s)}px;opacity:0">
+    <div class="tag">${tag}</div></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// LE MOUVEMENT DE PLAN.
+// Entree : la carte arrive de la profondeur en tournant, a PLEINE opacite.
+// Vie    : derive lente et continue, elle ne se fige jamais.
+// Sortie : elle repart vers le spectateur en tournant dans l'autre sens.
+// ---------------------------------------------------------------------------
+function planMove(id, t, a, b, sens) {
+  const el = $(id); if (!el) return;
+  const IN = .52, OUT = .40;
+  const ein = eOut(seg(t, a, a + IN));           // 0 -> 1 a l'arrivee
+  const eout = eQuint(seg(t, b - OUT, b));       // 0 -> 1 au depart
+  const vie = seg(t, a, b);
+  const z = lerp(-620, 0, ein) + lerp(0, 340, eout);
+  // La carte NE SE REMET PAS DROITE : elle garde son orientation 3D au repos.
+  // Une image posee de biais lit comme un objet dans l'espace, pas comme une
+  // capture d'ecran collee sur le fond.
+  const ry = lerp(26 * sens, 7.5 * sens, ein) + lerp(0, -17 * sens, eout);
+  const rx = lerp(9, 2.6, ein) + lerp(0, -5, eout);
+  const dx = lerp(150 * sens, 0, ein) + lerp(0, -110 * sens, eout);
+  const dy = lerp(48, 0, ein) + lerp(0, 40, eout) + Math.sin(vie * 2.1) * 5;
+  const sc = lerp(.94, 1, ein) * lerp(1, 1.05, eout) + vie * .012;
+  el.style.opacity = 1;
+  el.style.transform =
+    `translate3d(${dx}px, ${dy}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${sc})`;
+  // Le reflet balaie la vitre juste apres l'arrivee.
+  const sp = $(id + 's');
+  if (sp) {
+    const u = seg(t, a + .06, a + .62);
+    sp.style.opacity = u > 0 && u < 1 ? (1 - Math.abs(u - .5) * 2) * .9 : 0;
+    sp.style.transform = `translateX(${lerp(-500, (FRAMES[id] ? FRAMES[id].w : 1600) + 200, u)}px) skewX(-16deg)`;
+  }
+}
+
+// Bloc de texte en verre : arrive en glissant et en tournant, repart de meme.
+function textMove(id, t, a, b, dly, sens) {
+  const el = $(id); if (!el) return;
+  const ein = eBack(clamp01(seg(t, a + dly, a + dly + .40)));
+  const eout = eQuint(seg(t, b - .32, b));
+  el.style.opacity = clamp01(ein) * (1 - eout * .9);
+  const dx = lerp(-70 * sens, 0, ein) + lerp(0, 60 * sens, eout);
+  const ry = lerp(-16 * sens, 0, ein);
+  el.style.transform = `translate3d(${dx}px, ${lerp(0, -22, eout)}px, 0) rotateY(${ry}deg)`;
+}
+
+function chipMove(id, t, a, b, st, i, sens) {
+  const el = $(id); if (!el) return;
+  const ein = eBack(clamp01(seg(t, st, st + .34)));
+  const eout = eQuint(seg(t, b - .30, b));
+  el.style.opacity = clamp01(ein) * (1 - eout);
+  const fl = Math.sin((t - a) * 2.3 + i * 1.2) * 9;
+  const dx = lerp(120 * sens, 0, ein) + lerp(0, -70 * sens, eout);
+  el.style.transform = `translate3d(${dx}px, ${fl}px, 0) scale(${lerp(.74, 1, ein)})`;
+}
+
+function drawScene(t) {
+  const [key, a, b] = curAct(t);
+  const d = seg(t, a, b);
+
+  // ---- A1 : la console du centre ---------------------------------------
+  if (key === 'a1') {
+    build('b1', card('c1', 530, 250, 1500, 844, CLIP.staff)
+      + `<div class="glasspanel" id="p1" style="left:120px;top:470px;width:520px;height:230px"></div>
+         <div class="kick" id="k1" style="left:168px;top:516px">La console du centre</div>
+         <div class="ttl" id="t1" style="left:168px;top:556px;font-size:64px;width:440px">Tout votre<br>centre.</div>`);
+    scrub('#c1v', 0.5 + d * 1.8);
+    planMove('c1', t, a, b, 1);
+    textMove('p1', t, a, b, .10, 1);
+    textMove('k1', t, a, b, .16, 1);
+    textMove('t1', t, a, b, .22, 1);
+  }
+
+  // ---- A2 : planning et controle ----------------------------------------
+  if (key === 'a2') {
+    build('b2', card('c1', 480, 230, 1600, 900, CLIP.staff)
+      + `<div class="kick" id="k2" style="left:480px;top:150px">Planning &amp; contrôle</div>
+         <div class="chip" id="q1" style="left:110px;top:520px"><span class="dot"></span>8 pistes</div>
+         <div class="chip" id="q2" style="left:110px;top:640px"><span class="dot"></span>38 joueurs</div>
+         <div class="chip" id="q3" style="left:2130px;top:520px"><span class="dot"></span>601 EUR</div>`);
+    scrub('#c1v', 2.6 + d * 8.4);
+    planMove('c1', t, a, b, -1);
+    textMove('k2', t, a, b, .10, -1);
+    chipMove('q1', t, a, b, a + .55, 0, -1);
+    chipMove('q2', t, a, b, a + .78, 1, -1);
+    chipMove('q3', t, a, b, a + 1.00, 2, 1);
+  }
+
+  // ---- A3 : le formulaire sur mesure -------------------------------------
+  if (key === 'a3') {
+    build('b3', card('c1', 900, 250, 1420, 799, CLIP.client)
+      + `<div class="glasspanel" id="p3" style="left:130px;top:440px;width:640px;height:300px"></div>
+         <div class="kick" id="k3" style="left:180px;top:486px">Côté client</div>
+         <div class="bar" id="bar3" style="left:180px;top:530px;width:180px"></div>
+         <div class="ttl" id="t3" style="left:180px;top:566px;font-size:66px;width:560px">Un parcours<br>sur mesure.</div>`);
+    scrub('#c1v', 1.4 + d * 5.4);
+    planMove('c1', t, a, b, 1);
+    textMove('p3', t, a, b, .10, 1);
+    textMove('k3', t, a, b, .16, 1);
+    textMove('t3', t, a, b, .24, 1);
+    const bar = $('bar3');
+    if (bar) { const p = eOut(seg(t, a + .30, a + .62)); bar.style.opacity = p; bar.style.transformOrigin = 'left'; bar.style.transform = `scaleX(${p})`; }
+  }
+
+  // ---- A4 : les trois sequences, designees en rafale ----------------------
+  if (key === 'a4') {
+    // Pas de repere pose sur une carte precise ici.
+    //
+    // Le releve du tournage donne le CONTENEUR de la rangee, pas chaque carte,
+    // et l'interpretation de ses coordonnees (mise en page ou pixels ecran)
+    // n'est pas fiable : le repere tombait systematiquement une colonne a cote.
+    // Un rectangle qui designe le mauvais element est PIRE que pas de rectangle.
+    // Les six sequences sont lisibles avec leurs descriptions, le curseur du
+    // clip les parcourt, et la voix les nomme : le propos passe.
+    build('b4', card('c1', 480, 250, 1600, 900, CLIP.staff)
+      + `<div class="kick" id="k4" style="left:480px;top:170px">Séquences automatiques</div>`);
+    // Instants releves PAR L'ENREGISTREUR au moment ou il a survole les cartes.
+    scrub('#c1v', (M['sequence Confirmation'] ? M['sequence Confirmation'].t - 0.6 : 13.4) + d * 3.9);
+    planMove('c1', t, a, b, -1);
+    textMove('k4', t, a, b, .08, -1);
+    [['m1', a + .55], ['m2', a + 1.35], ['m3', a + 2.10]].forEach(([id, st]) => {
+      const el = $(id); if (!el) return;
+      const p = eBack(clamp01(seg(t, st, st + .22)));
+      const out = eQuint(seg(t, st + .72, st + .92));
+      el.style.opacity = clamp01(p) * (1 - out);
+      el.style.transform = `scale(${lerp(1.16, 1, clamp01(p)) * lerp(1, .92, out)})`;
+    });
+  }
+
+  // ---- A5 : l'agent marketing --------------------------------------------
+  if (key === 'a5') {
+    build('b5', card('c1', 860, 250, 1600, 900, CLIP.staff)
+      + `<div class="glasspanel" id="p5" style="left:130px;top:430px;width:700px;height:310px"></div>
+         <div class="kick" id="k5" style="left:180px;top:476px">Marketing</div>
+         <div class="bar" id="bar5" style="left:180px;top:520px;width:180px"></div>
+         <div class="ttl" id="t5" style="left:180px;top:556px;font-size:66px;width:620px">Une IA qui<br>vous guide.</div>`);
+    scrub('#c1v', 21.8 + d * 6.4);
+    planMove('c1', t, a, b, 1);
+    textMove('p5', t, a, b, .10, 1);
+    textMove('k5', t, a, b, .16, 1);
+    textMove('t5', t, a, b, .24, 1);
+    const bar = $('bar5');
+    if (bar) { const p = eOut(seg(t, a + .30, a + .62)); bar.style.opacity = p; bar.style.transformOrigin = 'left'; bar.style.transform = `scaleX(${p})`; }
+  }
+
+  // ---- A6 : etablissement -------------------------------------------------
+  if (key === 'a6') {
+    build('b6', card('c1', 480, 230, 1600, 900, CLIP.staff)
+      + `<div class="kick" id="k6" style="left:480px;top:150px">Vous gérez tout</div>
+         <div class="chip" id="e1" style="left:110px;top:560px"><span class="dot"></span>Horaires</div>
+         <div class="chip" id="e2" style="left:2130px;top:560px"><span class="dot"></span>Tarifs</div>`);
+    scrub('#c1v', 30.5 + d * 7.4);
+    planMove('c1', t, a, b, -1);
+    textMove('k6', t, a, b, .10, -1);
+    chipMove('e1', t, a, b, a + .60, 0, -1);
+    chipMove('e2', t, a, b, a + .85, 1, 1);
+  }
+
+  // ---- A7 : la data analysee ----------------------------------------------
+  if (key === 'a7') {
+    build('b7', card('c1', 480, 230, 1600, 900, CLIP.staff)
+      + `<div class="kick" id="k7" style="left:480px;top:150px">Clients &amp; analyses</div>
+         <div class="chip" id="d1" style="left:110px;top:560px"><span class="dot"></span>Panier moyen</div>
+         <div class="chip" id="d2" style="left:2130px;top:560px"><span class="dot"></span>Visites</div>`);
+    scrub('#c1v', 39.4 + d * 5.4);
+    planMove('c1', t, a, b, 1);
+    textMove('k7', t, a, b, .10, 1);
+    chipMove('d1', t, a, b, a + .60, 0, -1);
+    chipMove('d2', t, a, b, a + .85, 1, 1);
+  }
+
+  // ---- A8 : marque et appel a l'action -----------------------------------
+  if (key === 'a8') {
+    build('b8', `<div class="logo" id="lg"><div class="m"></div><div class="t">Pinlane</div></div>
+      <div class="cta" id="cb">Réserver une démo</div>`);
+    const lg = $('lg'), cb = $('cb');
+    // Arrivee PLEINE (jamais depuis l'opacite 0), seule l'echelle et la
+    // profondeur sont animees.
+    if (lg) {
+      const p = eOut(seg(t, a, a + .40));
+      lg.style.opacity = 1;
+      lg.style.transform = `translateX(-50%) translateZ(${lerp(-260, 0, p)}px) scale(${lerp(1.18, 1, p)})`;
+    }
+    if (cb) {
+      const p = eBack(clamp01(seg(t, a + .60, a + .95)));
+      cb.style.opacity = clamp01(p);
+      const puls = 1 + Math.sin((t - a) * 5.2) * .022;
+      cb.style.transform = `translateX(-50%) translateY(${lerp(34, 0, clamp01(p))}px) scale(${lerp(.8, 1, clamp01(p)) * puls})`;
+    }
+  }
+}
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .06 && t < l.b + .22);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const words = [...host.children];
+  const span = Math.max(.22, (L.b - L.a) * .48);
+  const out = eQuint(seg(t, L.b - .22, L.b + .10));
+  words.forEach((el, i) => {
+    const st = L.a + (i / Math.max(1, words.length)) * span;
+    const p = eBack(clamp01(seg(t, st, st + .16)));
+    // Bascule 3D a l'arrivee, envol vers le haut a la sortie.
+    el.style.opacity = clamp01(p) * (1 - out);
+    el.style.transform = `translateY(${lerp(30, 0, clamp01(p)) - out * 40}px) `
+      + `rotateX(${lerp(-72, 0, clamp01(p))}deg) scale(${lerp(.84, 1, clamp01(p))})`;
+  });
+  host.style.opacity = 1;
+}
+
+function render(t) {
+  const [key, a] = curAct(t);
+  // Fond : la nappe respire et tourne lentement, la grille derive, un faisceau
+  // traverse. Le decor n'est jamais fixe.
+  $('wash').style.transform = `translate(${Math.sin(t * .29) * 90}px, ${Math.cos(t * .23) * 70}px) rotate(${Math.sin(t * .16) * 5}deg) scale(${1 + Math.sin(t * .21) * .05})`;
+  $('grid').style.transform = `translate(${(t * 20) % 120}px, ${(t * 11) % 120}px)`;
+  $('beam').style.transform = `translateX(${((t * 300) % 3400) - 700}px)`;
+  $('badge').style.transform = `translateY(${Math.sin(t * 1.5) * 4}px)`;
+  $('progIn').style.width = (clamp01(t / DUR) * 100).toFixed(2) + '%';
+
+  // Reperes de cadrage : ils se posent puis pulsent a chaque coupe.
+  const cp = eOut(clamp01(seg(t, 0, .45)));
+  const pulse = 1 + eQuint(1 - clamp01((t - a) / .5)) * .18;
+  ['cTL', 'cTR', 'cBL', 'cBR'].forEach((id) => {
+    $(id).style.opacity = cp * .8;
+    $(id).style.transform = `scale(${pulse})`;
+  });
+
+  // Eclair court a chaque coupe.
+  const cut = ACTS.find(([, s]) => t >= s && t < s + .16 && s > 0);
+  $('flash').style.opacity = cut ? (1 - (t - cut[1]) / .16) * .16 : 0;
+
+  const etape = ETAPE[key];
+  [...$('steps').children].forEach((el, i) => {
+    el.classList.toggle('on', i <= etape);
+    const grow = i === etape ? 1 + eQuint(1 - clamp01((t - a) / .5)) * .5 : 1;
+    el.style.transform = `scaleX(${grow})`;
+    el.style.transformOrigin = 'left';
+  });
+
+  drawScene(t);
+  drawSubs(t);
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

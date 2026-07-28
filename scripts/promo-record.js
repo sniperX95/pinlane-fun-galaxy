@@ -144,10 +144,22 @@ async function installCursor(page) {
     // x = position, v = vitesse. La vitesse part de ZERO : l'initialiser a la
     // position projetait le curseur a l'autre bout de l'ecran a la 1re frame.
     const ressort = (x0) => ({ x: x0, v: 0 });
+    // Integration en SOUS-PAS de 4 ms maximum.
+    //
+    // Un ressort raide integre en Euler explicite DIVERGE des que k*dt/m
+    // depasse ~2. Avec k=500 et m=0.5, une frame de 32 ms donne 32 : l'echelle
+    // partait a l'infini et la pastille couvrait la moitie de l'ecran en bleu.
+    // Decouper le pas de temps rend le calcul stable quelle que soit la charge
+    // machine — et c'est aussi ce qui rend le rendu reproductible.
+    const SOUS_PAS = 0.004;
     const pas = (e, cible, dt, k, c, m) => {
-      const a = (-k * (e.x - cible) - c * e.v) / m;
-      e.v += a * dt;
-      e.x += e.v * dt;
+      const n = Math.max(1, Math.ceil(dt / SOUS_PAS));
+      const h = dt / n;
+      for (let i = 0; i < n; i++) {
+        const a = (-k * (e.x - cible) - c * e.v) / m;
+        e.v += a * h;
+        e.x += e.v * h;
+      }
     };
 
     const cible = { x: -9999, y: -9999 };
@@ -719,8 +731,24 @@ async function verifierAnonymat(page, etiquette) {
     await closeOverlay(page, 'fermeture du message');
 
     // 6. Marketing : l'agent IA. On lui PARLE, c'est tout l'interet.
+    //
+    // La conversation de l'agent se charge en differe. Filmee trop tot, la page
+    // ne montre que la barre laterale — et au montage, la voix annonce « une IA
+    // marketing » sur un ecran vide. On ATTEND le contenu, et on le dit si
+    // jamais il n'arrive pas.
     await go('campaigns', 'Marketing');
-    await page.waitForTimeout(500);
+    const agentPret = await page.waitForFunction(
+      () => /surveille|urgent a publier|Demande-moi/i.test(document.body.innerText),
+      null, { timeout: 12000 },
+    ).then(() => true).catch(() => false);
+    if (!agentPret) {
+      MISSED.push('contenu agent marketing');
+      console.log('   AGENT MARKETING VIDE : le plan « IA marketing » serait sans image');
+    } else {
+      console.log(`   agent marketing charge @${((Date.now() - T0) / 1000).toFixed(1)}s`);
+      noterMarque('page marketing', { x: 0, y: 0, w: CSS_W, h: CSS_H });
+    }
+    await page.waitForTimeout(700);
     await typeInto(page, '[placeholder*="Demande-moi"], #mkwAsk, textarea',
       'un post pour la soiree fluo de samedi', 'demande a l agent marketing');
     await page.waitForTimeout(600);

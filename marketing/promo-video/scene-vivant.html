@@ -212,6 +212,30 @@ function src(r) {
   if (!r) return null;
   return { x: r.x * ZOOM_TOURNAGE, y: r.y * ZOOM_TOURNAGE, w: r.w * ZOOM_TOURNAGE, h: r.h * ZOOM_TOURNAGE };
 }
+// ===========================================================================
+// SYNCHRONISATION VOIX <-> IMAGE.
+//
+// C'est le defaut le plus grave qu'on ait eu : trois plans sur sept montraient
+// une autre page que celle annoncee par la voix, et un scrubait au-dela de la
+// fin du clip (image figee). Cause : les fenetres etaient ecrites en dur et le
+// clip a change de duree entre deux tournages.
+//
+// Elles sont maintenant CALCULEES depuis les instants releves au tournage
+// (marks.js). Si l'enregistrement bouge, les fenetres suivent.
+// ===========================================================================
+const A = (cle, defaut) => (M[cle] ? M[cle].t : defaut);
+const FEN = {
+  planning:      [A('survol de la reservation', 3.63) - 3.0, A('survol de la reservation', 3.63) - 0.4],
+  planningFiche: [A('survol de la reservation', 3.63) - 0.6, A('la resa dans la liste', 10.5) - 2.9],
+  emails:        [A('sequence Confirmation', 14.0) - 0.4, A('sequence Reactiver les dormants', 16.93) + 1.5],
+  marketing:     [A('page marketing', 21.68) - 0.3, A('page marketing', 21.68) + 4.8],
+  etablissement: [A('un autre centre', 36.71) - 5.2, A('un autre centre', 36.71) - 0.2],
+  clients:       [A('le panier moyen', 40.46) - 1.4, A('le panier moyen', 40.46) + 4.0],
+};
+// Filet : toute demande hors du clip est enregistree ici, et le controle de
+// scene la fait remonter au lieu de laisser passer une image figee.
+window.SCRUB_ERRORS = [];
+
 const RANGEE = src(M['sequence Confirmation']) || { x: 760, y: 708, w: 1850, h: 257 };
 const COL = 6;
 function colonne(i, tag) {
@@ -254,6 +278,17 @@ function scrub(sel, time) {
   }
   if (Math.abs(v.currentTime - time) > 0.02) seekTo(v, time);
 }
+// Scrub sur une FENETRE nommee, avec garde-fou : une demande au-dela de la
+// fin du clip donnerait une image figee, et personne ne le verrait au montage.
+function scrubFen(sel, fen, d) {
+  const v = document.querySelector(sel);
+  const t = fen[0] + d * (fen[1] - fen[0]);
+  if (v && v.duration && t > v.duration - 0.05) {
+    window.SCRUB_ERRORS.push({ sel, t: +t.toFixed(2), duree: +v.duration.toFixed(2) });
+  }
+  scrub(sel, t);
+}
+
 window.SCRUB_SETTLED = () => WAIT.length === 0
   && [...document.querySelectorAll('video')].every((v) => v.readyState >= 2 && !v.seeking);
 
@@ -325,21 +360,33 @@ function planMove(id, t, a, b, sens, beats) {
   // capture d'ecran collee sur le fond.
   const ry = lerp(26 * sens, 7.5 * sens, ein) + lerp(0, -17 * sens, eout);
   const rx = lerp(9, 2.6, ein) + lerp(0, -5, eout);
+  // ECHELLE CONSTANTE — jamais de zoom avant/arriere.
+  //
+  // La version precedente faisait monter l'echelle en continu et la sursautait
+  // a chaque temps fort : a l'ecran ca donnait un zoom/dezoom permanent, l'effet
+  // le moins couteux et le plus visible du motion design bas de gamme.
+  // Le mouvement passe desormais par le DEPLACEMENT et la PROFONDEUR : la carte
+  // glisse et pivote, sa taille apparente ne bouge pas.
   const sk = secousse(t, a);
-  const cp = punch(t, a, beats || []);
-  // Parallaxe continue : deux sinusoides de periodes differentes, donc la
-  // carte ne repasse jamais exactement au meme endroit.
-  const par = { x: Math.sin(vie * 3.4) * 13 + Math.sin(vie * 1.3) * 9,
-    y: Math.cos(vie * 2.6) * 10 + Math.sin(vie * 1.1) * 7 };
-  const dx = lerp(150 * sens, 0, ein) + lerp(0, -110 * sens, eout) + par.x + sk.x;
-  const dy = lerp(48, 0, ein) + lerp(0, 40, eout) + par.y + sk.y;
-  // Poussee continue : +7 % du debut a la fin du plan, plus le coup de poing.
-  const sc = lerp(.94, 1, ein) * lerp(1, 1.05, eout) + vie * .07 + cp * .075;
+  const par = { x: Math.sin(vie * 1.55) * 16 + Math.sin(vie * 0.7) * 9,
+    y: Math.cos(vie * 1.15) * 11 };
+  const dx = lerp(320 * sens, 0, ein) + lerp(0, -280 * sens, eout) + par.x + sk.x * .5;
+  const dy = lerp(26, 0, ein) + lerp(0, 22, eout) + par.y + sk.y * .5;
   el.style.opacity = 1;
   el.style.transform =
-    `translate3d(${dx}px, ${dy}px, ${z + cp * 90}px) `
-    + `rotateX(${rx + sk.r * .5}deg) rotateY(${ry + sk.r - cp * 2.4 * sens}deg) `
-    + `rotateZ(${sk.r * .6 + Math.sin(vie * 1.7) * .5}deg) scale(${sc})`;
+    `translate3d(${dx}px, ${dy}px, ${z}px) `
+    + `rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${Math.sin(vie * .9) * .45}deg)`;
+  // VOLET : la carte se DEVOILE de biais au lieu d'apparaitre d'un bloc.
+  // C'est ce qui remplace le zoom d'entree.
+  // Le volet part a 40 % DEJA OUVERT : demarre a zero, il masque toute la carte
+  // sur la premiere image du plan — exactement le trou noir que les fondus
+  // depuis l'opacite zero produisaient. Le controle des frames l'a rattrape.
+  const vol = 0.4 + 0.6 * eOut(clamp01(seg(t, a, a + .34)));
+  el.style.clipPath = vol < 0.999
+    ? (sens > 0
+      ? `inset(0 ${((1 - vol) * 100).toFixed(1)}% 0 0 round 26px)`
+      : `inset(0 0 0 ${((1 - vol) * 100).toFixed(1)}% round 26px)`)
+    : 'none';
   // Le reflet balaie la vitre juste apres l'arrivee.
   const sp = $(id + 's');
   if (sp) {
@@ -380,7 +427,7 @@ function drawScene(t) {
       + `<div class="glasspanel" id="p1" style="left:120px;top:470px;width:520px;height:230px"></div>
          <div class="kick" id="k1" style="left:168px;top:516px">La console du centre</div>
          <div class="ttl" id="t1" style="left:168px;top:556px;font-size:64px;width:440px">Tout votre<br>centre.</div>`);
-    scrub('#c1v', 0.5 + d * 1.8);
+    scrubFen('#c1v', FEN.planning, d);
     planMove('c1', t, a, b, 1, [.7, 1.6, 2.4]);
     textMove('p1', t, a, b, .10, 1);
     textMove('k1', t, a, b, .16, 1);
@@ -394,7 +441,7 @@ function drawScene(t) {
          <div class="chip" id="q1" style="left:110px;top:520px"><span class="dot"></span>8 pistes</div>
          <div class="chip" id="q2" style="left:110px;top:640px"><span class="dot"></span>38 joueurs</div>
          <div class="chip" id="q3" style="left:2130px;top:520px"><span class="dot"></span>601 EUR</div>`);
-    scrub('#c1v', 2.6 + d * 8.4);
+    scrubFen('#c1v', FEN.planningFiche, d);
     planMove('c1', t, a, b, -1, [.6, 1.5, 2.4, 3.2]);
     textMove('k2', t, a, b, .10, -1);
     chipMove('q1', t, a, b, a + .55, 0, -1);
@@ -431,7 +478,7 @@ function drawScene(t) {
     build('b4', card('c1', 480, 250, 1600, 900, CLIP.staff)
       + `<div class="kick" id="k4" style="left:480px;top:170px">Séquences automatiques</div>`);
     // Instants releves PAR L'ENREGISTREUR au moment ou il a survole les cartes.
-    scrub('#c1v', (M['sequence Confirmation'] ? M['sequence Confirmation'].t - 0.6 : 13.4) + d * 3.9);
+    scrubFen('#c1v', FEN.emails, d);
     planMove('c1', t, a, b, -1, [.5, 1.2, 1.9, 2.6]);
     textMove('k4', t, a, b, .08, -1);
     [['m1', a + .55], ['m2', a + 1.35], ['m3', a + 2.10]].forEach(([id, st]) => {
@@ -450,7 +497,7 @@ function drawScene(t) {
          <div class="kick" id="k5" style="left:180px;top:476px">Marketing</div>
          <div class="bar" id="bar5" style="left:180px;top:520px;width:180px"></div>
          <div class="ttl" id="t5" style="left:180px;top:556px;font-size:66px;width:620px">Une IA qui<br>vous guide.</div>`);
-    scrub('#c1v', 21.8 + d * 6.4);
+    scrubFen('#c1v', FEN.marketing, d);
     planMove('c1', t, a, b, 1, [.6, 1.4, 2.2, 2.9]);
     textMove('p5', t, a, b, .10, 1);
     textMove('k5', t, a, b, .16, 1);
@@ -465,7 +512,7 @@ function drawScene(t) {
       + `<div class="kick" id="k6" style="left:480px;top:150px">Vous gérez tout</div>
          <div class="chip" id="e1" style="left:110px;top:560px"><span class="dot"></span>Horaires</div>
          <div class="chip" id="e2" style="left:2130px;top:560px"><span class="dot"></span>Tarifs</div>`);
-    scrub('#c1v', 30.5 + d * 7.4);
+    scrubFen('#c1v', FEN.etablissement, d);
     planMove('c1', t, a, b, -1, [.6, 1.5, 2.4, 3.1]);
     textMove('k6', t, a, b, .10, -1);
     chipMove('e1', t, a, b, a + .60, 0, -1);
@@ -478,7 +525,7 @@ function drawScene(t) {
       + `<div class="kick" id="k7" style="left:480px;top:150px">Clients &amp; analyses</div>
          <div class="chip" id="d1" style="left:110px;top:560px"><span class="dot"></span>Panier moyen</div>
          <div class="chip" id="d2" style="left:2130px;top:560px"><span class="dot"></span>Visites</div>`);
-    scrub('#c1v', 39.4 + d * 5.4);
+    scrubFen('#c1v', FEN.clients, d);
     planMove('c1', t, a, b, 1, [.6, 1.5, 2.3, 3.0]);
     textMove('k7', t, a, b, .10, 1);
     chipMove('d1', t, a, b, a + .60, 0, -1);
@@ -525,15 +572,13 @@ function drawSubs(t) {
     const st = L.a + (i / Math.max(1, words.length)) * span;
     const p = clamp01(seg(t, st, st + .13));
     const pb = eBack(p);
-    // Chaque mot CLAQUE : il arrive en surcharge d'echelle, bascule en 3D, et
-    // continue de respirer une fois pose. Un mot qui s'affiche puis se fige
-    // est exactement ce qui rendait le texte mou.
-    const vivant = p >= 1 ? 1 + Math.sin((t - st) * 6.2) * .012 : 1;
+    // Revele par MASQUE, sans sursaut d'echelle : le mot monte derriere une
+    // ligne invisible et bascule en 3D. Un mot qui grossit puis retrecit,
+    // c'est le meme defaut bon marche que le zoom avant/arriere sur l'image.
     const fort = el.classList.contains('hi');
     el.style.opacity = clamp01(pb) * (1 - out);
-    el.style.transform = `translateY(${lerp(44, 0, pb) - out * 52}px) `
-      + `rotateX(${lerp(-84, 0, pb)}deg) `
-      + `scale(${lerp(fort ? .62 : .74, 1, pb) * vivant * (1 + (1 - Math.abs(p * 2 - 1)) * (fort ? .10 : .05))})`;
+    el.style.transform = `translateY(${lerp(fort ? 54 : 42, 0, pb) - out * 46}px) `
+      + `rotateX(${lerp(-74, 0, pb)}deg)`;
   });
   host.style.opacity = 1;
 }

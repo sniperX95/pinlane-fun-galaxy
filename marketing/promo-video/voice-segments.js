@@ -32,7 +32,7 @@ const OUT = path.resolve(ROOT, process.argv[3] || 'artifacts/promo-video/voix-sa
 
 // Respiration APRES chaque plan, en secondes. C'est le rythme du film : une
 // valeur par plan, assumee, plutot qu'un silence subi.
-const PAUSES = [0.30, 0.14, 0.30, 0.14, 0.30, 0.24, 0.12, 0.32, 0.00];
+const PAUSES = [0.22, 0.16, 0.20, 0.16, 0.20, 0.24, 0.00];
 
 // Accelere l'ensemble une fois assemble. Les bornes des plans sont DIVISEES
 // par le facteur mesure, pas par celui demande : `atempo` ne rend pas
@@ -46,15 +46,19 @@ const TEMPO = Number((process.argv.find((a) => a.startsWith('--tempo=')) || '--t
 // des qu'une voix de synthese le lit. Les liens logiques — « le temps que »,
 // « sans que tu y penses » — sont ce qui fait entendre quelqu'un plutot
 // qu'une liste.
+// Le film parle en RESERVATIONS, plus en euros. « Six cent un euros, quatre
+// reservations » sonnait faux — non parce que le chiffre etait mal dit, mais
+// parce qu'il etait petit : on ne vend pas un outil de pilotage sur une
+// journee a l'arret. Les nombres viennent desormais d'une journee pleine
+// (38 reservations, 297 joueurs, 76 % d'occupation) et restent tous LUS SUR
+// L'ECRAN montre a cote.
 const TEXTES = [
-  'Samedi, onze heures.',
-  'Tu es en salle, et une réservation arrive.',
-  "Le temps que tu la voies, elle est déjà dans ton planning, confirmée, et payée.",
-  'Cet après-midi, un groupe de dix-sept.',
-  'Le formulaire a tout demandé à ta place, et calculé les pistes tout seul.',
-  'Le soir, le rappel de demain part sans que tu y penses.',
-  'Vingt-deux heures quarante. Tu fermes.',
-  'Six cent un euros, quatre réservations, et pas une seule saisie.',
+  'Samedi. Le centre tourne à plein.',
+  'Trente-huit réservations, deux cent quatre-vingt-dix-sept joueurs.',
+  "Et toi, tu n'as rien saisi.",
+  'Elles sont arrivées toutes seules, du formulaire au planning.',
+  'Confirmées, rappelées, encaissées, sans que tu y penses.',
+  'Soixante-seize pour cent de tes pistes occupées.',
   'Pinlane. La console de ton centre.',
 ];
 

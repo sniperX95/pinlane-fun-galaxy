@@ -164,6 +164,159 @@ const INIT = ([zoom, theme]) => {
   poser();
 };
 
+// ===========================================================================
+// UN SAMEDI CHARGE, ET NON LE JEU DE TEST.
+//
+// Les captures se faisaient sur le fixture du harnais QA : quatre reservations
+// aux noms volontairement interminables, faits pour eprouver la mise en page.
+// A l'ecran d'une publicite, ca donne un planning presque vide et un chiffre
+// du jour a 601 € — « 4 reservations mdrr », verdict de Movsar, et il a raison :
+// on ne vend pas un outil de pilotage avec la journee d'un centre a l'arret.
+//
+// Ce seed-ci decrit un samedi PLEIN et plausible : 8 pistes de 10 h a 22 h,
+// des groupes de tailles variees, des formules, des anniversaires. Les chiffres
+// que le film affiche restent donc LUS SUR L'ECRAN — c'est la journee montree
+// qui change, pas les nombres qu'on lui fait dire.
+//
+// Aucun tirage aleatoire : la table est ecrite, donc deux captures successives
+// donnent exactement la meme image.
+// ===========================================================================
+const SAMEDI = (() => {
+  const groupes = [
+    ['Famille Lambert', 'bowling', 'Bowling classique', 4, 39],
+    ['Anniversaire Léa', 'bowling', 'Bowling classique', 8, 78],
+    ['Groupe Vandenberg', 'bowling', 'Bowling classique', 6, 59],
+    ['Entreprise Ardenne', 'formule', 'FORMULE 3', 11, 308],
+    ['École Saint-Hubert', 'bowling', 'Bowling 2 h', 17, 156],
+    ['Famille Moreau', 'bowling', 'Bowling classique', 5, 39],
+    ['CE Delhaize', 'formule', 'FORMULE 2', 14, 266],
+    ['Anniversaire Noah', 'bowling', 'Bowling classique', 9, 78],
+    ['Team Proximus', 'formule', 'FORMULE 3', 12, 336],
+    ['Famille Dubois', 'bowling', 'Bowling classique', 4, 39],
+    ['Club Ath', 'bowling', 'Bowling 2 h', 16, 156],
+    ['Anniversaire Jade', 'bowling', 'Bowling classique', 7, 59],
+    ['Famille Petit', 'bowling', 'Bowling classique', 3, 20],
+    ['Groupe Namur', 'formule', 'FORMULE 1', 10, 190],
+    ['Amis Charleroi', 'bowling', 'Bowling classique', 6, 59],
+    ['Anniversaire Tom', 'bowling', 'Bowling classique', 8, 78],
+    ['Famille Renard', 'bowling', 'Bowling classique', 5, 39],
+    ['Scouts Libramont', 'bowling', 'Bowling 2 h', 18, 156],
+    ['Team Engie', 'formule', 'FORMULE 2', 13, 247],
+    ['Famille Collin', 'bowling', 'Bowling classique', 4, 39],
+    ['Anniversaire Inès', 'bowling', 'Bowling classique', 9, 78],
+    ['Groupe Bastogne', 'bowling', 'Bowling classique', 7, 59],
+    ['Famille Gérard', 'bowling', 'Bowling classique', 5, 39],
+    ['CE Carrefour', 'formule', 'FORMULE 3', 15, 420],
+    ['Amis Marche', 'bowling', 'Bowling classique', 6, 59],
+    ['Anniversaire Hugo', 'bowling', 'Bowling classique', 8, 78],
+    ['Famille Simon', 'bowling', 'Bowling classique', 4, 39],
+    ['Club Neufchâteau', 'bowling', 'Bowling 2 h', 14, 156],
+    ['Famille Leroy', 'bowling', 'Bowling classique', 6, 59],
+    ['Anniversaire Manon', 'bowling', 'Bowling classique', 10, 98],
+    ['Groupe Arlon', 'formule', 'FORMULE 2', 12, 228],
+    ['Famille Denis', 'bowling', 'Bowling classique', 5, 39],
+    ['Amis Dinant', 'bowling', 'Bowling classique', 7, 59],
+    ['Anniversaire Sacha', 'bowling', 'Bowling classique', 8, 78],
+    ['Famille Bertrand', 'bowling', 'Bowling classique', 4, 39],
+    ['Team Belfius', 'formule', 'FORMULE 1', 11, 209],
+    ['Famille Nicolas', 'bowling', 'Bowling classique', 6, 59],
+    ['Anniversaire Elsa', 'bowling', 'Bowling classique', 9, 78],
+  ];
+  // Remplissage piste par piste : chaque piste enchaine ses sessions sans
+  // chevauchement, ce qui donne un planning dense mais coherent.
+  const PISTES = 8;
+  const suivante = Array.from({ length: PISTES }, () => 10);   // heure libre par piste
+  const STATUTS = ['paid', 'arrived', 'confirmed', 'confirmed', 'paid'];
+  return groupes.map((g, i) => {
+    const [nom, type, label, pax, price] = g;
+    const duree = label.includes('2 h') ? 2 : (type === 'formule' ? 1.5 : 1);
+    const nbPistes = pax > 12 ? 3 : (pax > 6 ? 2 : 1);
+    // On choisit les pistes les plus tot disponibles.
+    const ordre = suivante.map((h, k) => ({ h, k })).sort((a, b) => a.h - b.h || a.k - b.k);
+    const choisies = ordre.slice(0, nbPistes);
+    const debut = Math.max(...choisies.map((c) => c.h));
+    choisies.forEach((c) => { suivante[c.k] = debut + duree; });
+    const hh = String(Math.floor(debut)).padStart(2, '0');
+    const mm = debut % 1 === 0 ? '00' : '30';
+    return {
+      id: 8000 + i, name: `${nom} #${8000 + i}`,
+      phone: `+3247086${String(1000 + i).slice(-4)}`,
+      email: `contact${i}@example.test`,
+      startTime: `${hh}:${mm}`, duration: duree,
+      lanes: choisies.map((c) => c.k + 1),
+      status: STATUTS[i % STATUTS.length],
+      pax, price, type, label,
+      ...(type === 'formule' ? { formuleId: 'formule3' } : {}),
+    };
+  }).filter((r) => Number(r.startTime.slice(0, 2)) < 22);
+})();
+
+// LE JEU DE DONNEES S'INJECTE AVANT LE CHARGEMENT, PAS APRES.
+//
+// Assigner `state.reservations` une fois la page chargee ne tient pas : le
+// produit reconstruit son etat depuis la fabrique `__PINLANE_QA_RESERVATIONS__`
+// a plusieurs moments, et l'affectation se faisait ecraser en silence — l'ecran
+// restait a quatre reservations pendant que je croyais en avoir pose
+// trente-huit. On remplace donc LA FABRIQUE, dans un addInitScript pose APRES
+// celui du harnais QA : le dernier inscrit gagne, et tous les chemins de
+// rechargement servent desormais le samedi charge.
+async function poserJeuSamedi(page) {
+  await page.addInitScript((resas) => {
+    const fabrique = (date) => resas.map((r) => ({ ...r, date }));
+    window.__PINLANE_QA_RESERVATIONS__ = fabrique;
+    Object.defineProperty(window, '__PINLANE_QA_RESERVATIONS__', {
+      value: fabrique, writable: false, configurable: false,
+    });
+  }, SAMEDI);
+}
+
+async function seedSamediCharge(page) {
+  const total = await page.evaluate((resas) => {
+    const d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+    const jeu = resas.map((r) => ({ ...r, date: d }));
+    // On remplace AUSSI la fabrique du harnais QA : plusieurs chemins du
+    // produit la rappellent pour reconstruire l'etat, et le premier essai
+    // s'est fait ecraser en silence — l'ecran affichait encore les quatre
+    // reservations du jeu de test alors que l'etat en contenait trente-huit.
+    window.__PINLANE_QA_RESERVATIONS__ = () => jeu.map((r) => ({ ...r }));
+    state.currentDate = d;
+    state.staffMenuPage = 'planning';
+    state.staffResourceView = 'bowling';
+    state.reservations = jeu;
+    if (typeof save === 'function') save();
+    if (typeof setView === 'function') setView('staff');
+    if (typeof renderStaff === 'function') renderStaff();
+    return {
+      resas: state.reservations.length,
+      joueurs: state.reservations.reduce((s, r) => s + r.pax, 0),
+      ca: state.reservations.reduce((s, r) => s + r.price, 0),
+    };
+  }, SAMEDI);
+  console.log(`   samedi charge : ${total.resas} réservations, ${total.joueurs} joueurs, ${total.ca} €`);
+  return total;
+}
+
+// GARDE : l'ECRAN affiche-t-il bien ce qu'on a seme ?
+//
+// C'est la garde qui manquait. Le seed rapportait 38 reservations pendant que
+// la page en affichait 4, et rien ne le signalait : on ne verifiait que l'etat
+// interne, jamais le rendu. Un jeu de donnees pose n'est pas un jeu de donnees
+// AFFICHE.
+async function verifierDonneesAffichees(page, attendu) {
+  const lu = await page.evaluate(() => {
+    const t = document.body.innerText;
+    const m = /(\d+)\s+réservations?\s+bowling/i.exec(t);
+    const j = /•\s*(\d+)\s+joueurs/i.exec(t);
+    return { resas: m ? Number(m[1]) : null, joueurs: j ? Number(j[1]) : null };
+  });
+  if (lu.resas === null) { RATES.push('impossible de lire le compte affiche sur le planning'); return; }
+  // Le planning ne montre que le bowling : le compte affiche est donc <= total.
+  if (lu.resas < attendu.resas * 0.5) {
+    RATES.push(`l'ecran affiche ${lu.resas} reservations pour ${attendu.resas} semees — le seed a ete ecrase`);
+  }
+  console.log(`   ecran : ${lu.resas} reservations, ${lu.joueurs} joueurs affiches`);
+}
+
 const RATES = [];
 const FAITS = [];
 
@@ -348,8 +501,7 @@ async function capturer(page, cle, texte, opts = {}) {
     const ctx = await browser.newContext({ viewport: { width: CSS_W, height: CSS_H }, deviceScaleFactor: DSF });
     await ctx.addInitScript(INIT, [ZOOM, THEME]);
     const page = await ctx.newPage();
-    await installQaApi(page);
-    await page.goto(`${BASE_URL}/?v=det-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    await page.goto(`${BASE_URL}/?demo=1&v=det-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate((t) => {
       document.documentElement.setAttribute('data-theme', t);
@@ -379,13 +531,28 @@ async function capturer(page, cle, texte, opts = {}) {
     const ctx = await browser.newContext({ viewport: { width: CSS_W, height: CSS_H }, deviceScaleFactor: DSF });
     await ctx.addInitScript(INIT, [ZOOM, THEME]);
     const page = await ctx.newPage();
-    await installQaApi(page);
-    await page.goto(`${BASE_URL}/?v=det2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+    // MODE DEMONSTRATION DU PRODUIT (`?demo=1`) plutot que le harnais QA.
+    //
+    // Le harnais sert des donnees de TEST : quatre reservations aux noms
+    // interminables, faites pour eprouver la mise en page. Poser un autre jeu
+    // par-dessus ne marchait pas — le produit charge ses reservations par son
+    // API, que le harnais intercepte, si bien que `state.reservations = ...`
+    // etait ecrase en silence et que l'ecran restait a quatre lignes.
+    //
+    // Le mode demo, lui, EST prevu pour ca : meme application, journee
+    // coherente, reseau coupe, enseigne remplacee avant le premier rendu.
+    // On cesse donc de lutter contre le harnais et on utilise la porte prevue.
+    await page.goto(`${BASE_URL}/?demo=1&v=det2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
     await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), THEME);
-    await seedStressDay(page);
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(1400);
+    await page.waitForTimeout(1800);
+    const journee = await page.evaluate(() => {
+      let r = [];
+      try { r = state.reservations || []; } catch (e) { r = []; }
+      return { resas: r.length, joueurs: r.reduce((s, x) => s + (x.pax || 0), 0) };
+    });
+    console.log(`   journee de demonstration : ${journee.resas} réservations, ${journee.joueurs} joueurs`);
 
     const menu = await page.evaluate(() => [...document.querySelectorAll('.fgx-menu-nav [data-fgx-menu-key]')]
       .map((el) => ({ key: el.getAttribute('data-fgx-menu-key'), label: (el.getAttribute('title') || '').trim() })));
@@ -401,39 +568,31 @@ async function capturer(page, cle, texte, opts = {}) {
     };
 
     console.log('PLANNING');
-    await renderStaffPage(page, 'planning');
-    await page.waitForTimeout(1200);
-    // TOUTES les cibles de ce bloc sont sur la page PLANNING, celle que le clip
-    // montre reellement sur les deux premiers plans. Les captures precedentes
-    // venaient de « Vue d'ensemble », une page que le tournage ne filme pas :
-    // la vignette aurait agrandi un ecran absent de la fenetre a cote.
-    await capturer(page, 'menu-admin', 'Activités & tarifs', { minW: 250, minH: 130 });
-    await capturer(page, 'menu-clients', 'Emails & relances', { minW: 250, minH: 130 });
-    await capturer(page, 'plan-titre', '8 pistes', { minW: 250, minH: 45 });
-    await capturer(page, 'plan-ca', "Chiffre d'affaires", { minW: 300, minH: 100 });
-    await capturer(page, 'plan-resa', 'Réservations aujourd', { minW: 300, minH: 100 });
+    await page.waitForTimeout(800);
+    await verifierDonneesAffichees(page, journee);
+    // Cibles relevees dans l'inventaire du MODE DEMO : sa mise en page n'est
+    // pas celle du harnais QA, et les anciennes cibles y attrapaient des
+    // conteneurs pleine page (2560 x 6838).
+    await capturer(page, 'plan-titre', '38 réservations bowling', { minW: 250, minH: 45 });
     // Au ras : dans le planning les reservations se touchent, la marge tombait
     // dans la ligne du dessous.
-    await capturer(page, 'plan-lambert', 'Famille Lambert', { minW: 130, minH: 44, marge: 0 });
-    await capturer(page, 'plan-ecole', 'Ecole Saint-Hubert', { minW: 130, minH: 90, marge: 0 });
+    await capturer(page, 'plan-booking', 'Famille Dubois', { minW: 130, minH: 90, marge: 0 });
+    await capturer(page, 'plan-booking2', 'Club Padel', { minW: 130, minH: 44, marge: 0 });
 
-    console.log('FICHE RESERVATION');
-    await page.evaluate(() => { const b = document.querySelector('.booking'); if (b) b.click(); });
-    await page.waitForTimeout(1800);
-    await capturer(page, 'fiche-tete', 'Anniversaire Lina', { minW: 300, minH: 80 });
-    await capturer(page, 'fiche-montant', 'Montant', { minW: 300, minH: 45 });
-    await page.evaluate(() => {
-      const ov = [...document.querySelectorAll('[id$="Overlay"]')]
-        .find((o) => getComputedStyle(o).display !== 'none');
-      if (ov) ov.click();
-    });
-    await page.waitForTimeout(900);
+    console.log("VUE D'ENSEMBLE");
+    await go('dashboard');
+    await page.waitForTimeout(600);
+    await capturer(page, 'dash-resa', 'Réservations aujourd', { minW: 250, minH: 80 });
+    await capturer(page, 'dash-joueurs', 'Joueurs aujourd', { minW: 250, minH: 80 });
+    await capturer(page, 'dash-occup', "Taux d'occupation", { minW: 250, minH: 60 });
+    await capturer(page, 'dash-donut', '38 réservations aujourd', { minW: 150, minH: 150 });
+    await capturer(page, 'dash-encaisser', 'Paiement à encaisser', { minW: 250, minH: 60 });
 
     console.log('EMAILS');
     await go('emails');
-    await capturer(page, 'mail-confirmation', 'Confirme la reservation au client', { minW: 220, minH: 130 });
-    await capturer(page, 'mail-rappel', 'Rappelle la venue quelques jours', { minW: 220, minH: 130 });
-    await capturer(page, 'mail-dormants', 'Clients fideles plus vus depuis', { minW: 220, minH: 130 });
+    await capturer(page, 'mail-confirmation', 'Confirme la réservation au client', { minW: 220, minH: 100 });
+    await capturer(page, 'mail-rappel', 'Rappelle la venue quelques jours', { minW: 220, minH: 100 });
+    await capturer(page, 'mail-anniv', "L’anniversaire fêté ici revient", { minW: 220, minH: 100 });
 
     console.log('MARKETING');
     await go('campaigns');
@@ -447,20 +606,12 @@ async function capturer(page, cle, texte, opts = {}) {
     await capturer(page, 'mkt-agent', 'en veille', { minW: 240, minH: 34 });
     await capturer(page, 'mkt-onglets', 'Studio', { minW: 300, minH: 30 });
 
-    console.log('ETABLISSEMENT');
-    await go('establishment');
-    await capturer(page, 'etab-centre', 'Bowling Nord', { minW: 190, minH: 70 });
-    await capturer(page, 'etab-pistes', 'Pistes bowling', { minW: 150, minH: 100 });
+    // ETABLISSEMENT : le mode demo ne configure qu'un seul centre, il n'y a
+    // donc rien a montrer de « vos centres ». La crea « Samedi » ne parle pas
+    // de multi-centre : on ne capture pas une page pour la laisser inutilisee.
 
     console.log('CLIENTS');
     await go('clients');
-    // « Panier moyen » apparait DEUX fois : dans la statistique de la page et
-    // dans la fiche client ouverte. Sans un mot propre a chacune, les deux
-    // vignettes capturaient le meme bloc et se lisaient comme un doublon.
-    await capturer(page, 'cli-panier', 'par réservation', { minW: 250, minH: 90 });
-    // minH eleve pour prendre le bloc d'identite ENTIER (nom, badges, contact)
-    // et pas la seule ligne de titre, dont le bas coupait le telephone.
-    await capturer(page, 'cli-fiche', 'Client clé', { minW: 250, minH: 130 });
     await capturer(page, 'cli-venir', 'attendus', { minW: 250, minH: 90 });
 
     const restes = await page.evaluate(() => {

@@ -102,7 +102,7 @@ const musWav = path.join(DIR, 'tmp-s-mus.wav');
 // ducking, et le sidechain lui reprend encore 3 a 6 dB pendant la parole.
 // Viser 11 faisait donc atterrir a 17 — au-dessus du plafond, musique inaudible.
 // La cible est un point de depart, pas le resultat.
-const MARGE_CIBLE = 9;
+const MARGE_CIBLE = 10.5;
 const meanVoix = niveau(voixWav, 0.4, Number(global.window.PROMO_VOIX_DUREE) - 0.4);
 const meanMus = niveau(MUSIQUE, 0.4, Math.min(24, DUREE) - 0.4);
 if (meanVoix === null || meanMus === null) { console.error('ECHEC : mesure impossible'); process.exit(1); }

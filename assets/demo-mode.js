@@ -57,40 +57,69 @@
      pas juste detruit la confiance plus surement qu'une page vide. */
   var NOMS = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo', 'Groupe amis', 'Sarah Lemaire',
     'Ecole Saint-Joseph', 'Famille Martin', 'EVJF Camille', 'Club Padel', 'Famille Rousseau',
-    'Duo Verhaegen', 'Soiree ligue', 'Famille Nowak'];
-  // Les creneaux commencent DES L'OUVERTURE : le cadre de la vitrine ne montre
-  // que le haut du planning, et des reservations qui demarrent a 14h laissaient
-  // voir une grille vide au prospect - exactement l'inverse de ce qu'on veut
-  // prouver.
-  var HEURES = ['10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00',
-    '13:30', '14:00', '14:30', '15:00', '15:30', '16:00'];
+    'Duo Verhaegen', 'Soiree ligue', 'Famille Nowak', 'Anniversaire Lea', 'Groupe Vandenberg',
+    'CE Delhaize', 'Famille Moreau', 'Anniversaire Noah', 'Team Proximus', 'Club Ath',
+    'Anniversaire Jade', 'Famille Petit', 'Amis Charleroi', 'Anniversaire Tom', 'Famille Renard',
+    'Scouts Libramont', 'Team Engie', 'Famille Collin', 'Anniversaire Ines', 'Groupe Bastogne',
+    'Famille Gerard', 'CE Carrefour', 'Amis Marche', 'Anniversaire Hugo', 'Famille Simon',
+    'Club Neufchateau', 'Famille Leroy', 'Anniversaire Manon'];
 
+  /* UN SAMEDI QUI TOURNE, PAS UNE MATINEE CALME.
+     La vitrine montrait treize reservations groupees entre 10 h et 16 h : le
+     planning restait a moitie vide et le chiffre du jour tombait a quelques
+     centaines d'euros. Un prospect qui cherche un outil de PILOTAGE n'a rien
+     a piloter sur cet ecran-la — et sur la publicite, « 4 reservations »
+     decredibilisait le produit plus surement qu'une absence de chiffre.
+
+     La journee couvre desormais l'amplitude complete (10 h - 22 h) et remplit
+     les huit pistes. Le remplissage se fait PISTE PAR PISTE : chaque piste
+     enchaine ses sessions sans chevauchement, donc les totaux du produit
+     (occupation, joueurs, chiffre) restent exacts — c'est lui qui compte, on
+     ne fait que lui donner une journee plausible. */
   function reservations() {
-    return NOMS.map(function (nom, i) {
-      return {
+    var libre = [10, 10, 10, 10, 10, 10, 10, 10];   // heure de liberation par piste
+    var sortie = [];
+    NOMS.forEach(function (nom, i) {
+      var pax = 4 + (i % 9);                         // de 4 a 12 joueurs
+      var duree = (i % 6 === 0) ? 2 : 1;             // une sur six joue deux heures
+      var nbPistes = pax > 6 ? 2 : 1;
+      // On prend les pistes disponibles le plus tot, pour serrer la grille.
+      var ordre = libre.map(function (h, k) { return { h: h, k: k }; })
+        .sort(function (a, b) { return a.h - b.h || a.k - b.k; })
+        .slice(0, nbPistes);
+      var debut = Math.max.apply(null, ordre.map(function (o) { return o.h; }));
+      if (debut + duree > 22) return;                // le centre ferme a 22 h
+      ordre.forEach(function (o) { libre[o.k] = debut + duree; });
+      var pistes = ordre.map(function (o) { return o.k + 1; });
+      var hh = Math.floor(debut);
+      var mm = (debut % 1) === 0 ? '00' : '30';
+      sortie.push({
         id: 90000 + i,
         name: nom,
         date: AUJOURD_HUI,
-        startTime: HEURES[i],
+        startTime: (hh < 10 ? '0' : '') + hh + ':' + mm,
         // EN HEURES, comme partout dans le produit (`duration: 1`). Cette
         // fixture disait 60, en croyant parler minutes : le taux d'occupation
         // affichait alors 813 % (13 x 60 / (8 pistes x 12 h d'ouverture)) et
         // ce chiffre absurde a ete pris pour un bug du produit pendant deux
         // sessions. Le produit, lui, comptait juste.
-        duration: 1,
-        pax: 4 + (i % 5),
-        lane: (i % 8) + 1,
-        lanes: [(i % 8) + 1],
+        duration: duree,
+        pax: pax,
+        lane: pistes[0],
+        lanes: pistes,
         type: 'bowling',
         activity: 'bowling',
         status: i % 4 === 0 ? 'arrived' : 'pending',
         validationStatus: 'confirmed',
-        price: 48 + i * 6,
+        // Le prix suit le nombre de joueurs et la duree : un total qui ne
+        // s'explique pas par ce qui est a l'ecran se remarque tout de suite.
+        price: Math.round((9.5 * pax + 14 * pistes.length) * duree),
         phone: '+32 470 00 00 00',
         email: 'contact@example.be',
         source: i % 3 === 0 ? 'phone' : 'online',
-      };
+      });
     });
+    return sortie;
   }
 
   var DEMO = reservations();

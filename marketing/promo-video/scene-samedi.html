@@ -100,7 +100,9 @@
   #jalons u{position:absolute;inset:7px;border-radius:5px;background:#15803d;
     transform:scale(0);transform-origin:50% 50%}
 
-  #bilan{position:absolute;left:88px;right:88px;top:500px}
+  /* Les plans a chiffres n'ont plus d'heure au-dessus : le bloc remonte pour
+     occuper la place liberee, sinon le tiers haut de l'image reste vide. */
+  #bilan{position:absolute;left:88px;right:88px;top:300px}
   #bilan .l{display:flex;align-items:center;gap:28px;margin-bottom:26px}
   #bilan .ch{display:flex;height:118px;overflow:hidden}
   #bilan .ch .col{position:relative;width:70px;height:118px;overflow:hidden}
@@ -214,34 +216,23 @@ if (!VOIX.length) window.MONTAGE_ERREURS.push('bornes de voix absentes');
 const QUEUE = 0.55;
 const DUR = (window.PROMO_VOIX_DUREE || 23.7) + QUEUE;
 
+// Sept plans, et un GRAND CHIFFRE plutot qu'une heure : la chronologie
+// horaire a laisse la place aux volumes, parce que c'est le volume qui prouve
+// qu'un outil de pilotage sert a quelque chose. Chaque nombre est lu sur la
+// capture affichee juste en dessous.
 const PLANS = [
-  { heure: '', titre: 'SAMEDI', preuve: null, legende: '', mode: 'ouverture', h: 10.0,
-    phrase: '10 h — 22 h.|Une journée entière.', bleu: [0] },
-  { heure: '11:04', phrase: 'Tu es en salle,|et une réservation arrive.', preuve: 'plan-lambert',
-    legende: 'Le planning, en direct', h: 11.07, bleu: [1] },
-  { heure: '11:04', phrase: '', preuve: 'mail-confirmation', legende: 'Séquence automatique',
-    mode: 'jalons', h: 11.2 },
-  { heure: '14:30', phrase: 'Un groupe|de dix-sept.', preuve: 'plan-ecole',
-    legende: 'Bowling · 2 h', h: 14.5, bleu: [1] },
-  { heure: '14:30', phrase: 'Le formulaire a tout demandé|à ta place.',
-    preuve: 'client-joueurs', legende: '3 pistes, calculées seules', h: 15.2, bleu: [1] },
-  { heure: '18:12', phrase: 'Le rappel de demain|part sans que tu y penses.',
-    preuve: 'mail-rappel', legende: 'Rappel avant la venue', h: 18.2, bleu: [1] },
-  { heure: '22:40', phrase: 'Tu fermes.', preuve: null, legende: '', h: 22.67 },
-  { heure: '22:40', phrase: '', preuve: 'plan-ca', legende: 'Chiffre du jour',
-    mode: 'bilan', h: 22.8 },
-  { heure: '', phrase: '', preuve: null, legende: '', mode: 'fin', h: 23.0 },
+  { titre: 'SAMEDI', mode: 'ouverture', preuve: 'plan-titre', legende: '8 pistes · 10 h — 22 h',
+    phrase: 'Le centre|tourne à plein.', bleu: [1], h: 10 },
+  { num: '38', unite: '', libelle: 'réservations', num2: '297', libelle2: 'joueurs',
+    mode: 'double', preuve: 'dash-donut', legende: 'Aujourd’hui', h: 13 },
+  { phrase: 'Et toi,|tu n’as rien saisi.', bleu: [1], preuve: null, legende: '', h: 15 },
+  { phrase: 'Arrivées toutes seules,|du formulaire au planning.', bleu: [1],
+    preuve: 'plan-booking', legende: 'Posée sur la piste 1', h: 17 },
+  { phrase: '', mode: 'jalons', preuve: 'mail-confirmation', legende: 'Séquence automatique', h: 19 },
+  { num: '76', unite: ' %', libelle: 'de tes pistes occupées', mode: 'simple',
+    preuve: 'dash-occup', legende: 'Taux d’occupation', h: 21 },
+  { phrase: '', mode: 'fin', preuve: null, legende: '', h: 22 },
 ];
-
-const LARGE_MAX = 904, HAUT_MAX = 560, CENTRE_Y = 1190;
-window.PREUVES_MANQUANTES = [];
-function boitePreuve(cle) {
-  const d = D[cle];
-  if (!d) { window.PREUVES_MANQUANTES.push(cle); return [88, 1100, 500, 300]; }
-  const w = Math.min(LARGE_MAX, d.w, HAUT_MAX * d.ratio);
-  const h = w / d.ratio;
-  return [88, Math.round(CENTRE_Y - h / 2), Math.round(w), Math.round(h)];
-}
 
 const planDe = (t) => {
   let i = 0;
@@ -249,68 +240,59 @@ const planDe = (t) => {
   return Math.min(i, PLANS.length - 1);
 };
 
-// --- compteur mecanique ----------------------------------------------------
-// Quatre colonnes de 0 a 9, construites UNE FOIS. Le chiffre affiche est un
-// simple deplacement de la colonne : la valeur ne se remplace jamais, elle
-// roule — c'est ce qui distingue un compteur d'un changement de texte.
-const H_COL = 206;
-(function batirHeure() {
-  const host = $('heure');
-  host.innerHTML = '';
-  [0, 1, 's', 2, 3].forEach((k) => {
-    if (k === 's') {
-      const s = document.createElement('div'); s.className = 'sep'; s.textContent = ':';
-      host.appendChild(s); return;
-    }
+
+// ===========================================================================
+// ANIMATION : ENTREE, VIE, SORTIE — pour CHAQUE element, sans exception.
+//
+// Reproche de Movsar : « il faut de l'animation partout, chaque entrée chaque
+// sortie pendant ». La version precedente n'animait que les entrees ; a la
+// coupe, tout disparaissait d'un coup. Un element qui s'en va sans geste
+// annule le geste qu'il avait fait en arrivant.
+//
+// `phase()` donne les trois temps d'un element pour le plan courant :
+//   e = son entree   (0 -> 1 sur 0,42 s apres son retard propre)
+//   v = sa vie       (0 -> 1 sur toute la duree du plan, pour le mouvement lent)
+//   s = sa sortie    (0 -> 1 sur les 0,34 s qui precedent la coupe)
+// Chaque bloc s'en sert pour composer son propre mouvement : rien n'apparait
+// ni ne disparait sans etre passe par les trois.
+// ===========================================================================
+const ENTREE = 0.42;
+const SORTIE = 0.34;
+function phase(dans, duree, retard) {
+  const e = eOut(clamp01((dans - (retard || 0)) / ENTREE));
+  const v = clamp01(dans / Math.max(0.6, duree));
+  const s = eOut(clamp01((dans - (duree - SORTIE)) / SORTIE));
+  return { e, v, s };
+}
+
+// --- compteur mecanique : colonnes de 0 a 9 que l'on DEPLACE ---------------
+const H_BIL = 118;
+function batirCompteur(hote, nb) {
+  hote.innerHTML = '';
+  for (let i = 0; i < nb; i++) {
     const c = document.createElement('div'); c.className = 'col';
     const p = document.createElement('div'); p.className = 'pile';
-    for (let n = 0; n <= 9; n++) { const sp = document.createElement('span'); sp.textContent = n; p.appendChild(sp); }
-    c.appendChild(p); host.appendChild(c);
-  });
-})();
-const colonnesHeure = [...$('heure').querySelectorAll('.col .pile')];
-
-function poserHeure(deTexte, versTexte, u) {
-  const chiffres = (s) => (s || '').replace(/[^0-9]/g, '').padStart(4, '0').split('').map(Number);
-  const a = chiffres(deTexte), b = chiffres(versTexte);
-  colonnesHeure.forEach((pile, k) => {
-    // Chaque colonne part un peu apres la precedente : c'est le decalage qui
-    // fait lire « compteur » plutot que « bloc qui glisse ».
-    const uu = eOut(clamp01((u - k * 0.09) / (1 - 0.27)));
-    const v = lerp(a[k], b[k], uu);
-    pile.style.transform = `translateY(${(-v * H_COL).toFixed(2)}px)`;
+    for (let n = 0; n <= 9; n++) {
+      const sp = document.createElement('span'); sp.textContent = n; p.appendChild(sp);
+    }
+    c.appendChild(p); hote.appendChild(c);
+  }
+}
+// Les unites roulent vite, les dizaines plus lentement : c'est ce rapport qui
+// fait lire « un compteur qui totalise » plutot que « un texte qui change ».
+function poserCompteur(hote, valeur, avance) {
+  const piles = [...hote.querySelectorAll('.pile')];
+  const v = valeur * avance;
+  piles.forEach((pile, k) => {
+    const rang = Math.pow(10, piles.length - 1 - k);
+    pile.style.transform = `translateY(${(-((v / rang) % 10) * H_BIL).toFixed(2)}px)`;
   });
 }
 
-// --- chiffres du bilan, meme mecanique -------------------------------------
-const BILAN = [
-  { valeur: 601, unite: ' €', libelle: 'encaissés', larg: 3 },
-  { valeur: 4, unite: '', libelle: 'réservations', larg: 1 },
-  { valeur: 0, unite: '', libelle: 'saisie', larg: 1 },
-];
-(function batirBilan() {
-  const host = $('bilan');
-  host.innerHTML = '';
-  BILAN.forEach((b) => {
-    const l = document.createElement('div'); l.className = 'l';
-    const ch = document.createElement('div'); ch.className = 'ch';
-    for (let i = 0; i < b.larg; i++) {
-      const c = document.createElement('div'); c.className = 'col';
-      const p = document.createElement('div'); p.className = 'pile';
-      for (let n = 0; n <= 9; n++) { const sp = document.createElement('span'); sp.textContent = n; p.appendChild(sp); }
-      c.appendChild(p); ch.appendChild(c);
-    }
-    if (b.unite) { const u = document.createElement('div'); u.className = 'u'; u.textContent = b.unite; ch.appendChild(u); }
-    const lg = document.createElement('div'); lg.className = 'lg'; lg.textContent = b.libelle;
-    l.appendChild(ch); l.appendChild(lg); host.appendChild(l);
-  });
-})();
-const H_BIL = 118;
-
-// --- texte revele mot a mot ------------------------------------------------
+// --- texte revele mot a mot derriere un masque -----------------------------
 let clePhrase = '';
 function batirPhrase(p) {
-  const cle = p.phrase + '|' + (p.bleu || []).join(',');
+  const cle = (p.phrase || '') + '|' + (p.bleu || []).join(',');
   if (clePhrase === cle) return;
   clePhrase = cle;
   const lignes = (p.phrase || '').split('|');
@@ -321,82 +303,115 @@ function batirPhrase(p) {
   }).join('<br>');
 }
 
+const LARGE_MAX = 904, HAUT_MAX = 520, CENTRE_Y = 1270;
+window.PREUVES_MANQUANTES = [];
+function boitePreuve(cle) {
+  const d = D[cle];
+  if (!d) { window.PREUVES_MANQUANTES.push(cle); return [88, 1120, 500, 300]; }
+  const w = Math.min(LARGE_MAX, d.w, HAUT_MAX * d.ratio);
+  const h = w / d.ratio;
+  return [88, Math.round(CENTRE_Y - h / 2), Math.round(w), Math.round(h)];
+}
+
 function render(t) {
   const i = planDe(t);
   const p = PLANS[i];
   const prev = PLANS[Math.max(0, i - 1)];
   const v = VOIX[i] || { debut: 0, fin: DUR };
   const dans = t - v.debut;
-  const durV = Math.max(0.8, v.fin - v.debut);
+  const duree = Math.max(0.9, (v.fin + (v.pause || 0)) - v.debut);
   const ouverture = p.mode === 'ouverture';
   const finale = p.mode === 'fin';
 
-  // ---- decor : il respire en continu, et une onde part a chaque coupe ----
+  // ---- decor : jamais immobile ----
   $('trame').style.transform =
-    `translate(${(t * 5) % 54}px, ${(-t * 3) % 54}px) scale(${1 + Math.sin(t * .5) * .004})`;
-  // Onde discrete : a l'essai elle occupait la moitie de l'ecran et volait la
-  // vedette a la carte. Elle doit se sentir, pas se regarder.
-  const o = clamp01(dans / 0.7);
-  $('onde').style.opacity = i > 0 && o < 1 ? (1 - o) * .28 : 0;
+    `translate(${(t * 6) % 54}px, ${(-t * 4) % 54}px) scale(${1 + Math.sin(t * .55) * .005})`;
+  const o = clamp01(dans / 0.62);
+  $('onde').style.opacity = i > 0 && o < 1 ? (1 - o) * .3 : 0;
   $('onde').style.transform = `scale(${(0.4 + o * 5.5).toFixed(3)})`;
 
   // ---- rideau : une bande d'encre balaie a chaque coupe ----
-  const r = clamp01(dans / 0.34);
-  const passe = i > 0 && r < 1;
-  $('rideau').style.opacity = passe ? 1 : 0;
-  $('rideau').style.transform = `translateY(${lerp(-58, 100, eInOut(r)) * 19.2}px)`;
+  const r = clamp01(dans / 0.32);
+  $('rideau').style.opacity = i > 0 && r < 1 ? 1 : 0;
+  $('rideau').style.transform = `translateY(${(lerp(-58, 100, eInOut(r)) * 19.2).toFixed(1)}px)`;
 
   // ---- entete ----
-  $('marque').style.opacity = finale ? 0 : 1;
-  $('marque').style.transform = `translateY(${lerp(-16, 0, eOut(clamp01(dans / 0.3)))}px)`;
-  $('num').textContent = `${String(i + 1).padStart(2, '0')} / 09`;
-  $('num').style.opacity = finale ? 0 : 1;
+  const ph0 = phase(dans, duree, 0);
+  $('marque').style.opacity = finale ? 0 : (1 - ph0.s * 0.85);
+  $('marque').style.transform = `translateY(${(lerp(-16, 0, ph0.e) - ph0.s * 14).toFixed(1)}px)`;
+  $('num').textContent = `${String(i + 1).padStart(2, '0')} / 0${PLANS.length}`;
+  $('num').style.opacity = finale ? 0 : (1 - ph0.s * 0.85);
 
-  // ---- l'heure roule ----
-  $('heure').style.display = (ouverture || finale) ? 'none' : 'flex';
+  // ---- le grand chiffre ----
+  const aChiffre = p.mode === 'simple' || p.mode === 'double';
+  $('heure').style.display = 'none';
   $('titre').style.display = ouverture ? 'block' : 'none';
-  if (!ouverture && !finale) {
-    poserHeure(prev.heure || p.heure, p.heure, clamp01(dans / 0.62));
-    $('heure').style.transform = `translateY(${lerp(14, 0, eOut(clamp01(dans / 0.4)))}px)`;
-  }
+  $('bilan').style.display = aChiffre ? 'block' : 'none';
+
   if (ouverture) {
-    // Le titre se decouvre par la gauche au lieu d'apparaitre.
-    const c = eOut(clamp01(dans / 0.6)) * 100;
-    $('titre').style.clipPath = `inset(0 ${(100 - c).toFixed(1)}% 0 0)`;
+    const c = eOut(clamp01(dans / 0.55));
+    // Il ENTRE par un volet qui s'ouvre, il SORT par un volet qui se ferme.
+    $('titre').style.clipPath =
+      `inset(0 ${((1 - c) * 100).toFixed(1)}% 0 ${(ph0.s * 100).toFixed(1)}%)`;
+    $('titre').style.transform = `translateY(${(-ph0.s * 26).toFixed(1)}px)`;
   }
 
-  // ---- le filet se trace, un point le parcourt ----
-  const large = ouverture ? 904 : 344;
-  const trace = eOut(clamp01((dans - 0.06) / 0.34));
-  $('filet').style.width = `${Math.round(trace * large)}px`;
+  if (aChiffre) {
+    const lignes = [...$('bilan').children];
+    const cible = [Number(p.num), p.num2 ? Number(p.num2) : null];
+    lignes.forEach((ligne, k) => {
+      const actif = k === 0 || (k === 1 && p.num2);
+      ligne.style.display = actif ? 'flex' : 'none';
+      if (!actif) return;
+      const f = phase(dans, duree, 0.10 + k * 0.22);
+      poserCompteur(ligne.querySelector('.ch'), cible[k], eOut(clamp01((dans - (0.10 + k * 0.3)) / 0.85)));
+      ligne.querySelector('.lg').textContent = k === 0 ? p.libelle : p.libelle2;
+      const u = ligne.querySelector('.u');
+      if (u) u.textContent = k === 0 ? (p.unite || '') : '';
+      ligne.style.transform = `translateY(${((1 - f.e) * 40 - f.s * 30).toFixed(1)}px)`;
+      ligne.style.opacity = (f.e * (1 - f.s)).toFixed(3);
+    });
+  }
+
+  // ---- le filet : il se trace, puis se retire par l'autre bout ----
+  // Il se place AU-DESSUS du bloc chiffre et SOUS le titre : sa hauteur suit
+  // donc le mode du plan, sinon il traversait les compteurs.
+  $('filet').style.top = aChiffre ? '236px' : '452px';
+  $('filetPt').style.top = aChiffre ? '233px' : '449px';
+  const large = ouverture ? 904 : 420;
+  const trace = eOut(clamp01((dans - 0.05) / 0.32));
+  $('filet').style.width = `${Math.round(trace * large * (1 - ph0.s))}px`;
+  $('filet').style.marginLeft = `${(ph0.s * large * 0.35).toFixed(0)}px`;
   $('filet').style.opacity = finale ? 0 : 1;
-  const ptv = clamp01((dans - 0.14) / 0.5);
-  $('filetPt').style.opacity = finale ? 0 : (ptv > 0 && ptv < 1 ? 1 : 0);
+  const ptv = clamp01((dans - 0.12) / 0.46);
+  $('filetPt').style.opacity = (finale || ph0.s > 0.05) ? 0 : (ptv > 0 && ptv < 1 ? 1 : 0);
   $('filetPt').style.left = `${Math.round(84 + eOut(ptv) * large)}px`;
 
-  // ---- le texte se revele mot a mot derriere un masque ----
+  // ---- la phrase, mot a mot a l'entree ET a la sortie ----
   const modePhrase = !p.mode || ouverture;
   $('phrase').style.display = modePhrase ? 'block' : 'none';
   $('jalons').style.display = p.mode === 'jalons' ? 'flex' : 'none';
-  $('bilan').style.display = p.mode === 'bilan' ? 'block' : 'none';
   $('fin').style.display = finale ? 'block' : 'none';
 
   if (modePhrase) {
     batirPhrase(p);
     const mots = [...$('phrase').querySelectorAll('.m u')];
     mots.forEach((el, k) => {
-      const a = eOut(clamp01((dans - (0.16 + k * 0.055)) / 0.34));
-      el.style.transform = `translateY(${((1 - a) * 108).toFixed(2)}%)`;
+      const f = phase(dans, duree, 0.14 + k * 0.05);
+      // Les mots partent dans l'ordre INVERSE de leur arrivee : le dernier
+      // arrive est le premier a s'en aller, comme une vague qui reflue.
+      const sMot = eOut(clamp01((dans - (duree - SORTIE - (mots.length - 1 - k) * 0.03)) / SORTIE));
+      el.style.transform = `translateY(${((1 - f.e) * 108 - sMot * 112).toFixed(2)}%)`;
     });
   }
 
   if (p.mode === 'jalons') {
-    const QUAND = [0.34, 0.62, 0.84];
+    const QUAND = [0.30, 0.56, 0.80];
     [...$('jalons').children].forEach((el, k) => {
-      const a = eOut(clamp01((dans - QUAND[k] * durV) / 0.24));
-      const e = eOut(clamp01((dans - (0.12 + k * 0.08)) / 0.34));
-      el.style.transform = `translateX(${((1 - e) * -46).toFixed(1)}px)`;
-      el.style.opacity = e.toFixed(3);
+      const f = phase(dans, duree, 0.10 + k * 0.07);
+      const a = eOut(clamp01((dans - QUAND[k] * duree) / 0.22));
+      el.style.transform = `translateX(${((1 - f.e) * -46 + f.s * 40).toFixed(1)}px)`;
+      el.style.opacity = (f.e * (1 - f.s)).toFixed(3);
       const cadre = el.querySelector('i');
       cadre.style.borderColor = a > .04 ? '#15803d' : '#c9c2b2';
       cadre.style.background = a > .04 ? 'rgba(21,128,61,.08)' : 'transparent';
@@ -405,25 +420,7 @@ function render(t) {
     });
   }
 
-  if (p.mode === 'bilan') {
-    [...$('bilan').children].forEach((ligne, k) => {
-      const b = BILAN[k];
-      const a = eOut(clamp01((dans - (0.10 + k * 0.26)) / 0.75));
-      const e = eOut(clamp01((dans - (0.06 + k * 0.08)) / 0.32));
-      ligne.style.transform = `translateY(${((1 - e) * 34).toFixed(1)}px)`;
-      ligne.style.opacity = e.toFixed(3);
-      const val = b.valeur * a;
-      [...ligne.querySelectorAll('.col .pile')].forEach((pile, c, tab) => {
-        const rang = Math.pow(10, tab.length - 1 - c);
-        // Les unites roulent vite, les dizaines plus lentement : c'est ce
-        // rapport qui donne l'impression d'un compteur qui totalise.
-        const chiffre = (val / rang) % 10;
-        pile.style.transform = `translateY(${(-chiffre * H_BIL).toFixed(2)}px)`;
-      });
-    });
-  }
-
-  // ---- la preuve : masque diagonal, redressement, reflet ----
+  // ---- la preuve : masque diagonal a l'entree, l'inverse a la sortie ----
   const pr = $('preuve');
   if (p.preuve) {
     const b = boitePreuve(p.preuve);
@@ -433,46 +430,45 @@ function render(t) {
     pr.style.left = b[0] + 'px'; pr.style.top = b[1] + 'px';
     pr.style.width = b[2] + 'px'; pr.style.height = b[3] + 'px';
 
-    const e = eOut(clamp01((dans - 0.20) / 0.52));
-    const vie = clamp01(dans / durV);
-    pr.style.transform = `translateY(${((1 - e) * 54).toFixed(1)}px) `
-      + `rotate(${lerp(-1.6, 0, e).toFixed(2)}deg) `
-      + `scale(${lerp(0.955, 1, e).toFixed(4)}) `
-      + `translateY(${(Math.sin(vie * Math.PI) * -9).toFixed(2)}px)`;
-    // Le masque s'ouvre en diagonale et finit COMPLETEMENT ouvert.
-    const ouv = lerp(-30, 132, eOut(clamp01((dans - 0.18) / 0.5)));
+    const f = phase(dans, duree, 0.16);
+    pr.style.transform = `translateY(${((1 - f.e) * 56 + f.s * 46).toFixed(1)}px) `
+      + `rotate(${(lerp(-1.6, 0, f.e) + f.s * 1.4).toFixed(2)}deg) `
+      + `scale(${(lerp(0.955, 1, f.e) * (1 - f.s * 0.05)).toFixed(4)}) `
+      + `translateY(${(Math.sin(f.v * Math.PI) * -10).toFixed(2)}px)`;
+    pr.style.opacity = (1 - f.s).toFixed(3);
+    const ouv = lerp(-30, 132, f.e) - f.s * 150;
     $('cadre').style.clipPath = `polygon(0% 0%, ${ouv}% 0%, ${ouv - 30}% 100%, 0% 100%)`;
 
-    const g = clamp01((dans - 0.42) / 0.62);
+    const g = clamp01((dans - 0.38) / 0.58);
     $('reflet').style.opacity = g > 0 && g < 1 ? (1 - Math.abs(g - .5) * 2) : 0;
     $('reflet').style.transform = `translateX(${lerp(-60, b[2] + 30, eOut(g))}px) skewX(-18deg)`;
 
     $('legende').style.display = 'block';
     $('legende').textContent = p.legende;
     $('legende').style.top = (b[1] + b[3] + 30) + 'px';
-    const lg = eOut(clamp01((dans - 0.52) / 0.4));
-    $('legende').style.clipPath = `inset(0 ${((1 - lg) * 100).toFixed(1)}% 0 0)`;
+    const lg = eOut(clamp01((dans - 0.46) / 0.36));
+    $('legende').style.clipPath = `inset(0 ${((1 - lg) * 100 + f.s * 100).toFixed(1)}% 0 0)`;
   } else {
     pr.style.display = 'none';
     $('legende').style.display = 'none';
   }
 
   if (finale) {
-    const e = ressort(clamp01(dans / 1.0));
+    const e = ressort(clamp01(dans / 0.95));
     $('finLogo').style.transform = `scale(${(0.86 + e * 0.14).toFixed(4)})`;
-    const pp = eOut(clamp01((dans - 0.34) / 0.44));
+    const pp = eOut(clamp01((dans - 0.30) / 0.40));
     $('finP').style.clipPath = `inset(0 ${((1 - pp) * 100).toFixed(1)}% 0 0)`;
-    const cc = ressort(clamp01((dans - 0.56) / 0.9));
+    const cc = ressort(clamp01((dans - 0.50) / 0.85));
     $('finCta').style.transform = `scale(${(0.8 + cc * 0.2).toFixed(4)})`;
   }
 
-  // ---- la journee, avec sa trainee ----
-  const hCourante = lerp(prev.h, p.h, eOut(clamp01(dans / 0.42)));
+  // ---- la journee ----
+  const hCourante = lerp(prev.h, p.h, eOut(clamp01(dans / 0.4)));
   const q = clamp01((hCourante - 10) / 13);
   const qPrec = clamp01((prev.h - 10) / 13);
   $('jourIn').style.width = (q * 100).toFixed(2) + '%';
   $('jourPt').style.left = (q * 100).toFixed(2) + '%';
-  const tr = clamp01(1 - dans / 0.9);
+  const tr = clamp01(1 - dans / 0.8);
   $('jourTr').style.left = (qPrec * 100).toFixed(2) + '%';
   $('jourTr').style.width = (Math.max(0, q - qPrec) * 100 * tr).toFixed(2) + '%';
   $('jourTr').style.opacity = tr.toFixed(2);
@@ -483,6 +479,27 @@ function render(t) {
   $('jour').style.opacity = finale ? 0 : 1;
   $('pied').style.opacity = finale ? 0 : 1;
 }
+
+// Deux lignes de compteur, construites une fois : 2 chiffres pour « 38 » et
+// « 76 », 3 pour « 297 ».
+(function batirBilan() {
+  const host = $('bilan');
+  host.innerHTML = '';
+  [2, 3].forEach(() => {
+    const l = document.createElement('div'); l.className = 'l';
+    const ch = document.createElement('div'); ch.className = 'ch';
+    const u = document.createElement('div'); u.className = 'u';
+    const lg = document.createElement('div'); lg.className = 'lg';
+    l.appendChild(ch); ch.appendChild(u); l.appendChild(lg); host.appendChild(l);
+  });
+  batirCompteur($('bilan').children[0].querySelector('.ch'), 2);
+  batirCompteur($('bilan').children[1].querySelector('.ch'), 3);
+  // batirCompteur vide le conteneur : on remet l'unite APRES les colonnes.
+  [...$('bilan').children].forEach((l) => {
+    const u = document.createElement('div'); u.className = 'u';
+    l.querySelector('.ch').appendChild(u);
+  });
+})();
 
 window.renderFrame = render;
 window.SCENE_DURATION = DUR;

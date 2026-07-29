@@ -35,7 +35,11 @@ const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i === -
 //
 // Ce n'est pas une perte : le clip vit dans une carte de ~1500 px CSS, soit
 // 2250 px reels dans un rendu 4K. Une source de 2560 y est encore REDUITE.
-const ZOOM = Number(arg('zoom', 1.2));
+// La valeur etait absente de la regle CSS (`zoom: }`) : elle n'a jamais ete
+// appliquee, l'interface a donc ete filmee a sa taille normale alors que le
+// commentaire ci-dessus decrit l'inverse. C'est une des causes du texte petit
+// et mou dans la fenetre reduite du montage.
+const ZOOM = Number(arg('zoom', 1.3));
 const CSS_W = Number(arg('cssw', 2560));
 const CSS_H = Number(arg('cssh', 1440));
 const W = CSS_W;
@@ -602,7 +606,7 @@ const SCRIPT_INIT = (zoom) => {
     st.textContent = `img[src*="galaxy" i], img[src*="fun-galaxy" i], img.logo[alt*="Galaxy" i],
        a:has(> img[src*="galaxy" i]), *:has(> img.logo[src*="galaxy" i])
         { visibility:hidden !important }
-      body { zoom: }`;
+      body { zoom: ${zoom} }`;
     (document.head || document.documentElement).appendChild(st);
     passe();
     new MutationObserver(passe).observe(document.body, { childList: true, subtree: true, characterData: true });

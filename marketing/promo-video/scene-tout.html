@@ -143,11 +143,16 @@ const SRC_W = 2560, SRC_H = 1440;
 // Scruber hors de ces fenetres donnerait un ecran de transition.
 
 // Position REELLE des sequences dans l'application, mesuree au navigateur.
-const ROW = { x: 620, y: 400, w: 1570, h: 561 };
+// Le clip est enregistre avec l'application zoomee a 1,2 (plus de pixels par
+// element, donc une image nette en 4K). Les coordonnees ci-dessous ont ete
+// MESUREES sans zoom : il faut les remettre a l'echelle de la capture.
+const SRC_ZOOM = 1.2;
+const z = (r) => ({ x: r.x * SRC_ZOOM, y: r.y * SRC_ZOOM, w: r.w * SRC_ZOOM, h: r.h * SRC_ZOOM, tag: r.tag });
+const ROW = z({ x: 620, y: 400, w: 1570, h: 561 });
 const SEQ = {
-  confirmation: { x: 900, y: 588, w: 246, h: 218, tag: 'Confirmation' },
-  rappel:       { x: 1152, y: 588, w: 246, h: 218, tag: 'Rappel avant la venue' },
-  dormants:     { x: 1906, y: 588, w: 252, h: 218, tag: 'Réactiver les dormants' },
+  confirmation: z({ x: 900, y: 588, w: 246, h: 218, tag: 'Confirmation' }),
+  rappel:       z({ x: 1152, y: 588, w: 246, h: 218, tag: 'Rappel avant la venue' }),
+  dormants:     z({ x: 1906, y: 588, w: 252, h: 218, tag: 'Réactiver les dormants' }),
 };
 
 let built = '';
@@ -248,7 +253,7 @@ function drawScene(t) {
 
   // ---- A3 : le formulaire client, sur mesure -----------------------------
   if (key === 'a3') {
-    build('b3', card('c1', 900, 250, 1420, 799, CLIP.client, { x: 640, y: 150, w: 1500, h: 844 })
+    build('b3', card('c1', 900, 250, 1420, 799, CLIP.client, z({ x: 640, y: 150, w: 1500, h: 844 }))
       + `<div class="kick" id="k3" style="left:180px;top:470px">Côté client</div>
          <div class="bar" id="bar3" style="left:180px;top:516px;width:180px"></div>
          <div class="ttl" id="t3" style="left:180px;top:556px;font-size:74px;width:600px">Un parcours<br>fait sur mesure.</div>`);
@@ -263,7 +268,7 @@ function drawScene(t) {
 
   // ---- A4 : les trois sequences, designees en rafale ----------------------
   if (key === 'a4') {
-    build('b4', card('c1', 300, 300, 1960, 700, CLIP.staff, ROW)
+    build('b4', card('c1', 530, 330, 1500, 536, CLIP.staff, ROW)
       + markHtml('c1', 'm1', SEQ.confirmation, SEQ.confirmation.tag)
       + markHtml('c1', 'm2', SEQ.rappel, SEQ.rappel.tag)
       + markHtml('c1', 'm3', SEQ.dormants, SEQ.dormants.tag)
@@ -286,7 +291,7 @@ function drawScene(t) {
   if (key === 'a5') {
     // Cadre sur le bloc HAUT (onglets + message de l'agent) : la conversation
     // est courte, une carte carree laissait la moitie basse vide.
-    build('b5', card('c1', 1020, 360, 1380, 776, CLIP.staff, { x: 900, y: 25, w: 880, h: 495 })
+    build('b5', card('c1', 1140, 380, 1140, 641, CLIP.staff, z({ x: 860, y: 20, w: 1180, h: 664 }))
       + `<div class="kick" id="k5" style="left:200px;top:470px">Marketing</div>
          <div class="bar" id="bar5" style="left:200px;top:516px;width:180px"></div>
          <div class="ttl" id="t5" style="left:200px;top:556px;font-size:74px;width:820px">Une IA qui<br>vous guide.</div>`);
@@ -300,7 +305,7 @@ function drawScene(t) {
 
   // ---- A6 : etablissement, tout se regle ---------------------------------
   if (key === 'a6') {
-    build('b6', card('c1', 480, 230, 1600, 900, CLIP.staff, { x: 560, y: 20, w: 1700, h: 957 })
+    build('b6', card('c1', 480, 230, 1600, 900, CLIP.staff, z({ x: 560, y: 20, w: 1700, h: 957 }))
       + `<div class="kick" id="k6" style="left:480px;top:150px">Vous gérez tout</div>`);
     scrub('#c1v', 30.5 + d * 7.4);
     place('c1', { rx: 1.2, ry: -2, sc: lerp(.978, 1, settle), dx: lerp(-26, 0, settle), dy: lerp(12, -8, d) });
@@ -309,7 +314,7 @@ function drawScene(t) {
 
   // ---- A7 : la data, analysee --------------------------------------------
   if (key === 'a7') {
-    build('b7', card('c1', 480, 230, 1600, 900, CLIP.staff, { x: 560, y: 20, w: 1700, h: 957 })
+    build('b7', card('c1', 480, 230, 1600, 900, CLIP.staff, z({ x: 560, y: 20, w: 1700, h: 957 }))
       + `<div class="kick" id="k7" style="left:480px;top:150px">Clients &amp; analyses</div>`);
     scrub('#c1v', 39.4 + d * 5.4);
     place('c1', { rx: 1.2, ry: 2, sc: lerp(.978, 1, settle), dx: lerp(26, 0, settle), dy: lerp(12, -8, d) });

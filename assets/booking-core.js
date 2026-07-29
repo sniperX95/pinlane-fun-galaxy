@@ -818,6 +818,25 @@ function readBlockHour(block, key, fallback = 0) {
   return fallback;
 }
 
+// Une DUREE de reservation, en heures, quelle que soit l'unite d'origine.
+//
+// `readBlockHour` normalise deja les minutes en heures pour les HORAIRES : la
+// preuve que des valeurs en minutes circulent dans le systeme. Le chemin de
+// repli des fenetres bowling, lui, prenait `reservation.duration` brut. Une
+// donnee en minutes qui passait par la produisait des piste-heures 60 fois trop
+// grandes, et donc un taux d'occupation a 813 % au lieu de 13 %.
+//
+// Le seuil est le meme que celui de `readBlockHour` (24) pour ne pas avoir deux
+// regles concurrentes dans le meme fichier. Limite assumee : une duree comprise
+// entre 13 et 24 minutes serait lue comme des heures. Aucun creneau de ce genre
+// n'existe (le pas est de 30 min), et un seuil plus bas casserait les durees
+// legitimes de 1 a 4 heures.
+function readDurationHours(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return raw > 24 ? raw / 60 : raw;
+}
+
 function normalizeLaserArenaEnd(start, end) {
   const arenaEnd = start + (LASER_GAME_ARENA_MINUTES / 60);
   if (!Number.isFinite(Number(end)) || end <= start) return arenaEnd;
@@ -856,12 +875,13 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
   // placée (sinon la carte réapparaîtrait aussitôt sur le planning).
   if (resourceType === 'laser_arena' && reservation.opsPlan?.laserManual) return planned;
   if (resourceType === 'bowling_lane' && (reservation.lanes || []).length) {
+    const heures = readDurationHours(reservation.duration);
     return [{
       reservation,
       resourceType,
       start: timeToNum(reservation.startTime),
-      end: timeToNum(reservation.startTime) + Number(reservation.duration),
-      duration: Number(reservation.duration),
+      end: timeToNum(reservation.startTime) + heures,
+      duration: heures,
       lanes: (reservation.lanes || []).map(Number),
       label: 'Bowling',
     }];

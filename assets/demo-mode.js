@@ -72,10 +72,16 @@
         name: nom,
         date: AUJOURD_HUI,
         startTime: HEURES[i],
-        duration: 60,
+        // EN HEURES, comme partout dans le produit (`duration: 1`). Cette
+        // fixture disait 60, en croyant parler minutes : le taux d'occupation
+        // affichait alors 813 % (13 x 60 / (8 pistes x 12 h d'ouverture)) et
+        // ce chiffre absurde a ete pris pour un bug du produit pendant deux
+        // sessions. Le produit, lui, comptait juste.
+        duration: 1,
         pax: 4 + (i % 5),
         lane: (i % 8) + 1,
         lanes: [(i % 8) + 1],
+        type: 'bowling',
         activity: 'bowling',
         status: i % 4 === 0 ? 'arrived' : 'pending',
         validationStatus: 'confirmed',

@@ -38,9 +38,15 @@ const ff = (args, label) => {
 // mean_volume d'un extrait : c'est la mesure qui dit qui domine.
 // volumedetect ecrit sur stderr, y compris quand ffmpeg reussit : execFileSync
 // ne rend que stdout, il faut donc spawnSync pour lire le resultat.
+// `-ss` APRES `-i` et une DUREE plutot qu'une fin : place avant `-i`, le seek
+// est un seek d'entree et `-to` reste compte sur l'horloge du fichier
+// d'origine, si bien qu'une fenetre proche de la fin mesurait jusqu'au bout du
+// morceau, fondu de sortie compris. Les marges relevees par ce script avant
+// cette correction sont donc a reprendre.
 function niveau(file, from, to) {
-  const r = spawnSync('ffmpeg', ['-hide_banner', '-ss', String(from), '-to', String(to),
-    '-i', file, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-i', file,
+    '-ss', String(from), '-t', String(Math.max(0.05, to - from)),
+    '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
   const m = /mean_volume:\s*(-?[\d.]+) dB/.exec(String(r.stderr || ''));
   return m ? Number(m[1]) : null;
 }

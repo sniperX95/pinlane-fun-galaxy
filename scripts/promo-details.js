@@ -40,10 +40,14 @@ const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i === -
 
 const DSF = Number(arg('dsf', 3));
 const ZOOM = Number(arg('zoom', 1.3));
+// Le theme se choisit ici et NON au montage : une capture sombre eclaircie
+// apres coup garde ses ombres et ses bordures sombres. C'est le produit qui
+// possede les deux themes, autant les lui demander.
+const THEME = arg('theme', 'dark');
 const CSS_W = 2560, CSS_H = 1440;
 const PORT = 4602;                       // 4601 est pris par le tournage
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const OUT = path.join(ROOT, 'artifacts/promo-clips/details');
+const OUT = path.join(ROOT, 'artifacts/promo-clips', arg('out', THEME === 'dark' ? 'details' : 'details-' + THEME));
 
 // Marge autour de l'element. Sans elle, l'ombre et la bordure de la carte sont
 // rasees et la vignette a l'air decoupee aux ciseaux. Reglable par cible :
@@ -111,7 +115,7 @@ function loadFromVisualQa(name) {
   return new Function('BASE_URL', body + '\nreturn ' + name + ';')(BASE_URL);
 }
 
-const INIT = (zoom) => {
+const INIT = ([zoom, theme]) => {
   const REGLES = [
     [/Fun\s*Galaxy\s+Libramont/gi, 'Bowling Central'],
     [/Fun\s*Galaxy\s+Gembloux/gi, 'Bowling Nord'],
@@ -131,8 +135,10 @@ const INIT = (zoom) => {
       if (n.nodeValue && suspect.test(n.nodeValue)) cibles.push(n);
     }
     cibles.forEach((n) => { n.nodeValue = reecrire(n.nodeValue); });
-    if (document.documentElement.getAttribute('data-theme') !== 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark');
+    // Le theme est re-impose a CHAQUE passe : la page publique du client
+    // s'ouvre dans son propre theme et ecrase le reglage pose au chargement.
+    if (document.documentElement.getAttribute('data-theme') !== theme) {
+      document.documentElement.setAttribute('data-theme', theme);
     }
     document.querySelectorAll('[title],[alt],[placeholder],[aria-label]').forEach((el) => {
       for (const attr of ['title', 'alt', 'placeholder', 'aria-label']) {
@@ -172,6 +178,13 @@ const FAITS = [];
 // captures : les saines sont a 0,0-4,4, la coupee a 46,2 — la separation est
 // franche, pas un reglage a la main.
 const BORD_MAX = 8;
+function luminanceMoyenne(fichier) {
+  const g = execFileSync('ffmpeg', ['-v', 'error', '-i', fichier, '-vf', 'format=gray',
+    '-f', 'rawvideo', '-'], { maxBuffer: 256 * 1024 * 1024 });
+  let s = 0;
+  for (let i = 0; i < g.length; i += 4) s += g[i];
+  return s / Math.ceil(g.length / 4);
+}
 function contrasteDesBords(fichier) {
   const dims = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v',
     '-show_entries', 'stream=width,height', '-of', 'csv=p=0', fichier], { encoding: 'utf8' }).trim().split(',');
@@ -282,6 +295,15 @@ async function capturer(page, cle, texte, opts = {}) {
   }
   if (bord > BORD_MAX && !auRas) RATES.push(`${cle} : le cadre coupe du contenu (contraste de bord ${bord.toFixed(1)})`);
 
+  // Le theme demande est-il celui qu'on a capture ? Une page qui ecrase le
+  // reglage (la page publique du client le fait) donnerait des cartes sombres
+  // posees sur une direction artistique claire — le defaut saute aux yeux dans
+  // le film, jamais dans un journal qui dit « 22 details captures ».
+  const lum = luminanceMoyenne(fichier);
+  const attenduClair = THEME !== 'dark';
+  if (attenduClair && lum < 140) RATES.push(`${cle} : theme ${THEME} demande mais capture sombre (luminance ${lum.toFixed(0)})`);
+  if (!attenduClair && lum > 120) RATES.push(`${cle} : theme sombre demande mais capture claire (luminance ${lum.toFixed(0)})`);
+
   const octets = fs.statSync(fichier).size;
   const px = { w: Math.round(box.w * DSF), h: Math.round(box.h * DSF) };
   // Deux cibles qui tombent sur le MEME element donnent deux vignettes
@@ -324,20 +346,24 @@ async function capturer(page, cle, texte, opts = {}) {
   // ---- COTE CLIENT ---------------------------------------------------------
   {
     const ctx = await browser.newContext({ viewport: { width: CSS_W, height: CSS_H }, deviceScaleFactor: DSF });
-    await ctx.addInitScript(INIT, ZOOM);
+    await ctx.addInitScript(INIT, [ZOOM, THEME]);
     const page = await ctx.newPage();
     await installQaApi(page);
     await page.goto(`${BASE_URL}/?v=det-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
-    await page.evaluate(() => {
-      document.documentElement.setAttribute('data-theme', 'dark');
+    await page.evaluate((t) => {
+      document.documentElement.setAttribute('data-theme', t);
       if (typeof setView === 'function') setView('client');
-    });
+    }, THEME);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1200);
     console.log('COTE CLIENT');
 
-    await page.evaluate(() => { const e = document.querySelector('#fPax'); if (e) { e.value = '6'; e.dispatchEvent(new Event('input', { bubbles: true })); } });
+    // 17 joueurs : la crea « Samedi » enchaine « un groupe de dix-sept » sur le
+    // plan du planning PUIS le formulaire. Avec 6 dans le champ, deux plans
+    // consecutifs se contredisaient. Un chiffre juste isolement peut etre faux
+    // dans l'enchainement.
+    await page.evaluate(() => { const e = document.querySelector('#fPax'); if (e) { e.value = '17'; e.dispatchEvent(new Event('input', { bubbles: true })); } });
     await page.waitForTimeout(400);
     // Cibles choisies dans l'inventaire des elements REELS de la page, pas
     // devinees : « Durée » attrapait le conteneur entier (1020 px CSS), la
@@ -351,12 +377,12 @@ async function capturer(page, cle, texte, opts = {}) {
   // ---- COTE EQUIPE ---------------------------------------------------------
   {
     const ctx = await browser.newContext({ viewport: { width: CSS_W, height: CSS_H }, deviceScaleFactor: DSF });
-    await ctx.addInitScript(INIT, ZOOM);
+    await ctx.addInitScript(INIT, [ZOOM, THEME]);
     const page = await ctx.newPage();
     await installQaApi(page);
     await page.goto(`${BASE_URL}/?v=det2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
-    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), THEME);
     await seedStressDay(page);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1400);

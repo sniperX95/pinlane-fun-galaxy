@@ -120,12 +120,17 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
 
   // Version LEGERE pour l'envoi et le web : meme image, debit plafonne. Un
   // master a 14 Mo ne passe pas dans une messagerie ni dans un mail.
+  //
+  // L'echelle suit l'ORIENTATION. Ecrite « scale=1920:-2 », elle force la
+  // LARGEUR a 1920 : sur un film vertical, ca produisait un 1920x3413 de
+  // 6,5 Mpx cense etre la version legere. On plafonne le grand cote.
   const web = path.join(OUT_DIR, `${NAME}-web.mp4`);
+  const echelleWeb = H > W ? 'scale=-2:1920:flags=lanczos' : 'scale=1920:-2:flags=lanczos';
   execFileSync('ffmpeg', [
     '-y', '-i', mp4,
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '25',
     '-maxrate', '2600k', '-bufsize', '5200k',
-    '-vf', 'scale=1920:-2:flags=lanczos',
+    '-vf', echelleWeb,
     '-c:a', 'aac', '-b:a', '128k',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', web,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });

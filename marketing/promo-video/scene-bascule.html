@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Pinlane — le même samedi</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  /* =====================================================================
+     CREA « LE MEME SAMEDI » — 16:9, DA claire, produit au centre.
+
+     CE QUE CORRIGENT LES CHOIX CI-DESSOUS.
+
+     « ça n'évolue pas » — les versions precedentes ENUMERAIENT des capacites.
+     Une liste n'a pas de milieu : le plan 6 aurait pu etre le plan 2 sans que
+     rien ne change. Ici le film a une CHARNIERE : trois plans de chaos sans
+     produit, une bascule, trois plans ou le produit occupe le cadre. C'est le
+     passage de l'un a l'autre qui porte le propos, pas les plans eux-memes.
+
+     « le design est buggé à mort » — a 7,2 s de la version precedente, l'ecran
+     ne portait plus qu'un tiret. Cause : des plans SANS image, dont le texte
+     etait deja sorti. Ici aucun plan n'est vide par construction — la moitie
+     « avant » garde ses cartes a l'ecran pendant les trois plans, la moitie
+     « apres » garde le planning. La garde check-frames v4 le verifie sur la
+     zone de contenu, seuil calibre sur deux films reels.
+
+     « format tiktok non » — 2560x1440, rendu 3840x2160.
+     ===================================================================== */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:2560px;height:1440px;overflow:hidden;background:#f2f2f0}
+  body{font-family:var(--font-ui);color:#14140f;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#f2f2f0}
+
+  /* Fond : un degrade sobre, pas de grain papier — c'est ce qui distingue
+     cette DA de l'editoriale precedente, que Movsar n'a pas aimee. */
+  #fond{position:absolute;inset:-8%;
+    background:radial-gradient(60% 60% at 30% 20%,#fbfbfa,transparent 70%),
+               radial-gradient(70% 70% at 78% 82%,#e8e8e5,transparent 70%),
+               linear-gradient(160deg,#f6f6f4,#ececea);will-change:transform}
+  #vig{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(130% 100% at 50% 45%,transparent 62%,rgba(20,20,15,.07) 100%)}
+
+  #marque{position:absolute;left:120px;top:96px;display:flex;align-items:center;gap:18px;
+    font-family:var(--font-data);font-size:26px;letter-spacing:.30em;text-transform:uppercase;
+    color:#8d8b83;will-change:transform}
+  #marque b{display:block;width:16px;height:16px;border-radius:50%;background:#2563eb}
+  #chap{position:absolute;right:120px;top:92px;font-family:var(--font-data);font-size:26px;
+    letter-spacing:.26em;text-transform:uppercase;color:#b5b2a8}
+
+  /* ---- Colonne de texte, a gauche ---- */
+  #texte{position:absolute;left:120px;top:430px;width:820px}
+  #texte .kick{font-family:var(--font-data);font-size:26px;letter-spacing:.30em;
+    text-transform:uppercase;color:#2563eb;margin-bottom:26px;overflow:hidden;white-space:nowrap}
+  #phrase{font-size:78px;line-height:1.14;font-weight:600;letter-spacing:-.03em;color:#14140f}
+  #phrase .m{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:.08em}
+  #phrase .m u{display:inline-block;text-decoration:none;will-change:transform}
+  #phrase .b{color:#2563eb}
+
+  /* ---- LE CHAOS : ce qu'on remplace ---- */
+  #chaos{position:absolute;left:1240px;top:180px;width:1220px;height:1100px}
+  .note{position:absolute;background:#fffef9;border-radius:6px;padding:34px 40px;
+    box-shadow:0 2px 0 rgba(20,20,15,.05), 0 30px 60px rgba(20,20,15,.14);
+    font-size:44px;line-height:1.3;color:#2a2a22;will-change:transform,opacity}
+  .note em{font-style:normal;color:#8d8b83;font-size:30px;display:block;margin-top:10px;
+    font-family:var(--font-data);letter-spacing:.14em}
+  .note.barre{color:#a3a096}
+  .note .raie{position:absolute;left:34px;height:4px;background:#c8352b;top:52px;width:0;
+    border-radius:2px}
+  #compteur{position:absolute;left:1240px;top:1180px;font-family:var(--font-data);
+    font-size:34px;letter-spacing:.2em;color:#c8352b;text-transform:uppercase}
+
+  /* ---- LE PRODUIT : ce qu'on installe ---- */
+  #ecran{position:absolute;border-radius:20px;overflow:hidden;background:#fff;
+    box-shadow:0 4px 0 rgba(20,20,15,.05), 0 50px 110px rgba(20,20,15,.20),
+               0 4px 10px rgba(20,20,15,.10);will-change:transform,clip-path}
+  #ecran img{display:block;width:100%;height:100%;object-fit:cover;object-position:top left}
+  #eclat{position:absolute;top:-30%;bottom:-30%;width:34%;left:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.8),transparent);
+    filter:blur(20px);transform:skewX(-18deg);will-change:transform,opacity}
+
+  /* ---- Chiffres roulants ---- */
+  #chiffres{position:absolute;left:120px;top:430px;width:820px}
+  #chiffres .l{display:flex;align-items:center;gap:32px;margin-bottom:34px}
+  #chiffres .ch{display:flex;height:140px;overflow:hidden}
+  #chiffres .col{position:relative;width:86px;height:140px;overflow:hidden}
+  #chiffres .pile{position:absolute;left:0;top:0;width:100%;will-change:transform}
+  #chiffres .pile span{display:block;height:140px;line-height:140px;text-align:center;
+    font-family:var(--font-data);font-size:132px;font-weight:600;letter-spacing:-.05em;color:#14140f}
+  #chiffres .u{height:140px;line-height:140px;font-family:var(--font-data);font-size:132px;
+    font-weight:600;letter-spacing:-.05em;color:#14140f;padding-left:14px}
+  #chiffres .lg{font-size:46px;color:#6d6b62;letter-spacing:-.01em}
+
+  /* ---- La bascule : un volet qui balaie et remplace ---- */
+  #volet{position:absolute;top:-6%;bottom:-6%;width:46%;background:#2563eb;
+    left:-50%;opacity:0;will-change:transform,opacity}
+
+  /* ---- Fin ---- */
+  #fin{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:0}
+  #finLogo{will-change:transform}
+  #fin img{display:block;width:1000px}
+  #finP{margin-top:56px;font-size:62px;font-weight:600;letter-spacing:-.02em;overflow:hidden}
+  #finCta{display:inline-block;margin-top:52px;background:#2563eb;color:#fff;
+    font-size:50px;font-weight:700;padding:34px 82px;border-radius:18px;
+    box-shadow:0 24px 60px rgba(37,99,235,.34);will-change:transform}
+
+  #prog{position:absolute;left:120px;right:120px;bottom:92px;height:4px;
+    background:rgba(20,20,15,.10);border-radius:2px}
+  #progIn{position:absolute;left:0;top:0;bottom:0;background:#14140f;border-radius:2px;width:0}
+  #pied{position:absolute;left:120px;right:120px;bottom:44px;display:flex;
+    justify-content:space-between;font-family:var(--font-data);font-size:25px;
+    letter-spacing:.26em;text-transform:uppercase;color:#a5a299}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="fond"></div>
+
+  <div id="marque"><b></b><span>Pinlane</span></div>
+  <div id="chap">Le même samedi</div>
+
+  <div id="texte"><div class="kick" id="kick"></div><div id="phrase"></div></div>
+
+  <div id="chaos"></div>
+  <div id="compteur"></div>
+
+  <div id="ecran"><img id="eimg" alt=""><div id="eclat"></div></div>
+
+  <div id="chiffres"></div>
+
+  <div id="fin">
+    <div id="finLogo"><img src="../../artifacts/promo-video/logo-clair-net.png" alt="Pinlane"></div>
+    <div id="finP">La console de ton centre.</div>
+    <div><span id="finCta">Réserver une démo</span></div>
+  </div>
+
+  <div id="volet"></div>
+  <div id="prog"><div id="progIn"></div></div>
+  <div id="pied"><span>pinlane.app</span><span>Réservation · planning · relances</span></div>
+  <div id="vig"></div>
+</div>
+
+<script src="../../artifacts/promo-video/voix-bascule-plans.js"></script>
+<script src="../../artifacts/promo-clips/vues-light/vues.js"></script>
+<script src="../../artifacts/promo-clips/details-light/details.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const eOut = (x) => 1 - Math.pow(1 - x, 4);
+const eInOut = (x) => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const ressort = (x) => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x) * Math.cos((x * 10 - .75) * 2.4);
+const lerp = (a, b, x) => a + (b - a) * x;
+
+const VOIX = window.PROMO_PLANS || [];
+const VUES = window.PROMO_VUES || {};
+const DET = window.PROMO_DETAILS || {};
+window.MONTAGE_ERREURS = [];
+if (!VOIX.length) window.MONTAGE_ERREURS.push('bornes de voix absentes');
+const DUR = (window.PROMO_VOIX_DUREE || 21.8) + 0.6;
+
+// Le plan 4 est la CHARNIERE : avant lui, aucune image de produit ; a partir
+// de lui, le produit occupe le cadre et ne le quitte plus.
+const BASCULE = 3;
+
+const PLANS = [
+  { cote: 'avant', kick: 'Samedi, 18 h', phrase: 'Le téléphone sonne|pour la <em>sixième</em> fois.', notes: 2 },
+  { cote: 'avant', kick: 'Ton cahier', phrase: 'La piste quatre,|elle est libre <em>ou pas</em> ?', notes: 4 },
+  { cote: 'avant', kick: 'Et après', phrase: 'Tu rappelleras.|<em>Ou pas.</em>', notes: 6 },
+  { cote: 'bascule', kick: 'Le même samedi', phrase: 'Avec <em>Pinlane</em>.', vue: 'vue-planning' },
+  { cote: 'apres', kick: 'Tombées toutes seules', vue: 'vue-planning', mode: 'chiffres',
+    chiffres: [{ v: 38, u: '', lg: 'réservations' }, { v: 297, u: '', lg: 'joueurs' }] },
+  { cote: 'apres', kick: 'Ta journée', vue: 'vue-planning', mode: 'chiffres',
+    chiffres: [{ v: 76, u: ' %', lg: 'd’occupation' }, { v: 0, u: '', lg: 'saisie' }] },
+  { cote: 'fin', kick: '', phrase: '', mode: 'fin' },
+];
+
+// Les notes du « avant ». Ecrites une fois, elles s'ACCUMULENT sur les trois
+// premiers plans au lieu de disparaitre : c'est l'empilement qui dit le chaos,
+// et c'est aussi ce qui empeche un plan de se retrouver vide.
+const NOTES = [
+  { t: 'Rappeler les Dupont', s: '18:04 · appel manqué', x: 40, y: 20, r: -3 },
+  { t: 'Piste 4 libre à 20 h ?', s: 'vérifier le cahier', x: 470, y: 150, r: 2.5, barre: true },
+  { t: 'Anniv. Léo — combien ?', s: 'sans réponse', x: 90, y: 350, r: 1.5 },
+  { t: 'Groupe de 17 samedi', s: 'on tient ? on tient pas ?', x: 520, y: 470, r: -2 },
+  { t: 'Rappeler le 0470…', s: '18:26 · appel manqué', x: 30, y: 690, r: 2 },
+  { t: 'C’est complet ??', s: 'personne ne sait', x: 500, y: 810, r: -1.5, barre: true },
+];
+(function batirNotes() {
+  $('chaos').innerHTML = NOTES.map((n) => `<div class="note${n.barre ? ' barre' : ''}"
+    style="left:${n.x}px;top:${n.y}px;width:640px">${n.t}<em>${n.s}</em>
+    <div class="raie"></div></div>`).join('');
+})();
+const NOTE_EL = [...$('chaos').children];
+
+// Compteurs : deux lignes, colonnes de 0 a 9 que l'on deplace.
+(function batirChiffres() {
+  $('chiffres').innerHTML = '';
+  [3, 3].forEach(() => {
+    const l = document.createElement('div'); l.className = 'l';
+    const ch = document.createElement('div'); ch.className = 'ch';
+    for (let i = 0; i < 3; i++) {
+      const c = document.createElement('div'); c.className = 'col';
+      const p = document.createElement('div'); p.className = 'pile';
+      for (let n = 0; n <= 9; n++) { const s = document.createElement('span'); s.textContent = n; p.appendChild(s); }
+      c.appendChild(p); ch.appendChild(c);
+    }
+    const u = document.createElement('div'); u.className = 'u';
+    ch.appendChild(u);
+    const lg = document.createElement('div'); lg.className = 'lg';
+    l.appendChild(ch); l.appendChild(lg); $('chiffres').appendChild(l);
+  });
+})();
+const H_CH = 140;
+
+let clePhrase = '';
+function batirPhrase(txt) {
+  if (clePhrase === txt) return;
+  clePhrase = txt;
+  $('phrase').innerHTML = (txt || '').split('|').map((ligne) => ligne.split(' ').map((mot) => {
+    const bleu = /^<em>/.test(mot) || /<\/em>$/.test(mot);
+    const net = mot.replace(/<\/?em>/g, '');
+    return `<span class="m${bleu ? ' b' : ''}"><u>${net}</u></span>`;
+  }).join(' ')).join('<br>');
+}
+
+// L'ecran produit : cadre calcule pour ne JAMAIS agrandir la capture.
+window.VUES_MANQUANTES = [];
+// LE PRODUIT DOIT DOMINER LE CADRE — c'est le sens de « produit-first ».
+// A 1240 px sur 2560, le planning se lisait comme une vignette posee dans un
+// coin et son texte devenait illisible. Il occupe desormais 1560 px, soit 61 %
+// de la largeur, et la definition suit : 4818 px natifs pour 1560 CSS rendus a
+// 1,5, donc 2,06 pixels source par pixel de film.
+function boiteEcran(cle, part) {
+  const d = VUES[cle];
+  if (!d) { window.VUES_MANQUANTES.push(cle); return [880, 400, 1560, 620]; }
+  const w = Math.min(part, d.w / 1.5);
+  const h = Math.min(1000, w / d.ratio);
+  return [2560 - 110 - w, Math.round(730 - h / 2), Math.round(w), Math.round(h)];
+}
+
+const planDe = (t) => {
+  let i = 0;
+  for (let n = 0; n < VOIX.length; n++) if (t >= VOIX[n].debut) i = n;
+  return Math.min(i, PLANS.length - 1);
+};
+
+const ENTREE = 0.44, SORTIE = 0.32;
+function phase(dans, duree, retard) {
+  return {
+    e: eOut(clamp01((dans - (retard || 0)) / ENTREE)),
+    v: clamp01(dans / Math.max(0.6, duree)),
+    s: eOut(clamp01((dans - (duree - SORTIE)) / SORTIE)),
+  };
+}
+
+function render(t) {
+  const i = planDe(t);
+  const p = PLANS[i];
+  const v = VOIX[i] || { debut: 0, fin: DUR, pause: 0 };
+  const dans = t - v.debut;
+  const duree = Math.max(0.9, (v.fin + (v.pause || 0)) - v.debut);
+  const f0 = phase(dans, duree, 0);
+  const finale = p.mode === 'fin';
+  const avant = p.cote === 'avant';
+
+  $('fond').style.transform =
+    `translate(${Math.sin(t * .22) * 30}px, ${Math.cos(t * .18) * 22}px) scale(${1 + Math.sin(t * .15) * .012})`;
+  $('progIn').style.width = (clamp01(t / DUR) * 100).toFixed(2) + '%';
+
+  // ---- entete ----
+  $('marque').style.opacity = finale ? 0 : 1;
+  $('marque').style.transform = `translateY(${lerp(-14, 0, eOut(clamp01(t / 0.6)))}px)`;
+  $('chap').textContent = i < BASCULE ? 'Aujourd’hui, sans outil' : 'Le même samedi, avec Pinlane';
+  $('chap').style.opacity = finale ? 0 : 1;
+  $('pied').style.opacity = finale ? 0 : 1;
+  $('prog').style.opacity = finale ? 0 : 1;
+
+  // ---- le volet de bascule : il balaie une seule fois, au plan charniere ----
+  const bascule = i === BASCULE ? clamp01(dans / 0.85) : (i > BASCULE ? 1 : 0);
+  const passe = i === BASCULE && bascule < 1;
+  $('volet').style.opacity = passe ? 1 : 0;
+  $('volet').style.transform = `translateX(${(lerp(0, 260, eInOut(bascule)) * 25.6).toFixed(0)}px)`;
+
+  // ---- texte ----
+  const aTexte = !!p.phrase && !finale;
+  $('texte').style.display = aTexte ? 'block' : 'none';
+  $('chiffres').style.display = p.mode === 'chiffres' ? 'block' : 'none';
+  $('fin').style.display = finale ? 'flex' : 'none';
+
+  $('kick').textContent = p.kick || '';
+  // Le tout premier plan ouvre le film : son surtitre est deja la a l'image 0.
+  // Le faire entrer coutait 0,12 s d'ecran nu au demarrage.
+  const k = i === 0 ? eOut(clamp01(0.35 + dans / 0.3)) : eOut(clamp01((dans - 0.06) / 0.36));
+  $('kick').style.clipPath = `inset(0 ${((1 - k) * 100 + f0.s * 100).toFixed(1)}% 0 0)`;
+
+  if (aTexte) {
+    batirPhrase(p.phrase);
+    const mots = [...$('phrase').querySelectorAll('.m u')];
+    mots.forEach((el, n) => {
+      // AUCUN retard initial sur le premier plan : le film commencait par
+      // 0,28 s d'ecran quasi vide, le temps que le premier mot monte. La
+      // cascade suffit a donner le geste, le retard de depart ne servait rien.
+      // Au premier plan, les mots partent d'une position DEJA visible : sinon
+      // l'image 0 du film est vide, quel que soit le retard.
+      const depart = i === 0 ? 0 : 0.14;
+      const bas = i === 0 ? 46 : 110;
+      const fm = phase(dans, duree, depart + n * 0.055);
+      const sm = eOut(clamp01((dans - (duree - SORTIE - (mots.length - 1 - n) * 0.028)) / SORTIE));
+      el.style.transform = `translateY(${((1 - fm.e) * bas - sm * 114).toFixed(2)}%)`;
+    });
+  }
+
+  // ---- les notes du chaos : elles s'ACCUMULENT ----
+  // Au plan CHARNIERE, les notes du plan precedent restent affichees : c'est
+  // le volet qui doit les chasser, pas leur disparition instantanee. Les
+  // remettre a zero des la premiere image laissait 0,08 s d'ecran nu — le
+  // meme defaut que celui deja corrige, sous une autre forme.
+  const combien = avant ? p.notes : (i === BASCULE ? (PLANS[BASCULE - 1].notes || 0) : 0);
+  $('chaos').style.display = i <= BASCULE ? 'block' : 'none';
+  $('compteur').style.display = avant ? 'block' : 'none';
+  NOTE_EL.forEach((el, n) => {
+    if (n >= combien) { el.style.opacity = 0; return; }
+    // Chaque note arrive avec son propre retard, et TOUTES restent ensuite :
+    // c'est l'empilement qui raconte, et il garde l'ecran plein.
+    const nouvelle = n >= (i === 0 ? 0 : PLANS[i - 1].notes || 0);
+    const r = nouvelle ? phase(dans, duree, (i === 0 ? 0 : 0.10) + (n % 2) * 0.14) : { e: 1, s: 0 };
+    // Au moment de la bascule elles partent, balayees par le volet — mais PAS
+    // avant que le produit soit la. Chassees des 0,10 s, elles laissaient un
+    // ecran vide de 0,20 s le temps que le planning arrive.
+    const chassees = i === BASCULE ? eOut(clamp01((dans - 0.30) / 0.45)) : 0;
+    el.style.opacity = (r.e * (1 - chassees)).toFixed(3);
+    el.style.transform = `translate(${(chassees * -260).toFixed(0)}px, ${((1 - r.e) * 40).toFixed(0)}px) `
+      + `rotate(${(NOTES[n].r * (1 + (1 - r.e) * 2) - chassees * 6).toFixed(2)}deg) `
+      + `scale(${(lerp(0.94, 1, r.e) * (1 - chassees * 0.08)).toFixed(3)})`;
+    const raie = el.querySelector('.raie');
+    if (NOTES[n].barre) {
+      const rr = eOut(clamp01((dans - (0.5 + n * 0.1)) / 0.4));
+      raie.style.width = `${Math.round(rr * 560)}px`;
+    } else { raie.style.width = '0px'; }
+  });
+  if (avant) {
+    const nb = Math.round(2 + p.notes * 1.5 * eOut(clamp01(dans / 0.9)));
+    $('compteur').textContent = `${nb} appels · 0 trace`;
+    $('compteur').style.opacity = (f0.e * (1 - f0.s)).toFixed(2);
+  }
+
+  // ---- l'ecran produit ----
+  const montre = i >= BASCULE;
+  $('ecran').style.display = (montre && !finale) ? 'block' : 'none';
+  if (montre && !finale) {
+    const part = i === BASCULE ? 1480 : 1560;
+    const b = boiteEcran(p.vue, part);
+    const src = '../../artifacts/promo-clips/vues-light/' + p.vue + '.png';
+    if ($('eimg').getAttribute('src') !== src) $('eimg').setAttribute('src', src);
+    $('ecran').style.left = b[0] + 'px'; $('ecran').style.top = b[1] + 'px';
+    $('ecran').style.width = b[2] + 'px'; $('ecran').style.height = b[3] + 'px';
+    // Au plan charniere il ENTRE derriere le volet ; ensuite il respire.
+    // Le produit arrive TOT (0,04 s) : c'est lui qui doit remplir l'ecran
+    // pendant que les notes s'en vont, sinon la bascule laisse un trou.
+    const arrivee = i === BASCULE ? eOut(clamp01((dans - 0.04) / 0.62)) : 1;
+    const resp = Math.sin(f0.v * Math.PI) * -10;
+    $('ecran').style.transform =
+      `translate(${((1 - arrivee) * 90).toFixed(0)}px, ${resp.toFixed(1)}px) `
+      + `scale(${lerp(0.965, 1, arrivee).toFixed(4)})`;
+    $('ecran').style.clipPath = `inset(0 0 ${((1 - arrivee) * 100).toFixed(1)}% 0)`;
+    const g = clamp01((dans - 0.3) / 0.7);
+    $('eclat').style.opacity = (i === BASCULE && g > 0 && g < 1) ? (1 - Math.abs(g - .5) * 2) * .9 : 0;
+    $('eclat').style.transform = `translateX(${lerp(-200, b[2] + 100, eOut(g))}px) skewX(-18deg)`;
+  }
+
+  // ---- chiffres ----
+  if (p.mode === 'chiffres') {
+    [...$('chiffres').children].forEach((ligne, n) => {
+      const c = p.chiffres[n];
+      const fc = phase(dans, duree, 0.12 + n * 0.2);
+      ligne.style.transform = `translateY(${((1 - fc.e) * 44 - fc.s * 34).toFixed(1)}px)`;
+      ligne.style.opacity = (fc.e * (1 - fc.s)).toFixed(3);
+      ligne.querySelector('.lg').textContent = c.lg;
+      ligne.querySelector('.u').textContent = c.u;
+      const av = eOut(clamp01((dans - (0.12 + n * 0.28)) / 0.9));
+      const val = c.v * av;
+      const piles = [...ligne.querySelectorAll('.pile')];
+      piles.forEach((pile, q) => {
+        const rang = Math.pow(10, piles.length - 1 - q);
+        // COMME UN VRAI COMPTEUR : seule la colonne des unites roule en
+        // continu ; les rangs superieurs affichent un chiffre ENTIER et ne
+        // bougent que lorsque le rang inferieur boucle. Un roulement continu
+        // sur toutes les colonnes laissait les dizaines a mi-course — « 38 »
+        // s'affichait « 48 », le 3 arrete entre deux crans.
+        const pos = rang === 1 ? (val % 10) : (Math.floor(val / rang) % 10);
+        pile.style.transform = `translateY(${(-pos * H_CH).toFixed(2)}px)`;
+        // Un zero de tete sur « 38 » se lirait « 038 ». On RETIRE la colonne au
+        // lieu de la rendre transparente : masquee par l'opacite, elle gardait
+        // sa largeur et decalait le nombre d'un cran — « 38 » s'affichait avec
+        // un trou devant.
+        const utile = (c.v >= rang || rang === 1);
+        pile.parentElement.style.width = utile ? '86px' : '0px';
+      });
+    });
+  }
+
+  if (finale) {
+    const e = ressort(clamp01(dans / 0.9));
+    $('finLogo').style.transform = `scale(${(0.88 + e * 0.12).toFixed(4)})`;
+    const pp = eOut(clamp01((dans - 0.32) / 0.42));
+    $('finP').style.clipPath = `inset(0 ${((1 - pp) * 100).toFixed(1)}% 0 0)`;
+    const cc = ressort(clamp01((dans - 0.55) / 0.85));
+    $('finCta').style.transform = `scale(${(0.82 + cc * 0.18).toFixed(4)})`;
+  }
+}
+
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

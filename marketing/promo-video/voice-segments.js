@@ -32,7 +32,10 @@ const OUT = path.resolve(ROOT, process.argv[3] || 'artifacts/promo-video/voix-sa
 
 // Respiration APRES chaque plan, en secondes. C'est le rythme du film : une
 // valeur par plan, assumee, plutot qu'un silence subi.
-const PAUSES = [0.22, 0.16, 0.20, 0.16, 0.20, 0.24, 0.00];
+// La pause du plan 3 est la plus longue du film : c'est le silence AVANT la
+// bascule. Sans elle, « le même samedi, avec Pinlane » arrive sans respiration
+// et la charniere du recit passe inapercue.
+const PAUSES = [0.18, 0.16, 0.52, 0.24, 0.18, 0.22, 0.00];
 
 // Accelere l'ensemble une fois assemble. Les bornes des plans sont DIVISEES
 // par le facteur mesure, pas par celui demande : `atempo` ne rend pas
@@ -52,13 +55,16 @@ const TEMPO = Number((process.argv.find((a) => a.startsWith('--tempo=')) || '--t
 // journee a l'arret. Les nombres viennent desormais d'une journee pleine
 // (38 reservations, 297 joueurs, 76 % d'occupation) et restent tous LUS SUR
 // L'ECRAN montre a cote.
+// RECIT AVANT / APRES. Les versions precedentes enumeraient des capacites, et
+// Movsar l'a dit : « ça n'évolue pas ». Une liste n'a pas de milieu — ici la
+// bascule du plan 4 EST le sujet du film : la meme journee, avant et apres.
 const TEXTES = [
-  'Samedi. Le centre tourne à plein.',
-  'Trente-huit réservations, deux cent quatre-vingt-dix-sept joueurs.',
-  "Et toi, tu n'as rien saisi.",
-  'Elles sont arrivées toutes seules, du formulaire au planning.',
-  'Confirmées, rappelées, encaissées, sans que tu y penses.',
-  'Soixante-seize pour cent de tes pistes occupées.',
+  'Samedi, dix-huit heures. Le téléphone sonne pour la sixième fois.',
+  'Tu cherches dans ton cahier si la piste quatre est libre.',
+  'Tu rappelleras. Ou pas.',
+  'Le même samedi, avec Pinlane.',
+  'Trente-huit réservations tombées toutes seules. Deux cent quatre-vingt-dix-sept joueurs.',
+  "Soixante-seize pour cent d'occupation. Zéro saisie.",
   'Pinlane. La console de ton centre.',
 ];
 

@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Pinlane</title>
+<link rel="stylesheet" href="../../assets/pinlane.css">
+<style>
+  /* =====================================================================
+     CE QUI CHANGE PAR RAPPORT A LA VERSION PRECEDENTE, ET POURQUOI.
+
+     Reproche 1 : « ça fait pas motion design, ya pas d'animation ».
+       Avant : un seul plan, une seule profondeur. Meme en bougeant, une
+       image unique parait fixe — il n'y a rien PAR RAPPORT A QUOI bouger.
+       Maintenant : trois couches a des profondeurs differentes (decor,
+       ecran, details extraits) qui derivent a des vitesses differentes.
+       C'est la parallaxe qui fabrique le mouvement, pas l'amplitude.
+
+     Reproche 2 : « j'aime pas comment sont placees les images ».
+       Avant : un grand rectangle centre, des pastilles collees aux bords
+       du cadre, et de larges zones mortes en haut et en bas.
+       Maintenant : composition asymetrique sur grille — l'ecran occupe
+       un cote, un bloc chiffre tient l'autre, deux details font le pont
+       entre les deux et l'un deborde hors cadre. Plus de vide.
+
+     Reproche 3 : le logo de fin sur sa plaque noire.
+       Le logo est desormais depremultiplie depuis son fond noir
+       (logo-detourer.js, mode sur-noir) : plus aucune plaque.
+     ===================================================================== */
+  @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:2560px;height:1440px;overflow:hidden;background:#05070c}
+  body{font-family:var(--font-ui);color:#fff;-webkit-font-smoothing:antialiased}
+  #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#05070c;
+    perspective:2600px;perspective-origin:50% 46%}
+
+  /* ---- COUCHE 1 : le decor, le plus lent ---- */
+  #wash{position:absolute;inset:-22%;
+    background:radial-gradient(46% 46% at 28% 26%,rgba(40,102,200,.55),transparent 62%),
+               radial-gradient(42% 42% at 74% 66%,rgba(14,52,120,.52),transparent 62%),
+               radial-gradient(60% 55% at 50% 112%,rgba(8,24,56,.6),transparent 60%);
+    will-change:transform}
+  #grid{position:absolute;inset:-16%;opacity:.085;
+    background-image:linear-gradient(rgba(120,175,255,.5) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(120,175,255,.5) 1px,transparent 1px);
+    background-size:132px 132px;will-change:transform}
+  #beam{position:absolute;top:-30%;bottom:-30%;left:0;width:560px;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(120,180,255,.15),transparent);
+    filter:blur(56px);will-change:transform}
+
+  .corner{position:absolute;width:54px;height:54px;border:2px solid rgba(160,200,255,.24)}
+  #cTL{left:60px;top:56px;border-right:0;border-bottom:0}
+  #cTR{right:60px;top:56px;border-left:0;border-bottom:0}
+  #cBL{left:60px;bottom:56px;border-right:0;border-top:0}
+  #cBR{right:60px;bottom:56px;border-left:0;border-top:0}
+
+  /* ---- COUCHE 2 : l'ecran produit ---- */
+  #scr{position:absolute;border-radius:22px;overflow:hidden;background:#080a0e;
+    border:1px solid rgba(185,215,255,.20);
+    box-shadow:0 70px 190px rgba(0,0,0,.95), 0 0 0 1px rgba(255,255,255,.04),
+               inset 0 1px 0 rgba(255,255,255,.26);
+    will-change:transform,left,top,width,height}
+  #scr video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  #scr .veil{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(158deg,rgba(255,255,255,.07),rgba(255,255,255,.01) 40%,rgba(4,8,16,.22))}
+  #scr .spec{position:absolute;top:-40%;bottom:-40%;width:400px;left:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.22),transparent);
+    filter:blur(18px);transform:skewX(-16deg);will-change:transform,opacity}
+
+  /* ---- COUCHE 3 : les details extraits, les plus rapides ---- */
+  .frag{position:absolute;border-radius:16px;overflow:hidden;background:#0a0d12;
+    border:1px solid rgba(190,220,255,.30);
+    box-shadow:0 40px 110px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.5),
+               inset 0 1px 0 rgba(255,255,255,.30), 0 0 60px rgba(50,145,255,.16);
+    will-change:transform,opacity}
+  .frag canvas{display:block;width:100%;height:100%}
+  .frag .tag{position:absolute;left:14px;bottom:12px;background:rgba(6,10,18,.88);padding:7px 13px;border-radius:7px;border:1px solid rgba(140,185,250,.28);font-family:var(--font-data);
+    font-size:17px;letter-spacing:.24em;text-transform:uppercase;
+    color:rgba(190,220,255,.98);text-shadow:0 2px 12px rgba(0,0,0,1), 0 0 30px rgba(0,0,0,.95)}
+  #f2 .tag{display:none}
+
+  /* ---- Bloc typographique ---- */
+  .col{position:absolute;width:560px;will-change:transform,opacity}
+  .col .kick{font-family:var(--font-data);font-size:23px;letter-spacing:.32em;
+    text-transform:uppercase;color:rgba(140,190,255,.98)}
+  .col .bar{height:3px;width:0;margin-top:16px;
+    background:linear-gradient(90deg,var(--accent),rgba(120,180,255,0))}
+  .col .num{font-family:var(--font-data);font-size:132px;line-height:.92;
+    letter-spacing:-.05em;margin-top:26px;color:#fff;
+    text-shadow:0 12px 60px rgba(30,90,190,.55);white-space:nowrap}
+  .col .cap{font-size:31px;line-height:1.32;color:rgba(226,238,255,.80);margin-top:20px}
+
+  /* Trait de liaison entre le chiffre et le detail : il DESSINE le lien. */
+  #link{position:absolute;inset:0;pointer-events:none;overflow:visible}
+  #link path{fill:none;stroke:rgba(120,180,255,.55);stroke-width:2;
+    stroke-dasharray:6 9;stroke-linecap:round}
+
+  #subs{position:absolute;left:180px;right:180px;bottom:88px;text-align:center;perspective:900px}
+  .w{display:inline-block;font-size:60px;line-height:1.16;font-weight:600;letter-spacing:-.03em;
+    margin:0 11px 2px 0;color:rgba(255,255,255,.97);text-shadow:0 8px 34px rgba(0,0,0,1);
+    will-change:transform,opacity}
+  .w.hi{color:#6cb0ff;text-shadow:0 8px 40px rgba(40,120,230,.8)}
+
+  #steps{position:absolute;left:60px;bottom:52px;display:flex;gap:8px}
+  #steps i{display:block;width:44px;height:4px;border-radius:2px;background:rgba(255,255,255,.13)}
+  #steps i.on{background:var(--accent);box-shadow:0 0 16px rgba(50,145,255,.9)}
+  #prog{position:absolute;left:60px;right:60px;bottom:32px;height:2px;background:rgba(255,255,255,.09)}
+  #progIn{position:absolute;left:0;top:0;bottom:0;width:0;
+    background:linear-gradient(90deg,rgba(120,175,255,.45),var(--accent));
+    box-shadow:0 0 12px rgba(50,145,255,.75)}
+  .badge{position:absolute;right:132px;top:66px;font-family:var(--font-data);
+    font-size:22px;letter-spacing:.32em;text-transform:uppercase;color:rgba(255,255,255,.30)}
+
+  /* ---- Fin de marque ---- */
+  #logo{position:absolute;left:50%;top:300px;width:1020px;will-change:transform,opacity}
+  #logo img{display:block;width:100%;height:auto}
+  #cta{position:absolute;left:50%;top:980px;background:var(--accent);color:#fff;
+    font-size:50px;font-weight:700;padding:34px 80px;border-radius:16px;white-space:nowrap;
+    box-shadow:0 40px 110px rgba(50,145,255,.6), inset 0 2px 0 rgba(255,255,255,.32);
+    will-change:transform,opacity}
+
+  #vig{position:absolute;inset:0;z-index:50;pointer-events:none;
+    background:radial-gradient(150% 112% at 50% 46%,transparent 60%,rgba(0,0,0,.68) 100%)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wash"></div>
+  <div id="grid"></div>
+  <div id="beam"></div>
+  <div class="corner" id="cTL"></div><div class="corner" id="cTR"></div>
+  <div class="corner" id="cBL"></div><div class="corner" id="cBR"></div>
+  <div class="badge">Pinlane</div>
+
+  <svg id="link"><path id="linkPath" d=""/></svg>
+
+  <!-- Construit UNE FOIS : aucun innerHTML n'est reecrit pendant le film,
+       c'est ce qui garde les transitions continues. -->
+  <div id="scr">
+    <video id="vStaff" src="../../artifacts/promo-clips/staff.webm" muted preload="auto"></video>
+    <video id="vClient" src="../../artifacts/promo-clips/client.webm" muted preload="auto"></video>
+    <div class="veil"></div><div class="spec" id="spec"></div>
+  </div>
+
+  <div class="frag" id="f1"><canvas id="c1"></canvas><div class="tag" id="t1"></div></div>
+  <div class="frag" id="f2"><canvas id="c2"></canvas><div class="tag" id="t2"></div></div>
+
+  <div class="col" id="colA"><div class="kick"></div><div class="bar"></div><div class="num"></div><div class="cap"></div></div>
+  <div class="col" id="colB"><div class="kick"></div><div class="bar"></div><div class="num"></div><div class="cap"></div></div>
+
+  <div id="logo"><img src="../../artifacts/promo-video/logo-dark-lockup.png" alt="Pinlane"></div>
+  <div id="cta">Réserver une démo</div>
+
+  <div id="subs"></div>
+  <div id="steps"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="prog"><div id="progIn"></div></div>
+  <div id="vig"></div>
+</div>
+
+<script src="../../artifacts/promo-clips/marks.js"></script>
+<script>
+// ===========================================================================
+// Bornes prises sur la voix resserree (voix-pro-serree.mp3) :
+//   0.00-2.98 / 3.04-6.77 / 6.83-10.16 / 10.22-13.15
+//   13.21-16.26 / 16.32-19.56 / 19.62-22.87 / 22.93-24.66
+// ===========================================================================
+const DUR = 25.2;
+const TRANS = 0.80;
+const $ = (id) => document.getElementById(id);
+const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eInOut = (x) => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, x) => a + (b - a) * x;
+const mixBox = (A, B, u) => A.map((v, i) => lerp(v, B[i], u));
+
+const LINES = [
+  { a: 0.02, b: 2.92, t: "Pinlane, c'est tout votre centre dans un seul outil.", hi: ['Pinlane,'] },
+  { a: 3.04, b: 6.71, t: 'Le planning en direct : vous contrôlez chaque piste.', hi: ['planning'] },
+  { a: 6.83, b: 10.10, t: 'Un formulaire de réservation fait sur mesure.', hi: ['mesure.'] },
+  { a: 10.22, b: 13.09, t: 'Confirmations, rappels, relances : automatiques.', hi: ['automatiques.'] },
+  { a: 13.21, b: 16.20, t: 'Une IA marketing qui vous guide sur les réseaux.', hi: ['IA', 'marketing'] },
+  { a: 16.32, b: 19.50, t: 'Tarifs, équipes, établissement : vous gérez tout.', hi: ['tout.'] },
+  { a: 19.62, b: 22.81, t: 'Toute votre data, stockée et analysée.', hi: ['data,'] },
+  { a: 22.93, b: DUR, t: 'Demandez votre démo.', hi: ['démo.'] },
+];
+
+const M = (typeof window !== 'undefined' && window.PROMO_MARKS) || {};
+const A = (cle, defaut) => (M[cle] ? M[cle].t : defaut);
+const dep = (v) => Math.max(0, v);
+// Fenetres du clip calculees depuis les instants releves AU TOURNAGE : ecrites
+// en dur, elles se desynchronisaient des que le clip changeait de duree.
+const FEN = {
+  planning:      [dep(A('survol de la reservation', 3.63) - 3.0), A('survol de la reservation', 3.63) - 0.4],
+  planningFiche: [A('survol de la reservation', 3.63) - 0.6, A('la resa dans la liste', 10.5) - 2.9],
+  emails:        [A('sequence Confirmation', 14.0) - 0.4, A('sequence Reactiver les dormants', 16.93) + 1.5],
+  marketing:     [A('page marketing', 21.68) - 0.3, A('page marketing', 21.68) + 4.8],
+  etablissement: [A('un autre centre', 36.71) - 5.2, A('un autre centre', 36.71) - 0.2],
+  clients:       [A('le panier moyen', 40.46) - 1.4, A('le panier moyen', 40.46) + 4.0],
+};
+window.SCRUB_ERRORS = [];
+
+// Deux compositions en miroir. L'ecran tient un cote, le bloc chiffre l'autre,
+// un detail fait le pont entre les deux et l'autre deborde hors cadre — c'est
+// ce debord qui supprime la zone morte du bord.
+const DROITE = {
+  scr: [830, 236, 1560, 878], ry: -11,
+  f1:  [716, 856, 548, 316],       // pont vers le texte
+  f2:  [2156, 214, 436, 252],      // deborde a droite
+  col: 150, lien: [[690, 622], [762, 830]],
+};
+const GAUCHE = {
+  scr: [170, 236, 1560, 878], ry: 11,
+  f1:  [1296, 856, 548, 316],
+  f2:  [-32, 214, 436, 252],
+  col: 1850, lien: [[1868, 622], [1796, 830]],
+};
+
+// Chaque chiffre est LU SUR L'ECRAN du plan : rien d'invente.
+const PLANS = [
+  { k: 'a1', a: 0.00,  clip: 'staff',  fen: FEN.planning,      L: DROITE,
+    kick: 'La console du centre', num: '1', cap: 'seul outil pour tout le centre',
+    s1: [2040, 40, 520, 300],  n1: 'Chiffre du jour',
+    s2: [1240, 750, 520, 300],   n2: 'Planning' },
+  { k: 'a2', a: 3.04,  clip: 'staff',  fen: FEN.planningFiche, L: GAUCHE,
+    kick: 'Planning & contrôle', num: '601 €', cap: 'chiffre du jour, en direct',
+    s1: [1340, 410, 520, 300], n1: 'Réservation',
+    s2: [2040, 40, 520, 300],  n2: 'Chiffre du jour' },
+  { k: 'a3', a: 6.83,  clip: 'client', fen: [1.4, 6.8],        L: DROITE,
+    kick: 'Côté client', num: '< 1 min', cap: 'pour réserver en ligne',
+    s1: [1390, 500, 520, 300], n1: 'Date & joueurs',
+    s2: [1660, 1119, 520, 300], n2: 'Durée de jeu' },
+  { k: 'a4', a: 10.22, clip: 'staff',  fen: FEN.emails,        L: GAUCHE,
+    kick: 'Séquences automatiques', num: '6', cap: 'séquences prêtes à l’emploi',
+    s1: [1267, 895, 520, 300],  n1: 'Confirmation',
+    s2: [1652, 895, 520, 300],  n2: 'Rappel' },
+  { k: 'a5', a: 13.21, clip: 'staff',  fen: FEN.marketing,     L: DROITE,
+    kick: 'Marketing', num: 'IA', cap: 'qui surveille et propose chaque matin',
+    s1: [1560, 30, 520, 300],  n1: 'Votre agent',
+    s2: [1600, 250, 520, 300], n2: 'Ce qui est prêt' },
+  { k: 'a6', a: 16.32, clip: 'staff',  fen: FEN.etablissement, L: GAUCHE,
+    kick: 'Vous gérez tout', num: '3', cap: 'centres pilotés d’un seul écran',
+    s1: [1690, 407, 520, 300], n1: 'Vos centres',
+    s2: [1740, 886, 520, 300], n2: 'Capacité' },
+  { k: 'a7', a: 19.62, clip: 'staff',  fen: FEN.clients,       L: DROITE,
+    kick: 'Clients & analyses', num: '156 €', cap: 'panier moyen calculé pour vous',
+    s1: [2725, 481, 520, 300],  n1: 'Fiche client',
+    s2: [1530, 533, 520, 300], n2: 'Vos clients' },
+  { k: 'a8', a: 22.93, clip: 'staff',  fen: FEN.clients,       L: DROITE, sortie: true,
+    kick: '', num: '', cap: '', s1: [2725, 481, 520, 300], n1: '', s2: [1530, 533, 520, 300], n2: '' },
+];
+const finDe = (i) => (i < PLANS.length - 1 ? PLANS[i + 1].a : DUR);
+
+// --- scrub ----------------------------------------------------------------
+let WAIT = [];
+function seekTo(v, time) {
+  WAIT.push(v);
+  const fini = () => { WAIT = WAIT.filter((x) => x !== v); };
+  v.addEventListener('seeked', fini, { once: true });
+  v.addEventListener('error', fini, { once: true });
+  try { v.currentTime = time; } catch (e) { fini(); }
+}
+function scrub(v, time) {
+  if (!v) return;
+  if (v.duration && time > v.duration - 0.05) {
+    window.SCRUB_ERRORS.push({ src: v.id, t: +time.toFixed(2), duree: +v.duration.toFixed(2) });
+    time = Math.max(0, v.duration - 0.1);
+  }
+  if (v.readyState < 1) {
+    WAIT.push(v);
+    v.addEventListener('loadedmetadata', () => { WAIT = WAIT.filter((x) => x !== v); seekTo(v, time); }, { once: true });
+    return;
+  }
+  if (Math.abs(v.currentTime - time) > 0.02) seekTo(v, time);
+}
+window.SCRUB_SETTLED = () => WAIT.length === 0
+  && [...document.querySelectorAll('video')].every((v) => v.readyState >= 2 && !v.seeking);
+
+// --- etat interpole -------------------------------------------------------
+let ETAT = null;
+function etat(t) {
+  let i = 0;
+  for (let n = 0; n < PLANS.length; n++) if (t >= PLANS[n].a) i = n;
+  const p = PLANS[i], prev = PLANS[i - 1] || p;
+  const u = eInOut(clamp01((t - p.a) / TRANS));
+  const vie = clamp01((t - p.a) / Math.max(.6, finDe(i) - p.a));
+  return { p, prev, i, u, vie, t };
+}
+
+// Trois vitesses de derive : c'est l'ECART entre elles qui fait la profondeur.
+const derive = (t, k, ph) => ({
+  x: Math.sin(t * .62 + ph) * 9 * k + Math.sin(t * .27 + ph) * 6 * k,
+  y: Math.cos(t * .48 + ph) * 7 * k,
+});
+
+function poseBoite(el, b, extra) {
+  el.style.left = b[0] + 'px'; el.style.top = b[1] + 'px';
+  el.style.width = b[2] + 'px'; el.style.height = b[3] + 'px';
+  el.style.transform = extra;
+}
+
+function drawScene(t) {
+  const e = etat(t); ETAT = e;
+  const p = e.p, prev = e.prev;
+  const sortie = p.sortie ? eInOut(clamp01((t - p.a) / .9)) : 0;
+
+  // ---- ecran ----
+  const box = mixBox(prev.L.scr, p.L.scr, e.u);
+  const ry = lerp(prev.L.ry, p.L.ry, e.u);
+  const d0 = derive(t, 1, 0);
+  poseBoite($('scr'), box,
+    `translate3d(${d0.x}px, ${d0.y - sortie * 260}px, 0) rotateY(${ry + Math.sin(t * .5) * .5}deg) `
+    + `rotateX(${2.2 - sortie * 4}deg) rotateZ(${Math.sin(t * .4) * .28}deg)`);
+  $('scr').style.opacity = 1 - sortie;
+
+  const estClient = p.clip === 'client';
+  const prevClient = prev.clip === 'client';
+  const opClient = lerp(prevClient ? 1 : 0, estClient ? 1 : 0, e.u);
+  $('vStaff').style.opacity = 1 - opClient;
+  $('vClient').style.opacity = opClient;
+
+  if (p.fen) {
+    const v = estClient ? $('vClient') : $('vStaff');
+    scrub(v, p.fen[0] + e.vie * (p.fen[1] - p.fen[0]));
+    if (opClient > 0 && opClient < 1) {
+      const w = prevClient ? $('vClient') : $('vStaff');
+      scrub(w, prev.fen[1]);
+    }
+  }
+
+  const sp = $('spec');
+  const s = clamp01((t - p.a) / 1.0);
+  sp.style.opacity = s > 0 && s < 1 ? (1 - Math.abs(s - .5) * 2) * .8 : 0;
+  sp.style.transform = `translateX(${lerp(-480, box[2] + 220, eOut(s))}px) skewX(-16deg)`;
+
+  // ---- details extraits : ils entrent en decale et derivent plus vite ----
+  [['f1', 'f1', 's1', 'n1', 't1', .30, 1.9, 1.4], ['f2', 'f2', 's2', 'n2', 't2', .48, 2.6, 3.1]]
+    .forEach(([id, cle, srcCle, nomCle, tagId, retard, vitesse, phase]) => {
+      const el = $(id);
+      const b = mixBox(prev.L[cle], p.L[cle], e.u);
+      const dd = derive(t, vitesse, phase);
+      const dedans = eOut(clamp01((t - (p.a + retard)) / .62));
+      const dehors = eInOut(clamp01((t - (finDe(e.i) - .42)) / .42));
+      // Un changement de clip interdit d'interpoler le recadrage : on creuse
+      // brievement l'opacite, ce qui se lit comme une mise au point.
+      const saut = (prev.clip !== p.clip) ? (1 - Math.sin(Math.PI * clamp01(e.u)) * .85) : 1;
+      const cote = (p.L === DROITE ? -1 : 1) * (id === 'f2' ? -1 : 1);
+      el.style.opacity = clamp01(dedans) * (1 - dehors) * saut * (1 - sortie);
+      poseBoite(el, b,
+        `translate3d(${dd.x + lerp(120 * cote, 0, dedans) + dehors * -90 * cote}px, `
+        + `${dd.y + lerp(34, 0, dedans) + dehors * 30 - sortie * 200}px, 0) `
+        + `rotateY(${lerp(-14 * cote, -3.5 * cote, dedans)}deg) rotateX(${1.4}deg)`);
+      $(tagId).textContent = p[nomCle] || '';
+    });
+
+  // ---- bloc chiffre : deux colonnes qui se croisent ----
+  [[0, e.i], [1, e.i - 1]].forEach(([, ]) => {});
+  const colDe = (idx) => (idx % 2 === 0 ? $('colA') : $('colB'));
+  [e.i, e.i - 1].forEach((idx) => {
+    if (idx < 0) return;
+    const pl = PLANS[idx], el = colDe(idx);
+    el.style.left = pl.L.col + 'px';
+    el.style.top = '392px';
+    el.querySelector('.kick').textContent = pl.kick;
+    el.querySelector('.cap').textContent = pl.cap;
+    const dedans = eOut(clamp01((t - (pl.a + .12)) / .58));
+    const dehors = eInOut(clamp01((t - (finDe(idx) - .55)) / .55));
+    const cote = pl.L === DROITE ? -1 : 1;
+    el.style.opacity = pl.kick ? clamp01(dedans) * (1 - dehors) : 0;
+    const dc = derive(t, .45, idx);
+    el.style.transform = `translate3d(${dc.x + lerp(70 * cote, 0, dedans) + dehors * -60 * cote}px, `
+      + `${dc.y + lerp(22, 0, dedans)}px, 0)`;
+    el.querySelector('.bar').style.width = `${Math.round(eOut(clamp01((t - (pl.a + .30)) / .5)) * 190)}px`;
+    // Les chiffres se COMPTENT : un nombre qui apparait fige ne raconte rien.
+    const brut = String(pl.num);
+    const m = /^([\d]+)(.*)$/.exec(brut);
+    if (m) {
+      const c = eOut(clamp01((t - (pl.a + .22)) / .95));
+      el.querySelector('.num').textContent = Math.round(Number(m[1]) * c) + m[2];
+    } else {
+      el.querySelector('.num').textContent = brut;
+    }
+  });
+
+  // ---- trait de liaison chiffre -> detail ----
+  const [L0, L1] = p.L.lien;
+  const f1b = mixBox(prev.L.f1, p.L.f1, e.u);
+  const cible = [f1b[0] + (p.L === DROITE ? 0 : f1b[2]), f1b[1] + 40];
+  const tirage = eOut(clamp01((t - (p.a + .55)) / .7)) * (1 - eInOut(clamp01((t - (finDe(e.i) - .4)) / .4)));
+  const px = lerp(L1[0], cible[0], tirage), py = lerp(L1[1], cible[1], tirage);
+  $('linkPath').setAttribute('d', `M ${L0[0]} ${L0[1]} L ${L1[0]} ${L1[1]} L ${px} ${py}`);
+  $('linkPath').style.opacity = (tirage > .02 ? .9 : 0) * (1 - sortie);
+
+  // ---- marque ----
+  const p8 = PLANS[PLANS.length - 1];
+  const venue = eInOut(clamp01((t - p8.a) / 1.0));
+  $('logo').style.opacity = venue;
+  $('logo').style.transform = `translateX(-50%) translateY(${lerp(58, 0, venue)}px) scale(${lerp(.93, 1, venue)})`;
+  const vcb = eInOut(clamp01((t - (p8.a + .72)) / .8));
+  $('cta').style.opacity = vcb;
+  $('cta').style.transform = `translateX(-50%) translateY(${lerp(48, 0, vcb)}px)`;
+}
+
+// PAINT est appele par le rendu APRES stabilisation des clips : c'est la seule
+// facon d'etre sur que drawImage copie la bonne image.
+window.PAINT = () => {
+  if (!ETAT) return;
+  const { p, prev, u } = ETAT;
+  const v = p.clip === 'client' ? $('vClient') : $('vStaff');
+  if (!v || v.readyState < 2) return;
+  const memeClip = prev.clip === p.clip;
+  [['c1', 's1', 'f1'], ['c2', 's2', 'f2']].forEach(([cid, scle, fcle]) => {
+    const cv = $(cid); if (!cv) return;
+    const b = mixBox(prev.L[fcle], p.L[fcle], u);
+    const W = Math.max(2, Math.round(b[2])), H = Math.max(2, Math.round(b[3]));
+    if (cv.width !== W) cv.width = W;
+    if (cv.height !== H) cv.height = H;
+    // Le recadrage lui-meme se deplace pendant la transition : le detail
+    // « voyage » d'une region a l'autre au lieu de sauter.
+    const base = memeClip ? mixBox(prev[scle], p[scle], u) : p[scle];
+    const tt = ETAT.t;
+    const r = [base[0] + Math.sin(tt * .52 + (cid === 'c2' ? 2.1 : 0)) * 20,
+               base[1] + Math.cos(tt * .41 + (cid === 'c2' ? 1.3 : 0)) * 12,
+               base[2], base[3]];
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    try { ctx.drawImage(v, r[0], r[1], r[2], r[3], 0, 0, W, H); } catch (err) {}
+  });
+};
+
+let subKey = '';
+function drawSubs(t) {
+  const L = LINES.find((l) => t >= l.a - .5 && t < l.b + .5);
+  const host = $('subs');
+  if (!L) { host.style.opacity = 0; return; }
+  if (subKey !== String(L.a)) {
+    host.innerHTML = L.t.split(' ').map((w) => {
+      const c = (L.hi || []).includes(w) ? ' hi' : '';
+      return `<span class="w${c}">${w}</span>`;
+    }).join('');
+    subKey = String(L.a);
+  }
+  const mots = [...host.children];
+  const span = Math.max(.24, (L.b - L.a) * .42);
+  const out = eInOut(clamp01((t - (L.b - .18)) / .5));
+  mots.forEach((el, i) => {
+    const st = L.a + (i / Math.max(1, mots.length)) * span;
+    const pb = eInOut(clamp01((t - st) / .32));
+    el.style.opacity = pb * (1 - out);
+    el.style.transform = `translateY(${lerp(42, 0, pb) - out * 40}px) rotateX(${lerp(-58, 0, pb)}deg)`;
+  });
+  host.style.opacity = 1;
+}
+
+function render(t) {
+  // Le decor bouge le moins : c'est le point fixe qui rend les autres couches
+  // lisibles comme du mouvement.
+  $('wash').style.transform = `translate(${Math.sin(t * .3) * 88}px, ${Math.cos(t * .24) * 62}px) rotate(${Math.sin(t * .17) * 5}deg) scale(${1 + Math.sin(t * .21) * .05})`;
+  $('grid').style.transform = `translate(${(t * 26) % 132}px, ${(t * 15) % 132}px)`;
+  $('beam').style.transform = `translateX(${((t * 380) % 3300) - 620}px)`;
+  $('progIn').style.width = (clamp01(t / DUR) * 100).toFixed(2) + '%';
+  const cp = eOut(clamp01(t / .55));
+  ['cTL', 'cTR', 'cBL', 'cBR'].forEach((id) => { $(id).style.opacity = cp * .8; });
+
+  drawScene(t);
+  drawSubs(t);
+  const idx = ETAT ? Math.min(6, ETAT.i) : 0;
+  [...$('steps').children].forEach((el, i) => el.classList.toggle('on', i <= idx));
+}
+window.renderFrame = render;
+window.SCENE_DURATION = DUR;
+render(0);
+</script>
+</body>
+</html>

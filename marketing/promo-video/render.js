@@ -67,6 +67,10 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
         .catch(() => console.warn(`
   clip non stabilise a la frame ${i}`));
     }
+    // PAINT() est appele APRES la stabilisation. Une scene peut recopier des
+    // morceaux du clip dans des <canvas> pour les faire vivre au premier plan ;
+    // un drawImage lance avant le repositionnement copierait l'image precedente.
+    await page.evaluate(() => { if (window.PAINT) window.PAINT(); });
     await page.screenshot({
       path: path.join(FRAME_DIR, `f${String(i).padStart(5, '0')}.png`),
       animations: 'disabled',

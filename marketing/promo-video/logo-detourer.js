@@ -10,7 +10,22 @@
 // On propage donc depuis les bords (remplissage par diffusion) et on ne rend
 // transparent que ce qui est atteint.
 //
-// Usage : node marketing/promo-video/logo-detourer.js <entree.png> <sortie.png> [clair|sombre]
+// MODE « sur-noir » : extraction EXACTE, pas un seuil.
+//
+// Sur la declinaison sombre, le dessin est compose sur du noir pur. Or composer
+// sur du noir, c'est exactement premultiplier : pixel = couleur x alpha. On
+// inverse donc l'operation au lieu de la deviner —
+//     alpha  = max(R, V, B)          (le noir vaut 0 sur les trois canaux)
+//     couleur = pixel x 255 / alpha   (depremultiplication)
+// Un pixel a mi-chemin entre le bleu et le fond ressort a demi transparent AVEC
+// la bonne couleur : l'anticrenelage est reconstruit, pas approxime.
+//
+// Et le papier du calendrier redevient transparent — ce qui est le comportement
+// VOULU sur fond sombre : le decor transparait, comme sur la planche d'origine
+// posee sur noir. C'est le contraire du mode « sombre » (diffusion), qui le
+// garde opaque pour un fond clair.
+//
+// Usage : node marketing/promo-video/logo-detourer.js <entree.png> <sortie.png> [clair|sombre|sur-noir]
 
 const fs = require('fs');
 const path = require('path');
@@ -32,6 +47,30 @@ const W = Number(dims[0]), H = Number(dims[1]);
 
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', inFile, '-f', 'rawvideo', '-pix_fmt', 'rgb24', tmpRaw]);
 const rgb = fs.readFileSync(tmpRaw);
+
+// --- Mode exact : depremultiplication d'un dessin compose sur noir ---------
+if (MODE === 'sur-noir') {
+  const rgba = Buffer.alloc(W * H * 4);
+  let encre = 0;
+  for (let i = 0, s = 0, d = 0; i < W * H; i++, s += 3, d += 4) {
+    const a = Math.max(rgb[s], rgb[s + 1], rgb[s + 2]);
+    if (a === 0) { rgba[d] = rgba[d + 1] = rgba[d + 2] = rgba[d + 3] = 0; continue; }
+    rgba[d] = Math.min(255, Math.round((rgb[s] * 255) / a));
+    rgba[d + 1] = Math.min(255, Math.round((rgb[s + 1] * 255) / a));
+    rgba[d + 2] = Math.min(255, Math.round((rgb[s + 2] * 255) / a));
+    rgba[d + 3] = a;
+    if (a > 24) encre++;
+  }
+  fs.writeFileSync(tmpRaw, rgba);
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba',
+    '-s', `${W}x${H}`, '-i', tmpRaw, '-frames:v', '1', outFile]);
+  fs.rmSync(tmpRaw, { force: true });
+  const pct = ((encre / (W * H)) * 100).toFixed(1);
+  console.log(`${path.basename(outFile)} : ${W}x${H}, ${pct} % d'encre (mode sur-noir)`);
+  if (encre < W * H * 0.01) { console.error('ECHEC : rien d\'opaque, l\'image n\'etait pas sur fond noir'); process.exit(1); }
+  console.log('OK : alpha reconstruit par depremultiplication, anticrenelage exact');
+  process.exit(0);
+}
 
 const luma = new Uint8Array(W * H);
 for (let i = 0, p = 0; i < W * H; i++, p += 3) {

@@ -115,6 +115,35 @@
   // precedentes ne sont plus comparables et ne doivent pas produire de defile.
   function oublier() { derniere = Object.create(null); signatures = Object.create(null); }
 
+  /* ---- LE FOCUS QUI SURVIT AU RENDU -------------------------------------
+     Les pages de la console se re-rendent par `innerHTML` complet. Un champ de
+     recherche dont le `oninput` declenche ce rendu est donc DETRUIT a chaque
+     lettre : le focus part, et taper « anniversaire » demande douze clics.
+     C'est ce que Movsar a decrit : « j'ecris un a et ca me retire de
+     l'ecriture ».
+
+     On memorise le champ par une CLE (`data-pl-focus`) et non par sa reference :
+     l'element d'apres le rendu n'est pas le meme objet. La position du curseur
+     est restauree aussi, sinon corriger une faute au milieu d'un mot renverrait
+     le curseur a la fin. */
+  function garderFocus(rendre) {
+    var actif = document.activeElement;
+    var cle = actif && actif.getAttribute ? actif.getAttribute('data-pl-focus') : null;
+    var debut = null;
+    var fin = null;
+    if (cle) {
+      try { debut = actif.selectionStart; fin = actif.selectionEnd; } catch (e) { /* type sans selection */ }
+    }
+    rendre();
+    if (!cle) return;
+    var neuf = document.querySelector('[data-pl-focus="' + cle + '"]');
+    if (!neuf || neuf === actif) return;
+    try {
+      neuf.focus({ preventScroll: true });
+      if (debut !== null) neuf.setSelectionRange(debut, fin);
+    } catch (e) { /* le champ n'accepte pas la selection */ }
+  }
+
   /* ---- LES LISTES QUI SE RECOMPOSENT ------------------------------------
      Quand on cherche un client, la liste ne doit pas se remplacer d'un coup :
      ses lignes se posent l'une apres l'autre, comme sur la vitrine. 26 ms
@@ -220,6 +249,7 @@
   window.PinlaneMotion = {
     chiffres: chiffres,
     cascade: cascade,
+    garderFocus: garderFocus,
     oublier: oublier,
     marquerNeuves: marquerNeuves,
     estNeuve: estNeuve,

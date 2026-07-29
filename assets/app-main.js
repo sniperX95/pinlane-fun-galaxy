@@ -11833,7 +11833,11 @@ function getStaffClientMetrics(rows = getStaffClientRows(), reservations = getSt
 
 function setStaffClientQuery(value) {
   state.staffClientQuery = value || '';
-  renderStaffClientsPage();
+  // Le rendu detruit le champ (innerHTML complet) : sans ca le focus part a
+  // chaque lettre et la recherche est inutilisable - taper « anniversaire »
+  // demandait douze clics.
+  if (typeof PinlaneMotion !== 'undefined') PinlaneMotion.garderFocus(renderStaffClientsPage);
+  else renderStaffClientsPage();
 }
 
 function selectStaffClient(id) {

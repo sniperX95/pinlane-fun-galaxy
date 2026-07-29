@@ -13712,3 +13712,44 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 @media (prefers-reduced-motion: reduce) {
   .pl-in { animation: none; opacity: 1; transform: none; }
 }
+
+/* La recherche clients, POSEE AU-DESSUS DE LA LISTE et non dans la barre de
+   titre. Elle etait a l'autre bout de l'ecran alors qu'on l'utilise en
+   regardant les lignes : le trajet de l'oeil et de la souris etait absurde.
+   Elle prend la place disponible entre les onglets et le compteur. */
+.crm-search {
+  display: flex; align-items: center; gap: 8px;
+  flex: 1 1 260px; min-width: 180px; max-width: 460px;
+  height: 34px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--muted);
+  transition: border-color .16s var(--ease-out-strong, ease), box-shadow .16s var(--ease-out-strong, ease);
+}
+.crm-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.crm-search svg { flex: none; opacity: .7; }
+.crm-search input {
+  flex: 1; min-width: 0; height: 100%;
+  border: 0; background: none; outline: none;
+  color: var(--text); font-family: inherit; font-size: 13.5px;
+}
+.crm-search input::placeholder { color: var(--faint); }
+/* La croix native de `type="search"` est masquee : elle differe d'un navigateur
+   a l'autre et ne suit pas le theme sombre. */
+.crm-search input::-webkit-search-cancel-button { display: none; }
+.crm-search-clear {
+  flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--line); color: var(--text); cursor: pointer;
+  font-size: 15px; line-height: 1; display: grid; place-items: center;
+}
+.crm-search-clear:hover { background: var(--line-strong); }
+/* La barre de segments accueille maintenant trois choses : elle passe donc en
+   flex avec retour a la ligne, et le compteur reste colle a droite. */
+.crm-segbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.crm-segbar .crm-seg-count { margin-left: auto; }
+@media (max-width: 720px) {
+  .crm-search { flex-basis: 100%; max-width: none; order: 3; }
+  .crm-segbar .crm-seg-count { order: 2; }
+}

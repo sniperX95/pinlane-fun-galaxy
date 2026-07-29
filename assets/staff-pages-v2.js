@@ -41,11 +41,16 @@
       const suffix = node.getAttribute('data-pv2-suffix') || '';
       const start = performance.now();
       const duration = 620;
+      // Le drapeau que PinlaneMotion respecte : pendant ce defile d'arrivee, le
+      // module ne doit pas lire les valeurs intermediaires, sinon il memorise
+      // une reference fausse et rejoue une seconde animation par-dessus.
+      node.setAttribute('data-pl-anim', '1');
       const step = (now) => {
         const t = Math.min(1, (now - start) / duration);
         const eased = 1 - Math.pow(1 - t, 3);
         node.textContent = Math.round(target * eased).toLocaleString('fr-BE') + suffix;
         if (t < 1) requestAnimationFrame(step);
+        else node.removeAttribute('data-pl-anim');
       };
       requestAnimationFrame(step);
     });
@@ -299,9 +304,17 @@
   }
 
   function stat({ label, value, count, suffix = '', delta = '', deltaTone = 'flat', foot = '', series = null }) {
+    // `data-pv2-count` ne defile QU'A L'ARRIVEE sur la page (voir
+    // animateCounters). `data-pl-num` prend le relais ensuite : c'est lui qui
+    // fait bouger le chiffre quand la valeur CHANGE - une recherche, un poll,
+    // une reservation qui tombe. Sans ca les grands chiffres de tete restaient
+    // figes pendant toute la session, ce que Movsar a vu tout de suite.
+    // La cle vient du libelle : les stats sont posees par appels successifs,
+    // aucun identifiant ecrit a la main n'aurait tenu.
+    const cle = `stat.${String(label).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
     const valueHtml = count !== undefined
-      ? `<span data-pv2-count="${Number(count) || 0}" data-pv2-suffix="${esc(suffix)}">${(Number(count) || 0).toLocaleString('fr-BE')}${esc(suffix)}</span>`
-      : esc(value);
+      ? `<span data-pv2-count="${Number(count) || 0}" data-pv2-suffix="${esc(suffix)}" data-pl-num="${cle}">${(Number(count) || 0).toLocaleString('fr-BE')}${esc(suffix)}</span>`
+      : `<span data-pl-num="${cle}">${esc(value)}</span>`;
     return `<article class="pv2-stat">
       <div class="pv2-stat-label"><span>${esc(label)}</span>${delta ? `<span class="pv2-delta ${deltaTone}">${esc(delta)}</span>` : ''}</div>
       <div class="pv2-stat-value">${valueHtml}</div>
@@ -499,8 +512,22 @@
       // gates qui pilotent ces boutons).
       return `<button type="button" class="crm-seg${active === key ? ' is-active' : ''}" data-crm-seg="${key}" aria-pressed="${active === key}" onclick="setStaffClientSegment('${key}')"><span class="crm-seg-label">${esc(label)}</span>${badge}</button>`;
     }).join('');
-    const count = active === 'avenir' ? '' : `<span class="crm-seg-count"><strong>${filteredCount}</strong>${active === 'tous' ? ` / ${totalCount}` : ''} client${filteredCount > 1 ? 's' : ''}</span>`;
-    return `<section class="crm-segbar" role="tablist" aria-label="Vue clients">${seg}${count}</section>`;
+    // Le compteur qui DESCEND pendant la frappe : c'est lui qui prouve a l'oeil
+    // que la recherche est instantanee. Les deux nombres sont isoles pour etre
+    // animes separement.
+    const count = active === 'avenir' ? '' : `<span class="crm-seg-count"><strong data-pl-num="crm.segment.filtres">${filteredCount}</strong>${active === 'tous' ? ` / <span data-pl-num="crm.segment.total">${totalCount}</span>` : ''} client${filteredCount > 1 ? 's' : ''}</span>`;
+    // LA RECHERCHE EST ICI, pas dans la barre de titre : c'est au-dessus de la
+    // liste qu'on cherche, et elle etait a l'autre bout de l'ecran.
+    // `data-pl-focus` la fait survivre au re-rendu declenche par sa propre
+    // frappe - sans ca le focus partait a chaque lettre.
+    const search = `<label class="crm-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input type="search" data-pl-focus="clients.recherche" value="${esc(state.staffClientQuery || '')}"
+        placeholder="Rechercher un client, un email, un téléphone…" aria-label="Rechercher un client"
+        oninput="setStaffClientQuery(this.value)">
+      ${state.staffClientQuery ? '<button type="button" class="crm-search-clear" aria-label="Effacer la recherche" onclick="setStaffClientQuery(\'\')">&times;</button>' : ''}
+    </label>`;
+    return `<section class="crm-segbar" role="tablist" aria-label="Vue clients">${seg}${search}${count}</section>`;
   }
 
   // Badge unique par ligne : le plus décisionnel gagne.
@@ -917,7 +944,6 @@
         title: 'Clients',
         sub: esc(sync),
         actions: `
-          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffClientQuery || '')}" placeholder="Rechercher un client…" oninput="setStaffClientQuery(this.value)"><kbd>Ctrl K</kbd></label>
           <button type="button" class="pv2-btn" onclick="refreshStaffClients()">Actualiser</button>
           <button type="button" class="pv2-btn" onclick="exportStaffClientsCsv()">Exporter</button>
           <button type="button" class="pv2-btn primary" onclick="openStaffClientBooking()">+ Nouveau client</button>`,

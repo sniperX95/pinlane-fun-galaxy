@@ -764,7 +764,7 @@
     const badges = [crmStatusPill(selected)];
     if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push(`<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`);
     if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">Anniversaire</span>');
-    const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
+    const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val" data-pl-num="crm.${String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-")}">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
     const next = selected.nextBooking;
     const relance = getStaffClientRelance(selected);
     let nextBlock = '';

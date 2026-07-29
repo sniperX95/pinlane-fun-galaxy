@@ -598,7 +598,7 @@
         <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(c.status || '')}</span>
         ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('refresh')}</button>` : ''}
       </div>`).join('');
-    return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
+    return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count" data-pl-num="crm.messages">${comms.length}</span></h3>${compose}</div>
       <div class="crm-comm-stats">${sent} envoyé${sent > 1 ? 's' : ''} · ${delivered} délivré${delivered > 1 ? 's' : ''} · ${failedCount} échec${failedCount > 1 ? 's' : ''}${last ? ` · dernier ${esc((typeof formatOpsTimestamp === 'function' && (last.sentAt || last.createdAt)) ? formatOpsTimestamp(last.sentAt || last.createdAt) : '')}` : ''}</div>
       <div class="crm-comm-list">${items}</div></section>`;
   }
@@ -816,7 +816,7 @@
         </section>` : ''}
 
         <section class="crm-sec">
-          <div class="crm-sec-head"><h3>Réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
+          <div class="crm-sec-head"><h3>Réservations <span class="crm-count" data-pl-num="crm.historique">${(selected.history || []).length}</span></h3></div>
           <div class="crm-history">${(selected.history || []).map(crmHistoryItem).join('') || '<div class="crm-muted">Aucune réservation.</div>'}</div>
         </section>
 
@@ -897,11 +897,11 @@
           <div class="crm-table-wrap">
             <table class="crm-table">
               <thead><tr>${th('name', 'Client') + th('lastDate', 'Venue') + th('reservations', 'Visites', true) + th('spent', 'Dépensé', true)}${lastTh}</tr></thead>
-              <tbody>${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment.' : 'Aucun résultat.'} <button type="button" class="pv2-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
+              <tbody data-pl-stagger="crm.clients">${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment.' : 'Aucun résultat.'} <button type="button" class="pv2-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
             </table>
           </div>
           <div class="crm-list-foot">
-            <span>${shown.length} affiché${shown.length > 1 ? 's' : ''} sur ${rows.length}</span>
+            <span><b data-pl-num="crm.affiches">${shown.length}</b> affiché${shown.length > 1 ? 's' : ''} sur <b data-pl-num="crm.total">${rows.length}</b></span>
             ${rows.length > shown.length ? `<button type="button" class="pv2-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
           </div>
         </article>
@@ -2927,7 +2927,7 @@
           </div>
           <table class="pv2-table">
             ${tableHead}
-            <tbody>${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.' : originFilter === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : originFilter === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
+            <tbody data-pl-stagger="comms.file">${tableRows || `<tr><td colspan="4"><div class="pv2-empty"><strong>${filter === 'inbound' ? 'Aucun mail reçu' : 'File vide'}</strong>${filter === 'inbound' ? 'Collez un mail avec « Coller un mail reçu » : l\'agent prépare la réponse.' : originFilter === 'auto' ? 'Aucun mail automatique ne correspond à ce filtre.' : originFilter === 'manual' ? 'Aucun envoi manuel ne correspond à ce filtre.' : 'Aucune communication pour ce filtre.'}</div></td></tr>`}</tbody>
           </table>
         </article>
         <article class="pv2-panel">

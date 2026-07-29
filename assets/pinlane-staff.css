@@ -13702,3 +13702,13 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
      l'information au lieu du mouvement serait une regression d'accessibilite. */
   .res-row.is-neuve, .booking.is-neuve { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
 }
+
+/* Une liste qui se recompose apres une recherche : ses lignes se posent l'une
+   apres l'autre. 26 ms d'ecart et 220 ms de course - la liste RESPIRE, elle ne
+   se fait pas attendre. Au-dela de la seizieme ligne le module arrete de
+   decaler : l'oeil ne suit plus et le reste ne ferait que trainer. */
+.pl-in { animation: plIn .22s var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) both; }
+@keyframes plIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .pl-in { animation: none; opacity: 1; transform: none; }
+}

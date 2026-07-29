@@ -13770,7 +13770,7 @@ function renderReservationSection(statusKey, title, subtitle, reservations) {
         <span class="count">${ordered.length}</span>
       </div>
     </div>
-    ${ordered.length ? `<div class="res-dense-list">${ordered.map(renderReservationRow).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
+    ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste">${ordered.map(renderReservationRow).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
   </div>`;
 }
 

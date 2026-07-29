@@ -113,7 +113,54 @@
 
   // Changer de centre ou de journee, c'est changer de sujet : les valeurs
   // precedentes ne sont plus comparables et ne doivent pas produire de defile.
-  function oublier() { derniere = Object.create(null); }
+  function oublier() { derniere = Object.create(null); signatures = Object.create(null); }
+
+  /* ---- LES LISTES QUI SE RECOMPOSENT ------------------------------------
+     Quand on cherche un client, la liste ne doit pas se remplacer d'un coup :
+     ses lignes se posent l'une apres l'autre, comme sur la vitrine. 26 ms
+     d'ecart, pas 200 : on veut que la liste RESPIRE, pas qu'elle se fasse
+     attendre.
+
+     Meme garde-fou que pour les chiffres : on ne rejoue que si la liste a
+     vraiment change. La signature ne retient que l'IDENTITE des lignes (leurs
+     18 premiers caracteres, donc le nom) et pas leurs valeurs : un montant qui
+     bouge au poll ne doit pas relancer toute la cascade.
+
+     TROIS BORNES, parce que c'est un outil de travail et pas une demo :
+       - 8 lignes decalees au maximum (soit 126 ms avant la derniere), le reste
+         apparait d'un bloc. Une cascade qu'on attend est une cascade ratee ;
+       - la signature ne lit que 40 lignes : au-dela le cout de comparaison
+         depasserait le benefice, et une liste de 200 lignes qui change change
+         de toute facon dans ses 40 premieres ;
+       - `void offsetWidth` force un recalcul de style, donc on ne le paie QUE
+         sur les lignes reellement decalees. */
+  var signatures = Object.create(null);
+  var CASCADE_MAX = 8;               // au-dela, l'oeil ne suit plus et ca traine
+  var CASCADE_PAS = 18;              // ms entre deux lignes
+  var SIG_MAX = 40;                  // lignes lues pour la signature
+
+  function cascade(racine) {
+    var hote = racine && racine.querySelectorAll ? racine : document;
+    var listes = hote.querySelectorAll('[data-pl-stagger]');
+    for (var i = 0; i < listes.length; i += 1) {
+      var liste = listes[i];
+      var cle = liste.getAttribute('data-pl-stagger');
+      var enfants = liste.children;
+      var n = enfants.length;
+      var sig = n + '|';
+      for (var s = 0; s < n && s < SIG_MAX; s += 1) sig += (enfants[s].textContent || '').trim().slice(0, 18) + ';';
+      if (signatures[cle] === sig) continue;
+      signatures[cle] = sig;
+      if (reduit) continue;
+      for (var j = 0; j < n && j < CASCADE_MAX; j += 1) {
+        var e = enfants[j];
+        e.classList.remove('pl-in');
+        void e.offsetWidth;          // force le redemarrage de l'animation
+        e.style.animationDelay = (j * CASCADE_PAS) + 'ms';
+        e.classList.add('pl-in');
+      }
+    }
+  }
 
   /* ---- CE QUI VIENT D'ARRIVER -------------------------------------------
      Une reservation tombee du site pendant le service doit se voir DANS la
@@ -162,15 +209,17 @@
     new MutationObserver(function () {
       if (arme) return;
       arme = true;
-      window.requestAnimationFrame(function () { arme = false; chiffres(document); });
+      window.requestAnimationFrame(function () { arme = false; chiffres(document); cascade(document); });
     }).observe(cible, { childList: true, subtree: true });
     chiffres(document);          // pose la valeur de reference sans animer
+    cascade(document);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observer);
   else observer();
 
   window.PinlaneMotion = {
     chiffres: chiffres,
+    cascade: cascade,
     oublier: oublier,
     marquerNeuves: marquerNeuves,
     estNeuve: estNeuve,

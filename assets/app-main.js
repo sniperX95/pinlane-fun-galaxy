@@ -2057,9 +2057,16 @@ async function syncDateReservations(dateStr, opts = {}) {
     // (site public / autre poste). Les créations locales sont déjà dans l'état
     // avant le poll → jamais notifiées ici. Skip au 1er sync (baseline).
     if (changed && hadBaseline && state.view === 'staff' && dateStr === todayStr()) {
-      (payload.reservations || [])
-        .filter(r => r && !beforeResIds.has(r.id) && r.status !== 'cancelled' && r.status !== 'rejected')
-        .forEach(r => notifyNewReservation(r));
+      const arrivees = (payload.reservations || [])
+        .filter(r => r && !beforeResIds.has(r.id) && r.status !== 'cancelled' && r.status !== 'rejected');
+      // On MARQUE avant de re-rendre : sinon la ligne et le bloc du planning se
+      // dessinent sans leur signal et l'arrivee passe inapercue jusqu'au poll
+      // suivant.
+      if (arrivees.length && typeof PinlaneMotion !== 'undefined') {
+        PinlaneMotion.marquerNeuves(arrivees.map(r => r.id));
+        if (state.currentDate === dateStr && !opts.skipRender) renderStaffData();
+      }
+      arrivees.forEach(r => notifyNewReservation(r));
     }
     markRemoteSyncSuccess();
     return changed;
@@ -5703,25 +5710,25 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
     <section class="dash-kpis">
       <article class="dash-kpi purple">
         <div class="dash-icon">${renderDashboardIcon('calendar')}</div>
-        <div class="dash-kpi-copy"><span>Réservations aujourd'hui</span><strong>${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
+        <div class="dash-kpi-copy"><span>Réservations aujourd'hui</span><strong data-pl-num="dash.resa">${metrics.activeReservations.length}</strong><small>sessions piste</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(reservationTrendText)}</strong><span>vs hier</span></div>
         ${renderDashboardSpark(metrics.reservationSeries, 'purple')}
       </article>
       <article class="dash-kpi blue">
         <div class="dash-icon">${renderDashboardIcon('users')}</div>
-        <div class="dash-kpi-copy"><span>Joueurs aujourd'hui</span><strong>${metrics.players}</strong><small>personnes</small></div>
+        <div class="dash-kpi-copy"><span>Joueurs aujourd'hui</span><strong data-pl-num="dash.joueurs">${metrics.players}</strong><small>personnes</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(playerTrendText)}</strong><span>vs hier</span></div>
         ${renderDashboardSpark(metrics.playerSeries, 'blue')}
       </article>
       <article class="dash-kpi green">
         <div class="dash-icon">${renderDashboardIcon('euro')}</div>
-        <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong>${formatMoney(metrics.revenue)}</strong><small>${formatMoney(metrics.collected)} validés aujourd'hui</small></div>
+        <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong data-pl-num="dash.ca">${formatMoney(metrics.revenue)}</strong><small>${formatMoney(metrics.collected)} validés aujourd'hui</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(revenueTrendText)}</strong><span>vs hier</span></div>
         ${renderDashboardSpark(metrics.revenueSeries, 'green')}
       </article>
       <article class="dash-kpi orange">
         <div class="dash-icon">${renderDashboardIcon('activity')}</div>
-        <div class="dash-kpi-copy"><span>Taux d'occupation</span><strong>${metrics.occupancy}%</strong><small>${availableLanes} pistes disponibles</small></div>
+        <div class="dash-kpi-copy"><span>Taux d'occupation</span><strong data-pl-num="dash.occupation">${metrics.occupancy}%</strong><small>${availableLanes} pistes disponibles</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(occupancyTrendText)}</strong><span>vs hier</span></div>
         ${renderDashboardSpark(metrics.occupancySeries, 'orange')}
       </article>
@@ -12810,6 +12817,13 @@ function renderCardStats(pax, durationLabel, options = {}) {
 
 function getReservationHighlightClasses(reservation) {
   const classes = [];
+  // Ce qui vient de tomber du site pendant le service se signale DANS la liste
+  // et DANS le planning, pas seulement dans le bandeau du coin qu'on rate quand
+  // on a la tete au comptoir. Le bloc `.booking` et la ligne `.res-row` passent
+  // tous les deux par ici : un seul branchement couvre les deux vues.
+  // Le marquage se perime tout seul au bout de trois minutes - un ecran ou tout
+  // brille est un ecran ou plus rien ne ressort.
+  if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.estNeuve(reservation.id)) classes.push('is-neuve');
   if (reservation.type === 'formule' || reservation.formuleId) classes.push('is-formula');
   const bowlingDuration = getBowlingDurationForReservation(reservation);
   if (bowlingDuration && Math.abs(bowlingDuration - 1) > 0.01) classes.push('is-special-duration');

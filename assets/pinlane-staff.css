@@ -13649,3 +13649,56 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 #staffCockpitPage .fcp-billing-edit { display: flex; align-items: center; gap: 6px; }
 #staffCockpitPage .fcp-price-input { width: 88px; }
 #staffCockpitPage .fcp-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--faint); }
+
+/* ==========================================================================
+   §  LE MOTION D'EXPLOITATION
+   ==========================================================================
+   Ajout du 2026-07-29. Retour Movsar : « le motion design de la landing est
+   beaucoup plus beau, dans le vrai produit c'est beaucoup plus sec ».
+
+   Ce qui est porte depuis la vitrine, et rien d'autre : les chiffres qui montent
+   au lieu de sauter, et ce qui vient d'arriver qui se signale. Les scenes de la
+   vitrine durent 12,5 s parce qu'elles RACONTENT ; ici on est au comptoir avec
+   un groupe qui attend, donc le motion INFORME en moins d'une demi-seconde puis
+   s'efface. Un spinner d'une seconde sur chaque action ferait passer la console
+   pour lente, et la loi 1 du produit reste « si ca demande une explication,
+   c'est rate ».
+   ========================================================================== */
+
+/* Un chiffre qui vient de bouger. La couleur dit le SENS avant que le nombre
+   soit lu : au comptoir, « +1 reservation » et « -1 place » n'appellent pas la
+   meme reaction. Elle s'eteint en 900 ms, sinon l'ecran finit tout colore. */
+[data-pl-num] { transition: color .3s var(--ease-out-strong, ease); }
+.pl-num-up { color: var(--success, var(--accent)); }
+.pl-num-down { color: var(--accent-strong, var(--accent)); }
+
+/* CE QUI VIENT D'ARRIVER, dans la liste ET sur le planning.
+   Un halo qui se resorbe, pas un clignotement permanent : la reservation reste
+   marquee trois minutes cote JS, mais l'animation ne joue qu'une fois. Une
+   pastille qui pulse sans fin dans un planning charge devient du bruit. */
+.res-row.is-neuve,
+.booking.is-neuve {
+  animation: plNeuve 2.6s var(--ease-out-strong, cubic-bezier(0.23, 1, 0.32, 1)) 1;
+}
+@keyframes plNeuve {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  22%  { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+/* L'entree de la ligne elle-meme : elle arrive par la gauche, comme une chose
+   qui se pose, pas comme une chose qui apparait de nulle part. */
+.res-row.is-neuve { animation: plNeuve 2.6s var(--ease-out-strong, ease) 1, plNeuveIn .34s var(--ease-out-strong, ease) 1; }
+@keyframes plNeuveIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+/* Sur le planning le bloc est positionne en absolu : il grandit sur place au
+   lieu de glisser, sinon il quitterait son creneau le temps de l'animation. */
+.booking.is-neuve { animation: plNeuve 2.6s var(--ease-out-strong, ease) 1, plNeuvePose .3s var(--ease-out-strong, ease) 1; }
+@keyframes plNeuvePose { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-pl-num] { transition: none; }
+  .pl-num-up, .pl-num-down { color: inherit; }
+  .res-row.is-neuve, .booking.is-neuve { animation: none; }
+  /* Le signal ne disparait pas pour autant : il devient statique. Supprimer
+     l'information au lieu du mouvement serait une regression d'accessibilite. */
+  .res-row.is-neuve, .booking.is-neuve { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+}

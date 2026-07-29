@@ -21,6 +21,12 @@
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
 <script src="./assets/demo-mode.js?v=20260729e"></script>
+<!-- Le motion d'exploitation (chiffres qui montent, arrivees qui se signalent).
+     Chargé AVANT app-main : `getReservationHighlightClasses` interroge
+     PinlaneMotion des le premier rendu, et un rendu qui tombe avant le module
+     dessinerait les arrivees sans leur signal. Le module ne fait rien tant
+     qu'aucun `data-pl-num` n'existe : le charger tôt ne coûte rien. -->
+<script defer src="./assets/pinlane-motion.js?v=20260729a"></script>
 <script defer src="./assets/app-main.js?v=20260728g"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260728b"></script>

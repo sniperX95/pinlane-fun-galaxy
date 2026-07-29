@@ -14,10 +14,14 @@ const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '../..');
 const DIR = path.join(ROOT, 'artifacts/promo-video');
-const VOIX = path.join(DIR, 'voix-samedi-plans.wav');
+// Une voix par version du film (masculine / feminine) : le nom de base est
+// passe en argument, les trois fichiers en decoulent.
+const BASE = process.argv[2] || 'voix-samedi-plans';
+const SUFFIXE = process.argv[3] || '';
+const VOIX = path.join(DIR, BASE + '.wav');
 const MUSIQUE = path.join(DIR, 'musique-samedi.mp3');
-const BORNES = path.join(DIR, 'voix-samedi-plans-plans.js');
-const OUT = path.join(DIR, 'pinlane-samedi-audio.wav');
+const BORNES = path.join(DIR, BASE + '-plans.js');
+const OUT = path.join(DIR, `pinlane-samedi${SUFFIXE}-audio.wav`);
 
 const MARGE_MIN_DB = 7;
 const MARGE_MAX_DB = 16;
@@ -56,6 +60,23 @@ function niveau(file, from, to) {
   return m ? Number(m[1]) : null;
 }
 
+// GARDE DE DUREE : la musique doit couvrir le film. En dessous, `apad` remplit
+// la fin de silence et le film se termine sans musique — sans que rien ne le
+// signale, puisque les fenetres de mesure tombent pendant la parole. La
+// duree est LUE SUR LE FLUX et non sur l'entete du conteneur : sur un MP3,
+// `format=duration` sous-estime.
+const dureeFlux = (f) => Number(execFileSync('ffprobe', ['-v', 'error',
+  '-select_streams', 'a', '-show_entries', 'format=duration:stream=duration',
+  '-of', 'default=nk=1:nw=1', f], { encoding: 'utf8' }).trim().split(/\s+/)
+  .map(Number).filter((n) => !Number.isNaN(n)).reduce((a, b) => Math.max(a, b), 0));
+const dureeMus = dureeFlux(MUSIQUE);
+if (dureeMus < DUREE - 0.05) {
+  console.error(`ECHEC : musique de ${dureeMus.toFixed(2)}s pour un film de ${DUREE.toFixed(2)}s.`);
+  console.error('La fin serait muette. Regenerer une piste plus longue ou raccourcir la voix.');
+  process.exit(1);
+}
+console.log(`0. musique ${dureeMus.toFixed(2)}s pour un film de ${DUREE.toFixed(2)}s : couverture OK`);
+
 console.log('1. voix : normalisation et calage');
 const voixWav = path.join(DIR, 'tmp-s-voix.wav');
 ff(['-i', VOIX, '-af', 'loudnorm=I=-15:TP=-1.5:LRA=9,apad', '-t', String(DUREE),
@@ -77,7 +98,11 @@ const musWav = path.join(DIR, 'tmp-s-mus.wav');
 // musique, et on calcule le gain qui place la seconde a MARGE_CIBLE sous la
 // premiere. Un gain constant ne peut pas creuser un passage.
 // ---------------------------------------------------------------------------
-const MARGE_CIBLE = 11;
+// 9 et non 11 : le gain place la musique a MARGE_CIBLE sous la voix AVANT
+// ducking, et le sidechain lui reprend encore 3 a 6 dB pendant la parole.
+// Viser 11 faisait donc atterrir a 17 — au-dessus du plafond, musique inaudible.
+// La cible est un point de depart, pas le resultat.
+const MARGE_CIBLE = 9;
 const meanVoix = niveau(voixWav, 0.4, Number(global.window.PROMO_VOIX_DUREE) - 0.4);
 const meanMus = niveau(MUSIQUE, 0.4, Math.min(24, DUREE) - 0.4);
 if (meanVoix === null || meanMus === null) { console.error('ECHEC : mesure impossible'); process.exit(1); }

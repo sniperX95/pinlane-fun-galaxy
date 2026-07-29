@@ -6,29 +6,30 @@
 <link rel="stylesheet" href="../../assets/pinlane.css">
 <style>
   /* =====================================================================
-     CREA « SAMEDI » — l'oppose de « pinlane-zoom » sur six axes.
+     CREA « SAMEDI » — verticale, DA claire, motion design editorial.
 
-       ratio    9:16 vertical           (contre 16:9)
-       DA       claire, papier & encre  (contre sombre, verre, halos)
-       montage  coupes seches           (contre glissements continus)
-       voix     feminine, tutoiement    (contre off masculine corporate)
-       preuve   captures fixes posees   (contre clip 3D en perspective)
-       recit    la journee d'un samedi  (contre demo de fonctionnalites)
+     CE QUI A CHANGE APRES LE PREMIER JET, ET POURQUOI.
 
-     Une variante qui ne changerait qu'un ou deux axes ne dirait rien en
-     test A/B : on ne saurait pas ce qui a fait la difference.
+     Reproche : « aucun motion design, que des apparitions simples rapides ».
+     Il etait fonde. J'avais choisi des coupes seches parce qu'elles rendent
+     la frame vide IMPOSSIBLE (aucune opacite animee, donc aucun trou a la
+     couture) — un argument de securite, pas un argument de mise en scene.
+     Le gout du commanditaire passe avant ma commodite.
 
-     POURQUOI LES COUPES SECHES SUPPRIMENT UNE CLASSE DE BUGS.
-     Le defaut le plus tenace des versions precedentes etait la frame vide a
-     la couture : un plan qui monte depuis l'opacite 0 pendant que le
-     precedent est detruit. Ici PLUS AUCUN element n'anime son opacite —
-     chaque plan est opaque des sa premiere image, seul un leger deplacement
-     s'anime. La frame vide devient impossible, pas seulement improbable.
+     Le mouvement vient maintenant de six gestes, pas d'une translation :
+       . les chiffres ROULENT comme un compteur mecanique, colonne par
+         colonne, avec un decalage entre elles ;
+       . le texte se REVELE mot a mot derriere un masque qui s'ouvre par le
+         bas, en cascade ;
+       . un RIDEAU d'encre balaie l'ecran a chaque coupe ;
+       . la carte de preuve s'ouvre derriere un masque DIAGONAL, se redresse,
+         puis un reflet la traverse ;
+       . le filet se trace et un point de lumiere le parcourt ;
+       . la journee laisse une TRAINEE derriere son curseur.
 
-     ECHELLE. La scene est ecrite en 1080x1920, soit exactement la definition
-     de livraison des reseaux. Un pixel CSS = un pixel livre, donc une capture
-     de 952 px de large peut occuper jusqu'a 952 px sans jamais etre agrandie.
-     Le master est rendu plus grand seulement pour l'anticrenelage.
+     La securite est conservee autrement : le rideau ne couvre jamais tout
+     l'ecran (55 % de la hauteur), et aucun plan ne demarre a l'opacite zero
+     sur la totalite de son contenu. La garde check-frames reste au vert.
      ===================================================================== */
   @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
   @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
@@ -37,80 +38,110 @@
   body{font-family:var(--font-ui);color:#14120e;-webkit-font-smoothing:antialiased}
   #stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:#f4f1ea}
 
-  /* Papier : une trame tres legere et un grain. Un aplat parfaitement lisse
-     sonne « slide PowerPoint » ; c'est le bruit qui fait la matiere. */
-  #trame{position:absolute;inset:-6%;opacity:.5;
+  #trame{position:absolute;inset:-10%;opacity:.5;
     background-image:linear-gradient(rgba(20,18,14,.055) 1px,transparent 1px),
                      linear-gradient(90deg,rgba(20,18,14,.055) 1px,transparent 1px);
     background-size:54px 54px;will-change:transform}
+  #onde{position:absolute;left:50%;top:44%;width:120px;height:120px;margin:-60px 0 0 -60px;
+    border:3px solid rgba(37,99,235,.5);border-radius:50%;opacity:0;will-change:transform,opacity}
   #grain{position:absolute;inset:0;opacity:.055;pointer-events:none;
-    background-image:radial-gradient(#14120e 1px,transparent 1px);
-    background-size:3px 3px}
+    background-image:radial-gradient(#14120e 1px,transparent 1px);background-size:3px 3px}
   #teinte{position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(78% 52% at 50% 22%,rgba(255,255,255,.85),transparent 68%),
                radial-gradient(70% 44% at 50% 104%,rgba(190,182,166,.35),transparent 70%)}
-  /* Le flash de coupe : deux images de blanc a chaque changement de plan.
-     C'est ce qui donne la frappe du montage sans aucun fondu. */
-  #flash{position:absolute;inset:0;background:#fffdf8;opacity:0;pointer-events:none}
+
+  /* Le rideau : une bande, jamais l'ecran entier. */
+  #rideau{position:absolute;left:-4%;width:108%;height:55%;background:#14120e;
+    top:0;opacity:0;will-change:transform,opacity}
 
   #marque{position:absolute;left:88px;top:104px;display:flex;align-items:center;gap:16px;
     font-family:var(--font-data);font-size:25px;letter-spacing:.30em;text-transform:uppercase;
-    color:#8a8377}
+    color:#8a8377;will-change:transform}
   #marque b{display:block;width:15px;height:15px;border-radius:50%;background:#2563eb}
+  #num{position:absolute;right:88px;top:100px;font-family:var(--font-data);font-size:25px;
+    letter-spacing:.22em;color:#b3aa99}
 
-  #heure{position:absolute;left:84px;top:212px;font-family:var(--font-data);
-    font-size:200px;line-height:.86;letter-spacing:-.055em;font-weight:600;color:#14120e;
-    will-change:transform}
+  /* ---- Compteur mecanique ----
+     Chaque chiffre est une colonne de 0 a 9 dans une fenetre a hauteur fixe.
+     On ne remplace jamais le texte : on DEPLACE la colonne. C'est ce qui
+     donne le roulement, et ca reste une fonction du temps. */
+  #heure{position:absolute;left:84px;top:206px;display:flex;align-items:flex-start;
+    height:206px;will-change:transform}
+  /* 128 px et non 118 : a 200 px de corps, un chiffre de Geist Mono en occupe
+     ~120, et les colonnes trop etroites faisaient chevaucher le separateur. */
+  #heure .col{position:relative;width:128px;height:206px;overflow:hidden}
+  #heure .col .pile{position:absolute;left:0;top:0;width:100%;will-change:transform}
+  #heure .col .pile span{display:block;height:206px;line-height:206px;text-align:center;
+    font-family:var(--font-data);font-size:200px;letter-spacing:-.055em;font-weight:600;color:#14120e}
+  /* En monospace, le « : » a la MEME avance qu'un chiffre : dans une boite de
+     44 px il debordait de 38 px de chaque cote et se posait sur le zero.
+     La boite doit valoir son avance reelle, pas sa largeur apparente. */
+  #heure .sep{width:112px;height:206px;line-height:196px;text-align:center;
+    font-family:var(--font-data);font-size:190px;font-weight:600;color:#14120e}
+  #titre{position:absolute;left:88px;top:206px;font-family:var(--font-data);
+    font-size:152px;line-height:206px;letter-spacing:-.04em;font-weight:600;color:#14120e;
+    white-space:nowrap;overflow:hidden;will-change:clip-path}
+
   #filet{position:absolute;left:88px;top:452px;height:5px;background:#14120e;width:0}
+  #filetPt{position:absolute;top:449px;width:11px;height:11px;border-radius:50%;
+    background:#2563eb;opacity:0;box-shadow:0 0 0 6px rgba(37,99,235,.18)}
 
-  #phrase{position:absolute;left:88px;right:88px;top:512px;
-    font-size:66px;line-height:1.16;font-weight:600;letter-spacing:-.028em;color:#14120e}
-  #phrase em{font-style:normal;color:#2563eb}
+  /* ---- Texte revele mot a mot derriere un masque ---- */
+  #phrase{position:absolute;left:88px;right:88px;top:508px;
+    font-size:66px;line-height:1.18;font-weight:600;letter-spacing:-.028em;color:#14120e}
+  #phrase .m{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:.06em}
+  #phrase .m u{display:inline-block;text-decoration:none;will-change:transform}
+  #phrase .b{color:#2563eb}
 
-  /* Les trois etats du plan 3 : ils s'allument l'un apres l'autre. */
-  #jalons{position:absolute;left:88px;right:88px;top:512px;display:flex;flex-direction:column;gap:26px}
-  #jalons div{display:flex;align-items:center;gap:24px;font-size:56px;font-weight:600;
-    letter-spacing:-.02em}
+  #jalons{position:absolute;left:88px;right:88px;top:508px;display:flex;flex-direction:column;gap:26px}
+  #jalons div{display:flex;align-items:center;gap:24px;font-size:56px;font-weight:600;letter-spacing:-.02em}
   #jalons i{display:block;width:44px;height:44px;border-radius:12px;border:4px solid #c9c2b2;
     flex:0 0 auto;position:relative}
-  /* Element reel et non pseudo-element : un ::after ne se pilote pas depuis le
-     JS, et le rendu doit rester une fonction du temps. */
   #jalons u{position:absolute;inset:7px;border-radius:5px;background:#15803d;
     transform:scale(0);transform-origin:50% 50%}
 
-  /* Le bilan du plan 8 : trois chiffres empiles, pas une phrase. */
-  #bilan{position:absolute;left:88px;right:88px;top:470px}
-  #bilan div{display:flex;align-items:baseline;gap:28px;margin-bottom:22px}
-  #bilan span.n{font-family:var(--font-data);font-size:118px;line-height:1;font-weight:600;
-    letter-spacing:-.05em;color:#14120e;min-width:330px}
-  #bilan span.l{font-size:42px;color:#6f6a60;letter-spacing:-.01em}
+  #bilan{position:absolute;left:88px;right:88px;top:500px}
+  #bilan .l{display:flex;align-items:center;gap:28px;margin-bottom:26px}
+  #bilan .ch{display:flex;height:118px;overflow:hidden}
+  #bilan .ch .col{position:relative;width:70px;height:118px;overflow:hidden}
+  #bilan .ch .col .pile{position:absolute;left:0;top:0;width:100%;will-change:transform}
+  #bilan .ch .col .pile span{display:block;height:118px;line-height:118px;text-align:center;
+    font-family:var(--font-data);font-size:112px;font-weight:600;letter-spacing:-.05em;color:#14120e}
+  #bilan .ch .u{height:118px;line-height:118px;font-family:var(--font-data);font-size:112px;
+    font-weight:600;letter-spacing:-.05em;color:#14120e;padding-left:12px}
+  #bilan .lg{font-size:42px;color:#6f6a60;letter-spacing:-.01em}
 
-  /* La preuve : une capture du produit, posee a plat. Aucune perspective —
-     c'est justement ce qui la distingue de l'autre film. */
-  #preuve{position:absolute;left:88px;border-radius:22px;overflow:hidden;background:#fff;
+  /* ---- La preuve ---- */
+  #preuve{position:absolute;left:88px;will-change:transform,left,top,width,height}
+  #cadre{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#fff;
     box-shadow:0 3px 0 rgba(20,18,14,.06), 0 26px 60px rgba(20,18,14,.14),
-               0 2px 6px rgba(20,18,14,.09);
-    will-change:transform,left,top,width,height}
-  #preuve img{display:block;width:100%;height:100%;object-fit:cover}
+               0 2px 6px rgba(20,18,14,.09);will-change:clip-path}
+  #cadre img{display:block;width:100%;height:100%;object-fit:cover}
+  #reflet{position:absolute;top:-40%;bottom:-40%;width:38%;left:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);
+    filter:blur(14px);transform:skewX(-18deg);will-change:transform,opacity}
   #legende{position:absolute;left:88px;font-family:var(--font-data);font-size:24px;
-    letter-spacing:.26em;text-transform:uppercase;color:#8a8377}
+    letter-spacing:.26em;text-transform:uppercase;color:#8a8377;overflow:hidden;white-space:nowrap}
 
-  /* Fin de marque */
-  #fin{position:absolute;left:0;right:0;top:640px;text-align:center}
+  #fin{position:absolute;left:0;right:0;top:600px;text-align:center}
+  #finLogo{display:inline-block;will-change:transform}
   #fin img{display:block;width:780px;margin:0 auto}
-  #fin p{margin-top:56px;font-size:52px;font-weight:600;color:#14120e;letter-spacing:-.02em}
-  #fin s{display:inline-block;margin-top:44px;text-decoration:none;background:#2563eb;color:#fff;
+  #fin p{margin-top:52px;font-size:52px;font-weight:600;color:#14120e;letter-spacing:-.02em;
+    overflow:hidden}
+  #finCta{display:inline-block;margin-top:44px;background:#2563eb;color:#fff;
     font-size:44px;font-weight:700;padding:30px 66px;border-radius:16px;
-    box-shadow:0 18px 44px rgba(37,99,235,.32)}
+    box-shadow:0 18px 44px rgba(37,99,235,.32);will-change:transform}
 
-  /* La journee qui avance : 10h a 23h. Elle relie les plans entre eux. */
   #jour{position:absolute;left:88px;right:88px;bottom:196px}
   #jourBar{position:relative;height:6px;background:rgba(20,18,14,.12);border-radius:3px}
   #jourIn{position:absolute;left:0;top:0;bottom:0;background:#14120e;border-radius:3px;width:0}
+  #jourTr{position:absolute;top:0;bottom:0;background:rgba(37,99,235,.30);border-radius:3px;
+    width:0;left:0}
   #jourPt{position:absolute;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;
     border-radius:50%;background:#2563eb;box-shadow:0 0 0 8px rgba(37,99,235,.16)}
   #jourEch{display:flex;justify-content:space-between;margin-top:22px;
     font-family:var(--font-data);font-size:23px;letter-spacing:.16em;color:#8a8377}
+  #jourEch span{transition:none}
 
   #pied{position:absolute;left:88px;right:88px;bottom:104px;display:flex;
     align-items:center;justify-content:space-between;
@@ -122,108 +153,93 @@
 <div id="stage">
   <div id="trame"></div>
   <div id="teinte"></div>
+  <div id="onde"></div>
 
   <div id="marque"><b></b><span>Samedi · centre de loisirs</span></div>
+  <div id="num">01 / 09</div>
+
   <div id="heure"></div>
+  <div id="titre">SAMEDI</div>
   <div id="filet"></div>
+  <div id="filetPt"></div>
   <div id="phrase"></div>
 
   <div id="jalons">
     <div><i><u></u></i><span>Au planning</span></div>
     <div><i><u></u></i><span>Confirmée</span></div>
-    <div><i><u></u></i><span>Encaissée</span></div>
+    <div><i><u></u></i><span>Payée</span></div>
   </div>
 
-  <div id="bilan">
-    <div><span class="n" id="b1">0 €</span><span class="l">encaissés</span></div>
-    <div><span class="n" id="b2">0</span><span class="l">réservations</span></div>
-    <div><span class="n" id="b3">0</span><span class="l">saisie</span></div>
-  </div>
+  <div id="bilan"></div>
 
-  <div id="preuve"><img id="pimg" alt=""></div>
+  <div id="preuve"><div id="cadre"><img id="pimg" alt=""><div id="reflet"></div></div></div>
   <div id="legende"></div>
 
   <div id="fin">
-    <img src="../../artifacts/promo-video/logo-clair-net.png" alt="Pinlane">
-    <p>La console de ton centre.</p>
-    <s>Réserver une démo</s>
+    <div id="finLogo"><img src="../../artifacts/promo-video/logo-clair-net.png" alt="Pinlane"></div>
+    <p id="finP">La console de ton centre.</p>
+    <div><span id="finCta">Réserver une démo</span></div>
   </div>
 
   <div id="jour">
-    <div id="jourBar"><div id="jourIn"></div><div id="jourPt"></div></div>
+    <div id="jourBar"><div id="jourIn"></div><div id="jourTr"></div><div id="jourPt"></div></div>
     <div id="jourEch"><span>10 h</span><span>14 h</span><span>18 h</span><span>23 h</span></div>
   </div>
-  <div id="pied"><span>Pinlane</span><span id="piedD">pinlane.app</span></div>
+  <div id="pied"><span>Pinlane</span><span>pinlane.app</span></div>
 
+  <div id="rideau"></div>
   <div id="grain"></div>
-  <div id="flash"></div>
 </div>
 
+<!-- Bornes de la version en cours de rendu. Chaque version (masculine /
+     feminine) a son propre fichier de bornes ; celui-ci en est une copie,
+     posee avant le rendu. La scene ne connait donc qu'un seul chemin, et
+     changer de voix ne demande aucune modification ici. -->
 <script src="../../artifacts/promo-video/voix-samedi-plans-plans.js"></script>
 <script src="../../artifacts/promo-clips/details-light/details.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const clamp01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
 const eOut = (x) => 1 - Math.pow(1 - x, 4);
+const eInOut = (x) => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+// Ressort amorti, ecrit en forme close : une integration pas a pas dependrait
+// de l'image precedente, et le rendu doit rester une fonction du temps seul.
+const ressort = (x) => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x) * Math.cos((x * 10 - .75) * 2.4);
 const lerp = (a, b, x) => a + (b - a) * x;
 
-// ---------------------------------------------------------------------------
-// LES BORNES VIENNENT DE LA VOIX, ELLES NE SONT PAS ECRITES ICI.
-//
-// voice-segments.js genere un segment de voix par plan et publie leurs bornes.
-// Regenerer la voix decale automatiquement le montage : c'est la seule facon
-// d'empecher la desynchronisation qui avait mis trois plans sur sept en face
-// de la mauvaise page dans un film precedent.
-// ---------------------------------------------------------------------------
 const VOIX = window.PROMO_PLANS || [];
 const D = window.PROMO_DETAILS || {};
 window.MONTAGE_ERREURS = [];
 if (!VOIX.length) window.MONTAGE_ERREURS.push('bornes de voix absentes');
-
-const QUEUE = 0.5;                         // battement apres la derniere phrase
+const QUEUE = 0.55;
 const DUR = (window.PROMO_VOIX_DUREE || 23.7) + QUEUE;
 
-// Un plan par segment de voix. `preuve` nomme une capture de details-light ;
-// null = pas d'image sur ce plan, c'est une respiration.
 const PLANS = [
-  { heure: '', titre: 'SAMEDI', preuve: null, legende: '', mode: 'ouverture', h: 10.0 },
-  { heure: '11:04', phrase: 'Une résa tombe.<br><em>Tu es en salle.</em>', preuve: 'plan-lambert',
-    legende: 'Le planning, en direct', h: 11.07 },
+  { heure: '', titre: 'SAMEDI', preuve: null, legende: '', mode: 'ouverture', h: 10.0,
+    phrase: '10 h — 22 h.|Une journée entière.', bleu: [0] },
+  { heure: '11:04', phrase: 'Tu es en salle,|et une réservation arrive.', preuve: 'plan-lambert',
+    legende: 'Le planning, en direct', h: 11.07, bleu: [1] },
   { heure: '11:04', phrase: '', preuve: 'mail-confirmation', legende: 'Séquence automatique',
     mode: 'jalons', h: 11.2 },
-  // Legende relue sur la capture elle-meme : « Bowling 2h », 17 joueurs. La
-  // version d'essai disait « posé sur deux pistes » — rien a l'ecran ne le dit.
-  { heure: '14:30', phrase: 'Un groupe de <em>dix-sept</em>.', preuve: 'plan-ecole',
-    legende: 'Bowling · 2 h', h: 14.5 },
-  { heure: '14:30', phrase: 'Le formulaire a tout demandé<br><em>à ta place.</em>',
-    preuve: 'client-joueurs', legende: '3 pistes, calculées seules', h: 15.2 },
-  { heure: '18:12', phrase: 'Le rappel de demain est parti.<br><em>Tout seul.</em>',
-    preuve: 'mail-rappel', legende: 'Rappel avant la venue', h: 18.2 },
+  { heure: '14:30', phrase: 'Un groupe|de dix-sept.', preuve: 'plan-ecole',
+    legende: 'Bowling · 2 h', h: 14.5, bleu: [1] },
+  { heure: '14:30', phrase: 'Le formulaire a tout demandé|à ta place.',
+    preuve: 'client-joueurs', legende: '3 pistes, calculées seules', h: 15.2, bleu: [1] },
+  { heure: '18:12', phrase: 'Le rappel de demain|part sans que tu y penses.',
+    preuve: 'mail-rappel', legende: 'Rappel avant la venue', h: 18.2, bleu: [1] },
   { heure: '22:40', phrase: 'Tu fermes.', preuve: null, legende: '', h: 22.67 },
   { heure: '22:40', phrase: '', preuve: 'plan-ca', legende: 'Chiffre du jour',
     mode: 'bilan', h: 22.8 },
   { heure: '', phrase: '', preuve: null, legende: '', mode: 'fin', h: 23.0 },
 ];
 
-// ---------------------------------------------------------------------------
-// TAILLE DE LA PREUVE — meme regle que sur l'autre film, adaptee au portrait.
-// Trois plafonds : la largeur utile, la hauteur disponible, et la DEFINITION
-// NATIVE de la capture. Le troisieme est celui qui interdit le flou : on
-// n'affiche jamais une image sur plus de pixels qu'elle n'en contient.
-// ---------------------------------------------------------------------------
-const LARGE_MAX = 904;      // 1080 moins deux marges de 88
-const HAUT_MAX = 560;
-const CENTRE_Y = 1250;      // la legende tient sous la plus haute carte
+const LARGE_MAX = 904, HAUT_MAX = 560, CENTRE_Y = 1190;
 window.PREUVES_MANQUANTES = [];
 function boitePreuve(cle) {
   const d = D[cle];
   if (!d) { window.PREUVES_MANQUANTES.push(cle); return [88, 1100, 500, 300]; }
   const w = Math.min(LARGE_MAX, d.w, HAUT_MAX * d.ratio);
   const h = w / d.ratio;
-  // Ancree par son CENTRE : les captures vont du ratio 1,17 au ratio 3,97,
-  // donc de 228 a 560 px de haut. Ancrees en haut, les plus plates laissaient
-  // un trou de 330 px sous elles ; ancrees au centre, elles restent posees au
-  // meme endroit de la page quelle que soit leur forme.
   return [88, Math.round(CENTRE_Y - h / 2), Math.round(w), Math.round(h)];
 }
 
@@ -233,124 +249,237 @@ const planDe = (t) => {
   return Math.min(i, PLANS.length - 1);
 };
 
-let dernierSrc = '';
+// --- compteur mecanique ----------------------------------------------------
+// Quatre colonnes de 0 a 9, construites UNE FOIS. Le chiffre affiche est un
+// simple deplacement de la colonne : la valeur ne se remplace jamais, elle
+// roule — c'est ce qui distingue un compteur d'un changement de texte.
+const H_COL = 206;
+(function batirHeure() {
+  const host = $('heure');
+  host.innerHTML = '';
+  [0, 1, 's', 2, 3].forEach((k) => {
+    if (k === 's') {
+      const s = document.createElement('div'); s.className = 'sep'; s.textContent = ':';
+      host.appendChild(s); return;
+    }
+    const c = document.createElement('div'); c.className = 'col';
+    const p = document.createElement('div'); p.className = 'pile';
+    for (let n = 0; n <= 9; n++) { const sp = document.createElement('span'); sp.textContent = n; p.appendChild(sp); }
+    c.appendChild(p); host.appendChild(c);
+  });
+})();
+const colonnesHeure = [...$('heure').querySelectorAll('.col .pile')];
+
+function poserHeure(deTexte, versTexte, u) {
+  const chiffres = (s) => (s || '').replace(/[^0-9]/g, '').padStart(4, '0').split('').map(Number);
+  const a = chiffres(deTexte), b = chiffres(versTexte);
+  colonnesHeure.forEach((pile, k) => {
+    // Chaque colonne part un peu apres la precedente : c'est le decalage qui
+    // fait lire « compteur » plutot que « bloc qui glisse ».
+    const uu = eOut(clamp01((u - k * 0.09) / (1 - 0.27)));
+    const v = lerp(a[k], b[k], uu);
+    pile.style.transform = `translateY(${(-v * H_COL).toFixed(2)}px)`;
+  });
+}
+
+// --- chiffres du bilan, meme mecanique -------------------------------------
+const BILAN = [
+  { valeur: 601, unite: ' €', libelle: 'encaissés', larg: 3 },
+  { valeur: 4, unite: '', libelle: 'réservations', larg: 1 },
+  { valeur: 0, unite: '', libelle: 'saisie', larg: 1 },
+];
+(function batirBilan() {
+  const host = $('bilan');
+  host.innerHTML = '';
+  BILAN.forEach((b) => {
+    const l = document.createElement('div'); l.className = 'l';
+    const ch = document.createElement('div'); ch.className = 'ch';
+    for (let i = 0; i < b.larg; i++) {
+      const c = document.createElement('div'); c.className = 'col';
+      const p = document.createElement('div'); p.className = 'pile';
+      for (let n = 0; n <= 9; n++) { const sp = document.createElement('span'); sp.textContent = n; p.appendChild(sp); }
+      c.appendChild(p); ch.appendChild(c);
+    }
+    if (b.unite) { const u = document.createElement('div'); u.className = 'u'; u.textContent = b.unite; ch.appendChild(u); }
+    const lg = document.createElement('div'); lg.className = 'lg'; lg.textContent = b.libelle;
+    l.appendChild(ch); l.appendChild(lg); host.appendChild(l);
+  });
+})();
+const H_BIL = 118;
+
+// --- texte revele mot a mot ------------------------------------------------
+let clePhrase = '';
+function batirPhrase(p) {
+  const cle = p.phrase + '|' + (p.bleu || []).join(',');
+  if (clePhrase === cle) return;
+  clePhrase = cle;
+  const lignes = (p.phrase || '').split('|');
+  $('phrase').innerHTML = lignes.map((ligne, li) => {
+    const bleu = (p.bleu || []).includes(li);
+    return ligne.split(' ').map((mot) =>
+      `<span class="m${bleu ? ' b' : ''}"><u>${mot}</u></span>`).join(' ');
+  }).join('<br>');
+}
+
 function render(t) {
   const i = planDe(t);
   const p = PLANS[i];
+  const prev = PLANS[Math.max(0, i - 1)];
   const v = VOIX[i] || { debut: 0, fin: DUR };
-  const dans = t - v.debut;                       // age du plan courant
-
-  // ---- decor : lent, continu, il ne se coupe jamais ----
-  $('trame').style.transform = `translate(${(t * 5) % 54}px, ${(-t * 3) % 54}px)`;
-
-  // ---- flash de coupe : deux images, sur les plans qui ne sont pas le premier
-  const fl = i > 0 && dans < 0.08 ? (1 - dans / 0.08) * .85 : 0;
-  $('flash').style.opacity = fl.toFixed(3);
-
-  // ---- entrees : AUCUNE opacite animee ----
-  // Chaque bloc est opaque des la premiere image de son plan et ne fait que
-  // glisser en place. C'est ce qui rend la frame vide impossible.
-  const glisse = (retard, dist) => lerp(dist, 0, eOut(clamp01((dans - retard) / 0.22)));
-
+  const dans = t - v.debut;
+  const durV = Math.max(0.8, v.fin - v.debut);
   const ouverture = p.mode === 'ouverture';
   const finale = p.mode === 'fin';
 
+  // ---- decor : il respire en continu, et une onde part a chaque coupe ----
+  $('trame').style.transform =
+    `translate(${(t * 5) % 54}px, ${(-t * 3) % 54}px) scale(${1 + Math.sin(t * .5) * .004})`;
+  // Onde discrete : a l'essai elle occupait la moitie de l'ecran et volait la
+  // vedette a la carte. Elle doit se sentir, pas se regarder.
+  const o = clamp01(dans / 0.7);
+  $('onde').style.opacity = i > 0 && o < 1 ? (1 - o) * .28 : 0;
+  $('onde').style.transform = `scale(${(0.4 + o * 5.5).toFixed(3)})`;
+
+  // ---- rideau : une bande d'encre balaie a chaque coupe ----
+  const r = clamp01(dans / 0.34);
+  const passe = i > 0 && r < 1;
+  $('rideau').style.opacity = passe ? 1 : 0;
+  $('rideau').style.transform = `translateY(${lerp(-58, 100, eInOut(r)) * 19.2}px)`;
+
+  // ---- entete ----
   $('marque').style.opacity = finale ? 0 : 1;
-  $('marque').style.transform = `translateY(${glisse(0, -14)}px)`;
+  $('marque').style.transform = `translateY(${lerp(-16, 0, eOut(clamp01(dans / 0.3)))}px)`;
+  $('num').textContent = `${String(i + 1).padStart(2, '0')} / 09`;
+  $('num').style.opacity = finale ? 0 : 1;
 
-  $('heure').textContent = ouverture ? 'SAMEDI' : (p.heure || '');
-  $('heure').style.opacity = (ouverture || p.heure) ? 1 : 0;
-  $('heure').style.fontSize = ouverture ? '152px' : '200px';
-  $('heure').style.transform = `translateY(${glisse(0.02, 26)}px)`;
+  // ---- l'heure roule ----
+  $('heure').style.display = (ouverture || finale) ? 'none' : 'flex';
+  $('titre').style.display = ouverture ? 'block' : 'none';
+  if (!ouverture && !finale) {
+    poserHeure(prev.heure || p.heure, p.heure, clamp01(dans / 0.62));
+    $('heure').style.transform = `translateY(${lerp(14, 0, eOut(clamp01(dans / 0.4)))}px)`;
+  }
+  if (ouverture) {
+    // Le titre se decouvre par la gauche au lieu d'apparaitre.
+    const c = eOut(clamp01(dans / 0.6)) * 100;
+    $('titre').style.clipPath = `inset(0 ${(100 - c).toFixed(1)}% 0 0)`;
+  }
 
-  // Le filet se trace : c'est le seul trait qui « s'anime » vraiment, et il
-  // donne le depart de lecture.
-  const traceLarge = ouverture ? 904 : 344;
-  $('filet').style.width = `${Math.round(eOut(clamp01((dans - 0.04) / 0.30)) * traceLarge)}px`;
+  // ---- le filet se trace, un point le parcourt ----
+  const large = ouverture ? 904 : 344;
+  const trace = eOut(clamp01((dans - 0.06) / 0.34));
+  $('filet').style.width = `${Math.round(trace * large)}px`;
   $('filet').style.opacity = finale ? 0 : 1;
+  const ptv = clamp01((dans - 0.14) / 0.5);
+  $('filetPt').style.opacity = finale ? 0 : (ptv > 0 && ptv < 1 ? 1 : 0);
+  $('filetPt').style.left = `${Math.round(84 + eOut(ptv) * large)}px`;
 
-  // ---- le corps du plan : phrase, jalons ou bilan ----
-  const modePhrase = !p.mode || p.mode === 'ouverture';
+  // ---- le texte se revele mot a mot derriere un masque ----
+  const modePhrase = !p.mode || ouverture;
   $('phrase').style.display = modePhrase ? 'block' : 'none';
   $('jalons').style.display = p.mode === 'jalons' ? 'flex' : 'none';
   $('bilan').style.display = p.mode === 'bilan' ? 'block' : 'none';
   $('fin').style.display = finale ? 'block' : 'none';
 
-  // L'ouverture annonce l'amplitude reelle du centre — 10 h - 22 h est lu sur
-  // l'entete du planning, comme tous les chiffres de ce film.
-  if (ouverture) {
-    $('phrase').innerHTML = '<em>10 h — 22 h.</em><br>Une journée entière.';
-  } else if (modePhrase) {
-    $('phrase').innerHTML = p.phrase || '';
+  if (modePhrase) {
+    batirPhrase(p);
+    const mots = [...$('phrase').querySelectorAll('.m u')];
+    mots.forEach((el, k) => {
+      const a = eOut(clamp01((dans - (0.16 + k * 0.055)) / 0.34));
+      el.style.transform = `translateY(${((1 - a) * 108).toFixed(2)}%)`;
+    });
   }
-  $('phrase').style.transform = `translateY(${glisse(0.06, 30)}px)`;
 
   if (p.mode === 'jalons') {
-    // Les trois etats s'allument QUAND LA VOIX LES NOMME. Les instants sont
-    // exprimes en fraction du segment, pas en secondes : si la voix est
-    // regeneree un peu plus vite, les coches suivent d'elles-memes.
-    const durV = Math.max(0.8, v.fin - v.debut);
-    const QUAND = [0.38, 0.68, 0.88];
+    const QUAND = [0.34, 0.62, 0.84];
     [...$('jalons').children].forEach((el, k) => {
       const a = eOut(clamp01((dans - QUAND[k] * durV) / 0.24));
-      el.style.transform = `translateY(${glisse(0.06 + k * 0.04, 26)}px)`;
+      const e = eOut(clamp01((dans - (0.12 + k * 0.08)) / 0.34));
+      el.style.transform = `translateX(${((1 - e) * -46).toFixed(1)}px)`;
+      el.style.opacity = e.toFixed(3);
       const cadre = el.querySelector('i');
       cadre.style.borderColor = a > .04 ? '#15803d' : '#c9c2b2';
       cadre.style.background = a > .04 ? 'rgba(21,128,61,.08)' : 'transparent';
-      // La coche grandit au lieu d'apparaitre : un carre qui surgit d'un coup
-      // se lit comme un defaut d'affichage.
-      el.querySelector('u').style.transform = `scale(${a.toFixed(3)})`;
+      el.querySelector('u').style.transform = `scale(${ressort(a).toFixed(3)})`;
       el.querySelector('span').style.color = a > .5 ? '#14120e' : '#9a9385';
     });
   }
 
   if (p.mode === 'bilan') {
-    const c = (retard) => eOut(clamp01((dans - retard) / 0.62));
-    $('b1').textContent = `${Math.round(601 * c(0.10))} €`;
-    $('b2').textContent = `${Math.round(4 * c(0.36))}`;
-    $('b3').textContent = `${Math.round(0 * c(0.62))}`;
-    [...$('bilan').children].forEach((el, k) => {
-      el.style.transform = `translateY(${glisse(0.06 + k * 0.06, 28)}px)`;
+    [...$('bilan').children].forEach((ligne, k) => {
+      const b = BILAN[k];
+      const a = eOut(clamp01((dans - (0.10 + k * 0.26)) / 0.75));
+      const e = eOut(clamp01((dans - (0.06 + k * 0.08)) / 0.32));
+      ligne.style.transform = `translateY(${((1 - e) * 34).toFixed(1)}px)`;
+      ligne.style.opacity = e.toFixed(3);
+      const val = b.valeur * a;
+      [...ligne.querySelectorAll('.col .pile')].forEach((pile, c, tab) => {
+        const rang = Math.pow(10, tab.length - 1 - c);
+        // Les unites roulent vite, les dizaines plus lentement : c'est ce
+        // rapport qui donne l'impression d'un compteur qui totalise.
+        const chiffre = (val / rang) % 10;
+        pile.style.transform = `translateY(${(-chiffre * H_BIL).toFixed(2)}px)`;
+      });
     });
   }
 
-  // ---- la preuve ----
+  // ---- la preuve : masque diagonal, redressement, reflet ----
   const pr = $('preuve');
   if (p.preuve) {
     const b = boitePreuve(p.preuve);
     const src = '../../artifacts/promo-clips/details-light/' + p.preuve + '.png';
-    if (dernierSrc !== src) { $('pimg').setAttribute('src', src); dernierSrc = src; }
+    if ($('pimg').getAttribute('src') !== src) $('pimg').setAttribute('src', src);
     pr.style.display = 'block';
     pr.style.left = b[0] + 'px'; pr.style.top = b[1] + 'px';
     pr.style.width = b[2] + 'px'; pr.style.height = b[3] + 'px';
-    // Respiration : la carte s'eleve tres legerement pendant son plan. Le
-    // mouvement porte sur LA CARTE, jamais sur l'image : agrandir l'image
-    // rognerait son texte.
-    const vie = clamp01(dans / Math.max(0.8, (v.fin - v.debut)));
-    pr.style.transform = `translateY(${glisse(0.10, 40) - vie * 10}px)`;
+
+    const e = eOut(clamp01((dans - 0.20) / 0.52));
+    const vie = clamp01(dans / durV);
+    pr.style.transform = `translateY(${((1 - e) * 54).toFixed(1)}px) `
+      + `rotate(${lerp(-1.6, 0, e).toFixed(2)}deg) `
+      + `scale(${lerp(0.955, 1, e).toFixed(4)}) `
+      + `translateY(${(Math.sin(vie * Math.PI) * -9).toFixed(2)}px)`;
+    // Le masque s'ouvre en diagonale et finit COMPLETEMENT ouvert.
+    const ouv = lerp(-30, 132, eOut(clamp01((dans - 0.18) / 0.5)));
+    $('cadre').style.clipPath = `polygon(0% 0%, ${ouv}% 0%, ${ouv - 30}% 100%, 0% 100%)`;
+
+    const g = clamp01((dans - 0.42) / 0.62);
+    $('reflet').style.opacity = g > 0 && g < 1 ? (1 - Math.abs(g - .5) * 2) : 0;
+    $('reflet').style.transform = `translateX(${lerp(-60, b[2] + 30, eOut(g))}px) skewX(-18deg)`;
+
     $('legende').style.display = 'block';
     $('legende').textContent = p.legende;
     $('legende').style.top = (b[1] + b[3] + 30) + 'px';
-    $('legende').style.transform = `translateY(${glisse(0.16, 20)}px)`;
+    const lg = eOut(clamp01((dans - 0.52) / 0.4));
+    $('legende').style.clipPath = `inset(0 ${((1 - lg) * 100).toFixed(1)}% 0 0)`;
   } else {
     pr.style.display = 'none';
     $('legende').style.display = 'none';
   }
 
   if (finale) {
-    $('fin').style.transform = `translateY(${glisse(0.02, 34)}px)`;
+    const e = ressort(clamp01(dans / 1.0));
+    $('finLogo').style.transform = `scale(${(0.86 + e * 0.14).toFixed(4)})`;
+    const pp = eOut(clamp01((dans - 0.34) / 0.44));
+    $('finP').style.clipPath = `inset(0 ${((1 - pp) * 100).toFixed(1)}% 0 0)`;
+    const cc = ressort(clamp01((dans - 0.56) / 0.9));
+    $('finCta').style.transform = `scale(${(0.8 + cc * 0.2).toFixed(4)})`;
   }
 
-  // ---- la journee ----
-  // Le curseur se pose sur l'heure DU PLAN COURANT et rejoint la suivante en
-  // 0,35 s a la coupe. Une progression continue vers l'heure suivante le
-  // montrait a 14 h pendant que le titre affichait « 11:04 » — l'oeil lit les
-  // deux en meme temps, la contradiction se voit.
-  const prec = PLANS[Math.max(0, i - 1)];
-  const hCourante = lerp(prec.h, p.h, eOut(clamp01(dans / 0.35)));
+  // ---- la journee, avec sa trainee ----
+  const hCourante = lerp(prev.h, p.h, eOut(clamp01(dans / 0.42)));
   const q = clamp01((hCourante - 10) / 13);
+  const qPrec = clamp01((prev.h - 10) / 13);
   $('jourIn').style.width = (q * 100).toFixed(2) + '%';
   $('jourPt').style.left = (q * 100).toFixed(2) + '%';
+  const tr = clamp01(1 - dans / 0.9);
+  $('jourTr').style.left = (qPrec * 100).toFixed(2) + '%';
+  $('jourTr').style.width = (Math.max(0, q - qPrec) * 100 * tr).toFixed(2) + '%';
+  $('jourTr').style.opacity = tr.toFixed(2);
+  [...$('jourEch').children].forEach((el, k) => {
+    const seuils = [10, 14, 18, 23];
+    el.style.color = hCourante >= seuils[k] - 0.2 ? '#14120e' : '#b3aa99';
+  });
   $('jour').style.opacity = finale ? 0 : 1;
   $('pied').style.opacity = finale ? 0 : 1;
 }

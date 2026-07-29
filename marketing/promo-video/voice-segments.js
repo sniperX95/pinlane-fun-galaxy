@@ -41,15 +41,20 @@ const PAUSES = [0.30, 0.14, 0.30, 0.14, 0.30, 0.24, 0.12, 0.32, 0.00];
 // suivant. On mesure, on ne suppose pas.
 const TEMPO = Number((process.argv.find((a) => a.startsWith('--tempo=')) || '--tempo=1').split('=')[1]);
 
+// Texte reecrit en francais PARLE : le premier jet etait telegraphique
+// (« Samedi. Onze heures quatre. Une resa tombe. »), ce qui sonne artificiel
+// des qu'une voix de synthese le lit. Les liens logiques — « le temps que »,
+// « sans que tu y penses » — sont ce qui fait entendre quelqu'un plutot
+// qu'une liste.
 const TEXTES = [
-  'Samedi.',
-  'Onze heures quatre. Une résa tombe. Tu es en salle.',
-  "Pinlane l'a mise au planning, confirmée, encaissée.",
-  'Quatorze heures trente. Un groupe de dix-sept.',
-  'Le formulaire a tout demandé à ta place.',
-  'Dix-huit heures douze. Le rappel de demain est parti. Tout seul.',
+  'Samedi, onze heures.',
+  'Tu es en salle, et une réservation arrive.',
+  "Le temps que tu la voies, elle est déjà dans ton planning, confirmée, et payée.",
+  'Cet après-midi, un groupe de dix-sept.',
+  'Le formulaire a tout demandé à ta place, et calculé les pistes tout seul.',
+  'Le soir, le rappel de demain part sans que tu y penses.',
   'Vingt-deux heures quarante. Tu fermes.',
-  'Six cent un euros. Quatre réservations. Zéro saisie.',
+  'Six cent un euros, quatre réservations, et pas une seule saisie.',
   'Pinlane. La console de ton centre.',
 ];
 

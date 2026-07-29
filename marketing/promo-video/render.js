@@ -44,6 +44,23 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
   await page.evaluate(() => Promise.all(
     [...document.images].filter((i) => !i.complete).map((i) => new Promise((r) => { i.onload = i.onerror = r; })),
   ));
+  // Les images posees en CSS (`background-image`) N'APPARAISSENT PAS dans
+  // `document.images` : une scene qui compose avec elles rendait ses premieres
+  // frames avec des blocs blancs, alors que la scene elle-meme etait juste.
+  // On les collecte et on les charge explicitement.
+  await page.evaluate(() => {
+    const urls = new Set();
+    document.querySelectorAll('*').forEach((el) => {
+      const bg = getComputedStyle(el).backgroundImage;
+      const m = /url\(["']?(.+?)["']?\)/.exec(bg || '');
+      if (m) urls.add(m[1]);
+    });
+    return Promise.all([...urls].map((u) => new Promise((r) => {
+      const im = new Image();
+      im.onload = im.onerror = r;
+      im.src = u;
+    })));
+  });
   // Les woff2 doivent etre pretes AVANT la premiere capture, sinon les
   // premieres frames sortent avec la police de repli.
   await page.evaluate(() => document.fonts.ready);

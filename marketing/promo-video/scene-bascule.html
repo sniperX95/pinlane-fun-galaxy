@@ -70,11 +70,19 @@
   #compteur{position:absolute;left:1240px;top:1180px;font-family:var(--font-data);
     font-size:34px;letter-spacing:.2em;color:#c8352b;text-transform:uppercase}
 
-  /* ---- LE PRODUIT : ce qu'on installe ---- */
-  #ecran{position:absolute;border-radius:20px;overflow:hidden;background:#fff;
-    box-shadow:0 4px 0 rgba(20,20,15,.05), 0 50px 110px rgba(20,20,15,.20),
-               0 4px 10px rgba(20,20,15,.10);will-change:transform,clip-path}
-  #ecran img{display:block;width:100%;height:100%;object-fit:cover;object-position:top left}
+  /* ---- LE PRODUIT : ce qu'on installe ----
+     Il ne « paraît » pas d'un bloc : il S'ASSEMBLE, une colonne de piste apres
+     l'autre. Neuf lames independantes montrent chacune sa tranche de la meme
+     image ; c'est ce decalage qui fait lire « tout se met en place » plutot
+     que « une capture est apparue ». */
+  #ecran{position:absolute;border-radius:20px;background:transparent;
+    will-change:transform;filter:drop-shadow(0 40px 90px rgba(20,20,15,.22))}
+  .lame{position:absolute;top:0;bottom:0;overflow:hidden;background:#fff;
+    will-change:transform,opacity,filter}
+  .lame .in{position:absolute;top:0;height:100%;background-repeat:no-repeat;
+    background-size:auto 100%}
+  .lame:first-child{border-radius:20px 0 0 20px}
+  .lame:last-child{border-radius:0 20px 20px 0}
   #eclat{position:absolute;top:-30%;bottom:-30%;width:34%;left:0;pointer-events:none;
     background:linear-gradient(90deg,transparent,rgba(255,255,255,.8),transparent);
     filter:blur(20px);transform:skewX(-18deg);will-change:transform,opacity}
@@ -91,9 +99,17 @@
     font-weight:600;letter-spacing:-.05em;color:#14140f;padding-left:14px}
   #chiffres .lg{font-size:46px;color:#6d6b62;letter-spacing:-.01em}
 
-  /* ---- La bascule : un volet qui balaie et remplace ---- */
-  #volet{position:absolute;top:-6%;bottom:-6%;width:46%;background:#2563eb;
-    left:-50%;opacity:0;will-change:transform,opacity}
+  /* ---- La bascule : un rideau A LAMES, pas un rectangle ----
+     Six bandes qui traversent avec un decalage : un volet plein glissait comme
+     un bloc de couleur, ce qui faisait « transition de logiciel de montage ».
+     Le decalage entre les lames donne la matiere. */
+  /* Les lames sont ESPACEES : jointives, elles couvraient tout l'ecran et
+     fabriquaient l'aplat qu'on passe le film a eviter. Espacees, on voit le
+     planning s'assembler A TRAVERS le rideau — et c'est bien plus riche. */
+  #volet{position:absolute;inset:-10% -25%;opacity:0;pointer-events:none}
+  #volet i{position:absolute;top:0;bottom:0;width:11%;background:#2563eb;
+    will-change:transform}
+  #volet i:nth-child(2n){background:#1d4ed8}
 
   /* ---- Fin ---- */
   #fin{position:absolute;inset:0;display:flex;flex-direction:column;
@@ -125,7 +141,15 @@
   <div id="chaos"></div>
   <div id="compteur"></div>
 
-  <div id="ecran"><img id="eimg" alt=""><div id="eclat"></div></div>
+  <!-- PRECHARGEMENT. Les lames affichent l'image en `background-image`, et le
+       rendu n'attend QUE les `<img>` du document (`document.images`) : les
+       images CSS ne sont pas couvertes. Resultat au premier essai — sept
+       colonnes sur neuf sortaient blanches alors que la scene etait juste,
+       parce que le fichier n'etait pas encore charge quand la frame a ete
+       prise. Cette balise cachee la fait entrer dans `document.images`, donc
+       dans l'attente. -->
+  <img id="precharge" src="../../artifacts/promo-clips/vues-light/vue-planning.png" alt="" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+  <div id="ecran"></div>
 
   <div id="chiffres"></div>
 
@@ -135,7 +159,7 @@
     <div><span id="finCta">Réserver une démo</span></div>
   </div>
 
-  <div id="volet"></div>
+  <div id="volet"><i></i><i></i><i></i><i></i><i></i><i></i></div>
   <div id="prog"><div id="progIn"></div></div>
   <div id="pied"><span>pinlane.app</span><span>Réservation · planning · relances</span></div>
   <div id="vig"></div>
@@ -245,6 +269,15 @@ const planDe = (t) => {
   return Math.min(i, PLANS.length - 1);
 };
 
+// Les neuf lames de l'ecran, en fraction de sa largeur : la colonne des heures
+// est etroite, les huit pistes se partagent le reste. Ces proportions sont
+// relevees sur la capture, pas devinees — une lame mal decoupee ferait
+// apparaitre une couture au milieu d'une colonne.
+const LAMES = [0.0355, 0.1206, 0.1206, 0.1206, 0.1206, 0.1206, 0.1206, 0.1206, 0.1204];
+(function batirLames() {
+  $('ecran').innerHTML = LAMES.map(() => '<div class="lame"><div class="in"></div></div>').join('');
+})();
+
 const ENTREE = 0.44, SORTIE = 0.32;
 function phase(dans, duree, retard) {
   return {
@@ -276,11 +309,19 @@ function render(t) {
   $('pied').style.opacity = finale ? 0 : 1;
   $('prog').style.opacity = finale ? 0 : 1;
 
-  // ---- le volet de bascule : il balaie une seule fois, au plan charniere ----
-  const bascule = i === BASCULE ? clamp01(dans / 0.85) : (i > BASCULE ? 1 : 0);
+  // ---- le rideau a lames : il balaie une fois, au plan charniere ----
+  // Chaque lame part un peu apres la precedente et va un peu plus vite : c'est
+  // ce decalage qui fait un GESTE. Un bloc plein qui glisse ne raconte rien.
+  const bascule = i === BASCULE ? clamp01(dans / 0.9) : (i > BASCULE ? 1 : 0);
   const passe = i === BASCULE && bascule < 1;
   $('volet').style.opacity = passe ? 1 : 0;
-  $('volet').style.transform = `translateX(${(lerp(0, 260, eInOut(bascule)) * 25.6).toFixed(0)}px)`;
+  if (passe) {
+    [...$('volet').children].forEach((lame, n) => {
+      const u = eInOut(clamp01((bascule - n * 0.06) / (1 - 0.3)));
+      lame.style.left = `${n * 17 - 105}%`;
+      lame.style.transform = `translateX(${(u * 1180).toFixed(1)}%) skewX(-7deg)`;
+    });
+  }
 
   // ---- texte ----
   const aTexte = !!p.phrase && !finale;
@@ -345,28 +386,56 @@ function render(t) {
     $('compteur').style.opacity = (f0.e * (1 - f0.s)).toFixed(2);
   }
 
-  // ---- l'ecran produit ----
+  // ---- l'ecran produit : IL S'ASSEMBLE, colonne par colonne ----
   const montre = i >= BASCULE;
   $('ecran').style.display = (montre && !finale) ? 'block' : 'none';
   if (montre && !finale) {
     const part = i === BASCULE ? 1480 : 1560;
     const b = boiteEcran(p.vue, part);
-    const src = '../../artifacts/promo-clips/vues-light/' + p.vue + '.png';
-    if ($('eimg').getAttribute('src') !== src) $('eimg').setAttribute('src', src);
     $('ecran').style.left = b[0] + 'px'; $('ecran').style.top = b[1] + 'px';
     $('ecran').style.width = b[2] + 'px'; $('ecran').style.height = b[3] + 'px';
-    // Au plan charniere il ENTRE derriere le volet ; ensuite il respire.
-    // Le produit arrive TOT (0,04 s) : c'est lui qui doit remplir l'ecran
-    // pendant que les notes s'en vont, sinon la bascule laisse un trou.
-    const arrivee = i === BASCULE ? eOut(clamp01((dans - 0.04) / 0.62)) : 1;
     const resp = Math.sin(f0.v * Math.PI) * -10;
-    $('ecran').style.transform =
-      `translate(${((1 - arrivee) * 90).toFixed(0)}px, ${resp.toFixed(1)}px) `
-      + `scale(${lerp(0.965, 1, arrivee).toFixed(4)})`;
-    $('ecran').style.clipPath = `inset(0 0 ${((1 - arrivee) * 100).toFixed(1)}% 0)`;
-    const g = clamp01((dans - 0.3) / 0.7);
-    $('eclat').style.opacity = (i === BASCULE && g > 0 && g < 1) ? (1 - Math.abs(g - .5) * 2) * .9 : 0;
-    $('eclat').style.transform = `translateX(${lerp(-200, b[2] + 100, eOut(g))}px) skewX(-18deg)`;
+    $('ecran').style.transform = `translateY(${resp.toFixed(1)}px)`;
+
+    const src = '../../artifacts/promo-clips/vues-light/' + p.vue + '.png';
+    let x = 0;
+    LAMES.forEach((larg, n) => {
+      const el = $('ecran').children[n];
+      const gauche = x * b[2];
+      const w = larg * b[2];
+      el.style.left = `${gauche.toFixed(1)}px`;
+      el.style.width = `${w.toFixed(1)}px`;
+      const dedans = el.firstElementChild;
+      if (dedans.dataset.src !== src) {
+        dedans.style.backgroundImage = `url('${src}')`;
+        dedans.dataset.src = src;
+      }
+      dedans.style.left = `${(-gauche).toFixed(1)}px`;
+      dedans.style.width = `${b[2].toFixed(1)}px`;
+      dedans.style.backgroundSize = `${b[2].toFixed(0)}px ${b[3].toFixed(0)}px`;
+
+      // Au plan charniere, chaque colonne tombe en place a son tour, avec un
+      // flou de deplacement qui se resorbe. Ailleurs, elles sont posees.
+      if (i === BASCULE) {
+        const a = ressort(clamp01((dans - (0.10 + n * 0.05)) / 0.85));
+        const brut = clamp01((dans - (0.10 + n * 0.05)) / 0.85);
+        el.style.opacity = clamp01(brut * 3).toFixed(3);
+        el.style.transform = `translateY(${((1 - a) * -70).toFixed(1)}px) `
+          + `scaleY(${(0.86 + a * 0.14).toFixed(4)})`;
+        // Flou directionnel : c'est ce detail qui separe un mouvement anime
+        // d'un mouvement qui a l'air rendu image par image.
+        el.style.filter = `blur(${((1 - Math.min(1, brut * 1.6)) * 7).toFixed(2)}px)`;
+      } else {
+        el.style.opacity = 1;
+        el.style.transform = 'none';
+        el.style.filter = 'none';
+      }
+      // Curseur de position : sans cette ligne, les neuf lames restaient a
+      // `left: 0` et se superposaient toutes au meme endroit. A l'ecran on ne
+      // voyait que la derniere posee, soit deux colonnes sur neuf — et je l'ai
+      // d'abord pris pour « l'assemblage en cours » au lieu d'un bug.
+      x += larg;
+    });
   }
 
   // ---- chiffres ----

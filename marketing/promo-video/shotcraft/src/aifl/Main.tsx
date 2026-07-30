@@ -27,14 +27,24 @@ export const AIFL_SHOTS = {
 export const AIFL_TOTAL = 1085;
 
 // bottom-strip narration over the live shots (absolute frames; outro stays clean)
+// Aucun chiffre qui ne soit pas AFFICHE par le produit dans le plan concerne :
+// 38 reservations et 297 joueurs sont ecrits en clair dans l'en-tete du
+// planning, et le script de capture refuse de livrer les assets si la journee
+// de demonstration ne les porte pas. Les autres plans se passent de chiffres
+// plutot que d'en avancer un que l'image ne montre pas.
 const CAPTIONS = [
-  { from: 90, duration: 40, text: 'TEN LIVE PROJECTS · FOUR RESEARCHERS' },
-  // (the hero-card hover annotation lives inside SceneOpen as a 3D floating note)
-  { from: 318, duration: 44, text: 'NEW WORK LANDS ALL WEEK' },
-  { from: 395, duration: 55, text: 'SEARCH · FILTER · OPEN' },
-  { from: 477, duration: 68, text: 'EVERY QUESTION, TRACKED TO ITS EXPERIMENTS' },
-  { from: 633, duration: 72, text: 'THE DAILY PAPER RADAR' },
-  { from: 789, duration: 78, text: 'FOUR VOICES, ONE WEEKLY BRIEF' },
+  // Pas de jour de la semaine : le produit affiche « Jeu. 30 juil. » a l'ecran,
+  // annoncer « samedi » aurait ete contredit par l'image elle-meme.
+  { from: 90, duration: 40, text: 'UNE JOURNÉE · 38 RÉSERVATIONS · 297 JOUEURS' },
+  // (l'annotation qui flotte pres de la reservation vit dans SceneOpen)
+  { from: 318, duration: 44, text: 'ELLES TOMBENT TOUTES SEULES' },
+  { from: 395, duration: 55, text: 'CHERCHER · FILTRER · OUVRIR' },
+  { from: 477, duration: 68, text: 'CHAQUE ARRIVÉE SUIVIE À LA MINUTE' },
+  { from: 633, duration: 72, text: 'RELANCES ET AVIS — AUTOMATIQUES' },
+  // Ces trois chiffres sont ECRITS EN CLAIR sur le tableau de bord filme dans
+  // ce meme plan (verifie sur la texture) : le sous-titre ne fait que lire
+  // l'image, il n'avance rien.
+  { from: 789, duration: 78, text: '76 % D’OCCUPATION · 4 288 € · ZÉRO SAISIE' },
 ] as const;
 
 // sound design pinned to animation beats (absolute frames, Mixkit license).
@@ -108,7 +118,7 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.card1.from} durationInFrames={AIFL_SHOTS.card1.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.card1.duration}
-          words={[{ text: 'All' }, { text: 'your' }, { text: 'team’s' }, { text: 'research,' }, { text: 'one', accent: true }, { text: 'place' }, { text: 'to' }, { text: 'go.' }]}
+          words={[{ text: 'Avant,' }, { text: 'chaque', accent: true }, { text: 'résa' }, { text: 'passait' }, { text: 'par' }, { text: 'toi.' }]}
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.table.from} durationInFrames={AIFL_SHOTS.table.duration}>
@@ -120,9 +130,9 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.card2.from} durationInFrames={AIFL_SHOTS.card2.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.card2.duration}
-          words={[{ text: 'Paper' }, { text: 'Radar,', accent: true }, { text: 'tailored' }, { text: 'for' }, { text: 'your' }, { text: 'morning' }, { text: 'reading.' }]}
-          sub="of 31 fetched today"
-          subDigits="5"
+          words={[{ text: 'Maintenant,' }, { text: 'les' }, { text: 'relances' }, { text: 'partent' }, { text: 'seules.', accent: true }]}
+          sub="réservations ce samedi"
+          subDigits="38"
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.chart.from} durationInFrames={AIFL_SHOTS.chart.duration}>
@@ -131,7 +141,7 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.cardWbr.from} durationInFrames={AIFL_SHOTS.cardWbr.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.cardWbr.duration}
-          words={[{ text: 'Every' }, { text: 'project,' }, { text: 'linked', accent: true }, { text: 'to' }, { text: 'your' }, { text: 'weekly' }, { text: 'report.' }]}
+          words={[{ text: 'Ton' }, { text: 'centre,' }, { text: 'lisible', accent: true }, { text: 'd’un' }, { text: 'coup' }, { text: 'd’œil.' }]}
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.wbr.from} durationInFrames={AIFL_SHOTS.wbr.duration}>
@@ -140,7 +150,7 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.card3.from} durationInFrames={AIFL_SHOTS.card3.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.card3.duration}
-          words={[{ text: 'The' }, { text: 'whole' }, { text: 'team,' }, { text: 'on' }, { text: 'the' }, { text: 'same', accent: true }, { text: 'page.' }]}
+          words={[{ text: 'Tu' }, { text: 'ne' }, { text: 'saisis' }, { text: 'plus' }, { text: 'rien.', accent: true }]}
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.outro.from} durationInFrames={AIFL_SHOTS.outro.duration}>

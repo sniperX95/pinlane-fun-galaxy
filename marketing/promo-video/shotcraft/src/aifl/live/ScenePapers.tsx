@@ -21,12 +21,16 @@ const FLY_EASE = Easing.bezier(0.45, 0.05, 0.25, 1.12);
 const TILTS = [2, -2, 2, -2, 2];
 
 // camera reveals the header first, then follows the growing stack downward
+// Le point vise suit le CENTRE des blocs empiles, pas le centre de page. Les
+// blocs du template couvraient x 408..1512 (centre 960) ; les notres commencent
+// a x=21, et un cx=960 coupait leur moitie gauche hors cadre.
+const CX = Math.round(cards[0].x + cards[0].w / 2);
 const CAM_KEYS: CamKey[] = [
-  { frame: 0, cx: 960, cy: 270, zoom: 1.35 },
-  { frame: 30, cx: 960, cy: 330, zoom: 1.15 },
-  { frame: 36, cx: 960, cy: 520, zoom: 1.02 },
-  { frame: 74, cx: 960, cy: 820, zoom: 0.95 },
-  { frame: 100, cx: 960, cy: 860, zoom: 0.9 }, // settle ≤105
+  { frame: 0, cx: CX, cy: cards[0].y + 60, zoom: 1.35 },
+  { frame: 30, cx: CX, cy: cards[0].y + 120, zoom: 1.15 },
+  { frame: 36, cx: CX, cy: cards[0].y + 310, zoom: 1.02 },
+  { frame: 74, cx: CX, cy: cards[0].y + 610, zoom: 0.95 },
+  { frame: 100, cx: CX, cy: cards[0].y + 650, zoom: 0.9 }, // pose <= 105
 ];
 
 /** Paper radar: daily paper cards stack up into place one by one (the list-stack
@@ -171,13 +175,13 @@ export const ScenePapers: React.FC = () => {
       {/* screen-space counter, top-right */}
       <div style={{ position: 'absolute', top: 70, right: 96, textAlign: 'right', pointerEvents: 'none' }}>
         <div style={{ fontFamily: MONO, fontSize: 24, letterSpacing: '0.16em', color: 'oklch(50% 0.006 82)', textTransform: 'uppercase' }}>
-          Paper Radar
+          Événements du mois
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
           <DigitRoll key={landedCount} value={String(landedCount)} fontSize={96} color={AMBER} />
         </div>
         <div style={{ fontFamily: MONO, fontSize: 20, letterSpacing: '0.12em', color: 'oklch(50% 0.006 82)', marginTop: 4, textTransform: 'uppercase' }}>
-          Of 31 Fetched Today
+          Sur {String(cards.length)} affichés
         </div>
       </div>
     </>

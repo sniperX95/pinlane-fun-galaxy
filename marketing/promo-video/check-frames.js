@@ -34,7 +34,17 @@ const ROOT = path.resolve(__dirname, '../..');
 const file = process.argv[2];
 if (!file) { console.error('usage: check-frames.js <video.mp4>'); process.exit(2); }
 const iFps = process.argv.indexOf('--fps');
-const FPS = iFps === -1 ? 25 : Number(process.argv[iFps + 1]);
+// La cadence se LIT dans le fichier. Elle etait supposee a 25 : sur un film a
+// 30 i/s la garde annoncait des defauts a t=43 s dans un film de 36 s, ce qui
+// rendait ses rapports impossibles a recouper avec l'image.
+const FPS = iFps !== -1 ? Number(process.argv[iFps + 1]) : (() => {
+  const r = require('child_process').spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0',
+    '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', process.argv[2]], { encoding: 'utf8' });
+  // `csv=p=0` ajoute une virgule en fin de ligne : un `split('/')` naif donnait
+  // « 1,\r\n » comme denominateur, donc NaN, donc le repli silencieux a 25.
+  const m = String(r.stdout || '').match(/(\d+)\s*\/\s*(\d+)/);
+  return m && Number(m[2]) ? Number(m[1]) / Number(m[2]) : 25;
+})();
 
 // Seuil CALIBRE SUR DEUX FILMS REELS, un valide et un fautif : le n1 (sombre,
 // valide par Movsar) ne descend jamais sous 10,7 ; la crea « Samedi » tombait

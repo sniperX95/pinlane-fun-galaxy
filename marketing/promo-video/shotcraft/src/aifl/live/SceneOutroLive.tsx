@@ -5,7 +5,7 @@ import layout from '../live-layout.json';
 
 const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-const LETTERS = 'AI Foundation Lab'.split('');
+const LETTERS = 'Pinlane'.split('');
 const PAGE_H = layout.projects.pageH;
 const WBR_PAGE_H = layout.wbr.pageH;
 
@@ -31,17 +31,47 @@ type FlyEl = {
   wbrCrop?: boolean; // element I: crop out of wbr-full.png as a background
 };
 
-// render order = cue order, so later arrivals stack on top
+// LA COMPOSITION EST CONSERVEE, LES PROPORTIONS VIENNENT DES IMAGES.
+//
+// Les neuf poses portaient des dimensions ecrites en dur (cartes 358x312,
+// panneaux 1104x225…). Nos elements ont d'autres proportions : gardees telles
+// quelles, chaque image aurait ete etiree. On ne conserve donc de la pose que
+// la LARGEUR VOULUE A L'ECRAN (largeur d'origine x son echelle), et la hauteur
+// suit le rapport reel de l'image, lu dans le layout au moment de la capture.
+const TAILLES = (layout as { assets?: Record<string, { w: number; h: number }> }).assets ?? {};
+
+// La fenetre de recadrage dans la page du tableau de bord : l'en-tete du premier
+// bloc releve. L'offset d'origine (-576, -173) visait le titre d'un document qui
+// n'existe pas ici.
+const WBR_CROP = (() => {
+  const b = layout.wbr.blocks[0] ?? { x: 0, y: 267, w: 685, h: 316 };
+  return { x: b.x, y: b.y, w: Math.min(b.w, 700), h: 54 };
+})();
+const pose = (
+  p: Omit<FlyEl, 'w' | 'h' | 'scale'> & { largeurEcran: number; replis: { w: number; h: number } },
+): FlyEl => {
+  const a = TAILLES[p.file] ?? p.replis;
+  return { ...p, w: a.w, h: a.h, scale: p.largeurEcran / a.w };
+};
+
+// ordre de rendu = ordre des entrees, donc les derniers arrivent au-dessus
 const ELS: FlyEl[] = [
-  { key: 'nav', file: 'nav.png', w: 1920, h: 61, cx: 960, cy: 84, scale: 0.62, rot: 0, dx: 0, dy: -120, radius: 10, cue: 4 },
-  { key: 'card4', file: 'card4-hires.png', w: 358, h: 312, cx: 300, cy: 400, scale: 0.72, rot: -5, dx: -500, dy: 0, radius: 16, cue: 7 },
-  { key: 'card1', file: 'card1.png', w: 358, h: 288, cx: 1630, cy: 380, scale: 0.68, rot: 4, dx: 500, dy: 0, radius: 16, cue: 10 },
-  { key: 'paper1', file: 'paper1.png', w: 1104, h: 225, cx: 1460, cy: 730, scale: 0.5, rot: -3, dx: 450, dy: 260, radius: 12, cue: 13 },
-  { key: 'card7', file: 'card7.png', w: 358, h: 312, cx: 260, cy: 800, scale: 0.6, rot: 3, dx: -400, dy: 300, radius: 16, cue: 16 },
-  { key: 'paper3', file: 'paper3.png', w: 1104, h: 225, cx: 620, cy: 930, scale: 0.48, rot: 2, dx: 0, dy: 320, radius: 12, cue: 19 },
-  { key: 'search', file: 'float-search.png', w: 1016, h: 44, cx: 760, cy: 180, scale: 0.55, rot: -1.5, dx: 0, dy: -240, radius: 10, cue: 22 },
-  { key: 'stats', file: 'float-stats.png', w: 315, h: 56, cx: 1560, cy: 950, scale: 0.9, rot: -2, dx: 380, dy: 0, radius: 10, cue: 25 },
-  { key: 'wbr', file: 'wbr-full.png', w: 688, h: 54, cx: 1620, cy: 170, scale: 0.8, rot: 2.5, dx: 360, dy: -200, radius: 8, cue: 28, wbrCrop: true },
+  pose({ key: 'nav', file: 'nav.png', largeurEcran: 1190, replis: { w: 1920, h: 61 }, cx: 960, cy: 84, rot: 0, dx: 0, dy: -120, radius: 10, cue: 4 }),
+  pose({ key: 'hero', file: layout.projects.heroHires ?? 'card-hero-hires.png', largeurEcran: 470, replis: { w: 358, h: 312 }, cx: 300, cy: 400, rot: -5, dx: -500, dy: 0, radius: 12, cue: 7 }),
+  pose({ key: 'card1', file: 'card1.png', largeurEcran: 430, replis: { w: 358, h: 288 }, cx: 1630, cy: 380, rot: 4, dx: 500, dy: 0, radius: 12, cue: 10 }),
+  pose({ key: 'paper1', file: 'paper1.png', largeurEcran: 552, replis: { w: 1104, h: 225 }, cx: 1460, cy: 730, rot: -3, dx: 450, dy: 260, radius: 12, cue: 13 }),
+  pose({ key: 'card7', file: 'card7.png', largeurEcran: 400, replis: { w: 358, h: 312 }, cx: 260, cy: 800, rot: 3, dx: -400, dy: 300, radius: 12, cue: 16 }),
+  pose({ key: 'paper3', file: 'paper3.png', largeurEcran: 530, replis: { w: 1104, h: 225 }, cx: 620, cy: 930, rot: 2, dx: 0, dy: 320, radius: 12, cue: 19 }),
+  pose({ key: 'search', file: 'float-search.png', largeurEcran: 420, replis: { w: 1016, h: 44 }, cx: 760, cy: 180, rot: -1.5, dx: 0, dy: -240, radius: 10, cue: 22 }),
+  pose({ key: 'stats', file: 'float-stats.png', largeurEcran: 283, replis: { w: 315, h: 56 }, cx: 1560, cy: 950, rot: -2, dx: 380, dy: 0, radius: 10, cue: 25 }),
+  // Ce dernier element n'est pas une decoupe mais un RECADRAGE dans la page du
+  // tableau de bord : ses dimensions sont celles de la fenetre de recadrage, pas
+  // celles du fichier. Elles suivent le premier bloc releve sur cette page.
+  {
+    key: 'wbr', file: 'wbr-full.png', w: WBR_CROP.w, h: WBR_CROP.h,
+    scale: 550 / WBR_CROP.w, cx: 1620, cy: 170, rot: 2.5, dx: 360, dy: -200,
+    radius: 8, cue: 28, wbrCrop: true,
+  },
 ];
 
 // 20 gold dust motes, all parameters index-derived (deterministic)
@@ -194,7 +224,7 @@ export const SceneOutroLive: React.FC = () => {
 
             const texture = el.wbrCrop
               ? {
-                  background: `#fff url(${staticFile(`textures/live/${el.file}`)}) -576px -173px / 1920px ${WBR_PAGE_H}px no-repeat`,
+                  background: `#fff url(${staticFile(`textures/live/${el.file}`)}) -${WBR_CROP.x}px -${WBR_CROP.y}px / 1920px ${WBR_PAGE_H}px no-repeat`,
                   border: '1px solid oklch(90% .008 82)',
                 }
               : null;
@@ -385,7 +415,7 @@ export const SceneOutroLive: React.FC = () => {
             ) : null}
           </div>
           <div style={{ fontFamily: MONO, fontSize: 25, letterSpacing: '0.14em', color: 'oklch(50% 0.006 82)', marginTop: 30, opacity: tag, textTransform: 'uppercase' }}>
-            Team Research Console
+            La console de ton centre
           </div>
         </div>
       </AbsoluteFill>

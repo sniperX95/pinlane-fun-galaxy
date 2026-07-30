@@ -10,19 +10,33 @@ const INK = 'oklch(18% 0.006 82)';
 const AMBER = 'oklch(52% 0.115 65)';
 const INK2 = 'oklch(50% 0.006 82)';
 
-const WORDMARK = 'AI Foundation Lab';
-const KICKER = 'TEAM RESEARCH CONSOLE';
+const WORDMARK = 'Pinlane';
+const KICKER = 'LA CONSOLE DE TON CENTRE';
 
 const PAGE_H = layout.projects.pageH;
 
-// --- the ONE hero card the whole opening focuses on -------------------------
-// cards[3] sits in the centre column, mid-grid; its centre x is exactly 960
-// (page centre), so the push-in stays perfectly framed.
-const MAIN = 3;
+// --- LA reservation sur laquelle tout le plan d'ouverture se referme ---------
+// Elle n'est plus choisie a la main : le script de capture designe celle qui est
+// la plus proche du centre de page et ecrit son rang. Le centre compte, parce
+// que la camera cadre le point (cx, cy) au milieu de l'image — un heros collé
+// au bord fait entrer le hors-page dans le cadre.
+const MAIN = layout.projects.heroIndex ?? 3;
 const CARD = layout.projects.cards[MAIN];
-const MCX = CARD.x + CARD.w / 2; // ≈ 960
-const MCY = CARD.y + CARD.h / 2; // 772
+const HIRES = layout.projects.heroHires ?? 'card-hero-hires.png';
+const MCX = CARD.x + CARD.w / 2;
+const MCY = CARD.y + CARD.h / 2;
 const RADIUS = 16;
+
+// Grossissement du gros plan. Deux plafonds : la definition natives du gros
+// plan (le script mesure combien de vrais pixels il contient — on reduit
+// toujours une image, jamais on ne l'agrandit) et le confort de la TEXTURE de
+// page dessous, capturee en densite 2, qui devient molle au-dela de ~1,5x.
+// 3,4 n'est pas un chiffre rond choisi au hasard : c'est le plus fort
+// grossissement qui laisse encore tenir l'annotation A GAUCHE de la
+// reservation. A ce grossissement la moitie de l'image couvre 960/3,4 = 282 px
+// de page, donc le cadre va de 616 a 1180 ; la reservation occupe 835 a 1022, il
+// reste 219 px a sa gauche. Monter a 4,2 chassait l'annotation hors cadre.
+const ZOOM_HERO = Math.min(layout.projects.heroZoomMax ?? 4, 3.4);
 
 // Camera: straight-on full page (52→84, static while the spotlight roves and
 // locks), then a 16-frame push-in that swings to a LEFT-SIDE view — rotY
@@ -31,12 +45,27 @@ const RADIUS = 16;
 // frame (84→100), then held to the end (190) with an almost-imperceptible pull.
 // The focal page-point sits a touch LEFT of the card centre so the card lands
 // slightly right of screen-centre, foregrounding its near (left) edge.
+const WIDE_ZOOM = 0.78;
 const CAM_KEYS: CamKey[] = [
-  { frame: 82, cx: 960, cy: 540, zoom: 0.78, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
-  { frame: 114, cx: 960, cy: 540, zoom: 0.78, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
-  { frame: 130, cx: MCX - 30, cy: MCY, zoom: 2.6, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
-  { frame: 220, cx: MCX - 30, cy: MCY, zoom: 2.58, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
+  { frame: 82, cx: 960, cy: 540, zoom: WIDE_ZOOM, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
+  { frame: 114, cx: 960, cy: 540, zoom: WIDE_ZOOM, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
+  { frame: 130, cx: MCX - 30, cy: MCY, zoom: ZOOM_HERO, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
+  { frame: 220, cx: MCX - 30, cy: MCY, zoom: ZOOM_HERO - 0.02, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
 ];
+
+// Ou se trouve le heros A L'ECRAN dans la vue large ? Le projecteur doit
+// verrouiller exactement dessus. La valeur d'origine (50 %, 67 %) etait juste
+// pour une carte a y=772 ; la notre est a y=203, le projecteur aurait eclaire
+// une zone vide a deux tiers de l'image. On la DERIVE de la meme transformation
+// que celle qu'applique la camera : ecran = centre + (page - focale) x zoom.
+const LOCK_X = ((960 + (MCX - 960) * WIDE_ZOOM) / 1920) * 100;
+const LOCK_Y = ((540 + (MCY - 540) * WIDE_ZOOM) / 1080) * 100;
+
+// L'annotation flottante se pose a GAUCHE de la reservation, au meme decalage
+// relatif que dans le template (-225, +52). Ses coordonnees etaient ecrites en
+// dur pour une carte a (781, 616) ; laissees telles quelles, elle aurait flotte
+// hors du cadre.
+const NOTE = { x: CARD.x - 215, y: CARD.y - 16, w: 200 };
 const PUSH_EASE = Easing.bezier(0.35, 0, 0.2, 1);
 
 const POP_EASE = Easing.bezier(0.2, 1.25, 0.3, 1); // spring with overshoot
@@ -101,10 +130,10 @@ export const SceneOpen: React.FC = () => {
   // the flat page, then locks onto the hero card centre (which sits at screen
   // (50%, ~67%) in the straight-on view) and rides the push-in to the middle.
   const spotEase = Easing.bezier(0.4, 0, 0.3, 1);
-  const spotX = interpolate(frame, [86, 90, 98, 104, 110, 130], [25, 25, 70, 42, 50, 50], {
+  const spotX = interpolate(frame, [86, 90, 98, 104, 110, 130], [25, 25, 70, 42, LOCK_X, 50], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: spotEase,
   });
-  const spotY = interpolate(frame, [86, 90, 98, 104, 110, 130], [30, 30, 45, 60, 67, 50], {
+  const spotY = interpolate(frame, [86, 90, 98, 104, 110, 130], [30, 30, 45, 60, LOCK_Y, 50], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: spotEase,
   });
   const spotOn = interpolate(frame, [84, 92], [0, 1], {
@@ -267,7 +296,7 @@ export const SceneOpen: React.FC = () => {
                       px) and samples DOWN from the 1432px source — crisp — rather
                       than being downsampled to layout size and GPU-upscaled. */}
                   <Img
-                    src={staticFile('textures/live/card4-hires.png')}
+                    src={staticFile(`textures/live/${HIRES}`)}
                     style={{
                       position: 'absolute',
                       inset: 0,
@@ -358,7 +387,7 @@ export const SceneOpen: React.FC = () => {
                   {/* soft shadow the note casts onto the page */}
                   <div
                     style={{
-                      position: 'absolute', left: 566, top: 736, width: 210, height: 74,
+                      position: 'absolute', left: NOTE.x + 10, top: NOTE.y + 68, width: 210, height: 74,
                       transform: 'translateZ(2px)',
                       background: 'radial-gradient(ellipse at 50% 50%, rgba(40,30,20,0.3), transparent 70%)',
                       filter: 'blur(12px)',
@@ -367,19 +396,27 @@ export const SceneOpen: React.FC = () => {
                   />
                   <div
                     style={{
-                      position: 'absolute', left: 556, top: 668, width: 230,
+                      position: 'absolute', left: NOTE.x, top: NOTE.y, width: NOTE.w,
                       transform: `translateZ(${noteZ}px) translateY(${(1 - noteIn) * 26}px)`,
                       opacity: noteVis,
                       filter: `blur(${(1 - noteIn) * 4}px)`,
+                      // UNE PLAQUE SOUS LE TEXTE. Le template posait cette note
+                      // au-dessus d'une grande carte quasi vide ; ici elle tombe
+                      // sur une grille dense de creneaux et le serif noir devenait
+                      // illisible. La plaque la detache du fond sans la cacher.
+                      background: 'oklch(98.5% 0.008 85 / 0.93)',
+                      padding: '14px 18px 18px',
+                      borderRadius: 10,
+                      boxShadow: '0 10px 30px rgba(40,30,20,0.16), 0 2px 6px rgba(40,30,20,0.10)',
                     }}
                   >
                     <div
                       style={{
-                        fontFamily: SERIF, fontSize: 37, fontWeight: 600, color: INK,
+                        fontFamily: SERIF, fontSize: 27, fontWeight: 600, color: INK,
                         lineHeight: 1.16, letterSpacing: '-0.012em',
                       }}
                     >
-                      One card,
+                      Une résa,
                     </div>
                     <div style={{ position: 'relative', display: 'inline-block' }}>
                       {/* marker highlight sweeping in behind the words */}
@@ -394,11 +431,11 @@ export const SceneOpen: React.FC = () => {
                       <div
                         style={{
                           position: 'relative',
-                          fontFamily: SERIF, fontStyle: 'italic', fontSize: 37, fontWeight: 600,
+                          fontFamily: SERIF, fontStyle: 'italic', fontSize: 27, fontWeight: 600,
                           color: INK, lineHeight: 1.16, letterSpacing: '-0.012em',
                         }}
                       >
-                        one project.
+                        zéro saisie.
                       </div>
                     </div>
                   </div>

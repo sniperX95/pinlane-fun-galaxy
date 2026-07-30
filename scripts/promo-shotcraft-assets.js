@@ -44,39 +44,73 @@ const SETTLE = 900;
 // lateral de Pinlane ; `nom` est le prefixe de fichier attendu par les scenes.
 const PAGES = [
   {
-    nom: 'planning', menu: 'planning',
+    // `menu: null` : le planning EST la vue par defaut, il n'y a pas de cle de
+    // menu pour lui. Il doit donc etre capture en premier, avant tout clic.
+    // `pleinePage` : la planche sur laquelle les reservations atterrissent. Le
+    // template descendait jusqu'a 3782 px parce que sa grille de projets
+    // s'etalait sur toute cette hauteur. Mesure faite ici : nos 62 creneaux
+    // tiennent dans 610 px. On cadre donc 1900 px — planning entier plus la
+    // liste des reservations dessous — et la plongee se recale dessus.
+    nom: 'projects', menu: null, hauteurCible: 1746, pleinePage: 1900,
     // Les reservations du planning : ce sont elles qui « volent » dans le plan
     // de distribution, donc elles sortent en decoupes transparentes.
-    decoupes: [{ base: 'card', sel: '.booking', max: 10, transparent: true }],
+    decoupes: [
+      // `etaler` : prendre les dix reservations REPARTIES sur toute la journee,
+      // pas les dix premieres dans l'ordre du DOM. Les dix premieres vivent
+      // toutes dans les deux premieres pistes, en haut a gauche ; le plan de
+      // distribution les fait tomber sur toute la page, il lui faut donc des
+      // positions etalees, sinon la moitie droite du planning reste vide.
+      { base: 'card', sel: '.booking', max: 10, transparent: true, etaler: true },
+      // Les scenes attendent trois decoupes nommees : la barre laterale et deux
+      // puces qui flottent au-dessus du plan de page.
+      { base: 'nav', sel: '.planning-title-stack', max: 1, transparent: true, sansIndex: true },
+      { base: 'float-search', sel: '.booking', max: 1, transparent: true, sansIndex: true },
+      { base: 'float-stats', sel: '.lane-header', max: 1, transparent: true, sansIndex: true },
+    ],
     boites: [
-      { cle: 'bookings', sel: '.booking', tous: true, max: 10 },
+      { cle: 'bookings', sel: '.booking', tous: true, max: 10, etaler: true },
       { cle: 'titre', sel: '.planning-title-stack' },
+      // Le champ de recherche du planning : le plan de distribution y fait
+      // taper une requete, il lui faut sa position reelle.
+      { cle: 'recherche', sel: 'input[placeholder*="Recherch"]' },
       { cle: 'colonnes', sel: '.lane-header', tous: true, max: 8 },
     ],
     // Planche vide : le meme planning sans ses reservations, pour que les
     // cartes aient une grille ou atterrir.
     masquerPourVide: '.booking',
   },
+  // Le casting suit la FORME, pas le nom. Les trois scenes ci-dessous empilent
+  // des blocs larges et bas (1104x224 et 1104x95 dans le template d'origine) :
+  // leur donner des cartes KPI cote a cote produisait une image qui ne
+  // ressemblait a rien une fois l'animation appliquee. Un inventaire des formes
+  // du produit a designe les bons elements.
   {
-    nom: 'dashboard', menu: 'dashboard',
-    decoupes: [
-      { base: 'kpi', sel: '.dash-kpi', max: 4, transparent: true },
-      { base: 'donut', sel: '.dash-donut-wrap', max: 1, transparent: true },
-    ],
+    // Les lignes de detail qui tombent une par une = la liste des arrivees,
+    // 38 lignes de 1073x84 empilees. Forme quasi identique a l'originale.
+    nom: 'detail', menu: 'arrivals', hauteurCible: 1172,
+    decoupes: [{ base: 'kpi', sel: '.utility-res-card', max: 4, transparent: true }],
+    boites: [{ cle: 'kpis', sel: '.utility-res-card', tous: true, max: 5 }],
+  },
+  {
+    // La pile qui s'empile = les evenements du mois, 24 lignes de 1073x91.
+    //
+    // Premier choix : les panneaux d'automatisation email. Rejete apres avoir
+    // REGARDE l'image rendue : la journee de demonstration n'a aucun historique
+    // d'emails, les panneaux affichaient « 0 recu · 0 en attente · 0 envoye ».
+    // Un plan de pub qui montre des zeros dit que le produit ne fait rien.
+    nom: 'papers', menu: 'events', hauteurCible: 1489,
+    decoupes: [{ base: 'paper', sel: '.event-row', max: 5, attendus: 5, transparent: true }],
+    boites: [{ cle: 'stats', sel: '.event-row', tous: true, max: 5 }],
+  },
+  {
+    // Le document qui s'ecrit tout seul = le tableau de bord qui se remplit,
+    // carte par carte.
+    nom: 'wbr', menu: 'dashboard', hauteurCible: 1080,
+    decoupes: [{ base: 'seq', sel: '.dash-card', max: 2, transparent: true }],
     boites: [
-      { cle: 'kpis', sel: '.dash-kpi', tous: true, max: 4 },
-      { cle: 'alerte', sel: '.dash-alerts' },
+      { cle: 'sequences', sel: '.dash-card', tous: true, max: 6 },
+      { cle: 'lignes', sel: '.dash-arrival-row', tous: true, max: 3 },
     ],
-  },
-  {
-    nom: 'reservations', menu: 'reservations',
-    decoupes: [{ base: 'row', sel: '.pv2-stat', max: 4, transparent: true }],
-    boites: [{ cle: 'stats', sel: '.pv2-stat', tous: true, max: 4 }],
-  },
-  {
-    nom: 'emails', menu: 'emails',
-    decoupes: [{ base: 'seq', sel: '.mk-auto-card, .mk-auto-head', max: 5, transparent: true }],
-    boites: [{ cle: 'sequences', sel: '.mk-auto-desc', tous: true, max: 6 }],
   },
 ];
 
@@ -103,6 +137,40 @@ const serve = () => new Promise((resolve) => {
 });
 
 const RATES = [];
+
+// `k` indices repartis sur `n` elements, premier et dernier inclus. Avec n=38 et
+// k=10 : 0, 4, 8, 12, 16, 20, 24, 28, 32, 37 — soit une reservation par tranche
+// de la journee, donc reparties sur toutes les pistes.
+// GARDE : la texture doit contenir EXACTEMENT la hauteur de page annoncee.
+//
+// Rien ne signalait qu'une capture de 1080 px etait publiee sous une hauteur de
+// page de 1746 : le film l'etirait silencieusement, et les elements superposes
+// (reservation heros, lignes qui tombent) derivaient de plus en plus de leur
+// emplacement dans l'image. Un ecart d'un pixel arrete maintenant le script.
+// Taille reelle d'un PNG, en pixels. En-tete PNG : largeur et hauteur en
+// gros-boutiste aux octets 16..23.
+const taillePng = (nom) => {
+  const png = fs.readFileSync(path.join(OUT, nom));
+  return { w: png.readUInt32BE(16), h: png.readUInt32BE(20) };
+};
+
+const verifierTexture = (nom, hAttendue) => {
+  const { w, h } = taillePng(nom);
+  if (w !== VIEW.width * DSF || h !== Math.round(hAttendue * DSF)) {
+    RATES.push(`${nom} : ${w}x${h} px alors que la page annonce`
+      + ` ${hAttendue} CSS en densite ${DSF} (attendu ${VIEW.width * DSF}x${Math.round(hAttendue * DSF)})`);
+  }
+};
+
+const etaler = (n, k) => (k >= n
+  ? Array.from({ length: n }, (_, i) => i)
+  : Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1))));
+
+// Le template affiche un titre par carte volante. On reprend des noms de
+// groupes du jeu de demonstration, pour rester coherent avec l'image.
+const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
+  'Groupe amis', 'Sarah Lemaire', 'Ecole Saint-Joseph', 'Famille Martin',
+  'EVJF Camille', 'Club Padel', 'Famille Rousseau'];
 
 (async () => {
   fs.rmSync(OUT, { recursive: true, force: true });
@@ -144,6 +212,24 @@ const RATES = [];
 
   const layout = { pageW: VIEW.width };
 
+  // LE FOND DU FILM VIENT DU PRODUIT.
+  //
+  // La camera cadre un point de la page ; des qu'elle vise pres d'un bord, elle
+  // montre du hors-page. Le template rendait cela INVISIBLE en peignant son
+  // arriere-plan de la couleur exacte du fond de ses captures. Avec le creme du
+  // template derriere une page Pinlane claire, le hors-page devenait une bande
+  // grise franche — c'est ce qu'on voyait au premier rendu.
+  const fond = await page.evaluate(() => {
+    const lis = (el) => (el ? getComputedStyle(el).backgroundColor : '');
+    const transparent = (c) => !c || c === 'transparent' || /rgba\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(c);
+    for (const el of [document.body, document.documentElement]) {
+      const c = lis(el);
+      if (!transparent(c)) return c;
+    }
+    return 'rgb(255,255,255)';
+  });
+  console.log(`fond de page mesure : ${fond}`);
+
   const bbox = (sel, index) => page.evaluate(([s, i]) => {
     const el = document.querySelectorAll(s)[i || 0];
     if (!el) return null;
@@ -153,16 +239,36 @@ const RATES = [];
   }, [sel, index]);
 
   for (const pg of PAGES) {
-    await page.evaluate((k) => {
-      const el = document.querySelector(`[data-fgx-menu-key="${k}"]`);
-      if (el) el.click();
-    }, pg.menu);
-    await page.waitForTimeout(SETTLE + 900);
+    if (pg.menu) {
+      // GARDE : une cle de menu qui ne correspond a rien laissait la page
+      // precedente a l'ecran, et rien ne le signalait. Les quatre pages du
+      // film seraient sorties identiques.
+      const ok = await page.evaluate((k) => {
+        const el = document.querySelector(`[data-fgx-menu-key="${k}"]`);
+        if (!el) return false;
+        el.click();
+        return true;
+      }, pg.menu);
+      if (!ok) { RATES.push(`${pg.nom} : aucun menu « ${pg.menu} »`); continue; }
+      await page.waitForTimeout(SETTLE + 900);
+    }
 
     const entree = { pageH: await page.evaluate(() => document.documentElement.scrollHeight) };
     layout[pg.nom] = entree;
 
-    await page.screenshot({ path: path.join(OUT, `${pg.nom}-full.png`), fullPage: true });
+    // Recadre a la hauteur du template quand la page est plus longue ; sinon
+    // pleine page (une page plus COURTE que la cible serait etiree).
+    const hReelle = entree.pageH;
+    const hCible = pg.hauteurCible && pg.hauteurCible < hReelle ? pg.hauteurCible : hReelle;
+    entree.pageH = hCible;
+    // `clip` SANS `fullPage` est borne au viewport : demander 1746 px de haut
+    // rendait une image de 1080 px, que le film etirait ensuite sur 1746 —
+    // d'ou un decalage croissant entre les elements superposes et la texture
+    // (119 px sur la reservation heros). `fullPage: true` fait porter le
+    // decoupage sur la page entiere.
+    await page.screenshot({ path: path.join(OUT, `${pg.nom}-full.png`),
+      fullPage: true, clip: { x: 0, y: 0, width: VIEW.width, height: hCible } });
+    verifierTexture(`${pg.nom}-full.png`, hCible);
     console.log(`  ${pg.nom}-full  (hauteur de page ${entree.pageH})`);
 
     entree.boxes = {};
@@ -170,7 +276,8 @@ const RATES = [];
       if (b.tous) {
         const n = await page.evaluate((s) => document.querySelectorAll(s).length, b.sel);
         const lot = [];
-        for (let i = 0; i < Math.min(n, b.max || 12); i++) {
+        const pris = b.etaler ? etaler(n, b.max || 12) : etaler(Math.min(n, b.max || 12), Math.min(n, b.max || 12));
+        for (const i of pris) {
           const r = await bbox(b.sel, i);
           if (r) lot.push(r);
         }
@@ -187,14 +294,77 @@ const RATES = [];
       const n = await page.evaluate((s) => document.querySelectorAll(s).length, d.sel);
       if (!n) { RATES.push(`${pg.nom} : decoupe « ${d.sel} » ne trouve rien`); continue; }
       const combien = Math.min(n, d.max || 10);
-      for (let i = 0; i < combien; i++) {
+      // L'index DOM et le numero de fichier sont deux choses distinctes : avec
+      // `etaler`, card3.png est la 9e reservation du DOM. Le fichier suit le
+      // RANG dans la selection, pour rester aligne sur `layout.projects.cards`.
+      const pris = d.etaler ? etaler(n, combien) : etaler(combien, combien);
+      for (let rang = 0; rang < pris.length; rang++) {
+        const i = pris[rang];
         const el = page.locator(d.sel).nth(i);
-        const nom = `${d.base}${i + 1}.png`;
+        const nom = d.sansIndex ? `${d.base}.png` : `${d.base}${rang + 1}.png`;
         try {
-          await el.screenshot({ path: path.join(OUT, nom), omitBackground: !!d.transparent });
-        } catch (e) { RATES.push(`${pg.nom} : ${nom} non capturee (${String(e.message).slice(0, 60)})`); }
+          await el.screenshot({ path: path.join(OUT, nom), omitBackground: !!d.transparent, timeout: 6000 });
+        } catch (e) {
+          // REPLI PAR RECADRAGE. `element.screenshot` attend que l'element soit
+          // stable et visible, et rend la main sur timeout — la barre laterale
+          // et les onglets, hauts dans une page de 5282 px, echouaient ainsi.
+          // Un recadrage sur leur bbox n'attend rien et donne la meme image ;
+          // seule la transparence est perdue, sans consequence sur un element
+          // pose sur un fond opaque.
+          const r = await bbox(d.sel, i);
+          if (r && r.w > 4 && r.h > 4) {
+            await page.screenshot({ path: path.join(OUT, nom),
+              clip: { x: r.x, y: r.y, width: r.w, height: r.h } });
+            console.log(`    ${nom} par recadrage (element instable)`);
+          } else RATES.push(`${pg.nom} : ${nom} non capturee (${String(e.message).slice(0, 50)})`);
+        }
       }
       console.log(`  ${combien} decoupes « ${d.base} »`);
+      // Le template attend un nombre FIXE de fichiers par serie (paper1..paper5).
+      // S'il en manque, il reste des <Img> pointant vers un fichier absent —
+      // Remotion echoue au rendu. On complete en rejouant les premieres.
+      if (!d.sansIndex && d.attendus && combien < d.attendus) {
+        for (let i = combien; i < d.attendus; i++) {
+          const source = path.join(OUT, `${d.base}${(i % combien) + 1}.png`);
+          if (fs.existsSync(source)) {
+            fs.copyFileSync(source, path.join(OUT, `${d.base}${i + 1}.png`));
+            console.log(`    ${d.base}${i + 1}.png complete depuis ${path.basename(source)}`);
+          }
+        }
+      }
+    }
+
+    // --- LA PAGE LONGUE POUR LE PLAN DE DISTRIBUTION ------------------------
+    //
+    // Ce plan descend jusqu'a cy=3032 : le template y arrivait en PEIGNANT une
+    // extension de papier vide sous sa capture, garnie de 16 cartes dupliquees.
+    // Notre planning fait 5282 px de haut pour de vrai — on lui donne donc une
+    // vraie page de 3782 px (10h -> ~19h, huit pistes) et de vraies
+    // reservations. Rien de peint, rien de duplique.
+    if (pg.pleinePage) {
+      const hL = Math.min(pg.pleinePage, hReelle);
+      const toutes = await page.evaluate(([sel, hMax]) => [...document.querySelectorAll(sel)]
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: Math.round(r.x + window.scrollX), y: Math.round(r.y + window.scrollY),
+            w: Math.round(r.width), h: Math.round(r.height) };
+        })
+        .filter((r) => r.y + r.h <= hMax && r.w > 8), [pg.masquerPourVide, hL]);
+      const pris = etaler(toutes.length, Math.min(26, toutes.length));
+      entree.pleine = { pageH: hL, cartes: pris.map((i, rang) => ({ file: `cardf${rang + 1}.png`, ...toutes[i] })) };
+      for (let rang = 0; rang < pris.length; rang++) {
+        const nom = `cardf${rang + 1}.png`;
+        const r = toutes[pris[rang]];
+        try {
+          await page.locator(pg.masquerPourVide).nth(pris[rang]).screenshot({
+            path: path.join(OUT, nom), omitBackground: true, timeout: 6000,
+          });
+        } catch (e) {
+          await page.screenshot({ path: path.join(OUT, nom),
+            clip: { x: r.x, y: r.y, width: r.w, height: r.h } });
+        }
+      }
+      console.log(`  ${pris.length} decoupes « cardf » (page longue ${hL} px)`);
     }
 
     if (pg.masquerPourVide) {
@@ -202,7 +372,12 @@ const RATES = [];
         document.querySelectorAll(s).forEach((e) => { e.style.visibility = 'hidden'; });
       }, pg.masquerPourVide);
       await page.waitForTimeout(400);
-      await page.screenshot({ path: path.join(OUT, `${pg.nom}-empty.png`), fullPage: true });
+      // La planche vide est celle sur laquelle les cartes atterrissent : elle
+      // suit la hauteur de la page longue, pas celle du plan large.
+      const hVide = (entree.pleine && entree.pleine.pageH) || hCible;
+      await page.screenshot({ path: path.join(OUT, `${pg.nom}-empty.png`),
+        fullPage: true, clip: { x: 0, y: 0, width: VIEW.width, height: hVide } });
+      verifierTexture(`${pg.nom}-empty.png`, hVide);
       await page.evaluate((s) => {
         document.querySelectorAll(s).forEach((e) => { e.style.visibility = ''; });
       }, pg.masquerPourVide);
@@ -210,31 +385,151 @@ const RATES = [];
     }
   }
 
-  // Gros plan a densite 4 : le template exige une capture separee pour tout
-  // element vu en tres gros, sinon son texte casse sous le zoom.
-  await page.evaluate(() => {
-    const el = document.querySelector('[data-fgx-menu-key="planning"]');
-    if (el) el.click();
-  });
-  await page.waitForTimeout(1600);
-  const ctx4 = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 4 });
-  const p4 = await ctx4.newPage();
-  await p4.goto(`${BASE}/?demo=1&v=${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
-  await p4.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
-  await p4.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
-  await p4.waitForTimeout(2600);
-  const cible = p4.locator('.booking').nth(0);
-  if (await cible.count()) {
-    await cible.screenshot({ path: path.join(OUT, 'card1-hires.png'), omitBackground: true });
-    console.log('  card1-hires (densite 4)');
-  } else RATES.push('card1-hires : aucune reservation a capturer');
-  await ctx4.close();
+  // --- LE HEROS : la reservation que le plan d'ouverture montre en tres gros --
+  //
+  // Il se choisit par la geometrie, pas au hasard : parmi les dix retenues, la
+  // plus HAUTE (une reservation de 2 h porte deux lignes de texte lisibles) et
+  // la plus PROCHE du centre de page. Le centre compte : la camera cadre le
+  // point (cx, cy) au milieu de l'image, donc un heros collé au bord gauche
+  // fait apparaitre le vide hors-page — c'est exactement ce qui ratait au
+  // premier rendu.
+  const cartes = layout.projects.boxes.bookings;
+  const score = (r) => Math.abs(r.x + r.w / 2 - VIEW.width / 2) - r.h * 6;
+  let heros = 0;
+  cartes.forEach((r, i) => { if (score(r) < score(cartes[heros])) heros = i; });
+  const heroBox = cartes[heros];
+  console.log(`  heros : reservation ${heros + 1} (${heroBox.w}x${heroBox.h} a x=${heroBox.x})`);
+
+  // Densite du gros plan : plus elle est haute, plus la camera peut zoomer sans
+  // etirer l'image. On tente 6, puis on retombe a 4 si Chromium refuse la
+  // surface (1920x1746 en densite 6 = 120 Mpx).
+  let densite = 0;
+  for (const d of [6, 4]) {
+    const c = await browser.newContext({ viewport: VIEW, deviceScaleFactor: d });
+    const p = await c.newPage();
+    try {
+      await p.goto(`${BASE}/?demo=1&v=${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+      await p.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
+      await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      await p.waitForTimeout(2600);
+      const n = await p.evaluate(() => document.querySelectorAll('.booking').length);
+      const idx = etaler(n, 10)[heros];
+      await p.locator('.booking').nth(idx).screenshot({
+        path: path.join(OUT, 'card-hero-hires.png'), omitBackground: true, timeout: 20000,
+      });
+      densite = d;
+      await c.close();
+      break;
+    } catch (e) {
+      console.log(`  densite ${d} refusee (${String(e.message).slice(0, 60)})`);
+      await c.close();
+    }
+  }
+  if (!densite) RATES.push('card-hero-hires : aucune densite n\'a abouti');
+  else console.log(`  card-hero-hires (densite ${densite}, ${heroBox.w * densite} px de large)`);
 
   await browser.close();
   server.close();
 
-  fs.writeFileSync(LAYOUT, JSON.stringify(layout, null, 2));
+  // --- mise en forme au schema attendu par les scenes ---------------------
+  const bo = (p, c) => ((layout[p] && layout[p].boxes && layout[p].boxes[c]) || []);
+  const liste = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+  const borne = (r, hMax) => ({ ...r, y: Math.min(r.y, Math.max(0, hMax - r.h)) });
+
+  const finales = { pageW: VIEW.width, bg: fond };
+
+  // projects : les reservations deviennent les « cartes » qui volent.
+  const hP = layout.projects.pageH;
+  const bookings = bo('projects', 'bookings').map((r, i) => ({
+    file: `card${i + 1}.png`, ...borne(r, hP),
+    title: TITRES[i % TITRES.length],
+  }));
+  finales.projects = {
+    pageH: hP,
+    // Le plan d'ouverture lit ces trois valeurs au lieu de les deviner :
+    // quelle reservation est le heros, quelle image la montre en gros, et
+    // jusqu'ou la camera peut zoomer avant d'etirer cette image (regle dure :
+    // on reduit toujours une image, on ne l'agrandit jamais).
+    heroIndex: heros,
+    heroHires: 'card-hero-hires.png',
+    heroZoomMax: densite || 1,
+    // La page longue et ses 26 reservations, pour le plan de distribution.
+    fullPageH: (layout.projects.pleine && layout.projects.pleine.pageH) || hP,
+    cardsFull: ((layout.projects.pleine && layout.projects.pleine.cartes) || []).map((c, i) => ({
+      ...c, title: TITRES[i % TITRES.length],
+    })),
+    search: liste(layout.projects.boxes.recherche)[0] || { x: 1074, y: 40, w: 180, h: 30 },
+    header: liste(layout.projects.boxes.titre)[0] || { x: 0, y: 0, w: VIEW.width, h: 61 },
+    cards: bookings,
+    sections: bo('projects', 'colonnes').slice(0, 5).map((r, i) => ({
+      text: `Piste ${i + 1}`, ...borne(r, hP),
+    })),
+  };
+
+  // detail : les KPI du tableau de bord tiennent le role des lignes de detail.
+  const hD = layout.detail.pageH;
+  finales.detail = {
+    pageH: hD,
+    rows: bo('detail', 'kpis').map((r) => borne(r, hD)),
+    expPageH: hD,
+  };
+
+  // float : les puces qui flottent au-dessus du plan de page.
+  finales.float = [
+    { file: 'float-search.png', ...(liste(layout.projects.boxes.titre)[0] || { x: 60, y: 120, w: 350, h: 55 }) },
+    { file: 'float-stats.png', ...(bo('projects', 'colonnes')[0] || { x: 60, y: 200, w: 251, h: 49 }) },
+    { file: 'nav.png', ...(liste(layout.projects.boxes.titre)[0] || { x: 0, y: 0, w: 350, h: 55 }) },
+  ];
+
+  // wbr : les descriptions de sequences font les blocs du document.
+  const hW = layout.wbr.pageH;
+  const blocs = [...bo('wbr', 'sequences'), ...bo('wbr', 'lignes')]
+    .map((r) => ({ ...borne(r, hW), tag: 'p' }))
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+  finales.wbr = {
+    pageH: hW,
+    blocks: blocs.length ? blocs : [{ x: 576, y: 189, w: 400, h: 28, tag: 'p' }],
+    leftRail: { x: 0, y: 61, w: 208, h: hW - 61 },
+    rightRail: { x: VIEW.width - 288, y: 61, w: 288, h: hW - 61 },
+  };
+
+  // papers : les statistiques de reservations s'empilent.
+  const hS = layout.papers.pageH;
+  const stats = bo('papers', 'stats').map((r) => borne(r, hS));
+  finales.papers = {
+    pageH: hS,
+    cards: stats.length >= 5 ? stats.slice(0, 5)
+      : [...stats, ...Array.from({ length: 5 - stats.length }, (_, k) => stats[k % Math.max(1, stats.length)])].slice(0, 5),
+  };
+
+  // GARDE : toute cle lue par les scenes doit exister et etre non vide.
+  const exigees = [
+    ['projects.cards', finales.projects.cards.length >= 10],
+    ['projects.sections', finales.projects.sections.length >= 5],
+    ['detail.rows', finales.detail.rows.length >= 4],
+    ['float', finales.float.length >= 3],
+    ['wbr.blocks', finales.wbr.blocks.length >= 1],
+    ['papers.cards', finales.papers.cards.length === 5],
+  ];
+  exigees.filter(([, ok]) => !ok).forEach(([cle]) => RATES.push(`layout.${cle} incomplet`));
+
   const fichiers = fs.readdirSync(OUT);
+
+  // TAILLE INTRINSEQUE DE CHAQUE DECOUPE, EN PX CSS.
+  //
+  // Le plan de fin assemble neuf elements pris sur toutes les pages, avec leurs
+  // dimensions ecrites en dur (cartes 358x312, panneaux 1104x225…). Nos
+  // elements ont d'autres proportions : laissees en dur, chaque image serait
+  // ETIREE. La scene lit desormais ces tailles et n'impose que la largeur a
+  // l'ecran — la hauteur suit le rapport reel de l'image.
+  finales.assets = {};
+  fichiers.filter((f) => f.endsWith('.png')).forEach((f) => {
+    const { w, h } = taillePng(f);
+    const d = f === 'card-hero-hires.png' ? (densite || DSF) : DSF;
+    finales.assets[f] = { w: Math.round(w / d), h: Math.round(h / d) };
+  });
+
+  fs.writeFileSync(LAYOUT, JSON.stringify(finales, null, 2));
   console.log(`\n${fichiers.length} fichiers dans ${path.relative(ROOT, OUT)}`);
   console.log(`layout : ${path.relative(ROOT, LAYOUT)}`);
 

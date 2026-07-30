@@ -1,4 +1,12 @@
 import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame, Easing } from 'remotion';
+import layout from '../live-layout.json';
+
+// Le fond derriere le plan de page, mesuré sur le produit au moment de la
+// capture. Il doit valoir EXACTEMENT le fond des captures : la camera cadre un
+// point de la page, donc dès qu'elle vise près d'un bord elle montre du
+// hors-page. Avec le crème du template derrière une page Pinlane claire, ce
+// hors-page devenait une bande grise franche sur un tiers de l'image.
+const FOND = (layout as { bg?: string }).bg ?? '#faf7f2';
 
 export type CamKey = {
   frame: number;
@@ -57,7 +65,7 @@ export const PageCam: React.FC<{
 
   if (!has3D) {
     return (
-      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#faf7f2' }}>
+      <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: FOND }}>
         <div
           style={{
             position: 'absolute', width: 1920, height: pageH,
@@ -82,7 +90,7 @@ export const PageCam: React.FC<{
   const persp = lerp(a.persp ?? 1400, b.persp ?? 1400, t);
 
   return (
-    <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: '#faf7f2' }}>
+    <AbsoluteFill style={{ overflow: 'hidden', backgroundColor: FOND }}>
       <div
         style={{
           position: 'absolute', inset: 0,

@@ -8,9 +8,13 @@ const rows = layout.detail.rows;
 
 // the fly-in shot ends on the click into the nano-lab card; this shot opens
 // directly on its detail page (the FlashCut transition covers the cut).
+// Meme correction que sur la pile : le point vise suit le centre des LIGNES.
+// Les lignes du template couvraient x 408..1512 (centre 960) ; les notres
+// commencent a x=21, et un cx=960 en coupait la moitie gauche.
+const CX = Math.round(rows[0].x + rows[0].w / 2);
 const DETAIL_CAM: CamKey[] = [
-  { frame: 0, cx: 960, cy: 300, zoom: 1.1 },
-  { frame: 75, cx: 960, cy: 760, zoom: 1.0 }, // 75 ≤ duration 100
+  { frame: 0, cx: CX, cy: 500, zoom: 1.1 },
+  { frame: 75, cx: CX, cy: 760, zoom: 1.0 }, // 75 <= duree 100
 ];
 
 const FLY_EASE = Easing.bezier(0.3, 0, 0.25, 1);

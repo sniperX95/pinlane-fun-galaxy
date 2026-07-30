@@ -56,7 +56,7 @@ const CAM_KEYS: CamKey[] = [
   // reservation flotte. La camera contourne maintenant lentement la carte
   // (rotY 34 -> 29,5, rotX 8 -> 6,2), ce qui fait vivre le plan entier sans
   // rien changer au rythme du vol ni aux bruitages.
-  { frame: 220, cx: MCX - 22, cy: MCY + 6, zoom: ZOOM_HERO + 0.06, rotX: 6.2, rotY: 29.5, rotZ: 1.4, persp: 1200 },
+  { frame: 268, cx: MCX - 22, cy: MCY + 6, zoom: ZOOM_HERO + 0.06, rotX: 6.2, rotY: 29.5, rotZ: 1.4, persp: 1200 },
 ];
 
 // Ou se trouve le heros A L'ECRAN dans la vue large ? Le projecteur doit

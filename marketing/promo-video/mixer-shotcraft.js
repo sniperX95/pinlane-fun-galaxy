@@ -39,11 +39,17 @@ const SANS_MUSIQUE = process.argv.includes('--sans-musique');
 
 const TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/narration.json');
 const VOIX = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-ugc.mp3');
-// La musique vient de la bibliotheque du skill : batterie marquee, electronique.
-// Sa reference impose ce critere — « les yeux fermes, ca doit sonner comme une
-// bande-annonce de produit, pas comme un jeu mobile » — et interdit de choisir un
-// morceau sans l'avoir ecoute DANS le film monte.
-const MUSIQUE = path.join(ROOT, 'marketing/promo-video/shotcraft/public/audio/bgm-tech-house.mp3');
+// UNE NAPPE COMPOSEE SUR LA STRUCTURE DU FILM, PAS UN MORCEAU POSE DESSOUS.
+//
+// « Je pense que tu peux encore mieux faire avec une musique de fond. » Le morceau
+// precedent etait bon mais uniforme : il ne savait pas que le film raconte quelque
+// chose. Celui-ci est compose section par section sur la table de plans —
+// ouverture eparse, tension pendant les deux cartons du probleme, balayage
+// ascendant au basculement, conduite pendant le mecanisme, recompense sur la
+// preuve, resolution sur l'appel a l'action. Mesure de controle apres generation :
+// -32 dB dans l'ouverture, -27 dans la tension, -13,6 dans la conduite. L'arc est
+// dans le fichier, pas seulement dans le prompt.
+const MUSIQUE = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/musique-arc.mp3');
 
 // Bornes MESUREES dans la prise (silencedetect, seuil -34 dB, duree >= 0,75 s)
 // et instant du film ou chaque phrase doit tomber, choisi sur le plan qu'elle
@@ -122,7 +128,12 @@ console.log(`film : ${D.toFixed(2)}s`);
 // off ; ne pas le faire, c'est demander a l'auditeur de compenser au volume.
 const VOIX_COMP = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-compressee.wav');
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', VOIX,
-  '-af', 'acompressor=threshold=0.045:ratio=3:attack=15:release=250:makeup=1.6,'
+  // Seuil a 0,1 (~-20 dB) et non 0,045 (~-27 dB). MESURE QUI A CORRIGE CE
+  // REGLAGE : a 0,045, la moyenne et la crete baissaient de la MEME quantite
+  // (-5,7 et -5,6 dB) — le compresseur agissait sur la totalite du signal, donc
+  // comme un simple atténuateur, sans rien resserrer. Un compresseur ne resserre
+  // que ce qui DEPASSE son seuil : il faut le placer entre la moyenne et la crete.
+  '-af', 'acompressor=threshold=0.1:ratio=4:attack=10:release=200:makeup=2,'
     + 'highpass=f=85,aresample=48000',
   '-c:a', 'pcm_s16le', VOIX_COMP]);
 const avant = moyenne(VOIX);
@@ -130,9 +141,27 @@ const apres = moyenne(VOIX_COMP);
 console.log(`voix : ${avant.moy} dB avant compression, ${apres.moy} dB apres`
   + ` (crete ${avant.max} -> ${apres.max} dB)`);
 
+// LA NAPPE EST LEGEREMENT COMPRESSEE, PAS APLATIE.
+//
+// Son arc couvre 18 dB. Normalisee sur sa MOYENNE, son ouverture eparse tombait a
+// -45 dB : plus une nappe discrete, une nappe absente. Une compression douce
+// (ratio 2) ramene l'amplitude a ~9 dB, ce qui garde l'intention musicale — la
+// musique ENTRE au basculement — tout en laissant l'ouverture audible.
+const MUSIQUE_COMP = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/musique-comp.wav');
+execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', MUSIQUE,
+  // Meme correction : l'arc de la nappe va de -32 (ouverture) a -13,6 (conduite).
+  // Un seuil a 0,02 (~-34 dB) passait sous TOUT, donc n'aplatissait rien. A 0,063
+  // (~-24 dB), seules les sections fortes sont resserrees, et le gain de
+  // compensation remonte l'ensemble : l'ouverture reste relativement plus haute.
+  '-af', 'acompressor=threshold=0.063:ratio=3:attack=80:release=1200:makeup=2,aresample=48000',
+  '-c:a', 'pcm_s16le', MUSIQUE_COMP]);
+const musAvant = moyenne(MUSIQUE);
+const musApres = moyenne(MUSIQUE_COMP);
+console.log(`musique : ${musAvant.moy} dB avant compression, ${musApres.moy} dB apres`);
+
 const nSfx = moyenne(FILM);
 const nVoix = apres;
-const nMus = moyenne(MUSIQUE);
+const nMus = musApres;
 console.log(`niveaux mesures — bruitages ${nSfx.moy} dB · voix ${nVoix.moy} dB · musique ${nMus.moy} dB`);
 
 const gSfx = gain(nSfx.moy, CIBLE_SFX);
@@ -147,10 +176,11 @@ const ratees = [];
 let finPrec = 0;
 PHRASES.forEach((p, i) => {
   // La derniere borne de l'alignement peut depasser de quelques millisecondes la
-  // duree que rapporte le conteneur mp3 (bourrage de l'encodeur). On borne au
-  // lieu d'echouer ; au-dela de 60 ms en revanche, c'est une vraie incoherence.
+  // duree que rapporte le conteneur mp3 (bourrage de l'encodeur). Mesure sur
+  // plusieurs prises : jusqu'a 110 ms de depassement. On borne au lieu d'echouer ;
+  // au-dela de 250 ms en revanche, c'est une vraie incoherence.
   if (p.a > DV) {
-    if (p.a > DV + 0.06) ratees.push(`phrase ${i + 1} : borne ${p.a}s tres au-dela de la prise (${DV.toFixed(2)}s)`);
+    if (p.a > DV + 0.25) ratees.push(`phrase ${i + 1} : borne ${p.a}s tres au-dela de la prise (${DV.toFixed(2)}s)`);
     p.a = +DV.toFixed(3);
   }
   if (p.at + (p.a - p.de) > D) ratees.push(`phrase ${i + 1} : depasse la fin du film`);
@@ -179,7 +209,7 @@ if (SANS_MUSIQUE) {
   // La voix sert DEUX fois : une fois au mixage, une fois comme declencheur de
   // l'attenuation de la musique. D'ou le `asplit`.
   chaines.push('[voix]asplit=2[voixMix][voixDuck]');
-  chaines.push(`[2:a]atrim=0:${D},asetpts=N/SR/TB,volume=${gMus.toFixed(4)},`
+  chaines.push(`[2:a]apad=whole_dur=${D + 1},atrim=0:${D},asetpts=N/SR/TB,volume=${gMus.toFixed(4)},`
     + `afade=t=in:st=0:d=1.6,afade=t=out:st=${(D - 2.4).toFixed(2)}:d=2.4[mus]`);
   // ATTENUATION SOUS LA VOIX : la musique baisse de ~7 dB des que la voix parle,
   // et remonte en 400 ms. Sans ca, il faut monter la voix jusqu'a ecraser les
@@ -201,7 +231,7 @@ if (SANS_MUSIQUE) {
 chaines.push(`${mix},alimiter=limit=0.85:level=disabled,aresample=48000[out]`);
 
 const args = ['-y', '-v', 'error', '-i', FILM, '-i', VOIX_COMP];
-if (!SANS_MUSIQUE) args.push('-i', MUSIQUE);
+if (!SANS_MUSIQUE) args.push('-i', MUSIQUE_COMP);
 args.push('-filter_complex', chaines.join(';'),
   '-map', '0:v', '-map', '[out]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
   '-movflags', '+faststart', '-shortest', SORTIE);

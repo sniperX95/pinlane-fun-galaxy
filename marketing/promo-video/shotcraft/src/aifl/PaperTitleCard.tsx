@@ -40,7 +40,7 @@ export const PaperTitleCard: React.FC<{
 }> = ({ duration, words, sub, subDigits, mots, decalage = 0, illustration }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const fadeOut = interpolate(frame, [duration - 8, duration], [1, 0], {
+  const fadeOut = interpolate(frame, [duration - 5, duration], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });

@@ -65,6 +65,19 @@ const fenetre = (frame: number, de: number, a: number) => interpolate(
   { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.linear },
 );
 
+
+// L'ILLUSTRATION S'ETABLIT DES L'OUVERTURE DU CARTON.
+//
+// Defaut mesure par la garde d'images plates : jusqu'a 0,57 s de blanc entre deux
+// cartons. Cause : le carton s'ouvre quelques images avant que la voix n'attaque,
+// les mots n'apparaissent qu'a leur date, et l'illustration attendait SON premier
+// mot — donc l'ecran restait vide le temps de la jointure. Le decor (le combine,
+// le pictogramme, les cadres des compteurs) apparait maintenant des l'image 2 ;
+// seuls les EVENEMENTS restent cales sur les mots.
+const etabli = (frame: number) => interpolate(frame, [2, 12], [0, 1], {
+  extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
+});
+
 // ---------------------------------------------------------------------------
 // Briques reutilisables
 // ---------------------------------------------------------------------------
@@ -113,7 +126,7 @@ const IncrustProbleme: React.FC<Contexte> = (ctx) => {
   const tCahier = temps(ctx, 'cahier', 3.2, fps);
   const tPiste = temps(ctx, 'piste', 5.2, fps);
 
-  const vTel = fenetre(frame, tTel - 12, tCahier - 4);
+  const vTel = Math.min(etabli(frame), fenetre(frame, 2, tCahier - 4));
   const vCahier = fenetre(frame, tCahier - 14, tPiste - 6);
   const vPiste = interpolate(frame, [tPiste - 16, tPiste - 8], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
@@ -159,7 +172,8 @@ const IncrustProbleme: React.FC<Contexte> = (ctx) => {
               width: 140 + o.p * 260, height: 140 + o.p * 260,
               transform: 'translate(-50%, -50%)',
               border: `3px solid ${BLEU}`, borderRadius: '50%',
-              opacity: o.o * vTel,
+              // Les ondes, elles, ne partent que sur le mot « telephone ».
+              opacity: o.o * vTel * interpolate(frame, [tTel - 4, tTel + 4], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
             }} />
           ))}
           <div style={{
@@ -349,9 +363,10 @@ const IncrustReprise: React.FC<Contexte> = (ctx) => {
     });
   }, 0);
 
-  const pictoIn = interpolate(frame, [t0, t0 + 12], [0, 1], {
+  const pictoIn = interpolate(frame, [2, 14], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ressort,
   });
+  void t0;
 
   return (
     <div style={{ position: 'relative', width: 1300, height: 380, margin: '0 auto' }}>
@@ -494,8 +509,8 @@ const IncrustSoir: React.FC<Contexte> = (ctx) => {
         width: 560, padding: '30px 36px', boxSizing: 'border-box',
         background: '#fff', border: `1px solid ${TRAIT}`, borderRadius: 18,
         boxShadow: '0 14px 40px rgba(5, 30, 72, 0.10)',
-        opacity: interpolate(frame, [tChiffre - 8, tChiffre + 4], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
-        transform: `translateY(${interpolate(frame, [tChiffre - 8, tChiffre + 6], [18, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease })}px)`,
+        opacity: etabli(frame),
+        transform: `translateY(${(1 - etabli(frame)) * 18}px)`,
       }}>
         <div style={{ fontFamily: MONO, fontSize: 19, letterSpacing: '0.12em', color: ATONE, textTransform: 'uppercase' }}>
           Chiffre du jour
@@ -513,7 +528,7 @@ const IncrustSoir: React.FC<Contexte> = (ctx) => {
       {/* le taux d'occupation */}
       <div style={{
         position: 'relative', width: 220, height: 220,
-        opacity: interpolate(frame, [tTaux - 8, tTaux + 4], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
+        opacity: etabli(frame),
       }}>
         <svg width={220} height={220} viewBox="0 0 220 220" style={{ transform: 'rotate(-90deg)' }}>
           <circle cx={110} cy={110} r={R} fill="none" stroke={PALE} strokeWidth={22} />

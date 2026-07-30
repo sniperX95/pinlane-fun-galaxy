@@ -54,7 +54,11 @@ const ORDRE = ['morning', 'cardA', 'cardB', 'card1', 'table', 'macro',
 // Les plans PRODUIT gardent exactement la duree pour laquelle leur animation a
 // ete concue. `macro` passe de 100 a 130 images et recoit une cle de camera
 // supplementaire pour continuer a deriver au lieu de figer.
-const FIXES = { morning: 230, table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
+// `morning` porte DEUX phrases (l'accroche sur le logo, le contexte sur le
+// planning) : c'est le seul plan produit qui en porte deux, donc le seul a avoir
+// besoin de place. 268 images, et la derive de camera de `SceneOpen` s'etale
+// jusque-la au lieu de se figer a 220.
+const FIXES = { morning: 268, table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
 
 // Les CARTONS n'ont pas de duree ecrite : elle se CALCULE depuis la phrase qu'ils
 // portent. C'est ce qui rend l'ensemble insensible au debit de la synthese — une
@@ -86,7 +90,7 @@ const LIGNES = [
   // qualifie (« est-ce que ca me concerne ? »), la deuxieme montre le resultat
   // avant d'expliquer comment on y arrive.
   { decalage: 0.70, plan: 'morning', cible: 'aucun', jeu: '[direct, comme si tu interpellais quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
-  { decalage: 4.20, plan: 'morning', cible: 'bandeau', jeu: '[posé]', texte: 'Ça, c’est une journée complète. Huit pistes, quarante-huit réservations.' },
+  { decalage: 'apres', plan: 'morning', cible: 'bandeau', jeu: '[posé]', texte: 'Ça, c’est une journée complète. Huit pistes, quarante-huit réservations.' },
 
   // 3-4 : LE PROBLEME, PUIS CE QU'IL COUTE. Un trafic froid ne sait pas encore
   // qu'il a un probleme : il faut le nommer avant de vendre quoi que ce soit.
@@ -99,7 +103,7 @@ const LIGNES = [
   // 6-10 : LE MECANISME, une etape par plan, chacune montree a l'ecran pendant
   // qu'elle est dite. C'est la partie qui manquait : on expliquait par titres.
   { decalage: 0.40, plan: 'table', cible: 'bandeau', jeu: '', texte: 'Tes clients réservent en ligne, et la résa se pose toute seule au bon créneau.' },
-  { decalage: 4.20, plan: 'table', cible: 'bandeau', jeu: '[appuye]', texte: 'Tu cherches un client ? Deux secondes.' },
+  { decalage: 'apres', plan: 'table', cible: 'bandeau', jeu: '[appuye]', texte: 'Tu cherches un client ? Deux secondes.' },
   { decalage: 0.40, plan: 'macro', cible: 'bandeau', jeu: '[confiant]', texte: 'Le jour même, tu vois qui arrive, à quelle heure, et combien ils sont.' },
   { decalage: 0.40, plan: 'card2', cible: 'carton', jeu: '', texte: 'Et ce qui demande une action remonte tout seul en haut de la liste.' },
   { decalage: 0.40, plan: 'chart', cible: 'bandeau', jeu: '', texte: 'Tous les dossiers du jour, déjà triés par heure.' },
@@ -113,10 +117,38 @@ const LIGNES = [
   { decalage: 0.60, plan: 'outro', cible: 'aucun', jeu: '[net, chaleureux]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
 ];
 
+
+// --- PRONONCIATION : CE QUI EST DIT N'EST PAS TOUJOURS CE QUI EST ECRIT ------
+//
+// « La voix des fois elle prononce pas tres bien les mots. » La transcription ne
+// le montre PAS : elle rend « Pinlane » meme quand la voix dit « pain-lane »,
+// parce qu'elle choisit le mot le plus proche. Ma note de skill affirmait qu'une
+// transcription correcte prouvait une bonne prononciation — c'est faux, elle
+// prouve seulement qu'on a dit un mot reconnaissable.
+//
+// On corrige donc la prononciation LA OU ELLE SE CORRIGE : dans l'ecriture
+// envoyee au modele. Le mot AFFICHE reste celui de gauche, le mot DIT est celui
+// de droite. L'appariement caractere par caractere se fait sur la version dite,
+// et les dates obtenues sont attribuees au mot affiche — les deux restent donc
+// synchronises.
+//
+// « Pinlane » est le cas critique : c'est le nom de la marque, prononce deux fois
+// dont une sur la signature. Le decoupage « Pinn-lane » evite la voyelle nasale
+// francaise de « pin » (qui donne « pain ») et garde deux syllabes.
+const PRONONCIATION = {
+  Pinlane: 'Pinn-lane',
+  'Pinlane.': 'Pinn-lane.',
+};
+const ditPour = (mot) => PRONONCIATION[mot] || mot;
+
 // Indication de pause entre les lignes : elle donne du silence a l'endroit ou on
 // coupe, et de l'air a la diction. Les indications entre crochets ne sont pas
 // lues (verifie par transcription sur cette voix et ce modele).
-const TEXTE = LIGNES.map((l) => `${l.jeu} ${l.texte}`.trim()).join(' [longue pause] ');
+// Calcule a l'appel et non au chargement : `enMots` est declare plus bas dans le
+// fichier, et une constante fleche n'existe pas avant sa ligne.
+const texteAEnvoyer = () => LIGNES
+  .map((l) => `${l.jeu} ${enMots(l.texte).map(ditPour).join(' ')}`.trim())
+  .join(' [longue pause] ');
 
 const cle = (() => {
   const c = require('C:/Users/movsa/.claude.json');
@@ -127,7 +159,7 @@ const cle = (() => {
 
 const appel = () => new Promise((resolve, reject) => {
   const corps = JSON.stringify({
-    text: TEXTE,
+    text: texteAEnvoyer(),
     model_id: MODELE,
     language_code: 'fr',
     voice_settings: { stability: 0.5, similarity_boost: 0.85, style: 0.4, use_speaker_boost: true },
@@ -169,7 +201,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
 }, []);
 
 (async () => {
-  console.log(`appel ${MODELE}, ${TEXTE.length} caracteres, ${LIGNES.length} lignes`);
+  console.log(`appel ${MODELE}, ${texteAEnvoyer().length} caracteres, ${LIGNES.length} lignes`);
   const rep = await appel();
   const al = rep.alignment || rep.normalized_alignment;
   if (!al || !al.characters) throw new Error('pas d\'alignement dans la reponse');
@@ -211,7 +243,9 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   const attendus = [];
   LIGNES.forEach((ligne, i) => {
     enMots(ligne.texte).forEach((mot, j) => {
-      [...mot].filter(utile).forEach((c) => attendus.push({ c: nu(c), i, j }));
+      // Les caracteres attendus sont ceux de la version DITE ; l'index (i, j)
+      // reste celui du mot AFFICHE, donc les dates retombent au bon endroit.
+      [...ditPour(mot)].filter(utile).forEach((c) => attendus.push({ c: nu(c), i, j }));
     });
   });
 
@@ -252,6 +286,27 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
     return { ligne, mots, de: bornes[0].t0, a: bornes[bornes.length - 1].t1 };
   });
   if (mesurees.some((x) => !x)) { rates.forEach((r) => console.log('  - ' + r)); process.exit(1); }
+
+  // Passe 1 bis : RESOUDRE LES DECALAGES AUTOMATIQUES.
+  //
+  // `decalage: 'apres'` place la phrase juste apres la precedente, avec une
+  // respiration. C'est la reponse a une erreur qui revenait a chaque
+  // regeneration : deux phrases dans un meme plan, decalages regles a la main, et
+  // le debit de la synthese qui bouge de 10 % — elles finissaient par se
+  // chevaucher. Une valeur calculee ne peut plus deriver.
+  const RESPIRATION = 0.40;
+  mesurees.forEach((x, n) => {
+    if (x.ligne.decalage !== 'apres') return;
+    const prec = mesurees[n - 1];
+    if (!prec) { x.ligne.decalage = 0.4; return; }
+    // Decalage exprime depuis le debut du plan COURANT : on a besoin de savoir ou
+    // finit la precedente, en absolu. Les deux phrases partagent leur plan, donc
+    // la difference de leurs decalages suffit.
+    const finPrec = prec.ligne.plan === x.ligne.plan
+      ? prec.ligne.decalage + (prec.a - prec.de)
+      : 0;
+    x.ligne.decalage = +(finPrec + RESPIRATION).toFixed(3);
+  });
 
   // Passe 2 : la chronologie. Duree d'un carton = ce que sa phrase exige.
   const DEPART = {};

@@ -3,14 +3,15 @@ import { AIFL_SHOTS } from '../Main';
 import { PageCam, CamKey } from './PageCam';
 import layout from '../live-layout.json';
 
-const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const SANS = "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif";
+const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
 
-const INK = 'oklch(18% 0.006 82)';
-const AMBER = 'oklch(52% 0.115 65)';
-const INK2 = 'oklch(50% 0.006 82)';
+const INK = '#08111f';
+const AMBER = '#0664fe';
+const INK2 = '#55617a';
 
-const WORDMARK = 'Pinlane';
+const WORDMARK = 'PINLANE';
+const BLEU_HALO = 'rgba(6, 100, 254, 0.20)';
 const KICKER = 'LA CONSOLE DE TON CENTRE';
 
 const PAGE_H = layout.projects.pageH;
@@ -70,9 +71,9 @@ const PUSH_EASE = Easing.bezier(0.35, 0, 0.2, 1);
 
 const POP_EASE = Easing.bezier(0.2, 1.25, 0.3, 1); // spring with overshoot
 const RESEAT_EASE = Easing.bezier(0.4, 0, 0.3, 1.05); // compress on touchdown
-const PATCH = 'oklch(97.5% 0.008 82)';
-const SLOT_AMBER = 'oklch(58% 0.13 65)';
-const BEAM_CORE = 'rgba(255,248,232,0.98)';
+const PATCH = '#ffffff';
+const SLOT_AMBER = '#0664fe';
+const BEAM_CORE = 'rgba(255, 255, 255, 0.98)';
 
 /** Brand open (0–83): an invisible pen draws an amber crosshair, "AI
  * Foundation Lab" letterpresses in glyph by glyph (all glyphs down by ~46), a mono kicker
@@ -182,7 +183,7 @@ export const SceneOpen: React.FC = () => {
   });
 
   // two-layer shadow that grows with altitude
-  const shadow = `0 ${8 * lift}px ${10 + 12 * lift}px rgba(40,30,20,${0.18 * lift}), 0 ${46 * lift}px ${90 * lift}px rgba(40,30,20,${0.22 * lift})`;
+  const shadow = `0 ${8 * lift}px ${10 + 12 * lift}px rgba(5, 30, 72, ${0.18 * lift}), 0 ${46 * lift}px ${90 * lift}px rgba(5, 30, 72, ${0.22 * lift})`;
 
   // vacated-slot amber outline: alive while airborne, brightens as the card
   // lands, then vanishes.
@@ -224,7 +225,7 @@ export const SceneOpen: React.FC = () => {
   const rootOpacity = 1 - outT;
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#faf7f2', opacity: rootOpacity }}>
+    <AbsoluteFill style={{ backgroundColor: '#fafafa', opacity: rootOpacity }}>
       {frame >= 84 ? (
         <AbsoluteFill style={{ opacity: macroIn }}>
           <PageCam
@@ -253,7 +254,7 @@ export const SceneOpen: React.FC = () => {
                     position: 'absolute', left: CARD.x - 2, top: CARD.y - 2,
                     width: CARD.w + 4, height: CARD.h + 4, background: PATCH,
                     borderRadius: RADIUS,
-                    boxShadow: `inset 0 0 26px rgba(180,120,50,${0.12 * slotEdge})`,
+                    boxShadow: `inset 0 0 26px rgba(6, 100, 254, ${0.12 * slotEdge})`,
                     opacity: slotVis,
                   }}
                 >
@@ -335,7 +336,7 @@ export const SceneOpen: React.FC = () => {
                       position: 'absolute', left: -3, top: -3, overflow: 'visible',
                       pointerEvents: 'none',
                       opacity: beam1On ? 1 : 0.62,
-                      filter: `drop-shadow(0 0 6px ${AMBER}) drop-shadow(0 0 18px rgba(255,240,210,0.55))`,
+                      filter: `drop-shadow(0 0 6px ${AMBER}) drop-shadow(0 0 18px rgba(190, 220, 255, 0.6))`,
                     }}
                   >
                     {/* amber edge (wider) */}
@@ -389,7 +390,7 @@ export const SceneOpen: React.FC = () => {
                     style={{
                       position: 'absolute', left: NOTE.x + 10, top: NOTE.y + 68, width: 210, height: 74,
                       transform: 'translateZ(2px)',
-                      background: 'radial-gradient(ellipse at 50% 50%, rgba(40,30,20,0.3), transparent 70%)',
+                      background: 'radial-gradient(ellipse at 50% 50%, rgba(5, 30, 72, 0.3), transparent 70%)',
                       filter: 'blur(12px)',
                       opacity: 0.55 * noteVis,
                     }}
@@ -404,15 +405,15 @@ export const SceneOpen: React.FC = () => {
                       // au-dessus d'une grande carte quasi vide ; ici elle tombe
                       // sur une grille dense de creneaux et le serif noir devenait
                       // illisible. La plaque la detache du fond sans la cacher.
-                      background: 'oklch(98.5% 0.008 85 / 0.93)',
+                      background: 'rgba(255, 255, 255, 0.94)',
                       padding: '14px 18px 18px',
                       borderRadius: 10,
-                      boxShadow: '0 10px 30px rgba(40,30,20,0.16), 0 2px 6px rgba(40,30,20,0.10)',
+                      boxShadow: '0 10px 30px rgba(5, 30, 72, 0.16), 0 2px 6px rgba(5, 30, 72, 0.1)',
                     }}
                   >
                     <div
                       style={{
-                        fontFamily: SERIF, fontSize: 27, fontWeight: 600, color: INK,
+                        fontFamily: SANS, fontSize: 27, fontWeight: 600, color: INK,
                         lineHeight: 1.16, letterSpacing: '-0.012em',
                       }}
                     >
@@ -424,14 +425,14 @@ export const SceneOpen: React.FC = () => {
                         style={{
                           position: 'absolute', left: -5, top: '12%', bottom: '4%',
                           width: `calc(${hl} * (100% + 10px))`,
-                          background: 'oklch(88% 0.095 85)',
+                          background: '#cfe0ff',
                           borderRadius: 4,
                         }}
                       />
                       <div
                         style={{
                           position: 'relative',
-                          fontFamily: SERIF, fontStyle: 'italic', fontSize: 27, fontWeight: 600,
+                          fontFamily: SANS, fontStyle: 'italic', fontSize: 27, fontWeight: 600,
                           color: INK, lineHeight: 1.16, letterSpacing: '-0.012em',
                         }}
                       >
@@ -447,7 +448,7 @@ export const SceneOpen: React.FC = () => {
           {/* roving / locking spotlight: warm pool + dim outside so it reads */}
           <AbsoluteFill
             style={{
-              background: `radial-gradient(${poolRx}px ${poolRy}px at ${spotX}% ${spotY}%, rgba(255,241,214,0.42), rgba(255,241,214,0.10) 45%, rgba(70,56,38,${vignette * spotOn}) 100%)`,
+              background: `radial-gradient(${poolRx}px ${poolRy}px at ${spotX}% ${spotY}%, rgba(226, 238, 255, 0.46), rgba(226, 238, 255, 0.12) 45%, rgba(5, 30, 72, ${vignette * spotOn}) 100%)`,
               pointerEvents: 'none',
               opacity: spotOn,
             }}
@@ -455,7 +456,7 @@ export const SceneOpen: React.FC = () => {
           {/* faint trailing bounce of the same light */}
           <AbsoluteFill
             style={{
-              background: `radial-gradient(300px 220px at ${spotX - 6}% ${spotY + 10}%, rgba(255,246,228,0.18), transparent 70%)`,
+              background: `radial-gradient(300px 220px at ${spotX - 6}% ${spotY + 10}%, rgba(232, 242, 255, 0.20), transparent 70%)`,
               pointerEvents: 'none',
               opacity: spotOn * 0.7,
             }}
@@ -473,30 +474,42 @@ export const SceneOpen: React.FC = () => {
               transformOrigin: 'center center',
             }}
           >
-            {/* crosshair drawn by an invisible amber pen */}
-            <svg
-              width={64}
-              height={64}
-              viewBox="0 0 64 64"
-              style={{ display: 'block', margin: '0 auto 34px', opacity: crossFade }}
-            >
-              <line
-                x1={32} y1={2} x2={32} y2={62}
-                stroke={AMBER} strokeWidth={5} strokeLinecap="round"
-                pathLength={100} strokeDasharray={100} strokeDashoffset={vDraw}
+            {/* LE PICTOGRAMME DE LA MARQUE, pas un viseur generique.
+                Le template dessinait une croix a la plume : joli mouvement, mais
+                aucun rapport avec Pinlane. Le pictogramme entre par un ressort,
+                avec un halo bleu qui pulse une fois, puis reste dans le lockup —
+                un logo ne disparait pas avant son nom. */}
+            <div style={{ position: 'relative', width: 152, height: 140, margin: '0 auto 26px' }}>
+              <div
+                style={{
+                  position: 'absolute', inset: '-30% -30%',
+                  background: `radial-gradient(circle, ${BLEU_HALO}, transparent 68%)`,
+                  opacity: interpolate(frame, [4, 14, 30], [0, 1, 0.45], {
+                    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+                  }),
+                }}
               />
-              <line
-                x1={2} y1={32} x2={62} y2={32}
-                stroke={AMBER} strokeWidth={5} strokeLinecap="round"
-                pathLength={100} strokeDasharray={100} strokeDashoffset={hDraw}
+              <Img
+                src={staticFile('brand/picto.webp')}
+                style={{
+                  position: 'absolute', inset: 0, width: '100%', height: '100%',
+                  objectFit: 'contain',
+                  opacity: interpolate(frame, [2, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
+                  transform: `scale(${interpolate(frame, [2, 16], [0.62, 1], {
+                    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: POP_EASE,
+                  })})`,
+                  filter: `blur(${interpolate(frame, [2, 12], [7, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })}px)`,
+                }}
               />
-            </svg>
+            </div>
 
-            {/* wordmark: glyph-by-glyph letterpress with amber under-glint */}
+            {/* LE LOCKUP REEL : « PIN » bleu, « LANE » navy, capitales tres
+                trackees (.19em) — la construction du logo fourni. Le template
+                posait un mot en serif ; ce n'etait pas notre marque. */}
             <div
               style={{
-                fontFamily: SERIF, fontSize: 132, fontWeight: 600, color: INK,
-                letterSpacing: '-0.01em', lineHeight: 1, whiteSpace: 'pre',
+                fontFamily: SANS, fontSize: 124, fontWeight: 620, color: INK,
+                letterSpacing: '0.19em', lineHeight: 1, whiteSpace: 'pre',
                 display: 'inline-flex', alignItems: 'flex-end',
               }}
             >
@@ -519,6 +532,7 @@ export const SceneOpen: React.FC = () => {
                       opacity: t,
                       transform: `scale(${1.6 - 0.6 * t})`,
                       transformOrigin: 'center bottom',
+                      color: i < 3 ? AMBER : INK,
                       filter: `blur(${(1 - t) * 6}px)`,
                     }}
                   >

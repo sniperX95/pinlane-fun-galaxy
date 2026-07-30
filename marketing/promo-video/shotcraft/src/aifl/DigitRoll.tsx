@@ -8,7 +8,7 @@ export const DigitRoll: React.FC<{
   delay?: number;
   fontSize?: number;
   color?: string;
-}> = ({ value, delay = 0, fontSize = 30, color = 'oklch(52% 0.115 65)' }) => {
+}> = ({ value, delay = 0, fontSize = 30, color = '#0664fe' }) => {
   const frame = useCurrentFrame();
   const lineH = fontSize * 1.15;
   return (

@@ -64,6 +64,35 @@
     'Famille Gerard', 'CE Carrefour', 'Amis Marche', 'Anniversaire Hugo', 'Famille Simon',
     'Club Neufchateau', 'Famille Leroy', 'Anniversaire Manon'];
 
+  /* PLUSIEURS ACTIVITES, PAS UNE SEULE.
+     La journee ne servait que du bowling : les 38 creneaux du planning
+     affichaient tous « Bowling Classique », la repartition par activite du
+     tableau de bord tombait a « Bowling 100 % · Laser 0 % · Complet 0 % », et la
+     carte des formules disait « Aucune formule vendue aujourd'hui ». Un centre
+     qui vend cinq choses paraissait n'en vendre qu'une.
+
+     Le libelle n'est pas ecrit a la main : le produit le DERIVE
+     (`getReservationLabel`) — `type: 'laser'` donne « Laser Game », un
+     `formuleId` donne le nom de la formule. On pose donc le bon type et la bonne
+     formule, et l'affichage suit tout seul.
+
+     Les contraintes des formules sont RESPECTEES : on est un jeudi, donc pas de
+     formule reservee au mardi (`css`) ni au vendredi (`ffm`) ; « BACK TO
+     SCHOOL/WORK » n'apparait qu'apres 18 h et « MATIN MALIN » qu'avant midi,
+     comme leur catalogue le declare. Une formule affichee un jour ou elle
+     n'existe pas est exactement le genre d'incoherence qu'un gerant repere. */
+  var NOMS_SANS_PISTE = ['Anniversaire Zoe', 'Team Solvay', 'Amis Namur', 'Groupe Ciney',
+    'Anniversaire Malo', 'Ecole des Roches', 'EVG Thomas', 'Famille Bastin',
+    'Club Arlon', 'Anniversaire Livia'];
+
+  /* Formules qui OCCUPENT une piste : elles vivent dans le planning bowling, avec
+     leur nom a la place de « Bowling Classique ». */
+  var FORMULES_PISTE = ['f1', 'f3', 'f4'];
+  var FORMULE_SOIR = 'bts';            // 18 h - 22 h seulement
+  /* Formules SANS piste + laser : elles nourrissent les listes du jour, la
+     repartition par activite et la carte des formules. */
+  var SANS_PISTE = ['laser', 'f2', 'hlg', 'laser', 'f5', 'mm', 'laser', 'f6', 'laser', 'f7'];
+
   /* UN SAMEDI QUI TOURNE, PAS UNE MATINEE CALME.
      La vitrine montrait treize reservations groupees entre 10 h et 16 h : le
      planning restait a moitie vide et le chiffre du jour tombait a quelques
@@ -93,9 +122,19 @@
       var pistes = ordre.map(function (o) { return o.k + 1; });
       var hh = Math.floor(debut);
       var mm = (debut % 1) === 0 ? '00' : '30';
+      // Une reservation sur quatre passe par une formule : le planning affiche
+      // alors son nom au lieu de « Bowling Classique ». La formule du soir n'est
+      // posee que sur un creneau ou son catalogue l'autorise.
+      var formule = null;
+      if (i % 4 === 1) {
+        formule = (hh >= 18 && hh + duree <= 22)
+          ? FORMULE_SOIR
+          : FORMULES_PISTE[(i / 4 | 0) % FORMULES_PISTE.length];
+      }
       sortie.push({
         id: 90000 + i,
         name: nom,
+        formuleId: formule,
         date: AUJOURD_HUI,
         startTime: (hh < 10 ? '0' : '') + hh + ':' + mm,
         // EN HEURES, comme partout dans le produit (`duration: 1`). Cette
@@ -117,6 +156,43 @@
         phone: '+32 470 00 00 00',
         email: 'contact@example.be',
         source: i % 3 === 0 ? 'phone' : 'online',
+      });
+    });
+
+    /* Les activites qui n'occupent PAS de piste : laser et formules sans
+       bowling. Elles ne peuvent donc pas fausser le taux d'occupation des
+       pistes — la propriete « les totaux du produit restent exacts » tient
+       toujours. Deux zones laser : on les sequence comme les pistes. */
+    var libreZone = [10, 10];
+    NOMS_SANS_PISTE.forEach(function (nom, j) {
+      var quoi = SANS_PISTE[j % SANS_PISTE.length];
+      var laser = quoi === 'laser';
+      var pax = 5 + (j % 8);
+      var duree = laser ? 0.5 : 2;
+      var z = libreZone[0] <= libreZone[1] ? 0 : 1;
+      var debut = laser ? libreZone[z] : 11 + j;
+      if (quoi === 'mm') debut = 10.5;                 // MATIN MALIN : avant midi
+      if (debut + duree > 22) return;
+      if (laser) libreZone[z] = debut + duree;
+      var hh = Math.floor(debut);
+      var mm = (debut % 1) === 0 ? '00' : '30';
+      sortie.push({
+        id: 95000 + j,
+        name: nom,
+        formuleId: laser ? null : quoi,
+        date: AUJOURD_HUI,
+        startTime: (hh < 10 ? '0' : '') + hh + ':' + mm,
+        duration: duree,
+        pax: pax,
+        lane: null,
+        lanes: [],
+        type: laser ? 'laser' : 'complete',
+        status: j % 3 === 0 ? 'arrived' : 'pending',
+        validationStatus: 'confirmed',
+        price: Math.round((laser ? 12 : 26) * pax),
+        phone: '+32 470 00 00 00',
+        email: 'contact@example.be',
+        source: j % 2 === 0 ? 'online' : 'phone',
       });
     });
     return sortie;

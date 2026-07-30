@@ -32,12 +32,12 @@ const OUT = path.resolve(ROOT, process.argv[3] || 'artifacts/promo-video/voix-ba
 // Le texte, decoupe en plans. C'est la SEULE chose a maintenir : les instants
 // s'en deduisent.
 const PLANS_TEXTE = [
-  'Samedi, dix-huit heures. Le téléphone sonne pour la sixième fois.',
-  'Tu cherches dans ton cahier si la piste quatre est libre.',
-  'Tu rappelleras. Ou pas.',
-  'Le même samedi, avec Pinlane.',
-  'Trente-huit réservations tombées toutes seules. Deux cent quatre-vingt-dix-sept joueurs.',
-  "Soixante-seize pour cent d'occupation. Zéro saisie.",
+  'Un centre de loisirs, un jeudi. Huit pistes : du bowling, du laser, des formules.',
+  'Les réservations arrivent en ligne. Toutes seules.',
+  'Un client ? Tu le trouves en deux secondes.',
+  'Le jour J, tu sais qui arrive, à quelle heure, et combien ils sont.',
+  'Les dossiers qui demandent une action remontent tout seuls.',
+  'Et le soir, tout est déjà compté. Sans une seule saisie.',
   'Pinlane. La console de ton centre.',
 ];
 

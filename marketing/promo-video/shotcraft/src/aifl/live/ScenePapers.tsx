@@ -7,8 +7,8 @@ import { DigitRoll } from '../DigitRoll';
 const cards = layout.papers.cards;
 const PAGE_H = layout.papers.pageH;
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-const AMBER = 'oklch(52% 0.115 65)';
+const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
+const AMBER = '#0664fe';
 
 // paperN.png files, one per card
 const FILES = ['paper1.png', 'paper2.png', 'paper3.png', 'paper4.png', 'paper5.png'];
@@ -83,7 +83,7 @@ export const ScenePapers: React.FC = () => {
               top: c.y - 10,
               width: c.w + 24,
               height: c.h + 20,
-              background: '#faf7f2',
+              background: '#fafafa',
               opacity: frame >= CUES[i] + DUR - 2 ? 0 : 1,
             }}
           />
@@ -100,8 +100,8 @@ export const ScenePapers: React.FC = () => {
           const rot = TILTS[i] * (1 - t);
           const scale = 1.06 - 0.06 * t;
           const shadow = settled
-            ? '0 2px 8px rgba(60,45,30,.10)'
-            : `0 32px 64px rgba(60,45,30,${0.22 * (1 - t) + 0.06})`;
+            ? '0 2px 8px rgba(5, 30, 72, .10)'
+            : `0 32px 64px rgba(5, 30, 72, ${0.22 * (1 - t) + 0.06})`;
 
           // amber highlight over the linked-project name, 6 frames after landing.
           // card-relative: x ~20px in, y ~72% of card height, ~40% wide.
@@ -143,7 +143,7 @@ export const ScenePapers: React.FC = () => {
                     top: c.h * 0.72,
                     width: `${hlGrow * 40}%`,
                     height: 30,
-                    background: 'oklch(97% 0.028 85)',
+                    background: '#eef4ff',
                     opacity: 0.6 * hlFade,
                     borderRight: `2px solid ${AMBER}`,
                     pointerEvents: 'none',
@@ -166,21 +166,29 @@ export const ScenePapers: React.FC = () => {
             opacity: glazeVis * 0.5,
             mixBlendMode: 'overlay',
             background:
-              'linear-gradient(90deg, transparent, rgba(255,240,214,0.9) 45%, rgba(255,240,214,0.9) 55%, transparent)',
+              'linear-gradient(90deg, transparent, rgba(235, 244, 255, 0.92) 45%, rgba(235, 244, 255, 0.92) 55%, transparent)',
             pointerEvents: 'none',
           }}
         />
       </PageCam>
 
-      {/* screen-space counter, top-right */}
-      <div style={{ position: 'absolute', top: 70, right: 96, textAlign: 'right', pointerEvents: 'none' }}>
-        <div style={{ fontFamily: MONO, fontSize: 24, letterSpacing: '0.16em', color: 'oklch(50% 0.006 82)', textTransform: 'uppercase' }}>
-          Événements du mois
+      {/* Compteur a l'ecran, en haut a droite. IL N'APPARAIT QU'A PARTIR DU
+          PREMIER DOSSIER POSE : affiche des le debut du plan, il montrait un
+          « 0 » de 96 px pendant presque une seconde — la premiere chose que
+          l'oeil accrochait sur ce plan etait un zero. */}
+      <div
+        style={{
+          position: 'absolute', top: 70, right: 96, textAlign: 'right', pointerEvents: 'none',
+          opacity: landedCount > 0 ? 1 : 0,
+        }}
+      >
+        <div style={{ fontFamily: MONO, fontSize: 24, letterSpacing: '0.16em', color: '#55617a', textTransform: 'uppercase' }}>
+          Dossiers du jour
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
           <DigitRoll key={landedCount} value={String(landedCount)} fontSize={96} color={AMBER} />
         </div>
-        <div style={{ fontFamily: MONO, fontSize: 20, letterSpacing: '0.12em', color: 'oklch(50% 0.006 82)', marginTop: 4, textTransform: 'uppercase' }}>
+        <div style={{ fontFamily: MONO, fontSize: 20, letterSpacing: '0.12em', color: '#55617a', marginTop: 4, textTransform: 'uppercase' }}>
           Sur {String(cards.length)} affichés
         </div>
       </div>

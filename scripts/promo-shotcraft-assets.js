@@ -64,7 +64,10 @@ const PAGES = [
       // Les scenes attendent trois decoupes nommees : la barre laterale et deux
       // puces qui flottent au-dessus du plan de page.
       { base: 'nav', sel: '.planning-title-stack', max: 1, transparent: true, sansIndex: true },
-      { base: 'float-search', sel: '.booking', max: 1, transparent: true, sansIndex: true },
+      // La puce « recherche » est le CHAMP DE RECHERCHE, pas une reservation :
+      // pointee sur `.booking` elle sortait le meme fichier que card1.png (md5
+      // identique), et le plan de fin affichait deux fois la meme reservation.
+      { base: 'float-search', sel: 'input[placeholder*="Recherch"]', max: 1, transparent: true, sansIndex: true },
       { base: 'float-stats', sel: '.lane-header', max: 1, transparent: true, sansIndex: true },
     ],
     boites: [
@@ -110,6 +113,8 @@ const PAGES = [
     boites: [
       { cle: 'sequences', sel: '.dash-card', tous: true, max: 6 },
       { cle: 'lignes', sel: '.dash-arrival-row', tous: true, max: 3 },
+      // Les quatre indicateurs du haut : le plan les allume un par un.
+      { cle: "kpis", sel: ".dash-kpi", tous: true, max: 4 },
     ],
   },
 ];
@@ -490,6 +495,7 @@ const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
     pageH: hW,
     blocks: blocs.length ? blocs : [{ x: 576, y: 189, w: 400, h: 28, tag: 'p' }],
     leftRail: { x: 0, y: 61, w: 208, h: hW - 61 },
+    kpis: bo("wbr", "kpis").map(function(r){return borne(r, hW);}),
     rightRail: { x: VIEW.width - 288, y: 61, w: 288, h: hW - 61 },
   };
 
@@ -526,7 +532,11 @@ const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
   fichiers.filter((f) => f.endsWith('.png')).forEach((f) => {
     const { w, h } = taillePng(f);
     const d = f === 'card-hero-hires.png' ? (densite || DSF) : DSF;
-    finales.assets[f] = { w: Math.round(w / d), h: Math.round(h / d) };
+    // `px` = la definition NATIVE en pixels reels. Le plan de fin s'en sert pour
+    // ne jamais afficher une decoupe plus large qu'elle ne contient de pixels :
+    // l'en-tete du planning (538 px de large) etait etale sur 1190 px, soit un
+    // agrandissement de 4,4x, et ressortait mou et surdimensionne.
+    finales.assets[f] = { w: Math.round(w / d), h: Math.round(h / d), px: w };
   });
 
   fs.writeFileSync(LAYOUT, JSON.stringify(finales, null, 2));

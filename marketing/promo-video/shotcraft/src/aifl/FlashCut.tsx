@@ -12,7 +12,7 @@ export const FlashCut: React.FC<{ duration?: number }> = ({ duration = 10 }) => 
       style={{
         pointerEvents: 'none',
         opacity: o,
-        background: 'radial-gradient(ellipse at 50% 45%, rgba(255,248,235,0.98), rgba(255,244,224,0.55) 55%, transparent 80%)',
+        background: 'radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.98), rgba(226, 238, 255, 0.6) 55%, transparent 80%)',
       }}
     />
   );

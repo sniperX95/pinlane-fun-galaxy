@@ -1,8 +1,8 @@
 import { AbsoluteFill, interpolate, useCurrentFrame, Easing } from 'remotion';
 import { DigitRoll } from './DigitRoll';
 
-const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+const SERIF = "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif";
+const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
 
 /**
  * Paper title card: warm paper field, serif statement letterpressed word by
@@ -32,18 +32,18 @@ export const PaperTitleCard: React.FC<{
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: 'oklch(97.5% 0.008 82)',
+        backgroundColor: '#ffffff',
         justifyContent: 'center',
         alignItems: 'center',
         opacity: fadeOut,
-        backgroundImage: 'radial-gradient(1100px 750px at 50% 42%, oklch(99.3% 0.014 88 / 0.85), transparent 65%)',
+        backgroundImage: 'radial-gradient(1100px 750px at 50% 42%, rgba(255, 255, 255, 0.92), transparent 65%)',
       }}
     >
       <div style={{ textAlign: 'center', maxWidth: 1500 }}>
         <div
           style={{
             fontFamily: SERIF, fontSize: 116, fontWeight: 600, lineHeight: 1.14,
-            color: 'oklch(18% 0.006 82)', letterSpacing: '-0.012em',
+            color: '#08111f', letterSpacing: '-0.012em',
             display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: '0.26em',
           }}
         >
@@ -63,7 +63,7 @@ export const PaperTitleCard: React.FC<{
                   filter: `blur(${(1 - t) * 7}px)`,
                   display: 'inline-block',
                   fontStyle: w.accent ? 'italic' : 'normal',
-                  color: w.accent ? 'oklch(52% 0.115 65)' : undefined,
+                  color: w.accent ? '#0664fe' : undefined,
                 }}
               >
                 {w.text}
@@ -74,11 +74,11 @@ export const PaperTitleCard: React.FC<{
         <div
           style={{
             height: 6, width: 220, margin: '38px auto 0', borderRadius: 3,
-            background: 'oklch(52% 0.115 65)', transform: `scaleX(${underline})`,
+            background: '#0664fe', transform: `scaleX(${underline})`,
           }}
         />
         {sub ? (
-          <div style={{ fontFamily: MONO, fontSize: 26, letterSpacing: '0.12em', color: 'oklch(50% 0.006 82)', marginTop: 34, opacity: subT, textTransform: 'uppercase', display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: '0.5em' }}>
+          <div style={{ fontFamily: MONO, fontSize: 26, letterSpacing: '0.12em', color: '#55617a', marginTop: 34, opacity: subT, textTransform: 'uppercase', display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: '0.5em' }}>
             {subDigits ? <DigitRoll value={subDigits} delay={12} fontSize={26} /> : null}
             <span>{sub}</span>
           </div>

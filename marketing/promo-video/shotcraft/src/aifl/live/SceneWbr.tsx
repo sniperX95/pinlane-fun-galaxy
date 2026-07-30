@@ -8,10 +8,10 @@ const leftRail = layout.wbr.leftRail;
 const rightRail = layout.wbr.rightRail;
 const PAGE_H = layout.wbr.pageH;
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-const PAPER = '#fdfcfa';
-const AMBER = 'oklch(52% 0.115 65)';
-const AMBER_WASH = 'oklch(95% 0.05 85)';
+const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
+const PAPER = '#ffffff';
+const AMBER = '#0664fe';
+const AMBER_WASH = '#e8f0ff';
 
 // editor-title close-up → ease out to the whole page (both rails on camera)
 // → tiny breathing hold.
@@ -34,18 +34,26 @@ const WIPE = 8;
 // ---- past weeks stack into the left rail: the captured texture only holds
 // the live W28 entry, so W27…W22 drop in from above one after another (list
 // stacking, same vocabulary as the papers shot), landing below it. ----
-const SANS = 'ui-sans-serif, system-ui, -apple-system, sans-serif';
+const SANS = "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif";
+// Les jours precedents qui viennent s'empiler dans la colonne. Le template
+// livrait ici des libelles EN CHINOIS (« 2026 第 27 周 ») et des titres anglais :
+// ils s'affichent a l'ecran vers la 28e seconde, et personne ne les avait vus
+// parce que ce plan n'avait ete controle qu'a son debut. Un plan se verifie sur
+// toute sa duree, pas sur sa premiere image.
 const PAST_WEEKS = [
-  { week: '2026 第 27 周', date: '7月3日', title: '2026-W27 · Foundation Lab Weekly' },
-  { week: '2026 第 26 周', date: '6月26日', title: '2026-W26 · Foundation Lab Weekly' },
-  { week: '2026 第 25 周', date: '6月19日', title: '2026-W25 · Foundation Lab Weekly' },
-  { week: '2026 第 24 周', date: '6月12日', title: '2026-W24 · Foundation Lab Weekly' },
-  { week: '2026 第 23 周', date: '6月5日', title: '2026-W23 · Foundation Lab Weekly' },
-  { week: '2026 第 22 周', date: '5月29日', title: '2026-W22 · Foundation Lab Weekly' },
+  { week: 'Hier', date: 'Mer. 29', title: 'Journée du 29 juillet' },
+  { week: 'Mardi', date: 'Mar. 28', title: 'Journée du 28 juillet' },
+  { week: 'Lundi', date: 'Lun. 27', title: 'Journée du 27 juillet' },
+  { week: 'Dimanche', date: 'Dim. 26', title: 'Journée du 26 juillet' },
+  { week: 'Samedi', date: 'Sam. 25', title: 'Journée du 25 juillet' },
+  { week: 'Vendredi', date: 'Ven. 24', title: 'Journée du 24 juillet' },
 ];
-const WEEK_Y0 = 228; // just under the baked-in W28 entry
-const WEEK_H = 56;
-const WEEK_CUE = (i: number) => 58 + i * 5; // after the left rail wipes on (46–56)
+// Les quatre indicateurs du haut du tableau de bord, releves a la capture.
+// Ils s'allument sur les temps 65, 70, 75, 80 — soit exactement les quatre
+// premiers « pop » de la table de bruitages (frames absolues 840, 845, 850, 855
+// moins l'origine du plan, 775).
+const KPIS = (layout.wbr as { kpis?: { x: number; y: number; w: number; h: number }[] }).kpis ?? [];
+const KPI_CUE = (i: number) => 65 + i * 5;
 const WEEK_DROP = Easing.bezier(0.2, 1.15, 0.3, 1); // drop with a light bounce
 
 // member-name headings (tag=h2) get the @-mention amber wash; the pinned
@@ -229,71 +237,54 @@ export const SceneWbr: React.FC = () => {
             </div>
           );
         })}
-        {/* past weeks drop into the left rail from above, stacking in order */}
-        {PAST_WEEKS.map((w, i) => {
-          const cue = WEEK_CUE(i);
+        {/* LES QUATRE CHIFFRES DU JOUR S'ALLUMENT UN PAR UN.
+
+            Ce que le template faisait ici : empiler des « semaines passees » dans
+            une colonne laterale. Notre tableau de bord n'a pas de colonne libre —
+            ces cartes atterrissaient sur un panneau blanc qui RECOUVRAIT le
+            graphique d'affluence. Le mecanisme ne s'applique pas a cette page.
+
+            Ce qu'il devient : les quatre indicateurs du haut (48 reservations,
+            376 joueurs, 5 936 €, 76 % d'occupation) s'allument l'un apres
+            l'autre, sur les memes temps que les six « pop » de la table de
+            bruitages — donc un son par evenement visible, et exactement les
+            chiffres que le sous-titre annonce a cet instant. */}
+        {KPIS.map((k, i) => {
+          const cue = KPI_CUE(i);
           if (frame < cue) return null;
-          const t = interpolate(frame, [cue, cue + 8], [0, 1], {
-            extrapolateLeft: 'clamp',
-            extrapolateRight: 'clamp',
-            easing: WEEK_DROP,
+          const t = interpolate(frame, [cue, cue + 10], [0, 1], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: WEEK_DROP,
           });
-          const appear = interpolate(frame, [cue, cue + 3], [0, 1], {
-            extrapolateLeft: 'clamp',
-            extrapolateRight: 'clamp',
+          const eclat = interpolate(frame, [cue, cue + 5, cue + 16], [0, 1, 0], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
           });
-          const air = Math.max(0, 1 - t);
           return (
             <div
-              key={w.week}
+              key={`kpi-${i}`}
               style={{
                 position: 'absolute',
-                left: 4,
-                top: WEEK_Y0 + i * WEEK_H,
-                width: leftRail.w - 8,
-                height: WEEK_H,
-                transform: `translateY(${-44 * air}px)`,
-                opacity: appear,
-                boxShadow: air > 0.02 ? `0 ${10 * air}px ${20 * air}px rgba(30,25,18,${0.16 * air})` : 'none',
-                background: PAPER,
-                borderBottom: '1px solid rgba(31,41,55,0.07)',
-                padding: '8px 10px 0',
-                boxSizing: 'border-box',
-                fontFamily: SANS,
+                left: k.x - 3, top: k.y - 3, width: k.w + 6, height: k.h + 6,
+                borderRadius: 16,
+                border: `2px solid ${AMBER}`,
+                opacity: t * (0.28 + 0.72 * eclat),
+                boxShadow: `0 0 ${18 * eclat}px rgba(6, 100, 254, ${0.4 * eclat}),`
+                  + ` 0 ${8 * t}px ${22 * t}px rgba(5, 30, 72, ${0.1 * t})`,
+                transform: `scale(${1 + 0.012 * eclat})`,
+                transformOrigin: 'center center',
                 pointerEvents: 'none',
               }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: '#1f2937' }}>{w.week}</span>
-                <span style={{ fontSize: 10, color: '#9ca3af' }}>{w.date}</span>
-              </div>
-              <div style={{ marginTop: 2, fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {w.title}
-              </div>
-            </div>
+            />
           );
         })}
       </PageCam>
 
-      {/* screen-space kicker, top-right */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 16, // inside the page's empty top-nav band at full-page framing,
-          right: 96, // clear of the comment rail's own header
-
-          textAlign: 'right',
-          fontFamily: MONO,
-          fontSize: 24,
-          letterSpacing: '0.14em',
-          color: 'oklch(50% 0.006 82)',
-          textTransform: 'uppercase',
-          opacity: kick,
-          pointerEvents: 'none',
-        }}
-      >
-        Weekly Brief · 2026-W28
-      </div>
+      {/* PAS DE CARTOUCHE ICI.
+          Le template posait un titre en haut a droite, dans la bande vide de son
+          en-tete. Notre tableau de bord occupe cette zone (bouton
+          « + Reservation rapide »), et le cartouche passait derriere. Il etait de
+          toute facon redondant : la page affiche son propre titre, sa date et
+          « Vue d'ensemble de votre activite ». Un texte qui repete l'image et la
+          salit ne merite pas d'etre replace ailleurs — il merite d'etre retire. */}
     </>
   );
 };

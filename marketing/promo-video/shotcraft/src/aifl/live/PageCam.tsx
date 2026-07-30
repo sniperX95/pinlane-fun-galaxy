@@ -6,7 +6,7 @@ import layout from '../live-layout.json';
 // point de la page, donc dès qu'elle vise près d'un bord elle montre du
 // hors-page. Avec le crème du template derrière une page Pinlane claire, ce
 // hors-page devenait une bande grise franche sur un tiers de l'image.
-const FOND = (layout as { bg?: string }).bg ?? '#faf7f2';
+const FOND = (layout as { bg?: string }).bg ?? '#fafafa';
 
 export type CamKey = {
   frame: number;

@@ -8,6 +8,9 @@ import { PaperTitleCard } from './PaperTitleCard';
 import { SceneOutroLive } from './live/SceneOutroLive';
 import { FlashCut } from './FlashCut';
 import { Caption } from './Caption';
+import { chargerGeist } from './fonts';
+
+chargerGeist();
 
 // ~36.2s @ 30fps — paper-and-ink morning reading room (10 shots). Both wordmark
 // moments (brand open, outro sign-off) hold a full second once fully on.
@@ -32,19 +35,24 @@ export const AIFL_TOTAL = 1085;
 // planning, et le script de capture refuse de livrer les assets si la journee
 // de demonstration ne les porte pas. Les autres plans se passent de chiffres
 // plutot que d'en avancer un que l'image ne montre pas.
+// CHAQUE LIGNE DIT CE QUE SON IMAGE MONTRE, ET RIEN D'AUTRE.
+//
+// C'est le reproche precis auquel repond cette table : « le texte mais pas tout
+// le temps correlé avec les images qui doivent correspondre ». La version
+// precedente annoncait des relances automatiques au-dessus d'une page
+// d'evenements, et un jour de la semaine que l'ecran contredisait.
+//
+// La voix off dit exactement la meme chose au meme instant (une phrase par
+// plan) : texte a l'ecran, voix et image portent le meme propos.
 const CAPTIONS = [
-  // Pas de jour de la semaine : le produit affiche « Jeu. 30 juil. » a l'ecran,
-  // annoncer « samedi » aurait ete contredit par l'image elle-meme.
-  { from: 90, duration: 40, text: 'UNE JOURNÉE · 38 RÉSERVATIONS · 297 JOUEURS' },
-  // (l'annotation qui flotte pres de la reservation vit dans SceneOpen)
-  { from: 318, duration: 44, text: 'ELLES TOMBENT TOUTES SEULES' },
-  { from: 395, duration: 55, text: 'CHERCHER · FILTRER · OUVRIR' },
-  { from: 477, duration: 68, text: 'CHAQUE ARRIVÉE SUIVIE À LA MINUTE' },
-  { from: 633, duration: 72, text: 'RELANCES ET AVIS — AUTOMATIQUES' },
-  // Ces trois chiffres sont ECRITS EN CLAIR sur le tableau de bord filme dans
-  // ce meme plan (verifie sur la texture) : le sous-titre ne fait que lire
-  // l'image, il n'avance rien.
-  { from: 789, duration: 78, text: '76 % D’OCCUPATION · 4 288 € · ZÉRO SAISIE' },
+  { from: 90, duration: 40, text: 'HUIT PISTES · BOWLING, LASER, FORMULES' },   // planning
+  { from: 318, duration: 44, text: 'EN LIGNE, SANS UN SEUL APPEL' },            // les resas tombent
+  { from: 395, duration: 55, text: 'CHERCHER UN CLIENT : DEUX SECONDES' },      // frappe + filtre
+  { from: 477, duration: 68, text: 'QUI ARRIVE, QUAND, COMBIEN' },              // page Arrivees
+  { from: 633, duration: 72, text: 'LES DOSSIERS DU JOUR, DÉJÀ TRIÉS' },        // page Evenements
+  // Ces quatre chiffres sont ECRITS EN CLAIR sur le tableau de bord filme dans
+  // ce meme plan : le sous-titre ne fait que lire l'image, il n'avance rien.
+  { from: 789, duration: 78, text: '48 RÉSAS · 376 JOUEURS · 5 936 € · 76 %' },
 ] as const;
 
 // sound design pinned to animation beats (absolute frames, Mixkit license).
@@ -99,7 +107,7 @@ const SFX: { from: number; src: string; volume: number }[] = [
 
 export const AiflMain: React.FC = () => {
   return (
-    <AbsoluteFill style={{ backgroundColor: '#f2eee6' }}>
+    <AbsoluteFill style={{ backgroundColor: '#f6f8fb' }}>
       {/* beat-pinned promo sound effects (no music bed — SFX only) */}
       {SFX.map((s, i) => (
         <Sequence
@@ -118,7 +126,7 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.card1.from} durationInFrames={AIFL_SHOTS.card1.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.card1.duration}
-          words={[{ text: 'Avant,' }, { text: 'chaque', accent: true }, { text: 'résa' }, { text: 'passait' }, { text: 'par' }, { text: 'toi.' }]}
+          words={[{ text: 'Les' }, { text: 'réservations' }, { text: 'arrivent' }, { text: 'toutes' }, { text: 'seules.', accent: true }]}
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.table.from} durationInFrames={AIFL_SHOTS.table.duration}>
@@ -130,9 +138,8 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.card2.from} durationInFrames={AIFL_SHOTS.card2.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.card2.duration}
-          words={[{ text: 'Maintenant,' }, { text: 'les' }, { text: 'relances' }, { text: 'partent' }, { text: 'seules.', accent: true }]}
-          sub="réservations ce samedi"
-          subDigits="38"
+          words={[{ text: 'Les' }, { text: 'dossiers' }, { text: 'du' }, { text: 'jour,' }, { text: 'déjà' }, { text: 'triés.', accent: true }]}
+          sub="dossiers à traiter"
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.chart.from} durationInFrames={AIFL_SHOTS.chart.duration}>
@@ -141,7 +148,7 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.cardWbr.from} durationInFrames={AIFL_SHOTS.cardWbr.duration}>
         <PaperTitleCard
           duration={AIFL_SHOTS.cardWbr.duration}
-          words={[{ text: 'Ton' }, { text: 'centre,' }, { text: 'lisible', accent: true }, { text: 'd’un' }, { text: 'coup' }, { text: 'd’œil.' }]}
+          words={[{ text: 'Et' }, { text: 'le' }, { text: 'soir,' }, { text: 'tout' }, { text: 'est' }, { text: 'déjà' }, { text: 'compté.', accent: true }]}
         />
       </Sequence>
       <Sequence from={AIFL_SHOTS.wbr.from} durationInFrames={AIFL_SHOTS.wbr.duration}>

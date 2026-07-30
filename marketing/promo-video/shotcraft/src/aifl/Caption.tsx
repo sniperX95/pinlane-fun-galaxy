@@ -1,7 +1,7 @@
 import { interpolate, useCurrentFrame } from 'remotion';
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-const AMBER = 'oklch(52% 0.115 65)';
+const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
+const AMBER = '#0664fe';
 
 /** Screen-space narration caption: a mono UI info-strip at the bottom of the
  * frame, led by a small amber square. Fades/rises in over 8 frames and fades
@@ -36,7 +36,7 @@ export const Caption: React.FC<{ text: string; duration: number; bottom?: number
         fontSize: 22,
         letterSpacing: '0.14em',
         textTransform: 'uppercase',
-        color: 'oklch(45% 0.006 82)',
+        color: '#55617a',
         opacity: inT * outT,
         transform: `translateY(${(1 - inT) * 8}px)`,
         pointerEvents: 'none',

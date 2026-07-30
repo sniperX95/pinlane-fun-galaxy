@@ -14,7 +14,7 @@ const DIVE_EASE = Easing.bezier(0.3, 0, 0.2, 1); // decelerate into the hover
 const SLIDE_EASE = Easing.bezier(0.35, 0, 0.2, 1); // nano-lab card slide to the top slot
 
 // Couleurs prises sur le produit au moment de la capture, pas choisies.
-const PAPER = (layout as { bg?: string }).bg ?? '#f9f6f1';
+const PAPER = (layout as { bg?: string }).bg ?? '#fafafa';
 const FIELD = '#ffffff'; // interieur du champ de recherche
 
 const CARD_W = cards[0].w;
@@ -165,12 +165,12 @@ export const SceneFlyIn: React.FC = () => {
             }),
             background: [
               // warm key light pooled on the pile
-              `radial-gradient(1300px 900px at ${3000 + PILE_CX}px ${3000 + PILE_CY}px, rgba(255,214,150,0.20), rgba(255,190,120,0.06) 40%, transparent 68%)`,
+              `radial-gradient(1300px 900px at ${3000 + PILE_CX}px ${3000 + PILE_CY}px, rgba(30, 116, 254, 0.24), rgba(30, 116, 254, 0.08) 40%, transparent 68%)`,
               // brushed-metal grain: fine anisotropic streaks
               'repeating-linear-gradient(100deg, rgba(255,255,255,0.028) 0px, rgba(255,255,255,0.028) 1px, transparent 2px, transparent 7px)',
               'repeating-linear-gradient(100deg, rgba(0,0,0,0.16) 0px, rgba(0,0,0,0.16) 2px, transparent 4px, transparent 13px)',
               // broad steel sheen
-              'linear-gradient(115deg, #2a2d33 0%, #383c44 28%, #22242a 55%, #33363e 78%, #1d1f24 100%)',
+              'linear-gradient(115deg, #0b1220 0%, #14203a 28%, #070d18 55%, #101b30 78%, #050a14 100%)',
             ].join(', '),
             pointerEvents: 'none',
           }}
@@ -289,12 +289,12 @@ export const SceneFlyIn: React.FC = () => {
         // shadow: stacked cards carry almost none (they sit on each other),
         // airborne large/soft, tight when flush, widening on the slide
         const shadow = isNano && frame >= FILTER_START
-          ? `0 ${2 + 14 * float}px ${6 + 26 * float}px rgba(60,45,30,${0.08 + 0.1 * float})`
+          ? `0 ${2 + 14 * float}px ${6 + 26 * float}px rgba(5, 30, 72, ${0.08 + 0.1 * float})`
           : landed
-            ? '0 2px 6px rgba(60,45,30,.08)'
+            ? '0 2px 6px rgba(5, 30, 72, 0.08)'
             : inPile
-              ? '0 1px 3px rgba(60,45,30,.14)'
-              : `0 ${36 - 30 * settleT}px ${70 - 60 * settleT}px rgba(60,45,30,${0.3 - 0.22 * settleT})`;
+              ? '0 1px 3px rgba(5, 30, 72, 0.14)'
+              : `0 ${36 - 30 * settleT}px ${70 - 60 * settleT}px rgba(5, 30, 72, ${0.3 - 0.22 * settleT})`;
 
         // motion-blur ghost during the deal: a faint blurred copy trailing the flight path
         const showGhost = diveT > 0.02 && diveT < 0.98;
@@ -382,10 +382,10 @@ export const SceneFlyIn: React.FC = () => {
             height: SEARCH.h,
             display: 'flex',
             alignItems: 'center',
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+            fontFamily: "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif",
             fontSize: 15,
             letterSpacing: 0.2,
-            color: 'oklch(25% 0.006 82)',
+            color: '#08111f',
             pointerEvents: 'none',
           }}
         >
@@ -397,7 +397,7 @@ export const SceneFlyIn: React.FC = () => {
                 width: 2,
                 height: 20,
                 marginLeft: 2,
-                background: 'oklch(58% 0.13 65)',
+                background: '#0664fe',
               }}
             />
           ) : null}
@@ -422,7 +422,7 @@ export const SceneFlyIn: React.FC = () => {
               width: rad * 2,
               height: rad * 2,
               borderRadius: '50%',
-              border: '2px solid oklch(58% 0.13 65)',
+              border: '2px solid #0664fe',
               opacity: 1 - t,
               pointerEvents: 'none',
             }}
@@ -440,8 +440,8 @@ export const SceneFlyIn: React.FC = () => {
             width: nano.w + 12,
             height: nano.h + 12,
             borderRadius: 16,
-            border: '3px solid oklch(58% 0.13 65)',
-            boxShadow: '0 0 40px rgba(180,120,50,0.5)',
+            border: '3px solid #0664fe',
+            boxShadow: '0 0 40px rgba(6, 100, 254, 0.5)',
             opacity: interpolate(frame, [178, 181], [0.5, 1], {
               extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
             }),

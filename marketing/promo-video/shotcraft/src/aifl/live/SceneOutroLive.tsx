@@ -3,9 +3,9 @@ import { PageCam, CamKey } from './PageCam';
 import { AIFL_SHOTS } from '../Main';
 import layout from '../live-layout.json';
 
-const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
-const LETTERS = 'Pinlane'.split('');
+const SANS = "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif";
+const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
+const LETTERS = 'PINLANE'.split('');
 const PAGE_H = layout.projects.pageH;
 const WBR_PAGE_H = layout.wbr.pageH;
 
@@ -38,7 +38,7 @@ type FlyEl = {
 // quelles, chaque image aurait ete etiree. On ne conserve donc de la pose que
 // la LARGEUR VOULUE A L'ECRAN (largeur d'origine x son echelle), et la hauteur
 // suit le rapport reel de l'image, lu dans le layout au moment de la capture.
-const TAILLES = (layout as { assets?: Record<string, { w: number; h: number }> }).assets ?? {};
+const TAILLES = (layout as { assets?: Record<string, { w: number; h: number; px?: number }> }).assets ?? {};
 
 // La fenetre de recadrage dans la page du tableau de bord : l'en-tete du premier
 // bloc releve. L'offset d'origine (-576, -173) visait le titre d'un document qui
@@ -51,7 +51,12 @@ const pose = (
   p: Omit<FlyEl, 'w' | 'h' | 'scale'> & { largeurEcran: number; replis: { w: number; h: number } },
 ): FlyEl => {
   const a = TAILLES[p.file] ?? p.replis;
-  return { ...p, w: a.w, h: a.h, scale: p.largeurEcran / a.w };
+  // PLAFOND DE DEFINITION NATIVE : une decoupe ne s'affiche jamais plus large
+  // qu'elle ne contient de pixels reels. Sans ce plafond, l'en-tete du planning
+  // (538 px) etait etale sur 1190 px — 4,4x d'agrandissement, mou et
+  // surdimensionne au milieu d'elements nets.
+  const natif = ('px' in a && a.px) ? a.px : a.w * 2;
+  return { ...p, w: a.w, h: a.h, scale: Math.min(p.largeurEcran, natif) / a.w };
 };
 
 // ordre de rendu = ordre des entrees, donc les derniers arrivent au-dessus
@@ -59,7 +64,9 @@ const ELS: FlyEl[] = [
   pose({ key: 'nav', file: 'nav.png', largeurEcran: 1190, replis: { w: 1920, h: 61 }, cx: 960, cy: 84, rot: 0, dx: 0, dy: -120, radius: 10, cue: 4 }),
   pose({ key: 'hero', file: layout.projects.heroHires ?? 'card-hero-hires.png', largeurEcran: 470, replis: { w: 358, h: 312 }, cx: 300, cy: 400, rot: -5, dx: -500, dy: 0, radius: 12, cue: 7 }),
   pose({ key: 'card1', file: 'card1.png', largeurEcran: 430, replis: { w: 358, h: 288 }, cx: 1630, cy: 380, rot: 4, dx: 500, dy: 0, radius: 12, cue: 10 }),
-  pose({ key: 'paper1', file: 'paper1.png', largeurEcran: 552, replis: { w: 1104, h: 225 }, cx: 1460, cy: 730, rot: -3, dx: 450, dy: 260, radius: 12, cue: 13 }),
+  // Descendu de 730 a 838 : a 730 il passait devant la baseline
+  // « LA CONSOLE DE TON CENTRE » et en cachait le dernier mot.
+  pose({ key: 'paper1', file: 'paper1.png', largeurEcran: 552, replis: { w: 1104, h: 225 }, cx: 1500, cy: 838, rot: -3, dx: 450, dy: 260, radius: 12, cue: 13 }),
   pose({ key: 'card7', file: 'card7.png', largeurEcran: 400, replis: { w: 358, h: 312 }, cx: 260, cy: 800, rot: 3, dx: -400, dy: 300, radius: 12, cue: 16 }),
   pose({ key: 'paper3', file: 'paper3.png', largeurEcran: 530, replis: { w: 1104, h: 225 }, cx: 620, cy: 930, rot: 2, dx: 0, dy: 320, radius: 12, cue: 19 }),
   pose({ key: 'search', file: 'float-search.png', largeurEcran: 420, replis: { w: 1016, h: 44 }, cx: 760, cy: 180, rot: -1.5, dx: 0, dy: -240, radius: 10, cue: 22 }),
@@ -216,7 +223,7 @@ export const SceneOutroLive: React.FC = () => {
             const air = Math.max(0, 1 - t);
             const shadow =
               air > 0.01
-                ? `0 ${10 + 26 * air}px ${24 + 46 * air}px rgba(30,25,18,${0.16 + 0.1 * air}), 0 2px 6px rgba(30,25,18,.08)`
+                ? `0 ${10 + 26 * air}px ${24 + 46 * air}px rgba(5, 30, 72, ${0.16 + 0.1 * air}), 0 2px 6px rgba(30,25,18,.08)`
                 : '0 10px 24px rgba(30,25,18,.16), 0 2px 6px rgba(30,25,18,.08)';
 
             const settledOpacity = opacity * (1 - 0.12 * recede);
@@ -225,7 +232,7 @@ export const SceneOutroLive: React.FC = () => {
             const texture = el.wbrCrop
               ? {
                   background: `#fff url(${staticFile(`textures/live/${el.file}`)}) -${WBR_CROP.x}px -${WBR_CROP.y}px / 1920px ${WBR_PAGE_H}px no-repeat`,
-                  border: '1px solid oklch(90% .008 82)',
+                  border: '1px solid rgba(5, 30, 72, 0.10)',
                 }
               : null;
 
@@ -304,7 +311,7 @@ export const SceneOutroLive: React.FC = () => {
                       width: glowR * 2,
                       height: glowR * 2,
                       borderRadius: '50%',
-                      background: 'radial-gradient(circle, oklch(78% 0.13 70 / 0.9), oklch(78% 0.13 70 / 0) 70%)',
+                      background: 'radial-gradient(circle, rgba(30, 116, 254, 0.9), rgba(30, 116, 254, 0) 70%)',
                       opacity: glow,
                       mixBlendMode: 'multiply',
                     }}
@@ -331,7 +338,7 @@ export const SceneOutroLive: React.FC = () => {
                 width: d.size,
                 height: d.size,
                 borderRadius: '50%',
-                background: 'oklch(75% 0.08 85)',
+                background: '#1e74fe',
                 opacity: d.opacity,
               }}
             />
@@ -349,7 +356,7 @@ export const SceneOutroLive: React.FC = () => {
               bottom: 0,
               left: sweepX - 300,
               width: 600,
-              background: 'linear-gradient(90deg, rgba(255,244,224,0), rgba(255,244,224,1) 50%, rgba(255,244,224,0))',
+              background: 'linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 1) 50%, rgba(255, 255, 255, 0))',
               opacity: sweepOpacity,
             }}
           />
@@ -361,7 +368,7 @@ export const SceneOutroLive: React.FC = () => {
         <AbsoluteFill
           style={{
             pointerEvents: 'none',
-            background: 'radial-gradient(700px 360px at 960px 470px, rgba(255,246,228,0.95), rgba(255,246,228,0.35) 55%, rgba(255,246,228,0) 75%)',
+            background: 'radial-gradient(700px 360px at 960px 470px, rgba(255, 255, 255, 0.96), rgba(226, 238, 255, 0.4) 55%, rgba(226, 238, 255, 0) 75%)',
             opacity: stageLight,
           }}
         />
@@ -372,7 +379,7 @@ export const SceneOutroLive: React.FC = () => {
         <AbsoluteFill
           style={{
             pointerEvents: 'none',
-            background: 'radial-gradient(1400px 900px at 50% 50%, rgba(62,48,32,0) 55%, rgba(62,48,32,0.7) 100%)',
+            background: 'radial-gradient(1400px 900px at 50% 50%, rgba(5, 30, 72, 0) 55%, rgba(5, 30, 72, 0.55) 100%)',
             opacity: vignette,
           }}
         />
@@ -380,7 +387,17 @@ export const SceneOutroLive: React.FC = () => {
 
       <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', pointerEvents: 'none' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: SERIF, fontSize: 148, fontWeight: 600, color: 'oklch(18% 0.006 82)', letterSpacing: `${wordSpacing}em`, display: 'flex' }}>
+          {/* Le pictogramme de la marque au-dessus du mot : c'est le lockup
+              fourni, pas un mot pose seul. */}
+          <div style={{ position: 'relative', width: 112, height: 103, margin: '0 auto 28px', opacity: tag }}>
+            <Img
+              src={staticFile('brand/picto.webp')}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          </div>
+          {/* « PIN » bleu, « LANE » navy, capitales trackees a .19em : la
+              construction exacte du logo. Le template posait un mot en serif. */}
+          <div style={{ fontFamily: SANS, fontSize: 128, fontWeight: 620, color: '#08111f', letterSpacing: `${0.19 + wordSpacing}em`, display: 'flex' }}>
             {LETTERS.map((ch, i) => {
               const delay = Math.round(42 + i * 1.8);
               const t = interpolate(frame, [delay, delay + 8], [0, 1], {
@@ -397,6 +414,7 @@ export const SceneOutroLive: React.FC = () => {
                     filter: `blur(${(1 - t) * 8}px)`,
                     display: 'inline-block',
                     whiteSpace: 'pre',
+                    color: i < 3 ? '#0664fe' : undefined,
                   }}
                 >
                   {ch}
@@ -405,16 +423,16 @@ export const SceneOutroLive: React.FC = () => {
             })}
           </div>
           <div style={{ position: 'relative', height: 6, width: 260, margin: '34px auto 0' }}>
-            <div style={{ position: 'absolute', inset: 0, borderRadius: 3, background: 'oklch(52% 0.115 65)', transform: `scaleX(${rule})` }} />
+            <div style={{ position: 'absolute', inset: 0, borderRadius: 3, background: '#0664fe', transform: `scaleX(${rule})` }} />
             {/* launch lower-third: 1px amber lines shooting out from the rule ends, then fading */}
             {ruleExt > 0 && ruleExtFade > 0 ? (
               <>
-                <div style={{ position: 'absolute', top: 2.5, height: 1, right: '100%', width: 190 * ruleExt, background: 'oklch(52% 0.115 65)', opacity: ruleExtFade }} />
-                <div style={{ position: 'absolute', top: 2.5, height: 1, left: '100%', width: 190 * ruleExt, background: 'oklch(52% 0.115 65)', opacity: ruleExtFade }} />
+                <div style={{ position: 'absolute', top: 2.5, height: 1, right: '100%', width: 190 * ruleExt, background: '#0664fe', opacity: ruleExtFade }} />
+                <div style={{ position: 'absolute', top: 2.5, height: 1, left: '100%', width: 190 * ruleExt, background: '#0664fe', opacity: ruleExtFade }} />
               </>
             ) : null}
           </div>
-          <div style={{ fontFamily: MONO, fontSize: 25, letterSpacing: '0.14em', color: 'oklch(50% 0.006 82)', marginTop: 30, opacity: tag, textTransform: 'uppercase' }}>
+          <div style={{ fontFamily: MONO, fontSize: 25, letterSpacing: '0.14em', color: '#55617a', marginTop: 30, opacity: tag, textTransform: 'uppercase' }}>
             La console de ton centre
           </div>
         </div>

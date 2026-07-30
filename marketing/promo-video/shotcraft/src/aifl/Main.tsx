@@ -12,6 +12,7 @@ import { SFX, longueur } from './sfx';
 import NARRATION from './narration.json';
 import { AIFL_SHOTS } from './shots';
 import { useGeist } from './fonts';
+import { Incrustation } from './Incrustations';
 
 // La table de plans vit dans `shots.ts` (voir l'entete de ce fichier pour le
 // pourquoi). On la re-exporte : les scenes l'importent depuis '../Main'.
@@ -52,6 +53,7 @@ const Carton: React.FC<{ plan: 'cardA' | 'cardB' | 'card1' | 'card2' | 'cardWbr'
         words={l.mots.map((m) => ({ text: m.m }))}
         mots={l.mots}
         decalage={decalageDe(plan, shot.from)}
+        illustration={<Incrustation plan={plan} mots={l.mots} decalage={decalageDe(plan, shot.from)} />}
       />
     </Sequence>
   );

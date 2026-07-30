@@ -1,4 +1,5 @@
 import { AIFL_SHOTS } from './shots';
+import NARRATION from './narration.json';
 
 // LA TABLE DE BRUITAGES — CALEE RELATIVEMENT AU DEBUT DE CHAQUE PLAN.
 //
@@ -22,6 +23,25 @@ import { AIFL_SHOTS } from './shots';
 export type Son = { from: number; src: string; volume: number; coupe?: number };
 
 const S = AIFL_SHOTS;
+// UN SON SUR LE MOT QUI LE DECLENCHE.
+//
+// Les incrustations des cartons jouent leurs temps sur des MOTS (le telephone
+// sonne quand la voix dit « telephone », les deux reservations se percutent quand
+// elle dit « piste »). Leurs sons doivent donc tomber sur ces memes mots, pas sur
+// un decalage devine depuis le debut du plan.  cherche le mot dans la
+// table de narration et rend son image ABSOLUE dans le film.
+const surMot = (plan: string, cle: string, repli: number) => {
+  const l = NARRATION.lignes.find((x) => x.plan === plan);
+  if (!l) return AIFL_SHOTS[plan as keyof typeof AIFL_SHOTS].from + repli;
+  const nu = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const m = l.mots.find((x) => nu(x.m).includes(nu(cle)));
+  const t = m ? m.t0 : null;
+  const base = Math.round(l.at * NARRATION.fps);
+  return t === null
+    ? AIFL_SHOTS[plan as keyof typeof AIFL_SHOTS].from + repli
+    : base + Math.round(t * NARRATION.fps);
+};
+
 
 // La cadence de distribution du plan `table` : la carte k part a
 // `36 + 4k - 0.0792 k(k-1)` et se pose 12 images plus tard (SceneFlyIn). On
@@ -57,10 +77,14 @@ export const SFX: Son[] = [
   // meme chose : le telephone qui sonne pendant le service, puis un battement
   // isole sur l'enjeu. C'est du son NARRATIF, pas de la decoration.
   { from: S.cardA.from, src: 'swoosh-quick.mp3', volume: 0.40 },
-  { from: S.cardA.from + 14, src: 'ui-notify-tech.mp3', volume: 0.34 },   // ca sonne
-  { from: S.cardA.from + 40, src: 'ui-message-pop.mp3', volume: 0.28 },   // et ca resonne
-  { from: S.cardA.from + 74, src: 'pen-write-paper.mp3', volume: 0.40, coupe: 30 }, // le cahier
-  { from: S.cardA.from + 128, src: 'ui-notify-tech.mp3', volume: 0.26 },  // ca resonne encore
+  // Ces quatre-la sont cales sur LEUR MOT, comme l'animation qu'ils sonorisent :
+  // le telephone sonne quand la voix dit « telephone », le stylo ecrit sur
+  // « cahier », les deux reservations se percutent sur « piste ».
+  { from: surMot('cardA', 'telephone', 14) - 6, src: 'ui-notify-tech.mp3', volume: 0.36 },
+  { from: surMot('cardA', 'telephone', 14) + 22, src: 'ui-message-pop.mp3', volume: 0.28 },
+  { from: surMot('cardA', 'cahier', 74) - 4, src: 'pen-write-paper.mp3', volume: 0.42, coupe: 34 },
+  { from: surMot('cardA', 'piste', 128) + 6, src: 'hit-weak.mp3', volume: 0.44 },
+  { from: surMot('cardA', 'piste', 128) + 8, src: 'bass-hit-short.mp3', volume: 0.26 },
 
   { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.38 },
   { from: S.cardB.from + 10, src: 'heartbeat-single.mp3', volume: 0.42 }, // l'enjeu
@@ -116,6 +140,8 @@ export const SFX: Son[] = [
 
   // ---- Carton 3 --------------------------------------------------------
   { from: S.cardWbr.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: surMot('cardWbr', 'chiffre', 30), src: 'clock-knob-spin.mp3', volume: 0.30, coupe: 34 },
+  { from: surMot('cardWbr', 'occupation', 60), src: 'data-scan.mp3', volume: 0.22, coupe: 30 },
 
   // ---- Tableau de bord : il se remplit, puis les 4 chiffres s'allument -
   { from: S.wbr.from + 4, src: 'transition-soft.mp3', volume: 0.40 },
@@ -130,6 +156,9 @@ export const SFX: Son[] = [
 
   // ---- Carton 4 --------------------------------------------------------
   { from: S.card3.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: surMot('card3', 'saisie', 20), src: 'ui-select-click.mp3', volume: 0.36 },
+  { from: surMot('card3', 'double', 55), src: 'ui-select-click.mp3', volume: 0.32 },
+  { from: surMot('card3', 'appel', 90), src: 'ui-success-soft.mp3', volume: 0.34 },
 
   // ---- Signature : la formule en trois temps de la reference (§ 4.3) ---
   // riser (montee) -> ~35 images plus tard l'impact (le pic du film) ->

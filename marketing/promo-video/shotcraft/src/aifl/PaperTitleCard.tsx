@@ -33,7 +33,11 @@ export const PaperTitleCard: React.FC<{
    *  sans ce decalage les mots apparaissaient 4 images trop tot — soit exactement
    *  le defaut de synchronisation qu'on corrige. */
   decalage?: number;
-}> = ({ duration, words, sub, subDigits, mots, decalage = 0 }) => {
+  /** Incrustation animee posee AU-DESSUS du texte. Quand elle est presente, le
+   *  texte descend et rapetisse : le carton devient une scene, plus une diapo.
+   *  C'est la reponse a « quand il parle beaucoup, ça montre que du texte ». */
+  illustration?: React.ReactNode;
+}> = ({ duration, words, sub, subDigits, mots, decalage = 0, illustration }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const fadeOut = interpolate(frame, [duration - 8, duration], [1, 0], {
@@ -69,14 +73,31 @@ export const PaperTitleCard: React.FC<{
     >
       <div
         style={{
-          textAlign: 'center', maxWidth: 1500,
-          transform: `scale(${1 + pousse * 0.035}) translateY(${-pousse * 10}px)`,
+          textAlign: 'center', maxWidth: illustration ? 1620 : 1500,
+          transform: `scale(${1 + pousse * (illustration ? 0.018 : 0.035)}) translateY(${-pousse * (illustration ? 5 : 10)}px)`,
           transformOrigin: 'center center',
         }}
       >
+        {illustration ? (
+          // ECHELLE 1,2. Les illustrations sont dessinees a une taille confortable
+          // a lire dans le code (une pastille de 330 px, une grille de 250 px de
+          // colonne) ; rendues telles quelles dans un cadre de 1920x1080 elles
+          // occupaient un quart de la hauteur et le reste etait du blanc. Une mise
+          // a l'echelle globale les remplit sans toucher a leurs proportions
+          // internes — et 1,2 est le facteur maximal : la plus large (1560 px)
+          // atteint alors 1872 px, soit juste sous le cadre.
+          // `zoom` ET NON `transform: scale`. Une mise a l'echelle par `transform`
+          // ne change pas la BOITE de mise en page : le contenu grossissait vers
+          // le haut pendant que le texte dessous restait a sa place, et le groupe
+          // se retrouvait colle en haut avec une bande vide sous le texte. `zoom`
+          // agrandit la boite elle-meme, donc le groupe reste centre.
+          <div style={{ marginBottom: 26, zoom: 1.2 }}>
+            {illustration}
+          </div>
+        ) : null}
         <div
           style={{
-            fontFamily: SERIF, fontSize: 116, fontWeight: 600, lineHeight: 1.14,
+            fontFamily: SERIF, fontSize: illustration ? 62 : 116, fontWeight: 620, lineHeight: 1.16,
             color: '#08111f', letterSpacing: '-0.012em',
             display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: '0.26em',
           }}
@@ -119,7 +140,7 @@ export const PaperTitleCard: React.FC<{
         </div>
         <div
           style={{
-            height: 6, width: 220, margin: '38px auto 0', borderRadius: 3,
+            height: 6, width: illustration ? 150 : 220, margin: illustration ? '26px auto 0' : '38px auto 0', borderRadius: 3,
             background: '#0664fe', transform: `scaleX(${underline})`,
           }}
         />

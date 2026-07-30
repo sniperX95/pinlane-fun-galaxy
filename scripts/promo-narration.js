@@ -32,7 +32,20 @@ const ROOT = path.resolve(__dirname, '..');
 const SORTIE_AUDIO = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-ugc.mp3');
 const SORTIE_TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/narration.json');
 
-const VOIX_ID = 'aQROLel5sQbj1vuIVi6B';   // Voix Nicolas Petit — narration FR pro
+// LA VOIX SE CHANGE ICI, EN UNE LIGNE.
+//
+// Les voix de la bibliotheque partagee s'utilisent DIRECTEMENT par leur
+// identifiant (verifie : HTTP 200) — contrairement a ce que disait ma note de
+// skill. Le compte de Movsar n'en contient que deux ; la bibliotheque en a des
+// dizaines de francaises, dont plusieurs taguees « spots commerciaux ».
+// `scripts/promo-essai-voix.js` en compare cinq sur la meme phrase.
+//
+//   aQROLel5sQbj1vuIVi6B  Nicolas Petit        (celle des versions 3 a 7)
+//   c365oriviHmAhyLhpuN6  Adrien Clairon       spots commerciaux, gere l'anglais
+//   DGTOOUoGpoP6UZ9uSWfA  Celian               contenu promotionnel, gere l'anglais
+//   yG4Uc56cLYQyZFnWaYv2  Kael                 contenu de marque premium
+//   jhQTaVBI6hnd0ESpmfIu  Jayce                publicite, voix grave
+const VOIX_ID = 'aQROLel5sQbj1vuIVi6B';
 const MODELE = 'eleven_v3';
 const FPS = 30;
 // --- LA TABLE DE PLANS, SOURCE UNIQUE --------------------------------------
@@ -185,7 +198,11 @@ const appel = () => new Promise((resolve, reject) => {
     text: texteAEnvoyer(),
     model_id: MODELE,
     language_code: 'fr',
-    voice_settings: { stability: 0.5, similarity_boost: 0.85, style: 0.4, use_speaker_boost: true },
+    // `style` a 0,25 et non 0,4. Un style eleve EXAGERE l'interpretation : le
+    // modele place des accents toniques la ou il croit qu'il y a de l'emphase, et
+    // c'est un candidat serieux pour « les intonations c'est mal fait ». A 0,25 la
+    // lecture reste vivante sans etre jouee.
+    voice_settings: { stability: 0.5, similarity_boost: 0.85, style: 0.25, use_speaker_boost: true },
   });
   const req = https.request({
     hostname: 'api.elevenlabs.io',

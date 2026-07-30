@@ -45,7 +45,7 @@ const SORTIE_TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/n
 //   DGTOOUoGpoP6UZ9uSWfA  Celian               contenu promotionnel, gere l'anglais
 //   yG4Uc56cLYQyZFnWaYv2  Kael                 contenu de marque premium
 //   jhQTaVBI6hnd0ESpmfIu  Jayce                publicite, voix grave
-const VOIX_ID = 'aQROLel5sQbj1vuIVi6B';
+const VOIX_ID = 'yG4Uc56cLYQyZFnWaYv2';   // Kael
 const MODELE = 'eleven_v3';
 const FPS = 30;
 // --- LA TABLE DE PLANS, SOURCE UNIQUE --------------------------------------
@@ -102,8 +102,8 @@ const LIGNES = [
   // 1-2 : ON PARLE A QUELQU'UN QUI NE NOUS CONNAIT PAS. La premiere phrase
   // qualifie (« est-ce que ca me concerne ? »), la deuxieme montre le resultat
   // avant d'expliquer comment on y arrive.
-  { decalage: 0.70, plan: 'morning', cible: 'aucun', jeu: '[direct, comme si tu interpellais quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
-  { decalage: 'apres', plan: 'morning', cible: 'bandeau', jeu: '[posé]', texte: 'Ça, c’est une journée complète. Huit pistes, quarante-huit réservations.' },
+  { decalage: 0.70, plan: 'morning', cible: 'aucun', jeu: '[énergique, souriant, tu interpelles quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
+  { decalage: 'apres', plan: 'morning', cible: 'bandeau', jeu: '[enjoué, tu montres quelque chose dont tu es fier]', texte: 'Ça, c’est une journée complète. Huit pistes, quarante-huit réservations.' },
 
   // 3-4 : LE PROBLEME, PUIS CE QU'IL COUTE. Un trafic froid ne sait pas encore
   // qu'il a un probleme : il faut le nommer avant de vendre quoi que ce soit.
@@ -115,23 +115,23 @@ const LIGNES = [
   { decalage: 0.40, plan: 'cardB', cible: 'carton', jeu: '[net, un peu plus grave]', texte: 'Tu peux pas décrocher. Et l’appel que tu rates, c’est un groupe qui réserve ailleurs.' },
 
   // 5 : LE BASCULEMENT. On dit ce que c'est, en une phrase, sans jargon.
-  { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[clair, on ouvre]', texte: 'Pinlane, c’est le logiciel qui gère tout ça à ta place.' },
+  { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[ça s’ouvre, enjoué, la solution arrive]', texte: 'Pinlane, c’est le logiciel qui gère tout ça à ta place.' },
 
   // 6-10 : LE MECANISME, une etape par plan, chacune montree a l'ecran pendant
   // qu'elle est dite. C'est la partie qui manquait : on expliquait par titres.
-  { decalage: 0.40, plan: 'table', cible: 'bandeau', jeu: '', texte: 'Tes clients réservent en ligne, et la résa se pose toute seule au bon créneau.' },
-  { decalage: 'apres', plan: 'table', cible: 'bandeau', jeu: '[appuye]', texte: 'Tu cherches un client ? Deux secondes.' },
-  { decalage: 0.40, plan: 'macro', cible: 'bandeau', jeu: '[confiant]', texte: 'Le jour même, tu vois qui arrive, à quelle heure, et combien ils sont.' },
-  { decalage: 0.40, plan: 'card2', cible: 'carton', jeu: '', texte: 'Et ce qui demande une action remonte tout seul en haut de la liste.' },
-  { decalage: 0.40, plan: 'chart', cible: 'bandeau', jeu: '', texte: 'Tous les dossiers du jour, déjà triés par heure.' },
+  { decalage: 0.40, plan: 'table', cible: 'bandeau', jeu: '[enjoué, rythmé]', texte: 'Tes clients réservent en ligne, et la résa se pose toute seule au bon créneau.' },
+  { decalage: 'apres', plan: 'table', cible: 'bandeau', jeu: '[appuyé, avec le sourire]', texte: 'Tu cherches un client ? Deux secondes !' },
+  { decalage: 0.40, plan: 'macro', cible: 'bandeau', jeu: '[confiant, enjoué]', texte: 'Le jour même, tu vois qui arrive, à quelle heure, et combien ils sont.' },
+  { decalage: 0.40, plan: 'card2', cible: 'carton', jeu: '[rythmé]', texte: 'Et ce qui demande une action remonte tout seul en haut de la liste.' },
+  { decalage: 0.40, plan: 'chart', cible: 'bandeau', jeu: '[enjoué]', texte: 'Tous les dossiers du jour, déjà triés par heure.' },
 
   // 11-13 : LA PREUVE, puis le benefice en trois coups.
-  { decalage: 0.40, plan: 'cardWbr', cible: 'carton', jeu: '[plus posé]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
-  { decalage: 0.40, plan: 'wbr', cible: 'bandeau', jeu: '', texte: 'Tout est là, sans que tu aies saisi une seule ligne.' },
-  { decalage: 0.45, plan: 'card3', cible: 'carton', jeu: '[fier, appuyé]', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
+  { decalage: 0.40, plan: 'cardWbr', cible: 'carton', jeu: '[chaleureux, satisfait]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
+  { decalage: 0.40, plan: 'wbr', cible: 'bandeau', jeu: '[enjoué]', texte: 'Tout est là, sans que tu aies saisi une seule ligne.' },
+  { decalage: 0.45, plan: 'card3', cible: 'carton', jeu: '[fier, punché, avec le sourire]', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
 
   // 14 : L'APPEL A L'ACTION. Un trafic froid a besoin qu'on lui dise quoi faire.
-  { decalage: 0.60, plan: 'outro', cible: 'aucun', jeu: '[net, chaleureux]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
+  { decalage: 0.60, plan: 'outro', cible: 'aucun', jeu: '[chaleureux, souriant, une invitation]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
 ];
 
 
@@ -202,7 +202,18 @@ const appel = () => new Promise((resolve, reject) => {
     // modele place des accents toniques la ou il croit qu'il y a de l'emphase, et
     // c'est un candidat serieux pour « les intonations c'est mal fait ». A 0,25 la
     // lecture reste vivante sans etre jouee.
-    voice_settings: { stability: 0.5, similarity_boost: 0.85, style: 0.25, use_speaker_boost: true },
+    // « Faut qu'ils soient plus enjoués, comme une vraie vidéo promo. »
+    // `style` remonte a 0,45 : c'est le levier d'expressivite. Il avait ete baisse
+    // a 0,25 pour calmer des intonations fautives — mais la cause etait la VOIX,
+    // pas le reglage, et avec une voix juste on peut de nouveau jouer.
+    // `stability` a 0,4 : un peu plus de relief. Le risque historique de ce
+    // reglage (le timbre qui change d'un appel a l'autre) n'existe plus, puisque
+    // tout le film tient dans UN SEUL appel.
+    // `speed` a 1,04 : quatre pour cent plus vif. Une voix promo avance.
+    voice_settings: {
+      stability: 0.4, similarity_boost: 0.85, style: 0.45,
+      use_speaker_boost: true, speed: 1.04,
+    },
   });
   const req = https.request({
     hostname: 'api.elevenlabs.io',

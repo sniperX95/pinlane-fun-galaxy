@@ -50,8 +50,25 @@ export const SFX: Son[] = [
   { from: S.morning.from + 196, src: 'air-woosh-quick.mp3', volume: 0.30 },// elle redescend
   { from: S.morning.from + 204, src: 'transition-snap.mp3', volume: 0.50 },// et se recale
 
-  // ---- Carton 1 --------------------------------------------------------
-  { from: S.card1.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  // ---- LES DEUX CARTONS DU PROBLEME -----------------------------------
+  //
+  // Ces deux plans n'existaient pas : ils portent la partie du texte qui manquait
+  // pour un trafic froid (le probleme, puis ce qu'il coute). Leur son raconte la
+  // meme chose : le telephone qui sonne pendant le service, puis un battement
+  // isole sur l'enjeu. C'est du son NARRATIF, pas de la decoration.
+  { from: S.cardA.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: S.cardA.from + 14, src: 'ui-notify-tech.mp3', volume: 0.34 },   // ca sonne
+  { from: S.cardA.from + 40, src: 'ui-message-pop.mp3', volume: 0.28 },   // et ca resonne
+  { from: S.cardA.from + 74, src: 'pen-write-paper.mp3', volume: 0.40, coupe: 30 }, // le cahier
+  { from: S.cardA.from + 128, src: 'ui-notify-tech.mp3', volume: 0.26 },  // ca resonne encore
+
+  { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.38 },
+  { from: S.cardB.from + 10, src: 'heartbeat-single.mp3', volume: 0.42 }, // l'enjeu
+  { from: S.cardB.from + 52, src: 'bass-hit-short.mp3', volume: 0.34 },
+
+  // ---- Carton du basculement : on ouvre ------------------------------
+  { from: S.card1.from, src: 'wind-swoosh-short.mp3', volume: 0.42 },
+  { from: S.card1.from + 10, src: 'shimmer-sparkle-sweep.mp3', volume: 0.26, coupe: 40 },
 
   // ---- Distribution : la pile, puis les cartes ------------------------
   { from: S.table.from + 2, src: 'transition-soft.mp3', volume: 0.40 },
@@ -70,6 +87,7 @@ export const SFX: Son[] = [
 
   // ---- Detail : cinq lignes qui s'encastrent --------------------------
   { from: S.macro.from + 2, src: 'transition-soft.mp3', volume: 0.42 },
+  { from: S.macro.from + 6, src: 'data-scan.mp3', volume: 0.24, coupe: 34 },  // la liste se lit
   // `paper-staple` est l'echantillon que la bibliotheque associe a `row-embed`.
   ...[0, 1, 2, 3, 4].map((n) => ({
     from: S.macro.from + 12 + n * 9 + 12,
@@ -83,6 +101,7 @@ export const SFX: Son[] = [
 
   // ---- Dossiers : la pile s'empile ------------------------------------
   { from: S.chart.from + 3, src: 'transition-soft.mp3', volume: 0.42 },
+  { from: S.chart.from + 8, src: 'sweep-fast-small.mp3', volume: 0.30 },     // le tri
   // ScenePapers : depart du bloc n a CUES[n] = 18 + 12n, atterrissage 22 images
   // plus tard. Le son doit tomber sur l'ATTERRISSAGE (40, 52, 64, 76, 88) : la
   // premiere version le posait sur le depart, donc 22 images — presque une
@@ -120,6 +139,7 @@ export const SFX: Son[] = [
   { from: S.outro.from + 40, src: 'impact-deep-whoosh.mp3', volume: 0.56 },
   { from: S.outro.from + 65, src: 'sparkle.mp3', volume: 0.30 },
   { from: S.outro.from + 78, src: 'camera-autofocus.mp3', volume: 0.24 },  // la baseline se pose
+  { from: S.outro.from + 104, src: 'chime-crystal.mp3', volume: 0.26, coupe: 46 }, // l'appel a l'action
 ];
 
 // Longueur jouee. Les echantillons longs (`keyboard` 19,6 s, `riser-cine` 4,8 s,

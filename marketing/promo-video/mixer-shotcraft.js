@@ -63,9 +63,26 @@ const PHRASES = NARR.lignes.map((l) => ({
 // Cibles de niveau, en dB de moyenne. La voix domine de ~10 dB les bruitages et
 // de ~14 dB la musique : c'est l'ecart a partir duquel une narration reste
 // intelligible sur un petit haut-parleur.
-const CIBLE_VOIX = -17;
+// -15 et non -17 : sur une publicite de trafic froid, la voix doit etre EN AVANT.
+// Avec la nappe montee a -30 (voir plus bas), -17 ne laissait que 4,8 dB de marge
+// dans le passage le plus doux de la narration. Deux dB de plus la degagent
+// franchement sans toucher a la nappe, et le limiteur en bout de chaine absorbe
+// les cretes.
+const CIBLE_VOIX = -15;
 const CIBLE_SFX = -27;
-const CIBLE_MUSIQUE = -31;
+// -30, ET UNE ATTENUATION DOUCE PLUTOT QUE FORTE.
+//
+// Trois valeurs essayees, chacune mesuree. A -31 avec une attenuation de 7 dB,
+// Movsar a redemande « rajoute une petite musique » alors qu'il y en avait une :
+// pendant la parole elle tombait a -38, donc elle n'existait pas. A -27 la garde a
+// refuse le mixage — dans un trou de 0,6 s la nappe remontait a -23,4 contre
+// -21,1 pour la voix, soit 2,3 dB d'ecart : elle lui disputait la place.
+//
+// Le film parle 76 % du temps : une nappe qui ne s'entend QUE dans les trous ne
+// s'entend jamais. Elle doit donc etre audible SOUS la parole — environ 10 dB
+// sous elle — et l'attenuation ne fait que degager l'aigu, pas la faire
+// disparaitre.
+const CIBLE_MUSIQUE = -30;
 
 const duree = (f) => Number(execFileSync('ffprobe', ['-v', 'error',
   '-show_entries', 'format=duration', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim());
@@ -92,8 +109,29 @@ console.log(`film : ${D.toFixed(2)}s`);
   if (!fs.existsSync(f)) { console.error(`${n} introuvable : ${path.relative(ROOT, f)}`); process.exit(1); }
 });
 
+// --- LA VOIX EST COMPRESSEE AVANT TOUT ------------------------------------
+//
+// Une narration lue avec des intentions differentes n'a pas un niveau constant :
+// la ligne jouee « plus bas, complice » sortait 5 dB sous la moyenne, et c'est
+// exactement la que la garde d'intelligibilite tombait a 4 dB de marge. Monter le
+// gain global n'aurait fait qu'ecraser les passages forts.
+//
+// On compresse donc la prise (ratio 3, seuil bas, attaque 15 ms) AVANT de calculer
+// son gain : les passages doux remontent, les forts ne bougent presque pas, et le
+// niveau devient regulier d'un bout a l'autre. C'est ce qu'on fait sur toute voix
+// off ; ne pas le faire, c'est demander a l'auditeur de compenser au volume.
+const VOIX_COMP = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-compressee.wav');
+execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', VOIX,
+  '-af', 'acompressor=threshold=0.045:ratio=3:attack=15:release=250:makeup=1.6,'
+    + 'highpass=f=85,aresample=48000',
+  '-c:a', 'pcm_s16le', VOIX_COMP]);
+const avant = moyenne(VOIX);
+const apres = moyenne(VOIX_COMP);
+console.log(`voix : ${avant.moy} dB avant compression, ${apres.moy} dB apres`
+  + ` (crete ${avant.max} -> ${apres.max} dB)`);
+
 const nSfx = moyenne(FILM);
-const nVoix = moyenne(VOIX);
+const nVoix = apres;
 const nMus = moyenne(MUSIQUE);
 console.log(`niveaux mesures — bruitages ${nSfx.moy} dB · voix ${nVoix.moy} dB · musique ${nMus.moy} dB`);
 
@@ -104,7 +142,7 @@ console.log(`gains constants — bruitages x${gSfx.toFixed(3)} · voix x${gVoix.
 
 // GARDE : aucune phrase ne doit sortir de la prise ni depasser la fin du film,
 // et deux phrases ne doivent pas se chevaucher.
-const DV = duree(VOIX);
+const DV = duree(VOIX_COMP);
 const ratees = [];
 let finPrec = 0;
 PHRASES.forEach((p, i) => {
@@ -146,7 +184,9 @@ if (SANS_MUSIQUE) {
   // ATTENUATION SOUS LA VOIX : la musique baisse de ~7 dB des que la voix parle,
   // et remonte en 400 ms. Sans ca, il faut monter la voix jusqu'a ecraser les
   // bruitages pour rester intelligible.
-  chaines.push('[mus][voixDuck]sidechaincompress=threshold=0.02:ratio=5:attack=6:release=400:makeup=1[musDuck]');
+    // ratio 2,5 et non 5 : l'attenuation retire environ 3 dB, pas 7. La nappe
+  // reste presente pendant la parole au lieu de s'effacer.
+  chaines.push('[mus][voixDuck]sidechaincompress=threshold=0.03:ratio=2.5:attack=8:release=550:makeup=1[musDuck]');
   mix = '[sfx][voixMix][musDuck]amix=inputs=3:normalize=0';
 }
 // `alimiter` en bout de chaine : plafond a -1 dBFS. `amix normalize=0` ne
@@ -160,7 +200,7 @@ if (SANS_MUSIQUE) {
 // dire quelque chose que si l'auto-niveau est coupe.
 chaines.push(`${mix},alimiter=limit=0.85:level=disabled,aresample=48000[out]`);
 
-const args = ['-y', '-v', 'error', '-i', FILM, '-i', VOIX];
+const args = ['-y', '-v', 'error', '-i', FILM, '-i', VOIX_COMP];
 if (!SANS_MUSIQUE) args.push('-i', MUSIQUE);
 args.push('-filter_complex', chaines.join(';'),
   '-map', '0:v', '-map', '[out]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
@@ -189,9 +229,13 @@ let trou = { ss: 0, t: 0 };
 PHRASES.forEach((p, i) => {
   const debutTrou = p.at + (p.a - p.de);
   const finTrou = i + 1 < PHRASES.length ? PHRASES[i + 1].at : D;
-  // On ecarte les trous qui tombent dans le fondu de sortie : la nappe y baisse
-  // deja, donc la fenetre y mesurerait un niveau qui ne dit rien du mixage.
+  // On ecarte deux zones : le fondu de sortie (la nappe y baisse deja) et tout le
+  // plan de signature (riser + impact y sont les bruitages les plus forts du
+  // film). Sans cette seconde exclusion, la garde mesurait l'impact et annoncait
+  // 4,4 dB de marge — un chiffre qui ne parlait pas de la nappe du tout.
   if (debutTrou > D - 3) return;
+  const debutOutro = (NARR.plans && NARR.plans.outro ? NARR.plans.outro.from / NARR.fps : D);
+  if (debutTrou > debutOutro - 1) return;
   if (finTrou - debutTrou > trou.t) trou = { ss: debutTrou + 0.25, t: finTrou - debutTrou - 0.45 };
 });
 const wTait = { ss: trou.ss.toFixed(2), t: Math.min(1.6, trou.t).toFixed(2) };

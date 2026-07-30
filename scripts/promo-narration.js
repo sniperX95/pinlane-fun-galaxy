@@ -35,7 +35,39 @@ const SORTIE_TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/n
 const VOIX_ID = 'aQROLel5sQbj1vuIVi6B';   // Voix Nicolas Petit — narration FR pro
 const MODELE = 'eleven_v3';
 const FPS = 30;
-const FILM = 1085 / FPS;                  // 36,17 s
+// --- LA TABLE DE PLANS, SOURCE UNIQUE --------------------------------------
+//
+// Elle vit ICI et non dans `shots.ts` : ce script l'ecrit dans `narration.json`,
+// et `shots.ts` la relit. Raison : les instants de la voix se calculent depuis
+// elle, et la duree de chaque phrase varie d'un appel de synthese a l'autre (une
+// meme phrase a mesure 2,29 s puis 2,43 s selon la prise). Deux tables tenues
+// separement finiraient par se contredire — c'est le defaut qu'on vient de
+// corriger sur les sous-titres, il n'y a aucune raison de le reintroduire ici.
+//
+// Les plans « card* » sont des cartons de typographie : leur duree se choisit
+// librement, sans risque de figer une animation. Les plans produit gardent
+// exactement la duree pour laquelle leur animation a ete concue — sauf `macro`,
+// dont la camera recoit une cle supplementaire pour continuer a deriver.
+const ORDRE = ['morning', 'cardA', 'cardB', 'card1', 'table', 'macro',
+  'card2', 'chart', 'cardWbr', 'wbr', 'card3', 'outro'];
+
+// Les plans PRODUIT gardent exactement la duree pour laquelle leur animation a
+// ete concue. `macro` passe de 100 a 130 images et recoit une cle de camera
+// supplementaire pour continuer a deriver au lieu de figer.
+const FIXES = { morning: 230, table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
+
+// Les CARTONS n'ont pas de duree ecrite : elle se CALCULE depuis la phrase qu'ils
+// portent. C'est ce qui rend l'ensemble insensible au debit de la synthese — une
+// meme phrase a mesure 2,29 s sur une prise et 2,91 s sur la suivante, et quatre
+// phrases debordaient de leur plan quand les durees etaient fixees a la main.
+const MARGE_CARTON = 0.55;
+
+// QUEUE ELASTIQUE DES PLANS PRODUIT. Leur duree est celle de leur animation, mais
+// on autorise jusqu'a 20 images de tenue supplementaire si la phrase en a besoin :
+// une demi-seconde de pose avant la coupe ne se voit pas, alors qu'une phrase
+// coupee au milieu s'entend. Sans cette elasticite, il fallait re-regler le texte
+// a chaque appel de synthese — le debit varie de 10 % d'une prise a l'autre.
+const ELASTIQUE = 20;
 
 // --- LE TEXTE ---------------------------------------------------------------
 //
@@ -50,18 +82,35 @@ const FILM = 1085 / FPS;                  // 36,17 s
 // s'affiche : sur un carton plein ecran, dans le bandeau du bas, ou nulle part
 // (quand l'image porte deja le mot : le logo, la signature).
 const LIGNES = [
-  { at: 0.60, cible: 'aucun', jeu: '[curieux, comme si tu montrais ton ecran a un pote]', texte: 'Regarde ça deux secondes.' },
-  { at: 3.00, cible: 'bandeau', jeu: '[posé]', texte: 'Ça, c’est un jeudi. Huit pistes qui tournent.' },
-  { at: 7.45, cible: 'carton', jeu: '[un peu plus vif]', texte: 'Les réservations tombent toutes seules.' },
-  { at: 9.70, cible: 'bandeau', jeu: '[net]', texte: 'Zéro appel. Zéro saisie.' },
-  { at: 12.90, cible: 'bandeau', jeu: '', texte: 'Un client ? Je le trouve en deux secondes.' },
-  { at: 15.90, cible: 'bandeau', jeu: '[confiant]', texte: 'Le jour J, je sais qui arrive et combien.' },
-  { at: 18.95, cible: 'carton', jeu: '', texte: 'Ce qui coince remonte tout seul.' },
-  { at: 21.10, cible: 'bandeau', jeu: '', texte: 'Trié par heure. Sans que j’y touche.' },
-  { at: 24.30, cible: 'carton', jeu: '[plus posé]', texte: 'Et le soir, tout est déjà compté.' },
-  { at: 26.30, cible: 'bandeau', jeu: '', texte: 'Le chiffre, l’occupation, les arrivées. Tout est là.' },
-  { at: 29.65, cible: 'carton', jeu: '[fier, sourire]', texte: 'Moi, je saisis plus rien.' },
-  { at: 32.40, cible: 'aucun', jeu: '[net, chaleureux]', texte: 'Pinlane. La console de ton centre.' },
+  // 1-2 : ON PARLE A QUELQU'UN QUI NE NOUS CONNAIT PAS. La premiere phrase
+  // qualifie (« est-ce que ca me concerne ? »), la deuxieme montre le resultat
+  // avant d'expliquer comment on y arrive.
+  { decalage: 0.70, plan: 'morning', cible: 'aucun', jeu: '[direct, comme si tu interpellais quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
+  { decalage: 4.20, plan: 'morning', cible: 'bandeau', jeu: '[posé]', texte: 'Ça, c’est une journée complète. Huit pistes, quarante-huit réservations.' },
+
+  // 3-4 : LE PROBLEME, PUIS CE QU'IL COUTE. Un trafic froid ne sait pas encore
+  // qu'il a un probleme : il faut le nommer avant de vendre quoi que ce soit.
+  { decalage: 0.40, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice]', texte: 'Sauf qu’en vrai, ça se passe au téléphone. Tu notes sur un cahier, et tu espères que personne n’a déjà pris la même piste.' },
+  { decalage: 0.40, plan: 'cardB', cible: 'carton', jeu: '[net, un peu plus grave]', texte: 'Un créneau oublié, c’est un groupe qui part ailleurs.' },
+
+  // 5 : LE BASCULEMENT. On dit ce que c'est, en une phrase, sans jargon.
+  { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[clair, on ouvre]', texte: 'Pinlane, c’est le logiciel qui gère tout ça à ta place.' },
+
+  // 6-10 : LE MECANISME, une etape par plan, chacune montree a l'ecran pendant
+  // qu'elle est dite. C'est la partie qui manquait : on expliquait par titres.
+  { decalage: 0.40, plan: 'table', cible: 'bandeau', jeu: '', texte: 'Tes clients réservent en ligne, et la résa se pose toute seule au bon créneau.' },
+  { decalage: 4.20, plan: 'table', cible: 'bandeau', jeu: '[appuye]', texte: 'Tu cherches un client ? Deux secondes.' },
+  { decalage: 0.40, plan: 'macro', cible: 'bandeau', jeu: '[confiant]', texte: 'Le jour même, tu vois qui arrive, à quelle heure, et combien ils sont.' },
+  { decalage: 0.40, plan: 'card2', cible: 'carton', jeu: '', texte: 'Et ce qui demande une action remonte tout seul en haut de la liste.' },
+  { decalage: 0.40, plan: 'chart', cible: 'bandeau', jeu: '', texte: 'Tous les dossiers du jour, déjà triés par heure.' },
+
+  // 11-13 : LA PREUVE, puis le benefice en trois coups.
+  { decalage: 0.40, plan: 'cardWbr', cible: 'carton', jeu: '[plus posé]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
+  { decalage: 0.40, plan: 'wbr', cible: 'bandeau', jeu: '', texte: 'Tout est là, sans que tu aies saisi une seule ligne.' },
+  { decalage: 0.45, plan: 'card3', cible: 'carton', jeu: '[fier, appuyé]', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
+
+  // 14 : L'APPEL A L'ACTION. Un trafic froid a besoin qu'on lui dise quoi faire.
+  { decalage: 0.60, plan: 'outro', cible: 'aucun', jeu: '[net, chaleureux]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
 ];
 
 // Indication de pause entre les lignes : elle donne du silence a l'endroit ou on
@@ -191,22 +240,53 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
     else e.t1 = flux[n].t1;
   }
 
-  const table = LIGNES.map((ligne, i) => {
-    const mots = enMots(ligne.texte);
-    const posees = mots.map((mot, j) => {
+  // Passe 1 : mesurer chaque phrase, sans encore savoir ou elle tombe.
+  const mesurees = LIGNES.map((ligne, i) => {
+    const mots = enMots(ligne.texte).map((mot, j) => {
       const e = parMot.get(`${i}-${j}`);
       if (!e) rates.push(`ligne ${i + 1} : mot « ${mot} » sans horodatage`);
       return { m: mot, t0: e ? e.t0 : null, t1: e ? e.t1 : null };
     });
-    const bornes = posees.filter((p) => p.t0 !== null);
+    const bornes = mots.filter((x) => x.t0 !== null);
     if (!bornes.length) { rates.push(`ligne ${i + 1} : aucun mot situe`); return null; }
-    const de = bornes[0].t0;
-    const a = bornes[bornes.length - 1].t1;
+    return { ligne, mots, de: bornes[0].t0, a: bornes[bornes.length - 1].t1 };
+  });
+  if (mesurees.some((x) => !x)) { rates.forEach((r) => console.log('  - ' + r)); process.exit(1); }
+
+  // Passe 2 : la chronologie. Duree d'un carton = ce que sa phrase exige.
+  const DEPART = {};
+  let curseur = 0;
+  ORDRE.forEach((nom) => {
+    const dessus = mesurees.filter((x) => x.ligne.plan === nom);
+    const besoin = dessus.length
+      ? Math.max(...dessus.map((x) => x.ligne.decalage + (x.a - x.de))) + MARGE_CARTON
+      : 0;
+    let d;
+    if (FIXES[nom]) {
+      d = FIXES[nom];
+      const manque = Math.round(besoin * FPS) - d;
+      if (manque > 0) {
+        if (manque > ELASTIQUE) rates.push(`plan ${nom} : il manque ${manque} images pour ses phrases (elastique ${ELASTIQUE})`);
+        else { d += manque; console.log(`  ${nom} : +${manque} images de tenue pour tenir sa phrase`); }
+      }
+    } else {
+      d = Math.round(besoin * FPS);
+    }
+    DEPART[nom] = { from: curseur, duration: d };
+    curseur += d;
+  });
+  const TOTAL = curseur;
+  const FILM = TOTAL / FPS;
+  console.log(`film : ${TOTAL} images, ${FILM.toFixed(2)}s`);
+
+  const table = mesurees.map(({ ligne, mots: posees, de, a }, i) => {
+    const at = DEPART[ligne.plan].from / FPS + ligne.decalage;
     return {
       i,
       texte: ligne.texte,
       cible: ligne.cible,
-      at: ligne.at,
+      plan: ligne.plan,
+      at: +at.toFixed(3),
       de: +de.toFixed(3),
       a: +a.toFixed(3),
       duree: +(a - de).toFixed(3),
@@ -226,6 +306,15 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   ok.forEach((l, n) => {
     if (l.duree < 0.4) rates.push(`ligne ${n + 1} : ${l.duree}s, borne suspecte`);
     if (l.at + l.duree > FILM) rates.push(`ligne ${n + 1} : depasse la fin du film (${(l.at + l.duree).toFixed(2)}s > ${FILM.toFixed(2)}s)`);
+    // La phrase doit tenir dans SON plan : c'est ce qui garantit que le texte
+    // parle de l'image a l'ecran. 0,2 s de tolerance sur la coupe, le temps du
+    // fondu.
+    const pl = DEPART[l.plan];
+    const finPlan = (pl.from + pl.duration) / FPS;
+    if (l.at + l.duree > finPlan + 0.2) {
+      rates.push(`ligne ${n + 1} deborde du plan ${l.plan}`
+        + ` (finit a ${(l.at + l.duree).toFixed(2)}s, le plan finit a ${finPlan.toFixed(2)}s)`);
+    }
     const suiv = ok[n + 1];
     if (suiv && l.at + l.duree > suiv.at + 0.02) {
       rates.push(`ligne ${n + 1} finit a ${(l.at + l.duree).toFixed(2)}s, la ${n + 2} commence a ${suiv.at}s — chevauchement`);
@@ -237,7 +326,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   console.log('');
   ok.forEach((l, n) => console.log(
     `  ${String(n + 1).padStart(2)}. ${l.at.toFixed(2)}s +${l.duree.toFixed(2)}s`
-    + `  ${l.cible.padEnd(8)} ${l.texte}`));
+    + `  ${l.plan.padEnd(8)} ${l.cible.padEnd(8)} ${l.texte}`));
 
   if (rates.length) {
     console.log('\nPROBLEMES :');
@@ -247,6 +336,9 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
 
   fs.writeFileSync(SORTIE_TABLE, JSON.stringify({
     fps: FPS,
+    // La structure du film, lue par `shots.ts`.
+    plans: DEPART,
+    total: TOTAL,
     audio: path.relative(ROOT, SORTIE_AUDIO).replace(/\\/g, '/'),
     dureePrise: +duree.toFixed(3),
     lignes: ok,

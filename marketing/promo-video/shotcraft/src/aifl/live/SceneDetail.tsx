@@ -14,7 +14,12 @@ const rows = layout.detail.rows;
 const CX = Math.round(rows[0].x + rows[0].w / 2);
 const DETAIL_CAM: CamKey[] = [
   { frame: 0, cx: CX, cy: 500, zoom: 1.1 },
-  { frame: 75, cx: CX, cy: 760, zoom: 1.0 }, // 75 <= duree 100
+  { frame: 75, cx: CX, cy: 760, zoom: 1.0 },
+  // Ce plan est passe de 100 a 144 images pour porter sa phrase. Sans cette
+  // derniere cle, la camera tenait la meme pose pendant les 69 images ajoutees :
+  // deux secondes d'image immobile. Elle continue maintenant a descendre
+  // lentement le long de la liste des arrivees.
+  { frame: 144, cx: CX, cy: 880, zoom: 0.96 },
 ];
 
 const FLY_EASE = Easing.bezier(0.3, 0, 0.25, 1);

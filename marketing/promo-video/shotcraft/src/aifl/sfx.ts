@@ -70,25 +70,45 @@ export const SFX: Son[] = [
   { from: S.morning.from + 196, src: 'air-woosh-quick.mp3', volume: 0.30 },// elle redescend
   { from: S.morning.from + 204, src: 'transition-snap.mp3', volume: 0.50 },// et se recale
 
-  // ---- LES DEUX CARTONS DU PROBLEME -----------------------------------
+  // ---- LA SCENE DU COMPTOIR ET L'APPEL MANQUE -------------------------
   //
-  // Ces deux plans n'existaient pas : ils portent la partie du texte qui manquait
-  // pour un trafic froid (le probleme, puis ce qu'il coute). Leur son raconte la
-  // meme chose : le telephone qui sonne pendant le service, puis un battement
-  // isole sur l'enjeu. C'est du son NARRATIF, pas de la decoration.
-  { from: S.cardA.from, src: 'swoosh-quick.mp3', volume: 0.40 },
-  // Ces quatre-la sont cales sur LEUR MOT, comme l'animation qu'ils sonorisent :
-  // le telephone sonne quand la voix dit « telephone », le stylo ecrit sur
-  // « cahier », les deux reservations se percutent sur « piste ».
-  { from: surMot('cardA', 'telephone', 14) - 6, src: 'ui-notify-tech.mp3', volume: 0.36 },
-  { from: surMot('cardA', 'telephone', 14) + 22, src: 'ui-message-pop.mp3', volume: 0.28 },
-  { from: surMot('cardA', 'cahier', 74) - 4, src: 'pen-write-paper.mp3', volume: 0.42, coupe: 34 },
-  { from: surMot('cardA', 'piste', 128) + 6, src: 'hit-weak.mp3', volume: 0.44 },
-  { from: surMot('cardA', 'piste', 128) + 8, src: 'bass-hit-short.mp3', volume: 0.26 },
+  // Ces deux plans jouent le probleme au lieu de le decrire : on est derriere le
+  // comptoir, il y a du monde, ca doit s'ENTENDRE. D'ou une nappe d'ambiance de
+  // centre de loisirs (brouhaha, quilles au loin, arcade) sous toute la sequence,
+  // et des sons cales sur les mots exactement comme l'animation qu'ils
+  // accompagnent.
+  //
+  // L'ambiance dure 5 s : trois passes couvrent les deux cartons. Elle est
+  // volontairement basse — c'est un fond, pas un effet.
+  ...[0, 1, 2].map((n) => ({
+    from: S.cardA.from + n * 150,
+    src: 'ambiance-centre.mp3',
+    volume: 0.20,
+    coupe: 152,
+  })),
 
-  { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.38 },
-  { from: S.cardB.from + 10, src: 'heartbeat-single.mp3', volume: 0.42 }, // l'enjeu
-  { from: S.cardB.from + 52, src: 'bass-hit-short.mp3', volume: 0.34 },
+  { from: S.cardA.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: surMot('cardA', 'comptoir', 20) - 4, src: 'sweep-fast-small.mp3', volume: 0.30 }, // le plan se pose
+  // trois personnes qui arrivent : trois pops en decroissance (regle 4.2)
+  ...[0, 1, 2].map((n) => ({
+    from: surMot('cardA', 'groupes', 50) - 6 + n * 5,
+    src: n % 2 === 0 ? 'pop.mp3' : 'switch-tap.mp3',
+    volume: +(0.30 - n * 0.05).toFixed(3),
+    coupe: 14,
+  })),
+  { from: surMot('cardA', 'encaisser', 92) - 4, src: 'ui-select-click.mp3', volume: 0.34 }, // le terminal
+  { from: surMot('cardA', 'encaisser', 92) + 6, src: 'switch-tap.mp3', volume: 0.24 },
+  // et le telephone qui sonne, deux fois, sans qu'on le prenne
+  { from: surMot('cardA', 'sonne', 130) - 4, src: 'ui-notify-tech.mp3', volume: 0.40 },
+  { from: surMot('cardA', 'sonne', 130) + 26, src: 'ui-notify-tech.mp3', volume: 0.34 },
+  { from: surMot('cardA', 'sonne', 130) + 52, src: 'ui-notify-tech.mp3', volume: 0.28 },
+
+  { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.34 },
+  { from: S.cardB.from + 6, src: 'ui-notify-tech.mp3', volume: 0.26 },                      // ca sonne encore
+  { from: surMot('cardB', 'rates', 56), src: 'bass-hit-short.mp3', volume: 0.40 },          // l'appel tombe
+  { from: surMot('cardB', 'rates', 56) + 2, src: 'heartbeat-single.mp3', volume: 0.34 },
+  { from: surMot('cardB', 'ailleurs', 90) - 8, src: 'air-woosh-quick.mp3', volume: 0.34 },  // ils s'en vont
+  { from: surMot('cardB', 'ailleurs', 90) + 14, src: 'ui-select-click.mp3', volume: 0.30 }, // et reservent la-bas
 
   // ---- Carton du basculement : on ouvre ------------------------------
   { from: S.card1.from, src: 'wind-swoosh-short.mp3', volume: 0.42 },

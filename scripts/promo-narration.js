@@ -94,8 +94,12 @@ const LIGNES = [
 
   // 3-4 : LE PROBLEME, PUIS CE QU'IL COUTE. Un trafic froid ne sait pas encore
   // qu'il a un probleme : il faut le nommer avant de vendre quoi que ce soit.
-  { decalage: 0.40, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice]', texte: 'Sauf qu’en vrai, ça se passe au téléphone. Tu notes sur un cahier, et tu espères que personne n’a déjà pris la même piste.' },
-  { decalage: 0.40, plan: 'cardB', cible: 'carton', jeu: '[net, un peu plus grave]', texte: 'Un créneau oublié, c’est un groupe qui part ailleurs.' },
+  // UNE SCENE, PAS UNE GENERALITE. « Ça se passe au téléphone, tu notes sur un
+  // cahier » decrivait le probleme de l'exterieur. Ici on est DANS la scene :
+  // derriere le comptoir, un samedi, avec du monde devant soi. C'est la que le
+  // gerant se reconnait.
+  { decalage: 0.40, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice, un peu pressé]', texte: 'Sauf qu’en vrai, t’es au comptoir. Trois groupes qui attendent, une commande à encaisser, et le téléphone qui sonne.' },
+  { decalage: 0.40, plan: 'cardB', cible: 'carton', jeu: '[net, un peu plus grave]', texte: 'Tu peux pas décrocher. Et l’appel que tu rates, c’est un groupe qui réserve ailleurs.' },
 
   // 5 : LE BASCULEMENT. On dit ce que c'est, en une phrase, sans jargon.
   { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[clair, on ouvre]', texte: 'Pinlane, c’est le logiciel qui gère tout ça à ta place.' },
@@ -135,11 +139,30 @@ const LIGNES = [
 // « Pinlane » est le cas critique : c'est le nom de la marque, prononce deux fois
 // dont une sur la signature. Le decoupage « Pinn-lane » evite la voyelle nasale
 // francaise de « pin » (qui donne « pain ») et garde deux syllabes.
+// Les mots ANGLAIS lus a la francaise sont le defaut le plus audible : « game »
+// prononce « gamme » au lieu de « gueïme », « bowling » aplati. Ce sont les deux
+// mots du metier de Movsar, dits dans la premiere phrase du film.
 const PRONONCIATION = {
   Pinlane: 'Pinn-lane',
-  'Pinlane.': 'Pinn-lane.',
+  bowling: 'bôling',
+  game: 'gueïme',
 };
-const ditPour = (mot) => PRONONCIATION[mot] || mot;
+
+// La cle est le mot NU : les jetons portent leur ponctuation (« bowling, »,
+// « Pinlane. »), et une table indexee sur la forme ponctuee obligerait a
+// enumerer chaque variante. On detache donc la ponctuation, on traduit, on la
+// remet — et la casse initiale est preservee.
+const ditPour = (mot) => {
+  const m = mot.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u);
+  if (!m) return mot;
+  const [, avant, coeur, apres] = m;
+  const cle = coeur.toLowerCase();
+  const remplacement = PRONONCIATION[coeur] || PRONONCIATION[cle];
+  if (!remplacement) return mot;
+  const majuscule = coeur[0] && coeur[0] === coeur[0].toUpperCase() && coeur[0] !== coeur[0].toLowerCase();
+  const dit = majuscule ? remplacement[0].toUpperCase() + remplacement.slice(1) : remplacement;
+  return `${avant}${dit}${apres}`;
+};
 
 // Indication de pause entre les lignes : elle donne du silence a l'endroit ou on
 // coupe, et de l'air a la diction. Les indications entre crochets ne sont pas

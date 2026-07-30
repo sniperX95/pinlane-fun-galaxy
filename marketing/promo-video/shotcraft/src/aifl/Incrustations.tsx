@@ -1,5 +1,6 @@
 import React from 'react';
 import { Img, interpolate, staticFile, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
+import { IncrustAilleurs, IncrustComptoir } from './IncrustComptoir';
 
 // LES INCRUSTATIONS DES CARTONS D'EXPLICATION.
 //
@@ -25,7 +26,6 @@ import { Img, interpolate, staticFile, useCurrentFrame, useVideoConfig, Easing }
 const SANS = "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif";
 const MONO = "'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, monospace";
 const BLEU = '#0664fe';
-const BLEU_CLAIR = '#1e74fe';
 const PALE = '#eef4ff';
 const NAVY = '#051e48';
 const ENCRE = '#08111f';
@@ -59,12 +59,6 @@ const temps = (c: Contexte, cle: string, repli: number, fps: number) =>
 const ease = Easing.bezier(0.22, 0.9, 0.24, 1);
 const ressort = Easing.bezier(0.2, 1.25, 0.3, 1);
 
-/** Apparition/disparition d'un sous-temps : monte en 8 images, tient, redescend. */
-const fenetre = (frame: number, de: number, a: number) => interpolate(
-  frame, [de, de + 8, a - 7, a], [0, 1, 1, 0],
-  { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.linear },
-);
-
 
 // L'ILLUSTRATION S'ETABLIT DES L'OUVERTURE DU CARTON.
 //
@@ -82,264 +76,10 @@ const etabli = (frame: number) => interpolate(frame, [2, 12], [0, 1], {
 // Briques reutilisables
 // ---------------------------------------------------------------------------
 
-/** Une pastille de reservation, comme dans le planning du produit. */
-const Chip: React.FC<{ w?: number; h?: number; titre: string; sous?: string; ton?: 'bleu' | 'sable' | 'gris' }> = ({
-  w = 350, h = 104, titre, sous, ton = 'bleu',
-}) => {
-  const fond = ton === 'bleu' ? PALE : ton === 'sable' ? '#fdf3e3' : '#f1f3f7';
-  const barre = ton === 'bleu' ? BLEU : ton === 'sable' ? '#c98a2b' : ATONE;
-  return (
-    <div style={{
-      width: w, height: h, background: fond, borderRadius: 10,
-      borderLeft: `4px solid ${barre}`, padding: '10px 14px', boxSizing: 'border-box',
-      fontFamily: SANS, display: 'flex', flexDirection: 'column', justifyContent: 'center',
-      boxShadow: '0 2px 6px rgba(5, 30, 72, 0.08)',
-    }}>
-      <div style={{ fontSize: 27, fontWeight: 620, color: ENCRE, whiteSpace: 'nowrap' }}>{titre}</div>
-      {sous ? <div style={{ fontSize: 20, color: ATONE, marginTop: 4 }}>{sous}</div> : null}
-    </div>
-  );
-};
+// A et B vivent dans `IncrustComptoir.tsx` : la scene du comptoir et l'appel
+// manque sont assez grosses pour meriter leur fichier, et elles partagent le
+// telephone 3D.
 
-/** Un fragment de planning : une piste, ses graduations. */
-const Piste: React.FC<{ w: number; libelle: string }> = ({ w, libelle }) => (
-  <div style={{ width: w, fontFamily: SANS }}>
-    <div style={{ fontSize: 15, color: ATONE, letterSpacing: '0.06em', marginBottom: 8 }}>{libelle}</div>
-    <div style={{ height: 128, border: `1px solid ${TRAIT}`, borderRadius: 10, background: '#fff', position: 'relative' }}>
-      {[0.25, 0.5, 0.75].map((p) => (
-        <div key={p} style={{ position: 'absolute', left: `${p * 100}%`, top: 8, bottom: 8, width: 1, background: TRAIT }} />
-      ))}
-    </div>
-  </div>
-);
-
-// ---------------------------------------------------------------------------
-// A · « ça se passe au téléphone · tu notes sur un cahier · la même piste »
-// ---------------------------------------------------------------------------
-
-const IncrustProbleme: React.FC<Contexte> = (ctx) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-
-  // Trois temps, chacun declenche par SON mot.
-  const tTel = temps(ctx, 'telephone', 1.4, fps);
-  const tCahier = temps(ctx, 'cahier', 3.2, fps);
-  const tPiste = temps(ctx, 'piste', 5.2, fps);
-
-  const vTel = Math.min(etabli(frame), fenetre(frame, 2, tCahier - 4));
-  const vCahier = fenetre(frame, tCahier - 14, tPiste - 6);
-  const vPiste = interpolate(frame, [tPiste - 16, tPiste - 8], [0, 1], {
-    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
-  });
-
-  // --- 1. le telephone qui sonne : trois ondes qui partent en boucle
-  const ondes = [0, 1, 2].map((k) => {
-    const cycle = 22;
-    const p = ((frame - tTel + 16 + k * 7) % cycle) / cycle;
-    return { p, o: (1 - p) * 0.7 };
-  });
-  // il tremble legerement, comme un combine qui vibre
-  const vib = Math.sin((frame - tTel) * 1.1) * 2.5 * vTel;
-
-  // --- 2. le cahier : deux lignes tracees, puis une rayee
-  const trace = (de: number, duree: number) => interpolate(frame, [tCahier + de, tCahier + de + duree], [0, 1], {
-    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-  });
-  const l1 = trace(2, 12);
-  const l2 = trace(14, 12);
-  const rature = trace(26, 10);
-
-  // --- 3. deux pastilles glissent sur LA MEME piste et se percutent
-  const arrive = interpolate(frame, [tPiste - 10, tPiste + 6], [0, 1], {
-    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-  });
-  const choc = interpolate(frame, [tPiste + 6, tPiste + 10, tPiste + 22], [0, 1, 0.55], {
-    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
-  });
-  const secousse = Math.sin((frame - tPiste - 6) * 2.2) * 5 * Math.max(0, choc - 0.4);
-
-  return (
-    <div style={{ position: 'relative', width: 1500, height: 400, margin: '0 auto' }}>
-      {/* 1 · téléphone */}
-      <div style={{
-        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        opacity: vTel,
-      }}>
-        <div style={{ position: 'relative', width: 340, height: 340 }}>
-          {ondes.map((o, k) => (
-            <div key={k} style={{
-              position: 'absolute', left: '50%', top: '50%',
-              width: 140 + o.p * 260, height: 140 + o.p * 260,
-              transform: 'translate(-50%, -50%)',
-              border: `3px solid ${BLEU}`, borderRadius: '50%',
-              // Les ondes, elles, ne partent que sur le mot « telephone ».
-              opacity: o.o * vTel * interpolate(frame, [tTel - 4, tTel + 4], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }),
-            }} />
-          ))}
-          <div style={{
-            position: 'absolute', left: '50%', top: '50%', width: 140, height: 140,
-            transform: `translate(-50%, -50%) rotate(${vib}deg)`,
-            background: BLEU, borderRadius: 34,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: `0 18px 44px rgba(6, 100, 254, 0.30)`,
-          }}>
-            {/* combiné */}
-            <svg width={74} height={74} viewBox="0 0 24 24" fill="none">
-              <path
-                d="M6.6 10.8c1.2 2.4 3.2 4.4 5.6 5.6l2.1-2.1c.3-.3.7-.4 1.1-.2 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V19c0 .6-.4 1-1 1C10.5 20 4 13.5 4 5.4c0-.6.4-1 1-1h3.3c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.2 1.1l-2.1 2.1z"
-                fill="#fff"
-              />
-            </svg>
-          </div>
-          {/* petite pastille de compteur d'appels manqués */}
-          <div style={{
-            position: 'absolute', left: 'calc(50% + 48px)', top: 'calc(50% - 82px)',
-            minWidth: 44, height: 44, padding: '0 10px', borderRadius: 22,
-            background: NAVY, color: '#fff', fontFamily: MONO, fontSize: 20, fontWeight: 600,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transform: `scale(${interpolate(frame, [tTel + 6, tTel + 14], [0, 1], {
-              extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ressort,
-            })})`,
-          }}>
-            {Math.min(6, Math.max(1, Math.floor((frame - tTel) / 14) + 1))}
-          </div>
-        </div>
-      </div>
-
-      {/* 2 · le cahier */}
-      <div style={{
-        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        opacity: vCahier,
-      }}>
-        <div style={{
-          width: 620, height: 330, background: '#fff', borderRadius: 12,
-          border: `1px solid ${TRAIT}`, boxShadow: '0 20px 50px rgba(5, 30, 72, 0.12)',
-          padding: '30px 40px', boxSizing: 'border-box', position: 'relative', overflow: 'hidden',
-        }}>
-          {/* marge du cahier */}
-          <div style={{ position: 'absolute', left: 74, top: 0, bottom: 0, width: 2, background: 'rgba(6,100,254,0.18)' }} />
-          {[0, 1, 2, 3, 4].map((k) => (
-            <div key={k} style={{ position: 'absolute', left: 30, right: 30, top: 66 + k * 52, height: 1, background: TRAIT }} />
-          ))}
-          <svg width={540} height={270} viewBox="0 0 540 270" style={{ position: 'absolute', left: 40, top: 24 }}>
-            {/* deux notes griffonnées */}
-            <path d="M60 52 C120 46, 180 58, 250 50 S330 44, 400 52" stroke={ENCRE} strokeWidth={4}
-              fill="none" strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - l1} />
-            <path d="M60 104 C130 98, 200 110, 270 102 S350 96, 430 104" stroke={ENCRE} strokeWidth={4}
-              fill="none" strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - l2} />
-            {/* la rature : ce qu'on avait note et qui ne tient plus */}
-            <path d="M52 100 L440 110" stroke={BLEU} strokeWidth={5}
-              fill="none" strokeLinecap="round" pathLength={1} strokeDasharray={1} strokeDashoffset={1 - rature} />
-          </svg>
-          {/* le stylo suit la ligne en cours d'écriture */}
-          {(l1 > 0 && l1 < 1) || (l2 > 0 && l2 < 1) ? (
-            <div style={{
-              position: 'absolute',
-              left: 100 + (l1 < 1 ? l1 * 340 : l2 * 370),
-              top: l1 < 1 ? 62 : 114,
-              width: 8, height: 34, background: NAVY, borderRadius: 3,
-              transform: 'rotate(20deg)',
-            }} />
-          ) : null}
-        </div>
-      </div>
-
-      {/* 3 · deux réservations sur la même piste */}
-      <div style={{
-        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        opacity: vPiste,
-      }}>
-        <div style={{ position: 'relative', width: 1230 }}>
-          <Piste w={1230} libelle="PISTE 4 · 18:00" />
-          <div style={{
-            position: 'absolute', left: 66, top: 46,
-            transform: `translateX(${(1 - arrive) * -420}px) translateY(${secousse}px)`,
-          }}>
-            <Chip titre="Famille Dubois" sous="8 joueurs · 1 h" ton="sable" />
-          </div>
-          <div style={{
-            position: 'absolute', right: 66, top: 46,
-            transform: `translateX(${(1 - arrive) * 420}px) translateY(${-secousse}px)`,
-          }}>
-            <Chip titre="Anniversaire Lucas" sous="6 joueurs · 1 h" />
-          </div>
-          {/* le heurt : un liseré qui pulse entre les deux */}
-          {choc > 0.02 ? (
-            <div style={{
-              position: 'absolute', left: '50%', top: 40, width: 7, height: 142,
-              transform: 'translateX(-50%)', background: NAVY, borderRadius: 3,
-              opacity: choc, boxShadow: `0 0 ${18 * choc}px rgba(5, 30, 72, 0.5)`,
-            }} />
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// B · « un créneau oublié, c'est un groupe qui part ailleurs »
-// ---------------------------------------------------------------------------
-
-const IncrustCreneau: React.FC<Contexte> = (ctx) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const tVide = temps(ctx, 'oublie', 0.5, fps);
-  const tPart = temps(ctx, 'part', 1.7, fps);
-
-  const grille = Array.from({ length: 12 }, (_, i) => i);
-  const VIDE = 6;
-  const pulse = 0.5 + 0.5 * Math.sin((frame - tVide) * 0.22);
-
-  return (
-    <div style={{ position: 'relative', width: 1300, height: 400, margin: '0 auto' }}>
-      <div style={{
-        position: 'absolute', left: 0, top: 30,
-        display: 'grid', gridTemplateColumns: 'repeat(4, 200px)', gap: 16,
-      }}>
-        {grille.map((i) => {
-          const vide = i === VIDE;
-          const entree = interpolate(frame, [i * 1.6, i * 1.6 + 10], [0, 1], {
-            extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-          });
-          return (
-            <div key={i} style={{
-              height: 92, borderRadius: 10,
-              background: vide ? 'transparent' : PALE,
-              border: vide ? `2.5px dashed ${BLEU}` : `1px solid ${TRAIT}`,
-              borderLeft: vide ? `2.5px dashed ${BLEU}` : `4px solid ${BLEU_CLAIR}`,
-              opacity: entree * (vide ? 0.35 + 0.65 * pulse : 1),
-              transform: `translateY(${(1 - entree) * 16}px)`,
-            }} />
-          );
-        })}
-      </div>
-      {/* le groupe s'en va vers la droite */}
-      {[0, 1, 2].map((k) => {
-        const depart = tPart + k * 5;
-        const p = interpolate(frame, [depart, depart + 34], [0, 1], {
-          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.4, 0, 0.6, 1),
-        });
-        return (
-          <div key={k} style={{
-            position: 'absolute', left: 250 + k * 62 + p * 760, top: 250 - k * 8,
-            opacity: (1 - p) * interpolate(frame, [depart, depart + 6], [0, 1], {
-              extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
-            }),
-            transform: `translateY(${Math.sin(p * Math.PI * 4 + k) * 5}px)`,
-          }}>
-            <svg width={54} height={72} viewBox="0 0 54 72">
-              <circle cx={27} cy={17} r={14} fill={ATONE} />
-              <path d="M6 70 C6 48, 16 38, 27 38 C38 38, 48 48, 48 70 Z" fill={ATONE} />
-            </svg>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
 // C · « Pinlane, c'est le logiciel qui gère tout ça à ta place »
 // ---------------------------------------------------------------------------
 
@@ -351,9 +91,12 @@ const IncrustReprise: React.FC<Contexte> = (ctx) => {
 
   // Les trois embetements du plan precedent viennent se faire absorber.
   const pieces = [
-    { x: -520, y: -140, label: 'Appels' },
-    { x: 540, y: -90, label: 'Cahier' },
-    { x: -430, y: 170, label: 'Doublons' },
+    // Les trois choses que la scene du comptoir vient de montrer, nommees telles
+    // quelles : sinon le spectateur ne fait pas le lien entre ce qui est absorbe
+    // et ce qu'il a vu dix secondes plus tot.
+    { x: -520, y: -140, label: 'Appels manqués' },
+    { x: 540, y: -90, label: 'File d’attente' },
+    { x: -430, y: 170, label: 'Encaissement' },
   ];
 
   const halo = pieces.reduce((acc, _, k) => {
@@ -635,8 +378,8 @@ const IncrustZeros: React.FC<Contexte> = (ctx) => {
 // ---------------------------------------------------------------------------
 
 const PAR_PLAN: Record<string, React.FC<Contexte>> = {
-  cardA: IncrustProbleme,
-  cardB: IncrustCreneau,
+  cardA: IncrustComptoir,
+  cardB: IncrustAilleurs,
   card1: IncrustReprise,
   card2: IncrustRemontee,
   cardWbr: IncrustSoir,

@@ -210,9 +210,19 @@ const appel = () => new Promise((resolve, reject) => {
     // reglage (le timbre qui change d'un appel a l'autre) n'existe plus, puisque
     // tout le film tient dans UN SEUL appel.
     // `speed` a 1,04 : quatre pour cent plus vif. Une voix promo avance.
+    // RETOUR AUX REGLAGES QUE MOVSAR AVAIT VALIDES A L'ECOUTE.
+    //
+    // Il a choisi cette voix sur un comparatif genere a `style: 0.25`, puis n'a
+    // pas aime le film ou je l'avais poussee a 0,45 avec `speed` 1,04 : « change
+    // un truc beaucoup plus pro ». Un `style` eleve sur ce modele SUR-JOUE — la
+    // lecture devient appuyee, et une lecture appuyee ne sonne pas
+    // professionnelle, elle sonne synthetique.
+    //
+    // L'enjouement reste demande, mais il vient desormais des INDICATIONS DE JEU
+    // et de l'ecriture, pas d'un curseur qui exagere tout uniformement.
     voice_settings: {
-      stability: 0.4, similarity_boost: 0.85, style: 0.45,
-      use_speaker_boost: true, speed: 1.04,
+      stability: 0.5, similarity_boost: 0.85, style: 0.28,
+      use_speaker_boost: true, speed: 1.0,
     },
   });
   const req = https.request({

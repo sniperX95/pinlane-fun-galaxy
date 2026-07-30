@@ -80,10 +80,17 @@ export const SFX: Son[] = [
   //
   // L'ambiance dure 5 s : trois passes couvrent les deux cartons. Elle est
   // volontairement basse — c'est un fond, pas un effet.
+  // « Les SFX de bowling c'est trop, il doit y en avoir qu'une. » L'ambiance est
+  // regeneree : brouhaha etouffe, une SEULE quille au loin, pas d'arcade.
+  //
+  // `volume` EST UN COEFFICIENT, PAS UN NIVEAU CIBLE — piege documente par la
+  // reference du skill pour les fichiers enregistres bas. Celui-ci sort a
+  // -47,1 dB de moyenne (crete -33,5) : a 0,20 il n'existait pas. A x4 la moyenne
+  // monte a -35 dB et la crete a -21,5, donc aucun risque de saturation.
   ...[0, 1, 2].map((n) => ({
     from: S.cardA.from + n * 150,
     src: 'ambiance-centre.mp3',
-    volume: 0.20,
+    volume: 4.0,
     coupe: 152,
   })),
 
@@ -99,12 +106,14 @@ export const SFX: Son[] = [
   { from: surMot('cardA', 'encaisser', 92) - 4, src: 'ui-select-click.mp3', volume: 0.34 }, // le terminal
   { from: surMot('cardA', 'encaisser', 92) + 6, src: 'switch-tap.mp3', volume: 0.24 },
   // et le telephone qui sonne, deux fois, sans qu'on le prenne
-  { from: surMot('cardA', 'sonne', 130) - 4, src: 'ui-notify-tech.mp3', volume: 0.40 },
-  { from: surMot('cardA', 'sonne', 130) + 26, src: 'ui-notify-tech.mp3', volume: 0.34 },
-  { from: surMot('cardA', 'sonne', 130) + 52, src: 'ui-notify-tech.mp3', volume: 0.28 },
+  // UNE VRAIE SONNERIE, pas un bip d'interface. `ui-notify-tech` est une
+  // notification logicielle : elle ne dit pas « le telephone du comptoir sonne ».
+  // Le fichier porte deux sonneries sur 4 s ; on le joue une fois sur le mot,
+  // puis une reprise plus basse pendant que la scene continue.
+  { from: surMot('cardA', 'sonne', 130) - 4, src: 'sonnerie-telephone.mp3', volume: 0.50, coupe: 120 },
 
   { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.34 },
-  { from: S.cardB.from + 6, src: 'ui-notify-tech.mp3', volume: 0.26 },                      // ca sonne encore
+  { from: S.cardB.from + 4, src: 'sonnerie-telephone.mp3', volume: 0.34, coupe: 64 },       // ca sonne encore
   { from: surMot('cardB', 'rates', 56), src: 'bass-hit-short.mp3', volume: 0.40 },          // l'appel tombe
   { from: surMot('cardB', 'rates', 56) + 2, src: 'heartbeat-single.mp3', volume: 0.34 },
   { from: surMot('cardB', 'ailleurs', 90) - 8, src: 'air-woosh-quick.mp3', volume: 0.34 },  // ils s'en vont

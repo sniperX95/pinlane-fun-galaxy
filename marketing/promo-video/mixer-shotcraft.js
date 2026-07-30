@@ -74,9 +74,24 @@ const PHRASES = NARR.lignes.map((l) => ({
 // dans le passage le plus doux de la narration. Deux dB de plus la degagent
 // franchement sans toucher a la nappe, et le limiteur en bout de chaine absorbe
 // les cretes.
-const CIBLE_VOIX = -15;
-const CIBLE_SFX = -27;
-// -30, ET UNE ATTENUATION DOUCE PLUTOT QUE FORTE.
+// -18, ET NON -15. On ne monte pas la nappe en la poussant : le mixage tapait
+// deja dans le limiteur, qui ravalait tout ce qu'on ajoutait (3 dB de nappe en
+// plus n'en donnaient que 0,9 a l'arrivee). On BAISSE donc les autres pistes pour
+// faire de la place, et une normalisation finale remonte l'ensemble d'un bloc —
+// l'equilibre entre les trois est ce qui compte, pas leur niveau absolu.
+const CIBLE_VOIX = -18;
+const CIBLE_SFX = -30;
+// -24. QUATRIEME REGLAGE, ET CELUI-CI EST FONDE SUR UNE MESURE DIRECTE.
+//
+// Movsar a redemande « une petite musique en fond » QUATRE fois. J'ai enfin
+// isole la nappe du mixage livre — en soustrayant la version sans musique de la
+// version avec — et mesure ce qui restait : -29,5 dB de moyenne, jusqu'a -34 dB
+// par sections. Soit 11 a 15 dB sous la voix. Elle etait la au sens technique et
+// absente au sens ou on l'entend.
+//
+// Le reste de ce commentaire garde l'historique des essais, parce qu'il explique
+// pourquoi il a fallu quatre tours pour arriver a une mesure au lieu d'une
+// garde indirecte.
 //
 // Trois valeurs essayees, chacune mesuree. A -31 avec une attenuation de 7 dB,
 // Movsar a redemande « rajoute une petite musique » alors qu'il y en avait une :
@@ -88,7 +103,13 @@ const CIBLE_SFX = -27;
 // s'entend jamais. Elle doit donc etre audible SOUS la parole — environ 10 dB
 // sous elle — et l'attenuation ne fait que degager l'aigu, pas la faire
 // disparaitre.
-const CIBLE_MUSIQUE = -30;
+// LA CIBLE EST UN NIVEAU AVANT ATTENUATION, PAS LE NIVEAU FINAL.
+//
+// Mesure qui a corrige ce reglage : cible a -24, nappe isolee du mixage a -29,4.
+// L'ecart de 5,4 dB, c'est l'attenuation sous la voix — et le film parle 73 % du
+// temps, donc elle s'applique presque partout. Je reglais une cible que le mixage
+// ne voyait jamais.
+const CIBLE_MUSIQUE = -21;
 
 const duree = (f) => Number(execFileSync('ffprobe', ['-v', 'error',
   '-show_entries', 'format=duration', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim());
@@ -153,7 +174,11 @@ execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', MUSIQUE,
   // Un seuil a 0,02 (~-34 dB) passait sous TOUT, donc n'aplatissait rien. A 0,063
   // (~-24 dB), seules les sections fortes sont resserrees, et le gain de
   // compensation remonte l'ensemble : l'ouverture reste relativement plus haute.
-  '-af', 'acompressor=threshold=0.063:ratio=3:attack=80:release=1200:makeup=2,aresample=48000',
+  // Seuil remonte a 0,09 et ratio 4 : l'arc compose couvre 18 dB, et ses sections
+  // sparses tombaient sous le seuil d'audibilite une fois la nappe normalisee sur
+  // sa moyenne. On resserre plus fermement — l'intention musicale (la musique
+  // ENTRE au basculement) survit, mais aucune section n'est plus inaudible.
+  '-af', 'acompressor=threshold=0.09:ratio=4:attack=80:release=1200:makeup=2,aresample=48000',
   '-c:a', 'pcm_s16le', MUSIQUE_COMP]);
 const musAvant = moyenne(MUSIQUE);
 const musApres = moyenne(MUSIQUE_COMP);
@@ -201,6 +226,9 @@ chaines.push(`${voixIn}amix=inputs=${PHRASES.length}:normalize=0:dropout_transit
   + `apad=whole_dur=${D}[voix]`);
 chaines.push(`[0:a]volume=${gSfx.toFixed(4)}[sfx]`);
 
+// La chaine equivalente SANS musique, gardee pour la garde 2 : elle sert a
+// produire la reference qu'on soustrait.
+const chainesSansMusique = [];
 let mix;
 if (SANS_MUSIQUE) {
   chaines.push('[voix]asplit=1[voixOut]');
@@ -216,7 +244,10 @@ if (SANS_MUSIQUE) {
   // bruitages pour rester intelligible.
     // ratio 2,5 et non 5 : l'attenuation retire environ 3 dB, pas 7. La nappe
   // reste presente pendant la parole au lieu de s'effacer.
-  chaines.push('[mus][voixDuck]sidechaincompress=threshold=0.03:ratio=2.5:attack=8:release=550:makeup=1[musDuck]');
+    // Attenuation ALLEGEE (ratio 2, seuil 0,06) : elle degage la voix sans faire
+  // disparaitre la nappe. Une nappe qui ne s'entend que dans les trous ne
+  // s'entend jamais sur un film qui parle les trois quarts du temps.
+  chaines.push('[mus][voixDuck]sidechaincompress=threshold=0.06:ratio=2:attack=10:release=600:makeup=1[musDuck]');
   mix = '[sfx][voixMix][musDuck]amix=inputs=3:normalize=0';
 }
 // `alimiter` en bout de chaine : plafond a -1 dBFS. `amix normalize=0` ne
@@ -230,12 +261,45 @@ if (SANS_MUSIQUE) {
 // dire quelque chose que si l'auto-niveau est coupe.
 chaines.push(`${mix},alimiter=limit=0.85:level=disabled,aresample=48000[out]`);
 
+// Meme graphe, sans la piste musicale : les phrases, le meme gain, les memes
+// bruitages, le meme limiteur. La difference avec le mixage complet est donc
+// exactement la nappe.
+PHRASES.forEach((p, i) => {
+  const ms = Math.round(p.at * 1000);
+  chainesSansMusique.push(`[1:a]atrim=start=${p.de}:end=${p.a},asetpts=N/SR/TB,`
+    + `adelay=${ms}|${ms},volume=${gVoix.toFixed(4)}[w${i}]`);
+});
+chainesSansMusique.push(`${PHRASES.map((_, i) => `[w${i}]`).join('')}`
+  + `amix=inputs=${PHRASES.length}:normalize=0:dropout_transition=0,apad=whole_dur=${D}[voixR]`);
+chainesSansMusique.push(`[0:a]volume=${gSfx.toFixed(4)}[sfxR]`);
+chainesSansMusique.push('[sfxR][voixR]amix=inputs=2:normalize=0,'
+  + 'alimiter=limit=0.85:level=disabled,aresample=48000[out]');
+
 const args = ['-y', '-v', 'error', '-i', FILM, '-i', VOIX_COMP];
 if (!SANS_MUSIQUE) args.push('-i', MUSIQUE_COMP);
 args.push('-filter_complex', chaines.join(';'),
   '-map', '0:v', '-map', '[out]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
   '-movflags', '+faststart', '-shortest', SORTIE);
+// PREMIERE PASSE : on fabrique le mixage a son equilibre, sans se soucier du
+// niveau absolu. DEUXIEME PASSE : on mesure ce qu'il donne et on applique le gain
+// unique qui l'amene a la cible. C'est ce qui permet de baisser les trois sources
+// pour laisser respirer la nappe sans livrer un film trop faible.
+const CIBLE_MIXAGE = -16.5;
 execFileSync('ffmpeg', args, { stdio: ['ignore', 'ignore', 'inherit'] });
+{
+  const brut = moyenne(SORTIE);
+  const g = gain(brut.moy, CIBLE_MIXAGE);
+  if (Math.abs(20 * Math.log10(g)) > 0.3) {
+    const provisoire = SORTIE.replace(/\.mp4$/, '-brut.mkv');
+    fs.renameSync(SORTIE, provisoire);
+    execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', provisoire,
+      '-af', `volume=${g.toFixed(4)},alimiter=limit=0.85:level=disabled,aresample=48000`,
+      '-map', '0:v', '-map', '0:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+      '-movflags', '+faststart', SORTIE], { stdio: ['ignore', 'ignore', 'inherit'] });
+    fs.unlinkSync(provisoire);
+    console.log(`normalisation finale : ${brut.moy} dB -> cible ${CIBLE_MIXAGE} dB (x${g.toFixed(3)})`);
+  }
+}
 
 // --- verification ----------------------------------------------------------
 const nOut = moyenne(SORTIE);
@@ -245,49 +309,62 @@ console.log(`niveau global ${nOut.moy} dB (crete ${nOut.max} dB)`);
 // GARDE 1 : pas de saturation.
 if (nOut.max > -0.5) { console.error('ECHEC : crete a ' + nOut.max + ' dB, ca sature'); process.exit(1); }
 
-// GARDE 2 : la voix doit DOMINER.
+// GARDE 2 : LA NAPPE EST-ELLE AUDIBLE, ET LA VOIX PASSE-T-ELLE AU-DESSUS ?
 //
-// On compare une fenetre ou elle parle a une fenetre ou elle se tait. Ces deux
-// fenetres sont DERIVEES de la table de narration, pas ecrites en dur : la
-// version precedente pointait 30,0 s comme « muette », or apres reecriture du
-// texte une phrase y parlait — la garde mesurait 2,7 dB d'ecart et accusait le
-// mixage alors que c'etait sa propre fenetre qui etait fausse.
-const plusLongue = PHRASES.reduce((a, b) => ((b.a - b.de) > (a.a - a.de) ? b : a));
-const wParle = { ss: (plusLongue.at + 0.35).toFixed(2), t: Math.min(1.6, plusLongue.a - plusLongue.de - 0.5).toFixed(2) };
-// Le plus grand trou entre deux phrases, borne par la fin du film.
-let trou = { ss: 0, t: 0 };
-PHRASES.forEach((p, i) => {
-  const debutTrou = p.at + (p.a - p.de);
-  const finTrou = i + 1 < PHRASES.length ? PHRASES[i + 1].at : D;
-  // On ecarte deux zones : le fondu de sortie (la nappe y baisse deja) et tout le
-  // plan de signature (riser + impact y sont les bruitages les plus forts du
-  // film). Sans cette seconde exclusion, la garde mesurait l'impact et annoncait
-  // 4,4 dB de marge — un chiffre qui ne parlait pas de la nappe du tout.
-  if (debutTrou > D - 3) return;
-  const debutOutro = (NARR.plans && NARR.plans.outro ? NARR.plans.outro.from / NARR.fps : D);
-  if (debutTrou > debutOutro - 1) return;
-  if (finTrou - debutTrou > trou.t) trou = { ss: debutTrou + 0.25, t: finTrou - debutTrou - 0.45 };
-});
-const wTait = { ss: trou.ss.toFixed(2), t: Math.min(1.6, trou.t).toFixed(2) };
-console.log(`fenetres derivees — parlee a ${wParle.ss}s (${wParle.t}s) · muette a ${wTait.ss}s (${wTait.t}s)`);
+// Les trois versions precedentes de cette garde comparaient le niveau GLOBAL de
+// deux fenetres du mixage. C'est un proxy, et un mauvais : avec une nappe
+// volontairement presente, l'ecart entre « avec voix » et « sans voix » se
+// resserre, et la garde criait au loup pendant que Movsar, lui, n'entendait
+// toujours pas la musique.
+//
+// On mesure maintenant la nappe ELLE-MEME. On produit le mixage sans musique,
+// on le soustrait du mixage complet, et ce qui reste EST la musique — rien
+// d'autre. Deux exigences sur ce residu :
+//   - assez fort pour exister (au-dessus de -32 dB de moyenne) ;
+//   - assez bas pour laisser passer la voix (au moins 5 dB sous elle).
+if (!SANS_MUSIQUE) {
+  const sansMus = SORTIE.replace(/\.mp4$/, '-ref-sans-musique.mp4');
+  const argsRef = ['-y', '-v', 'error', '-i', FILM, '-i', VOIX_COMP,
+    '-filter_complex', chainesSansMusique.join(';'),
+    '-map', '0:v', '-map', '[out]', '-c:v', 'copy', '-c:a', 'pcm_s16le',
+    '-shortest', sansMus.replace(/\.mp4$/, '.mkv')];
+  execFileSync('ffmpeg', argsRef, { stdio: ['ignore', 'ignore', 'inherit'] });
+  const seule = SORTIE.replace(/\.mp4$/, '-nappe-seule.wav');
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', SORTIE, '-i', sansMus.replace(/\.mp4$/, '.mkv'),
+    '-filter_complex', '[0:a][1:a]amerge=inputs=2,pan=mono|c0=c0-c1',
+    '-c:a', 'pcm_s16le', seule], { stdio: ['ignore', 'ignore', 'inherit'] });
 
-const parle = moyenne(SORTIE, ['-ss', wParle.ss, '-t', wParle.t]);
-const tait = moyenne(SORTIE, ['-ss', wTait.ss, '-t', wTait.t]);
-const marge = parle.moy - tait.moy;
-console.log(`fenetre parlee ${parle.moy} dB · fenetre muette ${tait.moy} dB · marge ${marge.toFixed(1)} dB`);
-if (marge < 4) {
-  console.error(`ECHEC : la voix ne domine que de ${marge.toFixed(1)} dB, elle sera noyee`);
-  process.exit(1);
+  const nappe = moyenne(seule);
+  const global = moyenne(SORTIE);
+  console.log(`nappe isolee : ${nappe.moy} dB (crete ${nappe.max}) · mixage ${global.moy} dB`);
+  fs.unlinkSync(sansMus.replace(/\.mp4$/, '.mkv'));
+  fs.unlinkSync(seule);
+
+  // LE CRITERE EST UN ECART, PAS UN NIVEAU ABSOLU.
+  //
+  // Un seuil en dB absolus ne veut rien dire : il depend du niveau general du
+  // mixage, qu'une normalisation finale deplace. Ce qui s'entend, c'est la
+  // DISTANCE entre la nappe et le reste. Au-dela de 14 dB elle passe inapercue —
+  // c'est ce qui s'est produit quatre fois de suite. En deca de 7 dB elle
+  // dispute sa place a la voix.
+  const ecart = global.moy - nappe.moy;
+  console.log(`ecart nappe / mixage : ${ecart.toFixed(1)} dB (fenetre visee : 7 a 14)`);
+  if (ecart > 14) {
+    console.error(`ECHEC : la nappe est ${ecart.toFixed(1)} dB sous le mixage — on ne l'entendra pas`);
+    process.exit(1);
+  }
+  if (ecart < 7) {
+    console.error(`ECHEC : la nappe n'est qu'a ${ecart.toFixed(1)} dB sous le mixage — elle couvre la voix`);
+    process.exit(1);
+  }
 }
 
-// GARDE 3 : la nappe hors-voix doit rester AUDIBLE (le defaut inverse : une
-// musique si basse qu'elle n'existe pas).
-if (!SANS_MUSIQUE && tait.moy < -45) {
-  console.error(`ECHEC : hors voix, la nappe est a ${tait.moy} dB — inaudible`);
-  process.exit(1);
-}
+// (L'ancienne garde 3 mesurait la nappe dans une fenetre « sans voix » du
+// mixage. Elle est remplacee par la mesure directe ci-dessus : on isole la nappe
+// par soustraction au lieu de l'estimer depuis un trou de la narration, qui ne
+// contenait de toute facon jamais que du bruitage.)
 
-// GARDE 4 : la duree ne doit pas bouger.
+// GARDE 3 : la duree ne doit pas bouger.
 const DS = duree(SORTIE);
 if (Math.abs(DS - D) > 0.12) {
   console.error(`ECHEC : duree ${DS.toFixed(2)}s au lieu de ${D.toFixed(2)}s`);

@@ -37,22 +37,28 @@ const FILM = path.resolve(ROOT, process.argv[2] || 'marketing/promo-video/shotcr
 const SORTIE = path.resolve(ROOT, process.argv[3] || 'marketing/promo-video/shotcraft/out/pinlane-v2-mixe.mp4');
 const SANS_MUSIQUE = process.argv.includes('--sans-musique');
 
-const VOIX = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-pauses.mp3');
-const MUSIQUE = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/musique.mp3');
+const TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/narration.json');
+const VOIX = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-ugc.mp3');
+// La musique vient de la bibliotheque du skill : batterie marquee, electronique.
+// Sa reference impose ce critere — « les yeux fermes, ca doit sonner comme une
+// bande-annonce de produit, pas comme un jeu mobile » — et interdit de choisir un
+// morceau sans l'avoir ecoute DANS le film monte.
+const MUSIQUE = path.join(ROOT, 'marketing/promo-video/shotcraft/public/audio/bgm-tech-house.mp3');
 
 // Bornes MESUREES dans la prise (silencedetect, seuil -34 dB, duree >= 0,75 s)
 // et instant du film ou chaque phrase doit tomber, choisi sur le plan qu'elle
 // decrit. Les deux colonnes de droite sont donc verifiables : la premiere par
 // re-mesure de la prise, la seconde par la table de plans de `Main.tsx`.
-const PHRASES = [
-  { de: 0.000, a: 5.896, at: 2.70, texte: 'Un centre de loisirs, un jeudi. Huit pistes…', plan: 'planning 8 pistes' },
-  { de: 6.945, a: 9.312, at: 9.40, texte: 'Les réservations arrivent en ligne. Toutes seules.', plan: 'les résas se distribuent' },
-  { de: 10.192, a: 12.396, at: 12.90, texte: 'Un client ? Tu le trouves en deux secondes.', plan: 'frappe + filtre + clic' },
-  { de: 13.415, a: 17.206, at: 15.60, texte: 'Le jour J, tu sais qui arrive…', plan: 'page Arrivées' },
-  { de: 18.387, a: 21.068, at: 20.90, texte: 'Les dossiers qui demandent une action…', plan: 'page Événements' },
-  { de: 21.928, a: 25.579, at: 25.00, texte: 'Et le soir, tout est déjà compté…', plan: 'tableau de bord' },
-  { de: 26.617, a: 28.880, at: 32.40, texte: 'Pinlane. La console de ton centre.', plan: 'signature' },
-];
+// LES PHRASES VIENNENT DE LA TABLE DE NARRATION, PAS D'UNE LISTE ECRITE ICI.
+//
+// C'est le coeur de la correction : le film et le mixage lisent le MEME fichier,
+// produit par `scripts/promo-narration.js` a partir de l'alignement caractere par
+// caractere rendu par la synthese. Une liste maintenue a la main de chaque cote
+// ne peut pas rester d'accord — et c'etait exactement le defaut entendu.
+const NARR = JSON.parse(fs.readFileSync(TABLE, 'utf8'));
+const PHRASES = NARR.lignes.map((l) => ({
+  de: l.de, a: l.a, at: l.at, texte: l.texte, plan: l.cible,
+}));
 
 // Cibles de niveau, en dB de moyenne. La voix domine de ~10 dB les bruitages et
 // de ~14 dB la musique : c'est l'ecart a partir duquel une narration reste
@@ -102,7 +108,13 @@ const DV = duree(VOIX);
 const ratees = [];
 let finPrec = 0;
 PHRASES.forEach((p, i) => {
-  if (p.a > DV + 0.01) ratees.push(`phrase ${i + 1} : borne ${p.a}s hors de la prise (${DV.toFixed(2)}s)`);
+  // La derniere borne de l'alignement peut depasser de quelques millisecondes la
+  // duree que rapporte le conteneur mp3 (bourrage de l'encodeur). On borne au
+  // lieu d'echouer ; au-dela de 60 ms en revanche, c'est une vraie incoherence.
+  if (p.a > DV) {
+    if (p.a > DV + 0.06) ratees.push(`phrase ${i + 1} : borne ${p.a}s tres au-dela de la prise (${DV.toFixed(2)}s)`);
+    p.a = +DV.toFixed(3);
+  }
   if (p.at + (p.a - p.de) > D) ratees.push(`phrase ${i + 1} : depasse la fin du film`);
   if (p.at < finPrec - 0.01) ratees.push(`phrase ${i + 1} : chevauche la precedente`);
   finPrec = p.at + (p.a - p.de);
@@ -163,10 +175,30 @@ console.log(`niveau global ${nOut.moy} dB (crete ${nOut.max} dB)`);
 // GARDE 1 : pas de saturation.
 if (nOut.max > -0.5) { console.error('ECHEC : crete a ' + nOut.max + ' dB, ca sature'); process.exit(1); }
 
-// GARDE 2 : la voix doit DOMINER. On compare une fenetre ou elle parle a une
-// fenetre ou elle se tait — si l'ecart est faible, elle est noyee.
-const parle = moyenne(SORTIE, ['-ss', '26.0', '-t', '2.0']);
-const tait = moyenne(SORTIE, ['-ss', '30.0', '-t', '1.6']);
+// GARDE 2 : la voix doit DOMINER.
+//
+// On compare une fenetre ou elle parle a une fenetre ou elle se tait. Ces deux
+// fenetres sont DERIVEES de la table de narration, pas ecrites en dur : la
+// version precedente pointait 30,0 s comme « muette », or apres reecriture du
+// texte une phrase y parlait — la garde mesurait 2,7 dB d'ecart et accusait le
+// mixage alors que c'etait sa propre fenetre qui etait fausse.
+const plusLongue = PHRASES.reduce((a, b) => ((b.a - b.de) > (a.a - a.de) ? b : a));
+const wParle = { ss: (plusLongue.at + 0.35).toFixed(2), t: Math.min(1.6, plusLongue.a - plusLongue.de - 0.5).toFixed(2) };
+// Le plus grand trou entre deux phrases, borne par la fin du film.
+let trou = { ss: 0, t: 0 };
+PHRASES.forEach((p, i) => {
+  const debutTrou = p.at + (p.a - p.de);
+  const finTrou = i + 1 < PHRASES.length ? PHRASES[i + 1].at : D;
+  // On ecarte les trous qui tombent dans le fondu de sortie : la nappe y baisse
+  // deja, donc la fenetre y mesurerait un niveau qui ne dit rien du mixage.
+  if (debutTrou > D - 3) return;
+  if (finTrou - debutTrou > trou.t) trou = { ss: debutTrou + 0.25, t: finTrou - debutTrou - 0.45 };
+});
+const wTait = { ss: trou.ss.toFixed(2), t: Math.min(1.6, trou.t).toFixed(2) };
+console.log(`fenetres derivees — parlee a ${wParle.ss}s (${wParle.t}s) · muette a ${wTait.ss}s (${wTait.t}s)`);
+
+const parle = moyenne(SORTIE, ['-ss', wParle.ss, '-t', wParle.t]);
+const tait = moyenne(SORTIE, ['-ss', wTait.ss, '-t', wTait.t]);
 const marge = parle.moy - tait.moy;
 console.log(`fenetre parlee ${parle.moy} dB · fenetre muette ${tait.moy} dB · marge ${marge.toFixed(1)} dB`);
 if (marge < 4) {

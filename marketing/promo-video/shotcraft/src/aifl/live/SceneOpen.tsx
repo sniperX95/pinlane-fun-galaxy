@@ -51,7 +51,12 @@ const CAM_KEYS: CamKey[] = [
   { frame: 82, cx: 960, cy: 540, zoom: WIDE_ZOOM, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
   { frame: 114, cx: 960, cy: 540, zoom: WIDE_ZOOM, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
   { frame: 130, cx: MCX - 30, cy: MCY, zoom: ZOOM_HERO, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
-  { frame: 220, cx: MCX - 30, cy: MCY, zoom: ZOOM_HERO - 0.02, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
+  // DERIVE PENDANT LE VOL STATIONNAIRE. La pose etait tenue a l'identique
+  // pendant 90 images — trois secondes d'image immobile pendant que la
+  // reservation flotte. La camera contourne maintenant lentement la carte
+  // (rotY 34 -> 29,5, rotX 8 -> 6,2), ce qui fait vivre le plan entier sans
+  // rien changer au rythme du vol ni aux bruitages.
+  { frame: 220, cx: MCX - 22, cy: MCY + 6, zoom: ZOOM_HERO + 0.06, rotX: 6.2, rotY: 29.5, rotZ: 1.4, persp: 1200 },
 ];
 
 // Ou se trouve le heros A L'ECRAN dans la vue large ? Le projecteur doit

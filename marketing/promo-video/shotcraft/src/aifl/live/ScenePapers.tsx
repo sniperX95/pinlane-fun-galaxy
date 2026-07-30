@@ -172,26 +172,13 @@ export const ScenePapers: React.FC = () => {
         />
       </PageCam>
 
-      {/* Compteur a l'ecran, en haut a droite. IL N'APPARAIT QU'A PARTIR DU
-          PREMIER DOSSIER POSE : affiche des le debut du plan, il montrait un
-          « 0 » de 96 px pendant presque une seconde — la premiere chose que
-          l'oeil accrochait sur ce plan etait un zero. */}
-      <div
-        style={{
-          position: 'absolute', top: 70, right: 96, textAlign: 'right', pointerEvents: 'none',
-          opacity: landedCount > 0 ? 1 : 0,
-        }}
-      >
-        <div style={{ fontFamily: MONO, fontSize: 24, letterSpacing: '0.16em', color: '#55617a', textTransform: 'uppercase' }}>
-          Dossiers du jour
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-          <DigitRoll key={landedCount} value={String(landedCount)} fontSize={96} color={AMBER} />
-        </div>
-        <div style={{ fontFamily: MONO, fontSize: 20, letterSpacing: '0.12em', color: '#55617a', marginTop: 4, textTransform: 'uppercase' }}>
-          Sur {String(cards.length)} affichés
-        </div>
-      </div>
+      {/* PAS DE COMPTEUR A L'ECRAN.
+          Il chevauchait l'en-tete de la page — « 35 dossiers · 296 joueurs » —
+          et repetait un chiffre que l'image affiche deja. Meme raison que le
+          cartouche retire du tableau de bord : un texte qui redit l'image et la
+          salit ne merite pas d'etre deplace, il merite d'etre retire. Le rythme
+          de ce plan est porte par les cinq blocs qui se posent, chacun avec son
+          surlignage bleu et son bruit de papier. */}
     </>
   );
 };

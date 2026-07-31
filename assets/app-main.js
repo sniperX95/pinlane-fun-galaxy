@@ -3176,44 +3176,124 @@ function syncBookingTypeUi() {
 
 // La grille d'activites. Une carte cochee ouvre ses options SOUS elle : le
 // client voit ce qu'il choisit sans changer d'ecran, et le prix suit.
+// LA GRILLE D'ACTIVITES. Elle se construit UNE fois, puis ne change que par des
+// CLASSES. C'est la seule facon d'animer quoi que ce soit : la premiere version
+// reecrivait tout le innerHTML a chaque clic, donc chaque carte etait detruite et
+// recreee, et aucune transition ne pouvait survivre. Un composant qui se
+// reconstruit ne peut pas s'animer, quelle que soit la CSS qu'on lui met.
 function renderActivityPicker(off = []) {
   const host = document.getElementById('activityPicker');
   if (!host) return;
   const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
-  if (!catalog.length) { host.innerHTML = ''; return; }
+  if (!catalog.length) { host.innerHTML = ''; activityPickerSignature = ''; return; }
+  const signature = catalog.map(activity => activity.id).join(',');
+  if (signature !== activityPickerSignature) {
+    buildActivityPicker(host, catalog);
+    activityPickerSignature = signature;
+  }
+  syncActivityPickerState(off);
+  renderProgramSummary();
+}
+
+let activityPickerSignature = '';
+
+// Icones en trait, un dessin par activite. Une grille de huit rectangles de
+// texte se lit comme un formulaire administratif ; la meme grille avec un objet
+// reconnaissable par carte se lit d'un coup d'oeil.
+const ACTIVITY_ICONS = {
+  bowling: '<circle cx="12" cy="12" r="9"/><circle cx="9.5" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="8.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="12.4" r="1.1" fill="currentColor" stroke="none"/>',
+  laser_game: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  minigolf_blacklight: '<path d="M9 20V4l8 3.5L9 11"/><ellipse cx="14.5" cy="19" rx="4" ry="1.6"/><circle cx="7" cy="18.4" r="1.6"/>',
+  golf_oclock: '<path d="M9 20V4l8 3.5L9 11"/><circle cx="15.5" cy="17.5" r="3.5"/><path d="M15.5 16v1.6l1.2.8"/>',
+  billards: '<circle cx="12" cy="12" r="9"/><path d="M4.6 8.6a9 9 0 0 0 14.8 6.8" /><circle cx="12" cy="12" r="2.6"/>',
+  arcade_time: '<rect x="4" y="3" width="16" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 8h2M10 7v2"/><circle cx="15" cy="8" r="1.1"/>',
+  playground: '<path d="M5 20v-7l7-8"/><path d="M5 13h8"/><path d="M19 20V8l-7-3"/><circle cx="17" cy="17" r="2.4"/>',
+  duckpin_bowling: '<path d="M8 20c0-3 1.2-4 1.2-6S8 11 8 9a2.6 2.6 0 0 1 5.2 0c0 2-1.2 3-1.2 5s1.2 3 1.2 6"/><path d="M6.5 20h8"/><circle cx="18.5" cy="16.5" r="3.2"/>',
+  fun_run: '<rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="12" r="1.1"/><circle cx="18.6" cy="14.4" r="1.1"/>',
+  party_table: '<path d="M4 10h16l-2 10H6z"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>',
+};
+
+function activityIconMarkup(activityId) {
+  const paths = ACTIVITY_ICONS[activityId] || '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>';
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
+// Le DOM complet, options COMPRISES meme quand la carte n'est pas cochee : c'est
+// ce qui permet de les reveler par une transition (grid-template-rows 0fr -> 1fr)
+// au lieu de les faire apparaitre d'un coup.
+function buildActivityPicker(host, catalog) {
+  const pax = Math.max(1, Number(state.booking.pax) || 1);
+  host.innerHTML = catalog.map((activity, index) => `
+    <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
+      <button type="button" class="activity-toggle" aria-pressed="false" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
+        <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
+        <span class="activity-text">
+          <span class="activity-name">${escapeHtml(activity.name)}</span>
+          <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
+        </span>
+        <span class="activity-check" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+      </button>
+      <div class="activity-options"><div class="activity-options-inner" data-role="options">${renderActivityOptions(activity, state.booking.activities?.[activity.id] || {}, pax)}</div></div>
+    </div>`).join('');
+}
+
+// L'etat, et rien que l'etat : classes, aria, libelles. Aucun noeud n'est
+// remplace, donc les transitions CSS partent de la valeur courante au lieu de
+// repartir de zero (elles restent interruptibles : on peut cocher/decocher vite
+// sans saccade).
+function syncActivityPickerState(off = []) {
+  const host = document.getElementById('activityPicker');
+  if (!host) return;
   const selection = state.booking.activities || (state.booking.activities = {});
   const pax = Math.max(1, Number(state.booking.pax) || 1);
-  host.innerHTML = catalog.map(activity => {
-    const chosen = Boolean(selection[activity.id]);
-    const closed = off.includes(activity.id);
-    const options = selection[activity.id] || {};
-    return `<div class="activity-card${chosen ? ' is-on' : ''}${closed ? ' is-off' : ''}">
-      <button type="button" class="activity-toggle" ${closed ? 'disabled aria-disabled="true"' : ''}
-        aria-pressed="${chosen ? 'true' : 'false'}" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
-        <span class="activity-name">${escapeHtml(activity.name)}</span>
-        <span class="activity-price">${closed ? 'Fermé ce jour' : escapeHtml(activityPriceHint(activity, pax))}</span>
-        <span class="activity-check" aria-hidden="true"></span>
-      </button>
-      ${chosen && !closed ? `<div class="activity-options">${renderActivityOptions(activity, options, pax)}</div>` : ''}
-    </div>`;
-  }).join('');
-  renderProgramSummary();
+  host.querySelectorAll('.activity-card').forEach(card => {
+    const activityId = card.getAttribute('data-activity');
+    const activity = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
+    const chosen = Boolean(selection[activityId]);
+    const closed = off.includes(activityId);
+    card.classList.toggle('is-on', chosen && !closed);
+    card.classList.toggle('is-off', closed);
+    const toggle = card.querySelector('.activity-toggle');
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', chosen && !closed ? 'true' : 'false');
+      toggle.disabled = closed;
+      toggle.setAttribute('aria-disabled', closed ? 'true' : 'false');
+    }
+    const price = card.querySelector('[data-role="price"]');
+    if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, pax);
+    // Les options ne sont PAS reecrites : on bascule seulement la pastille
+    // active. Les reconstruire a chaque clic detruirait le retour visuel du
+    // press en cours et ferait perdre le focus d'un select ouvert.
+    const chosenOptions = selection[activityId] || {};
+    card.querySelectorAll('[data-opt]').forEach(pill => {
+      const key = pill.getAttribute('data-opt');
+      const value = Number(pill.getAttribute('data-val'));
+      pill.classList.toggle('active', (Number(chosenOptions[key]) || 1) === value);
+    });
+  });
 }
 
 // Ce qu'on annonce sous le nom : un prix quand le centre l'a saisi, la mention
 // honnete "réglé sur place" sinon. Jamais 0 EUR pour "on ne sait pas".
 function activityPriceHint(activity, pax) {
+  if (!activity) return '';
   if (activity.priceType === 'grid_bowling') return `dès ${DURATION_OPTIONS[0].price}€ la piste`;
   if (activity.priceType === 'grid_laser') return `dès ${LASER_GAME_OPTIONS[0].price}€ par joueur`;
   if (activity.priceValue == null) return 'réglé sur place';
   return `${activity.priceValue}€ ${activity.unitLabel || ''}`.trim();
 }
 
+// Les options d'une activite. data-opt / data-val servent a
+// syncActivityPickerState : il bascule la pastille active SANS reconstruire le
+// bloc, donc sans casser le retour au press ni le focus d'un select ouvert.
 function renderActivityOptions(activity, options, pax) {
+  if (!activity) return '';
   if (activity.id === 'bowling') {
     const current = Number(options.duration) || 1;
     return `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
-      <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}"
+      <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"
         onclick="setBookingActivityOption('bowling','duration',${option.value})">
         ${option.label}<span class="price">${option.price}€ / piste</span>
       </button>`).join('')}</div>`;
@@ -3221,7 +3301,7 @@ function renderActivityOptions(activity, options, pax) {
   if (activity.id === 'laser_game') {
     const current = Number(options.games) || 1;
     return `<div class="activity-option-row">${LASER_GAME_OPTIONS.map(option => `
-      <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}"
+      <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}" data-opt="games" data-val="${option.games}"
         onclick="setBookingActivityOption('laser_game','games',${option.games})">
         ${option.label}<span class="price">${option.price}€ / pers</span>
       </button>`).join('')}</div>`;
@@ -3271,10 +3351,32 @@ function renderProgramSummary() {
     if (price == null) complete = false; else total += price;
     return activity.name;
   });
-  host.innerHTML = `<div class="program-summary">
-    <span class="program-line">${escapeHtml(parts.join(' + '))}</span>
-    <span class="program-total">${complete ? '' : 'à partir de '}${Math.round(total)}€${complete ? '' : ' <small>+ ce qui se règle sur place</small>'}</span>
-  </div>`;
+  // Le bloc n'est ECRIT qu'une fois : ensuite on ne remplace que le texte. Un
+  // innerHTML a chaque clic aurait rejoue l'animation d'entree du bandeau et
+  // empeche de faire reagir le montant.
+  let box = host.querySelector('.program-summary');
+  if (!box) {
+    host.innerHTML = '<div class="program-summary"><span class="program-line"></span><span class="program-total"></span></div>';
+    box = host.querySelector('.program-summary');
+  }
+  const line = box.querySelector('.program-line');
+  const totalEl = box.querySelector('.program-total');
+  const nextLine = parts.join(' + ');
+  const nextTotal = `${complete ? '' : 'à partir de '}${Math.round(total)}€`;
+  if (line.textContent !== nextLine) line.textContent = nextLine;
+  if (totalEl.getAttribute('data-value') !== nextTotal) {
+    totalEl.setAttribute('data-value', nextTotal);
+    totalEl.innerHTML = `${escapeHtml(nextTotal)}${complete ? '' : ' <small>+ ce qui se règle sur place</small>'}`;
+    // Le montant a change : on le fait respirer une fois. C'est le seul endroit
+    // de l'ecran qui repond a la question « ca me coute combien ? », il doit se
+    // signaler quand il bouge sans jamais clignoter.
+    totalEl.classList.remove('is-bumped');
+    void totalEl.offsetWidth; // force le redemarrage de l'animation
+    totalEl.classList.add('is-bumped');
+    // La classe se retire a la fin : sinon elle reste posee pour toujours et
+    // l'element n'a plus aucun moyen de signaler le CHANGEMENT suivant.
+    totalEl.addEventListener('animationend', () => totalEl.classList.remove('is-bumped'), { once: true });
+  }
 }
 
 function toggleBookingActivity(activityId) {

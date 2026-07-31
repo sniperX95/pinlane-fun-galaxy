@@ -311,7 +311,74 @@ async function main() {
     ok(staff.monoEmpty === true, 'une reservation mono-activite n affiche AUCUN bloc programme (fiche inchangee)');
 
     // =====================================================================
-    console.log('\n[9] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
+    console.log('\n[9] Les deux plaintes exactes, devenues des assertions');
+    // =====================================================================
+    // « les coches sont pas bien cadrees » et « 0 animation, zero motion ».
+    // Un correctif meurt en silence, une assertion crie.
+    await bootClient(page, 'motion');
+    const motion = await page.evaluate(async () => {
+      const card = () => document.querySelector('#activityPicker .activity-card[data-activity="bowling"]');
+      // 1. La carte SURVIT au clic : c'est la condition de toute animation.
+      //    Tant que le bloc etait reecrit, aucune transition ne pouvait exister.
+      const before = card();
+      toggleBookingActivity('laser_game');
+      toggleBookingActivity('minigolf_blacklight');
+      const sameNode = card() === before;
+
+      // 2. Centrage de la coche : on MESURE, on ne regarde pas.
+      const ring = document.querySelector('.activity-card.is-on .activity-check');
+      const svg = ring?.querySelector('svg');
+      const r = ring.getBoundingClientRect();
+      const s = svg.getBoundingClientRect();
+      const dx = Math.abs((r.left + r.width / 2) - (s.left + s.width / 2));
+      const dy = Math.abs((r.top + r.height / 2) - (s.top + s.height / 2));
+
+      // 3. Les options d'une carte NON cochee existent quand meme dans le DOM :
+      //    sans ca, elles ne pourraient qu'apparaitre d'un coup.
+      const closedCard = document.querySelector('#activityPicker .activity-card:not(.is-on)');
+      const hiddenOptions = closedCard?.querySelector('.activity-options-inner');
+      const rows = getComputedStyle(closedCard.querySelector('.activity-options')).gridTemplateRows;
+
+      // 4. Les transitions sont reellement declarees (pas seulement ecrites).
+      const cardStyle = getComputedStyle(card());
+      const ringStyle = getComputedStyle(ring);
+
+      // 5. Le montant reagit quand il change.
+      const total = document.querySelector('.program-total');
+      // On attend la fin de l'animation d'entree : la classe se retire d'elle
+      // meme, sinon elle resterait posee et ne signalerait plus rien.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const bumpedBefore = total.classList.contains('is-bumped');
+      setBookingActivityOption('bowling', 'duration', 2);
+      const bumpedAfter = document.querySelector('.program-total').classList.contains('is-bumped');
+
+      return {
+        sameNode,
+        dx: Math.round(dx * 100) / 100,
+        dy: Math.round(dy * 100) / 100,
+        hasHiddenOptions: Boolean(hiddenOptions && hiddenOptions.innerHTML.trim()),
+        collapsedRows: rows,
+        cardTransition: cardStyle.transitionProperty,
+        ringTransition: ringStyle.transitionProperty,
+        bumpedBefore,
+        bumpedAfter,
+        iconCount: document.querySelectorAll('#activityPicker .activity-icon svg').length,
+      };
+    });
+    ok(motion.sameNode === true,
+      'la carte SURVIT au clic (meme noeud DOM) : sans ca, aucune transition ne peut exister');
+    ok(motion.dx <= 1 && motion.dy <= 1,
+      `la coche est centree dans son anneau a ${motion.dx} / ${motion.dy} px pres (mesure, pas oeil)`);
+    ok(motion.hasHiddenOptions === true && motion.collapsedRows.startsWith('0'),
+      `les options d une carte non cochee sont deja dans le DOM et repliees (${motion.collapsedRows}) : elles se deplient au lieu d apparaitre`);
+    ok(/transform/.test(motion.cardTransition) && /background-color/.test(motion.ringTransition),
+      'les transitions sont declarees sur la carte et sur la coche');
+    ok(motion.bumpedBefore === false && motion.bumpedAfter === true,
+      'changer une option fait reagir le montant (classe is-bumped posee)');
+    ok(motion.iconCount === 8, `chaque activite porte son icone (${motion.iconCount}/8)`);
+
+    // =====================================================================
+    console.log('\n[10] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
     const toFileEol = (text) => (original.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));

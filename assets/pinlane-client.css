@@ -543,13 +543,16 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 /* --- Choix des activités (multi-sélection) ------------------------------ */
 /* Une visite se compose : plusieurs activités cochables, chacune ouvrant ses
    options sous elle. Zéro couleur en dur (DESIGN.md) : tout passe par les
-   tokens, donc le clair et le sombre suivent sans règle dupliquée. */
+   tokens, donc le clair et le sombre suivent sans règle dupliquée.
+
+   Le composant se construit UNE fois et ne change ensuite que par des classes :
+   c'est ce qui rend les transitions possibles. Un bloc réécrit à chaque clic
+   repart toujours de zéro, quelle que soit la CSS qu'on lui met. */
 #clientView .activity-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  /* Chaque carte prend SA hauteur : sans ça, une carte cochée qui ouvre ses
-     options étire toutes ses voisines de la même rangée, et une activité sans
-     option se retrouve avec un grand vide sous son nom. */
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  /* Chaque carte prend SA hauteur : sans ça, une carte qui ouvre ses options
+     étire toutes ses voisines de la rangée. */
   align-items: start;
   gap: var(--space-2);
   margin-top: var(--space-3);
@@ -561,37 +564,88 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
-  overflow: hidden;
-  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+  /* Les cartes arrivent en cascade (40 ms d'écart) : la grille se lit dans
+     l'ordre au lieu d'apparaître d'un bloc. */
+  animation: activity-card-in 380ms var(--ease-out-strong) backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+  transition:
+    border-color 200ms var(--ease-out-strong),
+    background-color 200ms var(--ease-out-strong),
+    box-shadow 200ms var(--ease-out-strong),
+    transform 200ms var(--ease-out-strong);
+}
+
+@keyframes activity-card-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
 }
 
 #clientView .activity-card.is-on {
   border-color: var(--accent);
   background: var(--subtle);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
-#clientView .activity-card.is-off { opacity: 0.55; }
+#clientView .activity-card.is-off { opacity: 0.5; }
+
+/* Le press : la carte répond sous le doigt. 0.985 suffit, le geste doit se
+   sentir plus que se voir. */
+#clientView .activity-card:has(.activity-toggle:active) { transform: scale(0.985); }
+
+@media (hover: hover) and (pointer: fine) {
+  #clientView .activity-card:not(.is-off):hover { border-color: var(--text-3); }
+  #clientView .activity-card.is-on:hover { border-color: var(--accent); }
+}
 
 #clientView .activity-toggle {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
   width: 100%;
-  min-height: 66px;
-  padding: 12px 40px 12px 14px;
+  padding: 14px;
   border: 0;
   background: transparent;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 14px;
-  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 
 #clientView .activity-toggle[disabled] { cursor: not-allowed; }
+
+/* L'icône : un objet reconnaissable par activité. Une grille de huit lignes de
+   texte se lit comme un formulaire administratif ; la même grille avec un
+   dessin par carte se lit d'un coup d'oeil. */
+#clientView .activity-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+  color: var(--text-2);
+  transition: background-color 200ms var(--ease-out-strong), color 200ms var(--ease-out-strong);
+}
+
+#clientView .activity-card.is-on .activity-icon {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+#clientView .activity-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+#clientView .activity-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
 
 #clientView .activity-price {
   font-family: var(--font-data);
@@ -601,54 +655,81 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   color: var(--muted);
 }
 
-/* La coche est la seule marque de sélection : une bordure seule se rate au
-   coup d'oeil sur une grille de huit cartes. */
+/* La coche : un anneau qui se remplit, et un trait qui SE DESSINE. Le SVG est
+   centré par flex, fini le pseudo-élément calé au pixel près qui tombait à côté
+   dès que la taille du cercle changeait. */
 #clientView .activity-check {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 18px;
-  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   border: 1.5px solid var(--line-strong);
   border-radius: 50%;
+  color: var(--accent-contrast);
+  transition:
+    background-color 180ms var(--ease-out-strong),
+    border-color 180ms var(--ease-out-strong),
+    transform 260ms var(--ease-out-strong);
+}
+
+#clientView .activity-check svg {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  opacity: 0;
+  transition: stroke-dashoffset 220ms var(--ease-out-strong) 60ms, opacity 90ms linear 60ms;
 }
 
 #clientView .activity-card.is-on .activity-check {
-  border-color: var(--accent);
   background: var(--accent);
+  border-color: var(--accent);
+  /* Un rebond très court : la coche se pose, elle ne surgit pas. */
+  transform: scale(1.08);
 }
 
-#clientView .activity-card.is-on .activity-check::after {
-  content: '';
-  position: absolute;
-  top: 4px;
-  left: 5px;
-  width: 5px;
-  height: 9px;
-  border: solid var(--accent-contrast);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+#clientView .activity-card.is-on .activity-check svg {
+  stroke-dashoffset: 0;
+  opacity: 1;
 }
 
+/* Le dépli des options : grid-template-rows 0fr vers 1fr anime une hauteur AUTO
+   sans mesure JavaScript et sans valeur codée en dur. */
 #clientView .activity-options {
-  padding: 0 12px 12px;
-  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms var(--ease-out-strong);
+}
+
+#clientView .activity-card.is-on .activity-options { grid-template-rows: 1fr; }
+
+#clientView .activity-options-inner {
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 160ms linear;
+}
+
+#clientView .activity-card.is-on .activity-options-inner {
+  opacity: 1;
+  transition: opacity 200ms linear 80ms;
 }
 
 #clientView .activity-option-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
+  margin: 0 14px 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 #clientView .dur-pill.sm {
-  min-height: 44px;
-  padding: 6px 10px;
+  min-height: 46px;
+  padding: 7px 11px;
   font-size: 13px;
 }
 
 #clientView .dur-pill.sm .price { font-size: 11px; }
+#clientView .dur-pill:active { transform: scale(0.97); }
 
 #clientView .activity-mini-field {
   display: flex;
@@ -659,7 +740,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .activity-mini-field select {
-  padding: 6px 8px;
+  padding: 7px 9px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -669,11 +750,14 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .activity-option-note {
-  margin-top: 10px;
+  margin: 0 14px 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--muted);
 }
 
+/* Le bandeau du programme. Il entre une fois, puis seul son texte change. */
 #clientView .program-summary {
   display: flex;
   flex-wrap: wrap;
@@ -681,10 +765,11 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   justify-content: space-between;
   gap: var(--space-2);
   margin-top: var(--space-3);
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--subtle);
+  animation: activity-card-in 320ms var(--ease-out-strong) backwards;
 }
 
 #clientView .program-line {
@@ -694,9 +779,10 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .program-total {
+  display: inline-block;
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 600;
   color: var(--text);
 }
@@ -706,6 +792,31 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   font-size: 12px;
   font-weight: 400;
   color: var(--muted);
+}
+
+/* Le montant respire quand il change : c'est la seule réponse à la question
+   « ça me coûte combien ? », il doit se signaler sans clignoter. */
+#clientView .program-total.is-bumped { animation: total-bump 260ms var(--ease-out-strong); }
+
+@keyframes total-bump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* Mouvement réduit : on garde ce qui explique (opacité, couleur), on retire ce
+   qui déplace. */
+@media (prefers-reduced-motion: reduce) {
+  #clientView .activity-card,
+  #clientView .program-summary { animation: none; }
+  #clientView .activity-card,
+  #clientView .activity-check,
+  #clientView .activity-options,
+  #clientView .program-total { transition-property: background-color, border-color, color, opacity; }
+  #clientView .activity-card.is-on .activity-check { transform: none; }
+  #clientView .activity-card:has(.activity-toggle:active) { transform: none; }
+  #clientView .activity-check svg { transition: opacity 120ms linear; stroke-dashoffset: 0; }
+  #clientView .program-total.is-bumped { animation: none; }
 }
 
 /* --- Durées bowling / options laser ------------------------------------- */

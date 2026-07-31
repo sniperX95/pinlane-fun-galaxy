@@ -3272,6 +3272,14 @@ function syncActivityPickerState(off = []) {
       const value = Number(pill.getAttribute('data-val'));
       pill.classList.toggle('active', (Number(chosenOptions[key]) || 1) === value);
     });
+    // Les listes deroulantes (nombre de tables, duree) suivent l'etat elles
+    // aussi : sans ca, revenir a l'etape 1 depuis les creneaux affichait les
+    // valeurs par defaut alors que le programme, lui, gardait les vraies.
+    card.querySelectorAll('select[data-opt-select]').forEach(select => {
+      const key = select.getAttribute('data-opt-select');
+      const value = chosenOptions[key];
+      if (value != null && String(select.value) !== String(value)) select.value = String(value);
+    });
   });
 }
 
@@ -3310,10 +3318,10 @@ function renderActivityOptions(activity, options, pax) {
     const units = Math.max(1, Number(options.units) || 1);
     const hours = Math.max(0.5, Number(options.hours) || 1);
     return `<div class="activity-option-row">
-      <label class="activity-mini-field">Nombre<select onchange="setBookingActivityOption('${escapeHtml(activity.id)}','units',this.value)">
+      <label class="activity-mini-field">Nombre<select data-opt-select="units" onchange="setBookingActivityOption('${escapeHtml(activity.id)}','units',this.value)">
         ${[1, 2, 3, 4, 5, 6].map(value => `<option value="${value}" ${value === units ? 'selected' : ''}>${value}</option>`).join('')}
       </select></label>
-      <label class="activity-mini-field">Durée<select onchange="setBookingActivityOption('${escapeHtml(activity.id)}','hours',this.value)">
+      <label class="activity-mini-field">Durée<select data-opt-select="hours" onchange="setBookingActivityOption('${escapeHtml(activity.id)}','hours',this.value)">
         ${[0.5, 1, 1.5, 2, 3].map(value => `<option value="${value}" ${value === hours ? 'selected' : ''}>${value === 0.5 ? '30 min' : `${value}h`}</option>`).join('')}
       </select></label>
     </div>`;

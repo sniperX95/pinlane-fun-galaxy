@@ -377,6 +377,20 @@ async function main() {
       'changer une option fait reagir le montant (classe is-bumped posee)');
     ok(motion.iconCount === 8, `chaque activite porte son icone (${motion.iconCount}/8)`);
 
+    // Les listes deroulantes suivent l'etat : revenir a l'etape 1 depuis les
+    // creneaux doit retrouver SES choix, pas les valeurs par defaut.
+    const selects = await page.evaluate(() => {
+      state.booking.activities.billards = { units: 3, hours: 2 };
+      syncBookingTypeUi();
+      const card = document.querySelector('.activity-card[data-activity="billards"]');
+      return {
+        units: card?.querySelector('select[data-opt-select="units"]')?.value,
+        hours: card?.querySelector('select[data-opt-select="hours"]')?.value,
+      };
+    });
+    ok(selects.units === '3' && selects.hours === '2',
+      `les listes deroulantes refletent l etat (${selects.units} tables, ${selects.hours}h)`);
+
     // =====================================================================
     console.log('\n[10] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
     // =====================================================================

@@ -43,7 +43,7 @@ const decalageDe = (plan: string, depart: number) =>
 
 // Un carton, tel qu'il est monte a chaque fois : sa duree vient de la table de
 // plans, son texte et son minutage de la table de narration.
-const Carton: React.FC<{ plan: 'cardA' | 'cardB' | 'card1' | 'card2' | 'cardWbr' | 'card3' }> = ({ plan }) => {
+const Carton: React.FC<{ plan: 'cardA' | 'cardB' | 'cardC' | 'card1' | 'card2' | 'cardWbr' | 'card3' }> = ({ plan }) => {
   const shot = AIFL_SHOTS[plan];
   const l = ligneDe(plan);
   return (
@@ -73,9 +73,13 @@ export const AiflMain: React.FC = () => {
       <Sequence from={AIFL_SHOTS.morning.from} durationInFrames={AIFL_SHOTS.morning.duration}>
         <SceneOpen />
       </Sequence>
-      {/* Les deux cartons du probleme : ce qui manquait pour un trafic froid. */}
+      {/* La sequence du probleme, en TROIS marches. `cardA` est la marche du
+          milieu qui manquait : comment une reservation arrive chez toi
+          aujourd'hui. Sans elle on passait du planning au telephone qui sonne
+          sans dire pourquoi les deux avaient un rapport. */}
       <Carton plan="cardA" />
       <Carton plan="cardB" />
+      <Carton plan="cardC" />
       <Carton plan="card1" />
       <Sequence from={AIFL_SHOTS.table.from} durationInFrames={AIFL_SHOTS.table.duration}>
         <SceneFlyIn />

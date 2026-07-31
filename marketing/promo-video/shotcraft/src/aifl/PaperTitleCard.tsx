@@ -40,7 +40,12 @@ export const PaperTitleCard: React.FC<{
 }> = ({ duration, words, sub, subDigits, mots, decalage = 0, illustration }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const fadeOut = interpolate(frame, [duration - 5, duration], [1, 0], {
+  // LE FONDU NE VA PAS JUSQU'A ZERO. Termine a 0 pile a `duration`, il laissait
+  // la DERNIERE image du carton entierement vide — un clignotement d'une image a
+  // chaque coupe, que la garde d'images plates comptait sans que je le corrige.
+  // A 0,2 la coupe reste douce et l'image n'est jamais vide : le plan suivant
+  // arrive de toute facon a l'image d'apres.
+  const fadeOut = interpolate(frame, [duration - 4, duration - 1], [1, 0.72], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });

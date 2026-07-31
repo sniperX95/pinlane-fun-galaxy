@@ -68,7 +68,13 @@ const ressort = Easing.bezier(0.2, 1.25, 0.3, 1);
 // mot — donc l'ecran restait vide le temps de la jointure. Le decor (le combine,
 // le pictogramme, les cadres des compteurs) apparait maintenant des l'image 2 ;
 // seuls les EVENEMENTS restent cales sur les mots.
-const etabli = (frame: number) => interpolate(frame, [2, 12], [0, 1], {
+// MISE A JOUR : « des l'image 2 » ne suffisait pas. La garde d'images plates
+// mesure encore 3 a 11 images d'ecart-type nul au debut de chaque carton — le
+// fond blanc du carton est bien la, mais rien dessus. Une rampe qui part de zero
+// laisse forcement quelques images sous le seuil de visibilite, quel que soit
+// l'instant ou elle commence. Le decor part donc DEJA VISIBLE : il ne s'ouvre
+// pas, il est la, et il finit seulement de s'asseoir.
+const etabli = (frame: number) => interpolate(frame, [0, 8], [0.55, 1], {
   extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
 });
 
@@ -106,9 +112,11 @@ const IncrustReprise: React.FC<Contexte> = (ctx) => {
     });
   }, 0);
 
-  const pictoIn = interpolate(frame, [2, 14], [0, 1], {
+  // Le pictogramme est la des la premiere image : il ne s'ouvre pas, il finit
+  // de s'asseoir. Sans ca le carton demarrait sur trois images vides.
+  const pictoIn = Math.max(etabli(frame) * 0.62, interpolate(frame, [2, 14], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ressort,
-  });
+  }));
   void t0;
 
   return (
@@ -178,9 +186,12 @@ const IncrustRemontee: React.FC<Contexte> = (ctx) => {
         const actif = i === CIBLE;
         // La cible monte au rang 0 ; celles qu'elle depasse descendent d'un rang.
         const rang = actif ? CIBLE * (1 - t) : (i < CIBLE ? i + t : i);
-        const entree = interpolate(frame, [i * 2.5, i * 2.5 + 10], [0, 1], {
+        // La liste est etablie des l'ouverture ; c'est la REMONTEE, elle, qui
+        // attend son mot. Une cascade partant de zero ouvrait le carton sur neuf
+        // images vides — le deuxieme plus gros trou du film.
+        const entree = Math.max(etabli(frame) * 0.6, interpolate(frame, [i * 2.5, i * 2.5 + 10], [0, 1], {
           extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-        });
+        }));
         const lift = actif ? Math.sin(t * Math.PI) : 0;
         return (
           <div key={nom} style={{
@@ -320,13 +331,19 @@ const IncrustZeros: React.FC<Contexte> = (ctx) => {
         const pose = interpolate(frame, [d - 4, d + 8], [0, 1], {
           extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ressort,
         });
+        // LE DECOR S'ETABLIT, SEUL L'EVENEMENT ATTEND SON MOT. Les trois blocs
+        // n'apparaissaient qu'a leur « zéro » : le carton ouvrait sur onze images
+        // entierement vides, le plus gros trou du film. Ils sont maintenant la
+        // des la premiere image, a demi-teinte, et chacun s'allume quand la voix
+        // le nomme — c'est le rayage qui reste cale sur le mot.
+        const vie = Math.max(etabli(frame) * 0.55, pose);
         const barre = interpolate(frame, [d + 6, d + 18], [0, 1], {
           extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
         });
         return (
           <div key={b.titre} style={{
-            width: 460, textAlign: 'center', opacity: pose,
-            transform: `scale(${0.86 + 0.14 * pose})`,
+            width: 460, textAlign: 'center', opacity: vie,
+            transform: `scale(${0.86 + 0.14 * vie})`,
           }}>
             <div style={{ position: 'relative', width: 128, height: 128, margin: '0 auto 14px' }}>
               <svg width={128} height={128} viewBox="0 0 48 48" fill="none">
@@ -375,11 +392,162 @@ const IncrustZeros: React.FC<Contexte> = (ctx) => {
   );
 };
 
+// A0 · « Une résa comme celle-là, chez toi, elle arrive comment ?
+//        Neuf fois sur dix : au téléphone. »
+// ---------------------------------------------------------------------------
+//
+// LA MARCHE QUI MANQUAIT. Le film passait de la reservation a l'ecran au
+// comptoir sous pression sans dire pourquoi les deux avaient un rapport : « il
+// parle direct du telephone qui sonne mais le lien est pas fait ». Cette
+// incrustation EST le lien, et elle le montre au lieu de l'affirmer — la carte
+// qu'on vient de voir en gros plan, et les trois chemins par lesquels elle
+// arrive aujourd'hui. Celui du telephone s'allume, les deux autres s'eteignent.
+
+// Le chemin est un COUDE, pas une diagonale : une ligne droite tiree d'une puce
+// haute vers le bord d'une carte basse ne touche ni l'une ni l'autre — au
+// premier rendu les trois traits flottaient a cote de ce qu'ils reliaient. Un
+// coude a angle droit avec un rayon, lui, part du bord de la puce et arrive sur
+// le bord de la carte : il se lit comme un acheminement.
+// `ecart` = a quelle distance du bord de la carte le chemin fait son angle. Il
+// est DIFFERENT pour les deux canaux de gauche : au meme ecart, leurs segments
+// verticaux se superposaient sur la meme colonne de pixels, et le premier rendu
+// montrait un seul trait pour deux chemins.
+const CANAUX = [
+  { nom: 'Téléphone', cote: -1, dy: -118, ecart: 46 },
+  { nom: 'Sur place', cote: -1, dy: 118, ecart: 92 },
+  { nom: 'Messages', cote: 1, dy: -118, ecart: 46 },
+];
+const CARTE_L = 280;
+const CARTE_H = 108;
+const PUCE_X = 452;
+
+const IncrustCanaux: React.FC<Contexte> = (ctx) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const socle = etabli(frame);
+  // Les trois chemins se tracent sur « comment » ; le telephone l'emporte sur
+  // « neuf ». Un texte reecrit sans ces mots retombe sur les replis et
+  // l'illustration continue de jouer.
+  const tRoutes = temps(ctx, 'comment', 1.5, fps);
+  const tGagne = temps(ctx, 'neuf', 3.0, fps);
+
+  const L = 1320;
+  const H = 340;
+  const cx = L / 2;
+  const cy = H / 2;
+  const verdict = interpolate(frame, [tGagne, tGagne + 12], [0, 1], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
+  });
+
+  return (
+    <div style={{ position: 'relative', width: L, height: H, margin: '0 auto', opacity: socle }}>
+      {/* Les chemins, en dessous de tout : ils partent des puces et arrivent sur
+          les bords de la carte. */}
+      <svg width={L} height={H} style={{ position: 'absolute', left: 0, top: 0 }}>
+        {CANAUX.map((c, k) => {
+          const depart = tRoutes + k * 7;
+          const trace = interpolate(frame, [depart, depart + 15], [0, 1], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
+          });
+          const gagnant = k === 0;
+          const vie = gagnant ? 1 : 1 - 0.78 * verdict;
+          const xPuce = cx + c.cote * (PUCE_X - 92);
+          const xCarte = cx + c.cote * (CARTE_L / 2);
+          // L'angle se fait DEHORS : place a l'interieur, le segment vertical
+          // passait derriere la carte et ressortait dessous.
+          const coude = xCarte + c.cote * c.ecart;
+          const r = 18 * c.cote;
+          const sens = c.dy > 0 ? -1 : 1;
+          const d = `M ${xPuce} ${cy + c.dy}`
+            + ` H ${coude + r}`
+            + ` Q ${coude} ${cy + c.dy} ${coude} ${cy + c.dy + sens * 18}`
+            + ` V ${cy - sens * 18}`
+            + ` Q ${coude} ${cy} ${coude - r} ${cy}`
+            + ` H ${xCarte}`;
+          // `pathLength` normalise a 100 : le trait se DESSINE quelle que soit sa
+          // longueur reelle, donc les trois chemins avancent au meme rythme.
+          return (
+            <path
+              key={c.nom} d={d} fill="none" pathLength={100}
+              stroke={gagnant && verdict > 0 ? BLEU : ATONE}
+              strokeWidth={gagnant ? 2 + 2 * verdict : 2}
+              strokeLinecap="round"
+              strokeDasharray="100" strokeDashoffset={100 - 100 * trace}
+              opacity={(gagnant ? 0.45 + 0.55 * verdict : 0.34) * vie}
+            />
+          );
+        })}
+      </svg>
+
+      {/* La reservation, au centre : c'est l'objet dont on parle. */}
+      <div style={{
+        position: 'absolute', left: '50%', top: '50%', width: CARTE_L, height: CARTE_H,
+        transform: `translate(-50%, -50%) scale(${0.92 + 0.08 * socle})`,
+        background: '#fff', borderRadius: 12, borderLeft: `5px solid ${BLEU}`,
+        boxShadow: '0 14px 34px rgba(5, 30, 72, 0.13)',
+        padding: '20px 22px', boxSizing: 'border-box', zIndex: 2,
+      }}>
+        <div style={{ fontFamily: SANS, fontSize: 26, fontWeight: 620, color: ENCRE }}>Une réservation</div>
+        <div style={{ fontFamily: MONO, fontSize: 19, color: ATONE, marginTop: 9, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+          11:00 · 11 JOUEURS
+        </div>
+      </div>
+
+      {CANAUX.map((c, k) => {
+        const depart = tRoutes + k * 7;
+        const trace = interpolate(frame, [depart, depart + 15], [0, 1], {
+          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
+        });
+        const gagnant = k === 0;
+        const vie = gagnant ? 1 : 1 - 0.78 * verdict;
+        const allume = gagnant && verdict > 0;
+        return (
+          <div key={c.nom} style={{
+            position: 'absolute', left: '50%', top: '50%',
+            transform: `translate(-50%, -50%) translate(${c.cote * PUCE_X}px, ${c.dy}px)`
+              + ` scale(${0.86 + 0.14 * trace + (gagnant ? 0.10 * verdict : 0)})`,
+            opacity: trace * vie,
+            fontFamily: MONO, fontSize: 22, letterSpacing: '0.1em', textTransform: 'uppercase',
+            color: allume ? '#fff' : ATONE,
+            background: allume ? BLEU : '#fff',
+            border: `1px solid ${allume ? BLEU : TRAIT}`,
+            padding: '14px 24px', borderRadius: 999, whiteSpace: 'nowrap', zIndex: 2,
+            boxShadow: allume
+              ? `0 12px 30px rgba(6, 100, 254, ${0.30 * verdict})`
+              : '0 10px 26px rgba(5, 30, 72, 0.09)',
+          }}>
+            {c.nom}
+          </div>
+        );
+      })}
+
+      {/* La proportion, en chiffres : « neuf fois sur dix » se retient mieux
+          ecrit que dit. */}
+      <div style={{
+        position: 'absolute', left: '50%', bottom: -14,
+        transform: `translateX(-50%) scale(${0.9 + 0.1 * verdict})`,
+        opacity: interpolate(frame, [tGagne + 6, tGagne + 16], [0, 1], {
+          extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+        }),
+        fontFamily: MONO, fontSize: 24, fontWeight: 600, letterSpacing: '0.14em',
+        color: BLEU, textTransform: 'uppercase',
+        background: PALE, border: `1px solid rgba(6, 100, 254, 0.22)`,
+        padding: '11px 20px', borderRadius: 999,
+      }}>
+        9 fois sur 10
+      </div>
+    </div>
+  );
+};
+
 // ---------------------------------------------------------------------------
 
 const PAR_PLAN: Record<string, React.FC<Contexte>> = {
-  cardA: IncrustComptoir,
-  cardB: IncrustAilleurs,
+  // La sequence du probleme se joue en trois marches : d'ou vient la resa,
+  // pourquoi tu ne peux pas repondre, ce que ca coute.
+  cardA: IncrustCanaux,
+  cardB: IncrustComptoir,
+  cardC: IncrustAilleurs,
   card1: IncrustReprise,
   card2: IncrustRemontee,
   cardWbr: IncrustSoir,

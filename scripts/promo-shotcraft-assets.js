@@ -171,11 +171,9 @@ const etaler = (n, k) => (k >= n
   ? Array.from({ length: n }, (_, i) => i)
   : Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1))));
 
-// Le template affiche un titre par carte volante. On reprend des noms de
-// groupes du jeu de demonstration, pour rester coherent avec l'image.
-const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
-  'Groupe amis', 'Sarah Lemaire', 'Ecole Saint-Joseph', 'Famille Martin',
-  'EVJF Camille', 'Club Padel', 'Famille Rousseau'];
+// (Il y avait ici une liste de noms de groupes appliquee par rang aux cartes.
+// Elle avait l'air d'une donnee et n'en etait pas — le nom affiche n'etait pas
+// celui de la carte. Les libelles se lisent maintenant dans le DOM.)
 
 (async () => {
   fs.rmSync(OUT, { recursive: true, force: true });
@@ -293,6 +291,45 @@ const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
         entree.boxes[b.cle] = r;
         if (!r) RATES.push(`${pg.nom}.${b.cle} : « ${b.sel} » ne trouve rien`);
       }
+    }
+
+    // --- CE QUE LA RESERVATION AFFICHE VRAIMENT ----------------------------
+    //
+    // Les libelles du film venaient d'une liste ecrite dans ce script et
+    // appliquee PAR RANG (`TITRES[i % TITRES.length]`). Rien ne garantissait que
+    // « Ecole Saint-Joseph » soit le nom de la carte qu'on met en evidence a
+    // l'ecran : c'etait de la decoration qui avait l'air d'une donnee.
+    //
+    // On lit donc le DOM. Le film peut alors DIRE ce que l'image MONTRE — c'est
+    // ce qui manquait a la narration : « huit pistes, quarante-huit
+    // reservations » pendant qu'un gros plan designe une carte precise.
+    if (pg.nom === 'projects') {
+      entree.reservations = await page.evaluate(() => [...document.querySelectorAll('.booking')].map((el) => {
+        const lis = (s) => {
+          const n = el.querySelector(s);
+          return n ? n.textContent.replace(/\s+/g, ' ').trim() : '';
+        };
+        const r = el.getBoundingClientRect();
+        const plage = (el.getAttribute('data-range') || '').replace(/\s+/g, ' ').trim();
+        // Les noms de classe viennent d'une SONDE du DOM rendu, pas d'un fichier
+        // d'artefact : ma premiere version cherchait `.booking-meta`, qui
+        // n'existe pas dans cette vue — les 62 cartes sont sorties sans effectif
+        // et la garde les a toutes signalees.
+        const pax = (lis('.bk-pax').match(/(\d+)/) || [])[1];
+        return {
+          x: Math.round(r.x + window.scrollX), y: Math.round(r.y + window.scrollY),
+          nom: lis('.booking-name'),
+          heure: plage.split('-')[0].trim(),
+          plage,
+          pax: pax ? Number(pax) : null,
+          duree: lis('.bk-dur'),
+          formule: lis('.b-tag'),
+          piste: Number(el.getAttribute('data-booking-lane') || 0) + 1,
+        };
+      }));
+      const creux = entree.reservations.filter((b) => !b.nom || !b.heure || !b.pax).length;
+      if (creux) RATES.push(`projects : ${creux} reservation(s) sans nom, heure ou effectif`);
+      console.log(`  ${entree.reservations.length} reservations lues (nom, heure, effectif, piste)`);
     }
 
     for (const d of pg.decoupes || []) {
@@ -445,9 +482,21 @@ const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
 
   // projects : les reservations deviennent les « cartes » qui volent.
   const hP = layout.projects.pageH;
+
+  // Le texte se raccroche par la GEOMETRIE, pas par le rang : les bbox et les
+  // textes sortent du meme DOM, donc leurs coordonnees absolues coincident, et
+  // les deux listes n'ont ni le meme ordre ni la meme longueur (`etaler`).
+  // Un rang commun aurait ete une hypothese de plus a tenir a jour.
+  const RESAS = layout.projects.reservations || [];
+  const texteDe = (r) => {
+    const b = RESAS.find((z) => z.x === r.x && z.y === r.y);
+    if (!b) { RATES.push(`reservation a (${r.x},${r.y}) : aucun texte lu dans le DOM`); return {}; }
+    return { title: b.nom, heure: b.heure, plage: b.plage, pax: b.pax,
+      duree: b.duree, formule: b.formule, piste: b.piste };
+  };
+
   const bookings = bo('projects', 'bookings').map((r, i) => ({
-    file: `card${i + 1}.png`, ...borne(r, hP),
-    title: TITRES[i % TITRES.length],
+    file: `card${i + 1}.png`, ...borne(r, hP), ...texteDe(r),
   }));
   finales.projects = {
     pageH: hP,
@@ -458,10 +507,14 @@ const TITRES = ['Famille Dubois', 'Anniversaire Lucas', 'Team building Nexo',
     heroIndex: heros,
     heroHires: 'card-hero-hires.png',
     heroZoomMax: densite || 1,
+    // CE QUE LE PLAN D'OUVERTURE MET EN EVIDENCE, en toutes lettres. La scene
+    // l'affiche et la narration le DIT : une seule source, donc l'image et la
+    // voix ne peuvent plus se contredire.
+    hero: texteDe(heroBox),
     // La page longue et ses 26 reservations, pour le plan de distribution.
     fullPageH: (layout.projects.pleine && layout.projects.pleine.pageH) || hP,
-    cardsFull: ((layout.projects.pleine && layout.projects.pleine.cartes) || []).map((c, i) => ({
-      ...c, title: TITRES[i % TITRES.length],
+    cardsFull: ((layout.projects.pleine && layout.projects.pleine.cartes) || []).map((c) => ({
+      ...c, ...texteDe(c),
     })),
     search: liste(layout.projects.boxes.recherche)[0] || { x: 1074, y: 40, w: 180, h: 30 },
     header: liste(layout.projects.boxes.titre)[0] || { x: 0, y: 0, w: VIEW.width, h: 61 },

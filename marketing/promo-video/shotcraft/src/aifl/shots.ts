@@ -11,15 +11,16 @@ import NARRATION from './narration.json';
 // images. Tenir cette table separement de la voix la ferait deriver — c'est
 // exactement le defaut qu'on vient de corriger sur les sous-titres.
 //
-// Ordre : marque+planning · probleme · ce qu'il coute · basculement ·
-// distribution+recherche · arrivees · action a prendre · dossiers · le soir ·
-// tableau de bord · benefice · signature+appel a l'action.
+// Ordre : marque+planning+reservation · d'ou vient une resa · le comptoir · ce
+// que l'appel manque coute · basculement · distribution · arrivees · action a
+// prendre · evenements · le soir · tableau de bord · benefice · signature.
 
 type Plan = { from: number; duration: number };
 
 export const AIFL_SHOTS = NARRATION.plans as unknown as {
-  morning: Plan; cardA: Plan; cardB: Plan; card1: Plan; table: Plan; macro: Plan;
-  card2: Plan; chart: Plan; cardWbr: Plan; wbr: Plan; card3: Plan; outro: Plan;
+  morning: Plan; cardA: Plan; cardB: Plan; cardC: Plan; card1: Plan; table: Plan;
+  macro: Plan; card2: Plan; chart: Plan; cardWbr: Plan; wbr: Plan; card3: Plan;
+  outro: Plan;
 };
 
 export const AIFL_TOTAL: number = NARRATION.total;

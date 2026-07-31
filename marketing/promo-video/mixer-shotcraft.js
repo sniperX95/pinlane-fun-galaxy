@@ -109,7 +109,17 @@ const CIBLE_SFX = -30;
 // L'ecart de 5,4 dB, c'est l'attenuation sous la voix — et le film parle 73 % du
 // temps, donc elle s'applique presque partout. Je reglais une cible que le mixage
 // ne voyait jamais.
-const CIBLE_MUSIQUE = -21;
+// -25, ET NON -21. LA CIBLE EST PROPRE AU FICHIER, PAS AU MIXAGE.
+//
+// Le morceau a ete regenere sur la nouvelle structure (six mouvements, 76 s), et
+// son arc porte plus de sections en conduite : -16,3 dB de moyenne contre -20 et
+// des pour le precedent. A cible identique, la nappe est ressortie a 6,6 dB sous
+// le mixage — la garde l'a refusee, dans le bon sens cette fois : elle disputait
+// la place a la voix. Quatre dB de moins la remettent dans la fenetre.
+//
+// C'est la contrepartie de la mesure par soustraction : la garde attrape
+// maintenant les DEUX cotes, pas seulement la nappe absente.
+const CIBLE_MUSIQUE = -25;
 
 const duree = (f) => Number(execFileSync('ffprobe', ['-v', 'error',
   '-show_entries', 'format=duration', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim());
@@ -214,13 +224,64 @@ PHRASES.forEach((p, i) => {
 });
 if (ratees.length) { ratees.forEach((r) => console.error('  - ' + r)); process.exit(1); }
 
+// --- CHAQUE PHRASE EST PRELEVEE AVEC L'AIR QUI L'ENTOURE --------------------
+//
+// « La voix change et c'est pas fluide entre chaque. » La prise est pourtant
+// UNIQUE — un seul appel, un seul timbre. Le defaut n'etait pas la synthese,
+// c'etait le DECOUPAGE : `atrim` partait exactement du premier caractere aligne
+// et s'arretait exactement au dernier. Une phrase coupee la perd son attaque
+// (les occlusives sont tranchees en plein milieu) et sa chute (la fin de
+// syllabe et la respiration), et les deux bouts nus se recollent en un point de
+// montage audible. Quinze phrases, quinze points de montage : ca s'entend comme
+// quinze prises differentes.
+//
+// On prend donc un peu avant et un peu apres, borne par les phrases voisines
+// dans la prise (les `[longue pause]` entre les lignes laissent la place), et on
+// fond les deux extremites pour qu'aucun raccord ne claque.
+const AVANT = 0.10;
+const APRES = 0.24;
+const FONDU = 0.04;
+
+PHRASES.forEach((p, i) => {
+  const prec = PHRASES[i - 1];
+  const suiv = PHRASES[i + 1];
+  const deb = Math.max(0, p.de - AVANT, prec ? prec.a + 0.03 : 0);
+  const fin = Math.min(DV, p.a + APRES, suiv ? suiv.de - 0.03 : DV);
+  p.deb = +deb.toFixed(3);
+  p.fin = +Math.max(fin, p.a).toFixed(3);
+  // Le decalage vers l'amont doit etre RENDU au placement : sinon toute la
+  // phrase avance de 100 ms et les mots ne tombent plus sur leurs images.
+  p.pose = +(p.at - (p.de - p.deb)).toFixed(3);
+});
+
+// GARDE : les segments ELARGIS ne doivent pas se chevaucher non plus. Elle a du
+// sens ici et pas avant : l'air ajoute est precisement ce qui peut mordre sur le
+// voisin.
+const collisions = PHRASES.filter((p, i) => {
+  const s = PHRASES[i + 1];
+  return s && p.pose + (p.fin - p.deb) > s.pose + 0.01;
+});
+if (collisions.length) {
+  collisions.forEach((p) => console.error(`  - « ${p.texte.slice(0, 40)}… » mord sur la phrase suivante`));
+  process.exit(1);
+}
+const air = PHRASES.reduce((s, p) => s + (p.fin - p.deb) - (p.a - p.de), 0);
+console.log(`decoupe des phrases : ${air.toFixed(2)}s d'air rendu aux attaques et aux chutes`);
+
 // --- construction du graphe ------------------------------------------------
 const chaines = [];
-PHRASES.forEach((p, i) => {
-  const ms = Math.round(p.at * 1000);
-  chaines.push(`[1:a]atrim=start=${p.de}:end=${p.a},asetpts=N/SR/TB,`
-    + `adelay=${ms}|${ms},volume=${gVoix.toFixed(4)}[v${i}]`);
-});
+// Le segment porte son air et ses deux fondus (voir plus haut) : plus aucun
+// raccord ne claque, et l'attaque de chaque phrase est entiere.
+const segment = (p, sortie) => {
+  const ms = Math.round(p.pose * 1000);
+  const duree = +(p.fin - p.deb).toFixed(3);
+  return `[1:a]atrim=start=${p.deb}:end=${p.fin},asetpts=N/SR/TB,`
+    + `afade=t=in:st=0:d=${FONDU},`
+    + `afade=t=out:st=${Math.max(0, duree - FONDU).toFixed(3)}:d=${FONDU},`
+    + `adelay=${ms}|${ms},volume=${gVoix.toFixed(4)}[${sortie}]`;
+};
+
+PHRASES.forEach((p, i) => { chaines.push(segment(p, `v${i}`)); });
 const voixIn = PHRASES.map((_, i) => `[v${i}]`).join('');
 chaines.push(`${voixIn}amix=inputs=${PHRASES.length}:normalize=0:dropout_transition=0,`
   + `apad=whole_dur=${D}[voix]`);
@@ -264,11 +325,7 @@ chaines.push(`${mix},alimiter=limit=0.85:level=disabled,aresample=48000[out]`);
 // Meme graphe, sans la piste musicale : les phrases, le meme gain, les memes
 // bruitages, le meme limiteur. La difference avec le mixage complet est donc
 // exactement la nappe.
-PHRASES.forEach((p, i) => {
-  const ms = Math.round(p.at * 1000);
-  chainesSansMusique.push(`[1:a]atrim=start=${p.de}:end=${p.a},asetpts=N/SR/TB,`
-    + `adelay=${ms}|${ms},volume=${gVoix.toFixed(4)}[w${i}]`);
-});
+PHRASES.forEach((p, i) => { chainesSansMusique.push(segment(p, `w${i}`)); });
 chainesSansMusique.push(`${PHRASES.map((_, i) => `[w${i}]`).join('')}`
   + `amix=inputs=${PHRASES.length}:normalize=0:dropout_transition=0,apad=whole_dur=${D}[voixR]`);
 chainesSansMusique.push(`[0:a]volume=${gSfx.toFixed(4)}[sfxR]`);
@@ -373,5 +430,5 @@ if (Math.abs(DS - D) > 0.12) {
 
 console.log('\nphrase -> plan :');
 PHRASES.forEach((p, i) => console.log(
-  `  ${(i + 1)}. ${p.at.toFixed(2)}s (${(p.a - p.de).toFixed(2)}s)  ${p.plan.padEnd(26)} ${p.texte}`));
+  `  ${(i + 1)}. ${p.pose.toFixed(2)}s (${(p.fin - p.deb).toFixed(2)}s)  ${p.plan.padEnd(9)} ${p.texte}`));
 console.log('\nOK : voix dominante, nappe audible, pas de saturation, duree intacte');

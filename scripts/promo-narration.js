@@ -32,6 +32,50 @@ const ROOT = path.resolve(__dirname, '..');
 const SORTIE_AUDIO = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-ugc.mp3');
 const SORTIE_TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/narration.json');
 
+// --- LA VOIX DIT CE QUE L'IMAGE MONTRE --------------------------------------
+//
+// « Il dit huit pistes, quarante-huit reservations, mais la le motion design
+// montre UNE carte du planning : ca devrait plus parler de la carte qu'il met en
+// evidence. » Le defaut n'etait pas le texte, c'etait qu'il decrivait la journee
+// entiere pendant que la camera se fermait sur une reservation precise.
+//
+// La reservation mise en evidence est designee par la GEOMETRIE (la plus proche
+// du centre de page), donc elle change des que la journee de demonstration
+// change. On lit ses vraies valeurs dans le layout et on construit la phrase
+// avec : la scene affiche « 11:00 · EVJF Camille · 11 joueurs · Piste 6 » et la
+// voix dit « onze heures, onze joueurs, piste six ». Un seul fait, une seule
+// source — elles ne peuvent plus se contredire.
+const LAYOUT = require(path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/live-layout.json'));
+const HERO = (LAYOUT.projects && LAYOUT.projects.hero) || {};
+if (!HERO.heure || !HERO.pax || !HERO.piste) {
+  console.error('la reservation heros du layout n\'a ni heure, ni effectif, ni piste'
+    + ' — relancer `node scripts/promo-shotcraft-assets.js`');
+  process.exit(1);
+}
+
+// Les nombres s'ecrivent EN LETTRES dans le texte envoye a la synthese : « 11:00 »
+// se lit « onze deux-points zero zero » chez certains modeles, et le bandeau
+// affiche de toute facon le texte tel quel — « onze heures » y est plus lisible
+// qu'un horaire technique.
+const UNITES = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit',
+  'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'];
+const DIZAINES = { 20: 'vingt', 30: 'trente', 40: 'quarante', 50: 'cinquante' };
+const enLettres = (n) => {
+  if (n <= 16) return UNITES[n];
+  if (n < 20) return `dix-${UNITES[n - 10]}`;
+  const d = Math.floor(n / 10) * 10;
+  const u = n % 10;
+  if (!DIZAINES[d]) return String(n);
+  if (u === 0) return DIZAINES[d];
+  if (u === 1) return `${DIZAINES[d]} et un`;
+  return `${DIZAINES[d]}-${UNITES[u]}`;
+};
+const heureDite = (hhmm) => {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  const heures = `${enLettres(h)} heure${h > 1 ? 's' : ''}`;
+  return m ? `${heures} ${enLettres(m)}` : heures;
+};
+
 // LA VOIX SE CHANGE ICI, EN UNE LIGNE.
 //
 // Les voix de la bibliotheque partagee s'utilisent DIRECTEMENT par leur
@@ -61,7 +105,11 @@ const FPS = 30;
 // librement, sans risque de figer une animation. Les plans produit gardent
 // exactement la duree pour laquelle leur animation a ete concue — sauf `macro`,
 // dont la camera recoit une cle supplementaire pour continuer a deriver.
-const ORDRE = ['morning', 'cardA', 'cardB', 'card1', 'table', 'macro',
+// `cardC` est nouveau : la sequence du probleme se joue maintenant en TROIS
+// temps au lieu de deux. « Il parle direct du telephone qui sonne mais le lien
+// est pas fait » — il manquait la marche du milieu, celle qui relie la
+// reservation qu'on vient de montrer a la facon dont elle arrive aujourd'hui.
+const ORDRE = ['morning', 'cardA', 'cardB', 'cardC', 'card1', 'table', 'macro',
   'card2', 'chart', 'cardWbr', 'wbr', 'card3', 'outro'];
 
 // Les plans PRODUIT gardent exactement la duree pour laquelle leur animation a
@@ -71,7 +119,22 @@ const ORDRE = ['morning', 'cardA', 'cardB', 'card1', 'table', 'macro',
 // planning) : c'est le seul plan produit qui en porte deux, donc le seul a avoir
 // besoin de place. 268 images, et la derive de camera de `SceneOpen` s'etale
 // jusque-la au lieu de se figer a 220.
-const FIXES = { morning: 268, table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
+const FIXES = { table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
+
+// `morning` N'EST PLUS UN PLAN A DUREE FIXE, C'EST UN PLANCHER.
+//
+// Il porte desormais TROIS phrases : la question qui qualifie (sur le logo), la
+// presentation du planning (sur la vue large), et la reservation mise en
+// evidence (sur le gros plan). Sa vue large ne tenait que 28 images — de quoi
+// montrer la page, pas de quoi l'expliquer, et c'est exactement ce que Movsar a
+// vu : « le "ça" on capte pas, parce qu'on comprend pas direct que c'est un
+// planning ». Le plan prend donc la duree que ses phrases exigent, avec un
+// plancher qui garantit que son animation a la place de se derouler.
+//
+// La scene ne devine pas ou couper : elle lit dans `narration.json` l'instant de
+// la troisieme phrase et fait partir son gros plan la. Une phrase reecrite
+// deplace la camera avec elle.
+const PLANCHERS = { morning: 300 };
 
 // Les CARTONS n'ont pas de duree ecrite : elle se CALCULE depuis la phrase qu'ils
 // portent. C'est ce qui rend l'ensemble insensible au debit de la synthese — une
@@ -98,39 +161,65 @@ const ELASTIQUE = 20;
 // decrit (voir la table de plans de `Main.tsx`). `cible` = ou son texte
 // s'affiche : sur un carton plein ecran, dans le bandeau du bas, ou nulle part
 // (quand l'image porte deja le mot : le logo, la signature).
+// UNE INDICATION DE JEU TOUS LES QUATRE OU CINQ PLANS, PAS UNE PAR PHRASE.
+//
+// « La voix change et c'est pas fluide entre chaque. » Il y avait quatorze
+// indications differentes pour quatorze phrases : le modele re-interprete a
+// chaque crochet, donc il changeait de registre a chaque phrase — quatorze
+// intentions collees bout a bout s'entendent comme quatorze prises.
+// Une indication OUVRE un mouvement et les phrases suivantes la prolongent
+// naturellement. Il en reste cinq, une par mouvement du film.
 const LIGNES = [
-  // 1-2 : ON PARLE A QUELQU'UN QUI NE NOUS CONNAIT PAS. La premiere phrase
-  // qualifie (« est-ce que ca me concerne ? »), la deuxieme montre le resultat
-  // avant d'expliquer comment on y arrive.
+  // --- MOUVEMENT 1 : ON QUALIFIE, ET ON MONTRE CE QU'ON REGARDE -------------
+  //
+  // « Ça, c'est une journée complète » : le « ça » ne designait rien pour
+  // quelqu'un qui n'a jamais vu le produit, et « journée complète » ne veut rien
+  // dire tant qu'on n'a pas compris qu'on regarde un planning. On NOMME donc
+  // l'objet avant d'en parler, puis on explique sa grille, et seulement apres on
+  // designe une reservation — pendant que la camera se ferme dessus.
   { decalage: 0.70, plan: 'morning', cible: 'aucun', jeu: '[énergique, souriant, tu interpelles quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
-  { decalage: 'apres', plan: 'morning', cible: 'bandeau', jeu: '[enjoué, tu montres quelque chose dont tu es fier]', texte: 'Ça, c’est une journée complète. Huit pistes, quarante-huit réservations.' },
+  { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: 'Ça, c’est ton planning du jour. Chaque colonne, une piste. Chaque bloc, un groupe qui a réservé.' },
+  { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: `Celui-là : ${heureDite(HERO.heure)}, ${enLettres(HERO.pax)} joueurs, piste ${enLettres(HERO.piste)}.` },
 
-  // 3-4 : LE PROBLEME, PUIS CE QU'IL COUTE. Un trafic froid ne sait pas encore
-  // qu'il a un probleme : il faut le nommer avant de vendre quoi que ce soit.
-  // UNE SCENE, PAS UNE GENERALITE. « Ça se passe au téléphone, tu notes sur un
-  // cahier » decrivait le probleme de l'exterieur. Ici on est DANS la scene :
-  // derriere le comptoir, un samedi, avec du monde devant soi. C'est la que le
-  // gerant se reconnait.
-  { decalage: 0.40, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice, un peu pressé]', texte: 'Sauf qu’en vrai, t’es au comptoir. Trois groupes qui attendent, une commande à encaisser, et le téléphone qui sonne.' },
-  { decalage: 0.40, plan: 'cardB', cible: 'carton', jeu: '[net, un peu plus grave]', texte: 'Tu peux pas décrocher. Et l’appel que tu rates, c’est un groupe qui réserve ailleurs.' },
+  // --- MOUVEMENT 2 : LE PROBLEME, EN TROIS MARCHES --------------------------
+  //
+  // Il en manquait une, et c'est celle-la que Movsar a vu manquer : « ensuite
+  // direct il parle du telephone qui sonne, mais le lien est pas fait ». On
+  // passait de la reservation a l'ecran au comptoir sous pression sans dire
+  // pourquoi les deux ont un rapport. La marche du milieu, c'est la question :
+  // cette reservation, aujourd'hui, elle arrive comment ?
+  { decalage: 0.40, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice, un peu pressé]', texte: 'Une résa comme celle-là, chez toi, elle arrive comment ? Neuf fois sur dix : au téléphone.' },
+  { decalage: 0.40, plan: 'cardB', cible: 'carton', texte: 'Et le téléphone, il sonne quand t’es au comptoir. Trois groupes qui attendent, une commande à encaisser.' },
+  { decalage: 0.40, plan: 'cardC', cible: 'carton', texte: 'Tu peux pas décrocher. Et l’appel que tu rates, c’est un groupe qui réserve ailleurs.' },
 
-  // 5 : LE BASCULEMENT. On dit ce que c'est, en une phrase, sans jargon.
-  { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[ça s’ouvre, enjoué, la solution arrive]', texte: 'Pinlane, c’est le logiciel qui gère tout ça à ta place.' },
+  // --- MOUVEMENT 3 : CE QUE C'EST, PUIS LE MECANISME ------------------------
+  //
+  // Une etape par plan, chacune MONTREE a l'ecran pendant qu'elle est dite. Les
+  // phrases nomment ce que la page affiche vraiment : `table` fait voler les
+  // reservations sur le planning puis tape une recherche, `macro` est la page des
+  // arrivees du jour, `chart` la liste des evenements.
+  { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[ça s’ouvre, enjoué, la solution arrive]', texte: 'Pinlane, c’est le logiciel qui prend ces réservations à ta place. En ligne, jour et nuit.' },
+  // Ces quatre phrases sont COURTES parce que leur plan est un plan produit : sa
+  // duree est celle de son animation, et l'allonger la figerait (piege 78).
+  // L'explication vit sur les cartons, la preuve sur le produit.
+  { decalage: 0.40, plan: 'table', cible: 'bandeau', texte: 'Ton client réserve en ligne, la résa se pose toute seule.' },
+  // LA RECHERCHE EST A L'IMAGE : ELLE DOIT ETRE DITE. J'avais coupe cette phrase
+  // pour tenir dans la duree du plan — et le plan continuait de taper « Dubois »
+  // dans le champ de recherche puis de filtrer les vingt-six reservations,
+  // pendant que la voix parlait d'autre chose. Une sequence qui joue sans
+  // narration, sur du trafic froid, ne s'explique pas toute seule. Les deux
+  // phrases sont donc raccourcies pour tenir a deux dans les 190 images.
+  { decalage: 'apres', plan: 'table', cible: 'bandeau', texte: 'Tu cherches un groupe ? Tu tapes son nom.' },
+  { decalage: 0.40, plan: 'macro', cible: 'bandeau', texte: 'Le jour même, tes arrivées sont déjà prêtes.' },
+  { decalage: 0.40, plan: 'card2', cible: 'carton', texte: 'Et ce qui demande une action, un acompte, un rappel, remonte tout seul en haut de la liste.' },
+  { decalage: 0.40, plan: 'chart', cible: 'bandeau', texte: 'Tes événements, tous au même endroit.' },
 
-  // 6-10 : LE MECANISME, une etape par plan, chacune montree a l'ecran pendant
-  // qu'elle est dite. C'est la partie qui manquait : on expliquait par titres.
-  { decalage: 0.40, plan: 'table', cible: 'bandeau', jeu: '[enjoué, rythmé]', texte: 'Tes clients réservent en ligne, et la résa se pose toute seule au bon créneau.' },
-  { decalage: 'apres', plan: 'table', cible: 'bandeau', jeu: '[appuyé, avec le sourire]', texte: 'Tu cherches un client ? Deux secondes !' },
-  { decalage: 0.40, plan: 'macro', cible: 'bandeau', jeu: '[confiant, enjoué]', texte: 'Le jour même, tu vois qui arrive, à quelle heure, et combien ils sont.' },
-  { decalage: 0.40, plan: 'card2', cible: 'carton', jeu: '[rythmé]', texte: 'Et ce qui demande une action remonte tout seul en haut de la liste.' },
-  { decalage: 0.40, plan: 'chart', cible: 'bandeau', jeu: '[enjoué]', texte: 'Tous les dossiers du jour, déjà triés par heure.' },
+  // --- MOUVEMENT 4 : LA PREUVE, PUIS LE BENEFICE EN TROIS COUPS -------------
+  { decalage: 0.40, plan: 'cardWbr', cible: 'carton', jeu: '[chaleureux, satisfait, tu constates le résultat]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
+  { decalage: 0.40, plan: 'wbr', cible: 'bandeau', texte: 'Tout est là, sans une seule saisie.' },
+  { decalage: 0.45, plan: 'card3', cible: 'carton', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
 
-  // 11-13 : LA PREUVE, puis le benefice en trois coups.
-  { decalage: 0.40, plan: 'cardWbr', cible: 'carton', jeu: '[chaleureux, satisfait]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
-  { decalage: 0.40, plan: 'wbr', cible: 'bandeau', jeu: '[enjoué]', texte: 'Tout est là, sans que tu aies saisi une seule ligne.' },
-  { decalage: 0.45, plan: 'card3', cible: 'carton', jeu: '[fier, punché, avec le sourire]', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
-
-  // 14 : L'APPEL A L'ACTION. Un trafic froid a besoin qu'on lui dise quoi faire.
+  // --- L'APPEL A L'ACTION : un trafic froid a besoin qu'on lui dise quoi faire.
   { decalage: 0.60, plan: 'outro', cible: 'aucun', jeu: '[chaleureux, souriant, une invitation]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
 ];
 
@@ -182,8 +271,10 @@ const ditPour = (mot) => {
 // lues (verifie par transcription sur cette voix et ce modele).
 // Calcule a l'appel et non au chargement : `enMots` est declare plus bas dans le
 // fichier, et une constante fleche n'existe pas avant sa ligne.
+// Une ligne SANS indication de jeu prolonge le registre de la precedente — c'est
+// tout l'interet : le modele ne se re-interprete que la ou on le lui demande.
 const texteAEnvoyer = () => LIGNES
-  .map((l) => `${l.jeu} ${enMots(l.texte).map(ditPour).join(' ')}`.trim())
+  .map((l) => `${l.jeu || ''} ${enMots(l.texte).map(ditPour).join(' ')}`.trim())
   .join(' [longue pause] ');
 
 const cle = (() => {
@@ -378,7 +469,11 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
       ? Math.max(...dessus.map((x) => x.ligne.decalage + (x.a - x.de))) + MARGE_CARTON
       : 0;
     let d;
-    if (FIXES[nom]) {
+    if (PLANCHERS[nom]) {
+      // Plan a PLANCHER : il prend la duree de ses phrases, jamais moins que le
+      // temps dont son animation a besoin.
+      d = Math.max(PLANCHERS[nom], Math.round(besoin * FPS));
+    } else if (FIXES[nom]) {
       d = FIXES[nom];
       const manque = Math.round(besoin * FPS) - d;
       if (manque > 0) {

@@ -1,5 +1,6 @@
 import { AIFL_SHOTS } from './shots';
 import NARRATION from './narration.json';
+import { macro } from './ouverture';
 
 // LA TABLE DE BRUITAGES — CALEE RELATIVEMENT AU DEBUT DE CHAQUE PLAN.
 //
@@ -64,11 +65,14 @@ export const SFX: Son[] = [
   { from: S.morning.from + 4, src: 'transition-soft.mp3', volume: 0.42 },
   { from: S.morning.from + 12, src: 'sparkle-touch.mp3', volume: 0.30 },   // le pictogramme se pose
   { from: S.morning.from + 78, src: 'whoosh-fast.mp3', volume: 0.45 },     // marque -> planning
-  { from: S.morning.from + 114, src: 'ui-zoom-in.mp3', volume: 0.85 },     // debut du rapproche (fichier a -14 dB)
-  { from: S.morning.from + 127, src: 'whoosh-big.mp3', volume: 0.50 },     // la reservation se souleve
-  { from: S.morning.from + 141, src: 'sparkle.mp3', volume: 0.34 },        // le faisceau la balaie
-  { from: S.morning.from + 196, src: 'air-woosh-quick.mp3', volume: 0.30 },// elle redescend
-  { from: S.morning.from + 204, src: 'transition-snap.mp3', volume: 0.50 },// et se recale
+  // La vue large tient maintenant le temps de deux phrases : ces cinq sons
+  // suivent la camera au lieu d'une image ecrite en dur (voir `ouverture.ts`).
+  { from: S.morning.from + macro(110), src: 'sweep-fast-small.mp3', volume: 0.28 }, // le cadre se ferme sur la carte
+  { from: S.morning.from + macro(114), src: 'ui-zoom-in.mp3', volume: 0.85 },     // debut du rapproche (fichier a -14 dB)
+  { from: S.morning.from + macro(127), src: 'whoosh-big.mp3', volume: 0.50 },     // la reservation se souleve
+  { from: S.morning.from + macro(141), src: 'sparkle.mp3', volume: 0.34 },        // le faisceau la balaie
+  { from: S.morning.from + macro(196), src: 'air-woosh-quick.mp3', volume: 0.30 },// elle redescend
+  { from: S.morning.from + macro(204), src: 'transition-snap.mp3', volume: 0.50 },// et se recale
 
   // ---- LA SCENE DU COMPTOIR ET L'APPEL MANQUE -------------------------
   //
@@ -78,7 +82,8 @@ export const SFX: Son[] = [
   // et des sons cales sur les mots exactement comme l'animation qu'ils
   // accompagnent.
   //
-  // L'ambiance dure 5 s : trois passes couvrent les deux cartons. Elle est
+  // L'ambiance dure 5 s : quatre passes couvrent les TROIS cartons du probleme
+  // (`cardA` est nouveau : la marche « d'ou vient une resa »). Elle est
   // volontairement basse — c'est un fond, pas un effet.
   // « Les SFX de bowling c'est trop, il doit y en avoir qu'une. » L'ambiance est
   // regeneree : brouhaha etouffe, une SEULE quille au loin, pas d'arcade.
@@ -87,37 +92,47 @@ export const SFX: Son[] = [
   // reference du skill pour les fichiers enregistres bas. Celui-ci sort a
   // -47,1 dB de moyenne (crete -33,5) : a 0,20 il n'existait pas. A x4 la moyenne
   // monte a -35 dB et la crete a -21,5, donc aucun risque de saturation.
-  ...[0, 1, 2].map((n) => ({
+  ...[0, 1, 2, 3].map((n) => ({
     from: S.cardA.from + n * 150,
     src: 'ambiance-centre.mp3',
     volume: 4.0,
     coupe: 152,
   })),
 
+  // cardA — d'ou arrive une reservation : trois chemins se tracent, celui du
+  // telephone l'emporte.
   { from: S.cardA.from, src: 'swoosh-quick.mp3', volume: 0.40 },
-  { from: surMot('cardA', 'comptoir', 20) - 4, src: 'sweep-fast-small.mp3', volume: 0.30 }, // le plan se pose
+  ...[0, 1, 2].map((n) => ({
+    from: surMot('cardA', 'comment', 45) + n * 7,
+    src: n % 2 === 0 ? 'sweep-fast-small.mp3' : 'swoosh-quick.mp3',
+    volume: +(0.28 - n * 0.05).toFixed(3),
+    coupe: 16,
+  })),
+  // Le telephone l'emporte : une vraie sonnerie, une seule, sur le mot.
+  { from: surMot('cardA', 'neuf', 92) + 4, src: 'sonnerie-telephone.mp3', volume: 0.44, coupe: 66 },
+
+  // cardB — la scene du comptoir.
+  { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.34 },
+  { from: surMot('cardB', 'comptoir', 34) - 4, src: 'sweep-fast-small.mp3', volume: 0.30 }, // le plan se pose
   // trois personnes qui arrivent : trois pops en decroissance (regle 4.2)
   ...[0, 1, 2].map((n) => ({
-    from: surMot('cardA', 'groupes', 50) - 6 + n * 5,
+    from: surMot('cardB', 'groupes', 62) - 6 + n * 5,
     src: n % 2 === 0 ? 'pop.mp3' : 'switch-tap.mp3',
     volume: +(0.30 - n * 0.05).toFixed(3),
     coupe: 14,
   })),
-  { from: surMot('cardA', 'encaisser', 92) - 4, src: 'ui-select-click.mp3', volume: 0.34 }, // le terminal
-  { from: surMot('cardA', 'encaisser', 92) + 6, src: 'switch-tap.mp3', volume: 0.24 },
-  // et le telephone qui sonne, deux fois, sans qu'on le prenne
+  { from: surMot('cardB', 'encaisser', 104) - 4, src: 'ui-select-click.mp3', volume: 0.34 }, // le terminal
+  { from: surMot('cardB', 'encaisser', 104) + 6, src: 'switch-tap.mp3', volume: 0.24 },
   // UNE VRAIE SONNERIE, pas un bip d'interface. `ui-notify-tech` est une
   // notification logicielle : elle ne dit pas « le telephone du comptoir sonne ».
-  // Le fichier porte deux sonneries sur 4 s ; on le joue une fois sur le mot,
-  // puis une reprise plus basse pendant que la scene continue.
-  { from: surMot('cardA', 'sonne', 130) - 4, src: 'sonnerie-telephone.mp3', volume: 0.50, coupe: 120 },
+  { from: surMot('cardB', 'sonne', 22) - 4, src: 'sonnerie-telephone.mp3', volume: 0.50, coupe: 120 },
 
-  { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.34 },
-  { from: S.cardB.from + 4, src: 'sonnerie-telephone.mp3', volume: 0.34, coupe: 64 },       // ca sonne encore
-  { from: surMot('cardB', 'rates', 56), src: 'bass-hit-short.mp3', volume: 0.40 },          // l'appel tombe
-  { from: surMot('cardB', 'rates', 56) + 2, src: 'heartbeat-single.mp3', volume: 0.34 },
-  { from: surMot('cardB', 'ailleurs', 90) - 8, src: 'air-woosh-quick.mp3', volume: 0.34 },  // ils s'en vont
-  { from: surMot('cardB', 'ailleurs', 90) + 14, src: 'ui-select-click.mp3', volume: 0.30 }, // et reservent la-bas
+  // cardC — ce que l'appel manque coute.
+  { from: S.cardC.from, src: 'sweep-short.mp3', volume: 0.34 },
+  { from: surMot('cardC', 'rates', 56), src: 'bass-hit-short.mp3', volume: 0.40 },          // l'appel tombe
+  { from: surMot('cardC', 'rates', 56) + 2, src: 'heartbeat-single.mp3', volume: 0.34 },
+  { from: surMot('cardC', 'ailleurs', 90) - 8, src: 'air-woosh-quick.mp3', volume: 0.34 },  // ils s'en vont
+  { from: surMot('cardC', 'ailleurs', 90) + 14, src: 'ui-select-click.mp3', volume: 0.30 }, // et reservent la-bas
 
   // ---- Carton du basculement : on ouvre ------------------------------
   { from: S.card1.from, src: 'wind-swoosh-short.mp3', volume: 0.42 },

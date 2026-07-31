@@ -193,7 +193,10 @@ export const IncrustComptoir: React.FC<Contexte> = (ctx) => {
 
   // Le decor s'etablit des l'ouverture du carton (sinon l'ecran reste blanc le
   // temps que la voix attaque) ; les EVENEMENTS, eux, attendent leur mot.
-  const plan = monte(frame, 2, 14);
+  // Le decor part DEJA VISIBLE : une rampe qui commence a zero laisse
+  // toujours quelques images sous le seuil de visibilite, et la garde d'images
+  // plates les comptait a l'ouverture de chaque carton.
+  const plan = 0.55 + 0.45 * monte(frame, 0, 10);
   const sonne = monte(frame, tSonne - 4, 8);
   const caisse = monte(frame, tCaisse - 4, 10, ressort);
 
@@ -306,7 +309,10 @@ export const IncrustAilleurs: React.FC<Contexte> = (ctx) => {
   const tRate = temps(ctx, 'rates', 1.9, fps);
   const tAilleurs = temps(ctx, 'ailleurs', 3.0, fps);
 
-  const plan = monte(frame, 2, 12);
+  // Le decor part DEJA VISIBLE : une rampe qui commence a zero laisse
+  // toujours quelques images sous le seuil de visibilite, et la garde d'images
+  // plates les comptait a l'ouverture de chaque carton.
+  const plan = 0.55 + 0.45 * monte(frame, 0, 10);
   // L'appel sonne, puis s'eteint : c'est l'appel qu'on ne prend pas.
   const sonne = interpolate(frame, [2, 12, tRate - 6, tRate + 2], [0, 1, 1, 0], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp',

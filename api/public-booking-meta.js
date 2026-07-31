@@ -22,6 +22,7 @@ const {
   resolveBlocksForDate,
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS } = require('../lib/ops-engine');
+const { listSellableActivities } = require('../lib/activity-catalog');
 
 // This function serves several public surfaces to stay under the Vercel Hobby
 // 12-function limit:
@@ -225,14 +226,24 @@ function buildDayStatus(blocks, dayDate, center, centerId) {
     closedWindows = merged.map(([start, end]) => ({ start: toHM(start), end: toHM(end) }));
   }
 
-  // Activites VENDABLES seulement (ancres du moteur : bowling, laser_game). Un
-  // id y entre sur un blocage jour entier OU sur le on/off permanent
-  // activityAvailability, que api/public-availability.js applique deja sans que
-  // le client le sache (segment Bowling clickable pour rien).
+  // Activites indisponibles ce jour. Un id y entre sur un blocage jour entier OU
+  // sur le on/off permanent activityAvailability.
+  //
+  // Le perimetre couvre desormais TOUTES les activites vendables du centre, plus
+  // seulement les deux ancres du moteur. Tant que minigolf, billards ou
+  // playground n'etaient pas reservables, les griser n'avait pas de sens (limite
+  // assumee dans scripts/availability-day-check.js). Depuis qu'ils se reservent,
+  // fermer le minigolf un mardi DOIT l'eteindre dans le tunnel, sinon le client
+  // reserve une activite fermee.
+  //
+  // Le grisage des FORMULES, lui, ne bouge pas : il ne depend que des ancres du
+  // moteur (une formule ne casse pas parce qu'un billard est ferme).
   const availability = (center.activityAvailability && typeof center.activityAvailability === 'object')
     ? center.activityAvailability
     : {};
-  const unavailableActivityIds = ANCHOR_ACTIVITY_IDS.filter((id) => availability[id] === false
+  const sellableIds = listSellableActivities({ centerId, availability }).map((activity) => activity.id);
+  const testableIds = [...new Set([...ANCHOR_ACTIVITY_IDS, ...sellableIds])];
+  const unavailableActivityIds = testableIds.filter((id) => availability[id] === false
     || isActivityFullyBlockedOn(blocks, dayDate, id));
 
   // Formules : blocage jour entier direct, OU ancre du moteur indisponible.
@@ -398,6 +409,13 @@ module.exports = async (req, res) => {
     formules: getEffectiveFormules(centerId),
     laserOptions: LASER_GAME_OPTIONS,
     bowlingPrices: BOWLING_PRICES,
+    // Ce que CE centre vend, planifie ou non, avec son tarif quand il est saisi.
+    // Cle ADDITIVE : un centre inconnu ou pas encore configure rend bowling +
+    // laser, c'est-a-dire exactement le tunnel d'avant.
+    activities: listSellableActivities({
+      centerId,
+      availability: center && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
+    }),
     center: center
       ? {
         id: center.id,

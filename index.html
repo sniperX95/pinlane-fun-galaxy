@@ -174,14 +174,17 @@
             </div>
             <div>
               <div class="card-title">Que souhaitez-vous faire ?</div>
-              <div class="card-desc">Bowling, Laser Game ou formule complète</div>
+              <div class="card-desc">Choisissez tout ce qui vous tente, en une seule réservation</div>
             </div>
           </div>
           <div class="segmented">
-            <button class="seg-btn active" id="segBowling" onclick="setType('bowling')">Bowling Simple</button>
-            <button class="seg-btn" id="segLaser" onclick="setType('laser')">Laser Game</button>
+            <button class="seg-btn active" id="segCarte" onclick="setType('carte')">À la carte</button>
             <button class="seg-btn" id="segFormule" onclick="setType('formule')">Nos Formules</button>
           </div>
+          <!-- Grille des activités du centre (multi-sélection). Bowling et laser
+               ouvrent leurs options ; les autres se cochent simplement. -->
+          <div class="activity-picker" id="activityPicker"></div>
+          <div id="programSummary" aria-live="polite"></div>
           <div id="typeAlert" aria-live="polite"></div>
         </div>
 

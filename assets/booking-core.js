@@ -178,6 +178,36 @@ function getCenterScheduleConfig() {
   return centerScheduleConfig;
 }
 
+// Ce que CE centre vend (cle `activities` de /api/public-booking-meta) : bowling
+// et laser, qui contraignent le creneau, plus les activites libres du centre
+// (minigolf, billards, arcades...). Vide tant que la meta n'est pas revenue : le
+// tunnel retombe alors sur les deux activites planifiees, c'est-a-dire sur le
+// formulaire d'avant.
+let centerActivities = [];
+
+function setCenterActivities(list) {
+  centerActivities = Array.isArray(list) ? list.filter((item) => item && item.id) : [];
+}
+
+function getCenterActivities() {
+  return centerActivities.slice();
+}
+
+function getCenterActivity(activityId) {
+  return centerActivities.find((item) => item.id === String(activityId || '')) || null;
+}
+
+// Prix d'une activite libre, ou null quand le centre n'a pas saisi son tarif.
+// null s'affiche "sur place" : afficher 0 EUR promettrait la gratuite.
+function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1 } = {}) {
+  if (!activity || activity.priceValue == null) return null;
+  if (activity.priceType === 'per_pax') return Math.round(activity.priceValue * Math.max(1, Number(pax) || 1) * 100) / 100;
+  if (activity.priceType === 'per_unit_hour') {
+    return Math.round(activity.priceValue * Math.max(1, Number(units) || 1) * Math.max(0.5, Number(hours) || 1) * 100) / 100;
+  }
+  return null;
+}
+
 // Verdict serveur DU JOUR (cle center.day de /api/public-booking-meta?date=...).
 // Le serveur est le seul a connaitre les blocages ponctuels poses depuis le
 // cockpit (fermeture exceptionnelle, activite en panne, formule suspendue) :
@@ -431,6 +461,14 @@ function getReservationLabel(res) {
 }
 function reservationNeedsLanes(type, formuleId) {
   const formule = FORMULES.find(x => x.id === formuleId);
+  // Une VISITE mobilise des pistes des qu'elle contient du bowling. Sans ce cas,
+  // le tunnel n'allouait aucune piste pour une visite bowling + laser et postait
+  // lanes: [] : le serveur rattrapait, mais le client n'aurait plus rien verifie
+  // avant d'envoyer, et le recapitulatif aurait affiche zero piste.
+  if (type === 'visite') {
+    const chosen = (typeof state !== 'undefined' && state.booking && state.booking.activities) || {};
+    return Boolean(chosen.bowling);
+  }
   return type === 'bowling' || !!(formule && formule.hasBowling);
 }
 function getRequiredLaneCount(type, pax, formuleId) {
@@ -1502,6 +1540,10 @@ function getFormulaActivityProgressSummary(reservation) {
     isFormulaBlockedDate,
     isOfferEnabled,
     setCenterScheduleConfig,
+    setCenterActivities,
+    getCenterActivities,
+    getCenterActivity,
+    getFreeActivityPrice,
     getCenterScheduleConfig,
     setCenterDayStatus,
     getCenterDayStatus,

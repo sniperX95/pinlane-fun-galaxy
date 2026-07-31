@@ -80,7 +80,8 @@ const FORMULA_COLS = ['id', 'name', 'family', 'min_pax', 'price_type', 'price_va
   'sort_index', 'source', 'active'];
 const STEP_COLS = ['formula_id', 'position', 'activity_id', 'count', 'duration_minutes', 'label', 'critical', 'resource_type'];
 const ACTIVITY_COLS = ['id', 'center_id', 'name', 'resource_type', 'duration_model', 'service_model',
-  'risk_drivers', 'planning_pressure', 'source', 'active'];
+  'risk_drivers', 'planning_pressure', 'bookable', 'price_type', 'price_value', 'price_unit',
+  'booking_order', 'source', 'active'];
 
 function rowFromParams(cols, params) {
   const row = {};

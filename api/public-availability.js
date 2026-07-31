@@ -32,10 +32,12 @@ const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = requir
 const {
   isCenterClosedAt,
   isActivityBlockedAt,
+  isActivityFullyBlockedOn,
   isFormulaBlockedOn,
   isFormulaFullyBlockedOn,
   isLaneBlockedAt,
 } = require('../lib/availability-blocks');
+const { buildProgramFormula, describeProgram, normalizeProgram } = require('../lib/visit-program');
 
 const LASER_ARENA_MINUTES = 25;
 // Fenêtre d'accueil fixe AVANT la première activité : l'heure choisie par le
@@ -383,7 +385,14 @@ module.exports = async (req, res) => {
     const centerBowlingConfig = centerDoc?.resources?.bowling || null;
     const centerLaneCount = Number(centerBowlingConfig?.laneCount) || TOTAL_LANES;
     const rawType = String(url.searchParams.get('type') || 'bowling');
-    const type = rawType === 'formule' ? 'formule' : rawType === 'laser' ? 'laser' : 'bowling';
+    // 'visite' : plusieurs activites dans une meme reservation (bowling ET laser,
+    // ou une activite libre seule). Les types historiques ne changent pas d'un
+    // caractere : une visite a UNE seule activite planifiee continue de passer
+    // par son chemin d'origine, c'est le tunnel qui n'envoie 'visite' que pour
+    // les combinaisons qui n'existaient pas.
+    const type = rawType === 'formule' ? 'formule'
+      : rawType === 'laser' ? 'laser'
+        : rawType === 'visite' ? 'visite' : 'bowling';
     // Borne haute alignée sur la contrainte SQL reservations_pax_check (pax <= 240) :
     // un pax géant non authentifié déclencherait des allocations de tableau
     // proportionnelles dans le moteur de planning (DoS). Le trunc neutralise aussi NaN.
@@ -403,6 +412,14 @@ module.exports = async (req, res) => {
       preferredTimes = JSON.parse(String(url.searchParams.get('preferredTimes') || '{}')) || {};
     } catch (error) {
       preferredTimes = {};
+    }
+    // Panier de la visite. JSON malforme = panier vide (message clair), jamais
+    // une 500 : cet endpoint est public et sa robustesse prime sur le diagnostic.
+    let programInput = [];
+    try {
+      programInput = JSON.parse(String(url.searchParams.get('program') || '[]')) || [];
+    } catch (error) {
+      programInput = [];
     }
     if (preferredBowlingTime) preferredTimes.bowling = preferredBowlingTime;
     if (preferredLaserTime) preferredTimes.laser_game = preferredLaserTime;
@@ -437,7 +454,7 @@ module.exports = async (req, res) => {
         totalDuration: 0,
         price: 0,
         requiresLanes: false,
-        label: type === 'formule' && formule ? formule.name : type === 'laser' ? 'Laser Game' : 'Bowling Classique',
+        label: type === 'formule' && formule ? formule.name : type === 'laser' ? 'Laser Game' : type === 'visite' ? 'Votre visite' : 'Bowling Classique',
         message: 'Cette date est déjà passée.',
       });
       return;
@@ -458,7 +475,7 @@ module.exports = async (req, res) => {
         totalDuration: 0,
         price: 0,
         requiresLanes: false,
-        label: type === 'formule' ? formule.name : type === 'laser' ? 'Laser Game' : 'Bowling Classique',
+        label: type === 'formule' ? formule.name : type === 'laser' ? 'Laser Game' : type === 'visite' ? 'Votre visite' : 'Bowling Classique',
         message: 'Le centre est fermé à cette date.',
       });
       return;
@@ -540,6 +557,151 @@ module.exports = async (req, res) => {
 
     if (date === todayStr()) {
       minTime = Math.max(minTime, roundUpHalfHour(currentTimeDecimal()));
+    }
+
+    // ── VISITE : plusieurs activites dans une seule reservation ──────────────
+    // Deux cas, et un seul moteur.
+    //   * au moins deux activites PLANIFIEES (bowling + laser) : on compose une
+    //     formule a la volee et on la donne au moteur des formules, qui sait
+    //     deja placer deux ressources, gerer les conflits et proposer les heures
+    //     par ancre. Aucun second moteur n'est ecrit.
+    //   * aucune activite planifiee (minigolf seul, billards seuls) : il n'y a
+    //     rien a allouer. Les creneaux sont simplement les heures d'ouverture, a
+    //     la demie, moins les fermetures du jour.
+    if (type === 'visite') {
+      const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig });
+      const visitLabel = 'Votre visite';
+      const respondVisit = (slots, message, extra = {}) => {
+        sendJson(res, 200, {
+          ok: true,
+          date,
+          ...scheduleMeta,
+          slots,
+          laneCount: program.laneCount,
+          duration: program.plannedItems[0]?.duration || 0,
+          totalDuration: Math.round((program.items.reduce((sum, item) => sum + (item.minutes || 0), 0) / 60) * 100) / 100,
+          price: program.price,
+          requiresLanes: program.hasBowling,
+          label: visitLabel,
+          program,
+          message,
+          ...extra,
+        });
+      };
+
+      if (!program.items.length) {
+        respondVisit([], 'Choisissez au moins une activité.');
+        return;
+      }
+
+      // Une activite fermee toute la journee (blocage staff) sort du programme
+      // AVANT tout calcul : mieux vaut le dire que proposer un creneau pour une
+      // activite qui n'ouvrira pas.
+      const blockedItem = program.items.find((item) => isActivityFullyBlockedOn(snapshot.blocks || [], date, item.activityId));
+      if (blockedItem) {
+        respondVisit([], `${blockedItem.name} n'est pas disponible ce jour.`);
+        return;
+      }
+
+      const engineContext = {
+        reservations: snapshot.reservations,
+        laneStatuses: snapshot.laneStatuses,
+        blocks: snapshot.blocks || [],
+      };
+      const visitFormula = buildProgramFormula(program, { name: visitLabel });
+
+      if (visitFormula) {
+        let anchorMeta = null;
+        try {
+          anchorMeta = getFormulaAnchorAvailability({ centerId, formula: visitFormula, date, pax }, engineContext);
+        } catch (error) {
+          anchorMeta = null;
+        }
+        const guardContext = {
+          centerId,
+          date,
+          type: 'formule',
+          formuleId: '',
+          pax,
+          duration: program.plannedItems[0]?.duration || 0,
+          totalDuration: 0,
+          laneCount: program.laneCount,
+          requiresLanes: program.hasBowling,
+          label: visitLabel,
+          snapshot,
+        };
+        const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game);
+        if (!hasAnchorChoice) {
+          // Le client n'a pas encore choisi ses heures : on rend la matiere
+          // premiere (les heures possibles par activite), comme pour une formule
+          // a plusieurs ancres.
+          respondVisit([], anchorMeta && anchorMeta.ok ? '' : 'Aucune combinaison disponible ce jour-là.', { anchors: anchorMeta });
+          return;
+        }
+        const plan = planningAgent(
+          {
+            centerId,
+            date,
+            type: 'formule',
+            formula: visitFormula,
+            pax,
+            duration: program.plannedItems[0]?.duration || 0,
+            preference: { preferredTimes, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
+            pauseMinutes,
+          },
+          engineContext,
+        );
+        const recommended = plan?.plan?.recommended;
+        const guarded = recommended && recommended.ok
+          ? filterSlotsByFinalGuards([toFormulaSlot(recommended, snapshot, program.plannedItems[0]?.duration || 0)], guardContext)
+          : [];
+        respondVisit(
+          guarded,
+          guarded.length ? '' : (plan?.plan?.reason || 'Cette combinaison n’est plus disponible. Essayez une heure proche.'),
+          { anchors: anchorMeta, suggestions: plan?.plan?.anchorSuggestions || [] },
+        );
+        return;
+      }
+
+      // Visite 100 % libre : aucune ressource a reserver, donc aucun creneau a
+      // refuser. On propose les heures d'ouverture a la demie et on laisse la
+      // garde de fermeture faire son travail.
+      const visitMinutes = program.items.reduce((sum, item) => sum + (item.minutes || 0), 0);
+      const visitHours = Math.max(0.5, Math.round((visitMinutes / 60) * 2) / 2);
+      const freeSlots = [];
+      for (let value = Math.ceil(minTime * 2) / 2; value <= schedule.close - visitHours; value += 0.5) {
+        const startMin = Math.round(value * 60);
+        const endMin = startMin + Math.round(visitHours * 60);
+        if (isCenterClosedAt(snapshot.blocks || [], date, startMin)) continue;
+        const startTime = numToTime(value);
+        const endTime = numToTime(value + visitHours);
+        freeSlots.push({
+          time: startTime,
+          lanes: [],
+          freeCount: 0,
+          opsPlan: {
+            startTime,
+            endTime,
+            totalMinutes: Math.round(visitHours * 60),
+            staffSummary: `${visitLabel} - ${pax} personne${pax > 1 ? 's' : ''} | ${describeProgram(program)} | Aucune ressource a bloquer`,
+            assignedLanes: [],
+            timeline: program.items.map((item) => ({ type: 'activity', activityId: item.activityId, label: item.name })),
+            // Des blocs en capacite SOUPLE : ils disent au staff ce que le
+            // groupe vient faire sans jamais occuper piste ni arene. C'est aussi
+            // ce qui fait tomber la reservation dans l'onglet hors planning.
+            resourceBlocks: program.items.map((item, index) => ({
+              resourceType: 'soft_capacity',
+              activityId: item.activityId,
+              startTime,
+              endTime,
+              countIndex: index + 1,
+            })),
+          },
+        });
+        if (endMin >= Math.round(schedule.close * 60)) break;
+      }
+      respondVisit(freeSlots, freeSlots.length ? '' : 'Aucun horaire disponible ce jour-là.');
+      return;
     }
 
     if (type === 'formule') {

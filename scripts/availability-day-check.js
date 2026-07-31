@@ -247,10 +247,19 @@ async function setStoreBlocks(rows) {
   ok(laserRange.unavailableActivityIds.length === 0 && laserRange.unavailableFormulaIds.length === 0,
     'blocage de PLAGE sur laser_game : AUCUN grisage, aucun segment eteint');
 
-  // Activite NON-ancre : aucun effet (le moteur ne refuse pas la combinaison).
+  // Activite NON-ancre VENDABLE (playground est propose par Libramont) : elle
+  // s'eteint pour le client, sans jamais griser une formule. La "limite assumee"
+  // d'avant (aucun verdict) valait tant que ces activites n'etaient pas
+  // reservables ; depuis qu'elles le sont, laisser reserver un playground ferme
+  // serait le vrai defaut.
   const playgroundBlocked = day(normBlocks([rawBlock({ scope_type: 'activity', scope_ref: 'playground', date: TUE })]), TUE);
-  ok(playgroundBlocked.unavailableActivityIds.length === 0 && playgroundBlocked.unavailableFormulaIds.length === 0,
-    'activite NON-ancre (playground) bloquee : aucun verdict prononce (limite assumee)');
+  ok(playgroundBlocked.unavailableActivityIds.includes('playground'),
+    'activite libre vendable (playground) bloquee : elle entre dans unavailableActivityIds');
+  ok(playgroundBlocked.unavailableFormulaIds.length === 0,
+    'une activite libre bloquee ne grise AUCUNE formule (le moteur ne depend que des ancres)');
+  ok(!playgroundBlocked.unavailableActivityIds.includes('bowling')
+    && !playgroundBlocked.unavailableActivityIds.includes('laser_game'),
+    'les deux activites planifiees restent disponibles');
 
   // =========================================================================
   console.log('\n[6] activityAvailability : le on/off permanent remonte enfin au client');

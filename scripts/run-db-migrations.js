@@ -195,6 +195,16 @@ const MIGRATIONS = [
     file: 'database/catalog-schema.sql',
     description: "Catalogue unifie (activities / formulas / formula_steps) : source DB unique fusionnee par-dessus les fichiers socle (activities.json, formulas.json, booking-config FORMULES) par lib/catalog-store.js. time_limit canonique en minutes depuis minuit ; is_birthday_formula remplace le regex famille ; hasBowling derive des steps. Aucune ligne = comportement identique aux fichiers ; apres backfill seed, comportement identique (prix/dispo/ancrage). Additive et idempotente.",
   },
+  {
+    id: '0039_activity_booking',
+    file: 'database/activity-booking-schema.sql',
+    description: "Reservabilite et tarif d'une activite (bookable, price_type, price_value, price_unit, booking_order) : le tunnel client peut proposer minigolf, billards, arcades... et le tarif devient une donnee de centre au lieu d'une constante du code. Colonnes nullables : NULL = valeur du socle, donc aucune ligne existante ne change de comportement.",
+  },
+  {
+    id: '0040_reservation_program',
+    file: 'database/reservation-program-schema.sql',
+    description: "Programme d'une reservation (plusieurs activites dans une meme visite) en jsonb additif. `type` reste derive du programme pour ne pas toucher aux 260+ lectures existantes ; ops_plan.resource_blocks reste la verite du planning. NULL = reservation mono-activite, comportement inchange.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

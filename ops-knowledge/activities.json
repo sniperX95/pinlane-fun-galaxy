@@ -11,7 +11,8 @@
         "explainMinutes": 5,
         "transitionOutMinutes": 5
       },
-      "riskDrivers": ["lane_conflict", "late_group", "lane_bug", "drinks_before_start"]
+      "riskDrivers": ["lane_conflict", "late_group", "lane_bug", "drinks_before_start"],
+      "booking": { "bookable": true, "order": 1, "priceType": "grid_bowling", "unitLabel": "par piste" }
     },
     {
       "id": "laser_game",
@@ -24,7 +25,8 @@
         "transitionOutMinutes": 5,
         "betweenGamesMinutes": 5
       },
-      "riskDrivers": ["late_group", "incomplete_group", "laser_bug", "briefing_delay", "single_arena_pressure"]
+      "riskDrivers": ["late_group", "incomplete_group", "laser_bug", "briefing_delay", "single_arena_pressure"],
+      "booking": { "bookable": true, "order": 2, "priceType": "grid_laser", "unitLabel": "par personne" }
     },
     {
       "id": "minigolf_blacklight",
@@ -36,7 +38,8 @@
         "transitionOutMinutes": 5
       },
       "riskDrivers": ["group_slow"],
-      "planningPressure": "low"
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 3, "priceType": "per_pax", "unitLabel": "par personne" }
     },
     {
       "id": "golf_oclock",
@@ -48,7 +51,8 @@
         "transitionOutMinutes": 5
       },
       "riskDrivers": ["center_specific_availability"],
-      "planningPressure": "low"
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 4, "priceType": "per_pax", "unitLabel": "par personne" }
     },
     {
       "id": "arcade_time",
@@ -60,7 +64,8 @@
         "explainMinutes": 2
       },
       "riskDrivers": ["card_setup_delay", "bar_queue"],
-      "planningPressure": "low"
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 6, "priceType": "per_pax", "unitLabel": "par personne" }
     },
     {
       "id": "playground",
@@ -71,7 +76,8 @@
         "checkInMinutes": 3
       },
       "riskDrivers": ["age_rule", "group_slow"],
-      "planningPressure": "low"
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 7, "priceType": "per_pax", "unitLabel": "par enfant" }
     },
     {
       "id": "party_table",
@@ -81,7 +87,8 @@
       "serviceModel": {
         "setupMinutes": 5
       },
-      "riskDrivers": ["table_capacity", "food_and_drink_delay"]
+      "riskDrivers": ["table_capacity", "food_and_drink_delay"],
+      "booking": { "bookable": false }
     },
     {
       "id": "duckpin_bowling",
@@ -92,7 +99,9 @@
         "explainMinutes": 5,
         "transitionOutMinutes": 5
       },
-      "riskDrivers": ["group_slow"]
+      "riskDrivers": ["group_slow"],
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 8, "priceType": "per_pax", "unitLabel": "par personne" }
     },
     {
       "id": "axe_throwing",
@@ -103,7 +112,8 @@
         "briefingMinutes": 8,
         "transitionOutMinutes": 5
       },
-      "riskDrivers": ["safety_briefing"]
+      "riskDrivers": ["safety_briefing"],
+      "booking": { "bookable": false }
     },
     {
       "id": "free_roaming_vr",
@@ -114,7 +124,8 @@
         "briefingMinutes": 8,
         "transitionOutMinutes": 5
       },
-      "riskDrivers": ["equipment_setup", "briefing_delay"]
+      "riskDrivers": ["equipment_setup", "briefing_delay"],
+      "booking": { "bookable": false }
     },
     {
       "id": "karting_vr",
@@ -125,7 +136,34 @@
         "briefingMinutes": 5,
         "transitionOutMinutes": 5
       },
-      "riskDrivers": ["equipment_setup"]
+      "riskDrivers": ["equipment_setup"],
+      "booking": { "bookable": false }
+    },
+    {
+      "id": "billards",
+      "name": "Billards",
+      "resourceType": "soft_capacity",
+      "durationModel": { "type": "open_range", "defaultMinutes": 60, "minMinutes": 30, "maxMinutes": 180 },
+      "serviceModel": {
+        "explainMinutes": 2,
+        "transitionOutMinutes": 5
+      },
+      "riskDrivers": ["table_capacity"],
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 5, "priceType": "per_unit_hour", "unitLabel": "par table et par heure" }
+    },
+    {
+      "id": "fun_run",
+      "name": "Fun Run by PIXEL",
+      "resourceType": "soft_capacity",
+      "durationModel": { "type": "open_range", "defaultMinutes": 30, "minMinutes": 15, "maxMinutes": 60 },
+      "serviceModel": {
+        "explainMinutes": 3,
+        "transitionOutMinutes": 5
+      },
+      "riskDrivers": ["equipment_setup"],
+      "planningPressure": "low",
+      "booking": { "bookable": true, "order": 9, "priceType": "per_pax", "unitLabel": "par personne" }
     }
   ]
 }

@@ -2145,6 +2145,10 @@ function loadState() {
       name:'', phone:'', email:'', pax:4,
       date: today,
       type:'bowling', formuleId:'', duration:1, totalDuration:1, laneCount:1, startTime:'',
+      // Mode de composition + activites cochees. Le bowling coche par defaut :
+      // le formulaire s'ouvre exactement comme avant, sur un bowling d'une heure.
+      mode: 'carte',
+      activities: { bowling: { duration: 1 } },
       allocatedLanes: [],
       preference: createDefaultFormulaPreference(),
       pauseMinutes: 0,
@@ -3112,29 +3116,227 @@ function updatePaxAlert() {
 }
 
 function normalizeBookingType(type) {
-  return ['bowling', 'laser', 'formule'].includes(type) ? type : 'bowling';
+  return ['bowling', 'laser', 'formule', 'visite'].includes(type) ? type : 'bowling';
+}
+
+// Deux modes seulement : composer sa visite « à la carte », ou prendre une
+// formule tout compris. Les anciens types restent acceptes (vieux lien, etat
+// sauvegarde) et retombent sur la carte avec la bonne activite cochee.
+function normalizeBookingMode(mode) {
+  if (mode === 'formule') return 'formule';
+  return 'carte';
+}
+
+// LE TYPE ENVOYE AU SERVEUR SE DEDUIT de ce qui est coche. Une visite qui ne
+// contient qu'une activite planifiee garde son type historique ('bowling' ou
+// 'laser') et donc son chemin de disponibilite d'origine : on ne fait passer par
+// le chemin 'visite' que ce qui n'existait pas avant.
+function deriveBookingType() {
+  if (normalizeBookingMode(state.booking.mode) === 'formule') return 'formule';
+  const chosen = getChosenActivities();
+  if (!chosen.length) return 'bowling';
+  const planned = chosen.filter(item => item.planned);
+  if (planned.length === 1 && chosen.length === 1) return planned[0].id === 'laser_game' ? 'laser' : 'bowling';
+  return 'visite';
+}
+
+// Les activites cochees, dans l'ordre du catalogue du centre.
+function getChosenActivities() {
+  const selection = state.booking.activities && typeof state.booking.activities === 'object' ? state.booking.activities : {};
+  const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
+  const list = catalog.length ? catalog : [
+    { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling' },
+    { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser' },
+  ];
+  return list.filter(activity => selection[activity.id]).map(activity => ({ ...activity, options: selection[activity.id] || {} }));
 }
 
 function syncBookingTypeUi() {
   const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(state.booking.date) : null;
   const off = dayStatus && Array.isArray(dayStatus.unavailableActivityIds) ? dayStatus.unavailableActivityIds : [];
-  // L'ecran ne reste jamais sur un choix mort : on bascule avant de peindre.
-  let type = normalizeBookingType(state.booking.type);
-  if ((type === 'bowling' && off.includes('bowling')) || (type === 'laser' && off.includes('laser_game'))) {
-    type = off.includes('bowling') ? (off.includes('laser_game') ? 'formule' : 'laser') : 'bowling';
+  const mode = normalizeBookingMode(state.booking.mode);
+  // Une activite fermee ce jour est DECOCHEE : l'ecran ne garde jamais un choix
+  // mort, et le client n'arrive pas a l'etape des creneaux avec un programme
+  // qui ne peut pas exister.
+  if (state.booking.activities && off.length) {
+    off.forEach(id => { delete state.booking.activities[id]; });
   }
-  state.booking.type = type;
-  document.getElementById('segBowling').classList.toggle('active', type === 'bowling');
-  document.getElementById('segLaser').classList.toggle('active', type === 'laser');
-  document.getElementById('segFormule').classList.toggle('active', type === 'formule');
-  document.getElementById('bowlingBlock').classList.toggle('hidden', type !== 'bowling');
-  document.getElementById('laserBlock').classList.toggle('hidden', type !== 'laser');
-  document.getElementById('formuleBlock').classList.toggle('hidden', type !== 'formule');
-  // segFormule n'est JAMAIS eteint : une formule sans l'activite fermee reste
-  // vendable, c'est renderFormules qui tranche carte par carte.
-  applySegmentOffState('segBowling', off.includes('bowling'));
-  applySegmentOffState('segLaser', off.includes('laser_game'));
+  state.booking.mode = mode;
+  state.booking.type = deriveBookingType();
+  document.getElementById('segCarte').classList.toggle('active', mode === 'carte');
+  document.getElementById('segFormule').classList.toggle('active', mode === 'formule');
+  const picker = document.getElementById('activityPicker');
+  if (picker) picker.classList.toggle('hidden', mode !== 'carte');
+  document.getElementById('bowlingBlock').classList.add('hidden');
+  document.getElementById('laserBlock').classList.add('hidden');
+  document.getElementById('formuleBlock').classList.toggle('hidden', mode !== 'formule');
+  renderActivityPicker(off);
   renderTypeAlert(off, dayStatus);
+}
+
+// La grille d'activites. Une carte cochee ouvre ses options SOUS elle : le
+// client voit ce qu'il choisit sans changer d'ecran, et le prix suit.
+function renderActivityPicker(off = []) {
+  const host = document.getElementById('activityPicker');
+  if (!host) return;
+  const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
+  if (!catalog.length) { host.innerHTML = ''; return; }
+  const selection = state.booking.activities || (state.booking.activities = {});
+  const pax = Math.max(1, Number(state.booking.pax) || 1);
+  host.innerHTML = catalog.map(activity => {
+    const chosen = Boolean(selection[activity.id]);
+    const closed = off.includes(activity.id);
+    const options = selection[activity.id] || {};
+    return `<div class="activity-card${chosen ? ' is-on' : ''}${closed ? ' is-off' : ''}">
+      <button type="button" class="activity-toggle" ${closed ? 'disabled aria-disabled="true"' : ''}
+        aria-pressed="${chosen ? 'true' : 'false'}" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
+        <span class="activity-name">${escapeHtml(activity.name)}</span>
+        <span class="activity-price">${closed ? 'Fermé ce jour' : escapeHtml(activityPriceHint(activity, pax))}</span>
+        <span class="activity-check" aria-hidden="true"></span>
+      </button>
+      ${chosen && !closed ? `<div class="activity-options">${renderActivityOptions(activity, options, pax)}</div>` : ''}
+    </div>`;
+  }).join('');
+  renderProgramSummary();
+}
+
+// Ce qu'on annonce sous le nom : un prix quand le centre l'a saisi, la mention
+// honnete "réglé sur place" sinon. Jamais 0 EUR pour "on ne sait pas".
+function activityPriceHint(activity, pax) {
+  if (activity.priceType === 'grid_bowling') return `dès ${DURATION_OPTIONS[0].price}€ la piste`;
+  if (activity.priceType === 'grid_laser') return `dès ${LASER_GAME_OPTIONS[0].price}€ par joueur`;
+  if (activity.priceValue == null) return 'réglé sur place';
+  return `${activity.priceValue}€ ${activity.unitLabel || ''}`.trim();
+}
+
+function renderActivityOptions(activity, options, pax) {
+  if (activity.id === 'bowling') {
+    const current = Number(options.duration) || 1;
+    return `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
+      <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}"
+        onclick="setBookingActivityOption('bowling','duration',${option.value})">
+        ${option.label}<span class="price">${option.price}€ / piste</span>
+      </button>`).join('')}</div>`;
+  }
+  if (activity.id === 'laser_game') {
+    const current = Number(options.games) || 1;
+    return `<div class="activity-option-row">${LASER_GAME_OPTIONS.map(option => `
+      <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}"
+        onclick="setBookingActivityOption('laser_game','games',${option.games})">
+        ${option.label}<span class="price">${option.price}€ / pers</span>
+      </button>`).join('')}</div>`;
+  }
+  if (activity.priceType === 'per_unit_hour') {
+    const units = Math.max(1, Number(options.units) || 1);
+    const hours = Math.max(0.5, Number(options.hours) || 1);
+    return `<div class="activity-option-row">
+      <label class="activity-mini-field">Nombre<select onchange="setBookingActivityOption('${escapeHtml(activity.id)}','units',this.value)">
+        ${[1, 2, 3, 4, 5, 6].map(value => `<option value="${value}" ${value === units ? 'selected' : ''}>${value}</option>`).join('')}
+      </select></label>
+      <label class="activity-mini-field">Durée<select onchange="setBookingActivityOption('${escapeHtml(activity.id)}','hours',this.value)">
+        ${[0.5, 1, 1.5, 2, 3].map(value => `<option value="${value}" ${value === hours ? 'selected' : ''}>${value === 0.5 ? '30 min' : `${value}h`}</option>`).join('')}
+      </select></label>
+    </div>`;
+  }
+  return `<div class="activity-option-note">Accès à votre arrivée, ${activity.priceValue == null ? 'réglé sur place' : 'compris dans le total'}.</div>`;
+}
+
+// Le programme, en une ligne, sous la grille : ce que le client a compose et ce
+// que ca coute. Le "à partir de" apparait des qu'une activite n'a pas de tarif
+// connu : annoncer un total ferme qui n'en est pas un se paierait au comptoir.
+function renderProgramSummary() {
+  const host = document.getElementById('programSummary');
+  if (!host) return;
+  const chosen = getChosenActivities();
+  if (!chosen.length || normalizeBookingMode(state.booking.mode) === 'formule') { host.innerHTML = ''; return; }
+  const pax = Math.max(1, Number(state.booking.pax) || 1);
+  let total = 0;
+  let complete = true;
+  const parts = chosen.map(activity => {
+    const options = activity.options || {};
+    if (activity.id === 'bowling') {
+      const duration = Number(options.duration) || 1;
+      const lanes = getRequiredLaneCount('bowling', pax, '');
+      total += (DURATION_OPTIONS.find(option => Number(option.value) === duration)?.price || 0) * lanes;
+      return `Bowling ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}`;
+    }
+    if (activity.id === 'laser_game') {
+      const games = Number(options.games) || 1;
+      total += (LASER_GAME_OPTIONS.find(option => Number(option.games) === games)?.price || 0) * pax;
+      return `Laser ${games} partie${games > 1 ? 's' : ''}`;
+    }
+    const price = typeof getFreeActivityPrice === 'function'
+      ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours })
+      : null;
+    if (price == null) complete = false; else total += price;
+    return activity.name;
+  });
+  host.innerHTML = `<div class="program-summary">
+    <span class="program-line">${escapeHtml(parts.join(' + '))}</span>
+    <span class="program-total">${complete ? '' : 'à partir de '}${Math.round(total)}€${complete ? '' : ' <small>+ ce qui se règle sur place</small>'}</span>
+  </div>`;
+}
+
+function toggleBookingActivity(activityId) {
+  const selection = state.booking.activities || (state.booking.activities = {});
+  if (selection[activityId]) {
+    delete selection[activityId];
+  } else {
+    selection[activityId] = activityId === 'bowling' ? { duration: 1 } : activityId === 'laser_game' ? { games: 1 } : {};
+  }
+  state.booking.mode = 'carte';
+  state.booking.formuleId = '';
+  clearCurrentBookingChoice();
+  clearBookingAlternatives();
+  applyChosenActivitiesToBooking();
+  syncBookingTypeUi();
+  updatePaxAlert();
+  save();
+}
+
+function setBookingActivityOption(activityId, key, value) {
+  const selection = state.booking.activities || (state.booking.activities = {});
+  if (!selection[activityId]) selection[activityId] = {};
+  selection[activityId][key] = Number(value);
+  clearCurrentBookingChoice();
+  applyChosenActivitiesToBooking();
+  syncBookingTypeUi();
+  save();
+}
+
+// Les champs historiques (duration, laneCount, totalDuration) restent remplis :
+// tout le reste du tunnel les lit encore, et une visite mono-activite doit
+// produire exactement la meme requete qu'avant.
+function applyChosenActivitiesToBooking() {
+  const chosen = getChosenActivities();
+  const pax = Math.max(1, Number(state.booking.pax) || 1);
+  const bowling = chosen.find(activity => activity.id === 'bowling');
+  const laser = chosen.find(activity => activity.id === 'laser_game');
+  if (bowling) {
+    state.booking.duration = Number(bowling.options.duration) || 1;
+    state.booking.laneCount = getRequiredLaneCount('bowling', pax, '');
+  } else if (laser) {
+    state.booking.duration = Number(LASER_GAME_OPTIONS.find(option => Number(option.games) === (Number(laser.options.games) || 1))?.value) || 0.5;
+    state.booking.laneCount = 0;
+    state.booking.allocatedLanes = [];
+  }
+  state.booking.totalDuration = state.booking.duration;
+  state.booking.preference = createDefaultFormulaPreference();
+  state.booking.pauseMinutes = 0;
+}
+
+// Le panier envoye au serveur. Il ne porte que des identifiants et des options :
+// AUCUN prix. Le montant est recalcule cote serveur, toujours.
+function buildBookingProgramPayload() {
+  return getChosenActivities().map(activity => {
+    const options = activity.options || {};
+    if (activity.id === 'bowling') return { activityId: 'bowling', duration: Number(options.duration) || 1 };
+    if (activity.id === 'laser_game') return { activityId: 'laser_game', games: Number(options.games) || 1 };
+    const item = { activityId: activity.id };
+    if (options.units) item.units = Number(options.units);
+    if (options.hours) item.hours = Number(options.hours);
+    return item;
+  });
 }
 
 // Un segment ferme est DESACTIVE (disabled natif : le onclick inline ne part
@@ -3160,7 +3362,10 @@ function renderTypeAlert(off, dayStatus) {
   if (!el) return;
   if (!dayStatus || !off.length) { el.innerHTML = ''; return; }
   const labels = { bowling: 'Bowling', laser_game: 'Laser Game' };
-  const noms = off.map(id => labels[id] || id).join(' et ');
+  const named = (id) => labels[id]
+    || (typeof getCenterActivity === 'function' ? getCenterActivity(id)?.name : '')
+    || id;
+  const noms = off.map(named).join(' et ');
   const reste = off.length >= 2
     ? 'Les formules sans ces activités restent réservables ce jour.'
     : 'Le reste du centre et les formules restent réservables ce jour.';
@@ -3174,39 +3379,28 @@ function clearCurrentBookingChoice() {
   state.booking.opsPlan = null;
 }
 
+// setType garde son nom (appele par le HTML et par d'anciens etats sauvegardes)
+// mais bascule desormais un MODE : 'carte' (composer sa visite) ou 'formule'.
+// Les anciennes valeurs 'bowling' / 'laser' cochent l'activite correspondante.
 function setType(t) {
-  state.booking.type = normalizeBookingType(t);
-  // syncBookingTypeUi peut REFUSER l'activite demandee (fermee ce jour) et
-  // basculer sur une autre : on relit le type reellement retenu, sinon la
-  // normalisation ci-dessous s'appliquerait au mauvais type.
-  syncBookingTypeUi();
-  const type = state.booking.type;
   clearCurrentBookingChoice();
   clearBookingAlternatives();
-  if (type === 'bowling') {
+  if (t === 'formule') {
+    state.booking.mode = 'formule';
+    state.booking.activities = {};
+  } else {
+    state.booking.mode = 'carte';
     state.booking.formuleId = '';
-    if (!DURATION_OPTIONS.some(option => Number(option.value) === Number(state.booking.duration))) {
-      state.booking.duration = 1;
+    if (!state.booking.activities || !Object.keys(state.booking.activities).length) {
+      state.booking.activities = t === 'laser' ? { laser_game: { games: 1 } } : { bowling: { duration: 1 } };
+    } else if (t === 'bowling' || t === 'laser') {
+      state.booking.activities = t === 'laser' ? { laser_game: { games: 1 } } : { bowling: { duration: 1 } };
     }
-    state.booking.totalDuration = state.booking.duration;
-    state.booking.preference = createDefaultFormulaPreference();
-    state.booking.pauseMinutes = 0;
-    state.booking.laneCount = getRequiredLaneCount('bowling', state.booking.pax, '');
+    applyChosenActivitiesToBooking();
   }
-  if (type === 'laser') {
-    state.booking.formuleId = '';
-    if (!LASER_GAME_OPTIONS.some(option => Number(option.value) === Number(state.booking.duration))) {
-      state.booking.duration = LASER_GAME_OPTIONS[0].value;
-    }
-    state.booking.totalDuration = Number(state.booking.duration) * getLaserWaveCount(state.booking.pax);
-    state.booking.allocatedLanes = [];
-    state.booking.laneCount = 0;
-    state.booking.preference = createDefaultFormulaPreference();
-    state.booking.pauseMinutes = 0;
-  }
+  syncBookingTypeUi();
   renderFormules();
   renderFormulaPreferences();
-  renderLaserOptions();
   updatePaxAlert();
   save();
 }
@@ -3512,6 +3706,10 @@ async function goStep2() {
   if (!schedule) { showAlert('Le centre est fermé à cette date. Choisissez une autre date.'); return; }
   const pax = Number(state.booking.pax) || 0;
   if (pax < 1) { showAlert('Nombre de joueurs invalide.'); return; }
+  if (normalizeBookingMode(state.booking.mode) === 'carte' && !getChosenActivities().length) {
+    showAlert('Choisissez au moins une activité.');
+    return;
+  }
   if (state.booking.type === 'formule') {
     const formule = FORMULES.find(x => x.id === state.booking.formuleId);
     if (!formule) { showAlert('Sélectionnez une formule.'); return; }
@@ -3549,6 +3747,15 @@ async function fetchSlots(options = {}) {
       }
       if (Object.keys(chosenTimes).length) params.set('preferredTimes', JSON.stringify(chosenTimes));
       if (preference.laserPlacement === 'onsite') params.set('laserPlacement', 'onsite');
+    } else if (state.booking.type === 'visite') {
+      // Le panier part tel quel : le serveur le renormalise et recalcule tout
+      // (activites reellement vendues par ce centre, options, prix).
+      params.set('program', JSON.stringify(buildBookingProgramPayload()));
+      const preference = createDefaultFormulaPreference(state.booking.preference || {});
+      const chosenTimes = {};
+      if (preference.preferredTimes.bowling) chosenTimes.bowling = preference.preferredTimes.bowling;
+      if (preference.preferredTimes.laser_game) chosenTimes.laser_game = preference.preferredTimes.laser_game;
+      if (Object.keys(chosenTimes).length) params.set('preferredTimes', JSON.stringify(chosenTimes));
     } else {
       params.set('duration', String(state.booking.duration));
       if (state.booking.type === 'laser') params.set('laserGames', String(getLaserGameCount(state.booking.duration)));
@@ -4346,7 +4553,13 @@ async function confirmBooking() {
     allocated = [];
   }
 
-  const basePrice = getBasePrice(b.type, duration, needsLanes ? allocated.length : 0, Number(b.pax), b.formuleId);
+  const isVisit = b.type === 'visite';
+  // Le prix affiche reste indicatif : le serveur recalcule TOUT (grilles bowling
+  // et laser, tarifs de centre des activites libres) et c'est son montant qui
+  // est enregistre. On envoie le notre pour ne pas casser le payload historique.
+  const basePrice = isVisit
+    ? 0
+    : getBasePrice(b.type, duration, needsLanes ? allocated.length : 0, Number(b.pax), b.formuleId);
   const reservation = {
     name: b.name,
     phone: b.phone,
@@ -4364,6 +4577,9 @@ async function confirmBooking() {
     formuleId: b.formuleId,
     label: formule ? formule.name : b.type === 'laser' ? 'Laser Game' : 'Bowling Classique',
     laserGames: b.type === 'laser' ? getLaserGameCount(b.duration) : 0,
+    // Programme de la visite. Absent pour une reservation mono-activite : le
+    // payload est alors strictement celui d'avant.
+    ...(isVisit ? { program: buildBookingProgramPayload() } : {}),
     preference: b.preference || {},
     pauseMinutes: 0,
     opsPlan: b.opsPlan || null,
@@ -14159,6 +14375,41 @@ function renderFormulaActivityChecklist(r, opts = {}) {
   </div>`;
 }
 
+// LE PROGRAMME d'une visite, sur la fiche staff. Deux colonnes de sens :
+// ce qui est PLACE au planning (piste, arene) et ce qui se fait SUR PLACE. Le
+// comptoir doit savoir que le groupe de 15h vient aussi pour le minigolf et
+// deux billards : c'est exactement l'information qu'il decouvrait a l'arrivee.
+// Absent des reservations mono-activite (program null) : rien ne change pour
+// elles, la fiche reste celle d'avant.
+function renderReservationProgram(reservation) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items)
+    ? reservation.program.items
+    : [];
+  if (items.length < 2) return '';
+  const line = (item) => {
+    const detail = item.activityId === 'bowling'
+      ? `${item.duration}h`
+      : item.games
+        ? `${item.games} partie${item.games > 1 ? 's' : ''}`
+        : item.units
+          ? `${item.units} x ${item.hours}h`
+          : '';
+    const price = item.priceKnown ? `${Math.round(Number(item.price))}€` : 'sur place';
+    return `<div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span style="font-weight:700;color:var(--text);">${escapeHtml(item.name || item.activityId)}${detail ? ` <small style="font-weight:400;color:var(--text-3);">${escapeHtml(detail)}</small>` : ''}</span>
+      <span style="color:var(--text-2);font-weight:700;">${item.planned ? 'planifié' : price}</span>
+    </div>`;
+  };
+  const planned = items.filter((item) => item.planned);
+  const free = items.filter((item) => !item.planned);
+  return `<div class="info-block">
+    <div class="info-label">Programme du groupe</div>
+    ${planned.map(line).join('')}
+    ${free.length ? `<div style="margin-top:10px;color:var(--text-3);font-size:12px;">Sans réservation de ressource, à prévoir au comptoir :</div>${free.map(line).join('')}` : ''}
+    ${reservation.program.priceComplete === false ? '<div style="margin-top:10px;color:var(--text-3);font-size:12px;line-height:1.45;">Une partie du programme n\'a pas de tarif enregistré : elle se règle au comptoir.</div>' : ''}
+  </div>`;
+}
+
 function renderPosDetails(r) {
   const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
   const lanesTxt = r.type === 'laser'
@@ -14195,6 +14446,7 @@ function renderPosDetails(r) {
         <div class="info-row" style="grid-column:1/-1;padding-top:14px;border-top:1px solid var(--border);"><div class="lbl">Emplacement</div><div class="val">${lanesTxt}</div></div>
       </div>
     </div>
+    ${renderReservationProgram(r)}
     ${activityChecklistHtml}
     ${opsPlanHtml}
     <div class="info-block">
@@ -16441,6 +16693,11 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     // Fallback sur la constante FORMULES statique si absent, pour ne rien casser.
     if (Array.isArray(payload?.formules)) {
       window.__pinlaneDisplayFormules = payload.formules;
+    }
+    // Ce que CE centre vend. Sans cette liste, le tunnel ne propose que bowling
+    // et laser : exactement le formulaire d'avant, jamais une page vide.
+    if (Array.isArray(payload?.activities) && typeof setCenterActivities === 'function') {
+      setCenterActivities(payload.activities);
     }
     if (payload?.center && typeof setCenterScheduleConfig === 'function') {
       setCenterScheduleConfig(payload.center);

@@ -159,18 +159,29 @@ function buildSeedRows() {
     divergences.push(...div);
   });
 
-  const activities = ACTIVITIES.map((activity) => ({
-    id: activity.id,
-    center_id: 'all',
-    name: activity.name != null ? activity.name : null,
-    resource_type: activity.resourceType != null ? activity.resourceType : null,
-    duration_model: activity.durationModel != null ? activity.durationModel : null,
-    service_model: activity.serviceModel != null ? activity.serviceModel : null,
-    risk_drivers: Array.isArray(activity.riskDrivers) ? activity.riskDrivers.slice() : null,
-    planning_pressure: activity.planningPressure != null ? activity.planningPressure : null,
-    source: 'seed',
-    active: true,
-  }));
+  const activities = ACTIVITIES.map((activity) => {
+    const booking = (activity.booking && typeof activity.booking === 'object') ? activity.booking : null;
+    return {
+      id: activity.id,
+      center_id: 'all',
+      name: activity.name != null ? activity.name : null,
+      resource_type: activity.resourceType != null ? activity.resourceType : null,
+      duration_model: activity.durationModel != null ? activity.durationModel : null,
+      service_model: activity.serviceModel != null ? activity.serviceModel : null,
+      risk_drivers: Array.isArray(activity.riskDrivers) ? activity.riskDrivers.slice() : null,
+      planning_pressure: activity.planningPressure != null ? activity.planningPressure : null,
+      // Colonnes 0039 : le seed rejoue le socle. Le TARIF reste ce que le fichier
+      // dit (donc vide) : c'est une donnee de centre, saisie par la direction, et
+      // un backfill ne doit jamais ecraser un prix deja pose en base.
+      bookable: booking && booking.bookable != null ? Boolean(booking.bookable) : null,
+      price_type: booking && booking.priceType != null ? String(booking.priceType) : null,
+      price_value: booking && booking.priceValue != null ? Number(booking.priceValue) : null,
+      price_unit: booking && booking.unitLabel != null ? String(booking.unitLabel) : null,
+      booking_order: booking && booking.order != null ? Math.trunc(Number(booking.order)) : null,
+      source: 'seed',
+      active: true,
+    };
+  });
 
   return { formulas, steps, activities, divergences };
 }
@@ -179,8 +190,9 @@ function buildSeedRows() {
 async function upsertActivity(client, row) {
   await client.query(
     `insert into activities
-       (id, center_id, name, resource_type, duration_model, service_model, risk_drivers, planning_pressure, source, active, updated_at)
-     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, now())
+       (id, center_id, name, resource_type, duration_model, service_model, risk_drivers, planning_pressure,
+        bookable, price_type, price_value, price_unit, booking_order, source, active, updated_at)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
      on conflict (id, center_id) do update set
        name = excluded.name,
        resource_type = excluded.resource_type,
@@ -188,6 +200,13 @@ async function upsertActivity(client, row) {
        service_model = excluded.service_model,
        risk_drivers = excluded.risk_drivers,
        planning_pressure = excluded.planning_pressure,
+       bookable = excluded.bookable,
+       price_type = excluded.price_type,
+       -- Le TARIF saisi par la direction survit a un re-seed : le socle n'en
+       -- porte aucun, l'ecraser reviendrait a effacer le travail du client.
+       price_value = coalesce(excluded.price_value, activities.price_value),
+       price_unit = excluded.price_unit,
+       booking_order = excluded.booking_order,
        source = excluded.source,
        active = excluded.active,
        updated_at = now();`,
@@ -195,7 +214,9 @@ async function upsertActivity(client, row) {
       row.id, row.center_id, row.name, row.resource_type,
       row.duration_model == null ? null : JSON.stringify(row.duration_model),
       row.service_model == null ? null : JSON.stringify(row.service_model),
-      row.risk_drivers, row.planning_pressure, row.source, row.active,
+      row.risk_drivers, row.planning_pressure,
+      row.bookable, row.price_type, row.price_value, row.price_unit, row.booking_order,
+      row.source, row.active,
     ],
   );
 }

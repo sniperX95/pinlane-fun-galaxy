@@ -29,3 +29,9 @@ fetched.out
 *.err
 README.md
 AGENTS.md
+
+# Chaine de production video (rushes, node_modules Remotion, mp4) : 1,9 Go
+# qui partaient dans CHAQUE deploiement et le bloquaient a l upload. Rien n y
+# est servi par le site (aucune route, aucun rewrite) et le rendu se fait en
+# local (file://), jamais depuis la prod.
+marketing

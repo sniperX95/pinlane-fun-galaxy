@@ -140,7 +140,11 @@ const PLANCHERS = { morning: 300 };
 // portent. C'est ce qui rend l'ensemble insensible au debit de la synthese — une
 // meme phrase a mesure 2,29 s sur une prise et 2,91 s sur la suivante, et quatre
 // phrases debordaient de leur plan quand les durees etaient fixees a la main.
-const MARGE_CARTON = 0.55;
+// 0,30 ET NON 0,55. Seize plans x 0,25 s de queue en trop faisaient six
+// secondes de film ou personne ne parle et ou rien ne se passe. Le fondu de
+// sortie occupe les quatre dernieres images : 0,30 s laisse la phrase se poser
+// sans laisser le plan trainer.
+const MARGE_CARTON = 0.26;
 
 // QUEUE ELASTIQUE DES PLANS PRODUIT. Leur duree est celle de leur animation, mais
 // on autorise jusqu'a 20 images de tenue supplementaire si la phrase en a besoin :
@@ -177,9 +181,9 @@ const LIGNES = [
   // dire tant qu'on n'a pas compris qu'on regarde un planning. On NOMME donc
   // l'objet avant d'en parler, puis on explique sa grille, et seulement apres on
   // designe une reservation — pendant que la camera se ferme dessus.
-  { decalage: 0.70, plan: 'morning', cible: 'aucun', jeu: '[énergique, souriant, tu interpelles quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
-  { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: 'Ça, c’est ton planning du jour. Chaque colonne, une piste. Chaque bloc, un groupe qui a réservé.' },
-  { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: `Celui-là : ${heureDite(HERO.heure)}, ${enLettres(HERO.pax)} joueurs, piste ${enLettres(HERO.piste)}.` },
+  { decalage: 0.55, plan: 'morning', cible: 'aucun', jeu: '[énergique, souriant, tu interpelles quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
+  { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: 'Ça, c’est ton planning du jour : chaque colonne, une piste, et chaque bloc, un groupe qui a réservé.' },
+  { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: `Celui-là, c’est ${heureDite(HERO.heure)}, ${enLettres(HERO.pax)} joueurs, piste ${enLettres(HERO.piste)}.` },
 
   // --- MOUVEMENT 2 : LE PROBLEME, EN TROIS MARCHES --------------------------
   //
@@ -188,9 +192,9 @@ const LIGNES = [
   // passait de la reservation a l'ecran au comptoir sous pression sans dire
   // pourquoi les deux ont un rapport. La marche du milieu, c'est la question :
   // cette reservation, aujourd'hui, elle arrive comment ?
-  { decalage: 0.40, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice, un peu pressé]', texte: 'Une résa comme celle-là, chez toi, elle arrive comment ? Neuf fois sur dix : au téléphone.' },
-  { decalage: 0.40, plan: 'cardB', cible: 'carton', texte: 'Et le téléphone, il sonne quand t’es au comptoir. Trois groupes qui attendent, une commande à encaisser.' },
-  { decalage: 0.40, plan: 'cardC', cible: 'carton', texte: 'Tu peux pas décrocher. Et l’appel que tu rates, c’est un groupe qui réserve ailleurs.' },
+  { decalage: 0.18, plan: 'cardA', cible: 'carton', jeu: '[plus bas, complice, un peu pressé]', texte: 'Une résa comme celle-là, chez toi, elle arrive comment ? Neuf fois sur dix, au téléphone.' },
+  { decalage: 0.18, plan: 'cardB', cible: 'carton', texte: 'Et le téléphone, il sonne quand t’es au comptoir. Trois groupes qui attendent, une commande à encaisser.' },
+  { decalage: 0.18, plan: 'cardC', cible: 'carton', texte: 'Tu peux pas décrocher. Et l’appel que tu rates, c’est un groupe qui réserve ailleurs.' },
 
   // --- MOUVEMENT 3 : CE QUE C'EST, PUIS LE MECANISME ------------------------
   //
@@ -198,29 +202,29 @@ const LIGNES = [
   // phrases nomment ce que la page affiche vraiment : `table` fait voler les
   // reservations sur le planning puis tape une recherche, `macro` est la page des
   // arrivees du jour, `chart` la liste des evenements.
-  { decalage: 0.40, plan: 'card1', cible: 'carton', jeu: '[ça s’ouvre, enjoué, la solution arrive]', texte: 'Pinlane, c’est le logiciel qui prend ces réservations à ta place. En ligne, jour et nuit.' },
+  { decalage: 0.18, plan: 'card1', cible: 'carton', jeu: '[ça s’ouvre, enjoué, la solution arrive]', texte: 'Pinlane, c’est le logiciel qui prend ces réservations à ta place, en ligne, jour et nuit.' },
   // Ces quatre phrases sont COURTES parce que leur plan est un plan produit : sa
   // duree est celle de son animation, et l'allonger la figerait (piege 78).
   // L'explication vit sur les cartons, la preuve sur le produit.
-  { decalage: 0.40, plan: 'table', cible: 'bandeau', texte: 'Ton client réserve en ligne, la résa se pose toute seule.' },
+  { decalage: 0.18, plan: 'table', cible: 'bandeau', texte: 'Ton client réserve en ligne, et la résa se pose toute seule au bon créneau.' },
   // LA RECHERCHE EST A L'IMAGE : ELLE DOIT ETRE DITE. J'avais coupe cette phrase
   // pour tenir dans la duree du plan — et le plan continuait de taper « Dubois »
   // dans le champ de recherche puis de filtrer les vingt-six reservations,
   // pendant que la voix parlait d'autre chose. Une sequence qui joue sans
   // narration, sur du trafic froid, ne s'explique pas toute seule. Les deux
   // phrases sont donc raccourcies pour tenir a deux dans les 190 images.
-  { decalage: 'apres', plan: 'table', cible: 'bandeau', texte: 'Tu cherches un groupe ? Tu tapes son nom.' },
-  { decalage: 0.40, plan: 'macro', cible: 'bandeau', texte: 'Le jour même, tes arrivées sont déjà prêtes.' },
-  { decalage: 0.40, plan: 'card2', cible: 'carton', texte: 'Et ce qui demande une action, un acompte, un rappel, remonte tout seul en haut de la liste.' },
-  { decalage: 0.40, plan: 'chart', cible: 'bandeau', texte: 'Tes événements, tous au même endroit.' },
+  { decalage: 'apres', plan: 'table', cible: 'bandeau', texte: 'Tu cherches un groupe ? Tu tapes son nom, tu l’as.' },
+  { decalage: 0.18, plan: 'macro', cible: 'bandeau', texte: 'Le jour même, tu vois qui arrive, à quelle heure, et combien ils sont, sans rien chercher.' },
+  { decalage: 0.18, plan: 'card2', cible: 'carton', texte: 'Et ce qui demande une action, un acompte, un rappel, remonte tout seul en haut de la liste.' },
+  { decalage: 0.18, plan: 'chart', cible: 'bandeau', texte: 'Tes anniversaires, tes groupes, tes soirées : tout au même endroit.' },
 
   // --- MOUVEMENT 4 : LA PREUVE, PUIS LE BENEFICE EN TROIS COUPS -------------
-  { decalage: 0.40, plan: 'cardWbr', cible: 'carton', jeu: '[chaleureux, satisfait, tu constates le résultat]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
-  { decalage: 0.40, plan: 'wbr', cible: 'bandeau', texte: 'Tout est là, sans une seule saisie.' },
-  { decalage: 0.45, plan: 'card3', cible: 'carton', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
+  { decalage: 0.18, plan: 'cardWbr', cible: 'carton', jeu: '[chaleureux, satisfait, tu constates le résultat]', texte: 'Le soir, ton chiffre et ton taux d’occupation sont déjà calculés.' },
+  { decalage: 0.18, plan: 'wbr', cible: 'bandeau', texte: 'Tout est là, et tu n’as pas saisi une seule ligne de la journée.' },
+  { decalage: 0.24, plan: 'card3', cible: 'carton', texte: 'Zéro saisie. Zéro double réservation. Zéro appel manqué.' },
 
   // --- L'APPEL A L'ACTION : un trafic froid a besoin qu'on lui dise quoi faire.
-  { decalage: 0.60, plan: 'outro', cible: 'aucun', jeu: '[chaleureux, souriant, une invitation]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
+  { decalage: 0.40, plan: 'outro', cible: 'aucun', jeu: '[chaleureux, souriant, une invitation]', texte: 'Pinlane. La console de ton centre. Le lien est juste en dessous.' },
 ];
 
 
@@ -313,7 +317,20 @@ const appel = () => new Promise((resolve, reject) => {
     // et de l'ecriture, pas d'un curseur qui exagere tout uniformement.
     voice_settings: {
       stability: 0.5, similarity_boost: 0.85, style: 0.28,
-      use_speaker_boost: true, speed: 1.0,
+      // 1,10 ET NON 1,0. « On a le temps de dormir, il parle des fois trop
+    // lentement. » Mesure faite avant de toucher au curseur : 40,0 s de
+    // phonation pure sur 73,6 s de film — 44 % de silence. Le debit est un des
+    // trois leviers, les deux autres sont les creux INTERNES aux phrases et les
+    // trous ENTRE elles, traites plus bas.
+    // Le `style` reste a 0,28 : c'est lui que Movsar avait valide a l'oreille, et
+    // c'est en le poussant a 0,45 que la voix avait sonne sur-jouee. On ne bouge
+    // qu'un curseur a la fois.
+    // 1,14 apres mesure du premier essai a 1,10 : les creux INTERNES n'avaient pas
+    // bouge (15,3 s), et l'analyse fine dit pourquoi — sur ces 15,3 s il n'y a que
+    // 7,7 s de vraies pauses (>180 ms), le reste est l'interstice normal entre
+    // deux mots, qu'on ne peut pas supprimer sans hacher la diction. Le seul
+    // levier qui agit encore sur cette part-la est le debit.
+    use_speaker_boost: true, speed: 1.14,
     },
   });
   const req = https.request({
@@ -446,7 +463,9 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   // regeneration : deux phrases dans un meme plan, decalages regles a la main, et
   // le debit de la synthese qui bouge de 10 % — elles finissaient par se
   // chevaucher. Une valeur calculee ne peut plus deriver.
-  const RESPIRATION = 0.40;
+  // 0,24 : une respiration, pas un silence. A 0,40 les deux phrases d'un meme
+  // plan se lisaient comme deux plans.
+  const RESPIRATION = 0.24;
   mesurees.forEach((x, n) => {
     if (x.ligne.decalage !== 'apres') return;
     const prec = mesurees[n - 1];
@@ -559,5 +578,35 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   console.log(`\naudio : ${path.relative(ROOT, SORTIE_AUDIO)}`);
   console.log(`table : ${path.relative(ROOT, SORTIE_TABLE)}`);
   console.log(`${parle.toFixed(1)}s de parole sur ${FILM.toFixed(1)}s de film (${Math.round(parle / FILM * 100)} %)`);
+
+  // --- DENSITE : LE CHIFFRE QUI DECRIT « ON A LE TEMPS DE DORMIR » ----------
+  //
+  // « Faut que ce soit beaucoup plus dynamique, la on a le temps de dormir, il
+  // parle des fois trop lentement. » Un ressenti de rythme se mesure, et il se
+  // decompose en TROIS termes qu'on corrige separement :
+  //
+  //   phonation    = la somme des durees de mots. C'est le seul temps ou il se
+  //                  passe quelque chose a l'oreille.
+  //   creux INTERNES = les silences DANS les phrases. Ils viennent de la
+  //                  ponctuation : eleven_v3 marque un temps a chaque point.
+  //                  Trois points dans une phrase font deux silences.
+  //   trous ENTRE   = les silences entre deux phrases. Ils viennent des marges
+  //                  de plan, pas de la voix.
+  //
+  // Premiere mesure, avant correction : 40,0 s de phonation sur 73,6 s, soit
+  // 44 % de silence — 15,2 s dedans, 16,9 s entre. Les deux moities comptaient
+  // autant, et je n'aurais pas devine laquelle traiter sans les separer.
+  const phonation = ok.reduce((s, l) => s + l.mots.reduce((t, m) => t + (m.t1 - m.t0), 0), 0);
+  const dedans = ok.reduce((s, l) => s + l.duree, 0) - phonation;
+  const entre = FILM - phonation - dedans;
+  const motsTotal = ok.reduce((s, l) => s + l.mots.length, 0);
+  console.log(`densite : ${phonation.toFixed(1)}s de phonation (${Math.round(phonation / FILM * 100)} %)`
+    + ` · ${dedans.toFixed(1)}s de creux internes · ${entre.toFixed(1)}s entre les phrases`
+    + ` · ${Math.round(motsTotal / phonation * 60)} mots/min`);
+  if (phonation / FILM < 0.5) {
+    console.log(`  ATTENTION : moins de la moitie du film porte de la parole —`
+      + ` c'est ce qui s'entend comme « on a le temps de dormir »`);
+  }
+
   console.log('OK : chaque mot horodate, aucune ligne ne chevauche la suivante');
 })().catch((e) => { console.error(String(e.message || e)); process.exit(1); });

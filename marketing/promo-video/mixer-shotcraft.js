@@ -242,11 +242,23 @@ const AVANT = 0.10;
 const APRES = 0.24;
 const FONDU = 0.04;
 
+// L'AIR EST PROPORTIONNEL AU TROU DISPONIBLE, PAS UNE CONSTANTE.
+//
+// Premiere version : 100 ms avant et 240 ms apres, en dur. Des que les marges de
+// plan ont ete resserrees pour donner du rythme, trois phrases se sont mises a
+// mordre sur la suivante — la garde les a arretees. Une constante ne peut pas
+// tenir face a un montage qui change ; l'air se PARTAGE donc entre les deux
+// phrases qui bordent chaque trou : 60 % a la chute de celle qui finit (c'est
+// elle qu'on entend se couper), 40 % a l'attaque de celle qui commence.
 PHRASES.forEach((p, i) => {
   const prec = PHRASES[i - 1];
   const suiv = PHRASES[i + 1];
-  const deb = Math.max(0, p.de - AVANT, prec ? prec.a + 0.03 : 0);
-  const fin = Math.min(DV, p.a + APRES, suiv ? suiv.de - 0.03 : DV);
+  const trouAvant = prec ? p.at - (prec.at + (prec.a - prec.de)) : p.at;
+  const trouApres = suiv ? suiv.at - (p.at + (p.a - p.de)) : Infinity;
+  const avant = Math.min(AVANT, Math.max(0, trouAvant * 0.4 - 0.01));
+  const apres = Math.min(APRES, Math.max(0, trouApres * 0.6 - 0.01));
+  const deb = Math.max(0, p.de - avant, prec ? prec.a + 0.02 : 0);
+  const fin = Math.min(DV, p.a + apres, suiv ? suiv.de - 0.02 : DV);
   p.deb = +deb.toFixed(3);
   p.fin = +Math.max(fin, p.a).toFixed(3);
   // Le decalage vers l'amont doit etre RENDU au placement : sinon toute la

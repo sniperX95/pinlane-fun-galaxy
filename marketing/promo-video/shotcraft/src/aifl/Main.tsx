@@ -111,8 +111,13 @@ export const AiflMain: React.FC = () => {
           </Sequence>
         );
       })}
-      {/* warm flash cuts straddling scene changes */}
-      {[AIFL_SHOTS.table.from, AIFL_SHOTS.macro.from, AIFL_SHOTS.chart.from, AIFL_SHOTS.wbr.from].map((cut) => (
+      {/* UN ACCENT SUR CHAQUE COUPE, PAS SEULEMENT SUR LES PLANS PRODUIT.
+          « Faut que ce soit beaucoup plus dynamique, on a le temps de dormir. »
+          Le rythme d'un film ne s'entend pas que dans la voix : il se voit aux
+          coupes. Quatre des douze transitions portaient un accent, les huit
+          autres etaient des fondus muets — le film changeait de plan sans que
+          rien ne le marque. Toutes les coupes en ont un maintenant. */}
+      {Object.values(AIFL_SHOTS).map((s) => s.from).filter((f) => f > 0).map((cut) => (
         <Sequence key={cut} from={cut - 5} durationInFrames={10}>
           <FlashCut duration={10} />
         </Sequence>

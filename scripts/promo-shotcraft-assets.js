@@ -304,12 +304,30 @@ const etaler = (n, k) => (k >= n
     // ce qui manquait a la narration : « huit pistes, quarante-huit
     // reservations » pendant qu'un gros plan designe une carte precise.
     if (pg.nom === 'projects') {
-      entree.reservations = await page.evaluate(() => [...document.querySelectorAll('.booking')].map((el) => {
+      entree.reservations = await page.evaluate(() => {
+        // LA PISTE SE LIT DANS LA COLONNE, PAS DANS UN ATTRIBUT.
+        //
+        // Movsar : « au debut ca dit piste 6, alors que c'est piste 5, l'endroit
+        // ou le motion design montre la carte. » Verifie : `data-booking-lane`
+        // est DEJA en base 1, et j'y ajoutais 1 — toutes les cartes etaient
+        // decalees d'une colonne. Une base d'indexation se devine ; une position
+        // a l'ecran se mesure. On cherche donc l'en-tete de colonne dont la
+        // bande horizontale contient le centre de la reservation, et on lit SON
+        // libelle. Le chiffre dit par la voix est alors celui que le spectateur
+        // lit au-dessus de la carte, par construction.
+        const colonnes = [...document.querySelectorAll('.lane-header')].map((el) => {
+          const r = el.getBoundingClientRect();
+          const n = (el.textContent.match(/(\d+)\s*$/) || [])[1];
+          return { x: r.x + window.scrollX, w: r.width, piste: n ? Number(n) : null };
+        });
+        return [...document.querySelectorAll('.booking')].map((el) => {
         const lis = (s) => {
           const n = el.querySelector(s);
           return n ? n.textContent.replace(/\s+/g, ' ').trim() : '';
         };
         const r = el.getBoundingClientRect();
+        const centre = r.x + window.scrollX + r.width / 2;
+        const col = colonnes.find((c) => centre >= c.x && centre <= c.x + c.w);
         const plage = (el.getAttribute('data-range') || '').replace(/\s+/g, ' ').trim();
         // Les noms de classe viennent d'une SONDE du DOM rendu, pas d'un fichier
         // d'artefact : ma premiere version cherchait `.booking-meta`, qui
@@ -324,11 +342,22 @@ const etaler = (n, k) => (k >= n
           pax: pax ? Number(pax) : null,
           duree: lis('.bk-dur'),
           formule: lis('.b-tag'),
-          piste: Number(el.getAttribute('data-booking-lane') || 0) + 1,
+          piste: col ? col.piste : null,
+          // On garde l'attribut pour pouvoir CHIFFRER l'ecart : c'est lui qui
+          // avait mis « piste 6 » a la place de « piste 5 ».
+          lane: Number(el.getAttribute('data-booking-lane')),
         };
-      }));
+        });
+      });
       const creux = entree.reservations.filter((b) => !b.nom || !b.heure || !b.pax).length;
       if (creux) RATES.push(`projects : ${creux} reservation(s) sans nom, heure ou effectif`);
+      const sansCol = entree.reservations.filter((b) => b.piste === null).length;
+      if (sansCol) RATES.push(`projects : ${sansCol} reservation(s) sous aucune colonne — la piste serait inventee`);
+      const ecarts = entree.reservations.filter((b) => b.piste !== null && b.piste !== b.lane).length;
+      if (ecarts) {
+        console.log(`  ${ecarts}/${entree.reservations.length} reservations ou data-booking-lane`
+          + ` ne vaut PAS la colonne affichee — c'est la geometrie qui fait foi`);
+      }
       console.log(`  ${entree.reservations.length} reservations lues (nom, heure, effectif, piste)`);
     }
 

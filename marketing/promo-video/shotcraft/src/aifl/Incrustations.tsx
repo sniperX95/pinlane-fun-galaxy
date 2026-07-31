@@ -132,7 +132,7 @@ const IncrustReprise: React.FC<Contexte> = (ctx) => {
           filter: 'blur(16px)',
         }} />
         <Img
-          src={staticFile('brand/picto.webp')}
+          src={staticFile('brand/picto.png')}
           style={{
             width: 196, height: 180, objectFit: 'contain', display: 'block',
             opacity: pose,

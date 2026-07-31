@@ -45,6 +45,23 @@ export const NarrationCaption: React.FC<{
 
   return (
     <AbsoluteFill style={{ pointerEvents: 'none', opacity: sortie }}>
+      {/* LE VOILE : UN DEGRADE QUI S'ETEINT, PAS UNE PLAQUE.
+          « Le texte avec un fond blanc qui gâche la vue derrière. » C'etait
+          exact : une plaque opaque a 86 % posee sur le planning en cachait un
+          tiers, et son bord franc dessinait un rectangle au milieu de l'image.
+          Elle est remplacee par un degrade vertical qui part du bas et s'eteint
+          completement avant le texte. Il assoit la typographie sans dessiner de
+          contour, et le produit reste lisible de bout en bout. */}
+      <div
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          height: bas + 240,
+          background: 'linear-gradient(180deg,'
+            + ' rgba(250, 251, 253, 0) 0%,'
+            + ' rgba(250, 251, 253, 0.62) 42%,'
+            + ' rgba(250, 251, 253, 0.90) 100%)',
+        }}
+      />
       <div
         style={{
           position: 'absolute', left: 0, right: 0, bottom: bas,
@@ -55,16 +72,18 @@ export const NarrationCaption: React.FC<{
           style={{
             display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
             alignItems: 'baseline', columnGap: '0.30em', rowGap: 4,
-            maxWidth: 1420, padding: '16px 30px 20px',
-            borderRadius: 18,
-            // Plaque tres legere : le bandeau doit rester lisible sur un
-            // planning dense sans masquer le produit.
-            background: 'rgba(255, 255, 255, 0.86)',
-            boxShadow: '0 12px 40px rgba(5, 30, 72, 0.10), inset 0 0 0 1px rgba(5, 30, 72, 0.05)',
-            backdropFilter: 'blur(10px) saturate(1.1)',
-            WebkitBackdropFilter: 'blur(10px) saturate(1.1)',
-            fontFamily: SANS, fontSize: taille, fontWeight: 620,
-            letterSpacing: '-0.014em', lineHeight: 1.12, color: ENCRE,
+            maxWidth: 1500, padding: '0 40px',
+            fontFamily: SANS, fontSize: taille, fontWeight: 680,
+            letterSpacing: '-0.016em', lineHeight: 1.14, color: ENCRE,
+            // LA LISIBILITE VIENT D'UN HALO, PAS D'UNE BOITE. Quatre ombres
+            // claires serrees autour des glyphes font un lisere qui detache le
+            // texte de n'importe quel fond clair — y compris une capture d'ecran
+            // dense — sans rien masquer. C'est ce que fait un sous-titre de
+            // cinema, en inverse (halo sombre sur image claire ici).
+            textShadow: '0 0 14px rgba(250,251,253,0.98),'
+              + ' 0 0 28px rgba(250,251,253,0.92),'
+              + ' 0 2px 3px rgba(250,251,253,1),'
+              + ' 0 0 3px rgba(250,251,253,1)',
           }}
         >
           {mots.map((mot, i) => {

@@ -391,7 +391,7 @@ export const SceneOutroLive: React.FC = () => {
               fourni, pas un mot pose seul. */}
           <div style={{ position: 'relative', width: 112, height: 103, margin: '0 auto 28px', opacity: tag }}>
             <Img
-              src={staticFile('brand/picto.webp')}
+              src={staticFile('brand/picto.png')}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
             />
           </div>

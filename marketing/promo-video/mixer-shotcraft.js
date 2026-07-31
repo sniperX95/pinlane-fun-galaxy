@@ -240,40 +240,103 @@ if (ratees.length) { ratees.forEach((r) => console.error('  - ' + r)); process.e
 // montage audible. Quinze phrases, quinze points de montage : ca s'entend comme
 // quinze prises differentes.
 //
-// On prend donc un peu avant et un peu apres, borne par les phrases voisines
-// dans la prise (les `[longue pause]` entre les lignes laissent la place), et on
-// fond les deux extremites pour qu'aucun raccord ne claque.
-const AVANT = 0.10;
-const APRES = 0.24;
+// On prend donc un peu avant et un peu apres, et on fond les deux extremites
+// pour qu'aucun raccord ne claque. COMBIEN d'air exactement : voir juste en
+// dessous — la premiere version le choisissait, la seconde le MESURE.
 const FONDU = 0.04;
 
-// L'AIR EST PROPORTIONNEL AU TROU DISPONIBLE, PAS UNE CONSTANTE.
+// LA COUPE SE CALE SUR LE SILENCE REEL, PAS SUR UN DECALAGE CHOISI.
 //
-// Premiere version : 100 ms avant et 240 ms apres, en dur. Des que les marges de
-// plan ont ete resserrees pour donner du rythme, trois phrases se sont mises a
-// mordre sur la suivante — la garde les a arretees. Une constante ne peut pas
-// tenir face a un montage qui change ; l'air se PARTAGE donc entre les deux
-// phrases qui bordent chaque trou : 60 % a la chute de celle qui finit (c'est
-// elle qu'on entend se couper), 40 % a l'attaque de celle qui commence.
+// « Il dit "Inlane" au lieu de "Pinlane", et des fois il oublie les premiers
+// mots. » Mesure qui a tranche : on compare, pour chaque phrase, l'instant
+// annonce par l'alignement de la synthese et l'instant ou le silence se termine
+// vraiment (`silencedetect`). L'ALIGNEMENT RETARDE L'ATTAQUE DE 38 A 284 ms
+// selon la phrase — il date le premier caractere, pas le debut du son.
+//
+// Mon air d'entree etait une constante de 100 ms. Il suffisait pour la moitie
+// des phrases et rognait l'autre moitie : la derniere ligne perdait 136 ms,
+// c'est-a-dire exactement l'occlusion et l'explosion du « P » de Pinlane.
+//
+// Augmenter la constante n'aurait fait que deplacer le probleme (trop d'air sur
+// les phrases qui n'en ont pas besoin, et collision avec la precedente). On
+// MESURE donc : la coupe se pose dans le silence qui precede, un peu avant que
+// le son ne commence. Une phrase ne peut plus perdre son attaque, quelle que
+// soit la prise.
+const APRES = 0.24;
+const MARGE_ATTAQUE = 0.035;   // on entre dans le silence, pas au ras du son
+const AIR_MAX = 0.45;
+
+const silences = (() => {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-i', VOIX_COMP,
+    '-af', 'silencedetect=noise=-40dB:d=0.08', '-f', 'null', '-'],
+  { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const t = String(r.stderr || '').replace(/\r/g, '');
+  const debuts = [...t.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+  const fins = [...t.matchAll(/silence_end: ([\d.]+)/g)].map((m) => Number(m[1]));
+  return debuts.map((x, i) => ({ de: x, a: fins[i] })).filter((x) => x.a !== undefined);
+})();
+if (silences.length < PHRASES.length - 1) {
+  console.error(`seulement ${silences.length} silences detectes pour ${PHRASES.length} phrases`
+    + ' — la prise n\'est pas decoupable, verifier les pauses entre lignes');
+  process.exit(1);
+}
+
+/** Ou le son commence-t-il VRAIMENT avant `t` ? (fin du dernier silence) */
+const onde = (t) => {
+  const s = silences.filter((x) => x.a <= t + 0.02).pop();
+  return s ? s.a : null;
+};
+/** Et ou s'arrete-t-il apres `t` ? (debut du silence suivant) */
+const repos = (t) => {
+  const s = silences.find((x) => x.de >= t - 0.02);
+  return s ? s.de : null;
+};
+
+// 1. L'ATTAQUE D'ABORD. Elle est prioritaire sur la chute : c'est elle qu'on
+//    entend manquer.
+PHRASES.forEach((p, i) => {
+  const debutSon = onde(p.de);
+  const besoin = debutSon === null ? 0.12 : Math.max(0, p.de - debutSon + MARGE_ATTAQUE);
+  const prec = PHRASES[i - 1];
+  const trouAvant = prec ? p.at - (prec.at + (prec.a - prec.de)) : p.at;
+  p.avant = Math.min(AIR_MAX, besoin, Math.max(0, trouAvant - 0.06));
+  p.debutSon = debutSon;
+});
+
+// 2. LA CHUTE PREND CE QUI RESTE dans le trou, une fois l'attaque de la suivante
+//    servie. Elle s'arrete de toute facon au silence qui suit la phrase.
+PHRASES.forEach((p, i) => {
+  const suiv = PHRASES[i + 1];
+  const trouApres = suiv ? suiv.at - (p.at + (p.a - p.de)) : Infinity;
+  const finSon = repos(p.a);
+  const utile = finSon === null ? APRES : Math.max(0.05, finSon - p.a + 0.05);
+  p.apres = Math.min(APRES, utile,
+    suiv ? Math.max(0, trouApres - (suiv.avant || 0) - 0.02) : APRES);
+});
+
 PHRASES.forEach((p, i) => {
   const prec = PHRASES[i - 1];
   const suiv = PHRASES[i + 1];
-  const trouAvant = prec ? p.at - (prec.at + (prec.a - prec.de)) : p.at;
-  const trouApres = suiv ? suiv.at - (p.at + (p.a - p.de)) : Infinity;
-  const avant = Math.min(AVANT, Math.max(0, trouAvant * 0.4 - 0.01));
-  const apres = Math.min(APRES, Math.max(0, trouApres * 0.6 - 0.01));
-  const deb = Math.max(0, p.de - avant, prec ? prec.a + 0.02 : 0);
-  const fin = Math.min(DV, p.a + apres, suiv ? suiv.de - 0.02 : DV);
+  const deb = Math.max(0, p.de - p.avant, prec ? prec.a + 0.02 : 0);
+  const fin = Math.min(DV, p.a + p.apres, suiv ? suiv.de - 0.02 : DV);
   p.deb = +deb.toFixed(3);
   p.fin = +Math.max(fin, p.a).toFixed(3);
   // Le decalage vers l'amont doit etre RENDU au placement : sinon toute la
-  // phrase avance de 100 ms et les mots ne tombent plus sur leurs images.
+  // phrase avance et les mots ne tombent plus sur leurs images.
   p.pose = +(p.at - (p.de - p.deb)).toFixed(3);
 });
 
-// GARDE : les segments ELARGIS ne doivent pas se chevaucher non plus. Elle a du
-// sens ici et pas avant : l'air ajoute est precisement ce qui peut mordre sur le
-// voisin.
+// GARDE : AUCUNE PHRASE NE PERD SON ATTAQUE. C'est la garde qui manquait — le
+// defaut etait audible depuis plusieurs versions et rien ne le mesurait.
+const rognees = PHRASES.filter((p) => p.debutSon !== null && p.deb > p.debutSon - 0.005);
+if (rognees.length) {
+  rognees.forEach((p) => console.error(
+    `  - « ${p.texte.slice(0, 44)}… » coupee a ${p.deb.toFixed(3)}s alors que le son`
+    + ` commence a ${p.debutSon.toFixed(3)}s : ${Math.round((p.deb - p.debutSon) * 1000)} ms d'attaque perdus`));
+  process.exit(1);
+}
+
+// GARDE : les segments elargis ne doivent pas se chevaucher.
 const collisions = PHRASES.filter((p, i) => {
   const s = PHRASES[i + 1];
   return s && p.pose + (p.fin - p.deb) > s.pose + 0.01;
@@ -282,8 +345,11 @@ if (collisions.length) {
   collisions.forEach((p) => console.error(`  - « ${p.texte.slice(0, 40)}… » mord sur la phrase suivante`));
   process.exit(1);
 }
+
+const pire = PHRASES.reduce((m, p) => Math.min(m, p.debutSon === null ? 1 : p.debutSon - p.deb), 1);
 const air = PHRASES.reduce((s, p) => s + (p.fin - p.deb) - (p.a - p.de), 0);
-console.log(`decoupe des phrases : ${air.toFixed(2)}s d'air rendu aux attaques et aux chutes`);
+console.log(`decoupe : ${air.toFixed(2)}s d'air rendu · attaque la plus juste :`
+  + ` ${Math.round(pire * 1000)} ms avant le son (aucune phrase rognee)`);
 
 // --- construction du graphe ------------------------------------------------
 const chaines = [];

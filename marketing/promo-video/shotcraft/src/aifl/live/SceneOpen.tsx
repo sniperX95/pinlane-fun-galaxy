@@ -576,7 +576,7 @@ export const SceneOpen: React.FC = () => {
                 }}
               />
               <Img
-                src={staticFile('brand/picto.webp')}
+                src={staticFile('brand/picto.png')}
                 style={{
                   position: 'absolute', inset: 0, width: '100%', height: '100%',
                   objectFit: 'contain',

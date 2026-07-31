@@ -3205,10 +3205,10 @@ const ACTIVITY_ICONS = {
   laser_game: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   minigolf_blacklight: '<path d="M9 20V4l8 3.5L9 11"/><ellipse cx="14.5" cy="19" rx="4" ry="1.6"/><circle cx="7" cy="18.4" r="1.6"/>',
   golf_oclock: '<path d="M9 20V4l8 3.5L9 11"/><circle cx="15.5" cy="17.5" r="3.5"/><path d="M15.5 16v1.6l1.2.8"/>',
-  billards: '<circle cx="12" cy="12" r="9"/><path d="M4.6 8.6a9 9 0 0 0 14.8 6.8" /><circle cx="12" cy="12" r="2.6"/>',
+  billards: '<path d="M21 3 10.5 13.5"/><path d="m18.4 3 2.6 2.6"/><circle cx="7" cy="17" r="4"/><path d="M4.2 14.2a4 4 0 0 0 5.6 5.6"/>',
   arcade_time: '<rect x="4" y="3" width="16" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 8h2M10 7v2"/><circle cx="15" cy="8" r="1.1"/>',
-  playground: '<path d="M5 20v-7l7-8"/><path d="M5 13h8"/><path d="M19 20V8l-7-3"/><circle cx="17" cy="17" r="2.4"/>',
-  duckpin_bowling: '<path d="M8 20c0-3 1.2-4 1.2-6S8 11 8 9a2.6 2.6 0 0 1 5.2 0c0 2-1.2 3-1.2 5s1.2 3 1.2 6"/><path d="M6.5 20h8"/><circle cx="18.5" cy="16.5" r="3.2"/>',
+  playground: '<path d="M4 20 12 9"/><path d="M12 9h4l4 11"/><path d="M20 20H3"/><path d="M6.5 16h4M8.5 12.5h4"/><circle cx="16" cy="5.5" r="2"/>',
+  duckpin_bowling: '<path d="M7 19c0-2 .9-2.8.9-4.2S7 12.4 7 11a1.9 1.9 0 0 1 3.8 0c0 1.4-.9 2.4-.9 3.8S10.8 17 10.8 19"/><path d="M15 19c0-2 .9-2.8.9-4.2S15 12.4 15 11a1.9 1.9 0 0 1 3.8 0c0 1.4-.9 2.4-.9 3.8S18.8 17 18.8 19"/><path d="M4 21h16"/>',
   fun_run: '<rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="12" r="1.1"/><circle cx="18.6" cy="14.4" r="1.1"/>',
   party_table: '<path d="M4 10h16l-2 10H6z"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>',
 };

@@ -31,13 +31,20 @@ const N = JSON.parse(fs.readFileSync(TABLE, 'utf8'));
 const FILM = N.total / N.fps;
 
 // Les six mouvements, exprimes en PLANS. Le minutage se calcule.
+// LES MOUVEMENTS DECRIVENT UNE MATIERE, PAS SEULEMENT UNE INTENTION.
+//
+// « Le son ambiancant derriere doit etre mieux, il est pas fou celui-la. » Le
+// brief precedent disait ce que la musique devait FAIRE RESSENTIR (« la tension
+// monte ») sans jamais dire de QUOI elle est faite. Un modele generatif comble
+// ce vide avec sa moyenne : des nappes generiques. On nomme donc les
+// instruments, le traitement et ce qu'on ne veut pas.
 const MOUVEMENTS = [
-  { plans: ['morning'], intention: 'ouverture aeree et lumineuse, nappe de synthe douce, quelques notes de piano electrique espacees, pas de batterie, on installe le decor' },
-  { plans: ['cardA', 'cardB', 'cardC'], intention: 'la tension monte : basse pulsee sourde, un tic-tac discret, tonalite plus sombre, aucune melodie qui chante — c est le probleme, pas la solution' },
-  { plans: ['card1'], intention: 'balayage ascendant qui resout la tension, la lumiere revient, la batterie entre' },
-  { plans: ['table', 'macro', 'card2', 'chart'], intention: 'conduite : tech-house sobre, kick regulier, arpege discret, ca avance sans rien reclamer — on explique pendant ce temps' },
-  { plans: ['cardWbr', 'wbr'], intention: 'recompense : les accords s ouvrent, une note tenue plus large, sentiment de travail accompli' },
-  { plans: ['card3', 'outro'], intention: 'resolution : dernier accord tenu, la batterie s efface, on finit sur une nappe claire qui laisse la place a la voix de signature' },
+  { plans: ['morning'], intention: 'nappe de synthe analogique chaude et large, une seule note de piano electrique Rhodes toutes les deux mesures avec beaucoup de reverbe, une nappe de bruit tres douce en fond, aucune percussion, aucune basse — l espace est ouvert et on installe le decor' },
+  { plans: ['cardA', 'cardB', 'cardC'], intention: 'sub-basse tenue sur une seule note, un pouls sourd de grosse caisse feutree toutes les deux temps, un shaker sec tres bas, la nappe se referme et devient plus sombre, une dissonance legere qui ne se resout pas — aucune melodie, c est le probleme' },
+  { plans: ['card1'], intention: 'balayage ascendant de bruit blanc filtre sur deux secondes, un impact grave a l arrivee, puis la grosse caisse entre franchement avec un charleston regulier — la lumiere revient d un coup' },
+  { plans: ['table', 'macro', 'card2', 'chart'], intention: 'house sobre et haut de gamme a tempo modere : kick rond regulier, basse pulsee sur la fondamentale, arpege court de synthe pluck tres en arriere, charleston serre, saturation a bande legere sur l ensemble. Ca avance sans rien reclamer, la voix passe par-dessus' },
+  { plans: ['cardWbr', 'wbr'], intention: 'les accords s ouvrent sur une quarte large, des cordes de synthe entrent doucement en dessous, la basse descend d une octave, un accord tenu qui respire — sentiment de travail accompli' },
+  { plans: ['card3', 'outro'], intention: 'trois impacts espaces qui appuient les trois derniers mots, puis la batterie s efface, et il ne reste qu un accord tenu clair et large avec une longue queue de reverbe — la voix de signature passe seule dessus' },
 ];
 
 const bornes = (plans) => {
@@ -56,12 +63,24 @@ const sections = MOUVEMENTS.map((m) => {
   return `${de.toFixed(0)}s a ${a.toFixed(0)}s : ${m.intention}`;
 });
 
-const PROMPT = 'Musique de fond instrumentale pour une publicite de logiciel, tempo modere,'
-  + ' electronique sobre et haut de gamme, aucune voix, aucun instrument qui joue une'
-  + ' melodie chantante au premier plan — elle passe SOUS une narration parlee du debut a'
-  + ' la fin et ne doit jamais lui disputer la place. Elle suit un arc precis :\n'
-  + sections.map((s) => `- ${s}`).join('\n')
-  + `\nDuree totale ${Math.round(FILM + MARGE)} secondes.`;
+const SAUT = String.fromCharCode(10);
+
+const PROMPT = [
+  'Musique instrumentale pour une publicite de logiciel professionnelle,'
+    + ' 100 BPM, tonalite mineure, production haut de gamme et moderne.',
+  'MATIERE : synthes analogiques chauds, sub-basse ronde, percussions electroniques'
+    + ' seches, saturation a bande legere, reverbe large et propre. Melange soigne,'
+    + ' rien de criard.',
+  'A EVITER ABSOLUMENT : toute voix meme sans paroles, tout solo, toute melodie qui'
+    + ' chante au premier plan, les sons de jeu video ou de carillon, les cordes'
+    + ' orchestrales cinematographiques, les cuivres, le piano acoustique au premier'
+    + ' plan. Le registre median doit rester DEGAGE : une narration parlee passe'
+    + ' par-dessus du debut a la fin et la musique ne doit jamais lui disputer la place.',
+  'STRUCTURE, minutee a la seconde :',
+  ...sections.map((s) => `- ${s}`),
+  `Duree totale ${Math.round(FILM + MARGE)} secondes. Les transitions entre sections`
+    + ' sont franches et se sentent, elles ne sont pas des fondus mous.',
+].join(SAUT);
 
 const cle = (() => {
   const c = require('C:/Users/movsa/.claude.json');

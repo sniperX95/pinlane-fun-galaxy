@@ -1,6 +1,7 @@
 import React from 'react';
 import { Img, interpolate, staticFile, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { IncrustAilleurs, IncrustComptoir } from './IncrustComptoir';
+import * as D3 from './scene3d';
 
 // LES INCRUSTATIONS DES CARTONS D'EXPLICATION.
 //
@@ -92,134 +93,153 @@ const etabli = (frame: number) => interpolate(frame, [0, 8], [0.55, 1], {
 const IncrustReprise: React.FC<Contexte> = (ctx) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const t0 = temps(ctx, 'pinlane', 0.1, fps);
-  const tGere = temps(ctx, 'gere', 1.2, fps);
+  const tGere = temps(ctx, 'prend', 1.2, fps);
 
-  // Les trois embetements du plan precedent viennent se faire absorber.
+  // Les trois embetements du plan precedent viennent se faire absorber. Ils sont
+  // nommes comme la scene du comptoir les a montres : sinon le spectateur ne
+  // fait pas le lien entre ce qui est absorbe et ce qu'il a vu.
   const pieces = [
-    // Les trois choses que la scene du comptoir vient de montrer, nommees telles
-    // quelles : sinon le spectateur ne fait pas le lien entre ce qui est absorbe
-    // et ce qu'il a vu dix secondes plus tot.
-    { x: -520, y: -140, label: 'Appels manqués' },
-    { x: 540, y: -90, label: 'File d’attente' },
-    { x: -430, y: 170, label: 'Encaissement' },
+    { x: -560, y: -150, z: -260, label: 'Appels manqués' },
+    { x: 580, y: -95, z: -180, label: 'File d’attente' },
+    { x: -460, y: 180, z: -320, label: 'Encaissement' },
   ];
+  const arriveeDe = (k: number) => tGere + 6 + k * 10;
 
   const halo = pieces.reduce((acc, _, k) => {
-    const arrivee = tGere + 6 + k * 9;
-    return acc + interpolate(frame, [arrivee - 3, arrivee, arrivee + 10], [0, 1, 0], {
+    const a = arriveeDe(k);
+    return acc + interpolate(frame, [a - 4, a, a + 12], [0, 1, 0], {
       extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
     });
   }, 0);
 
-  // Le pictogramme est la des la premiere image : il ne s'ouvre pas, il finit
-  // de s'asseoir. Sans ca le carton demarrait sur trois images vides.
-  const pictoIn = Math.max(etabli(frame) * 0.62, interpolate(frame, [2, 14], [0, 1], {
-    extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ressort,
-  }));
-  void t0;
+  const pose = Math.max(etabli(frame) * 0.62, D3.ressort(frame, 1, 22));
 
   return (
-    <div style={{ position: 'relative', width: 1300, height: 380, margin: '0 auto' }}>
-      <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+    <D3.Plateau frame={frame} largeur={1340} hauteur={400} perspective={1300} amplitude={2}>
+      <D3.Halo intensite={0.6 + 1.6 * Math.min(1, halo)} taille={760} />
+
+      {/* LE PICTOGRAMME, SUR SON SOCLE. Il ne flotte plus dans le vide : une
+          ombre de contact au sol lui donne une place dans l'espace. */}
+      <div style={{
+        position: 'absolute', left: '50%', top: '50%',
+        transform: `translate(-50%, -50%) translateZ(${70 + 26 * Math.min(1, halo)}px)`,
+        transformStyle: 'preserve-3d', zIndex: 3,
+      }}>
         <div style={{
-          position: 'absolute', left: '50%', top: '50%', width: 460, height: 460,
-          transform: 'translate(-50%, -50%)',
-          background: `radial-gradient(circle, rgba(6,100,254,${0.10 + 0.18 * Math.min(1, halo)}), transparent 68%)`,
+          position: 'absolute', left: '50%', top: 198, width: 168, height: 26,
+          transform: 'translateX(-50%)', borderRadius: '50%',
+          background: `rgba(5,30,72,${0.13 + 0.06 * Math.min(1, halo)})`,
+          filter: 'blur(16px)',
         }} />
         <Img
           src={staticFile('brand/picto.webp')}
           style={{
-            width: 184, height: 169, objectFit: 'contain', display: 'block',
-            opacity: pictoIn,
-            transform: `scale(${0.7 + 0.3 * pictoIn + 0.04 * Math.min(1, halo)})`,
+            width: 196, height: 180, objectFit: 'contain', display: 'block',
+            opacity: pose,
+            transform: `scale(${0.72 + 0.28 * pose + 0.05 * Math.min(1, halo)})`,
+            filter: `drop-shadow(0 18px 34px rgba(6,100,254,${0.18 + 0.22 * Math.min(1, halo)}))`,
           }}
         />
       </div>
+
+      {/* L'onde qui part du pictogramme a chaque absorption : un seul anneau a
+          la fois. Les halos en rafale font cheap, un eclat unique de qualite non. */}
+      {pieces.map((_, k) => {
+        const a = arriveeDe(k);
+        const t = interpolate(frame, [a, a + 22], [0, 1], {
+          extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+        });
+        return <D3.Eclat key={`onde-${k}`} t={t} taille={320} />;
+      })}
+
       {pieces.map((p, k) => {
-        const arrivee = tGere + 6 + k * 9;
-        const t = interpolate(frame, [tGere - 10 + k * 4, arrivee], [0, 1], {
-          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.4, 0, 0.3, 1),
+        const a = arriveeDe(k);
+        const t = interpolate(frame, [tGere - 12 + k * 5, a], [0, 1], {
+          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.4, 0, 0.25, 1),
         });
         if (t >= 1) return null;
+        // Elles arrivent DE LOIN (z negatif) et se rapprochent en accelerant :
+        // c'est la profondeur qui fait sentir l'aspiration, pas la taille seule.
         return (
           <div key={p.label} style={{
             position: 'absolute', left: '50%', top: '50%',
-            transform: `translate(-50%, -50%) translate(${p.x * (1 - t)}px, ${p.y * (1 - t)}px) scale(${1 - 0.55 * t})`,
-            // Elles s'effacent AVANT d'arriver au centre : a 0,82 elles passaient
-            // encore DEVANT le pictogramme et le masquaient au lieu de le nourrir.
-            opacity: interpolate(t, [0, 0.12, 0.55, 0.78], [0, 1, 1, 0]),
-            fontFamily: MONO, fontSize: 22, letterSpacing: '0.1em', textTransform: 'uppercase',
-            color: ATONE, background: '#fff', border: `1px solid ${TRAIT}`,
-            padding: '14px 22px', borderRadius: 999, whiteSpace: 'nowrap',
-            boxShadow: '0 10px 26px rgba(5, 30, 72, 0.10)',
+            transform: 'translate(-50%, -50%)'
+              + ` translate3d(${p.x * (1 - t)}px, ${p.y * (1 - t)}px, ${p.z * (1 - t) + 40 * t}px)`
+              + ` scale(${1 - 0.5 * t})`,
+            // Elles s'effacent AVANT d'arriver au centre : sinon elles passent
+            // DEVANT le pictogramme et le masquent au lieu de le nourrir.
+            opacity: interpolate(t, [0, 0.12, 0.55, 0.8], [0, 1, 1, 0]),
+            filter: `blur(${t > 0.5 ? (t - 0.5) * 14 : 0}px)`,
+            zIndex: 2,
           }}>
-            {p.label}
+            <D3.Pastille texte={p.label} />
           </div>
         );
       })}
-    </div>
+    </D3.Plateau>
   );
 };
-
-// ---------------------------------------------------------------------------
-// D · « ce qui demande une action remonte tout seul en haut de la liste »
-// ---------------------------------------------------------------------------
 
 const IncrustRemontee: React.FC<Contexte> = (ctx) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const tRemonte = temps(ctx, 'remonte', 1.3, fps);
 
-  const H = 82;
-  const GAP = 12;
+  const H = 84;
+  const GAP = 14;
   const N = 5;
   const CIBLE = 3;                       // la ligne qui remonte
-  const t = interpolate(frame, [tRemonte, tRemonte + 24], [0, 1], {
+  const t = interpolate(frame, [tRemonte, tRemonte + 26], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.3, 0, 0.2, 1),
   });
-  const noms = ['Team building Nexo', 'Anniversaire Léa', 'Groupe amis', 'Famille Dubois · à encaisser', 'Club Padel'];
+  const noms = ['Team building Nexo', 'Anniversaire Léa', 'Groupe amis',
+    'Famille Dubois · acompte', 'Club Padel'];
 
   return (
-    <div style={{ position: 'relative', width: 1080, height: (H + GAP) * N, margin: '0 auto' }}>
+    <D3.Plateau frame={frame} largeur={1120} hauteur={(H + GAP) * N} perspective={1500} amplitude={1.3}>
       {noms.map((nom, i) => {
         const actif = i === CIBLE;
-        // La cible monte au rang 0 ; celles qu'elle depasse descendent d'un rang.
         const rang = actif ? CIBLE * (1 - t) : (i < CIBLE ? i + t : i);
-        // La liste est etablie des l'ouverture ; c'est la REMONTEE, elle, qui
-        // attend son mot. Une cascade partant de zero ouvrait le carton sur neuf
-        // images vides — le deuxieme plus gros trou du film.
-        const entree = Math.max(etabli(frame) * 0.6, interpolate(frame, [i * 2.5, i * 2.5 + 10], [0, 1], {
-          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-        }));
-        const lift = actif ? Math.sin(t * Math.PI) : 0;
+        const entree = Math.max(etabli(frame) * 0.6, D3.monte(frame, i * 2.5, 12));
+        // LA CARTE DECOLLE DE LA PILE. C'est tout le propos : elle ne se glisse
+        // pas entre ses voisines, elle passe AU-DESSUS. Son altitude pilote a la
+        // fois son elevation, son ombre et son echelle — les trois ensemble font
+        // lire un objet qui se souleve, aucune ne suffit seule.
+        const vol = actif ? Math.sin(t * Math.PI) : 0;
         return (
           <div key={nom} style={{
             position: 'absolute', left: 0, right: 0, top: rang * (H + GAP),
-            height: H, borderRadius: 12, background: '#fff',
-            border: `1px solid ${TRAIT}`,
-            borderLeft: `4px solid ${actif ? BLEU : 'rgba(5,30,72,0.18)'}`,
-            boxShadow: actif
-              ? `0 ${6 + 22 * lift}px ${14 + 40 * lift}px rgba(5, 30, 72, ${0.10 + 0.14 * lift})`
-              : '0 1px 3px rgba(5, 30, 72, 0.06)',
-            outline: actif ? `2px solid ${BLEU}` : 'none',
+            height: H, borderRadius: 14,
+            ...D3.MATIERE_CLAIRE,
+            border: '1px solid rgba(5, 30, 72, 0.08)',
+            borderLeft: `4px solid ${actif ? BLEU : 'rgba(5,30,72,0.16)'}`,
+            boxShadow: `${D3.ombre(actif ? 0.18 + 0.82 * vol : 0.08)}, ${D3.MATIERE_CLAIRE.boxShadow}`,
+            outline: actif && t > 0.02 ? `2px solid rgba(6,100,254,${0.35 + 0.65 * t})` : 'none',
             outlineOffset: -1,
             opacity: entree,
-            transform: `scale(${1 + 0.02 * lift})`,
-            display: 'flex', alignItems: 'center', padding: '0 26px',
+            transform: `translateZ(${actif ? 120 * vol : 0}px) scale(${1 + 0.035 * vol})`,
+            display: 'flex', alignItems: 'center', padding: '0 28px',
             fontFamily: SANS, fontSize: 26, fontWeight: actif ? 620 : 500,
             color: actif ? ENCRE : ATONE,
-            zIndex: actif ? 3 : 1,
+            zIndex: actif ? 9 : 1,
           }}>
+            {actif && vol > 0.05 ? (
+              <D3.Reflet t={interpolate(frame, [tRemonte + 4, tRemonte + 22], [0, 1],
+                { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} rayon={14} />
+            ) : null}
             <span style={{
-              width: 12, height: 12, borderRadius: 6, marginRight: 18,
-              background: actif ? BLEU : 'rgba(5,30,72,0.20)',
+              width: 13, height: 13, borderRadius: 7, marginRight: 20,
+              ...(actif ? D3.MATIERE_BLEUE : {}),
+              background: actif ? undefined : 'rgba(5,30,72,0.18)',
+              boxShadow: actif ? `0 0 ${10 + 14 * t}px rgba(6,100,254,0.7)` : 'none',
             }} />
             {nom}
             {actif ? (
               <span style={{
-                marginLeft: 'auto', fontFamily: MONO, fontSize: 19, letterSpacing: '0.08em',
-                color: BLEU, textTransform: 'uppercase',
+                marginLeft: 'auto', fontFamily: MONO, fontSize: 18, letterSpacing: '0.08em',
+                color: '#fff', textTransform: 'uppercase',
+                ...D3.MATIERE_BLEUE, padding: '8px 16px', borderRadius: 999,
+                opacity: t,
               }}>
                 à traiter
               </span>
@@ -227,13 +247,9 @@ const IncrustRemontee: React.FC<Contexte> = (ctx) => {
           </div>
         );
       })}
-    </div>
+    </D3.Plateau>
   );
 };
-
-// ---------------------------------------------------------------------------
-// E · « le soir, ton chiffre et ton taux d'occupation sont déjà calculés »
-// ---------------------------------------------------------------------------
 
 const IncrustSoir: React.FC<Contexte> = (ctx) => {
   const frame = useCurrentFrame();
@@ -252,54 +268,91 @@ const IncrustSoir: React.FC<Contexte> = (ctx) => {
 
   const R = 86;
   const C = 2 * Math.PI * R;
+  const socle = etabli(frame);
+  const poseA = D3.ressort(frame, 0, 24);
+  const poseB = D3.ressort(frame, 7, 24);
 
   return (
-    <div style={{
-      width: 1300, height: 340, margin: '0 auto',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 90,
-    }}>
-      {/* le chiffre du jour */}
+    <D3.Plateau frame={frame} largeur={1340} hauteur={370} perspective={1600} amplitude={1.2}>
+      <D3.Halo intensite={socle * 0.8} taille={860} />
       <div style={{
-        width: 560, padding: '30px 36px', boxSizing: 'border-box',
-        background: '#fff', border: `1px solid ${TRAIT}`, borderRadius: 18,
-        boxShadow: '0 14px 40px rgba(5, 30, 72, 0.10)',
-        opacity: etabli(frame),
-        transform: `translateY(${(1 - etabli(frame)) * 18}px)`,
+        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', gap: 84, transformStyle: 'preserve-3d',
       }}>
-        <div style={{ fontFamily: MONO, fontSize: 19, letterSpacing: '0.12em', color: ATONE, textTransform: 'uppercase' }}>
-          Chiffre du jour
-        </div>
-        <div style={{ fontFamily: SANS, fontSize: 84, fontWeight: 620, color: ENCRE, letterSpacing: '-0.02em', marginTop: 6 }}>
-          {euros.toLocaleString('fr-FR')} €
-        </div>
-        <div style={{ height: 8, borderRadius: 4, background: PALE, marginTop: 14, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%', width: `${(euros / 5936) * 100}%`, background: BLEU, borderRadius: 4,
-          }} />
-        </div>
-      </div>
-
-      {/* le taux d'occupation */}
-      <div style={{
-        position: 'relative', width: 220, height: 220,
-        opacity: etabli(frame),
-      }}>
-        <svg width={220} height={220} viewBox="0 0 220 220" style={{ transform: 'rotate(-90deg)' }}>
-          <circle cx={110} cy={110} r={R} fill="none" stroke={PALE} strokeWidth={22} />
-          <circle
-            cx={110} cy={110} r={R} fill="none" stroke={BLEU} strokeWidth={22} strokeLinecap="round"
-            strokeDasharray={C} strokeDashoffset={C * (1 - taux / 100)}
-          />
-        </svg>
+        {/* LE CHIFFRE DU JOUR, sur une carte qui a une epaisseur. */}
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', fontFamily: SANS,
+          position: 'relative', width: 580, padding: '32px 38px', boxSizing: 'border-box',
+          borderRadius: 20, ...D3.MATIERE_CLAIRE,
+          border: '1px solid rgba(5, 30, 72, 0.08)',
+          boxShadow: `${D3.ombre(0.55 * (1 - poseA) + 0.30)}, ${D3.MATIERE_CLAIRE.boxShadow}`,
+          opacity: Math.min(1, socle * 1.3),
+          transform: `translateZ(${40 - 30 * (1 - poseA)}px) translateY(${(1 - poseA) * 22}px)`,
+          filter: D3.flou(poseA, 8),
         }}>
-          <div style={{ fontSize: 56, fontWeight: 620, color: ENCRE }}>{taux} %</div>
-          <div style={{ fontFamily: MONO, fontSize: 16, color: ATONE, letterSpacing: '0.1em' }}>OCCUPATION</div>
+          <D3.Reflet t={interpolate(frame, [18, 52], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} rayon={20} />
+          <div style={{ fontFamily: MONO, fontSize: 19, letterSpacing: '0.12em', color: ATONE, textTransform: 'uppercase' }}>
+            Chiffre du jour
+          </div>
+          <div style={{
+            fontFamily: SANS, fontSize: 88, fontWeight: 640, letterSpacing: '-0.025em', marginTop: 6,
+            // Le chiffre est en degrade, pas en aplat : c'est ce qui le fait
+            // lire comme un element de marque et non comme du texte de gabarit.
+            background: `linear-gradient(180deg, ${ENCRE} 30%, #24406e 100%)`,
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+          }}>
+            {euros.toLocaleString('fr-FR')} €
+          </div>
+          {/* la jauge : creusee dans la carte, remplie d'une matiere bleue */}
+          <div style={{
+            height: 10, borderRadius: 5, background: '#e8eefb', marginTop: 16, overflow: 'hidden',
+            boxShadow: 'inset 0 1px 2px rgba(5,30,72,0.14)',
+          }}>
+            <div style={{
+              height: '100%', width: `${(euros / 5936) * 100}%`, borderRadius: 5,
+              ...D3.MATIERE_BLEUE,
+              boxShadow: `0 0 14px rgba(6,100,254,0.45), ${D3.MATIERE_BLEUE.boxShadow}`,
+            }} />
+          </div>
+        </div>
+
+        {/* LE TAUX D'OCCUPATION, en anneau, pose plus pres de l'observateur. */}
+        <div style={{
+          position: 'relative', width: 236, height: 236,
+          opacity: Math.min(1, socle * 1.3),
+          transform: `translateZ(${75 - 45 * (1 - poseB)}px) scale(${0.9 + 0.1 * poseB})`,
+          filter: D3.flou(poseB, 8),
+        }}>
+          {/* l'ombre de l'anneau sur le plateau */}
+          <div style={{
+            position: 'absolute', left: '50%', bottom: -22, width: 190, height: 26,
+            transform: 'translateX(-50%)', borderRadius: '50%',
+            background: 'rgba(5,30,72,0.16)', filter: 'blur(14px)',
+          }} />
+          <svg width={236} height={236} viewBox="0 0 236 236" style={{ transform: 'rotate(-90deg)' }}>
+            <defs>
+              <linearGradient id="anneau" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#3b86ff" />
+                <stop offset="100%" stopColor={BLEU} />
+              </linearGradient>
+            </defs>
+            <circle cx={118} cy={118} r={R} fill="none" stroke="#e8eefb" strokeWidth={24} />
+            <circle
+              cx={118} cy={118} r={R} fill="none" stroke="url(#anneau)" strokeWidth={24}
+              strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C * (1 - taux / 100)}
+              style={{ filter: 'drop-shadow(0 4px 12px rgba(6,100,254,0.35))' }}
+            />
+          </svg>
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', fontFamily: SANS,
+          }}>
+            <div style={{ fontSize: 58, fontWeight: 640, color: ENCRE, letterSpacing: '-0.02em' }}>{taux} %</div>
+            <div style={{ fontFamily: MONO, fontSize: 16, color: ATONE, letterSpacing: '0.1em' }}>OCCUPATION</div>
+          </div>
         </div>
       </div>
-    </div>
+    </D3.Plateau>
   );
 };
 
@@ -322,73 +375,102 @@ const IncrustZeros: React.FC<Contexte> = (ctx) => {
   ];
 
   return (
-    <div style={{
-      width: 1560, height: 360, margin: '0 auto',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 60,
-    }}>
-      {blocs.map((b, k) => {
-        const d = t[k];
-        const pose = interpolate(frame, [d - 4, d + 8], [0, 1], {
-          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ressort,
-        });
-        // LE DECOR S'ETABLIT, SEUL L'EVENEMENT ATTEND SON MOT. Les trois blocs
-        // n'apparaissaient qu'a leur « zéro » : le carton ouvrait sur onze images
-        // entierement vides, le plus gros trou du film. Ils sont maintenant la
-        // des la premiere image, a demi-teinte, et chacun s'allume quand la voix
-        // le nomme — c'est le rayage qui reste cale sur le mot.
-        const vie = Math.max(etabli(frame) * 0.55, pose);
-        const barre = interpolate(frame, [d + 6, d + 18], [0, 1], {
-          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-        });
-        return (
-          <div key={b.titre} style={{
-            width: 460, textAlign: 'center', opacity: vie,
-            transform: `scale(${0.86 + 0.14 * vie})`,
-          }}>
-            <div style={{ position: 'relative', width: 128, height: 128, margin: '0 auto 14px' }}>
-              <svg width={128} height={128} viewBox="0 0 48 48" fill="none">
-                {b.icone === 'clavier' ? (
-                  <>
-                    <rect x={5} y={15} width={38} height={20} rx={4} stroke={ATONE} strokeWidth={2.4} />
-                    {[0, 1, 2, 3].map((i) => (
-                      <rect key={i} x={9 + i * 8} y={20} width={5} height={4} rx={1} fill={ATONE} />
-                    ))}
-                    <rect x={13} y={27} width={22} height={4} rx={1} fill={ATONE} />
-                  </>
-                ) : b.icone === 'doublon' ? (
-                  <>
-                    <rect x={6} y={13} width={24} height={16} rx={3} stroke={ATONE} strokeWidth={2.4} />
-                    <rect x={18} y={20} width={24} height={16} rx={3} stroke={ATONE} strokeWidth={2.4} fill="#fff" />
-                  </>
-                ) : (
-                  <path
-                    d="M13 21c2.4 4.8 6.4 8.8 11.2 11.2l4.2-4.2c.6-.6 1.4-.8 2.2-.4 2.4.8 5 1.2 7.6 1.2 1.2 0 2 .8 2 2v6c0 1.2-.8 2-2 2C21 39 8 26 8 9.8c0-1.2.8-2 2-2h6.6c1.2 0 2 .8 2 2 0 2.6.4 5.2 1.2 7.6.2.8 0 1.6-.4 2.2L13 21z"
-                    stroke={ATONE} strokeWidth={2.2} fill="none"
-                  />
-                )}
-              </svg>
-              {/* la barre qui raye : ce qui disparait */}
-              <svg width={128} height={128} viewBox="0 0 128 128" style={{ position: 'absolute', inset: 0 }}>
-                <path d="M18 110 L110 18" stroke={BLEU} strokeWidth={7} strokeLinecap="round"
-                  pathLength={1} strokeDasharray={1} strokeDashoffset={1 - barre} />
-              </svg>
-            </div>
-            <div style={{
-              fontFamily: SANS, fontSize: 120, fontWeight: 620, color: BLEU,
-              lineHeight: 1, letterSpacing: '-0.03em',
+    <D3.Plateau frame={frame} largeur={1560} hauteur={400} perspective={1500} amplitude={1.4}>
+      <D3.Halo intensite={0.5 * etabli(frame)} taille={980} />
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', gap: 44, transformStyle: 'preserve-3d',
+      }}>
+        {blocs.map((b, k) => {
+          const d = t[k];
+          // LE DECOR S'ETABLIT, SEUL L'EVENEMENT ATTEND SON MOT : les trois
+          // cartes sont la des la premiere image, a demi-teinte, et chacune
+          // s'allume quand la voix la nomme.
+          const pose = D3.ressort(frame, d - 4, 22);
+          const vie = Math.max(etabli(frame) * 0.55, pose);
+          const barre = interpolate(frame, [d + 6, d + 20], [0, 1], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
+          });
+          const eclat = interpolate(frame, [d + 4, d + 26], [0, 1], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          return (
+            <div key={b.titre} style={{
+              position: 'relative', width: 396, padding: '30px 22px 26px',
+              boxSizing: 'border-box', textAlign: 'center',
+              borderRadius: 22, ...D3.MATIERE_CLAIRE,
+              border: '1px solid rgba(5, 30, 72, 0.07)',
+              boxShadow: `${D3.ombre(0.20 + 0.55 * pose)}, ${D3.MATIERE_CLAIRE.boxShadow}`,
+              opacity: vie,
+              transform: `translateZ(${20 + 70 * pose}px) scale(${0.90 + 0.10 * vie})`,
+              filter: D3.flou(pose, 8),
             }}>
-              0
+              <D3.Reflet t={interpolate(frame, [d + 2, d + 26], [0, 1],
+                { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} rayon={22} />
+              {eclat > 0 && eclat < 1 ? <D3.Eclat t={eclat} taille={260} /> : null}
+
+              {/* L'ICONE, CREUSEE DANS LA CARTE. Un cercle en retrait avec une
+                  ombre interne : ca donne une epaisseur au support au lieu de
+                  poser un pictogramme a plat. */}
+              <div style={{
+                position: 'relative', width: 118, height: 118, margin: '0 auto 14px',
+                borderRadius: '50%', background: '#eef2f9',
+                boxShadow: 'inset 0 2px 5px rgba(5,30,72,0.16), inset 0 -1px 0 rgba(255,255,255,0.9)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width={76} height={76} viewBox="0 0 48 48" fill="none">
+                  {b.icone === 'clavier' ? (
+                    <>
+                      <rect x={5} y={15} width={38} height={20} rx={4} stroke={ATONE} strokeWidth={2.4} />
+                      {[0, 1, 2, 3].map((i) => (
+                        <rect key={i} x={9 + i * 8} y={20} width={5} height={4} rx={1} fill={ATONE} />
+                      ))}
+                      <rect x={13} y={27} width={22} height={4} rx={1} fill={ATONE} />
+                    </>
+                  ) : b.icone === 'doublon' ? (
+                    <>
+                      <rect x={6} y={13} width={24} height={16} rx={3} stroke={ATONE} strokeWidth={2.4} />
+                      <rect x={18} y={20} width={24} height={16} rx={3} stroke={ATONE} strokeWidth={2.4} fill="#eef2f9" />
+                    </>
+                  ) : (
+                    <path
+                      d="M13 21c2.4 4.8 6.4 8.8 11.2 11.2l4.2-4.2c.6-.6 1.4-.8 2.2-.4 2.4.8 5 1.2 7.6 1.2 1.2 0 2 .8 2 2v6c0 1.2-.8 2-2 2C21 39 8 26 8 9.8c0-1.2.8-2 2-2h6.6c1.2 0 2 .8 2 2 0 2.6.4 5.2 1.2 7.6.2.8 0 1.6-.4 2.2L13 21z"
+                      stroke={ATONE} strokeWidth={2.2} fill="none"
+                    />
+                  )}
+                </svg>
+                {/* la barre qui raye, avec un point de lumiere a sa pointe */}
+                <svg width={132} height={132} viewBox="0 0 132 132" style={{ position: 'absolute', inset: 0 }}>
+                  <path d="M22 112 L110 24" stroke={BLEU} strokeWidth={7} strokeLinecap="round"
+                    pathLength={1} strokeDasharray={1} strokeDashoffset={1 - barre}
+                    style={{ filter: 'drop-shadow(0 2px 6px rgba(6,100,254,0.5))' }} />
+                  {barre > 0.02 && barre < 0.99 ? (
+                    <circle cx={22 + 88 * barre} cy={112 - 88 * barre} r={7} fill="#fff"
+                      style={{ filter: 'drop-shadow(0 0 10px rgba(6,100,254,0.9))' }} />
+                  ) : null}
+                </svg>
+              </div>
+
+              {/* LE ZERO, en degrade et non en aplat. */}
+              <div style={{
+                fontFamily: SANS, fontSize: 112, fontWeight: 640, lineHeight: 1,
+                letterSpacing: '-0.035em',
+                background: 'linear-gradient(180deg, #3b86ff 10%, #0345b8 100%)',
+                WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+              }}>
+                0
+              </div>
+              <div style={{
+                fontFamily: MONO, fontSize: 20, letterSpacing: '0.1em', color: ATONE,
+                textTransform: 'uppercase', marginTop: 8,
+              }}>
+                {b.titre}
+              </div>
             </div>
-            <div style={{
-              fontFamily: MONO, fontSize: 21, letterSpacing: '0.1em', color: ATONE,
-              textTransform: 'uppercase', marginTop: 10,
-            }}>
-              {b.titre}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </D3.Plateau>
   );
 };
 
@@ -425,6 +507,9 @@ const IncrustCanaux: React.FC<Contexte> = (ctx) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const socle = etabli(frame);
+  // Profondeur : la carte est DEVANT, les puces derriere, et l'ecart se voit
+  // parce que la scene est en perspective et que les ombres suivent l'altitude.
+  const derive3d = D3.derive(frame, 1.6);
   // Les trois chemins se tracent sur « comment » ; le telephone l'emporte sur
   // « neuf ». Un texte reecrit sans ces mots retombe sur les replis et
   // l'illustration continue de jouer.
@@ -432,111 +517,160 @@ const IncrustCanaux: React.FC<Contexte> = (ctx) => {
   const tGagne = temps(ctx, 'neuf', 3.0, fps);
 
   const L = 1320;
-  const H = 340;
+  const H = 360;
   const cx = L / 2;
   const cy = H / 2;
-  const verdict = interpolate(frame, [tGagne, tGagne + 12], [0, 1], {
+  const verdict = interpolate(frame, [tGagne, tGagne + 14], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
   });
+  // La carte arrive en ressort et se pose : c'est ce depassement qui lui donne
+  // une masse. Son altitude pilote son ombre ET son elevation en Z.
+  const pose = D3.ressort(frame, 0, 24);
+  const altitude = 1 - Math.min(1, pose);
 
   return (
-    <div style={{ position: 'relative', width: L, height: H, margin: '0 auto', opacity: socle }}>
-      {/* Les chemins, en dessous de tout : ils partent des puces et arrivent sur
-          les bords de la carte. */}
-      <svg width={L} height={H} style={{ position: 'absolute', left: 0, top: 0 }}>
+    <D3.Plateau frame={frame} largeur={L} hauteur={H} perspective={1500} amplitude={1.6}>
+      <D3.Halo intensite={socle * (0.5 + 0.5 * verdict)} taille={720} />
+
+      {/* Les chemins, au fond de la scene. */}
+      <svg width={L} height={H} style={{ position: 'absolute', left: 0, top: 0, transform: 'translateZ(-40px)' }}>
+        <defs>
+          <linearGradient id="fil-actif" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={D3.BLEU} stopOpacity="0.15" />
+            <stop offset="100%" stopColor={D3.BLEU} stopOpacity="1" />
+          </linearGradient>
+        </defs>
         {CANAUX.map((c, k) => {
           const depart = tRoutes + k * 7;
-          const trace = interpolate(frame, [depart, depart + 15], [0, 1], {
+          const trace = interpolate(frame, [depart, depart + 16], [0, 1], {
             extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
           });
           const gagnant = k === 0;
-          const vie = gagnant ? 1 : 1 - 0.78 * verdict;
-          const xPuce = cx + c.cote * (PUCE_X - 92);
+          const vie = gagnant ? 1 : 1 - 0.80 * verdict;
+          const xPuce = cx + c.cote * (PUCE_X - 96);
           const xCarte = cx + c.cote * (CARTE_L / 2);
-          // L'angle se fait DEHORS : place a l'interieur, le segment vertical
-          // passait derriere la carte et ressortait dessous.
           const coude = xCarte + c.cote * c.ecart;
-          const r = 18 * c.cote;
+          const r = 20 * c.cote;
           const sens = c.dy > 0 ? -1 : 1;
           const d = `M ${xPuce} ${cy + c.dy}`
             + ` H ${coude + r}`
-            + ` Q ${coude} ${cy + c.dy} ${coude} ${cy + c.dy + sens * 18}`
-            + ` V ${cy - sens * 18}`
+            + ` Q ${coude} ${cy + c.dy} ${coude} ${cy + c.dy + sens * 20}`
+            + ` V ${cy - sens * 20}`
             + ` Q ${coude} ${cy} ${coude - r} ${cy}`
             + ` H ${xCarte}`;
-          // `pathLength` normalise a 100 : le trait se DESSINE quelle que soit sa
-          // longueur reelle, donc les trois chemins avancent au meme rythme.
           return (
-            <path
-              key={c.nom} d={d} fill="none" pathLength={100}
-              stroke={gagnant && verdict > 0 ? BLEU : ATONE}
-              strokeWidth={gagnant ? 2 + 2 * verdict : 2}
-              strokeLinecap="round"
-              strokeDasharray="100" strokeDashoffset={100 - 100 * trace}
-              opacity={(gagnant ? 0.45 + 0.55 * verdict : 0.34) * vie}
-            />
+            <g key={c.nom}>
+              {/* la trace eteinte, toujours la : le chemin EXISTE avant qu'on
+                  le parcoure, ce qui evite l'effet « trait qui pousse dans le
+                  vide » */}
+              <path d={d} fill="none" stroke={D3.ATONE} strokeWidth={1.5}
+                opacity={0.14 * Math.min(1, trace * 3) * vie} />
+              <path
+                d={d} fill="none" pathLength={100}
+                stroke={gagnant && verdict > 0 ? 'url(#fil-actif)' : D3.ATONE}
+                strokeWidth={gagnant ? 2.5 + 2 * verdict : 2}
+                strokeLinecap="round"
+                strokeDasharray="100" strokeDashoffset={100 - 100 * trace}
+                opacity={(gagnant ? 0.5 + 0.5 * verdict : 0.36) * vie}
+              />
+              {/* LE POINT DE LUMIERE QUI PARCOURT LE TRAIT. C'est lui qui
+                  raconte l'acheminement : un trait qui s'allonge dit « ca
+                  pousse », un point qui court dit « ca circule ».
+                  Sa position est calculee ANALYTIQUEMENT le long du coude —
+                  pas de `<animate>` SVG, qui est une animation temporelle que
+                  Remotion ne pilote pas et qui casserait le determinisme. */}
+              {trace > 0.03 && trace < 0.98 ? (() => {
+                const l1 = Math.abs(coude - xPuce);
+                const l2 = Math.abs(c.dy) + 0;
+                const l3 = Math.abs(xCarte - coude);
+                const total = l1 + l2 + l3;
+                let d1 = trace * total;
+                let px = xPuce;
+                let py = cy + c.dy;
+                if (d1 <= l1) {
+                  px = xPuce + Math.sign(coude - xPuce) * d1;
+                } else if (d1 <= l1 + l2) {
+                  px = coude;
+                  py = cy + c.dy + Math.sign(-c.dy) * (d1 - l1);
+                } else {
+                  px = coude + Math.sign(xCarte - coude) * (d1 - l1 - l2);
+                  py = cy;
+                }
+                return (
+                  <g opacity={0.95 * vie}>
+                    <circle cx={px} cy={py} r={gagnant ? 11 : 8}
+                      fill={gagnant ? D3.BLEU : D3.ATONE} opacity={0.18} />
+                    <circle cx={px} cy={py} r={gagnant ? 4.5 : 3.2}
+                      fill={gagnant ? D3.BLEU : D3.ATONE} />
+                  </g>
+                );
+              })() : null}
+            </g>
           );
         })}
       </svg>
 
-      {/* La reservation, au centre : c'est l'objet dont on parle. */}
+      {/* La reservation : au premier plan, avec une vraie epaisseur. */}
       <div style={{
         position: 'absolute', left: '50%', top: '50%', width: CARTE_L, height: CARTE_H,
-        transform: `translate(-50%, -50%) scale(${0.92 + 0.08 * socle})`,
-        background: '#fff', borderRadius: 12, borderLeft: `5px solid ${BLEU}`,
-        boxShadow: '0 14px 34px rgba(5, 30, 72, 0.13)',
-        padding: '20px 22px', boxSizing: 'border-box', zIndex: 2,
+        transform: `translate(-50%, -50%) translateZ(${60 + 40 * altitude}px)`
+          + ` translateY(${-26 * altitude}px) scale(${0.94 + 0.06 * pose})`,
+        opacity: Math.min(1, socle * 1.4),
+        filter: D3.flou(pose, 10),
+        borderRadius: 14, borderLeft: `5px solid ${D3.BLEU}`,
+        ...D3.MATIERE_CLAIRE,
+        boxShadow: `${D3.ombre(0.35 + 0.65 * altitude)}, ${D3.MATIERE_CLAIRE.boxShadow}`,
+        padding: '22px 24px', boxSizing: 'border-box', zIndex: 3,
       }}>
-        <div style={{ fontFamily: SANS, fontSize: 26, fontWeight: 620, color: ENCRE }}>Une réservation</div>
-        <div style={{ fontFamily: MONO, fontSize: 19, color: ATONE, marginTop: 9, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+        <D3.Reflet t={interpolate(frame, [16, 46], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })} />
+        <div style={{ fontFamily: SANS, fontSize: 27, fontWeight: 640, color: ENCRE, letterSpacing: '-0.01em' }}>
+          Une réservation
+        </div>
+        <div style={{ fontFamily: MONO, fontSize: 19, color: ATONE, marginTop: 10, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
           11:00 · 11 JOUEURS
         </div>
       </div>
 
       {CANAUX.map((c, k) => {
         const depart = tRoutes + k * 7;
-        const trace = interpolate(frame, [depart, depart + 15], [0, 1], {
-          extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease,
-        });
+        const entree = D3.ressort(frame, depart - 6, 20);
         const gagnant = k === 0;
         const vie = gagnant ? 1 : 1 - 0.78 * verdict;
-        const allume = gagnant && verdict > 0;
+        const allume = gagnant && verdict > 0.02;
+        // Le gagnant AVANCE vers l'observateur quand il l'emporte ; les autres
+        // reculent. La hierarchie se lit en profondeur, pas seulement en couleur.
+        const z = allume ? 30 * verdict : -20 * verdict;
         return (
           <div key={c.nom} style={{
             position: 'absolute', left: '50%', top: '50%',
             transform: `translate(-50%, -50%) translate(${c.cote * PUCE_X}px, ${c.dy}px)`
-              + ` scale(${0.86 + 0.14 * trace + (gagnant ? 0.10 * verdict : 0)})`,
-            opacity: trace * vie,
-            fontFamily: MONO, fontSize: 22, letterSpacing: '0.1em', textTransform: 'uppercase',
-            color: allume ? '#fff' : ATONE,
-            background: allume ? BLEU : '#fff',
-            border: `1px solid ${allume ? BLEU : TRAIT}`,
-            padding: '14px 24px', borderRadius: 999, whiteSpace: 'nowrap', zIndex: 2,
-            boxShadow: allume
-              ? `0 12px 30px rgba(6, 100, 254, ${0.30 * verdict})`
-              : '0 10px 26px rgba(5, 30, 72, 0.09)',
+              + ` translateZ(${z}px) scale(${0.88 + 0.12 * entree + (gagnant ? 0.08 * verdict : 0)})`,
+            opacity: entree * vie,
+            filter: D3.flou(entree, 7),
+            zIndex: 2,
           }}>
-            {c.nom}
+            <D3.Pastille texte={c.nom} actif={allume} />
           </div>
         );
       })}
 
-      {/* La proportion, en chiffres : « neuf fois sur dix » se retient mieux
-          ecrit que dit. */}
+      {/* La proportion, en chiffres. */}
       <div style={{
-        position: 'absolute', left: '50%', bottom: -14,
-        transform: `translateX(-50%) scale(${0.9 + 0.1 * verdict})`,
+        position: 'absolute', left: '50%', bottom: -18,
+        transform: `translateX(-50%) translateZ(${20 * verdict}px) scale(${0.88 + 0.12 * D3.ressort(frame, tGagne + 6, 18)})`,
         opacity: interpolate(frame, [tGagne + 6, tGagne + 16], [0, 1], {
           extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
         }),
         fontFamily: MONO, fontSize: 24, fontWeight: 600, letterSpacing: '0.14em',
         color: BLEU, textTransform: 'uppercase',
-        background: PALE, border: `1px solid rgba(6, 100, 254, 0.22)`,
-        padding: '11px 20px', borderRadius: 999,
+        ...D3.MATIERE_CLAIRE,
+        border: '1px solid rgba(6, 100, 254, 0.24)',
+        padding: '12px 22px', borderRadius: 999,
+        boxShadow: D3.ombre(0.25, '6, 100, 254'),
       }}>
         9 fois sur 10
       </div>
-    </div>
+    </D3.Plateau>
   );
 };
 

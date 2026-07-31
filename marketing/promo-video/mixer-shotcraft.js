@@ -119,7 +119,12 @@ const CIBLE_SFX = -30;
 //
 // C'est la contrepartie de la mesure par soustraction : la garde attrape
 // maintenant les DEUX cotes, pas seulement la nappe absente.
-const CIBLE_MUSIQUE = -25;
+// -23 apres regeneration du morceau : son arc est plus creuse qu'avant (ouverture
+// a -19,7 dB, conduite a -12,8), donc a cible egale il ressortait a 12,2 dB sous
+// le mixage — dans la fenetre, mais a son bord bas. Deux dB le remettent au
+// milieu. La cible se rejuge a CHAQUE nouveau fichier : elle decrit ce
+// fichier-la, pas le mixage.
+const CIBLE_MUSIQUE = -23;
 
 const duree = (f) => Number(execFileSync('ffprobe', ['-v', 'error',
   '-show_entries', 'format=duration', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim());

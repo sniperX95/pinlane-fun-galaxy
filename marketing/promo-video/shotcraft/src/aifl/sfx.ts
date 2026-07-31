@@ -92,27 +92,43 @@ export const SFX: Son[] = [
   // reference du skill pour les fichiers enregistres bas. Celui-ci sort a
   // -47,1 dB de moyenne (crete -33,5) : a 0,20 il n'existait pas. A x4 la moyenne
   // monte a -35 dB et la crete a -21,5, donc aucun risque de saturation.
-  ...[0, 1, 2, 3].map((n) => ({
-    from: S.cardA.from + n * 150,
+  // L'AMBIANCE EST MAINTENANT NORMALISEE A LA SOURCE (`scripts/promo-ambiance.js`).
+  // Elle sortait a -47,1 dB et il fallait la jouer a x4 — ce qui multipliait
+  // aussi son souffle et ses artefacts d'encodage. Elle sort a -27 dB sur 12 s :
+  // deux passes couvrent les trois cartons, et un `volume` proche de 1 veut de
+  // nouveau dire « telle quelle ».
+  ...[0, 1].map((n) => ({
+    from: S.cardA.from + n * 358,
     src: 'ambiance-centre.mp3',
-    volume: 4.0,
-    coupe: 152,
+    volume: 0.85,
+    coupe: 360,
   })),
 
   // cardA — d'ou arrive une reservation : trois chemins se tracent, celui du
   // telephone l'emporte.
-  { from: S.cardA.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: S.cardA.from, src: 'whoosh-swirl.mp3', volume: 0.38, coupe: 44 },
+  // LES TROIS CHEMINS QUI SE TRACENT. Le son tombe sur l'ARRIVEE du point de
+  // lumiere sur la carte, pas sur son depart : le trace dure 16 images, donc le
+  // contact se produit 16 images apres le debut du mouvement (piege 71).
   ...[0, 1, 2].map((n) => ({
     from: surMot('cardA', 'comment', 45) + n * 7,
-    src: n % 2 === 0 ? 'sweep-fast-small.mp3' : 'swoosh-quick.mp3',
-    volume: +(0.28 - n * 0.05).toFixed(3),
+    src: n % 2 === 0 ? 'sweep-fast-small.mp3' : 'air-woosh-quick.mp3',
+    volume: +(0.26 - n * 0.04).toFixed(3),
     coupe: 16,
   })),
-  // Le telephone l'emporte : une vraie sonnerie, une seule, sur le mot.
+  ...[0, 1, 2].map((n) => ({
+    from: surMot('cardA', 'comment', 45) + n * 7 + 16,
+    src: n % 2 === 0 ? 'ui-select-click.mp3' : 'switch-tap.mp3',
+    volume: +(0.30 - n * 0.05).toFixed(3),
+    coupe: 12,
+  })),
+  // Le telephone l'emporte : une vraie sonnerie, une seule, sur le mot, plus
+  // l'impact qui marque le verdict.
   { from: surMot('cardA', 'neuf', 92) + 4, src: 'sonnerie-telephone.mp3', volume: 0.44, coupe: 66 },
+  { from: surMot('cardA', 'neuf', 92) + 10, src: 'hit-weak.mp3', volume: 0.30, coupe: 14 },
 
   // cardB — la scene du comptoir.
-  { from: S.cardB.from, src: 'sweep-short.mp3', volume: 0.34 },
+  { from: S.cardB.from, src: 'wind-swoosh-short.mp3', volume: 0.36, coupe: 40 },
   { from: surMot('cardB', 'comptoir', 34) - 4, src: 'sweep-fast-small.mp3', volume: 0.30 }, // le plan se pose
   // trois personnes qui arrivent : trois pops en decroissance (regle 4.2)
   ...[0, 1, 2].map((n) => ({
@@ -129,14 +145,26 @@ export const SFX: Son[] = [
 
   // cardC — ce que l'appel manque coute.
   { from: S.cardC.from, src: 'sweep-short.mp3', volume: 0.34 },
+  { from: S.cardC.from + 3, src: 'impact-cine.mp3', volume: 0.22, coupe: 40 },
   { from: surMot('cardC', 'rates', 56), src: 'bass-hit-short.mp3', volume: 0.40 },          // l'appel tombe
   { from: surMot('cardC', 'rates', 56) + 2, src: 'heartbeat-single.mp3', volume: 0.34 },
   { from: surMot('cardC', 'ailleurs', 90) - 8, src: 'air-woosh-quick.mp3', volume: 0.34 },  // ils s'en vont
   { from: surMot('cardC', 'ailleurs', 90) + 14, src: 'ui-select-click.mp3', volume: 0.30 }, // et reservent la-bas
 
   // ---- Carton du basculement : on ouvre ------------------------------
-  { from: S.card1.from, src: 'wind-swoosh-short.mp3', volume: 0.42 },
+  { from: S.card1.from, src: 'riser-cine.mp3', volume: 0.30, coupe: 42 },
   { from: S.card1.from + 10, src: 'shimmer-sparkle-sweep.mp3', volume: 0.26, coupe: 40 },
+  // LES TROIS ABSORPTIONS. Le pictogramme avale une etiquette toutes les dix
+  // images a partir de `prend` + 6 : chacune produit une onde, donc chacune a
+  // son son. Deux echantillons alternes et un volume decroissant (regle 4.2) —
+  // trois fois le meme timbre se serait entendu comme un bug.
+  ...[0, 1, 2].map((n) => ({
+    from: surMot('card1', 'prend', 36) + 6 + n * 10,
+    src: n % 2 === 0 ? 'pop-electric.mp3' : 'sparkle-touch.mp3',
+    volume: +(0.34 - n * 0.05).toFixed(3),
+    coupe: 20,
+  })),
+  { from: surMot('card1', 'prend', 36) + 32, src: 'ui-success-soft.mp3', volume: 0.26, coupe: 24 },
 
   // ---- Distribution : la pile, puis les cartes ------------------------
   { from: S.table.from + 2, src: 'transition-soft.mp3', volume: 0.40 },
@@ -165,7 +193,12 @@ export const SFX: Son[] = [
   })),
 
   // ---- Carton 2 --------------------------------------------------------
-  { from: S.card2.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: S.card2.from, src: 'swoosh-quick.mp3', volume: 0.38 },
+  // LA CARTE QUI DECOLLE, PUIS QUI SE REPOSE. Le mouvement dure 26 images et son
+  // altitude suit un sinus : elle est en haut a la moitie, reposee a la fin.
+  // Deux sons, donc, et le second sur l'ATTERRISSAGE.
+  { from: surMot('card2', 'remonte', 40) - 2, src: 'whoosh-big.mp3', volume: 0.34, coupe: 26 },
+  { from: surMot('card2', 'remonte', 40) + 26, src: 'transition-snap.mp3', volume: 0.38, coupe: 18 },
 
   // ---- Dossiers : la pile s'empile ------------------------------------
   { from: S.chart.from + 3, src: 'transition-soft.mp3', volume: 0.42 },
@@ -183,7 +216,7 @@ export const SFX: Son[] = [
   { from: S.chart.from + 92, src: 'ui-success-soft.mp3', volume: 0.30 },   // la pile est complete
 
   // ---- Carton 3 --------------------------------------------------------
-  { from: S.cardWbr.from, src: 'swoosh-quick.mp3', volume: 0.40 },
+  { from: S.cardWbr.from, src: 'transition-soft.mp3', volume: 0.40 },
   { from: surMot('cardWbr', 'chiffre', 30), src: 'clock-knob-spin.mp3', volume: 0.30, coupe: 34 },
   { from: surMot('cardWbr', 'occupation', 60), src: 'data-scan.mp3', volume: 0.22, coupe: 30 },
 
@@ -199,10 +232,21 @@ export const SFX: Son[] = [
   { from: S.wbr.from + 88, src: 'ui-success-soft.mp3', volume: 0.34 },
 
   // ---- Carton 4 --------------------------------------------------------
-  { from: S.card3.from, src: 'swoosh-quick.mp3', volume: 0.40 },
-  { from: surMot('card3', 'saisie', 20), src: 'ui-select-click.mp3', volume: 0.36 },
-  { from: surMot('card3', 'double', 55), src: 'ui-select-click.mp3', volume: 0.32 },
-  { from: surMot('card3', 'appel', 90), src: 'ui-success-soft.mp3', volume: 0.34 },
+  { from: S.card3.from, src: 'sweep-fast-small.mp3', volume: 0.36 },
+  // LES TROIS ZEROS : la carte apparait sur le mot, et sa barre la raye six
+  // images plus tard. Deux evenements distincts, donc deux sons — c'est ce
+  // decalage qui fait entendre une mecanique au lieu d'un simple clic.
+  ...[
+    { cle: 'saisie', repli: 20 },
+    { cle: 'double', repli: 55 },
+    { cle: 'appel', repli: 90 },
+  ].flatMap((z, n) => [
+    { from: surMot('card3', z.cle, z.repli) - 4, src: n % 2 === 0 ? 'pop.mp3' : 'pop-electric.mp3',
+      volume: +(0.34 - n * 0.03).toFixed(3), coupe: 16 },
+    { from: surMot('card3', z.cle, z.repli) + 8, src: 'hit-weak.mp3',
+      volume: +(0.28 - n * 0.03).toFixed(3), coupe: 14 },
+  ]),
+  { from: surMot('card3', 'appel', 90) + 22, src: 'ui-success-soft.mp3', volume: 0.32, coupe: 26 },
 
   // ---- Signature : la formule en trois temps de la reference (§ 4.3) ---
   // riser (montee) -> ~35 images plus tard l'impact (le pic du film) ->

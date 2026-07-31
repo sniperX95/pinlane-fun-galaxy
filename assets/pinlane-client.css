@@ -547,6 +547,10 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .activity-picker {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /* Chaque carte prend SA hauteur : sans ça, une carte cochée qui ouvre ses
+     options étire toutes ses voisines de la même rangée, et une activité sans
+     option se retrouve avec un grand vide sous son nom. */
+  align-items: start;
   gap: var(--space-2);
   margin-top: var(--space-3);
 }

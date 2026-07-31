@@ -51,98 +51,165 @@ const monte = (frame: number, de: number, duree = 12, easing = ease) =>
 // Le telephone, en 3D
 // ---------------------------------------------------------------------------
 
-/** Un smartphone vu de trois quarts. `sonne` de 0 a 1 pilote la vibration, les
- *  ondes et l'eclat de l'ecran ; `entree` son apparition. */
+// LA CADENCE DE SONNERIE. Un telephone sonne par SALVES : ~1,3 s de sonnerie,
+// ~0,9 s de silence. La version precedente vibrait et emettait des ondes sans
+// interruption, ce qui ne ressemble a aucun telephone — et c'est cette cadence,
+// bien plus que le nombre de reflets, qui fait reconnaitre l'objet.
+// Elle est calee sur `sonnerie-telephone.mp3`, qui porte deux sonneries sur 4 s.
+const CADENCE = 66;        // images pour un cycle complet
+const SALVE = 39;          // dont sonnerie
+
+/** Ou en est-on dans la salve ? 0 pendant le silence, 1 pendant la sonnerie,
+ *  avec une attaque et une chute courtes pour ne pas claquer. */
+const salve = (frame: number) => {
+  const t = ((frame % CADENCE) + CADENCE) % CADENCE;
+  if (t > SALVE) return 0;
+  return Math.min(1, Math.min(t / 3, (SALVE - t) / 5));
+};
+
+/** Un smartphone vu de trois quarts. `sonne` de 0 a 1 autorise la sonnerie ;
+ *  `entree` son apparition. La cadence, elle, vient du temps. */
 const Telephone: React.FC<{ entree: number; sonne: number; frame: number; echelle?: number }> = ({
   entree, sonne, frame, echelle = 1,
 }) => {
+  const actif = sonne * salve(frame);
   // Vibration : deux frequences superposees pour que ca ne batte pas comme un
   // metronome. Un telephone sur un comptoir tressaute, il n'oscille pas.
-  const vx = (Math.sin(frame * 1.9) * 2.4 + Math.sin(frame * 3.7) * 1.1) * sonne;
-  const vr = (Math.sin(frame * 2.1 + 1) * 1.6) * sonne;
+  const vx = (Math.sin(frame * 1.9) * 2.6 + Math.sin(frame * 3.7) * 1.2) * actif;
+  const vy = (Math.sin(frame * 2.6 + 0.7) * 1.4) * actif;
+  const vr = (Math.sin(frame * 2.1 + 1) * 1.7) * actif;
   const L = 214;
   const H = 424;
+  const px = (v: number) => v * echelle;
 
   return (
     <div style={{
-      position: 'relative', width: L * echelle, height: H * echelle,
+      position: 'relative', width: px(L), height: px(H),
       perspective: 1100, transformStyle: 'preserve-3d',
       opacity: entree,
     }}>
-      {/* ombre portee sur le comptoir : elle s'ecarte quand l'appareil tressaute */}
+      {/* ombre portee : elle se resserre et fonce quand l'appareil tressaute */}
       <div style={{
-        position: 'absolute', left: '50%', bottom: -26 * echelle,
-        width: L * 1.15 * echelle, height: 42 * echelle,
-        transform: `translateX(calc(-50% + ${vx * 0.6}px))`,
-        background: 'radial-gradient(ellipse at 50% 50%, rgba(5, 30, 72, 0.28), transparent 70%)',
-        filter: 'blur(9px)',
-        opacity: 0.7 * entree,
+        position: 'absolute', left: '50%', bottom: px(-30),
+        width: px(L * 1.2), height: px(46),
+        transform: `translateX(calc(-50% + ${vx * 0.6}px)) scaleX(${1 - 0.06 * actif})`,
+        background: `radial-gradient(ellipse at 50% 50%, rgba(5, 30, 72, ${0.26 + 0.08 * actif}), transparent 70%)`,
+        filter: 'blur(10px)',
+        opacity: 0.75 * entree,
       }} />
 
-      {/* ondes d'appel : elles epousent la forme du telephone, pas des cercles */}
-      {[0, 1, 2].map((k) => {
-        const cycle = 26;
-        const p = ((frame + k * 9) % cycle) / cycle;
+      {/* LES ONDES PARTENT DU HAUT DE L'APPAREIL, en arcs, comme une emission —
+          et non en ellipses centrees dessus, qui ne ressemblent a rien. Elles ne
+          vivent que pendant la salve. */}
+      {actif > 0.02 ? [0, 1, 2].map((k) => {
+        const cycle = 22;
+        const q = (((frame - k * 7) % cycle) + cycle) % cycle / cycle;
+        const r = px(46 + q * 150);
         return (
-          <div key={k} style={{
-            position: 'absolute', left: '50%', top: '50%',
-            width: (L + 40 + p * 260) * echelle, height: (H * 0.55 + 40 + p * 260) * echelle,
-            transform: 'translate(-50%, -50%)',
-            border: `${3 * echelle}px solid ${BLEU}`,
-            borderRadius: 999,
-            opacity: (1 - p) * 0.55 * sonne,
-          }} />
+          <svg
+            key={k}
+            width={px(420)} height={px(300)}
+            viewBox="0 0 420 300"
+            style={{
+              position: 'absolute', left: '50%', top: px(-52),
+              transform: 'translateX(-50%)',
+              opacity: (1 - q) * 0.7 * actif,
+              overflow: 'visible',
+            }}
+          >
+            <path
+              d={`M ${210 - r / echelle} 150 A ${r / echelle} ${r / echelle} 0 0 1 ${210 + r / echelle} 150`}
+              fill="none" stroke={BLEU} strokeWidth={3.2} strokeLinecap="round"
+            />
+          </svg>
         );
-      })}
+      }) : null}
 
-      {/* corps */}
+      {/* corps : coque, biseau interieur, tranche laterale et bouton */}
       <div style={{
         position: 'absolute', inset: 0,
-        transform: `rotateY(-21deg) rotateX(7deg) rotateZ(${-5 + vr}deg) translateX(${vx}px)`,
+        transform: `rotateY(-21deg) rotateX(7deg) rotateZ(${-5 + vr}deg)`
+          + ` translateX(${vx}px) translateY(${vy}px)`,
         transformStyle: 'preserve-3d',
-        borderRadius: 34 * echelle,
-        background: 'linear-gradient(148deg, #16233d 0%, #0b1526 46%, #05101f 100%)',
-        boxShadow: `inset 0 0 0 ${1.6 * echelle}px rgba(255,255,255,0.14),`
-          + ` inset 0 ${2 * echelle}px 0 rgba(255,255,255,0.10),`
-          + ` 0 ${26 * echelle}px ${52 * echelle}px rgba(5, 30, 72, 0.34)`,
+        borderRadius: px(34),
+        background: 'linear-gradient(148deg, #1b2a48 0%, #0d1830 44%, #050d1c 100%)',
+        boxShadow: `inset 0 0 0 ${px(1.6)}px rgba(255,255,255,0.16),`
+          + ` inset 0 ${px(2)}px 0 rgba(255,255,255,0.12),`
+          + ` inset 0 ${px(-3)}px ${px(6)}px rgba(0,0,0,0.5),`
+          + ` 0 ${px(28)}px ${px(56)}px rgba(5, 30, 72, ${0.34 + 0.08 * actif})`,
       }}>
+        {/* le bouton de tranche : un detail qui coute trois lignes et qui fait
+            lire un objet fabrique plutot qu'un rectangle */}
+        <div style={{
+          position: 'absolute', right: px(-3), top: px(112),
+          width: px(4), height: px(56), borderRadius: px(3),
+          background: 'linear-gradient(180deg, #2a3c5e, #16233d)',
+        }} />
+
         {/* ecran */}
         <div style={{
-          position: 'absolute', inset: 9 * echelle, borderRadius: 27 * echelle,
+          position: 'absolute', inset: px(9), borderRadius: px(27),
           background: `linear-gradient(158deg, ${BLEU_CLAIR} 0%, ${BLEU} 42%, #0b3ea8 100%)`,
           overflow: 'hidden',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'space-between',
-          padding: `${34 * echelle}px ${16 * echelle}px ${26 * echelle}px`,
+          padding: `${px(26)}px ${px(16)}px ${px(24)}px`,
           boxSizing: 'border-box',
+          boxShadow: `inset 0 0 ${px(30)}px rgba(0,0,0,0.28)`,
         }}>
-          <div style={{ textAlign: 'center' }}>
+          {/* l'encoche : encore un detail d'objet reel */}
+          <div style={{
+            position: 'absolute', left: '50%', top: px(8), transform: 'translateX(-50%)',
+            width: px(72), height: px(9), borderRadius: px(6),
+            background: 'rgba(0,0,0,0.34)',
+          }} />
+
+          <div style={{ textAlign: 'center', marginTop: px(16) }}>
+            {/* la pastille d'appelant : elle pulse au rythme de la salve */}
             <div style={{
-              fontFamily: MONO, fontSize: 15 * echelle, letterSpacing: '0.16em',
+              width: px(64), height: px(64), borderRadius: '50%', margin: '0 auto',
+              background: 'rgba(255,255,255,0.18)',
+              border: `${px(2)}px solid rgba(255,255,255,0.38)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transform: `scale(${1 + 0.07 * actif})`,
+              boxShadow: `0 0 ${px(18 * actif)}px rgba(255,255,255,${0.4 * actif})`,
+            }}>
+              <svg width={px(30)} height={px(30)} viewBox="0 0 24 24">
+                <circle cx={12} cy={8} r={4} fill="rgba(255,255,255,0.9)" />
+                <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="rgba(255,255,255,0.9)" />
+              </svg>
+            </div>
+            <div style={{
+              fontFamily: MONO, fontSize: px(14), letterSpacing: '0.16em',
               color: 'rgba(255,255,255,0.72)', textTransform: 'uppercase',
+              marginTop: px(12),
             }}>
               Appel entrant
             </div>
             <div style={{
-              fontFamily: SANS, fontSize: 27 * echelle, fontWeight: 620, color: '#fff',
-              marginTop: 8 * echelle, whiteSpace: 'nowrap',
+              fontFamily: SANS, fontSize: px(26), fontWeight: 620, color: '#fff',
+              marginTop: px(5), whiteSpace: 'nowrap',
             }}>
               06 12 34 …
             </div>
           </div>
 
-          {/* les deux boutons : cercles blancs, l'un incline pour « raccrocher ».
-              Pas de vert/rouge — le film tient sur deux couleurs de marque. */}
-          <div style={{ display: 'flex', gap: 26 * echelle }}>
+          {/* les deux boutons : celui qu'on ne prendra pas respire au rythme de
+              la salve. Pas de vert/rouge — le film tient sur deux couleurs. */}
+          <div style={{ display: 'flex', gap: px(26) }}>
             {[0, 1].map((k) => (
               <div key={k} style={{
-                width: 52 * echelle, height: 52 * echelle, borderRadius: '50%',
-                background: k === 0 ? '#fff' : 'rgba(255,255,255,0.22)',
+                width: px(52), height: px(52), borderRadius: '50%',
+                background: k === 0
+                  ? 'linear-gradient(180deg, #ffffff, #e6edf9)'
+                  : 'rgba(255,255,255,0.20)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: k === 0 ? `0 ${6 * echelle}px ${14 * echelle}px rgba(0,0,0,0.22)` : 'none',
-                transform: `scale(${k === 0 ? 1 + 0.06 * Math.sin(frame * 0.5) * sonne : 1})`,
+                boxShadow: k === 0
+                  ? `0 ${px(6)}px ${px(14)}px rgba(0,0,0,0.26), 0 0 ${px(20 * actif)}px rgba(255,255,255,${0.5 * actif})`
+                  : 'inset 0 0 0 1px rgba(255,255,255,0.18)',
+                transform: `scale(${k === 0 ? 1 + 0.08 * actif : 1})`,
               }}>
-                <svg width={26 * echelle} height={26 * echelle} viewBox="0 0 24 24"
+                <svg width={px(26)} height={px(26)} viewBox="0 0 24 24"
                   style={{ transform: k === 1 ? 'rotate(134deg)' : 'none' }}>
                   <path
                     d="M6.6 10.8c1.2 2.4 3.2 4.4 5.6 5.6l2.1-2.1c.3-.3.7-.4 1.1-.2 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V19c0 .6-.4 1-1 1C10.5 20 4 13.5 4 5.4c0-.6.4-1 1-1h3.3c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.2 1.1l-2.1 2.1z"
@@ -153,11 +220,11 @@ const Telephone: React.FC<{ entree: number; sonne: number; frame: number; echell
             ))}
           </div>
 
-          {/* reflet : une bande diagonale qui glisse lentement */}
+          {/* reflet : une bande diagonale qui glisse lentement sur le verre */}
           <div style={{
-            position: 'absolute', inset: -40 * echelle,
-            background: 'linear-gradient(118deg, transparent 38%, rgba(255,255,255,0.20) 47%,'
-              + ' rgba(255,255,255,0.06) 53%, transparent 62%)',
+            position: 'absolute', inset: px(-40),
+            background: 'linear-gradient(118deg, transparent 38%, rgba(255,255,255,0.22) 47%,'
+              + ' rgba(255,255,255,0.07) 53%, transparent 62%)',
             transform: `translateX(${((frame * 0.7) % 320) - 160}px)`,
             pointerEvents: 'none',
           }} />
@@ -167,15 +234,76 @@ const Telephone: React.FC<{ entree: number; sonne: number; frame: number; echell
   );
 };
 
-/** Une silhouette de client qui attend. */
-const Client: React.FC<{ h?: number; ton?: string; impatience?: number }> = ({
-  h = 150, ton = ATONE, impatience = 0,
-}) => (
-  <svg width={h * 0.62} height={h} viewBox="0 0 62 150" style={{ display: 'block' }}>
-    <circle cx={31} cy={26 + impatience} r={21} fill={ton} />
-    <path d={`M2 150 C2 96, 15 74, 31 74 C47 74, 60 96, 60 150 Z`} fill={ton} />
-  </svg>
-);
+// ---------------------------------------------------------------------------
+// Les silhouettes, avec un vrai cycle de marche
+// ---------------------------------------------------------------------------
+
+/** Une personne. `marche` est la distance parcourue en pas (0 = immobile) :
+ *  c'est elle qui pilote le cycle, donc la vitesse des jambes suit toujours
+ *  celle du deplacement — un personnage dont les jambes bougent sans qu'il
+ *  avance, ou l'inverse, se voit immediatement. */
+const Silhouette: React.FC<{
+  h?: number; ton?: string; marche?: number; impatience?: number; phase?: number;
+}> = ({ h = 150, ton = ATONE, marche = 0, impatience = 0, phase = 0 }) => {
+  const k = h / 150;
+  const c = (marche + phase) * Math.PI * 2;
+  const anime = marche > 0.001 ? 1 : 0;
+  // Le corps monte et descend DEUX fois par pas, jamais une : c'est la
+  // signature d'une demarche.
+  const rebond = Math.abs(Math.sin(c)) * 4 * k * anime;
+  const jambeA = Math.sin(c) * 22 * anime;
+  const jambeB = Math.sin(c + Math.PI) * 22 * anime;
+  const brasA = Math.sin(c + Math.PI) * 16 * anime;
+  const brasB = Math.sin(c) * 16 * anime;
+  // L'ombre de contact se resserre quand un pied porte le poids.
+  const appui = 0.6 + 0.4 * Math.abs(Math.cos(c));
+
+  return (
+    <div style={{ position: 'relative', width: h * 0.66, height: h * 1.06 }}>
+      <div style={{
+        position: 'absolute', left: '50%', bottom: 0,
+        width: h * 0.5 * appui, height: h * 0.075,
+        transform: 'translateX(-50%)', borderRadius: '50%',
+        background: 'rgba(5,30,72,0.20)', filter: `blur(${h * 0.035}px)`,
+      }} />
+      {/* LA POSE DE REPOS DOIT DEJA ETRE JUSTE. Premier essai : deux jambes
+          posees a trois pixels l'une de l'autre et des bras de 38 px accroches
+          trop haut — a l'arret elles se superposaient en un seul bloc et les
+          bras faisaient des moignons. Un cycle de marche ne rattrape pas une
+          silhouette mal proportionnee : on dessine d'abord la station debout,
+          l'animation ne fait ensuite que pivoter les membres. */}
+      <svg
+        width={h * 0.66} height={h}
+        viewBox="0 0 66 150"
+        style={{ display: 'block', position: 'absolute', left: 0, bottom: h * 0.03,
+          transform: `translateY(${-rebond}px)` }}
+      >
+        {/* jambes : deux troncs SEPARES, qui pivotent depuis la hanche */}
+        <g transform="translate(33, 92)">
+          <rect x={-13} y={-4} width={12} height={58} rx={6} fill={ton} opacity={0.78}
+            transform={`rotate(${jambeB})`} style={{ transformOrigin: '-7px 0px' }} />
+          <rect x={1} y={-4} width={12} height={58} rx={6} fill={ton}
+            transform={`rotate(${jambeA})`} style={{ transformOrigin: '7px 0px' }} />
+        </g>
+        {/* bras : longs, le long du corps, en opposition aux jambes */}
+        <g transform="translate(33, 60)">
+          <rect x={-21} y={0} width={8} height={44} rx={4} fill={ton} opacity={0.72}
+            transform={`rotate(${brasA})`} style={{ transformOrigin: '-17px 2px' }} />
+          <rect x={13} y={0} width={8} height={44} rx={4} fill={ton} opacity={0.88}
+            transform={`rotate(${brasB})`} style={{ transformOrigin: '17px 2px' }} />
+        </g>
+        {/* buste : des epaules et une taille, pas une goutte */}
+        <path
+          d="M15 96 C13 78, 12 60, 33 56 C54 60, 53 78, 51 96 Z"
+          fill={ton}
+        />
+        <circle cx={33} cy={30 + impatience} r={17} fill={ton} />
+        {/* le cou : sans lui la tete est posee sur les epaules comme une bille */}
+        <rect x={29} y={42} width={8} height={10} fill={ton} />
+      </svg>
+    </div>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // A · « t'es au comptoir · trois groupes qui attendent · une commande a
@@ -235,7 +363,10 @@ export const IncrustComptoir: React.FC<Contexte> = (ctx) => {
             opacity: t,
             transform: `translateY(${(1 - t) * 26}px) translateX(${imp}px)`,
           }}>
-            <Client h={186 + (k % 2) * 22} ton={k === 1 ? '#6b768c' : ATONE} />
+            {/* Ils ATTENDENT : pas de cycle de marche, mais une impatience qui
+                monte — le poids passe d'un pied sur l'autre. */}
+            <Silhouette h={186 + (k % 2) * 22} ton={k === 1 ? '#6b768c' : ATONE}
+              impatience={imp * 0.4} />
           </div>
         );
       })}
@@ -345,11 +476,12 @@ export const IncrustAilleurs: React.FC<Contexte> = (ctx) => {
         const d = Math.max(0, partent - k * 0.06) / (1 - k * 0.06 || 1);
         return (
           <div key={k} style={{
-            position: 'absolute', left: 520 + k * 96 + d * 470, bottom: 96,
+            position: 'absolute', left: 500 + k * 112 + d * 470, bottom: 92,
             opacity: plan * (1 - Math.max(0, (d - 0.86) / 0.14)),
             transform: `translateY(${Math.sin(d * Math.PI * 5 + k) * 6}px)`,
           }}>
-            <Client h={138} ton={k === 1 ? '#6b768c' : ATONE} />
+            <Silhouette h={172} ton={k === 1 ? '#6b768c' : ATONE}
+              marche={d * 3.4} phase={k * 0.37} />
           </div>
         );
       })}
@@ -365,23 +497,43 @@ export const IncrustAilleurs: React.FC<Contexte> = (ctx) => {
         }}>
           Le centre d’à côté
         </div>
+        {/* LES CRENEAUX DU CONCURRENT. Les deux qui ne recoivent rien portent
+            quand meme un squelette de contenu : vides, ils se lisaient comme des
+            cadres pas finis plutot que comme un planning. */}
         {[0, 1, 2].map((k) => {
           const pris = k === 1;
           const arrive = pris ? monte(frame, tAilleurs + 12, 12, ressort) : 1;
           return (
             <div key={k} style={{
-              height: 74, marginBottom: 10, borderRadius: 10,
+              height: 76, marginBottom: 12, borderRadius: 12,
               background: pris ? PALE : '#fff',
               border: `1px solid ${TRAIT}`,
-              borderLeft: `4px solid ${pris ? BLEU : 'rgba(5,30,72,0.15)'}`,
-              display: 'flex', alignItems: 'center', padding: '0 18px',
+              borderLeft: `4px solid ${pris ? BLEU : 'rgba(5,30,72,0.13)'}`,
+              display: 'flex', alignItems: 'center', padding: '0 18px', gap: 14,
               fontFamily: SANS, fontSize: 20, fontWeight: pris ? 620 : 500,
               color: pris ? ENCRE : 'rgba(5,30,72,0.28)',
-              transform: pris ? `translateX(${(1 - arrive) * 90}px)` : 'none',
+              transform: pris ? `translateX(${(1 - arrive) * 90}px) scale(${0.96 + 0.04 * arrive})` : 'none',
               opacity: pris ? arrive : 1,
-              boxShadow: pris ? `0 ${8 * arrive}px ${20 * arrive}px rgba(5,30,72,0.12)` : 'none',
+              boxShadow: pris
+                ? `0 ${10 * arrive}px ${24 * arrive}px rgba(5,30,72,0.14)`
+                : 'inset 0 1px 0 rgba(255,255,255,0.9)',
             }}>
-              {pris ? 'Groupe de 8 · 18:00' : ''}
+              {pris ? (
+                <>
+                  <span style={{
+                    fontFamily: MONO, fontSize: 17, letterSpacing: '0.08em',
+                    color: BLEU,
+                  }}>
+                    18:00
+                  </span>
+                  <span>Groupe de 8</span>
+                </>
+              ) : (
+                <>
+                  <div style={{ width: 52, height: 10, borderRadius: 5, background: 'rgba(5,30,72,0.08)' }} />
+                  <div style={{ width: 128 + k * 26, height: 12, borderRadius: 6, background: 'rgba(5,30,72,0.06)' }} />
+                </>
+              )}
             </div>
           );
         })}

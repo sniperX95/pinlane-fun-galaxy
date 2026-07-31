@@ -92,17 +92,14 @@ export const SFX: Son[] = [
   // reference du skill pour les fichiers enregistres bas. Celui-ci sort a
   // -47,1 dB de moyenne (crete -33,5) : a 0,20 il n'existait pas. A x4 la moyenne
   // monte a -35 dB et la crete a -21,5, donc aucun risque de saturation.
-  // L'AMBIANCE EST MAINTENANT NORMALISEE A LA SOURCE (`scripts/promo-ambiance.js`).
-  // Elle sortait a -47,1 dB et il fallait la jouer a x4 — ce qui multipliait
-  // aussi son souffle et ses artefacts d'encodage. Elle sort a -27 dB sur 12 s :
-  // deux passes couvrent les trois cartons, et un `volume` proche de 1 veut de
-  // nouveau dire « telle quelle ».
-  ...[0, 1].map((n) => ({
-    from: S.cardA.from + n * 358,
-    src: 'ambiance-centre.mp3',
-    volume: 0.85,
-    coupe: 360,
-  })),
+  // (PLUS D'AMBIANCE DE FOND. Il y en avait une — brouhaha de centre de loisirs —
+  // sous les trois cartons du probleme, et je l'avais rendue 20 dB plus forte au
+  // tour precedent en croyant l'ameliorer. Verdict : « y a trop de bruit
+  // parasite, des gens qui parlent en fond, je demandais pas ca ». C'etait une
+  // idee a moi, jamais demandee, et la monter n'a fait que la rendre genante.
+  // Un fond d'ambiance ajoute de la texture SEULEMENT si le film en manque ;
+  // ici il y a deja une nappe musicale et cinquante bruitages, et un troisieme
+  // lit de son ne fait qu'encombrer le milieu du spectre, la ou vit la voix.)
 
   // cardA — d'ou arrive une reservation : trois chemins se tracent, celui du
   // telephone l'emporte.

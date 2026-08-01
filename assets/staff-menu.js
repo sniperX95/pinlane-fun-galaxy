@@ -887,7 +887,7 @@
           <span class="fgx-menu-logo-frame${hasCustomBrandLogo() ? ' is-custom' : ''}">
             <img class="fgx-menu-logo" src="${escapeHtml(getBrandLogoSrc())}" alt="" aria-hidden="true">
           </span>
-          <img class="fgx-menu-lockup" src="${escapeHtml(PLATFORM_LOCKUP_SRC)}" alt="${escapeHtml(PLATFORM_BRAND.name)}, console du centre" width="179" height="40">
+          <img class="fgx-menu-lockup" src="${escapeHtml(PLATFORM_LOCKUP_SRC)}" alt="${escapeHtml(PLATFORM_BRAND.name)}, console du centre" width="143" height="32">
           <span class="fgx-menu-brand-copy">
             <strong>${escapeHtml(PLATFORM_BRAND.name)}</strong>
           </span>

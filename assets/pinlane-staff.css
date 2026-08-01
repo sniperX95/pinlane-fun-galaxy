@@ -167,7 +167,7 @@ body.admin-mode .ops-sidebar {
 }
 
 .fgx-menu-top {
-  min-height: 48px;
+  min-height: 40px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
@@ -179,7 +179,7 @@ body.admin-mode .ops-sidebar {
    (menu replie, logo personnalise par le centre). */
 .fgx-menu-brand {
   min-width: 0;
-  min-height: 48px;
+  min-height: 40px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
@@ -193,7 +193,7 @@ body.admin-mode .ops-sidebar {
 /* Le lockup : le nom est DESSINE dedans, avec son tracking et ses deux
    couleurs. Un <img> ne recoit pas la cascade CSS, donc le theme change la
    SOURCE (meme mecanique que l'ecran de connexion). */
-.fgx-menu-lockup { width: auto; height: 40px; display: block; }
+.fgx-menu-lockup { width: auto; height: 32px; display: block; }
 [data-theme='dark'] .fgx-menu-lockup { content: url('./brand/pinlane-logo-signe-dark.svg'); }
 
 /* Par defaut, le pictogramme encadre et le nom en texte s'effacent : le
@@ -939,7 +939,7 @@ body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; 
   margin-bottom: var(--space-6);
 }
 
-.auth-brand-logo { width: 240px; height: auto; }
+.auth-brand-logo { width: 210px; height: auto; }
 /* Le lockup est en couleur et son mot « LANE » suit le fond : un fichier par
    theme, choisi ici. Un <img> ne recoit pas la cascade CSS de la page, donc
    c'est la SOURCE qu'on change, pas la couleur. */

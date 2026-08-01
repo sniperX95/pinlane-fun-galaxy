@@ -145,6 +145,18 @@ PROCEDES.filter((p) => p.regime === 'spectacle' && usage.has(p.nom)).forEach((p)
   }
 });
 
+// CE QUE CETTE GARDE NE VOIT PAS, et il faut qu'elle le dise elle-meme.
+//
+// Elle reconnait les procedes de sa table, et rien d'autre. Le tri
+// constant/spectacle vaut pour TOUT le film (le son, la couleur, le rythme, la
+// camera, la typographie), mais un script ne sait juger que ce qu'il sait lire.
+// Une garde qui laisse croire qu'elle couvre tout est pire qu'une garde absente.
+console.log('');
+console.log(`couverture : ${PROCEDES.length} procedes d'animation reconnus.`);
+console.log('  NON couverts par ce script, a juger a la main avec la meme question');
+console.log('  (« est-ce que ca traite un TYPE, ou est-ce que ca porte un MOMENT ? ») :');
+console.log('    le son (voir check-sfx.js) · la couleur · le rythme · la camera · la typographie');
+
 console.log('');
 if (ratees.length) {
   console.error('ECHEC :');

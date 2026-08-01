@@ -3316,12 +3316,15 @@ function activityPriceHint(activity, pax) {
 // billard sans demi-heure (borne basse a 60 min) n'en propose plus, sans
 // toucher au tunnel.
 function activityHourChoices(activity) {
-  const min = Math.max(30, Number(activity.minMinutes) || 60);
+  const min = Math.max(15, Number(activity.minMinutes) || 60);
   const max = Math.max(min, Number(activity.maxMinutes) || min);
+  // Le PAS vient de l'activite : le billard se vend a l'heure pleine, donc ni
+  // demi-heure ni 1h30. Une liste en dur ici obligerait a la corriger a
+  // chaque activite qui ne se vend pas comme les autres.
+  const pas = Math.max(15, Number(activity.stepMinutes) || 30);
   const minutes = [];
-  for (let m = 30; m <= 360; m += 30) if (m >= min && m <= max) minutes.push(m);
-  if (!minutes.includes(min)) minutes.unshift(min);
-  if (!minutes.includes(max)) minutes.push(max);
+  for (let m = min; m <= max; m += pas) minutes.push(m);
+  if (!minutes.length) minutes.push(min);
   return minutes.sort((a, b) => a - b).map(m => ({
     hours: m / 60,
     label: m < 60 ? `${m} min` : (m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`),
@@ -3361,10 +3364,9 @@ function renderActivityOptions(activity, options, pax) {
         ${option.label}<span class="price">${option.price}€ / session</span>
       </button>`).join('')}</div>`;
   }
-  if (activity.priceType === 'per_unit_hour' || activity.priceType === 'per_pax_hour') {
+  if (activity.priceType === 'per_unit_hour') {
     const choix = activityHourChoices(activity);
     const hours = Number(options.hours) || choix[0].hours;
-    const parUnite = activity.priceType === 'per_unit_hour';
     const units = Math.max(1, Number(options.units) || 1);
     const prixHeure = activity.priceValue;
     // Les listes deroulantes natives sont remplacees par les memes pastilles
@@ -3373,7 +3375,7 @@ function renderActivityOptions(activity, options, pax) {
       <div class="activity-option-pills">${choix.map(option => `
         <button type="button" class="dur-pill xs ${Number(hours) === option.hours ? 'active' : ''}" data-opt="hours" data-val="${option.hours}"
           onclick="setBookingActivityOption('${id}','hours',${option.hours})">${option.label}</button>`).join('')}</div></div>`;
-    const nombre = !parUnite ? '' : `<div class="activity-option-group"><span class="activity-option-legend">Tables</span>
+    const nombre = `<div class="activity-option-group"><span class="activity-option-legend">Tables</span>
       <div class="activity-option-pills">${[1, 2, 3, 4].map(value => `
         <button type="button" class="dur-pill xs ${units === value ? 'active' : ''}" data-opt="units" data-val="${value}"
           onclick="setBookingActivityOption('${id}','units',${value})">${value}</button>`).join('')}</div></div>`;

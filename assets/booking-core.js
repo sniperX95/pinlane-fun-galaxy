@@ -217,10 +217,6 @@ function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes
   if (activity.priceValue == null) return null;
   const people = Math.max(1, Number(pax) || 1);
   if (activity.priceType === 'per_pax') return Math.round(activity.priceValue * people * 100) / 100;
-  // Au temps ET par personne (minigolf) : miroir exact de lib/activity-catalog.
-  if (activity.priceType === 'per_pax_hour') {
-    return Math.round(activity.priceValue * people * Math.max(0.5, Number(hours) || 1) * 100) / 100;
-  }
   if (activity.priceType === 'per_unit_hour') {
     return Math.round(activity.priceValue * Math.max(1, Number(units) || 1) * Math.max(0.5, Number(hours) || 1) * 100) / 100;
   }

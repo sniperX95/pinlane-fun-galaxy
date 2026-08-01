@@ -76,9 +76,9 @@
       "booking": {
         "bookable": true,
         "order": 3,
-        "priceType": "per_pax_hour",
-        "unitLabel": "par personne et par heure",
-        "note": "12 niveaux"
+        "priceType": "per_pax",
+        "unitLabel": "par personne",
+        "note": "12 niveaux, sans limite de temps"
       }
     },
     {
@@ -150,7 +150,8 @@
         "bookable": true,
         "order": 7,
         "priceType": "per_pax",
-        "unitLabel": "par enfant"
+        "unitLabel": "par enfant",
+        "note": "accès à la journée entière"
       }
     },
     {
@@ -193,7 +194,11 @@
         "order": 8,
         "priceType": "grid_bowling",
         "unitLabel": "par piste",
-        "note": "2 pistes (9 et 10)"
+        "units": 2,
+        "unitIds": [
+          "9",
+          "10"
+        ]
       }
     },
     {
@@ -262,7 +267,8 @@
         "type": "open_range",
         "defaultMinutes": 60,
         "minMinutes": 60,
-        "maxMinutes": 180
+        "maxMinutes": 180,
+        "stepMinutes": 60
       },
       "serviceModel": {
         "explainMinutes": 2,

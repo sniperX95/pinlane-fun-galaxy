@@ -1,3 +1,14 @@
+/*
+  Le socle 3D partage par toutes les incrustations (invariant I.3).
+  
+  A ADAPTER quand on reprend ce script sur un autre produit :
+  Les couleurs en tete. Le reste est generique.
+  
+  Les CONSTANTES CHIFFREES de ce fichier ne sont pas des reglages par
+  defaut : chacune vient d'une mesure, et le commentaire qui la suit dit
+  laquelle. Les changer sans re-mesurer fait revenir le defaut d'origine.
+  Les chemins en <MAJUSCULES> sont a remplacer.
+*/
 import React from 'react';
 import { interpolate, Easing } from 'remotion';
 

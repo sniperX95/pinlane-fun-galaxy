@@ -64,6 +64,13 @@ const ATTENDU = [
   ['bruitages', 'assets/audio/sfx', /\.mp3$/, 149],
   ['musiques de fond', 'assets/audio/bgm', /\.mp3$/, 5],
   ['documents de reference', 'references', /\.md$/, 6],
+  // Ces trois-la etaient installes et INVISIBLES : jamais cites par mon skill
+  // avant l'audit du 2026-08-01. `motion.ts` contenait deja l'oscillation
+  // amortie que j'avais reecrite dans `scene3d.tsx`.
+  ['composants reutilisables', 'assets/lib', /\.tsx$/, 6],
+  ['helpers d animation', 'assets/lib/helpers', /\.(ts|tsx)$/, 4],
+  ['squelette d energie', 'references/sequences', /\.md$/, 1],
+  ['cartes rangees par famille', 'references/shots', /\.md$/, 104],
 ];
 
 console.log('bibliotheque video-shotcraft :');

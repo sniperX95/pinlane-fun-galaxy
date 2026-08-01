@@ -164,7 +164,7 @@ export const SFX: Son[] = [
   { from: surMot('card1', 'prend', 36) + 32, src: 'ui-success-soft.mp3', volume: 0.26, coupe: 24 },
 
   // ---- Distribution : la pile, puis les cartes ------------------------
-  { from: S.table.from + 2, src: 'transition-soft.mp3', volume: 0.40 },
+  { from: S.table.from + 2, src: 'whoosh-fast.mp3', volume: 0.38 },      // les resas volent
   { from: S.table.from + 30, src: 'paper-page-turn.mp3', volume: 0.45 },   // la pile se decolle
   { from: S.table.from + 33, src: 'whoosh-big.mp3', volume: 0.48 },        // recul de la camera
   ...distribution,
@@ -179,7 +179,7 @@ export const SFX: Son[] = [
   { from: S.table.from + 180, src: 'swoosh-quick.mp3', volume: 0.35 },     // et on pousse dedans
 
   // ---- Detail : cinq lignes qui s'encastrent --------------------------
-  { from: S.macro.from + 2, src: 'transition-soft.mp3', volume: 0.42 },
+  { from: S.macro.from + 2, src: 'sweep-short.mp3', volume: 0.40 },      // la liste s encastre
   { from: S.macro.from + 6, src: 'data-scan.mp3', volume: 0.24, coupe: 34 },  // la liste se lit
   // `paper-staple` est l'echantillon que la bibliotheque associe a `row-embed`.
   ...[0, 1, 2, 3, 4].map((n) => ({
@@ -198,7 +198,7 @@ export const SFX: Son[] = [
   { from: surMot('card2', 'remonte', 40) + 26, src: 'transition-snap.mp3', volume: 0.38, coupe: 18 },
 
   // ---- Dossiers : la pile s'empile ------------------------------------
-  { from: S.chart.from + 3, src: 'transition-soft.mp3', volume: 0.42 },
+  { from: S.chart.from + 3, src: 'air-woosh-quick.mp3', volume: 0.38 },  // la pile s empile
   { from: S.chart.from + 8, src: 'sweep-fast-small.mp3', volume: 0.30 },     // le tri
   // ScenePapers : depart du bloc n a CUES[n] = 18 + 12n, atterrissage 22 images
   // plus tard. Le son doit tomber sur l'ATTERRISSAGE (40, 52, 64, 76, 88) : la
@@ -213,12 +213,12 @@ export const SFX: Son[] = [
   { from: S.chart.from + 92, src: 'ui-success-soft.mp3', volume: 0.30 },   // la pile est complete
 
   // ---- Carton 3 --------------------------------------------------------
-  { from: S.cardWbr.from, src: 'transition-soft.mp3', volume: 0.40 },
+  { from: S.cardWbr.from, src: 'swoosh-quick.mp3', volume: 0.38 },
   { from: surMot('cardWbr', 'chiffre', 30), src: 'clock-knob-spin.mp3', volume: 0.30, coupe: 34 },
   { from: surMot('cardWbr', 'occupation', 60), src: 'data-scan.mp3', volume: 0.22, coupe: 30 },
 
   // ---- Tableau de bord : il se remplit, puis les 4 chiffres s'allument -
-  { from: S.wbr.from + 4, src: 'transition-soft.mp3', volume: 0.40 },
+  { from: S.wbr.from + 4, src: 'transition-snap.mp3', volume: 0.36 },    // le tableau se pose
   { from: S.wbr.from + 6, src: 'keyboard.mp3', volume: 0.32, coupe: 40 },
   ...[0, 1, 2, 3].map((n) => ({
     from: S.wbr.from + 65 + n * 5,

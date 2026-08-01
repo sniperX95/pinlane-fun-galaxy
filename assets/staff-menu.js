@@ -16,11 +16,15 @@
     field: 'arrivals',
     activities: 'prices'
   };
+  // Le nom et la signature de la marque sont DESSINES dans le lockup : les
+  // retaper en police d'interface donnait un « Pinlane » en casse mixte a cote
+  // d'un logo en capitales trackees, et repetait la baseline du logo en
+  // sous-titre. Ne reste ici que ce qui n'est pas dans l'image.
   const PLATFORM_BRAND = {
     name: 'Pinlane',
-    subtitle: 'Console du centre',
     accountRole: 'Accès complet'
   };
+  const PLATFORM_LOCKUP_SRC = './assets/brand/pinlane-logo.svg';
   const FALLBACK_CENTERS = [
     {
       id: 'libramont',
@@ -877,13 +881,13 @@
     const roleLabel = getRoleLabel();
     root.innerHTML = `
       <div class="fgx-menu-top">
-        <button type="button" class="fgx-menu-brand" data-fgx-menu-key="dashboard" title="Tableau de bord Pinlane">
+        <button type="button" class="fgx-menu-brand${hasCustomBrandLogo() ? ' est-perso' : ''}" data-fgx-menu-key="dashboard" title="Tableau de bord Pinlane">
           <span class="fgx-menu-logo-frame${hasCustomBrandLogo() ? ' is-custom' : ''}">
             <img class="fgx-menu-logo" src="${escapeHtml(getBrandLogoSrc())}" alt="" aria-hidden="true">
           </span>
+          <img class="fgx-menu-lockup" src="${escapeHtml(PLATFORM_LOCKUP_SRC)}" alt="${escapeHtml(PLATFORM_BRAND.name)}" width="107" height="24">
           <span class="fgx-menu-brand-copy">
             <strong>${escapeHtml(PLATFORM_BRAND.name)}</strong>
-            <small>${escapeHtml(PLATFORM_BRAND.subtitle)}</small>
           </span>
         </button>
         <button type="button" class="fgx-menu-collapse" data-fgx-menu-collapse aria-label="R\u00e9duire le menu" title="R\u00e9duire le menu">${icons.panel}</button>

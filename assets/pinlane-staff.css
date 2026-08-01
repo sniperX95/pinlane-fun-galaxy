@@ -174,17 +174,34 @@ body.admin-mode .ops-sidebar {
   gap: var(--space-2);
 }
 
+/* Marque par defaut : UNE seule colonne, le lockup. Le pictogramme encadre et
+   le nom en texte ne servent plus qu'aux deux cas particuliers ci-dessous
+   (menu replie, logo personnalise par le centre). */
 .fgx-menu-brand {
   min-width: 0;
   min-height: 40px;
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 0 6px;
   border-radius: var(--radius-md);
   transition: background-color var(--dur) var(--ease);
 }
+.fgx-menu-brand.est-perso { grid-template-columns: 32px minmax(0, 1fr); }
+
+/* Le lockup : le nom est DESSINE dedans, avec son tracking et ses deux
+   couleurs. Un <img> ne recoit pas la cascade CSS, donc le theme change la
+   SOURCE (meme mecanique que l'ecran de connexion). */
+.fgx-menu-lockup { width: auto; height: 24px; display: block; }
+[data-theme='dark'] .fgx-menu-lockup { content: url('./brand/pinlane-logo-dark.svg'); }
+
+/* Par defaut, le pictogramme encadre et le nom en texte s'effacent : le
+   lockup les contient deja. */
+.fgx-menu-brand:not(.est-perso) .fgx-menu-logo-frame,
+.fgx-menu-brand:not(.est-perso) .fgx-menu-brand-copy { display: none; }
+/* Logo personnalise : c'est SA marque qui prime, le lockup se retire. */
+.fgx-menu-brand.est-perso .fgx-menu-lockup { display: none; }
 
 .fgx-menu-brand:hover { background: var(--subtle); }
 
@@ -225,7 +242,6 @@ body.admin-mode .ops-sidebar {
 }
 
 .fgx-menu-brand-copy strong { color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
-.fgx-menu-brand-copy small { margin-top: 1px; color: var(--faint); font-size: 11px; line-height: 1.15; }
 
 .fgx-menu-collapse {
   position: relative;
@@ -554,6 +570,12 @@ body.staff-menu-collapsed .fgx-menu-collapse svg { transform: scaleX(-1); }
 body.staff-menu-collapsed .ops-sidebar { padding: 12px 8px 10px; }
 body.staff-menu-collapsed .fgx-menu-top { grid-template-columns: 1fr; justify-items: center; gap: 6px; }
 body.staff-menu-collapsed .fgx-menu-brand { grid-template-columns: 1fr; justify-items: center; padding: 0; }
+/* Menu replie : 64 px de large, le lockup n'y tient pas. Le pictogramme
+   revient, sans son cadre (un logo n'est pas un avatar). */
+body.staff-menu-collapsed .fgx-menu-lockup { display: none; }
+body.staff-menu-collapsed .fgx-menu-brand:not(.est-perso) .fgx-menu-logo-frame {
+  display: grid; background: transparent; border-color: transparent;
+}
 
 body.staff-menu-collapsed .fgx-menu-brand-copy,
 body.staff-menu-collapsed .fgx-menu-label,

@@ -745,8 +745,16 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
    en y reservant la place du pire cas — nom sur deux lignes, tarif sur deux
    lignes, une ligne de precision. En unites relatives, donc ca tient aussi
    quand les colonnes retrecissent et que les textes passent a la ligne. */
-#clientView .activity-name { display: block; min-height: 2.6em; }
-#clientView .activity-price { display: block; min-height: 2.9em; }
+/* La reserve de place va sur le CONTENEUR de texte, pas sur chaque ligne :
+   poser un min-height sur le nom lui-meme le sortait de la colonne du milieu
+   et renvoyait l'icone sous le titre. */
+/* Une SEULE reserve, calee sur le pire cas de toutes les largeurs. Un premier
+   essai la faisait varier par media query : le nombre de colonnes ne suit pas
+   la largeur d'ecran de facon monotone (700 px redonnait des colonnes plus
+   etroites que 1180), donc le seuil etait faux quelque part a chaque reglage.
+   Une reserve unique coute ~15 px de hauteur sur les grandes largeurs et tient
+   partout. Verifie de 400 a 1180 px : ecart 0. */
+#clientView .activity-text { min-height: 6.7em; }
 
 #clientView .activity-note {
   display: block;

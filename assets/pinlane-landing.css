@@ -43,18 +43,14 @@
   transform: translateY(0);
 }
 
-/* Logo Pinlane : le SVG source est crème (pensé pour fond sombre).
-   grayscale = monochrome système ; en light on inverse pour rester lisible. */
-.brand img,
-.site-footer img,
-.mock-sidebar > img {
-  filter: grayscale(1);
-}
-
-html:not([data-theme='dark']) .brand img,
-html:not([data-theme='dark']) .site-footer img,
-html:not([data-theme='dark']) .mock-sidebar > img {
-  filter: grayscale(1) invert(1);
+/* Logo Pinlane. L'ancien SVG etait creme et monochrome : il fallait le
+   desaturer puis l'inverser en theme clair pour rester lisible. Le logo 2026
+   est EN COULEUR (bleu de marque + navy) : ces filtres le grisailleraient.
+   Le lockup existe donc en deux fichiers et c'est le THEME qui choisit, la
+   seule facon d'agir sur un SVG servi en <img> (pas de cascade CSS dedans). */
+[data-theme='dark'] .brand img,
+[data-theme='dark'] .site-footer img {
+  content: url('./brand/pinlane-logo-dark.svg');
 }
 
 /* ----------------------------------------------------------------------------

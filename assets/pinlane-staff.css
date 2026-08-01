@@ -917,7 +917,11 @@ body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; 
   margin-bottom: var(--space-6);
 }
 
-.auth-brand-logo { width: 150px; height: auto; }
+.auth-brand-logo { width: 188px; height: auto; }
+/* Le lockup est en couleur et son mot « LANE » suit le fond : un fichier par
+   theme, choisi ici. Un <img> ne recoit pas la cascade CSS de la page, donc
+   c'est la SOURCE qu'on change, pas la couleur. */
+[data-theme='dark'] .auth-brand-logo { content: url('./brand/pinlane-logo-dark.svg'); }
 
 
 .auth-kicker { color: var(--muted); font-size: 12px; font-weight: 500; margin-bottom: var(--space-1); }

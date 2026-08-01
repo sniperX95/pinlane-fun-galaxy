@@ -1,24 +1,33 @@
 // ============================================================
-// GARDE : LE FILM SE REPETE-T-IL, ALORS QU'IL Y AVAIT MIEUX A PRENDRE ?
+// GARDE : LE FILM SE REPETE-T-IL LA OU IL NE FAUT PAS, ET VARIE-T-IL LA OU IL
+// NE FAUT PAS NON PLUS ?
 //
-// « Faut pas utiliser la meme animation ou le meme SFX 3 fois ou plus alors
-// qu'il y en a d'autres bien mieux pour le truc. »
+// LA REGLE A DEUX SENS, ET LA PREMIERE VERSION N'EN VOYAIT QU'UN.
 //
-// `check-sfx.js` couvre le SON. Rien ne couvrait le MOUVEMENT. Or c'est la
-// regle la plus repetee par l'auteur de `video-shotcraft` sur ses propres
-// cartes : « un procede ne fait le sujet qu'une seule fois », « un pousse
-// brutal ≤ 2 fois par film ». Un deuxieme emploi du meme effet ne produit plus
-// rien, et le spectateur le sent avant de savoir pourquoi.
+// Movsar, en corrigeant cette garde : « faut pas non plus que ce soit trop abusé
+// sur les restrictions. Il peut utiliser les memes animations plusieurs fois
+// s'il y a une logique serieuse derriere. Par exemple une animation de texte, le
+// mieux c'est de garder la meme tout le long, et pas changer d'animation pour le
+// texte a chaque fois. Trop de restrictions tue la qualite aussi. »
 //
-// Ce script lit la scene et compte les PROCEDES, pas les lignes de code. Un
-// procede est reconnu a sa signature : un ressort, un flou qui se resorbe, un
-// trace de chemin, une derive de camera, un reflet qui traverse, un compteur
-// qui roule, un eclat.
+// Il a raison. La version precedente comptait « compteur qui roule » et « flash
+// de coupe » parmi les procedes a rationner, alors que ce sont justement ceux
+// qui DOIVENT etre constants : c'est la facon dont le film traite ses chiffres
+// et ses coupes. Un film ou chaque nombre s'anime differemment n'est pas riche,
+// il est mal fini.
 //
-// CE QU'IL NE PEUT PAS FAIRE : juger si deux emplois sont justifies. Une serie
-// de cartes qui se posent utilise legitimement le meme ressort dix fois. Il
-// compte donc les SCENES distinctes qui emploient un procede, pas les
-// occurrences.
+// D'ou trois regimes, et DEUX DEFAUTS OPPOSES :
+//
+//   CONSTANT   procede attache a un TYPE D'ELEMENT (le texte, les chiffres, les
+//              coupes, les arrivees). Le defaut est la VARIATION : deux
+//              traitements concurrents du meme type se lisent comme une
+//              incoherence. On en veut UN, employe partout.
+//
+//   SPECTACLE  procede qui EST l'evenement d'un plan (un eclat, un trace qui se
+//              dessine, un reflet qui traverse). Le defaut est la REPETITION :
+//              rejoue, il ne produit plus rien. Deux fois au plus.
+//
+//   LIBRE      la texture du film. Ni imposee, ni rationnee.
 //
 // A ADAPTER : SCENE, et la table PROCEDES si le vocabulaire du projet change.
 //
@@ -39,59 +48,37 @@ if (!fs.existsSync(SCENE)) {
   process.exit(1);
 }
 
-// La signature d'un procede, et l'alternative a regarder quand il revient trop.
+// `type` : ce que le procede traite. Deux procedes de meme `type` en
+// concurrence, c'est l'incoherence qu'on cherche.
 const PROCEDES = [
-  ['ressort (depassement puis pose)', /D3\.ressort\(|POP_EASE|1\.25,\s*0\.3/,
-    'un flou directionnel qui se resorbe, ou une arrivee en ligne droite decelerante'],
-  ['flou directionnel qui se resorbe', /D3\.flou\(|blur\(\$\{\(1 - /,
-    'un ressort, ou une entree par masque'],
-  ['trace de chemin (stroke-dashoffset)', /strokeDashoffset/,
-    'un element qui glisse le long du chemin, ou un masque qui l ouvre'],
-  ['derive de camera', /D3\.derive\(|Plateau/,
-    'une camera fixe, si le plan a deja beaucoup de mouvement interne'],
-  ['reflet qui traverse', /D3\.Reflet|Reflet /,
-    'une arete lumineuse fixe, ou un halo qui pulse'],
-  ['eclat / onde', /D3\.Eclat|Eclat /,
-    'un impact sans onde, ou une variation de l ombre portee'],
-  ['halo', /D3\.Halo|Halo /,
-    'un fond degrade fixe'],
-  ['compteur qui roule', /DigitRoll/,
-    'un chiffre qui apparait d un coup avec un impact'],
-  ['flash de coupe', /FlashCut/,
-    'une coupe seche, ou un rideau'],
-  ['ombre de contact pilotee', /D3\.ombre\(/,
-    'une ombre fixe, si l objet ne change pas d altitude'],
+  // --- CONSTANT : un seul traitement par type d'element ---------------------
+  { nom: 'compteur qui roule', motif: /DigitRoll/, regime: 'constant', type: 'chiffre' },
+  // (Il y avait ici un detecteur `tabular-nums`, retire : c'est une propriete
+  //  TYPOGRAPHIQUE, pas un traitement d'animation, et elle vit A L'INTERIEUR du
+  //  compteur qui roule pour aligner ses colonnes. La garde signalait donc le
+  //  compteur comme concurrent de lui-meme.
+  //  Lecon : un detecteur de PROCEDE doit matcher un mouvement, jamais un style.)
+  { nom: 'flash de coupe', motif: /FlashCut/, regime: 'constant', type: 'coupe' },
+  { nom: 'rideau de coupe', motif: /Rideau|Curtain|wipeCut/, regime: 'constant', type: 'coupe' },
+  { nom: 'texte : flou et echelle', motif: /blur\(\$\{\(1 - (?:entree|t)\)/, regime: 'constant', type: 'texte' },
+  { nom: 'texte : masque qui ouvre', motif: /clipPath[\s\S]{0,140}(?:mot|word)/i, regime: 'constant', type: 'texte' },
+  { nom: 'arrivee en ressort', motif: /D3\.ressort\(|POP_EASE/, regime: 'constant', type: 'arrivee' },
+
+  // --- SPECTACLE : deux fois au plus -----------------------------------------
+  { nom: 'trace de chemin', motif: /strokeDashoffset/, regime: 'spectacle',
+    alt: 'un element qui glisse le long du chemin, ou un masque qui l ouvre' },
+  { nom: 'eclat / onde', motif: /D3\.Eclat|<Eclat /, regime: 'spectacle',
+    alt: 'un impact sans onde, ou une variation de l ombre portee' },
+  { nom: 'reflet qui traverse', motif: /D3\.Reflet|<Reflet /, regime: 'spectacle',
+    alt: 'une arete lumineuse fixe, ou un halo qui pulse' },
+
+  // --- LIBRE : la texture, sa constance EST le style -------------------------
+  { nom: 'derive de camera', motif: /D3\.derive\(|Plateau/, regime: 'libre' },
+  { nom: 'ombre de contact pilotee', motif: /D3\.ombre\(/, regime: 'libre' },
+  { nom: 'halo', motif: /D3\.Halo|<Halo /, regime: 'libre' },
+  { nom: 'flou directionnel', motif: /D3\.flou\(/, regime: 'libre' },
 ];
 
-// TEXTURE ou SUJET : c'est la distinction qui compte, pas le seuil.
-//
-// Premiere version : un plafond unique pour tous les procedes. Elle a signale le
-// flou directionnel dans six fichiers, dont `scene3d` qui le DEFINIT et les deux
-// composants de texte qui l'emploient pour la meme raison. C'etait un faux
-// positif, et le reflexe aurait ete de relever le seuil : ca aurait rendu la
-// garde decorative, comme la premiere version de `check-sfx.js`.
-//
-// La regle de l'auteur du depot dit « un procede ne fait le SUJET qu'une seule
-// fois ». Un flou d'entree, une derive de camera, une ombre pilotee ne sont pas
-// des sujets : ce sont des traitements de fond, et leur constance EST le style.
-// Un ressort de decollage, un trace de chemin, un eclat, un compteur qui roule
-// sont des sujets : ils portent un moment, et un moment ne se rejoue pas.
-// Le depart : les courbes d'easing et les traitements de fond sont des
-// TEXTURES. Ce qui PORTE un moment est un SUJET. Un ressort est une maniere
-// d'arriver, pas un evenement ; un trace de chemin ou un compteur qui roule
-// EST l'evenement du plan.
-const TEXTURE = new Set([
-  'derive de camera',
-  'ombre de contact pilotee',
-  'flou directionnel qui se resorbe',
-  'halo',
-  'ressort (depassement puis pose)',
-]);
-// Un sujet peut revenir DEUX fois (une reprise deliberee se lit comme un rappel).
-// A la troisieme, c'est une habitude.
-const MAX = 2;
-
-// On lit chaque fichier de scene comme UNE scene.
 const fichiers = [];
 const marche = (d) => {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
@@ -104,55 +91,69 @@ marche(SCENE);
 
 const usage = new Map();
 for (const f of fichiers) {
-  const s = fs.readFileSync(f, 'utf8');
+  const src = fs.readFileSync(f, 'utf8');
   const nom = path.basename(f).replace(/\.tsx?$/, '');
-  for (const [proc, motif] of PROCEDES) {
-    // LE FICHIER QUI DEFINIT UN COMPOSANT N'EN EST PAS UN EMPLOI. Premiere
-    // version : une liste de noms en dur, qui ne couvrait que `scene3d`.
-    // `DigitRoll.tsx` et `FlashCut.tsx` etaient donc comptes comme des usages
-    // d'eux-memes, et deux des trois alertes etaient fausses. La regle
-    // generale : si le motif du procede nomme ce fichier, c'est sa definition.
-    const estSaDefinition = new RegExp(nom, 'i').test(motif.source)
-      || /^scene3d$/i.test(nom);
-    if (motif.test(s) && !estSaDefinition) {
-      if (!usage.has(proc)) usage.set(proc, []);
-      usage.get(proc).push(nom);
+  for (const p of PROCEDES) {
+    // LE FICHIER QUI DEFINIT UN COMPOSANT N'EN EST PAS UN EMPLOI. Regle
+    // generale plutot qu'une liste de noms : `DigitRoll.tsx` et `FlashCut.tsx`
+    // etaient comptes comme des usages d'eux-memes, ce qui faisait deux
+    // alertes fausses sur trois.
+    const saDefinition = new RegExp(nom, 'i').test(p.motif.source) || /^scene3d$/i.test(nom);
+    if (p.motif.test(src) && !saDefinition) {
+      if (!usage.has(p.nom)) usage.set(p.nom, []);
+      usage.get(p.nom).push(nom);
     }
   }
 }
 
 console.log(`${fichiers.length} fichiers de scene analyses`);
 console.log('');
-const classe = [...usage.entries()].sort((a, b) => b[1].length - a[1].length);
-classe.forEach(([proc, scenes]) => {
-  const r = TEXTURE.has(proc) ? 'texture' : 'sujet  ';
-  console.log(`  ${String(scenes.length).padStart(2)} scenes  ${r}  ${proc}`);
-  if (scenes.length >= 2) console.log(`                       ${scenes.join(', ')}`);
-});
-
-const inutilises = PROCEDES.filter(([p]) => !usage.has(p)).map(([p]) => p);
-if (inutilises.length) {
-  console.log('');
-  console.log(`procedes jamais employes (${inutilises.length}) : ${inutilises.join(' · ')}`);
-}
+const REGIME = { constant: 'constant ', spectacle: 'spectacle', libre: 'libre    ' };
+[...usage.entries()]
+  .sort((a, b) => b[1].length - a[1].length)
+  .forEach(([nom, scenes]) => {
+    const p = PROCEDES.find((x) => x.nom === nom);
+    console.log(`  ${String(scenes.length).padStart(2)} scenes  ${REGIME[p.regime]}  ${nom}`);
+    if (scenes.length >= 2) console.log(`                        ${scenes.join(', ')}`);
+  });
 
 const ratees = [];
-classe.forEach(([proc, scenes]) => {
-  if (TEXTURE.has(proc)) return;
-  if (scenes.length > MAX) {
-    const alt = (PROCEDES.find(([p]) => p === proc) || [])[2];
-    ratees.push(`« ${proc} » dans ${scenes.length} scenes (${scenes.join(', ')})`
-      + `\n      alternative : ${alt}`);
+
+// --- DEFAUT 1 : deux traitements concurrents du meme type d'element -----------
+const parType = new Map();
+PROCEDES.filter((p) => p.regime === 'constant' && usage.has(p.nom)).forEach((p) => {
+  if (!parType.has(p.type)) parType.set(p.type, []);
+  parType.get(p.type).push(p);
+});
+[...parType.entries()].forEach(([type, procs]) => {
+  if (procs.length > 1) {
+    ratees.push(`INCOHERENCE : ${procs.length} traitements concurrents pour « ${type} »`
+      + `\n      ${procs.map((p) => `${p.nom} -> ${usage.get(p.nom).join(', ')}`).join('\n      ')}`
+      + '\n      N EN GARDER QU UN. Un film ou chaque element du meme type s anime'
+      + '\n      autrement n est pas riche, il est mal fini.');
+  }
+});
+
+// --- DEFAUT 2 : un effet spectaculaire rejoue --------------------------------
+const MAX_SPECTACLE = 2;
+PROCEDES.filter((p) => p.regime === 'spectacle' && usage.has(p.nom)).forEach((p) => {
+  const scenes = usage.get(p.nom);
+  if (scenes.length > MAX_SPECTACLE) {
+    ratees.push(`REPETITION : « ${p.nom} » porte ${scenes.length} moments (${scenes.join(', ')})`
+      + '\n      Rejoue, un effet spectaculaire ne produit plus rien.'
+      + `\n      alternative : ${p.alt}`);
   }
 });
 
 console.log('');
 if (ratees.length) {
-  console.error('ECHEC : le film se repete');
+  console.error('ECHEC :');
   ratees.forEach((r) => console.error('  - ' + r));
   console.error('');
-  console.error('  104 recettes de plans sont disponibles :');
-  console.error('  references/plans-shotcraft.md, puis references/selection.md pour le son.');
+  console.error('  104 recettes de plans : references/plans-shotcraft.md,');
+  console.error('  puis references/selection.md pour le son qui va avec.');
   process.exit(1);
 }
-console.log(`OK : aucun procede SUJET employe dans plus de ${MAX} scenes.`);
+console.log('OK : un seul traitement par type d element, aucun effet spectaculaire rejoue.');
+console.log('     Les procedes « constant » et « libre » PEUVENT etre partout :');
+console.log('     c est leur constance qui fait le style.');

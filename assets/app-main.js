@@ -2926,6 +2926,13 @@ function initClient() {
     state.booking.pauseMinutes = 0;
     state.booking.opsPlan = null;
     updatePaxAlert();
+    // Le nombre de joueurs entre dans le prix de presque tout : les activites
+    // facturees par personne (minigolf, playground), et le bowling dont le
+    // nombre de PISTES s'en deduit. Sans ce rafraichissement, le total restait
+    // celui du nombre de joueurs precedent — le client voyait un montant qui
+    // ne bougeait pas en ajoutant du monde. Le champ « date » appelait deja
+    // cette chaine ; le champ « joueurs » ne l'appelait pas.
+    syncBookingTypeUi();
     renderFormules();
     renderFormulaPreferences();
     save();
@@ -3094,6 +3101,51 @@ function updatePaxAlert() {
       </div>`;
     return;
   }
+  // VISITE : plusieurs activites dans la meme reservation. Le message ne
+  // connaissait que le bowling seul, le laser seul et les formules : une
+  // visite retombait donc sur le texte du bowling (« nous reservons 2
+  // pistes ») sans dire un mot des autres activites cochees. On annonce ici
+  // ce que le GROUPE implique, activite par activite, et rien pour celles
+  // qui n'imposent aucune contrainte.
+  if (normalizeBookingMode(state.booking.mode) === 'carte' && typeof getChosenActivities === 'function') {
+    const choisies = getChosenActivities();
+    if (choisies.length > 1) {
+      const consequences = [];
+      const aBowling = choisies.find((a) => a.priceType === 'grid_bowling');
+      if (aBowling && needed > 0) {
+        consequences.push(`<b>${needed} piste${needed > 1 ? 's' : ''}</b> de ${escapeHtml(aBowling.name.toLowerCase())}`);
+      }
+      const aLaser = choisies.find((a) => a.priceType === 'grid_laser');
+      if (aLaser) {
+        const vagues = getLaserWaveCount(pax);
+        if (vagues > 1) consequences.push(`<b>${vagues} sessions</b> de laser game`);
+      }
+      // Une installation avec un plafond de joueurs impose ses passages.
+      choisies.forEach((activite) => {
+        const plafond = Number(activite.maxPax) || 0;
+        if (plafond > 0 && pax > plafond) {
+          consequences.push(`<b>${Math.ceil(pax / plafond)} passages</b> au ${escapeHtml(activite.name)} (${plafond} joueurs max)`);
+        }
+      });
+      const impossible = aBowling && needed > totalLanes;
+      // Seules les activites PLANIFIEES ont une heure a choisir. Promettre ce
+      // choix pour un billard ou une plaine de jeu serait faux : elles se
+      // vivent a l'arrivee.
+      const aCreneau = choisies.some((a) => a.planned);
+      el.innerHTML = `
+        <div class="pax-alert ${impossible || consequences.length ? 'warning' : ''}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${consequences.length ? '2.5' : '2'}" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>${impossible
+            ? `Groupe de <b>${pax} joueurs</b> : impossible sur ${totalLanes} pistes en même temps. Le staff proposera deux vagues ou un autre horaire.`
+            : consequences.length
+              ? `Pour <b>${pax} personne${pax > 1 ? 's' : ''}</b>, nous réservons ${consequences.join(', ')}.${aCreneau ? " Vous choisirez l'heure de chaque activité à l'étape suivante." : ''}`
+              : `<b>${pax} personne${pax > 1 ? 's' : ''}</b> et <b>${choisies.length} activités</b> : tout tient en une seule visite. ${aCreneau
+                ? "Vous choisirez l'heure de chaque activité à l'étape suivante."
+                : "Aucune de ces activités ne se réserve à heure fixe : choisissez simplement votre heure d'arrivée."}`}</span>
+        </div>`;
+      return;
+    }
+  }
   if (impossibleBowlingGroup) {
     el.innerHTML = `
       <div class="pax-alert warning">
@@ -3239,7 +3291,7 @@ function buildActivityPicker(host, catalog) {
         <span class="activity-text">
           <span class="activity-name">${escapeHtml(activity.name)}</span>
           <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
-          ${activity.note ? `<span class="activity-note">${escapeHtml(activity.note)}</span>` : ''}
+          <span class="activity-note">${activity.note ? escapeHtml(activity.note) : ''}</span>
         </span>
         <span class="activity-check" aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -3403,7 +3455,10 @@ function renderProgramSummary() {
       const duration = Number(options.duration) || 1;
       const lanes = getRequiredLaneCount('bowling', pax, '');
       total += (DURATION_OPTIONS.find(option => Number(option.value) === duration)?.price || 0) * lanes;
-      return `${activity.name} ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}`;
+      // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,
+      // le total double sans que rien n'explique pourquoi.
+      const pistes = lanes > 1 ? ` · ${lanes} pistes` : '';
+      return `${activity.name} ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}${pistes}`;
     }
     if (activity.priceType === 'grid_laser') {
       const games = Number(options.games) || 1;
@@ -4254,7 +4309,7 @@ function renderFormulaAnchorPicker(formule) {
     <div class="formula-anchor-picker">
       <div class="formula-arrival-head">
         <strong>Composez votre visite</strong>
-        <span><span class="only-desktop">Choisissez l'heure de chaque activité à créneau : présentez-vous 10 minutes avant votre premier rendez-vous. Le reste de la formule se vit à votre rythme, sans horaire.</span><span class="only-mobile">Choisissez l'heure de chaque activité. Présentez-vous 10 min avant. Le reste, à votre rythme.</span></span>
+        <span><span class="only-desktop">Choisissez l'heure de chaque activité à créneau : présentez-vous 10 minutes avant votre premier rendez-vous. Le reste ${formule ? 'de la formule' : 'de votre visite'} se vit à votre rythme, sans horaire.</span><span class="only-mobile">Choisissez l'heure de chaque activité. Présentez-vous 10 min avant. Le reste, à votre rythme.</span></span>
       </div>
       ${renderFormulaAnchorRows(formule)}
       ${statusHtml}
@@ -4364,9 +4419,14 @@ function renderSlots(formule) {
     list.innerHTML = renderSlotLoadError();
     return;
   }
-  if (formule && formulaHasAnchorUi()) {
-    // Formule à ancres : le picker reste affiché même sans créneau composé
-    // (combinaison refusée → message + suggestions proches).
+  if (formulaHasAnchorUi()) {
+    // Choix de l'heure PAR ACTIVITE : le picker reste affiché même sans
+    // créneau composé (combinaison refusée → message + suggestions proches).
+    // Il ne dépend PAS d'une formule : une visite à la carte avec plusieurs
+    // activités à créneau (bowling + laser) reçoit exactement les mêmes
+    // ancres du serveur. Tant que cette condition exigeait une formule, le
+    // client jetait des ancres valides et affichait « Aucun créneau
+    // disponible » alors que le serveur en proposait neuf.
     list.innerHTML = renderFormulaAnchorPicker(formule);
     return;
   }

@@ -78,7 +78,7 @@
         "order": 3,
         "priceType": "per_pax",
         "unitLabel": "par personne",
-        "note": "12 niveaux, sans limite de temps"
+        "note": "12 niveaux"
       }
     },
     {
@@ -151,7 +151,7 @@
         "order": 7,
         "priceType": "per_pax",
         "unitLabel": "par enfant",
-        "note": "accès à la journée entière"
+        "note": "accès à la journée"
       }
     },
     {
@@ -309,7 +309,7 @@
         "priceType": "grid_fun_run",
         "unitLabel": "la session",
         "maxPax": 5,
-        "note": "5 joueurs maximum"
+        "note": "5 joueurs max."
       }
     }
   ]

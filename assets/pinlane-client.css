@@ -739,11 +739,26 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
    le tunnel, et plus rien a ouvrir pour voir les options. */
 /* La precision du centre (« 12 niveaux », « 2 pistes (9 et 10) ») : une
    troisieme ligne discrete sous le tarif, jamais au meme poids que lui. */
+/* Les cartes d'une rangee doivent finir au MEME niveau. On ne peut pas les
+   etirer (align-items: start plus bas est la, exprès : une carte qui ouvre
+   ses options etirerait sinon toutes ses voisines) : on egalise donc l'EN-TETE
+   en y reservant la place du pire cas — nom sur deux lignes, tarif sur deux
+   lignes, une ligne de precision. En unites relatives, donc ca tient aussi
+   quand les colonnes retrecissent et que les textes passent a la ligne. */
+#clientView .activity-name { display: block; min-height: 2.6em; }
+#clientView .activity-price { display: block; min-height: 2.9em; }
+
 #clientView .activity-note {
   display: block;
   margin-top: 2px;
+  min-height: 1.4em;
   font-size: 11px;
   color: var(--faint);
+  /* Garde-fou : une precision plus longue que prevu s'abrege au lieu de
+     passer a la ligne et de decaler toute la rangee. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #clientView .activity-option-stack {

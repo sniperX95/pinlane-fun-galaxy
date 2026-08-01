@@ -731,22 +731,64 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .dur-pill.sm .price { font-size: 11px; }
 #clientView .dur-pill:active { transform: scale(0.97); }
 
-#clientView .activity-mini-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
+/* Le choix de duree et de quantite se faisait a la liste deroulante native :
+   fleche collee au bord droit d'un champ etire, hauteur qui ne suit aucune
+   autre commande de l'ecran, et un menu systeme qui ne ressemble a rien du
+   reste. Ces choix sont des CHOIX, exactement comme la duree du bowling juste
+   au-dessus : ils prennent les memes pastilles. Un seul vocabulaire dans tout
+   le tunnel, et plus rien a ouvrir pour voir les options. */
+/* La precision du centre (« 12 niveaux », « 2 pistes (9 et 10) ») : une
+   troisieme ligne discrete sous le tarif, jamais au meme poids que lui. */
+#clientView .activity-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--faint);
 }
 
-#clientView .activity-mini-field select {
-  padding: 7px 9px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-family: var(--font-ui);
+#clientView .activity-option-stack {
+  display: grid;
+  gap: 10px;
+  margin: 0 14px 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+#clientView .activity-option-group {
+  display: grid;
+  gap: 6px;
+}
+
+#clientView .activity-option-legend {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+#clientView .activity-option-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Pastille compacte : une seule ligne, pas de prix a l'interieur. Le tarif
+   unitaire est rappele une fois sous le bloc, pas repete sur chaque choix. */
+#clientView .dur-pill.xs {
+  min-height: 34px;
+  padding: 6px 12px;
   font-size: 13px;
+  font-weight: 550;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+#clientView .activity-option-stack .activity-option-note {
+  margin: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 #clientView .activity-option-note {

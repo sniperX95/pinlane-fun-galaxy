@@ -33,6 +33,14 @@ const UPSELL_CATALOG = [
   { id:'u3', name:'Pack Jetons', price:10 },
   { id:'u4', name:'Tapas', price:15 },
 ];
+// Fun Run by PIXEL : des SESSIONS, pas des heures (30 EUR les 15 min, 55 les
+// 30 : le prix horaire n'est meme pas constant). Miroir de lib/booking-config,
+// comme les grilles bowling et laser au-dessus.
+const FUN_RUN_OPTIONS = [
+  { minutes: 15, label: '15 min', price: 30 },
+  { minutes: 30, label: '30 min', price: 55 },
+];
+const FUN_RUN_MAX_PAX = 5;
 const DURATION_OPTIONS = [
   { value:0.5, label:'30 min', price:20 },
   { value:1, label:'1 heure', price:39 },
@@ -199,9 +207,20 @@ function getCenterActivity(activityId) {
 
 // Prix d'une activite libre, ou null quand le centre n'a pas saisi son tarif.
 // null s'affiche "sur place" : afficher 0 EUR promettrait la gratuite.
-function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1 } = {}) {
-  if (!activity || activity.priceValue == null) return null;
-  if (activity.priceType === 'per_pax') return Math.round(activity.priceValue * Math.max(1, Number(pax) || 1) * 100) / 100;
+function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null } = {}) {
+  if (!activity) return null;
+  // Grille de session : le montant vient de la grille, pas d'un tarif saisi.
+  if (activity.priceType === 'grid_fun_run') {
+    const option = FUN_RUN_OPTIONS.find((item) => item.minutes === Number(minutes)) || FUN_RUN_OPTIONS[0];
+    return option.price;
+  }
+  if (activity.priceValue == null) return null;
+  const people = Math.max(1, Number(pax) || 1);
+  if (activity.priceType === 'per_pax') return Math.round(activity.priceValue * people * 100) / 100;
+  // Au temps ET par personne (minigolf) : miroir exact de lib/activity-catalog.
+  if (activity.priceType === 'per_pax_hour') {
+    return Math.round(activity.priceValue * people * Math.max(0.5, Number(hours) || 1) * 100) / 100;
+  }
   if (activity.priceType === 'per_unit_hour') {
     return Math.round(activity.priceValue * Math.max(1, Number(units) || 1) * Math.max(0.5, Number(hours) || 1) * 100) / 100;
   }

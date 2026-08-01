@@ -53,7 +53,11 @@ const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
   { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, unitLabel: 'par personne', order: 2, defaultMinutes: 22 },
   { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 3, defaultMinutes: 45 },
-  { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: null, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60 },
+  // Les bornes de duree font partie de ce que le catalogue expose (elles
+  // decident des durees proposees au client) : une fixture qui les omet
+  // ne ressemble plus au reel et teste autre chose. Valeurs du socle :
+  // le billard se vend de 1 h a 3 h, sans demi-heure.
+  { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: null, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180 },
   { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 6, defaultMinutes: 30 },
   { id: 'playground', name: 'Playground', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par enfant', order: 7, defaultMinutes: 60 },
   { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 8, defaultMinutes: 30 },
@@ -377,19 +381,29 @@ async function main() {
       'changer une option fait reagir le montant (classe is-bumped posee)');
     ok(motion.iconCount === 8, `chaque activite porte son icone (${motion.iconCount}/8)`);
 
-    // Les listes deroulantes suivent l'etat : revenir a l'etape 1 depuis les
-    // creneaux doit retrouver SES choix, pas les valeurs par defaut.
-    const selects = await page.evaluate(() => {
+    // Les choix de quantite et de duree suivent l'etat : revenir a l'etape 1
+    // depuis les creneaux doit retrouver SES choix, pas les valeurs par
+    // defaut. LA PROPRIETE N'A PAS BOUGE ; seule sa forme a change : ces
+    // choix se faisaient a la liste deroulante (« fleche trop loin et c'est
+    // moche », plainte du 2026-08-01) et se font desormais aux memes
+    // pastilles que la duree du bowling. On interroge donc l'etat ACTIF des
+    // pastilles, pas la valeur d'un <select> qui n'existe plus.
+    const choix = await page.evaluate(() => {
       state.booking.activities.billards = { units: 3, hours: 2 };
       syncBookingTypeUi();
       const card = document.querySelector('.activity-card[data-activity="billards"]');
+      const actif = (cle) => card?.querySelector(`[data-opt="${cle}"].active`)?.getAttribute('data-val');
       return {
-        units: card?.querySelector('select[data-opt-select="units"]')?.value,
-        hours: card?.querySelector('select[data-opt-select="hours"]')?.value,
+        units: actif('units'),
+        hours: actif('hours'),
+        // Contre-preuve : plus aucune liste deroulante dans le selecteur.
+        selects: document.querySelectorAll('#activityPicker select').length,
       };
     });
-    ok(selects.units === '3' && selects.hours === '2',
-      `les listes deroulantes refletent l etat (${selects.units} tables, ${selects.hours}h)`);
+    ok(choix.units === '3' && choix.hours === '2',
+      `les choix refletent l etat (${choix.units} tables, ${choix.hours}h)`);
+    ok(choix.selects === 0,
+      `plus aucune liste deroulante dans le selecteur d activites (${choix.selects})`);
 
     // =====================================================================
     console.log('\n[10] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');

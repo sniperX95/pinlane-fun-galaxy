@@ -3201,21 +3201,30 @@ let activityPickerSignature = '';
 // texte se lit comme un formulaire administratif ; la meme grille avec un objet
 // reconnaissable par carte se lit d'un coup d'oeil.
 const ACTIVITY_ICONS = {
-  bowling: '<circle cx="12" cy="12" r="9"/><circle cx="9.5" cy="9" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="8.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="11" cy="12.4" r="1.1" fill="currentColor" stroke="none"/>',
-  laser_game: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
-  minigolf_blacklight: '<path d="M9 20V4l8 3.5L9 11"/><ellipse cx="14.5" cy="19" rx="4" ry="1.6"/><circle cx="7" cy="18.4" r="1.6"/>',
-  golf_oclock: '<path d="M9 20V4l8 3.5L9 11"/><circle cx="15.5" cy="17.5" r="3.5"/><path d="M15.5 16v1.6l1.2.8"/>',
-  billards: '<path d="M21 3 10.5 13.5"/><path d="m18.4 3 2.6 2.6"/><circle cx="7" cy="17" r="4"/><path d="M4.2 14.2a4 4 0 0 0 5.6 5.6"/>',
-  arcade_time: '<rect x="4" y="3" width="16" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 8h2M10 7v2"/><circle cx="15" cy="8" r="1.1"/>',
-  playground: '<path d="M4 20 12 9"/><path d="M12 9h4l4 11"/><path d="M20 20H3"/><path d="M6.5 16h4M8.5 12.5h4"/><circle cx="16" cy="5.5" r="2"/>',
-  duckpin_bowling: '<path d="M7 19c0-2 .9-2.8.9-4.2S7 12.4 7 11a1.9 1.9 0 0 1 3.8 0c0 1.4-.9 2.4-.9 3.8S10.8 17 10.8 19"/><path d="M15 19c0-2 .9-2.8.9-4.2S15 12.4 15 11a1.9 1.9 0 0 1 3.8 0c0 1.4-.9 2.4-.9 3.8S18.8 17 18.8 19"/><path d="M4 21h16"/>',
-  fun_run: '<rect x="2" y="7" width="20" height="11" rx="4"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="12" r="1.1"/><circle cx="18.6" cy="14.4" r="1.1"/>',
-  party_table: '<path d="M4 10h16l-2 10H6z"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>',
+  // Boule de bowling : les trois trous en negatif, pas trois points poses.
+  bowling: '<path d="M12 2.6a9.4 9.4 0 1 0 0 18.8 9.4 9.4 0 0 0 0-18.8Zm-2.7 5.1a1.35 1.35 0 1 1 0 2.7 1.35 1.35 0 0 1 0-2.7Zm3.9-1.1a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Zm-2.2 5.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6Z"/>',
+  // Pistolet laser vu de profil, avec sa visee.
+  laser_game: '<path d="M3.4 8.2h9.1l1.7-1.9h4.4a1.4 1.4 0 0 1 1.4 1.4v2.5a1.4 1.4 0 0 1-1.4 1.4h-2.2l-1 2.2a2.2 2.2 0 0 1-2 1.3h-1.2l-.9 3.6a1 1 0 0 1-1 .8H8.2a1 1 0 0 1-1-1.2l.7-3.2H5.6A2.2 2.2 0 0 1 3.4 14Z"/><circle cx="17.3" cy="9" r="1"/>',
+  // Club, balle et trou : les trois signes du minigolf.
+  minigolf_blacklight: '<path d="M9.6 2.6a.95.95 0 0 1 1.9 0v13.6a.95.95 0 0 1-1.9 0Z"/><path d="M11.9 3.1 18.6 5.4a.6.6 0 0 1 0 1.1l-6.7 2.3Z"/><ellipse cx="11.2" cy="18.4" rx="6.4" ry="2.4" opacity=".3"/><circle cx="17.9" cy="16.9" r="2"/>',
+  golf_oclock: '<path d="M6.6 2.6a.95.95 0 0 1 1.9 0v14.2a.95.95 0 0 1-1.9 0Z"/><path d="M8.9 3.1 15.2 5.3a.6.6 0 0 1 0 1.1L8.9 8.6Z"/><path d="M16.6 12.4a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm.5 2.3v2.2l1.5 1a.8.8 0 0 1-.9 1.3l-1.9-1.3a.8.8 0 0 1-.4-.7v-2.5a.85.85 0 0 1 1.7 0Z"/>',
+  // Queue et triangle de boules, vus de dessus.
+  billards: '<path d="M20.3 2.5a1.3 1.3 0 0 1 1.8 1.8l-1 1-1.8-1.8ZM18.1 4.7l1.8 1.8-7.4 7.4a4.9 4.9 0 0 0-1.8-1.8Z"/><circle cx="7.4" cy="16.6" r="4.9"/><path d="M5 14.2a3.4 3.4 0 0 0 4.8 4.8" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".45"/>',
+  // Borne d'arcade : ecran, joystick, deux boutons.
+  arcade_time: '<path d="M6.2 2.6h11.6a2.4 2.4 0 0 1 2.4 2.4v11a2.4 2.4 0 0 1-2.4 2.4h-3.1l.5 2.1h1.4a.85.85 0 0 1 0 1.7H7.4a.85.85 0 0 1 0-1.7h1.4l.5-2.1H6.2a2.4 2.4 0 0 1-2.4-2.4V5a2.4 2.4 0 0 1 2.4-2.4Zm.4 2.6v5.9h10.8V5.2Zm2.3 8.2a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm4 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm3.4 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Z"/>',
+  // Toboggan avec son echelle : la plaine de jeu, pas une abstraction.
+  playground: '<path d="M16.4 3.2h1.9v15.9h-1.9Zm4.4 0h1.9v15.9h-1.9Z"/><path d="M17.4 6.4h4.9v1.7h-4.9Zm0 4.1h4.9v1.7h-4.9Zm0 4.1h4.9v1.7h-4.9Z" opacity=".75"/><path d="M16 4.6v2.1c-2.8 1.3-4.6 3.4-5.5 6.4-.6 2-2 3.6-4.2 4.9a.95.95 0 0 1-1-1.6c1.8-1.1 2.9-2.3 3.4-3.9 1.1-3.7 3.5-6.3 7.3-7.9Z"/><path d="M2 20.9h13.4a.95.95 0 0 0 0-1.9H2a.95.95 0 0 0 0 1.9Z"/>',
+  // Quilles courtes du duckpin : deux quilles trapues, sa signature.
+  duckpin_bowling: '<path d="M8.5 2.4c1.5 0 2.5 1.3 2.5 2.7 0 1.2-.8 2.2-.8 3.2 0 1.6 1.6 2.7 1.6 5.1 0 2.1-1.4 3.4-3.3 3.4S5.2 15.5 5.2 13.4c0-2.4 1.6-3.5 1.6-5.1 0-1-.8-2-.8-3.2 0-1.4 1-2.7 2.5-2.7Z"/><path d="M16.4 5.6c1.3 0 2.1 1.1 2.1 2.3 0 1-.7 1.9-.7 2.7 0 1.4 1.4 2.3 1.4 4.4 0 1.8-1.2 2.9-2.8 2.9s-2.8-1.1-2.8-2.9c0-2.1 1.4-3 1.4-4.4 0-.8-.7-1.7-.7-2.7 0-1.2.8-2.3 2.1-2.3Z" opacity=".8"/><path d="M3.4 20.8h17.2a.9.9 0 0 0 0-1.8H3.4a.9.9 0 0 0 0 1.8Z"/>',
+  // Coureur : le Fun Run se vend a la session, l'icone dit le mouvement.
+  fun_run: '<path d="M14.6 2.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"/><path d="M12.4 7.6c.9-.5 2-.3 2.7.4l1.9 2 2.5.9a1 1 0 0 1-.7 1.9l-2.9-1.1a1 1 0 0 1-.4-.3l-.7-.7-.8 3 2 2.1a1 1 0 0 1 .3.6l.4 3.6a1 1 0 0 1-2 .2l-.3-3.2-2.8-2.9a1 1 0 0 1-.3-.9l.5-2.7-1.3 1.4-2 3a1 1 0 0 1-1.7-1.1l2.1-3.2a1 1 0 0 1 .2-.2Z"/><path d="M2.6 9.4h4.2a.9.9 0 0 1 0 1.8H2.6a.9.9 0 0 1 0-1.8Zm.6 3.4h3a.9.9 0 0 1 0 1.8h-3a.9.9 0 0 1 0-1.8Z" opacity=".5"/>',
+  party_table: '<path d="M11.2 2.2c.6.7 1 1.3 1 1.9a1.2 1.2 0 0 1-2.4 0c0-.6.4-1.2 1-1.9a.3.3 0 0 1 .4 0Z"/><path d="M10.1 5.6h1.8v3.1h-1.8Z"/><path d="M6.6 8.7h8.8a2.4 2.4 0 0 1 2.4 2.4v1.6c-1 0-1.4.9-2.4.9s-1.4-.9-2.4-.9-1.4.9-2.4.9-1.4-.9-2.4-.9-1.4.9-2.4.9v-2.5a2.4 2.4 0 0 1 2.4-2.4Z"/><path d="M4.2 15.1c1 0 1.4-.9 2.4-.9s1.4.9 2.4.9 1.4-.9 2.4-.9 1.4.9 2.4.9 1.4-.9 2.4-.9 1.4.9 2.4.9v3.3a2.4 2.4 0 0 1-2.4 2.4H6.6a2.4 2.4 0 0 1-2.4-2.4Z" opacity=".75"/>',
 };
 
 function activityIconMarkup(activityId) {
-  const paths = ACTIVITY_ICONS[activityId] || '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>';
-  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const paths = ACTIVITY_ICONS[activityId]
+    || '<path d="M12 2.6a9.4 9.4 0 1 0 0 18.8 9.4 9.4 0 0 0 0-18.8Zm.9 4.6v3.9h3.9a.9.9 0 0 1 0 1.8h-3.9v3.9a.9.9 0 0 1-1.8 0v-3.9H7.2a.9.9 0 0 1 0-1.8h3.9V7.2a.9.9 0 0 1 1.8 0Z"/>';
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${paths}</svg>`;
 }
 
 // Le DOM complet, options COMPRISES meme quand la carte n'est pas cochee : c'est
@@ -3230,6 +3239,7 @@ function buildActivityPicker(host, catalog) {
         <span class="activity-text">
           <span class="activity-name">${escapeHtml(activity.name)}</span>
           <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
+          ${activity.note ? `<span class="activity-note">${escapeHtml(activity.note)}</span>` : ''}
         </span>
         <span class="activity-check" aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
@@ -3267,19 +3277,26 @@ function syncActivityPickerState(off = []) {
     // active. Les reconstruire a chaque clic detruirait le retour visuel du
     // press en cours et ferait perdre le focus d'un select ouvert.
     const chosenOptions = selection[activityId] || {};
+    // Le defaut depend de la CLE : « 1 » vaut pour une duree de bowling ou un
+    // nombre de tables, jamais pour une session de 15 minutes ni pour une
+    // activite dont la duree minimale est d'une heure. Un defaut faux
+    // n'allume aucune pastille et la carte parait vide.
+    const activityDefaut = (key) => {
+      if (key === 'minutes') return FUN_RUN_OPTIONS[0].minutes;
+      if (key === 'hours') return activityHourChoices(activity || {})[0].hours;
+      return 1;
+    };
     card.querySelectorAll('[data-opt]').forEach(pill => {
       const key = pill.getAttribute('data-opt');
       const value = Number(pill.getAttribute('data-val'));
-      pill.classList.toggle('active', (Number(chosenOptions[key]) || 1) === value);
+      const courant = chosenOptions[key] == null ? activityDefaut(key) : Number(chosenOptions[key]);
+      pill.classList.toggle('active', courant === value);
     });
-    // Les listes deroulantes (nombre de tables, duree) suivent l'etat elles
-    // aussi : sans ca, revenir a l'etape 1 depuis les creneaux affichait les
-    // valeurs par defaut alors que le programme, lui, gardait les vraies.
-    card.querySelectorAll('select[data-opt-select]').forEach(select => {
-      const key = select.getAttribute('data-opt-select');
-      const value = chosenOptions[key];
-      if (value != null && String(select.value) !== String(value)) select.value = String(value);
-    });
+    // Nombre de tables et duree passaient par des listes deroulantes ; ce sont
+    // desormais les memes pastilles que ci-dessus, donc la boucle [data-opt]
+    // les couvre deja. La propriete a garantir n'a pas bouge : revenir a
+    // l'etape 1 depuis les creneaux doit retrouver SES choix, pas les valeurs
+    // par defaut.
   });
 }
 
@@ -3289,8 +3306,26 @@ function activityPriceHint(activity, pax) {
   if (!activity) return '';
   if (activity.priceType === 'grid_bowling') return `dès ${DURATION_OPTIONS[0].price}€ la piste`;
   if (activity.priceType === 'grid_laser') return `dès ${LASER_GAME_OPTIONS[0].price}€ par joueur`;
+  if (activity.priceType === 'grid_fun_run') return `dès ${FUN_RUN_OPTIONS[0].price}€ la session`;
   if (activity.priceValue == null) return 'réglé sur place';
   return `${activity.priceValue}€ ${activity.unitLabel || ''}`.trim();
+}
+
+// Les durees vendables d'une activite au temps. Elles se DERIVENT des bornes
+// du catalogue au lieu d'etre une liste en dur : c'est ce qui fait qu'un
+// billard sans demi-heure (borne basse a 60 min) n'en propose plus, sans
+// toucher au tunnel.
+function activityHourChoices(activity) {
+  const min = Math.max(30, Number(activity.minMinutes) || 60);
+  const max = Math.max(min, Number(activity.maxMinutes) || min);
+  const minutes = [];
+  for (let m = 30; m <= 360; m += 30) if (m >= min && m <= max) minutes.push(m);
+  if (!minutes.includes(min)) minutes.unshift(min);
+  if (!minutes.includes(max)) minutes.push(max);
+  return minutes.sort((a, b) => a - b).map(m => ({
+    hours: m / 60,
+    label: m < 60 ? `${m} min` : (m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`),
+  }));
 }
 
 // Les options d'une activite. data-opt / data-val servent a
@@ -3298,33 +3333,53 @@ function activityPriceHint(activity, pax) {
 // bloc, donc sans casser le retour au press ni le focus d'un select ouvert.
 function renderActivityOptions(activity, options, pax) {
   if (!activity) return '';
-  if (activity.id === 'bowling') {
+  const id = escapeHtml(activity.id);
+  // Grille de pistes : le duckpin la partage avec le bowling (meme tarif, meme
+  // regle de joueurs). Piloter par le TYPE et non par l'id, c'est ce qui rend
+  // ce partage gratuit.
+  if (activity.priceType === 'grid_bowling') {
     const current = Number(options.duration) || 1;
     return `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"
-        onclick="setBookingActivityOption('bowling','duration',${option.value})">
+        onclick="setBookingActivityOption('${id}','duration',${option.value})">
         ${option.label}<span class="price">${option.price}€ / piste</span>
       </button>`).join('')}</div>`;
   }
-  if (activity.id === 'laser_game') {
+  if (activity.priceType === 'grid_laser') {
     const current = Number(options.games) || 1;
     return `<div class="activity-option-row">${LASER_GAME_OPTIONS.map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.games) ? 'active' : ''}" data-opt="games" data-val="${option.games}"
-        onclick="setBookingActivityOption('laser_game','games',${option.games})">
+        onclick="setBookingActivityOption('${id}','games',${option.games})">
         ${option.label}<span class="price">${option.price}€ / pers</span>
       </button>`).join('')}</div>`;
   }
-  if (activity.priceType === 'per_unit_hour') {
+  if (activity.priceType === 'grid_fun_run') {
+    const current = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
+    return `<div class="activity-option-row">${FUN_RUN_OPTIONS.map(option => `
+      <button type="button" class="dur-pill sm ${current === Number(option.minutes) ? 'active' : ''}" data-opt="minutes" data-val="${option.minutes}"
+        onclick="setBookingActivityOption('${id}','minutes',${option.minutes})">
+        ${option.label}<span class="price">${option.price}€ / session</span>
+      </button>`).join('')}</div>`;
+  }
+  if (activity.priceType === 'per_unit_hour' || activity.priceType === 'per_pax_hour') {
+    const choix = activityHourChoices(activity);
+    const hours = Number(options.hours) || choix[0].hours;
+    const parUnite = activity.priceType === 'per_unit_hour';
     const units = Math.max(1, Number(options.units) || 1);
-    const hours = Math.max(0.5, Number(options.hours) || 1);
-    return `<div class="activity-option-row">
-      <label class="activity-mini-field">Nombre<select data-opt-select="units" onchange="setBookingActivityOption('${escapeHtml(activity.id)}','units',this.value)">
-        ${[1, 2, 3, 4, 5, 6].map(value => `<option value="${value}" ${value === units ? 'selected' : ''}>${value}</option>`).join('')}
-      </select></label>
-      <label class="activity-mini-field">Durée<select data-opt-select="hours" onchange="setBookingActivityOption('${escapeHtml(activity.id)}','hours',this.value)">
-        ${[0.5, 1, 1.5, 2, 3].map(value => `<option value="${value}" ${value === hours ? 'selected' : ''}>${value === 0.5 ? '30 min' : `${value}h`}</option>`).join('')}
-      </select></label>
-    </div>`;
+    const prixHeure = activity.priceValue;
+    // Les listes deroulantes natives sont remplacees par les memes pastilles
+    // que le bowling : un seul vocabulaire de choix dans tout l'ecran.
+    const duree = `<div class="activity-option-group"><span class="activity-option-legend">Durée</span>
+      <div class="activity-option-pills">${choix.map(option => `
+        <button type="button" class="dur-pill xs ${Number(hours) === option.hours ? 'active' : ''}" data-opt="hours" data-val="${option.hours}"
+          onclick="setBookingActivityOption('${id}','hours',${option.hours})">${option.label}</button>`).join('')}</div></div>`;
+    const nombre = !parUnite ? '' : `<div class="activity-option-group"><span class="activity-option-legend">Tables</span>
+      <div class="activity-option-pills">${[1, 2, 3, 4].map(value => `
+        <button type="button" class="dur-pill xs ${units === value ? 'active' : ''}" data-opt="units" data-val="${value}"
+          onclick="setBookingActivityOption('${id}','units',${value})">${value}</button>`).join('')}</div></div>`;
+    const detail = prixHeure == null ? '' :
+      `<div class="activity-option-note">${prixHeure}€ ${escapeHtml(activity.unitLabel || '')}.</div>`;
+    return `<div class="activity-option-stack">${nombre}${duree}${detail}</div>`;
   }
   return `<div class="activity-option-note">Accès à votre arrivée, ${activity.priceValue == null ? 'réglé sur place' : 'compris dans le total'}.</div>`;
 }
@@ -3342,19 +3397,25 @@ function renderProgramSummary() {
   let complete = true;
   const parts = chosen.map(activity => {
     const options = activity.options || {};
-    if (activity.id === 'bowling') {
+    if (activity.priceType === 'grid_bowling') {
       const duration = Number(options.duration) || 1;
       const lanes = getRequiredLaneCount('bowling', pax, '');
       total += (DURATION_OPTIONS.find(option => Number(option.value) === duration)?.price || 0) * lanes;
-      return `Bowling ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}`;
+      return `${activity.name} ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}`;
     }
-    if (activity.id === 'laser_game') {
+    if (activity.priceType === 'grid_laser') {
       const games = Number(options.games) || 1;
       total += (LASER_GAME_OPTIONS.find(option => Number(option.games) === games)?.price || 0) * pax;
       return `Laser ${games} partie${games > 1 ? 's' : ''}`;
     }
+    if (activity.priceType === 'grid_fun_run') {
+      const minutes = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
+      const option = FUN_RUN_OPTIONS.find(item => item.minutes === minutes) || FUN_RUN_OPTIONS[0];
+      total += option.price;
+      return `${activity.name} ${option.label}`;
+    }
     const price = typeof getFreeActivityPrice === 'function'
-      ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours })
+      ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours, minutes: options.minutes })
       : null;
     if (price == null) complete = false; else total += price;
     return activity.name;
@@ -3392,7 +3453,13 @@ function toggleBookingActivity(activityId) {
   if (selection[activityId]) {
     delete selection[activityId];
   } else {
-    selection[activityId] = activityId === 'bowling' ? { duration: 1 } : activityId === 'laser_game' ? { games: 1 } : {};
+    // Le defaut suit le TYPE de tarif, pas l'identifiant : sinon le duckpin,
+    // qui vend des pistes comme le bowling, demarrait sans duree.
+    const type = (typeof getCenterActivity === 'function' && getCenterActivity(activityId) || {}).priceType || '';
+    selection[activityId] = type === 'grid_bowling' ? { duration: 1 }
+      : type === 'grid_laser' ? { games: 1 }
+      : type === 'grid_fun_run' ? { minutes: FUN_RUN_OPTIONS[0].minutes }
+      : {};
   }
   state.booking.mode = 'carte';
   state.booking.formuleId = '';

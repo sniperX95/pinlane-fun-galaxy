@@ -6,7 +6,7 @@ import * as D3 from './scene3d';
 // LES INCRUSTATIONS DES CARTONS D'EXPLICATION.
 //
 // Le reproche : « quand il parle beaucoup, ça montre que du texte ». C'etait
-// exact — les six cartons qui portent l'explication etaient de la typographie sur
+// exact : les six cartons qui portent l'explication etaient de la typographie sur
 // blanc. Sur un film de trafic froid, ce sont justement les moments ou il faut
 // MONTRER, parce que c'est la qu'on explique.
 //
@@ -38,7 +38,7 @@ export type Mot = { m: string; t0: number; t1: number };
 const nu = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** Instant (en secondes, depuis le debut de la ligne) ou commence le premier mot
- *  qui contient `cle`. Rend `repli` si le mot n'est pas trouve — ce qui arrive si
+ *  qui contient `cle`. Rend `repli` si le mot n'est pas trouve : ce qui arrive si
  *  le texte est reecrit sans toucher a l'illustration, et vaut mieux qu'un plan
  *  qui ne joue plus rien. */
 const quand = (mots: Mot[], cle: string, repli: number) => {
@@ -50,7 +50,7 @@ const quand = (mots: Mot[], cle: string, repli: number) => {
 //
 // `useCurrentFrame()` compte depuis le debut du CARTON ; les dates des mots
 // comptent depuis le debut de la LIGNE PARLEE. Sans ce decalage, le telephone
-// sonnerait quelques images avant que la voix ne dise « telephone » — exactement
+// sonnerait quelques images avant que la voix ne dise « telephone » : exactement
 // le defaut de synchronisation qu'on vient de corriger sur les sous-titres. Les
 // composants ci-dessous prennent donc `decalage` et l'ajoutent a chaque temps.
 type Contexte = { mots: Mot[]; decalage: number };
@@ -66,11 +66,11 @@ const ressort = Easing.bezier(0.2, 1.25, 0.3, 1);
 // Defaut mesure par la garde d'images plates : jusqu'a 0,57 s de blanc entre deux
 // cartons. Cause : le carton s'ouvre quelques images avant que la voix n'attaque,
 // les mots n'apparaissent qu'a leur date, et l'illustration attendait SON premier
-// mot — donc l'ecran restait vide le temps de la jointure. Le decor (le combine,
+// mot : donc l'ecran restait vide le temps de la jointure. Le decor (le combine,
 // le pictogramme, les cadres des compteurs) apparait maintenant des l'image 2 ;
 // seuls les EVENEMENTS restent cales sur les mots.
 // MISE A JOUR : « des l'image 2 » ne suffisait pas. La garde d'images plates
-// mesure encore 3 a 11 images d'ecart-type nul au debut de chaque carton — le
+// mesure encore 3 a 11 images d'ecart-type nul au debut de chaque carton : le
 // fond blanc du carton est bien la, mais rien dessus. Une rampe qui part de zero
 // laisse forcement quelques images sous le seuil de visibilite, quel que soit
 // l'instant ou elle commence. Le decor part donc DEJA VISIBLE : il ne s'ouvre
@@ -203,7 +203,7 @@ const IncrustRemontee: React.FC<Contexte> = (ctx) => {
         const entree = Math.max(etabli(frame) * 0.6, D3.monte(frame, i * 2.5, 12));
         // LA CARTE DECOLLE DE LA PILE. C'est tout le propos : elle ne se glisse
         // pas entre ses voisines, elle passe AU-DESSUS. Son altitude pilote a la
-        // fois son elevation, son ombre et son echelle — les trois ensemble font
+        // fois son elevation, son ombre et son echelle : les trois ensemble font
         // lire un objet qui se souleve, aucune ne suffit seule.
         const vol = actif ? Math.sin(t * Math.PI) : 0;
         return (
@@ -481,12 +481,12 @@ const IncrustZeros: React.FC<Contexte> = (ctx) => {
 // LA MARCHE QUI MANQUAIT. Le film passait de la reservation a l'ecran au
 // comptoir sous pression sans dire pourquoi les deux avaient un rapport : « il
 // parle direct du telephone qui sonne mais le lien est pas fait ». Cette
-// incrustation EST le lien, et elle le montre au lieu de l'affirmer — la carte
+// incrustation EST le lien, et elle le montre au lieu de l'affirmer : la carte
 // qu'on vient de voir en gros plan, et les trois chemins par lesquels elle
 // arrive aujourd'hui. Celui du telephone s'allume, les deux autres s'eteignent.
 
 // Le chemin est un COUDE, pas une diagonale : une ligne droite tiree d'une puce
-// haute vers le bord d'une carte basse ne touche ni l'une ni l'autre — au
+// haute vers le bord d'une carte basse ne touche ni l'une ni l'autre : au
 // premier rendu les trois traits flottaient a cote de ce qu'ils reliaient. Un
 // coude a angle droit avec un rayon, lui, part du bord de la puce et arrive sur
 // le bord de la carte : il se lit comme un acheminement.

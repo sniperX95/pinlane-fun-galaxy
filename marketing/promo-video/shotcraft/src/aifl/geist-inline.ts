@@ -1,4 +1,4 @@
-// GEIST, INTEGREE EN BASE64 — PLUS AUCUNE REQUETE A ECHOUER.
+// GEIST, INTEGREE EN BASE64. PLUS AUCUNE REQUETE A ECHOUER.
 //
 // Regenerer : voir l'entete de `fonts.ts`.
 //
@@ -7,7 +7,7 @@
 // douze plans), la requete echouait parfois. Et `document.fonts.load` NE REJETTE
 // PAS quand le fichier n'arrive pas : elle resout avec une liste vide. Ma garde
 // concluait alors « police absente », levait, et le `delayRender` restait
-// suspendu — le rendu mourait sur un timeout opaque de 58 s.
+// suspendu : le rendu mourait sur un timeout opaque de 58 s.
 //
 // Une police en `data:` ne peut pas ne pas arriver. Le defaut n'est plus rattrape,
 // il n'existe plus. Cout : 70 ko de source, aucune consequence au rendu.

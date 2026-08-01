@@ -26,11 +26,11 @@ export const PaperTitleCard: React.FC<{
   subDigits?: string;
   /** Dates de chaque mot, en secondes depuis le debut du carton. Quand elles
    *  sont fournies, les mots apparaissent A L'INSTANT OU LA VOIX LES DIT au lieu
-   *  d'un decalage par index — et le mot en cours porte le bleu de la marque. */
+   *  d'un decalage par index : et le mot en cours porte le bleu de la marque. */
   mots?: { m: string; t0: number; t1: number }[];
   /** Decalage, en images, entre le debut du CARTON et le debut de la ligne
    *  parlee. Le carton s'ouvre quelques images avant que la voix n'attaque ;
-   *  sans ce decalage les mots apparaissaient 4 images trop tot — soit exactement
+   *  sans ce decalage les mots apparaissaient 4 images trop tot : soit exactement
    *  le defaut de synchronisation qu'on corrige. */
   decalage?: number;
   /** Incrustation animee posee AU-DESSUS du texte. Quand elle est presente, le
@@ -41,7 +41,7 @@ export const PaperTitleCard: React.FC<{
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   // LE FONDU NE VA PAS JUSQU'A ZERO. Termine a 0 pile a `duration`, il laissait
-  // la DERNIERE image du carton entierement vide — un clignotement d'une image a
+  // la DERNIERE image du carton entierement vide : un clignotement d'une image a
   // chaque coupe, que la garde d'images plates comptait sans que je le corrige.
   // A 0,2 la coupe reste douce et l'image n'est jamais vide : le plan suivant
   // arrive de toute facon a l'image d'apres.
@@ -59,7 +59,7 @@ export const PaperTitleCard: React.FC<{
     extrapolateRight: 'clamp',
   });
   // POUSSEE CONTINUE. Les mots apparaissaient puis l'image se figeait jusqu'a la
-  // coupe — pres de deux secondes d'arret sur chacun des quatre cartons. Une
+  // coupe : pres de deux secondes d'arret sur chacun des quatre cartons. Une
   // lente montee d'echelle et une derive du halo suffisent a garder le plan
   // vivant, sans toucher au rythme d'apparition des mots.
   const pousse = interpolate(frame, [0, duration], [0, 1], {
@@ -89,7 +89,7 @@ export const PaperTitleCard: React.FC<{
           // colonne) ; rendues telles quelles dans un cadre de 1920x1080 elles
           // occupaient un quart de la hauteur et le reste etait du blanc. Une mise
           // a l'echelle globale les remplit sans toucher a leurs proportions
-          // internes — et 1,2 est le facteur maximal : la plus large (1560 px)
+          // internes : et 1,2 est le facteur maximal : la plus large (1560 px)
           // atteint alors 1872 px, soit juste sous le cadre.
           // `zoom` ET NON `transform: scale`. Une mise a l'echelle par `transform`
           // ne change pas la BOITE de mise en page : le contenu grossissait vers

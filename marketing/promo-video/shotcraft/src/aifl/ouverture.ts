@@ -8,7 +8,7 @@ import NARRATION from './narration.json';
 // `sfx.ts` pour ses bruitages, et un import croise donnerait « Cannot access
 // before initialization »).
 //
-// LE PROBLEME QU'IL RESOUT. Le plan d'ouverture tenait sa vue large 28 images —
+// LE PROBLEME QU'IL RESOUT. Le plan d'ouverture tenait sa vue large 28 images ,
 // 0,9 seconde. Assez pour montrer le planning, pas pour l'expliquer, et c'est
 // exactement ce que Movsar a vu : « le "ça" on capte pas, parce qu'on comprend
 // pas direct que c'est un planning ». Le plan porte maintenant trois phrases :
@@ -52,7 +52,7 @@ export const macro = (imageTemplate: number) =>
 //
 // La deuxieme phrase decrit la grille : « Chaque colonne, une piste. Chaque
 // BLOC, un groupe qui a réservé. » Le cadre se ferme sur une reservation
-// exactement quand la voix dit « bloc » — sinon il designe une carte pendant
+// exactement quand la voix dit « bloc » : sinon il designe une carte pendant
 // qu'on parle des colonnes, et c'est encore un « mal calibre avec l'image ».
 // Repli : 62 images avant le depart de la camera, si le mot disparait du texte.
 const nu = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();

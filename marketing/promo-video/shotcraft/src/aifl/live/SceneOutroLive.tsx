@@ -53,7 +53,7 @@ const pose = (
   const a = TAILLES[p.file] ?? p.replis;
   // PLAFOND DE DEFINITION NATIVE : une decoupe ne s'affiche jamais plus large
   // qu'elle ne contient de pixels reels. Sans ce plafond, l'en-tete du planning
-  // (538 px) etait etale sur 1190 px — 4,4x d'agrandissement, mou et
+  // (538 px) etait etale sur 1190 px : 4,4x d'agrandissement, mou et
   // surdimensionne au milieu d'elements nets.
   const natif = ('px' in a && a.px) ? a.px : a.w * 2;
   return { ...p, w: a.w, h: a.h, scale: Math.min(p.largeurEcran, natif) / a.w };
@@ -96,7 +96,7 @@ const DUST = Array.from({ length: 20 }, (_, i) => ({
 /** Sign-off reworked as a "group photo": core elements from every page fly in
  * from off-screen in staggered beats and settle in an arc around the center;
  * then the letterpressed "AI Foundation Lab" wordmark appears while the assembled
- * elements recede slightly into the background — teammates in the back row.
+ * elements recede slightly into the background : teammates in the back row.
  * Launch-event treatment: a crane-in camera on the whole photo layer, ghost
  * trails + landing glows on the fly-ins, a stage light behind the wordmark,
  * gold dust and a single opening light sweep for atmosphere. */
@@ -123,14 +123,14 @@ export const SceneOutroLive: React.FC = () => {
     extrapolateRight: 'clamp',
   });
 
-  // as the wordmark takes the stage (42–50) the assembled elements step back
+  // as the wordmark takes the stage (42-50) the assembled elements step back
   const recede = interpolate(frame, [42, 50], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
 
   // ---- camera crane on the whole group-photo layer (wordmark stays outside) ----
-  // 0–40: crane down from a slight top angle onto the stage; 40–end: keep breathing in
+  // 0,40: crane down from a slight top angle onto the stage; 40,end: keep breathing in
   const craneT = interpolate(frame, [0, 40], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -143,7 +143,7 @@ export const SceneOutroLive: React.FC = () => {
   const camScale = 1.06 - 0.06 * craneT + 0.035 * pushT;
   const camTilt = 4 * (1 - craneT); // rotateX deg
 
-  // opening light sweep: one wide, faint warm band crossing the screen, 2–14
+  // opening light sweep: one wide, faint warm band crossing the screen, 2,14
   const sweepX = interpolate(frame, [2, 14], [-700, 2020], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -154,7 +154,7 @@ export const SceneOutroLive: React.FC = () => {
     extrapolateRight: 'clamp',
   });
 
-  // stage light behind the wordmark: 0 → 0.5 → 0.25 across 42–58
+  // stage light behind the wordmark: 0 → 0.5 → 0.25 across 42-58
   const stageLight = interpolate(frame, [42, 50, 58], [0, 0.5, 0.25], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -166,7 +166,7 @@ export const SceneOutroLive: React.FC = () => {
     extrapolateRight: 'clamp',
   });
 
-  // rule extension lines: shoot out to ±320px (58–66), then fade over 6 frames
+  // rule extension lines: shoot out to ±320px (58-66), then fade over 6 frames
   const ruleExt = interpolate(frame, [58, 66], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -177,7 +177,7 @@ export const SceneOutroLive: React.FC = () => {
     extrapolateRight: 'clamp',
   });
 
-  // one breath of letter-spacing once the wordmark is fully set (62–66)
+  // one breath of letter-spacing once the wordmark is fully set (62-66)
   const wordSpacing = interpolate(frame, [62, 66], [-0.01, 0.005], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',

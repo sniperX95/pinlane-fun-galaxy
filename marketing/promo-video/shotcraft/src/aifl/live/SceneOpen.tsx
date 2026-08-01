@@ -20,13 +20,13 @@ const PAGE_H = layout.projects.pageH;
 // --- LA reservation sur laquelle tout le plan d'ouverture se referme ---------
 // Elle n'est plus choisie a la main : le script de capture designe celle qui est
 // la plus proche du centre de page et ecrit son rang. Le centre compte, parce
-// que la camera cadre le point (cx, cy) au milieu de l'image — un heros collé
+// que la camera cadre le point (cx, cy) au milieu de l'image : un heros collé
 // au bord fait entrer le hors-page dans le cadre.
 const MAIN = layout.projects.heroIndex ?? 3;
 const CARD = layout.projects.cards[MAIN];
 // CE QUE LA RESERVATION AFFICHE, lu dans le DOM au moment de la capture. La
 // scene l'ecrit a l'ecran et la narration le DIT : un seul fait, une seule
-// source. Avant, les libelles venaient d'une liste appliquee par rang — de la
+// source. Avant, les libelles venaient d'une liste appliquee par rang : de la
 // decoration qui avait l'air d'une donnee.
 const HERO = layout.projects.hero;
 const HIRES = layout.projects.heroHires ?? 'card-hero-hires.png';
@@ -35,7 +35,7 @@ const MCY = CARD.y + CARD.h / 2;
 const RADIUS = 16;
 
 // Grossissement du gros plan. Deux plafonds : la definition natives du gros
-// plan (le script mesure combien de vrais pixels il contient — on reduit
+// plan (le script mesure combien de vrais pixels il contient : on reduit
 // toujours une image, jamais on ne l'agrandit) et le confort de la TEXTURE de
 // page dessous, capturee en densite 2, qui devient molle au-dela de ~1,5x.
 // 3,4 n'est pas un chiffre rond choisi au hasard : c'est le plus fort
@@ -46,9 +46,9 @@ const RADIUS = 16;
 const ZOOM_HERO = Math.min(layout.projects.heroZoomMax ?? 4, 3.4);
 
 // Camera: straight-on full page (52→84, static while the spotlight roves and
-// locks), then a 16-frame push-in that swings to a LEFT-SIDE view — rotY
+// locks), then a 16-frame push-in that swings to a LEFT-SIDE view : rotY
 // dominant so the card's left edge reads near and its right edge recedes, with
-// only a slight downward tilt (rotX) — until the single card nearly fills the
+// only a slight downward tilt (rotX) : until the single card nearly fills the
 // frame (84→100), then held to the end (190) with an almost-imperceptible pull.
 // The focal page-point sits a touch LEFT of the card centre so the card lands
 // slightly right of screen-centre, foregrounding its near (left) edge.
@@ -61,7 +61,7 @@ const CAM_KEYS: CamKey[] = [
   { frame: T_VERROU, cx: 960, cy: 540, zoom: WIDE_ZOOM, rotX: 0, rotY: 0, rotZ: 0, persp: 1200 },
   { frame: macro(130), cx: MCX - 30, cy: MCY, zoom: ZOOM_HERO, rotX: 8, rotY: 34, rotZ: 2, persp: 1200 },
   // DERIVE PENDANT LE VOL STATIONNAIRE. La pose etait tenue a l'identique
-  // pendant 90 images — trois secondes d'image immobile pendant que la
+  // pendant 90 images : trois secondes d'image immobile pendant que la
   // reservation flotte. La camera contourne maintenant lentement la carte
   // (rotY 34 -> 29,5, rotX 8 -> 6,2), ce qui fait vivre le plan entier sans
   // rien changer au rythme du vol ni aux bruitages.
@@ -89,12 +89,12 @@ const PATCH = '#ffffff';
 const SLOT_AMBER = '#0664fe';
 const BEAM_CORE = 'rgba(255, 255, 255, 0.98)';
 
-/** Brand open (0–83): an invisible pen draws an amber crosshair, "AI
+/** Brand open (0-83): an invisible pen draws an amber crosshair, "AI
  * Foundation Lab" letterpresses in glyph by glyph (all glyphs down by ~46), a mono kicker
  * types itself out, then the finished lockup RESTS fully-on for a second
- * (46–76) before dissolving and handing to the console.
+ * (46-76) before dissolving and handing to the console.
  *
- * Single-card macro (82–220): a warm spotlight roves the dashboard, then locks
+ * Single-card macro (82-220): a warm spotlight roves the dashboard, then locks
  * onto ONE card (pool shrinks, surroundings dim); the camera pushes in and
  * SWINGS to a left-side view (rotY-dominant: left edge near, right edge far)
  * until the card nearly fills the frame, a crisp 4x capture crossfading in over
@@ -147,7 +147,7 @@ export const SceneOpen: React.FC = () => {
   // avec reflet, c'est blanc avec un cercle comme un projecteur, mais c'est
   // super moche et mal fait ». Il avait raison sur la cause : deux degrades
   // radiaux blancs qui balayaient la page, plus une vignette. Un degrade radial
-  // n'a pas de bord — il fait une TACHE, et une tache sur une capture d'ecran se
+  // n'a pas de bord : il fait une TACHE, et une tache sur une capture d'ecran se
   // lit comme un defaut de rendu, pas comme une intention.
   //
   // Ce qui remplace : une SELECTION. Un voile clair couvre la page, perce d'un
@@ -159,7 +159,7 @@ export const SceneOpen: React.FC = () => {
   //
   // Tout est en espace ECRAN et non dans la page : la camera est immobile
   // pendant cette phase, et un element pose dans la page serait reduit par le
-  // zoom de 0,78 — l'etiquette y serait sortie a 17 px de haut.
+  // zoom de 0,78 : l'etiquette y serait sortie a 17 px de haut.
   const misePoint = interpolate(frame, [T_MISE_AU_POINT, T_MISE_AU_POINT + 14], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.bezier(0.3, 0, 0.2, 1),
   });
@@ -204,7 +204,7 @@ export const SceneOpen: React.FC = () => {
 
   // --- hero card pop-up ------------------------------------------------------
   // rise 130→140 (spring overshoot), hover 140→194 (54f sin bob), reseat
-  // 194→212 (18f, gentle) — lock(114)→touchdown(212) ≈ 98f ≈ 3.3s.
+  // 194→212 (18f, gentle) : lock(114)→touchdown(212) ≈ 98f ≈ 3.3s.
   const rise = interpolate(frame, [macro(130), macro(140)], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: POP_EASE,
   });
@@ -235,7 +235,7 @@ export const SceneOpen: React.FC = () => {
 
   // --- perimeter beam: TWO laps around the card outline during the hover.
   // Lap 1 (142→156) runs fast and bright; lap 2 (162→182) runs slower and
-  // weaker — two laps read as a sustained scan rather than a single blink. A
+  // weaker : two laps read as a sustained scan rather than a single blink. A
   // faint amber ring lingers after lap 2 and fades before reseat (182→194). ---
   const beam1Prog = interpolate(frame, [macro(142), macro(156)], [0, 1], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.linear,

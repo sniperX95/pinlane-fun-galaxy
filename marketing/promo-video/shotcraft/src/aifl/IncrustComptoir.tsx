@@ -1,7 +1,7 @@
 import React from 'react';
 import { interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 
-// LA SCENE DU COMPTOIR — le probleme joue, il n'est plus decrit.
+// LA SCENE DU COMPTOIR : le probleme joue, il n'est plus decrit.
 //
 // La version precedente illustrait « ça se passe au telephone, tu notes sur un
 // cahier » par un combine plat et un cahier. Movsar a demande la vraie scene :
@@ -53,7 +53,7 @@ const monte = (frame: number, de: number, duree = 12, easing = ease) =>
 
 // LA CADENCE DE SONNERIE. Un telephone sonne par SALVES : ~1,3 s de sonnerie,
 // ~0,9 s de silence. La version precedente vibrait et emettait des ondes sans
-// interruption, ce qui ne ressemble a aucun telephone — et c'est cette cadence,
+// interruption, ce qui ne ressemble a aucun telephone : et c'est cette cadence,
 // bien plus que le nombre de reflets, qui fait reconnaitre l'objet.
 // Elle est calee sur `sonnerie-telephone.mp3`, qui porte deux sonneries sur 4 s.
 const CADENCE = 66;        // images pour un cycle complet
@@ -240,7 +240,7 @@ const Telephone: React.FC<{ entree: number; sonne: number; frame: number; echell
 
 /** Une personne. `marche` est la distance parcourue en pas (0 = immobile) :
  *  c'est elle qui pilote le cycle, donc la vitesse des jambes suit toujours
- *  celle du deplacement — un personnage dont les jambes bougent sans qu'il
+ *  celle du deplacement : un personnage dont les jambes bougent sans qu'il
  *  avance, ou l'inverse, se voit immediatement. */
 const Silhouette: React.FC<{
   h?: number; ton?: string; marche?: number; impatience?: number; phase?: number;

@@ -2,7 +2,7 @@
 //
 // Movsar : « la voix est vraiment pas folle, bowling laser game et tout, les
 // intonations c'est mal fait ». Trois iterations de respelling phonetique n'ont
-// rien donne — parce que le probleme n'est peut-etre pas l'orthographe mais LA
+// rien donne : parce que le probleme n'est peut-etre pas l'orthographe mais LA
 // VOIX. Son compte n'en contient que deux ; la bibliotheque ElevenLabs en a des
 // dizaines de francaises, dont plusieurs taguees « spots commerciaux ».
 //
@@ -39,7 +39,7 @@ const VOIX = [
 ];
 
 // `style` a 0,25 et non 0,4 : un style eleve exagere l'interpretation, ce qui
-// donne des accents toniques au mauvais endroit — un candidat serieux pour
+// donne des accents toniques au mauvais endroit : un candidat serieux pour
 // « les intonations c'est mal fait ».
 const REGLAGES = { stability: 0.5, similarity_boost: 0.85, style: 0.25, use_speaker_boost: true };
 

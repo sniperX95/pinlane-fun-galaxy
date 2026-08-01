@@ -49,7 +49,7 @@ const PAST_WEEKS = [
   { week: 'Vendredi', date: 'Ven. 24', title: 'Journée du 24 juillet' },
 ];
 // Les quatre indicateurs du haut du tableau de bord, releves a la capture.
-// Ils s'allument sur les temps 65, 70, 75, 80 — soit exactement les quatre
+// Ils s'allument sur les temps 65, 70, 75, 80 : soit exactement les quatre
 // premiers « pop » de la table de bruitages (frames absolues 840, 845, 850, 855
 // moins l'origine du plan, 775).
 const KPIS = (layout.wbr as { kpis?: { x: number; y: number; w: number; h: number }[] }).kpis ?? [];
@@ -68,7 +68,7 @@ const memberH2 = new Set<number>();
 
 /** Weekly brief: the full report is "written" in block by block (paper mask
  * wipes left→right behind an amber caret), member names get an @-mention amber
- * wash, then the week list (left) and comment sidebar (right) wipe on stage —
+ * wash, then the week list (left) and comment sidebar (right) wipe on stage ,
  * the whole page, both rails included, settles into frame. */
 export const SceneWbr: React.FC = () => {
   const frame = useCurrentFrame();

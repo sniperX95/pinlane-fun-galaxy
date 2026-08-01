@@ -39,7 +39,7 @@ const CAM_KEYS: CamKey[] = [
 export const ScenePapers: React.FC = () => {
   const frame = useCurrentFrame();
 
-  // how many cards have already landed (t reached 1) — drives the counter
+  // how many cards have already landed (t reached 1) : drives the counter
   const landedCount = CUES.filter((c) => frame >= c + DUR).length;
 
   // when a *later* card enters, the already-settled stack gets pressed down 6px

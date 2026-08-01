@@ -23,7 +23,7 @@ export type Mot = { m: string; t0: number; t1: number };
  * Chaque mot apparait a l'instant ou il est prononce : sa date vient de
  * l'alignement caractere par caractere rendu par la synthese vocale, pas d'un
  * decalage par index. C'est la reponse au reproche « quand il dit des choses, ca
- * se dit pas en meme temps que le texte apparait » — le decalage n'est plus
+ * se dit pas en meme temps que le texte apparait » : le decalage n'est plus
  * regle, il est impossible.
  *
  * Le mot EN COURS de prononciation porte le bleu de la marque, puis retombe a
@@ -77,8 +77,8 @@ export const NarrationCaption: React.FC<{
             letterSpacing: '-0.016em', lineHeight: 1.14, color: ENCRE,
             // LA LISIBILITE VIENT D'UN HALO, PAS D'UNE BOITE. Quatre ombres
             // claires serrees autour des glyphes font un lisere qui detache le
-            // texte de n'importe quel fond clair — y compris une capture d'ecran
-            // dense — sans rien masquer. C'est ce que fait un sous-titre de
+            // texte de n'importe quel fond clair : y compris une capture d'ecran
+            // dense : sans rien masquer. C'est ce que fait un sous-titre de
             // cinema, en inverse (halo sombre sur image claire ici).
             textShadow: '0 0 14px rgba(250,251,253,0.98),'
               + ' 0 0 28px rgba(250,251,253,0.92),'

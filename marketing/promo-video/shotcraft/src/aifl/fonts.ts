@@ -2,27 +2,27 @@ import { useEffect, useState } from 'react';
 import { continueRender, delayRender } from 'remotion';
 import { GEIST_MONO_B64, GEIST_SANS_B64 } from './geist-inline';
 
-// GEIST, LA POLICE DE LA MARQUE — INTEGREE, ET ATTENDUE DANS LE COMPOSANT.
+// GEIST, LA POLICE DE LA MARQUE. INTEGREE, ET ATTENDUE DANS LE COMPOSANT.
 //
 // Deux defauts payes ici, dans cet ordre :
 //
 // 1. CHARGEE PAR URL, ELLE FAISAIT EXPIRER LE RENDU. Remotion ouvre plusieurs
 //    onglets ; sur un film long la requete echouait parfois, et
-//    `document.fonts.load` NE REJETTE PAS quand le fichier n'arrive pas — elle
+//    `document.fonts.load` NE REJETTE PAS quand le fichier n'arrive pas : elle
 //    resout avec une liste vide. Les fichiers sont donc INLINES en base64
 //    (`geist-inline.ts`) : une police en `data:` ne peut pas ne pas arriver.
 //
 // 2. `delayRender` APPELE AU CHARGEMENT DU MODULE n'appartient a aucun passage de
 //    rendu. Le symptome etait deroutant : le rendu d'une image seule marchait, le
 //    rendu complet mourait apres 58 s sur « A delayRender() "Geist" was called
-//    but not cleared », et aucun de mes messages n'apparaissait dans le journal —
+//    but not cleared », et aucun de mes messages n'apparaissait dans le journal ,
 //    parce que la promesse ne se terminait meme pas. C'est un HOOK maintenant :
 //    la reservation se fait dans le contexte de rendu, comme le veut le patron
 //    documente de Remotion.
 //
 // Et pourquoi verifier du tout : declarer `font-family: Geist` ne charge rien.
 // C'est exactement ce qui a fait passer la page de vente pour « cheap » pendant
-// six iterations — le CSS reclamait Geist, aucun `@font-face` ne la fournissait,
+// six iterations : le CSS reclamait Geist, aucun `@font-face` ne la fournissait,
 // et tous les titres sortaient en Segoe UI. `getComputedStyle` ne le montre pas :
 // il renvoie la DECLARATION, pas la police resolue.
 
@@ -92,7 +92,7 @@ export const useGeist = () => {
         // ON LIBERE TOUJOURS. Relancer l'erreur laissait le `delayRender`
         // suspendu : le rendu mourait sur un timeout qui ne disait rien de la
         // cause. Une garde qui masque ce qu'elle detecte est pire que pas de
-        // garde — la verification se fait en cherchant « GEIST-ABSENTE » dans le
+        // garde : la verification se fait en cherchant « GEIST-ABSENTE » dans le
         // journal de rendu.
         if (vivant) continueRender(attente);
       });

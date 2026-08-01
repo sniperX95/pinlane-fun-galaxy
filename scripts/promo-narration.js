@@ -10,7 +10,7 @@
 // `/with-timestamps`, qui rend l'audio ET l'alignement caractere par caractere.
 // De cet alignement on tire, pour chaque ligne : ses bornes dans la prise, et la
 // date de CHAQUE MOT relative au debut de la ligne. Le film et le mixage lisent
-// tous les deux ce fichier — le mot apparait donc a l'instant ou il est
+// tous les deux ce fichier : le mot apparait donc a l'instant ou il est
 // prononce, par construction et non par reglage.
 //
 // Trois proprietes qui viennent gratuitement :
@@ -44,7 +44,7 @@ const SORTIE_TABLE = path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/n
 // change. On lit ses vraies valeurs dans le layout et on construit la phrase
 // avec : la scene affiche « 11:00 · EVJF Camille · 11 joueurs · Piste 6 » et la
 // voix dit « onze heures, onze joueurs, piste six ». Un seul fait, une seule
-// source — elles ne peuvent plus se contredire.
+// source : elles ne peuvent plus se contredire.
 const LAYOUT = require(path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl/live-layout.json'));
 const HERO = (LAYOUT.projects && LAYOUT.projects.hero) || {};
 if (!HERO.heure || !HERO.pax || !HERO.piste) {
@@ -55,7 +55,7 @@ if (!HERO.heure || !HERO.pax || !HERO.piste) {
 
 // Les nombres s'ecrivent EN LETTRES dans le texte envoye a la synthese : « 11:00 »
 // se lit « onze deux-points zero zero » chez certains modeles, et le bandeau
-// affiche de toute facon le texte tel quel — « onze heures » y est plus lisible
+// affiche de toute facon le texte tel quel. « onze heures » y est plus lisible
 // qu'un horaire technique.
 const UNITES = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit',
   'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'];
@@ -79,7 +79,7 @@ const heureDite = (hhmm) => {
 // LA VOIX SE CHANGE ICI, EN UNE LIGNE.
 //
 // Les voix de la bibliotheque partagee s'utilisent DIRECTEMENT par leur
-// identifiant (verifie : HTTP 200) — contrairement a ce que disait ma note de
+// identifiant (verifie : HTTP 200), contrairement a ce que disait ma note de
 // skill. Le compte de Movsar n'en contient que deux ; la bibliotheque en a des
 // dizaines de francaises, dont plusieurs taguees « spots commerciaux ».
 // `scripts/promo-essai-voix.js` en compare cinq sur la meme phrase.
@@ -98,16 +98,16 @@ const FPS = 30;
 // et `shots.ts` la relit. Raison : les instants de la voix se calculent depuis
 // elle, et la duree de chaque phrase varie d'un appel de synthese a l'autre (une
 // meme phrase a mesure 2,29 s puis 2,43 s selon la prise). Deux tables tenues
-// separement finiraient par se contredire — c'est le defaut qu'on vient de
+// separement finiraient par se contredire : c'est le defaut qu'on vient de
 // corriger sur les sous-titres, il n'y a aucune raison de le reintroduire ici.
 //
 // Les plans « card* » sont des cartons de typographie : leur duree se choisit
 // librement, sans risque de figer une animation. Les plans produit gardent
-// exactement la duree pour laquelle leur animation a ete concue — sauf `macro`,
+// exactement la duree pour laquelle leur animation a ete concue : sauf `macro`,
 // dont la camera recoit une cle supplementaire pour continuer a deriver.
 // `cardC` est nouveau : la sequence du probleme se joue maintenant en TROIS
 // temps au lieu de deux. « Il parle direct du telephone qui sonne mais le lien
-// est pas fait » — il manquait la marche du milieu, celle qui relie la
+// est pas fait » : il manquait la marche du milieu, celle qui relie la
 // reservation qu'on vient de montrer a la facon dont elle arrive aujourd'hui.
 const ORDRE = ['morning', 'cardA', 'cardB', 'cardC', 'card1', 'table', 'macro',
   'card2', 'chart', 'cardWbr', 'wbr', 'card3', 'outro'];
@@ -125,7 +125,7 @@ const FIXES = { table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
 //
 // Il porte desormais TROIS phrases : la question qui qualifie (sur le logo), la
 // presentation du planning (sur la vue large), et la reservation mise en
-// evidence (sur le gros plan). Sa vue large ne tenait que 28 images — de quoi
+// evidence (sur le gros plan). Sa vue large ne tenait que 28 images : de quoi
 // montrer la page, pas de quoi l'expliquer, et c'est exactement ce que Movsar a
 // vu : « le "ça" on capte pas, parce qu'on comprend pas direct que c'est un
 // planning ». Le plan prend donc la duree que ses phrases exigent, avec un
@@ -137,7 +137,7 @@ const FIXES = { table: 190, macro: 130, chart: 105, wbr: 110, outro: 160 };
 const PLANCHERS = { morning: 300 };
 
 // Les CARTONS n'ont pas de duree ecrite : elle se CALCULE depuis la phrase qu'ils
-// portent. C'est ce qui rend l'ensemble insensible au debit de la synthese — une
+// portent. C'est ce qui rend l'ensemble insensible au debit de la synthese : une
 // meme phrase a mesure 2,29 s sur une prise et 2,91 s sur la suivante, et quatre
 // phrases debordaient de leur plan quand les durees etaient fixees a la main.
 // 0,30 ET NON 0,55. Seize plans x 0,25 s de queue en trop faisaient six
@@ -150,7 +150,7 @@ const MARGE_CARTON = 0.26;
 // on autorise jusqu'a 20 images de tenue supplementaire si la phrase en a besoin :
 // une demi-seconde de pose avant la coupe ne se voit pas, alors qu'une phrase
 // coupee au milieu s'entend. Sans cette elasticite, il fallait re-regler le texte
-// a chaque appel de synthese — le debit varie de 10 % d'une prise a l'autre.
+// a chaque appel de synthese : le debit varie de 10 % d'une prise a l'autre.
 const ELASTIQUE = 20;
 
 // --- LE TEXTE ---------------------------------------------------------------
@@ -169,7 +169,7 @@ const ELASTIQUE = 20;
 //
 // « La voix change et c'est pas fluide entre chaque. » Il y avait quatorze
 // indications differentes pour quatorze phrases : le modele re-interprete a
-// chaque crochet, donc il changeait de registre a chaque phrase — quatorze
+// chaque crochet, donc il changeait de registre a chaque phrase : quatorze
 // intentions collees bout a bout s'entendent comme quatorze prises.
 // Une indication OUVRE un mouvement et les phrases suivantes la prolongent
 // naturellement. Il en reste cinq, une par mouvement du film.
@@ -180,7 +180,7 @@ const LIGNES = [
   // quelqu'un qui n'a jamais vu le produit, et « journée complète » ne veut rien
   // dire tant qu'on n'a pas compris qu'on regarde un planning. On NOMME donc
   // l'objet avant d'en parler, puis on explique sa grille, et seulement apres on
-  // designe une reservation — pendant que la camera se ferme dessus.
+  // designe une reservation : pendant que la camera se ferme dessus.
   { decalage: 0.55, plan: 'morning', cible: 'aucun', jeu: '[énergique, souriant, tu interpelles quelqu’un]', texte: 'Tu gères un bowling, un laser game, un centre de loisirs ?' },
   { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: 'Ça, c’est ton planning du jour : chaque colonne, une piste, et chaque bloc, un groupe qui a réservé.' },
   { decalage: 'apres', plan: 'morning', cible: 'bandeau', texte: `Celui-là, c’est ${heureDite(HERO.heure)}, ${enLettres(HERO.pax)} joueurs, piste ${enLettres(HERO.piste)}.` },
@@ -208,7 +208,7 @@ const LIGNES = [
   // L'explication vit sur les cartons, la preuve sur le produit.
   { decalage: 0.18, plan: 'table', cible: 'bandeau', texte: 'Ton client réserve en ligne, et la résa se pose toute seule au bon créneau.' },
   // LA RECHERCHE EST A L'IMAGE : ELLE DOIT ETRE DITE. J'avais coupe cette phrase
-  // pour tenir dans la duree du plan — et le plan continuait de taper « Dubois »
+  // pour tenir dans la duree du plan : et le plan continuait de taper « Dubois »
   // dans le champ de recherche puis de filtrer les vingt-six reservations,
   // pendant que la voix parlait d'autre chose. Une sequence qui joue sans
   // narration, sur du trafic froid, ne s'explique pas toute seule. Les deux
@@ -233,13 +233,13 @@ const LIGNES = [
 // « La voix des fois elle prononce pas tres bien les mots. » La transcription ne
 // le montre PAS : elle rend « Pinlane » meme quand la voix dit « pain-lane »,
 // parce qu'elle choisit le mot le plus proche. Ma note de skill affirmait qu'une
-// transcription correcte prouvait une bonne prononciation — c'est faux, elle
+// transcription correcte prouvait une bonne prononciation : c'est faux, elle
 // prouve seulement qu'on a dit un mot reconnaissable.
 //
 // On corrige donc la prononciation LA OU ELLE SE CORRIGE : dans l'ecriture
 // envoyee au modele. Le mot AFFICHE reste celui de gauche, le mot DIT est celui
 // de droite. L'appariement caractere par caractere se fait sur la version dite,
-// et les dates obtenues sont attribuees au mot affiche — les deux restent donc
+// et les dates obtenues sont attribuees au mot affiche : les deux restent donc
 // synchronises.
 //
 // « Pinlane » est le cas critique : c'est le nom de la marque, prononce deux fois
@@ -257,7 +257,7 @@ const PRONONCIATION = {
 // La cle est le mot NU : les jetons portent leur ponctuation (« bowling, »,
 // « Pinlane. »), et une table indexee sur la forme ponctuee obligerait a
 // enumerer chaque variante. On detache donc la ponctuation, on traduit, on la
-// remet — et la casse initiale est preservee.
+// remet : et la casse initiale est preservee.
 const ditPour = (mot) => {
   const m = mot.match(/^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u);
   if (!m) return mot;
@@ -275,7 +275,7 @@ const ditPour = (mot) => {
 // lues (verifie par transcription sur cette voix et ce modele).
 // Calcule a l'appel et non au chargement : `enMots` est declare plus bas dans le
 // fichier, et une constante fleche n'existe pas avant sa ligne.
-// Une ligne SANS indication de jeu prolonge le registre de la precedente — c'est
+// Une ligne SANS indication de jeu prolonge le registre de la precedente : c'est
 // tout l'interet : le modele ne se re-interprete que la ou on le lui demande.
 const texteAEnvoyer = () => LIGNES
   .map((l) => `${l.jeu || ''} ${enMots(l.texte).map(ditPour).join(' ')}`.trim())
@@ -299,7 +299,7 @@ const appel = () => new Promise((resolve, reject) => {
     // lecture reste vivante sans etre jouee.
     // « Faut qu'ils soient plus enjoués, comme une vraie vidéo promo. »
     // `style` remonte a 0,45 : c'est le levier d'expressivite. Il avait ete baisse
-    // a 0,25 pour calmer des intonations fautives — mais la cause etait la VOIX,
+    // a 0,25 pour calmer des intonations fautives : mais la cause etait la VOIX,
     // pas le reglage, et avec une voix juste on peut de nouveau jouer.
     // `stability` a 0,4 : un peu plus de relief. Le risque historique de ce
     // reglage (le timbre qui change d'un appel a l'autre) n'existe plus, puisque
@@ -309,7 +309,7 @@ const appel = () => new Promise((resolve, reject) => {
     //
     // Il a choisi cette voix sur un comparatif genere a `style: 0.25`, puis n'a
     // pas aime le film ou je l'avais poussee a 0,45 avec `speed` 1,04 : « change
-    // un truc beaucoup plus pro ». Un `style` eleve sur ce modele SUR-JOUE — la
+    // un truc beaucoup plus pro ». Un `style` eleve sur ce modele SUR-JOUE : la
     // lecture devient appuyee, et une lecture appuyee ne sonne pas
     // professionnelle, elle sonne synthetique.
     //
@@ -319,14 +319,14 @@ const appel = () => new Promise((resolve, reject) => {
       stability: 0.5, similarity_boost: 0.85, style: 0.28,
       // 1,10 ET NON 1,0. « On a le temps de dormir, il parle des fois trop
     // lentement. » Mesure faite avant de toucher au curseur : 40,0 s de
-    // phonation pure sur 73,6 s de film — 44 % de silence. Le debit est un des
+    // phonation pure sur 73,6 s de film : 44 % de silence. Le debit est un des
     // trois leviers, les deux autres sont les creux INTERNES aux phrases et les
     // trous ENTRE elles, traites plus bas.
     // Le `style` reste a 0,28 : c'est lui que Movsar avait valide a l'oreille, et
     // c'est en le poussant a 0,45 que la voix avait sonne sur-jouee. On ne bouge
     // qu'un curseur a la fois.
     // 1,14 apres mesure du premier essai a 1,10 : les creux INTERNES n'avaient pas
-    // bouge (15,3 s), et l'analyse fine dit pourquoi — sur ces 15,3 s il n'y a que
+    // bouge (15,3 s), et l'analyse fine dit pourquoi : sur ces 15,3 s il n'y a que
     // 7,7 s de vraies pauses (>180 ms), le reste est l'interstice normal entre
     // deux mots, qu'on ne peut pas supprimer sans hacher la diction. Le seul
     // levier qui agit encore sur cette part-la est le debit.
@@ -358,8 +358,8 @@ const nu = (c) => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase
   .replace(/[’']/g, "'");
 const utile = (c) => /[a-z0-9']/.test(nu(c));
 
-// Decoupage en mots AFFICHABLES. Un jeton sans aucune lettre — le « ? » de
-// « Un client ? Je le trouve », impose par la typographie francaise — n'a pas de
+// Decoupage en mots AFFICHABLES. Un jeton sans aucune lettre : le « ? » de
+// « Un client ? Je le trouve », impose par la typographie francaise : n'a pas de
 // date propre et n'a pas a en avoir : il se rattache au mot precedent, ce qui le
 // garde aussi colle a lui a l'ecran.
 const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton) => {
@@ -390,7 +390,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   //
   // On enleve donc d'abord les portions entre crochets, puis on ne garde que les
   // caracteres utiles (lettres, chiffres, apostrophes) des deux cotes. Les deux
-  // suites doivent alors coincider terme a terme — c'est verifiable, et c'est
+  // suites doivent alors coincider terme a terme : c'est verifiable, et c'est
   // verifie ci-dessous.
   const C = al.characters;
   const T0 = al.character_start_times_seconds;
@@ -461,7 +461,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   // `decalage: 'apres'` place la phrase juste apres la precedente, avec une
   // respiration. C'est la reponse a une erreur qui revenait a chaque
   // regeneration : deux phrases dans un meme plan, decalages regles a la main, et
-  // le debit de la synthese qui bouge de 10 % — elles finissaient par se
+  // le debit de la synthese qui bouge de 10 % : elles finissaient par se
   // chevaucher. Une valeur calculee ne peut plus deriver.
   // 0,24 : une respiration, pas un silence. A 0,40 les deux phrases d'un meme
   // plan se lisaient comme deux plans.
@@ -594,7 +594,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   //                  de plan, pas de la voix.
   //
   // Premiere mesure, avant correction : 40,0 s de phonation sur 73,6 s, soit
-  // 44 % de silence — 15,2 s dedans, 16,9 s entre. Les deux moities comptaient
+  // 44 % de silence : 15,2 s dedans, 16,9 s entre. Les deux moities comptaient
   // autant, et je n'aurais pas devine laquelle traiter sans les separer.
   const phonation = ok.reduce((s, l) => s + l.mots.reduce((t, m) => t + (m.t1 - m.t0), 0), 0);
   const dedans = ok.reduce((s, l) => s + l.duree, 0) - phonation;

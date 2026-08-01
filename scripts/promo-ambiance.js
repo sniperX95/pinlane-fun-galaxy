@@ -31,7 +31,7 @@ const DUREE = 12;
 
 // 450 caracteres maximum a l'API : le brief doit tenir, donc chaque mot compte.
 // On garde l'ESPACE (c'est lui qui manquait), un seul evenement, et les
-// exclusions — le reste est du confort de redaction.
+// exclusions : le reste est du confort de redaction.
 const PROMPT = 'Ambiance continue d un grand bowling, enregistree derriere le comptoir.'
   + ' Grande salle au plafond haut, longue reverberation naturelle. Brouhaha de'
   + ' conversations lointaines et etouffees, aucune voix comprehensible.'
@@ -88,7 +88,7 @@ const mesure = (f) => {
   const avant = mesure(BRUT);
   console.log(`ambiance brute : ${avant.moy} dB (crete ${avant.max})`);
 
-  // Gain CONSTANT calcule depuis la mesure — jamais `loudnorm`, qui applique un
+  // Gain CONSTANT calcule depuis la mesure : jamais `loudnorm`, qui applique un
   // gain variable dans le temps et creuserait l'ambiance par endroits.
   const gain = CIBLE - avant.moy;
   execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', BRUT,

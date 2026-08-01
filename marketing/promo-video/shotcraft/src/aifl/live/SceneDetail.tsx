@@ -63,7 +63,7 @@ export const SceneDetail: React.FC = () => {
           ) : null;
 
         // flying row: texture-crop of the row, dropping in from the air.
-        // Removed once fully embedded (press bounce done) — texture shows through.
+        // Removed once fully embedded (press bounce done) : texture shows through.
         let flyer: React.ReactNode = null;
         if (df >= cue && df < cue + 16) {
           const p = interpolate(df, [cue, cue + 12], [0, 1], {

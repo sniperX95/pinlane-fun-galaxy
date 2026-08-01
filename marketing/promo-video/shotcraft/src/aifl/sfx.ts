@@ -2,11 +2,11 @@ import { AIFL_SHOTS } from './shots';
 import NARRATION from './narration.json';
 import { macro } from './ouverture';
 
-// LA TABLE DE BRUITAGES — CALEE RELATIVEMENT AU DEBUT DE CHAQUE PLAN.
+// LA TABLE DE BRUITAGES. CALEE RELATIVEMENT AU DEBUT DE CHAQUE PLAN.
 //
 // Regle dure de `video-shotcraft/references/sound-design.md` § 4.5 : ne jamais
 // ecrire de frame absolue. La version precedente le faisait, et la moindre
-// modification de duree d'un plan invalidait toutes les entrees suivantes — la
+// modification de duree d'un plan invalidait toutes les entrees suivantes : la
 // table du template a ete recalee trois fois, dont deux uniquement a cause de
 // changements d'image. Ici chaque son est pose comme `plan.from + decalage` :
 // changer la duree d'un plan anterieur ne casse rien.
@@ -46,7 +46,7 @@ const surMot = (plan: string, cle: string, repli: number) => {
 
 // La cadence de distribution du plan `table` : la carte k part a
 // `36 + 4k - 0.0792 k(k-1)` et se pose 12 images plus tard (SceneFlyIn). On
-// sonorise les DOUZE premieres poses — au-dela l'intervalle tombe sous 2 images
+// sonorise les DOUZE premieres poses : au-dela l'intervalle tombe sous 2 images
 // et la rafale se brouille : c'est le whoosh de la ligne suivante qui la porte.
 const POSES_SONORISEES = 12;
 const posePlan = (k: number) => Math.round(36 + 4 * k - 0.0792 * k * (k - 1)) + 12;
@@ -84,15 +84,15 @@ export const SFX: Son[] = [
   //
   // L'ambiance dure 5 s : quatre passes couvrent les TROIS cartons du probleme
   // (`cardA` est nouveau : la marche « d'ou vient une resa »). Elle est
-  // volontairement basse — c'est un fond, pas un effet.
+  // volontairement basse : c'est un fond, pas un effet.
   // « Les SFX de bowling c'est trop, il doit y en avoir qu'une. » L'ambiance est
   // regeneree : brouhaha etouffe, une SEULE quille au loin, pas d'arcade.
   //
-  // `volume` EST UN COEFFICIENT, PAS UN NIVEAU CIBLE — piege documente par la
+  // `volume` EST UN COEFFICIENT, PAS UN NIVEAU CIBLE : piege documente par la
   // reference du skill pour les fichiers enregistres bas. Celui-ci sort a
   // -47,1 dB de moyenne (crete -33,5) : a 0,20 il n'existait pas. A x4 la moyenne
   // monte a -35 dB et la crete a -21,5, donc aucun risque de saturation.
-  // (PLUS D'AMBIANCE DE FOND. Il y en avait une — brouhaha de centre de loisirs —
+  // (PLUS D'AMBIANCE DE FOND. Il y en avait une : brouhaha de centre de loisirs ,
   // sous les trois cartons du probleme, et je l'avais rendue 20 dB plus forte au
   // tour precedent en croyant l'ameliorer. Verdict : « y a trop de bruit
   // parasite, des gens qui parlent en fond, je demandais pas ca ». C'etait une
@@ -101,7 +101,7 @@ export const SFX: Son[] = [
   // ici il y a deja une nappe musicale et cinquante bruitages, et un troisieme
   // lit de son ne fait qu'encombrer le milieu du spectre, la ou vit la voix.)
 
-  // cardA — d'ou arrive une reservation : trois chemins se tracent, celui du
+  // cardA : d'ou arrive une reservation : trois chemins se tracent, celui du
   // telephone l'emporte.
   { from: S.cardA.from, src: 'whoosh-swirl.mp3', volume: 0.38, coupe: 44 },
   // LES TROIS CHEMINS QUI SE TRACENT. Le son tombe sur l'ARRIVEE du point de
@@ -124,7 +124,7 @@ export const SFX: Son[] = [
   { from: surMot('cardA', 'neuf', 92) + 4, src: 'sonnerie-telephone.mp3', volume: 0.44, coupe: 66 },
   { from: surMot('cardA', 'neuf', 92) + 10, src: 'hit-weak.mp3', volume: 0.30, coupe: 14 },
 
-  // cardB — la scene du comptoir.
+  // cardB : la scene du comptoir.
   { from: S.cardB.from, src: 'wind-swoosh-short.mp3', volume: 0.36, coupe: 40 },
   { from: surMot('cardB', 'comptoir', 34) - 4, src: 'sweep-fast-small.mp3', volume: 0.30 }, // le plan se pose
   // trois personnes qui arrivent : trois pops en decroissance (regle 4.2)
@@ -140,7 +140,7 @@ export const SFX: Son[] = [
   // notification logicielle : elle ne dit pas « le telephone du comptoir sonne ».
   { from: surMot('cardB', 'sonne', 22) - 4, src: 'sonnerie-telephone.mp3', volume: 0.50, coupe: 120 },
 
-  // cardC — ce que l'appel manque coute.
+  // cardC : ce que l'appel manque coute.
   { from: S.cardC.from, src: 'sweep-short.mp3', volume: 0.34 },
   { from: S.cardC.from + 3, src: 'impact-cine.mp3', volume: 0.22, coupe: 40 },
   { from: surMot('cardC', 'rates', 56), src: 'bass-hit-short.mp3', volume: 0.40 },          // l'appel tombe
@@ -153,7 +153,7 @@ export const SFX: Son[] = [
   { from: S.card1.from + 10, src: 'shimmer-sparkle-sweep.mp3', volume: 0.26, coupe: 40 },
   // LES TROIS ABSORPTIONS. Le pictogramme avale une etiquette toutes les dix
   // images a partir de `prend` + 6 : chacune produit une onde, donc chacune a
-  // son son. Deux echantillons alternes et un volume decroissant (regle 4.2) —
+  // son son. Deux echantillons alternes et un volume decroissant (regle 4.2) ,
   // trois fois le meme timbre se serait entendu comme un bug.
   ...[0, 1, 2].map((n) => ({
     from: surMot('card1', 'prend', 36) + 6 + n * 10,
@@ -202,8 +202,8 @@ export const SFX: Son[] = [
   { from: S.chart.from + 8, src: 'sweep-fast-small.mp3', volume: 0.30 },     // le tri
   // ScenePapers : depart du bloc n a CUES[n] = 18 + 12n, atterrissage 22 images
   // plus tard. Le son doit tomber sur l'ATTERRISSAGE (40, 52, 64, 76, 88) : la
-  // premiere version le posait sur le depart, donc 22 images — presque une
-  // seconde — avant que le bloc ne touche.
+  // premiere version le posait sur le depart, donc 22 images : presque une
+  // seconde : avant que le bloc ne touche.
   ...[0, 1, 2, 3, 4].map((n) => ({
     from: S.chart.from + 18 + n * 12 + 22,
     src: n % 2 === 0 ? 'paper-slide.mp3' : 'paper-move-quick.mp3',
@@ -231,7 +231,7 @@ export const SFX: Son[] = [
   // ---- Carton 4 --------------------------------------------------------
   { from: S.card3.from, src: 'sweep-fast-small.mp3', volume: 0.36 },
   // LES TROIS ZEROS : la carte apparait sur le mot, et sa barre la raye six
-  // images plus tard. Deux evenements distincts, donc deux sons — c'est ce
+  // images plus tard. Deux evenements distincts, donc deux sons : c'est ce
   // decalage qui fait entendre une mecanique au lieu d'un simple clic.
   ...[
     { cle: 'saisie', repli: 20 },
@@ -258,5 +258,5 @@ export const SFX: Son[] = [
 
 // Longueur jouee. Les echantillons longs (`keyboard` 19,6 s, `riser-cine` 4,8 s,
 // `sparkle` 4,5 s) doivent etre tronques, sinon ils debordent sur le plan suivant
-// — la reference en liste 21 dans ce cas.
+// : la reference en liste 21 dans ce cas.
 export const longueur = (s: Son) => s.coupe ?? 90;

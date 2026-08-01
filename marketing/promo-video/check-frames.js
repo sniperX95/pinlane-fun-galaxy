@@ -1,24 +1,24 @@
 // Detecte les frames VIDES d'un film rendu.
 //
 // QUATRE VERSIONS DE CETTE GARDE. C'est l'exemple le plus net du projet qu'un
-// vert ne prouve rien tant que la garde n'a pas su rougir a bon escient — et
+// vert ne prouve rien tant que la garde n'a pas su rougir a bon escient : et
 // que chaque version doit etre eprouvee sur un film FAUTIF **et** sur un film
 // valide, sinon on remplace un aveuglement par un faux positif.
 //
-//   v1 — YMAX seul. Ne marche que sur une DA sombre, ou une frame vide est
+//   v1. YMAX seul. Ne marche que sur une DA sombre, ou une frame vide est
 //        noire. Sur un fond clair, une frame vide est CLAIRE : YMAX plafonne
 //        et la garde la declare bonne. Aveugle sur toute la crea « Samedi ».
 //
-//   v2 — contraste (YMAX - YMIN) sur l'image entiere. Un pied de page
+//   v2 : contraste (YMAX - YMIN) sur l'image entiere. Un pied de page
 //        permanent et un degrade suffisent a le maintenir haut. Un film a ete
 //        livre avec une frame ou il ne restait qu'un tiret et « pinlane.app ».
 //
-//   v3 — proportion de pixels porteurs (`blackframe`), sur la zone centrale.
+//   v3 : proportion de pixels porteurs (`blackframe`), sur la zone centrale.
 //        Bonne idee, mauvaise mesure : `pblack` est un ENTIER en pourcentage,
 //        donc un film sombre parfaitement valide y descend a 0 comme une frame
 //        vide. Resolution insuffisante pour discriminer.
 //
-//   v4 — celle-ci. On decode la zone de contenu en gris et en petit, puis on
+//   v4 : celle-ci. On decode la zone de contenu en gris et en petit, puis on
 //        calcule l'ECART-TYPE de luminance frame par frame. Une image qui
 //        porte du texte ou une interface a beaucoup de transitions clair/
 //        sombre ; un aplat n'en a aucune, quelle que soit sa couleur. La
@@ -49,7 +49,7 @@ const FPS = iFps !== -1 ? Number(process.argv[iFps + 1]) : (() => {
 // Seuil CALIBRE SUR DEUX FILMS REELS, un valide et un fautif : le n1 (sombre,
 // valide par Movsar) ne descend jamais sous 10,7 ; la crea « Samedi » tombait
 // a 3,5 sur ses trous. Un seuil a 7 separe les deux avec de la marge des deux
-// cotes — un seuil qui ne laisse passer AUCUN film n'est pas une garde, c'est
+// cotes : un seuil qui ne laisse passer AUCUN film n'est pas une garde, c'est
 // un blocage.
 const ECART_MIN = 7;
 // Zone de contenu : l'habillage permanent (entete, pied, barre) en est exclu,

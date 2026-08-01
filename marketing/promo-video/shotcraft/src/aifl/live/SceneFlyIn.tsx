@@ -31,9 +31,9 @@ const PAPER_EXT = { x: 0, y: PAGE_H, w: 1920, h: 0 };
 const extras: typeof cards = [];
 
 // ---- the DECK: all 26 cards start stacked in one pile at the page's top
-// right. The shot opens on a rotating 3D close-up of the pile (0–35), pulls
-// back to reveal the page (35–62), and the cards deal themselves to their
-// slots in reading order (y, then x) on a hard-accelerating cadence — the gap
+// right. The shot opens on a rotating 3D close-up of the pile (0-35), pulls
+// back to reveal the page (35-62), and the cards deal themselves to their
+// slots in reading order (y, then x) on a hard-accelerating cadence : the gap
 // between departures shrinks from 4f to 0.2f (gap_k = 4 − 0.1584k), so the
 // dealing goes from deliberate to a blur. First departs at 36 (mid pull-back),
 // last ≈88, lands ≈96. Pile poses carry a small deterministic jitter and each
@@ -259,7 +259,7 @@ export const SceneFlyIn: React.FC = () => {
         });
         const scale = dealScale * press;
 
-        // --- nano-lab slide (104 → 114): glide from (408,1402) to the first-row
+        // --- nano-lab slide (104 → 114): glide from (408-1402) to the first-row
         // slot with a light float (scale 1→1.02→1, small Z lift, wider shadow) ---
         const slideT = isNano
           ? interpolate(frame, [FILTER_START, FILTER_START + 10], [0, 1], {
@@ -360,7 +360,7 @@ export const SceneFlyIn: React.FC = () => {
             // L'aplat couvre le texte d'invite SANS manger la loupe, qui est a
             // droite du champ dans Pinlane. Les valeurs etaient calees sur une
             // boite a x=408 large de 1016 px ; la notre est a x=1070, large de
-            // 190 — laissees en dur, l'aplat aurait couvert un bout de grille.
+            // 190 : laissees en dur, l'aplat aurait couvert un bout de grille.
             left: SEARCH.x + 8,
             top: SEARCH.y + 4,
             width: SEARCH.w - 44,

@@ -8,7 +8,7 @@ import NARRATION from './narration.json';
 // l'autre (une meme phrase a mesure 2,29 s puis 2,91 s). Les cartons, qui n'ont
 // pas d'animation a figer, prennent donc exactement la duree que leur phrase
 // exige, et les plans produit gardent la leur avec une queue elastique de 20
-// images. Tenir cette table separement de la voix la ferait deriver — c'est
+// images. Tenir cette table separement de la voix la ferait deriver : c'est
 // exactement le defaut qu'on vient de corriger sur les sous-titres.
 //
 // Ordre : marque+planning+reservation · d'ou vient une resa · le comptoir · ce

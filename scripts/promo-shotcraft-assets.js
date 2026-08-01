@@ -3,7 +3,7 @@
 // Adapte de `video-shotcraft/assets/scripts/capture-template.mjs`. Deux ecarts
 // assumes par rapport au modele fourni :
 //
-//   1. Playwright et non Puppeteer — deja installe dans ce depot, et c'est le
+//   1. Playwright et non Puppeteer : deja installe dans ce depot, et c'est le
 //      meme moteur ; installer une seconde bibliotheque de pilotage pour un
 //      script d'assets n'apporterait rien.
 //   2. Pinlane est une SPA a routage par fragment (`#/staff/<page>`) et non par
@@ -49,8 +49,8 @@ const PAGES = [
     // `pleinePage` : la planche sur laquelle les reservations atterrissent. Le
     // template descendait jusqu'a 3782 px parce que sa grille de projets
     // s'etalait sur toute cette hauteur. Mesure faite ici : nos 62 creneaux
-    // tiennent dans 610 px. On cadre donc 1900 px — planning entier plus la
-    // liste des reservations dessous — et la plongee se recale dessus.
+    // tiennent dans 610 px. On cadre donc 1900 px : planning entier plus la
+    // liste des reservations dessous : et la plongee se recale dessus.
     nom: 'projects', menu: null, hauteurCible: 1746, pleinePage: 1900,
     // Les reservations du planning : ce sont elles qui « volent » dans le plan
     // de distribution, donc elles sortent en decoupes transparentes.
@@ -144,7 +144,7 @@ const serve = () => new Promise((resolve) => {
 const RATES = [];
 
 // `k` indices repartis sur `n` elements, premier et dernier inclus. Avec n=38 et
-// k=10 : 0, 4, 8, 12, 16, 20, 24, 28, 32, 37 — soit une reservation par tranche
+// k=10 : 0, 4, 8, 12, 16, 20, 24, 28, 32, 37, soit une reservation par tranche
 // de la journee, donc reparties sur toutes les pistes.
 // GARDE : la texture doit contenir EXACTEMENT la hauteur de page annoncee.
 //
@@ -172,7 +172,7 @@ const etaler = (n, k) => (k >= n
   : Array.from({ length: k }, (_, i) => Math.round((i * (n - 1)) / (k - 1))));
 
 // (Il y avait ici une liste de noms de groupes appliquee par rang aux cartes.
-// Elle avait l'air d'une donnee et n'en etait pas — le nom affiche n'etait pas
+// Elle avait l'air d'une donnee et n'en etait pas : le nom affiche n'etait pas
 // celui de la carte. Les libelles se lisent maintenant dans le DOM.)
 
 (async () => {
@@ -221,7 +221,7 @@ const etaler = (n, k) => (k >= n
   // montre du hors-page. Le template rendait cela INVISIBLE en peignant son
   // arriere-plan de la couleur exacte du fond de ses captures. Avec le creme du
   // template derriere une page Pinlane claire, le hors-page devenait une bande
-  // grise franche — c'est ce qu'on voyait au premier rendu.
+  // grise franche : c'est ce qu'on voyait au premier rendu.
   const fond = await page.evaluate(() => {
     const lis = (el) => (el ? getComputedStyle(el).backgroundColor : '');
     const transparent = (c) => !c || c === 'transparent' || /rgba\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(c);
@@ -265,7 +265,7 @@ const etaler = (n, k) => (k >= n
     const hCible = pg.hauteurCible && pg.hauteurCible < hReelle ? pg.hauteurCible : hReelle;
     entree.pageH = hCible;
     // `clip` SANS `fullPage` est borne au viewport : demander 1746 px de haut
-    // rendait une image de 1080 px, que le film etirait ensuite sur 1746 —
+    // rendait une image de 1080 px, que le film etirait ensuite sur 1746 ,
     // d'ou un decalage croissant entre les elements superposes et la texture
     // (119 px sur la reservation heros). `fullPage: true` fait porter le
     // decoupage sur la page entiere.
@@ -300,7 +300,7 @@ const etaler = (n, k) => (k >= n
     // « Ecole Saint-Joseph » soit le nom de la carte qu'on met en evidence a
     // l'ecran : c'etait de la decoration qui avait l'air d'une donnee.
     //
-    // On lit donc le DOM. Le film peut alors DIRE ce que l'image MONTRE — c'est
+    // On lit donc le DOM. Le film peut alors DIRE ce que l'image MONTRE : c'est
     // ce qui manquait a la narration : « huit pistes, quarante-huit
     // reservations » pendant qu'un gros plan designe une carte precise.
     if (pg.nom === 'projects') {
@@ -309,7 +309,7 @@ const etaler = (n, k) => (k >= n
         //
         // Movsar : « au debut ca dit piste 6, alors que c'est piste 5, l'endroit
         // ou le motion design montre la carte. » Verifie : `data-booking-lane`
-        // est DEJA en base 1, et j'y ajoutais 1 — toutes les cartes etaient
+        // est DEJA en base 1, et j'y ajoutais 1 : toutes les cartes etaient
         // decalees d'une colonne. Une base d'indexation se devine ; une position
         // a l'ecran se mesure. On cherche donc l'en-tete de colonne dont la
         // bande horizontale contient le centre de la reservation, et on lit SON
@@ -331,7 +331,7 @@ const etaler = (n, k) => (k >= n
         const plage = (el.getAttribute('data-range') || '').replace(/\s+/g, ' ').trim();
         // Les noms de classe viennent d'une SONDE du DOM rendu, pas d'un fichier
         // d'artefact : ma premiere version cherchait `.booking-meta`, qui
-        // n'existe pas dans cette vue — les 62 cartes sont sorties sans effectif
+        // n'existe pas dans cette vue : les 62 cartes sont sorties sans effectif
         // et la garde les a toutes signalees.
         const pax = (lis('.bk-pax').match(/(\d+)/) || [])[1];
         return {
@@ -377,7 +377,7 @@ const etaler = (n, k) => (k >= n
           await el.screenshot({ path: path.join(OUT, nom), omitBackground: !!d.transparent, timeout: 6000 });
         } catch (e) {
           // REPLI PAR RECADRAGE. `element.screenshot` attend que l'element soit
-          // stable et visible, et rend la main sur timeout — la barre laterale
+          // stable et visible, et rend la main sur timeout : la barre laterale
           // et les onglets, hauts dans une page de 5282 px, echouaient ainsi.
           // Un recadrage sur leur bbox n'attend rien et donne la meme image ;
           // seule la transparence est perdue, sans consequence sur un element
@@ -392,7 +392,7 @@ const etaler = (n, k) => (k >= n
       }
       console.log(`  ${combien} decoupes « ${d.base} »`);
       // Le template attend un nombre FIXE de fichiers par serie (paper1..paper5).
-      // S'il en manque, il reste des <Img> pointant vers un fichier absent —
+      // S'il en manque, il reste des <Img> pointant vers un fichier absent ,
       // Remotion echoue au rendu. On complete en rejouant les premieres.
       if (!d.sansIndex && d.attendus && combien < d.attendus) {
         for (let i = combien; i < d.attendus; i++) {
@@ -409,7 +409,7 @@ const etaler = (n, k) => (k >= n
     //
     // Ce plan descend jusqu'a cy=3032 : le template y arrivait en PEIGNANT une
     // extension de papier vide sous sa capture, garnie de 16 cartes dupliquees.
-    // Notre planning fait 5282 px de haut pour de vrai — on lui donne donc une
+    // Notre planning fait 5282 px de haut pour de vrai : on lui donne donc une
     // vraie page de 3782 px (10h -> ~19h, huit pistes) et de vraies
     // reservations. Rien de peint, rien de duplique.
     if (pg.pleinePage) {
@@ -462,7 +462,7 @@ const etaler = (n, k) => (k >= n
   // plus HAUTE (une reservation de 2 h porte deux lignes de texte lisibles) et
   // la plus PROCHE du centre de page. Le centre compte : la camera cadre le
   // point (cx, cy) au milieu de l'image, donc un heros collé au bord gauche
-  // fait apparaitre le vide hors-page — c'est exactement ce qui ratait au
+  // fait apparaitre le vide hors-page : c'est exactement ce qui ratait au
   // premier rendu.
   const cartes = layout.projects.boxes.bookings;
   const score = (r) => Math.abs(r.x + r.w / 2 - VIEW.width / 2) - r.h * 6;
@@ -609,7 +609,7 @@ const etaler = (n, k) => (k >= n
   // dimensions ecrites en dur (cartes 358x312, panneaux 1104x225…). Nos
   // elements ont d'autres proportions : laissees en dur, chaque image serait
   // ETIREE. La scene lit desormais ces tailles et n'impose que la largeur a
-  // l'ecran — la hauteur suit le rapport reel de l'image.
+  // l'ecran : la hauteur suit le rapport reel de l'image.
   finales.assets = {};
   fichiers.filter((f) => f.endsWith('.png')).forEach((f) => {
     const { w, h } = taillePng(f);

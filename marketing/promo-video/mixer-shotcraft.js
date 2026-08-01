@@ -5,7 +5,7 @@
 //   1. UNE SEULE PRISE DE VOIX, DECOUPEE. Sept appels de synthese donnaient sept
 //      timbres (`stability: 0` fait varier le timbre a chaque appel). Ici la
 //      prise est unique et on ne fait que la decouper sur ses SILENCES REELS,
-//      mesures — les bornes ci-dessous viennent de `silencedetect`, pas d'une
+//      mesures : les bornes ci-dessous viennent de `silencedetect`, pas d'une
 //      estimation. La prise a ete generee avec des pauses explicites entre
 //      phrases justement pour que ces frontieres soient non ambigues : la
 //      version sans pauses avait des silences de virgule aussi longs que ses
@@ -43,7 +43,7 @@ const VOIX = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-ugc.mp3'
 //
 // « Je pense que tu peux encore mieux faire avec une musique de fond. » Le morceau
 // precedent etait bon mais uniforme : il ne savait pas que le film raconte quelque
-// chose. Celui-ci est compose section par section sur la table de plans —
+// chose. Celui-ci est compose section par section sur la table de plans ,
 // ouverture eparse, tension pendant les deux cartons du probleme, balayage
 // ascendant au basculement, conduite pendant le mecanisme, recompense sur la
 // preuve, resolution sur l'appel a l'action. Mesure de controle apres generation :
@@ -60,7 +60,7 @@ const MUSIQUE = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/musique-ar
 // C'est le coeur de la correction : le film et le mixage lisent le MEME fichier,
 // produit par `scripts/promo-narration.js` a partir de l'alignement caractere par
 // caractere rendu par la synthese. Une liste maintenue a la main de chaque cote
-// ne peut pas rester d'accord — et c'etait exactement le defaut entendu.
+// ne peut pas rester d'accord : et c'etait exactement le defaut entendu.
 const NARR = JSON.parse(fs.readFileSync(TABLE, 'utf8'));
 const PHRASES = NARR.lignes.map((l) => ({
   de: l.de, a: l.a, at: l.at, texte: l.texte, plan: l.cible,
@@ -77,15 +77,15 @@ const PHRASES = NARR.lignes.map((l) => ({
 // -18, ET NON -15. On ne monte pas la nappe en la poussant : le mixage tapait
 // deja dans le limiteur, qui ravalait tout ce qu'on ajoutait (3 dB de nappe en
 // plus n'en donnaient que 0,9 a l'arrivee). On BAISSE donc les autres pistes pour
-// faire de la place, et une normalisation finale remonte l'ensemble d'un bloc —
+// faire de la place, et une normalisation finale remonte l'ensemble d'un bloc ,
 // l'equilibre entre les trois est ce qui compte, pas leur niveau absolu.
 const CIBLE_VOIX = -18;
 const CIBLE_SFX = -30;
 // -24. QUATRIEME REGLAGE, ET CELUI-CI EST FONDE SUR UNE MESURE DIRECTE.
 //
 // Movsar a redemande « une petite musique en fond » QUATRE fois. J'ai enfin
-// isole la nappe du mixage livre — en soustrayant la version sans musique de la
-// version avec — et mesure ce qui restait : -29,5 dB de moyenne, jusqu'a -34 dB
+// isole la nappe du mixage livre : en soustrayant la version sans musique de la
+// version avec : et mesure ce qui restait : -29,5 dB de moyenne, jusqu'a -34 dB
 // par sections. Soit 11 a 15 dB sous la voix. Elle etait la au sens technique et
 // absente au sens ou on l'entend.
 //
@@ -96,17 +96,17 @@ const CIBLE_SFX = -30;
 // Trois valeurs essayees, chacune mesuree. A -31 avec une attenuation de 7 dB,
 // Movsar a redemande « rajoute une petite musique » alors qu'il y en avait une :
 // pendant la parole elle tombait a -38, donc elle n'existait pas. A -27 la garde a
-// refuse le mixage — dans un trou de 0,6 s la nappe remontait a -23,4 contre
+// refuse le mixage : dans un trou de 0,6 s la nappe remontait a -23,4 contre
 // -21,1 pour la voix, soit 2,3 dB d'ecart : elle lui disputait la place.
 //
 // Le film parle 76 % du temps : une nappe qui ne s'entend QUE dans les trous ne
-// s'entend jamais. Elle doit donc etre audible SOUS la parole — environ 10 dB
-// sous elle — et l'attenuation ne fait que degager l'aigu, pas la faire
+// s'entend jamais. Elle doit donc etre audible SOUS la parole : environ 10 dB
+// sous elle : et l'attenuation ne fait que degager l'aigu, pas la faire
 // disparaitre.
 // LA CIBLE EST UN NIVEAU AVANT ATTENUATION, PAS LE NIVEAU FINAL.
 //
 // Mesure qui a corrige ce reglage : cible a -24, nappe isolee du mixage a -29,4.
-// L'ecart de 5,4 dB, c'est l'attenuation sous la voix — et le film parle 73 % du
+// L'ecart de 5,4 dB, c'est l'attenuation sous la voix : et le film parle 73 % du
 // temps, donc elle s'applique presque partout. Je reglais une cible que le mixage
 // ne voyait jamais.
 // -25, ET NON -21. LA CIBLE EST PROPRE AU FICHIER, PAS AU MIXAGE.
@@ -114,14 +114,14 @@ const CIBLE_SFX = -30;
 // Le morceau a ete regenere sur la nouvelle structure (six mouvements, 76 s), et
 // son arc porte plus de sections en conduite : -16,3 dB de moyenne contre -20 et
 // des pour le precedent. A cible identique, la nappe est ressortie a 6,6 dB sous
-// le mixage — la garde l'a refusee, dans le bon sens cette fois : elle disputait
+// le mixage : la garde l'a refusee, dans le bon sens cette fois : elle disputait
 // la place a la voix. Quatre dB de moins la remettent dans la fenetre.
 //
 // C'est la contrepartie de la mesure par soustraction : la garde attrape
 // maintenant les DEUX cotes, pas seulement la nappe absente.
 // -23 apres regeneration du morceau : son arc est plus creuse qu'avant (ouverture
 // a -19,7 dB, conduite a -12,8), donc a cible egale il ressortait a 12,2 dB sous
-// le mixage — dans la fenetre, mais a son bord bas. Deux dB le remettent au
+// le mixage : dans la fenetre, mais a son bord bas. Deux dB le remettent au
 // milieu. La cible se rejuge a CHAQUE nouveau fichier : elle decrit ce
 // fichier-la, pas le mixage.
 const CIBLE_MUSIQUE = -23;
@@ -166,7 +166,7 @@ const VOIX_COMP = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/voix-com
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', VOIX,
   // Seuil a 0,1 (~-20 dB) et non 0,045 (~-27 dB). MESURE QUI A CORRIGE CE
   // REGLAGE : a 0,045, la moyenne et la crete baissaient de la MEME quantite
-  // (-5,7 et -5,6 dB) — le compresseur agissait sur la totalite du signal, donc
+  // (-5,7 et -5,6 dB) : le compresseur agissait sur la totalite du signal, donc
   // comme un simple atténuateur, sans rien resserrer. Un compresseur ne resserre
   // que ce qui DEPASSE son seuil : il faut le placer entre la moyenne et la crete.
   '-af', 'acompressor=threshold=0.1:ratio=4:attack=10:release=200:makeup=2,'
@@ -181,8 +181,8 @@ console.log(`voix : ${avant.moy} dB avant compression, ${apres.moy} dB apres`
 //
 // Son arc couvre 18 dB. Normalisee sur sa MOYENNE, son ouverture eparse tombait a
 // -45 dB : plus une nappe discrete, une nappe absente. Une compression douce
-// (ratio 2) ramene l'amplitude a ~9 dB, ce qui garde l'intention musicale — la
-// musique ENTRE au basculement — tout en laissant l'ouverture audible.
+// (ratio 2) ramene l'amplitude a ~9 dB, ce qui garde l'intention musicale : la
+// musique ENTRE au basculement : tout en laissant l'ouverture audible.
 const MUSIQUE_COMP = path.join(ROOT, 'artifacts/promo-video/voix-shotcraft/musique-comp.wav');
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', MUSIQUE,
   // Meme correction : l'arc de la nappe va de -32 (ouverture) a -13,6 (conduite).
@@ -191,7 +191,7 @@ execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', MUSIQUE,
   // compensation remonte l'ensemble : l'ouverture reste relativement plus haute.
   // Seuil remonte a 0,09 et ratio 4 : l'arc compose couvre 18 dB, et ses sections
   // sparses tombaient sous le seuil d'audibilite une fois la nappe normalisee sur
-  // sa moyenne. On resserre plus fermement — l'intention musicale (la musique
+  // sa moyenne. On resserre plus fermement : l'intention musicale (la musique
   // ENTRE au basculement) survit, mais aucune section n'est plus inaudible.
   '-af', 'acompressor=threshold=0.09:ratio=4:attack=80:release=1200:makeup=2,aresample=48000',
   '-c:a', 'pcm_s16le', MUSIQUE_COMP]);
@@ -232,7 +232,7 @@ if (ratees.length) { ratees.forEach((r) => console.error('  - ' + r)); process.e
 // --- CHAQUE PHRASE EST PRELEVEE AVEC L'AIR QUI L'ENTOURE --------------------
 //
 // « La voix change et c'est pas fluide entre chaque. » La prise est pourtant
-// UNIQUE — un seul appel, un seul timbre. Le defaut n'etait pas la synthese,
+// UNIQUE : un seul appel, un seul timbre. Le defaut n'etait pas la synthese,
 // c'etait le DECOUPAGE : `atrim` partait exactement du premier caractere aligne
 // et s'arretait exactement au dernier. Une phrase coupee la perd son attaque
 // (les occlusives sont tranchees en plein milieu) et sa chute (la fin de
@@ -242,7 +242,7 @@ if (ratees.length) { ratees.forEach((r) => console.error('  - ' + r)); process.e
 //
 // On prend donc un peu avant et un peu apres, et on fond les deux extremites
 // pour qu'aucun raccord ne claque. COMBIEN d'air exactement : voir juste en
-// dessous — la premiere version le choisissait, la seconde le MESURE.
+// dessous : la premiere version le choisissait, la seconde le MESURE.
 const FONDU = 0.04;
 
 // LA COUPE SE CALE SUR LE SILENCE REEL, PAS SUR UN DECALAGE CHOISI.
@@ -251,7 +251,7 @@ const FONDU = 0.04;
 // mots. » Mesure qui a tranche : on compare, pour chaque phrase, l'instant
 // annonce par l'alignement de la synthese et l'instant ou le silence se termine
 // vraiment (`silencedetect`). L'ALIGNEMENT RETARDE L'ATTAQUE DE 38 A 284 ms
-// selon la phrase — il date le premier caractere, pas le debut du son.
+// selon la phrase : il date le premier caractere, pas le debut du son.
 //
 // Mon air d'entree etait une constante de 100 ms. Il suffisait pour la moitie
 // des phrases et rognait l'autre moitie : la derniere ligne perdait 136 ms,
@@ -326,7 +326,7 @@ PHRASES.forEach((p, i) => {
   p.pose = +(p.at - (p.de - p.deb)).toFixed(3);
 });
 
-// GARDE : AUCUNE PHRASE NE PERD SON ATTAQUE. C'est la garde qui manquait — le
+// GARDE : AUCUNE PHRASE NE PERD SON ATTAQUE. C'est la garde qui manquait, le
 // defaut etait audible depuis plusieurs versions et rien ne le mesurait.
 const rognees = PHRASES.filter((p) => p.debutSon !== null && p.deb > p.debutSon - 0.005);
 if (rognees.length) {
@@ -401,7 +401,7 @@ if (SANS_MUSIQUE) {
 // Par defaut `alimiter` REMET SA SORTIE A 0 dB apres avoir limite (option
 // `level`, activee d'office). Consequence mesuree : baisser le plafond de 0,89
 // a 0,75 rendait le mixage PLUS fort (-18,5 puis -17,5 dB de moyenne) et la
-// crete montait vers 0 — l'inverse de ce qu'on demandait. Le plafond ne veut
+// crete montait vers 0 : l'inverse de ce qu'on demandait. Le plafond ne veut
 // dire quelque chose que si l'auto-niveau est coupe.
 chaines.push(`${mix},alimiter=limit=0.85:level=disabled,aresample=48000[out]`);
 
@@ -458,7 +458,7 @@ if (nOut.max > -0.5) { console.error('ECHEC : crete a ' + nOut.max + ' dB, ca sa
 // toujours pas la musique.
 //
 // On mesure maintenant la nappe ELLE-MEME. On produit le mixage sans musique,
-// on le soustrait du mixage complet, et ce qui reste EST la musique — rien
+// on le soustrait du mixage complet, et ce qui reste EST la musique : rien
 // d'autre. Deux exigences sur ce residu :
 //   - assez fort pour exister (au-dessus de -32 dB de moyenne) ;
 //   - assez bas pour laisser passer la voix (au moins 5 dB sous elle).
@@ -484,7 +484,7 @@ if (!SANS_MUSIQUE) {
   //
   // Un seuil en dB absolus ne veut rien dire : il depend du niveau general du
   // mixage, qu'une normalisation finale deplace. Ce qui s'entend, c'est la
-  // DISTANCE entre la nappe et le reste. Au-dela de 14 dB elle passe inapercue —
+  // DISTANCE entre la nappe et le reste. Au-dela de 14 dB elle passe inapercue ,
   // c'est ce qui s'est produit quatre fois de suite. En deca de 7 dB elle
   // dispute sa place a la voix.
   const ecart = global.moy - nappe.moy;

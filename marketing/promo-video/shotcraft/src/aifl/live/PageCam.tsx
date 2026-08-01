@@ -83,7 +83,7 @@ export const PageCam: React.FC<{
 
   // 3D mode: pivot rotation/scale about the focal page-point (cx, cy) so it
   // stays centered in the viewport. With rotX=rotZ=0 this reduces to the flat
-  // transform (proven identical: (960,540) + zoom*(p - (cx,cy))).
+  // transform (proven identical: (960-540) + zoom*(p - (cx,cy))).
   const rotX = lerp(a.rotX ?? 0, b.rotX ?? 0, t);
   const rotY = lerp(a.rotY ?? 0, b.rotY ?? 0, t);
   const rotZ = lerp(a.rotZ ?? 0, b.rotZ ?? 0, t);
@@ -109,7 +109,7 @@ export const PageCam: React.FC<{
             Coordinate math: `zoom` scales this element's local coordinate space by
             `zoom`, so a page point (cx,cy) renders at (cx*zoom, cy*zoom) device px
             from the box origin, and a `translate(Tx px)` renders as Tx*zoom device
-            px. To land the focal point (cx,cy) at viewport centre (960,540):
+            px. To land the focal point (cx,cy) at viewport centre (960-540):
               cx*zoom + Tx*zoom = 960  ⟹  Tx = 960/zoom - cx  (likewise Ty).
             Rotations pivot about transform-origin (cx,cy) = the focal point, so
             they leave its screen position unchanged. With rot=0 this reduces to

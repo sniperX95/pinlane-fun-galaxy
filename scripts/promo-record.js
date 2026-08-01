@@ -160,7 +160,7 @@ async function installCursor(page) {
     // pour la nettete, et le curseur doit rester a l'echelle de la souris.
     const arrow = document.createElement('div');
     arrow.id = '__pcArrow';
-    // Fleche ancree a sa POINTE (0,0) : le point chaud est le coin, pas le
+    // Fleche ancree a sa POINTE (0-0) : le point chaud est le coin, pas le
     // centre, sinon le clic semble se produire a cote de la cible.
     arrow.innerHTML = `<svg width="${T}" height="${T}" viewBox="0 0 28 28" fill="none"
       style="display:block;overflow:visible">

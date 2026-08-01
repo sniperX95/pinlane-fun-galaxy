@@ -21,7 +21,7 @@ import { interpolate, Easing } from 'remotion';
 //      mouvement anime d'un mouvement rendu image par image.
 //
 // Tout ce qui suit est deterministe : chaque valeur derive de `frame`. Aucune
-// date, aucun tirage — condition pour que Remotion recalcule une image et pour
+// date, aucun tirage : condition pour que Remotion recalcule une image et pour
 // qu'une garde soit reproductible.
 
 export const BLEU = '#0664fe';
@@ -33,7 +33,7 @@ export const PALE = '#eef4ff';
 const SANS = "'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif";
 
 /** Ressort amorti en forme CLOSE (jamais integre pas a pas : le rendu doit
- *  rester une fonction pure du temps). Depasse puis revient — c'est ce
+ *  rester une fonction pure du temps). Depasse puis revient : c'est ce
  *  depassement qui donne une masse a l'objet. */
 export const ressort = (frame: number, de: number, duree = 18, rebond = 1.7) => {
   const t = Math.min(1, Math.max(0, (frame - de) / duree));
@@ -70,7 +70,7 @@ export const derive = (frame: number, amplitude = 1.5, periode = 240) => ({
 });
 
 /** La scene : perspective, derive de camera, et un sol qui recoit les ombres.
- *  Toutes les incrustations vivent dedans, ce qui leur donne un espace commun —
+ *  Toutes les incrustations vivent dedans, ce qui leur donne un espace commun ,
  *  c'est cette coherence qui fait qu'un film a l'air fabrique par une seule
  *  main. */
 export const Plateau: React.FC<{
@@ -111,7 +111,7 @@ export const MATIERE_BLEUE: React.CSSProperties = {
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(2,32,92,0.35)',
 };
 
-/** Un reflet qui TRAVERSE une surface. Il ne s'allume pas, il passe — c'est ce
+/** Un reflet qui TRAVERSE une surface. Il ne s'allume pas, il passe : c'est ce
  *  passage qui fait lire du verre plutot que du papier. `t` va de 0 a 1 sur la
  *  duree du balayage. */
 export const Reflet: React.FC<{ t: number; rayon?: number; angle?: number }> = ({ t, rayon = 14, angle = 108 }) => {
@@ -153,7 +153,7 @@ export const Halo: React.FC<{ intensite: number; taille?: number; couleur?: stri
 );
 
 /** Une particule de lumiere qui part d'un point : l'accent qu'on pose sur un
- *  impact. Une seule, jamais une rafale — les halos en serie font cheap, un
+ *  impact. Une seule, jamais une rafale : les halos en serie font cheap, un
  *  eclat unique de qualite non. */
 export const Eclat: React.FC<{ t: number; taille?: number }> = ({ t, taille = 200 }) => {
   if (t <= 0 || t >= 1) return null;

@@ -707,7 +707,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: 11px 14px;
+  padding: 12px 16px;
   background: var(--subtle);
 }
 
@@ -731,10 +731,10 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .activity-config-row-inner {
   display: grid;
-  grid-template-columns: minmax(132px, 0.6fr) minmax(0, 2fr);
+  grid-template-columns: 148px minmax(0, 1fr);
   align-items: center;
   gap: var(--space-4);
-  padding: 12px 14px;
+  padding: 10px 16px;
 }
 
 #clientView .activity-config-label {
@@ -763,20 +763,32 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .activity-config-controls .activity-option-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
-  gap: var(--space-2);
+  gap: 3px;
   margin: 0;
-  padding: 0;
+  padding: 3px;
   border: 0;
+  border-radius: 9px;
+  background: var(--subtle);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 #clientView .dur-pill.sm {
   width: 100%;
-  min-height: 44px;
-  padding: 7px 10px;
+  min-height: 46px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   font-size: 13px;
 }
 
 #clientView .dur-pill.sm .price { font-size: 11px; }
+#clientView .activity-config-controls .dur-pill:hover { background: var(--surface); }
+#clientView .activity-config-controls .dur-pill.active,
+#clientView .activity-config-controls .dur-pill.active:hover {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
 #clientView .dur-pill:active { transform: scale(0.96); }
 
 #clientView .activity-note {
@@ -792,8 +804,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .activity-option-stack {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 7px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -801,7 +812,9 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .activity-option-group {
   display: grid;
-  gap: 6px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
 }
 
 #clientView .activity-option-legend {
@@ -813,7 +826,11 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .activity-option-pills {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
-  gap: 6px;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--subtle);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 /* Pastille compacte : une seule ligne, pas de prix a l'interieur. Le tarif
@@ -822,6 +839,9 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   width: 100%;
   min-height: 40px;
   padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   font-size: 13px;
   font-weight: 550;
   align-items: center;
@@ -830,7 +850,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .activity-option-stack .activity-option-note {
-  grid-column: 1 / -1;
+  padding-left: 60px;
 }
 
 #clientView .activity-option-note {
@@ -857,43 +877,134 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 @media (max-width: 440px) {
   #clientView .activity-grid { grid-template-columns: 1fr; }
-  #clientView .activity-option-stack { grid-template-columns: 1fr; }
 }
 
-/* Le bandeau du programme. Seul son contenu change, sans choregraphie de page. */
+/* Synthese compacte : liste scannable a gauche, montant stable a droite. */
 #clientView .program-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 176px;
+  gap: var(--space-4);
   margin-top: var(--space-3);
-  padding: 14px 16px;
+  padding: 16px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--subtle);
 }
 
-#clientView .program-line {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
+#clientView .program-overview { min-width: 0; }
+
+#clientView .program-summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 10px;
 }
 
-#clientView .program-total {
-  display: inline-block;
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 19px;
+#clientView .program-title {
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
 }
 
-#clientView .program-total small {
-  font-family: var(--font-ui);
+#clientView .program-count,
+#clientView .program-total-label,
+#clientView .program-total-note {
   font-size: 12px;
-  font-weight: 400;
   color: var(--muted);
+}
+
+#clientView .program-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#clientView .program-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: baseline;
+  gap: 1px;
+  min-width: 0;
+  padding-left: 12px;
+  position: relative;
+}
+
+#clientView .program-item::before {
+  position: absolute;
+  top: 0.58em;
+  left: 1px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  content: '';
+}
+
+#clientView .program-item-name {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+#clientView .program-item-detail {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#clientView .program-price-block {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--line);
+}
+
+#clientView .program-total {
+  display: block;
+  margin: 2px 0 4px;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+#clientView .program-total-note {
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+@media (max-width: 680px) {
+  #clientView .program-summary { grid-template-columns: 1fr; }
+  #clientView .program-price-block {
+    padding-top: var(--space-3);
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 440px) {
+  #clientView .program-list { grid-template-columns: 1fr; }
+  #clientView .program-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+  #clientView .program-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /* Le montant respire quand il change : c'est la seule réponse à la question

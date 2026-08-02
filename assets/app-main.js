@@ -3324,7 +3324,7 @@ function buildActivityPicker(host, catalog) {
     <div class="activity-grid" data-role="activity-grid">${cards}</div>
     <div class="activity-configurator" data-role="activity-configurator" aria-hidden="true">
       <div class="activity-configurator-head">
-        <span class="activity-configurator-title">Durées et quantités</span>
+        <span class="activity-configurator-title">Choisissez vos options</span>
         <span class="activity-configurator-count" data-role="config-count"></span>
       </div>
       <div class="activity-config-list">${settings}</div>
@@ -3392,7 +3392,7 @@ function syncActivityPickerState(off = []) {
     configurator.setAttribute('aria-hidden', visibleConfigCount > 0 ? 'false' : 'true');
   }
   const count = host.querySelector('[data-role="config-count"]');
-  if (count) count.textContent = `${visibleConfigCount} activité${visibleConfigCount > 1 ? 's' : ''} avec options`;
+  if (count) count.textContent = `${visibleConfigCount} réglage${visibleConfigCount > 1 ? 's' : ''} actif${visibleConfigCount > 1 ? 's' : ''}`;
 }
 
 // Ce qu'on annonce sous le nom : un prix quand le centre l'a saisi, la mention
@@ -3481,9 +3481,9 @@ function renderActivityOptions(activity, options, pax) {
   return `<div class="activity-option-note">Accès à votre arrivée, ${activity.priceValue == null ? 'réglé sur place' : 'compris dans le total'}.</div>`;
 }
 
-// Le programme, en une ligne, sous la grille : ce que le client a compose et ce
-// que ca coute. Le "à partir de" apparait des qu'une activite n'a pas de tarif
-// connu : annoncer un total ferme qui n'en est pas un se paierait au comptoir.
+// Le programme est une vraie synthese, pas une phrase concatenee. Le client peut
+// comparer les activites et leur reglage sans relire toute une ligne. Le montant
+// reste separe, et "A partir de" apparait des qu'un tarif sera regle sur place.
 function renderProgramSummary() {
   const host = document.getElementById('programSummary');
   if (!host) return;
@@ -3492,50 +3492,90 @@ function renderProgramSummary() {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
   let total = 0;
   let complete = true;
-  const parts = chosen.map(activity => {
+  const items = chosen.map(activity => {
     const options = activity.options || {};
     if (activity.priceType === 'grid_bowling') {
       const duration = Number(options.duration) || 1;
       const lanes = getRequiredLaneCount('bowling', pax, '');
-      total += (DURATION_OPTIONS.find(option => Number(option.value) === duration)?.price || 0) * lanes;
+      const option = DURATION_OPTIONS.find(item => Number(item.value) === duration);
+      total += (option?.price || 0) * lanes;
       // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,
       // le total double sans que rien n'explique pourquoi.
-      const pistes = lanes > 1 ? ` · ${lanes} pistes` : '';
-      return `${activity.name} ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}${pistes}`;
+      return {
+        name: activity.name,
+        detail: `${option?.label || ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
+      };
     }
     if (activity.priceType === 'grid_laser') {
       const games = Number(options.games) || 1;
       total += (LASER_GAME_OPTIONS.find(option => Number(option.games) === games)?.price || 0) * pax;
-      return `Laser ${games} partie${games > 1 ? 's' : ''}`;
+      return { name: activity.name, detail: `${games} partie${games > 1 ? 's' : ''}` };
     }
     if (activity.priceType === 'grid_fun_run') {
       const minutes = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
       const option = FUN_RUN_OPTIONS.find(item => item.minutes === minutes) || FUN_RUN_OPTIONS[0];
       total += option.price;
-      return `${activity.name} ${option.label}`;
+      return { name: activity.name, detail: option.label };
     }
     const price = typeof getFreeActivityPrice === 'function'
       ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours, minutes: options.minutes })
       : null;
     if (price == null) complete = false; else total += price;
-    return activity.name;
+    if (activity.priceType === 'per_unit_hour') {
+      const units = Math.max(1, Number(options.units) || 1);
+      const hourChoices = activityHourChoices(activity);
+      const hours = Number(options.hours) || hourChoices[0].hours;
+      const durationLabel = hourChoices.find(option => option.hours === hours)?.label || `${hours}h`;
+      return {
+        name: activity.name,
+        detail: `${units} table${units > 1 ? 's' : ''} · ${durationLabel}`,
+      };
+    }
+    return {
+      name: activity.name,
+      detail: price == null ? 'À régler sur place' : 'Compris dans le total',
+    };
   });
-  // Le bloc n'est ECRIT qu'une fois : ensuite on ne remplace que le texte. Un
-  // innerHTML a chaque clic aurait rejoue l'animation d'entree du bandeau et
-  // empeche de faire reagir le montant.
+  // La structure n'est ecrite qu'une fois. Ensuite la liste et les valeurs sont
+  // actualisees sans rejouer une animation de conteneur a chaque clic.
   let box = host.querySelector('.program-summary');
   if (!box) {
-    host.innerHTML = '<div class="program-summary"><span class="program-line"></span><span class="program-total"></span></div>';
+    host.innerHTML = `<div class="program-summary">
+      <div class="program-overview">
+        <div class="program-summary-head">
+          <span class="program-title">Votre programme</span>
+          <span class="program-count"></span>
+        </div>
+        <ul class="program-list"></ul>
+      </div>
+      <div class="program-price-block">
+        <span class="program-total-label"></span>
+        <strong class="program-total"></strong>
+        <small class="program-total-note"></small>
+      </div>
+    </div>`;
     box = host.querySelector('.program-summary');
   }
-  const line = box.querySelector('.program-line');
+  const list = box.querySelector('.program-list');
+  const count = box.querySelector('.program-count');
+  const totalLabel = box.querySelector('.program-total-label');
   const totalEl = box.querySelector('.program-total');
-  const nextLine = parts.join(' + ');
-  const nextTotal = `${complete ? '' : 'à partir de '}${Math.round(total)}€`;
-  if (line.textContent !== nextLine) line.textContent = nextLine;
-  if (totalEl.getAttribute('data-value') !== nextTotal) {
-    totalEl.setAttribute('data-value', nextTotal);
-    totalEl.innerHTML = `${escapeHtml(nextTotal)}${complete ? '' : ' <small>+ ce qui se règle sur place</small>'}`;
+  const totalNote = box.querySelector('.program-total-note');
+  const roundedTotal = Math.round(total);
+  const nextTotal = complete || roundedTotal > 0 ? `${roundedTotal}€` : 'Sur place';
+  const nextValue = `${complete ? '' : 'à partir de '}${nextTotal}`;
+  list.innerHTML = items.map(item => `<li class="program-item">
+    <span class="program-item-name">${escapeHtml(item.name)}</span>
+    <span class="program-item-detail">${escapeHtml(item.detail)}</span>
+  </li>`).join('');
+  count.textContent = `${items.length} activité${items.length > 1 ? 's' : ''}`;
+  totalLabel.textContent = complete ? 'Total' : (roundedTotal > 0 ? 'À partir de' : 'Tarif');
+  totalNote.textContent = complete
+    ? 'pour cette sélection'
+    : (roundedTotal > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
+  if (totalEl.getAttribute('data-value') !== nextValue) {
+    totalEl.setAttribute('data-value', nextValue);
+    totalEl.textContent = nextTotal;
     // Le montant a change : on le fait respirer une fois. C'est le seul endroit
     // de l'ecran qui repond a la question « ca me coute combien ? », il doit se
     // signaler quand il bouge sans jamais clignoter.

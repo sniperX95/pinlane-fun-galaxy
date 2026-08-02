@@ -169,17 +169,19 @@ async function main() {
     await page.evaluate(() => { toggleBookingActivity('arcade_time'); });
     await page.waitForTimeout(200);
     const summary = await page.evaluate(() => ({
-      line: document.querySelector('#programSummary .program-line')?.textContent.trim() || '',
+      items: [...document.querySelectorAll('#programSummary .program-item')].map(item => item.textContent.replace(/\s+/g, ' ').trim()),
+      label: document.querySelector('#programSummary .program-total-label')?.textContent.trim() || '',
       total: document.querySelector('#programSummary .program-total')?.textContent.trim() || '',
+      totalValue: document.querySelector('#programSummary .program-total')?.getAttribute('data-value') || '',
       type: state.booking.type,
       chosen: getChosenActivities().map((a) => a.id),
     }));
     ok(summary.chosen.join(',') === 'bowling,laser_game,arcade_time', `les trois activites sont retenues (${summary.chosen.join(',')})`);
-    ok(summary.line.includes('Bowling') && summary.line.includes('Laser 2 parties') && summary.line.includes('Arcades'),
-      `le programme se lit en clair : "${summary.line}"`);
+    ok(summary.items.some(item => item.includes('Bowling')) && summary.items.some(item => item.includes('Laser Game 2 parties')) && summary.items.some(item => item.includes('Arcades')),
+      `le programme se lit en trois lignes : "${summary.items.join(' | ')}"`);
     // 8 joueurs : bowling 1h sur 2 pistes (39x2) + laser 2 parties (18x8) = 222.
-    ok(summary.total.startsWith('à partir de 222€'),
-      `total "a partir de" tant qu une activite n a pas de tarif (obtenu "${summary.total}")`);
+    ok(summary.label === 'À partir de' && summary.total === '222€' && summary.totalValue === 'à partir de 222€',
+      `total "a partir de" tant qu une activite n a pas de tarif (obtenu "${summary.label} ${summary.total}")`);
     ok(summary.type === 'visite', 'le type derive passe a "visite" des qu il y a plus d une activite');
 
     // =====================================================================
@@ -386,9 +388,9 @@ async function main() {
     });
     const layouts = [];
     for (const target of [
-      { width: 1280, expectedColumns: 2 },
-      { width: 800, expectedColumns: 2 },
-      { width: 420, expectedColumns: 1 },
+      { width: 1280, expectedColumns: 2, expectedSummaryColumns: 2 },
+      { width: 800, expectedColumns: 2, expectedSummaryColumns: 2 },
+      { width: 420, expectedColumns: 1, expectedSummaryColumns: 1 },
     ]) {
       await page.setViewportSize({ width: target.width, height: 1200 });
       await page.waitForTimeout(80);
@@ -399,12 +401,17 @@ async function main() {
         const columns = new Set(rects.map(rect => Math.round(rect.left))).size;
         const grid = document.querySelector('[data-role="activity-grid"]').getBoundingClientRect();
         const settings = document.querySelector('[data-role="activity-configurator"]').getBoundingClientRect();
+        const summary = document.querySelector('.program-summary');
+        const summaryColumns = getComputedStyle(summary).gridTemplateColumns.split(' ').length;
         return {
           cards: cards.length,
           columns,
           heightSpread: Math.max(...heights) - Math.min(...heights),
           settingsGap: settings.top - grid.bottom,
           visibleSettings: document.querySelectorAll('.activity-config-row.is-visible').length,
+          summaryItems: document.querySelectorAll('.program-item').length,
+          summaryColumns,
+          billardsGroups: document.querySelectorAll('[data-activity-options="billards"] .activity-option-group').length,
         };
       });
       layouts.push({ ...target, ...measured });
@@ -423,6 +430,10 @@ async function main() {
         `${layout.width}px : ${layout.settingsGap.toFixed(1)}px entre la grille et les reglages`);
       ok(layout.visibleSettings === 5,
         `${layout.width}px : les 5 activites parametrables ont une ligne de reglages`);
+      ok(layout.summaryItems === 8 && layout.summaryColumns === layout.expectedSummaryColumns,
+        `${layout.width}px : recap structure en ${layout.summaryItems} lignes et ${layout.summaryColumns} colonne(s)`);
+      ok(layout.billardsGroups === 2,
+        `${layout.width}px : tables et duree des billards restent deux groupes distincts`);
     });
     await page.setViewportSize({ width: 1280, height: 1000 });
     if (process.env.PINLANE_VISUAL_CAPTURE) {

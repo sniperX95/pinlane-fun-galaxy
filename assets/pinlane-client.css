@@ -1942,6 +1942,62 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   color: var(--text);
 }
 
+#clientView .recap-program-row { align-items: flex-start; }
+
+#clientView .recap-program-value {
+  display: grid;
+  width: min(100%, 560px);
+}
+
+#clientView .recap-program-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+#clientView .recap-program-item:first-child { padding-top: 0; }
+#clientView .recap-program-item:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+#clientView .recap-program-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#clientView .recap-program-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+#clientView .recap-program-detail,
+#clientView .recap-program-price {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+#clientView .recap-program-detail {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+#clientView .recap-program-price {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
 #clientView .recap-note {
   margin-top: var(--space-3);
   padding: 12px 14px;
@@ -1965,6 +2021,25 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   padding: var(--space-4);
   border-radius: var(--radius-md);
   background: var(--subtle);
+}
+
+#clientView .total-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#clientView .total-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#clientView .total-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  text-wrap: pretty;
 }
 
 #clientView .total-amount {
@@ -2281,8 +2356,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
      même au milieu d'une longue liste de formules. Le conteneur porte le fond
      dégradé + la safe-area, le bouton garde son style d'origine. */
   #clientView .step-cta-bar,
-  #clientView #step3 .step-actions,
-  #clientView #step4 .step-actions {
+  #clientView #step3 .step-actions {
     position: sticky;
     bottom: 0;
     z-index: 20;

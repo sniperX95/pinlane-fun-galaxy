@@ -2150,6 +2150,9 @@ function loadState() {
       mode: 'carte',
       activities: { bowling: { duration: 1 } },
       allocatedLanes: [],
+      // Programme normalise par public-availability. Il porte le prix serveur
+      // affiche au recap final ; le POST sera malgre tout recalcule a nouveau.
+      serverProgram: null,
       preference: createDefaultFormulaPreference(),
       pauseMinutes: 0,
       opsPlan: null
@@ -4039,6 +4042,9 @@ async function goStep2() {
 
 async function fetchSlots(options = {}) {
   const requestId = ++slotFetchRequestId;
+  // Un ancien prix ne doit jamais survivre a une nouvelle recherche. La reponse
+  // courante remettra le programme normalise si le type est bien une visite.
+  state.booking.serverProgram = null;
   if (!options.keepAlternatives) clearBookingAlternatives();
   const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
   if (options.showLoading !== false) {
@@ -4095,6 +4101,10 @@ async function fetchSlots(options = {}) {
     state.booking.totalDuration = state.booking.type === 'laser'
       ? Number(state.booking.duration || 0.5) * getLaserWaveCount(state.booking.pax)
       : Number(payload.totalDuration || payload.duration || state.booking.totalDuration || 0);
+    state.booking.serverProgram = state.booking.type === 'visite'
+      && payload.program && Array.isArray(payload.program.items)
+      ? payload.program
+      : null;
     state.booking.opsPlan = null;
   } catch (error) {
     if (requestId !== slotFetchRequestId) return;
@@ -4790,15 +4800,45 @@ function renderRecap() {
   const b = state.booking;
   const formule = b.type === 'formule' ? FORMULES.find(x => x.id === b.formuleId) : null;
   const isLaser = b.type === 'laser';
+  const isVisit = b.type === 'visite';
+  const visitProgram = isVisit && b.serverProgram && Array.isArray(b.serverProgram.items)
+    ? b.serverProgram
+    : null;
   const showLanes = reservationNeedsLanes(b.type, b.formuleId);
-  const total = getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId);
+  // Pour une visite, la source de verite d'affichage est le programme normalise
+  // par public-availability. getBasePrice ne connait que les types historiques
+  // et renverrait donc 0 pour "visite".
+  const total = visitProgram
+    ? Math.max(0, Number(visitProgram.price) || 0)
+    : getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId);
   const totalDuration = getBookingTotalDuration(b);
   const formulaRecap = formule ? getFormulaRecapModel(b) : null;
   const planLine = b.opsPlan ? describeSlotPlan(b.opsPlan) : '';
   const laserOption = isLaser ? getLaserOption(b.duration) : null;
   const laserWaveCount = isLaser ? Number(b.opsPlan?.laserSharing?.waveCount || getLaserWaveCount(b.pax)) : 1;
-  document.getElementById('recapTotal').textContent = total + '€';
+  const totalLabel = document.getElementById('recapTotalLabel');
+  const totalNote = document.getElementById('recapTotalNote');
+  const totalAmount = document.getElementById('recapTotal');
+  if (isVisit && visitProgram) {
+    const complete = visitProgram.priceComplete === true;
+    if (totalLabel) totalLabel.textContent = complete ? 'Total' : (total > 0 ? 'À partir de' : 'Tarif');
+    if (totalNote) totalNote.textContent = complete
+      ? 'Pour cette sélection'
+      : (total > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
+    if (totalAmount) totalAmount.textContent = total > 0 ? `${Math.round(total)}€` : 'Sur place';
+  } else {
+    if (totalLabel) totalLabel.textContent = 'Total estimé';
+    if (totalNote) totalNote.textContent = 'À régler sur place';
+    if (totalAmount) totalAmount.textContent = `${total}€`;
+  }
   const dateLabel = parseLocalDate(b.date).toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long' });
+  const visitProgramHtml = visitProgram ? `
+    <div class="recap-item recap-program-row">
+      <span class="recap-label">Activités</span>
+      <div class="recap-value recap-program-value">
+        ${visitProgram.items.map(renderVisitRecapItem).join('')}
+      </div>
+    </div>` : '';
   document.getElementById('recapList').innerHTML = `
     <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${escapeHtml(b.name)}</span></div>
     <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
@@ -4807,6 +4847,7 @@ function renderRecap() {
     ${formule && b.opsPlan?.arrivalTime ? `<div class="recap-item"><span class="recap-label">Arrivée conseillée</span><span class="recap-value">${escapeHtml(b.opsPlan.arrivalTime)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• accueil ${Number(b.opsPlan.arrivalMinutes || 10)} min avant</small></span></div>` : ''}
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
     ${showLanes ? `<div class="recap-item"><span class="recap-label">Piste${b.allocatedLanes.length > 1 ? 's' : ''} assignée${b.allocatedLanes.length > 1 ? 's' : ''}</span><span class="recap-value teal">${b.allocatedLanes.join(' & ')}</span></div>` : ''}
+    ${visitProgramHtml}
     ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game • ${laserOption.label}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${formule.name}</span></div>` : ''}
     ${formulaRecap && formulaRecap.appointments.length ? `<div class="recap-item"><span class="recap-label">Vos rendez-vous</span><span class="recap-value">${formulaRecap.appointments.map(escapeHtml).join(' · ')}</span></div>` : ''}
@@ -4817,6 +4858,40 @@ function renderRecap() {
     ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
     ${formule ? `<div class="recap-note"><b>Le reste, à votre rythme :</b> aucune heure imposée pour les activités du pass liberté, vous les vivez quand vous voulez pendant votre visite.</div>` : ''}
   `;
+}
+
+// Une ligne du programme SERVEUR dans le recap final : nom, choix effectif et
+// prix de cette ligne. Les options affichent ce qui sera reserve, jamais une
+// valeur reconstruite depuis le libelle global de la reservation.
+function renderVisitRecapItem(item) {
+  const activityId = String(item?.activityId || '');
+  let detail = '';
+  if (activityId === 'bowling') {
+    const option = DURATION_OPTIONS.find(entry => Number(entry.value) === Number(item.duration));
+    const lanes = Math.max(1, Number(item.laneCount) || 1);
+    detail = `${option?.label || `${Number(item.duration) || 1}h`} · ${lanes} piste${lanes > 1 ? 's' : ''}`;
+  } else if (activityId === 'laser_game') {
+    const games = Math.max(1, Number(item.games) || 1);
+    detail = `${games} partie${games > 1 ? 's' : ''}`;
+  } else if (item.units != null || item.hours != null) {
+    const units = Math.max(1, Number(item.units) || 1);
+    const hours = Math.max(0.5, Number(item.hours) || 1);
+    detail = `${units} table${units > 1 ? 's' : ''} · ${formatDurationLabel(hours)}`;
+  } else if (item.minutes) {
+    detail = formatDurationLabel(Number(item.minutes) / 60);
+  } else {
+    detail = item.priceKnown === true ? 'Compris dans le total' : 'À régler sur place';
+  }
+  const price = item.priceKnown === true && Number.isFinite(Number(item.price))
+    ? `${Math.round(Number(item.price))}€`
+    : 'Sur place';
+  return `<div class="recap-program-item">
+    <span class="recap-program-copy">
+      <strong class="recap-program-name">${escapeHtml(item.name || activityId)}</strong>
+      <small class="recap-program-detail">${escapeHtml(detail)}</small>
+    </span>
+    <span class="recap-program-price">${escapeHtml(price)}</span>
+  </div>`;
 }
 
 async function confirmBooking() {
@@ -4975,6 +5050,7 @@ function resetBooking() {
     name:'', phone:'', email:'', pax:4,
     date: todayStr(),
     type:'bowling', formuleId:'', duration:1, totalDuration:1, laneCount:1, startTime:'', allocatedLanes:[],
+    serverProgram: null,
     preference: createDefaultFormulaPreference(),
     pauseMinutes: 0,
     occasion: '',

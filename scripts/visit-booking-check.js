@@ -98,7 +98,22 @@ async function installMock(page, { closedActivityIds = [] } = {}) {
       }
       if (u.pathname === '/api/public-availability') {
         window.__QA_CALLS__.availability.push(u.search);
-        return J({ ok: true, date: DATE, slots: [slot('15:00'), slot('16:00')], laneCount: 2, duration: 1, totalDuration: 2.25, price: 222, requiresLanes: true, label: 'Votre visite', anchors: null, message: '' });
+        return J({
+          ok: true, date: DATE, slots: [slot('15:00'), slot('16:00')], laneCount: 2,
+          duration: 1, totalDuration: 2.25, price: 222, requiresLanes: true,
+          label: 'Votre visite', anchors: null, message: '',
+          // Contrat reel de public-availability pour une visite : le serveur
+          // renvoie le programme NORMALISE et son prix, jamais le calcul client.
+          program: {
+            items: [
+              { activityId: 'bowling', name: 'Bowling', planned: true, duration: 1, laneCount: 2, price: 78, priceKnown: true },
+              { activityId: 'laser_game', name: 'Laser Game', planned: true, games: 2, price: 144, priceKnown: true },
+              { activityId: 'arcade_time', name: 'Arcades', planned: false, price: null, priceKnown: false },
+            ],
+            price: 222,
+            priceComplete: false,
+          },
+        });
       }
       if (u.pathname === '/api/public-reservations') {
         const body = JSON.parse(String(init.body || '{}'));
@@ -201,13 +216,59 @@ async function main() {
     ok(!JSON.stringify(sentProgram).includes('price'), 'AUCUN prix n est envoye par le navigateur (le serveur recalcule)');
 
     // =====================================================================
-    console.log('\n[4] Le POST de reservation porte le programme');
+    console.log('\n[4] L etape Valider reprend le programme et le prix du serveur');
+    // =====================================================================
+    const validationRecap = await page.evaluate(() => {
+      selectSlot(0); // selectSlot prend l INDEX du creneau, pas ses valeurs
+      document.getElementById('fName').value = 'Groupe QA';
+      document.getElementById('fPhone').value = '+32470000000';
+      document.getElementById('fEmail').value = 'qa@pinlane.test';
+      goStep4();
+      return {
+        step: state.step,
+        activities: [...document.querySelectorAll('#recapList .recap-program-item')]
+          .map(item => item.textContent.replace(/\s+/g, ' ').trim()),
+        total: document.getElementById('recapTotal')?.textContent.trim() || '',
+        totalLabel: document.querySelector('#step4 .total-box strong')?.textContent.trim() || '',
+        totalNote: document.querySelector('#step4 .total-box small')?.textContent.trim() || '',
+      };
+    });
+    ok(validationRecap.step === 4, 'le formulaire arrive bien a l etape Valider');
+    ok(validationRecap.activities.length === 3
+      && validationRecap.activities.some(item => item.includes('Bowling'))
+      && validationRecap.activities.some(item => item.includes('Laser Game'))
+      && validationRecap.activities.some(item => item.includes('Arcades')),
+    `le recap final nomme les 3 activites (${validationRecap.activities.join(' | ') || 'aucune'})`);
+    ok(validationRecap.total === '222€' && validationRecap.totalLabel === 'À partir de'
+      && validationRecap.totalNote.includes('se règlent sur place'),
+    `le recap final reprend le prix serveur honnete (${validationRecap.totalLabel} ${validationRecap.total}, ${validationRecap.totalNote})`);
+    if (process.env.PINLANE_VISUAL_CAPTURE) {
+      const captureDir = path.resolve(process.env.PINLANE_VISUAL_CAPTURE);
+      fs.mkdirSync(captureDir, { recursive: true });
+      await page.screenshot({ path: path.join(captureDir, 'validation-recap-1280.png'), fullPage: true });
+      await page.setViewportSize({ width: 420, height: 1000 });
+      await page.waitForTimeout(80);
+      const mobileRecapLayout = await page.evaluate(() => {
+        const total = document.querySelector('#step4 .total-box').getBoundingClientRect();
+        const actions = document.querySelector('#step4 .step-actions');
+        const actionBox = actions.getBoundingClientRect();
+        return {
+          position: getComputedStyle(actions).position,
+          actionsTop: actionBox.top,
+          totalBottom: total.bottom,
+        };
+      });
+      ok(mobileRecapLayout.position === 'static'
+        && mobileRecapLayout.actionsTop >= mobileRecapLayout.totalBottom,
+      `mobile : les boutons suivent le total sans recouvrir les activites (${mobileRecapLayout.position})`);
+      await page.screenshot({ path: path.join(captureDir, 'validation-recap-420.png'), fullPage: true });
+      await page.setViewportSize({ width: 1280, height: 1000 });
+    }
+
+    // =====================================================================
+    console.log('\n[5] Le POST de reservation porte le programme');
     // =====================================================================
     const posted = await page.evaluate(async () => {
-      selectSlot(0); // selectSlot prend l INDEX du creneau, pas ses valeurs
-      state.booking.name = 'Groupe QA';
-      state.booking.phone = '+32470000000';
-      state.booking.email = 'qa@pinlane.test';
       window.__QA_CALLS__.reservations = [];
       await confirmBooking();
       return window.__QA_CALLS__.reservations[0] || null;
@@ -219,7 +280,7 @@ async function main() {
       'les arcades, qui n occupent aucune ressource, partent quand meme au serveur : c est tout l objet de la feature');
 
     // =====================================================================
-    console.log('\n[5] Une activite fermee ce jour est desactivee ET decochee');
+    console.log('\n[6] Une activite fermee ce jour est desactivee ET decochee');
     // =====================================================================
     await page.evaluate(() => {
       setCenterDayStatus({ date: state.booking.date, open: true, unavailableActivityIds: ['minigolf_blacklight'], unavailableFormulaIds: [], unavailableFormulaReason: {}, closedWindows: [] }, 'libramont');
@@ -244,7 +305,7 @@ async function main() {
     ok(closed.alert.includes('Minigolf'), 'le bandeau nomme l activite fermee');
 
     // =====================================================================
-    console.log('\n[6] Aucune activite cochee : on ne passe pas');
+    console.log('\n[7] Aucune activite cochee : on ne passe pas');
     // =====================================================================
     const blocked = await page.evaluate(async () => {
       setCenterDayStatus(null, 'libramont');
@@ -259,7 +320,7 @@ async function main() {
       `sans activite : aucun appel de disponibilite et l etape ne change pas (etape ${blocked.after})`);
 
     // =====================================================================
-    console.log('\n[7] Une seule activite planifiee garde le chemin HISTORIQUE');
+    console.log('\n[8] Une seule activite planifiee garde le chemin HISTORIQUE');
     // =====================================================================
     const legacy = await page.evaluate(async () => {
       state.booking.activities = { bowling: { duration: 1 } };
@@ -277,7 +338,7 @@ async function main() {
     ok(legacyParams.get('duration') === '1', 'la duree part comme avant');
 
     // =====================================================================
-    console.log('\n[8] Cote STAFF : la fiche montre le programme complet');
+    console.log('\n[9] Cote STAFF : la fiche montre le programme complet');
     // =====================================================================
     // C'est la demande d'origine : « eux peuvent reserver et on doit voir ».
     // Le comptoir doit lire le minigolf et les billards sur la fiche, meme si
@@ -316,7 +377,7 @@ async function main() {
     ok(staff.monoEmpty === true, 'une reservation mono-activite n affiche AUCUN bloc programme (fiche inchangee)');
 
     // =====================================================================
-    console.log('\n[9] Le selecteur reste compact, symetrique et pilotable au clavier');
+    console.log('\n[10] Le selecteur reste compact, symetrique et pilotable au clavier');
     // =====================================================================
     await bootClient(page, 'motion');
     const polish = await page.evaluate(async () => {
@@ -477,7 +538,7 @@ async function main() {
       `plus aucune liste deroulante dans le selecteur d activites (${choix.selects})`);
 
     // =====================================================================
-    console.log('\n[10] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
+    console.log('\n[11] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
     const original = fs.readFileSync(APP, 'utf8');
     const toFileEol = (text) => (original.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text.replace(/\r\n/g, '\n'));

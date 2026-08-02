@@ -2929,7 +2929,7 @@ function initClient() {
     // Le nombre de joueurs entre dans le prix de presque tout : les activites
     // facturees par personne (minigolf, playground), et le bowling dont le
     // nombre de PISTES s'en deduit. Sans ce rafraichissement, le total restait
-    // celui du nombre de joueurs precedent — le client voyait un montant qui
+    // celui du nombre de joueurs precedent, le client voyait un montant qui
     // ne bougeait pas en ajoutant du monde. Le champ « date » appelait deja
     // cette chaine ; le champ « joueurs » ne l'appelait pas.
     syncBookingTypeUi();
@@ -3226,13 +3226,10 @@ function syncBookingTypeUi() {
   renderTypeAlert(off, dayStatus);
 }
 
-// La grille d'activites. Une carte cochee ouvre ses options SOUS elle : le
-// client voit ce qu'il choisit sans changer d'ecran, et le prix suit.
-// LA GRILLE D'ACTIVITES. Elle se construit UNE fois, puis ne change que par des
-// CLASSES. C'est la seule facon d'animer quoi que ce soit : la premiere version
-// reecrivait tout le innerHTML a chaque clic, donc chaque carte etait detruite et
-// recreee, et aucune transition ne pouvait survivre. Un composant qui se
-// reconstruit ne peut pas s'animer, quelle que soit la CSS qu'on lui met.
+// La grille d'activites se construit UNE fois, puis ne change que par des
+// classes. Les tuiles restent compactes et les reglages des activites cochees
+// vivent dans un bloc commun sous la grille. Aucune carte ne peut ainsi imposer
+// sa hauteur aux voisines ni creer de trou dans la composition.
 function renderActivityPicker(off = []) {
   const host = document.getElementById('activityPicker');
   if (!host) return;
@@ -3279,26 +3276,59 @@ function activityIconMarkup(activityId) {
   return `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${paths}</svg>`;
 }
 
-// Le DOM complet, options COMPRISES meme quand la carte n'est pas cochee : c'est
-// ce qui permet de les reveler par une transition (grid-template-rows 0fr -> 1fr)
-// au lieu de les faire apparaitre d'un coup.
+// Tous les blocs de reglages existent des le premier rendu. Cocher une activite
+// ne reconstruit ni la grille ni les boutons, ce qui preserve le focus.
+function activityHasConfigurableOptions(activity) {
+  return Boolean(activity && [
+    'grid_bowling',
+    'grid_laser',
+    'grid_fun_run',
+    'per_unit_hour',
+  ].includes(activity.priceType));
+}
+
+function activityConfigHint(activity) {
+  if (!activity) return '';
+  if (activity.priceType === 'grid_laser') return 'Nombre de parties';
+  if (activity.priceType === 'per_unit_hour') return 'Tables et durée';
+  return 'Durée';
+}
+
 function buildActivityPicker(host, catalog) {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
-  host.innerHTML = catalog.map((activity, index) => `
-    <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
-      <button type="button" class="activity-toggle" aria-pressed="false" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
-        <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
-        <span class="activity-text">
-          <span class="activity-name">${escapeHtml(activity.name)}</span>
-          <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
-          <span class="activity-note">${activity.note ? escapeHtml(activity.note) : ''}</span>
-        </span>
-        <span class="activity-check" aria-hidden="true">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </span>
-      </button>
-      <div class="activity-options"><div class="activity-options-inner" data-role="options">${renderActivityOptions(activity, state.booking.activities?.[activity.id] || {}, pax)}</div></div>
-    </div>`).join('');
+  const cards = catalog.map((activity, index) => `
+      <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
+        <button type="button" class="activity-toggle" aria-pressed="false" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
+          <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
+          <span class="activity-text">
+            <span class="activity-name">${escapeHtml(activity.name)}</span>
+            <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
+            <span class="activity-note"${activity.note ? ` title="${escapeHtml(activity.note)}"` : ''}>${activity.note ? escapeHtml(activity.note) : ''}</span>
+          </span>
+          <span class="activity-check" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </span>
+        </button>
+      </div>`).join('');
+  const settings = catalog.filter(activityHasConfigurableOptions).map(activity => `
+      <section class="activity-config-row" data-activity-options="${escapeHtml(activity.id)}" aria-label="Réglages ${escapeHtml(activity.name)}" aria-hidden="true">
+        <div class="activity-config-row-inner">
+          <div class="activity-config-label">
+            <span class="activity-config-name">${escapeHtml(activity.name)}</span>
+            <span class="activity-config-hint">${escapeHtml(activityConfigHint(activity))}</span>
+          </div>
+          <div class="activity-config-controls" data-role="options">${renderActivityOptions(activity, state.booking.activities?.[activity.id] || {}, pax)}</div>
+        </div>
+      </section>`).join('');
+  host.innerHTML = `
+    <div class="activity-grid" data-role="activity-grid">${cards}</div>
+    <div class="activity-configurator" data-role="activity-configurator" aria-hidden="true">
+      <div class="activity-configurator-head">
+        <span class="activity-configurator-title">Durées et quantités</span>
+        <span class="activity-configurator-count" data-role="config-count"></span>
+      </div>
+      <div class="activity-config-list">${settings}</div>
+    </div>`;
 }
 
 // L'etat, et rien que l'etat : classes, aria, libelles. Aucun noeud n'est
@@ -3310,6 +3340,9 @@ function syncActivityPickerState(off = []) {
   if (!host) return;
   const selection = state.booking.activities || (state.booking.activities = {});
   const pax = Math.max(1, Number(state.booking.pax) || 1);
+  const optionsRows = new Map([...host.querySelectorAll('[data-activity-options]')]
+    .map(row => [row.getAttribute('data-activity-options'), row]));
+  let visibleConfigCount = 0;
   host.querySelectorAll('.activity-card').forEach(card => {
     const activityId = card.getAttribute('data-activity');
     const activity = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
@@ -3325,9 +3358,17 @@ function syncActivityPickerState(off = []) {
     }
     const price = card.querySelector('[data-role="price"]');
     if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, pax);
+    const optionsRow = optionsRows.get(activityId);
+    if (!optionsRow) return;
+    const showOptions = chosen && !closed;
+    optionsRow.classList.toggle('is-visible', showOptions);
+    optionsRow.setAttribute('aria-hidden', showOptions ? 'false' : 'true');
+    if (showOptions) visibleConfigCount += 1;
+    if (!showOptions && optionsRow.contains(document.activeElement) && toggle) toggle.focus();
+    optionsRow.querySelectorAll('button').forEach(button => { button.tabIndex = showOptions ? 0 : -1; });
     // Les options ne sont PAS reecrites : on bascule seulement la pastille
     // active. Les reconstruire a chaque clic detruirait le retour visuel du
-    // press en cours et ferait perdre le focus d'un select ouvert.
+    // press en cours et ferait perdre le focus.
     const chosenOptions = selection[activityId] || {};
     // Le defaut depend de la CLE : « 1 » vaut pour une duree de bowling ou un
     // nombre de tables, jamais pour une session de 15 minutes ni pour une
@@ -3338,18 +3379,20 @@ function syncActivityPickerState(off = []) {
       if (key === 'hours') return activityHourChoices(activity || {})[0].hours;
       return 1;
     };
-    card.querySelectorAll('[data-opt]').forEach(pill => {
+    optionsRow.querySelectorAll('[data-opt]').forEach(pill => {
       const key = pill.getAttribute('data-opt');
       const value = Number(pill.getAttribute('data-val'));
       const courant = chosenOptions[key] == null ? activityDefaut(key) : Number(chosenOptions[key]);
       pill.classList.toggle('active', courant === value);
     });
-    // Nombre de tables et duree passaient par des listes deroulantes ; ce sont
-    // desormais les memes pastilles que ci-dessus, donc la boucle [data-opt]
-    // les couvre deja. La propriete a garantir n'a pas bouge : revenir a
-    // l'etape 1 depuis les creneaux doit retrouver SES choix, pas les valeurs
-    // par defaut.
   });
+  const configurator = host.querySelector('[data-role="activity-configurator"]');
+  if (configurator) {
+    configurator.classList.toggle('is-visible', visibleConfigCount > 0);
+    configurator.setAttribute('aria-hidden', visibleConfigCount > 0 ? 'false' : 'true');
+  }
+  const count = host.querySelector('[data-role="config-count"]');
+  if (count) count.textContent = `${visibleConfigCount} activité${visibleConfigCount > 1 ? 's' : ''} avec options`;
 }
 
 // Ce qu'on annonce sous le nom : un prix quand le centre l'a saisi, la mention

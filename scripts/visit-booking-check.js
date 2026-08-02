@@ -47,21 +47,20 @@ function serveStatic() {
 }
 
 // Le catalogue servi par /api/public-booking-meta. Copie fidele de ce que rend
-// lib/activity-catalog pour Libramont : deux planifiees, six libres, aucun tarif
-// libre saisi (l'etat REEL de la prod tant que le client n'a pas donne ses prix).
+// Libramont depuis la validation des tarifs du 2026-08-01.
 const ACTIVITIES = [
   { id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 },
   { id: 'laser_game', name: 'Laser Game', planned: true, priceType: 'grid_laser', priceValue: null, unitLabel: 'par personne', order: 2, defaultMinutes: 22 },
-  { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 3, defaultMinutes: 45 },
+  { id: 'minigolf_blacklight', name: 'Minigolf Blacklight', planned: false, priceType: 'per_pax', priceValue: 10, unitLabel: 'par personne', note: '12 niveaux', order: 3, defaultMinutes: 45 },
   // Les bornes de duree font partie de ce que le catalogue expose (elles
   // decident des durees proposees au client) : une fixture qui les omet
   // ne ressemble plus au reel et teste autre chose. Valeurs du socle :
   // le billard se vend de 1 h a 3 h, sans demi-heure.
-  { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: null, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180 },
-  { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 6, defaultMinutes: 30 },
-  { id: 'playground', name: 'Playground', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par enfant', order: 7, defaultMinutes: 60 },
-  { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 8, defaultMinutes: 30 },
-  { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: 'par personne', order: 9, defaultMinutes: 30 },
+  { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180, stepMinutes: 60 },
+  { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: '', order: 6, defaultMinutes: 30 },
+  { id: 'playground', name: 'Playground', planned: false, priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', note: 'accès à la journée', order: 7, defaultMinutes: 60 },
+  { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 8, defaultMinutes: 60 },
+  { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs max.', order: 9, defaultMinutes: 15 },
 ];
 
 async function installMock(page, { closedActivityIds = [] } = {}) {
@@ -167,7 +166,7 @@ async function main() {
     // =====================================================================
     await page.evaluate(() => { toggleBookingActivity('laser_game'); });
     await page.evaluate(() => { setBookingActivityOption('laser_game', 'games', 2); });
-    await page.evaluate(() => { toggleBookingActivity('minigolf_blacklight'); });
+    await page.evaluate(() => { toggleBookingActivity('arcade_time'); });
     await page.waitForTimeout(200);
     const summary = await page.evaluate(() => ({
       line: document.querySelector('#programSummary .program-line')?.textContent.trim() || '',
@@ -175,8 +174,8 @@ async function main() {
       type: state.booking.type,
       chosen: getChosenActivities().map((a) => a.id),
     }));
-    ok(summary.chosen.join(',') === 'bowling,laser_game,minigolf_blacklight', `les trois activites sont retenues (${summary.chosen.join(',')})`);
-    ok(summary.line.includes('Bowling') && summary.line.includes('Laser 2 parties') && summary.line.includes('Minigolf'),
+    ok(summary.chosen.join(',') === 'bowling,laser_game,arcade_time', `les trois activites sont retenues (${summary.chosen.join(',')})`);
+    ok(summary.line.includes('Bowling') && summary.line.includes('Laser 2 parties') && summary.line.includes('Arcades'),
       `le programme se lit en clair : "${summary.line}"`);
     // 8 joueurs : bowling 1h sur 2 pistes (39x2) + laser 2 parties (18x8) = 222.
     ok(summary.total.startsWith('à partir de 222€'),
@@ -196,7 +195,7 @@ async function main() {
     ok(sentProgram.length === 3, `le panier envoye contient 3 lignes (obtenu ${sentProgram.length})`);
     ok(sentProgram.some((i) => i.activityId === 'bowling' && i.duration === 1), 'la ligne bowling porte sa duree');
     ok(sentProgram.some((i) => i.activityId === 'laser_game' && i.games === 2), 'la ligne laser porte ses parties');
-    ok(sentProgram.some((i) => i.activityId === 'minigolf_blacklight'), 'la ligne minigolf est presente');
+    ok(sentProgram.some((i) => i.activityId === 'arcade_time'), 'la ligne arcades est presente');
     ok(!JSON.stringify(sentProgram).includes('price'), 'AUCUN prix n est envoye par le navigateur (le serveur recalcule)');
 
     // =====================================================================
@@ -214,8 +213,8 @@ async function main() {
     ok(posted && Array.isArray(posted.program) && posted.program.length === 3,
       `le corps du POST contient le programme des 3 activites (${posted && posted.program ? posted.program.length : 'aucun'})`);
     ok(posted && posted.type === 'visite', `le POST declare type=visite (obtenu ${posted && posted.type})`);
-    ok(posted && posted.program.some((i) => i.activityId === 'minigolf_blacklight'),
-      'le minigolf, qui n occupe aucune ressource, part quand meme au serveur : c est tout l objet de la feature');
+    ok(posted && posted.program.some((i) => i.activityId === 'arcade_time'),
+      'les arcades, qui n occupent aucune ressource, partent quand meme au serveur : c est tout l objet de la feature');
 
     // =====================================================================
     console.log('\n[5] Une activite fermee ce jour est desactivee ET decochee');
@@ -315,21 +314,16 @@ async function main() {
     ok(staff.monoEmpty === true, 'une reservation mono-activite n affiche AUCUN bloc programme (fiche inchangee)');
 
     // =====================================================================
-    console.log('\n[9] Les deux plaintes exactes, devenues des assertions');
+    console.log('\n[9] Le selecteur reste compact, symetrique et pilotable au clavier');
     // =====================================================================
-    // « les coches sont pas bien cadrees » et « 0 animation, zero motion ».
-    // Un correctif meurt en silence, une assertion crie.
     await bootClient(page, 'motion');
-    const motion = await page.evaluate(async () => {
+    const polish = await page.evaluate(async () => {
       const card = () => document.querySelector('#activityPicker .activity-card[data-activity="bowling"]');
-      // 1. La carte SURVIT au clic : c'est la condition de toute animation.
-      //    Tant que le bloc etait reecrit, aucune transition ne pouvait exister.
       const before = card();
       toggleBookingActivity('laser_game');
       toggleBookingActivity('minigolf_blacklight');
       const sameNode = card() === before;
 
-      // 2. Centrage de la coche : on MESURE, on ne regarde pas.
       const ring = document.querySelector('.activity-card.is-on .activity-check');
       const svg = ring?.querySelector('svg');
       const r = ring.getBoundingClientRect();
@@ -337,20 +331,14 @@ async function main() {
       const dx = Math.abs((r.left + r.width / 2) - (s.left + s.width / 2));
       const dy = Math.abs((r.top + r.height / 2) - (s.top + s.height / 2));
 
-      // 3. Les options d'une carte NON cochee existent quand meme dans le DOM :
-      //    sans ca, elles ne pourraient qu'apparaitre d'un coup.
-      const closedCard = document.querySelector('#activityPicker .activity-card:not(.is-on)');
-      const hiddenOptions = closedCard?.querySelector('.activity-options-inner');
-      const rows = getComputedStyle(closedCard.querySelector('.activity-options')).gridTemplateRows;
-
-      // 4. Les transitions sont reellement declarees (pas seulement ecrites).
+      const settingsRows = [...document.querySelectorAll('[data-activity-options]')];
+      const laserSettings = settingsRows.find(row => row.getAttribute('data-activity-options') === 'laser_game');
+      const hiddenSettings = settingsRows.find(row => !row.classList.contains('is-visible'));
+      const configurator = document.querySelector('[data-role="activity-configurator"]');
       const cardStyle = getComputedStyle(card());
-      const ringStyle = getComputedStyle(ring);
+      const checkStyle = getComputedStyle(svg);
 
-      // 5. Le montant reagit quand il change.
       const total = document.querySelector('.program-total');
-      // On attend la fin de l'animation d'entree : la classe se retire d'elle
-      // meme, sinon elle resterait posee et ne signalerait plus rien.
       await new Promise((resolve) => setTimeout(resolve, 400));
       const bumpedBefore = total.classList.contains('is-bumped');
       setBookingActivityOption('bowling', 'duration', 2);
@@ -360,26 +348,98 @@ async function main() {
         sameNode,
         dx: Math.round(dx * 100) / 100,
         dy: Math.round(dy * 100) / 100,
-        hasHiddenOptions: Boolean(hiddenOptions && hiddenOptions.innerHTML.trim()),
-        collapsedRows: rows,
+        configuratorVisible: Boolean(configurator && getComputedStyle(configurator).display !== 'none'),
+        settingsRows: settingsRows.length,
+        laserSettingsVisible: Boolean(laserSettings && getComputedStyle(laserSettings).display !== 'none'),
+        hiddenSettingsHidden: Boolean(hiddenSettings && getComputedStyle(hiddenSettings).display === 'none'),
+        noOptionsInsideCards: document.querySelectorAll('.activity-card [data-opt]').length === 0,
+        hiddenButtonsFocusable: hiddenSettings
+          ? [...hiddenSettings.querySelectorAll('button')].some(button => button.tabIndex >= 0)
+          : true,
         cardTransition: cardStyle.transitionProperty,
-        ringTransition: ringStyle.transitionProperty,
+        checkTransition: checkStyle.transitionProperty,
         bumpedBefore,
         bumpedAfter,
         iconCount: document.querySelectorAll('#activityPicker .activity-icon svg').length,
       };
     });
-    ok(motion.sameNode === true,
-      'la carte SURVIT au clic (meme noeud DOM) : sans ca, aucune transition ne peut exister');
-    ok(motion.dx <= 1 && motion.dy <= 1,
-      `la coche est centree dans son anneau a ${motion.dx} / ${motion.dy} px pres (mesure, pas oeil)`);
-    ok(motion.hasHiddenOptions === true && motion.collapsedRows.startsWith('0'),
-      `les options d une carte non cochee sont deja dans le DOM et repliees (${motion.collapsedRows}) : elles se deplient au lieu d apparaitre`);
-    ok(/transform/.test(motion.cardTransition) && /background-color/.test(motion.ringTransition),
-      'les transitions sont declarees sur la carte et sur la coche');
-    ok(motion.bumpedBefore === false && motion.bumpedAfter === true,
+    ok(polish.sameNode === true,
+      'la carte survit au clic : la grille ne se reconstruit pas');
+    ok(polish.dx <= 1 && polish.dy <= 1,
+      `la coche est centree dans son anneau a ${polish.dx} / ${polish.dy} px pres`);
+    ok(polish.settingsRows === 5 && polish.configuratorVisible && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
+      `le panneau commun ne montre que les reglages selectionnes (${polish.settingsRows} lignes parametrables)`);
+    ok(polish.noOptionsInsideCards,
+      'aucun reglage ne gonfle une carte : la selection et la configuration sont separees');
+    ok(polish.hiddenButtonsFocusable === false,
+      'les reglages masques sont retires du parcours clavier');
+    ok(/transform/.test(polish.cardTransition) && /opacity/.test(polish.checkTransition) && /filter/.test(polish.checkTransition),
+      'les retours visuels declarent uniquement les proprietes utiles');
+    ok(polish.bumpedBefore === false && polish.bumpedAfter === true,
       'changer une option fait reagir le montant (classe is-bumped posee)');
-    ok(motion.iconCount === 8, `chaque activite porte son icone (${motion.iconCount}/8)`);
+    ok(polish.iconCount === 8, `chaque activite porte son icone (${polish.iconCount}/8)`);
+
+    await page.evaluate(() => {
+      getCenterActivities().forEach((activity) => {
+        if (!state.booking.activities[activity.id]) toggleBookingActivity(activity.id);
+      });
+    });
+    const layouts = [];
+    for (const target of [
+      { width: 1280, expectedColumns: 2 },
+      { width: 800, expectedColumns: 2 },
+      { width: 420, expectedColumns: 1 },
+    ]) {
+      await page.setViewportSize({ width: target.width, height: 1200 });
+      await page.waitForTimeout(80);
+      const measured = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('#activityPicker .activity-card')];
+        const rects = cards.map(card => card.getBoundingClientRect());
+        const heights = rects.map(rect => rect.height);
+        const columns = new Set(rects.map(rect => Math.round(rect.left))).size;
+        const grid = document.querySelector('[data-role="activity-grid"]').getBoundingClientRect();
+        const settings = document.querySelector('[data-role="activity-configurator"]').getBoundingClientRect();
+        return {
+          cards: cards.length,
+          columns,
+          heightSpread: Math.max(...heights) - Math.min(...heights),
+          settingsGap: settings.top - grid.bottom,
+          visibleSettings: document.querySelectorAll('.activity-config-row.is-visible').length,
+        };
+      });
+      layouts.push({ ...target, ...measured });
+      if (process.env.PINLANE_VISUAL_CAPTURE) {
+        const captureDir = path.resolve(process.env.PINLANE_VISUAL_CAPTURE);
+        fs.mkdirSync(captureDir, { recursive: true });
+        await page.screenshot({ path: path.join(captureDir, `activity-picker-${target.width}.png`), fullPage: true });
+      }
+    }
+    layouts.forEach((layout) => {
+      ok(layout.cards === 8 && layout.columns === layout.expectedColumns,
+        `${layout.width}px : 8 cartes sur ${layout.columns} colonne(s)`);
+      ok(layout.heightSpread <= 1,
+        `${layout.width}px : ecart de hauteur ${layout.heightSpread.toFixed(1)}px entre les cartes`);
+      ok(layout.settingsGap >= 8 && layout.settingsGap <= 16,
+        `${layout.width}px : ${layout.settingsGap.toFixed(1)}px entre la grille et les reglages`);
+      ok(layout.visibleSettings === 5,
+        `${layout.width}px : les 5 activites parametrables ont une ligne de reglages`);
+    });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    if (process.env.PINLANE_VISUAL_CAPTURE) {
+      const captureDir = path.resolve(process.env.PINLANE_VISUAL_CAPTURE);
+      await page.evaluate(() => localStorage.removeItem('pinlane-theme'));
+      await page.emulateMedia({ colorScheme: 'dark' });
+      await bootClient(page, 'dark-capture');
+      await page.evaluate(() => {
+        getCenterActivities().forEach((activity) => {
+          if (!state.booking.activities[activity.id]) toggleBookingActivity(activity.id);
+        });
+      });
+      await page.screenshot({ path: path.join(captureDir, 'activity-picker-1280-dark.png'), fullPage: true });
+      await page.evaluate(() => localStorage.removeItem('pinlane-theme'));
+      await page.emulateMedia({ colorScheme: 'light' });
+      await bootClient(page, 'after-dark-capture');
+    }
 
     // Les choix de quantite et de duree suivent l'etat : revenir a l'etape 1
     // depuis les creneaux doit retrouver SES choix, pas les valeurs par
@@ -391,8 +451,8 @@ async function main() {
     const choix = await page.evaluate(() => {
       state.booking.activities.billards = { units: 3, hours: 2 };
       syncBookingTypeUi();
-      const card = document.querySelector('.activity-card[data-activity="billards"]');
-      const actif = (cle) => card?.querySelector(`[data-opt="${cle}"].active`)?.getAttribute('data-val');
+      const settings = document.querySelector('[data-activity-options="billards"]');
+      const actif = (cle) => settings?.querySelector(`[data-opt="${cle}"].active`)?.getAttribute('data-val');
       return {
         units: actif('units'),
         hours: actif('hours'),

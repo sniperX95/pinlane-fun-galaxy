@@ -541,56 +541,40 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 /* --- Choix des activités (multi-sélection) ------------------------------ */
-/* Une visite se compose : plusieurs activités cochables, chacune ouvrant ses
-   options sous elle. Zéro couleur en dur (DESIGN.md) : tout passe par les
-   tokens, donc le clair et le sombre suivent sans règle dupliquée.
-
-   Le composant se construit UNE fois et ne change ensuite que par des classes :
-   c'est ce qui rend les transitions possibles. Un bloc réécrit à chaque clic
-   repart toujours de zéro, quelle que soit la CSS qu'on lui met. */
+/* Deux niveaux, deux fonctions. La grille sert uniquement à choisir. Le bloc
+   sous la grille sert uniquement à régler les activités choisies. Les cartes
+   gardent ainsi une hauteur uniforme, même quand les options sont nombreuses. */
 #clientView .activity-picker {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
-  /* Chaque carte prend SA hauteur : sans ça, une carte qui ouvre ses options
-     étire toutes ses voisines de la rangée. */
-  align-items: start;
-  gap: var(--space-2);
   margin-top: var(--space-3);
 }
 
 #clientView .activity-picker.hidden { display: none; }
 
+#clientView .activity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
 #clientView .activity-card {
+  min-width: 0;
+  height: 80px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
-  /* Les cartes arrivent en cascade (40 ms d'écart) : la grille se lit dans
-     l'ordre au lieu d'apparaître d'un bloc. */
-  animation: activity-card-in 380ms var(--ease-out-strong) backwards;
-  animation-delay: calc(var(--i, 0) * 40ms);
-  transition:
-    border-color 200ms var(--ease-out-strong),
-    background-color 200ms var(--ease-out-strong),
-    box-shadow 200ms var(--ease-out-strong),
-    transform 200ms var(--ease-out-strong);
-}
-
-@keyframes activity-card-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.985); }
-  to   { opacity: 1; transform: none; }
+  transition-property: border-color, background-color, transform;
+  transition-duration: 180ms;
+  transition-timing-function: var(--ease-out-strong);
 }
 
 #clientView .activity-card.is-on {
-  border-color: var(--accent);
-  background: var(--subtle);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line-strong));
+  background: var(--accent-soft);
 }
 
 #clientView .activity-card.is-off { opacity: 0.5; }
 
-/* Le press : la carte répond sous le doigt. 0.985 suffit, le geste doit se
-   sentir plus que se voir. */
-#clientView .activity-card:has(.activity-toggle:active) { transform: scale(0.985); }
+#clientView .activity-card:has(.activity-toggle:active) { transform: scale(0.96); }
 
 @media (hover: hover) and (pointer: fine) {
   #clientView .activity-card:not(.is-off):hover { border-color: var(--text-3); }
@@ -599,11 +583,12 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .activity-toggle {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 34px minmax(0, 1fr) 22px;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 14px;
+  height: 100%;
+  padding: 12px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -621,38 +606,51 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-sm);
   background: var(--subtle);
   color: var(--text-2);
-  transition: background-color 200ms var(--ease-out-strong), color 200ms var(--ease-out-strong);
+  transition-property: background-color, color;
+  transition-duration: 180ms;
+  transition-timing-function: var(--ease-out-strong);
 }
 
 #clientView .activity-card.is-on .activity-icon {
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--surface);
+  color: var(--accent);
 }
 
 #clientView .activity-text {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
   min-width: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
 #clientView .activity-name {
+  display: -webkit-box;
+  overflow: hidden;
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 #clientView .activity-price {
+  display: -webkit-box;
+  overflow: hidden;
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 400;
+  line-height: 1.35;
   color: var(--muted);
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* La coche : un anneau qui se remplit, et un trait qui SE DESSINE. Le SVG est
@@ -667,114 +665,138 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   border: 1.5px solid var(--line-strong);
   border-radius: 50%;
   color: var(--accent-contrast);
-  transition:
-    background-color 180ms var(--ease-out-strong),
-    border-color 180ms var(--ease-out-strong),
-    transform 260ms var(--ease-out-strong);
+  transition-property: background-color, border-color;
+  transition-duration: 180ms;
+  transition-timing-function: var(--ease-out-strong);
 }
 
 #clientView .activity-check svg {
-  stroke-dasharray: 22;
-  stroke-dashoffset: 22;
   opacity: 0;
-  transition: stroke-dashoffset 220ms var(--ease-out-strong) 60ms, opacity 90ms linear 60ms;
+  filter: blur(4px);
+  transform: scale(0.25);
+  transition-property: opacity, filter, transform;
+  transition-duration: 220ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
 #clientView .activity-card.is-on .activity-check {
   background: var(--accent);
   border-color: var(--accent);
-  /* Un rebond très court : la coche se pose, elle ne surgit pas. */
-  transform: scale(1.08);
 }
 
 #clientView .activity-card.is-on .activity-check svg {
-  stroke-dashoffset: 0;
   opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
 }
 
-/* Le dépli des options : grid-template-rows 0fr vers 1fr anime une hauteur AUTO
-   sans mesure JavaScript et sans valeur codée en dur. */
-#clientView .activity-options {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 260ms var(--ease-out-strong);
-}
-
-#clientView .activity-card.is-on .activity-options { grid-template-rows: 1fr; }
-
-#clientView .activity-options-inner {
+/* Un panneau commun remplace les options imbriquées dans chaque carte. */
+#clientView .activity-configurator {
+  display: none;
+  margin-top: var(--space-3);
   overflow: hidden;
-  opacity: 0;
-  transition: opacity 160ms linear;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
 
-#clientView .activity-card.is-on .activity-options-inner {
-  opacity: 1;
-  transition: opacity 200ms linear 80ms;
-}
+#clientView .activity-configurator.is-visible { display: block; }
 
-#clientView .activity-option-row {
+#clientView .activity-configurator-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 14px 14px;
-  padding-top: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 11px 14px;
+  background: var(--subtle);
+}
+
+#clientView .activity-configurator-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#clientView .activity-configurator-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#clientView .activity-config-row { display: none; }
+
+#clientView .activity-config-row.is-visible {
+  display: block;
   border-top: 1px solid var(--line);
 }
 
+#clientView .activity-config-row-inner {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.6fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--space-4);
+  padding: 12px 14px;
+}
+
+#clientView .activity-config-label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#clientView .activity-config-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#clientView .activity-config-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#clientView .activity-config-controls { min-width: 0; }
+
+#clientView .activity-config-controls .activity-option-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 #clientView .dur-pill.sm {
-  min-height: 46px;
-  padding: 7px 11px;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 10px;
   font-size: 13px;
 }
 
 #clientView .dur-pill.sm .price { font-size: 11px; }
-#clientView .dur-pill:active { transform: scale(0.97); }
-
-/* Le choix de duree et de quantite se faisait a la liste deroulante native :
-   fleche collee au bord droit d'un champ etire, hauteur qui ne suit aucune
-   autre commande de l'ecran, et un menu systeme qui ne ressemble a rien du
-   reste. Ces choix sont des CHOIX, exactement comme la duree du bowling juste
-   au-dessus : ils prennent les memes pastilles. Un seul vocabulaire dans tout
-   le tunnel, et plus rien a ouvrir pour voir les options. */
-/* La precision du centre (« 12 niveaux », « 2 pistes (9 et 10) ») : une
-   troisieme ligne discrete sous le tarif, jamais au meme poids que lui. */
-/* Les cartes d'une rangee doivent finir au MEME niveau. On ne peut pas les
-   etirer (align-items: start plus bas est la, exprès : une carte qui ouvre
-   ses options etirerait sinon toutes ses voisines) : on egalise donc l'EN-TETE
-   en y reservant la place du pire cas — nom sur deux lignes, tarif sur deux
-   lignes, une ligne de precision. En unites relatives, donc ca tient aussi
-   quand les colonnes retrecissent et que les textes passent a la ligne. */
-/* La reserve de place va sur le CONTENEUR de texte, pas sur chaque ligne :
-   poser un min-height sur le nom lui-meme le sortait de la colonne du milieu
-   et renvoyait l'icone sous le titre. */
-/* Une SEULE reserve, calee sur le pire cas de toutes les largeurs. Un premier
-   essai la faisait varier par media query : le nombre de colonnes ne suit pas
-   la largeur d'ecran de facon monotone (700 px redonnait des colonnes plus
-   etroites que 1180), donc le seuil etait faux quelque part a chaque reglage.
-   Une reserve unique coute ~15 px de hauteur sur les grandes largeurs et tient
-   partout. Verifie de 400 a 1180 px : ecart 0. */
-#clientView .activity-text { min-height: 6.7em; }
+#clientView .dur-pill:active { transform: scale(0.96); }
 
 #clientView .activity-note {
-  display: block;
-  margin-top: 2px;
-  min-height: 1.4em;
-  font-size: 11px;
-  color: var(--faint);
-  /* Garde-fou : une precision plus longue que prevu s'abrege au lieu de
-     passer a la ligne et de decaler toute la rangee. */
-  white-space: nowrap;
   overflow: hidden;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--faint);
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+#clientView .activity-note:empty { display: none; }
 
 #clientView .activity-option-stack {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin: 0 14px 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 #clientView .activity-option-group {
@@ -783,24 +805,23 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .activity-option-legend {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--faint);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 #clientView .activity-option-pills {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
   gap: 6px;
 }
 
 /* Pastille compacte : une seule ligne, pas de prix a l'interieur. Le tarif
    unitaire est rappele une fois sous le bloc, pas repete sur chaque choix. */
 #clientView .dur-pill.xs {
-  min-height: 34px;
-  padding: 6px 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
   font-size: 13px;
   font-weight: 550;
   align-items: center;
@@ -809,20 +830,37 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .activity-option-stack .activity-option-note {
-  margin: 0;
-  padding-top: 0;
-  border-top: 0;
+  grid-column: 1 / -1;
 }
 
 #clientView .activity-option-note {
-  margin: 0 14px 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 0;
+  border: 0;
   font-size: 12px;
   color: var(--muted);
 }
 
-/* Le bandeau du programme. Il entre une fois, puis seul son texte change. */
+@media (max-width: 680px) {
+  #clientView .activity-config-row-inner {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  #clientView .activity-config-label {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+}
+
+@media (max-width: 440px) {
+  #clientView .activity-grid { grid-template-columns: 1fr; }
+  #clientView .activity-option-stack { grid-template-columns: 1fr; }
+}
+
+/* Le bandeau du programme. Seul son contenu change, sans choregraphie de page. */
 #clientView .program-summary {
   display: flex;
   flex-wrap: wrap;
@@ -834,7 +872,6 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--subtle);
-  animation: activity-card-in 320ms var(--ease-out-strong) backwards;
 }
 
 #clientView .program-line {
@@ -873,14 +910,11 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
    qui déplace. */
 @media (prefers-reduced-motion: reduce) {
   #clientView .activity-card,
-  #clientView .program-summary { animation: none; }
-  #clientView .activity-card,
   #clientView .activity-check,
-  #clientView .activity-options,
-  #clientView .program-total { transition-property: background-color, border-color, color, opacity; }
-  #clientView .activity-card.is-on .activity-check { transform: none; }
+  #clientView .activity-check svg,
+  #clientView .program-total { transition-duration: 0.01ms; }
   #clientView .activity-card:has(.activity-toggle:active) { transform: none; }
-  #clientView .activity-check svg { transition: opacity 120ms linear; stroke-dashoffset: 0; }
+  #clientView .activity-check svg { filter: none; }
   #clientView .program-total.is-bumped { animation: none; }
 }
 

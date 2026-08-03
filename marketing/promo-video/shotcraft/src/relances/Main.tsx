@@ -18,8 +18,8 @@ import { NarrationCaption } from '../aifl/NarrationCaption';
 import { FlashCut } from '../aifl/FlashCut';
 import { useGeist } from '../aifl/fonts';
 import {
-  SceneOuverture, ScenePage, SceneSequences, SceneEnumere, SceneEteinte,
-  SceneVeut, SceneReponse, SceneApprend, SceneOutro,
+  SceneOuverture, SceneProbleme, SceneSequences, SceneEnumere, SceneInterrupteur,
+  SceneCreer, SceneRecu, SceneVeut, SceneReponse, SceneApprend, SceneOutro,
 } from './Scenes';
 
 type Mot = { m: string; t0: number; t1: number };
@@ -88,20 +88,25 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
       <Sequence from={P.ouverture.from} durationInFrames={P.ouverture.duration}>
         <SceneOuverture duree={P.ouverture.duration} />
       </Sequence>
-      <Sequence from={P.page.from} durationInFrames={P.page.duration}>
-        <ScenePage duree={P.page.duration} />
+      <Sequence from={P.probleme.from} durationInFrames={P.probleme.duration}>
+        <SceneProbleme duree={P.probleme.duration} />
       </Sequence>
-      <Carton n={n} plan="cardA" />
       <Sequence from={P.sequences.from} durationInFrames={P.sequences.duration}>
         <SceneSequences duree={P.sequences.duration} />
       </Sequence>
       <Sequence from={P.enumere.from} durationInFrames={P.enumere.duration}>
         <SceneEnumere duree={P.enumere.duration} instants={instants} />
       </Sequence>
-      <Sequence from={P.eteinte.from} durationInFrames={P.eteinte.duration}>
-        <SceneEteinte duree={P.eteinte.duration} />
+      <Sequence from={P.interrupteur.from} durationInFrames={P.interrupteur.duration}>
+        <SceneInterrupteur duree={P.interrupteur.duration} />
       </Sequence>
-      <Carton n={n} plan="cardB" />
+      <Sequence from={P.creer.from} durationInFrames={P.creer.duration}>
+        <SceneCreer duree={P.creer.duration} />
+      </Sequence>
+      <Carton n={n} plan="bascule" />
+      <Sequence from={P.recu.from} durationInFrames={P.recu.duration}>
+        <SceneRecu duree={P.recu.duration} />
+      </Sequence>
       <Sequence from={P.veut.from} durationInFrames={P.veut.duration}>
         <SceneVeut duree={P.veut.duration} />
       </Sequence>
@@ -111,7 +116,7 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
       <Sequence from={P.apprend.from} durationInFrames={P.apprend.duration}>
         <SceneApprend duree={P.apprend.duration} />
       </Sequence>
-      <Carton n={n} plan="cardC" />
+      <Carton n={n} plan="manque" />
       <Sequence from={P.outro.from} durationInFrames={P.outro.duration}>
         <SceneOutro duree={P.outro.duration} />
       </Sequence>
@@ -123,10 +128,14 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
           l'image. */}
       {n.lignes.filter((l) => l.cible === 'bandeau').map((l) => {
         const from = Math.round(l.at * n.fps);
-        const duree = Math.round(l.duree * n.fps) + 24;
+        const plan = P[l.plan];
+        const finDuPlan = plan ? plan.from + plan.duration : n.total;
+        // 24 images de tenue apres le dernier mot, MAIS jamais au-dela de la fin
+        // du plan : un bandeau qui deborde se lit comme une coupe ratee.
+        const duree = Math.max(12, Math.min(Math.round(l.duree * n.fps) + 24, finDuPlan - from - 2));
         return (
           <Sequence key={`nar-${l.i}`} from={from} durationInFrames={duree}>
-            <NarrationCaption mots={l.mots} duree={duree} bas={104} taille={44} />
+            <NarrationCaption mots={l.mots} duree={duree} bas={52} taille={43} />
           </Sequence>
         );
       })}

@@ -7,6 +7,7 @@
   "sequences": [
     {
       "titre": "Demande reçue",
+      "description": "Accuse réception au client quand sa demande part en validation.",
       "compteur": "456 envoyés sur 30 jours",
       "allumee": true,
       "boite": {
@@ -18,6 +19,7 @@
     },
     {
       "titre": "Confirmation",
+      "description": "Confirme la réservation au client dès qu’elle est validée.",
       "compteur": "691 envoyés · 1 échec sur 30 jours",
       "allumee": true,
       "boite": {
@@ -29,6 +31,7 @@
     },
     {
       "titre": "Rappel avant la venue",
+      "description": "Rappelle la venue quelques jours avant : moins d’absences le jour J.",
       "compteur": "608 envoyés sur 30 jours",
       "allumee": true,
       "boite": {
@@ -40,6 +43,7 @@
     },
     {
       "titre": "Merci post-visite",
+      "description": "Remercie après la visite et invite à revenir.",
       "compteur": "650 envoyés · 2 échecs sur 30 jours",
       "allumee": true,
       "boite": {
@@ -51,6 +55,7 @@
     },
     {
       "titre": "30 jours avant l’anniversaire",
+      "description": "L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.",
       "compteur": "28 envoyés sur 30 jours",
       "allumee": true,
       "boite": {
@@ -62,6 +67,7 @@
     },
     {
       "titre": "Réactiver les clients dormants",
+      "description": "Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.",
       "compteur": "0 envoyé sur 30 jours",
       "allumee": false,
       "boite": {
@@ -122,6 +128,7 @@
     "sequences": [
       {
         "titre": "Demande reçue",
+        "description": "Accuse réception au client quand sa demande part en validation.",
         "compteur": "456 envoyés sur 30 jours",
         "allumee": true,
         "boite": {
@@ -133,6 +140,7 @@
       },
       {
         "titre": "Confirmation",
+        "description": "Confirme la réservation au client dès qu’elle est validée.",
         "compteur": "691 envoyés · 1 échec sur 30 jours",
         "allumee": true,
         "boite": {
@@ -144,6 +152,7 @@
       },
       {
         "titre": "Rappel avant la venue",
+        "description": "Rappelle la venue quelques jours avant : moins d’absences le jour J.",
         "compteur": "608 envoyés sur 30 jours",
         "allumee": true,
         "boite": {
@@ -155,6 +164,7 @@
       },
       {
         "titre": "Merci post-visite",
+        "description": "Remercie après la visite et invite à revenir.",
         "compteur": "650 envoyés · 2 échecs sur 30 jours",
         "allumee": true,
         "boite": {
@@ -166,6 +176,7 @@
       },
       {
         "titre": "30 jours avant l’anniversaire",
+        "description": "L’anniversaire fêté ici revient chaque année, relance toute seule au bon moment.",
         "compteur": "28 envoyés sur 30 jours",
         "allumee": true,
         "boite": {
@@ -177,6 +188,7 @@
       },
       {
         "titre": "Réactiver les clients dormants",
+        "description": "Clients fidèles plus vus depuis 2-3 mois : un rappel doux, plafonné par semaine.",
         "compteur": "0 envoyé sur 30 jours",
         "allumee": false,
         "boite": {
@@ -219,7 +231,7 @@
           "Julie MoreauAnniversaire pour ma fille",
           "AnniversaireAnniversaire pour 12 enfants de 10 ans, demande la disponibilité de samedi après-midi",
           "À répondre",
-          "03/08 21:16"
+          "03/08 22:20"
         ],
         "de": "Julie MoreauAnniversaire pour ma fille",
         "demande": "AnniversaireAnniversaire pour 12 enfants de 10 ans, demande la disponibilité de samedi après-midi",
@@ -230,7 +242,7 @@
           "Thomas BergerAnnulation de demain",
           "Annulation UrgentAnnule sa réservation de demain soir",
           "À répondre",
-          "03/08 18:16"
+          "03/08 19:20"
         ],
         "de": "Thomas BergerAnnulation de demain",
         "demande": "Annulation UrgentAnnule sa réservation de demain soir",
@@ -241,7 +253,7 @@
           "Nexo GroupTeam building 24 personnes",
           "RéservationTeam building de 24 personnes, un jeudi soir de septembre, bowling et laser",
           "Répondu",
-          "02/08 21:16"
+          "02/08 22:20"
         ],
         "de": "Nexo GroupTeam building 24 personnes",
         "demande": "RéservationTeam building de 24 personnes, un jeudi soir de septembre, bowling et laser",

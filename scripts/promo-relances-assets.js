@@ -161,6 +161,16 @@ const decouper = async (page, sel, nom, index = 0) => {
       const r = el.getBoundingClientRect();
       return {
         titre: texte(el.querySelector('h3,h4,strong,[class*="title"]')),
+        // Ce que la carte EXPLIQUE. Le film le redessine, donc il le lit ici :
+        // une description recopiee a la main vieillirait au premier changement
+        // de libelle cote produit.
+        description: (() => {
+          const t = texte(el);
+          const titre = texte(el.querySelector('h3,h4,strong,[class*="title"]'));
+          const apres = t.slice(t.indexOf(titre) + titre.length);
+          const coupe = apres.search(/Aperçu du message|d+s*envoy/);
+          return (coupe > 0 ? apres.slice(0, coupe) : apres).replace(/^s*modifiés*/i, '').trim();
+        })(),
         // Le compteur s'arrete AVANT le bouton : « 456 envoyes sur 30 jours
         // Modifier » embarquait le libelle du bouton dans la donnee.
         compteur: (t.match(/\d+\s*envoy[^]*?30 jours/) || [''])[0].trim(),

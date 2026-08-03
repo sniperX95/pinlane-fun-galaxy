@@ -68,24 +68,24 @@ fs.mkdirSync(path.dirname(SORTIE_AUDIO), { recursive: true });
 const LAYOUT = require(path.join(ROOT, 'marketing/promo-video/shotcraft/src/relances/live-layout.json'));
 const SEQ = LAYOUT.donnees.sequences;
 const ETEINTE = SEQ.find((s) => !s.allumee) || SEQ[SEQ.length - 1];
-// Les trois sequences que la voix enumere : celles dont le titre se dit en une
-// respiration. On les DESIGNE par leur position dans la page, pas par leur texte.
-const CITEES = [1, 2, 3].map((i) => SEQ[i]);
 
 // --- LA TABLE DE PLANS, SOURCE UNIQUE ----------------------------------------
 //
 // Elle vit ici et `shots.ts` la relit : les instants de la voix se calculent
 // depuis elle, et la duree d'une meme phrase varie de 10 % d'une prise a
 // l'autre. Deux tables tenues separement finiraient par se contredire.
-const ORDRE = ['ouverture', 'page', 'cardA', 'sequences', 'enumere', 'eteinte',
-  'cardB', 'veut', 'reponse', 'apprend', 'cardC', 'outro'];
+const ORDRE = ['ouverture', 'probleme', 'sequences', 'enumere', 'interrupteur',
+  'creer', 'bascule', 'recu', 'veut', 'reponse', 'apprend', 'manque', 'outro'];
 
 // Plans PRODUIT : la duree pour laquelle leur animation est concue.
-const FIXES = { sequences: 90, enumere: 155, eteinte: 105, veut: 110, reponse: 105, apprend: 125, outro: 130 };
+const FIXES = {
+  sequences: 95, enumere: 150, interrupteur: 90, creer: 130,
+  recu: 55, veut: 78, reponse: 100, apprend: 140, outro: 125,
+};
 
 // Planchers : le plan prend la duree que sa phrase exige, mais jamais moins que
 // ce qu'il faut a son animation pour se derouler.
-const PLANCHERS = { ouverture: 100, page: 120 };
+const PLANCHERS = { ouverture: 95, probleme: 130 };
 
 // Les CARTONS n'ont pas de duree ecrite : elle se CALCULE depuis leur phrase.
 const MARGE_CARTON = 0.22;
@@ -108,25 +108,28 @@ const ELASTIQUE = 20;
 // re-interprete a chaque crochet, et douze intentions collees bout a bout
 // s'entendent comme douze prises.
 const LIGNES = [
-  // --- MOUVEMENT 1 : ce que j'ai ajoute, et pourquoi -------------------------
-  { decalage: 0.45, plan: 'ouverture', cible: 'aucun', jeu: '[posé, tu montres un truc dont tu es content]', texte: 'Cette semaine, j’ai ajouté les mails et les relances dans Pinlane.' },
-  { decalage: 0.20, plan: 'page', cible: 'bandeau', texte: 'Ça, c’est la boîte du centre : ce qui part au client, et ce qui arrive.' },
-  { decalage: 0.18, plan: 'cardA', cible: 'carton', jeu: '[plus bas, tu racontes]', texte: 'Avant, il fallait penser à écrire au client. Personne n’y pensait.' },
+  // --- MOUVEMENT 1 : ce que j'ai ajoute, et le manque qu'il comble ----------
+  { decalage: 0.40, plan: 'ouverture', cible: 'aucun', jeu: '[posé, tu montres un truc dont tu es content]', texte: 'Cette semaine, j’ai ajouté les mails et les relances dans Pinlane.' },
+  { decalage: 0.22, plan: 'probleme', cible: 'bandeau', texte: 'Un client réserve, il vient, il repart. Et plus personne ne lui écrit.' },
 
-  // --- MOUVEMENT 2 : le mecanisme, montre ------------------------------------
-  { decalage: 0.20, plan: 'sequences', cible: 'bandeau', texte: 'Maintenant, six séquences partent toutes seules.' },
-  { decalage: 0.15, plan: 'enumere', cible: 'bandeau', texte: `${CITEES[0].titre}. ${CITEES[1].titre}. ${CITEES[2].titre}. Anniversaire.` },
-  { decalage: 0.18, plan: 'eteinte', cible: 'bandeau', texte: 'Chacune s’allume ou se coupe. Rien ne part sans toi.' },
+  // --- MOUVEMENT 2 : les sequences, montrees dans l'ordre ou on les lit -----
+  { decalage: 0.15, plan: 'sequences', cible: 'bandeau', texte: 'Six séquences prêtes, qui partent toutes seules.' },
+  { decalage: 0.12, plan: 'enumere', cible: 'bandeau', texte: 'Confirmation. Rappel avant la venue. Merci d’après. Anniversaire.' },
+  { decalage: 0.15, plan: 'interrupteur', cible: 'bandeau', texte: 'Chacune s’allume ou se coupe. Rien ne part sans toi.' },
+  // LA LIGNE QUI CORRIGE LE FAUX. Elle ne rallonge pas le film : elle remplace
+  // une phrase qui plafonnait le produit par celle qui l'ouvre.
+  { decalage: 0.15, plan: 'creer', cible: 'bandeau', jeu: '[tu ajoutes un truc auquel il ne s’attend pas]', texte: 'Et tu écris les tiennes : ton déclencheur, ton délai, ton texte.' },
 
-  // --- MOUVEMENT 3 : le morceau qui compte -----------------------------------
-  { decalage: 0.18, plan: 'cardB', cible: 'carton', jeu: '[tu accélères, c’est le morceau qui compte]', texte: 'Mais le vrai morceau, c’est ce qui arrive.' },
-  { decalage: 0.20, plan: 'veut', cible: 'bandeau', texte: 'Un client écrit. Avant d’ouvrir le mail, tu sais ce qu’il veut.' },
-  { decalage: 0.18, plan: 'reponse', cible: 'bandeau', texte: 'Et la réponse est déjà écrite. Tu relis, tu envoies.' },
-  { decalage: 0.18, plan: 'apprend', cible: 'bandeau', texte: 'Tu la corriges, l’agent retient. La fois d’après, il écrit comme toi.' },
+  // --- MOUVEMENT 3 : l'autre sens, une etape par plan -----------------------
+  { decalage: 0.16, plan: 'bascule', cible: 'carton', jeu: '[tu accélères, c’est le morceau qui compte]', texte: 'Mais le vrai morceau, c’est ce qui arrive.' },
+  { decalage: 0.14, plan: 'recu', cible: 'bandeau', texte: 'Un client écrit.' },
+  { decalage: 0.14, plan: 'veut', cible: 'bandeau', texte: 'Avant même de l’ouvrir, tu sais ce qu’il veut.' },
+  { decalage: 0.14, plan: 'reponse', cible: 'bandeau', texte: 'Et la réponse est déjà écrite.' },
+  { decalage: 0.15, plan: 'apprend', cible: 'bandeau', texte: 'Tu la corriges, l’agent retient. La fois d’après, il écrit comme toi.' },
 
-  // --- MOUVEMENT 4 : ce qui manque, et la signature --------------------------
-  { decalage: 0.18, plan: 'cardC', cible: 'carton', jeu: '[franc, sans vendre]', texte: 'Il manque la réception automatique. Pour l’instant, on colle le mail à la main.' },
-  { decalage: 0.30, plan: 'outro', cible: 'aucun', texte: 'Pinlane.' },
+  // --- MOUVEMENT 4 : ce qui manque, et la signature -------------------------
+  { decalage: 0.16, plan: 'manque', cible: 'carton', jeu: '[franc, sans vendre]', texte: 'Il manque la réception automatique. Pour l’instant, on colle le mail à la main.' },
+  { decalage: 0.28, plan: 'outro', cible: 'aucun', texte: 'Pinlane.' },
 ];
 
 // --- PRONONCIATION : CE QUI EST DIT N'EST PAS TOUJOURS CE QUI EST ECRIT -------

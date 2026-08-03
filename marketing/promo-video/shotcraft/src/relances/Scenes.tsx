@@ -493,7 +493,7 @@ export const SceneOutro: React.FC<{ duree: number }> = ({ duree }) => {
             marginTop: 12, fontWeight: 500, fontSize: 29,
             letterSpacing: '-0.01em', color: ATONE, opacity: monte(frame, 19, 16),
           }}>
-            Emails &amp; relances
+            Abonne-toi, je montre la suite
           </div>
         </div>
       </AbsoluteFill>

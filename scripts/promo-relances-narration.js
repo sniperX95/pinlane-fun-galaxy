@@ -55,7 +55,12 @@ const VOIX_ID = VOIX[CHOIX].id;
 const MODELE = 'eleven_v3';
 const FPS = 30;
 
-const SORTIE_AUDIO = path.join(ROOT, `artifacts/promo-video/relances/voix-${CHOIX}.mp3`);
+// LA PRISE S ECRIT LA OU LA COMPOSITION LA LIT, jamais ailleurs.
+// Elle vivait dans `artifacts/` et se copiait a la main dans `public/audio/` :
+// apres deux reecritures du script sans recopier, le film disait un texte et
+// en ecrivait un autre. Deux copies d une meme verite finissent toujours par
+// diverger, et celle-ci ne fait aucune erreur en divergeant.
+const SORTIE_AUDIO = path.join(ROOT, `marketing/promo-video/shotcraft/public/audio/voix-${CHOIX}.mp3`);
 const SORTIE_TABLE = path.join(ROOT, `marketing/promo-video/shotcraft/src/relances/narration-${CHOIX}.json`);
 fs.mkdirSync(path.dirname(SORTIE_AUDIO), { recursive: true });
 
@@ -79,8 +84,8 @@ const ORDRE = ['ouverture', 'probleme', 'sequences', 'enumere', 'interrupteur',
 
 // Plans PRODUIT : la duree pour laquelle leur animation est concue.
 const FIXES = {
-  sequences: 95, enumere: 150, interrupteur: 90, creer: 130,
-  recu: 55, veut: 78, reponse: 100, apprend: 140, outro: 125,
+  sequences: 95, enumere: 150, interrupteur: 128, creer: 130,
+  recu: 55, veut: 78, reponse: 100, apprend: 140, outro: 190,
 };
 
 // Planchers : le plan prend la duree que sa phrase exige, mais jamais moins que
@@ -129,7 +134,7 @@ const LIGNES = [
 
   // --- MOUVEMENT 4 : ce qui manque, et la signature -------------------------
   { decalage: 0.16, plan: 'manque', cible: 'carton', jeu: '[franc, sans vendre]', texte: 'Il manque la réception automatique. Pour l’instant, on colle le mail à la main.' },
-  { decalage: 0.28, plan: 'outro', cible: 'aucun', texte: 'Pinlane.' },
+  { decalage: 0.28, plan: 'outro', cible: 'aucun', texte: 'Pinlane. Abonne-toi, je montre la suite.' },
 ];
 
 // --- PRONONCIATION : CE QUI EST DIT N'EST PAS TOUJOURS CE QUI EST ECRIT -------
@@ -459,6 +464,17 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   const parle = ok.reduce((s, l) => s + l.duree, 0);
   console.log(`\naudio : ${path.relative(ROOT, SORTIE_AUDIO)}`);
   console.log(`table : ${path.relative(ROOT, SORTIE_TABLE)}`);
+
+  // (Il y avait ici une garde qui comparait la duree de la PRISE a la fin de la
+  //  derniere phrase. Elle etait fausse : `at` est un instant du FILM, pas de la
+  //  prise, et le film pousse ses lignes plus loin que la prise brute. Elle est
+  //  partie rouge sur les deux voix, pour deux raisons opposees, sans qu'aucune
+  //  ne soit un defaut. Une garde qui mesure la mauvaise chose est pire qu'une
+  //  garde absente : elle apprend a ignorer le rouge.
+  //
+  //  Ce qu'elle voulait proteger est desormais IMPOSSIBLE plutot que mesure :
+  //  la prise s'ecrit a l'endroit unique ou la composition la lit. Il n'y a plus
+  //  deux fichiers a garder d'accord.)
   console.log(`${parle.toFixed(1)}s de parole sur ${FILM.toFixed(1)}s de film (${Math.round(parle / FILM * 100)} %)`);
 
   // --- DENSITE : LE CHIFFRE QUI DECRIT « ON A LE TEMPS DE DORMIR » ----------

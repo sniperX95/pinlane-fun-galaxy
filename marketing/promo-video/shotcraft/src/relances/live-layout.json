@@ -1,0 +1,300 @@
+{
+  "pageW": 1920,
+  "fond": "rgb(250, 250, 250)",
+  "emails": {
+    "pageH": 1510
+  },
+  "sequences": [
+    {
+      "titre": "Demande reçue",
+      "compteur": "456 envoyés sur 30 jours",
+      "allumee": true,
+      "boite": {
+        "x": 17,
+        "y": 945.421875,
+        "width": 249,
+        "height": 213.53125
+      }
+    },
+    {
+      "titre": "Confirmation",
+      "compteur": "691 envoyés · 1 échec sur 30 jours",
+      "allumee": true,
+      "boite": {
+        "x": 282,
+        "y": 945.421875,
+        "width": 249,
+        "height": 213.53125
+      }
+    },
+    {
+      "titre": "Rappel avant la venue",
+      "compteur": "608 envoyés sur 30 jours",
+      "allumee": true,
+      "boite": {
+        "x": 547,
+        "y": 945.421875,
+        "width": 249,
+        "height": 213.53125
+      }
+    },
+    {
+      "titre": "Merci post-visite",
+      "compteur": "650 envoyés · 2 échecs sur 30 jours",
+      "allumee": true,
+      "boite": {
+        "x": 812,
+        "y": 945.421875,
+        "width": 249,
+        "height": 213.53125
+      }
+    },
+    {
+      "titre": "30 jours avant l’anniversaire",
+      "compteur": "28 envoyés sur 30 jours",
+      "allumee": true,
+      "boite": {
+        "x": 1077,
+        "y": 945.421875,
+        "width": 249,
+        "height": 213.53125
+      }
+    },
+    {
+      "titre": "Réactiver les clients dormants",
+      "compteur": "0 envoyé sur 30 jours",
+      "allumee": false,
+      "boite": {
+        "x": 1342,
+        "y": 945.421875,
+        "width": 249,
+        "height": 213.53125
+      }
+    }
+  ],
+  "recus": {
+    "pageH": 1661
+  },
+  "blocs": {
+    "mail-recu": {
+      "x": 1038.703125,
+      "y": 391.578125,
+      "width": 552.296875,
+      "height": 186.90625
+    },
+    "ce-quil-veut": {
+      "x": 1038.703125,
+      "y": 591.484375,
+      "width": 552.296875,
+      "height": 94.09375
+    },
+    "reponse-ia": {
+      "x": 1038.703125,
+      "y": 698.578125,
+      "width": 552.296875,
+      "height": 269.09375
+    }
+  },
+  "lignesRecues": [
+    {
+      "x": 1,
+      "y": 362.34375,
+      "width": 1007.703125,
+      "height": 55.078125,
+      "texte": "Votre réservation est confirméefamille.dubois@example.be Confirmation clientAuto Envoyé 03/08 22:02"
+    },
+    {
+      "x": 1,
+      "y": 417.421875,
+      "width": 1007.703125,
+      "height": 55.078125,
+      "texte": "On vous attend lundi 3 aoûtanniversaire.lucas@example.be Rappel avant la venueAuto Envoyé 03/08 20:02"
+    },
+    {
+      "x": 1,
+      "y": 472.5,
+      "width": 1007.703125,
+      "height": 55.078125,
+      "texte": "Merci de votre visiteteam.building.nexo@example.be Merci post-visiteAuto Envoyé 03/08 18:02"
+    }
+  ],
+  "donnees": {
+    "sequences": [
+      {
+        "titre": "Demande reçue",
+        "compteur": "456 envoyés sur 30 jours",
+        "allumee": true,
+        "boite": {
+          "x": 17,
+          "y": 945.421875,
+          "width": 249,
+          "height": 213.53125
+        }
+      },
+      {
+        "titre": "Confirmation",
+        "compteur": "691 envoyés · 1 échec sur 30 jours",
+        "allumee": true,
+        "boite": {
+          "x": 282,
+          "y": 945.421875,
+          "width": 249,
+          "height": 213.53125
+        }
+      },
+      {
+        "titre": "Rappel avant la venue",
+        "compteur": "608 envoyés sur 30 jours",
+        "allumee": true,
+        "boite": {
+          "x": 547,
+          "y": 945.421875,
+          "width": 249,
+          "height": 213.53125
+        }
+      },
+      {
+        "titre": "Merci post-visite",
+        "compteur": "650 envoyés · 2 échecs sur 30 jours",
+        "allumee": true,
+        "boite": {
+          "x": 812,
+          "y": 945.421875,
+          "width": 249,
+          "height": 213.53125
+        }
+      },
+      {
+        "titre": "30 jours avant l’anniversaire",
+        "compteur": "28 envoyés sur 30 jours",
+        "allumee": true,
+        "boite": {
+          "x": 1077,
+          "y": 945.421875,
+          "width": 249,
+          "height": 213.53125
+        }
+      },
+      {
+        "titre": "Réactiver les clients dormants",
+        "compteur": "0 envoyé sur 30 jours",
+        "allumee": false,
+        "boite": {
+          "x": 1342,
+          "y": 945.421875,
+          "width": 249,
+          "height": 213.53125
+        }
+      }
+    ],
+    "recus": [
+      {
+        "colonnes": [
+          "Votre réservation est confirméefamille.dubois@example.be",
+          "Confirmation clientAuto",
+          "Envoyé",
+          "03/08 22:02"
+        ],
+        "brut": "Votre réservation est confirméefamille.dubois@example.be Confirmation clientAuto Envoyé 03/08 22:02"
+      },
+      {
+        "colonnes": [
+          "On vous attend lundi 3 aoûtanniversaire.lucas@example.be",
+          "Rappel avant la venueAuto",
+          "Envoyé",
+          "03/08 20:02"
+        ],
+        "brut": "On vous attend lundi 3 aoûtanniversaire.lucas@example.be Rappel avant la venueAuto Envoyé 03/08 20:02"
+      },
+      {
+        "colonnes": [
+          "Merci de votre visiteteam.building.nexo@example.be",
+          "Merci post-visiteAuto",
+          "Envoyé",
+          "03/08 18:02"
+        ],
+        "brut": "Merci de votre visiteteam.building.nexo@example.be Merci post-visiteAuto Envoyé 03/08 18:02"
+      },
+      {
+        "colonnes": [
+          "Votre réservation est confirméegroupe.amis@example.be",
+          "Confirmation clientAuto",
+          "Envoyé",
+          "03/08 16:02"
+        ],
+        "brut": "Votre réservation est confirméegroupe.amis@example.be Confirmation clientAuto Envoyé 03/08 16:02"
+      },
+      {
+        "colonnes": [
+          "On vous attend lundi 3 aoûtsarah.lemaire@example.be",
+          "Rappel avant la venueAuto",
+          "Envoyé",
+          "03/08 14:02"
+        ],
+        "brut": "On vous attend lundi 3 aoûtsarah.lemaire@example.be Rappel avant la venueAuto Envoyé 03/08 14:02"
+      },
+      {
+        "colonnes": [
+          "Merci de votre visiteecole.saint.joseph@example.be",
+          "Merci post-visiteAuto",
+          "Envoyé",
+          "03/08 12:02"
+        ],
+        "brut": "Merci de votre visiteecole.saint.joseph@example.be Merci post-visiteAuto Envoyé 03/08 12:02"
+      },
+      {
+        "colonnes": [
+          "Votre réservation est confirméefamille.martin@example.be",
+          "Confirmation clientAuto",
+          "En attente",
+          "04/08 09:02"
+        ],
+        "brut": "Votre réservation est confirméefamille.martin@example.be Confirmation clientAuto En attente 04/08 09:02"
+      },
+      {
+        "colonnes": [
+          "On vous attend lundi 3 aoûtevjf.camille@example.be",
+          "Rappel avant la venueAuto",
+          "En attente",
+          "04/08 10:02"
+        ],
+        "brut": "On vous attend lundi 3 aoûtevjf.camille@example.be Rappel avant la venueAuto En attente 04/08 10:02"
+      },
+      {
+        "colonnes": [
+          "Merci de votre visiteclub.padel@example.be",
+          "Merci post-visiteAuto",
+          "ÉchecÉchec d'envoi",
+          "03/08 06:02"
+        ],
+        "brut": "Merci de votre visiteclub.padel@example.be Merci post-visiteAuto ÉchecÉchec d'envoi 03/08 06:02"
+      }
+    ],
+    "pipeline": [
+      "Tout(9)",
+      "Tout",
+      "(9)",
+      "3Reçus 2 sans réponse",
+      "3",
+      "Reçus",
+      "2 sans réponse",
+      "2En attente 0 prêt à partir",
+      "2",
+      "En attente",
+      "0 prêt à partir",
+      "6Envoyés 86 % de réussite",
+      "6",
+      "Envoyés",
+      "86 % de réussite",
+      "1Échec 10 tentatives d’envoi",
+      "1",
+      "Échec",
+      "10 tentatives d’envoi",
+      "0À valider",
+      "0",
+      "À valider"
+    ],
+    "hauteur": 1510,
+    "tousLesMails": "11 messages partent d'ici : 8 au client, 3 à l'équipe. Aucun autre."
+  }
+}

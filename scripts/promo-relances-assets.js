@@ -169,14 +169,8 @@ const decouper = async (page, sel, nom, index = 0) => {
       };
     });
 
-    const recus = Array.from(document.querySelectorAll('tbody tr')).map((tr) => ({
-      colonnes: Array.from(tr.querySelectorAll('td')).map(texte),
-      brut: texte(tr),
-    }));
-
     return {
       sequences,
-      recus,
       pipeline: Array.from(document.querySelectorAll('[role="tab"],[class*="pipe"]'))
         .map(texte).filter((t) => t && t.length < 60),
       hauteur: document.documentElement.scrollHeight,
@@ -261,9 +255,26 @@ const decouper = async (page, sel, nom, index = 0) => {
   layout.lignesRecues = [];
   for (let i = 0; i < 3; i += 1) {
     const boite = await decouper(page, 'tbody tr', `recu${i + 1}`, i);
-    layout.lignesRecues.push({ ...(boite || {}), texte: (donnees.recus[i] || {}).brut || '' });
+    layout.lignesRecues.push({ ...(boite || {}) });
   }
 
+  /* LA BOITE DE RECEPTION SE LIT ICI, PAS PLUS HAUT.
+     La premiere version la lisait dans la meme passe que les sequences, donc
+     AVANT la bascule d'onglet : elle ramenait la file d'envoi. Rien ne l'aurait
+     signale, les deux sont des `tbody tr` et les deux sont non vides. */
+  donnees.recus = await page.evaluate(() => Array.from(document.querySelectorAll('tbody tr')).map((tr) => {
+    const t = (el) => (el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : '');
+    const cel = Array.from(tr.querySelectorAll('td')).map(t);
+    return { colonnes: cel, de: cel[0] || '', demande: cel[1] || '', statut: cel[2] || '' };
+  }));
+  console.log('boite de reception :');
+  donnees.recus.forEach((r) => console.log(`   ${r.de}  ->  ${r.demande}  [${r.statut}]`));
+  if (donnees.recus.length < 3) RATES.push(`${donnees.recus.length} mails recus au lieu de 3`);
+  donnees.recus.forEach((r, i) => {
+    if (!r.demande) RATES.push(`mail recu ${i + 1} : la colonne « Demande » est vide`);
+  });
+
+  layout.lignesRecues.forEach((l, i) => { l.texte = (donnees.recus[i] || {}).demande || ''; });
   layout.donnees = donnees;
   fs.writeFileSync(LAYOUT, `${JSON.stringify(layout, null, 2)}\n`);
 

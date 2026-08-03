@@ -72,7 +72,7 @@
      qui vend cinq choses paraissait n'en vendre qu'une.
 
      Le libelle n'est pas ecrit a la main : le produit le DERIVE
-     (`getReservationLabel`) — `type: 'laser'` donne « Laser Game », un
+     (`getReservationLabel`) : `type: 'laser'` donne « Laser Game », un
      `formuleId` donne le nom de la formule. On pose donc le bon type et la bonne
      formule, et l'affichage suit tout seul.
 
@@ -97,13 +97,13 @@
      La vitrine montrait treize reservations groupees entre 10 h et 16 h : le
      planning restait a moitie vide et le chiffre du jour tombait a quelques
      centaines d'euros. Un prospect qui cherche un outil de PILOTAGE n'a rien
-     a piloter sur cet ecran-la — et sur la publicite, « 4 reservations »
+     a piloter sur cet ecran-la, et sur la publicite, « 4 reservations »
      decredibilisait le produit plus surement qu'une absence de chiffre.
 
      La journee couvre desormais l'amplitude complete (10 h - 22 h) et remplit
      les huit pistes. Le remplissage se fait PISTE PAR PISTE : chaque piste
      enchaine ses sessions sans chevauchement, donc les totaux du produit
-     (occupation, joueurs, chiffre) restent exacts — c'est lui qui compte, on
+     (occupation, joueurs, chiffre) restent exacts : c'est lui qui compte, on
      ne fait que lui donner une journee plausible. */
   function reservations() {
     var libre = [10, 10, 10, 10, 10, 10, 10, 10];   // heure de liberation par piste
@@ -161,7 +161,7 @@
 
     /* Les activites qui n'occupent PAS de piste : laser et formules sans
        bowling. Elles ne peuvent donc pas fausser le taux d'occupation des
-       pistes — la propriete « les totaux du produit restent exacts » tient
+       pistes : la propriete « les totaux du produit restent exacts » tient
        toujours. Deux zones laser : on les sequence comme les pistes. */
     var libreZone = [10, 10];
     NOMS_SANS_PISTE.forEach(function (nom, j) {
@@ -202,7 +202,10 @@
 
   var PERMISSIONS = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser',
     'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status',
-    'reservations.quick', 'clients.view', 'direction.view', 'campaigns.manage', 'marketing.agents'];
+    'reservations.quick', 'clients.view', 'direction.view', 'campaigns.manage', 'marketing.agents',
+    // « Emails & relances » etait dans le menu mais sans ses droits : la page
+    // s'ouvrait en lecture et ses actions restaient inertes.
+    'emails.view', 'emails.send'];
 
   var SESSION = {
     token: 'demo',
@@ -237,6 +240,184 @@
     },
   };
 
+  /* ---- « Emails & relances » ---------------------------------------------
+     Ajoute le 2026-08-03. Le mode demonstration repondait VIDE a tout ce qui
+     n'etait pas le planning : un visiteur qui ouvrait « Emails & relances » sur
+     /demo voyait « File vide », six sequences eteintes et zero partout, et
+     concluait que la fonction n'existait pas. C'est celle qui se vend le mieux.
+
+     MEME REGLE QUE POUR LA JOURNEE : les chiffres tombent juste. Les compteurs
+     se DERIVENT du volume de la journee de demonstration au lieu d'etre ecrits
+     a la main, sinon un visiteur qui compare deux ecrans trouve la
+     contradiction avant nous. Et les destinataires sont les reservations du
+     planning : le meme nom se retrouve des deux cotes. */
+
+  // Le mois deduit de la journee : environ 4 samedis pleins comme celle-ci, et
+  // 26 jours plus calmes autour de 40 % de son volume.
+  var RESAS_MOIS = Math.round(DEMO.length * (4 + 26 * 0.4));
+  var ilYA = function (heures) { return new Date(Date.now() - heures * 3600e3).toISOString(); };
+  var dans = function (heures) { return new Date(Date.now() + heures * 3600e3).toISOString(); };
+  var courriel = function (nom) {
+    return nom.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z]+/g, '.').replace(/^\.|\.$/g, '') + '@example.be';
+  };
+
+  // Les six sequences du produit. `reactivation` est eteinte : c'est le defaut
+  // reel du serveur (AUTOMATION_DEFAULTS), et le montrer dit que rien ne part
+  // sans que le gerant l'ait allume.
+  var AUTO_SETTINGS = {
+    request_received: { enabled: true }, confirmation: { enabled: true },
+    // RIEN D'AUTRE QUE `enabled` ICI. Un `offsetDays` ou un `cap` presents dans
+    // les REGLAGES sont lus par l'ecran comme un ecart voulu par le gerant :
+    // quatre cartes portaient une pilule « modifie » alors qu'elles etaient a
+    // leur valeur d'usine. Les defauts vivent dans AUTO_DEFAULTS, pas ici.
+    reminder_48h: { enabled: true }, post_visit: { enabled: true },
+    birthday_j30: { enabled: true }, reactivation: { enabled: false },
+  };
+  var VARS = ['prenom', 'date', 'heure', 'formule', 'pax', 'centre'];
+  var AUTO_DEFAULTS = {
+    request_received: { enabled: true, variables: VARS, subject: 'On a bien reçu votre demande', body: 'Bonjour {{prenom}},\n\nVotre demande du {{date}} à {{heure}} est bien arrivée. On vous confirme très vite.\n\nL’équipe ' + CENTRE },
+    confirmation: { enabled: true, variables: VARS, subject: 'Votre réservation est confirmée', body: 'Bonjour {{prenom}},\n\nC’est confirmé : {{formule}}, le {{date}} à {{heure}}, pour {{pax}} personnes.\n\nÀ très vite,\nL’équipe ' + CENTRE },
+    reminder_48h: { enabled: true, offsetDays: 2, variables: VARS, subject: 'On vous attend {{date}}', body: 'Bonjour {{prenom}},\n\nPetit rappel : on vous attend le {{date}} à {{heure}}, pour {{pax}} personnes.\n\nL’équipe ' + CENTRE },
+    post_visit: { enabled: true, offsetDays: 1, variables: VARS, subject: 'Merci de votre visite', body: 'Bonjour {{prenom}},\n\nMerci d’être passé. Si vous avez aimé, revenez quand vous voulez.\n\nL’équipe ' + CENTRE },
+    birthday_j30: { enabled: true, offsetDays: 30, variables: VARS, subject: 'L’anniversaire approche', body: 'Bonjour {{prenom}},\n\nL’an dernier vous avez fêté l’anniversaire ici. On vous garde une date ?\n\nL’équipe ' + CENTRE },
+    reactivation: { enabled: false, cap: 20, variables: VARS, subject: 'Ça fait un moment', body: 'Bonjour {{prenom}},\n\nÇa fait un moment. Les pistes et le laser vous attendent.\n\nL’équipe ' + CENTRE },
+  };
+  // Derives du mois, pas ecrits : une demande d'accuse pour les reservations en
+  // ligne (2 sur 3), une confirmation par reservation, un rappel pour celles
+  // qui ne sont pas du jour meme, un merci pour celles qui ont eu lieu.
+  var AUTO_STATS = {
+    request_received: { sent30d: Math.round(RESAS_MOIS * 0.66), failed30d: 0 },
+    confirmation: { sent30d: RESAS_MOIS, failed30d: 1 },
+    reminder_48h: { sent30d: Math.round(RESAS_MOIS * 0.88), failed30d: 0 },
+    post_visit: { sent30d: Math.round(RESAS_MOIS * 0.94), failed30d: 2 },
+    birthday_j30: { sent30d: Math.round(RESAS_MOIS * 0.04), failed30d: 0 },
+    reactivation: { sent30d: 0, failed30d: 0 },
+  };
+
+  // Une date qu'un client lit, pas une date de base de donnees : « 2026-08-03 »
+  // apparaissait tel quel dans les sujets.
+  function dateLisible(iso) {
+    try {
+      return new Date(iso + 'T12:00:00').toLocaleDateString('fr-BE',
+        { weekday: 'long', day: 'numeric', month: 'long' });
+    } catch (error) { return iso; }
+  }
+
+  // « Bonjour Dubois » etait faux : le dernier mot de « Famille Dubois » est un
+  // NOM DE FAMILLE, et une reservation collective n'a pas de prenom du tout.
+  var COLLECTIFS = /^(famille|groupe|anniversaire|team|club|duo|soiree|ecole|evjf|comite)/i;
+  function sansAccent(mot) {
+    return mot.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  function prenomDe(nom) {
+    if (COLLECTIFS.test(sansAccent(nom))) return '';
+    return nom.split(' ')[0];
+  }
+  function formuleDe(r) {
+    if (r.type === 'laser') return 'Laser Game';
+    if (r.activity === 'bowling') return 'Bowling';
+    return 'Formule complete';
+  }
+
+  // Remplit un gabarit avec les valeurs REELLES de la reservation, les memes
+  // que le planning affiche. Les deux ecrans ne peuvent pas se contredire :
+  // ils lisent la meme ligne.
+  function remplir(gabarit, r) {
+    return gabarit
+      .replace(/\{\{prenom\}\}/g, prenomDe(r.name))
+      .replace(/Bonjour ,/g, 'Bonjour,')
+      .replace(/\{\{date\}\}/g, dateLisible(r.date))
+      .replace(/\{\{heure\}\}/g, r.startTime)
+      .replace(/\{\{formule\}\}/g, formuleDe(r))
+      .replace(/\{\{pax\}\}/g, String(r.pax))
+      .replace(/\{\{centre\}\}/g, CENTRE);
+  }
+
+  // La file : des envois pris sur les reservations du planning, pour que le nom
+  // affiche ici soit celui d'une carte qu'on vient de voir.
+  //
+  // ATTENTION AU DOUBLE VOCABULAIRE : la sequence s'appelle `post_visit` dans
+  // les reglages, mais le mail reellement envoye porte le modele
+  // `post_visit_followup`. Avec la cle des reglages, la colonne « Modele »
+  // affichait l'identifiant technique brut au lieu de « Merci post-visite ».
+  var MODELE_ENVOYE = {
+    confirmation: 'confirmation', reminder_48h: 'reminder_48h', post_visit: 'post_visit_followup',
+  };
+  var COMMS = DEMO.slice(0, 9).map(function (r, i) {
+    var etat = i < 6 ? 'delivered' : (i < 8 ? 'queued' : 'failed');
+    var cle = i % 3 === 0 ? 'confirmation' : (i % 3 === 1 ? 'reminder_48h' : 'post_visit');
+    return {
+      id: 4100 + i, centerId: 'demo', channel: 'email', direction: 'outbound',
+      templateId: MODELE_ENVOYE[cle], recipient: courriel(r.name),
+      subject: remplir(AUTO_DEFAULTS[cle].subject, r), status: etat,
+      sentAt: etat === 'delivered' ? ilYA(1 + i * 2) : null,
+      scheduledAt: etat === 'queued' ? dans(4 + i) : null,
+      createdAt: ilYA(1 + i * 2),
+      lastError: etat === 'failed' ? 'Adresse refus\u00e9e par le serveur du destinataire.' : null,
+      attempts: etat === 'failed' ? 2 : 1,
+      payload: { textBody: remplir(AUTO_DEFAULTS[cle].body, r) },
+    };
+  });
+
+  // LES MAILS RECUS, ET CE QUE L'AGENT EN A COMPRIS. C'est le coeur de la
+  // fonction : le gerant lit « ce qu'il veut » avant d'ouvrir le mail, et la
+  // reponse est deja ecrite.
+  var RECUS = [
+    {
+      id: 4201, centerId: 'demo', channel: 'email', direction: 'inbound', status: 'received',
+      templateId: null, recipient: 'julie.moreau@example.be', subject: 'Anniversaire pour ma fille',
+      createdAt: ilYA(2),
+      payload: {
+        from: 'julie.moreau@example.be',
+        textBody: 'Bonjour,\n\nJe voudrais organiser l’anniversaire de ma fille, elle a 10 ans. On serait 12 enfants. Est-ce que vous avez de la place samedi après-midi ?\n\nMerci d’avance,\nJulie',
+        analysis: {
+          intent: 'anniversaire', intentLabel: 'Anniversaire',
+          summary: 'Anniversaire pour 12 enfants de 10 ans, demande la disponibilité de samedi après-midi',
+          urgency: 'normale',
+          reply: { subject: 'Re: Anniversaire pour ma fille', body: 'Bonjour Julie,\n\nAvec plaisir. Pour 12 enfants de 10 ans, la formule anniversaire est la plus adaptée : elle comprend la piste, la boisson et le gâteau.\n\nDites-nous l’heure qui vous arrange samedi après-midi et on vous bloque la place.\n\nL’équipe ' + CENTRE },
+          clientName: 'Julie Moreau', provider: 'anthropic',
+        },
+      },
+    },
+    {
+      id: 4202, centerId: 'demo', channel: 'email', direction: 'inbound', status: 'received',
+      templateId: null, recipient: 'thomas.b@example.be', subject: 'Annulation de demain',
+      createdAt: ilYA(5),
+      payload: {
+        from: 'thomas.b@example.be',
+        textBody: 'Bonjour, je dois annuler notre réservation de demain soir, un empêchement. Désolé pour le délai.',
+        analysis: {
+          intent: 'annulation', intentLabel: 'Annulation',
+          summary: 'Annule sa réservation de demain soir',
+          urgency: 'haute',
+          reply: { subject: 'Re: Annulation de demain', body: 'Bonjour Thomas,\n\nC’est noté, votre réservation de demain soir est annulée, sans frais.\n\nQuand vous voulez revenir, écrivez-nous.\n\nL’équipe ' + CENTRE },
+          clientName: 'Thomas Berger', provider: 'anthropic',
+        },
+      },
+    },
+    {
+      id: 4203, centerId: 'demo', channel: 'email', direction: 'inbound', status: 'received',
+      templateId: null, recipient: 'compta@nexo-group.example.be', subject: 'Team building 24 personnes',
+      createdAt: ilYA(26),
+      payload: {
+        from: 'compta@nexo-group.example.be',
+        textBody: 'Bonjour, nous cherchons une activité pour 24 personnes un jeudi soir en septembre. Bowling et laser possible sur la même soirée ?',
+        // Repondu : la ligne porte le badge, et c'est ce mail qui a servi de
+        // lecon a l'agent (le staff a corrige sa reponse).
+        repliedAt: ilYA(25), replyCommunicationId: 4204,
+        analysis: {
+          intent: 'reservation', intentLabel: 'Réservation',
+          summary: 'Team building de 24 personnes, un jeudi soir de septembre, bowling et laser',
+          urgency: 'normale',
+          reply: { subject: 'Re: Team building 24 personnes', body: 'Bonjour,\n\nOui, c’est possible sur la même soirée : on sépare le groupe en deux et on alterne.\n\nDonnez-nous la date et on vous confirme.\n\nL’équipe ' + CENTRE },
+          clientName: 'Nexo Group', provider: 'anthropic',
+        },
+      },
+    },
+  ];
+  var TOUS_MAILS = RECUS.concat(COMMS);
+
   function reponse(charge) {
     return new Response(JSON.stringify(neutraliser(charge)), {
       status: 200,
@@ -247,7 +428,7 @@
   // La table des reponses. Tout ce qui n'y figure pas recoit une reponse VIDE
   // mais valide : un ecran inconnu affiche « rien a montrer », il ne plante
   // pas et il n'atteint pas le reseau.
-  function repondre(chemin, action) {
+  function repondre(chemin, action, corps) {
     if (chemin === '/api/staff-auth') {
       return reponse({
         ok: true, authenticated: true, session: SESSION,
@@ -263,12 +444,94 @@
       return reponse({ ok: true, revision: 'demo', reservations: DEMO, laneStatuses: {}, centerId: 'demo' });
     }
     if (chemin === '/api/admin-range') {
-      return reponse({ ok: true, reservations: DEMO, emails: [], agentEvents: [], centerId: 'demo' });
+      return reponse({ ok: true, reservations: DEMO, emails: TOUS_MAILS, agentEvents: [], centerId: 'demo' });
     }
     if (chemin === '/api/public-booking-meta') {
       return reponse({ ok: true, today: AUJOURD_HUI, durationOptions: [], formules: [], center: { id: 'demo', status: 'active' } });
     }
     if (chemin === '/api/ops' && action === 'centerConfig') return reponse(CONFIG);
+
+    /* Les routes de la page « Emails & relances ». `corps` est le corps d'un
+       POST quand il y en a un : l'action d'un POST vit dans le corps et non
+       dans l'URL, ce que ce mode ne lisait pas. Toute action non listee
+       retombe sur l'accuse de reception generique plus bas : rien ne part au
+       reseau, mais un bouton inconnu ne casse pas la page. */
+    var cle = action || (corps && corps.action) || '';
+    if (chemin === '/api/ops' && cle === 'automationSettings') {
+      // Un interrupteur qui ne bouge pas se lit comme une panne. On enregistre
+      // le changement EN MEMOIRE : il tient le temps de la visite, et rien ne
+      // sort du navigateur.
+      if (corps && AUTO_SETTINGS[corps.key]) {
+        if (corps.reset) AUTO_SETTINGS[corps.key] = { enabled: AUTO_SETTINGS[corps.key].enabled };
+        else {
+          if ('enabled' in corps) AUTO_SETTINGS[corps.key].enabled = !!corps.enabled;
+          if (corps.subject !== undefined) AUTO_SETTINGS[corps.key].subject = corps.subject;
+          if (corps.body !== undefined) AUTO_SETTINGS[corps.key].body = corps.body;
+          if (corps.offsetDays !== undefined) AUTO_SETTINGS[corps.key].offsetDays = Number(corps.offsetDays);
+          if (corps.cap !== undefined) AUTO_SETTINGS[corps.key].cap = Number(corps.cap);
+        }
+      }
+      return reponse({ ok: true, settings: AUTO_SETTINGS, defaults: AUTO_DEFAULTS, stats: AUTO_STATS });
+    }
+    if (chemin === '/api/ops' && cle === 'emailTemplates') {
+      return reponse({
+        ok: true,
+        templates: [
+          { id: 1, label: 'Devis groupe', subject: 'Votre devis pour {{pax}} personnes', body: 'Bonjour {{prenom}},\n\nVoici notre proposition pour {{pax}} personnes le {{date}}.' },
+          { id: 2, label: 'Réponse à une demande de prix', subject: 'Nos tarifs', body: 'Bonjour {{prenom}},\n\nVoici le détail de nos formules.' },
+        ],
+        identities: [
+          { id: 1, label: 'Accueil', email: 'contact@example.be', isDefault: true },
+          { id: 2, label: 'Groupes et entreprises', email: 'groupes@example.be' },
+        ],
+        channel: { resendConfigured: true, aiConfigured: true },
+      });
+    }
+    if (chemin === '/api/ops' && cle === 'emailBrain') {
+      return reponse({
+        ok: true,
+        overrides: { faq: {}, signature: 'L’équipe ' + CENTRE, extra: '' },
+        defaults: {
+          intents: { reservation: 'Réservation', annulation: 'Annulation / report', anniversaire: 'Anniversaire', prix: 'Prix & tarifs', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre' },
+          faq: {
+            horaires: { subject: 'Nos horaires', body: 'Ouvert de 10 h à 23 h, sept jours sur sept.' },
+            anniversaire: { subject: 'Les anniversaires', body: 'Formule anniversaire à partir de 8 enfants, piste réservée, boisson et gâteau compris.' },
+          },
+          signature: 'L’équipe ' + CENTRE,
+        },
+      });
+    }
+    if (chemin === '/api/ops' && cle === 'customSequences') {
+      return reponse({
+        ok: true, sequences: [],
+        limits: {
+          maxSequences: 10, cap: [1, 100],
+          triggers: {
+            after_visit: { label: 'X jours après une visite', days: [1, 90], variables: ['prenom', 'centre'] },
+            before_visit: { label: 'X jours avant une venue prévue', days: [1, 60], variables: ['prenom', 'centre', 'date', 'heure', 'formule', 'pax'] },
+            inactive: { label: 'Clients plus vus depuis X jours', days: [30, 365], variables: ['prenom', 'centre'] },
+            weekly: { label: 'Chaque semaine, un jour fixe', variables: ['prenom', 'centre'] },
+          },
+          segments: { all: 'Tous les clients avec email', dormant: 'Dormants (+90 jours)', loyal: 'Fidèles', birthdays: 'Clients anniversaire' },
+        },
+      });
+    }
+    if (chemin === '/api/ops' && cle === 'communications') {
+      return reponse({ ok: true, centerId: 'demo', communications: TOUS_MAILS });
+    }
+    if (chemin === '/api/ops' && cle === 'relanceStats') {
+      // Le retour d'une relance : combien sont revenus, et ce que ca a rapporte.
+      var revenus = Math.round(AUTO_STATS.post_visit.sent30d * 0.11);
+      return reponse({
+        ok: true, centerId: 'demo', days: 90,
+        sent: AUTO_STATS.post_visit.sent30d * 3, returned: revenus * 3,
+        revenue: revenus * 3 * 84, rate: 0.11,
+      });
+    }
+    if (chemin === '/api/ops' && cle === 'suppressions') {
+      return reponse({ ok: true, centerId: 'demo', suppressions: [], total: 0 });
+    }
+
     return reponse({
       ok: true, centerId: 'demo', reservations: [], communications: [], samples: [], suggestions: [],
       events: [], agents: [], blocks: [], clients: [], centers: [], entries: [],
@@ -283,7 +546,12 @@
     var u;
     try { u = new URL(brut, window.location.origin); } catch (error) { u = null; }
     if (u && u.pathname.indexOf('/api/') === 0) {
-      return Promise.resolve(repondre(u.pathname, u.searchParams.get('action')));
+      // L'action d'un POST vit dans son CORPS, pas dans l'URL. Sans cette
+      // lecture, tout POST retombait sur la reponse generique : un interrupteur
+      // de sequence se rearmait tout seul a l'ecran suivant.
+      var corps = null;
+      try { if (options && options.body) corps = JSON.parse(options.body); } catch (error) { corps = null; }
+      return Promise.resolve(repondre(u.pathname, u.searchParams.get('action'), corps));
     }
     return fetchNatif ? fetchNatif(entree, options) : Promise.reject(new Error('reseau indisponible'));
   };

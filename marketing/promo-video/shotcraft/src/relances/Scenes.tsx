@@ -40,11 +40,40 @@ const caseDe = (i: number) => ({
   y: HAUT + Math.floor(i / COLS) * (CASE_H + GOUT),
 });
 
-const Fond: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <AbsoluteFill style={{ background: FOND_PRODUIT, overflow: 'hidden', fontFamily: 'Geist' }}>
-    {children}
-  </AbsoluteFill>
-);
+// UN PLAN FIXE SE LIT COMME UNE IMAGE, PAS COMME UN FILM.
+//
+// Entre deux evenements, la grille etait figee : rien ne bougeait pendant deux
+// ou trois secondes. On ajoute deux couches SOUS LE SEUIL DE CONSCIENCE, qui ne
+// se remarquent pas une par une mais qui empechent le cadre de mourir.
+//
+// 1. LA RESPIRATION. Chaque carte flotte sur sa propre phase, avec des periodes
+//    incommensurables : deux sinusoides de meme periode battent comme un
+//    metronome et se voient. L'amplitude est de trois pixels, soit moins que ce
+//    que l'oeil nomme.
+const flotte = (frame: number, i: number) => {
+  const a = Math.sin((frame / 30) * 0.62 + i * 1.7) * 3.0;
+  const b = Math.sin((frame / 30) * 0.41 + i * 2.3) * 1.6;
+  return { y: a + b, r: Math.sin((frame / 30) * 0.33 + i * 1.1) * 0.22 };
+};
+
+// 2. LA LUMIERE QUI DERIVE. Une tache tres floue qui traverse le fond en une
+//    quarantaine de secondes. Elle ne se voit pas, elle empeche le fond d'etre
+//    un aplat.
+const Fond: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const frame = useCurrentFrame();
+  const x = 50 + Math.sin((frame / 30) * 0.16) * 26;
+  const y = 42 + Math.cos((frame / 30) * 0.11) * 16;
+  return (
+    <AbsoluteFill style={{ background: FOND_PRODUIT, overflow: 'hidden', fontFamily: 'Geist' }}>
+      <AbsoluteFill
+        style={{
+          background: `radial-gradient(88% 74% at ${x}% ${y}%, rgba(6,100,254,0.03) 0%, rgba(6,100,254,0) 72%)`,
+        }}
+      />
+      {children}
+    </AbsoluteFill>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // 1 · OUVERTURE
@@ -157,7 +186,8 @@ export const SceneSequences: React.FC<{ duree: number }> = ({ duree }) => {
             style={{
               position: 'absolute', left: c.x, top: c.y, width: CASE_L, height: CASE_H,
               opacity: Math.min(1, p * 1.5),
-              transform: `translateY(${(1 - p) * 80}px) scale(${0.93 + 0.07 * p})`,
+              transform: `translateY(${(1 - p) * 80 + flotte(frame, i).y * p}px)`
+                + ` rotate(${flotte(frame, i).r * p}deg) scale(${0.93 + 0.07 * p})`,
               filter: flou(p, 9),
             }}
           >
@@ -198,7 +228,8 @@ export const SceneEnumere: React.FC<{ duree: number; instants: number[] }> = ({ 
             style={{
               position: 'absolute', left: c.x, top: c.y, width: CASE_L, height: CASE_H,
               opacity: rang >= 0 ? 0.44 + 0.56 * sb : recul,
-              transform: `translateY(${-10 * sb}px) scale(${1 + 0.05 * sb})`,
+              transform: `translateY(${-10 * sb + flotte(frame, i).y}px)`
+                + ` rotate(${flotte(frame, i).r}deg) scale(${1 + 0.05 * sb})`,
               zIndex: sb > 0.3 ? 2 : 1,
             }}
           >

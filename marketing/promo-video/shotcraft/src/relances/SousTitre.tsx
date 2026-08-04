@@ -1,27 +1,30 @@
-// LE SOUS-TITRE : UNE FENETRE QUI ROULE, PAS UN PARAGRAPHE QUI SE POSE.
+// LE SOUS-TITRE : DE LA TYPOGRAPHIE CINETIQUE, PAS UN INTERRUPTEUR.
 //
-// Movsar : « le texte est beaucoup trop long des fois. C'est sans motion, genre
-// on voit uniquement le texte apparaitre sans grande motion sur le texte. Il
-// parle 7 a 10 secondes sans motion, juste un texte qui apparait. »
+// Movsar, deux fois : « plus de motion sur le texte que t'ecris, parce que
+// c'est moche la, le texte qui pop comme ca ».
 //
-// DEUX DEFAUTS, et ils ont la meme cause.
+// LA CAUSE DU « POP », nommable : les mots pas encore dits etaient affiches en
+// fantome a 32 %, puis passaient a 100 % au moment ou la voix les disait. Ce
+// n'est pas une animation, c'est un INTERRUPTEUR : deux etats, aucun trajet
+// entre les deux. Et le fantome fait de la bouillie visuelle avant meme que le
+// mot compte.
 //
-// La ligne entiere etait affichee d'un bloc, ses mots s'allumant un par un. Sur
-// une phrase de vingt-six mots, ca fait dix secondes pendant lesquelles le cadre
-// ne bouge pas : le seul evenement est un mot qui change de couleur. Et comme le
-// bloc doit contenir toute la phrase, le corps est petit et la lecture molle.
+// Ce qui remplace : un mot pas encore dit n'existe PAS, et chaque mot ARRIVE
+// avec son propre geste, cale sur sa propre date. Quatre couches faibles
+// superposees, jamais un effet fort (regle du vault d'Arlan) :
 //
-// Ici la phrase est decoupee en GROUPES DE SOUFFLE de trois a cinq mots, et
-// chaque groupe REMPLACE le precedent au moment ou il est dit. Trois consequences
-// directes :
+//   1. il monte avec un depassement, comme les objets du film (ressort ferme) ;
+//   2. son flou directionnel se resorbe, ce qui separe un mouvement anime d'un
+//      mouvement rendu image par image ;
+//   3. une PASTILLE de marque flashe derriere lui puis se dissout : c'est le
+//      « typer » du vault d'Arlan, ou une lettre passe par un etat plein avant
+//      d'atterrir en texte nu. Version sobre, parce qu'un sous-titre doit rester
+//      lisible sur un telephone en silence ;
+//   4. l'interlettrage se resserre en arrivant, de 0,04 em a la valeur finale.
 //
-//   1. le texte est court, donc gros, donc lisible sur un telephone ;
-//   2. il se passe quelque chose toutes les 1 a 2 secondes au lieu de toutes les
-//      10 : le groupe monte, son flou se resorbe, le precedent s'efface ;
-//   3. le mot en cours porte l'accent de marque, donc l'oeil suit la voix.
-//
-// Le decoupage se fait sur la PONCTUATION d'abord, sur le compte ensuite : une
-// phrase se lit par groupes de souffle, pas par tranches de quatre mots.
+// Le traitement est le MEME du debut a la fin du film : c'est un procede attache
+// a un TYPE d'element (§I.5 bis), donc sa constance fait le style. Ce qui varie,
+// c'est uniquement la date de chaque mot, et elle vient de l'alignement.
 import React from 'react';
 import { interpolate, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { BLEU, ENCRE } from '../aifl/scene3d';
@@ -31,18 +34,16 @@ export type Mot = { m: string; t0: number; t1: number };
 const MAX_MOTS = 5;
 
 /** Coupe la ligne en groupes de souffle. La ponctuation ferme un groupe ; a
- *  defaut, on ferme a cinq mots. Un groupe d'un seul mot est recolle au
- *  precedent : « Anniversaire. » seul a l'ecran se lit comme un bug. */
+ *  defaut, on ferme a cinq mots. Un groupe d'un seul mot se recolle au
+ *  precedent : un mot seul a l'ecran se lit comme un bug. */
 export const grouper = (mots: Mot[]): Mot[][] => {
   const groupes: Mot[][] = [];
   let courant: Mot[] = [];
   mots.forEach((mot) => {
     courant.push(mot);
-    const ferme = /[.!?:;,]$/.test(mot.m) || courant.length >= MAX_MOTS;
-    if (ferme) { groupes.push(courant); courant = []; }
+    if (/[.!?:;,]$/.test(mot.m) || courant.length >= MAX_MOTS) { groupes.push(courant); courant = []; }
   });
   if (courant.length) groupes.push(courant);
-  // Recollage des orphelins.
   for (let i = groupes.length - 1; i > 0; i -= 1) {
     if (groupes[i].length === 1 && groupes[i - 1].length + 1 <= MAX_MOTS + 1) {
       groupes[i - 1] = groupes[i - 1].concat(groupes[i]);
@@ -51,6 +52,11 @@ export const grouper = (mots: Mot[]): Mot[][] => {
   }
   return groupes;
 };
+
+/** Le ressort en forme CLOSE : jamais integre pas a pas, sinon le rendu cesse
+ *  d'etre une fonction pure de l'image et Remotion ne peut plus recalculer une
+ *  image isolee. Le depassement est ce qui donne un poids au mot. */
+const ressort = (t: number) => (t <= 0 ? 0 : (t >= 1 ? 1 : 1 - Math.exp(-6.5 * t) * Math.cos(1.7 * Math.PI * t)));
 
 export const SousTitre: React.FC<{
   mots: Mot[];
@@ -66,19 +72,19 @@ export const SousTitre: React.FC<{
   // Le groupe courant : celui dont le premier mot a commence et dont le suivant
   // n'a pas encore commence. La bascule suit la VOIX, jamais une horloge.
   let index = 0;
-  groupes.forEach((g, i) => { if (t >= g[0].t0 - 0.08) index = i; });
+  groupes.forEach((g, i) => { if (t >= g[0].t0 - 0.10) index = i; });
   const groupe = groupes[index];
   if (!groupe) return null;
 
-  const debut = groupe[0].t0 - 0.08;
-  const age = t - debut;
-  // L'entree : monte, flou qui se resorbe, opacite. C'est ce qui manquait, et
-  // c'est le seul mouvement du cadre pendant les longues phrases.
-  const entree = interpolate(age, [0, 0.26], [0, 1], {
-    easing: Easing.bezier(0.2, 0.9, 0.25, 1), extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
-  });
-  // La sortie de la LIGNE entiere, pour ne pas couper net a la coupe de plan.
-  const finLigne = interpolate(frame, [duree - 7, duree], [1, 0], {
+  // La sortie du groupe : il derive vers le bas et se floute quand le suivant
+  // arrive. Une coupe nette entre deux groupes se lit comme un clignotement.
+  const suivant = groupes[index + 1];
+  const sortie = suivant
+    ? interpolate(t, [suivant[0].t0 - 0.22, suivant[0].t0 - 0.10], [1, 0], {
+      extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+    })
+    : 1;
+  const finLigne = interpolate(frame, [duree - 8, duree], [1, 0], {
     extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
   });
 
@@ -86,45 +92,77 @@ export const SousTitre: React.FC<{
     <div
       style={{
         position: 'absolute', left: 0, right: 0, bottom: bas,
-        display: 'flex', justifyContent: 'center', padding: '0 70px',
-        pointerEvents: 'none', opacity: finLigne,
+        display: 'flex', justifyContent: 'center', padding: '0 66px',
+        pointerEvents: 'none', opacity: finLigne * sortie,
+        transform: `translateY(${(1 - sortie) * 14}px)`,
+        filter: sortie < 0.99 ? `blur(${(1 - sortie) * 5}px)` : undefined,
       }}
     >
       <div
         style={{
           fontFamily: 'Geist', fontWeight: 600, fontSize: taille,
-          lineHeight: 1.18, letterSpacing: '-0.026em', textAlign: 'center',
-          color: ENCRE,
-          opacity: entree,
-          transform: `translateY(${(1 - entree) * 26}px) scale(${0.97 + 0.03 * entree})`,
-          filter: entree < 0.99 ? `blur(${(1 - entree) * 7}px)` : undefined,
-          // LE HALO, JAMAIS UNE PLAQUE. Une plaque opaque est un trou dans
-          // l'image : celle du film precedent cachait un tiers du produit et son
-          // bord franc dessinait un rectangle au milieu du cadre.
-          textShadow: [
-            '0 0 14px rgba(255,255,255,0.92)',
-            '0 0 28px rgba(255,255,255,0.85)',
-            '0 1px 0 rgba(255,255,255,0.9)',
-            '0 2px 18px rgba(255,255,255,0.7)',
-          ].join(', '),
+          lineHeight: 1.22, textAlign: 'center', color: ENCRE,
+          display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
+          columnGap: taille * 0.2, rowGap: taille * 0.04,
         }}
       >
         {groupe.map((mot, i) => {
-          // Le mot EN COURS porte l'accent de marque : l'oeil suit la voix au
-          // lieu de balayer le groupe.
-          const dit = t >= mot.t0 - 0.02;
-          const encours = dit && t <= mot.t1 + 0.14;
+          // CHAQUE MOT A SA PROPRE DATE, donc sa propre arrivee. C'est ce qui
+          // remplace l'interrupteur : il y a un TRAJET entre l'absence et la
+          // presence, et ce trajet dure 0,34 s.
+          const age = t - (mot.t0 - 0.06);
+          if (age < 0) {
+            // Le mot n'existe pas encore : il occupe sa place pour que la ligne
+            // ne saute pas, mais il n'est pas visible. Un fantome a 32 % faisait
+            // de la bouillie avant meme que le mot compte.
+            return (
+              <span key={`${mot.m}-${i}`} style={{ display: 'inline-block', opacity: 0 }}>{mot.m}</span>
+            );
+          }
+          const p = ressort(Math.min(1, age / 0.34));
+          const doux = interpolate(age, [0, 0.34], [0, 1], {
+            easing: Easing.bezier(0.22, 0.9, 0.24, 1), extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          // La pastille de marque : pleine a l'arrivee, dissoute en 0,3 s. C'est
+          // le « typer » du vault d'Arlan, ramene a ce qu'un sous-titre supporte.
+          const pastille = interpolate(age, [0, 0.06, 0.30], [0, 0.9, 0], {
+            extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+          });
+          const encours = t >= mot.t0 - 0.02 && t <= mot.t1 + 0.16;
           return (
             <span
               key={`${mot.m}-${i}`}
               style={{
-                display: 'inline-block',
-                marginRight: taille * 0.19,
+                position: 'relative', display: 'inline-block',
+                opacity: doux,
+                transform: `translateY(${(1 - p) * 16}px) scale(${0.93 + 0.07 * p})`,
+                filter: doux < 0.98 ? `blur(${(1 - doux) * 6}px)` : undefined,
+                letterSpacing: `${-0.026 + (1 - doux) * 0.05}em`,
                 color: encours ? BLEU : ENCRE,
-                opacity: dit ? 1 : 0.32,
-                transform: `translateY(${dit ? 0 : 5}px)`,
+                // LE HALO, JAMAIS UNE PLAQUE : une plaque opaque est un trou
+                // dans l'image.
+                textShadow: [
+                  '0 0 13px rgba(255,255,255,0.95)',
+                  '0 0 26px rgba(255,255,255,0.88)',
+                  '0 1px 0 rgba(255,255,255,0.92)',
+                  '0 2px 20px rgba(255,255,255,0.72)',
+                ].join(', '),
               }}
             >
+              {/* La pastille vit DERRIERE le mot, en flux inverse : elle
+                  s'imprime puis rend la place au texte nu. */}
+              <span
+                style={{
+                  position: 'absolute',
+                  left: -taille * 0.11, right: -taille * 0.11,
+                  top: taille * 0.06, bottom: taille * 0.12,
+                  background: BLEU,
+                  borderRadius: 999,
+                  opacity: pastille * 0.22,
+                  transform: `scaleX(${0.86 + 0.14 * Math.min(1, age / 0.06)})`,
+                  zIndex: -1,
+                }}
+              />
               {mot.m}
             </span>
           );

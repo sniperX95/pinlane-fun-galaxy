@@ -1,0 +1,80 @@
+[
+  {
+    "i": 0,
+    "fichier": "phrase-michael-0.mp3",
+    "amorce": 0.12,
+    "duree": 3.4361
+  },
+  {
+    "i": 1,
+    "fichier": "phrase-michael-1.mp3",
+    "amorce": 0.1632,
+    "duree": 8.837596
+  },
+  {
+    "i": 2,
+    "fichier": "phrase-michael-2.mp3",
+    "amorce": 0.2315,
+    "duree": 2.86068
+  },
+  {
+    "i": 3,
+    "fichier": "phrase-michael-3.mp3",
+    "amorce": 0.2057,
+    "duree": 6.134104
+  },
+  {
+    "i": 4,
+    "fichier": "phrase-michael-4.mp3",
+    "amorce": 0.1659,
+    "duree": 2.819184
+  },
+  {
+    "i": 5,
+    "fichier": "phrase-michael-5.mp3",
+    "amorce": 0.2202,
+    "duree": 2.57941
+  },
+  {
+    "i": 6,
+    "fichier": "phrase-michael-6.mp3",
+    "amorce": 0.2632,
+    "duree": 3.044807
+  },
+  {
+    "i": 7,
+    "fichier": "phrase-michael-7.mp3",
+    "amorce": 0.2614,
+    "duree": 2.345397
+  },
+  {
+    "i": 8,
+    "fichier": "phrase-michael-8.mp3",
+    "amorce": 0.2446,
+    "duree": 3.282608
+  },
+  {
+    "i": 9,
+    "fichier": "phrase-michael-9.mp3",
+    "amorce": 0.2766,
+    "duree": 2.483605
+  },
+  {
+    "i": 10,
+    "fichier": "phrase-michael-10.mp3",
+    "amorce": 0.3048,
+    "duree": 2.332494
+  },
+  {
+    "i": 11,
+    "fichier": "phrase-michael-11.mp3",
+    "amorce": 0.2523,
+    "duree": 3.913991
+  },
+  {
+    "i": 12,
+    "fichier": "phrase-michael-12.mp3",
+    "amorce": 0.2001,
+    "duree": 2.841111
+  }
+]

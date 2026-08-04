@@ -1,0 +1,80 @@
+[
+  {
+    "i": 0,
+    "fichier": "phrase-kael-0.mp3",
+    "amorce": 0.12,
+    "duree": 3.108186
+  },
+  {
+    "i": 1,
+    "fichier": "phrase-kael-1.mp3",
+    "amorce": 0.1552,
+    "duree": 9.397302
+  },
+  {
+    "i": 2,
+    "fichier": "phrase-kael-2.mp3",
+    "amorce": 0.239,
+    "duree": 2.508821
+  },
+  {
+    "i": 3,
+    "fichier": "phrase-kael-3.mp3",
+    "amorce": 0.2115,
+    "duree": 6.272494
+  },
+  {
+    "i": 4,
+    "fichier": "phrase-kael-4.mp3",
+    "amorce": 0.2227,
+    "duree": 3.653696
+  },
+  {
+    "i": 5,
+    "fichier": "phrase-kael-5.mp3",
+    "amorce": 0.2278,
+    "duree": 2.40771
+  },
+  {
+    "i": 6,
+    "fichier": "phrase-kael-6.mp3",
+    "amorce": 0.2524,
+    "duree": 2.66
+  },
+  {
+    "i": 7,
+    "fichier": "phrase-kael-7.mp3",
+    "amorce": 0.2513,
+    "duree": 2.003288
+  },
+  {
+    "i": 8,
+    "fichier": "phrase-kael-8.mp3",
+    "amorce": 0.3518,
+    "duree": 2.8122
+  },
+  {
+    "i": 9,
+    "fichier": "phrase-kael-9.mp3",
+    "amorce": 0.2475,
+    "duree": 2.165488
+  },
+  {
+    "i": 10,
+    "fichier": "phrase-kael-10.mp3",
+    "amorce": 0.2336,
+    "duree": 2.624603
+  },
+  {
+    "i": 11,
+    "fichier": "phrase-kael-11.mp3",
+    "amorce": 0.2833,
+    "duree": 3.702608
+  },
+  {
+    "i": 12,
+    "fichier": "phrase-kael-12.mp3",
+    "amorce": 0.2035,
+    "duree": 2.683492
+  }
+]

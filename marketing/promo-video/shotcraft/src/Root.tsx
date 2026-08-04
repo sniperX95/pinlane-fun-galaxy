@@ -1,8 +1,10 @@
 import { Composition } from 'remotion';
 import { AiflMain, AIFL_TOTAL } from './aifl/Main';
-import { RelancesMain, Narration } from './relances/Main';
+import { RelancesMain, Narration, Phrase } from './relances/Main';
 import KAEL from './relances/narration-kael.json';
 import MICHAEL from './relances/narration-michael.json';
+import PH_KAEL from './relances/phrases-kael.json';
+import PH_MICHAEL from './relances/phrases-michael.json';
 
 // Deux compositions carrees pour le film « mails et relances » : le MEME
 // montage, nourri par deux tables de plans differentes. Chaque voix garde son
@@ -28,7 +30,7 @@ export const Root: React.FC = () => {
         fps={kael.fps}
         width={1080}
         height={1080}
-        defaultProps={{ narration: kael, voix: 'kael' }}
+        defaultProps={{ narration: kael, phrases: PH_KAEL as Phrase[], voix: 'kael' }}
       />
       <Composition
         id="RelancesMichael"
@@ -37,7 +39,7 @@ export const Root: React.FC = () => {
         fps={michael.fps}
         width={1080}
         height={1080}
-        defaultProps={{ narration: michael, voix: 'michael' }}
+        defaultProps={{ narration: michael, phrases: PH_MICHAEL as Phrase[], voix: 'michael' }}
       />
     </>
   );

@@ -14,7 +14,7 @@
 import React from 'react';
 import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion';
 import { PaperTitleCard } from '../aifl/PaperTitleCard';
-import { NarrationCaption } from '../aifl/NarrationCaption';
+import { SousTitre } from './SousTitre';
 import { FlashCut } from '../aifl/FlashCut';
 import { useGeist } from '../aifl/fonts';
 import {
@@ -31,6 +31,7 @@ type Ligne = {
   at: number; duree: number;
 };
 type Plan = { from: number; duration: number };
+export type Phrase = { i: number; fichier: string; amorce: number; duree: number };
 export type Narration = {
   fps: number; total: number; audio?: string;
   plans: Record<string, Plan>;
@@ -65,7 +66,7 @@ const Carton: React.FC<{ n: Narration; plan: string }> = ({ n, plan }) => {
   );
 };
 
-export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({ narration: n, voix }) => {
+export const RelancesMain: React.FC<{ narration: Narration; phrases: Phrase[]; voix: string }> = ({ narration: n, phrases }) => {
   useGeist();
   const P = n.plans;
 
@@ -121,16 +122,29 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
           Quatre montages ffmpeg ont echoue avant celui-ci, chacun rendant un
           fichier de la bonne duree partiellement muet. Remotion decoupe et pose
           nativement : il n'y a ni horodatage a negocier ni format a accorder. */}
-      {n.lignes.map((l) => {
-        const de = Math.max(0, Math.round((l.de - 0.05) * n.fps));
-        const a = Math.round((l.a + 0.16) * n.fps);
+      {phrases.map((ph) => {
+        // UN FICHIER PAR PHRASE, JOUE DEPUIS SON DEBUT. Le film ne CHERCHE
+        // jamais dans un MP3, donc il n'y a plus rien a avaler.
+        //
+        // Mesure du defaut precedent, par transcription du film livre : les
+        // lignes 1 a 5 etaient intactes et les lignes 6 a 12 perdaient TOUTES
+        // leur premier mot. Plus la position de recherche est profonde dans le
+        // fichier, plus le decodeur met de temps a se caler : le defaut est
+        // PROGRESSIF, et c'est pour ca qu'une amorce constante ne le corrigeait
+        // pas. Les mots perdus etaient les connecteurs (« Et », « Mais »,
+        // « Parce », « Il »), les plus courts donc les plus fragiles.
+        //
+        // `amorce` est le silence garde en tete du fichier : on recule la
+        // sequence d'autant pour que la voix tombe quand meme a son instant.
+        const ligne = n.lignes[ph.i];
+        const debut = Math.max(0, Math.round((ligne.at - ph.amorce) * n.fps));
         return (
           <Sequence
-            key={`voix-${l.i}`}
-            from={Math.round(l.at * n.fps)}
-            durationInFrames={Math.max(2, a - de)}
+            key={`voix-${ph.i}`}
+            from={debut}
+            durationInFrames={Math.max(2, Math.ceil(ph.duree * n.fps) + 2)}
           >
-            <Audio src={staticFile(`audio/prise-${voix}.mp3`)} startFrom={de} endAt={a} />
+            <Audio src={staticFile(`audio/${ph.fichier}`)} />
           </Sequence>
         );
       })}
@@ -185,7 +199,7 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
         const duree = Math.max(12, Math.min(Math.round(l.duree * n.fps) + 24, finDuPlan - from - 2));
         return (
           <Sequence key={`nar-${l.i}`} from={from} durationInFrames={duree}>
-            <NarrationCaption mots={l.mots} duree={duree} bas={52} taille={43} />
+            <SousTitre mots={l.mots} duree={duree} bas={62} taille={57} />
           </Sequence>
         );
       })}

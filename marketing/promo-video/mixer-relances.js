@@ -98,7 +98,7 @@ for (const voix of ['kael', 'michael']) {
   console.log(`  nappe isolee  ${mNappe.moyenne} dB`);
   console.log(`  ecart         ${ecart.toFixed(1)} dB     [fenetre 7 a 14]`);
 
-  if (mMix.crete !== null && mMix.crete > -1) rates.push(`${voix} : crete a ${mMix.crete} dB, risque de saturation apres AAC`);
+
   if (ecart === null) rates.push(`${voix} : ecart non mesurable`);
   else if (ecart < 7) rates.push(`${voix} : nappe a ${ecart.toFixed(1)} dB sous le mixage, elle couvre la voix`);
   else if (ecart > 14) rates.push(`${voix} : nappe a ${ecart.toFixed(1)} dB sous le mixage, on ne l'entend pas (c'est le defaut pose quatre fois)`);
@@ -116,7 +116,7 @@ for (const voix of ['kael', 'michael']) {
     if (Math.abs(gain) < 0.5) break;
     for (const f of [sortie, sansMusique]) {
       const tmp = f.replace(/\.mp4$/, '-tmp.mp4');
-      ff(['-i', f, '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.94:level=disabled`,
+      ff(['-i', f, '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.86:level=disabled`,
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', tmp]);
       fs.renameSync(tmp, f);
     }
@@ -127,6 +127,15 @@ for (const voix of ['kael', 'michael']) {
   if (sonieAvant !== null && Math.abs(sonieAvant - CIBLE_LUFS) > 1.2) {
     rates.push(`${voix} : sonie a ${sonieAvant} LUFS au lieu de ${CIBLE_LUFS}`);
   }
+
+  // LA CRETE SE MESURE SUR CE QUI EST LIVRE, pas sur un intermediaire. Elle
+  // etait relevee AVANT la boucle de gain, donc sur un fichier que personne ne
+  // recoit : la garde rougissait sur une valeur qui n'existait plus.
+  const creteFinale = mesure(sortie).crete;
+  if (creteFinale !== null && creteFinale > -0.6) {
+    rates.push(`${voix} : crete a ${creteFinale} dB apres gain, risque de saturation apres AAC`);
+  }
+  console.log(`  crete livree  ${creteFinale} dB`);
 
   // Livraison web : on REDUIT en lanczos depuis le rendu 2160, c'est la que se
   // gagne l'anticrenelage. CRF 20 et non 24 : mesure faite sur du texte bleu,

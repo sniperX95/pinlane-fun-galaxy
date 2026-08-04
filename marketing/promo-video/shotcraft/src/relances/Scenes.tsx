@@ -81,15 +81,19 @@ export const SceneOuverture: React.FC<{ duree: number }> = ({ duree }) => {
 //     écrit. » Trois etapes qui s'allument, une quatrieme qui reste eteinte :
 //     c'est la phrase, dessinee.
 // ---------------------------------------------------------------------------
-export const SceneProbleme: React.FC<{ duree: number }> = ({ duree }) => {
+export const SceneProbleme: React.FC<{ duree: number; instants: number[] }> = ({ duree, instants }) => {
   const frame = useCurrentFrame();
+  // LES ETAPES S'ALLUMENT SUR LEUR MOT, pas a des images choisies a la main.
+  // Le plan dure dix secondes parce que sa phrase en dure dix ; avec des images
+  // fixes, tout se jouait dans les trois premieres et les sept suivantes etaient
+  // mortes. Les instants viennent des mots « réserve », « vient », « repart ».
   const etapes = [
-    { libelle: 'Il réserve', de: 8 },
-    { libelle: 'Il vient', de: 28 },
-    { libelle: 'Il repart', de: 48 },
+    { libelle: 'Il réserve', de: instants[0] },
+    { libelle: 'Il vient', de: instants[1] },
+    { libelle: 'Il repart', de: instants[2] },
   ];
-  // La quatrieme case n'arrive jamais : c'est le sujet du plan.
-  const vide = monte(frame, 70, 18);
+  // Et la case vide arrive sur « plus personne ne lui écrit ».
+  const vide = monte(frame, instants[3], 20);
   const battement = 0.5 + 0.5 * Math.sin((frame / 30) * Math.PI * 1.1);
   return (
     <Fond>

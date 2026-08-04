@@ -91,13 +91,13 @@ const ORDRE = ['ouverture', 'probleme', 'sequences', 'enumere', 'interrupteur',
 
 // Plans PRODUIT : la duree pour laquelle leur animation est concue.
 const FIXES = {
-  sequences: 95, enumere: 150, interrupteur: 128, creer: 130,
-  recu: 55, veut: 78, reponse: 100, apprend: 140, outro: 190,
+  sequences: 90, enumere: 185, interrupteur: 105, creer: 105,
+  recu: 60, veut: 85, reponse: 70, apprend: 90, outro: 190,
 };
 
 // Planchers : le plan prend la duree que sa phrase exige, mais jamais moins que
 // ce qu'il faut a son animation pour se derouler.
-const PLANCHERS = { ouverture: 95, probleme: 130 };
+const PLANCHERS = { ouverture: 95, probleme: 210 };
 
 // Les CARTONS n'ont pas de duree ecrite : elle se CALCULE depuis leur phrase.
 const MARGE_CARTON = 0.22;
@@ -120,27 +120,27 @@ const ELASTIQUE = 20;
 // re-interprete a chaque crochet, et douze intentions collees bout a bout
 // s'entendent comme douze prises.
 const LIGNES = [
-  // --- MOUVEMENT 1 : ce que j'ai ajoute, et le manque qu'il comble ----------
+  // --- LE FIL : ce que j'ai ajoute, et le manque qui l'a fait naitre --------
   { decalage: 0.40, plan: 'ouverture', cible: 'aucun', jeu: '[posé, tu montres un truc dont tu es content]', texte: 'Cette semaine, j’ai ajouté les mails et les relances dans Pinlane.' },
-  { decalage: 0.22, plan: 'probleme', cible: 'bandeau', texte: 'Un client réserve, il vient, il repart. Et plus personne ne lui écrit.' },
+  // Le « parce que » qui ouvre est la charniere qui manquait : sans lui, la
+  // phrase suivante etait un changement de sujet.
+  { decalage: 0.22, plan: 'probleme', cible: 'bandeau', jeu: '[plus bas, tu racontes une scène]', texte: 'Parce qu’un client réserve, il vient, il repart. Et après, plus personne ne lui écrit. Pas par négligence : un samedi soir, personne n’ouvre une boîte mail.' },
 
-  // --- MOUVEMENT 2 : les sequences, montrees dans l'ordre ou on les lit -----
-  { decalage: 0.15, plan: 'sequences', cible: 'bandeau', texte: 'Six séquences prêtes, qui partent toutes seules.' },
-  { decalage: 0.12, plan: 'enumere', cible: 'bandeau', texte: 'Confirmation. Rappel avant la venue. Merci d’après. Anniversaire.' },
-  { decalage: 0.15, plan: 'interrupteur', cible: 'bandeau', texte: 'Chacune s’allume ou se coupe. Rien ne part sans toi.' },
-  // LA LIGNE QUI CORRIGE LE FAUX. Elle ne rallonge pas le film : elle remplace
-  // une phrase qui plafonnait le produit par celle qui l'ouvre.
-  { decalage: 0.15, plan: 'creer', cible: 'bandeau', jeu: '[tu ajoutes un truc auquel il ne s’attend pas]', texte: 'Et tu écris les tiennes : ton déclencheur, ton délai, ton texte.' },
+  // --- CE QUE J'AI FAIT, en reponse directe -------------------------------
+  { decalage: 0.15, plan: 'sequences', cible: 'bandeau', jeu: '[tu remontes, c’est la réponse]', texte: 'Alors maintenant, six séquences partent toutes seules.' },
+  { decalage: 0.12, plan: 'enumere', cible: 'bandeau', texte: 'La confirmation dès que c’est validé. Le rappel deux jours avant. Le merci d’après. Et l’anniversaire.' },
+  { decalage: 0.15, plan: 'interrupteur', cible: 'bandeau', texte: 'Tu en coupes une, elle s’arrête. Rien ne part sans toi.' },
+  { decalage: 0.15, plan: 'creer', cible: 'bandeau', texte: 'Et si aucune ne te va, tu écris la tienne.' },
 
-  // --- MOUVEMENT 3 : l'autre sens, une etape par plan -----------------------
-  { decalage: 0.16, plan: 'bascule', cible: 'carton', jeu: '[tu accélères, c’est le morceau qui compte]', texte: 'Mais le vrai morceau, c’est ce qui arrive.' },
-  { decalage: 0.14, plan: 'recu', cible: 'bandeau', texte: 'Un client écrit.' },
-  { decalage: 0.14, plan: 'veut', cible: 'bandeau', texte: 'Avant même de l’ouvrir, tu sais ce qu’il veut.' },
-  { decalage: 0.14, plan: 'reponse', cible: 'bandeau', texte: 'Et la réponse est déjà écrite.' },
-  { decalage: 0.15, plan: 'apprend', cible: 'bandeau', texte: 'Tu la corriges, l’agent retient. La fois d’après, il écrit comme toi.' },
+  // --- LE RETOURNEMENT, annonce puis deroule -------------------------------
+  { decalage: 0.16, plan: 'bascule', cible: 'carton', jeu: '[tu accélères, c’est le morceau qui compte]', texte: 'Mais le morceau dont je suis le plus fier, c’est l’autre sens.' },
+  { decalage: 0.14, plan: 'recu', cible: 'bandeau', texte: 'Parce qu’un client, ça écrit aussi.' },
+  { decalage: 0.14, plan: 'veut', cible: 'bandeau', texte: 'Et là, avant même d’ouvrir le mail, tu sais ce qu’il veut.' },
+  { decalage: 0.14, plan: 'reponse', cible: 'bandeau', texte: 'Et la réponse t’attend, déjà écrite.' },
+  { decalage: 0.15, plan: 'apprend', cible: 'bandeau', texte: 'Tu la corriges une fois, et l’agent retient.' },
 
-  // --- MOUVEMENT 4 : ce qui manque, et la signature -------------------------
-  { decalage: 0.16, plan: 'manque', cible: 'carton', jeu: '[franc, sans vendre]', texte: 'Il manque la réception automatique. Pour l’instant, on colle le mail à la main.' },
+  // --- CE QUI MANQUE, dit sans se dedouaner, et la suite -------------------
+  { decalage: 0.16, plan: 'manque', cible: 'carton', jeu: '[franc, sans vendre]', texte: 'Il reste un bout à finir : la réception automatique se colle encore à la main.' },
   { decalage: 0.28, plan: 'outro', cible: 'aucun', texte: 'Pinlane. Abonne-toi, je montre la suite.' },
 ];
 

@@ -87,6 +87,25 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
     return departs.slice(0, 4);
   })();
 
+  // Les etapes du plan « probleme » s'allument sur LEUR MOT. On cherche le mot
+  // dans la ligne plutot que de compter des images : une phrase reecrite deplace
+  // les allumages toute seule.
+  const instantsProbleme = (() => {
+    const l = n.lignes.find((x) => x.plan === 'probleme');
+    if (!l) return [0, 20, 40, 60];
+    const base = Math.round(l.at * n.fps) - P.probleme.from;
+    const sur = (motif: RegExp, defaut: number) => {
+      const m = l.mots.find((x) => motif.test(x.m));
+      return m ? base + Math.round(m.t0 * n.fps) : defaut;
+    };
+    return [
+      sur(/^r[ée]serve/i, base),
+      sur(/^vient/i, base + 24),
+      sur(/^repart/i, base + 48),
+      sur(/^personne/i, base + 90),
+    ];
+  })();
+
   return (
     <AbsoluteFill style={{ backgroundColor: '#eef2f8' }}>
       {/* LE MONTAGE DE LA VOIX SE FAIT ICI, PAR REMOTION.
@@ -120,7 +139,7 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
         <SceneOuverture duree={P.ouverture.duration} />
       </Sequence>
       <Sequence from={P.probleme.from} durationInFrames={P.probleme.duration}>
-        <SceneProbleme duree={P.probleme.duration} />
+        <SceneProbleme duree={P.probleme.duration} instants={instantsProbleme} />
       </Sequence>
       <Sequence from={P.sequences.from} durationInFrames={P.sequences.duration}>
         <SceneSequences duree={P.sequences.duration} />

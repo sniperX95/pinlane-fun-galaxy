@@ -55,12 +55,19 @@ const VOIX_ID = VOIX[CHOIX].id;
 const MODELE = 'eleven_v3';
 const FPS = 30;
 
-// LA PRISE S ECRIT LA OU LA COMPOSITION LA LIT, jamais ailleurs.
-// Elle vivait dans `artifacts/` et se copiait a la main dans `public/audio/` :
-// apres deux reecritures du script sans recopier, le film disait un texte et
-// en ecrivait un autre. Deux copies d une meme verite finissent toujours par
-// diverger, et celle-ci ne fait aucune erreur en divergeant.
-const SORTIE_AUDIO = path.join(ROOT, `marketing/promo-video/shotcraft/public/audio/voix-${CHOIX}.mp3`);
+// La prise BRUTE est un intermediaire : la composition ne la lit pas. Elle est
+// ensuite decoupee phrase par phrase et remontee aux instants du FILM par
+// , qui ecrit dans public/audio. Jouer la prise
+// brute reviendrait a utiliser l'horloge de la synthese pour le son et celle du
+// montage pour l'image : l'ecart se creuse a chaque plan.
+// La prise BRUTE est un intermediaire : la composition ne la lit pas.
+//
+// Elle est ensuite decoupee phrase par phrase et remontee aux instants du FILM
+// par `promo-relances-montage-voix.js`, qui ecrit dans public/audio. Jouer la
+// prise brute reviendrait a utiliser l'horloge de la SYNTHESE pour le son et
+// celle du MONTAGE pour l'image : l'ecart est nul au debut et se creuse a chaque
+// plan (mesure : 1,5 s a la deuxieme phrase, 2,5 s a la cinquieme).
+const SORTIE_AUDIO = path.join(ROOT, `marketing/promo-video/shotcraft/public/audio/prise-${CHOIX}.mp3`);
 const SORTIE_TABLE = path.join(ROOT, `marketing/promo-video/shotcraft/src/relances/narration-${CHOIX}.json`);
 fs.mkdirSync(path.dirname(SORTIE_AUDIO), { recursive: true });
 

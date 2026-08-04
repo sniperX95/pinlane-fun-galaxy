@@ -23,7 +23,13 @@ import {
 } from './Scenes';
 
 type Mot = { m: string; t0: number; t1: number };
-type Ligne = { i: number; plan: string; cible: string; at: number; duree: number; mots: Mot[]; texte: string };
+type Ligne = {
+  i: number; plan: string; cible: string; texte: string; mots: Mot[];
+  /** Bornes de la phrase DANS LA PRISE. */
+  de: number; a: number;
+  /** Instant de la phrase DANS LE FILM, et sa duree. */
+  at: number; duree: number;
+};
 type Plan = { from: number; duration: number };
 export type Narration = {
   fps: number; total: number; audio?: string;
@@ -83,7 +89,32 @@ export const RelancesMain: React.FC<{ narration: Narration; voix: string }> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#eef2f8' }}>
-      <Audio src={staticFile(`audio/voix-${voix}.mp3`)} />
+      {/* LE MONTAGE DE LA VOIX SE FAIT ICI, PAR REMOTION.
+          La prise est un enregistrement CONTINU : ses phrases s'enchainent au
+          rythme de la synthese. Le film a des plans dont la duree est bornee par
+          leur animation, donc ses phrases tombent a des instants DIFFERENTS. La
+          table porte les deux horloges : `de`/`a` dans la prise, `at` dans le
+          film. Jouer la prise entiere depuis l'image 0 revient a utiliser une
+          horloge pour le son et l'autre pour l'image : l'ecart est nul au debut
+          et se creuse a chaque plan (mesure : 6,9 s a la derniere phrase).
+          On pose donc UN extrait par phrase, a son instant de film.
+
+          Quatre montages ffmpeg ont echoue avant celui-ci, chacun rendant un
+          fichier de la bonne duree partiellement muet. Remotion decoupe et pose
+          nativement : il n'y a ni horodatage a negocier ni format a accorder. */}
+      {n.lignes.map((l) => {
+        const de = Math.max(0, Math.round((l.de - 0.05) * n.fps));
+        const a = Math.round((l.a + 0.16) * n.fps);
+        return (
+          <Sequence
+            key={`voix-${l.i}`}
+            from={Math.round(l.at * n.fps)}
+            durationInFrames={Math.max(2, a - de)}
+          >
+            <Audio src={staticFile(`audio/prise-${voix}.mp3`)} startFrom={de} endAt={a} />
+          </Sequence>
+        );
+      })}
 
       <Sequence from={P.ouverture.from} durationInFrames={P.ouverture.duration}>
         <SceneOuverture duree={P.ouverture.duration} />

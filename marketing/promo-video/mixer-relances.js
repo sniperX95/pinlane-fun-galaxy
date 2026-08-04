@@ -31,6 +31,20 @@ const mesure = (fichier) => {
   return { moyenne: moy ? Number(moy[1]) : null, crete: max ? Number(max[1]) : null };
 };
 
+// La sonie visee pour le fichier livre. Les reseaux lisent autour de -14 LUFS ;
+// -15 laisse une marge de crete sans sonner en dessous des autres videos du fil.
+const CIBLE_LUFS = -15;
+
+/** La SONIE INTEGREE, en LUFS. C'est ce que l'oreille et les plateformes
+ *  entendent : elle ignore les silences, contrairement a la moyenne de niveau. */
+const sonie = (fichier) => {
+  const r = require('child_process').spawnSync('ffmpeg',
+    ['-hide_banner', '-nostats', '-i', fichier, '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'],
+    { encoding: 'utf8' });
+  const m = /I:\s*(-?[\d.]+) LUFS/.exec((r.stderr || '') + (r.stdout || ''));
+  return m ? Number(m[1]) : null;
+};
+
 const CIBLE_MUSIQUE = -23;   // niveau vise pour la nappe, avant mixage
 const CIBLE_MIX = -16;       // niveau du fichier livre
 const rates = [];
@@ -65,7 +79,7 @@ for (const voix of ['kael', 'michael']) {
       '-af', `loudnorm=I=${cible.toFixed(1)}:TP=-3:LRA=7,afade=t=in:st=0:d=1.6,afade=t=out:st=${(duree - 2.4).toFixed(2)}:d=2.4`,
       '-ar', '48000', '-ac', '2', nappe]);
     ff(['-i', film, '-i', nappe,
-      '-filter_complex', `[1:a]volume=1[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=${CIBLE_MIX}:TP=-1.2:LRA=11[a]`,
+      '-filter_complex', `[1:a]volume=1[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,loudnorm=I=${CIBLE_MIX}:TP=-1.2:LRA=11[a]`,
       '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', sortie]);
     // MESURE PAR SOUSTRACTION : le mixage moins sa version sans nappe EST la
     // nappe telle qu'elle sort du fichier livre, limiteur compris.
@@ -88,6 +102,31 @@ for (const voix of ['kael', 'michael']) {
   if (ecart === null) rates.push(`${voix} : ecart non mesurable`);
   else if (ecart < 7) rates.push(`${voix} : nappe a ${ecart.toFixed(1)} dB sous le mixage, elle couvre la voix`);
   else if (ecart > 14) rates.push(`${voix} : nappe a ${ecart.toFixed(1)} dB sous le mixage, on ne l'entend pas (c'est le defaut pose quatre fois)`);
+
+  // --- LA SONIE, MESUREE PUIS CORRIGEE, EN BOUCLE -------------------------
+  // Une seule passe ne suffit pas : LE LIMITEUR RAVALE CE QU'ON AJOUTE. Un gain
+  // de +10,7 dB n'a rendu que 8,2 dB de sonie, parce que les cretes ont ete
+  // ecretees en route. C'est exactement le piege deja paye sur la nappe du film
+  // precedent, et la reponse est la meme : mesurer le resultat, corriger de
+  // l'ecart, recommencer.
+  let sonieAvant = sonie(sortie);
+  const depart = sonieAvant;
+  for (let passe = 1; passe <= 4; passe += 1) {
+    const gain = CIBLE_LUFS - sonieAvant;
+    if (Math.abs(gain) < 0.5) break;
+    for (const f of [sortie, sansMusique]) {
+      const tmp = f.replace(/\.mp4$/, '-tmp.mp4');
+      ff(['-i', f, '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.94:level=disabled`,
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', tmp]);
+      fs.renameSync(tmp, f);
+    }
+    sonieAvant = sonie(sortie);
+    console.log(`  sonie passe ${passe} : gain ${gain.toFixed(1)} dB -> ${sonieAvant} LUFS`);
+  }
+  console.log(`  sonie         ${depart} -> ${sonieAvant} LUFS     [cible ${CIBLE_LUFS}]`);
+  if (sonieAvant !== null && Math.abs(sonieAvant - CIBLE_LUFS) > 1.2) {
+    rates.push(`${voix} : sonie a ${sonieAvant} LUFS au lieu de ${CIBLE_LUFS}`);
+  }
 
   // Livraison web : on REDUIT en lanczos depuis le rendu 2160, c'est la que se
   // gagne l'anticrenelage. CRF 20 et non 24 : mesure faite sur du texte bleu,

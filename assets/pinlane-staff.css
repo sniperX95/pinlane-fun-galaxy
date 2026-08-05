@@ -9530,6 +9530,20 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-prop-actions { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-4); }
 .mkw-prop-skel { min-height: 72px; }
 
+/* ── La planche du jour (2026-08-05) : brief, propositions, radar, veille ──
+   Les cartes fermées portent désormais un aperçu et leurs actions : la rangée
+   dense d'une seule ligne ne suffit plus, on passe en bloc aéré. */
+.mkw-props-list { display: flex; flex-direction: column; }
+.mkw-props-list .mkw-prop:not(.is-open):not(.is-published) { display: block; padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.mkw-props-list .mkw-prop:not(.is-open):not(.is-published) .mkw-prop-why { font-size: 14.5px; }
+.mkw-props-list .mkw-prop:not(.is-open):not(.is-published) .mkw-prop-meta { margin-top: 6px; white-space: normal; }
+.mkw-prop .mkw-cta { margin-top: var(--space-3); }
+.mkw-brief-text { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.65; color: var(--text); max-width: 68ch; }
+.mkw-ask-row { display: flex; gap: var(--space-3); align-items: center; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.mkw-ask-row .mkw-input { flex: 1; min-width: 0; }
+.mkw-veille-line { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); }
+.mkw-radar-card .mkw-radar { margin-top: var(--space-2); }
+
 /* Onglets réseau (dans une carte ou le Studio) */
 .mkw-nets { display: flex; gap: var(--space-3); margin-top: var(--space-3); }
 .mkw-net { border: 0; background: transparent; padding: 0 0 4px; font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease); }

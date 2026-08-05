@@ -10220,7 +10220,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .badge { height: 20px; padding: 0 10px; line-height: 1; }
 
 /* Cards majeures en radius container */
-.mk-auto { border-radius: var(--radius-xl); }
+.mk-auto { border-radius: 0; }
 
 /* Dark : re-sélection de ton par surface (Astryx), les cards se détachent du
    fond par un ton raised, pas seulement par la bordure. */
@@ -10252,20 +10252,41 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-note-input:disabled { opacity: 0.55; }
 .crm-note-legacy { margin-top: 8px; font-size: 12px; }
 
-/* ── Séquences automatiques (page Emails) ── */
-.mk-auto-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--space-4); }
+/* ── Séquences automatiques (page Emails) ──────────────────────────────────
+   LISTE ALIGNÉE, plus une grille de cartes. Les cartes donnaient six hauteurs
+   différentes, des interrupteurs à des ordonnées différentes, un orphelin sur
+   la deuxième rangée et des « Modifier » qui flottaient (capture proprio du
+   2026-08-05 : « trop cheap, pas bien positionné »). Une séquence par LIGNE :
+   nom, description, stats, Modifier, interrupteur, chacun dans SA colonne,
+   alignés sur toutes les lignes. Le markup ne bouge pas (display: contents
+   sur head et foot) : les gates continuent de lire les mêmes classes. */
 /* .mk-auto-star supprimee : deux etoiles AMBRE decoraient « Anniversaire J-30 »
    et « Reactivation dormants ». Leur seul sens vivait dans un title=, donc
    invisible, et elles depensaient l'ambre que cette page reserve a l'ATTENTE.
    Couleur = sens, sinon rien : le markup et la regle partent ensemble. */
-.mk-auto { display: flex; flex-direction: column; gap: 8px; padding: var(--space-4); background: var(--surface); border: 1px solid var(--line); }
-.mk-auto.is-on { border-color: color-mix(in srgb, var(--success) 45%, var(--line)); }
-.mk-auto-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.mk-auto-head strong { font-size: 13.5px; font-weight: 600; }
-.mk-auto-desc { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.mk-auto-grid { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); }
+.mk-auto { display: grid; grid-template-columns: minmax(170px, 230px) minmax(0, 1fr) max-content max-content 40px; grid-template-areas: "title desc stats edit switch" "preview desc stats edit switch" "editor editor editor editor editor"; align-items: center; column-gap: var(--space-4); row-gap: 2px; padding: 12px var(--space-4); background: var(--surface); border: 0; border-top: 1px solid var(--line); }
+.mk-auto-grid > .mk-auto:first-child { border-top: 0; }
+.mk-auto-head, .mk-auto-foot { display: contents; }
+.mk-auto-head strong { grid-area: title; font-size: 13.5px; font-weight: 600; align-self: end; }
+.mk-auto-head .mk-switch { grid-area: switch; justify-self: end; }
+.mk-auto-desc { grid-area: desc; margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.mk-auto-preview { grid-area: preview; align-self: start; }
 .mk-auto-preview summary { font-size: 11.5px; color: var(--faint); cursor: pointer; }
 .mk-auto-preview p { margin: 6px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
-.mk-auto-stats { margin-top: auto; padding-top: 4px; font-size: 11.5px; color: var(--faint); }
+.mk-auto-stats { grid-area: stats; margin: 0; padding: 0; font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+.mk-auto-edit-btn { grid-area: edit; }
+.mk-auto-edit { grid-area: editor; }
+/* L'état actif se lit sur l'interrupteur, la bordure verte par carte n'a plus
+   de support en liste : un liseré gauche discret marque la ligne coupée. */
+.mk-auto:not(.is-on) .mk-auto-head strong { color: var(--muted); }
+/* Sous 900 px, la ligne redevient une carte empilée : cinq colonnes ne
+   tiennent pas sur un écran de poche. */
+@media (max-width: 900px) {
+  .mk-auto { grid-template-columns: minmax(0, 1fr) 40px; grid-template-areas: "title switch" "desc desc" "preview preview" "stats stats" "edit edit" "editor editor"; row-gap: 6px; }
+  .mk-auto-head strong { align-self: center; }
+  .mk-auto-edit-btn { justify-self: start; }
+}
 .mk-auto-fail { color: var(--danger); }
 .mk-switch { position: relative; width: 40px; height: 22px; border-radius: var(--radius-full); border: 1px solid var(--line-strong); background: var(--subtle); cursor: pointer; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); flex-shrink: 0; }
 .mk-switch span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: var(--radius-full); background: var(--muted); transition: transform var(--dur) var(--ease), background var(--dur) var(--ease); }
@@ -10356,6 +10377,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .pv2-var-ok { border-bottom: 1px dashed var(--line-strong); }
 .pv2-var-missing { background: var(--warning-soft); color: var(--warning); font-family: var(--font-data); font-size: 12px; padding: 0 3px; border-radius: 3px; }
 
+/* Détail d'un mail : le contenu se lit comme un mail, pas comme du code. */
+.pv2-mail-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.pv2-mail-preview-head .pv2-mail-preview-title { margin: 0; }
+.pv2-mail-render-detail { max-height: 340px; background: var(--surface); }
+
 @media (max-width: 900px) { .pv2-composer-grid { grid-template-columns: 1fr; } }
 
 /* ── Emails v3 : boîte de réception (analyse + réponse proposée) ── */
@@ -10369,7 +10395,9 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* ── Emails v3 : éditeur de séquence (tout modifiable) ── */
 .mk-auto-mod { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; margin-left: 8px; border-radius: var(--radius-full); font-size: 11px; font-weight: 500; background: var(--accent-soft); color: var(--accent-strong); vertical-align: 1px; }
-.mk-auto-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 4px; }
+/* Liste alignée : head et foot sont des conteneurs TRANSPARENTS (display:
+   contents, déclaré plus haut) : leurs enfants se placent dans les colonnes de
+   la ligne. L'ancien flex de .mk-auto-foot écrasait ce placement. */
 .mk-auto-foot .mk-auto-stats { margin-top: 0; padding-top: 0; }
 .mk-auto-edit-btn { flex-shrink: 0; }
 /* La carte en édition prend toute la rangée : les cartes sœurs gardent leur
@@ -10508,7 +10536,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    les mails et sur le parcours public, elle n'entre pas dans la console. */
 #staffEmailsPage .pv2-panel,
 #staffCockpitPage .pv2-panel { border-radius: var(--radius-lg); }
-#staffEmailsPage .mk-auto { border-radius: var(--radius-md); }
+#staffEmailsPage .mk-auto { border-radius: 0; }
 #staffEmailsPage .pv2-btn,
 #staffCockpitPage .pv2-btn { border-radius: var(--radius-sm); }
 #staffEmailsPage .pv2-search { border-radius: var(--radius-sm); }

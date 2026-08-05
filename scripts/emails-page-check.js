@@ -579,6 +579,56 @@ async function main() {
     ok(varsPassed.post && !/\{\{/.test(varsPassed.post.subject + varsPassed.post.body), 'CONTRE-PREUVE : trous remplis, le MÊME envoi part, zéro accolade dans ce qui est envoyé');
     ok(varsPassed.closed, 'composer fermé après l\'envoi corrigé');
 
+    /* ══ LA FRAPPE SURVIT AUX RE-RENDUS (bug prod 2026-08-05) ═══════════════
+       « une fois qu'on check les clients ça fait tout bugger on peut plus
+       écrire » : la page se re-rend (poll, données qui arrivent) et le focus
+       du champ en cours de frappe part dans le vide : les lettres suivantes ne
+       s'écrivent NULLE PART. On tape, on force un re-rendu au milieu, on
+       retape : tout doit s'écrire, curseur compris, et la liste du sélecteur
+       ouverte doit survivre au re-rendu. */
+    console.log('\n[FRAPPE SOUS POLL] le focus et le curseur survivent à un re-rendu');
+    const typing = await page.evaluate(async () => {
+      window.getStaffClientRows = () => [
+        { id: 'c1', name: 'Marie Dupont', email: 'marie@test.be', reservations: 4, lastVisitAgo: 'il y a 12 jours' },
+      ];
+      pv2OpenComposer({ to: 'marie@test.be', name: 'Marie Dupont' });
+      await new Promise((r) => setTimeout(r, 250));
+      return true;
+    });
+    ok(typing, 'composer ouvert avec un client choisi');
+    await page.click('#pv2ComposerBody');
+    await page.keyboard.type('abc', { delay: 25 });
+    await page.evaluate(() => { renderStaffEmailsPage(); });
+    await page.waitForTimeout(150);
+    await page.keyboard.type('def', { delay: 25 });
+    const typed = await page.evaluate(() => ({
+      value: document.getElementById('pv2ComposerBody').value,
+      focused: document.activeElement && document.activeElement.id === 'pv2ComposerBody',
+    }));
+    ok(typed.value === 'abcdef', `un re-rendu au milieu de la frappe ne mange AUCUNE lettre (obtenu « ${typed.value} »)`);
+    ok(typed.focused, 'le focus est toujours dans le champ message après le re-rendu');
+    // Curseur au MILIEU : corriger une faute pendant qu'un poll arrive.
+    await page.evaluate(() => { const ta = document.getElementById('pv2ComposerBody'); ta.setSelectionRange(3, 3); });
+    await page.evaluate(() => { renderStaffEmailsPage(); });
+    await page.waitForTimeout(150);
+    await page.keyboard.type('X');
+    const caret = await page.evaluate(() => document.getElementById('pv2ComposerBody').value);
+    ok(caret === 'abcXdef', `le CURSEUR est restauré au même endroit, pas jeté en fin de texte (obtenu « ${caret} »)`);
+    // La liste du sélecteur ouverte survit elle aussi au re-rendu.
+    await page.click('#pv2ComposerTo');
+    await page.evaluate(() => { const i = document.getElementById('pv2ComposerTo'); i.value = ''; pv2ComboInput('mar'); });
+    await page.waitForTimeout(120);
+    await page.evaluate(() => { renderStaffEmailsPage(); });
+    await page.waitForTimeout(200);
+    const comboSurvives = await page.evaluate(() => ({
+      visible: getComputedStyle(document.getElementById('pv2ComboList')).display !== 'none',
+      options: document.querySelectorAll('#pv2ComboList .pv2-combo-opt').length,
+      focused: document.activeElement && document.activeElement.id === 'pv2ComposerTo',
+    }));
+    ok(comboSurvives.visible && comboSurvives.options > 0, `la liste ouverte du sélecteur survit au re-rendu (${comboSurvives.options} option(s) encore affichée(s))`);
+    ok(comboSurvives.focused, 'et le champ « À » garde le focus');
+    await page.evaluate(async () => { pv2CloseComposer(); await new Promise((r) => setTimeout(r, 150)); });
+
     /* ══ TENUE À L'ÉCHELLE : 5000 clients dans le sélecteur ═════════════════ */
     console.log('\n[COMBO 5000] le sélecteur tient à 5000 clients');
     const bigCombo = await page.evaluate(async () => {

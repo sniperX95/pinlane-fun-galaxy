@@ -777,8 +777,8 @@
   function crmRelanceComposer(selected) {
     const busy = crmRelance.busy;
     return `<div class="crm-composer" role="form" aria-label="Relancer ${esc(selected.name || 'ce client')}">
-      <input class="crm-composer-subject" value="${esc(crmRelance.subject)}" oninput="crmRelanceField('subject', this.value)" aria-label="Objet">
-      <textarea class="crm-composer-body" rows="7" oninput="crmRelanceField('body', this.value)" aria-label="Message">${esc(crmRelance.body)}</textarea>
+      <input class="crm-composer-subject" data-pl-focus="clients.relance.objet" value="${esc(crmRelance.subject)}" oninput="crmRelanceField('subject', this.value)" aria-label="Objet">
+      <textarea class="crm-composer-body" data-pl-focus="clients.relance.message" rows="7" oninput="crmRelanceField('body', this.value)" aria-label="Message">${esc(crmRelance.body)}</textarea>
       <div class="crm-composer-actions">
         <span class="crm-muted">→ ${esc(selected.email)}</span>
         <button type="button" class="pv2-btn" onclick="crmCloseRelance()">Annuler</button>
@@ -861,7 +861,7 @@
 
         <section class="crm-sec crm-note-block">
           <div class="crm-sec-head"><h3>Notes</h3>${crmNotes.saving ? '<span class="crm-muted">Enregistrement…</span>' : ''}</div>
-          <textarea class="crm-note-input" rows="3" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
+          <textarea class="crm-note-input" data-pl-focus="clients.note" rows="3" placeholder="${crmNotes.loading ? 'Chargement…' : 'Allergies, prénom de l\'enfant, préférences… (enregistré automatiquement)'}"
             ${crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? '' : 'disabled'}
             onblur="crmSaveClientNote('${escJs(selected.id)}', this.value)">${esc(crmNotes.key === crmClientKey(selected) && crmNotes.loaded ? crmNotes.body : '')}</textarea>
           ${selected.notesConcat ? `<div class="crm-muted crm-note-legacy">Notes des réservations : ${esc(selected.notesConcat)}</div>` : ''}
@@ -1243,8 +1243,15 @@
 
   window.pv2ComboBlur = function () {
     // Le mousedown d'une option prévient le blur : ce délai ne sert que la
-    // sortie réelle du champ (Tab, clic ailleurs).
-    setTimeout(() => { pv2Combo.open = false; pv2ComboPaint(); }, 120);
+    // sortie réelle du champ (Tab, clic ailleurs). Et un blur peut venir de la
+    // DESTRUCTION du champ par un re-rendu : si le focus a été restauré sur le
+    // champ neuf entre-temps, on ne ferme pas : le gérant est toujours dedans.
+    setTimeout(() => {
+      const input = document.getElementById('pv2ComposerTo');
+      if (input && document.activeElement === input) return;
+      pv2Combo.open = false;
+      pv2ComboPaint();
+    }, 120);
   };
 
   window.pv2ComboKey = function (event) {
@@ -1391,6 +1398,15 @@
     } catch (error) {
       toast(error.message || 'Aperçu indisponible.');
     }
+  };
+
+  // Le mail TEL QU'ENVOYÉ : la colonne body de la communication porte le HTML
+  // exact parti chez le client (emailShell compris). Aucune reconstruction :
+  // on montre ce qui est stocké, dans l'iframe sandboxée.
+  window.pv2ViewStoredMail = function (uid) {
+    const row = getStaffEmailRows().find((r) => r.uid === uid);
+    if (!row || !row.body) { toast('Le contenu complet de ce mail n\'est pas disponible.'); return; }
+    previewOpsEmailHtml(row.body, row.subject || 'Mail envoyé');
   };
 
   window.pv2ComposerTemplate = function (ref) {
@@ -1809,7 +1825,7 @@
     return `<div class="pv2-seq-editor" data-pv2-mount="seqEditor" aria-label="Éditeur de séquence">
       <div class="pv2-composer-grid">
         <label class="pv2-composer-field"><span>Nom de la séquence</span>
-          <input id="pv2SeqName" value="${esc(d.name || '')}" placeholder="Ex. Relance une semaine après la visite" oninput="pv2SeqField('name', this.value)">
+          <input id="pv2SeqName" data-pl-focus="emails.sequence.nom" value="${esc(d.name || '')}" placeholder="Ex. Relance une semaine après la visite" oninput="pv2SeqField('name', this.value)">
         </label>
         <label class="pv2-composer-field"><span>Déclencheur</span>
           <select onchange="pv2SeqField('trigger.type', this.value)">${triggerOptions}</select>
@@ -1828,10 +1844,10 @@
           <input type="number" min="1" max="100" value="${Number(d.cap) || 20}" oninput="pv2SeqField('cap', this.value)">
         </label>
         <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-          <input value="${esc(d.subject || '')}" placeholder="Objet du message automatique" oninput="pv2SeqField('subject', this.value)">
+          <input data-pl-focus="emails.sequence.objet" value="${esc(d.subject || '')}" placeholder="Objet du message automatique" oninput="pv2SeqField('subject', this.value)">
         </label>
         <label class="pv2-composer-field pv2-composer-wide"><span>Message <small class="pv2-seq-vars">Variables : ${esc(variables)}</small></span>
-          <textarea rows="7" placeholder="Bonjour {{prenom}},…" oninput="pv2SeqField('body', this.value)">${esc(d.body || '')}</textarea>
+          <textarea rows="7" data-pl-focus="emails.sequence.message" placeholder="Bonjour {{prenom}},…" oninput="pv2SeqField('body', this.value)">${esc(d.body || '')}</textarea>
         </label>
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
@@ -2720,10 +2736,10 @@
       : '';
     return `<div class="mk-auto-edit" data-pv2-mount="autoEditor">
       <label class="mk-auto-edit-field"><span>Objet</span>
-        <input value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
+        <input data-pl-focus="emails.auto.objet" value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
       </label>
       <label class="mk-auto-edit-field"><span>Message</span>
-        <textarea rows="5" placeholder="${esc(def.body || 'Message par défaut')}" oninput="pv2AutoEditField('body', this.value)" aria-label="Corps du message">${esc(d.body)}</textarea>
+        <textarea rows="5" data-pl-focus="emails.auto.message" placeholder="${esc(def.body || 'Message par défaut')}" oninput="pv2AutoEditField('body', this.value)" aria-label="Corps du message">${esc(d.body)}</textarea>
       </label>
       ${variables}
       ${timingSelect}
@@ -2838,7 +2854,7 @@
           </div>
         </div>
         <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-          <input id="pv2ComposerSubject" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value); pv2ComposerSyncHints();">
+          <input id="pv2ComposerSubject" data-pl-focus="emails.composer.objet" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value); pv2ComposerSyncHints();">
         </label>
         <div class="pv2-composer-field pv2-composer-wide">
           <span>Message</span>
@@ -2851,7 +2867,7 @@
             <span class="pv2-toolbar-sep" aria-hidden="true"></span>
             ${Object.entries(PV2_VAR_LABELS).map(([key, label]) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(label)}" onclick="pv2InsertVar('${key}')">${esc(label)}</button>`).join('')}
           </div>
-          <textarea id="pv2ComposerBody" rows="8" placeholder="Bonjour…" oninput="pv2ComposerField('body', this.value); pv2ComposerSyncHints();">${esc(d.body)}</textarea>
+          <textarea id="pv2ComposerBody" data-pl-focus="emails.composer.message" rows="8" placeholder="Bonjour…" oninput="pv2ComposerField('body', this.value); pv2ComposerSyncHints();">${esc(d.body)}</textarea>
           <p class="pv2-vars-hint" id="pv2ComposerVarsHint" ${unresolved.length ? '' : 'hidden'}>${unresolved.length ? `À compléter avant l'envoi : ${unresolved.map((k) => `<code>{{${esc(k)}}}</code>`).join(' ')}${missName ? ' <span>(choisissez un client pour remplir le prénom)</span>' : ''}` : ''}</p>
           <div class="pv2-mail-render" id="pv2ComposerPreview" aria-label="Aperçu du message">${pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>'}</div>
         </div>
@@ -2876,10 +2892,10 @@
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
         <label class="pv2-composer-field"><span>De (adresse du client)</span>
-          <input id="pv2AnalyzeFrom" value="${esc(pv2Mail.analyzeDraft.from)}" placeholder="client@exemple.be" oninput="pv2AnalyzeField('from', this.value)">
+          <input id="pv2AnalyzeFrom" data-pl-focus="emails.analyse.de" value="${esc(pv2Mail.analyzeDraft.from)}" placeholder="client@exemple.be" oninput="pv2AnalyzeField('from', this.value)">
         </label>
         <label class="pv2-composer-field pv2-composer-wide"><span>Texte du mail reçu</span>
-          <textarea rows="6" placeholder="Collez ici le contenu du mail…" oninput="pv2AnalyzeField('body', this.value)">${esc(pv2Mail.analyzeDraft.body)}</textarea>
+          <textarea rows="6" data-pl-focus="emails.analyse.texte" placeholder="Collez ici le contenu du mail…" oninput="pv2AnalyzeField('body', this.value)">${esc(pv2Mail.analyzeDraft.body)}</textarea>
         </label>
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn primary" onclick="pv2AnalyzeSubmit()" ${pv2Mail.analyzeBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.analyzeBusy ? 'Analyse…' : 'Analyser'}</button>
@@ -2916,8 +2932,8 @@
         </div>
         <div class="pv2-inbox-reply">
           <div class="pv2-mail-preview-title">Réponse proposée${analysis.provider && analysis.provider !== 'rules' ? ' (IA)' : ''}</div>
-          <input class="pv2-inbox-reply-subject" value="${esc(draft.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'subject', this.value)">
-          <textarea class="pv2-inbox-reply-body" rows="7" aria-label="Réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'body', this.value)">${esc(draft.body)}</textarea>
+          <input class="pv2-inbox-reply-subject" data-pl-focus="emails.reponse.objet" value="${esc(draft.subject)}" aria-label="Objet de la réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'subject', this.value)">
+          <textarea class="pv2-inbox-reply-body" data-pl-focus="emails.reponse.message" rows="7" aria-label="Réponse" oninput="pv2InboxReplyField('${escJs(row.uid)}', 'body', this.value)">${esc(draft.body)}</textarea>
           <div class="pv2-composer-actions">
             <button type="button" class="pv2-btn" onclick="pv2InboxReanalyze('${escJs(row.uid)}')" ${busy ? 'disabled' : ''}>${ci('refresh')}Ré-analyser</button>
             <span class="pv2-composer-spacer"></span>
@@ -3048,6 +3064,22 @@
   window.renderStaffEmailsPage = function (errorMessage = '') {
     const root = document.getElementById('staffEmailsPage');
     if (!root) return;
+    // LE FOCUS SURVIT AU RENDU (bug prod 2026-08-05 : « on ne peut plus
+    // écrire »). Cette page se reconstruit par innerHTML quand une donnée
+    // arrive (poll, file, séquences) : sans cette garde, le champ en cours de
+    // frappe est détruit, le focus part sur <body> et les lettres suivantes ne
+    // s'écrivent nulle part. garderFocus mémorise la clé data-pl-focus du champ
+    // actif ET la position du curseur, re-rend, puis restaure les deux.
+    const paint = () => renderStaffEmailsPaint(root, errorMessage);
+    if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.garderFocus) PinlaneMotion.garderFocus(paint);
+    else paint();
+    // La liste ouverte du sélecteur de destinataire est repeinte après le
+    // rendu : le DOM neuf naît avec une liste vide et cachée, l'état, lui, vit
+    // hors DOM (pv2Combo) et survit.
+    if (pv2Mail.composerOpen && pv2Combo.open) pv2ComboPaint();
+  };
+
+  function renderStaffEmailsPaint(root, errorMessage = '') {
     if (!mkAuto.loaded && !mkAuto.loading) setTimeout(() => loadStaffAutomations(), 0);
     if (!pv2Seq.loaded && !pv2Seq.loading) setTimeout(() => loadPv2Sequences(), 0);
     // Chargé à l'ouverture de la page, pas seulement à l'ouverture du panneau :
@@ -3187,7 +3219,7 @@
           <div><dt>Origine</dt><dd>${esc(getStaffEmailOrigin(selected) === 'manual'
             ? `Envoi manuel${payload.staffMember ? ` · ${payload.staffMember}` : ''}`
             : 'Automatique · parti tout seul')}</dd></div>
-          <div><dt>Canal</dt><dd>${esc(selected.channel || 'email')}</dd></div>
+          <div><dt>Canal</dt><dd>${esc({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' }[selected.channel] || selected.channel || 'Email')}</dd></div>
           <div><dt>Statut</dt><dd>${esc((KIND_META[selected.statusKind] || {}).label || selected.status || '-')}</dd></div>
           <div><dt>Programmé</dt><dd>${esc(formatOpsTimestamp(selected.scheduledAt) || '-')}</dd></div>
           ${selected.sentAt ? `<div><dt>Envoyé</dt><dd>${esc(formatOpsTimestamp(selected.sentAt))}</dd></div>` : ''}
@@ -3213,8 +3245,11 @@
           </div>`;
         })() : ''}
         <div>
-          <div class="pv2-mail-preview-title">Aperçu</div>
-          <div class="pv2-mail-preview">${esc(String(payload.textBody || selected.subject || 'Pas de contenu texte.'))}</div>
+          <div class="pv2-mail-preview-head">
+            <span class="pv2-mail-preview-title">Contenu</span>
+            ${selected.body ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ViewStoredMail('${escJs(selected.uid)}')">Voir le mail tel qu'envoyé</button>` : ''}
+          </div>
+          <div class="pv2-mail-render pv2-mail-render-detail">${pv2RenderEmailPreview(String(payload.textBody || selected.subject || 'Pas de contenu texte.'), { prenom: '', nom: '', centre: '' }) || '<p class="pv2-preview-empty">Pas de contenu texte.</p>'}</div>
         </div>
       </div>`;
 
@@ -3235,7 +3270,7 @@
            discret. « Exporter » et « Envoyer la file » quittent la tête pour
            se poser sur la file, l'objet sur lequel ils agissent. */
         actions: `
-          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" oninput="setStaffEmailQuery(this.value)"></label>
+          <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input data-pl-focus="emails.recherche" value="${esc(state.staffEmailQuery || '')}" placeholder="Client, sujet, erreur…" oninput="setStaffEmailQuery(this.value)"></label>
           <button type="button" class="pv2-btn sm ghost" onclick="requestOpsAdminLoad(true)" title="Recharger les données">${ci('refresh')}Actualiser</button>
           <button type="button" class="pv2-btn sm ghost" onclick="pv2OpenSettings()">${ci('wrench')}Réglages</button>
           <button type="button" class="pv2-btn" onclick="pv2OpenAnalyze()">${ci('inbox')}Coller un mail reçu</button>

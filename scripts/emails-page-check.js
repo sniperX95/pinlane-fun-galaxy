@@ -65,6 +65,7 @@ async function installMock(page) {
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
     const nf = window.fetch.bind(window);
     window.__QA_POSTS__ = [];
+    window.__QA_EMAIL_META_REQUESTS__ = { studio: 0, legacy: 0 };
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
@@ -140,8 +141,13 @@ async function installMock(page) {
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailBrain') {
         return J({ ok: true, overrides: { faq: {}, signature: '', extra: '' }, defaults: { intents: { reservation: 'Réservation', annulation: 'Annulation / report', anniversaire: 'Anniversaire', prix: 'Prix & tarifs', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre' }, faq: { horaires: { subject: 'Nos horaires', body: 'Réponse type horaires du fichier.' } }, signature: "L'équipe Fun Galaxy" } });
       }
-      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailTemplates') {
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailStudio') {
+        window.__QA_EMAIL_META_REQUESTS__.studio += 1;
         return J({ ok: true, templates: [{ id: 7, label: 'Modèle maison', subject: 'Sujet du modèle {{prenom}}', body: 'Corps du modèle pour {{prenom}}.' }], identities: [{ id: 1, label: 'Accueil', email: 'contact@fungalaxy.be', isDefault: true }, { id: 2, label: 'Direction', email: 'direction@fungalaxy.be' }], channel: { resendConfigured: true, aiConfigured: false } });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailTemplates') {
+        window.__QA_EMAIL_META_REQUESTS__.legacy += 1;
+        return J({ ok: false, error: 'Action Ops GET inconnue.' });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'communications') return J({ ok: true, communications: comms });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: comms, samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
@@ -225,6 +231,7 @@ async function main() {
       pipeline: document.querySelectorAll('#staffEmailsPage .pv2-pipe').length,
       tableRows: document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr').length,
       newMsgBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Nouveau message/.test(b.textContent)),
+      emailMetaRequests: { ...window.__QA_EMAIL_META_REQUESTS__ },
       // Libelle renomme : « Analyser un reçu » se lisait comme un reçu de
       // caisse. Le panneau sert a COLLER un mail reçu d'un client.
       analyzeBtn: [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].some((b) => /Coller un mail reçu/.test(b.textContent)),
@@ -535,9 +542,12 @@ async function main() {
         antifill: (document.getElementById('pv2ComposerTo') || {}).getAttribute
           ? { auto: document.getElementById('pv2ComposerTo').getAttribute('autocomplete'), ph: document.getElementById('pv2ComposerTo').getAttribute('placeholder') || '' }
           : { auto: '', ph: '' },
+        emailMetaRequests: { ...window.__QA_EMAIL_META_REQUESTS__ },
       };
     });
     ok(composer.inBody && composer.open, 'le composeur vit dans une SURCOUCHE montée sur document.body');
+    ok(composer.emailMetaRequests.studio === 1 && composer.emailMetaRequests.legacy === 0,
+      `le composeur charge ses métadonnées via emailStudio, sans boucle legacy (${JSON.stringify(composer.emailMetaRequests)})`);
     ok(!composer.inPage, 'CONTRE-PREUVE : plus aucun composeur dans la page (les re-rendus ne peuvent plus le toucher)');
     ok(await page.evaluate(() => document.documentElement.classList.contains('pv2-lock') && getComputedStyle(document.body).overflow === 'hidden'),
       'la page derrière est VERROUILLÉE : la molette ne peut plus la faire défiler sous la surcouche (bug vidéo du 2026-08-06)');

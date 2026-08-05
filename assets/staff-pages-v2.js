@@ -1323,14 +1323,19 @@
     if (pv2Mail.metaLoading || (pv2Mail.metaLoaded && !force)) return;
     pv2Mail.metaLoading = true;
     try {
-      const payload = await apiRequest(`/api/ops?action=emailTemplates&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
+      const payload = await apiRequest(`/api/ops?action=emailStudio&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       pv2Mail.identities = payload.identities || [];
       pv2Mail.templates = payload.templates || [];
       pv2Mail.channel = payload.channel || {};
       const def = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0];
       if (def && !pv2Mail.draft.identityId) pv2Mail.draft.identityId = String(def.id);
       pv2Mail.metaLoaded = true;
-    } catch (error) { /* rôle sans accès : selects vides, envoi possible quand même */ } finally {
+    } catch (error) {
+      // Une erreur de métadonnées ne doit jamais déclencher un cycle
+      // render → retry → render : le composeur reste utilisable avec ses
+      // valeurs de repli jusqu'au prochain rafraîchissement explicite.
+      pv2Mail.metaLoaded = true;
+    } finally {
       pv2Mail.metaLoading = false;
       renderStaffEmailsPage();
       if (pv2Mail.composerOpen) pv2RenderComposer();

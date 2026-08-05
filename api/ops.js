@@ -80,6 +80,7 @@ const {
   listDelayNotificationChannels,
   sendClientMessage,
   sendDirectEmail,
+  buildDirectEmailPreview,
   enqueueCampaign,
   getAutomationSettings,
   getAutomationDefaults,
@@ -2415,6 +2416,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Aperçu d'un message libre du composeur : même shell que l'envoi réel,
+  // aucune écriture. Le front l'affiche dans l'iframe sandboxée existante.
+  if (action === 'directEmailPreview') {
+    const previewCenterId = requireConcreteCenter('aperçu email');
+    sendJson(res, 200, { ok: true, ...buildDirectEmailPreview({ centerId: previewCenterId, subject: body.subject, body: body.body }) });
+    return;
+  }
+
   if (action === 'improveEmailWithAi') {
     const { getCenter } = require('../lib/ops-knowledge');
     const center = getCenter(centerId);
@@ -2569,6 +2578,7 @@ function getRequiredOpsPermission(method, action) {
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];
   if (action === 'improveEmailWithAi') return ['emails.view', 'direction.view', 'campaigns.manage'];
+  if (action === 'directEmailPreview') return ['emails.view', 'emails.send'];
   if (action === 'customRequestStatus') return ['clients.view', 'reservations.edit', 'dashboard.view'];
   if (action === 'insightStatus') return ['campaigns.manage', 'marketing.agents'];
   if (['suppressionAdd', 'suppressionRemove'].includes(action)) return ['campaigns.manage', 'emails.send'];
@@ -2613,6 +2623,7 @@ const NON_MUTATING_POST_ACTIONS = new Set([
   'clientMessageComposer',
   'communicationDraft',
   'automationPreview', // previsualisation
+  'directEmailPreview', // buildDirectEmailPreview : pur, ne touche ni base ni file
   'agentStackAudit',   // audit de lecture
   'logClientError',    // telemetrie plafonnee : le journal d'audit trace les
                        // actes de gestion, pas la meteo des consoles : le

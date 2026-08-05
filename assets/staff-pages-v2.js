@@ -618,11 +618,14 @@
     const last = comms[0];
     const CHAN = { email: 'mail', sms: 'message', whatsapp: 'message', note: 'note' };
     const TONE = { sent: 'info', delivered: 'success', failed: 'warn', queued: 'info', draft: 'muted' };
+    // Statut en FRANÇAIS : « failed » / « delivered » bruts sur la fiche
+    // étaient le seul anglais de l'écran (vu sur capture mobile 2026-08-05).
+    const STATUS_FR = { sent: 'Envoyé', delivered: 'Délivré', failed: 'Échec', queued: 'En attente', draft: 'Brouillon', received: 'Reçu' };
     const items = comms.slice(0, 40).map((c) => `
       <div class="crm-comm dir-${esc(c.direction || 'outbound')}">
         <span class="crm-comm-icon">${ci(CHAN[c.channel] || 'mail')}</span>
         <span class="crm-comm-main"><strong>${esc(c.subject || c.templateId || 'Message')}</strong><small>${esc(c.recipient || '')} · ${esc((typeof formatOpsTimestamp === 'function' && (c.sentAt || c.createdAt)) ? formatOpsTimestamp(c.sentAt || c.createdAt) : (c.sentAt || c.createdAt || ''))}${c.direction === 'inbound' ? ' · reçu' : ''}</small></span>
-        <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(c.status || '')}</span>
+        <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(STATUS_FR[c.status] || c.status || '')}</span>
         ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('refresh')}</button>` : ''}
       </div>`).join('');
     return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count" data-pl-num="crm.messages">${comms.length}</span></h3>${compose}</div>
@@ -679,6 +682,10 @@
     if (crmRelance.busy) return;
     const row = getStaffClientRows().find((r) => r.id === clientId);
     if (!row || !row.email) return;
+    // Filet du moteur de variables (défini plus bas dans ce module, dispo à
+    // l'exécution) : une relance éditée à la main ne part jamais avec {{…}}.
+    const relanceLeft = pv2FillVars(`${crmRelance.subject}\n${crmRelance.body}`, pv2VarContext({ name: row.name || '' })).unresolved;
+    if (relanceLeft.length) { toast(`Complétez d'abord : ${relanceLeft.map((k) => `{{${k}}}`).join(' · ')}`); return; }
     crmRelance.busy = true;
     renderStaffClientsPage();
     try {
@@ -796,17 +803,20 @@
     const relance = getStaffClientRelance(selected);
     let nextBlock = '';
     if (next) {
-      // Même dossier (même id) que le segment « À venir » → les coches de prépa
-      // sont partagées entre la carte dossier et la fiche.
+      // Même dossier (même id) que le segment « À venir » : l'état de prépa est
+      // partagé. La checklist elle-même ne vit PLUS ici : quatre puces sur la
+      // fiche n'aidaient aucune décision (demande du propriétaire, 2026-08-05).
+      // La carte dit la date, l'offre et l'état de prépa, et un clic OUVRE la
+      // réservation, là où tout se règle. La prépa se coche dans « À venir ».
       const dossier = { id: `r-${next.id}`, kind: 'reservation', reservation: next, row: selected, dateISO: next.date, startTime: next.startTime || '', pax: Number(next.pax || 0) };
       const readiness = computeStaffGroupReadiness(dossier);
-      const checks = readiness.items.filter((i) => i.state !== 'na').map((i) =>
-        `<button type="button" class="groups-check-toggle${i.state === 'done' ? ' is-done' : ''}" onclick="toggleStaffGroupPrep('${escJs(dossier.id)}','${escJs(i.key)}')" aria-pressed="${i.state === 'done'}">${i.state === 'done' ? '✓' : '○'} ${esc(i.label)}</button>`
-      ).join('');
+      const paxN = Number(next.pax) || 0;
       nextBlock = `<section class="crm-sec crm-next">
         <div class="crm-sec-head"><h3>Prochaine venue</h3><span class="crm-pill tone-${readiness.ready ? 'success' : 'warn'}">${readiness.ready ? 'Prêt' : `${readiness.todo} à préparer`}</span></div>
-        <div class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))}${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${Number(next.pax) || 0} joueurs</span></div>
-        <div class="groups-check-toggles">${checks}</div>
+        <button type="button" class="crm-next-open" onclick="openStaffReservationDetail('${escJs(next.id)}')">
+          <span class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))}${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${paxN} joueur${paxN > 1 ? 's' : ''}</span></span>
+          <span class="crm-next-cta">Ouvrir la résa</span>
+        </button>
       </section>`;
     }
     return `
@@ -1022,19 +1032,83 @@
      (identités + modèles), improveEmailWithAi. Le composer n'exige AUCUNE
      réservation ; la fiche client route ici via pv2OpenComposer. ── */
 
-  // Modèles de départ (mêmes contenus que le studio direction : dupliqués
-  // volontairement : admin-mail.js n'est pas chargé côté staff).
+  /* ── LA BIBLIOTHÈQUE DE MODÈLES FOURNIS ──────────────────────────────────
+     Douze moments commerciaux réels d'un centre de loisirs indoor, écrits à la
+     main (zéro génération). Règles d'écriture :
+       . {{prenom}} et {{centre}} se remplissent TOUT SEULS (destinataire +
+         centre courant) : jamais de nom de centre en dur, le produit est
+         multi-tenant ;
+       . {{offre}}, {{geste}}, {{lien_avis}}… sont des TROUS À COMPLÉTER par le
+         gérant : l'envoi est BLOQUÉ tant qu'il en reste un (moteur pv2FillVars),
+         c'est ce qui empêche un « Cette semaine : {{offre}} » de partir chez un
+         client (bug réel constaté le 2026-08-05) ;
+       . aucun prix, aucune promo inventée : un modèle propose une structure,
+         jamais un chiffre que le centre n'a pas donné. */
   const PV2_STARTERS = [
-    { key: 'relance-client', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
-    { key: 'marketing-anniversaire', name: 'Pack anniversaire', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et cruches de boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe Fun Galaxy' },
-    { key: 'promo-semaine', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
-    { key: 'serieux-entreprise', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
+    // Relancer
+    { key: 'relance-client', cat: 'Relancer', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    { key: 'relance-devis', cat: 'Relancer', name: 'Devis resté sans réponse', subject: 'Votre projet chez {{centre}} tient toujours ?', body: 'Bonjour {{prenom}},\n\nOn vous avait préparé une proposition et on est resté sans nouvelle. Si le projet tient toujours, répondez simplement à ce message : on vous garde la date.\n\nEt si vos plans ont changé, dites-le en une ligne, on ne vous relancera plus.\n\nL\'équipe {{centre}}' },
+    // Anniversaires & groupes
+    { key: 'marketing-anniversaire', cat: 'Anniversaires & groupes', name: 'Pack anniversaire enfant', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe {{centre}}' },
+    { key: 'anniversaire-adulte', cat: 'Anniversaires & groupes', name: 'Anniversaire adulte / EVG-EVJF', subject: 'Un anniversaire qui change des restos', body: 'Bonjour {{prenom}},\n\nPour un anniversaire adulte, un EVG ou un EVJF : bowling, laser game et arcades, tout au même endroit, sans organisation de votre côté.\n\nDonnez-nous la date et la taille du groupe, on vous monte la soirée.\n\nL\'équipe {{centre}}' },
+    { key: 'merci-groupe', cat: 'Anniversaires & groupes', name: 'Merci après un groupe', subject: 'Merci pour votre venue, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nMerci pour votre venue avec votre groupe : on espère que tout le monde est reparti avec le sourire.\n\nSi quelque chose peut être amélioré pour la prochaine fois, répondez à ce message, on lit tout.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    // Entreprises & écoles
+    { key: 'serieux-entreprise', cat: 'Entreprises & écoles', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez {{centre}}, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau réservé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction {{centre}}' },
+    { key: 'devis-groupe-ecole', cat: 'Entreprises & écoles', name: 'Sortie école / mouvement de jeunesse', subject: 'Votre sortie de groupe chez {{centre}}', body: 'Bonjour {{prenom}},\n\nPour une sortie d\'école ou de mouvement de jeunesse, les créneaux en semaine sont les plus calmes : le groupe a de la place et l\'équipe est disponible pour encadrer.\n\nDites-nous la date envisagée, l\'âge et le nombre d\'enfants : on vous prépare un devis clair.\n\nLa direction {{centre}}' },
+    // Offres & saisons
+    { key: 'promo-semaine', cat: 'Offres & saisons', name: 'Offre de la semaine', subject: 'Cette semaine chez {{centre}} : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe {{centre}}' },
+    { key: 'creux-semaine', cat: 'Offres & saisons', name: 'Jour calme en semaine', subject: 'Envie d\'une piste tranquille cette semaine ?', body: 'Bonjour {{prenom}},\n\nEn semaine, le centre est plus calme : pas d\'attente, tout le temps de jouer.\n\nRéservez votre créneau en ligne, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
+    { key: 'vacances-annonce', cat: 'Offres & saisons', name: 'Annonce vacances scolaires', subject: 'Les vacances arrivent, {{prenom}}', body: 'Bonjour {{prenom}},\n\nLes vacances scolaires approchent et les créneaux partent vite, surtout l\'après-midi.\n\nPensez à réserver à l\'avance en ligne : vous choisissez votre heure, c\'est réglé en une minute.\n\nL\'équipe {{centre}}' },
+    // Service client
+    { key: 'reponse-reclamation', cat: 'Service client', name: 'Réponse à une réclamation', subject: 'On vous répond, {{prenom}}', body: 'Bonjour {{prenom}},\n\nMerci d\'avoir pris le temps de nous écrire : ce que vous décrivez n\'est pas l\'expérience qu\'on veut offrir, et on vous présente nos excuses.\n\nVoici ce qu\'on vous propose : {{geste}}.\n\nOn espère vous revoir dans de meilleures conditions.\n\nLa direction {{centre}}' },
+    { key: 'avis-google', cat: 'Service client', name: 'Demande d\'avis Google', subject: 'Un petit mot sur votre visite ?', body: 'Bonjour {{prenom}},\n\nSi vous avez passé un bon moment chez nous, un avis nous aide énormément : ça prend trente secondes.\n\n[[bouton: Laisser un avis | {{lien_avis}}]]\n\nMerci, et à bientôt,\nL\'équipe {{centre}}' },
   ];
+
+  /* ── LE MOTEUR DE VARIABLES : une seule implémentation ───────────────────
+     Tout texte qui part MAINTENANT vers un destinataire concret (composeur,
+     réponse inbox, relance fiche client) passe par pv2FillVars : les variables
+     connues se remplissent, et l'envoi est BLOQUÉ tant qu'il reste une
+     accolade. Les séquences et automatiques, elles, GARDENT leurs {{…}} : le
+     serveur les résout à l'envoi, client par client. */
+  const PV2_VAR_LABELS = { prenom: 'Prénom', nom: 'Nom complet', centre: 'Nom du centre' };
+
+  function pv2CenterName() {
+    if (typeof window.staffCenterDisplayName === 'function') {
+      const name = window.staffCenterDisplayName();
+      if (name && name !== 'Centre actuel') return name;
+    }
+    return '';
+  }
+
+  function pv2VarContext(draft) {
+    const name = String(draft && draft.name || '').trim();
+    return {
+      prenom: name.split(/\s+/)[0] || '',
+      nom: name,
+      centre: pv2CenterName(),
+    };
+  }
+
+  function pv2FillVars(text, ctx) {
+    const unresolved = [];
+    const out = String(text || '').replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (match, key) => {
+      const value = ctx[key.toLowerCase()];
+      if (value) return value;
+      unresolved.push(key.toLowerCase());
+      return match;
+    });
+    return { text: out, unresolved: [...new Set(unresolved)] };
+  }
+
+  function pv2DraftUnresolved(draft) {
+    const ctx = pv2VarContext(draft);
+    return pv2FillVars(`${draft.subject || ''}\n${draft.body || ''}`, ctx).unresolved;
+  }
 
   const pv2Mail = {
     composerOpen: false, busy: false, aiBusy: false, aiTips: [],
     draft: { to: '', name: '', subject: '', body: '', identityId: '', templateRef: '', replyTo: null },
-    identities: [], templates: [], metaLoaded: false, metaLoading: false,
+    identities: [], templates: [], channel: {}, metaLoaded: false, metaLoading: false,
     analyzeOpen: false, analyzeBusy: false, analyzeDraft: { from: '', body: '' },
     replyDraft: {}, replyBusy: '', analysisOverride: {}, retryingId: '',
   };
@@ -1047,6 +1121,7 @@
       const payload = await apiRequest(`/api/ops?action=emailTemplates&centerId=${encodeURIComponent(state.adminCenterId || 'libramont')}`);
       pv2Mail.identities = payload.identities || [];
       pv2Mail.templates = payload.templates || [];
+      pv2Mail.channel = payload.channel || {};
       const def = pv2Mail.identities.find((i) => i.isDefault) || pv2Mail.identities[0];
       if (def && !pv2Mail.draft.identityId) pv2Mail.draft.identityId = String(def.id);
       pv2Mail.metaLoaded = true;
@@ -1092,24 +1167,240 @@
     if (field === 'to') {
       const rows = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
       const match = rows.find((r) => String(r.email || '').toLowerCase() === String(value).trim().toLowerCase());
-      if (match) pv2Mail.draft.name = match.name || '';
+      // Pas de correspondance = pas de nom : garder celui du client PRÉCÉDENT
+      // ferait écrire « Bonjour Marie » à quelqu'un d'autre.
+      pv2Mail.draft.name = match ? (match.name || '') : '';
     }
   };
 
-  // Suggestions destinataire : datalist native (clavier + zéro perte de focus).
-  function pv2ComposerSuggestions() {
-    const rows = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
-    return rows
-      .filter((r) => r.email)
-      .slice(0, 200)
-      .map((r) => `<option value="${esc(r.email)}">${esc(r.name || r.email)}</option>`)
-      .join('');
+  /* ── SÉLECTEUR DE DESTINATAIRE MAISON ────────────────────────────────────
+     Remplace la datalist native qui recevait jusqu'à 200 <option> : liste non
+     stylable, mal cadrée, sans recherche par nom ni contexte (symptôme « ça
+     bugue à la flèche » rapporté par le propriétaire). Ici : filtrage nom +
+     adresse pendant la frappe, 8 lignes maximum affichées (tient à 5000
+     clients), navigation clavier complète, et chaque ligne dit ce qui aide à
+     choisir : visites et dernière venue. Le menu est géré EN DIRECT dans le
+     DOM (jamais de re-rendu de page pendant la frappe : le focus survit). */
+  const pv2Combo = { open: false, index: -1, matches: [] };
+
+  function pv2ComboMatches(query) {
+    const rows = (typeof getStaffClientRows === 'function' ? getStaffClientRows() : []).filter((r) => r.email);
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return rows.slice(0, 8);
+    const starts = [];
+    const contains = [];
+    for (const r of rows) {
+      const name = String(r.name || '').toLowerCase();
+      const email = String(r.email || '').toLowerCase();
+      if (name.startsWith(q) || email.startsWith(q)) starts.push(r);
+      else if (name.includes(q) || email.includes(q)) contains.push(r);
+      if (starts.length >= 8) break;
+    }
+    return [...starts, ...contains].slice(0, 8);
   }
+
+  function pv2ComboList() { return document.getElementById('pv2ComboList'); }
+
+  function pv2ComboPaint() {
+    const list = pv2ComboList();
+    const input = document.getElementById('pv2ComposerTo');
+    if (!list || !input) return;
+    if (!pv2Combo.open || !pv2Combo.matches.length) {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      return;
+    }
+    list.innerHTML = pv2Combo.matches.map((r, i) => {
+      const meta = [];
+      const visits = Number(r.reservations) || 0;
+      if (visits) meta.push(`${visits} visite${visits > 1 ? 's' : ''}`);
+      if (r.lastVisitAgo) meta.push(r.lastVisitAgo);
+      return `<button type="button" role="option" id="pv2ComboOpt${i}" class="pv2-combo-opt${i === pv2Combo.index ? ' is-active' : ''}" aria-selected="${i === pv2Combo.index}"
+        onmousedown="event.preventDefault(); pv2ComboPick(${i});">
+        <span class="pv2-combo-id"><strong>${esc(r.name || r.email)}</strong><small>${esc(r.email)}</small></span>
+        ${meta.length ? `<span class="pv2-combo-meta">${esc(meta.join(' · '))}</span>` : ''}
+      </button>`;
+    }).join('');
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-activedescendant', pv2Combo.index >= 0 ? `pv2ComboOpt${pv2Combo.index}` : '');
+  }
+
+  window.pv2ComboInput = function (value) {
+    pv2ComposerField('to', value);
+    pv2Combo.open = true;
+    pv2Combo.index = -1;
+    pv2Combo.matches = pv2ComboMatches(value);
+    pv2ComboPaint();
+    pv2ComposerSyncHints();
+  };
+
+  window.pv2ComboFocus = function () {
+    pv2Combo.open = true;
+    pv2Combo.matches = pv2ComboMatches(pv2Mail.draft.to);
+    pv2ComboPaint();
+  };
+
+  window.pv2ComboBlur = function () {
+    // Le mousedown d'une option prévient le blur : ce délai ne sert que la
+    // sortie réelle du champ (Tab, clic ailleurs).
+    setTimeout(() => { pv2Combo.open = false; pv2ComboPaint(); }, 120);
+  };
+
+  window.pv2ComboKey = function (event) {
+    if (!pv2Combo.open || !pv2Combo.matches.length) {
+      if (event.key === 'ArrowDown') { pv2ComboFocus(); event.preventDefault(); }
+      return;
+    }
+    if (event.key === 'ArrowDown') { pv2Combo.index = Math.min(pv2Combo.index + 1, pv2Combo.matches.length - 1); pv2ComboPaint(); event.preventDefault(); }
+    else if (event.key === 'ArrowUp') { pv2Combo.index = Math.max(pv2Combo.index - 1, -1); pv2ComboPaint(); event.preventDefault(); }
+    else if (event.key === 'Enter') { if (pv2Combo.index >= 0) { pv2ComboPick(pv2Combo.index); event.preventDefault(); } }
+    else if (event.key === 'Escape') { pv2Combo.open = false; pv2ComboPaint(); }
+  };
+
+  window.pv2ComboPick = function (index) {
+    const row = pv2Combo.matches[index];
+    if (!row) return;
+    pv2Mail.draft.to = row.email;
+    pv2Mail.draft.name = row.name || '';
+    pv2Combo.open = false;
+    const input = document.getElementById('pv2ComposerTo');
+    if (input) { input.value = row.email; input.focus(); }
+    pv2ComboPaint();
+    pv2ComposerSyncHints();
+  };
+
+  /* ── BARRE D'OUTILS + APERÇU EN DIRECT ───────────────────────────────────
+     Le corps reste un textarea (fiabilité, sélection native, mobile) ; la mise
+     en forme passe par quatre marqueurs que le SERVEUR convertit en HTML
+     robuste (textToHtml, lib/ops-communications.js) : **gras**, _italique_,
+     « - » en début de ligne pour une liste, [texte](https://lien), et
+     [[bouton: Libellé | https://lien]] pour le bouton d'action. L'aperçu sous
+     le champ rend la MÊME grammaire, variables résolues, et surligne ce qui
+     reste à compléter. */
+  function pv2ApplyMarker(kind) {
+    const ta = document.getElementById('pv2ComposerBody');
+    if (!ta) return;
+    const start = ta.selectionStart || 0;
+    const end = ta.selectionEnd || 0;
+    const value = ta.value;
+    const selected = value.slice(start, end);
+    let insert = '';
+    let cursorFrom = start;
+    let cursorTo = end;
+    if (kind === 'bold') { insert = `**${selected || 'texte en gras'}**`; cursorFrom = start + 2; cursorTo = cursorFrom + (selected || 'texte en gras').length; }
+    else if (kind === 'italic') { insert = `_${selected || 'texte'}_`; cursorFrom = start + 1; cursorTo = cursorFrom + (selected || 'texte').length; }
+    else if (kind === 'list') {
+      const lines = (selected || 'premier point\ndeuxième point').split('\n');
+      insert = lines.map((l) => (l.trim() ? `- ${l.replace(/^- /, '')}` : l)).join('\n');
+      cursorFrom = start; cursorTo = start + insert.length;
+    } else if (kind === 'link') { const label = selected || 'le lien'; insert = `[${label}](https://)`; cursorFrom = start + label.length + 3; cursorTo = cursorFrom + 8; }
+    else if (kind === 'button') { insert = `${selected ? selected + '\n\n' : ''}[[bouton: Réserver en ligne | https://]]`; cursorFrom = start + insert.length - 11; cursorTo = start + insert.length - 2; }
+    ta.value = value.slice(0, start) + insert + value.slice(end);
+    pv2Mail.draft.body = ta.value;
+    ta.focus();
+    ta.setSelectionRange(cursorFrom, cursorTo);
+    pv2ComposerSyncHints();
+  }
+  window.pv2ApplyMarker = pv2ApplyMarker;
+
+  window.pv2InsertVar = function (key) {
+    const ta = document.getElementById('pv2ComposerBody');
+    if (!ta) return;
+    const start = ta.selectionStart || 0;
+    const token = `{{${key}}}`;
+    ta.value = ta.value.slice(0, start) + token + ta.value.slice(ta.selectionEnd || 0);
+    pv2Mail.draft.body = ta.value;
+    ta.focus();
+    ta.setSelectionRange(start + token.length, start + token.length);
+    pv2ComposerSyncHints();
+  };
+
+  // Miroir CLIENT de la grammaire serveur, pour l'aperçu seulement. Tout est
+  // échappé d'abord ; les variables résolues s'affichent, les manquantes
+  // ressortent en surbrillance d'alerte.
+  function pv2RenderEmailPreview(text, ctx) {
+    const esc2 = esc;
+    const lines = String(text || '').split('\n');
+    const blocks = [];
+    let bullets = [];
+    const inline = (rawLine) => {
+      let s = esc2(rawLine);
+      s = s.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, key) => {
+        const v = ctx[key.toLowerCase()];
+        return v ? `<span class="pv2-var-ok">${esc2(v)}</span>` : `<mark class="pv2-var-missing">{{${esc2(key)}}}</mark>`;
+      });
+      s = s.replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{0,500})\)/g, '<a>$1</a>');
+      s = s.replace(/\*\*([^*\n]{1,300}?)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/(^|[^\w&])_([^_\n]{1,300}?)_(?=$|[^\w])/g, '$1<em>$2</em>');
+      return s;
+    };
+    const flush = () => {
+      if (!bullets.length) return;
+      blocks.push(`<ul>${bullets.map((b) => `<li>${b}</li>`).join('')}</ul>`);
+      bullets = [];
+    };
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) { flush(); continue; }
+      const btn = line.match(/^\[\[bouton\s*:\s*([^|\]]{1,80})\|\s*(\S{0,500})\s*\]\]$/i);
+      if (btn) { flush(); blocks.push(`<span class="pv2-preview-btn">${inline(btn[1].trim())}</span>`); continue; }
+      if (/^- /.test(line)) { bullets.push(inline(line.slice(2))); continue; }
+      flush();
+      blocks.push(`<p>${inline(line)}</p>`);
+    }
+    flush();
+    return blocks.join('');
+  }
+
+  // Rafraîchit aperçu + rappel de variables SANS re-rendre la page (le rendu
+  // complet tuerait le focus en pleine frappe : même règle que pv2ComposerField).
+  function pv2ComposerSyncHints() {
+    const d = pv2Mail.draft;
+    const ctx = pv2VarContext(d);
+    const preview = document.getElementById('pv2ComposerPreview');
+    if (preview) preview.innerHTML = pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>';
+    const hint = document.getElementById('pv2ComposerVarsHint');
+    if (hint) {
+      const unresolved = pv2DraftUnresolved(d);
+      if (unresolved.length) {
+        const missName = !d.name && unresolved.some((k) => k === 'prenom' || k === 'nom');
+        hint.innerHTML = `À compléter avant l'envoi : ${unresolved.map((k) => `<code>{{${esc(k)}}}</code>`).join(' ')}${missName ? ' <span>(choisissez un client pour remplir le prénom)</span>' : ''}`;
+        hint.hidden = false;
+      } else {
+        hint.hidden = true;
+      }
+    }
+  }
+  window.pv2ComposerSyncHints = pv2ComposerSyncHints;
+
+  window.pv2ComposerServerPreview = async function () {
+    const d = pv2Mail.draft;
+    const ctx = pv2VarContext(d);
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'directEmailPreview',
+          centerId: state.adminCenterId || 'libramont',
+          subject: pv2FillVars(d.subject, ctx).text,
+          body: pv2FillVars(d.body, ctx).text,
+        }),
+      });
+      previewOpsEmailHtml(payload.html || '', payload.subject || 'Aperçu du mail');
+    } catch (error) {
+      toast(error.message || 'Aperçu indisponible.');
+    }
+  };
 
   window.pv2ComposerTemplate = function (ref) {
     pv2Mail.draft.templateRef = ref;
-    const firstName = String(pv2Mail.draft.name || '').trim().split(/\s+/)[0] || '';
-    const fill = (text) => String(text || '').replace(/\{\{\s*prenom\s*\}\}/gi, firstName || 'vous');
+    // Les variables RÉSOLUBLES (prénom, nom, centre) se remplissent dès le
+    // choix du modèle : le gérant voit le vrai texte. Les trous volontaires
+    // ({{offre}}, {{geste}}…) RESTENT visibles et bloquent l'envoi tant qu'ils
+    // ne sont pas remplis : c'est le moteur unique pv2FillVars qui décide.
+    const ctx = pv2VarContext(pv2Mail.draft);
+    const fill = (text) => pv2FillVars(text, ctx).text;
     if (ref.startsWith('starter:')) {
       const starter = PV2_STARTERS.find((s) => s.key === ref.slice(8));
       if (starter) { pv2Mail.draft.subject = fill(starter.subject); pv2Mail.draft.body = fill(starter.body); }
@@ -1117,6 +1408,19 @@
       const tpl = pv2Mail.templates.find((t) => String(t.id) === ref.slice(4));
       if (tpl) { pv2Mail.draft.subject = fill(tpl.subject || ''); pv2Mail.draft.body = fill(tpl.body || ''); }
     }
+    renderStaffEmailsPage();
+  };
+
+  // Un modèle fourni qui plaît devient un modèle À SOI : préremplit l'éditeur
+  // de la bibliothèque (Réglages → Modèles) avec le brouillon courant.
+  window.pv2ComposerSaveAsTemplate = function () {
+    const d = pv2Mail.draft;
+    if (!String(d.subject || '').trim() && !String(d.body || '').trim()) { toast('Rien à enregistrer : le message est vide.'); return; }
+    pv2Settings.open = true;
+    pv2Settings.view = 'templates';
+    const ref = String(d.templateRef || '');
+    const starter = ref.startsWith('starter:') ? PV2_STARTERS.find((s) => s.key === ref.slice(8)) : null;
+    pv2Settings.tplEditing = { id: null, name: starter ? `${starter.name} (ma version)` : '', category: 'marketing', subject: d.subject, body: d.body };
     renderStaffEmailsPage();
   };
 
@@ -1153,6 +1457,18 @@
     const to = String(d.to || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Adresse email invalide.'); return; }
     if (!d.subject.trim() || !d.body.trim()) { toast('Objet et message obligatoires.'); return; }
+    // LA GARDE DES VARIABLES : rien ne part avec une accolade. Les variables
+    // résolubles se remplissent ici (dernière valeur du destinataire incluse),
+    // le reste BLOQUE l'envoi et se montre sous le champ.
+    const ctx = pv2VarContext(d);
+    const filledSubject = pv2FillVars(d.subject, ctx);
+    const filledBody = pv2FillVars(d.body, ctx);
+    const unresolved = [...new Set([...filledSubject.unresolved, ...filledBody.unresolved])];
+    if (unresolved.length) {
+      pv2ComposerSyncHints();
+      toast(`Complétez d'abord : ${unresolved.map((k) => `{{${k}}}`).join(' · ')}`);
+      return;
+    }
     let scheduledAt = null;
     if (d.when === 'later') {
       if (!d.scheduledAt) { toast('Choisis la date et l\'heure d\'envoi.'); return; }
@@ -1173,8 +1489,8 @@
           centerId: state.adminCenterId || 'libramont',
           to,
           name: d.name || '',
-          subject: d.subject,
-          body: d.body,
+          subject: filledSubject.text,
+          body: filledBody.text,
           identityId: d.identityId || null,
           templateRef: d.templateRef || '',
           replyToCommunicationId: d.replyTo || null,
@@ -1262,6 +1578,10 @@
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { toast('Adresse de l\'expéditeur introuvable.'); return; }
     const draft = pv2InboxReplyDraft(row);
     if (!String(draft.subject || '').trim() || !String(draft.body || '').trim()) { toast('Objet et réponse obligatoires.'); return; }
+    // Même garde que le composeur : une réponse ne part jamais avec {{…}}.
+    const replyCtx = pv2VarContext({ name: pv2InboxAnalysis(row)?.clientName || '' });
+    const replyLeft = pv2FillVars(`${draft.subject}\n${draft.body}`, replyCtx).unresolved;
+    if (replyLeft.length) { toast(`Complétez d'abord : ${replyLeft.map((k) => `{{${k}}}`).join(' · ')}`); return; }
     pv2Mail.replyBusy = uid;
     renderStaffEmailsPage();
     try {
@@ -1272,8 +1592,8 @@
           centerId: state.adminCenterId || 'libramont',
           to,
           name: pv2InboxAnalysis(row)?.clientName || '',
-          subject: draft.subject,
-          body: draft.body,
+          subject: pv2FillVars(draft.subject, replyCtx).text,
+          body: pv2FillVars(draft.body, replyCtx).text,
           identityId: pv2Mail.draft.identityId || null,
           replyToCommunicationId: row.id || null,
         }),
@@ -2468,21 +2788,40 @@
     const identityOptions = pv2Mail.identities.length
       ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(d.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
       : '<option value="">Expéditeur par défaut</option>';
+    // Modèles groupés par moment commercial ; « Vos modèles » = ceux du centre
+    // (créés, dupliqués ou modifiés par l'équipe) : l'origine se lit d'un
+    // coup d'œil, comme demandé.
+    const groups = [];
+    for (const s of PV2_STARTERS) {
+      let g = groups.find((x) => x.label === s.cat);
+      if (!g) { g = { label: s.cat, items: [] }; groups.push(g); }
+      g.items.push(`<option value="starter:${s.key}"${d.templateRef === `starter:${s.key}` ? ' selected' : ''}>${esc(s.name)}</option>`);
+    }
     const templateOptions = [
       '<option value="">Partir de zéro…</option>',
-      ...PV2_STARTERS.map((s) => `<option value="starter:${s.key}"${d.templateRef === `starter:${s.key}` ? ' selected' : ''}>${esc(s.name)}</option>`),
-      ...pv2Mail.templates.map((t) => `<option value="tpl:${t.id}"${d.templateRef === `tpl:${t.id}` ? ' selected' : ''}>${esc(t.label || t.name || `Modèle ${t.id}`)}</option>`),
+      ...groups.map((g) => `<optgroup label="${esc(g.label)}">${g.items.join('')}</optgroup>`),
+      pv2Mail.templates.length
+        ? `<optgroup label="Vos modèles">${pv2Mail.templates.map((t) => `<option value="tpl:${t.id}"${d.templateRef === `tpl:${t.id}` ? ' selected' : ''}>${esc(t.label || t.name || `Modèle ${t.id}`)}</option>`).join('')}</optgroup>`
+        : '',
     ].join('');
+    const unresolved = pv2DraftUnresolved(d);
+    const missName = !d.name && unresolved.some((k) => k === 'prenom' || k === 'nom');
+    const aiOn = !!(pv2Mail.channel && pv2Mail.channel.aiConfigured);
+    const ctx = pv2VarContext(d);
     return `<section class="pv2-panel pv2-composer" data-pv2-mount="composer" aria-label="Nouveau message">
       <div class="pv2-panel-head has-sub">
-        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisissez le client (ou tapez une adresse), l'expéditeur, un modèle si vous voulez, et envoyez.</p></div>
+        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisissez le client, un modèle si vous voulez, écrivez : l'aperçu montre ce que le client recevra.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2CloseComposer()">Fermer</button>
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
-        <label class="pv2-composer-field pv2-composer-to"><span>À</span>
-          <input id="pv2ComposerTo" list="pv2ClientsList" value="${esc(d.to)}" placeholder="Nom ou adresse email du client…" oninput="pv2ComposerField('to', this.value)" autocomplete="off">
-          <datalist id="pv2ClientsList">${pv2ComposerSuggestions()}</datalist>
-        </label>
+        <div class="pv2-composer-field pv2-composer-to"><span id="pv2ComboLabel">À</span>
+          <div class="pv2-combo">
+            <input id="pv2ComposerTo" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="pv2ComboList" aria-labelledby="pv2ComboLabel"
+              data-pl-focus="emails.composer.to" value="${esc(d.to)}" placeholder="Nom ou adresse email du client…" autocomplete="off"
+              oninput="pv2ComboInput(this.value)" onfocus="pv2ComboFocus()" onblur="pv2ComboBlur()" onkeydown="pv2ComboKey(event)">
+            <div class="pv2-combo-list" id="pv2ComboList" role="listbox" aria-label="Clients correspondants" hidden></div>
+          </div>
+        </div>
         <label class="pv2-composer-field"><span>Expéditeur</span>
           <select onchange="pv2ComposerField('identityId', this.value)" aria-label="Adresse d'envoi">${identityOptions}</select>
         </label>
@@ -2499,14 +2838,28 @@
           </div>
         </div>
         <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-          <input id="pv2ComposerSubject" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value)">
+          <input id="pv2ComposerSubject" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value); pv2ComposerSyncHints();">
         </label>
-        <label class="pv2-composer-field pv2-composer-wide"><span>Message</span>
-          <textarea id="pv2ComposerBody" rows="8" placeholder="Bonjour…" oninput="pv2ComposerField('body', this.value)">${esc(d.body)}</textarea>
-        </label>
+        <div class="pv2-composer-field pv2-composer-wide">
+          <span>Message</span>
+          <div class="pv2-toolbar" role="toolbar" aria-label="Mise en forme">
+            <button type="button" class="pv2-tool" title="Gras" aria-label="Gras" onclick="pv2ApplyMarker('bold')"><strong>G</strong></button>
+            <button type="button" class="pv2-tool" title="Italique" aria-label="Italique" onclick="pv2ApplyMarker('italic')"><em>I</em></button>
+            <button type="button" class="pv2-tool" title="Liste à puces" aria-label="Liste à puces" onclick="pv2ApplyMarker('list')">•&#8201;•</button>
+            <button type="button" class="pv2-tool" title="Lien" aria-label="Insérer un lien" onclick="pv2ApplyMarker('link')">Lien</button>
+            <button type="button" class="pv2-tool" title="Bouton d'action dans le mail" aria-label="Insérer un bouton" onclick="pv2ApplyMarker('button')">Bouton</button>
+            <span class="pv2-toolbar-sep" aria-hidden="true"></span>
+            ${Object.entries(PV2_VAR_LABELS).map(([key, label]) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(label)}" onclick="pv2InsertVar('${key}')">${esc(label)}</button>`).join('')}
+          </div>
+          <textarea id="pv2ComposerBody" rows="8" placeholder="Bonjour…" oninput="pv2ComposerField('body', this.value); pv2ComposerSyncHints();">${esc(d.body)}</textarea>
+          <p class="pv2-vars-hint" id="pv2ComposerVarsHint" ${unresolved.length ? '' : 'hidden'}>${unresolved.length ? `À compléter avant l'envoi : ${unresolved.map((k) => `<code>{{${esc(k)}}}</code>`).join(' ')}${missName ? ' <span>(choisissez un client pour remplir le prénom)</span>' : ''}` : ''}</p>
+          <div class="pv2-mail-render" id="pv2ComposerPreview" aria-label="Aperçu du message">${pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>'}</div>
+        </div>
         ${pv2Mail.aiTips.length ? `<ul class="pv2-composer-tips">${pv2Mail.aiTips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
         <div class="pv2-composer-actions pv2-composer-wide">
-          <button type="button" class="pv2-btn" onclick="pv2ComposerImprove()" ${pv2Mail.aiBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.aiBusy ? 'Analyse…' : 'Améliorer par IA'}</button>
+          <button type="button" class="pv2-btn" onclick="pv2ComposerServerPreview()">Voir le mail final</button>
+          <button type="button" class="pv2-btn" onclick="pv2ComposerSaveAsTemplate()">Garder en modèle</button>
+          <button type="button" class="pv2-btn" onclick="pv2ComposerImprove()" ${pv2Mail.aiBusy ? 'disabled' : ''}>${ci('sparkles')}${pv2Mail.aiBusy ? 'Analyse…' : (aiOn ? 'Améliorer par IA' : 'Conseils d\'écriture')}</button>
           <span class="pv2-composer-spacer"></span>
           <button type="button" class="pv2-btn" onclick="pv2CloseComposer()">Annuler</button>
           <button type="button" class="pv2-btn primary" onclick="pv2ComposerSend()" ${pv2Mail.busy ? 'disabled' : ''}>${ci('send')}${pv2Mail.busy ? 'Envoi…' : 'Envoyer'}</button>

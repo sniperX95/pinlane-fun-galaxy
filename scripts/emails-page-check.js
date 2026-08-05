@@ -126,6 +126,9 @@ async function installMock(page) {
         if (b.action === 'improveEmailWithAi') {
           return J({ ok: true, mode: 'ia', tips: ['Objet un peu court : vise 30-60 caractères.'], subject: 'Sujet amélioré par IA', body: 'Corps amélioré par IA.' });
         }
+        if (b.action === 'directEmailPreview') {
+          return J({ ok: true, subject: b.subject || 'Aperçu', html: `<html><body><p>apercu serveur : ${b.subject || ''}</p></body></html>` });
+        }
         return J({ ok: true });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'automationSettings') {
@@ -459,30 +462,64 @@ async function main() {
     ok(resetState.last && resetState.last.key === 'birthday_j30' && resetState.last.reset === true, 'POST {key, reset:true}');
     ok(!resetState.modified, 'pilule « modifié » retirée après reset');
 
-    console.log('\n[COMPOSER] nouveau message : client, identité, modèle, envoi');
+    console.log('\n[COMPOSER] nouveau message : sélecteur maison PILOTÉ, modèle, envoi');
     await page.evaluate(() => {
       window.getStaffClientRows = () => [
-        { id: 'c1', name: 'Marie Dupont', email: 'marie@test.be' },
-        { id: 'c2', name: 'Lucas Petit', email: 'lucas@test.be' },
+        { id: 'c1', name: 'Marie Dupont', email: 'marie@test.be', reservations: 4, lastVisitAgo: 'il y a 12 jours' },
+        { id: 'c2', name: 'Lucas Petit', email: 'lucas@test.be', reservations: 2, lastVisitAgo: 'il y a 3 jours' },
+        { id: 'c3', name: 'Martin Duval', email: 'martin@test.be', reservations: 1, lastVisitAgo: 'il y a 60 jours' },
       ];
       [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].find((b) => /Nouveau message/.test(b.textContent)).click();
     });
     await page.waitForTimeout(500);
     const composer = await page.evaluate(() => ({
       open: !!document.querySelector('#staffEmailsPage .pv2-composer'),
-      datalist: document.querySelectorAll('#pv2ClientsList option').length,
-      hasMarie: [...document.querySelectorAll('#pv2ClientsList option')].some((o) => o.value === 'marie@test.be'),
+      combo: !!document.getElementById('pv2ComboList'),
+      noDatalist: !document.getElementById('pv2ClientsList'),
       identities: [...document.querySelectorAll('#staffEmailsPage .pv2-composer select')][0]?.options.length || 0,
+      toolbar: document.querySelectorAll('#staffEmailsPage .pv2-toolbar .pv2-tool').length,
+      preview: !!document.getElementById('pv2ComposerPreview'),
+      groups: [...document.querySelectorAll('#staffEmailsPage .pv2-composer optgroup')].map((g) => g.label),
+      starters: document.querySelectorAll('#staffEmailsPage .pv2-composer optgroup option').length,
     }));
     ok(composer.open, 'panneau composer ouvert');
-    ok(composer.datalist >= 2 && composer.hasMarie, `autocomplete clients (${composer.datalist} suggestions, marie@test.be présent)`);
+    ok(composer.combo && composer.noDatalist, 'sélecteur maison présent, la datalist native a disparu (contre-preuve)');
     ok(composer.identities === 2, `2 identités d'expéditeur (obtenu ${composer.identities})`);
-    await page.evaluate(() => {
-      const input = document.getElementById('pv2ComposerTo');
-      input.value = 'marie@test.be';
-      input.dispatchEvent(new Event('input'));
-      pv2ComposerTemplate('starter:relance-client');
-    });
+    ok(composer.toolbar >= 7, `barre d'outils : gras, italique, liste, lien, bouton + variables (${composer.toolbar} outils)`);
+    ok(composer.preview, 'aperçu en direct sous le champ message');
+    ok(composer.groups.length >= 5 && composer.groups.includes('Relancer') && composer.groups.includes('Service client'),
+      `modèles groupés par moment commercial (${composer.groups.join(' · ')})`);
+    ok(composer.starters >= 12, `bibliothèque fournie : ${composer.starters} modèles prêts (4 avant la refonte)`);
+
+    // PILOTAGE RÉEL du sélecteur : frappe, liste filtrée avec contexte,
+    // flèche + Entrée. Une assertion de présence ne prouverait rien : c'est
+    // précisément le composant qui « buguait à la flèche ».
+    await page.click('#pv2ComposerTo');
+    await page.keyboard.type('mar', { delay: 40 });
+    await page.waitForTimeout(200);
+    const comboOpen = await page.evaluate(() => ({
+      // Visibilité RENDUE, pas la propriété : un display qui bat [hidden] a
+      // déjà fait mentir ce test une fois (barre vide peinte sous le champ).
+      visible: getComputedStyle(document.getElementById('pv2ComboList')).display !== 'none',
+      options: [...document.querySelectorAll('#pv2ComboList .pv2-combo-opt strong')].map((s) => s.textContent),
+      meta: (document.querySelector('#pv2ComboList .pv2-combo-meta') || {}).textContent || '',
+      focusAlive: document.activeElement && document.activeElement.id === 'pv2ComposerTo',
+    }));
+    ok(comboOpen.visible && comboOpen.options.length === 2, `frappe « mar » → 2 clients proposés (${comboOpen.options.join(', ')})`);
+    ok(/visite/.test(comboOpen.meta) || /il y a/.test(comboOpen.meta), `chaque ligne porte du contexte utile (${comboOpen.meta})`);
+    ok(comboOpen.focusAlive, 'le focus reste dans le champ pendant la frappe (aucun re-rendu ne le tue)');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+    const picked = await page.evaluate(() => ({
+      value: document.getElementById('pv2ComposerTo').value,
+      name: pv2Mail.draft.name,
+      closed: getComputedStyle(document.getElementById('pv2ComboList')).display === 'none',
+    }));
+    ok(picked.value === 'marie@test.be' && picked.name === 'Marie Dupont', `flèche + Entrée sélectionne Marie (${picked.value}, ${picked.name})`);
+    ok(picked.closed, 'la liste se referme après la sélection');
+
+    await page.evaluate(() => { pv2ComposerTemplate('starter:relance-client'); });
     await page.waitForTimeout(300);
     const filled = await page.evaluate(() => ({
       subject: document.getElementById('pv2ComposerSubject').value,
@@ -490,6 +527,7 @@ async function main() {
     }));
     ok(/longtemps, Marie/.test(filled.subject), `modèle prérempli avec prénom substitué (${filled.subject})`);
     ok(/Bonjour Marie/.test(filled.body), 'corps prérempli avec {{prenom}} → Marie');
+    ok(/Fun Galaxy Libramont/.test(filled.body), 'la signature porte le NOM DU CENTRE résolu, plus aucun centre codé en dur');
     await page.evaluate(() => pv2ComposerSend());
     await page.waitForTimeout(400);
     const sent = await page.evaluate(() => ({
@@ -499,6 +537,108 @@ async function main() {
     ok(sent.post && sent.post.to === 'marie@test.be' && /longtemps/.test(sent.post.subject) && sent.post.identityId === '1', 'POST sendDirectEmail {to, subject, identityId défaut}');
     ok(sent.post.replyToCommunicationId === null, 'pas de replyTo pour un message libre');
     ok(sent.closed, 'composer fermé après envoi');
+
+    /* ══ VARIABLES BLOQUANTES : rien ne part avec une accolade ══════════════
+       Bug réel du 2026-08-05 : fill() ne remplaçait QUE {{prenom}}, le modèle
+       « Offre de la semaine » partait chez le client avec « {{offre}} » en
+       toutes lettres. La preuve est comportementale ET contre-prouvée : le
+       même envoi passe une fois les trous remplis. */
+    console.log('\n[VARIABLES] l\'envoi est bloqué tant qu\'un {{…}} n\'est pas rempli');
+    const varsBlocked = await page.evaluate(async () => {
+      pv2OpenComposer({ to: 'marie@test.be', name: 'Marie Dupont' });
+      await new Promise((r) => setTimeout(r, 200));
+      pv2ComposerTemplate('starter:promo-semaine');
+      await new Promise((r) => setTimeout(r, 200));
+      const before = window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').length;
+      pv2ComposerSend();
+      await new Promise((r) => setTimeout(r, 300));
+      const after = window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').length;
+      const hint = document.getElementById('pv2ComposerVarsHint');
+      return {
+        stillOpen: !!document.querySelector('#staffEmailsPage .pv2-composer'),
+        posted: after - before,
+        hintShown: !!hint && !hint.hidden,
+        hintText: hint ? hint.textContent : '',
+        marks: document.querySelectorAll('#pv2ComposerPreview .pv2-var-missing').length,
+        subject: document.getElementById('pv2ComposerSubject').value,
+      };
+    });
+    ok(/\{\{offre\}\}/.test(varsBlocked.subject), `le trou {{offre}} du modèle est VISIBLE dans l'objet (${varsBlocked.subject.slice(0, 50)}…)`);
+    ok(varsBlocked.posted === 0, `AUCUN sendDirectEmail n'est parti avec une variable non remplie (${varsBlocked.posted} envoi)`);
+    ok(varsBlocked.stillOpen, 'le composer reste ouvert pour corriger');
+    ok(varsBlocked.hintShown && /offre/.test(varsBlocked.hintText), `le rappel nomme ce qui manque (${varsBlocked.hintText.trim().slice(0, 60)})`);
+    ok(varsBlocked.marks >= 3, `l'aperçu surligne chaque variable manquante (${varsBlocked.marks} marquées : offre, date_debut, date_fin)`);
+    const varsPassed = await page.evaluate(async () => {
+      pv2ComposerField('subject', 'Cette semaine : une partie offerte des 2 parties');
+      pv2ComposerField('body', 'Bonjour Marie,\n\nCette semaine on vous gate : **une partie offerte** des la deuxieme partie jouee.\n\n- valable du lundi au jeudi\n- sur reservation en ligne\n\n[En profiter](https://reservation.test)\n\nL\'equipe Fun Galaxy Libramont');
+      pv2ComposerSend();
+      await new Promise((r) => setTimeout(r, 300));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').slice(-1)[0];
+      return { post, closed: !document.querySelector('#staffEmailsPage .pv2-composer') };
+    });
+    ok(varsPassed.post && !/\{\{/.test(varsPassed.post.subject + varsPassed.post.body), 'CONTRE-PREUVE : trous remplis, le MÊME envoi part, zéro accolade dans ce qui est envoyé');
+    ok(varsPassed.closed, 'composer fermé après l\'envoi corrigé');
+
+    /* ══ TENUE À L'ÉCHELLE : 5000 clients dans le sélecteur ═════════════════ */
+    console.log('\n[COMBO 5000] le sélecteur tient à 5000 clients');
+    const bigCombo = await page.evaluate(async () => {
+      window.getStaffClientRows = () => Array.from({ length: 5000 }, (_, i) => ({
+        id: `c${i}`, name: `Client ${i}`, email: `client${i}@test.be`, reservations: i % 9, lastVisitAgo: 'il y a ' + (i % 90) + ' jours',
+      }));
+      pv2OpenComposer({});
+      await new Promise((r) => setTimeout(r, 200));
+      const t0 = performance.now();
+      pv2ComboInput('client49');
+      const elapsed = performance.now() - t0;
+      const options = document.querySelectorAll('#pv2ComboList .pv2-combo-opt').length;
+      pv2CloseComposer();
+      await new Promise((r) => setTimeout(r, 150));
+      return { elapsed: Math.round(elapsed * 10) / 10, options };
+    });
+    ok(bigCombo.options > 0 && bigCombo.options <= 8, `jamais plus de 8 lignes affichées (obtenu ${bigCombo.options})`);
+    ok(bigCombo.elapsed < 120, `filtrage instantané sur 5000 clients (${bigCombo.elapsed} ms)`);
+
+    /* ══ APERÇU SERVEUR : le mail FINAL, rendu par le même chemin que l'envoi ══ */
+    console.log('\n[APERÇU FINAL] variables résolues, iframe sandboxée');
+    const finalPreview = await page.evaluate(async () => {
+      window.getStaffClientRows = () => [{ id: 'c1', name: 'Marie Dupont', email: 'marie@test.be' }];
+      pv2OpenComposer({ to: 'marie@test.be', name: 'Marie Dupont' });
+      await new Promise((r) => setTimeout(r, 200));
+      pv2ComposerField('subject', 'Bonjour {{prenom}}');
+      pv2ComposerField('body', 'Un mot pour {{prenom}} du centre {{centre}}.');
+      pv2ComposerServerPreview();
+      await new Promise((r) => setTimeout(r, 350));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'directEmailPreview').slice(-1)[0];
+      const overlay = document.getElementById('emailPreviewOverlay');
+      const frame = overlay ? overlay.querySelector('iframe') : null;
+      const out = { post, overlay: !!overlay, sandboxed: frame ? frame.getAttribute('sandbox') === '' : false };
+      if (typeof closeEmailPreview === 'function') closeEmailPreview();
+      pv2CloseComposer();
+      await new Promise((r) => setTimeout(r, 150));
+      return out;
+    });
+    ok(finalPreview.post && finalPreview.post.subject === 'Bonjour Marie' && !/\{\{/.test(finalPreview.post.body),
+      `l'aperçu part avec les variables RÉSOLUES (« ${finalPreview.post && finalPreview.post.subject} »)`);
+    ok(finalPreview.overlay && finalPreview.sandboxed, 'rendu dans l\'iframe sandboxée, jamais injecté dans la page');
+
+    // « Garder en modèle » : un modèle fourni retouché devient un modèle À SOI
+    // (préremplit l'éditeur de la bibliothèque, chemin saveEmailTemplate déjà
+    // testé plus haut). Un bouton affiché doit faire quelque chose.
+    const keepAsTpl = await page.evaluate(async () => {
+      pv2OpenComposer({ to: 'marie@test.be', name: 'Marie Dupont' });
+      await new Promise((r) => setTimeout(r, 200));
+      pv2ComposerTemplate('starter:relance-client');
+      await new Promise((r) => setTimeout(r, 200));
+      [...document.querySelectorAll('#staffEmailsPage .pv2-composer button')].find((b) => /Garder en modèle/.test(b.textContent)).click();
+      await new Promise((r) => setTimeout(r, 250));
+      const editing = pv2Settings.tplEditing;
+      const out = { open: pv2Settings.open, view: pv2Settings.view, name: editing ? editing.name : '', subject: editing ? editing.subject : '' };
+      pv2Settings.tplEditing = null; pv2Settings.open = false; pv2CloseComposer();
+      await new Promise((r) => setTimeout(r, 150));
+      return out;
+    });
+    ok(keepAsTpl.open && keepAsTpl.view === 'templates' && /ma version/.test(keepAsTpl.name) && /longtemps/.test(keepAsTpl.subject),
+      `« Garder en modèle » ouvre la bibliothèque préremplie (« ${keepAsTpl.name} », objet repris)`);
 
     console.log('\n[INBOX] pipe Reçus → analyse → réponse 1-clic');
     await page.evaluate(() => pv2EmailFilter('inbound'));

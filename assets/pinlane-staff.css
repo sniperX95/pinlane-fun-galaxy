@@ -9227,7 +9227,9 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-head-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .crm-head-row h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; overflow-wrap: anywhere; }
 .crm-head-badges { display: inline-flex; gap: 5px; flex-wrap: wrap; }
-.crm-head-contact { display: flex; flex-direction: column; gap: 3px; }
+/* Contacts en LIGNE : deux liens empilés creusaient la tête de fiche de 20 px
+   pour deux informations qui tiennent côte à côte. */
+.crm-head-contact { display: flex; flex-direction: row; flex-wrap: wrap; gap: 3px 14px; }
 .crm-contact-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); text-decoration: none; min-width: 0; }
 .crm-contact-link:hover { color: var(--text); text-decoration: underline; }
 .crm-contact-link .pv2-ico { width: 13px; height: 13px; opacity: .65; flex: 0 0 auto; }
@@ -9251,7 +9253,14 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .crm-insight.tone-warn, .crm-insight.tone-warn strong { color: var(--warning); }
 .crm-insight.tone-success { color: var(--success); }
 .crm-insight.tone-accent strong { color: var(--accent-strong); }
-.crm-next-body { display: flex; flex-direction: column; gap: 2px; }
+/* Prochaine venue : UNE surface cliquable qui ouvre la réservation. Remplace
+   les quatre puces de prépa (Formule/Joueurs/Contact/Paiement) qui occupaient
+   deux lignes sans déclencher d'action ici (demande du propriétaire). */
+.crm-next-open { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; margin: 0; background: transparent; border: 1px solid var(--line); border-radius: var(--radius-md); cursor: pointer; font: inherit; color: inherit; transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
+.crm-next-open:hover { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); border-color: var(--line-strong); }
+.crm-next-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.crm-next-cta { flex: none; font-size: 11.5px; font-weight: 600; color: var(--accent-strong); white-space: nowrap; }
+.crm-next-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .crm-next-body strong { font-size: 14px; font-weight: 600; color: var(--text); }
 .crm-next-body span { font-size: 12px; color: var(--muted); }
 .crm-kv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; }
@@ -10307,6 +10316,46 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .pv2-composer-tips { grid-column: 1 / -1; margin: 0; padding: 8px 12px 8px 26px; font-size: 12px; color: var(--muted); background: var(--subtle); border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 3px; }
 .pv2-composer-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pv2-composer-spacer { flex: 1; }
+
+/* ── Composeur : sélecteur de destinataire maison (remplace la datalist) ──
+   Menu détaché sous le champ, 8 lignes max, entièrement clavier. */
+.pv2-combo { position: relative; }
+.pv2-combo-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40; display: flex; flex-direction: column; padding: 4px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-lg, 0 12px 32px rgba(0, 0, 0, .16)); max-height: 320px; overflow: auto; }
+/* `display: flex` bat le [hidden] de l'agent utilisateur : sans cette règle,
+   la liste VIDE restait peinte en barre fine sous le champ (vu sur capture le
+   2026-08-05, invisible au gate qui lisait la propriété et non le rendu). */
+.pv2-combo-list[hidden] { display: none; }
+.pv2-combo-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; font: inherit; color: inherit; }
+.pv2-combo-opt:hover, .pv2-combo-opt.is-active { background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
+.pv2-combo-opt.is-active { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pv2-combo-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pv2-combo-id strong { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv2-combo-id small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv2-combo-meta { flex: none; font-size: 11px; color: var(--faint); white-space: nowrap; }
+
+/* ── Composeur : barre d'outils de mise en forme + variables ── */
+.pv2-toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 4px; background: var(--subtle); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.pv2-toolbar + textarea { border-top-left-radius: 0; border-top-right-radius: 0; }
+.pv2-tool { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 26px; padding: 0 8px; background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-size: 12px; color: var(--muted); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.pv2-tool:hover { background: var(--surface); color: var(--text); }
+.pv2-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pv2-tool-var { font-size: 11px; border: 1px dashed var(--line-strong); }
+.pv2-toolbar-sep { width: 1px; height: 16px; background: var(--line-strong); margin: 0 4px; }
+
+/* ── Composeur : rappel de variables + aperçu en direct ── */
+.pv2-vars-hint { margin: 6px 0 0; padding: 7px 10px; font-size: 12px; color: var(--warning); background: var(--warning-soft); border-radius: var(--radius-md); }
+.pv2-vars-hint code { font-family: var(--font-data); font-size: 11.5px; }
+.pv2-vars-hint span { color: var(--muted); }
+.pv2-mail-render { margin-top: 8px; padding: 12px 14px; background: var(--subtle); border: 1px solid var(--line); border-radius: var(--radius-md); font-size: 13px; line-height: 1.6; color: var(--text); max-height: 240px; overflow: auto; }
+.pv2-mail-render p { margin: 0 0 10px; }
+.pv2-mail-render p:last-child { margin-bottom: 0; }
+.pv2-mail-render ul { margin: 0 0 10px; padding-left: 20px; }
+.pv2-mail-render a { color: var(--accent-strong); font-weight: 600; text-decoration: underline; cursor: default; }
+.pv2-mail-render .pv2-preview-btn { display: inline-flex; align-items: center; height: 30px; padding: 0 16px; margin: 2px 0 10px; border-radius: var(--radius-full); background: var(--accent); color: var(--accent-contrast); font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+.pv2-mail-render .pv2-preview-empty { color: var(--faint); }
+.pv2-var-ok { border-bottom: 1px dashed var(--line-strong); }
+.pv2-var-missing { background: var(--warning-soft); color: var(--warning); font-family: var(--font-data); font-size: 12px; padding: 0 3px; border-radius: 3px; }
+
 @media (max-width: 900px) { .pv2-composer-grid { grid-template-columns: 1fr; } }
 
 /* ── Emails v3 : boîte de réception (analyse + réponse proposée) ── */

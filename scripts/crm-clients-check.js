@@ -275,7 +275,7 @@ async function main() {
     ok(stats.some((t) => /À venir 7 j/.test(t)), 'stat « À venir 7 j » présente');
     ok(stats.some((t) => /Demandes sur mesure/.test(t) && /1/.test(t)), 'stat « Demandes sur mesure » compte le lead en attente');
 
-    console.log('\n[FICHE] fiche KISS : 3 chiffres, prochaine venue + checklist, contacts cliquables');
+    console.log('\n[FICHE] fiche KISS : 3 chiffres, prochaine venue cliquable, contacts cliquables');
     await page.evaluate(() => { setStaffClientSegment('tous'); });
     await page.waitForTimeout(200);
     await page.evaluate(() => {
@@ -289,7 +289,10 @@ async function main() {
         name: /Marie Dupont/.test(f?.textContent || ''),
         kpis: f ? f.querySelectorAll('.crm-kpi').length : 0,
         next: !!f?.querySelector('.crm-next'),
+        // CONTRE-PREUVE (demande proprio 2026-08-05) : les puces de prépa ont
+        // quitté la fiche. La checklist reste testée dans « À venir » plus haut.
         nextChecks: f ? f.querySelectorAll('.crm-next .groups-check-toggle').length : 0,
+        nextOpen: !!f?.querySelector('.crm-next .crm-next-open'),
         tel: !!f?.querySelector('a[href^="tel:"]'),
         mailto: !!f?.querySelector('a[href^="mailto:"]'),
         history: f ? f.querySelectorAll('details.crm-hist').length : 0,
@@ -300,7 +303,24 @@ async function main() {
     });
     ok(fiche.name, 'fiche de Marie affichée');
     ok(fiche.kpis === 3, `3 chiffres seulement (obtenu ${fiche.kpis})`);
-    ok(fiche.next && fiche.nextChecks >= 3, `bloc Prochaine venue avec checklist (${fiche.nextChecks} items)`);
+    ok(fiche.next && fiche.nextChecks === 0, `bloc Prochaine venue SANS puces de prépa (obtenu ${fiche.nextChecks}, la checklist vit dans « À venir »)`);
+    ok(fiche.nextOpen, 'la prochaine venue est un bouton qui ouvre la réservation');
+    // COMPORTEMENT, pas présence : le clic ouvre bien la fiche de la résa
+    // future de Marie (POS détail : state.selectedRes porte son id).
+    const nextOpened = await page.evaluate(() => {
+      document.querySelector('#staffClientsPage .crm-next .crm-next-open').click();
+      const overlay = document.getElementById('posOverlay');
+      return {
+        id: state.selectedRes ? state.selectedRes.id : null,
+        tab: state.activeTab,
+        overlayVisible: !!overlay && !overlay.classList.contains('hidden'),
+      };
+    });
+    ok(nextOpened.id === 7003 && nextOpened.tab === 'details' && nextOpened.overlayVisible, `le clic ouvre la réservation future (id ${nextOpened.id}, overlay ${nextOpened.overlayVisible ? 'affiché' : 'ABSENT'})`);
+    // Fermeture par le chemin RÉEL de l'app (closePos) : sans elle, l'overlay
+    // resterait posé sur tout le reste du test et sur chaque capture.
+    await page.evaluate(() => { closePos(); renderStaffClientsPage(); });
+    await page.waitForTimeout(250);
     ok(fiche.tel && fiche.mailto, 'téléphone et email cliquables (tel:/mailto:)');
     ok(fiche.history >= 3, `historique dépliable (${fiche.history} résas)`);
     ok(fiche.comms && fiche.resend, 'messages envoyés + Renvoyer présents');
@@ -370,14 +390,39 @@ async function main() {
     });
     ok(sortInfo.hadTh && sortInfo.before !== sortInfo.after, 'clic en-tête change le tri');
 
-    // [SHOT] captures dark des 4 segments + fiche
+    // [SHOT] captures des 4 segments + fiche. Même règle que le gate emails :
+    // setStaffTheme() est le SEUL chemin qui pose data-theme, et le clair + le
+    // mobile doivent être REGARDÉS, pas supposés.
     if (process.env.CRM_SHOT) {
       const shotDir = process.env.CRM_SHOT;
+      // Les toasts « nouvelle réservation » de la fixture s'empilent sur le
+      // panneau fiche : on les retire des CAPTURES (pas des assertions).
+      await page.evaluate(() => { const n = document.getElementById('newResNotifs'); if (n) n.remove(); });
       for (const seg of ['tous', 'avenir', 'relancer', 'vip']) {
         await page.evaluate((s) => { state.staffClientSegment = s; save(); renderStaffClientsPage(); }, seg);
         await page.waitForTimeout(300);
         await page.screenshot({ path: `${shotDir}/crm-fusion-${seg}.png`, clip: { x: 0, y: 0, width: 1400, height: 800 } });
       }
+      // Fiche de MARIE pour les captures : c'est elle qui a une prochaine
+      // venue, donc le bloc « Prochaine venue » se voit au lieu d'être supposé.
+      await page.evaluate(() => {
+        state.staffClientSegment = 'tous';
+        const marie = getStaffClientRows().find((r) => /Marie/.test(r.name || ''));
+        if (marie) state.staffSelectedClientId = marie.id;
+        save(); renderStaffClientsPage();
+      });
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate((t) => { setStaffTheme(t); }, theme);
+        await page.waitForTimeout(350);
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: `${shotDir}/crm-fiche-${theme}-desktop.png`, fullPage: false });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: `${shotDir}/crm-fiche-${theme}-mobile.png`, fullPage: true });
+        await page.setViewportSize({ width: 1400, height: 900 });
+      }
+      await page.evaluate(() => { setStaffTheme('dark'); });
     }
 
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); }

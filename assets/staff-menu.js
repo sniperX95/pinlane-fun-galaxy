@@ -350,6 +350,9 @@
   function centerDisplayName(center = getSelectedCenter()) {
     return center?.name || center?.label || 'Centre actuel';
   }
+  // Expose au reste de la console : c'est la SEULE source du nom lisible du
+  // centre courant (le composeur email s'en sert pour la variable {{centre}}).
+  window.staffCenterDisplayName = () => centerDisplayName();
 
   function getCurrentSession() {
     try {

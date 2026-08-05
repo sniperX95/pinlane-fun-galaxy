@@ -408,14 +408,38 @@ async function main() {
       return {
         open: !!edit,
         placeholder: edit ? edit.querySelector('input').placeholder : '',
-        hasVars: edit ? /\{\{prenom\}\}/.test(edit.textContent) : false,
+        rawBraces: edit ? /\{\{[a-z_]+\}\}/.test((edit.querySelector('.pv2-varbar') || {}).textContent || '') : true,
+        varChips: edit ? [...edit.querySelectorAll('.pv2-varbar .pv2-tool-var')].map((b) => b.textContent) : [],
+        mirror: edit ? !!edit.querySelector('#mkAutoMirror') : false,
         timingOptions: edit ? edit.querySelectorAll('select option').length : 0,
       };
     });
     ok(editor.open, 'éditeur inline ouvert');
     ok(/anniversaire approche/i.test(editor.placeholder), `placeholder = texte par défaut (${editor.placeholder.slice(0, 30)}…)`);
-    ok(editor.hasVars, 'variables {{prenom}}… documentées');
+    ok(editor.varChips.length >= 3 && editor.varChips.includes('Prénom') && !editor.rawBraces,
+      `les variables sont des JETONS cliquables en français, plus des accolades (${editor.varChips.join(' · ')})`);
+    ok(editor.mirror, 'le miroir à halo est posé sous la zone de frappe de l\'éditeur');
     ok(editor.timingOptions >= 5, `timing en libellés FR (${editor.timingOptions} options)`);
+    // COMPORTEMENT : cliquer un jeton insère la variable AU CURSEUR et met le
+    // brouillon à jour (chaîne oninput réelle, pas un cas spécial).
+    const chipInsert = await page.evaluate(async () => {
+      const ta = document.getElementById('mkAutoBody');
+      ta.value = 'Bonjour , à bientôt';
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.setSelectionRange(8, 8);
+      [...document.querySelectorAll('#staffEmailsPage .pv2-varbar .pv2-tool-var')].find((b) => b.textContent === 'Prénom').click();
+      await new Promise((r) => setTimeout(r, 150));
+      return { value: document.getElementById('mkAutoBody').value, glow: document.querySelectorAll('#mkAutoMirror .pv2-glow').length };
+    });
+    ok(chipInsert.value === 'Bonjour {{prenom}}, à bientôt', `le jeton s'insère au curseur (obtenu « ${chipInsert.value} »)`);
+    ok(chipInsert.glow >= 1, 'et le halo s\'allume immédiatement dans la zone de frappe');
+    // Nettoyage : le corps écrit pour la preuve ne doit pas polluer le test
+    // d'enregistrement qui suit (il vérifie que SEUL l'objet modifié part).
+    await page.evaluate(() => {
+      const ta = document.getElementById('mkAutoBody');
+      ta.value = '';
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     await page.evaluate(() => {
       pv2AutoEditField('subject', 'Sujet perso anniversaire');
       pv2AutoEditSave('birthday_j30');
@@ -508,6 +532,8 @@ async function main() {
     });
     ok(composer.inBody && composer.open, 'le composeur vit dans une SURCOUCHE montée sur document.body');
     ok(!composer.inPage, 'CONTRE-PREUVE : plus aucun composeur dans la page (les re-rendus ne peuvent plus le toucher)');
+    ok(await page.evaluate(() => document.documentElement.classList.contains('pv2-lock') && getComputedStyle(document.body).overflow === 'hidden'),
+      'la page derrière est VERROUILLÉE : la molette ne peut plus la faire défiler sous la surcouche (bug vidéo du 2026-08-06)');
     ok(composer.combo && composer.noDatalist, 'sélecteur maison présent, la datalist native a disparu (contre-preuve)');
     ok(composer.identities === 2, `2 identités d'expéditeur (obtenu ${composer.identities})`);
     ok(composer.toolbar >= 7, `barre d'outils : gras, italique, liste, lien, bouton + variables (${composer.toolbar} outils)`);

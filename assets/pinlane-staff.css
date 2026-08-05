@@ -10279,15 +10279,17 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    invisible, et elles depensaient l'ambre que cette page reserve a l'ATTENTE.
    Couleur = sens, sinon rien : le markup et la regle partent ensemble. */
 .mk-auto-grid { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); }
-.mk-auto { display: grid; grid-template-columns: minmax(170px, 230px) minmax(0, 1fr) max-content max-content 40px; grid-template-areas: "title desc stats edit switch" "preview desc stats edit switch" "editor editor editor editor editor"; align-items: center; column-gap: var(--space-4); row-gap: 2px; padding: 12px var(--space-4); background: var(--surface); border: 0; border-top: 1px solid var(--line); }
+.mk-auto { display: grid; grid-template-columns: minmax(170px, 230px) minmax(0, 1fr) max-content max-content max-content 40px; grid-template-areas: "title desc stats voir edit switch" "editor editor editor editor editor editor"; align-items: center; column-gap: var(--space-4); row-gap: 2px; padding: 12px var(--space-4); background: var(--surface); border: 0; border-top: 1px solid var(--line); }
 .mk-auto-grid > .mk-auto:first-child { border-top: 0; }
 .mk-auto-head, .mk-auto-foot { display: contents; }
-.mk-auto-head strong { grid-area: title; font-size: 13.5px; font-weight: 600; align-self: end; }
+.mk-auto-head strong { grid-area: title; font-size: 13.5px; font-weight: 600; }
 .mk-auto-head .mk-switch { grid-area: switch; justify-self: end; }
 .mk-auto-desc { grid-area: desc; margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-.mk-auto-preview { grid-area: preview; align-self: start; }
-.mk-auto-preview summary { font-size: 11.5px; color: var(--faint); cursor: pointer; }
-.mk-auto-preview p { margin: 6px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
+/* « Voir le mail » vit dans SA colonne, aligné avec Modifier sur toutes les
+   lignes (capture proprio 2026-08-06 : il flottait sous le titre). */
+button.mk-auto-preview { grid-area: voir; white-space: nowrap; font-size: 12px; }
+details.mk-auto-preview { grid-area: voir; align-self: center; }
+.mk-auto-preview summary { font-size: 11.5px; color: var(--faint); cursor: pointer; white-space: nowrap; }
 .mk-auto-stats { grid-area: stats; margin: 0; padding: 0; font-size: 11.5px; color: var(--faint); white-space: nowrap; }
 .mk-auto-edit-btn { grid-area: edit; }
 .mk-auto-edit { grid-area: editor; }
@@ -10297,9 +10299,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* Sous 900 px, la ligne redevient une carte empilée : cinq colonnes ne
    tiennent pas sur un écran de poche. */
 @media (max-width: 900px) {
-  .mk-auto { grid-template-columns: minmax(0, 1fr) 40px; grid-template-areas: "title switch" "desc desc" "preview preview" "stats stats" "edit edit" "editor editor"; row-gap: 6px; }
-  .mk-auto-head strong { align-self: center; }
-  .mk-auto-edit-btn { justify-self: start; }
+  .mk-auto { grid-template-columns: minmax(0, 1fr) 40px; grid-template-areas: "title switch" "desc desc" "voir voir" "stats stats" "edit edit" "editor editor"; row-gap: 6px; }
+  .mk-auto-edit-btn, button.mk-auto-preview { justify-self: start; }
 }
 .mk-auto-fail { color: var(--danger); }
 .mk-switch { position: relative; width: 40px; height: 22px; border-radius: var(--radius-full); border: 1px solid var(--line-strong); background: var(--subtle); cursor: pointer; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); flex-shrink: 0; }
@@ -10402,7 +10403,9 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* ── LE COMPOSEUR EN SURCOUCHE (2026-08-06) ────────────────────────────────
    Monté dans document.body : les re-rendus de la page ne peuvent plus fermer
    ses menus (« j'appuie sur modèle, ça s'affiche une seconde puis ça part »). */
-.pv2-mail-overlay { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px 16px; background: rgba(0, 0, 0, 0.46); overflow: auto; }
+.pv2-mail-overlay { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px 16px; background: rgba(0, 0, 0, 0.46); overflow: auto; overscroll-behavior: contain; }
+/* Surcouche ouverte = page figée : la molette ne fait plus défiler le fond. */
+.pv2-lock, .pv2-lock body { overflow: hidden; }
 .pv2-mail-overlay.hidden { display: none; }
 .pv2-mail-overlay .pv2-composer { width: min(980px, 100%); max-height: 92vh; overflow: auto; margin: 0; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35); }
 .pv2-mail-overlay .pv2-composer.pv2-mount { animation: pv2OverlayIn 0.28s var(--ease); }
@@ -10439,6 +10442,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .pv2-editor { position: relative; }
 .pv2-editor-mirror { position: absolute; inset: 0; padding: 8px 10px; font-family: inherit; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; overflow: hidden; color: transparent; pointer-events: none; border: 1px solid transparent; border-radius: 0 0 var(--radius-md) var(--radius-md); }
 .pv2-editor textarea { position: relative; z-index: 1; background: transparent; caret-color: var(--text); }
+/* Variante compacte des éditeurs de séquences/modèles (12,5px, padding 9px). */
+.pv2-editor-sm .pv2-editor-mirror { padding: 8px 9px; font-size: 12.5px; border-radius: var(--radius-md); }
+.pv2-varbar { margin-bottom: 6px; border-radius: var(--radius-md); }
+.pv2-varbar-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); margin: 0 4px 0 4px; }
 .pv2-glow { border-radius: 5px; background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 22%, transparent); }
 .pv2-glow.is-fill { background: color-mix(in srgb, var(--warning) 22%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 14%, transparent), 0 0 12px color-mix(in srgb, var(--warning) 24%, transparent); }
 

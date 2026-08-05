@@ -1071,6 +1071,46 @@
      accolade. Les séquences et automatiques, elles, GARDENT leurs {{…}} : le
      serveur les résout à l'envoi, client par client. */
   const PV2_VAR_LABELS = { prenom: 'Prénom', nom: 'Nom complet', centre: 'Nom du centre' };
+  // Libellés pour TOUTES les variables que les éditeurs (séquences,
+  // automatiques, modèles) peuvent proposer : les jetons portent des mots, les
+  // accolades restent une écriture interne.
+  const PV2_VAR_LABELS_ALL = { ...PV2_VAR_LABELS, date: 'Date', heure: 'Heure', formule: 'Formule', pax: 'Joueurs', offre: 'Offre' };
+
+  // Insertion d'une variable au CURSEUR d'un textarea identifié, puis relance
+  // de sa chaîne oninput (sauvegarde du brouillon + miroir) via un vrai
+  // événement input : aucun éditeur n'a de chemin spécial.
+  window.pv2InsertVarAt = function (taId, key) {
+    const ta = document.getElementById(taId);
+    if (!ta) return;
+    const start = ta.selectionStart || 0;
+    const token = `{{${key}}}`;
+    ta.value = ta.value.slice(0, start) + token + ta.value.slice(ta.selectionEnd || 0);
+    ta.focus();
+    ta.setSelectionRange(start + token.length, start + token.length);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  // Synchronisation d'un miroir à halo générique (composeur, éditeurs).
+  window.pv2MirrorSync = function (ta, mirrorId) {
+    const mirror = document.getElementById(mirrorId);
+    if (!mirror) return;
+    mirror.innerHTML = pv2EditorMirrorHtml(ta.value);
+    mirror.scrollTop = ta.scrollTop;
+  };
+  window.pv2MirrorScroll = function (ta, mirrorId) {
+    const mirror = document.getElementById(mirrorId);
+    if (mirror) mirror.scrollTop = ta.scrollTop;
+  };
+
+  // Rangée de jetons de variables cliquables pour un éditeur donné.
+  function pv2VarBar(taId, keys) {
+    const list = (keys || []).filter((k) => PV2_VAR_LABELS_ALL[k]);
+    if (!list.length) return '';
+    return `<div class="pv2-toolbar pv2-varbar" role="toolbar" aria-label="Variables disponibles">
+      <span class="pv2-varbar-label">Variables</span>
+      ${list.map((k) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(PV2_VAR_LABELS_ALL[k])}" onclick="pv2InsertVarAt('${escJs(taId)}','${escJs(k)}')">${esc(PV2_VAR_LABELS_ALL[k])}</button>`).join('')}
+    </div>`;
+  }
 
   function pv2CenterName() {
     if (typeof window.staffCenterDisplayName === 'function') {
@@ -1161,9 +1201,14 @@
       host.classList.add('hidden');
       host.innerHTML = '';
       pv2OverlayWasOpen = false;
+      document.documentElement.classList.remove('pv2-lock');
       return;
     }
     host.classList.remove('hidden');
+    // La page derrière est VERROUILLÉE : dans la vidéo du proprio, la molette
+    // faisait défiler la page sous la surcouche et tout semblait partir en
+    // morceaux. Une surcouche ouverte fige le fond.
+    document.documentElement.classList.add('pv2-lock');
     host.innerHTML = pv2ComposerPanel();
     // Entrée animée UNE fois, à l'ouverture réelle : un re-rendu interne
     // (choix de modèle, bascule d'envoi) ne rejoue rien.
@@ -1947,7 +1992,6 @@
     const limits = pv2Seq.limits || { triggers: {}, segments: {} };
     const trigger = d.trigger || { type: 'after_visit' };
     const meta = (limits.triggers && limits.triggers[trigger.type]) || {};
-    const variables = (meta.variables || ['prenom', 'centre']).map((v) => `{{${v}}}`).join(' · ');
     const triggerOptions = Object.entries(limits.triggers || {})
       .map(([key, t]) => `<option value="${key}"${trigger.type === key ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
     const segmentOptions = Object.entries(limits.segments || {})
@@ -1983,9 +2027,13 @@
         <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
           <input data-pl-focus="emails.sequence.objet" value="${esc(d.subject || '')}" placeholder="Objet du message automatique" oninput="pv2SeqField('subject', this.value)">
         </label>
-        <label class="pv2-composer-field pv2-composer-wide"><span>Message <small class="pv2-seq-vars">Variables : ${esc(variables)}</small></span>
-          <textarea rows="7" data-pl-focus="emails.sequence.message" placeholder="Bonjour {{prenom}},…" oninput="pv2SeqField('body', this.value)">${esc(d.body || '')}</textarea>
-        </label>
+        <div class="pv2-composer-field pv2-composer-wide"><span>Message</span>
+          ${pv2VarBar('pv2SeqBody', meta.variables || ['prenom', 'centre'])}
+          <div class="pv2-editor pv2-editor-sm">
+            <div class="pv2-editor-mirror" id="pv2SeqMirror" aria-hidden="true">${pv2EditorMirrorHtml(d.body || '')}</div>
+            <textarea id="pv2SeqBody" rows="7" data-pl-focus="emails.sequence.message" placeholder="Bonjour {{prenom}},…" oninput="pv2SeqField('body', this.value); pv2MirrorSync(this, 'pv2SeqMirror');" onscroll="pv2MirrorScroll(this, 'pv2SeqMirror')">${esc(d.body || '')}</textarea>
+          </div>
+        </div>
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
           <span class="pv2-composer-spacer"></span>
@@ -2227,7 +2275,13 @@
           <label class="pv2-composer-field"><span>Nom</span><input value="${esc(tpl.name)}" placeholder="Ex. Offre rentrée" oninput="pv2TplField('name', this.value)"></label>
           <label class="pv2-composer-field"><span>Catégorie</span><select onchange="pv2TplField('category', this.value)">${PV2_TPL_CATEGORIES.map(([key, label]) => `<option value="${key}"${tpl.category === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
           <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span><input value="${esc(tpl.subject)}" oninput="pv2TplField('subject', this.value)"></label>
-          <label class="pv2-composer-field pv2-composer-wide"><span>Message <small class="pv2-seq-vars">Variables : {{prenom}} · {{nom}}</small></span><textarea rows="7" oninput="pv2TplField('body', this.value)">${esc(tpl.body)}</textarea></label>
+          <div class="pv2-composer-field pv2-composer-wide"><span>Message</span>
+            ${pv2VarBar('pv2TplBody', ['prenom', 'nom', 'centre'])}
+            <div class="pv2-editor pv2-editor-sm">
+              <div class="pv2-editor-mirror" id="pv2TplMirror" aria-hidden="true">${pv2EditorMirrorHtml(tpl.body)}</div>
+              <textarea id="pv2TplBody" rows="7" oninput="pv2TplField('body', this.value); pv2MirrorSync(this, 'pv2TplMirror');" onscroll="pv2MirrorScroll(this, 'pv2TplMirror')">${esc(tpl.body)}</textarea>
+            </div>
+          </div>
           <div class="pv2-composer-actions pv2-composer-wide">
             <button type="button" class="pv2-btn" onclick="pv2Settings.tplEditing = null; renderStaffEmailsPage();">Annuler</button>
             <span class="pv2-composer-spacer"></span>
@@ -2856,7 +2910,7 @@
         </select>
       </label>` : '';
     const variables = Array.isArray(def.variables) && def.variables.length
-      ? `<p class="mk-auto-edit-vars">Variables : ${def.variables.map((v) => `<code>{{${esc(v)}}}</code>`).join(' ')}</p>`
+      ? pv2VarBar('mkAutoBody', def.variables)
       : '';
     // Merci post-visite : le mail peut pousser vers la fiche Google du centre
     // (bouton tracké : les clics remontent dans le retour marketing).
@@ -2879,7 +2933,10 @@
         <input data-pl-focus="emails.auto.objet" value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
       </label>
       <label class="mk-auto-edit-field"><span>Message</span>
-        <textarea rows="5" data-pl-focus="emails.auto.message" placeholder="${esc(def.body || 'Message par défaut')}" oninput="pv2AutoEditField('body', this.value)" aria-label="Corps du message">${esc(d.body)}</textarea>
+        <div class="pv2-editor pv2-editor-sm">
+          <div class="pv2-editor-mirror" id="mkAutoMirror" aria-hidden="true">${pv2EditorMirrorHtml(d.body)}</div>
+          <textarea id="mkAutoBody" rows="5" data-pl-focus="emails.auto.message" placeholder="${esc(def.body || 'Message par défaut')}" oninput="pv2AutoEditField('body', this.value); pv2MirrorSync(this, 'mkAutoMirror');" onscroll="pv2MirrorScroll(this, 'mkAutoMirror')" aria-label="Corps du message">${esc(d.body)}</textarea>
+        </div>
       </label>
       ${variables}
       ${timingSelect}
@@ -2967,7 +3024,7 @@
     if (!pv2Mail.metaLoaded && !pv2Mail.metaLoading) setTimeout(() => loadPv2MailMeta(), 0);
     const identityOptions = pv2Mail.identities.length
       ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(d.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
-      : '<option value="">Expéditeur par défaut</option>';
+      : `<option value="">${pv2Mail.metaLoading ? 'Chargement des adresses…' : 'Expéditeur par défaut'}</option>`;
     const currentTpl = (() => {
       const ref = String(d.templateRef || '');
       if (ref.startsWith('starter:')) { const s = PV2_STARTERS.find((x) => `starter:${x.key}` === ref); return s ? s.name : ''; }

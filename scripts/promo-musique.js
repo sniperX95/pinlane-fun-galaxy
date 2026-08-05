@@ -39,18 +39,18 @@ const FILM = N.total / N.fps;
 // ce vide avec sa moyenne : des nappes generiques. On nomme donc les
 // instruments, le traitement et ce qu'on ne veut pas.
 const MOUVEMENTS = [
-  { plans: ['morning'], intention: 'nappe de synthe analogique chaude et large, une seule note de piano electrique Rhodes toutes les deux mesures avec beaucoup de reverbe, une nappe de bruit tres douce en fond, aucune percussion, aucune basse — l espace est ouvert et on installe le decor' },
-  { plans: ['cardA', 'cardB', 'cardC'], intention: 'sub-basse tenue sur une seule note, un pouls sourd de grosse caisse feutree toutes les deux temps, un shaker sec tres bas, la nappe se referme et devient plus sombre, une dissonance legere qui ne se resout pas — aucune melodie, c est le probleme' },
-  { plans: ['card1'], intention: 'balayage ascendant de bruit blanc filtre sur deux secondes, un impact grave a l arrivee, puis la grosse caisse entre franchement avec un charleston regulier — la lumiere revient d un coup' },
+  { plans: ['morning'], intention: 'nappe de synthe analogique chaude et large, une seule note de piano electrique Rhodes toutes les deux mesures avec beaucoup de reverbe, une nappe de bruit tres douce en fond, aucune percussion, aucune basse : l espace est ouvert et on installe le decor' },
+  { plans: ['cardA', 'cardB', 'cardC'], intention: 'sub-basse tenue sur une seule note, un pouls sourd de grosse caisse feutree toutes les deux temps, un shaker sec tres bas, la nappe se referme et devient plus sombre, une dissonance legere qui ne se resout pas : aucune melodie, c est le probleme' },
+  { plans: ['card1'], intention: 'balayage ascendant de bruit blanc filtre sur deux secondes, un impact grave a l arrivee, puis la grosse caisse entre franchement avec un charleston regulier : la lumiere revient d un coup' },
   { plans: ['table', 'macro', 'card2', 'chart'], intention: 'house sobre et haut de gamme a tempo modere : kick rond regulier, basse pulsee sur la fondamentale, arpege court de synthe pluck tres en arriere, charleston serre, saturation a bande legere sur l ensemble. Ca avance sans rien reclamer, la voix passe par-dessus' },
-  { plans: ['cardWbr', 'wbr'], intention: 'les accords s ouvrent sur une quarte large, des cordes de synthe entrent doucement en dessous, la basse descend d une octave, un accord tenu qui respire — sentiment de travail accompli' },
-  { plans: ['card3', 'outro'], intention: 'trois impacts espaces qui appuient les trois derniers mots, puis la batterie s efface, et il ne reste qu un accord tenu clair et large avec une longue queue de reverbe — la voix de signature passe seule dessus' },
+  { plans: ['cardWbr', 'wbr'], intention: 'les accords s ouvrent sur une quarte large, des cordes de synthe entrent doucement en dessous, la basse descend d une octave, un accord tenu qui respire : sentiment de travail accompli' },
+  { plans: ['card3', 'outro'], intention: 'trois impacts espaces qui appuient les trois derniers mots, puis la batterie s efface, et il ne reste qu un accord tenu clair et large avec une longue queue de reverbe : la voix de signature passe seule dessus' },
 ];
 
 const bornes = (plans) => {
   const p = plans.map((n) => N.plans[n]).filter(Boolean);
   if (p.length !== plans.length) {
-    console.error(`plan inconnu dans ${plans.join(', ')} — la table a change`);
+    console.error(`plan inconnu dans ${plans.join(', ')} : la table a change`);
     process.exit(1);
   }
   const de = Math.min(...p.map((x) => x.from)) / N.fps;
@@ -133,7 +133,7 @@ const niveau = (f, de, t) => {
   // GARDE 1 : le morceau doit couvrir le film. `apad` remplit sinon la fin de
   // silence et rien ne le signale.
   if (d < FILM) {
-    console.error(`morceau de ${d.toFixed(2)}s pour un film de ${FILM.toFixed(2)}s — trop court`);
+    console.error(`morceau de ${d.toFixed(2)}s pour un film de ${FILM.toFixed(2)}s : trop court`);
     process.exit(1);
   }
 

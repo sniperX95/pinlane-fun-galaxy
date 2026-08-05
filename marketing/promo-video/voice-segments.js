@@ -3,7 +3,7 @@
 // POURQUOI PAS UN SEUL FICHIER DE VOIX.
 //
 // Caler les plans sur une voix generee d'une traite oblige a DEVINER ou finit
-// chaque phrase. On le deduit des silences — et ca ne marche pas : sur la voix
+// chaque phrase. On le deduit des silences : et ca ne marche pas : sur la voix
 // de ce film, `silencedetect` trouve 37 blancs, presque tous inter-syllabes.
 // Rien ne distingue « fin de phrase » de « respiration au milieu d'un mot
 // compose ». Les bornes finissent ecrites a la main, et elles se desynchronisent
@@ -14,9 +14,9 @@
 // decale automatiquement tout ce qui suit, sans qu'aucune valeur soit a
 // retoucher. Le montage ne peut plus se desynchroniser de la voix.
 //
-// Le script rogne aussi le silence de tete et de queue de chaque segment —
+// Le script rogne aussi le silence de tete et de queue de chaque segment -
 // ElevenLabs en ajoute environ 0,1 s de chaque cote, ce qui ferait 1,8 s de
-// vide cumule sur neuf plans — puis pose des respirations CHOISIES entre eux.
+// vide cumule sur neuf plans : puis pose des respirations CHOISIES entre eux.
 //
 // Sortie : <sortie>.wav + <sortie>-plans.js (window.PROMO_PLANS)
 //
@@ -40,23 +40,23 @@ const PAUSES = [0.18, 0.16, 0.52, 0.24, 0.18, 0.22, 0.00];
 // Accelere l'ensemble une fois assemble. Les bornes des plans sont DIVISEES
 // par le facteur mesure, pas par celui demande : `atempo` ne rend pas
 // exactement le ratio annonce, et un ecart de 1 % sur 25 s fait un quart de
-// seconde de decalage a la fin — assez pour que la voix parle sur le plan
+// seconde de decalage a la fin : assez pour que la voix parle sur le plan
 // suivant. On mesure, on ne suppose pas.
 const TEMPO = Number((process.argv.find((a) => a.startsWith('--tempo=')) || '--tempo=1').split('=')[1]);
 
 // Texte reecrit en francais PARLE : le premier jet etait telegraphique
 // (« Samedi. Onze heures quatre. Une resa tombe. »), ce qui sonne artificiel
-// des qu'une voix de synthese le lit. Les liens logiques — « le temps que »,
-// « sans que tu y penses » — sont ce qui fait entendre quelqu'un plutot
+// des qu'une voix de synthese le lit. Les liens logiques : « le temps que »,
+// « sans que tu y penses » : sont ce qui fait entendre quelqu'un plutot
 // qu'une liste.
 // Le film parle en RESERVATIONS, plus en euros. « Six cent un euros, quatre
-// reservations » sonnait faux — non parce que le chiffre etait mal dit, mais
+// reservations » sonnait faux : non parce que le chiffre etait mal dit, mais
 // parce qu'il etait petit : on ne vend pas un outil de pilotage sur une
 // journee a l'arret. Les nombres viennent desormais d'une journee pleine
 // (38 reservations, 297 joueurs, 76 % d'occupation) et restent tous LUS SUR
 // L'ECRAN montre a cote.
 // RECIT AVANT / APRES. Les versions precedentes enumeraient des capacites, et
-// Movsar l'a dit : « ça n'évolue pas ». Une liste n'a pas de milieu — ici la
+// Movsar l'a dit : « ça n'évolue pas ». Une liste n'a pas de milieu : ici la
 // bascule du plan 4 EST le sujet du film : la meme journee, avant et apres.
 const TEXTES = [
   'Samedi, dix-huit heures. Le téléphone sonne pour la sixième fois.',
@@ -93,7 +93,7 @@ function bornesParole(f) {
 }
 
 // PIEGE : les fichiers ElevenLabs se nomment `tts_<debut du texte>_<horodatage>`.
-// Un tri alphabetique classe donc par CONTENU, pas par ordre de generation —
+// Un tri alphabetique classe donc par CONTENU, pas par ordre de generation -
 // « Dix-huit heures » passerait avant « Samedi ». On trie sur l'horodatage,
 // seul champ qui porte l'ordre, et on refuse de deviner s'il manque.
 const HORODATE = /_(\d{8}_\d{6})\.mp3$/;
@@ -149,7 +149,7 @@ execFileSync('ffmpeg', ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i',
 
 let totale = duree(wav);
 // GARDE : la duree assemblee doit valoir la somme des plans et des pauses.
-// Un ecart signale une coupe ratee ou un fichier manquant — silencieux sinon.
+// Un ecart signale une coupe ratee ou un fichier manquant : silencieux sinon.
 const attendue = PLANS.reduce((s, p) => s + p.duree + p.pause, 0);
 const ecart = Math.abs(totale - attendue);
 console.log(`\nvoix assemblee : ${totale.toFixed(2)}s (attendu ${attendue.toFixed(2)}s, ecart ${ecart.toFixed(3)}s)`);
@@ -172,7 +172,7 @@ if (TEMPO !== 1) {
 }
 
 fs.writeFileSync(OUT + '-plans.js',
-  '// Genere par voice-segments.js — ne pas editer a la main.\n'
+  '// Genere par voice-segments.js : ne pas editer a la main.\n'
   + '// Chaque plan du montage se cale sur SON segment de voix : les bornes sont\n'
   + '// construites, pas deduites de silences.\n'
   + `window.PROMO_PLANS = ${JSON.stringify(PLANS, null, 2)};\n`
@@ -181,7 +181,7 @@ console.log(`bornes  : ${path.relative(ROOT, OUT + '-plans.js')}`);
 
 if (ecart > 0.08) { console.error('ECHEC : la duree assemblee ne correspond pas aux plans'); process.exit(1); }
 if (PLANS.some((p) => p.duree < 0.35)) {
-  console.error('ECHEC : un plan dure moins de 0,35 s — segment vide ou mal coupe');
+  console.error('ECHEC : un plan dure moins de 0,35 s : segment vide ou mal coupe');
   process.exit(1);
 }
 console.log('OK : chaque plan porte de la parole, les bornes sont exactes');

@@ -360,7 +360,7 @@ function planMove(id, t, a, b, sens, beats) {
   // capture d'ecran collee sur le fond.
   const ry = lerp(26 * sens, 7.5 * sens, ein) + lerp(0, -17 * sens, eout);
   const rx = lerp(9, 2.6, ein) + lerp(0, -5, eout);
-  // ECHELLE CONSTANTE — jamais de zoom avant/arriere.
+  // ECHELLE CONSTANTE : jamais de zoom avant/arriere.
   //
   // La version precedente faisait monter l'echelle en continu et la sursautait
   // a chaque temps fort : a l'ecran ca donnait un zoom/dezoom permanent, l'effet
@@ -379,7 +379,7 @@ function planMove(id, t, a, b, sens, beats) {
   // VOLET : la carte se DEVOILE de biais au lieu d'apparaitre d'un bloc.
   // C'est ce qui remplace le zoom d'entree.
   // Le volet part a 40 % DEJA OUVERT : demarre a zero, il masque toute la carte
-  // sur la premiere image du plan — exactement le trou noir que les fondus
+  // sur la premiere image du plan : exactement le trou noir que les fondus
   // depuis l'opacite zero produisaient. Le controle des frames l'a rattrape.
   const vol = 0.4 + 0.6 * eOut(clamp01(seg(t, a, a + .34)));
   el.style.clipPath = vol < 0.999

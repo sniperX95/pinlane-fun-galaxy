@@ -61,7 +61,7 @@ const musWav = path.join(DIR, 'tmp-mus.wav');
 ff(['-i', MUSIQUE, '-af',
   // dynaudnorm AVANT le reste : la piste d'ambiance monte de -40 dB a -22 dB
   // sur ses 14 premieres secondes. Sans egalisation, la moitie du film n'a
-  // pratiquement pas de musique — « ambiante » ne veut pas dire « absente ».
+  // pratiquement pas de musique : « ambiante » ne veut pas dire « absente ».
   `atrim=0:${DUREE},asetpts=N/SR/TB,dynaudnorm=f=180:g=31:p=0.95:m=18,loudnorm=I=-22:TP=-4:LRA=5,afade=t=in:st=0:d=0.25,afade=t=out:st=${(DUREE - 0.7).toFixed(2)}:d=0.7`,
   '-ar', '48000', '-ac', '2', musWav], 'musique');
 

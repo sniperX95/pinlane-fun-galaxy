@@ -154,7 +154,7 @@ const FRAME_DIR = path.join(OUT_DIR, 'frames-' + (arg('out','pinlane-promo')));
   console.log(`Web  : ${path.relative(REPO, web)} (${(fs.statSync(web).size / 1048576).toFixed(1)} Mo, 1080p)`);
 
   // Version carree : seulement depuis un master paysage. Le recadrage se
-  // deduit des dimensions REELLES du master (largeur x scale) — code en dur
+  // deduit des dimensions REELLES du master (largeur x scale) : code en dur
   // pour du 1920, il taillait une vignette au hasard dans un master 4K.
   if (H <= W) {
   const outW = W * SCALE, outH = H * SCALE;

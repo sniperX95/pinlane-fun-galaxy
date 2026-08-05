@@ -2,28 +2,28 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Pinlane — le même samedi</title>
+<title>Pinlane : le même samedi</title>
 <link rel="stylesheet" href="../../assets/pinlane.css">
 <style>
   /* =====================================================================
-     CREA « LE MEME SAMEDI » — 16:9, DA claire, produit au centre.
+     CREA « LE MEME SAMEDI » : 16:9, DA claire, produit au centre.
 
      CE QUE CORRIGENT LES CHOIX CI-DESSOUS.
 
-     « ça n'évolue pas » — les versions precedentes ENUMERAIENT des capacites.
+     « ça n'évolue pas » : les versions precedentes ENUMERAIENT des capacites.
      Une liste n'a pas de milieu : le plan 6 aurait pu etre le plan 2 sans que
      rien ne change. Ici le film a une CHARNIERE : trois plans de chaos sans
      produit, une bascule, trois plans ou le produit occupe le cadre. C'est le
      passage de l'un a l'autre qui porte le propos, pas les plans eux-memes.
 
-     « le design est buggé à mort » — a 7,2 s de la version precedente, l'ecran
+     « le design est buggé à mort » : a 7,2 s de la version precedente, l'ecran
      ne portait plus qu'un tiret. Cause : des plans SANS image, dont le texte
-     etait deja sorti. Ici aucun plan n'est vide par construction — la moitie
+     etait deja sorti. Ici aucun plan n'est vide par construction : la moitie
      « avant » garde ses cartes a l'ecran pendant les trois plans, la moitie
      « apres » garde le planning. La garde check-frames v4 le verifie sur la
      zone de contenu, seuil calibre sur deux films reels.
 
-     « format tiktok non » — 2560x1440, rendu 3840x2160.
+     « format tiktok non » : 2560x1440, rendu 3840x2160.
      ===================================================================== */
   @font-face { font-family:'Geist'; src:url('../../assets/fonts/geist-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
   @font-face { font-family:'Geist Mono'; src:url('../../assets/fonts/geist-mono-latin.woff2') format('woff2'); font-weight:100 900; font-display:block; }
@@ -32,7 +32,7 @@
   body{font-family:var(--font-ui);color:#14140f;-webkit-font-smoothing:antialiased}
   #stage{position:relative;width:2560px;height:1440px;overflow:hidden;background:#f2f2f0}
 
-  /* Fond : un degrade sobre, pas de grain papier — c'est ce qui distingue
+  /* Fond : un degrade sobre, pas de grain papier : c'est ce qui distingue
      cette DA de l'editoriale precedente, que Movsar n'a pas aimee. */
   #fond{position:absolute;inset:-8%;
     background:radial-gradient(60% 60% at 30% 20%,#fbfbfa,transparent 70%),
@@ -105,7 +105,7 @@
      Le decalage entre les lames donne la matiere. */
   /* Les lames sont ESPACEES : jointives, elles couvraient tout l'ecran et
      fabriquaient l'aplat qu'on passe le film a eviter. Espacees, on voit le
-     planning s'assembler A TRAVERS le rideau — et c'est bien plus riche. */
+     planning s'assembler A TRAVERS le rideau : et c'est bien plus riche. */
   #volet{position:absolute;inset:-10% -25%;opacity:0;pointer-events:none}
   #volet i{position:absolute;top:0;bottom:0;width:11%;background:#2563eb;
     will-change:transform}
@@ -143,7 +143,7 @@
 
   <!-- PRECHARGEMENT. Les lames affichent l'image en `background-image`, et le
        rendu n'attend QUE les `<img>` du document (`document.images`) : les
-       images CSS ne sont pas couvertes. Resultat au premier essai — sept
+       images CSS ne sont pas couvertes. Resultat au premier essai : sept
        colonnes sur neuf sortaient blanches alors que la scene etait juste,
        parce que le fichier n'etait pas encore charge quand la frame a ete
        prise. Cette balise cachee la fait entrer dans `document.images`, donc
@@ -205,7 +205,7 @@ const PLANS = [
 const NOTES = [
   { t: 'Rappeler les Dupont', s: '18:04 · appel manqué', x: 40, y: 20, r: -3 },
   { t: 'Piste 4 libre à 20 h ?', s: 'vérifier le cahier', x: 470, y: 150, r: 2.5, barre: true },
-  { t: 'Anniv. Léo — combien ?', s: 'sans réponse', x: 90, y: 350, r: 1.5 },
+  { t: 'Anniv. Léo : combien ?', s: 'sans réponse', x: 90, y: 350, r: 1.5 },
   { t: 'Groupe de 17 samedi', s: 'on tient ? on tient pas ?', x: 520, y: 470, r: -2 },
   { t: 'Rappeler le 0470…', s: '18:26 · appel manqué', x: 30, y: 690, r: 2 },
   { t: 'C’est complet ??', s: 'personne ne sait', x: 500, y: 810, r: -1.5, barre: true },
@@ -250,7 +250,7 @@ function batirPhrase(txt) {
 
 // L'ecran produit : cadre calcule pour ne JAMAIS agrandir la capture.
 window.VUES_MANQUANTES = [];
-// LE PRODUIT DOIT DOMINER LE CADRE — c'est le sens de « produit-first ».
+// LE PRODUIT DOIT DOMINER LE CADRE : c'est le sens de « produit-first ».
 // A 1240 px sur 2560, le planning se lisait comme une vignette posee dans un
 // coin et son texte devenait illisible. Il occupe desormais 1560 px, soit 61 %
 // de la largeur, et la definition suit : 4818 px natifs pour 1560 CSS rendus a
@@ -271,7 +271,7 @@ const planDe = (t) => {
 
 // Les neuf lames de l'ecran, en fraction de sa largeur : la colonne des heures
 // est etroite, les huit pistes se partagent le reste. Ces proportions sont
-// relevees sur la capture, pas devinees — une lame mal decoupee ferait
+// relevees sur la capture, pas devinees : une lame mal decoupee ferait
 // apparaitre une couture au milieu d'une colonne.
 const LAMES = [0.0355, 0.1206, 0.1206, 0.1206, 0.1206, 0.1206, 0.1206, 0.1206, 0.1204];
 (function batirLames() {
@@ -355,7 +355,7 @@ function render(t) {
   // ---- les notes du chaos : elles s'ACCUMULENT ----
   // Au plan CHARNIERE, les notes du plan precedent restent affichees : c'est
   // le volet qui doit les chasser, pas leur disparition instantanee. Les
-  // remettre a zero des la premiere image laissait 0,08 s d'ecran nu — le
+  // remettre a zero des la premiere image laissait 0,08 s d'ecran nu : le
   // meme defaut que celui deja corrige, sous une autre forme.
   const combien = avant ? p.notes : (i === BASCULE ? (PLANS[BASCULE - 1].notes || 0) : 0);
   $('chaos').style.display = i <= BASCULE ? 'block' : 'none';
@@ -366,7 +366,7 @@ function render(t) {
     // c'est l'empilement qui raconte, et il garde l'ecran plein.
     const nouvelle = n >= (i === 0 ? 0 : PLANS[i - 1].notes || 0);
     const r = nouvelle ? phase(dans, duree, (i === 0 ? 0 : 0.10) + (n % 2) * 0.14) : { e: 1, s: 0 };
-    // Au moment de la bascule elles partent, balayees par le volet — mais PAS
+    // Au moment de la bascule elles partent, balayees par le volet : mais PAS
     // avant que le produit soit la. Chassees des 0,10 s, elles laissaient un
     // ecran vide de 0,20 s le temps que le planning arrive.
     const chassees = i === BASCULE ? eOut(clamp01((dans - 0.30) / 0.45)) : 0;
@@ -432,7 +432,7 @@ function render(t) {
       }
       // Curseur de position : sans cette ligne, les neuf lames restaient a
       // `left: 0` et se superposaient toutes au meme endroit. A l'ecran on ne
-      // voyait que la derniere posee, soit deux colonnes sur neuf — et je l'ai
+      // voyait que la derniere posee, soit deux colonnes sur neuf : et je l'ai
       // d'abord pris pour « l'assemblage en cours » au lieu d'un bug.
       x += larg;
     });
@@ -455,13 +455,13 @@ function render(t) {
         // COMME UN VRAI COMPTEUR : seule la colonne des unites roule en
         // continu ; les rangs superieurs affichent un chiffre ENTIER et ne
         // bougent que lorsque le rang inferieur boucle. Un roulement continu
-        // sur toutes les colonnes laissait les dizaines a mi-course — « 38 »
+        // sur toutes les colonnes laissait les dizaines a mi-course : « 38 »
         // s'affichait « 48 », le 3 arrete entre deux crans.
         const pos = rang === 1 ? (val % 10) : (Math.floor(val / rang) % 10);
         pile.style.transform = `translateY(${(-pos * H_CH).toFixed(2)}px)`;
         // Un zero de tete sur « 38 » se lirait « 038 ». On RETIRE la colonne au
         // lieu de la rendre transparente : masquee par l'opacite, elle gardait
-        // sa largeur et decalait le nombre d'un cran — « 38 » s'affichait avec
+        // sa largeur et decalait le nombre d'un cran : « 38 » s'affichait avec
         // un trou devant.
         const utile = (c.v >= rang || rang === 1);
         pile.parentElement.style.width = utile ? '86px' : '0px';

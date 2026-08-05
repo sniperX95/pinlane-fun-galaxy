@@ -32,10 +32,10 @@ const PHRASE = 'Tu gères un bowling, un laser game, un centre de loisirs ?'
 
 const VOIX = [
   { n: 1, id: 'aQROLel5sQbj1vuIVi6B', nom: 'Nicolas Petit (celle du film)' },
-  { n: 2, id: 'c365oriviHmAhyLhpuN6', nom: 'Adrien Clairon — spots commerciaux' },
-  { n: 3, id: 'DGTOOUoGpoP6UZ9uSWfA', nom: 'Célian — contenu promotionnel' },
-  { n: 4, id: 'yG4Uc56cLYQyZFnWaYv2', nom: 'Kael — contenu de marque premium' },
-  { n: 5, id: 'jhQTaVBI6hnd0ESpmfIu', nom: 'Jayce — publicité, voix grave' },
+  { n: 2, id: 'c365oriviHmAhyLhpuN6', nom: 'Adrien Clairon : spots commerciaux' },
+  { n: 3, id: 'DGTOOUoGpoP6UZ9uSWfA', nom: 'Célian : contenu promotionnel' },
+  { n: 4, id: 'yG4Uc56cLYQyZFnWaYv2', nom: 'Kael : contenu de marque premium' },
+  { n: 5, id: 'jhQTaVBI6hnd0ESpmfIu', nom: 'Jayce : publicité, voix grave' },
 ];
 
 // `style` a 0,25 et non 0,4 : un style eleve exagere l'interpretation, ce qui

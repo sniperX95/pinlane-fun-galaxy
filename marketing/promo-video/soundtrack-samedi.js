@@ -2,7 +2,7 @@
 //
 // Difference avec les mix precedents : LES FENETRES DE MESURE NE SONT PLUS
 // ECRITES A LA MAIN. Elles sont prises dans les bornes des plans, publiees par
-// voice-segments.js — donc on mesure forcement pendant la parole. Des fenetres
+// voice-segments.js : donc on mesure forcement pendant la parole. Des fenetres
 // en dur finissent par tomber dans un silence quand la voix est regeneree, et
 // une garde qui mesure du silence dit toujours que tout va bien.
 //
@@ -47,7 +47,7 @@ const ff = (args, label) => {
 // volumedetect ecrit sur stderr meme quand ffmpeg reussit.
 //
 // PIEGE PAYE ICI : avec `-ss` place AVANT `-i`, ffmpeg fait un seek d'entree et
-// `-to` reste compte sur l'horloge du FICHIER D'ORIGINE — la fenetre demandee
+// `-to` reste compte sur l'horloge du FICHIER D'ORIGINE : la fenetre demandee
 // « 22,13 -> 23,13 » mesurait en fait de 22,13 jusqu'a la fin du morceau,
 // fondu de sortie compris. La garde annoncait alors une musique a -45 dB sur
 // un passage ou elle est a -30, et faisait echouer un mix correct.
@@ -61,7 +61,7 @@ function niveau(file, from, to) {
 }
 
 // GARDE DE DUREE : la musique doit couvrir le film. En dessous, `apad` remplit
-// la fin de silence et le film se termine sans musique — sans que rien ne le
+// la fin de silence et le film se termine sans musique : sans que rien ne le
 // signale, puisque les fenetres de mesure tombent pendant la parole. La
 // duree est LUE SUR LE FLUX et non sur l'entete du conteneur : sur un MP3,
 // `format=duration` sous-estime.
@@ -89,7 +89,7 @@ const musWav = path.join(DIR, 'tmp-s-mus.wav');
 // POURQUOI PAS `loudnorm` SUR LA MUSIQUE.
 //
 // En une passe, loudnorm applique un gain VARIABLE DANS LE TEMPS : il s'adapte
-// a ce qu'il a entendu jusque-la. Mesure faite sur cette piste — source plate
+// a ce qu'il a entendu jusque-la. Mesure faite sur cette piste : source plate
 // a 0,6 dB pres sur tout le morceau, sortie creusee a -41,7 dB sur le dernier
 // plan, soit 18 dB de trou invente. La musique disparaissait pile sur la
 // signature de marque.
@@ -100,7 +100,7 @@ const musWav = path.join(DIR, 'tmp-s-mus.wav');
 // ---------------------------------------------------------------------------
 // 9 et non 11 : le gain place la musique a MARGE_CIBLE sous la voix AVANT
 // ducking, et le sidechain lui reprend encore 3 a 6 dB pendant la parole.
-// Viser 11 faisait donc atterrir a 17 — au-dessus du plafond, musique inaudible.
+// Viser 11 faisait donc atterrir a 17 : au-dessus du plafond, musique inaudible.
 // La cible est un point de depart, pas le resultat.
 const MARGE_CIBLE = 10.5;
 const meanVoix = niveau(voixWav, 0.4, Number(global.window.PROMO_VOIX_DUREE) - 0.4);

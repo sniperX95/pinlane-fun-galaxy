@@ -257,7 +257,7 @@ function drawScene(t) {
       [['ch1', 0], ['ch2', 1], ['ch3', 2]].forEach(([id, i]) => chip(id, t, a, a + .2 + i * .1, i, 1, false));
     } else {
       // « Mardi, vide. » : le meme centre, mais l'image se vide de sa couleur
-      // et recule. Aucun chiffre invente — c'est la lumiere qui raconte.
+      // et recule. Aucun chiffre invente : c'est la lumiere qui raconte.
       scrub('#c1v', 1.8 + d * 1.0);
       const drain = eOut(seg(t, a, a + .55));
       place('c1', {

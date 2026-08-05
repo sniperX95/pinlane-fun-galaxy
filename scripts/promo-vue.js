@@ -2,7 +2,7 @@
 //
 // La crea « avant / apres » a besoin d'une image qui porte a elle seule la
 // moitie « apres » : le planning complet, ses huit pistes remplies. Un detail
-// ne suffit pas — c'est la DENSITE qui prouve qu'un centre tourne.
+// ne suffit pas : c'est la DENSITE qui prouve qu'un centre tourne.
 //
 // Difference avec promo-details.js : on ne vise pas un petit noeud a fort
 // grossissement mais un grand bloc, donc la densite de capture est plus basse
@@ -146,7 +146,7 @@ async function capturerVue(page, cle, selecteur, opts = {}) {
   const table = {};
   FAITS.forEach((f) => { table[f.cle] = { w: f.w, h: f.h, ratio: f.ratio, cssW: f.cssW }; });
   fs.writeFileSync(path.join(OUT, 'vues.js'),
-    '// Genere par scripts/promo-vue.js — ne pas editer a la main.\n'
+    '// Genere par scripts/promo-vue.js : ne pas editer a la main.\n'
     + 'window.PROMO_VUES = ' + JSON.stringify(table, null, 2) + ';\n');
 
   console.log(`\n${FAITS.length} vues dans ${path.relative(ROOT, OUT)}`);

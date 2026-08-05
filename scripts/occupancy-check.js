@@ -102,9 +102,18 @@ const bloc = demo.slice(demo.indexOf('function reservations()'), demo.indexOf('v
   .split('\n')
   .filter((ligne) => !ligne.trim().startsWith('//'))
   .join('\n');
-const duree = (bloc.match(/duration:\s*([\d.]+)/) || [])[1];
-ok(duree !== undefined, 'la fixture declare une duree');
-ok(Number(duree) <= 24, 'la fixture exprime la duree en heures, comme le produit', 'duration: ' + duree);
+// La fixture n'ecrit plus un litteral apres `duration:` : elle CALCULE ses
+// durees (var duree = ... ? 2 : 1) puis cable `duration: duree`. Le gate
+// verifie donc la meme propriete sur les deux formes : le champ est cable, et
+// TOUTE valeur candidate est en heures plausibles. Un retour aux minutes
+// (`? 30 : 60`, ou `duration: 60`) fait rougir, exactement comme avant.
+const cable = /duration:\s*(?:duree\b|[\d.]+)/.test(bloc);
+ok(cable, 'la fixture declare une duree (litteral ou variable cablee)');
+const valeursDuree = [...bloc.matchAll(/duree\s*=\s*[^;]*?([\d.]+)\s*:\s*([\d.]+)/g)]
+  .flatMap((m) => [Number(m[1]), Number(m[2])])
+  .concat([...bloc.matchAll(/duration:\s*([\d.]+)/g)].map((m) => Number(m[1])));
+ok(valeursDuree.length > 0 && valeursDuree.every((v) => v > 0 && v <= 12),
+  'la fixture exprime la duree en heures, comme le produit', 'valeurs: ' + valeursDuree.join(', '));
 
 console.log(failures === 0 ? '\nOK : le taux d occupation ne peut plus mentir.' : `\n${failures} echec(s).`);
 process.exit(failures === 0 ? 0 : 1);

@@ -3,7 +3,7 @@
 // Le probleme : dans ce logo, la couleur de fond sert DEUX roles. Sur la
 // version claire, le blanc est a la fois le fond de l'image ET le papier du
 // calendrier dans le monogramme ; sur la version sombre, c'est le noir. Un
-// `colorkey` global enleve les deux et vide le calendrier — teste, verifie.
+// `colorkey` global enleve les deux et vide le calendrier : teste, verifie.
 //
 // Ce qui les distingue n'est pas la couleur mais la TOPOLOGIE : le fond touche
 // le bord de l'image, le papier du calendrier est enferme dans le monogramme.
@@ -14,13 +14,13 @@
 //
 // Sur la declinaison sombre, le dessin est compose sur du noir pur. Or composer
 // sur du noir, c'est exactement premultiplier : pixel = couleur x alpha. On
-// inverse donc l'operation au lieu de la deviner —
+// inverse donc l'operation au lieu de la deviner -
 //     alpha  = max(R, V, B)          (le noir vaut 0 sur les trois canaux)
 //     couleur = pixel x 255 / alpha   (depremultiplication)
 // Un pixel a mi-chemin entre le bleu et le fond ressort a demi transparent AVEC
 // la bonne couleur : l'anticrenelage est reconstruit, pas approxime.
 //
-// Et le papier du calendrier redevient transparent — ce qui est le comportement
+// Et le papier du calendrier redevient transparent : ce qui est le comportement
 // VOULU sur fond sombre : le decor transparait, comme sur la planche d'origine
 // posee sur noir. C'est le contraire du mode « sombre » (diffusion), qui le
 // garde opaque pour un fond clair.
@@ -102,7 +102,7 @@ while (tete < queue) {
 }
 
 // Alpha : 0 sur le fond atteint, 255 ailleurs. Les pixels d'anticrenelage
-// n'etant pas atteints, le contour reste doux — et le calendrier, enferme,
+// n'etant pas atteints, le contour reste doux : et le calendrier, enferme,
 // n'est jamais atteint : il reste plein.
 const rgba = Buffer.alloc(W * H * 4);
 let opaques = 0;

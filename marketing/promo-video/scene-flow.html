@@ -93,16 +93,16 @@
   .badge{position:absolute;right:146px;top:78px;font-family:var(--font-data);
     font-size:24px;letter-spacing:.34em;text-transform:uppercase;color:rgba(255,255,255,.36)}
 
-  /* MARQUE — le fichier officiel, pas une reconstruction.
+  /* MARQUE : le fichier officiel, pas une reconstruction.
      Le noir du fichier n'est PAS un fond a detourer : c'est le papier du
      calendrier dans le monogramme. Le detourer creve le dessin (essaye et
      verifie). On garde donc la plaque et on FOND ses bords : sur le fond
      tres sombre du film, la jonction devient invisible. */
-  /* left:50% seul — c'est le script qui applique translateX(-50%) ; une marge
+  /* left:50% seul : c'est le script qui applique translateX(-50%) ; une marge
      negative en plus decalait le logo d'une demi-largeur vers la gauche.
 
      L'ALPHA EST GRAVEE DANS LE PNG, pas posee en CSS : mask-image ne s'applique
-     pas dans le Chromium de Playwright (verifie — la plaque gardait ses angles
+     pas dans le Chromium de Playwright (verifie : la plaque gardait ses angles
      nets). Un canal alpha dans le fichier ne depend d'aucun moteur. */
   .logo{position:absolute;left:50%;top:210px;width:1060px;will-change:transform,opacity}
   .logo img{display:block;width:100%;height:auto}
@@ -203,7 +203,7 @@ const PLANS = [
   { k: 'a1', a: 0.00,  clip: 'staff',  fen: FEN.planning,
     // TOUTES LES CARTES ONT LA MEME TAILLE : seules la position et la rotation
   // changent. Une taille qui varie entre deux plans, meme interpolee, reste un
-  // zoom a l'ecran — et c'est precisement ce qu'on veut supprimer.
+  // zoom a l'ecran : et c'est precisement ce qu'on veut supprimer.
   box: [560, 262, 1560, 878], ry: 8, rx: 2.4,
     bloc: { x: 120, y: 470, w: 520, h: 240, kick: 'La console du centre', ttl: 'Tout votre<br>centre.' }, chips: [] },
   { k: 'a2', a: 3.04,  clip: 'staff',  fen: FEN.planningFiche,
@@ -325,7 +325,7 @@ function drawScene(t) {
   const opClient = lerp(prevClient ? 1 : 0, estClient ? 1 : 0, e.u);
   // Sortie COMPLETE sur le plan de marque : la carte gardait 8 % d'opacite et
   // restait visible en bas a droite pendant « Demandez votre demo ». Le fondu
-  // va jusqu'a zero — la frame reste pleine, le logo et le bouton l'occupent.
+  // va jusqu'a zero : la frame reste pleine, le logo et le bouton l'occupent.
   const sortie = p.sortie ? eInOut(clamp01((t - p.a) / 0.9)) : 0;
   poseCarte($('cStaff'), e, (1 - opClient) * (1 - sortie));
   poseCarte($('cClient'), e, opClient * (1 - sortie));

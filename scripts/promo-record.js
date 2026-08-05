@@ -58,7 +58,7 @@ const H = CSS_H;
 // dans 270 Mo, c'est negligeable.
 //
 // Consequence : le temps n'avance plus tout seul. Le curseur est pilote par une
-// HORLOGE VIRTUELLE avancee d'exactement 1/FPS par image — la capture devient
+// HORLOGE VIRTUELLE avancee d'exactement 1/FPS par image : la capture devient
 // aussi reproductible que le rendu du montage.
 // ===========================================================================
 const FPS = Number(arg('fps', 25));
@@ -78,7 +78,7 @@ async function pause(page, ms) {
   for (let i = 0; i < n; i++) await snap(page);
 }
 
-// Instant courant du clip, en secondes — c'est le compteur d'images qui fait foi.
+// Instant courant du clip, en secondes : c'est le compteur d'images qui fait foi.
 const instant = () => frameIdx / FPS;
 const OUT = path.join(ROOT, 'artifacts/promo-clips');
 const PORT = 4601;
@@ -130,7 +130,7 @@ const serve = () => new Promise((resolve) => {
 // petit curseur systeme y disparait. Trois elements, trois ressorts distincts :
 //   - la fleche, ancree a sa POINTE, sur un ressort nerveux ;
 //   - une pastille Pinlane qui TRAINE derriere sur un ressort plus mou et
-//     bascule selon la vitesse — c'est elle qui donne la sensation de geste ;
+//     bascule selon la vitesse : c'est elle qui donne la sensation de geste ;
 //   - un halo d'impact au clic, plus l'enfoncement des deux.
 // Les ressorts sont integres a la main (pas de bibliotheque dans la page).
 const CURSEUR_TAILLE = 62;
@@ -190,7 +190,7 @@ async function installCursor(page) {
     // depasse ~2. Avec k=500 et m=0.5, une frame de 32 ms donne 32 : l'echelle
     // partait a l'infini et la pastille couvrait la moitie de l'ecran en bleu.
     // Decouper le pas de temps rend le calcul stable quelle que soit la charge
-    // machine — et c'est aussi ce qui rend le rendu reproductible.
+    // machine : et c'est aussi ce qui rend le rendu reproductible.
     const SOUS_PAS = 0.004;
     const pas = (e, cible, dt, k, c, m) => {
       const n = Math.max(1, Math.ceil(dt / SOUS_PAS));
@@ -551,7 +551,7 @@ async function seedDirectionRange(page) {
 //
 // Le jeu de demo porte le nom d'un client reel. Une pub Pinlane qui affiche
 // l'enseigne d'un client partout, c'est le client qu'elle met en avant, pas le
-// produit — et c'est une exposition qu'il n'a pas demandee. On substitue donc
+// produit : et c'est une exposition qu'il n'a pas demandee. On substitue donc
 // un nom neutre a l'affichage, en continu : l'application se re-rend sans
 // arret, une passe unique serait effacee au premier changement de page.
 const ENSEIGNE_INTERDITE = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
@@ -565,7 +565,7 @@ const ENSEIGNE_INTERDITE = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
 //
 // ZOOM : l'application est rendue a 1,4x dans la meme capture 2560x1440. Chaque
 // element d'interface recoit donc 1,4x plus de pixels, et le film 4K n'a plus a
-// l'agrandir — c'est ce qui rendait les captures floues. Le zoom porte sur
+// l'agrandir : c'est ce qui rendait les captures floues. Le zoom porte sur
 // <body> et non <html> : le curseur de demonstration, ajoute a <html>, reste
 // hors du zoom et ses coordonnees continuent de coincider avec la souris.
 const SCRIPT_INIT = (zoom) => {
@@ -815,7 +815,7 @@ function assembler(nom) {
     // 6. Marketing : l'agent IA. On lui PARLE, c'est tout l'interet.
     //
     // La conversation de l'agent se charge en differe. Filmee trop tot, la page
-    // ne montre que la barre laterale — et au montage, la voix annonce « une IA
+    // ne montre que la barre laterale : et au montage, la voix annonce « une IA
     // marketing » sur un ecran vide. On ATTEND le contenu, et on le dit si
     // jamais il n'arrive pas.
     await go('campaigns', 'Marketing');
@@ -850,7 +850,7 @@ function assembler(nom) {
     //
     // La console Direction (`setView('admin')`) N'EST PAS filmable ici : elle
     // agrege /api/admin-range, et le mock QA ne produit rien qu'elle sache
-    // exploiter — elle affiche « Pas encore de donnees sur cette periode »
+    // exploiter : elle affiche « Pas encore de donnees sur cette periode »
     // meme apres avoir alimente la periode et force `loadAdminDashboard(true)`.
     // Ses graphiques demandent le vrai pipeline de donnees.
     //
@@ -888,13 +888,13 @@ function assembler(nom) {
   //
   // Plus aucun recalage a faire : les instants sont le compteur d'images divise
   // par la cadence, donc exactement la position dans le clip assemble. C'est
-  // l'avantage cache de la capture image par image — avant, il fallait estimer
+  // l'avantage cache de la capture image par image : avant, il fallait estimer
   // le decalage entre le debut de l'enregistrement et le debut du scenario.
   const decalage = 0;
   const marques = {};
   for (const [k, v] of Object.entries(MARQUES)) marques[k] = { ...v, t: Number((v.t + decalage).toFixed(2)) };
   fs.writeFileSync(path.join(OUT, 'marks.js'),
-    '// Genere par scripts/promo-record.js — coordonnees et instants releves PENDANT le tournage.\n'
+    '// Genere par scripts/promo-record.js : coordonnees et instants releves PENDANT le tournage.\n'
     + `window.PROMO_MARKS = ${JSON.stringify(marques, null, 1)};\n`);
   console.log(`\nreperes : ${Object.keys(marques).length} (decalage clip ${decalage.toFixed(2)}s) -> artifacts/promo-clips/marks.js`);
   for (const [k, v] of Object.entries(marques)) console.log(`   ${k.padEnd(34)} ${v.x},${v.y} ${v.w}x${v.h} @${v.t}s`);

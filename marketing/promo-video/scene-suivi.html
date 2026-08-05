@@ -19,7 +19,7 @@
     perspective:3000px}
 
   /* Fond : une seule nappe froide, tres basse. Pas de boules de couleur qui
-     derivent — c'est la signature « fond d'ecran IA ». */
+     derivent : c'est la signature « fond d'ecran IA ». */
   #wash{position:absolute;inset:0;
     background:radial-gradient(120% 80% at 50% 0%,rgba(24,58,110,.55),transparent 62%),
                radial-gradient(90% 70% at 50% 110%,rgba(12,30,62,.5),transparent 60%)}
@@ -125,7 +125,7 @@ const LINES = [
   { a: 3.66, b: 5.49, t: 'La confirmation part toute seule.', hi: ['confirmation'] },
   { a: 5.57, b: 7.76, t: 'Le rappel avant la venue aussi.', hi: ['rappel'] },
   { a: 7.84, b: 9.42, t: 'Et la relance des clients dormants.', hi: ['relance'] },
-  // sub:false — cette phrase est deja ecrite en grand DANS le plan a6 ; la
+  // sub:false : cette phrase est deja ecrite en grand DANS le plan a6 ; la
   // repeter en sous-titre l'affichait deux fois a l'ecran.
   { a: 9.50, b: 11.29, t: "Vous n'avez rien fait.", sub: false },
   { a: 11.37, b: 12.66, t: 'Pinlane, si.', hi: ['Pinlane,'] },
@@ -146,7 +146,7 @@ const SRC_W = 2560, SRC_H = 1440;   // definition native des captures
 // (scripts de mesure : voir journal). La rangee de 6 cartes va de x=640 a
 // x=2158, en y=590..804. On ne cadre pas a l'oeil : on pointe les coordonnees.
 // Le format de la region doit suivre celui de la carte (1960/700 = 2,8) :
-// sinon le cadrage « couvre » par la hauteur et rogne les cotes — les deux
+// sinon le cadrage « couvre » par la hauteur et rogne les cotes : les deux
 // dernieres sequences, dont « Reactiver les dormants », sortaient du champ.
 const ROW = { x: 620, y: 400, w: 1570, h: 561 };
 const SEQ = {

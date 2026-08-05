@@ -209,7 +209,7 @@ const etaler = (n, k) => (k >= n
   });
   console.log(`journee de demonstration : ${journee.resas} réservations, ${journee.joueurs} joueurs`);
   if (journee.resas < 20) {
-    console.error(`ECHEC : ${journee.resas} reservations seulement — assets inutilisables.`);
+    console.error(`ECHEC : ${journee.resas} reservations seulement : assets inutilisables.`);
     process.exit(1);
   }
 
@@ -352,11 +352,11 @@ const etaler = (n, k) => (k >= n
       const creux = entree.reservations.filter((b) => !b.nom || !b.heure || !b.pax).length;
       if (creux) RATES.push(`projects : ${creux} reservation(s) sans nom, heure ou effectif`);
       const sansCol = entree.reservations.filter((b) => b.piste === null).length;
-      if (sansCol) RATES.push(`projects : ${sansCol} reservation(s) sous aucune colonne — la piste serait inventee`);
+      if (sansCol) RATES.push(`projects : ${sansCol} reservation(s) sous aucune colonne : la piste serait inventee`);
       const ecarts = entree.reservations.filter((b) => b.piste !== null && b.piste !== b.lane).length;
       if (ecarts) {
         console.log(`  ${ecarts}/${entree.reservations.length} reservations ou data-booking-lane`
-          + ` ne vaut PAS la colonne affichee — c'est la geometrie qui fait foi`);
+          + ` ne vaut PAS la colonne affichee : c'est la geometrie qui fait foi`);
       }
       console.log(`  ${entree.reservations.length} reservations lues (nom, heure, effectif, piste)`);
     }

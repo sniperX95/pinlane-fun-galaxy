@@ -2929,7 +2929,7 @@ function initClient() {
     // Le nombre de joueurs entre dans le prix de presque tout : les activites
     // facturees par personne (minigolf, playground), et le bowling dont le
     // nombre de PISTES s'en deduit. Sans ce rafraichissement, le total restait
-    // celui du nombre de joueurs precedent — le client voyait un montant qui
+    // celui du nombre de joueurs precedent : le client voyait un montant qui
     // ne bougeait pas en ajoutant du monde. Le champ « date » appelait deja
     // cette chaine ; le champ « joueurs » ne l'appelait pas.
     syncBookingTypeUi();

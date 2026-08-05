@@ -3,12 +3,12 @@
 //
 // Pourquoi une passe scriptée et non douze éditions à la main : ces jetons sont
 // des chaînes littérales répétées des dizaines de fois. Une substitution
-// déclarée ici est AUDITABLE — le script compte chaque remplacement et refuse de
+// déclarée ici est AUDITABLE : le script compte chaque remplacement et refuse de
 // finir s'il reste une couleur chaude, ce qui est la seule façon de savoir
 // qu'aucune n'a survécu dans un coin.
 //
 // Les trois valeurs de marque sont relevées sur les fichiers de logo fournis
-// (histogramme des pixels saturés), pas choisies à l'œil — voir la palette de
+// (histogramme des pixels saturés), pas choisies à l'œil : voir la palette de
 // `pinlane-site/index.html`.
 //
 // PIÈGE PAYÉ ICI : remplacer un littéral de chaîne AVEC ses délimiteurs par une
@@ -149,7 +149,7 @@ fichiers.forEach((f) => {
 console.log(`${total} remplacements dans ${fichiers.length} fichiers`);
 
 // GARDE : une couleur est CHAUDE si son rouge depasse nettement son bleu. C'est
-// une mesure, pas une liste de valeurs connues — la premiere version de cette
+// une mesure, pas une liste de valeurs connues : la premiere version de cette
 // garde signalait « rgba(226, 238, 255) » (un blanc bleute) comme chaude.
 const restes = [];
 fichiers.forEach((f) => {

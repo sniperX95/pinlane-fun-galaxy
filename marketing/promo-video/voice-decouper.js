@@ -5,7 +5,7 @@
 // Generer un fichier par plan donnait des bornes exactes, mais un DEFAUT
 // majeur que Movsar a entendu tout de suite : « les voix font que de changer,
 // on dirait une personne differente a chaque fois ». C'est exact, et c'est
-// mecanique — a `stability: 0` (mode Creative), le synthetiseur varie le
+// mecanique : a `stability: 0` (mode Creative), le synthetiseur varie le
 // timbre a chaque appel. Sept appels, sept voix.
 //
 // Monter la stabilite aplatit le jeu ; garder sept appels garde sept timbres.
@@ -70,11 +70,11 @@ if (creux.length < PLANS_TEXTE.length - 1) {
 
 // Estimation par le texte : proportion de caracteres dits avant chaque
 // frontiere. La parole n'est pas exactement proportionnelle au texte, mais
-// l'ecart est bien plus petit que l'espacement entre deux silences — donc le
+// l'ecart est bien plus petit que l'espacement entre deux silences : donc le
 // silence le plus proche est le bon.
 // ON RAISONNE EN TEMPS DE PAROLE, PAS EN TEMPS D'HORLOGE.
 //
-// Estimer sur la duree totale suppose un debit constant — mais 2 s de silences
+// Estimer sur la duree totale suppose un debit constant : mais 2 s de silences
 // s'y intercalent, et chaque silence decale tout ce qui suit. Les estimations
 // tardives arrivaient 2,6 s en avance et l'affectation choisissait des silences
 // internes aux phrases.
@@ -103,7 +103,7 @@ for (let i = 0; i < PLANS_TEXTE.length - 1; i++) {
 // estimation contre 0,88 s pour le bon. Le plan 3 se retrouvait a 0,31 s.
 //
 // Un choix glouton ne peut pas voir cette erreur : elle n'apparait qu'en
-// regardant l'ENSEMBLE. On resout donc par programmation dynamique — la suite
+// regardant l'ENSEMBLE. On resout donc par programmation dynamique : la suite
 // ORDONNEE de k silences qui minimise la somme des ecarts. Chaque frontiere
 // accepte un moins bon voisin si cela permet aux suivantes d'etre justes.
 const k = attendus.length;
@@ -141,7 +141,7 @@ PLANS_TEXTE.forEach((txt, i) => {
     duree: +(fin - depart).toFixed(3), pause: f ? +(f.fin - f.debut).toFixed(3) : 0 });
   const ecart = f ? Math.abs(f.parole - attendus[i]) : 0;
   console.log(`  plan ${i + 1}  ${depart.toFixed(2)} -> ${fin.toFixed(2)}s`
-    + `  (attendu ${attendus[i] ? attendus[i].toFixed(2) : '—'}, ecart ${ecart.toFixed(2)}s)  ${txt.slice(0, 46)}`);
+    + `  (attendu ${attendus[i] ? attendus[i].toFixed(2) : '-'}, ecart ${ecart.toFixed(2)}s)  ${txt.slice(0, 46)}`);
   depart = f ? f.fin : D;
 });
 
@@ -149,7 +149,7 @@ const wav = OUT + '.wav';
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-i', SRC, '-ar', '44100', '-ac', '1', '-c:a', 'pcm_s16le', wav]);
 
 fs.writeFileSync(OUT + '-plans.js',
-  '// Genere par voice-decouper.js — ne pas editer a la main.\n'
+  '// Genere par voice-decouper.js : ne pas editer a la main.\n'
   + '// UNE SEULE prise de voix, decoupee : le timbre est constant d\'un plan a\n'
   + '// l\'autre. Sept prises separees donnaient sept voix differentes.\n'
   + `window.PROMO_PLANS = ${JSON.stringify(PLANS, null, 2)};\n`
@@ -159,7 +159,7 @@ const trop = PLANS.filter((p) => p.duree < 0.5);
 console.log(`\nvoix : ${D.toFixed(2)}s en ${PLANS.length} plans`);
 console.log(`bornes : ${path.relative(ROOT, OUT + '-plans.js')}`);
 if (trop.length) {
-  console.error(`ECHEC : ${trop.length} plan(s) sous 0,5 s — decoupage suspect`);
+  console.error(`ECHEC : ${trop.length} plan(s) sous 0,5 s : decoupage suspect`);
   process.exit(1);
 }
 // Un ecart important entre l'estimation et le silence retenu signale que le

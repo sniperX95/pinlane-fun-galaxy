@@ -7,7 +7,7 @@
 // sortir vers ce chemin.
 //
 // Ce gate verifie la propriete par le COMPORTEMENT (quel fournisseur est
-// choisi, quelle URL est appelee), pas par la lecture du code — et il se
+// choisi, quelle URL est appelee), pas par la lecture du code : et il se
 // contre-prouve : il verifie aussi qu'un usage autorise passe BIEN par
 // OpenRouter, sinon un aiguillage casse rendrait le test vert pour rien.
 const assert = require('assert');

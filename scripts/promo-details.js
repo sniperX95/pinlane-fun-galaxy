@@ -17,14 +17,14 @@
 //
 // LA CORRECTION EST STRUCTURELLE, PAS UN REGLAGE. On ne decoupe plus une image,
 // on CAPTURE L'ELEMENT : Playwright vise le noeud du DOM, le cadre est donc son
-// rectangle exact, plus une marge. Un mot ne peut PLUS etre coupe — ce n'est
+// rectangle exact, plus une marge. Un mot ne peut PLUS etre coupe : ce n'est
 // pas mieux mesure, c'est impossible par construction.
 //
 // Et la nettete devient un exces : a densite 3, une carte de 320 px CSS sort en
 // 960 pixels pour un affichage sur 822. L'image est REDUITE, jamais agrandie.
 //
 // Sortie : artifacts/promo-clips/details/<cle>.png + details.json (dimensions
-// reelles de chaque capture — la scene y lit le RATIO pour dimensionner sa
+// reelles de chaque capture : la scene y lit le RATIO pour dimensionner sa
 // vignette, au lieu d'ecraser l'image dans un cadre arbitraire).
 //
 // Usage : node scripts/promo-details.js [--dsf 3]
@@ -59,7 +59,7 @@ const MARGE_DEF = 16;
 //
 // L'ecran principal montre 2560 px CSS de produit sur 1560 px de film : son
 // echelle est 0,61. Une vignette qui afficherait le produit a une echelle plus
-// faible se lirait comme une deuxieme copie du meme ecran, en plus petit —
+// faible se lirait comme une deuxieme copie du meme ecran, en plus petit -
 // c'est exactement ce que Movsar a vu.
 //
 // La scene ne fixe donc PAS la largeur des vignettes : elle leur donne une
@@ -74,7 +74,7 @@ const DSF_FILM = 1.5;                 // densite a laquelle le montage est rendu
 
 // TROISIEME PLAFOND, ET C'EST LUI QUI TUE LE FLOU : la vignette ne depasse
 // jamais la definition NATIVE de sa capture. Au-dela, on agrandirait des
-// pixels — exactement la faute de la version precedente, qui etirait 520 px
+// pixels : exactement la faute de la version precedente, qui etirait 520 px
 // de video sur 822 px de film. Ici c'est structurellement impossible : la
 // largeur est bornee par le nombre de pixels reellement captures.
 const largeurVignette = (aire, largMax, ratio, wPx) =>
@@ -170,12 +170,12 @@ const INIT = ([zoom, theme]) => {
 // Les captures se faisaient sur le fixture du harnais QA : quatre reservations
 // aux noms volontairement interminables, faits pour eprouver la mise en page.
 // A l'ecran d'une publicite, ca donne un planning presque vide et un chiffre
-// du jour a 601 € — « 4 reservations mdrr », verdict de Movsar, et il a raison :
+// du jour a 601 € : « 4 reservations mdrr », verdict de Movsar, et il a raison :
 // on ne vend pas un outil de pilotage avec la journee d'un centre a l'arret.
 //
 // Ce seed-ci decrit un samedi PLEIN et plausible : 8 pistes de 10 h a 22 h,
 // des groupes de tailles variees, des formules, des anniversaires. Les chiffres
-// que le film affiche restent donc LUS SUR L'ECRAN — c'est la journee montree
+// que le film affiche restent donc LUS SUR L'ECRAN : c'est la journee montree
 // qui change, pas les nombres qu'on lui fait dire.
 //
 // Aucun tirage aleatoire : la table est ecrite, donc deux captures successives
@@ -255,7 +255,7 @@ const SAMEDI = (() => {
 //
 // Assigner `state.reservations` une fois la page chargee ne tient pas : le
 // produit reconstruit son etat depuis la fabrique `__PINLANE_QA_RESERVATIONS__`
-// a plusieurs moments, et l'affectation se faisait ecraser en silence — l'ecran
+// a plusieurs moments, et l'affectation se faisait ecraser en silence : l'ecran
 // restait a quatre reservations pendant que je croyais en avoir pose
 // trente-huit. On remplace donc LA FABRIQUE, dans un addInitScript pose APRES
 // celui du harnais QA : le dernier inscrit gagne, et tous les chemins de
@@ -276,7 +276,7 @@ async function seedSamediCharge(page) {
     const jeu = resas.map((r) => ({ ...r, date: d }));
     // On remplace AUSSI la fabrique du harnais QA : plusieurs chemins du
     // produit la rappellent pour reconstruire l'etat, et le premier essai
-    // s'est fait ecraser en silence — l'ecran affichait encore les quatre
+    // s'est fait ecraser en silence : l'ecran affichait encore les quatre
     // reservations du jeu de test alors que l'etat en contenait trente-huit.
     window.__PINLANE_QA_RESERVATIONS__ = () => jeu.map((r) => ({ ...r }));
     state.currentDate = d;
@@ -312,7 +312,7 @@ async function verifierDonneesAffichees(page, attendu) {
   if (lu.resas === null) { RATES.push('impossible de lire le compte affiche sur le planning'); return; }
   // Le planning ne montre que le bowling : le compte affiche est donc <= total.
   if (lu.resas < attendu.resas * 0.5) {
-    RATES.push(`l'ecran affiche ${lu.resas} reservations pour ${attendu.resas} semees — le seed a ete ecrase`);
+    RATES.push(`l'ecran affiche ${lu.resas} reservations pour ${attendu.resas} semees : le seed a ete ecrase`);
   }
   console.log(`   ecran : ${lu.resas} reservations, ${lu.joueurs} joueurs affiches`);
 }
@@ -328,7 +328,7 @@ const FAITS = [];
 //
 // Le discriminant est le CONTRASTE de la bande de bord. Du fond uni donne un
 // ecart-type nul ; une ligne de texte coupee monte a 46. Mesure sur les 17
-// captures : les saines sont a 0,0-4,4, la coupee a 46,2 — la separation est
+// captures : les saines sont a 0,0-4,4, la coupee a 46,2 : la separation est
 // franche, pas un reglage a la main.
 const BORD_MAX = 8;
 function luminanceMoyenne(fichier) {
@@ -435,7 +435,7 @@ async function capturer(page, cle, texte, opts = {}) {
   // peut y entrer, c'est garanti par construction et non par une mesure.
   let bord = contrasteDesBords(fichier);
   // La garde de bord ne cherche qu'une chose : la marge a-t-elle mordu sur le
-  // voisin. Sans marge elle n'a pas d'objet — et elle se trompe : le lisere de
+  // voisin. Sans marge elle n'a pas d'objet : et elle se trompe : le lisere de
   // statut d'une reservation, coupe par les coins arrondis, fait monter la
   // mesure a 67 sur une capture pourtant parfaitement entiere.
   let auRas = MARGE === 0;
@@ -450,7 +450,7 @@ async function capturer(page, cle, texte, opts = {}) {
 
   // Le theme demande est-il celui qu'on a capture ? Une page qui ecrase le
   // reglage (la page publique du client le fait) donnerait des cartes sombres
-  // posees sur une direction artistique claire — le defaut saute aux yeux dans
+  // posees sur une direction artistique claire : le defaut saute aux yeux dans
   // le film, jamais dans un journal qui dit « 22 details captures ».
   const lum = luminanceMoyenne(fichier);
   const attenduClair = THEME !== 'dark';
@@ -460,7 +460,7 @@ async function capturer(page, cle, texte, opts = {}) {
   const octets = fs.statSync(fichier).size;
   const px = { w: Math.round(box.w * DSF), h: Math.round(box.h * DSF) };
   // Deux cibles qui tombent sur le MEME element donnent deux vignettes
-  // identiques cote a cote — le defaut se voit tout de suite a l'ecran, mais
+  // identiques cote a cote : le defaut se voit tout de suite a l'ecran, mais
   // jamais dans un journal qui dit « 14 details captures ».
   const jumeau = FAITS.find((f) => f.x === box.x && f.y === box.y && f.cssW === box.w);
   if (jumeau) RATES.push(`${cle} : capture le meme element que ${jumeau.cle}`);
@@ -535,7 +535,7 @@ async function capturer(page, cle, texte, opts = {}) {
     //
     // Le harnais sert des donnees de TEST : quatre reservations aux noms
     // interminables, faites pour eprouver la mise en page. Poser un autre jeu
-    // par-dessus ne marchait pas — le produit charge ses reservations par son
+    // par-dessus ne marchait pas : le produit charge ses reservations par son
     // API, que le harnais intercepte, si bien que `state.reservations = ...`
     // etait ecrase en silence et que l'ecran restait a quatre lignes.
     //
@@ -601,7 +601,7 @@ async function capturer(page, cle, texte, opts = {}) {
     await page.waitForTimeout(900);
     // Sur des donnees de demonstration, l'agent n'a rien a proposer : ses
     // compteurs affichent 0. On montre donc ce qu'il EST (« je surveille… »,
-    // « il propose, tu valides ») et pas ce qu'il a trouve ce matin — un zero
+    // « il propose, tu valides ») et pas ce qu'il a trouve ce matin : un zero
     // agrandi en plein ecran dirait le contraire de ce que dit la voix.
     await capturer(page, 'mkt-agent', 'en veille', { minW: 240, minH: 34 });
     await capturer(page, 'mkt-onglets', 'Studio', { minW: 300, minH: 30 });
@@ -636,7 +636,7 @@ async function capturer(page, cle, texte, opts = {}) {
   // au ras, qui n'ont aucune marge de securite.
   FAITS.forEach((f) => { table[f.cle] = { w: f.w, h: f.h, ratio: f.ratio, cssW: f.cssW, marge: f.marge }; });
   fs.writeFileSync(path.join(OUT, 'details.js'),
-    '// Genere par scripts/promo-details.js — ne pas editer a la main.\n'
+    '// Genere par scripts/promo-details.js : ne pas editer a la main.\n'
     + 'window.PROMO_DETAILS = ' + JSON.stringify(table, null, 2) + ';\n');
   console.log(`\n${FAITS.length} details captures dans ${path.relative(ROOT, OUT)}`);
   if (RATES.length) {

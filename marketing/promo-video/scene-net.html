@@ -12,16 +12,16 @@
      l'intérieur est pas claire, ça fait cheap. » Il portait sur les
      vignettes de detail. Les trois defauts avaient la MEME cause.
 
-     AVANT — la vignette etait un morceau DECOUPE DANS LE CLIP VIDEO a des
+     AVANT : la vignette etait un morceau DECOUPE DANS LE CLIP VIDEO a des
      coordonnees ecrites a la main :
        . flou      : 520 px de source etires sur 822 px de film, +58 %, et
                      depuis une source VP9 deja compressee ;
-       . mal cadre : un rectangle en dur ignore ou est le contenu — il
+       . mal cadre : un rectangle en dur ignore ou est le contenu : il
                      coupait « Entreprise Ardenne Formule Premiu... » en
                      plein milieu d'un mot ;
        . ecrase    : des regions de 4:1 a 7:1 forcees dans des cartes 1,73:1.
 
-     MAINTENANT — la vignette est une CAPTURE D'ELEMENT (promo-details.js) :
+     MAINTENANT : la vignette est une CAPTURE D'ELEMENT (promo-details.js) :
        . le cadre est le rectangle du noeud, un mot ne PEUT plus etre coupe ;
        . la capture est prise a densite 4 et la vignette ne depasse jamais sa
          definition native : l'image est toujours reduite, jamais agrandie ;
@@ -85,7 +85,7 @@
     will-change:clip-path}
   /* L'image occupe EXACTEMENT son cadre. La version d'essai la debordait de
      10 % pour se donner de la place ou panoramiquer : avec object-fit cover,
-     ces 10 % etaient rognes — 5 % a gauche, et « Chiffre d'affaires » sortait
+     ces 10 % etaient rognes : 5 % a gauche, et « Chiffre d'affaires » sortait
      en « fre d'affaires ». La marge du panoramique vient desormais du zoom
      lui-meme, bornee a ce que le zoom autorise (voir MARGE_PANO). */
   .fin img{position:absolute;inset:0;width:100%;height:100%;
@@ -214,13 +214,13 @@ const FEN = {
 window.SCRUB_ERRORS = [];
 
 // ===========================================================================
-// TAILLE D'UNE VIGNETTE — la regle qui remplace les rectangles ecrits a la main
+// TAILLE D'UNE VIGNETTE : la regle qui remplace les rectangles ecrits a la main
 //
 // Trois plafonds, dans cet ordre :
 //   1. une AIRE constante par emplacement, pour que les vignettes se
 //      ressemblent d'un plan a l'autre malgre des formats tres differents ;
 //   2. une largeur maximale, pour ne pas envahir la composition ;
-//   3. la DEFINITION NATIVE de la capture — c'est le plafond qui tue le flou :
+//   3. la DEFINITION NATIVE de la capture : c'est le plafond qui tue le flou :
 //      au-dela on agrandirait des pixels. Le film etant rendu a 1,5x, une
 //      capture de 1452 px ne peut pas depasser 968 px CSS.
 // Le ratio, lui, est TOUJOURS celui de la capture : plus rien n'est ecrase.
@@ -230,7 +230,7 @@ const DSF_FILM = 1.5;
 // Les deux vignettes tiennent ENTIEREMENT dans le cadre. La version
 // precedente en faisait deborder une hors champ pour « tuer la marge morte » :
 // sur une capture cadree au pixel, ce debord recoupait justement ce qu'on
-// avait pris soin de ne pas couper — « Famille Lambert » devenait
+// avait pris soin de ne pas couper : « Famille Lambert » devenait
 // « Lambert », et l'etiquette « ...SERVATION ».
 const SLOTS = {
   f1: { aire: 548 * 316, largMax: 820, c: { DROITE: [860, 1020], GAUCHE: [1700, 1020] } },
@@ -369,7 +369,7 @@ function drawScene(t) {
   // Le detail SORT completement avant la fin de son plan et le suivant ENTRE
   // apres le debut du sien : entre les deux il est invisible, et c'est la
   // qu'on change l'image. Aucun fondu entre deux captures differentes, donc
-  // aucune image fantome — et le changement reste une fonction du temps seul,
+  // aucune image fantome : et le changement reste une fonction du temps seul,
   // ce qui garde le rendu reproductible.
   [
     { id: 'f1', slot: 'f1', img: 'i1', fin: 'k1', gl: 'g1', tag: 't1', dcle: 'd1', ncle: 'n1',
@@ -392,7 +392,7 @@ function drawScene(t) {
     // Le mouvement d'ampleur porte sur LA CARTE, pas sur l'image : agrandir la
     // carte deplace son cadre et son ombre sans jamais rogner ce qu'elle
     // montre. C'est ce qui permet un geste ample tout en gardant le contenu
-    // entier — un zoom applique a l'image, lui, mange les bords et coupait
+    // entier : un zoom applique a l'image, lui, mange les bords et coupait
     // « Ton agent marketing » sur son T.
     el.style.opacity = clamp01(dedans) * (1 - dehors) * (1 - sortie);
     poseBoite(el, b,
@@ -414,7 +414,7 @@ function drawScene(t) {
     //
     // Tout zoom sur une image qui remplit son cadre en rogne les bords : a
     // 1,05 on perd 2,5 % de chaque cote, et sur cette capture la marge de
-    // securite n'en fait que 2,1 % — le T de « Ton agent marketing » y passait.
+    // securite n'en fait que 2,1 % : le T de « Ton agent marketing » y passait.
     // On borne donc le zoom par la marge REELLE de la capture (0 si elle a ete
     // prise au ras), avec une reserve d'un cinquieme.
     const dd2 = D[p[F.dcle]];

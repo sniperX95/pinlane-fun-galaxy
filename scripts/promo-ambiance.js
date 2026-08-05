@@ -101,12 +101,12 @@ const mesure = (f) => {
   console.log(`ambiance normalisee : ${apres.moy} dB (crete ${apres.max}) · ${d.toFixed(1)}s`);
 
   if (apres.max > -1) {
-    console.error('crete trop haute apres normalisation — le fichier saturera au mixage');
+    console.error('crete trop haute apres normalisation : le fichier saturera au mixage');
     process.exit(1);
   }
   if (Math.abs(apres.moy - CIBLE) > 1.5) {
     console.error(`la normalisation n'a pas atteint sa cible (${apres.moy} au lieu de ${CIBLE})`);
     process.exit(1);
   }
-  console.log(`\nOK : ${path.relative(ROOT, SORTIE)} — se joue desormais autour de volume 1`);
+  console.log(`\nOK : ${path.relative(ROOT, SORTIE)} : se joue desormais autour de volume 1`);
 })().catch((e) => { console.error(String(e.message || e)); process.exit(1); });

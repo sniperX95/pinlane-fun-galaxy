@@ -3,7 +3,7 @@
 // Applique la methode du skill `video-shotcraft` (references/sound-design.md).
 // C'est la couche qui manquait a tous les films precedents : ils n'avaient
 // AUCUN bruitage. Un mouvement sans son sonne cheap quelle que soit la qualite
-// de l'animation — c'est le diagnostic le plus utile qu'apporte ce skill.
+// de l'animation : c'est le diagnostic le plus utile qu'apporte ce skill.
 //
 // Quatre regles reprises telles quelles :
 //
@@ -11,7 +11,7 @@
 //      afin de laisser du headroom aux SFX.
 //   2. Vocabulaire choisi par TYPE DE FILM, pas par evenement d'interface :
 //      whoosh (mouvement) / impact (arrivee) / riser (montee) / sparkle
-//      (lumiere) / transition. Les timbres de jeu video sont exclus — le skill
+//      (lumiere) / transition. Les timbres de jeu video sont exclus : le skill
 //      documente un premier jet rejete d'une phrase : « trop comme un jeu ».
 //      Le bruitage de matiere reelle (papier, mecanique) reste autorise quand
 //      l'image montre vraiment cette matiere.
@@ -43,7 +43,7 @@ const b = (i) => P[i].debut;          // debut du plan i, en secondes
 
 // ===========================================================================
 // LA TABLE. Chaque ligne : instant, son, volume, et l'ACTION qu'elle habille.
-// Les instants sont derives des bornes de plans — jamais ecrits en dur, donc
+// Les instants sont derives des bornes de plans : jamais ecrits en dur, donc
 // regenerer la voix les deplace tous ensemble.
 // ===========================================================================
 const SFX = [
@@ -129,7 +129,7 @@ ff(['-i', VOIX, '-af', 'loudnorm=I=-15:TP=-1.5:LRA=9,apad', '-t', String(DUREE),
   '-ar', '48000', '-ac', '2', voixWav], 'voix');
 
 // 2. BGM a gain fixe (jamais loudnorm : il applique un gain variable dans le
-//    temps et creuse des passages entiers — mesure sur ce projet).
+//    temps et creuse des passages entiers : mesure sur ce projet).
 const MARGE_CIBLE = 10;
 const meanVoix = niveau(voixWav, 0.4, Number(global.window.PROMO_VOIX_DUREE) - 0.4);
 const meanMus = niveau(MUSIQUE, 0.4, Math.min(24, DUREE) - 0.4);
@@ -142,7 +142,7 @@ ff(['-i', MUSIQUE, '-af',
   '-ar', '48000', '-ac', '2', musWav], 'bgm');
 
 // 3. la nappe de SFX : chaque son retarde a son instant, puis tout melange.
-//    `normalize=0` est indispensable — sinon amix divise par le nombre
+//    `normalize=0` est indispensable : sinon amix divise par le nombre
 //    d'entrees et la nappe devient inaudible.
 const entrees = [];
 const filtres = [];
@@ -201,7 +201,7 @@ console.log(`MIX sans BGM : ${path.relative(ROOT, sans)}`);
 if (pire < 7) { console.error('ECHEC : la voix ne passe pas devant la BGM'); process.exit(1); }
 if (pireMus > 16) { console.error('ECHEC : BGM etouffee'); process.exit(1); }
 if (meanSfx === null || meanSfx < -46) {
-  console.error(`ECHEC : nappe SFX quasi muette (${meanSfx} dB) — verifier adelay/normalize`);
+  console.error(`ECHEC : nappe SFX quasi muette (${meanSfx} dB) : verifier adelay/normalize`);
   process.exit(1);
 }
 console.log('OK : voix devant, BGM presente, nappe SFX audible');

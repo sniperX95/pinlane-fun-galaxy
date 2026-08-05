@@ -202,12 +202,12 @@ console.log(`musique : ${musAvant.moy} dB avant compression, ${musApres.moy} dB 
 const nSfx = moyenne(FILM);
 const nVoix = apres;
 const nMus = musApres;
-console.log(`niveaux mesures — bruitages ${nSfx.moy} dB · voix ${nVoix.moy} dB · musique ${nMus.moy} dB`);
+console.log(`niveaux mesures : bruitages ${nSfx.moy} dB · voix ${nVoix.moy} dB · musique ${nMus.moy} dB`);
 
 const gSfx = gain(nSfx.moy, CIBLE_SFX);
 const gVoix = gain(nVoix.moy, CIBLE_VOIX);
 const gMus = gain(nMus.moy, CIBLE_MUSIQUE);
-console.log(`gains constants — bruitages x${gSfx.toFixed(3)} · voix x${gVoix.toFixed(3)} · musique x${gMus.toFixed(3)}`);
+console.log(`gains constants : bruitages x${gSfx.toFixed(3)} · voix x${gVoix.toFixed(3)} · musique x${gMus.toFixed(3)}`);
 
 // GARDE : aucune phrase ne doit sortir de la prise ni depasser la fin du film,
 // et deux phrases ne doivent pas se chevaucher.
@@ -277,7 +277,7 @@ const silences = (() => {
 })();
 if (silences.length < PHRASES.length - 1) {
   console.error(`seulement ${silences.length} silences detectes pour ${PHRASES.length} phrases`
-    + ' — la prise n\'est pas decoupable, verifier les pauses entre lignes');
+    + ' : la prise n\'est pas decoupable, verifier les pauses entre lignes');
   process.exit(1);
 }
 
@@ -490,11 +490,11 @@ if (!SANS_MUSIQUE) {
   const ecart = global.moy - nappe.moy;
   console.log(`ecart nappe / mixage : ${ecart.toFixed(1)} dB (fenetre visee : 7 a 14)`);
   if (ecart > 14) {
-    console.error(`ECHEC : la nappe est ${ecart.toFixed(1)} dB sous le mixage — on ne l'entendra pas`);
+    console.error(`ECHEC : la nappe est ${ecart.toFixed(1)} dB sous le mixage : on ne l'entendra pas`);
     process.exit(1);
   }
   if (ecart < 7) {
-    console.error(`ECHEC : la nappe n'est qu'a ${ecart.toFixed(1)} dB sous le mixage — elle couvre la voix`);
+    console.error(`ECHEC : la nappe n'est qu'a ${ecart.toFixed(1)} dB sous le mixage : elle couvre la voix`);
     process.exit(1);
   }
 }

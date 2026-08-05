@@ -742,7 +742,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 /* Les cartes d'une rangee doivent finir au MEME niveau. On ne peut pas les
    etirer (align-items: start plus bas est la, exprès : une carte qui ouvre
    ses options etirerait sinon toutes ses voisines) : on egalise donc l'EN-TETE
-   en y reservant la place du pire cas — nom sur deux lignes, tarif sur deux
+   en y reservant la place du pire cas : nom sur deux lignes, tarif sur deux
    lignes, une ligne de precision. En unites relatives, donc ca tient aussi
    quand les colonnes retrecissent et que les textes passent a la ligne. */
 /* La reserve de place va sur le CONTENEUR de texte, pas sur chaque ligne :

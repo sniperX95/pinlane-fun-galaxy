@@ -49,7 +49,7 @@ const LAYOUT = require(path.join(ROOT, 'marketing/promo-video/shotcraft/src/aifl
 const HERO = (LAYOUT.projects && LAYOUT.projects.hero) || {};
 if (!HERO.heure || !HERO.pax || !HERO.piste) {
   console.error('la reservation heros du layout n\'a ni heure, ni effectif, ni piste'
-    + ' — relancer `node scripts/promo-shotcraft-assets.js`');
+    + ' : relancer `node scripts/promo-shotcraft-assets.js`');
   process.exit(1);
 }
 
@@ -425,7 +425,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
   let desaccords = 0;
   for (let n = 0; n < N; n++) if (flux[n].c !== attendus[n].c) desaccords += 1;
   if (desaccords > 0) {
-    rates.push(`${desaccords} caractere(s) en desaccord sur ${N} — l'appariement a derape`);
+    rates.push(`${desaccords} caractere(s) en desaccord sur ${N} : l'appariement a derape`);
     for (let n = 0; n < N; n++) {
       if (flux[n].c !== attendus[n].c) {
         rates.push(`  premier ecart a ${n} : attendu « ${attendus[n].c} », aligne « ${flux[n].c} »`);
@@ -547,7 +547,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
     }
     const suiv = ok[n + 1];
     if (suiv && l.at + l.duree > suiv.at + 0.02) {
-      rates.push(`ligne ${n + 1} finit a ${(l.at + l.duree).toFixed(2)}s, la ${n + 2} commence a ${suiv.at}s — chevauchement`);
+      rates.push(`ligne ${n + 1} finit a ${(l.at + l.duree).toFixed(2)}s, la ${n + 2} commence a ${suiv.at}s : chevauchement`);
     }
     const sansT = l.mots.filter((m) => m.t1 === 0 && m.t0 === 0).length;
     if (sansT) rates.push(`ligne ${n + 1} : ${sansT} mot(s) sans horodatage`);
@@ -604,7 +604,7 @@ const enMots = (texte) => texte.split(/\s+/).filter(Boolean).reduce((acc, jeton)
     + ` · ${dedans.toFixed(1)}s de creux internes · ${entre.toFixed(1)}s entre les phrases`
     + ` · ${Math.round(motsTotal / phonation * 60)} mots/min`);
   if (phonation / FILM < 0.5) {
-    console.log(`  ATTENTION : moins de la moitie du film porte de la parole —`
+    console.log(`  ATTENTION : moins de la moitie du film porte de la parole -`
       + ` c'est ce qui s'entend comme « on a le temps de dormir »`);
   }
 

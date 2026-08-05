@@ -79,7 +79,7 @@ for (let f = 0; f * TAILLE + TAILLE <= brut.length; f++) {
 
 const empty = frames.filter((f) => f.ecart < ECART_MIN);
 const pire = frames.reduce((a, b) => (b.ecart < a.ecart ? b : a), frames[0]);
-console.log(`${frames.length} frames analysees — ecart-type >= ${ECART_MIN} sur la zone de contenu`);
+console.log(`${frames.length} frames analysees : ecart-type >= ${ECART_MIN} sur la zone de contenu`);
 console.log(`  frame la plus pauvre : ${pire.ecart.toFixed(1)} a t=${pire.t.toFixed(2)}s`);
 
 if (!empty.length) {

@@ -7,7 +7,7 @@
 //
 // 2. ELLES SONT NETTES. On compare la definition NATIVE de la capture a la
 //    taille qu'elle occupe dans le film : en dessous de 1 pixel source par
-//    pixel de film, l'image est agrandie — c'est exactement ce qui rendait la
+//    pixel de film, l'image est agrandie : c'est exactement ce qui rendait la
 //    version precedente molle (520 px de video etires sur 822 px de film).
 //
 // 3. AUCUNE N'EST MANQUANTE. Une cle absente du manifeste afficherait un cadre

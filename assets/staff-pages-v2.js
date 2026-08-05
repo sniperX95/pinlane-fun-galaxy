@@ -1076,30 +1076,195 @@
   // accolades restent une écriture interne.
   const PV2_VAR_LABELS_ALL = { ...PV2_VAR_LABELS, date: 'Date', heure: 'Heure', formule: 'Formule', pax: 'Joueurs', offre: 'Offre' };
 
-  // Insertion d'une variable au CURSEUR d'un textarea identifié, puis relance
-  // de sa chaîne oninput (sauvegarde du brouillon + miroir) via un vrai
-  // événement input : aucun éditeur n'a de chemin spécial.
+  /* ── L'ÉDITEUR À JETONS ──────────────────────────────────────────────────
+     Demande explicite du propriétaire (2026-08-06) : ne JAMAIS montrer
+     {{prenom}} dans une zone d'écriture. La surface d'édition est un
+     contenteditable où chaque variable est un JETON bleu insécable (un
+     Backspace le supprime d'un bloc) ; la valeur STOCKÉE reste le texte
+     {{...}}, seule langue que le serveur parle. L'élément expose value,
+     selectionStart et setSelectionRange comme un textarea : le code existant
+     et les gates ne voient pas la différence. */
+  function pv2TokChipHtml(key) {
+    const k = String(key).toLowerCase();
+    const known = Boolean(PV2_VAR_LABELS_ALL[k]);
+    return `<span class="pl-tok${known ? '' : ' is-fill'}" data-var="${esc(k)}" contenteditable="false">${esc(known ? PV2_VAR_LABELS_ALL[k] : `${k} · à compléter`)}</span>`;
+  }
+
+  function pv2TokeditRender(text) {
+    return String(text || '')
+      .split(/(\{\{\s*[a-z_][a-z0-9_]*\s*\}\})/gi)
+      .map((part) => {
+        const m = part.match(/^\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}$/i);
+        if (m) return pv2TokChipHtml(m[1]);
+        return esc(part).replace(/\n/g, '<br>');
+      }).join('');
+  }
+
+  function pv2TokeditSerialize(node) {
+    let out = '';
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) { out += child.nodeValue; continue; }
+      if (child.nodeType !== 1) continue;
+      if (child.classList && child.classList.contains('pl-tok')) { out += `{{${child.dataset.var}}}`; continue; }
+      if (child.tagName === 'BR') { out += '\n'; continue; }
+      if (child.tagName === 'DIV' || child.tagName === 'P') {
+        if (out && !out.endsWith('\n')) out += '\n';
+        out += pv2TokeditSerialize(child);
+        continue;
+      }
+      out += pv2TokeditSerialize(child);
+    }
+    return out;
+  }
+
+  // Position texte <-> position DOM. Un jeton pèse la longueur de son
+  // {{...}} ; le curseur ne peut se poser qu'avant ou après lui.
+  function pv2TokWeight(el) { return `{{${el.dataset.var}}}`.length; }
+  function pv2TokeditOffsetOf(root, node, off) {
+    let total = 0;
+    const walk = (current) => {
+      for (const child of current.childNodes) {
+        if (child === node) {
+          if (child.nodeType === 3) { total += off; return true; }
+          for (let i = 0; i < off; i += 1) total += pv2TokeditLen(child.childNodes[i]);
+          return true;
+        }
+        if (child.nodeType === 3) {
+          total += child.nodeValue.length;
+          continue;
+        }
+        if (child.nodeType !== 1) continue;
+        if (child.classList && child.classList.contains('pl-tok')) { total += pv2TokWeight(child); continue; }
+        if (child.tagName === 'BR') { total += 1; continue; }
+        if (child.tagName === 'DIV' || child.tagName === 'P') { if (total && !String(total).endsWith) { /* noop */ } total += 0; }
+        if (child.contains(node) || child === node) { if (walk(child)) return true; continue; }
+        total += pv2TokeditLen(child);
+      }
+      return false;
+    };
+    walk(root);
+    return total;
+  }
+  function pv2TokeditLen(node) {
+    if (!node) return 0;
+    if (node.nodeType === 3) return node.nodeValue.length;
+    if (node.nodeType !== 1) return 0;
+    if (node.classList && node.classList.contains('pl-tok')) return pv2TokWeight(node);
+    if (node.tagName === 'BR') return 1;
+    let n = 0;
+    for (const child of node.childNodes) n += pv2TokeditLen(child);
+    return n;
+  }
+  function pv2TokeditPoint(root, offset) {
+    let remaining = Math.max(0, Number(offset) || 0);
+    const walk = (current) => {
+      for (const child of current.childNodes) {
+        const len = pv2TokeditLen(child);
+        if (remaining > len) { remaining -= len; continue; }
+        if (child.nodeType === 3) return { node: child, off: remaining };
+        if (child.nodeType === 1 && child.classList && child.classList.contains('pl-tok')) {
+          const parent = child.parentNode;
+          const idx = [...parent.childNodes].indexOf(child);
+          return remaining === 0 ? { node: parent, off: idx } : { node: parent, off: idx + 1 };
+        }
+        if (child.nodeType === 1 && child.tagName === 'BR') {
+          const parent = child.parentNode;
+          const idx = [...parent.childNodes].indexOf(child);
+          return remaining === 0 ? { node: parent, off: idx } : { node: parent, off: idx + 1 };
+        }
+        if (child.nodeType === 1) {
+          const inner = walk(child);
+          if (inner) return inner;
+          continue;
+        }
+      }
+      return null;
+    };
+    return walk(root) || { node: root, off: root.childNodes.length };
+  }
+  function pv2TokeditSel(el) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !el.contains(sel.anchorNode)) { const end = pv2TokeditSerialize(el).length; return { start: end, end }; }
+    const range = sel.getRangeAt(0);
+    return {
+      start: pv2TokeditOffsetOf(el, range.startContainer, range.startOffset),
+      end: pv2TokeditOffsetOf(el, range.endContainer, range.endOffset),
+    };
+  }
+
+  function pv2TokeditAttach(el) {
+    if (el.__tokedit) return;
+    el.__tokedit = true;
+    Object.defineProperty(el, 'value', {
+      get() { return pv2TokeditSerialize(el); },
+      set(v) { el.innerHTML = pv2TokeditRender(v); },
+    });
+    Object.defineProperty(el, 'selectionStart', { get() { return pv2TokeditSel(el).start; } });
+    Object.defineProperty(el, 'selectionEnd', { get() { return pv2TokeditSel(el).end; } });
+    el.setSelectionRange = function (start) {
+      const point = pv2TokeditPoint(el, start);
+      const range = document.createRange();
+      range.setStart(point.node, point.off);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    };
+  }
+  window.pv2TokeditAdoptAll = function (root) {
+    (root || document).querySelectorAll('.pv2-tokedit').forEach(pv2TokeditAttach);
+  };
+
+  const PV2_TOKEDIT_SINKS = {
+    composerBody: (v) => { pv2ComposerField('body', v); pv2ComposerSyncHints(); },
+    composerSubject: (v) => { pv2ComposerField('subject', v); pv2ComposerSyncHints(); },
+    autoSubject: (v) => pv2AutoEditField('subject', v),
+    autoBody: (v) => pv2AutoEditField('body', v),
+    seqSubject: (v) => pv2SeqField('subject', v),
+    seqBody: (v) => pv2SeqField('body', v),
+    tplSubject: (v) => pv2TplField('subject', v),
+    tplBody: (v) => pv2TplField('body', v),
+  };
+  window.pv2TokeditInput = function (el) {
+    const sink = PV2_TOKEDIT_SINKS[el.dataset.sink];
+    if (sink) sink(pv2TokeditSerialize(el));
+  };
+  window.pv2TokeditKey = function (event) {
+    if (event.currentTarget.dataset.single === '1' && event.key === 'Enter') event.preventDefault();
+  };
+  // Collage en TEXTE BRUT, puis re-normalisation : un {{prenom}} collé devient
+  // un jeton, jamais des accolades à l'écran.
+  window.pv2TokeditPaste = function (event) {
+    event.preventDefault();
+    const el = event.currentTarget;
+    const text = (event.clipboardData || window.clipboardData).getData('text/plain') || '';
+    const { start, end } = pv2TokeditSel(el);
+    const v = pv2TokeditSerialize(el);
+    el.value = v.slice(0, start) + text + v.slice(end);
+    el.setSelectionRange(start + text.length);
+    pv2TokeditInput(el);
+  };
+  function pv2Humanize(text) {
+    return String(text || '').replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, k) => PV2_VAR_LABELS_ALL[k.toLowerCase()] || k);
+  }
+  function pv2TokeditHtml({ id, sink, value, single = false, plFocus = '', placeholder = '' }) {
+    return `<div class="pv2-tokedit${single ? ' is-single' : ''}" id="${esc(id)}" data-sink="${esc(sink)}"${single ? ' data-single="1"' : ''}${plFocus ? ` data-pl-focus="${esc(plFocus)}"` : ''} contenteditable="true" role="textbox" aria-multiline="${single ? 'false' : 'true'}" data-placeholder="${esc(pv2Humanize(placeholder))}" spellcheck="false" oninput="pv2TokeditInput(this)" onkeydown="pv2TokeditKey(event)" onpaste="pv2TokeditPaste(event)">${pv2TokeditRender(value)}</div>`;
+  }
+
+  // Insertion d'une variable au CURSEUR d'un éditeur identifié. Grâce aux
+  // accesseurs value/setSelectionRange, le même chemin sert les jetons et un
+  // textarea natif : aucun éditeur n'a de chemin spécial.
   window.pv2InsertVarAt = function (taId, key) {
     const ta = document.getElementById(taId);
     if (!ta) return;
     const start = ta.selectionStart || 0;
+    const end = ta.selectionEnd || start;
     const token = `{{${key}}}`;
-    ta.value = ta.value.slice(0, start) + token + ta.value.slice(ta.selectionEnd || 0);
+    const v = ta.value;
+    ta.value = v.slice(0, start) + token + v.slice(end);
     ta.focus();
     ta.setSelectionRange(start + token.length, start + token.length);
     ta.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-
-  // Synchronisation d'un miroir à halo générique (composeur, éditeurs).
-  window.pv2MirrorSync = function (ta, mirrorId) {
-    const mirror = document.getElementById(mirrorId);
-    if (!mirror) return;
-    mirror.innerHTML = pv2EditorMirrorHtml(ta.value);
-    mirror.scrollTop = ta.scrollTop;
-  };
-  window.pv2MirrorScroll = function (ta, mirrorId) {
-    const mirror = document.getElementById(mirrorId);
-    if (mirror) mirror.scrollTop = ta.scrollTop;
   };
 
   // Rangée de jetons de variables cliquables pour un éditeur donné.
@@ -1210,6 +1375,7 @@
     // morceaux. Une surcouche ouverte fige le fond.
     document.documentElement.classList.add('pv2-lock');
     host.innerHTML = pv2ComposerPanel();
+    pv2TokeditAdoptAll(host);
     // Entrée animée UNE fois, à l'ouverture réelle : un re-rendu interne
     // (choix de modèle, bascule d'envoi) ne rejoue rien.
     const card = host.firstElementChild;
@@ -1435,18 +1601,6 @@
   }
   window.pv2ApplyMarker = pv2ApplyMarker;
 
-  window.pv2InsertVar = function (key) {
-    const ta = document.getElementById('pv2ComposerBody');
-    if (!ta) return;
-    const start = ta.selectionStart || 0;
-    const token = `{{${key}}}`;
-    ta.value = ta.value.slice(0, start) + token + ta.value.slice(ta.selectionEnd || 0);
-    pv2Mail.draft.body = ta.value;
-    ta.focus();
-    ta.setSelectionRange(start + token.length, start + token.length);
-    pv2ComposerSyncHints();
-  };
-
   /* ── LES VARIABLES SONT DES JETONS, PLUS DES ACCOLADES ───────────────────
      Demande du propriétaire (2026-08-06) : « des trucs comme {{prenom}} on ne
      doit pas les voir, ça doit s'afficher de manière stylée ». Partout où un
@@ -1499,27 +1653,12 @@
     return blocks.join('');
   }
 
-  // Le halo des variables DANS la zone de frappe : un miroir aux mêmes
-  // métriques (police, padding, retours à la ligne) peint un fond lumineux
-  // sous chaque {{…}} sans toucher au texte ni au curseur.
-  function pv2EditorMirrorHtml(text) {
-    return esc(String(text || '')).replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, key) => {
-      const known = Boolean(PV2_VAR_LABELS[String(key).toLowerCase()]);
-      return `<span class="pv2-glow${known ? '' : ' is-fill'}">${m}</span>`;
-    }) + '\n';
-  }
-
-  // Rafraîchit miroir + aperçu + rappel de variables SANS re-rendre le panneau
-  // (le rendu complet tuerait le focus en pleine frappe).
+  // Rafraîchit aperçu + rappel de variables SANS re-rendre le panneau (le
+  // rendu complet tuerait le focus en pleine frappe). La zone d'écriture,
+  // elle, porte déjà ses jetons : c'est un éditeur à jetons, pas un textarea.
   function pv2ComposerSyncHints() {
     const d = pv2Mail.draft;
     const ctx = pv2VarContext(d);
-    const mirror = document.getElementById('pv2ComposerMirror');
-    if (mirror) {
-      mirror.innerHTML = pv2EditorMirrorHtml(d.body);
-      const ta = document.getElementById('pv2ComposerBody');
-      if (ta) mirror.scrollTop = ta.scrollTop;
-    }
     // L'aperçu est UN MAIL : objet en tête, expéditeur et destinataire, puis
     // le papier clair (les mails partent toujours sur fond clair).
     const subjectEl = document.getElementById('pv2PreviewSubject');
@@ -1546,10 +1685,6 @@
     }
   }
   window.pv2ComposerSyncHints = pv2ComposerSyncHints;
-  window.pv2EditorScrollSync = function (ta) {
-    const mirror = document.getElementById('pv2ComposerMirror');
-    if (mirror) mirror.scrollTop = ta.scrollTop;
-  };
 
   window.pv2ComposerServerPreview = async function () {
     const d = pv2Mail.draft;
@@ -2024,15 +2159,12 @@
         <label class="pv2-composer-field"><span>Plafond d'envois</span>
           <input type="number" min="1" max="100" value="${Number(d.cap) || 20}" oninput="pv2SeqField('cap', this.value)">
         </label>
-        <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-          <input data-pl-focus="emails.sequence.objet" value="${esc(d.subject || '')}" placeholder="Objet du message automatique" oninput="pv2SeqField('subject', this.value)">
-        </label>
+        <div class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
+          ${pv2TokeditHtml({ id: 'pv2SeqSubject', sink: 'seqSubject', value: d.subject || '', single: true, plFocus: 'emails.sequence.objet', placeholder: 'Objet du message automatique' })}
+        </div>
         <div class="pv2-composer-field pv2-composer-wide"><span>Message</span>
           ${pv2VarBar('pv2SeqBody', meta.variables || ['prenom', 'centre'])}
-          <div class="pv2-editor pv2-editor-sm">
-            <div class="pv2-editor-mirror" id="pv2SeqMirror" aria-hidden="true">${pv2EditorMirrorHtml(d.body || '')}</div>
-            <textarea id="pv2SeqBody" rows="7" data-pl-focus="emails.sequence.message" placeholder="Bonjour {{prenom}},…" oninput="pv2SeqField('body', this.value); pv2MirrorSync(this, 'pv2SeqMirror');" onscroll="pv2MirrorScroll(this, 'pv2SeqMirror')">${esc(d.body || '')}</textarea>
-          </div>
+          ${pv2TokeditHtml({ id: 'pv2SeqBody', sink: 'seqBody', value: d.body || '', plFocus: 'emails.sequence.message', placeholder: 'Bonjour {{prenom}},…' })}
         </div>
         <div class="pv2-composer-actions pv2-composer-wide">
           <button type="button" class="pv2-btn" onclick="pv2SeqCloseEditor()">Annuler</button>
@@ -2274,13 +2406,12 @@
       content = tpl ? `<div class="pv2-composer-grid">
           <label class="pv2-composer-field"><span>Nom</span><input value="${esc(tpl.name)}" placeholder="Ex. Offre rentrée" oninput="pv2TplField('name', this.value)"></label>
           <label class="pv2-composer-field"><span>Catégorie</span><select onchange="pv2TplField('category', this.value)">${PV2_TPL_CATEGORIES.map(([key, label]) => `<option value="${key}"${tpl.category === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
-          <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span><input value="${esc(tpl.subject)}" oninput="pv2TplField('subject', this.value)"></label>
+          <div class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
+            ${pv2TokeditHtml({ id: 'pv2TplSubject', sink: 'tplSubject', value: tpl.subject, single: true, placeholder: 'Objet du modèle' })}
+          </div>
           <div class="pv2-composer-field pv2-composer-wide"><span>Message</span>
             ${pv2VarBar('pv2TplBody', ['prenom', 'nom', 'centre'])}
-            <div class="pv2-editor pv2-editor-sm">
-              <div class="pv2-editor-mirror" id="pv2TplMirror" aria-hidden="true">${pv2EditorMirrorHtml(tpl.body)}</div>
-              <textarea id="pv2TplBody" rows="7" oninput="pv2TplField('body', this.value); pv2MirrorSync(this, 'pv2TplMirror');" onscroll="pv2MirrorScroll(this, 'pv2TplMirror')">${esc(tpl.body)}</textarea>
-            </div>
+            ${pv2TokeditHtml({ id: 'pv2TplBody', sink: 'tplBody', value: tpl.body, placeholder: 'Bonjour {{prenom}},…' })}
           </div>
           <div class="pv2-composer-actions pv2-composer-wide">
             <button type="button" class="pv2-btn" onclick="pv2Settings.tplEditing = null; renderStaffEmailsPage();">Annuler</button>
@@ -2929,15 +3060,12 @@
       ? `<p class="mk-auto-edit-warn">Votre texte remplace le message entier : le récapitulatif (date, heure, formule, participants) ne sera plus affiché. Pensez à y remettre les infos utiles, avec les variables ci-dessus.</p>`
       : '';
     return `<div class="mk-auto-edit" data-pv2-mount="autoEditor">
-      <label class="mk-auto-edit-field"><span>Objet</span>
-        <input data-pl-focus="emails.auto.objet" value="${esc(d.subject)}" placeholder="${esc(def.subject || 'Objet par défaut')}" oninput="pv2AutoEditField('subject', this.value)" aria-label="Objet du message">
-      </label>
-      <label class="mk-auto-edit-field"><span>Message</span>
-        <div class="pv2-editor pv2-editor-sm">
-          <div class="pv2-editor-mirror" id="mkAutoMirror" aria-hidden="true">${pv2EditorMirrorHtml(d.body)}</div>
-          <textarea id="mkAutoBody" rows="5" data-pl-focus="emails.auto.message" placeholder="${esc(def.body || 'Message par défaut')}" oninput="pv2AutoEditField('body', this.value); pv2MirrorSync(this, 'mkAutoMirror');" onscroll="pv2MirrorScroll(this, 'mkAutoMirror')" aria-label="Corps du message">${esc(d.body)}</textarea>
-        </div>
-      </label>
+      <div class="mk-auto-edit-field"><span>Objet</span>
+        ${pv2TokeditHtml({ id: 'mkAutoSubject', sink: 'autoSubject', value: d.subject, single: true, plFocus: 'emails.auto.objet', placeholder: def.subject || 'Objet par défaut' })}
+      </div>
+      <div class="mk-auto-edit-field"><span>Message</span>
+        ${pv2TokeditHtml({ id: 'mkAutoBody', sink: 'autoBody', value: d.body, plFocus: 'emails.auto.message', placeholder: def.body || 'Message par défaut' })}
+      </div>
       ${variables}
       ${timingSelect}
       ${capSelect}
@@ -3071,9 +3199,9 @@
           </div>
         </div>
         ${pv2Mail.pickerOpen ? `<div class="pv2-composer-wide">${pv2TplPickerPanel(d, ctx)}</div>` : ''}
-        <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
-          <input id="pv2ComposerSubject" data-pl-focus="emails.composer.objet" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value); pv2ComposerSyncHints();">
-        </label>
+        <div class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
+          ${pv2TokeditHtml({ id: 'pv2ComposerSubject', sink: 'composerSubject', value: d.subject, single: true, plFocus: 'emails.composer.objet', placeholder: 'Objet du message' })}
+        </div>
         <div class="pv2-composer-field pv2-composer-wide">
           <span>Message</span>
           <div class="pv2-toolbar" role="toolbar" aria-label="Mise en forme">
@@ -3083,13 +3211,9 @@
             <button type="button" class="pv2-tool" title="Lien" aria-label="Insérer un lien" onclick="pv2ApplyMarker('link')">Lien</button>
             <button type="button" class="pv2-tool" title="Bouton d'action dans le mail" aria-label="Insérer un bouton" onclick="pv2ApplyMarker('button')">Bouton</button>
             <span class="pv2-toolbar-sep" aria-hidden="true"></span>
-            ${Object.entries(PV2_VAR_LABELS).map(([key, label]) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(label)}" onclick="pv2InsertVar('${key}')">${esc(label)}</button>`).join('')}
+            ${Object.entries(PV2_VAR_LABELS).map(([key, label]) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(label)}" onclick="pv2InsertVarAt('pv2ComposerBody', '${key}')">${esc(label)}</button>`).join('')}
           </div>
-          <div class="pv2-editor">
-            <div class="pv2-editor-mirror" id="pv2ComposerMirror" aria-hidden="true">${pv2EditorMirrorHtml(d.body)}</div>
-            <textarea id="pv2ComposerBody" data-pl-focus="emails.composer.message" rows="8" placeholder="Bonjour…" spellcheck="true"
-              oninput="pv2ComposerField('body', this.value); pv2ComposerSyncHints();" onscroll="pv2EditorScrollSync(this)">${esc(d.body)}</textarea>
-          </div>
+          ${pv2TokeditHtml({ id: 'pv2ComposerBody', sink: 'composerBody', value: d.body, plFocus: 'emails.composer.message', placeholder: 'Bonjour…' })}
           <p class="pv2-vars-hint" id="pv2ComposerVarsHint" ${unresolved.length ? '' : 'hidden'}>${unresolved.length ? `À compléter avant l'envoi : ${unresolved.map((k) => `<code>{{${esc(k)}}}</code>`).join(' ')}${missName ? ' <span>(choisissez un client pour remplir le prénom)</span>' : ''}` : ''}</p>
           <div class="pv2-mail-paper">
             <div class="pv2-mail-paper-subject" id="pv2PreviewSubject">${pv2RenderEmailPreview(d.subject, ctx).replace(/^<p>|<\/p>$/g, '') || '<span class="pv2-preview-empty">Objet du message</span>'}</div>
@@ -3623,6 +3747,7 @@
     // animation ne rejoue quand seules les donnees ont bouge.
     slidePipeRail(root);
     replaySwitchKnobs(root);
+    pv2TokeditAdoptAll(root);
     markEmailsMounts(root, {
       analyze: pv2Mail.analyzeOpen,
       settings: pv2Settings.open,

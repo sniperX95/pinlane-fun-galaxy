@@ -405,12 +405,13 @@ async function main() {
     await page.waitForTimeout(300);
     const editor = await page.evaluate(() => {
       const edit = document.querySelector('#staffEmailsPage .mk-auto-edit');
+      const subject = edit ? edit.querySelector('#mkAutoSubject') : null;
       return {
         open: !!edit,
-        placeholder: edit ? edit.querySelector('input').placeholder : '',
+        placeholder: subject ? subject.getAttribute('data-placeholder') || '' : '',
         rawBraces: edit ? /\{\{[a-z_]+\}\}/.test((edit.querySelector('.pv2-varbar') || {}).textContent || '') : true,
         varChips: edit ? [...edit.querySelectorAll('.pv2-varbar .pv2-tool-var')].map((b) => b.textContent) : [],
-        mirror: edit ? !!edit.querySelector('#mkAutoMirror') : false,
+        tokedit: edit ? !!edit.querySelector('#mkAutoBody.pv2-tokedit') : false,
         timingOptions: edit ? edit.querySelectorAll('select option').length : 0,
       };
     });
@@ -418,10 +419,10 @@ async function main() {
     ok(/anniversaire approche/i.test(editor.placeholder), `placeholder = texte par défaut (${editor.placeholder.slice(0, 30)}…)`);
     ok(editor.varChips.length >= 3 && editor.varChips.includes('Prénom') && !editor.rawBraces,
       `les variables sont des JETONS cliquables en français, plus des accolades (${editor.varChips.join(' · ')})`);
-    ok(editor.mirror, 'le miroir à halo est posé sous la zone de frappe de l\'éditeur');
+    ok(editor.tokedit, 'la zone de frappe est un éditeur à jetons (plus un textarea à accolades)');
     ok(editor.timingOptions >= 5, `timing en libellés FR (${editor.timingOptions} options)`);
-    // COMPORTEMENT : cliquer un jeton insère la variable AU CURSEUR et met le
-    // brouillon à jour (chaîne oninput réelle, pas un cas spécial).
+    // LA DEMANDE EXACTE DU PROPRIÉTAIRE, prouvée : cliquer un jeton insère la
+    // variable AU CURSEUR, l'écran montre « Prénom » qui brille, JAMAIS {{.
     const chipInsert = await page.evaluate(async () => {
       const ta = document.getElementById('mkAutoBody');
       ta.value = 'Bonjour , à bientôt';
@@ -429,10 +430,16 @@ async function main() {
       ta.setSelectionRange(8, 8);
       [...document.querySelectorAll('#staffEmailsPage .pv2-varbar .pv2-tool-var')].find((b) => b.textContent === 'Prénom').click();
       await new Promise((r) => setTimeout(r, 150));
-      return { value: document.getElementById('mkAutoBody').value, glow: document.querySelectorAll('#mkAutoMirror .pv2-glow').length };
+      const el = document.getElementById('mkAutoBody');
+      return {
+        value: el.value,
+        visible: el.innerText,
+        toks: el.querySelectorAll('.pl-tok').length,
+      };
     });
-    ok(chipInsert.value === 'Bonjour {{prenom}}, à bientôt', `le jeton s'insère au curseur (obtenu « ${chipInsert.value} »)`);
-    ok(chipInsert.glow >= 1, 'et le halo s\'allume immédiatement dans la zone de frappe');
+    ok(chipInsert.value === 'Bonjour {{prenom}}, à bientôt', `la VALEUR garde {{prenom}} pour le serveur (obtenu « ${chipInsert.value} »)`);
+    ok(!chipInsert.visible.includes('{{') && /Prénom/.test(chipInsert.visible) && chipInsert.toks === 1,
+      `l'ÉCRAN montre le jeton « Prénom » et AUCUNE accolade (visible : « ${chipInsert.visible.trim()} »)`);
     // Nettoyage : le corps écrit pour la preuve ne doit pas polluer le test
     // d'enregistrement qui suit (il vérifie que SEUL l'objet modifié part).
     await page.evaluate(() => {
@@ -523,7 +530,7 @@ async function main() {
         toolbar: document.querySelectorAll('.pv2-composer .pv2-toolbar .pv2-tool').length,
         preview: !!document.getElementById('pv2ComposerPreview'),
         paper: !!document.querySelector('.pv2-composer .pv2-mail-paper') && !!document.getElementById('pv2PreviewSubject') && !!document.getElementById('pv2PreviewMeta'),
-        mirror: !!document.getElementById('pv2ComposerMirror'),
+        tokedit: !!document.querySelector('#pv2ComposerBody.pv2-tokedit') && !!document.querySelector('#pv2ComposerSubject.pv2-tokedit'),
         tplToggle: !!document.querySelector('.pv2-composer .pv2-tpl-toggle'),
         antifill: (document.getElementById('pv2ComposerTo') || {}).getAttribute
           ? { auto: document.getElementById('pv2ComposerTo').getAttribute('autocomplete'), ph: document.getElementById('pv2ComposerTo').getAttribute('placeholder') || '' }
@@ -538,7 +545,7 @@ async function main() {
     ok(composer.identities === 2, `2 identités d'expéditeur (obtenu ${composer.identities})`);
     ok(composer.toolbar >= 7, `barre d'outils : gras, italique, liste, lien, bouton + variables (${composer.toolbar} outils)`);
     ok(composer.preview && composer.paper, 'l\'aperçu est UN MAIL : papier clair, objet en tête, De/À');
-    ok(composer.mirror, 'l\'éditeur porte son miroir : les variables brillent sous la frappe');
+    ok(composer.tokedit, 'objet et message sont des éditeurs à JETONS : les accolades n\'existent plus à l\'écran');
     ok(composer.tplToggle, 'le sélecteur de modèle est un bouton maison (plus de select natif fermable par un re-rendu)');
     ok(/one-time-code/.test(composer.antifill.auto || '') && !/email/i.test(composer.antifill.ph),
       'l\'autocomplétion d\'adresses du navigateur est neutralisée (le menu fantôme de Chrome ne peut plus recouvrir la liste)');
@@ -666,6 +673,14 @@ async function main() {
     ok(varsBlocked.stillOpen, 'le composer reste ouvert pour corriger');
     ok(varsBlocked.hintShown && /offre/.test(varsBlocked.hintText), `le rappel nomme ce qui manque (${varsBlocked.hintText.trim().slice(0, 60)})`);
     ok(varsBlocked.marks >= 3, `l'aperçu surligne chaque variable manquante (${varsBlocked.marks} marquées : offre, date_debut, date_fin)`);
+    // LA DEMANDE EXACTE : dans la ZONE D'ÉCRITURE non plus, aucune accolade ne
+    // se voit : la valeur serveur garde {{offre}}, l'écran montre le jeton.
+    const editorScreen = await page.evaluate(() => {
+      const el = document.getElementById('pv2ComposerBody');
+      return { visible: el.innerText, raw: el.value, toks: el.querySelectorAll('.pl-tok').length };
+    });
+    ok(!editorScreen.visible.includes('{{') && editorScreen.toks >= 3 && /\{\{offre\}\}/.test(editorScreen.raw),
+      `l'éditeur montre des jetons, jamais {{ (écran sans accolade, ${editorScreen.toks} jetons, valeur serveur intacte)`);
     const varsPassed = await page.evaluate(async () => {
       pv2ComposerField('subject', 'Cette semaine : une partie offerte des 2 parties');
       pv2ComposerField('body', 'Bonjour Marie,\n\nCette semaine on vous gate : **une partie offerte** des la deuxieme partie jouee.\n\n- valable du lundi au jeudi\n- sur reservation en ligne\n\n[En profiter](https://reservation.test)\n\nL\'equipe Fun Galaxy Libramont');

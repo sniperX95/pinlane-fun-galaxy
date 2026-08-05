@@ -10395,6 +10395,72 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .pv2-mail-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .pv2-mail-preview-head .pv2-mail-preview-title { margin: 0; }
 .pv2-mail-render-detail { max-height: 340px; background: var(--surface); }
+/* Le mail TEL QU'ENVOYÉ, en ligne : l'HTML stocké en base dans une iframe
+   sandboxée. Fond blanc assumé : un mail part toujours sur papier clair. */
+.pv2-mail-frame { width: 100%; height: 380px; border: 1px solid var(--line); border-radius: var(--radius-md); background: #ffffff; }
+
+/* ── LE COMPOSEUR EN SURCOUCHE (2026-08-06) ────────────────────────────────
+   Monté dans document.body : les re-rendus de la page ne peuvent plus fermer
+   ses menus (« j'appuie sur modèle, ça s'affiche une seconde puis ça part »). */
+.pv2-mail-overlay { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px 16px; background: rgba(0, 0, 0, 0.46); overflow: auto; }
+.pv2-mail-overlay.hidden { display: none; }
+.pv2-mail-overlay .pv2-composer { width: min(980px, 100%); max-height: 92vh; overflow: auto; margin: 0; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35); }
+.pv2-mail-overlay .pv2-composer.pv2-mount { animation: pv2OverlayIn 0.28s var(--ease); }
+@keyframes pv2OverlayIn { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+
+/* ── La galerie de modèles (remplace le select natif) ── */
+.pv2-tpl-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: var(--h-md); padding: 0 10px; font-family: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); cursor: pointer; }
+.pv2-tpl-toggle .pv2-ico { transition: transform var(--dur-fast) var(--ease); }
+.pv2-tpl-toggle.is-open .pv2-ico { transform: rotate(180deg); }
+.pv2-tpl-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pv2-tpl-picker { padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--subtle); display: flex; flex-direction: column; gap: var(--space-4); }
+.pv2-tpl-group h4 { margin: 0 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.pv2-tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-3); }
+.pv2-tpl-card { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); cursor: pointer; font-family: inherit; transition: border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.pv2-tpl-card:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.10); }
+.pv2-tpl-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pv2-tpl-card.is-active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.pv2-tpl-name { font-size: 12.5px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.pv2-tpl-origin { font-style: normal; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-strong); background: var(--accent-soft); padding: 1px 6px; border-radius: var(--radius-full); }
+.pv2-tpl-subject { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv2-tpl-body { font-size: 11.5px; line-height: 1.45; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pv2-tpl-foot { display: flex; justify-content: flex-end; }
+
+/* ── Les variables sont des JETONS, plus des accolades ── */
+.pl-var { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; margin: 0 1px; border-radius: var(--radius-full); font-size: 11px; font-weight: 600; letter-spacing: 0.01em; vertical-align: baseline; background: linear-gradient(115deg, var(--accent-soft) 30%, color-mix(in srgb, var(--accent) 26%, var(--accent-soft)) 50%, var(--accent-soft) 70%); background-size: 220% 100%; color: var(--accent-strong); animation: plVarSheen 3.2s var(--ease) infinite; }
+.pl-var.is-ok { animation: none; background: transparent; padding: 0; height: auto; font-size: inherit; font-weight: inherit; color: inherit; border-bottom: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 0; }
+.pl-var.is-fill { background: linear-gradient(115deg, var(--warning-soft) 30%, color-mix(in srgb, var(--warning) 30%, var(--warning-soft)) 50%, var(--warning-soft) 70%); background-size: 220% 100%; color: var(--warning); }
+@keyframes plVarSheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) { .pl-var { animation: none; } }
+
+/* ── L'éditeur à halo : le miroir peint la lumière sous les {{variables}} ──
+   Mêmes métriques que le textarea, texte transparent : seuls les halos se
+   voient, les caractères restent ceux du textarea (curseur intact). */
+.pv2-editor { position: relative; }
+.pv2-editor-mirror { position: absolute; inset: 0; padding: 8px 10px; font-family: inherit; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; overflow: hidden; color: transparent; pointer-events: none; border: 1px solid transparent; border-radius: 0 0 var(--radius-md) var(--radius-md); }
+.pv2-editor textarea { position: relative; z-index: 1; background: transparent; caret-color: var(--text); }
+.pv2-glow { border-radius: 5px; background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 22%, transparent); }
+.pv2-glow.is-fill { background: color-mix(in srgb, var(--warning) 22%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 14%, transparent), 0 0 12px color-mix(in srgb, var(--warning) 24%, transparent); }
+
+/* ── L'aperçu est UN MAIL : papier clair, objet en tête, De/À ── */
+.pv2-mail-paper { margin-top: 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; background: #ffffff; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10); }
+.pv2-mail-paper-subject { padding: 12px 16px 4px; font-size: 15px; font-weight: 700; color: #17151f; }
+.pv2-mail-paper-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 0 16px 10px; border-bottom: 1px solid #edeaf0; font-size: 11.5px; color: #5a5560; }
+.pv2-mail-paper-meta b { font-weight: 600; color: #17151f; margin-right: 4px; }
+.pv2-mail-paper .pv2-mail-render { margin-top: 0; border: 0; border-radius: 0; background: #ffffff; color: #17151f; max-height: 260px; }
+.pv2-mail-paper .pv2-mail-render a { color: #944292; }
+.pv2-mail-paper .pv2-mail-render .pv2-preview-btn { background: #944292; color: #ffffff; }
+.pv2-mail-paper .pl-var.is-ok { border-bottom-color: rgba(148, 66, 146, 0.5); }
+
+/* ── Sélecteur de client : rangée de tri + méta enrichie ── */
+.pv2-combo-sort { display: flex; gap: 4px; padding: 2px 4px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.pv2-combo-sort-btn { border: 0; background: transparent; padding: 3px 8px; font-family: inherit; font-size: 11px; font-weight: 600; color: var(--muted); border-radius: var(--radius-full); cursor: pointer; }
+.pv2-combo-sort-btn:hover { color: var(--text); background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover)); }
+.pv2-combo-sort-btn.is-active { color: var(--accent-strong); background: var(--accent-soft); }
+
+/* Aperçu des séquences perso : le corps rendu avec ses jetons. */
+.mk-auto-preview-body { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.mk-auto-preview-body p { margin: 0 0 6px; }
 
 @media (max-width: 900px) { .pv2-composer-grid { grid-template-columns: 1fr; } }
 

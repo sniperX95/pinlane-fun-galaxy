@@ -135,7 +135,7 @@ async function installMock(page) {
         return J({ ok: true, settings: JSON.parse(JSON.stringify(autoState)), defaults: autoDefaults, stats: autoStats });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customSequences') {
-        return J({ ok: true, sequences: window.__QA_SEQS__ || [], limits: { maxSequences: 10, cap: [1, 100], triggers: { after_visit: { label: 'X jours après une visite', days: [1, 90], variables: ['prenom', 'centre'] }, before_visit: { label: 'X jours avant une venue prévue', days: [1, 60], variables: ['prenom', 'centre', 'date', 'heure', 'formule', 'pax'] }, inactive: { label: 'Clients plus vus depuis X jours', days: [30, 365], variables: ['prenom', 'centre'] }, weekly: { label: 'Chaque semaine, un jour fixe', variables: ['prenom', 'centre'] } }, segments: { all: 'Tous les clients avec email', dormant: 'Dormants (+90 jours)', loyal: 'Fidèles', birthdays: 'Clients anniversaire' } } });
+        return J({ ok: true, sequences: window.__QA_SEQS__ || [], limits: { maxSequences: 10, cap: [1, 100], triggers: { after_visit: { label: 'X jours après une visite', days: [1, 90], variables: ['prenom', 'centre'] }, before_visit: { label: 'X jours avant une venue prévue', days: [1, 60], variables: ['prenom', 'centre', 'date', 'heure', 'formule', 'pax'] }, inactive: { label: 'Clients plus vus depuis X jours', days: [30, 365], variables: ['prenom', 'centre'] }, weekly: { label: 'Chaque semaine, un jour fixe', variables: ['prenom', 'centre'] }, monthly: { label: 'Chaque mois, un jour fixe', variables: ['prenom', 'centre'] } }, segments: { all: 'Tous les clients avec email', dormant: 'Dormants (+90 jours)', loyal: 'Fidèles', birthdays: 'Clients anniversaire' } } });
       }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'emailBrain') {
         return J({ ok: true, overrides: { faq: {}, signature: '', extra: '' }, defaults: { intents: { reservation: 'Réservation', annulation: 'Annulation / report', anniversaire: 'Anniversaire', prix: 'Prix & tarifs', horaires: 'Horaires', reclamation: 'Réclamation', autre: 'Autre' }, faq: { horaires: { subject: 'Nos horaires', body: 'Réponse type horaires du fichier.' } }, signature: "L'équipe Fun Galaxy" } });
@@ -220,7 +220,7 @@ async function main() {
       switches: document.querySelectorAll('#staffEmailsPage .mk-switch').length,
       onCount: document.querySelectorAll('#staffEmailsPage .mk-switch.is-on').length,
       statsTxt: (document.querySelector('#staffEmailsPage .mk-auto .mk-auto-stats') || {}).textContent || '',
-      preview: !!document.querySelector('#staffEmailsPage .mk-auto-preview summary'),
+      previewBtns: [...document.querySelectorAll('#staffEmailsPage .mk-auto .mk-auto-preview')].filter((el) => /Voir le mail/.test(el.textContent)).length,
       editBtns: document.querySelectorAll('#staffEmailsPage .mk-auto-edit-btn').length,
       pipeline: document.querySelectorAll('#staffEmailsPage .pv2-pipe').length,
       tableRows: document.querySelectorAll('#staffEmailsPage .pv2-table tbody tr').length,
@@ -249,8 +249,23 @@ async function main() {
     ok(load.onCount === 5, `5 séquences ON au départ (obtenu ${load.onCount})`);
     ok(/37\u00a0envoyés/.test(load.statsTxt), `stats 30 j affichées avec espace insécable (${JSON.stringify(load.statsTxt.trim().slice(0, 30))})`);
     ok(/sur 30\u00a0jours/.test(load.statsTxt), 'période explicite sur la carte de séquence (F8), unité insécable');
-    ok(load.preview, 'aperçu du message dépliable');
+    ok(load.previewBtns === 6, `« Voir le mail » sur chaque carte : l'aperçu est le VRAI mail rendu serveur (obtenu ${load.previewBtns})`);
     ok(load.editBtns === 6, `bouton Modifier sur chaque carte (obtenu ${load.editBtns})`);
+    // COMPORTEMENT : le clic carte (éditeur FERMÉ) rend le mail réellement en
+    // vigueur (aucun brouillon d'une autre carte), dans l'iframe sandboxée.
+    const cardPreview = await page.evaluate(async () => {
+      const before = window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').length;
+      [...document.querySelectorAll('#staffEmailsPage .mk-auto .mk-auto-preview')].find((el) => /Voir le mail/.test(el.textContent)).click();
+      await new Promise((r) => setTimeout(r, 400));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').slice(-1)[0];
+      const overlay = document.getElementById('emailPreviewOverlay');
+      const frame = overlay ? overlay.querySelector('iframe') : null;
+      const out = { posted: window.__QA_POSTS__.filter((p) => p.action === 'automationPreview').length - before, noDraft: post && post.subject === undefined && post.body === undefined, sandboxed: frame ? frame.getAttribute('sandbox') === '' : false };
+      if (typeof closeEmailPreview === 'function') closeEmailPreview();
+      return out;
+    });
+    ok(cardPreview.posted === 1 && cardPreview.sandboxed, 'clic « Voir le mail » -> rendu serveur dans l\'iframe sandboxée');
+    ok(cardPreview.noDraft, 'éditeur fermé -> AUCUN brouillon joint : le mail montré est celui en vigueur');
     ok(load.pipeline === 6, `pipeline avec pipe Reçus (obtenu ${load.pipeline})`);
     ok(/^1 Échec$/.test(load.pipeFailed), `accord du libellé au compteur : « ${load.pipeFailed} » et non « 1 Échecs »`);
     ok(/^1 Envoyé$/.test(load.pipeSent), `accord du libellé au compteur : « ${load.pipeSent} »`);
@@ -472,24 +487,81 @@ async function main() {
       [...document.querySelectorAll('#staffEmailsPage .pv2-bar-actions button')].find((b) => /Nouveau message/.test(b.textContent)).click();
     });
     await page.waitForTimeout(500);
-    const composer = await page.evaluate(() => ({
-      open: !!document.querySelector('#staffEmailsPage .pv2-composer'),
-      combo: !!document.getElementById('pv2ComboList'),
-      noDatalist: !document.getElementById('pv2ClientsList'),
-      identities: [...document.querySelectorAll('#staffEmailsPage .pv2-composer select')][0]?.options.length || 0,
-      toolbar: document.querySelectorAll('#staffEmailsPage .pv2-toolbar .pv2-tool').length,
-      preview: !!document.getElementById('pv2ComposerPreview'),
-      groups: [...document.querySelectorAll('#staffEmailsPage .pv2-composer optgroup')].map((g) => g.label),
-      starters: document.querySelectorAll('#staffEmailsPage .pv2-composer optgroup option').length,
-    }));
-    ok(composer.open, 'panneau composer ouvert');
+    const composer = await page.evaluate(() => {
+      const overlay = document.getElementById('pv2MailOverlay');
+      return {
+        inBody: !!overlay && overlay.parentElement === document.body,
+        open: !!overlay && !overlay.classList.contains('hidden') && !!overlay.querySelector('.pv2-composer'),
+        inPage: !!document.querySelector('#staffEmailsPage .pv2-composer'),
+        combo: !!document.getElementById('pv2ComboList'),
+        noDatalist: !document.getElementById('pv2ClientsList'),
+        identities: [...document.querySelectorAll('.pv2-composer select')][0]?.options.length || 0,
+        toolbar: document.querySelectorAll('.pv2-composer .pv2-toolbar .pv2-tool').length,
+        preview: !!document.getElementById('pv2ComposerPreview'),
+        paper: !!document.querySelector('.pv2-composer .pv2-mail-paper') && !!document.getElementById('pv2PreviewSubject') && !!document.getElementById('pv2PreviewMeta'),
+        mirror: !!document.getElementById('pv2ComposerMirror'),
+        tplToggle: !!document.querySelector('.pv2-composer .pv2-tpl-toggle'),
+        antifill: (document.getElementById('pv2ComposerTo') || {}).getAttribute
+          ? { auto: document.getElementById('pv2ComposerTo').getAttribute('autocomplete'), ph: document.getElementById('pv2ComposerTo').getAttribute('placeholder') || '' }
+          : { auto: '', ph: '' },
+      };
+    });
+    ok(composer.inBody && composer.open, 'le composeur vit dans une SURCOUCHE montée sur document.body');
+    ok(!composer.inPage, 'CONTRE-PREUVE : plus aucun composeur dans la page (les re-rendus ne peuvent plus le toucher)');
     ok(composer.combo && composer.noDatalist, 'sélecteur maison présent, la datalist native a disparu (contre-preuve)');
     ok(composer.identities === 2, `2 identités d'expéditeur (obtenu ${composer.identities})`);
     ok(composer.toolbar >= 7, `barre d'outils : gras, italique, liste, lien, bouton + variables (${composer.toolbar} outils)`);
-    ok(composer.preview, 'aperçu en direct sous le champ message');
-    ok(composer.groups.length >= 5 && composer.groups.includes('Relancer') && composer.groups.includes('Service client'),
-      `modèles groupés par moment commercial (${composer.groups.join(' · ')})`);
-    ok(composer.starters >= 12, `bibliothèque fournie : ${composer.starters} modèles prêts (4 avant la refonte)`);
+    ok(composer.preview && composer.paper, 'l\'aperçu est UN MAIL : papier clair, objet en tête, De/À');
+    ok(composer.mirror, 'l\'éditeur porte son miroir : les variables brillent sous la frappe');
+    ok(composer.tplToggle, 'le sélecteur de modèle est un bouton maison (plus de select natif fermable par un re-rendu)');
+    ok(/one-time-code/.test(composer.antifill.auto || '') && !/email/i.test(composer.antifill.ph),
+      'l\'autocomplétion d\'adresses du navigateur est neutralisée (le menu fantôme de Chrome ne peut plus recouvrir la liste)');
+
+    // LA GALERIE DE MODÈLES : ouverte par le bouton, groupée, et STABLE sous
+    // les re-rendus de page : c'était le bug « ça s'affiche une seconde puis
+    // ça part » (le select natif mourait à chaque poll).
+    await page.evaluate(() => { document.querySelector('.pv2-composer .pv2-tpl-toggle').click(); });
+    await page.waitForTimeout(250);
+    const gallery = await page.evaluate(() => {
+      const picker = document.getElementById('pv2TplPicker');
+      const card = document.querySelector('#pv2MailOverlay .pv2-composer');
+      if (card) card.dataset.qaNode = 'stable';
+      return {
+        open: !!picker,
+        groups: [...document.querySelectorAll('#pv2TplPicker .pv2-tpl-group h4')].map((el) => el.textContent),
+        cards: document.querySelectorAll('#pv2TplPicker .pv2-tpl-card').length,
+        maison: [...document.querySelectorAll('#pv2TplPicker .pv2-tpl-origin')].length,
+        chips: document.querySelectorAll('#pv2TplPicker .pl-var').length,
+      };
+    });
+    ok(gallery.open, 'la galerie de modèles s\'ouvre');
+    ok(gallery.groups.length >= 5 && gallery.groups.includes('Relancer') && gallery.groups.includes('Service client') && gallery.groups.includes('Vos modèles'),
+      `modèles groupés par moment commercial + « Vos modèles » (${gallery.groups.join(' · ')})`);
+    ok(gallery.cards >= 13, `bibliothèque fournie : ${gallery.cards} cartes (4 options avant la refonte)`);
+    ok(gallery.maison >= 1, 'l\'origine « maison » se lit sur les modèles du centre');
+    ok(gallery.chips >= 6, `les variables des cartes sont des JETONS nommés, plus des accolades (${gallery.chips} jetons)`);
+    const stability = await page.evaluate(async () => {
+      renderStaffData();
+      await new Promise((r) => setTimeout(r, 300));
+      renderStaffEmailsPage();
+      await new Promise((r) => setTimeout(r, 300));
+      const card = document.querySelector('#pv2MailOverlay .pv2-composer');
+      return {
+        pickerStillOpen: !!document.getElementById('pv2TplPicker'),
+        sameNode: !!card && card.dataset.qaNode === 'stable',
+      };
+    });
+    ok(stability.pickerStillOpen, 'LE BUG EST MORT : la galerie ouverte SURVIT à deux re-rendus complets de la page');
+    ok(stability.sameNode, 'le composeur est LE MÊME NŒUD après les re-rendus : la page ne le reconstruit jamais');
+    await page.evaluate(async () => {
+      [...document.querySelectorAll('#pv2TplPicker .pv2-tpl-card')].find((el) => /On ne vous a plus vu/.test(el.textContent)).click();
+      await new Promise((r) => setTimeout(r, 250));
+    });
+    const galleryPicked = await page.evaluate(() => ({
+      closed: !document.getElementById('pv2TplPicker'),
+      toggleLabel: (document.querySelector('.pv2-composer .pv2-tpl-toggle') || {}).textContent || '',
+    }));
+    ok(galleryPicked.closed && /On ne vous a plus vu/.test(galleryPicked.toggleLabel), 'choisir une carte applique le modèle et referme la galerie');
 
     // PILOTAGE RÉEL du sélecteur : frappe, liste filtrée avec contexte,
     // flèche + Entrée. Une assertion de présence ne prouverait rien : c'est
@@ -532,7 +604,7 @@ async function main() {
     await page.waitForTimeout(400);
     const sent = await page.evaluate(() => ({
       post: window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').slice(-1)[0],
-      closed: !document.querySelector('#staffEmailsPage .pv2-composer'),
+      closed: !document.querySelector('#pv2MailOverlay:not(.hidden) .pv2-composer'),
     }));
     ok(sent.post && sent.post.to === 'marie@test.be' && /longtemps/.test(sent.post.subject) && sent.post.identityId === '1', 'POST sendDirectEmail {to, subject, identityId défaut}');
     ok(sent.post.replyToCommunicationId === null, 'pas de replyTo pour un message libre');
@@ -555,7 +627,7 @@ async function main() {
       const after = window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').length;
       const hint = document.getElementById('pv2ComposerVarsHint');
       return {
-        stillOpen: !!document.querySelector('#staffEmailsPage .pv2-composer'),
+        stillOpen: !!document.querySelector('#pv2MailOverlay:not(.hidden) .pv2-composer'),
         posted: after - before,
         hintShown: !!hint && !hint.hidden,
         hintText: hint ? hint.textContent : '',
@@ -574,7 +646,7 @@ async function main() {
       pv2ComposerSend();
       await new Promise((r) => setTimeout(r, 300));
       const post = window.__QA_POSTS__.filter((p) => p.action === 'sendDirectEmail').slice(-1)[0];
-      return { post, closed: !document.querySelector('#staffEmailsPage .pv2-composer') };
+      return { post, closed: !document.querySelector('#pv2MailOverlay:not(.hidden) .pv2-composer') };
     });
     ok(varsPassed.post && !/\{\{/.test(varsPassed.post.subject + varsPassed.post.body), 'CONTRE-PREUVE : trous remplis, le MÊME envoi part, zéro accolade dans ce qui est envoyé');
     ok(varsPassed.closed, 'composer fermé après l\'envoi corrigé');
@@ -679,7 +751,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 200));
       pv2ComposerTemplate('starter:relance-client');
       await new Promise((r) => setTimeout(r, 200));
-      [...document.querySelectorAll('#staffEmailsPage .pv2-composer button')].find((b) => /Garder en modèle/.test(b.textContent)).click();
+      [...document.querySelectorAll('#pv2MailOverlay .pv2-composer button')].find((b) => /Garder en modèle/.test(b.textContent)).click();
       await new Promise((r) => setTimeout(r, 250));
       const editing = pv2Settings.tplEditing;
       const out = { open: pv2Settings.open, view: pv2Settings.view, name: editing ? editing.name : '', subject: editing ? editing.subject : '' };
@@ -754,7 +826,7 @@ async function main() {
     await page.evaluate(() => pv2OpenComposer({ to: 'x@y.be', name: 'X Y' }));
     await page.waitForTimeout(300);
     const prefill = await page.evaluate(() => ({
-      open: !!document.querySelector('#staffEmailsPage .pv2-composer'),
+      open: !!document.querySelector('#pv2MailOverlay:not(.hidden) .pv2-composer'),
       to: (document.getElementById('pv2ComposerTo') || {}).value || '',
     }));
     ok(prefill.open && prefill.to === 'x@y.be', `pv2OpenComposer préremplit le destinataire (${prefill.to})`);
@@ -782,6 +854,31 @@ async function main() {
     ok(seqRes.editorOpen, 'éditeur de séquence ouvert via + Créer');
     ok(seqRes.post && seqRes.post.sequence && seqRes.post.sequence.name === 'Relance J+7' && seqRes.post.sequence.trigger.type === 'after_visit' && Number(seqRes.post.sequence.trigger.days) === 7, 'POST customSequences complet (nom, déclencheur, délai)');
     ok(seqRes.card === 1, 'carte « perso » rendue dans la grille des séquences');
+
+    console.log('\n[MENSUEL] le nouveau déclencheur : chaque mois, un jour fixe, une cible');
+    const monthly = await page.evaluate(async () => {
+      pv2SeqNew();
+      await new Promise((r) => setTimeout(r, 150));
+      pv2SeqField('trigger.type', 'monthly');
+      await new Promise((r) => setTimeout(r, 200));
+      const editor = document.querySelector('.pv2-seq-editor');
+      const labels = [...editor.querySelectorAll('.pv2-composer-field > span')].map((el) => el.textContent.trim());
+      const dayOptions = (editor.querySelectorAll('select')[1] || {}).options ? editor.querySelectorAll('select')[1].options.length : 0;
+      pv2SeqField('name', 'Rendez-vous mensuel');
+      pv2SeqField('trigger.monthday', 15);
+      pv2SeqField('segment', 'loyal');
+      pv2SeqField('subject', 'On se voit ce mois-ci ?');
+      pv2SeqField('body', 'Bonjour {{prenom}}, le centre vous attend.');
+      pv2SeqSave();
+      await new Promise((r) => setTimeout(r, 300));
+      const post = window.__QA_POSTS__.filter((p) => p.action === 'customSequences').slice(-1)[0];
+      return { labels, dayOptions, post };
+    });
+    ok(monthly.labels.some((l) => /Jour du mois/.test(l)) && monthly.labels.some((l) => /À qui/.test(l)),
+      `le déclencheur mensuel expose jour du mois + cible (${monthly.labels.filter((l) => /Jour|qui/.test(l)).join(' · ')})`);
+    ok(monthly.dayOptions === 28, `28 jours proposés, jamais un 30 qui sauterait février (obtenu ${monthly.dayOptions})`);
+    ok(monthly.post && monthly.post.sequence.trigger.type === 'monthly' && Number(monthly.post.sequence.trigger.monthday) === 15 && monthly.post.sequence.segment === 'loyal',
+      'POST customSequences {monthly, jour 15, cible fidèles}');
 
     console.log("\n[V4 RÉGLAGES] modèles, adresses, cerveau de l'agent");
     const setRes = await page.evaluate(async () => {
@@ -863,10 +960,16 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
       pv2OpenComposer({ to: 'motion@test.be' });
       await new Promise((r) => setTimeout(r, 250));
-      const onOpen = !!document.querySelector('[data-pv2-mount="composer"].pv2-mount');
+      // Surcouche : l'entree est posee sur le panneau a l'OUVERTURE reelle, et
+      // comme la page ne le reconstruit jamais, elle ne peut pas rejouer : on
+      // verifie le noeud IDENTIQUE apres deux re-rendus complets.
+      const cardEl = document.querySelector('#pv2MailOverlay .pv2-composer');
+      const onOpen = !!cardEl && cardEl.classList.contains('pv2-mount');
+      if (cardEl) cardEl.dataset.qaMotion = 'meme-noeud';
       renderStaffEmailsPage();
       await new Promise((r) => setTimeout(r, 150));
-      const onRerender = !!document.querySelector('[data-pv2-mount="composer"].pv2-mount');
+      const after = document.querySelector('#pv2MailOverlay .pv2-composer');
+      const onRerender = !(after && after.dataset.qaMotion === 'meme-noeud');
       renderStaffEmailsPage();
       await new Promise((r) => setTimeout(r, 100));
       const railEl = () => document.querySelector('#staffEmailsPage .pv2-pipe-rail');
@@ -905,7 +1008,7 @@ async function main() {
       return { onOpen, onRerender, railStill, railMoved, fromSeg, toSeg, railStart, railEnd };
     });
     ok(motion.onOpen, 'l\'entree du composer est animee a sa VRAIE apparition (classe .pv2-mount posee)');
-    ok(motion.onRerender === false, 'elle ne rejoue PAS sur un simple re-rendu : c\'est ce qui evite le clignotement');
+    ok(motion.onRerender === false, 'elle ne PEUT pas rejouer : le panneau est le MEME NOEUD apres les re-rendus de page');
     ok(motion.railStill === '0', 'l\'indicateur du segmente ne bouge pas quand seules les donnees changent (data-moved=' + motion.railStill + ')');
     ok(motion.railMoved === '1', 'il GLISSE quand la gerante change de filtre (data-moved=' + motion.railMoved + ')');
     // Le segment de depart est choisi LOIN du bord gauche (« Envoyes ») : une

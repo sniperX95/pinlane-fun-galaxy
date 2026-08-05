@@ -1106,7 +1106,7 @@
   }
 
   const pv2Mail = {
-    composerOpen: false, busy: false, aiBusy: false, aiTips: [],
+    composerOpen: false, pickerOpen: false, busy: false, aiBusy: false, aiTips: [],
     draft: { to: '', name: '', subject: '', body: '', identityId: '', templateRef: '', replyTo: null },
     identities: [], templates: [], channel: {}, metaLoaded: false, metaLoading: false,
     analyzeOpen: false, analyzeBusy: false, analyzeDraft: { from: '', body: '' },
@@ -1128,13 +1128,57 @@
     } catch (error) { /* rôle sans accès : selects vides, envoi possible quand même */ } finally {
       pv2Mail.metaLoading = false;
       renderStaffEmailsPage();
+      if (pv2Mail.composerOpen) pv2RenderComposer();
     }
   }
+
+  /* ── LE COMPOSEUR VIT DANS UNE SURCOUCHE, PAS DANS LA PAGE ───────────────
+     Bug prod du 2026-08-06 : la page se re-rend au poll, et tout menu OUVERT
+     du composeur (le select natif « Modèle », la liste de clients) était
+     détruit au bout d'une seconde : « ça m'affiche tout puis ça part ».
+     Le composeur est donc monté dans document.body (même doctrine que la
+     modale tarifs) : les reconstructions innerHTML de la page ne le touchent
+     JAMAIS. Il n'est re-rendu que par ses propres actions. */
+  function pv2OverlayHost() {
+    let host = document.getElementById('pv2MailOverlay');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'pv2MailOverlay';
+      host.className = 'pv2-mail-overlay hidden';
+      document.body.appendChild(host);
+      host.addEventListener('mousedown', (event) => { if (event.target === host) pv2CloseComposer(); });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && pv2Mail.composerOpen) { pv2CloseComposer(); event.stopPropagation(); }
+      }, true);
+    }
+    return host;
+  }
+
+  let pv2OverlayWasOpen = false;
+  window.pv2RenderComposer = function () {
+    const host = pv2OverlayHost();
+    if (!pv2Mail.composerOpen) {
+      host.classList.add('hidden');
+      host.innerHTML = '';
+      pv2OverlayWasOpen = false;
+      return;
+    }
+    host.classList.remove('hidden');
+    host.innerHTML = pv2ComposerPanel();
+    // Entrée animée UNE fois, à l'ouverture réelle : un re-rendu interne
+    // (choix de modèle, bascule d'envoi) ne rejoue rien.
+    const card = host.firstElementChild;
+    if (card && !pv2OverlayWasOpen && !reducedMotion) card.classList.add('pv2-mount');
+    pv2OverlayWasOpen = true;
+    pv2ComposerSyncHints();
+    if (pv2Combo.open) pv2ComboPaint();
+  };
 
   // API globale : la fiche client (et tout autre module) ouvre le composer
   // prérempli : remplace le détour console direction / mailto.
   window.pv2OpenComposer = function (prefill = {}) {
     pv2Mail.composerOpen = true;
+    pv2Mail.pickerOpen = false;
     pv2Mail.aiTips = [];
     pv2Mail.draft = {
       to: String(prefill.to || ''),
@@ -1150,14 +1194,21 @@
     if (state.staffMenuPage !== 'emails' && typeof openStaffMenuPage === 'function') {
       openStaffMenuPage('emails');
     }
-    renderStaffEmailsPage();
+    if (!pv2Mail.metaLoaded && !pv2Mail.metaLoading) loadPv2MailMeta();
+    pv2RenderComposer();
     setTimeout(() => { const el = document.getElementById('pv2ComposerTo'); if (el && !el.value) el.focus(); }, 60);
   };
 
   window.pv2CloseComposer = function () {
     pv2Mail.composerOpen = false;
+    pv2Mail.pickerOpen = false;
     pv2Mail.aiTips = [];
-    renderStaffEmailsPage();
+    pv2RenderComposer();
+  };
+
+  window.pv2TogglePicker = function () {
+    pv2Mail.pickerOpen = !pv2Mail.pickerOpen;
+    pv2RenderComposer();
   };
 
   // Champs édités SANS re-render (pattern crmRelanceField : le render complet
@@ -1181,23 +1232,47 @@
      clients), navigation clavier complète, et chaque ligne dit ce qui aide à
      choisir : visites et dernière venue. Le menu est géré EN DIRECT dans le
      DOM (jamais de re-rendu de page pendant la frappe : le focus survit). */
-  const pv2Combo = { open: false, index: -1, matches: [] };
+  // Tri au choix du gérant : pertinence de la frappe, dernière venue, ou plus
+  // gros clients. La recherche couvre le nom, l'adresse ET le téléphone
+  // (chiffres seuls : « 0470 » trouve « +32 470 … »).
+  const pv2Combo = { open: false, index: -1, matches: [], sort: 'pertinence' };
+  const PV2_COMBO_SORTS = [['pertinence', 'Pertinence'], ['recents', 'Récents'], ['valeur', 'Gros clients']];
 
   function pv2ComboMatches(query) {
     const rows = (typeof getStaffClientRows === 'function' ? getStaffClientRows() : []).filter((r) => r.email);
     const q = String(query || '').trim().toLowerCase();
-    if (!q) return rows.slice(0, 8);
-    const starts = [];
-    const contains = [];
-    for (const r of rows) {
-      const name = String(r.name || '').toLowerCase();
-      const email = String(r.email || '').toLowerCase();
-      if (name.startsWith(q) || email.startsWith(q)) starts.push(r);
-      else if (name.includes(q) || email.includes(q)) contains.push(r);
-      if (starts.length >= 8) break;
+    const qDigits = q.replace(/\D/g, '');
+    let list;
+    if (!q) {
+      list = rows.slice();
+    } else {
+      const starts = [];
+      const contains = [];
+      for (const r of rows) {
+        const name = String(r.name || '').toLowerCase();
+        const email = String(r.email || '').toLowerCase();
+        const phone = String(r.phone || '').replace(/\D/g, '');
+        if (name.startsWith(q) || email.startsWith(q) || (qDigits.length >= 3 && phone.startsWith(qDigits))) starts.push(r);
+        else if (name.includes(q) || email.includes(q) || (qDigits.length >= 3 && phone.includes(qDigits))) contains.push(r);
+      }
+      list = [...starts, ...contains];
     }
-    return [...starts, ...contains].slice(0, 8);
+    if (pv2Combo.sort === 'recents') {
+      list = list.slice().sort((a, b) => String(b.lastVisit || '').localeCompare(String(a.lastVisit || '')));
+    } else if (pv2Combo.sort === 'valeur') {
+      list = list.slice().sort((a, b) => (Number(b.spent) || 0) - (Number(a.spent) || 0));
+    }
+    return list.slice(0, 8);
   }
+
+  window.pv2ComboSort = function (key) {
+    pv2Combo.sort = PV2_COMBO_SORTS.some(([k]) => k === key) ? key : 'pertinence';
+    const input = document.getElementById('pv2ComposerTo');
+    pv2Combo.matches = pv2ComboMatches(input ? input.value : pv2Mail.draft.to);
+    pv2Combo.index = -1;
+    pv2ComboPaint();
+    if (input) input.focus();
+  };
 
   function pv2ComboList() { return document.getElementById('pv2ComboList'); }
 
@@ -1210,14 +1285,18 @@
       input.setAttribute('aria-expanded', 'false');
       return;
     }
-    list.innerHTML = pv2Combo.matches.map((r, i) => {
+    const sortRow = `<div class="pv2-combo-sort" role="group" aria-label="Trier les clients">
+      ${PV2_COMBO_SORTS.map(([key, label]) => `<button type="button" class="pv2-combo-sort-btn${pv2Combo.sort === key ? ' is-active' : ''}" onmousedown="event.preventDefault(); pv2ComboSort('${key}');">${esc(label)}</button>`).join('')}
+    </div>`;
+    list.innerHTML = sortRow + pv2Combo.matches.map((r, i) => {
       const meta = [];
       const visits = Number(r.reservations) || 0;
       if (visits) meta.push(`${visits} visite${visits > 1 ? 's' : ''}`);
+      if (Number(r.spent) > 0) meta.push(money(r.spent));
       if (r.lastVisitAgo) meta.push(r.lastVisitAgo);
       return `<button type="button" role="option" id="pv2ComboOpt${i}" class="pv2-combo-opt${i === pv2Combo.index ? ' is-active' : ''}" aria-selected="${i === pv2Combo.index}"
         onmousedown="event.preventDefault(); pv2ComboPick(${i});">
-        <span class="pv2-combo-id"><strong>${esc(r.name || r.email)}</strong><small>${esc(r.email)}</small></span>
+        <span class="pv2-combo-id"><strong>${esc(r.name || r.email)}</strong><small>${esc(r.email)}${r.phone ? ` · ${esc(r.phone)}` : ''}</small></span>
         ${meta.length ? `<span class="pv2-combo-meta">${esc(meta.join(' · '))}</span>` : ''}
       </button>`;
     }).join('');
@@ -1323,9 +1402,27 @@
     pv2ComposerSyncHints();
   };
 
+  /* ── LES VARIABLES SONT DES JETONS, PLUS DES ACCOLADES ───────────────────
+     Demande du propriétaire (2026-08-06) : « des trucs comme {{prenom}} on ne
+     doit pas les voir, ça doit s'afficher de manière stylée ». Partout où un
+     texte est RENDU, une variable devient un jeton :
+       . résolue -> la vraie valeur, soulignée d'un liseré discret ;
+       . connue mais pas encore résolue (pas de client choisi) -> jeton bleu
+         nommé (« Prénom ») ;
+       . trou à compléter ({{offre}}…) -> jeton ambre « à compléter », qui
+         bloque toujours l'envoi.
+     Dans la ZONE DE FRAPPE, le texte reste la source de vérité : un miroir
+     colle un halo lumineux sous chaque variable, aux mêmes métriques. */
+  function pv2VarToken(key, ctx) {
+    const k = String(key).toLowerCase();
+    const value = ctx ? ctx[k] : '';
+    if (value) return `<span class="pl-var is-ok">${esc(value)}</span>`;
+    if (PV2_VAR_LABELS[k]) return `<span class="pl-var">${esc(PV2_VAR_LABELS[k])}</span>`;
+    return `<mark class="pv2-var-missing pl-var is-fill">${esc(k)} · à compléter</mark>`;
+  }
+
   // Miroir CLIENT de la grammaire serveur, pour l'aperçu seulement. Tout est
-  // échappé d'abord ; les variables résolues s'affichent, les manquantes
-  // ressortent en surbrillance d'alerte.
+  // échappé d'abord ; les variables deviennent des jetons.
   function pv2RenderEmailPreview(text, ctx) {
     const esc2 = esc;
     const lines = String(text || '').split('\n');
@@ -1333,10 +1430,7 @@
     let bullets = [];
     const inline = (rawLine) => {
       let s = esc2(rawLine);
-      s = s.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, key) => {
-        const v = ctx[key.toLowerCase()];
-        return v ? `<span class="pv2-var-ok">${esc2(v)}</span>` : `<mark class="pv2-var-missing">{{${esc2(key)}}}</mark>`;
-      });
+      s = s.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, key) => pv2VarToken(key, ctx));
       s = s.replace(/\[([^\]\n]{1,200})\]\((https?:\/\/[^\s)]{0,500})\)/g, '<a>$1</a>');
       s = s.replace(/\*\*([^*\n]{1,300}?)\*\*/g, '<strong>$1</strong>');
       s = s.replace(/(^|[^\w&])_([^_\n]{1,300}?)_(?=$|[^\w])/g, '$1<em>$2</em>');
@@ -1360,11 +1454,38 @@
     return blocks.join('');
   }
 
-  // Rafraîchit aperçu + rappel de variables SANS re-rendre la page (le rendu
-  // complet tuerait le focus en pleine frappe : même règle que pv2ComposerField).
+  // Le halo des variables DANS la zone de frappe : un miroir aux mêmes
+  // métriques (police, padding, retours à la ligne) peint un fond lumineux
+  // sous chaque {{…}} sans toucher au texte ni au curseur.
+  function pv2EditorMirrorHtml(text) {
+    return esc(String(text || '')).replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (m, key) => {
+      const known = Boolean(PV2_VAR_LABELS[String(key).toLowerCase()]);
+      return `<span class="pv2-glow${known ? '' : ' is-fill'}">${m}</span>`;
+    }) + '\n';
+  }
+
+  // Rafraîchit miroir + aperçu + rappel de variables SANS re-rendre le panneau
+  // (le rendu complet tuerait le focus en pleine frappe).
   function pv2ComposerSyncHints() {
     const d = pv2Mail.draft;
     const ctx = pv2VarContext(d);
+    const mirror = document.getElementById('pv2ComposerMirror');
+    if (mirror) {
+      mirror.innerHTML = pv2EditorMirrorHtml(d.body);
+      const ta = document.getElementById('pv2ComposerBody');
+      if (ta) mirror.scrollTop = ta.scrollTop;
+    }
+    // L'aperçu est UN MAIL : objet en tête, expéditeur et destinataire, puis
+    // le papier clair (les mails partent toujours sur fond clair).
+    const subjectEl = document.getElementById('pv2PreviewSubject');
+    if (subjectEl) subjectEl.innerHTML = pv2RenderEmailPreview(d.subject, ctx).replace(/^<p>|<\/p>$/g, '') || '<span class="pv2-preview-empty">Objet du message</span>';
+    const metaEl = document.getElementById('pv2PreviewMeta');
+    if (metaEl) {
+      const identity = pv2Mail.identities.find((i) => String(i.id) === String(d.identityId)) || pv2Mail.identities[0] || null;
+      const from = identity ? `${identity.label || identity.email} <${identity.email}>` : 'expéditeur par défaut';
+      const to = d.to ? `${d.name ? `${d.name} ` : ''}<${d.to}>` : 'choisissez un client';
+      metaEl.innerHTML = `<span><b>De</b> ${esc(from)}</span><span><b>À</b> ${esc(to)}</span>`;
+    }
     const preview = document.getElementById('pv2ComposerPreview');
     if (preview) preview.innerHTML = pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>';
     const hint = document.getElementById('pv2ComposerVarsHint');
@@ -1380,6 +1501,10 @@
     }
   }
   window.pv2ComposerSyncHints = pv2ComposerSyncHints;
+  window.pv2EditorScrollSync = function (ta) {
+    const mirror = document.getElementById('pv2ComposerMirror');
+    if (mirror) mirror.scrollTop = ta.scrollTop;
+  };
 
   window.pv2ComposerServerPreview = async function () {
     const d = pv2Mail.draft;
@@ -1424,7 +1549,8 @@
       const tpl = pv2Mail.templates.find((t) => String(t.id) === ref.slice(4));
       if (tpl) { pv2Mail.draft.subject = fill(tpl.subject || ''); pv2Mail.draft.body = fill(tpl.body || ''); }
     }
-    renderStaffEmailsPage();
+    pv2Mail.pickerOpen = false;
+    pv2RenderComposer();
   };
 
   // Un modèle fourni qui plaît devient un modèle À SOI : préremplit l'éditeur
@@ -1437,7 +1563,12 @@
     const ref = String(d.templateRef || '');
     const starter = ref.startsWith('starter:') ? PV2_STARTERS.find((s) => s.key === ref.slice(8)) : null;
     pv2Settings.tplEditing = { id: null, name: starter ? `${starter.name} (ma version)` : '', category: 'marketing', subject: d.subject, body: d.body };
+    // La bibliothèque vit sur la page : la surcouche se range, l'éditeur de
+    // modèle prérempli attend dans Réglages.
+    pv2Mail.composerOpen = false;
+    pv2RenderComposer();
     renderStaffEmailsPage();
+    toast('Brouillon repris dans Réglages : donnez-lui un nom et enregistrez.');
   };
 
   window.pv2ComposerImprove = async function () {
@@ -1445,7 +1576,7 @@
     const d = pv2Mail.draft;
     if (!d.subject.trim() && !d.body.trim()) { toast('Écris d\'abord un brouillon à améliorer.'); return; }
     pv2Mail.aiBusy = true;
-    renderStaffEmailsPage();
+    pv2RenderComposer();
     try {
       const payload = await apiRequest('/api/ops', {
         method: 'POST',
@@ -1463,7 +1594,7 @@
       toast(error.message || 'Amélioration indisponible.');
     } finally {
       pv2Mail.aiBusy = false;
-      renderStaffEmailsPage();
+      pv2RenderComposer();
     }
   };
 
@@ -1496,7 +1627,7 @@
       scheduledAt = requested.toISOString();
     }
     pv2Mail.busy = true;
-    renderStaffEmailsPage();
+    pv2RenderComposer();
     try {
       await apiRequest('/api/ops', {
         method: 'POST',
@@ -1522,7 +1653,7 @@
       toast(error.message || 'Envoi impossible.');
     } finally {
       pv2Mail.busy = false;
-      renderStaffEmailsPage();
+      pv2RenderComposer();
     }
   };
 
@@ -1689,10 +1820,9 @@
     if (t.type === 'after_visit') return `${t.days} jour${t.days > 1 ? 's' : ''} après une visite`;
     if (t.type === 'before_visit') return `${t.days} jour${t.days > 1 ? 's' : ''} avant une venue`;
     if (t.type === 'inactive') return `clients plus vus depuis ${t.days} jours`;
-    if (t.type === 'weekly') {
-      const segments = (pv2Seq.limits && pv2Seq.limits.segments) || {};
-      return `chaque ${PV2_WEEKDAYS[t.weekday] || ''} · ${segments[sequence.segment] || 'tous'}`;
-    }
+    const segments = (pv2Seq.limits && pv2Seq.limits.segments) || {};
+    if (t.type === 'weekly') return `chaque ${PV2_WEEKDAYS[t.weekday] || ''} · ${segments[sequence.segment] || 'tous'}`;
+    if (t.type === 'monthly') return `le ${Number(t.monthday) || 1} de chaque mois · ${segments[sequence.segment] || 'tous'}`;
     return '';
   }
 
@@ -1721,12 +1851,13 @@
 
   window.pv2SeqField = function (field, value) {
     if (field === 'trigger.type') {
-      pv2Seq.draft.trigger = { type: value, days: value === 'inactive' ? 90 : 7, weekday: 4 };
+      pv2Seq.draft.trigger = { type: value, days: value === 'inactive' ? 90 : 7, weekday: 4, monthday: 1 };
       renderStaffEmailsPage();
       return;
     }
     if (field === 'trigger.days') { pv2Seq.draft.trigger.days = Number(value); return; }
     if (field === 'trigger.weekday') { pv2Seq.draft.trigger.weekday = Number(value); return; }
+    if (field === 'trigger.monthday') { pv2Seq.draft.trigger.monthday = Number(value); return; }
     if (field === 'cap') { pv2Seq.draft.cap = Number(value); return; }
     pv2Seq.draft[field] = value;
   };
@@ -1803,7 +1934,7 @@
         <button type="button" class="mk-switch${sequence.enabled ? ' is-on' : ''}" data-switch-key="seq:${esc(String(sequence.id))}" role="switch" aria-checked="${sequence.enabled}" aria-label="${esc(sequence.name)}" onclick="pv2SeqToggle('${escJs(sequence.id)}', ${sequence.enabled ? 'false' : 'true'})" ${pv2Seq.busy ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(pv2SeqTriggerLabel(sequence))} · max ${Number(sequence.cap) || 0} envois</p>
-      <details class="mk-auto-preview"><summary><span class="pv2-caret" aria-hidden="true"></span>Aperçu du message</summary><p>${esc(sequence.body || '')}</p></details>
+      <details class="mk-auto-preview"><summary><span class="pv2-caret" aria-hidden="true"></span>Aperçu du message</summary><div class="mk-auto-preview-body">${pv2RenderEmailPreview(sequence.body || '', null)}</div></details>
       <div class="mk-auto-stats">
         <button type="button" class="pv2-btn sm" onclick="pv2SeqEdit('${escJs(sequence.id)}')">${ci('pencil')}Modifier</button>
         <button type="button" class="pv2-btn sm" onclick="pv2SeqDelete('${escJs(sequence.id)}')">Supprimer</button>
@@ -1833,6 +1964,12 @@
         ${trigger.type === 'weekly' ? `
         <label class="pv2-composer-field"><span>Jour de la semaine</span>
           <select onchange="pv2SeqField('trigger.weekday', this.value)">${PV2_WEEKDAYS.map((label, index) => `<option value="${index}"${Number(trigger.weekday) === index ? ' selected' : ''}>${label}</option>`).join('')}</select>
+        </label>
+        <label class="pv2-composer-field"><span>À qui</span>
+          <select onchange="pv2SeqField('segment', this.value)">${segmentOptions}</select>
+        </label>` : trigger.type === 'monthly' ? `
+        <label class="pv2-composer-field"><span>Jour du mois</span>
+          <select onchange="pv2SeqField('trigger.monthday', this.value)">${Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}"${(Number(trigger.monthday) || 1) === i + 1 ? ' selected' : ''}>le ${i + 1}</option>`).join('')}</select>
         </label>
         <label class="pv2-composer-field"><span>À qui</span>
           <select onchange="pv2SeqField('segment', this.value)">${segmentOptions}</select>
@@ -2601,7 +2738,10 @@
      règles que la sauvegarde, donc un aperçu qui s'affiche est un texte qui
      s'enregistrera. ── */
   function pv2AutoDraftBody(key) {
-    const d = mkAuto.editDraft;
+    // Le brouillon n'est joint QUE si l'éditeur de CETTE séquence est ouvert :
+    // « Voir le mail » depuis une carte fermée rend les textes réellement en
+    // vigueur, jamais le brouillon d'une autre carte resté en mémoire.
+    const d = mkAuto.editKey === key ? mkAuto.editDraft : {};
     const body = { action: '', key, centerId: state.adminCenterId || 'libramont' };
     if (String(d.subject || '').trim()) body.subject = d.subject;
     if (String(d.body || '').trim()) body.body = d.body;
@@ -2768,7 +2908,6 @@
     // vrai texte : celui du gérant s'il en a écrit un, sinon le texte d'usine
     // servi par le serveur. Le rendu HTML complet est derrière « Voir le mail ».
     const def = mkAuto.defaults[meta.key] || {};
-    const previewText = (setting && setting.body) || def.body || '';
     // ÉTOILE AMBRE SUPPRIMÉE : elle ne portait aucune information lisible (son
     // seul sens vivait dans un title=, invisible), et elle dépensait l'ambre
     // que cet écran réserve à l'ATTENTE. Couleur = sens, sinon rien.
@@ -2785,7 +2924,7 @@
         <button type="button" class="mk-switch${enabled ? ' is-on' : ''}" data-switch-key="auto:${esc(meta.key)}" role="switch" aria-checked="${enabled}" aria-label="${esc(meta.label)}" onclick="toggleStaffAutomation('${meta.key}')" ${busy || !mkAuto.settings ? 'disabled' : ''}><span></span></button>
       </div>
       <p class="mk-auto-desc">${esc(meta.desc)}</p>
-      <details class="mk-auto-preview"><summary><span class="pv2-caret" aria-hidden="true"></span>Aperçu du message</summary><p>${esc(previewText)}</p></details>
+      <button type="button" class="mkw-link mk-auto-preview" onclick="pv2AutoPreview('${meta.key}')" ${mkAuto.busyKey === meta.key ? 'disabled' : ''}>Voir le mail</button>
       <div class="mk-auto-foot">
         <span class="mk-auto-stats">${statsTxt}</span>
         <button type="button" class="pv2-btn sm mk-auto-edit-btn" onclick="pv2AutoEdit('${meta.key}')">${ci('pencil')}${editing ? 'Fermer' : 'Modifier'}</button>
@@ -2798,61 +2937,83 @@
     return row.direction === 'inbound' || row.status === 'received';
   }
 
+  // La GALERIE de modèles : des cartes lisibles groupées par moment commercial
+  // (fini le select natif que chaque re-rendu refermait). Chaque carte montre
+  // l'objet et le début du texte, variables en jetons.
+  function pv2TplPickerPanel(d, ctx) {
+    const card = (ref, name, subject, body, origin) => `
+      <button type="button" class="pv2-tpl-card${d.templateRef === ref ? ' is-active' : ''}" onclick="pv2ComposerTemplate('${escJs(ref)}')">
+        <span class="pv2-tpl-name">${esc(name)}${origin ? `<em class="pv2-tpl-origin">${esc(origin)}</em>` : ''}</span>
+        <span class="pv2-tpl-subject">${pv2RenderEmailPreview(subject, ctx).replace(/^<p>|<\/p>$/g, '')}</span>
+        <span class="pv2-tpl-body">${pv2RenderEmailPreview(String(body || '').split('\n').filter(Boolean).slice(0, 2).join(' '), ctx).replace(/^<p>|<\/p>$/g, '')}</span>
+      </button>`;
+    const groups = [];
+    for (const s of PV2_STARTERS) {
+      let g = groups.find((x) => x.label === s.cat);
+      if (!g) { g = { label: s.cat, cards: [] }; groups.push(g); }
+      g.cards.push(card(`starter:${s.key}`, s.name, s.subject, s.body, ''));
+    }
+    if (pv2Mail.templates.length) {
+      groups.push({ label: 'Vos modèles', cards: pv2Mail.templates.map((t) => card(`tpl:${t.id}`, t.label || t.name || `Modèle ${t.id}`, t.subject || '', t.body || '', 'maison')) });
+    }
+    return `<div class="pv2-tpl-picker" id="pv2TplPicker">
+      ${groups.map((g) => `<div class="pv2-tpl-group"><h4>${esc(g.label)}</h4><div class="pv2-tpl-grid">${g.cards.join('')}</div></div>`).join('')}
+      <div class="pv2-tpl-foot"><button type="button" class="mkw-link" onclick="pv2ComposerTemplate('')">Partir de zéro</button></div>
+    </div>`;
+  }
+
   function pv2ComposerPanel() {
     const d = pv2Mail.draft;
     if (!pv2Mail.metaLoaded && !pv2Mail.metaLoading) setTimeout(() => loadPv2MailMeta(), 0);
     const identityOptions = pv2Mail.identities.length
       ? pv2Mail.identities.map((i) => `<option value="${esc(String(i.id))}"${String(i.id) === String(d.identityId) ? ' selected' : ''}>${esc(i.label || i.email)}, ${esc(i.email)}</option>`).join('')
       : '<option value="">Expéditeur par défaut</option>';
-    // Modèles groupés par moment commercial ; « Vos modèles » = ceux du centre
-    // (créés, dupliqués ou modifiés par l'équipe) : l'origine se lit d'un
-    // coup d'œil, comme demandé.
-    const groups = [];
-    for (const s of PV2_STARTERS) {
-      let g = groups.find((x) => x.label === s.cat);
-      if (!g) { g = { label: s.cat, items: [] }; groups.push(g); }
-      g.items.push(`<option value="starter:${s.key}"${d.templateRef === `starter:${s.key}` ? ' selected' : ''}>${esc(s.name)}</option>`);
-    }
-    const templateOptions = [
-      '<option value="">Partir de zéro…</option>',
-      ...groups.map((g) => `<optgroup label="${esc(g.label)}">${g.items.join('')}</optgroup>`),
-      pv2Mail.templates.length
-        ? `<optgroup label="Vos modèles">${pv2Mail.templates.map((t) => `<option value="tpl:${t.id}"${d.templateRef === `tpl:${t.id}` ? ' selected' : ''}>${esc(t.label || t.name || `Modèle ${t.id}`)}</option>`).join('')}</optgroup>`
-        : '',
-    ].join('');
+    const currentTpl = (() => {
+      const ref = String(d.templateRef || '');
+      if (ref.startsWith('starter:')) { const s = PV2_STARTERS.find((x) => `starter:${x.key}` === ref); return s ? s.name : ''; }
+      if (ref.startsWith('tpl:')) { const t = pv2Mail.templates.find((x) => `tpl:${x.id}` === ref); return t ? (t.label || t.name || '') : ''; }
+      return '';
+    })();
     const unresolved = pv2DraftUnresolved(d);
     const missName = !d.name && unresolved.some((k) => k === 'prenom' || k === 'nom');
     const aiOn = !!(pv2Mail.channel && pv2Mail.channel.aiConfigured);
     const ctx = pv2VarContext(d);
-    return `<section class="pv2-panel pv2-composer" data-pv2-mount="composer" aria-label="Nouveau message">
+    const identity = pv2Mail.identities.find((i) => String(i.id) === String(d.identityId)) || pv2Mail.identities[0] || null;
+    const fromLine = identity ? `${identity.label || identity.email} <${identity.email}>` : 'expéditeur par défaut';
+    const toLine = d.to ? `${d.name ? `${d.name} ` : ''}<${d.to}>` : 'choisissez un client';
+    return `<section class="pv2-panel pv2-composer" role="dialog" aria-modal="true" aria-label="Nouveau message">
       <div class="pv2-panel-head has-sub">
-        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisissez le client, un modèle si vous voulez, écrivez : l'aperçu montre ce que le client recevra.</p></div>
+        <div><h2>${d.replyTo ? 'Répondre' : 'Nouveau message'}</h2><p class="pv2-panel-sub">Choisissez le client, un modèle si vous voulez, écrivez : l'aperçu montre le mail que le client recevra.</p></div>
         <button type="button" class="pv2-btn sm" onclick="pv2CloseComposer()">Fermer</button>
       </div>
       <div class="pv2-panel-body pv2-composer-grid">
         <div class="pv2-composer-field pv2-composer-to"><span id="pv2ComboLabel">À</span>
           <div class="pv2-combo">
             <input id="pv2ComposerTo" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="pv2ComboList" aria-labelledby="pv2ComboLabel"
-              data-pl-focus="emails.composer.to" value="${esc(d.to)}" placeholder="Nom ou adresse email du client…" autocomplete="off"
+              data-pl-focus="emails.composer.to" value="${esc(d.to)}" placeholder="Nom, téléphone ou début d'adresse…"
+              autocomplete="one-time-code" name="pv2-recherche-client" spellcheck="false"
               oninput="pv2ComboInput(this.value)" onfocus="pv2ComboFocus()" onblur="pv2ComboBlur()" onkeydown="pv2ComboKey(event)">
             <div class="pv2-combo-list" id="pv2ComboList" role="listbox" aria-label="Clients correspondants" hidden></div>
           </div>
         </div>
         <label class="pv2-composer-field"><span>Expéditeur</span>
-          <select onchange="pv2ComposerField('identityId', this.value)" aria-label="Adresse d'envoi">${identityOptions}</select>
+          <select onchange="pv2ComposerField('identityId', this.value); pv2ComposerSyncHints();" aria-label="Adresse d'envoi">${identityOptions}</select>
         </label>
-        <label class="pv2-composer-field"><span>Modèle</span>
-          <select onchange="pv2ComposerTemplate(this.value)" aria-label="Modèle de message">${templateOptions}</select>
-        </label>
+        <div class="pv2-composer-field"><span>Modèle</span>
+          <button type="button" class="pv2-tpl-toggle${pv2Mail.pickerOpen ? ' is-open' : ''}" aria-expanded="${pv2Mail.pickerOpen}" aria-controls="pv2TplPicker" onclick="pv2TogglePicker()">
+            <span>${currentTpl ? esc(currentTpl) : 'Choisir un modèle…'}</span>${ci('chevronDown')}
+          </button>
+        </div>
         <div class="pv2-composer-field pv2-composer-when"><span>Envoi</span>
           <div class="pv2-composer-when-row">
-            <select onchange="pv2ComposerField('when', this.value); renderStaffEmailsPage();" aria-label="Moment d'envoi">
+            <select onchange="pv2ComposerField('when', this.value); pv2RenderComposer();" aria-label="Moment d'envoi">
               <option value="now"${d.when !== 'later' ? ' selected' : ''}>Maintenant</option>
               <option value="later"${d.when === 'later' ? ' selected' : ''}>Programmer</option>
             </select>
             ${d.when === 'later' ? `<input type="datetime-local" value="${esc(d.scheduledAt)}" aria-label="Date et heure d'envoi" onchange="pv2ComposerField('scheduledAt', this.value)">` : ''}
           </div>
         </div>
+        ${pv2Mail.pickerOpen ? `<div class="pv2-composer-wide">${pv2TplPickerPanel(d, ctx)}</div>` : ''}
         <label class="pv2-composer-field pv2-composer-wide"><span>Objet</span>
           <input id="pv2ComposerSubject" data-pl-focus="emails.composer.objet" value="${esc(d.subject)}" placeholder="Objet du message" oninput="pv2ComposerField('subject', this.value); pv2ComposerSyncHints();">
         </label>
@@ -2867,9 +3028,17 @@
             <span class="pv2-toolbar-sep" aria-hidden="true"></span>
             ${Object.entries(PV2_VAR_LABELS).map(([key, label]) => `<button type="button" class="pv2-tool pv2-tool-var" title="Insérer ${esc(label)}" onclick="pv2InsertVar('${key}')">${esc(label)}</button>`).join('')}
           </div>
-          <textarea id="pv2ComposerBody" data-pl-focus="emails.composer.message" rows="8" placeholder="Bonjour…" oninput="pv2ComposerField('body', this.value); pv2ComposerSyncHints();">${esc(d.body)}</textarea>
+          <div class="pv2-editor">
+            <div class="pv2-editor-mirror" id="pv2ComposerMirror" aria-hidden="true">${pv2EditorMirrorHtml(d.body)}</div>
+            <textarea id="pv2ComposerBody" data-pl-focus="emails.composer.message" rows="8" placeholder="Bonjour…" spellcheck="true"
+              oninput="pv2ComposerField('body', this.value); pv2ComposerSyncHints();" onscroll="pv2EditorScrollSync(this)">${esc(d.body)}</textarea>
+          </div>
           <p class="pv2-vars-hint" id="pv2ComposerVarsHint" ${unresolved.length ? '' : 'hidden'}>${unresolved.length ? `À compléter avant l'envoi : ${unresolved.map((k) => `<code>{{${esc(k)}}}</code>`).join(' ')}${missName ? ' <span>(choisissez un client pour remplir le prénom)</span>' : ''}` : ''}</p>
-          <div class="pv2-mail-render" id="pv2ComposerPreview" aria-label="Aperçu du message">${pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>'}</div>
+          <div class="pv2-mail-paper">
+            <div class="pv2-mail-paper-subject" id="pv2PreviewSubject">${pv2RenderEmailPreview(d.subject, ctx).replace(/^<p>|<\/p>$/g, '') || '<span class="pv2-preview-empty">Objet du message</span>'}</div>
+            <div class="pv2-mail-paper-meta" id="pv2PreviewMeta"><span><b>De</b> ${esc(fromLine)}</span><span><b>À</b> ${esc(toLine)}</span></div>
+            <div class="pv2-mail-render" id="pv2ComposerPreview" aria-label="Aperçu du message">${pv2RenderEmailPreview(d.body, ctx) || '<p class="pv2-preview-empty">L\'aperçu du message s\'affiche ici pendant que vous écrivez.</p>'}</div>
+          </div>
         </div>
         ${pv2Mail.aiTips.length ? `<ul class="pv2-composer-tips">${pv2Mail.aiTips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
         <div class="pv2-composer-actions pv2-composer-wide">
@@ -3246,10 +3415,12 @@
         })() : ''}
         <div>
           <div class="pv2-mail-preview-head">
-            <span class="pv2-mail-preview-title">Contenu</span>
-            ${selected.body ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ViewStoredMail('${escJs(selected.uid)}')">Voir le mail tel qu'envoyé</button>` : ''}
+            <span class="pv2-mail-preview-title">Le mail</span>
+            ${selected.body ? `<button type="button" class="pv2-btn sm ghost" onclick="pv2ViewStoredMail('${escJs(selected.uid)}')">Plein écran</button>` : ''}
           </div>
-          <div class="pv2-mail-render pv2-mail-render-detail">${pv2RenderEmailPreview(String(payload.textBody || selected.subject || 'Pas de contenu texte.'), { prenom: '', nom: '', centre: '' }) || '<p class="pv2-preview-empty">Pas de contenu texte.</p>'}</div>
+          ${selected.body
+            ? `<iframe class="pv2-mail-frame" sandbox="" title="Mail tel qu'envoyé" srcdoc="${esc(selected.body)}"></iframe>`
+            : `<div class="pv2-mail-render pv2-mail-render-detail">${pv2RenderEmailPreview(String(payload.textBody || selected.subject || 'Pas de contenu texte.'), null) || '<p class="pv2-preview-empty">Pas de contenu texte.</p>'}</div>`}
         </div>
       </div>`;
 
@@ -3279,11 +3450,12 @@
 
       ${failureBanner}
 
-      <!-- FAMILLE B. Ces trois panneaux apparaissent VRAIMENT sur une action de
-           la gerante, mais ils sont aussi re-rendus a chaque frappe dans la
+      <!-- FAMILLE B. Ces panneaux apparaissent VRAIMENT sur une action de la
+           gerante, mais ils sont aussi re-rendus a chaque frappe dans la
            recherche : sans la garde de markEmailsMounts(), leur entree
-           rejouerait a chaque lettre tapee. -->
-      ${pv2Mail.composerOpen ? pv2ComposerPanel() : ''}
+           rejouerait a chaque lettre tapee. Le COMPOSEUR, lui, ne vit plus
+           ici : il est monte dans document.body (pv2RenderComposer) pour que
+           les re-rendus de la page ne puissent plus fermer ses menus. -->
       ${pv2Mail.analyzeOpen ? pv2AnalyzePanel() : ''}
       ${pv2Settings.open ? pv2SettingsPanel() : ''}
 
@@ -3395,7 +3567,6 @@
     slidePipeRail(root);
     replaySwitchKnobs(root);
     markEmailsMounts(root, {
-      composer: pv2Mail.composerOpen,
       analyze: pv2Mail.analyzeOpen,
       settings: pv2Settings.open,
       seqEditor: pv2Seq.creating || pv2Seq.editId,

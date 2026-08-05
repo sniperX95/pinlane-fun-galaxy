@@ -110,7 +110,8 @@
     "test:ai-learning": "node scripts/ai-learning-check.js",
     "test:embed-origins": "node scripts/embed-origins-check.js",
     "test:occupancy": "node scripts/occupancy-check.js",
-    "test:motion-exploitation": "node scripts/motion-exploitation-check.js"
+    "test:motion-exploitation": "node scripts/motion-exploitation-check.js",
+    "test:openrouter-frontier": "node scripts/openrouter-frontier-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

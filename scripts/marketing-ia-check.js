@@ -609,6 +609,15 @@ async function main() {
       return { ok: rect ? lowest <= window.innerHeight + 2 && lowest >= window.innerHeight - 110 : false };
     });
     ok(hardBottom.ok, 'a scroll maximum, la barre bute au bas de l\'ecran : aucun vide ne vit dessous');
+    // UN SEUL cadre de focus : la boite s'allume (focus-within), l'input nu
+    // n'ajoute JAMAIS son propre anneau (deux cadres bleus = retour Movsar).
+    const focusRing = await page.evaluate(() => {
+      const input = document.getElementById('brAskInput');
+      input.focus();
+      const style = getComputedStyle(input);
+      return { shadow: style.boxShadow, outline: style.outlineStyle };
+    });
+    ok(focusRing.shadow === 'none' && focusRing.outline === 'none', `l'input du composer ne porte AUCUN anneau propre (${focusRing.shadow} / ${focusRing.outline})`);
 
     console.log('\n[FEUILLE MOBILE] le panneau devient une feuille body-montee, entree/sortie animees');
     await page.setViewportSize({ width: 390, height: 844 });

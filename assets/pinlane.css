@@ -1033,4 +1033,6 @@ kbd, .kbd {
    sa vue. setView() retire le drapeau des qu'il agit. */
 html[data-boot='app'] #clientView,
 html[data-boot='app'] #nav { display: none !important; }
-html[data-boot='app']::before { content: ''; position: fixed; inset: 0; background: var(--bg, #0b0b0c); z-index: 99999; }
+/* Le fond du voile suit le THEME : --page est le vrai token de fond (--bg
+   n'existe pas, le fallback noir passait aussi en theme clair). */
+html[data-boot='app']::before { content: ''; position: fixed; inset: 0; background: var(--page, #0b0b0c); z-index: 99999; }

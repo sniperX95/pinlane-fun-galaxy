@@ -123,9 +123,14 @@ async function measure(browser, opts) {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await installProbe(page, opts);
   await page.goto(`${BASE_URL}/#/staff/emails`, { waitUntil: 'load', timeout: 45000 });
-  // On laisse vivre le demarrage complet (auth + synchros simulees lentes).
-  await page.waitForTimeout(2600);
+  // On laisse vivre le demarrage complet (auth + synchros simulees lentes),
+  // PLUS la fenetre du filet de re-rendu post-chargement.
+  await page.waitForTimeout(3400);
   const probe = await page.evaluate(() => window.__BOOT_PROBE__);
+  probe.pageFilled = await page.evaluate(() => {
+    const el = document.getElementById('staffEmailsPage');
+    return Boolean(el && el.children.length > 0 && el.textContent.trim().length > 40);
+  });
   await page.close();
   return probe;
 }
@@ -140,6 +145,13 @@ async function main() {
     ok(run.staffAt >= 0, `la console finit par s'afficher (a ${run.staffAt} ms)`);
     ok(run.clientVisible === 0,
       `AUCUNE frame ne montre le parcours de reservation (${run.clientVisible} frame(s) fautive(s)${run.firstClientAt >= 0 ? `, la premiere a ${run.firstClientAt} ms` : ''})`);
+    // LA PAGE ACTIVE A DU CONTENU (bug « la page reste noire, on recharge »,
+    // 2026-08-06) : setView anticipe pouvait appeler renderStaff AVANT que
+    // staff-pages-v2.js (defer, charge apres app-main, ici RALENTI expres) ne
+    // definisse le rendu des pages : ReferenceError, page vide a vie. Le
+    // harnais lent reproduit la course ; cette assertion la verrouille.
+    ok(run.pageFilled === true,
+      'la page staff ACTIVE porte du contenu (jamais une zone noire qui exige un rechargement)');
 
     /* ══ CONTRE-PREUVE ══════════════════════════════════════════════════════
        Un gate qui ne sait pas rougir ne prouve rien. On rejoue exactement la

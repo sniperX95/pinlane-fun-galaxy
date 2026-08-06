@@ -6416,7 +6416,27 @@
     if (!root) return;
     // Meme garde que la page Emails : le focus et le curseur du champ actif
     // survivent au re-rendu (bug « on ne peut plus ecrire », 2026-08-05).
-    const paint = () => renderStaffCampaignsPaint(root);
+    // FILET ANTI-NOIR : une exception de rendu ne laisse JAMAIS une zone
+    // vide silencieuse : l'erreur s'affiche avec un vrai bouton, et un
+    // re-essai automatique unique couvre les courses passageres.
+    const paint = () => {
+      try {
+        renderStaffCampaignsPaint(root);
+      } catch (error) {
+        console.error('Marketing paint:', error);
+        root.innerHTML = `<div class="pv2-shell mkw-shell"><section class="mkw-card mkw-error" role="alert">
+          <div class="mkw-error-body"><div>
+            <p class="mkw-error-title">L'affichage a buté.</p>
+            <p class="mkw-error-text">Je réessaie tout seul ; si rien ne vient, ce bouton relance.</p>
+          </div></div>
+          <button type="button" class="pv2-btn primary" onclick="renderStaffCampaignsPage()">Réessayer</button>
+        </section></div>`;
+        if (!window.__mkwPaintRetry) {
+          window.__mkwPaintRetry = true;
+          setTimeout(() => { window.renderStaffCampaignsPage(); }, 450);
+        }
+      }
+    };
     if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.garderFocus) PinlaneMotion.garderFocus(paint);
     else paint();
   };

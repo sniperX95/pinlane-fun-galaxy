@@ -12827,6 +12827,14 @@ function renderStaff() {
   guardStaffPage();
   const dayReservations = todaysReservations();
   renderStaffShell(dayReservations);
+  // Les pages v2 vivent dans staff-pages-v2.js, un defer charge APRES ce
+  // fichier. Depuis que la vue est appliquee AVANT les attentes reseau
+  // (correctif anti-flash du 2026-08-06), ce dispatcher peut tourner pendant
+  // que leur script se parse encore : sans garde, ReferenceError et la page
+  // restait NOIRE jusqu'a un rechargement (bug rapporte le jour meme). Chaque
+  // page absente est simplement sautee ; le filet post-chargement (listener
+  // load, plus bas) re-rend la vue des que tous les scripts sont la.
+  const pageReady = (fn) => typeof window[fn] === 'function';
   if (isStaffDashboardActive()) {
     document.body.style.overflow = '';
     renderStaffDashboard(dayReservations);
@@ -12834,27 +12842,27 @@ function renderStaff() {
   }
   if (isStaffReservationsActive()) {
     document.body.style.overflow = '';
-    renderStaffReservationsPage();
+    if (pageReady('renderStaffReservationsPage')) renderStaffReservationsPage();
     return;
   }
   if (isStaffClientsActive()) {
     document.body.style.overflow = '';
-    renderStaffClientsPage();
+    if (pageReady('renderStaffClientsPage')) renderStaffClientsPage();
     return;
   }
   if (isStaffPricingActive()) {
     document.body.style.overflow = '';
-    renderStaffPricingPage();
+    if (pageReady('renderStaffPricingPage')) renderStaffPricingPage();
     return;
   }
   if (isStaffEmailsActive()) {
     document.body.style.overflow = '';
-    renderStaffEmailsPage();
+    if (pageReady('renderStaffEmailsPage')) renderStaffEmailsPage();
     return;
   }
   if (isStaffCampaignsActive()) {
     document.body.style.overflow = '';
-    renderStaffCampaignsPage();
+    if (pageReady('renderStaffCampaignsPage')) renderStaffCampaignsPage();
     return;
   }
   if (isStaffCockpitActive()) {
@@ -12875,7 +12883,7 @@ function renderStaff() {
   }
   if (isStaffUtilityActive()) {
     document.body.style.overflow = '';
-    renderStaffUtilityPage();
+    if (pageReady('renderStaffUtilityPage')) renderStaffUtilityPage();
     return;
   }
   document.getElementById('searchInput').value = state.searchTerm || '';
@@ -17184,6 +17192,19 @@ async function bootstrapApp() {
 }
 
 bootstrapApp();
+
+// LE FILET POST-CHARGEMENT (bug « la page reste noire, on recharge »,
+// 2026-08-06). La vue est appliquee AVANT les attentes reseau (anti-flash) :
+// renderStaff peut donc tourner pendant que les scripts defer suivants
+// (staff-pages-v2, founder-*) se parsent encore, et la page active est alors
+// sautee par les gardes du dispatcher. Quand TOUT est charge, on re-rend UNE
+// fois la vue active : la page se remplit sans que personne ne recharge.
+window.addEventListener('load', () => {
+  try {
+    if (state.view === 'staff') renderStaff();
+    else if (state.view === 'admin' && typeof renderAdmin === 'function') renderAdmin();
+  } catch (error) { /* un filet ne casse jamais le demarrage */ }
+});
 
 // Fraîcheur multi-postes sobre : au retour sur l'onglet (changement de poste,
 // réveil de tablette), une synchro différentielle immédiate au lieu d'attendre

@@ -3425,16 +3425,24 @@
     // frappe est détruit, le focus part sur <body> et les lettres suivantes ne
     // s'écrivent nulle part. garderFocus mémorise la clé data-pl-focus du champ
     // actif ET la position du curseur, re-rend, puis restaure les deux.
-    // LE SCROLL SURVIT AUSSI (retour Movsar 2026-08-07 : cliquer un message
-    // de la file renvoyait la page tout en haut). Le rebuild innerHTML fait
-    // s'effondrer la hauteur un instant : le navigateur ramene alors le
-    // scroll a 0. On memorise la position et on la repose apres le paint ;
-    // au premier rendu d'une navigation, c'est un no-op.
+    // LE SCROLL SURVIT AUSSI (retour Movsar 2026-08-07, deux fois : d'abord
+    // le scroll de PAGE, puis : « je clique et boum tout en haut » : c'etait
+    // le scroll INTERNE de la file (.pv2-mail-list defile dans son propre
+    // cadre, max-height). Le rebuild innerHTML recree le cadre : son
+    // scrollTop repartait a zero. On memorise LES DEUX (page + cadres
+    // defilants internes) et on les repose apres le paint.
     const scrollY = window.scrollY;
+    const innerScrolls = [...root.querySelectorAll('.pv2-mail-list, .pv2-mail-detail')]
+      .map((el) => ({ cls: el.className, top: el.scrollTop }))
+      .filter((s) => s.top > 0);
     const paint = () => renderStaffEmailsPaint(root, errorMessage);
     if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.garderFocus) PinlaneMotion.garderFocus(paint);
     else paint();
     if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+    for (const saved of innerScrolls) {
+      const fresh = root.querySelector(`.${saved.cls.split(' ')[0]}`);
+      if (fresh) fresh.scrollTop = saved.top;
+    }
     // La liste ouverte du sélecteur de destinataire est repeinte après le
     // rendu : le DOM neuf naît avec une liste vide et cachée, l'état, lui, vit
     // hors DOM (pv2Combo) et survit.

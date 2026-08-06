@@ -61,6 +61,12 @@ async function installMock(page) {
       { id: 4, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client1@x.be', subject: 'Anniversaire pour mon fils', createdAt: new Date(Date.now() - 7200e3).toISOString(), payload: { from: 'client1@x.be', textBody: 'Bonjour, je voudrais organiser un anniversaire pour mon fils de 8 ans, vous avez de la place samedi ?', analysis: { intent: 'anniversaire', intentLabel: 'Anniversaire', summary: 'Veut organiser un anniversaire (8 ans) et demande la dispo de samedi', urgency: 'normale', reply: { subject: 'Re: Anniversaire pour mon fils', body: 'Bonjour,\n\nAvec plaisir ! Dites-nous la date exacte et le nombre d’enfants, on vous propose la formule adaptée.\n\nL’équipe Fun Galaxy' }, clientName: 'Client Un', provider: 'rules' } } },
       { id: 5, centerId: 'libramont', channel: 'email', direction: 'inbound', status: 'received', templateId: null, recipient: 'client2@x.be', subject: 'Annulation résa de demain', createdAt: new Date(Date.now() - 3600e3).toISOString(), payload: { from: 'client2@x.be', textBody: 'Je dois annuler ma réservation de demain, désolé.', repliedAt: new Date(Date.now() - 1800e3).toISOString(), replyCommunicationId: 77, analysis: { intent: 'annulation', intentLabel: 'Annulation', summary: 'Annule sa réservation de demain', urgency: 'haute', reply: { subject: 'Re: Annulation résa de demain', body: 'Bonjour, c’est noté, votre réservation est annulée.' }, provider: 'rules' } } },
     ];
+    // La file REELLE porte des dizaines de messages : le cadre interne defile
+    // (max-height). Sans ce volume, le geste du proprietaire (« je scrolle la
+    // file, je clique, boum en haut ») est intestable.
+    for (let i = 0; i < 30; i += 1) {
+      comms.push({ id: 100 + i, centerId: 'libramont', channel: 'email', direction: 'outbound', templateId: i % 2 ? 'reminder_48h' : 'confirmation', recipient: `client${i}@demo.fungalaxy.test`, subject: i % 2 ? 'Alors, cette partie ?' : `C'est confirmé : on vous attend`, status: 'queued', scheduledAt: new Date(Date.now() + (i + 2) * 3600e3).toISOString(), payload: {} });
+    }
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
     const nf = window.fetch.bind(window);
@@ -276,9 +282,9 @@ async function main() {
     ok(load.pipeline === 6, `pipeline avec pipe Reçus (obtenu ${load.pipeline})`);
     ok(/^1 Échec$/.test(load.pipeFailed), `accord du libellé au compteur : « ${load.pipeFailed} » et non « 1 Échecs »`);
     ok(/^1 Envoyé$/.test(load.pipeSent), `accord du libellé au compteur : « ${load.pipeSent} »`);
-    ok(/^Tout\s*\(3\)$/.test(load.pipeAll), `total invariable écrit « Tout (3) » et non « 3 Tout » (obtenu « ${load.pipeAll} »)`);
+    ok(/^Tout\s*\(33\)$/.test(load.pipeAll), `total invariable écrit « Tout (33) » et non « 33 Tout » (obtenu « ${load.pipeAll} »)`);
     ok(load.pipeQueuedTone === 'amber', `« En attente » est un état d'attente, donc ambre et non bleu (obtenu ${load.pipeQueuedTone || 'aucun'})`);
-    ok(load.tableRows === 3, `file d'envoi = 3 lignes, reçus exclus (obtenu ${load.tableRows})`);
+    ok(load.tableRows === 33, `file d'envoi = 33 lignes, reçus exclus (obtenu ${load.tableRows})`);
     ok(load.newMsgBtn && load.analyzeBtn, 'boutons « Nouveau message » + « Coller un mail reçu » dans la bar');
 
     // Un mail qui n'est pas parti doit se voir SANS avoir a le chercher : la
@@ -530,6 +536,30 @@ async function main() {
     });
     ok(scrollKept.found, 'la file porte des lignes cliquables et la page peut defiler');
     ok(scrollKept.kept, `cliquer un message GARDE la position de lecture (${scrollKept.before} -> ${scrollKept.after})`);
+    // LE GESTE EXACT DU PROPRIETAIRE (2e capture) : la FILE defile dans son
+    // PROPRE cadre (max-height). Scroller CE cadre, cliquer une ligne basse :
+    // le cadre ne remonte JAMAIS.
+    const innerKept = await page.evaluate(async () => {
+      const list = document.querySelector('#staffEmailsPage .pv2-mail-list');
+      if (!list || list.scrollHeight <= list.clientHeight + 50) return { found: false };
+      list.scrollTop = 400;
+      await new Promise((r) => setTimeout(r, 100));
+      const before = list.scrollTop;
+      const rows = [...list.querySelectorAll('tr[onclick^="pv2SelectEmail"]')];
+      const visible = rows.find((row) => {
+        const rect = row.getBoundingClientRect();
+        const box = list.getBoundingClientRect();
+        return rect.top > box.top + 40 && rect.bottom < box.bottom - 10;
+      });
+      if (!visible) return { found: false };
+      visible.click();
+      await new Promise((r) => setTimeout(r, 350));
+      const freshList = document.querySelector('#staffEmailsPage .pv2-mail-list');
+      const after = freshList ? freshList.scrollTop : -1;
+      return { found: true, before, after, kept: Math.abs(after - before) < 40 };
+    });
+    ok(innerKept.found, 'la file interne defile assez pour reproduire le geste');
+    ok(innerKept.kept, `cliquer une ligne au fond de la FILE INTERNE garde sa position (${innerKept.before} -> ${innerKept.after})`);
 
     console.log('\n[COMPOSER] nouveau message : sélecteur maison PILOTÉ, modèle, envoi');
     await page.evaluate(() => {

@@ -507,6 +507,30 @@ async function main() {
     });
     ok(cleared.hero && cleared.stored === 0, '« Nouvelle conversation » vide LE SIEN (accueil restaure, stockage vide)');
 
+    console.log('\n[MOTION] les tours frais s\'animent, un repaint ne rejoue JAMAIS le fil');
+    const motion = await page.evaluate(async () => {
+      const input = document.getElementById('brAskInput');
+      input.value = 'que fait bowling arlon ce matin';
+      input.dispatchEvent(new Event('input'));
+      window.mkwSend();
+      await new Promise((r) => setTimeout(r, 120));
+      const msgs = [...document.querySelectorAll('#staffCampaignsPage .mkw-chat-thread .mkw-msg')];
+      const freshIn = msgs.slice(-2).every((el) => el.classList.contains('is-in'));
+      const stagger = (msgs[msgs.length - 1].getAttribute('style') || '').includes('animation-delay');
+      const oldQuiet = msgs.slice(0, -2).every((el) => !el.classList.contains('is-in'));
+      // La fenetre passe : un repaint n'anime plus rien.
+      await new Promise((r) => setTimeout(r, 700));
+      window.renderStaffCampaignsPage();
+      await new Promise((r) => setTimeout(r, 150));
+      const replay = document.querySelectorAll('#staffCampaignsPage .mkw-chat-thread .mkw-msg.is-in').length;
+      return { freshIn, stagger, oldQuiet, replay };
+    });
+    ok(motion.freshIn && motion.stagger, 'la bulle du gerant puis la reponse entrent en CASCADE (is-in + delay)');
+    ok(motion.oldQuiet, 'les tours deja vus restent immobiles pendant la frappe');
+    ok(motion.replay === 0, 'CONTRE-PREUVE : apres la fenetre, un repaint ne rejoue AUCUNE entree');
+    const dotsIdle = await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-wait-dots').length);
+    ok(dotsIdle === 0, 'les points d\'attente ne vivent que pendant une VRAIE requete (absents au repos)');
+
     console.log('\n[PANNEAU calme + CENTRE qui gouverne]');
     const calm = await page.evaluate(async () => {
       const saved = JSON.stringify(window.mkBrief.data);

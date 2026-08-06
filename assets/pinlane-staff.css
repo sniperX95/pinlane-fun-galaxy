@@ -9868,8 +9868,27 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-ans-fact .br-num { color: var(--text); }
 .mkw-turn-answer .mkw-prop-actions { margin-top: var(--space-3); padding-left: 31px; }
 .mkw-ans-src { margin: var(--space-2) 0 0; padding-left: 31px; font-size: 11px; color: var(--faint); }
-.mkw-msg.is-pending .mkw-msg-head b { animation: mkwBreath 1.6s var(--mkw-io) infinite; }
 @keyframes mkwBreath { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* L'ENTREE D'UN TOUR (retour Movsar : « plus beau et anime quand on ecrit »).
+   La bulle du gerant part de son cote (leger scale, origine droite) ; la
+   reponse de l'agent se leve dessous, en cascade (animation-delay pose par le
+   JS sur la fournee fraiche). Un repaint ne rejoue JAMAIS le fil entier :
+   seuls les tours plus recents que `mkw.painted` portent .is-in. */
+.mkw-msg.is-in.is-user { animation: mkwUserIn 340ms var(--mkw-out) both; }
+.mkw-msg.is-in.is-agent { animation: mkwAgentIn 420ms var(--mkw-out) both; }
+.mkw-msg.is-in .mkw-msg-head .mkw-mark { animation: mkwMarkPop 380ms var(--mkw-spring) both; animation-delay: inherit; }
+@keyframes mkwUserIn { from { opacity: 0; transform: translateY(14px) scale(0.97); transform-origin: 100% 100%; } to { opacity: 1; transform: none; } }
+@keyframes mkwAgentIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes mkwMarkPop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: none; opacity: 1; } }
+
+/* L'ATTENTE VRAIE (mode Creer, requete en vol) : trois points qui respirent
+   en vague. Jamais joue pour une reponse instantanee. */
+.mkw-wait-dots { display: inline-flex; align-items: center; gap: 4px; align-self: center; }
+.mkw-wait-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); opacity: 0.3; animation: mkwWait 1.05s var(--mkw-io) infinite; }
+.mkw-wait-dots i:nth-child(2) { animation-delay: 160ms; }
+.mkw-wait-dots i:nth-child(3) { animation-delay: 320ms; }
+@keyframes mkwWait { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
 
 /* LE COMPOSER : la piece signature. Ancre en bas du chat quand le fil vit ;
    au centre sur l'accueil. Fond plein + voile (jamais de verre). */
@@ -9968,10 +9987,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* MOTION d'entree : le chat se leve doucement, le panneau suit. Une fois par
-   navigation (classe mkw-in), jamais sur un re-render in-view. */
+   navigation (classe mkw-in), jamais sur un re-render in-view. L'ACCUEIL se
+   deploie en vague : le bonjour, puis le brief, le sous-titre, le composer et
+   les suggestions. « Nouvelle conversation » rejoue ce deploiement. */
 .mkw-surface.mkw-in > .mkw-desk { animation: none; }
 .mkw-surface.mkw-in .mkw-chat { animation: mkwUp 420ms var(--mkw-out) both; }
 .mkw-surface.mkw-in .mkw-panel { animation: mkwUp 420ms var(--mkw-out) 140ms both; }
+.mkw-surface.mkw-in .mkw-chat-hero > * { animation: mkwHeroIn 520ms var(--mkw-out) both; }
+.mkw-surface.mkw-in .mkw-chat-hero > .mkw-hello { animation-name: mkwHelloIn; }
+.mkw-surface.mkw-in .mkw-chat-hero > *:nth-child(2) { animation-delay: 90ms; }
+.mkw-surface.mkw-in .mkw-chat-hero > *:nth-child(3) { animation-delay: 170ms; }
+.mkw-surface.mkw-in .mkw-chat-hero > *:nth-child(4) { animation-delay: 250ms; }
+.mkw-surface.mkw-in .mkw-chat-hero > *:nth-child(n+5) { animation-delay: 330ms; }
+@keyframes mkwHelloIn { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes mkwHeroIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+/* Les suggestions repondent a la main : leger souleve. */
+.mkw-chip-suggest { transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), transform 160ms var(--mkw-out); }
+.mkw-chip-suggest:hover { transform: translateY(-1px); }
+.mkw-chip-suggest:active { transform: translateY(0) scale(0.97); }
 
 /* Responsive : la tablette resserre le panneau ; le mobile le transforme en
    FEUILLE plein ecran a droite (jamais une colonne minuscule), le chat et le

@@ -3864,7 +3864,11 @@
   //    un gerant sur Gembloux ne voit jamais une seconde de data Libramont.
   // panelOpen : le panneau lateral (taches + radar) se ferme et s'ouvre d'un
   // geste, anime. Le chat, lui, ne bouge jamais : c'est la piece principale.
-  const mkw = { mode: 'creer', thread: [], knownKeys: null, loadedCenter: '', focusRival: '', panelOpen: true };
+  // painted : combien de tours ont DEJA joue leur entree. Un repaint innerHTML
+  // recree tout le DOM : sans ce compteur, chaque frappe rejouerait
+  // l'animation de TOUT le fil. Seuls les tours au-dela de `painted`
+  // s'animent, et le compteur les absorbe une fois leur entree jouee.
+  const mkw = { mode: 'creer', thread: [], knownKeys: null, loadedCenter: '', focusRival: '', panelOpen: true, painted: 0 };
   window.mkw = mkw;
 
   // Motion à un coup : la toile ne se refade qu'en ARRIVANT sur une vue (ou à
@@ -5054,10 +5058,16 @@
     let stored = [];
     try { stored = JSON.parse(localStorage.getItem(mkwChatKey()) || '[]'); } catch (error) { stored = []; }
     mkw.thread = Array.isArray(stored) ? stored.filter((t) => t && MKW_CHAT_KINDS.has(t.kind)) : [];
+    // Un historique RESTAURE ne rejoue pas trente entrees : seuls les tours
+    // qui naitront apres ce chargement s'animeront.
+    mkw.painted = mkw.thread.length;
   }
   window.mkwChatClear = function () {
     mkw.thread = [];
+    mkw.painted = 0;
     mkwChatSave();
+    // L'accueil se REDEPLOIE (mkw-in rejoue) : repartir de zero se voit.
+    mkwPrevTab = null;
     renderStaffCampaignsPage();
   };
 
@@ -5087,17 +5097,31 @@
   //              creation) : la carte-atelier complete, memes handlers ;
   //  : le pending honnete pendant un Creer (une requete reelle en vol).
   function mkwChatTurns() {
-    const turns = mkw.thread.map((t) => {
+    // L'entree n'est jouee QUE par les tours nes depuis le dernier paint
+    // absorbe (index >= painted) : la bulle du gerant part la premiere, la
+    // reponse suit en cascade (retard par position dans la fournee).
+    let freshRank = 0;
+    const inCls = (index) => {
+      if (index < mkw.painted) return { cls: '', style: '' };
+      const delay = Math.min(freshRank, 3) * 110;
+      freshRank += 1;
+      return { cls: ' is-in', style: delay ? ` style="animation-delay:${delay}ms"` : '' };
+    };
+    const turns = mkw.thread.map((t, index) => {
       if (t.kind === 'prop') {
         const p = brVisiblePropositions().find((item) => item.key === t.key);
         if (!p) return '';
-        return `${t.intro ? `<article class="mkw-msg is-agent"><div class="mkw-msg-head">${mkwAgentMark()}<b>${esc(t.intro)}</b></div></article>` : ''}
-          <div class="mkw-msg is-agent mkw-msg-prop">${mkwPropCard(p)}</div>`;
+        const introIn = inCls(index);
+        const cardIn = t.intro ? inCls(index) : introIn;
+        return `${t.intro ? `<article class="mkw-msg is-agent${introIn.cls}"${introIn.style}><div class="mkw-msg-head">${mkwAgentMark()}<b>${esc(t.intro)}</b></div></article>` : ''}
+          <div class="mkw-msg is-agent mkw-msg-prop${cardIn.cls}"${cardIn.style}>${mkwPropCard(p)}</div>`;
       }
+      const userIn = inCls(index);
+      const agentIn = inCls(index);
       const facts = (t.facts || []).map((f) => `<span class="mkw-ans-fact">${brProse(f)}</span>`).join('');
       const acts = (t.actions || []).map((a, i) => `<button type="button" class="${i === 0 ? 'pv2-btn primary' : 'mkw-link'}" onclick="${a.js}">${esc(a.label)}</button>`).join('');
-      return `<article class="mkw-msg is-user"><div class="mkw-msg-user">${esc(t.q)}</div></article>
-      <article class="mkw-msg is-agent mkw-turn-answer">
+      return `<article class="mkw-msg is-user${userIn.cls}"${userIn.style}><div class="mkw-msg-user">${esc(t.q)}</div></article>
+      <article class="mkw-msg is-agent mkw-turn-answer${agentIn.cls}"${agentIn.style}>
         <div class="mkw-msg-head">${mkwAgentMark()}<b>${esc(t.title)}</b></div>
         ${t.reco ? `<p class="mkw-ans-reco">${brProse(t.reco)}</p>` : ''}
         ${t.why ? `<p class="mkw-ans-why">${brProse(t.why)}</p>` : ''}
@@ -5106,8 +5130,11 @@
         <p class="mkw-ans-src">${esc(t.source || 'assemblé depuis le brief du matin, sans invention')}</p>
       </article>`;
     }).join('');
+    // L'attente du mode Creer : une VRAIE requete est en vol (aria-busy). Les
+    // points respirent tant qu'elle tourne : jamais un theatre pour une
+    // reponse instantanee (le mode Demander repond sans attente simulee).
     const pending = mkBrief.busy === 'ask'
-      ? `<article class="mkw-msg is-agent is-pending" role="status" aria-busy="true"><div class="mkw-msg-head">${mkwAgentMark()}<b>Je prépare ça</b><span class="mkw-msg-sub">une requête au moteur du centre, quelques secondes</span></div></article>`
+      ? `<article class="mkw-msg is-agent is-pending is-in" role="status" aria-busy="true"><div class="mkw-msg-head">${mkwAgentMark()}<b>Je prépare ça</b><span class="mkw-wait-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="mkw-msg-sub">une requête au moteur du centre</span></div></article>`
       : '';
     return turns + pending;
   }
@@ -6321,6 +6348,12 @@
     if (mkBrief.data && mkw.knownKeys) {
       const freshKeys = brVisiblePropositions().map((p) => p.key).filter((k) => !mkw.knownKeys.has(k));
       if (freshKeys.length) setTimeout(() => { freshKeys.forEach((k) => mkw.knownKeys.add(k)); }, 420);
+    }
+    // Meme fenetre pour l'entree des tours du chat : les tours frais gardent
+    // leur animation a travers un repaint immediat, puis sont absorbes.
+    if (mkw.thread.length > mkw.painted) {
+      const target = mkw.thread.length;
+      setTimeout(() => { if (mkw.painted < target) mkw.painted = target; }, 520);
     }
     // Deep-link avec intention : le concurrent cible arrive en evidence, puis
     // la mise en avant s'eteint (etat consomme, pas un marquage a vie).

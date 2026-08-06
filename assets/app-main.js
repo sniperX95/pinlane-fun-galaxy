@@ -2150,6 +2150,9 @@ function loadState() {
       mode: 'carte',
       activities: { bowling: { duration: 1 } },
       allocatedLanes: [],
+      // Programme normalise par public-availability. Il porte le prix serveur
+      // affiche au recap final ; le POST sera malgre tout recalcule a nouveau.
+      serverProgram: null,
       preference: createDefaultFormulaPreference(),
       pauseMinutes: 0,
       opsPlan: null
@@ -2933,7 +2936,7 @@ function initClient() {
     // Le nombre de joueurs entre dans le prix de presque tout : les activites
     // facturees par personne (minigolf, playground), et le bowling dont le
     // nombre de PISTES s'en deduit. Sans ce rafraichissement, le total restait
-    // celui du nombre de joueurs precedent : le client voyait un montant qui
+    // celui du nombre de joueurs precedent, le client voyait un montant qui
     // ne bougeait pas en ajoutant du monde. Le champ « date » appelait deja
     // cette chaine ; le champ « joueurs » ne l'appelait pas.
     syncBookingTypeUi();
@@ -3230,13 +3233,10 @@ function syncBookingTypeUi() {
   renderTypeAlert(off, dayStatus);
 }
 
-// La grille d'activites. Une carte cochee ouvre ses options SOUS elle : le
-// client voit ce qu'il choisit sans changer d'ecran, et le prix suit.
-// LA GRILLE D'ACTIVITES. Elle se construit UNE fois, puis ne change que par des
-// CLASSES. C'est la seule facon d'animer quoi que ce soit : la premiere version
-// reecrivait tout le innerHTML a chaque clic, donc chaque carte etait detruite et
-// recreee, et aucune transition ne pouvait survivre. Un composant qui se
-// reconstruit ne peut pas s'animer, quelle que soit la CSS qu'on lui met.
+// La grille d'activites se construit UNE fois, puis ne change que par des
+// classes. Les tuiles restent compactes et les reglages des activites cochees
+// vivent dans un bloc commun sous la grille. Aucune carte ne peut ainsi imposer
+// sa hauteur aux voisines ni creer de trou dans la composition.
 function renderActivityPicker(off = []) {
   const host = document.getElementById('activityPicker');
   if (!host) return;
@@ -3283,26 +3283,59 @@ function activityIconMarkup(activityId) {
   return `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${paths}</svg>`;
 }
 
-// Le DOM complet, options COMPRISES meme quand la carte n'est pas cochee : c'est
-// ce qui permet de les reveler par une transition (grid-template-rows 0fr -> 1fr)
-// au lieu de les faire apparaitre d'un coup.
+// Tous les blocs de reglages existent des le premier rendu. Cocher une activite
+// ne reconstruit ni la grille ni les boutons, ce qui preserve le focus.
+function activityHasConfigurableOptions(activity) {
+  return Boolean(activity && [
+    'grid_bowling',
+    'grid_laser',
+    'grid_fun_run',
+    'per_unit_hour',
+  ].includes(activity.priceType));
+}
+
+function activityConfigHint(activity) {
+  if (!activity) return '';
+  if (activity.priceType === 'grid_laser') return 'Nombre de parties';
+  if (activity.priceType === 'per_unit_hour') return 'Tables et durée';
+  return 'Durée';
+}
+
 function buildActivityPicker(host, catalog) {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
-  host.innerHTML = catalog.map((activity, index) => `
-    <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
-      <button type="button" class="activity-toggle" aria-pressed="false" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
-        <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
-        <span class="activity-text">
-          <span class="activity-name">${escapeHtml(activity.name)}</span>
-          <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
-          <span class="activity-note">${activity.note ? escapeHtml(activity.note) : ''}</span>
-        </span>
-        <span class="activity-check" aria-hidden="true">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </span>
-      </button>
-      <div class="activity-options"><div class="activity-options-inner" data-role="options">${renderActivityOptions(activity, state.booking.activities?.[activity.id] || {}, pax)}</div></div>
-    </div>`).join('');
+  const cards = catalog.map((activity, index) => `
+      <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
+        <button type="button" class="activity-toggle" aria-pressed="false" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
+          <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
+          <span class="activity-text">
+            <span class="activity-name">${escapeHtml(activity.name)}</span>
+            <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
+            <span class="activity-note"${activity.note ? ` title="${escapeHtml(activity.note)}"` : ''}>${activity.note ? escapeHtml(activity.note) : ''}</span>
+          </span>
+          <span class="activity-check" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          </span>
+        </button>
+      </div>`).join('');
+  const settings = catalog.filter(activityHasConfigurableOptions).map(activity => `
+      <section class="activity-config-row" data-activity-options="${escapeHtml(activity.id)}" aria-label="Réglages ${escapeHtml(activity.name)}" aria-hidden="true">
+        <div class="activity-config-row-inner">
+          <div class="activity-config-label">
+            <span class="activity-config-name">${escapeHtml(activity.name)}</span>
+            <span class="activity-config-hint">${escapeHtml(activityConfigHint(activity))}</span>
+          </div>
+          <div class="activity-config-controls" data-role="options">${renderActivityOptions(activity, state.booking.activities?.[activity.id] || {}, pax)}</div>
+        </div>
+      </section>`).join('');
+  host.innerHTML = `
+    <div class="activity-grid" data-role="activity-grid">${cards}</div>
+    <div class="activity-configurator" data-role="activity-configurator" aria-hidden="true">
+      <div class="activity-configurator-head">
+        <span class="activity-configurator-title">Choisissez vos options</span>
+        <span class="activity-configurator-count" data-role="config-count"></span>
+      </div>
+      <div class="activity-config-list">${settings}</div>
+    </div>`;
 }
 
 // L'etat, et rien que l'etat : classes, aria, libelles. Aucun noeud n'est
@@ -3314,6 +3347,9 @@ function syncActivityPickerState(off = []) {
   if (!host) return;
   const selection = state.booking.activities || (state.booking.activities = {});
   const pax = Math.max(1, Number(state.booking.pax) || 1);
+  const optionsRows = new Map([...host.querySelectorAll('[data-activity-options]')]
+    .map(row => [row.getAttribute('data-activity-options'), row]));
+  let visibleConfigCount = 0;
   host.querySelectorAll('.activity-card').forEach(card => {
     const activityId = card.getAttribute('data-activity');
     const activity = typeof getCenterActivity === 'function' ? getCenterActivity(activityId) : null;
@@ -3329,9 +3365,17 @@ function syncActivityPickerState(off = []) {
     }
     const price = card.querySelector('[data-role="price"]');
     if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, pax);
+    const optionsRow = optionsRows.get(activityId);
+    if (!optionsRow) return;
+    const showOptions = chosen && !closed;
+    optionsRow.classList.toggle('is-visible', showOptions);
+    optionsRow.setAttribute('aria-hidden', showOptions ? 'false' : 'true');
+    if (showOptions) visibleConfigCount += 1;
+    if (!showOptions && optionsRow.contains(document.activeElement) && toggle) toggle.focus();
+    optionsRow.querySelectorAll('button').forEach(button => { button.tabIndex = showOptions ? 0 : -1; });
     // Les options ne sont PAS reecrites : on bascule seulement la pastille
     // active. Les reconstruire a chaque clic detruirait le retour visuel du
-    // press en cours et ferait perdre le focus d'un select ouvert.
+    // press en cours et ferait perdre le focus.
     const chosenOptions = selection[activityId] || {};
     // Le defaut depend de la CLE : « 1 » vaut pour une duree de bowling ou un
     // nombre de tables, jamais pour une session de 15 minutes ni pour une
@@ -3342,18 +3386,20 @@ function syncActivityPickerState(off = []) {
       if (key === 'hours') return activityHourChoices(activity || {})[0].hours;
       return 1;
     };
-    card.querySelectorAll('[data-opt]').forEach(pill => {
+    optionsRow.querySelectorAll('[data-opt]').forEach(pill => {
       const key = pill.getAttribute('data-opt');
       const value = Number(pill.getAttribute('data-val'));
       const courant = chosenOptions[key] == null ? activityDefaut(key) : Number(chosenOptions[key]);
       pill.classList.toggle('active', courant === value);
     });
-    // Nombre de tables et duree passaient par des listes deroulantes ; ce sont
-    // desormais les memes pastilles que ci-dessus, donc la boucle [data-opt]
-    // les couvre deja. La propriete a garantir n'a pas bouge : revenir a
-    // l'etape 1 depuis les creneaux doit retrouver SES choix, pas les valeurs
-    // par defaut.
   });
+  const configurator = host.querySelector('[data-role="activity-configurator"]');
+  if (configurator) {
+    configurator.classList.toggle('is-visible', visibleConfigCount > 0);
+    configurator.setAttribute('aria-hidden', visibleConfigCount > 0 ? 'false' : 'true');
+  }
+  const count = host.querySelector('[data-role="config-count"]');
+  if (count) count.textContent = `${visibleConfigCount} réglage${visibleConfigCount > 1 ? 's' : ''} actif${visibleConfigCount > 1 ? 's' : ''}`;
 }
 
 // Ce qu'on annonce sous le nom : un prix quand le centre l'a saisi, la mention
@@ -3442,9 +3488,9 @@ function renderActivityOptions(activity, options, pax) {
   return `<div class="activity-option-note">Accès à votre arrivée, ${activity.priceValue == null ? 'réglé sur place' : 'compris dans le total'}.</div>`;
 }
 
-// Le programme, en une ligne, sous la grille : ce que le client a compose et ce
-// que ca coute. Le "à partir de" apparait des qu'une activite n'a pas de tarif
-// connu : annoncer un total ferme qui n'en est pas un se paierait au comptoir.
+// Le programme est une vraie synthese, pas une phrase concatenee. Le client peut
+// comparer les activites et leur reglage sans relire toute une ligne. Le montant
+// reste separe, et "A partir de" apparait des qu'un tarif sera regle sur place.
 function renderProgramSummary() {
   const host = document.getElementById('programSummary');
   if (!host) return;
@@ -3453,50 +3499,90 @@ function renderProgramSummary() {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
   let total = 0;
   let complete = true;
-  const parts = chosen.map(activity => {
+  const items = chosen.map(activity => {
     const options = activity.options || {};
     if (activity.priceType === 'grid_bowling') {
       const duration = Number(options.duration) || 1;
       const lanes = getRequiredLaneCount('bowling', pax, '');
-      total += (DURATION_OPTIONS.find(option => Number(option.value) === duration)?.price || 0) * lanes;
+      const option = DURATION_OPTIONS.find(item => Number(item.value) === duration);
+      total += (option?.price || 0) * lanes;
       // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,
       // le total double sans que rien n'explique pourquoi.
-      const pistes = lanes > 1 ? ` · ${lanes} pistes` : '';
-      return `${activity.name} ${DURATION_OPTIONS.find(option => Number(option.value) === duration)?.label || ''}${pistes}`;
+      return {
+        name: activity.name,
+        detail: `${option?.label || ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
+      };
     }
     if (activity.priceType === 'grid_laser') {
       const games = Number(options.games) || 1;
       total += (LASER_GAME_OPTIONS.find(option => Number(option.games) === games)?.price || 0) * pax;
-      return `Laser ${games} partie${games > 1 ? 's' : ''}`;
+      return { name: activity.name, detail: `${games} partie${games > 1 ? 's' : ''}` };
     }
     if (activity.priceType === 'grid_fun_run') {
       const minutes = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
       const option = FUN_RUN_OPTIONS.find(item => item.minutes === minutes) || FUN_RUN_OPTIONS[0];
       total += option.price;
-      return `${activity.name} ${option.label}`;
+      return { name: activity.name, detail: option.label };
     }
     const price = typeof getFreeActivityPrice === 'function'
       ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours, minutes: options.minutes })
       : null;
     if (price == null) complete = false; else total += price;
-    return activity.name;
+    if (activity.priceType === 'per_unit_hour') {
+      const units = Math.max(1, Number(options.units) || 1);
+      const hourChoices = activityHourChoices(activity);
+      const hours = Number(options.hours) || hourChoices[0].hours;
+      const durationLabel = hourChoices.find(option => option.hours === hours)?.label || `${hours}h`;
+      return {
+        name: activity.name,
+        detail: `${units} table${units > 1 ? 's' : ''} · ${durationLabel}`,
+      };
+    }
+    return {
+      name: activity.name,
+      detail: price == null ? 'À régler sur place' : 'Compris dans le total',
+    };
   });
-  // Le bloc n'est ECRIT qu'une fois : ensuite on ne remplace que le texte. Un
-  // innerHTML a chaque clic aurait rejoue l'animation d'entree du bandeau et
-  // empeche de faire reagir le montant.
+  // La structure n'est ecrite qu'une fois. Ensuite la liste et les valeurs sont
+  // actualisees sans rejouer une animation de conteneur a chaque clic.
   let box = host.querySelector('.program-summary');
   if (!box) {
-    host.innerHTML = '<div class="program-summary"><span class="program-line"></span><span class="program-total"></span></div>';
+    host.innerHTML = `<div class="program-summary">
+      <div class="program-overview">
+        <div class="program-summary-head">
+          <span class="program-title">Votre programme</span>
+          <span class="program-count"></span>
+        </div>
+        <ul class="program-list"></ul>
+      </div>
+      <div class="program-price-block">
+        <span class="program-total-label"></span>
+        <strong class="program-total"></strong>
+        <small class="program-total-note"></small>
+      </div>
+    </div>`;
     box = host.querySelector('.program-summary');
   }
-  const line = box.querySelector('.program-line');
+  const list = box.querySelector('.program-list');
+  const count = box.querySelector('.program-count');
+  const totalLabel = box.querySelector('.program-total-label');
   const totalEl = box.querySelector('.program-total');
-  const nextLine = parts.join(' + ');
-  const nextTotal = `${complete ? '' : 'à partir de '}${Math.round(total)}€`;
-  if (line.textContent !== nextLine) line.textContent = nextLine;
-  if (totalEl.getAttribute('data-value') !== nextTotal) {
-    totalEl.setAttribute('data-value', nextTotal);
-    totalEl.innerHTML = `${escapeHtml(nextTotal)}${complete ? '' : ' <small>+ ce qui se règle sur place</small>'}`;
+  const totalNote = box.querySelector('.program-total-note');
+  const roundedTotal = Math.round(total);
+  const nextTotal = complete || roundedTotal > 0 ? `${roundedTotal}€` : 'Sur place';
+  const nextValue = `${complete ? '' : 'à partir de '}${nextTotal}`;
+  list.innerHTML = items.map(item => `<li class="program-item">
+    <span class="program-item-name">${escapeHtml(item.name)}</span>
+    <span class="program-item-detail">${escapeHtml(item.detail)}</span>
+  </li>`).join('');
+  count.textContent = `${items.length} activité${items.length > 1 ? 's' : ''}`;
+  totalLabel.textContent = complete ? 'Total' : (roundedTotal > 0 ? 'À partir de' : 'Tarif');
+  totalNote.textContent = complete
+    ? 'pour cette sélection'
+    : (roundedTotal > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
+  if (totalEl.getAttribute('data-value') !== nextValue) {
+    totalEl.setAttribute('data-value', nextValue);
+    totalEl.textContent = nextTotal;
     // Le montant a change : on le fait respirer une fois. C'est le seul endroit
     // de l'ecran qui repond a la question « ca me coute combien ? », il doit se
     // signaler quand il bouge sans jamais clignoter.
@@ -3960,6 +4046,9 @@ async function goStep2() {
 
 async function fetchSlots(options = {}) {
   const requestId = ++slotFetchRequestId;
+  // Un ancien prix ne doit jamais survivre a une nouvelle recherche. La reponse
+  // courante remettra le programme normalise si le type est bien une visite.
+  state.booking.serverProgram = null;
   if (!options.keepAlternatives) clearBookingAlternatives();
   const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
   if (options.showLoading !== false) {
@@ -4016,6 +4105,10 @@ async function fetchSlots(options = {}) {
     state.booking.totalDuration = state.booking.type === 'laser'
       ? Number(state.booking.duration || 0.5) * getLaserWaveCount(state.booking.pax)
       : Number(payload.totalDuration || payload.duration || state.booking.totalDuration || 0);
+    state.booking.serverProgram = state.booking.type === 'visite'
+      && payload.program && Array.isArray(payload.program.items)
+      ? payload.program
+      : null;
     state.booking.opsPlan = null;
   } catch (error) {
     if (requestId !== slotFetchRequestId) return;
@@ -4711,15 +4804,45 @@ function renderRecap() {
   const b = state.booking;
   const formule = b.type === 'formule' ? FORMULES.find(x => x.id === b.formuleId) : null;
   const isLaser = b.type === 'laser';
+  const isVisit = b.type === 'visite';
+  const visitProgram = isVisit && b.serverProgram && Array.isArray(b.serverProgram.items)
+    ? b.serverProgram
+    : null;
   const showLanes = reservationNeedsLanes(b.type, b.formuleId);
-  const total = getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId);
+  // Pour une visite, la source de verite d'affichage est le programme normalise
+  // par public-availability. getBasePrice ne connait que les types historiques
+  // et renverrait donc 0 pour "visite".
+  const total = visitProgram
+    ? Math.max(0, Number(visitProgram.price) || 0)
+    : getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId);
   const totalDuration = getBookingTotalDuration(b);
   const formulaRecap = formule ? getFormulaRecapModel(b) : null;
   const planLine = b.opsPlan ? describeSlotPlan(b.opsPlan) : '';
   const laserOption = isLaser ? getLaserOption(b.duration) : null;
   const laserWaveCount = isLaser ? Number(b.opsPlan?.laserSharing?.waveCount || getLaserWaveCount(b.pax)) : 1;
-  document.getElementById('recapTotal').textContent = total + '€';
+  const totalLabel = document.getElementById('recapTotalLabel');
+  const totalNote = document.getElementById('recapTotalNote');
+  const totalAmount = document.getElementById('recapTotal');
+  if (isVisit && visitProgram) {
+    const complete = visitProgram.priceComplete === true;
+    if (totalLabel) totalLabel.textContent = complete ? 'Total' : (total > 0 ? 'À partir de' : 'Tarif');
+    if (totalNote) totalNote.textContent = complete
+      ? 'Pour cette sélection'
+      : (total > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
+    if (totalAmount) totalAmount.textContent = total > 0 ? `${Math.round(total)}€` : 'Sur place';
+  } else {
+    if (totalLabel) totalLabel.textContent = 'Total estimé';
+    if (totalNote) totalNote.textContent = 'À régler sur place';
+    if (totalAmount) totalAmount.textContent = `${total}€`;
+  }
   const dateLabel = parseLocalDate(b.date).toLocaleDateString('fr-BE', { weekday:'long', day:'numeric', month:'long' });
+  const visitProgramHtml = visitProgram ? `
+    <div class="recap-item recap-program-row">
+      <span class="recap-label">Activités</span>
+      <div class="recap-value recap-program-value">
+        ${visitProgram.items.map(renderVisitRecapItem).join('')}
+      </div>
+    </div>` : '';
   document.getElementById('recapList').innerHTML = `
     <div class="recap-item"><span class="recap-label">Client</span><span class="recap-value">${escapeHtml(b.name)}</span></div>
     <div class="recap-item"><span class="recap-label">Téléphone</span><span class="recap-value">${escapeHtml(b.phone)}</span></div>
@@ -4728,6 +4851,7 @@ function renderRecap() {
     ${formule && b.opsPlan?.arrivalTime ? `<div class="recap-item"><span class="recap-label">Arrivée conseillée</span><span class="recap-value">${escapeHtml(b.opsPlan.arrivalTime)} <small style="font-size:13px;color:var(--text-3);font-weight:500;">• accueil ${Number(b.opsPlan.arrivalMinutes || 10)} min avant</small></span></div>` : ''}
     <div class="recap-item"><span class="recap-label">Joueurs</span><span class="recap-value">${b.pax} personne${b.pax > 1 ? 's' : ''}</span></div>
     ${showLanes ? `<div class="recap-item"><span class="recap-label">Piste${b.allocatedLanes.length > 1 ? 's' : ''} assignée${b.allocatedLanes.length > 1 ? 's' : ''}</span><span class="recap-value teal">${b.allocatedLanes.join(' & ')}</span></div>` : ''}
+    ${visitProgramHtml}
     ${isLaser ? `<div class="recap-item"><span class="recap-label">Activité</span><span class="recap-value">Laser Game • ${laserOption.label}</span></div>` : ''}
     ${formule ? `<div class="recap-item"><span class="recap-label">Formule</span><span class="recap-value">${formule.name}</span></div>` : ''}
     ${formulaRecap && formulaRecap.appointments.length ? `<div class="recap-item"><span class="recap-label">Vos rendez-vous</span><span class="recap-value">${formulaRecap.appointments.map(escapeHtml).join(' · ')}</span></div>` : ''}
@@ -4738,6 +4862,40 @@ function renderRecap() {
     ${formulaRecap && (formulaRecap.remainingLaser > 0 || formulaRecap.laserOnSite) ? `<div class="recap-note"><b>Laser Game :</b> ${formulaRecap.remainingLaser > 0 ? `${formulaRecap.remainingLaser} partie${formulaRecap.remainingLaser > 1 ? 's' : ''} à placer sur place avec l'équipe, selon l'affluence.` : ''} ${formulaRecap.laserOnSite ? 'Vous placez vos parties laser librement pendant la visite.' : ''}</div>` : ''}
     ${formule ? `<div class="recap-note"><b>Le reste, à votre rythme :</b> aucune heure imposée pour les activités du pass liberté, vous les vivez quand vous voulez pendant votre visite.</div>` : ''}
   `;
+}
+
+// Une ligne du programme SERVEUR dans le recap final : nom, choix effectif et
+// prix de cette ligne. Les options affichent ce qui sera reserve, jamais une
+// valeur reconstruite depuis le libelle global de la reservation.
+function renderVisitRecapItem(item) {
+  const activityId = String(item?.activityId || '');
+  let detail = '';
+  if (activityId === 'bowling') {
+    const option = DURATION_OPTIONS.find(entry => Number(entry.value) === Number(item.duration));
+    const lanes = Math.max(1, Number(item.laneCount) || 1);
+    detail = `${option?.label || `${Number(item.duration) || 1}h`} · ${lanes} piste${lanes > 1 ? 's' : ''}`;
+  } else if (activityId === 'laser_game') {
+    const games = Math.max(1, Number(item.games) || 1);
+    detail = `${games} partie${games > 1 ? 's' : ''}`;
+  } else if (item.units != null || item.hours != null) {
+    const units = Math.max(1, Number(item.units) || 1);
+    const hours = Math.max(0.5, Number(item.hours) || 1);
+    detail = `${units} table${units > 1 ? 's' : ''} · ${formatDurationLabel(hours)}`;
+  } else if (item.minutes) {
+    detail = formatDurationLabel(Number(item.minutes) / 60);
+  } else {
+    detail = item.priceKnown === true ? 'Compris dans le total' : 'À régler sur place';
+  }
+  const price = item.priceKnown === true && Number.isFinite(Number(item.price))
+    ? `${Math.round(Number(item.price))}€`
+    : 'Sur place';
+  return `<div class="recap-program-item">
+    <span class="recap-program-copy">
+      <strong class="recap-program-name">${escapeHtml(item.name || activityId)}</strong>
+      <small class="recap-program-detail">${escapeHtml(detail)}</small>
+    </span>
+    <span class="recap-program-price">${escapeHtml(price)}</span>
+  </div>`;
 }
 
 async function confirmBooking() {
@@ -4896,6 +5054,7 @@ function resetBooking() {
     name:'', phone:'', email:'', pax:4,
     date: todayStr(),
     type:'bowling', formuleId:'', duration:1, totalDuration:1, laneCount:1, startTime:'', allocatedLanes:[],
+    serverProgram: null,
     preference: createDefaultFormulaPreference(),
     pauseMinutes: 0,
     occasion: '',

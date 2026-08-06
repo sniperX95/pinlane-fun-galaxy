@@ -18,7 +18,7 @@
 <link rel="stylesheet" href="./assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="./assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="./assets/pinlane-analytics-board.css?v=20260722a">
-<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260806a">
+<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260806c">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260710a"></script>
@@ -32,7 +32,7 @@
      dessinerait les arrivees sans leur signal. Le module ne fait rien tant
      qu'aucun `data-pl-num` n'existe : le charger tôt ne coûte rien. -->
 <script defer src="./assets/pinlane-motion.js?v=20260729c"></script>
-<script defer src="./assets/app-main.js?v=20260806b"></script>
+<script defer src="./assets/app-main.js?v=20260806c"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260806a"></script>
 <script defer src="./assets/pinlane-fx.js?v=20260728e"></script>
@@ -186,8 +186,8 @@
             <button class="seg-btn active" id="segCarte" onclick="setType('carte')">À la carte</button>
             <button class="seg-btn" id="segFormule" onclick="setType('formule')">Nos Formules</button>
           </div>
-          <!-- Grille des activités du centre (multi-sélection). Bowling et laser
-               ouvrent leurs options ; les autres se cochent simplement. -->
+          <!-- Grille compacte multi-sélection. Les durées et quantités des
+               activités choisies se règlent dans un panneau commun dessous. -->
           <div class="activity-picker" id="activityPicker"></div>
           <div id="programSummary" aria-live="polite"></div>
           <div id="typeAlert" aria-live="polite"></div>
@@ -365,9 +365,9 @@
           </div>
           <div id="recapList"></div>
           <div class="total-box">
-            <div>
-              <div style="font-weight:700;">Total estimé</div>
-              <div style="font-size:12px;color:var(--text-3);">À régler sur place</div>
+            <div class="total-copy">
+              <strong class="total-label" id="recapTotalLabel">Total estimé</strong>
+              <small class="total-note" id="recapTotalNote">À régler sur place</small>
             </div>
             <div class="total-amount" id="recapTotal">0€</div>
           </div>

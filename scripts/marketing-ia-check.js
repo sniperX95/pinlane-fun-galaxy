@@ -597,6 +597,18 @@ async function main() {
     ok(motion.replay === 0, 'CONTRE-PREUVE : apres la fenetre, un repaint ne rejoue AUCUNE entree');
     const stateIdle = await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-msg.is-state').length);
     ok(stateIdle === 0, 'l\'etat de travail n\'existe JAMAIS au repos');
+    // LE SCROLL BUTE SUR LA BARRE (retour Movsar) : tout en bas de page, le
+    // composer est colle au bas de l'ecran, JAMAIS de vide dessous.
+    const hardBottom = await page.evaluate(async () => {
+      window.scrollTo(0, 1000000);
+      await new Promise((r) => setTimeout(r, 200));
+      const box = document.querySelector('#staffCampaignsPage .mkw-composer-box');
+      const rect = box ? box.getBoundingClientRect() : null;
+      const chips = document.querySelector('#staffCampaignsPage .mkw-composer-chips');
+      const lowest = chips ? chips.getBoundingClientRect().bottom : (rect ? rect.bottom : 0);
+      return { ok: rect ? lowest <= window.innerHeight + 2 && lowest >= window.innerHeight - 110 : false };
+    });
+    ok(hardBottom.ok, 'a scroll maximum, la barre bute au bas de l\'ecran : aucun vide ne vit dessous');
 
     console.log('\n[FEUILLE MOBILE] le panneau devient une feuille body-montee, entree/sortie animees');
     await page.setViewportSize({ width: 390, height: 844 });

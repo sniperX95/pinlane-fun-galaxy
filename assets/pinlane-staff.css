@@ -9817,6 +9817,12 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    dans body, regles plus bas). Quand il est ouvert sur grand ecran, le
    shell reserve sa place et le chat se recentre, en douceur. */
 .mkw-desk { min-width: 0; }
+/* Le scroll BUTE sur la barre (retour Movsar : on pouvait descendre au-dela
+   du composer et le faire « monter » sur du vide). Sur le bureau du chat,
+   PLUS RIEN ne vit sous le composer : ni padding du shell, ni padding du
+   staff-wrap : le bas de page, c'est la barre, comme ChatGPT. */
+.mkw-shell:has(.mkw-desk) { padding-bottom: 0; }
+.staff-wrap:has(.mkw-desk) { padding-bottom: 0; }
 .mkw-shell { transition: padding-right 460ms cubic-bezier(0.16, 1, 0.3, 1); }
 #staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 400px; }
 

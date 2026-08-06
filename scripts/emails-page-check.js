@@ -515,6 +515,22 @@ async function main() {
     ok(resetState.last && resetState.last.key === 'birthday_j30' && resetState.last.reset === true, 'POST {key, reset:true}');
     ok(!resetState.modified, 'pilule « modifié » retirée après reset');
 
+    console.log('\n[SCROLL] ouvrir un message ne renvoie JAMAIS en haut de page');
+    const scrollKept = await page.evaluate(async () => {
+      window.scrollTo(0, 500);
+      await new Promise((r) => setTimeout(r, 120));
+      const before = window.scrollY;
+      const rows = [...document.querySelectorAll('#staffEmailsPage tr[onclick^="pv2SelectEmail"]')];
+      if (!rows.length || before < 300) return { found: false };
+      rows[Math.min(3, rows.length - 1)].click();
+      await new Promise((r) => setTimeout(r, 350));
+      const after = window.scrollY;
+      window.scrollTo(0, 0);
+      return { found: true, before, after, kept: Math.abs(after - before) < 60 };
+    });
+    ok(scrollKept.found, 'la file porte des lignes cliquables et la page peut defiler');
+    ok(scrollKept.kept, `cliquer un message GARDE la position de lecture (${scrollKept.before} -> ${scrollKept.after})`);
+
     console.log('\n[COMPOSER] nouveau message : sélecteur maison PILOTÉ, modèle, envoi');
     await page.evaluate(() => {
       window.getStaffClientRows = () => [

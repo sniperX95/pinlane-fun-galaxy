@@ -3425,9 +3425,16 @@
     // frappe est détruit, le focus part sur <body> et les lettres suivantes ne
     // s'écrivent nulle part. garderFocus mémorise la clé data-pl-focus du champ
     // actif ET la position du curseur, re-rend, puis restaure les deux.
+    // LE SCROLL SURVIT AUSSI (retour Movsar 2026-08-07 : cliquer un message
+    // de la file renvoyait la page tout en haut). Le rebuild innerHTML fait
+    // s'effondrer la hauteur un instant : le navigateur ramene alors le
+    // scroll a 0. On memorise la position et on la repose apres le paint ;
+    // au premier rendu d'une navigation, c'est un no-op.
+    const scrollY = window.scrollY;
     const paint = () => renderStaffEmailsPaint(root, errorMessage);
     if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.garderFocus) PinlaneMotion.garderFocus(paint);
     else paint();
+    if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
     // La liste ouverte du sélecteur de destinataire est repeinte après le
     // rendu : le DOM neuf naît avec une liste vide et cachée, l'état, lui, vit
     // hors DOM (pv2Combo) et survit.

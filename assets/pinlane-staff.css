@@ -9808,9 +9808,13 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* LE BUREAU : chat + panneau. La colonne du panneau s'anime a l'ouverture et
    a la fermeture (grid-template-columns interpole + glissement du contenu). */
-.mkw-desk { display: grid; grid-template-columns: minmax(0, 1fr) 324px; gap: var(--space-6); align-items: start; transition: grid-template-columns 280ms var(--mkw-out); }
-.mkw-desk.panel-closed { grid-template-columns: minmax(0, 1fr) 0px; gap: 0; }
-.mkw-desk.panel-closed .mkw-panel { transform: translateX(18px); opacity: 0; pointer-events: none; visibility: hidden; }
+/* Le bureau n'est plus une grille : le CHAT seul vit dans la page ; le
+   panneau est un TIROIR colle au bord droit de l'ecran (#mkwSheet, monte
+   dans body, regles plus bas). Quand il est ouvert sur grand ecran, le
+   shell reserve sa place et le chat se recentre, en douceur. */
+.mkw-desk { min-width: 0; }
+.mkw-shell { transition: padding-right 300ms var(--mkw-out); }
+#staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 384px; }
 
 /* LE CHAT : une colonne de lecture centree, sans meuble autour. */
 .mkw-chat { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - 230px); min-height: calc(100dvh - 230px); }
@@ -9920,8 +9924,9 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* LE PANNEAU : le travail de l'agent. Sections a hairline, cartes « A
    valider » avec barre de ton, mini-radar en pied. Sticky, fermable. */
-.mkw-panel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-4); max-height: calc(100vh - 32px); overflow: auto; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-xl); background: color-mix(in srgb, var(--surface) 92%, transparent); scrollbar-width: thin; transition: transform 280ms var(--mkw-out), opacity 240ms var(--ease); }
-[data-theme='dark'] .mkw-panel { background: color-mix(in srgb, var(--raised) 92%, transparent); }
+/* Le contenu du tiroir (les groupes, la tete) : le POSITIONNEMENT du tiroir
+   lui-meme vit dans les regles #mkwSheet, communes a toutes les tailles. */
+.mkw-panel { display: flex; flex-direction: column; gap: var(--space-4); scrollbar-width: thin; }
 .mkw-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .mkw-panel-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
 .mkw-panel-close { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--faint); cursor: pointer; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
@@ -9997,7 +10002,6 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    les suggestions. « Nouvelle conversation » rejoue ce deploiement. */
 .mkw-surface.mkw-in > .mkw-desk { animation: none; }
 .mkw-surface.mkw-in .mkw-chat { animation: mkwUp 420ms var(--mkw-out) both; }
-.mkw-surface.mkw-in .mkw-panel { animation: mkwUp 420ms var(--mkw-out) 140ms both; }
 .mkw-surface.mkw-in .mkw-chat-hero > * { animation: mkwHeroIn 520ms var(--mkw-out) both; }
 .mkw-surface.mkw-in .mkw-chat-hero > .mkw-hello { animation-name: mkwHelloIn; }
 .mkw-surface.mkw-in .mkw-chat-hero > *:nth-child(2) { animation-delay: 90ms; }
@@ -10014,24 +10018,24 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* Responsive : la tablette resserre le panneau ; le mobile le transforme en
    FEUILLE plein ecran a droite (jamais une colonne minuscule), le chat et le
    composer passent d'abord. */
-@media (max-width: 1080px) {
-  .mkw-desk { grid-template-columns: minmax(0, 1fr) 292px; gap: var(--space-5); }
-}
 @media (max-width: 900px) {
-  .mkw-desk, .mkw-desk.panel-closed { display: block; }
   .mkw-chat { min-height: calc(100vh - 200px); min-height: calc(100dvh - 200px); }
+  /* Sur petit ecran le tiroir RECOUVRE (voile) : le shell ne se pousse pas. */
+  #staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 24px; }
 }
 
-/* LA FEUILLE MOBILE (#mkwSheet, montee dans document.body : un fixed DANS la
-   page se faisait pieger par les ancetres animes en transform et flottait
-   n'importe ou). Entree : la feuille glisse du bord droit pendant que le
-   voile fond ; sortie : le meme chemin a l'envers, joue AVANT le retrait
-   (classe is-closing posee par mkwPanelToggle). */
-#mkwSheet { position: fixed; inset: 0; z-index: 120; display: none; }
+/* LE TIROIR (#mkwSheet, monte dans document.body : un fixed DANS la page se
+   faisait pieger par les ancetres animes en transform et flottait n'importe
+   ou). COLLE AU BORD DROIT de l'ecran a toutes les tailles : il SORT du bord
+   a l'ouverture et y RENTRE a la fermeture (sortie jouee AVANT le retrait,
+   classe is-closing). Sur grand ecran, pas de voile : le conteneur laisse
+   passer les clics et le chat se recentre a cote (padding du shell). Sur
+   petit ecran, le voile couvre et ferme au tap. */
+#mkwSheet { position: fixed; inset: 0; z-index: 70; display: none; pointer-events: none; }
 #mkwSheet.is-on { display: block; }
-#mkwSheet .mkw-sheet-back { position: absolute; inset: 0; background: color-mix(in srgb, var(--page) 62%, transparent); opacity: 0; transition: opacity 260ms var(--ease); }
+#mkwSheet .mkw-sheet-back { position: absolute; inset: 0; pointer-events: auto; background: color-mix(in srgb, var(--page) 62%, transparent); opacity: 0; transition: opacity 260ms var(--ease); }
 #mkwSheet.is-in .mkw-sheet-back { opacity: 1; }
-#mkwSheet .mkw-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(88vw, 380px); max-height: none; margin: 0; border-radius: 0; border: 0; border-left: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.25)); overflow: auto; padding: var(--space-4) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom, 0px)); transform: translateX(100%); transition: transform 300ms var(--mkw-out); }
+#mkwSheet .mkw-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(88vw, 372px); pointer-events: auto; max-height: none; margin: 0; border-radius: 0; border: 0; border-left: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.25)); overflow: auto; padding: var(--space-4) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom, 0px)); transform: translateX(100%); transition: transform 300ms var(--mkw-out); }
 [data-theme='dark'] #mkwSheet .mkw-panel { background: var(--raised); }
 #mkwSheet.is-in .mkw-panel { transform: none; }
 #mkwSheet.is-closing .mkw-sheet-back { opacity: 0; }
@@ -10039,6 +10043,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 #mkwSheet .mkw-panel-close { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) {
   #mkwSheet .mkw-sheet-back, #mkwSheet .mkw-panel { transition: none; }
+  .mkw-shell { transition: none; }
 }
 @media (max-width: 720px) {
   .mkw-head { padding-top: var(--space-6); }

@@ -5549,7 +5549,7 @@
   let mkwSheetWasOpen = false;
   function mkwSheetRender() {
     const host = mkwSheetHost();
-    const on = mkwIsMobile() && mkw.panelOpen && mkBrief.tab === 'feed'
+    const on = mkw.panelOpen && mkBrief.tab === 'feed'
       && state.view === 'staff' && state.staffMenuPage === 'campaigns';
     if (!on) {
       host.className = '';
@@ -5557,11 +5557,13 @@
       mkwSheetWasOpen = false;
       return;
     }
-    host.innerHTML = `<div class="mkw-sheet-back" aria-hidden="true"></div>${mkwPanel()}`;
+    // Le voile n'existe qu'en mobile (le tiroir recouvre le chat) ; sur grand
+    // ecran le chat se RECENTRE a cote du tiroir, rien a voiler.
+    host.innerHTML = `${mkwIsMobile() ? '<div class="mkw-sheet-back" aria-hidden="true"></div>' : ''}${mkwPanel()}`;
     host.className = 'is-on';
     if (!mkwSheetWasOpen && !reducedMotion) {
-      // L'entree joue au frame suivant : la feuille part du bord, le voile
-      // fond. Un simple re-render (contenu qui change) ne rejoue rien.
+      // L'entree joue au frame suivant : le tiroir SORT du bord droit, le
+      // voile fond. Un simple re-render (contenu qui change) ne rejoue rien.
       requestAnimationFrame(() => requestAnimationFrame(() => host.classList.add('is-in')));
     } else {
       host.classList.add('is-in');
@@ -5589,11 +5591,14 @@
 
   window.mkwPanelToggle = function () {
     const host = document.getElementById('mkwSheet');
-    if (mkwIsMobile() && mkw.panelOpen && host && host.classList.contains('is-on')) {
-      // SORTIE animee : la feuille repart par ou elle est venue, PUIS meurt.
+    if (mkw.panelOpen && host && host.classList.contains('is-on')) {
+      // SORTIE animee (toutes tailles) : le tiroir RENTRE dans le bord, PUIS
+      // meurt. Le chat reprend sa place en meme temps (padding anime).
       if (host.classList.contains('is-closing')) return;
       host.classList.add('is-closing');
       host.classList.remove('is-in');
+      const page = document.getElementById('staffCampaignsPage');
+      if (page) page.classList.remove('mkw-has-panel');
       setTimeout(() => {
         host.classList.remove('is-closing');
         mkw.panelOpen = false;
@@ -6113,14 +6118,12 @@
   }
 
   function mkwDesk() {
-    // Sur petit ecran le panneau ne vit JAMAIS dans la grille : il est la
-    // feuille body-montee (mkwSheetRender), sinon ses ids et son fixed se
-    // battraient avec la page.
-    const inlinePanel = mkwIsMobile() ? '' : mkwPanel();
-    return `<div class="mkw-desk ${mkw.panelOpen && !mkwIsMobile() ? '' : 'panel-closed'}" id="mkwFeed">
-      ${mkwChat()}
-      ${inlinePanel}
-    </div>`;
+    // Le panneau ne vit JAMAIS dans la page : c'est un TIROIR monte dans
+    // document.body (mkwSheetRender), colle au bord droit de l'ecran a toutes
+    // les tailles : il sort du bord et y rentre (retour Movsar 2026-08-06).
+    // Ici, seulement le chat ; le shell prend un padding anime quand le
+    // tiroir est ouvert (classe mkw-has-panel posee au paint).
+    return `<div class="mkw-desk" id="mkwFeed">${mkwChat()}</div>`;
   }
 
   // Une vue de PROFONDEUR (plan, studio, concurrents, résultats) : subordonnée
@@ -6519,6 +6522,9 @@
     }
     // La texture vivante : (re)démarrée sur le canvas fraîchement rendu
     // (l'ancienne boucle est coupée dans l'init : zéro doublon, zéro fuite).
+    // La classe de poussee : quand le tiroir est ouvert sur grand ecran, le
+    // shell reserve sa place (padding-right anime) et le chat se recentre.
+    root.classList.toggle('mkw-has-panel', Boolean(mkw.panelOpen && mkBrief.tab === 'feed' && !mkwIsMobile()));
     mkwSheetRender();
     mkwDotsInit();
     mkwMarkInit();

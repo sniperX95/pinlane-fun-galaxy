@@ -211,8 +211,8 @@ async function main() {
       save(); setView('staff'); renderStaff();
     });
     // LE BUREAU : fil + tableau + composer, radar 14 cellules DANS le fil.
-    await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-desk .mkw-chat') && document.querySelector('#staffCampaignsPage .mkw-panel') && document.querySelector('#staffCampaignsPage .mkw-composer'), null, { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-mini').length >= 14, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-desk .mkw-chat') && document.querySelector('#mkwSheet .mkw-panel') && document.querySelector('#staffCampaignsPage .mkw-composer'), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#mkwSheet .mkw-mini').length >= 14, null, { timeout: 15000 });
     await page.waitForTimeout(400);
 
     // Captures optionnelles (PINLANE_MK_SHOTS=<dossier>) : REGARDER le chat
@@ -255,7 +255,7 @@ async function main() {
         rail: root.querySelectorAll('.mkw-rail, .mkw-rail-link, .mkw-rail-home').length,
         toggle: Boolean(root.querySelector('.mkw-head-nav .mkw-panel-toggle')),
         theatre: root.querySelectorAll('.mkw-turn-avatar, .mkw-bubble, .mkw-thinking, .mkw-fold, .mkw-suggest, .mkw-cmd-bar, .mkw-turn-brief').length,
-        desk: Boolean(root.querySelector('.mkw-desk .mkw-chat') && root.querySelector('.mkw-desk .mkw-panel')),
+        desk: Boolean(root.querySelector('.mkw-desk .mkw-chat') && document.querySelector('#mkwSheet .mkw-panel') && root.classList.contains('mkw-has-panel')),
         modes: [...root.querySelectorAll('.mkw-modes .mkw-mode')].map((el) => el.textContent.trim()),
         title: (root.querySelector('.mkw-head-title') || {}).textContent || '',
         desc: (root.querySelector('.mkw-head-desc') || {}).textContent || '',
@@ -296,7 +296,7 @@ async function main() {
     console.log('\n[PANNEAU] le travail de l\'agent : 3 groupes honnetes + mini-radar, fermable anime');
     const board = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
-      const groups = [...root.querySelectorAll('.mkw-bgroup')];
+      const groups = [...document.querySelectorAll('#mkwSheet .mkw-bgroup')];
       const heads = groups.map((g) => (g.querySelector('h3') || {}).textContent || '');
       return {
         heads,
@@ -304,8 +304,8 @@ async function main() {
         facts: (groups[0] && [...groups[0].querySelectorAll('.mkw-bcard')] || []).every((el) => /Voir les faits/.test(el.textContent)),
         pending: /verdict le 26 juillet/.test(groups[1] ? groups[1].textContent : ''),
         watch: groups[2] ? groups[2].textContent : '',
-        minis: root.querySelectorAll('.mkw-panel .mkw-mini').length,
-        title: (root.querySelector('.mkw-panel-title') || {}).textContent || '',
+        minis: document.querySelectorAll('#mkwSheet .mkw-mini').length,
+        title: (document.querySelector('#mkwSheet .mkw-panel-title') || {}).textContent || '',
       };
     });
     ok(board.heads.slice(0, 3).join('|') === 'À valider|En cours|À surveiller', `les trois groupes du panneau (${board.heads.join(', ')})`);
@@ -316,21 +316,34 @@ async function main() {
     ok(board.minis === 14, `le mini-radar des 14 jours vit dans le panneau (${board.minis})`);
     const toggled = await page.evaluate(async () => {
       window.mkwPanelToggle();
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 120));
+      // La SORTIE joue : is-closing pendant que le tiroir RENTRE dans le bord.
+      const closing = Boolean(document.querySelector('#mkwSheet.is-closing'));
+      await new Promise((r) => setTimeout(r, 420));
       const closed = {
-        deskClosed: Boolean(document.querySelector('#staffCampaignsPage .mkw-desk.panel-closed')),
-        hidden: (document.querySelector('#staffCampaignsPage .mkw-panel') || {}).getAttribute('aria-hidden') === 'true',
+        sheetGone: !document.querySelector('#mkwSheet.is-on'),
+        pushGone: !document.getElementById('staffCampaignsPage').classList.contains('mkw-has-panel'),
       };
       window.mkwPanelToggle();
-      await new Promise((r) => setTimeout(r, 350));
-      const reopened = Boolean(document.querySelector('#staffCampaignsPage .mkw-desk:not(.panel-closed) .mkw-panel'));
-      return { ...closed, reopened };
+      await new Promise((r) => setTimeout(r, 420));
+      const panel = document.querySelector('#mkwSheet.is-on.is-in .mkw-panel');
+      const rect = panel ? panel.getBoundingClientRect() : null;
+      return {
+        closing,
+        ...closed,
+        reopened: Boolean(panel),
+        // LA DEMANDE EXACTE : colle au bord droit de l'ECRAN, du haut en bas.
+        edge: rect ? Math.abs(rect.right - window.innerWidth) < 2 && rect.top < 2 && Math.abs(rect.bottom - window.innerHeight) < 2 : false,
+        pushBack: document.getElementById('staffCampaignsPage').classList.contains('mkw-has-panel'),
+      };
     });
-    ok(toggled.deskClosed && toggled.hidden && toggled.reopened, 'le panneau se FERME et se ROUVRE d\'un geste (etat + aria + colonne animee)');
+    ok(toggled.closing && toggled.sheetGone && toggled.pushGone, 'la fermeture ANIME la sortie (is-closing) puis le tiroir rentre dans le bord, le chat reprend la largeur');
+    ok(toggled.reopened && toggled.edge, 'rouvert : le tiroir COLLE au bord droit de l\'ecran, du haut en bas (geometrie au pixel)');
+    ok(toggled.pushBack, 'et le chat se recentre a cote (le shell reserve la place, anime)');
 
     console.log('\n[MINI-RADAR] un clic sur un jour POSE LA QUESTION dans le chat');
     const dayAsk = await page.evaluate(async () => {
-      const minis = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-mini')];
+      const minis = [...document.querySelectorAll('#mkwSheet .mkw-mini')];
       minis[9].click(); // le jour CALME du mock (sans proposition liee)
       await new Promise((r) => setTimeout(r, 1000));
       const answer = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-turn-answer');
@@ -359,7 +372,7 @@ async function main() {
 
     console.log('\n[PANNEAU -> CHAT] « Voir les faits » invite la carte DANS la conversation');
     const shown = await page.evaluate(async () => {
-      const card = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-bcard')].find((el) => /plan au sec/.test(el.textContent));
+      const card = [...document.querySelectorAll('#mkwSheet .mkw-bcard')].find((el) => /plan au sec/.test(el.textContent));
       card.click();
       await new Promise((r) => setTimeout(r, 400));
       const prop = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-msg-prop .mkw-prop.is-open');
@@ -407,11 +420,11 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
       const survived = (document.getElementById('brAskInput') || {}).value || '';
       const focusAlive = document.activeElement && document.activeElement.id === 'brAskInput';
-      const boardBefore = document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-bcard').length;
+      const boardBefore = document.querySelectorAll('#mkwSheet .mkw-bcard').length;
       [...document.querySelectorAll('#staffCampaignsPage .mkw-composer-send')].find((el) => /Préparer/.test(el.textContent)).click();
       await new Promise((r) => setTimeout(r, 800));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionCreate' && p.brief);
-      const cards = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-bcard')];
+      const cards = [...document.querySelectorAll('#mkwSheet .mkw-bcard')];
       const fresh = cards.filter((el) => el.classList.contains('is-new'));
       const chatProps = [...document.querySelectorAll('#staffCampaignsPage .mkw-chat .mkw-msg-prop')];
       const lastProp = chatProps[chatProps.length - 1];
@@ -435,7 +448,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 600));
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 200));
-      return document.querySelectorAll('#staffCampaignsPage .mkw-bcard.is-new').length;
+      return document.querySelectorAll('#mkwSheet .mkw-bcard.is-new').length;
     });
     ok(once === 0, 'CONTRE-PREUVE : l\'entree animee ne joue qu\'UNE fois');
 
@@ -595,8 +608,8 @@ async function main() {
     await page.setViewportSize({ width: 1400, height: 900 });
     await page.evaluate(() => { window.mkw.panelOpen = true; window.renderStaffCampaignsPage(); });
     await page.waitForTimeout(300);
-    ok(await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-panel').length === 1 && !document.querySelector('#mkwSheet.is-on')),
-      'retour grand ecran : le panneau reprend sa colonne, la feuille dort');
+    ok(await page.evaluate(() => Boolean(document.querySelector('#mkwSheet.is-on .mkw-panel')) && !document.querySelector('#mkwSheet .mkw-sheet-back') && document.getElementById('staffCampaignsPage').classList.contains('mkw-has-panel')),
+      'retour grand ecran : le tiroir reste au bord SANS voile, le chat pousse a cote');
 
     console.log('\n[PANNEAU calme + CENTRE qui gouverne]');
     const calm = await page.evaluate(async () => {
@@ -609,8 +622,8 @@ async function main() {
       window.mkBrief.published = {};
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));
-      const empties = document.querySelectorAll('#staffCampaignsPage .mkw-bempty').length;
-      const fake = document.querySelectorAll('#staffCampaignsPage .mkw-bcard, #staffCampaignsPage .mkw-brow').length;
+      const empties = document.querySelectorAll('#mkwSheet .mkw-bempty').length;
+      const fake = document.querySelectorAll('#mkwSheet .mkw-bcard, #mkwSheet .mkw-brow').length;
       window.mkBrief.data = JSON.parse(saved);
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 250));
@@ -627,11 +640,11 @@ async function main() {
       const text = (document.querySelector('#staffCampaignsPage .mkw-hello-brief, #staffCampaignsPage .mkw-msg-text') || {}).textContent || '';
       const centers = [...(window.__QA_BRIEF_CENTERS__ || [])];
       const thread = window.mkw.thread.length;
-      const learning = /J'apprends encore/.test(document.querySelector('#staffCampaignsPage .mkw-panel').textContent);
+      const learning = /J'apprends encore/.test((document.querySelector('#mkwSheet .mkw-panel') || {}).textContent || '');
       state.adminCenterId = 'libramont';
       window.renderStaffCampaignsPage();
       const back = Date.now() + 6000;
-      while (Date.now() < back && !/Bowling Arlon/.test((document.querySelector('#staffCampaignsPage .mkw-panel') || {}).textContent || '')) {
+      while (Date.now() < back && !/Bowling Arlon/.test((document.querySelector('#mkwSheet .mkw-panel') || {}).textContent || '')) {
         await new Promise((r) => setTimeout(r, 80));
       }
       return { text, centers, thread, learning };

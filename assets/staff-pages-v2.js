@@ -5010,7 +5010,7 @@
           <p class="mkw-head-desc">${centre ? `L'employé marketing de <strong>${esc(centre)}</strong>. ` : ''}Vous validez, rien ne part tout seul.</p>
         </div>
         <nav class="mkw-head-nav" aria-label="Vues de profondeur Marketing">
-          ${depth}
+          <span class="mkw-head-links">${depth}</span>
           <span class="mkw-head-navsep" aria-hidden="true"></span>
           <button type="button" class="mkw-panel-toggle ${mkw.panelOpen ? 'is-open' : ''}" aria-expanded="${mkw.panelOpen}" aria-label="${mkw.panelOpen ? 'Fermer le panneau des tâches' : 'Ouvrir le panneau des tâches'}" onclick="mkwPanelToggle()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>

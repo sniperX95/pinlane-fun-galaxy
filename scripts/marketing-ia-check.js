@@ -338,12 +338,27 @@ async function main() {
         edge: rect ? Math.abs(rect.right - (window.innerWidth - 16)) < 3 && Math.abs(rect.top - 16) < 3 && rect.bottom <= window.innerHeight - 12 : false,
         rounded: style ? parseFloat(style.borderTopLeftRadius) >= 10 : false,
         glass: style ? /blur/.test(style.backdropFilter || style.webkitBackdropFilter || '') : false,
+        // VRAIMENT transparent : l'alpha du fond sous 0.7 (un verre opaque
+        // n'est pas un verre), et le chevron pointe vers la DROITE (sens de
+        // la rentree), sans rotation.
+        seeThrough: style ? (() => {
+          const bg = style.backgroundColor || '';
+          // Deux formats possibles : rgba(r, g, b, a) et color(srgb r g b / a).
+          const slash = bg.match(/\/\s*([\d.]+)\s*\)/);
+          const comma = bg.match(/rgba\([^)]*,\s*([\d.]+)\s*\)/);
+          const alpha = slash ? parseFloat(slash[1]) : (comma ? parseFloat(comma[1]) : 1);
+          return alpha < 0.7;
+        })() : false,
+        chevron: (() => { const c = document.querySelector('#mkwSheet .mkw-panel-close'); return c ? getComputedStyle(c).transform === 'none' : false; })(),
+        navOneBlock: (() => { const links = [...document.querySelectorAll('.mkw-head-links .mkw-head-link')]; return links.length === 4 && new Set(links.map((l) => l.offsetTop)).size === 1; })(),
         pushBack: document.getElementById('staffCampaignsPage').classList.contains('mkw-has-panel'),
       };
     });
     ok(toggled.closing && toggled.sheetGone && toggled.pushGone, 'la fermeture ANIME la sortie (is-closing) puis le tiroir rentre dans le bord, le chat reprend la largeur');
     ok(toggled.reopened && toggled.edge, 'rouvert : la BULLE vit pres du bord droit (marge 16), hauteur au contenu');
-    ok(toggled.rounded && toggled.glass, 'et c\'est une bulle VITREE arrondie (radius + backdrop blur, demande client)');
+    ok(toggled.rounded && toggled.glass && toggled.seeThrough, 'et c\'est une bulle VITREE arrondie, VRAIMENT transparente (alpha du fond < 0.7 + blur)');
+    ok(toggled.chevron, 'la fleche de fermeture pointe vers la DROITE : le sens ou la bulle rentre');
+    ok(toggled.navOneBlock, 'les 4 liens de l\'en-tete restent EN BLOC sur une ligne (jamais recroquevilles)');
     ok(toggled.pushBack, 'et le chat se recentre a cote (le shell reserve la place, anime)');
 
     console.log('\n[MINI-RADAR] un clic sur un jour POSE LA QUESTION dans le chat');

@@ -9793,7 +9793,11 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* L'en-tete : une ligne. Identite a gauche, profondeurs + panneau a droite. */
+/* Les 4 liens vivent GROUPES (.mkw-head-links, nowrap) : quand la bulle
+   pousse le contenu, ils glissent EN BLOC ou passent a la ligne EN BLOC,
+   jamais coupes au milieu (retour Movsar : « ils se recroquevillent »). */
 .mkw-head-nav { display: flex; align-items: center; gap: 2px; margin-left: auto; align-self: flex-start; flex-wrap: wrap; justify-content: flex-end; }
+.mkw-head-links { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; white-space: nowrap; }
 .mkw-head-link { flex: none; border: 0; background: transparent; padding: 8px 11px; min-height: 36px; border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
 .mkw-head-link:hover { color: var(--text); background: var(--subtle); }
 .mkw-head-link.active { color: var(--text); background: var(--subtle); font-weight: 600; }
@@ -9813,7 +9817,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    dans body, regles plus bas). Quand il est ouvert sur grand ecran, le
    shell reserve sa place et le chat se recentre, en douceur. */
 .mkw-desk { min-width: 0; }
-.mkw-shell { transition: padding-right 380ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mkw-shell { transition: padding-right 460ms cubic-bezier(0.16, 1, 0.3, 1); }
 #staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 400px; }
 
 /* LE CHAT : une colonne de lecture centree, sans meuble autour. */
@@ -10042,26 +10046,39 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   position: absolute; top: 16px; right: 16px; bottom: auto;
   width: min(calc(100vw - 32px), 360px); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
   pointer-events: auto; margin: 0; overflow: auto; overscroll-behavior: contain;
-  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 55%, transparent);
   border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--surface) 76%, transparent);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  backdrop-filter: blur(16px) saturate(1.15);
-  box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.22));
+  /* Le VERRE, pour de vrai : fond franchement translucide + flou fort +
+     reflet vitreux en tete. Le fond de points et le chat transparaissent. */
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), transparent 42%),
+    color-mix(in srgb, var(--surface) 52%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.22)), inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent);
   padding: var(--space-4) var(--space-4) var(--space-5);
-  transform: translateX(calc(100% + 32px));
-  transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: 100% 24%;
+  opacity: 0;
+  transform: translateX(calc(100% + 32px)) scale(0.965);
+  transition: transform 460ms cubic-bezier(0.16, 1, 0.3, 1), opacity 340ms var(--ease);
 }
-[data-theme='dark'] #mkwSheet .mkw-panel { background: color-mix(in srgb, var(--raised) 72%, transparent); }
+[data-theme='dark'] #mkwSheet .mkw-panel { background: linear-gradient(180deg, color-mix(in srgb, var(--text) 5%, transparent), transparent 42%), color-mix(in srgb, var(--raised) 48%, transparent); }
 /* Sans backdrop-filter (vieux moteur) : fond plein, la lisibilite d'abord. */
 @supports not (backdrop-filter: blur(1px)) {
   #mkwSheet .mkw-panel { background: var(--surface); }
   [data-theme='dark'] #mkwSheet .mkw-panel { background: var(--raised); }
 }
-#mkwSheet.is-in .mkw-panel { transform: none; }
+/* Les boites INTERNES de la bulle deviennent translucides aussi : un verre
+   rempli de cartes opaques n'est pas un verre. */
+#mkwSheet .mkw-bcard { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+[data-theme='dark'] #mkwSheet .mkw-bcard { background: color-mix(in srgb, var(--raised) 52%, transparent); }
+#mkwSheet .mkw-mini { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+[data-theme='dark'] #mkwSheet .mkw-mini { background: color-mix(in srgb, var(--raised) 52%, transparent); }
+#mkwSheet.is-in .mkw-panel { opacity: 1; transform: none; }
 #mkwSheet.is-closing .mkw-sheet-back { opacity: 0; }
-#mkwSheet.is-closing .mkw-panel { transform: translateX(calc(100% + 32px)); transition: transform 300ms var(--mkw-io); }
-#mkwSheet .mkw-panel-close { transform: rotate(180deg); }
+#mkwSheet.is-closing .mkw-panel { opacity: 0; transform: translateX(calc(100% + 32px)) scale(0.97); transition: transform 340ms var(--mkw-io), opacity 300ms var(--ease); }
+/* Le chevron pointe vers la DROITE : le sens ou la bulle RENTRE. */
+#mkwSheet .mkw-panel-close { transform: none; }
 @media (prefers-reduced-motion: reduce) {
   #mkwSheet .mkw-sheet-back, #mkwSheet .mkw-panel { transition: none; }
   .mkw-shell { transition: none; }

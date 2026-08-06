@@ -2771,6 +2771,10 @@ function requestOpsDispatch() {
 }
 
 function setView(v) {
+  // Le voile de demarrage (index.html) meurt ici : des qu'une vue est
+  // reellement appliquee, il n'a plus de raison d'etre. Premiere ligne, avant
+  // tout retour anticipe, sinon un refus d'acces le laisserait colle.
+  document.documentElement.removeAttribute('data-boot');
   if (v === 'admin' && !canOpenAdminView()) {
     toast('Accès non autorisé pour ce rôle.');
     v = 'staff';
@@ -17001,6 +17005,13 @@ async function bootstrapApp() {
   if (customerMode) state.view = 'client';
   initClient();
   loadCenterScheduleConfig();
+  // LA VUE EST POSEE AVANT LE RESEAU. setView() vivait apres le controle de
+  // session et deux synchros : la console mettait 1 a 2 s a remplacer le
+  // parcours de reservation a l'ecran. La vue client/staff ne depend d'aucune
+  // reponse serveur, on l'applique donc tout de suite. Seule la vue DIRECTION
+  // attend, parce qu'elle seule se decide sur les permissions (canOpenAdminView)
+  // et qu'un rendu optimiste retomberait sur staff avec un toast de refus.
+  if (state.view !== 'admin') setView(state.view);
   if (isAuthenticated) {
     await loadStaffAuthSession({ silent: true });
     await syncDateReservations(state.booking.date, { silent: true, skipRender: true });

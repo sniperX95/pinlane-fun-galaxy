@@ -1024,3 +1024,13 @@ kbd, .kbd {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── DEMARRAGE SANS FLASH (2026-08-06) ─────────────────────────────────────
+   Le drapeau data-boot="app" est pose par assets/boot-view.js AVANT la
+   premiere peinture, quand l'URL (ou l'etat sauvegarde) dit que l'on ouvre la
+   console et non le parcours de reservation. Ces deux regles couvrent le seul
+   intervalle ou le HTML est peint mais ou app-main.js n'a pas encore applique
+   sa vue. setView() retire le drapeau des qu'il agit. */
+html[data-boot='app'] #clientView,
+html[data-boot='app'] #nav { display: none !important; }
+html[data-boot='app']::before { content: ''; position: fixed; inset: 0; background: var(--bg, #0b0b0c); z-index: 99999; }

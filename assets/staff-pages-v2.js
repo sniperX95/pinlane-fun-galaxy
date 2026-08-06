@@ -3845,11 +3845,25 @@
   const mkBrief = {
     data: null, loading: false, error: '', period: 30, tab: 'feed',
     payOpen: false, radarOpen: null, openCard: null, cardNetwork: {},
-    angleOpen: null, publishedAsk: null, moreOpen: false, receiptsAll: false,
+    angleOpen: null, publishedAsk: null, receiptsAll: false,
     busy: '', published: {}, dismissed: {},
     studioChannel: 'facebook', studioPacks: {}, studioBusy: false,
   };
   window.mkBrief = mkBrief;
+
+  // L'etat de SESSION du bureau (refonte 2026-08-06 « console d'agent ») :
+  //  : mode du composer (« demander » pose une question, « creer » prepare un
+  //    livrable ; ce sont deux CONTRATS differents, pas deux skins) ;
+  //  : thread = les tours ephemeres du mode Demander (reponses assemblees en
+  //    local depuis le bundle deja charge : au rechargement, le fil se
+  //    reconstruit depuis les objets serveur, qui sont la verite) ;
+  //  : knownKeys = les propositions deja vues, pour n'animer QUE l'arrivee
+  //    d'une action neuve dans le tableau (jamais le chargement initial) ;
+  //  : loadedCenter = le centre dont les donnees a l'ecran proviennent. S'il
+  //    diverge du centre selectionne, TOUT l'etat marketing est remis a zero :
+  //    un gerant sur Gembloux ne voit jamais une seconde de data Libramont.
+  const mkw = { mode: 'creer', thread: [], knownKeys: null, loadedCenter: '', ctxVeille: false, focusRival: '' };
+  window.mkw = mkw;
 
   // Motion à un coup : la toile ne se refade qu'en ARRIVANT sur une vue (ou à
   // la première donnée), jamais sur chaque clic in-view (ouvrir une carte,
@@ -3904,9 +3918,8 @@
   const BR_TRIGGER_TONE = { creux: 'danger', jour_fort: 'success' };
   const BR_NETWORK_LABELS = { facebook: 'Facebook', instagram: 'Instagram', story: 'Story', email: 'Email' };
 
-  // NB (refonte planche 2026-08-05) : le brief vit dans son panneau (mkwFeed),
-  // les 4 compteurs dans mkwCounters, la paie dans Résultats (mkwHero).
-  // mkBrPeriod/mkBrPayDetail servent la surface Résultats.
+  // NB : la paie vit dans Impact (mkwHero) ; mkBrPeriod/mkBrPayDetail servent
+  // cette surface. Le brief et la file vivent dans le fil du bureau.
 
   window.mkBrPeriod = async function (days) {
     mkBrief.period = Number(days) || 30;
@@ -4006,10 +4019,8 @@
   };
   window.mkBrGoCard = function (key) {
     mkBrief.openCard = key;
-    // Fix audit 4.1 : si la cible est au-delà des 3 cartes visibles, le
-    // querySelector ne trouvait rien et le clic était silencieusement inopérant.
-    const index = brVisiblePropositions().findIndex((p) => p.key === key);
-    if (index >= 3) mkBrief.moreOpen = true;
+    // Le fil vit sur le bureau : depuis le tableau ou une réponse, on y revient.
+    mkBrief.tab = 'feed';
     renderStaffCampaignsPage();
     setTimeout(() => {
       const el = document.querySelector(`[data-br-card="${CSS.escape(key)}"]`);
@@ -4147,10 +4158,8 @@
     </article>`;
   }
 
-  // NB (refonte agent-natif) : ex-mkwQueue (la file « Prêt pour toi » + la
-  // command bar) est dissoute. Les propositions sont désormais des tours du fil
-  // (mkwPropCard, appelé par mkwFeed) et la command bar est le composer sticky
-  // (mkwComposer). Mêmes chips, mêmes ids (#mkwAsk/#brAskInput), mêmes handlers.
+  // NB : les propositions sont des tours du fil (mkwPropCard via mkwTurnsProps)
+  // et la demande vit dans le composer du bureau (mkwComposer, #brAskInput).
 
   window.mkBrOpenCard = function (key) {
     mkBrief.openCard = mkBrief.openCard === key ? null : key;
@@ -4163,11 +4172,6 @@
       if (p && network && p.kind !== 'email' && !(p.networks || {})[network]) window.mkBrNetwork(key, network, true);
     }
   };
-  window.mkBrMore = function () {
-    mkBrief.moreOpen = true;
-    renderStaffCampaignsPage();
-  };
-
   // Trouve la proposition (persistée ou volatile) et son payload de POST.
   function brPropPayload(p) {
     return p.id ? { id: p.id } : { proposition: p };
@@ -4317,9 +4321,8 @@
         body: JSON.stringify({ action: 'propositionCreate', centerId: state.adminCenterId || 'libramont', trigger: 'demande', brief: brief.slice(0, 300) }),
       });
       mkBrief.askDraft = '';
-      mkBrief.moreOpen = true;
       await loadMarketingBrief(true);
-      toast('C\'est prêt : la proposition est dans la liste.');
+      toast('C\'est prêt : la carte arrive dans « À valider ».');
     } catch (error) {
       toast(error.message || 'La préparation a échoué : réessayez.');
     } finally {
@@ -4992,18 +4995,20 @@
      l'analyse causale profonde arrive en Phase 1 backend).
      ══════════════════════════════════════════════════════════════════════ */
 
-  // AGENT-NATIF (refonte 2026-07-18) : la landing n'est plus une grille de 5
-  // onglets co-égaux, c'est la CONVERSATION de l'agent (feed). La profondeur
-  // (plan, studio, concurrents, résultats) reste accessible mais SUBORDONNÉE :
-  // un rail discret + des liens depuis le fil. `feed` est la maison.
+  // LE BUREAU (refonte 2026-08-06) : la maison est le bureau de l'agent
+  // (fil + tableau d'actions), PAS un onglet. Les 4 profondeurs répondent
+  // chacune à UNE question : Plan (que prévoir), Créations (fabriquer),
+  // Marché (qui me prend des clients), Impact (qu'est-ce que ça a rapporté).
+  // Les CLÉS internes ne bougent pas (handlers, deep-links, tests) : seuls
+  // les libellés portent la nouvelle lecture.
   const MKW_TABS = [
-    { key: 'feed', label: 'Aujourd\'hui' },
-    { key: 'plan', label: 'Le plan' },
-    { key: 'studio', label: 'Studio' },
-    { key: 'rivals', label: 'Concurrents' },
-    { key: 'results', label: 'Résultats' },
+    { key: 'feed', label: 'Bureau' },
+    { key: 'plan', label: 'Plan' },
+    { key: 'studio', label: 'Créations' },
+    { key: 'rivals', label: 'Marché' },
+    { key: 'results', label: 'Impact' },
   ];
-  // Les entrées de profondeur du rail (tout sauf la maison conversation).
+  // Les entrées de profondeur du rail (tout sauf la maison bureau).
   const MKW_DEPTH = MKW_TABS.filter((t) => t.key !== 'feed');
 
   window.mkwTab = function (key) {
@@ -5044,8 +5049,11 @@
     const b = mkBrief.data;
     const generated = b && b.generatedAt ? new Date(b.generatedAt) : null;
     const fresh = generated && !Number.isNaN(generated.getTime())
-      ? `Brief du ${esc(generated.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}.`
-      : '';
+      ? `Dernière analyse : ${esc(generated.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }))}.`
+      : 'La première analyse arrive au prochain matin.';
+    // Le centre SELECTIONNE est affiché dans l'identité : l'agent travaille
+    // pour UN centre, et ça se voit sans chercher (verite de scope).
+    const centre = typeof window.staffCenterDisplayName === 'function' ? window.staffCenterDisplayName() : '';
     return `<section class="mkw-head">
       <p class="mkw-crumb"><span class="pv2-live"></span>Clients &amp; marketing / Marketing</p>
       <div class="mkw-head-id">
@@ -5055,64 +5063,401 @@
             <h1 class="mkw-head-title">Marketing</h1>
             <span class="mkw-head-badge"><span class="mkw-live" aria-hidden="true"></span>analyse chaque matin</span>
           </div>
-          <p class="mkw-head-desc">Météo, réservations et concurrents passés au crible chaque matin : des posts prêts à publier, mesurés 14 jours après publication. Vous validez, rien ne part tout seul. ${fresh}</p>
+          <p class="mkw-head-desc">${centre ? `L'employé marketing de <strong>${esc(centre)}</strong>. ` : ''}Météo, réservations et concurrents passés au crible chaque matin. Vous validez, rien ne part tout seul. ${fresh}</p>
         </div>
       </div>
     </section>`;
   }
 
-  // ── LE BANDEAU D'ETAT ─────────────────────────────────────────────────────
-  // La page s'ouvrait sur une conversation et rien d'autre : au-dessus du fil,
-  // aucune idee de ce que l'agent a en main. Ce bandeau donne l'etat en quatre
-  // nombres, avec DEUX interdits tenus :
-  //   : aucun chiffre d'exploitation (CA, visiteurs, panier). Ils vivent en
-  //     Direction, et un meme fait affiche a deux endroits finit par diverger
-  //     (c'est exactement ce qui s'est produit ici : la page Marketing lisait
-  //     l'entrepot quotidien et affichait 7 654 EUR pendant que la Direction en
-  //     annoncait 44 159 pour la meme periode). Un fait, une autorite.
-  //   : aucun montant d'attribution. La figure en euros du marketing n'existe
-  //     qu'a UN exemplaire, dans Resultats (audit 6.2).
-  // Il ne reste donc ici que ce qui appartient a cette page : ce qui est pret,
-  // ce qu'il reste a remplir, la veille, et l'etat de la mesure.
-  function mkwCounters() {
-    const b = mkBrief.data;
-    if (!b) {
-      return `<section class="pv2-stats mkw-counters">${'<article class="pv2-stat"><div class="mkw-skel mkw-skel-short"></div><div class="mkw-skel"></div></article>'.repeat(4)}</section>`;
-    }
-    const props = brVisiblePropositions();
-    const today = b.today || '';
-    const quiet = (b.radar || []).filter((day) => (day.level === 'creux' || day.level === 'calme') && day.date >= today);
-    const veille = b.veille || {};
-    const paie = b.paie || {};
-    const receipts = (b.receipts || []).length;
-    // Etat de la mesure : tant qu'aucune publication n'a vecu ses 14 jours, on
-    // annonce la DATE du premier verdict au lieu d'un zero qui ressemble a un
-    // echec.
-    const measure = receipts > 0
-      ? { value: String(receipts), foot: 'publications mesurées à 14 jours' }
-      : { value: '-', foot: paie.firstVerdictDate ? `premier bilan le ${paie.firstVerdictDate}` : 'la mesure démarre à la première publication' };
-    return `<section class="pv2-stats mkw-counters">
-      ${stat({ label: 'Prêt à publier', count: props.length, foot: props.length ? 'validé par toi avant tout envoi' : 'rien d\'urgent aujourd\'hui' })}
-      ${stat({ label: 'Jours creux à remplir', count: quiet.length, foot: 'sur les 14 prochains jours' })}
-      ${stat({ label: 'Concurrents suivis', count: Number(veille.count) || 0, foot: (veille.changed || []).length ? `${veille.changed.length} ont bougé ce matin` : 'rien de neuf ce matin' })}
-      ${stat({ label: 'Mesure', value: measure.value, foot: measure.foot })}
-    </section>`;
-  }
-  // Le RAIL secondaire : discret, subordonné à la conversation. À gauche, la
-  // maison (« Conversation ») ; à droite, les 4 profondeurs en liens sobres.
-  // Ce n'est plus une grille d'onglets co-égaux : la voix par défaut est le fil.
+  // Le RAIL : les 4 profondeurs, rien d'autre. « Aujourd'hui » n'est PAS un
+  // onglet : le bureau (fil + tableau) est l'etat par defaut, et chaque
+  // profondeur porte son bouton de retour (mkwDepth). Sur le bureau, aucune
+  // entree n'est active : on n'est nulle part « ailleurs ».
   function mkwRail() {
-    const onFeed = mkBrief.tab === 'feed';
-    return `<nav class="mkw-rail" aria-label="Marketing">
-      <button type="button" class="mkw-rail-home ${onFeed ? 'active' : ''}" aria-current="${onFeed ? 'page' : 'false'}" onclick="mkwTab('feed')">
-        ${mkwAgentMark()}<span>Aujourd'hui</span>
-      </button>
-      <span class="mkw-rail-sep" aria-hidden="true"></span>
+    return `<nav class="mkw-rail" aria-label="Vues de profondeur Marketing">
+      <span class="mkw-rail-label">Profondeur</span>
       <div class="mkw-rail-depth">
         ${MKW_DEPTH.map((t) => `<button type="button" class="mkw-rail-link ${mkBrief.tab === t.key ? 'active' : ''}" aria-current="${mkBrief.tab === t.key ? 'page' : 'false'}" onclick="mkwTab('${t.key}')">${esc(t.label)}</button>`).join('')}
       </div>
     </nav>`;
   }
+
+  /* ══════════════════════════════════════════════════════════════════════
+     LE BUREAU (refonte 2026-08-06, MARKETING-AGENT-DESIGN.md) : le fil de
+     l'agent a gauche, le tableau d'actions a droite. Chaque tour du fil est
+     un OBJET REEL (brief du matin, proposition, demande du gerant) ou une
+     reponse assemblee en local depuis ces objets : jamais de theatre, jamais
+     un chiffre qui ne vient pas du bundle serveur.
+     ══════════════════════════════════════════════════════════════════════ */
+
+  // ── Le tour d'ouverture : le brief du matin, radar integre ────────────────
+  function mkwTurnBrief() {
+    const b = mkBrief.data;
+    const date = esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }));
+    const changed = (b.veille && b.veille.changed) || [];
+    // La veille : une piece de contexte du fil, depliable INLINE (jamais une
+    // navigation forcee). Le lien vers Marche garde l'intention : le concurrent
+    // qui a bouge arrive mis en evidence.
+    const veilleRow = changed.length ? `<div class="mkw-ctx ${mkw.ctxVeille ? 'is-open' : ''}">
+        <button type="button" class="mkw-ctx-toggle" aria-expanded="${mkw.ctxVeille}" onclick="mkwCtxVeille()">
+          ${ci('bolt')}<span>${changed.length > 1 ? `${changed.length} concurrents ont bougé ce matin` : `<strong>${esc(changed[0].name)}</strong> a bougé ce matin`}</span>
+          <svg class="mkw-ctx-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        ${mkw.ctxVeille ? `<div class="mkw-ctx-body">
+          ${changed.map((c) => `<p class="mkw-veille-line"><strong>${esc(c.name)}</strong> : ${esc(c.diff)}</p>`).join('')}
+          <button type="button" class="mkw-link" onclick="mkwGoRival('${escJs(changed[0].name)}')">Voir dans Marché</button>
+        </div>` : ''}
+      </div>` : '';
+    // Le pointeur Impact : la ligne compacte (audit §6.2 : le heros euros vit
+    // a UN exemplaire, dans Impact ; ici, le rappel et le chemin, c'est tout).
+    const p = b.paie || {};
+    let impactLine = '';
+    if (p.young) impactLine = `Mesure encore trop jeune : premier bilan le ${esc(p.firstVerdictDate || '')}.`;
+    else if (p.quietWindow) impactLine = `Rien d'envoyé sur les ${p.days} derniers jours.`;
+    else if (p.euros > 0) impactLine = `Tes messages ont rapporté ${money(p.euros)} de visites honorées sur ${p.days} jours.`;
+    else impactLine = `${p.sent || 0} messages partis sur ${p.days} jours, pas encore de visite liée.`;
+    const impactRow = `<div class="mkw-ctx"><span class="mkw-ctx-line">${ci('flag')}<span>${brProse(impactLine)}</span>
+      <button type="button" class="mkw-link" onclick="mkwTab('results')">Voir Impact</button></span></div>`;
+    return `<article class="mkw-turn is-agent mkw-turn-brief">
+      <div class="mkw-turn-head">${mkwAgentMark()}<b>Le brief du ${date}</b><span class="mkw-turn-sub">calculé ce matin sur vos chiffres, la météo et le calendrier</span></div>
+      ${b.brief && b.brief.degraded ? '<p class="mkw-degraded">Mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
+      ${b.brief ? `<p class="mkw-brief-text">${brProse(b.brief.text)}</p>` : ''}
+      <div class="mkw-turn-radar">
+        <span class="mkw-turn-radar-cap">Les 14 prochains jours : cliquez un jour pour le détail</span>
+        ${mkwRadar()}
+      </div>
+      ${veilleRow}
+      ${impactRow}
+    </article>`;
+  }
+  window.mkwCtxVeille = function () {
+    mkw.ctxVeille = !mkw.ctxVeille;
+    renderStaffCampaignsPage();
+  };
+
+  // Ouvrir Marche AVEC l'intention : le concurrent nomme arrive surligne.
+  window.mkwGoRival = function (name) {
+    mkw.focusRival = String(name || '');
+    if (typeof loadCompetitors === 'function') loadCompetitors();
+    mkBrief.tab = 'rivals';
+    renderStaffCampaignsPage();
+  };
+
+  // ── Les tours de proposition ─────────────────────────────────────────────
+  // Une proposition nee d'une demande du gerant rend D'ABORD son tour a lui
+  // (sa phrase, citee depuis l'objet serveur), puis la reponse de l'agent.
+  function mkwTurnsProps() {
+    return brVisiblePropositions().map((p) => {
+      const isDemand = p.trigger === 'demande';
+      const quoted = isDemand ? (String(p.whyShort || p.why || '').match(/«\s*([^»]+?)\s*»/) || [])[1] : '';
+      const userTurn = isDemand ? `<article class="mkw-turn is-user"><div class="mkw-turn-user-body">${esc(quoted || 'Ta demande')}</div></article>` : '';
+      return `${userTurn}<div class="mkw-turn is-agent mkw-turn-prop">${mkwPropCard(p)}</div>`;
+    }).join('');
+  }
+
+  // ── Les tours de session (mode Demander) ─────────────────────────────────
+  // La reponse est ASSEMBLEE depuis le bundle deja charge : chaque nombre
+  // vient du serveur et la source est dite a l'ecran. Pas d'endpoint d'analyse
+  // libre, pas de credits IA : on ne simule RIEN, on route vers ce qu'on sait.
+  function mkwThreadTurns() {
+    const turns = mkw.thread.map((t) => {
+      const facts = (t.facts || []).map((f) => `<span class="mkw-ans-fact">${brProse(f)}</span>`).join('');
+      const acts = (t.actions || []).map((a, i) => `<button type="button" class="${i === 0 ? 'pv2-btn primary' : 'mkw-link'}" onclick="${a.js}">${esc(a.label)}</button>`).join('');
+      return `<article class="mkw-turn is-user"><div class="mkw-turn-user-body">${esc(t.q)}</div></article>
+      <article class="mkw-turn is-agent mkw-turn-answer">
+        <div class="mkw-turn-head">${mkwAgentMark()}<b>${esc(t.title)}</b></div>
+        ${t.reco ? `<p class="mkw-ans-reco">${brProse(t.reco)}</p>` : ''}
+        ${t.why ? `<p class="mkw-ans-why">${brProse(t.why)}</p>` : ''}
+        ${facts ? `<div class="mkw-ans-facts">${facts}</div>` : ''}
+        ${acts ? `<div class="mkw-prop-actions">${acts}</div>` : ''}
+        <p class="mkw-ans-src">${esc(t.source || 'assemblé depuis le brief du matin, sans invention')}</p>
+      </article>`;
+    }).join('');
+    const pending = mkBrief.busy === 'ask'
+      ? `<article class="mkw-turn is-agent is-pending" role="status" aria-busy="true"><div class="mkw-turn-head">${mkwAgentMark()}<b>Je prépare ça</b><span class="mkw-turn-sub">une requête au moteur du centre, quelques secondes</span></div></article>`
+      : '';
+    return turns + pending;
+  }
+
+  // ── Le moteur de reponse (deterministe, borne, honnete) ──────────────────
+  const MKW_DAY_WORDS = { lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6, dimanche: 0 };
+  function mkwFindRadarDay(question) {
+    const b = mkBrief.data;
+    if (!b || !b.radar) return null;
+    const q = question.toLowerCase();
+    const m = q.match(/(\d{1,2})\/(\d{1,2})/);
+    if (m) {
+      const dd = m[1].padStart(2, '0');
+      const mm = m[2].padStart(2, '0');
+      return b.radar.find((d) => d.date.slice(5) === `${mm}-${dd}`) || null;
+    }
+    if (/demain/.test(q)) return b.radar[1] || null;
+    if (/week[- ]?end/.test(q)) return b.radar.find((d, i) => i > 0 && (d.dow === 6 || d.dow === 0)) || null;
+    for (const [word, dow] of Object.entries(MKW_DAY_WORDS)) {
+      if (q.includes(word)) return b.radar.find((d, i) => i > 0 && d.dow === dow) || null;
+    }
+    return null;
+  }
+
+  function mkwAnswer(question) {
+    const b = mkBrief.data;
+    const q = question.toLowerCase();
+    if (!b) {
+      return { q: question, title: 'Le brief n\'est pas chargé', reco: 'Recharge la page : sans le brief du matin, je n\'ai rien de fiable à te répondre.', facts: [], actions: [], source: 'aucune donnée chargée' };
+    }
+    const day = mkwFindRadarDay(question);
+    if (day) {
+      const basket = b.pulse && b.pulse.avgBasket > 0 ? b.pulse.avgBasket : 0;
+      const isQuiet = day.level === 'creux' || day.level === 'calme';
+      const facts = [
+        day.resaCount ? `${day.resaCount} personnes déjà posées ce jour-là` : 'aucune réservation posée pour l\'instant',
+        day.tmax !== null && day.tmax !== undefined ? `${Math.round(day.tmax)}° annoncés` : '',
+        day.event ? day.event : '',
+        isQuiet && basket ? `panier moyen mesuré : ${money(basket)} par visiteur` : '',
+      ].filter(Boolean).slice(0, 4);
+      const linked = day.propositionKey && brVisiblePropositions().some((p) => p.key === day.propositionKey);
+      const actions = [];
+      if (linked) actions.push({ label: 'Voir la proposition prête', js: `mkBrGoCard('${escJs(day.propositionKey)}')` });
+      else if (isQuiet) actions.push({ label: 'Prépare-moi un post pour ce jour', js: `mkBrRadarFill('${escJs(day.date)}')` });
+      return {
+        q: question,
+        title: `${cap(brFrDay(day.date))} : ce que je vois`,
+        reco: day.explanation,
+        why: isQuiet && basket ? `Chaque visiteur récupéré ce jour-là vaut environ ${money(basket)} (ton panier moyen mesuré sur 30 jours).` : '',
+        facts,
+        actions,
+        source: 'assemblé depuis le radar du matin (météo, réservations posées, calendrier)',
+      };
+    }
+    if (/(concurrent|march[eé]|rival|en face)/.test(q)) {
+      const v = b.veille || {};
+      const changed = v.changed || [];
+      return {
+        q: question,
+        title: changed.length ? 'Du mouvement chez tes concurrents' : 'Rien de neuf chez tes concurrents',
+        reco: changed.length ? `${changed[0].name} : ${changed[0].diff}` : `${Number(v.count) || 0} concurrent${(Number(v.count) || 0) > 1 ? 's' : ''} sous surveillance, aucun changement détecté ce matin.`,
+        facts: changed.slice(1, 4).map((c) => `${c.name} : ${c.diff}`),
+        actions: [{ label: 'Ouvrir Marché', js: changed.length ? `mkwGoRival('${escJs(changed[0].name)}')` : "mkwTab('rivals')" }],
+        source: 'assemblé depuis la veille de ce matin (sites inspectés + note Google)',
+      };
+    }
+    if (/(rapport[eé]|r[eé]sultat|impact|combien|euros?|chiffre)/.test(q)) {
+      const p = b.paie || {};
+      const reco = p.young ? `Encore trop tôt pour un chiffre honnête : premier bilan le ${p.firstVerdictDate || ''}.`
+        : (p.euros > 0 ? `${money(p.euros)} de visites honorées liées à tes messages sur ${p.days} jours.` : `${p.sent || 0} messages partis sur ${p.days} jours : aucune visite honorée ne leur est encore liée.`);
+      return {
+        q: question,
+        title: 'Ce que le marketing a rapporté',
+        reco,
+        facts: p.young ? [] : [`${p.venues || 0} visites honorées`, `${p.sent || 0} messages envoyés`],
+        actions: [{ label: 'Ouvrir Impact (le détail et les reçus)', js: "mkwTab('results')" }],
+        source: 'assemblé depuis la mesure réelle (visites honorées, jamais les annulées ni les à-venir)',
+      };
+    }
+    if (/(plan|semaines?|prochain(s|es)? mois)/.test(q)) {
+      const weeks = (mkPlan.data && mkPlan.data.weeks) || [];
+      const dated = weeks.filter((w) => w.confiance !== 'routine').length;
+      return {
+        q: question,
+        title: 'L\'horizon des prochaines semaines',
+        reco: weeks.length ? `${weeks.length} semaines posées, dont ${dated} avec une date certaine à jouer (congés, fériés, événements).` : 'Le plan se construit chaque lundi : ouvre-le, il se génère à la demande si besoin.',
+        facts: weeks.slice(0, 3).map((w) => `S${w.index} : ${w.objectif}`),
+        actions: [{ label: 'Ouvrir Plan', js: "mkwTab('plan')" }],
+        source: weeks.length ? 'assemblé depuis le plan réel (calendrier vérifié, rien d\'inventé)' : 'le plan n\'est pas encore chargé',
+      };
+    }
+    if (/(pluie|m[eé]t[eé]o|chaud|chaleur|soleil)/.test(q)) {
+      const rain = (b.radar || []).filter((d) => d.precipMm !== null && d.precipMm >= 8).slice(0, 2);
+      const heat = (b.radar || []).filter((d) => d.tmax !== null && d.tmax >= 25).slice(0, 2);
+      const w = b.facts && b.facts.weather;
+      const facts = [
+        ...rain.map((d) => `pluie ${brFrDay(d.date)} (${Math.round(d.precipMm)} mm)`),
+        ...heat.map((d) => `chaleur ${brFrDay(d.date)} (${Math.round(d.tmax)}°)`),
+      ].slice(0, 4);
+      return {
+        q: question,
+        title: 'La météo des 14 prochains jours',
+        reco: facts.length ? 'Voilà les jours à jouer côté météo.' : 'Rien de marquant côté météo sur les 14 prochains jours.',
+        why: w && w.rainEffectPct !== null ? `Chez toi, la pluie a un effet mesuré de ${mkwSignedPct(w.rainEffectPct)} sur la fréquentation (${w.sampleDays} jours de recul, confiance ${(MKW_CONF[w.confidence] || MKW_CONF.exploratoire).label}).` : 'Je n\'ai pas encore assez de recul pour chiffrer l\'effet météo chez toi.',
+        facts,
+        actions: [],
+        source: 'assemblé depuis le radar du matin et les effets mesurés du centre',
+      };
+    }
+    if (/(formule|anniversaire|prix|offre|promo|tarif)/.test(q)) {
+      const f = b.facts || {};
+      const facts = [
+        f.bestDay ? `ton meilleur jour : ${f.bestDay.label} (${f.bestDay.avgVisitors} visiteurs en moyenne)` : '',
+        f.worstDay ? `ton jour le plus creux : ${f.worstDay.label}` : '',
+        (b.patterns || []).length ? `${b.patterns.length} contexte${b.patterns.length > 1 ? 's' : ''} déjà mesuré${b.patterns.length > 1 ? 's' : ''} (dans Impact)` : '',
+      ].filter(Boolean);
+      return {
+        q: question,
+        title: 'Changer une formule : ce que je sais, ce que je ne sais pas',
+        reco: 'Je ne devine jamais un prix ni une formule : c\'est ta décision. Ce que je sais faire, c\'est la plus petite expérience pour la tester.',
+        why: `Le chemin honnête : tu décides l'offre, je prépare le post, tu le publies, et je mesure l'effet réel pendant 14 jours (le reçu arrive dans Impact).${(b.dataDays || 0) < 90 ? ` Il me manque encore du recul (${b.dataDays || 0} jours de données) pour des verdicts causaux solides.` : ''}`,
+        facts,
+        actions: [{ label: 'Me faire préparer le post de test', js: 'mkwPrefillCreate()' }],
+        source: 'assemblé depuis tes journées mesurées, sans rien promettre',
+      };
+    }
+    return {
+      q: question,
+      title: 'Je ne sais pas encore analyser ça librement',
+      reco: 'Je réponds sur : un jour précis, la météo, les concurrents, le plan, ce que ça rapporte, ou une formule à tester. Pour un livrable (post, email, offre), passe en mode Créer : je le prépare pour de vrai.',
+      facts: [],
+      actions: [{ label: 'Passer en mode Créer', js: 'mkwPrefillCreate()' }],
+      source: 'aucune invention : je préfère te dire ce que je ne sais pas',
+    };
+  }
+
+  // Bascule douce Demander -> Creer en gardant la phrase tapee.
+  window.mkwPrefillCreate = function () {
+    mkw.mode = 'creer';
+    renderStaffCampaignsPage();
+    setTimeout(() => { const el = document.getElementById('brAskInput'); if (el) el.focus(); }, 60);
+  };
+
+  window.mkwAsk = function () {
+    const q = String(mkBrief.askDraft || '').trim();
+    if (q.length < 4) { toast('Pose ta question en quelques mots.'); return; }
+    mkw.thread.push(mkwAnswer(q));
+    if (mkw.thread.length > 12) mkw.thread.shift();
+    mkBrief.askDraft = '';
+    renderStaffCampaignsPage();
+    setTimeout(() => {
+      const turns = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
+      const last = turns[turns.length - 1];
+      if (last) last.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    }, 60);
+  };
+
+  // ── Le composer : DEUX contrats, pas deux skins ──────────────────────────
+  function mkwSuggestions() {
+    const b = mkBrief.data;
+    if (!b) return [];
+    const out = [];
+    const today = b.today || '';
+    const quiet = (b.radar || []).find((d) => (d.level === 'creux' || d.level === 'calme') && d.date >= today);
+    if (quiet) out.push({ label: `Remplir ${brFrDay(quiet.date)}`, mode: 'demander', text: `Comment remplir ${brFrDay(quiet.date)} ?` });
+    const changed = (b.veille && b.veille.changed) || [];
+    if (changed.length) out.push({ label: `Que fait ${changed[0].name} ?`, mode: 'demander', text: `Que fait ${changed[0].name} ?` });
+    out.push({ label: 'Un post pour le week-end', mode: 'creer', text: 'Un post pour le week-end' });
+    return out.slice(0, 3);
+  }
+  window.mkwSuggest = function (index) {
+    const s = mkwSuggestions()[index];
+    if (!s) return;
+    mkw.mode = s.mode;
+    mkBrief.askDraft = s.text;
+    renderStaffCampaignsPage();
+    setTimeout(() => {
+      const el = document.getElementById('brAskInput');
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    }, 60);
+  };
+  window.mkwMode = function (mode) {
+    mkw.mode = mode === 'demander' ? 'demander' : 'creer';
+    renderStaffCampaignsPage();
+    setTimeout(() => { const el = document.getElementById('brAskInput'); if (el) el.focus(); }, 60);
+  };
+  window.mkwSend = function () {
+    if (mkw.mode === 'demander') window.mkwAsk();
+    else window.mkBrAskSimple();
+  };
+
+  function mkwComposer() {
+    const demander = mkw.mode === 'demander';
+    const busyAsk = mkBrief.busy === 'ask';
+    const suggestions = mkwSuggestions();
+    const chips = suggestions.length ? `<div class="mkw-composer-chips">${suggestions.map((s, i) => `<button type="button" class="mkw-chip-suggest" onclick="mkwSuggest(${i})">${esc(s.label)}</button>`).join('')}</div>` : '';
+    return `<div class="mkw-composer">
+      ${chips}
+      <div class="mkw-composer-box">
+        <div class="mkw-modes" role="group" aria-label="Mode du message">
+          <button type="button" class="mkw-mode ${demander ? 'active' : ''}" aria-pressed="${demander}" onclick="mkwMode('demander')">Demander</button>
+          <button type="button" class="mkw-mode ${demander ? '' : 'active'}" aria-pressed="${!demander}" onclick="mkwMode('creer')">Créer</button>
+        </div>
+        <input id="brAskInput" class="mkw-composer-input" data-pl-focus="marketing.demande" value="${esc(mkBrief.askDraft || '')}"
+          placeholder="${demander ? 'Pose ta question : « comment remplir mardi ? »' : 'Décris le livrable : « un post pour la soirée fluo »'}"
+          aria-label="${demander ? 'Poser une question à l\'agent' : 'Demander une création à l\'agent'}"
+          oninput="mkBrief.askDraft = this.value" onkeydown="if (event.key === 'Enter') mkwSend()">
+        <button type="button" class="pv2-btn primary mkw-composer-send" onclick="mkwSend()" ${busyAsk ? 'disabled' : ''}>${busyAsk ? 'Préparation…' : (demander ? 'Demander' : 'Préparer')}</button>
+      </div>
+    </div>`;
+  }
+
+  // ── Le tableau d'actions (colonne droite) ────────────────────────────────
+  // Trois groupes a nombre volontairement limite. CALME quand il n'y a rien :
+  // une ligne honnete, jamais une liste gonflee pour faire vivant.
+  function mkwBoardCards() {
+    const props = brVisiblePropositions().filter((p) => !mkBrief.published[p.key]);
+    const fresh = mkw.knownKeys ? props.filter((p) => !mkw.knownKeys.has(p.key)) : [];
+    return props.map((p) => {
+      const tone = BR_TRIGGER_TONE[p.trigger] || 'accent';
+      const due = p.dueDate ? (p.dueDate === (mkBrief.data && mkBrief.data.today) ? 'aujourd\'hui' : `avant ${brFrDay(p.dueDate)}`) : 'quand tu veux';
+      const verb = p.kind === 'email' ? 'Valider un email' : (p.kind === 'offre' ? 'Une action sur place' : 'Valider un post');
+      const isNew = fresh.some((f) => f.key === p.key);
+      return `<button type="button" class="mkw-bcard tone-${tone} ${isNew ? 'is-new' : ''}" onclick="mkBrGoCard('${escJs(p.key)}')">
+        <span class="mkw-bcard-verb">${esc(verb)}</span>
+        <span class="mkw-bcard-why">${esc(String(p.whyShort || p.why || '').slice(0, 90))}</span>
+        <span class="mkw-bcard-meta"><em>${esc(due)}</em><i>${esc(BR_TRIGGER_LABELS[p.trigger] || '')}</i><u>Voir les faits</u></span>
+      </button>`;
+    }).join('');
+  }
+
+  function mkwBoard() {
+    const b = mkBrief.data;
+    if (!b) {
+      return `<div class="mkw-bgroup"><div class="mkw-skel mkw-skel-short"></div><div class="mkw-skel"></div><div class="mkw-skel"></div></div>`;
+    }
+    const validateCards = mkwBoardCards();
+    const validateCount = brVisiblePropositions().filter((p) => !mkBrief.published[p.key]).length;
+
+    // EN COURS : uniquement ce qui existe VRAIMENT cote serveur.
+    const running = [];
+    (b.receipts || []).filter((r) => r.tone === 'pending').slice(0, 4).forEach((r) => {
+      running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>${esc(brFrDates(r.label))}</span><em>${esc(r.result)}</em></div>`);
+    });
+    Object.keys(mkBrief.published).filter((k) => mkBrief.published[k]).forEach(() => {
+      running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Publication notée à l'instant</span><em>la mesure court 14 jours</em></div>`);
+    });
+    if (mkPlan.jobId) running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Le plan se construit</span><em><button type="button" class="mkw-link" onclick="mkwTab('plan')">voir les étapes réelles</button></em></div>`);
+    if (mkBrief.studioBusy) running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Un pack s'écrit dans Créations</span><em>10 à 20 secondes</em></div>`);
+    if (mkBrief.busy === 'ask') running.push(`<div class="mkw-brow"><span class="mkw-brow-dot is-run"></span><span>Ta demande se prépare</span><em>quelques secondes</em></div>`);
+
+    // A SURVEILLER : signaux reels, sans action urgente.
+    const watch = [];
+    const today = b.today || '';
+    (b.radar || []).filter((d) => (d.level === 'creux' || d.level === 'calme') && d.date >= today).slice(0, 3).forEach((d) => {
+      watch.push(`<button type="button" class="mkw-brow is-link" onclick="mkwWatchDay('${escJs(d.date)}')"><span class="mkw-brow-dot is-warn"></span><span>${esc(cap(brFrDay(d.date)))} s'annonce ${d.level === 'creux' ? 'très calme' : 'calme'}</span><em>${d.resaCount ? `${d.resaCount} pers. posées` : 'rien de posé'}</em></button>`);
+    });
+    ((b.veille && b.veille.changed) || []).slice(0, 2).forEach((c) => {
+      watch.push(`<button type="button" class="mkw-brow is-link" onclick="mkwGoRival('${escJs(c.name)}')"><span class="mkw-brow-dot is-warn"></span><span>${esc(c.name)} a bougé</span><em>voir Marché</em></button>`);
+    });
+    const eventDay = (b.radar || []).find((d) => d.event);
+    if (eventDay) watch.push(`<div class="mkw-brow"><span class="mkw-brow-dot"></span><span>${esc(eventDay.event.replace(' (à 5 min)', ''))}</span><em>${esc(brFrDay(eventDay.date))} · à 5 min</em></div>`);
+    if ((b.dataDays || 0) < 90) watch.push(`<div class="mkw-brow"><span class="mkw-brow-dot"></span><span>J'apprends encore</span><em>${b.dataDays || 0} j de données, verdicts causaux vers 90 j</em></div>`);
+
+    const group = (title, count, rows, empty) => `<div class="mkw-bgroup">
+      <div class="mkw-bgroup-head"><h3>${title}</h3>${count ? `<span class="mkw-bcount">${count}</span>` : ''}</div>
+      ${rows || `<p class="mkw-bempty">${empty}</p>`}
+    </div>`;
+    return `${group('À valider', validateCount, validateCards, 'Rien à valider : la surveillance continue.')}
+      ${group('En cours', running.length, running.join(''), 'Rien ne tourne en ce moment.')}
+      ${group('À surveiller', 0, watch.join(''), 'Rien à surveiller de particulier.')}`;
+  }
+
+  // Depuis le tableau : ouvrir le jour surveille dans le radar du fil.
+  window.mkwWatchDay = function (date) {
+    mkBrief.tab = 'feed';
+    mkBrief.radarOpen = date;
+    renderStaffCampaignsPage();
+    setTimeout(() => {
+      const cell = document.querySelector('#staffCampaignsPage .mkw-cell.is-open');
+      if (cell) cell.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+    }, 60);
+  };
 
   // ── Résultats · le héros euros : SEUL exemplaire (audit §6.2). Libellés
   // exacts : des MESSAGES (relances, anniversaires, campagnes), pas des
@@ -5308,7 +5653,9 @@
       const rating = typeof c.rating === 'number' ? `<span class="mkw-riv-stat" title="note Google">${ci('star')}${c.rating.toFixed(1)}${c.reviewsCount ? ` <em>${c.reviewsCount} avis</em>` : ''}</span>` : '';
       const checked = c.lastCheckedAt ? `site inspecté le ${String(c.lastCheckedAt).slice(8, 10)}/${String(c.lastCheckedAt).slice(5, 7)}` : 'première inspection demain matin';
       const signals = (c.signals || []).slice(0, 4).map((s) => `<span class="mkw-riv-sig">${esc(s.label)}${s.price ? ` <b>${esc(s.price)}</b>` : ''}</span>`).join('');
-      return `<article class="mkw-riv">
+      // data-riv-name : la cible du deep-link avec intention (mkwGoRival) : un
+      // clic veille arrive ICI, sur LE concurrent qui a bougé, mis en évidence.
+      return `<article class="mkw-riv ${mkw.focusRival && mkw.focusRival === c.name ? 'is-focus' : ''}" data-riv-name="${esc(c.name)}">
         <div class="mkw-riv-top">
           <div><span class="mkw-riv-name">${esc(c.name)}</span>${host ? `<span class="mkw-riv-host">${esc(host)}</span>` : ''}</div>
           <button type="button" class="mkw-link mkw-link-faint" onclick="mkCompDelete(${Number(c.id)})">Retirer</button>
@@ -5570,70 +5917,49 @@
     setTimeout(() => { const el = document.getElementById('brStudioBrief'); if (el) el.focus(); }, 60);
   };
 
-  /* ── LA PLANCHE DU JOUR (refonte 2026-08-05) ─────────────────────────────
-     Fini le théâtre : plus d'avatar, plus de bulles, plus de faux « je
-     prépare ça… », plus de plis à déplier. Une planche calme sur le fond de
-     points conservé : le brief du matin, les propositions avec leur POURQUOI
-     chiffré et UNE action, le radar 14 jours toujours visible, la veille
-     quand elle a bougé. Tout le câblage d'action (ouvrir, copier, publier,
-     ignorer, variante, remplir un jour calme) est inchangé. ── */
-  function mkwFeed() {
+  /* ── LE BUREAU : fil + composer + tableau (refonte 2026-08-06) ───────────
+     Le fil raconte le travail reel de l'agent (brief, propositions, demandes
+     du gerant, reponses assemblees) ; le composer est fixe en bas du fil ;
+     le tableau d'actions vit en colonne droite, sticky sur desktop. Tout le
+     cablage d'action (ouvrir, copier, publier, ignorer, variante, remplir un
+     jour calme) est inchange. ── */
+  function mkwFil() {
     const b = mkBrief.data;
     if (!b && mkBrief.error) {
-      return `<div class="mkw-feed" id="mkwFeed">${mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)')}</div>`;
+      return mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)');
     }
     if (!b) {
-      return `<div class="mkw-feed" id="mkwFeed">
-        <section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>
-        <section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>
-      </div>`;
+      return `<section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>
+        <section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
     }
-    const date = esc(new Date(b.generatedAt).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }));
-    const briefPanel = b.brief ? `<section class="mkw-card mkw-brief">
-      <div class="mkw-block-head"><h3>Le brief du ${date}</h3><span class="mkw-block-sub">calculé ce matin sur vos chiffres, la météo et le calendrier</span></div>
-      ${b.brief.degraded ? '<p class="mkw-degraded">Mode simple ce matin : les chiffres sont exacts, les phrases moins polies.</p>' : ''}
-      <p class="mkw-brief-text">${brProse(b.brief.text)}</p>
-    </section>` : '';
-    const props = brVisiblePropositions();
-    const visible = mkBrief.moreOpen ? props : props.slice(0, 3);
-    const rest = props.length - visible.length;
-    const busyAsk = mkBrief.busy === 'ask';
-    const askRow = `<div class="mkw-ask-row">
-      <input id="brAskInput" class="mkw-input" data-pl-focus="marketing.demande" value="${esc(mkBrief.askDraft || '')}"
-        placeholder="Demander un post : « la soirée fluo de samedi »" aria-label="Demander une proposition"
-        oninput="mkBrief.askDraft = this.value" onkeydown="if (event.key === 'Enter') mkBrAskSimple()">
-      <button type="button" class="pv2-btn" onclick="mkBrAskSimple()" ${busyAsk ? 'disabled' : ''}>${busyAsk ? 'Préparation…' : 'Préparer'}</button>
+    const props = mkwTurnsProps();
+    const propsHead = props
+      ? `<p class="mkw-fil-sep">Prêt pour toi : tu valides, rien ne part tout seul.</p>`
+      : `<p class="mkw-fil-sep">Rien à publier d'urgence aujourd'hui : la météo, les réservations et les concurrents restent surveillés.</p>`;
+    return `${mkwTurnBrief()}${propsHead}${props}${mkwThreadTurns()}`;
+  }
+
+  function mkwDesk() {
+    return `<div class="mkw-desk" id="mkwFeed">
+      <div class="mkw-fil">
+        ${mkwFil()}
+        ${mkwComposer()}
+      </div>
+      <aside class="mkw-board" aria-label="Actions de l'agent">${mkwBoard()}</aside>
     </div>`;
-    const propsPanel = `<section class="mkw-card mkw-props">
-      <div class="mkw-block-head"><h3>À faire aujourd'hui</h3><span class="mkw-block-sub">${props.length ? 'proposé sur vos chiffres : vous validez, rien ne part tout seul' : 'rien d\'urgent : la surveillance continue'}</span></div>
-      ${visible.length ? `<div class="mkw-props-list">${visible.map(mkwPropCard).join('')}</div>` : `<p class="mkw-quiet">Rien à publier d'urgence aujourd'hui. La météo, les réservations et les concurrents restent surveillés : la prochaine occasion s'affichera ici.</p>`}
-      ${rest > 0 ? `<div class="mkw-feed-more"><button type="button" class="mkw-link" onclick="mkBrMore()">+ ${rest} proposition${rest > 1 ? 's' : ''} de plus</button></div>` : ''}
-      ${askRow}
-    </section>`;
-    const radarPanel = `<section class="mkw-card mkw-radar-card">
-      <div class="mkw-block-head"><h3>Les 14 prochains jours</h3><span class="mkw-block-sub">météo, réservations posées, événements : cliquez un jour pour le détail</span></div>
-      ${mkwRadar()}
-    </section>`;
-    const changed = (b.veille && b.veille.changed) || [];
-    const veillePanel = changed.length ? `<section class="mkw-card mkw-veille">
-      <div class="mkw-block-head"><h3>Veille concurrents</h3><span class="mkw-block-sub">${changed.length > 1 ? `${changed.length} concurrents ont bougé ce matin` : 'un concurrent a bougé ce matin'}</span></div>
-      <p class="mkw-veille-line"><strong>${esc(changed[0].name)}</strong> : ${esc(changed[0].diff)}</p>
-      <div class="mkw-cta"><button type="button" class="mkw-link" onclick="mkwTab('rivals')">Voir tous les concurrents</button></div>
-    </section>` : '';
-    return `<div class="mkw-feed" id="mkwFeed">${briefPanel}${propsPanel}${radarPanel}${veillePanel}</div>`;
   }
 
   // Une vue de PROFONDEUR (plan, studio, concurrents, résultats) : subordonnée
   // au fil, ouverte DEPUIS la conversation, avec un retour explicite.
   function mkwDepth(html) {
     return `<div class="mkw-depth">
-      <button type="button" class="mkw-back" onclick="mkwTab('feed')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Retour à la conversation</button>
+      <button type="button" class="mkw-back" onclick="mkwTab('feed')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Retour au bureau</button>
       ${html}
     </div>`;
   }
 
   function mkwSurface() {
-    // Résultats et fil dépendent du brief central : s'il a échoué et que rien
+    // Impact et le bureau dépendent du brief central : s'il a échoué et que rien
     // n'est affichable, une erreur franche avec retry (jamais des squelettes à vie).
     const briefDown = !mkBrief.data && mkBrief.error;
     switch (mkBrief.tab) {
@@ -5643,7 +5969,7 @@
       case 'results': return mkwDepth(briefDown ? mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)') : mkwResults());
       case 'feed':
       case 'today':
-      default: return mkwFeed();
+      default: return mkwDesk();
     }
   }
 
@@ -5922,7 +6248,30 @@
   };
 
   function renderStaffCampaignsPaint(root) {
+    // LE CENTRE GOUVERNE : si le centre sélectionné a changé, TOUT l'état
+    // marketing est remis à zéro avant de peindre. Sans ça, un gérant qui
+    // bascule sur Gembloux voyait le brief, la veille et le plan de Libramont
+    // (les gardes `data && !force` bloquaient tout rechargement).
+    const centerNow = state.adminCenterId || 'libramont';
+    if (mkw.loadedCenter && mkw.loadedCenter !== centerNow) {
+      Object.assign(mkBrief, {
+        data: null, loading: false, error: '', payOpen: false, radarOpen: null,
+        openCard: null, cardNetwork: {}, angleOpen: null, publishedAsk: null,
+        receiptsAll: false, busy: '', published: {}, dismissed: {}, askDraft: '',
+        studioPacks: {}, studioPacksLoaded: false, studioBusy: false, _seenData: false,
+      });
+      Object.assign(mkComp, { data: null, loading: false, error: '', postResult: null, postDraft: '' });
+      Object.assign(mkPlan, { data: null, loaded: false, loading: false, error: '', jobId: null, done: {} });
+      mkw.thread = [];
+      mkw.knownKeys = null;
+      mkw.ctxVeille = false;
+      mkw.focusRival = '';
+    }
+    mkw.loadedCenter = centerNow;
     if (!mkBrief.data && !mkBrief.loading && !mkBrief.error) setTimeout(() => loadMarketingBrief(), 0);
+    // L'arrivee d'une action NEUVE s'anime ; le chargement initial, jamais :
+    // au premier paint avec donnees, toutes les cartes sont « connues ».
+    if (mkBrief.data && !mkw.knownKeys) mkw.knownKeys = new Set(brVisiblePropositions().map((p) => p.key));
     // Entrée en scène UNE fois : en changeant de vue, ou à l'arrivée de la
     // première donnée. Jamais sur un clic in-view (sinon tout le fil clignote).
     const gotFirstData = mkBrief.data && !mkBrief._seenData;
@@ -5936,10 +6285,23 @@
     root.innerHTML = `<canvas class="mkw-dots" id="mkwDots" aria-hidden="true"></canvas>
     <div class="pv2-shell mkw-shell">
       ${mkwHead()}
-      ${mkwCounters()}
       ${mkwRail()}
       <div class="mkw-surface ${enter ? 'mkw-in' : ''}">${mkwSurface()}</div>
     </div>`;
+    // Les cartes neuves ont recu leur entree (.is-new) sur CE paint : on les
+    // marque connues pour que l'animation ne joue qu'une fois.
+    if (mkBrief.data && mkw.knownKeys) brVisiblePropositions().forEach((p) => mkw.knownKeys.add(p.key));
+    // Deep-link avec intention : le concurrent cible arrive en evidence, puis
+    // la mise en avant s'eteint (etat consomme, pas un marquage a vie).
+    if (mkw.focusRival && mkBrief.tab === 'rivals') {
+      const target = root.querySelector(`[data-riv-name="${CSS.escape(mkw.focusRival)}"]`);
+      if (target) {
+        setTimeout(() => {
+          target.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center' });
+          setTimeout(() => { target.classList.remove('is-focus'); mkw.focusRival = ''; }, 1600);
+        }, 60);
+      } else if (mkComp.data) { mkw.focusRival = ''; }
+    }
     // La texture vivante : (re)démarrée sur le canvas fraîchement rendu
     // (l'ancienne boucle est coupée dans l'init : zéro doublon, zéro fuite).
     mkwDotsInit();

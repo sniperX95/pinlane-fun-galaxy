@@ -3981,7 +3981,8 @@
         body: JSON.stringify({ action: 'propositionCreate', centerId: state.adminCenterId || 'libramont', targetDate: date, trigger: 'creux', brief: '' }),
       });
       await loadMarketingBrief(true);
-      toast('C\'est prêt : regarde plus bas.');
+      toast('C\'est prêt : la carte est dans le panneau.');
+      mkwPanelReveal();
     } catch (error) {
       toast(error.message || 'Je n\'ai pas réussi : réessaie.');
     } finally {
@@ -4268,6 +4269,7 @@
       const made = brVisiblePropositions().find((p) => p.trigger === 'demande' && String(p.why || '').includes(asked.slice(0, 40)));
       if (made) window.mkwShowProp(made.key, 'C\'est prêt : tu valides, rien ne part tout seul.');
       else toast('C\'est prêt : la carte arrive dans « À valider ».');
+      mkwPanelReveal();
     } catch (error) {
       toast(error.message || 'La préparation a échoué : réessayez.');
     } finally {
@@ -5614,6 +5616,19 @@
   // retire pour laisser voir la reponse arriver.
   function mkwSheetAutoClose() {
     if (mkwIsMobile() && mkw.panelOpen) mkw.panelOpen = false;
+  }
+
+  // Une NOUVELLE tache vient de naitre (creation IA aboutie) : le tiroir se
+  // REVELE tout seul sur grand ecran (s'il etait ferme, il s'ouvre) et defile
+  // jusqu'a la carte neuve, qui joue son entree (.is-new). Sur petit ecran on
+  // ne recouvre jamais le chat : la carte y arrive de toute facon.
+  function mkwPanelReveal() {
+    if (mkwIsMobile()) return;
+    if (!mkw.panelOpen) mkw.panelOpen = true;
+    setTimeout(() => {
+      const fresh = document.querySelector('#mkwSheet .mkw-bcard.is-new');
+      if (fresh) fresh.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest' });
+    }, 420);
   }
 
   // ── Résultats · le héros euros : SEUL exemplaire (audit §6.2). Libellés

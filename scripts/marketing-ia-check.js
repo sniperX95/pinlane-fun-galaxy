@@ -328,17 +328,22 @@ async function main() {
       await new Promise((r) => setTimeout(r, 420));
       const panel = document.querySelector('#mkwSheet.is-on.is-in .mkw-panel');
       const rect = panel ? panel.getBoundingClientRect() : null;
+      const style = panel ? getComputedStyle(panel) : null;
       return {
         closing,
         ...closed,
         reopened: Boolean(panel),
-        // LA DEMANDE EXACTE : colle au bord droit de l'ECRAN, du haut en bas.
-        edge: rect ? Math.abs(rect.right - window.innerWidth) < 2 && rect.top < 2 && Math.abs(rect.bottom - window.innerHeight) < 2 : false,
+        // LA BULLE : pres du bord droit avec sa marge (16px), arrondie,
+        // hauteur AU CONTENU (jamais une colonne bord a bord).
+        edge: rect ? Math.abs(rect.right - (window.innerWidth - 16)) < 3 && Math.abs(rect.top - 16) < 3 && rect.bottom <= window.innerHeight - 12 : false,
+        rounded: style ? parseFloat(style.borderTopLeftRadius) >= 10 : false,
+        glass: style ? /blur/.test(style.backdropFilter || style.webkitBackdropFilter || '') : false,
         pushBack: document.getElementById('staffCampaignsPage').classList.contains('mkw-has-panel'),
       };
     });
     ok(toggled.closing && toggled.sheetGone && toggled.pushGone, 'la fermeture ANIME la sortie (is-closing) puis le tiroir rentre dans le bord, le chat reprend la largeur');
-    ok(toggled.reopened && toggled.edge, 'rouvert : le tiroir COLLE au bord droit de l\'ecran, du haut en bas (geometrie au pixel)');
+    ok(toggled.reopened && toggled.edge, 'rouvert : la BULLE vit pres du bord droit (marge 16), hauteur au contenu');
+    ok(toggled.rounded && toggled.glass, 'et c\'est une bulle VITREE arrondie (radius + backdrop blur, demande client)');
     ok(toggled.pushBack, 'et le chat se recentre a cote (le shell reserve la place, anime)');
 
     console.log('\n[MINI-RADAR] un clic sur un jour POSE LA QUESTION dans le chat');
@@ -451,6 +456,26 @@ async function main() {
       return document.querySelectorAll('#mkwSheet .mkw-bcard.is-new').length;
     });
     ok(once === 0, 'CONTRE-PREUVE : l\'entree animee ne joue qu\'UNE fois');
+    // LA REVELATION : tiroir FERME, une creation IA aboutit -> il s'OUVRE tout
+    // seul et montre la tache neuve (demande Movsar 2026-08-06).
+    const reveal = await page.evaluate(async () => {
+      window.mkwPanelToggle();
+      await new Promise((r) => setTimeout(r, 450));
+      const closedBefore = !document.querySelector('#mkwSheet.is-on');
+      window.mkwMode('creer');
+      await new Promise((r) => setTimeout(r, 120));
+      const input = document.getElementById('brAskInput');
+      input.value = 'une offre anniversaire ados';
+      input.dispatchEvent(new Event('input'));
+      window.mkwSend();
+      await new Promise((r) => setTimeout(r, 900));
+      return {
+        closedBefore,
+        autoOpened: Boolean(document.querySelector('#mkwSheet.is-on.is-in')),
+        freshShown: Boolean(document.querySelector('#mkwSheet .mkw-bcard.is-new')),
+      };
+    });
+    ok(reveal.closedBefore && reveal.autoOpened && reveal.freshShown, 'tiroir ferme + creation IA -> il S\'OUVRE tout seul et montre la tache neuve animee');
 
     console.log('\n[DEMANDER] reponse assemblee, sourcee ; « je ne sais pas » sans invention');
     const asked = await page.evaluate(async () => {
@@ -575,13 +600,13 @@ async function main() {
       const rect = panel ? panel.getBoundingClientRect() : null;
       return {
         on: Boolean(sheet && sheet.classList.contains('is-on') && sheet.classList.contains('is-in')),
-        edge: rect ? Math.abs(rect.right - window.innerWidth) < 2 && rect.top < 2 && Math.abs(rect.bottom - window.innerHeight) < 2 : false,
+        edge: rect ? Math.abs(rect.right - (window.innerWidth - 16)) < 3 && Math.abs(rect.top - 16) < 3 : false,
         back: Boolean(sheet && sheet.querySelector('.mkw-sheet-back')),
         groups: sheet ? sheet.querySelectorAll('.mkw-bgroup').length : 0,
       };
     });
     ok(sheetOpen.on && sheetOpen.back, 'la feuille ENTRE (voile + glissement), montee dans body');
-    ok(sheetOpen.edge, 'et elle colle au bord : plein bord droit, du haut en bas (plus jamais flottante)');
+    ok(sheetOpen.edge, 'et la bulle se cale sur le bord droit avec sa marge (plus jamais flottante au milieu)');
     ok(sheetOpen.groups >= 3, 'elle porte tout le travail (3 groupes + mini-radar)');
     const sheetAction = await page.evaluate(async () => {
       const mini = [...document.querySelectorAll('#mkwSheet .mkw-mini')][2];

@@ -9813,8 +9813,8 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    dans body, regles plus bas). Quand il est ouvert sur grand ecran, le
    shell reserve sa place et le chat se recentre, en douceur. */
 .mkw-desk { min-width: 0; }
-.mkw-shell { transition: padding-right 300ms var(--mkw-out); }
-#staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 384px; }
+.mkw-shell { transition: padding-right 380ms cubic-bezier(0.22, 1, 0.36, 1); }
+#staffCampaignsPage.mkw-has-panel .mkw-shell { padding-right: 400px; }
 
 /* LE CHAT : une colonne de lecture centree, sans meuble autour. */
 .mkw-chat { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - 230px); min-height: calc(100dvh - 230px); }
@@ -10026,20 +10026,41 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* LE TIROIR (#mkwSheet, monte dans document.body : un fixed DANS la page se
    faisait pieger par les ancetres animes en transform et flottait n'importe
-   ou). COLLE AU BORD DROIT de l'ecran a toutes les tailles : il SORT du bord
-   a l'ouverture et y RENTRE a la fermeture (sortie jouee AVANT le retrait,
-   classe is-closing). Sur grand ecran, pas de voile : le conteneur laisse
-   passer les clics et le chat se recentre a cote (padding du shell). Sur
-   petit ecran, le voile couvre et ferme au tap. */
+   ou). C'est une BULLE RECTANGULAIRE VITREE (demande explicite du client du
+   2026-08-06 : « bulle transparente vitrée, arrondie, taille raisonnable » :
+   exception assumee a l'interdit glassmorphism de DESIGN.md, documentee ici) :
+   detachee des bords par une marge, arrondie, translucide et floutee, HAUTEUR
+   AU CONTENU (bornee), jamais une colonne bord a bord. Elle SORT du bord
+   droit a l'ouverture et y RENTRE a la fermeture (sortie jouee AVANT le
+   retrait), sur une courbe soyeuse. Grand ecran : pas de voile, les clics
+   passent a cote, le chat se recentre. Petit ecran : voile + tap pour fermer. */
 #mkwSheet { position: fixed; inset: 0; z-index: 70; display: none; pointer-events: none; }
 #mkwSheet.is-on { display: block; }
-#mkwSheet .mkw-sheet-back { position: absolute; inset: 0; pointer-events: auto; background: color-mix(in srgb, var(--page) 62%, transparent); opacity: 0; transition: opacity 260ms var(--ease); }
+#mkwSheet .mkw-sheet-back { position: absolute; inset: 0; pointer-events: auto; background: color-mix(in srgb, var(--page) 62%, transparent); opacity: 0; transition: opacity 300ms var(--ease); }
 #mkwSheet.is-in .mkw-sheet-back { opacity: 1; }
-#mkwSheet .mkw-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(88vw, 372px); pointer-events: auto; max-height: none; margin: 0; border-radius: 0; border: 0; border-left: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.25)); overflow: auto; padding: var(--space-4) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom, 0px)); transform: translateX(100%); transition: transform 300ms var(--mkw-out); }
-[data-theme='dark'] #mkwSheet .mkw-panel { background: var(--raised); }
+#mkwSheet .mkw-panel {
+  position: absolute; top: 16px; right: 16px; bottom: auto;
+  width: min(calc(100vw - 32px), 360px); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
+  pointer-events: auto; margin: 0; overflow: auto; overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
+  box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.22));
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  transform: translateX(calc(100% + 32px));
+  transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme='dark'] #mkwSheet .mkw-panel { background: color-mix(in srgb, var(--raised) 72%, transparent); }
+/* Sans backdrop-filter (vieux moteur) : fond plein, la lisibilite d'abord. */
+@supports not (backdrop-filter: blur(1px)) {
+  #mkwSheet .mkw-panel { background: var(--surface); }
+  [data-theme='dark'] #mkwSheet .mkw-panel { background: var(--raised); }
+}
 #mkwSheet.is-in .mkw-panel { transform: none; }
 #mkwSheet.is-closing .mkw-sheet-back { opacity: 0; }
-#mkwSheet.is-closing .mkw-panel { transform: translateX(100%); transition: transform 260ms var(--mkw-io); }
+#mkwSheet.is-closing .mkw-panel { transform: translateX(calc(100% + 32px)); transition: transform 300ms var(--mkw-io); }
 #mkwSheet .mkw-panel-close { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) {
   #mkwSheet .mkw-sheet-back, #mkwSheet .mkw-panel { transition: none; }

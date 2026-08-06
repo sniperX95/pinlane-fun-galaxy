@@ -5017,10 +5017,8 @@
       </div>
     </section>`;
   }
-  window.mkwPanelToggle = function () {
-    mkw.panelOpen = !mkw.panelOpen;
-    renderStaffCampaignsPage();
-  };
+  // (mkwPanelToggle vit plus bas, avec la feuille mobile : la sortie animee
+  // doit jouer AVANT le retrait.)
 
   /* ══════════════════════════════════════════════════════════════════════
      LE CHAT (v2 chat-first, retour Movsar 2026-08-06 : « comme un chat type
@@ -5036,6 +5034,7 @@
   window.mkwGoRival = function (name) {
     mkw.focusRival = String(name || '');
     if (typeof loadCompetitors === 'function') loadCompetitors();
+    mkwSheetAutoClose();
     mkBrief.tab = 'rivals';
     renderStaffCampaignsPage();
   };
@@ -5170,6 +5169,7 @@
     mkBrief.publishedAsk = null;
     mkBrief.angleOpen = null;
     mkBrief.tab = 'feed';
+    mkwSheetAutoClose();
     renderStaffCampaignsPage();
     mkwScrollChatEnd();
     const network = mkBrief.cardNetwork[key] || p.network;
@@ -5366,6 +5366,7 @@
     const b = mkBrief.data;
     const day = b && (b.radar || []).find((d) => d.date === date);
     if (!day) return;
+    mkwSheetAutoClose();
     mkwAskFlow(`Que dit ${brFrDay(date)} ?`);
   };
 
@@ -5519,6 +5520,95 @@
       </div>
       ${mkwBoard()}
     </aside>`;
+  }
+
+  // ── LA FEUILLE MOBILE ────────────────────────────────────────────────────
+  // Sur petit ecran, le panneau devient une feuille montee dans document.body
+  // (meme doctrine que la surcouche du composeur emails) : un `position:
+  // fixed` a l'interieur de la page se faisait pieger par les ancetres
+  // animes en transform (containing block) et la feuille flottait n'importe
+  // ou. Le body, lui, n'a pas d'ancetre. Entree : glissement depuis la
+  // droite + voile fondu ; sortie : le meme chemin, joue AVANT le retrait.
+  const MKW_SHEET_BP = 900;
+  function mkwIsMobile() { return window.innerWidth <= MKW_SHEET_BP; }
+  function mkwSheetHost() {
+    let host = document.getElementById('mkwSheet');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'mkwSheet';
+      host.addEventListener('mousedown', (event) => {
+        if (event.target.classList && event.target.classList.contains('mkw-sheet-back')) window.mkwPanelToggle();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && host.classList.contains('is-on') && !host.classList.contains('is-closing')) window.mkwPanelToggle();
+      }, true);
+      document.body.appendChild(host);
+    }
+    return host;
+  }
+  let mkwSheetWasOpen = false;
+  function mkwSheetRender() {
+    const host = mkwSheetHost();
+    const on = mkwIsMobile() && mkw.panelOpen && mkBrief.tab === 'feed'
+      && state.view === 'staff' && state.staffMenuPage === 'campaigns';
+    if (!on) {
+      host.className = '';
+      host.innerHTML = '';
+      mkwSheetWasOpen = false;
+      return;
+    }
+    host.innerHTML = `<div class="mkw-sheet-back" aria-hidden="true"></div>${mkwPanel()}`;
+    host.className = 'is-on';
+    if (!mkwSheetWasOpen && !reducedMotion) {
+      // L'entree joue au frame suivant : la feuille part du bord, le voile
+      // fond. Un simple re-render (contenu qui change) ne rejoue rien.
+      requestAnimationFrame(() => requestAnimationFrame(() => host.classList.add('is-in')));
+    } else {
+      host.classList.add('is-in');
+    }
+    if (!mkwSheetWasOpen) requestAnimationFrame(mkwSheetWatch);
+    mkwSheetWasOpen = true;
+  }
+
+  // La feuille vit sur body : si le gerant quitte la page Marketing pendant
+  // qu'elle est ouverte (sidebar, navigation), AUCUN paint marketing ne
+  // viendra la retirer. Ce garde par frame la tue des que la page n'est plus
+  // a l'ecran. Il ne tourne QUE feuille ouverte : cout nul au repos.
+  function mkwSheetWatch() {
+    const host = document.getElementById('mkwSheet');
+    if (!host || !host.classList.contains('is-on')) return;
+    const page = document.getElementById('staffCampaignsPage');
+    if (!page || page.offsetParent === null || !document.getElementById('mkwFeed')) {
+      host.className = '';
+      host.innerHTML = '';
+      mkwSheetWasOpen = false;
+      return;
+    }
+    requestAnimationFrame(mkwSheetWatch);
+  }
+
+  window.mkwPanelToggle = function () {
+    const host = document.getElementById('mkwSheet');
+    if (mkwIsMobile() && mkw.panelOpen && host && host.classList.contains('is-on')) {
+      // SORTIE animee : la feuille repart par ou elle est venue, PUIS meurt.
+      if (host.classList.contains('is-closing')) return;
+      host.classList.add('is-closing');
+      host.classList.remove('is-in');
+      setTimeout(() => {
+        host.classList.remove('is-closing');
+        mkw.panelOpen = false;
+        renderStaffCampaignsPage();
+      }, reducedMotion ? 0 : 280);
+      return;
+    }
+    mkw.panelOpen = !mkw.panelOpen;
+    renderStaffCampaignsPage();
+  };
+
+  // Une action lancee DEPUIS la feuille rend la main au chat : la feuille se
+  // retire pour laisser voir la reponse arriver.
+  function mkwSheetAutoClose() {
+    if (mkwIsMobile() && mkw.panelOpen) mkw.panelOpen = false;
   }
 
   // ── Résultats · le héros euros : SEUL exemplaire (audit §6.2). Libellés
@@ -6023,9 +6113,13 @@
   }
 
   function mkwDesk() {
-    return `<div class="mkw-desk ${mkw.panelOpen ? '' : 'panel-closed'}" id="mkwFeed">
+    // Sur petit ecran le panneau ne vit JAMAIS dans la grille : il est la
+    // feuille body-montee (mkwSheetRender), sinon ses ids et son fixed se
+    // battraient avec la page.
+    const inlinePanel = mkwIsMobile() ? '' : mkwPanel();
+    return `<div class="mkw-desk ${mkw.panelOpen && !mkwIsMobile() ? '' : 'panel-closed'}" id="mkwFeed">
       ${mkwChat()}
-      ${mkwPanel()}
+      ${inlinePanel}
     </div>`;
   }
 
@@ -6405,6 +6499,7 @@
     }
     // La texture vivante : (re)démarrée sur le canvas fraîchement rendu
     // (l'ancienne boucle est coupée dans l'init : zéro doublon, zéro fuite).
+    mkwSheetRender();
     mkwDotsInit();
     mkwMarkInit();
     mount(root, 'campaigns');

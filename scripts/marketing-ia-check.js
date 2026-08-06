@@ -545,6 +545,59 @@ async function main() {
     const stateIdle = await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-msg.is-state').length);
     ok(stateIdle === 0, 'l\'etat de travail n\'existe JAMAIS au repos');
 
+    console.log('\n[FEUILLE MOBILE] le panneau devient une feuille body-montee, entree/sortie animees');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => { window.mkw.panelOpen = false; window.renderStaffCampaignsPage(); });
+    await page.waitForTimeout(300);
+    const sheetClosed = await page.evaluate(() => ({
+      inlineGone: document.querySelectorAll('#staffCampaignsPage .mkw-panel').length === 0,
+      sheetOff: !document.querySelector('#mkwSheet.is-on'),
+    }));
+    ok(sheetClosed.inlineGone && sheetClosed.sheetOff, 'sur petit ecran, AUCUN panneau dans la page et la feuille dort');
+    const sheetOpen = await page.evaluate(async () => {
+      window.mkwPanelToggle();
+      await new Promise((r) => setTimeout(r, 450));
+      const sheet = document.getElementById('mkwSheet');
+      const panel = sheet && sheet.querySelector('.mkw-panel');
+      const rect = panel ? panel.getBoundingClientRect() : null;
+      return {
+        on: Boolean(sheet && sheet.classList.contains('is-on') && sheet.classList.contains('is-in')),
+        edge: rect ? Math.abs(rect.right - window.innerWidth) < 2 && rect.top < 2 && Math.abs(rect.bottom - window.innerHeight) < 2 : false,
+        back: Boolean(sheet && sheet.querySelector('.mkw-sheet-back')),
+        groups: sheet ? sheet.querySelectorAll('.mkw-bgroup').length : 0,
+      };
+    });
+    ok(sheetOpen.on && sheetOpen.back, 'la feuille ENTRE (voile + glissement), montee dans body');
+    ok(sheetOpen.edge, 'et elle colle au bord : plein bord droit, du haut en bas (plus jamais flottante)');
+    ok(sheetOpen.groups >= 3, 'elle porte tout le travail (3 groupes + mini-radar)');
+    const sheetAction = await page.evaluate(async () => {
+      const mini = [...document.querySelectorAll('#mkwSheet .mkw-mini')][2];
+      mini.click();
+      await new Promise((r) => setTimeout(r, 1100));
+      return {
+        closed: !document.querySelector('#mkwSheet.is-on'),
+        asked: /Que dit/.test((document.querySelector('#staffCampaignsPage .mkw-chat-thread') || {}).textContent || ''),
+      };
+    });
+    ok(sheetAction.closed && sheetAction.asked, 'une action depuis la feuille REND LA MAIN au chat (question posee, feuille retiree)');
+    const sheetOut = await page.evaluate(async () => {
+      window.mkwPanelToggle();
+      await new Promise((r) => setTimeout(r, 420));
+      const opened = Boolean(document.querySelector('#mkwSheet.is-on.is-in'));
+      window.mkwPanelToggle();
+      await new Promise((r) => setTimeout(r, 100));
+      const closing = Boolean(document.querySelector('#mkwSheet.is-closing'));
+      await new Promise((r) => setTimeout(r, 400));
+      const gone = !document.querySelector('#mkwSheet.is-on');
+      return { opened, closing, gone };
+    });
+    ok(sheetOut.opened && sheetOut.closing && sheetOut.gone, 'la SORTIE joue son animation PUIS la feuille meurt (is-closing observe)');
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.evaluate(() => { window.mkw.panelOpen = true; window.renderStaffCampaignsPage(); });
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-panel').length === 1 && !document.querySelector('#mkwSheet.is-on')),
+      'retour grand ecran : le panneau reprend sa colonne, la feuille dort');
+
     console.log('\n[PANNEAU calme + CENTRE qui gouverne]');
     const calm = await page.evaluate(async () => {
       const saved = JSON.stringify(window.mkBrief.data);

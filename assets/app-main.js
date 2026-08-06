@@ -17206,6 +17206,58 @@ window.addEventListener('load', () => {
   } catch (error) { /* un filet ne casse jamais le demarrage */ }
 });
 
+// LE DETECTEUR DE MISE A JOUR (2026-08-07). La console est une app d'une
+// seule page : un onglet laisse ouvert ne recharge JAMAIS ses fichiers, et
+// le gerant peut tester pendant des heures une version perimee en croyant
+// que rien n'est corrige (verifie : les bundles de prod passaient les tests
+// pendant que l'onglet servait l'ancienne version). Au retour sur l'onglet
+// et toutes les 4 minutes, on compare la version des assets de CE chargement
+// a celle que le serveur sert MAINTENANT : si elles different, un bandeau
+// propose de recharger. Jamais de rechargement force : une frappe en cours
+// ne se perd pas.
+(function watchAppVersion() {
+  const rx = /staff-pages-v2\.js\?v=([0-9a-z-]+)/;
+  const script = document.querySelector('script[src*="staff-pages-v2.js"]');
+  const mine = script ? (String(script.src).match(rx) || [])[1] : '';
+  // Marqueur d'armement + controle exposee : le gate appelle le controle
+  // directement (pas de dependance aux evenements du harnais headless).
+  window.__plUpdateWatch = mine || 'sans-version';
+  if (!mine) return;
+  let shown = false;
+  let checking = false;
+  const check = async () => {
+    if (shown || checking || document.hidden) return;
+    checking = true;
+    try {
+      // TOUJOURS la racine : l'app reecrit son URL (/reserver, /#/staff/...)
+      // et interroger le chemin courant renvoyait autre chose que l'index.
+      const response = await fetch(`/?plv=${Date.now()}`, { cache: 'no-store' });
+      const html = await response.text();
+      const served = (html.match(rx) || [])[1] || '';
+      // Trace de diagnostic (lisible en console prod : window.__plUpdateLast).
+      window.__plUpdateLast = { mine, served, at: new Date().toISOString() };
+      if (served && served !== mine) {
+        shown = true;
+        const bar = document.createElement('div');
+        bar.id = 'plUpdateBar';
+        bar.setAttribute('role', 'status');
+        bar.innerHTML = `<span>Une mise à jour de la console est prête.</span>
+          <button type="button" onclick="window.location.reload()">Recharger</button>`;
+        document.body.appendChild(bar);
+      }
+    } catch (error) {
+      window.__plUpdateLast = { mine, error: String(error), at: new Date().toISOString() };
+    } finally {
+      checking = false;
+    }
+  };
+  window.__plUpdateCheck = check;
+  window.addEventListener('focus', check);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  setInterval(check, 240000);
+  setTimeout(check, 20000);
+})();
+
 // Fraîcheur multi-postes sobre : au retour sur l'onglet (changement de poste,
 // réveil de tablette), une synchro différentielle immédiate au lieu d'attendre
 // le prochain tick du poll. Coût quasi nul : If-None-Match => 304 vide si rien

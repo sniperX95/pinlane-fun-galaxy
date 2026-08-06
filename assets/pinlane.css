@@ -1036,3 +1036,12 @@ html[data-boot='app'] #nav { display: none !important; }
 /* Le fond du voile suit le THEME : --page est le vrai token de fond (--bg
    n'existe pas, le fallback noir passait aussi en theme clair). */
 html[data-boot='app']::before { content: ''; position: fixed; inset: 0; background: var(--page, #0b0b0c); z-index: 99999; }
+
+/* Le bandeau de mise a jour (app-main, watchAppVersion) : discret, au-dessus
+   de tout, jamais un rechargement force. */
+#plUpdateBar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 200; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); color: var(--text); font-family: var(--font-ui); font-size: 13px; box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.2)); }
+[data-theme='dark'] #plUpdateBar { background: var(--raised); }
+#plUpdateBar button { border: 0; border-radius: var(--radius-full); min-height: 32px; padding: 0 14px; background: var(--text); color: var(--surface); font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+#plUpdateBar button:hover { opacity: 0.9; }
+#plUpdateBar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 720px) { #plUpdateBar { width: calc(100vw - 24px); justify-content: space-between; } }

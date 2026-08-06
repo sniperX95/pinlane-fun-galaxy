@@ -9434,32 +9434,10 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-thead-pat span:last-child { text-align: right; min-width: 56px; }
 
 /* Le radar 14 jours */
-.mkw-radar { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(48px, 1fr); gap: 6px; overflow-x: auto; padding: 4px 1px; scrollbar-width: thin; }
-.mkw-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 11px 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font-family: var(--font-ui); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), transform 180ms var(--mkw-out); }
 [data-theme='dark'] .mkw-cell { background: var(--raised); }
-.mkw-cell:hover { border-color: var(--line-strong); background: var(--subtle); transform: translateY(-1px); }
 /* Doctrine un-accent (ref heatmap Observability, juge V2) : chips NEUTRES
    uniformes ; le niveau se lit par une barre 2px en tete de chip, identique
    dans les deux themes. Fini les fonds pastel = 3 teintes actives. */
-.mkw-cell::before { content: ''; position: absolute; top: 4px; left: 10px; right: 10px; height: 2px; border-radius: 2px; background: transparent; }
-.mkw-cell.lv-calme::before { background: var(--line-strong); }
-.mkw-cell.lv-creux::before { background: var(--danger); }
-.mkw-cell.lv-fort::before { background: var(--success); }
-.mkw-cell.lv-creux .mkw-cell-resa { color: var(--danger); }
-.mkw-cell.lv-fort .mkw-cell-resa { color: var(--success); }
-.mkw-cell.is-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.mkw-cell.is-open { border-color: var(--accent); }
-.mkw-cell-day { font-family: var(--font-data); font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; }
-.mkw-cell.is-today .mkw-cell-day { color: var(--accent-strong); font-weight: 700; }
-.mkw-cell .br-wx { width: 17px; height: 17px; color: var(--muted); }
-.mkw-cell.lv-creux .br-wx { color: color-mix(in srgb, var(--danger) 60%, var(--muted)); }
-.mkw-cell-temp { font-family: var(--font-data); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--faint); }
-.mkw-cell-resa { font-family: var(--font-data); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); min-height: 14px; white-space: nowrap; }
-.mkw-cell-resa em { font-style: normal; color: var(--faint); font-size: 9.5px; }
-.mkw-cell-event { position: absolute; top: 6px; right: 6px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
-.mkw-cell-skel { height: 76px; border-radius: var(--radius-lg); background: var(--subtle); animation: pl-skeleton 1.4s var(--ease) infinite; }
-.mkw-radar-sum { margin: var(--space-4) 0 0; font-size: 13px; color: var(--muted); }
-.mkw-radar-explain { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); padding: 12px 14px; background: var(--subtle); border-radius: var(--radius-lg); font-size: 13px; color: var(--text); line-height: 1.5; }
 .br-num { font-family: var(--font-data); font-weight: 500; font-variant-numeric: tabular-nums; font-size: 0.95em; }
 
 /* Les cartes de proposition (la file « Prêt pour toi ») : fermée = une
@@ -9486,8 +9464,6 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 
 /* Les cartes fermees en bloc aere vivent dans le fil du bureau (.mkw-turn-prop). */
 .mkw-prop .mkw-cta { margin-top: var(--space-3); }
-.mkw-brief-text { margin: 0; font-size: 15px; font-weight: 500; line-height: 1.65; color: var(--text); max-width: 68ch; }
-.mkw-veille-line { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); }
 
 /* Onglets réseau (dans une carte ou le Studio) */
 .mkw-nets { display: flex; gap: var(--space-3); margin-top: var(--space-3); }
@@ -9495,6 +9471,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-net:hover { color: var(--text); }
 .mkw-net.active { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
 .mkw-net:disabled { opacity: 0.5; cursor: default; }
+.mkw-net:focus-visible, .mkw-seg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Le papier (texte prêt à copier) + shimmer honnête */
 .mkw-paper { margin-top: var(--space-3); padding: 16px 18px; background: var(--subtle); border-radius: var(--radius-md); font-size: 13.5px; line-height: 1.6; color: var(--text); white-space: pre-wrap; user-select: all; }
@@ -9592,19 +9569,13 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-plan-progress { margin-top: var(--space-2); }
 
 /* Focus visible sur TOUT l'interactif de la zone (contrainte 7) */
-.mkw-cell:focus-visible, .mkw-chip:focus-visible, .mkw-net:focus-visible,
 .mkw-seg-btn:focus-visible, .mkw-link:focus-visible, .mkw-plan-check:focus-visible,
-.mkw-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 760px) {
-  .mkw-radar { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; scrollbar-width: none; }
-  .mkw-cell { min-width: 52px; scroll-snap-align: start; }
   .mkw-prop-actions { flex-wrap: wrap; gap: var(--space-3); }
   /* Mobile : la meta s'empile SOUS le titre (ref rangees Requests), jamais
      entrelacee avec un titre qui wrappe. */
   .mkw-prop:not(.is-open):not(.is-published) { flex-direction: column; align-items: stretch; gap: 5px; }
-  .mkw-stat-val { font-size: 20px; }
-  .mkw-cmd-send { width: 44px; height: 44px; }
   .mkw-st-bar { flex-direction: column; align-items: stretch; }
   .mkw-chip { min-height: 44px; }
   .mkw-plan-check { width: 24px; height: 24px; }
@@ -9638,7 +9609,6 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* En-tête d'accueil (langage Vercel « Agent ») : fil d'Ariane, grande identité,
    pastille d'état vivant, une phrase de description mutée, « En savoir plus ». */
 .mkw-head { display: flex; flex-direction: column; gap: 10px; padding: var(--space-8) 0 var(--space-6); }
-.mkw-crumb { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
 .mkw-head-id { display: flex; align-items: flex-start; gap: 14px; }
 /* La vignette de marque : un canvas de particules (pinlane-fx.js) qui reforme
    le dessin de l'agent et fuit le curseur. `color` porte le token pour le
@@ -9815,52 +9785,70 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-surface .pv2-btn:active { transform: scale(0.97); }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   MARKETING · LE BUREAU DE L'AGENT (refonte 2026-08-06, MARKETING-AGENT-DESIGN.md)
-   Le fil de l'agent a gauche (brief + propositions + reponses), le tableau
-   d'actions a droite (A valider / En cours / A surveiller), le composer a deux
-   modes fixe au bas du fil. Tokens uniquement, un seul accent, parite
-   light/dark automatique, motions 150-260ms coupees en reduced-motion.
+   MARKETING · LE CHAT DE L'AGENT (v2 chat-first, 2026-08-06)
+   Retour Movsar : « comme un chat type ChatGPT ou Claude, clean, épuré ».
+   Le centre est une conversation libre sur le fond de points conserve ;
+   l'operationnel vit dans le panneau lateral FERMABLE (anime). Tokens
+   uniquement, un seul accent, light/dark auto, reduced-motion couvert.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* Le RAIL : les 4 profondeurs, subordonnees au bureau. Pas d'onglet maison :
-   la ou l'on travaille n'est pas une destination. */
-.mkw-rail { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-6); padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-.mkw-rail::-webkit-scrollbar { display: none; }
-.mkw-rail-label { flex: none; font-size: 11.5px; font-weight: 500; color: var(--faint); }
-.mkw-rail-depth { display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; }
-.mkw-rail-depth::-webkit-scrollbar { display: none; }
-.mkw-rail-link { flex: none; border: 0; background: transparent; padding: 8px 12px; min-height: 36px; border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
-.mkw-rail-link:hover { color: var(--text); background: var(--subtle); }
-.mkw-rail-link.active { color: var(--text); background: var(--subtle); font-weight: 600; }
-.mkw-rail-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* L'en-tete : une ligne. Identite a gauche, profondeurs + panneau a droite. */
+.mkw-head-nav { display: flex; align-items: center; gap: 2px; margin-left: auto; align-self: flex-start; flex-wrap: wrap; justify-content: flex-end; }
+.mkw-head-link { flex: none; border: 0; background: transparent; padding: 8px 11px; min-height: 36px; border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.mkw-head-link:hover { color: var(--text); background: var(--subtle); }
+.mkw-head-link.active { color: var(--text); background: var(--subtle); font-weight: 600; }
+.mkw-head-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mkw-head-navsep { flex: none; width: 1px; height: 18px; margin: 0 6px; background: var(--line-strong); }
+.mkw-panel-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--muted); cursor: pointer; transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+[data-theme='dark'] .mkw-panel-toggle { background: var(--raised); }
+.mkw-panel-toggle svg { width: 16px; height: 16px; }
+.mkw-panel-toggle:hover { color: var(--text); border-color: var(--accent); }
+.mkw-panel-toggle.is-open { color: var(--accent-strong); border-color: var(--accent); }
+.mkw-panel-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* LE BUREAU : grille fil + tableau. Le tableau est sticky : les actions
-   restent sous les yeux pendant que le fil defile. */
-.mkw-desk { display: grid; grid-template-columns: minmax(0, 1fr) 332px; gap: var(--space-6); align-items: start; }
-.mkw-fil { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+/* LE BUREAU : chat + panneau. La colonne du panneau s'anime a l'ouverture et
+   a la fermeture (grid-template-columns interpole + glissement du contenu). */
+.mkw-desk { display: grid; grid-template-columns: minmax(0, 1fr) 324px; gap: var(--space-6); align-items: start; transition: grid-template-columns 280ms var(--mkw-out); }
+.mkw-desk.panel-closed { grid-template-columns: minmax(0, 1fr) 0px; gap: 0; }
+.mkw-desk.panel-closed .mkw-panel { transform: translateX(18px); opacity: 0; pointer-events: none; visibility: hidden; }
 
-/* Un TOUR du fil. L'agent parle en cartes calmes ; le gerant en bulle sobre a
-   droite. Pas d'avatar decoratif : la marque n'apparait qu'en tete de tour. */
-.mkw-turn-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: var(--space-3); flex-wrap: wrap; }
-.mkw-turn-head .mkw-mark { width: 22px; height: 22px; border-radius: var(--radius-sm); align-self: center; }
-.mkw-turn-head .mkw-mark svg { width: 13px; height: 13px; }
-.mkw-turn-head b { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
-.mkw-turn-sub { font-size: 12px; color: var(--faint); }
+/* LE CHAT : une colonne de lecture centree, sans meuble autour. */
+.mkw-chat { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - 230px); min-height: calc(100dvh - 230px); }
+.mkw-chat-thread { flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-5); width: 100%; max-width: 760px; margin: 0 auto; padding-bottom: var(--space-4); }
+.mkw-chat-tools { display: flex; justify-content: flex-end; min-height: 20px; }
 
-.mkw-turn.is-agent { padding: var(--space-5); border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--surface); }
-[data-theme='dark'] .mkw-turn.is-agent { background: var(--raised); }
-.mkw-turn.is-user { display: flex; justify-content: flex-end; }
-.mkw-turn-user-body { max-width: 78%; padding: 10px 16px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: var(--radius-lg); border-top-right-radius: 6px; background: var(--accent-soft); font-size: 14px; line-height: 1.5; color: var(--text); }
-[data-theme='dark'] .mkw-turn-user-body { background: color-mix(in srgb, var(--accent) 26%, var(--raised)); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+/* L'ACCUEIL (chat vide) : le bonjour au centre, comme une page Claude. Le
+   sous-titre est le BRIEF REEL du matin : informatif, jamais decoratif. */
+.mkw-chat.is-hero { justify-content: center; }
+.mkw-chat-hero { width: 100%; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-4); padding: var(--space-8) 0; }
+.mkw-hello { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 30px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); }
+.mkw-hello .mkw-mark { width: 34px; height: 34px; border-radius: var(--radius-md); }
+.mkw-hello .mkw-mark svg { width: 19px; height: 19px; }
+.mkw-hello-brief { margin: 0; max-width: 56ch; font-size: 14.5px; line-height: 1.65; color: var(--text); }
+.mkw-hello-sub { margin: 0; max-width: 52ch; font-size: 13px; line-height: 1.5; color: var(--faint); }
+.mkw-chat-hero .mkw-composer { position: static; width: 100%; margin-top: var(--space-2); padding: 0; background: none; }
+.mkw-chat-hero .mkw-composer::before { content: none; }
+.mkw-chat-hero .mkw-composer-chips { justify-content: center; margin-top: var(--space-3); margin-bottom: 0; }
 
-/* Le tour proposition : la carte existante (.mkw-prop) devient un tour plein
-   cadre, en bloc aere (la rangee dense d'une ligne vivait dans l'ancienne
-   file). */
-.mkw-turn-prop .mkw-prop { margin-top: 0; }
-.mkw-turn-prop .mkw-prop:not(.is-open):not(.is-published) { display: block; padding-top: var(--space-4); padding-bottom: var(--space-4); }
-.mkw-turn-prop .mkw-prop:not(.is-open):not(.is-published) .mkw-prop-why { font-size: 14.5px; }
-.mkw-turn-prop .mkw-prop:not(.is-open):not(.is-published) .mkw-prop-meta { margin-top: 6px; white-space: normal; }
-.mkw-turn-prop .mkw-prop.is-open .mkw-prop-body { animation: mkwExpand 320ms var(--mkw-spring) both; }
+/* UN MESSAGE. L'agent parle en texte nu (pas de boite) ; le gerant en bulle
+   sobre a droite. La seule « boite » agent est un artefact : la carte-atelier
+   d'une proposition, comme un bloc de code dans Claude. */
+.mkw-msg { min-width: 0; }
+.mkw-msg-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 6px; flex-wrap: wrap; }
+.mkw-msg-head .mkw-mark { width: 22px; height: 22px; border-radius: var(--radius-sm); align-self: center; }
+.mkw-msg-head .mkw-mark svg { width: 13px; height: 13px; }
+.mkw-msg-head b { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.mkw-msg-sub { font-size: 12px; color: var(--faint); }
+.mkw-msg-text { margin: 0; padding-left: 31px; font-size: 14.5px; line-height: 1.65; color: var(--text); }
+.mkw-msg-links { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: 8px; padding-left: 31px; }
+.mkw-msg.is-user { display: flex; justify-content: flex-end; }
+.mkw-msg-user { max-width: 78%; padding: 10px 16px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: var(--radius-lg); border-top-right-radius: 6px; background: var(--accent-soft); font-size: 14px; line-height: 1.5; color: var(--text); }
+[data-theme='dark'] .mkw-msg-user { background: color-mix(in srgb, var(--accent) 26%, var(--raised)); border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.mkw-msg-prop .mkw-prop { margin-top: 0; }
+.mkw-msg-prop .mkw-prop:not(.is-open):not(.is-published) { display: block; padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.mkw-msg-prop .mkw-prop:not(.is-open):not(.is-published) .mkw-prop-why { font-size: 14.5px; }
+.mkw-msg-prop .mkw-prop:not(.is-open):not(.is-published) .mkw-prop-meta { margin-top: 6px; white-space: normal; }
+.mkw-msg-prop .mkw-prop.is-open .mkw-prop-body { animation: mkwExpand 320ms var(--mkw-spring) both; }
 @keyframes mkwExpand { from { opacity: 0; transform: translateY(-8px) scale(0.99); } to { opacity: 1; transform: none; } }
 .mkw-prop-preview { margin: 8px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .mkw-prop-net { font-family: var(--font-data); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--faint); margin-right: 8px; }
@@ -9871,54 +9859,23 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-cta { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
 .mkw-cta .pv2-btn { height: 40px; padding: 0 16px; }
 
-/* Le separateur de sequence du fil : une respiration, pas un titre de section. */
-.mkw-fil-sep { margin: var(--space-2) 0 0; padding-left: 2px; font-size: 12px; font-weight: 500; color: var(--faint); }
-
-/* Le brief du matin : le tour d'ouverture. Sa voix est la plus grande du fil ;
-   le radar 14 jours vit DEDANS (c'est l'analyse du matin, pas un widget).
-   Cellules resserrees : les 14 jours tiennent dans la colonne du fil sans
-   scroll sur desktop (44px x 14 + 13 gaps = 681px). */
-.mkw-turn-brief .mkw-brief-text { font-size: 15.5px; }
-.mkw-turn-brief .mkw-radar { grid-auto-columns: minmax(44px, 1fr); gap: 5px; }
-.mkw-turn-radar { margin-top: var(--space-4); }
-.mkw-turn-radar-cap { display: block; margin-bottom: 8px; font-size: 11.5px; color: var(--faint); }
-
-/* Les pieces de contexte du fil (veille, impact) : une ligne fine, depliable
-   inline. Jamais une navigation forcee. */
-.mkw-ctx { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
-.mkw-ctx-toggle { display: flex; align-items: center; gap: 9px; width: 100%; border: 0; background: transparent; padding: 4px 0; min-height: 32px; font-family: var(--font-ui); font-size: 13px; color: var(--muted); cursor: pointer; text-align: left; transition: color var(--dur) var(--ease); }
-.mkw-ctx-toggle:hover { color: var(--text); }
-.mkw-ctx-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
-.mkw-ctx-toggle .pv2-ico { width: 14px; height: 14px; color: var(--faint); flex: none; }
-.mkw-ctx-toggle strong { color: var(--text); font-weight: 600; }
-.mkw-ctx-chev { width: 14px; height: 14px; margin-left: auto; flex: none; color: var(--faint); transition: transform 200ms var(--mkw-out); }
-.mkw-ctx.is-open .mkw-ctx-chev { transform: rotate(180deg); }
-.mkw-ctx-body { padding: var(--space-2) 0 0 23px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.mkw-ctx-line { display: flex; align-items: center; gap: 9px; width: 100%; padding: 4px 0; min-height: 32px; font-size: 13px; color: var(--muted); }
-.mkw-ctx-line .pv2-ico { width: 14px; height: 14px; color: var(--faint); flex: none; }
-.mkw-ctx-line .mkw-link { margin-left: auto; flex: none; }
-.mkw-veille-line { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); }
-
-/* La reponse assemblee (mode Demander) : titre de decision, recommandation,
-   pourquoi, faits compacts, action principale, et la SOURCE dite en clair. */
-.mkw-turn-answer .mkw-ans-reco { margin: 0; font-size: 14.5px; font-weight: 550; line-height: 1.55; color: var(--text); }
-.mkw-turn-answer .mkw-ans-why { margin: var(--space-2) 0 0; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
-.mkw-ans-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-3); }
+/* La reponse assemblee (mode Demander) : texte nu + faits en pilules + la
+   source dite. Aligne sur la colonne du texte (31px = marque + gap). */
+.mkw-turn-answer .mkw-ans-reco { margin: 0; padding-left: 31px; font-size: 14.5px; font-weight: 500; line-height: 1.6; color: var(--text); }
+.mkw-turn-answer .mkw-ans-why { margin: var(--space-2) 0 0; padding-left: 31px; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+.mkw-ans-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-3); padding-left: 31px; }
 .mkw-ans-fact { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 10px; border-radius: var(--radius-full); background: var(--subtle); font-size: 12px; color: var(--muted); }
 .mkw-ans-fact .br-num { color: var(--text); }
-.mkw-turn-answer .mkw-prop-actions { margin-top: var(--space-4); }
-.mkw-ans-src { margin: var(--space-3) 0 0; font-size: 11px; color: var(--faint); }
-.mkw-turn.is-pending .mkw-turn-head { margin-bottom: 0; }
-.mkw-turn.is-pending .mkw-turn-head b { animation: mkwBreath 1.6s var(--mkw-io) infinite; }
+.mkw-turn-answer .mkw-prop-actions { margin-top: var(--space-3); padding-left: 31px; }
+.mkw-ans-src { margin: var(--space-2) 0 0; padding-left: 31px; font-size: 11px; color: var(--faint); }
+.mkw-msg.is-pending .mkw-msg-head b { animation: mkwBreath 1.6s var(--mkw-io) infinite; }
 @keyframes mkwBreath { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
-/* LE COMPOSER : fixe au bas du fil, deux MODES explicites (deux contrats).
-   Surface flottante : fond plein + ombre overlay (jamais de verre). Le voile
-   degrade au-dessus protege la lecture : pendant le scroll, le fil ne
-   transparait jamais sous les chips ni entre les bords de la barre. */
-.mkw-composer { position: sticky; bottom: 0; z-index: 6; margin-top: var(--space-2); padding: 4px 2px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to top, var(--page) 82%, transparent); }
+/* LE COMPOSER : la piece signature. Ancre en bas du chat quand le fil vit ;
+   au centre sur l'accueil. Fond plein + voile (jamais de verre). */
+.mkw-composer { position: sticky; bottom: 0; z-index: 6; width: 100%; max-width: 760px; margin: var(--space-2) auto 0; padding: 4px 2px calc(12px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to top, var(--page) 82%, transparent); }
 .mkw-composer::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 36px; background: linear-gradient(to top, var(--page) 10%, transparent); pointer-events: none; }
-.mkw-composer-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--space-2); }
+.mkw-composer-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: var(--space-2); }
 .mkw-chip-suggest { border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-full); padding: 4px 12px; min-height: 28px; font-family: var(--font-ui); font-size: 12px; color: var(--muted); cursor: pointer; transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
 [data-theme='dark'] .mkw-chip-suggest { background: var(--raised); }
 .mkw-chip-suggest:hover { color: var(--text); border-color: var(--line-strong); }
@@ -9937,10 +9894,16 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-composer-input:focus-visible { outline: none; }
 .mkw-composer-send { flex: none; }
 
-/* LE TABLEAU D'ACTIONS : sticky, respirant, CALME quand il n'y a rien. Les
-   groupes sont des sections a hairline (pas des cartes dans des cartes) ;
-   seules les cartes « A valider » sont des boites, avec leur barre de ton. */
-.mkw-board { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-5); max-height: calc(100vh - 32px); overflow: auto; padding: 2px 2px var(--space-4); scrollbar-width: thin; }
+/* LE PANNEAU : le travail de l'agent. Sections a hairline, cartes « A
+   valider » avec barre de ton, mini-radar en pied. Sticky, fermable. */
+.mkw-panel { position: sticky; top: 16px; display: flex; flex-direction: column; gap: var(--space-4); max-height: calc(100vh - 32px); overflow: auto; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-xl); background: color-mix(in srgb, var(--surface) 92%, transparent); scrollbar-width: thin; transition: transform 280ms var(--mkw-out), opacity 240ms var(--ease); }
+[data-theme='dark'] .mkw-panel { background: color-mix(in srgb, var(--raised) 92%, transparent); }
+.mkw-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mkw-panel-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.mkw-panel-close { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--faint); cursor: pointer; transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.mkw-panel-close:hover { color: var(--text); background: var(--subtle); }
+.mkw-panel-close svg { width: 15px; height: 15px; }
+.mkw-panel-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mkw-bgroup-head { display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-2); }
 .mkw-bgroup-head h3 { margin: 0; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--muted); }
 .mkw-bcount { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-strong); font-family: var(--font-data); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -9977,44 +9940,61 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 .mkw-brow-dot.is-run { background: var(--accent); animation: mkwBreath 1.8s var(--mkw-io) infinite; }
 .mkw-brow-dot.is-warn { background: var(--warning); }
 
+/* Le mini-radar du panneau : 14 jours en bande, un clic pose la question. */
+.mkw-minis { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mkw-mini { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 2px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); font-family: var(--font-data); cursor: pointer; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+[data-theme='dark'] .mkw-mini { background: var(--raised); }
+.mkw-mini:hover { border-color: var(--line-strong); background: var(--subtle); }
+.mkw-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mkw-mini::before { content: ''; position: absolute; top: 3px; left: 7px; right: 7px; height: 2px; border-radius: 2px; background: transparent; }
+.mkw-mini.lv-calme::before { background: var(--line-strong); }
+.mkw-mini.lv-creux::before { background: var(--danger); }
+.mkw-mini.lv-fort::before { background: var(--success); }
+.mkw-mini.is-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.mkw-mini span { font-size: 9.5px; color: var(--faint); }
+.mkw-mini b { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); }
+.mkw-mini i { font-style: normal; font-size: 9.5px; font-variant-numeric: tabular-nums; color: var(--accent-strong); }
+.mkw-mini.lv-creux i { color: var(--danger); }
+.mkw-mini.lv-fort i { color: var(--success); }
+
 /* Marche : le concurrent cible d'un deep-link arrive mis en evidence. */
 .mkw-riv.is-focus { animation: mkwFlash 1.4s var(--ease); border-color: var(--accent); }
 
-/* Vue de PROFONDEUR : retour explicite vers le bureau. */
+/* Vue de PROFONDEUR : retour explicite vers le chat. */
 .mkw-depth { display: flex; flex-direction: column; gap: var(--space-4); }
 .mkw-back { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; border: 0; background: transparent; padding: 6px 6px 6px 2px; min-height: 36px; font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: color var(--dur) var(--ease); }
 .mkw-back:hover { color: var(--text); }
 .mkw-back svg { width: 16px; height: 16px; }
 .mkw-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* MOTION d'entree du bureau : le fil se leve en vague douce, le tableau suit.
-   Une fois par navigation (classe mkw-in), jamais sur un re-render in-view. */
+/* MOTION d'entree : le chat se leve doucement, le panneau suit. Une fois par
+   navigation (classe mkw-in), jamais sur un re-render in-view. */
 .mkw-surface.mkw-in > .mkw-desk { animation: none; }
-.mkw-surface.mkw-in .mkw-fil > * { animation: mkwUp 420ms var(--mkw-out) both; }
-.mkw-surface.mkw-in .mkw-fil > *:nth-child(2) { animation-delay: 60ms; }
-.mkw-surface.mkw-in .mkw-fil > *:nth-child(3) { animation-delay: 120ms; }
-.mkw-surface.mkw-in .mkw-fil > *:nth-child(n+4) { animation-delay: 170ms; }
-.mkw-surface.mkw-in .mkw-board { animation: mkwUp 420ms var(--mkw-out) 160ms both; }
+.mkw-surface.mkw-in .mkw-chat { animation: mkwUp 420ms var(--mkw-out) both; }
+.mkw-surface.mkw-in .mkw-panel { animation: mkwUp 420ms var(--mkw-out) 140ms both; }
 
-/* Responsive : la tablette resserre le tableau ; le mobile passe le bureau en
-   une colonne, le tableau devient une section pleine apres le fil (jamais une
-   colonne minuscule) et le composer se colle au bas de l'ecran. */
+/* Responsive : la tablette resserre le panneau ; le mobile le transforme en
+   FEUILLE plein ecran a droite (jamais une colonne minuscule), le chat et le
+   composer passent d'abord. */
 @media (max-width: 1080px) {
-  .mkw-desk { grid-template-columns: minmax(0, 1fr) 296px; gap: var(--space-5); }
+  .mkw-desk { grid-template-columns: minmax(0, 1fr) 292px; gap: var(--space-5); }
 }
 @media (max-width: 900px) {
-  .mkw-desk { grid-template-columns: minmax(0, 1fr); }
-  .mkw-board { position: static; max-height: none; overflow: visible; order: 2; border-top: 1px solid var(--line); padding-top: var(--space-5); }
-  .mkw-fil { order: 1; }
+  .mkw-desk, .mkw-desk.panel-closed { display: block; }
+  .mkw-chat { min-height: calc(100vh - 200px); min-height: calc(100dvh - 200px); }
+  /* Feuille OPAQUE : le chat ne transparait jamais sous le travail. */
+  .mkw-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 60; width: min(88vw, 360px); max-height: none; border-radius: 0; border-top: 0; border-bottom: 0; border-right: 0; background: var(--surface); box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0, 0, 0, 0.25)); transform: translateX(0); }
+  [data-theme='dark'] .mkw-panel { background: var(--raised); }
+  .mkw-desk.panel-closed .mkw-panel { transform: translateX(102%); opacity: 1; visibility: hidden; }
 }
 @media (max-width: 720px) {
   .mkw-head { padding-top: var(--space-6); }
-  .mkw-rail { margin-bottom: var(--space-5); }
-  .mkw-turn.is-agent { padding: var(--space-4); }
-  .mkw-turn-user-body { max-width: 88%; }
+  .mkw-head-nav { width: 100%; justify-content: flex-start; margin-left: 0; }
+  .mkw-hello { font-size: 25px; }
   .mkw-cta .pv2-btn { height: 44px; }
   .mkw-mode { height: 36px; }
-  .mkw-composer { bottom: 0; }
+  .mkw-msg-text, .mkw-turn-answer .mkw-ans-reco, .mkw-turn-answer .mkw-ans-why, .mkw-ans-facts, .mkw-turn-answer .mkw-prop-actions, .mkw-ans-src, .mkw-msg-links { padding-left: 0; }
+  .mkw-msg-user { max-width: 88%; }
   /* Empilement PROPRE : les modes sur leur ligne, puis input + envoi cote a
      cote. Jamais un bouton orphelin qui flotte sous la barre. */
   .mkw-composer-box { flex-wrap: wrap; }
@@ -10027,6 +10007,7 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
    compris pseudo-elements : sheen, pulses, staggers, shimmers). */
 @media (prefers-reduced-motion: reduce) {
   .mkw-shell *, .mkw-shell *::before, .mkw-shell *::after { animation: none !important; }
+  .mkw-desk, .mkw-panel { transition: none; }
 }
 
 /* ── Emails v4 : séquences personnalisées, réglages, envoi programmé ── */

@@ -77,7 +77,7 @@ async function installMock(page) {
         const level = i === 4 ? 'creux' : i === 6 ? 'fort' : (i === 9 ? 'calme' : 'normal');
         return { date, dow: d.getDay(), level, tmax: i === 2 ? 27 : 19, precipMm: i === 3 ? 12 : 0,
           event: i === 8 ? 'Foire de Libramont (à 5 min)' : '', resaCount: i === 6 ? 34 : (i === 0 ? 6 : 0),
-          explanation: level === 'creux' ? `Jour ${date.slice(8, 10)} : très calme attendu, jour structurellement faible. Rien de posé.` : `Jour ${date.slice(8, 10)} : journée normale attendue.`,
+          explanation: level === 'creux' ? `Jour ${date.slice(8, 10)} : très calme attendu, jour structurellement faible. Rien de posé.` : (level === 'calme' ? `Jour ${date.slice(8, 10)} : calme attendu, rien de posé.` : `Jour ${date.slice(8, 10)} : journée normale attendue.`),
           propositionKey: i === 4 ? 'plan:social-1' : null };
       });
       return {
@@ -211,11 +211,11 @@ async function main() {
       save(); setView('staff'); renderStaff();
     });
     // LE BUREAU : fil + tableau + composer, radar 14 cellules DANS le fil.
-    await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-desk .mkw-fil') && document.querySelector('#staffCampaignsPage .mkw-board') && document.querySelector('#staffCampaignsPage .mkw-composer'), null, { timeout: 15000 });
-    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-fil .mkw-cell').length >= 14, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('#staffCampaignsPage .mkw-desk .mkw-chat') && document.querySelector('#staffCampaignsPage .mkw-panel') && document.querySelector('#staffCampaignsPage .mkw-composer'), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-mini').length >= 14, null, { timeout: 15000 });
     await page.waitForTimeout(400);
 
-    // Captures optionnelles (PINLANE_MK_SHOTS=<dossier>) : REGARDER le bureau
+    // Captures optionnelles (PINLANE_MK_SHOTS=<dossier>) : REGARDER le chat
     // au lieu de le deviner, meme harnais que les gates emails et crm.
     if (process.env.PINLANE_MK_SHOTS) {
       const shotDir = process.env.PINLANE_MK_SHOTS;
@@ -225,10 +225,14 @@ async function main() {
         await page.waitForTimeout(450);
         await page.setViewportSize({ width: 1440, height: 1000 });
         await page.waitForTimeout(250);
-        await page.screenshot({ path: require('path').join(shotDir, `marketing-${theme}-desktop.png`), fullPage: true });
+        await page.screenshot({ path: require('path').join(shotDir, `marketing-${theme}-desktop.png`), fullPage: false });
         await page.setViewportSize({ width: 390, height: 844 });
+        // L'etat mobile REEL : charge en 390 px, le panneau demarre ferme
+        // (la conversation d'abord) ; on reproduit cet etat avant la capture.
+        await page.evaluate(() => { window.mkw.panelOpen = false; window.renderStaffCampaignsPage(); });
         await page.waitForTimeout(300);
-        await page.screenshot({ path: require('path').join(shotDir, `marketing-${theme}-mobile.png`), fullPage: true });
+        await page.screenshot({ path: require('path').join(shotDir, `marketing-${theme}-mobile.png`), fullPage: false });
+        await page.evaluate(() => { window.mkw.panelOpen = true; window.renderStaffCampaignsPage(); });
       }
       await page.setViewportSize({ width: 1400, height: 900 });
       await page.evaluate(() => { setStaffTheme('dark'); });
@@ -236,7 +240,7 @@ async function main() {
       console.log(`[SHOTS] captures ecrites dans ${shotDir}`);
     }
 
-    console.log('\n[HYGIENE] le bureau : identite, rail 4 profondeurs, zero theatre, zero jargon');
+    console.log('\n[HYGIENE] le chat : identite en une ligne, zero rail, zero theatre, zero jargon');
     let allText = '';
     for (const tab of ['feed', 'plan', 'studio', 'rivals', 'results']) {
       await go(tab);
@@ -247,121 +251,138 @@ async function main() {
     const hygiene = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
       return {
-        nav: [...root.querySelectorAll('.mkw-rail-link')].map((el) => el.textContent.trim()),
-        railHome: root.querySelectorAll('.mkw-rail-home').length,
-        theatre: root.querySelectorAll('.mkw-turn-avatar, .mkw-bubble, .mkw-thinking, .mkw-fold, .mkw-suggest, .mkw-cmd-bar').length,
-        desk: Boolean(root.querySelector('.mkw-desk .mkw-fil') && root.querySelector('.mkw-desk .mkw-board')),
-        composerInFil: Boolean(root.querySelector('.mkw-fil .mkw-composer #brAskInput')),
+        nav: [...root.querySelectorAll('.mkw-head-nav .mkw-head-link')].map((el) => el.textContent.trim()),
+        rail: root.querySelectorAll('.mkw-rail, .mkw-rail-link, .mkw-rail-home').length,
+        toggle: Boolean(root.querySelector('.mkw-head-nav .mkw-panel-toggle')),
+        theatre: root.querySelectorAll('.mkw-turn-avatar, .mkw-bubble, .mkw-thinking, .mkw-fold, .mkw-suggest, .mkw-cmd-bar, .mkw-turn-brief').length,
+        desk: Boolean(root.querySelector('.mkw-desk .mkw-chat') && root.querySelector('.mkw-desk .mkw-panel')),
         modes: [...root.querySelectorAll('.mkw-modes .mkw-mode')].map((el) => el.textContent.trim()),
         title: (root.querySelector('.mkw-head-title') || {}).textContent || '',
         desc: (root.querySelector('.mkw-head-desc') || {}).textContent || '',
         refresh: [...root.querySelectorAll('button')].filter((el) => /actualiser|analyser maintenant/i.test(el.textContent)).length,
         kpis: root.querySelectorAll('.mkw-kpi, .mkw-counters, .pv2-stat').length,
-        heroInFil: root.querySelectorAll('.mkw-fil .mkw-hero').length,
+        heroInChat: root.querySelectorAll('.mkw-chat .mkw-hero').length,
       };
     });
     ok(errs.length === 0, `aucune erreur console (${errs.length})${errs.length ? ' -> ' + errs.slice(0, 3).join(' | ') : ''}`);
-    ok(hygiene.nav.join('|') === 'Plan|Créations|Marché|Impact', `rail = 4 profondeurs, rien d'autre (${hygiene.nav.join(', ')})`);
-    ok(hygiene.railHome === 0, 'le bureau n\'est PAS un onglet : aucune entree « maison » dans le rail');
-    ok(hygiene.desk && hygiene.composerInFil, 'la grille du bureau : le fil a gauche, le tableau a droite, le composer dans le fil');
+    ok(hygiene.nav.join('|') === 'Plan|Créations|Marché|Impact' && hygiene.toggle, `l'en-tete porte les 4 profondeurs + le bouton panneau (${hygiene.nav.join(', ')})`);
+    ok(hygiene.rail === 0, 'le rail « Profondeur » est MORT : plus aucune rangee entre le gerant et le chat');
+    ok(hygiene.desk, 'la grille : le chat au centre, le panneau a droite');
     ok(hygiene.modes.join('|') === 'Demander|Créer', `le composer porte ses DEUX modes (${hygiene.modes.join(', ')})`);
-    ok(hygiene.theatre === 0, `ZERO theatre : ni avatar, ni bulle decorative, ni indicateur de pensee, ni pli (obtenu ${hygiene.theatre})`);
+    ok(hygiene.theatre === 0, `ZERO theatre : ni avatar, ni bulle decorative, ni carte-dashboard dans le chat (obtenu ${hygiene.theatre})`);
     ok(hygiene.title === 'Marketing' && /rien ne part tout seul/i.test(hygiene.desc) && /Fun Galaxy Libramont/.test(hygiene.desc), 'l\'en-tete dit l\'identite, LE CENTRE et la promesse de validation');
-    ok(hygiene.refresh === 0, 'zero bouton Actualiser/Analyser : le travail se fait chaque matin');
-    ok(banned.length === 0, `zero jargon interne a l'ecran${banned.length ? ' (trouve : ' + banned.join(', ') + ')' : ''}`);
-    ok(hygiene.kpis === 0, 'plus aucune rangee de compteurs muets : le tableau d\'actions porte l\'etat');
-    ok(hygiene.heroInFil === 0, 'le heros EUR ne vit PAS dans le fil (une seule maison : Impact)');
+    ok(hygiene.refresh === 0 && banned.length === 0, 'zero bouton de relance, zero jargon interne');
+    ok(hygiene.kpis === 0 && hygiene.heroInChat === 0, 'ni compteurs muets ni heros EUR dans le chat (une seule maison : Impact)');
 
-    console.log('\n[FIL] le brief du matin, radar integre, veille inline, pointeur Impact');
-    const fil = await page.evaluate(() => {
+    console.log('\n[ACCUEIL] le chat vide s\'ouvre comme Claude : bonjour + brief reel + composer centre');
+    const hero = await page.evaluate(() => {
       const root = document.getElementById('staffCampaignsPage');
-      const brief = root.querySelector('.mkw-turn-brief');
+      const heroBox = root.querySelector('.mkw-chat.is-hero .mkw-chat-hero');
       return {
-        briefTurn: Boolean(brief),
-        text: (brief && brief.querySelector('.mkw-brief-text') || {}).textContent || '',
-        nums: brief ? brief.querySelectorAll('.mkw-brief-text .br-num').length : 0,
-        radarInBrief: brief ? brief.querySelectorAll('.mkw-cell').length : 0,
-        veilleToggle: Boolean(brief && brief.querySelector('.mkw-ctx-toggle')),
-        impact: [...(brief ? brief.querySelectorAll('.mkw-ctx-line') : [])].map((el) => el.textContent).join(' '),
+        hero: Boolean(heroBox),
+        hello: (heroBox && heroBox.querySelector('.mkw-hello') || {}).textContent || '',
+        brief: (heroBox && heroBox.querySelector('.mkw-hello-brief') || {}).textContent || '',
+        briefNums: heroBox ? heroBox.querySelectorAll('.mkw-hello-brief .br-num').length : 0,
+        composerCentered: Boolean(heroBox && heroBox.querySelector('.mkw-composer #brAskInput')),
+        chips: heroBox ? heroBox.querySelectorAll('.mkw-chip-suggest').length : 0,
+        radarInChat: root.querySelectorAll('.mkw-chat .mkw-mini, .mkw-chat .mkw-cell').length,
       };
     });
-    ok(fil.briefTurn && /préparé/.test(fil.text) && /Bowling Arlon/.test(fil.text), 'le tour d\'ouverture : vu + prepare + veille');
-    ok(fil.nums >= 1, 'prose-preuve : les nombres du brief en mono');
-    ok(fil.radarInBrief === 14, `le radar 14 jours vit DANS le tour du brief (${fil.radarInBrief} cellules)`);
-    ok(/1[\s  ]?240/.test(fil.impact) && /Voir Impact/.test(fil.impact), 'le pointeur Impact : la ligne compacte + le chemin (jamais un second heros)');
-    const veille = await page.evaluate(async () => {
-      document.querySelector('#staffCampaignsPage .mkw-ctx-toggle').click();
-      await new Promise((r) => setTimeout(r, 250));
-      const body = document.querySelector('#staffCampaignsPage .mkw-ctx-body');
-      return { open: Boolean(body), text: body ? body.textContent : '' };
-    });
-    ok(veille.open && /offre étudiants/.test(veille.text) && /Voir dans Marché/.test(veille.text), 'la veille se deploie INLINE dans le fil, avec le chemin vers Marché');
+    ok(hero.hero && /Bonjour/.test(hero.hello), 'l\'accueil : un grand bonjour, rien d\'autre au centre');
+    ok(/préparé/.test(hero.brief) && /Bowling Arlon/.test(hero.brief) && hero.briefNums >= 1, 'le sous-titre est le BRIEF REEL du matin (prose-preuve en mono)');
+    ok(hero.composerCentered && hero.chips >= 2, 'le composer vit au centre, suggestions dessous');
+    ok(hero.radarInChat === 0, 'CONTRE-PREUVE : aucune grille meteo/radar ne squatte le chat (l\'operationnel vit dans le panneau)');
 
-    console.log('\n[RADAR] explication au clic, valeur du creux, « Prépare-moi un post »');
-    await page.evaluate(() => { document.querySelectorAll('#staffCampaignsPage .mkw-cell')[4].click(); });
-    await page.waitForTimeout(250);
-    const explain = await page.evaluate(() => (document.querySelector('#staffCampaignsPage .mkw-radar-explain') || {}).textContent || '');
-    ok(/très calme attendu/.test(explain) && /Voir la proposition/.test(explain), 'clic cellule creux -> explication + lien vers la proposition');
-    ok(/panier moyen mesuré/.test(explain) && /15\s?€/.test(explain), 'la valeur du creux en euros (panier mesure, pas une projection)');
-    await page.evaluate(() => { document.querySelectorAll('#staffCampaignsPage .mkw-cell')[9].click(); });
-    await page.waitForTimeout(250);
-    const fill = await page.evaluate(async () => {
-      const btn = [...document.querySelectorAll('#staffCampaignsPage .mkw-radar-explain button')].find((el) => /Prépare-moi un post/.test(el.textContent));
+    console.log('\n[PANNEAU] le travail de l\'agent : 3 groupes honnetes + mini-radar, fermable anime');
+    const board = await page.evaluate(() => {
+      const root = document.getElementById('staffCampaignsPage');
+      const groups = [...root.querySelectorAll('.mkw-bgroup')];
+      const heads = groups.map((g) => (g.querySelector('h3') || {}).textContent || '');
+      return {
+        heads,
+        badge: (groups[0] && groups[0].querySelector('.mkw-bcount') || {}).textContent || '',
+        facts: (groups[0] && [...groups[0].querySelectorAll('.mkw-bcard')] || []).every((el) => /Voir les faits/.test(el.textContent)),
+        pending: /verdict le 26 juillet/.test(groups[1] ? groups[1].textContent : ''),
+        watch: groups[2] ? groups[2].textContent : '',
+        minis: root.querySelectorAll('.mkw-panel .mkw-mini').length,
+        title: (root.querySelector('.mkw-panel-title') || {}).textContent || '',
+      };
+    });
+    ok(board.heads.slice(0, 3).join('|') === 'À valider|En cours|À surveiller', `les trois groupes du panneau (${board.heads.join(', ')})`);
+    ok(Number(board.badge) >= 4 && board.facts, 'chaque carte « À valider » compte et porte « Voir les faits »');
+    ok(board.pending, '« En cours » = la mesure J+14 REELLE (verdict date), pas un spinner inventé');
+    ok(/calme/.test(board.watch) && /Bowling Arlon a bougé/.test(board.watch) && /Foire de Libramont/.test(board.watch), '« À surveiller » : jour calme + concurrent + evenement, tous reels');
+    ok(!/J'apprends encore/.test(board.watch), 'CONTRE-PREUVE : a 210 j de recul, AUCUNE ligne « j\'apprends encore »');
+    ok(board.minis === 14, `le mini-radar des 14 jours vit dans le panneau (${board.minis})`);
+    const toggled = await page.evaluate(async () => {
+      window.mkwPanelToggle();
+      await new Promise((r) => setTimeout(r, 350));
+      const closed = {
+        deskClosed: Boolean(document.querySelector('#staffCampaignsPage .mkw-desk.panel-closed')),
+        hidden: (document.querySelector('#staffCampaignsPage .mkw-panel') || {}).getAttribute('aria-hidden') === 'true',
+      };
+      window.mkwPanelToggle();
+      await new Promise((r) => setTimeout(r, 350));
+      const reopened = Boolean(document.querySelector('#staffCampaignsPage .mkw-desk:not(.panel-closed) .mkw-panel'));
+      return { ...closed, reopened };
+    });
+    ok(toggled.deskClosed && toggled.hidden && toggled.reopened, 'le panneau se FERME et se ROUVRE d\'un geste (etat + aria + colonne animee)');
+
+    console.log('\n[MINI-RADAR] un clic sur un jour POSE LA QUESTION dans le chat');
+    const dayAsk = await page.evaluate(async () => {
+      const minis = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-mini')];
+      minis[9].click(); // le jour CALME du mock (sans proposition liee)
+      await new Promise((r) => setTimeout(r, 400));
+      const answer = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-turn-answer');
+      const heroGone = !document.querySelector('#staffCampaignsPage .mkw-chat.is-hero');
+      return {
+        heroGone,
+        answer: answer ? answer.textContent : '',
+        userTurn: (document.querySelector('#staffCampaignsPage .mkw-msg-user') || {}).textContent || '',
+        briefFirst: /Le brief du/.test((document.querySelector('#staffCampaignsPage .mkw-chat-thread .mkw-msg') || {}).textContent || ''),
+      };
+    });
+    ok(dayAsk.heroGone && /Que dit/.test(dayAsk.userTurn), 'le clic devient une question du gerant (bulle a droite), l\'accueil laisse place au fil');
+    ok(dayAsk.briefFirst, 'le brief du matin ouvre le fil (premier message de l\'agent)');
+    ok(/calme attendu/.test(dayAsk.answer) && /panier moyen mesuré/.test(dayAsk.answer) && /15/.test(dayAsk.answer), 'la reponse cite l\'explication REELLE du jour + le panier MESURE');
+    const fillFromAnswer = await page.evaluate(async () => {
+      const btn = [...document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer button')].find((el) => /Prépare-moi un post/.test(el.textContent));
       if (!btn) return { found: false };
       btn.click();
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 600));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionCreate');
       return { found: true, posted: posts.length, trigger: posts[0] && posts[0].trigger };
     });
-    ok(fill.found && fill.posted === 1 && fill.trigger === 'creux', 'jour calme -> « Prepare-moi un post » -> creation reelle');
+    ok(fillFromAnswer.found && fillFromAnswer.posted === 1 && fillFromAnswer.trigger === 'creux', 'l\'action de la reponse est REELLE : « Prepare-moi un post » -> propositionCreate');
     await page.waitForFunction(() => !window.mkBrief.busy, null, { timeout: 8000 });
     await page.waitForTimeout(300);
 
-    console.log('\n[TOURS] les propositions sont des tours ; une demande rend le tour du gerant');
-    const tours = await page.evaluate(() => {
-      const root = document.getElementById('staffCampaignsPage');
-      const turns = [...root.querySelectorAll('.mkw-fil > .mkw-turn, .mkw-fil > .mkw-turn-prop')];
-      const userTurns = [...root.querySelectorAll('.mkw-fil .mkw-turn.is-user .mkw-turn-user-body')].map((el) => el.textContent.trim());
-      const props = [...root.querySelectorAll('.mkw-fil .mkw-prop .mkw-prop-why')].map((el) => el.textContent);
-      // La demande db:22 doit produire : tour gerant (« soirée fluo ») PUIS la carte.
-      const userIdx = turns.findIndex((el) => el.classList.contains('is-user') && /soirée fluo/.test(el.textContent));
-      const cardIdx = turns.findIndex((el) => /voilà ce que je posterais/.test(el.textContent) && el.classList.contains('mkw-turn-prop'));
-      return { userTurns, props: props.length, order: userIdx >= 0 && cardIdx > userIdx, txt: root.querySelector('.mkw-fil').textContent };
-    });
-    ok(tours.userTurns.some((t) => t === 'soirée fluo'), 'la demande du gerant est SON tour, sa phrase citee depuis l\'objet serveur');
-    ok(tours.order, 'l\'ordre du dialogue est tenu : le tour du gerant PUIS la reponse de l\'agent');
-    ok(tours.props >= 4, `les propositions du matin sont toutes des tours (${tours.props})`);
-    ok(!/PERIME/.test(tours.txt) && !/JOURVISEPASSE/.test(tours.txt), 'hygiene de file : perimee et visee-passee ne s\'affichent JAMAIS');
-    ok((tours.txt.match(/Pluie annoncée samedi, les familles/g) || []).length === 1, 'le meme conseil mot pour mot ne s\'affiche qu\'une fois');
-
-    console.log('\n[ATELIER] ouvrir, adapter au reseau, copier, « Publié ? » = la seule porte');
-    await page.evaluate(async () => {
-      const card = [...document.querySelectorAll('#staffCampaignsPage .mkw-fil .mkw-prop')][0];
-      [...card.querySelectorAll('button')].find((el) => /Voir le post/.test(el.textContent)).click();
-      await new Promise((r) => setTimeout(r, 300));
-    });
-    const openCard = await page.evaluate(() => {
-      const card = document.querySelector('#staffCampaignsPage .mkw-fil .mkw-prop.is-open');
+    console.log('\n[PANNEAU -> CHAT] « Voir les faits » invite la carte DANS la conversation');
+    const shown = await page.evaluate(async () => {
+      const card = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-bcard')].find((el) => /plan au sec/.test(el.textContent));
+      card.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const prop = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-msg-prop .mkw-prop.is-open');
       return {
-        present: Boolean(card),
-        paper: (card && card.querySelector('.mkw-paper') || {}).textContent || '',
-        nets: card ? [...card.querySelectorAll('.mkw-net')].map((el) => el.textContent) : [],
-        noScore: card ? !/\d+\/100/.test(card.textContent) : false,
+        inChat: Boolean(prop),
+        paper: (prop && prop.querySelector('.mkw-paper') || {}).textContent || '',
+        nets: prop ? [...prop.querySelectorAll('.mkw-net')].map((el) => el.textContent) : [],
+        noScore: prop ? !/\d+\/100/.test(prop.textContent) : false,
       };
     });
-    ok(openCard.present && /pistes sont au sec/.test(openCard.paper), 'l\'atelier s\'ouvre dans le fil : le texte final pret a copier');
-    ok(openCard.nets.join(',') === 'Facebook,Instagram,Story' && openCard.noScore, 'reseaux du tenant, jamais de score interne');
+    ok(shown.inChat && /pistes sont au sec/.test(shown.paper), 'la carte arrive OUVERTE dans le chat : l\'agent montre son travail');
+    ok(shown.nets.join(',') === 'Facebook,Instagram,Story' && shown.noScore, 'reseaux du tenant, jamais de score interne');
     const variant = await page.evaluate(async () => {
-      const card = document.querySelector('#staffCampaignsPage .mkw-fil .mkw-prop.is-open');
+      const card = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-prop.is-open');
       [...card.querySelectorAll('.mkw-net')].find((el) => el.textContent === 'Facebook').click();
       await new Promise((r) => setTimeout(r, 500));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionAction' && p.propAction === 'variante');
-      const paper = (document.querySelector('#staffCampaignsPage .mkw-fil .mkw-prop.is-open .mkw-paper') || {}).textContent || '';
+      const paper = (document.querySelector('#staffCampaignsPage .mkw-chat .mkw-prop.is-open .mkw-paper') || {}).textContent || '';
       return { posted: posts.length, network: posts[0] && posts[0].network, paper };
     });
     ok(variant.posted === 1 && variant.network === 'facebook' && /fraichement écrit/.test(variant.paper), 'reseau non genere -> il s\'adapte (POST variante)');
     await page.evaluate(async () => {
-      const card = document.querySelector('#staffCampaignsPage .mkw-fil .mkw-prop.is-open');
+      const card = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-prop.is-open');
       [...card.querySelectorAll('button')].find((el) => /Copier le post/.test(el.textContent)).click();
       await new Promise((r) => setTimeout(r, 250));
     });
@@ -374,71 +395,73 @@ async function main() {
     });
     ok(published.posted === 1 && /la mesure court 14 jours/.test(published.compact), '« Oui » -> publiee + carte compactee (la mesure demarre)');
 
-    console.log('\n[COMPOSER] deux contrats : Créer prepare un livrable reel, la frappe survit');
+    console.log('\n[COMPOSER] Créer prepare un livrable reel qui ARRIVE dans le chat, la frappe survit');
     const compose = await page.evaluate(async () => {
-      // Mode Créer par defaut ; la frappe doit survivre a un re-render complet.
+      window.mkwMode('creer');
+      await new Promise((r) => setTimeout(r, 150));
       const input = document.getElementById('brAskInput');
       input.focus();
       input.value = 'un post pour la soirée fluo de samedi';
       input.dispatchEvent(new Event('input'));
-      document.querySelectorAll('#staffCampaignsPage .mkw-cell')[2].click();
-      await new Promise((r) => setTimeout(r, 300));
+      window.renderStaffCampaignsPage();
+      await new Promise((r) => setTimeout(r, 250));
       const survived = (document.getElementById('brAskInput') || {}).value || '';
       const focusAlive = document.activeElement && document.activeElement.id === 'brAskInput';
-      const boardBefore = document.querySelectorAll('#staffCampaignsPage .mkw-board .mkw-bcard').length;
+      const boardBefore = document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-bcard').length;
       [...document.querySelectorAll('#staffCampaignsPage .mkw-composer-send')].find((el) => /Préparer/.test(el.textContent)).click();
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 800));
       const posts = (window.__QA_POSTS__ || []).filter((p) => p.action === 'propositionCreate' && p.brief);
-      const cards = [...document.querySelectorAll('#staffCampaignsPage .mkw-board .mkw-bcard')];
+      const cards = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-bcard')];
       const fresh = cards.filter((el) => el.classList.contains('is-new'));
+      const chatProps = [...document.querySelectorAll('#staffCampaignsPage .mkw-chat .mkw-msg-prop')];
+      const lastProp = chatProps[chatProps.length - 1];
       return {
         survived, focusAlive,
         posted: posts.length, brief: posts.length ? posts[posts.length - 1].brief : '',
         cleared: (document.getElementById('brAskInput') || {}).value === '',
         boardBefore, boardAfter: cards.length,
-        freshCount: fresh.length, freshText: fresh.map((el) => el.textContent).join(' '),
-        userTurn: [...document.querySelectorAll('#staffCampaignsPage .mkw-fil .mkw-turn.is-user')].some((el) => /soirée fluo de samedi/.test(el.textContent)),
+        freshCount: fresh.length,
+        inChat: lastProp ? /soirée fluo/.test(lastProp.textContent) : false,
+        intro: /C'est prêt/.test(document.querySelector('#staffCampaignsPage .mkw-chat-thread').textContent),
       };
     });
     ok(compose.survived === 'un post pour la soirée fluo de samedi' && compose.focusAlive, 'le texte tape ET le focus survivent a un re-rendu complet');
-    ok(compose.posted === 1 && /soirée fluo/.test(compose.brief), '« Préparer » envoie propositionCreate avec la phrase du gerant');
-    ok(compose.cleared, 'l\'envoi vide la ligne');
-    ok(compose.boardAfter === compose.boardBefore + 1, `le livrable arrive dans « À valider » (${compose.boardBefore} -> ${compose.boardAfter})`);
-    ok(compose.freshCount === 1 && /soirée fluo/.test(compose.freshText), 'l\'action NEUVE porte son entree animee (.is-new), et elle seule');
-    ok(compose.userTurn, 'le fil rend le tour du gerant pour sa creation (objet serveur, pas un echo local)');
+    ok(compose.posted === 1 && /soirée fluo/.test(compose.brief) && compose.cleared, '« Préparer » envoie propositionCreate puis vide la ligne');
+    ok(compose.boardAfter === compose.boardBefore + 1 && compose.freshCount === 1, `la tache arrive dans « À valider » avec son entree animee (${compose.boardBefore} -> ${compose.boardAfter})`);
+    ok(compose.inChat && compose.intro, 'et l\'agent MONTRE la creation dans le chat (« C\'est prêt »), ouverte');
     const once = await page.evaluate(async () => {
+      // La fenetre de l'animation (420 ms) doit etre passee : apres elle, plus
+      // aucun repaint ne rejoue l'entree.
+      await new Promise((r) => setTimeout(r, 600));
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 200));
       return document.querySelectorAll('#staffCampaignsPage .mkw-bcard.is-new').length;
     });
-    ok(once === 0, 'CONTRE-PREUVE : l\'entree ne joue qu\'UNE fois (plus aucune .is-new au paint suivant)');
+    ok(once === 0, 'CONTRE-PREUVE : l\'entree animee ne joue qu\'UNE fois');
 
-    console.log('\n[DEMANDER] la reponse est assemblee du bundle, sourcee, et sait dire « je ne sais pas »');
+    console.log('\n[DEMANDER] reponse assemblee, sourcee ; « je ne sais pas » sans invention');
     const asked = await page.evaluate(async () => {
       window.mkwMode('demander');
       await new Promise((r) => setTimeout(r, 150));
-      const chip = [...document.querySelectorAll('#staffCampaignsPage .mkw-chip-suggest')].find((el) => /Remplir/.test(el.textContent));
+      const chip = [...document.querySelectorAll('#staffCampaignsPage .mkw-chip-suggest')].find((el) => /Que fait Bowling Arlon/.test(el.textContent));
       if (chip) chip.click();
       await new Promise((r) => setTimeout(r, 200));
       const filled = (document.getElementById('brAskInput') || {}).value || '';
       const postsBefore = (window.__QA_POSTS__ || []).length;
       [...document.querySelectorAll('#staffCampaignsPage .mkw-composer-send')].find((el) => /Demander/.test(el.textContent)).click();
       await new Promise((r) => setTimeout(r, 400));
-      const answer = document.querySelector('#staffCampaignsPage .mkw-turn-answer:last-of-type');
+      const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
+      const answer = answers[answers.length - 1];
       return {
         filled,
         postsDelta: (window.__QA_POSTS__ || []).length - postsBefore,
         answer: answer ? answer.textContent : '',
-        actions: answer ? [...answer.querySelectorAll('button')].map((el) => el.textContent.trim()) : [],
         source: (answer && answer.querySelector('.mkw-ans-src') || {}).textContent || '',
       };
     });
-    ok(/^Comment remplir/.test(asked.filled), 'la suggestion remplit la question ET bascule le mode');
-    ok(asked.postsDelta === 0, 'CONTRE-PREUVE : une question ne declenche AUCUN appel serveur (reponse locale)');
-    ok(/très calme attendu/.test(asked.answer), 'la reponse cite l\'explication REELLE du radar (phrase serveur)');
-    ok(/panier moyen mesuré/.test(asked.answer) && /15/.test(asked.answer), 'et la valeur du creux vient du panier MESURE du bundle');
+    ok(/^Que fait Bowling Arlon/.test(asked.filled), 'la suggestion remplit la question ET bascule le mode');
+    ok(asked.postsDelta === 0 && /offre étudiants/.test(asked.answer), 'CONTRE-PREUVE : reponse LOCALE (zero appel serveur), et elle cite la veille reelle');
     ok(/assemblé/.test(asked.source), 'la SOURCE de la reponse est dite a l\'ecran');
-    ok(asked.actions.some((a) => /Voir la proposition|Prépare-moi un post/.test(a)), 'la reponse porte une action REELLE');
     const unknown = await page.evaluate(async () => {
       const input = document.getElementById('brAskInput');
       input.value = 'quelle est la capitale du danemark';
@@ -453,39 +476,38 @@ async function main() {
     ok(/Je ne sais pas encore analyser ça librement/.test(unknown.text) && unknown.postsDelta === 0,
       'question hors perimetre -> l\'agent DIT qu\'il ne sait pas, n\'invente rien, n\'appelle rien');
 
-    console.log('\n[TABLEAU] trois groupes honnetes, chaque rangee est reelle');
-    const board = await page.evaluate(() => {
-      const root = document.getElementById('staffCampaignsPage');
-      const groups = [...root.querySelectorAll('.mkw-bgroup')];
-      const heads = groups.map((g) => (g.querySelector('h3') || {}).textContent || '');
-      const validate = groups[0] ? groups[0].textContent : '';
-      const running = groups[1] ? groups[1].textContent : '';
-      const watch = groups[2] ? groups[2].textContent : '';
+    console.log('\n[HISTORIQUE PERSONNEL] chaque code d\'acces a SA conversation');
+    const personal = await page.evaluate(async () => {
+      const keyQa = `pinlane-mkchat:libramont:${state.staffAuthSession.member.id}`;
+      const storedQa = JSON.parse(localStorage.getItem(keyQa) || '[]');
+      // Un AUTRE compte se connecte sur le meme poste : son chat est VIERGE.
+      state.staffAuthSession.member.id = 'directeur-2';
+      window.renderStaffCampaignsPage();
+      await new Promise((r) => setTimeout(r, 300));
+      const otherHero = Boolean(document.querySelector('#staffCampaignsPage .mkw-chat.is-hero'));
+      const otherThread = window.mkw.thread.length;
+      // Retour au premier compte : SON historique revient.
+      state.staffAuthSession.member.id = 'qa';
+      window.renderStaffCampaignsPage();
+      await new Promise((r) => setTimeout(r, 300));
+      const backThread = window.mkw.thread.length;
+      const backHasFluo = /soirée fluo/.test((document.querySelector('#staffCampaignsPage .mkw-chat-thread') || {}).textContent || '');
+      return { storedCount: storedQa.length, otherHero, otherThread, backThread, backHasFluo };
+    });
+    ok(personal.storedCount >= 3, `l'historique du compte est PERSISTE (${personal.storedCount} tours stockes sous sa cle)`);
+    ok(personal.otherHero && personal.otherThread === 0, 'un AUTRE code d\'acces ouvre un chat VIERGE (jamais le fil d\'un collegue)');
+    ok(personal.backThread >= 3 && personal.backHasFluo, 'le retour du premier compte RESTAURE sa conversation');
+    const cleared = await page.evaluate(async () => {
+      window.mkwChatClear();
+      await new Promise((r) => setTimeout(r, 250));
       return {
-        heads,
-        badge: (groups[0] && groups[0].querySelector('.mkw-bcount') || {}).textContent || '',
-        facts: (groups[0] && [...groups[0].querySelectorAll('.mkw-bcard')] || []).every((el) => /Voir les faits/.test(el.textContent)),
-        pending: /verdict le 26 juillet/.test(running),
-        watchCreux: /calme/.test(watch),
-        watchArlon: /Bowling Arlon a bougé/.test(watch),
-        watchFoire: /Foire de Libramont/.test(watch),
-        noLearning: !/J'apprends encore/.test(watch),
+        hero: Boolean(document.querySelector('#staffCampaignsPage .mkw-chat.is-hero')),
+        stored: JSON.parse(localStorage.getItem(`pinlane-mkchat:libramont:qa`) || '[]').length,
       };
     });
-    ok(board.heads.join('|') === 'À valider|En cours|À surveiller', `les trois groupes du tableau (${board.heads.join(', ')})`);
-    ok(Number(board.badge) >= 4 && board.facts, 'chaque carte « À valider » compte et porte « Voir les faits »');
-    ok(board.pending, '« En cours » = la mesure J+14 REELLE (verdict date), pas un spinner inventé');
-    ok(board.watchCreux && board.watchArlon && board.watchFoire, '« À surveiller » : jour calme + concurrent + evenement, tous reels');
-    ok(board.noLearning, 'CONTRE-PREUVE : a 210 j de recul, AUCUNE ligne « j\'apprends encore » (elle serait fausse)');
-    const goFacts = await page.evaluate(async () => {
-      const card = document.querySelector('#staffCampaignsPage .mkw-board .mkw-bcard');
-      const why = (card.querySelector('.mkw-bcard-why') || {}).textContent || '';
-      card.click();
-      await new Promise((r) => setTimeout(r, 400));
-      const open = document.querySelector('#staffCampaignsPage .mkw-fil .mkw-prop.is-open');
-      return { why, opened: Boolean(open), match: open ? open.textContent.includes(why.slice(0, 30)) : false };
-    });
-    ok(goFacts.opened && goFacts.match, '« Voir les faits » ouvre LA carte du fil (meme objet, pas une copie)');
+    ok(cleared.hero && cleared.stored === 0, '« Nouvelle conversation » vide LE SIEN (accueil restaure, stockage vide)');
+
+    console.log('\n[PANNEAU calme + CENTRE qui gouverne]');
     const calm = await page.evaluate(async () => {
       const saved = JSON.stringify(window.mkBrief.data);
       const b = window.mkBrief.data;
@@ -503,33 +525,29 @@ async function main() {
       await new Promise((r) => setTimeout(r, 250));
       return { empties, fake };
     });
-    ok(calm.empties >= 2 && calm.fake <= 1, `CONTRE-PREUVE : sans rien a faire, le tableau est CALME (${calm.empties} lignes vides honnetes, ${calm.fake} rangee(s))`);
-
-    console.log('\n[CENTRE] le centre selectionne gouverne TOUT : bascule = remise a zero');
+    ok(calm.empties >= 2 && calm.fake <= 1, `CONTRE-PREUVE : sans rien a faire, le panneau est CALME (${calm.empties} lignes vides honnetes)`);
     const scope = await page.evaluate(async () => {
       state.adminCenterId = 'gembloux';
       window.renderStaffCampaignsPage();
       const deadline = Date.now() + 6000;
-      while (Date.now() < deadline && !/Brief de Gembloux/.test((document.querySelector('#staffCampaignsPage .mkw-brief-text') || {}).textContent || '')) {
+      while (Date.now() < deadline && !/Brief de Gembloux/.test((document.querySelector('#staffCampaignsPage .mkw-hello-brief, #staffCampaignsPage .mkw-msg-text') || {}).textContent || '')) {
         await new Promise((r) => setTimeout(r, 80));
       }
-      const text = (document.querySelector('#staffCampaignsPage .mkw-brief-text') || {}).textContent || '';
+      const text = (document.querySelector('#staffCampaignsPage .mkw-hello-brief, #staffCampaignsPage .mkw-msg-text') || {}).textContent || '';
       const centers = [...(window.__QA_BRIEF_CENTERS__ || [])];
       const thread = window.mkw.thread.length;
-      const learning = /J'apprends encore/.test(document.querySelector('#staffCampaignsPage .mkw-board').textContent);
+      const learning = /J'apprends encore/.test(document.querySelector('#staffCampaignsPage .mkw-panel').textContent);
       state.adminCenterId = 'libramont';
       window.renderStaffCampaignsPage();
       const back = Date.now() + 6000;
-      while (Date.now() < back && !/Bowling Arlon/.test((document.querySelector('#staffCampaignsPage .mkw-turn-brief') || {}).textContent || '')) {
+      while (Date.now() < back && !/Bowling Arlon/.test((document.querySelector('#staffCampaignsPage .mkw-panel') || {}).textContent || '')) {
         await new Promise((r) => setTimeout(r, 80));
       }
-      return { text, centers, thread, learning, restored: /Bowling Arlon/.test((document.querySelector('#staffCampaignsPage .mkw-turn-brief') || {}).textContent || '') };
+      return { text, centers, thread, learning };
     });
-    ok(/Brief de Gembloux/.test(scope.text), 'basculer de centre RECHARGE le brief du bon centre (plus jamais la data d\'un autre)');
-    ok(scope.centers.includes('gembloux'), `le fetch porte le centre selectionne (${scope.centers.join(' -> ')})`);
-    ok(scope.thread === 0, 'les tours de session meurent avec le changement de centre');
-    ok(scope.learning, 'a 8 j de donnees, le tableau DIT « j\'apprends encore » (l\'honnetete suit le centre)');
-    ok(scope.restored, 'le retour a Libramont restaure son bureau');
+    ok(/Brief de Gembloux/.test(scope.text) && scope.centers.includes('gembloux'), 'basculer de centre RECHARGE le brief du bon centre (fetch scope)');
+    ok(scope.thread === 0 && scope.learning, 'le chat de l\'autre centre est le SIEN, et a 8 j de donnees le panneau DIT « j\'apprends encore »');
+
 
     console.log('\n[PLAN] les semaines, leurs poignees, l\'honnetete');
     await go('plan');

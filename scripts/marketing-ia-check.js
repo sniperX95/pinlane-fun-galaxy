@@ -332,7 +332,7 @@ async function main() {
     const dayAsk = await page.evaluate(async () => {
       const minis = [...document.querySelectorAll('#staffCampaignsPage .mkw-panel .mkw-mini')];
       minis[9].click(); // le jour CALME du mock (sans proposition liee)
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 1000));
       const answer = document.querySelector('#staffCampaignsPage .mkw-chat .mkw-turn-answer');
       const heroGone = !document.querySelector('#staffCampaignsPage .mkw-chat.is-hero');
       return {
@@ -449,7 +449,7 @@ async function main() {
       const filled = (document.getElementById('brAskInput') || {}).value || '';
       const postsBefore = (window.__QA_POSTS__ || []).length;
       [...document.querySelectorAll('#staffCampaignsPage .mkw-composer-send')].find((el) => /Demander/.test(el.textContent)).click();
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 1000));
       const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
       const answer = answers[answers.length - 1];
       return {
@@ -468,7 +468,7 @@ async function main() {
       input.dispatchEvent(new Event('input'));
       const postsBefore = (window.__QA_POSTS__ || []).length;
       window.mkwSend();
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 1000));
       const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
       const last = answers[answers.length - 1];
       return { text: last ? last.textContent : '', postsDelta: (window.__QA_POSTS__ || []).length - postsBefore };
@@ -507,29 +507,43 @@ async function main() {
     });
     ok(cleared.hero && cleared.stored === 0, '« Nouvelle conversation » vide LE SIEN (accueil restaure, stockage vide)');
 
-    console.log('\n[MOTION] les tours frais s\'animent, un repaint ne rejoue JAMAIS le fil');
+    console.log('\n[MOTION] on VOIT l\'agent travailler, et un repaint ne rejoue JAMAIS le fil');
     const motion = await page.evaluate(async () => {
       const input = document.getElementById('brAskInput');
       input.value = 'que fait bowling arlon ce matin';
       input.dispatchEvent(new Event('input'));
       window.mkwSend();
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 150));
+      // PENDANT : la bulle du gerant est entree, l'etat de travail vit (marque
+      // qui pulse + verbe VRAI qui shimmer), la reponse n'existe pas encore.
+      const during = {
+        state: (document.querySelector('#staffCampaignsPage .mkw-msg.is-state .mkw-state-word') || {}).textContent || '',
+        busy: Boolean(document.querySelector('#staffCampaignsPage .mkw-msg.is-state[aria-busy="true"]')),
+        userIn: Boolean([...document.querySelectorAll('#staffCampaignsPage .mkw-msg.is-user')].pop()?.classList.contains('is-in')),
+        answerYet: /offre étudiants/.test((document.querySelector('#staffCampaignsPage .mkw-chat-thread') || {}).textContent || ''),
+      };
+      await new Promise((r) => setTimeout(r, 900));
+      // APRES : l'etat est MORT, la reponse est entree avec sa propre animation.
       const msgs = [...document.querySelectorAll('#staffCampaignsPage .mkw-chat-thread .mkw-msg')];
-      const freshIn = msgs.slice(-2).every((el) => el.classList.contains('is-in'));
-      const stagger = (msgs[msgs.length - 1].getAttribute('style') || '').includes('animation-delay');
-      const oldQuiet = msgs.slice(0, -2).every((el) => !el.classList.contains('is-in'));
+      const after = {
+        stateGone: !document.querySelector('#staffCampaignsPage .mkw-msg.is-state'),
+        answered: /offre étudiants/.test(msgs[msgs.length - 1] ? msgs[msgs.length - 1].textContent : ''),
+        oldQuiet: msgs.slice(0, -1).every((el) => !el.classList.contains('is-in')),
+      };
       // La fenetre passe : un repaint n'anime plus rien.
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 400));
       window.renderStaffCampaignsPage();
       await new Promise((r) => setTimeout(r, 150));
       const replay = document.querySelectorAll('#staffCampaignsPage .mkw-chat-thread .mkw-msg.is-in').length;
-      return { freshIn, stagger, oldQuiet, replay };
+      return { during, after, replay };
     });
-    ok(motion.freshIn && motion.stagger, 'la bulle du gerant puis la reponse entrent en CASCADE (is-in + delay)');
-    ok(motion.oldQuiet, 'les tours deja vus restent immobiles pendant la frappe');
+    ok(/J'assemble depuis le brief/.test(motion.during.state) && motion.during.busy, 'PENDANT : l\'etat de travail vit (verbe VRAI + aria-busy), facon Claude');
+    ok(motion.during.userIn && !motion.during.answerYet, 'la bulle du gerant entre TOUT DE SUITE, la reponse pas encore');
+    ok(motion.after.stateGone && motion.after.answered, 'APRES : l\'etat MEURT avec le travail, la reponse entre (jamais de spinner orphelin)');
+    ok(motion.after.oldQuiet, 'les tours deja vus restent immobiles');
     ok(motion.replay === 0, 'CONTRE-PREUVE : apres la fenetre, un repaint ne rejoue AUCUNE entree');
-    const dotsIdle = await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-wait-dots').length);
-    ok(dotsIdle === 0, 'les points d\'attente ne vivent que pendant une VRAIE requete (absents au repos)');
+    const stateIdle = await page.evaluate(() => document.querySelectorAll('#staffCampaignsPage .mkw-msg.is-state').length);
+    ok(stateIdle === 0, 'l\'etat de travail n\'existe JAMAIS au repos');
 
     console.log('\n[PANNEAU calme + CENTRE qui gouverne]');
     const calm = await page.evaluate(async () => {

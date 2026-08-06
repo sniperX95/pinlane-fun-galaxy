@@ -3868,7 +3868,7 @@
   // recree tout le DOM : sans ce compteur, chaque frappe rejouerait
   // l'animation de TOUT le fil. Seuls les tours au-dela de `painted`
   // s'animent, et le compteur les absorbe une fois leur entree jouee.
-  const mkw = { mode: 'creer', thread: [], knownKeys: null, loadedCenter: '', focusRival: '', panelOpen: true, painted: 0 };
+  const mkw = { mode: 'creer', thread: [], knownKeys: null, loadedCenter: '', focusRival: '', panelOpen: true, painted: 0, stateWord: null };
   window.mkw = mkw;
 
   // Motion à un coup : la toile ne se refade qu'en ARRIVANT sur une vue (ou à
@@ -5052,7 +5052,14 @@
     return `pinlane-mkchat:${state.adminCenterId || 'libramont'}:${member}`;
   }
   function mkwChatSave() {
-    try { localStorage.setItem(mkwChatKey(), JSON.stringify(mkw.thread.slice(-30))); } catch (error) { /* stockage plein ou prive : le chat reste en memoire */ }
+    // Les drapeaux d'animation (answerFresh, pendingAnswer) sont un etat de
+    // SEANCE : jamais persistes, sinon un historique restaure rejouerait des
+    // entrees ou garderait une question sans reponse.
+    const clean = mkw.thread.slice(-30).map((t) => {
+      const { answerFresh, pendingAnswer, ...rest } = t;
+      return rest;
+    }).filter((t) => !t.pendingAnswer);
+    try { localStorage.setItem(mkwChatKey(), JSON.stringify(clean)); } catch (error) { /* stockage plein ou prive : le chat reste en memoire */ }
   }
   function mkwChatLoad() {
     let stored = [];
@@ -5116,8 +5123,13 @@
         return `${t.intro ? `<article class="mkw-msg is-agent${introIn.cls}"${introIn.style}><div class="mkw-msg-head">${mkwAgentMark()}<b>${esc(t.intro)}</b></div></article>` : ''}
           <div class="mkw-msg is-agent mkw-msg-prop${cardIn.cls}"${cardIn.style}>${mkwPropCard(p)}</div>`;
       }
-      const userIn = inCls(index);
-      const agentIn = inCls(index);
+      const userIn = t.answerFresh ? { cls: '', style: '' } : inCls(index);
+      // Pendant l'assemblage, seul le tour du gerant existe : la reponse
+      // arrive au tour suivant, avec sa propre entree.
+      if (t.pendingAnswer) {
+        return `<article class="mkw-msg is-user${userIn.cls}"${userIn.style}><div class="mkw-msg-user">${esc(t.q)}</div></article>`;
+      }
+      const agentIn = t.answerFresh ? { cls: ' is-in', style: '' } : inCls(index);
       const facts = (t.facts || []).map((f) => `<span class="mkw-ans-fact">${brProse(f)}</span>`).join('');
       const acts = (t.actions || []).map((a, i) => `<button type="button" class="${i === 0 ? 'pv2-btn primary' : 'mkw-link'}" onclick="${a.js}">${esc(a.label)}</button>`).join('');
       return `<article class="mkw-msg is-user${userIn.cls}"${userIn.style}><div class="mkw-msg-user">${esc(t.q)}</div></article>
@@ -5130,11 +5142,15 @@
         <p class="mkw-ans-src">${esc(t.source || 'assemblé depuis le brief du matin, sans invention')}</p>
       </article>`;
     }).join('');
-    // L'attente du mode Creer : une VRAIE requete est en vol (aria-busy). Les
-    // points respirent tant qu'elle tourne : jamais un theatre pour une
-    // reponse instantanee (le mode Demander repond sans attente simulee).
-    const pending = mkBrief.busy === 'ask'
-      ? `<article class="mkw-msg is-agent is-pending is-in" role="status" aria-busy="true"><div class="mkw-msg-head">${mkwAgentMark()}<b>Je prépare ça</b><span class="mkw-wait-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="mkw-msg-sub">une requête au moteur du centre</span></div></article>`
+    // L'ETAT DE TRAVAIL (demande Movsar : « voir l'IA reflechir », facon
+    // Claude : la marque qui pulse + le verbe qui shimmer). Le verbe est
+    // toujours VRAI : « J'écris le post » pendant la requete reelle du mode
+    // Creer ; « J'assemble depuis le brief » pendant l'assemblage local d'une
+    // reponse. Il disparait DES que le resultat entre : jamais un spinner qui
+    // tourne pour rien.
+    const stateWord = mkBrief.busy === 'ask' ? 'J\'écris le post' : mkw.stateWord;
+    const pending = stateWord
+      ? `<article class="mkw-msg is-agent is-state is-in" role="status" aria-busy="true"><div class="mkw-msg-head">${mkwAgentMark()}<b class="mkw-state-word">${esc(stateWord)}</b></div></article>`
       : '';
     return turns + pending;
   }
@@ -5311,15 +5327,37 @@
     setTimeout(() => { const el = document.getElementById('brAskInput'); if (el) el.focus(); }, 60);
   };
 
+  // L'assemblage d'une reponse : la bulle du gerant entre TOUT DE SUITE, puis
+  // l'etat « J'assemble depuis le brief » vit ~600 ms (le vrai travail local :
+  // router la question, lire le bundle), puis la reponse entre. Le mot d'etat
+  // decrit un travail qui a REELLEMENT lieu et meurt avec lui.
+  function mkwAskFlow(question) {
+    if (mkw.stateWord) return;
+    const pendingUser = { kind: 'qa', q: question, title: '', pendingAnswer: true };
+    mkw.thread.push(pendingUser);
+    mkw.stateWord = 'J\'assemble depuis le brief du matin';
+    mkBrief.tab = 'feed';
+    renderStaffCampaignsPage();
+    mkwScrollChatEnd();
+    setTimeout(() => {
+      const answer = mkwAnswer(question);
+      const idx = mkw.thread.indexOf(pendingUser);
+      // answerFresh : SEULE la reponse joue son entree a l'arrivee ; la bulle
+      // du gerant, deja entree pendant l'assemblage, ne rejoue jamais.
+      if (idx >= 0) mkw.thread[idx] = { kind: 'qa', ...answer, answerFresh: true };
+      if (mkw.thread.length > 14) mkw.thread.shift();
+      mkw.stateWord = null;
+      mkwChatSave();
+      renderStaffCampaignsPage();
+      mkwScrollChatEnd();
+    }, 620);
+  }
+
   window.mkwAsk = function () {
     const q = String(mkBrief.askDraft || '').trim();
     if (q.length < 4) { toast('Pose ta question en quelques mots.'); return; }
-    mkw.thread.push({ kind: 'qa', ...mkwAnswer(q) });
-    if (mkw.thread.length > 14) mkw.thread.shift();
-    mkwChatSave();
     mkBrief.askDraft = '';
-    renderStaffCampaignsPage();
-    mkwScrollChatEnd();
+    mkwAskFlow(q);
   };
 
   // Question sur UN jour (mini-radar du panneau, rangee « a surveiller ») :
@@ -5328,12 +5366,7 @@
     const b = mkBrief.data;
     const day = b && (b.radar || []).find((d) => d.date === date);
     if (!day) return;
-    mkw.thread.push({ kind: 'qa', ...mkwAnswer(`Que dit ${brFrDay(date)} ?`) });
-    if (mkw.thread.length > 14) mkw.thread.shift();
-    mkwChatSave();
-    mkBrief.tab = 'feed';
-    renderStaffCampaignsPage();
-    mkwScrollChatEnd();
+    mkwAskFlow(`Que dit ${brFrDay(date)} ?`);
   };
 
   // ── Le composer : DEUX contrats, pas deux skins ──────────────────────────
@@ -6350,10 +6383,14 @@
       if (freshKeys.length) setTimeout(() => { freshKeys.forEach((k) => mkw.knownKeys.add(k)); }, 420);
     }
     // Meme fenetre pour l'entree des tours du chat : les tours frais gardent
-    // leur animation a travers un repaint immediat, puis sont absorbes.
-    if (mkw.thread.length > mkw.painted) {
+    // leur animation a travers un repaint immediat, puis sont absorbes (le
+    // flag answerFresh d'une reponse fraichement arrivee meurt avec elle).
+    if (mkw.thread.length > mkw.painted || mkw.thread.some((t) => t.answerFresh)) {
       const target = mkw.thread.length;
-      setTimeout(() => { if (mkw.painted < target) mkw.painted = target; }, 520);
+      setTimeout(() => {
+        if (mkw.painted < target) mkw.painted = target;
+        mkw.thread.forEach((t) => { if (t.answerFresh) delete t.answerFresh; });
+      }, 520);
     }
     // Deep-link avec intention : le concurrent cible arrive en evidence, puis
     // la mise en avant s'eteint (etat consomme, pas un marquage a vie).

@@ -9882,13 +9882,18 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 @keyframes mkwAgentIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes mkwMarkPop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: none; opacity: 1; } }
 
-/* L'ATTENTE VRAIE (mode Creer, requete en vol) : trois points qui respirent
-   en vague. Jamais joue pour une reponse instantanee. */
-.mkw-wait-dots { display: inline-flex; align-items: center; gap: 4px; align-self: center; }
-.mkw-wait-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); opacity: 0.3; animation: mkwWait 1.05s var(--mkw-io) infinite; }
-.mkw-wait-dots i:nth-child(2) { animation-delay: 160ms; }
-.mkw-wait-dots i:nth-child(3) { animation-delay: 320ms; }
-@keyframes mkwWait { 0%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+/* L'ETAT DE TRAVAIL (facon Claude : la marque pulse, le verbe shimmer). Le
+   verbe decrit un travail REEL en cours (« J'écris le post » = requete en
+   vol ; « J'assemble depuis le brief » = assemblage local) et meurt avec
+   lui : jamais un spinner qui tourne pour rien. Le balayage de luminosite
+   est un pattern d'attente, pas de la typo decorative. */
+.mkw-msg.is-state .mkw-msg-head { margin-bottom: 0; }
+.mkw-msg.is-state .mkw-mark { animation: mkwMarkWork 1.9s var(--mkw-io) infinite; }
+.mkw-msg.is-state .mkw-mark svg { animation: mkwMarkSpin 3.6s linear infinite; }
+@keyframes mkwMarkWork { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+@keyframes mkwMarkSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.mkw-state-word { font-weight: 500; color: var(--muted); background: linear-gradient(100deg, var(--muted) 38%, var(--text) 50%, var(--muted) 62%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: mkwStateSweep 1.6s var(--mkw-io) infinite; }
+@keyframes mkwStateSweep { from { background-position: 130% 0; } to { background-position: -110% 0; } }
 
 /* LE COMPOSER : la piece signature. Ancre en bas du chat quand le fil vit ;
    au centre sur l'accueil. Fond plein + voile (jamais de verre). */

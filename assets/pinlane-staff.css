@@ -13891,6 +13891,10 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
   border: 0; background: none; outline: none;
   color: var(--text); font-family: inherit; font-size: 13.5px;
 }
+/* UN SEUL anneau : le conteneur s'allume (focus-within) ; la regle globale
+   input:focus posait un second ring accent-soft sur l'input nu (le meme
+   double cadre que sur le composer marketing, retour Movsar). */
+.crm-search input:focus, .crm-search input:focus-visible { outline: none; box-shadow: none; }
 .crm-search input::placeholder { color: var(--faint); }
 /* La croix native de `type="search"` est masquee : elle differe d'un navigateur
    a l'autre et ne suit pas le theme sombre. */

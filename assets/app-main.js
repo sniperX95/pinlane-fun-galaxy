@@ -12449,13 +12449,19 @@ function getStaffClientMetrics(rows = getStaffClientRows(), reservations = getSt
   };
 }
 
+let staffClientQueryTimer = 0;
 function setStaffClientQuery(value) {
   state.staffClientQuery = value || '';
-  // Le rendu detruit le champ (innerHTML complet) : sans ca le focus part a
-  // chaque lettre et la recherche est inutilisable - taper « anniversaire »
-  // demandait douze clics.
-  if (typeof PinlaneMotion !== 'undefined') PinlaneMotion.garderFocus(renderStaffClientsPage);
-  else renderStaffClientsPage();
+  // DEBOUNCE 120 ms (retour Movsar 2026-08-07 : « c'est super lent quand
+  // j'écris ») : chaque lettre déclenchait un rebuild innerHTML COMPLET de la
+  // page (liste + fiche), synchrone, dans la frappe. L'état, lui, suit chaque
+  // lettre (rien ne se perd) ; le rendu n'a lieu qu'à la pause de frappe.
+  // garderFocus restaure champ et curseur au rendu (bug « douze clics »).
+  clearTimeout(staffClientQueryTimer);
+  staffClientQueryTimer = setTimeout(() => {
+    if (typeof PinlaneMotion !== 'undefined') PinlaneMotion.garderFocus(renderStaffClientsPage);
+    else renderStaffClientsPage();
+  }, 120);
 }
 
 function selectStaffClient(id) {

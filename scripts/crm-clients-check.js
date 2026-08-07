@@ -379,6 +379,45 @@ async function main() {
     ok(note.posts >= 1 && /arachide/.test(note.body || ''), 'note sauvegardée au blur (POST clientNotes)');
 
 
+    console.log('\n[RECHERCHE] frappe FLUIDE (un seul rendu par rafale) + focus unique');
+    const typing = await page.evaluate(async () => {
+      // Chaque lettre déclenchait un rebuild innerHTML COMPLET, synchrone,
+      // DANS la frappe (retour Movsar : « super lent quand j'écris »). On
+      // compte les rendus pendant une rafale de 10 lettres : le debounce doit
+      // les coalescer en UN seul, sans perdre une lettre ni le focus.
+      const orig = window.renderStaffClientsPage;
+      let paints = 0;
+      window.renderStaffClientsPage = function (...args) { paints += 1; return orig.apply(this, args); };
+      const input = document.querySelector('#staffClientsPage .crm-search input');
+      input.focus();
+      const word = 'lefevre 06';
+      for (const ch of word) {
+        input.value = (input.value || '') + ch;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 12));
+      }
+      const paintsDuringBurst = paints;
+      await new Promise((r) => setTimeout(r, 350));
+      window.renderStaffClientsPage = orig;
+      const fresh = document.querySelector('#staffClientsPage .crm-search input');
+      const style = getComputedStyle(fresh, null);
+      fresh.focus();
+      return {
+        paintsDuringBurst,
+        paintsTotal: paints,
+        value: fresh.value,
+        stateValue: state.staffClientQuery,
+        focusAlive: document.activeElement === fresh,
+        ring: getComputedStyle(document.activeElement).boxShadow,
+      };
+    });
+    ok(typing.paintsDuringBurst === 0 && typing.paintsTotal === 1,
+      `10 lettres = UN rendu apres la pause, zero pendant la rafale (${typing.paintsDuringBurst} pendant, ${typing.paintsTotal} total)`);
+    ok(typing.value === 'lefevre 06' && typing.stateValue === 'lefevre 06', 'aucune lettre perdue (champ et etat identiques)');
+    ok(typing.focusAlive, 'le focus survit au rendu differe');
+    ok(typing.ring === 'none', 'UN SEUL anneau de focus : l\'input nu ne dessine rien (le conteneur s\'allume)');
+    await page.evaluate(async () => { window.setStaffClientQuery(''); await new Promise((r) => setTimeout(r, 250)); });
+
     console.log('\n[TRI] les en-têtes de colonnes restent triables');
     await page.evaluate(() => { setStaffClientSegment('tous'); });
     await page.waitForTimeout(200);

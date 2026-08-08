@@ -114,7 +114,7 @@ const { listCentersForSession } = require('../lib/center-scope');
 const { sessionHasPermission } = require('../lib/staff-auth');
 const { getPool, listCustomRequests, updateCustomRequestStatus, updateOpsJobStatus } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
-const { requireStaffPermission } = require('../lib/staff-auth');
+const { requireStaffPermission, isCenterForeignToSession } = require('../lib/staff-auth');
 const { buildFounderCockpit, buildFounderAgents, buildFounderIncidents, buildFounderClients } = require('../lib/founder-cockpit');
 const { buildFounderCenters, buildFounderTeam } = require('../lib/founder-admin');
 const { buildFounderCatalog, buildClientCatalog, upsertFormuleOverride, resetFormuleOverride, upsertClientFormuleOverride, resetClientFormuleOverride, dismissClientErrorGroup } = require('../lib/catalog-overrides');
@@ -899,6 +899,17 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   if (action === 'saveCenter') {
     const session = await requireStaffPermission(req, res, ['settings.manage'], { centerId: 'all' });
     if (!session) return;
+    // La CIBLE de cette action ne voyage pas dans body.centerId mais dans
+    // body.center.id, et l'appel se fait en portee 'all' : la garde
+    // inter-clients de requireStaffPermission ne peut donc pas la voir. Sans ce
+    // controle, une direction pouvait RENOMMER et FERMER (status closed) le
+    // centre d'un AUTRE client, ce qui coupe son tunnel de reservation. Prouve
+    // par la section [G] de scripts/cross-client-center-scope-check.js.
+    // Un id inconnu reste permis : c'est la creation d'un centre
+    // (submitNewCenter), pas une prise de controle.
+    if (await isCenterForeignToSession(session, body.center && body.center.id)) {
+      throw createHttpError('Acces centre insuffisant.', 403, true);
+    }
     const pool = getPool();
     let center;
     try {

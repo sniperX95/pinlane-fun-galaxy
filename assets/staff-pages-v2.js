@@ -2689,6 +2689,9 @@
   const PV2_AUDIT_DENIED = {
     '401_no_session': 'Sans session',
     '403_center_scope': 'Autre centre',
+    // Motif distinct de « Autre centre » a dessein : viser le centre d'un AUTRE
+    // CLIENT est la ligne la plus grave que ce journal puisse porter.
+    '403_cross_client': 'Autre client',
     '403_permission': 'Droits insuffisants',
   };
 

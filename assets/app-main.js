@@ -8446,6 +8446,17 @@ function validateEstablishmentForm() {
       invalid.push(input);
     }
   });
+  // Couleur du tunnel : facultative, mais une saisie qui n'est PAS une couleur
+  // ne doit pas partir en silence (le serveur la jetterait sans rien dire, et
+  // le gérant croirait sa marque enregistrée). Un contraste faible, lui, ne
+  // bloque jamais : c'est un avertissement, affiché sous le champ.
+  const accentInput = document.getElementById('estab-accent');
+  const accentRaw = accentInput ? String(accentInput.value || '').trim() : '';
+  const brandApi = establishmentBrandApi();
+  if (accentInput && accentRaw && (!brandApi || !brandApi.isValidHex(accentRaw))) {
+    markEstablishmentFieldError(accentInput, 'Couleur du tunnel : un code hexadécimal comme #1f6f43, ou vide pour aucune marque.');
+    invalid.push(accentInput);
+  }
   // Cohérence : la capacité de secours ne peut pas être sous la capacité
   // confort (le serveur la relèverait en silence).
   const normalCap = Number(document.getElementById('estab-normalCap')?.value);
@@ -8562,6 +8573,11 @@ async function submitCenterConfig(centerId) {
     classification,
     customActivities: establishmentCustomActivitiesDraft.map(item => ({ id: item.id, label: item.label }))
   };
+  // La marque du centre voyage avec le reste de sa config. `undefined` = champ
+  // absent ou saisie refusée : on ne l'ajoute pas au payload, donc le serveur
+  // conserve la couleur existante au lieu de l'effacer.
+  const branding = collectEstablishmentBranding();
+  if (branding !== undefined) config.branding = branding;
   const name = establishmentInputValue('estab-name').trim();
   submitCenterConfigInFlight = true;
   const saveBtn = document.getElementById('estabSaveBtn');
@@ -8617,6 +8633,98 @@ async function setEstablishmentCenterStatus(centerId, status) {
   } catch (error) {
     toast(error?.message || 'Changement de statut impossible.');
   }
+}
+
+// ── LA COULEUR DU TUNNEL, SAISIE ICI ────────────────────────────────────────
+//
+// Le tunnel public d'un centre porte SA marque depuis que le magenta Fun Galaxy
+// a quitté assets/pinlane-client.css. Cette couleur était une donnée de centre
+// que seul un appel d'API savait poser : elle se saisit désormais dans l'écran
+// qui configure le centre, comme le reste.
+//
+// UNE couleur, pas huit : assets/brand-color.js dérive le jeu complet de jetons
+// (clair + sombre) et l'envoie DÉCLARÉ dans la config. Il MESURE aussi le
+// contraste réel contre les fonds où la couleur sert, et l'interface le dit.
+// Elle avertit, elle ne bloque pas : la marque appartient au client.
+function establishmentBrandApi() {
+  return (typeof window !== 'undefined' && window.PinlaneBrand) ? window.PinlaneBrand : null;
+}
+
+function establishmentBrandPalette() {
+  const api = establishmentBrandApi();
+  if (!api) return null;
+  try { return api.readPlatformPalette(document); } catch (error) { return null; }
+}
+
+function establishmentAccentNoteHtml(raw) {
+  const api = establishmentBrandApi();
+  const value = String(raw == null ? '' : raw).trim();
+  if (!value) return '<span class="estab-brand-note">Aucune couleur : le tunnel de ce centre garde l’accent Pinlane.</span>';
+  if (!api || !api.isValidHex(value)) {
+    return '<span class="estab-brand-note is-bad">Code couleur invalide : attendu un hexadécimal, par exemple #1f6f43.</span>';
+  }
+  const palette = establishmentBrandPalette();
+  const notice = api.contrastNotice(api.deriveBranding(value, palette), palette);
+  if (!notice) return '<span class="estab-brand-note"></span>';
+  return `<span class="estab-brand-note ${notice.tone === 'warn' ? 'is-warn' : 'is-ok'}">${escapeHtml(notice.text)}</span>`;
+}
+
+function establishmentAccentFieldHtml(center) {
+  const api = establishmentBrandApi();
+  const accent = (center && center.branding && center.branding.accent) ? String(center.branding.accent) : '';
+  const swatch = (api && api.isValidHex(accent)) ? api.normalizeHex(accent) : '';
+  return `<div class="field estab-brand-field">
+    <label for="estab-accent">Couleur du tunnel client</label>
+    <div class="estab-brand-pick">
+      <input type="color" id="estab-accent-picker" aria-label="Choisir la couleur du tunnel"
+        value="${escapeHtml(swatch || '#000000')}" ${swatch ? '' : 'data-unset="1"'}
+        oninput="setEstablishmentAccent(this.value, 'picker')">
+      <input type="text" id="estab-accent" spellcheck="false" autocomplete="off"
+        placeholder="#1f6f43 (facultatif)" value="${escapeHtml(accent)}"
+        aria-describedby="estab-brand-note" oninput="setEstablishmentAccent(this.value, 'text')">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentAccent('', 'clear')">Retirer</button>
+    </div>
+    <span id="estab-brand-note">${establishmentAccentNoteHtml(accent)}</span>
+  </div>`;
+}
+
+function establishmentAccentReadValue(center) {
+  const api = establishmentBrandApi();
+  const accent = (center && center.branding && center.branding.accent) ? String(center.branding.accent) : '';
+  if (!api || !api.isValidHex(accent)) return '<span class="estab-badge off">accent Pinlane</span>';
+  const safe = api.normalizeHex(accent);
+  return `<span class="estab-brand-read"><span class="estab-brand-dot" style="background:${escapeHtml(safe)}" aria-hidden="true"></span><span class="num">${escapeHtml(safe)}</span></span>`;
+}
+
+// Les deux contrôles portent LA MÊME valeur ; seul celui qui n'a pas la frappe
+// est resynchronisé, sinon le curseur sauterait à chaque caractère.
+function setEstablishmentAccent(value, source) {
+  const api = establishmentBrandApi();
+  const raw = String(value == null ? '' : value).trim();
+  const text = document.getElementById('estab-accent');
+  const picker = document.getElementById('estab-accent-picker');
+  const note = document.getElementById('estab-brand-note');
+  if (text && source !== 'text') text.value = raw;
+  if (picker && source !== 'picker') {
+    if (api && api.isValidHex(raw)) { picker.value = api.normalizeHex(raw); picker.removeAttribute('data-unset'); }
+    else picker.setAttribute('data-unset', '1');
+  }
+  if (picker && source === 'picker') picker.removeAttribute('data-unset');
+  if (note) note.innerHTML = establishmentAccentNoteHtml(raw);
+}
+
+// Ce qui part au serveur. Champ vide = `null` : mergeCenterConfig remplace la
+// valeur, donc EFFACER la couleur est possible et le tunnel revient à l'accent
+// plateforme. Champ absent du DOM (panneau jamais rendu) = `undefined` : on ne
+// touche à rien plutôt que d'effacer une marque par accident.
+function collectEstablishmentBranding() {
+  const input = document.getElementById('estab-accent');
+  if (!input) return undefined;
+  const api = establishmentBrandApi();
+  const raw = String(input.value || '').trim();
+  if (!raw) return null;
+  if (!api || !api.isValidHex(raw)) return undefined;
+  return api.deriveBranding(raw, establishmentBrandPalette());
 }
 
 function renderEstablishmentDayRow(center, key, label, block = 'regular', prefix = 'estab-day') {
@@ -8760,6 +8868,7 @@ function renderEstablishmentEditPanels(center, active) {
     <fieldset class="establishment-card">
       <legend>Identité</legend>
       <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
+      ${establishmentAccentFieldHtml(center)}
       <div class="estab-field-row">
         <div class="field"><label for="estab-status">Statut</label>
           <select id="estab-status">
@@ -9033,6 +9142,7 @@ function renderEstablishmentReadPanels(center, active) {
         ${rule('Nom', `<span>${escapeHtml(center.name)}</span>`)}
         ${rule('Identifiant technique', `<span class="num">${escapeHtml(center.id)}</span>`, 'utilisé par le moteur et les URL')}
         ${rule('Fuseau horaire', `<span class="num">${escapeHtml(timezone)}</span>`)}
+        ${rule('Couleur du tunnel', establishmentAccentReadValue(center), 'portée par la page de réservation publique')}
       </div>`)}
   </div>`;
 

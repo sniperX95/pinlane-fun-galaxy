@@ -1543,8 +1543,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // + roles + codes uniques), ajouter un centre a un client, changer le statut.
   // Les codes d'acces retournes ne sont montres qu'UNE fois (a remettre au
   // client). Gate platform.admin, trace au journal.
+  // `body.center` porte aussi la MARQUE (`branding`) et l'IDENTITE D'EXPEDITEUR
+  // (`sender`) saisies dans le formulaire : le provisionnement les ecrit dans la
+  // foulee, il n'y a plus rien a poser a la main apres. Le cache centres est
+  // rafraichi comme apres saveCenter : sinon le tunnel du nouveau centre servirait
+  // encore la fusion d'avant, sans ses couleurs.
   if (action === 'createClient') {
-    const out = await provisionClient(getPool(), {
+    const pool = getPool();
+    const out = await provisionClient(pool, {
       id: body.id,
       name: body.name,
       status: body.status,
@@ -1553,11 +1559,14 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       contactPhone: body.contactPhone,
       center: body.center || null,
     });
+    await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, ...out });
     return;
   }
   if (action === 'addClientCenter') {
-    const out = await addCenterToClient(getPool(), { clientId: body.clientId, center: body.center || {} });
+    const pool = getPool();
+    const out = await addCenterToClient(pool, { clientId: body.clientId, center: body.center || {} });
+    await refreshCenterOverrides(pool, { force: true });
     sendJson(res, 200, { ok: true, action, ...out });
     return;
   }

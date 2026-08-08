@@ -25,6 +25,10 @@
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260710a"></script>
 <script defer src="./assets/booking-core.js?v=20260722b"></script>
+<!-- La marque d'un centre a partir d'UNE couleur (derivation + mesure de
+     contraste WCAG). Charge avant app-main et founder-clients-platform : les
+     deux ecrans de saisie (Etablissement, Nouveau client) l'interrogent. -->
+<script defer src="./assets/brand-color.js?v=20260808a"></script>
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
 <script src="./assets/demo-mode.js?v=20260808a"></script>

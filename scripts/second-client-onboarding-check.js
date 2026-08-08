@@ -82,8 +82,15 @@ const SECOND_CENTER_ID = 'strike-namur';
 const SECOND_CENTER_NAME = 'Strike Namur';
 const SECOND_SENDER_EMAIL = 'reservations@strike-namur.be';
 const SECOND_SENDER_LABEL = 'Strike Namur';
+// La SEULE couleur que Movsar tape dans le formulaire. Tout le reste (variante
+// sombre, tons derives) est produit par la console : ce gate ne l'ecrit nulle
+// part, il le RECOIT de l'ecran et le suit jusqu'au tunnel.
 const SECOND_ACCENT = '#1f6f43';
-const SECOND_ACCENT_DARK = '#4fd08a';
+// Une couleur qu'un gerant peut tres bien choisir et qui ne se lit pas : elle
+// sert a prouver que l'ecran AVERTIT sans jamais bloquer la saisie.
+const UNREADABLE_ACCENT = '#ffe600';
+// Ce que la console a reellement produit et envoye (rempli a l'etape [1]).
+let consoleBranding = null;
 
 // Table `clients`.
 const clientRows = [
@@ -97,9 +104,12 @@ const centerRows = [
 ];
 const reservationRows = [];
 const communicationRows = [];
-const emailIdentityRows = [
-  { id: 1, center_id: SECOND_CENTER_ID, label: SECOND_SENDER_LABEL, email: SECOND_SENDER_EMAIL, is_default: true },
-];
+// VIDE au depart, et c'est le coeur du gate : l'identite d'expediteur du
+// deuxieme client n'est PAS pre-posee ici. Si elle finit par exister, c'est que
+// le formulaire de la console l'a creee. Une ligne semee d'avance rendrait
+// l'etape [7] vraie sans que personne n'ait pu la saisir dans un ecran.
+const emailIdentityRows = [];
+let nextIdentityId = 10;
 // Le catalogue vendu par CE centre (table `activities`, ligne de centre). Le
 // deuxieme client vend du bowling et du minigolf ; il n'a PAS de laser game.
 const activityRows = [
@@ -262,7 +272,30 @@ class FakePool {
     if (/from communications/i.test(sql)) return { rows: [], rowCount: 0 };
 
     // -- identites d'expediteur --------------------------------------------
+    if (/update email_identities set is_default = false/i.test(sql)) {
+      emailIdentityRows.forEach((row) => { if (row.center_id === params[0]) row.is_default = false; });
+      return { rows: [], rowCount: 0 };
+    }
+    if (/insert into email_identities/i.test(sql)) {
+      const row = {
+        id: (nextIdentityId += 1),
+        center_id: params[0], label: params[1], email: params[2], is_default: Boolean(params[3]),
+      };
+      emailIdentityRows.push(row);
+      return { rows: [{ ...row }], rowCount: 1 };
+    }
+    if (/update email_identities set label/i.test(sql)) {
+      const row = emailIdentityRows.find((item) => item.id === Number(params[0]) && item.center_id === params[1]);
+      if (!row) return { rows: [], rowCount: 0 };
+      Object.assign(row, { label: params[2], email: params[3], is_default: Boolean(params[4]) });
+      return { rows: [{ ...row }], rowCount: 1 };
+    }
     if (/from email_identities/i.test(sql)) {
+      // Recherche par adresse (idempotence du provisionnement) ou liste du centre.
+      if (/lower\(email\) = \$2/i.test(sql)) {
+        const hit = emailIdentityRows.find((row) => row.center_id === params[0] && String(row.email).toLowerCase() === String(params[1]).toLowerCase());
+        return hit ? { rows: [{ id: hit.id }], rowCount: 1 } : { rows: [], rowCount: 0 };
+      }
       const scoped = emailIdentityRows.filter((row) => row.center_id === params[0]);
       scoped.sort((a, b) => (Number(b.is_default) - Number(a.is_default)) || (a.id - b.id));
       return { rows: scoped.map((row) => ({ ...row })), rowCount: scoped.length };
@@ -296,7 +329,9 @@ const ALL_PERMISSIONS = [
 ];
 const STRIKE_TOKEN = 'fgs_gate_direction_strike';
 const FUNGALAXY_TOKEN = 'fgs_gate_direction_fungalaxy';
-function sessionRow({ token, centerId, memberId, memberName }) {
+// Movsar lui-meme : c'est SA session qui execute le formulaire "Nouveau client".
+const OWNER_TOKEN = 'fgs_gate_platform_owner';
+function sessionRow({ token, centerId, memberId, memberName, permissions = ALL_PERMISSIONS, roleId = 'direction', roleName = 'Direction' }) {
   return {
     token_hash: hashSecret(token),
     center_id: centerId,
@@ -305,16 +340,25 @@ function sessionRow({ token, centerId, memberId, memberName }) {
     member_name: memberName,
     contact: '',
     member_status: 'active',
-    role_id: 'direction',
-    role_name: 'Direction',
-    role_code: 'DI',
-    permissions: ALL_PERMISSIONS,
+    role_id: roleId,
+    role_name: roleName,
+    role_code: roleName.slice(0, 2).toUpperCase(),
+    permissions,
     locked: true,
   };
 }
 const SESSION_BY_HASH = new Map([
   [hashSecret(STRIKE_TOKEN), sessionRow({ token: STRIKE_TOKEN, centerId: SECOND_CENTER_ID, memberId: `${SECOND_CENTER_ID}:direction-local`, memberName: 'Direction Strike Namur' })],
   [hashSecret(FUNGALAXY_TOKEN), sessionRow({ token: FUNGALAXY_TOKEN, centerId: 'libramont', memberId: 'libramont:direction-local', memberName: 'Direction Fun Galaxy' })],
+  [hashSecret(OWNER_TOKEN), sessionRow({
+    token: OWNER_TOKEN,
+    centerId: 'libramont',
+    memberId: 'libramont:platform-owner',
+    memberName: 'Movsar',
+    permissions: [...ALL_PERMISSIONS, 'platform.admin'],
+    roleId: 'platform-owner',
+    roleName: 'Proprietaire',
+  })],
 ]);
 
 const pgPath = require.resolve('pg');
@@ -354,8 +398,10 @@ function jsonOf(res) {
 }
 
 // ── Le code applicatif REEL ────────────────────────────────────────────────
-const { provisionClient } = require(path.join(ROOT, 'lib', 'platform-clients.js'));
-const { saveCenterConfigOverride } = require(path.join(ROOT, 'lib', 'center-config.js'));
+// api/ops.js est le SEUL chemin d'ecriture utilise par ce gate pour monter le
+// client : plus aucun appel direct a provisionClient / saveCenterConfigOverride.
+// Ce que la console poste, ce gate le rejoue tel quel.
+const opsHandler = require(path.join(ROOT, 'api', 'ops.js'));
 const { getCenter, refreshCenterOverrides } = require(path.join(ROOT, 'lib', 'ops-knowledge.js'));
 const { getPool } = require(path.join(ROOT, 'lib', 'database.js'));
 const { refreshCatalog } = require(path.join(ROOT, 'lib', 'catalog-store.js'));
@@ -366,6 +412,9 @@ const reservationsHandler = require(path.join(ROOT, 'api', 'public-reservations.
 const staffStateHandler = require(path.join(ROOT, 'api', 'staff-state.js'));
 
 // La config que la direction du deuxieme client saisit dans « Etablissement ».
+// Elle sert de POINT DE DEPART a l'ecran dans le navigateur : le gate ne
+// l'ecrit plus en base lui-meme, c'est le formulaire qui la renvoie (etape [3]).
+// Aucune couleur ici : la marque est saisie au provisionnement, etape [1].
 const SECOND_CENTER_CONFIG = {
   status: 'active',
   timezone: 'Europe/Brussels',
@@ -396,35 +445,96 @@ const SECOND_CENTER_CONFIG = {
   },
   // Ce centre ne vend PAS de laser game, et vend un minigolf.
   activityAvailability: { bowling: true, laser_game: false, minigolf_blacklight: true },
-  branding: {
-    accent: SECOND_ACCENT,
-    accentStrong: '#175835',
-    accentSoft: '#e6f3ec',
-    accentContrast: '#ffffff',
-    dark: { accent: SECOND_ACCENT_DARK, accentStrong: '#8fe6b8', accentSoft: '#0d2318', accentContrast: '#0a0a0a' },
-  },
 };
 
 async function run() {
   const pool = getPool();
 
-  section('[1] Le deuxieme client est monte DEPUIS LA CONSOLE, pas depuis le fichier');
+  // TOUT ce que ce gate ecrit part de LA CONSOLE. Le navigateur remplit les deux
+  // ecrans (Nouveau client, puis Etablissement) et rend les corps de requete
+  // EXACTS que les boutons envoient ; le gate les rejoue ensuite dans le vrai
+  // handler d'API. Aucun appel a la main, aucune ligne semee d'avance.
+  const journey = await captureConsoleJourney();
+
+  section('[1] Le deuxieme client est monte DEPUIS L ECRAN, pas depuis un terminal');
   const fileCenters = require(path.join(ROOT, 'ops-knowledge', 'centers.json')).centers.map((c) => c.id);
   ok(!fileCenters.includes(SECOND_CENTER_ID),
     `le centre ${SECOND_CENTER_ID} n'est PAS dans ops-knowledge/centers.json (fichier: ${fileCenters.join(', ')})`);
-  const provisioned = await provisionClient(pool, {
-    id: SECOND_CLIENT_ID,
-    name: 'Strike Namur SARL',
-    center: { id: SECOND_CENTER_ID, name: SECOND_CENTER_NAME },
+  const provisionBody = journey.provisioning && journey.provisioning.body;
+  ok(Boolean(provisionBody) && provisionBody.action === 'createClient',
+    `le bouton "Enregistrer" du formulaire poste createClient (obtenu ${provisionBody ? provisionBody.action : 'aucun envoi'})`);
+  ok(provisionBody?.center?.id === SECOND_CENTER_ID,
+    `le formulaire porte le centre saisi (obtenu ${provisionBody?.center?.id || 'aucun'})`);
+  ok(provisionBody?.center?.branding?.accent === SECOND_ACCENT,
+    `le formulaire porte la COULEUR saisie (obtenu ${provisionBody?.center?.branding?.accent || 'aucune'})`);
+  ok(provisionBody?.center?.sender?.email === SECOND_SENDER_EMAIL,
+    `le formulaire porte l ADRESSE D EXPEDITEUR saisie (obtenu ${provisionBody?.center?.sender?.email || 'aucune'})`);
+  ok(provisionBody?.center?.sender?.label === SECOND_SENDER_LABEL,
+    `le formulaire porte le NOM D EXPEDITEUR saisi (obtenu ${provisionBody?.center?.sender?.label || 'aucun'})`);
+  const derivedKeys = Object.keys(provisionBody?.center?.branding || {});
+  ok(['accentStrong', 'accentSoft', 'accentContrast', 'dark'].every((key) => derivedKeys.includes(key)),
+    `une seule couleur tapee suffit : l ecran derive le jeu complet (obtenu ${derivedKeys.join(', ') || 'rien'})`);
+  consoleBranding = provisionBody?.center?.branding || null;
+
+  // Le corps de la console, rejoue TEL QUEL dans le vrai handler d'API.
+  const createRes = await callHandler(opsHandler, {
+    method: 'POST', url: '/api/ops', token: OWNER_TOKEN, body: provisionBody,
   });
-  ok(provisioned.center?.id === SECOND_CENTER_ID, `provisionClient a cree le centre (obtenu ${provisioned.center?.id})`);
+  ok(createRes.res.statusCode === 200,
+    `l API accepte le formulaire (obtenu ${createRes.res.statusCode}${createRes.res.statusCode !== 200 ? ` : ${createRes.json?.error || createRes.res.body}` : ''})`);
+  ok(createRes.json?.center?.id === SECOND_CENTER_ID, `le centre est cree (obtenu ${createRes.json?.center?.id})`);
   ok(centerRows.some((row) => row.id === SECOND_CENTER_ID && row.client_id === SECOND_CLIENT_ID),
     'la ligne centers porte bien le client_id du deuxieme client');
-  await saveCenterConfigOverride(pool, SECOND_CENTER_ID, SECOND_CENTER_CONFIG);
+  ok(centerRows.find((row) => row.id === SECOND_CENTER_ID)?.settings?.config?.branding?.accent === SECOND_ACCENT,
+    'la couleur du formulaire est persistee sur la ligne du centre, sans aucun appel supplementaire');
+  ok(emailIdentityRows.some((row) => row.center_id === SECOND_CENTER_ID && row.email === SECOND_SENDER_EMAIL && row.is_default),
+    `l identite d expediteur est creee par le MEME envoi (lignes: ${emailIdentityRows.length})`);
+  ok(!emailIdentityRows.some((row) => row.center_id !== SECOND_CENTER_ID),
+    'aucune identite n a fuite vers un autre centre');
+
+  section('[2] La couleur est MESUREE : contraste faible = avertissement, jamais blocage');
+  const okNote = journey.provisioning?.noticeOk || '';
+  const badNote = journey.provisioning?.noticeUnreadable || '';
+  ok(/contraste tenu/i.test(okNote),
+    `la couleur retenue affiche un verdict de contraste tenu (obtenu "${okNote}")`);
+  ok(/sous le seuil de 3:1/.test(badNote),
+    `${UNREADABLE_ACCENT} est signalee sous le seuil composant (obtenu "${badNote}")`);
+  ok(journey.provisioning?.unreadableStillSavable === true,
+    'une couleur illisible reste enregistrable : l ecran avertit, il ne bloque pas');
+  ok(journey.provisioning?.invalidRefused === true,
+    'une saisie qui n est pas une couleur, elle, est refusee avec un message');
+  // CONTRE-EPREUVE des champs : sans saisie, RIEN ne part, et l'ecran annonce
+  // ce qui se passera. Sans cela, les preuves de l'etape [1] pourraient venir
+  // d'un defaut cache plutot que des champs remplis.
+  const bare = journey.provisioning?.bareBody || null;
+  ok(Boolean(bare) && bare.center && bare.center.branding === undefined && bare.center.sender === undefined,
+    `le meme formulaire laisse vide n envoie NI couleur NI expediteur (obtenu ${bare ? Object.keys(bare.center || {}).join(', ') : 'aucun envoi'})`);
+  ok(/accent Pinlane/i.test(journey.provisioning?.bareNote || ''),
+    `l etat par defaut est annonce, pas subi (obtenu "${journey.provisioning?.bareNote || ''}")`);
+
+  section('[3] La config d exploitation est saisie dans Etablissement, meme console');
+  const estabBodies = journey.establishment?.bodies || [];
+  const estabConfig = estabBodies.find((body) => body.action === 'saveCenterConfig') || null;
+  const estabCenter = estabBodies.find((body) => body.action === 'saveCenter') || null;
+  ok(Boolean(estabConfig), `le bouton "Enregistrer" poste saveCenterConfig (obtenu ${estabBodies.map((b) => b.action).join(', ') || 'aucun envoi'})`);
+  ok(Number(estabConfig?.config?.resources?.bowling?.laneCount) === 12,
+    `l ecran renvoie SES 12 pistes (obtenu ${estabConfig?.config?.resources?.bowling?.laneCount})`);
+  ok(estabConfig?.config?.branding?.accent === SECOND_ACCENT,
+    `l ecran Etablissement sait AUSSI porter la couleur (obtenu ${estabConfig?.config?.branding?.accent || 'aucune'})`);
+  if (estabCenter) {
+    await callHandler(opsHandler, { method: 'POST', url: '/api/ops', token: STRIKE_TOKEN, body: estabCenter });
+  }
+  const saveConfigRes = await callHandler(opsHandler, {
+    method: 'POST', url: '/api/ops', token: STRIKE_TOKEN, body: estabConfig,
+  });
+  ok(saveConfigRes.res.statusCode === 200,
+    `l API accepte la config de l ecran (obtenu ${saveConfigRes.res.statusCode}${saveConfigRes.res.statusCode !== 200 ? ` : ${saveConfigRes.json?.error || saveConfigRes.res.body}` : ''})`);
   ok(Boolean(centerRows.find((row) => row.id === SECOND_CENTER_ID)?.settings?.config),
     'la config saisie dans Etablissement est persistee sur la ligne du centre');
+  ok(centerRows.find((row) => row.id === SECOND_CENTER_ID)?.settings?.config?.branding?.accent === SECOND_ACCENT,
+    'enregistrer la config ne fait pas disparaitre la couleur posee au provisionnement');
 
-  section('[2] Le moteur CONNAIT ce centre (blocage A)');
+  section('[4] Le moteur CONNAIT ce centre (blocage A)');
   await refreshCenterOverrides(pool, { force: true });
   await refreshCatalog(pool, { force: true });
   let secondCenter = null;
@@ -434,11 +544,17 @@ async function run() {
   ok(secondCenter?.name === SECOND_CENTER_NAME, `la fiche porte SON nom (obtenu "${secondCenter?.name}")`);
   ok(Number(secondCenter?.resources?.bowling?.laneCount) === 12,
     `la fiche porte SES 12 pistes (obtenu ${secondCenter?.resources?.bowling?.laneCount})`);
-  ok(secondCenter?.resources?.laser === null, 'la fiche declare AUCUNE arene laser');
+  // « Pas de laser du tout » n'est PAS exprimable dans l'ecran Etablissement :
+  // il propose un nombre d'armes, pas une case « aucune arene ». Ce que la
+  // console sait dire, c'est ZERO arme, et c'est ce qu'on verifie ici. Ce qui
+  // decide de ce qui est VENDU, c'est le catalogue (etape [5]) : laser_game y
+  // est absent, et c'est la seule chose qu'un client verra.
+  ok(Number(secondCenter?.resources?.laser?.weaponCount) === 0,
+    `la fiche declare zero arme laser, ce que l ecran sait exprimer (obtenu ${secondCenter?.resources?.laser?.weaponCount})`);
   ok(getCenter('libramont')?.name === 'Fun Galaxy Libramont',
     'les centres du fichier restent intacts (non-regression)');
 
-  section('[3] Le tunnel public sert SES horaires et SON catalogue (blocage A, suite)');
+  section('[5] Le tunnel public sert SES horaires et SON catalogue (blocage A, suite)');
   const metaSecond = await callHandler(metaHandler, { url: `/api/public-booking-meta?centerId=${SECOND_CENTER_ID}&date=${DATE}` });
   const metaFunGalaxy = await callHandler(metaHandler, { url: `/api/public-booking-meta?centerId=libramont&date=${DATE}` });
   const scheduleSecond = metaSecond.json?.center?.day?.schedule || null;
@@ -456,7 +572,7 @@ async function run() {
   ok(!idsSecond.includes('laser_game'), 'SON catalogue ne contient PAS le laser game, qu il ne vend pas');
   ok(idsFunGalaxy.includes('laser_game'), 'contraste : le catalogue Fun Galaxy contient bien le laser game');
 
-  section('[4] Le tunnel public sert SES creneaux, dans SES heures');
+  section('[6] Le tunnel public sert SES creneaux, dans SES heures');
   const availabilitySecond = await callHandler(availabilityHandler, {
     url: `/api/public-availability?centerId=${SECOND_CENTER_ID}&date=${DATE}&type=bowling&pax=4&duration=1`,
   });
@@ -472,7 +588,7 @@ async function run() {
   const maxLane = Math.max(0, ...slotsSecond.flatMap((slot) => slot.lanes || []));
   ok(maxLane <= 12, `les pistes proposees restent dans SON parc de 12 (max vu: ${maxLane})`);
 
-  section('[5] Une reservation passe VRAIMENT sur ce centre');
+  section('[7] Une reservation passe VRAIMENT sur ce centre');
   const before = reservationRows.length;
   // Le corps EXACT que le tunnel poste : le creneau choisi, avec les pistes que
   // le serveur vient de proposer (buildReservationApiPayload les recopie).
@@ -502,7 +618,7 @@ async function run() {
   ok(reservationRows.length === before + 1, `une ligne est bien ecrite en base (${reservationRows.length - before})`);
   ok(created?.centerId === SECOND_CENTER_ID, `la ligne porte SON centre (obtenu ${created?.centerId})`);
 
-  section('[6] Elle apparait cote STAFF de ce client, et nulle part ailleurs');
+  section('[8] Elle apparait cote STAFF de ce client, et nulle part ailleurs');
   const staffSecond = await callHandler(staffStateHandler, {
     url: `/api/staff-state?date=${DATE}&centerId=${SECOND_CENTER_ID}`,
     token: STRIKE_TOKEN,
@@ -519,7 +635,7 @@ async function run() {
   ok(!funGalaxyIds.includes(Number(created?.id)),
     `contraste : Fun Galaxy ne voit PAS cette reservation (vues: ${funGalaxyIds.join(', ') || 'aucune'})`);
 
-  section('[7] Les sequences automatiques partent avec SON identite d expediteur (blocage D)');
+  section('[9] Les sequences automatiques partent avec SON identite d expediteur (blocage D)');
   const senderIdentity = await opsCommunications.resolveCenterSenderIdentity(SECOND_CENTER_ID, {
     query: (t, p) => pool.query(t, p),
   });
@@ -557,7 +673,7 @@ async function run() {
   ok(!/Fun Galaxy/.test(sentFromNoIdentity),
     `sans identite configuree, le repli n est PLUS "Fun Galaxy" (obtenu "${sentFromNoIdentity}")`);
 
-  section('[8] Le tunnel porte SES couleurs, et le CSS n en ecrit AUCUNE (blocage C)');
+  section('[10] Le tunnel porte SES couleurs, et le CSS n en ecrit AUCUNE (blocage C)');
   const clientCss = fs.readFileSync(path.join(ROOT, 'assets', 'pinlane-client.css'), 'utf8');
   const accentBlock = clientCss.slice(0, clientCss.indexOf('/* ---', clientCss.indexOf('body.client-mode, body.public-form')));
   ok(!/--accent(-strong|-soft|-contrast)?\s*:\s*#[0-9a-f]{3,8}/i.test(clientCss),
@@ -570,15 +686,19 @@ async function run() {
   const brandingFunGalaxy = metaFunGalaxy.json?.center?.branding || null;
   ok(brandingSecond?.accent === SECOND_ACCENT,
     `le tunnel du deuxieme client recoit SA couleur (obtenu ${brandingSecond?.accent || 'aucune'})`);
-  ok(brandingSecond?.dark?.accent === SECOND_ACCENT_DARK,
-    `sa variante sombre est servie (obtenu ${brandingSecond?.dark?.accent || 'aucune'})`);
+  // La variante sombre n'est PAS ecrite dans ce fichier : on verifie qu'on
+  // recoit exactement celle que l'ecran a derivee de la couleur tapee.
+  ok(Boolean(consoleBranding?.dark?.accent) && brandingSecond?.dark?.accent === consoleBranding.dark.accent,
+    `sa variante sombre, derivee par l ecran, est servie telle quelle (obtenu ${brandingSecond?.dark?.accent || 'aucune'}, attendu ${consoleBranding?.dark?.accent || 'inconnue'})`);
+  ok(brandingSecond?.accentContrast === consoleBranding?.accentContrast,
+    `le jeton de texte sur bouton suit le meme chemin (obtenu ${brandingSecond?.accentContrast || 'aucun'})`);
   ok(brandingFunGalaxy?.accent === '#a1289a',
     `contraste : Fun Galaxy garde son magenta, en DONNEE cette fois (obtenu ${brandingFunGalaxy?.accent || 'aucune'})`);
 
-  section('[9] La ligne d installation selectionne le centre, prouve au navigateur (blocage B)');
+  section('[11] La ligne d installation selectionne le centre, prouve au navigateur (blocage B)');
   await proveEmbedSelectsCenter();
 
-  section('[10] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
+  section('[12] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
   await mutationCounterProof();
 }
 
@@ -657,6 +777,297 @@ function serveStatic() {
     });
   });
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(PORT, '127.0.0.1', () => resolve(server)); });
+}
+
+// ── LE PARCOURS CONSOLE, DANS UN VRAI NAVIGATEUR ────────────────────────────
+//
+// C'est la partie qui repond a la question posee : accueillir un client
+// demande-t-il encore d'ouvrir un terminal ? On ne simule pas les ecrans, on
+// les ouvre : le formulaire "Nouveau client" et l'ecran "Etablissement" sont
+// remplis champ par champ (evenements input reels, clic reel sur le bouton), et
+// on capture les corps de requete EXACTS qu'ils envoient. Le reste du gate ne
+// rejoue que ceux-la. Si un reglage n'est atteignable que par un appel a la
+// main, il n'apparait dans aucun corps capture, et les etapes qui en dependent
+// rougissent.
+async function launchGateBrowser() {
+  let chromium;
+  try { ({ chromium } = require('playwright-core')); } catch (error) {
+    ok(false, `playwright-core indisponible : le parcours console ne peut pas etre prouve (${error.message})`);
+    return null;
+  }
+  if (!fs.existsSync(BROWSER_PATH)) {
+    ok(false, `navigateur introuvable (${BROWSER_PATH}) : le parcours console ne peut pas etre prouve. Definir E2E_BROWSER_PATH.`);
+    return null;
+  }
+  return chromium.launch({ executablePath: BROWSER_PATH, headless: true });
+}
+
+function gateStaffSession(centerId, permissions) {
+  return {
+    token: 'qa-gate',
+    cookieBacked: false,
+    centerId,
+    expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+    member: { id: `${centerId}:qa`, name: 'Movsar', roleId: 'direction' },
+    role: { id: 'direction', name: 'Direction', locked: true },
+    permissions,
+  };
+}
+
+async function installConsoleMock(page, { session, platformClients, centerConfig }) {
+  await page.addInitScript(({ session, platformClients, centerConfig }) => {
+    window.__QA_POSTS__ = [];
+    const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (input, init = {}) => {
+      const raw = typeof input === 'string' ? input : input?.url || '';
+      const u = new URL(raw, window.location.origin);
+      const method = String(init.method || 'GET').toUpperCase();
+      if (u.pathname === '/api/staff-auth') {
+        return J({ ok: true, authenticated: true, session, accessControl: { selectedRoleId: 'direction', selectedMemberId: session.member.id, roles: [], members: [], events: [], permissions: session.permissions } });
+      }
+      if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: [], laneStatuses: {}, centerId: session.centerId });
+      if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: [], emails: [], agentEvents: [], centerId: session.centerId });
+      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: '2026-08-15', durationOptions: [], formules: [], activities: [], center: { id: session.centerId, status: 'active' } });
+      if (u.pathname === '/api/ops' && method === 'POST') {
+        const body = JSON.parse(init.body || '{}');
+        window.__QA_POSTS__.push(body);
+        // Reponse minimale mais REALISTE : le formulaire enchaine sur l'etape
+        // « acces crees » avec ce que le serveur lui rend.
+        return J({
+          ok: true,
+          client: { id: body.id, name: body.name },
+          center: body.center ? { id: body.center.id, name: body.center.name || body.center.id, branding: body.center.branding || null, sender: body.center.sender || null } : null,
+          accessCodes: [{ centerId: body.center && body.center.id, role: 'Direction', code: 'QA-DIRECTION-0001' }],
+        });
+      }
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'platformClients') return J(platformClients);
+      if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'centerConfig') return J(centerConfig);
+      if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {}, blocks: [] });
+      return nativeFetch(input, init);
+    };
+    window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(session));
+  }, { session, platformClients, centerConfig });
+}
+
+async function captureConsoleJourney() {
+  const empty = { provisioning: null, establishment: null };
+  const browser = await launchGateBrowser();
+  if (!browser) return empty;
+  const server = await serveStatic();
+  const ownerSession = gateStaffSession('libramont', [...ALL_PERMISSIONS, 'platform.admin']);
+  const platformClients = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    testData: true,
+    clients: [{ id: 'fungalaxy', name: 'Fun Galaxy', status: 'active', plan: 'standard', monthlyPrice: null, revenue30d: 0, centers: [], centerCount: 0, staffCount: 0 }],
+    platform: { mrr: 0, activeClients: 1, activeCenters: 3, revenue30dAll: 0, clientsWithPrice: 0, clientCount: 1, centerCount: 3 },
+    orphanCenters: [],
+  };
+  const out = { provisioning: null, establishment: null };
+  try {
+    // ---- Ecran 1 : "Clients Pinlane" > Nouveau client -----------------------
+    const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+    await installConsoleMock(page, { session: ownerSession, platformClients, centerConfig: { ok: true, centers: [], activities: [] } });
+    await page.goto(`${BASE_URL}/?v=second-client-console`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForFunction(() => typeof window.renderPlatformClientsPage === 'function' && Boolean(window.PinlaneBrand), null, { timeout: 15000 });
+    out.provisioning = await page.evaluate(async ({ clientId, clientName, centerId, centerName, accent, senderLabel, senderEmail, unreadable }) => {
+      const host = document.getElementById('staffCockpitPage');
+      host.classList.remove('hidden');
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      // L'app finit son propre demarrage avant qu'on rende la page : sinon son
+      // premier rendu remplacerait le conteneur qu'on vient de peupler.
+      await wait(500);
+      window.renderPlatformClientsPage(host);
+      await wait(400);
+
+      // Saisie REELLE : on ecrit dans le champ et on declenche l'evenement que
+      // la frappe declencherait. Un fcpSet() appele a la main testerait la
+      // fonction, pas le formulaire.
+      const type = (input, value) => {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      const byLabel = (text) => {
+        const fields = Array.from(document.querySelectorAll('.fcp-overlay .fcp-field'));
+        const field = fields.find((f) => ((f.querySelector('label') || {}).textContent || '').trim().toLowerCase().startsWith(String(text).toLowerCase()));
+        const input = field ? field.querySelector('input') : null;
+        if (!input) {
+          const seen = fields.map((f) => ((f.querySelector('label') || {}).textContent || '').trim()).join(' | ');
+          const overlay = document.querySelector('.fcp-overlay');
+          throw new Error(`champ introuvable pour "${text}" ; libelles vus : ${seen || 'aucun'} ; overlay: ${overlay ? overlay.innerHTML.slice(0, 400) : 'absent'}`);
+        }
+        return input;
+      };
+      const fill = (accentValue) => {
+        type(byLabel('identifiant (slug)'), clientId);
+        type(byLabel('raison sociale'), clientName);
+        type(byLabel('identifiant du centre'), centerId);
+        type(byLabel('nom du centre'), centerName);
+        type(document.getElementById('fcpAccentText'), accentValue);
+        type(byLabel("nom d'expediteur"), senderLabel);
+        type(byLabel("adresse d'expediteur"), senderEmail);
+      };
+      const noteText = () => String((document.getElementById('fcpBrandNote') || {}).textContent || '').trim();
+      const errorText = () => {
+        const el = document.querySelector('.fcp-modal-error');
+        return el ? el.textContent.trim() : '';
+      };
+      const primary = () => document.querySelector('.fcp-modal-foot .pv2-btn.primary');
+
+      // Chaque tour rouvre le formulaire comme un humain le ferait : on FERME
+      // la modale (bouton Fermer) avant d'en rouvrir une, sinon on tape dans
+      // l'etape « acces crees » de la precedente.
+      const openForm = async () => {
+        if (document.querySelector('.fcp-overlay')) { window.fcpCloseModal(); await wait(150); }
+        window.fcpOpenNew();
+        await wait(150);
+        if (!document.querySelector('.fcp-panel .fcp-field')) {
+          throw new Error(`le formulaire ne s'est pas ouvert (hote: ${host.innerHTML.length} caracteres)`);
+        }
+      };
+
+      // (a) La couleur retenue : le verdict de contraste affiche sous le champ.
+      await openForm();
+      fill(accent);
+      const noticeOk = noteText();
+
+      // (b) Une couleur illisible : l'ecran doit AVERTIR et laisser passer.
+      type(document.getElementById('fcpAccentText'), unreadable);
+      const noticeUnreadable = noteText();
+      primary().click();
+      await wait(400);
+      const unreadableStillSavable = window.__QA_POSTS__.length === 1
+        && (window.__QA_POSTS__[0].center || {}).branding
+        && window.__QA_POSTS__[0].center.branding.accent === unreadable;
+
+      // (c) Une saisie qui n'est PAS une couleur : refusee, avec un message.
+      window.__QA_POSTS__ = [];
+      await openForm();
+      fill('vert sapin');
+      primary().click();
+      await wait(300);
+      const invalidRefused = window.__QA_POSTS__.length === 0 && /couleur/i.test(errorText());
+
+      // (d) CONTRE-EPREUVE : le meme formulaire, sans couleur ni expediteur.
+      // Si le corps envoye portait quand meme une marque, les preuves de
+      // l'etape [1] ne viendraient pas des champs mais d'un defaut cache.
+      window.__QA_POSTS__ = [];
+      await openForm();
+      type(byLabel('identifiant (slug)'), `${clientId}-nu`);
+      type(byLabel('raison sociale'), `${clientName} (sans marque)`);
+      type(byLabel('identifiant du centre'), `${centerId}-nu`);
+      type(byLabel('nom du centre'), `${centerName} (sans marque)`);
+      const bareNote = noteText();
+      primary().click();
+      await wait(400);
+      const bareBody = window.__QA_POSTS__[0] || null;
+
+      // (e) Le vrai envoi, avec la couleur retenue.
+      window.__QA_POSTS__ = [];
+      await openForm();
+      fill(accent);
+      primary().click();
+      await wait(500);
+      return {
+        bareBody,
+        bareNote,
+        body: window.__QA_POSTS__[0] || null,
+        noticeOk,
+        noticeUnreadable,
+        unreadableStillSavable: Boolean(unreadableStillSavable),
+        invalidRefused: Boolean(invalidRefused),
+        codesStep: Boolean(document.querySelector('.fcp-codes-warn')),
+      };
+    }, {
+      clientId: SECOND_CLIENT_ID,
+      clientName: 'Strike Namur SARL',
+      centerId: SECOND_CENTER_ID,
+      centerName: SECOND_CENTER_NAME,
+      accent: SECOND_ACCENT,
+      senderLabel: SECOND_SENDER_LABEL,
+      senderEmail: SECOND_SENDER_EMAIL,
+      unreadable: UNREADABLE_ACCENT,
+    });
+    await page.close().catch(() => {});
+
+    // ---- Ecran 2 : "Etablissement" du nouveau centre ------------------------
+    // Il demarre exactement dans l'etat que l'ecran 1 vient de creer : la
+    // couleur est deja posee, le reste (pistes, horaires, catalogue) est ce que
+    // la direction du client saisit.
+    const centerConfig = buildEstablishmentSeed(out.provisioning && out.provisioning.body);
+    const page2 = await browser.newPage({ viewport: { width: 1440, height: 950 } });
+    await installConsoleMock(page2, {
+      session: gateStaffSession(SECOND_CENTER_ID, ALL_PERMISSIONS),
+      platformClients,
+      centerConfig,
+    });
+    await page2.goto(`${BASE_URL}/?v=second-client-estab`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page2.waitForFunction(() => typeof window.setView === 'function' && typeof window.renderStaffUtilityPage === 'function', null, { timeout: 15000 });
+    out.establishment = await page2.evaluate(async ({ centerId, accent }) => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      state.currentDate = '2026-08-15';
+      state.staffMenuPage = 'establishment';
+      state.establishmentTab = 'centre';
+      state.establishmentEditing = false;
+      state.establishmentCenterId = centerId;
+      state.adminCenterId = centerId;
+      save();
+      setView('staff');
+      await wait(600);
+      startEstablishmentEdit();
+      await wait(300);
+      const accentField = document.getElementById('estab-accent');
+      const hasField = Boolean(accentField);
+      // On RETAPE la couleur dans le champ : si l'ecran ne savait pas la
+      // porter, elle ne repartirait pas dans le payload.
+      if (accentField) {
+        accentField.value = accent;
+        accentField.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      const note = (document.getElementById('estab-brand-note') || {}).textContent || '';
+      window.__QA_POSTS__ = [];
+      await submitCenterConfig(centerId);
+      return { bodies: window.__QA_POSTS__.slice(), hasField, note: note.trim() };
+    }, { centerId: SECOND_CENTER_ID, accent: SECOND_ACCENT });
+    await page2.close().catch(() => {});
+  } finally {
+    await browser.close().catch(() => {});
+    server.close();
+  }
+  return out;
+}
+
+// L'etat de depart de l'ecran Etablissement : la projection que le serveur rend
+// vraiment (lib/center-scope), construite avec le VRAI normaliseur de config.
+function buildEstablishmentSeed(provisionBody) {
+  const cc = require(path.join(ROOT, 'lib', 'center-config.js'));
+  const knowledge = require(path.join(ROOT, 'ops-knowledge', 'activities.json'));
+  const posed = (provisionBody && provisionBody.center && provisionBody.center.branding) || null;
+  const config = cc.normalizeCenterConfig({ ...SECOND_CENTER_CONFIG, branding: posed }, SECOND_CENTER_ID);
+  return {
+    ok: true,
+    centers: [{
+      id: SECOND_CENTER_ID,
+      name: SECOND_CENTER_NAME,
+      clientId: SECOND_CLIENT_ID,
+      clientName: 'Strike Namur SARL',
+      status: config.status,
+      timezone: config.timezone,
+      resources: config.resources,
+      defaultSchedule: config.defaultSchedule == null ? null : config.defaultSchedule,
+      activityAvailability: config.activityAvailability,
+      holidaySettings: config.holidaySettings,
+      offerAvailability: config.offerAvailability,
+      classification: config.classification,
+      customActivities: config.customActivities,
+      branding: config.branding || null,
+    }],
+    activities: (knowledge.activities || []).map((activity) => ({
+      id: activity.id,
+      label: activity.label || activity.name || activity.id,
+    })),
+  };
 }
 
 async function proveEmbedSelectsCenter() {
@@ -742,8 +1153,18 @@ async function proveEmbedSelectsCenter() {
   }
 }
 
+// La marque de Fun Galaxy telle qu'elle vit DANS LA DONNEE (fichier socle) :
+// le banc d'essai ne la reecrit pas, il la lit, sinon on testerait une copie.
+function baselineBranding(centerId) {
+  const baseline = require(path.join(ROOT, 'ops-knowledge', 'centers.json'));
+  const center = (baseline.centers || []).find((c) => c.id === centerId);
+  return (center && center.branding) || null;
+}
+
 async function installTunnelMock(page) {
-  await page.addInitScript(({ DATE, SECOND_CENTER_ID, SECOND_ACCENT, SECOND_ACCENT_DARK }) => {
+  const SECOND_BRANDING = consoleBranding;
+  const OTHER_BRANDING = baselineBranding('libramont');
+  await page.addInitScript(({ DATE, SECOND_CENTER_ID, SECOND_BRANDING, OTHER_BRANDING }) => {
     window.__QA_CALLS__ = { meta: [], availability: [], reservations: [] };
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });
     const nativeFetch = window.fetch.bind(window);
@@ -762,9 +1183,7 @@ async function installTunnelMock(page) {
           activities: [{ id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 }],
           center: {
             id: asked, status: 'active',
-            branding: isSecond
-              ? { accent: SECOND_ACCENT, accentStrong: '#175835', accentSoft: '#e6f3ec', accentContrast: '#ffffff', dark: { accent: SECOND_ACCENT_DARK, accentStrong: '#8fe6b8', accentSoft: '#0d2318', accentContrast: '#0a0a0a' } }
-              : { accent: '#a1289a', accentStrong: '#7d2478', accentSoft: '#f7ebf6', accentContrast: '#ffffff' },
+            branding: isSecond ? SECOND_BRANDING : OTHER_BRANDING,
             defaultSchedule: { regular: { 0: { open: '11:00', close: '19:00' }, 1: { open: '11:00', close: '19:00' }, 2: { open: '11:00', close: '19:00' }, 3: { open: '11:00', close: '19:00' }, 4: { open: '11:00', close: '19:00' }, 5: { open: '11:00', close: '19:00' }, 6: { open: '11:00', close: '19:00' } }, holiday: {} },
             holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] },
             offerAvailability: {},
@@ -783,7 +1202,7 @@ async function installTunnelMock(page) {
       }
       return nativeFetch(input, init);
     };
-  }, { DATE, SECOND_CENTER_ID, SECOND_ACCENT, SECOND_ACCENT_DARK });
+  }, { DATE, SECOND_CENTER_ID, SECOND_BRANDING, OTHER_BRANDING });
 }
 
 // -- Etape 10 : la mutation qui doit faire rougir ---------------------------

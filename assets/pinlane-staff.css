@@ -4095,6 +4095,41 @@ body.dashboard-detail-open { overflow: hidden; }
 /* Un champ de 300 px pour saisir « 8 » : le max-width: none datait des colonnes
    etroites. La cellule fait la largeur, pas le nombre. */
 .estab-field-row .field input[type='number'] { max-width: 100%; }
+/* Couleur du tunnel : pipette + code hexadécimal + retrait, et le verdict de
+   contraste juste dessous. La seule surface teintée ici est la pastille, et sa
+   teinte vient de la saisie du gérant, jamais d'une valeur écrite dans ce
+   fichier. Sans couleur choisie ([data-unset]), la pipette se lit comme un
+   champ vide (damier de jetons neutres), pas comme un noir volontaire. */
+.estab-brand-pick { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.estab-brand-pick input[type='text'] { flex: 1 1 auto; min-width: 0; font-family: var(--font-data); }
+.estab-brand-pick input[type='color'] {
+  flex: 0 0 auto;
+  width: 38px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.estab-brand-pick input[type='color'][data-unset] {
+  background:
+    linear-gradient(45deg, var(--subtle) 25%, transparent 25%, transparent 75%, var(--subtle) 75%) 0 0 / 10px 10px,
+    linear-gradient(45deg, var(--subtle) 25%, var(--surface) 25%, var(--surface) 75%, var(--subtle) 75%) 5px 5px / 10px 10px;
+}
+.estab-brand-pick input[type='color'][data-unset]::-webkit-color-swatch { opacity: 0; }
+.estab-brand-pick input[type='color'][data-unset]::-moz-color-swatch { opacity: 0; }
+.estab-brand-note { display: block; margin-top: var(--space-1); font-size: 12px; color: var(--muted); }
+.estab-brand-note.is-warn { color: var(--warning); }
+.estab-brand-note.is-bad { color: var(--danger); }
+.estab-brand-read { display: inline-flex; align-items: center; gap: 6px; }
+.estab-brand-dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+}
+
 /* Section Classification : léger accent pour la distinguer (nouvelle, business) */
 .establishment-classification { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
 .establishment-classification legend { color: var(--accent-strong); }
@@ -12637,6 +12672,50 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 #staffCockpitPage .fcp-field input:focus,
 #staffCockpitPage .fcp-field select:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent); }
 #staffCockpitPage .fcp-field input:invalid { border-color: var(--danger); }
+
+/* --- Marque du centre : pipette + code hexadecimal + retrait ----------------
+   La pastille de couleur est la SEULE surface teintee de cet ecran, et sa
+   teinte vient de la saisie du gerant, jamais d'une valeur ecrite ici. Sans
+   couleur choisie ([data-unset]), elle se lit comme un champ vide : un damier
+   fait de jetons neutres, pas un noir qui passerait pour un choix. */
+#staffCockpitPage .fcp-brand-pick { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#staffCockpitPage .fcp-brand-pick input[type='text'] { flex: 1 1 auto; min-width: 0; font-family: var(--font-mono, inherit); }
+#staffCockpitPage .fcp-brand-pick input[type='color'] {
+  flex: 0 0 auto;
+  width: 34px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+#staffCockpitPage .fcp-brand-pick input[type='color'][data-unset] {
+  background:
+    linear-gradient(45deg, var(--subtle) 25%, transparent 25%, transparent 75%, var(--subtle) 75%) 0 0 / 10px 10px,
+    linear-gradient(45deg, var(--subtle) 25%, var(--surface) 25%, var(--surface) 75%, var(--subtle) 75%) 5px 5px / 10px 10px;
+}
+#staffCockpitPage .fcp-brand-pick input[type='color'][data-unset]::-webkit-color-swatch { opacity: 0; }
+#staffCockpitPage .fcp-brand-pick input[type='color'][data-unset]::-moz-color-swatch { opacity: 0; }
+#staffCockpitPage .fcp-hint.fcp-brand-warn { color: var(--warning); }
+#staffCockpitPage .fcp-hint.fcp-brand-bad { color: var(--danger); }
+
+/* --- Recapitulatif de fin : ce que le centre porte vraiment. --------------- */
+#staffCockpitPage .fcp-brand-summary {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+#staffCockpitPage .fcp-brand-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  vertical-align: -1px;
+}
 
 #staffCockpitPage .fcp-modal-error {
   padding: 8px 10px;

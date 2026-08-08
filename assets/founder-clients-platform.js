@@ -606,6 +606,94 @@
     </div>`;
   }
 
+  // ---- Marque et expediteur du centre ---------------------------------------
+  //
+  // Ces deux reglages decidaient jusqu'ici du sort d'un accueil client : sans
+  // eux, le tunnel du nouveau centre portait l'accent plateforme et ses mails
+  // partaient de l'adresse plateforme. L'API les acceptait deja ; il fallait
+  // deux appels a la main depuis un terminal. Ils se saisissent ICI, au moment
+  // ou le client est cree, et nulle part ailleurs dans ce formulaire.
+  //
+  // UNE couleur suffit : assets/brand-color.js en derive le jeu complet de
+  // jetons (clair + sombre) et MESURE le contraste reel contre les fonds ou la
+  // couleur sert. On avertit, on ne bloque jamais : c'est la marque du client.
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function brandApi() {
+    return (typeof window !== 'undefined' && window.PinlaneBrand) ? window.PinlaneBrand : null;
+  }
+
+  function brandPalette() {
+    const api = brandApi();
+    if (!api) return null;
+    try { return api.readPlatformPalette(document); } catch (_) { return null; }
+  }
+
+  // Ce que la couleur saisie produira vraiment, en une ligne. Etat par defaut
+  // HONNETE : sans couleur, on dit ce qui se passe (accent Pinlane), on ne
+  // laisse pas croire a une marque absente.
+  function brandNoteHtml(accentRaw) {
+    const api = brandApi();
+    const raw = String(accentRaw == null ? '' : accentRaw).trim();
+    if (!raw) {
+      return `<span class="fcp-hint">Aucune couleur : le tunnel de ce centre garde l'accent Pinlane.</span>`;
+    }
+    if (!api || !api.isValidHex(raw)) {
+      return `<span class="fcp-hint fcp-brand-bad">Couleur invalide : attendu un code hexadecimal, par exemple #1f6f43.</span>`;
+    }
+    const notice = api.contrastNotice(api.deriveBranding(raw, brandPalette()), brandPalette());
+    if (!notice) return '<span class="fcp-hint"></span>';
+    return `<span class="fcp-hint ${notice.tone === 'warn' ? 'fcp-brand-warn' : ''}">${esc(notice.text)}</span>`;
+  }
+
+  function brandSection(center) {
+    const c = center || {};
+    const accent = String(c.accent || '');
+    const swatch = (brandApi() && brandApi().isValidHex(accent)) ? brandApi().normalizeHex(accent) : '';
+    return `<div class="fcp-section">
+      <div class="fcp-section-title">Marque et expediteur</div>
+      <div class="fcp-fields">
+        <div class="fcp-field fcp-span2">
+          <label for="fcpAccentText">Couleur d'accent du centre</label>
+          <div class="fcp-brand-pick">
+            <input type="color" id="fcpAccentColor" aria-label="Choisir la couleur d'accent"
+              value="${esc(swatch || '#000000')}" ${swatch ? '' : 'data-unset="1"'}
+              oninput="fcpSetAccent(this.value, 'picker')">
+            <input type="text" id="fcpAccentText" inputmode="text" spellcheck="false" autocomplete="off"
+              placeholder="#1f6f43 (facultatif)" value="${esc(accent)}"
+              aria-describedby="fcpBrandNote" oninput="fcpSetAccent(this.value, 'text')">
+            <button type="button" class="pv2-btn sm" onclick="fcpSetAccent('', 'clear')">Retirer</button>
+          </div>
+          <span id="fcpBrandNote">${brandNoteHtml(accent)}</span>
+        </div>
+        ${field("Nom d'expediteur des emails", 'center.senderLabel', c.senderLabel, { placeholder: 'Fun Galaxy Namur' })}
+        ${field("Adresse d'expediteur", 'center.senderEmail', c.senderEmail, { type: 'email', placeholder: 'reservations@fun-galaxy.be', autocomplete: 'off', hint: "Vide : les emails de ce centre partent de l'adresse plateforme." })}
+      </div>
+    </div>`;
+  }
+
+  // Ecriture de la couleur : les deux controles (pipette et texte) portent LA
+  // MEME valeur, et seul le champ qui n'a pas la frappe est resynchronise.
+  window.fcpSetAccent = function (value, source) {
+    if (!fcp.draft) return;
+    if (!fcp.draft.center || typeof fcp.draft.center !== 'object') fcp.draft.center = {};
+    const raw = String(value == null ? '' : value).trim();
+    fcp.draft.center.accent = raw;
+    const root = getRoot();
+    const text = root && root.querySelector('#fcpAccentText');
+    const picker = root && root.querySelector('#fcpAccentColor');
+    const note = root && root.querySelector('#fcpBrandNote');
+    const api = brandApi();
+    if (text && source !== 'text') text.value = raw;
+    if (picker && source !== 'picker') {
+      if (api && api.isValidHex(raw)) { picker.value = api.normalizeHex(raw); picker.removeAttribute('data-unset'); }
+      else picker.setAttribute('data-unset', '1');
+    }
+    if (picker && source === 'picker') picker.removeAttribute('data-unset');
+    if (note) note.innerHTML = brandNoteHtml(raw);
+  };
+
   function centerSection(center) {
     const c = center || {};
     return `<div class="fcp-section">
@@ -614,7 +702,8 @@
         ${field('Identifiant du centre (slug)', 'center.id', c.id, { placeholder: 'fun-galaxy-namur', pattern: SLUG_RE.source, hint: 'Minuscules, chiffres et tirets simples.', span2: true })}
         ${field('Nom du centre', 'center.name', c.name, { placeholder: 'Fun Galaxy Namur', span2: true })}
       </div>
-    </div>`;
+    </div>
+    ${brandSection(c)}`;
   }
 
   function newClientBody() {
@@ -648,7 +737,8 @@
           ${field('Identifiant du centre (slug)', 'center.id', c.id, { placeholder: 'fun-galaxy-liege', pattern: SLUG_RE.source, hint: 'Minuscules, chiffres et tirets simples.', autofocus: true, span2: true })}
           ${field('Nom du centre', 'center.name', c.name, { placeholder: 'Fun Galaxy Liege', span2: true })}
         </div>
-      </div>`;
+      </div>
+      ${brandSection(c)}`;
   }
 
   function codeRow(entry) {
@@ -684,7 +774,26 @@
         <strong>Copie ces codes maintenant, ils ne seront plus affiches.</strong>
         Remets le code Direction au client : il se connecte avec, cote Etablissement.
       </div>
-      <div class="fcp-codes">${rows}</div>`;
+      <div class="fcp-codes">${rows}</div>
+      ${brandSummary(res.center)}`;
+  }
+
+  // Ce que le centre porte VRAIMENT en sortant de ce formulaire. Le serveur
+  // rend ce qu'il a ecrit ; on l'affiche tel quel, y compris l'absence.
+  function brandSummary(center) {
+    const c = center || {};
+    const accent = c.branding && c.branding.accent ? String(c.branding.accent) : '';
+    const sender = c.sender && c.sender.email ? String(c.sender.email) : '';
+    const brandLine = accent
+      ? `<span class="fcp-brand-dot" style="background:${esc(accent)}" aria-hidden="true"></span> Tunnel a la couleur ${esc(accent)}.`
+      : 'Aucune couleur : le tunnel garde l\'accent Pinlane.';
+    const senderLine = sender
+      ? `Emails signes ${esc(c.sender.label || sender)} &lt;${esc(sender)}&gt;.`
+      : 'Aucune identite d\'expediteur : les emails partent de l\'adresse plateforme.';
+    return `<div class="fcp-brand-summary">
+      <div>${brandLine}</div>
+      <div>${senderLine}</div>
+    </div>`;
   }
 
   // ---- Modale : confirmation de suppression ---------------------------------
@@ -775,7 +884,7 @@
   // ---- Ouverture / edition ---------------------------------------------------
 
   window.fcpOpenNew = function () {
-    fcp.draft = { id: '', name: '', status: 'trial', plan: '', contactEmail: '', contactPhone: '', center: { id: '', name: '' } };
+    fcp.draft = { id: '', name: '', status: 'trial', plan: '', contactEmail: '', contactPhone: '', center: { id: '', name: '', accent: '', senderLabel: '', senderEmail: '' } };
     fcp.result = null;
     fcp.needsReload = false;
     fcp.modalError = '';
@@ -787,7 +896,7 @@
   window.fcpAddCenter = function (clientId) {
     const client = findClient(clientId);
     if (!client) { toast('Client introuvable. Actualise la liste.'); return; }
-    fcp.draft = { center: { id: '', name: '' } };
+    fcp.draft = { center: { id: '', name: '', accent: '', senderLabel: '', senderEmail: '' } };
     fcp.result = null;
     fcp.needsReload = false;
     fcp.modalError = '';
@@ -863,6 +972,37 @@
 
   function trimmed(v) { return String(v == null ? '' : v).trim(); }
 
+  // Marque + expediteur -> ce que le serveur recevra. Rend { error } si la
+  // saisie est refusee (couleur ou adresse mal formee), sinon { patch } a
+  // fusionner dans center. Les deux reglages sont FACULTATIFS : absents, le
+  // centre demarre sans marque et sans identite, et l'interface l'a annonce.
+  function centerBrandPatch(draftCenter) {
+    const c = draftCenter || {};
+    const patch = {};
+    const accent = trimmed(c.accent);
+    const api = brandApi();
+    if (accent) {
+      if (!api || !api.isValidHex(accent)) {
+        return { error: 'Couleur d\'accent invalide : un code hexadecimal comme #1f6f43 (ou vide pour aucune marque).' };
+      }
+      // Le jeu complet est DERIVE ici et voyage declare : le rendu ne calcule
+      // jamais une couleur (lib/center-config.js jette tout le reste).
+      patch.branding = api.deriveBranding(accent, brandPalette());
+    }
+    const senderLabel = trimmed(c.senderLabel);
+    const senderEmail = trimmed(c.senderEmail);
+    if (senderEmail && !EMAIL_RE.test(senderEmail)) {
+      return { error: 'Adresse d\'expediteur invalide : une adresse email complete, ou vide pour partir de l\'adresse plateforme.' };
+    }
+    if (!senderEmail && senderLabel) {
+      return { error: 'Nom d\'expediteur saisi sans adresse : ajoute l\'adresse, ou efface le nom.' };
+    }
+    if (senderEmail) {
+      patch.sender = { label: senderLabel, email: senderEmail };
+    }
+    return { patch };
+  }
+
   async function saveNewClient() {
     const d = fcp.draft || {};
     const id = trimmed(d.id);
@@ -882,12 +1022,15 @@
       refreshBody(); return;
     }
 
+    const brand = centerBrandPatch(center);
+    if (brand.error) { fcp.modalError = brand.error; refreshBody(); return; }
+
     const body = {
       action: 'createClient',
       id,
       name,
       status: d.status || 'trial',
-      center: centerName ? { id: centerId, name: centerName } : { id: centerId },
+      center: { id: centerId, ...(centerName ? { name: centerName } : {}), ...brand.patch },
     };
     if (trimmed(d.plan)) body.plan = trimmed(d.plan);
     if (trimmed(d.contactEmail)) body.contactEmail = trimmed(d.contactEmail);
@@ -924,10 +1067,12 @@
       fcp.modalError = 'Identifiant du centre invalide : minuscules, chiffres et tirets simples (ex. fun-galaxy-liege).';
       refreshBody(); return;
     }
+    const brand = centerBrandPatch(center);
+    if (brand.error) { fcp.modalError = brand.error; refreshBody(); return; }
     const body = {
       action: 'addClientCenter',
       clientId: fcp.modal.clientId,
-      center: centerName ? { id: centerId, name: centerName } : { id: centerId },
+      center: { id: centerId, ...(centerName ? { name: centerName } : {}), ...brand.patch },
     };
     fcp.saving = true;
     fcp.modalError = '';

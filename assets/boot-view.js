@@ -24,7 +24,12 @@
     // Le parcours a son adresse : on n'y touche jamais.
     if (path === '/reserver') return;
     var app = false;
-    if (hash.indexOf('#staff') === 0 || hash.indexOf('#admin') === 0) {
+    // La demonstration publique ouvre la CONSOLE, jamais le parcours de
+    // reservation : sans cette ligne, un prospect arrive sur /demo voyait le
+    // tunnel client le temps que demo-mode.js pose son fragment.
+    if (path === '/demo') {
+      app = true;
+    } else if (hash.indexOf('#staff') === 0 || hash.indexOf('#admin') === 0) {
       app = true;
     } else if (hash.indexOf('#client') !== 0) {
       // Aucun hash : c'est l'etat sauvegarde qui dit d'ou on revient.

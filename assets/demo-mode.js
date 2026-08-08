@@ -568,7 +568,85 @@
     };
   }
 
-  try { window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(SESSION)); } catch (error) { /* stockage refuse */ }
+  // LA TROISIEME PORTE, celle qu'on oublie. `navigator.sendBeacon` est un envoi
+  // en tache de fond : il ne passe ni par `fetch` ni par `XMLHttpRequest`, donc
+  // les deux coupures ci-dessus ne le voient pas. Aucun code du produit ne
+  // l'utilise aujourd'hui - c'est justement pour ca qu'il faut le fermer
+  // maintenant : le jour ou un module d'analytique l'ajoutera, personne ne se
+  // souviendra que la page /demo est publique.
+  var beaconNatif = window.navigator && window.navigator.sendBeacon
+    ? window.navigator.sendBeacon.bind(window.navigator) : null;
+  if (beaconNatif) {
+    window.navigator.sendBeacon = function (adresse, donnees) {
+      var u;
+      try { u = new URL(String(adresse || ''), window.location.origin); } catch (error) { u = null; }
+      if (u && u.pathname.indexOf('/api/') === 0) return true;  // accepte, n'envoie rien
+      return beaconNatif(adresse, donnees);
+    };
+  }
+
+  /* COUPURE DU STOCKAGE, pour la meme raison que la coupure du reseau.
+     Trouve le 2026-08-08 en instrumentant le serveur de test : la
+     demonstration ecrivait sa session bidon dans `funGalaxy_auth_v1`, la VRAIE
+     cle du produit, sur le VRAI domaine. Deux consequences, aucune theorique :
+       - un membre du staff du client qui ouvre /demo par curiosite voyait sa
+         session remplacee par `token: 'demo'` : il etait DECONNECTE de sa
+         console, et son poste repartait ensuite interroger l'API avec un
+         jeton mort ;
+       - la meme session survivait a la sortie de /demo : les pages reelles
+         visitees ensuite (/, /reserver) emettaient des appels /api/staff-auth
+         et /api/staff-state pour le compte d'un utilisateur qui n'existe pas.
+     On ne nettoie donc pas apres coup, on ISOLE : sur /demo, le stockage local
+     et de session sont remplaces par une memoire vive. La demonstration lit et
+     ecrit ce qu'elle veut, personne d'autre n'en voit rien, et elle ne peut
+     rien lire de ce qu'un utilisateur reel avait enregistre. */
+  function memoireVive() {
+    var boite = Object.create(null);
+    var faux = {
+      getItem: function (cle) {
+        cle = String(cle);
+        return Object.prototype.hasOwnProperty.call(boite, cle) ? boite[cle] : null;
+      },
+      setItem: function (cle, valeur) { boite[String(cle)] = String(valeur); },
+      removeItem: function (cle) { delete boite[String(cle)]; },
+      clear: function () { boite = Object.create(null); },
+      key: function (i) { return Object.keys(boite)[i] || null; },
+    };
+    try {
+      Object.defineProperty(faux, 'length', { get: function () { return Object.keys(boite).length; } });
+    } catch (error) { faux.length = 0; }
+    return faux;
+  }
+  function isoler(nom) {
+    try {
+      Object.defineProperty(window, nom, { configurable: true, value: memoireVive() });
+      return true;
+    } catch (error) {
+      // Navigateur qui refuse la redefinition : on ne peut pas isoler, donc on
+      // ne pollue pas non plus. La session vit alors en memoire seule (voir
+      // plus bas) et l'application retombera sur le faux reseau.
+      return false;
+    }
+  }
+  var stockageIsole = isoler('localStorage');
+  isoler('sessionStorage');
+
+  try {
+    // Le navigateur a refuse l'isolation : la demonstration doit quand meme
+    // fonctionner, donc on ecrit dans le stockage reel comme avant - mais on
+    // note ce qu'on ecrase et on le REND en quittant la page. Un membre du
+    // staff ne peut plus perdre sa session en visitant la demonstration.
+    if (!stockageIsole) {
+      var avant = window.localStorage.getItem('funGalaxy_auth_v1');
+      window.addEventListener('pagehide', function () {
+        try {
+          if (avant === null) window.localStorage.removeItem('funGalaxy_auth_v1');
+          else window.localStorage.setItem('funGalaxy_auth_v1', avant);
+        } catch (error) { /* rien de plus a tenter */ }
+      });
+    }
+    window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(SESSION));
+  } catch (error) { /* stockage refuse */ }
 
   /* ---- L'habillage : on montre le PRODUIT, pas la navigation interne ------ */
   var style = document.createElement('style');
@@ -594,6 +672,42 @@
     /* Une demonstration ne se defile pas toute seule dans son cadre : la
        hauteur remonte au site hote (voir l emetteur de app-main.js). */
     'body.pinlane-demo { overflow-x: hidden; }',
+    /* AUCUN CODE D'ACCES EN DEMONSTRATION. La session bidon est deja posee et
+       le faux reseau repond « authentifie » : l'ecran de connexion ne devrait
+       jamais s'armer. Mais `hasSavedAuth()` lit le stockage local, et un
+       navigateur en navigation privee ou une iframe cloisonnee peuvent le
+       refuser : la console s'ouvrirait alors sur une demande de code, dans une
+       vitrine. Cette regle ferme le cas, elle ne remplace pas la session. */
+    'body.pinlane-demo #authOverlay { display: none !important; }',
+    'body.pinlane-demo.auth-locked { overflow: auto !important; }',
+
+    /* ---- LE BANDEAU DE DEMONSTRATION -----------------------------------
+       Le visiteur doit savoir, a chaque seconde et sans avoir a le deviner,
+       que les chiffres sous ses yeux sont fabriques. Un bandeau qui defile
+       hors de l'ecran ne dit rien a celui qui arrive au milieu de la page :
+       il est donc FIXE, en bas, discret, et il porte le chemin du retour. */
+    '.pl-demo-bandeau { position: fixed; z-index: 2147483000; left: 50%; bottom: 14px;',
+    '  transform: translateX(-50%); display: flex; align-items: center; gap: 10px;',
+    '  max-width: calc(100vw - 24px); padding: 7px 8px 7px 14px;',
+    '  border: 1px solid var(--line-strong, #d9d9d9); border-radius: var(--radius-full, 9999px);',
+    '  background: var(--surface, #fff); box-shadow: var(--shadow-overlay, 0 8px 30px rgba(0,0,0,.12));',
+    '  font-family: var(--font-ui, system-ui, sans-serif); font-size: 12.5px; line-height: 1.35;',
+    '  color: var(--text, #0a0a0a); }',
+    '.pl-demo-bandeau b { font-weight: 600; }',
+    '.pl-demo-bandeau .pl-demo-pt { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%;',
+    '  background: var(--warning, #a35200); }',
+    '.pl-demo-bandeau .pl-demo-tx { min-width: 0; }',
+    '.pl-demo-bandeau .pl-demo-tx span { color: var(--muted, #666); }',
+    '.pl-demo-bandeau a { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;',
+    '  padding: 6px 12px; border-radius: var(--radius-full, 9999px); text-decoration: none;',
+    '  background: var(--text, #0a0a0a); color: var(--page, #fafafa); font-weight: 600;',
+    '  transition: opacity 150ms cubic-bezier(.4,0,.2,1); }',
+    '.pl-demo-bandeau a:hover { opacity: .82; }',
+    '.pl-demo-bandeau a:focus-visible { outline: 2px solid var(--accent, #0070f3); outline-offset: 2px; }',
+    /* Sur telephone la pilule devient une barre pleine largeur : a 375 px, une
+       pilule centree de contenu variable deborde. */
+    '@media (max-width: 620px) { .pl-demo-bandeau { left: 8px; right: 8px; bottom: 8px;',
+    '  transform: none; max-width: none; border-radius: var(--radius-lg, 12px); font-size: 12px; } }',
   ].join('\n');
   // L'enseigne du client vit AUSSI dans le gabarit : le titre de l'onglet, le
   // logo, les liens de navigation du site public. Les masquer ne suffit pas -
@@ -617,6 +731,48 @@
       if (/fun\s*galaxy/i.test(noeud.nodeValue)) noeud.nodeValue = noeud.nodeValue.replace(/fun\s*galaxy/gi, CENTRE);
       noeud = marcheur.nextNode();
     }
+  }
+
+  /* ---- LE BANDEAU : « ce que vous voyez est fabrique » --------------------
+     Le mode demonstration montre la VRAIE console : c'est sa force, et c'est
+     exactement pourquoi il doit se declarer. Un prospect qui prend ces
+     reservations pour de vraies donnees de client se croit devant une fuite ;
+     un prospect qui les prend pour les siennes cherche ses chiffres. Le
+     bandeau est FIXE (il ne defile pas hors de l'ecran), il tient sur une
+     ligne, et il porte le seul lien de la page : le retour vers la vitrine.
+     Il est repose a chaque mutation du corps : un rendu de l'application ne
+     peut pas le faire disparaitre sans qu'il revienne. */
+  var ID_BANDEAU = 'pinlaneDemoBadge';
+  function poserBandeau() {
+    if (!document.body || document.getElementById(ID_BANDEAU)) return;
+    var barre = document.createElement('div');
+    barre.id = ID_BANDEAU;
+    barre.className = 'pl-demo-bandeau';
+    // `status` et non `alert` : l'information est permanente et non urgente,
+    // un lecteur d'ecran ne doit pas etre interrompu a chaque rendu.
+    barre.setAttribute('role', 'status');
+    var pastille = document.createElement('i');
+    pastille.className = 'pl-demo-pt';
+    pastille.setAttribute('aria-hidden', 'true');
+    var texte = document.createElement('div');
+    texte.className = 'pl-demo-tx';
+    var fort = document.createElement('b');
+    fort.textContent = 'Démonstration.';
+    var suite = document.createElement('span');
+    suite.textContent = ' Données fabriquées, ' + CENTRE + ' n’existe pas. Rien n’est enregistré.';
+    texte.appendChild(fort);
+    texte.appendChild(suite);
+    var lien = document.createElement('a');
+    lien.href = 'https://pinlane.be/';
+    lien.textContent = 'Retour sur pinlane.be';
+    // La demonstration peut etre embarquee dans un cadre : le retour doit
+    // sortir du cadre, pas recharger la vitrine a l'interieur du produit.
+    lien.target = '_top';
+    lien.rel = 'noopener';
+    barre.appendChild(pastille);
+    barre.appendChild(texte);
+    barre.appendChild(lien);
+    document.body.appendChild(barre);
   }
 
   // L'application decide elle-meme de sa vue au demarrage (hash, session,
@@ -707,6 +863,7 @@
     document.body.classList.add('pinlane-demo');
     document.head.appendChild(style);
     neutraliserPage();
+    poserBandeau();
     // Le forcage attend `load` : les scripts DIFFERES (staff-pages-v2 et les
     // modules de page) ne sont pas encore executes au DOMContentLoaded, et
     // renderStaff() appelait alors une fonction inexistante - erreur reelle
@@ -721,7 +878,13 @@
       // apres.
       if (params.get('loop') === '1') setTimeout(function () { scene(0); }, 1400);
     }
-    // Un rendu ulterieur peut reintroduire un libelle : on surveille.
-    new MutationObserver(neutraliserPage).observe(document.body, { childList: true, subtree: true, characterData: true });
+    // Un rendu ulterieur peut reintroduire un libelle, ou remplacer un sous
+    // arbre qui emporte le bandeau : on surveille les deux. `poserBandeau` ne
+    // fait rien quand le bandeau est deja la, donc l'observateur ne peut pas
+    // se declencher lui-meme en boucle.
+    new MutationObserver(function () {
+      neutraliserPage();
+      poserBandeau();
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
   });
 }());

@@ -6512,12 +6512,30 @@ function setStaffRouteHash(page = getStaffMenuPage(), resource = '') {
 const CLIENT_ROUTE_PATH = '/reserver';
 const APP_ROUTE_PATH = '/';
 
+// LA DEMONSTRATION PUBLIQUE A SON CHEMIN, ET IL DOIT SURVIVRE (2026-08-08).
+// `/demo` fait tourner cette meme application sur des donnees fabriquees
+// (assets/demo-mode.js). Or les deux chemins canoniques ci-dessus etaient
+// ecrits dans l'URL a CHAQUE changement de vue : des le premier rendu,
+// `history.replaceState` remplacait `/demo` par `/`. Consequences en chaine,
+// toutes constatees : l'adresse n'etait plus partageable, un rechargement
+// servait la console REELLE (le faux reseau ne se posait plus), la session de
+// demonstration etait rejetee par le vrai serveur, et le prospect tombait sur
+// l'ecran de code d'acces. C'est pour ca que la vitrine ne liait pas la demo.
+// La regle est donc : sur `/demo`, l'application ecrit `/demo` - le fragment
+// continue de porter la page, la query string reste preservee. Sur tout autre
+// chemin, comportement STRICTEMENT inchange.
+const DEMO_ROUTE_PATH = '/demo';
+function isDemoRoute() {
+  try { return /^\/demo\/?$/i.test(window.location.pathname || ''); } catch (error) { return false; }
+}
+
 function getCurrentPathname() {
   try { return String(window.location.pathname || '/').replace(/\/+$/, '') || '/'; } catch (error) { return '/'; }
 }
 
 function writeAppUrl(pathname, hash = '', { push = false } = {}) {
   if (typeof window === 'undefined' || !window.history) return;
+  if (isDemoRoute()) pathname = DEMO_ROUTE_PATH;
   // La query string est PRESERVEE : elle peut porter un parametre de campagne ou
   // de centre, et la perdre en changeant d'onglet casserait le suivi.
   let search = '';

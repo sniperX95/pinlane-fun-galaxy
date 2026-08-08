@@ -856,7 +856,11 @@ async function main() {
       noHeader: document.querySelectorAll('#adminContent header').length === 0,
     }));
     ok(shell.hero === shell.centerName, `le hero porte le nom du centre (« ${shell.hero} »)`);
-    ok(/donn[ée]es de test/i.test(shell.honesty), 'le bandeau « donnees de test » est affiche (flag serveur)');
+    // Le bandeau se declenche toujours sur le flag serveur (stub testData:true
+    // plus haut) ; son TEXTE, lui, parle desormais de la fiabilite des chiffres
+    // et non de l'etat commercial de Pinlane.
+    ok(/chiffres non fiables/i.test(shell.honesty) && !/SaaS/i.test(shell.honesty),
+      `le bandeau de fiabilite est affiche (flag serveur) et ne parle pas du lancement du SaaS (« ${shell.honesty} »)`);
     ok(shell.controlsH > 0 && shell.labelH > 0, `barre de controle + libelle de fenetre a hauteur reelle > 0 (${shell.controlsH}px / ${shell.labelH}px)`);
     ok(/→/.test(shell.windowText), `le libelle de fenetre est toujours visible (« ${shell.windowText} »)`);
     ok(shell.noHeader, 'aucun <header> emis dans #adminContent (piege body.admin-mode header{height:0} evite)');

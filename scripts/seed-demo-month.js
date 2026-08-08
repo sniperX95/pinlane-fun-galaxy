@@ -46,7 +46,11 @@ const { getCenter } = require('../lib/ops-knowledge');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { refreshFormuleOverrides } = require('../lib/catalog-overrides');
 
-const DEMO_EMAIL_DOMAIN = 'demo.fungalaxy.test';
+// Le marqueur n'est plus ecrit ici : l'ecran Direction s'en sert pour decider
+// s'il affiche le bandeau "donnees de test" (lib/simulation-filter.js). Deux
+// copies de cette chaine, et le bandeau mentirait le jour ou l'une des deux
+// changerait.
+const { DEMONSTRATION_EMAIL_DOMAIN: DEMO_EMAIL_DOMAIN } = require('../lib/simulation-filter');
 const ROOT = path.resolve(__dirname, '..');
 
 const args = process.argv.slice(2);

@@ -7,6 +7,7 @@ const {
   createOpsEvent,
   getDelayIncidentById,
   getReservationById,
+  centerHasFabricatedReservations,
   getOpsHealth,
   getOpsJob,
   listCommunications,
@@ -316,12 +317,26 @@ async function handleGet(req, res, options = {}) {
     // donc lisible depuis les deux cockpits. Sans cette remontee, un echec de
     // journalisation ne vivrait que dans les logs Vercel et la phrase "tout est
     // tracable" deviendrait fausse sans que personne ne le voie.
-    // testData : meme doctrine que le bundle du cockpit fondateur
-    // (lib/founder-cockpit.js) : le SaaS n'est pas lance, tout chiffre vient
-    // des essais internes. Le cockpit du centre affiche ce flag en bandeau au
-    // lieu de presenter les tests comme du reel. A passer a false au lancement,
-    // en meme temps que celui du fondateur.
-    sendJson(res, 200, { ok: true, health, audit: getAuditHealth(), testData: true });
+    //
+    // testData : ce flag allume le bandeau de l'ecran Direction. Il valait
+    // `true` EN DUR, herite de la doctrine du cockpit fondateur
+    // (lib/founder-cockpit.js) ecrite quand aucune donnee du produit n'etait
+    // reelle. Deux consequences, toutes deux fausses aujourd'hui : le bandeau
+    // s'affichait sur un centre dont chaque ligne est une vraie reservation, et
+    // il parlait de l'etat COMMERCIAL de Pinlane sur un ecran de client.
+    //
+    // Il repond desormais a la seule question que le bandeau a le droit de
+    // poser : les lignes de CE centre sont-elles fabriquees ? La reponse vient
+    // de la base, par les marqueurs que le code pose lui-meme a la creation
+    // (lib/simulation-filter.js). Donnees d'exploitation = pas de bandeau.
+    // Le cockpit fondateur, lui, garde son propre flag : c'est l'ecran de
+    // Movsar, et ses compteurs plateforme viennent bien des essais internes.
+    sendJson(res, 200, {
+      ok: true,
+      health,
+      audit: getAuditHealth(),
+      testData: await centerHasFabricatedReservations({ centerId }),
+    });
     return;
   }
 

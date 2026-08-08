@@ -253,6 +253,25 @@ class FakePool {
       reservationRows.push(row);
       return { rows: [{ ...row }], rowCount: 1 };
     }
+    // Provenance des donnees : la sonde du bandeau "donnees de test" de l ecran
+    // Direction (lib/database.centerHasFabricatedReservations). Ce fake OBEIT au
+    // SQL : il lit la liste des channels DANS la requete et le motif d email
+    // dans les parametres. Si le predicat de production perdait une de ses deux
+    // moities, ce fake changerait de reponse et le gate rougirait ; il ne
+    // repond jamais a la place du code.
+    if (/from reservations/i.test(sql) && /^select 1 /i.test(sql) && /not \(coalesce\(channel/i.test(sql)) {
+      const channels = (sql.match(/not in \(([^)]*)\)/i)?.[1] || '')
+        .split(',')
+        .map((value) => value.trim().replace(/^'|'$/g, ''))
+        .filter(Boolean);
+      const suffix = String(params[1] || '').replace(/^%/, '').toLowerCase();
+      const hit = reservationRows.some((row) => {
+        if (row.center_id !== params[0]) return false;
+        if (channels.includes(String(row.channel || '').trim())) return true;
+        return Boolean(suffix) && String(row.email || '').toLowerCase().endsWith(suffix);
+      });
+      return { rows: hit ? [{ found: 1 }] : [], rowCount: hit ? 1 : 0 };
+    }
     if (/from reservations/i.test(sql)) {
       // Le filtre centre n'est applique QUE si le SQL le porte : c'est ce qui
       // permet a une regression de scope de faire rougir ce gate.
@@ -421,6 +440,8 @@ const { getCenter, refreshCenterOverrides } = require(path.join(ROOT, 'lib', 'op
 const { getPool } = require(path.join(ROOT, 'lib', 'database.js'));
 const { refreshCatalog } = require(path.join(ROOT, 'lib', 'catalog-store.js'));
 const opsCommunications = require(path.join(ROOT, 'lib', 'ops-communications.js'));
+const opsJobs = require(path.join(ROOT, 'lib', 'ops-jobs.js'));
+const { DEMONSTRATION_EMAIL_DOMAIN } = require(path.join(ROOT, 'lib', 'simulation-filter.js'));
 const metaHandler = require(path.join(ROOT, 'api', 'public-booking-meta.js'));
 const availabilityHandler = require(path.join(ROOT, 'api', 'public-availability.js'));
 const reservationsHandler = require(path.join(ROOT, 'api', 'public-reservations.js'));
@@ -688,6 +709,163 @@ async function run() {
   ok(!/Fun Galaxy/.test(sentFromNoIdentity),
     `sans identite configuree, le repli n est PLUS "Fun Galaxy" (obtenu "${sentFromNoIdentity}")`);
 
+  section('[9b] Les QUATRE emails DECLENCHES PAR UNE RESERVATION portent SON identite (blocage E)');
+  // Ceux-la, le client final les voit ; les sequences marketing de l etape [9],
+  // beaucoup moins. Les trois premiers sont deja en file : la reservation de
+  // l etape [7] les a enfiles par le VRAI chemin (api/public-reservations ->
+  // afterReservationCreated -> enqueueReservationCommunications). On lit donc ce
+  // que la base a REELLEMENT recu, pas ce qu on aurait aime lui envoyer.
+  const bookingMails = communicationRows.filter(
+    (row) => row.center_id === SECOND_CENTER_ID && row.channel === 'email',
+  );
+  const mailOf = (templateId) => bookingMails.find((row) => row.template_id === templateId) || null;
+  const arrival = mailOf('confirmation') || mailOf('request_received');
+  const reminder = mailOf('reminder_48h');
+  ok(Boolean(arrival),
+    `la reservation a enfile son mail d arrivee (vus: ${bookingMails.map((r) => r.template_id).join(', ') || 'aucun'})`);
+  ok(arrival?.payload?.fromEmail === SECOND_SENDER_EMAIL,
+    `${arrival?.template_id || 'arrivee'} : l adresse du centre est portee (obtenu ${arrival?.payload?.fromEmail || 'aucune'})`);
+  ok(arrival?.payload?.fromLabel === SECOND_SENDER_LABEL,
+    `${arrival?.template_id || 'arrivee'} : le nom du centre est porte (obtenu ${arrival?.payload?.fromLabel || 'aucun'})`);
+  ok(Boolean(reminder), 'le rappel J-2 est enfile lui aussi');
+  ok(reminder?.payload?.fromEmail === SECOND_SENDER_EMAIL,
+    `rappel J-2 : l adresse du centre est portee (obtenu ${reminder?.payload?.fromEmail || 'aucune'})`);
+  ok(reminder?.payload?.fromLabel === SECOND_SENDER_LABEL,
+    `rappel J-2 : le nom du centre est porte (obtenu ${reminder?.payload?.fromLabel || 'aucun'})`);
+
+  // Le quatrieme part d un JOB, pas de l enfilement : on execute le vrai
+  // handler. Il ecrit dans communications par le meme chemin que la prod.
+  const followupBefore = communicationRows.length;
+  await opsJobs.__test.handleReservationFollowup({
+    centerId: SECOND_CENTER_ID,
+    reservationId: created?.id || null,
+    payload: {
+      reservation: {
+        id: created?.id || null,
+        centerId: SECOND_CENTER_ID,
+        name: 'Camille Dubois',
+        email: 'camille.dubois@exemple.be',
+        date: DATE,
+        startTime: chosenSlot?.time || '14:00',
+      },
+    },
+  });
+  const followupMail = communicationRows
+    .slice(followupBefore)
+    .find((row) => row.template_id === 'post_visit_followup') || null;
+  ok(Boolean(followupMail), 'le merci d apres-visite est ecrit par son job');
+  ok(followupMail?.payload?.fromEmail === SECOND_SENDER_EMAIL,
+    `merci d apres-visite : l adresse du centre est portee (obtenu ${followupMail?.payload?.fromEmail || 'aucune'})`);
+  ok(followupMail?.payload?.fromLabel === SECOND_SENDER_LABEL,
+    `merci d apres-visite : le nom du centre est porte (obtenu ${followupMail?.payload?.fromLabel || 'aucun'})`);
+
+  // CE QUE RESEND RECEVRA : l en-tete From ET l adresse de reponse de la
+  // CONFIRMATION du deuxieme client. C est la question posee mot pour mot :
+  // part-elle a SON nom, depuis SON adresse ?
+  const arrivalEnvelope = await captureSendEmailEnvelope({
+    centerId: SECOND_CENTER_ID,
+    channel: 'email',
+    recipient: arrival?.recipient || 'camille.dubois@exemple.be',
+    subject: arrival?.subject || 'Confirmation',
+    body: arrival?.body || '',
+    payload: arrival?.payload || {},
+  });
+  ok(arrivalEnvelope.from === `${SECOND_SENDER_LABEL} <${SECOND_SENDER_EMAIL}>`,
+    `la confirmation part a SON nom depuis SON adresse (obtenu "${arrivalEnvelope.from}")`);
+  ok(arrivalEnvelope.replyTo === SECOND_SENDER_EMAIL,
+    `on lui repond a SON adresse, pas a la plateforme (obtenu "${arrivalEnvelope.replyTo || 'aucune'}")`);
+  ok(!/Fun Galaxy/i.test(arrivalEnvelope.from),
+    'contraste : rien de Fun Galaxy dans l en-tete du deuxieme client');
+
+  // LE REPLI, et il doit rester honnete : un centre SANS identite configuree
+  // repart sur l adresse plateforme, au nom du centre. Jamais une adresse
+  // inventee, jamais celle d un autre client. Fun Galaxy n a aucune ligne dans
+  // email_identities ici : c est exactement ce cas.
+  const funGalaxyQueue = [];
+  await opsCommunications.enqueueReservationCommunications({
+    id: 987654,
+    centerId: 'libramont',
+    name: 'Client Fun Galaxy',
+    email: 'client.fungalaxy@exemple.be',
+    phone: '',
+    date: DATE,
+    startTime: '15:00',
+    duration: 1,
+    pax: 4,
+    type: 'bowling',
+  }, {
+    enqueue: async (input) => { funGalaxyQueue.push(input); return { id: 1 }; },
+    deps: { query: (t, p) => pool.query(t, p) },
+  });
+  const funGalaxyArrival = funGalaxyQueue.find((row) => row.templateId === 'confirmation' || row.templateId === 'request_received') || null;
+  ok(Boolean(funGalaxyArrival), 'contraste : le premier client enfile aussi son mail d arrivee');
+  ok(!funGalaxyArrival?.payload?.fromEmail,
+    `sans identite configuree, aucune adresse n est inventee (obtenu ${funGalaxyArrival?.payload?.fromEmail || 'aucune'})`);
+  const funGalaxyEnvelope = await captureSendEmailEnvelope({
+    centerId: 'libramont',
+    channel: 'email',
+    recipient: 'client.fungalaxy@exemple.be',
+    subject: funGalaxyArrival?.subject || 'Confirmation',
+    body: funGalaxyArrival?.body || '',
+    payload: funGalaxyArrival?.payload || {},
+  });
+  ok(funGalaxyEnvelope.from.includes('<no-reply@pinlane.be>'),
+    `le repli reste l adresse plateforme (obtenu "${funGalaxyEnvelope.from}")`);
+  ok(!funGalaxyEnvelope.from.includes(SECOND_SENDER_EMAIL),
+    'et JAMAIS l adresse du deuxieme client (cloisonnement des expediteurs)');
+
+  section('[9c] L ecran Direction ne dit PAS "donnees de test" sur des donnees d exploitation');
+  // La reservation de l etape [7] est une vraie ligne : channel public, email
+  // ordinaire. Le flag qui allume le bandeau doit valoir false.
+  const healthReal = await callHandler(opsHandler, {
+    url: `/api/ops?action=health&centerId=${SECOND_CENTER_ID}`,
+    token: STRIKE_TOKEN,
+  });
+  ok(healthReal.res.statusCode === 200,
+    `l ecran Direction lit sa sante (obtenu ${healthReal.res.statusCode})`);
+  ok(healthReal.json?.testData === false,
+    `aucun bandeau sur des donnees d exploitation (obtenu ${JSON.stringify(healthReal.json?.testData)})`);
+
+  // MEME CODE, DONNEES FABRIQUEES : le flag doit basculer. C est ce qui prouve
+  // qu il SUIT la base et n est pas devenu un `false` ecrit en dur a la place
+  // du `true` d avant. Marqueur : le domaine d email du jeu de demonstration.
+  const seededRow = {
+    ...reservationRows[reservationRows.length - 1],
+    id: 999001,
+    email: `demo.1@${DEMONSTRATION_EMAIL_DOMAIN}`,
+  };
+  reservationRows.push(seededRow);
+  const healthSeeded = await callHandler(opsHandler, {
+    url: `/api/ops?action=health&centerId=${SECOND_CENTER_ID}`,
+    token: STRIKE_TOKEN,
+  });
+  ok(healthSeeded.json?.testData === true,
+    `une ligne du jeu de demonstration rallume le bandeau (obtenu ${JSON.stringify(healthSeeded.json?.testData)})`);
+  const simRow = { ...seededRow, id: 999002, email: 'vrai.client@exemple.be', channel: 'sim-client' };
+  reservationRows.splice(reservationRows.indexOf(seededRow), 1);
+  reservationRows.push(simRow);
+  const healthSim = await callHandler(opsHandler, {
+    url: `/api/ops?action=health&centerId=${SECOND_CENTER_ID}`,
+    token: STRIKE_TOKEN,
+  });
+  ok(healthSim.json?.testData === true,
+    `une ligne de simulation aussi (obtenu ${JSON.stringify(healthSim.json?.testData)})`);
+  reservationRows.splice(reservationRows.indexOf(simRow), 1);
+  const healthBack = await callHandler(opsHandler, {
+    url: `/api/ops?action=health&centerId=${SECOND_CENTER_ID}`,
+    token: STRIKE_TOKEN,
+  });
+  ok(healthBack.json?.testData === false,
+    'restauration : les lignes fabriquees retirees, le bandeau s eteint de nouveau');
+  // Le texte du bandeau ne parle plus de l etat commercial de Pinlane. Une
+  // demonstration qui affiche « le SaaS n est pas lance » annule l appel.
+  const consoleSource = fs.readFileSync(path.join(ROOT, 'assets', 'admin-console.js'), 'utf8');
+  const bannerLine = consoleSource.split('\n').find((line) => line.includes('class="admin-testdata"')) || '';
+  ok(!/SaaS n.est pas lanc|vrais clients|essais internes/i.test(bannerLine),
+    'le bandeau ne parle plus du lancement du SaaS ni de "vrais clients"');
+  ok(/fiab/i.test(bannerLine),
+    'il parle de la fiabilite des chiffres affiches');
+
   section('[10] Le tunnel porte SES couleurs, et le CSS n en ecrit AUCUNE (blocage C)');
   const clientCss = fs.readFileSync(path.join(ROOT, 'assets', 'pinlane-client.css'), 'utf8');
   const accentBlock = clientCss.slice(0, clientCss.indexOf('/* ---', clientCss.indexOf('body.client-mode, body.public-form')));
@@ -743,16 +921,24 @@ function birthdayQuery(text, params) {
 
 // Capture l en-tete From que sendEmail poserait, sans jamais sortir sur le
 // reseau : fetch est remplace le temps de l appel.
-async function captureSendEmailFrom(communication) {
+async function captureSendEmailEnvelope(communication) {
   const previousKey = process.env.RESEND_API_KEY;
   const previousFrom = process.env.RESEND_FROM;
+  const previousReplyTo = process.env.RESEND_REPLY_TO;
+  const previousStaff = process.env.STAFF_REVIEW_EMAIL;
+  const previousReservationStaff = process.env.RESERVATION_STAFF_EMAIL;
   const previousFetch = global.fetch;
   process.env.RESEND_API_KEY = 'gate-fake-key';
   process.env.RESEND_FROM = 'no-reply@pinlane.be';
-  let captured = '';
+  // Aucune adresse de reponse d environnement : l adresse de reponse observee
+  // ne peut alors venir que de l identite du centre.
+  delete process.env.RESEND_REPLY_TO;
+  delete process.env.STAFF_REVIEW_EMAIL;
+  delete process.env.RESERVATION_STAFF_EMAIL;
+  let captured = { from: '', replyTo: '' };
   global.fetch = async (url, init) => {
     const body = JSON.parse(String(init?.body || '{}'));
-    captured = String(body.from || '');
+    captured = { from: String(body.from || ''), replyTo: String(body.reply_to || '') };
     return { ok: true, status: 200, json: async () => ({ id: 'gate-message-id' }), text: async () => '{}' };
   };
   try {
@@ -760,13 +946,20 @@ async function captureSendEmailFrom(communication) {
     // separation des desinscriptions) : c'est elle qui compose l en-tete From.
     await opsCommunications.__test.sendEmail(communication);
   } catch (error) {
-    captured = captured || `ERREUR ${error.message}`;
+    captured = { from: captured.from || `ERREUR ${error.message}`, replyTo: captured.replyTo };
   } finally {
     global.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.RESEND_API_KEY; else process.env.RESEND_API_KEY = previousKey;
     if (previousFrom === undefined) delete process.env.RESEND_FROM; else process.env.RESEND_FROM = previousFrom;
+    if (previousReplyTo !== undefined) process.env.RESEND_REPLY_TO = previousReplyTo;
+    if (previousStaff !== undefined) process.env.STAFF_REVIEW_EMAIL = previousStaff;
+    if (previousReservationStaff !== undefined) process.env.RESERVATION_STAFF_EMAIL = previousReservationStaff;
   }
   return captured;
+}
+
+async function captureSendEmailFrom(communication) {
+  return (await captureSendEmailEnvelope(communication)).from;
 }
 
 // -- Appel d un handler d API reel ------------------------------------------
@@ -1261,6 +1454,82 @@ async function mutationCounterProof() {
   let restored = false;
   try { restored = Boolean(getCenter(SECOND_CENTER_ID)); } catch (error) { restored = false; }
   ok(restored, 'restauration inverse : la lecture base le fait revenir');
+
+  // Blocage E : on retire l identite d expediteur du mail d arrivee, dans le
+  // FICHIER, et on recharge le module. Restauration par edition inverse.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'ops-communications.js'),
+    anchor: 'payload: { textBody: message.body, validationMode, ...sender },',
+    replacement: 'payload: { textBody: message.body, validationMode },',
+    label: 'identite d expediteur retiree du mail d arrivee',
+    probe: async (mutated) => {
+      const queue = [];
+      await mutated.enqueueReservationCommunications({
+        id: 987655,
+        centerId: SECOND_CENTER_ID,
+        name: 'Camille Dubois',
+        email: 'camille.dubois@exemple.be',
+        date: DATE,
+        startTime: '14:00',
+        duration: 1,
+        pax: 4,
+        type: 'bowling',
+      }, {
+        enqueue: async (input) => { queue.push(input); return { id: 1 }; },
+        deps: { query: (t, p) => getPool().query(t, p) },
+      });
+      const arrival = queue.find((row) => row.templateId === 'confirmation' || row.templateId === 'request_received');
+      return arrival?.payload?.fromEmail === SECOND_SENDER_EMAIL;
+    },
+  });
+
+  // Le bandeau : on remet le `true` ecrit en dur d avant. L ecran Direction du
+  // deuxieme client doit se remettre a annoncer des donnees de test alors que
+  // ses lignes sont reelles.
+  await withSourceMutation({
+    file: path.join(ROOT, 'api', 'ops.js'),
+    anchor: 'testData: await centerHasFabricatedReservations({ centerId }),',
+    replacement: 'testData: true,',
+    label: 'bandeau de test remis en dur',
+    probe: async (mutated) => {
+      const health = await callHandler(mutated, {
+        url: `/api/ops?action=health&centerId=${SECOND_CENTER_ID}`,
+        token: STRIKE_TOKEN,
+      });
+      return health.json?.testData === false;
+    },
+  });
+}
+
+// Mutation du CODE SOURCE, meme convention que scripts/catalog-store-check.js :
+// on casse l invariant dans le fichier, on recharge le module, on verifie que la
+// sonde devient fausse, puis on restaure par EDITION INVERSE (jamais git).
+async function withSourceMutation({ file, anchor, replacement, probe, label }) {
+  const original = fs.readFileSync(file, 'utf8');
+  const occurrences = original.split(anchor).length - 1;
+  if (occurrences !== 1) {
+    console.error(`second-client-onboarding-check: ancre de mutation introuvable ou ambigue (${occurrences}) : ${label}`);
+    process.exit(1);
+  }
+  const freshLoad = () => {
+    delete require.cache[require.resolve(file)];
+    return require(file);
+  };
+  fs.writeFileSync(file, original.replace(anchor, replacement));
+  let holds = true;
+  try {
+    holds = await probe(freshLoad());
+  } catch (error) {
+    // La mutation a casse autre chose : l invariant ne tient plus non plus,
+    // mais on le DIT au lieu de le compter comme un succes silencieux.
+    console.log(`      (mutation "${label}" : la sonde a leve ${error && error.message})`);
+    holds = false;
+  } finally {
+    fs.writeFileSync(file, original);
+    delete require.cache[require.resolve(file)];
+    require(file);
+  }
+  ok(!holds, `mutation "${label}" : l invariant tombe, ce gate ROUGIRAIT`);
 }
 
 run()

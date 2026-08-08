@@ -1255,10 +1255,15 @@ function renderAdminCenterGrid() {
   }).join('');
 }
 
-// Le bandeau d'honnêteté ne s'affiche que si le serveur a DIT que les données
-// sont des essais internes (flag testData de l'action health, doctrine du
-// cockpit fondateur). Pas de flag reçu = pas d'affirmation, dans un sens
-// comme dans l'autre.
+// Le bandeau d'honnêteté ne s'affiche que si le serveur a DIT que ce centre
+// contient des lignes fabriquées (flag testData de l'action health, calculé
+// depuis les marqueurs posés en base, cf. lib/simulation-filter.js). Pas de
+// flag reçu = pas d'affirmation, dans un sens comme dans l'autre.
+//
+// Il parle de la FIABILITÉ DES CHIFFRES AFFICHÉS, et de rien d'autre. Le texte
+// précédent annonçait « le SaaS n'est pas lancé […] pas de vrais clients » :
+// un état commercial de Pinlane, affiché sur l'écran d'un gérant, et faux dès
+// que ses réservations sont réelles.
 function renderAdminHonestyNote() {
   const note = document.getElementById('adminHonestyNote');
   if (!note) return;
@@ -1267,7 +1272,7 @@ function renderAdminHonestyNote() {
     : opsAdminCache?.testData;
   const show = flag === true && state.staffMenuPage !== 'establishment';
   note.innerHTML = show
-    ? `<aside class="admin-testdata" role="note">Données de TEST : le SaaS n'est pas lancé, les chiffres de ce cockpit viennent des essais internes, pas de vrais clients.</aside>`
+    ? `<aside class="admin-testdata" role="note">Chiffres non fiables : ce centre contient des réservations de test ou de démonstration, elles sont comptées ici comme les autres.</aside>`
     : '';
 }
 

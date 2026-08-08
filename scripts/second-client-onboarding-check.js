@@ -1138,10 +1138,31 @@ async function proveEmbedSelectsCenter() {
     // AUCUN CLIGNOTEMENT au chargement suivant : la marque est memorisee par
     // centre et rappelee AVANT la premiere peinture (index.html), comme le
     // theme. Sonde posee avant tout script : elle voit la toute premiere frame.
+    // Cette sonde etait une COURSE, et elle a fini par se perdre : avec
+    // `waitUntil: 'commit'` la main revient des que la navigation est actee, le
+    // <head> pouvant n'avoir rien execute. Lire a cet instant, c'etait parfois
+    // lire avant boot-view.js et rougir sur une valeur vide, pour une raison de
+    // chronometre et non de produit (constate le 2026-08-08 dans la chaine, sur
+    // un code qui venait de passer deux fois de suite). Et attendre davantage
+    // ouvrait la course INVERSE : le serveur repond, et on ne sait plus si la
+    // couleur vient du rappel local ou de lui.
+    // On supprime donc la course au lieu de l'arbitrer : pendant CE chargement,
+    // le catalogue ne repond JAMAIS. Toute couleur presente ne peut alors venir
+    // que du rappel pose par boot-view.js. L'attente peut etre aussi longue
+    // qu'on veut sans affaiblir la preuve.
+    await page.addInitScript(() => {
+      const previous = window.fetch;
+      window.fetch = (input, init) => {
+        const raw = typeof input === 'string' ? input : (input && input.url) || '';
+        if (String(raw).includes('/api/public-booking-meta')) return new Promise(() => {});
+        return previous(input, init);
+      };
+    });
     await page.reload({ waitUntil: 'commit', timeout: 45000 });
+    await page.waitForFunction(() => Boolean(document.body), null, { timeout: 15000 });
     const firstFrameAccent = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--tenant-accent').trim());
     ok(firstFrameAccent.toLowerCase() === SECOND_ACCENT,
-      `au rechargement, la marque est la des la premiere peinture, sans attendre le serveur (obtenu "${firstFrameAccent}")`);
+      `au rechargement, la marque est la des la premiere peinture, sans attendre le serveur (obtenu "${firstFrameAccent}", catalogue volontairement muet)`);
 
     // CONTRE-EPREUVE : sans ?center=, on garde le comportement historique. Et
     // la marque memorisee du deuxieme client ne doit PAS teinter la premiere
@@ -1151,6 +1172,10 @@ async function proveEmbedSelectsCenter() {
     const page2 = await browser.newPage();
     await installTunnelMock(page2);
     await page2.goto(`${BASE_URL}/reserver?embed=1&center=libramont&v=second-client-autre`, { waitUntil: 'commit', timeout: 45000 });
+    // Meme jalon que ci-dessus, et pour une raison plus forte encore : lue trop
+    // tot, cette contre-epreuve serait vraie SANS RIEN PROUVER (rien n'est pose,
+    // donc rien ne fuit). Elle ne vaut qu'apres l'execution de boot-view.js.
+    await page2.waitForFunction(() => Boolean(document.body), null, { timeout: 15000 });
     const otherFirstFrame = await page2.evaluate(() => document.documentElement.style.getPropertyValue('--tenant-accent').trim());
     ok(otherFirstFrame !== SECOND_ACCENT,
       `la marque du deuxieme client ne teinte PAS la premiere peinture d un autre centre (obtenu "${otherFirstFrame || 'aucune'}")`);

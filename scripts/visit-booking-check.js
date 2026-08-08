@@ -29,7 +29,29 @@ const PORT = Number(process.env.PINLANE_VISIT_PORT || 4207);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-const DATE = '2026-08-08'; // samedi ouvert : deterministe, jamais un jour ferme
+// La date de la fixture doit tenir DEUX conditions, pas une seule.
+//   1. un SAMEDI : c'est le jour dont la grille va de 10h a Minuit, la seule ou
+//      les deux creneaux de la fixture (15h et 16h) tiennent ;
+//   2. un jour STRICTEMENT FUTUR : le tunnel masque les creneaux deja passes de
+//      la journee EN COURS (`filterPastSlotsForDate`, assets/booking-core.js).
+// La date etait figee au 2026-08-08. Ce samedi-la est arrive : passe 14h30 heure
+// de Bruxelles, les creneaux 15h et 16h sont devenus du passe, le filtre les a
+// retires, `state.availableSlots` est reparti vide, `selectSlot(0)` n'a plus rien
+// fait, et le POST est parti sans horaire ni programme. Trois assertions rouges
+// pour une raison d'HORLOGE, jamais de produit : le meme code etait vert le matin
+// et le lendemain. On vise donc le prochain samedi, toujours devant nous.
+function nextSaturday() {
+  // Le produit raisonne en heure de Bruxelles (BUSINESS_TIME_ZONE) : la machine
+  // qui lance le gate peut etre ailleurs, c'est ce fuseau qui decide du jour.
+  const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()).split('-').map(Number);
+  const cursor = new Date(Date.UTC(year, month - 1, day));
+  // do/while : on avance d'au moins un jour, donc jamais aujourd'hui meme un samedi.
+  do { cursor.setUTCDate(cursor.getUTCDate() + 1); } while (cursor.getUTCDay() !== 6);
+  return cursor.toISOString().slice(0, 10);
+}
+const DATE = nextSaturday();
 
 function serveStatic() {
   const server = http.createServer((req, res) => {

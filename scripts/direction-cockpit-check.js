@@ -488,6 +488,24 @@ async function switchDirView(page, view) {
 // du mock. Les chips attendues sont reconstruites depuis les totals servis et le
 // formatMoney de l'app (difference EXACTE, jamais une valeur recopiee).
 async function collectDirMeasures(page) {
+  // Les valeurs KPI sont ANIMEES : PinlaneCharts.countUp les fait monter de 0
+  // jusqu'au total en 450 ms, image par image (requestAnimationFrame). Lire sans
+  // attendre, c'est lire un chiffre EN COURS DE MONTEE : ce gate a rougi avec
+  // « 0 € » puis « 1 660 € » alors que l'affichage final valait exactement le
+  // total serveur attendu. La cause est une attente qui ne mesurait pas le bon
+  // evenement : `bootDirection` attend que les 6 tuiles EXISTENT, alors que le
+  // countUp est declenche par une passe de montage POSTERIEURE. Les 700 ms qui
+  // suivaient tombaient donc parfois au milieu de l'animation, et il a suffi
+  // d'un script de plus au demarrage pour que ce soit systematique.
+  // On attend donc les DEUX conditions qui disent « le compteur a fini » :
+  //   - `plc-countup` posee : le countUp a bien ete appele sur cette tuile ;
+  //   - `_plcRaf` a zero : plus aucune image n'est en attente.
+  // Aucune valeur n'est acceptee au rabais : c'est toujours le chiffre FINAL
+  // qui est compare au total servi.
+  await page.waitForFunction(() => {
+    const els = [...document.querySelectorAll('#adminContent .dir-kpi .dir-kpi-value')];
+    return els.length === 6 && els.every((el) => el.classList.contains('plc-countup') && !el._plcRaf);
+  }, null, { timeout: 15000 });
   return page.evaluate(() => {
     const range = window.PinlaneDirection.getRange();
     const served = (window.__DIR_SERVED__ || {})[`${range.start}|${range.end}`] || null;

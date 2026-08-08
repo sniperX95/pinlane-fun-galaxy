@@ -57,7 +57,22 @@ const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\M
 // Fun Galaxy Libramont ouvre 10h-Minuit ce jour-la ; le deuxieme client declare
 // 11h-19h. Deux grilles differentes : c'est ce qui rend le contraste lisible au
 // lieu d'etre une coincidence.
-const DATE = '2026-08-15';
+// La constante figee ne tenait pas la promesse de son propre commentaire : le
+// 2026-08-15 etait « a venir » le jour ou ce gate a ete ecrit, et devenait le
+// jour meme une semaine plus tard, puis une date passee. C'est exactement le
+// defaut qui a rendu visit-booking-check rouge tout un apres-midi. On CALCULE
+// donc le prochain samedi, qui est toujours devant nous.
+function nextSaturday() {
+  // Le produit raisonne en heure de Bruxelles : c'est ce fuseau qui decide du jour.
+  const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()).split('-').map(Number);
+  const cursor = new Date(Date.UTC(year, month - 1, day));
+  // do/while : on avance d'au moins un jour, donc jamais aujourd'hui meme un samedi.
+  do { cursor.setUTCDate(cursor.getUTCDate() + 1); } while (cursor.getUTCDay() !== 6);
+  return cursor.toISOString().slice(0, 10);
+}
+const DATE = nextSaturday();
 
 let failures = 0;
 function ok(cond, label) {

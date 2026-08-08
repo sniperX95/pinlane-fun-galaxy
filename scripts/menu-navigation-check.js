@@ -36,14 +36,19 @@ const MIME = {
   '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
 };
 
-// Les 4 pages de la categorie PLATEFORME et le titre h1 attendu :
-//  - cockpit         -> renderCockpitPage (h1 'Cockpit fondateur')
+// Les pages de la categorie PLATEFORME et le titre h1 attendu :
+//  - cockpit         -> renderCockpitPage (h1 'Cockpit')
 //  - cockpit-agents  -> PAGE_META.title 'Agents IA'
 //  - cockpit-incidents -> PAGE_META.title 'Incidents'
 //  - cockpit-clients -> PAGE_META.title 'Clients'
+// 2026-08-08 : le h1 du Cockpit a ete raccourci en « Cockpit » le 2026-07-28
+// (commit c578cc0, refonte visuelle de la console Plateforme). Le gate attendait
+// encore « Cockpit fondateur » : il expirait sur waitForFunction, l'exception
+// coupait TOUTES les verifications suivantes, et le bilan annoncait « 0 rouge »
+// pour un gate en echec. Attente remise a jour, et l'attente ne jette plus.
 const PLATFORM_PAGES = [
   { key: 'cockpit-clients-platform', title: 'Clients Pinlane' },
-  { key: 'cockpit', title: 'Cockpit fondateur' },
+  { key: 'cockpit', title: 'Cockpit' },
   { key: 'cockpit-centres', title: 'Centres' },
   { key: 'cockpit-agents', title: 'Agents IA' },
   { key: 'cockpit-incidents', title: 'Incidents' },
@@ -292,14 +297,27 @@ async function triggerDirection(page) {
   await page.waitForFunction(() => typeof state !== 'undefined' && state.view === 'admin', null, { timeout: 10000 });
 }
 
+// Attend le titre, mais ne JETTE JAMAIS : un titre qui a change est un rouge
+// nomme, avec la valeur observee, pas une exception qui coupe le reste du gate
+// et fait mentir le bilan ("0 rouge" alors que le gate a echoue).
 async function waitCockpitH1(page, title) {
-  await page.waitForFunction(
-    (expected) => {
+  try {
+    await page.waitForFunction(
+      (expected) => {
+        const h1 = document.querySelector('#staffCockpitPage .pv2-bar h1');
+        return !!h1 && h1.textContent.trim() === expected;
+      },
+      title, { timeout: 15000 },
+    );
+    return true;
+  } catch (e) {
+    const seen = await page.evaluate(() => {
       const h1 = document.querySelector('#staffCockpitPage .pv2-bar h1');
-      return !!h1 && h1.textContent.trim() === expected;
-    },
-    title, { timeout: 15000 },
-  );
+      return h1 ? h1.textContent.trim() : '(aucun h1)';
+    }).catch(() => '(page illisible)');
+    record(`titre du cockpit === ${JSON.stringify(title)}`, false, `h1 observe = ${JSON.stringify(seen)}`);
+    return false;
+  }
 }
 
 // Probe reutilisable pour la contre-preuve : page fraiche (contexte neuf, cache
@@ -377,12 +395,12 @@ async function probeCockpitClick(browser) {
     // Verrou : on est bien en admin avant le clic.
     record("etape 4 : point de depart = vue admin", sDir.view === 'admin', `view=${sDir.view}`);
     await clickNav(page, 'cockpit');
-    await waitCockpitH1(page, 'Cockpit fondateur');
+    await waitCockpitH1(page, 'Cockpit');
     const s4 = await readNavState(page);
     record("etape 4 : apres clic cockpit, state.view === 'staff'", s4.view === 'staff', `view=${s4.view}`);
     record("etape 4 : getStaffMenuPage() === 'cockpit'", s4.menuPage === 'cockpit', `menuPage=${s4.menuPage}`);
     record('etape 4 : #adminView cache', s4.adminViewHidden && s4.adminViewHasHiddenClass, `adminHidden=${s4.adminViewHidden}`);
-    record('etape 4 : #staffCockpitPage visible + h1 Cockpit fondateur', s4.cockpitVisible && s4.cockpitH1 === 'Cockpit fondateur', `cockpitVisible=${s4.cockpitVisible} h1=${JSON.stringify(s4.cockpitH1)}`);
+    record('etape 4 : #staffCockpitPage visible + h1 Cockpit', s4.cockpitVisible && s4.cockpitH1 === 'Cockpit', `cockpitVisible=${s4.cockpitVisible} h1=${JSON.stringify(s4.cockpitH1)}`);
 
     await page.close();
 

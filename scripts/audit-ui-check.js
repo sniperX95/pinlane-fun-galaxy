@@ -237,20 +237,33 @@ async function main() {
     ok(deniedRow, 'la ligne du refus est distinguee (classe is-denied, filet + chip rouge)');
 
     console.log('\n[4] le detail avant/apres s ouvre au CLIC et re-rend la page Plateforme');
-    const beforeDetail = await page.evaluate(() => document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]').innerText.includes('Avant'));
-    ok(!beforeDetail, 'le detail est replie au depart');
+    // On lit les EN-TETES du depliage, pas le texte peint de tout le panneau.
+    // Raison mesuree le 2026-08-08 : la console met les en-tetes de tableau en
+    // majuscules par CSS (#staffCockpitPage .pv2-table thead th, ajoute le
+    // 2026-07-28), et innerText rend le texte PEINT, donc « AVANT » / « APRES ».
+    // L'ancienne assertion cherchait « Avant » dans innerText : elle rougissait
+    // sur une casse decidee par une feuille de style, et surtout son pendant
+    // « le detail est replie au depart » ne pouvait plus JAMAIS echouer.
+    // textContent ignore text-transform : la casse du source fait foi.
+    const detailHeads = () => page.evaluate(() => [...document.querySelectorAll(
+      '#staffCockpitPage [data-pv2-mount="audit"] tr.pv2-audit-detail thead th',
+    )].map((th) => th.textContent.trim()));
+    const beforeHeads = await detailHeads();
+    ok(beforeHeads.length === 0, `le detail est replie au depart (obtenu ${beforeHeads.length} en-tete(s))`);
     await page.evaluate(() => {
       const rows = [...document.querySelectorAll('#staffCockpitPage [data-pv2-mount="audit"] tbody tr')];
       const target = rows.find((r) => r.textContent.includes('saveCenterConfig'));
       target.querySelector('button').click();
     });
     await page.waitForTimeout(500);
+    const afterHeads = await detailHeads();
     const afterDetail = await page.evaluate(() => ({
       text: document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]').innerText,
       // Le hook pv2AuditRerender doit re-rendre Direction, PAS la page Emails.
       emailsMarker: Boolean(document.querySelector('#staffEmailsPage .pv2-panel[data-qa-marker="1"]')),
     }));
-    ok(afterDetail.text.includes('Avant') && afterDetail.text.includes('Apres'), 'le detail montre les colonnes Avant et Apres');
+    ok(afterHeads.includes('Avant') && afterHeads.includes('Apres'),
+      `le detail montre les colonnes Avant et Apres (obtenu ${afterHeads.join(' / ') || 'aucune'})`);
     ok(/\b20\b/.test(afterDetail.text) && /\b25\b/.test(afterDetail.text),
       'les DEUX valeurs du changement de prix sont lisibles (20 puis 25), pas seulement la nouvelle');
     ok(afterDetail.emailsMarker, 'la page Emails (cachee) n a pas ete reconstruite a sa place (marqueur intact)');

@@ -1716,10 +1716,24 @@ async function main() {
     // valide pré-sélectionné, revalidation à chaque modification, refus +
     // suggestions, pass liberté SANS heure, payload de réservation correct.
     // ------------------------------------------------------------------
+    // Le samedi choisi doit etre un samedi ou la formule est REELLEMENT
+    // vendable, sinon confirmBooking s'arrete sur « Indisponible
+    // vacances/feries » et rien ne part au serveur. Mesure du 2026-08-08 : le
+    // « samedi prochain » naif tombait sur le 15 aout, jour ferie belge
+    // (periodType 'public', bloque par formulaBlockedPeriods) ; le gate
+    // rougissait donc quelques semaines par an, sans defaut produit. On ne
+    // devine plus le calendrier : on demande au produit quand il vend.
     const nextSaturdayIso = await page.evaluate(() => {
+      const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const formule = FORMULES.find((f) => f.id === 'f1');
       const target = new Date();
       target.setDate(target.getDate() + ((6 - target.getDay() + 7) % 7 || 7));
-      return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+      for (let week = 0; week < 60; week += 1) {
+        const candidate = iso(target);
+        if (getFormuleAvailability(formule, candidate, 8, '15:00').ok) return candidate;
+        target.setDate(target.getDate() + 7);
+      }
+      return iso(target);
     });
     await page.evaluate(async (iso) => {
       window.__PINLANE_QA_AVAILABILITY_CALLS__ = [];

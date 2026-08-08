@@ -128,7 +128,37 @@ const MUTATIONS = [
     replace: '{ best = dx; idx = 0; }',
     expect: 'hover-line-last',
   },
+  {
+    // Aucune mutation ne couvrait les deux checks d'animation : ils pouvaient
+    // rougir ou verdir sans que rien ne le prouve. Sans .plc-in, l'etat initial
+    // reste pose pour toujours : aucune valeur intermediaire, rien ne se pose.
+    name: 'la classe .plc-in n est jamais posee (l animation ne demarre pas)',
+    find: '          if (wrap && wrap.isConnected) wrap.classList.add(\'plc-in\');',
+    replace: '          if (false) wrap.classList.add(\'plc-in\');',
+    expect: 'line-anim-progress',
+  },
 ];
+
+// Verdict sur une sonde d'animation : transition reelle (duree > 0), trois
+// valeurs peintes le long de SA timeline, monotones dans le bon sens, au moins
+// une STRICTEMENT entre le depart et l'arrivee, et arrivee atteinte.
+function describeAnim(probe, from, to, sense) {
+  if (!probe) return { ok: false, detail: 'aucune transition observee (la sonde ne s est jamais declenchee)' };
+  if (probe.error) return { ok: false, detail: probe.error };
+  const s = Array.isArray(probe.samples) ? probe.samples : [];
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  const finite = s.length === 3 && s.every((v) => Number.isFinite(v));
+  const monotone = finite && (sense === 'asc'
+    ? s[0] <= s[1] && s[1] <= s[2]
+    : s[0] >= s[1] && s[1] >= s[2]);
+  const strictMid = finite && s.some((v) => v > lo && v < hi);
+  const ok = probe.duration > 0 && finite && monotone && strictMid && probe.end === to;
+  return {
+    ok,
+    detail: `duree ${probe.duration} ms, 25/50/75 % = ${s.join(' / ') || 'aucun'}, fin ${probe.end} (attendu ${to})`,
+  };
+}
 
 function serveStatic() {
   const server = http.createServer((req, res) => {
@@ -259,28 +289,102 @@ async function runSuite(browser, quiet) {
       out.singleNaN = /NaN/.test(g('hostSingle').innerHTML);
       out.negHeights = Array.from(g('hostNeg').querySelectorAll('.plc-bar')).map((b) => parseFloat(b.getAttribute('height')));
 
+      // Sonde d'animation. Elle vit DANS LA MEME FRAME que la pose de .plc-in,
+      // et c'est tout l'interet : mountChart arme un double rAF, on en arme un
+      // ici, apres lui (meme tache, donc meme file de callbacks, dans l'ordre
+      // d'inscription). A la deuxieme frame, les graphes posent .plc-in, PUIS
+      // notre callback tourne, quel que soit le temps ecoule entre les deux
+      // frames. Ni ecouteur transitionstart (son ENVOI peut etre reporte apres
+      // la fin d'une transition courte, et l'animation a alors disparu de
+      // getAnimations : mesure du 2026-08-09, la barre en 220 ms rate une fois
+      // sur deux), ni echantillonnage a l'horloge.
+      window.__plcProbe = { line: null, bar: null };
+      const probeAnim = (hostId, key, prop, selector, readValue) => {
+        const host = g(hostId);
+        const el = host && host.querySelector(selector);
+        if (!el) { window.__plcProbe[key] = { error: `element absent (${selector})` }; return; }
+        // Cette lecture force le recalcul de style : c'est elle qui fait NAITRE
+        // la transition tout juste declenchee par la classe.
+        readValue(el);
+        const running = el.getAnimations();
+        const animation = running.find((a) => a.transitionProperty === prop);
+        if (!animation) {
+          window.__plcProbe[key] = {
+            error: `aucune transition sur ${prop} (observe : ${running.map((a) => a.transitionProperty || a.constructor.name).join(', ') || 'aucune'})`,
+          };
+          return;
+        }
+        const timing = animation.effect.getComputedTiming();
+        const total = Number(timing.duration) || 0;
+        const delay = Number(timing.delay) || 0;
+        animation.pause();
+        const samples = [0.25, 0.5, 0.75].map((part) => {
+          animation.currentTime = delay + total * part;
+          return readValue(el);
+        });
+        animation.finish();
+        window.__plcProbe[key] = { duration: total, samples, end: readValue(el) };
+      };
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          probeAnim('hostLine', 'line', 'stroke-dashoffset', '.plc-line-path',
+            (el) => parseFloat(getComputedStyle(el).strokeDashoffset));
+          probeAnim('hostBar', 'bar', 'transform', '.plc-bar', scaleOf);
+        });
+      });
+
       const nf = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 });
       out.expectedEuro720 = `${nf.format(720)} €`;
       out.expectedEuro1234 = `${nf.format(D.countValue)} €`;
       return out;
     }, DATA);
 
-    // t+250ms : l'animation est en cours, les valeurs ont change.
-    await page.waitForTimeout(250);
-    const t250 = await page.evaluate(() => {
-      const g = (id) => document.getElementById(id);
-      const pathEl = g('hostLine').querySelector('.plc-line-path');
-      const bar = g('hostBar').querySelector('.plc-bar');
-      const t = bar ? getComputedStyle(bar).transform : '';
-      const v = t && t !== 'none' ? t.match(/-?[\d.]+/g) : null;
-      return {
-        lineOff: pathEl ? parseFloat(getComputedStyle(pathEl).strokeDashoffset) : NaN,
-        barScale: !t || t === 'none' ? 1 : (v && v.length >= 4 ? parseFloat(v[3]) : NaN),
-      };
-    });
+    // L'animation ne se lit PLUS a un instant d'horloge. Deux mesures du
+    // 2026-08-08 expliquent pourquoi, et elles se contredisent, ce qui est la
+    // signature d'une course : au TOUT PREMIER chargement du processus
+    // navigateur, le double rAF met ~130 ms a partir et la premiere frame
+    // animee ne tombe qu'a ~325 ms (une lecture a t+250 ms voyait donc l'etat
+    // de depart et rougissait) ; sous charge CPU au contraire, deux frames
+    // consecutives peuvent etre separees de plus que la duree de la transition,
+    // et un echantillonnage par requestAnimationFrame saute l'animation entiere
+    // (mesure : 4 echantillons, aucun intermediaire). Deplacer le curseur ou
+    // echantillonner plus vite ne fait que changer le cote du tirage au sort.
+    //
+    // La course est donc SUPPRIMEE : la sonde tourne DANS la frame ou .plc-in
+    // est posee (voir son commentaire dans la capture t0), met la transition en
+    // pause et lit la valeur peinte a 25/50/75 % de SA timeline. On attend
+    // ensuite son resultat par une CONDITION, sur un setInterval qui ne depend
+    // pas des frames, jamais par une duree choisie d'avance.
+    const anim = await page.evaluate(() => new Promise((resolve) => {
+      const done = () => window.__plcProbe && window.__plcProbe.line && window.__plcProbe.bar;
+      if (done()) { resolve(window.__plcProbe); return; }
+      const started = Date.now();
+      // Butoir : une animation morte doit rendre la main et FAIRE ROUGIR avec
+      // ce qu'elle a vu, jamais faire expirer le gate sur un timeout illisible.
+      const id = setInterval(() => {
+        if (done() || Date.now() - started > 4000) { clearInterval(id); resolve(window.__plcProbe); }
+      }, 40);
+    }));
 
-    // Etat pose (~950ms) : fin d'animation + re-rendu meme motionKey + countUp.
-    await page.waitForTimeout(700);
+    // Etat pose : on attend la CONDITION « tout est arrive », pas une duree.
+    // L'ancien `waitForTimeout(950)` etait genereux face a des animations de
+    // 600 ms, donc invisible - mais c'est la meme faute que celle corrigee
+    // ci-dessus, et elle se reveille des que la machine rame. Le butoir laisse
+    // les assertions rapporter la valeur observee au lieu d'expirer.
+    await page.waitForFunction(() => {
+      const g = (id) => document.getElementById(id);
+      const num = (el, prop) => (el ? parseFloat(getComputedStyle(el)[prop]) : NaN);
+      const path = g('hostLine').querySelector('.plc-line-path');
+      const area = g('hostLine').querySelector('.plc-line-area');
+      const segs = Array.from(g('hostDonut').querySelectorAll('.plc-donut-seg'));
+      const heatFill = g('hostHeat').querySelectorAll('.plc-heat-cell .plc-heat-fill')[2 * 10 + 3];
+      const count = g('hostCount');
+      return num(path, 'strokeDashoffset') === 0
+        && num(area, 'opacity') > 0.99
+        && segs.length > 0 && segs.every((s) => num(s, 'strokeDashoffset') === 0)
+        && num(heatFill, 'opacity') > 0
+        && count && count._plcRaf === 0;
+    }, null, { timeout: 6000 }).catch(() => {});
     const settled = await page.evaluate((D) => {
       const g = (id) => document.getElementById(id);
       const out = {};
@@ -403,7 +507,12 @@ async function runSuite(browser, quiet) {
     ok(dPoints === DATA.line.length && dNums.length === 2 + dCurves * 6 && dNums.every(Number.isFinite),
       'line-points', `attendu ${DATA.line.length} sommets finis, trouve ${dPoints} (${dNums.length} nombres)`);
     ok(t0.lineOff0 > 900, 'line-anim-start', `dashoffset t0 = ${t0.lineOff0}`);
-    ok(Number.isFinite(t250.lineOff) && t250.lineOff < t0.lineOff0 - 50, 'line-anim-progress', `t0 ${t0.lineOff0} -> t250 ${t250.lineOff} : doit avoir bouge`);
+    // Interpolation prouvee : une transition de duree non nulle, dont la valeur
+    // peinte DESCEND le long de sa timeline en passant strictement entre le
+    // depart (1000) et l'arrivee (0), et qui finit a 0. Un saut brut de 1000 a
+    // 0, ou une classe jamais posee, ne produit aucun de ces echantillons.
+    const lineAnim = describeAnim(anim && anim.line, t0.lineOff0, 0, 'desc');
+    ok(lineAnim.ok, 'line-anim-progress', lineAnim.detail);
     ok(settled.lineOffEnd < 1, 'line-anim-end', `dashoffset final = ${settled.lineOffEnd}`);
     ok(settled.areaOpacity > 0.99, 'line-area-end', `opacity aire = ${settled.areaOpacity}`);
     ok(t0.yticks >= 3 && t0.yticks <= 5, 'line-yticks', `${t0.yticks} graduations Y`);
@@ -416,8 +525,8 @@ async function runSuite(browser, quiet) {
       'line-no-value-in-plot', `textes du trace : ${plotClasses.join(', ') || 'aucun'}`);
     ok(t0.lineStroke === t0.tokenText, 'line-color-token', `stroke ${t0.lineStroke} vs var(--text) ${t0.tokenText}`);
     ok(t0.barCount === DATA.bar.length, 'bar-count', `${t0.barCount} barres`);
-    ok(t0.barScale0 < 0.6 && Number.isFinite(t250.barScale) && t250.barScale > t0.barScale0 + 0.2,
-      'bar-anim', `scaleY t0 ${t0.barScale0} -> t250 ${t250.barScale}`);
+    const barAnim = describeAnim(anim && anim.bar, t0.barScale0, 1, 'asc');
+    ok(t0.barScale0 < 0.6 && barAnim.ok, 'bar-anim', `depart ${t0.barScale0} · ${barAnim.detail}`);
     ok(t0.barHeights.length === 6 && t0.barHeights[3] > t0.barHeights[0] && t0.barHeights[0] > t0.barHeights[2] && t0.barHeights.every((h) => Number.isFinite(h) && h >= 0),
       'bar-geometry', `hauteurs ${t0.barHeights.join(', ')}`);
     ok(t0.barDatesLabels >= 2, 'bar-date-labels', 'les series {date, value} doivent produire des labels X');
@@ -578,7 +687,7 @@ async function runSuite(browser, quiet) {
       process.exitCode = 1;
       return;
     }
-    console.log('charts-check: ALL OK (points finis, animation mesuree t0/t250, reduced-motion immediat, garde motionKey, vides calmes, extremes, console propre, 2 contre-preuves par mutation)');
+    console.log(`charts-check: ALL OK (points finis, animation lue sur SA timeline puis repos attendu par condition, reduced-motion immediat, garde motionKey, vides calmes, extremes, console propre, ${MUTATIONS.length} contre-preuves par mutation)`);
   } finally {
     await browser.close();
     server.close();

@@ -9,15 +9,21 @@
 //
 // Preuves COMPORTEMENTALES (jamais une simple presence de chaine) :
 //   1. day absent  => rendu strictement historique : "Ouvert ...", aucun bloc
-//      .day-status, aucune banniere jour, segment Laser cliquable. C'est la
+//      .day-status, aucune banniere jour, tuile Laser cochable. C'est la
 //      garantie de non-regression des 16 gates qui mockent cet endpoint.
 //   2. centre ferme ce jour => #schedHint porte .day-status.is-closed, le mot
 //      "Ouvert" a DISPARU, la banniere .formule-day-alert est la, et TOUTES les
 //      cartes formule sont disabled + aria-disabled.
-//   3. laser_game ferme (centre ouvert) => #segLaser disabled + pastille
-//      .seg-btn-off "Ferme", la formule ancree laser est disabled AVEC la raison
+//   3. laser_game ferme (centre ouvert) => la TUILE Laser du selecteur porte
+//      .is-off, son bouton est disabled + aria-disabled, sa ligne de prix dit
+//      "Fermé ce jour" ; la formule ancree laser est disabled AVEC la raison
 //      exacte "Laser Game ferme ce jour", une formule sans laser reste
 //      reservable (preuve que le grisage est cible, pas un rideau).
+//      2026-08-08 : ce point observait #segLaser et sa pastille .seg-btn-off,
+//      supprimes par la refonte du selecteur (8 tuiles + panneau commun). Le
+//      comportement n'avait pas bouge, l'element si : le gate rougissait sur un
+//      selecteur mort, et son pendant "control-laser-clickable" ne pouvait plus
+//      JAMAIS echouer (getElementById rendait null des deux cotes).
 //   4. coupure horaire => .day-status.is-partial annonce l'amplitude ET la
 //      coupure, sans fermer le centre ni griser une carte de plus.
 //   5. retour a day absent => snapshot IDENTIQUE au point 1 (aucune fuite d'etat).
@@ -38,6 +44,15 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const APP = path.join(ROOT, 'assets', 'app-main.js');
 const CORE = path.join(ROOT, 'assets', 'booking-core.js');
+// Le catalogue vendable vient du VRAI module serveur, avec la meme
+// `activityAvailability` que le centre mocke plus bas : une liste ecrite a la
+// main ici perimerait le jour ou le contrat bouge, et c'est exactement ce qui
+// avait rendu ce gate aveugle a la refonte du selecteur.
+const { listSellableActivities } = require('../lib/activity-catalog.js');
+const SELLABLE_ACTIVITIES = listSellableActivities({
+  centerId: 'libramont',
+  availability: { bowling: true, laser_game: true },
+});
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -61,11 +76,11 @@ const MUTATIONS = [
     expect: 'closed-day-status-block',
   },
   {
-    name: 'le segment Laser ne s eteint plus',
+    name: 'la tuile de l activite fermee ne s eteint plus',
     file: APP,
-    find: "  applySegmentOffState('segLaser', off.includes('laser_game'));",
-    replace: "  applySegmentOffState('segLaser', false);",
-    expect: 'laser-segment-off',
+    find: '    const closed = off.includes(activityId);',
+    replace: '    const closed = false;',
+    expect: 'laser-card-off',
   },
   {
     name: 'getFormuleAvailability ignore les formules bloquees du jour',
@@ -105,7 +120,8 @@ function applyEdit(file, find, replace) {
 // payload est celle du serveur reel : center.day n'existe QUE si &date= est
 // passe, et day.date fait echo de la date demandee (garde anti-course cliente).
 async function installMock(page) {
-  await page.addInitScript(() => {
+  await page.addInitScript((sellable) => {
+    window.__pdaySellable = sellable;
     window.__pdayScenario = 'none';
     window.__pdayFetches = 0;
     window.__pdayQueries = [];
@@ -164,6 +180,9 @@ async function installMock(page) {
           today: new Date().toISOString().slice(0, 10),
           durationOptions: [],
           formules: [],
+          // Ce que le centre vend : sans cette cle le selecteur d'activites ne
+          // construit AUCUNE tuile, et les checks laser passeraient sur du vide.
+          activities: window.__pdaySellable,
           center: { ...CENTER, ...(day ? { day } : {}) },
         });
       }
@@ -171,7 +190,7 @@ async function installMock(page) {
       if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], laneStatuses: {}, communications: [], slots: [] });
       return nf(input, init);
     };
-  });
+  }, SELLABLE_ACTIVITIES);
 }
 
 // Snapshot de tout ce qui porte l'information "ouvert / ferme" a l'ecran.
@@ -184,8 +203,11 @@ function snapshot(page) {
       const el = card && card.querySelector('.formule-card-status');
       return el ? el.textContent.trim() : '';
     };
-    const laser = document.getElementById('segLaser');
-    const pill = laser && laser.querySelector('.seg-btn-off');
+    // Le choix d'une activite se fait dans la grille de tuiles (#activityPicker),
+    // plus dans un segment. On lit la tuile Laser telle qu'elle est peinte.
+    const laserCard = document.querySelector('#activityPicker .activity-card[data-activity="laser_game"]');
+    const laserToggle = laserCard && laserCard.querySelector('.activity-toggle');
+    const laserPrice = laserCard && laserCard.querySelector('[data-role="price"]');
     return {
       hintText: hint ? hint.textContent.trim() : '',
       hintHasOuvert: /Ouvert/.test(hint ? hint.textContent : ''),
@@ -198,8 +220,12 @@ function snapshot(page) {
       ariaDisabledCount: cards.filter((c) => c.getAttribute('aria-disabled') === 'true').length,
       f1Status: statusOf('f1'),
       mmStatus: statusOf('mm'),
-      laserDisabled: !!(laser && laser.disabled),
-      laserOffPill: pill && !pill.hidden ? pill.textContent.trim() : '',
+      activityCards: document.querySelectorAll('#activityPicker .activity-card').length,
+      laserCardPresent: Boolean(laserCard),
+      laserCardOff: Boolean(laserCard && laserCard.classList.contains('is-off')),
+      laserToggleDisabled: Boolean(laserToggle && laserToggle.disabled),
+      laserToggleAria: laserToggle ? laserToggle.getAttribute('aria-disabled') : '',
+      laserPrice: laserPrice ? laserPrice.textContent.trim() : '',
     };
   });
 }
@@ -261,7 +287,12 @@ async function runSuite(browser, quiet) {
     ok(control.hintHasOuvert, 'control-ouvert', JSON.stringify(control.hintText));
     ok(control.closedBlocks === 0 && control.partialBlocks === 0, 'control-no-day-status', JSON.stringify(control));
     ok(control.dayAlerts === 0 && control.typeAlerts === 0, 'control-no-day-alert', JSON.stringify(control));
-    ok(!control.laserDisabled && !control.laserOffPill, 'control-laser-clickable', JSON.stringify(control));
+    // Precondition du test 3 : sans la tuile a l'ecran, "la tuile est eteinte"
+    // ne prouverait rien du tout (c'est le piege qui a rendu ce gate aveugle).
+    ok(control.laserCardPresent && control.activityCards >= 2, 'control-activity-cards',
+      JSON.stringify({ cards: control.activityCards, laser: control.laserCardPresent }));
+    ok(!control.laserCardOff && !control.laserToggleDisabled && control.laserToggleAria === 'false',
+      'control-laser-clickable', JSON.stringify(control));
     ok(control.cardCount > 0, 'control-cards-rendered', JSON.stringify(control.cardCount));
     // Precondition du test 3 : sans elle, "f1 grisee" ne prouverait rien.
     ok(!control.disabledIds.includes('f1'), 'control-f1-enabled', JSON.stringify(control.disabledIds));
@@ -281,8 +312,9 @@ async function runSuite(browser, quiet) {
     // ---- 3. Laser ferme, centre ouvert -------------------------------------
     const laserOff = await applyScenario(page, 'laser-off', dateStr);
     ok(laserOff.hintHasOuvert, 'laser-center-still-open', JSON.stringify(laserOff.hintText));
-    ok(laserOff.laserDisabled, 'laser-segment-disabled', JSON.stringify(laserOff));
-    ok(laserOff.laserOffPill === 'Fermé', 'laser-segment-off', JSON.stringify(laserOff.laserOffPill));
+    ok(laserOff.laserCardOff && laserOff.laserToggleDisabled && laserOff.laserToggleAria === 'true',
+      'laser-card-disabled', JSON.stringify(laserOff));
+    ok(laserOff.laserPrice === 'Fermé ce jour', 'laser-card-off', JSON.stringify(laserOff.laserPrice));
     ok(laserOff.typeAlerts === 1, 'laser-type-alert', JSON.stringify(laserOff.typeAlerts));
     ok(laserOff.disabledIds.includes('f1'), 'laser-formula-disabled', JSON.stringify(laserOff.disabledIds));
     ok(laserOff.f1Status === 'Laser Game fermé ce jour', 'laser-formula-reason', JSON.stringify(laserOff.f1Status));
@@ -360,7 +392,7 @@ async function runSuite(browser, quiet) {
       process.exitCode = 1;
       return;
     }
-    console.log('availability-day-ui-check: ALL OK (day absent = rendu historique, centre ferme visible sans faux Ouvert, laser ferme = segment eteint + formule ancree grisee avec sa raison, coupure annoncee sans grisage, retour sans etat residuel ; 4 contre-preuves par mutation)');
+    console.log('availability-day-ui-check: ALL OK (day absent = rendu historique, centre ferme visible sans faux Ouvert, laser ferme = tuile eteinte + formule ancree grisee avec sa raison, coupure annoncee sans grisage, retour sans etat residuel ; 4 contre-preuves par mutation)');
   } finally {
     try { restoreAll(); } catch (e) { /* ignore */ }
     await browser.close();

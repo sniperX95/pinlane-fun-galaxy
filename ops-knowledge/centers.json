@@ -155,6 +155,18 @@
         "googleRating": null,
         "googleReviews": null,
         "note": "Aucune note publiee pour Libramont : ne jamais utiliser celle de Gembloux."
+      },
+      "branding": {
+        "accent": "#a1289a",
+        "accentStrong": "#7d2478",
+        "accentSoft": "#f7ebf6",
+        "accentContrast": "#ffffff",
+        "dark": {
+          "accent": "#c74fbf",
+          "accentStrong": "#e59ede",
+          "accentSoft": "#2a1228",
+          "accentContrast": "#ffffff"
+        }
       }
     },
     {
@@ -255,6 +267,18 @@
         "googleRating": 4.8,
         "googleReviews": 418,
         "source": "widget Google Reviews du site (Gembloux)"
+      },
+      "branding": {
+        "accent": "#a1289a",
+        "accentStrong": "#7d2478",
+        "accentSoft": "#f7ebf6",
+        "accentContrast": "#ffffff",
+        "dark": {
+          "accent": "#c74fbf",
+          "accentStrong": "#e59ede",
+          "accentSoft": "#2a1228",
+          "accentContrast": "#ffffff"
+        }
       }
     },
     {
@@ -269,7 +293,19 @@
         "partyTables": null,
         "barDesk": null
       },
-      "activityAvailability": {}
+      "activityAvailability": {},
+      "branding": {
+        "accent": "#a1289a",
+        "accentStrong": "#7d2478",
+        "accentSoft": "#f7ebf6",
+        "accentContrast": "#ffffff",
+        "dark": {
+          "accent": "#c74fbf",
+          "accentStrong": "#e59ede",
+          "accentSoft": "#2a1228",
+          "accentContrast": "#ffffff"
+        }
+      }
     }
   ],
   "groupProof": {

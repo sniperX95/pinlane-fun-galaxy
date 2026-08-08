@@ -17,6 +17,49 @@
  * par un filet de 8 s si le bundle ne demarre jamais : un voile ne doit pas
  * pouvoir bloquer l'ecran.
  */
+/* LA MARQUE DU CENTRE, AVANT LA PREMIERE PEINTURE.
+ *
+ * Meme probleme, meme remede que la vue de depart ci-dessus. Les couleurs du
+ * tunnel public viennent du SERVEUR (center.branding, /api/public-booking-meta)
+ * depuis qu'elles ont quitte assets/pinlane-client.css, ou le magenta Fun
+ * Galaxy etait ecrit en dur et heritait a tout deuxieme client. Elles
+ * n'arrivent donc qu'apres le boot : mesure au navigateur le 2026-08-08, le
+ * visiteur voyait l'accent plateforme pendant environ 1 s avant la couleur de
+ * son centre.
+ *
+ * On relit donc la derniere marque CONNUE pour CE centre (memoire ecrite par
+ * applyCenterBranding, assets/app-main.js) et on pose les jetons tout de suite.
+ * Clefee par centre : une installation multi-sites ne melange jamais deux
+ * marques, et un centre inconnu de la memoire n'herite de rien. Le serveur
+ * reste seul juge : sa reponse ecrase ou efface ce rappel quelques instants
+ * plus tard.
+ */
+(function () {
+  var TOKENS = {
+    accent: '--tenant-accent',
+    accentStrong: '--tenant-accent-strong',
+    accentSoft: '--tenant-accent-soft',
+    accentContrast: '--tenant-accent-contrast',
+  };
+  var HEX = /^#[0-9a-f]{6}$/i;
+  try {
+    var params = new URLSearchParams(location.search || '');
+    var center = String(params.get('center') || params.get('centerId') || '').trim().toLowerCase();
+    if (!/^[a-z][a-z0-9-]{1,40}$/.test(center)) return;
+    var brand = JSON.parse(localStorage.getItem('pinlane-brand:' + center) || 'null');
+    if (!brand || typeof brand !== 'object') return;
+    var dark = brand.dark && typeof brand.dark === 'object' ? brand.dark : {};
+    var root = document.documentElement;
+    Object.keys(TOKENS).forEach(function (key) {
+      if (HEX.test(String(brand[key] || ''))) root.style.setProperty(TOKENS[key], brand[key]);
+      if (HEX.test(String(dark[key] || ''))) root.style.setProperty(TOKENS[key] + '-dark', dark[key]);
+    });
+  } catch (error) {
+    // Stockage inaccessible (mode prive, iframe cloisonnee) : sans rappel, le
+    // tunnel affiche l'accent plateforme jusqu'a la reponse du serveur.
+  }
+}());
+
 (function () {
   try {
     var path = (location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';

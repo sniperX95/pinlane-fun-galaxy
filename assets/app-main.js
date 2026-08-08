@@ -1361,7 +1361,10 @@ function buildReservationApiPayload(reservation, overrides = {}) {
   return {
     ...reservation,
     ...overrides,
-    centerId: overrides.centerId || reservation.centerId || reservation.center_id || getCurrentStaffCenterId(),
+    // Canal public : le centre vient de la ligne d'installation (?center=),
+    // jamais du centre de la session staff, qui n'existe pas chez le visiteur.
+    centerId: overrides.centerId || reservation.centerId || reservation.center_id
+      || (channel === 'public' ? getTunnelCenterId() : getCurrentStaffCenterId()),
     laneCount,
     requiresLanes,
     channel,
@@ -1540,6 +1543,41 @@ function normalizeStaffCenterId(value, fallback = 'libramont') {
     return 'libramont';
   }
   return fallback;
+}
+
+// LE CENTRE QUE SERT LE TUNNEL PUBLIC.
+//
+// embed.js pose `?center=<slug>` sur l'iframe qu'il installe chez le client.
+// Personne ne lisait ce parametre : tout retombait sur normalizeStaffCenterId,
+// qui ne connait que les trois centres Fun Galaxy et rabat tout le reste sur
+// 'libramont'. Un deuxieme client colle la ligne d'installation et reserve chez
+// Fun Galaxy.
+//
+// On lit donc le slug de l'URL, borne exactement comme le serveur
+// (CENTER_ID_PATTERN, lib/center-config.js). Aucune liste blanche ici : le
+// serveur reste seul juge de l'existence du centre, sinon on recree le meme
+// mur pour le troisieme client. Slug absent ou mal forme = comportement
+// historique (le centre de la session staff).
+const PUBLIC_CENTER_ID_PATTERN = /^[a-z][a-z0-9-]{1,40}$/;
+let publicCenterIdFromUrl;
+function getUrlCenterId() {
+  if (publicCenterIdFromUrl !== undefined) return publicCenterIdFromUrl;
+  publicCenterIdFromUrl = '';
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const raw = String(params.get('center') || params.get('centerId') || '').trim().toLowerCase();
+    if (PUBLIC_CENTER_ID_PATTERN.test(raw)) publicCenterIdFromUrl = raw;
+  } catch (error) {
+    publicCenterIdFromUrl = '';
+  }
+  return publicCenterIdFromUrl;
+}
+
+// Le centre du TUNNEL (catalogue, horaires, creneaux, POST de reservation).
+// L'URL fait autorite quand elle porte un centre ; sinon on garde le centre de
+// la session staff, qui est ce que le tunnel interne utilise.
+function getTunnelCenterId() {
+  return getUrlCenterId() || getCurrentStaffCenterId();
 }
 
 function getCurrentStaffCenterId() {
@@ -4062,7 +4100,11 @@ async function fetchSlots(options = {}) {
     const params = new URLSearchParams({
       date: state.booking.date,
       type: state.booking.type,
-      pax: String(Number(state.booking.pax) || 1)
+      pax: String(Number(state.booking.pax) || 1),
+      // Le centre part avec CHAQUE demande de disponibilite : sans lui, l'API
+      // retombe sur 'libramont' et affiche les creneaux de Fun Galaxy sur le
+      // site d'un autre client.
+      centerId: String(typeof getTunnelCenterId === 'function' ? getTunnelCenterId() : 'libramont')
     });
     if (state.booking.type === 'formule') {
       const preference = createDefaultFormulaPreference(state.booking.preference || {});
@@ -17104,6 +17146,60 @@ function renderCenterContact(contact) {
   bar.hidden = false;
 }
 
+// LES COULEURS DU CENTRE, posees sur <body> a partir de la donnee servie par
+// /api/public-booking-meta (center.branding).
+//
+// Le magenta Fun Galaxy vivait en dur dans assets/pinlane-client.css : tout
+// deuxieme client heritait de la marque du premier. Le CSS ne connait plus que
+// les jetons `--tenant-*` (defaut = accent plateforme, cf. pinlane.css) ; c'est
+// ici, et seulement ici, qu'un centre les reassigne.
+//
+// Aucune couleur n'est calculee : chaque valeur est declaree par le centre,
+// theme par theme, ou absente. Un centre sans marque efface les jetons et
+// retombe sur l'accent systeme, jamais sur celui d'un autre client.
+//
+// Les jetons sont poses sur <html> (pas sur <body>) et memorises par centre :
+// c'est le rappel avant peinture de index.html qui les relit au chargement
+// suivant, comme il le fait deja pour le theme. Sans cette memoire, le tunnel
+// affichait l'accent plateforme pendant ~1 s avant la couleur du centre.
+const TENANT_BRANDING_PROPS = [
+  ['accent', '--tenant-accent'],
+  ['accentStrong', '--tenant-accent-strong'],
+  ['accentSoft', '--tenant-accent-soft'],
+  ['accentContrast', '--tenant-accent-contrast'],
+];
+const TENANT_HEX = /^#[0-9a-f]{6}$/i;
+const TENANT_BRAND_STORAGE_PREFIX = 'pinlane-brand:';
+
+function applyCenterBranding(branding, centerId = '') {
+  const root = document.documentElement;
+  if (!root) return;
+  const light = branding && typeof branding === 'object' ? branding : {};
+  const dark = light.dark && typeof light.dark === 'object' ? light.dark : {};
+  TENANT_BRANDING_PROPS.forEach(([key, prop]) => {
+    const lightValue = String(light[key] || '').trim();
+    const darkValue = String(dark[key] || '').trim();
+    if (TENANT_HEX.test(lightValue)) root.style.setProperty(prop, lightValue);
+    else root.style.removeProperty(prop);
+    if (TENANT_HEX.test(darkValue)) root.style.setProperty(`${prop}-dark`, darkValue);
+    else root.style.removeProperty(`${prop}-dark`);
+  });
+  // Memoire par centre. En mode demonstration, window.localStorage est deja
+  // remplace par une memoire vive (assets/demo-mode.js) : rien ne sort.
+  const key = String(centerId || '').trim().toLowerCase();
+  if (!key) return;
+  try {
+    if (TENANT_HEX.test(String(light.accent || '').trim())) {
+      window.localStorage.setItem(`${TENANT_BRAND_STORAGE_PREFIX}${key}`, JSON.stringify(branding));
+    } else {
+      window.localStorage.removeItem(`${TENANT_BRAND_STORAGE_PREFIX}${key}`);
+    }
+  } catch (error) {
+    // Stockage refuse (navigation privee stricte) : la couleur reste correcte
+    // pour cette page, seul le rappel avant peinture est perdu.
+  }
+}
+
 // Recupere la config publique du centre (horaires staff, vacances/feries,
 // offres activees) et la pousse dans booking-core pour que l'affichage client
 // (hint "Ouvert...", formules) reflete la meme verite que le serveur.
@@ -17119,7 +17215,7 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     if (state.view === 'client') updateSchedHint();
   }
   try {
-    const centerKey = String(getCurrentStaffCenterId ? getCurrentStaffCenterId() : 'libramont');
+    const centerKey = String(typeof getTunnelCenterId === 'function' ? getTunnelCenterId() : 'libramont');
     const payload = await apiRequest(`${API_ENDPOINTS.publicBookingMeta || '/api/public-booking-meta'}?centerId=${encodeURIComponent(centerKey)}${dateParam}`, { method: 'GET' });
     // payload.formules est deja override-aware (prix/nom edites appliques,
     // formules retirees exclues). On l'expose pour que renderFormules affiche au
@@ -17136,6 +17232,9 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     if (payload?.center && typeof setCenterScheduleConfig === 'function') {
       setCenterScheduleConfig(payload.center);
     }
+    // La marque du centre : posee des que le serveur a repondu, effacee si ce
+    // centre n'en declare pas (retour a l'accent plateforme).
+    applyCenterBranding(payload?.center?.branding || null, centerKey);
     // Anti-course : une reponse pour une date que l'utilisateur a deja quittee
     // est jetee. Sans `day` dans le payload, on efface : mieux vaut le rendu
     // historique qu'un verdict perime.

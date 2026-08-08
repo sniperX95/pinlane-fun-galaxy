@@ -7,10 +7,12 @@
 <link rel="icon" href="./assets/brand/pinlane-mark.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./assets/brand/pinlane-touch-180.png">
 <script>try{var t=localStorage.getItem('pinlane-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
-<!-- Vue de depart decidee AVANT la premiere peinture (voir assets/boot-view.js) :
-     sans lui, la console rechargee affichait le parcours de reservation une a
-     deux secondes. Sans defer, exprime : il doit s'executer avant le body. -->
-<script src="./assets/boot-view.js?v=20260808a"></script>
+<!-- Vue de depart ET marque du centre decidees AVANT la premiere peinture (voir
+     assets/boot-view.js) : sans lui, la console rechargee affichait le parcours
+     de reservation une a deux secondes, et le tunnel public affichait l'accent
+     plateforme avant la couleur de son centre. Sans defer, exprime : il doit
+     s'executer avant le body. -->
+<script src="./assets/boot-view.js?v=20260808b"></script>
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260807a">

@@ -26,29 +26,38 @@ body {
 }
 
 /* ----------------------------------------------------------------------------
-   0. IDENTITÉ FUN GALAXY : accent magenta de marque (#944292, logo Fun Galaxy)
-   sur le parcours CLIENT uniquement. Le staff/direction gardent l'accent système
-   (bleu). Scopé body.client-mode (index #clientView + header public) et
+   0. IDENTITÉ DU CENTRE : le parcours CLIENT porte la marque du centre qu'il
+   sert, jamais une marque écrite en dur.
+
+   Avant, ce bloc posait le magenta Fun Galaxy en dur : tout deuxième
+   client héritait des couleurs du premier. La marque est désormais une DONNÉE
+   de centre (`branding` dans la config du centre), servie par
+   /api/public-booking-meta et posée sur <body> à l'exécution
+   (applyCenterBranding, assets/app-main.js). Zéro couleur en dur ici : le bloc
+   ne fait que consommer les jetons `--tenant-*`, dont le défaut (pinlane.css)
+   est l'accent système. Un centre qui n'a rien déclaré affiche donc le bleu
+   plateforme, pas la marque du voisin.
+
+   Scopé body.client-mode (index #clientView + header public) et
    body.public-form (formulaire autonome) : jamais body.staff-mode/admin-mode.
-   Contrastes tenus : boutons magenta + texte blanc (light 6.4:1 / dark ≥3.9:1
-   pour libellés bold), accent-strong plus foncé/plus clair pour le texte.
+   Les contrastes sont portés par la donnée : `accentContrast` est déclaré par
+   le centre pour chaque thème, il ne se devine pas.
    -------------------------------------------------------------------------- */
 body.client-mode, body.public-form {
-  --accent: #a1289a;
-  --accent-strong: #7d2478;
-  --accent-soft: #f7ebf6;
-  --accent-contrast: #ffffff;
-  --tenant-accent: #a1289a;
-  --tenant-accent-soft: #f7ebf6;
+  --accent: var(--tenant-accent);
+  --accent-strong: var(--tenant-accent-strong);
+  --accent-soft: var(--tenant-accent-soft);
+  --accent-contrast: var(--tenant-accent-contrast);
 }
+/* Thème sombre : les jetons `-dark` ne sont posés que si le centre a déclaré
+   une variante sombre. Sinon on retombe sur sa couleur claire, et à défaut de
+   marque sur l'accent système du thème sombre. */
 [data-theme='dark'] body.client-mode,
 [data-theme='dark'] body.public-form {
-  --accent: #c74fbf;
-  --accent-strong: #e59ede;
-  --accent-soft: #2a1228;
-  --accent-contrast: #ffffff;
-  --tenant-accent: #c74fbf;
-  --tenant-accent-soft: #2a1228;
+  --accent: var(--tenant-accent-dark, var(--tenant-accent));
+  --accent-strong: var(--tenant-accent-strong-dark, var(--tenant-accent-strong));
+  --accent-soft: var(--tenant-accent-soft-dark, var(--tenant-accent-soft));
+  --accent-contrast: var(--tenant-accent-contrast-dark, var(--tenant-accent-contrast));
 }
 
 /* Titres « marqués » Fun Galaxy sur le parcours client (majuscules + poids). */

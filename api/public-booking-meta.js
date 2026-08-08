@@ -23,6 +23,7 @@ const {
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
+const { normalizeBranding } = require('../lib/center-config');
 
 // This function serves several public surfaces to stay under the Vercel Hobby
 // 12-function limit:
@@ -421,6 +422,10 @@ module.exports = async (req, res) => {
         id: center.id,
         status: center.status || 'active',
         contact: centerContact,
+        // La MARQUE du centre (couleurs du tunnel). Bornee ici, comme partout :
+        // quatre jetons hexadecimaux par theme, tout le reste est jete. null =
+        // ce centre n'a pas de marque, le tunnel garde l'accent plateforme.
+        branding: normalizeBranding(center.branding),
         defaultSchedule: center.defaultSchedule && typeof center.defaultSchedule === 'object' ? center.defaultSchedule : null,
         holidaySettings: center.holidaySettings && typeof center.holidaySettings === 'object'
           ? center.holidaySettings

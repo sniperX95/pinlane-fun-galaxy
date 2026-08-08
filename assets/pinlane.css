@@ -75,9 +75,15 @@
   --info-soft: #e8f1fd;
   --info-strong: var(--accent-strong);
 
-  /* Tenant (Fun Galaxy : logo seulement, accent = système) */
+  /* Tenant : la marque du CENTRE, servie en donnée par /api/public-booking-meta
+     (center.branding) et posée à l'exécution sur <body>. Par défaut = l'accent
+     système : un centre qui n'a pas déclaré de couleur n'hérite JAMAIS de celle
+     d'un autre client. Ces quatre jetons sont ceux, et seulement ceux, que le
+     parcours client réassigne. */
   --tenant-accent: var(--accent);
+  --tenant-accent-strong: var(--accent-strong);
   --tenant-accent-soft: var(--accent-soft);
+  --tenant-accent-contrast: var(--accent-contrast);
 
   /* Data-viz catégoriel : ordre fixe, palette validée CVD+contraste (light) */
   --chart-1: #0070f3;

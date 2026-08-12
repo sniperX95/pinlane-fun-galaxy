@@ -209,9 +209,29 @@ void main() {
     return shader;
   }
 
+  // Le palier de la machine (assets/pinlane-perf.js). Absent (chargement
+  // partiel, page qui n'embarque pas le module) : on se comporte comme avant,
+  // pleine qualite. Un effet decoratif ne doit jamais dependre d'un module pour
+  // exister.
+  const perf = () => window.PinlanePerf || null;
+
   window.plFxHalftone = function plFxHalftone(canvas, options) {
     if (!canvas || typeof canvas.getContext !== 'function') return null;
     const opts = options || {};
+
+    /* ---- LE REFUS QUI SAUVE LA PAGE ------------------------------------
+       Sur un rasterizer logiciel (pilote sur liste noire, vieux poste de
+       bureau : le parc reel des centres), CE shader plein ecran fait tomber
+       la page a 10 fps - mesure, pas suppose, voir scripts/perf-fluidity-
+       check.js. Il calcule un bruit simplex 3D par pixel et par image, et
+       sans GPU c'est le processeur qui les compte un par un.
+
+       On rend donc la main IMMEDIATEMENT : l'appelant a deja un repli, le
+       champ de points canvas 2D, qui tient 60 fps sur la meme machine et qui
+       a ete dessine pour cette page. On ne perd pas la texture, on ne perd
+       pas le mouvement : on change de technique. */
+    const p = perf();
+    if (p && typeof p.shaderPleinEcran === 'function' && !p.shaderPleinEcran()) return null;
     // alpha: true + premultipliedAlpha: false : le fond de la page reste
     // visible dessous, on ne peint QUE les points.
     let gl = null;
@@ -270,11 +290,24 @@ void main() {
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       if (!w || !h) return false;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      /* Le cout d'un shader plein ecran est PROPORTIONNEL AU NOMBRE DE PIXELS
+         qu'il calcule, et a rien d'autre. On peint donc dans une toile plus
+         petite que sa surface a l'ecran, que le navigateur etire ensuite - un
+         redimensionnement d'image, c'est-a-dire l'operation la moins chere
+         qu'il sache faire.
+
+         Mesure sur la machine bridee : 1x -> 10 fps, 0.55x -> 30 fps,
+         0.35x -> 60 fps. Et comme la trame est un voile doux et flou par
+         construction, l'etirement ne se lit pas a l'oeil : on paie en pixels
+         ce qu'on ne perd pas en dessin. */
+      const pf = perf();
+      const dprMax = pf ? pf.dprMax() : 2;
+      const echelle = pf ? pf.echelle() : 1;
+      const dpr = Math.min(dprMax, window.devicePixelRatio || 1) * echelle;
       if (w === state.w && h === state.h && dpr === state.dpr) return true;
       state.w = w; state.h = h; state.dpr = dpr;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(u.uResolution, canvas.width, canvas.height);
       // La maille et le rayon d'influence sont donnes en px CSS : ils doivent
@@ -297,9 +330,29 @@ void main() {
       if (state.stopped) return;
       if (!isLive(canvas)) { stop(); return; }
       state.raf = requestAnimationFrame(frame);
-      if (now - state.last < FRAME_MS) return;
+      const pf = perf();
+      // La cadence vient du palier : 32 ms en pleine qualite (comme avant),
+      // plus lent sur une machine en peine. Ralentir une trame qui DERIVE ne
+      // se voit pas ; la meme trame qui saccade, si.
+      const budget = pf ? pf.cadence() : FRAME_MS;
+      if (now - state.last < budget) return;
+      // Ce qu'on rapporte au palier, c'est l'ecart entre deux peintures REELLES.
+      // Ce sont les boucles couteuses qui signalent leur propre cout : aucune
+      // boucle de mesure n'est ajoutee a la page.
+      if (pf && state.last) pf.signaler(now - state.last);
       state.last = now;
-      const rect = canvas.getBoundingClientRect();
+      /* `getBoundingClientRect` force le navigateur a resoudre la mise en page
+         avant de repondre. Le faire a chaque image serialise style, layout et
+         peinture. La position d'un fond de page ne change qu'au defilement ou
+         au redimensionnement : on la relit toutes les 8 images, et tout de
+         suite quand un de ces deux evenements tombe. */
+      state.rectAge = (state.rectAge || 0) + 1;
+      if (!state.rect || state.rectSale || state.rectAge >= 8) {
+        state.rect = canvas.getBoundingClientRect();
+        state.rectAge = 0;
+        state.rectSale = false;
+      }
+      const rect = state.rect;
       if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;   // hors ecran : on saute la peinture, pas l'horloge
       if (Math.abs(rect.width - state.w) > 1 || Math.abs(rect.height - state.h) > 1) resize();
       // Curseur : cible en coordonnees LOCALES du canvas, puis lissage.
@@ -321,6 +374,12 @@ void main() {
       state.py = event.clientY;
     }
     function onLeave() { state.px = null; state.py = null; }
+    // Les deux seuls evenements qui deplacent vraiment la toile. Marquer plutot
+    // que mesurer : la mesure aura lieu dans la frame suivante, une fois, au
+    // lieu de a chaque pixel de defilement.
+    function onGeometrie() { state.rectSale = true; }
+
+    let desabonner = null;
 
     function stop() {
       state.stopped = true;
@@ -328,8 +387,14 @@ void main() {
       state.raf = 0;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('blur', onLeave);
+      window.removeEventListener('scroll', onGeometrie, true);
+      window.removeEventListener('resize', onGeometrie);
       document.removeEventListener('mouseleave', onLeave);
       document.removeEventListener('visibilitychange', onVisibility);
+      // Meme regle que les listeners : ce qui a ete branche ici se debranche
+      // ici. Sinon chaque montage de la page laisse un abonne tenant un canvas
+      // mort et son contexte WebGL.
+      if (desabonner) { desabonner(); desabonner = null; }
     }
 
     function onVisibility() {
@@ -361,8 +426,21 @@ void main() {
     // intercepter), donc c'est la fenetre qui rapporte la position.
     window.addEventListener('pointermove', onMove, { passive: true });
     window.addEventListener('blur', onLeave, { passive: true });
+    window.addEventListener('scroll', onGeometrie, { passive: true, capture: true });
+    window.addEventListener('resize', onGeometrie, { passive: true });
     document.addEventListener('mouseleave', onLeave, { passive: true });
     document.addEventListener('visibilitychange', onVisibility);
+    // Si le palier descend en cours de route (la machine s'est reveillee plus
+    // lente que ses caracteristiques ne le laissaient croire), la toile doit
+    // RETRECIR pour de vrai. `state.dpr` est remis a zero pour que `resize()`
+    // ne se croie pas deja a jour et refasse le calcul.
+    if (p && typeof p.surChangement === 'function') {
+      desabonner = p.surChangement(function () {
+        if (state.stopped) return;
+        state.dpr = 0;
+        resize();
+      });
+    }
     state.raf = requestAnimationFrame(frame);
     return stop;
   };

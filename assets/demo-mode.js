@@ -606,16 +606,58 @@
   function etatApp() {
     try { return (typeof state !== 'undefined' && state) ? state : null; } catch (error) { return null; }
   }
-  function neutraliserPage() {
-    document.title = 'Pinlane · démonstration';
-    [].forEach.call(document.querySelectorAll('img[alt]'), function (img) {
-      if (/fun\s*galaxy/i.test(img.getAttribute('alt') || '')) img.setAttribute('alt', CENTRE);
-    });
-    var marcheur = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  /* ---- LE NETTOYAGE, ET CE QU'IL COUTAIT --------------------------------
+     La garantie 3 (aucune enseigne de client sur une page publique) est non
+     negociable et ne bouge pas d'un pouce ici. Ce qui change, c'est son PRIX.
+
+     La version d'origine repassait sur CHAQUE noeud texte du document a chaque
+     lot de mutations, sans throttle. Mesure du 2026-08-12 (page Clients, CPU
+     bride 6x) : 119 parcours complets pendant UNE montee de chiffres, et la
+     pire image a 50 ms. Sur `/demo`, qui est la page que voient les
+     prospects, c'est le pire endroit possible pour ramer.
+
+     Le nettoyage ci-dessous couvre exactement le meme terrain, parce qu'un
+     texte ne peut apparaitre que de deux facons : porte par un noeud AJOUTE,
+     ou ecrit dans un noeud texte existant. L'observateur rapporte deja les
+     deux. On traite donc ce qui a change, et plus la page entiere : le cout
+     devient proportionnel au rendu, pas a la taille de l'ecran. */
+  var MARQUE = /fun\s*galaxy/i;
+
+  function nettoyerSousArbre(racine) {
+    if (!racine) return;
+    if (racine.nodeType === 3) {
+      if (MARQUE.test(racine.nodeValue)) racine.nodeValue = racine.nodeValue.replace(/fun\s*galaxy/gi, CENTRE);
+      return;
+    }
+    if (racine.nodeType !== 1) return;
+    if (racine.tagName === 'IMG' && MARQUE.test(racine.getAttribute('alt') || '')) racine.setAttribute('alt', CENTRE);
+    if (racine.querySelectorAll) {
+      [].forEach.call(racine.querySelectorAll('img[alt]'), function (img) {
+        if (MARQUE.test(img.getAttribute('alt') || '')) img.setAttribute('alt', CENTRE);
+      });
+    }
+    var marcheur = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT);
     var noeud = marcheur.nextNode();
     while (noeud) {
-      if (/fun\s*galaxy/i.test(noeud.nodeValue)) noeud.nodeValue = noeud.nodeValue.replace(/fun\s*galaxy/gi, CENTRE);
+      if (MARQUE.test(noeud.nodeValue)) noeud.nodeValue = noeud.nodeValue.replace(/fun\s*galaxy/gi, CENTRE);
       noeud = marcheur.nextNode();
+    }
+  }
+
+  // Passe COMPLETE : au premier chargement, et a chaque fois qu'on veut la
+  // certitude absolue plutot que l'economie. Elle reste la reference.
+  function neutraliserPage() {
+    document.title = 'Pinlane · démonstration';
+    nettoyerSousArbre(document.body);
+  }
+
+  // Passe INCREMENTALE : ce que l'observateur rapporte, et rien d'autre.
+  function neutraliserMutations(mutations) {
+    if (document.title !== 'Pinlane · démonstration') document.title = 'Pinlane · démonstration';
+    for (var i = 0; i < mutations.length; i += 1) {
+      var m = mutations[i];
+      if (m.type === 'characterData') { nettoyerSousArbre(m.target); continue; }
+      for (var j = 0; j < m.addedNodes.length; j += 1) nettoyerSousArbre(m.addedNodes[j]);
     }
   }
 
@@ -722,6 +764,6 @@
       if (params.get('loop') === '1') setTimeout(function () { scene(0); }, 1400);
     }
     // Un rendu ulterieur peut reintroduire un libelle : on surveille.
-    new MutationObserver(neutraliserPage).observe(document.body, { childList: true, subtree: true, characterData: true });
+    new MutationObserver(neutraliserMutations).observe(document.body, { childList: true, subtree: true, characterData: true });
   });
 }());

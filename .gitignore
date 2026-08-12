@@ -39,3 +39,7 @@ fetched.out
 
 .env*
 .captures-founder/
+
+# Releve du banc de fluidite (node scripts/perf-fluidity-check.js --json) :
+# une mesure locale, propre a la machine qui la produit.
+perf-releve.json

@@ -47,6 +47,33 @@
     return brut ? Number(brut[0]) : null;
   }
 
+  /* ---- ECRIRE SANS REVEILLER L'OBSERVATEUR -------------------------------
+     `el.textContent = x` ne modifie pas le texte : il DETRUIT le noeud texte
+     existant et en cree un neuf. C'est donc une mutation `childList`, et
+     l'observateur du bas de ce fichier ecoute justement `childList`.
+
+     Consequence mesuree (banc du 2026-08-12, page Clients, 12 compteurs) :
+     chaque image d'animation reveillait l'observateur, qui relancait un
+     `querySelectorAll` sur le DOCUMENT ENTIER, deux fois. 142 scans complets
+     pour une seule montee de chiffres, et la pire image passait de 17 a 50 ms.
+     Le marqueur `data-pl-anim` empechait bien la BOUCLE d'animation, mais pas
+     le rescan : il empechait le symptome visible, pas le cout.
+
+     Ecrire dans `nodeValue` modifie le noeud texte EN PLACE. C'est une
+     mutation `characterData`, que l'observateur n'ecoute pas : il ne se
+     reveille plus du tout pendant une animation. Moins de travail pour le
+     navigateur, et zero scan.
+
+     Repli assume : si l'element porte autre chose qu'un unique noeud texte
+     (une unite dans un `<span>`, par exemple), on repasse par `textContent`.
+     C'est exactement ce que faisait le code avant, donc rien ne regresse - on
+     y perd juste le gain sur ces elements-la, qui sont rares. */
+  function ecrire(el, texte) {
+    var seul = el.firstChild;
+    if (seul && seul.nodeType === 3 && seul === el.lastChild) seul.nodeValue = texte;
+    else el.textContent = texte;
+  }
+
   function animerChiffre(el, de, vers) {
     var cle = el.getAttribute('data-pl-num');
     var modele = el.textContent;
@@ -72,10 +99,10 @@
       var p = Math.min(1, (t - debut) / duree);
       var doux = 1 - Math.pow(1 - p, 3);
       var v = de + (vers - de) * doux;
-      el.textContent = modele.replace(/-?[\d\s  .,]*\d/, formater(v, decimales));
+      ecrire(el, modele.replace(/-?[\d\s  .,]*\d/, formater(v, decimales)));
       if (p < 1) requestAnimationFrame(pas);
       else {
-        el.textContent = modele;
+        ecrire(el, modele);
         el.removeAttribute('data-pl-anim');
         window.setTimeout(function () {
           if (enCours[cle] === jeton) el.classList.remove('pl-num-up', 'pl-num-down');

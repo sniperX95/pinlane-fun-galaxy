@@ -111,6 +111,7 @@
     "test:embed-origins": "node scripts/embed-origins-check.js",
     "test:occupancy": "node scripts/occupancy-check.js",
     "test:motion-exploitation": "node scripts/motion-exploitation-check.js",
+    "test:perf-fluidity": "node scripts/perf-fluidity-check.js",
     "test:boot-flash": "node scripts/boot-flash-check.js",
     "test:update-banner": "node scripts/update-banner-check.js",
     "test:openrouter-frontier": "node scripts/openrouter-frontier-check.js"

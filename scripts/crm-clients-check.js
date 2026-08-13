@@ -1,6 +1,6 @@
 // Test INTERACTIF de la page Clients FUSIONNÉE (Clients + Groupes, KISS).
 // Playwright pilote de vrais clics : 4 segments (re-clic → Tous), « À venir »
-// = dossiers groupes + leads + checklist prépa, « À relancer » = dormants +
+// = la liste dense des venues (refonte 2026-08-13), « À relancer » = dormants +
 // anniversaires ~1 an, fiche 3 chiffres, export CSV, tri. Cf. ship-interactive-ui-tested.
 const fs = require('fs');
 const http = require('http');
@@ -220,34 +220,39 @@ async function main() {
     const back = await page.evaluate(() => ((document.querySelector('.crm-seg.is-active .crm-seg-label') || {}).textContent || '').trim());
     ok(back === 'Tous', `re-clic sur VIP → retour à Tous (obtenu ${back})`);
 
-    console.log('\n[AVENIR] segment À venir = dossiers groupes + checklist + leads (ex-page Groupes)');
+    // Refonte du 2026-08-13 : « À venir » parle la MÊME langue que « Tous » :
+    // une liste dense, cinq colonnes, une action par ligne. Le détail de la vue
+    // et ses contre-épreuves vivent dans scripts/crm-groups-check.js ; ici on
+    // prouve la cohabitation des deux onglets sur la même page.
+    console.log('\n[AVENIR] segment À venir = la même liste que « Tous », adaptée aux venues');
     await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="avenir"]').click());
     await page.waitForTimeout(400);
-    const avenir = await page.evaluate(() => ({
-      dossiers: document.querySelectorAll('#staffClientsPage .groups-dossier').length,
-      marie: !![...document.querySelectorAll('#staffClientsPage .groups-dossier')].find((c) => /Marie Dupont/.test(c.textContent)),
-      checks: document.querySelectorAll('#staffClientsPage .groups-check-toggle').length,
-      lead: !![...document.querySelectorAll('#staffClientsPage .groups-dossier-lead, #staffClientsPage [class*="cr-"], #staffClientsPage .groups-side-stack')].find((c) => /Lucioles/.test(c.textContent)),
-      table: document.querySelectorAll('#staffClientsPage table tbody tr').length,
-    }));
-    ok(avenir.dossiers >= 1, `dossiers à venir rendus (${avenir.dossiers})`);
-    ok(avenir.marie, 'le dossier de Marie (+6 j) est visible');
-    ok(avenir.checks >= 3, `checklist prépa cliquable (${avenir.checks} items)`);
-    ok(avenir.lead, 'la demande sur mesure (lead Lucioles) est visible');
-    const prep = await page.evaluate(() => {
-      const target = [...document.querySelectorAll('#staffClientsPage .groups-check-toggle')].find((b) => !b.classList.contains('is-done'));
-      if (!target) return null;
-      const label = target.textContent.trim();
-      target.click();
-      return { label };
+    const avenir = await page.evaluate(() => {
+      const root = document.getElementById('staffClientsPage');
+      const rows = [...root.querySelectorAll('.crm-table-avenir tbody tr:not(.crm-day)')];
+      return {
+        table: root.querySelectorAll('.crm-table-avenir').length,
+        heads: [...root.querySelectorAll('.crm-table-avenir thead th')].map((h) => h.textContent.trim()),
+        rows: rows.length,
+        names: rows.map((r) => (r.querySelector('.crm-client-id strong') || {}).textContent || ''),
+        days: root.querySelectorAll('.crm-table-avenir tbody tr.crm-day').length,
+        cartes: root.querySelectorAll('.groups-dossier').length,
+        checks: root.querySelectorAll('.groups-check-toggle').length,
+        memo: root.querySelectorAll('.groups-memo').length,
+        lead: /Lucioles/.test((root.querySelector('.crm-avenir-side') || {}).textContent || ''),
+        height: Math.round(document.documentElement.scrollHeight),
+      };
     });
-    await page.waitForTimeout(250);
-    const prepAfter = await page.evaluate((info) => {
-      const again = [...document.querySelectorAll('#staffClientsPage .groups-check-toggle')].find((b) => b.textContent.trim().replace('✓', '○') === info.label || b.textContent.includes(info.label.replace('○ ', '')));
-      return { done: !!again && again.classList.contains('is-done'), stillClients: state.staffMenuPage === 'clients' };
-    }, prep);
-    ok(prep && prepAfter.done, 'cocher un item de prépa le marque ✓ (re-rendu sur la page fusionnée)');
-    ok(prepAfter.stillClients, 'toujours sur la page clients après la coche');
+    ok(avenir.table === 1, `la vue est UNE table dense (obtenu ${avenir.table})`);
+    ok(avenir.heads.join('|') === 'Heure|Client|Réservation|Joueurs|', `5 colonnes : ${avenir.heads.join(' | ')}`);
+    // Fixture : Marie (+6 j) et Nadia (+9 j) sont les deux seules résas futures.
+    ok(avenir.rows === 2, `2 venues à venir listées (obtenu ${avenir.rows})`);
+    ok(avenir.names.includes('Marie Dupont'), 'la venue de Marie (+6 j) est là');
+    ok(avenir.names.includes('Nadia Klein'), 'la venue de Nadia (+9 j, profil NON-groupe) est là aussi : la vue ne filtre plus sur « groupe »');
+    ok(avenir.days === 2, `un séparateur par jour (obtenu ${avenir.days})`);
+    ok(avenir.cartes === 0 && avenir.checks === 0 && avenir.memo === 0, `ni carte, ni pastille de préparation, ni ligne d'habitudes (${avenir.cartes}/${avenir.checks}/${avenir.memo})`);
+    ok(avenir.lead, 'la demande sur mesure (lead Lucioles) garde son panneau');
+    ok(avenir.height < 1600, `page courte (${avenir.height} px)`);
 
     console.log('\n[RELANCER] la liste qui rapporte : dormants + anniversaires ~1 an, avec le pourquoi');
     await page.evaluate(() => document.querySelector('.crm-seg[data-crm-seg="relancer"]').click());
@@ -289,8 +294,9 @@ async function main() {
         name: /Marie Dupont/.test(f?.textContent || ''),
         kpis: f ? f.querySelectorAll('.crm-kpi').length : 0,
         next: !!f?.querySelector('.crm-next'),
-        // CONTRE-PREUVE (demande proprio 2026-08-05) : les puces de prépa ont
-        // quitté la fiche. La checklist reste testée dans « À venir » plus haut.
+        // CONTRE-PREUVE : les puces de prépa ont quitté la fiche le 2026-08-05
+        // (demande du propriétaire) et « À venir » le 2026-08-13. Elles ne
+        // doivent plus apparaître nulle part.
         nextChecks: f ? f.querySelectorAll('.crm-next .groups-check-toggle').length : 0,
         nextOpen: !!f?.querySelector('.crm-next .crm-next-open'),
         tel: !!f?.querySelector('a[href^="tel:"]'),
@@ -303,7 +309,7 @@ async function main() {
     });
     ok(fiche.name, 'fiche de Marie affichée');
     ok(fiche.kpis === 3, `3 chiffres seulement (obtenu ${fiche.kpis})`);
-    ok(fiche.next && fiche.nextChecks === 0, `bloc Prochaine venue SANS puces de prépa (obtenu ${fiche.nextChecks}, la checklist vit dans « À venir »)`);
+    ok(fiche.next && fiche.nextChecks === 0, `bloc Prochaine venue SANS puces de prépa (obtenu ${fiche.nextChecks} : la checklist n'existe plus nulle part)`);
     ok(fiche.nextOpen, 'la prochaine venue est un bouton qui ouvre la réservation');
     // COMPORTEMENT, pas présence : le clic ouvre bien la fiche de la résa
     // future de Marie (POS détail : state.selectedRes porte son id).

@@ -568,6 +568,101 @@
       </tr>`;
   }
 
+  /* ── « À VENIR » : la MÊME liste que « Tous », adaptée à la question
+     opérationnelle « qui vient, quand, combien, et qu'est-ce qui manque ».
+     Même composant `.crm-table` : même densité (ligne de 38 px), même
+     typographie (12,5 px / 10,5 px), mêmes en-têtes collants, même panneau
+     borné à 720 px qui scrolle DANS lui-même, donc la page ne grandit plus
+     avec le nombre de réservations.
+     Ce qui a été retiré ici le 2026-08-13, et la raison, est écrit au-dessus
+     de `getStaffVisitGap` (app-main.js) pour les pastilles de préparation.
+     Le reste : les grandes cartes, le mètre « x/6 prêt », la ligne d'habitudes
+     en italique, les six facettes d'occasion (déjà supprimées de cette page le
+     2026-07-13, restées ici), le second champ de recherche (il y en avait DEUX
+     à l'écran), les panneaux « À confirmer en priorité » (re-coupe de la même
+     liste) et « Charge à venir · 7 jours » (il ne comptait que les dossiers
+     groupe/anniversaire : il annonçait une charge fausse). ── */
+
+  // Un seul jour par en-tête de section, avec ce qu'il porte VRAIMENT : le
+  // nombre de réservations affichées et le total de joueurs, tous deux
+  // recomposables en additionnant les lignes en dessous.
+  function crmDayHeadRow(dateISO, list) {
+    const pax = list.reduce((sum, visit) => sum + (Number(visit.pax) || 0), 0);
+    // Majuscule sur la PREMIÈRE lettre seulement : `text-transform: capitalize`
+    // écrivait « Jeudi 13 Août », le mois prend une minuscule en français.
+    const brut = parseLocalDate(dateISO).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+    const jour = brut.charAt(0).toUpperCase() + brut.slice(1);
+    const countdown = typeof staffGroupCountdown === 'function' ? staffGroupCountdown(dateISO) : '';
+    return `<tr class="crm-day"><th colspan="5" scope="colgroup">
+      <span class="crm-day-label">${esc(jour)}</span>
+      <span class="crm-day-meta">${list.length} réservation${list.length > 1 ? 's' : ''} · ${pax} joueur${pax > 1 ? 's' : ''}${countdown ? ` · ${esc(countdown)}` : ''}</span>
+    </th></tr>`;
+  }
+
+  // UNE action par ligne, et c'est la ligne entière : elle ouvre la
+  // réservation, là où tout se règle (piste, contact, statut, activités).
+  // « Contacter » et « Fiche client » ne disparaissent nulle part : le client
+  // se retrouve dans l'onglet « Tous » et le message part de sa fiche.
+  function crmUpcomingRow(visit) {
+    const gap = typeof getStaffVisitGap === 'function' ? getStaffVisitGap(visit) : null;
+    const offre = typeof getStaffClientOfferLabel === 'function' ? getStaffClientOfferLabel(visit.reservation) : 'Réservation';
+    const occasion = typeof getReservationOccasionLabel === 'function' ? getReservationOccasionLabel(visit.reservation) : '';
+    const heure = visit.startTime ? String(visit.startTime).slice(0, 5) : '--:--';
+    return `
+      <tr tabindex="0" role="button" onclick="openStaffReservationDetail('${escJs(visit.reservation.id)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStaffReservationDetail('${escJs(visit.reservation.id)}');}">
+        <td class="crm-cell-time"><strong>${esc(heure)}</strong></td>
+        <td class="crm-cell-client">
+          <span class="crm-avatar">${esc(visit.initials || '-')}</span>
+          <span class="crm-client-id"><strong>${esc(visit.name)}</strong><small>${esc(visit.email || visit.phone || '')}</small></span>
+        </td>
+        <td class="crm-cell-offer"><strong>${esc(offre)}</strong>${occasion ? `<small>${esc(occasion)}</small>` : ''}</td>
+        <td class="num">${Number(visit.pax) || 0}</td>
+        <td class="crm-cell-badge">${gap ? `<span class="crm-pill tone-warn">${esc(gap.label)}</span>` : ''}</td>
+      </tr>`;
+  }
+
+  function crmUpcomingBody() {
+    const all = typeof buildStaffUpcomingVisits === 'function' ? buildStaffUpcomingVisits() : [];
+    // LE champ de recherche de la page (celui de la barre de segments) pilote
+    // aussi cette liste : il n'y en a plus qu'un.
+    const query = String(state.staffClientQuery || '').trim().toLowerCase();
+    const visits = query
+      ? all.filter((visit) => `${visit.name} ${visit.email} ${visit.phone}`.toLowerCase().includes(query))
+      : all;
+    const limit = Number(state.staffClientListLimit) || 40;
+    const shown = visits.slice(0, limit);
+
+    let rows = '';
+    let currentDay = '';
+    shown.forEach((visit, index) => {
+      if (visit.dateISO !== currentDay) {
+        currentDay = visit.dateISO;
+        rows += crmDayHeadRow(currentDay, shown.slice(index).filter((v) => v.dateISO === currentDay));
+      }
+      rows += crmUpcomingRow(visit);
+    });
+
+    const empty = `<tr><td colspan="5"><div class="crm-empty"><strong>Aucune venue à préparer</strong>${query ? 'Aucune réservation à venir ne correspond à cette recherche.' : 'Les réservations à venir apparaissent ici dès qu\'une date est prise.'}</div></td></tr>`;
+
+    return `<section class="pv2-split crm-split">
+      <article class="pv2-panel crm-list-panel">
+        <div class="crm-table-wrap">
+          <table class="crm-table crm-table-avenir">
+            <thead><tr><th class="crm-th">Heure</th><th class="crm-th">Client</th><th class="crm-th">Réservation</th><th class="num crm-th">Joueurs</th><th class="crm-th"></th></tr></thead>
+            <tbody data-pl-stagger="crm.avenir">${rows || empty}</tbody>
+          </table>
+        </div>
+        <div class="crm-list-foot">
+          <span><b data-pl-num="crm.avenir.affiches">${shown.length}</b> affichée${shown.length > 1 ? 's' : ''} sur <b data-pl-num="crm.avenir.total">${visits.length}</b></span>
+          ${visits.length > shown.length ? '<button type="button" class="pv2-btn" onclick="showMoreStaffClients()">Afficher plus</button>' : ''}
+        </div>
+      </article>
+      <article class="pv2-panel crm-avenir-side">
+        ${typeof renderStaffCustomRequestsPanel === 'function' ? renderStaffCustomRequestsPanel() : ''}
+      </article>
+    </section>`;
+  }
+
   function crmHistoryItem(entry) {
     const r = entry.reservation || {};
     const cancelled = String(r.status) === 'cancelled';
@@ -803,16 +898,15 @@
     const relance = getStaffClientRelance(selected);
     let nextBlock = '';
     if (next) {
-      // Même dossier (même id) que le segment « À venir » : l'état de prépa est
-      // partagé. La checklist elle-même ne vit PLUS ici : quatre puces sur la
-      // fiche n'aidaient aucune décision (demande du propriétaire, 2026-08-05).
-      // La carte dit la date, l'offre et l'état de prépa, et un clic OUVRE la
-      // réservation, là où tout se règle. La prépa se coche dans « À venir ».
-      const dossier = { id: `r-${next.id}`, kind: 'reservation', reservation: next, row: selected, dateISO: next.date, startTime: next.startTime || '', pax: Number(next.pax || 0) };
-      const readiness = computeStaffGroupReadiness(dossier);
+      // Même lecture que la colonne « manque » du segment « À venir » : le
+      // même `getStaffVisitGap`, donc la fiche et la liste ne peuvent pas se
+      // contredire. La checklist ne vit plus nulle part (audit 2026-08-13) : un
+      // clic OUVRE la réservation, là où le manque se corrige vraiment.
+      const visit = { id: `r-${next.id}`, reservation: next, row: selected, dateISO: next.date, startTime: next.startTime || '', pax: Number(next.pax || 0), email: next.email || selected.email || '', phone: next.phone || selected.phone || '' };
+      const gap = typeof getStaffVisitGap === 'function' ? getStaffVisitGap(visit) : null;
       const paxN = Number(next.pax) || 0;
       nextBlock = `<section class="crm-sec crm-next">
-        <div class="crm-sec-head"><h3>Prochaine venue</h3><span class="crm-pill tone-${readiness.ready ? 'success' : 'warn'}">${readiness.ready ? 'Prêt' : `${readiness.todo} à préparer`}</span></div>
+        <div class="crm-sec-head"><h3>Prochaine venue</h3><span class="crm-pill tone-${gap ? 'warn' : 'success'}">${gap ? esc(gap.label) : 'Prêt'}</span></div>
         <button type="button" class="crm-next-open" onclick="openStaffReservationDetail('${escJs(next.id)}')">
           <span class="crm-next-body"><strong>${esc(formatStaffClientDateText(next.date))}${next.startTime ? ` · ${esc(String(next.startTime).slice(0, 5))}` : ''}</strong><span>${esc(getStaffClientOfferLabel(next))} · ${paxN} joueur${paxN > 1 ? 's' : ''}</span></span>
           <span class="crm-next-cta">Ouvrir la résa</span>
@@ -885,11 +979,15 @@
     const sync = staffClientDataCache.loading ? 'Synchronisation…' : staffClientDataCache.loaded ? `Synchronisé ${formatOpsTimestamp(staffClientDataCache.syncedAt)}` : 'En attente du serveur…';
 
     // 4 chiffres qui déclenchent chacun UNE décision (cliquables → segment).
-    const dossiers = (typeof buildStaffGroupDossiers === 'function' ? buildStaffGroupDossiers() : []).filter((d) => d.kind === 'reservation');
+    const visits = typeof buildStaffUpcomingVisits === 'function' ? buildStaffUpcomingVisits() : [];
     const today = staffGroupToday();
-    const within = (d, days) => d.dateISO && staffClientDaysBetween(d.dateISO, today) <= days;
-    const upcoming7 = dossiers.filter((d) => within(d, 7));
-    const upcoming7Value = upcoming7.reduce((sum, d) => { const v = getStaffGroupDossierValue(d); return sum + (v.value || 0); }, 0);
+    const within = (v, days) => v.dateISO && staffClientDaysBetween(v.dateISO, today) <= days;
+    const upcoming7 = visits.filter((v) => within(v, 7));
+    // Des JOUEURS, plus des euros : la somme précédente additionnait des prix
+    // réels et des prix ESTIMÉS (panier moyen × joueurs) sous le mot
+    // « attendus », sans jamais dire lesquels. Le nombre de joueurs, lui, est
+    // porté par chaque réservation et se recompose en additionnant les lignes.
+    const upcoming7Pax = upcoming7.reduce((sum, v) => sum + (Number(v.pax) || 0), 0);
     const newLeads = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
     const relancer = allRows.filter((row) => getStaffClientRelance(row).due).length;
     const statBtn = (seg, html) => `<div class="crm-stat-link${segment === seg ? ' is-active' : ''}" role="button" tabindex="0" onclick="setStaffClientSegment('${seg}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setStaffClientSegment('${seg}');}">${html}</div>`;
@@ -901,9 +999,7 @@
 
     let body = '';
     if (segment === 'avenir') {
-      // L'ancienne page « Groupes & anniversaires » vit ici : dossiers datés,
-      // checklist prépa, leads sur mesure, priorités, charge à venir.
-      body = renderStaffGroupWorkspaceV2();
+      body = crmUpcomingBody();
     } else {
       const limit = Number(state.staffClientListLimit) || 40;
       const shown = rows.slice(0, limit);
@@ -960,7 +1056,7 @@
       })}
 
       <section class="pv2-stats crm-stats">
-        ${statBtn('avenir', stat({ label: 'À venir 7 j', count: upcoming7.length, foot: upcoming7Value ? `${money(upcoming7Value)} attendus` : 'dossiers à préparer' }))}
+        ${statBtn('avenir', stat({ label: 'À venir 7 j', count: upcoming7.length, foot: upcoming7Pax ? `${upcoming7Pax} joueur${upcoming7Pax > 1 ? 's' : ''} attendus` : 'réservations à préparer' }))}
         ${statBtn('avenir', stat({ label: 'Demandes sur mesure', count: newLeads, foot: newLeads ? 'à répondre aujourd’hui' : 'aucune en attente' }))}
         ${statBtn('relancer', stat({ label: 'À relancer', count: relancer, foot: 'clients à récupérer' }))}
         ${statBtn('vip', stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' }))}
@@ -7509,13 +7605,10 @@
   };
 
   /* ==========================================================================
-     GROUPES & ANNIVERSAIRES : chrome V2 (P1-6)
-     Dernière page « Clients & marketing » restée en chrome V1 : on remplace le
-     header utilitaire 4 lignes par la barre pv2 + stats, en gardant TOUT le
-     moteur data existant (renderStaffGroupWorkspaceV2 d'app-main.js : demandes
-     sur mesure, toolbar, table « Profils exploitables », agenda, relances).
-     Les autres pages utilitaires (sessions, arrivées, users…) restent servies
-     par le renderer legacy, qu'on délègue.
+     GROUPES & ANNIVERSAIRES : la page n'existe plus (fusion du 2026-07-13).
+     Tout accès historique (hash, état sauvegardé, alerte du tableau de bord)
+     retombe sur Clients / segment « À venir ». Les autres pages utilitaires
+     (sessions, arrivées, users…) restent servies par le renderer legacy.
      ======================================================================== */
 
   const legacyRenderStaffUtilityPage = window.renderStaffUtilityPage;

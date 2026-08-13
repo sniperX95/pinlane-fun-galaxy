@@ -9351,75 +9351,20 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   .crm-table .col-secondary, .crm-table td.col-secondary { display: none; }
 }
 
-/* ── Groupes & anniversaires : Radar de préparation (futur proche) ─────────── */
-.groups-cockpit { grid-template-columns: minmax(0, 1.9fr) minmax(340px, 0.9fr); align-items: start; }
-.groups-primary { min-width: 0; }
-.groups-timeline { display: flex; flex-direction: column; gap: var(--space-5); }
-.groups-band-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: var(--space-3); padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.groups-band-head h3 { font-size: 14px; font-weight: 800; color: var(--text); margin: 0; }
-.groups-band-head span { font-size: 12px; color: var(--muted); font-weight: 600; }
-.groups-band-list { display: flex; flex-direction: column; gap: var(--space-3); }
-.groups-dossier { border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); padding: 13px 15px; display: flex; flex-direction: column; gap: 10px; }
-.groups-dossier.tone-success { border-left-color: var(--success); }
-.groups-dossier.tone-warning { border-left-color: var(--warning); }
-.groups-dossier.tone-danger { border-left-color: var(--danger); }
-.groups-dossier.tone-info { border-left-color: var(--info); }
-.groups-dossier-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.groups-dossier-when { display: flex; align-items: baseline; gap: 8px; }
-.groups-dossier-when strong { font-size: 13px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
-.groups-jx { font-size: 11px; font-weight: 800; color: var(--accent-strong); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); padding: 2px 7px; border-radius: var(--radius-full); white-space: nowrap; }
-.groups-pax { font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
-.groups-dossier-val { margin-left: auto; font-size: 14px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
-.groups-flag { font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: var(--radius-full); }
-.groups-flag-vip { color: var(--accent-contrast); background: var(--accent); }
-.groups-flag-risk { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, var(--surface)); }
-.groups-dossier-ident { display: flex; align-items: center; gap: 11px; }
-.groups-dossier-ident strong { font-size: 14px; font-weight: 700; color: var(--text); display: block; }
-.groups-dossier-ident small { font-size: 11.5px; color: var(--faint); }
-.groups-readiness { display: flex; align-items: center; gap: 10px; }
-.groups-readiness-bar { flex: 1 1 auto; height: 6px; border-radius: var(--radius-full); background: var(--subtle); overflow: hidden; }
-.groups-readiness-bar > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width var(--dur) var(--ease); }
-.groups-readiness-count { flex: 0 0 auto; font-size: 11px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.groups-checks { display: flex; flex-wrap: wrap; gap: 6px; }
-.groups-check { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: var(--radius-full); border: 1px solid var(--line); }
-.groups-check-done { color: var(--success); background: color-mix(in srgb, var(--success) 12%, var(--surface)); border-color: color-mix(in srgb, var(--success) 30%, var(--line)); }
-.groups-check-todo { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--surface)); border-color: color-mix(in srgb, var(--warning) 30%, var(--line)); }
-.groups-check-na { color: var(--faint); background: var(--subtle); }
-.groups-check-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
-.groups-check-toggle { font-size: 11px; font-weight: 700; padding: 5px 9px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
-.groups-check-toggle:hover { border-color: var(--accent); }
-.groups-check-toggle.is-done { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, var(--line)); background: color-mix(in srgb, var(--success) 10%, var(--surface)); }
-.groups-memo { font-size: 12px; color: var(--muted); font-style: italic; }
-.groups-dossier-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.groups-stage-badge { display: inline-flex; align-items: center; height: 20px; font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 0 8px; border-radius: var(--radius-full); color: var(--info); background: color-mix(in srgb, var(--info) 14%, var(--surface)); }
-.groups-stage-in_progress { color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, var(--surface)); }
-.groups-history { margin-top: 2px; }
-.groups-history summary { font-size: 11.5px; color: var(--muted); cursor: pointer; }
-.groups-history-list { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; }
-.groups-history-row { display: grid; grid-template-columns: 1fr 1.4fr auto auto; gap: 8px; font-size: 11.5px; color: var(--muted); padding: 4px 0; border-top: 1px solid var(--line); }
-.groups-history-row strong { color: var(--text); font-variant-numeric: tabular-nums; }
-.groups-view-seg button[disabled] { opacity: .45; cursor: not-allowed; }
-.groups-facets { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 11px; }
-.groups-facet { cursor: pointer; }
-.groups-facet.active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
-.groups-count { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
-.groups-prepfirst, .groups-reset { font-size: 12px; font-weight: 700; padding: 7px 11px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
-.groups-prepfirst.active { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
-.groups-reset:hover { border-color: var(--accent); }
-.groups-priority-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--text); cursor: pointer; margin-bottom: 6px; }
-.groups-priority-row:hover { border-color: var(--accent); }
-.groups-priority-row div { flex: 1 1 auto; min-width: 0; }
-.groups-priority-row strong { font-size: 13px; display: block; }
-.groups-priority-row small { font-size: 11px; color: var(--muted); }
-.groups-forecast { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; align-items: end; }
-.groups-forecast-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.groups-forecast-bar { width: 100%; height: 54px; display: flex; align-items: flex-end; background: var(--subtle); border-radius: var(--radius-md); overflow: hidden; }
-.groups-forecast-bar > span { width: 100%; background: var(--chart-1); min-height: 2px; }
-.groups-forecast-col small { font-size: 10px; color: var(--faint); }
-.groups-forecast-col strong { font-size: 11px; color: var(--text); font-variant-numeric: tabular-nums; }
-@media (max-width: 1100px) {
-  .groups-cockpit { grid-template-columns: 1fr; }
-}
+/* ── « À venir » : MÊME composant que la liste « Tous ». Trois règles neuves,
+   rien de plus : le séparateur de jour, la colonne heure, et le panneau de
+   droite qui accueille les demandes sur mesure. Tout le reste (densité,
+   en-têtes collants, survol, anneau de focus, chiffres tabulaires) est hérité
+   de .crm-table, donc les deux onglets ne peuvent pas diverger. ─────────── */
+.crm-table-avenir .crm-day > th { position: static; background: var(--page); padding: 9px 12px 7px; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); }
+.crm-table-avenir .crm-day:first-child > th { border-top: 0; }
+.crm-day-label { font-size: 12px; font-weight: 600; color: var(--text); }
+.crm-day-meta { margin-left: 8px; font-size: 11.5px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.crm-cell-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.crm-cell-time strong { font-family: var(--font-data); font-size: 12.5px; font-weight: 600; color: var(--text); }
+.crm-cell-offer strong { display: block; font-size: 12px; font-weight: 600; }
+.crm-cell-offer small { display: block; font-size: 10.5px; color: var(--faint); }
+.crm-avenir-side { padding: 0; background: transparent; border: 0; box-shadow: none; min-width: 0; }
 
 .mk-auto-edit-hint { display: block; font-weight: 400; color: var(--faint); text-transform: none; letter-spacing: 0; margin-top: 1px; }
 

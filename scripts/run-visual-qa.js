@@ -922,8 +922,11 @@ async function collectIssues(page, scopeLabel) {
       '.dash-kpi',
       '.dash-card',
       '.dash-status-strip',
-      '.groups-page',
-      '.groups-toolbar-card',
+      // « À venir » : la liste dense qui a remplacé les cartes dossier le
+      // 2026-08-13. `.groups-page` et `.groups-toolbar-card` ne sont plus
+      // rendus par aucun chemin, ils sortent de la surveillance.
+      '.crm-table-avenir',
+      '.crm-day',
       '.groups-selected-card',
       '.groups-ledger-row',
       '.groups-side-card',

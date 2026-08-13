@@ -1569,7 +1569,11 @@ button.staff-date-label:focus-visible,
 .planning-grid-wrap { position: relative; background: var(--surface); overflow-x: auto; }
 .planning-box.expanded .planning-grid-wrap { flex: 1; min-height: 0; overflow: auto; }
 
-.planning-grid { display: flex; width: 100%; min-width: 760px; position: relative; }
+/* Pas de largeur minimale en dur. Elle valait 760px, soit « huit pistes », et
+   forçait un défilement horizontal à un centre qui n'en a que quatre. La vraie
+   largeur minimale est la somme de la colonne d'heures et des pistes réelles :
+   c'est ce que le flex calcule tout seul via `min-width` sur `.lane-col`. */
+.planning-grid { display: flex; width: 100%; position: relative; }
 .planning-box.expanded .planning-grid { min-height: 100%; }
 
 /* ----------------------------------------------------------------------------
@@ -1785,12 +1789,16 @@ button.staff-date-label:focus-visible,
   display: flex; align-items: center; justify-content: center; z-index: 2;
 }
 
+/* z-index 25 : AU-DESSUS de la ligne « maintenant » (20). Sans ça, faire
+   glisser la grille vers la droite faisait passer la barre bleue par-dessus la
+   colonne d'heures collante. Une colonne collante doit couvrir ce qui passe
+   dessous, sinon elle ne colle qu'à moitié. */
 .hour-col {
   width: var(--planning-hour-col);
   flex-shrink: 0;
   position: sticky;
   left: 0;
-  z-index: 5;
+  z-index: 25;
   background: var(--surface);
   border-right: 1px solid var(--line);
 }
@@ -1801,6 +1809,10 @@ button.staff-date-label:focus-visible,
   align-items: center;
   justify-content: center;
   border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 7;
   font-size: 11px;
   font-weight: 500;
   color: var(--faint);
@@ -1825,10 +1837,17 @@ button.staff-date-label:focus-visible,
 
 .lanes-row { flex: 1; display: flex; }
 
+/* La piste est un CONTENEUR de requête : les cartes se dégradent sur la largeur
+   RÉELLE de leur colonne, pas sur celle de la fenêtre. C'est ce qui fait qu'une
+   carte se comporte pareil à 4 pistes sur un petit écran et à 40 pistes sur un
+   grand, à n'importe quel niveau de zoom, sans qu'aucun JavaScript ne
+   re-mesure. Voir la hiérarchie de dégradation plus bas. */
 .lane-col {
   flex: 1;
   min-width: var(--planning-lane-w);
   position: relative;
+  container-type: inline-size;
+  container-name: piste;
   background: var(--surface);
   border-right: 1px solid var(--line);
 }
@@ -2022,12 +2041,16 @@ button.staff-date-label:focus-visible,
 .booking-stats .u { opacity: 0.65; font-weight: 500; margin-left: 1px; }
 
 /* Effectif : emphase croissante (gris → pastille inversée) selon le groupe. */
+/* `--faint` tombait à 4,41:1 en clair et 4,24:1 en sombre sur le fond des
+   cartes : sous le seuil AA de 4,5:1. L'effectif est la DEUXIÈME information de
+   la carte, elle ne peut pas être la moins lisible. `--muted` mesure 5,0+ dans
+   les deux thèmes sur les trois fonds de statut. */
 .bk-pax {
   display: inline-flex;
   align-items: baseline;
   font-size: 11px;
   font-weight: 500;
-  color: var(--faint);
+  color: var(--muted);
   white-space: nowrap;
 }
 .bk-pax.grp-m { color: var(--text); font-weight: 600; }
@@ -2074,16 +2097,67 @@ button.staff-date-label:focus-visible,
   gap: 6px;
   padding: 2px 6px;
 }
-.booking.dens-xs .booking-name { flex: 1 1 auto; font-size: 11px; }
-.booking.dens-xs .booking-foot { margin-top: 0; flex: 0 0 auto; }
+/* Sur une carte d'une seule ligne, le nom prend ce qui reste et le pied cède :
+   sans ça, l'effectif et la durée gardaient leur largeur pleine et le nom
+   tombait à 12px de large, c'est-à-dire à rien. `4ch` est le plancher écrit :
+   en dessous, la carte ne dit plus QUI vient. */
+.booking.dens-xs .booking-name { flex: 1 1 auto; min-width: 4ch; font-size: 11px; }
+/* Le pied ne se comprime pas : effectif et durée sont des CHIFFRES, on ne les
+   tronque pas, on les retire (voir la hiérarchie de dégradation plus bas).
+   C'est le nom qui absorbe la réduction, jusqu'à son plancher de 4ch. */
+.booking.dens-xs .booking-foot { margin-top: 0; flex: 0 0 auto; min-width: 0; }
 .booking.dens-xs .booking-foot .b-tag { display: none; }
+.booking.dens-xs .booking-stats { min-width: 0; }
 .booking.dens-xs.is-delayed { padding-right: 22px; }
 .booking.dens-xs .delay-indicator .delay-indicator-label { display: none; }
+/* Une carte d'une seule ligne n'a par définition pas de deuxième ligne : les
+   étiquettes y devenaient un bloc rigide qui poussait le nom ET le pied HORS
+   de la carte (mesuré : contenu 240px dans une carte de 227px). */
+.booking.dens-xs .reservation-tags { display: none; }
 
 /* Vue non agrandie : les pills dupliquent le .b-tag / la durée, on garde la
    densité. En plein écran, les tags ne reviennent que sur les cartes hautes. */
 .planning-box:not(.expanded) .booking .reservation-tags { display: none; }
 .planning-box.expanded .booking.dens-md .reservation-tags { display: none; }
+
+/* ----------------------------------------------------------------------------
+   HIÉRARCHIE DE DÉGRADATION - la règle est écrite ici, pas laissée au navigateur
+   Un gérant qui regarde son planning a besoin, DANS CET ORDRE : QUI vient,
+   COMBIEN ils sont, COMBIEN DE TEMPS ils restent. Quand la place manque, on
+   retire donc par le BAS de cette liste, jamais par le haut :
+     1. les étiquettes (formule / note / occasion)  partent en premier
+     2. le libellé d'activité (.b-tag)
+     3. la durée (.bk-dur)
+     4. l'effectif (.bk-pax)
+     5. le nom (.booking-name)                      ne part JAMAIS
+   Le déclencheur est la largeur réelle de la piste, mesurée par le navigateur à
+   chaque changement de taille ET de zoom. Aucun seuil JavaScript à re-calculer,
+   donc rien qui puisse devenir périmé entre deux rendus.
+
+   DEUX FORMES DE CARTE, DEUX SEUILS, et c'est la nuance qui compte : sur une
+   carte HAUTE, le nom a sa propre ligne, le libellé d'activité ne lui prend
+   donc RIEN (il partage la ligne du bas avec les chiffres, et il s'ellipse).
+   Sur une carte d'UNE SEULE ligne, tout se dispute la même ligne : la durée
+   part beaucoup plus tôt pour que le nom garde ses 4 caractères. Confondre les
+   deux, c'est retirer une information utile sur les cartes qui avaient la place
+   de l'afficher.
+   -------------------------------------------------------------------------- */
+@container piste (max-width: 190px) {
+  .booking .reservation-tags { display: none; }
+}
+/* Carte d'une seule ligne : le nom et les chiffres se partagent la ligne. */
+@container piste (max-width: 118px) {
+  .booking.dens-xs .bk-dur { display: none; }
+}
+/* Toutes formes : sous cette largeur, le libellé ne montrerait plus que trois
+   lettres et une ellipse, et les chiffres ne tiennent plus à côté. */
+@container piste (max-width: 104px) {
+  .booking .booking-foot .b-tag { display: none; }
+  .booking .bk-dur { display: none; }
+}
+@container piste (max-width: 84px) {
+  .booking .booking-stats { display: none; }
+}
 
 .reservation-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
 
@@ -2106,7 +2180,10 @@ button.staff-date-label:focus-visible,
 .reservation-tag.occasion { background: var(--accent-soft); color: var(--accent-strong); }
 .reservation-tag.note { background: var(--warning-soft); color: var(--warning); font-weight: 600; }
 
-/* Ligne temps réel */
+/* Ligne temps réel : la barre traverse les pistes, l'étiquette vit dans la
+   colonne d'heures (`.current-badge`), qui est collante à gauche. L'étiquette
+   reste donc à l'écran quand on fait glisser un planning large, et la barre
+   passe SOUS la colonne d'heures au lieu de la barrer (z-index 20 < 25). */
 .current-line {
   position: absolute;
   left: var(--planning-hour-col);
@@ -2117,22 +2194,11 @@ button.staff-date-label:focus-visible,
   pointer-events: none;
 }
 
-.current-line::before {
-  content: '';
+.current-badge {
   position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-}
-
-.current-line::after {
-  content: attr(data-time);
-  position: absolute;
-  top: -20px;
-  left: 8px;
+  left: 50%;
+  z-index: 6;
+  transform: translate(-50%, -50%);
   padding: 1px 7px;
   border-radius: var(--radius-full);
   background: var(--accent);
@@ -2142,6 +2208,8 @@ button.staff-date-label:focus-visible,
   font-size: 10px;
   font-weight: 500;
   line-height: 1.6;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* Drag & drop bowling */
@@ -7247,6 +7315,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .edit-modal-head h3 { font-size: 17px; }
 .edit-modal-head p { color: var(--muted); font-size: 12px; margin-top: 4px; max-width: 520px; }
+/* Référence du dossier : une donnée, donc Geist Mono tabulaire (DESIGN.md §4).
+   C'est le seul endroit de l'écran où elle s'affiche, et c'est voulu : on la
+   lit quand on a le client au téléphone, pas quand on survole le planning. */
+.edit-modal-head .pos-ref { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--text); font-weight: 500; }
 .edit-modal-body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-5); }
 
 .edit-shell { display: grid; gap: var(--space-4); }

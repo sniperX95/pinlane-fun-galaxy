@@ -349,10 +349,14 @@ function buildAdminExcelXml(payload) {
     excelRow(['Signaux agents', metrics.suggestions, `${metrics.events} événement(s) terrain`]),
   ];
   const reservationRows = [
-    excelRow(['Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation'], 'Header'),
+    // « Réf. » = l'identifiant réel de la réservation, le seul que la console et
+    // la base savent résoudre. Il remplace le code « FG-… » qui sortait ici et
+    // que rien ne permettait de retrouver.
+    excelRow(['Réf.', 'Date', 'Heure', 'Client', 'Téléphone', 'Email', 'Offre', 'Type', 'Joueurs', 'Statut', 'Paiement', 'Montant', 'Ressources', 'Consignes', 'Check-in', 'Risque', 'Validation'], 'Header'),
     ...reservations.map(reservation => {
       const guest = getReservationGuestOps(reservation);
       return excelRow([
+      `#${reservation.id}`,
       reservation.date,
       reservation.startTime,
       reservation.name,
@@ -366,7 +370,7 @@ function buildAdminExcelXml(payload) {
       Number(reservation.price || 0),
       getAdminResourceText(reservation),
       guest.waiverRequired ? (guest.waiverDone ? 'OK' : 'A valider') : 'Non requis',
-      guest.checkInDone ? 'OK' : guest.checkInCode,
+      guest.checkInDone ? 'OK' : 'A faire',
       reservation.riskLevel || 'normal',
       reservation.validationStatus || '',
     ]);
@@ -594,7 +598,7 @@ function buildFunGalaxyReportHtml(payload) {
             const guest = getReservationGuestOps(reservation);
             const engagement = [
               guest.waiverRequired ? (guest.waiverDone ? 'Consignes OK' : 'Consignes a valider') : '',
-              guest.checkInDone ? 'Check-in OK' : guest.checkInCode,
+              guest.checkInDone ? 'Check-in OK' : 'Check-in a faire',
             ].filter(Boolean).join(' / ');
             return `<tr>
             <td>${escapeHtml(reservation.date || '')}</td>

@@ -12709,15 +12709,19 @@ function renderStaff() {
   const laserPlanningToggle = document.getElementById('laserPlanningToggle');
   if (laserPlanningToggle) laserPlanningToggle.textContent = state.staffLaserPlanningExpanded ? 'Réduire' : 'Agrandir';
   document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
+  attachPlanningFullscreenResize();
   renderKpis();
   renderPlanning();
   renderLaserPlanning();
   renderTable();
 }
 
-// Recalcule la hauteur de ligne bowling / le layout laser quand la fenêtre change
-// de taille en plein écran. Attaché uniquement pendant le plein écran, détaché à
-// la fermeture pour éviter toute fuite d'écouteur.
+// Recalcule le planning quand la fenêtre change de taille. Ce n'était attaché
+// QUE pendant le plein écran, et c'était un trou : hors plein écran aussi, des
+// décisions de rendu sont prises en pixels au moment du render (hauteur de
+// ligne tactile sous 768px, hauteur des cartes). Redimensionner ou zoomer sans
+// re-render laissait donc une grille calculée pour l'ancienne taille. Un seul
+// écouteur, posé une fois, qui ne travaille que si le planning est à l'écran.
 let planningFullscreenResizeHandler = null;
 
 function attachPlanningFullscreenResize() {
@@ -12727,17 +12731,19 @@ function attachPlanningFullscreenResize() {
     if (raf) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = 0;
-      if (state.staffPlanningExpanded) renderPlanning();
-      else if (state.staffLaserPlanningExpanded) renderLaserPlanning();
+      if (state.view !== 'staff') return;
+      if (state.staffLaserPlanningExpanded) { renderLaserPlanning(); return; }
+      if (state.staffPlanningExpanded) { renderPlanning(); return; }
+      if (document.getElementById('planningGridWrap')) renderPlanning();
+      if (document.getElementById('laserPlanningGridWrap')) renderLaserPlanning();
     });
   };
-  window.addEventListener('resize', planningFullscreenResizeHandler);
+  window.addEventListener('resize', planningFullscreenResizeHandler, { passive: true });
 }
 
 function detachPlanningFullscreenResize() {
-  if (!planningFullscreenResizeHandler) return;
-  window.removeEventListener('resize', planningFullscreenResizeHandler);
-  planningFullscreenResizeHandler = null;
+  // Volontairement conservé : l'écouteur reste posé pour couvrir aussi le mode
+  // fenêtre. Il se contente de ne rien faire quand le planning n'est pas visible.
 }
 
 function togglePlanningExpanded() {
@@ -13387,12 +13393,21 @@ function getReservationCommercialStore(reservation) {
     : {};
 }
 
-function getReservationCheckInCode(reservation) {
-  const idPart = String(reservation?.id || '0000').slice(-4).padStart(4, '0');
-  const datePart = String(reservation?.date || todayStr()).replace(/-/g, '').slice(2);
-  return `FG-${datePart}-${idPart}`;
-}
-
+// SUPPRIMÉ le 2026-08-13 : `getReservationCheckInCode`, qui fabriquait un code
+// du genre « FG-260813-0930 » (enseigne en dur + date + 4 derniers chiffres de
+// l'identifiant). Movsar, verbatim : « pourquoi il y a des trucs genre FG chais
+// pas quoi, ça sert à rien ici ». Il avait raison, et pour une raison plus dure
+// que l'encombrement : ce code N'EXISTAIT NULLE PART AILLEURS. Il n'était ni
+// stocké en base, ni envoyé dans un email, ni accepté par la recherche du staff
+// (`getPlanningVisibleReservations` cherche sur nom / téléphone / offre / email),
+// ni affiché dans le détail du dossier. Personne ne pouvait donc retrouver une
+// réservation avec. C'est exactement ce que la Product Rule de DESIGN.md §9
+// interdit : donner l'illusion d'une donnée que le backend ne fournit pas.
+// Le préfixe « FG » était en prime codé en dur : un 2e client aurait vu la
+// marque de Fun Galaxy sur ses propres dossiers.
+// LA VRAIE RÉFÉRENCE EXISTE, et c'est l'identifiant de la réservation : il est
+// stocké, unique, stable. Il est désormais montré là où une référence sert
+// vraiment : l'en-tête du dossier et l'export.
 function reservationRequiresGuestWaiver(reservation) {
   return reservation?.type === 'laser'
     || getLaserGameCountForReservation(reservation) > 0
@@ -13413,7 +13428,6 @@ function getReservationGuestOps(reservation) {
     waiverRequired,
     waiverDone,
     checkInDone,
-    checkInCode: stored.checkInCode || getReservationCheckInCode(reservation),
     reminderSent: Boolean(stored.reminderSent),
     lastUpdatedAt: stored.updatedAt || '',
     missing,
@@ -13430,9 +13444,11 @@ function getGuestOpsChips(reservation) {
       label: guest.waiverDone ? 'Consignes OK' : 'Consignes laser',
     });
   }
+  // La pastille dit l'ÉTAT, pas un code. Un code qu'on ne peut chercher nulle
+  // part mangeait la ligne à la place de l'information qui sert au comptoir.
   chips.push({
     cls: guest.checkInDone ? 'ok' : 'danger',
-    label: guest.checkInDone ? 'Check-in OK' : guest.checkInCode,
+    label: guest.checkInDone ? 'Check-in OK' : 'Check-in à faire',
   });
   return chips;
 }
@@ -13664,6 +13680,18 @@ function renderPlanning() {
   const compactTouch = !state.staffPlanningExpanded
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(max-width: 768px)').matches;
+  const verticalInset = state.staffPlanningExpanded ? 3 : 1;
+  // INVARIANT DE NON-CHEVAUCHEMENT, et c'est la cause racine du « bug graphique
+  // avec les cartes » : la hauteur MINIMALE d'une carte ne doit JAMAIS dépasser
+  // la hauteur du plus petit créneau que la grille sait produire (30 min, soit
+  // HH/2, moins les deux marges verticales). Le plein écran violait cet
+  // invariant : il laissait la ligne d'heure tomber à 34px (créneau de 30 min =
+  // 17px) tout en imposant 40px de hauteur minimale à chaque carte. Résultat,
+  // deux réservations qui ne se croisent PAS dans le temps se croisaient à
+  // l'écran. On pose donc la hauteur de carte lisible d'abord, et on en DÉDUIT
+  // le plancher de la ligne d'heure.
+  const MIN_CARD_H = compactTouch ? 42 : 22;
+  const MIN_HOUR_H = (MIN_CARD_H + verticalInset * 2) * 2;
   let HH = state.staffPlanningExpanded ? 52 : compactTouch ? 88 : 48;
   let HEADER_H = state.staffPlanningExpanded ? 46 : 38;
   if (state.staffPlanningExpanded) {
@@ -13675,7 +13703,8 @@ function renderPlanning() {
     //   + HH/2 (la cellule de fin) => facteur (totalHours + 0.5).
     // On retire une marge de sécurité pour l'éventuelle scrollbar horizontale
     // (pistes larges) afin de ne jamais déborder verticalement.
-    const MIN_HOUR_H = 34;
+    // Quand la fenêtre est trop courte pour ça (zoom 200 %, petit écran), la
+    // grille défile verticalement : mieux vaut faire défiler que superposer.
     const SCROLLBAR_SAFETY = 14;
     const availableHeight = wrap.clientHeight
       || (window.innerHeight - HEADER_H - 64);
@@ -13729,11 +13758,12 @@ function renderPlanning() {
       const r = item.reservation;
       const st = item.window.start;
       if (st < startHour || st >= closeHour) return;
-      const verticalInset = state.staffPlanningExpanded ? 4 : 1;
       const top = (st - startHour) * HH + HEADER_H + verticalInset;
       const rawHeight = (Number(item.window.duration) * HH) - (verticalInset * 2);
-      const minHeight = state.staffPlanningExpanded ? 40 : compactTouch ? 42 : 22;
-      const height = Math.max(rawHeight, minHeight);
+      // MIN_CARD_H tient par construction dans un créneau de 30 min (cf.
+      // l'invariant plus haut) : ce plancher ne peut donc plus faire mordre
+      // une carte sur la suivante.
+      const height = Math.max(rawHeight, MIN_CARD_H);
       const end = formatClockDisplay(item.window.end);
       let cls = 'conf';
       if (r.status === 'arrived') cls = 'arr';
@@ -13777,12 +13807,21 @@ function renderPlanning() {
     </div>`;
   }
 
+  // L'HEURE COURANTE EN DEUX MORCEAUX, et c'est voulu : la barre traverse les
+  // pistes, l'étiquette vit DANS la colonne d'heures. La colonne d'heures est
+  // collante à gauche : l'étiquette reste donc lisible même quand on fait
+  // glisser un planning à 40 pistes vers la droite. Avant, elle était posée sur
+  // la barre elle-même et sortait du cadre au premier défilement.
+  const nowBadge = curPos >= HEADER_H
+    ? `<div class="current-badge" style="top:${curPos}px" aria-hidden="true">${formatClockDisplay(curH)}</div>`
+    : '';
   wrap.innerHTML = `
     <div class="planning-grid">
-      ${curPos >= HEADER_H ? `<div class="current-line" data-time="${formatClockDisplay(curH)}" style="top:${curPos}px"></div>` : ''}
+      ${curPos >= HEADER_H ? `<div class="current-line" style="top:${curPos}px"></div>` : ''}
       <div class="hour-col">
         <div class="hour-header">Heure</div>
         ${hoursHtml}
+        ${nowBadge}
       </div>
       <div class="lanes-row">${lanesHtml}</div>
     </div>`;
@@ -16840,9 +16879,13 @@ function renderPos() {
   const overlay = document.getElementById('posOverlay');
   const isEdit = state.activeTab === 'modifier';
   const title = isEdit ? 'Modifier la réservation' : escapeHtml(r.name);
+  // La référence du dossier vit ICI, et nulle part ailleurs dans l'écran : c'est
+  // l'endroit où on la lit quand on a un client au téléphone. C'est
+  // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
+  // l'export, pas un code reconstruit à l'affichage.
   const subtitle = isEdit
     ? ''
-    : `${escapeHtml(getReservationLabel(r))} • ${r.startTime} • ${r.pax} joueur${r.pax > 1 ? 's' : ''}`;
+    : `<span class="pos-ref">#${escapeHtml(String(r.id))}</span> • ${escapeHtml(getReservationLabel(r))} • ${r.startTime} • ${r.pax} joueur${r.pax > 1 ? 's' : ''}`;
   const bodyHtml = isEdit ? renderPosEdit(r) : renderPosDetails(r);
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');

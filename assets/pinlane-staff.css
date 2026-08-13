@@ -1988,7 +1988,12 @@ button.staff-date-label:focus-visible,
 /* Le texte ne se compresse jamais (flex none) : au manque de place, on masque
    par paliers via les classes mini/snug/compact posées par le JS. */
 .booking > * { min-width: 0; flex: 0 0 auto; }
-.booking:hover { z-index: 10; border-color: var(--line-strong); border-left-color: var(--accent); box-shadow: var(--shadow-sm); }
+/* Survol : la bordure, jamais l'ombre ni le déplacement. DESIGN.md §5 réserve
+   l'ombre aux surfaces FLOTTANTES ; une carte posée dans une grille n'en est
+   pas une, et le gate prouve qu'aucune carte n'en chevauche une autre, donc il
+   n'y a rien à décoller. Aucune largeur ne change : un survol qui décale le
+   contenu d'un pixel se sent, même sans se voir. */
+.booking:hover { z-index: 10; border-color: var(--line-strong); }
 .booking:active, .booking.is-dragging { cursor: grabbing; }
 .booking.is-dragging { opacity: 0.45; }
 
@@ -2016,17 +2021,39 @@ button.staff-date-label:focus-visible,
   text-overflow: ellipsis;
 }
 
-/* Pied de carte : activité (gauche, tronquée) + stats effectif/durée (droite),
-   épinglé en bas de la carte via margin-top:auto. */
+/* Pied de carte : offre (gauche, tronquée) + état + effectif/durée (droite).
+   IL N'EST PLUS ÉPINGLÉ EN BAS. `margin-top: auto` le collait au bord inférieur,
+   ce qui creusait jusqu'à 90px de vide au milieu d'une carte de 2h et faisait
+   lire la carte en deux morceaux séparés. Le nom, l'offre et les chiffres
+   forment un seul bloc en haut : la durée, elle, se lit déjà dans la HAUTEUR de
+   la carte, elle n'a pas besoin d'être dite une deuxième fois par un vide. */
 .booking-foot {
-  margin-top: auto;
+  margin-top: 2px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
   min-width: 0;
 }
-.booking-foot .b-tag { flex: 1 1 auto; }
+
+/* Repère d'état : une FORME par état, pas une nuance de couleur. Voir
+   `renderBookingStateMark`. « Confirmé » n'en a pas : c'est le défaut. */
+.bk-state {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  color: var(--muted);
+}
+.bk-state svg { width: 100%; height: 100%; }
+.booking.arr .bk-state { color: var(--warning); }
+.booking.paid .bk-state { color: var(--success); }
+/* Le libellé n'obtient que la place qui RESTE une fois les chiffres posés :
+   base zéro + croissance. Il s'ellipse quand cette place se réduit, il ne prend
+   jamais celle d'un rang supérieur. */
+.booking-foot .b-tag { flex: 1 1 0; min-width: 0; }
 
 /* Effectif + durée : toujours affichés sur TOUTES les cartes. */
 .booking-stats {
@@ -2097,17 +2124,23 @@ button.staff-date-label:focus-visible,
   gap: 6px;
   padding: 2px 6px;
 }
-/* Sur une carte d'une seule ligne, le nom prend ce qui reste et le pied cède :
-   sans ça, l'effectif et la durée gardaient leur largeur pleine et le nom
-   tombait à 12px de large, c'est-à-dire à rien. `4ch` est le plancher écrit :
-   en dessous, la carte ne dit plus QUI vient. */
-.booking.dens-xs .booking-name { flex: 1 1 auto; min-width: 4ch; font-size: 11px; }
-/* Le pied ne se comprime pas : effectif et durée sont des CHIFFRES, on ne les
-   tronque pas, on les retire (voir la hiérarchie de dégradation plus bas).
-   C'est le nom qui absorbe la réduction, jusqu'à son plancher de 4ch. */
-.booking.dens-xs .booking-foot { margin-top: 0; flex: 0 0 auto; min-width: 0; }
-.booking.dens-xs .booking-foot .b-tag { display: none; }
-.booking.dens-xs .booking-stats { min-width: 0; }
+/* Sur une carte d'une seule ligne, TOUT se joue sur la même ligne. Le pied
+   cesse donc d'être une boîte : ses enfants entrent directement dans la ligne
+   de la carte (`display: contents`). Sans ça, le pied négociait la place EN
+   BLOC avec le nom, le libellé d'activité ne pouvait pas s'effacer tout seul,
+   et il a donc fini masqué d'office, y compris sur une carte de 290px où il
+   restait 200px de vide. C'est le défaut que Movsar voyait « quand j'agrandis ». */
+.booking.dens-xs .booking-name { flex: 0 1 auto; min-width: 4ch; font-size: 11px; }
+.booking.dens-xs .booking-foot { display: contents; }
+/* `flex: 1 1 0` = base ZÉRO + croissance : le libellé n'obtient QUE la place
+   qui reste une fois le nom et les chiffres posés. Il ne prend jamais un pixel
+   à un rang supérieur, il ne crée jamais de vide, et il apparaît partout où il
+   reste de la place. Aucun seuil de largeur n'est choisi à l'avance. */
+.booking.dens-xs .booking-foot .b-tag { display: block; flex: 1 1 0; min-width: 0; }
+/* Effectif et durée sont des CHIFFRES : on ne les tronque pas, on les retire
+   (voir la hiérarchie plus bas). Ils ne cèdent donc rien. */
+.booking.dens-xs .activity-pill { flex: 0 0 auto; }
+.booking.dens-xs .booking-stats { flex: 0 0 auto; min-width: 0; }
 .booking.dens-xs.is-delayed { padding-right: 22px; }
 .booking.dens-xs .delay-indicator .delay-indicator-label { display: none; }
 /* Une carte d'une seule ligne n'a par définition pas de deuxième ligne : les
@@ -2134,28 +2167,73 @@ button.staff-date-label:focus-visible,
    chaque changement de taille ET de zoom. Aucun seuil JavaScript à re-calculer,
    donc rien qui puisse devenir périmé entre deux rendus.
 
-   DEUX FORMES DE CARTE, DEUX SEUILS, et c'est la nuance qui compte : sur une
-   carte HAUTE, le nom a sa propre ligne, le libellé d'activité ne lui prend
-   donc RIEN (il partage la ligne du bas avec les chiffres, et il s'ellipse).
-   Sur une carte d'UNE SEULE ligne, tout se dispute la même ligne : la durée
-   part beaucoup plus tôt pour que le nom garde ses 4 caractères. Confondre les
-   deux, c'est retirer une information utile sur les cartes qui avaient la place
-   de l'afficher.
+   CE QUI DÉCIDE, C'EST LA PLACE QUI RESTE, PAS UN SEUIL CHOISI D'AVANCE.
+   Corrigé le 2026-08-13 (journal 142), sur la remarque de Movsar « quand
+   j'agrandis, je vois plus l'activité ». La version précédente masquait le
+   libellé d'activité d'office sur toute carte d'une seule ligne, et sous 104px
+   de piste sur toutes les autres : une carte de 290px affichait donc « Camille
+   Laurent · 6j · 1h » avec 200px de vide au milieu.
+   Le libellé (rang 2) n'a plus AUCUN seuil : `flex: 1 1 0` lui donne exactement
+   la place qui reste une fois le nom et les chiffres posés. Il apparaît partout
+   où il tient, s'ellipse quand la place se réduit, disparaît de lui-même quand
+   il n'en reste plus. Rien à calibrer, rien à re-mesurer.
+   Les rangs 3 et 4 (durée, effectif) sont des CHIFFRES : un chiffre tronqué
+   ment, on ne peut donc pas l'ellipser, il faut le retirer. Leurs deux seuils
+   restants ne sont pas des choix esthétiques mais des PLANCHERS arithmétiques :
+   la largeur en dessous de laquelle le nom ne peut plus garder ses 4 caractères
+   si le chiffre reste. `test:planning-matrix` mesure les deux sens sur 324
+   combinaisons : trop d'information pour la place, ET information retirée alors
+   qu'elle tenait.
    -------------------------------------------------------------------------- */
+/* RANG 0 : L'EMPHASE, PAS L'INFORMATION. Ce qui cède en premier n'est pas une
+   donnée, c'est sa mise en valeur. La pastille inversée d'un grand groupe et la
+   pastille ambre d'une durée inhabituelle coûtent 26px de largeur à elles deux
+   et ne disent RIEN que le chiffre ne dise déjà. Les retirer avant de retirer
+   une donnée, c'est ce qui fait descendre le plancher de la durée de 147px de
+   piste à 121px. Le chiffre et sa couleur restent : seule la pastille tombe. */
 @container piste (max-width: 190px) {
   .booking .reservation-tags { display: none; }
+  .booking .bk-pax.grp-l,
+  .booking .bk-pax.grp-xl { padding: 0; background: none; color: var(--text); }
+  .booking .bk-dur.dur-special { padding: 0; background: none; }
 }
-/* Carte d'une seule ligne : le nom et les chiffres se partagent la ligne. */
-@container piste (max-width: 118px) {
+/* RANG 2 : LA DURÉE, sur la carte d'une seule ligne, où le nom, l'offre, l'état
+   et les chiffres se partagent la MÊME ligne. Ce plancher est CALCULÉ, pas
+   choisi : nom 4ch (30px) + gouttière (6px) + offre (0px, elle a déjà cédé) +
+   gouttière (6px) + effectif sans pastille (22,6px) + gouttière (6px) + état
+   (11px) + gouttière (5px) + durée sans pastille (26,4px) = 113px de contenu,
+   soit ~121px de piste. En dessous, garder la durée pousserait le nom sous ses
+   4 caractères, et le nom ne part jamais. */
+@container piste (max-width: 121px) {
   .booking.dens-xs .bk-dur { display: none; }
 }
-/* Toutes formes : sous cette largeur, le libellé ne montrerait plus que trois
-   lettres et une ellipse, et les chiffres ne tiennent plus à côté. */
-@container piste (max-width: 104px) {
-  .booking .booking-foot .b-tag { display: none; }
+/* Même rang, carte HAUTE : le nom a sa propre ligne, seule la ligne du bas est
+   en jeu. Plancher : offre (0px) + 6 + état (11px) + 6 + effectif (22,6px) + 5
+   + durée (26,4px) = 71px de contenu, soit ~96px de piste. */
+@container piste (max-width: 96px) {
   .booking .bk-dur { display: none; }
 }
+/* RANG 3 : l'état. Sur la carte d'une seule ligne seulement : sur une carte
+   haute, le nom a sa propre ligne et le repère de 11px tient jusqu'à 52px de
+   piste. Plancher : 30 + 6 + 6 + 11 + 6 + 22,6 = 81,6px de contenu, ~100px de
+   piste. */
+@container piste (max-width: 100px) {
+  .booking.dens-xs .bk-state { display: none; }
+}
+/* RANG 4 : l'effectif, dernier chiffre avant le nom seul. Sur la carte d'une
+   seule ligne : 30 + 6 + 6 + 22,6 = 64,6px de contenu, ~84px de piste.
+   Sur une carte HAUTE, le nom ne dispute rien : l'état tient jusqu'à ~64px de
+   piste et l'effectif jusqu'à ~48px, en dessous du plancher de lisibilité d'une
+   colonne (44px) qui est de toute façon un défaut à lui seul. Confondre les
+   deux formes, c'était retirer l'effectif d'une carte de 33px de large qui
+   avait la place de l'afficher : le gate l'a vu. */
 @container piste (max-width: 84px) {
+  .booking.dens-xs .booking-stats { display: none; }
+}
+@container piste (max-width: 64px) {
+  .booking .bk-state { display: none; }
+}
+@container piste (max-width: 48px) {
   .booking .booking-stats { display: none; }
 }
 
@@ -2528,11 +2606,21 @@ body.staff-mode.laser-dragging * { user-select: none; }
 /* ----------------------------------------------------------------------------
    6. LISTE RÉSERVATIONS (.table-box / .res-*)
    -------------------------------------------------------------------------- */
+/* LA LISTE DU JOUR EST UN PANNEAU BORNÉ, PAS UNE COLONNE QUI POUSSE LA PAGE.
+   Même règle que l'onglet « À venir » de Clients (journal 140) : la liste
+   mesurait 3 040px pour 24 réservations, soit 72 % d'une page de 4 201px, et
+   elle grandit avec le volume, et un samedi chargé est pire. Le panneau se borne
+   à 640px et défile DANS LUI-MÊME : la page garde une hauteur stable quel que
+   soit le nombre de dossiers, et la grille reste à portée de regard au lieu
+   d'être repoussée par sa propre répétition. Aucune ligne n'est retirée. */
 .table-box {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 704px;
 }
 
 .table-head {
@@ -2541,7 +2629,8 @@ body.staff-mode.laser-dragging * { user-select: none; }
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-  margin-bottom: var(--space-4);
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
 }
 
 .table-head h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; }
@@ -2577,7 +2666,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
   font-size: 13px;
 }
 
-.res-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.res-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 
 .table-toolbar {
   display: flex;
@@ -2585,7 +2674,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-  margin-bottom: var(--space-3);
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 .status-filters { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -2610,7 +2704,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .status-chip:hover { background: var(--subtle); color: var(--text); }
 .status-chip.active { background: var(--text); border-color: var(--text); color: var(--surface); }
 .status-chip.active.arrived { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
-.status-chip.active.pending { background: var(--info-soft); border-color: var(--info); color: var(--info); }
+.status-chip.active.pending { background: var(--info-soft); border-color: var(--info); color: var(--accent-strong); }
 .status-chip.active.paid { background: var(--success-soft); border-color: var(--success); color: var(--success); }
 .status-chip.active.notes { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
 
@@ -2627,25 +2721,33 @@ body.staff-mode.laser-dragging * { user-select: none; }
   font-size: 11px;
 }
 
-.table-summary { font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+/* `--faint` = 3,23:1 sur `--surface`, sous AA. Un résumé de liste se lit. */
+.table-summary { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-.res-sections { display: flex; flex-direction: column; gap: var(--space-3); }
+/* TROIS CADRES EMBOÎTÉS DEVENAIENT UN SEUL TABLEAU. Le panneau encadrait des
+   sections encadrées qui encadraient des lignes encadrées : trois bordures pour
+   dire une seule chose. DESIGN.md §6 décrit une liste comme des lignes séparées
+   par un filet, pas comme un empilement de cartes, et c'est aussi le langage de la
+   grille juste au-dessus, et c'est ce qui rend les deux vues cohérentes. */
+.res-sections { display: flex; flex-direction: column; }
 
-.res-section {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: var(--space-2);
-  background: var(--surface);
-}
+.res-section { background: var(--surface); }
 
 .res-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 6px 10px;
+  gap: var(--space-3);
+  padding: 7px 18px;
+  background: var(--subtle);
+  border-bottom: 1px solid var(--line);
 }
 
-.res-section.offplanning { border-color: var(--warning); }
+.res-section + .res-section .res-section-head { border-top: 1px solid var(--line); }
+.res-section.offplanning .res-section-head { background: var(--warning-soft); }
 .res-section.offplanning .res-section-head .label { color: var(--warning); }
 .res-section.offplanning .res-section-head .count { background: var(--warning-soft); color: var(--warning); }
 
@@ -2666,42 +2768,43 @@ body.staff-mode.laser-dragging * { user-select: none; }
   line-height: 1.8;
 }
 
-.res-dense-list { display: flex; flex-direction: column; gap: 6px; }
+.res-dense-list { display: flex; flex-direction: column; }
 
 .res-row {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1.7fr) minmax(130px, 0.8fr) auto;
+  grid-template-columns: 54px minmax(0, 1.7fr) minmax(110px, 0.6fr) auto;
   gap: var(--space-3);
   align-items: center;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  padding: 7px 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   background: var(--surface);
   cursor: pointer;
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition: background-color var(--dur) var(--ease);
 }
 
-.res-row:hover { background: var(--subtle); border-color: var(--line-strong); }
-.res-row.pending { border-left: 2px solid var(--info); }
-.res-row.arrived { border-left: 2px solid var(--warning); }
-.res-row.paid { border-left: 2px solid var(--success); opacity: 0.75; }
+.res-row:last-child { border-bottom: 0; }
+.res-row:hover { background: var(--subtle); }
+/* La barre d'état est posée EN OMBRE INTÉRIEURE, pas en bordure : une bordure
+   qui apparaît décale le contenu de 2px, et un survol qui bouge se sent. */
+.res-row.pending { box-shadow: inset 2px 0 0 var(--info); }
+.res-row.arrived { box-shadow: inset 2px 0 0 var(--warning); }
+.res-row.paid { box-shadow: inset 2px 0 0 var(--success); opacity: 0.72; }
 
 .res-row-time {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  min-height: 44px;
-  border-radius: var(--radius-sm);
-  background: var(--subtle);
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
 }
 
-.res-row-time strong { font-size: 14px; font-weight: 600; line-height: 1.1; }
-.res-row-time span { margin-top: 2px; font-size: 10px; color: var(--faint); }
+.res-row-time strong { font-size: 13px; font-weight: 600; line-height: 1.15; }
+.res-row-time span { font-size: 10px; color: var(--muted); }
 
-.res-row-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.res-row-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .res-row-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .res-row-name { font-size: 13px; font-weight: 600; color: var(--text); }
 
@@ -2717,16 +2820,16 @@ body.staff-mode.laser-dragging * { user-select: none; }
   color: var(--muted);
 }
 
-.type-badge.formule { background: var(--accent-soft); color: var(--accent); }
-.type-badge.laser { background: var(--info-soft); color: var(--info); }
+.type-badge.formule { background: var(--accent-soft); color: var(--accent-strong); }
+.type-badge.laser { background: var(--info-soft); color: var(--accent-strong); }
 .type-badge.bowling { background: var(--subtle); color: var(--muted); }
 
 .res-row-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
 .res-row-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .res-row-meta svg { width: 11px; height: 11px; }
 
-.res-row-side { min-width: 0; display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
-.res-row-label { font-size: 11px; color: var(--faint); font-weight: 500; }
+.res-row-side { min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.res-row-label { font-size: 11px; color: var(--muted); font-weight: 500; }
 .res-row-lanes { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .res-lane-chip {
@@ -2745,10 +2848,14 @@ body.staff-mode.laser-dragging * { user-select: none; }
   line-height: 1.7;
 }
 
-.res-lane-chip.laser { border-color: var(--info); color: var(--info); background: var(--info-soft); }
-.res-lanes-empty { font-size: 12px; color: var(--faint); }
+.res-lane-chip.laser { border-color: var(--info); color: var(--accent-strong); background: var(--info-soft); }
+.res-lanes-empty { font-size: 12px; color: var(--muted); }
 
-.res-row-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+/* Les actions passent de DEUX lignes empilées à UNE seule : c'est ce qui fait
+   descendre la ligne de 104px à ~68px sans retirer un seul bouton. L'état
+   nommé, le sélecteur de statut et les outils se lisent de gauche à droite,
+   dans l'ordre où on s'en sert au comptoir. */
+.res-row-actions { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 8px; }
 
 .res-state-pill {
   display: inline-flex;
@@ -2763,7 +2870,14 @@ body.staff-mode.laser-dragging * { user-select: none; }
   font-variant-numeric: tabular-nums;
 }
 
-.res-state-pill.pending { background: var(--info-soft); color: var(--info); }
+/* MESURÉ : `--info` (#0070f3) sur `--info-soft` (#e8f1fd) donne 3,98:1 en
+   thème clair, sous le seuil AA de 4,5:1 que DESIGN.md §3 exige pour un badge
+   de statut. `--accent-strong` (#0761d1) mesure 5,09:1 sur le même fond et
+   6,53:1 en sombre : même famille, même lecture, un cran plus foncé.
+   La paire fautive existe ailleurs dans la console (tableau de bord, groupes,
+   laser, établissement) : traitée ici pour la liste et les fiches, à reprendre
+   d'un seul geste sur le reste. */
+.res-state-pill.pending { background: var(--info-soft); color: var(--accent-strong); }
 .res-state-pill.arrived { background: var(--warning-soft); color: var(--warning); }
 .res-state-pill.paid { background: var(--success-soft); color: var(--success); }
 
@@ -2785,7 +2899,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 }
 
 .res-status-btn:hover { background: var(--subtle); color: var(--text); }
-.res-status-btn.active.pending { background: var(--info-soft); border-color: var(--info); color: var(--info); }
+.res-status-btn.active.pending { background: var(--info-soft); border-color: var(--info); color: var(--accent-strong); }
 .res-status-btn.active.arrived { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
 .res-status-btn.active.paid { background: var(--success-soft); border-color: var(--success); color: var(--success); }
 
@@ -6764,9 +6878,25 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .info-label { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 10px; }
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-.info-row .lbl { font-size: 11px; color: var(--faint); font-weight: 500; margin-bottom: 3px; }
+/* `--faint` mesure 3,23:1 sur `--surface` en clair : sous le seuil AA de 4,5:1.
+   L'intitulé d'un champ est ce qui dit CE QU'ON LIT ; il ne peut pas être le
+   texte le moins lisible de l'écran. Même correction que l'effectif des cartes
+   du planning le 2026-08-13 (journal 141), au même endroit du raisonnement. */
+.info-row .lbl { font-size: 11px; color: var(--muted); font-weight: 500; margin-bottom: 3px; }
 .info-row .val { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; }
-.info-row .val small { font-size: 11px; color: var(--faint); font-weight: 400; }
+.info-row .val small { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* HIÉRARCHIE DE LECTURE DANS LA FICHE. Huit blocs empilés portaient tous un
+   titre au même poids (12px/500 gris) : rien ne disait par quoi commencer.
+   Le titre de section passe en `--text` et en 600, les intitulés de champ
+   restent en 11px `--muted` : deux niveaux qui se distinguent d'un coup d'œil,
+   sans ajouter ni trait ni couleur. */
+.edit-modal-body .info-label { color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
+.edit-modal-body .info-block { margin-bottom: var(--space-4); }
+.edit-modal-body .info-block:last-child { margin-bottom: 0; }
+/* Le premier bloc, c'est l'essentiel du comptoir : quand, combien, où. Il se
+   détache du fond pour être le point d'entrée du regard. */
+.edit-modal-body .fade-in > .info-block:first-child { background: var(--subtle); }
 
 .status-pill {
   display: inline-flex;
@@ -6781,7 +6911,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 }
 
 .status-pill .dot { width: 6px; height: 6px; background: currentColor; }
-.status-pill.conf { background: var(--info-soft); color: var(--info); }
+.status-pill.conf { background: var(--info-soft); color: var(--accent-strong); }
 .status-pill.arr { background: var(--warning-soft); color: var(--warning); }
 .status-pill.paid { background: var(--success-soft); color: var(--success); }
 
@@ -7304,17 +7434,33 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   overflow: hidden;
 }
 
+/* EN-TÊTE EN DEUX ÉTAGES : l'identité du dossier, puis les onglets. Les onglets
+   étaient EMPILÉS SOUS le sous-titre à l'intérieur du même bloc, donc décalés
+   au milieu de l'en-tête, sans filet ni alignement : rien ne disait qu'ils
+   commandaient le corps en dessous. Ils courent maintenant sur toute la largeur,
+   posés sur le filet qui sépare l'en-tête du corps. */
 .edit-modal-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5) 0;
   border-bottom: 1px solid var(--line);
 }
 
-.edit-modal-head h3 { font-size: 17px; }
-.edit-modal-head p { color: var(--muted); font-size: 12px; margin-top: 4px; max-width: 520px; }
+.edit-modal-ident { min-width: 0; }
+.modal-tabs { grid-column: 1 / -1; }
+.edit-modal-head h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+/* La ligne d'identité est une DONNÉE : heure, piste, effectif, montant. Geist
+   Mono tabulaire pour les chiffres, séparateurs discrets, jamais de retour à la
+   ligne au milieu d'une valeur. */
+.edit-modal-head p {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
 /* Référence du dossier : une donnée, donc Geist Mono tabulaire (DESIGN.md §4).
    C'est le seul endroit de l'écran où elle s'affiche, et c'est voulu : on la
    lit quand on a le client au téléphone, pas quand on survole le planning. */
@@ -7359,14 +7505,21 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .edit-inline-note .n { color: var(--muted); }
 .edit-inline-note .v { font-weight: 500; }
 
+/* Ce qui détruit à gauche, ce qui fait avancer à droite, et tout l'espace
+   disponible entre les deux : c'est la protection du clic accidentel, et elle
+   ne coûte ni fenêtre de confirmation supplémentaire ni double clic. */
 .edit-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
   flex-wrap: wrap;
   padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
+
+.edit-actions-destructive,
+.edit-actions-main { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 .edit-actions .btn-secondary,
 .edit-actions .btn-primary,

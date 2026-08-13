@@ -13250,6 +13250,47 @@ function getBookingDensityClass(height, expanded) {
   return 'dens-lg';
 }
 
+// ÉTAT DE LA RÉSERVATION SUR LA CARTE, ET IL NE TIENT PLUS À LA COULEUR SEULE.
+// Le fond et la barre de gauche disaient l'état à eux seuls : bleu = confirmé,
+// ambre = arrivé, vert = payé, avec une légende en haut du panneau. DESIGN.md §7
+// l'interdit (« pas d'info portée par la couleur seule »), et un gérant
+// deutéranope confond exactement ces deux-là, l'ambre et le vert.
+// Le repère porte donc une FORME distincte par état, plus un libellé lu par la
+// synthèse vocale. « Confirmé » est l'état par défaut : il ne reçoit aucun
+// repère, parce qu'un écran où tout est marqué est un écran où rien ne ressort.
+const BOOKING_STATE_MARKS = {
+  // Arrivé : la flèche qui entre. C'est la question du comptoir.
+  arr: { label: 'Arrivé', path: '<path d="M3 12h10"/><path d="M9 8l4 4-4 4"/><path d="M17 4v16"/>' },
+  // Payé : la coche. Le dossier est clos.
+  paid: { label: 'Payé', path: '<path d="M20 6 9 17l-5-5"/>' },
+};
+function renderBookingStateMark(cls) {
+  const mark = BOOKING_STATE_MARKS[cls];
+  if (!mark) return '';
+  return `<span class="bk-state" role="img" aria-label="${mark.label}" title="${mark.label}">`
+    + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${mark.path}</svg>`
+    + `</span>`;
+}
+
+// Durée d'une carte de planning : forme COMPACTE et de largeur BORNÉE (`0h30`,
+// `1h`, `1h30`), là où `formatDurationLabel` rend « 30 min » pour la demi-heure.
+// Deux raisons, et la seconde n'est pas cosmétique.
+// (1) La grille est un tableau de données : DESIGN.md §4 veut du Geist Mono
+//     tabulaire, or « 30 min » mélange chiffres, lettre et espace et ne
+//     s'aligne avec rien dans la colonne.
+// (2) Surtout, sa largeur DÉCIDE : c'est elle qui fixe le plancher en dessous
+//     duquel la durée doit céder la place au nom sur une carte d'une seule
+//     ligne. Mesuré : « 30 min » occupe 51,6px contre 38,4px au pire pour la
+//     forme compacte. Une largeur bornée rend ce plancher CALCULABLE au lieu
+//     d'être deviné, et c'est tout l'objet de la correction du 2026-08-13.
+// Le libellé long reste dans l'infobulle : aucune information ne se perd.
+function formatCardDurationLabel(hours) {
+  const totalMinutes = Math.max(0, Math.round((Number(hours) || 0) * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+}
+
 // Bloc effectif + durée commun aux cartes bowling ET laser. Le libellé texte
 // porte toujours l'info (accessibilité : jamais de sens porté par la couleur
 // seule) ; la couleur/pastille ne fait que renforcer.
@@ -13258,9 +13299,10 @@ function renderCardStats(pax, durationLabel, options = {}) {
   const paxNum = Math.max(0, Number(pax) || 0);
   const grp = getGroupSizeClass(paxNum);
   const durClass = special ? 'bk-dur dur-special' : 'bk-dur';
+  const durTitle = options.durationTitle || durationLabel;
   return `<span class="booking-stats">`
     + `<span class="bk-pax ${grp}" title="${paxNum} joueur${paxNum > 1 ? 's' : ''}">${paxNum}<span class="u">j</span></span>`
-    + `<span class="${durClass}" title="Durée ${escapeHtml(durationLabel)}">${escapeHtml(durationLabel)}</span>`
+    + `<span class="${durClass}" title="Durée ${escapeHtml(durTitle)}">${escapeHtml(durationLabel)}</span>`
     + `</span>`;
 }
 
@@ -13773,7 +13815,7 @@ function renderPlanning() {
       const fullName = String(r.name || 'Client');
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
-      const statsHtml = renderCardStats(r.pax, formatDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration) });
+      const statsHtml = renderCardStats(r.pax, formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration) });
       bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${renderDelayIndicator(r)}
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
@@ -13781,6 +13823,7 @@ function renderPlanning() {
         <div class="booking-foot">
           <span class="b-tag">${escapeHtml(getReservationLabel(r))}</span>
           ${renderActivityProgressPill(r)}
+          ${renderBookingStateMark(cls)}
           ${statsHtml}
         </div>
       </div>`;
@@ -14188,7 +14231,12 @@ function renderReservationRow(r) {
       : bowlingLanes.length
         ? `<div class="res-row-lanes">${bowlingChipHtml}</div>`
         : `<span class="res-lanes-empty">Hors piste</span>`;
-  const stateText = r.status === 'paid' ? `${r.price}€ payé` : r.status === 'arrived' ? 'Arrivé' : 'Confirmé';
+  // La pastille d'état ne se dessine QUE si elle dit quelque chose que le
+  // sélecteur juste à côté ne dit pas déjà. « Arrivé » suivi de trois boutons
+  // dont « Arrivé » est actif, c'est la même information écrite deux fois à
+  // 8px d'écart. Sur une réservation payée, elle porte le MONTANT : là, elle
+  // apporte, et elle reste.
+  const stateText = r.status === 'paid' ? `${r.price}€ payé` : '';
   const timeLabel = resourceWindows.length ? formatClockDisplay(resourceWindows[0].start) : r.startTime;
   const resourceDurationLabel = view === 'all'
     ? (isFormule ? 'Formule' : r.type === 'laser' ? (getLaserGameCountForReservation(r) > 1 ? `Laser x${getLaserGameCountForReservation(r)}` : 'Laser') : formatDurationLabel(r.duration))
@@ -14222,7 +14270,7 @@ function renderReservationRow(r) {
       ${lanesHtml}
     </div>
     <div class="res-row-actions" onclick="event.stopPropagation()">
-      <span class="res-state-pill ${r.status}">${stateText}</span>
+      ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
       <div class="res-status-row compact">
         <button class="res-status-btn ${r.status === 'pending' ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>
         <button class="res-status-btn ${r.status === 'arrived' ? 'active arrived' : ''}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>
@@ -14506,10 +14554,18 @@ async function cancelRes(id, ev) {
 
 async function deleteRes(id, ev) {
   if (ev) ev.stopPropagation();
-  if (!confirm('Supprimer cette réservation ?')) return;
   const current = state.reservations.find(r => r.id === id);
   if (!current) return;
+  // La confirmation NOMME ce qu'elle détruit. « Supprimer cette réservation ? »
+  // ne dit pas laquelle : on clique dessus en pensant à une autre. Elle dit
+  // aussi que c'est définitif, parce que ça l'est : il n'y a pas d'annulation.
+  const quoi = `${current.name || 'Client'} · ${current.startTime || ''} · ${current.pax || 0} joueur${(current.pax || 0) > 1 ? 's' : ''}`;
+  if (!confirm(`Supprimer definitivement la reservation #${id} ?\n\n${quoi}\n\nCette action est irreversible. Pour garder la trace du dossier, utilisez plutot « Annuler reservation ».`)) return;
   removeOptimisticReservation(id);
+  // La fiche se ferme : elle décrivait un dossier qui n'existe plus. Elle
+  // restait ouverte, avec ses boutons « Enregistrer » et « Arrivé » actifs sur
+  // une réservation supprimée.
+  if (state.selectedRes && state.selectedRes.id === id) closePos();
   try {
     await apiRequest(API_ENDPOINTS.staffReservations, {
       method: 'DELETE',
@@ -14551,6 +14607,11 @@ function closePos() {
   overlay.classList.add('hidden');
   overlay.classList.remove('centered');
   overlay.innerHTML = '';
+  // Le focus revient d'où il venait : la ligne ou la carte qu'on avait ouverte.
+  if (posReturnFocus && document.contains(posReturnFocus)) {
+    try { posReturnFocus.focus({ preventScroll: true }); } catch (e) { /* élément disparu entre-temps */ }
+  }
+  posReturnFocus = null;
 }
 
 function setTab(t) {
@@ -14674,9 +14735,11 @@ function renderReservationProgram(reservation) {
 
 function renderPosDetails(r) {
   const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
+  // « Emplacement : Piste : 3 » se lisait avec deux deux-points d'affilée :
+  // l'intitulé dit déjà de quoi il s'agit, la valeur n'a pas à le redire.
   const lanesTxt = r.type === 'laser'
-    ? `Laser Game : ${laserWindow ? `${formatClockDisplay(laserWindow.start)} - ${formatClockDisplay(laserWindow.end)}` : r.startTime}`
-    : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} : ${r.lanes.join(', ')}` : 'Hors piste';
+    ? `Laser Game ${laserWindow ? `${formatClockDisplay(laserWindow.start)} - ${formatClockDisplay(laserWindow.end)}` : r.startTime}`
+    : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : 'Hors piste';
   const statusMeta = {
     pending: { label: 'Confirmé', cls: 'conf' },
     arrived: { label: 'Arrivé', cls: 'arr' },
@@ -15376,7 +15439,12 @@ function renderPosEdit(r) {
   return `<div class="edit-shell fade-in">
     <div class="edit-summary">
       <div class="edit-summary-card">
-        <div class="info-label" style="margin-bottom:6px;">Réservation en cours</div>
+        <!-- « Réservation en cours » recopiait mot pour mot la ligne d'identité
+             de l'en-tête : deux fois la même chose à 60px d'écart. Ce bloc n'est
+             PAS l'état actuel, c'est l'APERÇU de ce qui sera enregistré : il se
+             recalcule à chaque frappe (refreshEditPreview). Il suffisait de le
+             dire pour qu'il cesse d'être une redite et devienne une garantie. -->
+        <div class="info-label" style="margin-bottom:6px;">Après enregistrement</div>
         <h4 id="editSummaryName">${escapeHtml(e.name)}</h4>
         <p id="editSummaryMeta">${escapeHtml(getReservationLabel(r))} • ${e.startTime || '--:--'} • ${e.lanesStr ? `pistes ${escapeHtml(e.lanesStr)}` : 'hors piste'}</p>
       </div>
@@ -15395,18 +15463,18 @@ function renderPosEdit(r) {
           <div class="info-block soft compact">
             <div class="field-stack">
               <div>
-                <label class="lbl">Client</label>
-                <input class="input" value="${escapeHtml(e.name)}" oninput="setEditField('name', this.value)" required>
+                <label class="lbl" for="editNameInput">Client</label>
+                <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" oninput="setEditField('name', this.value)" required>
               </div>
               <div>
-                <label class="lbl">Téléphone</label>
-                <input class="input" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
+                <label class="lbl" for="editPhoneInput">Téléphone</label>
+                <input id="editPhoneInput" class="input" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
               </div>
             </div>
           </div>
           <div class="info-block soft compact">
-            <label class="lbl">Statut</label>
-            <select class="input" oninput="setEditField('status', this.value)">
+            <label class="lbl" for="editStatusInput">Statut</label>
+            <select id="editStatusInput" class="input" oninput="setEditField('status', this.value)">
               <option value="pending" ${e.status === 'pending' ? 'selected' : ''}>Confirmé</option>
               <option value="arrived" ${e.status === 'arrived' ? 'selected' : ''}>Arrivé</option>
               <option value="paid" ${e.status === 'paid' ? 'selected' : ''}>Payé</option>
@@ -15417,19 +15485,19 @@ function renderPosEdit(r) {
           <div class="info-block soft compact">
             <div class="edit-grid-2">
               <div>
-                <label class="lbl">Joueurs</label>
-                <input class="input" type="number" min="1" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
+                <label class="lbl" for="editPaxInput">Joueurs</label>
+                <input id="editPaxInput" class="input" type="number" min="1" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
               </div>
               <div>
-                <label class="lbl">Durée (h)</label>
-                <input class="input" type="number" step="0.5" min="0.5" value="${e.duration}" oninput="setEditField('duration', this.value, true)" required>
+                <label class="lbl" for="editDurationInput">Durée (h)</label>
+                <input id="editDurationInput" class="input" type="number" step="0.5" min="0.5" value="${e.duration}" oninput="setEditField('duration', this.value, true)" required>
               </div>
               <div>
-                <label class="lbl">Heure</label>
-                <input class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
+                <label class="lbl" for="editStartInput">Heure</label>
+                <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
               </div>
               <div>
-                <label class="lbl">Pistes</label>
+                <label class="lbl" for="editLanesInput">Pistes</label>
                 <input id="editLanesInput" class="input" value="${escapeHtml(e.lanesStr)}" oninput="setEditLanes(this.value)" placeholder="Ex: 1,2">
               </div>
             </div>
@@ -15446,13 +15514,22 @@ function renderPosEdit(r) {
           </div>
         </div>
       </div>
+      <!-- DEUX GROUPES, ET UN VIDE ENTRE LES DEUX. « Supprimer » était collé à
+           « Enregistrer » : le geste qui détruit et le geste qui enregistre à
+           8px l'un de l'autre, sur la même ligne, avec la même forme. Ce qui
+           détruit part à GAUCHE, ce qui fait avancer reste à DROITE, et
+           « Supprimer » est le seul bouton à porter la couleur de danger. -->
       <div class="edit-actions">
+        <div class="edit-actions-destructive">
+          <button type="button" class="btn-secondary warn" onclick="cancelRes(${r.id})">Annuler réservation</button>
+          <button type="button" class="btn-secondary danger" onclick="deleteRes(${r.id})">Supprimer</button>
+        </div>
+        <div class="edit-actions-main">
         <button type="button" class="btn-secondary" onclick="closePos()">Fermer</button>
-        <button type="button" class="btn-secondary warn" onclick="cancelRes(${r.id})">Annuler réservation</button>
-        <button type="button" class="btn-secondary danger" onclick="deleteRes(${r.id})">Supprimer</button>
         <button type="submit" class="btn-primary">Enregistrer
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         </button>
+        </div>
       </div>
     </form>
   </div>`;
@@ -16873,40 +16950,102 @@ function renderFormules() {
   renderFormulaPreferences();
 }
 
+// LES CINQ CHOSES QU'UN GÉRANT CHERCHE AVANT TOUT LE RESTE, dans l'ordre où il
+// les cherche quand le client est devant lui : QUI (le nom, c'est le titre),
+// QUAND, OÙ, COMBIEN ILS SONT, COMBIEN ÇA FAIT. La ligne d'identité les porte
+// toutes les cinq, et elle ne change pas d'un onglet à l'autre : basculer sur
+// « Modifier » remplaçait le nom du client par « Modifier la réservation », et
+// on perdait de vue le dossier qu'on est en train de modifier.
+function getPosIdentityParts(r) {
+  const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
+  const bowlingWindow = getBowlingWindowsFromReservation(r)[0] || null;
+  const window = r.type === 'laser' ? laserWindow : bowlingWindow;
+  const horaire = window
+    ? `${formatClockDisplay(window.start)} - ${formatClockDisplay(window.end)}`
+    : String(r.startTime || '');
+  const lieu = r.type === 'laser'
+    ? 'Laser Game'
+    : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : 'Hors piste';
+  const parts = [
+    `<span class="pos-ref">#${escapeHtml(String(r.id))}</span>`,
+    escapeHtml(getReservationLabel(r)),
+    escapeHtml(horaire),
+    escapeHtml(lieu),
+    `${r.pax} joueur${r.pax > 1 ? 's' : ''}`,
+  ];
+  if (Number(r.price) > 0) parts.push(`${Number(r.price)} €`);
+  return parts;
+}
+
+// Mémorise l'élément qui avait le focus AVANT l'ouverture, pour le lui rendre à
+// la fermeture. Sans ça, fermer la fiche renvoie le focus au début de la page.
+let posReturnFocus = null;
+
+function focusablesInPos() {
+  const modal = document.querySelector('#posOverlay .edit-modal');
+  if (!modal) return [];
+  return [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.disabled && el.offsetParent !== null);
+}
+
+// Piège à focus + Échap. La fiche est une fenêtre modale : tabuler dedans ne
+// doit pas en sortir vers la page qui est derrière, et Échap doit la fermer.
+// Aucun des deux n'existait, alors que les trois autres modales de la console
+// (retard, communication, accès staff) les avaient déjà.
+function handlePosKeydown(ev) {
+  if (!state.selectedRes) return;
+  if (ev.key === 'Escape') { ev.stopPropagation(); closePos(); return; }
+  if (ev.key !== 'Tab') return;
+  const items = focusablesInPos();
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  if (ev.shiftKey && (active === first || !items.includes(active))) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && active === last) { ev.preventDefault(); first.focus(); }
+}
+
 function renderPos() {
   if (!state.selectedRes) return;
   const r = state.selectedRes;
   const overlay = document.getElementById('posOverlay');
+  const wasOpen = !overlay.classList.contains('hidden');
+  if (!wasOpen) posReturnFocus = document.activeElement;
   const isEdit = state.activeTab === 'modifier';
-  const title = isEdit ? 'Modifier la réservation' : escapeHtml(r.name);
   // La référence du dossier vit ICI, et nulle part ailleurs dans l'écran : c'est
   // l'endroit où on la lit quand on a un client au téléphone. C'est
   // l'identifiant réel de la réservation, celui qui est stocké et qui sort dans
   // l'export, pas un code reconstruit à l'affichage.
-  const subtitle = isEdit
-    ? ''
-    : `<span class="pos-ref">#${escapeHtml(String(r.id))}</span> • ${escapeHtml(getReservationLabel(r))} • ${r.startTime} • ${r.pax} joueur${r.pax > 1 ? 's' : ''}`;
+  const subtitle = getPosIdentityParts(r).join(' • ');
   const bodyHtml = isEdit ? renderPosEdit(r) : renderPosDetails(r);
   overlay.classList.remove('hidden');
   overlay.classList.add('centered');
   overlay.innerHTML = `
-    <div class="edit-modal">
+    <div class="edit-modal" role="dialog" aria-modal="true" aria-labelledby="posTitle" tabindex="-1">
       <div class="edit-modal-head">
-        <div>
-          <h3>${title}</h3>
-          ${subtitle ? `<p>${subtitle}</p>` : ''}
-          <div class="modal-tabs">
-            <button class="tab ${state.activeTab === 'details' ? 'active' : ''}" onclick="setTab('details')">Infos</button>
-            <button class="tab ${state.activeTab === 'modifier' ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>
-          </div>
+        <div class="edit-modal-ident">
+          <h3 id="posTitle">${escapeHtml(r.name)}</h3>
+          <p>${subtitle}</p>
         </div>
-        <button class="close-btn" onclick="closePos()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <button type="button" class="close-btn" aria-label="Fermer la fiche" onclick="closePos()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
+        <div class="modal-tabs" role="tablist" aria-label="Vues de la fiche">
+          <button type="button" role="tab" aria-selected="${!isEdit}" class="tab ${!isEdit ? 'active' : ''}" onclick="setTab('details')">Infos</button>
+          <button type="button" role="tab" aria-selected="${isEdit}" class="tab ${isEdit ? 'active' : ''}" onclick="setTab('modifier')">Modifier</button>
+        </div>
       </div>
       <div class="edit-modal-body">${bodyHtml}</div>
     </div>
   `;
+  if (!overlay.dataset.keyboardBound) {
+    overlay.addEventListener('keydown', handlePosKeydown);
+    overlay.dataset.keyboardBound = '1';
+  }
+  // Le focus entre dans la fenêtre, sur l'onglet actif : c'est le premier
+  // élément utile, et ça annonce à la synthèse vocale où on vient d'arriver.
+  const entry = overlay.querySelector('.modal-tabs .tab.active') || overlay.querySelector('.edit-modal');
+  if (entry) entry.focus({ preventScroll: true });
 }
 
 // Contact public du centre (téléphone + email) servi par

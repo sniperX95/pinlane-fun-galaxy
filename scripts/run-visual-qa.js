@@ -1114,7 +1114,15 @@ async function main() {
     assert(cardAudit.allBowlingHaveStats, 'Planning : toutes les cartes bowling portent effectif + durée.');
     assert(cardAudit.min30.hasPax && cardAudit.min30.hasDur, 'Planning : carte 30 min montre effectif + durée.');
     assert(/\bdens-xs\b/.test(cardAudit.min30.classes), 'Planning : carte 30 min en densité compacte (dens-xs).');
-    assert(!cardAudit.min30.bTagVisible, 'Planning : carte 30 min masque le détail secondaire (activité).');
+    // ATTENTE INVERSÉE LE 2026-08-13, et c'est la correction elle-même.
+    // Cette ligne exigeait auparavant que le libellé d'activité soit MASQUÉ sur
+    // la carte d'une seule ligne. Elle défendait donc le défaut que Movsar a
+    // signalé (« quand j'agrandis, je vois plus l'activité ») : une carte de
+    // 290px de large affichait « Camille Laurent · 6j · 1h » avec 200px de vide
+    // au milieu. La règle est maintenant que le libellé n'a AUCUN seuil : il
+    // occupe la place qui reste et disparaît de lui-même quand il n'en reste
+    // plus. À la largeur de cet écran de test, il en reste, donc il se voit.
+    assert(cardAudit.min30.bTagVisible, 'Planning : carte 30 min affiche le libellé d activité quand la place le permet.');
     assert(cardAudit.min30.overflow <= 1, `Planning : carte 30 min ne déborde pas (overflow=${cardAudit.min30.overflow}).`);
     assert(cardAudit.min30.durSpecial, 'Planning : durée 30 min ≠1h est mise en évidence.');
     assert(!cardAudit.h1.durSpecial, 'Planning : durée standard 1h reste neutre (pas de mise en évidence).');

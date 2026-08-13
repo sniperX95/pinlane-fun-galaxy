@@ -413,6 +413,101 @@ window.__PLANNING_AUDIT__ = function (ctx) {
     if (lr.right > wrapRect.right + 1 && !canScrollX) add('ligne-maintenant-coupee', 'la ligne depasse le cadre de ' + num(lr.right - wrapRect.right) + 'px');
   }
 
+  // 9. INFORMATION MASQUEE ALORS QU ELLE TENAIT - le sens INVERSE, celui qui
+  //    manquait. Les huit mesures ci-dessus ne savent voir qu un seul defaut :
+  //    trop d information pour la place. Elles sont aveugles au defaut
+  //    symetrique, et c est exactement celui que Movsar voit : une carte large
+  //    de ~290px qui affiche « Camille Laurent · 6j · 1h » avec un grand vide
+  //    au milieu, parce que le libelle d activite a saute alors qu il avait
+  //    toute la place. Une echelle de degradation sans ce detecteur est un
+  //    couteau a un seul tranchant : elle peut effacer une information utile a
+  //    n importe quelle taille sans que rien ne rougisse.
+  //
+  //    ON NE JUGE PAS AU SEUIL, ON MESURE PAR L ACTE : on remet l element
+  //    masque, et on regarde ce qui se passe vraiment. Il est masque a tort si
+  //    les TROIS conditions tiennent en meme temps :
+  //      a. la carte ne deborde pas (ni en largeur ni en hauteur) ;
+  //      b. l element montre son texte en entier, ou au moins 4 caracteres ;
+  //      c. PERSONNE AU-DESSUS DE LUI NE PAIE : ni le nom ni aucun rang
+  //         superieur deja affiche ne perd un pixel quand on le remet.
+  //    La condition (c) est celle qui compte, et elle a demande deux essais.
+  //    Se contenter du plancher de 4 caracteres du nom faisait rougir le gate
+  //    sur des cartes ou remettre la duree RETRECISSAIT le nom de 74 a 38px :
+  //    la duree y tenait, mais elle tenait AUX DEPENS du rang au-dessus, ce qui
+  //    est exactement ce que la hierarchie interdit. Un seuil de largeur
+  //    partage est forcement un peu conservateur, puisque « 6j 1h » et
+  //    « 12j 1h30 » n occupent pas la meme place ; ce que le detecteur doit
+  //    interdire, ce n est pas cette prudence de quelques pixels, c est une
+  //    regle qui efface une information alors que la place etait LIBRE.
+  //    Les etiquettes (.reservation-tags) sont HORS de ce detecteur, et c est
+  //    la seule exception, ecrite : leur contenu est deja porte ailleurs sur la
+  //    meme carte (formule et duree = .b-tag et .bk-dur) ou dans la liste du
+  //    jour, et le planning non agrandi les masque par decision produit, pas
+  //    par manque de place.
+  const NATURAL_DISPLAY = { 'booking-foot': 'flex', 'booking-stats': 'inline-flex', 'b-tag': 'block', 'bk-pax': 'inline-flex', 'bk-dur': 'inline-flex', 'bk-state': 'inline-flex' };
+  const naturalDisplay = (el) => {
+    const hit = Object.keys(NATURAL_DISPLAY).find((c) => el.classList.contains(c));
+    return hit ? NATURAL_DISPLAY[hit] : 'block';
+  };
+  const minLegible = (el, chars) => {
+    const fs = parseFloat(getComputedStyle(el).fontSize) || 11;
+    return fs * 0.55 * chars;
+  };
+  // Rang dans la hierarchie de degradation, du premier qui saute au dernier.
+  const RANKED = [
+    { sel: '.b-tag', nom: 'libelle d activite' },
+    { sel: '.bk-dur', nom: 'duree' },
+    { sel: '.bk-state', nom: 'repere d etat' },
+    { sel: '.bk-pax', nom: 'effectif' },
+  ];
+  bookings.forEach((bk) => {
+    const nameEl = bk.querySelector('.booking-name');
+    if (!nameEl) return;
+    // Largeurs AVANT : le nom et tous les rangs deja affiches. Aucun ne doit
+    // perdre un pixel quand on remet un rang inferieur.
+    const above = [nameEl, ...RANKED.map((r) => bk.querySelector(r.sel))]
+      .filter((el) => el && visible(el))
+      .map((el) => [el, R(el).width]);
+    // CHAQUE rang se verifie separement : s'arreter au premier visible
+    // laisserait passer une duree retiree a tort sous un libelle affiche.
+    for (let i = 0; i < RANKED.length; i += 1) {
+      const item = RANKED[i];
+      const el = bk.querySelector(item.sel);
+      // Un repere d'etat ne porte pas de texte : son libelle est son aria-label.
+      if (!el) continue;
+      if (!((el.textContent || '').trim() || el.getAttribute('aria-label'))) continue;
+      if (visible(el)) continue;
+      // On force le retour de l element ET de tous ses ancetres masques.
+      const undo = [];
+      let p = el;
+      while (p && p !== bk.parentElement) {
+        if (getComputedStyle(p).display === 'none') {
+          undo.push([p, p.style.getPropertyValue('display'), p.style.getPropertyPriority('display')]);
+          p.style.setProperty('display', naturalDisplay(p), 'important');
+        }
+        p = p.parentElement;
+      }
+      if (!undo.length) continue;
+      const fits = bk.scrollWidth <= bk.clientWidth + 1 && bk.scrollHeight <= bk.clientHeight + 1;
+      const shown = R(el).width;
+      // « Il disait quelque chose » : soit son texte tient EN ENTIER (« 1h »
+      // fait deux caracteres, exiger 4 le rendrait indetectable), soit il en
+      // montre au moins 4, comme le plancher du nom.
+      const entier = el.scrollWidth <= el.clientWidth + 1;
+      const lisible = entier || shown >= minLegible(el, 4);
+      // Personne au-dessus ne paie.
+      const paye = above.some(([node, before]) => R(node).width < before - 0.5);
+      undo.forEach(([node, value, priority]) => {
+        if (value) node.style.setProperty('display', value, priority);
+        else node.style.removeProperty('display');
+      });
+      if (fits && lisible && !paye) {
+        add('info-masquee-alors-quelle-tenait', item.nom + ' masque sur une carte de ' + num(R(bk).width) + 'x' + num(R(bk).height)
+          + 'px alors qu il tenait (' + num(shown) + 'px affichables, aucun rang superieur ne perd de place)');
+      }
+    }
+  });
+
   return out;
 };
 
@@ -486,7 +581,7 @@ window.__PLANNING_CONTRAST__ = function () {
     return acc ? over(acc, html) : html;
   };
   const ratio = (a, b) => { const l1 = lum(a); const l2 = lum(b); const hi = Math.max(l1, l2); const lo = Math.min(l1, l2); return (hi + 0.05) / (lo + 0.05); };
-  const SEL = ['.booking-name', '.booking .b-tag', '.booking .bk-pax', '.booking .bk-dur', '.booking .reservation-tag', '.hour-cell.major', '.hour-cell.minor', '.lane-header .pl', '.lane-header .num', '.current-badge'];
+  const SEL = ['.booking-name', '.booking .b-tag', '.booking .bk-pax', '.booking .bk-dur', '.booking .bk-state', '.booking .reservation-tag', '.hour-cell.major', '.hour-cell.minor', '.lane-header .pl', '.lane-header .num', '.current-badge'];
   const rows = [];
   SEL.forEach((sel) => {
     const el = document.querySelector('#planningGridWrap ' + sel);
@@ -681,6 +776,66 @@ async function main() {
     }));
     const cleanAfter = await page.evaluate(() => window.__PLANNING_AUDIT__());
     ok(cleanAfter.length === 0, `mutation retiree : retour a 0 defaut (obtenu ${cleanAfter.length})`);
+
+    // CONTRE-EPREUVE DU DETECTEUR NEUF, et c est la plus importante du lot :
+    // on REMET EXACTEMENT la regle qui produisait le defaut de Movsar, celle
+    // qui masquait le libelle d activite sur toute carte d une seule ligne quelle
+    // que soit sa largeur. Sans cette contre-epreuve, rien ne prouve que le
+    // detecteur voit autre chose que du vide.
+    const regression = await page.evaluate(() => new Promise((resolve) => {
+      // Pistes a 290px : EXACTEMENT la carte de la capture de Movsar.
+      document.getElementById('planningBox').style.setProperty('--planning-lane-w', '290px');
+      const style = document.createElement('style');
+      style.id = 'qa-mutation-masquage';
+      style.textContent = '#planningGridWrap .booking.dens-xs .booking-foot .b-tag{display:none !important;}';
+      document.head.appendChild(style);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const card = document.querySelector('#planningGridWrap .booking.dens-xs');
+        resolve({ defects: window.__PLANNING_AUDIT__(), cardWidth: card ? Math.round(card.getBoundingClientRect().width) : -1 });
+      }));
+    }));
+    const regressionKinds = new Set(regression.defects.map((d) => d.kind));
+    ok(regressionKinds.has('info-masquee-alors-quelle-tenait'),
+      `contre-epreuve : le libelle d activite masque alors qu il tenait est detecte (cartes a ${regression.cardWidth}px, ${regression.defects.length} defaut(s))`);
+    // Et le sens inverse : masquer un rang qui NE tenait pas ne doit rien
+    // declencher, sinon le detecteur interdirait toute degradation.
+    await page.evaluate(() => {
+      const s = document.getElementById('qa-mutation-masquage');
+      if (s) s.remove();
+      document.getElementById('planningBox').style.removeProperty('--planning-lane-w');
+    });
+    // PREUVE QUE LE DETECTEUR EST REELLEMENT EXERCE, et pas simplement muet.
+    // « 0 defaut » sur 324 combinaisons ne vaut rien si aucun rang n'est jamais
+    // masque : le detecteur ne se serait alors jamais declenche. A 40 pistes,
+    // les colonnes tombent a leur plancher de 88px et la degradation opere pour
+    // de vrai. On compte les rangs effectivement retires, on exige qu'il y en
+    // ait, et on exige que le detecteur reste silencieux dessus : c'est la
+    // contre-epreuve inverse, et elle porte sur l'etat SAIN, pas sur une
+    // mutation artificielle.
+    await page.evaluate(() => {
+      const s = document.getElementById('qa-mutation-masquage');
+      if (s) s.remove();
+    });
+    await applyLaneCount(page, 40);
+    const legitime = await page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const lane = document.querySelector('#planningGridWrap .lane-col');
+        const cache = (sel) => [...document.querySelectorAll('#planningGridWrap .booking')]
+          .filter((bk) => { const el = bk.querySelector(sel); return el && getComputedStyle(el).display === 'none'; }).length;
+        resolve({
+          defects: window.__PLANNING_AUDIT__().filter((d) => d.kind === 'info-masquee-alors-quelle-tenait'),
+          laneWidth: lane ? Math.round(lane.getBoundingClientRect().width) : -1,
+          duresMasquees: cache('.bk-dur'),
+          etiquettesMasquees: cache('.reservation-tags'),
+        });
+      }));
+    }));
+    ok(legitime.duresMasquees + legitime.etiquettesMasquees > 0,
+      `la degradation opere vraiment a ${legitime.laneWidth}px de piste (${legitime.duresMasquees} durees et ${legitime.etiquettesMasquees} blocs d etiquettes retires) : le detecteur est exerce`);
+    ok(legitime.defects.length === 0, `contre-epreuve inverse : une degradation legitime ne declenche rien (pistes a ${legitime.laneWidth}px, obtenu ${legitime.defects.length}${legitime.defects.length ? ' : ' + legitime.defects.slice(0, 3).map((d) => d.detail).join(' | ') : ''})`);
+    await applyLaneCount(page, 8);
+    const afterRegression = await page.evaluate(() => window.__PLANNING_AUDIT__());
+    ok(afterRegression.length === 0, `mutations de masquage retirees : retour a 0 defaut (obtenu ${afterRegression.length})`);
 
     // Contre-epreuve du detecteur de LARGEUR, par le vrai levier du produit :
     // la largeur minimale de piste est un jeton (`--planning-lane-w`). On le

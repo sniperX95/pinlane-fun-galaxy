@@ -2023,8 +2023,9 @@ button.staff-date-label:focus-visible,
 
 /* Pied de carte : offre (gauche, tronquée) + état + effectif/durée (droite).
    IL N'EST PLUS ÉPINGLÉ EN BAS. `margin-top: auto` le collait au bord inférieur,
-   ce qui creusait jusqu'à 90px de vide au milieu d'une carte de 2h et faisait
-   lire la carte en deux morceaux séparés. Le nom, l'offre et les chiffres
+   ce qui faisait lire la carte en deux morceaux séparés par un trou. MESURÉ sur
+   une carte de 2h : 55px de vide en fenêtre (carte de 94px) et 61px en plein
+   écran (carte de 106px), ramenés à 2px. Le nom, l'offre et les chiffres
    forment un seul bloc en haut : la durée, elle, se lit déjà dans la HAUTEUR de
    la carte, elle n'a pas besoin d'être dite une deuxième fois par un vide. */
 .booking-foot {

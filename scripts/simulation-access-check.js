@@ -110,9 +110,19 @@ function runSetOpsTab({ isOwner, requested }) {
   // RELECTURE a chaque appel, pas la copie chargee au demarrage : sinon la
   // sonde de mutation evaluerait l ancien texte et le gate se declarerait
   // capable de rougir sans l etre. (Detecte par sa propre contre-preuve.)
-  const live = read(consoleRel);
+  // LES FINS DE LIGNE NE SONT PAS UNE CONSTANTE (corrige le 2026-08-13). Le
+  // decoupage cherchait « \n}\n » en dur : sur une copie de travail en CRLF
+  // (`core.autocrlf=true`, le defaut Windows du depot), l'accolade fermante
+  // s'ecrit « \r\n}\r\n », `indexOf` rendait -1, et `slice(0, -1 + 3)` extrayait
+  // les DEUX PREMIERS caracteres de la fonction. Le bac a sable evaluait donc
+  // « fu » et tout le gate s'arretait sur « ReferenceError: fu is not defined ».
+  // Ce n'etait pas un defaut du produit : le meme code passait sur une copie en
+  // LF. On normalise la lecture, la source n'est pas touchee.
+  const live = read(consoleRel).replace(/\r\n/g, '\n');
   const fnSrc = live.slice(live.indexOf('function setOpsTab(tab)'));
-  const body = fnSrc.slice(0, fnSrc.indexOf('\n}\n') + 3);
+  const fin = fnSrc.indexOf('\n}\n');
+  if (fin === -1) throw new Error('setOpsTab introuvable ou non termine dans ' + consoleRel);
+  const body = fnSrc.slice(0, fin + 3);
   const sandbox = {
     state: { opsPanelTab: 'activity' },
     save() {},

@@ -62,14 +62,24 @@ const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\M
 // jour meme une semaine plus tard, puis une date passee. C'est exactement le
 // defaut qui a rendu visit-booking-check rouge tout un apres-midi. On CALCULE
 // donc le prochain samedi, qui est toujours devant nous.
-function nextSaturday() {
+// DEUXIEME BOMBE D'HORLOGE, desamorcee le 2026-08-13. « Le prochain samedi »
+// suffisait pour le tunnel, pas pour le RAPPEL J-2 : il n'est enfile que si
+// `date - 2 jours a 10 h` est encore devant nous (`isFuture(reminderAt, 5)`,
+// lib/ops-communications.js). Un jeudi apres 10 h, le prochain samedi est a
+// deux jours, l'echeance du rappel tombe donc le matin meme, deja passe : trois
+// assertions rougissaient pour une raison d'HORLOGE, jamais de produit (le meme
+// code etait vert le mercredi). On exige maintenant TROIS jours de marge, ce qui
+// laisse toujours l'echeance du rappel dans le futur.
+function nextSaturday(minDaysAhead = 3) {
   // Le produit raisonne en heure de Bruxelles : c'est ce fuseau qui decide du jour.
   const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date()).split('-').map(Number);
   const cursor = new Date(Date.UTC(year, month - 1, day));
-  // do/while : on avance d'au moins un jour, donc jamais aujourd'hui meme un samedi.
-  do { cursor.setUTCDate(cursor.getUTCDate() + 1); } while (cursor.getUTCDay() !== 6);
+  // On avance d'au moins `minDaysAhead` jours, puis jusqu'au samedi suivant :
+  // jamais aujourd'hui, et jamais trop pres pour le rappel J-2.
+  for (let i = 0; i < minDaysAhead; i += 1) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  while (cursor.getUTCDay() !== 6) cursor.setUTCDate(cursor.getUTCDate() + 1);
   return cursor.toISOString().slice(0, 10);
 }
 const DATE = nextSaturday();

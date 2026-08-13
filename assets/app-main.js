@@ -13291,6 +13291,31 @@ function formatCardDurationLabel(hours) {
   return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
 }
 
+// ON N'AFFICHE JAMAIS UN FRAGMENT DE MOT DANS UNE ÉTIQUETTE.
+// Movsar, 2026-08-13, en regardant la prod : « tu as encore tout qui est coupé
+// même en agrandi, genre "Bowling Classique" c'est coupé. Des petits trucs qui
+// font cheap. » Un mot coupé en deux est PIRE qu'un mot absent : il oblige à
+// deviner, et il signe un logiciel qu'on n'a pas fini.
+//
+// La cause n'était pas un seuil de mise en page : c'était la LONGUEUR du texte.
+// Le défaut métier d'une réservation bowling est « Bowling Classique », dix-sept
+// caractères, soit environ 84px là où une piste de 127px en offre quarante.
+// Aucune règle de mise en page ne fait tenir ça : il fallait raccourcir le
+// texte, pas ruser avec la place. On coupe donc par MOTS ENTIERS, jamais au
+// milieu d'un mot, et le libellé complet reste dans l'infobulle et dans la
+// fiche, où on a la place de le lire.
+const PLANNING_CARD_LABEL_MAX = 12;
+function getPlanningCardLabel(reservation) {
+  const complet = String(getReservationLabel(reservation) || '').trim();
+  if (!complet || complet.length <= PLANNING_CARD_LABEL_MAX) return complet;
+  // Une formule porte un nom commercial qui peut faire vingt caractères
+  // (« CRAZY STUDENT STRIKE »). Son premier mot n'en dit rien de juste : on
+  // nomme la NATURE de l'offre, qui est vraie et entière.
+  if (reservation && (reservation.type === 'formule' || reservation.formuleId)) return 'Formule';
+  const premier = complet.split(/\s+/).filter(Boolean)[0] || '';
+  return premier.length <= PLANNING_CARD_LABEL_MAX ? premier : '';
+}
+
 // Bloc effectif + durée commun aux cartes bowling ET laser. Le libellé texte
 // porte toujours l'info (accessibilité : jamais de sens porté par la couleur
 // seule) ; la couleur/pastille ne fait que renforcer.
@@ -13821,7 +13846,7 @@ function renderPlanning() {
         <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
         ${renderReservationTags(r)}
         <div class="booking-foot">
-          <span class="b-tag">${escapeHtml(getReservationLabel(r))}</span>
+          <span class="b-tag" title="${escapeHtml(getReservationLabel(r))}">${escapeHtml(getPlanningCardLabel(r))}</span>
           ${renderActivityProgressPill(r)}
           ${renderBookingStateMark(cls)}
           ${statsHtml}

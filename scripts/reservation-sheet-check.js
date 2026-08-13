@@ -51,7 +51,14 @@ function serveStatic() {
 // Le mock du gate matrice fait autorite : une seule definition du faux centre
 // et du faux jeu de reservations pour toute la console. Le dupliquer, ce serait
 // deux verites qui divergent au premier changement de contrat.
-const matrixSrc = fs.readFileSync(path.join(__dirname, 'planning-matrix-check.js'), 'utf8');
+// Les fins de ligne sont normalisees AVANT de chercher le marqueur : selon le
+// reglage git de la machine (core.autocrlf), le meme fichier arrive en LF ou en
+// CRLF, et un marqueur ecrit en LF ne se trouve alors nulle part. Le gate se
+// mettait a extraire tout le fichier et mourait sur une erreur de syntaxe, sans
+// rapport avec ce qu il teste.
+const CRLF = String.fromCharCode(13) + String.fromCharCode(10);
+const LF = String.fromCharCode(10);
+const matrixSrc = fs.readFileSync(path.join(__dirname, 'planning-matrix-check.js'), 'utf8').split(CRLF).join(LF);
 const installMockSrc = matrixSrc.slice(
   matrixSrc.indexOf('async function installMock'),
   matrixSrc.indexOf("// ---------------------------------------------------------------------------\n// L'AUDITEUR")

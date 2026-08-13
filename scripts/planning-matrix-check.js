@@ -127,7 +127,13 @@ async function installMock(page) {
             pax: 2 + (seed % 11),
             price: 20 + seed,
             type: 'bowling',
-            label: 'Bowling',
+            // Le libelle que la PROD sert vraiment. Il valait « Bowling » ici,
+            // huit caracteres qui tenaient partout : le gate ne voyait donc
+            // jamais le defaut que Movsar a vu en prod, « Bowling Classique »
+            // coupe en « Bowl… ». Une donnee de test plus courte que la vraie
+            // ne teste rien. Chaine vide = getReservationLabel retombe sur le
+            // defaut metier, exactement comme une reservation sans formule.
+            label: '',
             notes: seed % 5 === 0 ? 'Gateau a sortir a la fin de la partie' : '',
           });
         });

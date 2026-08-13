@@ -165,9 +165,11 @@ export default async function middleware(request: Request) {
     '/reserver',
     '/robots.txt',
     '/sitemap.xml',
-    // Mode demonstration public de la vitrine : la VRAIE application, avec des
-    // donnees fabriquees cote navigateur (assets/demo-mode.js coupe le reseau,
-    // aucun appel /api/ ne quitte le navigateur).
+    // Demonstration publique de la vitrine. Depuis le 2026-08-13 c'est une
+    // page AUTONOME (`demo/`), sans une ligne de code commune avec la console
+    // et sans le moindre appel reseau. Le chemin `/demo` est reecrit vers
+    // `demo/index.html` par le vercel.json ; ses trois fichiers vivent sous
+    // `/demo/` et sont ouverts juste en dessous.
     '/demo',
     // Le script d'installation est charge par le SITE DU CLIENT : il doit
     // etre lisible sans identifiants, comme le parcours qu'il embarque.
@@ -178,6 +180,14 @@ export default async function middleware(request: Request) {
   if (
     publicPaths.has(pathname)
     || pathname.startsWith('/assets/')
+    // Les fichiers PROPRES a la demonstration autonome. Sans cette ligne, la
+    // page `/demo` passait mais ses scripts recevaient un 401 Basic : ecran
+    // blanc pour tout prospect, et invisible en local ou aucun middleware ne
+    // tourne. Trouve en PROD, pas au gate, ce qui est exactement pourquoi le
+    // gate en porte desormais une garde de source (`test:demo-mode`).
+    // Ce dossier ne contient que la page, sa feuille et ses deux scripts :
+    // rien de l'application n'y est expose.
+    || pathname.startsWith('/demo/')
     || pathname === '/menu'
     || pathname.startsWith('/menu/')
   ) {

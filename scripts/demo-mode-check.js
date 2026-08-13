@@ -476,8 +476,53 @@ async function main() {
     surveiller(false);
 
     // =====================================================================
+    console.log('\n[7 bis] LA DEMONSTRATION EST JOIGNABLE SANS IDENTIFIANTS');
+    // =====================================================================
+    // DEFAUT REEL, TROUVE EN PROD ET PAS ICI, le 2026-08-13. Le middleware
+    // protege tout le site par une authentification Basic et ne laissait
+    // passer que le chemin exact `/demo` : la page s'affichait, ses deux
+    // scripts recevaient un 401, et un prospect voyait un ecran blanc. Le
+    // serveur de test de ce gate ne fait tourner AUCUN middleware, donc rien
+    // ne pouvait le voir ici. La garde lit donc la SOURCE du middleware.
+    const middleware = fs.readFileSync(path.join(ROOT, 'middleware.ts'), 'utf8');
+    // Le `return passThrough();` de la zone ouverte n'est PAS le premier du
+    // fichier : chercher a partir du debut de la condition, sinon la tranche
+    // est vide et la garde rougit sur du code parfaitement correct.
+    const debutZone = middleware.indexOf('publicPaths.has(pathname)');
+    const zoneOuverte = middleware.slice(debutZone,
+      middleware.indexOf('return passThrough();', debutZone));
+    ok(/pathname\.startsWith\('\/demo\/'\)/.test(zoneOuverte),
+      'le middleware ouvre /demo/ : les fichiers de la demonstration sont servis sans identifiants');
+    ok(/'\/demo'/.test(middleware), 'le middleware ouvre aussi le chemin /demo lui-meme');
+
+    // =====================================================================
     console.log('\n[8] CONTRE-PREUVES par mutation (ce gate sait-il rougir ?)');
     // =====================================================================
+    // (0) On referme /demo/ dans le middleware : la garde ci-dessus doit
+    // tomber. Sans cette contre-epreuve, elle pourrait passer sur un fichier
+    // qui contient la chaine ailleurs, par exemple dans un commentaire.
+    const originalMw = fs.readFileSync(path.join(ROOT, 'middleware.ts'), 'utf8');
+    // L'ancre suit la fin de ligne DU FICHIER : le depot est en CRLF
+    // (`core.autocrlf=true`), et une ancre en `\n` ne trouve jamais rien.
+    // Meme piege que celui paye sur `test:simulation-access` le 2026-08-13.
+    const finDeLigne = originalMw.includes('\r\n') ? '\r\n' : '\n';
+    const ancreMw = `    || pathname.startsWith('/demo/')${finDeLigne}`;
+    if ((originalMw.split(ancreMw).length - 1) !== 1) {
+      ok(false, 'ancre de mutation du middleware introuvable');
+    } else {
+      fs.writeFileSync(path.join(ROOT, 'middleware.ts'), originalMw.replace(ancreMw, ''));
+      let referme = true;
+      try {
+        const mw2 = fs.readFileSync(path.join(ROOT, 'middleware.ts'), 'utf8');
+        const zone2 = mw2.slice(mw2.indexOf('publicPaths.has(pathname)'), mw2.indexOf('return passThrough();'));
+        referme = /pathname\.startsWith\('\/demo\/'\)/.test(zone2);
+      } finally {
+        fs.writeFileSync(path.join(ROOT, 'middleware.ts'), originalMw);
+      }
+      ok(referme === false,
+        '/demo/ referme par mutation : la garde du middleware ROUGIRAIT');
+    }
+
     // (a) On OUVRE une porte fermee : la fenetre doit cesser de se poser, et le
     // flou doit disparaitre. Sans cette contre-epreuve, les assertions
     // « FERME » pourraient etre vraies par accident.

@@ -594,7 +594,18 @@
       gain: 'Explorez librement, tout est cliquable. Et rien de ce que vous voyez ici n’est réel.',
     },
   ];
-  var DUREE_ETAPE = 6600;
+  /* LA DUREE D'UNE ETAPE SE CALCULE, elle ne se choisit pas.
+     Premiere version : 6,6 s pour tout le monde. Mesure : les cartes portent
+     40 a 51 mots, soit 10 a 13 s de lecture a 230 mots par minute. Le guide
+     tournait donc DEUX FOIS trop vite, et un livrable qu'on n'a pas le temps
+     de lire se ressent exactement comme un livrable casse (lecon deja payee
+     sur la vitrine le 2026-07-29 : « bugge » voulait dire « trop rapide »).
+     Chaque etape dure donc le temps de lire SON texte, plus deux secondes
+     pour regarder l'element que la phrase designe. */
+  function dureeDe(etape) {
+    var mots = (etape.titre + ' ' + etape.dit + ' ' + etape.gain).split(/s+/).length;
+    return Math.round(2000 + (mots / 230) * 60000);
+  }
 
   function appliquerJetons() {
     [].forEach.call(document.querySelectorAll('[data-d-bloc]'), function (el) {
@@ -654,7 +665,7 @@
           + '<button type="button" class="d-g-fort" data-d-suiv>Suivant</button></div>';
       carte.className = 'd-guide' + (e.fin || SANS_MOUVEMENT || !enAuto ? '' : ' is-court');
       document.body.classList.add('d-guide-vivant');
-      carte.style.setProperty('--d-duree', DUREE_ETAPE + 'ms');
+      carte.style.setProperty('--d-duree', dureeDe(e) + 'ms');
       carte.innerHTML = '<div class="d-guide-jauge" aria-hidden="true"><i></i></div>'
         + '<div class="d-guide-corps">'
         + '<p class="d-guide-rang">Étape ' + (index + 1) + ' sur ' + ETAPES.length + ' · la journée d’un gérant</p>'
@@ -717,7 +728,7 @@
       }, e.jetons && e.jetons.length ? 440 : 140);
       tHalo = setInterval(function () { placerHalo(e.cible); }, 260);
 
-      if (enAuto && !e.fin) tEtape = setTimeout(function () { allerA(index + 1); }, DUREE_ETAPE);
+      if (enAuto && !e.fin) tEtape = setTimeout(function () { allerA(index + 1); }, dureeDe(e));
     }
 
     var tRemplissage = [];
@@ -748,7 +759,7 @@
       document.body.classList.remove('d-guide-vivant');
       carte.className = 'd-guide is-pastille';
       carte.innerHTML = '<div class="d-guide-pied"><button type="button" class="d-g-sec" data-d-rejouer>'
-        + (raison === 'passe' ? 'Reprendre le guide' : 'Revoir le guide en une minute')
+        + (raison === 'passe' ? 'Reprendre le guide' : 'Revoir le guide')
         + '</button></div>';
       brancher();
     }

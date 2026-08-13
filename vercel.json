@@ -32,7 +32,7 @@
   "rewrites": [
     {
       "source": "/demo",
-      "destination": "/index.html"
+      "destination": "/demo/index.html"
     },
     {
       "source": "/reserver",

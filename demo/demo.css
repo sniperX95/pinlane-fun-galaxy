@@ -1,0 +1,731 @@
+/* ==========================================================================
+   LA DEMONSTRATION PUBLIQUE : sa feuille de style, et rien d'autre.
+   ==========================================================================
+   Cette feuille n'est chargee QUE par demo/index.html. La console reelle ne la
+   voit jamais, et rien de ce qui est ecrit ici ne peut atteindre l'ecran d'un
+   gerant : c'est toute la raison du decouplage decide par Movsar le
+   2026-08-13.
+
+   LES JETONS SONT RECOPIES DE `DESIGN.md`, pas importes de la console. Une
+   feuille partagee aurait recree exactement la dependance qu'on vient de
+   couper : une retouche faite pour seduire un prospect serait tombee sur le
+   poste de quelqu'un qui travaille. En echange, ils peuvent deriver : le gate
+   `test:demo-fidelity` compare chaque valeur ci-dessous a `DESIGN.md` et
+   rougit des qu'elles divergent.
+
+   Zero couleur en dur en dehors de ce bloc de jetons.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/geist-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/geist-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/geist-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  --page: #fafafa;
+  --surface: #ffffff;
+  --subtle: #f2f2f2;
+  --line: #ebebeb;
+  --line-strong: #d9d9d9;
+  --text: #0a0a0a;
+  --muted: #666666;
+  --faint: #8f8f8f;
+  --accent: #0070f3;
+  --accent-strong: #0761d1;
+  --accent-soft: #e8f1fd;
+  --success: #0f7b3c;
+  --success-soft: #e6f4ea;
+  --warning: #a35200;
+  --warning-soft: #fff3e0;
+  --danger: #cb2a2f;
+  --danger-soft: #fdecec;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  --font-ui: Geist, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --ombre-sm: 0 1px 2px rgba(0, 0, 0, .05);
+  --ombre-md: 0 4px 12px rgba(0, 0, 0, .08);
+  --ombre-haute: 0 18px 50px rgba(0, 0, 0, .16);
+
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --ease-sortie: cubic-bezier(.4, 0, .2, 1);
+  --barre: 248px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #000000;
+    --surface: #0a0a0a;
+    --subtle: #1a1a1a;
+    --line: #262626;
+    --line-strong: #3d3d3d;
+    --text: #ededed;
+    --muted: #a1a1a1;
+    --faint: #7d7d7d;
+    --accent: #3291ff;
+    --accent-strong: #52a8ff;
+    --accent-soft: #0d2137;
+    --success: #3dd68c;
+    --success-soft: #0e2517;
+    --warning: #f5a623;
+    --warning-soft: #2a1e05;
+    --danger: #f75555;
+    --danger-soft: #2c1213;
+    --ombre-sm: 0 1px 2px rgba(0, 0, 0, .5);
+    --ombre-md: 0 4px 12px rgba(0, 0, 0, .55);
+    --ombre-haute: 0 18px 50px rgba(0, 0, 0, .7);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+h1, h2, h3, p, ul, ol { margin: 0; }
+ul { list-style: none; padding: 0; }
+button { font: inherit; color: inherit; }
+a { color: inherit; }
+.d-num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+/* Toute icone posee par le script a une taille declaree : un SVG sans
+   dimension prend 300 x 150 px et casse la mise en page au premier rendu. */
+.d-x { width: 16px; height: 16px; display: block; }
+.d-mkt-sceau .d-x { width: 22px; height: 22px; }
+.d-mkt-bonjour i .d-x { width: 24px; height: 24px; }
+.d-invisible {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ==========================================================================
+   1. LA CHARPENTE
+   ========================================================================== */
+.d-app { display: flex; min-height: 100vh; }
+
+/* ---- La barre laterale --------------------------------------------------- */
+.d-side {
+  position: fixed; inset: 0 auto 0 0; z-index: 40;
+  width: var(--barre); flex: 0 0 var(--barre);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.d-side-marque { display: flex; align-items: center; gap: 10px; padding: 18px 16px 14px; }
+.d-side-marque img { display: block; height: 30px; width: auto; }
+.d-side-centre {
+  display: flex; align-items: center; gap: 9px; margin: 0 10px 12px;
+  padding: 9px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--line); background: var(--surface);
+  font-size: 13.5px; font-weight: 550;
+}
+.d-side-centre i {
+  width: 18px; height: 18px; flex: none; border-radius: var(--radius-sm);
+  background: var(--subtle); display: grid; place-items: center;
+}
+.d-side-centre .d-chev { margin-left: auto; color: var(--faint); }
+.d-nav { flex: 1; overflow-y: auto; padding: 0 10px 14px; }
+.d-nav-groupe {
+  margin: 14px 0 6px; padding: 0 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--faint);
+}
+.d-nav-item {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 8px 10px; margin-bottom: 2px;
+  border: 0; border-radius: var(--radius-md); background: none;
+  font-size: 13.5px; font-weight: 500; text-align: left; cursor: pointer;
+  color: var(--text);
+  transition: background-color 140ms var(--ease-sortie), color 140ms var(--ease-sortie);
+}
+.d-nav-item svg { flex: none; width: 17px; height: 17px; opacity: .85; }
+.d-nav-item:hover { background: var(--subtle); }
+.d-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.d-nav-item.is-actif { background: var(--subtle); font-weight: 600; position: relative; }
+.d-nav-item.is-actif::before {
+  content: ''; position: absolute; left: -10px; top: 7px; bottom: 7px;
+  width: 2px; border-radius: 0 2px 2px 0; background: var(--text);
+}
+.d-nav-libelle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* LES ENTREES FERMEES sont grisees, et l'etat ne tient PAS a la couleur seule :
+   contraste reduit + un cadenas + un texte lu par la synthese vocale
+   (« ouvert pendant l'appel »). Elles restent cliquables : le clic est ce qui
+   ouvre la fenetre qui explique. */
+.d-nav-item.is-verrou { color: var(--muted); font-weight: 450; }
+.d-nav-item.is-verrou svg.d-ico { opacity: .45; }
+.d-nav-item.is-verrou:hover { background: var(--subtle); color: var(--text); }
+.d-cadenas { flex: none; width: 13px; height: 13px; color: var(--faint); opacity: .9; }
+.d-nav-item.is-verrou:hover .d-cadenas { color: var(--muted); }
+.d-pastille {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: var(--radius-full);
+  background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 1;
+}
+@media (prefers-color-scheme: dark) { .d-pastille { color: #001629; } }
+.d-side-pied {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-top: 1px solid var(--line);
+}
+.d-side-pied .d-avatar {
+  width: 30px; height: 30px; flex: none; border-radius: var(--radius-full);
+  display: grid; place-items: center; background: var(--subtle);
+  font-size: 11px; font-weight: 650; letter-spacing: .02em;
+}
+.d-side-pied b { display: block; font-size: 13px; font-weight: 600; }
+.d-side-pied span { display: block; font-size: 11.5px; color: var(--faint); }
+
+/* ---- La zone de travail -------------------------------------------------- */
+.d-main {
+  flex: 1; min-width: 0; margin-left: var(--barre);
+  padding: 20px 24px 96px;
+}
+.d-ecran[hidden] { display: none; }
+
+/* ==========================================================================
+   2. L'ECRAN PLANNING
+   ========================================================================== */
+.d-tete { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.d-tete-titre h1 { font-size: 24px; font-weight: 600; letter-spacing: -.02em; line-height: 1.2; }
+.d-tete-titre p { margin-top: 2px; font-size: 13.5px; color: var(--muted); }
+.d-tete-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.d-datenav {
+  display: flex; align-items: center; gap: 2px; padding: 3px;
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface);
+}
+.d-datenav button {
+  width: 28px; height: 28px; display: grid; place-items: center;
+  border: 0; border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--muted);
+}
+.d-datenav button:hover { background: var(--subtle); color: var(--text); }
+.d-datenav span { padding: 0 12px; font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
+.d-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface); font-size: 13px; font-weight: 550; cursor: pointer;
+  transition: border-color 140ms var(--ease-sortie), background-color 140ms var(--ease-sortie);
+}
+.d-btn:hover { border-color: var(--text); }
+.d-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.d-btn-fort { border-color: var(--text); background: var(--text); color: var(--page); }
+.d-btn-fort:hover { opacity: .86; border-color: var(--text); }
+
+/* ---- Les indicateurs ----------------------------------------------------- */
+.d-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.d-kpi {
+  padding: 15px 17px; border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--ombre-sm);
+}
+.d-kpi-lib { font-size: 12.5px; color: var(--muted); }
+.d-kpi-val {
+  margin-top: 6px; font-family: var(--font-data); font-variant-numeric: tabular-nums;
+  font-size: 27px; font-weight: 400; line-height: 1.1; letter-spacing: -.02em;
+}
+.d-kpi.is-fort .d-kpi-val { color: var(--accent); }
+.d-kpi-unite { margin-top: 5px; font-size: 12px; color: var(--faint); }
+.d-kpi-unite.is-ok {
+  display: inline-block; padding: 2px 8px; border-radius: var(--radius-full);
+  background: var(--success-soft); color: var(--success); font-weight: 550;
+}
+
+/* ---- Les onglets de ressource -------------------------------------------- */
+.d-onglets { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.d-onglet {
+  /* La reserve a droite n'est pas decorative : le compteur est en position
+     absolue, et sans elle le titre passait DESSOUS (« Planning Bowling » et
+     « 30 » superposes, vu au rendu en sombre). */
+  position: relative; padding: 9px 48px 9px 16px; border: 1px solid var(--line);
+  border-radius: var(--radius-md); background: var(--surface); cursor: pointer;
+  text-align: left; transition: border-color 140ms var(--ease-sortie);
+}
+.d-onglet:hover { border-color: var(--line-strong); }
+.d-onglet.is-actif { border-color: var(--accent); }
+.d-onglet.is-actif::after {
+  content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px;
+  border-radius: 2px 2px 0 0; background: var(--accent);
+}
+.d-onglet b { display: block; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+.d-onglet span { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
+.d-onglet i {
+  position: absolute; top: 9px; right: 12px; font-style: normal;
+  font-family: var(--font-data); font-size: 12px; color: var(--muted);
+}
+.d-onglet.is-actif i { color: var(--accent); }
+
+/* ---- La boite du planning ------------------------------------------------ */
+.d-boite {
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--ombre-sm); overflow: hidden;
+  margin-bottom: 18px;
+}
+.d-boite-tete {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 14px 17px; border-bottom: 1px solid var(--line);
+}
+.d-boite-tete h2 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.d-boite-tete p { font-size: 12.5px; color: var(--faint); margin-top: 1px; }
+.d-legende { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
+.d-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.d-legende i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.d-legende i.is-arr { background: var(--warning); }
+.d-legende i.is-pay { background: var(--success); }
+
+/* La grille : une colonne d'heures, huit colonnes de pistes. */
+.d-grille { overflow-x: auto; }
+.d-grille-inner { min-width: 880px; display: grid; grid-template-columns: 62px repeat(8, 1fr); }
+.d-gcell { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.d-gcell:last-child { border-right: 0; }
+.d-gtete {
+  padding: 9px 6px; text-align: center; font-size: 12px; font-weight: 600;
+  background: var(--subtle); border-bottom: 1px solid var(--line-strong); border-right: 1px solid var(--line);
+}
+.d-gtete:last-child { border-right: 0; }
+.d-gheure {
+  padding: 0 8px; font-family: var(--font-data); font-size: 11px; color: var(--faint);
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  display: flex; align-items: flex-start; justify-content: flex-end; height: 46px;
+}
+.d-gpiste { position: relative; height: 46px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.d-gpiste:last-child { border-right: 0; }
+.d-bloc {
+  position: absolute; left: 3px; right: 3px; top: 2px; overflow: hidden;
+  padding: 6px 8px; border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  font-size: 11.5px; line-height: 1.25; cursor: default;
+}
+.d-bloc.is-arr { border-left-color: var(--warning); background: var(--warning-soft); }
+.d-bloc.is-pay { border-left-color: var(--success); background: var(--success-soft); }
+.d-bloc b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-bloc span { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-bloc em { font-style: normal; font-family: var(--font-data); font-size: 10.5px; color: var(--muted); }
+
+/* ---- La liste du comptoir ------------------------------------------------ */
+.d-filtres { display: flex; gap: 7px; flex-wrap: wrap; padding: 12px 17px; border-bottom: 1px solid var(--line); }
+.d-puce {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  border: 1px solid var(--line); border-radius: var(--radius-full);
+  background: var(--surface); font-size: 12.5px; cursor: pointer;
+  transition: border-color 140ms var(--ease-sortie);
+}
+.d-puce:hover { border-color: var(--line-strong); }
+.d-puce.is-actif { border-color: var(--text); background: var(--text); color: var(--page); font-weight: 550; }
+.d-puce b { font-family: var(--font-data); font-weight: 500; opacity: .75; }
+.d-liste { padding: 6px 0; }
+.d-ligne {
+  display: flex; align-items: center; gap: 14px; padding: 12px 17px;
+  border-bottom: 1px solid var(--line);
+}
+.d-ligne:last-child { border-bottom: 0; }
+.d-ligne-h {
+  flex: none; width: 52px; font-family: var(--font-data); font-size: 13px; font-weight: 500;
+}
+.d-ligne-qui { flex: 1; min-width: 0; }
+.d-ligne-qui b { display: block; font-size: 13.5px; font-weight: 600; }
+.d-ligne-qui span { display: block; font-size: 12px; color: var(--muted); }
+.d-ligne-prix { flex: none; font-family: var(--font-data); font-size: 13px; }
+.d-etiq {
+  flex: none; padding: 3px 9px; border-radius: var(--radius-full);
+  font-size: 11.5px; font-weight: 550; white-space: nowrap;
+}
+.d-etiq.is-arr { background: var(--warning-soft); color: var(--warning); }
+.d-etiq.is-pay { background: var(--success-soft); color: var(--success); }
+.d-etiq.is-att { background: var(--accent-soft); color: var(--accent-strong); }
+.d-ligne-actions { flex: none; display: flex; gap: 7px; }
+.d-mini {
+  padding: 5px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-full);
+  background: var(--surface); font-size: 12px; font-weight: 550; cursor: pointer;
+  transition: border-color 140ms var(--ease-sortie);
+}
+.d-mini:hover { border-color: var(--text); }
+.d-mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   3. L'ECRAN MARKETING
+   ========================================================================== */
+.d-mkt { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.d-mkt-tete { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; }
+.d-mkt-sceau {
+  width: 46px; height: 46px; flex: none; border-radius: var(--radius-lg);
+  display: grid; place-items: center; background: var(--accent-soft); color: var(--accent);
+}
+.d-mkt-tete h1 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; display: inline; }
+.d-mkt-vivant {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; vertical-align: 3px;
+  padding: 3px 10px; border-radius: var(--radius-full); background: var(--success-soft);
+  color: var(--success); font-size: 11.5px; font-weight: 550;
+}
+.d-mkt-vivant i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.d-mkt-tete p { margin-top: 4px; font-size: 13.5px; color: var(--muted); max-width: 56ch; }
+.d-mkt-mot {
+  padding: 26px 28px; border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--ombre-sm);
+}
+.d-mkt-bonjour { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+.d-mkt-bonjour h2 { font-size: 27px; font-weight: 600; letter-spacing: -.025em; }
+.d-mkt-bonjour i { color: var(--accent); display: grid; place-items: center; }
+.d-mkt-brief { font-size: 15px; line-height: 1.62; }
+.d-mkt-rappel { margin-top: 16px; font-size: 13px; color: var(--muted); }
+.d-mkt-saisie {
+  display: flex; align-items: center; gap: 10px; margin-top: 20px; padding: 7px 7px 7px 16px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface);
+}
+.d-mkt-saisie span { flex: 1; color: var(--faint); font-size: 13.5px; }
+.d-mkt-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 13px; }
+.d-chip {
+  padding: 6px 13px; border: 1px solid var(--line); border-radius: var(--radius-full);
+  background: var(--surface); font-size: 12.5px; color: var(--muted); cursor: pointer;
+}
+.d-chip:hover { border-color: var(--line-strong); color: var(--text); }
+
+.d-panneau {
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--ombre-sm); overflow: hidden;
+}
+.d-panneau-tete {
+  display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line);
+}
+.d-panneau-tete h2 { font-size: 15px; font-weight: 600; }
+.d-groupe { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.d-groupe:last-child { border-bottom: 0; }
+.d-groupe-tete { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.d-groupe-tete h3 { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.d-compte {
+  min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center;
+  border-radius: var(--radius-full); background: var(--subtle);
+  font-family: var(--font-data); font-size: 11px;
+}
+.d-carte-prop {
+  display: block; width: 100%; text-align: left; margin-bottom: 9px; padding: 11px 13px;
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md); background: var(--surface); cursor: pointer;
+  transition: border-color 140ms var(--ease-sortie), transform 140ms var(--ease-sortie);
+}
+.d-carte-prop:hover { border-color: var(--line-strong); border-left-color: var(--accent); transform: translateX(2px); }
+.d-carte-prop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.d-carte-prop.is-danger { border-left-color: var(--danger); }
+.d-carte-prop:last-child { margin-bottom: 0; }
+.d-carte-prop b { display: block; font-size: 12px; font-weight: 600; color: var(--accent-strong); }
+.d-carte-prop.is-danger b { color: var(--danger); }
+.d-carte-prop p { margin-top: 3px; font-size: 13px; line-height: 1.4; }
+.d-carte-prop em {
+  display: block; margin-top: 6px; font-style: normal;
+  font-family: var(--font-data); font-size: 11px; color: var(--faint);
+}
+.d-veille { display: flex; align-items: baseline; gap: 9px; padding: 5px 0; font-size: 12.5px; }
+.d-veille i { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--warning); transform: translateY(-2px); }
+.d-veille span { margin-left: auto; font-family: var(--font-data); font-size: 11px; color: var(--faint); white-space: nowrap; }
+.d-radar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.d-radar-j {
+  padding: 5px 2px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  text-align: center; font-size: 10.5px; color: var(--faint);
+}
+.d-radar-j b { display: block; font-family: var(--font-data); font-size: 12px; color: var(--text); font-weight: 500; }
+.d-radar-j u { display: block; text-decoration: none; font-family: var(--font-data); font-size: 10.5px; }
+.d-radar-j.is-creux u { color: var(--danger); }
+.d-radar-j.is-plein u { color: var(--success); }
+.d-radar-j.is-moyen u { color: var(--muted); }
+.d-radar-j.is-auj { border-color: var(--accent); }
+
+/* ==========================================================================
+   4. LE BANDEAU « DONNEES FABRIQUEES »
+   ==========================================================================
+   Il est FIXE : un bandeau qui defile hors de l'ecran ne dit rien a celui qui
+   arrive au milieu de la page. */
+.d-bandeau {
+  position: fixed; z-index: 90; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  max-width: calc(100vw - 24px); padding: 7px 8px 7px 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-full);
+  background: var(--surface); box-shadow: var(--ombre-md);
+  font-size: 12.5px; line-height: 1.35;
+}
+.d-bandeau i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--warning); }
+.d-bandeau span { color: var(--muted); }
+.d-bandeau a {
+  display: inline-flex; align-items: center; white-space: nowrap;
+  padding: 6px 12px; border-radius: var(--radius-full); text-decoration: none;
+  background: var(--text); color: var(--page); font-weight: 600;
+  transition: opacity 150ms var(--ease-sortie);
+}
+/* Le bandeau est centre... sauf quand la carte du guide occupe le coin bas
+   droit : les deux se chevauchaient de 42 px et le bouton « Passer le guide »
+   passait sous la pilule. Mesure au rendu, pas relecture. */
+body.d-guide-vivant .d-bandeau { left: calc(var(--barre) + 24px); transform: none; }
+.d-bandeau a:hover { opacity: .84; }
+.d-bandeau a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ==========================================================================
+   5. LA PORTE FERMEE : le fond reel floute, la fenetre par-dessus
+   ==========================================================================
+   Movsar, 2026-08-13 : « les pages bloquees, on doit voir en fond la page mais
+   floutee, avec donc la popup qui dit ca ».
+
+   Le flou est BORNE a la hauteur de l'ecran : un `filter: blur()` pose sur un
+   conteneur de plusieurs milliers de pixels fait travailler le processeur
+   graphique en permanence, y compris sur ce que personne ne regarde. */
+body.is-verrou .d-main {
+  filter: blur(7px) saturate(.8);
+  opacity: .5;
+  transform: scale(1.008);
+  transform-origin: 50% 30%;
+  pointer-events: none; user-select: none;
+  max-height: 100vh; overflow: hidden;
+}
+body.is-verrou { overflow: hidden; }
+
+.d-fenetre-fond {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: color-mix(in srgb, var(--page) 55%, transparent);
+  animation: d-fondu 200ms var(--ease-sortie) both;
+}
+@keyframes d-fondu { from { opacity: 0; } to { opacity: 1; } }
+.d-fenetre {
+  position: relative; width: min(560px, 100%); max-height: calc(100vh - 48px); overflow: auto;
+  padding: 32px 32px 28px;
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--ombre-haute);
+  animation: d-entree 340ms var(--ease) both;
+}
+@keyframes d-entree {
+  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+.d-fenetre-kick {
+  display: inline-flex; align-items: center; gap: 7px; margin-bottom: 13px;
+  font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
+}
+.d-fenetre-kick i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.d-fenetre h2 { font-size: clamp(21px, 3vw, 26px); font-weight: 650; letter-spacing: -.02em; line-height: 1.18; }
+.d-fenetre-lede { margin-top: 9px; font-size: 14.5px; line-height: 1.55; color: var(--muted); }
+.d-fenetre-liste { margin: 20px 0; border-top: 1px solid var(--line); }
+.d-fenetre-liste li {
+  display: flex; gap: 11px; align-items: baseline; padding: 10px 2px;
+  border-bottom: 1px solid var(--line); font-size: 13.5px; line-height: 1.45;
+}
+.d-fenetre-liste li::before {
+  content: ''; flex: 0 0 5px; width: 5px; height: 5px; transform: translateY(-2px);
+  border-radius: 50%; background: var(--line-strong);
+}
+.d-fenetre-pourquoi {
+  margin-bottom: 22px; padding: 14px 16px; font-size: 13.5px; line-height: 1.5;
+  border-radius: var(--radius-md); background: var(--subtle);
+}
+.d-fenetre-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.d-fenetre-cta {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 19px;
+  border-radius: var(--radius-full); text-decoration: none;
+  background: var(--text); color: var(--page); font-size: 14px; font-weight: 600;
+  transition: opacity 150ms var(--ease-sortie);
+}
+.d-fenetre-cta:hover { opacity: .85; }
+.d-fenetre-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.d-fenetre-retour {
+  background: none; border: 0; padding: 6px 2px; cursor: pointer; font-size: 14px;
+  color: var(--muted); text-decoration: underline; text-underline-offset: 3px;
+}
+.d-fenetre-retour:hover { color: var(--text); }
+.d-fenetre-retour:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.d-fenetre-echap { margin-top: 15px; font-size: 12px; color: var(--faint); }
+
+/* ==========================================================================
+   6. LE GUIDE : l'ecran se construit en expliquant
+   ==========================================================================
+   La mecanique. Deux listes de jetons posees sur <html> :
+     - `data-d-vu`   : les blocs deja racontes, donc visibles ;
+     - `data-d-fixe` : ceux dont l'animation est finie, pour qu'un re-rendu ne
+                       la rejoue jamais.
+   Un bloc pas encore raconte est RETIRE du flux (`display: none`) et non rendu
+   transparent : sinon l'ecran depouille garderait la hauteur de l'ecran plein,
+   avec sa barre de defilement, et se lirait comme une page cassee.
+
+   La carte du guide n'est PAS modale : elle ne couvre rien, elle ne pose aucun
+   voile, et le moindre clic dans la console la replie en revelant tout. C'est
+   la regle qui empeche le tutoriel de devenir une prison. */
+/* Le bloc pas encore raconte est retire du flux. On ecrit la regle en
+   `:not(.is-vu)` et non en deux regles opposees : `display: revert` ramene au
+   style du NAVIGATEUR (`block`), pas a celui de la feuille, et la grille des
+   indicateurs se depliait en quatre lignes de 447 px au lieu d'une de 112.
+   Mesure a l'appui, pas relecture. */
+html[data-d-guide] [data-d-bloc]:not(.is-vu) { display: none !important; }
+[data-d-bloc].is-vu { animation: d-arrivee 520ms var(--ease) both; }
+[data-d-bloc].is-fixe { animation: none !important; }
+@keyframes d-arrivee {
+  from { opacity: 0; transform: translateY(14px) scale(.988); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes d-arrivee-cote {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: none; }
+}
+/* La cascade : les enfants d'un bloc revele entrent l'un apres l'autre. */
+[data-d-bloc].is-vu [data-d-casc] { animation: d-arrivee 440ms var(--ease) both; }
+[data-d-bloc].is-vu [data-d-casc="1"] { animation-delay: 60ms; }
+[data-d-bloc].is-vu [data-d-casc="2"] { animation-delay: 120ms; }
+[data-d-bloc].is-vu [data-d-casc="3"] { animation-delay: 180ms; }
+[data-d-bloc].is-vu [data-d-casc="4"] { animation-delay: 240ms; }
+[data-d-bloc].is-vu [data-d-casc="5"] { animation-delay: 300ms; }
+[data-d-bloc].is-vu [data-d-casc="6"] { animation-delay: 360ms; }
+[data-d-bloc].is-vu [data-d-casc="7"] { animation-delay: 420ms; }
+[data-d-bloc].is-vu [data-d-casc="8"] { animation-delay: 480ms; }
+[data-d-bloc].is-vu .d-panneau [data-d-casc] { animation-name: d-arrivee-cote; }
+[data-d-bloc].is-fixe [data-d-casc] { animation: none !important; }
+/* Une reservation qui se pose sur la grille : c'est le mouvement qui raconte
+   « personne n'a rien recopie ». */
+.d-bloc.is-neuf { animation: d-pose 380ms var(--ease) both; }
+@keyframes d-pose {
+  from { opacity: 0; transform: translateY(-6px) scale(.94); }
+  to { opacity: 1; transform: none; }
+}
+
+.d-guide {
+  position: fixed; right: 20px; bottom: 20px; z-index: 85;
+  width: min(392px, calc(100vw - 40px)); overflow: hidden;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-lg);
+  background: var(--surface); box-shadow: var(--ombre-haute);
+  animation: d-arrivee 420ms var(--ease) both;
+}
+.d-guide-jauge { height: 2px; background: var(--line); }
+.d-guide-jauge i {
+  display: block; height: 100%; width: 100%; transform: scaleX(0);
+  transform-origin: left center; background: var(--accent);
+}
+.d-guide.is-court .d-guide-jauge i { animation: d-jauge var(--d-duree, 6600ms) linear forwards; }
+@keyframes d-jauge { to { transform: scaleX(1); } }
+.d-guide-corps { padding: 17px 19px 3px; }
+.d-guide-rang {
+  margin-bottom: 9px; font-size: 11px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--faint);
+}
+.d-guide-titre { font-size: 17px; font-weight: 640; letter-spacing: -.015em; line-height: 1.25; }
+.d-guide-dit { margin-top: 7px; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.d-guide-gain {
+  margin-top: 11px; padding: 10px 12px; font-size: 12.5px; line-height: 1.45;
+  border-radius: var(--radius-md); background: var(--subtle);
+}
+.d-guide-pied {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 13px 19px 15px;
+}
+.d-guide-droite { display: flex; align-items: center; gap: 8px; }
+.d-guide button, .d-guide a { border-radius: var(--radius-full); cursor: pointer; }
+.d-guide button:focus-visible, .d-guide a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.d-g-lien {
+  background: none; border: 0; padding: 6px 2px; font-size: 12.5px; color: var(--muted);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.d-g-lien:hover { color: var(--text); }
+.d-g-sec {
+  padding: 7px 13px; font-size: 12.5px; font-weight: 550;
+  border: 1px solid var(--line-strong); background: var(--surface);
+  transition: border-color 140ms var(--ease-sortie);
+}
+.d-g-sec:hover { border-color: var(--text); }
+.d-g-sec[disabled] { opacity: .38; cursor: default; }
+.d-g-fort {
+  display: inline-flex; align-items: center; padding: 8px 16px; border: 0;
+  font-size: 12.5px; font-weight: 600; text-decoration: none;
+  background: var(--text); color: var(--page);
+  transition: opacity 150ms var(--ease-sortie);
+}
+.d-g-fort:hover { opacity: .85; }
+.d-guide.is-pastille .d-guide-jauge, .d-guide.is-pastille .d-guide-corps { display: none; }
+.d-guide.is-pastille { width: auto; }
+.d-guide.is-pastille .d-guide-pied { padding: 9px 14px; }
+
+/* Le cercle de designation : il ENTOURE, il ne masque pas. Un voile plein
+   ecran avec un trou aurait bloque l'exploration libre. */
+.d-halo {
+  position: fixed; z-index: 84; pointer-events: none; border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 8px color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: top 320ms var(--ease), left 320ms var(--ease),
+    width 320ms var(--ease), height 320ms var(--ease), opacity 200ms linear;
+  opacity: 0;
+}
+.d-halo.is-on { opacity: 1; }
+
+/* ==========================================================================
+   7. LES ECRANS ETROITS
+   ========================================================================== */
+@media (max-width: 1100px) {
+  .d-mkt { grid-template-columns: minmax(0, 1fr); }
+  .d-kpis { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 860px) {
+  :root { --barre: 0px; }
+  .d-side {
+    position: static; width: 100%; flex: none; flex-direction: row; flex-wrap: wrap;
+    align-items: center; gap: 8px; border-right: 0; border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+  .d-app { flex-direction: column; }
+  .d-side-marque { padding: 0; border: 0; }
+  /* Le pied de barre repete le nom du centre, deja porte par la pastille juste
+     au-dessus : sur 375 px il ne fait que pousser le contenu vers le bas. */
+  .d-side-pied { display: none; }
+  .d-side-centre { margin: 0; }
+  /* `flex: 1` du bureau pose `flex-basis: 0` et ECRASE `width: 100%` : la
+     barre de navigation se retrouvait comprimee sur la meme ligne que le
+     logo, et le menu disparaissait a 375 px. Trouve au rendu, pas en relisant
+     la feuille. */
+  .d-nav { flex: 1 0 100%; width: 100%; display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 2px; }
+  .d-nav-groupe { display: none; }
+  .d-nav-item { width: auto; flex: none; white-space: nowrap; margin: 0; }
+  .d-nav-item.is-actif::before { display: none; }
+  .d-main { margin-left: 0; padding: 16px 14px 190px; }
+  .d-guide { right: 8px; left: 8px; bottom: 8px; width: auto; max-height: 50vh; overflow: auto; }
+  html[data-d-guide] .d-bandeau, body.d-guide-ouvert .d-bandeau { top: 8px; bottom: auto; }
+  .d-bandeau { left: 8px; right: 8px; transform: none; max-width: none; border-radius: var(--radius-lg); }
+  .d-fenetre-fond { padding: 10px; align-items: flex-end; }
+  .d-fenetre { padding: 24px 20px 20px; max-height: calc(100vh - 100px); }
+}
+@media (max-width: 560px) {
+  .d-kpis { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .d-kpi-val { font-size: 22px; }
+  .d-tete-titre h1 { font-size: 20px; }
+  .d-guide-pied { flex-wrap: wrap; }
+}
+
+/* ==========================================================================
+   8. MOUVEMENT REDUIT
+   ==========================================================================
+   L'etat final est pose d'emblee par le script : rien n'est cache, le guide se
+   contente d'expliquer un ecran deja complet. */
+@media (prefers-reduced-motion: reduce) {
+  .d-guide, .d-guide-jauge i, .d-fenetre, .d-fenetre-fond,
+  [data-d-bloc], [data-d-casc], .d-bloc.is-neuf { animation: none !important; }
+  .d-halo { transition: opacity 120ms linear; }
+  body.is-verrou .d-main { transform: none; }
+  * { scroll-behavior: auto !important; }
+}

@@ -31,7 +31,16 @@
 <script defer src="./assets/brand-color.js?v=20260808a"></script>
 <!-- C14 : admin-console.js et ops-console.js sont injectés dynamiquement par
      app-main.js (vue admin après garde de permission, besoin Ops staff). -->
-<script src="./assets/demo-mode.js?v=20260808a"></script>
+<!-- LA DEMONSTRATION PUBLIQUE N'EST PLUS ICI (2026-08-13). Elle vivait dans
+     `assets/demo-mode.js`, charge par cette page, qui remplacait `fetch` et
+     rejouait la console reelle sur un faux reseau des que l'URL portait
+     `?demo=1` ou `/demo`. Elle est devenue un objet autonome dans `demo/`,
+     servi par la reecriture `/demo` du `vercel.json`, et ce fichier ne charge
+     plus une seule ligne de code de demonstration.
+     Decision de Movsar : « c'est une demo, un truc a part, et ca ne doit pas
+     du tout etre branche avec le vrai ». Consequence : aucun effet ajoute
+     pour seduire un prospect ne peut plus atterrir sur l'ecran d'un gerant,
+     et `app.pinlane.be/?demo=1` ne declenche plus rien du tout. -->
 <!-- Le motion d'exploitation (chiffres qui montent, arrivees qui se signalent).
      Chargé AVANT app-main : `getReservationHighlightClasses` interroge
      PinlaneMotion des le premier rendu, et un rendu qui tombe avant le module

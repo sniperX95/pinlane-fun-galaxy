@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr" data-d-guide="1">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pinlane · démonstration</title>
+<meta name="description" content="La console Pinlane en démonstration, avec des données fabriquées. Bowling Central n'existe pas.">
+<!-- Une demonstration publique n'a rien a faire dans un index de moteur de
+     recherche : le visiteur doit arriver par la vitrine, qui explique ce
+     qu'il regarde. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/favicon.ico">
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/geist-latin.woff2" crossorigin>
+<link rel="stylesheet" href="/demo/demo.css?v=20260813a">
+</head>
+<body>
+<!-- ==========================================================================
+     LA DEMONSTRATION EST UN OBJET AUTONOME (2026-08-13).
+     ==========================================================================
+     Elle ne charge AUCUN script de l'application : ni `app-main.js`, ni
+     `staff-pages-v2.js`, ni `pinlane-staff.css`. Elle ne parle a aucune API,
+     elle ne touche aucune base, elle n'ecrit dans aucun stockage.
+
+     Pourquoi ce decouplage, decide par Movsar : « c'est une demo, un truc a
+     part, et ca ne doit pas du tout etre branche avec le vrai ». Consequence
+     directe et voulue : aucun effet ajoute ici pour seduire un prospect ne
+     peut atterrir sur l'ecran d'un gerant, et aucun defaut d'ici ne peut
+     toucher la production.
+
+     LE REVERS EST TRAITE. Une maquette decouplee derive : elle finit par
+     montrer des ecrans que le produit ne fait plus. C'est arrive trois fois
+     sur la vitrine le meme jour. L'antidote est un gate,
+     `npm run test:demo-fidelity`, qui ouvre la VRAIE console et cette page, et
+     compare ce qui est verifiable : la liste et l'ordre des entrees de menu,
+     les libelles d'ecran, les intitules d'indicateurs, d'onglets et de
+     filtres. Il rougit des que le produit bouge sans que cette page suive.
+     ========================================================================== -->
+<div class="d-app">
+  <aside class="d-side" aria-label="Navigation de la console">
+    <div class="d-side-marque">
+      <!-- Le nom est DESSINE dans le lockup : le retaper en police d'interface
+           creerait deux typographies concurrentes pour le meme mot. -->
+      <picture>
+        <source srcset="/assets/brand/pinlane-logo-dark.svg" media="(prefers-color-scheme: dark)">
+        <img src="/assets/brand/pinlane-logo.svg" alt="Pinlane, console du centre" width="150" height="30">
+      </picture>
+    </div>
+    <button type="button" class="d-side-centre" data-d-centre>
+      <i aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/></svg>
+      </i>
+      <span data-d-nom-centre>Bowling Central</span>
+      <svg class="d-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <nav class="d-nav" data-d-nav aria-label="Sections de la console"></nav>
+    <div class="d-side-pied">
+      <span class="d-avatar" aria-hidden="true">BC</span>
+      <span>
+        <b data-d-nom-centre>Bowling Central</b>
+        <span>Accès complet</span>
+      </span>
+    </div>
+  </aside>
+
+  <main class="d-main" id="dMain">
+    <section class="d-ecran" id="ecranPlanning" data-d-ecran="planning" aria-label="Planning du jour"></section>
+    <section class="d-ecran" id="ecranMarketing" data-d-ecran="campaigns" aria-label="Marketing" hidden></section>
+  </main>
+</div>
+
+<div class="d-bandeau" role="status">
+  <i aria-hidden="true"></i>
+  <div>
+    <b>Démonstration.</b>
+    <span>Données fabriquées, Bowling Central n’existe pas. Rien n’est enregistré.</span>
+  </div>
+  <a href="https://pinlane.be/" target="_top" rel="noopener">Retour sur pinlane.be</a>
+</div>
+
+<div class="d-halo" aria-hidden="true"></div>
+
+<script src="/demo/demo-data.js?v=20260813a"></script>
+<script src="/demo/demo.js?v=20260813a"></script>
+</body>
+</html>

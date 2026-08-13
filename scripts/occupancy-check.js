@@ -25,7 +25,11 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const CORE = path.join(root, 'assets', 'booking-core.js');
-const DEMO = path.join(root, 'assets', 'demo-mode.js');
+// La fixture de la demonstration a demenage le 2026-08-13 : la demonstration
+// est devenue un objet autonome (demo/), decouple de la console. La garantie
+// que ce gate protege n'a pas bouge : la journee fabriquee ne doit jamais
+// produire un taux d'occupation superieur a 100 %.
+const DEMO = path.join(root, 'demo', 'demo-data.js');
 const APP = path.join(root, 'assets', 'app-main.js');
 let failures = 0;
 

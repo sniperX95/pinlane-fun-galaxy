@@ -1372,8 +1372,23 @@ function buildReservationApiPayload(reservation, overrides = {}) {
   };
 }
 
-function getCurrentStaffReservationsForUi() {
-  return todaysReservations().map(r => ({
+// CE QUI DECIDE D'UN RE-RENDU, C'EST CE QUI SE DESSINE, PAS L'HORODATAGE.
+//
+// Cette projection portait `updatedAt`, un champ que la console n'affiche
+// NULLE PART : il ne servait que de fourre-tout « quelque chose a bouge cote
+// serveur ». Consequence visible au comptoir : un clic sur Arrive / Paye /
+// Confirme appliquait l'etat optimiste (1er rendu), puis l'echo serveur
+// revenait ~300 ms plus tard avec un `updatedAt` neuf, la signature changeait
+// alors que le PIXEL etait identique, et la liste entiere se redessinait une
+// deuxieme fois. Movsar voyait un double clic la ou il y en avait un seul.
+//
+// On compare donc ce qui compte : les champs REELLEMENT dessines par
+// renderReservationRow / les cartes du planning (identite, horaire, ressource,
+// tags). `updatedAt` sort ; `name`, `phone`, `notes`, `occasion` et `label`
+// entrent, parce qu'ils se dessinent et qu'ils n'etaient couverts que par
+// ricochet, via `updatedAt`.
+function reservationRenderSignature(r) {
+  return {
     id: Number(r.id),
     status: r.status,
     startTime: r.startTime,
@@ -1386,8 +1401,16 @@ function getCurrentStaffReservationsForUi() {
     guestOpsKey: JSON.stringify(r.opsPlan?.guestOps || {}),
     lanes: (r.lanes || []).map(Number),
     paymentMethod: r.paymentMethod || '',
-    updatedAt: r.updatedAt || ''
-  }));
+    name: r.name || '',
+    phone: r.phone || '',
+    label: r.label || '',
+    occasion: r.occasion || '',
+    notes: r.notes || ''
+  };
+}
+
+function getCurrentStaffReservationsForUi() {
+  return todaysReservations().map(reservationRenderSignature);
 }
 
 function getStaffDataSignature(dateStr = state.currentDate) {
@@ -1395,21 +1418,7 @@ function getStaffDataSignature(dateStr = state.currentDate) {
     ? getCurrentStaffReservationsForUi()
     : state.reservations
         .filter(r => r.date === dateStr && r.status !== 'cancelled')
-        .map(r => ({
-          id: Number(r.id),
-          status: r.status,
-          startTime: r.startTime,
-          duration: Number(r.duration) || 0,
-          pax: Number(r.pax) || 0,
-          price: Number(r.price) || 0,
-          type: r.type || 'bowling',
-          formuleId: r.formuleId || '',
-          opsPlanKey: JSON.stringify((r.opsPlan?.resourceBlocks || []).map(block => [block.resourceType, block.startTime, block.endTime, block.lanes, block.players])),
-          guestOpsKey: JSON.stringify(r.opsPlan?.guestOps || {}),
-          lanes: (r.lanes || []).map(Number),
-          paymentMethod: r.paymentMethod || '',
-          updatedAt: r.updatedAt || ''
-        }));
+        .map(reservationRenderSignature);
   return JSON.stringify({
     date: dateStr,
     staffResourceView: state.staffResourceView || 'all',
@@ -14446,12 +14455,12 @@ function setReservationStatusDirect(id, status, ev) {
     // le délai de grâce : les lectures (staff-state) peuvent encore être en
     // retard sur l'écriture qui vient d'être committée.
     markReservationMutation(id, payload.reservation, ['status', 'paymentMethod']);
-    const labels = {
-      pending: 'Réservation marquée comme confirmée',
-      arrived: 'Client marqué comme arrivé',
-      paid: 'Réservation marquée comme payée'
-    };
-    toast(labels[status] || 'Statut mis à jour');
+    // UN SEUL RETOUR POUR UNE SEULE ACTION. La pastille qui bascule EST le
+    // retour : le bouton passe en `active`, la ligne change de section. Un
+    // message qui arrive 300 ms plus tard raconte une DEUXIEME fois ce que
+    // l'ecran a deja dit, et c'est ce troisieme signal (rendu optimiste, puis
+    // re-rendu a l'echo, puis message) qui donnait l'impression d'un double
+    // clic. L'echec, lui, garde son message : il dit quelque chose de neuf.
   }).catch(error => {
     if (!isLatestRequest()) return;
     applyOptimisticReservation(current, { preserveEditState: true });
@@ -14461,27 +14470,6 @@ function setReservationStatusDirect(id, status, ev) {
     clearReservationMutationInFlight(id, 'status');
     if (isLatestRequest()) delete statusSaveLatestSeqByReservation[requestKey];
   });
-  return;
-  state.reservations = state.reservations.map(r => {
-    if (r.id !== id) return r;
-    const updated = { ...r, status };
-    if (status === 'paid' && !updated.paymentMethod) updated.paymentMethod = 'Comptoir';
-    return updated;
-  });
-  const updatedReservation = state.reservations.find(r => r.id === id);
-  if (state.selectedRes && state.selectedRes.id === id) {
-    state.selectedRes = updatedReservation;
-    state.editState = { ...updatedReservation, lanesStr: (updatedReservation.lanes || []).join(', ') };
-    renderPos();
-  }
-  save();
-  renderStaff();
-  const labels = {
-    pending: 'Réservation marquée comme confirmée',
-    arrived: 'Client marqué comme arrivé',
-    paid: 'Réservation marquée comme payée'
-  };
-  toast(labels[status] || 'Statut mis à jour');
 }
 
 function quickPay(id) {

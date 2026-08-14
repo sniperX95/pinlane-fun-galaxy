@@ -13345,12 +13345,15 @@ function formatCardDurationLabel(hours) {
 // longueur (`lab-s` / `lab-m` / `lab-l`) porte le seul chiffre dont le CSS a
 // besoin pour trancher : combien de caracteres il doit loger. Le libelle
 // complet reste dans l'infobulle et dans la fiche.
-function renderCardActivityTag(reservation) {
+function renderCardActivityTag(reservation, view = 'bowling') {
   const complet = String(getReservationLabel(reservation) || '').trim();
-  const texte = getPlanningCardLabel(reservation);
+  const texte = getPlanningCardOfferLabel(reservation, view);
   // La boite reste, meme vide : c'est elle qui absorbe la place libre et
   // repousse les chiffres a droite. Sans elle, le pied se recollerait au nom.
-  if (!texte) return '<span class="b-tag" aria-hidden="true"></span>';
+  // L'offre a maintenant sa propre ligne : quand il n'y a rien a dire, la ligne
+  // n'existe pas du tout, au lieu de reserver un vide. Le pied n'a plus besoin
+  // d'une boite fantome pour repousser les chiffres, il ne partage plus sa ligne.
+  if (!texte) return '';
   return `<span class="b-tag lab-${planningLabelWidthUnits(texte)}" title="${escapeHtml(complet)}"><span class="b-tag-text">${escapeHtml(texte)}</span></span>`;
 }
 
@@ -13374,10 +13377,55 @@ function planningLabelWidthUnits(texte) {
     else if (caractere >= '0' && caractere <= '9') unites += 1.3;
     else unites += 1;
   }
-  return Math.min(16, Math.max(1, Math.ceil(unites)));
+  // LE PLAFOND MENTAIT DES QUE LE LIBELLE A GRANDI. Il valait 16 unites, ce qui
+  // suffisait a « Bowling » (7) mais pas a « FORMULE 4 · Laser x2 » (23) : au-dela
+  // du plafond, la classe posee reclamait moins de place que le texte n'en prend,
+  // donc le CSS l'affichait sur une piste trop etroite et il debordait de 12px.
+  // Un plafond n'est pas un detail de calibration : c'est un MENSONGE des que le
+  // contenu le depasse. Il suit maintenant la longueur reelle de l'offre.
+  return Math.min(28, Math.max(1, Math.ceil(unites)));
 }
 
 const PLANNING_CARD_LABEL_MAX = 12;
+// UNE CARTE DIT CE QU'ON NE PEUT PAS DEVINER, PAS CE QU'ON VOIT DEJA.
+// Movsar, 2026-08-14 : « les cartes du planning sont super nul pas complet, on
+// voit pas formule ». L'information EXISTAIT (`renderReservationTags` fabrique
+// bien « FORMULE 5 », « Laser x2 », « Note a lire ») mais deux regles CSS la
+// masquaient partout : les etiquettes ne s'affichaient qu'en plein ecran, et
+// au-dessus de 190px de piste, alors qu'une piste en fait 147 a huit pistes.
+// Elle etait donc rendue dans le DOM et invisible a l'ecran, toujours.
+//
+// Pendant ce temps le libelle, lui, ecrivait « Bowling » sur un planning DE
+// BOWLING : la seule chose que la colonne dit deja. La carte depensait sa
+// derniere ligne pour une evidence et taisait ce que le client a achete.
+//
+// La regle est donc : le libelle porte L'OFFRE, dans l'ordre de ce qui surprend
+// un gerant. Une formule d'abord (c'est elle qui commande la soiree), le
+// nombre de parties laser ensuite (c'est lui qui contraint l'arene). Quand il
+// n'y a ni l'un ni l'autre, la reservation EST l'activite de la colonne, et on
+// n'ecrit rien.
+function getPlanningCardOfferLabel(reservation, view = 'bowling') {
+  const morceaux = [];
+  const formule = reservation?.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
+  if (formule || reservation?.type === 'formule') {
+    // « FORMULE 5 » tient, « CRAZY STUDENT STRIKE » non : on garde le nom quand
+    // il est court, et on retombe sur la NATURE de l'offre, vraie et entiere.
+    const nom = String(formule?.name || '').trim();
+    morceaux.push(nom && nom.length <= 12 ? nom : 'Formule');
+  }
+  // LE LASER N'EST PLUS DANS LE TEXTE, IL EST DEVENU UN MARQUEUR.
+  // « FORMULE 5 · Laser x2 » fait 20 caracteres : sur une piste de 147px la
+  // regle « entier ou absent » le jugeait trop long et n'affichait RIEN, donc
+  // on reperdait la formule pour avoir voulu dire deux choses. La formule seule
+  // (« FORMULE 5 ») tient des 64px de piste. Le nombre de parties laser part
+  // dans les marqueurs, ou il coute 13px au lieu de 60.
+  if (morceaux.length) return morceaux.join(' · ');
+  // Ni formule ni laser multiple : la colonne dit deja l'activite. On ne repete
+  // pas « Bowling » sur le planning bowling.
+  if (view === 'bowling' || view === 'laser') return '';
+  return getPlanningCardLabel(reservation);
+}
+
 function getPlanningCardLabel(reservation) {
   const complet = String(getReservationLabel(reservation) || '').trim();
   if (!complet || complet.length <= PLANNING_CARD_LABEL_MAX) return complet;
@@ -13399,7 +13447,8 @@ function renderCardStats(pax, durationLabel, options = {}) {
   const durClass = special ? 'bk-dur dur-special' : 'bk-dur';
   const durTitle = options.durationTitle || durationLabel;
   return `<span class="booking-stats">`
-    + `<span class="bk-pax ${grp}" title="${paxNum} joueur${paxNum > 1 ? 's' : ''}">${paxNum}<span class="u">j</span></span>`
+    + `<span class="bk-pax ${grp}" title="${paxNum} joueur${paxNum > 1 ? 's' : ''}">${paxNum}<span class="u"><span class="u-short">j</span><span class="u-long">&nbsp;joueurs</span></span></span>`
+    + `<span class="bk-sep" aria-hidden="true">·</span>`
     + `<span class="${durClass}" title="Durée ${escapeHtml(durTitle)}">${escapeHtml(durationLabel)}</span>`
     + `</span>`;
 }
@@ -13432,6 +13481,44 @@ function getReservationNoteText(reservation = {}) {
 
 function hasReservationNote(reservation) {
   return !!getReservationNoteText(reservation);
+}
+
+// MARQUEURS DE CARTE : ce qui change la maniere de servir, en une forme.
+// Une note et un anniversaire ne se lisent pas comme un chiffre : ce sont des
+// consignes. Sur 147px de piste, les ecrire en toutes lettres coute la ligne
+// entiere de l'offre ; en icone titree, ils coutent 13px et restent lisibles
+// par la synthese vocale. Le texte complet vit dans la fiche, ou on l'ouvre
+// justement pour le lire.
+function renderCardFlags(reservation) {
+  const marques = [];
+  const parties = getLaserGameCountForReservation(reservation);
+  if (parties > 1) {
+    marques.push({
+      cls: 'flag-laser',
+      label: `${parties} parties de laser`,
+      texte: `x${parties}`,
+      path: '<circle cx="12" cy="12" r="6.4"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/>',
+    });
+  }
+  if (getReservationOccasion(reservation) === 'birthday') {
+    marques.push({
+      cls: 'flag-birthday',
+      label: 'Anniversaire',
+      path: '<path d="M5 21h14M6 21v-6h12v6M12 9V6"/><path d="M6 15a2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0 2.4 2.4 0 0 0 3 0 2.4 2.4 0 0 1 3 0"/><circle cx="12" cy="4.4" r="1.1"/>',
+    });
+  }
+  if (hasReservationNote(reservation)) {
+    marques.push({
+      cls: 'flag-note',
+      label: 'Note a lire',
+      path: '<path d="M12 8v5"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/>',
+    });
+  }
+  if (!marques.length) return '';
+  return `<span class="bk-flags">${marques.map(m => `<span class="bk-flag ${m.cls}" role="img" aria-label="${m.label}" title="${m.label}">`
+    + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${m.path}</svg>`
+    + (m.texte ? `<span class="bk-flag-num">${escapeHtml(m.texte)}</span>` : '')
+    + `</span>`).join('')}</span>`;
 }
 
 function renderReservationTags(reservation) {
@@ -13914,17 +14001,28 @@ function renderPlanning() {
       const delayedClass = getReservationDelayFlag(r) ? ' is-delayed' : '';
       const bowlingDuration = Number(item.window.duration) || 0;
       const statsHtml = renderCardStats(r.pax, formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration) });
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      // L'OFFRE N'A SA PROPRE LIGNE QUE SI LA CARTE A LA HAUTEUR DE L'OFFRIR.
+      // Mesure : une carte d'1h fait 46px, dont 44 utiles ; trois lignes (nom,
+      // offre, chiffres) en demandent 56. L'offre partage donc la ligne des
+      // chiffres sur les cartes courtes, exactement comme le libelle d'activite
+      // le faisait avant, avec le mecanisme qui la fait ceder toute seule quand
+      // la place manque. Sur une carte de 1h30 et plus, elle a la place et la
+      // prend : c'est la hauteur reelle qui decide, pas une preference.
+      const offreHtml = renderCardActivityTag(r, 'bowling');
+      const offreSurSaLigne = densClass === 'dens-lg';
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${renderDelayIndicator(r)}
         <div class="booking-head">
+          <span class="bk-time">${formatClockDisplay(st)}</span>
           <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
+          ${renderCardFlags(r)}
           ${renderBookingStateMark(cls)}
         </div>
-        ${renderReservationTags(r)}
+        ${offreSurSaLigne ? `<div class="booking-offer">${offreHtml}</div>` : ''}
         <div class="booking-foot">
-          ${renderCardActivityTag(r)}
-          ${renderActivityProgressPill(r)}
+          ${offreSurSaLigne ? '' : offreHtml}
           ${statsHtml}
+          ${renderActivityProgressPill(r)}
         </div>
       </div>`;
     });
@@ -13970,6 +14068,24 @@ function renderPlanning() {
     </div>`;
   wrap.scrollTop = prevScrollTop;
   wrap.scrollLeft = prevScrollLeft;
+  markPlanningGridFresh(wrap, state.currentDate);
+}
+
+// L'ANIMATION D'ENTREE NE JOUE QU'AU CHANGEMENT DE JOURNEE.
+// Le planning se redessine au sondage reseau toutes les 60 secondes : une
+// animation posee sans condition rejouerait a chaque tour, et un ecran qui
+// clignote toutes les minutes derriere un comptoir n'est pas anime, il est
+// casse. On compare donc la journee rendue a la precedente et on ne marque la
+// grille que quand elle a vraiment change de jour. La classe se retire des la
+// derniere carte arrivee, pour qu'un re-rendu suivant ne la retrouve pas posee.
+function markPlanningGridFresh(wrap, dateKey) {
+  if (!wrap) return;
+  const precedente = wrap.dataset.renderedDate || '';
+  wrap.dataset.renderedDate = String(dateKey || '');
+  if (precedente === String(dateKey || '')) return;
+  wrap.classList.add('is-fresh');
+  const cartes = wrap.querySelectorAll('.booking').length;
+  window.setTimeout(() => wrap.classList.remove('is-fresh'), 320 + cartes * 22);
 }
 
 function getPlanningBookingDisplayName(reservation) {
@@ -14344,42 +14460,45 @@ function renderReservationRow(r) {
     ? (getLaserGameCountForReservation(r) > 1 ? `Laser x${getLaserGameCountForReservation(r)}` : 'Laser')
     : formatDurationLabel(resourceWindows[0]?.duration || r.duration);
 
+  // CE QUE LE CLIENT A RESERVE, ECRIT UNE SEULE FOIS.
+  // Il l'etait TROIS fois par ligne : la pastille etoilee « FORMULE 1 » contre
+  // le nom, puis « FORMULE 1 » en etiquette grise juste en dessous, puis
+  // « Bowling 2h » alors que la duree est deja dans la colonne de gauche. Trois
+  // ecritures d'un meme fait, sur trois lignes, en trois styles.
+  const parties = getLaserGameCountForReservation(r);
+  const offre = isFormule
+    ? [formule.name, parties > 1 ? `Laser x${parties}` : ''].filter(Boolean).join(' · ')
+    : typeLabel;
+
   return `<div class="res-row ${r.status} ${getReservationHighlightClasses(r)}" data-res-row-id="${r.id}" onclick="openPos(${r.id})">
-    <div class="res-row-time">
+    <div class="res-c-time">
       <strong>${timeLabel}</strong>
       <span>${resourceDurationLabel}</span>
     </div>
-    <div class="res-row-main">
-      <div class="res-row-top">
-        <span class="res-row-name">${escapeHtml(r.name)}</span>
-        <span class="type-badge ${isFormule ? 'formule' : isLaser ? 'laser' : 'bowling'}">
-          ${isFormule ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>' : isLaser ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' : '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="14" cy="10" r="1.2" fill="currentColor"/></svg>'}
-          ${escapeHtml(typeLabel)}
-        </span>
-      </div>
-      ${renderReservationTags(r)}
+    <div class="res-c-client">
+      <span class="res-row-name">${escapeHtml(r.name)}</span>
+      <span class="res-c-pax">${r.pax} joueur${r.pax > 1 ? 's' : ''}</span>
+    </div>
+    <div class="res-c-what">
+      <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
+      ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
+      ${renderCardFlags(r)}
       ${renderStaffOpsMini(r)}
       ${renderGuestOpsMini(r)}
-      <div class="res-row-meta">
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${escapeHtml(r.phone || '-')}</span>
-        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>${r.pax} joueur${r.pax > 1 ? 's' : ''}</span>
-      </div>
     </div>
-    <div class="res-row-side">
-      <div class="res-row-label">${view === 'all' ? 'Ressources' : view === 'laser' ? 'Laser' : bowlingLanes.length ? 'Pistes' : 'Emplacement'}</div>
+    <div class="res-c-where">
       ${lanesHtml}
     </div>
-    <div class="res-row-actions" onclick="event.stopPropagation()">
-      ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
+    <div class="res-c-state" onclick="event.stopPropagation()">
       <div class="res-status-row compact">
         <button class="res-status-btn ${r.status === 'pending' ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending', event)">Confirmé</button>
         <button class="res-status-btn ${r.status === 'arrived' ? 'active arrived' : ''}" onclick="setReservationStatusDirect(${r.id}, 'arrived', event)">Arrivé</button>
         <button class="res-status-btn ${r.status === 'paid' ? 'active paid' : ''}" onclick="setReservationStatusDirect(${r.id}, 'paid', event)">Payé</button>
       </div>
       <div class="res-row-tools">
-        <button class="res-icon-btn" onclick="editRes(${r.id}, event)" title="Editer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-        <button class="res-icon-btn warn" onclick="cancelRes(${r.id}, event)" title="Annuler"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="8" y1="8" x2="16" y2="16"/></svg></button>
-        <button class="res-icon-btn danger" onclick="deleteRes(${r.id}, event)" title="Supprimer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        <button class="res-icon-btn" onclick="editRes(${r.id}, event)" title="Editer" aria-label="Editer ${escapeHtml(r.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        <button class="res-icon-btn warn" onclick="cancelRes(${r.id}, event)" title="Annuler" aria-label="Annuler ${escapeHtml(r.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="8" y1="8" x2="16" y2="16"/></svg></button>
+        <button class="res-icon-btn danger" onclick="deleteRes(${r.id}, event)" title="Supprimer" aria-label="Supprimer ${escapeHtml(r.name)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
       </div>
     </div>
   </div>`;
@@ -14390,15 +14509,20 @@ function renderReservationSection(statusKey, title, subtitle, reservations) {
     if (statusKey === 'paid') return timeToNum(b.startTime) - timeToNum(a.startTime);
     return timeToNum(a.startTime) - timeToNum(b.startTime);
   });
+  // UN EN-TETE DE COLONNES, UNE FOIS, AU LIEU D'UN LIBELLE PAR LIGNE.
+  // Le mot « Pistes » etait ecrit sur CHAQUE ligne, au-dessus de ses numeros :
+  // sept fois pour sept dossiers. Un libelle qui se repete a chaque ligne n'est
+  // pas une colonne, c'est une fiche recopiee, et c'est ce qui donnait a la
+  // liste son air de formulaire des annees 2000. Ecrit une fois en tete, il
+  // devient une VRAIE colonne : l'oeil descend au lieu de relire.
+  // Le sous-titre explicatif de chaque section a disparu. « Clients presents, a
+  // suivre maintenant » sous « Sur place » explique un titre qui se comprend
+  // seul : c'est du texte d'aide permanent, qui coute une ligne par section et
+  // n'est lu qu'une fois dans une vie de logiciel. Il reste dans l'infobulle.
   return `<div class="res-section workflow ${statusKey}">
-    <div class="res-section-head">
-      <div>
-        <span class="label">${title}</span>
-        <div class="table-summary">${subtitle}</div>
-      </div>
-      <div class="meta">
-        <span class="count">${ordered.length}</span>
-      </div>
+    <div class="res-section-head" title="${escapeHtml(subtitle)}">
+      <span class="label">${title}</span>
+      <span class="count">${ordered.length}</span>
     </div>
     ${ordered.length ? `<div class="res-dense-list" data-pl-stagger="resa.liste">${ordered.map(renderReservationRow).join('')}</div>` : `<div class="res-empty-inline">Aucune réservation dans cette zone.</div>`}
   </div>`;
@@ -14493,7 +14617,17 @@ function renderTable() {
     return true;
   }).filter(section => section.rows.length > 0);
 
+  // L'EN-TETE DE COLONNES EST ECRIT UNE SEULE FOIS, POUR TOUTE LA LISTE.
+  // Premiere tentative : un en-tete par section. C'etait reproduire exactement
+  // le defaut qu'on corrigeait, le mot « Pistes » repete a chaque ligne devenant
+  // « HEURE CLIENT RESERVATION PISTES ETAT » repete a chaque section. Les
+  // colonnes sont les MEMES partout puisque la grille est declaree une fois :
+  // l'en-tete l'est aussi, et il reste colle en haut au defilement.
+  const colOu = view === 'all' ? 'Ressources' : view === 'laser' ? 'Laser' : 'Pistes';
   list.innerHTML = `${toolbar}
+  <div class="res-col-head" aria-hidden="true">
+    <span>Heure</span><span>Client</span><span>Réservation</span><span>${colOu}</span><span>État</span>
+  </div>
   <div class="res-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows)).join('')}
   </div>`;

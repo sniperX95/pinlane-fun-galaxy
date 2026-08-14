@@ -134,6 +134,16 @@ async function installMock(page) {
             // ne teste rien. Chaine vide = getReservationLabel retombe sur le
             // defaut metier, exactement comme une reservation sans formule.
             label: '',
+            // UNE DONNEE DE TEST SANS FORMULE NE TESTE PAS LA CARTE DE FORMULE,
+            // et c'est precisement celle que Movsar reclamait le 2026-08-14
+            // (« on voit pas formule »). Depuis que la carte ecrit L'OFFRE au
+            // lieu de l'activite evidente, un jeu 100 % bowling sans formule ne
+            // produit AUCUNE etiquette : la contre-epreuve du masquage n'avait
+            // alors plus rien a masquer et passait au vert en ne voyant rien.
+            // Un tiers des dossiers porte donc une formule, comme un vrai
+            // samedi, ce qui donne aussi le libelle le plus long a loger
+            // (« FORMULE 5 · Laser x2 », 20 caracteres contre 7 pour « Bowling »).
+            formuleId: seed % 3 === 0 ? 'f5' : null,
             notes: seed % 5 === 0 ? 'Gateau a sortir a la fin de la partie' : '',
           });
         });
@@ -864,7 +874,12 @@ async function main() {
       // de conteneur de requete), et c est son enfant que la regle affiche ou
       // non. Masquer la boite reviendrait a muter autre chose que la regle
       // qu on veut mettre en defaut.
-      style.textContent = '#planningGridWrap .booking.dens-xs .booking-foot .b-tag .b-tag-text{display:none !important;}';
+      // L OFFRE A CHANGE DE PARENT le 2026-08-14 : elle a quitte le pied pour sa
+      // propre ligne (`.booking-offer`), qui repasse en `display: contents` sur
+      // une carte d une seule ligne. La mutation ne vise donc plus un parent
+      // precis, sinon elle ne mord plus sur rien et la contre-epreuve devient
+      // muette : elle vise le TEXTE de l etiquette, ou qu il vive.
+      style.textContent = '#planningGridWrap .booking.dens-xs .b-tag .b-tag-text{display:none !important;}';
       document.head.appendChild(style);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const card = document.querySelector('#planningGridWrap .booking.dens-xs');

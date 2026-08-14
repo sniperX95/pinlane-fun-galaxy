@@ -2010,13 +2010,62 @@ button.staff-date-label:focus-visible,
    pas une, et le gate prouve qu'aucune carte n'en chevauche une autre, donc il
    n'y a rien à décoller. Aucune largeur ne change : un survol qui décale le
    contenu d'un pixel se sent, même sans se voir. */
-.booking:hover { z-index: 10; border-color: var(--line-strong); }
+/* SURVOL : la carte s'allume, elle ne bouge pas. La couche `--overlay-hover`
+   est le jeton prévu pour ça et il s'inverse tout seul entre les deux thèmes.
+   Aucune largeur, aucune position ne change : un survol qui décale le contenu
+   d'un pixel se sent, même sans se voir. Et l'ombre reste interdite ici
+   (DESIGN.md §5 : elle est réservée aux surfaces flottantes ; une carte posée
+   dans une grille n'a rien d'où décoller). */
+.booking:hover {
+  z-index: 10;
+  border-color: var(--line-strong);
+  background-image: linear-gradient(var(--overlay-hover), var(--overlay-hover));
+}
 .booking:active, .booking.is-dragging { cursor: grabbing; }
 .booking.is-dragging { opacity: 0.45; }
 
-.booking.conf { background: var(--accent-soft); border-left-color: var(--accent); }
-.booking.arr { background: var(--warning-soft); border-left-color: var(--warning); }
-.booking.paid { background: var(--success-soft); border-left-color: var(--success); }
+/* LA GRILLE SE CONSTRUIT SOUS L'OEIL, UNE SEULE FOIS PAR JOURNEE.
+   Une animation d'entrée posée sur toutes les cartes rejouerait à CHAQUE rendu :
+   le planning se redessine au sondage réseau toutes les 60 secondes, et un
+   écran qui clignote toutes les minutes derrière un comptoir est un défaut, pas
+   une animation. Elle ne joue donc que quand la grille change de JOURNÉE
+   (classe posée par `renderPlanning`, retirée juste après), en cascade par
+   colonne pour que l'oeil suive le remplissage de gauche à droite. */
+@keyframes booking-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.planning-grid-wrap.is-fresh .booking {
+  animation: booking-in var(--dur) var(--ease) both;
+  animation-delay: calc(var(--bk-order, 0) * 22ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .planning-grid-wrap.is-fresh .booking { animation: none; }
+}
+
+/* LA PROFONDEUR EST UN EMPILEMENT, JAMAIS UN EFFET (vault d'Arlan, leçon 1).
+   Un aplat de couleur + une bordure, c'est le rendu par défaut d'un navigateur ;
+   c'est exactement ce que Movsar appelle « cheap ». Trois couches faibles
+   suffisent à faire un objet : un corps en dégradé (du soft vers un soft plus
+   proche de la surface), un liseré interne teinté du statut, et une couche de
+   survol. Aucune couleur en dur : tout se dérive des jetons de statut par
+   `color-mix`, donc les deux thèmes suivent sans être écrits deux fois, et la
+   lumière vient du haut dans les deux. */
+.booking.conf {
+  background: linear-gradient(180deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 74%, var(--surface)));
+  border-left-color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.booking.arr {
+  background: linear-gradient(180deg, var(--warning-soft), color-mix(in srgb, var(--warning-soft) 74%, var(--surface)));
+  border-left-color: var(--warning);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 16%, transparent);
+}
+.booking.paid {
+  background: linear-gradient(180deg, var(--success-soft), color-mix(in srgb, var(--success-soft) 74%, var(--surface)));
+  border-left-color: var(--success);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 16%, transparent);
+}
 .booking.laser-direct { background: var(--info-soft); border-left-color: var(--info); }
 .booking.laser-formula { background: var(--accent-soft); border-left-color: var(--accent-strong); }
 
@@ -2029,10 +2078,46 @@ button.staff-date-label:focus-visible,
 .booking-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 .booking-head .booking-name { flex: 1 1 auto; }
+
+/* L'HEURE NE PREND JAMAIS LA PLACE DU NOM.
+   Ecrite sur la ligne du nom, elle coute 30px et faisait tomber « Camille
+   Laurent » a « Camille Lau… » sur une piste de 147px : un nom coupe pour une
+   information que la colonne des heures donne deja, a 4 pixels de la. Le nom
+   ne part jamais, donc l'heure ne s'affiche QUE la ou elle ne lui prend rien,
+   c'est-a-dire en fenetre agrandie, ou la piste passe de 147 a 250px et ou
+   l'aller-retour de l'oeil vers la colonne coute vraiment quelque chose.
+   En chiffres tabulaires, pour que deux cartes voisines s'alignent au pixel. */
+.bk-time {
+  display: none;
+  flex: 0 0 auto;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--muted);
+}
+.planning-box.expanded .booking:not(.dens-xs) .bk-time { display: inline; }
+.booking.arr .bk-time { color: var(--warning); }
+.booking.paid .bk-time { color: var(--success); }
+
+/* CE QUE LE CLIENT A ACHETE, SUR SA PROPRE LIGNE.
+   Verbatim Movsar, 2026-08-14 : « on voit pas formule ». L'information etait
+   fabriquee et masquee : les etiquettes ne s'affichaient qu'en plein ecran ET
+   au-dessus de 190px de piste, quand une piste en fait 147 a huit pistes. La
+   carte gardait sa derniere ligne pour ecrire « Bowling » sur un planning de
+   bowling, c'est-a-dire l'evidence.
+   L'offre ne partage plus sa ligne avec les chiffres : elle en a une, donc
+   « FORMULE 5 · Laser x2 » tient en entier la ou 41px ne contenaient rien. */
+.booking-offer {
+  min-width: 0;
+  margin-top: 1px;
+}
+.booking-offer:empty { display: none; }
 
 .booking-name {
   font-size: 12px;
@@ -2047,10 +2132,23 @@ button.staff-date-label:focus-visible,
    tenir sur une ligne coupee a l ellipse : il passe a la ligne, donc il se
    coupe entre deux MOTS et plus au milieu d un. Deux lignes au maximum, bornees
    en hauteur pour que le contenu ne deborde jamais de la carte. */
+/* DEUX LIGNES, MAIS JAMAIS UN TEXTE COUPÉ SANS LE DIRE.
+   `text-overflow: clip` + `overflow-wrap: normal` : un nom qui contient un bloc
+   insécable (« Ecole #90010 ») ne pouvait ni se couper, ni s'ellipser, donc il
+   SORTAIT de la carte — 44px de texte dans 31px de place, sur 259 des 324
+   combinaisons de la matrice. Un texte tronqué sans ellipse ne se voit pas
+   comme tronqué : le lecteur croit lire un nom entier.
+   La coupe se fait donc entre MOTS quand c'est possible, à l'intérieur d'un
+   bloc insécable seulement s'il ne rentre pas autrement, et la deuxième ligne
+   se termine par une ellipse qui dit qu'il y a une suite. Le nom complet reste
+   dans l'infobulle et dans la fiche. */
 .booking.dens-lg .booking-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   white-space: normal;
-  text-overflow: clip;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
+  overflow: hidden;
   max-height: 2.32em;
 }
 
@@ -2098,6 +2196,71 @@ button.staff-date-label:focus-visible,
 @container etiquette (min-width: 8.12em) { .b-tag.lab-14 .b-tag-text { display: block; } }
 @container etiquette (min-width: 8.70em) { .b-tag.lab-15 .b-tag-text { display: block; } }
 @container etiquette (min-width: 9.28em) { .b-tag.lab-16 .b-tag-text { display: block; } }
+/* Paliers 17 a 28 : l'offre (« FORMULE 4 · Laser x2 ») est deux a trois fois plus
+   longue que l'ancien libelle d'activite (« Bowling »). Sans ces paliers, tout
+   ce qui depassait 16 unites retombait sur le seuil de 16 et s'affichait sur des
+   pistes trop etroites. Meme pas de 0,58em, meme regle, aucune exception. */
+@container etiquette (min-width: 9.86em) { .b-tag.lab-17 .b-tag-text { display: block; } }
+@container etiquette (min-width: 10.44em) { .b-tag.lab-18 .b-tag-text { display: block; } }
+@container etiquette (min-width: 11.02em) { .b-tag.lab-19 .b-tag-text { display: block; } }
+@container etiquette (min-width: 11.60em) { .b-tag.lab-20 .b-tag-text { display: block; } }
+@container etiquette (min-width: 12.18em) { .b-tag.lab-21 .b-tag-text { display: block; } }
+@container etiquette (min-width: 12.76em) { .b-tag.lab-22 .b-tag-text { display: block; } }
+@container etiquette (min-width: 13.34em) { .b-tag.lab-23 .b-tag-text { display: block; } }
+@container etiquette (min-width: 13.92em) { .b-tag.lab-24 .b-tag-text { display: block; } }
+@container etiquette (min-width: 14.50em) { .b-tag.lab-25 .b-tag-text { display: block; } }
+@container etiquette (min-width: 15.08em) { .b-tag.lab-26 .b-tag-text { display: block; } }
+@container etiquette (min-width: 15.66em) { .b-tag.lab-27 .b-tag-text { display: block; } }
+@container etiquette (min-width: 16.24em) { .b-tag.lab-28 .b-tag-text { display: block; } }
+
+/* L'OFFRE PORTE LA COULEUR DE LA MARQUE, parce que c'est elle qu'on cherche.
+   Dans le pied, le libellé était un texte tertiaire de 10px en `--muted` : au
+   milieu des chiffres, il se lisait comme une légende. Sur sa ligne, il est ce
+   que le client a acheté, et il se voit en un regard. Le point médian entre
+   « FORMULE 5 » et « Laser x2 » sépare deux faits, il n'ajoute pas un mot. */
+.booking-offer .b-tag {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--accent-strong);
+}
+.booking.arr .booking-offer .b-tag { color: var(--warning); }
+.booking.paid .booking-offer .b-tag { color: var(--success); }
+
+/* MARQUEURS : une consigne n'est pas un chiffre.
+   « Gâteau à sortir à 17h30 » et « anniversaire » changent la façon de servir,
+   pas le compte. Ils tiennent en 13px d'icône titrée là où le texte prendrait
+   la ligne entière de l'offre, et la synthèse vocale les annonce en toutes
+   lettres. Le texte complet reste dans la fiche, qu'on ouvre pour le lire. */
+.bk-flags {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.bk-flag {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+}
+.bk-flag svg { width: 100%; height: 100%; }
+.bk-flag.flag-note { color: var(--warning); }
+.bk-flag.flag-birthday { color: var(--accent-strong); }
+/* Le marqueur laser porte SON CHIFFRE : « x2 » dit combien de parties, ce qui
+   est la contrainte réelle de l'arène. Icône + chiffre = 22px, contre 60px pour
+   « · Laser x2 » écrit dans l'offre, qui faisait déborder la ligne et
+   disparaître la formule avec elle. */
+.bk-flag.flag-laser { width: auto; gap: 1px; color: var(--info); align-items: center; }
+.bk-flag.flag-laser svg { width: 11px; height: 11px; flex: 0 0 auto; }
+.bk-flag-num {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+}
 
 /* Pied de carte : offre (gauche, tronquée) + état + effectif/durée (droite).
    IL N'EST PLUS ÉPINGLÉ EN BAS. `margin-top: auto` le collait au bord inférieur,
@@ -2145,6 +2308,32 @@ button.staff-date-label:focus-visible,
   line-height: 1.1;
 }
 .booking-stats .u { opacity: 0.65; font-weight: 500; margin-left: 1px; }
+/* « 15j » se décode, « 15 joueurs » se lit. Maintenant que les chiffres ont
+   leur propre ligne, la forme longue tient : elle s'affiche partout où la piste
+   la contient et cède à la forme courte en dessous. C'est le CONTENEUR qui
+   tranche, jamais la largeur de la fenêtre. */
+.booking-stats .u-long { display: none; }
+.bk-sep { color: var(--faint); margin: 0 1px; }
+/* EN `em`, JAMAIS EN `px` : la police de la carte passe de 10px en fenêtre à
+   12px en plein écran. Un seuil écrit en pixels reste donc fixe pendant que le
+   texte qu'il autorise grandit de 20%, et « 24 joueurs · 1h30 » finit par
+   déborder d'une carte qui remplissait pourtant la condition. C'est ce que la
+   matrice a vu : contenu 117px dans une carte de 105px. Le reste du fichier
+   suit déjà cette règle pour les paliers d'étiquette, elle vaut ici aussi. */
+@container piste (min-width: 13.2em) {
+  .booking:not(.dens-xs) .booking-stats .u-long { display: inline; }
+  .booking:not(.dens-xs) .booking-stats .u-short { display: none; }
+}
+/* Une carte de formule porte EN PLUS la pastille de progression (« 0/4 ») sur
+   la même ligne. Mesuré : « 15 joueurs · 1h30 » + la pastille demandent 148px
+   de contenu, soit 162px de piste, quand une piste en offre 147 à huit pistes ;
+   la pastille sortait donc de la carte, tronquée en « 0/ ». Ce qui cède est le
+   CONFORT (« joueurs » redevient « j », zéro information perdue), jamais le
+   chiffre, qu'on ne peut pas tronquer sans lui faire dire autre chose. */
+@container piste (max-width: 17.5em) {
+  .booking:not(.dens-xs):has(.activity-pill) .booking-stats .u-long { display: none; }
+  .booking:not(.dens-xs):has(.activity-pill) .booking-stats .u-short { display: inline; }
+}
 
 /* Effectif : emphase croissante (gris → pastille inversée) selon le groupe. */
 /* `--faint` tombait à 4,41:1 en clair et 4,24:1 en sombre sur le fond des
@@ -2231,6 +2420,31 @@ button.staff-date-label:focus-visible,
    étiquettes y devenaient un bloc rigide qui poussait le nom ET le pied HORS
    de la carte (mesuré : contenu 240px dans une carte de 227px). */
 .booking.dens-xs .reservation-tags { display: none; }
+/* Sur une carte d'une seule ligne, l'offre et l'heure cèdent : elles sont les
+   deux rangs qui suivent le nom, et le nom ne part jamais. L'heure reste
+   déductible de la position dans la grille, l'offre reste dans l'infobulle et
+   dans la fiche. Mesuré : « 20:00 · Lea Lambert · 9j · 0h30 » demande 159px sur
+   une piste qui en offre 147. */
+/* L'OFFRE NE SE MASQUE PAS D'OFFICE SUR UNE CARTE D'UNE SEULE LIGNE.
+   Première version : `display: none` sur toute carte `dens-xs`. C'était refaire
+   mot pour mot l'erreur du 2026-08-13 (journal 142) : la forme « une seule
+   ligne » se décide sur la HAUTEUR, donc une carte de 30 min posée sur une
+   piste de 290px se voyait retirer son offre alors qu'il restait 200px de vide.
+   Comme le pied, l'offre entre donc DANS la ligne unique (`display: contents`)
+   et son texte cède tout seul quand la place manque : base zéro + croissance,
+   aucun seuil décidé à l'avance. */
+.booking.dens-xs .bk-time { display: none; }
+/* LES MARQUEURS ONT UN RANG, COMME TOUT LE RESTE. En `dens-xs` la tête est en
+   `display: contents` : ses enfants entrent DANS la ligne unique et disputent
+   la place au nom. Ajoutés sans rang, ils décalaient de 12 à 27px des planchers
+   calculés au pixel, et le contenu sortait de la carte (mesuré : 117px dans une
+   carte de 105px). Ils partent donc en premier, avec les étiquettes : une
+   consigne se lit dans la fiche, un nom ne se lit nulle part ailleurs. */
+.booking.dens-xs .bk-flags { display: none; }
+/* Même raison pour le séparateur : il ne dit rien que la gouttière ne dise
+   déjà, et ses 7px suffisaient à faire sortir le contenu de 4px sur une piste
+   de 130px. Ce qui cède en premier est l'emphase, jamais la donnée. */
+.booking.dens-xs .bk-sep { display: none; }
 
 /* Vue non agrandie : les pills dupliquent le .b-tag / la durée, on garde la
    densité. En plein écran, les tags ne reviennent que sur les cartes hautes. */
@@ -2298,10 +2512,15 @@ button.staff-date-label:focus-visible,
 @container piste (max-width: 121px) {
   .booking.dens-xs .bk-dur { display: none; }
 }
-/* Même rang, carte HAUTE : le nom a sa propre ligne, seule la ligne du bas est
-   en jeu. Plancher : offre (0px) + 6 + état (11px) + 6 + effectif (22,6px) + 5
-   + durée (26,4px) = 71px de contenu, soit ~96px de piste. */
-@container piste (max-width: 96px) {
+/* Même rang, carte HAUTE. LE PLANCHER A BAISSÉ PARCE QUE LA LIGNE A CHANGÉ DE
+   CONTENU : depuis que l'offre a sa propre ligne et que l'état est remonté
+   contre le nom, la ligne du bas ne porte plus QUE les chiffres. Elle ne
+   négocie donc plus avec rien. Nouveau plancher : effectif (22,6px) +
+   séparateur (7px) + durée (26,4px) = 56px de contenu, soit ~70px de piste,
+   contre 96px quand quatre éléments s'y partageaient la place. Garder l'ancien
+   plancher, c'était retirer la durée sur 26px de piste où elle tenait — et
+   c'est exactement ce que l'auditeur a signalé. */
+@container piste (max-width: 70px) {
   .booking .bk-dur { display: none; }
 }
 /* RANG 4 : l'effectif, dernier CHIFFRE. Sur la carte d'une seule ligne :
@@ -2893,8 +3112,13 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .res-section.offplanning .res-section-head .label { color: var(--warning); }
 .res-section.offplanning .res-section-head .count { background: var(--warning-soft); color: var(--warning); }
 
-.res-section-head .label { font-size: 13px; font-weight: 600; color: var(--text); }
+.res-section-head .label { font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.02em; }
 .res-section-head .table-summary { margin-top: 1px; }
+/* La barre de section passe de deux lignes à une : le sous-titre explicatif est
+   parti dans l'infobulle du titre. « Clients présents, à suivre maintenant »
+   sous « Sur place » explique un mot qui se comprend seul, et il coûtait une
+   ligne par section, sur toute la largeur, à chaque affichage. */
+.res-section-head { padding: 5px 18px; }
 
 .res-section-head .count {
   display: inline-grid;
@@ -2912,11 +3136,52 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .res-dense-list { display: flex; flex-direction: column; }
 
+/* CINQ COLONNES, ALIGNEES, AVEC UN EN-TETE ECRIT UNE FOIS.
+   Verbatim Movsar, 2026-08-14 : « c'est moche comme c'est designé et comment
+   c'est classé, ça fait trop à l'ancienne, on distingue mal, c'est cheap ».
+   Chaque ligne était un pavé libre de trois zones empilées : le nom, puis
+   jusqu'à trois rangées d'étiquettes, puis le téléphone et l'effectif en
+   petites lignes à icônes. Rien ne s'alignait verticalement d'une ligne à
+   l'autre, donc l'oeil devait RELIRE chaque dossier au lieu de balayer une
+   colonne. C'est exactement ce qui distingue une table d'une fiche recopiée.
+   Les colonnes sont partagées avec `.res-col-head` : une seule déclaration,
+   donc l'en-tête ne peut pas se désaligner du contenu. */
+/* AUCUNE COLONNE NE SE MESURE SUR SON CONTENU.
+   Chaque ligne est sa PROPRE grille : une colonne `auto` se calcule donc ligne
+   par ligne, et il suffit qu'un dossier porte une pastille « 24€ payé » de plus
+   que son voisin pour que ses quatre autres colonnes glissent. C'est ce qui se
+   voyait : « Bowling Classique » commençait 44px plus à gauche sur la ligne
+   payée que sur les six autres, et l'en-tête ne tombait au-dessus d'aucune des
+   deux. Toutes les largeurs sont donc déterminées à l'avance, et la colonne
+   d'état est fixe : 314px mesurés (3 boutons de 214px + 3 outils de 88px + la
+   gouttière), sans dépendre de ce que la ligne contient. */
+.res-col-head,
 .res-row {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1.7fr) minmax(110px, 0.6fr) auto;
+  grid-template-columns: 54px minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(96px, 0.44fr) 314px;
   gap: var(--space-3);
   align-items: center;
+}
+.res-col-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 6px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Un en-tête de colonne s'aligne sur SON contenu, sinon il désigne autre chose
+   que ce qu'il surmonte. Les quatre premières colonnes sont ferrées à gauche
+   comme leurs cellules ; « État » est à droite comme ses boutons. */
+.res-col-head > span { text-align: left; }
+.res-col-head > span:last-child { text-align: right; }
+
+.res-row {
   padding: 7px 18px;
   border: 0;
   border-bottom: 1px solid var(--line);
@@ -2934,6 +3199,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .res-row.arrived { box-shadow: inset 2px 0 0 var(--warning); }
 .res-row.paid { box-shadow: inset 2px 0 0 var(--success); opacity: 0.72; }
 
+.res-c-time,
 .res-row-time {
   display: flex;
   flex-direction: column;
@@ -2943,12 +3209,45 @@ body.staff-mode.laser-dragging * { user-select: none; }
   font-variant-numeric: tabular-nums;
 }
 
+.res-c-time strong,
 .res-row-time strong { font-size: 13px; font-weight: 600; line-height: 1.15; }
+.res-c-time span,
 .res-row-time span { font-size: 10px; color: var(--muted); }
 
-.res-row-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.res-row-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+/* COLONNE CLIENT : qui vient, et combien ils sont. Le TELEPHONE en est sorti.
+   Il occupait une ligne entière sur chaque dossier, avec son icône, et un
+   numéro ne se lit pas en balayage : on l'appelle depuis la fiche, où il est
+   cliquable. Sept numéros affichés, zéro utilisé par regard. */
+.res-c-client { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .res-row-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.res-c-pax { font-size: 11px; color: var(--muted); }
+
+/* COLONNE RESERVATION : ce qui a été acheté, écrit UNE fois. */
+.res-c-what { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.res-offer { font-size: 12px; font-weight: 500; color: var(--text); }
+.res-offer.is-formule { color: var(--accent-strong); font-weight: 600; }
+.res-offer.is-laser { color: var(--info); }
+.res-c-what .bk-flags { gap: 4px; }
+
+/* COLONNE OU : les numéros seuls. Le mot qui les nomme est dans l'en-tête. */
+.res-c-where { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* COLONNE ETAT : l'action principale reste visible, les outils rares
+   n'apparaissent qu'au survol ou au clavier. Six contrôles par ligne × sept
+   lignes = quarante-deux cibles à l'écran pour une liste qu'on parcourt ;
+   trois d'entre elles (éditer, annuler, supprimer) servent une fois par jour.
+   Elles restent atteignables au clavier : `:focus-within` les rend visibles,
+   donc la tabulation ne traverse jamais un bouton invisible. */
+.res-c-state { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.res-c-state .res-row-tools {
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.res-row:hover .res-row-tools,
+.res-c-state:focus-within .res-row-tools { opacity: 1; }
+@media (hover: none) {
+  .res-c-state .res-row-tools { opacity: 1; }
+}
 
 .type-badge {
   display: inline-flex;

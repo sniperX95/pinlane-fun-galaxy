@@ -121,7 +121,8 @@
     "test:openrouter-frontier": "node scripts/openrouter-frontier-check.js",
     "test:second-client": "node scripts/second-client-onboarding-check.js",
     "test:demo-fidelity": "node scripts/demo-fidelity-check.js",
-    "test:status-toggle": "node scripts/status-toggle-check.js"
+    "test:status-toggle": "node scripts/status-toggle-check.js",
+    "test:console-contrast": "node scripts/console-contrast-check.js"
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",

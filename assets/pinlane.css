@@ -55,8 +55,14 @@
   --line: #ebebeb;
   --line-strong: #d9d9d9;
   --text: #0a0a0a;
-  --muted: #666666;
-  --faint: #6f6f6f; /* AA : 5.0:1 sur --surface, 4.5:1 sur --subtle */
+  /* Trois rangs de texte, et le plancher d'un rang est le fond le plus SOMBRE
+     qu'il ait le droit d'habiter. Ce n'est pas --subtle : c'est --accent-soft,
+     ce que l'audit de toute la console a etabli le 2026-08-14 (--faint y tombait
+     a 4.41:1 alors que son commentaire ne parlait que de --subtle a 4.49:1).
+     --muted descend avec --faint pour que la hierarchie ne s'aplatisse pas :
+     l'ecart perceptuel muted/faint passe de 3.6 a 5.7 unites de L*. */
+  --muted: #5e5e5e; /* AA : 6.5:1 sur --surface, 5.8:1 sur --subtle, 5.7:1 sur --accent-soft */
+  --faint: #6c6c6c; /* AA : 5.3:1 sur --surface, 4.7:1 sur --subtle, 4.6:1 sur --accent-soft */
 
   /* Accent (unique) */
   --accent: #0070f3;
@@ -168,8 +174,8 @@
   --line: #262626;
   --line-strong: #3d3d3d;
   --text: #ededed;
-  --muted: #a1a1a1;
-  --faint: #828282; /* AA : 4.6:1 sur --subtle #1a1a1a */
+  --muted: #a1a1a1; /* AA : 8.4:1 sur --surface, 6.3:1 sur --accent-soft */
+  --faint: #8a8a8a; /* AA : 5.7:1 sur --surface, 5.0:1 sur --subtle, 4.7:1 sur --accent-soft */
 
   --accent: #3291ff;
   --accent-strong: #52a8ff;

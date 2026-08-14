@@ -2020,6 +2020,20 @@ button.staff-date-label:focus-visible,
 .booking.laser-direct { background: var(--info-soft); border-left-color: var(--info); }
 .booking.laser-formula { background: var(--accent-soft); border-left-color: var(--accent-strong); }
 
+/* LA TETE : QUI, PUIS L ETAT. Movsar, 2026-08-14 : « l'ordre des informations
+   n'a pas de logique de lecture ». La carte se lisait nom, activite, etat,
+   effectif, duree. Au comptoir, la question qui suit « qui vient ? » n'est pas
+   « quelle activite ? » (sur un planning de bowling, c'est du bowling) mais
+   « est-il arrive ? est-ce paye ? ». L etat remonte donc contre le nom, et
+   tout le reste passe apres. */
+.booking-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.booking-head .booking-name { flex: 1 1 auto; }
+
 .booking-name {
   font-size: 12px;
   font-weight: 600;
@@ -2029,14 +2043,61 @@ button.staff-date-label:focus-visible,
   text-overflow: ellipsis;
 }
 
+/* UNE CARTE QUI A DE LA PLACE S EN SERT. Sur une carte haute, le nom cesse de
+   tenir sur une ligne coupee a l ellipse : il passe a la ligne, donc il se
+   coupe entre deux MOTS et plus au milieu d un. Deux lignes au maximum, bornees
+   en hauteur pour que le contenu ne deborde jamais de la carte. */
+.booking.dens-lg .booking-name {
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: normal;
+  max-height: 2.32em;
+}
+
+/* L ETIQUETTE D ACTIVITE : ENTIERE OU ABSENTE, JAMAIS UN MORCEAU.
+   `text-overflow: ellipsis` rendait « Bowl… » a partir de « Bowling », un mot
+   pourtant deja raccourci cote JavaScript. Un mot coupe est PIRE qu un mot
+   absent : il oblige a deviner, et il signe un logiciel qu on n a pas fini.
+   La boite est un CONTENEUR DE REQUETE : sa largeur est exactement la place
+   qui reste une fois le nom, l etat et les chiffres poses (`flex: 1 1 0`,
+   base zero). Le texte ne s affiche que si cette place le contient EN ENTIER.
+   Rien n est devine : le seuil se lit sur la place reellement disponible, et
+   il suit la taille de police puisqu il est exprime en `em`. */
 .b-tag {
   font-size: 10px;
   line-height: 1.2;
   color: var(--muted);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  container-type: inline-size;
+  container-name: etiquette;
 }
+.b-tag-text {
+  display: none;
+  white-space: nowrap;
+}
+/* Le seuil est la LARGEUR RECLAMEE PAR CE TEXTE-LA, pas celle du pire mot
+   possible. `planningLabelWidthUnits` la rend en unites de caractere moyen
+   (majuscules et chiffres comptent 1,3, les signes etroits 0,6) ; une unite
+   vaut 0,58 em, calibre sur des mesures au navigateur : « Bowling » demande
+   37,1 px a 10 px de police et son seuil tombe a 40,6 px.
+   Tout est en `em` : le meme jeu de regles vaut donc en fenetre normale
+   (10 px) et en fenetre agrandie (12 px), sans rien dupliquer. */
+@container etiquette (min-width: 0.58em) { .b-tag.lab-1 .b-tag-text { display: block; } }
+@container etiquette (min-width: 1.16em) { .b-tag.lab-2 .b-tag-text { display: block; } }
+@container etiquette (min-width: 1.74em) { .b-tag.lab-3 .b-tag-text { display: block; } }
+@container etiquette (min-width: 2.32em) { .b-tag.lab-4 .b-tag-text { display: block; } }
+@container etiquette (min-width: 2.90em) { .b-tag.lab-5 .b-tag-text { display: block; } }
+@container etiquette (min-width: 3.48em) { .b-tag.lab-6 .b-tag-text { display: block; } }
+@container etiquette (min-width: 4.06em) { .b-tag.lab-7 .b-tag-text { display: block; } }
+@container etiquette (min-width: 4.64em) { .b-tag.lab-8 .b-tag-text { display: block; } }
+@container etiquette (min-width: 5.22em) { .b-tag.lab-9 .b-tag-text { display: block; } }
+@container etiquette (min-width: 5.80em) { .b-tag.lab-10 .b-tag-text { display: block; } }
+@container etiquette (min-width: 6.38em) { .b-tag.lab-11 .b-tag-text { display: block; } }
+@container etiquette (min-width: 6.96em) { .b-tag.lab-12 .b-tag-text { display: block; } }
+@container etiquette (min-width: 7.54em) { .b-tag.lab-13 .b-tag-text { display: block; } }
+@container etiquette (min-width: 8.12em) { .b-tag.lab-14 .b-tag-text { display: block; } }
+@container etiquette (min-width: 8.70em) { .b-tag.lab-15 .b-tag-text { display: block; } }
+@container etiquette (min-width: 9.28em) { .b-tag.lab-16 .b-tag-text { display: block; } }
 
 /* Pied de carte : offre (gauche, tronquée) + état + effectif/durée (droite).
    IL N'EST PLUS ÉPINGLÉ EN BAS. `margin-top: auto` le collait au bord inférieur,
@@ -2149,6 +2210,11 @@ button.staff-date-label:focus-visible,
    et il a donc fini masqué d'office, y compris sur une carte de 290px où il
    restait 200px de vide. C'est le défaut que Movsar voyait « quand j'agrandis ». */
 .booking.dens-xs .booking-name { flex: 0 1 auto; min-width: 4ch; font-size: 11px; }
+/* La TETE s aplatit exactement comme le pied : sur une seule ligne, le nom et
+   le repere d etat sont deux elements de la meme ligne, pas une boite qui
+   negocierait la place en bloc avec le reste. L ordre de lecture reste
+   celui de la source : nom, etat, libelle, effectif, duree. */
+.booking.dens-xs .booking-head { display: contents; }
 .booking.dens-xs .booking-foot { display: contents; }
 /* `flex: 1 1 0` = base ZÉRO + croissance : le libellé n'obtient QUE la place
    qui reste une fois le nom et les chiffres posés. Il ne prend jamais un pixel
@@ -2173,14 +2239,21 @@ button.staff-date-label:focus-visible,
 
 /* ----------------------------------------------------------------------------
    HIÉRARCHIE DE DÉGRADATION - la règle est écrite ici, pas laissée au navigateur
-   Un gérant qui regarde son planning a besoin, DANS CET ORDRE : QUI vient,
-   COMBIEN ils sont, COMBIEN DE TEMPS ils restent. Quand la place manque, on
-   retire donc par le BAS de cette liste, jamais par le haut :
+   Un gérant qui regarde son planning a besoin, DANS CET ORDRE : QUI vient, OÙ
+   IL EN EST (arrivé, payé), COMBIEN ils sont, COMBIEN DE TEMPS ils restent.
+   Quand la place manque, on retire donc par le BAS de cette liste, jamais par
+   le haut :
      1. les étiquettes (formule / note / occasion)  partent en premier
      2. le libellé d'activité (.b-tag)
      3. la durée (.bk-dur)
      4. l'effectif (.bk-pax)
-     5. le nom (.booking-name)                      ne part JAMAIS
+     5. le repère d'état (.bk-state)
+     6. le nom (.booking-name)                      ne part JAMAIS
+   L'ÉTAT EST REMONTÉ AU-DESSUS DES CHIFFRES le 2026-08-14, sur la demande de
+   Movsar (« qui, puis l'état, puis le reste »). Il partait avant eux, ce qui
+   voulait dire qu'une carte serrée disait combien ils sont sans dire s'ils
+   sont là. Les deux planchers sont donc échangés : l'état survit maintenant
+   à l'effectif, exactement comme il se lit avant lui.
    Le déclencheur est la largeur réelle de la piste, mesurée par le navigateur à
    chaque changement de taille ET de zoom. Aucun seuil JavaScript à re-calculer,
    donc rien qui puisse devenir périmé entre deux rendus.
@@ -2231,28 +2304,33 @@ button.staff-date-label:focus-visible,
 @container piste (max-width: 96px) {
   .booking .bk-dur { display: none; }
 }
-/* RANG 3 : l'état. Sur la carte d'une seule ligne seulement : sur une carte
-   haute, le nom a sa propre ligne et le repère de 11px tient jusqu'à 52px de
-   piste. Plancher : 30 + 6 + 6 + 11 + 6 + 22,6 = 81,6px de contenu, ~100px de
-   piste. */
+/* RANG 4 : l'effectif, dernier CHIFFRE. Sur la carte d'une seule ligne :
+   nom 4ch (30px) + gouttière (6px) + état (11px) + gouttière (6px) + effectif
+   sans pastille (22,6px) = 75,6px de contenu, ~100px de piste. */
+/* On retire l EFFECTIF, pas la boite qui le contient. Retirer `.booking-stats`
+   en bloc emportait aussi la duree, qui a son propre plancher plus haut : deux
+   regles pour un meme rang, et un auditeur qui, en remettant la boite, mesurait
+   une duree ecrasee a 12px et croyait a un masquage abusif. Un rang, une
+   regle, un element. */
 @container piste (max-width: 100px) {
+  .booking.dens-xs .bk-pax { display: none; }
+}
+/* RANG 5 : le repère d'état, dernier avant le nom seul. Il ne fait que 11px et
+   il répond à la question du comptoir : il tient donc le plus longtemps.
+   Plancher sur la carte d'une seule ligne : 30 + 6 + 11 = 47px de contenu,
+   ~84px de piste. Sur une carte HAUTE, le nom a sa propre ligne et ne dispute
+   rien : l'effectif tient jusqu'à ~64px de piste et l'état jusqu'à ~48px, en
+   dessous du plancher de lisibilité d'une colonne (44px) qui est de toute
+   façon un défaut à lui seul. Confondre les deux formes, c'était retirer un
+   rang d'une carte qui avait la place de l'afficher : le gate l'a vu. */
+@container piste (max-width: 84px) {
   .booking.dens-xs .bk-state { display: none; }
 }
-/* RANG 4 : l'effectif, dernier chiffre avant le nom seul. Sur la carte d'une
-   seule ligne : 30 + 6 + 6 + 22,6 = 64,6px de contenu, ~84px de piste.
-   Sur une carte HAUTE, le nom ne dispute rien : l'état tient jusqu'à ~64px de
-   piste et l'effectif jusqu'à ~48px, en dessous du plancher de lisibilité d'une
-   colonne (44px) qui est de toute façon un défaut à lui seul. Confondre les
-   deux formes, c'était retirer l'effectif d'une carte de 33px de large qui
-   avait la place de l'afficher : le gate l'a vu. */
-@container piste (max-width: 84px) {
-  .booking.dens-xs .booking-stats { display: none; }
-}
 @container piste (max-width: 64px) {
-  .booking .bk-state { display: none; }
+  .booking .bk-pax { display: none; }
 }
 @container piste (max-width: 48px) {
-  .booking .booking-stats { display: none; }
+  .booking .bk-state { display: none; }
 }
 
 .reservation-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
@@ -2631,7 +2709,17 @@ body.staff-mode.laser-dragging * { user-select: none; }
    à 640px et défile DANS LUI-MÊME : la page garde une hauteur stable quel que
    soit le nombre de dossiers, et la grille reste à portée de regard au lieu
    d'être repoussée par sa propre répétition. Aucune ligne n'est retirée. */
-.table-box {
+/* GARDE :not(.hidden), voir la note en tête de ce fichier. C'est ce
+   `display: flex`, posé le 2026-08-13 pour borner le panneau, qui a rendu
+   INERTES les deux correctifs JavaScript du 2026-08-14 (« la liste du jour ne
+   suit plus le visiteur », puis « le masquage se déduit ») : le JS posait bien
+   `.hidden` sur #staffTableBox, et `.table-box { display: flex }` la battait
+   dans la cascade — même spécificité, mais cette feuille est chargée après
+   pinlane.css. La liste du jour restait donc peinte sous Vue d'ensemble,
+   Terrain, Clients, Tarifs, Établissement... sur 16 pages sur 18, mesuré.
+   Un correctif JavaScript qui n'est pas vérifié à l'écran peut être exact et
+   ne rien changer. */
+.table-box:not(.hidden) {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);

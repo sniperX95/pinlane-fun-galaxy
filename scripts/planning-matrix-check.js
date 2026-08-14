@@ -325,7 +325,7 @@ window.__PLANNING_AUDIT__ = function (ctx) {
   });
 
   // 3. texte tronque sans strategie de troncature
-  const TEXT_SEL = '.booking-name, .booking .b-tag, .booking .bk-pax, .booking .bk-dur, .booking .reservation-tag, .booking .activity-pill, .lane-header .pl, .lane-header .num, .hour-cell, .planning-blocked span, .current-badge';
+  const TEXT_SEL = '.booking-name, .booking .b-tag-text, .booking .bk-pax, .booking .bk-dur, .booking .reservation-tag, .booking .activity-pill, .lane-header .pl, .lane-header .num, .hour-cell, .planning-blocked span, .current-badge';
   [...grid.querySelectorAll(TEXT_SEL)].filter(visible).forEach((el) => {
     const cs = getComputedStyle(el);
     if (cs.display === 'inline') return;
@@ -340,6 +340,24 @@ window.__PLANNING_AUDIT__ = function (ctx) {
     const fs = parseFloat(cs.fontSize) || 0;
     const rr = R(el);
     if (fs && rr.height > 0 && rr.height + 0.5 < fs) add('texte-ecrase-en-hauteur', el.className + ' : boite ' + num(rr.height) + 'px pour une police de ' + fs + 'px');
+  });
+
+  // 3 bis. AUCUN FRAGMENT DE MOT, quelle que soit la strategie de troncature.
+  // Le detecteur ci-dessus ACCEPTAIT l ellipse : « une troncature annoncee est
+  // une troncature honnete ». C est faux pour un element qui peut disparaitre.
+  // Movsar, 2026-08-14, sur une capture en fenetre agrandie : « Camille Laurent
+  // · Bowl… · ✓ · 6j · 1h ». « Bowl… » n apprend rien, il oblige a deviner.
+  // Ces elements-la sont TOUS facultatifs : ils ont le droit de disparaitre,
+  // donc ils n ont jamais le droit de s afficher a moitie. Le nom, lui, ne
+  // disparait jamais : il garde son ellipse comme dernier recours, et c est
+  // l assertion nom-illisible plus haut qui le protege.
+  const ENTIER_SEL = '.booking .b-tag-text, .booking .bk-pax, .booking .bk-dur, .booking .reservation-tag, .booking .activity-pill';
+  [...grid.querySelectorAll(ENTIER_SEL)].filter(visible).forEach((el) => {
+    if (!(el.textContent || '').trim()) return;
+    if (el.scrollWidth > el.clientWidth + 1) {
+      add('mot-coupe', el.className + ' : « ' + (el.textContent || '').trim().slice(0, 24)
+        + ' » rendu sur ' + el.clientWidth + 'px pour ' + el.scrollWidth + 'px de texte (entier ou absent, jamais un morceau)');
+    }
   });
 
   // 4. chevauchement de cartes dont les creneaux ne se chevauchent pas
@@ -460,11 +478,28 @@ window.__PLANNING_AUDIT__ = function (ctx) {
     return fs * 0.55 * chars;
   };
   // Rang dans la hierarchie de degradation, du premier qui saute au dernier.
+  // L ORDRE EST CELUI DE LA HIERARCHIE ECRITE DANS LA CSS, du premier retire au
+  // dernier : etiquettes, libelle, duree, effectif, ETAT, nom (jamais).
+  // L etat est passe SOUS l effectif le 2026-08-14 : « qui, puis l etat, puis
+  // le reste ». Le libelle se lit sur son enfant .b-tag-text : c est lui que
+  // la requete de conteneur affiche ou non ; la boite .b-tag, elle, reste en
+  // place pour absorber l espace libre.
+  // affichage : la valeur de display a reposer quand on remet l element pour
+  // le mesurer (un span rendu en inline ne rapporte ni clientWidth ni
+  // scrollWidth, donc « il tenait » deviendrait toujours vrai).
+  // entierRequis : cet element ne s affiche jamais a moitie, la question
+  // « est-ce qu il tenait ? » veut donc dire « EN ENTIER », pas « au moins
+  // quatre caracteres ».
+  // marge : la granularite DECLAREE de la regle. Le seuil du libelle vient
+  // d une estimation de largeur en unites de caractere, arrondie a l unite
+  // superieure : il reserve donc jusqu a ~8px de trop. Une regle prudente de
+  // quelques pixels n est pas une regle fausse ; en dessous de cette marge on
+  // ne signale rien, au-dessus si.
   const RANKED = [
-    { sel: '.b-tag', nom: 'libelle d activite' },
+    { sel: '.b-tag-text', nom: 'libelle d activite', affichage: 'block', entierRequis: true, marge: 8 },
     { sel: '.bk-dur', nom: 'duree' },
-    { sel: '.bk-state', nom: 'repere d etat' },
     { sel: '.bk-pax', nom: 'effectif' },
+    { sel: '.bk-state', nom: 'repere d etat' },
   ];
   bookings.forEach((bk) => {
     const nameEl = bk.querySelector('.booking-name');
@@ -489,7 +524,7 @@ window.__PLANNING_AUDIT__ = function (ctx) {
       while (p && p !== bk.parentElement) {
         if (getComputedStyle(p).display === 'none') {
           undo.push([p, p.style.getPropertyValue('display'), p.style.getPropertyPriority('display')]);
-          p.style.setProperty('display', naturalDisplay(p), 'important');
+          p.style.setProperty('display', (p === el && item.affichage) || naturalDisplay(p), 'important');
         }
         p = p.parentElement;
       }
@@ -500,7 +535,10 @@ window.__PLANNING_AUDIT__ = function (ctx) {
       // fait deux caracteres, exiger 4 le rendrait indetectable), soit il en
       // montre au moins 4, comme le plancher du nom.
       const entier = el.scrollWidth <= el.clientWidth + 1;
-      const lisible = entier || shown >= minLegible(el, 4);
+      const marge = item.marge || 0;
+      const lisible = item.entierRequis
+        ? (entier && el.clientWidth - el.scrollWidth >= marge)
+        : (entier || shown >= minLegible(el, 4));
       // Personne au-dessus ne paie.
       const paye = above.some(([node, before]) => R(node).width < before - 0.5);
       undo.forEach(([node, value, priority]) => {
@@ -821,7 +859,12 @@ async function main() {
       document.getElementById('planningBox').style.setProperty('--planning-lane-w', '290px');
       const style = document.createElement('style');
       style.id = 'qa-mutation-masquage';
-      style.textContent = '#planningGridWrap .booking.dens-xs .booking-foot .b-tag{display:none !important;}';
+      // C est bien le TEXTE qu on masque : depuis le 2026-08-14 la boite
+      // `.b-tag` reste toujours en place (elle absorbe l espace libre et sert
+      // de conteneur de requete), et c est son enfant que la regle affiche ou
+      // non. Masquer la boite reviendrait a muter autre chose que la regle
+      // qu on veut mettre en defaut.
+      style.textContent = '#planningGridWrap .booking.dens-xs .booking-foot .b-tag .b-tag-text{display:none !important;}';
       document.head.appendChild(style);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const card = document.querySelector('#planningGridWrap .booking.dens-xs');

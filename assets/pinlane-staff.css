@@ -1785,14 +1785,21 @@ button.staff-date-label:focus-visible,
 .formules-group-head span { font-size: 12px; color: var(--muted); font-weight: 600; }
 
 /* Pill compacte de progression des activités (cartes planning + lignes terrain) */
+/* « 0/4 » EST UN COMPTEUR, PAS UNE ETIQUETTE.
+   Verbatim Movsar, 2026-08-14 : « les 0/4 0/5 etc, pareil, c'est moche et pas
+   pro ». La pastille lui donnait un cadre, un fond et une bordure, soit trois
+   couches de decoration pour deux chiffres qui ne disent qu'un avancement. En
+   chiffres tabulaires nus, il se lit comme la duree et l'effectif a cote de
+   lui, dans la meme famille typographique, sans emprunter la forme d'un statut. */
 .activity-pill {
   display: inline-flex; align-items: center; gap: 2px;
-  font-size: 10px; font-weight: 800; line-height: 1;
-  padding: 2px 6px; border-radius: var(--radius-full);
-  background: var(--subtle); color: var(--muted); border: 1px solid var(--line);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px; font-weight: 600; line-height: 1;
+  color: var(--faint);
   white-space: nowrap;
 }
-.activity-pill.done { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.activity-pill.done { color: var(--success); font-weight: 700; }
 
 /* Carte planning dont TOUTES les activités de formule sont faites : grisée + coche.
    Signal « ce groupe a tout terminé » d'un coup d'œil sur le planning. */
@@ -2135,21 +2142,31 @@ button.staff-date-label:focus-visible,
 /* DEUX LIGNES, MAIS JAMAIS UN TEXTE COUPÉ SANS LE DIRE.
    `text-overflow: clip` + `overflow-wrap: normal` : un nom qui contient un bloc
    insécable (« Ecole #90010 ») ne pouvait ni se couper, ni s'ellipser, donc il
-   SORTAIT de la carte — 44px de texte dans 31px de place, sur 259 des 324
+   SORTAIT de la carte : 44px de texte dans 31px de place, sur 259 des 324
    combinaisons de la matrice. Un texte tronqué sans ellipse ne se voit pas
    comme tronqué : le lecteur croit lire un nom entier.
    La coupe se fait donc entre MOTS quand c'est possible, à l'intérieur d'un
    bloc insécable seulement s'il ne rentre pas autrement, et la deuxième ligne
    se termine par une ellipse qui dit qu'il y a une suite. Le nom complet reste
    dans l'infobulle et dans la fiche. */
-.booking.dens-lg .booking-name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  overflow: hidden;
-  max-height: 2.32em;
+/* ET DEUX LIGNES SEULEMENT LA OU DEUX LIGNES SUFFISENT.
+   Mesure : le nom le plus long que `getPlanningBookingDisplayName` laisse passer
+   (26 caracteres) tient en deux lignes a partir de 112px de piste, jamais en
+   dessous. Sous ce seuil (en mobile, ou les pistes sont etroites) il en
+   demandait trois, et la boite bornee a deux en coupait une horizontalement :
+   « Entreprise Ardenne #9003 » rendu sur 28px de haut pour 42px de contenu.
+   Sous le seuil, le nom reste donc sur UNE ligne avec son ellipse, ce qui ne
+   produit jamais de coupe verticale. */
+@container piste (min-width: 10.2em) {
+  .booking.dens-lg .booking-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    max-height: 2.32em;
+  }
 }
 
 /* L ETIQUETTE D ACTIVITE : ENTIERE OU ABSENTE, JAMAIS UN MORCEAU.
@@ -2374,11 +2391,15 @@ button.staff-date-label:focus-visible,
   color: var(--muted);
   white-space: nowrap;
 }
+/* UNE DUREE INHABITUELLE N'EST PAS UNE ALERTE.
+   Verbatim Movsar, 2026-08-14 : « les heures speciales, donc celles qui ne sont
+   pas 1h, je les trouve pas belles, ca fait pas pro ». Une pastille ambre pleine
+   sur « 1h30 » emprunte le vocabulaire du DANGER pour dire une banalite : la
+   moitie des reservations d'un samedi ne durent pas une heure. Le chiffre se
+   distingue maintenant par sa GRAISSE et sa couleur de texte, comme une donnee
+   mise en avant, pas comme un avertissement. */
 .bk-dur.dur-special {
-  padding: 0 6px;
-  border-radius: var(--radius-full);
-  background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--text);
   font-weight: 700;
 }
 
@@ -2445,6 +2466,10 @@ button.staff-date-label:focus-visible,
    déjà, et ses 7px suffisaient à faire sortir le contenu de 4px sur une piste
    de 130px. Ce qui cède en premier est l'emphase, jamais la donnée. */
 .booking.dens-xs .bk-sep { display: none; }
+/* La pastille de progression aussi : sur la ligne unique elle occupe 32px qui
+   ne cèdent jamais, et elle dit un état de terrain, pas un fait de planning.
+   Elle a son écran ; le nom, l'effectif et la durée n'en ont pas d'autre. */
+.booking.dens-xs .activity-pill { display: none; }
 
 /* Vue non agrandie : les pills dupliquent le .b-tag / la durée, on garde la
    densité. En plein écran, les tags ne reviennent que sur les cartes hautes. */
@@ -2502,6 +2527,27 @@ button.staff-date-label:focus-visible,
   .booking .bk-pax.grp-xl { padding: 0; background: none; color: var(--text); }
   .booking .bk-dur.dur-special { padding: 0; background: none; }
 }
+/* RANG 0 bis : LE SUIVI ET LES CONSIGNES, avant toute donnée de planning.
+   Ces trois-là n'avaient de plancher qu'en `dens-xs`, donc sur une carte haute
+   ils ne cédaient JAMAIS et sortaient du cadre. Mesuré à 88px de piste (carte
+   utile 64px) : le pied demandait effectif 45 + gouttière 6 + pastille 32 =
+   83px, et la tête laissait 36px au nom une fois les marqueurs posés.
+   Les planchers sont CALCULÉS depuis ces mesures, pas choisis :
+   - pastille de progression : 83px de contenu → il faut 107px de piste (10,7em) ;
+     c'est du suivi terrain, elle a son écran, elle part la première ;
+   - marqueurs : nom 4ch (28) + 5 + marqueurs (23) + 5 + état (11) = 72px de
+     contenu → 96px de piste (9,6em) ; la consigne se lit dans la fiche ;
+   - séparateur : purement décoratif, il cède dès que la ligne se resserre.
+   En `em`, parce que la police passe de 10 à 12px en fenêtre agrandie. */
+@container piste (max-width: 10.7em) {
+  .booking .activity-pill { display: none; }
+}
+@container piste (max-width: 9.6em) {
+  .booking .bk-flags { display: none; }
+}
+@container piste (max-width: 12em) {
+  .booking .bk-sep { display: none; }
+}
 /* RANG 2 : LA DURÉE, sur la carte d'une seule ligne, où le nom, l'offre, l'état
    et les chiffres se partagent la MÊME ligne. Ce plancher est CALCULÉ, pas
    choisi : nom 4ch (30px) + gouttière (6px) + offre (0px, elle a déjà cédé) +
@@ -2518,7 +2564,7 @@ button.staff-date-label:focus-visible,
    négocie donc plus avec rien. Nouveau plancher : effectif (22,6px) +
    séparateur (7px) + durée (26,4px) = 56px de contenu, soit ~70px de piste,
    contre 96px quand quatre éléments s'y partageaient la place. Garder l'ancien
-   plancher, c'était retirer la durée sur 26px de piste où elle tenait — et
+   plancher, c'était retirer la durée sur 26px de piste où elle tenait, et
    c'est exactement ce que l'auditeur a signalé. */
 @container piste (max-width: 70px) {
   .booking .bk-dur { display: none; }
@@ -2933,7 +2979,7 @@ body.staff-mode.laser-dragging * { user-select: none; }
    INERTES les deux correctifs JavaScript du 2026-08-14 (« la liste du jour ne
    suit plus le visiteur », puis « le masquage se déduit ») : le JS posait bien
    `.hidden` sur #staffTableBox, et `.table-box { display: flex }` la battait
-   dans la cascade — même spécificité, mais cette feuille est chargée après
+   dans la cascade : même spécificité, mais cette feuille est chargée après
    pinlane.css. La liste du jour restait donc peinte sous Vue d'ensemble,
    Terrain, Clients, Tarifs, Établissement... sur 16 pages sur 18, mesuré.
    Un correctif JavaScript qui n'est pas vérifié à l'écran peut être exact et
@@ -3108,6 +3154,21 @@ body.staff-mode.laser-dragging * { user-select: none; }
 }
 
 .res-section + .res-section .res-section-head { border-top: 1px solid var(--line); }
+/* HORS PLANNING : LE BLOC ENTIER SE VOIT, PAS SEULEMENT SON TITRE.
+   Verbatim Movsar, 2026-08-14 : « les hors piste, mets plus en evidence, genre
+   en entourant en jaune ». Ce sont les seules reservations qui n'apparaissent
+   sur AUCUNE grille : les rater, c'est les oublier tout court. Seul l'en-tete
+   etait teinte, donc les lignes elles-memes se lisaient comme les autres. Le
+   bloc porte maintenant un cadre ambre continu, et chaque ligne garde le fond
+   qui la rattache a lui. */
+.res-section.offplanning {
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0 10px 8px;
+}
+.res-section.offplanning .res-row { background: color-mix(in srgb, var(--warning-soft) 42%, var(--surface)); }
+.res-section.offplanning .res-row:hover { background: color-mix(in srgb, var(--warning-soft) 70%, var(--surface)); }
 .res-section.offplanning .res-section-head { background: var(--warning-soft); }
 .res-section.offplanning .res-section-head .label { color: var(--warning); }
 .res-section.offplanning .res-section-head .count { background: var(--warning-soft); color: var(--warning); }
@@ -3162,10 +3223,13 @@ body.staff-mode.laser-dragging * { user-select: none; }
   gap: var(--space-3);
   align-items: center;
 }
+/* PAS DE `sticky` ICI, ET C'EST UN DEFAUT PAYE. Colle en haut, cet en-tete se
+   superposait a la barre de filtres qui defilait dessous : deux surfaces
+   collantes au meme `top`, dont l'une n'est pas opaque sur toute sa largeur,
+   donnent un empilement illisible (signale par Movsar, capture a l'appui). Les
+   en-tetes de SECTION sont deja collants et suffisent a dire ou on est ; celui
+   des colonnes se lit une fois, en haut, et part avec le defilement. */
 .res-col-head {
-  position: sticky;
-  top: 0;
-  z-index: 3;
   padding: 6px 18px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);

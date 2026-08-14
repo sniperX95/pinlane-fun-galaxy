@@ -103,6 +103,14 @@ async function installQaApi(page) {
         price: 20,
         type: 'bowling',
         label: 'Bowling classique',
+        // DEPUIS LE 2026-08-14, LE LIBELLE DE CARTE PORTE L OFFRE, PAS L ACTIVITE.
+        // Sur un planning de bowling, ecrire « Bowling » etait ecrire ce que la
+        // colonne dit deja ; une reservation sans formule n a donc plus de
+        // libelle du tout, et l assertion « le libelle s affiche quand la place
+        // le permet » n avait plus rien a observer. Cette carte porte une formule
+        // pour que le test continue de proteger ce qu il protegeait : un libelle
+        // masque alors qu il tenait (defaut signale par Movsar le 2026-08-13).
+        formuleId: 'f5',
       },
       {
         id: 9002,
@@ -153,6 +161,11 @@ async function installQaApi(page) {
         price: 234,
         type: 'bowling',
         label: 'Bowling 2h',
+        // Meme raison que la carte 9001 : sans formule, une carte de bowling n a
+        // plus de libelle depuis que celui-ci porte l offre au lieu de l activite
+        // de la colonne. Celle-ci en porte une, et sur une carte de 2h l offre a
+        // sa propre ligne : c est le cas le plus complet du planning.
+        formuleId: 'f1',
       },
       {
         id: 9005,
@@ -1092,7 +1105,12 @@ async function main() {
       // 9001 = bowling 30 min (dens-xs), 9002 = bowling 1h (durée standard),
       // 9004 = bowling 2h (dens-lg, durée ≠1h). Cartes laser via .laser-group-card.
       const bTagVisible = (root) => {
-        const bt = root && root.querySelector('.booking-foot .b-tag');
+        // L OFFRE A CHANGE DE PARENT le 2026-08-14 : elle a sa propre ligne
+        // (`.booking-offer`) sur une carte haute, et reste dans le pied sur une
+        // carte courte, la ou trois lignes ne tiennent pas. Le test cherche donc
+        // l etiquette dans la CARTE, pas dans un parent precis : c est sa
+        // visibilite qui est en jeu, pas l endroit ou elle vit.
+        const bt = root && root.querySelector('.b-tag');
         if (!bt) return false;
         return window.getComputedStyle(bt).display !== 'none';
       };
@@ -1181,7 +1199,10 @@ async function main() {
       renderPlanning();
       const cards = Array.from(document.querySelectorAll('.booking'));
       const tall = document.querySelector('.booking[data-booking-res-id="9004"]'); // 2h
-      const tallTag = tall && tall.querySelector('.booking-foot .b-tag');
+      // Sur une carte haute, l offre a QUITTE le pied pour sa propre ligne
+      // (2026-08-14) : une carte d 1h ne tient pas trois lignes, une carte de
+      // 1h30 et plus si. On cherche donc l etiquette dans la carte.
+      const tallTag = tall && tall.querySelector('.b-tag');
       return {
         noOverflow: cards.every((el) => (el.scrollHeight - el.clientHeight) <= 2),
         count: cards.length,

@@ -143,7 +143,13 @@ async function installMock(page) {
             // Un tiers des dossiers porte donc une formule, comme un vrai
             // samedi, ce qui donne aussi le libelle le plus long a loger
             // (« FORMULE 5 · Laser x2 », 20 caracteres contre 7 pour « Bowling »).
-            formuleId: seed % 3 === 0 ? 'f5' : null,
+            // PAS DE FORMULE ICI, ET C'EST DELIBERE : ce fichier est un fixture
+            // PARTAGE, `reservation-sheet-check` en extrait son faux centre. Une
+            // formule y fait ouvrir une fiche de formule, plus haute et plus
+            // fournie que la fiche simple sur laquelle ses plafonds ont ete
+            // mesures (741px pour un plafond de 560). La contre-epreuve du
+            // masquage n'en a plus besoin depuis qu'elle mute aussi la duree,
+            // dont la largeur ne depend d'aucun conteneur.
             notes: seed % 5 === 0 ? 'Gateau a sortir a la fin de la partie' : '',
           });
         });
@@ -879,7 +885,14 @@ async function main() {
       // une carte d une seule ligne. La mutation ne vise donc plus un parent
       // precis, sinon elle ne mord plus sur rien et la contre-epreuve devient
       // muette : elle vise le TEXTE de l etiquette, ou qu il vive.
-      style.textContent = '#planningGridWrap .booking.dens-xs .b-tag .b-tag-text{display:none !important;}';
+      // ET LA MUTATION PORTE SUR DEUX RANGS, PAS UN SEUL. Le libelle est le seul
+      // rang dont l affichage depend d une requete de CONTENEUR : sa largeur est
+      // la place qui reste, donc « est-ce qu il tenait ? » depend de ce que les
+      // autres rangs occupent au meme instant. En muter un deuxieme, dont la
+      // largeur est fixe (la duree), rend la contre-epreuve independante de cette
+      // negociation : si le detecteur voit l un OU l autre, il n est pas muet.
+      style.textContent = '#planningGridWrap .booking.dens-xs .b-tag .b-tag-text{display:none !important;}'
+        + '#planningGridWrap .booking.dens-xs .bk-dur{display:none !important;}';
       document.head.appendChild(style);
       requestAnimationFrame(() => requestAnimationFrame(() => {
         const card = document.querySelector('#planningGridWrap .booking.dens-xs');

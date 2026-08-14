@@ -13272,7 +13272,13 @@ function getBookingDensityClass(height, expanded) {
     if (height < 54) return 'dens-xs';
     return height >= 108 ? 'dens-lg' : 'dens-md';
   }
-  if (height < 40) return 'dens-xs';
+  // LE SEUIL D'UNE LIGNE EST CELUI OU DEUX LIGNES NE TIENNENT PLUS, et il se
+  // MESURE. Il valait 40px, choisi avant que la carte porte son contenu actuel :
+  // deux lignes (nom 13,8px + gouttiere 2px + chiffres 12px + 11px de calage
+  // vertical) en demandent 43. Une carte de 42px partait donc en deux lignes et
+  // son contenu sortait par le bas, a 4 pistes et 150 % de zoom. 46px laisse
+  // 44px utiles, soit un pixel de marge sur les 43 mesures.
+  if (height < 46) return 'dens-xs';
   if (height < 66) return 'dens-md';
   return 'dens-lg';
 }
@@ -13511,7 +13517,12 @@ function renderCardFlags(reservation) {
     marques.push({
       cls: 'flag-note',
       label: 'Note a lire',
-      path: '<path d="M12 8v5"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/>',
+      // UNE BULLE, PAS UN ROND D'ALERTE. Movsar, 2026-08-14 : « le petit badge
+      // attention est proche de celui qui montre la piste en retard, donc
+      // relou ». Les deux etaient un cercle : a 12px, un cercle avec un point
+      // ressemble a tous les autres cercles avec un point. Une bulle de message
+      // ne peut se confondre avec rien, et elle dit ce qu'elle est.
+      path: '<path d="M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z"/><path d="M8.4 8.6h7.6M8.4 11.8h4.8"/>',
     });
   }
   if (!marques.length) return '';
@@ -13521,16 +13532,22 @@ function renderCardFlags(reservation) {
     + `</span>`).join('')}</span>`;
 }
 
-function renderReservationTags(reservation) {
+// `contexteSeul` : ne rend QUE ce que la ligne ne dit pas deja ailleurs.
+// Dans la liste refaite, la formule est ecrite dans sa colonne, la duree dans
+// la colonne de gauche et les parties laser dans les marqueurs : les repeter en
+// etiquettes, c'est ecrire trois fois le meme fait, ce qui etait exactement le
+// defaut signale. Restent l'occasion et la note, qui n'ont aucune autre place.
+function renderReservationTags(reservation, options = {}) {
   const tags = [];
+  const contexteSeul = Boolean(options.contexteSeul);
   const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
-  if (reservation.type === 'formule' || formule) tags.push({ cls: 'formula', label: formule?.name || 'Formule' });
+  if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: formule?.name || 'Formule' });
   const bowlingDuration = getBowlingDurationForReservation(reservation);
-  if (bowlingDuration && Math.abs(bowlingDuration - 1) > 0.01) {
+  if (!contexteSeul && bowlingDuration && Math.abs(bowlingDuration - 1) > 0.01) {
     tags.push({ cls: 'duration', label: `Bowling ${formatDurationLabel(bowlingDuration)}` });
   }
   const laserGames = getLaserGameCountForReservation(reservation);
-  if (laserGames > 1) tags.push({ cls: 'laser-plus', label: `Laser x${laserGames}` });
+  if (!contexteSeul && laserGames > 1) tags.push({ cls: 'laser-plus', label: `Laser x${laserGames}` });
   // Occasion + note : sans ça, la liste dense du jour n'affiche RIEN d'une
   // réservation qui porte une demande particulière.
   const occasion = getReservationOccasion(reservation);
@@ -14482,7 +14499,7 @@ function renderReservationRow(r) {
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
-      ${renderCardFlags(r)}
+      ${renderReservationTags(r, { contexteSeul: true })}
       ${renderStaffOpsMini(r)}
       ${renderGuestOpsMini(r)}
     </div>

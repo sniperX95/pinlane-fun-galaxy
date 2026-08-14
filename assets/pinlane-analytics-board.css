@@ -407,7 +407,7 @@
 }
 .pab-viz-ico { width: 20px; height: 20px; flex: none; color: var(--muted); }
 .pab-viz-ico rect { fill: currentColor; }
-.pab-pick-viz[aria-pressed="true"] .pab-viz-ico { color: var(--accent); }
+.pab-pick-viz[aria-pressed="true"] .pab-viz-ico { color: var(--accent-strong); }
 .pab-viz-name { font-weight: 500; }
 
 .pab-pick-metric:focus-visible,

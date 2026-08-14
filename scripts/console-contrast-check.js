@@ -627,21 +627,39 @@ function staticChecks() {
   // couple accent/accent-soft plafonne a 4:1, et le systeme a deja un jeton
   // pour ce role, `-strong`. Ce controle-la est STATIQUE parce qu'un ecran qui
   // n'est pas rendu ne se mesure pas : le balayage n'en voyait que 5 sur 21.
+  // Le fond et la couleur ne sont PAS toujours dans la meme regle : sur l'ecran
+  // Equipe & acces, `.staff-permission-toggle.is-on` peint le fond et
+  // `.staff-permission-toggle.is-on small` pose le texte. Un controle limite a
+  // la meme regle est le meme angle mort, en plus petit : on collecte donc les
+  // selecteurs qui PEIGNENT un fond -soft, puis on regarde tout selecteur qui
+  // en DESCEND.
   const FILES = ['assets/pinlane.css', 'assets/pinlane-staff.css', 'assets/pinlane-charts.css', 'assets/pinlane-daterange.css', 'assets/pinlane-analytics-board.css'];
-  const fautifs = [];
+  const regles = [];
   FILES.forEach((f) => {
     const css = fs.readFileSync(path.join(ROOT, f), 'utf8');
     const re = /([^{}]+)\{([^{}]*)\}/g;
     let m;
     while ((m = re.exec(css))) {
-      const body = m[2];
-      const softBg = /background[^;]*:\s*[^;]*var\(--(accent|info)-soft\)/.test(body);
-      const plainText = /(^|;)\s*color:\s*var\(--(accent|info)\)\s*(;|$)/.test(body);
-      if (softBg && plainText) {
-        fautifs.push(`${f}:${css.slice(0, m.index).split('\n').length} ${m[1].trim().split('\n').pop().slice(0, 60)}`);
-      }
+      const selRaw = m[1].trim().split('\n').pop().trim();
+      if (!selRaw || selRaw.startsWith('@')) continue;
+      selRaw.split(',').forEach((s) => {
+        regles.push({
+          f, ligne: css.slice(0, m.index).split('\n').length, sel: s.trim(), body: m[2],
+          softBg: /background[^;]*:\s*[^;]*var\(--(accent|info)-soft\)/.test(m[2]),
+          plainText: /(^|;)\s*color:\s*var\(--(accent|info)\)\s*(;|$)/.test(m[2]),
+        });
+      });
     }
   });
+  const fonds = regles.filter((r) => r.softBg).map((r) => r.sel);
+  const descend = (enfant, parent) => {
+    if (enfant === parent) return true;
+    if (!enfant.startsWith(parent)) return false;
+    return /[\s.:>#[]/.test(enfant.charAt(parent.length));
+  };
+  const fautifs = regles
+    .filter((r) => r.plainText && fonds.some((p) => descend(r.sel, p)))
+    .map((r) => `${r.f}:${r.ligne} ${r.sel.slice(0, 70)}`);
   ok(fautifs.length === 0, `aucune regle ne pose --accent/--info en TEXTE sur un fond -soft (${fautifs.length} trouvee(s))`);
   if (fautifs.length) fautifs.slice(0, 25).forEach((l) => console.log(`     ${l}`));
 

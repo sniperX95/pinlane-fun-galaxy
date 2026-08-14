@@ -641,7 +641,7 @@ table.pl-table tbody tr:hover {
 .badge-info,
 .badge-accent {
   background: var(--info-soft);
-  color: var(--info);
+  color: var(--info-strong);
 }
 
 .badge-plain::before {
@@ -909,7 +909,7 @@ kbd, .kbd {
 }
 
 .info-box svg {
-  color: var(--info);
+  color: var(--info-strong);
   margin-top: 1px;
 }
 

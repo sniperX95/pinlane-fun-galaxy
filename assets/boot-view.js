@@ -34,6 +34,14 @@
  * reste seul juge : sa reponse ecrase ou efface ce rappel quelques instants
  * plus tard.
  */
+/* Depuis la purge de marque, la meme memoire porte aussi l'IDENTITE du centre
+ * (nom d'onglet, logo, liens du site, ville du sous-titre) : index.html est
+ * neutre, l'identite est une donnee de centre ecrite par applyCenterIdentity
+ * (assets/app-main.js). Le titre se pose tout de suite ; le logo et les liens
+ * attendent que le DOM existe (DOMContentLoaded arrive avant tout retour
+ * reseau). Le visiteur ne voit jamais l'identite d'un autre centre, et le
+ * serveur reste seul juge : sa reponse ecrase ce rappel quelques instants
+ * plus tard. */
 (function () {
   var TOKENS = {
     accent: '--tenant-accent',
@@ -42,6 +50,8 @@
     accentContrast: '--tenant-accent-contrast',
   };
   var HEX = /^#[0-9a-f]{6}$/i;
+  var LOGO_URL = /^(?:https:\/\/[^\s"'<>]+|\.?\/?assets\/[a-z0-9_/.-]+)$/i;
+  var SITE_URL = /^https:\/\//i;
   try {
     var params = new URLSearchParams(location.search || '');
     var center = String(params.get('center') || params.get('centerId') || '').trim().toLowerCase();
@@ -54,6 +64,55 @@
       if (HEX.test(String(brand[key] || ''))) root.style.setProperty(TOKENS[key], brand[key]);
       if (HEX.test(String(dark[key] || ''))) root.style.setProperty(TOKENS[key] + '-dark', dark[key]);
     });
+
+    var identity = brand.identity && typeof brand.identity === 'object' ? brand.identity : null;
+    if (!identity) return;
+    var name = String(identity.name || '').trim().slice(0, 120);
+    if (name) document.title = name + ' · Réservation';
+    var applyIdentityDom = function () {
+      var logo = document.getElementById('centerLogo');
+      var wordmark = document.getElementById('centerWordmark');
+      var logoUrl = String(identity.logoUrl || '').trim();
+      if (logo && wordmark) {
+        if (logoUrl.length <= 300 && LOGO_URL.test(logoUrl)) {
+          logo.src = logoUrl;
+          logo.alt = name || 'Logo du centre';
+          logo.hidden = false;
+          wordmark.hidden = true;
+          var wrap = logo.closest ? logo.closest('.logo-wrap') : null;
+          if (wrap && identity.logoOnDark === true) wrap.classList.add('logo-on-dark');
+        } else if (name) {
+          wordmark.textContent = name;
+          wordmark.hidden = false;
+        }
+      }
+      var nav = document.getElementById('nav');
+      var links = Array.isArray(identity.siteLinks) ? identity.siteLinks : [];
+      if (nav && links.length && !nav.childElementCount) {
+        links.slice(0, 6).forEach(function (link) {
+          var label = String((link && link.label) || '').trim().slice(0, 40);
+          var url = String((link && link.url) || '').trim();
+          if (!label || url.length > 300 || !SITE_URL.test(url)) return;
+          var anchor = document.createElement('a');
+          anchor.className = 'nav-link';
+          anchor.href = url;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener';
+          anchor.textContent = label;
+          nav.appendChild(anchor);
+        });
+      }
+      var hero = document.getElementById('heroSubtitle');
+      var city = String(identity.city || '').trim().slice(0, 80);
+      if (hero && city) {
+        hero.textContent = 'Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie à ' + city + '.';
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', applyIdentityDom, { once: true });
+    } else {
+      applyIdentityDom();
+    }
   } catch (error) {
     // Stockage inaccessible (mode prive, iframe cloisonnee) : sans rappel, le
     // tunnel affiche l'accent plateforme jusqu'a la reponse du serveur.

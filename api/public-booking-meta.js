@@ -23,7 +23,7 @@ const {
 } = require('../lib/availability-blocks');
 const { getFormulaAnchorModel, ANCHOR_ACTIVITY_IDS } = require('../lib/ops-engine');
 const { listSellableActivities } = require('../lib/activity-catalog');
-const { normalizeBranding } = require('../lib/center-config');
+const { normalizeBranding, normalizeIdentity } = require('../lib/center-config');
 
 // This function serves several public surfaces to stay under the Vercel Hobby
 // 12-function limit:
@@ -420,6 +420,13 @@ module.exports = async (req, res) => {
     center: center
       ? {
         id: center.id,
+        // L'IDENTITE du centre sur le tunnel : nom d'onglet, ville du
+        // sous-titre, logo et liens de navigation. index.html est neutre :
+        // sans ces donnees, le tunnel reste Pinlane, il n'affiche jamais
+        // l'identite d'un autre centre.
+        name: typeof center.name === 'string' ? center.name : '',
+        city: centerPublicInfo && typeof centerPublicInfo.city === 'string' ? centerPublicInfo.city : '',
+        identity: normalizeIdentity(center.identity),
         status: center.status || 'active',
         contact: centerContact,
         // La MARQUE du centre (couleurs du tunnel). Bornee ici, comme partout :

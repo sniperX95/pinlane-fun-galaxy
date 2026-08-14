@@ -60,7 +60,7 @@ body.client-mode, body.public-form {
   --accent-contrast: var(--tenant-accent-contrast-dark, var(--tenant-accent-contrast));
 }
 
-/* Titres « marqués » Fun Galaxy sur le parcours client (majuscules + poids). */
+/* Titres « marqués » du parcours client (majuscules + poids). */
 body.client-mode #clientView .hero-title h1 {
   text-transform: uppercase;
   font-weight: 800;
@@ -78,13 +78,13 @@ body.client-mode #clientView .card-title {
   font-weight: 800;
   letter-spacing: 0.02em;
 }
-/* Icônes de cartes teintées marque Fun Galaxy. */
+/* Icônes de cartes teintées de la marque du centre. */
 body.client-mode #clientView .card-icon,
 body.client-mode #clientView .card-icon.teal {
   background: var(--accent-soft);
   color: var(--accent);
 }
-/* CTA principal Fun Galaxy : pill magenta + halo (remplace l'inversion noir/blanc). */
+/* CTA principal aux couleurs du centre : pill accent + halo (remplace l'inversion noir/blanc). */
 body.client-mode #clientView .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -101,7 +101,7 @@ body.client-mode #clientView .btn-primary:hover {
   box-shadow: 0 10px 32px color-mix(in srgb, var(--accent) 48%, transparent);
 }
 
-/* Écran de confirmation Fun Galaxy : badge magenta halo + titre marqué, plus pro. */
+/* Écran de confirmation : badge accent halo + titre marqué, plus pro. */
 body.client-mode #clientView .success-wrap {
   padding: var(--space-10) var(--space-6) var(--space-8);
   gap: var(--space-4);
@@ -2815,9 +2815,9 @@ body.public-form {
 
 /* ============================================================================
    5. HEADER CLIENT : shell public de index.html (body.client-mode)
-   Logo tenant (SVG inline, seul branding Fun Galaxy conservé), nav externe,
-   sélecteur de centre, switch de vue. En staff/admin, le header appartient à
-   pinlane-staff.css.
+   Logo et liens du centre en DONNEE (center.identity, appliquee par
+   applyCenterIdentity) : le HTML statique est neutre, aucun branding client
+   n'est ecrit ici. En staff/admin, le header appartient a pinlane-staff.css.
    ========================================================================== */
 body.client-mode header {
   display: flex;
@@ -2837,10 +2837,11 @@ body.client-mode .logo-wrap {
   border-radius: var(--radius-sm);
 }
 
-/* Le logo tenant officiel (assets/brand/logo-fun-galaxy.svg) est à texte
-   blanc : en thème clair on lui garantit un socle sombre, var(--text) vaut
-   exactement le noir de référence (#0a0a0a) dans ce thème. Pas de halo. */
-[data-theme='light'] body.client-mode .logo-wrap {
+/* Un logo de centre a lettrage clair demande un socle sombre en theme clair :
+   c'est la DONNEE center.identity.logoOnDark qui le dit (classe posee par
+   applyCenterIdentity / boot-view), jamais une regle ecrite pour un client.
+   var(--text) vaut exactement le noir de reference (#0a0a0a) dans ce theme. */
+[data-theme='light'] body.client-mode .logo-wrap.logo-on-dark {
   background: var(--text);
   padding: 4px 12px;
 }
@@ -2849,6 +2850,17 @@ body.client-mode .logo {
   width: auto;
   height: 48px;
   display: block;
+}
+
+/* Sans logo declare, le nom du centre s'affiche en lettrage neutre : jamais
+   le logo d'un autre centre, jamais un cadre vide qui a l'air casse. */
+body.client-mode .logo-wordmark {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 body.client-mode #nav {

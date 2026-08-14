@@ -167,6 +167,17 @@
           "accentSoft": "#2a1228",
           "accentContrast": "#ffffff"
         }
+      },
+      "identity": {
+        "logoUrl": "./assets/brand/logo-fun-galaxy.svg",
+        "logoOnDark": true,
+        "siteUrl": "https://fungalaxy.be",
+        "siteLinks": [
+          { "label": "Activités", "url": "https://fungalaxy.be/activites/" },
+          { "label": "Événements", "url": "https://fungalaxy.be/evenements/" },
+          { "label": "Formules", "url": "https://fungalaxy.be/formules/" },
+          { "label": "Contact", "url": "https://fungalaxy.be/contact/" }
+        ]
       }
     },
     {
@@ -279,6 +290,17 @@
           "accentSoft": "#2a1228",
           "accentContrast": "#ffffff"
         }
+      },
+      "identity": {
+        "logoUrl": "./assets/brand/logo-fun-galaxy.svg",
+        "logoOnDark": true,
+        "siteUrl": "https://fungalaxy.be",
+        "siteLinks": [
+          { "label": "Activités", "url": "https://fungalaxy.be/activites/" },
+          { "label": "Événements", "url": "https://fungalaxy.be/evenements/" },
+          { "label": "Formules", "url": "https://fungalaxy.be/formules/" },
+          { "label": "Contact", "url": "https://fungalaxy.be/contact/" }
+        ]
       }
     },
     {
@@ -305,6 +327,11 @@
           "accentSoft": "#2a1228",
           "accentContrast": "#ffffff"
         }
+      },
+      "identity": {
+        "logoUrl": "./assets/brand/logo-fun-galaxy.svg",
+        "logoOnDark": true,
+        "siteUrl": "https://fungalaxy.be"
       }
     }
   ],

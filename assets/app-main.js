@@ -17681,17 +17681,131 @@ function applyCenterBranding(branding, centerId = '') {
   });
   // Memoire par centre. En mode demonstration, window.localStorage est deja
   // remplace par une memoire vive (assets/demo-mode.js) : rien ne sort.
+  // L'objet memorise porte les couleurs A PLAT (contrat historique de
+  // boot-view.js) et, depuis la purge de marque, une cle `identity` que le
+  // meme rappel applique au logo, au titre et aux liens.
   const key = String(centerId || '').trim().toLowerCase();
   if (!key) return;
   try {
-    if (TENANT_HEX.test(String(light.accent || '').trim())) {
-      window.localStorage.setItem(`${TENANT_BRAND_STORAGE_PREFIX}${key}`, JSON.stringify(branding));
-    } else {
-      window.localStorage.removeItem(`${TENANT_BRAND_STORAGE_PREFIX}${key}`);
-    }
+    const storageKey = `${TENANT_BRAND_STORAGE_PREFIX}${key}`;
+    const stored = readTenantBrandMemory(key);
+    const next = TENANT_HEX.test(String(light.accent || '').trim())
+      ? { ...branding, ...(stored.identity ? { identity: stored.identity } : {}) }
+      : (stored.identity ? { identity: stored.identity } : null);
+    if (next) window.localStorage.setItem(storageKey, JSON.stringify(next));
+    else window.localStorage.removeItem(storageKey);
   } catch (error) {
     // Stockage refuse (navigation privee stricte) : la couleur reste correcte
     // pour cette page, seul le rappel avant peinture est perdu.
+  }
+}
+
+function readTenantBrandMemory(key) {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(`${TENANT_BRAND_STORAGE_PREFIX}${key}`) || 'null');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+// L'IDENTITE du centre sur le tunnel : nom d'onglet, logo, liens du site,
+// ville du sous-titre. index.html est NEUTRE (aucune identite de client dans
+// le HTML statique) : tout part de la donnee center.identity servie par
+// /api/public-booking-meta, exactement comme les couleurs juste au-dessus.
+// Un centre sans identite garde le tunnel neutre Pinlane ; il n'herite jamais
+// du logo ou des liens d'un autre client. Memoire par centre pour le rappel
+// avant peinture (boot-view.js), effacee des que le serveur ne declare plus
+// d'identite.
+const TENANT_IDENTITY_MAX_LINKS = 6;
+const TENANT_LOGO_URL = /^(?:https:\/\/[^\s"'<>]+|\.?\/?assets\/[a-z0-9_/.-]+)$/i;
+const TENANT_SITE_URL = /^https:\/\/[^\s"'<>]+$/i;
+
+function sanitizeTunnelIdentity(center) {
+  const identity = center && typeof center.identity === 'object' && center.identity ? center.identity : {};
+  const name = center && typeof center.name === 'string' ? center.name.trim().slice(0, 120) : '';
+  const city = center && typeof center.city === 'string' ? center.city.trim().slice(0, 80) : '';
+  const rawLogo = String(identity.logoUrl || '').trim();
+  const logoUrl = rawLogo.length <= 300 && TENANT_LOGO_URL.test(rawLogo) ? rawLogo : '';
+  const siteLinks = (Array.isArray(identity.siteLinks) ? identity.siteLinks : [])
+    .map(link => ({
+      label: String((link && link.label) || '').trim().slice(0, 40),
+      url: String((link && link.url) || '').trim(),
+    }))
+    .filter(link => link.label && link.url.length <= 300 && TENANT_SITE_URL.test(link.url))
+    .slice(0, TENANT_IDENTITY_MAX_LINKS);
+  if (!name && !city && !logoUrl && !siteLinks.length) return null;
+  return {
+    name,
+    city,
+    logoUrl,
+    logoOnDark: Boolean(logoUrl && identity.logoOnDark === true),
+    siteLinks,
+  };
+}
+
+function renderTunnelIdentity(identity) {
+  const safe = identity || { name: '', city: '', logoUrl: '', logoOnDark: false, siteLinks: [] };
+  const logo = document.getElementById('centerLogo');
+  const wordmark = document.getElementById('centerWordmark');
+  if (logo && wordmark) {
+    if (safe.logoUrl) {
+      logo.src = safe.logoUrl;
+      logo.alt = safe.name || 'Logo du centre';
+      logo.hidden = false;
+      wordmark.hidden = true;
+      wordmark.textContent = '';
+    } else {
+      logo.removeAttribute('src');
+      logo.alt = '';
+      logo.hidden = true;
+      wordmark.textContent = safe.name || '';
+      wordmark.hidden = !safe.name;
+    }
+    const wrap = logo.closest('.logo-wrap');
+    if (wrap) wrap.classList.toggle('logo-on-dark', Boolean(safe.logoOnDark));
+  }
+  const nav = document.getElementById('nav');
+  if (nav) {
+    nav.textContent = '';
+    (safe.siteLinks || []).forEach(link => {
+      const anchor = document.createElement('a');
+      anchor.className = 'nav-link';
+      anchor.href = link.url;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener';
+      anchor.textContent = link.label;
+      nav.appendChild(anchor);
+    });
+  }
+  const hero = document.getElementById('heroSubtitle');
+  if (hero) {
+    hero.textContent = safe.city
+      ? `Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie à ${safe.city}.`
+      : 'Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie.';
+  }
+  // Le titre d'onglet ne porte une identite que sur le TUNNEL (mode client pur
+  // ou centre explicite dans l'URL) : la console garde son titre neutre.
+  const isTunnel = Boolean(document.body && document.body.classList.contains('customer-mode'))
+    || Boolean(typeof getUrlCenterId === 'function' && getUrlCenterId());
+  if (isTunnel) document.title = safe.name ? `${safe.name} · Réservation` : 'Pinlane';
+}
+
+function applyCenterIdentity(center, centerId = '') {
+  const identity = sanitizeTunnelIdentity(center);
+  renderTunnelIdentity(identity);
+  const key = String(centerId || '').trim().toLowerCase();
+  if (!key) return;
+  try {
+    const storageKey = `${TENANT_BRAND_STORAGE_PREFIX}${key}`;
+    const stored = readTenantBrandMemory(key);
+    if (identity) stored.identity = identity;
+    else delete stored.identity;
+    if (Object.keys(stored).length) window.localStorage.setItem(storageKey, JSON.stringify(stored));
+    else window.localStorage.removeItem(storageKey);
+  } catch (error) {
+    // Stockage refuse : l'identite reste correcte pour cette page, seul le
+    // rappel avant peinture est perdu.
   }
 }
 
@@ -17730,6 +17844,9 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     // La marque du centre : posee des que le serveur a repondu, effacee si ce
     // centre n'en declare pas (retour a l'accent plateforme).
     applyCenterBranding(payload?.center?.branding || null, centerKey);
+    // L'identite du centre (logo, titre, liens, ville) : meme voie, meme
+    // moment. Sans donnee, le tunnel reste neutre Pinlane.
+    applyCenterIdentity(payload?.center || null, centerKey);
     // Anti-course : une reponse pour une date que l'utilisateur a deja quittee
     // est jetee. Sans `day` dans le payload, on efface : mieux vaut le rendu
     // historique qu'un verdict perime.

@@ -1792,14 +1792,26 @@ button.staff-date-label:focus-visible,
    chiffres tabulaires nus, il se lit comme la duree et l'effectif a cote de
    lui, dans la meme famille typographique, sans emprunter la forme d'un statut. */
 .activity-pill {
-  display: inline-flex; align-items: center; gap: 2px;
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 10px; font-weight: 600; line-height: 1;
-  color: var(--faint);
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
-.activity-pill.done { color: var(--success); font-weight: 700; }
+.activity-bar {
+  display: block;
+  width: 26px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--line-strong);
+  overflow: hidden;
+}
+.activity-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease);
+}
+.activity-pill.done .activity-bar-fill { background: var(--success); }
 
 /* Carte planning dont TOUTES les activités de formule sont faites : grisée + coche.
    Signal « ce groupe a tout terminé » d'un coup d'œil sur le planning. */
@@ -2395,12 +2407,18 @@ button.staff-date-label:focus-visible,
    Verbatim Movsar, 2026-08-14 : « les heures speciales, donc celles qui ne sont
    pas 1h, je les trouve pas belles, ca fait pas pro ». Une pastille ambre pleine
    sur « 1h30 » emprunte le vocabulaire du DANGER pour dire une banalite : la
-   moitie des reservations d'un samedi ne durent pas une heure. Le chiffre se
-   distingue maintenant par sa GRAISSE et sa couleur de texte, comme une donnee
-   mise en avant, pas comme un avertissement. */
+   moitie des reservations d'un samedi ne durent pas une heure.
+   PREMIERE CORRECTION TROP FORTE, corrigee dans la foulee : passer le chiffre en
+   couleur de texte le rendait invisible (« on ne remarque pas assez du tout les
+   heures differentes de 1h »). Ce qui faisait « pas pro » n'etait pas la
+   COULEUR, c'etait la PASTILLE : un fond plein, un rayon et une bordure autour
+   de quatre caracteres, soit la forme d'un statut pour une simple donnee. La
+   couleur ambre revient donc sur le chiffre nu, avec une graisse plus forte que
+   ses voisins. Contraste mesure par la matrice dans les deux themes : 5,58:1 en
+   clair, au-dessus du seuil AA de 4,5:1. */
 .bk-dur.dur-special {
-  color: var(--text);
-  font-weight: 700;
+  color: var(--warning);
+  font-weight: 800;
 }
 
 /* --- Densité responsive selon la hauteur réelle de la carte (durée × zoom) ---
@@ -3277,6 +3295,9 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .res-row-time strong { font-size: 13px; font-weight: 600; line-height: 1.15; }
 .res-c-time span,
 .res-row-time span { font-size: 10px; color: var(--muted); }
+/* Meme regle que sur la carte du planning : une duree qui n'est pas la duree
+   standard se remarque, sans emprunter la forme d'un statut. */
+.res-c-time span.is-special { color: var(--warning); font-weight: 700; }
 
 /* COLONNE CLIENT : qui vient, et combien ils sont. Le TELEPHONE en est sorti.
    Il occupait une ligne entière sur chaque dossier, avec son icône, et un

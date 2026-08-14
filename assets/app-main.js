@@ -14490,7 +14490,7 @@ function renderReservationRow(r) {
   return `<div class="res-row ${r.status} ${getReservationHighlightClasses(r)}" data-res-row-id="${r.id}" onclick="openPos(${r.id})">
     <div class="res-c-time">
       <strong>${timeLabel}</strong>
-      <span>${resourceDurationLabel}</span>
+      <span class="${isSpecialBowlingDuration(getBowlingDurationForReservation(r)) ? 'is-special' : ''}">${resourceDurationLabel}</span>
     </div>
     <div class="res-c-client">
       <span class="res-row-name">${escapeHtml(r.name)}</span>
@@ -14890,7 +14890,20 @@ function renderActivityProgressPill(r) {
   if (typeof reservationHasFormulaActivities === 'function' && !reservationHasFormulaActivities(r)) return '';
   const summary = getFormulaActivityProgressSummary(r);
   if (!summary.total) return '';
-  return `<span class="activity-pill${summary.allDone ? ' done' : ''}" title="Activités faites : ${summary.done}/${summary.total}">${summary.done}/${summary.total}${summary.allDone ? ' ✓' : ''}</span>`;
+  // UNE PROGRESSION SE VOIT, ELLE NE SE LIT PAS.
+  // Movsar, 2026-08-14 : « le 0/4, le design je le trouve pas fou ». Deux
+  // chiffres separes d'une barre oblique demandent une LECTURE pour dire une
+  // chose qu'une jauge dit d'un coup d'oeil, et ils prenaient la place d'une
+  // donnee sur une carte qui en manque. Le compte exact reste dans l'infobulle
+  // et dans le texte lu par la synthese vocale : rien n'est perdu, seule la
+  // forme change.
+  const part = Math.max(0, Math.min(1, summary.total ? summary.done / summary.total : 0));
+  return `<span class="activity-pill${summary.allDone ? ' done' : ''}" role="img"`
+    + ` title="Activités faites : ${summary.done}/${summary.total}"`
+    + ` aria-label="${summary.done} activité${summary.done > 1 ? 's' : ''} faite${summary.done > 1 ? 's' : ''} sur ${summary.total}">`
+    + `<span class="activity-bar"><span class="activity-bar-fill" style="width:${Math.round(part * 100)}%"></span></span>`
+    + `<span class="visually-hidden">${summary.done}/${summary.total}</span>`
+    + `</span>`;
 }
 
 function formatActivityDoneTime(iso) {

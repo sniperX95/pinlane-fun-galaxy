@@ -1569,6 +1569,12 @@ function normalizeStaffCenterId(value, fallback = 'libramont') {
   ) {
     return 'libramont';
   }
+  // Tout autre slug bien forme est un centre LEGITIME (deuxieme client et
+  // suivants) : il passe tel quel, comme cote serveur (lib/staff-auth.js).
+  // Rabattre l'inconnu sur 'libramont' faisait signer les exports et les
+  // lectures du staff d'un autre client avec le centre du premier.
+  const slug = raw.toLowerCase();
+  if (PUBLIC_CENTER_ID_PATTERN.test(slug)) return slug;
   return fallback;
 }
 

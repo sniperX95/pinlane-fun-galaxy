@@ -242,7 +242,9 @@ const anthropicOk = (object) => ({
   const subjectOnly = buildMessage({ reservation: resa, templateId: 'confirmation', channel: 'email', overrides: { subject: 'Youpi {{prenom}}' } });
   ok(subjectOnly.subject === 'Youpi Marie' && subjectOnly.body === defaultMessage.body, 'override sujet seul : corps par défaut conservé à l\'identique');
   const smsUntouched = buildMessage({ reservation: resa, templateId: 'reminder_day_sms', channel: 'sms', overrides: { subject: 'X', body: 'Y' } });
-  ok(smsUntouched.body.startsWith('Fun Galaxy:'), 'SMS jamais touché par les overrides email');
+  // Purge de marque : le SMS s'annonce du NOM DU CENTRE (donnee), plus d'une
+  // marque en dur. La resa incarne le centre libramont : son nom complet.
+  ok(smsUntouched.body.startsWith('Fun Galaxy Libramont:'), 'SMS jamais touché par les overrides email, annoncé au nom du centre');
 
   const birthdayDefault = buildBirthdayJ30Message({ name: 'Georges Dupuis', partyDateFr: '20 août' });
   ok(birthdayDefault.subject === 'Un anniversaire approche 🎂' && birthdayDefault.body.includes('(le 20 août)'), 'anniversaire sans override : texte historique');
@@ -252,8 +254,12 @@ const anthropicOk = (object) => ({
   ok(reactivationCustom.body === 'Reviens Léa, le Fun Galaxy Libramont t’attend !', 'réactivation : corps custom substitué');
   const postVisitDefault = buildPostVisitMessage({ name: 'Marie Dupont' });
   ok(postVisitDefault.subject.length > 5 && /merci/i.test(postVisitDefault.body), 'merci post-visite : texte par défaut du gabarit');
-  const postVisitCustom = buildPostVisitMessage({ name: 'Marie Dupont' }, { body: 'Merci {{prenom}}, à bientôt chez {{centre}} !' });
-  ok(postVisitCustom.body === 'Merci Marie, à bientôt chez Fun Galaxy !', 'merci post-visite : corps custom substitué');
+  // Purge de marque : {{centre}} vaut le nom du centre passe par l'appelant
+  // (ops-jobs le resout), et un repli NEUTRE sans centre, jamais une marque.
+  const postVisitCustom = buildPostVisitMessage({ name: 'Marie Dupont', centerName: 'Fun Galaxy Libramont' }, { body: 'Merci {{prenom}}, à bientôt chez {{centre}} !' });
+  ok(postVisitCustom.body === 'Merci Marie, à bientôt chez Fun Galaxy Libramont !', 'merci post-visite : corps custom substitué');
+  const postVisitNoCenter = buildPostVisitMessage({ name: 'Marie Dupont' }, { body: 'À bientôt chez {{centre}} !' });
+  ok(postVisitNoCenter.body === 'À bientôt chez votre centre !', 'merci post-visite sans centre : repli neutre, jamais une marque');
 
   console.log('\n[ENQUEUE] confirmation + rappel avec réglages du gérant');
   const depsEnqueue = makeDeps({ settings: { reminder_48h: { enabled: true, subject: 'Rappel {{prenom}}', offsetDays: 4 }, confirmation: { enabled: true, body: 'Tout est bon {{prenom}} !' } } });

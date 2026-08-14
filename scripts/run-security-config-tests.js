@@ -91,7 +91,10 @@ try {
   assert.strictEqual(http.getAllowedOrigin('https://www.fungalaxy.be'), 'https://www.fungalaxy.be');
   assert.strictEqual(http.getAllowedOrigin('https://www.mngfunglxy.com'), 'https://www.mngfunglxy.com');
   assert.strictEqual(http.getAllowedOrigin('https://mngfunglxy.com'), 'https://mngfunglxy.com');
-  assert.strictEqual(http.getAllowedOrigin('https://unknown.example'), 'https://fungalaxy.be');
+  // Chemin de REFUS : une origine inconnue recoit le domaine de la PLATEFORME,
+  // jamais celui d'un client (purge de marque 2026-08-15). La valeur ne
+  // debloque rien cote navigateur, mais elle est visible dans la reponse.
+  assert.strictEqual(http.getAllowedOrigin('https://unknown.example'), 'https://app.pinlane.be');
 
   resetEnv({ NODE_ENV: 'production', ALLOW_INSECURE_STAFF_CODES: 'true' });
   assert.strictEqual(staffAuth.isProductionRuntime(), true);

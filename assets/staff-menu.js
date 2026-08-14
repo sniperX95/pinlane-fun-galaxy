@@ -883,6 +883,13 @@
   function renderMenu() {
     const root = document.querySelector('[data-staff-menu-root]');
     if (!root) return;
+    // La barre laterale est une surface STAFF. Sur le parcours public (mode
+    // client pur, ou aucune session staff connue), elle ne se rend PAS : sans
+    // ce garde, le nom de repli du centre par defaut entrait dans le DOM du
+    // tunnel d'un autre centre (cache par le CSS, mais bel et bien servi).
+    const customerMode = Boolean(document.body && document.body.classList.contains('customer-mode'));
+    const session = (typeof state !== 'undefined' && state && state.staffAuthSession) || null;
+    if (customerMode || !session) { root.innerHTML = ''; return; }
     const center = getSelectedCenter();
     const displayName = centerDisplayName(center);
     const roleLabel = getRoleLabel();

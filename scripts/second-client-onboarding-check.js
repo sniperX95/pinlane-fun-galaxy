@@ -10,7 +10,14 @@
 //   [5] envoyer un mail signe de SON identite ;
 //   [6] porter SES couleurs, pas celles de Fun Galaxy ;
 //   [7] etre selectionne par la ligne d'installation (?center=), prouve dans un
-//       vrai navigateur.
+//       vrai navigateur ;
+//   [8] (purge de marque, 2026-08-15) afficher un tunnel ou AUCUNE chaine de
+//       l'identite Fun Galaxy ne survit : ni dans le HTML rendu, ni dans le
+//       titre d'onglet, ni dans un attribut, ni dans un email enfile, ni dans
+//       un export de la console. L'identite (nom, ville, logo, liens) est une
+//       DONNEE de centre servie par public-booking-meta : le proprietaire de
+//       la donnee la voit (contraste verifie sur le tunnel Fun Galaxy),
+//       personne d'autre ne l'herite.
 //
 // LES QUATRE BLOCAGES QU'IL VERROUILLE (tous mesures reels le 2026-08-08) :
 //   A. getCenter() ne connaissait que le FICHIER. rebuildMergedCenters ne
@@ -579,6 +586,16 @@ async function run() {
     'la config saisie dans Etablissement est persistee sur la ligne du centre');
   ok(centerRows.find((row) => row.id === SECOND_CENTER_ID)?.settings?.config?.branding?.accent === SECOND_ACCENT,
     'enregistrer la config ne fait pas disparaitre la couleur posee au provisionnement');
+  // PURGE DE MARQUE dans les EXPORTS : le fichier exporte depuis SA console
+  // porte SON identifiant, et pas une chaine du premier client, ni dans le nom
+  // ni dans le contenu.
+  const exportProbe = journey.establishment?.exportProbe || null;
+  ok(Boolean(exportProbe) && !exportProbe.error,
+    `l export Emails de SA console produit un fichier (obtenu ${exportProbe ? (exportProbe.error || exportProbe.filename) : 'aucun'})`);
+  ok(Boolean(exportProbe?.filename) && exportProbe.filename.startsWith(`${SECOND_CENTER_ID}-`),
+    `le nom du fichier exporte porte SON centre (obtenu "${exportProbe?.filename || 'aucun'}")`);
+  ok(!FORBIDDEN_BRAND.test(`${exportProbe?.filename || ''}\n${exportProbe?.content || ''}`),
+    'AUCUNE chaine Fun Galaxy dans le nom ni le contenu de l export');
 
   section('[4] Le moteur CONNAIT ce centre (blocage A)');
   await refreshCenterOverrides(pool, { force: true });
@@ -653,6 +670,10 @@ async function run() {
       duration: 1,
       pax: 4,
       type: 'bowling',
+      // La sixieme occasion du tunnel : 'evg' etait jetee a la normalisation
+      // serveur (OCCASION_VALUES n en retenait que cinq) et retombait sur
+      // « non precise ». On la poste telle que le tunnel la poste.
+      occasion: 'evg',
       lanes: chosenSlot?.lanes || [1],
       laneCount: (chosenSlot?.lanes || [1]).length,
       requiresLanes: true,
@@ -663,6 +684,8 @@ async function run() {
     `la reservation est acceptee (obtenu ${reservationRes.res.statusCode}${reservationRes.res.statusCode !== 201 ? ` : ${reservationRes.json?.error || reservationRes.res.body}` : ''})`);
   ok(reservationRows.length === before + 1, `une ligne est bien ecrite en base (${reservationRows.length - before})`);
   ok(created?.centerId === SECOND_CENTER_ID, `la ligne porte SON centre (obtenu ${created?.centerId})`);
+  ok(created?.occasion === 'evg',
+    `l occasion EVG cochee par le client est STOCKEE, plus jetee (obtenu "${created?.occasion || 'vide'}")`);
 
   section('[8] Elle apparait cote STAFF de ce client, et nulle part ailleurs');
   const staffSecond = await callHandler(staffStateHandler, {
@@ -786,6 +809,12 @@ async function run() {
     `on lui repond a SON adresse, pas a la plateforme (obtenu "${arrivalEnvelope.replyTo || 'aucune'}")`);
   ok(!/Fun Galaxy/i.test(arrivalEnvelope.from),
     'contraste : rien de Fun Galaxy dans l en-tete du deuxieme client');
+  // PURGE DE MARQUE dans le CONTENU du mail : objet, HTML complet (bandeau,
+  // pied, titres) et alternative texte. C est l email que le client final lit.
+  ok(!FORBIDDEN_BRAND.test(`${arrivalEnvelope.subject}\n${arrivalEnvelope.html}\n${arrivalEnvelope.text}`),
+    'AUCUNE chaine Fun Galaxy dans l objet, le HTML ou le texte du mail envoye');
+  ok(arrivalEnvelope.html.includes(SECOND_CENTER_NAME),
+    `le mail porte le nom du centre expediteur dans son habillage (cherche "${SECOND_CENTER_NAME}")`);
 
   // LE REPLI, et il doit rester honnete : un centre SANS identite configuree
   // repart sur l adresse plateforme, au nom du centre. Jamais une adresse
@@ -945,10 +974,18 @@ async function captureSendEmailEnvelope(communication) {
   delete process.env.RESEND_REPLY_TO;
   delete process.env.STAFF_REVIEW_EMAIL;
   delete process.env.RESERVATION_STAFF_EMAIL;
-  let captured = { from: '', replyTo: '' };
+  let captured = { from: '', replyTo: '', subject: '', html: '', text: '' };
   global.fetch = async (url, init) => {
     const body = JSON.parse(String(init?.body || '{}'));
-    captured = { from: String(body.from || ''), replyTo: String(body.reply_to || '') };
+    captured = {
+      from: String(body.from || ''),
+      replyTo: String(body.reply_to || ''),
+      // Ce que Resend recevrait VRAIMENT : la purge de marque s y verifie
+      // (aucune chaine Fun Galaxy dans un mail d un autre centre).
+      subject: String(body.subject || ''),
+      html: String(body.html || ''),
+      text: String(body.text || ''),
+    };
     return { ok: true, status: 200, json: async () => ({ id: 'gate-message-id' }), text: async () => '{}' };
   };
   try {
@@ -1246,7 +1283,22 @@ async function captureConsoleJourney() {
       const note = (document.getElementById('estab-brand-note') || {}).textContent || '';
       window.__QA_POSTS__ = [];
       await submitCenterConfig(centerId);
-      return { bodies: window.__QA_POSTS__.slice(), hasField, note: note.trim() };
+      // UN EXPORT DE LA CONSOLE de ce centre : on capture le fichier que le
+      // bouton Exporter produirait (nom + contenu), sans rien telecharger.
+      // C est le vrai code d export qui tourne, downloadTextFile est seulement
+      // intercepte au moment de servir le fichier.
+      let exportProbe = null;
+      try {
+        const captured = [];
+        const previousDownload = window.downloadTextFile;
+        window.downloadTextFile = (filename, content) => { captured.push({ filename, content }); };
+        window.exportStaffEmailsCsv();
+        window.downloadTextFile = previousDownload;
+        exportProbe = captured[0] || null;
+      } catch (error) {
+        exportProbe = { error: error && error.message };
+      }
+      return { bodies: window.__QA_POSTS__.slice(), hasField, note: note.trim(), exportProbe };
     }, { centerId: SECOND_CENTER_ID, accent: SECOND_ACCENT });
     await page2.close().catch(() => {});
   } finally {
@@ -1331,6 +1383,34 @@ async function proveEmbedSelectsCenter() {
     ok(accent.toLowerCase() === SECOND_ACCENT,
       `le tunnel calcule SA couleur d accent (obtenu "${accent}")`);
 
+    // [11b] PURGE DE MARQUE : le tunnel du deuxieme client porte SON identite
+    // (nom, ville) et pas UN octet de celle de Fun Galaxy : ni dans le titre,
+    // ni dans le HTML rendu, ni dans un attribut (outerHTML les contient tous).
+    await page.waitForFunction(() => document.title && document.title !== 'Pinlane', null, { timeout: 15000 }).catch(() => null);
+    const identityState = await page.evaluate(() => ({
+      title: document.title,
+      wordmark: (document.getElementById('centerWordmark') || {}).textContent || '',
+      wordmarkHidden: Boolean((document.getElementById('centerWordmark') || {}).hidden),
+      logoHidden: Boolean((document.getElementById('centerLogo') || {}).hidden),
+      hero: (document.getElementById('heroSubtitle') || {}).textContent || '',
+      navLinks: [...document.querySelectorAll('#nav a')].map((a) => a.href),
+      html: document.documentElement.outerHTML,
+    }));
+    ok(identityState.title === `${SECOND_CENTER_NAME} · Réservation`,
+      `le titre d onglet porte SON nom (obtenu "${identityState.title}")`);
+    ok(!identityState.wordmarkHidden && identityState.wordmark === SECOND_CENTER_NAME,
+      `l en-tete affiche SON nom en lettrage (obtenu "${identityState.wordmark}")`);
+    ok(identityState.logoHidden,
+      'aucun logo image : ce centre n en declare pas, il n herite de celui de personne');
+    ok(/à Namur\./.test(identityState.hero),
+      `le sous-titre porte SA ville (obtenu "${identityState.hero}")`);
+    ok(identityState.navLinks.length === 0,
+      `aucun lien de navigation d un autre client (obtenu ${identityState.navLinks.length})`);
+    ok(!FORBIDDEN_BRAND.test(identityState.html),
+      'AUCUNE chaine Fun Galaxy dans le HTML rendu du tunnel (attributs compris)');
+    ok(!/libramont|gembloux/i.test(identityState.html),
+      'aucun nom de centre Fun Galaxy dans le DOM du deuxieme client');
+
     // Le POST de reservation part-il avec le bon centre ?
     const postedCenter = await page.evaluate(() => {
       const payload = buildReservationApiPayload({ type: 'bowling', pax: 4, lanes: [1], formuleId: '' }, { channel: 'public' });
@@ -1384,6 +1464,30 @@ async function proveEmbedSelectsCenter() {
       `la marque du deuxieme client ne teinte PAS la premiere peinture d un autre centre (obtenu "${otherFirstFrame || 'aucune'}")`);
     await page2.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
 
+    // CONTRASTE de la purge : la donnee identite SERT toujours son proprietaire.
+    // Sur le tunnel de Fun Galaxy, le logo et les liens declares dans
+    // centers.json se rendent bien : la purge retire l identite du CODE, jamais
+    // de la DONNEE du client.
+    await page2.evaluate(() => loadCenterScheduleConfig());
+    await page2.waitForFunction(() => {
+      const logo = document.getElementById('centerLogo');
+      return Boolean(logo && !logo.hidden && logo.getAttribute('src'));
+    }, null, { timeout: 15000 }).catch(() => null);
+    const ownerIdentity = await page2.evaluate(() => ({
+      logoSrc: (document.getElementById('centerLogo') || {}).getAttribute
+        ? (document.getElementById('centerLogo').getAttribute('src') || '')
+        : '',
+      logoAlt: (document.getElementById('centerLogo') || {}).alt || '',
+      navCount: document.querySelectorAll('#nav a').length,
+      title: document.title,
+    }));
+    ok(/logo-fun-galaxy\.svg$/.test(ownerIdentity.logoSrc),
+      `contraste : le tunnel Fun Galaxy rend SON logo depuis SA donnee (obtenu "${ownerIdentity.logoSrc || 'aucun'}")`);
+    ok(ownerIdentity.navCount === 4,
+      `contraste : ses quatre liens de site sont rendus depuis la donnee (obtenu ${ownerIdentity.navCount})`);
+    ok(/Fun Galaxy Libramont/.test(ownerIdentity.title),
+      `contraste : son titre d onglet porte son nom (obtenu "${ownerIdentity.title}")`);
+
     const page3 = await browser.newPage();
     await installTunnelMock(page3);
     await page3.goto(`${BASE_URL}/reserver?embed=1&v=second-client-nocenter`, { waitUntil: 'networkidle', timeout: 45000 });
@@ -1404,10 +1508,33 @@ function baselineBranding(centerId) {
   return (center && center.branding) || null;
 }
 
+// L'IDENTITE (logo, liens, nom, ville) de la meme donnee socle : servie au
+// tunnel de SON centre pour prouver que la voie fonctionne, jamais a un autre.
+function baselineIdentitySlice(centerId) {
+  const baseline = require(path.join(ROOT, 'ops-knowledge', 'centers.json'));
+  const center = (baseline.centers || []).find((c) => c.id === centerId) || {};
+  return {
+    name: center.name || '',
+    city: (center.publicInfo && center.publicInfo.city) || '',
+    identity: center.identity || null,
+  };
+}
+
+// LES CHAINES INTERDITES sur tout chemin d'un autre centre. La casse et les
+// espaces ne doivent pas suffire a passer : fun galaxy, fungalaxy, le domaine
+// du site et le domaine d'exploitation du premier client.
+const FORBIDDEN_BRAND = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
+
 async function installTunnelMock(page) {
   const SECOND_BRANDING = consoleBranding;
   const OTHER_BRANDING = baselineBranding('libramont');
-  await page.addInitScript(({ DATE, SECOND_CENTER_ID, SECOND_BRANDING, OTHER_BRANDING }) => {
+  // L'identite est une DONNEE par centre : le deuxieme client a un NOM et une
+  // VILLE (saisis a l'onboarding), aucun logo ; Fun Galaxy garde son logo et
+  // ses liens en donnee socle. Le mock rend a chacun la sienne, jamais celle
+  // du voisin : c'est la voie public-booking-meta rejouee a l'identique.
+  const SECOND_IDENTITY = { name: SECOND_CENTER_NAME, city: 'Namur', identity: null };
+  const OTHER_IDENTITY = baselineIdentitySlice('libramont');
+  await page.addInitScript(({ DATE, SECOND_CENTER_ID, SECOND_BRANDING, OTHER_BRANDING, SECOND_IDENTITY, OTHER_IDENTITY }) => {
     window.__QA_CALLS__ = { meta: [], availability: [], reservations: [] };
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });
     const nativeFetch = window.fetch.bind(window);
@@ -1421,11 +1548,13 @@ async function installTunnelMock(page) {
         // demandait libramont, la couleur et les horaires seraient ceux de
         // Fun Galaxy, et les assertions rougiraient.
         const isSecond = asked === SECOND_CENTER_ID;
+        const who = isSecond ? SECOND_IDENTITY : OTHER_IDENTITY;
         return J({
           ok: true, today: DATE, durationOptions: [], formules: [],
           activities: [{ id: 'bowling', name: 'Bowling', planned: true, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 1, defaultMinutes: 60 }],
           center: {
             id: asked, status: 'active',
+            name: who.name, city: who.city, identity: who.identity,
             branding: isSecond ? SECOND_BRANDING : OTHER_BRANDING,
             defaultSchedule: { regular: { 0: { open: '11:00', close: '19:00' }, 1: { open: '11:00', close: '19:00' }, 2: { open: '11:00', close: '19:00' }, 3: { open: '11:00', close: '19:00' }, 4: { open: '11:00', close: '19:00' }, 5: { open: '11:00', close: '19:00' }, 6: { open: '11:00', close: '19:00' } }, holiday: {} },
             holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] },
@@ -1445,7 +1574,7 @@ async function installTunnelMock(page) {
       }
       return nativeFetch(input, init);
     };
-  }, { DATE, SECOND_CENTER_ID, SECOND_BRANDING, OTHER_BRANDING });
+  }, { DATE, SECOND_CENTER_ID, SECOND_BRANDING, OTHER_BRANDING, SECOND_IDENTITY, OTHER_IDENTITY });
 }
 
 // -- Etape 10 : la mutation qui doit faire rougir ---------------------------
@@ -1509,6 +1638,101 @@ async function mutationCounterProof() {
       return health.json?.testData === false;
     },
   });
+
+  // PURGE DE MARQUE, contre-preuve 1 : on remet le titre Fun Galaxy en dur
+  // dans index.html (l etat d avant la purge) et la detection du gate doit
+  // trouver la chaine dans la page servie. Fichier statique : pas de require,
+  // la sonde re-lit la page par le MEME serveur que la preuve navigateur.
+  await withStaticMutation({
+    file: path.join(ROOT, 'index.html'),
+    anchor: '<title>Pinlane</title>',
+    replacement: '<title>Pinlane · Fun Galaxy</title>',
+    label: 'titre d onglet Fun Galaxy remis en dur dans index.html',
+    probe: async () => {
+      const served = await fetchStaticPage('/reserver?embed=1&center=' + SECOND_CENTER_ID);
+      return !FORBIDDEN_BRAND.test(served);
+    },
+  });
+
+  // PURGE DE MARQUE, contre-preuve 2 : l en-tete de carte des emails signe de
+  // nouveau « Fun Galaxy » en dur. Le mail d arrivee du deuxieme client doit
+  // etre pris la main dans le sac par la meme detection que l etape [9b].
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'ops-communications.js'),
+    anchor: "  const bandName = String(center?.name || '').trim();",
+    replacement: "  const bandName = 'Fun Galaxy' || String(center?.name || '').trim();",
+    label: 'en-tete des emails signe Fun Galaxy en dur',
+    probe: async (mutated) => {
+      const queue = [];
+      await mutated.enqueueReservationCommunications({
+        id: 987656,
+        centerId: SECOND_CENTER_ID,
+        name: 'Camille Dubois',
+        email: 'camille.dubois@exemple.be',
+        date: DATE,
+        startTime: '14:00',
+        duration: 1,
+        pax: 4,
+        type: 'bowling',
+      }, {
+        enqueue: async (input) => { queue.push(input); return { id: 1 }; },
+        deps: { query: (t, p) => getPool().query(t, p) },
+      });
+      const arrival = queue.find((row) => row.templateId === 'confirmation' || row.templateId === 'request_received');
+      return Boolean(arrival) && !FORBIDDEN_BRAND.test(String(arrival.body || ''));
+    },
+  });
+
+  // PURGE DE MARQUE, contre-preuve 3 : on rejette de nouveau l occasion EVG a
+  // la normalisation (l etat d avant). La regle « les six occasions du tunnel
+  // sont stockees » doit tomber.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'reservation-request.js'),
+    anchor: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'evg', 'autre']);",
+    replacement: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'autre']);",
+    label: 'occasion EVG de nouveau jetee a la normalisation',
+    probe: async (mutated) => mutated.normalizeOccasion('evg') === 'evg',
+  });
+}
+
+// Mutation d un FICHIER STATIQUE servi tel quel (index.html) : meme contrat
+// que withSourceMutation, sans rechargement de module. La sonde lit la page
+// par un vrai aller-retour HTTP sur le meme serveur statique que les preuves
+// navigateur : c est bien l octet SERVI qui est juge, pas le fichier.
+async function withStaticMutation({ file, anchor, replacement, probe, label }) {
+  const original = fs.readFileSync(file, 'utf8');
+  const occurrences = original.split(anchor).length - 1;
+  if (occurrences !== 1) {
+    console.error(`second-client-onboarding-check: ancre de mutation statique introuvable ou ambigue (${occurrences}) : ${label}`);
+    process.exit(1);
+  }
+  fs.writeFileSync(file, original.replace(anchor, replacement));
+  let holds = true;
+  try {
+    holds = await probe();
+  } catch (error) {
+    console.log(`      (mutation "${label}" : la sonde a leve ${error && error.message})`);
+    holds = false;
+  } finally {
+    fs.writeFileSync(file, original);
+  }
+  ok(!holds, `mutation "${label}" : l invariant tombe, ce gate ROUGIRAIT`);
+}
+
+// GET local sur le serveur statique du gate : rend le corps de la page.
+async function fetchStaticPage(pathname) {
+  const server = await serveStatic();
+  try {
+    return await new Promise((resolve, reject) => {
+      http.get(`${BASE_URL}${pathname}`, (response) => {
+        let body = '';
+        response.on('data', (chunk) => { body += chunk; });
+        response.on('end', () => resolve(body));
+      }).on('error', reject);
+    });
+  } finally {
+    server.close();
+  }
 }
 
 // Mutation du CODE SOURCE, meme convention que scripts/catalog-store-check.js :

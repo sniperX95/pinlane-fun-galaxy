@@ -217,7 +217,9 @@ const opsJobs = require('../lib/ops-jobs');
 
   console.log('\n[MAIL POST-VISITE] bouton avis tracké');
   const followup = opsJobs.__test.handleReservationFollowup;
-  ok(opsJobs.__test.publicBaseUrl() === 'https://www.mngfunglxy.com', 'base publique = domaine prod par défaut');
+  // Purge de marque 2026-08-15 : le repli est le domaine de la PLATEFORME,
+  // jamais celui du premier client. PUBLIC_APP_URL reste prioritaire.
+  ok(opsJobs.__test.publicBaseUrl() === 'https://app.pinlane.be', 'base publique = domaine plateforme par défaut');
   // Sans lien configuré : pas de token, pas de bouton.
   settingsState.stored = {};
   dbState.route = (sql) => (sql.trim().startsWith('select') && sql.includes('center_automation_settings') ? [{ settings: settingsState.stored }] : []);

@@ -161,13 +161,71 @@
     });
   }
 
-  const observateurDom = new MutationObserver(() => monterLesOrbes());
+  const observateurDom = new MutationObserver(() => { monterLesOrbes(); monterLesProgressions(); });
   if (document.body) observateurDom.observe(document.body, { childList: true, subtree: true });
   else document.addEventListener('DOMContentLoaded', () => {
     observateurDom.observe(document.body, { childList: true, subtree: true });
     monterLesOrbes();
+    monterLesProgressions();
   });
 
-  window.PinlaneOrbs = { monter: monterLesOrbes, etats: [...ETATS] };
-  monterLesOrbes();
+  // UNE ATTENTE QUI DURE DOIT MONTRER UNE PROGRESSION, PAS UNE POSE.
+  // Movsar : « la reponse doit etre du style thinking-orbs, plus visible et
+  // beaucoup plus diversifie, un truc quali ou on voit l evolution ». Une seule
+  // orbe qui tourne pendant huit secondes dit « ca charge » ; elle ne dit pas
+  // qu on avance. Un element porteur de `data-orb-steps` enchaine donc les
+  // etapes du travail REEL de l agent, chacune avec son etat d orbe et son
+  // libelle, et une barre qui se remplit dit ou on en est.
+  // Les etapes ne sont pas decoratives : elles nomment ce que le cycle fait
+  // vraiment (lire les donnees, croiser, rediger, verifier). Inventer une
+  // progression qui ne correspond a rien serait mentir avec une animation.
+  const progressions = new WeakMap();
+
+  function demarrerProgression(hote) {
+    if (progressions.has(hote)) return;
+    let etapes;
+    try { etapes = JSON.parse(hote.dataset.orbSteps || '[]'); } catch (e) { etapes = []; }
+    if (!Array.isArray(etapes) || !etapes.length) return;
+
+    const canvas = hote.querySelector('canvas[data-orb-state]');
+    const libelle = hote.querySelector('[data-orb-step-label]');
+    const barre = hote.querySelector('[data-orb-step-bar]');
+    let index = 0;
+
+    const appliquer = () => {
+      const etape = etapes[index];
+      if (!etape) return;
+      if (libelle) libelle.textContent = etape.label || '';
+      if (barre) barre.style.width = `${Math.round(((index + 1) / etapes.length) * 100)}%`;
+      if (canvas && ETATS.has(etape.state) && canvas.dataset.orbState !== etape.state) {
+        canvas.dataset.orbState = etape.state;
+        // Le moteur lit l'etat au montage : on relance l'animation sur le neuf.
+        if (moteur) animer(canvas);
+      }
+    };
+
+    appliquer();
+    // La derniere etape ne tourne pas en boucle : elle RESTE. Repartir a zero
+    // ferait croire que le travail recommence, et un gerant qui voit une barre
+    // se vider conclut que ca a echoue.
+    const minuteur = window.setInterval(() => {
+      if (index >= etapes.length - 1) { window.clearInterval(minuteur); return; }
+      index += 1;
+      appliquer();
+    }, Math.max(700, Number(hote.dataset.orbStepMs) || 1600));
+
+    progressions.set(hote, minuteur);
+  }
+
+  function monterLesProgressions(racine = document) {
+    racine.querySelectorAll('[data-orb-steps]').forEach((hote) => {
+      if (!hote.isConnected) return;
+      chargerMoteur().then((mod) => { if (mod) demarrerProgression(hote); });
+    });
+  }
+
+  const monterTout = (racine) => { monterLesOrbes(racine); monterLesProgressions(racine); };
+
+  window.PinlaneOrbs = { monter: monterTout, etats: [...ETATS] };
+  monterTout();
 })();

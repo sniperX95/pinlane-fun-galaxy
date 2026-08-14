@@ -13671,6 +13671,28 @@ const PL_THINKING_LABELS = {
   shaping: 'Mise en forme',
 };
 
+// UNE ATTENTE LONGUE MONTRE OU ELLE EN EST.
+// `renderThinking` dit « ca travaille » ; celle-ci dit « voila ce qui est fait,
+// voila ce qui reste ». Les etapes nomment le travail REEL du cycle marketing
+// (lire les donnees du centre, les croiser, rediger, verifier ce qu'on avance) :
+// une progression inventee serait un mensonge anime. La barre ne revient jamais
+// en arriere et la derniere etape reste affichee jusqu'a la reponse : voir une
+// barre se vider fait conclure que ca a echoue.
+function renderThinkingSteps(etapes, options = {}) {
+  const liste = (etapes || []).filter((etape) => etape && etape.state && etape.label);
+  if (!liste.length) return renderThinking('breathing', options);
+  const premiere = liste[0];
+  const cadence = Number(options.stepMs) || 1600;
+  return `<div class="pl-progress" role="status" aria-live="polite"`
+    + ` data-orb-steps="${escapeHtml(JSON.stringify(liste))}" data-orb-step-ms="${cadence}">`
+    + `<canvas class="pl-orb-canvas" data-orb-state="${escapeHtml(premiere.state)}" data-orb-size="64" aria-hidden="true"></canvas>`
+    + `<div class="pl-progress-body">`
+    + `<span class="pl-progress-label" data-orb-step-label>${escapeHtml(premiere.label)}</span>`
+    + `<span class="pl-progress-track"><span class="pl-progress-bar" data-orb-step-bar style="width:${Math.round(100 / liste.length)}%"></span></span>`
+    + `</div></div>`;
+}
+window.renderThinkingSteps = renderThinkingSteps;
+
 function renderThinking(etat = 'breathing', options = {}) {
   const cle = PL_THINKING_LABELS[etat] ? etat : 'breathing';
   const libelle = options.label || PL_THINKING_LABELS[cle];

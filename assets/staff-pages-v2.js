@@ -5249,7 +5249,10 @@
       // Pendant l'assemblage, seul le tour du gerant existe : la reponse
       // arrive au tour suivant, avec sa propre entree.
       if (t.pendingAnswer) {
-        return `<article class="mkw-msg is-user${userIn.cls}"${userIn.style}><div class="mkw-msg-user">${esc(t.q)}</div></article>`;
+        // `is-sent` : la bulle du gerant monte et s'installe. Appuyer sur Entree
+        // ne produisait aucun signal, donc rien ne disait que la touche avait
+        // ete prise en compte.
+        return `<article class="mkw-msg is-user mkw-turn-q is-sent${userIn.cls}"${userIn.style}><div class="mkw-msg-user">${esc(t.q)}</div></article>`;
       }
       const agentIn = t.answerFresh ? { cls: ' is-in', style: '' } : inCls(index);
       const facts = (t.facts || []).map((f) => `<span class="mkw-ans-fact">${brProse(f)}</span>`).join('');
@@ -5270,9 +5273,30 @@
     // Creer ; « J'assemble depuis le brief » pendant l'assemblage local d'une
     // reponse. Il disparait DES que le resultat entre : jamais un spinner qui
     // tourne pour rien.
+    // LES ETAPES DU TRAVAIL REEL, PAS UN VERBE FIGE. Le mot d'etat disait
+    // « J'écris le post » pendant toute l'attente, du premier au dernier
+    // milliseconde : vrai a la fin, faux au debut, ou l'agent lit encore les
+    // donnees. Les etapes suivent l'ordre du cycle, et elles different selon le
+    // mode : « Créer » produit un livrable, « Demander » assemble une reponse.
+    // Rien n'est invente : chaque libelle nomme une phase que le code execute.
+    const etapesCreer = [
+      { state: 'searching', label: 'Je lis tes données du centre' },
+      { state: 'weaving', label: 'Je croise météo, réservations et calendrier' },
+      { state: 'composing', label: 'J’écris le post' },
+      { state: 'solving', label: 'Je vérifie ce que j’avance' },
+    ];
+    const etapesDemander = [
+      { state: 'searching', label: 'Je relis tes journées mesurées' },
+      { state: 'solving', label: 'Je croise avec ce que je sais du centre' },
+      { state: 'composing', label: 'Je formule la réponse' },
+    ];
     const stateWord = mkBrief.busy === 'ask' ? 'J\'écris le post' : mkw.stateWord;
     const pending = stateWord
-      ? `<article class="mkw-msg is-agent is-state is-in" role="status" aria-busy="true"><div class="mkw-msg-head">${mkwAgentMark()}<b class="mkw-state-word">${esc(stateWord)}</b></div></article>`
+      ? `<article class="mkw-msg is-agent is-state is-in" role="status" aria-busy="true">${
+        typeof renderThinkingSteps === 'function'
+          ? renderThinkingSteps(mkBrief.busy === 'ask' ? etapesCreer : etapesDemander)
+          : `<div class="mkw-msg-head">${mkwAgentMark()}<b class="mkw-state-word">${esc(stateWord)}</b></div>`
+      }</article>`
       : '';
     return turns + pending;
   }

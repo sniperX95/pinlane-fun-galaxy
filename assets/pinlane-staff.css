@@ -3288,6 +3288,55 @@ body.staff-mode.laser-dragging * { user-select: none; }
   color: var(--muted);
 }
 .pl-orb-canvas { display: block; flex: 0 0 auto; }
+
+/* LA PROGRESSION : l'orbe a gauche, ce qu'elle fait a droite, et dessous une
+   barre qui avance. Trois signaux qui disent la meme chose de trois facons,
+   parce qu'une attente longue derriere un comptoir se regarde de loin. */
+.pl-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+.pl-progress-body { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; }
+.pl-progress-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.pl-progress-track {
+  display: block;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--line-strong);
+  overflow: hidden;
+}
+.pl-progress-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 520ms var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-progress-bar { transition: none; }
+}
+
+/* LE MESSAGE QUI PART. Appuyer sur Entree ne produisait aucun signal : le texte
+   restait dans le champ jusqu'a ce que la reponse arrive, et rien ne disait que
+   la touche avait ete prise en compte. La bulle monte et s'installe, en une
+   fois : c'est le geste d'envoi, pas une decoration. */
+@keyframes pl-sent {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.mkw-turn-q.is-sent { animation: pl-sent 260ms var(--ease) both; }
+@media (prefers-reduced-motion: reduce) {
+  .mkw-turn-q.is-sent { animation: none; }
+}
 /* La note du dossier dans la fiche : une consigne se lit, elle ne se resume pas.
    Le liseré ambre la rattache au meme signal que le marqueur de la liste. */
 .pos-note-block { border-left: 3px solid var(--warning); padding-left: 12px; }

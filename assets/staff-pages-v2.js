@@ -2560,7 +2560,7 @@
     } else {
       const brain = pv2Settings.brain;
       content = !brain.loaded
-        ? '<div class="pv2-empty"><strong>Chargement…</strong></div>'
+        ? `<div class="pv2-empty">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
         : `<div class="pv2-composer-grid">
           <p class="pv2-panel-sub pv2-composer-wide">L'agent répond aux mails reçus avec CES textes. Modifie-les librement : ce que tu écris ici gagne toujours sur le modèle d'origine. Champ vidé = retour au modèle.</p>
           <label class="pv2-composer-field"><span>Signature</span>
@@ -2737,7 +2737,7 @@
         ${pv2Suppress.error
           ? `<div class="pv2-empty"><strong>${esc(pv2Suppress.error)}</strong></div>`
           : !pv2Suppress.loaded
-            ? '<div class="pv2-empty"><strong>Chargement…</strong></div>'
+            ? `<div class="pv2-empty">${typeof renderThinking === 'function' ? renderThinking('searching') : '<strong>Chargement…</strong>'}</div>`
             : pv2Suppress.entries.length
               ? `<table class="pv2-table">
                   <thead><tr><th>Adresse</th><th>Origine</th><th class="num">Depuis</th><th></th></tr></thead>

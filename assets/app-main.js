@@ -11913,13 +11913,13 @@ function renderStaffCustomRequestsPanel() {
   const head = `<div class="cr-panel-head">
     <div>
       <strong>Demandes sur mesure${newCount ? ` <span class="cr-count">${newCount}</span>` : ''}</strong>
-      <span>${cache.loading ? 'Chargement…' : `${items.length} demande(s) active(s)${newCount ? ` · ${newCount} nouvelle(s)` : ''}`}</span>
+      <span>${cache.loading ? renderThinking('searching', { label: 'Lecture des demandes' }) : `${items.length} demande(s) active(s)${newCount ? ` · ${newCount} nouvelle(s)` : ''}`}</span>
     </div>
     <button type="button" onclick="loadStaffCustomRequests(true)">Actualiser</button>
   </div>`;
   let body;
   if (cache.loading && !items.length) {
-    body = `<div class="cr-empty">Lecture des demandes…</div>`;
+    body = `<div class="cr-empty">${renderThinking('searching', { size: 64, label: 'Lecture des demandes' })}</div>`;
   } else if (cache.error) {
     body = `<div class="cr-empty cr-error">${escapeHtml(cache.error)}</div>`;
   } else if (!items.length) {
@@ -13644,6 +13644,45 @@ function hasReservationNote(reservation) {
 // service. Dans une table, la colonne « Réservation » a la largeur pour la dire.
 // Elle est ecrite en entier jusqu a 90 caracteres, coupee au MOT au-dela, et le
 // texte complet reste dans l infobulle et dans la fiche.
+// LES ORBES DE REFLEXION : « chargement » ne dit pas ce qui se passe.
+// Toutes les surfaces d'agent affichaient le meme mot, « Chargement… », que la
+// machine soit en train de lire la base, d'appeler un modele ou de composer un
+// texte. Or ces trois attentes n'ont ni la meme duree ni la meme raison, et
+// c'est justement ce qu'un gerant veut savoir quand il regarde un ecran qui ne
+// bouge pas. Cinq etats, chacun avec son mouvement (voir le bloc `.pl-orbs`
+// dans la feuille de style).
+// Les orbes sont DECORATIVES (`aria-hidden`) : c'est le libelle qui porte
+// l'information, et une synthese vocale lit « L'agent rédige », pas trois
+// points qui bougent.
+// NEUF ETATS, PAS UN SEUL « chargement ». Chacun correspond a un etat du
+// moteur `thinking-orbs` (voir `assets/thinking-orbs.js` pour l'attribution et
+// ce qui est repris tel quel). Le libelle FRANCAIS dit ce que la machine fait ;
+// l'animation dit qu'elle le fait encore. Les deux ensemble evitent la question
+// « est-ce que c'est bloque ? », qui est la seule que pose un ecran fige.
+const PL_THINKING_LABELS = {
+  breathing: 'L’agent réfléchit',
+  composing: 'L’agent rédige',
+  searching: 'Lecture des données',
+  solving: 'Analyse en cours',
+  connecting: 'Envoi en cours',
+  working: 'Traitement en cours',
+  weaving: 'Assemblage des données',
+  listening: 'Écoute des réponses',
+  shaping: 'Mise en forme',
+};
+
+function renderThinking(etat = 'breathing', options = {}) {
+  const cle = PL_THINKING_LABELS[etat] ? etat : 'breathing';
+  const libelle = options.label || PL_THINKING_LABELS[cle];
+  // Deux tailles, celles du moteur : 20 en ligne dans un texte, 64 quand
+  // l'attente occupe un panneau entier et qu'il n'y a rien d'autre a regarder.
+  const taille = Number(options.size) === 64 ? 64 : 20;
+  return `<span class="pl-thinking" role="status" aria-live="polite">`
+    + `<canvas class="pl-orb-canvas" data-orb-state="${cle}" data-orb-size="${taille}" aria-hidden="true"></canvas>`
+    + `<span>${escapeHtml(libelle)}</span></span>`;
+}
+window.renderThinking = renderThinking;
+
 // LA NOTE SE LIT AUSSI QUAND ON OUVRE LE DOSSIER.
 // Movsar, 2026-08-14 : « la note, on doit pouvoir la lire aussi quand on clique
 // sur la carte, ou on voit les infos ». La fiche « Infos » affichait le plan

@@ -555,10 +555,13 @@
           </span>
           <span id="staffAllCount">0</span>
         </button>
+        <!-- LA LEGENDE ETAIT ECRITE DEUX FOIS, a 80 px d'ecart. Elle vivait ici
+             ET dans l'en-tete de la boite planning juste en dessous, avec les
+             trois memes mots et les trois memes pastilles. Elle reste ou elle
+             sert : COLLEE a la grille qu'elle explique (et le planning laser a
+             deja la sienne, pour la meme raison). Ici il ne reste que ce qui
+             commande la barre d'onglets, le bouton Filtres. -->
         <div class="resource-strip-actions">
-          <span><i class="dot conf"></i>Confirmé</span>
-          <span><i class="dot arr"></i>Arrivé</span>
-          <span><i class="dot paid"></i>Payé</span>
           <button type="button" class="resource-filter-btn" onclick="togglePlanningFilterMenu(event)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>
             Filtres
@@ -582,9 +585,9 @@
             </div>
             <button class="planning-more-btn" type="button" aria-label="Plus d'options" onclick="togglePlanningActionsMenu(event)">•••</button>
             <div class="legend">
-              <span><div class="dot conf"></div> Confirmé</span>
-              <span><div class="dot arr"></div> Arrivé</span>
-              <span><div class="dot paid"></div> Payé</span>
+              <span><i class="dot conf"></i> Confirmé</span>
+              <span><i class="dot arr"></i> Arrivé</span>
+              <span><i class="dot paid"></i> Payé</span>
             </div>
             <button class="planning-toggle" id="planningToggle" onclick="togglePlanningExpanded()">Agrandir</button>
           </div>

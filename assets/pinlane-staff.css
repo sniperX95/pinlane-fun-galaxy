@@ -2915,9 +2915,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
 
 .res-row-tools { display: flex; align-items: center; gap: 5px; }
 
+/* 27 px face aux 26 px de `.res-status-btn`, cote a cote dans CHAQUE ligne
+   de la liste du jour : 72 boutons contre 72, un pixel d'ecart. Personne ne
+   nomme ce defaut, tout le monde le voit. Meme hauteur. */
 .res-icon-btn {
-  width: 27px;
-  height: 27px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7211,21 +7214,29 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .laser-group-card .delay-indicator { margin-left: auto; }
 
 /* Bouton d'ouverture du centre de communication (fiche résa) */
+/* Trois ecarts au systeme sur un seul bouton : une hauteur de 35 px la ou la
+   console n'en connait que 32 et 36, un rayon `--radius-md` la ou tous les
+   autres controles sont en `--radius-sm`, et un fond plein d'accent qui en
+   faisait l'element le plus bruyant de la fiche alors que c'est une action
+   SECONDAIRE (l'action de la fiche, c'est l'etat du dossier). Il redevient un
+   bouton de la meme famille que les autres, et ne prend l'accent qu'au survol. */
 .comm-open-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 14px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  color: var(--accent-strong, var(--accent));
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-family: var(--font-ui);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.comm-open-btn:hover { background: var(--accent); color: #fff; }
+.comm-open-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
 
 /* Centre de communication client (modale) */
 .comm-modal { max-width: 560px; }
@@ -7475,7 +7486,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
    ligne au milieu d'une valeur. */
 .edit-modal-head p {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 13px;
   margin-top: 5px;
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
@@ -7672,7 +7683,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pos-act-row .res-status-btn {
   flex: 1 1 0;
   min-height: 36px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .pos-contact { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
@@ -7682,7 +7693,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   align-items: center;
   gap: 8px;
   color: var(--text);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -7733,7 +7744,7 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pos-field { display: grid; gap: 6px; align-content: start; }
 .pos-field-wide { grid-column: 1 / -1; }
 .pos-field .lbl { font-size: 11px; color: var(--muted); font-weight: 500; }
-.pos-field .field-hint { margin-top: 2px; font-size: 11.5px; line-height: 1.45; }
+.pos-field .field-hint { margin-top: 2px; line-height: 1.45; }
 .pos-field .input:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 
 /* Un bouton doit repondre au doigt. 100-160 ms, `transform` uniquement, et

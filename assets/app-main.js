@@ -15330,10 +15330,17 @@ function renderPosCaisse(r) {
   const extras = r.extras || [];
   const basePrice = r.basePrice || getBasePriceForReservation(r);
   const total = r.price;
+  // L'en-tete du ticket porte le NOM DU CENTRE de la reservation, jamais une
+  // marque ecrite en dur : le comptoir d'un autre client encaissait sous
+  // « FUN GALAXY ».
+  const receiptName = (getAdminCenter(r.centerId || state.adminCenterId)?.name
+    || getCurrentStaffCenterName()
+    || getCurrentStaffCenterId()
+    || 'CENTRE').toUpperCase();
   return `<div class="fade-in">
     <div class="receipt">
       <div class="receipt-head">
-        <div class="title">FUN GALAXY</div>
+        <div class="title">${escapeHtml(receiptName)}</div>
         <div style="color:var(--text-3);font-size:11px;margin-top:4px;">Ticket #${String(r.id).slice(-5)}</div>
       </div>
       <div>

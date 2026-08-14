@@ -13178,6 +13178,15 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   if (laserCountEl) laserCountEl.textContent = laserCount;
   document.getElementById('planningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'bowling');
   document.getElementById('laserPlanningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'laser');
+  // LA LISTE DU JOUR SUIVAIT LE VISITEUR PARTOUT (2026-08-14). Movsar :
+  // « le truc reservations s'affiche sur toutes les categories ». Les deux
+  // plannings etaient masques au changement de page ; la boite de la liste
+  // n'entrait pas dans la regle et n'avait meme pas d'identifiant, donc elle
+  // restait peinte sous Vue d'ensemble, Reservations, Terrain, Clients...
+  // Regle a retenir : tout bloc de la page Planning se masque par la MEME
+  // decision. Un bloc qu'on oublie de rattacher a cette decision est visible
+  // par defaut, et personne ne le voit en relisant le code.
+  document.getElementById('staffTableBox')?.classList.toggle('hidden', hiddenByPage);
 }
 
 function getReservationFirstResourceStart(reservation, view = getStaffResourceView()) {

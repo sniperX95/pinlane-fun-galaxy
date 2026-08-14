@@ -27,11 +27,30 @@
 // (« Bowling Classique », pas « Bowling ») : une donnee de test plus courte que
 // la vraie ne teste rien.
 
+// Cle LLM chargee depuis un fichier d'environnement local, JAMAIS affichee, et
+// SEULES les variables du fournisseur : ce gate ne doit pas pouvoir toucher une
+// base de production par accident. Sans cle, le bloc [MODELE REEL] est saute et
+// le reste du gate tourne quand meme : test:ops:all ne depend d'aucun secret.
+const fs = require('fs');
+const path = require('path');
+const LLM_VARS = new Set(['KIMI_API_KEY', 'MOONSHOT_API_KEY', 'KIMI_MODEL', 'LLM_PROVIDER']);
+for (const file of [process.env.PINLANE_ENV_FILE, '.env.local', '.env'].filter(Boolean)) {
+  const target = path.isAbsolute(file) ? file : path.join(__dirname, '..', file);
+  if (!fs.existsSync(target)) continue;
+  for (const line of fs.readFileSync(target, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^([A-Za-z0-9_]+)=(.*)$/);
+    if (match && LLM_VARS.has(match[1]) && match[2] && !process.env[match[1]]) {
+      process.env[match[1]] = match[2].replace(/^"|"$/g, '');
+    }
+  }
+}
+
 const {
   answerMarketingQuestion,
   buildAskDossier,
   checkAnswerGrounding,
 } = require('../lib/marketing-ask');
+const { llmProvider } = require('../lib/llm-client');
 const { buildCenterFacts } = require('../lib/marketing-agents');
 const { listBookingFormules } = require('../lib/catalog-store');
 const { listCenterActivities } = require('../lib/activity-catalog');
@@ -230,6 +249,46 @@ function deps({ answer, calls, provider = 'kimi', exhausted = false }) {
     await answerMarketingQuestion('libramont', { question: 'ok' }, deps({ answer: GOOD_ANSWER, calls }));
   } catch (error) { thrown = error; }
   ok(thrown && thrown.statusCode === 400 && calls.length === 0, 'question de moins de 4 caracteres : refusee avant tout appel');
+
+  // ── Le seul bloc qui fait parler le VRAI modele ───────────────────────────
+  // Tout ce qui precede teste la plomberie avec un modele injecte. Un mock ne
+  // peut pas dire si Kimi, nourri du vrai catalogue de ce centre, ecrit une
+  // reponse qui SURVIT au controle : il pourrait la faire echouer a chaque fois
+  // et personne ne le saurait avant la prod. Cout : 3 appels, de l'ordre de
+  // 0,01 $. Sans cle : saute proprement.
+  if (!llmProvider('sensitive')) {
+    console.log('\n[MODELE REEL] SKIP (aucune cle LLM dans l\'environnement)');
+  } else {
+    console.log('\n[MODELE REEL] Kimi, nourri du vrai catalogue, passe le controle');
+    const realDeps = {
+      buildMarketingBriefBundle: async () => briefBundle(),
+      getMergedFormulas: async () => listBookingFormules(),
+    };
+    for (const question of [
+      'Comment je remplis lundi 18 ?',
+      'Est-ce que ca vaut le coup de pousser les anniversaires ados en ce moment ?',
+      'Quelle est la capitale du Danemark ?',
+    ]) {
+      const real = await answerMarketingQuestion('libramont', { question }, realDeps);
+      if (!ok(real.grounded === true, `« ${question} » : la reponse du modele passe le controle`,
+        `motif : ${real.reason}${real.blockers ? ' / ' + JSON.stringify(real.blockers) : ''}`)) continue;
+      console.log(`      [${real.provider}/${real.model}] ${real.answer.titre}`);
+      console.log(`      "${real.answer.reponse.slice(0, 160)}"`);
+      console.log(`      faits : ${JSON.stringify(real.answer.faits)}`);
+      console.log(`      ne sait pas : ${JSON.stringify(real.answer.jeNeSaisPas)}`);
+      const DASH_RE = new RegExp('[\\u2014\\u2013]');
+      ok(!DASH_RE.test(real.answer.reponse), '      zero tiret cadratin dans la sortie');
+      if (/danemark/i.test(question)) {
+        // La question hors perimetre : l'agent DIT qu'il ne sait pas au lieu de
+        // repondre « Copenhague ». C'est la loi produit, pas une preference.
+        ok(!/copenhague/i.test(`${real.answer.titre} ${real.answer.reponse} ${real.answer.faits.join(' ')}`)
+          && (real.answer.jeNeSaisPas.length > 0 || /pas mon sujet|ne sais pas|aucune donn/i.test(real.answer.reponse)),
+          '      hors perimetre : il refuse de repondre au lieu d\'inventer');
+      } else {
+        ok(real.answer.faits.length > 0, '      elle cite au moins un fait du dossier');
+      }
+    }
+  }
 
   console.log(`\nmarketing-ask-check: ${failures ? `${failures} FAIL` : 'ALL OK'}`);
   process.exit(failures ? 1 : 0);

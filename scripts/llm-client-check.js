@@ -8,7 +8,8 @@ const { llmProvider, anthropicModel, callLlm, callLlmJson, estimateTokens, cache
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
 
-const ENV_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_MARKETING_MODEL', 'OPENAI_MARKETING_MODEL'];
+const ENV_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_MARKETING_MODEL', 'OPENAI_MARKETING_MODEL',
+  'KIMI_API_KEY', 'MOONSHOT_API_KEY', 'KIMI_MODEL', 'LLM_PROVIDER', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL'];
 const saved = {};
 for (const key of ENV_KEYS) { saved[key] = process.env[key]; delete process.env[key]; }
 function restoreEnv() { for (const key of ENV_KEYS) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; } }
@@ -117,6 +118,94 @@ const anthropicOk = (text, stopReason = 'end_turn') => ({
   // tokens, sous les 4 096 de Haiku → le cache dort et on doit le SAVOIR.
   ok(estimateTokens('x'.repeat(8281)) < cacheableMinTokens('claude-haiku-4-5'),
     'le bloc stable réel de la prod est bien sous le seuil : le log prompt_cache_inactive a une raison d\'exister');
+
+  // ── KIMI : le fournisseur que le centre PAIE, et qui n'avait aucun gate ────
+  // Ce bloc existe a cause d'un defaut mesure sur l'API reelle le 2026-08-14 :
+  // K2.6 raisonne, son `reasoning_content` est decompte de max_tokens, et avec
+  // les plafonds calibres pour Haiku (900 a 1200) il consommait 899 tokens de
+  // raisonnement pour rendre ZERO caractere de contenu. finish_reason
+  // « length », JSON invalide, callLlmJson null, et toutes les surfaces
+  // marketing retombaient en silence sur leur gabarit. Le provider avait ete
+  // ajoute sans une seule assertion : voila pourquoi ca a pu vivre en prod.
+  console.log('\n[KIMI] raisonnement coupe, troncature refusee, priorite');
+  delete process.env.OPENAI_API_KEY;
+  process.env.KIMI_API_KEY = 'test-key-kimi';
+  ok(llmProvider('marketing') === 'kimi', 'cle Kimi seule -> kimi');
+  ok(llmProvider('sensitive') === 'kimi', 'Kimi sert AUSSI les usages sensibles (fournisseur contractuel)');
+  process.env.ANTHROPIC_API_KEY = 'test-key-anthropic';
+  ok(llmProvider('marketing') === 'kimi', 'Kimi PRIORITAIRE sur Anthropic : c\'est lui que le centre paie');
+  delete process.env.ANTHROPIC_API_KEY;
+
+  const kimiRes = (content, finishReason = 'stop', usage = {}) => ({
+    ok: true,
+    json: async () => ({ choices: [{ finish_reason: finishReason, message: { role: 'assistant', content } }], usage }),
+  });
+  const fxK = makeFetch(() => kimiRes('{"content":"Texte Kimi."}'));
+  const rK = await callLlmJson({ stableSystem: 'STABLE', system: 'volatile', user: '{"a":1}', schema, maxTokens: 900, fetchImpl: fxK.impl });
+  const callK = fxK.calls[0];
+  ok(callK.url === 'https://api.moonshot.ai/v1/chat/completions', 'URL Moonshot internationale (.ai, pas .cn)');
+  ok(callK.init.headers.Authorization === 'Bearer test-key-kimi', 'header Authorization Bearer');
+  ok(callK.body.model === 'kimi-k2.6' && callK.body.max_tokens === 900, `model + max_tokens (${callK.body.model}, ${callK.body.max_tokens})`);
+  ok(callK.body.thinking && callK.body.thinking.type === 'disabled',
+    'LE RAISONNEMENT EST COUPE : sans thinking.type=disabled, 899 tokens partent en reflexion et le contenu sort vide');
+  ok(callK.body.response_format && callK.body.response_format.type === 'json_object', 'mode JSON demande quand un schema est attendu');
+  ok(callK.body.messages[0].role === 'system' && callK.body.messages[0].content.includes('STABLE') && callK.body.messages[0].content.includes('volatile'), 'system = stable + volatile concatenes');
+  // Ce dialecte n'a AUCUN champ pour porter un schema : s'il n'est pas dans le
+  // prompt, il n'existe pas. Constate en reel : le modele rendait un objet de
+  // son invention, avec le seul champ qu'il jugeait utile, et les surfaces
+  // affichaient des valeurs par defaut sans que rien ne signale l'ecart.
+  ok(callK.body.messages[0].content.includes(JSON.stringify(schema)),
+    'LE SCHEMA EST DANS LE PROMPT : sans lui, response_format json_object demande « du JSON », jamais CE JSON');
+  const fxKnoSchema = makeFetch(() => kimiRes('texte libre'));
+  await callLlm({ user: 'u', fetchImpl: fxKnoSchema.impl });
+  ok(!fxKnoSchema.calls[0].body.response_format && !/required/.test(fxKnoSchema.calls[0].body.messages[0] ? fxKnoSchema.calls[0].body.messages[0].content : ''),
+    'CONTRE-PREUVE : sans schema demande, aucune consigne JSON n\'est ajoutee (le mode texte libre reste libre)');
+  ok(rK && rK.content === 'Texte Kimi.' && rK._provider === 'kimi' && rK._model === 'kimi-k2.6', 'reponse parsee + _provider/_model');
+
+  const fxKcut = makeFetch(() => kimiRes('{"content":"phrase coupee en plein mi', 'length'));
+  ok((await callLlm({ user: 'u', fetchImpl: fxKcut.impl })) === null,
+    'finish_reason « length » -> null : une phrase coupee en deux ne va JAMAIS sur une surface');
+  // Contre-preuve : c'est bien finish_reason qui decide, pas la forme du texte.
+  // Le MEME contenu, rendu avec finish_reason « stop », doit passer. Sans cette
+  // ligne, un refus qui viendrait d'ailleurs (texte vide, parse rate) passerait
+  // pour une garde anti-troncature qui n'existe pas.
+  const fxKsame = makeFetch(() => kimiRes('{"content":"phrase coupee en plein mi', 'stop'));
+  const rKsame = await callLlm({ user: 'u', fetchImpl: fxKsame.impl });
+  ok(rKsame && rKsame.text === '{"content":"phrase coupee en plein mi',
+    'CONTRE-PREUVE : le meme texte avec finish_reason « stop » PASSE (c\'est bien la troncature qui bloque)');
+
+  // Le plafond de cadence du compte : TROIS requetes par minute au niveau de
+  // l'organisation (mesure le 2026-08-14 : le 4e appel repart en 429 en 200 ms).
+  // Sans reprise, ce 429 devenait un null muet et la surface retombait sur son
+  // gabarit. C'est la cause dominante du « toujours la meme chose ».
+  let servedK = 0;
+  const fxK429 = makeFetch(() => {
+    servedK += 1;
+    return servedK <= 2 ? { status: 429, ok: false, json: async () => ({}) } : { status: 200, ...kimiRes('{"content":"apres la fenetre"}') };
+  });
+  const r429 = await callLlmJson({ user: 'u', schema, fetchImpl: fxK429.impl, retryWaitsMs: [5, 10] });
+  ok(r429 && r429.content === 'apres la fenetre' && servedK === 3,
+    `429 puis 429 puis 200 : l'appel REESSAIE et aboutit (${servedK} tentatives)`);
+  let servedAll429 = 0;
+  const fxK429all = makeFetch(() => { servedAll429 += 1; return { status: 429, ok: false, json: async () => ({}) }; });
+  const rAll429 = await callLlm({ user: 'u', fetchImpl: fxK429all.impl, retryWaitsMs: [5, 10] });
+  ok(rAll429 === null && servedAll429 === 3,
+    `429 sans fin : le nombre de tentatives est BORNE (${servedAll429}), la fonction ne part pas en salle d'attente`);
+  let servedFail = 0;
+  const fxK500 = makeFetch(() => { servedFail += 1; return { status: 500, ok: false, json: async () => ({}) }; });
+  ok((await callLlm({ user: 'u', fetchImpl: fxK500.impl, retryWaitsMs: [5, 10] })) === null && servedFail === 1,
+    'CONTRE-PREUVE : une erreur 500 n\'est PAS reessayee (seul le plafond de cadence l\'est)');
+
+  llmBudget.__resetForTests();
+  const beforeK = llmBudget.getMonthlySpend();
+  const fxKspend = makeFetch(() => kimiRes('coupe', 'length', { prompt_tokens: 100000, completion_tokens: 50000 }));
+  await callLlm({ user: 'u', fetchImpl: fxKspend.impl });
+  const spentK = llmBudget.getMonthlySpend() - beforeK;
+  // 100k in x 0.95/M + 50k out x 4/M = 0.095 + 0.20 = 0.295 $
+  ok(Math.abs(spentK - 0.295) < 1e-9,
+    `une sortie TRONQUEE est quand meme facturee, donc quand meme comptee (attendu 0.295, obtenu ${spentK})`);
+  llmBudget.__resetForTests();
+  delete process.env.KIMI_API_KEY;
 
   console.log('\n[SITES] câblage des consommateurs');
   delete process.env.OPENAI_API_KEY;

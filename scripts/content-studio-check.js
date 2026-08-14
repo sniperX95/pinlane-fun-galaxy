@@ -77,8 +77,25 @@ const { resolveOccasion } = require('../lib/fungalaxy-brand');
   ok(pack2.generationMode === 'rules', 'pack IA bloqué → le pack règles est servi');
   ok(!/garantie/.test(pack2.long), 'aucun claim interdit dans la sortie');
 
+  // LE SCORER NE CHOISIT PLUS QUI PUBLIE.
+  // Il choisit encore s'il faut CORRIGER (bloc précédent : faible → fixes →
+  // fort), mais plus qui du modèle ou du gabarit sort. Une version IA notée
+  // SOUS le seuil d'affichage, qui n'invente rien, publie quand même : elle est
+  // simplement étiquetée « à relire ». Avant, elle partait à la poubelle et le
+  // gabarit sortait, et c'est ce qui faisait lire au gérant le même paragraphe
+  // semaine après semaine.
+  console.log('\n[QUI PUBLIE] une version IA sous le seuil, mais honnête, sort quand même');
+  const pack3 = await generateContentPack('libramont', { platform: 'facebook' }, {
+    query, bundle, llmProvider: () => 'mock', callPackModel: async () => weakPack,
+  });
+  ok(pack3.generationMode === 'ai' && pack3.long === weakPack.long,
+    `la version du modèle publie malgré sa note (${pack3.quality.score}/100)`);
+  ok(pack3.quality.status === 'review', 'et elle est étiquetée « à relire », pas jetée en silence');
+  ok(pack3.quality.iterations.filter((step) => step.mode.startsWith('ai')).length === 2,
+    'la correction a bien été tentée avant de la garder telle quelle');
+
   console.log('\n[PERSISTANCE]');
-  ok(inserted.length === 2, 'chaque génération est persistée');
+  ok(inserted.length === 3, 'chaque génération est persistée');
   const row = inserted[0];
   ok(row[2] === 'facebook' && JSON.parse(row[5]).platform === 'facebook' && JSON.parse(row[5]).quality, 'payload complet (platform + quality)');
 

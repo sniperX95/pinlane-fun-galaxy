@@ -1,3 +1,8 @@
+// Marqueur des traces automatiques liees a un retard. Il permet de les RETIRER
+// quand le retard est annule, au lieu d empiler une ligne de plus. Il est masque
+// a l affichage par `getReservationNoteText`.
+const DELAY_NOTE_TAG = '[ops:retard]';
+
 const {
   applyReservationScheduleUpdates,
   cancelReservationCommunications,
@@ -1076,11 +1081,18 @@ async function handlePost(req, res, providedBody = null, options = {}) {
             origin: delayOrigin,
           })
           : change.update.opsPlan,
+        // UNE NOTE DIT CE QU IL FAUT FAIRE, PAS QUI A CLIQUE.
+        // Movsar, 2026-08-14 : « ca met deja "il y a trop d info", faut citer
+        // administrateur ou quoi, c est pas pro ». La ligne posait le retard, sa
+        // raison, la strategie choisie ET le nom de l operateur, soit quatre
+        // faits pour une consigne de comptoir qui en contient un. Qui a fait
+        // quoi vit dans le journal d audit, c est sa raison d etre ; la note du
+        // dossier sert la personne qui accueille le client.
         noteAppend: change.kind === 'delayed'
-        ? `Retard +${impact.delayMinutes} min appliqué (${impact.reason}) : ${strategy.label}, par ${staffMember}.`
+        ? `${DELAY_NOTE_TAG} Retard +${impact.delayMinutes} min.`
         : change.kind === 'relocate'
-          ? `Changement de piste (${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}) suite au retard de « ${impact.reservationName} », par ${staffMember}.`
-          : `Décalage de ${change.shiftMinutes} min suite au retard de « ${impact.reservationName} », par ${staffMember}.`,
+          ? `${DELAY_NOTE_TAG} Pistes ${change.previousLanes.join(', ')} vers ${change.newLanes.join(', ')}.`
+          : `${DELAY_NOTE_TAG} Décalée de ${change.shiftMinutes} min.`,
       };
     });
 
@@ -1367,7 +1379,11 @@ async function handlePost(req, res, providedBody = null, options = {}) {
         startTime: origin.startTime,
         lanes: restoredLanes,
         opsPlan: restoredPlan,
-        noteAppend: `Retard retiré, créneau d'origine ${origin.startTime} restauré, par ${staffMember}.`,
+        // RETIRER UN RETARD RETIRE SA TRACE, il n'en ajoute pas une deuxieme.
+        // La note empilait « Retard +10 min applique… » puis « Retard retire,
+        // creneau d origine restaure… » : deux lignes contradictoires que
+        // personne n efface, et une note qui grossit a chaque aller-retour.
+        noteDropTag: 'retard',
       }],
     });
     await createOpsEvent({

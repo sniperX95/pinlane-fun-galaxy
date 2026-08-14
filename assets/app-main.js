@@ -1149,6 +1149,32 @@ function setEditLanes(value) {
   refreshEditPreview();
 }
 
+// Bascule d'une piste depuis le selecteur. La source de verite reste
+// `lanesStr`, le format que le reste du formulaire lit deja : on ne cree pas un
+// second etat pour les memes pistes, sinon les deux divergent au premier oubli.
+function getEditLaneNumbers() {
+  return String(state.editState?.lanesStr || '')
+    .split(',')
+    .map(part => Number(String(part).trim()))
+    .filter(lane => Number.isFinite(lane) && lane >= 1);
+}
+
+function toggleEditLane(lane) {
+  if (!state.editState) return;
+  const choisies = new Set(getEditLaneNumbers());
+  if (choisies.has(lane)) choisies.delete(lane);
+  else choisies.add(lane);
+  state.editState.lanesStr = [...choisies].sort((a, b) => a - b).join(',');
+  const bouton = document.querySelector(`.lane-picker .lane-chip[onclick="toggleEditLane(${lane})"]`);
+  if (bouton) {
+    const actif = choisies.has(lane);
+    bouton.classList.toggle('is-on', actif);
+    bouton.setAttribute('aria-pressed', actif ? 'true' : 'false');
+  }
+  refreshEditPreview();
+}
+window.toggleEditLane = toggleEditLane;
+
 const STORAGE_KEY = 'funGalaxy_v4';
 const AUTH_KEY = 'funGalaxy_auth_v1';
 const API_ENDPOINTS = window.PinlaneApiClient?.endpoints || {
@@ -11718,7 +11744,7 @@ window.getStaffNewCustomRequestCount = getStaffNewCustomRequestCount;
 // A FAIRE. C est le compte du panneau qui fait foi : tant qu une demande n est
 // ni traitee ni archivee, elle attend quelqu un.
 function getStaffActiveCustomRequestCount() {
-  return getStaffCustomRequestItems().filter(item => item.status !== 'archived' && item.status !== 'done').length;
+  return getStaffCustomRequestItems().filter(item => item.status !== 'archived' && item.status !== 'handled').length;
 }
 window.getStaffActiveCustomRequestCount = getStaffActiveCustomRequestCount;
 
@@ -11775,7 +11801,11 @@ function renderStaffCustomRequestCard(item) {
     Number(item.pax) > 0 ? `${item.pax} pers.` : ''
   ].filter(Boolean).join(' · ');
   const jid = staffClientJs(item.id);
-  return `<article class="cr-card cr-status-${escapeHtml(item.status)}">
+  // La carte entiere ouvre la fiche : c'est la ligne de liste d'un dossier, et
+  // une ligne de liste s'ouvre. Les boutons d'action gardent leur propre clic.
+  return `<article class="cr-card cr-status-${escapeHtml(item.status)}" role="button" tabindex="0"
+      onclick="openStaffCustomRequest(${jid})"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openStaffCustomRequest(${jid});}">
     <div class="cr-card-head">
       <div class="cr-card-ident">
         <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
@@ -11786,7 +11816,7 @@ function renderStaffCustomRequestCard(item) {
     ${meta ? `<div class="cr-meta">${escapeHtml(meta)}</div>` : ''}
     ${item.email ? `<div class="cr-meta cr-email">${escapeHtml(item.email)}</div>` : ''}
     <p class="cr-message">${escapeHtml(item.message || '')}</p>
-    <div class="cr-actions">
+    <div class="cr-actions" onclick="event.stopPropagation()">
       ${item.email ? `<button type="button" onclick="composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
       ${item.status !== 'in_progress' && item.status !== 'handled' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
       ${item.status !== 'handled' ? `<button type="button" class="success" onclick="setStaffCustomRequestStatus(${jid}, 'handled')">Marquer traitée</button>` : ''}
@@ -11794,6 +11824,87 @@ function renderStaffCustomRequestCard(item) {
     </div>
   </article>`;
 }
+
+// UNE DEMANDE SUR MESURE S OUVRE, COMME UNE RESERVATION.
+// Movsar, 2026-08-14 : « les demandes sur mesure, on sait rien faire, on sait
+// pas voir la demande, il n'y a rien qui y est dedie ». Elles ne vivaient que
+// dans une carte d un panneau lateral de la page Clients : le message y est
+// borne par la largeur de la colonne, rien n est cliquable, et un dossier qui
+// ne s ouvre pas ne se traite pas. C est pourtant le SEUL endroit ou arrive une
+// demande d entreprise ou de groupe, c est-a-dire les plus gros paniers.
+// La fiche reprend la forme des fiches de reservation : un en-tete qui dit qui
+// et quand, un corps qui commence par l ACTION, le message en entier, et les
+// coordonnees cliquables (telephone et email s ouvrent vraiment).
+let staffCustomRequestFocusReturn = null;
+
+function openStaffCustomRequest(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  const overlay = document.getElementById('crOverlay');
+  if (!item || !overlay) return;
+  staffCustomRequestFocusReturn = document.activeElement;
+  const occKey = String(item.occasion || '').toLowerCase();
+  const occ = STAFF_OCCASION_LABELS[occKey] || '';
+  const jid = staffClientJs(item.id);
+  const faits = [
+    item.company ? ['Société', item.company] : null,
+    item.requestedDate ? ['Date souhaitée', item.requestedDate] : null,
+    Number(item.pax) > 0 ? ['Participants', `${item.pax} personnes`] : null,
+    occ ? ['Occasion', occ] : null,
+  ].filter(Boolean);
+  overlay.className = 'cr-sheet-overlay';
+  overlay.innerHTML = `<div class="cr-sheet" role="dialog" aria-modal="true" aria-labelledby="crSheetTitle">
+    <div class="cr-sheet-head">
+      <div>
+        <h2 id="crSheetTitle">${escapeHtml(item.contactName || 'Contact')}</h2>
+        <p>${escapeHtml([item.company, occ, Number(item.pax) > 0 ? `${item.pax} personnes` : '', item.requestedDate ? `souhait ${item.requestedDate}` : ''].filter(Boolean).join(' · ') || 'Demande sur mesure')}</p>
+      </div>
+      <button type="button" class="cr-sheet-close" onclick="closeStaffCustomRequest()" aria-label="Fermer">×</button>
+    </div>
+    <div class="cr-sheet-body">
+      <section class="cr-sheet-action">
+        <span class="cr-sheet-label">Que faire</span>
+        <div class="cr-sheet-buttons">
+          ${item.email ? `<button type="button" class="primary" onclick="composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre par email</button>` : ''}
+          ${item.status !== 'in_progress' && item.status !== 'handled' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress'); closeStaffCustomRequest();">Prendre en charge</button>` : ''}
+          ${item.status !== 'handled' ? `<button type="button" class="success" onclick="setStaffCustomRequestStatus(${jid}, 'handled'); closeStaffCustomRequest();">Marquer traitée</button>` : ''}
+          <button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived'); closeStaffCustomRequest();">Archiver</button>
+        </div>
+      </section>
+      <section class="cr-sheet-block">
+        <span class="cr-sheet-label">Sa demande</span>
+        <p class="cr-sheet-message">${escapeHtml(item.message || 'Aucun message.')}</p>
+      </section>
+      ${faits.length ? `<section class="cr-sheet-block">
+        <span class="cr-sheet-label">Le besoin</span>
+        <dl class="cr-sheet-facts">${faits.map(([cle, valeur]) => `<div><dt>${escapeHtml(cle)}</dt><dd>${escapeHtml(String(valeur))}</dd></div>`).join('')}</dl>
+      </section>` : ''}
+      <section class="cr-sheet-block">
+        <span class="cr-sheet-label">Le joindre</span>
+        <div class="cr-sheet-contact">
+          ${item.phone ? `<a href="tel:${escapeHtml(String(item.phone).replace(/\s+/g, ''))}">${escapeHtml(item.phone)}</a>` : ''}
+          ${item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : ''}
+          ${!item.phone && !item.email ? '<span class="cr-sheet-empty">Aucune coordonnée fournie.</span>' : ''}
+        </div>
+      </section>
+    </div>
+  </div>`;
+  overlay.classList.remove('hidden');
+  const premier = overlay.querySelector('button, a[href]');
+  if (premier) premier.focus();
+}
+window.openStaffCustomRequest = openStaffCustomRequest;
+
+function closeStaffCustomRequest() {
+  const overlay = document.getElementById('crOverlay');
+  if (!overlay) return;
+  overlay.className = 'hidden';
+  overlay.innerHTML = '';
+  if (staffCustomRequestFocusReturn && typeof staffCustomRequestFocusReturn.focus === 'function') {
+    staffCustomRequestFocusReturn.focus();
+  }
+  staffCustomRequestFocusReturn = null;
+}
+window.closeStaffCustomRequest = closeStaffCustomRequest;
 
 function renderStaffCustomRequestsPanel() {
   const cache = staffCustomRequestsCache;
@@ -13511,7 +13622,13 @@ function getReservationHighlightClasses(reservation) {
 // ce que la donnée prouve. Les marqueurs de simulation sont retirés, sinon une
 // réservation simulée compterait comme une vraie demande.
 function getReservationNoteText(reservation = {}) {
-  return String(reservation.notes || '').replace(/\[SIM:[^\]]*\]/g, '').trim();
+  // `[ops:xxx]` marque les traces posees par le moteur (retard, decalage) pour
+  // qu'elles puissent etre RETIREES quand l'operation est annulee. Le marqueur
+  // est une mecanique interne : il ne se lit jamais a l'ecran.
+  return String(reservation.notes || '')
+    .replace(/\[SIM:[^\]]*\]/g, '')
+    .replace(/\[ops:[^\]]*\]\s*/g, '')
+    .trim();
 }
 
 function hasReservationNote(reservation) {
@@ -13527,6 +13644,22 @@ function hasReservationNote(reservation) {
 // service. Dans une table, la colonne « Réservation » a la largeur pour la dire.
 // Elle est ecrite en entier jusqu a 90 caracteres, coupee au MOT au-dela, et le
 // texte complet reste dans l infobulle et dans la fiche.
+// LA NOTE SE LIT AUSSI QUAND ON OUVRE LE DOSSIER.
+// Movsar, 2026-08-14 : « la note, on doit pouvoir la lire aussi quand on clique
+// sur la carte, ou on voit les infos ». La fiche « Infos » affichait le plan
+// automatique, le contact, le retard, mais pas la consigne du client : le seul
+// endroit ou on ouvre un dossier pour comprendre ce qu'il a de particulier ne
+// disait pas ce qu'il a de particulier. Elle se place juste apres l'action,
+// avant le programme : c'est ce qui change la maniere de servir.
+function renderPosNoteBlock(reservation) {
+  const note = getReservationNoteText(reservation);
+  if (!note) return '';
+  return `<section class="info-block pos-note-block">
+    <span class="info-label">Note du dossier</span>
+    <p class="pos-note-text">${escapeHtml(note)}</p>
+  </section>`;
+}
+
 function renderReservationNoteLine(reservation) {
   const note = getReservationNoteText(reservation);
   if (!note) return '';
@@ -15118,6 +15251,7 @@ function renderPosDetails(r) {
         <button type="button" class="res-status-btn paid ${r.status === 'paid' ? 'active paid' : ''}" aria-pressed="${r.status === 'paid'}" onclick="setReservationStatusDirect(${r.id}, 'paid')">Payé</button>
       </div>
     </section>
+    ${renderPosNoteBlock(r)}
     ${renderReservationProgram(r)}
     ${activityChecklistHtml}
     ${opsPlanHtml}
@@ -15816,9 +15950,19 @@ function renderPosEdit(r) {
                 <label class="lbl" for="editStartInput">Heure</label>
                 <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
               </div>
+              <!-- UNE DUREE SE CHOISIT EN HEURES ET MINUTES, PAS EN DECIMAL.
+                   Movsar, 2026-08-14 : « pour le temps c'est mal foutu aussi, ca
+                   montre pas en minutes, genre ca montre en ,5 ». Le champ etait
+                   un compteur numerique au pas de 0,5 : il fallait traduire
+                   « 1,5 » en « une heure et demie » de tete, et rien n'empechait
+                   de saisir 3,7. La liste ne propose que des durees qui existent
+                   au comptoir, ecrites comme on les dit. -->
               <div class="pos-field">
-                <label class="lbl" for="editDurationInput">Durée (h)</label>
-                <input id="editDurationInput" class="input" type="number" step="0.5" min="0.5" value="${e.duration}" oninput="setEditField('duration', this.value, true)" required>
+                <label class="lbl" for="editDurationInput">Durée</label>
+                <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
+                  ${[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
+                  ${[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
+                </select>
               </div>
               <div class="pos-field">
                 <label class="lbl" for="editPaxInput">Joueurs</label>
@@ -15832,9 +15976,26 @@ function renderPosEdit(r) {
                   <option value="paid" ${e.status === 'paid' ? 'selected' : ''}>Payé</option>
                 </select>
               </div>
+              <!-- LES PISTES SE CHOISISSENT, ELLES NE SE TAPENT PAS.
+                   Movsar : « le truc modifier aussi pour les pistes, c'est mal
+                   foutu ». C'etait un champ texte libre avec « Ex: 1,2 » pour
+                   seule indication : il fallait connaitre le nombre de pistes du
+                   centre, la syntaxe attendue, et rien n'empechait d'ecrire 99.
+                   Une piste est un objet fini et denombrable, donc elle se
+                   presente comme telle : une case par piste, celles qui sont en
+                   maintenance sont hors service et le disent. -->
               <div class="pos-field pos-field-wide">
-                <label class="lbl" for="editLanesInput">Pistes</label>
-                <input id="editLanesInput" class="input" value="${escapeHtml(e.lanesStr)}" oninput="setEditLanes(this.value)" placeholder="Ex: 1,2" aria-describedby="editLanesHint">
+                <span class="lbl">Pistes</span>
+                <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
+                  ${Array.from({ length: TOTAL_LANES }, (_, index) => index + 1).map(lane => {
+                    const choisie = getEditLaneNumbers().includes(lane);
+                    const maintenance = state.laneStatuses[lane] === 'maintenance';
+                    return `<button type="button" class="lane-chip${choisie ? ' is-on' : ''}${maintenance ? ' is-off' : ''}"
+                      ${maintenance ? 'disabled aria-disabled="true" title="Piste en maintenance"' : ''}
+                      aria-pressed="${choisie ? 'true' : 'false'}"
+                      onclick="toggleEditLane(${lane})">${lane}</button>`;
+                  }).join('')}
+                </div>
                 <p class="field-hint" id="editLanesHint">Réattribuées automatiquement quand l'effectif, l'heure ou la durée change.</p>
               </div>
             </div>
@@ -17725,6 +17886,9 @@ document.getElementById('delayOverlay').addEventListener('click', e => {
 document.getElementById('quickBookOverlay').addEventListener('click', e => {
   if (e.target.id === 'quickBookOverlay') closeQuickBook();
 });
+document.getElementById('crOverlay')?.addEventListener('click', e => {
+  if (e.target.id === 'crOverlay') closeStaffCustomRequest();
+});
 
 setInterval(() => {
   if (state.view === 'staff') {
@@ -17736,6 +17900,12 @@ setInterval(() => {
 // Échap ferme le mode plein écran du planning (bowling ou laser).
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
+  const crOverlay = document.getElementById('crOverlay');
+  if (crOverlay && !crOverlay.classList.contains('hidden')) {
+    closeStaffCustomRequest();
+    event.preventDefault();
+    return;
+  }
   if (delayFlowState) {
     closeDelayModal();
     event.preventDefault();

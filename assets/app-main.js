@@ -4686,9 +4686,9 @@ function goStep4() {
   goStep(4);
 }
 
-// Occasion DÉCLARÉE par le client. Les clés alignées sur l'enum serveur
-// (anniversaire, amis, entreprise, ecole, autre) sont stockées telles quelles ;
-// 'evg' reste déclaratif côté client (l'enum serveur ne le retient pas encore).
+// Occasion DÉCLARÉE par le client. Les six clés sont alignées sur l'enum
+// serveur (OCCASION_VALUES, lib/reservation-request.js), 'evg' compris :
+// chaque chip du tunnel est stockée telle quelle en base.
 // '' = non précisé. Propagée au serveur → catégorisation staff déclarée.
 const BOOKING_OCCASIONS = ['anniversaire', 'amis', 'entreprise', 'ecole', 'evg', 'autre'];
 function setBookingOccasion(value) {

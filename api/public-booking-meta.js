@@ -34,7 +34,9 @@ const { normalizeBranding, normalizeIdentity } = require('../lib/center-config')
 //                                      vercel.json; discriminated by body.kind.
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CUSTOM_REQUEST_OCCASIONS = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'autre']);
+// Miroir de OCCASION_VALUES (lib/reservation-request.js) : les six occasions
+// proposees par le tunnel, 'evg' compris.
+const CUSTOM_REQUEST_OCCASIONS = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'evg', 'autre']);
 
 function clean(value, maxLength) {
   if (typeof value !== 'string') return '';

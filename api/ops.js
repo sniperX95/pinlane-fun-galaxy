@@ -539,7 +539,7 @@ async function handleGet(req, res, options = {}) {
   if (action === 'emailBrain') {
     const { getEmailBrainOverrides, getEmailBrainDefaults } = require('../lib/email-agent');
     const overrides = await getEmailBrainOverrides(centerId);
-    sendJson(res, 200, { ok: true, centerId, overrides, defaults: getEmailBrainDefaults() });
+    sendJson(res, 200, { ok: true, centerId, overrides, defaults: getEmailBrainDefaults(centerId) });
     return;
   }
 
@@ -2186,7 +2186,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Enregistrement impossible.'), error.expose ? 400 : 503, error.expose === true);
     }
-    sendJson(res, 200, { ok: true, action, overrides, defaults: getEmailBrainDefaults() });
+    sendJson(res, 200, { ok: true, action, overrides, defaults: getEmailBrainDefaults(concreteCenterId) });
     return;
   }
 
@@ -2496,7 +2496,7 @@ async function handlePost(req, res, providedBody = null, options = {}) {
       subject: body.subject,
       body: body.body,
       category: body.category || 'marketing',
-      centerName: center?.name || 'Fun Galaxy',
+      centerName: center?.name || 'votre centre',
     });
     sendJson(res, 200, { ok: true, ...result });
     return;

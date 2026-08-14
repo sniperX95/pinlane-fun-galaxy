@@ -28,6 +28,17 @@ const {
   renderUnsubscribePage,
 } = require('../lib/marketing-suppression');
 const { enforceRateLimit } = require('../lib/rate-limit');
+const { getCenter } = require('../lib/ops-knowledge');
+
+// Le NOM du centre resolu depuis le jeton : c'est lui qui signe la page de
+// confirmation. Inconnu = page neutre, jamais le nom d'un autre client.
+function centerNameOf(centerId) {
+  try {
+    return String(getCenter(centerId).name || '').trim();
+  } catch (error) {
+    return '';
+  }
+}
 
 function sendHtml(res, statusCode, html) {
   res.statusCode = statusCode;
@@ -104,7 +115,7 @@ module.exports = async (req, res) => {
 
       if (wantsResubscribe) {
         await removeSuppression({ centerId: resolved.centerId, email: resolved.email });
-        sendHtml(res, 200, renderUnsubscribePage({ state: 'restored', email: resolved.email, token }));
+        sendHtml(res, 200, renderUnsubscribePage({ state: 'restored', email: resolved.email, token, centerName: centerNameOf(resolved.centerId) }));
         return;
       }
 
@@ -123,7 +134,7 @@ module.exports = async (req, res) => {
         res.end('OK');
         return;
       }
-      sendHtml(res, 200, renderUnsubscribePage({ state: 'removed', email: resolved.email, token }));
+      sendHtml(res, 200, renderUnsubscribePage({ state: 'removed', email: resolved.email, token, centerName: centerNameOf(resolved.centerId) }));
       return;
     }
 
@@ -134,7 +145,7 @@ module.exports = async (req, res) => {
       source: 'link',
       reason: 'Lien de retrait du mail',
     });
-    sendHtml(res, 200, renderUnsubscribePage({ state: 'removed', email: resolved.email, token }));
+    sendHtml(res, 200, renderUnsubscribePage({ state: 'removed', email: resolved.email, token, centerName: centerNameOf(resolved.centerId) }));
   } catch (error) {
     // DEUX CAS QUE LE 200 NEUTRE CONFONDAIT, ET C'ETAIT GRAVE.
     // Un jeton inconnu doit rendre 200 avec une page neutre : c'est ce qui

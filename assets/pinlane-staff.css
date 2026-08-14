@@ -3152,9 +3152,13 @@ body.staff-mode.laser-dragging * { user-select: none; }
   margin-bottom: var(--space-3);
 }
 
+/* DEUX cartes depuis le retrait de « Prochaines arrivées » (2026-08-14), pas
+   trois. Les alertes portent du texte et deux boutons par ligne, la courbe de
+   revenus se lit sur sa largeur : le partage penche légèrement vers les
+   alertes plutôt que d'étaler deux cartes sur trois colonnes vides. */
 .dash-grid-bottom {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.86fr) minmax(0, 1.12fr);
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
@@ -3360,26 +3364,11 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-lane-row span i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: var(--radius-full); }
 .dash-lane-row em { font-style: normal; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); text-align: right; }
 
-.dash-arrivals, .dash-alerts { display: grid; gap: 6px; }
-
-.dash-arrival-row {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  font-size: 13px;
-}
-
-.dash-arrival-row time { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 600; }
-.dash-arrival-row strong { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dash-arrival-row span { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.dash-arrival-row em { font-style: normal; font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: var(--radius-full); background: var(--subtle); color: var(--muted); }
-.dash-arrival-row em.paid { background: var(--success-soft); color: var(--success); }
-.dash-arrival-row em.arrived { background: var(--warning-soft); color: var(--warning); }
-.dash-arrival-row em.pending { background: var(--info-soft); color: var(--info-strong); }
+/* `.dash-arrivals` et `.dash-arrival-row` sont partis avec la carte
+   « Prochaines arrivées », retirée de la Vue d'ensemble le 2026-08-14. Un
+   sélecteur qui ne s'applique plus à rien est une piste morte pour la passe
+   suivante : il se lit, il se corrige, il ne change rien. */
+.dash-alerts { display: grid; gap: 6px; }
 
 .dash-alert-row {
   display: grid;

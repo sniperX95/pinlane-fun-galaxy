@@ -375,6 +375,36 @@ async function probeCockpitClick(browser) {
     record('dashboard : #staffCockpitPage cache', s3.cockpitHidden && s3.cockpitHasHiddenClass, `cockpitHidden=${s3.cockpitHidden}`);
     record('dashboard : page dashboard visible', s3.dashboardVisible, `dashboardVisible=${s3.dashboardVisible}`);
 
+    // 3a-bis. LA VUE D ENSEMBLE NE REJOUE PAS UNE LISTE DE RESERVATIONS.
+    // Verbatim Movsar (2026-08-14) : « tu as rajoute ca dans dashboard et
+    // c'est bugge a mort et ca sert a rien en plus ici ». La carte
+    // « Prochaines arrivees » listait des dossiers - dont des clients deja
+    // arrives et deja payes, puisque `metrics.upcoming` ne filtre que sur
+    // l'heure - sur un ecran dont le travail est de dire comment va la
+    // journee. Une liste de dossiers se lit la ou on peut agir dessus :
+    // Planning et Reservations. Cette assertion empeche le retour.
+    const dash = await page.evaluate(() => {
+      const root = document.getElementById('staffDashboardPage');
+      if (!root) return { absent: true };
+      return {
+        arrivals: root.querySelectorAll('.dash-arrivals, .dash-arrival-row').length,
+        resRows: root.querySelectorAll('.res-row, .dashboard-detail-reservation, [data-res-row-id]').length,
+        titres: [...root.querySelectorAll('h2')].map((h) => h.textContent.replace(/\s+/g, ' ').trim()),
+        cartesBas: root.querySelectorAll('.dash-grid-bottom .dash-card').length,
+      };
+    });
+    // ANCRE POSITIVE D ABORD. Trois des quatre assertions qui suivent portent
+    // sur une ABSENCE, et une absence est verte sur une page qui ne rend rien :
+    // sans cette ancre, un dashboard casse ferait passer le controle.
+    record('dashboard : la page rend bien ses cartes (ancre du controle d absence)',
+      !dash.absent && (dash.titres || []).length >= 5, `titres=${(dash.titres || []).length}`);
+    record('dashboard : aucune liste d arrivees', !dash.absent && dash.arrivals === 0, `blocs=${dash.arrivals}`);
+    record('dashboard : aucune ligne de reservation', !dash.absent && dash.resRows === 0, `lignes=${dash.resRows}`);
+    record('dashboard : « Prochaines arrivees » n est plus un titre de carte',
+      !dash.absent && !(dash.titres || []).some((t) => /prochaines arriv/i.test(t)), (dash.titres || []).join(' · '));
+    record('dashboard : la rangee du bas porte deux cartes, pas trois',
+      dash.cartesBas === 2, `cartes=${dash.cartesBas}`);
+
     // 3b. establishment -> vue staff (PAS admin).
     await clickNav(page, 'establishment');
     await page.waitForFunction(() => typeof state !== 'undefined' && state.view === 'staff' && (typeof getStaffMenuPage === 'function' ? getStaffMenuPage() : state.staffMenuPage) === 'establishment', null, { timeout: 10000 });

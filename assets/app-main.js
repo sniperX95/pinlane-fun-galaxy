@@ -5535,21 +5535,6 @@ function renderStaffDashboardActivity(metrics) {
 }
 
 
-function renderStaffDashboardArrivals(metrics) {
-  const rows = metrics.upcoming.slice(0, 3);
-  if (!rows.length) return `<div class="dash-empty">Aucune arrivée à venir sur cette date.</div>`;
-  return rows.map(reservation => {
-    const lanes = getBowlingWindowsFromReservation(reservation)[0]?.lanes || reservation.lanes || [];
-    const statusLabel = reservation.status === 'paid' ? 'Payé' : reservation.status === 'arrived' ? 'Arrivé' : reservation.type === 'formule' ? 'Formule' : 'Confirmé';
-    return `<div class="dash-arrival-row">
-      <time>${escapeHtml(formatClockDisplay(getReservationFirstResourceStart(reservation, 'all')))}</time>
-      <strong>${escapeHtml(reservation.name || 'Client')}</strong>
-      <span>${lanes.length ? `Piste ${escapeHtml(lanes.join(', '))}` : getLaserWindowsFromReservation(reservation).length ? 'Laser' : 'Hors piste'}</span>
-      <em class="${escapeHtml(reservation.status || 'pending')}">${escapeHtml(statusLabel)}</em>
-    </div>`;
-  }).join('');
-}
-
 function renderStaffDashboardAlerts(metrics) {
   const alerts = getStaffDashboardAlertDefinitions(metrics);
   if (!alerts.length) {
@@ -5901,7 +5886,7 @@ function dashboardDetailReleaseAllLanes(ev) {
   refreshStaffDashboardDetailSoon(260);
 }
 
-function openStaffDashboardDetail(type = 'arrivals', kind = '') {
+function openStaffDashboardDetail(type = 'alerts', kind = '') {
   const metrics = getStaffDashboardMetrics(todaysReservations());
   state.dashboardDetailType = type;
   state.dashboardDetailKind = kind || '';
@@ -6022,21 +6007,12 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
       ]
     };
   }
-  return {
-    eyebrow: 'Accueil',
-    title: 'Prochaines arrivées',
-    subtitle: `${metrics.upcoming.length} arrivée${metrics.upcoming.length > 1 ? 's' : ''} à préparer`,
-    stats: [
-      { label: 'À venir', value: String(metrics.upcoming.length), note: 'sur la date' },
-      { label: 'Sur place', value: String(metrics.activeReservations.filter(r => r.status === 'arrived').length), note: 'déjà arrivées' },
-      { label: 'À clôturer', value: String(unpaidCount), note: 'paiement ou suivi' }
-    ],
-    body: renderStaffDashboardArrivalsDetail(metrics),
-    actions: [
-      { label: 'Voir la liste complète', onclick: openReservations },
-      { label: 'Ajouter une réservation', onclick: "closeStaffDashboardDetail(); openQuickBook({ date: state.currentDate });", className: 'secondary' }
-    ]
-  };
+  // Le panneau par defaut etait « Prochaines arrivees », ouvert par la carte du
+  // meme nom. La carte partie, plus rien n'ouvrait ce panneau : le defaut
+  // devient donc les alertes, la seule surface du dashboard qui appelle une
+  // action. Un type inconnu (etat sauvegarde d'une ancienne session, par
+  // exemple) retombe ici, donc sur un ecran qui existe.
+  return getStaffDashboardDetailConfig('alerts', kind, metrics);
 }
 
 function getStaffDashboardStatusMeta(reservation) {
@@ -6128,14 +6104,6 @@ function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
   actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
   actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
   return actions;
-}
-
-function renderStaffDashboardArrivalsDetail(metrics) {
-  const rows = metrics.upcoming.slice(0, 30);
-  return `<div class="dashboard-detail-section">
-    <div class="dashboard-detail-section-head"><h3>Arrivées triées par horaire</h3><p>Le staff peut ouvrir la fiche ou clôturer directement.</p></div>
-    ${renderStaffDashboardReservationRows(rows, 'Aucune arrivée à venir sur cette date.')}
-  </div>`;
 }
 
 // Niveaux d'importance des alertes : repère visuel + ordre de tri (rank).
@@ -6424,11 +6392,25 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
     </section>
 
+    <!-- « PROCHAINES ARRIVEES » A ETE RETIREE D ICI (2026-08-14). Verbatim
+         Movsar : « tu as rajoute ca dans dashboard et c'est bugge a mort et ca
+         sert a rien en plus ici ». Elle ne venait d'aucun agent : elle est dans
+         le tout premier commit de la console. Deux raisons de la retirer, et
+         la seconde est la vraie.
+         (1) Elle etait FAUSSE : « metrics.upcoming » retient toute reservation
+             dont l'heure de depart est encore devant, QUEL QUE SOIT son etat.
+             Une carte intitulee « Prochaines arrivees » listait donc des
+             clients deja marques « Arrive » et des dossiers deja « Paye », et
+             sa pastille melangeait l'etat et le TYPE (« Formule » a la place
+             d'un statut) : la meme classe d'erreur que les onglets qui
+             melangeaient trois questions.
+         (2) Elle REJOUAIT une liste qui a sa propre page. Le dashboard repond
+             a « comment va ma journee » : des indicateurs, des courbes, des
+             alertes, un etat des ressources. Une liste de dossiers se lit ou
+             on peut agir dessus, c'est-a-dire dans Planning et Reservations.
+         « metrics.upcoming » reste : la bande du bas s'en sert pour compter les
+         sessions en preparation. -->
     <section class="dash-grid-bottom">
-      <article class="dash-card">
-        <div class="dash-card-head"><h2>Prochaines arrivées</h2><button type="button" onclick="openStaffDashboardDetail('arrivals')">Voir toutes</button></div>
-        <div class="dash-arrivals">${renderStaffDashboardArrivals(metrics)}</div>
-      </article>
       <article class="dash-card">
         <div class="dash-card-head"><h2>Alertes & notifications</h2><button type="button" onclick="openStaffDashboardAlerts()">Voir toutes</button></div>
         <div class="dash-alerts">${renderStaffDashboardAlerts(metrics)}</div>

@@ -112,7 +112,11 @@ const PAGES = [
     decoupes: [{ base: 'seq', sel: '.dash-card', max: 2, transparent: true }],
     boites: [
       { cle: 'sequences', sel: '.dash-card', tous: true, max: 6 },
-      { cle: 'lignes', sel: '.dash-arrival-row', tous: true, max: 3 },
+      // « Prochaines arrivees » a ete retiree de la Vue d'ensemble le
+      // 2026-08-14 : ce selecteur ne trouvait plus rien et l'extraction serait
+      // sortie une liste vide sans le dire. Les lignes d'alerte jouent le meme
+      // role dans le plan (un document qui se remplit ligne apres ligne).
+      { cle: 'lignes', sel: '.dash-alert-row', tous: true, max: 3 },
       // Les quatre indicateurs du haut : le plan les allume un par un.
       { cle: "kpis", sel: ".dash-kpi", tous: true, max: 4 },
     ],

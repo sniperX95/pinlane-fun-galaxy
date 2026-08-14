@@ -201,7 +201,94 @@ async function main() {
     ok(edit.ecart > 200, `ecart MESURE entre Supprimer et Enregistrer : ${edit.ecart}px (minimum 200)`);
     ok(edit.dangerCouleur !== edit.primaireCouleur, 'Supprimer ne porte pas la meme couleur que l action principale');
 
-    console.log('\n[5] CONTRE-EPREUVES PAR MUTATION : on casse, le gate rougit');
+    // -----------------------------------------------------------------------
+    // [5] LA REFONTE DU 2026-08-14, MESUREE. Trois defauts se laissent compter,
+    // donc ils se laissent surveiller : la hauteur, le nombre de boutons a
+    // l'ecran, et le nombre de faits de l'en-tete recopies dans le corps. Les
+    // seuils sont posés au-dessus des mesures du jour (Infos 415 px / 7
+    // boutons, Modifier 483 px / 7 boutons) : ils attrapent une derive, pas une
+    // variation d'un pixel.
+    // -----------------------------------------------------------------------
+    console.log('\n[5] FICHE : HAUTEUR, BOUTONS, ET ZERO REDITE DE L EN-TETE');
+    const mesureOnglet = async (tab) => {
+      await page.evaluate((t) => { if (!state.selectedRes) openPos(state.reservations[0].id); setTab(t); }, tab);
+      await page.waitForTimeout(200);
+      return page.evaluate(() => {
+        // Un controle range dans un depliant ferme n'est pas a l'ecran, et
+        // `offsetParent` ne le dit pas (Chromium masque par content-visibility).
+        const visible = (el) => {
+          if (el.closest('details:not([open])')) return false;
+          if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
+          return el.getBoundingClientRect().width > 0;
+        };
+        const modal = document.querySelector('#posOverlay .edit-modal');
+        const body = document.querySelector('#posOverlay .edit-modal-body');
+        const soustitre = (document.querySelector('#posOverlay .edit-modal-head p') || {}).textContent || '';
+        const corps = body ? body.innerText : '';
+        const faits = soustitre.split('•').map((s) => s.trim()).filter((s) => s.length > 1);
+        return {
+          hauteur: Math.round(modal.getBoundingClientRect().height),
+          boutons: [...document.querySelectorAll('#posOverlay button')].filter(visible).length,
+          redites: faits.filter((f) => corps.includes(f)),
+        };
+      });
+    };
+    const infos = await mesureOnglet('details');
+    ok(infos.hauteur <= 560, `« Infos » : hauteur MESUREE ${infos.hauteur}px (plafond 560, valait 868 avant refonte)`);
+    ok(infos.boutons <= 8, `« Infos » : ${infos.boutons} boutons a l ecran (plafond 8, valait 11 avant refonte)`);
+    ok(infos.redites.length === 0, `« Infos » : ${infos.redites.length} fait de l en-tete recopie dans le corps${infos.redites.length ? ' : ' + infos.redites.join(' | ') : ''}`);
+    const modif = await mesureOnglet('modifier');
+    ok(modif.hauteur <= 560, `« Modifier » : hauteur MESUREE ${modif.hauteur}px (plafond 560, valait 610 avant refonte)`);
+    ok(modif.redites.length === 0, `« Modifier » : ${modif.redites.length} fait de l en-tete recopie dans le corps${modif.redites.length ? ' : ' + modif.redites.join(' | ') : ''}`);
+
+    // UNE SEULE SURFACE SE SOULEVE. C'est toute la hierarchie de la fiche : si
+    // les groupes reprennent un fond, on retombe sur cinq blocs au meme poids.
+    const relief = await page.evaluate(() => {
+      openPos(state.reservations[0].id); setTab('details');
+      const transparent = (v) => !v || v === 'transparent' || /rgba\([^)]*,\s*0\)/.test(v);
+      const act = document.querySelector('#posOverlay .pos-act');
+      const groupes = [...document.querySelectorAll('#posOverlay .pos-sheet > .info-block')];
+      return {
+        actAFond: !!act && !transparent(getComputedStyle(act).backgroundColor),
+        groupes: groupes.length,
+        groupesAvecFond: groupes.filter((g) => !transparent(getComputedStyle(g).backgroundColor)).length,
+        groupesAvecFilet: groupes.filter((g) => parseFloat(getComputedStyle(g).borderTopWidth) > 0).length,
+      };
+    });
+    await page.waitForTimeout(160);
+    ok(relief.actAFond, 'le bloc d action est la surface qui se souleve');
+    ok(relief.groupes > 0 && relief.groupesAvecFond === 0, `les ${relief.groupes} groupes du corps sont plats (${relief.groupesAvecFond} avec fond)`);
+    ok(relief.groupes === relief.groupesAvecFilet, `les ${relief.groupes} groupes se separent par un filet`);
+
+    // LE DEPLIANT NE SUPPRIME RIEN, IL RANGE. On le prouve par la HAUTEUR de la
+    // fenetre, pas en demandant au depliant s'il est ouvert : `getBoundingClientRect`
+    // rend un rectangle meme sous un `details` ferme, et « est-il dans un
+    // details ferme » serait une question circulaire. Si les quatre controles
+    // etaient a l'ecran au repos, la fiche serait plus haute. Elle grandit
+    // quand on l'ouvre : ils etaient bien ranges, et ils reviennent tous.
+    const fold = await page.evaluate(async () => {
+      const d = document.querySelector('#posOverlay details.pos-fold');
+      if (!d) return null;
+      const h = () => Math.round(document.querySelector('#posOverlay .edit-modal').getBoundingClientRect().height);
+      const chips = [...d.querySelectorAll('.delay-chip')];
+      const avant = { ouvert: d.open, hauteur: h() };
+      d.querySelector('summary').click();
+      await new Promise((r) => setTimeout(r, 200));
+      const apres = { ouvert: d.open, hauteur: h() };
+      const surEcran = chips.filter((c) => {
+        const r = c.getBoundingClientRect();
+        return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === c;
+      }).length;
+      return { avant, apres, total: chips.length, surEcran };
+    });
+    ok(fold && !fold.avant.ouvert, 'le depliant « Client en retard » est ferme au repos');
+    ok(fold && fold.apres.hauteur > fold.avant.hauteur + 40, `ouvrir le depliant fait grandir la fiche de ${fold ? fold.avant.hauteur : '?'} a ${fold ? fold.apres.hauteur : '?'}px : ses controles n etaient pas a l ecran`);
+    ok(fold && fold.apres.ouvert && fold.surEcran === fold.total && fold.total >= 4, `ouvert : les ${fold ? fold.total : '?'} controles de retard sont cliquables (${fold ? fold.surEcran : '?'} atteints au point milieu) - rien n a ete supprime`);
+    // La suite attend la fiche OUVERTE : on la remet a plat plutot que de la fermer.
+    await page.evaluate(() => { closePos(); openPos(state.reservations[0].id); });
+    await page.waitForTimeout(160);
+
+    console.log('\n[6] CONTRE-EPREUVES PAR MUTATION : on casse, le gate rougit');
     // (a) on retire le gestionnaire clavier : Echap doit cesser de fonctionner.
     const mutEchap = await page.evaluate(async () => {
       const overlay = document.getElementById('posOverlay');

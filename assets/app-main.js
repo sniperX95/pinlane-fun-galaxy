@@ -14746,88 +14746,103 @@ function renderReservationProgram(reservation) {
   </div>`;
 }
 
+// LA FICHE « INFOS » : L'EN-TETE DIT QUI EST LA, LE CORPS DIT QUOI FAIRE.
+//
+// Etat mesure avant refonte (2026-08-14) : 868 px, 11 boutons, CINQ blocs au
+// meme poids typographique, et le premier - le plus visible - recopiait MOT
+// POUR MOT le sous-titre de l'en-tete (activite, horaire, effectif, piste).
+// « Suivi rapide » affichait le statut DEUX FOIS cote a cote (une pastille et,
+// a 8 px de la, le meme mot en bouton actif) : exactement le defaut deja
+// corrige dans la liste du jour le 2026-08-13, laisse vivre a cote parce que
+// le retrait avait ete scope a un seul ecran. Et « Resume » remontait le
+// montant, deja present dans l'en-tete, tout en bas de l'ecran.
+//
+// L'ORDRE DE LECTURE D'UN COMPTOIR est : qui, quand, ou, combien, et QUELLE
+// ACTION FAIRE. L'en-tete porte deja les quatre premiers (nom en titre, puis
+// reference, activite, horaire, lieu, effectif, montant en ligne de donnee) :
+// le corps n'a donc qu'une seule chose a dire en premier, l'action.
+//
+// DEUX POIDS, PAS CINQ. Le bloc d'action est la seule surface qui se souleve
+// (fond, bordure, ombre courte) ; tout le reste est plat et se separe par un
+// filet, ce qui le range visuellement SOUS l'action sans ajouter une couleur.
+// Le retard est une action occasionnelle qui ouvre sa propre fenetre : il se
+// range derriere un depliant natif au lieu d'occuper six controles en
+// permanence. Aucune fonctionnalite retiree ; l'encaissement, seule donnee du
+// bloc « Resume » absente de l'en-tete, remonte dans le bloc d'action, la ou
+// on s'en sert.
 function renderPosDetails(r) {
-  const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
-  // « Emplacement : Piste : 3 » se lisait avec deux deux-points d'affilée :
-  // l'intitulé dit déjà de quoi il s'agit, la valeur n'a pas à le redire.
-  const lanesTxt = r.type === 'laser'
-    ? `Laser Game ${laserWindow ? `${formatClockDisplay(laserWindow.start)} - ${formatClockDisplay(laserWindow.end)}` : r.startTime}`
-    : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : 'Hors piste';
-  const statusMeta = {
-    pending: { label: 'Confirmé', cls: 'conf' },
-    arrived: { label: 'Arrivé', cls: 'arr' },
-    paid: { label: 'Payé', cls: 'paid' }
-  }[r.status] || { label: 'Confirmé', cls: 'conf' };
   // Pour une formule : checklist cochable des activités (suivi « fait / à faire »).
   // Sinon : plan automatique en lecture seule.
   const activityChecklistHtml = renderFormulaActivityChecklist(r);
   const opsPlanHtml = (r.opsPlan?.timeline?.length && !activityChecklistHtml) ? `
     <div class="info-block">
       <div class="info-label">Plan automatique</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div class="pos-plan-list">
         ${r.opsPlan.timeline.filter(step => step.type === 'activity').map(step => `
-          <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid var(--border);">
-            <span style="font-weight:700;color:var(--text);">${step.label}</span>
-            <span style="color:var(--text-2);font-weight:700;">${step.startTime} - ${step.endTime}</span>
+          <div class="pos-plan-row">
+            <span class="pos-plan-label">${step.label}</span>
+            <span class="pos-plan-time">${step.startTime} - ${step.endTime}</span>
           </div>
         `).join('')}
       </div>
-      ${r.opsPlan.staffSummary ? `<div style="margin-top:10px;color:var(--text-3);font-size:12px;line-height:1.45;">${r.opsPlan.staffSummary}</div>` : ''}
+      ${r.opsPlan.staffSummary ? `<p class="pos-note">${r.opsPlan.staffSummary}</p>` : ''}
     </div>
   ` : '';
-  return `<div class="fade-in">
-    <div class="info-block">
-      <div class="info-label">${escapeHtml(getReservationLabel(r))}</div>
-      <div class="info-grid">
-        <div class="info-row"><div class="lbl">Horaire</div><div class="val">${r.startTime} <small>(${r.duration}H)</small></div></div>
-        <div class="info-row"><div class="lbl">Participants</div><div class="val">${r.pax} <small>Joueurs</small></div></div>
-        <div class="info-row" style="grid-column:1/-1;padding-top:14px;border-top:1px solid var(--border);"><div class="lbl">Emplacement</div><div class="val">${lanesTxt}</div></div>
+  const paid = r.status === 'paid';
+  const method = r.paymentMethod || (paid ? 'Comptoir' : 'Sur place');
+  const lateMinutes = getLateArrivalMinutes(r);
+  return `<div class="pos-sheet fade-in">
+    <section class="pos-act">
+      <div class="pos-act-head">
+        <span class="pos-eyebrow">État du dossier</span>
+        <!-- Le MONTANT est dans la ligne d'identité, deux lignes plus haut :
+             le réécrire ici en ferait la seule chose dite deux fois de toute
+             la fiche. Ce qui manque à l'en-tête, et qui se décide ici, c'est
+             l'état de l'encaissement et par quel moyen. -->
+        <span class="pos-act-money ${paid ? 'is-paid' : ''}">${paid
+          ? `Encaissé · ${escapeHtml(method)}`
+          : `À encaisser · ${escapeHtml(method)}`}</span>
       </div>
-    </div>
+      <div class="res-status-row pos-act-row">
+        <button type="button" class="res-status-btn pending ${r.status === 'pending' ? 'active pending' : ''}" aria-pressed="${r.status === 'pending'}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>
+        <button type="button" class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" aria-pressed="${r.status === 'arrived'}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>
+        <button type="button" class="res-status-btn paid ${r.status === 'paid' ? 'active paid' : ''}" aria-pressed="${r.status === 'paid'}" onclick="setReservationStatusDirect(${r.id}, 'paid')">Payé</button>
+      </div>
+    </section>
     ${renderReservationProgram(r)}
     ${activityChecklistHtml}
     ${opsPlanHtml}
-    <div class="info-block">
-      <div class="info-label">Suivi rapide</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;">
-        <span class="status-pill ${statusMeta.cls}"><span class="dot"></span>${statusMeta.label}</span>
-        <div class="res-status-row">
-          <button class="res-status-btn pending ${r.status === 'pending' ? 'active pending' : ''}" onclick="setReservationStatusDirect(${r.id}, 'pending')">Confirmé</button>
-          <button class="res-status-btn arrived ${r.status === 'arrived' ? 'active arrived' : ''}" onclick="setReservationStatusDirect(${r.id}, 'arrived')">Arrivé</button>
-          <button class="res-status-btn paid ${r.status === 'paid' ? 'active paid' : ''}" onclick="setReservationStatusDirect(${r.id}, 'paid')">Payé</button>
-        </div>
+    <section class="info-block">
+      <div class="pos-group-head">
+        <span class="info-label">Contact</span>
+        <button type="button" class="comm-open-btn" onclick="openCommCenter(${r.id}, event)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Envoyer un message
+        </button>
       </div>
-    </div>
-    <div class="info-block delay-control-block">
-      <div class="info-label">Retard client</div>
-      <div class="delay-control-copy">Choisissez le retard : le meilleur plan s'affiche avant validation.</div>
+      <div class="pos-contact">
+        <span class="pos-contact-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${escapeHtml(r.phone || 'Non renseigné')}</span>
+        <span class="pos-contact-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>${escapeHtml(r.email || 'Non renseigné')}</span>
+      </div>
+    </section>
+    <details class="info-block pos-fold delay-control-block"${lateMinutes > 0 ? ' open' : ''}>
+      <summary class="pos-group-head">
+        <span class="info-label">Client en retard</span>
+        <svg class="pos-fold-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </summary>
+      <p class="pos-note">Choisissez le retard : le meilleur plan s'affiche avant validation.</p>
       <div class="delay-control-actions">
+        ${lateMinutes > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${r.id}, ${lateMinutes}, event)">Arrivé maintenant (+${lateMinutes} min)</button>` : ''}
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 5, event)">+5 min</button>
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 10, event)">+10 min</button>
         <button type="button" class="delay-chip" onclick="openDelayImpact(${r.id}, 15, event)">+15 min</button>
-        ${getLateArrivalMinutes(r) > 0 ? `<button type="button" class="delay-chip delay-chip-now" onclick="openDelayImpact(${r.id}, ${getLateArrivalMinutes(r)}, event)">Arrivé maintenant (+${getLateArrivalMinutes(r)} min)</button>` : ''}
       </div>
       <div class="delay-custom-row">
+        <label class="visually-hidden" for="delayCustomMinutes">Retard en minutes</label>
         <input type="number" id="delayCustomMinutes" min="1" max="240" placeholder="Minutes" inputmode="numeric" onclick="event.stopPropagation()">
-        <button type="button" class="delay-chip" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
+        <button type="button" class="delay-chip delay-chip-run" onclick="openDelayImpactCustom(${r.id}, event)">Analyser ce retard</button>
       </div>
-    </div>
-    <div class="info-block">
-      <div class="info-label">Contact client</div>
-      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:10px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span style="font-weight:600;">${escapeHtml(r.phone || 'Non renseigné')}</span></div>
-      <div style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:14px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><span style="font-weight:600;">${escapeHtml(r.email || 'Non renseigné')}</span></div>
-      <button type="button" class="comm-open-btn" onclick="openCommCenter(${r.id}, event)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Envoyer un message
-      </button>
-    </div>
-    <div class="info-block">
-      <div class="info-label">Résumé</div>
-      <div class="info-grid">
-        <div class="info-row"><div class="lbl">Montant</div><div class="val">${r.price}€</div></div>
-        <div class="info-row"><div class="lbl">Paiement</div><div class="val">${r.paymentMethod || (r.status === 'paid' ? 'Comptoir' : 'Sur place')}</div></div>
-      </div>
-    </div>
+    </details>
   </div>`;
 }
 
@@ -15447,84 +15462,74 @@ function renderPosCaisse(r) {
   </div>`;
 }
 
+// L'ONGLET « MODIFIER » : LES CHAMPS SONT LA VERITE, RIEN N'EST DIT DEUX FOIS.
+//
+// Etat mesure avant refonte (2026-08-14) : 610 px, et l'identite du dossier
+// ecrite une TROISIEME fois. Le bandeau « Apres enregistrement » (nom, type,
+// heure, pistes) et les deux compteurs Joueurs / Duree ne faisaient que
+// recopier des CHAMPS DE SAISIE situes 200 px plus bas : un apercu qui n'ajoute
+// rien a ce que la saisie montre deja n'est pas une garantie, c'est du bruit.
+// Le bloc « Type / Affectation » etait pire : « Type » redisait l'activite de
+// l'en-tete, et « Affectation » recopiait le champ « Pistes » de la colonne
+// d'a cote, que `syncEditLaneAssignment` tient deja a jour tout seul.
+//
+// Ce qui reste : DEUX groupes de champs nommes (le client, la reservation), au
+// meme habillage plat que l'onglet « Infos » pour que les deux vues se lisent
+// comme le meme ecran, et la barre d'actions inchangee. L'information perdue
+// par ces retraits est nulle : chaque valeur retiree est encore a l'ecran, dans
+// le champ qui la commande. La reattribution automatique des pistes, elle,
+// n'etait ecrite NULLE PART : elle est maintenant dite sous le champ.
 function renderPosEdit(r) {
   const e = state.editState;
-  return `<div class="edit-shell fade-in">
-    <div class="edit-summary">
-      <div class="edit-summary-card">
-        <!-- « Réservation en cours » recopiait mot pour mot la ligne d'identité
-             de l'en-tête : deux fois la même chose à 60px d'écart. Ce bloc n'est
-             PAS l'état actuel, c'est l'APERÇU de ce qui sera enregistré : il se
-             recalcule à chaque frappe (refreshEditPreview). Il suffisait de le
-             dire pour qu'il cesse d'être une redite et devienne une garantie. -->
-        <div class="info-label" style="margin-bottom:6px;">Après enregistrement</div>
-        <h4 id="editSummaryName">${escapeHtml(e.name)}</h4>
-        <p id="editSummaryMeta">${escapeHtml(getReservationLabel(r))} • ${e.startTime || '--:--'} • ${e.lanesStr ? `pistes ${escapeHtml(e.lanesStr)}` : 'hors piste'}</p>
-      </div>
-      <div class="edit-summary-stat">
-        <span class="k">Joueurs</span>
-        <span class="v" id="editSummaryPax">${e.pax || 0}</span>
-      </div>
-      <div class="edit-summary-stat">
-        <span class="k">Durée</span>
-        <span class="v" id="editSummaryDuration">${formatDurationLabel(e.duration || 0)}</span>
-      </div>
-    </div>
+  return `<div class="edit-shell pos-sheet fade-in">
     <form class="edit-form" onsubmit="saveEdit(event)">
       <div class="edit-layout">
         <div class="edit-stack">
-          <div class="info-block soft compact">
+          <section class="info-block">
+            <span class="info-label">Le client</span>
             <div class="field-stack">
-              <div>
+              <div class="pos-field">
                 <label class="lbl" for="editNameInput">Client</label>
                 <input id="editNameInput" class="input" value="${escapeHtml(e.name)}" oninput="setEditField('name', this.value)" required>
               </div>
-              <div>
+              <div class="pos-field">
                 <label class="lbl" for="editPhoneInput">Téléphone</label>
                 <input id="editPhoneInput" class="input" value="${escapeHtml(e.phone)}" oninput="setEditField('phone', this.value)" required>
               </div>
             </div>
-          </div>
-          <div class="info-block soft compact">
-            <label class="lbl" for="editStatusInput">Statut</label>
-            <select id="editStatusInput" class="input" oninput="setEditField('status', this.value)">
-              <option value="pending" ${e.status === 'pending' ? 'selected' : ''}>Confirmé</option>
-              <option value="arrived" ${e.status === 'arrived' ? 'selected' : ''}>Arrivé</option>
-              <option value="paid" ${e.status === 'paid' ? 'selected' : ''}>Payé</option>
-            </select>
-          </div>
+          </section>
         </div>
         <div class="edit-stack">
-          <div class="info-block soft compact">
+          <section class="info-block">
+            <span class="info-label">La réservation</span>
             <div class="edit-grid-2">
-              <div>
-                <label class="lbl" for="editPaxInput">Joueurs</label>
-                <input id="editPaxInput" class="input" type="number" min="1" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
-              </div>
-              <div>
-                <label class="lbl" for="editDurationInput">Durée (h)</label>
-                <input id="editDurationInput" class="input" type="number" step="0.5" min="0.5" value="${e.duration}" oninput="setEditField('duration', this.value, true)" required>
-              </div>
-              <div>
+              <div class="pos-field">
                 <label class="lbl" for="editStartInput">Heure</label>
                 <input id="editStartInput" class="input" type="time" value="${e.startTime}" oninput="setEditField('startTime', this.value, true)" required>
               </div>
-              <div>
+              <div class="pos-field">
+                <label class="lbl" for="editDurationInput">Durée (h)</label>
+                <input id="editDurationInput" class="input" type="number" step="0.5" min="0.5" value="${e.duration}" oninput="setEditField('duration', this.value, true)" required>
+              </div>
+              <div class="pos-field">
+                <label class="lbl" for="editPaxInput">Joueurs</label>
+                <input id="editPaxInput" class="input" type="number" min="1" value="${e.pax}" oninput="setEditField('pax', this.value, true)" required>
+              </div>
+              <div class="pos-field">
+                <label class="lbl" for="editStatusInput">Statut</label>
+                <select id="editStatusInput" class="input" oninput="setEditField('status', this.value)">
+                  <option value="pending" ${e.status === 'pending' ? 'selected' : ''}>Confirmé</option>
+                  <option value="arrived" ${e.status === 'arrived' ? 'selected' : ''}>Arrivé</option>
+                  <option value="paid" ${e.status === 'paid' ? 'selected' : ''}>Payé</option>
+                </select>
+              </div>
+              <div class="pos-field pos-field-wide">
                 <label class="lbl" for="editLanesInput">Pistes</label>
-                <input id="editLanesInput" class="input" value="${escapeHtml(e.lanesStr)}" oninput="setEditLanes(this.value)" placeholder="Ex: 1,2">
+                <input id="editLanesInput" class="input" value="${escapeHtml(e.lanesStr)}" oninput="setEditLanes(this.value)" placeholder="Ex: 1,2" aria-describedby="editLanesHint">
+                <p class="field-hint" id="editLanesHint">Réattribuées automatiquement quand l'effectif, l'heure ou la durée change.</p>
               </div>
             </div>
-          </div>
-          <div class="info-block soft compact">
-            <div class="edit-inline-note">
-              <span class="n">Type</span>
-              <span class="v">${escapeHtml(getReservationLabel(r))}</span>
-            </div>
-            <div class="edit-inline-note" style="margin-top:10px;">
-              <span class="n">Affectation</span>
-              <span class="v" id="editAssignmentValue">${e.lanesStr ? escapeHtml(e.lanesStr) : 'Hors piste'}</span>
-            </div>
-          </div>
+          </section>
         </div>
       </div>
       <!-- DEUX GROUPES, ET UN VIDE ENTRE LES DEUX. « Supprimer » était collé à
@@ -16973,9 +16978,15 @@ function getPosIdentityParts(r) {
   const laserWindow = getLaserWindowsFromReservation(r)[0] || null;
   const bowlingWindow = getBowlingWindowsFromReservation(r)[0] || null;
   const window = r.type === 'laser' ? laserWindow : bowlingWindow;
+  // La duree se lit dans la fenetre (11:00 - 12:00), mais pas toujours : sur
+  // une formule, la fenetre affichee est celle du bowling et la duree du
+  // dossier peut differer. Elle est donc ECRITE, collee a l'horaire, pour que
+  // la ligne d'identite reste la seule source de ces faits maintenant que le
+  // premier bloc de la fiche ne les recopie plus.
+  const duree = formatDurationLabel(Number(r.duration) || 0);
   const horaire = window
-    ? `${formatClockDisplay(window.start)} - ${formatClockDisplay(window.end)}`
-    : String(r.startTime || '');
+    ? `${formatClockDisplay(window.start)} - ${formatClockDisplay(window.end)}${duree ? ` (${duree})` : ''}`
+    : `${String(r.startTime || '')}${duree ? ` (${duree})` : ''}`;
   const lieu = r.type === 'laser'
     ? 'Laser Game'
     : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : 'Hors piste';
@@ -16994,11 +17005,22 @@ function getPosIdentityParts(r) {
 // la fermeture. Sans ça, fermer la fiche renvoie le focus au début de la page.
 let posReturnFocus = null;
 
+// LES ARRETS DE LA TABULATION DANS LA FICHE.
+//
+// Deux pieges, tous les deux poses par le depliant « Client en retard » :
+//   1. `summary` est focusable NATIVEMENT et n'etait dans aucun selecteur : le
+//      piege a focus ne le connaissait pas, la tabulation passait dessus et
+//      sortait de la fenetre.
+//   2. `offsetParent` reste NON NUL pour un controle range dans un depliant
+//      ferme (Chromium le masque par content-visibility, pas par display:none).
+//      La liste comptait donc quatre boutons que le navigateur, lui, saute :
+//      19 tabulations sur 25 s'echappaient de la fenetre.
+// On exclut donc explicitement ce qui vit sous un `details` ferme.
 function focusablesInPos() {
   const modal = document.querySelector('#posOverlay .edit-modal');
   if (!modal) return [];
-  return [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
-    .filter((el) => !el.disabled && el.offsetParent !== null);
+  return [...modal.querySelectorAll('button, summary, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => !el.disabled && el.offsetParent !== null && !el.closest('details:not([open])'));
 }
 
 // Piège à focus + Échap. La fiche est une fenêtre modale : tabuler dedans ne

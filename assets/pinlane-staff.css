@@ -6895,9 +6895,11 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .edit-modal-body .info-label { color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
 .edit-modal-body .info-block { margin-bottom: var(--space-4); }
 .edit-modal-body .info-block:last-child { margin-bottom: 0; }
-/* Le premier bloc, c'est l'essentiel du comptoir : quand, combien, où. Il se
-   détache du fond pour être le point d'entrée du regard. */
-.edit-modal-body .fade-in > .info-block:first-child { background: var(--subtle); }
+/* Il y avait ici une règle qui teintait le PREMIER bloc de la fiche pour en
+   faire « le point d'entrée du regard ». Ce bloc recopiait mot pour mot le
+   sous-titre de l'en-tête : on mettait donc en valeur une redite. Le point
+   d'entrée est maintenant le bloc d'action (`.pos-act`), et c'est la seule
+   surface soulevée de la fiche. */
 
 .status-pill {
   display: inline-flex;
@@ -6919,11 +6921,16 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .delay-control-copy { color: var(--muted); font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
 .delay-control-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* Ces contrôles étaient les seuls de la console en pilule (`--radius-full`)
+   pendant que tout le reste est en `--radius-sm` : une forme unique qui ne
+   voulait rien dire de particulier. Ils rentrent dans le système. Le monospace
+   reste sur les VALEURS (« +5 min »), qui sont des données, et sort du bouton
+   « Analyser ce retard », qui est une phrase (DESIGN.md §4). */
 .delay-chip {
-  min-height: 30px;
+  min-height: 32px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-data);
@@ -6936,14 +6943,16 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 .delay-chip:hover { background: var(--warning-soft); border-color: var(--warning); color: var(--warning); }
 .delay-chip-now { border-color: var(--warning); color: var(--warning); }
+.delay-chip-run { font-family: var(--font-ui); font-variant-numeric: normal; }
 
 .delay-custom-row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .delay-custom-row input {
-  width: 90px;
-  min-height: 30px;
+  width: 96px;
+  height: 32px;
+  min-height: 32px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-data);
@@ -7546,6 +7555,204 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .edit-actions .btn-secondary.danger:hover { background: var(--danger-soft); border-color: var(--danger); }
 .edit-actions .btn-primary { border: 1px solid var(--text); background: var(--text); color: var(--surface); }
 .edit-actions .btn-primary:hover { opacity: 0.88; }
+
+/* ============================================================================
+   LA FICHE DE RESERVATION (« Infos » et « Modifier ») - refonte 2026-08-14.
+
+   CINQ blocs au meme poids ne font pas une hierarchie, ils font une liste. La
+   fiche empilait cinq cartes identiques (meme fond, meme bordure, meme titre en
+   600) : rien ne disait par quoi commencer, et le premier bloc - le plus
+   visible - recopiait mot pour mot le sous-titre de l'en-tete.
+
+   DEUX POIDS SUFFISENT, et c'est la seule regle de cette section :
+     - UNE surface se souleve, celle de l'action (fond + bordure + ombre courte) ;
+     - tout le reste est PLAT et se separe par un filet.
+   Aucune couleur ajoutee, aucun encadrement supplementaire : le rang se lit a
+   la profondeur, exactement comme sur les cartes du planning.
+   ========================================================================== */
+
+.pos-sheet { display: grid; gap: var(--space-4); }
+
+/* Les blocs reutilises (checklist d'activites, programme du groupe, plan
+   automatique) gardent leur balisage : c'est leur HABILLAGE qui change, et
+   seulement dans la fiche. Le selecteur est scope pour que la carte Formules,
+   qui rend la meme checklist ailleurs, ne bouge pas d'un pixel. */
+.pos-sheet .info-block {
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+/* Seuls les groupes de PREMIER rang portent le filet qui les separe. Un bloc
+   imbrique (la checklist dans un programme, un groupe de champs dans une
+   colonne) n'a pas a redessiner une frontiere que son parent trace deja. */
+.pos-sheet > .info-block {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+/* L'intitule de groupe descend d'un rang : il n'a plus a rivaliser avec le
+   titre du dossier, il n'a qu'a nommer ce qui suit. Capitales, interlettrage
+   ouvert, `--muted` (5,7:1 en clair, AA large). */
+.pos-sheet .info-label {
+  display: block;
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pos-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.pos-group-head .info-label { margin-bottom: 0; }
+
+/* LE BLOC D'ACTION. Seule surface soulevee de la fiche, et premiere chose que
+   le corps dit : l'en-tete a deja repondu qui, quand, ou et combien. */
+.pos-act {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-act-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.pos-eyebrow {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Le reste a encaisser etait la SEULE donnee du bloc « Resume » absente de
+   l'en-tete, et il vivait tout en bas de la fiche. Il remonte a cote des
+   boutons d'etat : c'est la, et nulle part ailleurs, qu'on s'en sert. */
+.pos-act-money {
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.pos-act-money b { color: var(--text); font-weight: 600; }
+.pos-act-money.is-paid { color: var(--success); }
+
+/* Les trois etats deviennent un vrai selecteur segmente : parts egales, cible
+   confortable. La pastille qui les doublait a 8 px de la est retiree - un
+   bouton actif DIT deja l'etat, l'ecrire deux fois n'informe personne. */
+.pos-act-row { gap: var(--space-2); }
+.pos-act-row .res-status-btn {
+  flex: 1 1 0;
+  min-height: 36px;
+  font-size: 12.5px;
+}
+
+.pos-contact { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+
+.pos-contact-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.pos-contact-item svg { flex: none; color: var(--muted); }
+
+.pos-note {
+  margin-bottom: var(--space-3);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* LE RETARD SE REPLIE. Six controles permanents pour une action occasionnelle
+   qui ouvre de toute facon sa propre fenetre : ils passent derriere un
+   depliant natif (clavier et synthese vocale gratuits, zero JavaScript). Rien
+   n'est retire, et le depliant s'ouvre TOUT SEUL quand le client est deja en
+   retard, c'est-a-dire au seul moment ou ces boutons servent. */
+.pos-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pos-fold > summary::-webkit-details-marker { display: none; }
+.pos-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--radius-sm); }
+.pos-fold-chevron { color: var(--muted); transition: transform var(--dur) var(--ease-out-strong); }
+.pos-fold[open] > summary .pos-fold-chevron { transform: rotate(180deg); }
+
+.pos-plan-list { display: grid; }
+
+.pos-plan-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.pos-plan-row:last-child { border-bottom: 0; }
+.pos-plan-label { color: var(--text); font-weight: 600; }
+.pos-plan-time { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+/* CHAMPS : intitule au-dessus, aide en dessous, et l'erreur ne se declare
+   qu'apres que la personne a touche le champ (`:user-invalid`). `:invalid`
+   seul allume tous les champs obligatoires des l'ouverture : un ecran rouge
+   avant la premiere frappe apprend a ignorer le rouge. */
+.pos-field { display: grid; gap: 6px; align-content: start; }
+.pos-field-wide { grid-column: 1 / -1; }
+.pos-field .lbl { font-size: 11px; color: var(--muted); font-weight: 500; }
+.pos-field .field-hint { margin-top: 2px; font-size: 11.5px; line-height: 1.45; }
+.pos-field .input:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+
+/* Un bouton doit repondre au doigt. 100-160 ms, `transform` uniquement, et
+   l'enfoncement ne se joue que la ou un curseur existe. */
+.pos-sheet .res-status-btn,
+.pos-sheet .delay-chip,
+.pos-sheet .comm-open-btn,
+.edit-actions .btn-secondary,
+.edit-actions .btn-primary {
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease), transform 120ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pos-sheet .res-status-btn:active,
+  .pos-sheet .delay-chip:active,
+  .pos-sheet .comm-open-btn:active,
+  .edit-actions .btn-secondary:active,
+  .edit-actions .btn-primary:active { transform: scale(0.97); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-fold-chevron,
+  .pos-sheet .res-status-btn,
+  .pos-sheet .delay-chip,
+  .pos-sheet .comm-open-btn,
+  .edit-actions .btn-secondary,
+  .edit-actions .btn-primary { transition: none; }
+}
 
 /* Réservation rapide (quick book) */
 .qb-overlay {

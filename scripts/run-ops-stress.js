@@ -332,6 +332,11 @@ function runFixedGuardrailTests(knowledge) {
     riskLevel: 'critical',
     riskScore: 91,
   };
+  // Purge de marque (2026-08-15) : l'habillage email porte le nom du CENTRE
+  // quand l'appelant le fournit (chemin de prod : shellFromMessage passe le
+  // centre), et AUCUN nom du tout sans centre. L'ancien invariant (« Fun
+  // Galaxy » present dans tout mail, meme sans centre) etait la fuite.
+  const mailCenter = loadOpsKnowledge().centerById.get('libramont');
   ['request_received', 'confirmation', 'reminder_48h', 'staff_review_request', 'delay_update'].forEach((templateId) => {
     const message = buildMessage({ reservation: mailReservation, templateId, channel: 'email' });
     assert.ok(message.subject && message.body, `email message missing for ${templateId}`);
@@ -342,10 +347,15 @@ function runFixedGuardrailTests(knowledge) {
       details: message.details,
       action: message.action,
       note: message.note,
+      center: mailCenter,
     });
-    assert.ok(html.includes('Fun Galaxy'), `email brand missing for ${templateId}`);
+    assert.ok(html.includes('Fun Galaxy Libramont'), `email center name missing for ${templateId}`);
     assert.ok(html.includes('&lt;Client Test&gt;'), `email escaping missing for ${templateId}`);
     assert.ok(!html.includes('<Client Test>'), `email contains unescaped client data for ${templateId}`);
+    // L'HABILLAGE seul (le corps du message nomme legitimement SON centre) :
+    // sans centre fourni, la coquille ne doit porter AUCUNE marque de client.
+    const orphanHtml = emailShell({ title: 'Test neutre', body: 'Bonjour', preheader: 'Apercu neutre' });
+    assert.ok(!/fun\s*galaxy|fungalaxy|mngfunglxy/i.test(orphanHtml), `orphan shell must carry no client brand for ${templateId}`);
   });
   const sampleIds = buildEmailSamples().map((sample) => sample.templateId);
   ['request_received', 'confirmation', 'reminder_48h', 'staff_review_request', 'delay_update'].forEach((templateId) => {

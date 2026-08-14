@@ -1387,6 +1387,14 @@ button.staff-date-label:focus-visible,
   font-size: 11px;
   font-weight: 500;
 }
+/* Un second intitulé au milieu de la liste ouvre un GROUPE : il se sépare de
+   ce qui précède, sinon il se lit comme la légende du bouton du dessus. */
+.staff-action-popover-title + button + .staff-action-popover-title,
+.staff-action-popover button + .staff-action-popover-title {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
 
 .staff-action-popover button {
   display: flex;
@@ -2692,7 +2700,43 @@ body.staff-mode.laser-dragging * { user-select: none; }
   z-index: 3;
 }
 
-.status-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+/* DEUX GROUPES, PAS SIX PUCES ÉGALES (2026-08-14). Les puces répondaient à
+   trois questions différentes (l'état, qui est exclusif ; une union d'états ;
+   un attribut) et étaient peintes à l'identique : un gérant qui additionnait
+   trouvait 40 pour 24 dossiers. Le premier groupe porte l'ÉTAT, dont les trois
+   valeurs se totalisent. Le second porte les vues qui RECOUPENT le premier ;
+   un filet les sépare, et le repère ci-dessous les nomme sans texte en plus. */
+.status-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.status-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.status-group-cross {
+  position: relative;
+  padding-left: 13px;
+  margin-left: 7px;
+}
+/* Le filet de séparation : il ne se dessine que quand les deux groupes sont
+   sur la même ligne. Replié (barre étroite), un trait vertical orphelin en
+   tête de ligne ne sépare plus rien, il décore. */
+.status-group-cross::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--line-strong);
+}
+/* Le repère d'un recoupement : deux anneaux qui se chevauchent. C'est
+   exactement ce que la puce fait à l'ensemble affiché, et ça se lit sans lire.
+   Le `title` du bouton dit la même chose en toutes lettres et `aria-label` la
+   porte à la synthèse vocale : rien n'est confié à la seule forme. */
+.status-chip .chip-cross-mark {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-right: 1px;
+  opacity: 0.7;
+}
+.status-chip.active .chip-cross-mark { opacity: 0.9; }
 
 .status-chip {
   display: inline-flex;

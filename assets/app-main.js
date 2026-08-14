@@ -12873,18 +12873,28 @@ function applyPlanningStatusFilter(filter) {
   renderStaff();
 }
 
+// LE MÊME FILTRE, DONC LES MÊMES MOTS ET LE MÊME CLASSEMENT QUE LA LISTE.
+// Ce menu pilote `state.staffStatusFilter`, exactement comme les puces de la
+// liste du jour : il nommait pourtant « Payées » ce que la liste appelle
+// « Terminées », et rangeait « À gérer » entre deux états comme s'il en était
+// un troisième. Un même filtre qui porte deux noms selon l'endroit où on le
+// touche, c'est la même classe d'erreur que les compteurs qui ne se
+// recomposent pas. Les trois états d'abord, dans l'ordre de la liste ; le
+// recoupement ensuite, sous son propre intitulé.
 function togglePlanningFilterMenu(event) {
   const active = state.staffStatusFilter || 'all';
-  const options = [
+  const bouton = ([key, label]) => `<button type="button" class="${active === key ? 'active' : ''}" onclick="applyPlanningStatusFilter('${key}')">${label}</button>`;
+  const etats = [
     ['all', 'Toutes'],
-    ['open', 'À gérer'],
-    ['pending', 'À venir'],
     ['arrived', 'Sur place'],
-    ['paid', 'Payées']
+    ['pending', 'À venir'],
+    ['paid', 'Terminées']
   ];
   showStaffFloatingMenu(event, `
     <div class="staff-action-popover-title">Filtrer le planning</div>
-    ${options.map(([key, label]) => `<button type="button" class="${active === key ? 'active' : ''}" onclick="applyPlanningStatusFilter('${key}')">${label}</button>`).join('')}
+    ${etats.map(bouton).join('')}
+    <div class="staff-action-popover-title">Recoupe ces états</div>
+    ${bouton(['open', 'À gérer'])}
   `);
 }
 
@@ -14278,7 +14288,7 @@ function renderReservationRow(r) {
     ? (getLaserGameCountForReservation(r) > 1 ? `Laser x${getLaserGameCountForReservation(r)}` : 'Laser')
     : formatDurationLabel(resourceWindows[0]?.duration || r.duration);
 
-  return `<div class="res-row ${r.status} ${getReservationHighlightClasses(r)}" onclick="openPos(${r.id})">
+  return `<div class="res-row ${r.status} ${getReservationHighlightClasses(r)}" data-res-row-id="${r.id}" onclick="openPos(${r.id})">
     <div class="res-row-time">
       <strong>${timeLabel}</strong>
       <span>${resourceDurationLabel}</span>
@@ -14357,22 +14367,48 @@ function renderTable() {
   // annonce le même nombre que l'onglet, quel que soit le filtre de statut actif.
   const offPlanningDay = view === 'all' ? res.filter(isOffPlanningReservation).length : 0;
   const resourceSummary = view === 'all'
-    ? `Toutes activités • ${res.length} réservation${res.length > 1 ? 's' : ''}${offPlanningDay ? ` • ${offPlanningDay} hors planning` : ''}`
+    ? `Toutes activités${offPlanningDay ? ` • ${offPlanningDay} hors planning` : ''}`
     : view === 'laser'
       ? 'Laser Game uniquement'
       : 'Bowling uniquement';
   const resourceName = view === 'all' ? 'pour ce jour' : view === 'laser' ? 'Laser Game pour ce jour' : 'Bowling pour ce jour';
   const planningName = view === 'all' ? 'sur un planning' : view === 'laser' ? 'Laser Game' : 'Bowling';
+  // LES ONGLETS NE DISAIENT PAS TOUS LA MÊME CHOSE, ET RIEN NE LE DISAIT.
+  // Movsar, 2026-08-14 : « ça apparaît dans toutes les catégories, ça va pas du
+  // tout ». Sa capture : Tout 9 · À gérer 6 · Sur place 0 · À venir 6 ·
+  // Terminées 3. Rien n'était cassé dans le filtrage : les six puces étaient
+  // peintes à l'identique alors qu'elles répondent à TROIS questions
+  // différentes.
+  //   - « Tout » = absence de filtre ;
+  //   - « Sur place / À venir / Terminées » = l'ÉTAT, trois valeurs exclusives
+  //     qui se totalisent (8 + 8 + 8 = 24) ;
+  //   - « À gérer » = l'UNION de deux états (tout sauf terminé), donc chaque
+  //     réservation non terminée y apparaît EN PLUS de son état ;
+  //   - « Avec note » = un ATTRIBUT, vrai dans n'importe quel état.
+  // Alignées sur une seule rangée, elles se lisent comme cinq cases d'un même
+  // classement, et un gérant qui additionne tombe sur 40 pour 24 dossiers.
+  // Le recoupement reste : « tout ce qui n'est pas fini », c'est la liste de
+  // travail d'un comptoir. Mais il est désormais VISIBLE et NOMMÉ : deux
+  // groupes séparés par un filet, les recoupements marqués d'un repère, et la
+  // ligne de résumé qui recompose les comptes au lieu d'en citer deux au hasard.
+  const crossHint = (label, text) => ` title="${escapeHtml(text)}" aria-label="${escapeHtml(`${label} : ${text}`)}"`;
+  const crossMark = `<svg class="chip-cross-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/></svg>`;
+  const openHint = 'recoupe les états ci-dessus : les réservations Sur place et À venir réunies';
+  const notesHint = 'recoupe les états ci-dessus : les réservations qui portent une note, quel que soit leur état';
   const toolbar = `<div class="table-toolbar">
     <div class="status-filters">
-      <button class="status-chip ${state.staffStatusFilter === 'all' ? 'active' : ''}" onclick="setStaffStatusFilter('all')">Tout <span>${counts.all}</span></button>
-      <button class="status-chip ${state.staffStatusFilter === 'open' ? 'active open' : ''}" onclick="setStaffStatusFilter('open')">À gérer <span>${counts.open}</span></button>
-      <button class="status-chip ${state.staffStatusFilter === 'arrived' ? 'active arrived' : ''}" onclick="setStaffStatusFilter('arrived')">Sur place <span>${counts.arrived}</span></button>
-      <button class="status-chip ${state.staffStatusFilter === 'pending' ? 'active pending' : ''}" onclick="setStaffStatusFilter('pending')">À venir <span>${counts.pending}</span></button>
-      <button class="status-chip ${state.staffStatusFilter === 'paid' ? 'active paid' : ''}" onclick="setStaffStatusFilter('paid')">Terminées <span>${counts.paid}</span></button>
-      ${(counts.notes || state.staffStatusFilter === 'notes') ? `<button class="status-chip ${state.staffStatusFilter === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')">Avec note <span>${counts.notes}</span></button>` : ''}
+      <div class="status-group" role="group" aria-label="Filtrer par état. Les trois états ne se recoupent pas et se totalisent.">
+        <button class="status-chip ${state.staffStatusFilter === 'all' ? 'active' : ''}" onclick="setStaffStatusFilter('all')">Tout <span>${counts.all}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'arrived' ? 'active arrived' : ''}" onclick="setStaffStatusFilter('arrived')">Sur place <span>${counts.arrived}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'pending' ? 'active pending' : ''}" onclick="setStaffStatusFilter('pending')">À venir <span>${counts.pending}</span></button>
+        <button class="status-chip ${state.staffStatusFilter === 'paid' ? 'active paid' : ''}" onclick="setStaffStatusFilter('paid')">Terminées <span>${counts.paid}</span></button>
+      </div>
+      <div class="status-group status-group-cross" role="group" aria-label="Vues qui recoupent les états ci-dessus">
+        <button class="status-chip is-cross ${state.staffStatusFilter === 'open' ? 'active open' : ''}" onclick="setStaffStatusFilter('open')"${crossHint('À gérer', openHint)}>${crossMark}À gérer <span>${counts.open}</span></button>
+        ${(counts.notes || state.staffStatusFilter === 'notes') ? `<button class="status-chip is-cross ${state.staffStatusFilter === 'notes' ? 'active notes' : ''}" onclick="setStaffStatusFilter('notes')"${crossHint('Avec note', notesHint)}>${crossMark}Avec note <span>${counts.notes}</span></button>` : ''}
+      </div>
     </div>
-    <div class="table-summary">${resourceSummary} • ${counts.open} à gérer maintenant • ${counts.paid} terminées</div>
+    <div class="table-summary">${resourceSummary} • ${counts.all} réservation${counts.all > 1 ? 's' : ''} = ${counts.arrived} sur place + ${counts.pending} à venir + ${counts.paid} terminée${counts.paid > 1 ? 's' : ''} • « À gérer » réunit les ${counts.open} non terminée${counts.open > 1 ? 's' : ''}</div>
   </div>`;
   if (!filtered.length) {
     list.innerHTML = `${toolbar}<div class="empty-state">

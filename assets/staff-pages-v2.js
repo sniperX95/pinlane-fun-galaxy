@@ -5463,30 +5463,105 @@
     setTimeout(() => { const el = document.getElementById('brAskInput'); if (el) el.focus(); }, 60);
   };
 
+  // Les seules suites d'ecran que l'agent peut proposer. Liste FERMEE : le
+  // serveur ne rend qu'une cle, jamais du JS. Un modele qui inventerait une
+  // action inconnue n'en obtient aucune, il ne fait pas apparaitre un bouton
+  // vers un ecran qui n'existe pas.
+  const MKW_ASK_ACTIONS = {
+    creer_post: { label: 'Me faire préparer le post', js: 'mkwPrefillCreate()' },
+    ouvrir_plan: { label: 'Ouvrir Plan', js: "mkwTab('plan')" },
+    ouvrir_impact: { label: 'Ouvrir Impact', js: "mkwTab('results')" },
+    ouvrir_marche: { label: 'Ouvrir Marché', js: "mkwTab('rivals')" },
+  };
+
+  // Un post pour UN jour precis n'est pas la meme suite qu'un post en general :
+  // il part avec sa date (trigger « creux »), donc la carte nait deja rattachee
+  // au jour a remplir. Le serveur ne laisse passer `jourVise` que s'il figure
+  // dans le radar : la date est verifiee avant d'arriver ici.
+  function mkwAskAction(answer) {
+    const jour = String((answer && answer.jourVise) || '');
+    if (answer && answer.action === 'creer_post' && /^\d{4}-\d{2}-\d{2}$/.test(jour)) {
+      return { label: `Prépare-moi un post pour ${brFrDay(jour)}`, js: `mkBrRadarFill('${escJs(jour)}')` };
+    }
+    return MKW_ASK_ACTIONS[answer && answer.action] || null;
+  }
+
+  // Pourquoi la reponse n'a PAS ete ecrite par le modele. Dit a l'ecran, jamais
+  // masque : c'est la difference entre « il a repondu court » et « il n'a pas
+  // repondu du tout ». Le cas `bloque` est le plus important : le modele a
+  // repondu, sa reponse citait une donnee que le centre n'a pas, le serveur l'a
+  // jetee. Le gerant a le droit de le savoir.
+  const MKW_ASK_DEGRADED = {
+    sans_modele: 'mode simple : aucun modèle branché',
+    budget: 'mode simple : le budget du mois est atteint',
+    echec: 'mode simple : le modèle n\'a pas répondu',
+    bloque: 'mode simple : la réponse du modèle citait une donnée que tu n\'as pas, je l\'ai jetée',
+  };
+
+  // La reponse ECRITE PAR LE MODELE, ramenee a la forme d'un tour de chat. Les
+  // faits cites et ce qu'il ne sait pas viennent de lui ; la source, elle, dit
+  // ce qu'il avait REELLEMENT sous les yeux (compte des jours mesures, du radar,
+  // des formules), pas une formule de politesse.
+  function mkwAnswerFromServer(question, payload) {
+    const a = (payload && payload.answer) || {};
+    const basis = (payload && payload.basis) || {};
+    const action = mkwAskAction(a);
+    const unknowns = Array.isArray(a.jeNeSaisPas) ? a.jeNeSaisPas.filter(Boolean) : [];
+    return {
+      q: question,
+      title: a.titre || 'Ce que je vois',
+      reco: a.reponse || '',
+      why: unknowns.length ? `Ce que je ne sais pas : ${unknowns.join(' ')}` : '',
+      facts: Array.isArray(a.faits) ? a.faits.filter(Boolean) : [],
+      actions: action ? [action] : [],
+      source: `lu dans tes données : ${Number(basis.joursMesures) || 0} jours mesurés, ${Number(basis.joursRadar) || 0} jours à venir, ${Number(basis.formules) || 0} formules et leurs prix`,
+    };
+  }
+
   // L'assemblage d'une reponse : la bulle du gerant entre TOUT DE SUITE, puis
-  // l'etat « J'assemble depuis le brief » vit ~600 ms (le vrai travail local :
-  // router la question, lire le bundle), puis la reponse entre. Le mot d'etat
-  // decrit un travail qui a REELLEMENT lieu et meurt avec lui.
-  function mkwAskFlow(question) {
+  // les etapes de travail vivent le temps de la VRAIE requete, puis la reponse
+  // entre. Le mot d'etat decrit un travail qui a REELLEMENT lieu et meurt avec
+  // lui.
+  //
+  // Le chemin normal passe par le serveur : le modele repond depuis le dossier
+  // de faits du centre (api/ops action marketingAsk). Le routeur local
+  // (mkwAnswer) reste le FILET : il reprend la main quand le serveur rend
+  // `grounded: false` (pas de cle, budget au plafond, panne) ou quand la
+  // requete elle-meme echoue. Il ne decide plus rien, il rattrape.
+  async function mkwAskFlow(question) {
     if (mkw.stateWord) return;
     const pendingUser = { kind: 'qa', q: question, title: '', pendingAnswer: true };
     mkw.thread.push(pendingUser);
-    mkw.stateWord = 'J\'assemble depuis le brief du matin';
+    mkw.stateWord = 'Je regarde tes données';
     mkBrief.tab = 'feed';
     renderStaffCampaignsPage();
     mkwScrollChatEnd();
-    setTimeout(() => {
-      const answer = mkwAnswer(question);
-      const idx = mkw.thread.indexOf(pendingUser);
-      // answerFresh : SEULE la reponse joue son entree a l'arrivee ; la bulle
-      // du gerant, deja entree pendant l'assemblage, ne rejoue jamais.
-      if (idx >= 0) mkw.thread[idx] = { kind: 'qa', ...answer, answerFresh: true };
-      if (mkw.thread.length > 14) mkw.thread.shift();
-      mkw.stateWord = null;
-      mkwChatSave();
-      renderStaffCampaignsPage();
-      mkwScrollChatEnd();
-    }, 620);
+    let answer = null;
+    try {
+      const payload = await apiRequest('/api/ops', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'marketingAsk', centerId: state.adminCenterId || 'libramont', question: String(question).slice(0, 400) }),
+      });
+      if (payload && payload.grounded && payload.answer && payload.answer.reponse) {
+        answer = mkwAnswerFromServer(question, payload);
+      } else {
+        answer = mkwAnswer(question);
+        const why = MKW_ASK_DEGRADED[(payload && payload.reason) || ''] || 'mode simple';
+        answer.source = `${answer.source} · ${why}`;
+      }
+    } catch (error) {
+      answer = mkwAnswer(question);
+      answer.source = `${answer.source} · mode simple : la requête n'est pas passée`;
+    }
+    const idx = mkw.thread.indexOf(pendingUser);
+    // answerFresh : SEULE la reponse joue son entree a l'arrivee ; la bulle
+    // du gerant, deja entree pendant l'assemblage, ne rejoue jamais.
+    if (idx >= 0) mkw.thread[idx] = { kind: 'qa', ...answer, answerFresh: true };
+    if (mkw.thread.length > 14) mkw.thread.shift();
+    mkw.stateWord = null;
+    mkwChatSave();
+    renderStaffCampaignsPage();
+    mkwScrollChatEnd();
   }
 
   window.mkwAsk = function () {
@@ -5552,8 +5627,13 @@
   // LA DERNIERE DEMANDE, celle dont l'agent est en train de s'occuper. C'est
   // elle qui dicte les etapes affichees : sans elle, on retomberait sur une
   // liste generique, c'est-a-dire sur du theatre.
+  // Le fil vit dans `mkw.thread` : `mkBrief.turns` n'a jamais existe, donc le
+  // tour en cours n'etait jamais trouve et les etapes retombaient sur la liste
+  // generique. Exactement le theatre que ce code voulait eviter. La ligne
+  // tapee (askDraft) est videe par mkwAsk avant l'envoi : c'est bien le tour en
+  // attente, pas le champ, qui porte la question.
   function mkwDerniereDemande() {
-    const tours = (mkBrief.turns || []);
+    const tours = (mkw.thread || []);
     const enCours = tours.find((t) => t && t.pendingAnswer);
     return String((enCours && enCours.q) || mkBrief.askDraft || '');
   }

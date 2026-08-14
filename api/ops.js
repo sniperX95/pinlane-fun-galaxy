@@ -1997,6 +1997,20 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // « Demander » : une question LIBRE du gérant, à laquelle le modèle répond
+  // depuis le dossier de faits réels du centre (lib/marketing-ask.js). POST et
+  // non GET : la question est du texte libre, elle n'a rien à faire dans une
+  // URL (journaux, historique, référents). Quand le modèle manque, échoue ou
+  // invente, la réponse porte `grounded: false` et le navigateur reprend son
+  // chemin déterministe : jamais d'erreur, jamais d'invention affichée.
+  if (action === 'marketingAsk') {
+    const { answerMarketingQuestion } = require('../lib/marketing-ask');
+    const concreteCenterId = requireConcreteCenter('agent marketing');
+    const result = await answerMarketingQuestion(concreteCenterId, { question: String(body.question || '') });
+    sendJson(res, 200, { ok: true, action, ...result });
+    return;
+  }
+
   // Génération d'un pack de contenu (boucle de raffinement côté serveur).
   if (action === 'studioGenerate') {
     const { generateContentPack } = require('../lib/content-studio');
@@ -2621,7 +2635,7 @@ function getRequiredOpsPermission(method, action) {
   if (action === 'sendClientRelance') return 'emails.send';
   if (action === 'clientNotes') return ['clients.edit', 'clients.view'];
   if (action === 'insightRedo') return ['campaigns.manage', 'marketing.agents'];
-  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'competitorAnalyzePost', 'marketingPlanGet', 'marketingPlanBuild', 'studioGenerate', 'propositionAction', 'propositionCreate'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
+  if (['planActionDone', 'competitorSave', 'competitorDelete', 'competitorSweep', 'competitorAnalyzePost', 'marketingPlanGet', 'marketingPlanBuild', 'studioGenerate', 'propositionAction', 'propositionCreate', 'marketingAsk'].includes(action)) return ['campaigns.manage', 'marketing.agents'];
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';

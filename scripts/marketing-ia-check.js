@@ -47,6 +47,7 @@ async function installMock(page) {
     const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
     const nf = window.fetch.bind(window);
     window.__QA_POSTS__ = [];
+    window.__QA_ASKS__ = [];
     window.__QA_ROI_CALLS__ = [];
     window.__QA_BRIEF_CENTERS__ = [];
     // Les creations du gerant VIVENT : un propositionCreate reapparait dans le
@@ -145,6 +146,66 @@ async function installMock(page) {
             : `Tu m'as demandé : « ${brief} », voilà ce que je posterais.`;
           window.__QA_CREATED__.push({ key: `db:${id}`, id, trigger: b.trigger === 'creux' ? 'creux' : 'demande', why, whyShort: why, dueDate: dstr(1), kind: 'post', pinned: false, network: 'facebook', networks: { facebook: { text: `Post prêt : ${brief || b.targetDate}.` } }, photoIdea: '', imagePrompt: '', bestSlot: '', status: 'proposed', signature: `qa:${id}` });
           return J({ ok: true, result: { ok: true, id } });
+        }
+        // « Demander » : le serveur REPOND (lib/marketing-ask). Ce mock n'est pas
+        // un generateur de phrases : il lit le MEME brief que la page et rend une
+        // reponse construite depuis ses donnees reelles. Une reponse fabriquee de
+        // toutes pieces ici prouverait que le fil s'affiche, pas qu'il est ancre.
+        if (b.action === 'marketingAsk') {
+          window.__QA_ASKS__.push(b);
+          const q = String(b.question || '').toLowerCase();
+          const bundle = briefBundle(b.centerId || 'libramont');
+          // Un appel modele n'est JAMAIS instantane (Kimi : 2 a 5 s en reel).
+          // Un mock qui repond en 0 ms rendrait infalsifiable tout ce que la
+          // page montre PENDANT l'attente : les etapes de travail, la bulle du
+          // gerant qui entre seule, l'etat qui meurt avec la reponse.
+          await new Promise((r) => setTimeout(r, 400));
+          // Le cas degrade : le serveur a REFUSE la reponse du modele (elle
+          // citait une donnee que le centre n'a pas). Le navigateur doit
+          // reprendre son chemin deterministe ET le dire.
+          if (/fluo interdit/.test(q)) return J({ ok: true, grounded: false, reason: 'bloque', blockers: ['activite ou promesse absente du centre : karting'] });
+          // Une question sur UN jour : la reponse est ancree sur la ligne de
+          // radar de ce jour-la (son explication, ce qui est deja pose) et sur
+          // le panier moyen mesure. `jourVise` est la date du radar : c'est elle
+          // qui fait naitre la carte rattachee au bon jour.
+          const asked = q.match(/(\d{1,2})\/(\d{1,2})/);
+          const day = asked
+            ? (bundle.radar || []).find((d) => d.date.slice(5) === `${asked[2].padStart(2, '0')}-${asked[1].padStart(2, '0')}`)
+            : null;
+          if (day) {
+            return J({ ok: true, grounded: true, provider: 'kimi', model: 'kimi-k2.6',
+              answer: {
+                titre: `Ce que je vois pour le ${day.date.slice(8, 10)}/${day.date.slice(5, 7)}`,
+                reponse: `${day.explanation} Ton panier moyen mesuré est de ${bundle.pulse.avgBasket} €, donc chaque personne ramenée ce jour-là vaut ce montant.`,
+                faits: [`${day.resaCount} personnes déjà posées`, `panier moyen mesuré : ${bundle.pulse.avgBasket} €`],
+                jeNeSaisPas: [],
+                action: 'creer_post',
+                jourVise: day.date,
+              },
+              basis: { joursMesures: bundle.dataDays, joursRadar: bundle.radar.length, formules: 14, activites: 8, concurrents: bundle.veille.count } });
+          }
+          const rival = (bundle.veille.changed || [])[0];
+          if (rival && q.includes(String(rival.name).toLowerCase())) {
+            return J({ ok: true, grounded: true, provider: 'kimi', model: 'kimi-k2.6',
+              answer: {
+                titre: `Ce que fait ${rival.name}`,
+                reponse: `${rival.name} : ${rival.diff} Ton panier moyen est de ${bundle.pulse.avgBasket} €, donc reponds sur l'ambiance plutot que sur le prix.`,
+                faits: [`${rival.name} : ${rival.diff}`, `panier moyen mesure : ${bundle.pulse.avgBasket} €`],
+                jeNeSaisPas: [],
+                action: 'ouvrir_marche',
+              },
+              basis: { joursMesures: bundle.dataDays, joursRadar: bundle.radar.length, formules: 14, activites: 8, concurrents: bundle.veille.count } });
+          }
+          // Hors perimetre : le modele DIT qu'il ne sait pas au lieu d'inventer.
+          return J({ ok: true, grounded: true, provider: 'kimi', model: 'kimi-k2.6',
+            answer: {
+              titre: 'Ce n\'est pas mon sujet',
+              reponse: 'Je ne reponds que sur ton centre et son marketing : frequentation, jours a remplir, concurrents, ce que tes messages rapportent.',
+              faits: [],
+              jeNeSaisPas: ['Cette question sort de ce que je connais du centre : je n\'ai aucune donnee la-dessus.'],
+              action: 'aucune',
+            },
+            basis: { joursMesures: bundle.dataDays, joursRadar: bundle.radar.length, formules: 14, activites: 8, concurrents: bundle.veille.count } });
         }
         if (b.action === 'insightRedo') return J({ ok: true, insight: { id: 99, status: 'proposed' } });
         if (b.action === 'planActionDone') return J({ ok: true, result: { ok: true, id: 55, status: 'applied' } });
@@ -492,7 +553,26 @@ async function main() {
     });
     ok(reveal.closedBefore && reveal.autoOpened && reveal.freshShown, 'tiroir ferme + creation IA -> il S\'OUVRE tout seul et montre la tache neuve animee');
 
-    console.log('\n[DEMANDER] reponse assemblee, sourcee ; « je ne sais pas » sans invention');
+    // [DEMANDER] CE QUE CE BLOC DEFEND A CHANGE, ET POURQUOI.
+    //
+    // Avant : « reponse LOCALE, zero appel serveur ». Cette attente protegeait
+    // un bridage. Le mode Demander etait une cascade de regex cote navigateur :
+    // « prix », « meteo », « concurrent » rendaient un paragraphe pre-ecrit et
+    // TOUT le reste tombait sur « je ne sais pas encore analyser ca librement ».
+    // Le produit vendait un employe marketing et livrait un routeur de mots-cles.
+    //
+    // Maintenant : la question part au serveur, le modele repond depuis le
+    // dossier de faits reels du centre (lib/marketing-ask.js). Ce que ce bloc
+    // doit prouver a donc change de nature :
+    //   1. la question ATTEINT le serveur (sans quoi rien n'a bouge) ;
+    //   2. la reponse affichee est ANCREE : elle cite une donnee reelle du
+    //      centre, et l'ecran dit ce qu'elle a lu ;
+    //   3. hors perimetre, l'agent DIT qu'il ne sait pas au lieu d'inventer ;
+    //   4. quand le serveur REFUSE la reponse du modele (invention detectee), le
+    //      navigateur reprend son chemin deterministe ET l'affiche.
+    // Le refus d'inventer, lui, se prouve la ou il vit : scripts/marketing-ask-check.js
+    // (controle d'apres coup + contre-preuve par mutation).
+    console.log('\n[DEMANDER] la question part au serveur, la reponse est ancree et sourcee');
     const asked = await page.evaluate(async () => {
       window.mkwMode('demander');
       await new Promise((r) => setTimeout(r, 150));
@@ -500,34 +580,56 @@ async function main() {
       if (chip) chip.click();
       await new Promise((r) => setTimeout(r, 200));
       const filled = (document.getElementById('brAskInput') || {}).value || '';
-      const postsBefore = (window.__QA_POSTS__ || []).length;
+      const asksBefore = (window.__QA_ASKS__ || []).length;
       [...document.querySelectorAll('#staffCampaignsPage .mkw-composer-send')].find((el) => /Demander/.test(el.textContent)).click();
       await new Promise((r) => setTimeout(r, 1000));
       const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
       const answer = answers[answers.length - 1];
+      const asks = window.__QA_ASKS__ || [];
       return {
         filled,
-        postsDelta: (window.__QA_POSTS__ || []).length - postsBefore,
+        asksDelta: asks.length - asksBefore,
+        sentQuestion: asks.length ? String(asks[asks.length - 1].question || '') : '',
+        sentCenter: asks.length ? String(asks[asks.length - 1].centerId || '') : '',
         answer: answer ? answer.textContent : '',
         source: (answer && answer.querySelector('.mkw-ans-src') || {}).textContent || '',
       };
     });
     ok(/^Que fait Bowling Arlon/.test(asked.filled), 'la suggestion remplit la question ET bascule le mode');
-    ok(asked.postsDelta === 0 && /offre étudiants/.test(asked.answer), 'CONTRE-PREUVE : reponse LOCALE (zero appel serveur), et elle cite la veille reelle');
-    ok(/assemblé/.test(asked.source), 'la SOURCE de la reponse est dite a l\'ecran');
+    ok(asked.asksDelta === 1 && /Bowling Arlon/.test(asked.sentQuestion) && asked.sentCenter === 'libramont',
+      `la question part au SERVEUR, telle quelle, avec son centre (${asked.asksDelta} appel)`);
+    ok(/offre étudiants/.test(asked.answer) && /15\.4 €/.test(asked.answer),
+      'la reponse affichee est ANCREE : elle cite la veille reelle ET un chiffre mesure du centre');
+    ok(/jours mesurés/.test(asked.source) && /210/.test(asked.source),
+      `la SOURCE dit ce que la reponse a eu sous les yeux ("${asked.source.trim().slice(0, 80)}")`);
     const unknown = await page.evaluate(async () => {
       const input = document.getElementById('brAskInput');
       input.value = 'quelle est la capitale du danemark';
       input.dispatchEvent(new Event('input'));
-      const postsBefore = (window.__QA_POSTS__ || []).length;
       window.mkwSend();
       await new Promise((r) => setTimeout(r, 1000));
       const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
       const last = answers[answers.length - 1];
-      return { text: last ? last.textContent : '', postsDelta: (window.__QA_POSTS__ || []).length - postsBefore };
+      return { text: last ? last.textContent : '' };
     });
-    ok(/Je ne sais pas encore analyser ça librement/.test(unknown.text) && unknown.postsDelta === 0,
-      'question hors perimetre -> l\'agent DIT qu\'il ne sait pas, n\'invente rien, n\'appelle rien');
+    ok(/n'ai aucune donnée|aucune donnée là-dessus|pas mon sujet/i.test(unknown.text) && !/copenhague/i.test(unknown.text),
+      'question hors perimetre -> l\'agent DIT qu\'il ne sait pas, et n\'invente pas la reponse');
+    // Le FILET : le serveur refuse une reponse qui inventait. Le navigateur ne
+    // reste pas muet et ne fait pas semblant : il rend sa reponse deterministe
+    // et ecrit a l'ecran POURQUOI elle est en mode simple.
+    const degraded = await page.evaluate(async () => {
+      const input = document.getElementById('brAskInput');
+      input.value = 'que penses-tu de la soiree fluo interdit';
+      input.dispatchEvent(new Event('input'));
+      window.mkwSend();
+      await new Promise((r) => setTimeout(r, 1000));
+      const answers = document.querySelectorAll('#staffCampaignsPage .mkw-turn-answer');
+      const last = answers[answers.length - 1];
+      return { text: last ? last.textContent : '', source: (last && last.querySelector('.mkw-ans-src') || {}).textContent || '' };
+    });
+    ok(/mode simple/.test(degraded.source) && /jetée/.test(degraded.source),
+      `reponse du modele REFUSEE -> le filet deterministe reprend, et l'ecran le dit ("${degraded.source.trim().slice(0, 90)}")`);
+    ok(degraded.text.length > 40, 'le gerant recoit quand meme une reponse : jamais un ecran vide');
 
     console.log('\n[HISTORIQUE PERSONNEL] chaque code d\'acces a SA conversation');
     const personal = await page.evaluate(async () => {
@@ -569,8 +671,15 @@ async function main() {
       await new Promise((r) => setTimeout(r, 150));
       // PENDANT : la bulle du gerant est entree, l'etat de travail vit (marque
       // qui pulse + verbe VRAI qui shimmer), la reponse n'existe pas encore.
+      const stateBlock = document.querySelector('#staffCampaignsPage .mkw-msg.is-state');
       const during = {
-        state: (document.querySelector('#staffCampaignsPage .mkw-msg.is-state .mkw-state-word') || {}).textContent || '',
+        // L'attente est rendue par les ORBES d'etapes (renderThinkingSteps,
+        // app-main.js) : le libelle vit dans .pl-progress-label et la liste
+        // complete dans data-orb-steps. Le vieux selecteur .mkw-state-word ne
+        // vise que le repli sans orbes : il ne trouvait plus rien, et cette
+        // ligne etait rouge sur main avant meme cette session.
+        state: (stateBlock && stateBlock.querySelector('.pl-progress-label') || stateBlock && stateBlock.querySelector('.mkw-state-word') || {}).textContent || '',
+        steps: (stateBlock && stateBlock.querySelector('[data-orb-steps]') || {}).getAttribute ? stateBlock.querySelector('[data-orb-steps]').getAttribute('data-orb-steps') : '',
         busy: Boolean(document.querySelector('#staffCampaignsPage .mkw-msg.is-state[aria-busy="true"]')),
         userIn: Boolean([...document.querySelectorAll('#staffCampaignsPage .mkw-msg.is-user')].pop()?.classList.contains('is-in')),
         answerYet: /offre étudiants/.test((document.querySelector('#staffCampaignsPage .mkw-chat-thread') || {}).textContent || ''),
@@ -590,7 +699,11 @@ async function main() {
       const replay = document.querySelectorAll('#staffCampaignsPage .mkw-chat-thread .mkw-msg.is-in').length;
       return { during, after, replay };
     });
-    ok(/J'assemble depuis le brief/.test(motion.during.state) && motion.during.busy, 'PENDANT : l\'etat de travail vit (verbe VRAI + aria-busy), facon Claude');
+    ok(motion.during.state.trim().length > 0 && motion.during.busy, `PENDANT : l'etat de travail vit (« ${motion.during.state.trim()} » + aria-busy)`);
+    // LA preuve que l'attente n'est pas du decor : les etapes affichees sortent
+    // de CE qui a ete demande. Le concurrent nomme dans la question apparait
+    // dans la liste des etapes, parce que le brief le connait vraiment.
+    ok(/Bowling Arlon/.test(motion.during.steps), 'les etapes SORTENT de la demande (le concurrent nomme y figure), jamais une liste ecrite d\'avance');
     ok(motion.during.userIn && !motion.during.answerYet, 'la bulle du gerant entre TOUT DE SUITE, la reponse pas encore');
     ok(motion.after.stateGone && motion.after.answered, 'APRES : l\'etat MEURT avec le travail, la reponse entre (jamais de spinner orphelin)');
     ok(motion.after.oldQuiet, 'les tours deja vus restent immobiles');

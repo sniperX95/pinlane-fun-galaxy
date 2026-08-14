@@ -3188,6 +3188,19 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .res-section.offplanning .res-row { background: color-mix(in srgb, var(--warning-soft) 42%, var(--surface)); }
 .res-section.offplanning .res-row:hover { background: color-mix(in srgb, var(--warning-soft) 70%, var(--surface)); }
 .res-section.offplanning .res-section-head { background: var(--warning-soft); }
+
+/* Le panneau des demandes quand on arrive dessus depuis la tuile : il se signale
+   une fois, puis se tait. Sans ce repere, un defilement automatique laisse le
+   lecteur chercher ce qui a change. */
+.cr-panel.is-called {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-md);
+  transition: outline-color var(--dur) var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cr-panel.is-called { transition: none; }
+}
 .res-section.offplanning .res-section-head .label { color: var(--warning); }
 .res-section.offplanning .res-section-head .count { background: var(--warning-soft); color: var(--warning); }
 
@@ -3313,6 +3326,19 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .res-offer.is-formule { color: var(--accent-strong); font-weight: 600; }
 .res-offer.is-laser { color: var(--info); }
 .res-c-what .bk-flags { gap: 4px; }
+/* La note se LIT dans la ligne. Elle prend toute la largeur de sa colonne pour
+   passer sous l'offre au lieu de la pousser, parce qu'une consigne de service
+   est une phrase, pas une etiquette. */
+.res-note-line {
+  flex: 1 0 100%;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: var(--warning);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+.res-note-line svg { flex: 0 0 auto; margin-top: 1px; }
 
 /* COLONNE OU : les numéros seuls. Le mot qui les nomme est dans l'en-tête. */
 .res-c-where { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }

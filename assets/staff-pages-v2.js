@@ -989,8 +989,15 @@
     // porté par chaque réservation et se recompose en additionnant les lignes.
     const upcoming7Pax = upcoming7.reduce((sum, v) => sum + (Number(v.pax) || 0), 0);
     const newLeads = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
+    // Le compte AFFICHE est celui des demandes qui attendent encore quelqu un,
+    // le meme que le panneau : une demande « en cours » n est pas une demande
+    // reglee. Voir `getStaffActiveCustomRequestCount`.
+    const leadsActifs = typeof getStaffActiveCustomRequestCount === 'function' ? getStaffActiveCustomRequestCount() : newLeads;
     const relancer = allRows.filter((row) => getStaffClientRelance(row).due).length;
     const statBtn = (seg, html) => `<div class="crm-stat-link${segment === seg ? ' is-active' : ''}" role="button" tabindex="0" onclick="setStaffClientSegment('${seg}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();setStaffClientSegment('${seg}');}">${html}</div>`;
+    // Une tuile mene a ce qu elle annonce : celle des demandes va au panneau des
+    // demandes, pas au segment « À venir » des reservations.
+    const statGo = (fn, html) => `<div class="crm-stat-link" role="button" tabindex="0" onclick="${fn}()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${fn}();}">${html}</div>`;
 
     const selected = rows.find((r) => r.id === state.staffSelectedClientId)
       || allRows.find((r) => r.id === state.staffSelectedClientId)
@@ -1057,7 +1064,7 @@
 
       <section class="pv2-stats crm-stats">
         ${statBtn('avenir', stat({ label: 'À venir 7 j', count: upcoming7.length, foot: upcoming7Pax ? `${upcoming7Pax} joueur${upcoming7Pax > 1 ? 's' : ''} attendus` : 'réservations à préparer' }))}
-        ${statBtn('avenir', stat({ label: 'Demandes sur mesure', count: newLeads, foot: newLeads ? 'à répondre aujourd’hui' : 'aucune en attente' }))}
+        ${statGo('focusStaffCustomRequests', stat({ label: 'Demandes sur mesure', count: leadsActifs, foot: leadsActifs ? (newLeads ? `dont ${newLeads} nouvelle${newLeads > 1 ? 's' : ''}` : 'en cours de traitement') : 'aucune en attente' }))}
         ${statBtn('relancer', stat({ label: 'À relancer', count: relancer, foot: 'clients à récupérer' }))}
         ${statBtn('vip', stat({ label: 'Panier moyen', value: money(pv2AvgBasket(allRows)), foot: 'par réservation' }))}
       </section>

@@ -11708,6 +11708,35 @@ function getStaffNewCustomRequestCount() {
 }
 window.getStaffNewCustomRequestCount = getStaffNewCustomRequestCount;
 
+// DEUX COMPTAGES POUR UN MEME OBJET, C EST UNE CONTRADICTION A L ECRAN.
+// Movsar, 2026-08-14, capture a l appui : la tuile « Demandes sur mesure »
+// annoncait « 0 · aucune en attente » pendant que le panneau juste en dessous
+// listait « 1 demande(s) active(s) », une demande d Ansar Bisultanov en cours.
+// Les deux disaient vrai selon leur propre definition : la tuile comptait le
+// statut `new`, le panneau comptait tout ce qui n est pas archive. Une demande
+// qu on a commence a traiter disparaissait donc du compteur alors qu elle reste
+// A FAIRE. C est le compte du panneau qui fait foi : tant qu une demande n est
+// ni traitee ni archivee, elle attend quelqu un.
+function getStaffActiveCustomRequestCount() {
+  return getStaffCustomRequestItems().filter(item => item.status !== 'archived' && item.status !== 'done').length;
+}
+window.getStaffActiveCustomRequestCount = getStaffActiveCustomRequestCount;
+
+// La tuile MENE aux demandes au lieu de changer de segment. Elle declenchait
+// `setStaffClientSegment('avenir')`, donc un clic sur « Demandes sur mesure »
+// affichait les reservations a venir : deux sujets sans rapport, et le sentiment
+// que le bouton est casse (verbatim : « ca nous met d office avec reservation a
+// venir, c est pas complet du tout »).
+function focusStaffCustomRequests() {
+  if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
+  const panneau = document.querySelector('.cr-panel');
+  if (!panneau) return;
+  panneau.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  panneau.classList.add('is-called');
+  window.setTimeout(() => panneau.classList.remove('is-called'), 1600);
+}
+window.focusStaffCustomRequests = focusStaffCustomRequests;
+
 async function setStaffCustomRequestStatus(id, status) {
   try {
     await apiRequest(API_ENDPOINTS.ops, {
@@ -13489,6 +13518,29 @@ function hasReservationNote(reservation) {
   return !!getReservationNoteText(reservation);
 }
 
+// UNE NOTE QU ON NE PEUT PAS LIRE N EST PAS UNE NOTE, C EST UN RAPPEL D OUBLI.
+// Movsar, 2026-08-14 : « il y a aussi les notes a lire qui s affichent nulle
+// part, on sait pas lire la note ». L etiquette « Note a lire » etait posee sur
+// la ligne depuis toujours, et le TEXTE n apparaissait sur aucune surface de
+// liste : il fallait ouvrir la fiche pour decouvrir de quoi il s agissait, donc
+// ouvrir chaque dossier marque pour savoir si la consigne concernait ce
+// service. Dans une table, la colonne « Réservation » a la largeur pour la dire.
+// Elle est ecrite en entier jusqu a 90 caracteres, coupee au MOT au-dela, et le
+// texte complet reste dans l infobulle et dans la fiche.
+function renderReservationNoteLine(reservation) {
+  const note = getReservationNoteText(reservation);
+  if (!note) return '';
+  let affiche = note;
+  if (note.length > 90) {
+    const coupe = note.slice(0, 90);
+    const dernierEspace = coupe.lastIndexOf(' ');
+    affiche = `${(dernierEspace > 40 ? coupe.slice(0, dernierEspace) : coupe).trim()}…`;
+  }
+  return `<span class="res-note-line" title="${escapeHtml(note)}">`
+    + `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.4a2 2 0 0 1-2 2H8.2L4 20.4V5.6a2 2 0 0 1 2-2h12.5a2 2 0 0 1 2 2z"/></svg>`
+    + `<span>${escapeHtml(affiche)}</span></span>`;
+}
+
 // MARQUEURS DE CARTE : ce qui change la maniere de servir, en une forme.
 // Une note et un anniversaire ne se lisent pas comme un chiffre : ce sont des
 // consignes. Sur 147px de piste, les ecrire en toutes lettres coute la ligne
@@ -14500,6 +14552,7 @@ function renderReservationRow(r) {
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
       ${renderReservationTags(r, { contexteSeul: true })}
+      ${renderReservationNoteLine(r)}
       ${renderStaffOpsMini(r)}
       ${renderGuestOpsMini(r)}
     </div>

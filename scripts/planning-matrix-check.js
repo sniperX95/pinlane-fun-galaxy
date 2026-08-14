@@ -587,10 +587,38 @@ window.__PLANNING_CONTRAST__ = function () {
     return acc ? over(acc, html) : html;
   };
   const ratio = (a, b) => { const l1 = lum(a); const l2 = lum(b); const hi = Math.max(l1, l2); const lo = Math.min(l1, l2); return (hi + 0.05) / (lo + 0.05); };
-  const SEL = ['.booking-name', '.booking .b-tag', '.booking .bk-pax', '.booking .bk-dur', '.booking .bk-state', '.booking .reservation-tag', '.hour-cell.major', '.hour-cell.minor', '.lane-header .pl', '.lane-header .num', '.current-badge'];
+  // UN AUDITEUR QUI NE REGARDE QU'UNE REGION NE PROTEGE QUE CETTE REGION.
+  //
+  // Cette liste ne contenait QUE des selecteurs de la grille, tous prefixes par
+  // #planningGridWrap. Les deux echecs AA trouves le 2026-08-14 etaient donc
+  // hors de sa portee, a quelques pixels au-dessus : le sous-titre « 8 pistes »
+  // des onglets de ressource (4,49:1 sur le fond de l'onglet actif) et la
+  // pastille de compte de ces memes onglets (4,00:1). Le gate etait vert et la
+  // page etait fausse. La barre d'onglets et l'en-tete de page entrent donc
+  // dans la mesure, et les selecteurs portent desormais leur propre racine.
+  const SEL = [
+    '#planningGridWrap .booking-name',
+    '#planningGridWrap .booking .b-tag',
+    '#planningGridWrap .booking .bk-pax',
+    '#planningGridWrap .booking .bk-dur',
+    '#planningGridWrap .booking .bk-state',
+    '#planningGridWrap .booking .reservation-tag',
+    '#planningGridWrap .hour-cell.major',
+    '#planningGridWrap .hour-cell.minor',
+    '#planningGridWrap .lane-header .pl',
+    '#planningGridWrap .lane-header .num',
+    '#planningGridWrap .current-badge',
+    '.staff-resource-tab .main',
+    '.staff-resource-tab .sub',
+    '.staff-resource-tab.active .main',
+    '.staff-resource-tab.active .sub',
+    '.staff-resource-tab > span:last-child:not(:first-child)',
+    '.staff-resource-tab.active > span:last-child:not(:first-child)',
+    '.staff-head .sub',
+  ];
   const rows = [];
   SEL.forEach((sel) => {
-    const el = document.querySelector('#planningGridWrap ' + sel);
+    const el = document.querySelector(sel);
     if (!el) return;
     const cs = getComputedStyle(el);
     const fg = parse(cs.color);

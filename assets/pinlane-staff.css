@@ -1293,7 +1293,12 @@ button.staff-date-label:focus-visible,
 }
 
 .staff-resource-tab .main { display: block; font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: inherit; }
-.staff-resource-tab .sub { display: block; font-size: 11px; color: var(--faint); margin-top: 1px; }
+/* `--faint` mesurait 4,49:1 sur le fond de l'onglet ACTIF (`--subtle`) en
+   thème clair : sous le seuil AA de 4,5:1, d'un centième. « 8 pistes » est ce
+   qui dit de quelle ressource on parle ; il ne peut pas être le texte le moins
+   lisible de l'écran. `--muted` monte à 5,13:1 sur `--subtle`, 5,74:1 sur
+   `--surface` (onglet inactif) et 6,74:1 en thème sombre. */
+.staff-resource-tab .sub { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
 
 /* Alerte « hors planning » : ces reservations n'occupent ni piste ni zone laser,
    elles n'apparaissent donc sur AUCUNE grille. Le signal doit se voir depuis les
@@ -1316,10 +1321,14 @@ button.staff-date-label:focus-visible,
   color: var(--muted);
 }
 
+/* `--accent` sur `--accent-soft` mesurait 4,00:1 en thème clair : la pastille
+   PORTE UN NOMBRE, c'est-à-dire une donnée, pas une décoration. `--accent-strong`
+   existe exactement pour ça (5,06:1 ici, 6,52:1 en sombre). C'est la même paire
+   fautive que celle corrigée sur la fiche de réservation le 2026-08-13. */
 .staff-resource-tab.active > span:last-child:not(:first-child) {
   background: var(--accent-soft);
   border-color: transparent;
-  color: var(--accent);
+  color: var(--accent-strong);
 }
 
 .resource-strip-actions {

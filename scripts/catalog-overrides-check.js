@@ -442,8 +442,14 @@ function ovNorm(formuleId, centerId, patch = {}) {
   // =========================================================================
   console.log('\n[I] contre-preuve par MUTATION : le gate sait rougir, puis restauration inverse');
   // =========================================================================
-  async function withMutation(anchor, replacement, probe, label) {
+  async function withMutation(rawAnchor, rawReplacement, probe, label) {
     const original = fs.readFileSync(libPath, 'utf8');
+    // Checkout Windows (autocrlf=true) : la copie de travail est en CRLF alors
+    // que les ancres multi-lignes sont ecrites en LF. On aligne l'ancre sur le
+    // fichier, jamais l'inverse (meme garde que founder-cockpit-check).
+    const useCrlf = !original.includes(rawAnchor) && original.includes(rawAnchor.replace(/\n/g, '\r\n'));
+    const anchor = useCrlf ? rawAnchor.replace(/\n/g, '\r\n') : rawAnchor;
+    const replacement = useCrlf ? rawReplacement.replace(/\n/g, '\r\n') : rawReplacement;
     const occurrences = original.split(anchor).length - 1;
     if (occurrences !== 1) {
       console.error(`catalog-overrides-check: ancre de mutation introuvable ou ambigue (${occurrences} occurrence(s)) : ${label}`);

@@ -47,94 +47,15 @@ const DURATION_OPTIONS = [
   { value:1.5, label:'1h30', price:59 },
   { value:2, label:'2 heures', price:78 },
 ];
-const FUN_GALAXY_LOGO_URL = 'https://fungalaxy.be/wp-content/themes/fungalaxy/img/logo-fun-galaxy.svg';
+// Repli hors-ligne des CENTRES DU FICHIER, cle par leur id : jamais servi a
+// un autre centre (getAdminCenters filtre sur le centre de la session, et le
+// repli d un centre inconnu est neutre, cf. getAdminCenter dans app-main.js).
+// Miroir minimal de ops-knowledge/centers.json.
 const ADMIN_CENTER_FALLBACKS = [
   { id: 'libramont', name: 'Fun Galaxy Libramont', status: 'active', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30, parallelLaunches: 1, requiresCompleteGroupBeforeLaunch: true } } },
   { id: 'gembloux', name: 'Fun Galaxy Gembloux', status: 'active', resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30, parallelLaunches: 3, requiresCompleteGroupBeforeLaunch: false } } },
   { id: 'ciney', name: 'Fun Galaxy Ciney', status: 'planned', resources: { bowling: null, laser: null } }
 ];
-const STAFF_CAMPAIGN_CHANNELS = ['linkedin', 'facebook', 'instagram', 'tiktok', 'email'];
-const STAFF_CAMPAIGN_CENTERS = {
-  libramont: {
-    id: 'libramont',
-    name: 'Fun Galaxy Libramont',
-    city: 'Libramont',
-    positioning: 'sorties familles, anniversaires, groupes et loisirs indoor en province de Luxembourg',
-    approvedActivities: ['Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', 'Arcades', 'Plaine de jeux', 'Formules anniversaires'],
-    practicalFacts: [
-      'Bowling: 8 pistes, 6 joueurs conseillés par piste.',
-      'Laser Game: 30 armes, lancement plus sensible aux groupes incomplets.',
-      'Mini Golf Blacklight et arcades: activités utiles pour compléter une sortie sans bloquer le planning.',
-      'Anniversaires: formules avec activités, arcades et boissons selon la formule choisie.'
-    ],
-    forbiddenClaims: ['Golf oClock', "Golf o'Clock", 'plusieurs lancements Laser Game en parallèle', 'cinéma', 'karting', 'réalité virtuelle', 'escape game'],
-    localAngle: 'centre indoor pratique pour les familles, écoles, clubs et entreprises autour de Libramont',
-    laserAdvice: 'prévenir que les sessions Laser Game peuvent être partagées selon l’affluence'
-  },
-  gembloux: {
-    id: 'gembloux',
-    name: 'Fun Galaxy Gembloux',
-    city: 'Gembloux',
-    positioning: 'sorties familles, anniversaires, groupes, loisirs indoor et activités afterwork',
-    approvedActivities: ['Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', "Golf o'Clock", 'Arcades', 'Plaine de jeux', 'Formules anniversaires'],
-    practicalFacts: [
-      'Bowling: 8 pistes, 6 joueurs conseillés par piste.',
-      'Laser Game: 30 armes, organisation plus souple grâce aux lancements multiples.',
-      "Golf o'Clock est disponible à Gembloux.",
-      'Anniversaires: formules avec activités, arcades et boissons selon la formule choisie.'
-    ],
-    forbiddenClaims: ["Golf o'Clock à Libramont", 'cinéma', 'karting', 'réalité virtuelle', 'escape game'],
-    localAngle: 'centre indoor complet pour familles, groupes, entreprises et sorties entre amis autour de Gembloux',
-    laserAdvice: 'valoriser la souplesse Laser Game sans promettre une session privée'
-  }
-};
-const STAFF_SOCIAL_AGENTS = {
-  linkedin: {
-    label: 'LinkedIn',
-    icon: 'linkedin',
-    name: 'Agent LinkedIn B2B',
-    mission: 'Transformer les signaux du centre en post crédible pour entreprises, écoles, clubs et responsables RH.',
-    structure: ['accroche métier', 'problème terrain', 'preuve locale', 'invitation à organiser une sortie'],
-    tone: 'professionnel, concret, peu publicitaire',
-    avoid: 'hashtags en masse, promesses inventées, ton trop vendeur'
-  },
-  facebook: {
-    label: 'Facebook',
-    icon: 'facebook',
-    name: 'Agent Facebook local',
-    mission: 'Parler aux familles et groupes locaux avec un message simple, utile et partageable.',
-    structure: ['situation concrète', 'activités disponibles', 'rassurance pratique', 'appel à réserver ou demander une dispo'],
-    tone: 'chaleureux, local, direct',
-    avoid: 'texte trop long, jargon marketing, fausse urgence'
-  },
-  instagram: {
-    label: 'Instagram',
-    icon: 'instagram',
-    name: 'Agent Instagram visuel',
-    mission: 'Préparer une légende courte et un brief Reels/carrousel basé sur les vraies activités du centre.',
-    structure: ['hook court', 'moment visuel à montrer', 'bénéfice client', 'CTA léger'],
-    tone: 'visuel, vivant, sobre',
-    avoid: 'liste froide, hashtags génériques, activités non présentes'
-  },
-  tiktok: {
-    label: 'TikTok',
-    icon: 'tiktok',
-    name: 'Agent TikTok créatif',
-    mission: 'Découper l’idée en mini-script vertical avec hook immédiat et scènes filmables dans le centre.',
-    structure: ['hook 2 secondes', '3 plans terrain', 'preuve simple', 'CTA court'],
-    tone: 'rapide, naturel, filmable par le staff',
-    avoid: 'script trop corporate, promesse impossible, trends hors sujet'
-  },
-  email: {
-    label: 'Email',
-    icon: 'mail',
-    name: 'Agent Email humain',
-    mission: 'Rédiger un message court qui ressemble à une vraie prise de contact du centre.',
-    structure: ['objet clair', 'message humain', 'information utile', 'réponse facile'],
-    tone: 'humain, précis, sans design lourd',
-    avoid: 'newsletter trop chargée, fausse personnalisation, promotion vague'
-  }
-};
 
 function parseLocalDate(dateStr) {
   if (!dateStr) return new Date();
@@ -1530,9 +1451,6 @@ function getFormulaActivityProgressSummary(reservation) {
     UPSELL_CATALOG,
     DURATION_OPTIONS,
     ADMIN_CENTER_FALLBACKS,
-    STAFF_CAMPAIGN_CHANNELS,
-    STAFF_CAMPAIGN_CENTERS,
-    STAFF_SOCIAL_AGENTS,
     parseLocalDate,
     toLocalDateStr,
     addDays,

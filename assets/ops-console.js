@@ -106,7 +106,7 @@ function renderOpsSamples() {
         </div>
         <div>
           <div class="title">${escapeHtml(sample.subject)}</div>
-          <div class="meta">${escapeHtml(sample.preheader || 'Template email Fun Galaxy')}</div>
+          <div class="meta">${escapeHtml(sample.preheader || 'Template email du centre')}</div>
         </div>
         <button class="ops-mini-btn" onclick="previewOpsEmail(${index}, 'sample')">Prévisualiser</button>
       </div>
@@ -649,7 +649,7 @@ function renderOpsAgentEcosystem(ecosystem, activations = [], orchestration = {}
         <div>
           <span class="ops-eyebrow">Entreprise IA</span>
           <h3>Super Agent Team</h3>
-          <p>${escapeHtml(ecosystem.mission || 'Écosystème IA Fun Galaxy.')}</p>
+          <p>${escapeHtml(ecosystem.mission || 'Écosystème IA du centre.')}</p>
         </div>
         <div class="ai-org-metrics">
           <span><strong>${Number(ecosystem.summary?.agents || agents.length)}</strong> agents</span>
@@ -658,7 +658,7 @@ function renderOpsAgentEcosystem(ecosystem, activations = [], orchestration = {}
         </div>
       </div>
       <div class="ai-org-layout">
-        <div class="ai-org-canvas" aria-label="Organigramme IA Fun Galaxy">
+        <div class="ai-org-canvas" aria-label="Organigramme IA du centre">
           ${renderOpsCompactAgentPyramid(ecosystem, agents, selectedAgent, activations, orchestration)}
         </div>
         ${renderOpsAgentLiveBoard(ecosystem, agents, selectedAgent, activations, orchestration, connectors)}
@@ -714,7 +714,7 @@ function renderOpsAgentStack() {
       ${(stack.recommendations || []).slice(0, 3).map(item => `
         <div class="ops-row template">
           <div><span class="ops-pill">Principe</span></div>
-          <div><div class="title">${escapeHtml(item)}</div><div class="meta">Règle d'architecture IA Fun Galaxy</div></div>
+          <div><div class="title">${escapeHtml(item)}</div><div class="meta">Règle d'architecture IA de la plateforme</div></div>
           <span class="ops-pill">Actif</span>
         </div>
       `).join('')}

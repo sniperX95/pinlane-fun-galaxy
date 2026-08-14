@@ -667,7 +667,7 @@
           </div>
           <span id="fcpBrandNote">${brandNoteHtml(accent)}</span>
         </div>
-        ${field("Nom d'expediteur des emails", 'center.senderLabel', c.senderLabel, { placeholder: 'Fun Galaxy Namur' })}
+        ${field("Nom d'expediteur des emails", 'center.senderLabel', c.senderLabel, { placeholder: 'Nom public du centre' })}
         ${field("Adresse d'expediteur", 'center.senderEmail', c.senderEmail, { type: 'email', placeholder: 'reservations@fun-galaxy.be', autocomplete: 'off', hint: "Vide : les emails de ce centre partent de l'adresse plateforme." })}
       </div>
     </div>`;
@@ -700,7 +700,7 @@
       <div class="fcp-section-title">Premier centre</div>
       <div class="fcp-fields">
         ${field('Identifiant du centre (slug)', 'center.id', c.id, { placeholder: 'fun-galaxy-namur', pattern: SLUG_RE.source, hint: 'Minuscules, chiffres et tirets simples.', span2: true })}
-        ${field('Nom du centre', 'center.name', c.name, { placeholder: 'Fun Galaxy Namur', span2: true })}
+        ${field('Nom du centre', 'center.name', c.name, { placeholder: 'Nom public du centre', span2: true })}
       </div>
     </div>
     ${brandSection(c)}`;
@@ -714,7 +714,7 @@
         <div class="fcp-section-title">Entreprise cliente</div>
         <div class="fcp-fields">
           ${field('Identifiant (slug)', 'id', d.id, { placeholder: 'fun-galaxy', pattern: SLUG_RE.source, hint: 'Definitif : il identifie le client partout.', autofocus: true, span2: true })}
-          ${field('Raison sociale', 'name', d.name, { placeholder: 'Fun Galaxy SRL', span2: true })}
+          ${field('Raison sociale', 'name', d.name, { placeholder: 'Raison sociale du client', span2: true })}
           <div class="fcp-field">
             <label>Statut</label>
             <select onchange="fcpSet('status', this.value)">${statusOptions}</select>
@@ -735,7 +735,7 @@
         <div class="fcp-section-title">Nouveau centre</div>
         <div class="fcp-fields">
           ${field('Identifiant du centre (slug)', 'center.id', c.id, { placeholder: 'fun-galaxy-liege', pattern: SLUG_RE.source, hint: 'Minuscules, chiffres et tirets simples.', autofocus: true, span2: true })}
-          ${field('Nom du centre', 'center.name', c.name, { placeholder: 'Fun Galaxy Liege', span2: true })}
+          ${field('Nom du centre', 'center.name', c.name, { placeholder: 'Nom public du centre', span2: true })}
         </div>
       </div>
       ${brandSection(c)}`;
@@ -837,7 +837,7 @@
         avec ses roles et acces staff${staff > 0 ? ` (<strong>${esc(num(staff))} personne${staff > 1 ? 's' : ''}</strong> perdront leur acces)` : ''}
         et ses journaux techniques.
         S'il porte des reservations, le serveur <strong>refusera</strong> plutot que de les effacer.
-        Un centre de base du fichier (socle Fun Galaxy) n'est pas supprimable ici.
+        Un centre de base du fichier (socle ops-knowledge) n'est pas supprimable ici.
         <span class="fck-confirm-irrev">Cette action est irreversible.</span>
       </div>`;
   }

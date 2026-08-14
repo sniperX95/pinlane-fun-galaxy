@@ -55,7 +55,7 @@ function unauthorized() {
   return new Response('Acces restreint.', {
     status: 401,
     headers: {
-      'WWW-Authenticate': 'Basic realm="Fun Galaxy", charset="UTF-8"',
+      'WWW-Authenticate': 'Basic realm="Pinlane", charset="UTF-8"',
       'Cache-Control': 'no-store',
       'Content-Type': 'text/plain; charset=utf-8',
     },
@@ -66,7 +66,7 @@ function forbiddenDirection() {
   return new Response('Acces direction requis.', {
     status: 401,
     headers: {
-      'WWW-Authenticate': 'Basic realm="Fun Galaxy Direction", charset="UTF-8"',
+      'WWW-Authenticate': 'Basic realm="Pinlane Direction", charset="UTF-8"',
       'Cache-Control': 'no-store',
       'Content-Type': 'text/plain; charset=utf-8',
     },

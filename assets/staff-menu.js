@@ -306,8 +306,10 @@
         if (Array.isArray(centers) && centers.length) {
           return centers.map(center => ({
             id: center.id || center.slug || 'libramont',
-            name: center.name || center.label || 'Fun Galaxy Centre',
-            label: center.shortName || center.label || center.name || 'Fun Galaxy Centre',
+            // Repli NEUTRE : un centre sans nom affiche son id, jamais le nom
+            // d'un autre client.
+            name: center.name || center.label || center.id || 'Centre',
+            label: center.shortName || center.label || center.name || center.id || 'Centre',
             meta: center.meta || center.summary || `${Number(center.resources?.bowling?.laneCount || center.bowlingLanes || 8)} pistes · ${Number(center.resources?.laser?.weaponCount || center.laserGuns || 30)} armes laser`,
             status: center.status === 'planned' ? 'Prévu' : (center.status === 'closed' ? 'Archivé' : 'Actif'),
             // clientId/clientName : sert au GROUPEMENT par client cote proprietaire.

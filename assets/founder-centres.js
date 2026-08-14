@@ -693,7 +693,7 @@
           </div>
           <div class="fca-field fca-span2">
             <label>Nom affiche</label>
-            <input type="text" value="${esc(d.name || '')}" placeholder="Fun Galaxy Namur" oninput="fcaSet('name', this.value)">
+            <input type="text" value="${esc(d.name || '')}" placeholder="Nom public du centre" oninput="fcaSet('name', this.value)">
           </div>
           <div class="fca-field">
             <label>Statut initial</label>
@@ -722,7 +722,7 @@
         avec ses roles et acces staff${members > 0 ? ` (<strong>${esc(num(members))} membre${members > 1 ? 's' : ''}</strong> perdront leur acces)` : ''}
         et ses journaux techniques.
         ${resas > 0 ? `Il porte <strong>${esc(num(resas))} reservation(s)</strong> sur 30 jours : le serveur <strong>refusera</strong> tant qu'elles existent.` : `S'il porte des reservations, le serveur <strong>refusera</strong> plutot que de les effacer.`}
-        Un centre de base du fichier (socle Fun Galaxy) n'est pas supprimable ici.
+        Un centre de base du fichier (socle ops-knowledge) n'est pas supprimable ici.
         <span class="fck-confirm-irrev">Cette action est irreversible.</span>
       </div>`;
   }

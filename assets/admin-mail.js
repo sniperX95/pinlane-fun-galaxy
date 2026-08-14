@@ -22,11 +22,13 @@ const MS_CATEGORIES = {
 };
 
 // Modèles de départ intégrés : remplissent le composer, éditables ensuite.
+// {{centre}} = le NOM du centre courant, substitué à l'insertion
+// (msApplyTemplate) : aucun modèle ne porte le nom d'un client en dur.
 const MS_STARTERS = [
-  { key: 'promo-semaine', category: 'promotion', name: 'Offre de la semaine', subject: 'Cette semaine chez Fun Galaxy : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe Fun Galaxy' },
-  { key: 'marketing-anniversaire', category: 'marketing', name: 'Pack anniversaire', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et cruches de boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe Fun Galaxy' },
-  { key: 'serieux-entreprise', category: 'serieux', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez Fun Galaxy, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction Fun Galaxy' },
-  { key: 'relance-client', category: 'relance', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe Fun Galaxy' },
+  { key: 'promo-semaine', category: 'promotion', name: 'Offre de la semaine', subject: 'Cette semaine chez {{centre}} : {{offre}}', body: 'Bonjour {{prenom}},\n\nCette semaine, on vous a préparé quelque chose : {{offre}}.\n\nValable du {{date_debut}} au {{date_fin}}, réservez votre créneau en ligne en 1 minute.\n\nÀ très vite,\nL\'équipe {{centre}}' },
+  { key: 'marketing-anniversaire', category: 'marketing', name: 'Pack anniversaire', subject: 'Un anniversaire inoubliable, sans stress pour vous', body: 'Bonjour {{prenom}},\n\nUn anniversaire à organiser ? Bowling, laser game, table décorée et cruches de boissons : on s\'occupe de tout, vous profitez.\n\nDites-nous la date et le nombre d\'enfants, on vous propose la formule adaptée.\n\nL\'équipe {{centre}}' },
+  { key: 'serieux-entreprise', category: 'serieux', name: 'Proposition entreprise', subject: 'Votre événement d\'équipe chez {{centre}}, proposition', body: 'Bonjour {{prenom}},\n\nSuite à votre demande, voici notre proposition pour votre événement d\'équipe : créneau privatisé, activités au choix (bowling, laser game) et espace repas.\n\nNous restons disponibles pour ajuster la formule à votre budget et vos horaires.\n\nCordialement,\nLa direction {{centre}}' },
+  { key: 'relance-client', category: 'relance', name: 'On ne vous a plus vu', subject: 'Ça fait longtemps, {{prenom}} !', body: 'Bonjour {{prenom}},\n\nÇa fait un moment qu\'on ne vous a plus vu au centre, les pistes vous attendent.\n\nRéservez en ligne quand vous voulez, ça prend une minute.\n\nÀ bientôt,\nL\'équipe {{centre}}' },
 ];
 
 const msState = {
@@ -230,7 +232,7 @@ function renderMsCompose() {
         <span class="ms-actions-spacer"></span>
         <button type="button" class="admin-btn primary" ${msState.sendBusy ? 'disabled' : ''} onclick="msSendDirect(this)">${msState.sendBusy ? 'Envoi…' : 'Envoyer le mail'}</button>
       </div>
-      <p class="dh-sub">Le mail part avec la mise en page Fun Galaxy (en-tête, pied de page) et s'ajoute automatiquement à l'historique.</p>
+      <p class="dh-sub">Le mail part avec la mise en page du centre (en-tête, pied de page) et s'ajoute automatiquement à l'historique.</p>
     </div>
   </section>`;
 }
@@ -243,8 +245,15 @@ function msApplyTemplate(ref) {
     ? MS_STARTERS.find((s) => s.key === key)
     : msState.templates.find((t) => String(t.id) === key);
   if (!tpl) return;
-  msState.draft.subject = tpl.subject;
-  msState.draft.body = tpl.body;
+  // Le nom du CENTRE COURANT remplace {{centre}} à l'insertion : le texte posé
+  // dans le composer est prêt à envoyer, sans jeton brut ni nom d'un autre
+  // client. Repli froid : l'id du centre (les listes chargées portent le nom).
+  const centreName = (typeof getCurrentStaffCenterName === 'function' && getCurrentStaffCenterName())
+    || (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId())
+    || 'votre centre';
+  const withCentre = (text) => String(text || '').replace(/\{\{\s*centre\s*\}\}/gi, centreName);
+  msState.draft.subject = withCentre(tpl.subject);
+  msState.draft.body = withCentre(tpl.body);
   msState.draft.category = tpl.category;
   msState.aiTips = [];
   msRefresh();

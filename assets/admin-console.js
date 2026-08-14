@@ -264,7 +264,7 @@ function exportAdminCsv() {
 
 function exportAdminJson() {
   const payload = getAdminExportPayload();
-  downloadTextFile(`fungalaxy-${payload.center.id}-${payload.period.startDate}-${payload.period.endDate}-direction.json`, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
+  downloadTextFile(`${payload.center.id}-${payload.period.startDate}-${payload.period.endDate}-direction.json`, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
 }
 
 function escapeXml(value = '') {
@@ -334,7 +334,7 @@ function buildAdminExcelXml(payload) {
     getAdminStatusLabel(reservation.status),
   ]));
   const summaryRows = [
-    excelRow(['FUN GALAXY - RAPPORT DIRECTION'], 'Title'),
+    excelRow([`${String(center.name || center.id || 'CENTRE').toUpperCase()} - RAPPORT DIRECTION`], 'Title'),
     excelRow([center.name, periodLabel, `Export ${new Date(payload.exportedAt).toLocaleString('fr-BE')}`], 'Subtle'),
     excelRow([]),
     excelRow(['Indicateur', 'Valeur', 'Lecture'], 'Header'),
@@ -482,10 +482,12 @@ function exportAdminExcel() {
   const payload = getAdminExportPayload();
   const xml = buildAdminExcelXml(payload);
   const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  downloadBlob(`FunGalaxy_${payload.center.id}_${payload.period.startDate}_${payload.period.endDate}_direction_compta.xls`, blob);
+  downloadBlob(`${payload.center.id}_${payload.period.startDate}_${payload.period.endDate}_direction_compta.xls`, blob);
 }
 
-function buildFunGalaxyReportHtml(payload) {
+// Le rapport direction parle AU NOM DU CENTRE exporte : nom en texte (comme
+// les emails), jamais le logo ou le nom d'un autre client ecrits en dur.
+function buildDirectionReportHtml(payload) {
   const metrics = payload.metrics;
   const periodLabel = formatAdminPeriodLabel(payload.period);
   const reservations = (payload.reservations || []).filter(reservation => reservation.status !== 'cancelled');
@@ -494,7 +496,7 @@ function buildFunGalaxyReportHtml(payload) {
   const marketMetrics = buildAdminMarketMetrics(reservations);
   const clientProfiles = buildAdminClientProfiles(reservations);
   const generatedAt = new Date(payload.exportedAt).toLocaleString('fr-BE');
-  const logoMarkup = `<span class="logo-box"><img src="${FUN_GALAXY_LOGO_URL}" alt="Fun Galaxy"></span>`;
+  const logoMarkup = `<span class="logo-box"><span class="logo-name">${escapeHtml(payload.center.name || payload.center.id || '')}</span></span>`;
   return `<!doctype html>
 <html lang="fr">
 <head>
@@ -510,7 +512,7 @@ function buildFunGalaxyReportHtml(payload) {
     .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 18mm; background: #fff; border-left: 1px solid #ebebeb; border-right: 1px solid #ebebeb; }
     .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; border-bottom: 2px solid #0a0a0a; padding-bottom: 18px; }
     .logo-box { display: inline-flex; align-items: center; justify-content: center; width: 160px; height: 92px; padding: 14px 18px; background: #0a0a0a; border: 1.5px solid #0a0a0a; border-radius: 8px; }
-    .logo-box img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; opacity: 1; filter: none; }
+    .logo-box .logo-name { color: #fff; font-weight: 700; font-size: 16px; line-height: 1.25; letter-spacing: .02em; text-align: center; text-transform: uppercase; }
     .report-title { margin-top: 16px; }
     .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #666; }
     h1 { margin: 6px 0 0; font-size: 30px; letter-spacing: -.02em; line-height: 1; font-weight: 600; }
@@ -557,8 +559,8 @@ function buildFunGalaxyReportHtml(payload) {
       </div>
     </section>
     <div class="company">
-      <strong>Fun Galaxy - document interne direction.</strong><br>
-      Centres suivis: Libramont, Gembloux. Site: fungalaxy.be.
+      <strong>${escapeHtml(payload.center.name || payload.center.id || 'Centre')} - document interne direction.</strong><br>
+      Rapport limité au centre exporté.
     </div>
     <section class="kpis">
       <div class="kpi"><div class="k">Réservations</div><div class="v">${metrics.reservations}</div></div>
@@ -615,7 +617,7 @@ function buildFunGalaxyReportHtml(payload) {
       </table>
     </section>
     <div class="footer">
-      <span>Rapport généré par le cockpit direction Fun Galaxy.</span>
+      <span>Rapport généré par le cockpit direction Pinlane.</span>
       <span>Export complet disponible dans le classeur Excel compta.</span>
     </div>
   </main>
@@ -626,8 +628,8 @@ function buildFunGalaxyReportHtml(payload) {
 function exportAdminReport() {
   if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
-  const html = buildFunGalaxyReportHtml(payload);
-  downloadTextFile(`FunGalaxy_${payload.center.id}_${payload.period.startDate}_${payload.period.endDate}_rapport_direction.html`, html, 'text/html;charset=utf-8');
+  const html = buildDirectionReportHtml(payload);
+  downloadTextFile(`${payload.center.id}_${payload.period.startDate}_${payload.period.endDate}_rapport_direction.html`, html, 'text/html;charset=utf-8');
 }
 
 function buildAdminMetrics(reservations = [], center = getAdminCenter()) {
@@ -3541,7 +3543,7 @@ function startAdminHealthAutoRefresh() {
     objectRows,
     buildAdminExcelXml,
     exportAdminExcel,
-    buildFunGalaxyReportHtml,
+    buildDirectionReportHtml,
     exportAdminReport,
     buildAdminMetrics,
     buildAdminInsights,

@@ -1223,14 +1223,6 @@ let opsAdminLastAutoLoadAt = 0;
 let opsSimulationAutoTimer = null;
 let opsSimulationAutoRunning = false;
 let opsSimulationLastDashboardRefreshAt = 0;
-let staffMarketingAgentsCache = {
-  loaded: false,
-  loading: false,
-  running: false,
-  error: '',
-  status: null,
-  lastLoadedAt: ''
-};
 let adminDashboardCache = {
   loading: false,
   loaded: false,
@@ -2021,7 +2013,20 @@ function getAdminCenters() {
 }
 
 function getAdminCenter(centerId = state.adminCenterId) {
-  return getAdminCenters().find(center => center.id === centerId) || ADMIN_CENTER_FALLBACKS[0];
+  // Repli NEUTRE pour un centre inconnu de toute liste : jamais la fiche du
+  // premier client (un centre X recevait le nom et les ressources de Fun
+  // Galaxy Libramont le temps que sa liste scopee reponde).
+  return getAdminCenters().find(center => center.id === centerId)
+    || ADMIN_CENTER_FALLBACKS.find(center => center.id === centerId)
+    || { id: centerId || '', name: '', status: 'active', resources: {} };
+}
+
+// Le NOM du centre courant pour les surfaces staff (objets d'email, exports).
+// Vide tant qu'aucune liste ne l'a donne : un libelle neutre vaut mieux que
+// le nom d'un autre client.
+function getCurrentStaffCenterName() {
+  const center = getAdminCenter();
+  return String((center && center.name) || '').trim();
 }
 
 function getActiveOpsCenterId() {
@@ -2253,12 +2258,6 @@ function loadState() {
     staffEmailQuery: '',
     staffEmailTemplateFilter: 'all',
     staffEmailSelectedId: '',
-    staffCampaignObjective: 'anniversaires',
-    staffCampaignChannel: 'linkedin',
-    staffCampaignSelectedId: '',
-    staffCampaignBrief: '',
-    staffCampaignDraft: null,
-    marketingCampaigns: [],
     staffMenuCollapsed: false,
     staffMenuPage: 'planning',
     staffGroupQuery: '',
@@ -2371,12 +2370,10 @@ state.staffEmailOriginFilter = ['all', 'auto', 'manual'].includes(state.staffEma
 state.staffEmailQuery = state.staffEmailQuery || '';
 state.staffEmailTemplateFilter = state.staffEmailTemplateFilter || 'all';
 state.staffEmailSelectedId = state.staffEmailSelectedId || '';
-state.staffCampaignObjective = ['anniversaires', 'calme', 'groupes', 'fidelisation', 'laser', 'formules'].includes(state.staffCampaignObjective) ? state.staffCampaignObjective : 'anniversaires';
-state.staffCampaignChannel = ['linkedin', 'facebook', 'instagram', 'tiktok', 'email'].includes(state.staffCampaignChannel) ? state.staffCampaignChannel : 'linkedin';
-state.staffCampaignSelectedId = state.staffCampaignSelectedId || '';
-state.staffCampaignBrief = state.staffCampaignBrief || '';
-state.staffCampaignDraft = state.staffCampaignDraft && typeof state.staffCampaignDraft === 'object' ? state.staffCampaignDraft : null;
-state.marketingCampaigns = Array.isArray(state.marketingCampaigns) ? state.marketingCampaigns : [];
+// L'ancien panneau « campagnes » d'app-main (brouillons par centre codes en
+// dur sur l'identite du premier client) a ete supprime avec ses etats
+// staffCampaign* : la page Marketing vivante est renderStaffCampaignsPage
+// (staff-pages-v2.js), qui lit le moteur marketing-agents par l'API.
 state.staffMenuCollapsed = !!state.staffMenuCollapsed;
 state.booking = state.booking || {};
 state.booking.preference = createDefaultFormulaPreference(state.booking.preference || {});
@@ -9293,7 +9290,7 @@ function openStaffAccessModal(kind) {
       </div>
       ${isRole ? '' : `<div class="field">
         <label for="staffAccessModalContact">Contact : email, téléphone ou identifiant interne</label>
-        <input id="staffAccessModalContact" type="text" autocomplete="off" placeholder="Ex : camille@fungalaxy.be">
+        <input id="staffAccessModalContact" type="text" autocomplete="off" placeholder="Ex : camille@votre-centre.be">
       </div>
       <div class="field">
         <label for="staffAccessModalRole">Rôle attribué</label>
@@ -10692,7 +10689,7 @@ function exportStaffPricingCsv() {
     row.revenue || 0,
     row.description
   ].map(csvCell).join(','));
-  downloadTextFile(`fungalaxy-tarifs-formules-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
+  downloadTextFile(`${getCurrentStaffCenterId()}-tarifs-formules-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
 }
 
 function copyStaffPricingSummary() {
@@ -10855,612 +10852,7 @@ function exportStaffEmailsCsv() {
     Number(row.attempts || 0),
     row.lastError || ''
   ].map(csvCell).join(','));
-  downloadTextFile(`fungalaxy-mails-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
-}
-
-function staffCampaignJs(value) {
-  return JSON.stringify(String(value || '')).replace(/</g, '\\u003c');
-}
-
-function getStaffCampaignChannel() {
-  return STAFF_CAMPAIGN_CHANNELS.includes(state.staffCampaignChannel) ? state.staffCampaignChannel : 'linkedin';
-}
-
-function getStaffCampaignAgent(channel = getStaffCampaignChannel()) {
-  return STAFF_SOCIAL_AGENTS[channel] || STAFF_SOCIAL_AGENTS.linkedin;
-}
-
-function getStaffCampaignCenterIds() {
-  return ['libramont', 'gembloux'];
-}
-
-function getStaffCampaignCenter(centerId) {
-  const fallback = STAFF_CAMPAIGN_CENTERS[centerId] || STAFF_CAMPAIGN_CENTERS.libramont;
-  const live = (typeof getAdminCenters === 'function' ? getAdminCenters() : ADMIN_CENTER_FALLBACKS).find(center => center.id === fallback.id) || {};
-  return {
-    ...fallback,
-    resources: live.resources || ADMIN_CENTER_FALLBACKS.find(center => center.id === fallback.id)?.resources || {},
-    status: live.status || fallback.status || 'active'
-  };
-}
-
-function getStaffCampaignCenters() {
-  return getStaffCampaignCenterIds().map(getStaffCampaignCenter);
-}
-
-function getStaffCampaignReservationCenterId(reservation) {
-  return reservation.centerId || reservation.center_id || state.adminCenterId || 'libramont';
-}
-
-function getStaffCampaignReservations(centerId = '') {
-  const rows = (state.reservations || []).filter(reservation => reservation.status !== 'cancelled');
-  if (!centerId) return rows;
-  return rows.filter(reservation => getStaffCampaignReservationCenterId(reservation) === centerId);
-}
-
-function getStaffCampaignMonthReservations(centerId = '') {
-  const monthKey = getMonthKey(state.currentDate || todayStr());
-  return getStaffCampaignReservations(centerId).filter(reservation => getMonthKey(reservation.date) === monthKey);
-}
-
-function getStaffCampaignQuietDays(reservations = getStaffCampaignReservations()) {
-  const anchor = state.currentDate || todayStr();
-  return Array.from({ length: 14 }, (_, index) => addDays(anchor, index)).map(date => {
-    const dayReservations = reservations.filter(reservation => reservation.date === date);
-    return {
-      date,
-      count: dayReservations.length,
-      players: dayReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0)
-    };
-  }).filter(day => day.count <= 2).slice(0, 5);
-}
-
-function getStaffCampaignSnapshot() {
-  const reservations = getStaffCampaignReservations();
-  const monthReservations = getStaffCampaignMonthReservations();
-  const clients = typeof getStaffClientRows === 'function' ? getStaffClientRows() : [];
-  const upcoming = reservations.filter(reservation => reservation.date >= (state.currentDate || todayStr())).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const bowling = monthReservations.filter(reservation => getBowlingWindowsFromReservation(reservation).length > 0);
-  const laser = monthReservations.filter(reservation => getLaserWindowsFromReservation(reservation).length > 0);
-  const formulas = monthReservations.filter(reservation => normalizeBookingType(reservation.type) === 'formula' || String(reservation.formuleId || '').trim());
-  const groups = clients.filter(client => client.isGroup || Number(client.players || 0) >= 8);
-  const loyal = clients.filter(client => client.statusClass === 'loyal');
-  const monthRevenue = monthReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
-  const quietDays = getStaffCampaignQuietDays(reservations);
-  const centers = getStaffCampaignCenters().map(center => {
-    const centerReservations = getStaffCampaignReservations(center.id);
-    const centerMonthReservations = getStaffCampaignMonthReservations(center.id);
-    const centerRevenue = centerMonthReservations.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
-    return {
-      center,
-      reservations: centerReservations,
-      monthReservations: centerMonthReservations,
-      bowling: centerMonthReservations.filter(reservation => getBowlingWindowsFromReservation(reservation).length > 0),
-      laser: centerMonthReservations.filter(reservation => getLaserWindowsFromReservation(reservation).length > 0),
-      formulas: centerMonthReservations.filter(reservation => normalizeBookingType(reservation.type) === 'formula' || String(reservation.formuleId || '').trim()),
-      quietDays: getStaffCampaignQuietDays(centerReservations),
-      revenue: centerRevenue,
-      players: centerMonthReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0)
-    };
-  });
-  return {
-    reservations,
-    monthReservations,
-    clients,
-    upcoming,
-    bowling,
-    laser,
-    formulas,
-    groups,
-    loyal,
-    quietDays,
-    centers,
-    monthRevenue,
-    players: monthReservations.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0),
-    averageTicket: monthReservations.length ? monthRevenue / monthReservations.length : 0,
-  };
-}
-
-function buildStaffCampaignIdeas(snapshot = getStaffCampaignSnapshot()) {
-  const quietDay = snapshot.quietDays[0];
-  const nextFormula = snapshot.formulas.find(reservation => reservation.date >= (state.currentDate || todayStr()));
-  const nextLaser = snapshot.laser.find(reservation => reservation.date >= (state.currentDate || todayStr()));
-  const nextGroup = snapshot.upcoming.find(reservation => Number(reservation.pax || 0) >= 8);
-  const monthName = parseLocalDate(state.currentDate || todayStr()).toLocaleDateString('fr-BE', { month: 'long' });
-  const ideas = [
-    {
-      id: 'anniversaires',
-      objective: 'anniversaires',
-      title: 'Anniversaires sans stress',
-      segment: 'Parents et familles',
-      channel: 'facebook',
-      score: 94,
-      source: `${snapshot.groups.length} groupe(s) repérés dans les réservations`,
-      promise: 'Faire comprendre que Fun Galaxy organise une vraie sortie complète avec des activités vérifiées par centre.',
-      angle: `Mettre en avant les anniversaires, les formules, les activités réelles et la simplicité pour les parents.`,
-      cta: 'Demander les disponibilités anniversaire'
-    },
-    {
-      id: 'calme',
-      objective: 'calme',
-      title: quietDay ? `Remplir ${formatCampaignDate(quietDay.date)}` : 'Remplir les créneaux calmes',
-      segment: 'Clients locaux disponibles en semaine',
-      channel: 'email',
-      score: quietDay ? 88 : 72,
-      source: quietDay ? `${quietDay.count} réservation(s), ${quietDay.players} joueur(s)` : 'Analyse des 14 prochains jours',
-      promise: 'Transformer les jours faibles en offres simples, claires et limitées.',
-      angle: quietDay ? `Proposer une sortie facile sur ${formatCampaignDate(quietDay.date)} sans casser les prix.` : 'Relancer les créneaux calmes avec un message court et concret.',
-      cta: 'Réserver un créneau calme'
-    },
-    {
-      id: 'groupes',
-      objective: 'groupes',
-      title: 'Sorties équipe et groupes',
-      segment: 'Entreprises, écoles, clubs',
-      channel: 'linkedin',
-      score: nextGroup ? 91 : 78,
-      source: nextGroup ? `Un groupe de ${nextGroup.pax} personne(s) prévu le ${formatCampaignDate(nextGroup.date)}` : `${snapshot.groups.length} client(s) groupe dans l'historique`,
-      promise: 'Vendre le centre comme solution clé en main pour une sortie de groupe.',
-      angle: "Montrer que le centre aide à organiser bowling, laser et activités complémentaires sans inventer une offre sur mesure.",
-      cta: 'Organiser une sortie groupe'
-    },
-    {
-      id: 'laser',
-      objective: 'laser',
-      title: 'Laser Game partagé',
-      segment: 'Ados, groupes, familles',
-      channel: 'facebook',
-      score: nextLaser ? 86 : 70,
-      source: nextLaser ? `Prochaine session laser ${formatCampaignDate(nextLaser.date)} à ${nextLaser.startTime || '--'}` : `${snapshot.laser.length} session(s) laser ce mois`,
-      promise: 'Dédramatiser les sessions partagées et rendre le laser plus lisible.',
-      angle: "Expliquer que les groupes peuvent jouer avec d'autres personnes selon l'affluence, sans promettre une session privée.",
-      cta: 'Voir les départs Laser Game'
-    },
-    {
-      id: 'formules',
-      objective: 'formules',
-      title: 'Formules bowling + laser',
-      segment: 'Clients qui veulent une sortie complète',
-      channel: 'linkedin',
-      score: nextFormula ? 90 : 76,
-      source: `${snapshot.formulas.length} formule(s) sur ${monthName}`,
-      promise: "Faire comprendre la valeur d'une formule sans noyer le client dans les contraintes.",
-      angle: "Insister sur le choix de l'ordre des activités et la flexibilité sur place.",
-      cta: 'Comparer les formules'
-    },
-    {
-      id: 'fidelisation',
-      objective: 'fidelisation',
-      title: 'Retour des habitués',
-      segment: 'Clients fidèles',
-      channel: 'email',
-      score: snapshot.loyal.length ? 84 : 62,
-      source: `${snapshot.loyal.length} client(s) fidèle(s) dans la base`,
-      promise: 'Créer un message simple qui donne envie de revenir sans parler comme une publicité.',
-      angle: 'Remercier, rappeler une bonne expérience et proposer un nouveau moment.',
-      cta: 'Revenir cette semaine'
-    }
-  ];
-  return ideas.sort((left, right) => (right.objective === state.staffCampaignObjective ? 20 : 0) + right.score - ((left.objective === state.staffCampaignObjective ? 20 : 0) + left.score));
-}
-
-function getStaffCampaignIdeaById(id) {
-  const saved = (state.marketingCampaigns || []).find(campaign => campaign.id === id);
-  if (saved) return saved;
-  return buildStaffCampaignIdeas().find(idea => idea.id === id) || buildStaffCampaignIdeas()[0];
-}
-
-function getSelectedStaffCampaignIdea() {
-  const ideas = buildStaffCampaignIdeas();
-  const selected = getStaffCampaignIdeaById(state.staffCampaignSelectedId);
-  return selected || ideas[0];
-}
-
-function formatCampaignDate(dateStr) {
-  if (!dateStr) return 'date à choisir';
-  return parseLocalDate(dateStr).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '');
-}
-
-function renderCampaignIcon(name) {
-  const icons = {
-    calendar: '<rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4M16 3v4M4 10h16"></path>',
-    users: '<circle cx="8" cy="8" r="3"></circle><path d="M3.5 19c.7-3.5 2.4-5.2 4.5-5.2s3.8 1.7 4.5 5.2"></path><path d="M16 10a2.6 2.6 0 1 0 0-5"></path><path d="M17 14c1.7.6 2.8 2.2 3.2 5"></path>',
-    euro: '<path d="M17 6.5A6 6 0 1 0 17 17.5"></path><path d="M7 10h8M7 14h7"></path>',
-    spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"></path>',
-    send: '<path d="M21 3 10 14"></path><path d="m21 3-7 18-4-7-7-4 18-7z"></path>',
-    copy: '<rect x="9" y="9" width="11" height="11" rx="2"></rect><rect x="4" y="4" width="11" height="11" rx="2"></rect>',
-    plus: '<path d="M12 5v14M5 12h14"></path>',
-    filter: '<path d="M4 6h16M7 12h10M10 18h4"></path>',
-    linkedin: '<path d="M6 9v10"></path><path d="M6 5.5v.01"></path><path d="M11 19v-5.5a3 3 0 0 1 6 0V19"></path><path d="M11 9v10"></path>',
-    facebook: '<path d="M14 8h2V4h-3a4 4 0 0 0-4 4v3H7v4h2v5h4v-5h3l1-4h-4V8a1 1 0 0 1 1-1z"></path>',
-    instagram: '<rect x="4" y="4" width="16" height="16" rx="5"></rect><circle cx="12" cy="12" r="3.2"></circle><path d="M16.8 7.2v.01"></path>',
-    tiktok: '<path d="M14 4v9.2a4 4 0 1 1-3-3.9"></path><path d="M14 4c.8 2.7 2.5 4.2 5 4.4"></path>',
-    mail: '<rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m5 8 7 5 7-5"></path>',
-    shield: '<path d="M12 3 5 6v5c0 4.4 2.8 8.3 7 10 4.2-1.7 7-5.6 7-10V6l-7-3z"></path><path d="m9 12 2 2 4-5"></path>'
-  };
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.spark}</svg>`;
-}
-
-function getStaffCampaignActivitiesForIdea(idea, center) {
-  const activities = center.approvedActivities || [];
-  const picks = {
-    anniversaires: ['Formules anniversaires', 'Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', 'Arcades', 'Plaine de jeux'],
-    calme: ['Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', 'Arcades'],
-    groupes: ['Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', 'Arcades', "Golf o'Clock"],
-    laser: ['Laser Game 30 armes'],
-    formules: ['Formules anniversaires', 'Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', 'Arcades', 'Plaine de jeux'],
-    fidelisation: ['Bowling 8 pistes', 'Laser Game 30 armes', 'Mini Golf Blacklight', 'Arcades']
-  }[idea.objective] || activities;
-  return picks.filter(activity => activities.includes(activity));
-}
-
-function getStaffCampaignCenterStats(centerId, snapshot = getStaffCampaignSnapshot()) {
-  return snapshot.centers.find(item => item.center.id === centerId) || snapshot.centers[0];
-}
-
-function getStaffCampaignSafeBrief(center) {
-  const raw = String(state.staffCampaignBrief || '').trim();
-  if (!raw) return '';
-  const lower = raw.toLowerCase();
-  const forbidden = (center.forbiddenClaims || []).some(claim => lower.includes(String(claim).toLowerCase()));
-  return forbidden ? '' : raw;
-}
-
-function getStaffCampaignProofLine(idea, center, centerStats) {
-  if (!centerStats) return center.practicalFacts[0] || '';
-  if (idea.objective === 'laser') {
-    const launches = center.resources?.laser?.parallelLaunches || (center.id === 'gembloux' ? 3 : 1);
-    return `${center.name}: ${center.resources?.laser?.weaponCount || 30} armes Laser Game, ${launches} lancement(s) configuré(s).`;
-  }
-  if (idea.objective === 'formules') {
-    return `${FORMULES.filter(formula => formula.family === 'Formules anniversaires').length} formules anniversaires référencées dans le système.`;
-  }
-  if (idea.objective === 'calme' && centerStats.quietDays[0]) {
-    return `${formatCampaignDate(centerStats.quietDays[0].date)} ressort comme un créneau plus calme pour ${center.city}.`;
-  }
-  if (idea.objective === 'groupes') {
-    return `${center.name}: bowling 8 pistes et Laser Game 30 armes pour organiser les groupes sans inventer d’activité.`;
-  }
-  return `${center.name}: ${center.approvedActivities.slice(0, 4).join(', ')}.`;
-}
-
-function getStaffCampaignCta(idea, center, channel) {
-  if (channel === 'email') return `Répondez à ce message avec le nombre de personnes et la date souhaitée.`;
-  if (channel === 'tiktok' || channel === 'instagram') return `Réservez ou demandez les disponibilités pour ${center.city}.`;
-  return `${idea.cta} à ${center.city}.`;
-}
-
-function buildStaffCampaignCopyForCenter(idea, center, channel, snapshot = getStaffCampaignSnapshot()) {
-  const agent = getStaffCampaignAgent(channel);
-  const centerStats = getStaffCampaignCenterStats(center.id, snapshot);
-  const activities = getStaffCampaignActivitiesForIdea(idea, center);
-  const safeBrief = getStaffCampaignSafeBrief(center);
-  const proof = getStaffCampaignProofLine(idea, center, centerStats);
-  const activityLine = activities.length ? activities.join(', ') : center.approvedActivities.slice(0, 4).join(', ');
-  const cta = getStaffCampaignCta(idea, center, channel);
-  const briefLine = safeBrief ? `Note terrain à intégrer: ${safeBrief}` : '';
-  const subject = `${idea.title} à ${center.city}`;
-  const base = {
-    centerId: center.id,
-    centerName: center.name,
-    city: center.city,
-    channel,
-    agentName: agent.name,
-    subject,
-    factsUsed: [
-      proof,
-      `Activités autorisées: ${activityLine}.`,
-      center.laserAdvice
-    ].filter(Boolean),
-    guardrails: [
-      'Ne pas inventer d’activité, de promotion, de client ou d’événement.',
-      `Ne pas mentionner: ${(center.forbiddenClaims || []).join(', ')}.`,
-      'Ne pas promettre de session privée Laser Game si ce n’est pas validé par le staff.'
-    ],
-    alternatives: [
-      { label: 'Direct', text: `${center.name}: ${activityLine}. ${cta}` },
-      { label: 'Famille', text: `Une sortie simple à ${center.city}, avec des activités indoor claires et réservables.` },
-      { label: 'Plus pro', text: `Pour vos groupes à ${center.city}, Fun Galaxy aide à organiser les activités sans multiplier les échanges.` }
-    ]
-  };
-
-  if (channel === 'linkedin') {
-    return {
-      ...base,
-      text: [
-        `Organiser une sortie de groupe, ce n’est pas seulement bloquer une heure dans un planning.`,
-        '',
-        `À ${center.city}, ${center.name} permet de construire une sortie indoor autour de vraies activités du centre: ${activityLine}.`,
-        '',
-        proof,
-        '',
-        `L’intérêt pour une école, une entreprise ou un club: garder un programme clair, vérifier les disponibilités, et éviter les promesses qui ne tiennent pas sur place.`,
-        briefLine ? `\n${briefLine}` : '',
-        '',
-        cta
-      ].filter(Boolean).join('\n')
-    };
-  }
-
-  if (channel === 'facebook') {
-    return {
-      ...base,
-      text: [
-        `Une sortie facile à organiser à ${center.city} ?`,
-        '',
-        `${center.name} réunit ${activityLine}.`,
-        '',
-        `Pour un anniversaire, une sortie entre amis, un club ou une journée en famille, le plus simple est de partir des vraies disponibilités du centre et du nombre de personnes.`,
-        '',
-        proof,
-        briefLine ? `\n${briefLine}` : '',
-        '',
-        cta
-      ].filter(Boolean).join('\n')
-    };
-  }
-
-  if (channel === 'instagram') {
-    return {
-      ...base,
-      text: [
-        `${center.city}: une sortie indoor qui se décide facilement.`,
-        '',
-        `À montrer en image: ${activityLine}.`,
-        '',
-        `Idée Reels/carrousel: arrivée au centre, choix de l’activité, moment Laser Game ou bowling, puis pause arcade ou Mini Golf selon le centre.`,
-        '',
-        proof,
-        briefLine ? `\n${briefLine}` : '',
-        '',
-        `${cta}`,
-        `#FunGalaxy #${center.city.replace(/\s+/g, '')} #Bowling #LaserGame`
-      ].filter(Boolean).join('\n')
-    };
-  }
-
-  if (channel === 'tiktok') {
-    return {
-      ...base,
-      text: [
-        `Script TikTok/Reels pour ${center.name}`,
-        '',
-        `Hook 0-2s: "On fait quoi ce week-end à ${center.city} ?"`,
-        `Plan 1: entrée du centre + texte court "${center.city}".`,
-        `Plan 2: bowling ou Laser Game selon la campagne.`,
-        `Plan 3: ${activityLine}.`,
-        `Plan 4: CTA simple: "${cta}"`,
-        '',
-        proof,
-        briefLine ? `\n${briefLine}` : ''
-      ].filter(Boolean).join('\n')
-    };
-  }
-
-  return {
-    ...base,
-    text: [
-      `Objet: ${subject}`,
-      '',
-      'Bonjour,',
-      '',
-      `On vous partage une idée de sortie simple chez ${center.name}.`,
-      '',
-      `Les activités disponibles côté centre: ${activityLine}.`,
-      '',
-      `${proof}`,
-      '',
-      `Si vous avez une date, un nombre de personnes ou une formule en tête, répondez simplement à ce message. On vous aide à vérifier ce qui est réellement possible.`,
-      briefLine ? `\n${briefLine}` : '',
-      '',
-      'À bientôt,',
-      center.name
-    ].filter(Boolean).join('\n')
-  };
-}
-
-function getStaffCampaignDraftForIdea(idea, channelOverride = '') {
-  const brief = String(state.staffCampaignBrief || '').trim();
-  const channel = STAFF_CAMPAIGN_CHANNELS.includes(channelOverride) ? channelOverride : (STAFF_CAMPAIGN_CHANNELS.includes(state.staffCampaignChannel) ? state.staffCampaignChannel : idea.channel || 'linkedin');
-  const snapshot = getStaffCampaignSnapshot();
-  const variants = getStaffCampaignCenters().map(center => buildStaffCampaignCopyForCenter(idea, center, channel, snapshot));
-  return {
-    channel,
-    agentKey: channel,
-    agentName: getStaffCampaignAgent(channel).name,
-    subject: variants[0]?.subject || idea.title,
-    variants,
-    linkedin: variants[0]?.text || '',
-    email: variants[0]?.text || '',
-    sms: '',
-    brief,
-    createdAt: new Date().toISOString()
-  };
-}
-
-function normalizeStaffCampaignDraft(draft, idea) {
-  if (draft && Array.isArray(draft.variants) && draft.variants.length) return draft;
-  return getStaffCampaignDraftForIdea(idea);
-}
-
-function renderStaffCampaignAgentPanel(channel = getStaffCampaignChannel()) {
-  const agent = getStaffCampaignAgent(channel);
-  return `<div class="campaign-agent-brief campaign-agent-brief-simple">
-    <span>${renderCampaignIcon(agent.icon)}</span>
-    <div>
-      <small>Format appliqué</small>
-      <strong>${escapeHtml(agent.name)}</strong>
-      <p>${escapeHtml(agent.tone)}. Activités réelles seulement, aucune offre inventée.</p>
-    </div>
-  </div>`;
-}
-
-function renderStaffCampaignCenterDraft(variant) {
-  return `<article class="campaign-center-draft">
-    <div class="campaign-center-head">
-      <div>
-        <small>Version prête à copier</small>
-        <h3>${escapeHtml(variant.centerName)}</h3>
-      </div>
-      <button type="button" onclick="copyStaffCampaignDraft(${staffCampaignJs(variant.centerId)})">${renderCampaignIcon('copy')} Copier</button>
-    </div>
-    <textarea id="campaignDraftText-${escapeHtml(variant.centerId)}" oninput="updateStaffCampaignDraftText(this.value, ${staffCampaignJs(variant.centerId)})">${escapeHtml(variant.text || '')}</textarea>
-    <div class="campaign-center-tools">
-      <span>${renderCampaignIcon('shield')} Activités vérifiées</span>
-      <div class="campaign-tone-pills">
-        ${(variant.alternatives || []).map(item => `<button type="button" onclick="updateStaffCampaignDraftText(${staffCampaignJs(item.text)}, ${staffCampaignJs(variant.centerId)}); renderStaffCampaignsPage();">${escapeHtml(item.label)}</button>`).join('')}
-      </div>
-    </div>
-  </article>`;
-}
-
-function renderStaffCampaignDraft(draft, idea) {
-  const normalized = normalizeStaffCampaignDraft(draft, idea);
-  return `<div class="campaign-draft">
-    <div class="campaign-draft-head">
-      <div>
-        <small>${escapeHtml((normalized.channel || 'linkedin').toUpperCase())}</small>
-        <h3>Textes générés</h3>
-      </div>
-      <button type="button" onclick="copyStaffCampaignDraft()">${renderCampaignIcon('copy')} Copier les deux</button>
-    </div>
-    <div class="campaign-draft-grid">
-      ${renderStaffCampaignAgentPanel(normalized.channel)}
-      ${(normalized.variants || []).map(renderStaffCampaignCenterDraft).join('')}
-    </div>
-  </div>`;
-}
-
-function getCampaignStatusLabel(status) {
-  const labels = { draft: 'Brouillon', ready: 'Prêt', scheduled: 'Planifié', sent: 'Envoyé' };
-  return labels[status || 'draft'] || 'Brouillon';
-}
-
-function updateStaffCampaignDraftText(value, centerId = '') {
-  const idea = getSelectedStaffCampaignIdea();
-  const draft = normalizeStaffCampaignDraft(state.staffCampaignDraft, idea);
-  draft.variants = (draft.variants || []).map(variant => {
-    if (centerId && variant.centerId !== centerId) return variant;
-    return { ...variant, text: value };
-  });
-  draft.linkedin = draft.variants[0]?.text || '';
-  draft.email = draft.variants[0]?.text || '';
-  state.staffCampaignDraft = draft;
-  save();
-}
-
-function copyStaffCampaignDraft() {
-  const centerId = arguments.length ? arguments[0] : '';
-  const draft = normalizeStaffCampaignDraft(state.staffCampaignDraft, getSelectedStaffCampaignIdea());
-  const variants = centerId ? (draft.variants || []).filter(variant => variant.centerId === centerId) : (draft.variants || []);
-  const text = variants.map(variant => `[${variant.centerName}]\n${variant.text}`).join('\n\n---\n\n');
-  navigator.clipboard?.writeText(text).then(() => toast('Brouillon copié.')).catch(() => toast('Copie indisponible.'));
-}
-
-function exportStaffCampaignsCsv() {
-  const campaigns = state.marketingCampaigns || [];
-  const header = ['date', 'titre', 'centre', 'segment', 'canal', 'statut', 'source', 'texte'];
-  const rows = campaigns.flatMap(campaign => {
-    const variants = campaign.draft?.variants?.length ? campaign.draft.variants : [{ centerName: 'Libramont + Gembloux', text: campaign.draft?.linkedin || campaign.draft?.email || '' }];
-    return variants.map(variant => [campaign.date || '', campaign.title || '', variant.centerName || '', campaign.segment || '', campaign.channel || '', getCampaignStatusLabel(campaign.status), campaign.source || '', variant.text || '']);
-  });
-  const csvCell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-  downloadTextFile(`fungalaxy-campagnes-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n'), 'text/csv;charset=utf-8');
-}
-
-async function loadStaffMarketingAgents(force = false) {
-  if (staffMarketingAgentsCache.loading) return staffMarketingAgentsCache.status;
-  if (!force && staffMarketingAgentsCache.loaded && Date.now() - (staffMarketingAgentsCache.loadedAt || 0) < 45000) {
-    return staffMarketingAgentsCache.status;
-  }
-  staffMarketingAgentsCache.loading = true;
-  staffMarketingAgentsCache.error = '';
-  if (isStaffCampaignsActive()) renderStaffCampaignsPage();
-  try {
-    const payload = await apiRequest(`${API_ENDPOINTS.marketingAgents}?action=status&centerId=all`);
-    staffMarketingAgentsCache = {
-      ...staffMarketingAgentsCache,
-      loaded: true,
-      loading: false,
-      status: payload,
-      lastLoadedAt: payload.updatedAt || new Date().toISOString(),
-      loadedAt: Date.now(),
-      error: ''
-    };
-  } catch (error) {
-    staffMarketingAgentsCache = {
-      ...staffMarketingAgentsCache,
-      loaded: true,
-      loading: false,
-      error: error.message || 'Agents marketing indisponibles.',
-      loadedAt: Date.now()
-    };
-  }
-  if (isStaffCampaignsActive()) renderStaffCampaignsPage();
-  return staffMarketingAgentsCache.status;
-}
-
-function buildStaffCampaignDraftFromAgentResults(result) {
-  const selected = getSelectedStaffCampaignIdea();
-  const channel = getStaffCampaignChannel();
-  const variants = (result?.centers || [])
-    .map(centerResult => (centerResult.drafts || []).find(draft => draft.platform === channel))
-    .filter(Boolean)
-    .map(draft => ({
-      centerId: draft.centerId,
-      centerName: draft.centerName,
-      subject: draft.title,
-      text: draft.body,
-      facts: draft.factsUsed?.activities || [],
-      alternatives: [
-        {
-          label: `${draft.evaluation?.score || 0}/100`,
-          text: draft.body
-        }
-      ]
-    }));
-  if (!variants.length) return null;
-  return {
-    channel,
-    agentKey: channel,
-    agentName: getStaffCampaignAgent(channel).name,
-    subject: variants[0]?.subject || selected.title,
-    variants,
-    brief: state.staffCampaignBrief || '',
-    createdAt: new Date().toISOString(),
-    source: 'marketing-agents-api'
-  };
-}
-
-async function runStaffMarketingAgents() {
-  if (staffMarketingAgentsCache.running) return;
-  staffMarketingAgentsCache.running = true;
-  staffMarketingAgentsCache.error = '';
-  renderStaffCampaignsPage();
-  try {
-    const payload = await apiRequest(API_ENDPOINTS.marketingAgents, {
-      method: 'POST',
-      body: JSON.stringify({
-        action: 'run',
-        centerId: 'all',
-        objective: state.staffCampaignObjective || 'anniversaires',
-        brief: state.staffCampaignBrief || '',
-        runType: 'manual-staff'
-      })
-    });
-    const draft = buildStaffCampaignDraftFromAgentResults(payload);
-    if (draft) state.staffCampaignDraft = draft;
-    staffMarketingAgentsCache.running = false;
-    await loadStaffMarketingAgents(true);
-    // Le cycle persiste les idées data (marketing_insights) → recharger le conseiller.
-    if (typeof loadMarketingIa === 'function') await loadMarketingIa(true);
-    toast('Analyse terminée : les idées du jour sont à jour.');
-  } catch (error) {
-    staffMarketingAgentsCache.running = false;
-    staffMarketingAgentsCache.error = error.message || 'Analyse marketing impossible.';
-    toast(staffMarketingAgentsCache.error);
-    renderStaffCampaignsPage();
-  }
+  downloadTextFile(`${getCurrentStaffCenterId()}-mails-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
 }
 
 function getStaffClientInitials(name = '') {
@@ -12431,7 +11823,7 @@ function exportStaffClientsCsv() {
     row.lastDate,
     ...(relance ? [getStaffClientRelance(row).reason] : [])
   ].map(csvCell).join(','));
-  downloadTextFile(`fungalaxy-clients-${segment}-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
+  downloadTextFile(`${getCurrentStaffCenterId()}-clients-${segment}-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...body].join('\n'), 'text/csv;charset=utf-8');
 }
 
 function openStaffClientBooking(id = '') {
@@ -12467,15 +11859,21 @@ function composeStaffClientEmail(email = '', name = '') {
       msState.draft.to = address;
       msState.draft.category = 'relance';
       msState.draft.templateRef = starter ? 'starter:relance-client' : '';
-      msState.draft.subject = starter ? starter.subject.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || 'vous') : `Fun Galaxy, ${name || 'votre visite'}`;
-      msState.draft.body = starter ? starter.body.replace(/\{\{\s*prenom\s*\}\}/gi, firstName || '') : `Bonjour ${name || ''},\n\n`;
+      // Les starters portent {{centre}} : on le remplit ici comme msApplyTemplate,
+      // sinon la relance partirait avec un jeton brut.
+      const centreName = getCurrentStaffCenterName() || getCurrentStaffCenterId();
+      const fillStarter = (text, fallbackPrenom) => String(text || '')
+        .replace(/\{\{\s*prenom\s*\}\}/gi, firstName || fallbackPrenom)
+        .replace(/\{\{\s*centre\s*\}\}/gi, centreName);
+      msState.draft.subject = starter ? fillStarter(starter.subject, 'vous') : `${centreName || 'Votre centre'}, ${name || 'votre visite'}`;
+      msState.draft.body = starter ? fillStarter(starter.body, '') : `Bonjour ${name || ''},\n\n`;
       msState.aiTips = [];
       if (typeof setAdminTab === 'function') setAdminTab('mail');
       toast(`Relance prête pour ${address} : relis et envoie.`);
     }).catch(() => {});
     return;
   }
-  const subject = `Fun Galaxy : ${name ? name : 'votre réservation'}`;
+  const subject = [getCurrentStaffCenterName(), name || 'votre réservation'].filter(Boolean).join(' : ');
   const body = `Bonjour ${name || ''},\n\n`;
   const href = `mailto:${address}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   const link = document.createElement('a');
@@ -13041,7 +12439,7 @@ function exportStaffPlanningCsv() {
     reservation.price || 0
   ]);
   const header = ['Date', 'Heure', 'Client', 'Telephone', 'Offre', 'Joueurs', 'Ressources', 'Statut', 'Montant'];
-  downloadTextFile(`fungalaxy-planning-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n'), 'text/csv;charset=utf-8');
+  downloadTextFile(`${getCurrentStaffCenterId()}-planning-${state.currentDate || todayStr()}.csv`, [header.map(csvCell).join(','), ...rows.map(row => row.map(csvCell).join(','))].join('\n'), 'text/csv;charset=utf-8');
   closeStaffFloatingMenus();
 }
 

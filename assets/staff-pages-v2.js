@@ -738,17 +738,21 @@
   function crmRelancePrefill(row) {
     const relance = getStaffClientRelance(row);
     const firstName = String(row.name || '').trim().split(/\s+/)[0] || '';
+    // Signature = le NOM DU CENTRE courant, jamais un client ecrit en dur.
+    const centreName = (typeof getCurrentStaffCenterName === 'function' && getCurrentStaffCenterName())
+      || (typeof getCurrentStaffCenterId === 'function' && getCurrentStaffCenterId())
+      || 'du centre';
     if (relance.kind === 'anniversaire') {
       return {
         reason: 'birthday',
         subject: `L'anniversaire approche, on vous re-réserve la fête ? 🎂`,
-        body: `Bonjour ${firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez nous, et c'était un super moment !\nLa date approche : on vous re-réserve la formule ? Les créneaux du week-end partent vite.\n\nRépondez à ce message ou réservez en ligne, on s'occupe du reste.\n\nÀ très vite,\nL'équipe Fun Galaxy`,
+        body: `Bonjour ${firstName},\n\nL'an dernier vous aviez fêté un anniversaire chez nous, et c'était un super moment !\nLa date approche : on vous re-réserve la formule ? Les créneaux du week-end partent vite.\n\nRépondez à ce message ou réservez en ligne, on s'occupe du reste.\n\nÀ très vite,\nL'équipe ${centreName}`,
       };
     }
     return {
       reason: 'dormant',
       subject: 'Ça fait un moment, on vous a gardé une piste 🎳',
-      body: `Bonjour ${firstName},\n\nÇa fait un moment qu'on ne vous a pas vus au centre, bowling, laser, arcades… tout est prêt.\nVenez en semaine, c'est plus calme (et plus tranquille pour jouer).\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe Fun Galaxy`,
+      body: `Bonjour ${firstName},\n\nÇa fait un moment qu'on ne vous a pas vus au centre, bowling, laser, arcades… tout est prêt.\nVenez en semaine, c'est plus calme (et plus tranquille pour jouer).\n\nRéservez en ligne quand vous voulez, ou répondez simplement à ce message.\n\nÀ bientôt,\nL'équipe ${centreName}`,
     };
   }
 
@@ -2539,8 +2543,8 @@
     } else if (pv2Settings.view === 'identities') {
       const identity = pv2Settings.idEditing;
       content = identity ? `<div class="pv2-composer-grid">
-          <label class="pv2-composer-field"><span>Nom affiché</span><input value="${esc(identity.label)}" placeholder="Ex. Fun Galaxy Libramont" oninput="pv2IdField('label', this.value)"></label>
-          <label class="pv2-composer-field"><span>Adresse email</span><input value="${esc(identity.email)}" placeholder="contact@fungalaxy.be" oninput="pv2IdField('email', this.value)"></label>
+          <label class="pv2-composer-field"><span>Nom affiché</span><input value="${esc(identity.label)}" placeholder="Ex. le nom de votre centre" oninput="pv2IdField('label', this.value)"></label>
+          <label class="pv2-composer-field"><span>Adresse email</span><input value="${esc(identity.email)}" placeholder="contact@votre-centre.be" oninput="pv2IdField('email', this.value)"></label>
           <label class="pv2-composer-field pv2-settings-check"><span>&nbsp;</span><label><input type="checkbox" ${identity.isDefault ? 'checked' : ''} onchange="pv2IdField('isDefault', this.checked)"> Adresse par défaut</label></label>
           <div class="pv2-composer-actions pv2-composer-wide">
             <button type="button" class="pv2-btn" onclick="pv2Settings.idEditing = null; renderStaffEmailsPage();">Annuler</button>

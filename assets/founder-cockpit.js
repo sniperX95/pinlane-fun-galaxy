@@ -1231,6 +1231,40 @@
        ${armRows ? `<h3 class="fck-sub">Angles testés</h3><table class="pv2-table fck-table"><tbody>${armRows}</tbody></table>` : ''}`);
   }
 
+  // QUI ECRIT LE MIEUX, D'APRES LES VISITES REELLES.
+  // Tous les autres panneaux de cette page lisent ce que l'agent pense de
+  // lui-meme. Celui-ci lit ce que le CENTRE a constate : chaque publication
+  // porte son auteur, la mesure a 14 jours lui attache l'ecart de frequentation
+  // net (jour de semaine, conges et meteo neutralises). Et il refuse de
+  // conclure tant que les deux cotes n'ont pas assez de publications mesurees :
+  // un « le modele gagne » tire de deux posts serait exactement le genre de
+  // conclusion fabriquee que ce produit s'interdit.
+  function renderIaAuthorship(authorship) {
+    const auteurs = Array.isArray(authorship.auteurs) ? authorship.auteurs : [];
+    const titre = 'Qui écrit le mieux, d\'après les visites';
+    const sous = 'L\'écart de fréquentation mesuré 14 jours après publication, jour de semaine et météo neutralisés.';
+    if (!auteurs.length) {
+      return panel(titre, sous,
+        `<p class="fck-line">Aucune publication mesurée pour l'instant. Ce panneau se remplit tout seul dès qu'une proposition publiée a vécu ses 14 jours de mesure.</p>`);
+    }
+    const rows = auteurs.map((a) => `<tr>
+      <td>${esc(a.label || a.auteur)}</td>
+      <td>${esc(a.avgNetDelta === null ? '-' : `${a.avgNetDelta > 0 ? '+' : ''}${a.avgNetDelta} %`)}</td>
+      <td>${esc(`${a.wins}/${a.n}`)}</td>
+      <td>${chip(a.confiance === 'solide' ? 'green' : a.confiance === 'signal' ? 'amber' : 'grey', esc(a.confiance))}</td>
+    </tr>`).join('');
+    const conclusion = authorship.verdict
+      ? `<p class="fck-line">${esc(authorship.verdict.gagnant === 'egalite'
+        ? 'Les deux se valent sur les mesures disponibles.'
+        : `${authorship.verdict.gagnant === 'ai' ? 'Le modèle' : 'Le gabarit'} devance l'autre de ${authorship.verdict.ecartPoints} points de fréquentation.`)} ${esc(`Confiance : ${authorship.verdict.confiance}.`)}</p>`
+      : `<p class="pv2-quiet">${esc(authorship.pourquoiPasDeVerdict || 'Pas encore de quoi trancher.')}</p>`;
+    return panel(titre, sous,
+      `<table class="pv2-table fck-table">
+        <thead><tr><th>Auteur</th><th>Effet net moyen</th><th>Réussites</th><th>Confiance</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+       ${conclusion}`);
+  }
+
   function renderIaGrid(grid) {
     const platforms = Array.isArray(grid.platforms) ? grid.platforms : [];
     if (!platforms.length) return panel('Sa grille de jugement', '', emptyLine('Aucun critère enregistré pour ce centre.'));
@@ -1328,6 +1362,7 @@
     </section>`;
     return stats
       + renderIaMeasurement(d.measurement || {}, proposals)
+      + renderIaAuthorship(d.authorship || {})
       + renderIaGrid(grid)
       + renderIaQuality(quality, grid)
       + renderIaDna(dna)

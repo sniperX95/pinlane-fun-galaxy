@@ -81,7 +81,54 @@ ok(/empty: rows\.length === 0 && armRows\.length === 0/.test(lib),
   'le lecteur marque empty quand les deux tables d apprentissage sont vides');
 
 // ===========================================================================
-console.log('\n[5] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
+console.log('\n[5] L apprentissage remonte des VISITES, pas de la note du correcteur');
+// ===========================================================================
+// Tout le reste de cette page lit ce que l agent pense de lui-meme. Ce bloc
+// defend le seul signal qui ne vient pas de lui : l auteur du texte publie
+// croise avec l ecart de frequentation mesure a 14 jours. Deux choses doivent
+// tenir : l auteur est ECRIT au moment de la creation (sans lui, rien a
+// croiser), et aucun verdict ne sort d un echantillon trop mince.
+const { aggregateAuthorship } = require(LIB);
+const brief = fs.readFileSync(path.join(root, 'lib/marketing-brief.js'), 'utf8');
+const metrics = fs.readFileSync(path.join(root, 'lib/center-metrics.js'), 'utf8');
+ok(/auteur: pack\.generationMode === 'ai' \? 'ai' : 'rules'/.test(brief),
+  'une proposition creee a la demande enregistre QUI l a ecrite');
+ok(/'auteur', \$7::text/.test(brief),
+  'une variante reecrite met l auteur A JOUR (c est la version publiee qui compte)');
+ok(/auteur: idea\.auteur === 'ai' \? 'ai' : 'rules'/.test(metrics),
+  'une idee du cycle data enregistre aussi son auteur');
+ok(/\? \{ \.\.\.candidate, readyContent: polished, auteur: 'ai' \}/.test(metrics),
+  'et l auteur suit le FAIT : reecriture aboutie = le modele, sinon le gabarit');
+
+const mesure = (auteur, nets, wins = 0) => nets.map((netDeltaPct, index) => ({
+  auteur, result: { netDeltaPct }, status: index < wins ? 'validated' : 'inconclusive',
+}));
+const mince = aggregateAuthorship([...mesure('ai', [20, 30]), ...mesure('rules', [5])]);
+ok(mince.verdict === null, 'echantillon mince : AUCUN verdict n est rendu');
+ok(/au moins 3 publications mesurees de chaque cote/.test(mince.pourquoiPasDeVerdict)
+  && /2 pour le modele/.test(mince.pourquoiPasDeVerdict),
+  `et la page dit ce qui manque, chiffre a l appui ("${mince.pourquoiPasDeVerdict}")`);
+const seul = aggregateAuthorship(mesure('rules', [4, 5, 6, 7]));
+ok(seul.verdict === null && /Aucune publication mesuree ecrite par le modele/.test(seul.pourquoiPasDeVerdict),
+  'un seul auteur mesure : rien a comparer, et c est dit');
+const assez = aggregateAuthorship([...mesure('ai', [20, 24, 16], 2), ...mesure('rules', [4, 6, 8], 1)]);
+ok(assez.verdict && assez.verdict.gagnant === 'ai' && assez.verdict.ecartPoints === 14,
+  `avec 3 mesures de chaque cote, le verdict sort et il est calcule (${assez.verdict && assez.verdict.ecartPoints} points)`);
+ok(assez.auteurs[0].n === 3 && assez.auteurs[0].wins === 2 && assez.auteurs[0].confiance === 'signal',
+  'le detail par auteur porte son volume, ses reussites et sa confiance');
+// CONTRE-PREUVE : l agregation lit bien l EFFET MESURE, pas un compteur de
+// publications. Le modele qui publie DIX fois pour un effet mediocre ne doit
+// pas passer devant le gabarit qui publie trois fois pour un effet fort.
+const volumeur = aggregateAuthorship([...mesure('ai', [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]), ...mesure('rules', [30, 30, 30])]);
+ok(volumeur.verdict && volumeur.verdict.gagnant === 'rules',
+  'CONTRE-PREUVE : publier BEAUCOUP ne fait pas gagner, c est l effet mesure qui tranche');
+const cockpitAuthor = cockpit.slice(cockpit.indexOf('function renderIaAuthorship'), cockpit.indexOf('function renderIaGrid'));
+ok(cockpitAuthor.includes('pourquoiPasDeVerdict'),
+  'la page AFFICHE la raison du non-verdict au lieu d une conclusion fabriquee');
+ok(/renderIaAuthorship\(d\.authorship/.test(cockpit), 'le panneau est bien monte dans la page');
+
+// ===========================================================================
+console.log('\n[6] CONTRE-PREUVE par mutation (ce gate sait-il rougir ?)');
 // ===========================================================================
 const original = fs.readFileSync(OPS, 'utf8');
 const anchor = "if (action === 'aiLearning') return 'platform.admin';";

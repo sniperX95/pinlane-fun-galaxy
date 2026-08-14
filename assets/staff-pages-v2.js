@@ -4532,7 +4532,7 @@
 
   function mkwReceipts() {
     const b = mkBrief.data;
-    if (!b) return `<section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel"></div></section>`;
+    if (!b) return `<section class="mkw-card">${typeof renderThinking === 'function' ? renderThinking('searching', { label: 'Lecture des données du centre' }) : '<div class="mkw-skel"></div>'}</section>`;
     const receipts = b.receipts || [];
     const visible = mkBrief.receiptsAll ? receipts : receipts.slice(0, 5);
     const rows = visible.map((receipt) => `<div class="mkw-receipt tone-${esc(receipt.tone)}">
@@ -5591,7 +5591,7 @@
   function mkwBoard() {
     const b = mkBrief.data;
     if (!b) {
-      return `<div class="mkw-bgroup"><div class="mkw-skel mkw-skel-short"></div><div class="mkw-skel"></div><div class="mkw-skel"></div></div>`;
+      return `<div class="mkw-bgroup">${typeof renderThinking === 'function' ? renderThinking('shaping', { label: 'Mise en forme' }) : '<div class="mkw-skel"></div>'}</div>`;
     }
     const validateCards = mkwBoardCards();
     const validateCount = brVisiblePropositions().filter((p) => !mkBrief.published[p.key]).length;
@@ -5760,7 +5760,15 @@
     const b = mkBrief.data;
     // Meme garde que sur b : un brief sans bloc `paie` faisait planter p.young,
     // et l exception cassait la page Marketing entiere.
-    if (!b || !b.paie) return `<section class="mkw-hero"><div class="mkw-skel mkw-skel-hero"></div><div class="mkw-skel mkw-skel-short"></div></section>`;
+    // UN SQUELETTE GRIS NE DIT PAS QU IL SE PASSE QUELQUE CHOSE. Movsar, en
+    // regardant la page Marketing bloquee sur ses barres grises : « c'est normal
+    // que ca prenne beaucoup trop de temps a se charger », puis « ou sont les
+    // animations ». Les orbes etaient posees sur des libelles « Chargement… »
+    // qui ne s affichent presque jamais, pendant que les vraies attentes de la
+    // console, elles, montraient des rectangles immobiles. Un rectangle qui ne
+    // bouge pas ressemble a une page cassee ; une orbe qui tourne dit que la
+    // machine travaille encore. L etat choisi nomme CE QUE la page attend.
+    if (!b || !b.paie) return `<section class="mkw-hero">${typeof renderThinking === 'function' ? renderThinking('breathing', { size: 64, label: 'L’agent analyse le centre' }) : '<div class="mkw-skel mkw-skel-hero"></div>'}</section>`;
     const p = b.paie;
     const periods = [7, 30, 90].map((d) => `<button type="button" class="mkw-seg-btn ${mkBrief.period === d ? 'active' : ''}" onclick="mkBrPeriod(${d})">${d} j</button>`).join('');
     let fig;
@@ -5963,7 +5971,7 @@
     // déguisé en « aucun concurrent », audit §2), chargement, vide honnête.
     let listState;
     if (rows) listState = `<div class="mkw-riv-grid">${rows}</div>`;
-    else if (mkComp.loading) listState = '<div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div>';
+    else if (mkComp.loading) listState = typeof renderThinking === 'function' ? renderThinking('weaving', { label: 'Analyse de la concurrence' }) : '<div class="mkw-skel"></div>';
     else if (mkComp.error) listState = `<p class="mkw-quiet mkw-inline-error">${esc(mkComp.error)} <button type="button" class="mkw-link" onclick="loadCompetitors(true)">Réessayer</button></p>`;
     else listState = '<p class="mkw-quiet">Ajoute les centres qui te prennent des clients : j’inspecte leurs sites, leurs offres et leur note Google.</p>';
     return `<section class="mkw-rivals">
@@ -6146,7 +6154,7 @@
     if (mkPlan.loading) {
       return `<section class="mkw-card">
         <div class="mkw-block-head"><h3>Les 8 prochaines semaines</h3></div>
-        <div class="mkw-skel"></div><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div>
+        ${typeof renderThinking === 'function' ? renderThinking('working', { label: 'Traitement en cours' }) : '<div class="mkw-skel"></div>'}
       </section>`;
     }
     if (mkPlan.error) {
@@ -6225,7 +6233,7 @@
       return `<div class="mkw-chat">${mkwErrorPanel(mkBrief.error, 'loadMarketingBrief(true)')}</div>`;
     }
     if (!b) {
-      return `<div class="mkw-chat"><section class="mkw-card"><div class="mkw-skel"></div><div class="mkw-skel mkw-skel-short"></div></section></div>`;
+      return `<div class="mkw-chat"><section class="mkw-card">${typeof renderThinking === 'function' ? renderThinking('composing', { size: 64, label: 'L’agent prépare sa proposition' }) : '<div class="mkw-skel"></div>'}</section></div>`;
     }
     const empty = !mkw.thread.length && mkBrief.busy !== 'ask';
     if (empty) {

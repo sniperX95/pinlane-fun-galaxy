@@ -13154,7 +13154,24 @@ function scopedStaffReservations(view = getStaffResourceView()) {
 // Regle de visibilite : une grille ne s'affiche que sur SON onglet. « Toutes les
 // reservations » n'est plus un empilement des deux plannings mais la liste du
 // jour, hors planning en tete.
-function syncStaffResourceTabs(dayReservations = todaysReservations(), view = getStaffResourceView(), hiddenByPage = false) {
+// LES BLOCS DU PLANNING SUIVAIENT LE VISITEUR PARTOUT (2026-08-14, 2e passe).
+// Movsar : « j'ai toujours cette colonne qui s'affiche partout sur toutes les
+// categories ». Le premier correctif etait bon mais il etait ANNULE : ce
+// parametre valait `false` par defaut, et l'appelant de `renderStaffDay` ne le
+// passait pas. Un appelant qui oublie l'argument re-affichait donc les trois
+// blocs sur n'importe quelle page.
+//
+// La regle : une fonction qui doit connaitre l'etat de l'application le DEDUIT,
+// elle ne l'accepte pas d'un appelant qui peut l'oublier. Un defaut permissif
+// transforme chaque oubli futur en bug visible par l'utilisateur.
+function isStaffPlanningPageActive() {
+  return !(isStaffDashboardActive() || isStaffReservationsActive() || isStaffClientsActive()
+    || isStaffPricingActive() || isStaffEmailsActive() || isStaffCampaignsActive()
+    || isStaffUtilityActive() || isStaffCockpitActive());
+}
+
+function syncStaffResourceTabs(dayReservations = todaysReservations(), view = getStaffResourceView()) {
+  const hiddenByPage = !isStaffPlanningPageActive();
   const bowlingCount = dayReservations.filter(r => getBowlingWindowsFromReservation(r).length > 0).length;
   const laserCount = dayReservations.filter(r => getLaserWindowsFromReservation(r).length > 0).length;
   const offPlanningCount = dayReservations.filter(isOffPlanningReservation).length;
@@ -13314,6 +13331,52 @@ function formatCardDurationLabel(hours) {
 // texte, pas ruser avec la place. On coupe donc par MOTS ENTIERS, jamais au
 // milieu d'un mot, et le libellé complet reste dans l'infobulle et dans la
 // fiche, où on a la place de le lire.
+// ET LA COUPE PAR MOTS NE SUFFISAIT PAS : LA CSS RECOUPAIT DERRIERE.
+// Movsar, 2026-08-14, capture en fenetre AGRANDIE : « Camille Laurent · Bowl…
+// · ✓ · 6j · 1h ». Le raccourcissement ci-dessous marchait pourtant : il rend
+// « Bowling », sept lettres entieres. C'est `text-overflow: ellipsis` qui
+// recoupait ce mot deja court des que la place manquait. Raccourcir le TEXTE
+// et laisser la mise en page le retailler, c'est deux regles qui se
+// contredisent, et c'est toujours la seconde qui gagne.
+//
+// La regle est donc devenue binaire : ENTIER OU ABSENT. Le texte vit dans un
+// enfant que le CSS n'affiche que si la place qui RESTE peut le contenir en
+// entier ; sinon il n'y a rien du tout, et jamais un morceau. La classe de
+// longueur (`lab-s` / `lab-m` / `lab-l`) porte le seul chiffre dont le CSS a
+// besoin pour trancher : combien de caracteres il doit loger. Le libelle
+// complet reste dans l'infobulle et dans la fiche.
+function renderCardActivityTag(reservation) {
+  const complet = String(getReservationLabel(reservation) || '').trim();
+  const texte = getPlanningCardLabel(reservation);
+  // La boite reste, meme vide : c'est elle qui absorbe la place libre et
+  // repousse les chiffres a droite. Sans elle, le pied se recollerait au nom.
+  if (!texte) return '<span class="b-tag" aria-hidden="true"></span>';
+  return `<span class="b-tag lab-${planningLabelWidthUnits(texte)}" title="${escapeHtml(complet)}"><span class="b-tag-text">${escapeHtml(texte)}</span></span>`;
+}
+
+// LARGEUR D UN LIBELLE, EN UNITES DE CARACTERE MOYEN.
+// Le CSS a besoin d un seul chiffre pour trancher : combien de place ce texte
+// PRECIS reclame. Compter les caracteres ne suffit pas, « Mini-golf » (neuf
+// signes) est plus etroit que « Laser x2 » (huit) : mesure au navigateur,
+// 41,5 px contre 40,2 px a police egale, et « WWWW » vaut deux fois « iiii ».
+// Un comptage brut obligerait donc a reserver la largeur du pire cas pour
+// tout le monde, c est-a-dire a masquer des libelles qui tenaient - le defaut
+// exact que Movsar avait signale la veille.
+// Trois familles suffisent, calibrees sur des mesures reelles a 10 px :
+// majuscules et chiffres 1,3 ; signes etroits 0,6 ; le reste 1. L unite vaut
+// 0,58 em cote CSS, et le gate mesure les deux sens sur 324 combinaisons.
+const PLANNING_LABEL_NARROW = new Set(['i', 'l', 'j', 't', 'f', 'r', '.', ',', '-', ' ', "'"]);
+function planningLabelWidthUnits(texte) {
+  let unites = 0;
+  for (const caractere of String(texte)) {
+    if (PLANNING_LABEL_NARROW.has(caractere)) unites += 0.6;
+    else if (caractere === caractere.toUpperCase() && caractere !== caractere.toLowerCase()) unites += 1.3;
+    else if (caractere >= '0' && caractere <= '9') unites += 1.3;
+    else unites += 1;
+  }
+  return Math.min(16, Math.max(1, Math.ceil(unites)));
+}
+
 const PLANNING_CARD_LABEL_MAX = 12;
 function getPlanningCardLabel(reservation) {
   const complet = String(getReservationLabel(reservation) || '').trim();
@@ -13659,7 +13722,7 @@ function renderStaffShell(dayReservations = todaysReservations()) {
   if (planningSearchInput && planningSearchInput !== document.activeElement) planningSearchInput.value = state.searchTerm || '';
   const laserPlanningSearchInput = document.getElementById('laserPlanningSearchInput');
   if (laserPlanningSearchInput && laserPlanningSearchInput !== document.activeElement) laserPlanningSearchInput.value = state.searchTerm || '';
-  syncStaffResourceTabs(dayReservations, view, dashboardActive || reservationsActive || clientsActive || pricingActive || emailsActive || campaignsActive || utilityActive || cockpitActive);
+  syncStaffResourceTabs(dayReservations, view);
 }
 
 function renderKpis() {
@@ -13853,12 +13916,14 @@ function renderPlanning() {
       const statsHtml = renderCardStats(r.pax, formatCardDurationLabel(bowlingDuration), { special: isSpecialBowlingDuration(bowlingDuration), durationTitle: formatDurationLabel(bowlingDuration) });
       bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${renderDelayIndicator(r)}
-        <div class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</div>
+        <div class="booking-head">
+          <span class="booking-name" title="${escapeHtml(fullName)}">${escapeHtml(displayName)}</span>
+          ${renderBookingStateMark(cls)}
+        </div>
         ${renderReservationTags(r)}
         <div class="booking-foot">
-          <span class="b-tag" title="${escapeHtml(getReservationLabel(r))}">${escapeHtml(getPlanningCardLabel(r))}</span>
+          ${renderCardActivityTag(r)}
           ${renderActivityProgressPill(r)}
-          ${renderBookingStateMark(cls)}
           ${statsHtml}
         </div>
       </div>`;

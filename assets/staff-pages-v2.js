@@ -5279,22 +5279,11 @@
     // donnees. Les etapes suivent l'ordre du cycle, et elles different selon le
     // mode : « Créer » produit un livrable, « Demander » assemble une reponse.
     // Rien n'est invente : chaque libelle nomme une phase que le code execute.
-    const etapesCreer = [
-      { state: 'searching', label: 'Je lis tes données du centre' },
-      { state: 'weaving', label: 'Je croise météo, réservations et calendrier' },
-      { state: 'composing', label: 'J’écris le post' },
-      { state: 'solving', label: 'Je vérifie ce que j’avance' },
-    ];
-    const etapesDemander = [
-      { state: 'searching', label: 'Je relis tes journées mesurées' },
-      { state: 'solving', label: 'Je croise avec ce que je sais du centre' },
-      { state: 'composing', label: 'Je formule la réponse' },
-    ];
     const stateWord = mkBrief.busy === 'ask' ? 'J\'écris le post' : mkw.stateWord;
     const pending = stateWord
       ? `<article class="mkw-msg is-agent is-state is-in" role="status" aria-busy="true">${
         typeof renderThinkingSteps === 'function'
-          ? renderThinkingSteps(mkBrief.busy === 'ask' ? etapesCreer : etapesDemander)
+          ? renderThinkingSteps(mkwEtapesPour(mkwDerniereDemande(), mkBrief.busy === 'ask' ? 'creer' : 'demander'))
           : `<div class="mkw-msg-head">${mkwAgentMark()}<b class="mkw-state-word">${esc(stateWord)}</b></div>`
       }</article>`
       : '';
@@ -5547,9 +5536,76 @@
     setTimeout(() => { const el = document.getElementById('brAskInput'); if (el) el.focus(); }, 60);
   };
   window.mkwSend = function () {
+    // Le champ s'allume une fois au depart : c'est l'accuse de reception de la
+    // touche Entree, avant meme que la bulle n'apparaisse plus haut.
+    const boite = document.querySelector('.mkw-composer-box');
+    if (boite) {
+      boite.classList.remove('is-flushed');
+      void boite.offsetWidth;
+      boite.classList.add('is-flushed');
+      window.setTimeout(() => boite.classList.remove('is-flushed'), 500);
+    }
     if (mkw.mode === 'demander') window.mkwAsk();
     else window.mkBrAskSimple();
   };
+
+  // LA DERNIERE DEMANDE, celle dont l'agent est en train de s'occuper. C'est
+  // elle qui dicte les etapes affichees : sans elle, on retomberait sur une
+  // liste generique, c'est-a-dire sur du theatre.
+  function mkwDerniereDemande() {
+    const tours = (mkBrief.turns || []);
+    const enCours = tours.find((t) => t && t.pendingAnswer);
+    return String((enCours && enCours.q) || mkBrief.askDraft || '');
+  }
+
+  // DES ETAPES QUI SORTENT DE LA DEMANDE, PAS D'UNE LISTE ECRITE D'AVANCE.
+  // Movsar : « ce n'est pas comme ca que je voulais dire, c'est plus genre je
+  // reflechis, hmm voyons voir, je regarde un tel, je verifie, plein de trucs
+  // comme ca logiques, envoie pas betement, ca doit etre reel et ca doit
+  // dependre de la demande ».
+  // Quatre libelles fixes, c'est du decor : ils disent la meme chose qu'on
+  // demande un post pour samedi ou ce que fait un concurrent. Ici chaque etape
+  // est DERIVEE de ce qui a ete tape et de ce que le brief contient vraiment :
+  // un jour cite devient « je regarde samedi 16/08 », un concurrent nomme
+  // devient « je relis ce que fait Bowling Arlon », et rien n'est affiche sur
+  // une donnee que le centre n'a pas. Une etape qui ment sur ce qu'elle fait
+  // est pire qu'une barre anonyme.
+  function mkwEtapesPour(demande, mode) {
+    const q = String(demande || '').toLowerCase();
+    const b = mkBrief.data || {};
+    const etapes = [{ state: 'breathing', label: 'Hmm, voyons voir' }];
+
+    // Un jour cite dans la demande : on le NOMME, avec la date que le radar
+    // porte deja. C'est le repere que le gerant reconnait dans sa propre phrase.
+    const jour = (b.radar || []).find((d) => d && d.date && q.includes(String(brFrDay(d.date)).toLowerCase()));
+    if (jour) etapes.push({ state: 'searching', label: `Je regarde ${brFrDay(jour.date)}` });
+    else etapes.push({ state: 'searching', label: 'Je relis tes journées mesurées' });
+
+    // Un concurrent nomme : on ne cite QUE ceux que la veille connait vraiment.
+    const veille = ((b.veille && b.veille.changed) || []).concat((b.veille && b.veille.all) || []);
+    const concurrent = veille.find((c) => c && c.name && q.includes(String(c.name).toLowerCase().split(' ')[0]));
+    if (concurrent) etapes.push({ state: 'connecting', label: `Je relis ce que fait ${concurrent.name}` });
+
+    if (/(météo|meteo|pluie|soleil|temps|chaud|froid)/.test(q)) {
+      etapes.push({ state: 'listening', label: 'Je vérifie la météo annoncée' });
+    }
+    if (/(formule|prix|tarif|offre|promo|anniversaire)/.test(q)) {
+      etapes.push({ state: 'weaving', label: 'Je relis tes formules et leurs prix' });
+    }
+    if (/(remplir|creux|calme|vide|monde|affluence)/.test(q)) {
+      etapes.push({ state: 'solving', label: 'Je compare aux journées qui se sont remplies' });
+    }
+
+    etapes.push(mode === 'creer'
+      ? { state: 'composing', label: 'J’écris le post' }
+      : { state: 'composing', label: 'Je formule la réponse' });
+    etapes.push({ state: 'solving', label: 'Je vérifie ce que j’avance' });
+
+    // Deux etapes ne valent pas une progression : sous ce seuil, le gerant voit
+    // une barre sauter de 50 a 100 sans rien apprendre. On garde alors la forme
+    // simple, qui ne promet rien.
+    return etapes.length >= 4 ? etapes : etapes.slice(0, 3);
+  }
 
   function mkwComposer() {
     const demander = mkw.mode === 'demander';

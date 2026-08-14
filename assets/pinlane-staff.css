@@ -3329,13 +3329,44 @@ body.staff-mode.laser-dragging * { user-select: none; }
    restait dans le champ jusqu'a ce que la reponse arrive, et rien ne disait que
    la touche avait ete prise en compte. La bulle monte et s'installe, en une
    fois : c'est le geste d'envoi, pas une decoration. */
+/* L'ENVOI EST UN GESTE, PAS UNE APPARITION.
+   Movsar : « ca s'envoie de maniere brute, c'est pas pro ». Un simple fondu
+   fait apparaitre la bulle a l'endroit ou elle sera : rien ne relie ce qu'on a
+   tape a ce qui s'affiche. Ici elle PART du composer, monte, se pose, et sa
+   bordure s'allume une fois arrivee, comme un accuse de reception. Deux
+   mouvements enchaines valent mieux qu'un long : le geste se lit en 380 ms et
+   ne retarde jamais la lecture de la reponse. */
 @keyframes pl-sent {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+  0% { opacity: 0; transform: translateY(22px) scale(0.94); }
+  55% { opacity: 1; transform: translateY(-3px) scale(1.01); }
+  100% { opacity: 1; transform: none; }
 }
-.mkw-turn-q.is-sent { animation: pl-sent 260ms var(--ease) both; }
+@keyframes pl-sent-ring {
+  0%, 45% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+  100% { box-shadow: 0 0 0 7px transparent; }
+}
+.mkw-turn-q.is-sent {
+  animation: pl-sent 380ms var(--ease) both;
+}
+.mkw-turn-q.is-sent .mkw-msg-user {
+  animation: pl-sent-ring 620ms var(--ease) both;
+  border-radius: inherit;
+}
 @media (prefers-reduced-motion: reduce) {
-  .mkw-turn-q.is-sent { animation: none; }
+  .mkw-turn-q.is-sent,
+  .mkw-turn-q.is-sent .mkw-msg-user { animation: none; }
+}
+
+/* Le champ se vide EN MEME TEMPS que la bulle part : sans ca, le texte reste
+   sous les yeux pendant que sa copie s'affiche plus haut, et on doute d'avoir
+   envoye ou d'avoir duplique. */
+@keyframes pl-composer-flush {
+  0% { border-color: var(--accent); }
+  100% { border-color: var(--line); }
+}
+.mkw-composer-box.is-flushed { animation: pl-composer-flush 420ms var(--ease) both; }
+@media (prefers-reduced-motion: reduce) {
+  .mkw-composer-box.is-flushed { animation: none; }
 }
 /* La note du dossier dans la fiche : une consigne se lit, elle ne se resume pas.
    Le liseré ambre la rattache au meme signal que le marqueur de la liste. */

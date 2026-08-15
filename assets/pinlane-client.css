@@ -182,8 +182,18 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   /* Colonne de 340 px : date et joueurs se suivent au lieu de se partager la
      largeur. Cote a cote, la note ambre tombait sur dix lignes de trois mots. */
   #clientView .step1-col-when .grid-2 { grid-template-columns: 1fr; }
+  /* La colonne de gauche s arretait apres « Date et joueurs » et laissait
+     300 px de vide sous elle, pendant que l action principale et l entree sur
+     mesure poussaient la page de 200 px vers le bas. Elles descendent donc
+     dans ce vide : meme information, deux cents pixels de moins. */
   #clientView #step1 > .step-cta-bar,
-  #clientView #step1 > .bespoke-entry { grid-column: 1 / -1; }
+  #clientView #step1 > .bespoke-entry { grid-column: 1; }
+  #clientView #step1 > .step-cta-bar { margin-top: 0; }
+  /* L accroche marketing garde sa place sur l accueil, sans son paragraphe :
+     il redit ce que les cinq etapes montrent deja. */
+  #clientView[data-step='1'] .hero-title { margin-bottom: var(--space-4); }
+  #clientView[data-step='1'] .hero-title p { display: none; }
+  #clientView[data-step='1'] .hero-title h1 { font-size: 28px; }
 }
 
 /* --- Hero -------------------------------------------------------------- */
@@ -410,8 +420,10 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  /* Plancher tactile de DESIGN.md §7 : 44 px. Ce bouton en faisait 40, seul
+     de tout le parcours (mesure du tour complet, 2026-08-15). */
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -2283,6 +2295,20 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .step[data-arrived] .pl-cascade > :nth-child(-n+4) {
   animation: pl-rise var(--dur-enter) var(--ease-out-strong) both;
+}
+
+/* Ce qui ARRIVE a la suite d'un geste du client se pose : la ligne d'activite
+   qui entre dans le programme, la note du nombre de joueurs qui change. Elles
+   montrent la CONSEQUENCE du geste, elles ne decorent pas, et elles ne
+   rejouent jamais quand rien n'a change (garde cote JS). */
+#clientView .program-item.is-appearing,
+#clientView #paxAlert > .is-appearing {
+  animation: pl-rise var(--dur-enter) var(--ease-out-strong) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .program-item.is-appearing,
+  #clientView #paxAlert > .is-appearing { animation: none; }
 }
 #clientView .step[data-arrived] .pl-cascade > :nth-child(1) { animation-delay: 0ms; }
 #clientView .step[data-arrived] .pl-cascade > :nth-child(2) { animation-delay: 40ms; }

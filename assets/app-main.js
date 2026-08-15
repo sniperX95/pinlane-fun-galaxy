@@ -3154,7 +3154,19 @@ function updateSchedHint() {
   el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>${holiday}`;
 }
 
+// La note du nombre de joueurs REPOND au geste : elle se pose quand elle
+// change, et reste strictement immobile quand elle dit la meme chose (elle est
+// recalculee a chaque frappe dans le champ).
 function updatePaxAlert() {
+  const host = document.getElementById('paxAlert');
+  const before = host ? host.innerHTML : '';
+  renderPaxAlertContent();
+  if (host && host.innerHTML !== before && host.firstElementChild) {
+    host.firstElementChild.classList.add('is-appearing');
+  }
+}
+
+function renderPaxAlertContent() {
   const pax = Number(state.booking.pax) || 0;
   const needed = getRequiredLaneCount(state.booking.type || 'bowling', pax, state.booking.formuleId);
   // Capacite LIVE du centre (config, pas les constantes) : ainsi changer le nombre
@@ -3649,10 +3661,16 @@ function renderProgramSummary() {
   const roundedTotal = Math.round(total);
   const nextTotal = complete || roundedTotal > 0 ? `${roundedTotal}€` : 'Sur place';
   const nextValue = `${complete ? '' : 'à partir de '}${nextTotal}`;
-  list.innerHTML = items.map(item => `<li class="program-item">
+  // Cocher une activite doit se VOIR dans le programme : la ligne qui arrive se
+  // pose, celles deja la ne bougent pas d'un pixel. Sans ce filtre, chaque clic
+  // rejouerait l'animation de toute la liste (meme piege que le motion
+  // d'exploitation de la console : ce qui ne change pas reste immobile).
+  const previousIds = String(list.dataset.ids || '').split(',').filter(Boolean);
+  list.innerHTML = items.map(item => `<li class="program-item${previousIds.includes(item.id) ? '' : ' is-appearing'}" data-activity="${escapeHtml(item.id)}">
     <span class="program-item-name">${escapeHtml(item.name)}</span>
     <span class="program-item-detail">${escapeHtml(item.detail)}</span>
   </li>`).join('');
+  list.dataset.ids = items.map(item => item.id).join(',');
   count.textContent = `${items.length} activité${items.length > 1 ? 's' : ''}`;
   totalLabel.textContent = complete ? 'Total' : (roundedTotal > 0 ? 'À partir de' : 'Tarif');
   totalNote.textContent = complete

@@ -203,7 +203,10 @@ async function main() {
         measured[`${width}-${theme}`] = walk;
         Object.entries(walk).forEach(([stepKey, m]) => {
           const budget = BUDGET[width][stepKey];
-          ok(m.screens <= budget,
+          // Comparaison en PIXELS, jamais sur le ratio arrondi : 904 px pour une
+          // fenetre de 900 donnait « 1 ecran » et passait, alors que la page
+          // defilait bel et bien de 4 px.
+          ok(m.scrollHeight <= Math.round(m.clientHeight * budget),
             `${stepKey} : ${m.scrollHeight} px, ${m.screens} ecran(s) pour un budget de ${budget}${budget === 1 ? ' (tient dans la fenetre)' : ''}`);
           ok(!m.hScroll, `${stepKey} : aucun debordement horizontal de la page`);
           ok(m.smallTargets.length === 0, `${stepKey} : aucune cible sous 44 px${m.smallTargets.length ? ` (${m.smallTargets.join(', ')})` : ''}`);

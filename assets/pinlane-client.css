@@ -2347,7 +2347,12 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
     gap: var(--space-3);
   }
   #clientView #step4 .recap-decision .total-box { margin: 0; }
+  /* Le recapitulatif debordait de 4 px : la marge haute des actions fait
+     double emploi avec l'ecart de la colonne de decision. */
   #clientView #step4 .recap-decision .step-actions { margin: 0; flex-direction: column-reverse; }
+  /* Le recapitulatif debordait de 4 px : l'ecart entre les deux colonnes du
+     recapitulatif suffit, le rembourrage de la carte le doublait. */
+  #clientView #step4 .card { padding-bottom: var(--space-4); }
   #clientView #step4 .recap-decision .step-actions .btn-primary,
   #clientView #step4 .recap-decision .step-actions .btn-secondary { width: 100%; flex: none; }
 

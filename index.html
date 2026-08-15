@@ -147,11 +147,29 @@
           <span class="progress-index">5</span>
           <span class="progress-label">Confirmé</span>
         </div>
+        <!-- La barre SUIT le parcours au lieu de sauter : un rail plein sous les
+             cinq pastilles, anime en scaleX (transform seul, zero recalcul de
+             mise en page). -->
+        <div class="progress-rail" aria-hidden="true"><span class="progress-rail-fill"></span></div>
       </div>
 
       <div id="alertBox" role="alert" aria-live="assertive"></div>
 
+      <!-- Cible de focus du changement d'etape. Le focus qui s'y pose EST
+           l'annonce : un titre nomme l'etape et son rang, et le clavier
+           repart juste au-dessus du contenu qui vient d'arriver. Une region
+           live en plus ferait parler deux fois la synthese vocale. -->
+      <h2 id="stepHeading" class="visually-hidden" tabindex="-1"></h2>
+
+      <!-- Scene des etapes : l'etape qui sort passe en absolu le temps de son
+           mouvement, donc le DOM de l'etape qui arrive est correct DES
+           L'INSTANT du changement (aucun appelant n'attend une animation). -->
+      <div class="step-stage">
       <div id="step1" class="step">
+        <!-- Deux colonnes des 1100 px : le QUAND a gauche, le QUOI a droite.
+             En dessous, les enveloppes passent en `display: contents` et la
+             pile verticale d'origine revient a l'identique. -->
+        <div class="step1-col step1-col-when">
         <div class="card slide-up">
           <div class="card-head">
             <div class="card-icon">
@@ -188,7 +206,9 @@
             </div>
           </div>
         </div>
+        </div>
 
+        <div class="step1-col step1-col-what">
         <div class="card slide-up">
           <div class="card-head">
             <div class="card-icon">
@@ -255,6 +275,7 @@
             </div>
             <div class="preference-grid" id="formulaOrderOptions"></div>
           </div>
+        </div>
         </div>
 
         <div class="step-cta-bar">
@@ -416,6 +437,7 @@
 
           <button class="btn-secondary" onclick="resetBooking()" style="margin-top:14px;">Faire une autre réservation</button>
         </div>
+      </div>
       </div>
 
       <div class="client-contact-bar" id="clientContactBar" hidden>

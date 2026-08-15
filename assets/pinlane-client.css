@@ -148,6 +148,44 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   margin: 0 auto;
 }
 
+/* Le tunnel occupait 760 px sur un ecran de 1280 (59 %) et se lisait en 2,6
+   ecrans de defilement. Au-dela de 1100 px on rend la largeur disponible aux
+   BLOCS, pas au texte : les colonnes internes restent a une largeur lisible. */
+@media (min-width: 1100px) {
+  #clientView .client-wrap { width: min(1080px, 100%); }
+  #clientView .hero-title p { margin-inline: auto; }
+}
+
+/* Etape 1 : le QUAND et le QUOI cote a cote. En dessous de 1100 px les
+   enveloppes disparaissent de la mise en page (`display: contents`) et la pile
+   verticale d'origine revient telle quelle : zero risque sur telephone. */
+#clientView .step1-col { display: contents; }
+
+@media (min-width: 1100px) {
+  /* `:not(.hidden)` obligatoire : `#clientView #step1` bat `.hidden` en
+     specificite, l'etape restait donc affichee une fois quittee (mesure :
+     2975 px de scene au lieu de 1150). */
+  #clientView #step1:not(.hidden) {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-4);
+  }
+  #clientView .step1-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+  /* L'espacement vient de la grille : la marge des cartes ferait double emploi. */
+  #clientView #step1 .card { margin-bottom: 0; }
+  /* Colonne de 340 px : date et joueurs se suivent au lieu de se partager la
+     largeur. Cote a cote, la note ambre tombait sur dix lignes de trois mots. */
+  #clientView .step1-col-when .grid-2 { grid-template-columns: 1fr; }
+  #clientView #step1 > .step-cta-bar,
+  #clientView #step1 > .bespoke-entry { grid-column: 1 / -1; }
+}
+
 /* --- Hero -------------------------------------------------------------- */
 #clientView .hero-title {
   text-align: center;
@@ -209,7 +247,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 500;
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur-move) var(--ease-out-strong);
 }
 
 #clientView .progress-label {
@@ -2123,6 +2161,89 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   color: var(--text);
 }
 
+/* --------------------------------------------------------------------------
+   CHANGEMENT D'ETAPE : un deplacement lateral
+   Le tunnel avait cinq etapes qui se substituaient sans transition : rien ne
+   disait dans quel SENS on avancait. L'etape qui part sort du cote d'ou l'on
+   vient, celle qui arrive entre du cote ou l'on va ; le retour joue l'inverse.
+   Seuls `transform` et `opacity` bougent, et l'etape qui sort passe en absolu
+   (JS) pour qu'aucune hauteur ne s'anime.
+   -------------------------------------------------------------------------- */
+#clientView .step-stage { position: relative; }
+
+@keyframes pl-step-enter-forward {
+  from { opacity: 0; transform: translate3d(28px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes pl-step-enter-back {
+  from { opacity: 0; transform: translate3d(-28px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes pl-step-leave-forward {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(-28px, 0, 0); }
+}
+@keyframes pl-step-leave-back {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(28px, 0, 0); }
+}
+
+#clientView .step.is-entering-forward,
+#clientView .step.is-entering-back,
+#clientView .step.is-leaving-forward,
+#clientView .step.is-leaving-back {
+  will-change: transform, opacity;
+}
+
+#clientView .step.is-entering-forward { animation: pl-step-enter-forward var(--dur-enter) var(--ease-out-strong) both; }
+#clientView .step.is-entering-back { animation: pl-step-enter-back var(--dur-enter) var(--ease-out-strong) both; }
+/* Sortie plus courte que l'entree : a l'entree on decouvre, a la sortie on a
+   deja decide (doctrine de motion, assets/pinlane.css). */
+#clientView .step.is-leaving-forward { animation: pl-step-leave-forward var(--dur-exit) var(--ease-in-out-strong) both; }
+#clientView .step.is-leaving-back { animation: pl-step-leave-back var(--dur-exit) var(--ease-in-out-strong) both; }
+
+/* Rail de progression : il se remplit, il ne saute pas. */
+#clientView .progress {
+  position: relative;
+  --progress-fill: 0.2;
+}
+
+#clientView .progress-rail {
+  flex: 0 0 100%;
+  height: 2px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--line);
+  overflow: hidden;
+}
+
+#clientView .progress-rail-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(var(--progress-fill));
+  transform-origin: left center;
+  transition: transform var(--dur-enter) var(--ease-in-out-strong);
+}
+
+/* La pastille active grandit d'un cheveu : le regard sait ou il est sans
+   relire les cinq libelles. */
+#clientView .progress-step .progress-index { transform: scale(1); }
+#clientView .progress-step.active .progress-index { transform: scale(1.12); }
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step.is-entering-forward,
+  #clientView .step.is-entering-back,
+  #clientView .step.is-leaving-forward,
+  #clientView .step.is-leaving-back {
+    animation: none;
+    will-change: auto;
+  }
+  #clientView .progress-rail-fill { transition: none; }
+  #clientView .progress-step.active .progress-index { transform: none; }
+}
+
 /* --- Micro-motion : fade discret, une fois par rendu ---------------------- */
 @keyframes pl-client-enter {
   from { opacity: 0; transform: translateY(8px); }
@@ -3516,17 +3637,84 @@ body.customer-mode .client-footer {
   color: var(--muted);
 }
 
-/* Grille et non flex : des colonnes alignées se balaient du regard, une rangée
-   ragged non. minmax(58px) rend 5 colonnes sur un téléphone de 390 px là où le
-   flex n'en tenait que 4. */
+/* --------------------------------------------------------------------------
+   LES HEURES EN PISTE HORIZONTALE
+   Les 26 a 27 heures d'une activite tenaient sur trois a cinq rangees dont une
+   seule etait montree (filtre par moment de journee). La piste porte desormais
+   la JOURNEE ENTIERE sur un seul rang : on la parcourt au doigt, a la molette,
+   aux fleches du clavier ou par saut de moment. Rien n'est plus masque, et la
+   hauteur tombe d'autant.
+   -------------------------------------------------------------------------- */
+#clientView .anchor-track-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+#clientView .anchor-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Ne vole jamais le defilement vertical de la page ni celui du parent. */
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding: 2px;
+}
+
+#clientView .anchor-track::-webkit-scrollbar { display: none; }
+
+/* Ce qui depasse se VOIT : un fondu du cote ou il reste des heures. Un
+   defilement horizontal sans indicateur est un piege. */
+#clientView .anchor-track[data-overflow='both'] { mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+#clientView .anchor-track[data-overflow='start'] { mask-image: linear-gradient(to right, transparent 0, #000 24px); }
+#clientView .anchor-track[data-overflow='end'] { mask-image: linear-gradient(to left, transparent 0, #000 24px); }
+
+#clientView .anchor-track-nudge {
+  flex: none;
+  width: 30px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+
+#clientView .anchor-track-nudge:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+#clientView .anchor-track-nudge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#clientView .anchor-track-nudge:disabled { opacity: 0.3; cursor: default; }
+
+/* Une seule rangee : les heures se suivent comme sur une frise horaire. */
 #clientView .anchor-chip-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(58px, max-content);
+  grid-template-rows: auto;
   gap: var(--space-2);
+  width: max-content;
+}
+
+/* SUR TELEPHONE, l'horizontal seul appauvrit : une piste d'un rang ne montrait
+   plus que 3 a 5 heures la ou la grille en montrait 12 (mesure du 2026-08-15).
+   La piste garde donc DEUX rangs. Le remplissage se fait en colonnes et les
+   heures alternent :30 / :00, donc un rang porte les demies et l'autre les
+   heures pleines : la lecture reste evidente, la densite revient, et toute la
+   journee reste atteignable d'un seul glissement. */
+@media (max-width: 640px) {
+  #clientView .anchor-chip-grid { grid-template-rows: repeat(2, auto); }
 }
 
 #clientView .anchor-chip {
   position: relative;
+  scroll-snap-align: start;
   min-height: 44px;
   min-width: 58px;
   padding: var(--space-1) var(--space-2);

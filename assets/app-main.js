@@ -3029,7 +3029,9 @@ function initClient() {
   // Demarre TOUJOURS a l'etape 1 (et synchronise le DOM avec state.step) : sinon
   // un state.step persiste (ex. 4) affichait l'etape 4 dans la barre de progression
   // alors que le contenu montrait l'etape 1 -> desynchro visible sur le formulaire.
-  goStep(1);
+  // Synchronisation d'ouverture : ni mouvement ni vol de focus, personne n'a
+  // encore rien demandé.
+  goStep(1, { animate: false, focus: false });
 }
 
 // Stepper tactile du nombre de joueurs (boutons +/- mobile). On reste sur le
@@ -3974,6 +3976,10 @@ function updateProgress() {
     if (i < state.step) el.classList.add('done');
     if (i === state.step) el.classList.add('active');
   }
+  // Le rail se remplit en `scaleX` : la barre accompagne le changement d'étape
+  // au lieu de sauter, et rien ne recalcule la mise en page.
+  const progress = document.querySelector('#clientView .progress');
+  if (progress) progress.style.setProperty('--progress-fill', (Number(state.step) || 1) / 5);
 }
 
 function showAlert(msg) {
@@ -4063,12 +4069,88 @@ function applyBookingAlternative(index) {
   showAlert('Alternative appliquée. Vérifiez le récapitulatif avant confirmation.');
 }
 
-function goStep(n) {
-  ['step1', 'step2', 'step3', 'step4', 'step5'].forEach(s => document.getElementById(s).classList.add('hidden'));
-  document.getElementById('step' + n).classList.remove('hidden');
+// --- Changement d'étape : un DÉPLACEMENT LATÉRAL, pas un saut ----------------
+// Le mouvement raconte le sens du parcours : en avant, l'étape qui part sort
+// par la gauche et celle qui arrive entre par la droite ; en arrière, l'inverse.
+//
+// Trois propriétés non négociables :
+//  1. l'état (`state.step`) et le DOM de l'étape qui arrive sont corrects DÈS
+//     l'appel : rien dans le produit ni dans un gate n'attend une animation ;
+//  2. seuls `transform` et `opacity` bougent. L'étape qui sort passe en absolu
+//     dans `.step-stage` le temps de son mouvement, donc aucune hauteur ne
+//     s'anime et la mise en page n'est recalculée qu'une fois ;
+//  3. `prefers-reduced-motion` : tout se pose instantanément, y compris le
+//     défilement (le reset CSS ne couvre pas un scrollTo lancé en JS).
+const STEP_LABELS = { 1: 'Activité', 2: 'Créneau', 3: 'Contact', 4: 'Valider', 5: 'Confirmé' };
+const STEP_EXIT_MS = 150; // = --dur-exit
+let stepExitTimer = null;
+
+function prefersReducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function clearStepMotionClasses(element) {
+  if (!element) return;
+  element.classList.remove('is-entering-forward', 'is-entering-back', 'is-leaving-forward', 'is-leaving-back');
+  element.style.removeProperty('position');
+  element.style.removeProperty('top');
+  element.style.removeProperty('left');
+  element.style.removeProperty('right');
+}
+
+function goStep(n, options = {}) {
+  const previous = Number(state.step) || 1;
+  const target = document.getElementById('step' + n);
+  if (!target) return;
+  const reduce = prefersReducedMotion();
+  const animate = !reduce && options.animate !== false && previous !== n;
+  const forward = n >= previous;
+
+  // Une transition en cours est abandonnée net : on ne laisse jamais deux
+  // étapes en vol (c'est ce qui fait clignoter les tunnels animés).
+  if (stepExitTimer) { clearTimeout(stepExitTimer); stepExitTimer = null; }
+  ['step1', 'step2', 'step3', 'step4', 'step5'].forEach((id) => {
+    const element = document.getElementById(id);
+    clearStepMotionClasses(element);
+    if (element !== target) element.classList.add('hidden');
+  });
+
+  const leaving = animate ? document.getElementById('step' + previous) : null;
+  if (leaving && leaving !== target) {
+    // Sortie par-dessus l'arrivée : le flux appartient déjà à la nouvelle étape.
+    leaving.classList.remove('hidden');
+    leaving.style.position = 'absolute';
+    leaving.style.top = '0';
+    leaving.style.left = '0';
+    leaving.style.right = '0';
+    leaving.classList.add(forward ? 'is-leaving-forward' : 'is-leaving-back');
+    stepExitTimer = setTimeout(() => {
+      stepExitTimer = null;
+      clearStepMotionClasses(leaving);
+      leaving.classList.add('hidden');
+    }, STEP_EXIT_MS);
+  }
+
+  target.classList.remove('hidden');
+  if (animate) {
+    target.classList.add(forward ? 'is-entering-forward' : 'is-entering-back');
+    // `will-change` vit le temps de l'animation et pas une seconde de plus :
+    // laisser une couche de compositing sur cinq étapes coûte de la mémoire GPU.
+    const done = () => clearStepMotionClasses(target);
+    target.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 600);
+  }
+
   state.step = n;
   updateProgress();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  // Le focus suit l'étape qui arrive : sans ça, le clavier retombe sur <body>
+  // et le parcours est cassé pour qui ne se sert pas d'une souris.
+  const heading = document.getElementById('stepHeading');
+  if (heading) {
+    heading.textContent = `Étape ${n} sur 5 : ${STEP_LABELS[n] || ''}`;
+    if (options.focus !== false) heading.focus({ preventScroll: true });
+  }
   save();
 }
 
@@ -4239,11 +4321,9 @@ let formulaAnchorData = null;       // bloc `anchors` renvoyé par le serveur
 let formulaAnchorMessage = '';      // message de refus de combinaison
 let formulaAnchorSuggestions = [];  // combinaisons proches proposées
 let formulaAnchorBusy = false;      // revalidation en cours
-let formulaAnchorPeriodChoice = {}; // moment de journée ouvert, par ancre
 
 function resetFormulaProgramChoice() {
   formulaArrivalChoice = '';
-  formulaAnchorPeriodChoice = {};
 }
 
 function formulaHasAnchorUi() {
@@ -4306,9 +4386,6 @@ async function revalidateFormulaAnchors() {
 async function setFormulaAnchorTime(activityId, time) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
-  // Retenir une heure remet le moment affiché en phase avec elle : sinon un
-  // client qui applique « Enchaîner » ne verrait pas sa nouvelle heure.
-  formulaAnchorPeriodChoice = {};
   preference.preferredTimes[activityId] = time;
   if (activityId === 'laser_game') preference.laserPlacement = 'scheduled';
   state.booking.preference = preference;
@@ -4483,49 +4560,115 @@ async function tightenFormulaAnchorGap(activityId, time) {
   await setFormulaAnchorTime(activityId, time);
 }
 
-// Le moment affiché pour une activité : le choix explicite du client s'il en a
-// fait un, sinon celui de son heure retenue. Choisir une heure remet les deux
-// d'accord (setFormulaAnchorTime vide la carte des choix).
-function getAnchorVisiblePeriod(activityId, groups, selected, chained) {
-  const chosen = formulaAnchorPeriodChoice[activityId];
-  if (chosen && groups.some(group => group.key === chosen)) return chosen;
-  if (selected) return getAnchorPeriodKey(selected);
-  if (chained) return getAnchorPeriodKey(chained);
-  return groups[0]?.key || '';
+// Le moment n'est plus un FILTRE mais un SAUT : la piste porte toute la
+// journée, on se déplace dedans. Défilement natif, jamais un défilement maison.
+function setFormulaAnchorPeriod(activityId, periodKey) {
+  const track = document.querySelector(`.anchor-track[data-anchor="${activityId}"]`);
+  const mark = track ? track.querySelector(`[data-period-start="${periodKey}"]`) : null;
+  if (track && mark) {
+    track.scrollTo({
+      left: Math.max(0, mark.offsetLeft - track.offsetLeft - 4),
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
+    syncAnchorTrackState(track);
+  }
 }
 
-function setFormulaAnchorPeriod(activityId, periodKey) {
-  formulaAnchorPeriodChoice[activityId] = periodKey;
-  renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
+// Fait défiler la piste d'une « page » : c'est ce qui rend le hors-champ
+// atteignable à la souris et au clavier sans geste tactile.
+function nudgeAnchorTrack(activityId, direction) {
+  const track = document.querySelector(`.anchor-track[data-anchor="${activityId}"]`);
+  if (!track) return;
+  track.scrollBy({
+    left: direction * Math.max(120, track.clientWidth - 72),
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+  });
+}
+
+// État visible de la piste : ce qui dépasse à gauche, ce qui dépasse à droite,
+// et le moment de journée où l'on se trouve. Un défilement horizontal sans
+// indicateur est un piège : on ne sait pas qu'il reste des heures.
+function syncAnchorTrackState(track) {
+  if (!track) return;
+  const max = track.scrollWidth - track.clientWidth;
+  const left = track.scrollLeft;
+  const state_ = max <= 1 ? 'none' : (left <= 1 ? 'end' : (left >= max - 1 ? 'start' : 'both'));
+  if (track.dataset.overflow !== state_) track.dataset.overflow = state_;
+  const shell = track.closest('.anchor-periods');
+  if (!shell) return;
+  shell.querySelectorAll('.anchor-track-nudge').forEach((button) => {
+    const disabled = button.dataset.direction === '-1'
+      ? (state_ === 'none' || state_ === 'end')
+      : (state_ === 'none' || state_ === 'start');
+    if (button.disabled !== disabled) button.disabled = disabled;
+  });
+  // Onglet actif = le moment réellement sous les yeux (bord gauche de la piste).
+  const marks = [...track.querySelectorAll('[data-period-start]')];
+  let current = marks[0]?.dataset.periodStart || '';
+  marks.forEach((mark) => { if (mark.offsetLeft - track.offsetLeft <= left + 8) current = mark.dataset.periodStart; });
+  shell.querySelectorAll('.anchor-period-tab').forEach((tab) => {
+    const active = tab.dataset.period === current;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+// Un seul écouteur passif par piste, calé sur la fréquence d'affichage : on ne
+// touche au DOM que lorsque l'état CHANGE (voir syncAnchorTrackState).
+function bindAnchorTracks() {
+  document.querySelectorAll('.anchor-track').forEach((track) => {
+    if (track.dataset.bound === '1') return;
+    track.dataset.bound = '1';
+    let queued = false;
+    track.addEventListener('scroll', () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; syncAnchorTrackState(track); });
+    }, { passive: true });
+    syncAnchorTrackState(track);
+    // L'heure retenue doit être sous les yeux à l'ouverture, pas trois écrans
+    // plus loin dans la piste.
+    const active = track.querySelector('.anchor-chip.active');
+    if (active) {
+      track.scrollLeft = Math.max(0, active.offsetLeft - track.offsetLeft - track.clientWidth / 2 + active.offsetWidth / 2);
+      syncAnchorTrackState(track);
+    }
+  });
 }
 
 function renderAnchorChipGroups(activity, { selected, disabled, chained }) {
   const groups = groupAnchorTimes(activity.times);
   if (!groups.length) return '';
-  const visibleKey = getAnchorVisiblePeriod(activity.activityId, groups, selected, chained);
-  const visible = groups.find(group => group.key === visibleKey) || groups[0];
-  // Un seul rang de 44 px pour les trois moments : l'accordéon empilé coûtait
-  // 132 px par activité pour la même information (mesure du 2026-08-15).
+  // HORIZONTAL : une seule piste par activité qui porte TOUTE la journée. Les
+  // onglets de moment cessent d'être un filtre (26 heures sur 27 masquées) et
+  // deviennent des points de saut dans la piste : rien n'est plus caché.
   const tabs = groups.length > 1 ? `
       <div class="anchor-period-tabs" role="group" aria-label="Moment de la journée pour ${escapeHtml(activity.label)}">
         ${groups.map((group) => {
     const first = group.items[0].time;
     const last = group.items[group.items.length - 1].time;
-    const isVisible = group.key === visible.key;
     const holdsSelection = Boolean(selected) && group.items.some(item => item.time === selected);
-    return `<button type="button" class="anchor-period-tab ${isVisible ? 'active' : ''} ${holdsSelection ? 'has-pick' : ''}" aria-pressed="${isVisible ? 'true' : 'false'}" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}')"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
+    return `<button type="button" class="anchor-period-tab ${holdsSelection ? 'has-pick' : ''}" data-period="${escapeHtml(group.key)}" aria-pressed="false" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}')"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
   }).join('')}
       </div>` : '';
-  const chips = visible.items.map((item) => {
+  const chips = groups.map(group => group.items.map((item, index) => {
     const isActive = item.time === selected;
     const isChained = !isActive && item.time === chained;
     const label = isChained ? `${item.time}, enchaîné avec l'activité précédente` : item.time;
-    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
-  }).join('');
+    const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
+    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''}"${marker} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
+  }).join('')).join('');
+  const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
     <div class="anchor-periods">
       ${tabs}
-      <div class="anchor-chip-grid">${chips}</div>
+      <div class="anchor-track-shell">
+        ${nudge(-1, '&lsaquo;', `Heures précédentes pour ${activity.label}`)}
+        <div class="anchor-track" data-anchor="${escapeHtml(activity.activityId)}" data-overflow="none">
+          <div class="anchor-chip-grid">${chips}</div>
+        </div>
+        ${nudge(1, '&rsaquo;', `Heures suivantes pour ${activity.label}`)}
+      </div>
     </div>`;
 }
 
@@ -4808,6 +4951,7 @@ function renderSlots(formule) {
     // client jetait des ancres valides et affichait « Aucun créneau
     // disponible » alors que le serveur en proposait neuf.
     list.innerHTML = renderFormulaAnchorPicker(formule);
+    bindAnchorTracks();
     return;
   }
   if (!state.availableSlots.length) {

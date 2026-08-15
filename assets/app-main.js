@@ -4154,6 +4154,10 @@ function goStep(n, options = {}) {
   }
 
   state.step = n;
+  // Le rang de l'étape pilote le chrome de la page : passé l'accueil, le grand
+  // titre marketing n'informe plus, il pousse la décision hors de l'écran.
+  const clientView = document.getElementById('clientView');
+  if (clientView) clientView.dataset.step = String(n);
   updateProgress();
   window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   // Le focus suit l'étape qui arrive : sans ça, le clavier retombe sur <body>
@@ -4621,6 +4625,10 @@ function syncAnchorTrackState(track) {
   if (track.dataset.overflow !== state_) track.dataset.overflow = state_;
   const shell = track.closest('.anchor-periods');
   if (!shell) return;
+  // « Le apres-midi soir sert a rien si plus rien ne va » (Movsar). Sauter dans
+  // la journee n'a de sens que s'il y a quelque chose hors du champ : quand la
+  // piste tient entiere, les onglets occupent une ligne pour ne rien apporter.
+  shell.classList.toggle('has-jumps', state_ !== 'none');
   shell.querySelectorAll('.anchor-track-nudge').forEach((button) => {
     const disabled = button.dataset.direction === '-1'
       ? (state_ === 'none' || state_ === 'end')
@@ -4807,7 +4815,9 @@ function renderFormulaAnchorRows(formule) {
         ${freePass}
       </li>`);
   }
-  return `<ol class="visit-rail">${parts.join('')}</ol>`;
+  // Le nombre de rendez-vous à placer décide si les repères numérotés servent
+  // à quelque chose : à une seule activité, « 1 » ne numérote rien.
+  return `<ol class="visit-rail" data-anchors="${steps.length}">${parts.join('')}</ol>`;
 }
 
 // Le dernier maillon du fil : tout ce que le client a réservé SANS horaire.
@@ -4865,24 +4875,31 @@ function renderFormulaAnchorPicker(formule) {
         <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${slotIndex})">Valider ces horaires</button>
       </div>`;
   } else {
+    // UN REFUS EXPLIQUE, PAS UN MUR. L'encadré disait « Cette combinaison n'est
+    // pas possible » sans dire POURQUOI ni QUOI FAIRE d'autre que tout annuler
+    // (Movsar, 2026-08-15 : « le rouge comme ça, c'est pas fou »). Il nomme
+    // maintenant la contrainte, propose les combinaisons voisines qui marchent,
+    // et ne garde le retour à la proposition automatique qu'en dernier recours.
     const suggestions = (formulaAnchorSuggestions || []).map((suggestion, index) => `
       <button type="button" class="anchor-suggestion" onclick="applyFormulaAnchorSuggestion(${index})">${escapeHtml(suggestion.label || Object.values(suggestion.times || {}).join(' · '))}</button>`).join('');
     statusHtml = `
       <div class="anchor-status anchor-status-error" role="alert">
-        <strong>${escapeHtml(formulaAnchorMessage || 'Cette combinaison n’est pas possible.')}</strong>
-        ${suggestions ? `<div class="anchor-suggestions"><span>Essayez plutôt :</span>${suggestions}</div>` : ''}
-        <button type="button" class="formula-order-fallback-btn" onclick="resetFormulaAnchorChoices()">Revenir à la proposition automatique</button>
+        <div class="anchor-status-copy">
+          <strong>${escapeHtml(formulaAnchorMessage || 'Ces deux heures ne peuvent pas aller ensemble.')}</strong>
+          <span>Vos autres choix sont conservés : il suffit de déplacer une heure.</span>
+        </div>
+        ${suggestions ? `<div class="anchor-suggestions"><span>Ces horaires fonctionnent :</span>${suggestions}</div>` : ''}
+        <button type="button" class="formula-order-fallback-btn" onclick="resetFormulaAnchorChoices()">Repartir de la proposition automatique</button>
       </div>`;
   }
   // Le pass liberté est le dernier maillon du fil (renderFormulaAnchorRows) :
   // il ne se rajoute plus après le panneau, sinon la visite se lit en deux
   // morceaux alors que c'est UNE visite.
+  // Plus d'en-tête interne : le titre de la carte le porte déjà, et la consigne
+  // que ce paragraphe donnait ("présentez-vous 10 min avant") est dite par le
+  // résumé, à l'heure près.
   return `
     <div class="formula-anchor-picker">
-      <div class="formula-arrival-head">
-        <strong>Composez votre visite</strong>
-        <span><span class="only-desktop">Choisissez l'heure de chaque activité à créneau : présentez-vous 10 minutes avant votre premier rendez-vous. Le reste ${formule ? 'de la formule' : 'de votre visite'} se vit à votre rythme, sans horaire.</span><span class="only-mobile">Choisissez l'heure de chaque activité. Présentez-vous 10 min avant. Le reste, à votre rythme.</span></span>
-      </div>
       ${renderFormulaAnchorRows(formule)}
       ${statusHtml}
     </div>`;
@@ -4955,7 +4972,11 @@ function renderSlots(formule) {
   const isLaser = state.booking.type === 'laser';
   const ds = parseLocalDate(state.booking.date).toLocaleDateString('fr-BE', { weekday:'long', day:'2-digit', month:'short' });
   const slotTitle = document.getElementById('slotTitle');
-  if (slotTitle) slotTitle.textContent = formule ? 'Votre programme' : 'Horaire disponible';
+  // UN SEUL titre pour cet écran. « HORAIRE DISPONIBLE » en capitales suivi de
+  // « Composez votre visite » deux lignes plus bas disait deux fois la même
+  // chose (Movsar, 2026-08-15). Le titre de la carte porte l'intention, le
+  // sous-titre porte la date, et le bloc interne n'a plus d'en-tête.
+  if (slotTitle) slotTitle.textContent = formulaHasAnchorUi() ? 'Composez votre visite' : (formule ? 'Votre programme' : 'Horaire disponible');
   document.getElementById('slotDate').textContent = ds;
   const tl = document.getElementById('formTimeLimit');
   if (formule) {

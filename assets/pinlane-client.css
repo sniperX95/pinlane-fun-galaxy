@@ -2212,6 +2212,62 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .step.is-leaving-back { animation: pl-step-leave-back var(--dur-exit) var(--ease-in-out-strong) both; }
 
 /* --------------------------------------------------------------------------
+   UNE ETAPE = UN ECRAN
+   Objectif pose par Movsar : « eviter le plus de devoir scroller vers le bas,
+   tout voir d une traite ». Le grand titre marketing appartient a l accueil :
+   passe l etape 1 il ne renseigne plus rien et pousse la decision hors du
+   champ. Il se replie au lieu de disparaitre (le fil d Ariane reste).
+   -------------------------------------------------------------------------- */
+#clientView[data-step]:not([data-step='1']) .hero-title {
+  margin-bottom: var(--space-4);
+}
+#clientView[data-step]:not([data-step='1']) .hero-kicker,
+#clientView[data-step]:not([data-step='1']) .hero-title p {
+  display: none;
+}
+#clientView[data-step]:not([data-step='1']) .hero-title h1 {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+/* A partir de 1100 px, l'objectif est qu'une etape tienne dans UN ecran. Ce
+   qui se replie ici n'informe pas : le titre marketing (le nom du centre est
+   deja dans l'en-tete de la page), le rembourrage de bas de page, et le lien
+   « Espace equipe » qui ne s'adresse pas au client. Aucun contenu de
+   reservation n'est touche, aucune taille de texte utile n'est reduite. */
+@media (min-width: 1100px) {
+  #clientView { padding-top: var(--space-4); padding-bottom: var(--space-3); }
+  #clientView[data-step]:not([data-step='1']) .hero-title { display: none; }
+  #clientView .progress { margin-bottom: var(--space-3); }
+  #clientView .card { padding: var(--space-5); }
+  #clientView .card-head { margin-bottom: var(--space-3); }
+  #clientView .step > .btn-secondary { margin-top: var(--space-2); }
+  #clientView .anchor-row { padding: var(--space-2) var(--space-3); }
+  body.client-mode .client-footer {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+  }
+  /* « Espace equipe » ne s'adresse pas au client qui reserve : il reste sur
+     l'accueil du tunnel, il ne prend plus une ligne sur les etapes suivantes. */
+  #clientView[data-step]:not([data-step='1']) .client-footer { display: none; }
+  /* Le bloc « sans horaire » disait deux fois la meme chose : le badge annonce
+     deja qu'il n'y a aucune heure a choisir. */
+  #clientView .anchor-free-pass > small { display: none; }
+  #clientView .anchor-free-pass { padding: var(--space-2) var(--space-3); }
+  #clientView .formula-program-panel { padding: var(--space-3) var(--space-4); }
+  /* Le resume de la visite se lit en deux colonnes : cinq lignes empilees
+     poussaient la decision hors du champ. */
+  #clientView .formula-visit-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+    row-gap: var(--space-1);
+  }
+  #clientView .formula-program-panel { gap: var(--space-3); }
+  #clientView .formula-visit-summary .visit-line-note { grid-column: 1 / -1; }
+}
+
+/* --------------------------------------------------------------------------
    CASCADE D'ARRIVEE, PLAFONNEE
    Le contenu d'une etape se pose derriere elle au lieu d'apparaitre d'un bloc.
    DEUX plafonds, tenus par le CSS lui-meme :
@@ -2264,7 +2320,13 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   #clientView #step4 .recap-decision .step-actions { margin: 0; flex-direction: column-reverse; }
   #clientView #step4 .recap-decision .step-actions .btn-primary,
   #clientView #step4 .recap-decision .step-actions .btn-secondary { width: 100%; flex: none; }
+
 }
+
+/* Un seul rendez-vous a placer : le repere numerote ne numerote rien. */
+#clientView .visit-rail[data-anchors='1'] .visit-rail-mark { display: none; }
+#clientView .visit-rail[data-anchors='1'] .visit-rail-step { padding-left: 0; }
+#clientView .visit-rail[data-anchors='1'] .visit-rail-step::before { content: none; }
 
 /* Rail de progression : il se remplit, il ne saute pas. */
 #clientView .progress {
@@ -3372,14 +3434,13 @@ body.customer-mode .client-footer {
    Une ligne de chips par ancre (Bowling / Laser), un pass liberté sans
    aucune heure, la table qui suit l'arrivée.
    ========================================================================== */
+/* Plus de cadre : la carte de l'etape en portait deja un, et chaque etape du
+   fil en porte un troisieme. Trois encadrements pour un seul contenu, c'est ce
+   que Movsar a appele « la carte dans la carte dans la carte ». */
 #clientView .formula-anchor-picker {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
 }
 
 #clientView .formula-model-preview {
@@ -3634,6 +3695,10 @@ body.customer-mode .client-footer {
   flex-direction: column;
   gap: var(--space-2);
 }
+
+/* Les onglets de moment n'existent que s'il y a quelque chose hors du champ a
+   atteindre (classe posee par syncAnchorTrackState apres mesure reelle). */
+#clientView .anchor-periods:not(.has-jumps) .anchor-period-tabs { display: none; }
 
 #clientView .anchor-period-tabs {
   display: grid;
@@ -4284,3 +4349,67 @@ body.modal-open { overflow: hidden; }
 .cta-secondary:hover { background: var(--subtle); }
 
 /* Modale demande sur mesure : .cr-actions : composant partagé dans pinlane.css */
+
+/* --------------------------------------------------------------------------
+   LE FIL DE LA VISITE PASSE A L HORIZONTALE (>= 1100 px)
+   Ce bloc vit A LA FIN de la feuille : les regles de base du fil sont declarees
+   plus bas que la section « une etape = un ecran », et a specificite egale
+   c'est la DERNIERE qui gagne. Place plus haut, ce media query etait annule
+   par `flex-direction: column` et chaque etape reprenait sa largeur naturelle.
+   -------------------------------------------------------------------------- */
+@media (min-width: 1100px) {
+  /* Les activites se lisent cote a cote, le maillon qui les relie devient une
+     colonne etroite entre elles, et le pass liberte ferme la ligne dessous.
+     Chaque piste d heures montre moins d heures d un coup, mais elles restent
+     TOUTES atteignables (defilement, fleches, saut de moment) : rien n est
+     retire, et l etape entiere tient dans un ecran.
+     Flex et non grid : le nombre d'activites a creneau varie (une ou deux), et
+     surtout chaque etape contient une piste qui defile. `min-width: 0` est ce
+     qui autorise cette piste a retrecir ; sans lui, elle impose sa largeur
+     naturelle et c'est la PAGE qui se met a defiler horizontalement. */
+  #clientView .visit-rail {
+    display: flex;
+    /* `flex-direction: row` EXPLICITE : la regle de base pose une colonne, et
+       sans ce retour a la ligne le conteneur restait en colonne avec
+       `align-items: flex-start`, donc chaque etape prenait sa largeur naturelle
+       (1840 px pour 1030 disponibles) et c'est la page qui defilait. */
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  #clientView .visit-rail-step {
+    flex: 1 1 320px;
+    min-width: 0;
+  }
+  #clientView .visit-rail-link {
+    flex: 0 1 auto;
+    align-self: center;
+    max-width: 200px;
+    min-width: 0;
+  }
+  /* Le pass liberte n'est pas une activite a placer : il prend la ligne
+     entiere sous les etapes au lieu de leur voler une colonne. */
+  #clientView .visit-rail-step-free { flex: 1 0 100%; }
+  /* A l'horizontale, le trait vertical du rail n'a plus de sens : ce sont les
+     colonnes qui portent l'ordre, et les reperes numerotes le rang. */
+  #clientView .visit-rail-step::before,
+  #clientView .visit-rail-link::before { content: none; }
+  #clientView .visit-rail-step,
+  #clientView .visit-rail-link { padding-left: 0; padding-bottom: 0; }
+  #clientView .visit-rail-mark {
+    position: static;
+    margin-bottom: var(--space-2);
+  }
+  #clientView .visit-rail-step-free .visit-rail-mark { display: none; }
+
+  /* Le resume et la decision partagent la meme ligne : le bouton de validation
+     cesse d attendre en bas de page. */
+  #clientView .formula-program-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    align-items: center;
+    gap: var(--space-4);
+  }
+  #clientView .formula-program-panel .formula-visit-summary { margin-bottom: 0; }
+}

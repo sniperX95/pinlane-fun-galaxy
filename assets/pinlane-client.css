@@ -148,12 +148,24 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   margin: 0 auto;
 }
 
-/* Le tunnel occupait 760 px sur un ecran de 1280 (59 %) et se lisait en 2,6
-   ecrans de defilement. Au-dela de 1100 px on rend la largeur disponible aux
-   BLOCS, pas au texte : les colonnes internes restent a une largeur lisible. */
+/* LA COQUILLE PREND L ECRAN.
+   Mesure du 2026-08-15 : sur 1920 px la coquille faisait 744 px, soit 39 % de
+   l ecran, et le contenu ne commencait qu a 756 px du bord. « tout est
+   recroqueville, ca fait trop serre » (Movsar). La largeur suit donc l ecran
+   au lieu d etre bridee a un tiers, avec un plafond genereux : au-dela, une
+   coquille infinie ne sert plus personne.
+   ELARGIR N EST PAS ETIRER : la place gagnee se depense en COLONNES et en
+   respiration (voir plus bas), jamais en lignes de texte a 1700 px. Toute
+   colonne de prose garde son plancher de lisibilite (60-80 caracteres). */
 @media (min-width: 1100px) {
-  #clientView .client-wrap { width: min(1080px, 100%); }
+  #clientView .client-wrap { width: min(94vw, 1750px); }
   #clientView .hero-title p { margin-inline: auto; }
+  /* Le texte suivi ne s etire jamais avec la coquille. */
+  #clientView .card-desc,
+  #clientView .laser-note,
+  #clientView .formula-arrival-hint,
+  #clientView .field-honest-note,
+  #clientView .recap-note { max-width: 74ch; }
 }
 
 /* Etape 1 : le QUAND et le QUOI cote a cote. En dessous de 1100 px les
@@ -4912,7 +4924,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
     padding: var(--space-4) var(--space-5);
   }
   #clientView .step1-col-what .card:has(> .segmented):has(.activity-configurator.is-visible) {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 336px);
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
   }
   #clientView .step1-col-what .card:has(> .segmented) > .card-head {
     grid-column: 1;
@@ -4947,14 +4959,64 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView #step1 .program-summary { margin-top: 0; }
 
   /* Les cartes d'activite prennent la hauteur de leur contenu (jamais un nom
-     ou un prix coupe pour tenir dans 80 px fixes) ; sans panneau de reglages
-     elles s'etalent sur quatre colonnes au lieu de laisser un vide a droite. */
+     ou un prix coupe pour tenir dans 80 px fixes). LEUR NOMBRE PAR RANGEE SUIT
+     LA LARGEUR : la place gagnee par la coquille ajoute des COLONNES au lieu
+     d etirer deux cartes. 190 px est le plancher mesure sous lequel « Minigolf
+     Blacklight » et « 10 EUR par table et par heure » se coupent. */
+  #clientView #step1 .activity-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
   #clientView #step1 .activity-card { height: auto; min-height: 64px; }
   #clientView #step1 .activity-icon { width: 30px; height: 30px; }
   #clientView #step1 .activity-toggle { grid-template-columns: 30px minmax(0, 1fr) 20px; padding: 8px 10px; gap: 8px; }
-  #clientView .step1-col-what .card:has(> .segmented):not(:has(.activity-configurator.is-visible)) .activity-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Plus aucun libelle tronque : le nom et le tarif prennent les lignes qu il
+     leur faut, la carte grandit avec eux. */
+  #clientView #step1 .activity-name { -webkit-line-clamp: 3; }
+  #clientView #step1 .activity-price { -webkit-line-clamp: 3; }
+  #clientView #step1 .activity-note { white-space: normal; }
+
+  /* --- LES FORMULES : « il faut tjr scroll de fou » --------------------- */
+  /* Meme remede que les activites : la largeur ajoute des COLONNES (14
+     formules sur 3 colonnes etroites = 5 rangees et 2,2 ecrans), et chaque
+     carte rend son rembourrage. RIEN n est retire : le contenu de la formule
+     et ses conditions (« uniquement le mardi », « hors vacances scolaires »)
+     restent lisibles, ce sont elles qui decident le client. */
+  #clientView .formule-cards { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  #clientView .formule-grid { gap: var(--space-3); }
+  #clientView .formule-card { padding: var(--space-3); gap: 6px; }
+  /* Le CONTENU de la formule passe en ligne au lieu d une puce par ligne :
+     cinq lignes deviennent deux, sans qu un seul mot disparaisse. C est ce qui
+     transforme 5 rangees de cartes en 2. */
+  #clientView .formule-card-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1px var(--space-3);
+    line-height: 1.35;
   }
+  #clientView .formule-card-list li { padding-left: 11px; }
+  /* Le nom et son badge tiennent sur LA MEME ligne que le prix : le badge qui
+     passait a la ligne ajoutait 26 px a la carte la plus haute de la rangee,
+     et une rangee de grille prend la hauteur de sa plus haute carte : ces
+     26 px se payaient sur toute la rangee. */
+  /* Le NOM garde le droit de passer a la ligne (aucun libelle tronque) ; c est
+     le BADGE qui cesse de s exiler sur sa propre ligne. */
+  #clientView .formule-card-head { gap: var(--space-2); align-items: baseline; }
+  #clientView .formule-card-title { flex-wrap: nowrap; min-width: 0; }
+  #clientView .formule-name { min-width: 0; font-size: 13.5px; }
+  #clientView .badge-best { flex: none; }
+  /* Le prix rend 15 px de large au nom : c est ce qui fait tenir « BACK TO
+     SCHOOL/WORK » sur une ligne au lieu de deux, et une ligne de titre
+     economisee se paye sur TOUTE la rangee de la grille. */
+  #clientView .formule-card-price strong { font-size: 16px; }
+  #clientView .formule-card-price s { font-size: 11px; }
+  #clientView .formule-card-meta { line-height: 1.35; }
+  #clientView .formule-card-status { font-size: 12px; }
+  #clientView .formule-card-status.warn { padding: 3px 7px; }
+  #clientView .formule-group-head h3 { font-size: 12.5px; }
+  #clientView .formule-group-notes,
+  #clientView .formule-group-info { margin-top: 2px; }
+  #clientView .formule-cards { margin-top: var(--space-2); }
+  /* Le bloc formule ne partage pas la rangee du selecteur : il prend la
+     largeur entiere de la carte pour y loger ses colonnes. */
+  #clientView .step1-col-what #formuleBlock:not(.hidden) { grid-column: 1 / -1; }
 
   /* Panneau de reglages : l'etiquette au-dessus de ses pastilles, rangs serres.
      Les pastilles se partagent la colonne au lieu de passer a la ligne : c'est

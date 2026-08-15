@@ -74,11 +74,15 @@ function seedState() {
 // Il maintient les 3 tables en memoire et applique les ecritures des fonctions
 // CRUD par leur texte SQL + params positionnels. connect() partage les memes
 // tables (transactions), BEGIN/COMMIT/ROLLBACK sont des no-op.
+// Univers simule POST-migration 0041 : la FakePool repond aux SELECT etendus
+// (order_constraints, pax, optional), le store leve donc son drapeau de
+// capacite et ecrit la forme etendue. Les listes de colonnes suivent la MEME
+// forme, sinon le mappage positionnel decale tout apres order_policy.
 const FORMULA_COLS = ['id', 'name', 'family', 'min_pax', 'price_type', 'price_value', 'price_old',
   'not_during_holidays', 'valid_days', 'time_limit_min_minutes', 'time_limit_max_minutes',
-  'human_validation', 'order_policy', 'is_birthday_formula', 'best', 'description_lines',
+  'human_validation', 'order_policy', 'order_constraints', 'is_birthday_formula', 'best', 'description_lines',
   'sort_index', 'source', 'active'];
-const STEP_COLS = ['formula_id', 'position', 'activity_id', 'count', 'duration_minutes', 'label', 'critical', 'resource_type'];
+const STEP_COLS = ['formula_id', 'position', 'activity_id', 'count', 'duration_minutes', 'label', 'critical', 'resource_type', 'pax', 'optional'];
 const ACTIVITY_COLS = ['id', 'center_id', 'name', 'resource_type', 'duration_model', 'service_model',
   'risk_drivers', 'planning_pressure', 'bookable', 'price_type', 'price_value', 'price_unit',
   'booking_order', 'source', 'active'];
@@ -127,6 +131,8 @@ class MockPool {
     }
     if (/insert into formulas/i.test(sql)) {
       const row = rowFromParams(FORMULA_COLS, params);
+      // jsonb : le pilote pg rend un TABLEAU, pas la chaine passee en insert.
+      row.order_constraints = row.order_constraints == null ? null : JSON.parse(row.order_constraints);
       this._upsert(this.t.formulas, row, (r) => r.id);
       return { rows: [], rowCount: 1 };
     }

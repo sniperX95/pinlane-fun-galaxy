@@ -205,6 +205,11 @@ const MIGRATIONS = [
     file: 'database/reservation-program-schema.sql',
     description: "Programme d'une reservation (plusieurs activites dans une meme visite) en jsonb additif. `type` reste derive du programme pour ne pas toucher aux 260+ lectures existantes ; ops_plan.resource_blocks reste la verite du planning. NULL = reservation mono-activite, comportement inchange.",
   },
+  {
+    id: '0041_formula_effectif_ordre',
+    file: 'database/formula-effectif-ordre-schema.sql',
+    description: "Effectif (pax) et caractere optionnel PAR ETAPE de formule, contrainte d'ordre (order_constraints) PAR FORMULE. Colonnes additives : NULL/false = comportement historique exact. Le store detecte leur presence a la lecture (drapeau de capacite) : avant application, lecture et ecriture restent en forme historique.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

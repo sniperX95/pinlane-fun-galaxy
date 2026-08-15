@@ -815,6 +815,24 @@ async function run() {
     'AUCUNE chaine Fun Galaxy dans l objet, le HTML ou le texte du mail envoye');
   ok(arrivalEnvelope.html.includes(SECOND_CENTER_NAME),
     `le mail porte le nom du centre expediteur dans son habillage (cherche "${SECOND_CENTER_NAME}")`);
+  // PURGE DE COULEUR : la marque, c'est aussi une teinte. Le HTML du mail
+  // reellement envoye ne porte pas le magenta du premier client.
+  ok(!FORBIDDEN_MAGENTA.test(arrivalEnvelope.html),
+    'AUCUN magenta #944292 dans le HTML du mail envoye au client du deuxieme centre');
+  // Le chemin qui peignait CHAQUE lien : un corps AVEC lien markdown, rendu par
+  // le vrai gabarit commun (emailShell + inlineEmailMarkup) pour ce centre.
+  const linkedHtml = opsCommunications.emailShell({
+    title: 'Votre creneau vous attend',
+    eyebrow: 'Info reservation',
+    body: 'Bonjour,\n\nRetrouvez le planning ici : [Reserver](https://exemple.be/reserver).',
+    preheader: 'Votre creneau vous attend',
+    center: { name: SECOND_CENTER_NAME },
+    action: { href: 'https://exemple.be/go', label: 'Ouvrir ma reservation' },
+  });
+  ok(linkedHtml.includes('https://exemple.be/reserver') && linkedHtml.includes('https://exemple.be/go'),
+    'le gabarit rend bien le lien markdown et le bouton (le test ne teste pas du vide)');
+  ok(!FORBIDDEN_MAGENTA.test(linkedHtml),
+    'liens, bouton et eyebrow d un mail du deuxieme centre : zero #944292');
 
   // LE REPLI, et il doit rester honnete : un centre SANS identite configuree
   // repart sur l adresse plateforme, au nom du centre. Jamais une adresse
@@ -905,6 +923,56 @@ async function run() {
   ok(/fiab/i.test(bannerLine),
     'il parle de la fiabilite des chiffres affiches');
 
+  section('[9d] Le moteur marketing compose pour CE centre sans la marque du premier');
+  // EFFET, pas presence : on compose les VRAIS brouillons du deuxieme centre
+  // (composeChannelDraft, buildInstagramDaily, scoreDraft) et on juge ce qui
+  // sort. Les faits viennent du chemin reel (buildCenterFacts lit la meme
+  // connaissance fusionnee que le moteur) ; si le centre n existait pas, le
+  // repli libramont ferait sortir la marque et ces assertions rougiraient.
+  const { buildCenterFacts, scoreDraft } = require(path.join(ROOT, 'lib', 'marketing-agents.js'));
+  const { composeChannelDraft, resolveOccasion } = require(path.join(ROOT, 'lib', 'fungalaxy-brand.js'));
+  const { buildInstagramDaily } = require(path.join(ROOT, 'lib', 'marketing-brain.js'));
+  const secondFacts = buildCenterFacts(SECOND_CENTER_ID);
+  ok(secondFacts.centerName === SECOND_CENTER_NAME,
+    `les faits marketing viennent bien du deuxieme centre (obtenu "${secondFacts.centerName}")`);
+  // formules_decouverte est l occasion PAR DEFAUT (« Les formules Fun
+  // Galaxy... ») ; teambuilding portait « Une equipe Fun Galaxy... ». Tous les
+  // canaux cites par la review, et TOUT ce qui sort est juge : corps, titre,
+  // et les champs servis a l ecran (angle, hook, benefits).
+  const draftLeaks = [];
+  for (const occasionId of ['formules_decouverte', 'teambuilding']) {
+    for (const channel of ['email', 'facebook', 'instagram', 'linkedin', 'promo']) {
+      const draft = composeChannelDraft({ channel, facts: secondFacts, occasion: resolveOccasion(occasionId) });
+      const surface = [draft.title, draft.body, draft.angle, draft.hook, ...(draft.benefits || [])].join('\n');
+      if (FORBIDDEN_BRAND.test(surface)) draftLeaks.push(`${occasionId}/${channel}`);
+    }
+  }
+  ok(draftLeaks.length === 0,
+    `aucun brouillon compose pour ${SECOND_CENTER_NAME} ne cite le premier client (fuites : ${draftLeaks.join(', ') || 'aucune'})`);
+  // Le post Instagram du jour : hashtags derives du CENTRE. '#funGalaxy' etait
+  // ecrit en dur, et '#ardenne' (geographie du premier client) sortait pour
+  // n importe quelle ville.
+  const instaDaily = buildInstagramDaily({
+    today: DATE,
+    outlook: { days: [], medianVisitors: 0 },
+    centerFacts: secondFacts,
+  });
+  ok(instaDaily.hashtags.includes('#StrikeNamur'),
+    `le hashtag de marque vient du nom du centre (obtenus : ${instaDaily.hashtags.join(' ')})`);
+  ok(!instaDaily.hashtags.some((tag) => /fungalaxy/i.test(tag)) && !instaDaily.hashtags.includes('#ardenne'),
+    'ni #funGalaxy ni #ardenne dans les hashtags d un centre qui n est pas en Ardenne');
+  ok(!FORBIDDEN_BRAND.test(`${instaDaily.caption}\n${instaDaily.reason}`),
+    'la legende et la raison du post du jour ne citent pas le premier client');
+  // Le critere email_human notait 90 UNIQUEMENT un email contenant « fun
+  // galaxy » : il doit noter 90 un email qui signe au nom de CE centre.
+  const emailDraft = composeChannelDraft({ channel: 'email', facts: secondFacts, occasion: resolveOccasion('formules_decouverte') });
+  const emailEvaluation = scoreDraft({ text: emailDraft.body, platform: 'email', facts: secondFacts, signals: {} });
+  const emailHumanCheck = (emailEvaluation.checks || []).find((check) => check.id === 'email_human') || null;
+  ok(emailDraft.body.includes(`L'équipe ${SECOND_CENTER_NAME}`),
+    'l email compose signe au nom du centre (le critere a de quoi juger)');
+  ok(emailHumanCheck?.score === 90,
+    `email_human note 90 un email signe « ${SECOND_CENTER_NAME} », sans exiger le premier client (obtenu ${emailHumanCheck?.score})`);
+
   section('[10] Le tunnel porte SES couleurs, et le CSS n en ecrit AUCUNE (blocage C)');
   const clientCss = fs.readFileSync(path.join(ROOT, 'assets', 'pinlane-client.css'), 'utf8');
   const accentBlock = clientCss.slice(0, clientCss.indexOf('/* ---', clientCss.indexOf('body.client-mode, body.public-form')));
@@ -914,6 +982,27 @@ async function run() {
     'le magenta Fun Galaxy a quitte la feuille de style');
   ok(/var\(--tenant-accent\)/.test(accentBlock || clientCss),
     'le parcours client consomme bien le jeton --tenant-accent');
+  // La page publique de DESINSCRIPTION : le bouton « Me reinscrire » etait un
+  // aplat #944292 servi a tous les centres. On rend la vraie page (la fonction
+  // qu api/u.js sert) pour le deuxieme centre, etat retrait effectue, celui qui
+  // montre le bouton.
+  const { renderUnsubscribePage } = require(path.join(ROOT, 'lib', 'marketing-suppression.js'));
+  const unsubPage = renderUnsubscribePage({
+    state: 'removed',
+    email: 'camille.dubois@exemple.be',
+    token: 'a1b2c3d4e5f60718293a4b5c6d7e8f90'.slice(0, 32),
+    centerName: SECOND_CENTER_NAME,
+  });
+  ok(unsubPage.includes('Me reinscrire') && unsubPage.includes(SECOND_CENTER_NAME),
+    'la page de desinscription rend bien le bouton et le nom du centre (le test juge du concret)');
+  ok(!FORBIDDEN_MAGENTA.test(unsubPage) && !FORBIDDEN_BRAND.test(unsubPage),
+    'ni #944292 ni chaine Fun Galaxy sur la page de desinscription du deuxieme centre');
+  // VERIFICATION STATIQUE : la couleur du premier client n existe plus dans les
+  // chemins runtime communs. Les logos fun-galaxy (donnees du client) et les
+  // binaires sont exclus, tout le reste de lib/, api/ et assets/ est scanne.
+  const magentaHits = scanRuntimeForMagenta();
+  ok(magentaHits.length === 0,
+    `#944292 absent des chemins runtime lib/, api/, assets/ (trouve : ${magentaHits.join(', ') || 'rien'})`);
   const brandingSecond = metaSecond.json?.center?.branding || null;
   const brandingFunGalaxy = metaFunGalaxy.json?.center?.branding || null;
   ok(brandingSecond?.accent === SECOND_ACCENT,
@@ -1525,6 +1614,35 @@ function baselineIdentitySlice(centerId) {
 // du site et le domaine d'exploitation du premier client.
 const FORBIDDEN_BRAND = /fun\s*galaxy|fungalaxy|mngfunglxy/i;
 
+// LA COULEUR DE MARQUE du premier client (review adverse 2026-08-15) : la regex
+// de chaines ne voit pas une couleur. Un email entierement neutre en TEXTE
+// peignait encore chaque lien au magenta #944292 releve sur fungalaxy.be.
+// Cette couleur ne doit apparaitre ni dans une sortie composee pour un autre
+// centre, ni dans un chemin runtime commun.
+const FORBIDDEN_MAGENTA = /#944292/i;
+
+// VERIFICATION STATIQUE : #944292 est absent des chemins RUNTIME communs
+// (lib/, api/, assets/). Les fichiers de marque du premier client (logos
+// fun-galaxy) sont des DONNEES de ce client : ils restent exclus, comme les
+// binaires. scripts/ n'est pas scanne (ce gate porte lui-meme la regex).
+function scanRuntimeForMagenta() {
+  const roots = ['lib', 'api', 'assets'];
+  const binaryExt = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.pdf', '.mp4', '.zip']);
+  const isClientBrandFile = (file) => /fun-?galaxy/i.test(path.basename(file));
+  const hits = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (binaryExt.has(path.extname(entry.name).toLowerCase())) continue;
+      if (isClientBrandFile(full)) continue;
+      if (FORBIDDEN_MAGENTA.test(fs.readFileSync(full, 'utf8'))) hits.push(path.relative(ROOT, full));
+    }
+  };
+  for (const root of roots) walk(path.join(ROOT, root));
+  return hits;
+}
+
 async function installTunnelMock(page) {
   const SECOND_BRANDING = consoleBranding;
   const OTHER_BRANDING = baselineBranding('libramont');
@@ -1692,6 +1810,116 @@ async function mutationCounterProof() {
     replacement: "const OCCASION_VALUES = new Set(['anniversaire', 'amis', 'entreprise', 'ecole', 'autre']);",
     label: 'occasion EVG de nouveau jetee a la normalisation',
     probe: async (mutated) => mutated.normalizeOccasion('evg') === 'evg',
+  });
+
+  // Les faits du deuxieme centre par le chemin reel, pour les contre-preuves
+  // marketing qui suivent (module en cache, jamais celui qu on mutile).
+  const { buildCenterFacts } = require(path.join(ROOT, 'lib', 'marketing-agents.js'));
+  const mutationFacts = buildCenterFacts(SECOND_CENTER_ID);
+
+  // COULEUR, contre-preuve 4 : on remet #944292 dans EMAIL_THEME (l etat
+  // d avant la review). La verification STATIQUE des chemins runtime doit le
+  // trouver. La sonde relit les fichiers : aucun rechargement necessaire.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'ops-communications.js'),
+    anchor: "  ink: '#17151F',",
+    replacement: "  ink: '#17151F',\n  brand: '#944292',",
+    label: 'magenta #944292 remis dans EMAIL_THEME',
+    probe: async () => scanRuntimeForMagenta().length === 0,
+  });
+
+  // COULEUR, contre-preuve 5 : chaque lien markdown repeint au magenta (l etat
+  // d avant). Le HTML compose pour le deuxieme centre doit etre pris par la
+  // detection de couleur.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'ops-communications.js'),
+    anchor: 'style="color:${EMAIL_THEME.ink};font-weight:600;"',
+    replacement: 'style="color:#944292;font-weight:600;"',
+    label: 'liens des emails repeints au magenta du premier client',
+    probe: async (mutated) => {
+      const html = mutated.emailShell({
+        title: 'Votre creneau vous attend',
+        body: 'Bonjour,\n\n[Reserver](https://exemple.be/reserver).',
+        preheader: 'x',
+        center: { name: SECOND_CENTER_NAME },
+      });
+      return html.includes('https://exemple.be/reserver') && !FORBIDDEN_MAGENTA.test(html);
+    },
+  });
+
+  // COULEUR, contre-preuve 6 : le bouton « Me reinscrire » de la page de
+  // desinscription repasse en aplat magenta (l etat d avant).
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'marketing-suppression.js'),
+    anchor: 'background:${PAGE_THEME.ink};color:#FFFFFF',
+    replacement: 'background:#944292;color:#FFFFFF',
+    label: 'bouton de reinscription repeint au magenta du premier client',
+    probe: async (mutated) => {
+      const page = mutated.renderUnsubscribePage({
+        state: 'removed',
+        email: 'camille.dubois@exemple.be',
+        token: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+        centerName: SECOND_CENTER_NAME,
+      });
+      return page.includes('Me reinscrire') && !FORBIDDEN_MAGENTA.test(page);
+    },
+  });
+
+  // MARQUE, contre-preuve 7 : '#funGalaxy' remis en dur dans les hashtags du
+  // post du jour (l etat d avant). Les hashtags du deuxieme centre doivent
+  // redevenir porteurs de la marque, et l assertion [9d] tomber.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'marketing-brain.js'),
+    anchor: "    `#${String(centerFacts.centerName || '').replace(/[^a-zA-Z0-9]/g, '')}`,",
+    replacement: "    '#funGalaxy',",
+    label: 'hashtag #funGalaxy remis en dur dans le post du jour',
+    probe: async (mutated) => {
+      const daily = mutated.buildInstagramDaily({
+        today: DATE,
+        outlook: { days: [], medianVisitors: 0 },
+        centerFacts: mutationFacts,
+      });
+      return !daily.hashtags.some((tag) => /fungalaxy/i.test(tag));
+    },
+  });
+
+  // MARQUE, contre-preuve 8 : la substitution de voix retiree du compositeur
+  // (l etat d avant) : l angle par defaut redevient « Les formules Fun
+  // Galaxy... » dans les brouillons de n importe quel centre.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'fungalaxy-brand.js'),
+    anchor: '  const angleLine = speak(occasion.angle);',
+    replacement: "  const angleLine = String(occasion.angle == null ? '' : occasion.angle);",
+    label: 'substitution de voix retiree : l angle redevient celui du premier client',
+    probe: async (mutated) => {
+      const draft = mutated.composeChannelDraft({
+        channel: 'facebook',
+        facts: mutationFacts,
+        occasion: mutated.resolveOccasion('formules_decouverte'),
+      });
+      return !FORBIDDEN_BRAND.test(`${draft.title}\n${draft.body}\n${draft.angle}`);
+    },
+  });
+
+  // MARQUE, contre-preuve 9 : le critere email_human exige de nouveau la
+  // chaine « fun galaxy » (l etat d avant). L email signe au nom du deuxieme
+  // centre doit retomber a 68.
+  await withSourceMutation({
+    file: path.join(ROOT, 'lib', 'marketing-agents.js'),
+    anchor: "    const signed = normalized.includes('bonjour') && normalized.includes(lower(facts.centerName));",
+    replacement: "    const signed = normalized.includes('bonjour') && normalized.includes('fun galaxy');",
+    label: 'email_human exige de nouveau la chaine fun galaxy',
+    probe: async (mutated) => {
+      const { composeChannelDraft, resolveOccasion } = require(path.join(ROOT, 'lib', 'fungalaxy-brand.js'));
+      const draft = composeChannelDraft({
+        channel: 'email',
+        facts: mutationFacts,
+        occasion: resolveOccasion('formules_decouverte'),
+      });
+      const evaluation = mutated.scoreDraft({ text: draft.body, platform: 'email', facts: mutationFacts, signals: {} });
+      const check = (evaluation.checks || []).find((item) => item.id === 'email_human') || null;
+      return check?.score === 90;
+    },
   });
 }
 

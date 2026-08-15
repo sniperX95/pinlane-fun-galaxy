@@ -423,11 +423,16 @@ async function main() {
       const cardStyle = getComputedStyle(card());
       const checkStyle = getComputedStyle(svg);
 
+      // Le montant ROULE quand un choix le change (recette odometre, transform
+      // seul) : l'echafaudage .pl-roll n'existe que pendant le changement, et
+      // il redevient du texte simple apres.
       const total = document.querySelector('.program-total');
       await new Promise((resolve) => setTimeout(resolve, 400));
-      const bumpedBefore = total.classList.contains('is-bumped');
+      const bumpedBefore = Boolean(total.querySelector('.pl-roll'));
       setBookingActivityOption('bowling', 'duration', 2);
-      const bumpedAfter = document.querySelector('.program-total').classList.contains('is-bumped');
+      const bumpedAfter = Boolean(document.querySelector('.program-total .pl-roll'));
+      await new Promise((resolve) => setTimeout(resolve, 320));
+      const rollCleaned = !document.querySelector('.program-total .pl-roll');
 
       return {
         sameNode,
@@ -445,6 +450,7 @@ async function main() {
         checkTransition: checkStyle.transitionProperty,
         bumpedBefore,
         bumpedAfter,
+        rollCleaned,
         iconCount: document.querySelectorAll('#activityPicker .activity-icon svg').length,
       };
     });
@@ -461,7 +467,9 @@ async function main() {
     ok(/transform/.test(polish.cardTransition) && /opacity/.test(polish.checkTransition) && /filter/.test(polish.checkTransition),
       'les retours visuels declarent uniquement les proprietes utiles');
     ok(polish.bumpedBefore === false && polish.bumpedAfter === true,
-      'changer une option fait reagir le montant (classe is-bumped posee)');
+      'changer une option fait ROULER le montant (odometre .pl-roll)');
+    ok(polish.rollCleaned === true,
+      'le roulement fini, le montant redevient du texte simple');
     ok(polish.iconCount === 8, `chaque activite porte son icone (${polish.iconCount}/8)`);
 
     await page.evaluate(() => {

@@ -3314,6 +3314,9 @@ function syncBookingTypeUi() {
   state.booking.type = deriveBookingType();
   document.getElementById('segCarte').classList.toggle('active', mode === 'carte');
   document.getElementById('segFormule').classList.toggle('active', mode === 'formule');
+  // La pastille du selecteur GLISSE jusqu'au choix (recette 3) : la classe du
+  // conteneur pilote sa position, le CSS fait le mouvement.
+  document.getElementById('segCarte').closest('.segmented')?.classList.toggle('is-formule', mode === 'formule');
   const picker = document.getElementById('activityPicker');
   if (picker) picker.classList.toggle('hidden', mode !== 'carte');
   document.getElementById('bowlingBlock').classList.add('hidden');
@@ -3694,18 +3697,52 @@ function renderProgramSummary() {
     ? 'pour cette sélection'
     : (roundedTotal > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
   if (totalEl.getAttribute('data-value') !== nextValue) {
+    const previousTotal = totalEl.getAttribute('data-amount') || '';
     totalEl.setAttribute('data-value', nextValue);
-    totalEl.textContent = nextTotal;
-    // Le montant a change : on le fait respirer une fois. C'est le seul endroit
-    // de l'ecran qui repond a la question « ca me coute combien ? », il doit se
-    // signaler quand il bouge sans jamais clignoter.
-    totalEl.classList.remove('is-bumped');
-    void totalEl.offsetWidth; // force le redemarrage de l'animation
-    totalEl.classList.add('is-bumped');
-    // La classe se retire a la fin : sinon elle reste posee pour toujours et
-    // l'element n'a plus aucun moyen de signaler le CHANGEMENT suivant.
-    totalEl.addEventListener('animationend', () => totalEl.classList.remove('is-bumped'), { once: true });
+    totalEl.setAttribute('data-amount', nextTotal);
+    // Le montant ROULE vers sa nouvelle valeur (recette 8, adaptee en
+    // transform) : chiffre qui monte quand le prix monte, qui descend quand il
+    // baisse. C'est le seul endroit de l'ecran qui repond a « ca me coute
+    // combien ? » : il montre la CONSEQUENCE du geste, sans clignoter.
+    rollNumberTo(totalEl, previousTotal, nextTotal);
   }
+}
+
+// Odometre en transform pur. Chaque caractere qui change roule verticalement
+// dans une petite fenetre (overflow hidden) ; ceux qui ne changent pas ne
+// bougent pas d'un pixel. Longueurs differentes : tout le nombre roule d'un
+// bloc, meme direction. Mouvement reduit : la valeur se pose, point.
+function rollNumberTo(el, previousText, nextText) {
+  if (!previousText || prefersReducedMotion()) {
+    el.textContent = nextText;
+    return;
+  }
+  const up = (parseFloat(nextText.replace(/[^\d.]/g, '')) || 0)
+    >= (parseFloat(previousText.replace(/[^\d.]/g, '')) || 0);
+  const column = (before, after) => {
+    // Roulement vers le haut : [ancien, nouveau], la piste monte d'un demi.
+    // Vers le bas : [nouveau, ancien], la piste part du demi et redescend.
+    const stack = up ? [before, after] : [after, before];
+    return `<span class="pl-roll"><span class="pl-roll-track ${up ? '' : 'is-down'}">${stack
+      .map(ch => `<span>${escapeHtml(ch)}</span>`).join('')}</span></span>`;
+  };
+  let html = '';
+  if (previousText.length === nextText.length) {
+    for (let i = 0; i < nextText.length; i += 1) {
+      html += previousText[i] === nextText[i]
+        ? `<span>${escapeHtml(nextText[i])}</span>`
+        : column(previousText[i], nextText[i]);
+    }
+  } else {
+    html = column(previousText, nextText);
+  }
+  el.innerHTML = html;
+  // La structure de roulement est un echafaudage : une fois posee, la valeur
+  // redevient du texte simple (rien a nettoyer au prochain changement).
+  const guard = el.getAttribute('data-amount');
+  setTimeout(() => {
+    if (el.getAttribute('data-amount') === guard) el.textContent = guard;
+  }, 260);
 }
 
 function toggleBookingActivity(activityId) {
@@ -4223,9 +4260,10 @@ function setStep1Busy(isBusy) {
 const SEAL_MARKUP = [
   '<span class="btn-label">Confirmer la réservation',
   '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>',
-  '<span class="btn-seal" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">',
+  // Le disque : c'est LUI qui reste quand la pilule se dissout (morph assume).
+  '<span class="btn-seal" aria-hidden="true"><span class="btn-seal-disc"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">',
   '<circle class="btn-seal-ring" cx="12" cy="12" r="10" opacity="0.35"/>',
-  '<path class="btn-seal-check" d="M19 7.5 10 17l-5-5"/></svg></span>',
+  '<path class="btn-seal-check" d="M19 7.5 10 17l-5-5"/></svg></span></span>',
 ].join('');
 
 function ensureSealMarkup(button) {
@@ -4412,6 +4450,7 @@ let formulaAnchorMessage = '';      // message de refus de combinaison
 let formulaAnchorSuggestions = [];  // combinaisons proches proposées
 let formulaAnchorBusy = false;      // revalidation en cours
 let formulaAdviceSignature = '';    // avis de confort deja entre en scene
+let formulaAdviceDismissed = '';    // avis que le client a choisi d ecarter
 let formulaJustPicked = null;       // heure qui vient d'etre retenue (capsule)
 
 function resetFormulaProgramChoice() {
@@ -4882,6 +4921,17 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
   // re-rend à chaque choix, rejouer l'animation à chaque rendu ferait clignoter
   // l'écran (même règle que le motion d'exploitation de la console).
   const signature = `${notice.fromActivityId}>${notice.toActivityId}:${notice.gapMinutes}`;
+  // « Garder cet horaire » est une DECISION : l'avis écarté ne revient pas
+  // tant que l'attente n'a pas changé ; le maillon continue de dire l'écart
+  // réel (l'information ne disparaît jamais, seul le conseil se tait).
+  if (signature === formulaAdviceDismissed) {
+    if (!formulaAnchorBusy) formulaAdviceSignature = '';
+    return `
+      <li class="visit-rail-link">
+        <span class="visit-rail-line" aria-hidden="true"></span>
+        <span class="visit-rail-gap">${escapeHtml(formatGapText(gap))} entre les deux</span>
+      </li>`;
+  }
   const isNew = !formulaAnchorBusy && signature !== formulaAdviceSignature;
   if (!formulaAnchorBusy) formulaAdviceSignature = signature;
   return `
@@ -4890,9 +4940,26 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
       <div class="visit-rail-advice ${isNew ? 'is-appearing' : ''}" role="status">
         <strong>${escapeHtml(notice.gapLabel || formatGapText(gap))} d’attente entre ${escapeHtml(notice.fromLabel || previousStep.activity.label)} et ${escapeHtml(notice.toLabel || nextStep.activity.label)}</strong>
         <span>${escapeHtml(note)}</span>
-        ${canTighten ? `<button type="button" class="visit-rail-advice-action" onclick="tightenFormulaAnchorGap('${escapeHtml(nextStep.activity.activityId)}','${escapeHtml(notice.tightenTime)}')">Enchaîner à ${escapeHtml(notice.tightenTime)}</button>` : ''}
+        <div class="visit-rail-advice-actions">
+          ${canTighten ? `<button type="button" class="visit-rail-advice-action" onclick="tightenFormulaAnchorGap('${escapeHtml(nextStep.activity.activityId)}','${escapeHtml(notice.tightenTime)}')">Enchaîner à ${escapeHtml(notice.tightenTime)}</button>` : ''}
+          <button type="button" class="visit-rail-advice-ghost" onclick="dismissFormulaAdvice('${escapeHtml(signature)}')">Garder cet horaire</button>
+        </div>
       </div>
     </li>`;
+}
+
+// Écarter l'avis de confort : le client a vu, il assume son horaire. La carte
+// sort par le geste de sortie de la grammaire, puis les maillons se réécrivent
+// en place (aucune reconstruction du fil).
+async function dismissFormulaAdvice(signature) {
+  formulaAdviceDismissed = signature;
+  const advice = document.querySelector('.visit-rail-advice');
+  if (advice && !prefersReducedMotion()) {
+    advice.classList.add('is-leaving');
+    await new Promise((resolve) => setTimeout(resolve, 150)); // = --dur-exit
+  }
+  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  if (!syncFormulaAnchorUi(formule, { busy: false })) renderSlots(formule);
 }
 
 // « 2 h 30 », « 45 min » : même lecture que côté moteur (lib/ops-engine.js).

@@ -3721,6 +3721,39 @@ body.customer-mode .client-footer {
   outline-offset: 2px;
 }
 
+/* La carte de recommandation propose DEUX gestes (patron beautifului.dev :
+   accepter / garder) : enchainer, ou garder son horaire. Garder est un choix,
+   pas un echec : l'avis se retire et l'attente reste dite par le maillon. */
+#clientView .visit-rail-advice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+#clientView .visit-rail-advice-ghost {
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, color, transform;
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-out-strong);
+}
+
+#clientView .visit-rail-advice-ghost:hover { background: var(--surface); color: var(--text); }
+#clientView .visit-rail-advice-ghost:active { transform: scale(0.96); }
+
+#clientView .visit-rail-advice-ghost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 #clientView .visit-rail-step-free .anchor-free-pass { margin: 0; }
 
 #clientView .anchor-row {
@@ -4495,11 +4528,112 @@ body.modal-open { overflow: hidden; }
    elles sont ramenees a UN SEUL langage, celui que le depot porte deja.
      - ce qui repond au doigt : --dur-press (160 ms)
      - ce qui glisse d'un point A a un point B : --dur-move (180 ms)
-     - ce qui arrive : --dur-enter (240 ms), --ease-out-strong
+     - ce qui arrive : --dur-enter (240 ms), ressort leger --ease-spring
+       (bounce ~0.12, la signature smoothui, jamais un rebond enfantin)
      - ce qui part : --dur-exit (150 ms), toujours plus court qu'une entree
-   Aucune duree ne depasse 260 ms, aucun rebond enfantin, transform et opacity
-   seuls, et `prefers-reduced-motion` coupe tout en fin de section.
+   Aucune duree ne depasse 260 ms, transform et opacity seuls, et
+   `prefers-reduced-motion` coupe tout en fin de section.
+   La ou la console garde ses survols immobiles (DESIGN.md §5), le TUNNEL
+   assume la main visible : ce qui s'effleure se souleve d'un pixel, ce qui se
+   presse s'enfonce, ce qui arrive se pose avec un ressort leger. Un seul
+   registre, partout, borne a ce bloc.
    ========================================================================== */
+#clientView { --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1); }
+
+/* RECETTE 7 : l'APPARITION ECHELONNEE. A l'arrivee sur une etape, ses cartes
+   se posent l'une apres l'autre (10 px, 30 ms d'ecart, ressort leger). Le
+   retard est BORNE par min() : jamais plus de 8 elements, jamais plus de
+   210 ms, quel que soit le nombre de cartes. */
+#clientView .step[data-arrived] .activity-card {
+  animation: pl-rise var(--dur-enter) var(--ease-spring) both;
+  animation-delay: calc(min(var(--i, 0), 7) * 30ms);
+}
+
+#clientView .step[data-arrived] .visit-rail-step,
+#clientView .step[data-arrived] .visit-rail-link,
+#clientView .step[data-arrived] .formula-anchor-status-zone {
+  animation: pl-rise var(--dur-enter) var(--ease-spring) both;
+}
+
+#clientView .step[data-arrived] .visit-rail-step:nth-child(2),
+#clientView .step[data-arrived] .visit-rail-link:nth-child(2) { animation-delay: 40ms; }
+#clientView .step[data-arrived] .visit-rail-step:nth-child(3),
+#clientView .step[data-arrived] .visit-rail-link:nth-child(3) { animation-delay: 80ms; }
+#clientView .step[data-arrived] .visit-rail-step:nth-child(n+4) { animation-delay: 120ms; }
+#clientView .step[data-arrived] .formula-anchor-status-zone { animation-delay: 160ms; }
+
+#clientView .step[data-arrived] .recap-item,
+#clientView .step[data-arrived] .recap-decision {
+  animation: pl-rise var(--dur-enter) var(--ease-spring) both;
+}
+
+#clientView .step[data-arrived] .recap-item:nth-child(2) { animation-delay: 30ms; }
+#clientView .step[data-arrived] .recap-item:nth-child(3) { animation-delay: 60ms; }
+#clientView .step[data-arrived] .recap-item:nth-child(4) { animation-delay: 90ms; }
+#clientView .step[data-arrived] .recap-item:nth-child(n+5) { animation-delay: 120ms; }
+#clientView .step[data-arrived] .recap-decision { animation-delay: 90ms; }
+
+/* RECETTE 3 : l'indicateur GLISSANT du selecteur A la carte / Nos Formules.
+   Le fond accent ne saute plus d'un bouton a l'autre : une pastille glisse
+   jusqu'au choix (FLIP en transform pur, 180 ms). Le texte du bouton actif
+   passe en contraste par-dessus la pastille. */
+@media (min-width: 641px) {
+  #clientView .segmented {
+    position: relative;
+    isolation: isolate;
+  }
+  #clientView .segmented::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    left: 0;
+    width: calc(50% - var(--space-1));
+    height: 100%;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    transform: translateX(0);
+    transition: transform var(--dur-move) var(--ease-in-out-strong);
+  }
+  #clientView .segmented.is-formule::before {
+    transform: translateX(calc(100% + var(--space-2)));
+  }
+  #clientView .seg-btn.active {
+    background: transparent;
+    border-color: transparent;
+  }
+}
+
+/* RECETTE 8 : le PRIX QUI ROULE. Quand le total change, chaque chiffre qui
+   change roule verticalement dans le sens de la variation (transform seul,
+   200 ms). Le nombre dit « ton geste vient de changer le prix ». */
+.pl-roll {
+  display: inline-flex;
+  overflow: hidden;
+  /* La fenetre fait UNE ligne de haut : sans elle, la pile des deux valeurs
+     doublerait la hauteur du montant le temps du roulement. */
+  height: 1.1em;
+  vertical-align: bottom;
+}
+
+.pl-roll-track {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.1;
+  animation: pl-roll-up 200ms var(--ease-out-strong) both;
+}
+
+.pl-roll-track.is-down { animation-name: pl-roll-down; }
+
+@keyframes pl-roll-up {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@keyframes pl-roll-down {
+  from { transform: translateY(-50%); }
+  to { transform: translateY(0); }
+}
 
 /* RECETTE 5 et 11 : la PRESSION. Tout ce qui se clique dans le parcours
    s'enfonce du meme geste. C'est ce qui donne au tunnel une seule main. */
@@ -4528,24 +4662,49 @@ body.modal-open { overflow: hidden; }
   transition-timing-function: var(--ease-out-strong);
 }
 
+/* La MAIN VISIBLE : ce que le curseur effleure se souleve d'un pixel. Meme
+   geste sur les cartes d'activite, les formules, l'entree sur mesure et les
+   pastilles d'heure (elles, d'un leger grossissement, elles sont petites). */
+@media (hover: hover) and (pointer: fine) {
+  /* `:not(:active)` : la pression garde le dernier mot sur le survol. */
+  #clientView .activity-card:not(.is-off):hover:not(:has(.activity-toggle:active)) { transform: translateY(-1px); }
+  #clientView .formule-card:not(.disabled):hover:not(:active) { transform: translateY(-1px); }
+  #clientView .bespoke-entry:hover:not(:active) { transform: translateY(-1px); }
+  #clientView .occasion-chip:hover:not(:active) { transform: translateY(-1px); }
+  #clientView .anchor-chip:not(:disabled):not(.active):hover:not(:active) { transform: scale(1.05); }
+  #clientView .anchor-suggestion:hover:not(:active),
+  #clientView .visit-rail-advice-action:hover:not(:active) { transform: translateY(-1px); }
+  #clientView .btn-primary:not(:disabled):hover:not(:active) { transform: translateY(-1px); }
+}
+
+#clientView .formule-card,
+#clientView .bespoke-entry,
+#clientView .anchor-chip {
+  transition-property: background-color, border-color, color, box-shadow, transform;
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-out-strong);
+}
+
 /* RECETTE 6 : la CAPSULE du creneau retenu. L'heure qui vient d'etre choisie
    ressort une fois, juste assez pour que l'oeil sache ou son clic a atterri.
    Une seule pastille bouge, et seulement quand la valeur CHANGE. */
 @keyframes pl-chip-pop {
   0% { transform: scale(1); }
-  45% { transform: scale(1.09); }
+  45% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
 
 #clientView .anchor-chip.is-just-picked {
-  animation: pl-chip-pop var(--dur-press) var(--ease-out-strong);
+  animation: pl-chip-pop var(--dur-enter) var(--ease-spring);
 }
 
-/* RECETTES 4 et 12 : le SCEAU. Le bouton de confirmation est le clic a plus
-   fort enjeu du parcours. Il accuse reception (le libelle s'efface, un disque
-   se pose), il travaille (le disque respire, en opacite seule), puis il SCELLE
-   (la coche se dessine trait par trait). Aucune largeur, aucune hauteur
-   animee : le bouton garde sa boite, c'est son contenu qui change d'etat. */
+/* RECETTES 4 et 12 : le SCEAU, morph ASSUME. Le bouton de confirmation est le
+   clic a plus fort enjeu du parcours. Au clic, la PILULE SE DISSOUT (fond,
+   bordure et halo s'effacent : proprietes de peinture deja transitionnees au
+   survol) et il ne reste qu'un DISQUE accent qui se pose avec un ressort ;
+   il respire le temps de l'appel reseau (opacite seule), puis la coche se
+   dessine trait par trait et scelle. La boite du bouton ne change jamais de
+   taille : aucune largeur ni hauteur animee, zero saut de mise en page. */
 #clientView .btn-seal {
   position: absolute;
   inset: 0;
@@ -4553,13 +4712,34 @@ body.modal-open { overflow: hidden; }
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: scale(0.6);
+  transform: scale(0.35);
   pointer-events: none;
-  transition: opacity var(--dur-press) var(--ease-out-strong), transform var(--dur-enter) var(--ease-out-strong);
+  transition: opacity var(--dur-press) var(--ease-out-strong), transform var(--dur-enter) var(--ease-spring);
+}
+
+#clientView .btn-seal-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-contrast);
 }
 
 #clientView .btn-primary.is-sealing,
 #clientView .btn-primary.is-sealed { position: relative; }
+
+/* La pilule rend son encre : le disque du sceau devient la seule matiere. */
+body.client-mode #clientView .btn-primary.is-sealing,
+body.client-mode #clientView .btn-primary.is-sealed,
+#clientView .btn-primary.is-sealing,
+#clientView .btn-primary.is-sealed {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
 
 #clientView .btn-primary.is-sealing .btn-seal,
 #clientView .btn-primary.is-sealed .btn-seal {
@@ -4617,11 +4797,30 @@ body.modal-open { overflow: hidden; }
   #clientView .anchor-period-tab:active:not(:disabled),
   #clientView .anchor-track-nudge:active:not(:disabled),
   #clientView .visit-rail-advice-action:active,
+  #clientView .visit-rail-advice-ghost:active,
   #clientView .anchor-suggestion:active,
   #clientView .formula-order-fallback-btn:active,
   #clientView .seg-btn:active,
   #clientView .occasion-chip:active { transform: none; }
   #clientView .anchor-chip.is-just-picked { animation: none; }
+  /* Tout ce que la grammaire expressive ajoute se pose instantanement. */
+  #clientView .step[data-arrived] .activity-card,
+  #clientView .step[data-arrived] .visit-rail-step,
+  #clientView .step[data-arrived] .visit-rail-link,
+  #clientView .step[data-arrived] .formula-anchor-status-zone,
+  #clientView .step[data-arrived] .recap-item,
+  #clientView .step[data-arrived] .recap-decision { animation: none; }
+  #clientView .activity-card:not(.is-off):hover,
+  #clientView .formule-card:not(.disabled):hover,
+  #clientView .bespoke-entry:hover,
+  #clientView .occasion-chip:hover,
+  #clientView .anchor-chip:not(:disabled):not(.active):hover,
+  #clientView .anchor-suggestion:hover,
+  #clientView .visit-rail-advice-action:hover,
+  #clientView .btn-primary:not(:disabled):hover { transform: none; }
+  #clientView .segmented::before { transition: none; }
+  /* Le prix qui roule : c'est le JS qui s'abstient (prefersReducedMotion) et
+     pose la valeur directement : aucun .pl-roll n'est construit. */
   #clientView .btn-primary.is-sealing .btn-seal-ring { animation: none; }
   #clientView .btn-seal,
   #clientView .btn-primary.is-sealing .btn-label,

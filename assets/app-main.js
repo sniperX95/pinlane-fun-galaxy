@@ -4321,6 +4321,7 @@ let formulaAnchorData = null;       // bloc `anchors` renvoyé par le serveur
 let formulaAnchorMessage = '';      // message de refus de combinaison
 let formulaAnchorSuggestions = [];  // combinaisons proches proposées
 let formulaAnchorBusy = false;      // revalidation en cours
+let formulaAdviceSignature = '';    // avis de confort deja entre en scene
 
 function resetFormulaProgramChoice() {
   formulaArrivalChoice = '';
@@ -4555,8 +4556,16 @@ function getSlotComfortNotices() {
 
 // « Enchaîner à 16:30 » : le geste que propose l'avis. Il déplace UNE ancre,
 // jamais toute la visite, et passe par le chemin normal (revalidation serveur).
+// L'avis SORT avant le re-rendu, vers l'activité qu'il vient de recoller :
+// le mouvement dit ce qui vient de se passer au lieu de faire disparaître un
+// encadré d'une image à l'autre.
 async function tightenFormulaAnchorGap(activityId, time) {
   if (!activityId || !time) return;
+  const advice = document.querySelector('.visit-rail-advice');
+  if (advice && !prefersReducedMotion()) {
+    advice.classList.add('is-leaving');
+    await new Promise((resolve) => setTimeout(resolve, 150)); // = --dur-exit
+  }
   await setFormulaAnchorTime(activityId, time);
 }
 
@@ -4726,6 +4735,7 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
   const notice = notices.find(item => item.toActivityId === nextStep.activity.activityId
     && item.fromActivityId === previousStep.activity.activityId);
   if (!notice) {
+    if (!formulaAnchorBusy) formulaAdviceSignature = '';
     return `
       <li class="visit-rail-link">
         <span class="visit-rail-line" aria-hidden="true"></span>
@@ -4738,10 +4748,16 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
     : 'Ce temps se passe sur place, entre les deux activités.';
   const canTighten = Boolean(notice.tightenTime)
     && (nextStep.activity.times || []).some(item => item.time === notice.tightenTime);
+  // L'avis n'entre QU'UNE FOIS, et seulement quand il est neuf : le picker se
+  // re-rend à chaque choix, rejouer l'animation à chaque rendu ferait clignoter
+  // l'écran (même règle que le motion d'exploitation de la console).
+  const signature = `${notice.fromActivityId}>${notice.toActivityId}:${notice.gapMinutes}`;
+  const isNew = !formulaAnchorBusy && signature !== formulaAdviceSignature;
+  if (!formulaAnchorBusy) formulaAdviceSignature = signature;
   return `
     <li class="visit-rail-link is-advice">
       <span class="visit-rail-line" aria-hidden="true"></span>
-      <div class="visit-rail-advice" role="status">
+      <div class="visit-rail-advice ${isNew ? 'is-appearing' : ''}" role="status">
         <strong>${escapeHtml(notice.gapLabel || formatGapText(gap))} d’attente entre ${escapeHtml(notice.fromLabel || previousStep.activity.label)} et ${escapeHtml(notice.toLabel || nextStep.activity.label)}</strong>
         <span>${escapeHtml(note)}</span>
         ${canTighten ? `<button type="button" class="visit-rail-advice-action" onclick="tightenFormulaAnchorGap('${escapeHtml(nextStep.activity.activityId)}','${escapeHtml(notice.tightenTime)}')">Enchaîner à ${escapeHtml(notice.tightenTime)}</button>` : ''}

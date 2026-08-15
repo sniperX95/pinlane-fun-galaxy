@@ -264,6 +264,7 @@ async function checkProperties(page) {
     'pl-step-enter-forward', 'pl-step-enter-back',
     'pl-step-leave-forward', 'pl-step-leave-back',
     'pl-client-enter',
+    'pl-advice-in', 'pl-advice-out',
   ];
   const allowed = new Set(['transform', 'opacity']);
   TUNNEL_ANIMATIONS.forEach((name) => {

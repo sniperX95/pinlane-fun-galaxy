@@ -3443,6 +3443,38 @@ body.customer-mode .client-footer {
   font-variant-numeric: tabular-nums;
 }
 
+/* L'avis de confort RACONTE : il descend en place quand le choix du client le
+   fait apparaitre, et il repart VERS l'activite qu'on vient de recoller quand
+   le client accepte d'enchainer. Entree 240 ms, sortie 150 ms, transform et
+   opacity seuls. */
+@keyframes pl-advice-in {
+  from { opacity: 0; transform: translate3d(0, -10px, 0) scale(0.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes pl-advice-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.98); }
+}
+
+#clientView .visit-rail-advice.is-appearing {
+  animation: pl-advice-in var(--dur-enter) var(--ease-out-strong) both;
+  will-change: transform, opacity;
+}
+
+#clientView .visit-rail-advice.is-leaving {
+  animation: pl-advice-out var(--dur-exit) var(--ease-in-out-strong) both;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .visit-rail-advice.is-appearing,
+  #clientView .visit-rail-advice.is-leaving {
+    animation: none;
+    will-change: auto;
+  }
+}
+
 #clientView .visit-rail-advice {
   display: flex;
   flex-direction: column;

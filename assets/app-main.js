@@ -4346,7 +4346,11 @@ function formulaHasAnchorUi() {
 // Défaut zéro friction : à l'arrivée sur l'étape, la combinaison valide
 // proposée par le serveur est pré-sélectionnée : chaque ancre reste modifiable.
 function adoptDefaultFormulaAnchors() {
-  if (state.booking.type !== 'formule' || !formulaHasAnchorUi()) return;
+  // Une VISITE composée à la carte a exactement les mêmes ancres qu'une
+  // formule : elle mérite la même proposition d'ouverture. Tant que cette
+  // condition exigeait « formule », le client arrivait sur l'écran sans
+  // aucune heure retenue.
+  if (!['formule', 'visite'].includes(state.booking.type) || !formulaHasAnchorUi()) return;
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   let changed = false;
   formulaAnchorData.activities.forEach((activity) => {
@@ -4806,24 +4810,40 @@ function renderFormulaAnchorRows(formule) {
   return `<ol class="visit-rail">${parts.join('')}</ol>`;
 }
 
+// Le dernier maillon du fil : tout ce que le client a réservé SANS horaire.
+// Pour une formule ce sont les avantages inclus ; pour une visite composée à la
+// carte ce sont ses propres activités (minigolf, arcades, billards...), qui
+// n'apparaissaient nulle part et donnaient un écran qui amputait sa visite.
 function renderFormulaFreePassBlock(formule) {
-  const passItems = (formulaAnchorData?.freePass || []).map(item => item.label);
-  if (!passItems.length && formule) {
-    passItems.push(...getFormulaFreePassIds(formule).map(id => ACTIVITY_LABELS[id] || id));
+  const entries = (formulaAnchorData?.freePass || []).map(item => ({
+    label: item.label,
+    detail: item.detail || '',
+    onSitePayment: item.onSitePayment === true,
+  }));
+  if (!entries.length && formule) {
+    entries.push(...getFormulaFreePassIds(formule).map(id => ({ label: ACTIVITY_LABELS[id] || id, detail: '', onSitePayment: false })));
   }
   const drinks = formulaAnchorData?.drinks || [];
-  if (!passItems.length && !drinks.length) return '';
+  if (!entries.length && !drinks.length) return '';
+  const included = Boolean(formule);
+  const badge = included ? 'Pass liberté' : 'Sans horaire';
+  const headline = included
+    ? '<strong><span class="only-desktop">Inclus, à votre rythme sur place, quand vous voulez</span><span class="only-mobile">Inclus, quand vous voulez</span></strong>'
+    : '<strong><span class="only-desktop">Le reste de votre visite, à votre rythme sur place</span><span class="only-mobile">À votre rythme sur place</span></strong>';
+  const note = included
+    ? '<span class="only-desktop">Aucune heure à choisir : ces avantages se vivent librement pendant toute votre visite.</span><span class="only-mobile">Sans horaire : à vivre librement.</span>'
+    : '<span class="only-desktop">Aucune heure à choisir : vous en profitez quand vous voulez pendant votre visite.</span><span class="only-mobile">Sans horaire : quand vous voulez.</span>';
   return `
     <div class="anchor-free-pass">
       <div class="anchor-free-head">
-        <span class="anchor-free-badge">Pass liberté</span>
-        <strong><span class="only-desktop">Inclus, à votre rythme sur place, quand vous voulez</span><span class="only-mobile">Inclus, quand vous voulez</span></strong>
+        <span class="anchor-free-badge">${escapeHtml(badge)}</span>
+        ${headline}
       </div>
       <div class="anchor-free-items">
-        ${passItems.map(label => `<span class="anchor-free-item">${escapeHtml(label)}</span>`).join('')}
+        ${entries.map(entry => `<span class="anchor-free-item">${escapeHtml(entry.label)}${entry.detail ? `<small>${escapeHtml(entry.detail)}</small>` : ''}${entry.onSitePayment ? '<em>réglé sur place</em>' : ''}</span>`).join('')}
         ${drinks.map(label => `<span class="anchor-free-item anchor-free-drink">${escapeHtml(label)}</span>`).join('')}
       </div>
-      <small><span class="only-desktop">Aucune heure à choisir : ces avantages se vivent librement pendant toute votre visite.</span><span class="only-mobile">Sans horaire : à vivre librement.</span></small>
+      <small>${note}</small>
     </div>`;
 }
 

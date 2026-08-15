@@ -251,6 +251,20 @@ function toFormulaSlot(scenario, snapshot, duration) {
   };
 }
 
+// Ce que le client a choisi pour une activite libre, en une ligne. AUCUN
+// montant ici : le prix a une seule source d'autorite (le programme rendu a
+// l'etape 1 et le recapitulatif final), le repeter creerait une deuxieme
+// verite qui divergera.
+function describeFreeVisitItem(item) {
+  if (item.units && item.hours) {
+    const hours = Number(item.hours);
+    const label = Number.isInteger(hours) ? `${hours} h` : `${Math.floor(hours)} h ${String(Math.round((hours - Math.floor(hours)) * 60)).padStart(2, '0')}`;
+    return `${item.units} table${item.units > 1 ? 's' : ''} · ${label}`;
+  }
+  if (item.games) return `${item.games} partie${item.games > 1 ? 's' : ''}`;
+  return '';
+}
+
 function firstLaserBlock(scenario) {
   return (scenario?.resourceBlocks || []).find((block) => block.resourceType === 'laser_arena') || null;
 }
@@ -620,6 +634,27 @@ module.exports = async (req, res) => {
         } catch (error) {
           anchorMeta = null;
         }
+        // LA VISITE ENTIERE, PAS SEULEMENT SES CRENEAUX. Le document de formule
+        // synthetique ne porte QUE le bowling et le laser, par conception : les
+        // activites libres ne doivent participer a aucun calcul de
+        // disponibilite (lib/visit-program.js). Consequence non voulue : elles
+        // ne remontaient nulle part et l'ecran des creneaux amputait la visite
+        // du client (Movsar, 2026-08-15 : « on voit pas toutes les activites
+        // genre mini golf arcade etc »). On les rend ICI, en affichage pur,
+        // avec la verite du catalogue sur leur tarif.
+        if (anchorMeta && Array.isArray(program.freeItems) && program.freeItems.length) {
+          anchorMeta = {
+            ...anchorMeta,
+            freePass: program.freeItems.map((item) => ({
+              activityId: item.activityId,
+              label: item.name,
+              // « regle sur place » est une DONNEE (aucun tarif saisi pour
+              // cette activite dans ce centre), jamais une supposition.
+              onSitePayment: item.priceKnown !== true,
+              detail: describeFreeVisitItem(item),
+            })),
+          };
+        }
         const guardContext = {
           centerId,
           date,
@@ -635,10 +670,46 @@ module.exports = async (req, res) => {
         };
         const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game);
         if (!hasAnchorChoice) {
-          // Le client n'a pas encore choisi ses heures : on rend la matiere
-          // premiere (les heures possibles par activite), comme pour une formule
-          // a plusieurs ancres.
-          respondVisit([], anchorMeta && anchorMeta.ok ? '' : 'Aucune combinaison disponible ce jour-là.', { anchors: anchorMeta });
+          // ZERO FRICTION, comme pour une formule : on ne rend pas une liste
+          // vide. Une liste vide faisait afficher au client, DES SON ARRIVEE
+          // sur l'ecran, un encadre rouge « Cette combinaison n'est pas
+          // possible » alors qu'il n'avait rien choisi du tout. On compose donc
+          // la premiere combinaison valide et on la propose.
+          const defaultTimes = anchorMeta && anchorMeta.ok
+            ? buildDefaultAnchorTimes({
+              center: getCenter(centerId),
+              formula: visitFormula,
+              date,
+              pax,
+              model: getFormulaAnchorModel(visitFormula),
+              candidatesByActivity: Object.fromEntries((anchorMeta.activities || [])
+                .map((activity) => [activity.activityId, activity.times.map((item) => Math.round(timeToNum(item.time) * 60))])),
+              reservations: snapshot.reservations,
+              laneStatuses: snapshot.laneStatuses,
+              blocks: snapshot.blocks || [],
+            })
+            : null;
+          const defaultCombo = defaultTimes
+            ? evaluateAnchoredCombination({
+              center: getCenter(centerId),
+              formula: visitFormula,
+              date,
+              pax,
+              anchorTimes: defaultTimes,
+              laserPlacement: 'scheduled',
+              reservations: snapshot.reservations,
+              laneStatuses: snapshot.laneStatuses,
+              blocks: snapshot.blocks || [],
+            })
+            : null;
+          const defaultSlots = defaultCombo && defaultCombo.ok
+            ? filterSlotsByFinalGuards([toFormulaSlot(defaultCombo.scenario, snapshot, program.plannedItems[0]?.duration || 0)], guardContext)
+            : [];
+          respondVisit(
+            defaultSlots,
+            defaultSlots.length ? '' : 'Aucune combinaison disponible ce jour-là. Essayez une autre date ou un autre groupe.',
+            { anchors: anchorMeta },
+          );
           return;
         }
         const plan = planningAgent(

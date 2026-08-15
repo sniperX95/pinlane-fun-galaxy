@@ -126,9 +126,35 @@ const MEASURE = () => {
     .filter((el) => visible(el) && el.scrollWidth > el.clientWidth + 4 && ['auto', 'scroll'].includes(getComputedStyle(el).overflowX))
     .filter((el) => !el.dataset.overflow || el.dataset.overflow === 'none')
     .map((el) => (el.className || el.tagName).toString().split(' ')[0]);
+  // LARGEUR REELLEMENT UTILISEE par la coquille du tunnel. Mesure du
+  // 2026-08-15 : sur 1920 px elle prenait 744 px, soit 39 % de l ecran, et le
+  // contenu ne commencait qu a 756 px du bord. « tout est recroqueville [...]
+  // ca fait trop serre » (Movsar).
+  const wrap = document.querySelector('#clientView .client-wrap');
+  const wrapWidth = wrap ? Math.round(wrap.getBoundingClientRect().width) : 0;
+  // TRONCATURE REELLE : on retire le clamp le temps d une mesure et on compare
+  // la hauteur naturelle a la hauteur affichee. Un `-webkit-line-clamp` qui
+  // coupe ne se voit sur aucune autre metrique (scrollHeight reste egal).
+  const clipped = [...scope.querySelectorAll('.activity-name, .activity-price, .activity-note, .formule-name, .formule-card-list li, .slot-card-time, .slot-card-end, .slot-card-tag, .slot-card-meta')]
+    .filter(visible)
+    .filter((el) => {
+      const shown = el.getBoundingClientRect().height;
+      const clamp = el.style.webkitLineClamp;
+      const white = el.style.whiteSpace;
+      el.style.webkitLineClamp = 'unset';
+      el.style.whiteSpace = 'normal';
+      const natural = el.getBoundingClientRect().height;
+      el.style.webkitLineClamp = clamp;
+      el.style.whiteSpace = white;
+      return natural > shown + 1;
+    })
+    .map((el) => `${(el.className || el.tagName).toString().split(' ')[0]}:${(el.textContent || '').trim().slice(0, 18)}`);
   return {
     scrollHeight: Math.round(root.scrollHeight),
     clientHeight: Math.round(root.clientHeight),
+    wrapWidth,
+    wrapShare: root.clientWidth ? Math.round((wrapWidth / root.clientWidth) * 100) : 0,
+    clipped,
     fits: root.scrollHeight <= root.clientHeight,
     screens: Math.round((root.scrollHeight / root.clientHeight) * 100) / 100,
     hScroll: root.scrollWidth > root.clientWidth,
@@ -209,10 +235,17 @@ async function walkTunnel(page, session, viewport, theme) {
 //     MESURES (panier de six activites, le plus lourd accepte), le gate
 //     empeche qu'ils remontent ; l'ecart de +1,5 % absorbe la variation de
 //     longueur des dates (« 22 août » vs « 26 septembre »).
+// LARGEUR MINIMALE UTILISEE par palier. Le tunnel doit EXPLOITER l ecran :
+// bride a min(1080px), il prenait 39 % d un 1920 et le contenu ne commencait
+// qu a 756 px du bord. Au-dela du plafond (1750 px) la part baisse
+// mecaniquement, et c est voulu : une coquille infinie ne sert plus personne,
+// le plancher devient donc une largeur en pixels.
 const VIEWPORTS = [
-  { width: 1536, height: 730, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
-  { width: 1280, height: 610, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
-  { width: 390, height: 844, budgets: { step1: 3.62, step2: 2.28, step3: 1.73, step4: 1.84, step5: 1.08 } },
+  { width: 1536, height: 730, minShare: 88, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 1280, height: 610, minShare: 88, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 1920, height: 900, minShare: 85, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 2560, height: 1300, minWidth: 1600, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 390, height: 844, minShare: 92, budgets: { step1: 3.05, step2: 2.2, step3: 1.73, step4: 1.8, step5: 1.08 } },
 ];
 
 async function main() {
@@ -245,6 +278,21 @@ async function main() {
         });
         ok(walk.unnamedButtons === 0,
           `lecteur d ecran : aucun bouton sans nom accessible sur les 5 etapes (${walk.unnamedButtons})`);
+        // LA LARGEUR EST-ELLE EXPLOITEE ? Mesuree sur l etape 1, la plus large.
+        const shell = walk.step1;
+        if (viewport.minWidth) {
+          ok(shell.wrapWidth >= viewport.minWidth,
+            `largeur : la coquille fait ${shell.wrapWidth} px (plancher ${viewport.minWidth} px, plafond assume au-dela)`);
+        } else {
+          ok(shell.wrapShare >= viewport.minShare,
+            `largeur : la coquille prend ${shell.wrapShare} % de l ecran (${shell.wrapWidth} px, plancher ${viewport.minShare} %)`);
+        }
+        // ELARGIR N EST PAS ROGNER : aucun libelle coupe, a aucun palier.
+        ['step1', 'step2', 'step4'].forEach((stepKey) => {
+          const m = walk[stepKey];
+          ok(m.clipped.length === 0,
+            `${stepKey} : aucun libelle tronque (${m.clipped.length}${m.clipped.length ? ' : ' + m.clipped.slice(0, 3).join(' | ') : ''})`);
+        });
       }
     }
 
@@ -283,6 +331,25 @@ async function main() {
     const restored = await walkTunnel(page, null, referenceViewport, 'light');
     ok(restored.step2.fits === true,
       `restauration inverse : l etape creneau retient un ecran (${restored.step2.scrollHeight} px)`);
+
+    // LA LARGEUR, remise a l etroit expres : la coquille revient a son ancien
+    // plafond de 1080 px et le plancher de largeur doit rougir.
+    const cssWide = fs.readFileSync(CLIENT_CSS, 'utf8');
+    const wideAnchor = '#clientView .client-wrap { width: min(94vw, 1750px); }';
+    ok(cssWide.split(wideAnchor).length - 1 === 1, 'ancre de mutation de largeur unique');
+    let narrow = null;
+    try {
+      fs.writeFileSync(CLIENT_CSS, cssWide.replace(wideAnchor, '#clientView .client-wrap { width: min(1080px, 100%); }'));
+      const walk = await walkTunnel(page, null, referenceViewport, 'light');
+      narrow = walk.step1;
+    } finally {
+      fs.writeFileSync(CLIENT_CSS, cssWide);
+    }
+    ok(narrow.wrapShare < 88,
+      `coquille rebridee a 1080 px : elle ne prend plus que ${narrow.wrapShare} % de l ecran -> le plancher de largeur ROUGIRAIT`);
+    const wideAgain = (await walkTunnel(page, null, referenceViewport, 'light')).step1;
+    ok(wideAgain.wrapShare >= 88,
+      `restauration inverse : la coquille reprend l ecran (${wideAgain.wrapShare} %, ${wideAgain.wrapWidth} px)`);
 
     // Les cartes muettes du 2026-08-15, reproduites expres : nom explicite
     // vide ET contenu retire de l'arbre (aria-hidden). Le balayage CDP doit

@@ -2,27 +2,31 @@
 //
 // Objectif pose par Movsar (2026-08-15) : « eviter le plus de devoir scroller
 // vers le bas, genre de tout voir d'une traite ». Ce gate mesure la hauteur
-// REELLE de chaque etape dans un vrai navigateur, aux deux themes, en largeur
-// ordinateur et au telephone.
+// REELLE de chaque etape dans un vrai navigateur, aux deux themes, sur les
+// VIEWPORTS REELS : l'ancienne fenetre de 900 px de haut n'existe sur aucun
+// laptop (1920x1080 + zoom systeme 125 % + chrome du navigateur = ~730 px
+// utiles ; un petit laptop en donne ~610). C'est la que « une etape = un
+// ecran » se prouve, en PIXELS, jamais sur un ratio arrondi.
 //
-// LES TROIS PIEGES QU'IL REND IMPOSSIBLES :
+// LES QUATRE PIEGES QU'IL REND IMPOSSIBLES :
 //   1. tenir dans l'ecran en CACHANT de l'information : chaque activite choisie
 //      par le client et chaque heure de la journee doivent rester dans le DOM ;
 //   2. tenir dans l'ecran en RABOTANT : aucune cible tactile sous 44 px, aucun
-//      texte du parcours sous 12 px ;
+//      texte du parcours sous 11,5 px ;
 //   3. un defilement interne INVISIBLE : tout bloc qui defile en lui-meme doit
-//      le dire (etat d'debordement + boutons de deplacement) et rester
-//      parcourable au clavier.
+//      le dire (etat de debordement + boutons de deplacement) et rester
+//      parcourable au clavier ;
+//   4. une carte MUETTE au lecteur d'ecran : chaque bouton du parcours doit
+//      porter un nom accessible non vide dans l'arbre d'accessibilite REEL
+//      (CDP), pas seulement un texte visuel (bug attrape en prod le
+//      2026-08-15 : les huit cartes d'activite rendaient « button » sans nom).
 //
-// LE BUDGET N'EST PAS LE MEME PARTOUT, et c'est mesure, pas decrete :
-//   - a partir de 1100 px, les etapes 2 a 5 tiennent dans UN ecran ;
-//   - l'etape 1 porte le plus de decisions (date, groupe, jusqu'a huit
-//     activites et leurs reglages, le programme, l'action) : son budget est
-//     etabli sur la mesure, et le gate empeche qu'il REMONTE ;
-//   - sur telephone, l'objectif est une etape et demie au plus.
+// LE BUDGET : sur ordinateur (1536x730 et 1280x610), CHAQUE etape tient dans
+// UN ecran, comparaison en pixels. Sur telephone (390x844), les budgets sont
+// etablis sur la mesure et le gate empeche qu'ils REMONTENT.
 //
-// Contre-epreuve par mutation : on rend une etape trop haute expres, le gate
-// rougit, on restaure par edition inverse.
+// Contre-epreuves par mutation : on rend une etape trop haute expres, et on
+// rend les cartes muettes expres ; le gate rougit ; restauration inverse.
 //
 // Lancement : node scripts/tunnel-one-screen-check.js
 const fs = require('fs');
@@ -33,6 +37,7 @@ const { chromium } = require('playwright-core');
 const database = require('../lib/database');
 
 const CLIENT_CSS = path.join(ROOT, 'assets/pinlane-client.css');
+const APP_JS = path.join(ROOT, 'assets/app-main.js');
 const PORT = Number(process.env.PINLANE_ONESCREEN_PORT || 4215);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -137,10 +142,22 @@ const MEASURE = () => {
   };
 };
 
-async function walkTunnel(page, width, theme) {
+// L'arbre d'accessibilite REEL (CDP), pas une heuristique : c'est ce que recoit
+// un lecteur d'ecran. Un bouton visible sans nom est un bouton qu'on ne peut
+// pas actionner sans voir.
+async function unnamedButtons(session) {
+  const { nodes } = await session.send('Accessibility.getFullAXTree');
+  return nodes
+    .filter((node) => node.role?.value === 'button' && !node.ignored)
+    .filter((node) => !(node.name?.value || '').trim()).length;
+}
+
+async function walkTunnel(page, session, viewport, theme) {
   const out = {};
-  await page.setViewportSize({ width, height: 900 });
-  await page.goto(`${BASE_URL}/?v=one-${width}-${theme}-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+  const ax = { total: 0 };
+  const sweep = async () => { if (session) ax.total += await unnamedButtons(session); };
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  await page.goto(`${BASE_URL}/?v=one-${viewport.width}-${theme}-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => typeof window.setView === 'function' && typeof window.goStep === 'function', null, { timeout: 15000 });
   await page.evaluate((t) => { document.documentElement.setAttribute('data-theme', t); }, theme);
   await page.evaluate((d) => {
@@ -151,14 +168,17 @@ async function walkTunnel(page, width, theme) {
   }, DATE);
   await page.waitForTimeout(450);
   out.step1 = await page.evaluate(MEASURE);
+  await sweep();
 
   await page.evaluate(() => goStep2());
   await page.waitForTimeout(1200);
   out.step2 = await page.evaluate(MEASURE);
+  await sweep();
 
   await page.evaluate(() => { const i = getCurrentFormulaAnchorSlotIndex(); if (i >= 0) selectSlot(i); });
   await page.waitForTimeout(500);
   out.step3 = await page.evaluate(MEASURE);
+  await sweep();
 
   await page.evaluate(() => {
     document.getElementById('fName').value = 'Marie Dupont';
@@ -168,41 +188,51 @@ async function walkTunnel(page, width, theme) {
   });
   await page.waitForTimeout(700);
   out.step4 = await page.evaluate(MEASURE);
+  await sweep();
 
   await page.evaluate(async () => { await confirmBooking(); });
   await page.waitForTimeout(900);
   out.step5 = await page.evaluate(MEASURE);
+  await sweep();
+  out.unnamedButtons = ax.total;
   return out;
 }
 
-// Budgets EN ECRANS, etablis sur la mesure. 1 = tient dans la fenetre.
-// L'etape 1 porte le plus de decisions du parcours (date, groupe, huit
-// activites et leurs reglages, le programme, l'action) : la ramener a un ecran
-// exigerait d'en cacher une partie ou de descendre sous les planchers de
-// lisibilite. Son budget la borne donc au lieu de mentir.
-// Valeurs MESUREES sur ce parcours (six activites cochees, le panier le plus
-// lourd que le tunnel accepte), arrondies au centieme superieur. Elles bornent
-// ce qui est atteint aujourd'hui : le gate empeche la hauteur de REMONTER.
-const BUDGET = {
-  1280: { step1: 1.92, step2: 1, step3: 1, step4: 1, step5: 1 },
-  390: { step1: 3.36, step2: 2.12, step3: 1.6, step4: 1.8, step5: 1.15 },
-};
+// LES VIEWPORTS REELS, et le budget EN ECRANS de chacun. 1 = tient dans la
+// fenetre, comparaison en pixels.
+//   - 1536x730 : laptop 1920x1080, zoom systeme 125 %, chrome du navigateur.
+//     C'est l'ecran de Movsar : la reference du rejet du 2026-08-15 (l'etape 1
+//     y faisait 1,96 ecran REEL pendant que le gate validait « un ecran » sur
+//     une fenetre fictive de 900 px).
+//   - 1280x610 : petit laptop apres zoom.
+//   - 390x844 : telephone reel (iPhone 12-15). Les budgets telephone sont des
+//     MESURES (panier de six activites, le plus lourd accepte), le gate
+//     empeche qu'ils remontent ; l'ecart de +1,5 % absorbe la variation de
+//     longueur des dates (« 22 août » vs « 26 septembre »).
+const VIEWPORTS = [
+  { width: 1536, height: 730, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 1280, height: 610, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 390, height: 844, budgets: { step1: 3.62, step2: 2.28, step3: 1.73, step4: 1.84, step5: 1.08 } },
+];
 
 async function main() {
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1536, height: 730 } });
+  const session = await page.context().newCDPSession(page);
+  await session.send('Accessibility.enable');
   const consoleErrors = [];
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
   const measured = {};
   try {
-    for (const width of [1280, 390]) {
+    for (const viewport of VIEWPORTS) {
       for (const theme of ['light', 'dark']) {
-        console.log(`\n[${width} px / ${theme}]`);
-        const walk = await walkTunnel(page, width, theme);
-        measured[`${width}-${theme}`] = walk;
-        Object.entries(walk).forEach(([stepKey, m]) => {
-          const budget = BUDGET[width][stepKey];
+        console.log(`\n[${viewport.width}x${viewport.height} px / ${theme}]`);
+        const walk = await walkTunnel(page, session, viewport, theme);
+        measured[`${viewport.width}-${theme}`] = walk;
+        ['step1', 'step2', 'step3', 'step4', 'step5'].forEach((stepKey) => {
+          const m = walk[stepKey];
+          const budget = viewport.budgets[stepKey];
           // Comparaison en PIXELS, jamais sur le ratio arrondi : 904 px pour une
           // fenetre de 900 donnait « 1 ecran » et passait, alors que la page
           // defilait bel et bien de 4 px.
@@ -213,12 +243,14 @@ async function main() {
           ok(m.smallTextCount === 0, `${stepKey} : aucun texte sous 11,5 px (${m.smallTextCount}${m.smallTextCount ? ' : ' + m.smallText.join(', ') : ''})`);
           ok(m.silentScrollers.length === 0, `${stepKey} : aucun defilement interne muet${m.silentScrollers.length ? ` (${m.silentScrollers.join(', ')})` : ''}`);
         });
+        ok(walk.unnamedButtons === 0,
+          `lecteur d ecran : aucun bouton sans nom accessible sur les 5 etapes (${walk.unnamedButtons})`);
       }
     }
 
     // --- L'INFORMATION N'A PAS ETE SACRIFIEE A LA HAUTEUR --------------------
     console.log('\n[Rien n a ete cache pour tenir dans l ecran]');
-    const desktop = measured['1280-light'];
+    const desktop = measured['1536-light'];
     ok(desktop.step1.activityCards === 8, `etape 1 : les 8 activites du centre sont proposees (${desktop.step1.activityCards})`);
     ok(desktop.step2.chipsInDom === 53, `etape creneau : les 53 heures du jour restent dans le DOM (${desktop.step2.chipsInDom})`);
     // Les activites SANS creneau choisies par le client sont nommees a l'etape
@@ -230,8 +262,9 @@ async function main() {
     });
     ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length})`);
 
-    // --- CONTRE-EPREUVE PAR MUTATION ----------------------------------------
+    // --- CONTRE-EPREUVES PAR MUTATION ---------------------------------------
     console.log('\n[Contre-epreuve par mutation : ce gate sait-il rougir ?]');
+    const referenceViewport = VIEWPORTS[0];
     const css = fs.readFileSync(CLIENT_CSS, 'utf8');
     const anchor = '#clientView .formula-anchor-picker {';
     ok(css.split(anchor).length - 1 === 1, 'ancre de mutation unique');
@@ -239,17 +272,41 @@ async function main() {
     let mutatedFits = null;
     try {
       fs.writeFileSync(CLIENT_CSS, css.replace(anchor, `${anchor}\n  padding-bottom: 400px;`));
-      const walk = await walkTunnel(page, 1280, 'light');
+      const walk = await walkTunnel(page, null, referenceViewport, 'light');
       mutatedHeight = walk.step2.scrollHeight;
       mutatedFits = walk.step2.fits;
     } finally {
       fs.writeFileSync(CLIENT_CSS, css);
     }
-    ok(mutatedFits === false && mutatedHeight > 900,
+    ok(mutatedFits === false && mutatedHeight > referenceViewport.height,
       `400 px ajoutes a l etape creneau : elle deborde de la fenetre (${mutatedHeight} px) -> le budget ROUGIRAIT`);
-    const restored = await walkTunnel(page, 1280, 'light');
+    const restored = await walkTunnel(page, null, referenceViewport, 'light');
     ok(restored.step2.fits === true,
       `restauration inverse : l etape creneau retient un ecran (${restored.step2.scrollHeight} px)`);
+
+    // Les cartes muettes du 2026-08-15, reproduites expres : nom explicite
+    // vide ET contenu retire de l'arbre (aria-hidden). Le balayage CDP doit
+    // rougir, sinon il ne protege rien.
+    const appJs = fs.readFileSync(APP_JS, 'utf8');
+    const labelAnchor = "const hint = activityPriceHint(activity, pax);";
+    const textAnchor = '<span class="activity-text">';
+    ok(appJs.split(labelAnchor).length - 1 === 1 && appJs.split(textAnchor).length - 1 === 1,
+      'ancres de mutation accessibilite uniques');
+    let mutedButtons = null;
+    try {
+      fs.writeFileSync(APP_JS, appJs
+        .replace(labelAnchor, 'return "";\n  const hint = activityPriceHint(activity, pax);')
+        .replace(textAnchor, '<span class="activity-text" aria-hidden="true">'));
+      const walk = await walkTunnel(page, session, referenceViewport, 'light');
+      mutedButtons = walk.unnamedButtons;
+    } finally {
+      fs.writeFileSync(APP_JS, appJs);
+    }
+    ok(mutedButtons >= 8,
+      `cartes rendues muettes expres : ${mutedButtons} boutons sans nom dans l arbre reel -> le balayage ROUGIRAIT`);
+    const restoredAx = await walkTunnel(page, session, referenceViewport, 'light');
+    ok(restoredAx.unnamedButtons === 0,
+      `restauration inverse : plus aucun bouton muet (${restoredAx.unnamedButtons})`);
   } finally {
     await browser.close();
     server.close();

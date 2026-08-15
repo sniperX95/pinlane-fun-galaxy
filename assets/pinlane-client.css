@@ -538,11 +538,19 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 /* --- Segmented type d'activité : sélection = accent --------------------- */
+/* Deux choix, deux colonnes : la troisième colonne fantôme laissait un tiers
+   de la rangée vide et le contrôle semblait mal calé. */
 #clientView .segmented {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
 }
+
+/* Marges des blocs de l'étape Contact : elles vivaient en style inline dans le
+   HTML, ce qui interdisait à la mise en colonnes (>= 1100 px) de les annuler. */
+#clientView .occasion-field { margin-top: var(--space-5); }
+#clientView .request-field { margin-top: var(--space-4); }
+#clientView .step3-info { margin-top: var(--space-5); }
 
 #clientView .seg-btn {
   display: inline-flex;
@@ -4627,4 +4635,355 @@ body.modal-open { overflow: hidden; }
   #clientView .formula-anchor-status-zone .btn-primary,
   #clientView .formula-anchor-status-zone .anchor-suggestion,
   #clientView .formula-anchor-status-zone .formula-order-fallback-btn { transition: none; }
+}
+
+/* ==========================================================================
+   UNE ETAPE = UN ECRAN, AUX VIEWPORTS REELS
+   L'ancien contrat se prouvait sur une fenetre de 900 px de haut qui n'existe
+   pas : un laptop reel donne ~730 px utiles (1920x1080, zoom systeme 125 %,
+   chrome du navigateur), un petit laptop ~610. Mesure en prod : l'etape 1
+   faisait 1,96 ecran REEL. Ce bloc vit en FIN de feuille : a specificite
+   egale il gagne sur les reglages plus haut, c'est lui qui fait foi.
+   Rien n'est cache : les 8 activites, les 53 heures et les 4 activites libres
+   restent dans le DOM et atteignables (le gate one-screen le prouve) ; seuls
+   le rembourrage, les redites et la place perdue sont repris.
+   ========================================================================== */
+@media (min-width: 1100px) {
+  /* --- Le chrome rend ce qu'il ne merite pas ----------------------------- */
+  body.client-mode header {
+    min-height: 56px;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+  body.client-mode .logo { height: 36px; }
+  #clientView { padding-top: var(--space-3); }
+  /* « Espace equipe » redit le bouton Staff de l'en-tete, toujours visible a
+     cette largeur : le pied de page cede sa ligne a toutes les etapes. */
+  body.client-mode .client-footer { display: none; }
+  /* L'accueil garde son identite, en UNE ligne calme : passe la promesse
+     marketing, c'est la decision qui merite l'ecran. Le prefixe
+     body.client-mode est obligatoire : la regle de marque du haut de feuille
+     le porte, et sans lui le clamp 28-38px gagnait la cascade. */
+  #clientView[data-step='1'] .hero-title { margin-bottom: var(--space-3); }
+  #clientView[data-step='1'] .hero-kicker { display: none; }
+  body.client-mode #clientView[data-step='1'] .hero-title h1 { font-size: 21px; }
+  #clientView .progress { margin-bottom: var(--space-2); }
+  /* Le rail de progression appartient aux cinq pastilles, pas a la page : le
+     conteneur prend la largeur de son contenu et le rail (base 100 %) se cale
+     dessous, exactement aussi large que le fil qu'il raconte. */
+  #clientView .progress { width: fit-content; margin-inline: auto; }
+
+  /* --- Etape 1 : choisir a gauche, regler a droite, decider en bas ------- */
+  /* La colonne de gauche empile date, action et demande sur mesure SANS trou :
+     la carte des activites (droite) court sur les trois rangees, la hauteur de
+     la rangee 1 n'impose donc plus 230 px de vide sous « Date et joueurs ». */
+  #clientView #step1:not(.hidden) {
+    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+  }
+  #clientView #step1 .step1-col-when { grid-column: 1; grid-row: 1; }
+  #clientView #step1 .step1-col-what { grid-column: 2; grid-row: 1 / span 3; }
+  #clientView #step1 > .step-cta-bar { grid-column: 1; grid-row: 2; }
+  #clientView #step1 > .bespoke-entry { grid-column: 1; grid-row: 3; align-self: start; }
+  #clientView .step1-col-when .card { padding: var(--space-4); }
+  /* L'exemple de la demande sur mesure tient en deux lignes ici : le detail
+     complet vit dans la fenetre qu'ouvre ce bouton. */
+  #clientView #step1 .bespoke-entry-text small {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  /* La carte des activites devient une grille a deux colonnes : le titre et
+     le selecteur partagent la premiere rangee, les huit cartes font face au
+     panneau de reglages (qui court sur deux rangees), et le programme ferme
+     la colonne des cartes. `#activityPicker` passe en display:contents pour
+     que ses deux enfants (grille, panneau) se placent dans CETTE grille.
+     `:has(> .segmented)` designe LA carte du choix d'activites et elle seule :
+     un `.card` nu ici bat `.hidden` en specificite et remettrait a l'ecran
+     les blocs historiques masques (piege deja paye plus haut dans la feuille,
+     mesure : l'etape triplait). */
+  #clientView .step1-col-what .card:has(> .segmented) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--space-4);
+    row-gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+  }
+  #clientView .step1-col-what .card:has(> .segmented):has(.activity-configurator.is-visible) {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 336px);
+  }
+  #clientView .step1-col-what .card:has(> .segmented) > .card-head {
+    grid-column: 1;
+    grid-row: 1;
+    margin-bottom: 0;
+  }
+  #clientView .step1-col-what .card:has(> .segmented) > .segmented {
+    grid-column: -2 / -1;
+    grid-row: 1;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(126px, 1fr);
+    grid-template-columns: none;
+    justify-self: end;
+  }
+  #clientView .step1-col-what .card:has(> .segmented) > .activity-picker { display: contents; }
+  /* En mode formule le picker est masque : display:contents (plus fort que
+     .hidden a cette specificite) ne doit PAS le remettre a l'ecran. */
+  #clientView .step1-col-what .card:has(> .segmented) > .activity-picker.hidden { display: none; }
+  #clientView #step1 .activity-grid { grid-column: 1; grid-row: 2; align-self: start; }
+  #clientView #step1 .activity-configurator.is-visible {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    align-self: start;
+    margin-top: 0;
+  }
+  #clientView .step1-col-what .card:has(> .segmented) > #programSummary {
+    grid-column: 1;
+    align-self: start;
+  }
+  #clientView .step1-col-what .card:has(> .segmented) > #typeAlert { grid-column: 1 / -1; }
+  #clientView .step1-col-what .card:has(> .segmented) > #typeAlert:empty { display: none; }
+  #clientView #step1 .program-summary { margin-top: 0; }
+
+  /* Les cartes d'activite prennent la hauteur de leur contenu (jamais un nom
+     ou un prix coupe pour tenir dans 80 px fixes) ; sans panneau de reglages
+     elles s'etalent sur quatre colonnes au lieu de laisser un vide a droite. */
+  #clientView #step1 .activity-card { height: auto; min-height: 64px; }
+  #clientView #step1 .activity-icon { width: 30px; height: 30px; }
+  #clientView #step1 .activity-toggle { grid-template-columns: 30px minmax(0, 1fr) 20px; padding: 8px 10px; gap: 8px; }
+  #clientView .step1-col-what .card:has(> .segmented):not(:has(.activity-configurator.is-visible)) .activity-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* Panneau de reglages : l'etiquette au-dessus de ses pastilles, rangs serres.
+     Les pastilles se partagent la colonne au lieu de passer a la ligne : c'est
+     le retour a la ligne qui faisait 590 px d'un panneau de quatre reglages. */
+  #clientView #step1 .activity-config-row-inner {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 8px 10px;
+  }
+  #clientView #step1 .activity-config-label {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  #clientView #step1 .activity-config-controls .activity-option-row {
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  }
+  /* 44 px : le plancher tactile exact, rien de plus. */
+  #clientView #step1 .dur-pill.sm,
+  #clientView #step1 .dur-pill.xs { min-height: 44px; padding: 4px 6px; font-size: 12.5px; line-height: 1.25; }
+  #clientView #step1 .dur-pill.sm .price { font-size: 11.5px; }
+  #clientView #step1 .activity-option-stack { gap: 4px; }
+  #clientView #step1 .activity-configurator-head { padding: 7px 10px; }
+
+  /* Sous le titre « Date et joueurs », la question qui le repete n'apprend
+     rien ; meme chose pour la consigne du choix d'activites. Le titre reste. */
+  #clientView #step1 .card-head .card-desc { display: none; }
+  #clientView #step1 .card-head { align-items: center; }
+
+  /* Le programme en LIGNE DE DECISION : le compte d'activites, le total et sa
+     note. Le detail par activite est DEJA sous les yeux a cette largeur : la
+     carte cochee et sa pastille de reglage active sont a cote ; la liste le
+     redisait mot pour mot et coutait 190 px. Sur telephone, ou les reglages
+     sont loin, la liste complete demeure. */
+  #clientView #step1 .program-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: var(--space-4);
+    padding: 10px var(--space-4);
+  }
+  #clientView #step1 .program-summary-head { margin-bottom: 0; }
+  #clientView #step1 .program-title { display: none; }
+  #clientView #step1 .program-count { font-size: 12.5px; color: var(--text); font-weight: 600; }
+  #clientView #step1 .program-list { display: none; }
+  #clientView #step1 .program-price-block {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    padding-left: 0;
+    border-left: 0;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  #clientView #step1 .program-total { margin: 0; font-size: 18px; }
+  #clientView #step1 .program-total-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  #clientView #step1 .bespoke-entry { padding: 10px 14px; margin-top: var(--space-2); }
+  #clientView #step1 .bespoke-entry-icon { width: 34px; height: 34px; }
+
+  /* --- Etape 2 : les deux activites d'aplomb, le pass en ligne ----------- */
+  #clientView #step2 .card { padding: var(--space-3) var(--space-5) var(--space-4); }
+  #clientView #step2 .card-head { margin-bottom: var(--space-1); }
+  #clientView #step2 .card-icon { width: 32px; height: 32px; }
+  /* Deux etapes de visite cote a cote se calent sur la meme hauteur et leurs
+     PISTES s'alignent : la tete puis les heures, et les options propres a une
+     activite (laser sur place) descendent sous sa piste. Le vide residuel de
+     la colonne courte tombe en bas de sa boite, jamais au milieu. */
+  #clientView .visit-rail { align-items: stretch; }
+  #clientView .visit-rail-step { display: flex; flex-direction: column; }
+  #clientView .visit-rail-step .anchor-row { flex: 1 1 auto; }
+  #clientView .anchor-row .anchor-onsite { order: 3; }
+  /* Le pass liberte en UNE ligne qui s'enroule : badge, titre et activites se
+     suivent (l'en-tete passe en display:contents pour rejoindre la rangee). */
+  #clientView .anchor-free-pass {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+  #clientView .anchor-free-pass .anchor-free-head { display: contents; }
+  #clientView .anchor-free-items { display: contents; }
+  #clientView .anchor-free-item { padding: 2px 10px; }
+  /* Le resume en DEUX colonnes : la regle historique posait les colonnes sans
+     poser la grille (le conteneur restait un flex column, mesure : cinq lignes
+     empilees). */
+  #clientView .formula-visit-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+    row-gap: var(--space-1);
+    align-items: baseline;
+  }
+  #clientView .formula-program-panel { padding: var(--space-3) var(--space-4); }
+  #clientView #step2 > .btn-secondary { margin-top: var(--space-2); }
+
+  /* --- Etape 3 : l'occasion et la demande cote a cote -------------------- */
+  #clientView #step3 .card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-6);
+    row-gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+  }
+  #clientView #step3 .card > .card-head { grid-column: 1 / -1; margin-bottom: 0; }
+  #clientView #step3 .card > .contact-grid { grid-column: 1 / -1; }
+  #clientView #step3 .occasion-field:not(.request-field) { grid-column: 1; grid-row: 3; margin-top: 0; }
+  #clientView #step3 .request-field { grid-column: 2; grid-row: 3; margin-top: 0; }
+  #clientView #step3 .request-field textarea.input { min-height: 72px; }
+  #clientView #step3 .step3-info { grid-column: 1 / -1; margin-top: 0; }
+  #clientView #step3 .step-actions { grid-column: 1 / -1; margin-top: 0; }
+
+  /* --- Etape 4 : un recapitulatif dense, la decision a hauteur d'oeil ---- */
+  #clientView #step4 .card { padding: var(--space-4) var(--space-5) var(--space-4); }
+  #clientView #step4 .card-head { margin-bottom: var(--space-2); }
+  #clientView #step4 .card-icon { width: 32px; height: 32px; }
+  #clientView #step4 .recap-item { padding: 8px 0; font-size: 13px; }
+  /* Six activites en pleine largeur coutaient 312 px : deux colonnes. */
+  #clientView #step4 .recap-program-value {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6);
+  }
+  #clientView #step4 .recap-program-item { padding: 5px 0; }
+  #clientView #step4 .recap-note {
+    margin-top: var(--space-2);
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+
+  /* --- Etape 5 : la confirmation tient devant soi ------------------------ */
+  body.client-mode #clientView .success-wrap {
+    margin-top: var(--space-2);
+    padding: var(--space-6);
+    gap: var(--space-3);
+  }
+}
+
+/* Laptop reel (1920x1080 avec zoom systeme 125 % = ~730 px utiles) : le titre
+   marketing cede l'ecran a la reservation (l'identite reste dans l'en-tete du
+   site), et les onglets de moment cedent aux affordances propres de la piste
+   (fondus de debordement, fleches, clavier) : les 53 heures restent toutes
+   atteignables, rien d'autre ne change. */
+@media (min-width: 1100px) and (max-height: 780px) {
+  #clientView .hero-title { display: none; }
+  #clientView { padding-top: var(--space-2); }
+  #clientView .anchor-period-tabs { display: none; }
+  #clientView #step2 > .btn-secondary { margin-top: var(--space-1); height: 44px; }
+  #clientView .formula-anchor-status-zone .formula-program-panel { padding: var(--space-2) var(--space-3); }
+}
+
+/* Petit laptop (1280x610 apres zoom) : la meme information, sans un pixel de
+   rembourrage superflu. Aucune cible ne descend sous 44 px. */
+@media (min-width: 1100px) and (max-height: 680px) {
+  #clientView { padding-top: var(--space-2); padding-bottom: var(--space-1); }
+  #clientView main { padding-bottom: 0; }
+  #clientView .activity-configurator-head { display: none; }
+  #clientView .anchor-free-head strong { font-size: 12.5px; }
+  #clientView .progress { margin-bottom: var(--space-1); }
+  #clientView .progress-step { min-height: 28px; }
+  #clientView .progress-rail { margin-top: var(--space-1); }
+  #clientView #step1 .activity-config-row-inner { padding: 4px 8px; gap: 2px; }
+  #clientView #step1 .activity-config-name,
+  #clientView #step1 .activity-config-hint { font-size: 12px; line-height: 1.3; }
+  #clientView #step1 .activity-config-controls .activity-option-row { padding: 2px; }
+  #clientView #step1 .activity-option-pills { padding: 2px; }
+  #clientView #step1 .activity-option-stack { gap: 3px; }
+  /* Etape 2 : la date rejoint le titre, chaque rangee rend ses marges. */
+  #clientView #step2 .card-head > div:last-child > div:last-child {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  #clientView #step2 .card { padding-bottom: var(--space-2); }
+  #clientView .anchor-row { padding: var(--space-1) var(--space-2); }
+  #clientView .visit-rail-step { padding-bottom: var(--space-1); }
+  #clientView .visit-rail { gap: var(--space-2); }
+  #clientView .anchor-free-pass { padding: var(--space-1) var(--space-3); }
+  /* La phrase du pass liberte prend sa forme courte : meme information, une
+     seule rangee (les libelles longs vivent sur les ecrans hauts). */
+  #clientView .anchor-free-pass .only-desktop { display: none; }
+  #clientView .anchor-free-pass .only-mobile { display: inline; }
+  #clientView .anchor-free-item { padding: 1px 8px; font-size: 12px; }
+  #clientView #step2 > .btn-secondary { margin-top: 2px; }
+  #clientView .formula-visit-summary { row-gap: 2px; }
+  #clientView .formula-plan-confirm { height: 44px; }
+  #clientView .visit-rail-link { padding-bottom: 0; min-height: 0; }
+  #clientView .formula-anchor-status-zone .formula-program-panel { padding: var(--space-1) var(--space-3); }
+  /* Etape 1 : le bandeau programme en une ligne stricte. */
+  #clientView #step1 .program-summary { padding: 4px var(--space-3); }
+  #clientView #step1 .activity-grid { gap: 6px; }
+  #clientView #step1 .activity-name { line-height: 1.15; }
+  #clientView #step1 .activity-price { line-height: 1.25; }
+  #clientView .card { padding: var(--space-3) var(--space-4); }
+  #clientView .card-head .card-icon { display: none; }
+  #clientView .card-head { margin-bottom: var(--space-2); }
+  /* Etape 1 */
+  #clientView .step1-col-when .card { padding: var(--space-3); }
+  #clientView .step1-col-when .grid-2 { gap: var(--space-3); }
+  #clientView #step1 .activity-card { min-height: 56px; }
+  #clientView #step1 .activity-toggle { padding: 6px 8px; }
+  #clientView #step1 .bespoke-entry-text small { display: none; }
+  #clientView #step1 .bespoke-entry { padding: 8px 12px; }
+  #clientView #step1 .activity-config-row-inner { padding: 6px 8px; }
+  /* Etape 2 */
+  #clientView #step2 .card { padding: var(--space-2) var(--space-4) var(--space-3); }
+  #clientView #step2 .card-head { margin-bottom: 0; }
+  #clientView .anchor-row { padding: var(--space-2); gap: var(--space-1); }
+  #clientView .anchor-periods { gap: var(--space-1); }
+  #clientView .visit-rail-step { padding-bottom: var(--space-2); }
+  #clientView .formula-program-panel { padding: var(--space-2) var(--space-3); }
+  #clientView .visit-line { font-size: 12.5px; }
+  #clientView .visit-line strong { font-size: 13px; }
+  #clientView #step2 > .btn-secondary { margin-top: var(--space-1); height: 44px; }
+  /* Etape 3 */
+  #clientView #step3 .card { row-gap: var(--space-2); }
+  #clientView #step3 .request-field textarea.input { min-height: 56px; }
+  #clientView .occasion-chips { margin-top: var(--space-2); gap: var(--space-1); }
+  #clientView .step3-info { padding: var(--space-2) var(--space-3); }
+  /* Etape 4 */
+  #clientView #step4 .recap-item { padding: 6px 0; }
+  #clientView #step4 .recap-program-item { padding: 3px 0; }
+  #clientView #step4 .recap-note { margin-top: var(--space-1); padding: 6px 10px; font-size: 12px; }
+  /* Etape 5 */
+  body.client-mode #clientView .success-wrap { padding: var(--space-4) var(--space-6); margin-top: 0; }
+  body.client-mode #clientView .success-wrap h2 { font-size: clamp(26px, 4vw, 34px); }
+  #clientView .confetti-hint { padding: var(--space-3); }
 }

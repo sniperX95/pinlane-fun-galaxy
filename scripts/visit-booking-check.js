@@ -480,8 +480,21 @@ async function main() {
       const measured = await page.evaluate(() => {
         const cards = [...document.querySelectorAll('#activityPicker .activity-card')];
         const rects = cards.map(card => card.getBoundingClientRect());
-        const heights = rects.map(rect => rect.height);
         const columns = new Set(rects.map(rect => Math.round(rect.left))).size;
+        // Les cartes d'une MEME RANGEE partagent leur hauteur (rangs de grille) ;
+        // d'une rangee a l'autre la hauteur suit le contenu, jamais un texte
+        // coupe ni un debordement hors de la carte.
+        const rows = new Map();
+        rects.forEach((rect) => {
+          const key = Math.round(rect.top);
+          rows.set(key, [...(rows.get(key) || []), rect.height]);
+        });
+        const rowSpread = Math.max(...[...rows.values()]
+          .map(heights => Math.max(...heights) - Math.min(...heights)));
+        const overflowing = cards.filter((card) => {
+          const toggle = card.querySelector('.activity-toggle');
+          return toggle && toggle.scrollHeight > toggle.clientHeight + 1;
+        }).length;
         const grid = document.querySelector('[data-role="activity-grid"]').getBoundingClientRect();
         const settings = document.querySelector('[data-role="activity-configurator"]').getBoundingClientRect();
         const summary = document.querySelector('.program-summary');
@@ -489,8 +502,10 @@ async function main() {
         return {
           cards: cards.length,
           columns,
-          heightSpread: Math.max(...heights) - Math.min(...heights),
+          rowSpread,
+          overflowing,
           settingsGap: settings.top - grid.bottom,
+          settingsBeside: settings.left >= grid.right + 4 && Math.abs(settings.top - grid.top) <= 4,
           visibleSettings: document.querySelectorAll('.activity-config-row.is-visible').length,
           summaryItems: document.querySelectorAll('.program-item').length,
           summaryColumns,
@@ -507,10 +522,20 @@ async function main() {
     layouts.forEach((layout) => {
       ok(layout.cards === 8 && layout.columns === layout.expectedColumns,
         `${layout.width}px : 8 cartes sur ${layout.columns} colonne(s)`);
-      ok(layout.heightSpread <= 1,
-        `${layout.width}px : ecart de hauteur ${layout.heightSpread.toFixed(1)}px entre les cartes`);
-      ok(layout.settingsGap >= 8 && layout.settingsGap <= 16,
-        `${layout.width}px : ${layout.settingsGap.toFixed(1)}px entre la grille et les reglages`);
+      ok(layout.rowSpread <= 1,
+        `${layout.width}px : ecart de hauteur ${layout.rowSpread.toFixed(1)}px entre cartes d une meme rangee`);
+      ok(layout.overflowing === 0,
+        `${layout.width}px : aucun texte ne deborde de sa carte (${layout.overflowing})`);
+      // A partir de 1100 px les reglages se placent A COTE de la grille (meme
+      // rangee, alignes en haut) : c'est ce qui ramene l etape dans un ecran
+      // reel. En dessous, ils restent sous la grille a 8-16 px.
+      if (layout.width >= 1100) {
+        ok(layout.settingsBeside === true,
+          `${layout.width}px : les reglages font face a la grille (cote a cote, alignes)`);
+      } else {
+        ok(layout.settingsGap >= 8 && layout.settingsGap <= 16,
+          `${layout.width}px : ${layout.settingsGap.toFixed(1)}px entre la grille et les reglages`);
+      }
       ok(layout.visibleSettings === 5,
         `${layout.width}px : les 5 activites parametrables ont une ligne de reglages`);
       ok(layout.summaryItems === 8 && layout.summaryColumns === layout.expectedSummaryColumns,

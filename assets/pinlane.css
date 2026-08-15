@@ -891,7 +891,8 @@ kbd, .kbd {
   border-radius: var(--radius-full);
   background: var(--subtle);
   color: var(--muted);
-  font-size: 11px;
+  /* Plancher de lisibilite DESIGN.md §4 : jamais de texte sous 12 px. */
+  font-size: 12px;
   font-weight: 500;
 }
 

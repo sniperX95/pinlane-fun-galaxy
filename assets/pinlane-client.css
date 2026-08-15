@@ -591,7 +591,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   border-radius: var(--radius-full);
   background: var(--danger-soft);
   color: var(--danger);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -817,7 +817,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .activity-config-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -837,6 +837,8 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .dur-pill.sm {
   width: 100%;
+  /* Plancher tactile de DESIGN.md §7. La regle voisine du panneau de reglages
+     ramenait ces pastilles a 40 px : le minimum est desormais tenu ici et la. */
   min-height: 46px;
   padding: 6px 10px;
   border: 0;
@@ -845,7 +847,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   font-size: 13px;
 }
 
-#clientView .dur-pill.sm .price { font-size: 11px; }
+#clientView .dur-pill.sm .price { font-size: 12px; }
 #clientView .activity-config-controls .dur-pill:hover { background: var(--surface); }
 #clientView .activity-config-controls .dur-pill.active,
 #clientView .activity-config-controls .dur-pill.active:hover {
@@ -856,7 +858,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .activity-note {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.25;
   color: var(--faint);
   text-overflow: ellipsis;
@@ -900,7 +902,9 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
    unitaire est rappele une fois sous le bloc, pas repete sur chaque choix. */
 #clientView .dur-pill.xs {
   width: 100%;
-  min-height: 40px;
+  /* Plancher tactile de DESIGN.md §7 : ces pastilles de duree se touchent au
+     doigt comme les autres, elles ne descendent pas a 40 px. */
+  min-height: 44px;
   padding: 6px 10px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -1016,7 +1020,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 #clientView .program-item-detail {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1564,7 +1568,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .slot-free {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -1732,7 +1736,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 #clientView .formula-route-item small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -1842,7 +1846,7 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .formula-route-step > span {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -2193,20 +2197,20 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 #clientView .step-stage { position: relative; }
 
 @keyframes pl-step-enter-forward {
-  from { opacity: 0; transform: translate3d(28px, 0, 0); }
+  from { opacity: 0; transform: translate3d(20px, 0, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes pl-step-enter-back {
-  from { opacity: 0; transform: translate3d(-28px, 0, 0); }
+  from { opacity: 0; transform: translate3d(-20px, 0, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 @keyframes pl-step-leave-forward {
   from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to { opacity: 0; transform: translate3d(-28px, 0, 0); }
+  to { opacity: 0; transform: translate3d(-20px, 0, 0); }
 }
 @keyframes pl-step-leave-back {
   from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to { opacity: 0; transform: translate3d(28px, 0, 0); }
+  to { opacity: 0; transform: translate3d(20px, 0, 0); }
 }
 
 #clientView .step.is-entering-forward,
@@ -3498,7 +3502,7 @@ body.customer-mode .client-footer {
   width: auto;
   padding: 2px 10px;
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -3565,7 +3569,7 @@ body.customer-mode .client-footer {
   background: var(--surface);
   color: var(--muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -3792,7 +3796,7 @@ body.customer-mode .client-footer {
 
 #clientView .anchor-period-count {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--faint);
 }
@@ -4062,7 +4066,7 @@ body.customer-mode .client-footer {
   border-radius: var(--radius-full);
   background: var(--success-soft);
   color: var(--success);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -4086,7 +4090,7 @@ body.customer-mode .client-footer {
 #clientView .anchor-free-item em {
   margin-left: 6px;
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--muted);
 }
@@ -4438,4 +4442,150 @@ body.modal-open { overflow: hidden; }
     gap: var(--space-4);
   }
   #clientView .formula-program-panel .formula-visit-summary { margin-bottom: 0; }
+}
+
+/* ==========================================================================
+   GRAMMAIRE D'ANIMATION DU TUNNEL
+   Douze recettes ont ete relevees dans trois bibliotheques (smoothui,
+   beautifului.dev, inspora.design). Elles ne sont pas cousues telles quelles :
+   elles sont ramenees a UN SEUL langage, celui que le depot porte deja.
+     - ce qui repond au doigt : --dur-press (160 ms)
+     - ce qui glisse d'un point A a un point B : --dur-move (180 ms)
+     - ce qui arrive : --dur-enter (240 ms), --ease-out-strong
+     - ce qui part : --dur-exit (150 ms), toujours plus court qu'une entree
+   Aucune duree ne depasse 260 ms, aucun rebond enfantin, transform et opacity
+   seuls, et `prefers-reduced-motion` coupe tout en fin de section.
+   ========================================================================== */
+
+/* RECETTE 5 et 11 : la PRESSION. Tout ce qui se clique dans le parcours
+   s'enfonce du meme geste. C'est ce qui donne au tunnel une seule main. */
+#clientView .btn-primary:active:not(:disabled),
+#clientView .btn-secondary:active:not(:disabled),
+#clientView .anchor-chip:active:not(:disabled),
+#clientView .anchor-period-tab:active:not(:disabled),
+#clientView .anchor-track-nudge:active:not(:disabled),
+#clientView .visit-rail-advice-action:active,
+#clientView .anchor-suggestion:active,
+#clientView .formula-order-fallback-btn:active,
+#clientView .seg-btn:active,
+#clientView .occasion-chip:active {
+  transform: scale(0.96);
+}
+
+#clientView .btn-primary,
+#clientView .btn-secondary,
+#clientView .seg-btn,
+#clientView .occasion-chip,
+#clientView .visit-rail-advice-action,
+#clientView .anchor-suggestion,
+#clientView .formula-order-fallback-btn {
+  transition-property: background-color, border-color, color, opacity, transform;
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-out-strong);
+}
+
+/* RECETTE 6 : la CAPSULE du creneau retenu. L'heure qui vient d'etre choisie
+   ressort une fois, juste assez pour que l'oeil sache ou son clic a atterri.
+   Une seule pastille bouge, et seulement quand la valeur CHANGE. */
+@keyframes pl-chip-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.09); }
+  100% { transform: scale(1); }
+}
+
+#clientView .anchor-chip.is-just-picked {
+  animation: pl-chip-pop var(--dur-press) var(--ease-out-strong);
+}
+
+/* RECETTES 4 et 12 : le SCEAU. Le bouton de confirmation est le clic a plus
+   fort enjeu du parcours. Il accuse reception (le libelle s'efface, un disque
+   se pose), il travaille (le disque respire, en opacite seule), puis il SCELLE
+   (la coche se dessine trait par trait). Aucune largeur, aucune hauteur
+   animee : le bouton garde sa boite, c'est son contenu qui change d'etat. */
+#clientView .btn-seal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+  transition: opacity var(--dur-press) var(--ease-out-strong), transform var(--dur-enter) var(--ease-out-strong);
+}
+
+#clientView .btn-primary.is-sealing,
+#clientView .btn-primary.is-sealed { position: relative; }
+
+#clientView .btn-primary.is-sealing .btn-seal,
+#clientView .btn-primary.is-sealed .btn-seal {
+  opacity: 1;
+  transform: scale(1);
+}
+
+#clientView .btn-primary.is-sealing .btn-label,
+#clientView .btn-primary.is-sealed .btn-label {
+  opacity: 0;
+  transition: opacity var(--dur-exit) var(--ease-out-strong);
+}
+
+/* Le travail en cours : une respiration d'OPACITE, jamais un tourniquet qui
+   occupe le processeur pendant tout l'appel reseau. */
+@keyframes pl-seal-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+#clientView .btn-primary.is-sealing .btn-seal-ring {
+  animation: pl-seal-breathe 900ms var(--ease) infinite;
+}
+
+#clientView .btn-seal-check {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+}
+
+#clientView .btn-primary.is-sealed .btn-seal-check {
+  stroke-dashoffset: 0;
+  /* 220 ms, 50 ms apres que le disque se soit pose : la coche vient APRES la
+     reception, elle ne la double pas. */
+  transition: stroke-dashoffset 220ms var(--ease-out-strong) 50ms;
+}
+
+/* RECETTE 12 : l'ecran Confirme scelle la reservation au lieu d'afficher une
+   icone posee. Le disque arrive, la coche se dessine derriere lui. */
+#clientView .success-icon svg path,
+#clientView .success-icon svg polyline {
+  stroke-dasharray: 36;
+  stroke-dashoffset: 36;
+}
+
+#clientView .step[data-arrived] .success-icon svg path,
+#clientView .step[data-arrived] .success-icon svg polyline {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 220ms var(--ease-out-strong) 190ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .btn-primary:active:not(:disabled),
+  #clientView .btn-secondary:active:not(:disabled),
+  #clientView .anchor-chip:active:not(:disabled),
+  #clientView .anchor-period-tab:active:not(:disabled),
+  #clientView .anchor-track-nudge:active:not(:disabled),
+  #clientView .visit-rail-advice-action:active,
+  #clientView .anchor-suggestion:active,
+  #clientView .formula-order-fallback-btn:active,
+  #clientView .seg-btn:active,
+  #clientView .occasion-chip:active { transform: none; }
+  #clientView .anchor-chip.is-just-picked { animation: none; }
+  #clientView .btn-primary.is-sealing .btn-seal-ring { animation: none; }
+  #clientView .btn-seal,
+  #clientView .btn-primary.is-sealing .btn-label,
+  #clientView .btn-primary.is-sealed .btn-label,
+  #clientView .btn-primary.is-sealed .btn-seal-check,
+  #clientView .step[data-arrived] .success-icon svg path,
+  #clientView .step[data-arrived] .success-icon svg polyline { transition: none; }
+  #clientView .btn-seal-check,
+  #clientView .success-icon svg path,
+  #clientView .success-icon svg polyline { stroke-dashoffset: 0; }
 }

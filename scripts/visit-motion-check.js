@@ -265,6 +265,10 @@ async function checkProperties(page) {
     'pl-step-leave-forward', 'pl-step-leave-back',
     'pl-client-enter',
     'pl-advice-in', 'pl-advice-out',
+    // Recettes reprises des trois bibliotheques fournies, ramenees a la
+    // grammaire du depot : cascade d'arrivee, capsule du creneau retenu,
+    // respiration du sceau de confirmation.
+    'pl-rise', 'pl-chip-pop', 'pl-seal-breathe',
   ];
   const allowed = new Set(['transform', 'opacity']);
   TUNNEL_ANIMATIONS.forEach((name) => {
@@ -382,6 +386,33 @@ async function checkTrack(page) {
     `arrive au bout, l indicateur et les boutons le disent (${atEnd.state} / ${atEnd.nudges.join(', ')})`);
 }
 
+// Le sceau du bouton de confirmation : il accuse, il travaille, il scelle, et
+// il ne redessine JAMAIS une largeur ni une hauteur.
+async function checkSeal(page) {
+  console.log('\n[3b] Le sceau du bouton de confirmation');
+  await bootTunnel(page, 'seal');
+  const seal = await page.evaluate(() => {
+    const button = document.getElementById('btnConfirmBooking');
+    setBookingSubmitBusy(true);
+    const busy = { classes: [...button.classList], aria: button.getAttribute('aria-busy'), label: button.querySelector('.btn-label') ? button.querySelector('.btn-label').textContent.trim().slice(0, 20) : '' };
+    const box = button.getBoundingClientRect();
+    sealBookingSubmit();
+    const sealed = { classes: [...button.classList], width: Math.round(box.width), height: Math.round(box.height) };
+    const after = button.getBoundingClientRect();
+    // `getComputedStyle` rend un objet VIVANT : lu apres la remise a zero
+    // ci-dessous, il aurait donne l'etat du bouton au repos. On fige la valeur.
+    const checkTransition = String(getComputedStyle(button.querySelector('.btn-seal-check')).transitionProperty);
+    setBookingSubmitBusy(false);
+    return { busy, sealed, sameBox: Math.abs(after.width - box.width) < 1 && Math.abs(after.height - box.height) < 1, checkTransition };
+  });
+  ok(seal.busy.classes.includes('is-sealing'), `le clic accuse reception (${seal.busy.classes.join(' ')})`);
+  ok(seal.busy.aria === 'true', 'le bouton se declare occupe pour la synthese vocale');
+  ok(/Confirmer/.test(seal.busy.label), `le libelle reste dans le DOM, il ne fait que s effacer ("${seal.busy.label}")`);
+  ok(seal.sealed.classes.includes('is-sealed'), 'le succes scelle le bouton');
+  ok(seal.sameBox, 'la boite du bouton ne change NI de largeur NI de hauteur pendant tout le sceau');
+  ok(/stroke-dashoffset/.test(seal.checkTransition), `la coche se dessine par son trace (${seal.checkTransition})`);
+}
+
 async function checkFluidity(page) {
   console.log('\n[4] Fluidite mesuree (60 Hz : une image « normale » vaut ~16,8 ms,');
   console.log('    le signal utile est donc l image PERDUE au-dela de 32 ms et la tache longue)');
@@ -471,6 +502,7 @@ async function main() {
     await checkProperties(page);
     await checkReducedMotion(page);
     await checkTrack(page);
+    await checkSeal(page);
     await checkFluidity(page);
     await checkMutations(page);
     ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length})${consoleErrors.length ? ' : ' + consoleErrors.slice(0, 3).join(' | ') : ''}`);

@@ -4198,17 +4198,51 @@ function setStep1Busy(isBusy) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`;
 }
 
+// LE SCEAU. Le clic a plus fort enjeu du tunnel accuse reception, travaille,
+// puis scelle : le libelle s'efface, un disque se pose, il respire le temps de
+// l'appel reseau, et la coche se dessine trait par trait. Le bouton garde sa
+// boite : aucune largeur ni hauteur n'est animee, seul son contenu change
+// d'etat (recette 4 du catalogue, adaptee exactement comme il le prescrit).
+const SEAL_MARKUP = [
+  '<span class="btn-label">Confirmer la réservation',
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>',
+  '<span class="btn-seal" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">',
+  '<circle class="btn-seal-ring" cx="12" cy="12" r="10" opacity="0.35"/>',
+  '<path class="btn-seal-check" d="M19 7.5 10 17l-5-5"/></svg></span>',
+].join('');
+
+function ensureSealMarkup(button) {
+  if (!button || button.querySelector('.btn-seal')) return;
+  button.innerHTML = SEAL_MARKUP;
+}
+
 function setBookingSubmitBusy(isBusy) {
   const confirmBtn = document.getElementById('btnConfirmBooking');
   const backBtn = document.getElementById('btnStep4Back');
   if (confirmBtn) {
+    ensureSealMarkup(confirmBtn);
     confirmBtn.disabled = !!isBusy;
-    confirmBtn.innerHTML = isBusy
-      ? 'Confirmation en cours...'
-      : `Confirmer la r\u00e9servation
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    // Le libelle reste dans le DOM (il porte le nom accessible du bouton) :
+    // c'est son opacite qui s'efface, jamais son texte qui disparait.
+    confirmBtn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    confirmBtn.classList.toggle('is-sealing', !!isBusy);
+    if (!isBusy) confirmBtn.classList.remove('is-sealed');
   }
   if (backBtn) backBtn.disabled = !!isBusy;
+}
+
+// Succes : le disque cesse de respirer, la coche se dessine, puis on quitte.
+function sealBookingSubmit() {
+  const confirmBtn = document.getElementById('btnConfirmBooking');
+  if (!confirmBtn) return Promise.resolve();
+  ensureSealMarkup(confirmBtn);
+  confirmBtn.classList.remove('is-sealing');
+  confirmBtn.classList.add('is-sealed');
+  confirmBtn.setAttribute('aria-busy', 'false');
+  if (prefersReducedMotion()) return Promise.resolve();
+  // 50 ms d'attente + 220 ms de trace : on laisse la coche se finir avant de
+  // quitter l'ecran, sinon le sceau ne se voit jamais.
+  return new Promise((resolve) => setTimeout(resolve, 320));
 }
 
 async function goStep2() {
@@ -4356,6 +4390,7 @@ let formulaAnchorMessage = '';      // message de refus de combinaison
 let formulaAnchorSuggestions = [];  // combinaisons proches proposées
 let formulaAnchorBusy = false;      // revalidation en cours
 let formulaAdviceSignature = '';    // avis de confort deja entre en scene
+let formulaJustPicked = null;       // heure qui vient d'etre retenue (capsule)
 
 function resetFormulaProgramChoice() {
   formulaArrivalChoice = '';
@@ -4425,6 +4460,9 @@ async function revalidateFormulaAnchors() {
 async function setFormulaAnchorTime(activityId, time) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
+  // La pastille qui vient d'etre choisie ressort UNE fois : le client voit ou
+  // son clic a atterri (recette 6 du catalogue).
+  formulaJustPicked = { activityId, time };
   preference.preferredTimes[activityId] = time;
   if (activityId === 'laser_game') preference.laserPlacement = 'scheduled';
   state.booking.preference = preference;
@@ -4707,7 +4745,10 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained }) {
     const isChained = !isActive && item.time === chained;
     const label = isChained ? `${item.time}, enchaîné avec l'activité précédente` : item.time;
     const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
-    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''}"${marker} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
+    const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
+      && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
+    if (justPicked) formulaJustPicked = null;
+    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
   }).join('')).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
@@ -5559,6 +5600,7 @@ async function confirmBooking() {
     : '';
   document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
   releaseBookingSubmit();
+  await sealBookingSubmit();
   goStep(5);
 }
 

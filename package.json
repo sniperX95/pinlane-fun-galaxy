@@ -43,6 +43,7 @@
     "test:reservation-notes": "node scripts/reservation-notes-check.js",
     "test:off-planning": "node scripts/off-planning-check.js",
     "test:visit-booking": "node scripts/visit-booking-check.js",
+    "test:visit-freedom": "node scripts/visit-freedom-check.js",
     "test:scenario-chain": "node scripts/scenario-chain-matrix-check.js",
     "test:establishment-tabs": "node scripts/establishment-tabs-check.js",
     "test:ops:stress": "node scripts/run-ops-stress.js",

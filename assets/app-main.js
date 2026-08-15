@@ -4092,6 +4092,7 @@ function prefersReducedMotion() {
 function clearStepMotionClasses(element) {
   if (!element) return;
   element.classList.remove('is-entering-forward', 'is-entering-back', 'is-leaving-forward', 'is-leaving-back');
+  delete element.dataset.arrived;
   element.style.removeProperty('position');
   element.style.removeProperty('top');
   element.style.removeProperty('left');
@@ -4136,9 +4137,20 @@ function goStep(n, options = {}) {
     target.classList.add(forward ? 'is-entering-forward' : 'is-entering-back');
     // `will-change` vit le temps de l'animation et pas une seconde de plus :
     // laisser une couche de compositing sur cinq étapes coûte de la mémoire GPU.
-    const done = () => clearStepMotionClasses(target);
-    target.addEventListener('animationend', done, { once: true });
-    setTimeout(done, 600);
+    // `animationend` REMONTE : sans le filtre sur la cible, la fin de
+    // l'animation d'un enfant (les champs qui se posent en cascade) retirerait
+    // la classe de l'étape en pleine course.
+    const done = (event) => {
+      if (event && event.target !== target) return;
+      target.removeEventListener('animationend', done);
+      clearStepMotionClasses(target);
+    };
+    target.addEventListener('animationend', done);
+    setTimeout(() => done(null), 600);
+    // Signal de cascade pour les contenus de l'étape. Il vit jusqu'au nettoyage
+    // (600 ms), ce qui couvre 120 ms de retard maximum + 240 ms d'animation
+    // d'enfant sans jamais tronquer la dernière.
+    target.dataset.arrived = '1';
   }
 
   state.step = n;

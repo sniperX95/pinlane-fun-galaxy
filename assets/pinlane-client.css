@@ -375,6 +375,10 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   row-gap: var(--space-5);
 }
 
+/* L'email prend la ligne entiere tant qu'il n'y a que deux colonnes ; au-dela
+   de 1100 px il rejoint la meme rangee que le nom et le telephone. */
+#clientView .contact-grid .contact-grid-wide { grid-column: 1 / -1; }
+
 /* Erreur au champ (P2-1, DESIGN.md §6) : message 12px --danger injecté par
    setFieldError() sous l'input marqué aria-invalid (bordure via pinlane.css). */
 #clientView .field-error-message {
@@ -1434,6 +1438,11 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   margin-top: var(--space-6);
 }
 
+/* Le bouton principal remplit la rangee. C'etait un `style="flex:1"` en dur
+   dans le HTML : en colonne (recapitulatif large), ce flex-grow ecrasait le
+   bouton a 22 px de haut, et aucune regle de feuille ne pouvait le battre. */
+#clientView .step-actions .step-actions-grow { flex: 1 1 auto; }
+
 /* --- CTA : convention unique = .btn-primary (inversion) ------------------ */
 #clientView .btn-primary,
 #clientView .btn-secondary {
@@ -2201,6 +2210,61 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
    deja decide (doctrine de motion, assets/pinlane.css). */
 #clientView .step.is-leaving-forward { animation: pl-step-leave-forward var(--dur-exit) var(--ease-in-out-strong) both; }
 #clientView .step.is-leaving-back { animation: pl-step-leave-back var(--dur-exit) var(--ease-in-out-strong) both; }
+
+/* --------------------------------------------------------------------------
+   CASCADE D'ARRIVEE, PLAFONNEE
+   Le contenu d'une etape se pose derriere elle au lieu d'apparaitre d'un bloc.
+   DEUX plafonds, tenus par le CSS lui-meme :
+     - au plus QUATRE elements bougent par groupe. Les suivants se posent
+       immediatement : rien ne s'anime dix ecrans plus bas ;
+     - le retard maximum est de 120 ms, il ne grandit donc jamais avec le
+       nombre de champs ou de lignes de recapitulatif.
+   -------------------------------------------------------------------------- */
+@keyframes pl-rise {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+#clientView .step[data-arrived] .pl-cascade > :nth-child(-n+4) {
+  animation: pl-rise var(--dur-enter) var(--ease-out-strong) both;
+}
+#clientView .step[data-arrived] .pl-cascade > :nth-child(1) { animation-delay: 0ms; }
+#clientView .step[data-arrived] .pl-cascade > :nth-child(2) { animation-delay: 40ms; }
+#clientView .step[data-arrived] .pl-cascade > :nth-child(3) { animation-delay: 80ms; }
+#clientView .step[data-arrived] .pl-cascade > :nth-child(4) { animation-delay: 120ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step[data-arrived] .pl-cascade > * { animation: none; }
+}
+
+/* --------------------------------------------------------------------------
+   ETAPES 3 ET 4 : la largeur sert a raccourcir, pas a etaler
+   Contact : trois champs sur une ligne au lieu de deux plus un.
+   Recapitulatif : la liste a gauche, le montant et la decision a droite, cales
+   en haut pour rester sous les yeux sans defiler.
+   -------------------------------------------------------------------------- */
+@media (min-width: 1100px) {
+  #clientView #step3 .contact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #clientView #step3 .contact-grid .contact-grid-wide { grid-column: auto; }
+
+  #clientView #step4 .recap-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    align-items: start;
+    gap: var(--space-5);
+  }
+  #clientView #step4 .recap-decision {
+    position: sticky;
+    top: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  #clientView #step4 .recap-decision .total-box { margin: 0; }
+  #clientView #step4 .recap-decision .step-actions { margin: 0; flex-direction: column-reverse; }
+  #clientView #step4 .recap-decision .step-actions .btn-primary,
+  #clientView #step4 .recap-decision .step-actions .btn-secondary { width: 100%; flex: none; }
+}
 
 /* Rail de progression : il se remplit, il ne saute pas. */
 #clientView .progress {

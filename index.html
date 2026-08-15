@@ -330,7 +330,7 @@
               <div class="card-desc">Pour recevoir la confirmation</div>
             </div>
           </div>
-          <div class="grid-2 contact-grid">
+          <div class="grid-2 contact-grid pl-cascade">
             <div>
               <label class="lbl">Prénom &amp; Nom *</label>
               <input id="fName" class="input" placeholder="Marie Dupont" required />
@@ -339,7 +339,7 @@
               <label class="lbl">Téléphone *</label>
               <input id="fPhone" type="tel" class="input" placeholder="+32 470 00 00 00" required />
             </div>
-            <div style="grid-column:1/-1;">
+            <div class="contact-grid-wide">
               <label class="lbl">Email *</label>
               <input id="fEmail" type="email" class="input" placeholder="marie@email.com" required/>
             </div>
@@ -385,7 +385,7 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               Retour
             </button>
-            <button class="btn-primary" style="flex:1" onclick="goStep4()">Voir le récapitulatif</button>
+            <button class="btn-primary step-actions-grow" onclick="goStep4()">Voir le récapitulatif</button>
           </div>
         </div>
       </div>
@@ -401,7 +401,11 @@
               <div class="card-desc">Vérifiez avant de confirmer</div>
             </div>
           </div>
+          <!-- La liste a gauche, la DECISION a droite : le montant et le bouton
+               restent sous les yeux sans avoir a redescendre la page. -->
+          <div class="recap-columns">
           <div id="recapList"></div>
+          <div class="recap-decision">
           <div class="total-box">
             <div class="total-copy">
               <strong class="total-label" id="recapTotalLabel">Total estimé</strong>
@@ -414,16 +418,18 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               Retour
             </button>
-            <button class="btn-primary" id="btnConfirmBooking" style="flex:1" onclick="confirmBooking()">
+            <button class="btn-primary step-actions-grow" id="btnConfirmBooking" onclick="confirmBooking()">
               Confirmer la réservation
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             </button>
+          </div>
+          </div>
           </div>
         </div>
       </div>
 
       <div id="step5" class="step hidden">
-        <div class="success-wrap scale-in">
+        <div class="success-wrap pl-cascade">
           <div class="success-icon">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>

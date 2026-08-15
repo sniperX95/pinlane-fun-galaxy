@@ -7952,6 +7952,10 @@ function renderEstablishmentCenterChips(centers, activeId, statusLabels) {
 // champs non sauvegardés à chaque ajout/retrait.
 let establishmentHolidayOverridesDraft = [];
 let establishmentCustomActivitiesDraft = [];
+// Ressources DECLAREES du centre (padel, paintball, salle...) : le moteur les
+// compte comme les pistes. Brouillon manipulé en direct, même doctrine que les
+// activités personnalisées.
+let establishmentDeclaredResourcesDraft = [];
 
 function startEstablishmentEdit() {
   if (!canUseStaffPermission('settings.manage')) { toast('Édition réservée à la direction.'); return; }
@@ -7962,6 +7966,16 @@ function startEstablishmentEdit() {
   establishmentCustomActivitiesDraft = (Array.isArray(center?.customActivities) ? center.customActivities : [])
     .filter(item => item && item.id && item.label)
     .map(item => ({ id: item.id, label: item.label }));
+  establishmentDeclaredResourcesDraft = (Array.isArray(center?.resources?.declared) ? center.resources.declared : [])
+    .filter(item => item && item.id && item.name)
+    .map(item => ({
+      id: item.id,
+      name: item.name,
+      units: Math.max(1, Number(item.units) || 1),
+      capacityPerUnit: Math.max(1, Number(item.capacityPerUnit) || 1),
+      cleanupMinutes: Math.max(0, Number(item.cleanupMinutes) || 0),
+      allowGroupMixing: item.allowGroupMixing === true
+    }));
   state.establishmentEditing = true;
   renderStaffUtilityPage();
 }
@@ -7970,6 +7984,7 @@ function cancelEstablishmentEdit() {
   state.establishmentEditing = false;
   establishmentHolidayOverridesDraft = [];
   establishmentCustomActivitiesDraft = [];
+  establishmentDeclaredResourcesDraft = [];
   renderStaffUtilityPage();
 }
 
@@ -8012,6 +8027,59 @@ function addEstablishmentCustomActivity() {
 function removeEstablishmentCustomActivity(id) {
   establishmentCustomActivitiesDraft = establishmentCustomActivitiesDraft.filter(item => item.id !== id);
   refreshEstablishmentCustomActivitiesList();
+}
+
+// Ids que la donnée ne peut pas revendiquer (familles historiques et
+// pseudo-types du moteur) : mêmes réservations que lib/declared-resources.js.
+const ESTABLISHMENT_RESERVED_RESOURCE_IDS = ['bowling_lane', 'laser_arena', 'party_table', 'bar_service', 'bar_service_then_autonomous', 'soft_capacity', 'free_activity', 'transition', 'service'];
+
+function renderEstablishmentDeclaredResources() {
+  if (!establishmentDeclaredResourcesDraft.length) {
+    return '<p class="estab-overrides-empty">Aucune installation déclarée. Ajoute ce que le moteur doit compter (ex : Court de padel, Terrain paintball, Salle).</p>';
+  }
+  return establishmentDeclaredResourcesDraft.map(item => `<div class="estab-custom-activity">
+    <span>${escapeHtml(item.name)} · ${Number(item.units)} instal. × ${Number(item.capacityPerUnit)} pers. · remise ${Number(item.cleanupMinutes)} min · ${item.allowGroupMixing ? 'mixage groupes' : 'sans mixage'}</span>
+    <button type="button" class="estab-override-remove" aria-label="Retirer l'installation ${escapeHtml(item.name)}" onclick="removeEstablishmentDeclaredResource('${escapeJsString(item.id)}')">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>`).join('');
+}
+
+function refreshEstablishmentDeclaredResourcesList() {
+  const list = document.getElementById('estabDeclaredResourcesList');
+  if (list) list.innerHTML = renderEstablishmentDeclaredResources();
+}
+
+function addEstablishmentDeclaredResource() {
+  const nameInput = document.getElementById('estab-res-name');
+  const name = String(nameInput?.value || '').trim().slice(0, 60);
+  if (!name) { toast('Donne un nom à l\'installation.'); return; }
+  const id = establishmentSlugify(name).replace(/-/g, '_');
+  if (!id) { toast('Nom d\'installation invalide.'); return; }
+  if (ESTABLISHMENT_RESERVED_RESOURCE_IDS.includes(id)) { toast('Ce nom est réservé au moteur, choisis-en un autre.'); return; }
+  if (establishmentDeclaredResourcesDraft.some(item => item.id === id)) { toast('Cette installation existe déjà.'); return; }
+  if (establishmentDeclaredResourcesDraft.length >= 20) { toast('Maximum 20 installations déclarées.'); return; }
+  const units = Number(document.getElementById('estab-res-units')?.value);
+  const capacityPerUnit = Number(document.getElementById('estab-res-capacity')?.value);
+  const cleanupMinutes = Number(document.getElementById('estab-res-cleanup')?.value || 0);
+  if (!Number.isInteger(units) || units < 1 || units > 50) { toast('Installations : entier entre 1 et 50.'); return; }
+  if (!Number.isInteger(capacityPerUnit) || capacityPerUnit < 1 || capacityPerUnit > 500) { toast('Joueurs par installation : entier entre 1 et 500.'); return; }
+  if (!Number.isInteger(cleanupMinutes) || cleanupMinutes < 0 || cleanupMinutes > 240) { toast('Remise en état : entier entre 0 et 240 minutes.'); return; }
+  establishmentDeclaredResourcesDraft.push({
+    id,
+    name,
+    units,
+    capacityPerUnit,
+    cleanupMinutes,
+    allowGroupMixing: !!document.getElementById('estab-res-mixing')?.checked
+  });
+  if (nameInput) nameInput.value = '';
+  refreshEstablishmentDeclaredResourcesList();
+}
+
+function removeEstablishmentDeclaredResource(id) {
+  establishmentDeclaredResourcesDraft = establishmentDeclaredResourcesDraft.filter(item => item.id !== id);
+  refreshEstablishmentDeclaredResourcesList();
 }
 
 function renderEstablishmentOverridesList() {
@@ -8221,6 +8289,14 @@ async function submitCenterConfig(centerId) {
         softCapacity: Number(establishmentInputValue('estab-tableSoft', 6)),
         hardCapacity: Number(establishmentInputValue('estab-tableHard', 8))
       },
+      declared: establishmentDeclaredResourcesDraft.map(item => ({
+        id: item.id,
+        name: item.name,
+        units: item.units,
+        capacityPerUnit: item.capacityPerUnit,
+        cleanupMinutes: item.cleanupMinutes,
+        allowGroupMixing: item.allowGroupMixing
+      })),
       barDesk: {
         handlesBooking: chk('estab-bar-booking'),
         handlesBriefing: chk('estab-bar-briefing'),
@@ -8576,6 +8652,22 @@ function renderEstablishmentEditPanels(center, active) {
         <div class="field"><label for="estab-tableHard">Capacité max</label><input type="number" id="estab-tableHard" min="1" max="120" value="${Number(party.hardCapacity || Math.max(Number(party.softCapacity || 6), 8))}"></div>
       </div>
     </fieldset>
+
+    <fieldset class="establishment-card">
+      <legend>Installations déclarées</legend>
+      <p class="estab-card-hint">Déclare une ressource que le moteur doit compter comme les pistes (court de padel, terrain paintball, salle…). Le planning n'accepte alors que les enchaînements qui tiennent, remise en état comprise.</p>
+      <div class="estab-field-row">
+        <div class="field"><label for="estab-res-name">Nom</label><input type="text" id="estab-res-name" placeholder="ex : Court de padel" maxlength="60" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addEstablishmentDeclaredResource();}"></div>
+        <div class="field"><label for="estab-res-units">Installations</label><input type="number" id="estab-res-units" min="1" max="50" value="1"></div>
+        <div class="field"><label for="estab-res-capacity">Joueurs / installation</label><input type="number" id="estab-res-capacity" min="1" max="500" value="4"></div>
+        <div class="field"><label for="estab-res-cleanup">Remise en état (min)</label><input type="number" id="estab-res-cleanup" min="0" max="240" value="0"></div>
+      </div>
+      <label class="establishment-toggle"><input type="checkbox" id="estab-res-mixing"><span class="estab-check-box" aria-hidden="true"></span><span>Deux groupes distincts peuvent partager la même session (mixage)</span></label>
+      <div class="estab-override-form">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addEstablishmentDeclaredResource()">Ajouter l'installation</button>
+      </div>
+      <div id="estabDeclaredResourcesList" class="estab-custom-activities-list">${renderEstablishmentDeclaredResources()}</div>
+    </fieldset>
   </div>`;
 
   const horairesPanel = `<div class="estab-edit-stack">
@@ -8803,6 +8895,14 @@ function renderEstablishmentReadPanels(center, active) {
         ${stat(ICO.bolt, 'Lancements //', Number(laser.parallelLaunches || 0), 'simultanés')}
         ${stat(ICO.cake, 'Tables anniv.', softCap, `capacité max ${hardCap}`)}
       </div>`)}
+    ${(Array.isArray(center.resources?.declared) && center.resources.declared.length) ? section(ICO.grid, 'Installations déclarées', 'Les ressources propres au centre : le moteur les compte comme les pistes.', `
+      <div class="estab-rules">
+        ${center.resources.declared.map(item => rule(
+          String(item.name || item.id),
+          `<span class="num">${Number(item.units) || 1} × ${Number(item.capacityPerUnit) || 1} pers.</span>${Number(item.cleanupMinutes) ? ` <span class="estab-badge warn">remise ${Number(item.cleanupMinutes)} min</span>` : ''}${item.allowGroupMixing ? ' <span class="estab-badge on">mixage</span>' : ''}`,
+          '',
+        )).join('')}
+      </div>`) : ''}
     ${section(ICO.id, 'Identité', 'Ce qui identifie le centre dans la plateforme.', `
       <div class="estab-rules">
         ${rule('Nom', `<span>${escapeHtml(center.name)}</span>`)}

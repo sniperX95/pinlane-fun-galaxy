@@ -5028,7 +5028,9 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* En mode formule le picker est masque : display:contents (plus fort que
      .hidden a cette specificite) ne doit PAS le remettre a l'ecran. */
   #clientView .step1-col-what .card:has(> .segmented) > .activity-picker.hidden { display: none; }
-  #clientView #step1 .activity-grid { grid-column: 1; grid-row: 2; align-self: start; }
+  /* `stretch` et non `start` : la grille occupe la hauteur que lui laisse le
+     panneau de reglages, et ses rangees se la partagent (voir plus bas). */
+  #clientView #step1 .activity-grid { grid-column: 1; grid-row: 2; align-self: stretch; }
   #clientView #step1 .activity-configurator.is-visible {
     grid-column: 2;
     grid-row: 2 / span 2;
@@ -5048,8 +5050,16 @@ body.client-mode #clientView .btn-primary.is-sealed,
      LA LARGEUR : la place gagnee par la coquille ajoute des COLONNES au lieu
      d etirer deux cartes. 190 px est le plancher mesure sous lequel « Minigolf
      Blacklight » et « 10 EUR par table et par heure » se coupent. */
-  #clientView #step1 .activity-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
-  #clientView #step1 .activity-card { height: auto; min-height: 64px; }
+  #clientView #step1 .activity-grid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    /* Les rangees se partagent la hauteur disponible : quand le panneau de
+       reglages est plus haut que la grille, l espace va aux cartes (elles
+       respirent) au lieu de rester un trou sous elles. Un ecran large mal
+       rempli est aussi laid qu un ecran etrique. */
+    align-content: stretch;
+    grid-auto-rows: minmax(64px, auto);
+  }
+  #clientView #step1 .activity-card { height: 100%; min-height: 64px; }
   #clientView #step1 .activity-icon { width: 30px; height: 30px; }
   #clientView #step1 .activity-toggle { grid-template-columns: 30px minmax(0, 1fr) 20px; padding: 8px 10px; gap: 8px; }
   /* Plus aucun libelle tronque : le nom et le tarif prennent les lignes qu il

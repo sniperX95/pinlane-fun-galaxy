@@ -496,7 +496,12 @@ async function main() {
     for (const target of [
       { width: 1280, expectedColumns: 2, expectedSummaryColumns: 2 },
       { width: 800, expectedColumns: 2, expectedSummaryColumns: 2 },
-      { width: 420, expectedColumns: 1, expectedSummaryColumns: 1 },
+      // TELEPHONE : deux cartes par rangee depuis la refonte mobile du
+      // 2026-08-15. Une carte d activite est un icone, un nom et un tarif :
+      // elle n a jamais eu besoin de 390 px de large, et huit cartes empilees
+      // coutaient 512 px de defilement pour rien. L assertion de troncature
+      // ci-dessous garantit que la densite ne coupe aucun libelle.
+      { width: 420, expectedColumns: 2, expectedSummaryColumns: 1 },
     ]) {
       await page.setViewportSize({ width: target.width, height: 1200 });
       await page.waitForTimeout(80);

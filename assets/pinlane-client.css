@@ -3240,6 +3240,137 @@ body.customer-mode .client-footer {
 #clientView .visit-tag.arrival { background: var(--accent-soft); color: var(--text); }
 #clientView .visit-tag.laser { background: var(--accent-soft); color: var(--text); }
 
+/* --------------------------------------------------------------------------
+   LE FIL DE LA VISITE
+   Une visite n'est pas deux réservations posées l'une sous l'autre : les
+   activités se suivent, et ce qui se passe ENTRE elles fait partie de l'écran.
+   Un rail vertical unique porte les étapes dans l'ordre réel des heures
+   choisies, le pass liberté fermant la marche.
+   -------------------------------------------------------------------------- */
+#clientView .visit-rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#clientView .visit-rail-step,
+#clientView .visit-rail-link {
+  position: relative;
+  padding-left: 34px;
+}
+
+/* Le trait continu du rail : une seule direction de lecture, du haut vers le
+   bas. Il s'arrête au dernier repère (pas de trait dans le vide). */
+#clientView .visit-rail-step::before,
+#clientView .visit-rail-link::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  /* `--line` disparaissait sur les deux thèmes : le fil est l'objet de
+     l'écran, il se voit (contraste UI, DESIGN.md §7). */
+  background: var(--line-strong);
+}
+
+#clientView .visit-rail > li:last-child::before { bottom: calc(100% - 12px); }
+
+#clientView .visit-rail-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#clientView .visit-rail-mark-free {
+  border-style: dashed;
+  border-color: var(--success);
+}
+
+#clientView .visit-rail-step { padding-bottom: var(--space-3); }
+#clientView .visit-rail-step:last-child { padding-bottom: 0; }
+
+/* Le maillon entre deux étapes : discret quand tout s'enchaîne, il ne prend la
+   parole que lorsqu'il a quelque chose d'utile à dire. */
+#clientView .visit-rail-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  min-height: 28px;
+}
+
+#clientView .visit-rail-gap {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+#clientView .visit-rail-advice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  color: var(--text);
+}
+
+/* Un avis n'est pas un échec : ambre (attention), jamais rouge (bloqué). */
+#clientView .visit-rail-advice strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#clientView .visit-rail-advice span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+#clientView .visit-rail-advice-action {
+  min-height: 44px;
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+
+#clientView .visit-rail-advice-action:hover { border-color: var(--accent); }
+
+#clientView .visit-rail-advice-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#clientView .visit-rail-step-free .anchor-free-pass { margin: 0; }
+
 #clientView .anchor-row {
   display: flex;
   flex-direction: column;
@@ -3257,6 +3388,124 @@ body.customer-mode .client-footer {
   flex-wrap: wrap;
 }
 
+/* L'heure retenue se lit dans le titre de l'étape : le client sait ce qu'il a
+   choisi sans redescendre dans la grille. */
+#clientView .anchor-row-pick {
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#clientView .anchor-row-pick-free {
+  background: var(--success-soft);
+  color: var(--success);
+  font-family: var(--font-ui);
+}
+
+/* Les moments de la journée. 27 pastilles rigoureusement identiques ne se
+   parcourent pas : elles se rangent en matin / après-midi / soir, un seul rang
+   de 44 px, et chaque moment annonce COMBIEN d'heures il contient (son libellé
+   accessible donne aussi sa plage). Rien n'est supprimé, tout est à un geste.
+   Un accordéon empilé donnait la même information pour 132 px par activité. */
+#clientView .anchor-periods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+#clientView .anchor-period-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--space-1);
+  /* Un sélecteur segmenté reste un contrôle, pas une barre : il se cale à
+     gauche au lieu de s'étirer sur toute la carte en desktop. */
+  max-width: 420px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--subtle);
+}
+
+#clientView .anchor-period-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+#clientView .anchor-period-tab.active {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+
+#clientView .anchor-period-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#clientView .anchor-period-tab:disabled { cursor: not-allowed; }
+
+/* Le moment qui porte l'heure retenue reste repérable même quand le client va
+   regarder ailleurs : un point, jamais la couleur seule (l'onglet actif est
+   déjà signalé par aria-pressed et par son fond). */
+/* Le point du moment retenu ne se detache jamais de son mot : sur 78 px de
+   large il partait seul a la ligne. */
+#clientView .anchor-period-name { white-space: nowrap; }
+
+#clientView .anchor-period-tab.has-pick .anchor-period-name::after {
+  content: '';
+  display: inline-block;
+  margin-left: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  vertical-align: 2px;
+}
+
+#clientView .anchor-period-count {
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+}
+
+#clientView .anchor-period-tab.active .anchor-period-count { color: var(--muted); }
+
+/* Sur un téléphone les trois moments partagent 250 px : on rend la place que
+   prennent les marges plutôt que de casser « Après-midi » sur deux lignes. */
+@media (max-width: 440px) {
+  #clientView .anchor-period-tab {
+    gap: 4px;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+  #clientView .anchor-period-tab.has-pick .anchor-period-name::after { margin-left: 3px; }
+  /* 250 px pour trois moments : le compteur faisait casser « Après-midi » en
+     deux lignes. Un mot entier vaut mieux qu'un chiffre, et le compteur reste
+     annoncé par le libellé accessible du bouton. */
+  #clientView .anchor-period-count { display: none; }
+}
+
 #clientView .anchor-row-head strong {
   font-size: 14px;
   color: var(--text);
@@ -3267,28 +3516,52 @@ body.customer-mode .client-footer {
   color: var(--muted);
 }
 
+/* Grille et non flex : des colonnes alignées se balaient du regard, une rangée
+   ragged non. minmax(58px) rend 5 colonnes sur un téléphone de 390 px là où le
+   flex n'en tenait que 4. */
 #clientView .anchor-chip-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
   gap: var(--space-2);
 }
 
 #clientView .anchor-chip {
+  position: relative;
   min-height: 44px;
-  min-width: 64px;
-  padding: var(--space-1) var(--space-3);
+  min-width: 58px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
   background: var(--surface);
   color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 13.5px;
-  font-weight: 700;
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
 #clientView .anchor-chip:hover { border-color: var(--accent); }
+
+/* L'heure qui ENCHAÎNE avec l'activité voisine : c'est la proposition que le
+   moteur calcule. Un point suffit à la distinguer des 26 autres ; le libellé
+   accessible le dit en toutes lettres (jamais de sens porté par la couleur). */
+#clientView .anchor-chip.is-chained {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
+#clientView .anchor-chip.is-chained::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
 
 #clientView .anchor-chip.active {
   background: var(--accent);
@@ -3306,28 +3579,37 @@ body.customer-mode .client-footer {
   cursor: not-allowed;
 }
 
-#clientView .anchor-row-onsite .anchor-chip-grid { opacity: 0.55; }
+#clientView .anchor-row-onsite .anchor-periods { opacity: 0.5; }
 
+/* Choisir « sur place » est une décision sur CETTE activité : elle se prend en
+   tête d'étape, encadrée, pas en petite ligne sous 27 pastilles. */
 #clientView .anchor-onsite {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: 44px;
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
+  background: var(--surface);
   font-size: 13px;
   color: var(--text);
   cursor: pointer;
 }
 
 #clientView .anchor-onsite input {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
 
-#clientView .anchor-onsite.active { color: var(--accent); font-weight: 600; }
+#clientView .anchor-onsite.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
 
 #clientView .anchor-status {
   display: flex;
@@ -3361,7 +3643,7 @@ body.customer-mode .client-footer {
 }
 
 #clientView .anchor-suggestion {
-  min-height: 40px;
+  min-height: 44px;
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
@@ -3456,7 +3738,7 @@ body.customer-mode .client-footer {
 #clientView .formula-plan-confirm { width: 100%; }
 #clientView .formula-order-fallback-btn {
   margin-top: var(--space-2);
-  min-height: 40px;
+  min-height: 44px;
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);

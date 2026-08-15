@@ -4239,9 +4239,11 @@ let formulaAnchorData = null;       // bloc `anchors` renvoyé par le serveur
 let formulaAnchorMessage = '';      // message de refus de combinaison
 let formulaAnchorSuggestions = [];  // combinaisons proches proposées
 let formulaAnchorBusy = false;      // revalidation en cours
+let formulaAnchorPeriodChoice = {}; // moment de journée ouvert, par ancre
 
 function resetFormulaProgramChoice() {
   formulaArrivalChoice = '';
+  formulaAnchorPeriodChoice = {};
 }
 
 function formulaHasAnchorUi() {
@@ -4304,6 +4306,9 @@ async function revalidateFormulaAnchors() {
 async function setFormulaAnchorTime(activityId, time) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
+  // Retenir une heure remet le moment affiché en phase avec elle : sinon un
+  // client qui applique « Enchaîner » ne verrait pas sa nouvelle heure.
+  formulaAnchorPeriodChoice = {};
   preference.preferredTimes[activityId] = time;
   if (activityId === 'laser_game') preference.laserPlacement = 'scheduled';
   state.booking.preference = preference;
@@ -4402,36 +4407,232 @@ function renderFormulaVisitSummary(slot, formule) {
   return `<div class="formula-visit-summary">${rows.join('')}</div>`;
 }
 
-// Formules AVEC ancres : une ligne de chips par ancre + pass liberté.
-function renderFormulaAnchorRows(formule) {
+// --- Hiérarchie des heures ---------------------------------------------------
+// 26 à 27 pastilles par activité, toutes identiques : rien ne distinguait une
+// heure d'une autre et la page faisait 1732 px sur un téléphone (mesure du
+// 2026-08-15). Les heures se rangent donc en trois moments de journée, et un
+// seul moment est déplié : celui qui contient l'heure retenue. Aucune heure
+// n'est retirée, chaque moment annonce sa plage ET son nombre d'heures.
+const ANCHOR_PERIODS = [
+  { key: 'matin', label: 'Matin', maxHour: 12 },
+  { key: 'apresmidi', label: 'Après-midi', maxHour: 18 },
+  { key: 'soir', label: 'Soir', maxHour: 24 },
+];
+
+function getAnchorPeriodKey(time) {
+  const hour = Math.floor(timeToNum(time));
+  return (ANCHOR_PERIODS.find(period => hour < period.maxHour) || ANCHOR_PERIODS[ANCHOR_PERIODS.length - 1]).key;
+}
+
+function groupAnchorTimes(items) {
+  return ANCHOR_PERIODS
+    .map(period => ({ ...period, items: items.filter(item => getAnchorPeriodKey(item.time) === period.key) }))
+    .filter(period => period.items.length);
+}
+
+// L'heure qui ENCHAÎNE cette activité juste après l'autre : c'est la
+// proposition que le moteur calcule tout seul. On la marque au lieu de laisser
+// 27 pastilles se valoir. Rien n'est imposé : le reste reste cliquable.
+function getChainedAnchorTime(activityId) {
+  const activities = formulaAnchorData?.activities || [];
+  const self = activities.find(activity => activity.activityId === activityId);
+  if (!self) return '';
+  const { times } = getCurrentFormulaAnchorSelection();
+  let earliest = null;
+  activities.forEach((other) => {
+    if (other.activityId === activityId) return;
+    const start = times[other.activityId];
+    if (!start) return;
+    const end = timeToNum(start) * 60 + Number(other.durationMinutes || 60) + 5;
+    if (earliest === null || end > earliest) earliest = end;
+  });
+  if (earliest === null) return '';
+  const next = self.times.find(item => timeToNum(item.time) * 60 >= earliest);
+  return next?.time || '';
+}
+
+// Ordre RÉEL de la visite : les activités se suivent dans l'ordre des heures
+// choisies, pas dans l'ordre du catalogue. C'est ce qui fait qu'un client lit
+// une visite et non deux réservations posées l'une sous l'autre.
+function getVisitRailSteps() {
+  const { times } = getCurrentFormulaAnchorSelection();
+  return (formulaAnchorData?.activities || [])
+    .map((activity, index) => ({
+      activity,
+      index,
+      startMinutes: times[activity.activityId] ? timeToNum(times[activity.activityId]) * 60 : null,
+    }))
+    .sort((left, right) => {
+      if (left.startMinutes === null && right.startMinutes === null) return left.index - right.index;
+      if (left.startMinutes === null) return 1;
+      if (right.startMinutes === null) return -1;
+      return left.startMinutes - right.startMinutes;
+    });
+}
+
+function getSlotComfortNotices() {
+  const slotIndex = getCurrentFormulaAnchorSlotIndex();
+  const slot = slotIndex >= 0 ? state.availableSlots[slotIndex] : null;
+  return Array.isArray(slot?.opsPlan?.comfortNotices) ? slot.opsPlan.comfortNotices : [];
+}
+
+// « Enchaîner à 16:30 » : le geste que propose l'avis. Il déplace UNE ancre,
+// jamais toute la visite, et passe par le chemin normal (revalidation serveur).
+async function tightenFormulaAnchorGap(activityId, time) {
+  if (!activityId || !time) return;
+  await setFormulaAnchorTime(activityId, time);
+}
+
+// Le moment affiché pour une activité : le choix explicite du client s'il en a
+// fait un, sinon celui de son heure retenue. Choisir une heure remet les deux
+// d'accord (setFormulaAnchorTime vide la carte des choix).
+function getAnchorVisiblePeriod(activityId, groups, selected, chained) {
+  const chosen = formulaAnchorPeriodChoice[activityId];
+  if (chosen && groups.some(group => group.key === chosen)) return chosen;
+  if (selected) return getAnchorPeriodKey(selected);
+  if (chained) return getAnchorPeriodKey(chained);
+  return groups[0]?.key || '';
+}
+
+function setFormulaAnchorPeriod(activityId, periodKey) {
+  formulaAnchorPeriodChoice[activityId] = periodKey;
+  renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
+}
+
+function renderAnchorChipGroups(activity, { selected, disabled, chained }) {
+  const groups = groupAnchorTimes(activity.times);
+  if (!groups.length) return '';
+  const visibleKey = getAnchorVisiblePeriod(activity.activityId, groups, selected, chained);
+  const visible = groups.find(group => group.key === visibleKey) || groups[0];
+  // Un seul rang de 44 px pour les trois moments : l'accordéon empilé coûtait
+  // 132 px par activité pour la même information (mesure du 2026-08-15).
+  const tabs = groups.length > 1 ? `
+      <div class="anchor-period-tabs" role="group" aria-label="Moment de la journée pour ${escapeHtml(activity.label)}">
+        ${groups.map((group) => {
+    const first = group.items[0].time;
+    const last = group.items[group.items.length - 1].time;
+    const isVisible = group.key === visible.key;
+    const holdsSelection = Boolean(selected) && group.items.some(item => item.time === selected);
+    return `<button type="button" class="anchor-period-tab ${isVisible ? 'active' : ''} ${holdsSelection ? 'has-pick' : ''}" aria-pressed="${isVisible ? 'true' : 'false'}" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}')"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
+  }).join('')}
+      </div>` : '';
+  const chips = visible.items.map((item) => {
+    const isActive = item.time === selected;
+    const isChained = !isActive && item.time === chained;
+    const label = isChained ? `${item.time}, enchaîné avec l'activité précédente` : item.time;
+    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
+  }).join('');
+  return `
+    <div class="anchor-periods">
+      ${tabs}
+      <div class="anchor-chip-grid">${chips}</div>
+    </div>`;
+}
+
+// Un ÉTAPE de la visite : son rang, son heure retenue, et ses heures possibles.
+function renderVisitRailStep(step, position) {
+  const activity = step.activity;
   const { preference, times } = getCurrentFormulaAnchorSelection();
+  const isLaser = activity.activityId === 'laser_game';
   const laserOnSite = preference.laserPlacement === 'onsite';
-  return formulaAnchorData.activities.map((activity) => {
-    const isLaser = activity.activityId === 'laser_game';
-    const disabled = isLaser && laserOnSite;
-    const selected = disabled ? '' : (times[activity.activityId] || '');
-    const chips = activity.times.map(item => `
-      <button type="button" class="anchor-chip ${item.time === selected ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`).join('');
-    const detail = isLaser
-      ? (activity.count > 1
-        ? `${activity.count} parties incluses : choisissez la 1re, le reste se place sur place`
-        : `Session de ${activity.durationMinutes} min`)
-      : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
-    const onSiteToggle = isLaser && formulaAnchorData.laserOnSiteAvailable ? `
+  const disabled = isLaser && laserOnSite;
+  const selected = disabled ? '' : (times[activity.activityId] || '');
+  const chained = disabled ? '' : getChainedAnchorTime(activity.activityId);
+  const detail = isLaser
+    ? (activity.count > 1
+      ? `${activity.count} parties incluses : choisissez la 1re, le reste se place sur place`
+      : `Session de ${activity.durationMinutes} min`)
+    : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
+  // Le choix « sur place » est une DÉCISION sur cette activité : il vit en tête
+  // de son étape, pas perdu sous 27 pastilles (plainte du 2026-08-15).
+  const onSiteToggle = isLaser && formulaAnchorData.laserOnSiteAvailable ? `
       <label class="anchor-onsite ${laserOnSite ? 'active' : ''}">
         <input type="checkbox" ${laserOnSite ? 'checked' : ''} onchange="setFormulaLaserPlacement(this.checked ? 'onsite' : 'scheduled')">
         <span>Je place mes parties laser sur place, selon l'affluence</span>
       </label>` : '';
-    return `
+  const picked = disabled
+    ? '<span class="anchor-row-pick anchor-row-pick-free">avec l’équipe</span>'
+    : (selected ? `<span class="anchor-row-pick">${escapeHtml(selected)}</span>` : '');
+  return `
+    <li class="visit-rail-step">
+      <span class="visit-rail-mark" aria-hidden="true">${position}</span>
       <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}">
         <div class="anchor-row-head">
           <strong>${escapeHtml(activity.label)}</strong>
+          ${picked}
           <small>${escapeHtml(detail)}</small>
         </div>
-        <div class="anchor-chip-grid">${chips}</div>
         ${onSiteToggle}
-      </div>`;
-  }).join('');
+        ${renderAnchorChipGroups(activity, { selected, disabled, chained })}
+      </div>
+    </li>`;
+}
+
+// LE LIEN entre deux étapes : c'est tout le sujet de l'écran (une VISITE, pas
+// deux réservations). Il porte toujours l'écart réel. Quand cet écart dépasse
+// ce que la visite absorbe, le serveur envoie un avis : le lien passe en état
+// « avis » et propose d'enchaîner. Il n'interdit jamais rien.
+function renderVisitRailLink(previousStep, nextStep, notices) {
+  const { times } = getCurrentFormulaAnchorSelection();
+  const previousStart = times[previousStep.activity.activityId];
+  const nextStart = times[nextStep.activity.activityId];
+  if (!previousStart || !nextStart) return '';
+  const gap = Math.round(timeToNum(nextStart) * 60
+    - (timeToNum(previousStart) * 60 + Number(previousStep.activity.durationMinutes || 60)));
+  if (gap < 0) return '';
+  const notice = notices.find(item => item.toActivityId === nextStep.activity.activityId
+    && item.fromActivityId === previousStep.activity.activityId);
+  if (!notice) {
+    return `
+      <li class="visit-rail-link">
+        <span class="visit-rail-line" aria-hidden="true"></span>
+        <span class="visit-rail-gap">${gap === 0 ? 'enchaîné' : `${escapeHtml(formatGapText(gap))} entre les deux`}</span>
+      </li>`;
+  }
+  const passLabels = (formulaAnchorData?.freePass || []).map(item => item.label);
+  const note = passLabels.length
+    ? `Ce temps se passe sur place : ${passLabels.join(', ')} restent accessibles.`
+    : 'Ce temps se passe sur place, entre les deux activités.';
+  const canTighten = Boolean(notice.tightenTime)
+    && (nextStep.activity.times || []).some(item => item.time === notice.tightenTime);
+  return `
+    <li class="visit-rail-link is-advice">
+      <span class="visit-rail-line" aria-hidden="true"></span>
+      <div class="visit-rail-advice" role="status">
+        <strong>${escapeHtml(notice.gapLabel || formatGapText(gap))} d’attente entre ${escapeHtml(notice.fromLabel || previousStep.activity.label)} et ${escapeHtml(notice.toLabel || nextStep.activity.label)}</strong>
+        <span>${escapeHtml(note)}</span>
+        ${canTighten ? `<button type="button" class="visit-rail-advice-action" onclick="tightenFormulaAnchorGap('${escapeHtml(nextStep.activity.activityId)}','${escapeHtml(notice.tightenTime)}')">Enchaîner à ${escapeHtml(notice.tightenTime)}</button>` : ''}
+      </div>
+    </li>`;
+}
+
+// « 2 h 30 », « 45 min » : même lecture que côté moteur (lib/ops-engine.js).
+function formatGapText(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(total / 60);
+  const rest = total % 60;
+  if (!hours) return `${rest} min`;
+  return rest ? `${hours} h ${String(rest).padStart(2, '0')}` : `${hours} h`;
+}
+
+// Formules AVEC ancres : la visite se lit comme un fil, dans l'ordre réel.
+function renderFormulaAnchorRows(formule) {
+  const steps = getVisitRailSteps();
+  const notices = getSlotComfortNotices();
+  const parts = [];
+  steps.forEach((step, index) => {
+    if (index > 0) parts.push(renderVisitRailLink(steps[index - 1], step, notices));
+    parts.push(renderVisitRailStep(step, index + 1));
+  });
+  const freePass = renderFormulaFreePassBlock(formule);
+  if (freePass) {
+    parts.push(`
+      <li class="visit-rail-step visit-rail-step-free">
+        <span class="visit-rail-mark visit-rail-mark-free" aria-hidden="true"></span>
+        ${freePass}
+      </li>`);
+  }
+  return `<ol class="visit-rail">${parts.join('')}</ol>`;
 }
 
 function renderFormulaFreePassBlock(formule) {
@@ -4482,6 +4683,9 @@ function renderFormulaAnchorPicker(formule) {
         <button type="button" class="formula-order-fallback-btn" onclick="resetFormulaAnchorChoices()">Revenir à la proposition automatique</button>
       </div>`;
   }
+  // Le pass liberté est le dernier maillon du fil (renderFormulaAnchorRows) :
+  // il ne se rajoute plus après le panneau, sinon la visite se lit en deux
+  // morceaux alors que c'est UNE visite.
   return `
     <div class="formula-anchor-picker">
       <div class="formula-arrival-head">
@@ -4490,7 +4694,6 @@ function renderFormulaAnchorPicker(formule) {
       </div>
       ${renderFormulaAnchorRows(formule)}
       ${statusHtml}
-      ${renderFormulaFreePassBlock(formule)}
     </div>`;
 }
 

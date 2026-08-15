@@ -152,7 +152,12 @@ function oracleCapacityOk(declared, allBlocks) {
       if (!sessions.has(key)) sessions.set(key, { start: b.start, end: b.end, players: 0, units: 0 });
       const s = sessions.get(key);
       s.players += Math.max(1, Number(b.players || 1));
-      s.units += Math.ceil(Math.max(1, Number(b.players || 1)) / decl.capacityPerUnit);
+      // Un bloc peut REVENDIQUER plus d'installations que son effectif n'en
+      // calcule (staff qui bloque 2 courts pour 3 joueurs) : requiredUnits
+      // pose fait foi, comme dans le moteur.
+      s.units += b.requiredUnits != null
+        ? Math.max(1, Math.trunc(Number(b.requiredUnits)))
+        : Math.ceil(Math.max(1, Number(b.players || 1)) / decl.capacityPerUnit);
     });
     const occupations = [...sessions.values()].map((s) => ({
       start: s.start,
@@ -264,6 +269,7 @@ function blocksOf(reservations) {
     start: b.start,
     end: b.end,
     players: b.players,
+    ...(b.requiredUnits != null ? { requiredUnits: b.requiredUnits } : {}),
   })));
 }
 
@@ -359,6 +365,27 @@ const structural = runCase('pax 9 sur Duo (3 unites > 2 disponibles)', {
   chainSteps: [{ activityId: 'act_d', label: 'Duo', resourceType: 'duo', durationMinutes: 30 }],
 });
 ok(structural.result.scenarios.length === 0, 'groupe plus grand que le pool entier : aucun scenario, jamais');
+// Le staff peut REVENDIQUER plus d'installations que l'effectif n'en calcule
+// (2 courts bloques pour 3 joueurs) : requiredUnits pose fait foi, moteur ET
+// oracle. Le pool Duo est alors plein, tout depart chevauchant est masque.
+const overClaim = runCase('resa existante 3 joueurs mais 2 unites REVENDIQUEES sur Duo', {
+  pax: 4,
+  chainSteps: [{ activityId: 'act_d', label: 'Duo', resourceType: 'duo', durationMinutes: 60 }],
+  existing: [loadReservation('duo', '13:00', 120, 3, 2)],
+});
+ok(!overClaim.engineStarts.includes(toMin('13:00')) && !overClaim.engineStarts.includes(toMin('13:30')),
+  'requiredUnits fait foi : les departs qui chevauchent la revendication de 2 unites sont masques');
+{
+  // CONTRE-EPREUVE : un oracle qui recalculerait par joueurs (1 unite pour 3)
+  // serait en desaccord avec le moteur : la cellule sait rougir.
+  const naiveOracle = oracleFeasibleStarts(
+    DECLARED,
+    overClaim.includedSteps,
+    overClaim.existingBlocks.map(({ requiredUnits, ...rest }) => rest),
+  );
+  ok(naiveOracle.length > overClaim.oracleStarts.length,
+    `MUTATION : ignorer requiredUnits ouvre ${naiveOracle.length - overClaim.oracleStarts.length} faux depart(s), la cellule ROUGIRAIT`);
+}
 
 section('[4] Mixage de groupes : rejoindre une session existante');
 // Session existante 8 joueurs 14:00-14:45 sur l'arene mixable (cap 12, 1 unite).
@@ -463,6 +490,37 @@ ok(locked.result.scenarios.every((s) => {
   const order = s.resourceBlocks.map((b) => b.resourceType);
   return order.indexOf('salle_a') < order.indexOf('salle_b');
 }), 'P3 : tous les scenarios respectent l\'ordre declare');
+// Le verrou couvre AUSSI une etape SANS activityId (definie par sa seule
+// ressource) : elle ne peut pas etre reordonnee par une preference adverse.
+{
+  const lockSteps = [
+    { label: 'Salle A pure ressource', resourceType: 'salle_a', durationMinutes: 30 },
+    { activityId: 'act_b', label: 'Salle B', resourceType: 'salle_b', durationMinutes: 30 },
+  ];
+  const lockLoad = [loadReservation('salle_a', '14:00', 30, 6)];
+  const adverse = { activityOrder: ['act_b'] };
+  // Temoin SANS verrou : a 14:00 seul l'ordre inverse (B puis A) tient, et la
+  // preference adverse le fait proposer : la reordonnance est reelle.
+  const unlockedRes = engine.planScenarioChain({
+    centerId: CENTER_ID, date: DATE, pax: 4, steps: lockSteps, lockOrder: false, preference: adverse,
+  }, { reservations: lockLoad, laneStatuses: {} });
+  ok(unlockedRes.scenarios.some((s) => toMin(s.startTime) === toMin('14:00')),
+    'P3 temoin : sans verrou, la preference adverse reordonne (B puis A) et 14:00 passe');
+  // AVEC verrou : l'etape pure-ressource est tenue par sa cle resourceType,
+  // l'ordre inverse est ecarte, 14:00 disparait.
+  const lockedPure = runCase('verrou d\'ordre sur une etape SANS activityId (pure ressource)', {
+    pax: 4,
+    chainSteps: lockSteps,
+    existing: lockLoad,
+    preference: adverse,
+  });
+  ok(!lockedPure.engineStarts.includes(toMin('14:00')),
+    'P3 : avec verrou, l\'etape pure-ressource ne peut pas etre reordonnee : 14:00 est refuse');
+  ok(lockedPure.result.scenarios.length > 0 && lockedPure.result.scenarios.every((s) => {
+    const order = s.resourceBlocks.map((b) => b.resourceType);
+    return order.indexOf('salle_a') < order.indexOf('salle_b');
+  }), 'P3 : tous les scenarios verrouilles gardent salle_a avant salle_b malgre la preference adverse');
+}
 // Et sur les VRAIES ressources bowling/laser (centre fichier Libramont, via
 // planReservation, le vrai point d'entree) : sans contrainte, le moteur genere
 // aussi un ordre laser-d'abord ; la contrainte declaree l'interdit.

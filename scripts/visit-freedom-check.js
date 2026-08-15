@@ -214,7 +214,21 @@ const MEASURE = () => {
     periodTabs: [...document.querySelectorAll('.anchor-period-tab')].map((tab) => tab.querySelector('.anchor-period-name')?.textContent.trim()),
     periodCounts: [...document.querySelectorAll('.anchor-period-tab')].map((tab) => Number(tab.querySelector('.anchor-period-count')?.textContent.trim() || 0)),
     activeChips: [...document.querySelectorAll('.anchor-chip.active')].map((chip) => chip.textContent.trim()),
-    visibleChips: [...document.querySelectorAll('.anchor-chip')].filter((chip) => chip.getBoundingClientRect().height > 0).length,
+    // « Affichee » = reellement sous les yeux. Depuis que les heures vivent
+    // dans une piste horizontale, une pastille peut avoir une hauteur tout en
+    // etant hors du champ de sa piste : on croise donc avec la fenetre ET avec
+    // le cadre visible de la piste.
+    visibleChips: [...document.querySelectorAll('.anchor-chip')].filter((chip) => {
+      const box = chip.getBoundingClientRect();
+      if (box.height <= 0 || box.top >= window.innerHeight || box.bottom <= 0) return false;
+      const track = chip.closest('.anchor-track');
+      if (!track) return true;
+      const frame = track.getBoundingClientRect();
+      return box.right > frame.left + 1 && box.left < frame.right - 1;
+    }).length,
+    // Toutes les heures du jour vivent dans le DOM d'une seule piste : plus
+    // aucune n'est retiree derriere un filtre.
+    reachableChips: document.querySelectorAll('.anchor-chip').length,
     chipTimesValid: [...document.querySelectorAll('.anchor-chip')].every((chip) => /^\d{2}:(00|30)$/.test(chip.textContent.trim())),
     picks: [...document.querySelectorAll('.anchor-row-pick')].map((el) => el.textContent.trim()),
     linkText: document.querySelector('.visit-rail-link')?.textContent.replace(/\s+/g, ' ').trim() || '',
@@ -395,6 +409,11 @@ async function checkBrowser(page) {
   // pastilles identiques deroulees d un bloc. Le budget garde la marche.
   ok(mobile.pickerHeight <= 1600, `mobile 390px : l ecran tient en ${mobile.pickerHeight} px (budget 1600, mesure 1732 avant refonte)`);
   ok(mobile.visibleChips <= 26, `mobile 390px : ${mobile.visibleChips} pastilles affichees a la fois, moins de la moitie des 53 deroulees d un bloc avant`);
+  // La piste horizontale a supprime le filtre par moment de journee : les 53
+  // heures des deux activites sont TOUTES dans le DOM, atteignables au doigt,
+  // aux fleches ou par saut de moment. Avant, 29 d'entre elles n'existaient pas
+  // tant qu'on n'avait pas change d'onglet.
+  ok(mobile.reachableChips === 53, `mobile 390px : les ${mobile.reachableChips} heures du jour sont toutes atteignables sans changer d onglet`);
 }
 
 // --- 6. CONTRE-EPREUVE PAR MUTATION -----------------------------------------

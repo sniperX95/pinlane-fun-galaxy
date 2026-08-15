@@ -74,15 +74,28 @@ function seedState() {
 // Il maintient les 3 tables en memoire et applique les ecritures des fonctions
 // CRUD par leur texte SQL + params positionnels. connect() partage les memes
 // tables (transactions), BEGIN/COMMIT/ROLLBACK sont des no-op.
-// Univers simule POST-migration 0041 : la FakePool repond aux SELECT etendus
-// (order_constraints, pax, optional), le store leve donc son drapeau de
-// capacite et ecrit la forme etendue. Les listes de colonnes suivent la MEME
-// forme, sinon le mappage positionnel decale tout apres order_policy.
+// Univers simule POST-migration 0041 par defaut : la FakePool repond aux
+// SELECT etendus (order_constraints, pax, optional), le store leve donc son
+// drapeau de capacite et ecrit la forme etendue. L'option { preMigration }
+// simule la prod d'AUJOURD'HUI : les colonnes 0041 n'existent pas, tout SELECT
+// qui les nomme jette le code pg 42703 (undefined_column) et le store doit
+// retomber sur la forme historique, lectures ET ecritures.
+// Le mappage positionnel choisit sa liste de colonnes par le NOMBRE de
+// parametres : une forme etendue mappee sur la liste historique (ou l'inverse)
+// decalerait tout apres order_policy.
 const FORMULA_COLS = ['id', 'name', 'family', 'min_pax', 'price_type', 'price_value', 'price_old',
   'not_during_holidays', 'valid_days', 'time_limit_min_minutes', 'time_limit_max_minutes',
   'human_validation', 'order_policy', 'order_constraints', 'is_birthday_formula', 'best', 'description_lines',
   'sort_index', 'source', 'active'];
+const FORMULA_COLS_LEGACY = FORMULA_COLS.filter((col) => col !== 'order_constraints');
 const STEP_COLS = ['formula_id', 'position', 'activity_id', 'count', 'duration_minutes', 'label', 'critical', 'resource_type', 'pax', 'optional'];
+const STEP_COLS_LEGACY = STEP_COLS.filter((col) => col !== 'pax' && col !== 'optional');
+
+function undefinedColumnError() {
+  const error = new Error('column "order_constraints" does not exist');
+  error.code = '42703';
+  return error;
+}
 const ACTIVITY_COLS = ['id', 'center_id', 'name', 'resource_type', 'duration_model', 'service_model',
   'risk_drivers', 'planning_pressure', 'bookable', 'price_type', 'price_value', 'price_unit',
   'booking_order', 'source', 'active'];
@@ -94,13 +107,24 @@ function rowFromParams(cols, params) {
 }
 
 class MockPool {
-  constructor(state) {
+  constructor(state, options = {}) {
     this.t = {
       formulas: (state.formulas || []).map((r) => ({ ...r })),
       steps: (state.steps || []).map((r) => ({ ...r })),
       activities: (state.activities || []).map((r) => ({ ...r })),
     };
     this.queries = 0;
+    // preMigration : les colonnes 0041 n'existent pas (42703 sur tout SELECT
+    // qui les nomme). failExtendedCode : jette CE code-la a la place (prouve
+    // que seul 42703 declenche la retombee historique).
+    this.preMigration = options.preMigration === true;
+    this.failExtendedCode = options.failExtendedCode || null;
+    this.writeSqls = [];
+  }
+  _isExtendedSelect(sql) {
+    return /^select/i.test(sql)
+      && ((/from formulas/i.test(sql) && /order_constraints/i.test(sql))
+        || (/from formula_steps/i.test(sql) && /\bpax\b/i.test(sql)));
   }
   async query(text, params = []) { return this._run(text, params); }
   async connect() {
@@ -117,9 +141,19 @@ class MockPool {
     this.queries += 1;
     const sql = String(text).replace(/\s+/g, ' ').trim();
     if (/^(begin|commit|rollback)/i.test(sql)) return { rows: [], rowCount: 0 };
+    if (this._isExtendedSelect(sql)) {
+      if (this.failExtendedCode) {
+        const error = new Error('panne simulee sur le select etendu');
+        error.code = this.failExtendedCode;
+        throw error;
+      }
+      if (this.preMigration) throw undefinedColumnError();
+    }
 
     if (/insert into formula_steps/i.test(sql)) {
-      const row = rowFromParams(STEP_COLS, params);
+      this.writeSqls.push(sql);
+      if (this.preMigration && /\bpax\b/i.test(sql)) throw undefinedColumnError();
+      const row = rowFromParams(params.length >= STEP_COLS.length ? STEP_COLS : STEP_COLS_LEGACY, params);
       this._upsert(this.t.steps, row, (r) => `${r.formula_id}|${r.position}`);
       return { rows: [], rowCount: 1 };
     }
@@ -130,9 +164,13 @@ class MockPool {
       return { rows: [], rowCount: before - this.t.steps.length };
     }
     if (/insert into formulas/i.test(sql)) {
-      const row = rowFromParams(FORMULA_COLS, params);
+      this.writeSqls.push(sql);
+      if (this.preMigration && /order_constraints/i.test(sql)) throw undefinedColumnError();
+      const row = rowFromParams(params.length >= FORMULA_COLS.length ? FORMULA_COLS : FORMULA_COLS_LEGACY, params);
       // jsonb : le pilote pg rend un TABLEAU, pas la chaine passee en insert.
-      row.order_constraints = row.order_constraints == null ? null : JSON.parse(row.order_constraints);
+      if ('order_constraints' in row) {
+        row.order_constraints = row.order_constraints == null ? null : JSON.parse(row.order_constraints);
+      }
       this._upsert(this.t.formulas, row, (r) => r.id);
       return { rows: [], rowCount: 1 };
     }
@@ -354,6 +392,65 @@ async function loadFromSeed() {
   ok(store.getActivityDoc('vr-arena').name === 'VR Arena Pro', 'updateActivity : nom reflete');
   await store.deleteActivity(pool6, { id: 'vr-arena' });
   ok(store.getActivityDoc('vr-arena') === null, 'deleteActivity (soft) : getActivityDoc(vr-arena) = null');
+
+  // =========================================================================
+  console.log('\n[7] PRE-migration 0041 : la prod d\'AUJOURD\'HUI (colonnes absentes)');
+  // =========================================================================
+  // La base reelle n'a pas encore formula_steps.pax / optional ni
+  // formulas.order_constraints : le SELECT etendu jette 42703 et le store doit
+  // (a) retomber sur la forme historique, (b) garder le drapeau a false donc
+  // ECRIRE la forme historique, (c) refuser les champs 0041 avec une erreur
+  // claire au lieu de les porter en memoire et de les perdre au restart.
+  const poolPre = new MockPool(seedState(), { preMigration: true });
+  bc.setFormuleOverrides(new Map());
+  const preLoaded = await store.refreshCatalog(poolPre, { force: true });
+  ok(preLoaded === true, '42703 sur le select etendu : retombee historique, le chargement REUSSIT');
+  ok(deepEq(store.getFormulaDoc('f1'), docById.get('f1')), 'pre-migration : getFormulaDoc(f1) == fichier (deep-equal, steps compris)');
+
+  await store.updateFormula(poolPre, { id: 'f3', name: 'F3 PRE MIGRATION' });
+  ok(store.getFormulaDoc('f3') && store.getFormulaDoc('f3').name === 'F3 PRE MIGRATION',
+    'updateFormula fonctionne en pre-migration (ecriture historique acceptee par la base)');
+  await store.setFormulaSteps(poolPre, { id: 'f3', steps: [{ activityId: 'bowling', count: 1, durationMinutes: 60 }] });
+  ok(store.getFormulaDoc('f3').steps.length === 1 && store.getFormulaDoc('f3').steps[0].activityId === 'bowling',
+    'setFormulaSteps fonctionne en pre-migration');
+  const sqlIsHistorical = (sqls) => !sqls.some((sql) => /order_constraints/i.test(sql)
+    || (/insert into formula_steps/i.test(sql) && /\bpax\b/i.test(sql)));
+  ok(sqlIsHistorical(poolPre.writeSqls) && poolPre.writeSqls.length >= 2,
+    `les ${poolPre.writeSqls.length} INSERT emis sont en forme HISTORIQUE (aucune colonne 0041 nommee)`);
+
+  // Les champs 0041 sont REFUSES tant que la base ne les porte pas.
+  let paxRefused = '';
+  try { await store.setFormulaSteps(poolPre, { id: 'f3', steps: [{ activityId: 'bowling', count: 1, pax: 4 }] }); }
+  catch (error) { paxRefused = String(error.message || ''); }
+  ok(paxRefused.includes('0041'), `step.pax refuse avec une erreur claire (obtenu "${paxRefused.slice(0, 80)}")`);
+  let optionalRefused = '';
+  try { await store.setFormulaSteps(poolPre, { id: 'f3', steps: [{ activityId: 'bowling', count: 1, optional: true }] }); }
+  catch (error) { optionalRefused = String(error.message || ''); }
+  ok(optionalRefused.includes('0041'), 'step.optional refuse avec une erreur claire');
+  let constraintsRefused = '';
+  try { await store.updateFormula(poolPre, { id: 'f3', orderConstraints: [['bowling', 'laser_game']] }); }
+  catch (error) { constraintsRefused = String(error.message || ''); }
+  ok(constraintsRefused.includes('0041'), 'formula.orderConstraints refuse avec une erreur claire');
+  // Temoin : le meme appel SANS champ 0041 passe toujours.
+  await store.updateFormula(poolPre, { id: 'f3', name: 'F3 PRE MIGRATION 2' });
+  ok(store.getFormulaDoc('f3').name === 'F3 PRE MIGRATION 2', 'temoin : un patch sans champ 0041 passe toujours');
+
+  // Seul 42703 declenche la retombee : une panne (autre code) se PROPAGE.
+  const poolBroken = new MockPool(seedState(), { failExtendedCode: '08006' });
+  const brokenLoaded = await store.refreshCatalog(poolBroken, { force: true });
+  ok(brokenLoaded === false, 'une erreur NON-42703 sur le select etendu se propage : refreshCatalog rend false (fail-soft amont)');
+  ok(store.getFormulaDoc('f3').name === 'F3 PRE MIGRATION 2',
+    'et l\'etat connu est conserve : la panne n\'est pas confondue avec une base pre-migration');
+
+  // CONTRE-EPREUVE par mutation : le detecteur "forme historique" sait-il
+  // rougir ? Sur l'univers POST-migration (pool tolerant), le store ecrit la
+  // forme etendue : le MEME detecteur doit la voir. C'est exactement ce qui se
+  // passerait si le store ignorait son drapeau en pre-migration.
+  const poolPost = await loadFromSeed();
+  await store.updateFormula(poolPost, { id: 'f3', name: 'F3 POST' });
+  await store.setFormulaSteps(poolPost, { id: 'f3', steps: [{ activityId: 'bowling', count: 1 }] });
+  ok(!sqlIsHistorical(poolPost.writeSqls),
+    'MUTATION : sur une ecriture en forme etendue, le detecteur historique ROUGIRAIT (le tranchant coupe)');
 
   // =========================================================================
   console.log('\n[CP] Contre-preuves par MUTATION (edition inverse, jamais git)');

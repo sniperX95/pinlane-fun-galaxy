@@ -472,6 +472,21 @@ async function main() {
       'le roulement fini, le montant redevient du texte simple');
     ok(polish.iconCount === 8, `chaque activite porte son icone (${polish.iconCount}/8)`);
 
+    // La pastille GLISSANTE du selecteur suit l'etat reel : la classe du
+    // conteneur (is-formule) est ce qui la positionne. Si elle se desynchronise,
+    // la pastille encadre le mauvais choix : un mensonge visuel.
+    const segmented = await page.evaluate(() => {
+      const container = document.getElementById('segCarte').closest('.segmented');
+      const before = container.classList.contains('is-formule');
+      setType('formule');
+      const onFormule = container.classList.contains('is-formule');
+      setType('carte');
+      const backToCarte = container.classList.contains('is-formule');
+      return { before, onFormule, backToCarte };
+    });
+    ok(segmented.before === false && segmented.onFormule === true && segmented.backToCarte === false,
+      'la pastille du selecteur suit le choix (is-formule posee et retiree avec l etat)');
+
     await page.evaluate(() => {
       getCenterActivities().forEach((activity) => {
         if (!state.booking.activities[activity.id]) toggleBookingActivity(activity.id);

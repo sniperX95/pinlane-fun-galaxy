@@ -30,6 +30,7 @@ const { chromium } = require('playwright-core');
 const opsEngine = require('../lib/ops-engine');
 const { planningAgent } = require('../lib/ops-agents');
 
+const APP = path.join(ROOT, 'assets/app-main.js');
 const ENGINE = path.join(ROOT, 'lib/ops-engine.js');
 const PORT = Number(process.env.PINLANE_FREEDOM_PORT || 4211);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -368,7 +369,39 @@ async function checkBrowser(page) {
       `${theme} : l avis porte la couleur d attention et non celle du refus (${cell.advice?.borderColor} vs danger ${cell.tokens.danger})`);
   }
 
+  console.log('\n[3b] GARDER CET HORAIRE : ecarter l avis est un droit, pas une perte d info');
+  await bootFormula(page, 'dismiss', { bowling: GAP_BOWLING, laser: GAP_LASER });
+  const dismissed = await page.evaluate(async () => {
+    const ghost = document.querySelector('.visit-rail-advice-ghost');
+    const label = ghost ? ghost.textContent.trim() : '';
+    if (ghost) ghost.click();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const gapLink = document.querySelector('.visit-rail-gap');
+    return {
+      label,
+      adviceGone: !document.querySelector('.visit-rail-advice'),
+      gapText: gapLink ? gapLink.textContent.trim() : '',
+    };
+  });
+  ok(dismissed.label === 'Garder cet horaire', `l avis propose de garder son horaire ("${dismissed.label}")`);
+  ok(dismissed.adviceGone, 'garder son horaire retire l avis : le choix du client est respecte');
+  ok(/2 h 30/.test(dismissed.gapText), `l attente reste DITE par le maillon ("${dismissed.gapText}") : l information ne disparait jamais`);
+  const stillAway = await page.evaluate(async () => {
+    await revalidateFormulaAnchors();
+    return { adviceBack: Boolean(document.querySelector('.visit-rail-advice')) };
+  });
+  ok(stillAway.adviceBack === false, 'une revalidation ne ressuscite pas l avis ecarte');
+  const revived = await page.evaluate(async () => {
+    await setFormulaAnchorTime('laser_game', '19:00');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const advice = document.querySelector('.visit-rail-advice');
+    return { adviceBack: Boolean(advice), text: advice ? advice.textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : '' };
+  });
+  ok(revived.adviceBack === true, `l attente a change : l avis revient de lui-meme ("${revived.text}")`);
+
   console.log('\n[4] LE FIL DE LA VISITE et la hierarchie des heures');
+  // L etat de [3b] a deplace le laser : on repart de la paire de reference.
+  await bootFormula(page, 'rail', { bowling: GAP_BOWLING, laser: GAP_LASER });
   const rail = await measureCell(page, 1280, 'dark');
   ok(rail.railSteps === 3, `le fil porte les deux activites ET le pass liberte (${rail.railSteps} etapes)`);
   ok(rail.railLinks === 1, `le lien entre les deux activites est represente (${rail.railLinks})`);
@@ -449,6 +482,42 @@ process.stdout.write(JSON.stringify({ ok: result.ok, notices: (result.plan.recom
   ok(restored.ok === true && restored.notices === 1, 'restauration inverse : la liberte revient avec son avis');
 }
 
+// La decision « Garder cet horaire » rendue muette expres : le clic ne
+// memorise plus rien, l avis reste plante -> les checks de [3b] rougiraient.
+async function checkDismissMutation(page) {
+  console.log('\n[6b] CONTRE-EPREUVE : ecarter l avis doit vraiment l ecarter');
+  const original = fs.readFileSync(APP, 'utf8');
+  const anchor = '  formulaAdviceDismissed = signature;';
+  const occurrences = original.split(anchor).length - 1;
+  if (occurrences !== 1) {
+    ok(false, `ancre de mutation dismiss introuvable ou ambigue (${occurrences})`);
+    return;
+  }
+  let muted = null;
+  try {
+    fs.writeFileSync(APP, original.replace(anchor, "  formulaAdviceDismissed = '';"));
+    await bootFormula(page, 'mutation-dismiss', { bowling: GAP_BOWLING, laser: GAP_LASER });
+    muted = await page.evaluate(async () => {
+      const ghost = document.querySelector('.visit-rail-advice-ghost');
+      if (ghost) ghost.click();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return { adviceStill: Boolean(document.querySelector('.visit-rail-advice')) };
+    });
+  } finally {
+    fs.writeFileSync(APP, original); // restauration par edition inverse
+  }
+  ok(muted && muted.adviceStill === true,
+    'decision rendue muette expres : l avis reste plante -> le check [3b] ROUGIRAIT');
+  await bootFormula(page, 'restore-dismiss', { bowling: GAP_BOWLING, laser: GAP_LASER });
+  const back = await page.evaluate(async () => {
+    const ghost = document.querySelector('.visit-rail-advice-ghost');
+    if (ghost) ghost.click();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return { adviceGone: !document.querySelector('.visit-rail-advice') };
+  });
+  ok(back.adviceGone === true, 'restauration inverse : garder son horaire ecarte de nouveau l avis');
+}
+
 async function main() {
   checkEngine();
   const server = await serveStatic();
@@ -458,6 +527,7 @@ async function main() {
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   try {
     await checkBrowser(page);
+    await checkDismissMutation(page);
     ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length})${consoleErrors.length ? ' : ' + consoleErrors.slice(0, 3).join(' | ') : ''}`);
   } finally {
     await browser.close();

@@ -21,9 +21,14 @@
 //      dans le champ, la piste ne vole pas le defilement vertical, et ce qui
 //      depasse est signale (etat de la piste + boutons de deplacement) ;
 //   5. les CHIFFRES de fluidite : images longues et taches longues pendant le
-//      changement d'etape, le saut de moment et le choix d'une heure.
+//      changement d'etape, le saut de moment et le choix d'une heure ;
+//   6. la PREUVE EN RAFALE : les metriques DOM ne voyaient pas ce que Movsar
+//      voyait (« plusieurs rafraichissements au clic »). Une rafale de
+//      captures pendant le clic d'une heure, differenciees pixel a pixel,
+//      prouve qu'un geste ne produit qu'UNE vague de changement, sans
+//      reconstruire la piste ni faire sauter son defilement.
 //
-// CONTRE-EPREUVE PAR MUTATION sur 1 et 2, restauration par edition inverse.
+// CONTRE-EPREUVE PAR MUTATION sur 1, 2 et 6, restauration par edition inverse.
 //
 // Lancement : node scripts/visit-motion-check.js
 const fs = require('fs');
@@ -413,6 +418,98 @@ async function checkSeal(page) {
   ok(/stroke-dashoffset/.test(seal.checkTransition), `la coche se dessine par son trace (${seal.checkTransition})`);
 }
 
+// --- LA PREUVE EN RAFALE ----------------------------------------------------
+// Les métriques DOM (mutations, réseau, longtask) ne voyaient PAS ce que
+// Movsar voyait : « on clique sur un bouton ça fait plusieurs
+// rafraîchissements ». La preuve est VISUELLE : une rafale de captures pendant
+// le geste, différenciées pixel à pixel dans le navigateur. Un geste propre ne
+// change des pixels QUE dans la zone légitimement animée, en UNE vague.
+async function burstDiff(page, action, { durationMs = 1100 } = {}) {
+  const before = await page.evaluate(() => {
+    const track = document.querySelector('.anchor-track[data-anchor="bowling"]');
+    if (track) track.__burstMark = true;
+    return { scrollLeft: track ? Math.round(track.scrollLeft) : -1, scrollY: Math.round(window.scrollY) };
+  });
+  const frames = [];
+  const startedAt = Date.now();
+  let acted = false;
+  while (Date.now() - startedAt < durationMs) {
+    if (!acted && Date.now() - startedAt >= 60) { await action(); acted = true; }
+    frames.push({ t: Date.now() - startedAt, shot: await page.screenshot({ fullPage: false }) });
+  }
+  const events = [];
+  for (let index = 1; index < frames.length; index += 1) {
+    const result = await page.evaluate(async ([b64a, b64b]) => {
+      const load = (b64) => new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = 'data:image/png;base64,' + b64;
+      });
+      const [ia, ib] = await Promise.all([load(b64a), load(b64b)]);
+      if (ia.width !== ib.width || ia.height !== ib.height) return { n: -1 };
+      const canvas = new OffscreenCanvas(ia.width, ia.height);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(ia, 0, 0);
+      const da = ctx.getImageData(0, 0, ia.width, ia.height).data;
+      ctx.clearRect(0, 0, ia.width, ia.height);
+      ctx.drawImage(ib, 0, 0);
+      const db = ctx.getImageData(0, 0, ia.width, ia.height).data;
+      let n = 0;
+      for (let k = 0; k < da.length; k += 4) {
+        if (Math.abs(da[k] - db[k]) > 8 || Math.abs(da[k + 1] - db[k + 1]) > 8 || Math.abs(da[k + 2] - db[k + 2]) > 8) n += 1;
+      }
+      return { n, total: ia.width * ia.height };
+    }, [frames[index - 1].shot.toString('base64'), frames[index].shot.toString('base64')]);
+    if (result.n > 0) events.push({ t: frames[index].t, pixels: result.n, share: result.n / result.total });
+  }
+  const after = await page.evaluate(() => {
+    const track = document.querySelector('.anchor-track[data-anchor="bowling"]');
+    return {
+      sameTrack: Boolean(track && track.__burstMark),
+      scrollLeft: track ? Math.round(track.scrollLeft) : -1,
+      scrollY: Math.round(window.scrollY),
+    };
+  });
+  return {
+    frames: frames.length,
+    events,
+    bigWaves: events.filter((event) => event.share > 0.08).length,
+    sameTrack: after.sameTrack,
+    trackScrollKept: before.scrollLeft === after.scrollLeft,
+    pageScrollKept: before.scrollY === after.scrollY,
+  };
+}
+
+function describeBurst(result) {
+  const waves = result.events.map((event) => `${event.t}ms:${Math.round(event.share * 1000) / 10}%`).join(', ');
+  return `${result.frames} images, ${result.events.length} changement(s) [${waves || 'aucun'}]`;
+}
+
+async function clickFreshChip(page) {
+  await page.evaluate(() => {
+    const chip = [...document.querySelectorAll('.anchor-row[data-anchor="bowling"] .anchor-chip')]
+      .find((item) => !item.classList.contains('active') && !item.disabled);
+    if (chip) chip.click();
+  });
+}
+
+async function checkClickCalm(page) {
+  console.log('\n[3c] Un clic d heure = UNE vague de changement, jamais des rafraichissements');
+  await bootTunnel(page, 'calm');
+  await page.evaluate(() => goStep2());
+  await page.waitForTimeout(1200);
+  const result = await burstDiff(page, () => clickFreshChip(page));
+  console.log(`      ${describeBurst(result)}`);
+  ok(result.events.length > 0, 'le clic change bien quelque chose a l ecran');
+  ok(result.bigWaves <= 1,
+    `au plus UNE vague depasse 8 % de l ecran (${result.bigWaves}) : pas de reconstruction en cascade`);
+  ok(result.sameTrack, 'la piste d heures n est pas reconstruite par le clic (meme noeud DOM)');
+  ok(result.trackScrollKept, 'le defilement de la piste ne saute pas');
+  ok(result.pageScrollKept, 'la page ne defile pas toute seule');
+  return result;
+}
+
 async function checkFluidity(page) {
   console.log('\n[4] Fluidite mesuree (60 Hz : une image « normale » vaut ~16,8 ms,');
   console.log('    le signal utile est donc l image PERDUE au-dela de 32 ms et la tache longue)');
@@ -487,6 +584,37 @@ async function checkMutations(page) {
   ok(restoredJs.prefers === true && !restoredJs.classes.some((name) => name.startsWith('is-entering')),
     'restauration inverse : le mouvement reduit est de nouveau respecte');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+  // (c) la reconstruction en cascade d'avant (trois rendus complets par clic
+  // d'heure) remise expres : la rafale doit la voir, sinon elle ne protege
+  // rien. Deux anchors : le rendu « occupe » redevient un innerHTML complet,
+  // et le fetch re-rend une deuxieme fois.
+  const app2 = fs.readFileSync(APP, 'utf8');
+  const syncAnchor = 'if (!syncFormulaAnchorUi(formule, { busy: true })) renderSlots(formule);';
+  const fetchAnchor = 'await fetchSlots({ showLoading: false, render: false });';
+  ok(app2.split(syncAnchor).length - 1 === 1 && app2.split(fetchAnchor).length - 1 === 1,
+    'ancres JS de mutation flicker uniques');
+  let mutatedBurst = null;
+  try {
+    fs.writeFileSync(APP, app2
+      .replace(syncAnchor, 'renderSlots(formule);')
+      .replace(fetchAnchor, 'await fetchSlots({ showLoading: false });'));
+    await bootTunnel(page, 'mutation-flicker');
+    await page.evaluate(() => goStep2());
+    await page.waitForTimeout(1200);
+    mutatedBurst = await burstDiff(page, () => clickFreshChip(page));
+    console.log(`      mutation : ${describeBurst(mutatedBurst)}`);
+  } finally {
+    fs.writeFileSync(APP, app2);
+  }
+  ok(mutatedBurst.bigWaves >= 2 || !mutatedBurst.sameTrack,
+    `reconstruction remise expres : ${mutatedBurst.bigWaves} grande(s) vague(s), piste ${mutatedBurst.sameTrack ? 'conservee' : 'RECONSTRUITE'} -> le check [3c] ROUGIRAIT`);
+  await bootTunnel(page, 'restore-flicker');
+  await page.evaluate(() => goStep2());
+  await page.waitForTimeout(1200);
+  const calmAgain = await burstDiff(page, () => clickFreshChip(page));
+  ok(calmAgain.bigWaves <= 1 && calmAgain.sameTrack,
+    `restauration inverse : le clic redevient UNE vague (${calmAgain.bigWaves}) sur la meme piste`);
 }
 
 async function main() {
@@ -503,6 +631,7 @@ async function main() {
     await checkReducedMotion(page);
     await checkTrack(page);
     await checkSeal(page);
+    await checkClickCalm(page);
     await checkFluidity(page);
     await checkMutations(page);
     ok(consoleErrors.length === 0, `aucune erreur console (${consoleErrors.length})${consoleErrors.length ? ' : ' + consoleErrors.slice(0, 3).join(' | ') : ''}`);

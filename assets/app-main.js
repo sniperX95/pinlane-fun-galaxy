@@ -3391,11 +3391,22 @@ function activityConfigHint(activity) {
   return 'Durée';
 }
 
+// Le nom accessible d'une carte d'activite est EXPLICITE (aria-label), jamais
+// deduit de la concatenation des spans visuels : un arbre d'accessibilite qui
+// rend « button » sans texte interdit de reserver au lecteur d'ecran. Le nom
+// porte l'activite et son prix, l'etat coche vit dans aria-pressed.
+function activityToggleLabel(activity, { closed = false, pax = 1 } = {}) {
+  if (!activity) return '';
+  if (closed) return `${activity.name}, fermé ce jour`;
+  const hint = activityPriceHint(activity, pax);
+  return hint ? `${activity.name}, ${hint}` : activity.name;
+}
+
 function buildActivityPicker(host, catalog) {
   const pax = Math.max(1, Number(state.booking.pax) || 1);
   const cards = catalog.map((activity, index) => `
       <div class="activity-card" data-activity="${escapeHtml(activity.id)}" style="--i:${index}">
-        <button type="button" class="activity-toggle" aria-pressed="false" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
+        <button type="button" class="activity-toggle" aria-pressed="false" aria-label="${escapeHtml(activityToggleLabel(activity, { pax }))}" onclick="toggleBookingActivity('${escapeHtml(activity.id)}')">
           <span class="activity-icon">${activityIconMarkup(activity.id)}</span>
           <span class="activity-text">
             <span class="activity-name">${escapeHtml(activity.name)}</span>
@@ -3452,6 +3463,9 @@ function syncActivityPickerState(off = []) {
       toggle.setAttribute('aria-pressed', chosen && !closed ? 'true' : 'false');
       toggle.disabled = closed;
       toggle.setAttribute('aria-disabled', closed ? 'true' : 'false');
+      // Le nom accessible suit l'etat reel : prix du jour, fermeture du jour.
+      const label = activityToggleLabel(activity, { closed, pax });
+      if (label && toggle.getAttribute('aria-label') !== label) toggle.setAttribute('aria-label', label);
     }
     const price = card.querySelector('[data-role="price"]');
     if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, pax);

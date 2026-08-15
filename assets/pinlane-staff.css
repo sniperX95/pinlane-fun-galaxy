@@ -11597,9 +11597,9 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .pv2-mail-paper-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 0 16px 10px; border-bottom: 1px solid #edeaf0; font-size: 11.5px; color: #5a5560; }
 .pv2-mail-paper-meta b { font-weight: 600; color: #17151f; margin-right: 4px; }
 .pv2-mail-paper .pv2-mail-render { margin-top: 0; border: 0; border-radius: 0; background: #ffffff; color: #17151f; max-height: 260px; }
-.pv2-mail-paper .pv2-mail-render a { color: #944292; }
-.pv2-mail-paper .pv2-mail-render .pv2-preview-btn { background: #944292; color: #ffffff; }
-.pv2-mail-paper .pl-var.is-ok { border-bottom-color: rgba(148, 66, 146, 0.5); }
+/* Liens, bouton CTA et jetons de l'aperçu gardent les règles de base à jetons
+   (--accent-strong / --accent) : le magenta du premier client était repeint en
+   dur ici, DESIGN.md interdit toute couleur hors tokens (purge 2026-08-15). */
 
 /* ── Sélecteur de client : rangée de tri + méta enrichie ── */
 .pv2-combo-sort { display: flex; gap: 4px; padding: 2px 4px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }

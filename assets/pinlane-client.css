@@ -2417,6 +2417,37 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   animation: pl-client-enter var(--dur-slow) var(--ease) both;
 }
 
+/* DANS une étape, l'arrivée appartient à l'ÉTAPE (glissement latéral + cascade
+   bornée). Une animation CSS repart de zéro chaque fois que l'élément repasse
+   de display:none à visible : ces cartes rejouaient donc leur fondu à CHAQUE
+   visite de l'étape, par-dessus le glissement : deux mouvements superposés qui
+   se lisaient comme un double rafraîchissement. */
+#clientView .step .slide-up,
+#clientView .step .slide-right {
+  animation: none;
+}
+
+/* Vérification d'une combinaison : SEULES les actions se mettent en retrait,
+   le reste de l'écran ne bouge pas d'un pixel. Éteindre toute la zone faisait
+   un aplat qui clignotait à chaque clic d'heure. */
+#clientView .formula-anchor-status-zone .btn-primary,
+#clientView .formula-anchor-status-zone .anchor-suggestion,
+#clientView .formula-anchor-status-zone .formula-order-fallback-btn {
+  transition-property: background-color, border-color, color, opacity, transform;
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-out-strong);
+}
+
+#clientView .formula-anchor-status-zone.is-checking {
+  pointer-events: none;
+}
+
+#clientView .formula-anchor-status-zone.is-checking .btn-primary,
+#clientView .formula-anchor-status-zone.is-checking .anchor-suggestion,
+#clientView .formula-anchor-status-zone.is-checking .formula-order-fallback-btn {
+  opacity: 0.55;
+}
+
 /* --- Mobile first : le parcours se fait au téléphone ---------------------- */
 @media (max-width: 640px) {
   #clientView {
@@ -4593,4 +4624,7 @@ body.modal-open { overflow: hidden; }
   #clientView .btn-seal-check,
   #clientView .success-icon svg path,
   #clientView .success-icon svg polyline { stroke-dashoffset: 0; }
+  #clientView .formula-anchor-status-zone .btn-primary,
+  #clientView .formula-anchor-status-zone .anchor-suggestion,
+  #clientView .formula-anchor-status-zone .formula-order-fallback-btn { transition: none; }
 }

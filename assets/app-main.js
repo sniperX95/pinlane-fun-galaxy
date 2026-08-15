@@ -3599,6 +3599,7 @@ function renderProgramSummary() {
       // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,
       // le total double sans que rien n'explique pourquoi.
       return {
+        id: activity.id,
         name: activity.name,
         detail: `${option?.label || ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
       };
@@ -3606,13 +3607,13 @@ function renderProgramSummary() {
     if (activity.priceType === 'grid_laser') {
       const games = Number(options.games) || 1;
       total += (LASER_GAME_OPTIONS.find(option => Number(option.games) === games)?.price || 0) * pax;
-      return { name: activity.name, detail: `${games} partie${games > 1 ? 's' : ''}` };
+      return { id: activity.id, name: activity.name, detail: `${games} partie${games > 1 ? 's' : ''}` };
     }
     if (activity.priceType === 'grid_fun_run') {
       const minutes = Number(options.minutes) || FUN_RUN_OPTIONS[0].minutes;
       const option = FUN_RUN_OPTIONS.find(item => item.minutes === minutes) || FUN_RUN_OPTIONS[0];
       total += option.price;
-      return { name: activity.name, detail: option.label };
+      return { id: activity.id, name: activity.name, detail: option.label };
     }
     const price = typeof getFreeActivityPrice === 'function'
       ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours, minutes: options.minutes })
@@ -3624,11 +3625,13 @@ function renderProgramSummary() {
       const hours = Number(options.hours) || hourChoices[0].hours;
       const durationLabel = hourChoices.find(option => option.hours === hours)?.label || `${hours}h`;
       return {
+        id: activity.id,
         name: activity.name,
         detail: `${units} table${units > 1 ? 's' : ''} · ${durationLabel}`,
       };
     }
     return {
+      id: activity.id,
       name: activity.name,
       detail: price == null ? 'À régler sur place' : 'Compris dans le total',
     };
@@ -4280,6 +4283,9 @@ async function fetchSlots(options = {}) {
   if (options.showLoading !== false) {
     slotLoading = true;
     state.availableSlots = [];
+    // Nouvelle recherche assumée (arrivée sur l'étape, autre date) : les pistes
+    // repartiront centrées sur l'heure proposée, pas sur un vieux défilement.
+    anchorTrackScrollMemory.clear();
     renderSlots(formule);
   }
   setStep1Busy(true);
@@ -4354,7 +4360,9 @@ async function fetchSlots(options = {}) {
 
   if (requestId !== slotFetchRequestId) return;
   slotLoading = false;
-  renderSlots(formule);
+  // `render: false` : l'appelant (revalidation en place) décide lui-même de la
+  // mise à jour du DOM : deux rendus complets dos à dos faisaient clignoter.
+  if (options.render !== false) renderSlots(formule);
   setStep1Busy(false);
 }
 
@@ -4448,20 +4456,25 @@ function getCurrentFormulaAnchorSlotIndex() {
   return (state.availableSlots || []).findIndex((slot) => formulaSlotMatchesTimes(slot, times));
 }
 
+// Un clic = UNE réponse par phase, jamais une reconstruction. Phase 1 (tout de
+// suite) : l'état choisi se pose en place et la zone de statut passe en
+// vérification. Phase 2 (réponse serveur) : seuls les éléments qui ont changé
+// sont réécrits. Le rendu complet ne reste que pour un VRAI changement de
+// structure (ordre des activités, liste d'heures, panne).
 async function revalidateFormulaAnchors() {
   const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
   formulaAnchorBusy = true;
-  renderSlots(formule);
-  await fetchSlots({ showLoading: false });
+  if (!syncFormulaAnchorUi(formule, { busy: true })) renderSlots(formule);
+  await fetchSlots({ showLoading: false, render: false });
   formulaAnchorBusy = false;
-  renderSlots(formule);
+  if (!syncFormulaAnchorUi(formule, { busy: false })) renderSlots(formule);
 }
 
 async function setFormulaAnchorTime(activityId, time) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
   if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
-  // La pastille qui vient d'etre choisie ressort UNE fois : le client voit ou
-  // son clic a atterri (recette 6 du catalogue).
+  // La pastille qui vient d'etre choisie ressort UNE fois, DES le clic : le
+  // client voit ou son clic a atterri sans attendre le reseau (recette 6).
   formulaJustPicked = { activityId, time };
   preference.preferredTimes[activityId] = time;
   if (activityId === 'laser_game') preference.laserPlacement = 'scheduled';
@@ -4702,6 +4715,18 @@ function syncAnchorTrackState(track) {
   });
 }
 
+// La position de lecture de chaque piste survit aux rendus complets : un
+// client qui regardait le soir ne doit pas être ramené de force sur l'heure
+// active parce qu'un rendu est passé par là. La mémoire se vide à l'arrivée
+// sur l'étape (fetch avec chargement visible) : là, recentrer est un service.
+const anchorTrackScrollMemory = new Map();
+
+function snapshotAnchorTrackScroll() {
+  document.querySelectorAll('.anchor-track[data-anchor]').forEach((track) => {
+    anchorTrackScrollMemory.set(track.dataset.anchor, track.scrollLeft);
+  });
+}
+
 // Un seul écouteur passif par piste, calé sur la fréquence d'affichage : on ne
 // touche au DOM que lorsque l'état CHANGE (voir syncAnchorTrackState).
 function bindAnchorTracks() {
@@ -4715,6 +4740,14 @@ function bindAnchorTracks() {
       requestAnimationFrame(() => { queued = false; syncAnchorTrackState(track); });
     }, { passive: true });
     syncAnchorTrackState(track);
+    const remembered = anchorTrackScrollMemory.get(track.dataset.anchor);
+    if (remembered != null) {
+      // Rendu complet en cours de parcours : la piste reprend sa position, elle
+      // ne saute pas.
+      if (Math.abs(track.scrollLeft - remembered) > 1) track.scrollLeft = remembered;
+      syncAnchorTrackState(track);
+      return;
+    }
     // L'heure retenue doit être sous les yeux à l'ouverture, pas trois écrans
     // plus loin dans la piste.
     const active = track.querySelector('.anchor-chip.active');
@@ -4748,7 +4781,7 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained }) {
     const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
       && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
     if (justPicked) formulaJustPicked = null;
-    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
+    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
   }).join('')).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
@@ -4916,32 +4949,27 @@ function renderFormulaFreePassBlock(formule) {
     </div>`;
 }
 
-function renderFormulaAnchorPicker(formule) {
-  if (!formulaHasAnchorUi()) return renderFormulaArrivalPicker(formule);
+// La zone de statut du picker : panneau de validation quand la combinaison
+// tient, refus expliqué avec les combinaisons voisines sinon. UN SEUL endroit
+// écrit ce HTML : le rendu complet et la mise à jour en place s'en servent.
+function renderFormulaAnchorStatus(formule) {
   const slotIndex = getCurrentFormulaAnchorSlotIndex();
   const slot = slotIndex >= 0 ? state.availableSlots[slotIndex] : null;
-  let statusHtml = '';
-  if (formulaAnchorBusy) {
-    statusHtml = `
-      <div class="anchor-status anchor-status-busy" role="status" aria-live="polite">
-        <span class="slot-spinner" aria-hidden="true"></span>
-        <span>Vérification de votre combinaison…</span>
-      </div>`;
-  } else if (slot) {
-    statusHtml = `
+  if (slot) {
+    return `
       <div class="formula-program-panel">
         ${renderFormulaVisitSummary(slot, formule)}
         <button type="button" class="btn-primary formula-plan-confirm" onclick="selectSlot(${slotIndex})">Valider ces horaires</button>
       </div>`;
-  } else {
-    // UN REFUS EXPLIQUE, PAS UN MUR. L'encadré disait « Cette combinaison n'est
-    // pas possible » sans dire POURQUOI ni QUOI FAIRE d'autre que tout annuler
-    // (Movsar, 2026-08-15 : « le rouge comme ça, c'est pas fou »). Il nomme
-    // maintenant la contrainte, propose les combinaisons voisines qui marchent,
-    // et ne garde le retour à la proposition automatique qu'en dernier recours.
-    const suggestions = (formulaAnchorSuggestions || []).map((suggestion, index) => `
+  }
+  // UN REFUS EXPLIQUE, PAS UN MUR. L'encadré disait « Cette combinaison n'est
+  // pas possible » sans dire POURQUOI ni QUOI FAIRE d'autre que tout annuler
+  // (Movsar, 2026-08-15 : « le rouge comme ça, c'est pas fou »). Il nomme
+  // maintenant la contrainte, propose les combinaisons voisines qui marchent,
+  // et ne garde le retour à la proposition automatique qu'en dernier recours.
+  const suggestions = (formulaAnchorSuggestions || []).map((suggestion, index) => `
       <button type="button" class="anchor-suggestion" onclick="applyFormulaAnchorSuggestion(${index})">${escapeHtml(suggestion.label || Object.values(suggestion.times || {}).join(' · '))}</button>`).join('');
-    statusHtml = `
+  return `
       <div class="anchor-status anchor-status-error" role="alert">
         <div class="anchor-status-copy">
           <strong>${escapeHtml(formulaAnchorMessage || 'Ces deux heures ne peuvent pas aller ensemble.')}</strong>
@@ -4950,6 +4978,19 @@ function renderFormulaAnchorPicker(formule) {
         ${suggestions ? `<div class="anchor-suggestions"><span>Ces horaires fonctionnent :</span>${suggestions}</div>` : ''}
         <button type="button" class="formula-order-fallback-btn" onclick="resetFormulaAnchorChoices()">Repartir de la proposition automatique</button>
       </div>`;
+}
+
+function renderFormulaAnchorPicker(formule) {
+  if (!formulaHasAnchorUi()) return renderFormulaArrivalPicker(formule);
+  let statusHtml = '';
+  if (formulaAnchorBusy) {
+    statusHtml = `
+      <div class="anchor-status anchor-status-busy" role="status" aria-live="polite">
+        <span class="slot-spinner" aria-hidden="true"></span>
+        <span>Vérification de votre combinaison…</span>
+      </div>`;
+  } else {
+    statusHtml = renderFormulaAnchorStatus(formule);
   }
   // Le pass liberté est le dernier maillon du fil (renderFormulaAnchorRows) :
   // il ne se rajoute plus après le panneau, sinon la visite se lit en deux
@@ -4957,11 +4998,124 @@ function renderFormulaAnchorPicker(formule) {
   // Plus d'en-tête interne : le titre de la carte le porte déjà, et la consigne
   // que ce paragraphe donnait ("présentez-vous 10 min avant") est dite par le
   // résumé, à l'heure près.
+  // La zone de statut est un conteneur STABLE : la revalidation d'un choix la
+  // met à jour en place (syncFormulaAnchorUi), elle ne reconstruit pas le fil.
   return `
     <div class="formula-anchor-picker">
       ${renderFormulaAnchorRows(formule)}
-      ${statusHtml}
+      <div class="formula-anchor-status-zone" data-role="anchor-status-zone">${statusHtml}</div>
     </div>`;
+}
+
+// LA REVALIDATION NE RECONSTRUIT PLUS L'ECRAN. Un clic sur une heure changeait
+// trois fois tout le DOM du fil (rendu « occupé », rendu post-réseau, rendu
+// final) : chaque reconstruction rejouait les pistes, remettait leur défilement
+// à zéro et faisait clignoter le panneau. C'est le « plusieurs
+// rafraîchissements » que Movsar voyait. Ici, seuls les éléments dont l'état a
+// réellement changé sont touchés : pastilles (classes), badge d'heure retenue,
+// maillons d'attente, zone de statut. Le fil, les pistes et leur défilement ne
+// bougent pas. Retourne false quand la structure a changé (ordre des activités,
+// liste d'heures, état d'erreur) : l'appelant repasse alors par un rendu
+// complet, qui est cette fois un VRAI changement d'écran.
+function syncFormulaAnchorUi(formule, { busy }) {
+  const list = document.getElementById('slotList');
+  const picker = list ? list.querySelector('.formula-anchor-picker') : null;
+  if (!picker || !formulaHasAnchorUi()) return false;
+  if (!busy && slotLoadFailed) return false;
+  const steps = getVisitRailSteps();
+  const rows = [...picker.querySelectorAll('.anchor-row[data-anchor]')];
+  if (rows.length !== steps.length) return false;
+  if (steps.some((step, index) => rows[index].dataset.anchor !== step.activity.activityId)) return false;
+
+  const { preference, times } = getCurrentFormulaAnchorSelection();
+  for (const step of steps) {
+    const activity = step.activity;
+    const row = picker.querySelector(`.anchor-row[data-anchor="${activity.activityId}"]`);
+    if (!row) return false;
+    const isLaser = activity.activityId === 'laser_game';
+    const laserOnSite = preference.laserPlacement === 'onsite';
+    const disabled = isLaser && laserOnSite;
+    const selected = disabled ? '' : (times[activity.activityId] || '');
+    const chained = disabled ? '' : getChainedAnchorTime(activity.activityId);
+    const chips = [...row.querySelectorAll('.anchor-chip')];
+    if (chips.length !== (activity.times || []).length) return false;
+    chips.forEach((chip) => {
+      const time = chip.dataset.time || '';
+      const isActive = time === selected;
+      const isChained = !isActive && time === chained;
+      chip.classList.toggle('active', isActive);
+      chip.classList.toggle('is-chained', isChained);
+      chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      chip.setAttribute('aria-label', isChained ? `${time}, enchaîné avec l'activité précédente` : time);
+      if (chip.disabled !== disabled) chip.disabled = disabled;
+      // La capsule ne ressort que sur l'heure qui VIENT d'être choisie. La
+      // classe reste posée tant que l'heure est active (l'animation est finie,
+      // elle ne rejoue pas) : la retirer en cours de course couperait le pop
+      // quand le réseau répond plus vite que les 160 ms du geste.
+      const justPicked = Boolean(formulaJustPicked && isActive
+        && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === time);
+      if (justPicked) formulaJustPicked = null;
+      if (justPicked) chip.classList.add('is-just-picked');
+      else if (!isActive) chip.classList.remove('is-just-picked');
+    });
+    // L'heure retenue se lit dans le titre de l'étape, sans reconstruire la tête.
+    const head = row.querySelector('.anchor-row-head');
+    if (head) {
+      let pick = head.querySelector('.anchor-row-pick');
+      const wanted = disabled ? 'avec l’équipe' : selected;
+      if (wanted) {
+        if (!pick) {
+          pick = document.createElement('span');
+          head.querySelector('strong')?.insertAdjacentElement('afterend', pick);
+        }
+        pick.className = `anchor-row-pick${disabled ? ' anchor-row-pick-free' : ''}`;
+        if (pick.textContent !== wanted) pick.textContent = wanted;
+      } else if (pick) pick.remove();
+    }
+    row.classList.toggle('anchor-row-onsite', disabled);
+    const onsite = row.querySelector('.anchor-onsite');
+    if (onsite) {
+      onsite.classList.toggle('active', laserOnSite && isLaser);
+      const box = onsite.querySelector('input[type="checkbox"]');
+      if (box && box.checked !== (laserOnSite && isLaser)) box.checked = laserOnSite && isLaser;
+    }
+    // Le point du moment qui porte l'heure retenue.
+    const periodKey = selected ? getAnchorPeriodKey(selected) : '';
+    row.querySelectorAll('.anchor-period-tab').forEach((tab) => {
+      tab.classList.toggle('has-pick', Boolean(periodKey) && tab.dataset.period === periodKey);
+      if (tab.disabled !== disabled) tab.disabled = disabled;
+    });
+    row.querySelectorAll('.anchor-track-nudge').forEach((button) => {
+      if (disabled && !button.disabled) button.disabled = true;
+    });
+    if (!disabled) {
+      const track = row.querySelector('.anchor-track');
+      if (track) syncAnchorTrackState(track);
+    }
+  }
+
+  const zone = picker.querySelector('[data-role="anchor-status-zone"]');
+  if (!zone) return false;
+  if (busy) {
+    // Pendant la vérification, RIEN n'est remplacé : la zone se met en retrait
+    // et le bouton de validation se désarme. Aucun aplat ne disparaît.
+    zone.classList.add('is-checking');
+    zone.setAttribute('aria-busy', 'true');
+    zone.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+    return true;
+  }
+  // Réponse arrivée : les maillons du fil disent le nouvel écart réel.
+  const notices = getSlotComfortNotices();
+  picker.querySelectorAll('.visit-rail-link').forEach((link) => link.remove());
+  const stepLis = [...picker.querySelectorAll('.visit-rail-step:not(.visit-rail-step-free)')];
+  for (let index = steps.length - 1; index >= 1; index -= 1) {
+    const html = renderVisitRailLink(steps[index - 1], steps[index], notices);
+    if (html) stepLis[index].insertAdjacentHTML('beforebegin', html);
+  }
+  zone.classList.remove('is-checking');
+  zone.setAttribute('aria-busy', 'false');
+  zone.innerHTML = renderFormulaAnchorStatus(formule);
+  return true;
 }
 
 // Formules SANS ancre (table anniversaire + pass liberté) : le seul choix est
@@ -5078,6 +5232,7 @@ function renderSlots(formule) {
     // ancres du serveur. Tant que cette condition exigeait une formule, le
     // client jetait des ancres valides et affichait « Aucun créneau
     // disponible » alors que le serveur en proposait neuf.
+    snapshotAnchorTrackScroll();
     list.innerHTML = renderFormulaAnchorPicker(formule);
     bindAnchorTracks();
     return;

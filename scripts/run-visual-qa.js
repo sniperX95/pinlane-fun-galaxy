@@ -1785,8 +1785,14 @@ async function main() {
       rows: Array.from(document.querySelectorAll('.anchor-row')).map(row => ({
         anchor: row.dataset.anchor,
         label: row.querySelector('.anchor-row-head strong')?.textContent.trim() || '',
-        chips: Array.from(row.querySelectorAll('.anchor-chip')).map(el => el.textContent.trim()),
-        active: Array.from(row.querySelectorAll('.anchor-chip.active')).map(el => el.textContent.trim()),
+        // Le creneau est une CARTE depuis le 2026-08-15 : l heure vit dans sa
+        // ligne « heure », a cote de la fin et de la qualification.
+        chips: Array.from(row.querySelectorAll('.anchor-chip'))
+          .map(el => (el.querySelector('.slot-card-time') || el).textContent.trim()),
+        chipEnds: Array.from(row.querySelectorAll('.anchor-chip'))
+          .map(el => (el.querySelector('.slot-card-end') || {}).textContent?.trim() || ''),
+        active: Array.from(row.querySelectorAll('.anchor-chip.active'))
+          .map(el => (el.querySelector('.slot-card-time') || el).textContent.trim()),
       })),
       summary: document.querySelector('.formula-visit-summary')?.textContent.replace(/\s+/g, ' ') || '',
       confirm: Boolean(document.querySelector('.formula-plan-confirm')),
@@ -1797,7 +1803,8 @@ async function main() {
     assert(anchorPickerState.rows[0].anchor === 'bowling' && anchorPickerState.rows[1].anchor === 'laser_game', 'Picker ancres : lignes Bowling puis Laser attendues.');
     anchorPickerState.rows.forEach((row) => {
       assert(row.chips.length >= 4, `Ancre ${row.anchor} : plusieurs chips d heures attendues.`);
-      assert(row.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), `Ancre ${row.anchor} : toutes les chips doivent être :00/:30 (reçu ${row.chips.join(', ')}).`);
+      assert(row.chips.every(chip => /^\d{2}:(00|30)$/.test(chip)), `Ancre ${row.anchor} : toutes les heures doivent être :00/:30 (reçu ${row.chips.join(', ')}).`);
+      assert(row.chipEnds.every(end => /^→ \d{2}:\d{2}$/.test(end)), `Ancre ${row.anchor} : chaque carte de créneau dit son heure de fin (reçu ${row.chipEnds.slice(0, 3).join(', ')}).`);
     });
     // 2) Défaut pré-sélectionné valide (zéro friction).
     assert(anchorPickerState.rows[0].active[0] === '15:00' && anchorPickerState.rows[1].active[0] === '16:30', `Picker ancres : la combinaison par défaut doit être pré-sélectionnée (reçu ${JSON.stringify(anchorPickerState.rows.map(r => r.active))}).`);

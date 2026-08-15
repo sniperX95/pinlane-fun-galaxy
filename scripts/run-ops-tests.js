@@ -149,9 +149,29 @@ function testFormulaPreferredTimes() {
   const impossible = anchorRequest({ bowling: '08:00', laser_game: '16:30' });
   assert.strictEqual(impossible.ok, false, 'impossible preferred formula times must be rejected');
 
-  const unrealisticGap = anchorRequest({ bowling: '12:00', laser_game: '19:00' });
-  assert.strictEqual(unrealisticGap.ok, false, 'an unrealistic gap between anchors must be refused');
-  assert.strictEqual(unrealisticGap.plan.refusalCode, 'anchor_gap');
+  // LIBERTÉ DU CLIENT (arbitrage Movsar du 2026-08-15, qui renverse la règle
+  // précédente) : un grand trou entre deux activités est un INCONFORT, pas une
+  // impossibilité. Le moteur laisse passer et PRÉVIENT. Il ne refuse plus.
+  const wideGap = anchorRequest({ bowling: '12:00', laser_game: '19:00' });
+  assert.strictEqual(wideGap.ok, true, 'a wide gap between anchors must stay bookable: the client decides');
+  assert.strictEqual(wideGap.plan.refusalCode, '', 'a wide gap must not produce any refusal code');
+  const gapNotice = (wideGap.plan.recommended.comfortNotices || []).find((notice) => notice.code === 'anchor_gap');
+  assert.ok(gapNotice, 'a wide gap must come back as a comfort notice');
+  assert.strictEqual(gapNotice.gapMinutes, 360, 'the notice states the real waiting time');
+  assert.strictEqual(gapNotice.gapLabel, '6 h', 'the notice is readable by a customer, not in raw minutes');
+  assert.strictEqual(gapNotice.tightenTime, '13:30', 'the notice offers the closest time that chains both activities');
+  assert.strictEqual(gapNotice.severity, 'advice', 'a comfort notice is an advice, never a blocker');
+  // Le bloc laser est bien posé à l'heure demandée : prévenir n'est pas
+  // corriger en douce le choix du client.
+  assert.ok(
+    wideGap.plan.recommended.resourceBlocks.some((block) => block.resourceType === 'laser_arena' && block.startTime === '19:00'),
+    'the engine books exactly what the customer chose, it does not silently move it',
+  );
+  // Une combinaison confortable ne fabrique aucun avis (pas de bruit).
+  assert.strictEqual(
+    (locked.plan.recommended.comfortNotices || []).length, 0,
+    'a comfortable combination carries no notice at all',
+  );
 
   // Option « Je place mes parties laser sur place » : seul le bowling est
   // fixé, le laser reste un crédit à placer selon l'affluence.

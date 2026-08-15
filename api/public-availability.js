@@ -244,6 +244,9 @@ function toFormulaSlot(scenario, snapshot, duration) {
       laserSharing: scenario.laserSharing || null,
       laserPassPlan: scenario.laserPassPlan || null,
       anchorPlan: scenario.anchorPlan || null,
+      // Avis de confort (trou entre deux activités) : le créneau est
+      // réservable, l'écran l'annonce sans jamais barrer la route.
+      comfortNotices: scenario.comfortNotices || [],
     },
   };
 }

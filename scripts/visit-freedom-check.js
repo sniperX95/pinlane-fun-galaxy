@@ -214,7 +214,17 @@ const MEASURE = () => {
     railOrder: [...document.querySelectorAll('.anchor-row')].map((row) => row.dataset.anchor),
     periodTabs: [...document.querySelectorAll('.anchor-period-tab')].map((tab) => tab.querySelector('.anchor-period-name')?.textContent.trim()),
     periodCounts: [...document.querySelectorAll('.anchor-period-tab')].map((tab) => Number(tab.querySelector('.anchor-period-count')?.textContent.trim() || 0)),
-    activeChips: [...document.querySelectorAll('.anchor-chip.active')].map((chip) => chip.textContent.trim()),
+    // L heure vit dans la ligne « heure » de la CARTE de creneau (le creneau
+    // n est plus une pastille nue : il porte aussi sa fin et sa qualification).
+    activeChips: [...document.querySelectorAll('.anchor-chip.active')]
+      .map((chip) => (chip.querySelector('.slot-card-time') || chip).textContent.trim()),
+    // La carte REPOND aux questions que la pastille laissait ouvertes : quand
+    // ca finit, et ce que vaut ce creneau. Les deux se lisent a l ecran.
+    cardsWithEnd: [...document.querySelectorAll('.anchor-chip')]
+      .filter((chip) => /^→ \d{2}:\d{2}$/.test((chip.querySelector('.slot-card-end') || {}).textContent?.trim() || '')).length,
+    cardsTotal: document.querySelectorAll('.anchor-chip').length,
+    chainedTagged: [...document.querySelectorAll('.anchor-chip.is-chained')]
+      .every((chip) => (chip.querySelector('.slot-card-tag') || {}).textContent?.trim() === 'Enchaîné'),
     // « Affichee » = reellement sous les yeux. Depuis que les heures vivent
     // dans une piste horizontale, une pastille peut avoir une hauteur tout en
     // etant hors du champ de sa piste : on croise donc avec la fenetre ET avec
@@ -230,7 +240,8 @@ const MEASURE = () => {
     // Toutes les heures du jour vivent dans le DOM d'une seule piste : plus
     // aucune n'est retiree derriere un filtre.
     reachableChips: document.querySelectorAll('.anchor-chip').length,
-    chipTimesValid: [...document.querySelectorAll('.anchor-chip')].every((chip) => /^\d{2}:(00|30)$/.test(chip.textContent.trim())),
+    chipTimesValid: [...document.querySelectorAll('.anchor-chip')]
+      .every((chip) => /^\d{2}:(00|30)$/.test((chip.querySelector('.slot-card-time') || chip).textContent.trim())),
     picks: [...document.querySelectorAll('.anchor-row-pick')].map((el) => el.textContent.trim()),
     linkText: document.querySelector('.visit-rail-link')?.textContent.replace(/\s+/g, ' ').trim() || '',
     advice: advice ? {
@@ -411,7 +422,13 @@ async function checkBrowser(page) {
     `les heures sont rangees par moment de journee (${rail.periodTabs.join(', ')})`);
   ok(rail.periodCounts.every((count) => count > 0) && rail.periodCounts.reduce((sum, count) => sum + count, 0) >= 50,
     `chaque moment annonce combien d heures il contient (${rail.periodCounts.join('+')})`);
-  ok(rail.chipTimesValid, 'toutes les pastilles restent des heures :00/:30');
+  ok(rail.chipTimesValid, 'toutes les heures proposees restent des heures :00/:30');
+  // Le format CARTE demande par Movsar : « les cartes [...] cest bcp plus pro
+  // et beau ». Chaque creneau dit sa FIN, et l enchainement se lit en toutes
+  // lettres au lieu d un point colore.
+  ok(rail.cardsWithEnd === rail.cardsTotal && rail.cardsTotal > 0,
+    `chaque creneau porte son heure de fin (${rail.cardsWithEnd}/${rail.cardsTotal})`);
+  ok(rail.chainedTagged, 'le creneau qui enchaine le DIT en toutes lettres, jamais par la couleur seule');
 
   // Ordre CHRONOLOGIQUE : laser a 11:00 puis bowling a 15:00 => laser en tete.
   await bootFormula(page, 'order', { bowling: '15:00', laser: '11:00' });

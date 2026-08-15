@@ -3976,7 +3976,7 @@ body.customer-mode .client-footer {
 #clientView .anchor-chip-grid {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(58px, max-content);
+  grid-auto-columns: minmax(104px, max-content);
   grid-template-rows: auto;
   gap: var(--space-2);
   width: max-content;
@@ -3990,6 +3990,76 @@ body.customer-mode .client-footer {
    journee reste atteignable d'un seul glissement. */
 @media (max-width: 640px) {
   #clientView .anchor-chip-grid { grid-template-rows: repeat(2, auto); }
+}
+
+/* ==========================================================================
+   LA CARTE DE CRENEAU : UNE SEULE FAMILLE POUR TOUT LE TUNNEL
+   Movsar, capture a l appui : « pour les heures regardes les cartes [...] cest
+   bcp plus pro et beau ». La pastille ronde ne disait que l heure de depart.
+   La carte empile ce qui decide : l HEURE en chiffres tabulaires, la FIN
+   calculee sur la duree reelle, une QUALIFICATION en accent quand le moteur
+   en fournit une, et le SECONDAIRE en gris (pistes, places).
+   Le mode simple (#slotList .slot) et le composeur de visite (.anchor-chip)
+   partagent cette forme : seule la donnee portee change.
+   ========================================================================== */
+#clientView .slot-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+#clientView .slot-card-time {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+#clientView .slot-card-end,
+#clientView .slot-card-sub {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  line-height: 1.2;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#clientView .slot-card-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+#clientView .slot-card-tag.is-accent { color: var(--accent-strong); }
+
+#clientView .slot-card-meta {
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+
+/* Sur la carte retenue, les trois niveaux restent lisibles sur l aplat
+   d accent (contraste AA porte par --accent-contrast). */
+#clientView .slot-card.active .slot-card-end,
+#clientView .slot-card.active .slot-card-sub,
+#clientView .slot-card.active .slot-card-tag,
+#clientView .slot-card.active .slot-card-tag.is-accent,
+#clientView .slot-card.active .slot-card-meta {
+  color: var(--accent-contrast);
+  opacity: 0.86;
 }
 
 #clientView .anchor-chip {
@@ -4010,6 +4080,16 @@ body.customer-mode .client-footer {
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
 
+/* Le creneau du composeur EST une carte : il reprend la forme partagee et
+   abandonne la pastille (rayon plein, une seule ligne). */
+#clientView .anchor-chip.slot-card {
+  min-width: 104px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 400;
+}
+
 #clientView .anchor-chip:hover { border-color: var(--accent); }
 
 /* L'heure qui ENCHAÎNE avec l'activité voisine : c'est la proposition que le
@@ -4019,6 +4099,11 @@ body.customer-mode .client-footer {
   border-color: var(--accent);
   border-style: dashed;
 }
+
+/* Le point d enchainement a disparu : la carte le DIT en toutes lettres
+   (« Enchaîné », ligne de qualification). Un point colore en plus disait la
+   meme chose moins bien, et un sens porte par la couleur seule est interdit. */
+#clientView .anchor-chip.slot-card.is-chained::after { content: none; }
 
 #clientView .anchor-chip.is-chained::after {
   content: '';
@@ -5082,6 +5167,12 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView #step2 .card { padding: var(--space-3) var(--space-5) var(--space-4); }
   #clientView #step2 .card-head { margin-bottom: var(--space-1); }
   #clientView #step2 .card-icon { width: 32px; height: 32px; }
+  /* La carte de creneau est plus riche que la pastille, donc plus large : la
+     piste passe a DEUX rangs pour rendre au client le nombre de creneaux vus
+     d un coup (mesure : 3/4/6 sur un rang, 6/8/12 sur deux, contre 6/8/10 du
+     temps des pastilles). Le remplissage se fait en colonnes : un rang porte
+     les heures pleines, l autre les demies, la lecture reste evidente. */
+  #clientView .anchor-chip-grid { grid-template-rows: repeat(2, auto); }
   /* Deux etapes de visite cote a cote se calent sur la meme hauteur et leurs
      PISTES s'alignent : la tete puis les heures, et les options propres a une
      activite (laser sur place) descendent sous sa piste. Le vide residuel de
@@ -5194,10 +5285,21 @@ body.client-mode #clientView .btn-primary.is-sealed,
     flex-wrap: wrap;
   }
   #clientView #step2 .card { padding-bottom: var(--space-2); }
+  /* Sur un ecran court, la carte de creneau garde ses trois niveaux et rend
+     son rembourrage : elle reste au-dessus du plancher de 44 px de cible et
+     au-dessus du plancher de 11,5 px de texte. */
+  #clientView .anchor-chip.slot-card { padding: 3px 8px; gap: 0; }
+  #clientView .slot-card-time { font-size: 14px; line-height: 1.1; }
+  #clientView .slot-card-end,
+  #clientView .slot-card-sub,
+  #clientView .slot-card-tag,
+  #clientView .slot-card-meta { line-height: 1.15; }
+  #clientView #step2 .card { padding-top: var(--space-1); }
   #clientView .anchor-row { padding: var(--space-1) var(--space-2); }
   #clientView .visit-rail-step { padding-bottom: var(--space-1); }
-  #clientView .visit-rail { gap: var(--space-2); }
-  #clientView .anchor-free-pass { padding: var(--space-1) var(--space-3); }
+  #clientView .visit-rail { gap: var(--space-1); }
+  #clientView .anchor-free-pass { padding: 2px var(--space-3); }
+  #clientView { padding-bottom: 0; }
   /* La phrase du pass liberte prend sa forme courte : meme information, une
      seule rangee (les libelles longs vivent sur les ecrans hauts). */
   #clientView .anchor-free-pass .only-desktop { display: none; }

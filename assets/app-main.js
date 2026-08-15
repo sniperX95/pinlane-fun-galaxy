@@ -4811,6 +4811,56 @@ function bindAnchorTracks() {
   });
 }
 
+// LE CRENEAU EST UNE CARTE, PARTOUT.
+// Movsar (2026-08-15), en comparant les deux ecrans du tunnel : « pour les
+// heures regardes les cartes de la deuxieme image qui affiche comme ca cest
+// bcp plus pro et beau ». La pastille ronde ne portait que l heure de debut :
+// elle laissait ouvertes les deux questions qui decident (quand est-ce que ca
+// finit, ce creneau vaut-il mieux qu un autre). La carte les REPOND, sur trois
+// niveaux : l heure en chiffres tabulaires, la fin calculee sur la duree
+// REELLE de l activite, et une qualification quand le moteur en fournit une.
+// Une seule famille de composant sert les deux modes du tunnel : ce qui change
+// d un contexte a l autre, c est la DONNEE portee, jamais la forme.
+// AUCUNE LIGNE N EST INVENTEE : sans donnee, la ligne n existe pas.
+function slotCardMarkup({ time, endTime, tag, tagTone, meta }) {
+  // Trois niveaux de lecture, chacun sur sa ligne : l heure, la qualification,
+  // le secondaire. La carte reste ETROITE (une ligne longue la ferait grossir
+  // en largeur et chasserait les creneaux voisins hors du champ).
+  return [
+    `<span class="slot-card-time">${escapeHtml(time)}</span>`,
+    tag ? `<span class="slot-card-tag${tagTone ? ` is-${tagTone}` : ''}">${escapeHtml(tag)}</span>` : '',
+    endTime ? `<span class="slot-card-end">→ ${escapeHtml(endTime)}</span>` : '',
+    meta ? `<span class="slot-card-meta">${escapeHtml(meta)}</span>` : '',
+  ].join('');
+}
+
+// Le modele d une carte d heure dans le composeur de visite. Tout vient de la
+// reponse du moteur : `durationMinutes` de l activite, `lanes` allouees pour
+// le bowling, `remainingPlaces` / `sharedSession` pour le laser.
+function anchorSlotCardModel(activity, item, { isChained } = {}) {
+  const duration = Number(activity.durationMinutes || 0);
+  const endTime = duration > 0 ? numToTime(timeToNum(item.time) + duration / 60) : '';
+  let tag = '';
+  let tagTone = '';
+  if (isChained) { tag = 'Enchaîné'; tagTone = 'accent'; }
+  const bits = [];
+  if (Array.isArray(item.lanes) && item.lanes.length) {
+    bits.push(`${item.lanes.length} piste${item.lanes.length > 1 ? 's' : ''}`);
+  }
+  if (Number.isFinite(Number(item.remainingPlaces)) && Number(item.remainingPlaces) > 0) {
+    bits.push(`${Number(item.remainingPlaces)} place${Number(item.remainingPlaces) > 1 ? 's' : ''}`);
+  }
+  if (item.sharedSession) bits.push('session partagée');
+  const meta = bits.join(' · ');
+  const label = [
+    item.time,
+    endTime ? `fin ${endTime}` : '',
+    isChained ? "enchaîné avec l'activité précédente" : '',
+    meta,
+  ].filter(Boolean).join(', ');
+  return { time: item.time, endTime, tag, tagTone, meta, label };
+}
+
 function renderAnchorChipGroups(activity, { selected, disabled, chained }) {
   const groups = groupAnchorTimes(activity.times);
   if (!groups.length) return '';
@@ -4829,12 +4879,12 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained }) {
   const chips = groups.map(group => group.items.map((item, index) => {
     const isActive = item.time === selected;
     const isChained = !isActive && item.time === chained;
-    const label = isChained ? `${item.time}, enchaîné avec l'activité précédente` : item.time;
     const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
     const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
       && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
     if (justPicked) formulaJustPicked = null;
-    return `<button type="button" class="anchor-chip ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${escapeHtml(item.time)}</button>`;
+    const model = anchorSlotCardModel(activity, item, { isChained });
+    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
   }).join('')).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
@@ -5120,14 +5170,26 @@ function syncFormulaAnchorUi(formule, { busy }) {
     const chained = disabled ? '' : getChainedAnchorTime(activity.activityId);
     const chips = [...row.querySelectorAll('.anchor-chip')];
     if (chips.length !== (activity.times || []).length) return false;
-    chips.forEach((chip) => {
+    chips.forEach((chip, index) => {
       const time = chip.dataset.time || '';
       const isActive = time === selected;
       const isChained = !isActive && time === chained;
       chip.classList.toggle('active', isActive);
       chip.classList.toggle('is-chained', isChained);
       chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      chip.setAttribute('aria-label', isChained ? `${time}, enchaîné avec l'activité précédente` : time);
+      // La qualification « Enchaîné » se pose et se retire avec l etat, sans
+      // reconstruire la carte : seule la ligne concernee change.
+      const item = (activity.times || [])[index];
+      if (item && item.time === time) {
+        const model = anchorSlotCardModel(activity, item, { isChained });
+        chip.setAttribute('aria-label', model.label);
+        const tag = chip.querySelector('.slot-card-tag');
+        if (model.tag && !tag) {
+          chip.querySelector('.slot-card-time')?.insertAdjacentHTML('afterend',
+            `<span class="slot-card-tag${model.tagTone ? ` is-${model.tagTone}` : ''}">${escapeHtml(model.tag)}</span>`);
+        } else if (!model.tag && tag) tag.remove();
+        else if (model.tag && tag && tag.textContent !== model.tag) tag.textContent = model.tag;
+      }
       if (chip.disabled !== disabled) chip.disabled = disabled;
       // La capsule ne ressort que sur l'heure qui VIENT d'être choisie. La
       // classe reste posée tant que l'heure est active (l'animation est finie,
@@ -5327,13 +5389,18 @@ function renderSlots(formule) {
     list.innerHTML = picker || renderFormulaEmptySlots(formule);
     return;
   }
+  // MEME FAMILLE DE COMPOSANT que le composeur de visite : `slot-card` porte
+  // la forme (heure, fin, qualification, secondaire), la donnee change.
   const showLanes = reservationNeedsLanes(state.booking.type, state.booking.formuleId);
   list.innerHTML = `<div class="slot-grid stagger">${state.availableSlots.map((s, i) => `
-    <button class="slot" onclick="selectSlot(${i})">
-      <span class="slot-time">${s.time}</span>
-      ${showLanes ? `<span class="slot-free">${s.freeCount} pistes libres</span>` : isLaser ? `<span class="slot-free">${getLaserSlotCapacityText(s)}</span>` : ''}
-      ${isLaser ? `<span class="slot-plan"><b>${s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte'}</b><br>${getLaserSlotAfterText(s)}</span>` : ''}
-      ${!isLaser && s.opsPlan ? `<span class="slot-plan"><b>Plan conseillé</b><br>${describeSlotPlan(s.opsPlan)}</span>` : ''}
+    <button class="slot slot-card" onclick="selectSlot(${i})">
+      <span class="slot-card-time slot-time">${s.time}</span>
+      ${s.opsPlan?.endTime ? `<span class="slot-card-end">→ ${escapeHtml(s.opsPlan.endTime)}</span>` : ''}
+      ${!isLaser && s.opsPlan ? '<span class="slot-card-tag is-accent">Plan conseillé</span>' : ''}
+      ${isLaser ? `<span class="slot-card-tag is-accent">${s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte'}</span>` : ''}
+      ${showLanes ? `<span class="slot-card-meta slot-free">${s.freeCount} pistes libres</span>` : isLaser ? `<span class="slot-card-meta slot-free">${getLaserSlotCapacityText(s)}</span>` : ''}
+      ${isLaser ? `<span class="slot-card-meta slot-plan">${getLaserSlotAfterText(s)}</span>` : ''}
+      ${!isLaser && s.opsPlan ? `<span class="slot-card-meta slot-plan">${describeSlotPlan(s.opsPlan)}</span>` : ''}
     </button>
   `).join('')}</div>`;
 }

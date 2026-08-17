@@ -606,14 +606,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 /* L'intro marketing cede sa place au geste (deja le cas sur telephone). */
 #clientView .step1-body.is-solo .s1-when-head .step-intro { display: none; }
 
-/* En solo, l'etat d'attente devient une ligne fine SOUS la venue : la carte
-   fantome pleine hauteur n'a pas de place au centre. */
-#clientView .step1-body.is-solo .s1-placeholder {
-  border: 0;
-  padding: var(--space-2) 0 0;
-}
-#clientView .step1-body.is-solo .s1-placeholder svg { display: none; }
-#clientView .step1-body.is-solo .s1-placeholder strong { font-size: 13px; }
+/* En solo, l'etat d'attente DISPARAIT : le bouton « Voir les activités »
+   dit deja tout, et la ligne rognee par le bord de scene faisait un artefact
+   (vu en prod). Le badge d'horaires explique un jour ferme. */
+#clientView .step1-body.is-solo .s1-placeholder { display: none; }
 
 /* Le bouton d'ouverture n'existe QUE dans la venue centree : une fois le
    programme deploye, le geste est fait, il disparait. Deux classes dans le

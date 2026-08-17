@@ -253,10 +253,14 @@ async function runSuite(browser, quiet) {
   try {
     await boot(page);
 
-    // ---- 5. Distinction "mon centre" vs "catalogue partage" a l'ecran -------
+    // ---- 5. La PORTEE des actions est dite a l'ecran --------------------------
+    // L'invariant est que l'operateur SACHE ce qui n'engage que son centre et
+    // ce qui change tous les centres. Depuis la fusion en une carte par offre
+    // (2026-08-17), cette distinction vit dans la legende du rayon formules,
+    // plus dans deux bandeaux separes.
     const scopeText = await page.evaluate(() => document.getElementById('staffPricingPage').textContent || '');
-    ok(/mon centre/i.test(scopeText) && /catalogue partag/i.test(scopeText), 'scope-distinction',
-      `monCentre=${/mon centre/i.test(scopeText)} catalogue=${/catalogue partag/i.test(scopeText)}`);
+    ok(/n'engage que ce centre/i.test(scopeText) && /TOUS les centres/.test(scopeText), 'scope-distinction',
+      `centre=${/n'engage que ce centre/i.test(scopeText)} tous=${/TOUS les centres/.test(scopeText)}`);
     ok(await page.$('#cevAddFormula') !== null, 'catalog-add-btn');
 
     // ---- 1. "Ajouter une formule" -> modale -> createFormula avec steps ------

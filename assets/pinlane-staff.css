@@ -7021,55 +7021,100 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pv2-kv dd { margin: 0; color: var(--text); font-weight: 500; text-align: right; overflow: hidden; text-overflow: ellipsis; }
 
 /* Catalogue tarifs */
-.pv2-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: var(--space-3); }
+.pv2-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-3); }
+
+/* Sections du catalogue : un rayon par famille, kicker a barre d'accent
+   (meme vocabulaire que le tunnel). C'est l'ORGANISATION de la page : une
+   offre = UNE carte dans SON rayon, plus jamais deux listes paralleles. */
+.pv2-catalog-section { display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2); }
+
+.pv2-section-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.pv2-section-head h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pv2-section-head h3::before {
+  content: '';
+  width: 16px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+.pv2-section-head > span:not(.pv2-section-legend) { font-size: 12px; color: var(--faint); }
+.pv2-section-head #cevAddFormula { margin-left: auto; }
+.pv2-section-legend { flex-basis: 100%; font-size: 12px; color: var(--faint); }
 
 .pv2-price-card {
   display: grid;
   gap: 9px;
+  align-content: start;
   padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
-.pv2-price-card:hover { border-color: var(--line-strong); }
+.pv2-price-card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong)); }
 .pv2-price-card.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
 .pv2-price-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.pv2-price-head strong { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
-.pv2-price-head small { display: block; color: var(--faint); font-size: 11px; margin-top: 2px; }
+.pv2-price-head strong { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+.pv2-price-head small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; }
 
+/* Le prix est le deuxieme niveau de lecture, en accent : meme hierarchie que
+   les cartes du tunnel. accent-strong = la variante qui tient le contraste
+   en texte sur surface. */
 .pv2-price-amount {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text);
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--accent-strong);
   white-space: nowrap;
 }
 
-.pv2-price-amount small { font-size: 11px; color: var(--faint); font-weight: 400; }
-.pv2-price-desc { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.pv2-price-amount small { font-size: 11.5px; color: var(--faint); font-weight: 400; }
+.pv2-price-desc { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.pv2-price-desc:empty { display: none; }
 .pv2-price-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 
 .pv2-price-stats {
   display: flex;
   gap: 14px;
+  margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--line);
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--faint);
 }
 
 .pv2-price-stats strong { color: var(--text); font-weight: 600; }
+.pv2-price-stats-empty { font-family: var(--font-ui); font-variant-numeric: normal; }
 
 /* -- Editeur tarifaire client (badges sur la carte + modale) --------------- */
 .pev-badges { display: flex; flex-wrap: wrap; gap: 5px; }
-.pev-card-foot { padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+/* Les DEUX niveaux d'action d'une formule vivent au pied de SA carte :
+   tarif du centre d'abord, structure partagee ensuite, danger en dernier. */
+.pev-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.pev-card-foot .cev-danger { margin-left: auto; }
 .pev-removed { opacity: 0.62; }
 .pev-removed .pv2-price-amount { text-decoration: line-through; text-decoration-thickness: 1px; }
 
@@ -7154,87 +7199,10 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   .pev-grid2 { grid-template-columns: 1fr; }
 }
 
-/* -- Editeur "mon centre" : en-tete de niveau 1 (prix/dispo par centre) ------ */
-/* Niveau 1 (accent) vs niveau 2 catalogue partage (neutre) : deux en-tetes
-   nettement distincts pour que l'operateur sache toujours ce qu'il edite. */
-.cev-scope-note {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-}
-.cev-scope-badge {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 10px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-.cev-scope-copy { display: grid; gap: 2px; min-width: 0; }
-.cev-scope-copy strong { font-size: 13px; font-weight: 600; color: var(--text); }
-.cev-scope-copy span { font-size: 12px; line-height: 1.45; color: var(--muted); }
-
-/* -- Editeur du CATALOGUE partage : niveau 2 (structure des formules) -------- */
-.cev-catalog-block {
-  margin-top: var(--space-5);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--line);
-  display: grid;
-  gap: var(--space-4);
-}
-.cev-block-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.cev-block-copy { display: grid; gap: 4px; min-width: 0; }
-.cev-block-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cev-block-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
-.cev-block-head p { font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 62ch; }
-
-.cev-rows { display: grid; gap: var(--space-2); }
-.cev-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3) var(--space-4);
-  padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  flex-wrap: wrap;
-  transition: border-color var(--dur-fast) var(--ease);
-}
-.cev-row:hover { border-color: var(--line-strong); }
-.cev-row-main { flex: 1 1 260px; display: grid; gap: 3px; min-width: 0; }
-.cev-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cev-row-title strong { font-size: 14px; font-weight: 600; color: var(--text); }
-.cev-row-meta { font-size: 12px; color: var(--muted); }
-.cev-row-acts { font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
-.cev-row-price {
-  flex: none;
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-}
-.cev-row-price small { font-size: 11px; font-weight: 400; color: var(--faint); margin-left: 2px; }
-.cev-row-side { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.cev-row-actions { flex: none; display: flex; gap: 6px; flex-wrap: wrap; }
+/* L'ancienne page portait DEUX listes paralleles (cartes figees + lignes
+   « Catalogue partage ») avec leurs bandeaux de portee : fusionnees en une
+   carte par offre (pv2-price-card, sections pv2-catalog-section). Ne survit
+   ici que le style du bouton danger, partage par les pieds de carte. */
 .cev-danger { color: var(--danger); }
 .cev-danger:hover { border-color: var(--danger); }
 

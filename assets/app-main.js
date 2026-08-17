@@ -9372,16 +9372,22 @@ async function submitCenterConfig(centerId) {
   });
   // Panneau « Offres & formules » : map générique offerId -> booléen,
   // appliquée aussi côté serveur (une formule décochée n'est plus réservable).
+  // Collecte depuis le DOM : ce qui a été RENDU (liste vive du catalogue,
+  // customs comprises) est exactement ce qui s'enregistre. Itérer une
+  // constante ici perdait le réglage de toute formule qu'elle ignorait.
   const offerAvailability = {};
-  FORMULES.forEach(formule => {
-    offerAvailability[formule.id] = !!document.getElementById(`estab-offer-${formule.id}`)?.checked;
+  document.querySelectorAll('input[data-estab-offer]').forEach(input => {
+    offerAvailability[input.getAttribute('data-estab-offer')] = !!input.checked;
   });
   const formulaBlockedPeriods = ['manual'];
   if (document.getElementById('estab-fbp-public')?.checked) formulaBlockedPeriods.push('public');
   if (document.getElementById('estab-fbp-short')?.checked) formulaBlockedPeriods.push('school_short');
   if (document.getElementById('estab-fbp-summer')?.checked) formulaBlockedPeriods.push('school_summer');
   // Classification client/groupe éditée par le staff (seuils + formules annif).
-  const birthdayFormulaIds = FORMULES.filter(formule => document.getElementById(`estab-bday-${formule.id}`)?.checked).map(formule => formule.id);
+  // Meme collecte DOM que les offres : ce qui a ete rendu est ce qui s'enregistre.
+  const birthdayFormulaIds = [...document.querySelectorAll('input[data-estab-bday]')]
+    .filter(input => input.checked)
+    .map(input => input.getAttribute('data-estab-bday'));
   const classification = {
     groupMinPax: Number(establishmentInputValue('estab-groupMinPax', 10)),
     groupMinCumulative: Number(establishmentInputValue('estab-groupMinCumulative', 18)),
@@ -9687,6 +9693,10 @@ function renderStaffUtilityEstablishment() {
   if (!staffCenterConfigCache.loaded && !staffCenterConfigCache.loading) {
     setTimeout(() => loadStaffCenterConfig(false), 0);
   }
+  // Le panneau Offres consomme la liste VIVE du catalogue : son chargement se
+  // declenche d'ici aussi (pas seulement depuis la page Tarifs). Une fois la
+  // liste arrivee, pevLoad repeint cette page en mode lecture.
+  if (typeof window.pevEnsureCatalogLoaded === 'function') window.pevEnsureCatalogLoaded();
   if (!staffCenterConfigCache.loaded || staffCenterConfigCache.loading) {
     return `<div class="establishment-page"><div class="establishment-loading">Lecture de la configuration des centres…</div></div>`;
   }
@@ -9794,10 +9804,10 @@ function renderEstablishmentEditPanels(center, active) {
     : ['public', 'school_short', 'manual'];
 
   const formulaGrid = (idPrefix, isOn, labelOf) => `<div class="establishment-activity-grid">
-    ${FORMULES.map(formule => {
+    ${getConsoleFormuleCatalog().map(formule => {
       const on = isOn(formule);
       return `<label class="establishment-activity ${on ? 'on' : ''}">
-        <input type="checkbox" id="${idPrefix}-${escapeHtml(formule.id)}" ${on ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+        <input type="checkbox" id="${idPrefix}-${escapeHtml(formule.id)}" data-${idPrefix}="${escapeHtml(formule.id)}" ${on ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
         <span>${escapeHtml(labelOf(formule))}</span>
       </label>`;
     }).join('')}
@@ -9912,8 +9922,11 @@ function renderEstablishmentEditPanels(center, active) {
       <legend>Offres &amp; formules</legend>
       <p class="estab-card-hint">Une offre décochée disparaît de l'espace client et n'est plus réservable (blocage aussi côté serveur).</p>
       ${(() => {
+        // Liste VIVE du catalogue (customs comprises, retirees exclues) :
+        // l'ancienne constante figeait la liste au deploiement et une formule
+        // creee dans Tarifs n'apparaissait jamais ici.
         const families = [];
-        FORMULES.forEach(formule => {
+        getConsoleFormuleCatalog().forEach(formule => {
           const familyName = formule.family || 'Formules';
           let group = families.find(item => item.name === familyName);
           if (!group) { group = { name: familyName, items: [] }; families.push(group); }
@@ -9926,8 +9939,8 @@ function renderEstablishmentEditPanels(center, active) {
               ${group.items.map(formule => {
                 const enabled = center.offerAvailability?.[formule.id] !== false;
                 return `<label class="establishment-activity ${enabled ? 'on' : ''}">
-                  <input type="checkbox" id="estab-offer-${escapeHtml(formule.id)}" ${enabled ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
-                  <span>${escapeHtml(formule.name)} · ${Number(formule.price)}€/${formule.type === 'per_lane' ? 'piste' : 'pers.'}</span>
+                  <input type="checkbox" id="estab-offer-${escapeHtml(formule.id)}" data-estab-offer="${escapeHtml(formule.id)}" ${enabled ? 'checked' : ''} onchange="this.closest('.establishment-activity').classList.toggle('on', this.checked)">
+                  <span>${escapeHtml(formule.name)}${formule.price != null ? ` · ${Number(formule.price)}€/${formule.type === 'per_lane' ? 'piste' : 'pers.'}` : ''}</span>
                 </label>`;
               }).join('')}
             </div>
@@ -10044,12 +10057,15 @@ function renderEstablishmentReadPanels(center, active) {
   const activities = (staffCenterConfigCache.activities || []);
   const enabled = activities.filter(activity => center.activityAvailability?.[activity.id]);
   const customList = Array.isArray(center.customActivities) ? center.customActivities : [];
-  const disabledOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] === false);
-  const activeOffers = FORMULES.filter(formule => center.offerAvailability?.[formule.id] !== false);
+  // Liste VIVE du catalogue : une formule creee dans Tarifs compte ici des sa
+  // creation, une retiree disparait (l'ancienne constante figait ce panneau).
+  const catalogFormuleList = getConsoleFormuleCatalog();
+  const disabledOffers = catalogFormuleList.filter(formule => center.offerAvailability?.[formule.id] === false);
+  const activeOffers = catalogFormuleList.filter(formule => center.offerAvailability?.[formule.id] !== false);
   const classification = center.classification && typeof center.classification === 'object' ? center.classification : {};
   const classTiers = classification.sizeTiers && typeof classification.sizeTiers === 'object' ? classification.sizeTiers : {};
   const birthdayIds = Array.isArray(classification.birthdayFormulaIds) ? classification.birthdayFormulaIds : ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'];
-  const birthdayNames = FORMULES.filter(formule => birthdayIds.includes(formule.id)).map(formule => formule.name);
+  const birthdayNames = catalogFormuleList.filter(formule => birthdayIds.includes(formule.id)).map(formule => formule.name);
   const party = center.resources?.partyTables && typeof center.resources.partyTables === 'object' ? center.resources.partyTables : {};
   const barDesk = center.resources?.barDesk && typeof center.resources.barDesk === 'object' ? center.resources.barDesk : {};
   const timezone = center.timezone || 'Europe/Brussels';
@@ -10127,7 +10143,7 @@ function renderEstablishmentReadPanels(center, active) {
   const offresPanel = `<div class="estab-read-stack">
     ${section(ICO.tag, 'Offres & formules', 'Formules réservables côté client.', `
       <div class="estab-rules">
-        ${rule('Formules réservables', `<span class="num">${activeOffers.length}</span> / ${FORMULES.length}`)}
+        ${rule('Formules réservables', `<span class="num">${activeOffers.length}</span> / ${catalogFormuleList.length}`)}
       </div>
       ${disabledOffers.length
         ? `<div><p class="estab-empty" style="margin-bottom:6px">Désactivées côté client :</p><div class="estab-chip-row">${disabledOffers.map(formule => `<span class="estab-tag estab-tag-off">${escapeHtml(formule.name)}</span>`).join('')}</div></div>`
@@ -11794,6 +11810,20 @@ function getPricingUsageMap() {
   return usage;
 }
 
+// LA SOURCE des formules pour les ecrans de la console (grille Tarifs,
+// Etablissement > Offres) : la liste VIVE du catalogue (customs comprises,
+// editions refletees, nom/prix effectifs du centre) quand elle est chargee,
+// la constante FORMULES sinon. Les formules retirees du catalogue sont
+// EXCLUES par defaut (elles n'existent plus pour le centre) ; la grille
+// Tarifs les demande pour les montrer barrees et restaurables.
+function getConsoleFormuleCatalog({ includeRemoved = false } = {}) {
+  const live = typeof window !== 'undefined' && typeof window.pevLiveFormules === 'function'
+    ? window.pevLiveFormules()
+    : null;
+  if (!Array.isArray(live) || !live.length) return FORMULES;
+  return includeRemoved ? live : live.filter(formule => !formule.removed);
+}
+
 function getPricingRows() {
   const usage = getPricingUsageMap();
   const decorate = row => ({
@@ -11828,11 +11858,14 @@ function getPricingRows() {
     tags: ['Laser', `${option.games} partie${option.games > 1 ? 's' : ''}`, `${LASER_GAME_MAX_PLAYERS} armes`],
     activities: ['Laser Game']
   }));
-  const formulas = FORMULES.map(formule => {
+  const formulas = getConsoleFormuleCatalog({ includeRemoved: true }).map(formule => {
     const special = formule.family !== 'Formules anniversaires';
     return decorate({
       id: `formula-${formule.id}`,
       sourceId: formule.id,
+      removed: formule.removed === true,
+      source: formule.source || 'seed',
+      family: formule.family || '',
       type: special ? 'special' : 'formula',
       title: formule.name,
       subtitle: formule.family || 'Formule',

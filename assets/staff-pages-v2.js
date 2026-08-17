@@ -6932,18 +6932,79 @@
     } finally {
       pricingEditor.loading = false;
       if (typeof isStaffPricingActive === 'function' && isStaffPricingActive()) renderStaffPricingPage();
+      // L'Etablissement consomme aussi la liste vive : une fois chargee, la
+      // page ouverte se repeint pour quitter le fallback statique. JAMAIS en
+      // mode edition : reconstruire le formulaire perdrait les cases cochees.
+      if (typeof getStaffMenuPage === 'function' && getStaffMenuPage() === 'establishment'
+        && !(typeof state !== 'undefined' && state && state.establishmentEditing)
+        && typeof renderStaffUtilityPage === 'function') renderStaffUtilityPage();
     }
   }
 
   // Re-fetch + re-render : apres chaque ecriture, la ligne montre immediatement
-  // la nouvelle valeur.
+  // la nouvelle valeur. TOUTES les ecritures catalogue (override tarif, creation,
+  // edition, suppression) passent ici : c'est LE point de propagation. Le
+  // catalogue du tunnel (public-booking-meta -> __pinlaneDisplayFormules) se
+  // rafraichit dans le meme geste : creer une formule la rend reservable sans
+  // recharger la page, la retirer la fait disparaitre des cartes.
   function pevReload() {
     pricingEditor.loaded = false;
     pevLoad(true);
+    if (typeof loadCenterScheduleConfig === 'function') loadCenterScheduleConfig();
   }
   function pevEnsureLoaded() {
     if (!pricingEditor.loaded && !pricingEditor.loading && !pricingEditor.error) pevLoad(false);
   }
+
+  // LA LISTE VIVE DES FORMULES pour toutes les surfaces de la console (grille
+  // Tarifs, Etablissement > Offres). Rendue au format booking (le format que
+  // ces ecrans consomment deja via la constante FORMULES) depuis clientCatalog :
+  // customs comprises, editions de structure refletees, nom/prix effectifs du
+  // centre appliques. Rend null tant que le catalogue n'est pas charge : les
+  // appelants retombent sur la constante FORMULES, jamais sur un ecran vide.
+  window.pevLiveFormules = function () {
+    if (!pricingEditor.loaded) return null;
+    return [...pricingEditor.byId.values()].map((entry) => {
+      const eff = entry.effective || {};
+      const timeLimit = (entry.timeLimitMinMinutes != null || entry.timeLimitMaxMinutes != null)
+        ? {
+          ...(entry.timeLimitMinMinutes != null ? { min: entry.timeLimitMinMinutes / 60 } : {}),
+          ...(entry.timeLimitMaxMinutes != null ? { max: entry.timeLimitMaxMinutes / 60 } : {}),
+        }
+        : null;
+      return {
+        id: entry.id,
+        name: eff.name != null ? eff.name : entry.name,
+        // La famille BOOKING (« Formules anniversaires ») : c'est elle qui
+        // groupe les ecrans. doc.family (« Anniversaire ») classait tout en
+        // speciales (compteur Anniversaires a zero, vu a l'ecran).
+        family: entry.bookingFamily || entry.family || 'Formules',
+        desc: Array.isArray(entry.desc) ? entry.desc : [],
+        notes: Array.isArray(entry.notes) ? entry.notes : [],
+        price: eff.priceValue != null ? eff.priceValue : (entry.base ? entry.base.priceValue : null),
+        oldPrice: eff.priceOld != null ? eff.priceOld : (entry.base ? entry.base.priceOld : null),
+        type: entry.priceType || 'per_pax',
+        minPax: Number(entry.minPax) || 1,
+        validDays: Array.isArray(entry.validDays) && entry.validDays.length ? entry.validDays : null,
+        ...(timeLimit ? { timeLimit } : {}),
+        noHolidays: entry.noHolidays === true,
+        best: entry.best === true,
+        hasBowling: entry.hasBowling === true,
+        ...(entry.bowlingDur != null ? { bowlingDur: entry.bowlingDur } : {}),
+        ...(entry.estimatedTotalDuration != null ? { estimatedTotalDuration: entry.estimatedTotalDuration } : {}),
+        removed: Boolean(eff.removed),
+        enabled: eff.enabled !== false,
+        source: entry.source || 'seed',
+      };
+    });
+  };
+  // Les autres pages (Etablissement) declenchent le chargement sans dependre
+  // du rendu de la page Tarifs.
+  window.pevEnsureCatalogLoaded = pevEnsureLoaded;
+  // Un echec de chargement ne doit jamais etre un cul-de-sac : le bandeau
+  // d'erreur de la page Tarifs propose ce retry (l'ancien code retombait sur
+  // la constante SANS RIEN DIRE et ne reessayait qu'au rechargement complet).
+  window.pevRetryCatalog = pevReload;
 
   function pevModalBody() {
     if (!pricingEditor.modal || !pricingEditor.draft) return '';
@@ -7652,51 +7713,88 @@
     });
   }
 
-  // ── Section "Catalogue partage" (rendue dans la page prices) ──────────────
-  function cevCatalogSectionHtml() {
-    const canManage = cevCanManage();
-    const formulas = Array.from(pricingEditor.byId.values());
-    const rows = formulas.map((entry) => {
-      const source = entry.source === 'custom' ? '<span class="pv2-chip amber">Ajoutee</span>' : '<span class="pv2-chip">Socle</span>';
-      const stepCount = Array.isArray(entry.steps) ? entry.steps.length : 0;
-      const priceLabel = entry.priceType === 'per_lane' ? '/piste' : '/pers';
-      const priceValue = entry.base && entry.base.priceValue != null ? entry.base.priceValue : null;
-      const meta = `${esc(entry.family || 'Formule')} &middot; ${entry.minPax || 1}+ pers &middot; ${stepCount} activite${stepCount > 1 ? 's' : ''}`;
-      const actNames = (Array.isArray(entry.steps) ? entry.steps : []).map((step) => {
-        const act = (pricingEditor.activities || []).find((a) => a.id === step.activityId);
-        return act ? act.name : step.activityId;
-      }).filter(Boolean);
-      const actSummary = actNames.length
-        ? `${actNames.slice(0, 3).map((n) => esc(n)).join(', ')}${actNames.length > 3 ? '...' : ''}`
-        : 'Aucune activite';
-      const priceHtml = priceValue != null
-        ? `<div class="cev-row-price">${money(priceValue)}<small>${esc(priceLabel)}</small></div>`
-        : '';
-      const actions = canManage ? `<div class="cev-row-actions">
-          <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(entry.id)}" onclick="cevOpenFields('${escJs(entry.id)}')">Structure</button>
-          <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(entry.id)}" onclick="cevOpenSteps('${escJs(entry.id)}')">Modifier les activites</button>
-          <button type="button" class="pv2-btn sm cev-danger" data-cev-delete="${escJs(entry.id)}" onclick="cevDelete('${escJs(entry.id)}')">Supprimer</button>
-        </div>` : '';
-      return `<article class="cev-row" data-cev-formula="${escJs(entry.id)}">
-        <div class="cev-row-main">
-          <div class="cev-row-title"><strong>${esc(entry.name || 'Formule')}</strong>${source}</div>
-          <span class="cev-row-meta">${meta}</span>
-          <span class="cev-row-acts">${actSummary}</span>
-        </div>
-        ${priceHtml}
-        ${actions}
-      </article>`;
-    }).join('');
-    return `<section class="cev-catalog-block" id="cevCatalogBlock">
-      <div class="cev-block-head">
-        <div class="cev-block-copy">
-          <div class="cev-block-title"><h2>Catalogue partage</h2><span class="pv2-chip amber">Tous les centres</span></div>
-          <p>${canManage ? 'Structure des formules et de leurs activites, partagee par tous les centres du reseau. Modifier ici change l\'offre partout.' : 'Structure des formules, partagee par tous les centres. Lecture seule (edition reservee a la direction).'}</p>
-        </div>
-        ${canManage ? '<button type="button" class="pv2-btn primary" id="cevAddFormula" onclick="cevOpenCreate()">+ Ajouter une formule</button>' : ''}
+  // ── UNE carte par offre ───────────────────────────────────────────────────
+  // La page montrait la MEME formule deux fois : une carte (grille, figee sur
+  // la constante) ET une ligne « Catalogue partage » (vive). Une seule carte
+  // porte desormais tout : nom/prix effectifs du centre, contenu, usage, et
+  // ses DEUX niveaux d'action (tarif du centre / structure partagee).
+  function pricingCardHtml(row, view, { selected, ranking, index, canManage }) {
+    const isFormula = Boolean(view.sourceId);
+    const badges = [
+      row.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
+      view.removed ? '<span class="pv2-chip red">Retirée de ce centre</span>' : '',
+      view.personnalise && !view.removed ? '<span class="pv2-chip amber">Tarif personnalisé</span>' : '',
+      row.best ? '<span class="pv2-chip accent">Best deal</span>' : '',
+    ].filter(Boolean).join('');
+    const usage = Number(row.count)
+      ? `<div class="pv2-price-stats">
+          <span><strong>${Number(row.count)}</strong> résa</span>
+          <span><strong>${Number(row.players) || 0}</strong> joueurs</span>
+          <span><strong>${money(row.revenue)}</strong></span>
+          <span><strong>${money(Number(row.revenue || 0) / Number(row.count))}</strong> panier</span>
+        </div>`
+      : '<div class="pv2-price-stats pv2-price-stats-empty">Aucune réservation liée</div>';
+    const actions = isFormula ? `<div class="pev-card-foot">
+        <button type="button" class="pv2-btn" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
+        ${canManage ? `
+        <button type="button" class="pv2-btn" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
+        <button type="button" class="pv2-btn" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>
+        <button type="button" class="pv2-btn cev-danger" data-cev-delete="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')">Supprimer</button>` : ''}
+      </div>` : '';
+    return `<article class="pv2-price-card ${selected ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}"
+      ${isFormula ? `data-cev-formula="${escJs(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
+      <div class="pv2-price-head">
+        <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(view.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
+        <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.type === 'bowling' ? '/piste' : row.priceType === 'per_lane' ? '/piste' : isFormula ? '/pers' : '')}</small></div>
       </div>
-      <div class="cev-rows">${rows || '<div class="pv2-empty"><strong>Catalogue vide</strong>Ajoutez une premiere formule.</div>'}</div>
-    </section>`;
+      ${badges ? `<div class="pev-badges">${badges}</div>` : ''}
+      <p class="pv2-price-desc">${esc(row.description || '')}</p>
+      ${(row.tags || []).length ? `<div class="pv2-price-tags">${row.tags.slice(0, 4).map((tag) => `<span class="pv2-chip">${esc(tag)}</span>`).join('')}</div>` : ''}
+      ${usage}
+      ${actions}
+    </article>`;
+  }
+
+  // Groupes d'affichage : pistes, laser, puis les formules PAR FAMILLE.
+  // En classement actif, l'ordre tri prime : une seule liste plate.
+  function pricingSectionsHtml(rows, { selected, ranking, canManage }) {
+    const card = (row, index) => pricingCardHtml(row, pevRowView(row), { selected: selected && row.id === selected.id, ranking, index, canManage });
+    if (ranking !== 'default') {
+      return `<section class="pv2-catalog-section" id="cevCatalogBlock">
+        <div class="pv2-section-head"><h3>Classement</h3><span>${rows.length} offre${rows.length > 1 ? 's' : ''}, les plus fortes d'abord</span></div>
+        <div class="pv2-catalog">${rows.map(card).join('') || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</div>
+      </section>`;
+    }
+    const groups = [];
+    const groupOf = (row) => {
+      if (row.type === 'bowling') return 'Location de pistes';
+      if (row.type === 'laser') return 'Laser Game';
+      return row.family || (row.type === 'formula' ? 'Formules anniversaires' : 'Formules spéciales');
+    };
+    rows.forEach((row) => {
+      const name = groupOf(row);
+      let group = groups.find((g) => g.name === name);
+      if (!group) { group = { name, items: [] }; groups.push(group); }
+      group.items.push(row);
+    });
+    const firstFormulaGroup = groups.find((g) => g.items.some((row) => row.sourceId));
+    const sections = groups.map((group) => {
+      const isFormulaGroup = group.items.some((row) => row.sourceId);
+      // L'id du bloc formules + le bouton d'ajout vivent sur la PREMIERE
+      // famille de formules : une seule porte d'entree pour creer.
+      const hostId = group === firstFormulaGroup ? ' id="cevCatalogBlock"' : '';
+      const legend = group === firstFormulaGroup
+        ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS les centres.</span>`
+        : '';
+      const addBtn = group === firstFormulaGroup && canManage
+        ? '<button type="button" class="pv2-btn primary" id="cevAddFormula" onclick="cevOpenCreate()">+ Ajouter une formule</button>'
+        : '';
+      return `<section class="pv2-catalog-section"${hostId}>
+        <div class="pv2-section-head"><h3>${esc(group.name)}</h3><span>${group.items.length} offre${group.items.length > 1 ? 's' : ''}</span>${addBtn}${legend}</div>
+        <div class="pv2-catalog">${group.items.map(card).join('')}</div>
+      </section>`;
+    }).join('');
+    return sections || '<div class="pv2-empty" id="cevCatalogBlock"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>';
   }
 
   window.renderStaffPricingPage = function () {
@@ -7712,26 +7810,13 @@
     const countByType = (type) => allRows.filter((row) => row.type === type).length;
 
     const ranking = state.staffPricingSort || 'default';
-    const cards = rows.map((row, index) => {
-      const view = pevRowView(row);
-      const badges = `${view.removed ? '<span class="pv2-chip red">retirée</span>' : ''}${view.personnalise ? '<span class="pv2-chip amber">personnalisé</span>' : ''}`;
-      return `<article class="pv2-price-card ${selected && row.id === selected.id ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}" onclick="pv2SelectPricing('${escJs(row.id)}')">
-      <div class="pv2-price-head">
-        <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(view.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
-        <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.type === 'formula' ? '/pers' : row.type === 'bowling' ? '/piste' : '')}</small></div>
-      </div>
-      ${badges ? `<div class="pev-badges">${badges}</div>` : ''}
-      <p class="pv2-price-desc">${esc(row.description || '')}</p>
-      <div class="pv2-price-tags">${(row.tags || []).slice(0, 4).map((tag) => `<span class="pv2-chip">${esc(tag)}</span>`).join('')}</div>
-      <div class="pv2-price-stats">
-        <span><strong>${Number(row.count) || 0}</strong> résa</span>
-        <span><strong>${Number(row.players) || 0}</strong> joueurs</span>
-        <span><strong>${money(row.revenue)}</strong></span>
-        <span><strong>${Number(row.count) ? money(Number(row.revenue || 0) / Number(row.count)) : '-'}</strong> panier</span>
-      </div>
-      ${view.editable ? `<div class="pev-card-foot"><button type="button" class="pv2-btn" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Modifier</button></div>` : ''}
-    </article>`;
-    }).join('');
+    const canManage = cevCanManage();
+    const sections = pricingSectionsHtml(rows, { selected, ranking, canManage });
+    // Catalogue vivant en panne = on le DIT (la page montre alors le socle
+    // fige) et on offre le retry, jamais un fallback silencieux.
+    const catalogAlert = pricingEditor.error
+      ? `<div class="pv2-empty pv2-catalog-alert" role="alert"><strong>Catalogue vivant indisponible</strong>${esc(pricingEditor.error)} La page montre le socle : formules ajoutées ou retirées peuvent manquer. <button type="button" class="pv2-btn" onclick="pevRetryCatalog()">Réessayer</button></div>`
+      : '';
 
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
@@ -7766,17 +7851,8 @@
         ${ranking !== 'default' ? '<button type="button" class="pv2-chip-btn" onclick="setStaffPricingSort(state.staffPricingSort)">Ordre catalogue</button>' : ''}
       </div>
 
-      <div class="cev-scope-note">
-        <span class="cev-scope-badge">Mon centre</span>
-        <div class="cev-scope-copy">
-          <strong>Reglages de mon centre</strong>
-          <span>Prix, disponibilite et retrait pour CE centre uniquement. Cliquez sur Modifier sur une offre pour l ajuster.</span>
-        </div>
-      </div>
-
-      <section class="pv2-catalog">${cards || '<div class="pv2-empty"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>'}</section>
-
-      ${cevCatalogSectionHtml()}
+      ${catalogAlert}
+      ${sections}
     </div>`;
     mount(root, 'pricing');
     pevSyncModal();

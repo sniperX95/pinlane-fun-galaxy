@@ -240,12 +240,17 @@ function runFixedGuardrailTests(knowledge) {
   }, { reservations: [], laneStatuses: {} });
   assert.strictEqual(invalidDay.ok, false, 'formula validDays must be enforced');
 
+  // Départ 15:00 et non 14:00 : nextOpenDate peut tomber sur un jour qui
+  // OUVRE à 14:00, et l'accueil 10 min avant le départ sortirait alors de
+  // l'horaire (refus légitime du moteur, pas un défaut de vagues). Même
+  // remède que le bloc formule ci-dessous ; fixture dépendante de l'horloge
+  // attrapée le 2026-08-17 (un mardi à J+8).
   const splitLaser = planningAgent({
     centerId: 'libramont',
     date: futureOpenDate,
     type: 'laser',
     pax: 50,
-    startTime: '14:00',
+    startTime: '15:00',
     duration: 0.5,
     laserGames: 1,
   }, { reservations: [], laneStatuses: {} });

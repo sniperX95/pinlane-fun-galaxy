@@ -9486,8 +9486,8 @@ function establishmentPaymentFieldHtml(center) {
     <label for="estab-payment-mode">Encaissement des réservations</label>
     <select id="estab-payment-mode" class="estab-style-select">
       <option value="onsite" ${mode === 'onsite' ? 'selected' : ''}>Tout se règle sur place (au comptoir)</option>
-      <option value="deposit" disabled>Acompte en ligne — à venir avec l'encaissement</option>
-      <option value="online" disabled>Paiement en ligne — à venir avec l'encaissement</option>
+      <option value="deposit" disabled>Acompte en ligne : à venir avec l'encaissement</option>
+      <option value="online" disabled>Paiement en ligne : à venir avec l'encaissement</option>
     </select>
     <span class="estab-brand-note">Le tunnel de réservation annonce ce mode au client. Les paiements en ligne s'activeront ici dès que l'encaissement Pinlane sera branché.</span>
   </div>`;

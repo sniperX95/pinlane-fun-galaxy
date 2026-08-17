@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site d'un centre : test d'integration du widget Pinlane</title>
+<!-- PAGE DE TEST INTERNE. Simule le site WordPress/Wix/HTML d'un gerant qui
+     colle LA ligne d'installation Pinlane au milieu de sa page. A ouvrir en
+     local (node scripts/dev-tunnel-server.js sert /embed.js et /reserver) ou
+     contre la prod en remplacant l'origine du script. -->
+<style>
+  body { margin: 0; font-family: Georgia, serif; background: #f5efe6; color: #2b2118; }
+  .site-header { background: #2b2118; color: #f5efe6; padding: 18px 24px; font-size: 20px; }
+  .site-main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+  .site-main p { line-height: 1.6; }
+  .site-footer { text-align: center; padding: 24px; color: #8a7a66; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="site-header">Bowling du Centre : le site du gerant (theme quelconque)</div>
+<div class="site-main">
+  <h1>Reservez votre piste</h1>
+  <p>Ce paragraphe appartient au site du centre. Juste en dessous, le gerant a
+     colle la ligne d'installation Pinlane, rien d'autre :</p>
+
+  <script src="http://127.0.0.1:4230/embed.js" data-center="libramont"></script>
+
+  <p>Et ce paragraphe reprend apres le widget : l'iframe s'est inseree A
+     L'ENDROIT du script, sa hauteur suit le contenu (postMessage), et le
+     visiteur reste sur le site du centre.</p>
+</div>
+<div class="site-footer">© Bowling du Centre : page de test interne Pinlane</div>
+</body>
+</html>

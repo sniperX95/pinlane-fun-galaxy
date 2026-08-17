@@ -3705,10 +3705,14 @@ function syncActivityPickerState(off = []) {
     // Le defaut depend de la CLE : « 1 » vaut pour une duree de bowling ou un
     // nombre de tables, jamais pour une session de 15 minutes ni pour une
     // activite dont la duree minimale est d'une heure. Un defaut faux
-    // n'allume aucune pastille et la carte parait vide.
+    // n'allume aucune pastille et la carte parait vide. Et le compte d'enfants
+    // vaut le GROUPE ENTIER (meme regle que le serveur et que le premier
+    // rendu) : avec « 1 », la pastille 1 s'allumait alors que le champ libre
+    // affichait 8, deux etats actifs en meme temps.
     const activityDefaut = (key) => {
       if (key === 'minutes') return FUN_RUN_OPTIONS[0].minutes;
       if (key === 'hours') return activityHourChoices(activity || {})[0].hours;
+      if (key === 'participants') return Math.min(30, Math.max(1, pax));
       return 1;
     };
     optionsRow.querySelectorAll('[data-opt]').forEach(pill => {
@@ -3717,16 +3721,20 @@ function syncActivityPickerState(off = []) {
       const courant = chosenOptions[key] == null ? activityDefaut(key) : Number(chosenOptions[key]);
       pill.classList.toggle('active', courant === value);
     });
-    // Le compte d'enfants au-dela de cinq vit dans un CHAMP : il suit la
-    // valeur (sans voler une frappe en cours) et la note de prix recalcule.
+    // Le stepper d'enfants suit la valeur (sans voler une frappe en cours),
+    // les boutons -/+ se desactivent aux bornes, la note de prix recalcule.
     if (activityCountsChildren(activity)) {
       const ceiling = Math.min(30, Math.max(1, pax));
       const current = Math.min(ceiling, Math.max(1, Number(chosenOptions.participants) || ceiling));
       const field = optionsRow.querySelector('[data-role="participants-input"]');
       if (field) {
-        field.classList.toggle('active', current > 5);
-        if (document.activeElement !== field) field.value = current > 5 ? String(current) : '';
+        field.max = String(ceiling);
+        if (document.activeElement !== field) field.value = String(current);
       }
+      const minus = optionsRow.querySelector('[data-role="participants-minus"]');
+      const plus = optionsRow.querySelector('[data-role="participants-plus"]');
+      if (minus) minus.disabled = current <= 1;
+      if (plus) plus.disabled = current >= ceiling;
       const note = optionsRow.querySelector('[data-role="participants-note"]');
       const price = Number(activity && activity.priceValue);
       if (note && Number.isFinite(price) && price > 0) {
@@ -3808,26 +3816,26 @@ function renderActivityOptions(activity, options, pax) {
       </button>`).join('')}</div>`;
   }
   if (activityCountsChildren(activity)) {
-    // Le compte d'enfants : CINQ pastilles au plus, au-dela un champ ou l'on
-    // TAPE le chiffre (« pas besoin de faire autant, ca economise de la
-    // place », Movsar 2026-08-18, capture de neuf pastilles sur deux rangs).
+    // Le compte d'enfants se regle au MEME stepper -/+ que le compte de
+    // joueurs de la venue : un seul vocabulaire de reglage dans le tunnel.
+    // (Les pastilles 1-5 + champ « 6+ » faisaient deux composants pour un
+    // seul chiffre : refusees par Movsar le 2026-08-17.)
     const ceiling = Math.min(30, Math.max(1, pax));
     const current = Math.min(ceiling, Math.max(1, Number(options.participants) || ceiling));
-    const pillMax = Math.min(5, ceiling);
-    const pills = Array.from({ length: pillMax }, (_, index) => index + 1).map(value => `
-      <button type="button" class="dur-pill xs ${current === value ? 'active' : ''}" data-opt="participants" data-val="${value}"
-        onclick="setBookingActivityOption('${id}','participants',${value})">${value}</button>`).join('');
-    const field = ceiling > 5 ? `
-      <input type="number" class="input participants-input ${current > 5 ? 'active' : ''}" data-role="participants-input"
-        min="1" max="${ceiling}" inputmode="numeric" placeholder="6+"
-        value="${current > 5 ? current : ''}" aria-label="Nombre d'enfants, saisie libre"
-        oninput="setBookingActivityOption('${id}','participants', Math.min(${ceiling}, Math.max(1, Number(this.value) || 1)))">` : '';
     const price = Number(activity.priceValue);
     const detail = Number.isFinite(price) && price > 0
       ? `<div class="activity-option-note" data-role="participants-note">${price}€ ${escapeHtml(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.</div>`
       : '';
     return `<div class="activity-option-stack"><div class="activity-option-group"><span class="activity-option-legend">Enfants</span>
-      <div class="activity-option-pills">${pills}${field}</div></div>${detail}</div>`;
+      <div class="child-stepper">
+        <button type="button" class="child-step-btn" data-role="participants-minus" aria-label="Retirer un enfant" ${current <= 1 ? 'disabled' : ''}
+          onclick="stepBookingChildren('${id}',-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <input type="number" class="input participants-input" data-role="participants-input"
+          min="1" max="${ceiling}" inputmode="numeric" value="${current}" aria-label="Nombre d'enfants"
+          oninput="setBookingActivityOption('${id}','participants', Math.min(${ceiling}, Math.max(1, Number(this.value) || 1)))">
+        <button type="button" class="child-step-btn" data-role="participants-plus" aria-label="Ajouter un enfant" ${current >= ceiling ? 'disabled' : ''}
+          onclick="stepBookingChildren('${id}',1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      </div></div>${detail}</div>`;
   }
   if (activity.priceType === 'per_unit_hour') {
     const choix = activityHourChoices(activity);
@@ -4046,6 +4054,18 @@ function setBookingActivityOption(activityId, key, value) {
   applyChosenActivitiesToBooking();
   syncBookingTypeUi();
   save();
+}
+
+// Le stepper -/+ du compte d'enfants. Il lit l'etat (defaut = groupe entier,
+// meme regle que le serveur), applique le pas et borne au groupe : le bouton
+// n'a pas a connaitre la valeur courante au moment du rendu.
+function stepBookingChildren(activityId, delta) {
+  const selection = state.booking.activities || {};
+  const options = selection[activityId] || {};
+  const pax = Math.max(1, Number(state.booking.pax) || 1);
+  const ceiling = Math.min(30, pax);
+  const current = Math.min(ceiling, Math.max(1, Number(options.participants) || ceiling));
+  setBookingActivityOption(activityId, 'participants', Math.min(ceiling, Math.max(1, current + Number(delta))));
 }
 
 // Les champs historiques (duration, laneCount, totalDuration) restent remplis :
@@ -18081,17 +18101,31 @@ function renderFormules() {
       <div class="formule-cards">
         ${group.items.map(f => {
           // Notes propres à la carte, en version compacte (la phrase longue
-          // « Non valable durant... » reste réservée à l'en-tête de famille).
+          // reste réservée à l'en-tête de famille quand elle y est factorisée).
+          // Sur la carte, une condition tient en quelques mots : elle ferme la
+          // lecture, elle ne concurrence pas le contenu de l'offre.
           const uniqueNotes = (f.notes || [])
             .filter(note => !sharedNotes.includes(note))
-            .map(note => note.replace(/^Non valable durant les vacances scolaires et jours fériés$/i, 'Hors vacances scolaires et fériés'));
-          const meta = [...new Set([
-            ...uniqueNotes,
-            f.timeLimit ? formatTime(f.timeLimit) : ''
-          ].filter(Boolean))];
+            .map(note => String(note)
+              .replace(/^Non valable durant les vacances scolaires et jours fériés\.?$/i, 'Hors vacances scolaires et fériés')
+              .replace(/^Minimum (\d+) personnes$/i, 'Min. $1 pers.')
+              .replace(/^Disponible uniquement le /i, 'Uniquement le '));
           // Le motif « vacances/férié » est déjà annoncé une seule fois au
           // niveau de la famille : pas de redite par carte.
           const cardStatus = groupBlocked && f.noHolidays ? '' : f.status;
+          // La fenêtre horaire ne s'écrit qu'une fois : si une note ou une
+          // ligne de contenu la porte déjà (« Disponible uniquement avant
+          // 12h », « De 12h à 17h pour les enfants... »), pas de redite.
+          const timeLabel = f.timeLimit ? formatTime(f.timeLimit) : '';
+          const timeAlreadySaid = timeLabel && [...uniqueNotes, ...(f.desc || [])]
+            .some(line => String(line).toLowerCase().includes(timeLabel.toLowerCase()));
+          const meta = [...new Set([
+            ...uniqueNotes,
+            timeAlreadySaid ? '' : timeLabel
+          ].filter(Boolean))]
+            // Quand le statut du jour dit déjà « Uniquement le mardi », la même
+            // phrase en condition statique juste au-dessus est du bruit.
+            .filter(entry => !cardStatus || entry.toLowerCase() !== cardStatus.toLowerCase());
           return `
         <button type="button" data-formule-id="${escapeHtml(f.id)}" class="formule-card ${f.available ? '' : 'disabled'} ${state.booking.formuleId === f.id ? 'active' : ''}" ${f.available ? `onclick="selectFormule('${f.id}')"` : 'disabled aria-disabled="true"'}>
           <span class="formule-card-head">

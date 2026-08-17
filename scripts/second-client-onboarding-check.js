@@ -1491,7 +1491,11 @@ async function proveEmbedSelectsCenter() {
       `l en-tete affiche SON nom en lettrage (obtenu "${identityState.wordmark}")`);
     ok(identityState.logoHidden,
       'aucun logo image : ce centre n en declare pas, il n herite de celui de personne');
-    ok(/à Namur\./.test(identityState.hero),
+    // L'invariant est l'ISOLATION (le sous-titre nomme SA ville, jamais celle
+    // d'un autre client), pas la formulation marketing : la phrase a change le
+    // 2026-08-17 (« À Namur : le jour, votre groupe, le reste suit. ») et
+    // l'ancienne attente « à Namur. » couplait ce gate a la copie.
+    ok(/\bNamur\b/.test(identityState.hero),
       `le sous-titre porte SA ville (obtenu "${identityState.hero}")`);
     ok(identityState.navLinks.length === 0,
       `aucun lien de navigation d un autre client (obtenu ${identityState.navLinks.length})`);

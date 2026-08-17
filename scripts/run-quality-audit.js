@@ -195,7 +195,8 @@ if (!/data-fgx-menu-action="logout"/.test(staffMenu) || !/typeof\s+logout\s*===\
 
 const stylesheetLinks = [...index.matchAll(/<link\s+rel=["']stylesheet["']\s+href=["']([^"']+\.css)(?:\?[^"']*)?["']\s*>/gi)]
   .map((match) => match[1]);
-const expectedStylesheets = ['./assets/pinlane.css', './assets/pinlane-staff.css', './assets/pinlane-charts.css', './assets/pinlane-daterange.css', './assets/pinlane-analytics-board.css', './assets/pinlane-client.css'];
+// Chemins ABSOLUS depuis le 2026-08-18 : les relatifs cassaient sous l'adresse par centre /reserver/<slug>.
+const expectedStylesheets = ['/assets/pinlane.css', '/assets/pinlane-staff.css', '/assets/pinlane-charts.css', '/assets/pinlane-daterange.css', '/assets/pinlane-analytics-board.css', '/assets/pinlane-client.css'];
 if (JSON.stringify(stylesheetLinks) !== JSON.stringify(expectedStylesheets)) {
   addFail('index.html must load exactly pinlane.css, pinlane-staff.css, pinlane-charts.css, pinlane-daterange.css, pinlane-analytics-board.css, pinlane-client.css in that order (DESIGN.md §8).');
 }

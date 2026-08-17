@@ -3194,9 +3194,41 @@ function syncProgressiveReveal() {
     && Boolean(getSchedule(date, state.isHolidayMode))
     && !(dayStatus && dayStatus.open === false);
   // En vol : on garde l'etat courant (ni ouverture ni repli sur une promesse).
-  if (!pending) setRevealState(what, dayOpen);
-  // L'etat d'attente : une carte fantome dit POURQUOI le programme n'est pas
-  // la et ce qui l'ouvrira. Elle vit exactement quand le programme est plie.
+  if (!pending) {
+    // SEQUENCE CENTREE : la venue vit seule au milieu tant que la date ne
+    // tient pas (.is-solo sur le corps d'etape). Quand elle se met a tenir,
+    // le liquide la DECALE vers sa colonne : FLIP (position mesuree avant et
+    // apres, trajet rejoue en transform avec le ressort), pendant que le
+    // programme se deploie a la place liberee (lq-reveal).
+    const body = document.querySelector('#clientView .step1-body');
+    const when = document.querySelector('#clientView .s1-when');
+    const wasSolo = Boolean(body && body.classList.contains('is-solo'));
+    const willBeSolo = !dayOpen;
+    if (body && when && wasSolo !== willBeSolo && !prefersReducedMotion() && Number(state.step) === 1) {
+      const before = when.getBoundingClientRect();
+      setRevealState(what, dayOpen);
+      body.classList.toggle('is-solo', willBeSolo);
+      const after = when.getBoundingClientRect();
+      const dx = before.left - after.left;
+      const dy = before.top - after.top;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        when.style.transition = 'none';
+        when.style.transform = `translate(${dx}px, ${dy}px)`;
+        void when.offsetWidth;
+        when.style.transition = 'transform 0.6s var(--lq-spring)';
+        when.style.transform = '';
+        setTimeout(() => {
+          when.style.removeProperty('transition');
+          when.style.removeProperty('transform');
+        }, 680);
+      }
+    } else {
+      setRevealState(what, dayOpen);
+      if (body) body.classList.toggle('is-solo', willBeSolo);
+    }
+  }
+  // L'etat d'attente : une ligne fine sous la venue dit POURQUOI le programme
+  // n'est pas la et ce qui l'ouvrira. Elle vit exactement quand il est plie.
   const placeholder = document.getElementById('s1WhatPlaceholder');
   if (placeholder) placeholder.hidden = !what.classList.contains('is-folded');
   // Le resume : des qu'un choix existe dans le mode courant.
@@ -3461,7 +3493,12 @@ function renderActivityPicker(off = []) {
   if (!host) return;
   const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
   if (!catalog.length) { host.innerHTML = ''; activityPickerSignature = ''; return; }
-  const signature = catalog.map(activity => activity.id).join(',');
+  // Le PAX fait partie de la signature : le plafond des pastilles d'enfants
+  // (plaine de jeux) suit le groupe. Sans lui, un groupe passe de 4 a 6 et le
+  // compteur reste borne a 4. Reconstruire au changement de groupe est sans
+  // danger : aucun press n'est en cours dans le picker a ce moment-la.
+  const paxCeiling = Math.min(12, Math.max(1, Number(state.booking.pax) || 1));
+  const signature = `${catalog.map(activity => activity.id).join(',')}|pax:${paxCeiling}`;
   if (signature !== activityPickerSignature) {
     buildActivityPicker(host, catalog);
     activityPickerSignature = signature;
@@ -3508,7 +3545,15 @@ function activityIconMarkup(activityId) {
 
 // Tous les blocs de reglages existent des le premier rendu. Cocher une activite
 // ne reconstruit ni la grille ni les boutons, ce qui preserve le focus.
+// Une activite payee PAR ENFANT (plaine de jeux) se regle en nombre d'enfants :
+// 4 adultes + 2 enfants ne paient pas 6 entrees. La detection passe par la
+// DONNEE (unitLabel du catalogue), jamais par un id de centre.
+function activityCountsChildren(activity) {
+  return Boolean(activity && activity.priceType === 'per_pax' && /enfant/i.test(activity.unitLabel || ''));
+}
+
 function activityHasConfigurableOptions(activity) {
+  if (activityCountsChildren(activity)) return true;
   return Boolean(activity && [
     'grid_bowling',
     'grid_laser',
@@ -3519,6 +3564,7 @@ function activityHasConfigurableOptions(activity) {
 
 function activityConfigHint(activity) {
   if (!activity) return '';
+  if (activityCountsChildren(activity)) return 'Nombre d’enfants';
   if (activity.priceType === 'grid_laser') return 'Nombre de parties';
   if (activity.priceType === 'per_unit_hour') return 'Tables et durée';
   return 'Durée';
@@ -3703,6 +3749,20 @@ function renderActivityOptions(activity, options, pax) {
         ${option.label}<span class="price">${option.price}€ / session</span>
       </button>`).join('')}</div>`;
   }
+  if (activityCountsChildren(activity)) {
+    // Le compte d'enfants, en pastilles bornees au groupe (12 au plus a
+    // l'ecran : au-dela, le champ joueurs du groupe est le bon endroit).
+    const ceiling = Math.min(12, Math.max(1, pax));
+    const current = Math.min(ceiling, Math.max(1, Number(options.participants) || ceiling));
+    const price = Number(activity.priceValue);
+    const detail = Number.isFinite(price) && price > 0
+      ? `<div class="activity-option-note">${price}€ ${escapeHtml(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.</div>`
+      : '';
+    return `<div class="activity-option-stack"><div class="activity-option-group"><span class="activity-option-legend">Enfants</span>
+      <div class="activity-option-pills">${Array.from({ length: ceiling }, (_, index) => index + 1).map(value => `
+        <button type="button" class="dur-pill xs ${current === value ? 'active' : ''}" data-opt="participants" data-val="${value}"
+          onclick="setBookingActivityOption('${id}','participants',${value})">${value}</button>`).join('')}</div></div>${detail}</div>`;
+  }
   if (activity.priceType === 'per_unit_hour') {
     const choix = activityHourChoices(activity);
     const hours = Number(options.hours) || choix[0].hours;
@@ -3762,8 +3822,13 @@ function renderProgramSummary() {
       total += option.price;
       return { id: activity.id, name: activity.name, detail: option.label };
     }
+    // Le compte d'enfants declare remplace le groupe entier dans le calcul
+    // (meme regle que le serveur : borne au groupe, absent = tout le monde).
+    const linePax = activityCountsChildren(activity)
+      ? Math.min(pax, Math.max(1, Number(options.participants) || pax))
+      : pax;
     const price = typeof getFreeActivityPrice === 'function'
-      ? getFreeActivityPrice(activity, { pax, units: options.units, hours: options.hours, minutes: options.minutes })
+      ? getFreeActivityPrice(activity, { pax: linePax, units: options.units, hours: options.hours, minutes: options.minutes })
       : null;
     if (price == null) complete = false; else total += price;
     if (activity.priceType === 'per_unit_hour') {
@@ -3775,6 +3840,13 @@ function renderProgramSummary() {
         id: activity.id,
         name: activity.name,
         detail: `${units} table${units > 1 ? 's' : ''} · ${durationLabel}`,
+      };
+    }
+    if (activityCountsChildren(activity)) {
+      return {
+        id: activity.id,
+        name: activity.name,
+        detail: `${linePax} enfant${linePax > 1 ? 's' : ''}`,
       };
     }
     return {
@@ -3823,8 +3895,10 @@ function renderProgramSummary() {
   list.dataset.ids = items.map(item => item.id).join(',');
   count.textContent = `${items.length} activité${items.length > 1 ? 's' : ''}`;
   totalLabel.textContent = complete ? 'Total' : (roundedTotal > 0 ? 'À partir de' : 'Tarif');
+  // « à régler sur place » est TOUJOURS dit (2026-08-18) : rien ne s'encaisse
+  // en ligne, et un total nu laissait croire le contraire.
   totalNote.textContent = complete
-    ? 'pour cette sélection'
+    ? 'pour cette sélection · à régler sur place'
     : (roundedTotal > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
   if (totalEl.getAttribute('data-value') !== nextValue) {
     const previousTotal = totalEl.getAttribute('data-amount') || '';
@@ -3939,6 +4013,9 @@ function buildBookingProgramPayload() {
     const item = { activityId: activity.id };
     if (options.units) item.units = Number(options.units);
     if (options.hours) item.hours = Number(options.hours);
+    // Le compte d'enfants declare part au serveur, qui le borne au groupe et
+    // recalcule le prix (le navigateur n'est jamais cru sur un montant).
+    if (options.participants) item.participants = Number(options.participants);
     return item;
   });
 }

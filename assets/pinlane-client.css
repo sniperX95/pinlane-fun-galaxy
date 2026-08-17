@@ -262,7 +262,7 @@ body.client-mode #clientView {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  width: min(96vw, 1720px);
+  width: min(94vw, 1280px);
   margin: 0 auto;
   padding: 0 var(--space-4);
 }
@@ -569,6 +569,25 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView .step1-body {
   grid-template-columns: minmax(272px, 330px) minmax(0, 1fr);
 }
+
+/* SEQUENCE CENTREE (2026-08-18, Movsar) : tant que la date ne tient pas, la
+   venue vit SEULE au milieu de l'ecran. Des qu'elle tient, le liquide la
+   DECALE vers sa colonne (FLIP joue le trajet, syncProgressiveReveal) pendant
+   que le programme se deploie a sa place. */
+#clientView .step1-body.is-solo {
+  grid-template-columns: minmax(300px, 440px);
+  justify-content: center;
+  align-content: center;
+}
+
+/* En solo, l'etat d'attente devient une ligne fine SOUS la venue : la carte
+   fantome pleine hauteur n'a pas de place au centre. */
+#clientView .step1-body.is-solo .s1-placeholder {
+  border: 0;
+  padding: var(--space-2) 0 0;
+}
+#clientView .step1-body.is-solo .s1-placeholder svg { display: none; }
+#clientView .step1-body.is-solo .s1-placeholder strong { font-size: 13px; }
 
 #clientView .s1-when-head { display: flex; flex-direction: column; gap: var(--space-1); }
 

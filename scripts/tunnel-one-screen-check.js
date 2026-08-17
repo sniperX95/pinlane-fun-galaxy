@@ -272,10 +272,15 @@ const VIEWPORTS = [
   // compris : la page ne defile jamais, ce qui est long roule dans sa zone
   // assumee. Les anciens budgets telephone (3,05 / 2,2 / 1,73 / 1,8) sont
   // ABAISSES, jamais releves : c'est le sens unique impose par ce gate.
-  { width: 1536, height: 730, minShare: 88, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
-  { width: 1280, height: 610, minShare: 88, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
-  { width: 1920, height: 900, minShare: 85, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
-  { width: 2560, height: 1300, minWidth: 1600, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  // LARGEUR IDEALE (2026-08-18, Movsar : « pas obligé de prendre tout
+  // l espace, juste espace ideal ») : la coquille plafonne a 1280 px et se
+  // centre. Le plancher (minWidth) empeche un retour en douce a l'etroit ;
+  // le plafond (maxWidth) empeche le retour au plein ecran. Telephone :
+  // toute la largeur, comme avant.
+  { width: 1536, height: 730, minWidth: 1150, maxWidth: 1300, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 1280, height: 610, minWidth: 1100, maxWidth: 1300, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 1920, height: 900, minWidth: 1150, maxWidth: 1300, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  { width: 2560, height: 1300, minWidth: 1150, maxWidth: 1300, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
   { width: 390, height: 844, minShare: 92, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
 ];
 
@@ -311,11 +316,12 @@ async function main() {
         });
         ok(walk.unnamedButtons === 0,
           `lecteur d ecran : aucun bouton sans nom accessible sur les 5 etapes (${walk.unnamedButtons})`);
-        // LA LARGEUR EST-ELLE EXPLOITEE ? Mesuree sur l etape 1, la plus large.
+        // LA LARGEUR IDEALE : ni etriquee, ni plein ecran. Mesuree sur
+        // l etape 1, la plus large.
         const shell = walk.step1;
         if (viewport.minWidth) {
-          ok(shell.wrapWidth >= viewport.minWidth,
-            `largeur : la coquille fait ${shell.wrapWidth} px (plancher ${viewport.minWidth} px, plafond assume au-dela)`);
+          ok(shell.wrapWidth >= viewport.minWidth && shell.wrapWidth <= viewport.maxWidth,
+            `largeur : la coquille fait ${shell.wrapWidth} px (fenetre ideale ${viewport.minWidth}-${viewport.maxWidth} px)`);
         } else {
           ok(shell.wrapShare >= viewport.minShare,
             `largeur : la coquille prend ${shell.wrapShare} % de l ecran (${shell.wrapWidth} px, plancher ${viewport.minShare} %)`);
@@ -372,21 +378,21 @@ async function main() {
     // LA LARGEUR, remise a l etroit expres : la coquille revient a un plafond
     // de 1080 px et le plancher de largeur doit rougir.
     const cssWide = fs.readFileSync(CLIENT_CSS, 'utf8');
-    const wideAnchor = 'width: min(96vw, 1720px);';
+    const wideAnchor = 'width: min(94vw, 1280px);';
     ok(cssWide.split(wideAnchor).length - 1 === 1, 'ancre de mutation de largeur unique');
     let narrow = null;
     try {
-      fs.writeFileSync(CLIENT_CSS, cssWide.replace(wideAnchor, 'width: min(1080px, 100%);'));
+      fs.writeFileSync(CLIENT_CSS, cssWide.replace(wideAnchor, 'width: min(700px, 100%);'));
       const walk = await walkTunnel(page, null, referenceViewport, 'light');
       narrow = walk.step1;
     } finally {
       fs.writeFileSync(CLIENT_CSS, cssWide);
     }
-    ok(narrow.wrapShare < 88,
-      `coquille rebridee a 1080 px : elle ne prend plus que ${narrow.wrapShare} % de l ecran -> le plancher de largeur ROUGIRAIT`);
+    ok(narrow.wrapWidth < 1150,
+      );
     const wideAgain = (await walkTunnel(page, null, referenceViewport, 'light')).step1;
-    ok(wideAgain.wrapShare >= 88,
-      `restauration inverse : la coquille reprend l ecran (${wideAgain.wrapShare} %, ${wideAgain.wrapWidth} px)`);
+    ok(wideAgain.wrapWidth >= referenceViewport.minWidth && wideAgain.wrapWidth <= referenceViewport.maxWidth,
+      `restauration inverse : la coquille retrouve sa largeur ideale (${wideAgain.wrapWidth} px)`);
 
     // Les cartes muettes du 2026-08-15, reproduites expres : nom explicite
     // vide ET contenu retire de l'arbre (aria-hidden). Le balayage CDP doit

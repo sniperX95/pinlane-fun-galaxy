@@ -458,7 +458,8 @@ async function main() {
       'la carte survit au clic : la grille ne se reconstruit pas');
     ok(polish.dx <= 1 && polish.dy <= 1,
       `la coche est centree dans son anneau a ${polish.dx} / ${polish.dy} px pres`);
-    ok(polish.settingsRows === 5 && polish.configuratorVisible && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
+    // 6 depuis le 2026-08-18 : la plaine de jeux se regle en nombre d'enfants.
+    ok(polish.settingsRows === 6 && polish.configuratorVisible && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
       `le panneau commun ne montre que les reglages selectionnes (${polish.settingsRows} lignes parametrables)`);
     ok(polish.noOptionsInsideCards,
       'aucun reglage ne gonfle une carte : la selection et la configuration sont separees');
@@ -564,8 +565,8 @@ async function main() {
         ok(layout.settingsGap >= 8 && layout.settingsGap <= 16,
           `${layout.width}px : ${layout.settingsGap.toFixed(1)}px entre la grille et les reglages`);
       }
-      ok(layout.visibleSettings === 5,
-        `${layout.width}px : les 5 activites parametrables ont une ligne de reglages`);
+      ok(layout.visibleSettings === 6,
+        `${layout.width}px : les 6 activites parametrables ont une ligne de reglages`);
       ok(layout.summaryItems === 8 && layout.summaryColumns === layout.expectedSummaryColumns,
         `${layout.width}px : recap structure en ${layout.summaryItems} lignes et ${layout.summaryColumns} colonne(s)`);
       ok(layout.billardsGroups === 2,

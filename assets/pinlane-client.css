@@ -137,121 +137,228 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 /* ============================================================================
-   2. PARCOURS CLIENT : index.html #clientView
+   2. PARCOURS CLIENT : index.html #clientView : LA SCENE HORIZONTALE
+   ============================================================================
+   Doctrine (2026-08-17, demande Movsar) :
+     : UNE ETAPE = UN ECRAN, la page ne defile JAMAIS (ni vers le bas, ni vers
+       le haut). Ce qui est long defile DANS sa zone, a l'horizontale quand
+       c'est un choix, a la verticale bornee quand c'est une liste.
+     : les etapes vivent COTE A COTE dans une piste que goStep fait glisser
+       (translateX + ressort). L'etape qui arrive pose ses blocs en cascade.
+     : le LIQUIDE est la signature du mouvement : progression gooey, pilule
+       des selecteurs qui s'etire, ressort assume sur les arrivees.
+     : TOUT est personnalisable par centre (couleur, theme, rayons, police,
+       fond, relief, boutons) : voir le bloc PERSONNALISATION ci-dessous.
    ========================================================================== */
-#clientView {
-  padding: var(--space-8) var(--space-4) var(--space-10);
+
+/* --- PERSONNALISATION : les axes de marque du centre --------------------
+   La couleur (bloc 0 ci-dessus) etait le seul axe. Chaque axe est un
+   data-attribut pose sur <html> par applyCenterBranding (app-main.js) et
+   rappele avant la premiere peinture par boot-view.js. Un axe absent = le
+   defaut plateforme. Les attributs redefinissent les JETONS que les
+   composants client consomment deja : aucun composant n'est reecrit. */
+
+/* Rayons : sharp / soft (defaut) / round. On redefinit les jetons systeme
+   DANS le scope client : toute la surface suit, y compris les composants
+   existants (cartes de creneau, chips, champs). */
+html[data-tunnel-radius='sharp'] body.client-mode,
+html[data-tunnel-radius='sharp'] body.public-form {
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+}
+html[data-tunnel-radius='round'] body.client-mode,
+html[data-tunnel-radius='round'] body.public-form {
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
 }
 
-#clientView .client-wrap {
-  width: min(760px, 100%);
-  margin: 0 auto;
+/* Police : geist (defaut) / humanist / serif / mono. Familles systeme ou
+   self-hostees uniquement (CSP font-src 'self'). La donnee chiffree reste en
+   Geist Mono partout : c'est une regle produit, pas un gout. */
+html[data-tunnel-font='humanist'] body.client-mode,
+html[data-tunnel-font='humanist'] body.public-form {
+  --font-ui: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+html[data-tunnel-font='serif'] body.client-mode,
+html[data-tunnel-font='serif'] body.public-form {
+  --font-ui: Georgia, 'Times New Roman', serif;
+}
+html[data-tunnel-font='mono'] body.client-mode,
+html[data-tunnel-font='mono'] body.public-form {
+  --font-ui: var(--font-data);
 }
 
-/* LA COQUILLE PREND L ECRAN.
-   Mesure du 2026-08-15 : sur 1920 px la coquille faisait 744 px, soit 39 % de
-   l ecran, et le contenu ne commencait qu a 756 px du bord. « tout est
-   recroqueville, ca fait trop serre » (Movsar). La largeur suit donc l ecran
-   au lieu d etre bridee a un tiers, avec un plafond genereux : au-dela, une
-   coquille infinie ne sert plus personne.
-   ELARGIR N EST PAS ETIRER : la place gagnee se depense en COLONNES et en
-   respiration (voir plus bas), jamais en lignes de texte a 1700 px. Toute
-   colonne de prose garde son plancher de lisibilite (60-80 caracteres). */
-@media (min-width: 1100px) {
-  #clientView .client-wrap { width: min(94vw, 1750px); }
-  #clientView .hero-title p { margin-inline: auto; }
-  /* Le texte suivi ne s etire jamais avec la coquille. */
-  #clientView .card-desc,
-  #clientView .laser-note,
-  #clientView .formula-arrival-hint,
-  #clientView .field-honest-note,
-  #clientView .recap-note { max-width: 74ch; }
+/* Fond de scene : plain (defaut) / tint / aurora. Le halo aurora est doux et
+   fixe (aucune animation de fond : c'est un decor, pas un spectacle). */
+html[data-tunnel-backdrop='tint'] body.client-mode #clientView {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, var(--page)) 0%, var(--page) 42%);
+}
+html[data-tunnel-backdrop='aurora'] body.client-mode #clientView {
+  background:
+    radial-gradient(52% 44% at 12% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%),
+    radial-gradient(44% 38% at 92% 6%, color-mix(in srgb, var(--accent-strong) 9%, transparent), transparent 72%),
+    var(--page);
 }
 
-/* Etape 1 : le QUAND et le QUOI cote a cote. En dessous de 1100 px les
-   enveloppes disparaissent de la mise en page (`display: contents`) et la pile
-   verticale d'origine revient telle quelle : zero risque sur telephone. */
-#clientView .step1-col { display: contents; }
-
-@media (min-width: 1100px) {
-  /* `:not(.hidden)` obligatoire : `#clientView #step1` bat `.hidden` en
-     specificite, l'etape restait donc affichee une fois quittee (mesure :
-     2975 px de scene au lieu de 1150). */
-  #clientView #step1:not(.hidden) {
-    display: grid;
-    grid-template-columns: 340px minmax(0, 1fr);
-    align-items: start;
-    gap: var(--space-4);
-  }
-  #clientView .step1-col {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    min-width: 0;
-  }
-  /* L'espacement vient de la grille : la marge des cartes ferait double emploi. */
-  #clientView #step1 .card { margin-bottom: 0; }
-  /* Colonne de 340 px : date et joueurs se suivent au lieu de se partager la
-     largeur. Cote a cote, la note ambre tombait sur dix lignes de trois mots. */
-  #clientView .step1-col-when .grid-2 { grid-template-columns: 1fr; }
-  /* La colonne de gauche s arretait apres « Date et joueurs » et laissait
-     300 px de vide sous elle, pendant que l action principale et l entree sur
-     mesure poussaient la page de 200 px vers le bas. Elles descendent donc
-     dans ce vide : meme information, deux cents pixels de moins. */
-  #clientView #step1 > .step-cta-bar,
-  #clientView #step1 > .bespoke-entry { grid-column: 1; }
-  #clientView #step1 > .step-cta-bar { margin-top: 0; }
-  /* L accroche marketing garde sa place sur l accueil, sans son paragraphe :
-     il redit ce que les cinq etapes montrent deja. */
-  #clientView[data-step='1'] .hero-title { margin-bottom: var(--space-4); }
-  #clientView[data-step='1'] .hero-title p { display: none; }
-  #clientView[data-step='1'] .hero-title h1 { font-size: 28px; }
+/* Relief des panneaux : line (defaut, bordure 1px) / flat / shadow. */
+html[data-tunnel-cards='flat'] body.client-mode #clientView .panel {
+  border-color: transparent;
+  background: var(--subtle);
+}
+html[data-tunnel-cards='shadow'] body.client-mode #clientView .panel {
+  border-color: var(--line);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 7%, transparent);
 }
 
-/* --- Hero -------------------------------------------------------------- */
-#clientView .hero-title {
-  text-align: center;
-  margin-bottom: var(--space-8);
+/* Boutons : pill (defaut client) / rounded. */
+html[data-tunnel-buttons='rounded'] body.client-mode #clientView .btn-primary,
+html[data-tunnel-buttons='rounded'] body.client-mode #clientView .success-wrap .btn-secondary {
+  border-radius: var(--radius-md);
 }
 
-#clientView .hero-kicker {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--accent-strong);
-  margin-bottom: var(--space-2);
-}
-
-#clientView .hero-title h1 {
-  font-size: clamp(26px, 5vw, 32px);
-  letter-spacing: -0.02em;
-}
-
-#clientView .hero-title h1 .accent {
-  color: var(--accent);
-}
-
-#clientView .hero-title p {
-  margin: var(--space-3) auto 0;
-  max-width: 540px;
-  font-size: 15px;
-  color: var(--muted);
-}
-
-/* --- Stepper d'étapes : numéro + libellé, active = accent --------------- */
-#clientView .progress {
+/* --- LA COQUILLE : un ecran, pas une page -------------------------------- */
+/* Le mode client verrouille le defilement : la scene EST l'ecran. La hauteur
+   ne se calcule pas (un header de 72 ou 57 px selon la largeur ferait mentir
+   un calc) : le body devient une colonne flex, le header prend sa hauteur,
+   la scene prend LE RESTE. La console (staff/admin) garde son defilement :
+   setView retire client-mode en quittant la vue client. */
+body.client-mode {
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-6);
+  flex-direction: column;
 }
+
+body.client-mode header { flex: none; }
+
+/* Tunnel pur sans identite declaree (ni logo, ni nom, ni lien de site) : le
+   header n'a RIEN a montrer et se réduisait a un trait de 96 px (ses
+   rembourrages + sa bordure). Il disparait, la scene prend l'ecran entier ;
+   il revient de lui-meme des que l'identite du centre arrive. */
+body.customer-mode header:not(:has(#centerLogo:not([hidden]))):not(:has(#centerWordmark:not([hidden]))):not(:has(.nav-link)) {
+  display: none;
+}
+
+body.client-mode main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+body.client-mode #clientView {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+#clientView .tunnel-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(96vw, 1720px);
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+/* En iframe (embed.js pose la classe), la scene refuse de s'ecraser sous
+   560 px : le scrollHeight remonte alors au parent (postMessage) et l'iframe
+   converge d'elle-meme vers la hauteur ou rien ne deborde. */
+body.client-mode.embed-mode #clientView { min-height: 560px; }
+
+/* --- PROGRESSION LIQUIDE -------------------------------------------------
+   Deux calques. Dessous : le fluide (rail + remplissage + tete ronde) sous
+   filtre gooey : quand la tete avance, elle s'etire depuis le remplissage
+   comme une goutte. Dessus : les pastilles nettes numerotees et les libelles
+   (jamais de texte sous le filtre). --p : progression 0..1 (updateProgress). */
+#clientView .progress {
+  position: relative;
+  flex: none;
+  width: min(620px, 92%);
+  margin: 0 auto;
+  padding: var(--space-4) 0 var(--space-3);
+}
+
+/* Le rail NET (hors filtre : une ligne fine que le seuil alpha du gooey
+   dissoudrait) et le FLUIDE (sous filtre : les formes accent fusionnent en
+   goutte). Tous deux ancres au centre vertical des pastilles (13 px = la
+   moitie de leurs 26 px), dans la rangee elle-meme : le calage ne depend
+   d'aucun rembourrage exterieur. */
+#clientView .lq-track {
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  top: 13px;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: var(--radius-full);
+  background: var(--line);
+  pointer-events: none;
+}
+
+#clientView .lq-rail {
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  top: 0;
+  height: 26px;
+  filter: url(#plGoo);
+  pointer-events: none;
+}
+
+#clientView .lq-fluid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--p, 0) * 100%);
+  min-width: 26px;
+  transition: width 0.72s var(--lq-spring);
+}
+
+#clientView .lq-fill {
+  position: absolute;
+  left: 0;
+  right: 6px;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+#clientView .lq-head {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(13px, -50%);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+#clientView .progress-steps {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Les pastilles passent DEVANT le fluide : la goutte circule derriere elles. */
+#clientView .progress-step { position: relative; z-index: 1; }
 
 #clientView .progress-step {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 32px;
-  padding: 0 var(--space-2);
+  gap: 6px;
+  min-width: 26px;
 }
 
 #clientView .progress-index {
@@ -269,29 +376,350 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 500;
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur-move) var(--ease-out-strong);
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform 0.45s var(--lq-spring);
 }
 
 #clientView .progress-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--muted);
+  transition: color var(--dur) var(--ease);
 }
 
+/* Atteinte par le fluide : la pastille devient liquide elle aussi. */
+#clientView .progress-step.done .progress-index,
 #clientView .progress-step.active .progress-index {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
 }
 
-#clientView .progress-step.active .progress-label {
-  color: var(--text);
+#clientView .progress-step.active .progress-index {
+  transform: scale(1.18);
 }
 
-#clientView .progress-step.done .progress-index {
-  background: var(--accent-soft);
-  border-color: var(--accent-soft);
-  color: var(--accent);
+#clientView .progress-step.active .progress-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --- LA PISTE : cinq ecrans cote a cote, un ressort pour changer --------- */
+/* Courbe ressort : leger depassement puis pose. Si linear() est supporte, la
+   vraie courbe a rebond (celle des bibliotheques « bouncy ») prend le relais. */
+#clientView {
+  --lq-spring: cubic-bezier(0.30, 1.25, 0.42, 1);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  #clientView {
+    --lq-spring: linear(
+      0, 0.0472 2.08%, 0.1682 4.35%, 0.5442 10.36%, 0.7605 14.14%,
+      0.9445 18.13%, 1.0202 20.68%, 1.0774 23.42%, 1.1074 26.11%,
+      1.1151 28.86%, 1.0999 32.48%, 1.0429 39.94%, 1.0102 45.35%,
+      0.9931 51.11%, 0.9895 58.28%, 0.9979 71.53%, 1.0004 84.24%, 1
+    );
+  }
+}
+
+#clientView .tunnel-stage {
+  position: relative;
+  flex: 1; min-height: 0; overflow: hidden; /* verrou de scene : une etape = un ecran */
+  /* Les blocs qui depassent d'un ecran voisin ne se voient jamais. */
+  contain: layout;
+}
+
+#clientView .tunnel-track {
+  display: flex;
+  height: 100%;
+  transform: translateX(calc((var(--tstep, 1) - 1) * -100%));
+  transition: transform 0.62s var(--lq-spring);
+  will-change: transform;
+}
+
+#clientView .step {
+  flex: 0 0 100%;
+  min-width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-1) 0;
+}
+
+/* L'etape non courante est INERTE (inert pose par goStep) : invisible au
+   clavier et au lecteur d'ecran. AU REPOS elle est aussi invisible a l'oeil
+   (son ombre saignait de 12 px dans l'ecran courant) ; PENDANT le voyage
+   (classe is-travelling posee par goStep sur la piste), les voisines
+   reapparaissent en profondeur pour que le glissement raconte le trajet. */
+#clientView .step {
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+}
+#clientView .tunnel-track.is-travelling .step {
+  opacity: 0.45;
+}
+#clientView .step.is-current {
+  opacity: 1;
+}
+
+/* --- CORPS ET PIED D'ECRAN ----------------------------------------------- */
+#clientView .step-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+#clientView .step-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 72px;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-3);
+}
+
+#clientView .step-foot .btn-primary { width: auto; min-width: 280px; }
+#clientView .step-foot .btn-secondary { width: auto; }
+#clientView .step-foot-note {
+  font-size: 13px;
+  color: var(--faint);
+}
+
+/* --- PANNEAUX (l'unite de surface de la scene) --------------------------- */
+#clientView .panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+#clientView .panel-kicker {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+#clientView .panel-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+#clientView .step-intro {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* --- CASCADE : les blocs de l'etape se posent en ressort ------------------ */
+@keyframes lq-pop {
+  0% { opacity: 0; transform: translateY(16px) scale(0.97); }
+  62% { opacity: 1; transform: translateY(-3px) scale(1.006); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+#clientView .step[data-arrived] .cascade {
+  animation: lq-pop 0.5s var(--lq-spring) both;
+}
+#clientView .step[data-arrived] .cascade:nth-child(2) { animation-delay: 45ms; }
+#clientView .step[data-arrived] .cascade:nth-child(3) { animation-delay: 90ms; }
+#clientView .step[data-arrived] .cascade:nth-child(4) { animation-delay: 135ms; }
+
+/* --- ETAPE 1 : le QUAND a gauche, le QUOI a droite ------------------------ */
+#clientView .step1-body {
+  grid-template-columns: minmax(272px, 330px) minmax(0, 1fr);
+}
+
+#clientView .s1-when-head { display: flex; flex-direction: column; gap: var(--space-1); }
+
+#clientView .s1-field { display: flex; flex-direction: column; gap: var(--space-2); }
+
+#clientView .s1-what {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+#clientView .s1-what-head {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+/* La zone de choix defile dans SA boite si la configuration du centre est
+   dense (8 activites + reglages) : la page, elle, ne bouge jamais. */
+#clientView .s1-scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-right: 2px;
+}
+
+/* `:not(.hidden)` OBLIGATOIRE : cette regle pose un display et serait sinon
+   plus tardive que `.hidden` dans la cascade (piege paye le 2026-08-14,
+   journal 149 : un bloc masque par JS restait peint). */
+#clientView .tunable:not(.hidden) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+#clientView .tunable-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#clientView .tunable-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--faint);
+  margin-left: var(--space-1);
+}
+
+/* --- ETAPE 2 : contexte a gauche, heures a droite ------------------------- */
+#clientView .step2-body {
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+}
+
+#clientView .s2-slots {
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  padding-right: 2px;
+}
+
+/* --- ETAPE 3 : coordonnees a gauche, occasion a droite -------------------- */
+/* `center` : les deux colonnes prennent leur hauteur naturelle au milieu de
+   l'ecran au lieu de flotter en haut d'un grand vide. */
+#clientView .step3-body {
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  align-items: center;
+}
+
+#clientView .step3-body .occasion-field { margin-top: 0; }
+#clientView .step3-body .request-field textarea.input { min-height: 132px; }
+#clientView .step3-body .occasion-chips { gap: var(--space-2); }
+
+#clientView .s3-extra {
+  min-height: 0;
+  overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-right: 2px;
+}
+
+#clientView .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+#clientView .contact-grid-wide { grid-column: 1 / -1; }
+
+/* --- ETAPE 4 : la liste a gauche, la decision a droite -------------------- */
+#clientView .step4-body { grid-template-columns: 1fr; align-content: center; }
+
+/* --- ETAPE 5 : confirmation centree --------------------------------------- */
+#clientView .step5-body { grid-template-columns: 1fr; align-content: center; justify-items: center; }
+
+/* --- ALERTES : elles FLOTTENT au-dessus de la scene ----------------------- */
+#alertBox {
+  position: fixed;
+  top: calc(var(--tunnel-header-h, 56px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(560px, calc(100vw - 32px));
+  pointer-events: none;
+}
+#alertBox .alert { pointer-events: auto; box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 14%, transparent); }
+
+/* --- SOUS-BARRE : contact du centre + acces equipe, une ligne fine -------- */
+#clientView .tunnel-underbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 30px;
+  padding: var(--space-1) 0 var(--space-2);
+  font-size: 12px;
+  color: var(--faint);
+}
+#clientView .tunnel-underbar .client-contact-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* --- SCENE MOBILE : une pile par ecran, le pied reste ancre ---------------
+   Pas un bureau retreci : les colonnes fusionnent, le QUAND devient une
+   rangee compacte, les zones longues defilent dans leur boite et la decision
+   ne quitte jamais le bas de l'ecran. */
+@media (max-width: 900px) {
+  #clientView .tunnel-shell { width: 100%; padding: 0 var(--space-3); }
+
+  #clientView .step { padding-top: var(--space-1); }
+
+  #clientView .step1-body,
+  #clientView .step2-body,
+  #clientView .step3-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  /* Le QUAND en pile compacte : a deux colonnes, le champ joueurs tombait a
+     26 px et son chiffre disparaissait (mesure au navigateur). L'intro
+     disparait (le nom du centre est deja dans l'en-tete). */
+  #clientView .s1-when { display: grid; grid-template-columns: 1fr; gap: var(--space-3); padding: var(--space-3); }
+  #clientView .s1-when-head .step-intro { display: none; }
+
+  #clientView .s1-what-head { flex-direction: column; align-items: stretch; gap: var(--space-2); }
+  #clientView .s1-what-head .panel-title { font-size: 16px; }
+
+  #clientView .s2-side { padding: var(--space-3); }
+  #clientView .s3-side { padding: var(--space-3); }
+
+  #clientView .panel-title { font-size: 16px; }
+
+  /* Pied d'ecran : la demande sur mesure devient un bouton discret, le CTA
+     garde toute la largeur restante. */
+  #clientView .step-foot { min-height: 64px; gap: var(--space-2); }
+  #clientView .step-foot .btn-primary { min-width: 0; flex: 1; font-size: 13px; padding: 0 var(--space-3); }
+  /* Sur telephone, la demande sur mesure devient une icone seule : le texte
+     tronque au milieu d'un mot etait pire qu'aucun texte. Le nom accessible
+     survit (aria-label pose dans le HTML). */
+  #clientView .step-foot .bespoke-entry { flex: none; min-width: 0; padding: var(--space-2); }
+  #clientView .step-foot .bespoke-entry-text { display: none; }
+  #clientView .step-foot-note { display: none; }
+
+  #clientView .progress { padding-top: var(--space-3); }
 }
 
 /* --- Alertes (#alertBox) ------------------------------------------------ */
@@ -549,13 +977,23 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
   margin-top: var(--space-4);
 }
 
-/* --- Segmented type d'activité : sélection = accent --------------------- */
-/* Deux choix, deux colonnes : la troisième colonne fantôme laissait un tiers
-   de la rangée vide et le contrôle semblait mal calé. */
+/* --- Segmented type d'activité : une CAPSULE, sélection liquide ---------- */
+/* Deux choix dans une capsule fermée : le fond accent VOYAGE de l'un à
+   l'autre en s'étirant (voir la recette liquide plus bas). */
 #clientView .segmented {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: var(--space-1);
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+}
+#clientView .segmented .seg-btn {
+  border-color: transparent;
+  background: transparent;
+  border-radius: var(--radius-full);
+  min-height: 44px;
 }
 
 /* Marges des blocs de l'étape Contact : elles vivaient en style inline dans le
@@ -2207,101 +2645,30 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 }
 
 /* --------------------------------------------------------------------------
-   CHANGEMENT D'ETAPE : un deplacement lateral
-   Le tunnel avait cinq etapes qui se substituaient sans transition : rien ne
-   disait dans quel SENS on avancait. L'etape qui part sort du cote d'ou l'on
-   vient, celle qui arrive entre du cote ou l'on va ; le retour joue l'inverse.
-   Seuls `transform` et `opacity` bougent, et l'etape qui sort passe en absolu
-   (JS) pour qu'aucune hauteur ne s'anime.
+   CHANGEMENT D'ETAPE : il appartient a la PISTE (voir LA SCENE HORIZONTALE en
+   tete de section 2). Les recettes d'etape en absolu (is-entering / is-leaving)
+   sont retirees : le glissement de la piste dit le sens, la cascade pose le
+   contenu, aucune etape ne se substitue plus a une autre.
    -------------------------------------------------------------------------- */
-#clientView .step-stage { position: relative; }
 
-@keyframes pl-step-enter-forward {
-  from { opacity: 0; transform: translate3d(20px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+/* Compactages d'ecran (l'etape doit tenir dans la hauteur de la scene). */
+#clientView .card { padding: var(--space-5); }
+#clientView .card-head { margin-bottom: var(--space-3); }
+#clientView .anchor-row { padding: var(--space-2) var(--space-3); }
+/* Le bloc « sans horaire » disait deux fois la meme chose : le badge annonce
+   deja qu'il n'y a aucune heure a choisir. */
+#clientView .anchor-free-pass > small { display: none; }
+#clientView .anchor-free-pass { padding: var(--space-2) var(--space-3); }
+#clientView .formula-program-panel { padding: var(--space-3) var(--space-4); gap: var(--space-3); }
+/* Le resume de la visite se lit en deux colonnes : cinq lignes empilees
+   poussaient la decision hors du champ. */
+#clientView .formula-visit-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-4);
+  row-gap: var(--space-1);
 }
-@keyframes pl-step-enter-back {
-  from { opacity: 0; transform: translate3d(-20px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-@keyframes pl-step-leave-forward {
-  from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to { opacity: 0; transform: translate3d(-20px, 0, 0); }
-}
-@keyframes pl-step-leave-back {
-  from { opacity: 1; transform: translate3d(0, 0, 0); }
-  to { opacity: 0; transform: translate3d(20px, 0, 0); }
-}
-
-#clientView .step.is-entering-forward,
-#clientView .step.is-entering-back,
-#clientView .step.is-leaving-forward,
-#clientView .step.is-leaving-back {
-  will-change: transform, opacity;
-}
-
-#clientView .step.is-entering-forward { animation: pl-step-enter-forward var(--dur-enter) var(--ease-out-strong) both; }
-#clientView .step.is-entering-back { animation: pl-step-enter-back var(--dur-enter) var(--ease-out-strong) both; }
-/* Sortie plus courte que l'entree : a l'entree on decouvre, a la sortie on a
-   deja decide (doctrine de motion, assets/pinlane.css). */
-#clientView .step.is-leaving-forward { animation: pl-step-leave-forward var(--dur-exit) var(--ease-in-out-strong) both; }
-#clientView .step.is-leaving-back { animation: pl-step-leave-back var(--dur-exit) var(--ease-in-out-strong) both; }
-
-/* --------------------------------------------------------------------------
-   UNE ETAPE = UN ECRAN
-   Objectif pose par Movsar : « eviter le plus de devoir scroller vers le bas,
-   tout voir d une traite ». Le grand titre marketing appartient a l accueil :
-   passe l etape 1 il ne renseigne plus rien et pousse la decision hors du
-   champ. Il se replie au lieu de disparaitre (le fil d Ariane reste).
-   -------------------------------------------------------------------------- */
-#clientView[data-step]:not([data-step='1']) .hero-title {
-  margin-bottom: var(--space-4);
-}
-#clientView[data-step]:not([data-step='1']) .hero-kicker,
-#clientView[data-step]:not([data-step='1']) .hero-title p {
-  display: none;
-}
-#clientView[data-step]:not([data-step='1']) .hero-title h1 {
-  font-size: 22px;
-  line-height: 1.2;
-}
-
-/* A partir de 1100 px, l'objectif est qu'une etape tienne dans UN ecran. Ce
-   qui se replie ici n'informe pas : le titre marketing (le nom du centre est
-   deja dans l'en-tete de la page), le rembourrage de bas de page, et le lien
-   « Espace equipe » qui ne s'adresse pas au client. Aucun contenu de
-   reservation n'est touche, aucune taille de texte utile n'est reduite. */
-@media (min-width: 1100px) {
-  #clientView { padding-top: var(--space-4); padding-bottom: var(--space-3); }
-  #clientView[data-step]:not([data-step='1']) .hero-title { display: none; }
-  #clientView .progress { margin-bottom: var(--space-3); }
-  #clientView .card { padding: var(--space-5); }
-  #clientView .card-head { margin-bottom: var(--space-3); }
-  #clientView .step > .btn-secondary { margin-top: var(--space-2); }
-  #clientView .anchor-row { padding: var(--space-2) var(--space-3); }
-  body.client-mode .client-footer {
-    margin-top: var(--space-4);
-    padding-top: var(--space-3);
-  }
-  /* « Espace equipe » ne s'adresse pas au client qui reserve : il reste sur
-     l'accueil du tunnel, il ne prend plus une ligne sur les etapes suivantes. */
-  #clientView[data-step]:not([data-step='1']) .client-footer { display: none; }
-  /* Le bloc « sans horaire » disait deux fois la meme chose : le badge annonce
-     deja qu'il n'y a aucune heure a choisir. */
-  #clientView .anchor-free-pass > small { display: none; }
-  #clientView .anchor-free-pass { padding: var(--space-2) var(--space-3); }
-  #clientView .formula-program-panel { padding: var(--space-3) var(--space-4); }
-  /* Le resume de la visite se lit en deux colonnes : cinq lignes empilees
-     poussaient la decision hors du champ. */
-  #clientView .formula-visit-summary {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--space-4);
-    row-gap: var(--space-1);
-  }
-  #clientView .formula-program-panel { gap: var(--space-3); }
-  #clientView .formula-visit-summary .visit-line-note { grid-column: 1 / -1; }
-}
+#clientView .formula-visit-summary .visit-line-note { grid-column: 1 / -1; }
 
 /* --------------------------------------------------------------------------
    CASCADE D'ARRIVEE, PLAFONNEE
@@ -2350,8 +2717,11 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
    en haut pour rester sous les yeux sans defiler.
    -------------------------------------------------------------------------- */
 @media (min-width: 1100px) {
-  #clientView #step3 .contact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  #clientView #step3 .contact-grid .contact-grid-wide { grid-column: auto; }
+  /* SCENE HORIZONTALE : les coordonnees vivent dans un panneau de colonne
+     (~420 px), les champs s'y empilent en pleine largeur au lieu de se
+     partager trois colonnes de 120 px qui tronquaient leur propre exemple. */
+  #clientView #step3 .contact-grid { grid-template-columns: 1fr; }
+  #clientView #step3 .contact-grid .contact-grid-wide { grid-column: 1 / -1; }
 
   #clientView #step4 .recap-columns {
     display: grid;
@@ -2470,10 +2840,6 @@ body.client-mode #clientView .success-wrap .btn-secondary:hover {
 
 /* --- Mobile first : le parcours se fait au téléphone ---------------------- */
 @media (max-width: 640px) {
-  #clientView {
-    padding: var(--space-5) var(--space-3) var(--space-8);
-  }
-
   #clientView .card {
     padding: var(--space-4);
   }
@@ -4335,7 +4701,7 @@ body.customer-mode .client-footer {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 44px;
+  min-height: 45px;
   padding: 0 15px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
@@ -4670,35 +5036,37 @@ body.modal-open { overflow: hidden; }
 #clientView .step[data-arrived] .recap-item:nth-child(n+5) { animation-delay: 120ms; }
 #clientView .step[data-arrived] .recap-decision { animation-delay: 90ms; }
 
-/* RECETTE 3 : l'indicateur GLISSANT du selecteur A la carte / Nos Formules.
-   Le fond accent ne saute plus d'un bouton a l'autre : une pastille glisse
-   jusqu'au choix (FLIP en transform pur, 180 ms). Le texte du bouton actif
-   passe en contraste par-dessus la pastille. */
-@media (min-width: 641px) {
-  #clientView .segmented {
-    position: relative;
-    isolation: isolate;
-  }
-  #clientView .segmented::before {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    top: 0;
-    left: 0;
-    width: calc(50% - var(--space-1));
-    height: 100%;
-    border-radius: var(--radius-sm);
-    background: var(--accent);
-    transform: translateX(0);
-    transition: transform var(--dur-move) var(--ease-in-out-strong);
-  }
-  #clientView .segmented.is-formule::before {
-    transform: translateX(calc(100% + var(--space-2)));
-  }
-  #clientView .seg-btn.active {
-    background: transparent;
-    border-color: transparent;
-  }
+/* RECETTE 3, VERSION LIQUIDE : le fond accent du selecteur ne glisse pas
+   d'un bloc, il S'ETIRE. Les deux bords de la pilule ne partent pas en meme
+   temps (le bord avant est plus rapide que le bord arriere) : pendant le
+   trajet, la forme s'allonge comme une goutte puis se repose. Left/right
+   animent une boite absolue dans une capsule de taille fixe : le cout de
+   layout est local a la capsule, et le resultat est la sensation gooey. */
+#clientView .segmented {
+  position: relative;
+  isolation: isolate;
+}
+#clientView .segmented::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  right: calc(50% + 2px);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  transition: left 0.26s var(--ease-out-strong), right 0.44s var(--lq-spring);
+}
+#clientView .segmented.is-formule::before {
+  left: calc(50% + 2px);
+  right: 4px;
+  transition: left 0.44s var(--lq-spring), right 0.26s var(--ease-out-strong);
+}
+#clientView .seg-btn.active {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent-contrast);
 }
 
 /* RECETTE 8 : le PRIX QUI ROULE. Quand le total change, chaque chiffre qui
@@ -4881,8 +5249,11 @@ body.client-mode #clientView .btn-primary.is-sealed,
   stroke-dashoffset: 36;
 }
 
-#clientView .step[data-arrived] .success-icon svg path,
-#clientView .step[data-arrived] .success-icon svg polyline {
+/* `is-current` et non `data-arrived` : le signal de cascade expire (700 ms)
+   et la coche s'effacait avec lui. L'etat d'etape courante, lui, persiste
+   tant que l'ecran Confirme est affiche. */
+#clientView .step.is-current .success-icon svg path,
+#clientView .step.is-current .success-icon svg polyline {
   stroke-dashoffset: 0;
   transition: stroke-dashoffset 220ms var(--ease-out-strong) 190ms;
 }
@@ -4923,8 +5294,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .btn-primary.is-sealing .btn-label,
   #clientView .btn-primary.is-sealed .btn-label,
   #clientView .btn-primary.is-sealed .btn-seal-check,
-  #clientView .step[data-arrived] .success-icon svg path,
-  #clientView .step[data-arrived] .success-icon svg polyline { transition: none; }
+  #clientView .step.is-current .success-icon svg path,
+  #clientView .step.is-current .success-icon svg polyline { transition: none; }
   #clientView .btn-seal-check,
   #clientView .success-icon svg path,
   #clientView .success-icon svg polyline { stroke-dashoffset: 0; }
@@ -4956,93 +5327,31 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* « Espace equipe » redit le bouton Staff de l'en-tete, toujours visible a
      cette largeur : le pied de page cede sa ligne a toutes les etapes. */
   body.client-mode .client-footer { display: none; }
-  /* L'accueil garde son identite, en UNE ligne calme : passe la promesse
-     marketing, c'est la decision qui merite l'ecran. Le prefixe
-     body.client-mode est obligatoire : la regle de marque du haut de feuille
-     le porte, et sans lui le clamp 28-38px gagnait la cascade. */
-  #clientView[data-step='1'] .hero-title { margin-bottom: var(--space-3); }
-  #clientView[data-step='1'] .hero-kicker { display: none; }
-  body.client-mode #clientView[data-step='1'] .hero-title h1 { font-size: 21px; }
-  #clientView .progress { margin-bottom: var(--space-2); }
-  /* Le rail de progression appartient aux cinq pastilles, pas a la page : le
-     conteneur prend la largeur de son contenu et le rail (base 100 %) se cale
-     dessous, exactement aussi large que le fil qu'il raconte. */
-  #clientView .progress { width: fit-content; margin-inline: auto; }
-
-  /* --- Etape 1 : choisir a gauche, regler a droite, decider en bas ------- */
-  /* La colonne de gauche empile date, action et demande sur mesure SANS trou :
-     la carte des activites (droite) court sur les trois rangees, la hauteur de
-     la rangee 1 n'impose donc plus 230 px de vide sous « Date et joueurs ». */
-  #clientView #step1:not(.hidden) {
-    grid-template-columns: 320px minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr;
+  /* --- Etape 1 : les cartes d'activites font face a leurs reglages -------- */
+  /* Quand le configurateur est ouvert, la zone de choix passe en deux
+     colonnes DANS son defilement interne : les cartes a gauche, les reglages
+     a droite. #activityPicker contient les deux (renderActivityPicker). */
+  #clientView .activity-picker:has(.activity-configurator.is-visible) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    column-gap: var(--space-4);
+    align-items: start;
   }
-  #clientView #step1 .step1-col-when { grid-column: 1; grid-row: 1; }
-  #clientView #step1 .step1-col-what { grid-column: 2; grid-row: 1 / span 3; }
-  #clientView #step1 > .step-cta-bar { grid-column: 1; grid-row: 2; }
-  #clientView #step1 > .bespoke-entry { grid-column: 1; grid-row: 3; align-self: start; }
-  #clientView .step1-col-when .card { padding: var(--space-4); }
-  /* L'exemple de la demande sur mesure tient en deux lignes ici : le detail
-     complet vit dans la fenetre qu'ouvre ce bouton. */
-  #clientView #step1 .bespoke-entry-text small {
+  #clientView .activity-picker .activity-configurator.is-visible {
+    grid-column: 2;
+    grid-row: 1;
+    margin-top: 0;
+  }
+  #clientView .activity-picker .activity-grid { grid-column: 1; align-self: stretch; }
+  /* L'exemple de la demande sur mesure tient en deux lignes dans le pied
+     d'ecran : le detail complet vit dans la fenetre qu'ouvre ce bouton. */
+  #clientView .bespoke-entry-text small {
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-
-  /* La carte des activites devient une grille a deux colonnes : le titre et
-     le selecteur partagent la premiere rangee, les huit cartes font face au
-     panneau de reglages (qui court sur deux rangees), et le programme ferme
-     la colonne des cartes. `#activityPicker` passe en display:contents pour
-     que ses deux enfants (grille, panneau) se placent dans CETTE grille.
-     `:has(> .segmented)` designe LA carte du choix d'activites et elle seule :
-     un `.card` nu ici bat `.hidden` en specificite et remettrait a l'ecran
-     les blocs historiques masques (piege deja paye plus haut dans la feuille,
-     mesure : l'etape triplait). */
-  #clientView .step1-col-what .card:has(> .segmented) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: center;
-    column-gap: var(--space-4);
-    row-gap: var(--space-3);
-    padding: var(--space-4) var(--space-5);
-  }
-  #clientView .step1-col-what .card:has(> .segmented):has(.activity-configurator.is-visible) {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-  }
-  #clientView .step1-col-what .card:has(> .segmented) > .card-head {
-    grid-column: 1;
-    grid-row: 1;
-    margin-bottom: 0;
-  }
-  #clientView .step1-col-what .card:has(> .segmented) > .segmented {
-    grid-column: -2 / -1;
-    grid-row: 1;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(126px, 1fr);
-    grid-template-columns: none;
-    justify-self: end;
-  }
-  #clientView .step1-col-what .card:has(> .segmented) > .activity-picker { display: contents; }
-  /* En mode formule le picker est masque : display:contents (plus fort que
-     .hidden a cette specificite) ne doit PAS le remettre a l'ecran. */
-  #clientView .step1-col-what .card:has(> .segmented) > .activity-picker.hidden { display: none; }
-  /* `stretch` et non `start` : la grille occupe la hauteur que lui laisse le
-     panneau de reglages, et ses rangees se la partagent (voir plus bas). */
-  #clientView #step1 .activity-grid { grid-column: 1; grid-row: 2; align-self: stretch; }
-  #clientView #step1 .activity-configurator.is-visible {
-    grid-column: 2;
-    grid-row: 2 / span 2;
-    align-self: start;
-    margin-top: 0;
-  }
-  #clientView .step1-col-what .card:has(> .segmented) > #programSummary {
-    grid-column: 1;
-    align-self: start;
-  }
-  #clientView .step1-col-what .card:has(> .segmented) > #typeAlert { grid-column: 1 / -1; }
-  #clientView .step1-col-what .card:has(> .segmented) > #typeAlert:empty { display: none; }
+  #clientView #typeAlert:empty { display: none; }
   #clientView #step1 .program-summary { margin-top: 0; }
 
   /* Les cartes d'activite prennent la hauteur de leur contenu (jamais un nom

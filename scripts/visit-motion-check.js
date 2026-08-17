@@ -211,7 +211,12 @@ const READ_APPLIED = (layoutProperties) => {
       const duration = durations[index % durations.length] || 0;
       if (duration <= 0) return;
       if (property === 'all') offenders.push(`${name}: transition-property: all`);
-      if (layoutProperties.includes(property)) offenders.push(`${name}: transition ${property}`);
+      // Liste blanche LIQUIDE (2026-08-17) : le metaball du filtre gooey exige
+      // des formes dont la TAILLE reelle change (un cercle en scaleX devient
+      // une ellipse, la fusion se casse). Le cout est local a un calque absolu
+      // de 26 px de haut. Rien d'autre n'entre dans cette liste.
+      const liquidAllowed = name === 'lq-fluid' && property === 'width';
+      if (!liquidAllowed && layoutProperties.includes(property)) offenders.push(`${name}: transition ${property}`);
     });
     if (style.animationName && style.animationName !== 'none') {
       style.animationDelay.split(',').forEach((value) => {
@@ -266,8 +271,10 @@ async function checkProperties(page) {
   // Le prefixe `pl-` couvre TOUT le depot (console staff comprise) : on juge
   // strictement les animations du PARCOURS, celles qui viennent d'etre posees.
   const TUNNEL_ANIMATIONS = [
-    'pl-step-enter-forward', 'pl-step-enter-back',
-    'pl-step-leave-forward', 'pl-step-leave-back',
+    // SCENE HORIZONTALE (2026-08-17) : le changement d'etape est un glissement
+    // de piste (transition transform, verifie plus bas), la cascade lq-pop
+    // pose les blocs de l'etape arrivee.
+    'lq-pop',
     'pl-client-enter',
     'pl-advice-in', 'pl-advice-out',
     // Recettes reprises des trois bibliotheques fournies, ramenees a la
@@ -305,7 +312,7 @@ async function checkReducedMotion(page) {
       const timing = animation.effect && animation.effect.getTiming();
       return timing && Number(timing.duration) > 1;
     }).length;
-    const rail = getComputedStyle(document.querySelector('#clientView .progress-rail-fill'));
+    const rail = getComputedStyle(document.querySelector('#clientView .lq-fluid'));
     return {
       ...seen,
       prefers: typeof prefersReducedMotion === 'function' ? prefersReducedMotion() : null,
@@ -543,13 +550,13 @@ async function checkMutations(page) {
 
   // (a) une animation de mise en page glissee dans le mouvement d'etape.
   const css = fs.readFileSync(CLIENT_CSS, 'utf8');
-  const cssAnchor = '@keyframes pl-step-enter-forward {';
+  const cssAnchor = '@keyframes lq-pop {';
   ok(css.split(cssAnchor).length - 1 === 1, 'ancre CSS de mutation unique');
   try {
     fs.writeFileSync(CLIENT_CSS, css.replace(cssAnchor, `${cssAnchor}\n  from { height: 0; }`));
     await bootTunnel(page, 'mutation-css');
     const mutated = await page.evaluate(READ_KEYFRAMES, LAYOUT_PROPERTIES);
-    ok(mutated.forbidden.some((entry) => entry.startsWith('pl-step-enter-forward:height')),
+    ok(mutated.forbidden.some((entry) => entry.startsWith('lq-pop:height')),
       `hauteur animee dans le mouvement d etape : le check [1] ROUGIRAIT (${mutated.forbidden.join(', ')})`);
   } finally {
     fs.writeFileSync(CLIENT_CSS, css);
@@ -568,11 +575,14 @@ async function checkMutations(page) {
     await bootTunnel(page, 'mutation-js');
     const mutated = await page.evaluate(() => {
       goStep(2);
-      const step = document.getElementById('step2');
-      return { classes: [...step.classList], prefers: prefersReducedMotion() };
+      // SCENE : le mouvement d'etape est le voyage de la piste ; s'il se joue
+      // malgre le reglage, la piste porte is-travelling (pose par goStep
+      // uniquement quand il anime).
+      const track = document.getElementById('tunnelTrack');
+      return { classes: [...track.classList], prefers: prefersReducedMotion() };
     });
-    ok(mutated.prefers === false && mutated.classes.some((name) => name.startsWith('is-entering')),
-      `mouvement reduit ignore : l etape bouge quand meme (${mutated.classes.join(' ')}) : le check [2] ROUGIRAIT`);
+    ok(mutated.prefers === false && mutated.classes.includes('is-travelling'),
+      `mouvement reduit ignore : la piste voyage quand meme (${mutated.classes.join(' ')}) : le check [2] ROUGIRAIT`);
   } finally {
     fs.writeFileSync(APP, app);
   }

@@ -105,7 +105,9 @@ function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); i
 const MEASURE = () => {
   const root = document.scrollingElement || document.documentElement;
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  const step = document.querySelector('#clientView .step:not(.hidden)');
+  // SCENE HORIZONTALE (2026-08-17) : l'etape courante porte .is-current, les
+  // autres sont inertes et hors champ. On ne mesure que l'ecran affiche.
+  const step = document.querySelector('#clientView .step.is-current');
   const scope = step || document;
   const smallTargets = [...scope.querySelectorAll('button, input, textarea, select, summary, [role="button"]')]
     .filter(visible)
@@ -126,11 +128,34 @@ const MEASURE = () => {
     .filter((el) => visible(el) && el.scrollWidth > el.clientWidth + 4 && ['auto', 'scroll'].includes(getComputedStyle(el).overflowX))
     .filter((el) => !el.dataset.overflow || el.dataset.overflow === 'none')
     .map((el) => (el.className || el.tagName).toString().split(' ')[0]);
+  // DEFILEMENT VERTICAL : en zero-scroll de page, seules les zones ASSUMEES
+  // (scrollbar fine visible, jamais masquee) ont le droit de rouler dans leur
+  // boite. Tout AUTRE bloc qui coupe son contenu verticalement est un
+  // mensonge d'ecran : de l'information disparait sans aucun signal.
+  const ALLOWED_V_SCROLL = ['s1-scroller', 's2-slots', 's3-extra', 'recap-list-scroll'];
+  const hiddenClippers = [...scope.querySelectorAll('*')]
+    .filter((el) => visible(el) && el.scrollHeight > el.clientHeight + 4)
+    .filter((el) => !['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+    .filter((el) => {
+      const style = getComputedStyle(el);
+      const scrolls = ['auto', 'scroll'].includes(style.overflowY);
+      const allowed = ALLOWED_V_SCROLL.some((cls) => el.classList.contains(cls)) || el.id === 'recapList' || el.id === 'slotList';
+      if (scrolls && allowed) return false;           // scroller assume
+      if (!scrolls && style.overflowY === 'visible') return false; // deborde vers le parent, mesure la-bas
+      return true;                                    // coupe ou roule sans droit
+    })
+    .map((el) => (el.className || el.tagName).toString().split(' ')[0]);
+  // LA DECISION NE QUITTE JAMAIS L'ECRAN : le pied de l'etape courante (CTA
+  // principal, ou le retour quand la decision est un clic de carte, ou les
+  // actions du recapitulatif) est ENTIEREMENT dans la fenetre.
+  const foot = scope.querySelector ? (scope.querySelector('.step-foot .btn-primary, .step-actions .btn-primary, .step-foot .btn-secondary, .success-wrap .btn-secondary') || null) : null;
+  const footRect = foot ? foot.getBoundingClientRect() : null;
+  const footVisible = Boolean(footRect && footRect.height > 0 && footRect.bottom <= root.clientHeight + 1 && footRect.top >= 0);
   // LARGEUR REELLEMENT UTILISEE par la coquille du tunnel. Mesure du
   // 2026-08-15 : sur 1920 px elle prenait 744 px, soit 39 % de l ecran, et le
   // contenu ne commencait qu a 756 px du bord. « tout est recroqueville [...]
   // ca fait trop serre » (Movsar).
-  const wrap = document.querySelector('#clientView .client-wrap');
+  const wrap = document.querySelector('#clientView .tunnel-shell');
   const wrapWidth = wrap ? Math.round(wrap.getBoundingClientRect().width) : 0;
   // TRONCATURE REELLE : on retire le clamp le temps d une mesure et on compare
   // la hauteur naturelle a la hauteur affichee. Un `-webkit-line-clamp` qui
@@ -162,6 +187,8 @@ const MEASURE = () => {
     smallTextCount: smallText.length,
     smallText: [...new Set(smallText)].slice(0, 8),
     silentScrollers,
+    hiddenClippers: [...new Set(hiddenClippers)],
+    footVisible,
     chipsInDom: document.querySelectorAll('.anchor-chip').length,
     freeActivities: [...document.querySelectorAll('.anchor-free-item')].map((el) => el.textContent.replace(/\s+/g, ' ').trim().split('réglé')[0].trim()),
     activityCards: document.querySelectorAll('#activityPicker .activity-card').length,
@@ -241,11 +268,15 @@ async function walkTunnel(page, session, viewport, theme) {
 // mecaniquement, et c est voulu : une coquille infinie ne sert plus personne,
 // le plancher devient donc une largeur en pixels.
 const VIEWPORTS = [
+  // SCENE HORIZONTALE (2026-08-17) : le budget est 1 PARTOUT, telephone
+  // compris : la page ne defile jamais, ce qui est long roule dans sa zone
+  // assumee. Les anciens budgets telephone (3,05 / 2,2 / 1,73 / 1,8) sont
+  // ABAISSES, jamais releves : c'est le sens unique impose par ce gate.
   { width: 1536, height: 730, minShare: 88, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
   { width: 1280, height: 610, minShare: 88, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
   { width: 1920, height: 900, minShare: 85, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
   { width: 2560, height: 1300, minWidth: 1600, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
-  { width: 390, height: 844, minShare: 92, budgets: { step1: 3.05, step2: 2.2, step3: 1.73, step4: 1.8, step5: 1.08 } },
+  { width: 390, height: 844, minShare: 92, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
 ];
 
 async function main() {
@@ -272,6 +303,8 @@ async function main() {
           ok(m.scrollHeight <= Math.round(m.clientHeight * budget),
             `${stepKey} : ${m.scrollHeight} px, ${m.screens} ecran(s) pour un budget de ${budget}${budget === 1 ? ' (tient dans la fenetre)' : ''}`);
           ok(!m.hScroll, `${stepKey} : aucun debordement horizontal de la page`);
+          ok(m.footVisible, `${stepKey} : la decision (CTA du pied d ecran) est entierement visible`);
+          ok(m.hiddenClippers.length === 0, `${stepKey} : aucun contenu coupe sans zone de defilement assumee${m.hiddenClippers.length ? ` (${m.hiddenClippers.join(', ')})` : ''}`);
           ok(m.smallTargets.length === 0, `${stepKey} : aucune cible sous 44 px${m.smallTargets.length ? ` (${m.smallTargets.join(', ')})` : ''}`);
           ok(m.smallTextCount === 0, `${stepKey} : aucun texte sous 11,5 px (${m.smallTextCount}${m.smallTextCount ? ' : ' + m.smallText.join(', ') : ''})`);
           ok(m.silentScrollers.length === 0, `${stepKey} : aucun defilement interne muet${m.silentScrollers.length ? ` (${m.silentScrollers.join(', ')})` : ''}`);
@@ -313,33 +346,37 @@ async function main() {
     // --- CONTRE-EPREUVES PAR MUTATION ---------------------------------------
     console.log('\n[Contre-epreuve par mutation : ce gate sait-il rougir ?]');
     const referenceViewport = VIEWPORTS[0];
+    // LA SCENE, cassee expres : sans son verrou (flex + overflow hidden), les
+    // cinq etapes reprennent leur hauteur naturelle et la page deborde -> le
+    // budget « 1 ecran » doit rougir. C'est la mutation qui protege le contrat
+    // central du zero-defilement.
     const css = fs.readFileSync(CLIENT_CSS, 'utf8');
-    const anchor = '#clientView .formula-anchor-picker {';
-    ok(css.split(anchor).length - 1 === 1, 'ancre de mutation unique');
+    const stageAnchor = 'flex: 1; min-height: 0; overflow: hidden; /* verrou de scene : une etape = un ecran */';
+    ok(css.split(stageAnchor).length - 1 === 1, 'ancre de mutation de scene unique');
     let mutatedHeight = null;
     let mutatedFits = null;
     try {
-      fs.writeFileSync(CLIENT_CSS, css.replace(anchor, `${anchor}\n  padding-bottom: 400px;`));
+      fs.writeFileSync(CLIENT_CSS, css.replace(stageAnchor, ''));
       const walk = await walkTunnel(page, null, referenceViewport, 'light');
-      mutatedHeight = walk.step2.scrollHeight;
-      mutatedFits = walk.step2.fits;
+      mutatedHeight = walk.step1.scrollHeight;
+      mutatedFits = walk.step1.fits;
     } finally {
       fs.writeFileSync(CLIENT_CSS, css);
     }
     ok(mutatedFits === false && mutatedHeight > referenceViewport.height,
-      `400 px ajoutes a l etape creneau : elle deborde de la fenetre (${mutatedHeight} px) -> le budget ROUGIRAIT`);
+      `scene deverrouillee : la page deborde (${mutatedHeight} px) -> le budget ROUGIRAIT`);
     const restored = await walkTunnel(page, null, referenceViewport, 'light');
-    ok(restored.step2.fits === true,
-      `restauration inverse : l etape creneau retient un ecran (${restored.step2.scrollHeight} px)`);
+    ok(restored.step1.fits === true,
+      `restauration inverse : la scene retient un ecran (${restored.step1.scrollHeight} px)`);
 
-    // LA LARGEUR, remise a l etroit expres : la coquille revient a son ancien
-    // plafond de 1080 px et le plancher de largeur doit rougir.
+    // LA LARGEUR, remise a l etroit expres : la coquille revient a un plafond
+    // de 1080 px et le plancher de largeur doit rougir.
     const cssWide = fs.readFileSync(CLIENT_CSS, 'utf8');
-    const wideAnchor = '#clientView .client-wrap { width: min(94vw, 1750px); }';
+    const wideAnchor = 'width: min(96vw, 1720px);';
     ok(cssWide.split(wideAnchor).length - 1 === 1, 'ancre de mutation de largeur unique');
     let narrow = null;
     try {
-      fs.writeFileSync(CLIENT_CSS, cssWide.replace(wideAnchor, '#clientView .client-wrap { width: min(1080px, 100%); }'));
+      fs.writeFileSync(CLIENT_CSS, cssWide.replace(wideAnchor, 'width: min(1080px, 100%);'));
       const walk = await walkTunnel(page, null, referenceViewport, 'light');
       narrow = walk.step1;
     } finally {

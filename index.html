@@ -12,15 +12,15 @@
      de reservation une a deux secondes, et le tunnel public affichait l'accent
      plateforme avant la couleur de son centre. Sans defer, exprime : il doit
      s'executer avant le body. -->
-<script src="./assets/boot-view.js?v=20260815a"></script>
+<script src="./assets/boot-view.js?v=20260817a"></script>
 <link rel="preload" href="./assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="./assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="./assets/pinlane.css?v=20260807a">
-<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260807c">
+<link rel="stylesheet" href="./assets/pinlane-staff.css?v=20260817a">
 <link rel="stylesheet" href="./assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="./assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="./assets/pinlane-analytics-board.css?v=20260722a">
-<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260815a">
+<link rel="stylesheet" href="./assets/pinlane-client.css?v=20260817a">
 <script defer src="./assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="./assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="./assets/api-client.js?v=20260710a"></script>
@@ -48,7 +48,7 @@
      qu'aucun `data-pl-num` n'existe : le charger tôt ne coûte rien. -->
 <script defer src="./assets/pinlane-motion.js?v=20260729c"></script>
 <script defer src="./assets/thinking-orbs.js?v=20260814a"></script>
-<script defer src="./assets/app-main.js?v=20260815a"></script>
+<script defer src="./assets/app-main.js?v=20260817a"></script>
 <script defer src="./assets/ops-progress.js?v=20260717a"></script>
 <script defer src="./assets/staff-menu.js?v=20260806a"></script>
 <script defer src="./assets/pinlane-fx.js?v=20260728e"></script>
@@ -118,41 +118,65 @@
 </div>
 
 <main>
+  <!-- FILTRE LIQUIDE (effet gooey) : blur + remontee de contraste alpha.
+       Applique a des CALQUES DE FORMES uniquement (progression, pilule des
+       selecteurs), jamais a du texte : le filtre fusionne les formes proches
+       comme des gouttes, il rendrait un texte illisible. -->
+  <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+    <defs>
+      <filter id="plGoo">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b"/>
+        <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="g"/>
+        <feComposite in="SourceGraphic" in2="g" operator="atop"/>
+      </filter>
+    </defs>
+  </svg>
+
   <div id="clientView">
-    <div class="client-wrap">
-      <div class="hero-title slide-up">
-        <div class="hero-kicker">Réservation en ligne</div>
-        <h1>Réservez en <span class="accent">moins d'une minute</span></h1>
-        <p id="heroSubtitle">Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie.</p>
+    <div class="tunnel-shell">
+      <h1 class="visually-hidden">Réservation en ligne</h1>
+
+      <!-- PROGRESSION LIQUIDE. Deux calques : dessous, le fluide (rail + goutte
+           + tetes) sous filtre gooey qui avance d'etape en etape ; dessus, les
+           pastilles nettes et leurs libelles. Les ids pd1..pd5 restent le
+           contrat de updateProgress. -->
+      <div class="progress" role="group" aria-label="Progression de la réservation">
+        <div class="progress-steps">
+          <!-- Le rail net (ligne grise) et le FLUIDE (calque gooey : goutte qui
+               s'etire en avancant) vivent DANS la rangee des pastilles : leur
+               centre vertical est celui des pastilles, a toute largeur. -->
+          <span class="lq-track" aria-hidden="true"></span>
+          <div class="lq-rail" aria-hidden="true">
+            <span class="lq-fluid">
+              <span class="lq-fill"></span>
+              <span class="lq-head"></span>
+            </span>
+          </div>
+          <div class="progress-step" id="pd1">
+            <span class="progress-index">1</span>
+            <span class="progress-label">Activité</span>
+          </div>
+          <div class="progress-step" id="pd2">
+            <span class="progress-index">2</span>
+            <span class="progress-label">Créneau</span>
+          </div>
+          <div class="progress-step" id="pd3">
+            <span class="progress-index">3</span>
+            <span class="progress-label">Contact</span>
+          </div>
+          <div class="progress-step" id="pd4">
+            <span class="progress-index">4</span>
+            <span class="progress-label">Valider</span>
+          </div>
+          <div class="progress-step" id="pd5">
+            <span class="progress-index">5</span>
+            <span class="progress-label">Confirmé</span>
+          </div>
+        </div>
       </div>
 
-      <div class="progress">
-        <div class="progress-step" id="pd1">
-          <span class="progress-index">1</span>
-          <span class="progress-label">Activité</span>
-        </div>
-        <div class="progress-step" id="pd2">
-          <span class="progress-index">2</span>
-          <span class="progress-label">Créneau</span>
-        </div>
-        <div class="progress-step" id="pd3">
-          <span class="progress-index">3</span>
-          <span class="progress-label">Contact</span>
-        </div>
-        <div class="progress-step" id="pd4">
-          <span class="progress-index">4</span>
-          <span class="progress-label">Valider</span>
-        </div>
-        <div class="progress-step" id="pd5">
-          <span class="progress-index">5</span>
-          <span class="progress-label">Confirmé</span>
-        </div>
-        <!-- La barre SUIT le parcours au lieu de sauter : un rail plein sous les
-             cinq pastilles, anime en scaleX (transform seul, zero recalcul de
-             mise en page). -->
-        <div class="progress-rail" aria-hidden="true"><span class="progress-rail-fill"></span></div>
-      </div>
-
+      <!-- Les alertes FLOTTENT au-dessus de la scene : en zero-defilement, un
+           bandeau qui pousse le contenu ferait sortir le bas de l'ecran. -->
       <div id="alertBox" role="alert" aria-live="assertive"></div>
 
       <!-- Cible de focus du changement d'etape. Le focus qui s'y pose EST
@@ -161,28 +185,26 @@
            live en plus ferait parler deux fois la synthese vocale. -->
       <h2 id="stepHeading" class="visually-hidden" tabindex="-1"></h2>
 
-      <!-- Scene des etapes : l'etape qui sort passe en absolu le temps de son
-           mouvement, donc le DOM de l'etape qui arrive est correct DES
-           L'INSTANT du changement (aucun appelant n'attend une animation). -->
-      <div class="step-stage">
-      <div id="step1" class="step">
-        <!-- Deux colonnes des 1100 px : le QUAND a gauche, le QUOI a droite.
-             En dessous, les enveloppes passent en `display: contents` et la
-             pile verticale d'origine revient a l'identique. -->
-        <div class="step1-col step1-col-when">
-        <div class="card slide-up">
-          <div class="card-head">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <!-- SCENE HORIZONTALE : les cinq etapes vivent COTE A COTE dans une
+           piste que goStep fait glisser (translateX, ressort). Une etape = un
+           ecran, la page ne defile jamais ; les etapes non courantes sont
+           inertes (inert + aria-hidden), le clavier et le lecteur d'ecran ne
+           voient que l'ecran affiche. -->
+      <div class="tunnel-stage">
+      <div class="tunnel-track" id="tunnelTrack">
+      <section id="step1" class="step is-current" aria-label="Étape 1 : activité">
+        <!-- Etape 1 en trois zones horizontales : le QUAND (colonne fixe a
+             gauche), le QUOI (le reste de la largeur), la DECISION (pied
+             d'ecran). Rien ne depasse la hauteur de la scene : ce qui est long
+             defile DANS sa zone, jamais la page. -->
+        <div class="step-body step1-body">
+          <aside class="s1-when panel cascade">
+            <div class="s1-when-head">
+              <div class="panel-kicker">Votre venue</div>
+              <p class="step-intro" id="heroSubtitle">Réservez en moins d'une minute.</p>
             </div>
-            <div>
-              <div class="card-title">Date et joueurs</div>
-              <div class="card-desc">Quand venez-vous et combien êtes-vous ?</div>
-            </div>
-          </div>
-          <div class="grid-2">
-            <div>
-              <label class="lbl">Date</label>
+            <div class="s1-field">
+              <label class="lbl" for="fDate">Date</label>
               <div class="date-input-wrap">
                 <input type="date" id="fDate" class="input" />
                 <button type="button" class="date-picker-trigger" aria-label="Choisir une date" onclick="(() => { const el = document.getElementById('fDate'); if (!el) return; if (el.showPicker) el.showPicker(); else el.focus(); })()">
@@ -191,8 +213,8 @@
               </div>
               <div class="schedule-hint" id="schedHint" aria-live="polite"></div>
             </div>
-            <div>
-              <label class="lbl">Nombre de joueurs</label>
+            <div class="s1-field">
+              <label class="lbl" for="fPax">Nombre de joueurs</label>
               <div class="pax-stepper">
                 <button type="button" class="pax-step-btn" aria-label="Retirer un joueur" onclick="stepPax(-1)">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -204,146 +226,107 @@
               </div>
               <div id="paxAlert"></div>
             </div>
+          </aside>
+
+          <div class="s1-what cascade">
+            <div class="s1-what-head">
+              <div>
+                <div class="panel-kicker">Votre programme</div>
+                <div class="panel-title">Que souhaitez-vous faire ?</div>
+              </div>
+              <div class="segmented lq-segment">
+                <button class="seg-btn active" id="segCarte" onclick="setType('carte')">À la carte</button>
+                <button class="seg-btn" id="segFormule" onclick="setType('formule')">Nos Formules</button>
+              </div>
+            </div>
+            <div class="s1-scroller">
+              <div class="activity-picker" id="activityPicker"></div>
+              <div id="programSummary" aria-live="polite"></div>
+              <div id="typeAlert" aria-live="polite"></div>
+              <div class="tunable" id="bowlingBlock">
+                <div class="tunable-label">Durée de jeu <span class="tunable-sub">par piste</span></div>
+                <div class="grid-4" id="durGrid"></div>
+              </div>
+              <div class="tunable hidden" id="laserBlock">
+                <div class="tunable-label">Laser Game <span class="tunable-sub">briefing inclus, partage possible selon l'affluence</span></div>
+                <div class="grid-3 laser-option-grid" id="laserGrid"></div>
+                <div class="laser-note">Une session peut être complétée avec d'autres joueurs. Le planning affiche l'heure de lancement réelle.</div>
+              </div>
+              <div class="hidden" id="formuleBlock">
+                <div class="formule-grid" id="formuleGrid"></div>
+                <div class="formula-preferences hidden" id="formulaPrefs">
+                  <div class="formula-pref-head">
+                    <label class="lbl">Votre visite, en toute liberté</label>
+                    <div class="formula-pref-note" id="formulaPreferenceNote"></div>
+                  </div>
+                  <div class="preference-grid" id="formulaOrderOptions"></div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
         </div>
 
-        <div class="step1-col step1-col-what">
-        <div class="card slide-up">
-          <div class="card-head">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Que souhaitez-vous faire ?</div>
-              <div class="card-desc">Choisissez tout ce qui vous tente, en une seule réservation</div>
-            </div>
-          </div>
-          <div class="segmented">
-            <button class="seg-btn active" id="segCarte" onclick="setType('carte')">À la carte</button>
-            <button class="seg-btn" id="segFormule" onclick="setType('formule')">Nos Formules</button>
-          </div>
-          <!-- Grille compacte multi-sélection. Les durées et quantités des
-               activités choisies se règlent dans un panneau commun dessous. -->
-          <div class="activity-picker" id="activityPicker"></div>
-          <div id="programSummary" aria-live="polite"></div>
-          <div id="typeAlert" aria-live="polite"></div>
-        </div>
-
-        <div class="card slide-up" id="bowlingBlock">
-          <div class="card-head">
-            <div class="card-icon teal">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Durée de jeu</div>
-              <div class="card-desc">Choisissez combien de temps vous jouez (par piste)</div>
-            </div>
-          </div>
-          <div class="grid-4" id="durGrid"></div>
-        </div>
-
-        <div class="card slide-up hidden" id="laserBlock">
-          <div class="card-head">
-            <div class="card-icon teal">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M8 21h8"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Laser Game</div>
-              <div class="card-desc">Réservez une session. Briefing inclus, partage possible selon l'affluence.</div>
-            </div>
-          </div>
-          <div class="grid-3 laser-option-grid" id="laserGrid"></div>
-          <div class="laser-note">Une session peut être complétée avec d'autres joueurs. Le planning affiche l'heure de lancement réelle.</div>
-        </div>
-
-        <div class="card slide-up hidden" id="formuleBlock">
-          <div class="card-head">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Choix de la Formule</div>
-              <div class="card-desc">Les formules s'adaptent à votre date et au nombre de joueurs</div>
-            </div>
-          </div>
-          <div class="formule-grid" id="formuleGrid"></div>
-          <div class="formula-preferences hidden" id="formulaPrefs">
-            <div class="formula-pref-head">
-              <label class="lbl">Votre visite, en toute liberté</label>
-              <div class="formula-pref-note" id="formulaPreferenceNote"></div>
-            </div>
-            <div class="preference-grid" id="formulaOrderOptions"></div>
-          </div>
-        </div>
-        </div>
-
-        <div class="step-cta-bar">
-          <button class="btn-primary slide-up" id="btnStep1" onclick="goStep2()">
+        <div class="step-foot">
+          <button type="button" class="bespoke-entry" aria-label="Demande sur mesure : groupe, entreprise ou besoin spécial" onclick="openCustomRequestModal()">
+            <span class="bespoke-entry-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+            </span>
+            <span class="bespoke-entry-text">
+              <strong>Groupe, entreprise ou besoin spécial ?</strong>
+              <small>Privatisation, team-building, traiteur… On vous recontacte.</small>
+            </span>
+          </button>
+          <button class="btn-primary" id="btnStep1" onclick="goStep2()">
             Vérifier les disponibilités
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
         </div>
+      </section>
 
-        <button type="button" class="bespoke-entry slide-up" onclick="openCustomRequestModal()">
-          <span class="bespoke-entry-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-          </span>
-          <span class="bespoke-entry-text">
-            <strong>Groupe, entreprise ou besoin spécial ?</strong>
-            <small>Privatisation, team-building, traiteur, facture entreprise… Faites une demande sur mesure, on vous recontacte.</small>
-          </span>
-          <svg class="bespoke-entry-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
+      <section id="step2" class="step" inert aria-hidden="true" aria-label="Étape 2 : créneau">
+        <div class="step-body step2-body">
+          <aside class="s2-side panel cascade">
+            <div class="panel-kicker">Disponibilités</div>
+            <div class="panel-title" id="slotTitle">Horaire disponible</div>
+            <p class="step-intro" id="slotDate"></p>
+            <div id="formTimeLimit"></div>
+          </aside>
+          <div class="s2-slots cascade" id="slotList"></div>
+        </div>
+        <div class="step-foot">
+          <button class="btn-secondary" id="btnStep2Back" onclick="goStep(1)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Retour
+          </button>
+          <span class="step-foot-note">Choisissez une heure pour continuer</span>
+        </div>
+      </section>
 
-      <div id="step2" class="step hidden">
-        <div class="card slide-right">
-          <div class="card-head" style="justify-content:space-between;">
-            <div style="display:flex;gap:16px;">
-              <div class="card-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <section id="step3" class="step" inert aria-hidden="true" aria-label="Étape 3 : coordonnées">
+        <div class="step-body step3-body">
+          <aside class="s3-side panel cascade">
+            <div class="panel-kicker">Vos coordonnées</div>
+            <div class="panel-title">Pour recevoir la confirmation</div>
+            <div class="contact-grid pl-cascade">
+              <div>
+                <label class="lbl" for="fName">Prénom &amp; Nom *</label>
+                <input id="fName" class="input" placeholder="Marie Dupont" required />
               </div>
               <div>
-                <div class="card-title" id="slotTitle">Horaire disponible</div>
-                <div class="card-desc" id="slotDate"></div>
+                <label class="lbl" for="fPhone">Téléphone *</label>
+                <input id="fPhone" type="tel" class="input" placeholder="+32 470 00 00 00" required />
+              </div>
+              <div class="contact-grid-wide">
+                <label class="lbl" for="fEmail">Email *</label>
+                <input id="fEmail" type="email" class="input" placeholder="marie@email.com" required/>
               </div>
             </div>
-          </div>
-          <div id="formTimeLimit"></div>
-          <div id="slotList"></div>
-        </div>
-        <button class="btn-secondary" id="btnStep2Back" onclick="goStep(1)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-          Retour
-        </button>
-      </div>
-
-      <div id="step3" class="step hidden">
-        <div class="card slide-right">
-          <div class="card-head">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div class="info-box step3-info">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <div>Confirmation envoyée par email. Paiement sur place.</div>
             </div>
-            <div>
-              <div class="card-title">Vos coordonnées</div>
-              <div class="card-desc">Pour recevoir la confirmation</div>
-            </div>
-          </div>
-          <div class="grid-2 contact-grid pl-cascade">
-            <div>
-              <label class="lbl">Prénom &amp; Nom *</label>
-              <input id="fName" class="input" placeholder="Marie Dupont" required />
-            </div>
-            <div>
-              <label class="lbl">Téléphone *</label>
-              <input id="fPhone" type="tel" class="input" placeholder="+32 470 00 00 00" required />
-            </div>
-            <div class="contact-grid-wide">
-              <label class="lbl">Email *</label>
-              <input id="fEmail" type="email" class="input" placeholder="marie@email.com" required/>
-            </div>
-          </div>
+          </aside>
+          <div class="s3-extra cascade">
 
           <!-- Marges portées par la feuille (les styles inline bloquaient la
                mise en colonnes de l'étape aux largeurs d'ordinateur). -->
@@ -377,37 +360,26 @@
             </div>
             <p class="field-honest-note">Ces demandes ne sont pas garanties : on fait au mieux selon nos possibilités.</p>
           </div>
-
-          <div class="info-box step3-info">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            <div>Confirmation envoyée par email. Paiement sur place.</div>
-          </div>
-          <div class="step-actions">
-            <button class="btn-secondary" onclick="goStep(2)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-              Retour
-            </button>
-            <button class="btn-primary step-actions-grow" onclick="goStep4()">Voir le récapitulatif</button>
           </div>
         </div>
-      </div>
+        <div class="step-foot">
+          <button class="btn-secondary" onclick="goStep(2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Retour
+          </button>
+          <button class="btn-primary step-foot-cta" onclick="goStep4()">Voir le récapitulatif</button>
+        </div>
+      </section>
 
-      <div id="step4" class="step hidden">
-        <div class="card slide-right">
-          <div class="card-head">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            </div>
-            <div>
-              <div class="card-title">Récapitulatif</div>
-              <div class="card-desc">Vérifiez avant de confirmer</div>
-            </div>
-          </div>
+      <section id="step4" class="step" inert aria-hidden="true" aria-label="Étape 4 : récapitulatif">
+        <div class="step-body step4-body">
           <!-- La liste a gauche, la DECISION a droite : le montant et le bouton
                restent sous les yeux sans avoir a redescendre la page. -->
-          <div class="recap-columns">
+          <div class="recap-columns cascade">
           <div id="recapList"></div>
-          <div class="recap-decision">
+          <div class="recap-decision panel">
+          <div class="panel-kicker">Récapitulatif</div>
+          <div class="panel-title">Vérifiez avant de confirmer</div>
           <div class="total-box">
             <div class="total-copy">
               <strong class="total-label" id="recapTotalLabel">Total estimé</strong>
@@ -428,9 +400,10 @@
           </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div id="step5" class="step hidden">
+      <section id="step5" class="step" inert aria-hidden="true" aria-label="Étape 5 : confirmé">
+        <div class="step-body step5-body">
         <div class="success-wrap pl-cascade">
           <div class="success-icon">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -445,17 +418,20 @@
 
           <button class="btn-secondary" onclick="resetBooking()" style="margin-top:14px;">Faire une autre réservation</button>
         </div>
+        </div>
+      </section>
       </div>
       </div>
 
-      <div class="client-contact-bar" id="clientContactBar" hidden>
-        <span class="client-contact-intro">Une question ou une précision sur votre réservation ?</span>
-        <div class="client-contact-links" id="clientContactLinks"></div>
+      <div class="tunnel-underbar">
+        <div class="client-contact-bar" id="clientContactBar" hidden>
+          <span class="client-contact-intro">Une question ?</span>
+          <div class="client-contact-links" id="clientContactLinks"></div>
+        </div>
+        <footer class="client-footer">
+          <button id="clientDemoAccess" class="client-demo-access" onclick="openSaasAccess('staff')">Espace équipe</button>
+        </footer>
       </div>
-
-      <footer class="client-footer">
-        <button id="clientDemoAccess" class="client-demo-access" onclick="openSaasAccess('staff')">Espace équipe</button>
-      </footer>
     </div>
   </div>
 

@@ -65,6 +65,29 @@
       if (HEX.test(String(dark[key] || ''))) root.style.setProperty(TOKENS[key] + '-dark', dark[key]);
     });
 
+    /* Les axes de STYLE du tunnel, rappeles avec les couleurs : sans eux, un
+       centre en rayons ronds + fond aurora flasherait la version plateforme
+       une seconde. Miroir de TENANT_STYLE_AXES (app-main.js). Le theme force
+       ne se rappelle qu'en tunnel pur : ici, seul le chemin /reserver ou
+       ?embed=1 est concerne (la console garde le theme de l'operateur). */
+    var STYLE_AXES = {
+      radius: ['sharp', 'soft', 'round'],
+      font: ['geist', 'humanist', 'serif', 'mono'],
+      backdrop: ['plain', 'tint', 'aurora'],
+      cards: ['line', 'flat', 'shadow'],
+      buttons: ['pill', 'rounded'],
+    };
+    Object.keys(STYLE_AXES).forEach(function (axis) {
+      var value = String(brand[axis] || '').trim().toLowerCase();
+      if (STYLE_AXES[axis].indexOf(value) !== -1) root.setAttribute('data-tunnel-' + axis, value);
+    });
+    var path = String(location.pathname || '').toLowerCase().replace(/\/+$/, '');
+    var isPureTunnel = path === '/reserver' || params.get('embed') === '1';
+    var forcedTheme = String(brand.theme || '').trim().toLowerCase();
+    if (isPureTunnel && (forcedTheme === 'light' || forcedTheme === 'dark')) {
+      root.setAttribute('data-theme', forcedTheme);
+    }
+
     var identity = brand.identity && typeof brand.identity === 'object' ? brand.identity : null;
     if (!identity) return;
     var name = String(identity.name || '').trim().slice(0, 120);

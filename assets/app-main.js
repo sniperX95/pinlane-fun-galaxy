@@ -4048,10 +4048,11 @@ function updateProgress() {
     if (i < state.step) el.classList.add('done');
     if (i === state.step) el.classList.add('active');
   }
-  // Le rail se remplit en `scaleX` : la barre accompagne le changement d'étape
-  // au lieu de sauter, et rien ne recalcule la mise en page.
+  // Le FLUIDE avance jusqu'à la pastille courante : --p vaut 0 à l'étape 1 et
+  // 1 à la dernière. Sous filtre gooey, la tête s'étire depuis le remplissage
+  // comme une goutte (transition de width, calque .lq-fluid).
   const progress = document.querySelector('#clientView .progress');
-  if (progress) progress.style.setProperty('--progress-fill', (Number(state.step) || 1) / 5);
+  if (progress) progress.style.setProperty('--p', String(((Number(state.step) || 1) - 1) / 4));
 }
 
 function showAlert(msg) {
@@ -4141,34 +4142,24 @@ function applyBookingAlternative(index) {
   showAlert('Alternative appliquée. Vérifiez le récapitulatif avant confirmation.');
 }
 
-// --- Changement d'étape : un DÉPLACEMENT LATÉRAL, pas un saut ----------------
-// Le mouvement raconte le sens du parcours : en avant, l'étape qui part sort
-// par la gauche et celle qui arrive entre par la droite ; en arrière, l'inverse.
+// --- Changement d'étape : la PISTE GLISSE (scène horizontale) ----------------
+// Les cinq étapes vivent côte à côte dans `.tunnel-track` ; changer d'étape,
+// c'est déplacer la piste (translateX + ressort, variable --tstep). Le sens du
+// parcours est raconté par le glissement lui-même, la cascade pose ensuite les
+// blocs de l'étape arrivée.
 //
 // Trois propriétés non négociables :
 //  1. l'état (`state.step`) et le DOM de l'étape qui arrive sont corrects DÈS
 //     l'appel : rien dans le produit ni dans un gate n'attend une animation ;
-//  2. seuls `transform` et `opacity` bougent. L'étape qui sort passe en absolu
-//     dans `.step-stage` le temps de son mouvement, donc aucune hauteur ne
-//     s'anime et la mise en page n'est recalculée qu'une fois ;
-//  3. `prefers-reduced-motion` : tout se pose instantanément, y compris le
-//     défilement (le reset CSS ne couvre pas un scrollTo lancé en JS).
+//  2. seule la piste bouge (`transform`), aucune hauteur ne s'anime, la page
+//     ne défile JAMAIS (elle n'a pas de défilement : une étape = un écran) ;
+//  3. les étapes non courantes sont INERTES (`inert` + aria-hidden) : le
+//     clavier et le lecteur d'écran ne voient que l'écran affiché.
 const STEP_LABELS = { 1: 'Activité', 2: 'Créneau', 3: 'Contact', 4: 'Valider', 5: 'Confirmé' };
-const STEP_EXIT_MS = 150; // = --dur-exit
-let stepExitTimer = null;
+let stepArrivalTimer = null;
 
 function prefersReducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function clearStepMotionClasses(element) {
-  if (!element) return;
-  element.classList.remove('is-entering-forward', 'is-entering-back', 'is-leaving-forward', 'is-leaving-back');
-  delete element.dataset.arrived;
-  element.style.removeProperty('position');
-  element.style.removeProperty('top');
-  element.style.removeProperty('left');
-  element.style.removeProperty('right');
 }
 
 function goStep(n, options = {}) {
@@ -4177,61 +4168,57 @@ function goStep(n, options = {}) {
   if (!target) return;
   const reduce = prefersReducedMotion();
   const animate = !reduce && options.animate !== false && previous !== n;
-  const forward = n >= previous;
 
-  // Une transition en cours est abandonnée net : on ne laisse jamais deux
-  // étapes en vol (c'est ce qui fait clignoter les tunnels animés).
-  if (stepExitTimer) { clearTimeout(stepExitTimer); stepExitTimer = null; }
+  if (stepArrivalTimer) { clearTimeout(stepArrivalTimer); stepArrivalTimer = null; }
   ['step1', 'step2', 'step3', 'step4', 'step5'].forEach((id) => {
     const element = document.getElementById(id);
-    clearStepMotionClasses(element);
-    if (element !== target) element.classList.add('hidden');
+    if (!element) return;
+    const current = element === target;
+    element.classList.toggle('is-current', current);
+    // `inert` coupe clic, focus et lecture d'écran d'un seul attribut : une
+    // étape hors champ n'existe pour personne. La courante redevient vivante.
+    if (current) {
+      element.removeAttribute('inert');
+      element.removeAttribute('aria-hidden');
+    } else {
+      element.setAttribute('inert', '');
+      element.setAttribute('aria-hidden', 'true');
+      delete element.dataset.arrived;
+    }
   });
 
-  const leaving = animate ? document.getElementById('step' + previous) : null;
-  if (leaving && leaving !== target) {
-    // Sortie par-dessus l'arrivée : le flux appartient déjà à la nouvelle étape.
-    leaving.classList.remove('hidden');
-    leaving.style.position = 'absolute';
-    leaving.style.top = '0';
-    leaving.style.left = '0';
-    leaving.style.right = '0';
-    leaving.classList.add(forward ? 'is-leaving-forward' : 'is-leaving-back');
-    stepExitTimer = setTimeout(() => {
-      stepExitTimer = null;
-      clearStepMotionClasses(leaving);
-      leaving.classList.add('hidden');
-    }, STEP_EXIT_MS);
+  // La piste glisse jusqu'à l'étape. Sans animation (reduced motion, boot),
+  // la transition est coupée le temps de poser la position. Pendant le voyage,
+  // is-travelling rend les étapes voisines visibles en profondeur (CSS).
+  const track = document.getElementById('tunnelTrack');
+  if (track) {
+    if (!animate) track.style.transition = 'none';
+    else track.classList.add('is-travelling');
+    track.style.setProperty('--tstep', String(n));
+    if (!animate) {
+      // Reflow volontaire : la position se pose AVANT que la transition revive.
+      void track.offsetWidth;
+      track.style.removeProperty('transition');
+    }
   }
 
-  target.classList.remove('hidden');
   if (animate) {
-    target.classList.add(forward ? 'is-entering-forward' : 'is-entering-back');
-    // `will-change` vit le temps de l'animation et pas une seconde de plus :
-    // laisser une couche de compositing sur cinq étapes coûte de la mémoire GPU.
-    // `animationend` REMONTE : sans le filtre sur la cible, la fin de
-    // l'animation d'un enfant (les champs qui se posent en cascade) retirerait
-    // la classe de l'étape en pleine course.
-    const done = (event) => {
-      if (event && event.target !== target) return;
-      target.removeEventListener('animationend', done);
-      clearStepMotionClasses(target);
-    };
-    target.addEventListener('animationend', done);
-    setTimeout(() => done(null), 600);
-    // Signal de cascade pour les contenus de l'étape. Il vit jusqu'au nettoyage
-    // (600 ms), ce qui couvre 120 ms de retard maximum + 240 ms d'animation
-    // d'enfant sans jamais tronquer la dernière.
+    // Signal de cascade : les blocs `.cascade` de l'étape arrivée se posent en
+    // ressort. Le signal vit le temps des animations (délai max 135 ms +
+    // 500 ms de course), puis s'éteint pour ne jamais rejouer sur un rendu.
+    // is-travelling s'éteint au même moment : les voisines redisparaissent.
     target.dataset.arrived = '1';
+    stepArrivalTimer = setTimeout(() => {
+      stepArrivalTimer = null;
+      delete target.dataset.arrived;
+      if (track) track.classList.remove('is-travelling');
+    }, 700);
   }
 
   state.step = n;
-  // Le rang de l'étape pilote le chrome de la page : passé l'accueil, le grand
-  // titre marketing n'informe plus, il pousse la décision hors de l'écran.
   const clientView = document.getElementById('clientView');
   if (clientView) clientView.dataset.step = String(n);
   updateProgress();
-  window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   // Le focus suit l'étape qui arrive : sans ça, le clavier retombe sur <body>
   // et le parcours est cassé pour qui ne se sert pas d'une souris.
   const heading = document.getElementById('stepHeading');
@@ -9190,10 +9177,33 @@ function establishmentAccentNoteHtml(raw) {
   return `<span class="estab-brand-note ${notice.tone === 'warn' ? 'is-warn' : 'is-ok'}">${escapeHtml(notice.text)}</span>`;
 }
 
+// Les axes de style saisissables, avec leurs libelles metier. Le premier choix
+// de chaque axe est le DEFAUT plateforme : le choisir n'ecrit rien en config.
+const ESTABLISHMENT_STYLE_AXES = [
+  { key: 'theme', label: 'Thème du tunnel', options: [['auto', 'Suit l’appareil du client'], ['light', 'Toujours clair'], ['dark', 'Toujours sombre']] },
+  { key: 'radius', label: 'Angles', options: [['soft', 'Doux (défaut)'], ['sharp', 'Carrés'], ['round', 'Très arrondis']] },
+  { key: 'font', label: 'Police', options: [['geist', 'Geist (défaut)'], ['humanist', 'Humaniste'], ['serif', 'Serif'], ['mono', 'Monospace']] },
+  { key: 'backdrop', label: 'Fond de page', options: [['plain', 'Neutre (défaut)'], ['tint', 'Teinté à votre couleur'], ['aurora', 'Halo à votre couleur']] },
+  { key: 'cards', label: 'Panneaux', options: [['line', 'Bordure fine (défaut)'], ['flat', 'Aplat sans bordure'], ['shadow', 'Ombre douce']] },
+  { key: 'buttons', label: 'Boutons', options: [['pill', 'Pilule (défaut)'], ['rounded', 'Rectangle arrondi']] },
+];
+
 function establishmentAccentFieldHtml(center) {
   const api = establishmentBrandApi();
-  const accent = (center && center.branding && center.branding.accent) ? String(center.branding.accent) : '';
+  const branding = (center && center.branding && typeof center.branding === 'object') ? center.branding : {};
+  const accent = branding.accent ? String(branding.accent) : '';
   const swatch = (api && api.isValidHex(accent)) ? api.normalizeHex(accent) : '';
+  const axisFields = ESTABLISHMENT_STYLE_AXES.map((axis) => {
+    const current = String(branding[axis.key] || '').trim().toLowerCase();
+    const options = axis.options.map(([value, label], index) => {
+      const selected = current === value || (!axis.options.some(([v]) => v === current) && index === 0);
+      return `<option value="${escapeHtml(value)}" ${selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+    return `<div class="field estab-style-field">
+      <label for="estab-style-${escapeHtml(axis.key)}">${escapeHtml(axis.label)}</label>
+      <select id="estab-style-${escapeHtml(axis.key)}" class="estab-style-select">${options}</select>
+    </div>`;
+  }).join('');
   return `<div class="field estab-brand-field">
     <label for="estab-accent">Couleur du tunnel client</label>
     <div class="estab-brand-pick">
@@ -9206,6 +9216,8 @@ function establishmentAccentFieldHtml(center) {
       <button type="button" class="btn btn-ghost btn-sm" onclick="setEstablishmentAccent('', 'clear')">Retirer</button>
     </div>
     <span id="estab-brand-note">${establishmentAccentNoteHtml(accent)}</span>
+    <div class="estab-style-grid">${axisFields}</div>
+    <span class="estab-brand-note">Ces réglages habillent le tunnel de réservation public de ce centre : couleurs, thème, angles, police, fond, panneaux et boutons.</span>
   </div>`;
 }
 
@@ -9238,14 +9250,30 @@ function setEstablishmentAccent(value, source) {
 // valeur, donc EFFACER la couleur est possible et le tunnel revient à l'accent
 // plateforme. Champ absent du DOM (panneau jamais rendu) = `undefined` : on ne
 // touche à rien plutôt que d'effacer une marque par accident.
+function collectEstablishmentStyle() {
+  const out = {};
+  ESTABLISHMENT_STYLE_AXES.forEach((axis) => {
+    const select = document.getElementById(`estab-style-${axis.key}`);
+    if (!select) return;
+    const value = String(select.value || '').trim().toLowerCase();
+    // Le premier choix de l'axe est le defaut plateforme : on n'ecrit QUE les
+    // ecarts, la config d'un centre au defaut reste vide.
+    if (value && value !== axis.options[0][0]) out[axis.key] = value;
+  });
+  return out;
+}
+
 function collectEstablishmentBranding() {
   const input = document.getElementById('estab-accent');
   if (!input) return undefined;
   const api = establishmentBrandApi();
   const raw = String(input.value || '').trim();
-  if (!raw) return null;
-  if (!api || !api.isValidHex(raw)) return undefined;
-  return api.deriveBranding(raw, establishmentBrandPalette());
+  const style = collectEstablishmentStyle();
+  const hasStyle = Object.keys(style).length > 0;
+  if (!raw) return hasStyle ? style : null;
+  if (!api || !api.isValidHex(raw)) return hasStyle ? style : undefined;
+  const colors = api.deriveBranding(raw, establishmentBrandPalette());
+  return { ...(colors || {}), ...style };
 }
 
 function renderEstablishmentDayRow(center, key, label, block = 'regular', prefix = 'estab-day') {
@@ -17955,6 +17983,16 @@ const TENANT_BRANDING_PROPS = [
 ];
 const TENANT_HEX = /^#[0-9a-f]{6}$/i;
 const TENANT_BRAND_STORAGE_PREFIX = 'pinlane-brand:';
+// Les axes de STYLE du tunnel (miroir de lib/center-config.js, liste blanche
+// des deux cotes) : poses en data-attributs sur <html>, consommes par
+// pinlane-client.css. Une valeur par defaut ne pose RIEN (defaut plateforme).
+const TENANT_STYLE_AXES = {
+  radius: ['sharp', 'soft', 'round'],
+  font: ['geist', 'humanist', 'serif', 'mono'],
+  backdrop: ['plain', 'tint', 'aurora'],
+  cards: ['line', 'flat', 'shadow'],
+  buttons: ['pill', 'rounded'],
+};
 
 function applyCenterBranding(branding, centerId = '') {
   const root = document.documentElement;
@@ -17969,6 +18007,20 @@ function applyCenterBranding(branding, centerId = '') {
     if (TENANT_HEX.test(darkValue)) root.style.setProperty(`${prop}-dark`, darkValue);
     else root.style.removeProperty(`${prop}-dark`);
   });
+  // Le style du tunnel : un attribut par axe declare, rien pour les absents.
+  Object.entries(TENANT_STYLE_AXES).forEach(([axis, allowed]) => {
+    const value = String(light[axis] || '').trim().toLowerCase();
+    if (allowed.includes(value)) root.setAttribute(`data-tunnel-${axis}`, value);
+    else root.removeAttribute(`data-tunnel-${axis}`);
+  });
+  // Le THEME force ne s'applique qu'au tunnel pur (client final / iframe) :
+  // dans la console, le staff garde SON theme, l'apercu du sien ne se fait
+  // pas en douce.
+  const forcedTheme = String(light.theme || '').trim().toLowerCase();
+  const isPureTunnel = Boolean(document.body && (document.body.classList.contains('customer-mode') || document.body.classList.contains('embed-mode')));
+  if (isPureTunnel && (forcedTheme === 'light' || forcedTheme === 'dark')) {
+    root.setAttribute('data-theme', forcedTheme);
+  }
   // Memoire par centre. En mode demonstration, window.localStorage est deja
   // remplace par une memoire vive (assets/demo-mode.js) : rien ne sort.
   // L'objet memorise porte les couleurs A PLAT (contrat historique de
@@ -17979,7 +18031,12 @@ function applyCenterBranding(branding, centerId = '') {
   try {
     const storageKey = `${TENANT_BRAND_STORAGE_PREFIX}${key}`;
     const stored = readTenantBrandMemory(key);
-    const next = TENANT_HEX.test(String(light.accent || '').trim())
+    // Une marque se memorise des qu'elle declare une couleur OU un axe de
+    // style : le rappel avant peinture (boot-view.js) rejoue les deux.
+    const hasAccent = TENANT_HEX.test(String(light.accent || '').trim());
+    const hasStyle = Object.keys(TENANT_STYLE_AXES).some((axis) => TENANT_STYLE_AXES[axis].includes(String(light[axis] || '').trim().toLowerCase()))
+      || ['light', 'dark'].includes(String(light.theme || '').trim().toLowerCase());
+    const next = (hasAccent || hasStyle)
       ? { ...branding, ...(stored.identity ? { identity: stored.identity } : {}) }
       : (stored.identity ? { identity: stored.identity } : null);
     if (next) window.localStorage.setItem(storageKey, JSON.stringify(next));
@@ -18404,6 +18461,13 @@ document.addEventListener('keydown', (event) => {
   var params;
   try { params = new URLSearchParams(window.location.search); } catch (error) { return; }
   if (params.get('embed') !== '1') return;
+
+  // La scene sait qu'elle vit dans un cadre : pas de header, un plancher de
+  // hauteur (CSS body.client-mode.embed-mode) que le postMessage ci-dessous
+  // fait respecter au parent.
+  var markEmbed = function () { if (document.body) document.body.classList.add('embed-mode'); };
+  if (document.body) markEmbed();
+  else document.addEventListener('DOMContentLoaded', markEmbed, { once: true });
 
   // L'origine du parent n'est pas lisible (cross-origin) : le referrer la
   // donne, et il est pose par le navigateur, pas par la page hote.

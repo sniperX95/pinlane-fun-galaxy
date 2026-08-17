@@ -687,8 +687,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    venue, en format compact. Un seul vocabulaire de reglage dans le tunnel. */
 #clientView .child-stepper {
   display: grid;
-  grid-template-columns: 44px 72px 44px;
-  gap: var(--space-2);
+  /* Hauteur au plancher tactile (44 px), largeurs au regime : des boutons de
+     44 px de large pour un trait et une croix faisaient trois gros paves. */
+  grid-template-columns: 36px 56px 36px;
+  gap: var(--space-1);
   align-items: stretch;
 }
 #clientView .child-step-btn {
@@ -1665,64 +1667,76 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 
 #clientView .activity-note:empty { display: none; }
 
+/* Les groupes de reglages d'une activite (Tables, Duree, Enfants) COULENT sur
+   la ligne et passent a la ligne quand la place manque : « Tables + Duree »
+   du billard tiennent cote a cote au lieu d'empiler deux gros blocs pleins
+   largeur (« trop long pour peu de truc », Movsar 2026-08-17). */
 #clientView .activity-option-stack {
-  display: grid;
-  gap: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-5);
+  row-gap: 5px;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
 #clientView .activity-option-group {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
+  display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
 #clientView .activity-option-legend {
+  min-width: 52px;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
 }
 
-/* Rangee de pastilles : chaque pastille EPOUSE son contenu (plancher tactile
-   44px) au lieu de s'etirer sur la largeur du panneau. L'ancienne grille
-   auto-fit 1fr donnait cinq boutons enormes pour cinq chiffres d'un
-   caractere ; la rangee plie au lieu de deborder. */
+/* Rangee de pastilles : la boite EPOUSE ses pastilles (fit-content) au lieu
+   de s'etirer sur la largeur du panneau, et chaque pastille epouse son
+   contenu. L'ancienne grille auto-fit 1fr donnait cinq boutons enormes pour
+   cinq chiffres d'un caractere et un long bloc gris presque vide. */
 #clientView .activity-option-pills {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
-  gap: 3px;
+  gap: 2px;
+  width: fit-content;
   min-width: 0;
-  padding: 3px;
+  padding: 2px;
   border-radius: 9px;
   background: var(--subtle);
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
 /* Pastille compacte : une seule ligne, pas de prix a l'interieur. Le tarif
-   unitaire est rappele une fois sous le bloc, pas repete sur chaque choix. */
+   unitaire est rappele une fois sous le bloc, pas repete sur chaque choix.
+   La HAUTEUR tient le plancher tactile de DESIGN.md §7 (44 px, gate a
+   l'appui) ; c'est la LARGEUR qui degraisse. */
 #clientView .dur-pill.xs {
   flex: 0 0 auto;
-  /* Plancher tactile de DESIGN.md §7 : ces pastilles de duree se touchent au
-     doigt comme les autres, elles ne descendent pas a 40 px. */
-  min-width: 44px;
+  min-width: 38px;
   min-height: 44px;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 550;
   align-items: center;
   justify-content: center;
   text-align: center;
 }
 
+/* La note de prix ferme le bloc sur sa propre ligne, alignee au bord des
+   legendes (les groupes coulent, l'ancien retrait de 60 px ne correspond
+   plus a rien). */
 #clientView .activity-option-stack .activity-option-note {
-  padding-left: 60px;
+  flex-basis: 100%;
+  padding-left: 0;
 }
 
 #clientView .activity-option-note {

@@ -590,18 +590,19 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    venue vit SEULE au milieu de l'ecran. Des qu'elle tient, le liquide la
    DECALE vers sa colonne (FLIP joue le trajet, syncProgressiveReveal) pendant
    que le programme se deploie a sa place. */
+/* FLEX et non grid : sous hauteur contrainte, une rangee de grille auto se
+   calculait PLUS PETITE que la carte (min-height ignore par le track sizing)
+   et la carte debordait sur la ligne d'attente, bouton compris (vu en PROD).
+   En colonne flex avec des enfants flex:none, RIEN ne se comprime jamais :
+   si l'ecran est minuscule, ca depasse en bas, ca ne se rogne pas. */
 #clientView .step1-body.is-solo {
-  grid-template-columns: minmax(300px, 440px);
-  justify-content: center;
-  /* `safe center` : si la venue est plus haute que la scene, elle s'aligne au
-     debut au lieu de se faire rogner des deux cotes (le bouton debordait de
-     la carte et chevauchait la ligne d'attente, vu en prod). */
-  align-content: safe center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
 }
 
-/* La carte de venue ENGLOBE toujours son contenu en solo : sans ce plancher,
-   la rangee de grille la comprimait et le bouton sortait du panneau. */
-#clientView .step1-body.is-solo .s1-when { min-height: max-content; }
+#clientView .step1-body.is-solo > * { flex: none; width: min(440px, 100%); }
 /* L'intro marketing cede sa place au geste (deja le cas sur telephone). */
 #clientView .step1-body.is-solo .s1-when-head .step-intro { display: none; }
 

@@ -2106,6 +2106,10 @@ function getDateRangeDays(startDate, endDate) {
 // Ops communications, agent stack and simulation renderers live in ./assets/ops-console.js.
 async function syncDateReservations(dateStr, opts = {}) {
   if (!dateStr || remoteSyncBusy) return false;
+  // Le parcours public n'a pas de session staff : staff-state repondrait 401
+  // (vu en prod au changement de date du tunnel). Meme regle que la boucle de
+  // sync (plus bas) : en vue client sans session, on ne demande rien.
+  if (state.view === 'client' && !hasSavedAuth()) return false;
   remoteSyncBusy = true;
   try {
     const beforeData = state.view === 'staff' && state.currentDate === dateStr ? getStaffDataSignature(dateStr) : '';
@@ -18107,7 +18111,9 @@ function renderFormules() {
           const uniqueNotes = (f.notes || [])
             .filter(note => !sharedNotes.includes(note))
             .map(note => String(note)
-              .replace(/^Non valable durant les vacances scolaires et jours fériés\.?$/i, 'Hors vacances scolaires et fériés')
+              // Tolerant aux accents : le catalogue servi ecrit « jours feries »
+              // sans accent la ou le socle fichier ecrit « fériés » (vu en prod).
+              .replace(/^Non valable durant les vacances scolaires et jours f[ée]ri[ée]s\.?$/i, 'Hors vacances scolaires et fériés')
               .replace(/^Minimum (\d+) personnes$/i, 'Min. $1 pers.')
               .replace(/^Disponible uniquement le /i, 'Uniquement le '));
           // Le motif « vacances/férié » est déjà annoncé une seule fois au

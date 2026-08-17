@@ -7786,9 +7786,10 @@
       const legend = group === firstFormulaGroup
         ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS les centres.</span>`
         : '';
-      const addBtn = group === firstFormulaGroup && canManage
-        ? '<button type="button" class="pv2-btn primary" id="cevAddFormula" onclick="cevOpenCreate()">+ Ajouter une formule</button>'
-        : '';
+      // L'ajout au catalogue vit dans la BARRE du haut (toujours visible, quel
+      // que soit le filtre) : ici il fallait defiler jusqu'aux formules pour le
+      // trouver. Un seul bouton dans la page, un seul id.
+      const addBtn = '';
       return `<section class="pv2-catalog-section"${hostId}>
         <div class="pv2-section-head"><h3>${esc(group.name)}</h3><span>${group.items.length} offre${group.items.length > 1 ? 's' : ''}</span>${addBtn}${legend}</div>
         <div class="pv2-catalog">${group.items.map(card).join('')}</div>
@@ -7827,6 +7828,7 @@
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffPricingQuery || '')}" placeholder="Formule, activité, condition…" oninput="setStaffPricingQuery(this.value)"></label>
           <button type="button" class="pv2-btn" onclick="copyStaffPricingSummary()">Copier</button>
           <button type="button" class="pv2-btn" onclick="exportStaffPricingCsv()">Exporter</button>
+          ${canManage ? '<button type="button" class="pv2-btn" id="cevAddFormula" onclick="cevOpenCreate()">+ Formule</button>' : ''}
           <button type="button" class="pv2-btn primary" onclick="openStaffPricingBooking('${escJs(selected?.id || '')}')">+ Réservation</button>`,
       })}
 
@@ -7842,6 +7844,10 @@
         { key: 'bowling', label: 'Bowling', count: countByType('bowling'), active: filter === 'bowling' },
         { key: 'laser', label: 'Laser Game', count: countByType('laser'), active: filter === 'laser' },
         { key: 'formula', label: 'Anniversaires', count: countByType('formula'), active: filter === 'formula' },
+        // Les formules speciales (Kids Fun Day, Matin Malin...) etaient les
+        // SEULES offres sans onglet : 6 cartes sur 22 injoignables au filtre,
+        // et la somme des onglets ne tombait pas juste (Movsar 2026-08-17).
+        { key: 'special', label: 'Spéciales', count: countByType('special'), active: filter === 'special' },
       ], 'pv2PricingFilter')}
 
       <div class="pv2-quicksorts">

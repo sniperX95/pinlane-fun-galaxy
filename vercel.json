@@ -39,6 +39,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/reserver/:center",
+      "destination": "/index.html"
+    },
+    {
       "source": "/api/healthz",
       "destination": "/api/public-booking-meta"
     },

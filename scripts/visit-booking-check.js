@@ -162,6 +162,7 @@ async function bootClient(page, cacheKey) {
     state.booking.date = d;
     state.booking.pax = 8;
     state.booking.mode = 'carte';
+    state.booking.venueConfirmed = true;
     state.booking.activities = { bowling: { duration: 1 } };
     setView('client');
     syncBookingTypeUi();

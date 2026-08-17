@@ -1597,6 +1597,17 @@ function getUrlCenterId() {
   if (publicCenterIdFromUrl !== undefined) return publicCenterIdFromUrl;
   publicCenterIdFromUrl = '';
   try {
+    // L'ADRESSE PAR CENTRE d'abord (2026-08-18) : « /reserver/libramont »
+    // est la page personnelle du centre, generee par le seul fait que le
+    // centre existe (le slug EST la cle : catalogue, marque, horaires
+    // suivent tout seuls via public-booking-meta). La query ?center= reste
+    // acceptee : c'est le contrat historique d'embed.js.
+    const path = String(window.location.pathname || '').toLowerCase();
+    const pathMatch = path.match(/^\/reserver\/([a-z][a-z0-9-]{1,40})\/?$/);
+    if (pathMatch && PUBLIC_CENTER_ID_PATTERN.test(pathMatch[1])) {
+      publicCenterIdFromUrl = pathMatch[1];
+      return publicCenterIdFromUrl;
+    }
     const params = new URLSearchParams(window.location.search || '');
     const raw = String(params.get('center') || params.get('centerId') || '').trim().toLowerCase();
     if (PUBLIC_CENTER_ID_PATTERN.test(raw)) publicCenterIdFromUrl = raw;
@@ -3184,6 +3195,29 @@ function setRevealState(element, shouldShow) {
   }
 }
 
+// Le GESTE d'ouverture : la venue se valide d'un bouton, et c'est ce clic qui
+// deploie le programme (animation VECUE a chaque parcours, meme quand la date
+// par defaut est valide). Le choix survit au rechargement (state.booking).
+function confirmVenue() {
+  const date = state.booking.date;
+  const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(date) : null;
+  const dayOpen = !isPastBusinessDate(date)
+    && Boolean(getSchedule(date, state.isHolidayMode))
+    && !(dayStatus && dayStatus.open === false);
+  if (!dayOpen) {
+    showAlert('Choisissez une date d’ouverture : le centre est fermé ce jour.');
+    return;
+  }
+  state.booking.venueConfirmed = true;
+  save();
+  syncProgressiveReveal();
+}
+
+// Premier passage du boot : la position se POSE, elle ne s'anime pas (le FLIP
+// jouerait le repli de la venue au chargement, du theatre que personne n'a
+// demande).
+let revealBooted = false;
+
 function syncProgressiveReveal() {
   const what = document.getElementById('s1What');
   if (!what) return;
@@ -3192,7 +3226,8 @@ function syncProgressiveReveal() {
   const pending = typeof isCenterDayPending === 'function' && isCenterDayPending(date);
   const dayOpen = !isPastBusinessDate(date)
     && Boolean(getSchedule(date, state.isHolidayMode))
-    && !(dayStatus && dayStatus.open === false);
+    && !(dayStatus && dayStatus.open === false)
+    && state.booking.venueConfirmed === true;
   // En vol : on garde l'etat courant (ni ouverture ni repli sur une promesse).
   if (!pending) {
     // SEQUENCE CENTREE : la venue vit seule au milieu tant que la date ne
@@ -3204,7 +3239,11 @@ function syncProgressiveReveal() {
     const when = document.querySelector('#clientView .s1-when');
     const wasSolo = Boolean(body && body.classList.contains('is-solo'));
     const willBeSolo = !dayOpen;
-    if (body && when && wasSolo !== willBeSolo && !prefersReducedMotion() && Number(state.step) === 1) {
+    // L'etat solo se lit aussi sur l'etape entiere : le pied d'ecran masque
+    // son CTA global tant que le programme n'existe pas.
+    const stepRoot = document.getElementById('step1');
+    if (stepRoot) stepRoot.classList.toggle('is-solo', willBeSolo);
+    if (body && when && wasSolo !== willBeSolo && revealBooted && !prefersReducedMotion() && Number(state.step) === 1) {
       const before = when.getBoundingClientRect();
       setRevealState(what, dayOpen);
       body.classList.toggle('is-solo', willBeSolo);
@@ -3227,6 +3266,7 @@ function syncProgressiveReveal() {
       if (body) body.classList.toggle('is-solo', willBeSolo);
     }
   }
+  revealBooted = true;
   // L'etat d'attente : une ligne fine sous la venue dit POURQUOI le programme
   // n'est pas la et ce qui l'ouvrira. Elle vit exactement quand il est plie.
   const placeholder = document.getElementById('s1WhatPlaceholder');
@@ -3272,12 +3312,13 @@ function bindCardTilt() {
   const host = document.getElementById('clientView');
   if (!host || host.dataset.tiltBound === '1') return;
   host.dataset.tiltBound = '1';
-  const MAX_DEG = 5;
+  const MAX_DEG = 7;
   let queued = null;
   const clearTilt = (card) => {
     if (!card) return;
     card.style.removeProperty('--tiltX');
     card.style.removeProperty('--tiltY');
+    card.style.removeProperty('--tiltScale');
     card.classList.remove('is-tilting');
   };
   host.addEventListener('pointermove', (event) => {
@@ -3297,6 +3338,7 @@ function bindCardTilt() {
       const rx = ((current.y - rect.top) / rect.height - 0.5) * -2 * MAX_DEG;
       const ry = ((current.x - rect.left) / rect.width - 0.5) * 2 * MAX_DEG;
       current.card.style.setProperty('--tiltX', `${rx.toFixed(2)}deg`);
+      current.card.style.setProperty('--tiltScale', '1.02');
       current.card.style.setProperty('--tiltY', `${ry.toFixed(2)}deg`);
       current.card.classList.add('is-tilting');
     });
@@ -9295,6 +9337,8 @@ async function submitCenterConfig(centerId) {
   // conserve la couleur existante au lieu de l'effacer.
   const branding = collectEstablishmentBranding();
   if (branding !== undefined) config.branding = branding;
+  const payment = collectEstablishmentPayment();
+  if (payment !== undefined) config.payment = payment;
   const name = establishmentInputValue('estab-name').trim();
   submitCenterConfigInFlight = true;
   const saveBtn = document.getElementById('estabSaveBtn');
@@ -9428,6 +9472,32 @@ function establishmentAccentFieldHtml(center) {
     <div class="estab-style-grid">${axisFields}</div>
     <span class="estab-brand-note">Ces réglages habillent le tunnel de réservation public de ce centre : couleurs, thème, angles, police, fond, panneaux et boutons.</span>
   </div>`;
+}
+
+// LE MODE D'ENCAISSEMENT DU CENTRE. Un seul mode est activable aujourd'hui :
+// « tout se règle sur place », parce que c'est le seul que le produit tient
+// (aucun prestataire de paiement dans le dépôt). Les modes en ligne sont
+// AFFICHÉS mais désactivés : le gérant voit où ça se règlera le jour où
+// l'encaissement existe, sans qu'on lui vende une option fantôme (classe
+// d'écart commercial payée le 2026-08-08).
+function establishmentPaymentFieldHtml(center) {
+  const mode = String(center && center.payment && center.payment.mode || 'onsite');
+  return `<div class="field estab-brand-field">
+    <label for="estab-payment-mode">Encaissement des réservations</label>
+    <select id="estab-payment-mode" class="estab-style-select">
+      <option value="onsite" ${mode === 'onsite' ? 'selected' : ''}>Tout se règle sur place (au comptoir)</option>
+      <option value="deposit" disabled>Acompte en ligne — à venir avec l'encaissement</option>
+      <option value="online" disabled>Paiement en ligne — à venir avec l'encaissement</option>
+    </select>
+    <span class="estab-brand-note">Le tunnel de réservation annonce ce mode au client. Les paiements en ligne s'activeront ici dès que l'encaissement Pinlane sera branché.</span>
+  </div>`;
+}
+
+function collectEstablishmentPayment() {
+  const select = document.getElementById('estab-payment-mode');
+  if (!select) return undefined;
+  const mode = String(select.value || '').trim().toLowerCase();
+  return mode === 'onsite' ? { mode } : undefined;
 }
 
 function establishmentAccentReadValue(center) {
@@ -9627,6 +9697,7 @@ function renderEstablishmentEditPanels(center, active) {
       <legend>Identité</legend>
       <div class="field"><label for="estab-name">Nom du centre</label><input type="text" id="estab-name" value="${escapeHtml(center.name)}"></div>
       ${establishmentAccentFieldHtml(center)}
+      ${establishmentPaymentFieldHtml(center)}
       <div class="estab-field-row">
         <div class="field"><label for="estab-status">Statut</label>
           <select id="estab-status">
@@ -18448,7 +18519,7 @@ function detectCustomerMode() {
     try { sessionStorage.removeItem('pinlane-customer-mode'); } catch (e) {}
     return false;
   }
-  if (path === '/reserver') {
+  if (path === '/reserver' || path.startsWith('/reserver/')) {
     try { sessionStorage.setItem('pinlane-customer-mode', '1'); } catch (e) {}
     return true;
   }

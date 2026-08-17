@@ -565,6 +565,22 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView .step[data-arrived] .cascade:nth-child(3) { animation-delay: 90ms; }
 #clientView .step[data-arrived] .cascade:nth-child(4) { animation-delay: 135ms; }
 
+/* Les heures ARRIVENT en revelation liquide, comme les blocs de l'etape 1 :
+   chaque etape de la visite (bowling, laser...) s'ouvre en goutte, decalee de
+   la precedente. L'animation appartient a l'ARRIVEE sur l'ecran (data-arrived
+   expire ensuite) : un clic d'heure ne la rejoue jamais. */
+#clientView .step[data-arrived] .anchor-row,
+#clientView .step[data-arrived] .anchor-free-pass {
+  transform-origin: top center;
+  animation: lq-reveal 0.5s var(--lq-spring) both;
+}
+#clientView .step[data-arrived] .visit-rail-step:nth-child(2) .anchor-row { animation-delay: 80ms; }
+#clientView .step[data-arrived] .anchor-free-pass { animation-delay: 160ms; }
+@media (prefers-reduced-motion: reduce) {
+  #clientView .step[data-arrived] .anchor-row,
+  #clientView .step[data-arrived] .anchor-free-pass { animation: none; }
+}
+
 /* --- ETAPE 1 : le QUAND a gauche, le QUOI a droite ------------------------ */
 #clientView .step1-body {
   grid-template-columns: minmax(272px, 330px) minmax(0, 1fr);
@@ -588,6 +604,25 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 #clientView .step1-body.is-solo .s1-placeholder svg { display: none; }
 #clientView .step1-body.is-solo .s1-placeholder strong { font-size: 13px; }
+
+/* Le bouton d'ouverture n'existe QUE dans la venue centree : une fois le
+   programme deploye, le geste est fait, il disparait. Deux classes dans le
+   selecteur : a une seule, la recette `#clientView .btn-primary`
+   (display:inline-flex) etait plus specifique et le bouton restait peint,
+   comprime, sur le programme ouvert (attrape par le gate one-screen). */
+#clientView .s1-when .s1-continue { display: none; }
+#clientView .step1-body.is-solo .s1-continue {
+  display: inline-flex;
+  /* flex none : un panel min-height 0 comprimait le bouton a 20 px. */
+  flex: none;
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+/* En solo, le CTA global du pied (« Verifier les disponibilites ») ment : il
+   n'y a encore rien a verifier. Il revient avec le programme. */
+#clientView #step1.is-solo .step-foot .btn-primary { display: none; }
+#clientView #step1.is-solo .step-foot-note { display: inline; }
 
 #clientView .s1-when-head { display: flex; flex-direction: column; gap: var(--space-1); }
 
@@ -665,10 +700,26 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   margin-left: var(--space-1);
 }
 
-/* --- ETAPE 2 : contexte a gauche, heures a droite ------------------------- */
+/* --- ETAPE 2 : un EN-TETE fin, puis les heures ----------------------------
+   La colonne laterale ne portait que trois lignes et fabriquait un desert
+   noir plein ecran (« bcp bcp trop d espace vide », capture Movsar
+   2026-08-18) : elle devient une ligne d'en-tete au-dessus de la grille. */
 #clientView .step2-body {
-  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
 }
+
+#clientView .s2-side {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+#clientView .s2-side .panel-kicker { flex: none; }
+#clientView .s2-side .panel-title { font-size: 17px; flex: none; }
+#clientView .s2-side .step-intro { color: var(--faint); }
+#clientView .s2-side #formTimeLimit { margin-left: auto; }
+#clientView .s2-side #formTimeLimit:empty { display: none; }
 
 #clientView .s2-slots {
   min-height: 0;
@@ -1256,7 +1307,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
-  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg));
+  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg)) scale(var(--tiltScale, 1));
   transition-property: border-color, background-color, transform, box-shadow;
   transition-duration: 180ms;
   transition-timing-function: var(--ease-out-strong);
@@ -1884,7 +1935,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 #clientView .formule-card {
-  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg));
+  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg)) scale(var(--tiltScale, 1));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -5537,10 +5588,10 @@ body.client-mode #clientView .btn-primary.is-sealed,
        reglages est plus haut que la grille, l espace va aux cartes (elles
        respirent) au lieu de rester un trou sous elles. Un ecran large mal
        rempli est aussi laid qu un ecran etrique. */
-    align-content: stretch;
-    grid-auto-rows: minmax(64px, auto);
+    align-content: start;
+    grid-auto-rows: auto;
   }
-  #clientView #step1 .activity-card { height: 100%; min-height: 64px; }
+  #clientView #step1 .activity-card { height: auto; min-height: 64px; }
   #clientView #step1 .activity-icon { width: 30px; height: 30px; }
   #clientView #step1 .activity-toggle { grid-template-columns: 30px minmax(0, 1fr) 20px; padding: 8px 10px; gap: 8px; }
   /* Plus aucun libelle tronque : le nom et le tarif prennent les lignes qu il

@@ -54,7 +54,10 @@
   var SITE_URL = /^https:\/\//i;
   try {
     var params = new URLSearchParams(location.search || '');
-    var center = String(params.get('center') || params.get('centerId') || '').trim().toLowerCase();
+    /* L'adresse PAR CENTRE (« /reserver/libramont ») fait autorite sur la
+       query : c'est elle que le centre partage. */
+    var pathMatch = String(location.pathname || '').toLowerCase().match(/^\/reserver\/([a-z][a-z0-9-]{1,40})\/?$/);
+    var center = pathMatch ? pathMatch[1] : String(params.get('center') || params.get('centerId') || '').trim().toLowerCase();
     if (!/^[a-z][a-z0-9-]{1,40}$/.test(center)) return;
     var brand = JSON.parse(localStorage.getItem('pinlane-brand:' + center) || 'null');
     if (!brand || typeof brand !== 'object') return;
@@ -82,7 +85,7 @@
       if (STYLE_AXES[axis].indexOf(value) !== -1) root.setAttribute('data-tunnel-' + axis, value);
     });
     var path = String(location.pathname || '').toLowerCase().replace(/\/+$/, '');
-    var isPureTunnel = path === '/reserver' || params.get('embed') === '1';
+    var isPureTunnel = path === '/reserver' || path.indexOf('/reserver/') === 0 || params.get('embed') === '1';
     var forcedTheme = String(brand.theme || '').trim().toLowerCase();
     if (isPureTunnel && (forcedTheme === 'light' || forcedTheme === 'dark')) {
       root.setAttribute('data-theme', forcedTheme);
@@ -147,7 +150,7 @@
     var path = (location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
     var hash = (location.hash || '').toLowerCase().replace('#/', '#');
     // Le parcours a son adresse : on n'y touche jamais.
-    if (path === '/reserver') return;
+    if (path === '/reserver' || path.indexOf('/reserver/') === 0) return;
     var app = false;
     // La demonstration publique ouvre la CONSOLE, jamais le parcours de
     // reservation : sans cette ligne, un prospect arrive sur /demo voyait le

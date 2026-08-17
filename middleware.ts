@@ -188,6 +188,11 @@ export default async function middleware(request: Request) {
     // Ce dossier ne contient que la page, sa feuille et ses deux scripts :
     // rien de l'application n'y est expose.
     || pathname.startsWith('/demo/')
+    // L'adresse PAR CENTRE du parcours (« /reserver/libramont ») : meme
+    // ouverture que « /reserver » nu. Sans cette ligne, la page passait mais
+    // l'adresse d'un centre recevait un 401 Basic : exactement la classe de
+    // defaut « /demo/ verrouille » trouvee en prod le 2026-08-13.
+    || pathname.startsWith('/reserver/')
     || pathname === '/menu'
     || pathname.startsWith('/menu/')
   ) {

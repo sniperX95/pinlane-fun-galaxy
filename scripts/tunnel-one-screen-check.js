@@ -118,7 +118,7 @@ const MEASURE = () => {
       const label = el.closest('label');
       return !(label && label.getBoundingClientRect().height >= 44);
     })
-    .map((el) => `${(el.className || el.tagName).toString().split(' ')[0] || el.tagName}:${Math.round(el.getBoundingClientRect().height)}`);
+    .map((el) => `${el.id || (el.className || el.tagName).toString().split(' ')[0] || el.tagName}:${Math.round(el.getBoundingClientRect().height)}`);
   const smallText = [...scope.querySelectorAll('*')]
     .filter((el) => visible(el) && el.children.length === 0 && (el.textContent || '').trim().length > 2)
     .map((el) => `${(el.className || el.tagName).toString().split(' ')[0]}:${Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10}`)
@@ -148,7 +148,12 @@ const MEASURE = () => {
   // LA DECISION NE QUITTE JAMAIS L'ECRAN : le pied de l'etape courante (CTA
   // principal, ou le retour quand la decision est un clic de carte, ou les
   // actions du recapitulatif) est ENTIEREMENT dans la fenetre.
-  const foot = scope.querySelector ? (scope.querySelector('.step-foot .btn-primary, .step-actions .btn-primary, .step-foot .btn-secondary, .success-wrap .btn-secondary') || null) : null;
+  // Premier candidat REELLEMENT peint (display:none passe :not([hidden]) :
+  // le bouton d'ouverture masque en duo capturait le poste de decision).
+  const footCandidates = scope.querySelectorAll
+    ? [...scope.querySelectorAll('.s1-continue, .step-foot .btn-primary, .step-actions .btn-primary, .step-foot .btn-secondary, .success-wrap .btn-secondary')]
+    : [];
+  const foot = footCandidates.find((el) => el.getBoundingClientRect().height > 0) || null;
   const footRect = foot ? foot.getBoundingClientRect() : null;
   const footVisible = Boolean(footRect && footRect.height > 0 && footRect.bottom <= root.clientHeight + 1 && footRect.top >= 0);
   // LARGEUR REELLEMENT UTILISEE par la coquille du tunnel. Mesure du
@@ -205,6 +210,11 @@ async function unnamedButtons(session) {
     .filter((node) => !(node.name?.value || '').trim()).length;
 }
 
+async function settle(page) {
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
+  await page.waitForTimeout(80);
+}
+
 async function walkTunnel(page, session, viewport, theme) {
   const out = {};
   const ax = { total: 0 };
@@ -215,21 +225,25 @@ async function walkTunnel(page, session, viewport, theme) {
   await page.evaluate((t) => { document.documentElement.setAttribute('data-theme', t); }, theme);
   await page.evaluate((d) => {
     state.view = 'client'; state.booking.date = d; state.booking.pax = 8; state.booking.mode = 'carte';
+    state.booking.venueConfirmed = true; // le geste d'ouverture, comme un client
     state.booking.activities = { bowling: { duration: 1 }, laser_game: { games: 2 }, minigolf_blacklight: {}, arcade_time: {}, billards: { units: 2, hours: 1.5 }, fun_run: {} };
     setView('client'); applyChosenActivitiesToBooking(); syncBookingTypeUi();
     goStep(1, { animate: false, focus: false });
   }, DATE);
   await page.waitForTimeout(450);
+  await settle(page);
   out.step1 = await page.evaluate(MEASURE);
   await sweep();
 
   await page.evaluate(() => goStep2());
   await page.waitForTimeout(1200);
+  await settle(page);
   out.step2 = await page.evaluate(MEASURE);
   await sweep();
 
   await page.evaluate(() => { const i = getCurrentFormulaAnchorSlotIndex(); if (i >= 0) selectSlot(i); });
   await page.waitForTimeout(500);
+  await settle(page);
   out.step3 = await page.evaluate(MEASURE);
   await sweep();
 
@@ -240,11 +254,13 @@ async function walkTunnel(page, session, viewport, theme) {
     goStep4();
   });
   await page.waitForTimeout(700);
+  await settle(page);
   out.step4 = await page.evaluate(MEASURE);
   await sweep();
 
   await page.evaluate(async () => { await confirmBooking(); });
   await page.waitForTimeout(900);
+  await settle(page);
   out.step5 = await page.evaluate(MEASURE);
   await sweep();
   out.unnamedButtons = ax.total;

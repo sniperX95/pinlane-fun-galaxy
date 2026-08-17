@@ -75,7 +75,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/public-availability') { try { await availability(req, res); } catch (error) { res.writeHead(500); res.end(JSON.stringify({ ok: false })); } return; }
   if (url.pathname === '/api/public-reservations') { let body = ''; req.on('data', (c) => { body += c; }); req.on('end', () => { res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: true, reservation: { id: 1 }, ops: {}, communications: [], warnings: [] })); }); return; }
   let filePath = path.join(ROOT, decodeURIComponent(url.pathname));
-  if (url.pathname === '/' || url.pathname === '/reserver') filePath = path.join(ROOT, 'index.html');
+  if (url.pathname === '/' || url.pathname === '/reserver' || /^\/reserver\/[a-z0-9-]+\/?$/.test(url.pathname)) filePath = path.join(ROOT, 'index.html');
   if (!filePath.startsWith(ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
   fs.readFile(filePath, (err, content) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }

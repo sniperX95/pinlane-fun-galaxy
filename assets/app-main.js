@@ -3254,12 +3254,12 @@ function syncProgressiveReveal() {
         when.style.transition = 'none';
         when.style.transform = `translate(${dx}px, ${dy}px)`;
         void when.offsetWidth;
-        when.style.transition = 'transform 0.6s var(--lq-spring)';
+        when.style.transition = 'transform 0.95s var(--lq-spring)';
         when.style.transform = '';
         setTimeout(() => {
           when.style.removeProperty('transition');
           when.style.removeProperty('transform');
-        }, 680);
+        }, 1050);
       }
     } else {
       setRevealState(what, dayOpen);
@@ -3717,6 +3717,22 @@ function syncActivityPickerState(off = []) {
       const courant = chosenOptions[key] == null ? activityDefaut(key) : Number(chosenOptions[key]);
       pill.classList.toggle('active', courant === value);
     });
+    // Le compte d'enfants au-dela de cinq vit dans un CHAMP : il suit la
+    // valeur (sans voler une frappe en cours) et la note de prix recalcule.
+    if (activityCountsChildren(activity)) {
+      const ceiling = Math.min(30, Math.max(1, pax));
+      const current = Math.min(ceiling, Math.max(1, Number(chosenOptions.participants) || ceiling));
+      const field = optionsRow.querySelector('[data-role="participants-input"]');
+      if (field) {
+        field.classList.toggle('active', current > 5);
+        if (document.activeElement !== field) field.value = current > 5 ? String(current) : '';
+      }
+      const note = optionsRow.querySelector('[data-role="participants-note"]');
+      const price = Number(activity && activity.priceValue);
+      if (note && Number.isFinite(price) && price > 0) {
+        note.textContent = `${price}€ ${(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.`;
+      }
+    }
   });
   const configurator = host.querySelector('[data-role="activity-configurator"]');
   if (configurator) {
@@ -3792,18 +3808,26 @@ function renderActivityOptions(activity, options, pax) {
       </button>`).join('')}</div>`;
   }
   if (activityCountsChildren(activity)) {
-    // Le compte d'enfants, en pastilles bornees au groupe (12 au plus a
-    // l'ecran : au-dela, le champ joueurs du groupe est le bon endroit).
-    const ceiling = Math.min(12, Math.max(1, pax));
+    // Le compte d'enfants : CINQ pastilles au plus, au-dela un champ ou l'on
+    // TAPE le chiffre (« pas besoin de faire autant, ca economise de la
+    // place », Movsar 2026-08-18, capture de neuf pastilles sur deux rangs).
+    const ceiling = Math.min(30, Math.max(1, pax));
     const current = Math.min(ceiling, Math.max(1, Number(options.participants) || ceiling));
+    const pillMax = Math.min(5, ceiling);
+    const pills = Array.from({ length: pillMax }, (_, index) => index + 1).map(value => `
+      <button type="button" class="dur-pill xs ${current === value ? 'active' : ''}" data-opt="participants" data-val="${value}"
+        onclick="setBookingActivityOption('${id}','participants',${value})">${value}</button>`).join('');
+    const field = ceiling > 5 ? `
+      <input type="number" class="input participants-input ${current > 5 ? 'active' : ''}" data-role="participants-input"
+        min="1" max="${ceiling}" inputmode="numeric" placeholder="6+"
+        value="${current > 5 ? current : ''}" aria-label="Nombre d'enfants, saisie libre"
+        oninput="setBookingActivityOption('${id}','participants', Math.min(${ceiling}, Math.max(1, Number(this.value) || 1)))">` : '';
     const price = Number(activity.priceValue);
     const detail = Number.isFinite(price) && price > 0
-      ? `<div class="activity-option-note">${price}€ ${escapeHtml(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.</div>`
+      ? `<div class="activity-option-note" data-role="participants-note">${price}€ ${escapeHtml(activity.unitLabel || 'par enfant')} · ${current} enfant${current > 1 ? 's' : ''} = ${Math.round(price * current * 100) / 100}€.</div>`
       : '';
     return `<div class="activity-option-stack"><div class="activity-option-group"><span class="activity-option-legend">Enfants</span>
-      <div class="activity-option-pills">${Array.from({ length: ceiling }, (_, index) => index + 1).map(value => `
-        <button type="button" class="dur-pill xs ${current === value ? 'active' : ''}" data-opt="participants" data-val="${value}"
-          onclick="setBookingActivityOption('${id}','participants',${value})">${value}</button>`).join('')}</div></div>${detail}</div>`;
+      <div class="activity-option-pills">${pills}${field}</div></div>${detail}</div>`;
   }
   if (activity.priceType === 'per_unit_hour') {
     const choix = activityHourChoices(activity);
@@ -18408,8 +18432,8 @@ function renderTunnelIdentity(identity) {
   const hero = document.getElementById('heroSubtitle');
   if (hero) {
     hero.textContent = safe.city
-      ? `Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie à ${safe.city}.`
-      : 'Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie.';
+      ? `À ${safe.city} : le jour, votre groupe, le reste suit.`
+      : 'Le jour et votre groupe : le reste suit.';
   }
   // Le titre d'onglet ne porte une identite que sur le TUNNEL (mode client pur
   // ou centre explicite dans l'URL) : la console garde son titre neutre.

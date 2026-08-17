@@ -12,7 +12,7 @@
      de reservation une a deux secondes, et le tunnel public affichait l'accent
      plateforme avant la couleur de son centre. Sans defer, exprime : il doit
      s'executer avant le body. -->
-<script src="/assets/boot-view.js?v=20260818d"></script>
+<script src="/assets/boot-view.js?v=20260818h"></script>
 <link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/pinlane.css?v=20260807a">
@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="/assets/pinlane-charts.css?v=20260722a">
 <link rel="stylesheet" href="/assets/pinlane-daterange.css?v=20260721a">
 <link rel="stylesheet" href="/assets/pinlane-analytics-board.css?v=20260722a">
-<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260818g">
+<link rel="stylesheet" href="/assets/pinlane-client.css?v=20260818h">
 <script defer src="/assets/storage-adapter.js?v=20260703b"></script>
 <script defer src="/assets/staff-auth-session.js?v=20260703b"></script>
 <script defer src="/assets/api-client.js?v=20260710a"></script>
@@ -48,7 +48,7 @@
      qu'aucun `data-pl-num` n'existe : le charger tôt ne coûte rien. -->
 <script defer src="/assets/pinlane-motion.js?v=20260729c"></script>
 <script defer src="/assets/thinking-orbs.js?v=20260814a"></script>
-<script defer src="/assets/app-main.js?v=20260818d"></script>
+<script defer src="/assets/app-main.js?v=20260818h"></script>
 <script defer src="/assets/ops-progress.js?v=20260717a"></script>
 <script defer src="/assets/staff-menu.js?v=20260806a"></script>
 <script defer src="/assets/pinlane-fx.js?v=20260728e"></script>
@@ -199,9 +199,14 @@
              defile DANS sa zone, jamais la page. -->
         <div class="step-body step1-body">
           <aside class="s1-when panel cascade">
-            <div class="s1-when-head">
-              <div class="panel-kicker">Votre venue</div>
-              <p class="step-intro" id="heroSubtitle">Réservez en moins d'une minute.</p>
+            <div class="s1-when-head panel-head-rich">
+              <span class="panel-head-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
+              </span>
+              <span class="panel-head-copy">
+                <span class="panel-title">Votre venue</span>
+                <p class="step-intro" id="heroSubtitle">Le jour et votre groupe : le reste suit.</p>
+              </span>
             </div>
             <div class="s1-field">
               <label class="lbl" for="fDate">Date</label>

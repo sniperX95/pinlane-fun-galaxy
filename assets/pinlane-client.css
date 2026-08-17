@@ -432,7 +432,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   display: flex;
   height: 100%;
   transform: translateX(calc((var(--tstep, 1) - 1) * -100%));
-  transition: transform 0.62s var(--lq-spring);
+  transition: transform 0.78s var(--lq-spring);
   will-change: transform;
 }
 
@@ -537,7 +537,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    (squash & stretch, transform + clip-path seulement), le contenu arrive
    ensuite : la sensation de goutte sans jamais flouter une lettre. */
 @keyframes lq-reveal {
-  0% { opacity: 0; transform: scaleY(0.86) scaleX(0.985); clip-path: inset(0 0 62% 0 round var(--radius-lg)); }
+  0% { opacity: 0; transform: scaleY(0.78) scaleX(0.975); clip-path: inset(0 0 74% 0 round var(--radius-lg)); }
   55% { opacity: 1; transform: scaleY(1.012) scaleX(1); clip-path: inset(0 round var(--radius-lg)); }
   100% { opacity: 1; transform: scaleY(1) scaleX(1); clip-path: inset(0 round var(--radius-lg)); }
 }
@@ -547,7 +547,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 #clientView .lq-revealable.is-revealed {
-  animation: lq-reveal 0.5s var(--lq-spring) both;
+  animation: lq-reveal 0.75s var(--lq-spring) both;
 }
 
 /* Replie : hors flux, sans detruire le DOM (les gates et le clavier le voient
@@ -572,7 +572,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView .step[data-arrived] .anchor-row,
 #clientView .step[data-arrived] .anchor-free-pass {
   transform-origin: top center;
-  animation: lq-reveal 0.5s var(--lq-spring) both;
+  animation: lq-reveal 0.75s var(--lq-spring) both;
 }
 #clientView .step[data-arrived] .visit-rail-step:nth-child(2) .anchor-row { animation-delay: 80ms; }
 #clientView .step[data-arrived] .anchor-free-pass { animation-delay: 160ms; }
@@ -603,6 +603,31 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 #clientView .step1-body.is-solo > * { flex: none; width: min(440px, 100%); }
+
+/* Aucun message d'activite sur la venue seule : rien n'est encore pris a
+   l'ecran. L'allocation revient avec le programme, pres de ce qu'elle decrit. */
+#clientView .step1-body.is-solo #paxAlert { display: none; }
+
+/* Le compte de joueurs se regle au pouce ET a la souris sur la venue seule :
+   les boutons -/+ (jusqu'ici telephone) rendent la carte vivante. */
+#clientView .step1-body.is-solo .pax-stepper {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+#clientView .step1-body.is-solo .pax-step-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+#clientView .step1-body.is-solo .pax-step-btn:hover { background: var(--subtle); border-color: var(--accent); }
+#clientView .step1-body.is-solo .pax-stepper .input { text-align: center; }
 /* L'intro marketing cede sa place au geste (deja le cas sur telephone). */
 #clientView .step1-body.is-solo .s1-when-head .step-intro { display: none; }
 
@@ -631,6 +656,49 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView #step1.is-solo .step-foot-note { display: inline; }
 
 #clientView .s1-when-head { display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* L'EN-TETE RICHE de la venue (2026-08-18, « votre venue ca fait trop
+   cheap ») : une pastille d'icone teintee a la marque, le titre en taille de
+   panneau, la sous-ligne fine. Un en-tete, pas une etiquette. */
+#clientView .panel-head-rich {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+#clientView .panel-head-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+#clientView .panel-head-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#clientView .panel-head-rich .panel-title { font-size: 18px; }
+#clientView .panel-head-rich .step-intro { font-size: 12.5px; color: var(--faint); }
+
+/* Le champ de saisie libre du compte d'enfants (au-dela de cinq pastilles). */
+#clientView .participants-input {
+  width: 72px;
+  flex: none;
+  min-height: 44px;
+  padding: 0 10px;
+  text-align: center;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+/* La rangee enfants (pastilles + champ) plie au lieu de deborder du panneau. */
+#clientView .activity-option-pills { flex-wrap: wrap; min-width: 0; }
+#clientView .participants-input.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 
 #clientView .s1-field { display: flex; flex-direction: column; gap: var(--space-2); }
 
@@ -1465,7 +1533,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView .activity-configurator.is-visible {
   display: block;
   transform-origin: top center;
-  animation: lq-reveal 0.5s var(--lq-spring) both;
+  animation: lq-reveal 0.75s var(--lq-spring) both;
 }
 @media (prefers-reduced-motion: reduce) {
   #clientView .activity-configurator.is-visible { animation: none; }
@@ -2134,7 +2202,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 /* L ouverture des preferences (mode formule) joue la revelation liquide. */
 #clientView .formula-preferences:not(.hidden) {
   transform-origin: top center;
-  animation: lq-reveal 0.5s var(--lq-spring) both;
+  animation: lq-reveal 0.75s var(--lq-spring) both;
 }
 @media (prefers-reduced-motion: reduce) {
   #clientView .formula-preferences:not(.hidden) { animation: none; }

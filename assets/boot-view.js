@@ -131,7 +131,7 @@
       var hero = document.getElementById('heroSubtitle');
       var city = String(identity.city || '').trim().slice(0, 80);
       if (hero && city) {
-        hero.textContent = 'Un parcours plus compact, plus clair et plus sérieux pour réserver rapidement votre partie à ' + city + '.';
+        hero.textContent = 'À ' + city + ' : le jour, votre groupe, le reste suit.';
       }
     };
     if (document.readyState === 'loading') {

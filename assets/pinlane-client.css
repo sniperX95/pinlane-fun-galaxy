@@ -833,6 +833,55 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
    de la zone d'heures : la grille complete peut depasser d'une rangee, la
    decision, elle, ne quitte jamais l'ecran. Le fond opaque et l'ombre haute
    la detachent de ce qui defile dessous. */
+/* L'ETAPE CRENEAU EN DEUX COLONNES quand la decision existe. Une heure
+   choisie repliait la grille et laissait un desert sous deux bandeaux pleine
+   largeur (Movsar : « trop d'espace libre, mal opti, fais un truc smart »).
+   Des que la zone de decision a du contenu, elle devient une CARTE collante a
+   droite (rendez-vous, arrivee, valider) et le fil (grille + pass liberte)
+   garde la gauche : l'ecran est rempli par construction, rien n'est gonfle.
+   Avant le premier choix, la zone est vide : la grille deployee garde toute
+   la largeur, comme avant. */
+@media (min-width: 1200px) {
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    gap: var(--space-3);
+    align-items: start;
+  }
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) > .visit-rail {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) > .formula-anchor-status-zone {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: var(--space-2);
+  }
+  /* Dans la colonne, le panneau de decision s'EMPILE : la disposition en
+     barre (resume | bouton 260px) etait pensee pour la pleine largeur et
+     superposait ses textes dans 400 px. Chaque ligne du resume prend la
+     sienne (chip + texte), le bouton ferme la carte. */
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) .formula-program-panel {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) .formula-visit-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) .visit-line {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) .visit-line > :not(:first-child) {
+    min-width: 0;
+  }
+}
+
 #clientView .s2-slots .formula-anchor-status-zone {
   position: sticky;
   bottom: 0;

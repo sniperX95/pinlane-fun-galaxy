@@ -7082,7 +7082,14 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   white-space: nowrap;
 }
 
-.pv2-price-amount small { font-size: 11.5px; color: var(--faint); font-weight: 400; }
+/* display:inline explicite : .pv2-price-head small est en block (sous-titre du
+   nom), et le « dès » du prix tombait sur sa propre ligne. */
+.pv2-price-amount small { display: inline; font-size: 11.5px; color: var(--faint); font-weight: 400; }
+/* Absence de tarif : une mention grise, jamais un prix en accent. */
+.pv2-price-onsite { font-size: 12px; color: var(--faint); white-space: nowrap; }
+/* Une activite porte moins d'information qu'une offre : la carte se serre. */
+.pv2-activity-card { gap: 7px; padding: var(--space-3) var(--space-4); cursor: default; }
+.pv2-activity-card:hover { border-color: var(--line); }
 .pv2-price-desc { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .pv2-price-desc:empty { display: none; }
 .pv2-price-tags { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -7104,16 +7111,26 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 
 /* -- Editeur tarifaire client (badges sur la carte + modale) --------------- */
 .pev-badges { display: flex; flex-wrap: wrap; gap: 5px; }
-/* Les DEUX niveaux d'action d'une formule vivent au pied de SA carte :
-   tarif du centre d'abord, structure partagee ensuite, danger en dernier. */
+/* Les DEUX niveaux d'action d'une formule vivent au pied de SA carte, sur UNE
+   ligne : le tarif du centre (geste quotidien) porte l'accent, la structure
+   partagee reste secondaire, la suppression se reduit a une icone en bout. */
 .pev-card-foot {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 6px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
-.pev-card-foot .cev-danger { margin-left: auto; }
+.pev-card-foot .pv2-btn { flex: none; }
+.pev-card-foot .pv2-btn.primary { margin-right: 2px; }
+.pev-foot-danger {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  padding: 0;
+}
 .pev-removed { opacity: 0.62; }
 .pev-removed .pv2-price-amount { text-decoration: line-through; text-decoration-thickness: 1px; }
 

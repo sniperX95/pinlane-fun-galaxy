@@ -7268,6 +7268,23 @@
   }
 
   // ── Editeur de STEPS (liste ordonnee d'activites) ─────────────────────────
+  // Ce que le CLIENT lira si aucun libelle n'est ecrit : meme regle que le
+  // serveur (catalog-store describeStepForCard). Affiche en placeholder, donc
+  // le gerant voit la phrase exacte avant de decider de la remplacer.
+  function cevStepAutoLabel(step, activities) {
+    if (!step.activityId) return 'Choisir une activité d abord';
+    const act = (activities || []).find((a) => a.id === step.activityId);
+    const name = act ? act.name : step.activityId;
+    const count = Math.max(1, Number(step.count) || 1);
+    const min = Number(step.durationMinutes);
+    let duration = '';
+    if (Number.isFinite(min) && min > 0) {
+      duration = min < 60 ? `${min} min` : (min % 60 === 0 ? `${min / 60}h` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`);
+    }
+    if (duration) return count > 1 ? `${count}x ${duration} de ${name}` : `${duration} de ${name}`;
+    return count > 1 ? `${count}x ${name}` : name;
+  }
+
   function cevStepRowHtml(step, index, activities, total) {
     const known = activities.some((a) => a.id === step.activityId);
     const options = activities.map((a) => `<option value="${escJs(a.id)}"${a.id === step.activityId ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
@@ -7292,10 +7309,13 @@
         <label class="cev-step-field cev-step-count"><span>Nombre</span>
           <input type="number" min="1" max="99" step="1" data-cev-field="count" data-cev-idx="${index}" value="${step.count == null ? 1 : esc(step.count)}" oninput="cevStepSetCount(${index}, this.value)">
         </label>
-        <label class="cev-step-field cev-step-duration"><span>Duree (min)</span>
+        <label class="cev-step-field cev-step-duration"><span>Durée (min)</span>
           <input type="number" min="0" max="1440" step="5" data-cev-field="duration" data-cev-idx="${index}" value="${step.durationMinutes == null ? '' : esc(step.durationMinutes)}" placeholder="auto" oninput="cevStepSetDuration(${index}, this.value)">
         </label>
         <label class="cev-step-crit"><input type="checkbox" data-cev-field="critical" data-cev-idx="${index}" ${step.critical ? 'checked' : ''} onchange="cevStepToggleCritical(${index}, this.checked)"><span>Critique</span></label>
+        <label class="cev-step-field cev-step-label"><span>Ce que lit le client</span>
+          <input type="text" maxlength="80" data-cev-field="label" data-cev-idx="${index}" value="${step.label == null ? '' : esc(step.label)}" placeholder="${esc(cevStepAutoLabel(step, activities))}" oninput="cevStepSetLabel(${index}, this.value)">
+        </label>
       </div>
       <button type="button" class="cev-step-remove" data-cev-remove="${index}" aria-label="Retirer l activite" onclick="cevStepRemove(${index})">&times;</button>
     </div>`;
@@ -7366,6 +7386,14 @@
   window.cevStepToggleCritical = function (index, checked) {
     const step = catalogEditor.steps && catalogEditor.steps[index];
     if (step) step.critical = Boolean(checked);
+  };
+  // Le libelle est LA phrase que le client lit sur la carte (« 2 cruches
+  // boissons »). Vide = la phrase automatique du placeholder fait foi.
+  window.cevStepSetLabel = function (index, raw) {
+    const step = catalogEditor.steps && catalogEditor.steps[index];
+    if (!step) return;
+    const value = String(raw == null ? '' : raw).trim();
+    step.label = value ? value.slice(0, 80) : null;
   };
 
   // Liste au format API : chaque step designe une activite ; on ignore les lignes
@@ -7734,12 +7762,16 @@
           <span><strong>${money(Number(row.revenue || 0) / Number(row.count))}</strong> panier</span>
         </div>`
       : '<div class="pv2-price-stats pv2-price-stats-empty">Aucune réservation liée</div>';
+    // Pied de carte : une seule ligne, l'action du CENTRE en premier (celle de
+    // tous les jours), les deux actions de catalogue ensuite, et la suppression
+    // reduite a une icone en bout de ligne. Quatre boutons de meme poids sur
+    // deux rangs faisaient un pave illisible (Movsar, capture).
     const actions = isFormula ? `<div class="pev-card-foot">
-        <button type="button" class="pv2-btn" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
+        <button type="button" class="pv2-btn primary" data-pev-edit="${escJs(view.sourceId)}" onclick="event.stopPropagation();pevOpenEdit('${escJs(view.sourceId)}')">Tarif du centre</button>
         ${canManage ? `
-        <button type="button" class="pv2-btn" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
-        <button type="button" class="pv2-btn" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>
-        <button type="button" class="pv2-btn cev-danger" data-cev-delete="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')">Supprimer</button>` : ''}
+        <button type="button" class="pv2-btn sm" data-cev-steps="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenSteps('${escJs(view.sourceId)}')">Activités</button>
+        <button type="button" class="pv2-btn sm" data-cev-fields="${escJs(view.sourceId)}" onclick="event.stopPropagation();cevOpenFields('${escJs(view.sourceId)}')">Structure</button>
+        <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-cev-delete="${escJs(view.sourceId)}" title="Supprimer du catalogue" aria-label="Supprimer ${esc(view.title || 'cette formule')} du catalogue" onclick="event.stopPropagation();cevDelete('${escJs(view.sourceId)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>` : ''}
       </div>` : '';
     return `<article class="pv2-price-card ${selected ? 'selected' : ''}${view.removed ? ' pev-removed' : ''}"
       ${isFormula ? `data-cev-formula="${escJs(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
@@ -7796,6 +7828,236 @@
       </section>`;
     }).join('');
     return sections || '<div class="pv2-empty" id="cevCatalogBlock"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>';
+  }
+
+  /* ==========================================================================
+     ACTIVITES DU CATALOGUE (aev) : creer / editer / retirer une activite.
+     Le CRUD serveur existait (createActivity / updateActivity / deleteActivity,
+     permission settings.manage) sans aucune porte d'entree : impossible
+     d'ajouter « boissons soft » ou de renommer une activite, et l'editeur de
+     formule affichait « service_drinks (hors catalogue) » a la place d'un nom.
+     Meme mecanique que cev : etat hors DOM, modale montee dans document.body.
+     ======================================================================== */
+
+  const AEV_PRICE_TYPES = [
+    ['per_pax', 'Par personne'],
+    ['per_unit_hour', 'Par unité et par heure'],
+    ['on_site', 'Réglé sur place'],
+    ['grid_bowling', 'Grille bowling (par piste)'],
+    ['grid_laser', 'Grille laser (par partie)'],
+  ];
+
+  const activityEditor = { modal: null, fields: null, saving: false, error: '' };
+
+  function aevEntry(id) {
+    return (pricingEditor.activities || []).find((a) => a.id === String(id)) || null;
+  }
+
+  window.aevOpenCreate = function () {
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
+    activityEditor.fields = { id: '', name: '', bookable: true, priceType: 'per_pax', priceValue: null, priceUnit: 'par personne' };
+    activityEditor.modal = { mode: 'create', id: null };
+    activityEditor.error = '';
+    activityEditor.saving = false;
+    aevSyncModal();
+  };
+  window.aevOpenEdit = function (id) {
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
+    const entry = aevEntry(id);
+    if (!entry) { pevToast('Catalogue en cours de chargement, réessaie dans un instant.'); pevEnsureLoaded(); return; }
+    activityEditor.fields = {
+      id: entry.id,
+      name: entry.name || '',
+      bookable: entry.bookable === true,
+      priceType: entry.priceType || 'per_pax',
+      priceValue: entry.priceValue == null ? null : Number(entry.priceValue),
+      priceUnit: entry.priceUnit || '',
+    };
+    activityEditor.modal = { mode: 'edit', id: entry.id };
+    activityEditor.error = '';
+    activityEditor.saving = false;
+    aevSyncModal();
+  };
+  window.aevSet = function (key, value) {
+    if (!activityEditor.fields) return;
+    activityEditor.fields[key] = key === 'bookable' ? Boolean(value) : String(value == null ? '' : value);
+  };
+  window.aevSetPrice = function (raw) {
+    if (!activityEditor.fields) return;
+    if (raw === '' || raw == null) { activityEditor.fields.priceValue = null; return; }
+    const n = Number(raw);
+    activityEditor.fields.priceValue = Number.isFinite(n) ? Math.min(1000, Math.max(0, n)) : null;
+  };
+  window.aevCloseModal = function () {
+    if (activityEditor.saving) return;
+    activityEditor.modal = null;
+    activityEditor.fields = null;
+    activityEditor.error = '';
+    const overlay = document.getElementById('aevOverlay');
+    if (overlay) overlay.remove();
+  };
+  window.aevSave = function () {
+    if (activityEditor.saving || !activityEditor.modal) return;
+    const f = activityEditor.fields || {};
+    if (!String(f.name || '').trim()) { activityEditor.error = 'Donne un nom à l activité.'; aevRefresh(); return; }
+    // « Réglé sur place » est le seul type qui s'assume SANS montant : partout
+    // ailleurs un prix vide afficherait « réglé sur place » au client sans que
+    // personne ne l'ait décidé.
+    const activity = {
+      name: String(f.name).trim(),
+      bookable: Boolean(f.bookable),
+      priceType: f.priceType || 'per_pax',
+      priceValue: f.priceType === 'on_site' ? null : f.priceValue,
+      priceUnit: String(f.priceUnit || '').trim() || null,
+    };
+    activityEditor.saving = true;
+    activityEditor.error = '';
+    aevRefresh();
+    const body = activityEditor.modal.mode === 'create'
+      ? { action: 'createActivity', activity }
+      : { action: 'updateActivity', id: activityEditor.modal.id, patch: activity };
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: JSON.stringify(body) })
+      .then(() => {
+        pevToast(activityEditor.modal.mode === 'create' ? 'Activité ajoutée au catalogue.' : 'Activité mise à jour.');
+        window.aevCloseModal();
+        pevReload();
+      })
+      .catch((error) => {
+        activityEditor.saving = false;
+        activityEditor.error = (error && error.message) || 'Enregistrement refusé. Réessaie.';
+        aevRefresh();
+      });
+  };
+  window.aevDelete = function (id) {
+    if (!cevCanManage()) { pevToast('Édition du catalogue réservée à la direction.'); return; }
+    const entry = aevEntry(id);
+    const name = entry && entry.name ? entry.name : id;
+    if (!window.confirm(`Retirer « ${name} » du catalogue ? Les formules qui l utilisent garderont leur étape.`)) return;
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: JSON.stringify({ action: 'deleteActivity', id: String(id) }) })
+      .then(() => { pevToast('Activité retirée du catalogue.'); pevReload(); })
+      .catch((error) => pevToast((error && error.message) || 'Suppression refusée. Réessaie.'));
+  };
+
+  function aevModalBodyHtml() {
+    const f = activityEditor.fields || {};
+    const onSite = f.priceType === 'on_site';
+    const grid = f.priceType === 'grid_bowling' || f.priceType === 'grid_laser';
+    return `${activityEditor.error ? `<div class="pev-modal-error" role="alert">${esc(activityEditor.error)}</div>` : ''}
+      <div class="field pev-field">
+        <label for="aevName">Nom de l activité</label>
+        <input id="aevName" type="text" maxlength="60" value="${esc(f.name || '')}" data-autofocus placeholder="Ex : Boissons soft" oninput="aevSet('name', this.value)">
+        <span class="field-hint">C est ce nom que le client lit dans le tunnel et dans les formules.</span>
+      </div>
+      <div class="field pev-field">
+        <label for="aevPriceType">Comment ça se facture</label>
+        <select id="aevPriceType" onchange="aevSet('priceType', this.value); aevRefresh();">
+          ${AEV_PRICE_TYPES.map(([key, label]) => `<option value="${key}"${f.priceType === key ? ' selected' : ''}>${esc(label)}</option>`).join('')}
+        </select>
+      </div>
+      ${grid ? '<p class="cev-form-hint">Les paliers de cette grille (durées ou nombre de parties) restent ceux du moteur.</p>' : ''}
+      <div class="pev-grid2">
+        <div class="field pev-field">
+          <label for="aevPrice">Prix (EUR)</label>
+          <input id="aevPrice" type="number" min="0" max="1000" step="1" value="${f.priceValue == null ? '' : esc(f.priceValue)}" ${onSite ? 'disabled' : ''} placeholder="${onSite ? 'au comptoir' : 'vide = réglé sur place'}" oninput="aevSetPrice(this.value)">
+        </div>
+        <div class="field pev-field">
+          <label for="aevUnit">Unité affichée</label>
+          <input id="aevUnit" type="text" maxlength="60" value="${esc(f.priceUnit || '')}" placeholder="par personne" oninput="aevSet('priceUnit', this.value)">
+        </div>
+      </div>
+      <label class="pev-toggle-row">
+        <span class="pev-toggle-label">Réservable seule dans le tunnel<small>Décochée, l activité ne sert qu à composer les formules (comme la table anniversaire).</small></span>
+        <button type="button" class="mk-switch ${f.bookable ? 'is-on' : ''}" role="switch" aria-checked="${f.bookable ? 'true' : 'false'}" aria-label="Réservable seule" onclick="aevSet('bookable', !${Boolean(f.bookable)}); aevRefresh();"><span></span></button>
+      </label>`;
+  }
+
+  function aevModalFootHtml() {
+    const mode = activityEditor.modal && activityEditor.modal.mode;
+    return `<span class="pev-foot-note">Catalogue partagé : cette activité existe pour tous les centres.</span>
+      <button type="button" class="pv2-btn" ${activityEditor.saving ? 'disabled' : ''} onclick="aevCloseModal()">Annuler</button>
+      <button type="button" class="pv2-btn primary" id="aevSaveBtn" ${activityEditor.saving ? 'disabled' : ''} onclick="aevSave()">${activityEditor.saving ? 'Enregistrement…' : (mode === 'create' ? 'Ajouter' : 'Enregistrer')}</button>`;
+  }
+
+  window.aevRefresh = function () {
+    const body = document.querySelector('#aevOverlay .pev-modal-body');
+    if (body) body.innerHTML = aevModalBodyHtml();
+    const foot = document.querySelector('#aevOverlay .pev-modal-foot');
+    if (foot) foot.innerHTML = aevModalFootHtml();
+  };
+
+  function aevSyncModal() {
+    const existing = document.getElementById('aevOverlay');
+    if (!activityEditor.modal) { if (existing) existing.remove(); return; }
+    if (existing) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'aevOverlay';
+    overlay.className = 'overlay-backdrop pev-overlay';
+    overlay.innerHTML = `<div class="modal-surface pev-modal" role="dialog" aria-modal="true" aria-labelledby="aevModalTitle">
+      <div class="pev-modal-head">
+        <div><h3 id="aevModalTitle">${activityEditor.modal.mode === 'create' ? 'Nouvelle activité' : `Activité : ${esc((aevEntry(activityEditor.modal.id) || {}).name || '')}`}</h3><p>Ce que vos formules peuvent contenir, et ce que le client peut réserver.</p></div>
+        <button type="button" class="pev-close" aria-label="Fermer" onclick="aevCloseModal()">&times;</button>
+      </div>
+      <div class="pev-modal-body">${aevModalBodyHtml()}</div>
+      <div class="pev-modal-foot">${aevModalFootHtml()}</div>
+    </div>`;
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) window.aevCloseModal(); });
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => {
+      const f = overlay.querySelector('[data-autofocus]');
+      if (f) { try { f.focus(); } catch (_) { /* focus best effort */ } }
+    });
+  }
+
+  if (!window.__aevKeydownBound) {
+    window.__aevKeydownBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && activityEditor.modal && !activityEditor.saving) { e.preventDefault(); window.aevCloseModal(); }
+    });
+  }
+
+  // Le rayon « Activités » de la page : une carte par activité du catalogue.
+  function aevSectionHtml(canManage) {
+    const list = pricingEditor.activities || [];
+    if (!list.length) return '';
+    const cards = list.map((activity) => {
+      // Le prix ne MENT pas : une grille (bowling, laser) annonce son point de
+      // depart, un tarif saisi son montant, et l'absence de tarif se dit en
+      // gris. « sur place » en accent sur du bowling a grille etait faux ET
+      // criait plus fort que les vrais prix.
+      const gridStart = activity.priceType === 'grid_bowling'
+        ? (typeof DURATION_OPTIONS !== 'undefined' ? Math.min(...DURATION_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
+        : activity.priceType === 'grid_laser'
+          ? (typeof LASER_GAME_OPTIONS !== 'undefined' ? Math.min(...LASER_GAME_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
+          : null;
+      const price = Number.isFinite(gridStart)
+        ? `<span class="pv2-price-amount"><small>dès </small>${money(gridStart)}</span>`
+        : activity.priceValue != null
+          ? `<span class="pv2-price-amount">${money(activity.priceValue)}</span>`
+          : '<span class="pv2-price-onsite">réglé sur place</span>';
+      const badges = [
+        activity.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
+        activity.bookable ? '<span class="pv2-chip">Réservable seule</span>' : '<span class="pv2-chip">Dans les formules</span>',
+      ].filter(Boolean).join('');
+      return `<article class="pv2-price-card pv2-activity-card" data-aev-activity="${escJs(activity.id)}">
+        <div class="pv2-price-head">
+          <div><strong>${esc(activity.name)}</strong><small>${esc(activity.priceUnit || '')}</small></div>
+          ${price}
+        </div>
+        <div class="pev-badges">${badges}</div>
+        ${canManage ? `<div class="pev-card-foot">
+          <button type="button" class="pv2-btn sm" data-aev-edit="${escJs(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button>
+          <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${escJs(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+        </div>` : ''}
+      </article>`;
+    }).join('');
+    return `<section class="pv2-catalog-section" id="aevActivitiesBlock">
+      <div class="pv2-section-head">
+        <h3>Activités du catalogue</h3><span>${list.length} activité${list.length > 1 ? 's' : ''}</span>
+        ${canManage ? '<button type="button" class="pv2-btn" id="aevAddActivity" onclick="aevOpenCreate()">+ Activité</button>' : ''}
+        <span class="pv2-section-legend">Ce que vos formules peuvent contenir et ce que le client peut réserver à la carte. Partagé par tous les centres.</span>
+      </div>
+      <div class="pv2-catalog">${cards}</div>
+    </section>`;
   }
 
   window.renderStaffPricingPage = function () {
@@ -7859,10 +8121,12 @@
 
       ${catalogAlert}
       ${sections}
+      ${aevSectionHtml(canManage)}
     </div>`;
     mount(root, 'pricing');
     pevSyncModal();
     cevSyncModal();
+    aevSyncModal();
   };
 
   /* ==========================================================================

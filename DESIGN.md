@@ -140,7 +140,8 @@ Deux univers, un même langage :
 
 - **Radius** : 6 (boutons, inputs, badges) · 8 (cellules planning, menus) · 12 (cartes, modales) · full (pills, avatars).
 - **Profondeur** : bordure 1px d'abord. Ombres réservées aux surfaces flottantes (menus, modales, palette) : `shadows.overlay`. Aucune ombre sur les cartes posées.
-- **Motion** : 120-200ms, `cubic-bezier(0.25, 0.1, 0.25, 1)`, `transform`/`opacity` uniquement. Hover = changement de fond/bordure, pas de translation. Entrées de page : fade 8px une fois par navigation, jamais sur le poll 1,2s. `prefers-reduced-motion` : tout à 0.01ms.
+- **Motion (console)** : 120-200ms, `cubic-bezier(0.25, 0.1, 0.25, 1)`, `transform`/`opacity` uniquement. Hover = changement de fond/bordure, pas de translation. Entrées de page : fade 8px une fois par navigation, jamais sur le poll 1,2s. `prefers-reduced-motion` : tout à 0.01ms.
+- **Motion (tunnel client, 2026-08-17)** : le parcours public a sa grammaire LIQUIDE, décidée par Movsar (référence liquid-gooey). Scène horizontale : changement d'étape = glissement de piste au ressort (`--lq-spring`, `linear()` à léger rebond, retombée `cubic-bezier(0.30,1.25,0.42,1)`, 620ms) ; cascade `lq-pop` sur les blocs qui arrivent (500ms, délais 45ms, plafond 135ms) ; progression et pilule du sélecteur sous filtre gooey SVG (`#plGoo`, formes uniquement, jamais de texte). Exception ENCADRÉE à « transform/opacity seulement » : la largeur du fluide de progression et les bords de la pilule transitionnent en layout, parce qu'un métaball exige des formes dont la taille réelle change (un cercle en scaleX devient une ellipse) ; coût local à des calques absolus ≤26px, liste blanche tenue par le gate visit-motion. `prefers-reduced-motion` : tout se pose instantanément, piste comprise.
 
 ## 6. Composants de base
 

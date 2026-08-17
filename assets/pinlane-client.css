@@ -5457,35 +5457,45 @@ body.modal-open { overflow: hidden; }
   color: var(--accent-contrast);
 }
 
-/* RECETTE 8 : le PRIX QUI ROULE. Quand le total change, chaque chiffre qui
-   change roule verticalement dans le sens de la variation (transform seul,
-   200 ms). Le nombre dit « ton geste vient de changer le prix ». */
-.pl-roll {
+/* RECETTE 8 : le PRIX EN COMPTEUR A ROULEAUX (Transitions.dev, adaptee).
+   Une colonne par chiffre, chaque rouleau tourne puis se pose en cascade ;
+   le flou de file vertical vit dans un filtre SVG pilote par le JS, et les
+   bords de la fenetre se fondent au lieu de couper net. Transform seul :
+   le nombre dit « ton geste vient de changer le prix » sans rien redessiner. */
+.t-reel {
   display: inline-flex;
-  overflow: hidden;
-  /* La fenetre fait UNE ligne de haut : sans elle, la pile des deux valeurs
-     doublerait la hauteur du montant le temps du roulement. */
-  height: 1.1em;
+  align-items: center;
+  height: var(--reel-cell);
   vertical-align: bottom;
+  font-variant-numeric: tabular-nums;
+  --reel-cell: 1.15em;
 }
 
-.pl-roll-track {
-  display: inline-flex;
+.t-reel-col {
+  position: relative;
+  height: var(--reel-cell);
+  overflow: hidden;
+  /* Fondu des bords de fenetre : le noir d'un masque est de l'alpha, pas une
+     couleur rendue. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+}
+
+.t-reel-strip {
+  display: flex;
   flex-direction: column;
-  line-height: 1.1;
-  animation: pl-roll-up 200ms var(--ease-out-strong) both;
+  will-change: transform;
 }
 
-.pl-roll-track.is-down { animation-name: pl-roll-down; }
-
-@keyframes pl-roll-up {
-  from { transform: translateY(0); }
-  to { transform: translateY(-50%); }
+.t-reel-digit {
+  height: var(--reel-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-@keyframes pl-roll-down {
-  from { transform: translateY(-50%); }
-  to { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .t-reel-strip { transition: none !important; filter: none !important; }
 }
 
 /* RECETTE 5 et 11 : la PRESSION. Tout ce qui se clique dans le parcours
@@ -5677,8 +5687,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .visit-rail-advice-action:hover,
   #clientView .btn-primary:not(:disabled):hover { transform: none; }
   #clientView .segmented::before { transition: none; }
-  /* Le prix qui roule : c'est le JS qui s'abstient (prefersReducedMotion) et
-     pose la valeur directement : aucun .pl-roll n'est construit. */
+  /* Le compteur a rouleaux : c'est le JS qui s'abstient (prefersReducedMotion)
+     et pose la valeur directement : aucun .t-reel n'est construit. */
   #clientView .btn-primary.is-sealing .btn-seal-ring { animation: none; }
   #clientView .btn-seal,
   #clientView .btn-primary.is-sealing .btn-label,

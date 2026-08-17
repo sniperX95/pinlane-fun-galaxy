@@ -205,7 +205,10 @@ async function main() {
     await page.evaluate(() => { toggleBookingActivity('laser_game'); });
     await page.evaluate(() => { setBookingActivityOption('laser_game', 'games', 2); });
     await page.evaluate(() => { toggleBookingActivity('arcade_time'); });
-    await page.waitForTimeout(200);
+    // Le montant TOURNE (compteur a rouleaux) : lire son texte en plein vol
+    // recolte la piste de chiffres. On attend que les rouleaux soient poses,
+    // meme lecon que settle() sur la geometrie (2026-08-18).
+    await page.waitForFunction(() => !document.querySelector('#programSummary .program-total .t-reel'), { timeout: 4000 });
     const summary = await page.evaluate(() => ({
       items: [...document.querySelectorAll('#programSummary .program-item')].map(item => item.textContent.replace(/\s+/g, ' ').trim()),
       label: document.querySelector('#programSummary .program-total-label')?.textContent.trim() || '',
@@ -424,16 +427,17 @@ async function main() {
       const cardStyle = getComputedStyle(card());
       const checkStyle = getComputedStyle(svg);
 
-      // Le montant ROULE quand un choix le change (recette odometre, transform
-      // seul) : l'echafaudage .pl-roll n'existe que pendant le changement, et
-      // il redevient du texte simple apres.
+      // Le montant TOURNE quand un choix le change (compteur a rouleaux,
+      // transform seul) : l'echafaudage .t-reel n'existe que pendant le
+      // changement, et il redevient du texte simple une fois tous les
+      // rouleaux poses (900 ms + cascade, marge comprise).
       const total = document.querySelector('.program-total');
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      const bumpedBefore = Boolean(total.querySelector('.pl-roll'));
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+      const bumpedBefore = Boolean(total.querySelector('.t-reel'));
       setBookingActivityOption('bowling', 'duration', 2);
-      const bumpedAfter = Boolean(document.querySelector('.program-total .pl-roll'));
-      await new Promise((resolve) => setTimeout(resolve, 320));
-      const rollCleaned = !document.querySelector('.program-total .pl-roll');
+      const bumpedAfter = Boolean(document.querySelector('.program-total .t-reel'));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const rollCleaned = !document.querySelector('.program-total .t-reel');
 
       return {
         sameNode,
@@ -469,9 +473,9 @@ async function main() {
     ok(/transform/.test(polish.cardTransition) && /opacity/.test(polish.checkTransition) && /filter/.test(polish.checkTransition),
       'les retours visuels declarent uniquement les proprietes utiles');
     ok(polish.bumpedBefore === false && polish.bumpedAfter === true,
-      'changer une option fait ROULER le montant (odometre .pl-roll)');
+      'changer une option fait TOURNER le montant (compteur a rouleaux .t-reel)');
     ok(polish.rollCleaned === true,
-      'le roulement fini, le montant redevient du texte simple');
+      'les rouleaux poses, le montant redevient du texte simple');
     ok(polish.iconCount === 8, `chaque activite porte son icone (${polish.iconCount}/8)`);
 
     // La pastille GLISSANTE du selecteur suit l'etat reel : la classe du

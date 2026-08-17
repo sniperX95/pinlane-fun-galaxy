@@ -3990,41 +3990,104 @@ function renderProgramSummary() {
   }
 }
 
-// Odometre en transform pur. Chaque caractere qui change roule verticalement
-// dans une petite fenetre (overflow hidden) ; ceux qui ne changent pas ne
-// bougent pas d'un pixel. Longueurs differentes : tout le nombre roule d'un
-// bloc, meme direction. Mouvement reduit : la valeur se pose, point.
+// COMPTEUR A ROULEAUX (recette Transitions.dev fournie par Movsar, adaptee) :
+// une colonne par CHIFFRE, chaque rouleau porte une piste de chiffres, prend
+// un tour d'elan puis se pose sur le sien, en cascade de gauche a droite.
+// L'ancien odometre a deux cellules sautait d'un bloc des que la longueur
+// changeait (96 vers 108) : c'etait le « bug et moche ». Ce qui n'est pas un
+// chiffre (le €) ne bouge pas ; une longueur qui change fait partir les
+// colonnes neuves de 0. Mouvement reduit ou valeur non numerique
+// (« Sur place ») : la valeur se pose, point.
+const REEL_DUR_MS = 900;
+const REEL_STAGGER_MS = 90;
+const REEL_BLUR_FILTERS = 5;
+let reelBlurReady = false;
+
+// Le flou de file est STRICTEMENT vertical : un blur() CSS baverait sur les
+// cotes (c'est ecrit dans la recette). Seul feGaussianBlur accepte "0 Y".
+// Un filtre par colonne pour que chaque rouleau perde son flou en se posant.
+function ensureReelBlurFilters() {
+  if (reelBlurReady || typeof document === 'undefined' || !document.body) return;
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  host.innerHTML = `<svg width="0" height="0">${Array.from({ length: REEL_BLUR_FILTERS }, (_, i) =>
+    `<filter id="pl-reel-blur-${i}"><feGaussianBlur stdDeviation="0 0"/></filter>`).join('')}</svg>`;
+  document.body.appendChild(host);
+  reelBlurReady = true;
+}
+
+// Monte vite pendant la phase rapide de la course, retombe a zero pile a
+// l'atterrissage. Le rouleau au repos est NET, jamais baveux. Pilote au
+// TIMER (30 fps, largement assez pour un flou) et pas en rAF : un onglet
+// occulte affame le rAF et le flou resterait fige en pleine valeur.
+function decayReelBlur(strip, col, delayMs) {
+  const filter = document.querySelector(`#pl-reel-blur-${Math.min(col, REEL_BLUR_FILTERS - 1)} feGaussianBlur`);
+  if (!filter || typeof performance === 'undefined') return;
+  const start = performance.now() + delayMs;
+  const timer = setInterval(() => {
+    if (!strip.isConnected) { filter.setAttribute('stdDeviation', '0 0'); clearInterval(timer); return; }
+    const t = (performance.now() - start) / REEL_DUR_MS;
+    if (t < 0) return;
+    const v = t >= 1 ? 0 : 3 * (1 - t) * Math.min(1, t * 5);
+    filter.setAttribute('stdDeviation', `0 ${v.toFixed(2)}`);
+    if (t >= 1) clearInterval(timer);
+  }, 33);
+}
+
 function rollNumberTo(el, previousText, nextText) {
-  if (!previousText || prefersReducedMotion()) {
+  const prevDigits = String(previousText || '').replace(/\D/g, '');
+  const nextDigits = String(nextText || '').replace(/\D/g, '');
+  if (!previousText || !prevDigits || !nextDigits || prefersReducedMotion()) {
     el.textContent = nextText;
     return;
   }
-  const up = (parseFloat(nextText.replace(/[^\d.]/g, '')) || 0)
-    >= (parseFloat(previousText.replace(/[^\d.]/g, '')) || 0);
-  const column = (before, after) => {
-    // Roulement vers le haut : [ancien, nouveau], la piste monte d'un demi.
-    // Vers le bas : [nouveau, ancien], la piste part du demi et redescend.
-    const stack = up ? [before, after] : [after, before];
-    return `<span class="pl-roll"><span class="pl-roll-track ${up ? '' : 'is-down'}">${stack
-      .map(ch => `<span>${escapeHtml(ch)}</span>`).join('')}</span></span>`;
-  };
+  const up = (Number(nextDigits) || 0) >= (Number(prevDigits) || 0);
+  // Colonne a colonne, alignees par la droite : 96 -> 108 compare 096 a 108.
+  const prevPadded = prevDigits.padStart(nextDigits.length, '0').slice(-nextDigits.length);
+  ensureReelBlurFilters();
+  let digitIndex = 0;
   let html = '';
-  if (previousText.length === nextText.length) {
-    for (let i = 0; i < nextText.length; i += 1) {
-      html += previousText[i] === nextText[i]
-        ? `<span>${escapeHtml(nextText[i])}</span>`
-        : column(previousText[i], nextText[i]);
-    }
-  } else {
-    html = column(previousText, nextText);
+  for (const ch of String(nextText)) {
+    if (!/\d/.test(ch)) { html += `<span>${escapeHtml(ch)}</span>`; continue; }
+    const from = Number(prevPadded[digitIndex]);
+    const to = Number(ch);
+    // Un tour d'elan (10 cellules) + la distance jusqu'au chiffre cible.
+    const travel = 10 + ((up ? to - from : from - to) + 10) % 10;
+    const cells = [];
+    // La piste liste les chiffres DANS L'ORDRE ou la fenetre les traverse.
+    // Vers le bas, la meme course se joue a l'envers : la piste part deja
+    // deroulee et redescend (les chiffres defilent visuellement vers le bas).
+    for (let s = 0; s <= travel; s += 1) cells.push(`<span class="t-reel-digit">${up ? (from + s) % 10 : (to + s) % 10}</span>`);
+    html += `<span class="t-reel-col"><span class="t-reel-strip${up ? '' : ' is-down'}" data-col="${digitIndex}" data-travel="${travel}">${cells.join('')}</span></span>`;
+    digitIndex += 1;
   }
-  el.innerHTML = html;
-  // La structure de roulement est un echafaudage : une fois posee, la valeur
-  // redevient du texte simple (rien a nettoyer au prochain changement).
+  // La VRAIE valeur reste lisible pendant tout le spin : la synthese vocale
+  // et tout lecteur de texte recoivent le montant pose, jamais la piste de
+  // chiffres de l'echafaudage (qui est purement decoratif, donc aria-hidden).
+  el.innerHTML = `<span class="visually-hidden">${escapeHtml(nextText)}</span><span class="t-reel" aria-hidden="true">${html}</span>`;
+  const strips = [...el.querySelectorAll('.t-reel-strip')];
+  strips.forEach((strip) => {
+    const col = Number(strip.dataset.col);
+    const travel = Number(strip.dataset.travel);
+    const down = strip.classList.contains('is-down');
+    strip.style.transform = down ? `translateY(calc(${-travel} * var(--reel-cell)))` : 'translateY(0)';
+    strip.style.filter = `url(#pl-reel-blur-${Math.min(col, REEL_BLUR_FILTERS - 1)})`;
+    // Double rAF : la position de depart doit etre PEINTE avant que la
+    // transition ne parte, sinon le rouleau se teleporte.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      strip.style.transition = `transform ${REEL_DUR_MS}ms cubic-bezier(0.16, 1, 0.3, 1) ${col * REEL_STAGGER_MS}ms`;
+      strip.style.transform = down ? 'translateY(0)' : `translateY(calc(${-travel} * var(--reel-cell)))`;
+    }));
+    decayReelBlur(strip, col, col * REEL_STAGGER_MS);
+  });
+  // La structure de roulement est un echafaudage : une fois tous les rouleaux
+  // poses, la valeur redevient du texte simple (rien a nettoyer ensuite).
   const guard = el.getAttribute('data-amount');
+  const settleMs = REEL_DUR_MS + REEL_STAGGER_MS * Math.max(0, strips.length - 1) + 80;
   setTimeout(() => {
     if (el.getAttribute('data-amount') === guard) el.textContent = guard;
-  }, 260);
+  }, settleMs);
 }
 
 function toggleBookingActivity(activityId) {

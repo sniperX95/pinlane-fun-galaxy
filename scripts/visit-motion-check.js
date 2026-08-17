@@ -334,7 +334,12 @@ async function checkReducedMotion(page) {
 }
 
 async function checkTrack(page) {
-  console.log('\n[3] La piste d heures : ni piege clavier, ni information cachee');
+  // GRILLE COMPLETE (2026-08-18, « le menu deroulant cache bcp : un truc ou
+  // on voit tout mieux ») : la piste defilante est devenue un tableau qui
+  // montre LA JOURNEE ENTIERE. Le contrat s'inverse : plus RIEN ne defile
+  // horizontalement, chaque heure est visible et cliquable sans aucun geste,
+  // et les aides du defilement (fleches, fondus) n'existent plus a l'ecran.
+  console.log('\n[3] La grille d heures : la journee entiere, sans un geste');
   await bootTunnel(page, 'track');
   await page.evaluate(() => goStep2());
   await page.waitForTimeout(900);
@@ -342,60 +347,31 @@ async function checkTrack(page) {
   const track = await page.evaluate(() => {
     const element = document.querySelector('.anchor-track[data-anchor="bowling"]');
     if (!element) return null;
-    const style = getComputedStyle(element);
     const chips = [...element.querySelectorAll('.anchor-chip')];
+    const frame = element.getBoundingClientRect();
+    const rows = new Set(chips.map((chip) => Math.round(chip.getBoundingClientRect().top)));
     return {
       chips: chips.length,
       focusable: chips.every((chip) => !chip.disabled && chip.tabIndex >= 0),
-      overflowY: style.overflowY,
-      overflowX: style.overflowX,
-      overscrollX: style.overscrollBehaviorX,
-      scrollable: element.scrollWidth > element.clientWidth,
-      overflowState: element.dataset.overflow,
-      nudges: [...(element.closest('.anchor-periods')?.querySelectorAll('.anchor-track-nudge') || [])]
-        .map((button) => `${button.dataset.direction}:${button.disabled ? 'off' : 'on'}`),
-      // Rien d'atteignable ne doit vivre en dehors du contenu defilable.
-      insideContent: chips.every((chip) => chip.offsetLeft - element.offsetLeft + chip.offsetWidth <= element.scrollWidth + 1),
+      scrollable: element.scrollWidth > element.clientWidth + 1,
+      rows: rows.size,
+      // CHAQUE heure est entierement dans la largeur de la grille : aucune
+      // carte coupee, aucune hors champ.
+      allInFrame: chips.every((chip) => {
+        const box = chip.getBoundingClientRect();
+        return box.left >= frame.left - 1 && box.right <= frame.right + 1 && box.width > 60;
+      }),
+      visibleNudges: [...document.querySelectorAll('.anchor-track-nudge')]
+        .filter((button) => button.offsetParent !== null).length,
     };
   });
-  ok(Boolean(track), 'la piste du bowling existe');
-  ok(track.chips >= 20, `la piste porte la journee entiere (${track.chips} heures)`);
+  ok(Boolean(track), 'la grille du bowling existe');
+  ok(track.chips >= 20, `la grille porte la journee entiere (${track.chips} heures)`);
   ok(track.focusable, 'chaque heure est atteignable a la tabulation');
-  ok(track.overflowY === 'hidden', `la piste ne defile jamais verticalement (overflow-y: ${track.overflowY})`);
-  ok(track.overscrollX === 'contain', `la piste ne vole pas le defilement de la page (overscroll-behavior-x: ${track.overscrollX})`);
-  ok(track.scrollable && track.overflowState !== 'none', `ce qui depasse est signale (etat « ${track.overflowState} »)`);
-  ok(track.nudges.includes('1:on'), `un bouton mene aux heures suivantes (${track.nudges.join(', ')})`);
-  ok(track.insideContent, 'aucune heure ne vit en dehors du contenu defilable');
-
-  // Le focus clavier RAMENE l'heure dans le champ : c'est ce qui rend la piste
-  // utilisable sans souris ni doigt.
-  const focusBrings = await page.evaluate(async () => {
-    const element = document.querySelector('.anchor-track[data-anchor="bowling"]');
-    element.scrollLeft = 0;
-    const chips = [...element.querySelectorAll('.anchor-chip')];
-    const last = chips[chips.length - 1];
-    last.focus();
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    const frame = element.getBoundingClientRect();
-    const box = last.getBoundingClientRect();
-    return { scrollLeft: Math.round(element.scrollLeft), visible: box.left >= frame.left - 1 && box.right <= frame.right + 1 };
-  });
-  ok(focusBrings.scrollLeft > 0 && focusBrings.visible,
-    `donner le focus a la derniere heure la ramene dans le champ (scrollLeft ${focusBrings.scrollLeft})`);
-
-  // Au bout de la piste, le bouton qui n'a plus rien a montrer s'eteint.
-  const atEnd = await page.evaluate(async () => {
-    const element = document.querySelector('.anchor-track[data-anchor="bowling"]');
-    element.scrollLeft = element.scrollWidth;
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    return {
-      state: element.dataset.overflow,
-      nudges: [...element.closest('.anchor-periods').querySelectorAll('.anchor-track-nudge')]
-        .map((button) => `${button.dataset.direction}:${button.disabled ? 'off' : 'on'}`),
-    };
-  });
-  ok(atEnd.state === 'start' && atEnd.nudges.includes('1:off') && atEnd.nudges.includes('-1:on'),
-    `arrive au bout, l indicateur et les boutons le disent (${atEnd.state} / ${atEnd.nudges.join(', ')})`);
+  ok(!track.scrollable, 'plus AUCUN defilement horizontal : tout est pose');
+  ok(track.rows >= 2, `la journee s etale en rangees (${track.rows})`);
+  ok(track.allInFrame, 'chaque heure est entiere dans le cadre, aucune carte coupee');
+  ok(track.visibleNudges === 0, `les fleches de defilement ont disparu avec le defilement (${track.visibleNudges})`);
 }
 
 // Le sceau du bouton de confirmation : il accuse, il travaille, il scelle, et

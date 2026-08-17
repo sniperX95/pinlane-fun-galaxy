@@ -3026,6 +3026,7 @@ function initClient() {
   updatePaxAlert();
   renderFormules();
   renderFormulaPreferences();
+  bindCardTilt();
   // Demarre TOUJOURS a l'etape 1 (et synchronise le DOM avec state.step) : sinon
   // un state.step persiste (ex. 4) affichait l'etape 4 dans la barre de progression
   // alors que le contenu montrait l'etape 1 -> desynchro visible sur le formulaire.
@@ -3108,6 +3109,9 @@ function formatClockShort(hhmm) {
 }
 
 function updateSchedHint() {
+  // La revelation du programme suit le meme verdict que le badge d'horaires :
+  // meme lecture d'etat, au meme moment, quel que soit le chemin de sortie.
+  if (typeof syncProgressiveReveal === 'function') syncProgressiveReveal();
   const el = document.getElementById('schedHint');
   if (!el) return;
   const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(state.booking.date) : null;
@@ -3154,6 +3158,125 @@ function updateSchedHint() {
   el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>${holiday}`;
 }
 
+// --- REVELATION PROGRESSIVE DE L'ETAPE 1 (2026-08-18, demande Movsar) -------
+// D'abord la venue seule ; le PROGRAMME s'ouvre quand la date tient (jour
+// ouvert) ; le RESUME (total) s'ouvre des qu'un choix existe. Chaque
+// ouverture joue la revelation liquide (CSS lq-reveal). Le verdict en vol
+// (verification serveur) ne replie JAMAIS un bloc deja ouvert : un ecran qui
+// bat au rythme du reseau est pire qu'un ecran patient.
+function setRevealState(element, shouldShow) {
+  if (!element) return;
+  element.classList.add('lq-revealable');
+  // L'etat se lit sur is-folded SEUL : un bloc jamais synchronise (aucune
+  // classe) est un bloc AFFICHE, et le premier repli doit le plier vraiment.
+  // Corollaire voulu : un bloc affiche des le boot ne rejoue pas d'ouverture
+  // (la cascade d'arrivee de l'etape suffit, pas de theatre au chargement).
+  const isShown = !element.classList.contains('is-folded');
+  if (shouldShow === isShown) return;
+  if (shouldShow) {
+    element.classList.remove('is-folded');
+    // Reflow volontaire : l'animation d'ouverture rejoue a CHAQUE ouverture.
+    void element.offsetWidth;
+    element.classList.add('is-revealed');
+  } else {
+    element.classList.remove('is-revealed');
+    element.classList.add('is-folded');
+  }
+}
+
+function syncProgressiveReveal() {
+  const what = document.getElementById('s1What');
+  if (!what) return;
+  const date = state.booking.date;
+  const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(date) : null;
+  const pending = typeof isCenterDayPending === 'function' && isCenterDayPending(date);
+  const dayOpen = !isPastBusinessDate(date)
+    && Boolean(getSchedule(date, state.isHolidayMode))
+    && !(dayStatus && dayStatus.open === false);
+  // En vol : on garde l'etat courant (ni ouverture ni repli sur une promesse).
+  if (!pending) setRevealState(what, dayOpen);
+  // L'etat d'attente : une carte fantome dit POURQUOI le programme n'est pas
+  // la et ce qui l'ouvrira. Elle vit exactement quand le programme est plie.
+  const placeholder = document.getElementById('s1WhatPlaceholder');
+  if (placeholder) placeholder.hidden = !what.classList.contains('is-folded');
+  // Le resume : des qu'un choix existe dans le mode courant.
+  const mode = normalizeBookingMode(state.booking.mode);
+  const hasChoice = mode === 'carte'
+    ? (typeof getChosenActivities === 'function' && getChosenActivities().length > 0)
+    : Boolean(state.booking.formuleId);
+  setRevealState(document.getElementById('programSummary'), mode === 'carte' && hasChoice);
+  // Le dock telephone depend du repli du programme : il se resynchronise ICI,
+  // quel que soit l'ordre des rendus qui ont mene a ce verdict (un dock qui
+  // parle d'allocation devant un programme plie a ete observe au navigateur).
+  if (typeof syncStatusDock === 'function') syncStatusDock();
+}
+
+// --- DOCK D'ETAT TELEPHONE ---------------------------------------------------
+// Miroir flottant des messages d'allocation (paxAlert) et d'activite fermee
+// (typeAlert) : sur telephone ils quittent le flux (CSS) et vivent ici,
+// au-dessus du pied d'ecran, toujours visibles. Le dock ne s'exprime qu'a
+// l'etape 1 : ces messages n'existent que la.
+function syncStatusDock() {
+  const dock = document.getElementById('stepStatusDock');
+  if (!dock) return;
+  const onStepOne = Number(state.step) === 1;
+  // Programme replie (jour ferme, date passee) : l'allocation de pistes ne
+  // decrit rien que le client puisse composer, le dock se tait.
+  const what = document.getElementById('s1What');
+  const programOpen = Boolean(what && !what.classList.contains('is-folded'));
+  const pax = document.getElementById('paxAlert');
+  const type = document.getElementById('typeAlert');
+  const source = (type && type.innerHTML.trim()) ? type : ((pax && pax.innerHTML.trim()) ? pax : null);
+  const html = onStepOne && programOpen && source ? source.innerHTML : '';
+  if (dock.innerHTML !== html) dock.innerHTML = html;
+  dock.classList.toggle('is-live', Boolean(html));
+}
+
+// --- TILT 3D DES CARTES ------------------------------------------------------
+// La carte s'incline sous le curseur (max 5 degres), revient a plat au
+// depart. Souris uniquement (jamais au toucher), rien en mouvement reduit,
+// une seule ecoute deleguee, calee sur la frequence d'affichage.
+function bindCardTilt() {
+  const host = document.getElementById('clientView');
+  if (!host || host.dataset.tiltBound === '1') return;
+  host.dataset.tiltBound = '1';
+  const MAX_DEG = 5;
+  let queued = null;
+  const clearTilt = (card) => {
+    if (!card) return;
+    card.style.removeProperty('--tiltX');
+    card.style.removeProperty('--tiltY');
+    card.classList.remove('is-tilting');
+  };
+  host.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse' || prefersReducedMotion()) return;
+    const card = event.target && event.target.closest ? event.target.closest('.activity-card, .formule-card') : null;
+    if (queued) queued.card !== card && clearTilt(queued.card);
+    queued = { card, x: event.clientX, y: event.clientY, pending: queued ? queued.pending : false };
+    if (queued.pending) return;
+    queued.pending = true;
+    requestAnimationFrame(() => {
+      const current = queued;
+      if (!current) return;
+      current.pending = false;
+      if (!current.card) return;
+      const rect = current.card.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const rx = ((current.y - rect.top) / rect.height - 0.5) * -2 * MAX_DEG;
+      const ry = ((current.x - rect.left) / rect.width - 0.5) * 2 * MAX_DEG;
+      current.card.style.setProperty('--tiltX', `${rx.toFixed(2)}deg`);
+      current.card.style.setProperty('--tiltY', `${ry.toFixed(2)}deg`);
+      current.card.classList.add('is-tilting');
+    });
+  }, { passive: true });
+  host.addEventListener('pointerout', (event) => {
+    const card = event.target && event.target.closest ? event.target.closest('.activity-card, .formule-card') : null;
+    if (!card) return;
+    const next = event.relatedTarget && event.relatedTarget.closest ? event.relatedTarget.closest('.activity-card, .formule-card') : null;
+    if (next !== card) clearTilt(card);
+  }, { passive: true });
+}
+
 // La note du nombre de joueurs REPOND au geste : elle se pose quand elle
 // change, et reste strictement immobile quand elle dit la meme chose (elle est
 // recalculee a chaque frappe dans le champ).
@@ -3164,6 +3287,7 @@ function updatePaxAlert() {
   if (host && host.innerHTML !== before && host.firstElementChild) {
     host.firstElementChild.classList.add('is-appearing');
   }
+  syncStatusDock();
 }
 
 function renderPaxAlertContent() {
@@ -3324,6 +3448,8 @@ function syncBookingTypeUi() {
   document.getElementById('formuleBlock').classList.toggle('hidden', mode !== 'formule');
   renderActivityPicker(off);
   renderTypeAlert(off, dayStatus);
+  syncProgressiveReveal();
+  syncStatusDock();
 }
 
 // La grille d'activites se construit UNE fois, puis ne change que par des
@@ -3342,6 +3468,10 @@ function renderActivityPicker(off = []) {
   }
   syncActivityPickerState(off);
   renderProgramSummary();
+  // Le choix vient peut-etre de naitre ou de mourir : la revelation du resume
+  // et le dock telephone suivent le meme battement que le programme.
+  syncProgressiveReveal();
+  syncStatusDock();
 }
 
 let activityPickerSignature = '';
@@ -4226,6 +4356,8 @@ function goStep(n, options = {}) {
     heading.textContent = `Étape ${n} sur 5 : ${STEP_LABELS[n] || ''}`;
     if (options.focus !== false) heading.focus({ preventScroll: true });
   }
+  // Le dock telephone n'a voix qu'a l'etape 1 : il se tait des qu'on la quitte.
+  if (typeof syncStatusDock === 'function') syncStatusDock();
   save();
 }
 

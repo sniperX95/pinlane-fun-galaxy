@@ -404,18 +404,19 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 /* --- LA PISTE : cinq ecrans cote a cote, un ressort pour changer --------- */
-/* Courbe ressort : leger depassement puis pose. Si linear() est supporte, la
-   vraie courbe a rebond (celle des bibliotheques « bouncy ») prend le relais. */
+/* Courbe ressort AMORTIE (2026-08-18, Movsar : « ya un gros rebond qui me
+   derange, il faut un truc clean smooth »). L'ancienne courbe depassait de
+   11 % et oscillait ; celle-ci se pose en un seul toucher, 3 % de
+   depassement, zero oscillation : le liquide coule, il ne tremble pas. */
 #clientView {
-  --lq-spring: cubic-bezier(0.30, 1.25, 0.42, 1);
+  --lq-spring: cubic-bezier(0.26, 1.04, 0.38, 1);
 }
 @supports (transition-timing-function: linear(0, 1)) {
   #clientView {
     --lq-spring: linear(
-      0, 0.0472 2.08%, 0.1682 4.35%, 0.5442 10.36%, 0.7605 14.14%,
-      0.9445 18.13%, 1.0202 20.68%, 1.0774 23.42%, 1.1074 26.11%,
-      1.1151 28.86%, 1.0999 32.48%, 1.0429 39.94%, 1.0102 45.35%,
-      0.9931 51.11%, 0.9895 58.28%, 0.9979 71.53%, 1.0004 84.24%, 1
+      0, 0.1276 2.44%, 0.4306 5.35%, 0.7017 8.05%, 0.8756 10.55%,
+      0.9767 13.06%, 1.0249 15.76%, 1.0374 18.86%, 1.0292 22.57%,
+      1.0091 28.16%, 0.9986 35.28%, 0.9974 44.42%, 1.0001 60.68%, 1
     );
   }
 }
@@ -522,11 +523,39 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   line-height: 1.45;
 }
 
-/* --- CASCADE : les blocs de l'etape se posent en ressort ------------------ */
+/* --- CASCADE : les blocs de l'etape se posent en ressort (amorti) --------- */
 @keyframes lq-pop {
-  0% { opacity: 0; transform: translateY(16px) scale(0.97); }
-  62% { opacity: 1; transform: translateY(-3px) scale(1.006); }
+  0% { opacity: 0; transform: translateY(14px) scale(0.98); }
+  70% { opacity: 1; transform: translateY(-1px) scale(1.002); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* --- REVELATION LIQUIDE : un bloc qui s'OUVRE quand le precedent est rempli.
+   Demande Movsar (2026-08-18, captures a l'appui) : d'abord la venue, PUIS le
+   programme s'ouvre, PUIS les options s'ouvrent des qu'un choix existe, avec
+   une animation liquide a chaque ouverture. La forme s'etire puis se pose
+   (squash & stretch, transform + clip-path seulement), le contenu arrive
+   ensuite : la sensation de goutte sans jamais flouter une lettre. */
+@keyframes lq-reveal {
+  0% { opacity: 0; transform: scaleY(0.86) scaleX(0.985); clip-path: inset(0 0 62% 0 round var(--radius-lg)); }
+  55% { opacity: 1; transform: scaleY(1.012) scaleX(1); clip-path: inset(0 round var(--radius-lg)); }
+  100% { opacity: 1; transform: scaleY(1) scaleX(1); clip-path: inset(0 round var(--radius-lg)); }
+}
+
+#clientView .lq-revealable {
+  transform-origin: top center;
+}
+
+#clientView .lq-revealable.is-revealed {
+  animation: lq-reveal 0.5s var(--lq-spring) both;
+}
+
+/* Replie : hors flux, sans detruire le DOM (les gates et le clavier le voient
+   via la meme verite que l'oeil : display none). */
+#clientView .lq-revealable.is-folded { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .lq-revealable.is-revealed { animation: none; }
 }
 
 #clientView .step[data-arrived] .cascade {
@@ -551,6 +580,24 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* L'etat d'attente du programme : une carte fantome calme, qui dit pourquoi
+   l'ecran est encore vide et ce qui l'ouvrira. */
+#clientView .s1-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  color: var(--faint);
+}
+#clientView .s1-placeholder[hidden] { display: none; }
+#clientView .s1-placeholder strong { font-size: 15px; font-weight: 600; color: var(--muted); }
+#clientView .s1-placeholder span { font-size: 12.5px; max-width: 42ch; line-height: 1.5; }
 
 #clientView .s1-what-head {
   flex: none;
@@ -612,6 +659,19 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   padding-right: 2px;
 }
 
+/* La bande de DECISION (vos rendez-vous + Valider ces horaires) COLLE au bas
+   de la zone d'heures : la grille complete peut depasser d'une rangee, la
+   decision, elle, ne quitte jamais l'ecran. Le fond opaque et l'ombre haute
+   la detachent de ce qui defile dessous. */
+#clientView .s2-slots .formula-anchor-status-zone {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--page);
+  box-shadow: 0 -10px 16px -12px color-mix(in srgb, var(--text) 28%, transparent);
+  padding-top: var(--space-2);
+}
+
 /* --- ETAPE 3 : coordonnees a gauche, occasion a droite -------------------- */
 /* `center` : les deux colonnes prennent leur hauteur naturelle au milieu de
    l'ecran au lieu de flotter en haut d'un grand vide. */
@@ -655,6 +715,47 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   pointer-events: none;
 }
 #alertBox .alert { pointer-events: auto; box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 14%, transparent); }
+
+/* --- DOCK D'ETAT (telephone) ----------------------------------------------
+   « le message d'alerte pour les pistes [...] quand on descend on le voit
+   plus » (Movsar). Sur telephone, les messages d'etat de l'etape 1
+   (allocation de pistes, sessions laser, activite fermee) quittent le haut
+   de la pile : ils vivent dans un dock flottant au-dessus du pied d'ecran,
+   TOUJOURS visible, qui glisse en douceur et ne bloque aucun tap
+   (pointer-events: none). Le JS (syncStatusDock) y reflete la source de
+   verite ; hors telephone le dock n'existe pas et les messages restent a
+   leur place. */
+#clientView .step-status-dock {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  #clientView .step-status-dock {
+    display: block;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 78px;
+    z-index: 40;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.28s var(--ease), transform 0.4s var(--lq-spring);
+  }
+  #clientView .step-status-dock.is-live {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  #clientView .step-status-dock .pax-alert,
+  #clientView .step-status-dock .type-alert {
+    margin-top: 0;
+    background: var(--raised, var(--surface));
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--text) 16%, transparent);
+  }
+  /* La source quitte le flux : le dock EST son affichage telephone. */
+  #clientView .s1-when #paxAlert { display: none; }
+  #clientView #typeAlert { display: none; }
+}
 
 /* --- SOUS-BARRE : contact du centre + acces equipe, une ligne fine -------- */
 #clientView .tunnel-underbar {
@@ -877,7 +978,36 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   color: var(--text);
 }
 
-/* .schedule-hint : composant partagé défini dans pinlane.css */
+/* .schedule-hint : composant partagé défini dans pinlane.css. Ici, le verdict
+   du jour devient un BADGE STATUT (2026-08-17, « rend plus jolie ») : pastille
+   pill fond -soft + point de couleur + libellé, la grammaire des badges du
+   design system au lieu d'un mot colorié. */
+#clientView .schedule-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#clientView .schedule-hint .open,
+#clientView .schedule-hint .closed,
+#clientView .schedule-hint .sched-checking {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+#clientView .schedule-hint .open { background: var(--success-soft); color: var(--success); }
+#clientView .schedule-hint .closed { background: var(--danger-soft); color: var(--danger); }
+#clientView .schedule-hint .sched-checking { background: var(--subtle); color: var(--muted); font-weight: 500; }
+#clientView .schedule-hint .open::before,
+#clientView .schedule-hint .closed::before,
+#clientView .schedule-hint .sched-checking::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  flex: none;
+}
 
 /* Etat du jour côté client. Le bloc n'existe dans le DOM que si le serveur a
    rendu un verdict (payload center.day) : sans verdict, rendu historique. */
@@ -941,23 +1071,41 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   color: var(--muted);
 }
 
+/* Le message d'allocation (« 7 joueurs -> 2 pistes ») en LIGNE D'ETAT propre :
+   icone dans une pastille, texte a hauteur d'icone, bordure fine teintee.
+   Le CSS force la taille du svg (les attributs HTML 14x14 sont battus) pour
+   en faire la pastille sans toucher au markup genere. */
 #clientView .pax-alert {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 10px;
   margin-top: var(--space-2);
-  padding: 10px 12px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid color-mix(in srgb, var(--info) 24%, var(--line));
   border-radius: var(--radius-md);
-  background: var(--info-soft);
+  background: color-mix(in srgb, var(--info-soft) 60%, var(--surface));
   color: var(--info-strong);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+#clientView .pax-alert > svg {
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  border-radius: var(--radius-full);
+  background: var(--info-soft);
+  box-sizing: border-box;
+  flex: none;
 }
 
 #clientView .pax-alert.warning {
-  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--line));
+  background: color-mix(in srgb, var(--warning-soft) 60%, var(--surface));
   color: var(--warning);
 }
+
+#clientView .pax-alert.warning > svg { background: var(--warning-soft); }
 
 /* Stepper joueurs : sur desktop, champ simple (boutons masqués = rendu
    historique préservé). Les boutons +/- n'apparaissent qu'en mobile. */
@@ -993,7 +1141,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   border-color: transparent;
   background: transparent;
   border-radius: var(--radius-full);
-  min-height: 44px;
+  min-height: 45px;
 }
 
 /* Marges des blocs de l'étape Contact : elles vivaient en style inline dans le
@@ -1077,13 +1225,20 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   gap: var(--space-2);
 }
 
+/* LA CARTE D'ACTIVITE, resserree et en relief (2026-08-17). Le blanc perdu a
+   droite du texte est rendu au contenu (rembourrage 9-10 px, icone 30, coche
+   20) et la carte s'incline en 3D sous le curseur (tilt JS : variables
+   --tiltX/--tiltY posees par bindCardTilt, transform seul, jamais au
+   toucher ni en mouvement reduit). L'ombre n'existe QUE pendant le survol :
+   une carte inclinee flotte, une carte posee n'a pas d'ombre (DESIGN.md §5). */
 #clientView .activity-card {
   min-width: 0;
-  height: 80px;
+  min-height: 64px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
-  transition-property: border-color, background-color, transform;
+  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg));
+  transition-property: border-color, background-color, transform, box-shadow;
   transition-duration: 180ms;
   transition-timing-function: var(--ease-out-strong);
 }
@@ -1095,21 +1250,28 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 
 #clientView .activity-card.is-off { opacity: 0.5; }
 
-#clientView .activity-card:has(.activity-toggle:active) { transform: scale(0.96); }
+#clientView .activity-card:has(.activity-toggle:active) {
+  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg)) scale(0.96);
+}
 
 @media (hover: hover) and (pointer: fine) {
   #clientView .activity-card:not(.is-off):hover { border-color: var(--text-3); }
   #clientView .activity-card.is-on:hover { border-color: var(--accent); }
+  #clientView .activity-card.is-tilting:not(.is-off) {
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--text) 9%, transparent);
+    z-index: 1;
+    position: relative;
+  }
 }
 
 #clientView .activity-toggle {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 22px;
+  grid-template-columns: 30px minmax(0, 1fr) 20px;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
   height: 100%;
-  padding: 12px;
+  padding: 9px 10px;
   border: 0;
   background: transparent;
   color: var(--text);
@@ -1127,8 +1289,8 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--radius-sm);
   background: var(--subtle);
   color: var(--text-2);
@@ -1181,8 +1343,8 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: 1.5px solid var(--line-strong);
   border-radius: 50%;
   color: var(--accent-contrast);
@@ -1221,7 +1383,17 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   background: var(--surface);
 }
 
-#clientView .activity-configurator.is-visible { display: block; }
+/* L'ouverture du configurateur joue la revelation liquide : c'est le
+   troisieme temps de l'etape (venue -> programme -> options). L'animation
+   rejoue a chaque re-apparition (display none -> block la relance). */
+#clientView .activity-configurator.is-visible {
+  display: block;
+  transform-origin: top center;
+  animation: lq-reveal 0.5s var(--lq-spring) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  #clientView .activity-configurator.is-visible { animation: none; }
+}
 
 #clientView .activity-configurator-head {
   display: flex;
@@ -1693,6 +1865,7 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 #clientView .formule-card {
+  transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1882,6 +2055,14 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 }
 
 /* --- Préférences formule (mode auto / manuel, ordre) --------------------- */
+/* L ouverture des preferences (mode formule) joue la revelation liquide. */
+#clientView .formula-preferences:not(.hidden) {
+  transform-origin: top center;
+  animation: lq-reveal 0.5s var(--lq-spring) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  #clientView .formula-preferences:not(.hidden) { animation: none; }
+}
 #clientView .formula-preferences {
   margin-top: var(--space-5);
   padding-top: var(--space-5);
@@ -4298,64 +4479,33 @@ body.customer-mode .client-footer {
   gap: var(--space-1);
 }
 
+/* LA PISTE DEVIENT UN TABLEAU (2026-08-17). Movsar : « le menu deroulant il
+   est cache bcp, fait un truc plus pro plus clean ou on voit tout mieux ».
+   Une rangee defilante montrait 7 heures sur 26 et coupait la huitieme en
+   deux ; la grille montre LA JOURNEE ENTIERE d'un coup, en rangees. Plus de
+   defilement, plus de fondus de bord, plus de fleches : les aides d'une
+   piste qui cache n'ont plus d'objet quand plus rien n'est cache (le JS les
+   eteint deja de lui-meme via data-overflow='none' ; le CSS les retire). */
 #clientView .anchor-track {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* Ne vole jamais le defilement vertical de la page ni celui du parent. */
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: auto;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
+  overflow: visible;
   padding: 2px;
 }
 
-#clientView .anchor-track::-webkit-scrollbar { display: none; }
+#clientView .anchor-track-nudge { display: none; }
 
-/* Ce qui depasse se VOIT : un fondu du cote ou il reste des heures. Un
-   defilement horizontal sans indicateur est un piege. */
-#clientView .anchor-track[data-overflow='both'] { mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
-#clientView .anchor-track[data-overflow='start'] { mask-image: linear-gradient(to right, transparent 0, #000 24px); }
-#clientView .anchor-track[data-overflow='end'] { mask-image: linear-gradient(to left, transparent 0, #000 24px); }
-
-#clientView .anchor-track-nudge {
-  flex: none;
-  width: 30px;
-  min-height: 44px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-  font-family: var(--font-ui);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur) var(--ease);
-}
-
-#clientView .anchor-track-nudge:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
-#clientView .anchor-track-nudge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#clientView .anchor-track-nudge:disabled { opacity: 0.3; cursor: default; }
-
-/* Une seule rangee : les heures se suivent comme sur une frise horaire. */
 #clientView .anchor-chip-grid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(104px, max-content);
-  grid-template-rows: auto;
-  gap: var(--space-2);
-  width: max-content;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 6px;
+  width: 100%;
 }
 
-/* SUR TELEPHONE, l'horizontal seul appauvrit : une piste d'un rang ne montrait
-   plus que 3 a 5 heures la ou la grille en montrait 12 (mesure du 2026-08-15).
-   La piste garde donc DEUX rangs. Le remplissage se fait en colonnes et les
-   heures alternent :30 / :00, donc un rang porte les demies et l'autre les
-   heures pleines : la lecture reste evidente, la densite revient, et toute la
-   journee reste atteignable d'un seul glissement. */
+/* Telephone : memes rangees, trois colonnes pleines. La zone de l'etape
+   defile dans sa boite si la journee est longue (defilement assume). */
 @media (max-width: 640px) {
-  #clientView .anchor-chip-grid { grid-template-rows: repeat(2, auto); }
+  #clientView .anchor-chip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* ==========================================================================
@@ -4369,6 +4519,7 @@ body.customer-mode .client-footer {
    partagent cette forme : seule la donnee portee change.
    ========================================================================== */
 #clientView .slot-card {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -5133,7 +5284,9 @@ body.modal-open { overflow: hidden; }
 @media (hover: hover) and (pointer: fine) {
   /* `:not(:active)` : la pression garde le dernier mot sur le survol. */
   #clientView .activity-card:not(.is-off):hover:not(:has(.activity-toggle:active)) { transform: translateY(-1px); }
-  #clientView .formule-card:not(.disabled):hover:not(:active) { transform: translateY(-1px); }
+  /* Le survol COMPOSE avec le tilt 3D (transform remplace tout : sans les
+     variables, le survol ecraserait l'inclinaison sous le curseur). */
+  #clientView .formule-card:not(.disabled):hover:not(:active) { transform: perspective(720px) rotateX(var(--tiltX, 0deg)) rotateY(var(--tiltY, 0deg)) translateY(-1px); }
   #clientView .bespoke-entry:hover:not(:active) { transform: translateY(-1px); }
   #clientView .occasion-chip:hover:not(:active) { transform: translateY(-1px); }
   #clientView .anchor-chip:not(:disabled):not(.active):hover:not(:active) { transform: scale(1.05); }
@@ -5441,7 +5594,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
   }
   /* 44 px : le plancher tactile exact, rien de plus. */
   #clientView #step1 .dur-pill.sm,
-  #clientView #step1 .dur-pill.xs { min-height: 44px; padding: 4px 6px; font-size: 12.5px; line-height: 1.25; }
+  #clientView #step1 .dur-pill.xs { min-height: 45px; padding: 4px 6px; font-size: 12.5px; line-height: 1.25; }
   #clientView #step1 .dur-pill.sm .price { font-size: 11.5px; }
   #clientView #step1 .activity-option-stack { gap: 4px; }
   #clientView #step1 .activity-configurator-head { padding: 7px 10px; }
@@ -5486,12 +5639,6 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView #step2 .card { padding: var(--space-3) var(--space-5) var(--space-4); }
   #clientView #step2 .card-head { margin-bottom: var(--space-1); }
   #clientView #step2 .card-icon { width: 32px; height: 32px; }
-  /* La carte de creneau est plus riche que la pastille, donc plus large : la
-     piste passe a DEUX rangs pour rendre au client le nombre de creneaux vus
-     d un coup (mesure : 3/4/6 sur un rang, 6/8/12 sur deux, contre 6/8/10 du
-     temps des pastilles). Le remplissage se fait en colonnes : un rang porte
-     les heures pleines, l autre les demies, la lecture reste evidente. */
-  #clientView .anchor-chip-grid { grid-template-rows: repeat(2, auto); }
   /* Deux etapes de visite cote a cote se calent sur la meme hauteur et leurs
      PISTES s'alignent : la tete puis les heures, et les options propres a une
      activite (laser sur place) descendent sous sa piste. Le vide residuel de
@@ -5680,10 +5827,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .anchor-free-pass { padding: var(--space-2); gap: 6px; }
   #clientView .anchor-free-items { gap: 6px; }
 
-  /* 3. La carte de creneau au pouce : deux rangs qui defilent d un glissement,
-     une carte assez large pour ses trois niveaux, aucune troncature. */
-  #clientView .anchor-chip.slot-card { min-width: 112px; padding: 6px 10px; }
-  #clientView .anchor-chip-grid { grid-auto-columns: minmax(112px, max-content); }
+  /* 3. La carte de creneau au pouce : grille trois colonnes, padding au pouce. */
+  #clientView .anchor-chip.slot-card { padding: 6px 8px; }
 
   /* Deux choix, deux colonnes : empiles, ils prenaient deux rangees de 44 px
      pour une question binaire. */

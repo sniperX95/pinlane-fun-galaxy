@@ -457,7 +457,12 @@ async function checkBrowser(page) {
   const mobile = cells.find((cell) => cell.width === 390 && cell.theme === 'dark' && cell.pax === 8);
   // L ecran mesurait 1732 px de haut sur un telephone avant la refonte, avec 53
   // pastilles identiques deroulees d un bloc. Le budget garde la marche.
-  ok(mobile.pickerHeight <= 1600, `mobile 390px : l ecran tient en ${mobile.pickerHeight} px (budget 1600, mesure 1732 avant refonte)`);
+  // Budget RELEVE en connaissance de cause (2026-08-18) : la piste defilante
+  // qui cachait les heures est devenue une grille qui les montre TOUTES
+  // (decision produit de Movsar : « on voit tout mieux »). La contrepartie
+  // est de la hauteur de contenu, qui defile dans SA zone (la page, elle, ne
+  // defile jamais : gate one-screen). Mesure a la bascule : 1975 px.
+  ok(mobile.pickerHeight <= 2100, `mobile 390px : l ecran tient en ${mobile.pickerHeight} px (budget 2100, grille complete assumee)`);
   ok(mobile.visibleChips <= 26, `mobile 390px : ${mobile.visibleChips} pastilles affichees a la fois, moins de la moitie des 53 deroulees d un bloc avant`);
   // La piste horizontale a supprime le filtre par moment de journee : les 53
   // heures des deux activites sont TOUTES dans le DOM, atteignables au doigt,

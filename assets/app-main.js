@@ -4537,10 +4537,30 @@ function prefersReducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+// La scene ne defile JAMAIS elle-meme. Sa boite est overflow:hidden, mais un
+// scrollIntoView ou le focus d'un champ (clavier de telephone) peut quand meme
+// pousser son scrollLeft : toutes les etapes se desaxent alors d'un coup sans
+// que l'etat change (mesure 2026-08-18 a 390x844 : step1 rejete a x=-188).
+// Le verrou remet zero a chaque tentative, et goStep repart toujours de zero.
+let stageScrollLockArmed = false;
+function lockStageScroll() {
+  const stage = document.querySelector('#clientView .tunnel-stage');
+  if (!stage) return;
+  stage.scrollLeft = 0;
+  stage.scrollTop = 0;
+  if (stageScrollLockArmed) return;
+  stageScrollLockArmed = true;
+  stage.addEventListener('scroll', () => {
+    if (stage.scrollLeft) stage.scrollLeft = 0;
+    if (stage.scrollTop) stage.scrollTop = 0;
+  }, { passive: true });
+}
+
 function goStep(n, options = {}) {
   const previous = Number(state.step) || 1;
   const target = document.getElementById('step' + n);
   if (!target) return;
+  lockStageScroll();
   const reduce = prefersReducedMotion();
   const animate = !reduce && options.animate !== false && previous !== n;
 

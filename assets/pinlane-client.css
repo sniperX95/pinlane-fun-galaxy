@@ -954,7 +954,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: 78px;
+    /* Au-dessus du pied d ecran COMPLET (pied 64 + rembourrages 24 + filet +
+       marge 12 + sous-barre ~32) : a 78 px il recouvrait le CTA « Verifier
+       les disponibilites » (vu a l ecran le 2026-08-18, 390x844). */
+    bottom: 140px;
     z-index: 40;
     pointer-events: none;
     opacity: 0;
@@ -1026,6 +1029,15 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   #clientView .s2-side { padding: var(--space-3); }
   #clientView .s3-side { padding: var(--space-3); }
 
+  /* L'etape 3 s'empile POUR DE VRAI. La base bureau pose `align-items:
+     center` : dans la pile, la zone optionnelle (occasion + demande) prenait
+     sa hauteur NATURELLE centree dans sa rangee minmax(0, 1fr) et saignait
+     des deux cotes : les chips par-dessus le champ Email, le textarea
+     par-dessus « Voir le recapitulatif » (mesure 2026-08-18 a 390x844, le
+     doigt ne pouvait plus finir la reservation). En stretch, la rangee borne
+     la zone et son overflow auto (deja pose en base) prend le relais. */
+  #clientView .step3-body { align-items: stretch; }
+
   #clientView .panel-title { font-size: 16px; }
 
   /* Pied d'ecran : la demande sur mesure devient un bouton discret, le CTA
@@ -1034,8 +1046,12 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   #clientView .step-foot .btn-primary { min-width: 0; flex: 1; font-size: 13px; padding: 0 var(--space-3); }
   /* Sur telephone, la demande sur mesure devient une icone seule : le texte
      tronque au milieu d'un mot etait pire qu'aucun texte. Le nom accessible
-     survit (aria-label pose dans le HTML). */
-  #clientView .step-foot .bespoke-entry { flex: none; min-width: 0; padding: var(--space-2); }
+     survit (aria-label pose dans le HTML). `width: auto` est OBLIGATOIRE :
+     la regle de base pose width: 100 %, et flex: none ne l'annule pas ; sans
+     lui l'icone s'etale sur toute la rangee et pousse le CTA « Verifier les
+     disponibilites » HORS ECRAN (26 px a x=382 sur 390, mesure 2026-08-18 :
+     la reservation etait impossible au doigt). */
+  #clientView .step-foot .bespoke-entry { flex: none; width: auto; min-width: 0; padding: var(--space-2); }
   #clientView .step-foot .bespoke-entry-text { display: none; }
   #clientView .step-foot-note { display: none; }
 
@@ -3334,6 +3350,23 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   #clientView .slot-grid {
     grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   }
+  /* Les cartes RICHES (sessions laser, plan conseille) portent une ligne de
+     plan : a trois par rangee elles coupaient leur texte. Deux colonnes des
+     que la ligne de plan existe ; les cartes nues (heure + pistes libres)
+     gardent leurs trois colonnes. */
+  #clientView .slot-grid:has(.slot-card-meta.slot-plan) {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  #clientView .slot { min-width: 0; }
+  /* L en-tete de l etape creneau PLIE. En ligne seche (kicker + titre + date
+     + info laser alignee a droite), sa largeur min-content gonflait toute
+     l etape a 407 px pour 390 : chaque carte de la colonne de droite etait
+     coupee au bord de l ecran (mesure 2026-08-18). L info du laser prend sa
+     propre ligne, en pleine largeur. */
+  #clientView .s2-side { flex-wrap: wrap; align-items: center; row-gap: var(--space-1); }
+  #clientView .s2-side > * { min-width: 0; }
+  #clientView .s2-side #formTimeLimit { margin-left: 0; flex: 1 1 100%; }
+  #clientView .s2-side .info-box { margin: 0; }
 
   /* 5 étapes sur petit écran : seul le libellé actif reste visible */
   #clientView .progress {
@@ -6081,6 +6114,27 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .activity-price { -webkit-line-clamp: 2; font-size: 11.5px; }
   #clientView .activity-note { white-space: normal; font-size: 11.5px; }
 
+  /* La venue se COMPACTE pour rendre l ecran au programme : a 390x844 le
+     panneau prenait 308 px et la tete du programme 100, il restait 196 px
+     aux cartes d activites (2 px hors mode client). Rien ne descend sous le
+     pouce : champs et boutons gardent 44 px. */
+  #clientView .s1-when { gap: var(--space-2); padding: var(--space-3); }
+  #clientView .s1-when .panel-head-rich { padding-bottom: var(--space-2); }
+  #clientView .s1-when .panel-head-icon { width: 34px; height: 34px; }
+  #clientView .s1-when .panel-head-rich .panel-title { font-size: 16px; }
+  /* Programme ouvert : l en-tete « Votre venue » redit ce que la carte
+     montre deja (la date et le groupe sont sous les yeux) ; sa ligne revient
+     aux cartes d activites. En solo il reste : c est lui qui habille la
+     carte centree. */
+  #clientView .step1-body:not(.is-solo) .s1-when .panel-head-rich { display: none; }
+  #clientView .s1-when .s1-field { gap: 6px; }
+  #clientView .s1-when .input { height: 44px; }
+  #clientView .step1-body.is-solo .pax-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  /* La tete du programme : le kicker redit le titre, il cede sa ligne. */
+  #clientView .s1-what-head { gap: var(--space-1); }
+  #clientView .s1-what-head .panel-kicker { display: none; }
+  #clientView .s1-what-head .panel-title { font-size: 15px; }
+
   /* Les formules aussi : deux par rangee, contenu en ligne. 14 formules
      empilees faisaient nettement plus de quatre ecrans. */
   #clientView .formule-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -6096,54 +6150,64 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .formule-card-price strong { font-size: 15px; }
   #clientView .formule-grid { gap: var(--space-3); }
 
-  /* 2. L ACTION SOUS LE POUCE. L etape creneau portait sa decision a 1 658 px
-     du haut, le recapitulatif a 1 268 px : hors du champ, donc introuvable
-     sans chercher. Leur barre d action est ANCREE au bas de l ecran.
-     `sticky` ne suffit pas ici : il ne colle un element qu a l interieur de la
-     boite de son parent, et ces parents sont eux-memes sous la ligne de
-     flottaison. C est donc une barre `fixed`, avec la place reservee dessous
-     pour qu elle ne recouvre jamais le contenu. */
-  /* Le RESUME reste dans le fil, en pleine largeur et lisible ; c est la seule
-     ACTION qui s ancre. Le panneau cesse d etre une boite pour que son bouton
-     puisse quitter le flux sans emporter le resume avec lui. */
-  #clientView #step2 .formula-anchor-status-zone .formula-program-panel {
-    display: contents;
+  /* 2. L ACTION SOUS LE POUCE, DANS LA SCENE. Les barres `position: fixed`
+     de l ancienne pile verticale sont MORTES avec la scene horizontale : un
+     fixed sous un ancetre transforme (la piste en translateX permanent)
+     devient un absolu de PISTE, et la barre partait d un ecran entier hors
+     du viewport des que la piste glissait (mesure 2026-08-18 a 390x844 :
+     « Confirmer la reservation » a x=-707, la reservation etait impossible
+     au telephone). L ancrage se fait donc DANS le flux de l etape : ce qui
+     est long roule dans sa zone assumee, la decision ferme l ecran sans
+     jamais le quitter. */
+  /* Etape creneau, variante ancres : la zone de statut est DEJA collante au
+     bas du defileur s2-slots (regle de base). Elle redevient un panneau plein
+     (le display: contents servait la barre fixed) et se compacte : un fond
+     opaque, sinon les cartes d heures se lisent a travers la decision. */
+  #clientView #step2 .formula-anchor-status-zone {
+    background: var(--page);
+    padding-top: var(--space-2);
   }
-  /* Le recapitulatif ancre sa DECISION ENTIERE : le montant ET les boutons.
-     Ancrer le seul bouton faisait confirmer sans voir le prix, qui vivait
-     tout en bas de la liste. Le montant fait partie de la decision, il
-     descend avec elle. */
+  #clientView #step2 .formula-anchor-status-zone .formula-program-panel {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+  }
+  /* Le recapitulatif garde sa DECISION ENTIERE (montant + boutons) posee en
+     bas de l etape : la liste defile dans sa boite (#recapList est une zone
+     de defilement assumee du gate one-screen), la decision ne bouge pas. */
+  #clientView .step4-body { align-content: stretch; }
+  #clientView #step4 .recap-columns {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    gap: var(--space-3);
+  }
+  #clientView #step4 #recapList {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
   #clientView #step4 .recap-decision {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 20;
+    flex: none;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-2);
     margin: 0;
-    padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
-    background: linear-gradient(to top, var(--page) 78%, rgba(0, 0, 0, 0));
+    padding: var(--space-3);
   }
+  /* Le kicker et le titre redisent l etape que la progression nomme deja :
+     au telephone, la decision garde le montant et les boutons. */
+  #clientView #step4 .recap-decision .panel-kicker,
+  #clientView #step4 .recap-decision .panel-title { display: none; }
   #clientView #step4 .recap-decision .total-box {
     margin: 0;
     padding: var(--space-2) var(--space-3);
   }
   #clientView #step4 .recap-decision .total-amount { font-size: 20px; }
   #clientView #step4 .recap-decision .step-actions { margin: 0; }
-  /* L etape creneau n a qu UN bouton : il s ancre tel quel, avec son aplat
-     d accent et son halo. Aucune boite en plus, aucun style a redefinir. */
-  #clientView #step2 .formula-anchor-status-zone .formula-plan-confirm {
-    position: fixed;
-    left: var(--space-3);
-    right: var(--space-3);
-    bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
-    z-index: 20;
-    width: auto;
-  }
-  /* La place que prend la barre est RENDUE au bas de l etape : rien ne se
-     lit sous une barre opaque. */
-  #clientView #step2 .card { padding-bottom: 64px; }
-  #clientView #step4 .recap-columns { padding-bottom: 188px; }
+  #clientView #step4 .recap-decision .step-actions .btn-primary { flex: 1; min-width: 0; }
 
   /* La carte de creneau est plus riche que la pastille, donc plus haute :
      l etape rend ailleurs les pixels qu elle prend, sans rien retirer. */

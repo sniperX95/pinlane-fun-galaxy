@@ -883,17 +883,30 @@ kbd, .kbd {
 .schedule-hint .open { color: var(--success); font-weight: 500; }
 .schedule-hint .closed { color: var(--danger); font-weight: 500; }
 
-/* Contexte vacances/férié à côté de « Ouvert 10h - 22h » */
-.schedule-hint .sched-holiday {
-  margin-left: var(--space-2);
-  padding: 1px 8px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full);
-  background: var(--subtle);
-  color: var(--muted);
+/* Contexte vacances/férié à côté de l'état d'ouverture : une MENTION, pas une
+   pastille. Encadrée et posée sur un fond, elle avait le poids d'un bouton
+   pour une information de second plan (« ça fait trop IA la pastille comme
+   ça », Movsar 2026-08-17) ; un point médian suffit à la rattacher. */
+.schedule-hint .sched-holiday,
+.schedule-hint .sched-note {
+  color: var(--faint);
   /* Plancher de lisibilite DESIGN.md §4 : jamais de texte sous 12 px. */
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
+}
+
+/* La note d'horaire suit l'etat sur la meme ligne, separee d'un point ; la
+   mention de periode prend la sienne (un point median orphelin en debut de
+   ligne quand ca replie est pire que pas de point du tout). */
+.schedule-hint .sched-note::before {
+  content: '·';
+  margin: 0 6px;
+  color: var(--line-strong);
+}
+
+.schedule-hint .sched-holiday {
+  display: block;
+  margin-top: 3px;
 }
 
 /* Encart informatif d'étape */

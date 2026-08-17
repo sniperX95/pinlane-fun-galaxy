@@ -3170,6 +3170,21 @@ function updateSchedHint() {
     );
     return;
   }
+  // L'HEURE QU'IL EST COMPTE. Le badge lisait l'horaire du jour sans regarder
+  // la pendule : a 22h30, un centre ferme depuis 30 min affichait encore
+  // « Ouvert 10h - 22h » (Movsar, capture). Sur AUJOURD'HUI, il dit donc ce
+  // qui est vrai maintenant ; sur une date future, la plage reste la bonne
+  // reponse (« quand est-ce ouvert ce jour-la ? »).
+  // UN SEUL cas change la reponse : la journee est FINIE. Avant l'ouverture,
+  // la journee est encore devant (on reserve pour 14h a 8h du matin), donc le
+  // badge garde sa plage ; c'est APRES l'heure de fermeture qu'annoncer
+  // « Ouvert » devient un mensonge (Movsar, capture a 22h passees).
+  const isToday = typeof todayStr === 'function' && state.booking.date === todayStr();
+  const now = isToday && typeof currentTimeDecimal === 'function' ? currentTimeDecimal() : null;
+  if (now != null && Number.isFinite(Number(sch.close)) && now >= Number(sch.close)) {
+    el.innerHTML = `<span class="closed">Fermé pour aujourd’hui</span><span class="sched-note">ouvrait ${escapeHtml(sch.label)}</span>${holiday}`;
+    return;
+  }
   el.innerHTML = `<span class="open">Ouvert ${sch.label}</span>${holiday}`;
 }
 

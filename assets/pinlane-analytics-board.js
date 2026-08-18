@@ -471,8 +471,11 @@
     }
     function splitData(metric) {
       if (metric === 'byType') {
-        var obj = currentAnalytics && currentAnalytics.byType && typeof currentAnalytics.byType === 'object' ? currentAnalytics.byType : {};
-        return Object.keys(obj).map(function (k) { var row = obj[k] || {}; return { label: TYPE_LABELS[k] || k, value: Number(row.count) || 0 }; });
+        // byActivity (repartition reelle, labels du serveur, 2026-08-18)
+        // d'abord ; byType en repli pour un cache d'analytics d'avant.
+        var real = currentAnalytics && currentAnalytics.byActivity && typeof currentAnalytics.byActivity === 'object' && Object.keys(currentAnalytics.byActivity).length ? currentAnalytics.byActivity : null;
+        var obj = real || (currentAnalytics && currentAnalytics.byType && typeof currentAnalytics.byType === 'object' ? currentAnalytics.byType : {});
+        return Object.keys(obj).map(function (k) { var row = obj[k] || {}; return { label: (row && row.label) || TYPE_LABELS[k] || k, value: Number(row.count) || 0 }; });
       }
       if (metric === 'byFormule') {
         var formules = currentAnalytics && Array.isArray(currentAnalytics.byFormule) ? currentAnalytics.byFormule : [];

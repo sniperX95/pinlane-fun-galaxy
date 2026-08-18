@@ -234,8 +234,24 @@ function dhSeries(analytics) {
 const DH_TYPE_META = {
   bowling: { label: 'Bowling', color: 'var(--chart-1)' },
   laser: { label: 'Laser Game', color: 'var(--chart-2)' },
+  laser_game: { label: 'Laser Game', color: 'var(--chart-2)' },
   formule: { label: 'Formules', color: 'var(--chart-3)' },
+  visite: { label: 'Visite', color: 'var(--chart-4)' },
+  multi: { label: 'Multi-activités', color: 'var(--chart-4)' },
 };
+
+// Repartition par activite REELLE (byActivity, labels du serveur) d'abord ;
+// byType en repli tant qu'un cache d'analytics d'avant n'a pas rafraichi.
+function dhActivitySplit(a) {
+  const source = a && a.byActivity && Object.keys(a.byActivity).length ? a.byActivity : (a && a.byType) || {};
+  return Object.entries(source).map(([key, v]) => ({
+    key,
+    label: (v && v.label) || DH_TYPE_META[key]?.label || key,
+    count: Number(v && v.count) || 0,
+    pax: Number(v && v.pax) || 0,
+    revenue: Number(v && v.revenue) || 0,
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Rendu principal de l'onglet
@@ -289,11 +305,11 @@ function renderAdminDataTab() {
     dhTile({ label: 'Occupation bowling', value: a.occupancy.rate === null ? '-' : `${a.occupancy.rate.toLocaleString('fr-BE')} %`, sub: `${a.occupancy.bookedLaneHours} h réservées / ${a.occupancy.capacityLaneHours} h ouvertes` }),
   ].join('');
 
-  const typeRows = Object.entries(a.byType).map(([type, v]) => ({
-    label: DH_TYPE_META[type]?.label || type,
-    color: DH_TYPE_META[type]?.color || 'var(--chart-1)',
-    value: v.count,
-    extra: dhEuro(v.revenue),
+  const typeRows = dhActivitySplit(a).map((row) => ({
+    label: row.label,
+    color: DH_TYPE_META[row.key]?.color || 'var(--chart-1)',
+    value: row.count,
+    extra: dhEuro(row.revenue),
   })).sort((x, y) => y.value - x.value);
 
   const formuleRows = a.byFormule.slice(0, 8).map((f) => ({
@@ -564,11 +580,11 @@ async function dhExportCsv(kind) {
   } else if (kind === 'clients') {
     rows.push(['Client', 'Visites', 'Chiffre (EUR)', 'Première visite', 'Dernière visite', 'Activité préférée', 'Téléphone', 'Email', 'Nouveau sur la période']);
     for (const c of dhState.analytics.clients.top) {
-      rows.push([c.name, c.visits, c.revenue, c.firstVisit, c.lastVisit, DH_TYPE_META[c.favorite]?.label || c.favorite, c.phone, c.email, c.firstVisit >= a.startDate ? 'oui' : 'non']);
+      rows.push([c.name, c.visits, c.revenue, c.firstVisit, c.lastVisit, c.favoriteLabel || DH_TYPE_META[c.favorite]?.label || c.favorite, c.phone, c.email, c.firstVisit >= a.startDate ? 'oui' : 'non']);
     }
   } else if (kind === 'formules') {
     rows.push(['Type', 'Libellé', 'Réservations', 'Joueurs', 'Chiffre (EUR)']);
-    for (const [type, v] of Object.entries(a.byType)) rows.push(['Activité', DH_TYPE_META[type]?.label || type, v.count, v.pax, v.revenue]);
+    for (const row of dhActivitySplit(a)) rows.push(['Activité', row.label, row.count, row.pax, row.revenue]);
     for (const f of a.byFormule) rows.push(['Formule', f.label, f.count, f.pax, f.revenue]);
   } else if (kind === 'reservations-brutes') {
     try {
@@ -640,7 +656,7 @@ function dhPrintReport(reportId = null) {
     <div class="kpis">${kpis.map(([k, v]) => `<div class="kpi"><span>${dhEsc(k)}</span><b>${dhEsc(v)}</b></div>`).join('')}</div>
     <h2>Activités &amp; formules</h2>
     <table><thead><tr><th>Type</th><th>Libellé</th><th>Réservations</th><th>Joueurs</th><th>Chiffre</th></tr></thead><tbody>
-      ${tableRows(Object.entries(a.byType).map(([type, v]) => ['Activité', DH_TYPE_META[type]?.label || type, dhNum(v.count), dhNum(v.pax), dhEuroFull(v.revenue)]))}
+      ${tableRows(dhActivitySplit(a).map((row) => ['Activité', row.label, dhNum(row.count), dhNum(row.pax), dhEuroFull(row.revenue)]))}
       ${tableRows(a.byFormule.map((f) => ['Formule', f.label, dhNum(f.count), dhNum(f.pax), dhEuroFull(f.revenue)]))}
     </tbody></table>
     <h2>Clients fidèles</h2>

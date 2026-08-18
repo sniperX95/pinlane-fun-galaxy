@@ -1325,7 +1325,20 @@ function renderAdminHeader() {
 // Le label de fenêtre est TOUJOURS affiché à côté des graphiques.
 const adminTrendCache = {};
 const adminTrendLoadingKeys = {};
-const ADMIN_TREND_TYPE_LABELS = { bowling: 'Bowling', laser: 'Laser Game', formule: 'Formules' };
+const ADMIN_TREND_TYPE_LABELS = { bowling: 'Bowling', laser: 'Laser Game', formule: 'Formules', visite: 'Visite' };
+
+// Parts d'un graphe « repartition par activite » : byActivity (la repartition
+// REELLE servie par lib/direction-analytics depuis le 2026-08-18, avec les
+// noms du catalogue vivant) d'abord, byType en repli pour un cache d'avant.
+function adminActivitySplitParts(analytics, field) {
+  const source = analytics && analytics.byActivity && Object.keys(analytics.byActivity).length
+    ? analytics.byActivity
+    : (analytics && analytics.byType) || {};
+  return Object.entries(source).map(([key, row]) => ({
+    label: (row && row.label) || ADMIN_TREND_TYPE_LABELS[key] || key,
+    value: Number(row && row[field]) || 0,
+  }));
+}
 const ADMIN_TREND_CHANNEL_LABELS = { 'en ligne': 'En ligne (site)', staff: 'Staff (sur place / tél.)' };
 
 function formatAdminTrendDate(dateStr, withYear = false) {
@@ -1590,10 +1603,9 @@ function mountAdminDataCharts() {
   const analytics = dhState.analytics;
   const motionBase = `direction|data|${state.adminCenterId || 'libramont'}|${analytics.startDate}|${analytics.endDate}`;
   if (typeof charts.donutChart === 'function') {
-    const parts = Object.entries(analytics.byType || {}).map(([type, row]) => ({
-      label: ADMIN_TREND_TYPE_LABELS[type] || type,
-      value: Number(row?.revenue) || 0,
-    }));
+    // byActivity (repartition reelle, labels du serveur) d'abord ; byType en
+    // repli tant qu'un vieux cache d'analytics n'a pas ete rafraichi.
+    const parts = adminActivitySplitParts(analytics, 'revenue');
     charts.donutChart(document.getElementById('admDataTypes'), { parts, format: 'euro', motionKey: `${motionBase}|types` });
   }
   if (typeof charts.barChart === 'function') {
@@ -2182,7 +2194,7 @@ function dirTablesHtml(entry) {
         // (favoriteFormule) ; on la montre quand elle existe.
         const favorite = (row.favorite === 'formule' && row.favoriteFormule)
           ? row.favoriteFormule
-          : (ADMIN_TREND_TYPE_LABELS[row.favorite] || row.favorite || '');
+          : (row.favoriteLabel || ADMIN_TREND_TYPE_LABELS[row.favorite] || row.favorite || '');
         const contact = row.phone || row.email || '';
         return `<tr>
           <td><span class="dir-client-name">${escapeHtml(row.name || 'Client')}</span>${contact ? `<span class="dir-client-contact">${escapeHtml(contact)}</span>` : ''}</td>
@@ -3048,14 +3060,14 @@ function mountDirectionCharts() {
   }
   if (charts && typeof charts.donutChart === 'function') {
     charts.donutChart(document.getElementById('dirChartTypes'), {
-      parts: Object.entries(analytics.byType || {}).map(([type, row]) => ({ label: ADMIN_TREND_TYPE_LABELS[type] || type, value: Number(row && row.revenue) || 0 })),
+      parts: adminActivitySplitParts(analytics, 'revenue'),
       format: 'euro',
       motionKey: `${motionBase}|types`,
     });
     // Meme repartition par activite, mais en VOLUME (nombre de resas) : le mix
     // argent (formules) differe du mix volume (laser) -> l'insight le plus actionnable.
     charts.donutChart(document.getElementById('dirChartTypesVol'), {
-      parts: Object.entries(analytics.byType || {}).map(([type, row]) => ({ label: ADMIN_TREND_TYPE_LABELS[type] || type, value: Number(row && row.count) || 0 })),
+      parts: adminActivitySplitParts(analytics, 'count'),
       format: 'int',
       motionKey: `${motionBase}|typesvol`,
     });

@@ -6513,28 +6513,79 @@ function buildStaffActivityOccurrences(activeReservations = []) {
 // affichait 0 sur les jours jamais ouverts (« des fois ca montre des fois
 // non », capture Movsar 2026-08-18). Le serveur agrege la vraie plage ; le
 // calcul local reste le repli tant que la reponse n'est pas la.
-let staffDaySeriesCache = { key: '', days: [], at: 0, loading: false };
+// Cache PAR FENETRE (cle centre|date de fin) : la carte Revenus navigue par
+// jours (fleches), chaque fenetre garde sa reponse ~60 s. 14 jours par appel :
+// la fenetre affichee (7) + la precedente, pour une tendance « vs periode
+// precedente » calculee sur de vraies donnees serveur.
+const staffDaySeriesCache = new Map();
 
-function getStaffDaySeries() {
-  const key = `${getCurrentStaffCenterId()}|${state.currentDate}`;
-  return staffDaySeriesCache.key === key ? staffDaySeriesCache.days : [];
+function getStaffDaySeries(endDate = state.currentDate) {
+  const entry = staffDaySeriesCache.get(`${getCurrentStaffCenterId()}|${endDate}`);
+  return entry ? entry.days : [];
 }
 
-async function ensureStaffDaySeries() {
-  const key = `${getCurrentStaffCenterId()}|${state.currentDate}`;
-  const fresh = staffDaySeriesCache.key === key && (Date.now() - staffDaySeriesCache.at) < 60000;
-  if (staffDaySeriesCache.loading || (fresh && staffDaySeriesCache.days.length)) return;
-  staffDaySeriesCache = { key, days: staffDaySeriesCache.key === key ? staffDaySeriesCache.days : [], at: staffDaySeriesCache.at, loading: true };
+async function ensureStaffDaySeries(endDate = state.currentDate) {
+  const key = `${getCurrentStaffCenterId()}|${endDate}`;
+  const entry = staffDaySeriesCache.get(key);
+  if (entry && (entry.loading || (entry.days.length && (Date.now() - entry.at) < 60000))) return;
+  staffDaySeriesCache.set(key, { days: entry ? entry.days : [], at: entry ? entry.at : 0, loading: true });
   try {
     const centerQuery = encodeURIComponent(getCurrentStaffCenterId());
-    const payload = await apiRequest(`${API_ENDPOINTS.staffState}?date=${encodeURIComponent(state.currentDate)}&centerId=${centerQuery}&days=7`);
-    staffDaySeriesCache = { key, days: Array.isArray(payload.days) ? payload.days : [], at: Date.now(), loading: false };
+    const payload = await apiRequest(`${API_ENDPOINTS.staffState}?date=${encodeURIComponent(endDate)}&centerId=${centerQuery}&days=14`);
+    staffDaySeriesCache.set(key, { days: Array.isArray(payload.days) ? payload.days : [], at: Date.now(), loading: false });
     if (state.view === 'staff' && state.staffMenuPage === 'dashboard') renderStaffDashboard();
   } catch (error) {
     // Repli silencieux sur la serie locale : la carte reste honnete, juste
     // limitee aux dates connues du poste.
-    staffDaySeriesCache = { key, days: [], at: Date.now(), loading: false };
+    staffDaySeriesCache.set(key, { days: [], at: Date.now(), loading: false });
   }
+}
+
+// FENETRE AFFICHEE par la carte Revenus : 7 jours finissant a la date du
+// dashboard moins l'offset des fleches. Serveur d'abord ; a l'offset 0 les
+// series de metrics (deja corrigees serveur) servent de repli le temps du
+// premier chargement.
+function getDashRevenueWindow(metrics) {
+  const offset = Math.max(0, Number(state.dashRevenueOffset) || 0);
+  const endDate = addDays(state.currentDate, -offset);
+  const days = Array.from({ length: 7 }, (_, index) => addDays(endDate, index - 6));
+  const serverDays = getStaffDaySeries(endDate);
+  ensureStaffDaySeries(endDate);
+  if (serverDays.length === 14) {
+    const window = serverDays.slice(-7);
+    const previous = serverDays.slice(0, 7);
+    return {
+      offset, endDate, days, loaded: true,
+      values: window.map(day => Number(day.revenue) || 0),
+      counts: window.map(day => Number(day.reservations) || 0),
+      collected: window.map(day => Number(day.collected) || 0),
+      previousTotal: previous.reduce((sum, day) => sum + (Number(day.revenue) || 0), 0),
+    };
+  }
+  if (offset === 0) {
+    return { offset, endDate, days, loaded: true, values: metrics.revenueSeries, counts: metrics.reservationSeries, collected: metrics.collectedSeries, previousTotal: null };
+  }
+  return { offset, endDate, days, loaded: false, values: Array(7).fill(0), counts: Array(7).fill(0), collected: Array(7).fill(0), previousTotal: null };
+}
+
+// Les fleches de la carte Revenus : « avancer / reculer par jours » (Movsar,
+// 2026-08-18). L'offset ne descend jamais sous 0 : le futur n'a pas de caisse.
+function dashRevenueShift(delta, ev) {
+  if (ev) ev.stopPropagation();
+  const current = Math.max(0, Number(state.dashRevenueOffset) || 0);
+  const next = Math.max(0, current + delta);
+  if (next === current) return;
+  state.dashRevenueOffset = next;
+  save();
+  renderStaffDashboard();
+}
+
+function dashRevenueReset(ev) {
+  if (ev) ev.stopPropagation();
+  if (!Number(state.dashRevenueOffset)) return;
+  state.dashRevenueOffset = 0;
+  save();
+  renderStaffDashboard();
 }
 
 function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
@@ -6608,7 +6659,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   // (voir staffDaySeriesCache). Le jour affiche garde la donnee locale : elle
   // est temps reel (poll + mises a jour optimistes), le serveur a 60 s de
   // retard dessus.
-  const serverDays = typeof getStaffDaySeries === 'function' ? getStaffDaySeries() : [];
+  const serverDays = (typeof getStaffDaySeries === 'function' ? getStaffDaySeries() : []).slice(-7);
   if (serverDays.length === days.length) {
     serverDays.forEach((day, index) => {
       if (index === days.length - 1 || !day || day.date !== days[index]) return;
@@ -6991,27 +7042,35 @@ function formatMoneyShort(value) {
   return `${amount} €`;
 }
 
-function renderStaffDashboardRevenue(metrics) {
-  const rawMax = Math.max(...metrics.revenueSeries, 0);
+function renderStaffDashboardRevenue(win) {
+  if (!win.loaded) {
+    return `<div class="dash-revenue-bars is-loading" aria-label="Chargement de la période">
+      <div class="dash-revenue-loading" role="status">Chargement de la période…</div>
+    </div>`;
+  }
+  const rawMax = Math.max(...win.values, 0);
   const { max: axisMax, step } = niceRevenueScale(rawMax);
-  const days = Array.from({ length: 7 }, (_, index) => addDays(state.currentDate, index - 6));
   const ticks = [];
   for (let value = axisMax; value > -step / 2; value -= step) ticks.push(Math.max(0, Math.round(value)));
-  const bars = metrics.revenueSeries.map((value, index) => {
-    const date = parseLocalDate(days[index]);
+  const bars = win.values.map((value, index) => {
+    const date = parseLocalDate(win.days[index]);
     return {
       amount: Math.round(Number(value) || 0),
+      count: win.counts[index] || 0,
       short: date.toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric' }).replace('.', ''),
       full: date.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' }).replace('.', '')
     };
   });
-  const barsData = JSON.stringify(bars.map(bar => ({ f: bar.full, a: bar.amount })));
-  return `<div class="dash-revenue-bars" aria-label="Revenus des sept derniers jours" data-revenue-bars="${escapeHtml(barsData)}">
+  const barsData = JSON.stringify(bars.map(bar => ({ f: bar.full, a: bar.amount, c: bar.count })));
+  // La cle de mouvement change avec la FENETRE : les barres poussent a
+  // l'arrivee et a chaque navigation, jamais sur un simple re-rendu.
+  const motionKey = `dashrev|${getCurrentStaffCenterId()}|${win.endDate}|${Math.round(win.values.reduce((sum, value) => sum + value, 0))}`;
+  return `<div class="dash-revenue-bars" aria-label="Revenus de la période affichée" data-revenue-bars="${escapeHtml(barsData)}" data-motion-key="${escapeHtml(motionKey)}">
     <div class="dash-revenue-scale">${ticks.map(tick => `<span>${escapeHtml(formatMoneyShort(tick))}</span>`).join('')}</div>
     <div class="dash-revenue-bar-grid">
       ${bars.map((bar, index) => {
         const height = bar.amount > 0 ? Math.max(3, Math.round((bar.amount / axisMax) * 100)) : 0;
-        return `<button type="button" class="dash-revenue-bar" data-index="${index}" aria-label="${escapeHtml(`${bar.full} : ${formatMoney(bar.amount)}`)}">
+        return `<button type="button" class="dash-revenue-bar" data-index="${index}" style="--rev-delay:${index * 55}ms" aria-label="${escapeHtml(`${bar.full} : ${formatMoney(bar.amount)} · ${bar.count} résa${bar.count > 1 ? 's' : ''}`)}">
           <span style="height:${height}%"></span>
           <small>${escapeHtml(bar.short)}</small>
         </button>`;
@@ -7813,7 +7872,16 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   const playerTrendText = formatDashboardTrend(metrics.players, metrics.previousPlayers);
   const occupancyTrendText = formatDashboardTrend(metrics.occupancy, metrics.previousOccupancy);
   const availableLanes = TOTAL_LANES - Object.values(state.laneStatuses || {}).filter(status => status === 'maintenance').length;
-  const totalPeriodRevenue = metrics.revenueSeries.reduce((sum, value) => sum + value, 0);
+  // La carte Revenus vit sur SA fenetre (fleches par jours) : total et
+  // tendance suivent la fenetre affichee, pas forcement la date du dashboard.
+  const revenueWindow = getDashRevenueWindow(metrics);
+  const totalPeriodRevenue = revenueWindow.values.reduce((sum, value) => sum + value, 0);
+  const revenueTrendWindowText = revenueWindow.previousTotal !== null && revenueWindow.previousTotal > 0
+    ? `${totalPeriodRevenue >= revenueWindow.previousTotal ? '+' : ''}${Math.round(((totalPeriodRevenue - revenueWindow.previousTotal) / revenueWindow.previousTotal) * 100)}%`
+    : (revenueWindow.previousTotal === 0 && totalPeriodRevenue > 0 ? '+100%' : revenueTrendText);
+  const revenueWindowLabel = revenueWindow.offset
+    ? `${parseLocalDate(revenueWindow.days[0]).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')} au ${parseLocalDate(revenueWindow.endDate).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' }).replace('.', '')}`
+    : '7 derniers jours';
   const syncIndicator = getRemoteSyncIndicator();
   root.innerHTML = `
     <section class="dash-hero">
@@ -7899,9 +7967,21 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
         <div class="dash-alerts">${renderStaffDashboardAlerts(metrics)}</div>
       </article>
       <article class="dash-card dash-revenue-card">
-        <div class="dash-card-head"><h2>Revenus</h2><button type="button" onclick="openStaffDashboardRevenue()">7 derniers jours</button></div>
-        <div class="dash-revenue-head"><strong>${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendText)} vs période précédente</small></div>
-        ${renderStaffDashboardRevenue(metrics)}
+        <div class="dash-card-head">
+          <h2>Revenus</h2>
+          <div class="dash-revenue-nav">
+            ${revenueWindow.offset ? `<button type="button" class="dash-rev-today" onclick="dashRevenueReset(event)">Aujourd'hui</button>` : ''}
+            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(1, event)" aria-label="Reculer d'un jour">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" class="dash-rev-period" onclick="openStaffDashboardRevenue()">${escapeHtml(revenueWindowLabel)}</button>
+            <button type="button" class="dash-rev-step" onclick="dashRevenueShift(-1, event)" ${revenueWindow.offset ? '' : 'disabled'} aria-label="Avancer d'un jour">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="dash-revenue-head"><strong id="dashRevenueTotal">${formatMoney(totalPeriodRevenue)}</strong><span>Total</span><small>${escapeHtml(revenueTrendWindowText)} vs période précédente</small></div>
+        ${renderStaffDashboardRevenue(revenueWindow)}
       </article>
     </section>
 
@@ -7933,6 +8013,24 @@ function setupRevenueChartInteraction(container) {
   try { bars = JSON.parse(container.dataset.revenueBars || '[]'); } catch (_) { return; }
   const barEls = Array.from(container.querySelectorAll('.dash-revenue-bar'));
   if (!bars.length || !barEls.length) return;
+  // LA POUSSE DES BARRES, gardee par cle de fenetre (meme grammaire que
+  // PINLANE_CHARTS_SEEN) : elle joue a l'arrivee et a chaque navigation par
+  // jours, jamais sur un simple re-rendu de la meme fenetre. Le total
+  // s'anime en compteur au meme moment.
+  const seen = window.PINLANE_CHARTS_SEEN instanceof Set ? window.PINLANE_CHARTS_SEEN : (window.PINLANE_CHARTS_SEEN = new Set());
+  const motionKey = container.dataset.motionKey || '';
+  if (motionKey && !seen.has(motionKey) && !prefersReducedMotion()) {
+    seen.add(motionKey);
+    container.classList.add('rev-anim');
+    requestAnimationFrame(() => requestAnimationFrame(() => container.classList.add('rev-in')));
+    const totalEl = document.getElementById('dashRevenueTotal');
+    const charts = window.PinlaneCharts;
+    if (totalEl && charts && typeof charts.countUp === 'function') {
+      charts.countUp(totalEl, bars.reduce((sum, bar) => sum + (Number(bar.a) || 0), 0), { format: 'euro' });
+    }
+  } else {
+    container.classList.add('rev-in');
+  }
   const tip = document.createElement('div');
   tip.className = 'dash-chart-tip dash-chart-tip-bar';
   tip.setAttribute('role', 'status');
@@ -7944,7 +8042,7 @@ function setupRevenueChartInteraction(container) {
     const el = barEls[index];
     if (!info || !el) return;
     barEls.forEach(other => other.classList.toggle('is-active', other === el));
-    tip.innerHTML = `<strong>${escapeHtml(info.f)}</strong><b>${escapeHtml(formatMoney(info.a))}</b>`;
+    tip.innerHTML = `<strong>${escapeHtml(info.f)}</strong><b>${escapeHtml(formatMoney(info.a))}</b><small>${Number(info.c) || 0} résa${(Number(info.c) || 0) > 1 ? 's' : ''}</small>`;
     tip.hidden = false;
     const contRect = container.getBoundingClientRect();
     const barRect = el.getBoundingClientRect();

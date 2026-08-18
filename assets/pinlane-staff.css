@@ -4092,6 +4092,67 @@ body.staff-mode.laser-dragging * { user-select: none; }
    suivante : il se lit, il se corrige, il ne change rien. */
 .dash-alerts { display: grid; gap: 6px; }
 
+/* Groupes de gravite de la carte Alertes : un intitule fin (Prioritaire /
+   A traiter / A suivre) + compte, au-dessus de ses lignes. */
+.dash-alert-group { display: grid; gap: 6px; }
+.dash-alert-group + .dash-alert-group { margin-top: 6px; }
+.dash-alert-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.dash-alert-group-head .priority-dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: currentColor; }
+.dash-alert-group-head em { font-style: normal; font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--faint); }
+.dash-alert-group-head.pr-critical { color: var(--danger); }
+.dash-alert-group-head.pr-important { color: var(--warning); }
+.dash-alert-group-head.pr-info { color: var(--info); }
+.dash-alert-more {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 4px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dash-alert-more:hover { color: var(--text); }
+.dash-alert-dot.overdue { background: var(--danger); }
+.dash-alert-dot.noshow { background: var(--warning); }
+
+/* Une DEMANDE sur mesure dans le panneau d'alertes : pas une rangee de
+   reservation (pas d'heure, pas de montant), donc sa propre grille : le
+   contenu prend la largeur, les actions se posent dessous. */
+.dashboard-detail-row.lead {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.dashboard-detail-row.lead .dashboard-detail-main { min-width: 0; }
+.dashboard-detail-row.lead .dashboard-detail-main small {
+  display: block;
+  white-space: normal;
+  line-height: 1.45;
+}
+.dashboard-detail-row.lead .dashboard-detail-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+/* Mix d'activites : le total au-dessus, le donut partage (PinlaneCharts)
+   en dessous. L'ancien anneau CSS a trois tranches est mort avec lui. */
+.dash-activity-mix { display: grid; gap: var(--space-2); }
+.dash-activity-mix-total { display: flex; align-items: baseline; gap: 8px; }
+.dash-activity-mix-total strong { font-size: 26px; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.dash-activity-mix-total span { font-size: 12.5px; color: var(--muted); }
+.dash-activity-chart { min-height: 190px; }
+
 .dash-alert-row {
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) auto;

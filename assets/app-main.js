@@ -6445,6 +6445,98 @@ function renderDashboardIcon(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.calendar}</svg>`;
 }
 
+// COMPOSITION D'UNE RESERVATION EN ACTIVITES. La fiche programme du serveur
+// (program.items : id + nom du catalogue vivant) fait foi ; sans elle, le type
+// et les fenetres de ressources disent bowling / laser ; un type inconnu reste
+// nomme plutot qu'avale par une categorie fourre-tout.
+function getReservationActivityEntries(reservation) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items)
+    ? reservation.program.items
+    : [];
+  if (items.length) {
+    const seen = new Map();
+    items.forEach(item => {
+      const id = String(item.activityId || 'autre');
+      if (!seen.has(id)) seen.set(id, { id, name: item.name || ACTIVITY_LABELS[id] || id });
+    });
+    return [...seen.values()];
+  }
+  const entries = [];
+  if (getBowlingWindowsFromReservation(reservation).length) entries.push({ id: 'bowling', name: ACTIVITY_LABELS.bowling });
+  if (getLaserWindowsFromReservation(reservation).length) entries.push({ id: 'laser_game', name: ACTIVITY_LABELS.laser_game });
+  if (!entries.length) {
+    const id = String(reservation.type || 'autre');
+    entries.push({ id, name: ACTIVITY_LABELS[id] || 'Autre activité' });
+  }
+  return entries;
+}
+
+// UNE RESERVATION = UNE PART du donut, classee par sa composition : une seule
+// activite -> cette activite ; une formule -> Formules ; un panier libre de
+// plusieurs activites -> Multi-activites. Les parts somment donc toujours au
+// nombre de reservations, et chaque pourcentage vient de SON compte (jamais
+// d'un reste).
+function buildStaffActivityMix(activeReservations = []) {
+  const buckets = new Map();
+  activeReservations.forEach(reservation => {
+    const entries = getReservationActivityEntries(reservation);
+    const isFormule = reservation.type === 'formule' || reservation.formuleId;
+    const key = isFormule ? 'formule' : (entries.length > 1 ? 'multi' : entries[0].id);
+    const label = isFormule ? 'Formules' : (entries.length > 1 ? 'Multi-activités' : entries[0].name);
+    const bucket = buckets.get(key) || { key, label, count: 0, revenue: 0, players: 0 };
+    bucket.count += 1;
+    bucket.revenue += Number(reservation.price) || 0;
+    bucket.players += Number(reservation.pax) || 0;
+    buckets.set(key, bucket);
+  });
+  return [...buckets.values()].sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+}
+
+// OCCURRENCES PAR ACTIVITE : combien de dossiers contiennent chaque activite
+// du catalogue (une visite bowling + billards compte dans les deux). C'est la
+// lecture « qu'est-ce qui tourne aujourd'hui », servie par le detail.
+function buildStaffActivityOccurrences(activeReservations = []) {
+  const buckets = new Map();
+  activeReservations.forEach(reservation => {
+    getReservationActivityEntries(reservation).forEach(entry => {
+      const bucket = buckets.get(entry.id) || { id: entry.id, name: entry.name, count: 0, revenue: 0, rows: [] };
+      bucket.count += 1;
+      bucket.rows.push(reservation);
+      buckets.set(entry.id, bucket);
+    });
+  });
+  return [...buckets.values()].sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+}
+
+// SERIE QUOTIDIENNE SERVIE PAR LE SERVEUR. Le cache local (state.reservations)
+// ne contient QUE les dates deja visitees sur CE poste : la carte Revenus
+// affichait 0 sur les jours jamais ouverts (« des fois ca montre des fois
+// non », capture Movsar 2026-08-18). Le serveur agrege la vraie plage ; le
+// calcul local reste le repli tant que la reponse n'est pas la.
+let staffDaySeriesCache = { key: '', days: [], at: 0, loading: false };
+
+function getStaffDaySeries() {
+  const key = `${getCurrentStaffCenterId()}|${state.currentDate}`;
+  return staffDaySeriesCache.key === key ? staffDaySeriesCache.days : [];
+}
+
+async function ensureStaffDaySeries() {
+  const key = `${getCurrentStaffCenterId()}|${state.currentDate}`;
+  const fresh = staffDaySeriesCache.key === key && (Date.now() - staffDaySeriesCache.at) < 60000;
+  if (staffDaySeriesCache.loading || (fresh && staffDaySeriesCache.days.length)) return;
+  staffDaySeriesCache = { key, days: staffDaySeriesCache.key === key ? staffDaySeriesCache.days : [], at: staffDaySeriesCache.at, loading: true };
+  try {
+    const centerQuery = encodeURIComponent(getCurrentStaffCenterId());
+    const payload = await apiRequest(`${API_ENDPOINTS.staffState}?date=${encodeURIComponent(state.currentDate)}&centerId=${centerQuery}&days=7`);
+    staffDaySeriesCache = { key, days: Array.isArray(payload.days) ? payload.days : [], at: Date.now(), loading: false };
+    if (state.view === 'staff' && state.staffMenuPage === 'dashboard') renderStaffDashboard();
+  } catch (error) {
+    // Repli silencieux sur la serie locale : la carte reste honnete, juste
+    // limitee aux dates connues du poste.
+    staffDaySeriesCache = { key, days: [], at: Date.now(), loading: false };
+  }
+}
+
 function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const activeReservations = dayReservations.filter(reservation => reservation.status !== 'cancelled');
   const now = currentTimeDecimal();
@@ -6464,9 +6556,32 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const activeNow = activeReservations.filter(reservation => {
     return getStaffResourceWindows(reservation, 'all').some(window => window.start <= now && now < window.end);
   });
-  const completeCount = activeReservations.filter(reservation => getBowlingWindowsFromReservation(reservation).length && getLaserWindowsFromReservation(reservation).length).length;
-  const bowlingOnly = activeReservations.filter(reservation => getBowlingWindowsFromReservation(reservation).length && !getLaserWindowsFromReservation(reservation).length).length;
-  const laserOnly = activeReservations.filter(reservation => getLaserWindowsFromReservation(reservation).length && !getBowlingWindowsFromReservation(reservation).length).length;
+  // REPARTITION PAR ACTIVITE tiree de la COMPOSITION REELLE de chaque
+  // reservation (program.items du serveur, sinon type et fenetres), plus
+  // jamais du seul couple bowling/laser : 7 resas dont 2 golf/arcades
+  // donnaient « Complet 43 % » avec 1 dossier (2026-08-18, capture Movsar),
+  // parce que le pourcentage etait un RESTE (100 - bowling - laser) et que
+  // toute activite hors bowling/laser tombait dedans en silence.
+  const activityMix = buildStaffActivityMix(activeReservations);
+  const activityOccurrences = buildStaffActivityOccurrences(activeReservations);
+  // SEANCE FINIE, DOSSIER OUVERT : la fin est passee, rien n'est encaisse.
+  const overdueRows = state.currentDate === todayStr()
+    ? activeReservations.filter(reservation => {
+      if (reservation.status === 'paid') return false;
+      const windows = getStaffResourceWindows(reservation, 'all');
+      return windows.length > 0 && windows.every(window => window.end <= now);
+    })
+    : [];
+  // DEBUT PASSE, PERSONNE N'EST POINTE : arrivee a pointer ou client a rappeler.
+  const noshowRows = state.currentDate === todayStr()
+    ? activeReservations.filter(reservation => {
+      if (reservation.status === 'paid' || reservation.status === 'arrived') return false;
+      const start = getReservationFirstResourceStart(reservation, 'all');
+      if (!Number.isFinite(start)) return false;
+      const windows = getStaffResourceWindows(reservation, 'all');
+      return start + 0.25 <= now && windows.some(window => window.end > now);
+    })
+    : [];
   const laneUsage = Array.from({ length: TOTAL_LANES }, (_, index) => ({
     lane: index + 1,
     value: bowlingWindows.reduce((sum, window) => sum + ((window.lanes || []).includes(index + 1) ? Number(window.duration || 0) : 0), 0)
@@ -6478,6 +6593,7 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
   const revenueSeries = dayRows.map(rows => rows.reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0));
   const reservationSeries = dayRows.map(rows => rows.length);
   const playerSeries = dayRows.map(rows => rows.reduce((sum, reservation) => sum + (Number(reservation.pax) || 0), 0));
+  const collectedSeries = dayRows.map(rows => rows.filter(reservation => reservation.status === 'paid').reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0));
   const occupancySeries = days.map((date, index) => {
     const window = getPlanningWindow(date);
     const open = window.closed ? 0 : Math.max(window.close - window.open, 0);
@@ -6488,6 +6604,24 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
       .reduce((sum, win) => sum + ((Number(win.duration) || 0) * Math.max((win.lanes || []).length, 1)), 0);
     return Math.min(100, Math.round((usedLaneHours / capacity) * 100));
   });
+  // La serie SERVEUR remplace la lecture du cache local pour les jours passes
+  // (voir staffDaySeriesCache). Le jour affiche garde la donnee locale : elle
+  // est temps reel (poll + mises a jour optimistes), le serveur a 60 s de
+  // retard dessus.
+  const serverDays = typeof getStaffDaySeries === 'function' ? getStaffDaySeries() : [];
+  if (serverDays.length === days.length) {
+    serverDays.forEach((day, index) => {
+      if (index === days.length - 1 || !day || day.date !== days[index]) return;
+      revenueSeries[index] = Number(day.revenue) || 0;
+      reservationSeries[index] = Number(day.reservations) || 0;
+      playerSeries[index] = Number(day.players) || 0;
+      collectedSeries[index] = Number(day.collected) || 0;
+      const window = getPlanningWindow(days[index]);
+      const open = window.closed ? 0 : Math.max(window.close - window.open, 0);
+      const capacity = TOTAL_LANES * open;
+      occupancySeries[index] = capacity ? Math.min(100, Math.round(((Number(day.laneHours) || 0) / capacity) * 100)) : 0;
+    });
+  }
   const currentIndex = days.length - 1;
   const previousRevenue = revenueSeries.slice(0, currentIndex).reduce((sum, value) => sum + value, 0);
   const revenueTrend = previousRevenue ? Math.round(((revenue - (previousRevenue / Math.max(currentIndex, 1))) / (previousRevenue / Math.max(currentIndex, 1))) * 100) : 0;
@@ -6510,13 +6644,15 @@ function getStaffDashboardMetrics(dayReservations = todaysReservations()) {
     occupancy,
     upcoming,
     activeNow,
-    bowlingOnly,
-    laserOnly,
-    completeCount,
+    activityMix,
+    activityOccurrences,
+    overdueRows,
+    noshowRows,
     laneUsage,
     revenueSeries,
     reservationSeries,
     playerSeries,
+    collectedSeries,
     occupancySeries,
     revenueTrend,
     previousReservationsCount: previousActiveReservations.length,
@@ -6746,44 +6882,74 @@ function renderDashSideChartBody(host, metrics) {
   host.innerHTML = list.length ? dashSplitRowsHtml(list) : '<div class="dash-empty">Aucune formule vendue aujourd\'hui.</div>';
 }
 
+// LE MIX D'ACTIVITES passe par le composant donut partage (PinlaneCharts) :
+// une part par bucket REEL (chaque activite du catalogue vendue aujourd'hui,
+// Formules, Multi-activites), pourcentages calcules par le composant depuis
+// les comptes. L'ancien anneau CSS a trois tranches codees en dur affichait
+// « Complet 43 % » pour 1 dossier : son pourcentage etait le reste des deux
+// autres, et golf / arcades / billards n'existaient pour lui pas.
 function renderStaffDashboardActivity(metrics) {
   const totalCount = metrics.activeReservations.length;
-  const total = Math.max(totalCount, 1);
-  const bowlingPct = totalCount ? Math.round((metrics.bowlingOnly / total) * 100) : 0;
-  const laserPct = totalCount ? Math.round((metrics.laserOnly / total) * 100) : 0;
-  const completePct = totalCount ? Math.max(0, 100 - bowlingPct - laserPct) : 0;
-  return `<div class="dash-donut-wrap">
-    <div class="dash-donut" style="--bowling:${bowlingPct};--laser:${laserPct};--complete:${completePct};">
-      <strong>${metrics.activeReservations.length}</strong>
-      <span>réservations aujourd'hui</span>
-    </div>
-    <div class="dash-activity-list">
-      <div><i class="bowling"></i><span>Bowling</span><strong>${metrics.bowlingOnly}</strong><small>${bowlingPct}%</small></div>
-      <div><i class="laser"></i><span>Laser Game</span><strong>${metrics.laserOnly}</strong><small>${laserPct}%</small></div>
-      <div><i class="complete"></i><span>Complet (Bowling + Laser)</span><strong>${metrics.completeCount}</strong><small>${completePct}%</small></div>
-    </div>
+  return `<div class="dash-activity-mix">
+    <div class="dash-activity-mix-total"><strong>${totalCount}</strong><span>réservation${totalCount > 1 ? 's' : ''} aujourd'hui</span></div>
+    <div class="dash-range-chart dash-activity-chart" id="dashActivityBody"></div>
   </div>`;
 }
 
+function renderDashActivityBody(host, metrics) {
+  if (!host) return;
+  const charts = window.PinlaneCharts;
+  if (!charts) { host.innerHTML = '<div class="dash-empty">Moteur de graphiques indisponible.</div>'; return; }
+  const parts = metrics.activityMix.map(bucket => ({ label: bucket.label, value: bucket.count }));
+  if (!parts.length) { host.innerHTML = '<div class="dash-empty">Aucune réservation aujourd\'hui.</div>'; return; }
+  charts.donutChart(host, {
+    parts,
+    format: 'int',
+    motionKey: `dash|activity|${state.currentDate}|${metrics.activeReservations.length}|${parts.length}`,
+  });
+}
 
+
+// La carte du dashboard GROUPE par gravite (Prioritaire / A traiter / A
+// suivre) : le comptoir lit l'ordre d'attaque d'un coup d'oeil au lieu d'une
+// liste plate. Chaque ligne s'ouvre sur SA surface de resolution (le detail
+// pre-filtre, ou tout se repare sur place).
 function renderStaffDashboardAlerts(metrics) {
   const alerts = getStaffDashboardAlertDefinitions(metrics);
   if (!alerts.length) {
     return `<div class="dash-alert-row info">
       <span class="dash-alert-dot info" aria-hidden="true"></span>
-      <div class="dash-alert-copy"><strong>Tout est à jour</strong><p>Aucune alerte : paiements, laser et pistes sont sous contrôle.</p></div>
+      <div class="dash-alert-copy"><strong>Tout est à jour</strong><p>Aucune alerte : paiements, séances, demandes et pistes sont sous contrôle.</p></div>
     </div>`;
   }
-  return alerts.slice(0, 4).map(alert => `<div class="dash-alert-row ${escapeHtml(alert.kind)}">
-    <span class="dash-alert-dot ${escapeHtml(alert.kind)}" aria-hidden="true"></span>
-    <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
-    <div class="dash-alert-actions">
-      ${alert.cta
-        ? `<button type="button" class="dash-alert-cta" onclick="${escapeHtml(alert.cta)}">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>`
-        : `<button type="button" class="dash-alert-cta" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>
-           <button type="button" class="dash-alert-see" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">Voir</button>`}
-    </div>
-  </div>`).join('');
+  const ordered = [...alerts].sort((left, right) => getStaffAlertPriorityMeta(left).rank - getStaffAlertPriorityMeta(right).rank);
+  const groups = [];
+  ordered.forEach(alert => {
+    const meta = getStaffAlertPriorityMeta(alert);
+    let group = groups.find(entry => entry.meta.tone === meta.tone);
+    if (!group) { group = { meta, items: [] }; groups.push(group); }
+    group.items.push(alert);
+  });
+  const shown = { count: 0 };
+  const MAX_ROWS = 6;
+  const rendered = groups.map(group => {
+    const items = group.items.filter(() => (shown.count += 1) <= MAX_ROWS);
+    if (!items.length) return '';
+    return `<div class="dash-alert-group">
+      <div class="dash-alert-group-head pr-${escapeHtml(group.meta.tone)}"><span class="priority-dot" aria-hidden="true"></span>${escapeHtml(group.meta.label)}<em>${group.items.length}</em></div>
+      ${items.map(alert => `<div class="dash-alert-row ${escapeHtml(alert.kind)}">
+        <span class="dash-alert-dot ${escapeHtml(alert.kind)}" aria-hidden="true"></span>
+        <div class="dash-alert-copy"><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.text)}</p></div>
+        <div class="dash-alert-actions">
+          <button type="button" class="dash-alert-cta" onclick="openStaffDashboardDetail('alerts', '${escapeJsString(alert.kind)}')">${escapeHtml(getStaffAlertCtaLabel(alert.kind))}</button>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+  const hidden = ordered.length - Math.min(ordered.length, MAX_ROWS);
+  return rendered + (hidden > 0
+    ? `<button type="button" class="dash-alert-more" onclick="openStaffDashboardAlerts()">+ ${hidden} autre${hidden > 1 ? 's' : ''} signal${hidden > 1 ? 'aux' : ''} · Voir toutes</button>`
+    : '');
 }
 
 // Libellé du bouton d'action rapide inline selon le type d'alerte : mène
@@ -6791,11 +6957,13 @@ function renderStaffDashboardAlerts(metrics) {
 function getStaffAlertCtaLabel(kind) {
   return {
     payment: 'Encaisser',
+    overdue: 'Clôturer',
+    noshow: 'Pointer',
     review: 'Vérifier',
     warning: 'Traiter',
     maintenance: 'Libérer',
     formula: 'Cadencer',
-    lead: 'Ouvrir les demandes'
+    lead: 'Traiter les demandes'
   }[kind] || 'Résoudre';
 }
 
@@ -6898,6 +7066,31 @@ function getStaffDashboardAlertDefinitions(metrics) {
         : 'Encaisser ou clôturer les réservations restées ouvertes.'
     });
   }
+  // SEANCE FINIE, DOSSIER OUVERT : plus urgent que le simple « non paye »,
+  // ces clients sont peut-etre deja partis. A purger avant la fermeture.
+  if (metrics.overdueRows.length) {
+    const overdueAmount = sumStaffRowsAmount(metrics.overdueRows);
+    alerts.push({
+      kind: 'overdue',
+      priority: 'critical',
+      title: 'Séances terminées non encaissées',
+      text: `${metrics.overdueRows.length} séance${metrics.overdueRows.length > 1 ? 's' : ''} finie${metrics.overdueRows.length > 1 ? 's' : ''} sans encaissement · ${formatMoney(overdueAmount)}`,
+      rows: metrics.overdueRows,
+      action: 'Encaisser chaque dossier avant que le groupe ne quitte le centre, ou clôturer si c\'est déjà réglé.'
+    });
+  }
+  // DEBUT PASSE, PERSONNE N'EST POINTE : soit le groupe est la sans pointage,
+  // soit c'est un no-show a rappeler avant de liberer la ressource.
+  if (metrics.noshowRows.length) {
+    alerts.push({
+      kind: 'noshow',
+      priority: 'important',
+      title: 'Arrivées à pointer',
+      text: `${metrics.noshowRows.length} réservation${metrics.noshowRows.length > 1 ? 's' : ''} commencée${metrics.noshowRows.length > 1 ? 's' : ''} sans pointage d'arrivée`,
+      rows: metrics.noshowRows,
+      action: 'Pointer « Arrivé » si le groupe est là ; sinon appeler le client avant de libérer la piste.'
+    });
+  }
   const reviewRows = metrics.activeReservations.filter(reservation =>
     reservation.status !== 'cancelled'
     && reservation.validationStatus !== 'confirmed'
@@ -6962,17 +7155,20 @@ function getStaffDashboardAlertDefinitions(metrics) {
     });
   }
   // Un lead sur mesure est de l'argent qui attend une réponse : il passe EN
-  // TÊTE, renderStaffDashboardAlerts ne montrant que les 4 premières.
-  const newLeads = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
-  if (newLeads > 0) {
+  // TÊTE. Le compte est celui des demandes ACTIVES (ni traitées ni archivées,
+  // regle du 2026-08-14), et il se TRAITE ICI : le panneau d'alertes liste les
+  // demandes avec leurs actions (répondre, prendre en charge, marquer traitée)
+  // au lieu d'expédier vers la page Clients (« nous emmener dans toutes les
+  // categories », Movsar 2026-08-18).
+  const activeLeads = typeof getStaffActiveCustomRequestCount === 'function' ? getStaffActiveCustomRequestCount() : 0;
+  if (activeLeads > 0) {
     alerts.unshift({
       kind: 'lead',
       priority: 'critical',
-      title: `${newLeads} nouvelle${newLeads > 1 ? 's' : ''} demande${newLeads > 1 ? 's' : ''} sur mesure`,
+      title: `${activeLeads} demande${activeLeads > 1 ? 's' : ''} sur mesure en attente`,
       text: 'Anniversaires, groupes et entreprises qui attendent une réponse.',
       rows: [],
-      cta: "openStaffMenuPage('groups')",
-      action: 'Répondre à chaque demande depuis Clients, vue « À venir ».'
+      action: 'Répondre, prendre en charge ou marquer traitée, directement ici.'
     });
   }
   return alerts;
@@ -7222,15 +7418,16 @@ function getStaffDashboardDetailConfig(type, kind, metrics) {
     };
   }
   if (type === 'activity') {
+    // Les trois compteurs de tete suivent le mix REEL du jour (les trois plus
+    // gros buckets), plus jamais un triptyque bowling / laser / complet fige.
+    const topBuckets = metrics.activityMix.slice(0, 3);
     return {
       eyebrow: 'Mix activité',
       title: 'Réservations par activité',
-      subtitle: 'répartition bowling, laser et formules',
-      stats: [
-        { label: 'Bowling', value: String(metrics.bowlingOnly), note: 'direct' },
-        { label: 'Laser', value: String(metrics.laserOnly), note: 'direct' },
-        { label: 'Complet', value: String(metrics.completeCount), note: 'bowling + laser' }
-      ],
+      subtitle: 'toutes les activités du catalogue vendues sur la date affichée',
+      stats: topBuckets.length
+        ? topBuckets.map(bucket => ({ label: bucket.label, value: String(bucket.count), note: formatMoney(bucket.revenue) }))
+        : [{ label: 'Réservations', value: '0', note: 'aucune sur cette date' }],
       body: renderStaffDashboardActivityDetail(metrics),
       actions: [
         { label: 'Voir réservations', onclick: openReservations },
@@ -7310,10 +7507,14 @@ function renderDashboardRowActions(reservation, kind) {
     ? `<button type="button" class="primary" onclick="dashboardDetailSetStatus(${id}, 'paid', event)">Encaisser</button>` : '';
   const arrived = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
     ? `<button type="button" onclick="dashboardDetailSetStatus(${id}, 'arrived', event)">Arrivé</button>` : '';
+  const arrivedPrimary = (canStatus && reservation.status !== 'arrived' && reservation.status !== 'paid')
+    ? `<button type="button" class="primary" onclick="dashboardDetailSetStatus(${id}, 'arrived', event)">Arrivé</button>` : '';
   const valider = canEdit
     ? `<button type="button" class="primary" onclick="dashboardDetailValidate(${id}, event)">Valider</button>` : '';
   if (kind === 'review') return `${valider}${fiche}${contact}`;
   if (kind === 'payment') return `${encaisser}${arrived}${fiche}`;
+  if (kind === 'overdue') return `${encaisser}${fiche}${contact}`;
+  if (kind === 'noshow') return `${arrivedPrimary}${contact}${fiche}`;
   if (kind === 'warning') return `${open}${contact}`;
   if (kind === 'formula') return `${open}${arrived}${encaisser}`;
   // Vue par défaut (arrivées, activité…)
@@ -7329,8 +7530,11 @@ function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
   if (kind === 'maintenance' && canUseStaffPermission(['planning.drag', 'settings.manage'])) {
     actions.push({ label: 'Libérer toutes les pistes', onclick: 'dashboardDetailReleaseAllLanes(event)', className: 'primary' });
   }
+  if (kind === 'overdue' && canUseStaffPermission(['reservations.status', 'reservations.edit', 'payments.markPaid'])) {
+    actions.push({ label: 'Tout encaisser', onclick: 'dashboardDetailPayAllUnpaid(event)', className: 'primary' });
+  }
   if (kind === 'lead') {
-    actions.push({ label: 'Ouvrir les demandes', onclick: "closeStaffDashboardDetail(); openStaffMenuPage('groups')", className: 'primary' });
+    actions.push({ label: 'Toutes les demandes (page Clients)', onclick: "closeStaffDashboardDetail(); openStaffMenuPage('groups')", className: 'secondary' });
   }
   actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
   actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
@@ -7347,7 +7551,7 @@ const STAFF_ALERT_PRIORITY = {
 
 // Priorité par défaut si l'alerte n'en porte pas (robustesse).
 const STAFF_ALERT_PRIORITY_FALLBACK = {
-  payment: 'important', review: 'important', warning: 'critical', maintenance: 'info', formula: 'important'
+  payment: 'important', overdue: 'critical', noshow: 'important', review: 'important', warning: 'critical', maintenance: 'info', formula: 'important'
 };
 
 function getStaffAlertPriorityMeta(alert) {
@@ -7388,6 +7592,49 @@ function getStaffAlertSubsections(alert) {
   return [{ key: 'all', tone: '', showTotal: false, label: '', rows: sortStaffAlertRows(rows) }];
 }
 
+// LES DEMANDES SUR MESURE SE TRAITENT DANS LE PANNEAU D'ALERTES : chaque
+// demande active (nouvelle ou en cours) est listee avec ses actions reelles
+// (repondre par email, appeler, prendre en charge, marquer traitee, ouvrir la
+// fiche complete). Avant, ce signal expediait vers la page Clients sans
+// contexte : la classe d'ecart que Movsar a nommee le 2026-08-18.
+function renderStaffAlertLeadRows() {
+  const items = getStaffCustomRequestItems().filter(item => item.status === 'new' || item.status === 'in_progress');
+  if (!items.length) {
+    return '<div class="dashboard-detail-empty">Aucune demande en attente : tout est traité ou archivé.</div>';
+  }
+  return items.map(item => {
+    const jid = staffClientJs(item.id);
+    const occKey = String(item.occasion || '').toLowerCase();
+    const metaParts = [
+      STAFF_OCCASION_LABELS[occKey] || '',
+      item.company || '',
+      item.requestedDate ? `Souhait : ${item.requestedDate}` : '',
+      Number(item.pax) > 0 ? `${item.pax} pers.` : ''
+    ].filter(Boolean).join(' · ');
+    return `<article class="dashboard-detail-row lead">
+      <div class="dashboard-detail-main">
+        <strong>${escapeHtml(item.contactName || 'Contact')} ${renderStaffCustomRequestBadge(item.status)}</strong>
+        ${metaParts ? `<span>${escapeHtml(metaParts)}</span>` : ''}
+        <small>${escapeHtml(String(item.message || '').slice(0, 220))}</small>
+      </div>
+      <div class="dashboard-detail-row-actions">
+        ${item.email ? `<button type="button" class="primary" onclick="closeStaffDashboardDetail(); composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
+        ${item.status === 'new' ? `<button type="button" onclick="dashboardDetailLeadStatus(${jid}, 'in_progress', event)">Prendre en charge</button>` : ''}
+        <button type="button" onclick="dashboardDetailLeadStatus(${jid}, 'handled', event)">Marquer traitée</button>
+        <button type="button" onclick="closeStaffDashboardDetail(); openStaffMenuPage('groups'); window.setTimeout(() => openStaffCustomRequest(${jid}), 250)">Fiche</button>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+// Change le statut d'une demande depuis le panneau d'alertes, puis re-rend :
+// le compteur et la liste se mettent a jour sans quitter la surface.
+function dashboardDetailLeadStatus(id, status, ev) {
+  if (ev) ev.stopPropagation();
+  setStaffCustomRequestStatus(id, status);
+  refreshStaffDashboardDetailSoon(350);
+}
+
 function renderStaffAlertSubsection(sub, kind) {
   const total = sumStaffRowsAmount(sub.rows);
   const metaText = `${sub.rows.length} résa${sub.rows.length > 1 ? 's' : ''}${sub.showTotal && total > 0 ? ` · ${formatMoney(total)}` : ''}`;
@@ -7416,8 +7663,9 @@ function renderStaffDashboardAlertsDetail(alerts = []) {
     const rows = alert.rows || [];
     const total = sumStaffRowsAmount(rows);
     // Une demande sur mesure n'est PAS une réservation : elle n'occupe aucun
-    // créneau. Le compteur du détail doit dire « demande », jamais « résa ».
-    const leadCount = typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : 0;
+    // créneau. Le compteur du détail doit dire « demande », jamais « résa »,
+    // et compter les ACTIVES (ni traitées ni archivées, règle du 2026-08-14).
+    const leadCount = typeof getStaffActiveCustomRequestCount === 'function' ? getStaffActiveCustomRequestCount() : 0;
     const count = alert.kind === 'maintenance' ? (alert.lanes || []).length
       : alert.kind === 'lead' ? leadCount
         : rows.length;
@@ -7430,10 +7678,10 @@ function renderStaffDashboardAlertsDetail(alerts = []) {
       ? `<div class="dashboard-detail-lane-chips">${alert.lanes.map(lane => `<span class="lane-chip">Piste ${Number(lane)}${canRelease ? `<button type="button" class="lane-release" onclick="dashboardDetailReleaseLane(${Number(lane)}, event)">Libérer</button>` : ''}</span>`).join('')}</div>`
       : '';
     const subsections = getStaffAlertSubsections(alert);
-    const body = subsections.length
-      ? subsections.map(sub => renderStaffAlertSubsection(sub, alert.kind)).join('')
-      : alert.kind === 'lead'
-        ? `<div class="dashboard-detail-empty">Ces demandes n'occupent aucun créneau tant qu'elles ne sont pas confirmées. Elles se traitent dans Clients, vue « À venir ».</div>`
+    const body = alert.kind === 'lead'
+      ? renderStaffAlertLeadRows()
+      : subsections.length
+        ? subsections.map(sub => renderStaffAlertSubsection(sub, alert.kind)).join('')
         : (laneChips ? '' : `<div class="dashboard-detail-empty">Pas de réservation liée à ce signal.</div>`);
     return `<section class="dashboard-detail-section alert-section pr-${meta.tone} alert-${escapeHtml(alert.kind)}">
       <div class="alert-section-head">
@@ -7454,17 +7702,16 @@ function renderStaffDashboardAlertsDetail(alerts = []) {
 }
 
 function renderStaffDashboardRevenueDetail(metrics) {
+  // Chaque colonne vient des series de metrics : elles portent la verite
+  // SERVEUR pour les jours passes (voir staffDaySeriesCache), plus jamais le
+  // cache local qui ne connaissait que les dates visitees sur ce poste.
   const days = Array.from({ length: 7 }, (_, index) => addDays(state.currentDate, index - 6));
-  const rows = days.map((date, index) => {
-    const reservations = state.reservations.filter(reservation => reservation.date === date && reservation.status !== 'cancelled');
-    const collected = reservations.filter(reservation => reservation.status === 'paid').reduce((sum, reservation) => sum + (Number(reservation.price) || 0), 0);
-    return {
-      date,
-      reservations,
-      revenue: metrics.revenueSeries[index] || 0,
-      collected
-    };
-  });
+  const rows = days.map((date, index) => ({
+    date,
+    count: metrics.reservationSeries[index] || 0,
+    revenue: metrics.revenueSeries[index] || 0,
+    collected: metrics.collectedSeries[index] || 0
+  }));
   const max = Math.max(...rows.map(row => row.revenue), 1);
   return `<div class="dashboard-detail-section">
     <div class="dashboard-detail-section-head"><h3>Détail caisse</h3><p>Prévu, encaissé et reste à suivre sur les 7 derniers jours.</p></div>
@@ -7473,7 +7720,7 @@ function renderStaffDashboardRevenueDetail(metrics) {
         <time>${escapeHtml(parseLocalDate(row.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' }).replace('.', ''))}</time>
         <span><i style="width:${Math.max(4, Math.round((row.revenue / max) * 100))}%"></i></span>
         <strong>${formatMoney(row.revenue)}</strong>
-        <small>${row.reservations.length} rés. · ${formatMoney(row.collected)} validés</small>
+        <small>${row.count} rés. · ${formatMoney(row.collected)} validés</small>
       </div>`).join('')}
     </div>
   </div>`;
@@ -7502,15 +7749,17 @@ function renderStaffDashboardOccupationDetail(metrics) {
   </div>`;
 }
 
+// UNE SECTION PAR ACTIVITE DU CATALOGUE presente aujourd'hui (occurrences :
+// une visite bowling + billards apparait dans les deux sections, c'est la
+// question du comptoir « qu'est-ce qui tourne »). Fini le triptyque fige.
 function renderStaffDashboardActivityDetail(metrics) {
-  const groups = [
-    ['Bowling', metrics.activeReservations.filter(reservation => getBowlingWindowsFromReservation(reservation).length && !getLaserWindowsFromReservation(reservation).length)],
-    ['Laser Game', metrics.activeReservations.filter(reservation => getLaserWindowsFromReservation(reservation).length && !getBowlingWindowsFromReservation(reservation).length)],
-    ['Complet', metrics.activeReservations.filter(reservation => getBowlingWindowsFromReservation(reservation).length && getLaserWindowsFromReservation(reservation).length)]
-  ];
-  return groups.map(([title, rows]) => `<section class="dashboard-detail-section">
-    <div class="dashboard-detail-section-head"><h3>${escapeHtml(title)}</h3><p>${rows.length} réservation${rows.length > 1 ? 's' : ''}</p></div>
-    ${renderStaffDashboardReservationRows(rows.slice(0, 12), 'Aucune réservation dans cette activité.')}
+  const groups = metrics.activityOccurrences;
+  if (!groups.length) {
+    return '<div class="dashboard-detail-empty">Aucune réservation sur cette date.</div>';
+  }
+  return groups.map(group => `<section class="dashboard-detail-section">
+    <div class="dashboard-detail-section-head"><h3>${escapeHtml(group.name)}</h3><p>${group.count} réservation${group.count > 1 ? 's' : ''} contien${group.count > 1 ? 'nent' : 't'} cette activité</p></div>
+    ${renderStaffDashboardReservationRows(sortStaffAlertRows(group.rows).slice(0, 12), 'Aucune réservation dans cette activité.')}
   </section>`).join('');
 }
 
@@ -7554,6 +7803,9 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
   // quelqu'un qui n'ouvre jamais le bon filtre. Sans effet de bord de rendu
   // ici : loadStaffCustomRequests repasse par renderStaffGroupHost.
   if (typeof ensureStaffCustomRequests === 'function') ensureStaffCustomRequests();
+  // La serie 7 jours vient du serveur (voir staffDaySeriesCache) : declenchee
+  // ici, elle re-rend le dashboard a l'arrivee de la reponse.
+  ensureStaffDaySeries();
   const metrics = getStaffDashboardMetrics(dayReservations);
   const d = parseLocalDate(state.currentDate);
   const revenueTrendText = metrics.revenueTrend > 0 ? `+${metrics.revenueTrend}%` : `${metrics.revenueTrend}%`;
@@ -7670,6 +7922,7 @@ function setupStaffDashboardCharts(metrics) {
   if (!root) return;
   renderDashMainChartBody(document.getElementById('dashMainChartBody'), metrics);
   renderDashSideChartBody(document.getElementById('dashSideChartBody'), metrics);
+  renderDashActivityBody(document.getElementById('dashActivityBody'), metrics);
   const revenue = root.querySelector('.dash-revenue-bars[data-revenue-bars]');
   if (revenue) setupRevenueChartInteraction(revenue);
 }

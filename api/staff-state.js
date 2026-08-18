@@ -1,8 +1,9 @@
-const { getPool, readStaffState } = require('../lib/database');
+const { getPool, readStaffState, readAdminRangeState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
 const { refreshCenterOverrides, getCenter } = require('../lib/ops-knowledge');
 const { normalizeClassification } = require('../lib/center-config');
 const { isStaffAuthStorageError, requireStaffPermission } = require('../lib/staff-auth');
+const { buildStaffDaySeries } = require('../lib/staff-day-series');
 
 function buildOfflineStaffState(date, centerId, error) {
   return {
@@ -35,6 +36,21 @@ module.exports = async (req, res) => {
     if (!session) return;
     if (!date) {
       sendError(res, 400, 'Date manquante.');
+      return;
+    }
+    // SERIE QUOTIDIENNE AGREGEE (?days=N) : la carte Revenus du dashboard lit
+    // la vraie plage cote serveur au lieu du cache local du poste, qui ne
+    // connaissait que les dates deja visitees (jours a 0 par intermittence,
+    // capture Movsar 2026-08-18). Chiffres seulement, aucun dossier :
+    // l'agregat en dit MOINS que le detail par date deja servi ici.
+    const daysParam = Number(requestUrl.searchParams.get('days')) || 0;
+    if (daysParam > 0) {
+      const span = Math.min(Math.max(Math.round(daysParam), 1), 31);
+      const startDate = new Date(`${date}T00:00:00Z`);
+      startDate.setUTCDate(startDate.getUTCDate() - (span - 1));
+      const start = startDate.toISOString().slice(0, 10);
+      const range = await readAdminRangeState(start, date, centerId);
+      sendJson(res, 200, { ok: true, centerId, endDate: date, days: buildStaffDaySeries(range.reservations, start, date) });
       return;
     }
     // Reflète les éditions de config centre (cache ~30s, fail-soft) avant de

@@ -4232,11 +4232,12 @@ body.staff-mode.laser-dragging * { user-select: none; }
 .dash-revenue-head span { color: var(--muted); font-size: 12px; }
 .dash-revenue-head small { color: var(--faint); font-size: 11px; }
 
-/* La carte se REMPLIT (2026-08-18, « trop d espace vide, trop cheap ») : la
-   zone de barres prend toute la hauteur restante au lieu d un 120 px fige
-   qui laissait la moitie de la carte a nu. */
-.dash-revenue-card { display: flex; flex-direction: column; }
-.dash-revenue-card .dash-revenue-bars { flex: 1; }
+/* La carte se REMPLIT SANS S ETIRER (deux verdicts de Movsar le meme jour :
+   « trop d espace vide » puis « c trop long »). Elle ne suit plus la hauteur
+   de sa voisine Alertes (align-self start) : sa zone de barres est bornee
+   entre 150 et 210 px, assez pour lire, jamais une tour. */
+.dash-revenue-card { display: flex; flex-direction: column; align-self: start; }
+.dash-revenue-card .dash-revenue-bars { flex: 1; max-height: 210px; }
 
 /* Navigation par jours : reculer / avancer la fenetre de 7 jours. */
 .dash-revenue-nav { display: flex; align-items: center; gap: 6px; }

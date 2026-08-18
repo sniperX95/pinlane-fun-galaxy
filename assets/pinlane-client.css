@@ -6307,6 +6307,20 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Les cartes se deploient en entier : c est le corps d etape qui roule,
      plus une lucarne de 2 px. */
   #clientView .step1-body:not(.is-solo) .s1-scroller { flex: none; overflow: visible; }
+  /* L etape 3 a la meme maladie d ecran court : son panneau de coordonnees
+     passait SOUS le pied (le champ Email se remplissait derriere les
+     boutons, tap intercepte, vu en WebKit prod a 375x548). Meme regime : le
+     corps roule, la zone optionnelle rend son defilement interne au corps. */
+  #clientView .step3-body {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: hidden auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  #clientView .step3-body .s3-side { flex: none; }
+  #clientView .step3-body .s3-extra { flex: none; min-height: auto; overflow: visible; }
 }
 
 /* Petit laptop (1280x610 apres zoom) : la meme information, sans un pixel de

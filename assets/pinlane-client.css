@@ -6128,8 +6128,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr) 44px;
     align-items: center;
-    min-height: 46px;
-    padding: 2px 0;
+    min-height: 44px;
+    padding: 0;
   }
   #clientView .m-top-back {
     grid-column: 1;
@@ -6166,7 +6166,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
     border-radius: 2px;
     background: var(--line);
     overflow: hidden;
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--space-1);
   }
   #clientView .m-top-hairline i {
     display: block;
@@ -6224,11 +6224,20 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView #step4 .step-actions .btn-secondary { display: none; }
   #clientView .step-foot .btn-primary { flex: 1 1 auto; min-width: 0; }
 
-  /* En-tete, sous-barre et dock : chaque pixel de chrome se paie (iframe). */
-  body.client-mode .logo { height: 32px; }
-  body.customer-mode.client-mode header { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+  /* En-tete, sous-barre et dock : chaque pixel de chrome se paie (iframe).
+     Mesure prod 320x520 : l en-tete + la sous-barre mangeaient 156 px et le
+     CTA de la page venue passait sous le pli. */
+  body.client-mode .logo { height: 26px; }
+  body.customer-mode.client-mode header { padding-top: 2px; padding-bottom: 2px; min-height: 0; }
   #clientView .client-contact-intro { display: none; }
-  #clientView .tunnel-underbar { gap: var(--space-2); min-height: 0; padding: var(--space-1) 0; }
+  #clientView .tunnel-underbar { gap: var(--space-1); min-height: 0; padding: 2px 0; }
+  /* Les contacts du centre : une rangee compacte qui plie, pas une pile de
+     lignes de 44 px (88 px mesures en prod pour deux liens). */
+  #clientView .client-contact-bar { padding: 0; }
+  #clientView .client-contact-links { flex-wrap: wrap; justify-content: center; gap: 2px var(--space-4); }
+  #clientView .client-contact-links a { min-height: 30px; font-size: 12px; padding: 2px 4px; }
+  #clientView .client-contact-links a svg { width: 13px; height: 13px; }
+  #clientView .client-footer { margin-top: 0; padding-top: 2px; }
   /* Le dock d etat en FLUX (flottant, il recouvrait cartes ou selecteur) :
      une ligne calme sous le pied, sans chrome de panneau. */
   #clientView .step-status-dock {
@@ -6256,9 +6265,18 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Le titre de la barre haute nomme deja la page : l en-tete riche du
      panneau (icone + « Votre venue » + sous-titre) redit la meme chose. */
   #clientView .s1-when .panel-head-rich { display: none; }
-  #clientView .s1-when { gap: var(--space-3); padding: var(--space-3); }
-  #clientView .s1-when .s1-field { gap: 6px; }
+  #clientView .s1-when { gap: var(--space-2); padding: var(--space-3); }
+  #clientView .s1-when .s1-field { gap: 4px; }
   #clientView .s1-when .input { height: 44px; }
+  /* La DECISION de la page venue reste sous les yeux : sur les ecrans courts
+     le corps d etape defile, et le CTA passait sous le pli (mesure prod
+     320x520). Sticky DANS le defileur, le pattern maison (s2-slots) : jamais
+     de fixed dans la piste. */
+  #clientView .step1-body.is-solo .s1-continue {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+  }
   #clientView .schedule-hint { font-size: 12px; }
   #clientView .step1-body.is-solo .pax-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; }
   #clientView .step1-body.is-solo .pax-step-btn { min-height: 44px; }

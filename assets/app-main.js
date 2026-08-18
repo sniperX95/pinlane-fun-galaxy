@@ -3222,10 +3222,20 @@ function setRevealState(element, shouldShow) {
 // Retour a la page venue (ligne de rappel du telephone) : le programme se
 // replie, la venue redevient la page courante. Les choix d'activites du
 // client restent en memoire, rien ne se perd.
+// PAGE PAR PAGE : chaque page de l etape 1 demarre en HAUT. Sur les ecrans
+// courts le corps d etape defile ; le geste qui mene au bouton laisse un
+// scroll residuel, et la page suivante s ouvrait decalee (ligne de rappel
+// hors champ, vu en prod WebKit a 320x520 le 2026-08-18).
+function resetStepOneScroll() {
+  const body = document.querySelector('#clientView .step1-body');
+  if (body) body.scrollTop = 0;
+}
+
 function reopenVenue() {
   state.booking.venueConfirmed = false;
   save();
   syncProgressiveReveal();
+  resetStepOneScroll();
 }
 
 function confirmVenue() {
@@ -3241,6 +3251,7 @@ function confirmVenue() {
   state.booking.venueConfirmed = true;
   save();
   syncProgressiveReveal();
+  resetStepOneScroll();
 }
 
 // Premier passage du boot : la position se POSE, elle ne s'anime pas (le FLIP

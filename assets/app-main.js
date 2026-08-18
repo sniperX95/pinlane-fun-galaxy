@@ -3321,6 +3321,19 @@ function syncStatusDock() {
   const html = onStepOne && programOpen && source ? source.innerHTML : '';
   if (dock.innerHTML !== html) dock.innerHTML = html;
   dock.classList.toggle('is-live', Boolean(html));
+  // Le dock se pose au-dessus du pied MESURE, pas d'un pied suppose : la
+  // sous-barre varie d'un tenant a l'autre (contacts du centre en prod) et un
+  // decalage fixe mordait le haut du CTA « Verifier les disponibilites »
+  // (vu en prod le 2026-08-18 a 390x844). Mesure au moment ou il parle.
+  if (html) {
+    const foot = document.querySelector('#step1 .step-foot');
+    const footTop = foot ? foot.getBoundingClientRect().top : 0;
+    if (footTop > 0 && footTop < window.innerHeight) {
+      dock.style.bottom = `${Math.round(window.innerHeight - footTop + 8)}px`;
+    } else {
+      dock.style.removeProperty('bottom');
+    }
+  }
 }
 
 // --- TILT 3D DES CARTES ------------------------------------------------------

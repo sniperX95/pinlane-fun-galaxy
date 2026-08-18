@@ -115,9 +115,13 @@
     {
       title: 'Clients & marketing',
       items: [
+        { key: 'clients', label: 'Clients', icon: 'clients' },
         // badge = FONCTION : menuSections est une const évaluée une seule fois,
         // une valeur figée resterait bloquée sur le compte du premier rendu.
-        { key: 'clients', label: 'Clients', icon: 'clients', badge: () => (typeof window.getStaffNewCustomRequestCount === 'function' ? (window.getStaffNewCustomRequestCount() || '') : '') },
+        // Le compte est celui des demandes ACTIVES (ni traitées ni archivées),
+        // et il vit sur SA page depuis le 2026-08-18 : les demandes etaient
+        // enterrees dans un segment de Clients.
+        { key: 'requests', label: 'Demandes sur mesure', icon: 'events', badge: () => (typeof window.getStaffActiveCustomRequestCount === 'function' ? (window.getStaffActiveCustomRequestCount() || '') : '') },
         { key: 'emails', label: 'Emails & relances', icon: 'emails' },
         { key: 'campaigns', label: 'Marketing', icon: 'campaigns' }
       ]

@@ -4146,6 +4146,95 @@ body.staff-mode.laser-dragging * { user-select: none; }
   justify-content: flex-start;
 }
 
+/* ── PAGE DEMANDES SUR MESURE (2026-08-18) : tout se gere sur place. ────── */
+.req-board { display: grid; gap: var(--space-3); }
+.req-segments { display: flex; gap: 6px; flex-wrap: wrap; }
+.req-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.req-seg em { font-style: normal; font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--faint); }
+.req-seg:hover { background: var(--subtle); color: var(--text); }
+.req-seg.active { background: var(--text); border-color: var(--text); color: var(--surface); }
+.req-seg.active em { color: var(--surface); opacity: 0.75; }
+.req-list { display: grid; gap: var(--space-3); }
+.req-empty { padding: var(--space-5); text-align: center; color: var(--faint); font-size: 13.5px; }
+.req-retry { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.req-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.req-card.req-status-new { border-left: 3px solid var(--accent); }
+.req-card.req-status-in_progress { border-left: 3px solid var(--warning); }
+.req-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.req-card-ident { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.req-card-ident strong { font-size: 15.5px; }
+.req-card-when { color: var(--faint); font-size: 12px; font-family: var(--font-data); }
+.req-facts { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.req-fact { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.req-fact strong { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); }
+.req-fact a { color: var(--accent); text-decoration: none; }
+.req-fact a:hover { text-decoration: underline; }
+.req-message { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); white-space: pre-wrap; }
+.req-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.req-actions button {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.req-actions button:hover { background: var(--subtle); border-color: var(--line-strong); }
+.req-actions button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.req-actions button.primary:hover { opacity: 0.9; }
+.req-actions button.ghost { color: var(--faint); border-color: transparent; }
+.req-composer {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--raised, var(--subtle));
+}
+.req-composer textarea.input { min-height: 130px; resize: vertical; line-height: 1.5; }
+.req-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.req-composer-to { color: var(--faint); font-size: 12.5px; }
+.req-composer-actions button.primary {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.req-composer-actions button.primary:disabled { opacity: 0.6; cursor: default; }
+
 /* Mix d'activites : le total au-dessus, le donut partage (PinlaneCharts)
    en dessous. L'ancien anneau CSS a trois tranches est mort avec lui. */
 .dash-activity-mix { display: grid; gap: var(--space-2); }

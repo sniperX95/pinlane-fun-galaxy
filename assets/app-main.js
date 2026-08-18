@@ -2309,6 +2309,7 @@ const STAFF_MENU_PAGES = [
   'arrivals',
   'events',
   'clients',
+  'requests',
   'groups',
   'contacts',
   'lanes',
@@ -2449,6 +2450,7 @@ const STAFF_PAGE_PERMISSION_MAP = {
   arrivals: ['reservations.status', 'reservations.view'],
   events: ['reservations.view'],
   clients: ['clients.view'],
+  requests: ['clients.view'],
   groups: ['clients.view'],
   contacts: ['clients.view'],
   lanes: ['planning.bowling', 'settings.manage'],
@@ -6396,6 +6398,7 @@ const STAFF_UTILITY_MENU_PAGES = [
   'sessions',
   'arrivals',
   'events',
+  'requests',
   'contacts',
   'lanes',
   'laserGame',
@@ -7593,7 +7596,7 @@ function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
     actions.push({ label: 'Tout encaisser', onclick: 'dashboardDetailPayAllUnpaid(event)', className: 'primary' });
   }
   if (kind === 'lead') {
-    actions.push({ label: 'Toutes les demandes (page Clients)', onclick: "closeStaffDashboardDetail(); openStaffMenuPage('groups')", className: 'secondary' });
+    actions.push({ label: 'Ouvrir la page Demandes', onclick: "closeStaffDashboardDetail(); openStaffMenuPage('requests')", className: 'primary' });
   }
   actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
   actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
@@ -7680,7 +7683,7 @@ function renderStaffAlertLeadRows() {
         ${item.email ? `<button type="button" class="primary" onclick="closeStaffDashboardDetail(); composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
         ${item.status === 'new' ? `<button type="button" onclick="dashboardDetailLeadStatus(${jid}, 'in_progress', event)">Prendre en charge</button>` : ''}
         <button type="button" onclick="dashboardDetailLeadStatus(${jid}, 'handled', event)">Marquer traitée</button>
-        <button type="button" onclick="closeStaffDashboardDetail(); openStaffMenuPage('groups'); window.setTimeout(() => openStaffCustomRequest(${jid}), 250)">Fiche</button>
+        <button type="button" onclick="openStaffCustomRequest(${jid})">Fiche</button>
       </div>
     </article>`;
   }).join('');
@@ -11995,6 +11998,39 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
   // Plus de branche « groups » : la page a disparu le 2026-07-13 (fusion
   // Clients+Groupes), tous ses chemins d'accès sont aliasés vers Clients /
   // segment « À venir » (openStaffMenuPage, renderStaffData, renderStaffUtilityPage).
+  if (page === 'requests') {
+    // LA PAGE DEDIEE AUX DEMANDES SUR MESURE (2026-08-18, Movsar : « c est
+    // super caché et c est con parce que c est un truc important »). Tout se
+    // gère ICI : répondre par email dans la carte (sendDirectEmail, tracé
+    // dans l'historique), prendre en charge, marquer traitée, archiver,
+    // convertir en réservation préremplie. Zéro renvoi vers une autre page.
+    const requestItems = getStaffCustomRequestItems();
+    const newCount = requestItems.filter(item => item.status === 'new').length;
+    const progressCount = requestItems.filter(item => item.status === 'in_progress').length;
+    const handledCount = requestItems.filter(item => item.status === 'handled').length;
+    const totalPax = requestItems.filter(item => item.status === 'new' || item.status === 'in_progress')
+      .reduce((sum, item) => sum + (Number(item.pax) || 0), 0);
+    return {
+      ...base,
+      layout: 'requests',
+      eyebrow: 'Clients',
+      title: 'Demandes sur mesure',
+      subtitle: 'Anniversaires, groupes et entreprises : chaque demande se traite ici, réponse comprise.',
+      panelSubtitle: `${newCount + progressCount} active${newCount + progressCount > 1 ? 's' : ''} · ${handledCount} traitée${handledCount > 1 ? 's' : ''} · ${getStaffUtilitySyncLabel() || 'file du centre'}`,
+      hideDateAction: true,
+      primaryLabel: 'Actualiser',
+      primaryAction: 'loadStaffCustomRequests(true)',
+      secondaryLabel: 'Voir les clients',
+      secondaryAction: "openStaffMenuPage('clients')",
+      kpis: [
+        ['Nouvelles', newCount, 'jamais ouvertes'],
+        ['En cours', progressCount, 'prises en charge'],
+        ['Joueurs en jeu', totalPax, 'sur les demandes actives'],
+        ['Traitées', handledCount, 'réponses parties']
+      ],
+      body: renderStaffRequestsBoard()
+    };
+  }
   if (page === 'contacts') {
     const missing = clientRows.filter(row => !row.email || !row.phone).length;
     return {
@@ -12170,7 +12206,7 @@ function renderStaffUtilityPage() {
     </section>
   `;
   if (archivePages.has(model.page)) ensureStaffClientData();
-  if (model.page === 'groups') ensureStaffCustomRequests();
+  if (model.page === 'groups' || model.page === 'requests') ensureStaffCustomRequests();
   if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
 }
 
@@ -12932,6 +12968,181 @@ async function setStaffCustomRequestStatus(id, status) {
   } catch (error) {
     toast(error.message || 'Mise à jour impossible.');
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  PAGE « DEMANDES SUR MESURE » (2026-08-18). La file etait enterree dans
+//  Clients > segment « A venir » : « c est super caché et c est con parce que
+//  c est un truc important » (Movsar). Ici tout se fait SUR PLACE : repondre
+//  par email dans la carte (sendDirectEmail, trace dans l historique du
+//  studio), changer le statut, appeler, convertir en reservation preremplie.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Composeur inline par demande : id -> { open, subject, body, busy }.
+let staffRequestReplyState = {};
+
+function setStaffRequestSegment(segment) {
+  state.staffRequestSegment = ['actives', 'traitees', 'archivees'].includes(segment) ? segment : 'actives';
+  save();
+  renderStaffUtilityPage();
+}
+
+function renderStaffRequestsBoard() {
+  const items = getStaffCustomRequestItems();
+  const cache = staffCustomRequestsCache;
+  if (cache.loading && !items.length) return '<div class="req-empty">Chargement des demandes…</div>';
+  if (cache.error && !items.length) {
+    return `<div class="req-empty">${escapeHtml(cache.error)} <button type="button" class="req-retry" onclick="loadStaffCustomRequests(true)">Réessayer</button></div>`;
+  }
+  const segment = ['actives', 'traitees', 'archivees'].includes(state.staffRequestSegment) ? state.staffRequestSegment : 'actives';
+  const bySegment = {
+    actives: items.filter(item => item.status === 'new' || item.status === 'in_progress'),
+    traitees: items.filter(item => item.status === 'handled'),
+    archivees: items.filter(item => item.status === 'archived'),
+  };
+  const rows = bySegment[segment] || [];
+  const seg = (key, label) => `<button type="button" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em>${(bySegment[key] || []).length}</em></button>`;
+  return `<div class="req-board">
+    <div class="req-segments" role="tablist" aria-label="Filtrer les demandes">
+      ${seg('actives', 'À traiter')}${seg('traitees', 'Traitées')}${seg('archivees', 'Archivées')}
+    </div>
+    <div class="req-list">
+      ${rows.length ? rows.map(renderStaffRequestPageCard).join('') : `<div class="req-empty">${segment === 'actives' ? 'Aucune demande en attente : tout est traité.' : 'Rien dans cette vue.'}</div>`}
+    </div>
+  </div>`;
+}
+
+function renderStaffRequestPageCard(item) {
+  const jid = staffClientJs(item.id);
+  const occKey = String(item.occasion || '').toLowerCase();
+  const occ = STAFF_OCCASION_LABELS[occKey] || '';
+  const reply = staffRequestReplyState[String(item.id)] || {};
+  const created = item.createdAt ? new Date(item.createdAt).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const facts = [
+    item.requestedDate ? `<span class="req-fact"><strong>Souhait</strong>${escapeHtml(item.requestedDate)}</span>` : '',
+    Number(item.pax) > 0 ? `<span class="req-fact"><strong>Groupe</strong>${Number(item.pax)} pers.</span>` : '',
+    item.company ? `<span class="req-fact"><strong>Société</strong>${escapeHtml(item.company)}</span>` : '',
+    item.phone ? `<span class="req-fact"><strong>Tél.</strong><a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></span>` : '',
+    item.email ? `<span class="req-fact"><strong>Email</strong><a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></span>` : '',
+  ].filter(Boolean).join('');
+  return `<article class="req-card req-status-${escapeHtml(item.status)}" data-request-id="${escapeHtml(String(item.id))}">
+    <div class="req-card-head">
+      <div class="req-card-ident">
+        <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
+        ${occ ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occKey)}">${escapeHtml(occ)}</span>` : ''}
+        ${renderStaffCustomRequestBadge(item.status)}
+      </div>
+      ${created ? `<span class="req-card-when">${escapeHtml(created)}</span>` : ''}
+    </div>
+    ${facts ? `<div class="req-facts">${facts}</div>` : ''}
+    <p class="req-message">${escapeHtml(item.message || 'Sans message.')}</p>
+    <div class="req-actions">
+      ${item.email ? `<button type="button" class="primary" onclick="toggleStaffRequestReply(${jid})">${reply.open ? 'Fermer la réponse' : 'Répondre par email'}</button>` : ''}
+      ${item.status === 'new' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
+      ${item.status !== 'handled' && item.status !== 'archived' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'handled')">Marquer traitée</button>` : ''}
+      <button type="button" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>
+      ${item.status !== 'archived' ? `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>` : `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Réactiver</button>`}
+    </div>
+    ${reply.open ? renderStaffRequestReplyComposer(item, reply) : ''}
+  </article>`;
+}
+
+// Le composeur DANS la carte : objet + message prerempli, envoi par le meme
+// canal trace que le studio mails (sendDirectEmail). On ne quitte jamais la
+// page : c etait exactement le reproche.
+function renderStaffRequestReplyComposer(item, reply) {
+  const jid = staffClientJs(item.id);
+  return `<div class="req-composer">
+    <label class="lbl" for="reqSubject-${escapeHtml(String(item.id))}">Objet</label>
+    <input id="reqSubject-${escapeHtml(String(item.id))}" class="input" value="${escapeHtml(reply.subject || '')}" oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
+    <label class="lbl" for="reqBody-${escapeHtml(String(item.id))}">Message</label>
+    <textarea id="reqBody-${escapeHtml(String(item.id))}" class="input" rows="7" oninput="staffRequestReplyDraft(${jid}, 'body', this.value)">${escapeHtml(reply.body || '')}</textarea>
+    <div class="req-composer-actions">
+      <span class="req-composer-to">À : ${escapeHtml(item.email || '')}</span>
+      <button type="button" class="primary" ${reply.busy ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
+    </div>
+  </div>`;
+}
+
+function toggleStaffRequestReply(id) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item) return;
+  const current = staffRequestReplyState[key];
+  if (current && current.open) {
+    staffRequestReplyState[key] = { ...current, open: false };
+  } else {
+    const firstName = String(item.contactName || '').trim().split(/\s+/)[0] || '';
+    const centreName = getCurrentStaffCenterName() || getCurrentStaffCenterId();
+    const occ = STAFF_OCCASION_LABELS[String(item.occasion || '').toLowerCase()] || '';
+    staffRequestReplyState[key] = {
+      open: true,
+      busy: false,
+      subject: (current && current.subject) || `Votre demande${occ ? ` ${occ.toLowerCase()}` : ''} chez ${centreName}`,
+      body: (current && current.body) || `Bonjour ${firstName || ''},\n\nMerci pour votre demande${Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : ''}${item.requestedDate ? ` (${item.requestedDate})` : ''}.\n\n\n\nÀ très vite,\n${centreName}`,
+    };
+  }
+  renderStaffUtilityPage();
+}
+
+function staffRequestReplyDraft(id, field, value) {
+  const key = String(id);
+  const current = staffRequestReplyState[key] || { open: true, busy: false, subject: '', body: '' };
+  staffRequestReplyState[key] = { ...current, [field]: value };
+}
+
+async function staffRequestSendReply(id) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  const reply = staffRequestReplyState[key];
+  if (!item || !reply) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(item.email || '').trim())) { toast('Adresse email de la demande invalide.'); return; }
+  if (!String(reply.subject || '').trim() || !String(reply.body || '').trim()) { toast('Objet et message sont requis.'); return; }
+  staffRequestReplyState[key] = { ...reply, busy: true };
+  renderStaffUtilityPage();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'sendDirectEmail',
+        centerId: getActiveOpsCenterId(),
+        to: String(item.email).trim(),
+        subject: reply.subject,
+        body: reply.body,
+        category: 'direct',
+        templateRef: 'demande-sur-mesure',
+      }),
+    });
+    toast(payload.resendConfigured ? 'Réponse envoyée : visible dans l\'historique mails.' : 'Réponse en file : elle partira dès que le canal d\'envoi sera configuré.');
+    staffRequestReplyState[key] = { open: false, busy: false, subject: '', body: '' };
+    // Une demande a laquelle on vient de repondre n est plus « nouvelle ».
+    if (item.status === 'new') { setStaffCustomRequestStatus(item.id, 'in_progress'); return; }
+    renderStaffUtilityPage();
+  } catch (error) {
+    staffRequestReplyState[key] = { ...reply, busy: false };
+    renderStaffUtilityPage();
+    toast(error.message || 'Envoi impossible pour le moment.');
+  }
+}
+
+// Convertit la demande en reservation rapide preremplie : nom, contact,
+// groupe, et le message en note pour le comptoir. La date reste a choisir
+// (le souhait est du texte libre, il part en note, jamais devine).
+function staffRequestToBooking(id) {
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  if (!item) return;
+  const noteParts = [
+    'Demande sur mesure',
+    item.requestedDate ? `souhait : ${item.requestedDate}` : '',
+    item.message ? String(item.message).slice(0, 160) : '',
+  ].filter(Boolean);
+  openQuickBook({
+    name: item.contactName || '',
+    email: item.email || '',
+    phone: item.phone || '',
+    pax: Number(item.pax) > 0 ? Number(item.pax) : 4,
+    notes: noteParts.join(' · '),
+  });
 }
 
 function renderStaffCustomRequestBadge(status) {

@@ -171,7 +171,9 @@ async function main() {
     const readLeadSignals = () => page.evaluate(() => {
       const seg = document.querySelector('#staffClientsPage .crm-seg[data-crm-seg="avenir"]');
       const tile = [...document.querySelectorAll('#staffClientsPage .crm-stat-link')].find((s) => /Demandes sur mesure/.test(s.textContent));
-      const menuItem = document.querySelector('[data-fgx-menu-key="clients"]');
+      // Depuis le 2026-08-18 les demandes ont LEUR page : le badge vit sur
+      // l'entree « Demandes sur mesure » du menu, plus sur « Clients ».
+      const menuItem = document.querySelector('[data-fgx-menu-key="requests"]');
       return {
         segment: typeof getStaffClientSegment === 'function' ? getStaffClientSegment() : '',
         count: typeof getStaffNewCustomRequestCount === 'function' ? getStaffNewCustomRequestCount() : -1,
@@ -188,7 +190,7 @@ async function main() {
     ok(/^1 nouvelle$/.test(leadOn.segBadge), `badge sur le segment « À venir » (obtenu « ${leadOn.segBadge} »)`);
     ok(/Demandes sur mesure/.test(leadOn.tile) && /\b1\b/.test(leadOn.tile), `tuile « Demandes sur mesure » chiffrée (« ${leadOn.tile} »)`);
     ok(leadOn.menuItems > 0, `menu staff rendu (${leadOn.menuItems} entrées)`);
-    ok(leadOn.menuBadge === '1', `badge sidebar sur « Clients » (obtenu « ${leadOn.menuBadge} »)`);
+    ok(leadOn.menuBadge === '1', `badge sidebar sur « Demandes sur mesure » (obtenu « ${leadOn.menuBadge} »)`);
     ok(leadOn.menuDot, 'point de rappel dans l\'icône (survit au menu replié et sous 1100px)');
 
     // CONTRE-PREUVE : file vidée côté serveur → les 4 signaux doivent tomber.

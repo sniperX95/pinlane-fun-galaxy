@@ -6212,7 +6212,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .lbl-optional { font-size: 11.5px; }
   #clientView .seg-btn,
   #clientView .segmented .seg-btn { min-height: 44px; font-size: 13px; }
-  #clientView .segmented { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; gap: 2px; }
+  #clientView .segmented { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 2px; gap: 2px; }
   #clientView .step-foot {
     min-height: 0;
     padding: var(--space-2) 0;
@@ -6229,8 +6229,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* En-tete, sous-barre et dock : chaque pixel de chrome se paie (iframe).
      Mesure prod 320x520 : l en-tete + la sous-barre mangeaient 156 px et le
      CTA de la page venue passait sous le pli. */
-  body.client-mode .logo { height: 24px; }
-  body.customer-mode.client-mode header { padding-top: 2px; padding-bottom: 2px; min-height: 0; }
+  body.client-mode .logo { height: 20px; }
+  body.customer-mode.client-mode header { padding-top: 1px; padding-bottom: 1px; min-height: 0; }
   /* EN IFRAME (embed-mode) : le site du gerant porte deja sa marque et ses
      contacts, notre chrome ne fait que voler la hauteur du tunnel (Movsar :
      « pense que ce sera encore plus petit, faudra integrer sur un site »). */
@@ -6354,7 +6354,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
   }
   /* Le panneau programme perd son chrome : la page EST le panneau. */
   #clientView .s1-what { border: 0; background: transparent; padding: 0; box-shadow: none; }
-  #clientView .s1-what-head { gap: var(--space-1); }
+  #clientView .s1-what-head { gap: 2px; }
   #clientView .s1-what-head .panel-kicker,
   #clientView .s1-what-head .panel-title { display: none; }
   #clientView .s1-what-head .segmented { width: 100%; }
@@ -6376,7 +6376,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
      COUP (verdict Movsar 2026-08-18 : « faut tout voir d un coup », pense aux
      clients de 50 ans et plus). Nom qui replie sans se couper, prix en
      souffle court (« des 20/piste »), coche a droite. */
-  #clientView .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  #clientView .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 5px; }
   #clientView .activity-card { height: auto; min-height: 44px; position: relative; }
   /* La coche flotte au coin : chaque pixel de largeur va au texte (a 320,
      un prix mono qui manque de 1 px replie au slash et double la carte). */
@@ -6429,6 +6429,9 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Et sur la page activites, le configurateur n apparait plus : il A sa
      page, un bandeau coupe en bas d ecran ne ferait que du bruit. */
   #clientView #step1:not(.is-options) .activity-configurator { display: none; }
+  /* Le pied de la page activites au plus pres : chaque pixel rendu a la
+     grille (les 8 cartes d un coup, meme barres Safari deployees). */
+  #clientView #step1:not(.is-solo) .step-foot { padding: 4px 0; margin-top: 4px; }
   #clientView #step1.is-options .activity-configurator { margin-top: 0; }
   #clientView #step1.is-options .activity-config-row-inner { padding: 8px; }
 

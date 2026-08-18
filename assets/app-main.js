@@ -3217,6 +3217,15 @@ function setRevealState(element, shouldShow) {
 // Le GESTE d'ouverture : la venue se valide d'un bouton, et c'est ce clic qui
 // deploie le programme (animation VECUE a chaque parcours, meme quand la date
 // par defaut est valide). Le choix survit au rechargement (state.booking).
+// Retour a la page venue (ligne de rappel du telephone) : le programme se
+// replie, la venue redevient la page courante. Les choix d'activites du
+// client restent en memoire, rien ne se perd.
+function reopenVenue() {
+  state.booking.venueConfirmed = false;
+  save();
+  syncProgressiveReveal();
+}
+
 function confirmVenue() {
   const date = state.booking.date;
   const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(date) : null;
@@ -3290,6 +3299,23 @@ function syncProgressiveReveal() {
   // n'est pas la et ce qui l'ouvrira. Elle vit exactement quand il est plie.
   const placeholder = document.getElementById('s1WhatPlaceholder');
   if (placeholder) placeholder.hidden = !what.classList.contains('is-folded');
+  // PAGE PAR PAGE telephone (2026-08-18) : programme ouvert, la venue se
+  // resume en une ligne tapable (le panneau complet est masque par le CSS
+  // <= 640, l'ecran entier revient aux activites). Le contenu se remplit ici
+  // pour suivre CHAQUE changement de date ou de groupe.
+  const venueLine = document.getElementById('s1VenueLine');
+  if (venueLine) {
+    const lineText = document.getElementById('s1VenueLineText');
+    if (lineText) {
+      const pax = Number(state.booking.pax) || 0;
+      let dateLabel = state.booking.date || '';
+      try {
+        dateLabel = parseLocalDate(state.booking.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' });
+      } catch (error) { /* la date brute reste lisible */ }
+      lineText.textContent = `${dateLabel} · ${pax} joueur${pax > 1 ? 's' : ''}`;
+    }
+    venueLine.hidden = what.classList.contains('is-folded');
+  }
   // Le resume : des qu'un choix existe dans le mode courant.
   const mode = normalizeBookingMode(state.booking.mode);
   const hasChoice = mode === 'carte'

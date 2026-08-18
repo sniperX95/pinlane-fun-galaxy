@@ -728,6 +728,10 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 
 #clientView .s1-field { display: flex; flex-direction: column; gap: var(--space-2); }
 
+/* Ligne de rappel de la venue (page par page telephone, 2026-08-18) :
+   cachee partout, le CSS <= 640 la revele quand le programme est ouvert. */
+#clientView .s1-venue-line { display: none; }
+
 #clientView .s1-what {
   min-height: 0;
   display: flex;
@@ -6122,11 +6126,46 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .s1-when .panel-head-rich { padding-bottom: var(--space-2); }
   #clientView .s1-when .panel-head-icon { width: 34px; height: 34px; }
   #clientView .s1-when .panel-head-rich .panel-title { font-size: 16px; }
-  /* Programme ouvert : l en-tete « Votre venue » redit ce que la carte
-     montre deja (la date et le groupe sont sous les yeux) ; sa ligne revient
-     aux cartes d activites. En solo il reste : c est lui qui habille la
-     carte centree. */
-  #clientView .step1-body:not(.is-solo) .s1-when .panel-head-rich { display: none; }
+  /* PAGE PAR PAGE (2026-08-18, verdict de Movsar sur SON iPhone : ~660 px
+     utiles une fois le chrome Safari retire, panneau venue qui etouffait
+     les activites, dock par-dessus le selecteur). Programme ouvert : le
+     panneau venue DISPARAIT, une ligne de rappel tapable prend sa place et
+     ramene a la page venue ; les activites recoivent l ecran entier. La
+     page venue (solo) reste la premiere page, entiere et centree. */
+  #clientView .step1-body:not(.is-solo) .s1-when { display: none; }
+  #clientView .step1-body:not(.is-solo) .s1-venue-line:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+  }
+  #clientView .s1-venue-line svg { color: var(--accent); flex: none; }
+  #clientView .s1-venue-line-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  #clientView .s1-venue-line-edit {
+    margin-left: auto;
+    flex: none;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  /* La sous-barre au telephone : une seule ligne fine, l intro cede sa
+     place (les contacts restent). */
+  #clientView .client-contact-intro { display: none; }
+  #clientView .tunnel-underbar { gap: var(--space-2); min-height: 0; padding: var(--space-1) 0; }
   #clientView .s1-when .s1-field { gap: 6px; }
   #clientView .s1-when .input { height: 44px; }
   #clientView .step1-body.is-solo .pax-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; }

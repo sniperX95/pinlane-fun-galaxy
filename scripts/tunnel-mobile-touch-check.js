@@ -129,6 +129,19 @@ async function settle(page, ms = 900) {
 async function bootTunnel(page) {
   await page.goto(`${BASE_URL}/reserver?v=touch-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
   await page.waitForFunction(() => typeof window.goStep === 'function', null, { timeout: 15000 });
+  // PAGE PAR PAGE : une venue confirmee survit au rechargement (journal 162),
+  // le telephone demarre alors sur la page activites et le champ date est
+  // masque. Le harnais fait le geste du client : Modifier d'abord.
+  const dateHidden = await page.evaluate(() => {
+    const el = document.getElementById('fDate');
+    if (!el) return true;
+    const r = el.getBoundingClientRect();
+    return r.width === 0 || r.height === 0;
+  });
+  if (dateHidden && await page.locator('#s1VenueLine').isVisible().catch(() => false)) {
+    await page.tap('#s1VenueLine');
+    await page.waitForTimeout(1000);
+  }
   await page.fill('#fDate', DATE);
   await page.waitForTimeout(600);
 }
@@ -164,11 +177,20 @@ async function markReachable(page, selector) {
 async function main() {
   const server = await serveStatic();
   const browser = await chromium.launch({ executablePath: BROWSER_PATH, headless: true });
+  // DEUX ECRANS DE TELEPHONE, DEUX THEMES : 844 (plein ecran) en clair, et
+  // 664 (iPhone reel avec le chrome Safari, verdict de Movsar du 2026-08-18)
+  // en SOMBRE : tout le controle visuel du 18 aout etait en clair pendant
+  // que Movsar regardait du sombre.
+  for (const shape of [
+    { width: 390, height: 844, scheme: 'light' },
+    { width: 390, height: 664, scheme: 'dark' },
+  ]) {
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: { width: shape.width, height: shape.height },
     hasTouch: true,
     isMobile: true,
     deviceScaleFactor: 3,
+    colorScheme: shape.scheme,
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
   });
   const page = await context.newPage();
@@ -178,10 +200,28 @@ async function main() {
 
   try {
     // --- PARCOURS COMPLET, VARIANTE SIMPLE (une activite -> cartes) --------
-    console.log('\n[390x844 tactile : parcours complet, variante cartes simples]');
+    console.log(`\n[${shape.width}x${shape.height} ${shape.scheme} tactile : parcours complet, variante cartes simples]`);
     await bootTunnel(page);
     ok(await step(page) === 1, 'etape 1 au chargement');
     await openProgram(page);
+    // PAGE PAR PAGE : programme ouvert, la ligne de rappel de venue est la
+    // page de retour. On la tape (retour a la venue), puis on rouvre : le
+    // geste Modifier du telephone fait partie du parcours.
+    const lineVisible = await page.evaluate(() => {
+      const line = document.getElementById('s1VenueLine');
+      if (!line) return false;
+      const r = line.getBoundingClientRect();
+      return r.height > 0 && r.width > 0;
+    });
+    ok(lineVisible, 'la ligne de rappel de la venue est visible programme ouvert');
+    if (lineVisible) {
+      await provenTap(page, '#s1VenueLine', 'Modifier (retour a la page venue)');
+      await settle(page, 1200);
+      const backToSolo = await page.evaluate(() => document.querySelector('#clientView .step1-body').classList.contains('is-solo'));
+      ok(backToSolo, 'le tap Modifier ramene a la page venue (solo)');
+      await provenTap(page, '#btnVenueContinue', 'Voir les activites (retour au programme)');
+      await settle(page, 1400);
+    }
     await provenTap(page, '#btnStep1', 'Verifier les disponibilites');
     await settle(page, 2200);
     ok(await step(page) === 2, `le doigt quitte l etape 1 (etape courante : ${await step(page)})`);
@@ -228,7 +268,7 @@ async function main() {
     ok(successVisible, 'l ecran « C est valide ! » est dans le viewport');
 
     // --- VARIANTE ANCRES (bowling + laser -> grille + Valider) -------------
-    console.log('\n[390x844 tactile : etape creneau, variante grille d ancres]');
+    console.log(`\n[${shape.width}x${shape.height} ${shape.scheme} tactile : etape creneau, variante grille d ancres]`);
     await bootTunnel(page);
     await page.evaluate((d) => {
       state.booking.date = d; state.booking.pax = 6; state.booking.mode = 'carte';
@@ -259,39 +299,43 @@ async function main() {
 
     ok(errors.length === 0, `zero erreur JS/console sur les deux parcours (${errors.length}${errors.length ? ' : ' + errors[0] : ''})`);
 
-    // --- CONTRE-EPREUVE PAR MUTATION ---------------------------------------
+    // --- CONTRE-EPREUVE PAR MUTATION (sur la derniere forme d ecran) -------
     // Le bug exact du 2026-08-18, reintroduit : sans `width: auto`, la
     // demande sur mesure reprend le width: 100 % de sa regle de base et
     // repousse le CTA hors ecran. Le gate doit savoir rougir la-dessus.
-    console.log('\n[Contre-epreuve par mutation : ce gate sait-il rougir ?]');
-    const css = fs.readFileSync(CLIENT_CSS, 'utf8');
-    const anchor = '#clientView .step-foot .bespoke-entry { flex: none; width: auto; min-width: 0; padding: var(--space-2); }';
-    ok(css.split(anchor).length - 1 === 1, 'ancre de mutation unique (regle mobile de la demande sur mesure)');
-    let mutated = null;
-    try {
-      fs.writeFileSync(CLIENT_CSS, css.replace(anchor, anchor.replace('width: auto; ', '')));
+    if (shape.height === 664) {
+      console.log('\n[Contre-epreuve par mutation : ce gate sait-il rougir ?]');
+      const css = fs.readFileSync(CLIENT_CSS, 'utf8');
+      const anchor = '#clientView .step-foot .bespoke-entry { flex: none; width: auto; min-width: 0; padding: var(--space-2); }';
+      ok(css.split(anchor).length - 1 === 1, 'ancre de mutation unique (regle mobile de la demande sur mesure)');
+      let mutated = null;
+      try {
+        fs.writeFileSync(CLIENT_CSS, css.replace(anchor, anchor.replace('width: auto; ', '')));
+        await bootTunnel(page);
+        await openProgram(page);
+        mutated = await probeTappable(page, '#btnStep1');
+      } finally {
+        fs.writeFileSync(CLIENT_CSS, css);
+      }
+      ok(mutated && mutated.present && !mutated.inViewport,
+        `bug reintroduit expres : le CTA ressort de l ecran (${mutated ? JSON.stringify(mutated.rect) : 'n/a'}) -> le gate ROUGIRAIT`);
       await bootTunnel(page);
       await openProgram(page);
-      mutated = await probeTappable(page, '#btnStep1');
-    } finally {
-      fs.writeFileSync(CLIENT_CSS, css);
+      const restored = await probeTappable(page, '#btnStep1');
+      ok(restored.inViewport && restored.hit, 'restauration inverse : le CTA est de nouveau sous le doigt');
     }
-    ok(mutated && mutated.present && !mutated.inViewport,
-      `bug reintroduit expres : le CTA ressort de l ecran (${mutated ? JSON.stringify(mutated.rect) : 'n/a'}) -> le gate ROUGIRAIT`);
-    await bootTunnel(page);
-    await openProgram(page);
-    const restored = await probeTappable(page, '#btnStep1');
-    ok(restored.inViewport && restored.hit, 'restauration inverse : le CTA est de nouveau sous le doigt');
   } finally {
-    await browser.close();
-    server.close();
+    await context.close();
   }
+  }
+  await browser.close();
+  server.close();
 
   if (failures) {
     console.error(`\ntunnel-mobile-touch-check: ${failures} echec(s).`);
     process.exit(1);
   }
-  console.log('\ntunnel-mobile-touch-check: ALL OK - le parcours complet passe au doigt a 390x844.');
+  console.log('\ntunnel-mobile-touch-check: ALL OK - le parcours complet passe au doigt a 390x844 et 390x664, clair et sombre.');
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

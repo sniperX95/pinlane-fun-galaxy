@@ -298,6 +298,12 @@ const VIEWPORTS = [
   { width: 1920, height: 900, minWidth: 1150, maxWidth: 1300, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
   { width: 2560, height: 1300, minWidth: 1150, maxWidth: 1300, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
   { width: 390, height: 844, minShare: 92, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
+  // TELEPHONE REEL AVEC LE CHROME DU NAVIGATEUR (2026-08-18, verdict de
+  // Movsar sur son iPhone) : Safari mange ~180 px (barre URL + barre basse),
+  // il reste ~664 px utiles. C'est la hauteur ou le panneau venue etouffait
+  // les activites : valider a 844 seulement etait la meme erreur que la
+  // fenetre fictive de 900 px du 2026-08-15.
+  { width: 390, height: 664, minShare: 92, budgets: { step1: 1, step2: 1, step3: 1, step4: 1, step5: 1 } },
 ];
 
 async function main() {

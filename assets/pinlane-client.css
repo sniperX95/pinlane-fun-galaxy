@@ -6109,9 +6109,9 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* 1. Les objets courts vont par deux : une carte d activite est un icone,
      un nom et un tarif, elle n a jamais eu besoin de 390 px de large. */
   #clientView .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  #clientView .activity-card { height: auto; min-height: 60px; }
-  #clientView .activity-toggle { grid-template-columns: 26px minmax(0, 1fr) 18px; gap: 7px; padding: 8px; }
-  #clientView .activity-icon { width: 26px; height: 26px; }
+  #clientView .activity-card { height: auto; min-height: 52px; }
+  #clientView .activity-toggle { grid-template-columns: 24px minmax(0, 1fr) 18px; gap: 6px; padding: 6px 8px; }
+  #clientView .activity-icon { width: 24px; height: 24px; }
   #clientView .activity-check { width: 18px; height: 18px; }
   /* Aucune troncature : les libelles prennent les lignes qu il leur faut. */
   #clientView .activity-name { -webkit-line-clamp: 2; }
@@ -6174,6 +6174,84 @@ body.client-mode #clientView .btn-primary.is-sealed,
      tapables. */
   #clientView #step1.is-solo .step-foot { pointer-events: none; }
   #clientView #step1.is-solo .step-foot > * { pointer-events: auto; }
+
+  /* ETAPE CRENEAU : la GRILLE D HEURES est la reine de l ecran (verdict
+     Movsar 2026-08-18, captures iPhone : « pour les heures c est caché »,
+     la grille etait un ruban derriere le panneau de decision qui mangeait
+     tout). Le panneau se reduit a l essentiel : rendez-vous, arrivee,
+     valider. Les notes de confort (a votre rythme, partage laser) cedent
+     leur place aux heures ; elles restent dites au recapitulatif. */
+  #clientView #step2 .formula-anchor-status-zone .visit-line:has(.visit-tag.free) { display: none; }
+  #clientView #step2 .formula-anchor-status-zone .visit-line-note { display: none; }
+  #clientView #step2 .formula-anchor-status-zone .formula-program-panel { padding: var(--space-2) var(--space-3); gap: 6px; }
+  #clientView #step2 .formula-anchor-status-zone .formula-visit-summary { gap: 4px; }
+  #clientView #step2 .formula-anchor-status-zone .visit-line { font-size: 12.5px; flex-wrap: wrap; row-gap: 2px; }
+  #clientView #step2 .formula-anchor-status-zone .visit-tag { font-size: 11.5px; padding: 2px 8px; }
+  #clientView #step2 .formula-anchor-status-zone .formula-plan-confirm { min-height: 44px; }
+  /* L en-tete de l etape creneau tient sur une ligne fine : le kicker
+     DISPONIBILITES redisait le titre, la carte prenait 150 px a 320 de
+     large pendant que les heures vivaient dans un ruban. */
+  #clientView #step2 .s2-side { padding: var(--space-2) var(--space-3); row-gap: 2px; }
+  #clientView #step2 .s2-side .panel-kicker { display: none; }
+  #clientView #step2 .s2-side .panel-title { font-size: 15px; }
+  #clientView #step2 .s2-side .step-intro { font-size: 12px; margin: 0; }
+  /* Pied du creneau : une ligne fine, le Retour n a pas besoin de 60 px. */
+  #clientView #step2 .step-foot { min-height: 48px; padding: var(--space-2) 0; margin-top: var(--space-2); }
+
+  /* MOINS GROS : le tunnel vit aussi en iframe dans le site du client.
+     L en-tete, la progression et le dock se serrent au telephone. */
+  body.client-mode .logo { height: 32px; }
+  body.customer-mode.client-mode header { padding-top: var(--space-1); padding-bottom: var(--space-1); }
+  #clientView .progress { padding-top: var(--space-1); }
+  /* Le dock d etat entre dans le FLUX : en flottant il recouvrait les cartes
+     ou le selecteur selon la hauteur de l ecran. En flux il prend sa ligne
+     au-dessus de la sous-barre et ne cache plus jamais rien. */
+  #clientView .step-status-dock {
+    position: static;
+    margin: var(--space-1) 0 0;
+    transform: none;
+  }
+
+  /* L ECHELLE TELEPHONE (2026-08-18, Movsar : « tout est trop gros »).
+     Le tunnel n est pas un bureau retreci : titres, temps, boutons et
+     rembourrages descendent d un cran ENSEMBLE, sans jamais passer sous les
+     planchers du gate (11,5 px de texte, 44 px de cible). Il vit aussi en
+     iframe dans le site du client : chaque pixel de chrome se paie. */
+  #clientView .tunnel-shell { padding: 0 var(--space-2); }
+  #clientView .panel { border-radius: var(--radius-md); }
+  #clientView .panel-title { font-size: 15px; }
+  #clientView .panel-kicker { font-size: 11.5px; }
+  #clientView .step-intro { font-size: 12px; }
+  #clientView .btn-primary,
+  #clientView .btn-secondary {
+    min-height: 44px;
+    font-size: 13px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  #clientView .input { height: 44px; font-size: 14px; }
+  #clientView .lbl { font-size: 12px; }
+  #clientView .lbl-optional { font-size: 11.5px; }
+  #clientView .step1-body.is-solo .pax-step-btn { min-height: 44px; }
+  #clientView .seg-btn { min-height: 44px; font-size: 13px; }
+  /* Les temps : lisibles, plus imposants non. */
+  #clientView .slot-card-time { font-size: 13.5px; }
+  #clientView .slot-card-end,
+  #clientView .slot-card-sub,
+  #clientView .slot-card-tag,
+  #clientView .slot-card-meta { font-size: 11.5px; }
+  #clientView .anchor-chip.slot-card { padding: 5px 8px; }
+  /* La progression : des reperes, pas des medailles. */
+  #clientView .progress-step .progress-index { width: 26px; height: 26px; font-size: 12px; }
+  #clientView .progress-label { font-size: 11.5px; }
+  /* Cartes d activite : noms 13, prix 11,5, coche 16. */
+  #clientView .activity-name { font-size: 13px; }
+  #clientView .activity-check { width: 16px; height: 16px; }
+  /* Recapitulatif et confirmation au meme cran. */
+  #clientView .recap-item { font-size: 13px; }
+  #clientView .total-amount { font-size: 18px; }
+  #clientView .success-wrap h2 { font-size: 22px; }
+  #clientView .success-wrap .sub { font-size: 13px; }
   #clientView .s1-when .s1-field { gap: 6px; }
   #clientView .s1-when .input { height: 44px; }
   #clientView .step1-body.is-solo .pax-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; }
@@ -6277,6 +6355,14 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView[data-step='1'] .hero-title { margin-bottom: var(--space-3); }
   #clientView[data-step='1'] .hero-title p { display: none; }
   body.client-mode #clientView[data-step='1'] .hero-title h1 { font-size: 22px; }
+}
+
+/* ECRANS ETROITS (<360 px : iPhone mini, zoom d affichage, iframe serree) :
+   trois colonnes d heures debordaient du cadre (chips coupees a droite,
+   mesure WebKit a 320). Deux colonnes, entieres. */
+@media (max-width: 360px) {
+  #clientView .anchor-chip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #clientView .slot-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 }
 
 /* ECRANS COURTS (navigateur integre Instagram/Snap, Safari barre deployee) :

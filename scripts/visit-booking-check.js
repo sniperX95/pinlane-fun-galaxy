@@ -507,7 +507,10 @@ async function main() {
       // elle n a jamais eu besoin de 390 px de large, et huit cartes empilees
       // coutaient 512 px de defilement pour rien. L assertion de troncature
       // ci-dessous garantit que la densite ne coupe aucun libelle.
-      { width: 420, expectedColumns: 2, expectedSummaryColumns: 1 },
+      // REFONTE MOBILE 2026-08-18 (option liste native choisie par Movsar sur
+      // maquettes) : sous 640 px les activites sont des RANGEES de liste, une
+      // par ligne, prix a droite. Les 8 activites restent toutes rendues.
+      { width: 420, expectedColumns: 1, expectedSummaryColumns: 1 },
     ]) {
       await page.setViewportSize({ width: target.width, height: 1200 });
       await page.waitForTimeout(80);

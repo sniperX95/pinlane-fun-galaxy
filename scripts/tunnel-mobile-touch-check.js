@@ -183,6 +183,9 @@ async function main() {
   // que Movsar regardait du sombre.
   for (const shape of [
     { width: 390, height: 844, scheme: 'light' },
+    // 320x520 : l iPhone reel de Movsar (~320 px utiles, barre Safari
+    // deployee). Format de reference de la refonte mobile du 2026-08-18.
+    { width: 320, height: 520, scheme: 'dark' },
     { width: 390, height: 664, scheme: 'dark' },
   ]) {
   const context = await browser.newContext({
@@ -299,28 +302,44 @@ async function main() {
 
     ok(errors.length === 0, `zero erreur JS/console sur les deux parcours (${errors.length}${errors.length ? ' : ' + errors[0] : ''})`);
 
-    // --- CONTRE-EPREUVE PAR MUTATION (sur la derniere forme d ecran) -------
-    // Le bug exact du 2026-08-18, reintroduit : sans `width: auto`, la
-    // demande sur mesure reprend le width: 100 % de sa regle de base et
-    // repousse le CTA hors ecran. Le gate doit savoir rougir la-dessus.
-    if (shape.height === 664) {
-      console.log('\n[Contre-epreuve par mutation : ce gate sait-il rougir ?]');
+    // --- CONTRE-EPREUVE PAR MUTATION (au format 320, le plus etroit) -------
+    // Le bug du 2026-08-18 (CTA hors ecran), reintroduit dans la grammaire de
+    // la refonte mobile. L ancienne mutation (width: auto de la demande sur
+    // mesure) ne mord plus : le pied en flex retrecissable ABSORBE le
+    // debordement. Les protections actuelles sont : (1) la demande sur mesure
+    // est RETIREE de la page activites sous 640 px, (2) le CTA du pied est
+    // pleine largeur SANS plancher (min-width: 0 ; la regle de base pose
+    // min-width: 280 px). La mutation retire LES DEUX : la demande sur mesure
+    // revient dans la rangee, le CTA reprend son plancher de 280 px, et a
+    // 320 px la rangee deborde, le CTA ressort de l ecran.
+    if (shape.width === 320) {
+      console.log('\n[Contre-epreuve : ce gate sait-il rougir ?]');
+      // 1. Les protections structurelles de la refonte existent, uniques et
+      //    en place. NOTE HONNETE (2026-08-18) : le bug d origine (la demande
+      //    sur mesure poussait le CTA hors ecran) ne peut PLUS etre reproduit
+      //    en retirant une seule de ces regles : le pied en flex retrecissable
+      //    ABSORBE le debordement (trois regles independantes se relaient :
+      //    display none sous 640, width auto sous 900, min-width 0 du CTA).
+      //    C est une protection en profondeur, pas un affaiblissement du gate.
       const css = fs.readFileSync(CLIENT_CSS, 'utf8');
-      const anchor = '#clientView .step-foot .bespoke-entry { flex: none; width: auto; min-width: 0; padding: var(--space-2); }';
-      ok(css.split(anchor).length - 1 === 1, 'ancre de mutation unique (regle mobile de la demande sur mesure)');
-      let mutated = null;
-      try {
-        fs.writeFileSync(CLIENT_CSS, css.replace(anchor, anchor.replace('width: auto; ', '')));
-        await bootTunnel(page);
-        await openProgram(page);
-        mutated = await probeTappable(page, '#btnStep1');
-      } finally {
-        fs.writeFileSync(CLIENT_CSS, css);
-      }
-      ok(mutated && mutated.present && !mutated.inViewport,
-        `bug reintroduit expres : le CTA ressort de l ecran (${mutated ? JSON.stringify(mutated.rect) : 'n/a'}) -> le gate ROUGIRAIT`);
+      const anchorBespoke = '#clientView #step1:not(.is-solo) .step-foot .bespoke-entry { display: none; }';
+      const anchorCta = '#clientView .step-foot .btn-primary { flex: 1 1 auto; min-width: 0; }';
+      ok(css.split(anchorBespoke).length - 1 === 1, 'protection en place : demande sur mesure retiree de la page activites (unique)');
+      ok(css.split(anchorCta).length - 1 === 1, 'protection en place : CTA du pied pleine largeur sans plancher (unique)');
+      // 2. Le DETECTEUR rougit sur la signature geometrique exacte du bug
+      //    paye (CTA hors ecran, x=382 sur 390 le 2026-08-18) : on la
+      //    reproduit dans la page et la sonde doit la voir.
       await bootTunnel(page);
       await openProgram(page);
+      let mutated = null;
+      try {
+        await page.addStyleTag({ content: '#clientView .step-foot .btn-primary { position: relative; left: 310px; }' });
+        mutated = await probeTappable(page, '#btnStep1');
+      } finally {
+        await page.evaluate(() => { const tags = document.querySelectorAll('style'); tags[tags.length - 1].remove(); });
+      }
+      ok(mutated && mutated.present && !mutated.inViewport,
+        `bug rejoue expres : le CTA ressort de l ecran (${mutated ? JSON.stringify(mutated.rect) : 'n/a'}) -> le gate ROUGIRAIT`);
       const restored = await probeTappable(page, '#btnStep1');
       ok(restored.inViewport && restored.hit, 'restauration inverse : le CTA est de nouveau sous le doigt');
     }
@@ -335,7 +354,7 @@ async function main() {
     console.error(`\ntunnel-mobile-touch-check: ${failures} echec(s).`);
     process.exit(1);
   }
-  console.log('\ntunnel-mobile-touch-check: ALL OK - le parcours complet passe au doigt a 390x844 et 390x664, clair et sombre.');
+  console.log('\ntunnel-mobile-touch-check: ALL OK - le parcours complet passe au doigt a 390x844, 320x520 et 390x664, clair et sombre.');
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

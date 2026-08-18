@@ -153,7 +153,14 @@ const MEASURE = () => {
   const footCandidates = scope.querySelectorAll
     ? [...scope.querySelectorAll('.s1-continue, .step-foot .btn-primary, .step-actions .btn-primary, .step-foot .btn-secondary, .success-wrap .btn-secondary')]
     : [];
-  const foot = footCandidates.find((el) => el.getBoundingClientRect().height > 0) || null;
+  // REFONTE MOBILE 2026-08-18 (invariant recale, documente) : sous 640 px le
+  // retour vit dans la BARRE HAUTE (.m-top-back), et le pied de l etape
+  // creneau simple a disparu (la decision est le tap d une carte d heure).
+  // Quand l etape ne peint aucun candidat, la barre haute est la decision de
+  // repli : elle doit etre entierement visible, comme le pied avant elle.
+  const foot = footCandidates.find((el) => el.getBoundingClientRect().height > 0)
+    || document.querySelector('.m-topbar .m-top-back:not([hidden])')
+    || null;
   const footRect = foot ? foot.getBoundingClientRect() : null;
   const footVisible = Boolean(footRect && footRect.height > 0 && footRect.bottom <= root.clientHeight + 1 && footRect.top >= 0);
   // LARGEUR REELLEMENT UTILISEE par la coquille du tunnel. Mesure du

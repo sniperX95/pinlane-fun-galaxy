@@ -3328,6 +3328,9 @@ function syncProgressiveReveal() {
   // quel que soit l'ordre des rendus qui ont mene a ce verdict (un dock qui
   // parle d'allocation devant un programme plie a ete observe au navigateur).
   if (typeof syncStatusDock === 'function') syncStatusDock();
+  // La barre haute telephone lit la page courante (venue ou activites) : elle
+  // suit chaque bascule d'is-solo, pas seulement les changements d'etape.
+  if (typeof syncMobileTopbar === 'function') syncMobileTopbar();
 }
 
 // --- DOCK D'ETAT TELEPHONE ---------------------------------------------------
@@ -4469,6 +4472,50 @@ function updateProgress() {
   // comme une goutte (transition de width, calque .lq-fluid).
   const progress = document.querySelector('#clientView .progress');
   if (progress) progress.style.setProperty('--p', String(((Number(state.step) || 1) - 1) / 4));
+  syncMobileTopbar();
+}
+
+// --- BARRE HAUTE TELEPHONE ---------------------------------------------------
+// Refonte mobile 2026-08-18 (option « liste native ») : sous 640 px, la
+// progression a pastilles cede sa place a une barre fine retour + titre + rang
+// + filet de progression. Elle se lit sur l'ETAT REEL (etape courante, page
+// venue ou activites) : elle est juste a chaque rendu, quel que soit l'ordre
+// des chemins qui y menent. Au-dessus de 640 px elle est display:none, la
+// synchroniser ne coute rien.
+function syncMobileTopbar() {
+  const title = document.getElementById('mTopTitle');
+  const rank = document.getElementById('mTopRank');
+  const back = document.getElementById('mTopBack');
+  const fill = document.getElementById('mTopFill');
+  if (!title || !rank || !back || !fill) return;
+  const step = Number(state.step) || 1;
+  const body = document.querySelector('#clientView .step1-body');
+  const venuePage = step === 1 && Boolean(body && body.classList.contains('is-solo'));
+  const names = {
+    1: venuePage ? 'Votre venue' : 'Vos activités',
+    2: 'Vos horaires',
+    3: 'Vos coordonnées',
+    4: 'Récapitulatif',
+    5: 'Confirmé',
+  };
+  title.textContent = names[step] || '';
+  rank.textContent = `${step}/5`;
+  fill.style.width = `${(step / 5) * 100}%`;
+  // Le retour n'existe que la ou il mene quelque part : jamais sur la page
+  // venue (premier ecran) ni sur la confirmation (le parcours est fini).
+  back.hidden = venuePage || step === 5;
+}
+
+// Le geste du bouton retour de la barre haute : sur la page activites il
+// rouvre la venue (meme geste que la ligne de rappel), ailleurs il recule
+// d'une etape par le meme chemin que les boutons Retour d'origine.
+function mobileTopBack() {
+  const step = Number(state.step) || 1;
+  if (step === 1) {
+    reopenVenue();
+    return;
+  }
+  if (step > 1 && step < 5) goStep(step - 1);
 }
 
 function showAlert(msg) {

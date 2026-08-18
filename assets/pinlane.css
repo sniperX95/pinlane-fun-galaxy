@@ -239,6 +239,19 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Les controles n'heritent PAS de la police par defaut du navigateur : un
+   <button> sans font-family explicite rendait la police systeme (San
+   Francisco sur iPhone, MS Shell Dlg en WebKit Windows) au milieu du Geist.
+   Vu sur le tunnel le 2026-08-18 : les `.btn-primary` du parcours client ne
+   passaient par aucune regle qui pose la famille. Un composant qui veut du
+   mono (chiffres tabulaires) le declare explicitement, comme avant. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
 h1, h2, h3, h4, h5, h6 {
   margin: 0;
   font-weight: 600;

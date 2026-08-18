@@ -6166,6 +6166,14 @@ body.client-mode #clientView .btn-primary.is-sealed,
      place (les contacts restent). */
   #clientView .client-contact-intro { display: none; }
   #clientView .tunnel-underbar { gap: var(--space-2); min-height: 0; padding: var(--space-1) 0; }
+
+  /* Le pied d etape en SOLO ne porte que l icone sur mesure : sa bande vide
+     INTERCEPTAIT le tap de « Voir les activites » quand la carte venue
+     deborde dessous (reproduit en WebKit iPhone a 375x548 : bloque net,
+     2026-08-18). La bande laisse passer le doigt, ses enfants restent
+     tapables. */
+  #clientView #step1.is-solo .step-foot { pointer-events: none; }
+  #clientView #step1.is-solo .step-foot > * { pointer-events: auto; }
   #clientView .s1-when .s1-field { gap: 6px; }
   #clientView .s1-when .input { height: 44px; }
   #clientView .step1-body.is-solo .pax-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; }
@@ -6269,6 +6277,36 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView[data-step='1'] .hero-title { margin-bottom: var(--space-3); }
   #clientView[data-step='1'] .hero-title p { display: none; }
   body.client-mode #clientView[data-step='1'] .hero-title h1 { font-size: 22px; }
+}
+
+/* ECRANS COURTS (navigateur integre Instagram/Snap, Safari barre deployee) :
+   sous ~620 px utiles, l etape 1 ne peut plus tenir sans ecraser son contenu
+   (cartes reduites a des lambeaux tout en bas, verdict Movsar 2026-08-18,
+   reproduit en WebKit iPhone a 375x548). La page roule alors dans SA zone,
+   scrollbar fine assumee : on voit tout, on peut tout toucher, le pied reste
+   en bas de l ecran. */
+@media (max-width: 640px) and (max-height: 620px) {
+  #clientView .step1-body.is-solo {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow: hidden auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  #clientView .step1-body.is-solo .s1-when { flex: none; margin: auto 0; }
+  #clientView .step1-body:not(.is-solo) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  #clientView .step1-body:not(.is-solo) .s1-venue-line:not([hidden]) { flex: none; }
+  #clientView .step1-body:not(.is-solo) .s1-what { flex: none; min-height: 0; }
+  /* Les cartes se deploient en entier : c est le corps d etape qui roule,
+     plus une lucarne de 2 px. */
+  #clientView .step1-body:not(.is-solo) .s1-scroller { flex: none; overflow: visible; }
 }
 
 /* Petit laptop (1280x610 apres zoom) : la meme information, sans un pixel de

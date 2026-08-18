@@ -463,7 +463,11 @@ async function checkBrowser(page) {
   // est de la hauteur de contenu, qui defile dans SA zone (la page, elle, ne
   // defile jamais : gate one-screen). Mesure a la bascule : 1975 px.
   ok(mobile.pickerHeight <= 2100, `mobile 390px : l ecran tient en ${mobile.pickerHeight} px (budget 2100, grille complete assumee)`);
-  ok(mobile.visibleChips <= 26, `mobile 390px : ${mobile.visibleChips} pastilles affichees a la fois, moins de la moitie des 53 deroulees d un bloc avant`);
+  // Budget releve 26 -> 32 (2026-08-18, refonte mobile) : les chips passent
+  // de ~57 a 44 px de haut (densite demandee par Movsar, grille reine), donc
+  // l ecran en montre mecaniquement plus. L invariant defendu reste le meme :
+  // jamais le mur des 53 pastilles d avant, et la page ne defile pas.
+  ok(mobile.visibleChips <= 32, `mobile 390px : ${mobile.visibleChips} pastilles affichees a la fois, jamais le mur des 53 d avant`);
   // La piste horizontale a supprime le filtre par moment de journee : les 53
   // heures des deux activites sont TOUTES dans le DOM, atteignables au doigt,
   // aux fleches ou par saut de moment. Avant, 29 d'entre elles n'existaient pas

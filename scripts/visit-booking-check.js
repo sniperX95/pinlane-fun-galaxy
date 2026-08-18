@@ -507,10 +507,13 @@ async function main() {
       // elle n a jamais eu besoin de 390 px de large, et huit cartes empilees
       // coutaient 512 px de defilement pour rien. L assertion de troncature
       // ci-dessous garantit que la densite ne coupe aucun libelle.
-      // REFONTE MOBILE 2026-08-18 (option liste native choisie par Movsar sur
-      // maquettes) : sous 640 px les activites sont des RANGEES de liste, une
-      // par ligne, prix a droite. Les 8 activites restent toutes rendues.
-      { width: 420, expectedColumns: 1, expectedSummaryColumns: 1 },
+      // REFONTE MOBILE 2026-08-18, second verdict de Movsar le meme jour :
+      // « tout voir d un coup ». Sous 640 px : DEUX colonnes de cartes
+      // compactes (les 8 visibles ensemble, prix en souffle court), et les
+      // REGLAGES quittent l ecran pour LEUR page (« une autre page dans la
+      // page ») : le configurateur ne s affiche plus avec la grille, il est
+      // prouve sur sa page par les gates tactile et one-screen.
+      { width: 420, expectedColumns: 2, expectedSummaryColumns: 1, settingsOnOwnPage: true },
     ]) {
       await page.setViewportSize({ width: target.width, height: 1200 });
       await page.waitForTimeout(80);
@@ -543,6 +546,10 @@ async function main() {
           overflowing,
           settingsGap: settings.top - grid.bottom,
           settingsBeside: settings.left >= grid.right + 4 && Math.abs(settings.top - grid.top) <= 4,
+          settingsDisplayed: (() => {
+            const el = document.querySelector('[data-role="activity-configurator"]');
+            return Boolean(el && el.offsetParent !== null && el.getBoundingClientRect().height > 0);
+          })(),
           visibleSettings: document.querySelectorAll('.activity-config-row.is-visible').length,
           summaryItems: document.querySelectorAll('.program-item').length,
           summaryColumns,
@@ -566,7 +573,12 @@ async function main() {
       // A partir de 1100 px les reglages se placent A COTE de la grille (meme
       // rangee, alignes en haut) : c'est ce qui ramene l etape dans un ecran
       // reel. En dessous, ils restent sous la grille a 8-16 px.
-      if (layout.width >= 1100) {
+      if (layout.settingsOnOwnPage) {
+        // Telephone (2026-08-18) : les reglages ont LEUR page entre les
+        // activites et les heures ; ils ne s affichent plus avec la grille.
+        ok(layout.settingsDisplayed === false,
+          `${layout.width}px : les reglages ne s affichent pas avec la grille (page options dediee)`);
+      } else if (layout.width >= 1100) {
         ok(layout.settingsBeside === true,
           `${layout.width}px : les reglages font face a la grille (cote a cote, alignes)`);
       } else {

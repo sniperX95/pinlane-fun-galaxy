@@ -3234,6 +3234,7 @@ function resetStepOneScroll() {
 function reopenVenue() {
   state.booking.venueConfirmed = false;
   save();
+  if (typeof showMobileOptionsPage === 'function') showMobileOptionsPage(false);
   syncProgressiveReveal();
   resetStepOneScroll();
 }
@@ -3319,14 +3320,7 @@ function syncProgressiveReveal() {
   const venueLine = document.getElementById('s1VenueLine');
   if (venueLine) {
     const lineText = document.getElementById('s1VenueLineText');
-    if (lineText) {
-      const pax = Number(state.booking.pax) || 0;
-      let dateLabel = state.booking.date || '';
-      try {
-        dateLabel = parseLocalDate(state.booking.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' });
-      } catch (error) { /* la date brute reste lisible */ }
-      lineText.textContent = `${dateLabel} · ${pax} joueur${pax > 1 ? 's' : ''}`;
-    }
+    if (lineText) lineText.textContent = venueSummaryLabel();
     venueLine.hidden = what.classList.contains('is-folded');
   }
   // Le resume : des qu'un choix existe dans le mode courant.
@@ -3706,6 +3700,7 @@ function buildActivityPicker(host, catalog) {
           <span class="activity-text">
             <span class="activity-name">${escapeHtml(activity.name)}</span>
             <span class="activity-price" data-role="price">${escapeHtml(activityPriceHint(activity, pax))}</span>
+            <span class="activity-price-compact" data-role="price-compact" aria-hidden="true">${escapeHtml(activityPriceHintCompact(activity, pax))}</span>
             <span class="activity-note"${activity.note ? ` title="${escapeHtml(activity.note)}"` : ''}>${activity.note ? escapeHtml(activity.note) : ''}</span>
           </span>
           <span class="activity-check" aria-hidden="true">
@@ -3764,6 +3759,8 @@ function syncActivityPickerState(off = []) {
     }
     const price = card.querySelector('[data-role="price"]');
     if (price && activity) price.textContent = closed ? 'Fermé ce jour' : activityPriceHint(activity, pax);
+    const priceCompact = card.querySelector('[data-role="price-compact"]');
+    if (priceCompact && activity) priceCompact.textContent = closed ? 'Fermé ce jour' : activityPriceHintCompact(activity, pax);
     const optionsRow = optionsRows.get(activityId);
     if (!optionsRow) return;
     const showOptions = chosen && !closed;
@@ -3771,6 +3768,9 @@ function syncActivityPickerState(off = []) {
     optionsRow.setAttribute('aria-hidden', showOptions ? 'false' : 'true');
     if (showOptions) visibleConfigCount += 1;
     if (!showOptions && optionsRow.contains(document.activeElement) && toggle) toggle.focus();
+    // Le CTA du telephone dit ou il mene (Continuer vers la page options, ou
+    // directement les disponibilites) : il suit chaque coche.
+    if (typeof syncStepOneCta === 'function') syncStepOneCta();
     optionsRow.querySelectorAll('button').forEach(button => { button.tabIndex = showOptions ? 0 : -1; });
     // Les options ne sont PAS reecrites : on bascule seulement la pastille
     // active. Les reconstruire a chaque clic detruirait le retour visuel du
@@ -3834,6 +3834,22 @@ function activityPriceHint(activity, pax) {
   if (activity.priceType === 'grid_fun_run') return `dès ${FUN_RUN_OPTIONS[0].price}€ la session`;
   if (activity.priceValue == null) return 'réglé sur place';
   return `${activity.priceValue}€ ${activity.unitLabel || ''}`.trim();
+}
+
+// La MEME information en souffle court, pour la carte compacte du telephone :
+// « dès 20€/piste » au lieu de « dès 20€ la piste ». Une unite inconnue reste
+// telle quelle : mieux vaut long que faux.
+function activityPriceHintCompact(activity, pax) {
+  const full = activityPriceHint(activity, pax);
+  return full
+    .replace(' la piste', '/piste')
+    .replace(' par piste', '/piste')
+    .replace(' la session', '/session')
+    .replace(' par session', '/session')
+    .replace(' par personne', '/pers.')
+    .replace(' par joueur', '/joueur')
+    .replace(' par enfant', '/enfant')
+    .replace(' par table et par heure', '/table/h');
 }
 
 // Les durees vendables d'une activite au temps. Elles se DERIVENT des bornes
@@ -4493,6 +4509,17 @@ function updateProgress() {
 // venue ou activites) : elle est juste a chaque rendu, quel que soit l'ordre
 // des chemins qui y menent. Au-dessus de 640 px elle est display:none, la
 // synchroniser ne coute rien.
+// Le resume de la venue en un souffle : « sam. 22 aout · 4 joueurs ».
+// Partage entre la ligne de rappel et la barre haute.
+function venueSummaryLabel() {
+  const pax = Number(state.booking.pax) || 0;
+  let dateLabel = state.booking.date || '';
+  try {
+    dateLabel = parseLocalDate(state.booking.date).toLocaleDateString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short' });
+  } catch (error) { /* la date brute reste lisible */ }
+  return `${dateLabel} · ${pax} joueur${pax > 1 ? 's' : ''}`;
+}
+
 function syncMobileTopbar() {
   const title = document.getElementById('mTopTitle');
   const rank = document.getElementById('mTopRank');
@@ -4502,19 +4529,40 @@ function syncMobileTopbar() {
   const step = Number(state.step) || 1;
   const body = document.querySelector('#clientView .step1-body');
   const venuePage = step === 1 && Boolean(body && body.classList.contains('is-solo'));
+  const optionsPage = step === 1 && !venuePage && typeof onMobileOptionsPage === 'function' && onMobileOptionsPage();
+  const activitiesPage = step === 1 && !venuePage && !optionsPage;
+  // Sur la page activites, le titre EST le rappel de venue : il porte le
+  // choix (sam. 22 aout · 4 joueurs) et un tap ramene a la page venue. La
+  // rangee de rappel separee a cede sa hauteur a la grille (tout voir d'un
+  // coup, verdict Movsar 2026-08-18).
   const names = {
-    1: venuePage ? 'Votre venue' : 'Vos activités',
+    1: venuePage ? 'Votre venue' : (optionsPage ? 'Vos options' : venueSummaryLabel()),
     2: 'Vos horaires',
     3: 'Vos coordonnées',
     4: 'Récapitulatif',
     5: 'Confirmé',
   };
   title.textContent = names[step] || '';
+  title.disabled = !activitiesPage;
+  title.classList.toggle('is-actionable', activitiesPage);
+  if (activitiesPage) {
+    title.setAttribute('aria-label', `${venueSummaryLabel()}, modifier votre venue`);
+  } else {
+    title.removeAttribute('aria-label');
+  }
   rank.textContent = `${step}/5`;
   fill.style.width = `${(step / 5) * 100}%`;
   // Le retour n'existe que la ou il mene quelque part : jamais sur la page
   // venue (premier ecran) ni sur la confirmation (le parcours est fini).
   back.hidden = venuePage || step === 5;
+}
+
+// Tap sur le titre de la barre haute (page activites) : meme geste que la
+// ligne de rappel, retour a la page venue.
+function mobileTopTitleTap() {
+  const step = Number(state.step) || 1;
+  const body = document.querySelector('#clientView .step1-body');
+  if (step === 1 && body && !body.classList.contains('is-solo')) reopenVenue();
 }
 
 // Le geste du bouton retour de la barre haute : sur la page activites il
@@ -4523,6 +4571,11 @@ function syncMobileTopbar() {
 function mobileTopBack() {
   const step = Number(state.step) || 1;
   if (step === 1) {
+    // Page options -> page activites -> page venue : la chaine du retour.
+    if (typeof onMobileOptionsPage === 'function' && onMobileOptionsPage()) {
+      showMobileOptionsPage(false);
+      return;
+    }
     reopenVenue();
     return;
   }
@@ -4783,11 +4836,60 @@ function sealBookingSubmit() {
   return new Promise((resolve) => setTimeout(resolve, 320));
 }
 
+// --- PAGE OPTIONS DU TELEPHONE ----------------------------------------------
+// Verdict Movsar 2026-08-18 : les activites se voient TOUTES d un coup, et les
+// reglages (duree, tables, enfants, parties) vivent sur LEUR page, entre les
+// activites et les heures : « une autre page dans la page ». Au-dessus de
+// 640 px rien ne change, le configurateur reste sous la grille.
+function isPhoneLayout() {
+  return window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+}
+
+function mobileOptionsAvailable() {
+  // La page options n existe qu en mode A LA CARTE : une formule regle sa
+  // visite dans son propre flux. Sans ce garde, des reglages carte restes
+  // coches detournaient goStep2 d une reservation formule bootee a une
+  // largeur telephone (attrape par visit-freedom, matrice 20 joueurs).
+  if (normalizeBookingMode(state.booking.mode) !== 'carte') return false;
+  return document.querySelectorAll('.activity-config-row.is-visible').length > 0;
+}
+
+function onMobileOptionsPage() {
+  const stepRoot = document.getElementById('step1');
+  return Boolean(stepRoot && stepRoot.classList.contains('is-options'));
+}
+
+function showMobileOptionsPage(show) {
+  const stepRoot = document.getElementById('step1');
+  if (!stepRoot) return;
+  stepRoot.classList.toggle('is-options', Boolean(show));
+  resetStepOneScroll();
+  if (typeof syncStepOneCta === 'function') syncStepOneCta();
+  if (typeof syncMobileTopbar === 'function') syncMobileTopbar();
+}
+
+// Le libelle du CTA de l etape 1 dit ou il mene : « Continuer » vers la page
+// options quand elle existe, « Verifier les disponibilites » sinon.
+function syncStepOneCta() {
+  const label = document.getElementById('btnStep1Label');
+  if (!label) return;
+  const towardOptions = isPhoneLayout() && !onMobileOptionsPage() && mobileOptionsAvailable();
+  const text = towardOptions ? 'Continuer' : 'Vérifier les disponibilités';
+  if (label.textContent !== text) label.textContent = text;
+}
+
 async function goStep2() {
   if (isPastBusinessDate(state.booking.date)) {
     showAlert('Cette date est déjà passée. Vous ne pouvez plus réserver pour ce jour.');
     return;
   }
+  // Telephone : le premier passage s arrete sur la page options si un reglage
+  // existe ; le second (depuis la page options) continue vers les heures.
+  if (isPhoneLayout() && !onMobileOptionsPage() && mobileOptionsAvailable()) {
+    showMobileOptionsPage(true);
+    return;
+  }
+  showMobileOptionsPage(false);
   // getSchedule integre desormais le verdict serveur du jour : une fermeture
   // ponctuelle posee depuis le cockpit rend null ici, exactement comme un lundi.
   const schedule = getSchedule(state.booking.date, state.isHolidayMode);

@@ -245,6 +245,18 @@ async function walkTunnel(page, session, viewport, theme) {
   await page.evaluate(() => goStep2());
   await page.waitForTimeout(1200);
   await settle(page);
+  // PAGE OPTIONS du telephone (2026-08-18) : sous 640 px le premier goStep2
+  // s arrete sur la page des reglages. Elle se mesure comme un ecran a part
+  // entiere (budget 1, cibles, textes), puis le second appel continue.
+  const onOptionsPage = await page.evaluate(() => Number(state.step) === 1
+    && Boolean(document.getElementById('step1')?.classList.contains('is-options')));
+  if (onOptionsPage) {
+    out.step1options = await page.evaluate(MEASURE);
+    await sweep();
+    await page.evaluate(() => goStep2());
+    await page.waitForTimeout(1200);
+    await settle(page);
+  }
   out.step2 = await page.evaluate(MEASURE);
   await sweep();
 
@@ -328,9 +340,14 @@ async function main() {
         console.log(`\n[${viewport.width}x${viewport.height} px / ${theme}]`);
         const walk = await walkTunnel(page, session, viewport, theme);
         measured[`${viewport.width}-${theme}`] = walk;
-        ['step1', 'step2', 'step3', 'step4', 'step5'].forEach((stepKey) => {
+        // La PAGE OPTIONS du telephone (2026-08-18) est un ecran a part
+        // entiere : quand la marche l a traversee, elle repond aux memes
+        // exigences que les etapes, budget 1 compris.
+        const stepKeys = ['step1', 'step2', 'step3', 'step4', 'step5'];
+        if (walk.step1options) stepKeys.splice(1, 0, 'step1options');
+        stepKeys.forEach((stepKey) => {
           const m = walk[stepKey];
-          const budget = viewport.budgets[stepKey];
+          const budget = viewport.budgets[stepKey] ?? 1;
           // Comparaison en PIXELS, jamais sur le ratio arrondi : 904 px pour une
           // fenetre de 900 donnait « 1 ecran » et passait, alors que la page
           // defilait bel et bien de 4 px.

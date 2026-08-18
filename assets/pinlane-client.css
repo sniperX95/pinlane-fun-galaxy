@@ -6108,6 +6108,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
 /* Barre haute telephone : n'existe que sous 640 px (bloc mobile ci-dessous). */
 #clientView .m-topbar,
 #clientView .m-top-hairline { display: none; }
+/* Le prix compact (« des 20/piste ») ne sert que la carte telephone. */
+#clientView .activity-price-compact { display: none; }
 
 @media (max-width: 640px) {
   /* ==========================================================================
@@ -6166,7 +6168,7 @@ body.client-mode #clientView .btn-primary.is-sealed,
     border-radius: 2px;
     background: var(--line);
     overflow: hidden;
-    margin: 0 0 var(--space-1);
+    margin: 0 0 2px;
   }
   #clientView .m-top-hairline i {
     display: block;
@@ -6227,15 +6229,20 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* En-tete, sous-barre et dock : chaque pixel de chrome se paie (iframe).
      Mesure prod 320x520 : l en-tete + la sous-barre mangeaient 156 px et le
      CTA de la page venue passait sous le pli. */
-  body.client-mode .logo { height: 26px; }
+  body.client-mode .logo { height: 24px; }
   body.customer-mode.client-mode header { padding-top: 2px; padding-bottom: 2px; min-height: 0; }
+  /* EN IFRAME (embed-mode) : le site du gerant porte deja sa marque et ses
+     contacts, notre chrome ne fait que voler la hauteur du tunnel (Movsar :
+     « pense que ce sera encore plus petit, faudra integrer sur un site »). */
+  body.embed-mode.client-mode header { display: none; }
+  body.embed-mode #clientView .tunnel-underbar { display: none; }
   #clientView .client-contact-intro { display: none; }
   #clientView .tunnel-underbar { gap: var(--space-1); min-height: 0; padding: 2px 0; }
   /* Les contacts du centre : une rangee compacte qui plie, pas une pile de
      lignes de 44 px (88 px mesures en prod pour deux liens). */
   #clientView .client-contact-bar { padding: 0; }
   #clientView .client-contact-links { flex-wrap: wrap; justify-content: center; gap: 2px var(--space-4); }
-  #clientView .client-contact-links a { min-height: 30px; font-size: 12px; padding: 2px 4px; }
+  #clientView .client-contact-links a { min-height: 28px; font-size: 12px; padding: 2px 4px; }
   #clientView .client-contact-links a svg { width: 13px; height: 13px; }
   #clientView .client-footer { margin-top: 0; padding-top: 2px; }
   /* Le dock d etat en FLUX (flottant, il recouvrait cartes ou selecteur) :
@@ -6255,7 +6262,8 @@ body.client-mode #clientView .btn-primary.is-sealed,
     font-size: 11.5px;
     color: var(--muted);
   }
-  #clientView .step-status-dock svg { width: 14px; height: 14px; }
+  /* L icone decorative du dock se lisait comme un point flottant mal cadre. */
+  #clientView .step-status-dock svg { display: none; }
 
   /* --- 2. Etape 1, page VENUE (solo) : la carte respire, sans chrome. ----- */
   /* PAGE PAR PAGE (2026-08-18, verdict de Movsar sur SON iPhone). Programme
@@ -6291,53 +6299,56 @@ body.client-mode #clientView .btn-primary.is-sealed,
      disponibilites » hors ecran, le bug paye du 2026-08-18. Le gate tactile
      le prouve par mutation : ne pas la deplacer sans recaler le gate. */
   #clientView #step1:not(.is-solo) .step-foot .bespoke-entry { display: none; }
+  /* La demande sur mesure, page venue : une VRAIE carte visible (Movsar :
+     « trop petit et cache alors que ya full espace de libre »). */
   #clientView #step1.is-solo .bespoke-entry {
     width: 100%;
-    justify-content: center;
-    border: 0;
-    background: transparent;
-    padding: var(--space-2);
-    min-height: 44px;
-  }
-  #clientView #step1.is-solo .bespoke-entry-icon { display: none; }
-  #clientView #step1.is-solo .step-foot .bespoke-entry-text { display: flex; }
-  #clientView #step1.is-solo .bespoke-entry-text { gap: 0; align-items: center; text-align: center; }
-  #clientView #step1.is-solo .bespoke-entry-text strong {
-    font-size: 12.5px;
-    font-weight: 500;
-    color: var(--muted);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  #clientView #step1.is-solo .bespoke-entry-text small { display: none; }
-
-  /* --- 3. Etape 1, page ACTIVITES : la liste native. ---------------------- */
-  #clientView .step1-body:not(.is-solo) .s1-venue-line:not([hidden]) {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: 44px;
-    padding: var(--space-1) var(--space-3);
-    background: var(--subtle);
-    border: 0;
+    border: 1px dashed var(--line-strong);
     border-radius: var(--radius-md);
+    background: var(--surface);
+    padding: var(--space-2) var(--space-3);
+    min-height: 56px;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  #clientView #step1.is-solo .bespoke-entry-icon { width: 32px; height: 32px; flex: none; }
+  #clientView #step1.is-solo .step-foot .bespoke-entry-text { display: flex; }
+  #clientView #step1.is-solo .bespoke-entry-text { gap: 1px; text-align: left; }
+  #clientView #step1.is-solo .bespoke-entry-text strong { font-size: 12.5px; font-weight: 600; text-wrap: balance; }
+  #clientView #step1.is-solo .bespoke-entry-text small { display: block; font-size: 11.5px; color: var(--muted); }
+  /* La page venue s ANIME : les blocs se posent en cascade liquide a chaque
+     arrivee sur la page (grammaire lq-pop de la maison, reduced-motion la
+     coupe globalement). */
+  #clientView .step1-body.is-solo .s1-when > * { animation: lq-pop 0.5s var(--lq-spring) backwards; }
+  #clientView .step1-body.is-solo .s1-when > *:nth-child(1) { animation-delay: 0.03s; }
+  #clientView .step1-body.is-solo .s1-when > *:nth-child(2) { animation-delay: 0.09s; }
+  #clientView .step1-body.is-solo .s1-when > *:nth-child(3) { animation-delay: 0.15s; }
+  #clientView .step1-body.is-solo .s1-when > *:nth-child(4) { animation-delay: 0.21s; }
+  #clientView #step1.is-solo .step-foot .bespoke-entry { animation: lq-pop 0.5s var(--lq-spring) 0.27s backwards; }
+
+  /* --- 3. Etape 1, page ACTIVITES : tout voir d un coup. ------------------ */
+  /* Le rappel de venue vit DANS la barre haute (titre actionnable) : la
+     rangee de rappel separee cedait 42 px que la grille reclame. */
+  #clientView .s1-venue-line { display: none; }
+  #clientView .m-top-title {
+    background: transparent;
+    border: 0;
+    padding: 0;
     color: var(--text);
-    cursor: pointer;
-    text-align: left;
-  }
-  #clientView .s1-venue-line svg { color: var(--accent); flex: none; }
-  #clientView .s1-venue-line-text {
-    min-width: 0;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.15;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 600;
-    font-size: 12.5px;
   }
-  #clientView .s1-venue-line-edit {
-    margin-left: auto;
-    flex: none;
-    font-size: 12.5px;
+  #clientView .m-top-title:disabled { color: var(--text); opacity: 1; cursor: default; }
+  #clientView .m-top-title.is-actionable { cursor: pointer; }
+  #clientView .m-top-title.is-actionable::after {
+    content: 'Modifier';
+    display: block;
+    font-size: 11.5px;
     font-weight: 600;
     color: var(--accent);
   }
@@ -6347,41 +6358,79 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .s1-what-head .panel-kicker,
   #clientView .s1-what-head .panel-title { display: none; }
   #clientView .s1-what-head .segmented { width: 100%; }
+  /* Le geste vertical appartient au defilement : il commence souvent SUR un
+     bouton (cartes, chips, champs), pan-y le dit explicitement au moteur
+     (retour Movsar iPhone : « les boutons bloquent » le defilement). */
+  #clientView .step-body,
+  #clientView .s1-scroller,
+  #clientView .s2-slots,
+  #clientView #recapList,
+  #clientView .activity-toggle,
+  #clientView .anchor-chip,
+  #clientView .slot-card,
+  #clientView .anchor-track,
+  #clientView .seg-btn,
+  #clientView .formule-card { touch-action: pan-y; }
 
-  /* Les activites en RANGEES : icone, nom, prix a droite, coche. Les 8
-     activites se lisent d un coup d oeil, aucun libelle ne se coupe (le prix
-     long replie sous le nom, la rangee grandit). */
-  #clientView .activity-grid { grid-template-columns: 1fr; gap: 5px; }
-  #clientView .activity-card { height: auto; min-height: 44px; }
+  /* Les activites : DEUX colonnes de cartes compactes, LES 8 VISIBLES D UN
+     COUP (verdict Movsar 2026-08-18 : « faut tout voir d un coup », pense aux
+     clients de 50 ans et plus). Nom qui replie sans se couper, prix en
+     souffle court (« des 20/piste »), coche a droite. */
+  #clientView .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  #clientView .activity-card { height: auto; min-height: 44px; position: relative; }
+  /* La coche flotte au coin : chaque pixel de largeur va au texte (a 320,
+     un prix mono qui manque de 1 px replie au slash et double la carte). */
   #clientView .activity-toggle {
-    grid-template-columns: 26px minmax(0, 1fr) 18px;
-    gap: var(--space-2);
-    padding: 5px var(--space-2);
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 5px;
+    padding: 5px 8px;
     min-height: 44px;
-    align-items: center;
+    align-items: start;
   }
-  #clientView .activity-icon { width: 26px; height: 26px; }
-  #clientView .activity-check { width: 16px; height: 16px; }
-  #clientView .activity-text {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: var(--space-2);
-    row-gap: 0;
+  #clientView .activity-icon { width: 18px; height: 18px; margin-top: 1px; }
+  #clientView .activity-check {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 14px;
+    height: 14px;
+    margin: 0;
   }
-  #clientView .activity-name { font-size: 13px; -webkit-line-clamp: unset; }
-  #clientView .activity-price {
-    margin-left: auto;
-    font-size: 11.5px;
+  #clientView .activity-name { padding-right: 14px; }
+  #clientView .activity-text { display: block; }
+  #clientView .activity-name {
+    display: block;
+    font-size: 12.5px;
+    line-height: 1.2;
     -webkit-line-clamp: unset;
-    text-align: right;
+    white-space: normal;
   }
-  #clientView .activity-note { flex: 1 1 100%; white-space: normal; font-size: 11.5px; }
+  /* Le prix long cede sa place au prix compact ; l info est la meme. */
+  #clientView .activity-price { display: none; }
+  #clientView .activity-price-compact {
+    display: inline;
+    font-family: var(--font-data);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  #clientView .activity-note { display: inline; white-space: normal; font-size: 11.5px; }
+  #clientView .activity-note:not(:empty)::before { content: '· '; }
 
   /* Les reglages d une activite cochee (duree, tables, enfants). */
   #clientView #step1 .activity-config-row-inner { padding: 6px 8px; }
   #clientView .activity-configurator-head { padding: 0 2px; }
+  /* PAGE OPTIONS (« une autre page dans la page », Movsar 2026-08-18) : sur
+     telephone les reglages ont leur propre ecran entre les activites et les
+     heures. La grille et le selecteur s effacent, le configurateur prend
+     tout ; la barre haute titre « Vos options » et son retour font le lien. */
+  #clientView #step1.is-options .s1-what-head,
+  #clientView #step1.is-options .activity-grid,
+  #clientView #step1.is-options #programSummary { display: none; }
+  /* Et sur la page activites, le configurateur n apparait plus : il A sa
+     page, un bandeau coupe en bas d ecran ne ferait que du bruit. */
+  #clientView #step1:not(.is-options) .activity-configurator { display: none; }
+  #clientView #step1.is-options .activity-configurator { margin-top: 0; }
+  #clientView #step1.is-options .activity-config-row-inner { padding: 8px; }
 
   /* Les formules : une colonne lisible a 320, deux des que la place existe. */
   #clientView .formule-cards { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
@@ -6439,6 +6488,11 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .anchor-row-head small { font-size: 11.5px; }
   #clientView .anchor-row-pick { font-size: 12px; }
   #clientView .anchor-track-nudge { display: none; }
+  /* Le connecteur vertical du rail depassait derriere les chips (mal cadre) :
+     le lien entre etapes reste dit par le texte d ecart, centre. */
+  #clientView .visit-rail-line { display: none; }
+  #clientView .visit-rail-link { padding-left: 0; }
+  #clientView .visit-rail-gap { display: block; text-align: center; }
   #clientView .anchor-chip-grid { gap: 6px; }
   #clientView .anchor-chip.slot-card {
     align-items: center;

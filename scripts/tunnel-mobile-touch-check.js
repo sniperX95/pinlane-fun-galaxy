@@ -138,8 +138,10 @@ async function bootTunnel(page) {
     const r = el.getBoundingClientRect();
     return r.width === 0 || r.height === 0;
   });
-  if (dateHidden && await page.locator('#s1VenueLine').isVisible().catch(() => false)) {
-    await page.tap('#s1VenueLine');
+  // Depuis le 2026-08-18 (tout voir d un coup), le geste Modifier vit sur le
+  // TITRE de la barre haute (bouton #mTopTitle), plus sur une rangee dediee.
+  if (dateHidden && await page.locator('#mTopTitle.is-actionable').isVisible().catch(() => false)) {
+    await page.tap('#mTopTitle');
     await page.waitForTimeout(1000);
   }
   await page.fill('#fDate', DATE);
@@ -207,23 +209,37 @@ async function main() {
     await bootTunnel(page);
     ok(await step(page) === 1, 'etape 1 au chargement');
     await openProgram(page);
-    // PAGE PAR PAGE : programme ouvert, la ligne de rappel de venue est la
-    // page de retour. On la tape (retour a la venue), puis on rouvre : le
-    // geste Modifier du telephone fait partie du parcours.
+    // PAGE PAR PAGE : programme ouvert, le rappel de venue vit dans la BARRE
+    // HAUTE (titre actionnable, refonte du 2026-08-18). On le tape (retour a
+    // la venue), puis on rouvre : le geste Modifier fait partie du parcours.
     const lineVisible = await page.evaluate(() => {
-      const line = document.getElementById('s1VenueLine');
-      if (!line) return false;
+      const line = document.getElementById('mTopTitle');
+      if (!line || !line.classList.contains('is-actionable')) return false;
       const r = line.getBoundingClientRect();
       return r.height > 0 && r.width > 0;
     });
-    ok(lineVisible, 'la ligne de rappel de la venue est visible programme ouvert');
+    ok(lineVisible, 'le rappel de venue (titre de la barre haute) est actionnable programme ouvert');
     if (lineVisible) {
-      await provenTap(page, '#s1VenueLine', 'Modifier (retour a la page venue)');
+      await provenTap(page, '#mTopTitle', 'Modifier (retour a la page venue)');
       await settle(page, 1200);
       const backToSolo = await page.evaluate(() => document.querySelector('#clientView .step1-body').classList.contains('is-solo'));
       ok(backToSolo, 'le tap Modifier ramene a la page venue (solo)');
       await provenTap(page, '#btnVenueContinue', 'Voir les activites (retour au programme)');
       await settle(page, 1400);
+    }
+    // PAGE OPTIONS (2026-08-18) : avec un reglage actif, le premier tap mene
+    // a la page des options ; le second continue vers les heures.
+    await provenTap(page, '#btnStep1', 'Continuer (vers la page options)');
+    await settle(page, 1200);
+    const optionsShown = await page.evaluate(() => Number(state.step) === 1
+      && document.getElementById('step1').classList.contains('is-options'));
+    ok(optionsShown, 'la page options s ouvre entre les activites et les heures');
+    if (optionsShown) {
+      const backFromOptions = await page.evaluate(() => {
+        const back = document.getElementById('mTopBack');
+        return Boolean(back && !back.hidden);
+      });
+      ok(backFromOptions, 'la page options a un retour dans la barre haute');
     }
     await provenTap(page, '#btnStep1', 'Verifier les disponibilites');
     await settle(page, 2200);
@@ -281,7 +297,11 @@ async function main() {
       goStep(1, { animate: false, focus: false });
     }, DATE);
     await settle(page, 800);
-    await provenTap(page, '#btnStep1', 'Verifier les disponibilites (panier ancres)');
+    await provenTap(page, '#btnStep1', 'Continuer (panier ancres, vers la page options)');
+    await settle(page, 1200);
+    if (await page.evaluate(() => Number(state.step) === 1 && document.getElementById('step1').classList.contains('is-options'))) {
+      await provenTap(page, '#btnStep1', 'Verifier les disponibilites (panier ancres)');
+    }
     await settle(page, 2400);
     ok(await step(page) === 2, `etape creneau atteinte (${await step(page)})`);
     const chips = await page.evaluate(() => document.querySelectorAll('.anchor-chip:not([disabled])').length);

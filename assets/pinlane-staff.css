@@ -3425,6 +3425,18 @@ body.staff-mode.laser-dragging * { user-select: none; }
 @media (prefers-reduced-motion: reduce) {
   .cr-panel.is-called { transition: none; }
 }
+
+/* Meme repere quand l'alerte du tableau de bord amene sur UNE demande precise
+   de la page dediee : sans lui, le defilement automatique laisse le lecteur
+   chercher laquelle des cartes on lui montre. */
+.req-card.is-called {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  transition: outline-color var(--dur) var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .req-card.is-called { transition: none; }
+}
 .res-section.offplanning .res-section-head .label { color: var(--warning); }
 .res-section.offplanning .res-section-head .count { background: var(--warning-soft); color: var(--warning); }
 

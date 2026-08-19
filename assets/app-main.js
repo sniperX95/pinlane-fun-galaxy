@@ -7378,10 +7378,13 @@ function getStaffDashboardAlertDefinitions(metrics) {
   }
   // Un lead sur mesure est de l'argent qui attend une réponse : il passe EN
   // TÊTE. Le compte est celui des demandes ACTIVES (ni traitées ni archivées,
-  // regle du 2026-08-14), et il se TRAITE ICI : le panneau d'alertes liste les
-  // demandes avec leurs actions (répondre, prendre en charge, marquer traitée)
-  // au lieu d'expédier vers la page Clients (« nous emmener dans toutes les
-  // categories », Movsar 2026-08-18).
+  // regle du 2026-08-14). L'alerte NOMME la demande puis MENE a la page dediee
+  // « Demandes sur mesure » (Movsar 2026-08-19 : « c est mal relié, faut que ça
+  // emmene a notre categorie dediee pour gerer ça »). Elle ne duplique plus les
+  // actions : la page les porte toutes, et mieux (repondre dans la carte,
+  // convertir en reservation, segments). Ce qui avait ete refusé le 2026-08-18,
+  // c'etait d'expedier vers Clients > A venir, une page qui ne parlait pas du
+  // sujet ; cette page-la, elle, EST le sujet.
   const activeLeads = typeof getStaffActiveCustomRequestCount === 'function' ? getStaffActiveCustomRequestCount() : 0;
   if (activeLeads > 0) {
     alerts.unshift({
@@ -7390,7 +7393,7 @@ function getStaffDashboardAlertDefinitions(metrics) {
       title: `${activeLeads} demande${activeLeads > 1 ? 's' : ''} sur mesure en attente`,
       text: 'Anniversaires, groupes et entreprises qui attendent une réponse.',
       rows: [],
-      action: 'Répondre, prendre en charge ou marquer traitée, directement ici.'
+      action: 'Tout se traite dans la page Demandes sur mesure : répondre par email, prendre en charge, convertir en réservation.'
     });
   }
   return alerts;
@@ -7756,7 +7759,7 @@ function getStaffDashboardAlertActions(kind, visibleAlerts, nav) {
     actions.push({ label: 'Tout encaisser', onclick: 'dashboardDetailPayAllUnpaid(event)', className: 'primary' });
   }
   if (kind === 'lead') {
-    actions.push({ label: 'Ouvrir la page Demandes', onclick: "closeStaffDashboardDetail(); openStaffMenuPage('requests')", className: 'primary' });
+    actions.push({ label: 'Ouvrir les demandes sur mesure', onclick: 'openStaffRequestsPage(null, event)', className: 'primary' });
   }
   actions.push({ label: 'Voir toutes les réservations', onclick: nav.openReservations, className: actions.length ? 'secondary' : '' });
   actions.push({ label: 'Ouvrir le planning', onclick: nav.openPlanning, className: 'secondary' });
@@ -7840,13 +7843,48 @@ function renderStaffAlertLeadRows() {
         <small>${escapeHtml(String(item.message || '').slice(0, 220))}</small>
       </div>
       <div class="dashboard-detail-row-actions">
-        ${item.email ? `<button type="button" class="primary" onclick="closeStaffDashboardDetail(); composeStaffClientEmail(${staffClientJs(item.email)}, ${staffClientJs(item.contactName || '')})">Répondre</button>` : ''}
-        ${item.status === 'new' ? `<button type="button" onclick="dashboardDetailLeadStatus(${jid}, 'in_progress', event)">Prendre en charge</button>` : ''}
-        <button type="button" onclick="dashboardDetailLeadStatus(${jid}, 'handled', event)">Marquer traitée</button>
-        <button type="button" onclick="openStaffCustomRequest(${jid})">Fiche</button>
+        <button type="button" class="primary" onclick="openStaffRequestsPage(${jid}, event)">Gérer cette demande</button>
       </div>
     </article>`;
   }).join('');
+}
+
+// L'ALERTE MENE A LA PAGE DEDIEE (Movsar, 2026-08-19 : « l alerte pour ça c est
+// mal relié, faut que ça emmene a notre categorie dediee pour gerer ça »).
+// Elle ouvre « Demandes sur mesure », pose le segment qui CONTIENT la demande
+// (une demande traitée vit dans « Traitées » : ouvrir « À traiter » afficherait
+// une page vide sur un clic parfaitement valide), puis la designe a l'ecran.
+// Le rendu de la page est synchrone mais la carte n'existe qu'apres lui : le
+// repere se pose au tour suivant, et se re-tente une fois si le reseau finit
+// de charger les demandes entre-temps.
+function openStaffRequestsPage(id, ev) {
+  if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+  if (typeof closeStaffDashboardDetail === 'function') closeStaffDashboardDetail();
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === String(id));
+  const segment = item && item.status === 'archived' ? 'archivees'
+    : item && item.status === 'handled' ? 'traitees'
+      : 'actives';
+  state.staffRequestSegment = segment;
+  save();
+  openStaffMenuPage('requests');
+  if (id == null) return;
+  highlightStaffRequestCard(id, 2);
+}
+window.openStaffRequestsPage = openStaffRequestsPage;
+
+// Amene la carte sous les yeux et la signale une fois. `tries` couvre le cas ou
+// la liste arrive du reseau juste apres l'ouverture de la page.
+function highlightStaffRequestCard(id, tries = 1) {
+  window.setTimeout(() => {
+    const card = document.querySelector(`.req-card[data-request-id="${CSS.escape(String(id))}"]`);
+    if (!card) {
+      if (tries > 1) highlightStaffRequestCard(id, tries - 1);
+      return;
+    }
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('is-called');
+    window.setTimeout(() => card.classList.remove('is-called'), 1600);
+  }, 120);
 }
 
 // Change le statut d'une demande depuis le panneau d'alertes, puis re-rend :

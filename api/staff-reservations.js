@@ -13,7 +13,7 @@ const { enqueueReservationCommunications } = require('../lib/ops-communications'
 const { enqueueReservationAutomation } = require('../lib/ops-jobs');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
-const { requireStaffPermission } = require('../lib/staff-auth');
+const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
 
 // ---- PP4 : le chemin chaud -------------------------------------------------
@@ -159,6 +159,26 @@ async function refreshReservationAutomation(current, reservation, options = {}) 
   return { ...cancelled, refreshed: true };
 }
 
+// PROUVER QUI ON EST AVANT DE LIRE LA BASE (corrige 2026-08-20, trouve en
+// verifiant la prod). PATCH et DELETE lisaient la reservation AVANT tout
+// controle de session, parce que la permission depend du centre de cette
+// reservation. Consequence mesuree sur app.pinlane.be : un inconnu recevait
+// 404 pour un id inexistant et 401 pour un id existant. C'est un oracle
+// d'enumeration (quels ids existent) et, accessoirement, une lecture de base
+// offerte a n'importe qui, en boucle, sans compte.
+//
+// Deux etages, dans cet ordre : (1) as-tu une session staff valide, sinon 401
+// sans avoir rien lu ni rien revele ; (2) une fois la reservation lue, as-tu
+// le droit d'agir sur SON centre, ce qui reste le controle qui compte.
+async function requireAnyStaffSession(req, res) {
+  const session = await getStaffSessionFromRequest(req);
+  if (!session) {
+    sendError(res, 401, 'Session staff requise.');
+    return null;
+  }
+  return session;
+}
+
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') {
@@ -225,6 +245,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'PATCH') {
+      if (!(await requireAnyStaffSession(req, res))) return;
       const body = await readJson(req);
       if (!body.id) throw createHttpError('Reservation manquante.', 400);
 
@@ -337,6 +358,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'DELETE') {
+      if (!(await requireAnyStaffSession(req, res))) return;
       const body = await readJson(req);
       if (!body.id) throw createHttpError('Reservation manquante.', 400);
       const current = await getReservationById(body.id);

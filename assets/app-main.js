@@ -18038,8 +18038,13 @@ function setQuickPax(value) {
   renderQuickBook();
 }
 
-// Met à jour le « Total estimé » (seul nombre visible qui dépend des joueurs)
-// SANS reconstruire la modale : on patche en place, jamais l'input ni le bouton.
+// Met à jour CE QUI DEPEND DES JOUEURS sans reconstruire la modale (on ne
+// touche ni l'input ni le bouton, sinon on perd le focus en pleine frappe).
+// Le total N'EST PAS le seul nombre concerné, et c'est le bug paye le
+// 2026-08-19 (Movsar : « on monte de joueurs jusqu'a plus de 6 et ça reste
+// encore en disant une piste requise ») : la ligne d'etat porte les pistes
+// requises, l'attribution et les pistes libres, tous derives du nombre de
+// joueurs. Elle restait figee jusqu'au prochain rendu complet.
 function patchQuickBookPaxDerived() {
   if (!quickBookState) return;
   const overlay = document.getElementById('quickBookOverlay');
@@ -18049,6 +18054,40 @@ function patchQuickBookPaxDerived() {
   const desc = overlay.querySelector('.qb-summary .desc');
   if (amt) amt.textContent = `${summary.total}€`;
   if (desc) desc.textContent = `${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
+  patchQuickBookStatusLine(overlay);
+}
+
+// La ligne d'etat, recalculee a partir du MEME etat que le rendu complet.
+// Elle ne duplique aucune regle metier : elle rappelle les fonctions de
+// capacite (getRequiredLaneCount, allocateLanes, getFreeCount), donc elle ne
+// peut pas diverger de ce que le serveur decidera.
+function patchQuickBookStatusLine(overlay) {
+  const host = (overlay || document).querySelector('.qb-status-line');
+  if (!host || !quickBookState) return;
+  const schedule = typeof getSchedule === 'function' ? getSchedule(quickBookState.date, state.isHolidayMode) : null;
+  const needsLanes = reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
+  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const suggestedLanes = quickBookState.startTime && needsLanes
+    ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
+    : [];
+  const parts = [];
+  if (schedule) parts.push(`Ouvert ${schedule.label}`);
+  if (quickBookState.type === 'laser') {
+    const waves = getLaserWaveCount(quickBookState.pax);
+    parts.push(`${quickBookState.pax} joueurs • ${waves} session${waves > 1 ? 's' : ''}`);
+  } else if (needsLanes) {
+    parts.push(`${requiredCount} piste${requiredCount > 1 ? 's' : ''} requise${requiredCount > 1 ? 's' : ''}`);
+    parts.push(quickBookState.autoAssign
+      ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}`
+      : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}`);
+    if (quickBookState.startTime) {
+      const free = getFreeCount(quickBookState.date, quickBookState.startTime, quickBookState.duration);
+      parts.push(`${Math.max(free, 0)} piste(s) libre(s)`);
+    }
+  } else if (quickBookState.type === 'formule') {
+    parts.push('Sans piste de bowling');
+  }
+  host.innerHTML = parts.map(part => `<span>${escapeHtml(part)}</span>`).join('');
 }
 
 // Champ « Joueurs » de la modale staff : saisie NORMALE sans re-render destructif.
@@ -18082,12 +18121,67 @@ function onQuickPaxBlur(el, ev) {
   patchQuickBookPaxDerived();
 }
 
-function setQuickType(type) {
+// LES ACTIVITES DU QUICKBOOK VIENNENT DU CATALOGUE VIVANT (2026-08-19).
+// Trois boutons etaient codes en dur (Bowling, Laser, Formule) pendant que le
+// centre vendait huit activites et que le tunnel public les proposait toutes :
+// « on peut reserver que bowling et laser et formules alors que mtn on a
+// integre tout plein d autre » (Movsar). Meme classe de defaut que la grille
+// Tarifs du 2026-08-17, qui enumerait une CONSTANTE figee au deploiement.
+// Ce que le centre ajoute dans Etablissement apparait donc ici au chargement
+// suivant du catalogue, sans toucher a ce fichier.
+//
+// Les activites A RESSOURCE (bowling, laser) gardent leur planification
+// dediee ; les activites LIBRES entrent dans le `program`, exactement comme
+// au tunnel public, et le serveur les renormalise (lib/visit-program) : le
+// panier du navigateur n'est jamais lu tel quel.
+function getQuickBookActivityChoices() {
+  const catalog = typeof getCenterActivities === 'function' ? getCenterActivities() : [];
+  const sellable = catalog
+    .filter((activity) => activity && activity.id && activity.bookableAlone !== false)
+    .sort((left, right) => (Number(left.order) || 99) - (Number(right.order) || 99));
+  const choices = sellable.map((activity) => ({
+    id: activity.id,
+    label: activity.name || activity.id,
+    // Le type de reservation que le moteur connait, sinon une activite libre.
+    type: activity.id === 'bowling' ? 'bowling' : activity.id === 'laser_game' ? 'laser' : 'activity',
+    activity,
+  }));
+  // Sans catalogue charge (premier rendu, reseau lent), on garde les deux
+  // activites socle : un selecteur vide empecherait de reserver.
+  if (!choices.length) {
+    choices.push({ id: 'bowling', label: 'Bowling', type: 'bowling', activity: null });
+    choices.push({ id: 'laser_game', label: 'Laser', type: 'laser', activity: null });
+  }
+  return choices;
+}
+
+function renderQuickBookTypeButtons() {
+  const choices = getQuickBookActivityChoices();
+  const current = quickBookState.type === 'activity' ? String(quickBookState.activityId || '') : quickBookState.type;
+  const buttons = choices.map((choice) => {
+    const active = choice.type === 'activity' ? current === choice.id : quickBookState.type === choice.type;
+    const arg = choice.type === 'activity' ? `'activity','${escapeHtml(choice.id)}'` : `'${choice.type}'`;
+    return `<button class="qb-type-btn ${active ? 'active' : ''}" onclick="setQuickType(${arg})">${escapeHtml(choice.label)}</button>`;
+  });
+  // Les formules restent un MODE de reservation, pas une activite du catalogue.
+  buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`);
+  return buttons.join('');
+}
+
+function setQuickType(type, activityId = '') {
   quickBookState.type = type;
+  quickBookState.activityId = type === 'activity' ? String(activityId || '') : '';
   if (type === 'bowling' || type === 'laser') {
     quickBookState.formuleId = '';
     quickBookState.lanes = [];
     quickBookState.autoAssign = type === 'bowling';
+  }
+  if (type === 'activity') {
+    // Une activite libre ne prend ni piste ni arene : la selection de pistes
+    // n'a plus de sens, et le moteur ne planifie pas de ressource pour elle.
+    quickBookState.formuleId = '';
+    quickBookState.lanes = [];
+    quickBookState.autoAssign = false;
   }
   syncQuickBookDuration();
   renderQuickBook();
@@ -18728,11 +18822,7 @@ function renderQuickBook() {
           ` : ''}
           ${showType ? `
           <div class="blk-label" ${showClient ? 'style="margin-top:12px;"' : ''}>Activité</div>
-          <div class="qb-type-row">
-            <button class="qb-type-btn ${quickBookState.type === 'bowling' ? 'active' : ''}" onclick="setQuickType('bowling')">Bowling</button>
-            <button class="qb-type-btn ${quickBookState.type === 'laser' ? 'active' : ''}" onclick="setQuickType('laser')">Laser</button>
-            <button class="qb-type-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>
-          </div>
+          <div class="qb-type-row">${renderQuickBookTypeButtons()}</div>
           ` : ''}
           <div class="qb-row auto" ${showClient || showType ? 'style="margin-top:12px;"' : ''}>
             ${essentialCells.join('')}
@@ -18852,7 +18942,21 @@ async function saveQuickBook() {
     price: basePrice,
     type: quickBookState.type,
     formuleId: quickBookState.formuleId,
-    label: formule ? formule.name : quickBookState.type === 'laser' ? 'Laser Game' : 'Bowling Classique',
+    // UNE ACTIVITE LIBRE PART EN PROGRAMME (2026-08-19), le meme contrat que
+    // le tunnel public : le serveur renormalise via lib/visit-program (le
+    // panier du navigateur n'est jamais lu tel quel) et en derive le type, le
+    // libelle et le prix. Sans cette ligne, une activite choisie ici serait
+    // partie en « bowling » et aurait consomme une piste pour rien.
+    program: quickBookState.type === 'activity' && quickBookState.activityId
+      ? [{ activityId: quickBookState.activityId, pax: Number(quickBookState.pax) || 1 }]
+      : undefined,
+    label: formule
+      ? formule.name
+      : quickBookState.type === 'laser'
+        ? 'Laser Game'
+        : quickBookState.type === 'activity'
+          ? ((typeof getCenterActivity === 'function' && getCenterActivity(quickBookState.activityId)?.name) || 'Activité')
+          : 'Bowling Classique',
     laserGames: quickBookState.type === 'laser' ? getLaserGameCount(quickBookState.duration) : 0,
     allowPastStart: quickBookAllowsPastSelectedTime(),
     extras: []

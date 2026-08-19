@@ -1361,6 +1361,19 @@ function removeReservationFromMonthCache(id) {
   };
 }
 
+// LE RAFRAICHISSEMENT N'ECRASE PLUS UNE SAISIE EN COURS (corrige 2026-08-19).
+// Movsar, sur capture de l'onglet Modifier : « rien ne fonctionne ça
+// fonctionne vrm pas ». Diagnostic mesure au harnais : le poll (~1,2 s)
+// appelait cette fonction, qui reconstruisait `editState` DEPUIS le serveur,
+// sans condition. Le champ gardait ce que le staff avait tape (le DOM n'est
+// pas re-rendu), mais l'etat repartait des valeurs d'origine : l'enregistrement
+// renvoyait donc la reservation INCHANGEE, avec un « Réservation mise à jour »
+// parfaitement mensonger. Une course que le poll gagnait presque toujours, ce
+// qui donnait « ça ne marche jamais ».
+//
+// Regle : tant que l'onglet Modifier est ouvert, la saisie appartient a
+// l'humain. On rafraichit `selectedRes` (les faits du serveur, qui servent
+// l'onglet Infos et les gardes de conflit), on ne touche pas a `editState`.
 function hydrateSelectedReservation() {
   if (!state.selectedRes) return;
   const fresh = state.reservations.find(r => r.id === state.selectedRes.id);
@@ -1369,6 +1382,7 @@ function hydrateSelectedReservation() {
     return;
   }
   state.selectedRes = fresh;
+  if (state.activeTab === 'modifier' && state.editState) return;
   state.editState = { ...fresh, lanesStr: (fresh.lanes || []).join(', ') };
 }
 
@@ -17891,6 +17905,11 @@ function renderPosCaisse(r) {
 // n'etait ecrite NULLE PART : elle est maintenant dite sous le champ.
 function renderPosEdit(r) {
   const e = state.editState;
+  // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
+  // piste, une formule sans bowling non plus. La fiche s'adapte au lieu de
+  // parler bowling a tout le monde.
+  const isLaserRes = String(r.type || '') === 'laser';
+  const editNeedsLanes = reservationNeedsLanes(r.type, r.formuleId);
   return `<div class="edit-shell pos-sheet fade-in">
     <form class="edit-form" onsubmit="saveEdit(event)">
       <div class="edit-layout">
@@ -17924,11 +17943,19 @@ function renderPosEdit(r) {
                    « 1,5 » en « une heure et demie » de tete, et rien n'empechait
                    de saisir 3,7. La liste ne propose que des durees qui existent
                    au comptoir, ecrites comme on les dit. -->
+              <!-- UN LASER NE SE MESURE PAS EN HEURES, IL SE COMPTE EN PARTIES
+                   (2026-08-19, Movsar : « quand on va dans modifier pour un truc
+                   de laser game ça montre comme pour du bowling »). La fiche
+                   parlait bowling a toute reservation : des heures et huit
+                   pistes, y compris pour une session laser qui n'occupe aucune
+                   piste. Chaque type montre desormais CE QU'IL a. -->
               <div class="pos-field">
-                <label class="lbl" for="editDurationInput">Durée</label>
+                <label class="lbl" for="editDurationInput">${isLaserRes ? 'Parties' : 'Durée'}</label>
                 <select id="editDurationInput" class="input" oninput="setEditField('duration', this.value, true)" required>
-                  ${[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
-                  ${[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
+                  ${isLaserRes
+                    ? getLaserOptionsCatalog().map(option => `<option value="${option.value}" ${Math.abs(Number(e.duration) - Number(option.value)) < 0.01 ? 'selected' : ''}>${escapeHtml(option.label)} (${option.price}€ / joueur)</option>`).join('')
+                    : [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].map(h => `<option value="${h}" ${Math.abs(Number(e.duration) - h) < 0.01 ? 'selected' : ''}>${formatDurationLabel(h)}</option>`).join('')}
+                  ${isLaserRes || [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].some(h => Math.abs(Number(e.duration) - h) < 0.01) ? '' : `<option value="${e.duration}" selected>${formatDurationLabel(Number(e.duration) || 0)}</option>`}
                 </select>
               </div>
               <div class="pos-field">
@@ -17951,6 +17978,13 @@ function renderPosEdit(r) {
                    Une piste est un objet fini et denombrable, donc elle se
                    presente comme telle : une case par piste, celles qui sont en
                    maintenance sont hors service et le disent. -->
+              ${!editNeedsLanes ? `
+              <div class="pos-field pos-field-wide">
+                <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
+                <p class="field-hint">${isLaserRes
+                  ? `${Number(e.pax) || 0} joueur(s) : ${getLaserWaveCount(Number(e.pax) || 1)} session(s) de laser. Aucune piste de bowling n est reservee.`
+                  : 'Cette réservation ne prend aucune piste de bowling.'}</p>
+              </div>` : `
               <div class="pos-field pos-field-wide">
                 <span class="lbl">Pistes</span>
                 <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
@@ -17964,7 +17998,7 @@ function renderPosEdit(r) {
                   }).join('')}
                 </div>
                 <p class="field-hint" id="editLanesHint">Réattribuées automatiquement quand l'effectif, l'heure ou la durée change.</p>
-              </div>
+              </div>`}
             </div>
           </section>
         </div>

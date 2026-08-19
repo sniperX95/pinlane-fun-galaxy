@@ -3885,7 +3885,8 @@
       autoEditor: mkAuto.editKey,
       inventory: state.staffEmailInventoryOpen,
     });
-    if (typeof pv2Camp !== 'undefined' && !pv2Camp.loaded && !pv2Camp.loading) setTimeout(() => loadPv2Campaigns(), 0);
+    const mayCampaigns = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('campaigns.manage');
+    if (mayCampaigns && typeof pv2Camp !== 'undefined' && !pv2Camp.loaded && !pv2Camp.loading) setTimeout(() => loadPv2Campaigns(), 0);
   };
 
   /* ==========================================================================
@@ -4958,6 +4959,14 @@
   };
 
   function renderPv2RealCampaigns() {
+    // UN BLOC QU ON N A PAS LE DROIT DE CHARGER NE S AFFICHE PAS (2026-08-19).
+    // La page Emails est ouverte a « emails.view », que le role Manager a ;
+    // les campagnes exigent « campaigns.manage », qu il n a pas. Le bloc
+    // partait donc chercher ses donnees, prenait un 403 et affichait
+    // « Permission insuffisante » PAR-DESSUS une liste vide (capture Movsar).
+    // Regle DESIGN.md 9 : un bouton mene a une action reelle, ou il n existe
+    // pas. Ici le serveur reste la seule autorite : il refuse toujours.
+    if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('campaigns.manage')) return '';
     if (!pv2Camp.loaded && !pv2Camp.loading && !pv2Camp.error) setTimeout(() => loadPv2Campaigns(), 0);
     const segLabel = (id) => (pv2Camp.segments.find((s) => s.id === id) || {}).label || id;
 
@@ -5051,9 +5060,9 @@
         </div>
       </div>
       <div class="pv2-panel-body">
-        ${pv2Camp.error ? `<div class="pv2-empty"><strong>${esc(pv2Camp.error)}</strong><button type="button" class="pv2-btn" onclick="loadPv2Campaigns(true)">Réessayer</button></div>` : ''}
-        ${form}
-        ${list}
+        ${pv2Camp.error
+    ? `<div class="pv2-empty"><strong>${esc(pv2Camp.error)}</strong><button type="button" class="pv2-btn" onclick="loadPv2Campaigns(true)">Réessayer</button></div>`
+    : `${form}${list}`}
       </div>
     </section>`;
   }

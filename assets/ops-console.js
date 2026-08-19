@@ -17,14 +17,32 @@ async function loadOpsAdmin(force = false) {
     const startDate = encodeURIComponent(range.startDate);
     const endDate = encodeURIComponent(range.endDate);
     const simDate = encodeURIComponent(getSimulationDate());
-    const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload, simulationPayload] = await Promise.all([
+    // UN REFUS SUR UN BLOC NE VIDE PAS LA PAGE (corrige 2026-08-19).
+    // Ces six chargements partaient en Promise.all : le premier rejet emportait
+    // les cinq autres. Or /api/simulation exige 'platform.admin', que meme la
+    // Direction d un centre n a pas : la page Emails perdait donc TOUT
+    // (communications, exemples, suggestions, evenements, pile d agents) a
+    // cause d un bloc que personne n avait demande. Et le rendu qui suivait
+    // relancait la charge, d ou des centaines d appels en boucle.
+    // Reponse : on n appelle pas ce qu on n a pas le droit d appeler, et le
+    // lot survit bloc par bloc (allSettled).
+    const maySimulate = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('platform.admin');
+    const results = await Promise.allSettled([
       apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${centerId}&limit=500`),
       apiRequest(`${API_ENDPOINTS.ops}?action=emailSamples`),
       apiRequest(`${API_ENDPOINTS.ops}?action=suggestions&centerId=${centerId}&limit=80`),
       apiRequest(`${API_ENDPOINTS.ops}?action=events&centerId=${centerId}&limit=80`),
       apiRequest(`${API_ENDPOINTS.ops}?action=agentStack&centerId=${centerId}&startDate=${startDate}&endDate=${endDate}`),
-      apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerId}&date=${simDate}`)
+      maySimulate
+        ? apiRequest(`${API_ENDPOINTS.simulation}?action=status&centerId=${centerId}&date=${simDate}`)
+        : Promise.resolve(null)
     ]);
+    const value = (index) => (results[index].status === 'fulfilled' ? results[index].value : null) || {};
+    const [communicationsPayload, samplesPayload, suggestionsPayload, eventsPayload, agentStackPayload] = [0, 1, 2, 3, 4].map(value);
+    const simulationPayload = results[5].status === 'fulfilled' ? results[5].value : null;
+    // Si TOUT a echoue, c est une vraie panne : elle se dit, comme avant.
+    const everyFailed = results.slice(0, 5).every((entry) => entry.status === 'rejected');
+    if (everyFailed) throw (results[0].reason || new Error('Console Ops indisponible.'));
     opsAdminCache = {
       communications: communicationsPayload.communications || [],
       samples: samplesPayload.samples || [],

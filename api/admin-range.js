@@ -1,6 +1,6 @@
 const { getOpsHealth, readAdminRangeState } = require('../lib/database');
 const { sendError, sendJson } = require('../lib/http');
-const { requireStaffPermission } = require('../lib/staff-auth');
+const { requireStaffPermission, sessionHasPermission } = require('../lib/staff-auth');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
@@ -14,16 +14,29 @@ module.exports = async (req, res) => {
     const startDate = requestUrl.searchParams.get('startDate');
     const endDate = requestUrl.searchParams.get('endDate') || startDate;
     const centerId = requestUrl.searchParams.get('centerId') || 'libramont';
-    const session = await requireStaffPermission(req, res, 'direction.view', { centerId });
+    // QUI A LE DROIT DE LIRE UN MOIS DE RESERVATIONS (corrige 2026-08-19).
+    // Cet endpoint rend les MEMES donnees que /api/staff-state (reservations
+    // de la periode + statuts de pistes), sur une plage au lieu d un jour.
+    // Exiger 'direction.view' pour la plage refusait la page Reservations a un
+    // Manager qui, lui, peut ouvrir chaque jour un par un : la restriction ne
+    // protegeait rien, elle cassait juste le calendrier (bandeau « API
+    // indisponible », et des compteurs qui n apparaissaient qu apres avoir
+    // clique chaque jour, verdict de Movsar sur capture). Le droit de lire des
+    // reservations suffit donc ; 'direction.view' garde ce qui lui appartient
+    // vraiment, les indicateurs de supervision (voir opsHealth plus bas).
+    const session = await requireStaffPermission(req, res, ['direction.view', 'reservations.view'], { centerId });
     if (!session) return;
     if (!startDate || !endDate) {
       sendError(res, 400, 'Periode manquante.');
       return;
     }
     const snapshot = await readAdminRangeState(startDate, endDate, centerId);
+    // Les indicateurs de supervision restent a la Direction : ce qui s ouvre
+    // au Manager, ce sont les reservations, pas la sante interne du systeme.
+    const canSeeOps = sessionHasPermission(session, 'direction.view');
     let opsHealth = null;
     try {
-      opsHealth = await getOpsHealth({ centerId, limit: 40 });
+      opsHealth = canSeeOps ? await getOpsHealth({ centerId, limit: 40 }) : null;
     } catch (opsError) {
       console.error('[admin-range] ops health indisponible', opsError && (opsError.stack || opsError.message || opsError));
       opsHealth = {

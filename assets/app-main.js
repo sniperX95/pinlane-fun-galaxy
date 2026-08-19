@@ -13352,6 +13352,7 @@ function renderStaffRequestPageCard(item) {
       ${item.status !== 'archived' ? `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>` : `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Réactiver</button>`}
     </div>
     ${reply.open ? renderStaffRequestReplyComposer(item, reply) : ''}
+    ${renderStaffRequestThread(item)}
   </article>`;
 }
 
@@ -13360,16 +13361,227 @@ function renderStaffRequestPageCard(item) {
 // page : c etait exactement le reproche.
 function renderStaffRequestReplyComposer(item, reply) {
   const jid = staffClientJs(item.id);
+  const presets = STAFF_REQUEST_PRESETS.map((preset) =>
+    `<button type="button" class="req-preset" onclick="applyStaffRequestPreset(${jid}, '${preset.id}')">${escapeHtml(preset.label)}</button>`).join('');
   return `<div class="req-composer">
+    <div class="req-presets">
+      <span class="req-presets-label">Modèles</span>
+      ${presets}
+    </div>
     <label class="lbl" for="reqSubject-${escapeHtml(String(item.id))}">Objet</label>
     <input id="reqSubject-${escapeHtml(String(item.id))}" class="input" value="${escapeHtml(reply.subject || '')}" oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
     <label class="lbl" for="reqBody-${escapeHtml(String(item.id))}">Message</label>
     <textarea id="reqBody-${escapeHtml(String(item.id))}" class="input" rows="7" oninput="staffRequestReplyDraft(${jid}, 'body', this.value)">${escapeHtml(reply.body || '')}</textarea>
     <div class="req-composer-actions">
       <span class="req-composer-to">À : ${escapeHtml(item.email || '')}</span>
-      <button type="button" class="primary" ${reply.busy ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
+      ${reply.previous ? `<button type="button" class="req-revert" onclick="revertStaffRequestDraft(${jid})">Revenir à ma version</button>` : ''}
+      <button type="button" class="req-ai" ${reply.improving || reply.busy ? 'disabled' : ''} onclick="improveStaffRequestDraft(${jid})">${reply.improving ? 'Amélioration…' : 'Améliorer avec l IA'}</button>
+      <button type="button" class="primary" ${reply.busy || reply.improving ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
     </div>
+    <p class="req-ai-note">L IA reformule ce que vous avez écrit. Elle n invente ni prix, ni horaire, ni disponibilité.</p>
   </div>`;
+}
+
+// Page « Demandes sur mesure » : le fil de discussion, les modeles de reponse
+// et l'amelioration IA. Insere juste avant `function toggleStaffRequestReply`.
+
+// LE FIL DE DISCUSSION D'UNE DEMANDE (2026-08-19, Movsar : « on peut voir
+// direct sur cette page si ya eu des mails envoye des mails recu, tout gerer
+// ici »). Charge a la demande, par contact, et garde en cache : la page ne
+// telecharge pas les 500 messages du centre pour en montrer trois.
+let staffRequestThreads = {};
+
+async function loadStaffRequestThread(id, force = false) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  if (!item || !item.email) return;
+  const current = staffRequestThreads[key];
+  if (current && current.loading) return;
+  if (current && current.loaded && !force) return;
+  staffRequestThreads[key] = { ...(current || {}), loading: true, error: '' };
+  renderStaffUtilityPage();
+  try {
+    const payload = await apiRequest(`${API_ENDPOINTS.ops}?action=communications&centerId=${encodeURIComponent(getActiveOpsCenterId())}&recipient=${encodeURIComponent(String(item.email).trim())}&limit=50`);
+    staffRequestThreads[key] = { loading: false, loaded: true, error: '', messages: payload.communications || [] };
+  } catch (error) {
+    staffRequestThreads[key] = { loading: false, loaded: false, error: error.message || 'Historique indisponible.', messages: [] };
+  }
+  renderStaffUtilityPage();
+}
+
+// Les mails de CE contact, envoyes et recus, dans l'ordre du temps.
+function renderStaffRequestThread(item) {
+  const key = String(item.id);
+  const jid = staffClientJs(item.id);
+  if (!item.email) return '';
+  const thread = staffRequestThreads[key];
+  if (!thread) {
+    return `<div class="req-thread req-thread-idle">
+      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid})">Voir les mails échangés avec ce contact</button>
+    </div>`;
+  }
+  if (thread.loading) return '<div class="req-thread req-thread-idle"><span>Chargement des mails…</span></div>';
+  if (thread.error) {
+    return `<div class="req-thread req-thread-idle"><span>${escapeHtml(thread.error)}</span>
+      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Réessayer</button></div>`;
+  }
+  const messages = thread.messages || [];
+  if (!messages.length) {
+    return `<div class="req-thread req-thread-idle"><span>Aucun mail échangé avec ce contact pour l instant.</span>
+      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button></div>`;
+  }
+  const sent = messages.filter(message => (message.direction || 'outbound') !== 'inbound').length;
+  const received = messages.length - sent;
+  const rows = messages.slice(0, 12).map((message) => {
+    const inbound = (message.direction || 'outbound') === 'inbound';
+    const when = message.sentAt || message.createdAt || message.scheduledAt || '';
+    let stamp = '';
+    try {
+      stamp = when ? new Date(when).toLocaleString('fr-BE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    } catch (error) { stamp = ''; }
+    // Le statut se DIT : un mail en file n'est pas un mail parti, et laisser
+    // croire l'inverse est la faute qui coute un client.
+    const status = inbound ? 'reçu' : (message.status === 'sent' ? 'envoyé' : message.status === 'failed' ? 'échec' : message.status === 'queued' ? 'en file' : String(message.status || ''));
+    return `<article class="req-msg ${inbound ? 'is-in' : 'is-out'} ${message.status === 'failed' ? 'is-failed' : ''}">
+      <div class="req-msg-head">
+        <strong>${inbound ? 'Reçu' : 'Envoyé'}</strong>
+        <span class="req-msg-subject">${escapeHtml(message.subject || '(sans objet)')}</span>
+        <span class="req-msg-meta">${escapeHtml(status)}${stamp ? ` · ${escapeHtml(stamp)}` : ''}</span>
+      </div>
+      ${message.body ? `<p class="req-msg-body">${escapeHtml(String(message.body).slice(0, 400))}</p>` : ''}
+      ${message.lastError ? `<p class="req-msg-error">${escapeHtml(message.lastError)}</p>` : ''}
+    </article>`;
+  }).join('');
+  return `<div class="req-thread">
+    <div class="req-thread-head">
+      <strong>Mails avec ce contact</strong>
+      <span>${sent} envoyé${sent > 1 ? 's' : ''} · ${received} reçu${received > 1 ? 's' : ''}</span>
+      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button>
+    </div>
+    ${rows}
+    ${messages.length > 12 ? `<span class="req-thread-more">${messages.length - 12} message(s) plus ancien(s) non affiché(s)</span>` : ''}
+  </div>`;
+}
+
+// MODELES DE REPONSE. Ce sont des DEPARTS de message, pas des promesses : ils
+// laissent les blancs a completer (creneau, prix, conditions) plutot que
+// d'inventer une disponibilite que le planning n'a pas.
+const STAFF_REQUEST_PRESETS = [
+  {
+    id: 'dispo',
+    label: 'Proposer un créneau',
+    subject: (ctx) => `Votre demande chez ${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nNous pouvons vous accueillir le [DATE] à [HEURE]. Dites-nous si cela vous convient et nous bloquons le créneau.\n\nÀ très vite,\n${ctx.centre}`,
+  },
+  {
+    id: 'devis',
+    label: 'Envoyer une proposition',
+    subject: (ctx) => `Proposition pour votre venue chez ${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nVoici ce que nous vous proposons :\n- [ACTIVITÉ] : [DURÉE]\n- Total estimé : [MONTANT] (à régler sur place)\n\nCe montant reste indicatif tant que la réservation n est pas confirmée. Dites-nous si cela vous convient.\n\nÀ très vite,\n${ctx.centre}`,
+  },
+  {
+    id: 'infos',
+    label: 'Demander des précisions',
+    subject: (ctx) => `Quelques précisions pour votre demande`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande. Pour vous proposer le meilleur créneau, pouvez-vous nous préciser :\n- la date et l heure souhaitées\n- le nombre exact de participants\n- les activités qui vous intéressent\n\nDès votre réponse, nous vous envoyons une proposition.\n\nÀ très vite,\n${ctx.centre}`,
+  },
+  {
+    id: 'complet',
+    label: 'Répondre complet',
+    subject: (ctx) => `Votre demande chez ${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.quand}. Nous sommes malheureusement complets sur ce créneau.\n\nNous pouvons vous proposer [ALTERNATIVE]. Dites-nous si cela vous arrange, nous gardons la place le temps de votre réponse.\n\nÀ très vite,\n${ctx.centre}`,
+  },
+];
+
+function staffRequestPresetContext(item) {
+  const centre = getCurrentStaffCenterName() || getCurrentStaffCenterId();
+  const prenom = String(item.contactName || '').trim().split(/\s+/)[0] || '';
+  return {
+    centre,
+    prenom,
+    groupe: Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : '',
+    quand: item.requestedDate ? ` du ${item.requestedDate}` : '',
+  };
+}
+
+function applyStaffRequestPreset(id, presetId) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  const preset = STAFF_REQUEST_PRESETS.find(entry => entry.id === presetId);
+  if (!item || !preset) return;
+  const ctx = staffRequestPresetContext(item);
+  const current = staffRequestReplyState[key] || {};
+  staffRequestReplyState[key] = {
+    ...current,
+    open: true,
+    subject: preset.subject(ctx),
+    body: preset.body(ctx),
+  };
+  renderStaffUtilityPage();
+}
+
+// AMELIORER LE BROUILLON AVEC L'IA (Kimi, cote serveur). Le modele reecrit la
+// FORME de ce que le staff a ecrit : il n'invente ni prix, ni horaire, ni
+// disponibilite (le moteur deterministe reste la source de verite). Si le
+// modele ne repond pas, le texte d'origine est rendu tel quel et on le DIT.
+async function improveStaffRequestDraft(id) {
+  const key = String(id);
+  const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
+  const reply = staffRequestReplyState[key];
+  if (!item || !reply) return;
+  if (!String(reply.body || '').trim()) { toast('Écrivez d abord votre message : l IA améliore, elle n invente pas.'); return; }
+  staffRequestReplyState[key] = { ...reply, improving: true };
+  renderStaffUtilityPage();
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.ops, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'improveEmailDraft',
+        centerId: getActiveOpsCenterId(),
+        subject: reply.subject || '',
+        body: reply.body || '',
+        centerName: getCurrentStaffCenterName() || getCurrentStaffCenterId(),
+        contactName: item.contactName || '',
+        context: String(item.message || '').slice(0, 500),
+      }),
+    });
+    const after = staffRequestReplyState[key] || {};
+    if (payload && payload.improved) {
+      staffRequestReplyState[key] = {
+        ...after,
+        improving: false,
+        // Le texte d'AVANT est garde : une reecriture qui ne plait pas doit
+        // pouvoir etre annulee, sinon le staff perd ce qu'il avait ecrit.
+        previous: { subject: reply.subject || '', body: reply.body || '' },
+        subject: payload.subject || after.subject,
+        body: payload.body || after.body,
+      };
+      toast('Message amélioré. « Revenir à ma version » si ça ne vous va pas.');
+    } else {
+      staffRequestReplyState[key] = { ...after, improving: false };
+      toast(payload && payload.reason === 'unavailable'
+        ? 'IA indisponible pour le moment : votre texte est inchangé.'
+        : 'Amélioration impossible : votre texte est inchangé.');
+    }
+  } catch (error) {
+    const after = staffRequestReplyState[key] || {};
+    staffRequestReplyState[key] = { ...after, improving: false };
+    toast(error.message || 'Amélioration impossible.');
+  }
+  renderStaffUtilityPage();
+}
+
+function revertStaffRequestDraft(id) {
+  const key = String(id);
+  const reply = staffRequestReplyState[key];
+  if (!reply || !reply.previous) return;
+  staffRequestReplyState[key] = {
+    ...reply,
+    subject: reply.previous.subject,
+    body: reply.previous.body,
+    previous: null,
+  };
+  renderStaffUtilityPage();
 }
 
 function toggleStaffRequestReply(id) {
@@ -13422,6 +13634,9 @@ async function staffRequestSendReply(id) {
       }),
     });
     toast(payload.resendConfigured ? 'Réponse envoyée : visible dans l\'historique mails.' : 'Réponse en file : elle partira dès que le canal d\'envoi sera configuré.');
+    // Le fil se recharge : le mail qui vient de partir doit apparaitre ici,
+    // sinon le staff doute de l'envoi et le renvoie une seconde fois.
+    loadStaffRequestThread(id, true);
     staffRequestReplyState[key] = { open: false, busy: false, subject: '', body: '' };
     // Une demande a laquelle on vient de repondre n est plus « nouvelle ».
     if (item.status === 'new') { setStaffCustomRequestStatus(item.id, 'in_progress'); return; }

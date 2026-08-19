@@ -49,7 +49,7 @@ const {
   newRequestId,
 } = require('../lib/audit-log');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
-const { llmProvider } = require('../lib/llm-client');
+const { llmProvider, callLlm } = require('../lib/llm-client');
 const { listDailyMetrics, listMarketingInsights, setInsightStatus, buildMarketingWeek, redoInsight } = require('../lib/center-metrics');
 const { CAMPAIGN_SEGMENTS, buildCampaignAudience, personalizeCampaignText, findUnknownCampaignTokens } = require('../lib/campaigns');
 const { stampDelayFlag, clearDelayFlagOnPlan } = require('../lib/delay-flag');
@@ -308,6 +308,10 @@ async function handleGet(req, res, options = {}) {
       centerId,
       status: url.searchParams.get('status') || '',
       limit: Number(url.searchParams.get('limit') || 100),
+      // Fil d'UN contact quand l'appelant le demande (page Demandes sur
+      // mesure). Sans ce filtre, l'ecran devrait telecharger 500 messages du
+      // centre pour en montrer trois.
+      recipient: url.searchParams.get('recipient') || '',
     });
     sendJson(res, 200, { ok: true, centerId, communications });
     return;
@@ -2296,6 +2300,79 @@ async function handlePost(req, res, providedBody = null, options = {}) {
   // Envoi libre (studio mails + composer page Emails) : même pipeline que les
   // messages client. `replyToCommunicationId` = réponse à un email reçu
   // (marque l'inbound répondu + apprentissage de l'agent si texte modifié).
+  // AMELIORER UN BROUILLON (2026-08-19, demande de Movsar : « un bouton ia
+  // plug avec notre kimi qui ameliore le contenu de ce quon a ecrit pour un
+  // truc vrm plus pro et carre »).
+  //
+  // Ce que cette action fait, et surtout ce qu'elle NE fait PAS : elle
+  // reecrit la FORME du message que le staff a deja ecrit. Elle n'invente
+  // aucun fait, aucun prix, aucune disponibilite, aucune date : le moteur
+  // deterministe reste la seule source de verite du produit (DESIGN.md 9), et
+  // un mail commercial qui promet un creneau que le planning n'a pas est
+  // exactement l'ecart paye le 2026-08-08 sur la vitrine.
+  // Si le modele ne repond pas (cle absente, quota, panne), on rend le texte
+  // d'origine avec `improved: false` : jamais un message tronque, jamais un
+  // silence qui ferait croire a une amelioration.
+  if (action === 'improveEmailDraft') {
+    const draftSubject = String(body.subject || '').slice(0, 200);
+    const draftBody = String(body.body || '').slice(0, 4000);
+    if (!draftBody.trim()) {
+      sendJson(res, 200, { ok: true, improved: false, reason: 'empty', subject: draftSubject, body: draftBody });
+      return;
+    }
+    const centreName = String(body.centerName || '').slice(0, 120);
+    const contactName = String(body.contactName || '').slice(0, 120);
+    const context = String(body.context || '').slice(0, 600);
+    const result = await callLlm({
+      stableSystem: [
+        'Tu es le responsable clientele d un centre de loisirs belge (bowling, laser game, anniversaires).',
+        'Tu reecris un email que le staff vient d ecrire, pour le rendre plus professionnel, clair et chaleureux.',
+        'REGLES ABSOLUES :',
+        '- N INVENTE JAMAIS un fait : ni prix, ni horaire, ni disponibilite, ni promesse de reservation.',
+        '- Ne garde que les informations presentes dans le brouillon.',
+        '- Si le brouillon laisse un blanc a completer, laisse ce blanc.',
+        '- Francais de Belgique, vouvoiement, ton direct et cordial, phrases courtes.',
+        '- Aucun tiret cadratin, aucun emoji.',
+        '- Reponds UNIQUEMENT avec un objet JSON : {"subject": "...", "body": "..."}',
+      ].join(String.fromCharCode(10)),
+      system: `Centre : ${centreName || 'le centre'}. Contact : ${contactName || 'le client'}.${context ? ' Demande initiale : ' + context : ''}`,
+      user: `Objet actuel : ${draftSubject || '(vide)'}
+
+Message actuel :
+${draftBody}`,
+      maxTokens: 900,
+      timeoutMs: 20000,
+    });
+    if (!result || !result.text) {
+      sendJson(res, 200, { ok: true, improved: false, reason: 'unavailable', subject: draftSubject, body: draftBody });
+      return;
+    }
+    let parsed = null;
+    try {
+      const raw = result.text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      parsed = null;
+    }
+    const improvedBody = parsed && typeof parsed.body === 'string' ? parsed.body.trim() : '';
+    if (!improvedBody) {
+      sendJson(res, 200, { ok: true, improved: false, reason: 'unparsable', subject: draftSubject, body: draftBody });
+      return;
+    }
+    // Derniere garde, cote serveur : la regle maison du tiret cadratin ne
+    // depend pas de la bonne volonte du modele.
+    const clean = (text) => String(text || '').replace(/[\u2014\u2013]/g, '-');
+    sendJson(res, 200, {
+      ok: true,
+      improved: true,
+      provider: result.provider,
+      model: result.model,
+      subject: clean(parsed.subject || draftSubject).slice(0, 200),
+      body: clean(improvedBody).slice(0, 4000),
+    });
+    return;
+  }
+
   if (action === 'sendDirectEmail') {
     const studioCenterId = requireConcreteCenter('sendDirectEmail');
     let identity = null;
@@ -2639,6 +2716,8 @@ function getRequiredOpsPermission(method, action) {
   if (['generateDirectionReport', 'saveDirectionReport'].includes(action)) return 'direction.view';
   if (['createCampaign', 'updateCampaign', 'sendCampaign', 'cancelCampaign'].includes(action)) return 'campaigns.manage';
   if (action === 'sendDirectEmail') return 'emails.send';
+  // Ameliorer un brouillon, c'est preparer un envoi : meme droit que l'envoi.
+  if (action === 'improveEmailDraft') return 'emails.send';
   if (action === 'analyzeInboundEmail') return ['emails.view', 'emails.send'];
   if (['saveEmailTemplate', 'archiveEmailTemplate'].includes(action)) return ['campaigns.manage', 'direction.view'];
   if (['saveEmailIdentity', 'deleteEmailIdentity'].includes(action)) return ['settings.manage', 'direction.view'];

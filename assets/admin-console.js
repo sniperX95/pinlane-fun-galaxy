@@ -478,6 +478,8 @@ function buildAdminExcelXml(payload) {
 }
 
 function exportAdminExcel() {
+  // 'reports.export' etait declaree et ne gardait rien (audit 2026-08-19).
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reports.export')) { if (typeof toast === 'function') toast('Votre role ne permet pas d exporter l export comptable.'); return; }
   if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const xml = buildAdminExcelXml(payload);
@@ -626,6 +628,7 @@ function buildDirectionReportHtml(payload) {
 }
 
 function exportAdminReport() {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('reports.export')) { if (typeof toast === 'function') toast('Votre role ne permet pas d exporter le rapport de direction.'); return; }
   if (!adminDashboardCache.loaded) { toast('Direction en cours de chargement : patientez avant d\'exporter.'); return; }
   const payload = getAdminExportPayload();
   const html = buildDirectionReportHtml(payload);

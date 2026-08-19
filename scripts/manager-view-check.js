@@ -81,7 +81,7 @@ async function installMock(page, perms, denied) {
       }
       if (u.pathname === '/api/admin-range') {
         // La regle CORRIGEE : direction.view OU reservations.view.
-        if (!has('direction.view') && !has('reservations.view')) return note403('admin-range');
+        if (!has('direction.view') && !has('reservations.view') && !has('clients.view')) return note403('admin-range');
         return J({ ok: true, reservations: R, laneStatuses: lanes(), centerId: 'libramont', revision: 'qa', syncedAt: new Date().toISOString(), opsHealth: has('direction.view') ? { ok: true } : null });
       }
       if (u.pathname === '/api/simulation') {

@@ -24,7 +24,11 @@ module.exports = async (req, res) => {
     // clique chaque jour, verdict de Movsar sur capture). Le droit de lire des
     // reservations suffit donc ; 'direction.view' garde ce qui lui appartient
     // vraiment, les indicateurs de supervision (voir opsHealth plus bas).
-    const session = await requireStaffPermission(req, res, ['direction.view', 'reservations.view'], { centerId });
+    // 'clients.view' entre dans la liste (2026-08-19, trouve par le gate
+    // permissions-matrix) : une FICHE CLIENT est un agregat de ses visites,
+    // donc la page Clients lit cette meme plage. Sans elle, un role qui voit
+    // les clients partait chercher leur historique et prenait un refus.
+    const session = await requireStaffPermission(req, res, ['direction.view', 'reservations.view', 'clients.view'], { centerId });
     if (!session) return;
     if (!startDate || !endDate) {
       sendError(res, 400, 'Periode manquante.');

@@ -6391,6 +6391,27 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .staff-permission-toggle.is-on { background: var(--accent-soft); color: var(--text); }
 .staff-permission-toggle b { font-weight: 500; flex: 1 1 auto; min-width: 0; }
 .staff-permission-toggle small { font-size: 11px; color: var(--faint); flex: none; }
+
+/* ARBRE DES PERMISSIONS (2026-08-19, Movsar : « tout ce qui est contenu dans
+   une option, faut que ce soit des sous-options »). Le retrait et le filet
+   disent l'appartenance : une sous-option se lit comme un detail de l'option
+   du dessus, pas comme un reglage independant de plus dans une liste plate. */
+.staff-permission-toggle.is-child {
+  margin-left: 18px;
+  border-left: 2px solid var(--line);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.staff-permission-toggle.is-child.depth-2 { margin-left: 36px; }
+.staff-permission-toggle.is-child.is-on { border-left-color: var(--accent); }
+.staff-permission-toggle.is-child b { font-size: 13px; }
+/* Une sous-option dont le parent est ferme n'agit sur rien : elle se tait
+   visuellement au lieu de faire croire qu'elle protege quelque chose. */
+.staff-permission-toggle.is-inert { opacity: 0.55; }
+.staff-permission-toggle.is-inert small { color: var(--warning); }
+/* L'etat ne pousse jamais le libelle : a egalite, c'est le NOM du droit qui
+   doit rester lisible (le libelle d'etat se comprend au ton et a la case). */
+.staff-permission-toggle small { max-width: 46%; text-align: right; }
 .staff-permission-toggle.is-on small { color: var(--accent-strong); }
 .staff-permission-toggle:has(input:disabled) { cursor: not-allowed; opacity: 0.7; }
 

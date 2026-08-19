@@ -2821,3 +2821,9 @@ module.exports = async (req, res) => {
     sendError(res, status, safeUserMessage(error, 'Opération impossible pour le moment. Réessayez dans un instant.'));
   }
 };
+
+// La table action -> permission est EXPOSEE pour etre auditee (gate
+// scripts/permissions-audit-check.js). Elle reste la seule autorite : le gate
+// la lit, il ne la recopie pas. Une regle recopiee dans un test derive du
+// produit au premier changement, et le test finit par prouver une regle morte.
+module.exports.getRequiredOpsPermission = getRequiredOpsPermission;

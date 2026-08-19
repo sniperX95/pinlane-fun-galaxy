@@ -221,6 +221,33 @@ module.exports = async (req, res) => {
     const session = await requireStaffPermission(req, res, 'users.manage', { centerId });
     if (!session) return;
 
+    // LES CODES D'ACCES SONT UNE SOUS-PERMISSION (2026-08-19). 'security.codes'
+    // etait declaree, affichee dans l'editeur de roles, et ne gardait RIEN :
+    // la decocher ne changeait rien. Elle garde desormais ce qu'elle nomme,
+    // reveler et regenerer un code d'acces, c'est-a-dire le geste par lequel
+    // on entre dans la console. Elle est enfant de 'users.manage' (hierarchie
+    // PERMISSION_PARENTS) : qui la porte porte forcement son parent, et un
+    // role qui gere les equipes SANS ce droit ne peut plus lire les codes.
+    const CODE_ACTIONS = ['regenerateRoleCode', 'revealRoleCode', 'revealMemberCode'];
+    if (CODE_ACTIONS.includes(action) && !sessionHasPermission(session, 'security.codes')) {
+      // Le refus se TRACE, comme toute action sensible de ce dispatcher : un
+      // refus muet sur les codes d'acces serait la ligne la plus interessante
+      // du journal, et elle manquerait.
+      await writeAuditLog({
+        centerId,
+        ...actorFromSession(session),
+        surface: 'api/staff-auth.js',
+        action,
+        method: 'POST',
+        entityType: 'staff_role',
+        entityId: String(body.roleId || body.memberId || ''),
+        outcome: 'denied',
+        context: { permissionManquante: 'security.codes' },
+      });
+      sendError(res, 403, 'Permission insuffisante.');
+      return;
+    }
+
     // ---- PP3 : le dispatcher d'identite ------------------------------------
     //
     // Ce fichier a son PROPRE dispatcher et ne traverse jamais api/ops.js : sans

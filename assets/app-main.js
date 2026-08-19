@@ -7456,6 +7456,7 @@ function validateReservationDirect(id, ev) {
   }
   const key = String(id);
   const current = state.reservations.find(r => String(r.id) === key) || findStaffReservationById(id);
+  if (current && !requirePastDatePermission(current.date)) return;
   if (!current) {
     toast('Réservation introuvable.');
     return;
@@ -8111,7 +8112,7 @@ function renderStaffDashboard(dayReservations = todaysReservations()) {
       </article>
       <article class="dash-kpi green">
         <div class="dash-icon">${renderDashboardIcon('euro')}</div>
-        <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong data-pl-num="dash.ca">${formatMoney(metrics.revenue)}</strong><small>${formatMoney(metrics.collected)} validés aujourd'hui</small></div>
+        <div class="dash-kpi-copy"><span>Chiffre d'affaires</span><strong data-pl-num="dash.ca">${moneyForRole(metrics.revenue)}</strong><small>${moneyForRole(metrics.collected)} validés aujourd'hui</small></div>
         <div class="dash-kpi-trend"><strong>${escapeHtml(revenueTrendText)}</strong><span>vs hier</span></div>
         ${renderDashboardSpark(metrics.revenueSeries, 'green')}
       </article>
@@ -10817,6 +10818,54 @@ function renderEstablishmentReadPanels(center, active) {
   ].join('');
 }
 
+// HIERARCHIE DES PERMISSIONS COTE ECRAN (2026-08-19, demande de Movsar :
+// « tout ce qui est contenu dans une option, faut que ce soit des sous-options »).
+// MIROIR de PERMISSION_PARENTS (lib/staff-auth.js), qui reste la source de
+// verite : le serveur normalise a chaque ecriture, l'ecran ne fait que rendre
+// la meme regle lisible et evidente au clic.
+const STAFF_PERMISSION_PARENTS = {
+  'direction.view': 'dashboard.view',
+  'reports.export': 'dashboard.view',
+  'planning.bowling': 'planning.view',
+  'planning.laser': 'planning.view',
+  'planning.drag': 'planning.view',
+  'planning.past': 'planning.view',
+  'reservations.create': 'reservations.view',
+  'reservations.quick': 'reservations.create',
+  'reservations.edit': 'reservations.view',
+  'reservations.cancel': 'reservations.view',
+  'reservations.status': 'reservations.view',
+  'clients.edit': 'clients.view',
+  'payments.markPaid': 'payments.view',
+  'exports.download': 'clients.view',
+  'emails.send': 'emails.view',
+  'campaigns.manage': 'emails.view',
+  'marketing.agents': 'emails.view',
+  'security.codes': 'users.manage',
+};
+
+// La profondeur d'une permission dans l'arbre (0 = option de premier niveau).
+function staffPermissionDepth(permission) {
+  let depth = 0;
+  let current = STAFF_PERMISSION_PARENTS[permission];
+  while (current && depth < 5) { depth += 1; current = STAFF_PERMISSION_PARENTS[current]; }
+  return depth;
+}
+
+// Les descendants d'une permission (sous-options, et leurs sous-options).
+function staffPermissionDescendants(permission) {
+  const direct = Object.keys(STAFF_PERMISSION_PARENTS).filter(key => STAFF_PERMISSION_PARENTS[key] === permission);
+  return direct.flatMap(child => [child, ...staffPermissionDescendants(child)]);
+}
+
+// Les parents d'une permission, du plus proche au plus lointain.
+function staffPermissionAncestors(permission) {
+  const chain = [];
+  let current = STAFF_PERMISSION_PARENTS[permission];
+  while (current && !chain.includes(current)) { chain.push(current); current = STAFF_PERMISSION_PARENTS[current]; }
+  return chain;
+}
+
 const STAFF_PERMISSION_GROUPS = [
   {
     id: 'pilotage',
@@ -10825,8 +10874,8 @@ const STAFF_PERMISSION_GROUPS = [
     permissions: [
       ['dashboard.view', 'Voir le dashboard'],
       ['direction.view', 'Ouvrir la direction'],
-      ['centers.switch', 'Changer de centre'],
-      ['reports.export', 'Exporter les rapports']
+      ['reports.export', 'Exporter les rapports'],
+      ['centers.switch', 'Changer de centre']
     ]
   },
   {
@@ -10848,10 +10897,10 @@ const STAFF_PERMISSION_GROUPS = [
     permissions: [
       ['reservations.view', 'Voir les réservations'],
       ['reservations.create', 'Créer une réservation'],
+      ['reservations.quick', 'Utiliser la réservation rapide'],
       ['reservations.edit', 'Modifier client, heure ou ressource'],
       ['reservations.cancel', 'Annuler ou supprimer'],
-      ['reservations.status', 'Changer confirmé, arrivé, payé'],
-      ['reservations.quick', 'Utiliser la réservation rapide']
+      ['reservations.status', 'Changer confirmé, arrivé, payé']
     ]
   },
   {
@@ -10861,9 +10910,9 @@ const STAFF_PERMISSION_GROUPS = [
     permissions: [
       ['clients.view', 'Voir les clients'],
       ['clients.edit', 'Modifier les fiches clients'],
+      ['exports.download', 'Télécharger les exports'],
       ['payments.view', 'Voir les montants'],
-      ['payments.markPaid', 'Marquer payé'],
-      ['exports.download', 'Télécharger les exports']
+      ['payments.markPaid', 'Marquer payé']
     ]
   },
   {
@@ -10884,8 +10933,8 @@ const STAFF_PERMISSION_GROUPS = [
     permissions: [
       ['pricing.manage', 'Modifier tarifs et formules'],
       ['users.manage', 'Créer rôles et accès'],
-      ['settings.manage', 'Changer les paramètres'],
       ['security.codes', 'Générer les codes d’accès'],
+      ['settings.manage', 'Changer les paramètres'],
       ['ai.ops', 'Voir agents IA et logs Ops']
     ]
   }
@@ -11169,8 +11218,21 @@ async function toggleStaffRolePermission(roleId, permission, checked) {
   const allKeys = new Set(getStaffPermissionKeys());
   if (!allKeys.has(permission)) return;
   const permissions = new Set(role.permissions || []);
-  if (checked) permissions.add(permission);
-  else permissions.delete(permission);
+  if (checked) {
+    // Cocher une sous-option ouvre ce qu'elle suppose : modifier une
+    // reservation qu'on ne voit pas n'existe pas. Le serveur applique la meme
+    // regle (normalizePermissionHierarchy), l'ecran la rend visible tout de
+    // suite au lieu de la subir au rechargement.
+    permissions.add(permission);
+    staffPermissionAncestors(permission).forEach(parent => permissions.add(parent));
+  } else {
+    // Fermer une option ferme ce qu'elle contenait : sinon le role garderait
+    // des droits d'agir sur une surface qu'il ne peut plus ouvrir, et son
+    // porteur se heurterait a un ecran vide (le defaut paye sur la vue
+    // Manager le 2026-08-19).
+    permissions.delete(permission);
+    staffPermissionDescendants(permission).forEach(child => permissions.delete(child));
+  }
   role.permissions = [...permissions];
   await runStaffAuthAction('updateRolePermissions', {
     roleId,
@@ -11376,6 +11438,7 @@ async function deleteStaffMember(memberId) {
 }
 
 async function regenerateStaffAccessCode(roleId) {
+  if (!requireClientPermission('security.codes', 'Votre role ne permet pas de generer les codes d acces.')) return;
   const role = getStaffAccessRole(roleId);
   if (!role) return;
   if (isPlatformStaffRole(role)) { toast('Cet accès plateforme ne se gère pas depuis cette page.'); return; }
@@ -11397,7 +11460,7 @@ function copyStaffAccessCode(value, options = {}) {
 // Copie le code d'accès ACTUEL en le révélant via le serveur (déchiffrement),
 // sans le régénérer. Gated à users.manage côté serveur ET côté client.
 async function copyStaffRoleCode(roleId) {
-  if (!canUseStaffPermission('users.manage')) { toast('Copie du code réservée à la direction.'); return; }
+  if (!requireClientPermission('security.codes', 'Votre role ne permet pas de lire les codes d acces.')) return;
   const role = getStaffAccessRole(roleId);
   if (!role) return;
   if (isPlatformStaffRole(role)) { toast('Cet accès plateforme ne se gère pas depuis cette page.'); return; }
@@ -11417,7 +11480,7 @@ async function copyStaffRoleCode(roleId) {
 }
 
 async function copyStaffMemberCode(memberId) {
-  if (!canUseStaffPermission('users.manage')) { toast('Copie du code réservée à la direction.'); return; }
+  if (!requireClientPermission('security.codes', 'Votre role ne permet pas de lire les codes d acces.')) return;
   const access = ensureStaffAccessControl();
   const member = access.members.find(item => item.id === memberId);
   if (!member) return;
@@ -11616,11 +11679,24 @@ function renderStaffUtilityUsers() {
             <div class="staff-permission-list">
               ${group.permissions.map(([key, label]) => {
                 const checked = selectedPermissions.has(key);
-                return `<label class="staff-permission-toggle ${checked ? 'is-on' : ''}">
+                // ARBRE : la profondeur vient de la hierarchie, l'ordre du
+                // groupe. Une sous-option se lit comme ce qu'elle est, un
+                // detail de l'option qui la porte.
+                const depth = staffPermissionDepth(key);
+                const children = staffPermissionDescendants(key);
+                const grantedChildren = children.filter(child => selectedPermissions.has(child)).length;
+                const parent = STAFF_PERMISSION_PARENTS[key];
+                // Une sous-option dont le parent est refuse est INERTE : on le
+                // dit au lieu de laisser croire qu'elle agit.
+                const parentOff = Boolean(parent) && !selectedPermissions.has(parent);
+                const state = checked
+                  ? (children.length ? `Autorisé · ${grantedChildren}/${children.length} détail${children.length > 1 ? 's' : ''}` : 'Autorisé')
+                  : (parentOff ? 'Option parente fermée' : 'Bloqué');
+                return `<label class="staff-permission-toggle ${checked ? 'is-on' : ''} ${depth ? 'is-child depth-' + depth : 'is-root'} ${parentOff ? 'is-inert' : ''}">
                   <input type="checkbox" class="visually-hidden" ${checked ? 'checked' : ''} ${selectedRole.id === 'direction' ? 'disabled' : ''} onchange='toggleStaffRolePermission(${staffClientJs(selectedRole.id)}, ${staffClientJs(key)}, this.checked)'>
                   <span class="staff-toggle-track" aria-hidden="true"></span>
                   <b>${escapeHtml(label)}</b>
-                  <small>${checked ? 'Autorisé' : 'Bloqué'}</small>
+                  <small>${escapeHtml(state)}</small>
                 </label>`;
               }).join('')}
             </div>
@@ -12671,7 +12747,40 @@ function openAdminCenter(centerId) {
   save();
 }
 
+
+// ---- GARDES DE PERMISSION COTE ECRAN (2026-08-19) ---------------------------
+// Six permissions etaient DECORATIVES : declarees, affichees dans l editeur de
+// roles, et ne gardant rien (audit scripts/permissions-audit-check.js). Les
+// decocher ne changeait rien, et pire : le bouton restait la pour mener a un
+// refus serveur. Cette garde les rend vraies. Elle vit DANS les fonctions, pas
+// seulement sur les boutons : un bouton masque ne protege pas une fonction qui
+// reste appelable. Le serveur reste la seule autorite, ceci evite le refus.
+function requireClientPermission(permission, message) {
+  if (typeof canUseStaffPermission !== 'function' || canUseStaffPermission(permission)) return true;
+  if (typeof toast === 'function') toast(message || 'Votre role ne permet pas cette action.');
+  return false;
+}
+
+// 'planning.past' nommait « Modifier une date passee » sans rien garder : la
+// restriction n'existait pas. Elle existe desormais, et elle porte sur l'ACTE
+// (ecrire sur un jour deja passe), pas sur la lecture : consulter l'historique
+// reste ouvert a qui voit le planning.
+function requirePastDatePermission(dateStr) {
+  const date = String(dateStr || '').slice(0, 10);
+  if (!date || typeof isPastBusinessDate !== 'function' || !isPastBusinessDate(date)) return true;
+  return requireClientPermission('planning.past', 'Votre role ne permet pas de modifier une date passee.');
+}
+
+// 'payments.view' nommait « Voir les montants » sans rien masquer. Les surfaces
+// de caisse passent par ici : sans le droit, le chiffre cede la place a un
+// tiret, jamais a un zero (un zero est un FAIT, et il serait faux).
+function moneyForRole(amount) {
+  if (typeof canUseStaffPermission === 'function' && !canUseStaffPermission('payments.view')) return '···';
+  return typeof formatMoney === 'function' ? formatMoney(amount) : String(amount);
+}
+
 function exportStaffPricingCsv() {
+  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
   const rows = getPricingRowsFiltered();
   const header = ['Type', 'Nom', 'Prix', 'Capacite', 'Disponibilite', 'Reservations', 'Joueurs', 'Revenu', 'Details'];
   const body = rows.map(row => [
@@ -12834,6 +12943,7 @@ function getSelectedStaffEmailRow(rows = getStaffEmailRowsFiltered()) {
 }
 
 function exportStaffEmailsCsv() {
+  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
   const rows = getStaffEmailRowsFiltered();
   const header = ['Statut', 'Origine', 'Modele', 'Sujet', 'Destinataire', 'Canal', 'Planifie', 'Envoye', 'Tentatives', 'Erreur'];
   const body = rows.map(row => [
@@ -13979,6 +14089,7 @@ function refreshStaffClients() {
 // Export CSV du SEGMENT courant : la liste prête à l'emploi (relance = avec le
 // pourquoi ; marketing = emails). Colonnes réduites à l'utile.
 function exportStaffClientsCsv() {
+  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
   if (!staffClientDataCache.loaded) { toast('Clients en cours de chargement : patientez avant d\'exporter.'); return; }
   const segment = getStaffClientSegment();
   const rows = getFilteredStaffClientRows();
@@ -14596,6 +14707,7 @@ function refreshStaffPlanning() {
 }
 
 function exportStaffPlanningCsv() {
+  if (!requireClientPermission('exports.download', 'Votre role ne permet pas de telecharger les exports.')) return;
   const rows = getPlanningVisibleReservations().map(reservation => [
     reservation.date,
     reservation.startTime,
@@ -15685,8 +15797,11 @@ function renderKpis() {
   setKpiCopy(3, "Taux d'occupation", view === 'laser' ? 'capacité laser' : view === 'all' ? 'capacité globale' : 'capacité pistes');
   document.getElementById('kpiRes').textContent = res.length;
   document.getElementById('kpiPax').textContent = pax;
-  document.getElementById('kpiRev').textContent = revTotal + '€';
-  document.getElementById('kpiCollected').textContent = revColl + '€ validés';
+  // Sans 'payments.view', le montant cede la place a un tiret : jamais a un
+  // zero, qui serait un fait, et un fait faux.
+  const seesMoney = typeof canUseStaffPermission !== 'function' || canUseStaffPermission('payments.view');
+  document.getElementById('kpiRev').textContent = seesMoney ? revTotal + '€' : '···';
+  document.getElementById('kpiCollected').textContent = seesMoney ? revColl + '€ validés' : '···';
   document.getElementById('kpiOcc').textContent = occ + '%';
 }
 
@@ -17849,6 +17964,7 @@ function createQuickBookState(prefill = {}) {
 }
 
 function openQuickBook(prefill = {}) {
+  if (!requireClientPermission('reservations.quick', 'Votre role ne permet pas la reservation rapide.')) return;
   quickBookState = createQuickBookState(prefill);
   if (!quickBookState.startTime) {
     const schedule = getSchedule(quickBookState.date, state.isHolidayMode);

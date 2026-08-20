@@ -18,6 +18,9 @@ const ROOT = 'C:/Users/movsa/Documents/Codex/2026-04-24/doctype-html-html-lang-f
 const { chromium } = require(p.join(ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const PORT = PORT_ENV;
+// Le VRAI catalogue de formules : une fiche qui doit recopier le contenu d'une
+// formule ne prouve rien face a un catalogue vide invente pour le test.
+const FORMULES = require(p.join(ROOT, 'lib', 'booking-config.js')).FORMULES;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 
 const srv = http.createServer((req, res) => {
@@ -40,7 +43,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
   pg.on('pageerror', (e) => console.log('PAGEERROR', e.message));
   pg.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE-ERR', m.text()); });
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-  await pg.addInitScript((expiresAt) => {
+  await pg.addInitScript(({ expiresAt, FORMULES }) => {
     const perms = ['dashboard.view', 'planning.view', 'planning.bowling', 'planning.laser', 'planning.drag', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.cancel', 'reservations.status', 'clients.view', 'payments.view', 'payments.markPaid', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     // DATE LOCALE, comme l'app (todayStr). `toISOString()` rend de l'UTC :
@@ -53,6 +56,7 @@ srv.listen(PORT, '127.0.0.1', async () => {
     const R = [
       { id: 1332, name: 'TEST', phone: '+32487784816', email: 't@x.be', date: today, startTime: '10:00', duration: 1.5, pax: 23, price: 236, basePrice: 236, type: 'bowling', label: 'Bowling Classique', lanes: [3, 4, 5, 6], status: 'paid', centerId: 'libramont', channel: 'staff', activityProgress: {}, extras: [] },
       { id: 1333, name: 'LASER TEST', phone: '+32487784817', email: 'l@x.be', date: today, startTime: '14:00', duration: 0.5, pax: 10, price: 100, basePrice: 100, type: 'laser', label: 'Laser Game', lanes: [], status: 'pending', centerId: 'libramont', channel: 'staff', laserGames: 1, activityProgress: {}, extras: [] },
+      { id: 1334, name: 'FORMULE LASER', phone: '+32487784818', email: 'f@x.be', date: today, startTime: '16:00', duration: 2, pax: 8, price: 240, basePrice: 240, type: 'formule', formuleId: 'f2', label: 'FORMULE 2', lanes: [], status: 'pending', centerId: 'libramont', channel: 'staff', activityProgress: {}, extras: [] },
     ];
     const J = (payload) => new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });
     const nf = window.fetch.bind(window);
@@ -66,15 +70,18 @@ srv.listen(PORT, '127.0.0.1', async () => {
       if (u.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'PATCH') {
         const body = JSON.parse(init.body || '{}');
         window.__QA_PATCH__.push(body);
-        const base = R.find((r) => String(r.id) === String(body.id)) || R[0];
-        return J({ ok: true, reservation: { ...base, ...body } });
+        const idx = R.findIndex((r) => String(r.id) === String(body.id));
+        const base = idx >= 0 ? R[idx] : R[0];
+        const merged = { ...base, ...body };
+        if (idx >= 0) R[idx] = merged;
+        return J({ ok: true, reservation: merged });
       }
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], customRequests: [] });
-      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today, durationOptions: [], formules: [], activities: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: { open: '10:00', close: '22:00' }, 2: { open: '10:00', close: '22:00' }, 3: { open: '10:00', close: '22:00' }, 4: { open: '10:00', close: '22:00' }, 5: { open: '10:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
+      if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today, durationOptions: [], formules: FORMULES, activities: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: { open: '10:00', close: '22:00' }, 2: { open: '10:00', close: '22:00' }, 3: { open: '10:00', close: '22:00' }, 4: { open: '10:00', close: '22:00' }, 5: { open: '10:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
       return nf(input, init);
     };
     window.localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(qaSession));
-  }, expiresAt);
+  }, { expiresAt, FORMULES });
 
   await pg.goto('http://127.0.0.1:' + PORT + '/?v=' + Date.now(), { waitUntil: 'networkidle' });
   await pg.waitForFunction(() => typeof window.setView === 'function');
@@ -137,6 +144,19 @@ srv.listen(PORT, '127.0.0.1', async () => {
     ok(survived.name === 'NOUVEAU NOM' && survived.pax === '12',
       'la saisie survit au rafraichissement automatique (' + JSON.stringify(survived) + ')');
 
+    // Le conseil se lit LA, fiche encore ouverte : apres l'enregistrement elle
+    // se referme et un champ disparu rendrait une chaine vide qu'on prendrait
+    // pour une mesure.
+    const conseilPistes = await pg.evaluate(() => (document.getElementById('editLanesHint') || {}).textContent || '');
+    if (kind === 'BOWLING') {
+      // Le minimum passe de 4 pistes (23 joueurs) a 2 (12 joueurs) : exiger le
+      // « 2 » ET l'absence du « 4 » prouve que le conseil a RECALCULE pendant
+      // la frappe, au lieu de recopier l'etat d'ouverture. Le conseil ne redit
+      // pas l'effectif (regle de la fiche : aucun fait de l'en-tete recopie
+      // dans le corps), donc c'est bien le nombre de PISTES qu'on mesure.
+      ok(/2 pistes/.test(conseilPistes) && !/4 pistes/.test(conseilPistes),
+        'le conseil a RECALCULE le minimum pendant la frappe (' + JSON.stringify(conseilPistes.trim().slice(0, 110)) + ')');
+    }
     await pg.evaluate(() => {
       const f = document.querySelector('.edit-form');
       if (f) f.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -146,8 +166,14 @@ srv.listen(PORT, '127.0.0.1', async () => {
     ok(sent && sent.name === 'NOUVEAU NOM', 'l enregistrement porte le NOM saisi (' + (sent ? sent.name : 'aucun envoi') + ')');
     ok(sent && Number(sent.pax) === 12, 'l enregistrement porte les JOUEURS saisis (' + (sent ? sent.pax : 'n/a') + ')');
     if (kind === 'BOWLING') {
-      ok(sent && Array.isArray(sent.lanes) && sent.lanes.length === 2,
-        '12 joueurs sur 6 par piste : 2 pistes reattribuees (' + (sent ? JSON.stringify(sent.lanes) : 'n/a') + ')');
+      // RIEN N'EST RETIRE EN SILENCE. Cette assertion attendait autrefois une
+      // reduction automatique a 2 pistes quand l'effectif tombe a 12 : c'est
+      // le meme mecanisme qui effaçait les clics du staff. Les pistes deja
+      // attribuees restent attribuees, le conseil DIT que 2 suffisent, et le
+      // staff decoche s'il veut liberer. Une piste qui disparait sans un mot
+      // est une surprise au comptoir.
+      ok(sent && Array.isArray(sent.lanes) && sent.lanes.length >= 2,
+        'les pistes deja attribuees ne sont pas retirees en silence (' + (sent ? JSON.stringify(sent.lanes) : 'n/a') + ')');
     } else {
       ok(sent && Array.isArray(sent.lanes) && sent.lanes.length === 0,
         'laser : aucune piste envoyee (' + (sent ? JSON.stringify(sent.lanes) : 'n/a') + ')');
@@ -155,6 +181,85 @@ srv.listen(PORT, '127.0.0.1', async () => {
     await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
     await pg.waitForTimeout(400);
   }
+
+  // ================= L'HEURE ET LES PISTES, LES DEUX CHAMPS QUE MOVSAR A VUS
+  // « ne rien modifier » (2026-08-20). L'heure partait deja ; les pistes,
+  // non : le choix du staff etait tronque au minimum calcule.
+  console.log('');
+  console.log('[HEURE] changer l heure part vraiment, et le planning suit');
+  await pg.evaluate((rid) => { window.__QA_PATCH__ = []; if (typeof openPos === 'function') openPos(rid); }, 1332);
+  await pg.waitForTimeout(700);
+  await pg.evaluate(() => {
+    const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
+    if (tab) tab.click();
+  });
+  await pg.waitForSelector('.edit-form #editStartInput', { timeout: 20000 });
+  await pg.fill('#editStartInput', '14:30');
+  await pg.evaluate(() => {
+    const f = document.querySelector('.edit-form');
+    if (f) f.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await pg.waitForTimeout(1200);
+  const envoiHeure = await pg.evaluate(() => (window.__QA_PATCH__ || []).slice(-1)[0] || null);
+  ok(envoiHeure && envoiHeure.startTime === '14:30',
+    'l enregistrement porte l HEURE saisie (' + (envoiHeure ? envoiHeure.startTime : 'aucun envoi') + ')');
+  await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+  // On laisse le poll passer : ce que MOVSAR regarde, c'est le planning, pas
+  // le corps d'une requete. Un envoi juste avec un ecran fige serait, pour
+  // lui, exactement le meme defaut.
+  await pg.waitForTimeout(2600);
+  const planning = await pg.evaluate(() => [...document.querySelectorAll('[onclick]')]
+    .filter((n) => String(n.getAttribute('onclick') || '').includes('1332'))
+    .map((n) => (n.textContent || '').replace(/\s+/g, ' ').trim())
+    .join(' | '));
+  ok(planning.includes('14:30'), 'le PLANNING affiche la nouvelle heure apres enregistrement');
+
+  console.log('');
+  console.log('[PISTES] le staff peut donner PLUS de pistes que le minimum');
+  await pg.evaluate((rid) => { window.__QA_PATCH__ = []; if (typeof openPos === 'function') openPos(rid); }, 1332);
+  await pg.waitForTimeout(700);
+  await pg.evaluate(() => {
+    const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
+    if (tab) tab.click();
+  });
+  await pg.waitForSelector('.lane-picker .lane-chip', { timeout: 20000 });
+  // 12 joueurs = 2 pistes requises. On en coche deux de plus, au vrai clic.
+  for (const lane of [7, 8]) {
+    await pg.click('.lane-picker .lane-chip[onclick="toggleEditLane(' + lane + ')"]');
+  }
+  const cochees = await pg.evaluate(() => [...document.querySelectorAll('.lane-picker .lane-chip.is-on')].map((n) => n.textContent.trim()));
+  ok(cochees.length >= 3, 'l ecran montre les pistes cochees a la main (' + JSON.stringify(cochees) + ')');
+  await pg.evaluate(() => {
+    const f = document.querySelector('.edit-form');
+    if (f) f.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await pg.waitForTimeout(1200);
+  const envoiPistes = await pg.evaluate(() => (window.__QA_PATCH__ || []).slice(-1)[0] || null);
+  ok(envoiPistes && Array.isArray(envoiPistes.lanes) && envoiPistes.lanes.length === cochees.length,
+    'l enregistrement porte TOUTES les pistes cochees, sans troncature (' + (envoiPistes ? JSON.stringify(envoiPistes.lanes) : 'aucun envoi') + ' pour ' + cochees.length + ' cochee(s))');
+  await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+  await pg.waitForTimeout(400);
+
+  console.log('');
+  console.log('[FORMULE] une formule dit ce qu ELLE contient, pas du bowling');
+  await pg.evaluate((rid) => { if (typeof openPos === 'function') openPos(rid); }, 1334);
+  await pg.waitForTimeout(700);
+  await pg.evaluate(() => {
+    const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
+    if (tab) tab.click();
+  });
+  await pg.waitForSelector('.edit-form #editNameInput', { timeout: 20000 });
+  const ficheF = await pg.evaluate(() => ({
+    contenu: [...document.querySelectorAll('.edit-formule-list li')].map((n) => n.textContent.trim()),
+    lanePicker: !!document.querySelector('.lane-picker'),
+    labels: [...document.querySelectorAll('.edit-form .lbl')].map((l) => l.textContent.trim()),
+  }));
+  ok(ficheF.contenu.length >= 3, 'le contenu REEL de la formule est liste (' + JSON.stringify(ficheF.contenu) + ')');
+  ok(ficheF.contenu.some((l) => /laser/i.test(l)), 'le laser de cette formule est NOMME a l ecran');
+  ok(!ficheF.lanePicker, 'formule sans bowling : aucun selecteur de pistes');
+  ok(ficheF.labels.some((l) => /Contenu de/i.test(l)), 'la fiche annonce le contenu de la formule (' + JSON.stringify(ficheF.labels) + ')');
+  await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+  await pg.waitForTimeout(400);
 
   console.log('');
   console.log('[Contre-epreuve : le defaut rejoue, ce gate le voit-il ?]');

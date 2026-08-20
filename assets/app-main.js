@@ -1090,7 +1090,16 @@ function getSuggestedEditLanes(requiredCount, date, startTime, duration, ignoreI
   }
 
   const kept = parseLaneInput(currentValue).filter(l => available.has(l));
-  if (kept.length >= requiredCount) return kept.slice(0, requiredCount);
+  // LE STAFF PEUT DONNER PLUS DE PISTES QUE LE MINIMUM (corrige 2026-08-20,
+  // Movsar : « tout ce que je modifie pour les heures et les pistes ça modifie
+  // rien »). Ce `.slice(0, requiredCount)` tronquait le choix au minimum
+  // calcule : cocher les pistes 5 et 6 en plus de la 1 renvoyait [1], et le
+  // staff voyait ses clics disparaitre a l'enregistrement. Un groupe de 4 qui
+  // veut trois pistes cote a cote est un choix REALISABLE, donc il se respecte.
+  // Le minimum, lui, reste un plancher : `saveEdit` complete et le dit quand il
+  // en manque. Le serveur accepte deja ce choix (verifie sur le vrai handler :
+  // lanes [1,5,6] envoyees, [1,5,6] ecrites), c'est le client qui l'ecrasait.
+  if (kept.length >= requiredCount) return kept;
 
   if (requiredCount === 2 && kept.length === 1) {
     const pair = PAIRS.find(group => group.includes(kept[0]));
@@ -1114,6 +1123,15 @@ function refreshEditPreview() {
   const laneInput = document.getElementById('editLanesInput');
   if (nameEl) nameEl.textContent = e.name || 'Réservation';
   if (metaEl) metaEl.textContent = meta;
+  // LE CONSEIL SUIT LA FRAPPE. Le formulaire n'est pas re-rendu pendant la
+  // saisie (ça volerait le focus), donc tout texte DERIVE de l'etat doit etre
+  // rafraichi ici. Sans cette ligne, le conseil affichait le minimum de
+  // l'ancien effectif : « 4 pistes pour 23 joueurs » alors que le champ disait
+  // deja 12. Meme famille que la ligne d'etat de la reservation rapide
+  // (journal 186), et meme parade : rappeler la MEME fonction, aucune regle
+  // recopiee.
+  const adviceEl = document.getElementById('editLanesHint');
+  if (adviceEl) adviceEl.textContent = editLaneAdvice(state.selectedRes, e);
   if (paxEl) paxEl.textContent = e.pax || 0;
   if (durationEl) durationEl.textContent = formatDurationLabel(e.duration || 0);
   if (assignEl) assignEl.textContent = e.lanesStr || 'Hors piste';
@@ -17903,6 +17921,37 @@ function renderPosCaisse(r) {
 // par ces retraits est nulle : chaque valeur retiree est encore a l'ecran, dans
 // le champ qui la commande. La reattribution automatique des pistes, elle,
 // n'etait ecrite NULLE PART : elle est maintenant dite sous le champ.
+// CE QUE LE MOTEUR CONSEILLE, ECRIT NOIR SUR BLANC (2026-08-20). L'ancien
+// texte affirmait que les pistes etaient « reattribuees automatiquement » a
+// chaque changement : c'est justement le comportement qui effaçait les clics du
+// staff, et il a ete retire. Un texte qui decrit un mecanisme disparu est un
+// defaut a part entiere, alors celui-ci dit l'etat REEL : combien il en faut,
+// combien sont attribuees, et qui decide (le staff). Rien n'est retire en
+// silence : une piste attribuee reste attribuee tant que personne ne la
+// decoche, parce qu'une piste qui disparait sans un mot est une surprise au
+// comptoir.
+function editLaneAdvice(r, e) {
+  const requis = getRequiredLaneCount(r.type, e.pax, r.formuleId);
+  const choisies = String(e.lanesStr || '').split(',').map(x => Number(String(x).trim())).filter(n => Number.isFinite(n) && n >= 1).length;
+  if (!requis) return 'Cette réservation ne demande aucune piste.';
+  // Le francais s'accorde. Un texte que le staff lit vingt fois par jour ne
+  // s'ecrit pas en « piste(s) » : ça se voit, et ça fait bricolage.
+  //
+  // Et il ne RECOPIE PAS l'effectif : le nombre de joueurs est deja dans son
+  // champ, juste au-dessus. La fiche a une regle (verifiee par
+  // reservation-sheet-check) : aucun fait de l'en-tete redit dans le corps.
+  // Ce conseil parle donc PISTES, et renvoie a « cet effectif ».
+  const pistes = n => `${n} piste${n > 1 ? 's' : ''}`;
+  if (choisies > requis) {
+    return `${pistes(requis)} ${requis > 1 ? 'suffisent' : 'suffit'} pour cet effectif. Vous en avez attribué ${choisies} : votre choix est gardé tel quel. Décochez celles que vous voulez libérer.`;
+  }
+  if (choisies < requis) {
+    const manque = requis - choisies;
+    return `Cet effectif demande ${pistes(requis)}. Il en manque ${manque} : ${manque > 1 ? 'elles seront complétées' : 'elle sera complétée'} automatiquement à l enregistrement.`;
+  }
+  return `${pistes(requis)} pour cet effectif. Ajoutez-en si vous voulez plus de place : votre choix est respecté.`;
+}
+
 function renderPosEdit(r) {
   const e = state.editState;
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
@@ -17910,6 +17959,18 @@ function renderPosEdit(r) {
   // parler bowling a tout le monde.
   const isLaserRes = String(r.type || '') === 'laser';
   const editNeedsLanes = reservationNeedsLanes(r.type, r.formuleId);
+  // CE QUE LA FORMULE CONTIENT VRAIMENT (corrige 2026-08-20, Movsar : « quand
+  // on va dans laser game pour modifier alors que c est une formule bah ça me
+  // met tjr celle du bowling »). Une formule anniversaire laser affichait le
+  // meme bloc qu'un bowling, puis un texte qui ne parlait que de bowling
+  // (« ne prend aucune piste de bowling ») : le staff lisait l'absence de ce
+  // qu'il n'a pas commande au lieu de la presence de ce qu'il a commande.
+  // La description vient du catalogue, seule source de verite : la fiche
+  // n'invente pas le contenu d'une formule, elle le RECOPIE.
+  const editFormule = String(r.type || '') === 'formule' && typeof FORMULES !== 'undefined'
+    ? FORMULES.find(f => f.id === r.formuleId) || null
+    : null;
+  const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
   return `<div class="edit-shell pos-sheet fade-in">
     <form class="edit-form" onsubmit="saveEdit(event)">
       <div class="edit-layout">
@@ -17978,13 +18039,18 @@ function renderPosEdit(r) {
                    Une piste est un objet fini et denombrable, donc elle se
                    presente comme telle : une case par piste, celles qui sont en
                    maintenance sont hors service et le disent. -->
-              ${!editNeedsLanes ? `
+              ${editFormuleLignes.length ? `
+              <div class="pos-field pos-field-wide">
+                <span class="lbl">Contenu de ${escapeHtml(editFormule.name || 'la formule')}</span>
+                <ul class="edit-formule-list">${editFormuleLignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>
+              </div>` : ''}
+              ${!editNeedsLanes ? (editFormuleLignes.length ? '' : `
               <div class="pos-field pos-field-wide">
                 <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
                 <p class="field-hint">${isLaserRes
                   ? `${Number(e.pax) || 0} joueur(s) : ${getLaserWaveCount(Number(e.pax) || 1)} session(s) de laser. Aucune piste de bowling n est reservee.`
                   : 'Cette réservation ne prend aucune piste de bowling.'}</p>
-              </div>` : `
+              </div>`) : `
               <div class="pos-field pos-field-wide">
                 <span class="lbl">Pistes</span>
                 <div class="lane-picker" role="group" aria-label="Pistes attribuées" aria-describedby="editLanesHint">
@@ -17997,7 +18063,7 @@ function renderPosEdit(r) {
                       onclick="toggleEditLane(${lane})">${lane}</button>`;
                   }).join('')}
                 </div>
-                <p class="field-hint" id="editLanesHint">Réattribuées automatiquement quand l'effectif, l'heure ou la durée change.</p>
+                <p class="field-hint" id="editLanesHint">${editLaneAdvice(r, e)}</p>
               </div>`}
             </div>
           </section>

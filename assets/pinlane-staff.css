@@ -8804,6 +8804,20 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
 .pos-field-wide { grid-column: 1 / -1; }
 .pos-field .lbl { font-size: 11px; color: var(--muted); font-weight: 500; }
 .pos-field .field-hint { margin-top: 2px; line-height: 1.45; }
+
+/* Le contenu reel d'une formule dans la fiche de modification. Une liste,
+   parce que c'en est une : le staff scanne les lignes au lieu de lire une
+   phrase qui les enfile. */
+.edit-formule-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2, #4b5563);
+}
+.edit-formule-list li { list-style: disc; }
 .pos-field .input:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 
 /* Un bouton doit repondre au doigt. 100-160 ms, `transform` uniquement, et

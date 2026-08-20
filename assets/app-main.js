@@ -4431,6 +4431,27 @@ function getBookingLaserPartCount() {
   return laser ? Math.max(1, Number((laser.options || {}).games || 1)) : 0;
 }
 
+// LES HEURES RETENUES POUR LE LASER, triees. Les parties ne se distinguent pas
+// entre elles : la 1re est simplement la plus tot. Le client choisit donc des
+// HEURES dans une liste, pas des parties numerotees.
+function getChosenLaserTimes(preference) {
+  return getBookingLaserPartTimes(preference)
+    .filter(Boolean)
+    .sort((left, right) => timeToNum(left) - timeToNum(right));
+}
+
+// Poser la liste des heures retenues : elle remplit les parties dans l'ordre,
+// les parties restantes se placent sur place.
+function setChosenLaserTimes(preference, heures) {
+  const count = getBookingLaserPartCount();
+  const triees = [...new Set(heures.filter(Boolean))]
+    .sort((left, right) => timeToNum(left) - timeToNum(right))
+    .slice(0, count);
+  preference.laserGameTimes = Array.from({ length: count }, (_, index) => triees[index] || '');
+  preference.preferredTimes.laser_game = triees[0] || '';
+  return preference;
+}
+
 // La liste d'heures par partie, toujours a la bonne longueur.
 function getBookingLaserPartTimes(preference) {
   const count = getBookingLaserPartCount();
@@ -5205,47 +5226,33 @@ async function revalidateFormulaAnchors() {
   if (!syncFormulaAnchorUi(formule, { busy: false })) renderSlots(formule);
 }
 
-async function setFormulaAnchorTime(activityId, time, partIndex = null) {
+async function setFormulaAnchorTime(activityId, time) {
   const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const cible = activityId === 'laser_game' ? Number(partIndex || 0) : null;
-  if (cible === null) {
+  const parties = activityId === 'laser_game' ? getBookingLaserPartCount() : 1;
+  // PLUSIEURS PARTIES : la liste est un choix MULTIPLE. Un clic ajoute l'heure,
+  // un clic sur une heure deja retenue la retire. Le compte ne depasse jamais
+  // le nombre de parties achetees.
+  if (activityId === 'laser_game' && parties > 1) {
+    const retenues = getChosenLaserTimes(preference);
+    const deja = retenues.includes(time);
+    if (!deja && retenues.length >= parties) return;
+    const suivantes = deja ? retenues.filter(item => item !== time) : [...retenues, time];
+    setChosenLaserTimes(preference, suivantes);
+    // Plus aucune heure retenue = tout se place sur place, dit avec le mot que
+    // le client comprend.
+    preference.laserPlacement = suivantes.length ? 'scheduled' : 'onsite';
+    formulaJustPicked = deja ? null : { activityId, time };
+  } else {
     if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
-  } else {
-    const actuelles = getBookingLaserPartTimes(preference);
-    if (actuelles[cible] === time && preference.laserPlacement !== 'onsite') return;
-  }
-  // La pastille qui vient d'etre choisie ressort UNE fois, DES le clic : le
-  // client voit ou son clic a atterri sans attendre le reseau (recette 6).
-  formulaJustPicked = { activityId, time, partIndex: cible };
-  if (cible === null) {
+    // La pastille qui vient d'etre choisie ressort UNE fois, DES le clic : le
+    // client voit ou son clic a atterri sans attendre le reseau (recette 6).
+    formulaJustPicked = { activityId, time };
     preference.preferredTimes[activityId] = time;
-  } else {
-    // UNE PARTIE, UNE HEURE : on ne touche qu'a celle qu'on vient de cliquer.
-    const parties = getBookingLaserPartTimes(preference);
-    parties[cible] = time;
-    preference.laserGameTimes = parties;
-    preference.preferredTimes.laser_game = parties.find(item => item) || '';
-    preference.laserPlacement = 'scheduled';
+    if (activityId === 'laser_game') {
+      preference.laserPlacement = 'scheduled';
+      preference.laserGameTimes = [time];
+    }
   }
-  state.booking.preference = preference;
-  state.booking.startTime = '';
-  state.booking.opsPlan = null;
-  save();
-  await revalidateFormulaAnchors();
-}
-
-// Relacher UNE partie vers « sur place » sans toucher aux autres. Si c'etait la
-// derniere posee, la reservation revient au mode « toutes sur place » : c'est
-// le meme etat, dit avec le mot que le client comprend.
-async function setFormulaLaserPartOnSite(partIndex) {
-  const preference = createDefaultFormulaPreference(state.booking.preference || {});
-  const parties = getBookingLaserPartTimes(preference);
-  const cible = Number(partIndex || 0);
-  if (!parties[cible]) return;
-  parties[cible] = '';
-  preference.laserGameTimes = parties;
-  preference.preferredTimes.laser_game = parties.find(item => item) || '';
-  if (!parties.some(item => item)) preference.laserPlacement = 'onsite';
   state.booking.preference = preference;
   state.booking.startTime = '';
   state.booking.opsPlan = null;
@@ -5422,36 +5429,13 @@ function getChainedAnchorTime(activityId) {
 // choisies, pas dans l'ordre du catalogue. C'est ce qui fait qu'un client lit
 // une visite et non deux réservations posées l'une sous l'autre.
 function getVisitRailSteps() {
-  const { preference, times } = getCurrentFormulaAnchorSelection();
-  const partTimes = getBookingLaserPartTimes(preference);
-  const steps = [];
-  (formulaAnchorData?.activities || []).forEach((activity, index) => {
-    // CHAQUE PARTIE DE LASER EST UNE ETAPE (2026-08-20). Une seule etape pour
-    // « 3 parties » ne laissait choisir qu'une heure : les deux autres partaient
-    // d'office sur place. Le client place maintenant celles qu'il veut, a
-    // l'heure qu'il veut, et laisse les autres a l'equipe.
-    if (activity.activityId === 'laser_game' && Number(activity.count || 1) > 1) {
-      Array.from({ length: Number(activity.count) }, (_, part) => part).forEach((part) => {
-        const time = partTimes[part] || '';
-        steps.push({
-          activity,
-          index: index + part / 100,
-          partIndex: part,
-          partCount: Number(activity.count),
-          startMinutes: time ? timeToNum(time) * 60 : null,
-        });
-      });
-      return;
-    }
-    steps.push({
+  const { times } = getCurrentFormulaAnchorSelection();
+  return (formulaAnchorData?.activities || [])
+    .map((activity, index) => ({
       activity,
       index,
-      partIndex: activity.activityId === 'laser_game' ? 0 : null,
-      partCount: activity.activityId === 'laser_game' ? 1 : null,
       startMinutes: times[activity.activityId] ? timeToNum(times[activity.activityId]) * 60 : null,
-    });
-  });
-  return steps
+    }))
     .sort((left, right) => {
       if (left.startMinutes === null && right.startMinutes === null) return left.index - right.index;
       if (left.startMinutes === null) return 1;
@@ -5483,18 +5467,8 @@ async function tightenFormulaAnchorGap(activityId, time) {
 
 // Le moment n'est plus un FILTRE mais un SAUT : la piste porte toute la
 // journée, on se déplace dedans. Défilement natif, jamais un défilement maison.
-// La piste d'heures VISEE : avec plusieurs parties de laser, trois pistes
-// portent le meme `data-anchor`. Sans le numero de partie, tous les boutons
-// pilotaient la premiere.
-function anchorTrackFor(activityId, partIndex = null) {
-  const selector = partIndex === null || partIndex === undefined
-    ? `.anchor-track[data-anchor="${activityId}"]:not([data-part])`
-    : `.anchor-track[data-anchor="${activityId}"][data-part="${Number(partIndex) + 1}"]`;
-  return document.querySelector(selector) || document.querySelector(`.anchor-track[data-anchor="${activityId}"]`);
-}
-
-function setFormulaAnchorPeriod(activityId, periodKey, partIndex = null) {
-  const track = anchorTrackFor(activityId, partIndex);
+function setFormulaAnchorPeriod(activityId, periodKey) {
+  const track = document.querySelector(`.anchor-track[data-anchor="${activityId}"]`);
   const mark = track ? track.querySelector(`[data-period-start="${periodKey}"]`) : null;
   if (track && mark) {
     track.scrollTo({
@@ -5507,8 +5481,8 @@ function setFormulaAnchorPeriod(activityId, periodKey, partIndex = null) {
 
 // Fait défiler la piste d'une « page » : c'est ce qui rend le hors-champ
 // atteignable à la souris et au clavier sans geste tactile.
-function nudgeAnchorTrack(activityId, direction, partIndex = null) {
-  const track = anchorTrackFor(activityId, partIndex);
+function nudgeAnchorTrack(activityId, direction) {
+  const track = document.querySelector(`.anchor-track[data-anchor="${activityId}"]`);
   if (!track) return;
   track.scrollBy({
     left: direction * Math.max(120, track.clientWidth - 72),
@@ -5641,9 +5615,13 @@ function anchorSlotCardModel(activity, item, { isChained } = {}) {
   return { time: item.time, endTime, tag, tagTone, meta, label };
 }
 
-function renderAnchorChipGroups(activity, { selected, disabled, chained, partIndex = null }) {
+function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen = null, full = false }) {
   const groups = groupAnchorTimes(activity.times);
   if (!groups.length) return '';
+  // Choix MULTIPLE des que la reservation porte plusieurs parties : ce sont les
+  // heures retenues qui decident de l'etat des pastilles ET des onglets de
+  // moment, declare ici parce que les deux s'en servent.
+  const multi = Array.isArray(chosen);
   // HORIZONTAL : une seule piste par activité qui porte TOUTE la journée. Les
   // onglets de moment cessent d'être un filtre (26 heures sur 27 masquées) et
   // deviennent des points de saut dans la piste : rien n'est plus caché.
@@ -5652,29 +5630,32 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, partInd
         ${groups.map((group) => {
     const first = group.items[0].time;
     const last = group.items[group.items.length - 1].time;
-    const holdsSelection = Boolean(selected) && group.items.some(item => item.time === selected);
-    return `<button type="button" class="anchor-period-tab ${holdsSelection ? 'has-pick' : ''}" data-period="${escapeHtml(group.key)}" aria-pressed="false" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}',${partIndex === null ? 'null' : partIndex})"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
+    const holdsSelection = multi
+      ? group.items.some(item => chosen.includes(item.time))
+      : Boolean(selected) && group.items.some(item => item.time === selected);
+    return `<button type="button" class="anchor-period-tab ${holdsSelection ? 'has-pick' : ''}" data-period="${escapeHtml(group.key)}" aria-pressed="false" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}')"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
   }).join('')}
       </div>` : '';
   const chips = groups.map(group => group.items.map((item, index) => {
-    const isActive = item.time === selected;
+    // Multi-choix : une heure retenue est active, et quand le compte est
+    // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
+    const isActive = multi ? chosen.includes(item.time) : item.time === selected;
+    const chipDisabled = disabled || (multi && full && !isActive);
     const isChained = !isActive && item.time === chained;
     const marker = index === 0 ? ` data-period-start="${escapeHtml(group.key)}"` : '';
     const justPicked = !formulaAnchorBusy && isActive && formulaJustPicked
-      && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time
-      && (formulaJustPicked.partIndex === undefined || formulaJustPicked.partIndex === null
-        || formulaJustPicked.partIndex === partIndex);
+      && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
     if (justPicked) formulaJustPicked = null;
     const model = anchorSlotCardModel(activity, item, { isChained });
-    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}',${partIndex === null ? 'null' : partIndex})">${slotCardMarkup(model)}</button>`;
+    return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
   }).join('')).join('');
-  const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction},${partIndex === null ? 'null' : partIndex})">${glyph}</button>`;
+  const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
     <div class="anchor-periods">
       ${tabs}
       <div class="anchor-track-shell">
         ${nudge(-1, '&lsaquo;', `Heures précédentes pour ${activity.label}`)}
-        <div class="anchor-track" data-anchor="${escapeHtml(activity.activityId)}"${partIndex === null ? '' : ` data-part="${partIndex + 1}"`} data-overflow="none">
+        <div class="anchor-track" data-anchor="${escapeHtml(activity.activityId)}" data-overflow="none">
           <div class="anchor-chip-grid">${chips}</div>
         </div>
         ${nudge(1, '&rsaquo;', `Heures suivantes pour ${activity.label}`)}
@@ -5688,50 +5669,57 @@ function renderVisitRailStep(step, position) {
   const { preference, times } = getCurrentFormulaAnchorSelection();
   const isLaser = activity.activityId === 'laser_game';
   const laserOnSite = preference.laserPlacement === 'onsite';
-  const partIndex = isLaser ? Number(step.partIndex || 0) : null;
-  const partCount = isLaser ? Math.max(1, Number(step.partCount || activity.count || 1)) : 1;
-  const partTimes = isLaser ? getBookingLaserPartTimes(preference) : [];
-  // Une partie sans heure est « sur place » : c'est un choix par PARTIE, en
-  // plus du choix global qui les met toutes sur place d'un geste.
-  const partOnSite = isLaser && !partTimes[partIndex];
   const disabled = isLaser && laserOnSite;
-  const selected = disabled ? '' : (isLaser ? (partTimes[partIndex] || '') : (times[activity.activityId] || ''));
-  const chained = disabled || (isLaser && partIndex > 0) ? '' : getChainedAnchorTime(activity.activityId);
-  const label = isLaser && partCount > 1
-    ? `${activity.label} · partie ${partIndex + 1}/${partCount}`
-    : activity.label;
+  // PLUSIEURS PARTIES = PLUSIEURS HEURES DANS LA MEME LISTE (2026-08-20).
+  // Movsar : « fais juste le choix sur une liste ou ils peuvent choisir jusqu'a
+  // 3 horaires ». Une etape par partie donnait trois pistes d'heures identiques
+  // l'une sous l'autre : meme information, trois fois. Une seule liste, ou
+  // chaque heure retenue se clique et se declique.
+  const partCount = isLaser ? Math.max(1, Number(activity.count || 1)) : 1;
+  // `chosen` VAUT NULL hors multi-choix, jamais un tableau vide : c'est lui qui
+  // dit « cette liste est multiple ». Un tableau vide pour le bowling faisait
+  // lire son heure retenue dans une liste toujours vide, donc plus aucune
+  // pastille marquee (attrape par le gate visuel, pas par moi).
+  const chosen = isLaser && partCount > 1 && !disabled ? getChosenLaserTimes(preference) : null;
+  const full = Boolean(chosen && chosen.length >= partCount);
+  const restantes = chosen ? Math.max(0, partCount - chosen.length) : 0;
+  const selected = disabled ? '' : (chosen ? (chosen[0] || '') : (times[activity.activityId] || ''));
+  const chained = disabled || (chosen && chosen.length) ? '' : getChainedAnchorTime(activity.activityId);
   const detail = isLaser
     ? (partCount > 1
-      ? 'Choisissez son heure, ou laissez-la à placer sur place'
+      ? `${partCount} parties : choisissez jusqu’à ${partCount} heures, le reste se place sur place`
       : `Session de ${activity.durationMinutes} min`)
     : `${formatDurationLabel(Number(activity.durationMinutes || 60) / 60)} de piste réservée`;
   // Le choix « sur place » est une DÉCISION sur cette activité : il vit en tête
-  // de son étape, pas perdu sous 27 pastilles (plainte du 2026-08-15). Le geste
-  // global (toutes les parties sur place) ne s'affiche qu'une fois, sur la 1re.
-  const onSiteToggle = isLaser && formulaAnchorData.laserOnSiteAvailable && partIndex === 0 ? `
+  // de son étape, pas perdu sous 27 pastilles (plainte du 2026-08-15).
+  const onSiteToggle = isLaser && formulaAnchorData.laserOnSiteAvailable ? `
       <label class="anchor-onsite ${laserOnSite ? 'active' : ''}">
         <input type="checkbox" ${laserOnSite ? 'checked' : ''} onchange="setFormulaLaserPlacement(this.checked ? 'onsite' : 'scheduled')">
         <span>${partCount > 1 ? 'Je place mes parties laser sur place, selon l’affluence' : 'Je place ma partie laser sur place, selon l’affluence'}</span>
       </label>` : '';
-  // Reposer UNE partie sur place, sans toucher aux autres : le bouton n'existe
-  // que quand cette partie a une heure, et il ne parle que d'elle.
-  const partRelease = isLaser && partCount > 1 && !laserOnSite && selected ? `
-      <button type="button" class="anchor-part-release" onclick="setFormulaLaserPartOnSite(${partIndex})">Laisser cette partie sur place</button>` : '';
-  const picked = disabled || (isLaser && partOnSite && partCount > 1)
+  // Ce que le compteur dit : combien sont posées, combien restent, et comment
+  // en changer. Sans ça, une liste qui cesse de répondre à 3 clics est un mur.
+  const compteur = chosen ? `
+      <p class="anchor-part-count">${chosen.length} heure${chosen.length > 1 ? 's' : ''} sur ${partCount}${restantes
+        ? ` · ${restantes} partie${restantes > 1 ? 's' : ''} avec l’équipe`
+        : ' · cliquez une heure retenue pour la retirer'}</p>` : '';
+  const picked = disabled || (chosen && !chosen.length)
     ? '<span class="anchor-row-pick anchor-row-pick-free">avec l’équipe</span>'
-    : (selected ? `<span class="anchor-row-pick">${escapeHtml(selected)}</span>` : '');
+    : (chosen
+      ? `<span class="anchor-row-pick">${escapeHtml(chosen.join(' · '))}</span>`
+      : (selected ? `<span class="anchor-row-pick">${escapeHtml(selected)}</span>` : ''));
   return `
     <li class="visit-rail-step">
       <span class="visit-rail-mark" aria-hidden="true">${position}</span>
-      <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}"${isLaser ? ` data-part="${partIndex + 1}"` : ''}>
+      <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}"${chosen ? ` data-multi="${partCount}"` : ''}>
         <div class="anchor-row-head">
-          <strong>${escapeHtml(label)}</strong>
+          <strong>${escapeHtml(activity.label)}</strong>
           ${picked}
           <small>${escapeHtml(detail)}</small>
         </div>
         ${onSiteToggle}
-        ${partRelease}
-        ${renderAnchorChipGroups(activity, { selected, disabled, chained, partIndex })}
+        ${compteur}
+        ${renderAnchorChipGroups(activity, { selected, disabled, chained, chosen, full })}
       </div>
     </li>`;
 }
@@ -5945,16 +5933,6 @@ function renderFormulaAnchorPicker(formule) {
 // bougent pas. Retourne false quand la structure a changé (ordre des activités,
 // liste d'heures, état d'erreur) : l'appelant repasse alors par un rendu
 // complet, qui est cette fois un VRAI changement d'écran.
-// La ligne d'une etape : activite ET partie. `data-part` n'existe que pour les
-// parties de laser numerotees ; sans lui on retombe sur la ligne de l'activite.
-function anchorRowFor(picker, activityId, partIndex = null) {
-  if (partIndex === null || partIndex === undefined) {
-    return picker.querySelector(`.anchor-row[data-anchor="${activityId}"]:not([data-part])`)
-      || picker.querySelector(`.anchor-row[data-anchor="${activityId}"]`);
-  }
-  return picker.querySelector(`.anchor-row[data-anchor="${activityId}"][data-part="${partIndex + 1}"]`);
-}
-
 function syncFormulaAnchorUi(formule, { busy }) {
   const list = document.getElementById('slotList');
   const picker = list ? list.querySelector('.formula-anchor-picker') : null;
@@ -5969,29 +5947,30 @@ function syncFormulaAnchorUi(formule, { busy }) {
   // client voyait son clic sur la partie 2 ne rien faire. Un ordre qui change
   // (une partie qui prend ou perd son heure se deplace dans le fil) rend false :
   // le rendu complet reordonne, lui.
-  if (steps.some((step, index) => rows[index].dataset.anchor !== step.activity.activityId
-    || String(rows[index].dataset.part || '') !== (step.partIndex === null || step.partIndex === undefined ? '' : String(step.partIndex + 1)))) return false;
+  if (steps.some((step, index) => rows[index].dataset.anchor !== step.activity.activityId)) return false;
 
   const { preference, times } = getCurrentFormulaAnchorSelection();
-  const partTimes = getBookingLaserPartTimes(preference);
   for (const step of steps) {
     const activity = step.activity;
     const isLaser = activity.activityId === 'laser_game';
-    const partIndex = isLaser ? Number(step.partIndex || 0) : null;
-    const partCount = isLaser ? Math.max(1, Number(step.partCount || activity.count || 1)) : 1;
-    const row = anchorRowFor(picker, activity.activityId, partIndex);
+    const row = picker.querySelector(`.anchor-row[data-anchor="${activity.activityId}"]`);
     if (!row) return false;
     const laserOnSite = preference.laserPlacement === 'onsite';
     const disabled = isLaser && laserOnSite;
+    const partCount = isLaser ? Math.max(1, Number(activity.count || 1)) : 1;
+    // Liste MULTI-CHOIX quand la reservation porte plusieurs parties : ce sont
+    // les heures retenues qui pilotent l'etat des pastilles, pas une seule.
+    const chosen = isLaser && partCount > 1 && !disabled ? getChosenLaserTimes(preference) : null;
+    const full = Boolean(chosen && chosen.length >= partCount);
     const selected = disabled
       ? ''
-      : (isLaser ? (partTimes[partIndex] || '') : (times[activity.activityId] || ''));
-    const chained = disabled || (isLaser && partIndex > 0) ? '' : getChainedAnchorTime(activity.activityId);
+      : (chosen ? (chosen[0] || '') : (times[activity.activityId] || ''));
+    const chained = disabled || (chosen && chosen.length) ? '' : getChainedAnchorTime(activity.activityId);
     const chips = [...row.querySelectorAll('.anchor-chip')];
     if (chips.length !== (activity.times || []).length) return false;
     chips.forEach((chip, index) => {
       const time = chip.dataset.time || '';
-      const isActive = time === selected;
+      const isActive = chosen ? chosen.includes(time) : time === selected;
       const isChained = !isActive && time === chained;
       chip.classList.toggle('active', isActive);
       chip.classList.toggle('is-chained', isChained);
@@ -6009,15 +5988,16 @@ function syncFormulaAnchorUi(formule, { busy }) {
         } else if (!model.tag && tag) tag.remove();
         else if (model.tag && tag && tag.textContent !== model.tag) tag.textContent = model.tag;
       }
-      if (chip.disabled !== disabled) chip.disabled = disabled;
+      // Compte atteint : les heures non retenues cessent d'etre cliquables, et
+      // le compteur au-dessus dit comment en liberer une.
+      const chipDisabled = disabled || Boolean(chosen && full && !isActive);
+      if (chip.disabled !== chipDisabled) chip.disabled = chipDisabled;
       // La capsule ne ressort que sur l'heure qui VIENT d'être choisie. La
       // classe reste posée tant que l'heure est active (l'animation est finie,
       // elle ne rejoue pas) : la retirer en cours de course couperait le pop
       // quand le réseau répond plus vite que les 160 ms du geste.
       const justPicked = Boolean(formulaJustPicked && isActive
-        && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === time
-        && (formulaJustPicked.partIndex === undefined || formulaJustPicked.partIndex === null
-          || formulaJustPicked.partIndex === partIndex));
+        && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === time);
       if (justPicked) formulaJustPicked = null;
       if (justPicked) chip.classList.add('is-just-picked');
       else if (!isActive) chip.classList.remove('is-just-picked');
@@ -6026,8 +6006,8 @@ function syncFormulaAnchorUi(formule, { busy }) {
     const head = row.querySelector('.anchor-row-head');
     if (head) {
       let pick = head.querySelector('.anchor-row-pick');
-      const surPlace = disabled || (isLaser && partCount > 1 && !selected);
-      const wanted = surPlace ? 'avec l’équipe' : selected;
+      const surPlace = disabled || Boolean(chosen && !chosen.length);
+      const wanted = surPlace ? 'avec l’équipe' : (chosen ? chosen.join(' · ') : selected);
       if (wanted) {
         if (!pick) {
           pick = document.createElement('span');
@@ -6037,15 +6017,16 @@ function syncFormulaAnchorUi(formule, { busy }) {
         if (pick.textContent !== wanted) pick.textContent = wanted;
       } else if (pick) pick.remove();
     }
-    // Le bouton « laisser cette partie sur place » n'existe que quand cette
-    // partie a une heure : il apparait et disparait avec elle, sans rendu complet.
-    const release = row.querySelector('.anchor-part-release');
-    const releaseWanted = isLaser && partCount > 1 && !laserOnSite && Boolean(selected);
-    if (releaseWanted && !release) {
-      const head2 = row.querySelector('.anchor-row-head');
-      head2?.insertAdjacentHTML('afterend',
-        `<button type="button" class="anchor-part-release" onclick="setFormulaLaserPartOnSite(${partIndex})">Laisser cette partie sur place</button>`);
-    } else if (!releaseWanted && release) release.remove();
+    // Le compteur (« 2 heures sur 3 ») suit la liste sans rendu complet : c'est
+    // lui qui explique pourquoi les autres pastilles s'eteignent.
+    const compteur = row.querySelector('.anchor-part-count');
+    if (compteur && chosen) {
+      const restantes = Math.max(0, partCount - chosen.length);
+      const texte = `${chosen.length} heure${chosen.length > 1 ? 's' : ''} sur ${partCount}${restantes
+        ? ` · ${restantes} partie${restantes > 1 ? 's' : ''} avec l’équipe`
+        : ' · cliquez une heure retenue pour la retirer'}`;
+      if (compteur.textContent !== texte) compteur.textContent = texte;
+    }
     row.classList.toggle('anchor-row-onsite', disabled);
     const onsite = row.querySelector('.anchor-onsite');
     if (onsite) {
@@ -6054,9 +6035,11 @@ function syncFormulaAnchorUi(formule, { busy }) {
       if (box && box.checked !== (laserOnSite && isLaser)) box.checked = laserOnSite && isLaser;
     }
     // Le point du moment qui porte l'heure retenue.
-    const periodKey = selected ? getAnchorPeriodKey(selected) : '';
+    const periodKeys = chosen
+      ? new Set(chosen.map(getAnchorPeriodKey))
+      : new Set(selected ? [getAnchorPeriodKey(selected)] : []);
     row.querySelectorAll('.anchor-period-tab').forEach((tab) => {
-      tab.classList.toggle('has-pick', Boolean(periodKey) && tab.dataset.period === periodKey);
+      tab.classList.toggle('has-pick', periodKeys.has(tab.dataset.period));
       if (tab.disabled !== disabled) tab.disabled = disabled;
     });
     row.querySelectorAll('.anchor-track-nudge').forEach((button) => {

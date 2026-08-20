@@ -5004,6 +5004,15 @@ body.customer-mode .client-footer {
   font-weight: 600;
 }
 
+/* Le compte des heures retenues, sous le choix « sur place » : c'est lui qui
+   explique pourquoi les autres heures s'eteignent quand les 3 sont prises. */
+#clientView .anchor-part-count {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
 #clientView .anchor-status {
   display: flex;
   flex-direction: column;

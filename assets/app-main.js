@@ -1156,6 +1156,7 @@ function syncEditLaneAssignment() {
 
 function setEditField(field, value, syncLanes = false) {
   if (!state.editState) return;
+  if (state.editError) setEditError('');
   state.editState[field] = value;
   if (syncLanes) syncEditLaneAssignment();
   else refreshEditPreview();
@@ -1179,6 +1180,7 @@ function getEditLaneNumbers() {
 
 function toggleEditLane(lane) {
   if (!state.editState) return;
+  if (state.editError) setEditError('');
   const choisies = new Set(getEditLaneNumbers());
   if (choisies.has(lane)) choisies.delete(lane);
   else choisies.add(lane);
@@ -13509,13 +13511,13 @@ const STAFF_REQUEST_PRESETS = [
     id: 'devis',
     label: 'Envoyer une proposition',
     subject: (ctx) => `Proposition pour votre venue chez ${ctx.centre}`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nVoici ce que nous vous proposons :\n- [ACTIVITÉ] : [DURÉE]\n- Total estimé : [MONTANT] (à régler sur place)\n\nCe montant reste indicatif tant que la réservation n est pas confirmée. Dites-nous si cela vous convient.\n\nÀ très vite,\n${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande${ctx.groupe}${ctx.quand}.\n\nVoici ce que nous vous proposons :\n- [ACTIVITÉ] : [DURÉE]\n- Total estimé : [MONTANT] (à régler sur place)\n\nCe montant reste indicatif tant que la réservation n’est pas confirmée. Dites-nous si cela vous convient.\n\nÀ très vite,\n${ctx.centre}`,
   },
   {
     id: 'infos',
     label: 'Demander des précisions',
     subject: (ctx) => `Quelques précisions pour votre demande`,
-    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande. Pour vous proposer le meilleur créneau, pouvez-vous nous préciser :\n- la date et l heure souhaitées\n- le nombre exact de participants\n- les activités qui vous intéressent\n\nDès votre réponse, nous vous envoyons une proposition.\n\nÀ très vite,\n${ctx.centre}`,
+    body: (ctx) => `Bonjour ${ctx.prenom},\n\nMerci pour votre demande. Pour vous proposer le meilleur créneau, pouvez-vous nous préciser :\n- la date et l’heure souhaitées\n- le nombre exact de participants\n- les activités qui vous intéressent\n\nDès votre réponse, nous vous envoyons une proposition.\n\nÀ très vite,\n${ctx.centre}`,
   },
   {
     id: 'complet',
@@ -13561,7 +13563,7 @@ async function improveStaffRequestDraft(id) {
   const item = getStaffCustomRequestItems().find(entry => String(entry.id) === key);
   const reply = staffRequestReplyState[key];
   if (!item || !reply) return;
-  if (!String(reply.body || '').trim()) { toast('Écrivez d abord votre message : l IA améliore, elle n invente pas.'); return; }
+  if (!String(reply.body || '').trim()) { toast('Écrivez d’abord votre message : l’IA améliore, elle n’invente pas.'); return; }
   staffRequestReplyState[key] = { ...reply, improving: true };
   renderStaffUtilityPage();
   try {
@@ -17947,7 +17949,7 @@ function editLaneAdvice(r, e) {
   }
   if (choisies < requis) {
     const manque = requis - choisies;
-    return `Cet effectif demande ${pistes(requis)}. Il en manque ${manque} : ${manque > 1 ? 'elles seront complétées' : 'elle sera complétée'} automatiquement à l enregistrement.`;
+    return `Cet effectif demande ${pistes(requis)}. Il en manque ${manque} : ${manque > 1 ? 'elles seront complétées' : 'elle sera complétée'} automatiquement à l’enregistrement.`;
   }
   return `${pistes(requis)} pour cet effectif. Ajoutez-en si vous voulez plus de place : votre choix est respecté.`;
 }
@@ -18048,7 +18050,7 @@ function renderPosEdit(r) {
               <div class="pos-field pos-field-wide">
                 <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
                 <p class="field-hint">${isLaserRes
-                  ? `${Number(e.pax) || 0} joueur(s) : ${getLaserWaveCount(Number(e.pax) || 1)} session(s) de laser. Aucune piste de bowling n est reservee.`
+                  ? `${Number(e.pax) || 0} joueur(s) : ${getLaserWaveCount(Number(e.pax) || 1)} session(s) de laser. Aucune piste de bowling n’est réservée.`
                   : 'Cette réservation ne prend aucune piste de bowling.'}</p>
               </div>`) : `
               <div class="pos-field pos-field-wide">
@@ -18074,6 +18076,7 @@ function renderPosEdit(r) {
            8px l'un de l'autre, sur la même ligne, avec la même forme. Ce qui
            détruit part à GAUCHE, ce qui fait avancer reste à DROITE, et
            « Supprimer » est le seul bouton à porter la couleur de danger. -->
+      <p class="edit-error" id="editError" role="alert" ${state.editError ? '' : 'hidden'}>${escapeHtml(state.editError || '')}</p>
       <div class="edit-actions">
         <div class="edit-actions-destructive">
           <button type="button" class="btn-secondary warn" onclick="cancelRes(${r.id})">Annuler réservation</button>
@@ -18090,6 +18093,27 @@ function renderPosEdit(r) {
   </div>`;
 }
 
+// UN ECHEC D'ENREGISTREMENT DOIT RESTER SOUS LES YEUX (2026-08-20).
+// Movsar, capture a l'appui : fiche a 1h30 sur la piste 5, planning a 1h sur
+// la piste 4, « ça veut juste pas ». C'est l'image exacte d'un enregistrement
+// REFUSE : la saisie reste affichee (voulu, pour qu'il n'ait pas a retaper),
+// l'etat revient a la valeur du serveur, et le seul mot d'explication passe
+// dans un toast qui s'efface en trois secondes. Le motif s'ecrit donc dans la
+// fiche, a cote du bouton, et il y reste jusqu'a la frappe suivante.
+function setEditError(message) {
+  state.editError = message || '';
+  const zone = document.getElementById('editError');
+  if (zone) {
+    zone.textContent = state.editError;
+    zone.hidden = !state.editError;
+  }
+}
+
+function failEdit(message) {
+  setEditError(message);
+  toast(message);
+}
+
 async function saveEdit(e) {
   e.preventDefault();
   const es = state.editState;
@@ -18098,23 +18122,26 @@ async function saveEdit(e) {
   const duration = Number(es.duration);
   const pax = Number(es.pax);
   const slotCheck = validateSlotWindow(state.selectedRes.date, es.startTime, duration, { allowPastStart: true });
-  if (!slotCheck.ok) { toast(slotCheck.message); return; }
+  if (!slotCheck.ok) { failEdit(slotCheck.message); return; }
   let lanes = parseLaneInput(es.lanesStr);
+  // CE QUE LE STAFF A COCHE, garde avant toute substitution : c'est la seule
+  // reference honnete pour lui dire, apres coup, si on a du changer.
+  const lanesVoulues = lanes.slice();
   if (requiresLanes) {
     const suggested = getSuggestedEditLanes(requiredCount, state.selectedRes.date, es.startTime, duration, state.selectedRes.id, es.lanesStr);
     if (!suggested || suggested.length < requiredCount) {
-      toast('Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau.');
+      failEdit('Impossible de libérer ' + requiredCount + ' piste(s) pour ' + pax + ' joueurs sur ce créneau. Changez l’heure, la durée, ou libérez une piste.');
       return;
     }
     lanes = suggested;
     state.editState.lanesStr = formatLaneInput(lanes);
   }
-  if (lanes.some(l => state.laneStatuses[l] === 'maintenance')) { toast('Une des pistes choisies est en maintenance.'); return; }
+  if (lanes.some(l => state.laneStatuses[l] === 'maintenance')) { failEdit('Une des pistes choisies est en maintenance.'); return; }
   const conflicts = lanesConflict(state.selectedRes.date, es.startTime, duration, lanes, state.selectedRes.id);
-  if (conflicts.length) { toast('Conflit detecte avec une autre reservation.'); return; }
+  if (conflicts.length) { failEdit('Conflit avec une autre réservation sur ce créneau (pistes ' + conflicts.join(', ') + ').'); return; }
   if (state.selectedRes.type === 'laser') {
     const laserAvailability = getLaserAvailability(state.selectedRes.date, es.startTime, duration, pax, state.selectedRes.id);
-    if (!laserAvailability.ok) { toast(laserAvailability.message); return; }
+    if (!laserAvailability.ok) { failEdit(laserAvailability.message); return; }
   }
 
   const updated = {
@@ -18134,18 +18161,42 @@ async function saveEdit(e) {
   applyOptimisticReservation(updated, { preserveEditState: true });
 
   try {
+    // `laneCount` DIT COMBIEN DE PISTES ON ENVOIE, pas combien il en faudrait
+    // au minimum (corrige 2026-08-20, Movsar : « je l ai mis piste 5 et mis en
+    // 1h30 mais ça veut juste pas »). Cet override forçait `requiredCount`, le
+    // MINIMUM calcule. Or le serveur compare : `requestedLanes.length ===
+    // (payload.laneCount || lanes.length)`, et si ça ne colle pas il REALLOUE.
+    // Trois pistes choisies pour six joueurs partaient donc avec
+    // « laneCount: 1 », le serveur voyait 3 ≠ 1, et rendait une attribution
+    // automatique. Le choix du staff etait annule cote SERVEUR alors que le
+    // client venait de cesser de l'ecraser. Sans override, le calcul par
+    // defaut de buildReservationApiPayload fait exactement ce qu'il faut :
+    // max(pistes envoyees, minimum requis).
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
       method: 'PATCH',
-      body: JSON.stringify(buildReservationApiPayload(updated, { laneCount: requiredCount, requiresLanes, allowPastStart: true }))
+      body: JSON.stringify(buildReservationApiPayload(updated, { requiresLanes, allowPastStart: true }))
     });
     applyOptimisticReservation(payload.reservation, { preserveEditState: true });
     state.selectedRes = payload.reservation;
+    setEditError('');
     save();
     closePos();
-    toast('Réservation mise à jour');
+    // QUAND LE SERVEUR CHANGE LES PISTES, ON LE DIT. Il a le dernier mot (une
+    // piste peut avoir ete prise entre-temps par un autre poste), mais un
+    // « Réservation mise à jour » sur une piste 6 alors que le staff avait
+    // coche la 5 est un mensonge tranquille : il repart au comptoir avec la
+    // mauvaise piste en tete.
+    const voulues = lanesVoulues.join(', ');
+    const obtenues = ((payload.reservation && payload.reservation.lanes) || []).join(', ');
+    toast(requiresLanes && voulues && voulues !== obtenues
+      ? `Réservation mise à jour, mais pas sur les pistes demandées : ${obtenues || 'aucune'} au lieu de ${voulues}. Le créneau ne les laissait pas libres.`
+      : 'Réservation mise à jour');
   } catch (error) {
     applyOptimisticReservation(previousReservation, { preserveEditState: true });
-    toast(error.message || 'Impossible de mettre à jour la réservation.');
+    // La saisie est GARDEE a l'ecran (rien a retaper), donc l'ecran montrerait
+    // des valeurs que la base n'a pas : le motif doit rester lisible a cote du
+    // bouton, sinon l'ecart passe pour un bug muet.
+    failEdit((error.message || 'Impossible de mettre à jour la réservation.') + ' Rien n’a été enregistré.');
   }
 }
 

@@ -8818,6 +8818,21 @@ button.group-agenda-row:hover, button.group-followup-row:hover { background: var
   color: var(--text-2, #4b5563);
 }
 .edit-formule-list li { list-style: disc; }
+
+/* Le motif d'un enregistrement refuse. Il vit DANS la fiche, au-dessus des
+   boutons, la ou le regard va apres avoir clique : un toast qui s'efface
+   laisse le staff devant un ecran qui ne correspond plus a la base. */
+.edit-error {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--danger-border, #7f1d1d);
+  background: var(--danger-soft, rgba(153, 27, 27, 0.16));
+  color: var(--danger-text, #fca5a5);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.edit-error[hidden] { display: none; }
 .pos-field .input:user-invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 
 /* Un bouton doit repondre au doigt. 100-160 ms, `transform` uniquement, et

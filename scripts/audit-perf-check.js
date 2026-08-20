@@ -283,13 +283,47 @@ function report(r) {
 (async () => {
   console.log(`[PERF] chemin de reservation, ${ITERATIONS} iterations, latence simulee ${LATENCY_MS} ms par aller-retour\n`);
 
-  const sansJournal = await runScenario('A. sans journal (reference)', { withAudit: false });
+  // MESURE APPARIEE, ET C'EST LA TOUT LE POINT (durci 2026-08-20).
+  // Le signal cherche vaut un aller-retour (~8 ms) ; la machine, elle, execute
+  // en meme temps le reste de la chaine de gates, navigateurs compris.
+  // `setTimeout` derive alors de plusieurs millisecondes et le p95 d'UNE passe
+  // devient bruite : la contre-epreuve a rendu -3,52 ms sous charge, puis
+  // +7,87 / +7,86 / +8,01 ms trois fois de suite a vide. Un gate qui rougit
+  // selon la charge de la machine ne prouve plus rien, et il finit par etre
+  // ignore ou affaibli.
+  //
+  // On alterne donc les trois scenarios (A, B, C, A, B, C, ...) et on compare
+  // les MEDIANES. La derive de l'ordonnanceur frappe les trois de la meme
+  // façon a quelques millisecondes d'intervalle, donc elle s'annule dans la
+  // difference. Le seuil, lui, ne bouge pas d'un pouce : la contre-epreuve
+  // doit toujours voir un aller-retour entier.
+  const PASSES = Number(process.env.PERF_PASSES || 3);
+  const mediane = (xs) => {
+    const t = xs.slice().sort((a, b) => a - b);
+    const m = Math.floor(t.length / 2);
+    return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2;
+  };
+  const passes = { A: [], B: [], C: [] };
+  let sansJournal = null; let avecJournal = null; let dansTransaction = null;
+  for (let passe = 0; passe < PASSES; passe += 1) {
+    const a = await runScenario('A. sans journal (reference)', { withAudit: false });
+    const b = await runScenario('B. avec journal (livre)', { withAudit: true });
+    const c = await runScenario('C. journal DANS la transaction', { withAudit: false, auditInsideTransaction: true });
+    passes.A.push(a); passes.B.push(b); passes.C.push(c);
+    if (passe === 0) { sansJournal = a; avecJournal = b; dansTransaction = c; }
+    // Une seule ecriture de journal sous verrou, sur N passes, suffit a
+    // condamner : cette observation-la n'est pas une moyenne.
+    if (b.auditInsideLockObserved) avecJournal.auditInsideLockObserved = true;
+  }
+  sansJournal.lockP95 = mediane(passes.A.map((x) => x.lockP95));
+  avecJournal.lockP95 = mediane(passes.B.map((x) => x.lockP95));
+  dansTransaction.lockP95 = mediane(passes.C.map((x) => x.lockP95));
+  sansJournal.totalP95 = mediane(passes.A.map((x) => x.totalP95));
+  avecJournal.totalP95 = mediane(passes.B.map((x) => x.totalP95));
+  console.log(`      (${PASSES} passes alternees, medianes retenues)
+`);
   report(sansJournal);
-
-  const avecJournal = await runScenario('B. avec journal (livre)', { withAudit: true });
   report(avecJournal);
-
-  const dansTransaction = await runScenario('C. journal DANS la transaction', { withAudit: false, auditInsideTransaction: true });
   report(dansTransaction);
 
   console.log('');

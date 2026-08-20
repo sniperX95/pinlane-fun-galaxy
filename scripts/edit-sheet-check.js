@@ -70,6 +70,12 @@ srv.listen(PORT, '127.0.0.1', async () => {
       if (u.pathname === '/api/staff-reservations' && String(init.method || 'GET').toUpperCase() === 'PATCH') {
         const body = JSON.parse(init.body || '{}');
         window.__QA_PATCH__.push(body);
+        if (window.__QA_REFUS__) {
+          // L'enveloppe EXACTE du serveur (lib/http.js sendError) : { ok:false,
+          // message }. Une enveloppe inventee ferait passer le message par le
+          // repli generique et le gate prouverait le contraire de la realite.
+          return new Response(JSON.stringify({ ok: false, message: 'Ce créneau vient de changer. Merci de relancer la recherche avant de confirmer.' }), { status: 409, headers: { 'content-type': 'application/json; charset=utf-8' } });
+        }
         const idx = R.findIndex((r) => String(r.id) === String(body.id));
         const base = idx >= 0 ? R[idx] : R[0];
         const merged = { ...base, ...body };
@@ -259,6 +265,62 @@ srv.listen(PORT, '127.0.0.1', async () => {
   ok(!ficheF.lanePicker, 'formule sans bowling : aucun selecteur de pistes');
   ok(ficheF.labels.some((l) => /Contenu de/i.test(l)), 'la fiche annonce le contenu de la formule (' + JSON.stringify(ficheF.labels) + ')');
   await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+  await pg.waitForTimeout(400);
+
+  console.log('');
+  console.log('[LANECOUNT] le nombre envoye est celui du CHOIX, pas le minimum');
+  await pg.evaluate((rid) => { window.__QA_PATCH__ = []; if (typeof openPos === 'function') openPos(rid); }, 1332);
+  await pg.waitForTimeout(700);
+  await pg.evaluate(() => {
+    const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
+    if (tab) tab.click();
+  });
+  await pg.waitForSelector('.lane-picker .lane-chip', { timeout: 20000 });
+  const cocheesLC = await pg.evaluate(() => [...document.querySelectorAll('.lane-picker .lane-chip.is-on')].map((n) => Number(n.textContent.trim())));
+  await pg.click('.edit-form button[type="submit"]');
+  await pg.waitForTimeout(1300);
+  const envoiLC = await pg.evaluate(() => (window.__QA_PATCH__ || []).slice(-1)[0] || null);
+  // Le serveur compare `requestedLanes.length` a `payload.laneCount` : un
+  // laneCount fige au minimum lui fait REALLOUER, et le choix du staff est
+  // annule cote serveur meme si le client l'a bien envoye.
+  ok(envoiLC && Number(envoiLC.laneCount) === (envoiLC.lanes || []).length,
+    'laneCount = nombre de pistes envoyees (' + (envoiLC ? envoiLC.laneCount + ' pour ' + JSON.stringify(envoiLC.lanes) : 'aucun envoi') + ')');
+  ok(envoiLC && Number(envoiLC.laneCount) >= cocheesLC.length,
+    'laneCount ne rabote pas le choix affiche (' + (envoiLC ? envoiLC.laneCount : 'n/a') + ' pour ' + cocheesLC.length + ' cochee(s))');
+  await pg.evaluate(() => { if (typeof closePos === 'function') closePos(); });
+  await pg.waitForTimeout(400);
+
+  console.log('');
+  console.log('[REFUS] un enregistrement refuse se LIT dans la fiche, pas dans un toast qui passe');
+  await pg.evaluate((rid) => { window.__QA_REFUS__ = true; window.__QA_PATCH__ = []; if (typeof openPos === 'function') openPos(rid); }, 1332);
+  await pg.waitForTimeout(700);
+  await pg.evaluate(() => {
+    const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
+    if (tab) tab.click();
+  });
+  await pg.waitForSelector('.edit-form #editNameInput', { timeout: 20000 });
+  await pg.fill('#editNameInput', 'REFUS ATTENDU');
+  await pg.click('.edit-form button[type="submit"]');
+  await pg.waitForTimeout(1400);
+  const vuRefus = await pg.evaluate(() => {
+    const el = document.getElementById('editError');
+    if (!el) return { present: false };
+    const r = el.getBoundingClientRect();
+    return { present: true, cache: !!el.hidden, visible: r.width > 0 && r.height > 0, texte: (el.textContent || '').trim() };
+  });
+  ok(vuRefus.present && !vuRefus.cache && vuRefus.visible, 'le motif du refus est AFFICHE dans la fiche');
+  ok(/créneau vient de changer/.test(vuRefus.texte || ''), 'c est le motif REEL du serveur, pas un generique (' + JSON.stringify((vuRefus.texte || '').slice(0, 80)) + ')');
+  ok(/enregistr/i.test(vuRefus.texte || ''), 'la fiche dit que RIEN n a ete enregistre');
+  // Et il s'efface des que le staff corrige : un message qui survit a la
+  // correction contredit ce que l'ecran montre.
+  await pg.fill('#editNameInput', 'CORRIGE');
+  await pg.waitForTimeout(300);
+  const apresCorrection = await pg.evaluate(() => {
+    const el = document.getElementById('editError');
+    return el ? { cache: !!el.hidden, texte: (el.textContent || '').trim() } : { cache: true, texte: '' };
+  });
+  ok(apresCorrection.cache || !apresCorrection.texte, 'le motif disparait des que le staff corrige');
+  await pg.evaluate(() => { window.__QA_REFUS__ = false; if (typeof closePos === 'function') closePos(); });
   await pg.waitForTimeout(400);
 
   console.log('');

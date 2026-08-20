@@ -492,8 +492,8 @@ async function loadFromSeed() {
   disabledF5.formulas = disabledF5.formulas.map((row) => (row.id === 'f5' ? { ...row, active: false } : row));
   await withMutation(
     opsKnowledgePath,
-    'if (catalogStore.isFormulaKnown(formulaId)) return null;',
-    'if (catalogStore.isFormulaKnown(formulaId) && false) return null;',
+    'if (catalogStore.isFormulaKnown(formulaId, centerId)) return null;',
+    'if (catalogStore.isFormulaKnown(formulaId, centerId) && false) return null;',
     () => { store.applyCatalogState(disabledF5); },
     (mod) => mod.getFormula('f5') === null,
     'fix no-resurrect neutralise (ops-knowledge.getFormula)',

@@ -1674,12 +1674,46 @@ async function main() {
     await screenshot(page, 'chantier3-formules-normal');
     issues.push(...await collectIssues(page, 'chantier3-formules'));
     // Date pendant le congé d'automne : bannière famille + cartes désactivées
-    await page.evaluate(() => {
-      state.booking.date = '2026-10-26';
-      document.getElementById('fDate').value = '2026-10-26';
+    // TROISIEME BOMBE D HORLOGE, desamorcee le 2026-08-20. Les deux dates de ce
+    // bloc etaient ECRITES EN DUR, avec pour seule protection un commentaire
+    // « a rafraichir avant cette date ». La date d ete valait 2026-07-15, puis
+    // 2026-08-20 : le 2026-08-20 elle est devenue le jour meme, donc plus « dans
+    // le futur », et `test:visual` a rougi pour une raison d HORLOGE, jamais de
+    // produit (verifie sur un arbre de travail a HEAD, sans aucune modification :
+    // meme echec). On CALCULE desormais les deux dates depuis le calendrier
+    // scolaire du produit lui-meme (WALLONIA_SCHOOL_HOLIDAYS, assets/booking-core.js),
+    // toujours au moins un jour devant nous. Meme remede que nextSaturday dans
+    // scripts/second-client-onboarding-check.js.
+    const pickHolidayDate = (kind) => page.evaluate((wantedKind) => {
+      const iso = (d) => d.toISOString().slice(0, 10);
+      const now = new Date();
+      // Demain au plus tot : une date du jour ou passee declenche
+      // isPastBusinessDate et le hint affiche « Date passee », ce qui ferait
+      // tomber les assertions sans rien prouver sur les vacances.
+      const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+      const ranges = WALLONIA_SCHOOL_HOLIDAYS
+        .filter((range) => range.kind === wantedKind)
+        .sort((a, b) => (a.start < b.start ? -1 : 1));
+      for (const range of ranges) {
+        const start = new Date(`${range.start}T00:00:00Z`);
+        const end = new Date(`${range.end}T00:00:00Z`);
+        const cursor = start > from ? start : from;
+        if (cursor <= end) return iso(cursor);
+      }
+      return '';
+    }, kind);
+
+    const shortHolidayDate = await pickHolidayDate('short');
+    const summerHolidayDate = await pickHolidayDate('summer');
+    assert(Boolean(shortHolidayDate) && Boolean(summerHolidayDate),
+      `Calendrier scolaire perime : plus aucun conge a venir (court="${shortHolidayDate}", ete="${summerHolidayDate}"). Ajouter l annee suivante dans WALLONIA_SCHOOL_HOLIDAYS.`);
+
+    await page.evaluate((date) => {
+      state.booking.date = date;
+      document.getElementById('fDate').value = date;
       updateSchedHint();
       renderFormules();
-    });
+    }, shortHolidayDate);
     await page.waitForTimeout(250);
     const autumnState = await page.evaluate(() => ({
       groupAlert: Boolean(document.querySelector('.formule-group-alert')),
@@ -1690,18 +1724,15 @@ async function main() {
     assert(autumnState.f1Disabled, 'Congé d automne : les formules anniversaires doivent être désactivées.');
     assert(autumnState.repeatedNote === 0, 'La mention vacances ne doit plus être répétée sur chaque carte.');
     await screenshot(page, 'chantier3-formules-autumn-blocked');
-    // Date pendant les grandes vacances : formules anniversaires accessibles.
-    // La date doit rester DANS LE FUTUR : une date passee declenche
-    // isPastBusinessDate et le hint affiche "Date passee", ce qui fait tomber
-    // l assertion de periode plus bas sans rien prouver sur les vacances.
-    // 2026-08-20 : jeudi, dans les vacances d ete (04/07 -> 23/08/2026).
-    // A rafraichir avant cette date (ancienne valeur 2026-07-15, perimee).
-    await page.evaluate(() => {
-      state.booking.date = '2026-08-20';
-      document.getElementById('fDate').value = '2026-08-20';
+    // Date pendant les GRANDES vacances : les formules anniversaires restent
+    // accessibles (seuls les PETITS conges les bloquent). Date calculee, jamais
+    // ecrite en dur : voir la note de bombe d horloge plus haut.
+    await page.evaluate((date) => {
+      state.booking.date = date;
+      document.getElementById('fDate').value = date;
       updateSchedHint();
       renderFormules();
-    });
+    }, summerHolidayDate);
     await page.waitForTimeout(250);
     const summerState = await page.evaluate(() => ({
       groupAlert: Boolean(document.querySelector('.formule-group-alert')),

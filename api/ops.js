@@ -883,6 +883,29 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return scopedCenterId;
   };
 
+  // L'ENTREPRISE qui ecrit (migration 0042). Le catalogue n'est plus partage :
+  // toute ecriture est estampillee du client du centre de SESSION, jamais d'un
+  // client choisi par l'appelant (withCenter a deja ecrase body.centerId).
+  // FAIL-CLOSED : un centre sans entreprise ne peut pas editer, sinon son
+  // ecriture atterrirait dans le catalogue plateforme, donc chez tout le monde.
+  // C'est exactement la fuite que 0042 ferme.
+  const requireOwnerClientId = async (label = action) => {
+    const centerId = requireConcreteCenter(label);
+    const result = await getPool().query(
+      `select nullif(client_id, '') as client_id from centers where id = $1 limit 1;`,
+      [centerId],
+    );
+    const clientId = result.rows && result.rows[0] ? result.rows[0].client_id : null;
+    if (!clientId) {
+      throw createHttpError(
+        `Action ${label} refusée: ce centre n'est rattaché à aucune entreprise.`,
+        409,
+        true,
+      );
+    }
+    return String(clientId).trim().toLowerCase();
+  };
+
   if (action === 'plan') {
     requireConcreteCenter('planification');
     // Sur Vercel, api/ops est une fonction serverless SEPAREE de
@@ -1658,21 +1681,24 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
-  // ── CRUD CATALOGUE DB (phase 2b-1, permission settings.manage) ──────────────
-  // Ces actions editent le catalogue PARTAGE : les formulas sont GLOBALES
-  // aujourd hui (pas de center_id), owner ET client agissent dessus. Le scoping
-  // per-centre des formules custom est un raffinement ulterieur, HORS phase.
-  // requireConcreteCenter force un centre de SESSION concret ('all'/vide refuse)
-  // pour la coherence et le futur scoping, meme si l ecriture reste globale.
+  // ── CRUD CATALOGUE DB (permission settings.manage) ──────────────────────────
+  // Ces actions editent le catalogue DE L ENTREPRISE du centre de session
+  // (migration 0042, owner_client_id). Elles n'ont plus aucun effet chez un
+  // autre client : creer, editer ou retirer une formule ou une activite ecrit
+  // une ligne scopee, et une formule du SOCLE editee par un client est copiee a
+  // la volee dans sa portee (le socle et les autres clients ne bougent pas).
+  // requireOwnerClientId resout cette portee depuis centers.client_id et REFUSE
+  // (409) un centre orphelin : ecrire alors dans le catalogue plateforme
+  // toucherait tout le monde.
   // catalog-store rafraichit le cache (refreshCatalog force) apres chaque
   // ecriture ; l audit est automatique (PP1, action mutante non exclue). Les
   // bornes (name<=120, prix 0..1000, minPax>=1, steps non vide, priceType
   // per_pax|per_lane) vivent dans lib/catalog-store (erreurs exposees).
   if (action === 'createFormula') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.createFormula(getPool(), body.formula || {});
+      out = await catalogStore.createFormula(getPool(), { ...(body.formula || {}), ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Creation de la formule impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1680,10 +1706,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
   if (action === 'updateFormula') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.updateFormula(getPool(), { id: body.id, ...(body.patch || {}) });
+      out = await catalogStore.updateFormula(getPool(), { id: body.id, ...(body.patch || {}), ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Mise a jour de la formule impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1691,10 +1717,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
   if (action === 'setFormulaSteps') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.setFormulaSteps(getPool(), { id: body.id, steps: body.steps });
+      out = await catalogStore.setFormulaSteps(getPool(), { id: body.id, steps: body.steps, ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Mise a jour des etapes impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1702,10 +1728,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
   if (action === 'deleteFormula') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.deleteFormula(getPool(), { id: body.id });
+      out = await catalogStore.deleteFormula(getPool(), { id: body.id, ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Retrait de la formule impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1713,10 +1739,16 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
   if (action === 'createActivity') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.createActivity(getPool(), body.activity || {});
+      // centerId FORCE a 'all' : la maille d'isolation est l'ENTREPRISE, donc
+      // une activite vaut pour tous les centres de CE client. Aucun ecran
+      // n'envoie ce champ ; le laisser passer permettrait a un appelant de
+      // viser le centre d'un autre client. La portee proprietaire le rendrait
+      // de toute facon invisible, mais une ligne qui vise le centre d'autrui
+      // n'a aucune raison d'exister.
+      out = await catalogStore.createActivity(getPool(), { ...(body.activity || {}), centerId: 'all', ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Creation de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1724,10 +1756,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
   if (action === 'updateActivity') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.updateActivity(getPool(), { id: body.id, ...(body.patch || {}) });
+      out = await catalogStore.updateActivity(getPool(), { id: body.id, ...(body.patch || {}), centerId: 'all', ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Mise a jour de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }
@@ -1735,10 +1767,10 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
   if (action === 'deleteActivity') {
-    requireConcreteCenter('catalogue');
+    const ownerClientId = await requireOwnerClientId('catalogue');
     let out;
     try {
-      out = await catalogStore.deleteActivity(getPool(), { id: body.id });
+      out = await catalogStore.deleteActivity(getPool(), { id: body.id, centerId: 'all', ownerClientId });
     } catch (error) {
       throw createHttpError(safeUserMessage(error, 'Retrait de l activite impossible pour le moment. Reessayez.'), error.expose ? 400 : 503, error.expose === true);
     }

@@ -7237,13 +7237,16 @@
   }
 
   /* ==========================================================================
-     CATALOGUE PARTAGE : editeur de STRUCTURE (permission settings.manage)
+     CATALOGUE DE L ENTREPRISE : editeur de STRUCTURE (permission settings.manage)
      Distinct de l'editeur "mon centre" (pev, prix/dispo/retrait par centre) :
      ici on edite le CATALOGUE lui-meme (formules, activites d'une formule),
-     partage par TOUS les centres. Branche sur le CRUD backend deja deploye
-     (createFormula / updateFormula / setFormulaSteps / deleteFormula). Aucune
-     ecriture n'envoie de centerId : le serveur force le centre de session, et le
-     catalogue est global. Meme mecanique modale que pev : etat hors DOM
+     partage par tous les centres de LA MEME ENTREPRISE. Branche sur le CRUD
+     backend (createFormula / updateFormula / setFormulaSteps / deleteFormula).
+     Aucune ecriture n'envoie de centerId : le serveur force le centre de
+     session et en deduit l'entreprise proprietaire (migration 0042). Depuis
+     cette migration, aucune de ces actions n'a le moindre effet chez un autre
+     client : les textes ci-dessous le disent, parce qu'ils disaient l'inverse
+     et que c'etait faux. Meme mecanique modale que pev : etat hors DOM
      (catalogEditor), modale montee dans document.body pour survivre aux
      reconstructions innerHTML de la page. Lit clientCatalog via pricingEditor
      (meme source), re-fetch via pevReload apres chaque ecriture.
@@ -7654,7 +7657,7 @@
     if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
     const entry = pevEntry(formuleId);
     const name = entry && entry.name ? entry.name : formuleId;
-    if (!window.confirm(`Supprimer la formule "${name}" du catalogue partage ? Elle disparait pour tous les centres.`)) return;
+    if (!window.confirm(`Supprimer la formule "${name}" de ton catalogue ? Elle disparait de tous TES centres. Les autres clients ne sont pas touches.`)) return;
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
       method: 'POST',
       body: JSON.stringify({ action: 'deleteFormula', id: String(formuleId) }),
@@ -7675,7 +7678,7 @@
     return mode === 'steps' ? `Activites : ${name}` : `Structure : ${name}`;
   }
   function cevModalSub() {
-    return 'Catalogue partage : cette modification change l\'offre pour TOUS les centres, pas seulement le tien.';
+    return 'Cette modification change l\'offre de TOUS TES centres, pas seulement celui-ci. Aucun autre client ne la voit.';
   }
   function cevModalBodyHtml() {
     if (!catalogEditor.modal) return '';
@@ -7687,7 +7690,7 @@
   }
   function cevModalFootHtml() {
     const busy = catalogEditor.saving;
-    return `<span class="pev-foot-note">Catalogue partage. Chaque enregistrement est trace au journal.</span>
+    return `<span class="pev-foot-note">Catalogue de ton entreprise. Chaque enregistrement est trace au journal.</span>
       <button type="button" class="btn btn-ghost" ${busy ? 'disabled' : ''} onclick="cevCloseModal()">Annuler</button>
       <button type="button" class="btn btn-primary" ${busy ? 'disabled' : ''} onclick="cevSave()">${busy ? 'Enregistrement...' : 'Enregistrer'}</button>`;
   }
@@ -7825,7 +7828,7 @@
       // famille de formules : une seule porte d'entree pour creer.
       const hostId = group === firstFormulaGroup ? ' id="cevCatalogBlock"' : '';
       const legend = group === firstFormulaGroup
-        ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS les centres.</span>`
+        ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS TES centres.</span>`
         : '';
       // L'ajout au catalogue vit dans la BARRE du haut (toujours visible, quel
       // que soit le filtre) : ici il fallait defiler jusqu'aux formules pour le
@@ -7982,7 +7985,7 @@
 
   function aevModalFootHtml() {
     const mode = activityEditor.modal && activityEditor.modal.mode;
-    return `<span class="pev-foot-note">Catalogue partagé : cette activité existe pour tous les centres.</span>
+    return `<span class="pev-foot-note">Cette activité existe pour tous TES centres, et pour eux seuls.</span>
       <button type="button" class="pv2-btn" ${activityEditor.saving ? 'disabled' : ''} onclick="aevCloseModal()">Annuler</button>
       <button type="button" class="pv2-btn primary" id="aevSaveBtn" ${activityEditor.saving ? 'disabled' : ''} onclick="aevSave()">${activityEditor.saving ? 'Enregistrement…' : (mode === 'create' ? 'Ajouter' : 'Enregistrer')}</button>`;
   }

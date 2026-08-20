@@ -373,6 +373,33 @@ module.exports = async (req, res) => {
     center = null;
   }
 
+  // CENTRE INCONNU : on le DIT, on ne prete pas le catalogue d'un autre.
+  //
+  // Avant le 2026-08-20, cet endpoint repondait 200 avec un catalogue de repli
+  // pour n'importe quel identifiant : un slug invente et un centre absent
+  // rendaient le meme corps, octet pour octet (6053 octets, laser game +
+  // minigolf + plaine de jeux compris). Un site vitrine mal configure affichait
+  // donc un tunnel complet aux couleurs de la plateforme, proposant des
+  // activites que le centre n'a pas. Un formulaire absent vaut mieux qu'un
+  // formulaire qui ment.
+  //
+  // Le cas « aucun centerId » ne change PAS : il retombe sur 'libramont' comme
+  // depuis toujours, parce que la ligne d'installation historique du client en
+  // production ne porte pas le parametre. Ce sont les identifiants INCONNUS qui
+  // sont refuses.
+  //
+  // Les trois centres du fichier socle sont toujours resolus, meme base
+  // indisponible (getCenter lit le cache fusionne) : un incident base ne peut
+  // pas eteindre le tunnel de Fun Galaxy. Un centre qui n'existe QU'EN BASE,
+  // lui, repond 404 tant que la base est muette, ce qui est le comportement
+  // voulu : sans sa configuration, son tunnel ne peut rien dire de vrai.
+  if (!center) {
+    // L'identifiant est RENVOYE borne et nettoye : c'est une entree utilisateur,
+    // elle ne repart jamais telle quelle, meme dans un corps JSON.
+    sendError(res, 404, 'Centre inconnu.', { centerId: centerId.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 60) });
+    return;
+  }
+
   // Config bookable per-center (pistes, capacités, tarifs, options laser) : le
   // front la consomme quand elle est présente, ses constantes locales restent
   // le fallback (mêmes valeurs sans override).
@@ -394,7 +421,7 @@ module.exports = async (req, res) => {
   // base il rend l'etat connu ou []), et tout le reste est enveloppe. `day` a
   // null signifie, cote client, rendu strictement historique.
   let day = null;
-  if (dayDate && center) {
+  if (dayDate) {
     try {
       const blocks = await loadAvailabilityBlocks(getPool(), centerId);
       day = buildDayStatus(blocks, dayDate, center, centerId);

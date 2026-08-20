@@ -259,8 +259,11 @@ async function runSuite(browser, quiet) {
     // (2026-08-17), cette distinction vit dans la legende du rayon formules,
     // plus dans deux bandeaux separes.
     const scopeText = await page.evaluate(() => document.getElementById('staffPricingPage').textContent || '');
-    ok(/n'engage que ce centre/i.test(scopeText) && /TOUS les centres/.test(scopeText), 'scope-distinction',
-      `centre=${/n'engage que ce centre/i.test(scopeText)} tous=${/TOUS les centres/.test(scopeText)}`);
+    // « TOUS TES centres » depuis la migration 0042 : la portee d'une edition de
+    // catalogue est l'ENTREPRISE, plus la plateforme entiere. L'assertion suit
+    // le texte, sinon elle certifierait une phrase devenue fausse.
+    ok(/n'engage que ce centre/i.test(scopeText) && /TOUS TES centres/.test(scopeText), 'scope-distinction',
+      `centre=${/n'engage que ce centre/i.test(scopeText)} entreprise=${/TOUS TES centres/.test(scopeText)}`);
     ok(await page.$('#cevAddFormula') !== null, 'catalog-add-btn');
 
     // ---- 1. "Ajouter une formule" -> modale -> createFormula avec steps ------

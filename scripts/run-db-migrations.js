@@ -210,6 +210,11 @@ const MIGRATIONS = [
     file: 'database/formula-effectif-ordre-schema.sql',
     description: "Effectif (pax) et caractere optionnel PAR ETAPE de formule, contrainte d'ordre (order_constraints) PAR FORMULE. Colonnes additives : NULL/false = comportement historique exact. Le store detecte leur presence a la lecture (drapeau de capacite) : avant application, lecture et ecriture restent en forme historique.",
   },
+  {
+    id: '0042_catalog_client_scope',
+    file: 'database/catalog-client-scope-schema.sql',
+    description: "Portee ENTREPRISE du catalogue (owner_client_id sur formulas / formula_steps / activities, cles primaires composites). Deux clients Pinlane ne partagent plus rien ; deux centres d'un MEME client continuent de partager. Les lignes existantes vont a 'fungalaxy' (mesure : elles sont identiques au socle fichier, donc aucun catalogue servi ne change). Rollback : database/rollbacks/0042_catalog_client_scope.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

@@ -215,6 +215,11 @@ const MIGRATIONS = [
     file: 'database/catalog-client-scope-schema.sql',
     description: "Portee ENTREPRISE du catalogue (owner_client_id sur formulas / formula_steps / activities, cles primaires composites). Deux clients Pinlane ne partagent plus rien ; deux centres d'un MEME client continuent de partager. Les lignes existantes vont a 'fungalaxy' (mesure : elles sont identiques au socle fichier, donc aucun catalogue servi ne change). Rollback : database/rollbacks/0042_catalog_client_scope.down.sql",
   },
+  {
+    id: '0043_activity_pricing',
+    file: 'database/activity-pricing-schema.sql',
+    description: "Tarif d'activite PAR JOUR ET PAR CRENEAU (activities.pricing, jsonb nullable) : une liste d'exceptions au prix de base, comme le bowling a recu la sienne. NULL = un seul prix, comportement inchange. Regle de surete : sans creneau choisi, c'est le prix de base qui s'affiche, donc le montant ne peut que baisser. Forme validee par lib/activity-pricing.js.",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

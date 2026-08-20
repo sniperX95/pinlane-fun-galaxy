@@ -282,7 +282,52 @@ function run() {
   ok(Number((carteGrille.items || [])[0].price) === 39,
     `et le centre a la grille facture toujours 39 EUR la piste (obtenu ${(carteGrille.items || [])[0].price})`);
 
-  section('[6] CONTRE-PREUVE : sans le tarif du centre, le prix redevient celui de la grille');
+  section('[6] LE TARIF D UNE ACTIVITE peut dependre du jour et du creneau');
+  const { normalizeActivityPricing, resolveActivityUnitPrice } = require(path.join(ROOT, 'lib', 'activity-pricing.js'));
+  const { activityLinePrice } = require(path.join(ROOT, 'lib', 'activity-catalog.js'));
+  const karaPricing = normalizeActivityPricing({
+    mode: 'per_person',
+    tiers: [{ days: [3], untilMinutes: '18:00', price: 7.5, label: 'Mercredi apres-midi' }],
+  });
+  ok(Boolean(karaPricing) && karaPricing.tiers[0].untilMinutes === 1080,
+    `« 18:00 » se normalise en 1080 minutes (obtenu ${karaPricing && karaPricing.tiers[0].untilMinutes})`);
+  // Un palier sans jour NI fenetre serait un prix de base deguise : refuse.
+  ok(normalizeActivityPricing({ mode: 'per_person', tiers: [{ price: 1 }] }) === null,
+    'un palier sans jour ni plage horaire est refuse');
+  // Une fenetre fermee a l envers ne s appliquerait jamais : refusee a l ecriture.
+  ok(normalizeActivityPricing({ mode: 'per_person', tiers: [{ days: [3], fromMinutes: 1080, untilMinutes: 720, price: 1 }] }) === null,
+    'une plage horaire fermee a l envers est refusee');
+
+  const mercredi = nextWeekday(3);
+  const jeudi = nextWeekday(4);
+  ok(resolveActivityUnitPrice(karaPricing, 10, { dateStr: mercredi, startTime: '15:00' }) === 7.5,
+    'mercredi 15h : le palier gagne (7,50 EUR)');
+  ok(resolveActivityUnitPrice(karaPricing, 10, { dateStr: mercredi, startTime: '20:00' }) === 10,
+    'mercredi 20h : hors fenetre, prix de base (10 EUR)');
+  ok(resolveActivityUnitPrice(karaPricing, 10, { dateStr: jeudi, startTime: '15:00' }) === 10,
+    'jeudi 15h : mauvais jour, prix de base (10 EUR)');
+  // LA REGLE DE SURETE : sans creneau, jamais la promo. Le montant affiche ne
+  // peut que BAISSER une fois l heure connue, jamais monter.
+  ok(resolveActivityUnitPrice(karaPricing, 10, { dateStr: mercredi }) === 10,
+    'sans creneau choisi : prix de base, jamais le palier');
+
+  const kara = { id: 'kara-box', priceType: 'per_pax', priceValue: 10, pricing: karaPricing };
+  ok(activityLinePrice(kara, { pax: 8, dateStr: mercredi, startTime: '15:00' }) === 60,
+    `8 personnes, mercredi 15h = 60 EUR (obtenu ${activityLinePrice(kara, { pax: 8, dateStr: mercredi, startTime: '15:00' })})`);
+  ok(activityLinePrice(kara, { pax: 8, dateStr: mercredi, startTime: '20:00' }) === 80,
+    `8 personnes, mercredi 20h = 80 EUR (obtenu ${activityLinePrice(kara, { pax: 8, dateStr: mercredi, startTime: '20:00' })})`);
+  ok(activityLinePrice({ id: 'x', priceType: 'per_pax', priceValue: 10 }, { pax: 8, dateStr: mercredi, startTime: '15:00' }) === 80,
+    'une activite SANS paliers garde son prix unique (80 EUR)');
+
+  // Le NAVIGATEUR doit dire le meme montant que le serveur, sinon le client
+  // voit un total et en paie un autre.
+  const browserKara = loadBrowserCore(GAMES_PRICING);
+  ok(browserKara.getFreeActivityPrice(kara, { pax: 8, dateStr: mercredi, startTime: '15:00' }) === 60,
+    `le navigateur annonce 60 EUR la ou le serveur en calcule 60 (obtenu ${browserKara.getFreeActivityPrice(kara, { pax: 8, dateStr: mercredi, startTime: '15:00' })})`);
+  ok(browserKara.getFreeActivityPrice(kara, { pax: 8, dateStr: mercredi }) === 80,
+    'et sans creneau, le navigateur annonce lui aussi le prix de base');
+
+  section('[7] CONTRE-PREUVE : sans le tarif du centre, le prix redevient celui de la grille');
   const withoutPricing = bookingConfig.getBasePrice('bowling', 1, 1, 4, '', GAMES_CENTER,
     { bowlingConfig: gridBowling, dateStr: thursday });
   ok(withoutPricing === 39 && withoutPricing !== price4Thursday,

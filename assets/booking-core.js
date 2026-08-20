@@ -128,18 +128,46 @@ function getCenterActivity(activityId) {
 
 // Prix d'une activite libre, ou null quand le centre n'a pas saisi son tarif.
 // null s'affiche "sur place" : afficher 0 EUR promettrait la gratuite.
-function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null } = {}) {
+// Miroir de lib/activity-pricing.resolveActivityUnitPrice : le prix UNITAIRE
+// d'une activite peut dependre du JOUR et du CRENEAU (migration 0043). Sans
+// creneau choisi, c'est le prix de base : le montant ne peut que baisser une
+// fois l'heure connue, jamais monter. Un gate prouve que ce miroir et le
+// serveur disent le meme prix.
+function resolveActivityUnitPrice(pricing, basePrice, { dateStr = '', startTime = '' } = {}) {
+  const base = basePrice === null || basePrice === undefined ? null : Number(basePrice);
+  if (!pricing || !Array.isArray(pricing.tiers) || !pricing.tiers.length) return base;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+  if (!m) return base;
+  const day = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(String(startTime || '').trim());
+  const minutes = hm ? Number(hm[1]) * 60 + Number(hm[2]) : null;
+  for (const tier of pricing.tiers) {
+    const days = Array.isArray(tier.days) ? tier.days : [];
+    if (days.length && days.indexOf(day) === -1) continue;
+    const bounded = tier.fromMinutes != null || tier.untilMinutes != null;
+    if (bounded) {
+      if (minutes === null) continue;
+      if (tier.fromMinutes != null && minutes < tier.fromMinutes) continue;
+      if (tier.untilMinutes != null && minutes >= tier.untilMinutes) continue;
+    }
+    return Number(tier.price);
+  }
+  return base;
+}
+
+function getFreeActivityPrice(activity, { pax = 1, units = 1, hours = 1, minutes = null, dateStr = '', startTime = '' } = {}) {
   if (!activity) return null;
   // Grille de session : le montant vient de la grille, pas d'un tarif saisi.
   if (activity.priceType === 'grid_fun_run') {
     const option = FUN_RUN_OPTIONS.find((item) => item.minutes === Number(minutes)) || FUN_RUN_OPTIONS[0];
     return option.price;
   }
-  if (activity.priceValue == null) return null;
+  const unitPrice = resolveActivityUnitPrice(activity.pricing || null, activity.priceValue, { dateStr, startTime });
+  if (unitPrice == null) return null;
   const people = Math.max(1, Number(pax) || 1);
-  if (activity.priceType === 'per_pax') return Math.round(activity.priceValue * people * 100) / 100;
+  if (activity.priceType === 'per_pax') return Math.round(unitPrice * people * 100) / 100;
   if (activity.priceType === 'per_unit_hour') {
-    return Math.round(activity.priceValue * Math.max(1, Number(units) || 1) * Math.max(0.5, Number(hours) || 1) * 100) / 100;
+    return Math.round(unitPrice * Math.max(1, Number(units) || 1) * Math.max(0.5, Number(hours) || 1) * 100) / 100;
   }
   return null;
 }
@@ -1590,6 +1618,7 @@ function getFormulaActivityProgressSummary(reservation) {
     buildScheduleLabel,
     getCenterActivity,
     getFreeActivityPrice,
+    resolveActivityUnitPrice,
     getCenterScheduleConfig,
     setCenterDayStatus,
     getCenterDayStatus,

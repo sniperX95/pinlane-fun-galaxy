@@ -165,6 +165,19 @@ const KARA_BOX_ACTIVITY = {
   priceValue: 10,
   priceUnit: 'par personne',
   bookingOrder: 2,
+  // karabox.html et anniversaires.html : 10,00 EUR par personne, et 7,50 EUR
+  // le mercredi apres-midi. Ce deuxieme tarif n'etait pas exprimable sur une
+  // activite avant la migration 0043 : il vivait dans une formule, au mauvais
+  // endroit. « Apres-midi » = de midi a 18 h, la borne que le site donne pour
+  // les autres offres de journee.
+  //
+  // REGLE DE SURETE : tant que le client n'a pas choisi son creneau, c'est
+  // 10,00 EUR qui s'affiche. Le montant ne peut donc que BAISSER une fois
+  // l'heure connue, jamais monter.
+  pricing: {
+    mode: 'per_person',
+    tiers: [{ days: [3], fromMinutes: 12 * 60, untilMinutes: 18 * 60, price: 7.5, label: 'Mercredi apres-midi' }],
+  },
 };
 
 // ── Les formules du socle plateforme, retirees pour N4 ──────────────────────

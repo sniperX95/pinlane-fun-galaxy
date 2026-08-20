@@ -4119,7 +4119,10 @@ function renderProgramSummary() {
       ? Math.min(pax, Math.max(1, Number(options.participants) || pax))
       : pax;
     const price = typeof getFreeActivityPrice === 'function'
-      ? getFreeActivityPrice(activity, { pax: linePax, units: options.units, hours: options.hours, minutes: options.minutes })
+      // La date et le CRENEAU voyagent avec le prix : un palier borne par
+      // l'heure (migration 0043) ne s'applique qu'une fois le creneau choisi,
+      // donc le total affiche ne peut que baisser, jamais monter.
+      ? getFreeActivityPrice(activity, { pax: linePax, units: options.units, hours: options.hours, minutes: options.minutes, dateStr: state.booking.date, startTime: state.booking.startTime })
       : null;
     if (price == null) complete = false; else total += price;
     if (activity.priceType === 'per_unit_hour') {

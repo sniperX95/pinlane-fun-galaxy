@@ -259,7 +259,30 @@ function run() {
   ok(browser.buildScheduleLabel(10, 24) === '10h - Minuit',
     `minuit pile se dit toujours « Minuit » (obtenu « ${browser.buildScheduleLabel(10, 24)} »)`);
 
-  section('[5] CONTRE-PREUVE : sans le tarif du centre, le prix redevient celui de la grille');
+  section('[5] LA VENTE « A LA CARTE » suit le meme tarif que le reste');
+  // Le programme a la carte est le chemin REELLEMENT emprunte par le tunnel :
+  // le bloc « duree de jeu » historique est cache dans ce mode. Il a donc son
+  // propre calcul de prix, cote serveur (lib/visit-program) comme cote
+  // navigateur. Les trois doivent dire le meme montant, sinon le client voit un
+  // total et en paie un autre.
+  const visitProgram = require(path.join(ROOT, 'lib', 'visit-program.js'));
+  const carte = visitProgram.normalizeProgram(
+    [{ activityId: 'bowling', duration: 1 }],
+    { centerId: GAMES_CENTER, pax: 6, bowlingConfig: gamesBowling, dateStr: saturday },
+  );
+  const ligne = (carte.items || [])[0] || {};
+  ok(Number(ligne.price) === 42,
+    `6 joueurs, 1 partie, samedi, a la carte = 42 EUR (obtenu ${ligne.price})`);
+  ok(Number(ligne.laneCount) === 1,
+    `le nombre de pistes est dit (${ligne.laneCount}) mais ne multiplie pas le prix`);
+  const carteGrille = visitProgram.normalizeProgram(
+    [{ activityId: 'bowling', duration: 1 }],
+    { centerId: GRID_CENTER, pax: 6, bowlingConfig: gridBowling, dateStr: saturday },
+  );
+  ok(Number((carteGrille.items || [])[0].price) === 39,
+    `et le centre a la grille facture toujours 39 EUR la piste (obtenu ${(carteGrille.items || [])[0].price})`);
+
+  section('[6] CONTRE-PREUVE : sans le tarif du centre, le prix redevient celui de la grille');
   const withoutPricing = bookingConfig.getBasePrice('bowling', 1, 1, 4, '', GAMES_CENTER,
     { bowlingConfig: gridBowling, dateStr: thursday });
   ok(withoutPricing === 39 && withoutPricing !== price4Thursday,

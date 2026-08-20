@@ -3923,7 +3923,14 @@ function syncActivityPickerState(off = []) {
 // honnete "réglé sur place" sinon. Jamais 0 EUR pour "on ne sait pas".
 function activityPriceHint(activity, pax) {
   if (!activity) return '';
-  if (activity.priceType === 'grid_bowling') return `dès ${DURATION_OPTIONS[0].price}€ la piste`;
+  if (activity.priceType === 'grid_bowling') {
+    // Un centre qui vend AUX PARTIES annonce un prix PAR PERSONNE : « des 6 EUR
+    // par personne », jamais « des 20 EUR la piste », qui serait le tarif d un
+    // autre centre. Donnee de centre, pas constante du produit.
+    const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date) : null;
+    if (games) return games.length ? `dès ${games[0].price}€ par personne` : 'réglé sur place';
+    return `dès ${DURATION_OPTIONS[0].price}€ la piste`;
+  }
   if (activity.priceType === 'grid_laser') return `dès ${LASER_GAME_OPTIONS[0].price}€ par joueur`;
   if (activity.priceType === 'grid_fun_run') return `dès ${FUN_RUN_OPTIONS[0].price}€ la session`;
   if (activity.priceValue == null) return 'réglé sur place';
@@ -3977,6 +3984,18 @@ function renderActivityOptions(activity, options, pax) {
   // ce partage gratuit.
   if (activity.priceType === 'grid_bowling') {
     const current = Number(options.duration) || 1;
+    // Ce centre vend-il AUX PARTIES ? Alors la liste change de NATURE : des
+    // parties, un prix par personne, et une duree qui en decoule. Sans cette
+    // donnee, tout se passe exactement comme avant (durees, prix par piste).
+    const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date) : null;
+    if (games) {
+      if (!games.length) return '<div class="activity-option-row"><span class="activity-option-empty">Aucun tarif publié pour ce jour.</span></div>';
+      return `<div class="activity-option-row">${games.map(option => `
+        <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"
+          onclick="setBookingActivityOption('${id}','duration',${option.value})">
+          ${option.label}<span class="price">${option.price}€ / pers</span>
+        </button>`).join('')}</div>`;
+    }
     return `<div class="activity-option-row">${DURATION_OPTIONS.map(option => `
       <button type="button" class="dur-pill sm ${current === Number(option.value) ? 'active' : ''}" data-opt="duration" data-val="${option.value}"
         onclick="setBookingActivityOption('${id}','duration',${option.value})">
@@ -4059,6 +4078,20 @@ function renderProgramSummary() {
     if (activity.priceType === 'grid_bowling') {
       const duration = Number(options.duration) || 1;
       const lanes = getRequiredLaneCount('bowling', pax, '');
+      const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date) : null;
+      if (games) {
+        // AUX PARTIES : c'est le nombre de JOUEURS qui paie, pas le nombre de
+        // pistes. Les pistes restent dites, parce que le groupe doit savoir
+        // qu'il sera reparti, mais elles ne multiplient plus le prix.
+        const option = games.find(item => Number(item.value) === duration) || games[0];
+        total += (option?.price || 0) * pax;
+        if (!option) complete = false;
+        return {
+          id: activity.id,
+          name: activity.name,
+          detail: `${option?.label || ''} · ${pax} joueur${pax > 1 ? 's' : ''} · ${lanes} piste${lanes > 1 ? 's' : ''}`,
+        };
+      }
       const option = DURATION_OPTIONS.find(item => Number(item.value) === duration);
       total += (option?.price || 0) * lanes;
       // Le nombre de pistes se DEDUIT du nombre de joueurs : sans l'ecrire,

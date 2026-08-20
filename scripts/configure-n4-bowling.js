@@ -113,6 +113,11 @@ const ACTIVITY_AVAILABILITY = {
   fun_run: false,
   billards: false,
   arcade_time: false,
+  // La Kara Box se RESERVE : c'est la seule activite non planifiee que N4
+  // vend en ligne. Une activite non planifiee n'apparait que si le centre la
+  // declare explicitement, ce qui evite qu'un centre herite d'une offre qu'il
+  // n'a pas.
+  'kara-box': true,
 };
 
 // LA KARA BOX EST UNE RESSOURCE COMPTEE, et c'est de la DONNEE, pas du code.
@@ -151,10 +156,15 @@ const KARA_BOX_ACTIVITY = {
   id: 'kara-box',
   name: 'Kara Box',
   resourceType: KARA_BOX_RESOURCE.id,
-  bookable: false,
+  // VENDABLE A LA CARTE, pas par formule. Verbatim Movsar : « le karaoke doit
+  // pas etre dans les formules, c est une activite ». Une formule est une OFFRE
+  // composee ; la Kara Box est une salle qu on reserve, au meme titre qu une
+  // piste. Elle a donc sa tuile dans « A la carte ».
+  bookable: true,
   priceType: 'per_pax',
-  priceValue: null,
+  priceValue: 10,
   priceUnit: 'par personne',
+  bookingOrder: 2,
 };
 
 // ── Les formules du socle plateforme, retirees pour N4 ──────────────────────
@@ -273,54 +283,6 @@ const FORMULAS = [
     ],
     steps: [bowlingStep(1)],
   },
-  {
-    // karabox.html : 10,00 EUR par personne, des 6 personnes.
-    id: 'n4-kara-box',
-    name: 'Kara Box, karaoke prive',
-    family: 'Groupes',
-    minPax: 6,
-    priceType: 'per_pax',
-    priceValue: 10,
-    humanValidation: 'required',
-    descriptionLines: [
-      'Salle fermee rien que pour votre groupe',
-      'Banquettes, jeux de lumiere, catalogue Karafun',
-      'Des 6 personnes',
-      'L equipe confirme le creneau avec vous',
-    ],
-    steps: [{
-      activityId: 'kara-box',
-      count: 1,
-      durationMinutes: MINUTES_KARA_BOX,
-      label: 'Kara Box',
-      critical: true,
-    }],
-  },
-  {
-    // anniversaires.html : « Mercredi apres-midi 7,50 EUR ».
-    id: 'n4-kara-box-mercredi',
-    name: 'Kara Box, mercredi apres-midi',
-    family: 'Groupes',
-    minPax: 6,
-    priceType: 'per_pax',
-    priceValue: 7.5,
-    validDays: [3],
-    timeLimitMaxMinutes: 18 * 60,
-    humanValidation: 'required',
-    descriptionLines: [
-      'Le meme karaoke prive, 7,50 EUR par personne',
-      'Le mercredi apres-midi seulement',
-      'Des 6 personnes',
-      'L equipe confirme le creneau avec vous',
-    ],
-    steps: [{
-      activityId: 'kara-box',
-      count: 1,
-      durationMinutes: MINUTES_KARA_BOX,
-      label: 'Kara Box',
-      critical: true,
-    }],
-  },
 ];
 
 // Les formules d'une PREMIERE version de ce script, quand le bowling ne pouvait
@@ -331,6 +293,10 @@ const OBSOLETE_FORMULAS = [
   'n4-2-parties-semaine',
   'n4-1-partie-weekend',
   'n4-2-parties-weekend',
+  // La Kara Box est devenue une ACTIVITE vendue a la carte : ses deux formules
+  // faisaient double emploi et la rangeaient au mauvais endroit.
+  'n4-kara-box',
+  'n4-kara-box-mercredi',
 ];
 
 async function main() {

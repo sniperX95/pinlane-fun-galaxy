@@ -605,7 +605,7 @@ module.exports = async (req, res) => {
     //     rien a allouer. Les creneaux sont simplement les heures d'ouverture, a
     //     la demie, moins les fermetures du jour.
     if (type === 'visite') {
-      const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig });
+      const program = normalizeProgram(programInput, { centerId, pax, bowlingConfig: centerBowlingConfig, dateStr: date });
       const visitLabel = 'Votre visite';
       const respondVisit = (slots, message, extra = {}) => {
         sendJson(res, 200, {

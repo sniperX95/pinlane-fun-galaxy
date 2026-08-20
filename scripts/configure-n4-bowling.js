@@ -89,7 +89,14 @@ const HOLIDAY = {
 // Lundi et mardi n'ont aucun palier : le centre est ferme.
 const BOWLING_PRICING = {
   mode: 'per_game_per_person',
+  // Duree de repli, si jamais le compte par joueur etait retire.
   minutesPerGame: 60,
+  // UNE PARTIE DURE CE QUE METTENT LES JOUEURS A LANCER CHACUN LEUR TOUR.
+  // Verbatim Movsar : « c'est 10 min par personne pour une partie en moyenne ».
+  // Deux pistes jouent EN PARALLELE : c'est la piste la plus chargee qui donne
+  // la duree, jamais le groupe entier. 20 joueurs sur 2 pistes font donc
+  // 10 par piste, soit 100 min arrondies a 2 h, et non 200 min.
+  minutesPerPlayerPerGame: 10,
   tiers: [
     { days: [3, 4], prices: [6, 11] },
     { days: [5, 6, 0], prices: [7, 13] },
@@ -186,14 +193,15 @@ const KARA_BOX_ACTIVITY = {
 // depuis la migration 0042 : Fun Galaxy ne perd rien.
 const PLATFORM_FORMULAS = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'bts', 'mm', 'css', 'kfd', 'hlg', 'ffm'];
 
-// ── LES DEUX VALEURS QUE LE SITE NE DONNE PAS ───────────────────────────────
-// 1. La duree d'une partie de bowling. Le site parle de « parties », jamais de
-//    minutes. Elle decide combien de temps une piste est bloquee, donc combien
-//    de reservations tiennent dans une soiree.
-// 2. La duree d'une session Kara Box. Le site dit « salle privative pour toute
-//    la duree », sans chiffre.
-// Les deux sont des HYPOTHESES DE TRAVAIL, pas des faits. A CONFIRMER AUPRES DE
-// N4, puis changer ici et relancer le script.
+// ── DUREES ──────────────────────────────────────────────────────────────────
+// La duree d'une partie de bowling n'est PLUS une hypothese : Movsar l'a donnee,
+// « 10 min par personne pour une partie en moyenne », et elle vit desormais dans
+// le tarif du centre (minutesPerPlayerPerGame). MINUTES_PAR_PARTIE ne sert plus
+// qu'aux etapes des FORMULES, ou l'effectif de l'etape n'est pas toujours celui
+// du groupe : 60 min y reste une valeur de reference raisonnable.
+//
+// La duree d'une session Kara Box, elle, reste une HYPOTHESE : le site dit
+// « salle privative pour toute la duree », sans chiffre. A CONFIRMER.
 const MINUTES_PAR_PARTIE = 60;
 const MINUTES_KARA_BOX = 60;
 

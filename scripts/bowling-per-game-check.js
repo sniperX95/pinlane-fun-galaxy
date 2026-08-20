@@ -67,6 +67,8 @@ const GAMES_CENTER = 'gate-parties';   // vend aux parties, comme N4
 const GAMES_PRICING = {
   mode: 'per_game_per_person',
   minutesPerGame: 60,
+  // Une partie dure ce que mettent les joueurs a lancer chacun leur tour.
+  minutesPerPlayerPerGame: 10,
   tiers: [
     { days: [3, 4], prices: [6, 11] },      // mercredi, jeudi
     { days: [5, 6, 0], prices: [7, 13] },   // vendredi, samedi, dimanche
@@ -171,15 +173,41 @@ function run() {
   ok(gamesSaturday.length === 2 && gamesSaturday[0].price === 7 && gamesSaturday[1].price === 13,
     `samedi : 7 EUR et 13 EUR (obtenu ${JSON.stringify(gamesSaturday.map((g) => g.price))})`);
   ok(gamesMonday.length === 0, 'lundi : aucun tarif publie, donc rien a vendre en ligne');
-  ok(gamesThursday[1].durationMinutes === 120 && gamesThursday[1].value === 2,
-    '2 parties bloquent la piste 120 minutes (la duree DERIVE des parties)');
+  section('[2b] LA DUREE D UNE PARTIE SUIT LES JOUEURS DE LA PISTE');
+  // Verbatim Movsar : « c'est 10 min par personne pour une partie en moyenne ».
+  // Une partie ne dure donc pas un temps fixe, et DEUX PISTES JOUENT EN
+  // PARALLELE : c'est la piste la plus chargee qui donne la duree, jamais le
+  // groupe entier. Les creneaux tombant sur les demies, on arrondit AU-DESSUS :
+  // une piste rendue trop tot, c'est un groupe pousse dehors.
+  const dureeFor = (pax, laneCount, index) => bookingConfig
+    .getBowlingGameOptions(gamesBowling, thursday, { pax, laneCount })[index].durationMinutes;
+  ok(dureeFor(6, 1, 0) === 60, `6 joueurs, 1 piste, 1 partie = 60 min (obtenu ${dureeFor(6, 1, 0)})`);
+  ok(dureeFor(12, 1, 0) === 120, `12 joueurs, 1 piste, 1 partie = 120 min (obtenu ${dureeFor(12, 1, 0)})`);
+  ok(dureeFor(4, 1, 0) === 60, `4 joueurs = 40 min arrondies a la demie superieure, soit 60 (obtenu ${dureeFor(4, 1, 0)})`);
+  ok(dureeFor(20, 2, 0) === 120,
+    `20 joueurs sur 2 pistes = 10 par piste, donc 120 min et non 200 (obtenu ${dureeFor(20, 2, 0)})`);
+  ok(dureeFor(6, 1, 1) === 120, `6 joueurs, 2 parties = 120 min (obtenu ${dureeFor(6, 1, 1)})`);
+  // Un centre qui ne compte PAS par joueur garde une duree fixe.
+  const fixe = bookingConfig.getBowlingGameOptions(
+    { ...gamesBowling, pricing: { ...gamesBowling.pricing, minutesPerPlayerPerGame: 0 } },
+    thursday, { pax: 12, laneCount: 1 },
+  );
+  ok(fixe[0].durationMinutes === 60,
+    `sans minutes par joueur, la partie garde sa duree fixe (obtenu ${fixe[0].durationMinutes})`);
+
+  section('[2c] Le PRIX ne bouge pas avec la duree');
 
   const price4Thursday = bookingConfig.getBasePrice('bowling', 1, 1, 4, '', GAMES_CENTER,
     { bowlingConfig: gamesBowling, dateStr: thursday });
   ok(price4Thursday === 24, `4 joueurs, 1 partie, jeudi = 24 EUR (obtenu ${price4Thursday})`);
-  const price4Saturday = bookingConfig.getBasePrice('bowling', 2, 1, 4, '', GAMES_CENTER,
+  const unePartieJeudi = bookingConfig.getBowlingGameOptions(gamesBowling, thursday, { pax: 4, laneCount: 1 })[0];
+  // La duree se DEDUIT des joueurs : on la lit dans les options plutot que de
+  // l'ecrire en dur, sinon le gate teste sa propre supposition.
+  const deuxPartiesSamedi = bookingConfig.getBowlingGameOptions(gamesBowling, saturday, { pax: 4, laneCount: 1 })[1];
+  const price4Saturday = bookingConfig.getBasePrice('bowling', deuxPartiesSamedi.value, 1, 4, '', GAMES_CENTER,
     { bowlingConfig: gamesBowling, dateStr: saturday });
-  ok(price4Saturday === 52, `4 joueurs, 2 parties, samedi = 52 EUR (obtenu ${price4Saturday})`);
+  ok(price4Saturday === 52,
+    `4 joueurs, 2 parties (${deuxPartiesSamedi.durationMinutes} min), samedi = 52 EUR (obtenu ${price4Saturday})`);
   // Le nombre de PISTES ne doit RIEN changer au prix : c'est le nombre de
   // JOUEURS qui paie. Sans cette assertion, une regression vers la grille
   // passerait inapercue des que le groupe tient sur une piste.
@@ -187,14 +215,19 @@ function run() {
     { bowlingConfig: gamesBowling, dateStr: thursday });
   ok(price12 === 72, `12 joueurs sur 2 pistes, 1 partie, jeudi = 72 EUR (obtenu ${price12})`);
 
-  const priceUnsold = bookingConfig.getBasePrice('bowling', 1.5, 1, 4, '', GAMES_CENTER,
+  // Une duree FORGEE (aucune option ne la porte) ne se facture pas au prix de
+  // la grille : elle vaut 0, et le chemin de reservation la refuse.
+  const vendues = bookingConfig.getBowlingGameOptions(gamesBowling, thursday, { pax: 4, laneCount: 1 }).map((o) => o.value);
+  const forgee = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4].find((v) => !vendues.includes(v));
+  const priceUnsold = bookingConfig.getBasePrice('bowling', forgee, 1, 4, '', GAMES_CENTER,
     { bowlingConfig: gamesBowling, dateStr: thursday });
-  ok(priceUnsold === 0, `une duree non vendue rend 0, jamais un prix de grille (obtenu ${priceUnsold})`);
+  ok(priceUnsold === 0,
+    `une duree non vendue (${forgee} h, vendues : ${vendues.join(', ')}) rend 0, jamais un prix de grille (obtenu ${priceUnsold})`);
 
   section('[3] Le prix AFFICHE est le prix FACTURE');
   const browser = loadBrowserCore(GAMES_PRICING);
-  const shownThursday = browser.getBasePrice('bowling', 1, 1, 4, '', thursday);
-  const shownSaturday = browser.getBasePrice('bowling', 2, 1, 4, '', saturday);
+  const shownThursday = browser.getBasePrice('bowling', unePartieJeudi.value, 1, 4, '', thursday);
+  const shownSaturday = browser.getBasePrice('bowling', deuxPartiesSamedi.value, 1, 4, '', saturday);
   ok(shownThursday === price4Thursday,
     `le navigateur affiche ${shownThursday} EUR, le serveur en calcule ${price4Thursday}`);
   ok(shownSaturday === price4Saturday,
@@ -206,7 +239,7 @@ function run() {
     type: 'bowling',
     date: thursday,
     startTime: '19:00',
-    duration: 1,
+    duration: unePartieJeudi.value,
     pax: 4,
     name: 'Gate Parties',
     email: 'gate@example.test',
@@ -224,7 +257,7 @@ function run() {
       date: thursday,
       startTime: '19:00',
       duration: 1.75,
-      pax: 4,
+      pax: 5,
       name: 'Gate Parties',
       email: 'gate@example.test',
       phone: '0470000000',
@@ -266,8 +299,9 @@ function run() {
   // navigateur. Les trois doivent dire le meme montant, sinon le client voit un
   // total et en paie un autre.
   const visitProgram = require(path.join(ROOT, 'lib', 'visit-program.js'));
+  const unePartieSamedi6 = bookingConfig.getBowlingGameOptions(gamesBowling, saturday, { pax: 6, laneCount: 1 })[0];
   const carte = visitProgram.normalizeProgram(
-    [{ activityId: 'bowling', duration: 1 }],
+    [{ activityId: 'bowling', duration: unePartieSamedi6.value }],
     { centerId: GAMES_CENTER, pax: 6, bowlingConfig: gamesBowling, dateStr: saturday },
   );
   const ligne = (carte.items || [])[0] || {};

@@ -272,17 +272,27 @@ function getBowlingPricing() {
 // centre vend aux parties mais aucun tarif ne couvre ce jour. Miroir de
 // lib/booking-config.getBowlingGameOptions : les deux doivent rendre la meme
 // chose, sinon le prix affiche et le prix facture divergent.
-function getBowlingGameOptions(dateStr) {
+function getBowlingGameOptions(dateStr, context) {
   const pricing = getBowlingPricing();
   if (!pricing) return null;
   if (!dateStr) return [];
   const day = parseLocalDate(dateStr).getDay();
   const tier = pricing.tiers.find(t => Array.isArray(t.days) && t.days.indexOf(day) !== -1);
   if (!tier) return [];
-  const minutesPerGame = Number(pricing.minutesPerGame) || 60;
+  // Miroir de lib/booking-config.bowlingGameMinutes : une partie dure ce que
+  // mettent les joueurs a lancer chacun leur tour, et deux pistes jouent en
+  // parallele. Les deux doivent rendre la meme duree, sinon le creneau reserve
+  // et le creneau annonce different.
+  const ctx = context || {};
+  const perPlayer = Number(pricing.minutesPerPlayerPerGame) || 0;
+  const players = Math.max(1, Math.trunc(Number(ctx.pax) || 1));
+  const lanes = Math.max(1, Math.trunc(Number(ctx.laneCount) || 1));
+  const playersPerLane = Math.ceil(players / lanes);
   return (tier.prices || []).map((price, index) => {
     const games = index + 1;
-    const durationMinutes = games * minutesPerGame;
+    const durationMinutes = perPlayer > 0
+      ? Math.min(480, Math.max(30, Math.ceil((games * perPlayer * playersPerLane) / 30) * 30))
+      : games * (Number(pricing.minutesPerGame) || 60);
     return {
       games,
       value: Math.round((durationMinutes / 60) * 100) / 100,
@@ -511,7 +521,7 @@ function resolveDisplayFormule(formuleId) {
 }
 function getBasePrice(type, duration, laneCount, pax, formuleId, dateStr) {
   if (type === 'bowling') {
-    const gameOptions = getBowlingGameOptions(dateStr);
+    const gameOptions = getBowlingGameOptions(dateStr, { pax, laneCount });
     if (gameOptions) {
       const chosen = gameOptions.find(o => Number(o.value) === Number(duration));
       return chosen ? chosen.price * pax : 0;

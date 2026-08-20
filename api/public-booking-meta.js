@@ -3,7 +3,6 @@ const {
   DURATION_OPTIONS,
   FORMULES,
   LASER_GAME_OPTIONS,
-  getBowlingGameOptions,
   getEffectiveFormules,
   getSchedule,
   refreshFormuleOverrides,
@@ -479,10 +478,12 @@ module.exports = async (req, res) => {
           // grille par piste et par duree, exactement comme avant.
           ...(center?.resources?.bowling?.pricing
             ? {
+              // Le tunnel recoit le TARIF, pas une liste toute faite : la duree
+              // d'une partie depend du nombre de joueurs, que seul le tunnel
+              // connait a l'instant ou il l'affiche. Servir une liste calculee
+              // sans le groupe creerait une deuxieme verite, fausse des que le
+              // client change son effectif.
               bowlingPricing: center.resources.bowling.pricing,
-              // Les parties vendables LE JOUR demande, deja tarifees : le
-              // tunnel n'a aucun calcul de prix a refaire de son cote.
-              ...(dayDate ? { bowlingGames: getBowlingGameOptions(center.resources.bowling, dayDate) } : {}),
             }
             : {}),
         },

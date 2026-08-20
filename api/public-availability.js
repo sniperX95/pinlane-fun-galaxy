@@ -440,6 +440,16 @@ module.exports = async (req, res) => {
     }
     if (preferredBowlingTime) preferredTimes.bowling = preferredBowlingTime;
     if (preferredLaserTime) preferredTimes.laser_game = preferredLaserTime;
+    // UNE HEURE PAR PARTIE DE LASER (2026-08-20). Liste dans l'ordre des
+    // parties : "16:30" = posee, "" = a placer sur place. Absente, le moteur
+    // retombe sur l'ancre unique, donc l'ancien comportement.
+    let laserGameTimes = [];
+    try {
+      const parsed = JSON.parse(String(url.searchParams.get('laserGameTimes') || '[]'));
+      laserGameTimes = Array.isArray(parsed) ? parsed.slice(0, 12).map((item) => String(item || '').slice(0, 5)) : [];
+    } catch (error) {
+      laserGameTimes = [];
+    }
     const pauseMinutes = 0;
 
     if (!date) {
@@ -668,7 +678,8 @@ module.exports = async (req, res) => {
           label: visitLabel,
           snapshot,
         };
-        const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game);
+        const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game
+          || laserGameTimes.some((time) => time));
         if (!hasAnchorChoice) {
           // ZERO FRICTION, comme pour une formule : on ne rend pas une liste
           // vide. Une liste vide faisait afficher au client, DES SON ARRIVEE
@@ -720,7 +731,7 @@ module.exports = async (req, res) => {
             formula: visitFormula,
             pax,
             duration: program.plannedItems[0]?.duration || 0,
-            preference: { preferredTimes, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
+            preference: { preferredTimes, laserGameTimes, laserPlacement: 'scheduled', arrivalConfidence: 'normal' },
             pauseMinutes,
           },
           engineContext,
@@ -829,7 +840,8 @@ module.exports = async (req, res) => {
 
       if (anchorModel.anchors.length) {
         const laserPlacement = String(url.searchParams.get('laserPlacement') || '') === 'onsite' ? 'onsite' : 'scheduled';
-        const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game) || laserPlacement === 'onsite';
+        const hasAnchorChoice = Boolean(preferredTimes.bowling || preferredTimes.laser_game)
+          || laserGameTimes.some((time) => time) || laserPlacement === 'onsite';
 
         if (hasAnchorChoice) {
           // Revalidation serveur de la combinaison choisie (source de vérité) :
@@ -844,6 +856,7 @@ module.exports = async (req, res) => {
               duration,
               preference: {
                 preferredTimes,
+                laserGameTimes,
                 laserPlacement,
                 arrivalConfidence: 'normal',
               },

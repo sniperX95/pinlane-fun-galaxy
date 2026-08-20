@@ -822,13 +822,22 @@ function normalizeLaserArenaEnd(start, end) {
 
 function getResourceWindowsFromReservation(reservation, resourceType) {
   const blocks = Array.isArray(reservation.opsPlan?.resourceBlocks) ? reservation.opsPlan.resourceBlocks : [];
+  // Une partie de laser au-dela de la 1re ne se dessine que si elle est
+  // REELLEMENT posee : le plan la declare (scheduledPasses, quand le client a
+  // choisi son heure) ou le staff l'a placee a la main. Les autres attendent
+  // dans la file. Sans plan de pass, rien n'est masque : un vieux plan qui
+  // chainait les parties bout a bout n'existe plus qu'avec ce plan.
+  const passPlan = reservation.opsPlan?.laserPassPlan || null;
+  const partiesPosees = new Set((passPlan?.scheduledPasses || []).map(pass => Number(pass.countIndex || 1)));
   const planned = blocks
     .filter(block => block.resourceType === resourceType)
     .filter(block => !(
       resourceType === 'laser_arena' &&
       reservation.type === 'laser' &&
       Number(block.countIndex || 1) > 1 &&
-      !block.manualLaserPass
+      !block.manualLaserPass &&
+      passPlan &&
+      !partiesPosees.has(Number(block.countIndex || 1))
     ))
     .map(block => {
       const start = readBlockHour(block, 'start');
@@ -1007,7 +1016,12 @@ function getPendingLaserPasses(dateStr = state.currentDate) {
       const totalGames = Math.max(1, getLaserGameCountForReservation(reservation));
       // La 1re unité (jeu 1 · vague 1) reste ancrée automatiquement pour une formule,
       // SAUF laser en gestion manuelle (elle a pu être dé-placée) → tout devient plaçable.
-      const anchorFirst = !reservation.opsPlan?.laserManual && reservation.type !== 'laser';
+      // ET SAUF quand le plan DIT ce qui est posé (`laserPassPlan`) : depuis que
+      // le client choisit l'heure de chaque partie, il peut parfaitement laisser
+      // la 1re sur place et poser la 3e. Le plan fait foi, pas la convention.
+      const anchorFirst = reservation.opsPlan?.laserPassPlan
+        ? false
+        : (!reservation.opsPlan?.laserManual && reservation.type !== 'laser');
       return units
         .filter((unit, index) => {
           if (anchorFirst && index === 0) return false;
@@ -1129,7 +1143,9 @@ function updateLaserPassPlan(opsPlan, reservation) {
     .filter(block => block.resourceType === 'laser_arena')
     .map(block => Number(block.countIndex || 1)))].sort((a, b) => a - b);
   const pendingPasses = [];
-  for (let countIndex = 2; countIndex <= totalGames; countIndex += 1) {
+  // Depuis que le client place les parties qu'il veut (2026-08-20), la PREMIERE
+  // peut tres bien etre celle qu'il laisse sur place : la boucle part de 1.
+  for (let countIndex = 1; countIndex <= totalGames; countIndex += 1) {
     if (!scheduled.includes(countIndex)) pendingPasses.push({ countIndex, status: 'pending' });
   }
   return {
@@ -1268,9 +1284,10 @@ async function unscheduleLaserPass(reservationId, unitRef) {
   if (!scheduledKeys.has(unit.unitKey)) return;
   // La 1re unité (jeu 1 · vague 1) d'une FORMULE reste ancrée : la dé-placer n'aurait
   // pas d'effet durable → on le dit au lieu de faire clignoter. (Elle reste déplaçable.)
-  if (unit.countIndex === 1 && unit.waveIndex === 1 && reservation.type !== 'laser') {
+  const autresPosees = getLaserScheduledUnitKeys(reservation).filter(key => key !== unit.unitKey).length;
+  if (unit.countIndex === 1 && unit.waveIndex === 1 && reservation.type !== 'laser' && !autresPosees) {
     if (typeof showPlanningMoveNotice === 'function') {
-      showPlanningMoveNotice('Partie ancrée', "La 1re partie d'une formule reste placée automatiquement (elle reste déplaçable). Les vagues et parties suivantes peuvent être retirées.", 'info');
+      showPlanningMoveNotice('Partie ancrée', "La 1re partie d'une formule reste placée tant qu'aucune autre ne l'est (elle reste déplaçable). Placez-en une autre pour pouvoir retirer celle-ci.", 'info');
     }
     return;
   }

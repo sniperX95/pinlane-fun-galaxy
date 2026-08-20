@@ -92,8 +92,29 @@ srv.listen(PORT, '127.0.0.1', async () => {
       },
     });
 
+    // Le client a choisi lui-meme : partie 1 a 15:00, partie 3 a 19:00, et il
+    // laisse la 2 a l equipe. C'est ce que le serveur ecrit depuis 2026-08-20.
+    const visiteChoisie = () => {
+      const base = visite(4104, 3, 'VISITE PARTIES CHOISIES');
+      base.opsPlan.resourceBlocks = [
+        base.opsPlan.resourceBlocks[0],
+        { activityId: 'laser_game', resourceType: 'laser_arena', start: 900, end: 925, startTime: '15:00', endTime: '15:25', countIndex: 1, groupWaveIndex: 1, groupWaveCount: 1, players: 8 },
+        { activityId: 'laser_game', resourceType: 'laser_arena', start: 1140, end: 1165, startTime: '19:00', endTime: '19:25', countIndex: 3, groupWaveIndex: 1, groupWaveCount: 1, players: 8 },
+      ];
+      base.opsPlan.laserPassPlan = {
+        mode: 'manual_after_first', totalGames: 3, scheduledGames: 2, remainingGames: 1,
+        scheduledPasses: [
+          { countIndex: 1, status: 'scheduled', startTime: '15:00' },
+          { countIndex: 3, status: 'scheduled', startTime: '19:00' },
+        ],
+        pendingPasses: [{ countIndex: 2, status: 'pending' }],
+      };
+      return base;
+    };
+
     const R = [
       visite(4101, 3, 'VISITE 3 PARTIES'),
+      visiteChoisie(),
       visite(4102, 1, 'VISITE 1 PARTIE'),
       // Temoin : bowling seul, aucun programme. Il ne doit RIEN changer.
       { id: 4103, name: 'BOWLING SEUL', phone: '+32487784817', email: 'b@x.be', date: today, startTime: '18:00', duration: 1, pax: 4, price: 40, basePrice: 40, type: 'bowling', label: 'Bowling Classique', lanes: [7], laneCount: 1, status: 'pending', centerId: 'libramont', channel: 'staff', activityProgress: {}, extras: [] },
@@ -167,9 +188,29 @@ srv.listen(PORT, '127.0.0.1', async () => {
   ok(attente4101.length === 2, `2 cartes « a placer » pour la visite (${attente4101.length}) : ${JSON.stringify(attente4101)}`);
   ok(attente4101.some((t) => /Partie 2\/3/.test(t)) && attente4101.some((t) => /Partie 3\/3/.test(t)),
     'les cartes disent QUELLE partie attend (2/3 et 3/3)');
-  ok(/2/.test(ecran.entete), `l entete de la file annonce le compte (${JSON.stringify(ecran.entete)})`);
+  // L entete annonce le compte REEL de la journee (toutes reservations
+  // confondues), pas un nombre choisi a la main : on le compare a la source.
+  const attendues = await pg.evaluate(() => getPendingLaserPasses(state.currentDate).length);
+  ok(ecran.entete.includes(String(attendues)),
+    `l entete de la file annonce le compte du jour (${JSON.stringify(ecran.entete)} pour ${attendues} en attente)`);
   const groupe4101 = ecran.groupes.find((t) => /VISITE 3 PARTIES/.test(t)) || '';
   ok(/P1\/3|Partie 1\/3/.test(groupe4101), `la session placee est nommee « partie 1/3 » (${JSON.stringify(groupe4101.slice(0, 120))})`);
+
+  // -- [3bis] LES PARTIES CHOISIES PAR LE CLIENT SONT TOUTES DESSINEES --------
+  console.log('\n[3bis] Le client a pose les parties 1 et 3 : les deux se dessinent');
+  const choisies = await pg.evaluate(() => {
+    const resa = state.reservations.find((r) => Number(r.id) === 4104);
+    return {
+      fenetres: getLaserWindowsFromReservation(resa).map((w) => `P${w.countIndex}@${formatClockDisplay(w.start)}`),
+      attente: getPendingLaserPasses(state.currentDate)
+        .filter((x) => Number(x.reservation.id) === 4104)
+        .map((x) => `${x.countIndex}/${x.totalGames}`),
+    };
+  });
+  ok(choisies.fenetres.join(' ') === 'P1@15:00 P3@19:00',
+    `les deux parties posees sont sur le planning (${JSON.stringify(choisies.fenetres)})`);
+  ok(choisies.attente.join(' ') === '2/3',
+    `seule la partie laissee a l equipe attend (${JSON.stringify(choisies.attente)})`);
 
   // -- [4] LE PLANNING BOWLING N'A PAS BOUGE ----------------------------------
   console.log('\n[4] La visite reste posee sur ses pistes de bowling');

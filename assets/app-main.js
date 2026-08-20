@@ -1107,6 +1107,14 @@ function getSuggestedEditLanes(requiredCount, date, startTime, duration, ignoreI
     if (mate && available.has(mate)) return [kept[0], mate].sort((a, b) => a - b);
   }
 
+  // COMPLETER N'EST PAS REMPLACER. Il manque des pistes pour l'effectif : on
+  // AJOUTE a celles que le staff a cochees au lieu de repartir d'une allocation
+  // neuve, qui jetait son choix (piste 5 cochee, [1,2] enregistrees).
+  if (kept.length) {
+    const extended = allocateLanesIncludingSeed(requiredCount, kept, date, startTime, duration, ignoreId);
+    if (extended) return extended;
+  }
+
   const allocated = allocateLanes(requiredCount, date, startTime, duration, ignoreId);
   return allocated ? [...allocated].sort((a, b) => a - b) : null;
 }
@@ -15292,8 +15300,20 @@ function getFormulaLaserGameCount(formule) {
   }, 0);
 }
 
+// COMBIEN DE PARTIES DE LASER CE GROUPE A-T-IL ACHETEES.
+// Movsar, 2026-08-20 : « on met laser et on choisit plusieurs parties, ça
+// affiche que 1 partie dans les réservations et sur le planning ». Une VISITE
+// (plusieurs activites dans une reservation) porte son laser dans
+// `program.items`, pas dans un id de formule : son type vaut 'bowling' des
+// qu'elle contient du bowling, donc les deux branches ci-dessous rendaient
+// zero. Le compte tombait a 0, la « x3 » disparaissait, les parties non placees
+// n'entraient pas dans la file d'attente, et deux parties payees devenaient
+// invisibles pour le comptoir.
+// Le PROGRAMME fait foi (c'est ce qui a ete vendu), puis la formule.
 function getLaserGameCountForReservation(reservation) {
   if (reservation.type === 'laser') return getLaserGameCount(Number(reservation.duration) || 0.5);
+  const programGames = getProgramLaserGameCount(reservation);
+  if (programGames) return programGames;
   const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
   return getFormulaLaserGameCount(formule);
 }
@@ -18188,9 +18208,16 @@ async function saveEdit(e) {
     // mauvaise piste en tete.
     const voulues = lanesVoulues.join(', ');
     const obtenues = ((payload.reservation && payload.reservation.lanes) || []).join(', ');
+    // ENREGISTRE N'EST PAS FORCEMENT PLACE. Quand le moteur n'a pas su
+    // reconstruire le creneau (combinaison d'ancres refusee, plus rien de libre),
+    // la reservation est bien ecrite mais elle part en « à surveiller » : le
+    // dire, sinon le staff repart en croyant son planning a jour.
+    const aVerifier = payload.reservation && payload.reservation.validationStatus === 'staff_review';
     toast(requiresLanes && voulues && voulues !== obtenues
       ? `Réservation mise à jour, mais pas sur les pistes demandées : ${obtenues || 'aucune'} au lieu de ${voulues}. Le créneau ne les laissait pas libres.`
-      : 'Réservation mise à jour');
+      : aVerifier
+        ? 'Réservation mise à jour, mais le moteur n’a pas pu replacer ce créneau : elle passe en « à surveiller ».'
+        : 'Réservation mise à jour');
   } catch (error) {
     applyOptimisticReservation(previousReservation, { preserveEditState: true });
     // La saisie est GARDEE a l'ecran (rien a retaper), donc l'ecran montrerait

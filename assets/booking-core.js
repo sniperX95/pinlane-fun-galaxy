@@ -529,9 +529,12 @@ function getLaserCandidateWindows(startTime, duration, pax) {
 }
 
 function getFormulaLaserFallbackWindows(reservation) {
-  if (!(reservation?.type === 'formule' || reservation?.formuleId)) return [];
+  // Formule OU visite : les deux vendent des parties de laser sans etre de type
+  // 'laser'. Une visite dont le plan n'a pas pu etre calcule doit quand meme
+  // montrer sa session estimee, comme une formule.
+  if (!(reservation?.type === 'formule' || reservation?.formuleId || getProgramLaserGameCount(reservation) > 0)) return [];
   const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
-  const games = getFormulaLaserGameCount(formule);
+  const games = getProgramLaserGameCount(reservation) || getFormulaLaserGameCount(formule);
   if (!games) return [];
   const players = Math.max(1, Number(reservation.pax) || 1);
   const arrivalBuffer = (players >= 12 ? 10 : 5) / 60;
@@ -860,7 +863,8 @@ function getResourceWindowsFromReservation(reservation, resourceType) {
       label: 'Bowling',
     }];
   }
-  if (resourceType === 'laser_arena' && (reservation.type === 'formule' || reservation.formuleId)) {
+  if (resourceType === 'laser_arena'
+    && (reservation.type === 'formule' || reservation.formuleId || getProgramLaserGameCount(reservation) > 0)) {
     return getFormulaLaserFallbackWindows(reservation);
   }
   if (resourceType === 'laser_arena' && reservation.type === 'laser') {
@@ -907,6 +911,30 @@ function laserBlockUnitKey(block) {
 function parseLaserUnitKey(key) {
   const [ci, wi] = String(key).split('.').map(Number);
   return { countIndex: ci || 1, waveIndex: wi || 1 };
+}
+
+// Le nombre de parties de laser VENDUES dans une visite (plusieurs activités
+// dans une seule réservation). Le programme est la source : une visite n'a pas
+// d'id de formule, et son `type` dit bowling dès qu'elle contient du bowling.
+// Rend 0 pour tout le reste → l'appelant garde son chemin d'avant, à
+// l'identique.
+// Déplacer une partie de laser ne touche JAMAIS aux pistes. On ne les remet à
+// zéro que pour une réservation qui n'en occupe pas : une VISITE bowling +
+// laser en occupe, et forcer `laneCount: 0` lui aurait fait perdre ses pistes
+// au premier glisser-déposer d'une partie.
+function laserPassLanePayload(reservation) {
+  const lanes = (reservation.lanes || []).map(Number).filter(lane => Number.isFinite(lane) && lane > 0);
+  return lanes.length
+    ? { laneCount: lanes.length, requiresLanes: true }
+    : { laneCount: 0, requiresLanes: false };
+}
+
+function getProgramLaserGameCount(reservation) {
+  const items = reservation && reservation.program && Array.isArray(reservation.program.items)
+    ? reservation.program.items
+    : [];
+  const laser = items.find(item => item && item.activityId === 'laser_game');
+  return laser ? Math.max(0, Math.trunc(Number(laser.games) || 0)) : 0;
 }
 
 // Liste canonique de TOUTES les vagues d'une réservation (indépendante du placement) :
@@ -963,7 +991,11 @@ function getPendingLaserPasses(dateStr = state.currentDate) {
     .filter(reservation =>
       reservation.date === dateStr
       && reservation.status !== 'cancelled'
-      && (reservation.type === 'laser' || reservation.type === 'formule' || reservation.formuleId)
+      // Une VISITE compte ici comme une formule : ses parties de laser au-delà
+      // de la première se placent à la main, exactement pareil. Sans elle dans
+      // ce filtre, deux parties payées n'apparaissaient nulle part.
+      && (reservation.type === 'laser' || reservation.type === 'formule' || reservation.formuleId
+        || getProgramLaserGameCount(reservation) > 0)
       // Plusieurs unités laser (vagues et/ou parties à placer) OU laser en gestion
       // manuelle : une unité a été dé-placée vers « à placer », y compris une
       // session laser direct 1-partie.
@@ -1162,8 +1194,7 @@ async function scheduleLaserPass(reservationId, unitRef, targetStart, targetEnd 
       method: 'PATCH',
       body: JSON.stringify(buildReservationApiPayload(updated, {
         skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
-        laneCount: 0,
-        requiresLanes: false,
+        ...laserPassLanePayload(updated),
         allowPastStart: true
       }))
     });
@@ -1266,8 +1297,7 @@ async function unscheduleLaserPass(reservationId, unitRef) {
       method: 'PATCH',
       body: JSON.stringify(buildReservationApiPayload(updated, {
         skipReplan: updated.type !== 'formule' && !updated.formuleId && !updated.formulaId,
-        laneCount: 0,
-        requiresLanes: false,
+        ...laserPassLanePayload(updated),
         allowPastStart: true
       }))
     });

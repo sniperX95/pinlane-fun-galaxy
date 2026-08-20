@@ -3,6 +3,7 @@ const {
   DURATION_OPTIONS,
   FORMULES,
   LASER_GAME_OPTIONS,
+  getBowlingGameOptions,
   getEffectiveFormules,
   getSchedule,
   refreshFormuleOverrides,
@@ -473,6 +474,17 @@ module.exports = async (req, res) => {
           emergencyCapacityPerLane: bowlingCapacity.emergencyCapacityPerLane,
           bowlingPrices: BOWLING_PRICES,
           laserOptions: LASER_GAME_OPTIONS,
+          // Cle ADDITIVE : presente uniquement quand le centre vend le bowling
+          // AUX PARTIES, par personne (N4 Bowling). Absente, le tunnel garde la
+          // grille par piste et par duree, exactement comme avant.
+          ...(center?.resources?.bowling?.pricing
+            ? {
+              bowlingPricing: center.resources.bowling.pricing,
+              // Les parties vendables LE JOUR demande, deja tarifees : le
+              // tunnel n'a aucun calcul de prix a refaire de son cote.
+              ...(dayDate ? { bowlingGames: getBowlingGameOptions(center.resources.bowling, dayDate) } : {}),
+            }
+            : {}),
         },
         // Cle ADDITIVE, presente uniquement quand une date valide est demandee.
         ...(day ? { day } : {}),

@@ -229,6 +229,54 @@ function getBowlingPrices() {
   return prices && typeof prices === 'object' ? prices : BOWLING_PRICES;
 }
 
+// Le tarif bowling DU CENTRE : present, ce centre vend AUX PARTIES et par
+// personne (N4 Bowling) ; absent, il vend a la grille par piste et par duree
+// (Fun Galaxy). Miroir exact de lib/booking-config.resolveBowlingPricing.
+function getBowlingPricing() {
+  const pricing = getBookingCatalogConfig()?.bowlingPricing;
+  if (!pricing || typeof pricing !== 'object') return null;
+  if (pricing.mode !== 'per_game_per_person') return null;
+  if (!Array.isArray(pricing.tiers) || !pricing.tiers.length) return null;
+  return pricing;
+}
+
+// Les parties vendables un jour donne. null = grille historique ; [] = ce
+// centre vend aux parties mais aucun tarif ne couvre ce jour. Miroir de
+// lib/booking-config.getBowlingGameOptions : les deux doivent rendre la meme
+// chose, sinon le prix affiche et le prix facture divergent.
+function getBowlingGameOptions(dateStr) {
+  const pricing = getBowlingPricing();
+  if (!pricing) return null;
+  if (!dateStr) return [];
+  const day = parseLocalDate(dateStr).getDay();
+  const tier = pricing.tiers.find(t => Array.isArray(t.days) && t.days.indexOf(day) !== -1);
+  if (!tier) return [];
+  const minutesPerGame = Number(pricing.minutesPerGame) || 60;
+  return (tier.prices || []).map((price, index) => {
+    const games = index + 1;
+    const durationMinutes = games * minutesPerGame;
+    return {
+      games,
+      value: Math.round((durationMinutes / 60) * 100) / 100,
+      label: games === 1 ? '1 partie' : games + ' parties',
+      price: Number(price),
+      durationMinutes,
+    };
+  });
+}
+
+// Une nuit qui deborde sur le lendemain s'ecrit 25:00 EN INTERNE : la soiree du
+// samedi appartient au samedi, pour le staff comme pour le planning, meme
+// quand elle finit dimanche matin. Le CLIENT, lui, lit une heure de montre.
+// C'est un habillage d'affichage, jamais un changement de donnee.
+function displayTime(value) {
+  const parts = String(value == null ? '' : value).split(':');
+  const hours = Number(parts[0]);
+  if (!Number.isFinite(hours)) return String(value == null ? '' : value);
+  const minutes = String(parts[1] == null ? '00' : parts[1]).padStart(2, '0');
+  return String(hours % 24).padStart(2, '0') + ':' + minutes;
+}
+
 function getLaserOptionsCatalog() {
   const options = getBookingCatalogConfig()?.laserOptions;
   return Array.isArray(options) && options.length ? options : LASER_GAME_OPTIONS;
@@ -433,8 +481,15 @@ function resolveDisplayFormule(formuleId) {
   }
   return FORMULES.find(x => x.id === formuleId) || null;
 }
-function getBasePrice(type, duration, laneCount, pax, formuleId) {
-  if (type === 'bowling') return (getBowlingPrices()[duration] || 0) * laneCount;
+function getBasePrice(type, duration, laneCount, pax, formuleId, dateStr) {
+  if (type === 'bowling') {
+    const gameOptions = getBowlingGameOptions(dateStr);
+    if (gameOptions) {
+      const chosen = gameOptions.find(o => Number(o.value) === Number(duration));
+      return chosen ? chosen.price * pax : 0;
+    }
+    return (getBowlingPrices()[duration] || 0) * laneCount;
+  }
   if (type === 'laser') {
     const options = getLaserOptionsCatalog();
     const option = options.find(x => Number(x.value) === Number(duration)) || options[0];
@@ -446,7 +501,7 @@ function getBasePrice(type, duration, laneCount, pax, formuleId) {
 }
 function getBasePriceForReservation(res) {
   const laneCount = reservationNeedsLanes(res.type, res.formuleId) ? (res.lanes || []).length : 0;
-  return getBasePrice(res.type, Number(res.duration), laneCount, Number(res.pax), res.formuleId);
+  return getBasePrice(res.type, Number(res.duration), laneCount, Number(res.pax), res.formuleId, res.date);
 }
 function getPlanningWindow(dateStr) {
   const schedule = getSchedule(dateStr, state.isHolidayMode);
@@ -1522,6 +1577,9 @@ function getFormulaActivityProgressSummary(reservation) {
     setCenterScheduleConfig,
     setCenterActivities,
     getCenterActivities,
+    getBowlingPricing,
+    getBowlingGameOptions,
+    displayTime,
     getCenterActivity,
     getFreeActivityPrice,
     getCenterScheduleConfig,

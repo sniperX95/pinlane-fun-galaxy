@@ -416,7 +416,16 @@ module.exports = async (req, res) => {
     const pax = Math.min(240, Math.max(1, Math.trunc(Number(url.searchParams.get('pax')) || 1)));
     const formuleId = String(url.searchParams.get('formuleId') || '');
     const requestedDuration = Number(url.searchParams.get('duration') || (type === 'laser' ? 0.5 : 1));
-    const formule = FORMULES.find((item) => item.id === formuleId) || null;
+    // Le catalogue DU CENTRE d'abord, la constante fichier seulement en repli.
+    // Avant le 2026-08-20, cette ligne ne lisait QUE la constante : toute
+    // formule creee depuis la console (donc absente du fichier) etait refusee
+    // ici par « Formule invalide », alors que le tunnel venait de l'afficher.
+    // Elle etait affichable et non reservable. getEffectiveFormules est deja
+    // rafraichi plus haut dans ce handler, et il est scope par entreprise
+    // (migration 0042) : un centre ne resout jamais la formule d'un autre.
+    const formule = getEffectiveFormules(centerId).find((item) => item.id === formuleId)
+      || FORMULES.find((item) => item.id === formuleId)
+      || null;
     const firstActivityId = String(url.searchParams.get('firstActivityId') || '');
     const preferredBowlingTime = String(url.searchParams.get('preferredBowlingTime') || '');
     const preferredLaserTime = String(url.searchParams.get('preferredLaserTime') || '');
@@ -522,7 +531,7 @@ module.exports = async (req, res) => {
           laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
           duration: getFormuleLaneDuration(formule),
           totalDuration: getFormuleTotalDuration(formule),
-          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),
+          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }),
           requiresLanes: reservationNeedsLanes(type, formuleId),
           label: formule.name,
           message: 'Offre momentanement indisponible',
@@ -539,7 +548,7 @@ module.exports = async (req, res) => {
           laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
           duration: getFormuleLaneDuration(formule),
           totalDuration: getFormuleTotalDuration(formule),
-          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),
+          price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }),
           requiresLanes: reservationNeedsLanes(type, formuleId),
           label: formule.name,
           message: availability.message,
@@ -562,7 +571,7 @@ module.exports = async (req, res) => {
         laneCount: getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig),
         duration: getFormuleLaneDuration(formule),
         totalDuration: getFormuleTotalDuration(formule),
-        price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),
+        price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }),
         requiresLanes: reservationNeedsLanes(type, formuleId),
         label: formule.name,
         message: 'Formule indisponible ce jour.',
@@ -829,7 +838,7 @@ module.exports = async (req, res) => {
           laneCount,
           duration,
           totalDuration,
-          price: getBasePrice(type, duration, laneCount, pax, formuleId, centerId),
+          price: getBasePrice(type, duration, laneCount, pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }),
           requiresLanes,
           label: formule.name,
           anchors: anchorMeta,
@@ -1139,7 +1148,7 @@ module.exports = async (req, res) => {
       laneCount,
       duration,
       totalDuration,
-      price: getBasePrice(type, duration, laneCount, pax, formuleId, centerId),
+      price: getBasePrice(type, duration, laneCount, pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }),
       requiresLanes,
       label: type === 'formule' ? formule.name : 'Bowling Classique',
       message: slots.length ? '' : 'Aucun créneau disponible pour ces critères.',

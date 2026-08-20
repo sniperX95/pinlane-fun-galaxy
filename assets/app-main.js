@@ -3050,6 +3050,9 @@ function initClient() {
     loadCenterScheduleConfig(state.booking.date);
     updateSchedHint();
     syncBookingTypeUi();
+    // Le tarif d'un centre qui vend AUX PARTIES depend du JOUR : la liste se
+    // repeint avec la date, sinon le client voit le prix de la veille.
+    renderDurations();
     renderFormules();
     renderFormulaPreferences();
     updatePaxAlert();
@@ -3109,6 +3112,33 @@ function stepPax(delta) {
 
 function renderDurations() {
   const g = document.getElementById('durGrid');
+  const label = document.querySelector('#bowlingBlock .tunable-label');
+  // Ce centre vend-il AUX PARTIES, par personne ? La reponse est une DONNEE DE
+  // CENTRE (center.booking.bowlingPricing), pas une constante du produit : le
+  // bloc change alors de nature, pas seulement de prix. Sans cette donnee, tout
+  // se passe exactement comme avant.
+  const games = typeof getBowlingGameOptions === 'function' ? getBowlingGameOptions(state.booking.date) : null;
+  if (games) {
+    if (label) label.innerHTML = 'Nombre de parties <span class="tunable-sub">par personne, chaussures comprises</span>';
+    if (!games.length) {
+      g.innerHTML = '<p class="dur-empty">Aucun tarif publié pour ce jour.</p>';
+      return;
+    }
+    // Une duree qui n'est plus proposee ce jour-la ne doit pas rester
+    // selectionnee : le client paierait pour une option qui n'existe pas.
+    if (!games.some(o => Number(o.value) === Number(state.booking.duration))) {
+      state.booking.duration = games[0].value;
+      state.booking.totalDuration = games[0].value;
+    }
+    g.innerHTML = games.map(o => `
+      <button type="button" class="dur-pill ${Number(state.booking.duration) === Number(o.value) ? 'active' : ''}" onclick="setDuration(${o.value})">
+        ${o.label}
+        <span class="price">${o.price}€ / pers</span>
+      </button>
+    `).join('');
+    return;
+  }
+  if (label) label.innerHTML = 'Durée de jeu <span class="tunable-sub">par piste</span>';
   g.innerHTML = DURATION_OPTIONS.map(o => `
     <button type="button" class="dur-pill ${state.booking.duration === o.value ? 'active' : ''}" onclick="setDuration(${o.value})">
       ${o.label}
@@ -6085,7 +6115,7 @@ function renderFormulaArrivalPicker(formule) {
   const activeSlot = activeIndex >= 0 ? slots[activeIndex] : null;
   const chips = slots.map(slot => `
     <button type="button" class="formula-arrival-chip ${activeSlot && slot.time === formulaArrivalChoice ? 'active' : ''}" onclick="setFormulaArrivalChoice('${escapeHtml(slot.time)}')">
-      ${escapeHtml(slot.time)}
+      ${escapeHtml(typeof displayTime === 'function' ? displayTime(slot.time) : slot.time)}
     </button>`).join('');
   return `
     <div class="formula-arrival-picker">
@@ -6208,7 +6238,7 @@ function renderSlots(formule) {
   const showLanes = reservationNeedsLanes(state.booking.type, state.booking.formuleId);
   list.innerHTML = `<div class="slot-grid stagger">${state.availableSlots.map((s, i) => `
     <button class="slot slot-card" onclick="selectSlot(${i})">
-      <span class="slot-card-time slot-time">${s.time}</span>
+      <span class="slot-card-time slot-time">${typeof displayTime === 'function' ? displayTime(s.time) : s.time}</span>
       ${s.opsPlan?.endTime ? `<span class="slot-card-end">→ ${escapeHtml(s.opsPlan.endTime)}</span>` : ''}
       ${!isLaser && s.opsPlan ? '<span class="slot-card-tag is-accent">Plan conseillé</span>' : ''}
       ${isLaser ? `<span class="slot-card-tag is-accent">${s.sharedSession ? 'Session partagée' : s.splitGroup ? 'Groupe découpé' : 'Session ouverte'}</span>` : ''}
@@ -6495,7 +6525,7 @@ function renderRecap() {
   // et renverrait donc 0 pour "visite".
   const total = visitProgram
     ? Math.max(0, Number(visitProgram.price) || 0)
-    : getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId);
+    : getBasePrice(b.type, Number(b.duration), b.laneCount, Number(b.pax), b.formuleId, b.date);
   const totalDuration = getBookingTotalDuration(b);
   const formulaRecap = formule ? getFormulaRecapModel(b) : null;
   const planLine = b.opsPlan ? describeSlotPlan(b.opsPlan) : '';
@@ -6641,7 +6671,7 @@ async function confirmBooking() {
   // est enregistre. On envoie le notre pour ne pas casser le payload historique.
   const basePrice = isVisit
     ? 0
-    : getBasePrice(b.type, duration, needsLanes ? allocated.length : 0, Number(b.pax), b.formuleId);
+    : getBasePrice(b.type, duration, needsLanes ? allocated.length : 0, Number(b.pax), b.formuleId, b.date);
   const reservation = {
     name: b.name,
     phone: b.phone,
@@ -6724,7 +6754,7 @@ async function confirmBooking() {
   const freeLine = successRecap && successRecap.freeLabels.length
     ? ` À votre rythme sur place : ${successRecap.freeLabels.map(escapeHtml).join(', ')}, quand vous voulez.`
     : '';
-  document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
+  document.getElementById('successDetails').innerHTML = `${confirmationText} ${b.type === 'formule' ? 'Première activité' : 'Départ prévu'} à <b>${typeof displayTime === 'function' ? displayTime(b.startTime) : b.startTime}</b>${showLanes && allocated.length ? ` sur la/les piste(s) <b>${allocated.join(' & ')}</b>` : ''}.${appointmentsLine}${tableLine}${arrivalLine}${freeLine} Temps total estimé : <b>${formatDurationLabel(totalDuration)}</b>.${laserLine}`;
   releaseBookingSubmit();
   await sealBookingSubmit();
   goStep(5);
@@ -18850,7 +18880,7 @@ async function saveEdit(e) {
     allowPastStart: true,
     lanes: requiresLanes ? lanes : []
   };
-  updated.basePrice = getBasePrice(updated.type, updated.duration, updated.lanes.length, updated.pax, updated.formuleId);
+  updated.basePrice = getBasePrice(updated.type, updated.duration, updated.lanes.length, updated.pax, updated.formuleId, updated.date);
   updated.price = updated.basePrice + sumExtras(updated.extras);
   const previousReservation = state.selectedRes;
   applyOptimisticReservation(updated, { preserveEditState: true });
@@ -19482,7 +19512,7 @@ function getQuickBookSummary() {
     };
   }
   const laneCount = quickBookState.autoAssign ? getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId) : quickBookState.lanes.length;
-  const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId);
+  const total = getBasePrice(quickBookState.type, quickBookState.duration, laneCount, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const detail = laneCount ? `${laneCount} piste(s) prévues` : 'Sans piste';
   return { total, detail };
 }
@@ -19993,7 +20023,7 @@ async function saveQuickBook() {
     if (lanesConflict(quickBookState.date, quickBookState.startTime, duration, lanes).length) { failQuickBook('Conflit détecté sur les pistes choisies.'); return; }
   }
 
-  const basePrice = getBasePrice(quickBookState.type, duration, lanes.length, quickBookState.pax, quickBookState.formuleId);
+  const basePrice = getBasePrice(quickBookState.type, duration, lanes.length, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const reservation = {
     name,
     phone,
@@ -20769,6 +20799,9 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     if (state.view === 'client' && (payload?.center || Array.isArray(payload?.formules))) {
       updateSchedHint();
       syncBookingTypeUi();
+      // Le tarif bowling du centre arrive avec cette reponse : sans ce repaint,
+      // la liste garde la grille par piste jusqu'au prochain clic.
+      renderDurations();
       renderFormules();
       // La config (capacite pistes/joueurs) arrive en async : re-render le cadre
       // pax pour qu'il reflete la vraie capacite au lieu des constantes de repli.

@@ -332,6 +332,7 @@ function jsonOf(res) { try { return JSON.parse(String(res.body || '')); } catch 
 // ── Le code applicatif REEL ─────────────────────────────────────────────────
 const opsHandler = require(path.join(ROOT, 'api', 'ops.js'));
 const metaHandler = require(path.join(ROOT, 'api', 'public-booking-meta.js'));
+const availabilityHandler = require(path.join(ROOT, 'api', 'public-availability.js'));
 const { getPool } = require(path.join(ROOT, 'lib', 'database.js'));
 const catalogStore = require(path.join(ROOT, 'lib', 'catalog-store.js'));
 const { refreshCenterOverrides } = require(path.join(ROOT, 'lib', 'ops-knowledge.js'));
@@ -367,6 +368,35 @@ async function tunnel(centerId) {
       return hit ? Number(hit.price) : null;
     },
   };
+}
+
+// Le VERDICT DE RESERVATION d'une formule pour un centre : afficher une offre
+// qu'on ne peut pas reserver est le pire des deux mondes.
+async function reservable(centerId, formuleId, date) {
+  await catalogStore.refreshCatalog(getPool(), { force: true });
+  const query = `centerId=${encodeURIComponent(centerId)}&date=${date}&type=formule&formuleId=${encodeURIComponent(formuleId)}&pax=4`;
+  const req = fakeReq({ method: 'GET', url: `/api/public-availability?${query}` });
+  const res = fakeRes();
+  await availabilityHandler(req, res);
+  const json = jsonOf(res);
+  return {
+    status: res.statusCode,
+    ok: Boolean(json && json.ok),
+    message: (json && json.message) || '',
+    label: (json && json.label) || '',
+  };
+}
+
+// Un samedi a venir : jamais aujourd'hui (les creneaux passes sont filtres), et
+// calcule, jamais ecrit en dur (trois bombes d'horloge payees sur ce depot).
+function nextSaturday(minDaysAhead = 3) {
+  const [year, month, day] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Brussels', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date()).split('-').map(Number);
+  const cursor = new Date(Date.UTC(year, month - 1, day));
+  for (let i = 0; i < minDaysAhead; i += 1) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  while (cursor.getUTCDay() !== 6) cursor.setUTCDate(cursor.getUTCDate() + 1);
+  return cursor.toISOString().slice(0, 10);
 }
 
 const NEW_FORMULA = {
@@ -486,10 +516,26 @@ async function run() {
   ok(ghost.formuleIds.length === 0, `aucune formule n est servie (obtenu ${ghost.formuleIds.length})`);
   ok(Boolean(ghost.json && ghost.json.ok === false), 'la reponse dit franchement que le centre est inconnu');
 
-  section('[8] Aucune ecriture SQL non reconnue par le fake');
+  section('[8] La formule d ALPHA est RESERVABLE chez ALPHA, et inconnue chez BETA');
+  const saturday = nextSaturday();
+  const alphaVerdict = await reservable(ALPHA_UN, NEW_FORMULA.id, saturday);
+  ok(alphaVerdict.status === 200 && alphaVerdict.ok,
+    `ALPHA obtient un verdict de reservation (statut ${alphaVerdict.status}, ok=${alphaVerdict.ok}, "${alphaVerdict.message}")`);
+  // Le defaut ferme le 2026-08-20 : api/public-availability resolvait la formule
+  // dans la CONSTANTE FICHIER, donc toute offre creee en console etait
+  // affichable et NON reservable (« Formule invalide », HTTP 500).
+  ok(!/Formule invalide/i.test(alphaVerdict.message),
+    `la formule custom n est pas rejetee comme invalide (message : "${alphaVerdict.message || 'aucun'}")`);
+  ok(alphaVerdict.label === NEW_FORMULA.name,
+    `le verdict porte le nom de SA formule (obtenu "${alphaVerdict.label}")`);
+  const betaVerdict = await reservable(BETA_UN, NEW_FORMULA.id, saturday);
+  ok(betaVerdict.label !== NEW_FORMULA.name,
+    `BETA ne recoit jamais le nom de l offre d ALPHA (obtenu "${betaVerdict.label}")`);
+
+  section('[9] Aucune ecriture SQL non reconnue par le fake');
   ok(UNHANDLED.length === 0, `toutes les mutations sont comprises (${UNHANDLED.length} inconnues${UNHANDLED.length ? ` : ${UNHANDLED[0]}` : ''})`);
 
-  section('[9] CONTRE-PREUVE : la portee cassee expres doit faire rougir ce gate');
+  section('[10] CONTRE-PREUVE : la portee cassee expres doit faire rougir ce gate');
   SCOPE_COLUMN_PRESENT = false; // la base "oublie" la portee : retour au catalogue partage
   await catalogStore.refreshCatalog(pool, { force: true });
   const brokenAlpha = await tunnel(ALPHA_UN);

@@ -389,8 +389,8 @@ async function probeSecurityRefusesAll(mod) {
   //     l'apercu retombe sur le prix fichier -> il ne colle plus au facture.
   await withMutation(
     availPath,
-    'price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId),\n          requiresLanes: reservationNeedsLanes(type, formuleId),\n          label: formule.name,\n          message: availability.message,',
-    'price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId),\n          requiresLanes: reservationNeedsLanes(type, formuleId),\n          label: formule.name,\n          message: availability.message,',
+    'price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, centerId, { bowlingConfig: centerBowlingConfig, dateStr: date }),\n          requiresLanes: reservationNeedsLanes(type, formuleId),\n          label: formule.name,\n          message: availability.message,',
+    'price: getBasePrice(type, getFormuleLaneDuration(formule), getRequiredLaneCount(type, pax, formuleId, centerBowlingConfig), pax, formuleId, undefined, { bowlingConfig: centerBowlingConfig, dateStr: date }),\n          requiresLanes: reservationNeedsLanes(type, formuleId),\n          label: formule.name,\n          message: availability.message,',
     freshAvail,
     probeCorrelation,
     'public-availability : centerId retire d un getBasePrice',

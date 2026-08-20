@@ -8104,6 +8104,10 @@ function openStaffRequestsPage(id, ev) {
     : item && item.status === 'handled' ? 'traitees'
       : 'actives';
   state.staffRequestSegment = segment;
+  // La page est une boite de reception : ouvrir le bon onglet ne suffit plus,
+  // il faut DESIGNER la demande, sinon c'est la premiere de la file qui
+  // s'affiche a droite et le clic mene a cote.
+  if (id != null) state.staffRequestSelectedId = String(id);
   save();
   openStaffMenuPage('requests');
   if (id == null) return;
@@ -12527,8 +12531,13 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
       layout: 'requests',
       eyebrow: 'Clients',
       title: 'Demandes sur mesure',
-      subtitle: 'Anniversaires, groupes et entreprises : chaque demande se traite ici, réponse comprise.',
-      panelSubtitle: `${newCount + progressCount} active${newCount + progressCount > 1 ? 's' : ''} · ${handledCount} traitée${handledCount > 1 ? 's' : ''} · ${getStaffUtilitySyncLabel() || 'file du centre'}`,
+      // Le bandeau du panneau REPETAIT le titre et le compte deja portes par
+      // l'en-tete de page, juste au-dessus. Deux fois « Demandes sur mesure »
+      // a 40 pixels d'ecart, plus un « Rafraichir » a cote d'un « Actualiser »
+      // qui fait la meme chose : c'est du bruit, il part. Le compte vit
+      // maintenant dans le sous-titre et sur les onglets de la file.
+      subtitle: `${newCount + progressCount} active${newCount + progressCount > 1 ? 's' : ''} · ${handledCount} traitée${handledCount > 1 ? 's' : ''} · anniversaires, groupes et entreprises, réponse comprise.`,
+      hidePanelHead: true,
       hideDateAction: true,
       primaryLabel: 'Actualiser',
       primaryAction: 'loadStaffCustomRequests(true)',
@@ -12698,6 +12707,20 @@ function renderStaffUtilityPage() {
         <button type="button" onclick="renderStaffUtilityPage()">Rafraîchir</button>
       </div>`;
   root.className = `staff-utility-page utility-page-${escapeHtml(model.page)} utility-layout-${escapeHtml(model.layout || 'default')}`;
+  // CE QU ON ETAIT EN TRAIN DE FAIRE SURVIT AU REPAINT (2026-08-20). La page se
+  // repeint entierement des qu une reponse reseau arrive (file des demandes,
+  // fil de mails, changement de statut). Sans cette sauvegarde, le champ en
+  // cours de saisie est recree : le curseur saute a la fin, ou pire, le focus
+  // part et la frappe suivante se perd. Meme chose pour le defilement d une
+  // liste laterale, qui remontait en haut toute seule.
+  const focused = document.activeElement;
+  const focusedId = focused && root.contains(focused) && focused.id ? focused.id : '';
+  const caretStart = focused && typeof focused.selectionStart === 'number' ? focused.selectionStart : null;
+  const caretEnd = focused && typeof focused.selectionEnd === 'number' ? focused.selectionEnd : null;
+  const keptScroll = [];
+  root.querySelectorAll('#reqRailList, [data-keep-scroll]').forEach((node) => {
+    if (node.id && node.scrollTop) keptScroll.push([node.id, node.scrollTop]);
+  });
   root.innerHTML = `
     <section class="utility-hero">
       <div>
@@ -12717,8 +12740,24 @@ function renderStaffUtilityPage() {
       ${model.body}
     </section>
   `;
+  keptScroll.forEach(([id, top]) => {
+    const node = document.getElementById(id);
+    if (node) node.scrollTop = top;
+  });
+  if (focusedId) {
+    const again = document.getElementById(focusedId);
+    if (again && again !== document.activeElement) {
+      again.focus({ preventScroll: true });
+      if (caretStart !== null && typeof again.setSelectionRange === 'function') {
+        try { again.setSelectionRange(caretStart, caretEnd); } catch (error) {}
+      }
+    }
+  }
   if (archivePages.has(model.page)) ensureStaffClientData();
   if (model.page === 'groups' || model.page === 'requests') ensureStaffCustomRequests();
+  // Le fil de la demande ouverte se charge tout seul : l'historique existait
+  // deja, il fallait cliquer un bouton par carte pour le voir.
+  if (model.page === 'requests') ensureStaffRequestThread();
   if ((model.page === 'emails' || model.page === 'settings' || model.page === 'establishment') && !opsAdminCache.loaded && !opsAdminCache.loading) requestOpsAdminLoad(false);
 }
 
@@ -13533,65 +13572,404 @@ function setStaffRequestSegment(segment) {
   renderStaffUtilityPage();
 }
 
-function renderStaffRequestsBoard() {
-  const items = getStaffCustomRequestItems();
-  const cache = staffCustomRequestsCache;
-  if (cache.loading && !items.length) return '<div class="req-empty">Chargement des demandes…</div>';
-  if (cache.error && !items.length) {
-    return `<div class="req-empty">${escapeHtml(cache.error)} <button type="button" class="req-retry" onclick="loadStaffCustomRequests(true)">Réessayer</button></div>`;
+// ════════════════════════════════════════════════════════════════════════════
+//  REFONTE COMPLETE (2026-08-20). Movsar, capture a l appui : « c est super
+//  moche comment sont affiches les mails, tout est moche et mal designe et mal
+//  anime sur cette categorie ». Trois fautes, corrigees a la racine :
+//
+//  1. LE MAIL S AFFICHAIT EN CODE. `message.body` contient le gabarit HTML
+//     complet (doctype, <head>, <meta>, styles inline) : echappe puis pose tel
+//     quel dans un <p>, le staff lisait « <meta charset="utf-8"> » au lieu du
+//     message. On lit maintenant `payload.textBody` (le texte que le gabarit a
+//     habille, ecrit par le staff) et, a defaut, on DESHABILLE le HTML
+//     (staffHtmlToPlainText). Le rendu d origine reste consultable dans un
+//     cadre isole, pour verifier ce que le client a recu.
+//  2. LA PAGE N AVAIT PAS DE FORME. Une pile de cartes pleine largeur, chacune
+//     portant sa propre file de mails : trois demandes et l ecran devenait un
+//     rouleau. C est une BOITE DE RECEPTION maintenant : la file a gauche, la
+//     demande ouverte a droite, un seul fil a l ecran.
+//  3. L ANIMATION REJOUAIT A CHAQUE RENDU. La page se repeint entierement a
+//     chaque frappe reseau : toute animation d entree se rejouait, et le
+//     curseur sautait hors du champ en cours de saisie. Les entrees ne jouent
+//     plus que sur un VRAI changement de vue (staffRequestViewKey), et le
+//     focus + le caret + le defilement de la file survivent au repaint.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Recherche dans la file : volontairement HORS de `state`, donc non persistee.
+// Un filtre garde d une session a l autre fait croire a une file vide.
+let staffRequestSearch = '';
+// Messages du fil deplies, et vue choisie par message ('texte' | 'rendu').
+let staffRequestOpenMessages = {};
+let staffRequestMessageView = {};
+// Signature de la vue au dernier rendu : sert UNIQUEMENT a decider si une
+// entree doit etre animee. Sans elle, chaque repaint rejoue les animations.
+let staffRequestViewKey = '';
+
+function setStaffRequestSegment(segment) {
+  const next = ['actives', 'traitees', 'archivees'].includes(segment) ? segment : 'actives';
+  if (next !== state.staffRequestSegment) {
+    // Changer d onglet, c est changer de file : la selection de l ancienne
+    // n a plus de sens et la premiere ligne de la nouvelle prend la main.
+    state.staffRequestSelectedId = null;
   }
-  const segment = ['actives', 'traitees', 'archivees'].includes(state.staffRequestSegment) ? state.staffRequestSegment : 'actives';
-  const bySegment = {
+  state.staffRequestSegment = next;
+  save();
+  renderStaffUtilityPage();
+}
+
+function selectStaffRequest(id) {
+  state.staffRequestSelectedId = String(id || '');
+  save();
+  renderStaffUtilityPage();
+  // Sur telephone la file est AU-DESSUS du detail : sans ce rappel, un clic
+  // sur une demande ne montre rien, le detail est hors ecran.
+  if (window.matchMedia && window.matchMedia('(max-width: 980px)').matches) {
+    window.setTimeout(() => {
+      const detail = document.querySelector('.req-detail');
+      if (detail) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  }
+}
+window.selectStaffRequest = selectStaffRequest;
+
+function staffRequestSearchInput(value) {
+  staffRequestSearch = String(value || '');
+  // La selection suit ce qui reste visible : filtrer jusqu a exclure la
+  // demande ouverte laissait un detail sans ligne correspondante dans la file.
+  renderStaffUtilityPage();
+}
+window.staffRequestSearchInput = staffRequestSearchInput;
+
+function getStaffRequestSegment() {
+  return ['actives', 'traitees', 'archivees'].includes(state.staffRequestSegment) ? state.staffRequestSegment : 'actives';
+}
+
+function getStaffRequestSegments() {
+  const items = getStaffCustomRequestItems();
+  return {
     actives: items.filter(item => item.status === 'new' || item.status === 'in_progress'),
     traitees: items.filter(item => item.status === 'handled'),
     archivees: items.filter(item => item.status === 'archived'),
   };
-  const rows = bySegment[segment] || [];
-  const seg = (key, label) => `<button type="button" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em>${(bySegment[key] || []).length}</em></button>`;
-  return `<div class="req-board">
-    <div class="req-segments" role="tablist" aria-label="Filtrer les demandes">
-      ${seg('actives', 'À traiter')}${seg('traitees', 'Traitées')}${seg('archivees', 'Archivées')}
-    </div>
-    <div class="req-list">
-      ${rows.length ? rows.map(renderStaffRequestPageCard).join('') : `<div class="req-empty">${segment === 'actives' ? 'Aucune demande en attente : tout est traité.' : 'Rien dans cette vue.'}</div>`}
-    </div>
+}
+
+// Ordre de la file : ce qui n a jamais ete ouvert d abord, puis le plus recent.
+// Une demande jamais lue ne doit pas se retrouver sous une demande deja prise
+// en charge simplement parce qu elle est arrivee la veille.
+const STAFF_REQUEST_WEIGHT = { new: 0, in_progress: 1, handled: 2, archived: 3 };
+
+function staffRequestSearchBlob(item) {
+  return [item.contactName, item.company, item.email, item.phone, item.message, item.requestedDate]
+    .map(value => String(value || '')).join(' ').toLowerCase();
+}
+
+// Les lignes VISIBLES de la file, une seule definition partagee par le rendu et
+// par les effets d apres-rendu (chargement du fil). Deux definitions, c est la
+// selection qui designe une demande et le fil qui en charge une autre.
+function getStaffRequestRows() {
+  const rows = (getStaffRequestSegments()[getStaffRequestSegment()] || []).slice();
+  const query = String(staffRequestSearch || '').trim().toLowerCase();
+  const filtered = query ? rows.filter(item => staffRequestSearchBlob(item).includes(query)) : rows;
+  return filtered.sort((a, b) => {
+    const weight = (STAFF_REQUEST_WEIGHT[a.status] ?? 9) - (STAFF_REQUEST_WEIGHT[b.status] ?? 9);
+    if (weight) return weight;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
+}
+
+function getStaffRequestSelectedItem() {
+  const rows = getStaffRequestRows();
+  if (!rows.length) return null;
+  const wanted = String(state.staffRequestSelectedId || '');
+  return rows.find(item => String(item.id) === wanted) || rows[0];
+}
+
+// ── LIRE UN MAIL, PAS SON GABARIT ──────────────────────────────────────────
+// Table volontairement courte : les entites qui apparaissent VRAIMENT dans nos
+// gabarits et dans les mails clients francophones. Une entite inconnue est
+// rendue telle quelle plutot que devinee.
+const STAFF_MAIL_ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  agrave: 'à', acirc: 'â', aelig: 'æ', ccedil: 'ç',
+  eacute: 'é', egrave: 'è', ecirc: 'ê', euml: 'ë',
+  icirc: 'î', iuml: 'ï', ocirc: 'ô', oelig: 'œ',
+  ugrave: 'ù', ucirc: 'û', uuml: 'ü',
+  Agrave: 'À', Ccedil: 'Ç', Eacute: 'É', Egrave: 'È',
+  euro: '€', pound: '£', deg: '°', middot: '·', bull: '•',
+  hellip: '…', laquo: '«', raquo: '»',
+  lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
+  ndash: '\u2013', mdash: '\u2014', times: '×', copy: '©', reg: '®', trade: '™',
+  zwnj: '', zwj: '', shy: '', ensp: ' ', emsp: ' ', thinsp: ' ',
+};
+
+function staffMailCodePoint(number) {
+  if (!Number.isFinite(number) || number <= 0 || number > 0x10ffff) return '';
+  try { return String.fromCodePoint(number); } catch (error) { return ''; }
+}
+
+// UNE seule passe : decoder en cascade transformerait « &amp;lt; » en « < »,
+// donc du texte litteral en balise apparente.
+function staffDecodeMailEntities(value) {
+  return String(value || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, token) => {
+    if (token[0] === '#') {
+      const hex = token[1] === 'x' || token[1] === 'X';
+      const number = hex ? parseInt(token.slice(2), 16) : Number(token.slice(1));
+      return staffMailCodePoint(number);
+    }
+    const exact = STAFF_MAIL_ENTITIES[token];
+    if (exact !== undefined) return exact;
+    const lower = STAFF_MAIL_ENTITIES[token.toLowerCase()];
+    return lower === undefined ? match : lower;
+  });
+}
+
+function staffLooksLikeHtml(value) {
+  const text = String(value || '');
+  return /<!doctype html|<html[\s>]|<body[\s>]|<table[\s>]|<div[\s>]|<p[\s>]|<br\s*\/?>/i.test(text);
+}
+
+// Deshabille un mail HTML pour en rendre le TEXTE. Les blocs invisibles sont
+// retires en premier : notre gabarit cache un preheader (display:none suivi de
+// 60 espaces insecables) qui, laisse en place, volerait toute la premiere ligne
+// de l apercu.
+function staffHtmlToPlainText(html) {
+  let out = String(html || '');
+  if (!out) return '';
+  if (!staffLooksLikeHtml(out)) return out.trim();
+  out = out
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style|head|title)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<(div|span|td|p)\b[^>]*style\s*=\s*("|')[^"']*display\s*:\s*none[^"']*\2[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '\n• ')
+    .replace(/<\/(p|div|tr|li|table|blockquote|h[1-6])\s*>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ');
+  return staffDecodeMailEntities(out)
+    .replace(/[\u200b\u200c\u200d\ufeff\u00ad]/g, '')
+    .replace(/\r/g, '')
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Le texte QUE LE STAFF A ECRIT quand il existe (payload.textBody est pose par
+// tous nos chemins d envoi), le gabarit deshabille sinon.
+function staffMailPlainText(message) {
+  const stored = message && message.payload ? String(message.payload.textBody || '').trim() : '';
+  if (stored) return stored;
+  return staffHtmlToPlainText(message && message.body);
+}
+
+function staffMailHtmlSource(message) {
+  const body = message ? String(message.body || '') : '';
+  return staffLooksLikeHtml(body) ? body : '';
+}
+
+function staffMailSnippet(message, size = 130) {
+  const text = staffMailPlainText(message).replace(/\s+/g, ' ').trim();
+  return text.length > size ? `${text.slice(0, size - 1)}…` : text;
+}
+
+// ── TEMPS LISIBLE ──────────────────────────────────────────────────────────
+function staffRequestMoment(value) {
+  const time = value ? new Date(value).getTime() : NaN;
+  if (!Number.isFinite(time)) return '';
+  const minutes = Math.round((Date.now() - time) / 60000);
+  if (minutes < 1) return 'à l’instant';
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return 'hier';
+  if (days < 7) return `il y a ${days} jours`;
+  return new Date(time).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short' });
+}
+
+function staffRequestFullMoment(value) {
+  const time = value ? new Date(value).getTime() : NaN;
+  if (!Number.isFinite(time)) return '';
+  return new Date(time).toLocaleString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function staffRequestDayLabel(value) {
+  const time = value ? new Date(value).getTime() : NaN;
+  if (!Number.isFinite(time)) return 'Date inconnue';
+  const day = new Date(time); day.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const gap = Math.round((today.getTime() - day.getTime()) / 86400000);
+  if (gap === 0) return 'Aujourd’hui';
+  if (gap === 1) return 'Hier';
+  const label = new Date(time).toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function staffRequestInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+const STAFF_REQUEST_ICONS = {
+  search: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>',
+  out: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12 12 4M6 4h6v6"/></svg>',
+  in: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 4 4 12M10 12H4V6"/></svg>',
+  chevron: '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m5 6.5 3 3 3-3"/></svg>',
+  phone: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4.5c0 4.4 4.1 8.5 8.5 8.5.8 0 1.5-.7 1.5-1.5v-1L11 9.5l-1.5 1C8.2 9.8 6.2 7.8 5.5 6.5l1-1.5L4.5 3h-1C2.7 3 2 3.7 2 4.5"/></svg>',
+  mail: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="m2.5 5 5.5 4 5.5-4"/></svg>',
+  inbox: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 13h4l1.5 3h7L17 13h4"/><path d="M3 13 5.5 5.5A2 2 0 0 1 7.4 4h9.2a2 2 0 0 1 1.9 1.5L21 13v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+};
+
+// ── LE TABLEAU : file a gauche, demande ouverte a droite ────────────────────
+function renderStaffRequestsBoard() {
+  const cache = staffCustomRequestsCache;
+  const items = getStaffCustomRequestItems();
+  if (cache.loading && !items.length) return renderStaffRequestsSkeleton();
+  if (cache.error && !items.length) {
+    return `<div class="req-board req-board-flat"><div class="req-empty req-empty-error">
+      <span class="req-empty-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.inbox}</span>
+      <strong>Les demandes ne sont pas arrivées</strong>
+      <p>${escapeHtml(cache.error)}</p>
+      <button type="button" class="req-retry" onclick="loadStaffCustomRequests(true)">Réessayer</button>
+    </div></div>`;
+  }
+
+  const segment = getStaffRequestSegment();
+  const buckets = getStaffRequestSegments();
+  const rows = getStaffRequestRows();
+  const selected = getStaffRequestSelectedItem();
+  const query = String(staffRequestSearch || '').trim();
+
+  // UNE entree par changement REEL, et chaque partie a son propre declencheur.
+  // Une cle unique pour les deux rejouait la file a chaque lettre tapee dans la
+  // recherche, et le detail avec elle : l animation devenait le bruit qu elle
+  // etait censee remplacer. La file ne bouge donc que si l onglet change, le
+  // detail que si la demande ouverte change.
+  const [previousSegment = '', previousSelected = ''] = staffRequestViewKey.split('|');
+  const selectedId = selected ? String(selected.id) : '';
+  const changed = previousSelected !== selectedId;
+  const listChanged = previousSegment !== segment;
+  staffRequestViewKey = `${segment}|${selectedId}`;
+
+  const seg = (key, label) => `<button type="button" role="tab" aria-selected="${segment === key ? 'true' : 'false'}" class="req-seg ${segment === key ? 'active' : ''}" onclick="setStaffRequestSegment('${key}')">${escapeHtml(label)}<em>${(buckets[key] || []).length}</em></button>`;
+
+  const emptyList = query
+    ? `<p class="req-rail-empty">Aucune demande ne correspond à « ${escapeHtml(query)} ».</p>`
+    : `<p class="req-rail-empty">${segment === 'actives' ? 'Aucune demande en attente : tout est traité.' : 'Rien dans cette vue.'}</p>`;
+
+  return `<div class="req-board" data-segment="${escapeHtml(segment)}">
+    <aside class="req-rail" aria-label="File des demandes">
+      <div class="req-rail-head">
+        <div class="req-segments" role="tablist" aria-label="Filtrer les demandes">${seg('actives', 'À traiter')}${seg('traitees', 'Traitées')}${seg('archivees', 'Archivées')}</div>
+        <div class="req-search">
+          <span class="req-search-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.search}</span>
+          <input id="reqSearchField" type="search" class="req-search-field" placeholder="Nom, société, email…" aria-label="Chercher une demande" value="${escapeHtml(query)}" oninput="staffRequestSearchInput(this.value)" />
+          ${query ? '<button type="button" class="req-search-clear" aria-label="Effacer la recherche" onclick="staffRequestSearchInput(\'\')">×</button>' : ''}
+        </div>
+      </div>
+      <div class="req-rail-list" id="reqRailList" ${listChanged ? 'data-anim="1"' : ''}>
+        ${rows.length ? rows.map((item, index) => renderStaffRequestRailItem(item, selected && String(selected.id) === String(item.id), index)).join('') : emptyList}
+      </div>
+    </aside>
+    ${selected
+      ? renderStaffRequestDetail(selected, changed)
+      : `<section class="req-detail req-detail-empty">
+          <span class="req-empty-icon" aria-hidden="true">${STAFF_REQUEST_ICONS.inbox}</span>
+          <strong>${segment === 'actives' ? 'Aucune demande en attente : tout est traité.' : 'Rien dans cette vue.'}</strong>
+          <p>${segment === 'actives' ? 'Les nouvelles demandes du formulaire arrivent ici, réponse comprise.' : 'Changez d’onglet pour retrouver les demandes traitées ou archivées.'}</p>
+        </section>`}
   </div>`;
 }
 
-function renderStaffRequestPageCard(item) {
+function renderStaffRequestsSkeleton() {
+  const line = '<span class="req-skel-line"></span>';
+  const card = `<div class="req-skel-item">${line}${line}</div>`;
+  return `<div class="req-board req-board-skeleton" aria-busy="true">
+    <aside class="req-rail"><div class="req-rail-list">${card.repeat(4)}</div></aside>
+    <section class="req-detail"><div class="req-skel-detail">${line}${line}${line}</div></section>
+  </div>`;
+}
+
+function renderStaffRequestRailItem(item, active, index) {
+  const jid = staffClientJs(item.id);
+  const occKey = String(item.occasion || '').toLowerCase();
+  const occ = STAFF_OCCASION_LABELS[occKey] || '';
+  // Le statut est ECRIT dans la meta, pas seulement porte par la pastille : une
+  // demande jamais ouverte et une demande prise en charge vivent dans le meme
+  // onglet, les distinguer par la couleur seule exclut un lecteur sur douze.
+  const statusWord = item.status === 'new' ? 'Nouvelle' : item.status === 'in_progress' ? 'En cours' : '';
+  const meta = [statusWord, occ, Number(item.pax) > 0 ? `${Number(item.pax)} pers.` : '', item.requestedDate ? String(item.requestedDate) : '']
+    .filter(Boolean).join(' · ');
+  const snippet = String(item.message || '').replace(/\s+/g, ' ').trim();
+  return `<button type="button" class="req-item req-item-${escapeHtml(item.status)} ${active ? 'is-active' : ''}"
+      style="--i:${Math.min(index, 9)}" data-item-id="${escapeHtml(String(item.id))}"
+      aria-current="${active ? 'true' : 'false'}" onclick="selectStaffRequest(${jid})">
+    <span class="req-avatar" aria-hidden="true">${escapeHtml(staffRequestInitials(item.contactName))}</span>
+    <span class="req-item-main">
+      <span class="req-item-top">
+        <span class="req-item-dot" aria-hidden="true"></span>
+        <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
+        <time datetime="${escapeHtml(String(item.createdAt || ''))}">${escapeHtml(staffRequestMoment(item.createdAt))}</time>
+      </span>
+      ${meta ? `<span class="req-item-meta">${escapeHtml(meta)}</span>` : ''}
+      ${snippet ? `<span class="req-item-snip">${escapeHtml(snippet)}</span>` : ''}
+    </span>
+  </button>`;
+}
+
+function renderStaffRequestDetail(item, animate) {
   const jid = staffClientJs(item.id);
   const occKey = String(item.occasion || '').toLowerCase();
   const occ = STAFF_OCCASION_LABELS[occKey] || '';
   const reply = staffRequestReplyState[String(item.id)] || {};
-  const created = item.createdAt ? new Date(item.createdAt).toLocaleDateString('fr-BE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const fact = (label, value, extra = '') => value
+    ? `<div class="req-fact ${extra}"><dt>${escapeHtml(label)}</dt><dd>${value}</dd></div>` : '';
   const facts = [
-    item.requestedDate ? `<span class="req-fact"><strong>Souhait</strong>${escapeHtml(item.requestedDate)}</span>` : '',
-    Number(item.pax) > 0 ? `<span class="req-fact"><strong>Groupe</strong>${Number(item.pax)} pers.</span>` : '',
-    item.company ? `<span class="req-fact"><strong>Société</strong>${escapeHtml(item.company)}</span>` : '',
-    item.phone ? `<span class="req-fact"><strong>Tél.</strong><a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a></span>` : '',
-    item.email ? `<span class="req-fact"><strong>Email</strong><a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a></span>` : '',
+    fact('Souhait', item.requestedDate ? escapeHtml(String(item.requestedDate)) : ''),
+    fact('Groupe', Number(item.pax) > 0 ? `<span class="req-fact-num">${Number(item.pax)}</span> personnes` : ''),
+    fact('Société', item.company ? escapeHtml(item.company) : ''),
+    fact('Téléphone', item.phone ? `<a href="tel:${escapeHtml(item.phone)}">${escapeHtml(item.phone)}</a>` : ''),
+    fact('Email', item.email ? `<a href="mailto:${escapeHtml(item.email)}">${escapeHtml(item.email)}</a>` : ''),
   ].filter(Boolean).join('');
-  return `<article class="req-card req-status-${escapeHtml(item.status)}" data-request-id="${escapeHtml(String(item.id))}">
-    <div class="req-card-head">
-      <div class="req-card-ident">
-        <strong>${escapeHtml(item.contactName || 'Contact')}</strong>
-        ${occ ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occKey)}">${escapeHtml(occ)}</span>` : ''}
-        ${renderStaffCustomRequestBadge(item.status)}
+
+  return `<section class="req-card req-detail req-status-${escapeHtml(item.status)}" data-request-id="${escapeHtml(String(item.id))}" ${animate ? 'data-anim="1"' : ''}>
+    <div class="req-detail-head">
+      <span class="req-avatar req-avatar-lg" aria-hidden="true">${escapeHtml(staffRequestInitials(item.contactName))}</span>
+      <div class="req-detail-ident">
+        <h3>${escapeHtml(item.contactName || 'Contact')}</h3>
+        <div class="req-detail-tags">
+          ${renderStaffCustomRequestBadge(item.status)}
+          ${occ ? `<span class="res-occasion-tag res-occasion-${escapeHtml(occKey)}">${escapeHtml(occ)}</span>` : ''}
+          ${item.createdAt ? `<span class="req-detail-when" title="${escapeHtml(staffRequestFullMoment(item.createdAt))}">reçue ${escapeHtml(staffRequestMoment(item.createdAt))}</span>` : ''}
+        </div>
       </div>
-      ${created ? `<span class="req-card-when">${escapeHtml(created)}</span>` : ''}
+      <div class="req-detail-quick">
+        ${item.phone ? `<a class="req-icon-link" href="tel:${escapeHtml(item.phone)}" title="Appeler ${escapeHtml(item.contactName || '')}" aria-label="Appeler">${STAFF_REQUEST_ICONS.phone}</a>` : ''}
+        ${item.email ? `<a class="req-icon-link" href="mailto:${escapeHtml(item.email)}" title="Ouvrir dans le client mail" aria-label="Ouvrir dans le client mail">${STAFF_REQUEST_ICONS.mail}</a>` : ''}
+      </div>
     </div>
-    ${facts ? `<div class="req-facts">${facts}</div>` : ''}
-    <p class="req-message">${escapeHtml(item.message || 'Sans message.')}</p>
+
+    ${facts ? `<dl class="req-facts">${facts}</dl>` : ''}
+
+    <div class="req-brief">
+      <span class="req-brief-label">Sa demande</span>
+      <p class="req-message">${escapeHtml(item.message || 'Sans message.')}</p>
+    </div>
+
     <div class="req-actions">
-      ${item.email ? `<button type="button" class="primary" onclick="toggleStaffRequestReply(${jid})">${reply.open ? 'Fermer la réponse' : 'Répondre par email'}</button>` : ''}
+      ${item.email ? `<button type="button" class="${reply.open ? '' : 'primary'}" onclick="toggleStaffRequestReply(${jid})">${reply.open ? 'Fermer la réponse' : 'Répondre par email'}</button>` : ''}
       ${item.status === 'new' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Prendre en charge</button>` : ''}
       ${item.status !== 'handled' && item.status !== 'archived' ? `<button type="button" onclick="setStaffCustomRequestStatus(${jid}, 'handled')">Marquer traitée</button>` : ''}
       <button type="button" onclick="staffRequestToBooking(${jid})">Créer la réservation</button>
-      ${item.status !== 'archived' ? `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>` : `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Réactiver</button>`}
+      ${item.status !== 'archived'
+        ? `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'archived')">Archiver</button>`
+        : `<button type="button" class="ghost" onclick="setStaffCustomRequestStatus(${jid}, 'in_progress')">Réactiver</button>`}
     </div>
+
     ${reply.open ? renderStaffRequestReplyComposer(item, reply) : ''}
     ${renderStaffRequestThread(item)}
-  </article>`;
+  </section>`;
 }
 
 // Le composeur DANS la carte : objet + message prerempli, envoi par le meme
@@ -13599,19 +13977,28 @@ function renderStaffRequestPageCard(item) {
 // page : c etait exactement le reproche.
 function renderStaffRequestReplyComposer(item, reply) {
   const jid = staffClientJs(item.id);
+  const sid = escapeHtml(String(item.id));
   const presets = STAFF_REQUEST_PRESETS.map((preset) =>
     `<button type="button" class="req-preset" onclick="applyStaffRequestPreset(${jid}, '${preset.id}')">${escapeHtml(preset.label)}</button>`).join('');
-  return `<div class="req-composer">
+  // Fenetre courte volontairement : le composeur reste a l ecran pendant qu on
+  // applique un modele, qu on lance l IA, qu on recharge le fil. Sans elle, il
+  // rejouerait son entree a chacun de ces repaints, sous les doigts du lecteur.
+  const justOpened = Number(reply.openedAt) > 0 && (Date.now() - Number(reply.openedAt)) < 250;
+  return `<div class="req-composer" ${justOpened ? 'data-anim="1"' : ''}>
+    <div class="req-composer-head">
+      <strong>Répondre à ${escapeHtml(item.contactName || 'ce contact')}</strong>
+      <span class="req-composer-to">${escapeHtml(item.email || '')}</span>
+    </div>
     <div class="req-presets">
       <span class="req-presets-label">Modèles</span>
       ${presets}
     </div>
-    <label class="lbl" for="reqSubject-${escapeHtml(String(item.id))}">Objet</label>
-    <input id="reqSubject-${escapeHtml(String(item.id))}" class="input" value="${escapeHtml(reply.subject || '')}" oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
-    <label class="lbl" for="reqBody-${escapeHtml(String(item.id))}">Message</label>
-    <textarea id="reqBody-${escapeHtml(String(item.id))}" class="input" rows="7" oninput="staffRequestReplyDraft(${jid}, 'body', this.value)">${escapeHtml(reply.body || '')}</textarea>
+    <label class="lbl" for="reqSubject-${sid}">Objet</label>
+    <input id="reqSubject-${sid}" class="input" value="${escapeHtml(reply.subject || '')}" oninput="staffRequestReplyDraft(${jid}, 'subject', this.value)" />
+    <label class="lbl" for="reqBody-${sid}">Message</label>
+    <textarea id="reqBody-${sid}" class="input" rows="9" oninput="staffRequestReplyDraft(${jid}, 'body', this.value)" onkeydown="staffRequestComposerKey(event, ${jid})">${escapeHtml(reply.body || '')}</textarea>
     <div class="req-composer-actions">
-      <span class="req-composer-to">À : ${escapeHtml(item.email || '')}</span>
+      <span class="req-composer-hint">Ctrl + Entrée pour envoyer</span>
       ${reply.previous ? `<button type="button" class="req-revert" onclick="revertStaffRequestDraft(${jid})">Revenir à ma version</button>` : ''}
       <button type="button" class="req-ai" ${reply.improving || reply.busy ? 'disabled' : ''} onclick="improveStaffRequestDraft(${jid})">${reply.improving ? 'Amélioration…' : 'Améliorer avec l IA'}</button>
       <button type="button" class="primary" ${reply.busy || reply.improving ? 'disabled' : ''} onclick="staffRequestSendReply(${jid})">${reply.busy ? 'Envoi…' : 'Envoyer la réponse'}</button>
@@ -13620,8 +14007,12 @@ function renderStaffRequestReplyComposer(item, reply) {
   </div>`;
 }
 
-// Page « Demandes sur mesure » : le fil de discussion, les modeles de reponse
-// et l'amelioration IA. Insere juste avant `function toggleStaffRequestReply`.
+function staffRequestComposerKey(event, id) {
+  if (!event || event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+  event.preventDefault();
+  staffRequestSendReply(id);
+}
+window.staffRequestComposerKey = staffRequestComposerKey;
 
 // LE FIL DE DISCUSSION D'UNE DEMANDE (2026-08-19, Movsar : « on peut voir
 // direct sur cette page si ya eu des mails envoye des mails recu, tout gerer
@@ -13647,58 +14038,142 @@ async function loadStaffRequestThread(id, force = false) {
   renderStaffUtilityPage();
 }
 
-// Les mails de CE contact, envoyes et recus, dans l'ordre du temps.
+// Le fil de la demande OUVERTE se charge tout seul. Il fallait cliquer « Voir
+// les mails echanges » sur chaque carte : l historique existait mais personne
+// ne le voyait sans le demander.
+function ensureStaffRequestThread() {
+  const item = getStaffRequestSelectedItem();
+  if (!item || !item.email) return;
+  if (staffRequestThreads[String(item.id)]) return;
+  loadStaffRequestThread(item.id);
+}
+
+function toggleStaffRequestMessage(messageId) {
+  const key = String(messageId);
+  if (staffRequestOpenMessages[key]) delete staffRequestOpenMessages[key];
+  else staffRequestOpenMessages[key] = Date.now();
+  renderStaffUtilityPage();
+}
+window.toggleStaffRequestMessage = toggleStaffRequestMessage;
+
+function setStaffRequestMessageView(messageId, view) {
+  staffRequestMessageView[String(messageId)] = view === 'rendu' ? 'rendu' : 'texte';
+  staffRequestOpenMessages[String(messageId)] = staffRequestOpenMessages[String(messageId)] || Date.now();
+  renderStaffUtilityPage();
+}
+window.setStaffRequestMessageView = setStaffRequestMessageView;
+
+const STAFF_MAIL_STATUS = {
+  sent: ['envoyé', 'ok'],
+  delivered: ['remis', 'ok'],
+  queued: ['en file', 'wait'],
+  draft: ['brouillon', 'wait'],
+  processing: ['en cours', 'wait'],
+  failed: ['échec', 'bad'],
+  cancelled: ['annulé', 'bad'],
+};
+
+// Les mails de CE contact, envoyes et recus, groupes par jour.
 function renderStaffRequestThread(item) {
   const key = String(item.id);
   const jid = staffClientJs(item.id);
-  if (!item.email) return '';
-  const thread = staffRequestThreads[key];
-  if (!thread) {
-    return `<div class="req-thread req-thread-idle">
-      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid})">Voir les mails échangés avec ce contact</button>
-    </div>`;
+  if (!item.email) {
+    return `<div class="req-thread req-thread-idle"><span>Cette demande n’a pas d’adresse email : rien à échanger ici.</span></div>`;
   }
-  if (thread.loading) return '<div class="req-thread req-thread-idle"><span>Chargement des mails…</span></div>';
+  const thread = staffRequestThreads[key];
+  if (!thread || thread.loading) {
+    return `<div class="req-thread req-thread-idle"><span class="req-thread-spin" aria-hidden="true"></span><span>Chargement des mails…</span></div>`;
+  }
   if (thread.error) {
     return `<div class="req-thread req-thread-idle"><span>${escapeHtml(thread.error)}</span>
       <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Réessayer</button></div>`;
   }
-  const messages = thread.messages || [];
-  if (!messages.length) {
-    return `<div class="req-thread req-thread-idle"><span>Aucun mail échangé avec ce contact pour l instant.</span>
-      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button></div>`;
-  }
+  const messages = (thread.messages || []).slice().sort((a, b) =>
+    String(a.sentAt || a.createdAt || '').localeCompare(String(b.sentAt || b.createdAt || '')));
   const sent = messages.filter(message => (message.direction || 'outbound') !== 'inbound').length;
   const received = messages.length - sent;
-  const rows = messages.slice(0, 12).map((message) => {
-    const inbound = (message.direction || 'outbound') === 'inbound';
-    const when = message.sentAt || message.createdAt || message.scheduledAt || '';
-    let stamp = '';
-    try {
-      stamp = when ? new Date(when).toLocaleString('fr-BE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-    } catch (error) { stamp = ''; }
-    // Le statut se DIT : un mail en file n'est pas un mail parti, et laisser
-    // croire l'inverse est la faute qui coute un client.
-    const status = inbound ? 'reçu' : (message.status === 'sent' ? 'envoyé' : message.status === 'failed' ? 'échec' : message.status === 'queued' ? 'en file' : String(message.status || ''));
-    return `<article class="req-msg ${inbound ? 'is-in' : 'is-out'} ${message.status === 'failed' ? 'is-failed' : ''}">
-      <div class="req-msg-head">
-        <strong>${inbound ? 'Reçu' : 'Envoyé'}</strong>
-        <span class="req-msg-subject">${escapeHtml(message.subject || '(sans objet)')}</span>
-        <span class="req-msg-meta">${escapeHtml(status)}${stamp ? ` · ${escapeHtml(stamp)}` : ''}</span>
-      </div>
-      ${message.body ? `<p class="req-msg-body">${escapeHtml(String(message.body).slice(0, 400))}</p>` : ''}
-      ${message.lastError ? `<p class="req-msg-error">${escapeHtml(message.lastError)}</p>` : ''}
-    </article>`;
-  }).join('');
-  return `<div class="req-thread">
-    <div class="req-thread-head">
-      <strong>Mails avec ce contact</strong>
-      <span>${sent} envoyé${sent > 1 ? 's' : ''} · ${received} reçu${received > 1 ? 's' : ''}</span>
-      <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button>
-    </div>
-    ${rows}
-    ${messages.length > 12 ? `<span class="req-thread-more">${messages.length - 12} message(s) plus ancien(s) non affiché(s)</span>` : ''}
+
+  const head = `<div class="req-thread-head">
+    <strong>Mails avec ce contact</strong>
+    <span class="req-thread-count">${messages.length ? `${sent} envoyé${sent > 1 ? 's' : ''} · ${received} reçu${received > 1 ? 's' : ''}` : 'aucun échange'}</span>
+    <button type="button" class="req-thread-load" onclick="loadStaffRequestThread(${jid}, true)">Rafraîchir</button>
   </div>`;
+
+  if (!messages.length) {
+    return `<div class="req-thread">${head}
+      <p class="req-thread-void">Aucun mail échangé avec ce contact pour l’instant. La réponse envoyée depuis cette page apparaîtra ici.</p>
+    </div>`;
+  }
+
+  // Les plus recents en bas, comme une conversation. Au-dela de 12 messages on
+  // ne garde que les 12 derniers et on le DIT.
+  const shown = messages.slice(-12);
+  const hidden = messages.length - shown.length;
+  let lastDay = '';
+  const rows = shown.map((message) => {
+    const when = message.sentAt || message.createdAt || message.scheduledAt || '';
+    const day = staffRequestDayLabel(when);
+    const separator = day !== lastDay ? `<div class="req-day"><span>${escapeHtml(day)}</span></div>` : '';
+    lastDay = day;
+    return separator + renderStaffRequestMessage(message, when);
+  }).join('');
+
+  return `<div class="req-thread">
+    ${head}
+    ${hidden > 0 ? `<span class="req-thread-more">${hidden} message${hidden > 1 ? 's' : ''} plus ancien${hidden > 1 ? 's' : ''} non affiché${hidden > 1 ? 's' : ''}</span>` : ''}
+    <div class="req-thread-list">${rows}</div>
+  </div>`;
+}
+
+function renderStaffRequestMessage(message, when) {
+  const inbound = (message.direction || 'outbound') === 'inbound';
+  const mid = String(message.id || `${message.recipient || ''}-${when}`);
+  const jmid = staffClientJs(mid);
+  const open = Boolean(staffRequestOpenMessages[mid]);
+  const view = staffRequestMessageView[mid] === 'rendu' ? 'rendu' : 'texte';
+  let clock = '';
+  try { clock = when ? new Date(when).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }) : ''; } catch (error) { clock = ''; }
+
+  // Le statut se DIT : un mail en file n'est pas un mail parti, et laisser
+  // croire l'inverse est la faute qui coute un client.
+  const raw = String(message.status || '');
+  const known = STAFF_MAIL_STATUS[raw];
+  const status = inbound ? ['reçu', 'in'] : (known || [raw || 'inconnu', 'wait']);
+  const text = staffMailPlainText(message);
+  const html = staffMailHtmlSource(message);
+  const snippet = staffMailSnippet(message);
+
+  return `<article class="req-msg ${inbound ? 'is-in' : 'is-out'} ${raw === 'failed' ? 'is-failed' : ''} ${open ? 'is-open' : ''}" data-msg-id="${escapeHtml(mid)}">
+    <button type="button" class="req-msg-row" aria-expanded="${open ? 'true' : 'false'}" onclick="toggleStaffRequestMessage(${jmid})">
+      <span class="req-msg-dir" aria-hidden="true">${inbound ? STAFF_REQUEST_ICONS.in : STAFF_REQUEST_ICONS.out}</span>
+      <span class="req-msg-main">
+        <span class="req-msg-line">
+          <span class="req-msg-sr">${inbound ? 'Reçu' : 'Envoyé'}</span>
+          <span class="req-msg-subject">${escapeHtml(message.subject || '(sans objet)')}</span>
+          <span class="req-msg-status s-${escapeHtml(status[1])}">${escapeHtml(status[0])}</span>
+        </span>
+        <span class="req-msg-preview">${escapeHtml(snippet || 'Message vide.')}</span>
+      </span>
+      <span class="req-msg-side">
+        <time datetime="${escapeHtml(String(when || ''))}" title="${escapeHtml(staffRequestFullMoment(when))}">${escapeHtml(clock)}</time>
+        <span class="req-msg-chevron" aria-hidden="true">${STAFF_REQUEST_ICONS.chevron}</span>
+      </span>
+    </button>
+    <div class="req-msg-panel">
+      <div class="req-msg-panel-clip">
+        <div class="req-msg-panel-in">
+          ${html ? `<div class="req-msg-views" role="group" aria-label="Affichage du mail">
+            <button type="button" class="req-msg-view ${view === 'texte' ? 'active' : ''}" onclick="setStaffRequestMessageView(${jmid}, 'texte')">Texte</button>
+            <button type="button" class="req-msg-view ${view === 'rendu' ? 'active' : ''}" onclick="setStaffRequestMessageView(${jmid}, 'rendu')">Mail reçu</button>
+          </div>` : ''}
+          ${open && html && view === 'rendu'
+            ? `<iframe class="req-msg-frame" sandbox="" loading="lazy" title="Aperçu du mail tel qu’il a été envoyé" srcdoc="${escapeHtml(html)}"></iframe>`
+            : `<p class="req-msg-body">${escapeHtml(text || 'Message vide.')}</p>`}
+          ${message.lastError ? `<p class="req-msg-error">${escapeHtml(message.lastError)}</p>` : ''}
+        </div>
+      </div>
+    </div>
+  </article>`;
 }
 
 // MODELES DE REPONSE. Ce sont des DEPARTS de message, pas des promesses : ils
@@ -13752,6 +14227,7 @@ function applyStaffRequestPreset(id, presetId) {
   staffRequestReplyState[key] = {
     ...current,
     open: true,
+    openedAt: current && current.open ? current.openedAt : Date.now(),
     subject: preset.subject(ctx),
     body: preset.body(ctx),
   };
@@ -13836,6 +14312,9 @@ function toggleStaffRequestReply(id) {
     staffRequestReplyState[key] = {
       open: true,
       busy: false,
+      // Horodatage de l ouverture : c est lui, et lui seul, qui autorise
+      // l animation d entree du composeur (voir renderStaffRequestReplyComposer).
+      openedAt: Date.now(),
       subject: (current && current.subject) || `Votre demande${occ ? ` ${occ.toLowerCase()}` : ''} chez ${centreName}`,
       body: (current && current.body) || `Bonjour ${firstName || ''},\n\nMerci pour votre demande${Number(item.pax) > 0 ? ` pour ${item.pax} personnes` : ''}${item.requestedDate ? ` (${item.requestedDate})` : ''}.\n\n\n\nÀ très vite,\n${centreName}`,
     };

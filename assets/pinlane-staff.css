@@ -4158,151 +4158,680 @@ body.staff-mode.laser-dragging * { user-select: none; }
   justify-content: flex-start;
 }
 
-/* ── PAGE DEMANDES SUR MESURE (2026-08-18) : tout se gere sur place. ────── */
-.req-board { display: grid; gap: var(--space-3); }
-.req-segments { display: flex; gap: 6px; flex-wrap: wrap; }
-.req-seg {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-.req-seg em { font-style: normal; font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--faint); }
-.req-seg:hover { background: var(--subtle); color: var(--text); }
-.req-seg.active { background: var(--text); border-color: var(--text); color: var(--surface); }
-.req-seg.active em { color: var(--surface); opacity: 0.75; }
-.req-list { display: grid; gap: var(--space-3); }
-.req-empty { padding: var(--space-5); text-align: center; color: var(--faint); font-size: 13.5px; }
-.req-retry { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
-.req-card {
+/* ══════════════════════════════════════════════════════════════════════════
+   PAGE « DEMANDES SUR MESURE » : UNE BOITE DE RECEPTION (refonte 2026-08-20).
+   Movsar, capture a l appui : « c est super moche comment sont affiches les
+   mails, tout est moche et mal designe et mal anime sur cette categorie ».
+   Ce qui change ici, et pourquoi :
+   - La file a gauche, la demande ouverte a droite. L ancienne pile de cartes
+     pleine largeur empilait le fil de mails de CHAQUE demande : trois demandes
+     et la page devenait un rouleau de plusieurs ecrans.
+   - Un mail est une LIGNE repliee (objet, statut, heure, premiere ligne). On
+     deplie ce qu on veut lire. L ancien rendu posait le gabarit HTML complet
+     dans un paragraphe, doctype compris.
+   - Les entrees ne jouent qu au changement de vue (attribut data-anim pose par
+     le rendu). La page se repeint a chaque reponse reseau : sans ce garde-fou,
+     toute animation se rejouait sous les yeux du lecteur.
+   Aucune couleur en dur, tout passe par les jetons (DESIGN.md §3).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.req-board {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  background: var(--surface);
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.req-board-flat { grid-template-columns: minmax(0, 1fr); }
+
+/* ── La file ─────────────────────────────────────────────────────────────── */
+.req-rail {
+  position: sticky;
+  top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: calc(100vh - 200px);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
 }
-.req-card.req-status-new { border-left: 3px solid var(--accent); }
-.req-card.req-status-in_progress { border-left: 3px solid var(--warning); }
-.req-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
-.req-card-ident { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.req-card-ident strong { font-size: 15.5px; }
-.req-card-when { color: var(--faint); font-size: 12px; font-family: var(--font-data); }
-.req-facts { display: flex; gap: var(--space-3); flex-wrap: wrap; }
-.req-fact { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--text-2); }
-.req-fact strong { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); }
-.req-fact a { color: var(--accent); text-decoration: none; }
-.req-fact a:hover { text-decoration: underline; }
-.req-message { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--text); white-space: pre-wrap; }
-.req-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.req-actions button {
-  min-height: 36px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border);
+.req-rail-head {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Controle segmente : les trois etats de la file tiennent dans une piste, le
+   compte est colle a l onglet qu il decrit. */
+.req-segments {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+}
+.req-seg {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.req-seg em {
+  font-style: normal;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.req-seg:hover { color: var(--text); }
+.req-seg.active {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+  color: var(--text);
+  font-weight: 600;
+}
+.req-seg.active em { color: var(--muted); }
+
+.req-search { position: relative; display: flex; align-items: center; }
+.req-search-icon {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  color: var(--faint);
+  pointer-events: none;
+}
+/* Selecteur a DEUX classes volontairement : la regle de base de pinlane.css
+   cible `input[type='search']` (0,1,1) et battrait une classe seule, donc le
+   champ reprendrait 40px de haut et perdrait la place de sa loupe. */
+.req-search .req-search-field {
+  width: 100%;
+  height: 34px;
+  padding: 0 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.req-search .req-search-field::placeholder { color: var(--faint); }
+.req-search .req-search-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.req-search .req-search-field::-webkit-search-cancel-button { display: none; }
+.req-search-clear {
+  position: absolute;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--faint);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.req-search-clear:hover { background: var(--subtle); color: var(--text); }
+
+.req-rail-list {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.req-rail-empty { margin: 0; padding: var(--space-4); color: var(--faint); font-size: 13px; text-align: center; }
+
+.req-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding: 10px 10px 10px 12px;
+  border: 0;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  text-align: left;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--dur-fast) var(--ease);
 }
-.req-actions button:hover { background: var(--subtle); border-color: var(--line-strong); }
-.req-actions button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
-.req-actions button.primary:hover { opacity: 0.9; }
-.req-actions button.ghost { color: var(--faint); border-color: transparent; }
-/* ===== DEMANDES SUR MESURE : fil de discussion, modeles, IA (2026-08-19) =====
-   Movsar : « on peut voir direct sur cette page si ya eu des mails envoye des
-   mails recu, tout gerer ici, ya deja des preset et aussi un bouton ia ».
-   Le fil se lit d'un coup d'oeil : ce qui SORT est aligne a gauche en surface
-   neutre, ce qui ENTRE porte la barre d'accent. Un echec d'envoi se voit. */
-.req-thread { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.req-thread-idle {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  font-size: 12.5px; color: var(--muted);
+.req-item::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease);
 }
-.req-thread-load {
-  height: 30px; padding: 0 12px; border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
-  font-size: 12.5px; font-weight: 500; cursor: pointer;
+.req-item:hover { background: var(--subtle); }
+.req-item.is-active { background: var(--subtle); }
+.req-item.is-active::before { background: var(--accent); }
+.req-item-main { display: grid; gap: 3px; min-width: 0; }
+.req-item-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.req-item-top strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.req-thread-load:hover { background: var(--subtle); }
-.req-thread-head {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  font-size: 12.5px; color: var(--muted); padding-top: 4px;
+.req-item-top time {
+  flex: 0 0 auto;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.req-item-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--line-strong);
+}
+.req-item-new .req-item-dot { background: var(--accent); }
+.req-item-in_progress .req-item-dot { background: var(--warning); }
+.req-item-handled .req-item-dot { background: var(--success); }
+.req-item-meta, .req-item-snip {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.req-item-meta { font-size: 12px; color: var(--text-2); }
+.req-item-new .req-item-meta { color: var(--accent); }
+.req-item-snip { font-size: 12px; color: var(--faint); }
+
+.req-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 600;
+}
+.req-item.is-active .req-avatar { background: var(--surface); box-shadow: 0 0 0 1px var(--line-strong); color: var(--text); }
+.req-avatar-lg { width: 44px; height: 44px; font-size: 15px; }
+.req-status-new .req-avatar-lg { background: var(--accent-soft); color: var(--accent); }
+
+/* ── La demande ouverte ──────────────────────────────────────────────────── */
+.req-detail {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.req-detail-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+}
+.req-detail-ident { min-width: 0; }
+.req-detail-ident h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.req-detail-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
+.req-detail-when { font-family: var(--font-data); font-size: 12px; color: var(--faint); }
+.req-detail-quick { display: flex; gap: 6px; }
+.req-icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.req-icon-link:hover { color: var(--accent); border-color: var(--accent); }
+
+.req-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+}
+.req-fact { display: grid; gap: 2px; min-width: 0; }
+.req-fact dt { font-size: 12px; font-weight: 500; color: var(--muted); }
+.req-fact dd { margin: 0; font-size: 14px; color: var(--text); overflow-wrap: anywhere; }
+.req-fact-num { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 600; }
+.req-fact a { color: var(--accent); text-decoration: none; }
+.req-fact a:hover { text-decoration: underline; }
+
+.req-brief { display: grid; gap: 6px; }
+.req-brief-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.req-message {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line-strong);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.req-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.req-actions button {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.req-actions button:hover { background: var(--subtle); }
+.req-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.req-actions button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.req-actions button.ghost { margin-left: auto; border-color: transparent; color: var(--faint); }
+.req-actions button.ghost:hover { color: var(--text); }
+
+/* ── Etats vides et chargement ───────────────────────────────────────────── */
+.req-detail-empty {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  align-content: center;
+  min-height: 320px;
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+}
+.req-detail-empty strong { font-size: 14px; font-weight: 500; }
+.req-detail-empty p { margin: 0; max-width: 42ch; font-size: 13px; color: var(--muted); }
+.req-empty { display: grid; gap: 8px; justify-items: center; padding: var(--space-5); text-align: center; color: var(--muted); font-size: 13.5px; }
+.req-empty strong { font-size: 14px; font-weight: 500; color: var(--text); }
+.req-empty p { margin: 0; font-size: 13px; }
+.req-empty-icon { display: flex; color: var(--faint); }
+.req-retry {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.req-retry:hover { background: var(--subtle); }
+
+.req-skel-item { display: grid; gap: 8px; padding: 12px; }
+.req-skel-detail { display: grid; gap: 12px; padding: var(--space-5); }
+.req-skel-line {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+  animation: reqPulse 1.2s var(--ease) infinite;
+}
+.req-skel-item .req-skel-line:last-child { width: 60%; }
+.req-board-skeleton .req-detail { min-height: 280px; }
+@keyframes reqPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* ── Le fil de mails ─────────────────────────────────────────────────────── */
+.req-thread {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--line);
 }
-.req-thread-head strong { color: var(--text); font-size: 13px; }
-.req-thread-head .req-thread-load { margin-left: auto; }
-.req-msg {
-  border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--surface); padding: 8px 12px;
+.req-thread-idle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
 }
-.req-msg.is-in { border-left: 3px solid var(--accent); background: var(--accent-soft); }
-.req-msg.is-failed { border-left: 3px solid var(--danger); }
-.req-msg-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.req-msg-head strong { font-size: 12px; font-weight: 600; }
-.req-msg-subject { font-size: 12.5px; color: var(--text); flex: 1 1 auto; min-width: 0; }
-.req-msg-meta { font-size: 11.5px; color: var(--muted); font-family: var(--font-data); }
-.req-msg-body { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
-.req-msg-error { margin: 4px 0 0; font-size: 11.5px; color: var(--danger); }
+.req-thread-spin {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--line-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
+  animation: reqSpin 700ms linear infinite;
+}
+@keyframes reqSpin { to { transform: rotate(360deg); } }
+.req-thread-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.req-thread-head strong { font-size: 13px; color: var(--text); }
+.req-thread-count { font-size: 12px; color: var(--muted); font-family: var(--font-data); }
+.req-thread-load {
+  margin-left: auto;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.req-thread-load:hover { background: var(--subtle); }
+.req-thread-void { margin: 0; font-size: 12.5px; color: var(--faint); }
 .req-thread-more { font-size: 11.5px; color: var(--faint); }
+.req-thread-list { display: grid; gap: 4px; }
+
+.req-day { display: flex; align-items: center; gap: 10px; margin: var(--space-2) 0 2px; color: var(--faint); font-size: 12px; }
+.req-day::before, .req-day::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--line); }
+
+.req-msg {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.req-msg:hover { border-color: var(--line-strong); }
+.req-msg.is-open { border-color: var(--line-strong); background: var(--raised); }
+.req-msg.is-in { border-left: 2px solid var(--accent); }
+.req-msg.is-failed { border-left: 2px solid var(--danger); }
+.req-msg-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.req-msg-dir { display: flex; color: var(--faint); }
+.req-msg.is-in .req-msg-dir { color: var(--accent); }
+.req-msg-main { display: grid; gap: 2px; min-width: 0; }
+.req-msg-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.req-msg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.req-msg-subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.req-msg-status {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+}
+.req-msg-status.s-ok { background: var(--success-soft); color: var(--success); }
+.req-msg-status.s-wait { background: var(--warning-soft); color: var(--warning); }
+.req-msg-status.s-bad { background: var(--danger-soft); color: var(--danger); }
+.req-msg-status.s-in { background: var(--accent-soft); color: var(--accent); }
+.req-msg-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.req-msg-side { display: flex; align-items: center; gap: 8px; color: var(--faint); }
+.req-msg-side time { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; }
+.req-msg-chevron { display: flex; transition: transform var(--dur-move) var(--ease); }
+.req-msg.is-open .req-msg-chevron { transform: rotate(180deg); }
+
+/* Le depliage anime la HAUTEUR REELLE sans la coder en dur : grid-template-rows
+   0fr -> 1fr mesure le contenu tout seul. Un max-height devine, et devine faux
+   des qu un mail est plus long que prevu. */
+.req-msg-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-move) var(--ease-out-strong);
+}
+.req-msg.is-open .req-msg-panel { grid-template-rows: 1fr; }
+.req-msg-panel-clip {
+  min-height: 0;
+  overflow: hidden;
+  /* Un contenu replie est masque POUR DE VRAI : sans `visibility`, il reste
+     lisible par un lecteur d ecran et atteignable au clavier alors que rien ne
+     se voit. Le masquage attend la fin du repli, sinon le texte disparait d un
+     coup pendant que la hauteur descend encore. */
+  visibility: hidden;
+  transition: visibility 0s linear var(--dur-move);
+}
+.req-msg.is-open .req-msg-panel-clip { visibility: visible; transition: visibility 0s linear 0s; }
+.req-msg-panel-in { padding: 2px 12px 12px 40px; }
+.req-msg-views {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  background: var(--subtle);
+}
+.req-msg-view {
+  min-height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.req-msg-view.active { background: var(--surface); box-shadow: 0 0 0 1px var(--line); color: var(--text); }
+.req-msg-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Le mail tel qu il est parti, dans un cadre ISOLE (sandbox vide : ni script,
+   ni acces a la page). C est la seule facon de verifier ce que le client a
+   recu sans laisser le gabarit deteindre sur la console. */
+.req-msg-frame {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--subtle);
+  color-scheme: light;
+}
+.req-msg-error { margin: 6px 0 0; font-size: 12px; color: var(--danger); }
+
+/* ── Le composeur ────────────────────────────────────────────────────────── */
+.req-composer {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--raised, var(--subtle));
+}
+.req-composer-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.req-composer-head strong { font-size: 13.5px; }
+.req-composer-to { font-family: var(--font-data); font-size: 12px; color: var(--faint); }
+.req-composer textarea.input { min-height: 200px; resize: vertical; line-height: 1.6; }
+.req-composer-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.req-composer-hint { margin-right: auto; font-size: 12px; color: var(--faint); }
+.req-composer-actions button.primary {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.req-composer-actions button.primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.req-composer-actions button.primary:disabled { opacity: 0.6; cursor: default; }
 
 /* Modeles de reponse : des DEPARTS de message, pas des promesses. */
-.req-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.req-presets-label { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.req-presets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.req-presets-label { font-size: 12px; color: var(--muted); font-weight: 500; }
 .req-preset {
-  height: 30px; padding: 0 12px; border: 1px solid var(--line-strong);
-  border-radius: var(--radius-full); background: var(--surface); color: var(--text);
-  font-size: 12.5px; cursor: pointer;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .req-preset:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Le bouton IA : present, mais jamais confondu avec l'envoi. */
 .req-ai, .req-revert {
-  height: 34px; padding: 0 14px; border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
-  font-size: 12.5px; font-weight: 500; cursor: pointer;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
 }
 .req-ai:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .req-ai:disabled, .req-revert:disabled { opacity: 0.6; cursor: not-allowed; }
-.req-ai-note { margin: 6px 0 0; font-size: 11.5px; color: var(--faint); }
+.req-ai-note { margin: 0; font-size: 12px; color: var(--faint); }
 
-.req-composer {
-  display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--raised, var(--subtle));
+/* ── Focus visible partout (DESIGN.md §6) ────────────────────────────────── */
+.req-seg:focus-visible,
+.req-item:focus-visible,
+.req-msg-row:focus-visible,
+.req-msg-view:focus-visible,
+.req-preset:focus-visible,
+.req-icon-link:focus-visible,
+.req-thread-load:focus-visible,
+.req-search-clear:focus-visible,
+.req-actions button:focus-visible,
+.req-composer-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
-.req-composer textarea.input { min-height: 130px; resize: vertical; line-height: 1.5; }
-.req-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
-.req-composer-to { color: var(--faint); font-size: 12.5px; }
-.req-composer-actions button.primary {
-  min-height: 40px;
-  padding: 0 var(--space-4);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
+
+/* ── Motion : une entree par changement de vue, jamais par repaint ───────── */
+@keyframes reqRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.req-detail[data-anim="1"] { animation: reqRise var(--dur-enter) var(--ease-out-strong) both; }
+.req-composer[data-anim="1"] { animation: reqRise var(--dur-move) var(--ease-out-strong) both; }
+.req-rail-list[data-anim="1"] .req-item {
+  animation: reqRise var(--dur-move) var(--ease-out-strong) both;
+  animation-delay: calc(var(--i, 0) * 22ms);
 }
-.req-composer-actions button.primary:disabled { opacity: 0.6; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .req-board *,
+  .req-board *::before,
+  .req-board *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Ecrans etroits : la file passe au-dessus, plafonnee ─────────────────── */
+@media (max-width: 1080px) {
+  .req-board { grid-template-columns: minmax(0, 280px) minmax(0, 1fr); }
+}
+@media (max-width: 980px) {
+  .req-board { grid-template-columns: minmax(0, 1fr); }
+  .req-rail { position: static; max-height: none; }
+  .req-rail-list { max-height: 44vh; }
+  .req-detail { padding: var(--space-4); }
+}
+@media (max-width: 600px) {
+  .req-facts { grid-template-columns: minmax(0, 1fr); }
+  .req-detail-head { grid-template-columns: auto minmax(0, 1fr); }
+  .req-detail-quick { grid-column: 1 / -1; }
+  .req-icon-link { width: 44px; height: 44px; }
+  .req-actions button { flex: 1 1 auto; min-height: 44px; }
+  .req-actions button.ghost { margin-left: 0; }
+  .req-msg-preview { display: none; }
+  .req-msg-panel-in { padding-left: 12px; }
+  .req-msg-frame { height: 320px; }
+}
 
 /* Mix d'activites : le total au-dessus, le donut partage (PinlaneCharts)
    en dessous. L'ancien anneau CSS a trois tranches est mort avec lui. */

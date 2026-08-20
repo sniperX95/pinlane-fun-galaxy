@@ -780,9 +780,16 @@ function validateSlotWindow(dateStr, startTime, duration, options = {}) {
 }
 
 function formatScheduleHour(value) {
-  if (Number(value) >= 24) return 'Minuit';
-  const h = Math.floor(Number(value));
-  const m = Math.round((Number(value) - h) * 60);
+  const raw = Number(value);
+  // Minuit PILE se dit « Minuit ». Au-dela, la nuit deborde sur le lendemain
+  // (25 h = 1 h du matin, 26 h = 2 h) : le client doit lire l'heure de sa
+  // montre, pas un nombre d'heures depuis l'ouverture. Sans ce cas, un centre
+  // ouvert jusqu'a 2 h annoncait « Minuit » et se privait de deux heures de
+  // reservations.
+  if (raw === 24) return 'Minuit';
+  const wrapped = raw > 24 ? raw - 24 : raw;
+  const h = Math.floor(wrapped);
+  const m = Math.round((wrapped - h) * 60);
   return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
 }
 function buildScheduleLabel(open, close) {
@@ -1580,6 +1587,7 @@ function getFormulaActivityProgressSummary(reservation) {
     getBowlingPricing,
     getBowlingGameOptions,
     displayTime,
+    buildScheduleLabel,
     getCenterActivity,
     getFreeActivityPrice,
     getCenterScheduleConfig,

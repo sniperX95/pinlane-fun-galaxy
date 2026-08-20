@@ -1739,6 +1739,35 @@ async function main() {
       f1Enabled: Array.from(document.querySelectorAll('#formuleGrid .formule-card')).some(row => row.textContent.includes('FORMULE 1') && !row.classList.contains('disabled')),
       schedHint: document.getElementById('schedHint').textContent,
     }));
+    // LA DATE SE TAPE AU CLAVIER. Un champ `type="date"` emet `change` a chaque
+    // segment : en saisissant l'annee, la valeur vaut un instant « 0002-08-20 ».
+    // L'ancien code y voyait une date passee, criait et remettait le champ a
+    // aujourd'hui, donc il se battait contre la frappe. On rejoue exactement ce
+    // moment et on exige que le champ garde ce qu'on y a mis.
+    const typing = await page.evaluate((valide) => {
+      const champ = document.getElementById('fDate');
+      champ.value = '0002-08-20';
+      champ.dispatchEvent(new Event('change', { bubbles: true }));
+      const apresFrappe = champ.value;
+      champ.value = valide;
+      champ.dispatchEvent(new Event('change', { bubbles: true }));
+      return { apresFrappe, apresValide: champ.value, alerte: (document.getElementById('alertBox') || {}).textContent || '' };
+    }, summerHolidayDate);
+    assert(typing.apresFrappe === '0002-08-20',
+      `Une date incomplete ne doit PAS remettre le champ a aujourd hui (obtenu "${typing.apresFrappe}").`);
+    assert(!/deja passee/i.test(typing.alerte),
+      `Une date incomplete ne doit PAS declencher l alerte "date passee" (obtenu "${typing.alerte.trim()}").`);
+    assert(typing.apresValide === summerHolidayDate,
+      `Une date valide est acceptee telle quelle (obtenu "${typing.apresValide}").`);
+    // On repose la date d ete pour la suite des assertions.
+    await page.evaluate((date) => {
+      state.booking.date = date;
+      document.getElementById('fDate').value = date;
+      updateSchedHint();
+      renderFormules();
+    }, summerHolidayDate);
+    await page.waitForTimeout(250);
+
     assert(!summerState.groupAlert, 'Grandes vacances : pas de blocage des formules anniversaires.');
     assert(summerState.f1Enabled, 'Grandes vacances : FORMULE 1 doit rester réservable.');
     assert(/Vacances d'ete|Ouvert/.test(summerState.schedHint), 'Le hint horaires doit refléter la période.');

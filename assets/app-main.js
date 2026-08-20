@@ -3025,6 +3025,17 @@ function initClient() {
   document.getElementById('fPax').value = state.booking.pax;
   document.getElementById('fDate').addEventListener('change', e => {
     const nextDate = e.target.value;
+    // UNE DATE EN COURS DE FRAPPE N'EST PAS UNE DATE PASSEE.
+    // Un champ `type="date"` emet `change` a chaque segment saisi au clavier :
+    // en tapant l'annee chiffre par chiffre, la valeur vaut un instant
+    // « 0002-08-20 », qui est bien anterieure a aujourd'hui. L'ancien code
+    // criait alors « Cette date est deja passee. Choisissez aujourd'hui » ET
+    // remettait le champ a aujourd'hui, donc il se battait contre la frappe :
+    // impossible de saisir une date a la main. Une valeur incomplete est
+    // desormais IGNOREE, sans message et sans remise a zero. Signale par Movsar
+    // le 2026-08-20, capture a l'appui, sur le tunnel embarque de N4.
+    const complete = /^\d{4}-\d{2}-\d{2}$/.test(nextDate) && Number(nextDate.slice(0, 4)) >= 1000;
+    if (!complete) return;
     if (isPastBusinessDate(nextDate)) {
       state.booking.date = todayStr();
       e.target.value = state.booking.date;

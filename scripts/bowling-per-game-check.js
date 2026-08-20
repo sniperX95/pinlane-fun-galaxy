@@ -249,6 +249,15 @@ function run() {
   ok(browser.displayTime('25:00') === '01:00', 'le client lit 01:00 la ou la donnee dit 25:00');
   ok(browser.displayTime('26:30') === '02:30', 'et 02:30 la ou elle dit 26:30');
   ok(browser.displayTime('23:00') === '23:00', 'une heure normale ne bouge pas');
+  // Le BANDEAU d'horaires a son propre formateur : il disait « Minuit » pour
+  // toute fermeture au-dela de 24 h, donc un centre ouvert jusqu'a 2 h se
+  // privait de deux heures de reservations dans son propre message.
+  ok(browser.buildScheduleLabel(12, 26) === '12h - 2h',
+    `samedi 12h-26h se lit « 12h - 2h » (obtenu « ${browser.buildScheduleLabel(12, 26)} »)`);
+  ok(browser.buildScheduleLabel(15, 25) === '15h - 1h',
+    `vendredi 15h-25h se lit « 15h - 1h » (obtenu « ${browser.buildScheduleLabel(15, 25)} »)`);
+  ok(browser.buildScheduleLabel(10, 24) === '10h - Minuit',
+    `minuit pile se dit toujours « Minuit » (obtenu « ${browser.buildScheduleLabel(10, 24)} »)`);
 
   section('[5] CONTRE-PREUVE : sans le tarif du centre, le prix redevient celui de la grille');
   const withoutPricing = bookingConfig.getBasePrice('bowling', 1, 1, 4, '', GAMES_CENTER,

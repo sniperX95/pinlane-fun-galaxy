@@ -2752,6 +2752,11 @@ async function submitLogin(ev) {
       })
     });
     storeStaffAuthSession(payload.session);
+    // LE CENTRE SUIT LE CODE. Le serveur ouvre la session sur le centre du
+    // code, qui n'est pas forcement le dernier centre consulte : sans cette
+    // ligne, l'ecran resterait sur un centre que la session ne couvre pas et
+    // toutes les lectures suivantes partiraient au mauvais endroit.
+    if (payload.session?.centerId) state.adminCenterId = payload.session.centerId;
     if (payload.accessControl) state.staffAccessControl = payload.accessControl;
     save();
     applyAuthState();

@@ -177,7 +177,9 @@ module.exports = async (req, res) => {
       // connexion passe par le catch et ressort en outcome 'denied' : c'est le
       // signal "quelqu'un essaie des codes", qui n'existait nulle part avant.
       await writeAuditLog({
-        centerId,
+        // Le centre de la SESSION, pas celui que la console affichait : c'est
+        // le code qui decide ou l'on entre, la trace doit dire ou l'on est.
+        centerId: payload.session?.centerId || centerId,
         actorKind: 'staff',
         actorMemberId: payload.session?.member?.id || null,
         actorLabel: payload.session?.member?.name || '',

@@ -306,6 +306,47 @@ async function main() {
       'les arcades, qui n occupent aucune ressource, partent quand meme au serveur : c est tout l objet de la feature');
 
     // =====================================================================
+    // =====================================================================
+    console.log('');
+    console.log('[5b] Le message du groupe ne parle de PISTES que si le bowling est pris');
+    // =====================================================================
+    // Movsar, 2026-08-21, capture de Fun Galaxy Libramont : 7 joueurs, SEULES
+    // les Arcades cochees, et l'ecran annoncait « Maximum conseille : 6
+    // joueurs par piste. Avec 7 joueurs, nous reservons 0 pistes cote a
+    // cote. » Un compte de pistes pour une activite qui n'en occupe aucune,
+    // et un « 0 pistes » absurde par-dessus.
+    // La cause : le message dedie a la visite ne s'appliquait qu'a partir de
+    // DEUX activites cochees ; avec une seule, on retombait sur le texte du
+    // bowling seul. Le garde existait deja pour les formules (son commentaire
+    // dit mot pour mot « evite un absurde 0 pistes cote a cote »), il
+    // manquait au mode a la carte.
+    const messageActiviteLibre = await page.evaluate(async () => {
+      state.booking.pax = 7;
+      state.booking.activities = {};
+      toggleBookingActivity('arcade_time');
+      applyChosenActivitiesToBooking();
+      updatePaxAlert();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return (document.getElementById('paxAlert') || {}).textContent || '';
+    });
+    ok(!/piste/i.test(messageActiviteLibre),
+      `une activite libre seule ne parle JAMAIS de pistes : ${JSON.stringify(messageActiviteLibre.trim())}`);
+    ok(/7 personne|7 joueur/.test(messageActiviteLibre),
+      `le message parle quand meme du groupe : ${JSON.stringify(messageActiviteLibre.trim())}`);
+
+    // Le bowling SEUL garde son compte de pistes : c'est la moitie qu'on ne
+    // doit pas casser en corrigeant l'autre.
+    const messageBowlingSeul = await page.evaluate(async () => {
+      state.booking.activities = {};
+      toggleBookingActivity('bowling');
+      applyChosenActivitiesToBooking();
+      updatePaxAlert();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return (document.getElementById('paxAlert') || {}).textContent || '';
+    });
+    ok(/piste/i.test(messageBowlingSeul) && !/0 piste/i.test(messageBowlingSeul),
+      `le bowling seul annonce toujours ses pistes : ${JSON.stringify(messageBowlingSeul.trim())}`);
+
     console.log('\n[6] Une activite fermee ce jour est desactivee ET decochee');
     // =====================================================================
     await page.evaluate(() => {

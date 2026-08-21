@@ -268,6 +268,34 @@ server.listen(PORT, '127.0.0.1', async () => {
   ok(retiree.eteintes === 0, 'et la liste se rouvre');
 
   // ---------------------------------------------------------------------
+  console.log('');
+  console.log('[4b] VIDER la liste ne la verrouille pas');
+  // ---------------------------------------------------------------------
+  // Movsar, 2026-08-21 : « quand on decoche tous les choix on peut plus
+  // refaire de choix ». Retirer la DERNIERE heure basculait laserPlacement
+  // sur « onsite », ce qui desactivait toutes les pastilles. 'uand la visite
+  // n'a qu'une seule ancre (laser seul), la case « je place sur place »
+  // n'existe meme pas pour revenir en arriere : cul-de-sac complet, plus rien
+  // n'est reservable. Le cas [4] s'arretait a une heure retiree sur trois ;
+  // le bug n'apparait qu'au passage a ZERO.
+  await cliquer('15:00');
+  await cliquer('19:00');
+  const videe = await lireEcran();
+  ok(videe.etat.filter(Boolean).length === 0, `plus aucune heure retenue (${JSON.stringify(videe.etat)})`);
+  ok(videe.eteintes === 0, `et AUCUNE pastille n est eteinte (${videe.eteintes} eteinte(s))`);
+  await cliquer('16:00');
+  const reprise = await lireEcran();
+  ok(reprise.etat.filter(Boolean).join(' ') === '16:00',
+    `on peut re-choisir une heure apres avoir tout vide (${JSON.stringify(reprise.etat)})`);
+  // On remet l'etat que la suite du gate attend.
+  await cliquer('16:00');
+  await cliquer('15:00');
+  await cliquer('19:00');
+  const remise = await lireEcran();
+  ok(remise.etat.filter(Boolean).join(' ') === '15:00 19:00',
+    `etat restaure pour la suite (${JSON.stringify(remise.etat)})`);
+
+  // ---------------------------------------------------------------------
   console.log('\n[5] Le POST de reservation emporte les heures retenues');
   // ---------------------------------------------------------------------
   const poste = await page.evaluate(async () => {

@@ -102,6 +102,8 @@ async function installMock(page, { withSession, breakCatalog = false }) {
       activities: [],
     });
 
+    // Le centre sur lequel la SESSION est ouverte, cote serveur.
+    let loginCenterId = A.id;
     const nf = window.fetch.bind(window);
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : (input && input.url) || '';
@@ -118,10 +120,17 @@ async function installMock(page, { withSession, breakCatalog = false }) {
         const isPost = String((init && init.method) || 'GET').toUpperCase() === 'POST';
         const body = isPost && init.body ? JSON.parse(init.body) : {};
         if (isPost && body.action === 'login') {
-          return J({ ok: true, authenticated: true, session: sessionFor(body.centerId || A.id) });
+          loginCenterId = body.centerId || A.id;
+          return J({ ok: true, authenticated: true, session: sessionFor(loginCenterId) });
         }
-        const wanted = u.searchParams.get('centerId') || A.id;
-        return J({ ok: true, authenticated: true, session: sessionFor(wanted) });
+        // LE DOUBLE OBEIT AU VRAI SERVEUR. api/staff-auth (sendSessionSnapshot)
+        // rend TOUJOURS publicSession(activeSession), donc le centre du CODE
+        // de connexion : le parametre centerId ne sert qu'au controle d'acces
+        // et au chargement de l'accessControl, jamais a changer la session.
+        // Ce double repondait le centre DEMANDE, ce qui masquait entierement
+        // le bug du rechargement (Movsar : « quand je reload je rearrive sur
+        // l'autre centre »).
+        return J({ ok: true, authenticated: true, session: sessionFor(loginCenterId) });
       }
       if (u.pathname === '/api/ops') {
         const action = u.searchParams.get('action');
@@ -653,6 +662,74 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
       record('retour Fun Galaxy : sa grille bowling par piste est revenue', backOnA.pricingCardTitles.some((title) => /^Bowling /.test(title)), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
       record('retour Fun Galaxy : aucune formule de N4 ne traine', !backOnA.pricingCardTitles.includes('JEUDI FOU N4'), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
       await context.close();
+    }
+
+    // ===================================================================== [H]
+    // LE CENTRE CHOISI SURVIT AU RECHARGEMENT.
+    // Movsar, 2026-08-21 : « quand je vais sur Fun Galaxy Libramont et que je
+    // reload la page, je rearrive sur N4 Bowling ». Au demarrage,
+    // loadStaffAuthSession demande la session pour le centre memorise, mais le
+    // serveur rend TOUJOURS la session du centre de connexion (le code utilise
+    // pour ouvrir la session) ; storeStaffAuthSession ecrasait alors
+    // state.adminCenterId avec ce centre-la. Le choix explicite de
+    // l'utilisateur etait annule a chaque F5.
+    section('[H] Le centre choisi survit au rechargement de la page');
+    {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await installMock(page, { withSession: true });
+      await page.goto(`${BASE_URL}/?v=switch-h-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+      await bootStaff(page);
+      await openCenterMenu(page);
+      await page.click(`[data-fgx-center-option="${CENTER_B.id}"]`);
+      await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_B.id, { timeout: 10000 });
+      const avant = await readState(page);
+      record('la bascule a bien eu lieu avant le rechargement', avant.centerId === CENTER_B.id, `centre=${avant.centerId}`);
+
+      await page.reload({ waitUntil: 'networkidle', timeout: 45000 });
+      await bootStaff(page);
+      await page.waitForTimeout(1200);
+      const apres = await readState(page);
+      record(
+        'apres F5 : on est TOUJOURS sur le centre choisi, pas sur celui du code',
+        apres.centerId === CENTER_B.id,
+        `centre=${apres.centerId} (attendu ${CENTER_B.id})`,
+      );
+      await context.close();
+    }
+
+    // ===================================================================== [H2]
+    section('[H2] Contre-preuve de [H] : sans la re-affirmation, le F5 derape');
+    {
+      const APP = path.join(ROOT, 'assets', 'app-main.js');
+      const appOriginal = fs.readFileSync(APP, 'utf8');
+      const guard = 'if (demande && payload.session && demande !== payload.session.centerId) {';
+      try {
+        if (appOriginal.split(guard).length - 1 !== 1) throw new Error('ancre de mutation (re-affirmation) introuvable ou ambigue');
+        fs.writeFileSync(APP, appOriginal.replace(guard, 'if (false) {'));
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await installMock(page, { withSession: true });
+        await page.goto(`${BASE_URL}/?v=switch-h2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+        await bootStaff(page);
+        await openCenterMenu(page);
+        await page.click(`[data-fgx-center-option="${CENTER_B.id}"]`);
+        await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_B.id, { timeout: 10000 });
+        await page.waitForTimeout(1200);
+        await page.reload({ waitUntil: 'networkidle', timeout: 45000 });
+        await bootStaff(page);
+        await page.waitForTimeout(1200);
+        const broken = await readState(page);
+        record(
+          'sans la re-affirmation : le F5 ramene au centre du code, ce gate ROUGIRAIT',
+          broken.centerId === CENTER_A.id,
+          `centre=${broken.centerId}`,
+        );
+        await context.close();
+      } finally {
+        fs.writeFileSync(APP, appOriginal); // ECRITURE INVERSE exacte
+      }
+      record('app-main.js restaure a l identique apres [H2]', fs.readFileSync(APP, 'utf8') === appOriginal);
     }
 
     // ===================================================================== [G]

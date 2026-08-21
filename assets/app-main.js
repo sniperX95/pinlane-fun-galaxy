@@ -2717,7 +2717,8 @@ function guardStaffPage() {
 
 async function loadStaffAuthSession(options = {}) {
   try {
-    const centerId = encodeURIComponent(getCurrentStaffCenterId());
+    const demande = getCurrentStaffCenterId();
+    const centerId = encodeURIComponent(demande);
     const payload = await apiRequest(`${API_ENDPOINTS.staffAuth}?centerId=${centerId}`, {
       method: 'GET',
       headers: staffAuthHeaders()
@@ -2727,6 +2728,22 @@ async function loadStaffAuthSession(options = {}) {
       return false;
     }
     storeStaffAuthSession(payload.session);
+    // LE CENTRE CHOISI SURVIT AU RECHARGEMENT (2026-08-21).
+    // Movsar : « quand je vais sur Fun Galaxy Libramont et que je reload la
+    // page, je rearrive sur N4 Bowling ». api/staff-auth rend TOUJOURS la
+    // session du centre de CONNEXION : son parametre centerId ne sert qu'a
+    // controler l'acces et a charger le bon accessControl, jamais a deplacer
+    // la session. storeStaffAuthSession ecrasait donc le centre memorise par
+    // celui du code, a chaque demarrage.
+    //
+    // Le serveur a deja tranche l'AUTORISATION : sans le droit centers.switch
+    // sur ce centre il aurait repondu 403, et on serait dans le catch. Arrive
+    // ici, le centre demande est legitime : le choix explicite gagne, comme
+    // sur le chemin de la bascule (assets/staff-menu.js).
+    if (demande && payload.session && demande !== payload.session.centerId) {
+      state.adminCenterId = demande;
+      state.establishmentCenterId = demande;
+    }
     if (payload.accessControl) state.staffAccessControl = payload.accessControl;
     save();
     // Charge la liste des centres SCOPEE au tenant des que la session est prete,
@@ -3657,7 +3674,13 @@ function renderPaxAlertContent() {
   // qui n'imposent aucune contrainte.
   if (normalizeBookingMode(state.booking.mode) === 'carte' && typeof getChosenActivities === 'function') {
     const choisies = getChosenActivities();
-    if (choisies.length > 1) {
+    // DES LA PREMIERE ACTIVITE, et non a partir de la deuxieme (2026-08-21).
+    // Movsar, capture de Fun Galaxy Libramont : 7 joueurs, SEULES les Arcades
+    // cochees, et l'ecran annoncait « nous reservons 0 pistes cote a cote ».
+    // Avec une seule activite on retombait sur le texte du bowling seul, qui
+    // compte des pistes que rien n'occupe. Le meme garde existait deja pour
+    // les formules ; il manquait ici.
+    if (choisies.length) {
       const consequences = [];
       const aBowling = choisies.find((a) => a.priceType === 'grid_bowling');
       if (aBowling && needed > 0) {
@@ -3687,12 +3710,20 @@ function renderPaxAlertContent() {
             ? `Groupe de <b>${pax} joueurs</b> : impossible sur ${totalLanes} pistes en même temps. Le staff proposera deux vagues ou un autre horaire.`
             : consequences.length
               ? `Pour <b>${pax} personne${pax > 1 ? 's' : ''}</b>, nous réservons ${consequences.join(', ')}.${aCreneau ? " Vous choisirez l'heure de chaque activité à l'étape suivante." : ''}`
-              : `<b>${pax} personne${pax > 1 ? 's' : ''}</b> et <b>${choisies.length} activités</b> : tout tient en une seule visite. ${aCreneau
+              : `<b>${pax} personne${pax > 1 ? 's' : ''}</b> et <b>${choisies.length} activité${choisies.length > 1 ? 's' : ''}</b> : tout tient en une seule visite. ${aCreneau
                 ? "Vous choisirez l'heure de chaque activité à l'étape suivante."
                 : "Aucune de ces activités ne se réserve à heure fixe : choisissez simplement votre heure d'arrivée."}`}</span>
         </div>`;
       return;
     }
+    // Aucune activite cochee : le compte de pistes n'a aucun sens, et le
+    // client attend surtout de savoir quoi faire ensuite.
+    el.innerHTML = `
+      <div class="pax-alert">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>Vous serez <b>${pax} personne${pax > 1 ? 's' : ''}</b>. Choisissez au moins une activité ci-dessus.</span>
+      </div>`;
+    return;
   }
   if (impossibleBowlingGroup) {
     el.innerHTML = `
@@ -5348,6 +5379,17 @@ function adoptDefaultFormulaAnchors() {
   let changed = false;
   formulaAnchorData.activities.forEach((activity) => {
     if (activity.activityId === 'laser_game' && preference.laserPlacement === 'onsite') return;
+    // UNE LISTE VIDEE PAR LE CLIENT N'EST PAS UNE LISTE JAMAIS TOUCHEE.
+    // Cette proposition d'ouverture reposait l'heure par defaut a CHAQUE
+    // revalidation : le client retirait sa derniere heure de laser, et elle
+    // revenait toute seule au retour du serveur. Son geste etait annule sans
+    // un mot.
+    // La distinction est deja ecrite dans createDefaultFormulaPreference :
+    // laserGameTimes vaut [] tant que rien n'a ete choisi, et un tableau a la
+    // longueur des parties (cases vides comprises) des que le client y a
+    // touche. On ne propose donc que sur le premier cas.
+    if (activity.activityId === 'laser_game'
+      && Array.isArray(preference.laserGameTimes) && preference.laserGameTimes.length) return;
     const fallback = formulaAnchorData.defaultTimes?.[activity.activityId] || '';
     if (!preference.preferredTimes[activity.activityId] && fallback) {
       preference.preferredTimes[activity.activityId] = fallback;
@@ -5417,9 +5459,22 @@ async function setFormulaAnchorTime(activityId, time) {
     if (!deja && retenues.length >= parties) return;
     const suivantes = deja ? retenues.filter(item => item !== time) : [...retenues, time];
     setChosenLaserTimes(preference, suivantes);
-    // Plus aucune heure retenue = tout se place sur place, dit avec le mot que
-    // le client comprend.
-    preference.laserPlacement = suivantes.length ? 'scheduled' : 'onsite';
+    // RETIRER LA DERNIERE HEURE NE VERROUILLE PAS LA LISTE (2026-08-21).
+    // Movsar : « quand on decoche tous les choix on peut plus refaire de
+    // choix ». Cette ligne basculait laserPlacement sur 'onsite' des que la
+    // liste se vidait, et 'onsite' DESACTIVE toutes les pastilles. Quand la
+    // visite n'a qu'une seule ancre (laser seul), la case « je place sur
+    // place » n'est meme pas rendue (laserOnSiteAvailable exige 2 ancres) :
+    // le client se retrouvait devant un ecran mort, sans aucun moyen de
+    // revenir. Une vente perdue pour un clic de trop.
+    //
+    // Une liste VIDE en mode 'scheduled' dit deja la bonne chose : rien
+    // n'est pose, l'equipe placera les parties selon l'affluence (c'est le
+    // texte « avec l'equipe » rendu par renderVisitRailStep, et le serveur
+    // recoit une liste vide qu'il place librement). 'onsite' reste ce qu'il
+    // doit etre : une DECISION du client via sa case, jamais un effet de
+    // bord d'un declic.
+    if (suivantes.length) preference.laserPlacement = 'scheduled';
     formulaJustPicked = deja ? null : { activityId, time };
   } else {
     if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
@@ -5848,7 +5903,10 @@ function renderVisitRailStep(step, position) {
   const { preference, times } = getCurrentFormulaAnchorSelection();
   const isLaser = activity.activityId === 'laser_game';
   const laserOnSite = preference.laserPlacement === 'onsite';
-  const disabled = isLaser && laserOnSite;
+  // On ne verrouille QUE si le client peut deverrouiller. Sans la case
+  // « sur place » a l'ecran (visite a une seule ancre), griser la liste
+  // enferme le client au lieu de l'informer.
+  const disabled = isLaser && laserOnSite && Boolean(formulaAnchorData.laserOnSiteAvailable);
   // PLUSIEURS PARTIES = PLUSIEURS HEURES DANS LA MEME LISTE (2026-08-20).
   // Movsar : « fais juste le choix sur une liste ou ils peuvent choisir jusqu'a
   // 3 horaires ». Une etape par partie donnait trois pistes d'heures identiques
@@ -6135,7 +6193,10 @@ function syncFormulaAnchorUi(formule, { busy }) {
     const row = picker.querySelector(`.anchor-row[data-anchor="${activity.activityId}"]`);
     if (!row) return false;
     const laserOnSite = preference.laserPlacement === 'onsite';
-    const disabled = isLaser && laserOnSite;
+    // On ne verrouille QUE si le client peut deverrouiller. Sans la case
+    // « sur place » a l'ecran (visite a une seule ancre), griser la liste
+    // enferme le client au lieu de l'informer.
+    const disabled = isLaser && laserOnSite && Boolean(formulaAnchorData.laserOnSiteAvailable);
     const partCount = isLaser ? Math.max(1, Number(activity.count || 1)) : 1;
     // Liste MULTI-CHOIX quand la reservation porte plusieurs parties : ce sont
     // les heures retenues qui pilotent l'etat des pastilles, pas une seule.

@@ -881,6 +881,14 @@
       if (typeof state !== 'undefined') {
         state.adminCenterId = centerId;
         state.establishmentCenterId = centerId;
+        // ET ON LE PERSISTE (2026-08-21). Movsar : « quand je vais sur Fun
+        // Galaxy Libramont et que je reload la page, je rearrive sur N4
+        // Bowling ». Le save() du debut de la bascule ecrivait bien le bon
+        // centre, puis loadStaffAuthSession le re-sauvait par-dessus avec
+        // celui de la session serveur. Cette re-affirmation-ci ne touchait
+        // que la MEMOIRE : l'ecran montrait le bon centre, le stockage
+        // gardait l'ancien, et le rechargement suivant relisait l'ancien.
+        if (typeof save === 'function') save();
       }
       // LE CATALOGUE DU NOUVEAU CENTRE, quelle que soit la vue : c'est lui qui
       // alimente les formules et les activites du formulaire de reservation.

@@ -90,7 +90,17 @@ const db = {
   ],
   formulas: [],
   formula_steps: [],
-  activities: [],
+  // CHAQUE ENTREPRISE A SA PROPRE LIGNE BOWLING (2026-08-21). Le socle livre
+  // dans le code appartient desormais au client qui l a apporte : une autre
+  // entreprise n en herite plus, meme pas de l activite « bowling ». C est
+  // provisionClient qui pose ces lignes a la creation d un client, pour les
+  // seules ressources que le moteur planifie. Sans elles, validateSteps refuse
+  // une etape « 1 partie de bowling » avec « activite inconnue » : le gate le
+  // verrait en 400 des la premiere ecriture.
+  activities: [
+    { id: 'bowling', center_id: 'all', owner_client_id: ALPHA, name: 'Bowling', resource_type: 'bowling_lane', source: 'seed', active: true, bookable: true, price_type: 'grid_bowling' },
+    { id: 'bowling', center_id: 'all', owner_client_id: BETA, name: 'Bowling', resource_type: 'bowling_lane', source: 'seed', active: true, bookable: true, price_type: 'grid_bowling' },
+  ],
   formule_overrides: [],
 };
 
@@ -456,26 +466,29 @@ async function run() {
   ok(betaScreen.status === 200, `l ecran catalogue de BETA repond (statut ${betaScreen.status})`);
   ok(!idsOf(betaScreen).includes(NEW_FORMULA.id), 'BETA ne la voit PAS dans son ecran Activites & tarifs');
 
-  section('[3] Un retrait chez ALPHA ne retire rien chez BETA');
-  const victim = start.betaUn.formuleIds[0];
-  ok(Boolean(victim), `une formule du socle sert de cible (${victim})`);
-  const removed = await opsPost(TOKEN_ALPHA, { action: 'deleteFormula', id: victim });
-  ok(removed.status === 200, `ALPHA retire ${victim} de SON catalogue (statut ${removed.status})`);
-  const afterDelete = { alphaUn: await tunnel(ALPHA_UN), alphaDeux: await tunnel(ALPHA_DEUX), betaUn: await tunnel(BETA_UN) };
-  ok(!afterDelete.alphaUn.formuleIds.includes(victim), `${victim} a disparu du tunnel d ALPHA`);
-  ok(!afterDelete.alphaDeux.formuleIds.includes(victim), `${victim} a disparu du second centre d ALPHA`);
-  ok(afterDelete.betaUn.formuleIds.includes(victim), `${victim} est TOUJOURS servie a BETA`);
+  section('[3] Le catalogue d une AUTRE entreprise ne se touche pas');
+  // AVANT le 2026-08-21, ces deux sections editaient une formule du SOCLE (f1,
+  // f2) pour montrer que le changement restait chez ALPHA. Ce scenario n a plus
+  // de sens : le socle appartient au client qui l a apporte, et ALPHA ne le voit
+  // meme pas. La regle a tester est devenue le REFUS, et il doit etre franc :
+  // une ecriture qui repond 200 sans rien changer de visible est pire qu un 400.
+  const seedTarget = 'f1';
+  const refusedDelete = await opsPost(TOKEN_ALPHA, { action: 'deleteFormula', id: seedTarget });
+  ok(refusedDelete.status === 400, `ALPHA ne peut pas retirer ${seedTarget}, qui n est pas a lui (statut ${refusedDelete.status})`);
+  const refusedPatch = await opsPost(TOKEN_ALPHA, { action: 'updateFormula', id: seedTarget, patch: { priceValue: 999 } });
+  ok(refusedPatch.status === 400, `ni en changer le prix (statut ${refusedPatch.status})`);
+  const afterRefusals = { alphaUn: await tunnel(ALPHA_UN), betaUn: await tunnel(BETA_UN) };
+  ok(afterRefusals.alphaUn.priceOf(seedTarget) !== 999, `le prix de ${seedTarget} n a pas bouge malgre l appel refuse`);
 
-  section('[4] Un changement de prix chez ALPHA ne change pas le prix de BETA');
-  const target = start.betaUn.formuleIds.find((id) => id !== victim);
-  const priceBefore = start.betaUn.priceOf(target);
-  ok(priceBefore != null, `prix de depart de ${target} chez BETA : ${priceBefore} EUR`);
+  section('[4] Un changement de prix chez ALPHA ne change rien chez BETA');
+  // Le prix se change sur SA formule a lui, celle creee en [1].
+  const target = NEW_FORMULA.id;
   const patched = await opsPost(TOKEN_ALPHA, { action: 'updateFormula', id: target, patch: { priceValue: 999 } });
-  ok(patched.status === 200, `ALPHA passe ${target} a 999 EUR (statut ${patched.status})`);
-  const afterPatch = { alphaUn: await tunnel(ALPHA_UN), betaUn: await tunnel(BETA_UN) };
+  ok(patched.status === 200, `ALPHA passe SA formule ${target} a 999 EUR (statut ${patched.status})`);
+  const afterPatch = { alphaUn: await tunnel(ALPHA_UN), alphaDeux: await tunnel(ALPHA_DEUX), betaUn: await tunnel(BETA_UN) };
   ok(afterPatch.alphaUn.priceOf(target) === 999, `ALPHA voit 999 EUR (obtenu ${afterPatch.alphaUn.priceOf(target)})`);
-  ok(afterPatch.betaUn.priceOf(target) === priceBefore,
-    `BETA voit toujours ${priceBefore} EUR (obtenu ${afterPatch.betaUn.priceOf(target)})`);
+  ok(afterPatch.alphaDeux.priceOf(target) === 999, 'son SECOND centre aussi (partage intra-entreprise)');
+  ok(!afterPatch.betaUn.formuleIds.includes(target), 'BETA ne connait toujours pas cette formule');
 
   section('[5] Une activite creee par ALPHA reste chez ALPHA');
   const activityCreated = await opsPost(TOKEN_ALPHA, {
@@ -501,10 +514,14 @@ async function run() {
   ok(!betaTunnel.activityIds.includes(newActivityId), 'et le tunnel de BETA ne la propose pas davantage');
 
   section('[6] BETA ne peut pas toucher une formule d ALPHA');
+  // Le prix de reference est celui du MOMENT, pas celui de la creation : la
+  // section [4] vient de le passer a 999. Figer la valeur de depart ferait
+  // rougir ce gate pour une raison etrangere au cloisonnement.
+  const priceBeforeSteal = (await tunnel(ALPHA_UN)).priceOf(NEW_FORMULA.id);
   const steal = await opsPost(TOKEN_BETA, { action: 'updateFormula', id: NEW_FORMULA.id, patch: { priceValue: 1 } });
   ok(steal.status >= 400, `l ecriture croisee est refusee (statut ${steal.status})`);
   const afterSteal = await tunnel(ALPHA_UN);
-  ok(afterSteal.priceOf(NEW_FORMULA.id) === NEW_FORMULA.priceValue,
+  ok(afterSteal.priceOf(NEW_FORMULA.id) === priceBeforeSteal,
     `le prix d ALPHA n a pas bouge (${afterSteal.priceOf(NEW_FORMULA.id)} EUR)`);
   const betaAfterSteal = await tunnel(BETA_UN);
   ok(!betaAfterSteal.formuleIds.includes(NEW_FORMULA.id),
@@ -540,13 +557,13 @@ async function run() {
   await catalogStore.refreshCatalog(pool, { force: true });
   const brokenAlpha = await tunnel(ALPHA_UN);
   const brokenBeta = await tunnel(BETA_UN);
-  const leaked = brokenBeta.formuleIds.includes(NEW_FORMULA.id) || !brokenBeta.formuleIds.includes(victim);
+  const leaked = brokenBeta.formuleIds.includes(NEW_FORMULA.id);
   SCOPE_COLUMN_PRESENT = true;
   await catalogStore.refreshCatalog(pool, { force: true });
   ok(leaked, 'sans portee, la formule d ALPHA fuit chez BETA (ou le retrait d ALPHA la prive) : le gate sait rougir');
   ok(brokenAlpha.formuleIds.length > 0, 'et le catalogue reste servi dans les deux cas (aucun ecran blanc)');
   const restored = await tunnel(BETA_UN);
-  ok(!restored.formuleIds.includes(NEW_FORMULA.id) && restored.formuleIds.includes(victim),
+  ok(!restored.formuleIds.includes(NEW_FORMULA.id),
     'la contre-preuve ne laisse aucun etat casse derriere elle');
 }
 

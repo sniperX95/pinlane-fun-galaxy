@@ -310,6 +310,15 @@ async function runQuery(text, params = []) {
   if (/from centers\b/i.test(sql)) {
     return { rows: db.centers.map((row) => ({ ...row })), rowCount: db.centers.length };
   }
+  // -- catalogue -------------------------------------------------------------
+  // provisionClient copie desormais dans le catalogue du client les ressources
+  // que le moteur planifie (une piste, une table) : le socle livre dans le code
+  // appartient au client qui l'a apporte et ne se prete plus. Ce gate teste
+  // l'AUTHENTIFICATION, pas le catalogue : il repond « aucune ligne » pour que
+  // le provisionnement se deroule, sans repondre a la place du catalogue.
+  if (/^select .* from activities/i.test(sql) || /from formulas|from formula_steps/i.test(sql)) return { rows: [], rowCount: 0 };
+  if (/^insert into (activities|formulas|formula_steps)/i.test(sql)) return { rows: [], rowCount: 1 };
+
   if (/insert into audit_log|insert into client_errors|from schema_migrations/i.test(sql)) return { rows: [], rowCount: 0 };
 
   UNHANDLED.push(sql.slice(0, 160));

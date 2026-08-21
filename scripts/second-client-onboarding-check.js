@@ -248,6 +248,47 @@ class FakePool {
     if (/insert into staff_access_events|insert into audit_log/i.test(sql)) return { rows: [{ id: 1 }], rowCount: 1 };
 
     // -- catalogue ----------------------------------------------------------
+    // -- catalogue du nouveau client -----------------------------------------
+    // Depuis le 2026-08-21, le socle livre dans le code appartient au client
+    // qui l'a apporte : un nouveau client n'herite plus de rien. C'est
+    // provisionClient qui pose dans SON catalogue les ressources que le moteur
+    // planifie (une piste, une table), via seedPlannableActivitiesForClient.
+    // Ce fake doit donc savoir LIRE par cle et ECRIRE, sinon le deuxieme
+    // client monte par les ecrans se retrouve sans bowling : c'est ce que le
+    // gate a vu, et il avait raison.
+    if (/from activities where id = \$1 and center_id = \$2/i.test(sql)) {
+      const [wantedId, wantedCenter, wantedOwner] = params;
+      const hit = activityRows.find((row) => row.id === wantedId
+        && String(row.center_id) === String(wantedCenter)
+        && (wantedOwner === undefined || String(row.owner_client_id || "") === String(wantedOwner)));
+      return hit ? { rows: [{ ...hit }], rowCount: 1 } : { rows: [], rowCount: 0 };
+    }
+    if (/^insert into activities/i.test(sql)) {
+      // Les colonnes se LISENT dans la requete : supposer leur ordre ferait
+      // ecrire une ligne que la production n a jamais demandee.
+      const match = sql.match(/^insert into activities \(([^)]*)\) values \(([^)]*)\)/i);
+      if (!match) return { rows: [], rowCount: 0 };
+      const columns = match[1].split(",").map((c) => c.trim());
+      const values = match[2].split(",").map((v) => v.trim());
+      const row = {};
+      columns.forEach((column, index) => {
+        const raw = values[index];
+        if (raw === undefined) return;
+        const placeholder = raw.match(/^\$(\d+)/);
+        if (placeholder) { row[column] = params[Number(placeholder[1]) - 1]; return; }
+        const literal = raw.match(/^'([^']*)'/);
+        if (literal) { row[column] = literal[1]; return; }
+        if (/^now\(\)$/i.test(raw)) { row[column] = new Date().toISOString(); return; }
+        if (/^(true|false)$/i.test(raw)) { row[column] = /^true$/i.test(raw); return; }
+        row[column] = null;
+      });
+      const existing = activityRows.find((item) => item.id === row.id
+        && String(item.center_id) === String(row.center_id)
+        && String(item.owner_client_id || "") === String(row.owner_client_id || ""));
+      if (existing) Object.assign(existing, row);
+      else activityRows.push(row);
+      return { rows: [{ ...row }], rowCount: 1 };
+    }
     if (/from activities/i.test(sql)) {
       return { rows: activityRows.map((row) => ({ ...row })), rowCount: activityRows.length };
     }

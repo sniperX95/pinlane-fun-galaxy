@@ -220,6 +220,11 @@ const MIGRATIONS = [
     file: 'database/activity-pricing-schema.sql',
     description: "Tarif d'activite PAR JOUR ET PAR CRENEAU (activities.pricing, jsonb nullable) : une liste d'exceptions au prix de base, comme le bowling a recu la sienne. NULL = un seul prix, comportement inchange. Regle de surete : sans creneau choisi, c'est le prix de base qui s'affiche, donc le montant ne peut que baisser. Forme validee par lib/activity-pricing.js.",
   },
+  {
+    id: '0044_catalog_seed_ownership',
+    file: 'database/catalog-seed-ownership-schema.sql',
+    description: "Le catalogue livre dans le code appartient au client qui l a apporte. 0042 avait donne les FORMULES a 'fungalaxy' mais laisse les 12 ACTIVITES en portee plateforme ('all'), donc lisibles par toute entreprise : un bowling sans arene laser se voyait servir laser_game et minigolf_blacklight. Elles passent a 'fungalaxy'. Fun Galaxy ne perd rien, les autres cessent d heriter. Idempotente. Rollback : database/rollbacks/0044_catalog_seed_ownership.down.sql",
+  },
 ];
 
 async function ensureMigrationsTable(client) {

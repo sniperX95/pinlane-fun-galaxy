@@ -1156,6 +1156,10 @@ body.staff-menu-collapsed .fgx-menu-popover.account { transform-origin: 0 100%; 
 .staff-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); font-weight: 600; }
 .staff-cal-day.is-selected { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
 .staff-cal-day.is-selected:hover { background: var(--accent-strong); }
+/* Jour hors bornes (le tunnel client refuse le passe) : le mois garde sa forme,
+   le refus se lit AVANT le clic au lieu d'etre un message apres coup. */
+.staff-cal-day.is-blocked { color: var(--muted); opacity: 0.4; cursor: not-allowed; }
+.staff-cal-day.is-blocked:hover { background: transparent; }
 
 .staff-cal-foot {
   margin-top: var(--space-2);

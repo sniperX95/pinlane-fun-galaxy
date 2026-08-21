@@ -790,6 +790,16 @@
     } catch (error) {
       console.warn('[staff-menu] center save failed', error);
     }
+    // TOUT CE QUI VENAIT DE L'ANCIEN CENTRE MEURT ICI, avant le moindre rendu.
+    // Sans cette purge, la bascule etait instantanee ET fausse : les ecrans
+    // reaffichaient leurs caches (chiffres de la Direction, clients, demandes,
+    // config d'etablissement, blocs de disponibilite) sous le nom du nouveau
+    // centre. Vider suffit a declencher un vrai chargement : chaque ecran
+    // appelle son load*(false) au rendu et montre son etat de chargement.
+    if (typeof resetCenterScopedCaches === 'function') resetCenterScopedCaches();
+    // Le chargement se VOIT : la bascule fait un aller-retour serveur, l'ecran
+    // ne doit pas avoir l'air fige pendant ce temps.
+    if (typeof toast === 'function') toast(`Chargement de ${centerDisplayName(center)}...`);
     // On RESTE dans la vue courante : changer de centre ne doit pas ejecter
     // l'utilisateur vers la Direction (ancien bug : tout centre != libramont
     // forcait setView('admin')). On rafraichit seulement les donnees du centre.

@@ -2052,6 +2052,53 @@ async function loadMenuCenters(force = false) {
 }
 if (typeof window !== 'undefined') window.loadMenuCenters = loadMenuCenters;
 
+// ---- CHANGER DE CENTRE, C'EST TOUT RECHARGER -------------------------------
+//
+// Un cache qui survit à la bascule affiche les chiffres du centre précédent
+// sous le nom du nouveau : c'est le pire des états, parce qu'il est crédible.
+// Certains de ces caches portent une clé qui contient le centre et se
+// rechargent seuls ; d'autres n'en ont AUCUNE (opsAdminCache,
+// adminDashboardCache, la config d'établissement, les blocs de disponibilité,
+// les séries du jour) et gardaient indéfiniment les données du centre quitté.
+// La fuite la plus fine était `knowledge` : loadAdminDashboard le reprenait du
+// cache précédent quand l'instantané du nouveau centre n'en portait pas, et
+// c'est lui qui nomme les centres et décrit leurs ressources.
+//
+// On ne les met pas à jour : on les VIDE. Tous les écrans appellent leur
+// load*(false) au rendu, donc vider suffit à déclencher un vrai chargement, et
+// l'écran montre son état de chargement au lieu d'anciens chiffres.
+//
+// Ce qui n'est PAS vidé : scopedCentersCache (la liste des centres du tenant ne
+// dépend pas du centre choisi) et la session.
+function resetCenterScopedCaches() {
+  opsAdminCache = {
+    communications: [], samples: [], suggestions: [], events: [],
+    agentStack: null, opsHealth: null, simulation: null,
+    loaded: false, loading: false, lastLoadedAt: ''
+  };
+  adminDashboardCache = {
+    loading: false, loaded: false, error: '', snapshot: null, knowledge: null,
+    communications: [], suggestions: [], events: [], samples: [],
+    agentStack: null, opsHealth: null, simulation: null, lastLoadedAt: ''
+  };
+  adminSnapshotCache = {};
+  adminSnapshotLoadingKeys = {};
+  adminOpsCacheByCenter = {};
+  adminOpsLoadingByCenter = {};
+  opsAdminLastAutoLoadAt = 0;
+  staffClientDataCache = { key: '', loading: false, loaded: false, error: '', reservations: [], syncedAt: '', loadedAt: 0 };
+  staffReservationsDataCache = { key: '', loading: false, loaded: false, error: '', reservations: [], syncedAt: '', loadedAt: 0 };
+  staffClientCommsCache = { key: '', loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
+  staffCustomRequestsCache = { key: '', loading: false, loaded: false, error: '', items: [], loadedAt: 0 };
+  staffCenterConfigCache = { loaded: false, loading: false, error: '', centers: [], activities: [] };
+  availabilityBlocksCache = { loaded: false, loading: false, error: '', blocks: [] };
+  if (staffDaySeriesCache && typeof staffDaySeriesCache.clear === 'function') staffDaySeriesCache.clear();
+  // Les trois caches de la Direction vivent dans admin-console.js, chargé après
+  // ce fichier : on passe par la fonction qu'il expose plutôt que d'y toucher.
+  if (typeof window !== 'undefined' && typeof window.resetDirectionCaches === 'function') window.resetDirectionCaches();
+}
+if (typeof window !== 'undefined') window.resetCenterScopedCaches = resetCenterScopedCaches;
+
 function getScopedCenters() {
   return scopedCentersCache.loaded && scopedCentersCache.centers.length ? scopedCentersCache.centers : null;
 }
@@ -2759,6 +2806,15 @@ async function submitLogin(ev) {
     if (payload.session?.centerId) state.adminCenterId = payload.session.centerId;
     if (payload.accessControl) state.staffAccessControl = payload.accessControl;
     save();
+    // Une nouvelle session n herite rien de la precedente : c est peut-etre
+    // quelqu un d autre, sur un autre centre, sur le meme navigateur.
+    resetCenterScopedCaches();
+    // La liste des centres du tenant se charge ICI aussi, pas seulement a la
+    // restauration de session (loadStaffAuthSession). Sans cet appel, le
+    // switcher retombait sur le repli statique des 3 centres Fun Galaxy filtre
+    // par le centre courant : pour un centre ne dans la console (n4-bowling,
+    // mi12) ce repli est VIDE, et le menu s ouvrait sans aucun centre.
+    loadMenuCenters(true);
     applyAuthState();
     if (state.view === 'staff') {
       guardStaffPage();
@@ -15767,6 +15823,11 @@ function setStaffResourceView(view) {
 let staffCalTrigger = null;
 let staffCalAnchor = null;
 let staffCalMonth = null;
+// Contexte quand ce calendrier sert une AUTRE surface que la date staff :
+// { value, min, onPick }. null = comportement historique (state.currentDate).
+// C'est ce qui permet au tunnel client de reutiliser ce composant au lieu d'en
+// avoir un deuxieme a maintenir.
+let staffCalContext = null;
 
 const STAFF_CAL_CHEVRON_LEFT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
 const STAFF_CAL_CHEVRON_RIGHT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
@@ -15788,8 +15849,14 @@ function staffDateNavHtml() {
     </div>`;
 }
 
+function getStaffCalendarValue() {
+  if (staffCalContext) return staffCalContext.value || todayStr();
+  return state.currentDate || todayStr();
+}
+
 function renderStaffCalendar(dateISO) {
-  const selected = dateISO || state.currentDate || todayStr();
+  const selected = dateISO || getStaffCalendarValue();
+  const min = staffCalContext && staffCalContext.min ? String(staffCalContext.min) : '';
   const view = staffCalMonth || getMonthKey(selected);
   const [vy, vm] = view.split('-').map(Number);
   const today = todayStr();
@@ -15808,8 +15875,14 @@ function renderStaffCalendar(dateISO) {
     const classes = ['staff-cal-day'];
     if (iso === today) classes.push('is-today');
     if (iso === selected) classes.push('is-selected');
+    // Un jour hors bornes se DESACTIVE au lieu de disparaitre : le mois garde
+    // sa forme, et le refus est lisible avant le clic (le tunnel n'accepte pas
+    // une date passee, la console n'a pas de borne).
+    const blocked = Boolean(min) && iso < min;
+    if (blocked) classes.push('is-blocked');
     const current = iso === selected ? ' aria-current="date"' : '';
-    return `<button type="button" class="${classes.join(' ')}"${current} onclick="staffCalendarPick('${iso}')">${day}</button>`;
+    const guard = blocked ? ' disabled aria-disabled="true"' : '';
+    return `<button type="button" class="${classes.join(' ')}"${current}${guard} onclick="staffCalendarPick('${iso}')">${day}</button>`;
   }).join('');
   return `<div class="staff-cal-head">
       <button type="button" class="staff-cal-nav" aria-label="Mois précédent" onclick="staffCalendarShiftMonth(-1)">${STAFF_CAL_CHEVRON_LEFT}</button>
@@ -15847,7 +15920,7 @@ function positionStaffCalendar(pop, anchor) {
   pop.style.top = `${Math.round(top)}px`;
 }
 
-function openStaffCalendar(ev) {
+function openStaffCalendar(ev, options = null) {
   ev?.preventDefault?.();
   ev?.stopPropagation?.();
   const trigger = ev && (ev.currentTarget || ev.target);
@@ -15859,16 +15932,17 @@ function openStaffCalendar(ev) {
   }
   const rect = trigger && typeof trigger.getBoundingClientRect === 'function' ? trigger.getBoundingClientRect() : null;
   staffCalTrigger = trigger || null;
+  staffCalContext = options && typeof options.onPick === 'function' ? { ...options } : null;
   staffCalAnchor = rect
     ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
     : { left: 12, right: 12, top: 12, bottom: 12 };
-  staffCalMonth = getMonthKey(state.currentDate || todayStr());
+  staffCalMonth = getMonthKey(getStaffCalendarValue());
   const pop = document.createElement('div');
   pop.className = 'staff-calendar-pop';
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-modal', 'false');
   pop.setAttribute('aria-label', 'Choisir une date');
-  pop.innerHTML = renderStaffCalendar(state.currentDate || todayStr());
+  pop.innerHTML = renderStaffCalendar(getStaffCalendarValue());
   document.body.appendChild(pop);
   positionStaffCalendar(pop, staffCalAnchor);
   const focusTarget = pop.querySelector('.staff-cal-day.is-selected')
@@ -15882,18 +15956,20 @@ function openStaffCalendar(ev) {
 }
 
 function staffCalendarShiftMonth(delta) {
-  const view = staffCalMonth || getMonthKey(state.currentDate || todayStr());
+  const view = staffCalMonth || getMonthKey(getStaffCalendarValue());
   const [vy, vm] = view.split('-').map(Number);
   const moved = new Date(vy, vm - 1 + delta, 1);
   staffCalMonth = `${moved.getFullYear()}-${String(moved.getMonth() + 1).padStart(2, '0')}`;
   const pop = document.querySelector('.staff-calendar-pop');
   if (!pop) return;
-  pop.innerHTML = renderStaffCalendar(state.currentDate || todayStr());
+  pop.innerHTML = renderStaffCalendar(getStaffCalendarValue());
   if (staffCalAnchor) positionStaffCalendar(pop, staffCalAnchor);
 }
 
 function staffCalendarPick(dateISO) {
+  const handoff = staffCalContext && staffCalContext.onPick;
   closeStaffCalendar();
+  if (handoff) { handoff(dateISO); return; }
   setStaffDateFromPicker(dateISO); // logique existante : currentDate + save + renderStaff + sync
 }
 
@@ -15923,7 +15999,41 @@ function closeStaffCalendar() {
   document.removeEventListener('keydown', staffCalendarKeydown, true);
   staffCalTrigger = null;
   staffCalAnchor = null;
+  staffCalContext = null;
 }
+
+// ---- LE CALENDRIER DU TUNNEL CLIENT ---------------------------------------
+//
+// showPicker() JETTE dans une iframe cross-origin. Ce n'est pas un incident,
+// c'est la specification : « showPicker() called from cross-origin iframe ».
+// Or le tunnel vit EXACTEMENT la : mesure faite le 2026-08-21 sur le vrai site
+// de N4 (n4-bowling.vercel.app embarque app.pinlane.be), le clic sur le bouton
+// calendrier levait SecurityError et le repli focus() ne montrait rien sur
+// ordinateur. Le bouton existait, il ne faisait rien : « on peut pas cliquer ».
+//
+// On ouvre donc le calendrier MAISON, celui qui sert deja la console : une
+// seule implementation a maintenir, elle ne depend d'aucune API du navigateur,
+// et elle prend les couleurs du centre (les jetons de marque sont poses sur
+// :root par boot-view.js). Le champ reste un input[type=date] : la saisie au
+// clavier ne bouge pas, et sur telephone le selecteur natif s'ouvre toujours
+// au toucher du champ.
+function openClientDateCalendar(ev) {
+  const input = document.getElementById('fDate');
+  if (!input) return;
+  const floor = input.min || todayStr();
+  openStaffCalendar(ev, {
+    value: input.value || floor,
+    min: floor,
+    onPick: (iso) => {
+      input.value = iso;
+      // Meme evenement que la saisie clavier : tout ce qui ecoute la date
+      // (horaires du jour, creneaux, garde anti-date-passee) part d'ici.
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.focus();
+    },
+  });
+}
+if (typeof window !== 'undefined') window.openClientDateCalendar = openClientDateCalendar;
 
 function setStaffDateFromPicker(value) {
   if (!value) return;

@@ -1866,6 +1866,20 @@ const directionInsightLoading = {};
 // Meme cle que dirInsightKey (centre + fenetre, sans le mode de comparaison).
 const directionDecisionCache = {};
 const directionDecisionLoading = {};
+
+// Vidage des caches de la Direction au changement de centre. Leurs cles portent
+// le centre, donc ils ne MELANGENT pas deux centres ; mais une entree gardee
+// est une entree servie sans aller-retour, donc un chiffre d'il y a une heure
+// affiche comme s'il venait d'etre lu. Quand Movsar bascule, il veut la donnee
+// du moment, pas la derniere qu'on a vue. Appele par resetCenterScopedCaches
+// (assets/app-main.js), seul point d'entree.
+function resetDirectionCaches() {
+  for (const store of [adminTrendCache, directionInsightCache, directionInsightLoading, directionDecisionCache, directionDecisionLoading]) {
+    for (const key of Object.keys(store)) delete store[key];
+  }
+}
+if (typeof window !== 'undefined') window.resetDirectionCaches = resetDirectionCaches;
+
 let dirRangeHandle = null;
 let DIR_ENTRANCE_SEEN = false;
 // Vue Analyse : tableau d'analyse PERSONNALISABLE (window.PinlaneAnalyticsBoard),
@@ -3456,9 +3470,18 @@ async function loadAdminDashboard(force = false) {
 }
 
 function setAdminCenter(centerId) {
+  const previousCenterId = state.adminCenterId;
   state.adminCenterId = centerId || 'libramont';
   save();
-  loadAdminDashboard(false);
+  // Les cartes de centre de la Direction appellent cette fonction SANS passer
+  // par le switcher du menu : la purge doit donc vivre ici aussi, sinon le
+  // meme changement de centre nettoie ou ne nettoie pas selon le bouton clique.
+  if (previousCenterId !== state.adminCenterId && typeof resetCenterScopedCaches === 'function') {
+    resetCenterScopedCaches();
+  }
+  // Force : la donnee du centre qu'on ouvre se relit, elle ne se devine pas
+  // dans un instantane garde en memoire.
+  loadAdminDashboard(true);
 }
 
 function setAdminDate(value) {

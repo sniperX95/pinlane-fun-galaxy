@@ -15,6 +15,30 @@ const { afterReservationCreated, prepareReservationOps } = require('../lib/reser
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { requireStaffPermission, getStaffSessionFromRequest } = require('../lib/staff-auth');
 const { writeAuditLog, actorFromSession, buildChanges, newRequestId } = require('../lib/audit-log');
+const { refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { refreshFormuleOverrides } = require('../lib/booking-config');
+const { refreshCatalog } = require('../lib/catalog-store');
+const { getPool } = require('../lib/database');
+
+// LE COMPTOIR CONNAIT LES MEMES CENTRES QUE LE TUNNEL (2026-08-21).
+//
+// Ce handler normalisait un programme et planifiait un creneau sans jamais
+// rechauffer les trois caches module (centres, prix, catalogue). Sur une
+// instance serverless fraiche, il ne voyait donc que les centres du FICHIER
+// ops-knowledge/centers.json : pour un centre cree depuis la console, getCenter
+// levait « Centre inconnu », aucune activite libre n'etait retenue (le
+// catalogue d'un centre se lit dans SA fiche) et createReservation refusait.
+// Meme cause, meme correctif et meme ordre que api/public-reservations.js.
+//
+// Fail-soft en trois try separes : un incident base laisse le comptoir
+// travailler sur le dernier etat connu au lieu de le bloquer.
+// Appele APRES le controle de permission, jamais avant : ce depot ne lit pas la
+// base pour un inconnu (cf requireAnyStaffSession plus bas).
+async function warmCenterKnowledge() {
+  try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
+  try { await refreshFormuleOverrides(getPool()); } catch (error) { /* prix fichier */ }
+  try { await refreshCatalog(getPool()); } catch (error) { /* catalogue fichier */ }
+}
 
 // ---- PP4 : le chemin chaud -------------------------------------------------
 //
@@ -185,6 +209,7 @@ module.exports = async (req, res) => {
       const body = await readJson(req);
       const session = await requireStaffPermission(req, res, 'reservations.create', { centerId: body.centerId || body.center_id });
       if (!session) return;
+      await warmCenterKnowledge();
       // Côté STAFF le contact est LIBRE (nom/tél/email non imposés) : le staff
       // crée souvent une résa au comptoir sans tout saisir. L'email obligatoire
       // reste réservé au parcours CLIENT PUBLIC (api/public-reservations.js).
@@ -300,6 +325,7 @@ module.exports = async (req, res) => {
         return;
       }
 
+      await warmCenterKnowledge();
       const patch = {
         ...body,
         centerId: requestedCenterId,

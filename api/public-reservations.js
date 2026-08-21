@@ -5,6 +5,7 @@ const { findReservationAlternatives } = require('../lib/reservation-alternatives
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { refreshFormuleOverrides } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
+const { refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
@@ -29,6 +30,18 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
+    // Overrides de CENTRE chauds AVANT tout le reste (sync). Un centre cree
+    // depuis la console n'existe QUE en base : sans cette ligne, une instance
+    // serverless fraiche ne connait que les centres du FICHIER
+    // ops-knowledge/centers.json. getCenter leve alors « Centre inconnu », le
+    // centre n'a ni pistes ni activites cochees, et AUCUNE de ses reservations
+    // ne passe : 422 « Choisissez au moins une activite » quand le client a
+    // choisi une activite libre (listCenterActivities ne la garde que si le
+    // centre l'a cochee), 409 sans alternatives quand il a choisi le bowling.
+    // Les creneaux, eux, s'affichaient : public-availability et
+    // public-booking-meta font cet appel depuis le debut, pas ce handler.
+    // Fail-soft comme les deux suivantes : sans base, socle fichier.
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
     // Carte d'overrides catalogue chaude AVANT le calcul du prix (sync) : une
     // instance serverless fraiche doit facturer le meme prix que celui affiche
     // par le tunnel (public-booking-meta). Fail-soft : sans base, prix fichier.

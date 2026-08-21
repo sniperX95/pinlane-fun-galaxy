@@ -510,6 +510,13 @@ function getRequiredLaneCount(type, pax, formuleId) {
 // l'affichage client, jamais la source de verite.)
 function resolveDisplayFormule(formuleId) {
   if (!formuleId) return null;
+  // Le catalogue EFFECTIF du centre fait autorite quand l'application est la :
+  // window.getEffectiveCatalogFormules (app-main) sait, lui, qu'un centre hors
+  // socle ne doit JAMAIS retomber sur les formules du fichier, qui sont celles
+  // de Fun Galaxy. Sans lui (usage isole de ce module), ancien chemin.
+  if (typeof window !== 'undefined' && typeof window.getEffectiveCatalogFormules === 'function') {
+    return window.getEffectiveCatalogFormules().find(x => x && x.id === formuleId) || null;
+  }
   const display = (typeof window !== 'undefined' && Array.isArray(window.__pinlaneDisplayFormules))
     ? window.__pinlaneDisplayFormules
     : null;

@@ -135,8 +135,11 @@
           icon: 'prices',
           children: [
             { key: 'prices', label: 'Tarifs & formules' },
-            { key: 'lanes', label: 'Pistes bowling' },
-            { key: 'laserGame', label: 'Laser Game' }
+            // `requires`, et surtout PAS `resource` : ce dernier pose
+            // data-ops-resource, que le clic detourne vers la page Planning.
+            // Ces deux entrees ouvrent leurs propres ecrans.
+            { key: 'lanes', label: 'Pistes bowling', requires: 'bowling' },
+            { key: 'laserGame', label: 'Laser Game', requires: 'laser' }
           ]
         },
         { key: 'users', label: 'Équipe & accès', icon: 'users' },
@@ -303,6 +306,50 @@
     return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
   }
 
+  // ---- CE QUE LE CENTRE A VRAIMENT ----------------------------------------
+  //
+  // Le menu proposait « Laser Game » et « Pistes bowling » a TOUS les centres,
+  // parce que ces entrees etaient ecrites en dur. N4 n'a aucune arene laser
+  // (weaponCount 0) et voyait quand meme un planning laser et un ecran de
+  // tarifs laser : la console promettait une activite que le centre ne vend
+  // pas. Ces deux lectures sont la seule autorite du menu sur la question.
+  //
+  // Prudence volontaire : tant que la liste scopee n'a pas repondu, on ne SAIT
+  // pas, et on affiche (masquer par ignorance ferait clignoter le menu a chaque
+  // chargement). La liste arrivee, renderStaffMenu est rappele.
+  function centerResourceCount(center, kind, field) {
+    if (!center || !center.resources) return null;
+    // Distinction qui compte : la CLE ABSENTE veut dire « on ne sait pas »
+    // (repli neutre d'un centre pas encore charge, dont resources vaut {}),
+    // la cle presente a null veut dire « ce centre n'a pas cette ressource ».
+    // Les confondre masquait les onglets d'un centre parfaitement equipe.
+    if (!Object.prototype.hasOwnProperty.call(center.resources, kind)) return null;
+    const entry = center.resources[kind];
+    if (!entry) return 0;
+    const value = Number(entry[field]);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function centerHasResource(kind) {
+    const center = getSelectedCenter();
+    const field = kind === 'laser' ? 'weaponCount' : 'laneCount';
+    const count = centerResourceCount(center, kind, field);
+    if (count === null) return true; // ressources inconnues : on n'invente rien
+    return count > 0;
+  }
+
+  // Resume d'un centre dans le switcher : on ne cite QUE ce qu'il possede. La
+  // version d'avant repliait sur « 8 pistes · 30 armes laser » des que la
+  // valeur manquait ou valait zero, donc N4 s'annoncait avec 30 armes laser.
+  function describeCenterResources(center) {
+    const parts = [];
+    const lanes = centerResourceCount(center, 'bowling', 'laneCount');
+    const guns = centerResourceCount(center, 'laser', 'weaponCount');
+    if (lanes) parts.push(`${lanes} piste${lanes > 1 ? 's' : ''}`);
+    if (guns) parts.push(`${guns} arme${guns > 1 ? 's' : ''} laser`);
+    return parts.join(' · ');
+  }
+
   function getMenuCenters() {
     try {
       if (typeof getAdminCenters === 'function') {
@@ -314,7 +361,11 @@
             // d'un autre client.
             name: center.name || center.label || center.id || 'Centre',
             label: center.shortName || center.label || center.name || center.id || 'Centre',
-            meta: center.meta || center.summary || `${Number(center.resources?.bowling?.laneCount || center.bowlingLanes || 8)} pistes · ${Number(center.resources?.laser?.weaponCount || center.laserGuns || 30)} armes laser`,
+            // Les ressources REELLES du centre voyagent jusqu'au menu : c'est
+            // ce qui permet de ne pas proposer une activite que le centre n'a
+            // pas (N4 n'a aucune arene laser).
+            resources: center.resources || null,
+            meta: center.meta || center.summary || describeCenterResources(center),
             status: center.status === 'planned' ? 'Prévu' : (center.status === 'closed' ? 'Archivé' : 'Actif'),
             // clientId/clientName : sert au GROUPEMENT par client cote proprietaire.
             // Un client n'a qu'un seul clientId dans sa liste (deja scopee serveur),
@@ -549,11 +600,28 @@
     `;
   }
 
+  // Une entree liee a une ressource ne s'affiche que si le centre la possede.
+  // `resource: 'all'` (planning « Toutes ») n'est pas une ressource : c'est une
+  // vue, elle reste toujours la.
+  function itemAllowedForCenter(entry) {
+    if (!entry) return true;
+    // `requires` sert UNIQUEMENT au filtrage ; `resource` sert aussi a router le
+    // clic vers un onglet de Planning, et 'all' n'est pas une ressource mais une
+    // vue : elle reste toujours la.
+    const needed = entry.requires || (entry.resource && entry.resource !== 'all' ? entry.resource : '');
+    if (!needed) return true;
+    return centerHasResource(needed);
+  }
+
   function itemMarkup(item) {
     if (item.children) {
       const open = isMenuGroupOpen(item.key);
       const subnavId = getMenuSubnavId(item.key);
-      const children = item.children.map(child => `
+      const visibleChildren = item.children.filter(itemAllowedForCenter);
+      // Un groupe dont il ne reste qu'une vue generique ou rien du tout n'a plus
+      // de raison d'exister : il annoncerait un rayon vide.
+      if (!visibleChildren.length) return '';
+      const children = visibleChildren.map(child => `
         <button type="button" class="fgx-menu-subitem" title="${escapeHtml(child.label)}" data-fgx-menu-key="${escapeHtml(child.key)}" tabindex="${open ? '0' : '-1'}"${child.resource ? ` data-ops-resource="${escapeHtml(child.resource)}"` : ''}>
           <span class="fgx-menu-subitem-mark" aria-hidden="true"></span>
           <span class="fgx-menu-label">${escapeHtml(child.label)}</span>
@@ -571,6 +639,7 @@
       `;
     }
 
+    if (!itemAllowedForCenter(item)) return '';
     const badge = typeof item.badge === 'function' ? item.badge() : (item.badge || '');
     const badgeCount = Number(badge) || 0;
     // Le titre porte le chiffre : le badge visuel est masqué menu replié et sous
@@ -813,6 +882,10 @@
         state.adminCenterId = centerId;
         state.establishmentCenterId = centerId;
       }
+      // LE CATALOGUE DU NOUVEAU CENTRE, quelle que soit la vue : c'est lui qui
+      // alimente les formules et les activites du formulaire de reservation.
+      // Sans ce rappel, la console proposait le catalogue du centre precedent.
+      if (typeof loadCenterScheduleConfig === 'function') loadCenterScheduleConfig();
       if (typeof state !== 'undefined' && state.view === 'admin') {
         if (typeof setAdminCenter === 'function') setAdminCenter(centerId);
         else if (typeof openAdminCenter === 'function') openAdminCenter(centerId);

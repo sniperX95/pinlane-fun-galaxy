@@ -179,7 +179,12 @@ async function installMock(page) {
           ok: true,
           today: new Date().toISOString().slice(0, 10),
           durationOptions: [],
-          formules: [],
+          // Le SOCLE, comme le fait la prod pour un centre du fichier : depuis
+          // le 2026-08-21, un `formules: []` veut dire « ce centre ne vend
+          // aucune formule » et la console l'affiche tel quel, au lieu de
+          // retomber sur le catalogue de Fun Galaxy (fuite d'affichage chez un
+          // autre client). Ce mock doit donc servir ce que le serveur sert.
+          formules: (typeof FORMULES !== 'undefined' ? FORMULES : []),
           // Ce que le centre vend : sans cette cle le selecteur d'activites ne
           // construit AUCUNE tuile, et les checks laser passeraient sur du vide.
           activities: window.__pdaySellable,

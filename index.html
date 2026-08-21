@@ -232,7 +232,7 @@
                 <input type="date" id="fDate" class="input" />
                 <!-- Le tunnel vit dans une IFRAME CROSS-ORIGIN chez le gerant, et
                      showPicker() y jette : « showPicker() called from cross-origin
-                     iframe » (mesure sur le vrai site de N4, 2026-08-21). Le repli
+                     iframe » (mesure sur le site reel d un client, 2026-08-21). Le repli
                      focus() n'ouvrait rien sur ordinateur : le bouton ne faisait
                      RIEN la ou tous les clients reservent. Il ouvre desormais le
                      calendrier maison, celui de la console, qui ne depend d'aucune
@@ -609,14 +609,17 @@
         <button class="staff-resource-tab" id="staffTabBowling" onclick="setStaffResourceView('bowling')">
           <span>
             <span class="main">Planning Bowling</span>
-            <span class="sub">8 pistes</span>
+            <!-- Sous-titres remplis par syncStaffResourceTabs avec les VRAIES
+                 ressources du centre : ecrits en dur, ils annoncaient
+                 l installation du premier client a tous les autres. -->
+            <span class="sub" id="staffBowlingSub"></span>
           </span>
           <span id="staffBowlingCount">0</span>
         </button>
         <button class="staff-resource-tab" id="staffTabLaser" onclick="setStaffResourceView('laser')">
           <span>
             <span class="main">Planning Laser Game</span>
-            <span class="sub">2 zones</span>
+            <span class="sub" id="staffLaserSub"></span>
           </span>
           <span id="staffLaserCount">0</span>
         </button>

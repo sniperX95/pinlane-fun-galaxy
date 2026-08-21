@@ -1261,7 +1261,12 @@ button.staff-date-label:focus-visible,
   margin-bottom: var(--space-4);
 }
 
-.staff-resource-tab {
+/* `:not(.hidden)` OBLIGATOIRE, meme piege que .table-box le 2026-08-14 : cette
+   regle et `.hidden` ont la meme specificite (une classe chacune) et ce fichier
+   est charge apres pinlane.css, donc `display: inline-flex` GAGNAIT. L'onglet
+   Laser Game d'un centre sans arene recevait bien sa classe `hidden` et restait
+   peint. Une classe posee ne prouve rien : seule la boite rendue tranche. */
+.staff-resource-tab:not(.hidden) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);

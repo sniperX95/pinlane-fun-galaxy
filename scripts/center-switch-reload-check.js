@@ -70,9 +70,9 @@ function serveStatic() {
 }
 
 // ---- Mock : deux centres, des donnees distinctes, et un COMPTEUR d'appels ---
-async function installMock(page, { withSession }) {
+async function installMock(page, { withSession, breakCatalog = false }) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-  await page.addInitScript(({ expiresAt, withSession, A, B }) => {
+  await page.addInitScript(({ expiresAt, withSession, breakCatalog, A, B }) => {
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'direction.view', 'centers.switch', 'settings.manage', 'emails.view', 'users.manage', 'platform.admin'];
     const sessionFor = (centerId) => ({
       token: 'qa', cookieBacked: false, centerId, expiresAt,
@@ -127,14 +127,38 @@ async function installMock(page, { withSession }) {
         const action = u.searchParams.get('action');
         const centerId = u.searchParams.get('centerId') || A.id;
         if (action === 'menuCenters') {
+          // Les RESSOURCES voyagent avec le centre : A a une arene laser, B
+          // n'en a pas (weaponCount 0, l'etat reel de N4 en production).
           return J({ ok: true, owner: true, centers: [
-            { id: A.id, name: A.name, status: 'active', clientId: 'fungalaxy', clientName: 'Fun Galaxy' },
-            { id: B.id, name: B.name, status: 'active', clientId: 'n4-bowling', clientName: 'N4' },
+            {
+              id: A.id, name: A.name, status: 'active', clientId: 'fungalaxy', clientName: 'Fun Galaxy',
+              resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 30 } },
+            },
+            {
+              id: B.id, name: B.name, status: 'active', clientId: 'n4-bowling', clientName: 'N4',
+              resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 0 } },
+            },
           ] });
         }
         if (action === 'listAvailabilityBlocks') return J({ ok: true, blocks: blocksFor(centerId) });
         if (action === 'centerConfig') return J(configFor(centerId));
         return J({ ok: true, communications: [], suggestions: [], events: [], samples: [] });
+      }
+      // Le CATALOGUE du centre : chacun a ses formules, aucune n'est partagee.
+      // C'est ce que la console doit proposer a la reservation.
+      if (u.pathname === '/api/public-booking-meta') {
+        // Catalogue serveur en panne : c'est LA situation ou le repli statique
+        // reprenait la main et vendait le catalogue de Fun Galaxy a tout le monde.
+        if (breakCatalog) return new Response('{"ok":false}', { status: 500, headers: { 'content-type': 'application/json' } });
+        const centerId = u.searchParams.get('centerId') || A.id;
+        const formules = centerId === B.id
+          ? [{ id: 'n4-jeudi-fou', name: 'JEUDI FOU N4', family: 'Formules N4', desc: [], price: 12, type: 'per_pax', minPax: 2, notes: [] }]
+          : [{ id: 'f1', name: 'FORMULE 1', family: 'Formules anniversaires', desc: [], price: 26, type: 'per_pax', minPax: 6, notes: [] }];
+        return J({
+          ok: true, centerId, formules,
+          activities: centerId === B.id ? [{ id: 'bowling', name: 'Bowling' }] : [{ id: 'bowling', name: 'Bowling' }, { id: 'laser_game', name: 'Laser Game' }],
+          center: { id: centerId },
+        });
       }
       if (u.pathname.startsWith('/api/')) return J({ ok: true, reservations: [], laneStatuses: {}, communications: [], blocks: [] });
       return nf(input, init);
@@ -143,7 +167,7 @@ async function installMock(page, { withSession }) {
       if (withSession) localStorage.setItem('funGalaxy_auth_v1', JSON.stringify(sessionFor(A.id)));
       else localStorage.removeItem('funGalaxy_auth_v1');
     } catch (e) {}
-  }, { expiresAt, withSession, A: CENTER_A, B: CENTER_B });
+  }, { expiresAt, withSession, breakCatalog, A: CENTER_A, B: CENTER_B });
 }
 
 // Etat lu DANS la page : caches du vrai code + appels reellement partis.
@@ -155,6 +179,17 @@ const READ_STATE = `(() => ({
   blocksLoaded: (typeof availabilityBlocksCache !== 'undefined') ? availabilityBlocksCache.loaded : null,
   blockReasons: (typeof availabilityBlocksCache !== 'undefined' ? (availabilityBlocksCache.blocks || []) : []).map(b => b.reason),
   configCenters: (typeof staffCenterConfigCache !== 'undefined' ? (staffCenterConfigCache.centers || []) : []).map(c => c.id),
+  formuleIds: (typeof getEffectiveCatalogFormules === 'function' ? getEffectiveCatalogFormules() : []).map(f => f.id),
+  menuKeys: [...document.querySelectorAll('.fgx-menu-nav [data-fgx-menu-key]')].map(n => n.dataset.fgxMenuKey),
+  // Les onglets de ressource de la page Planning, mesures a la BOITE rendue :
+  // une classe posee ne prouve rien, un rectangle nul si.
+  resourceTabs: ['staffTabBowling', 'staffTabLaser', 'staffTabAll'].map((id) => {
+    const el = document.getElementById(id);
+    if (!el) return { id, present: false };
+    const r = el.getBoundingClientRect();
+    const sub = el.querySelector('.sub');
+    return { id, present: true, visible: r.width > 0 && r.height > 0, sub: sub ? sub.textContent.trim() : '' };
+  }),
   calls: (window.__calls || []).slice(),
 }))()`;
 
@@ -169,6 +204,19 @@ async function openCenterMenu(page) {
 
 async function listedCenters(page) {
   return page.$$eval('.fgx-menu-popover[data-popover-kind="center"] [data-fgx-center-option]', nodes => nodes.map(n => n.dataset.fgxCenterOption));
+}
+
+// Le resume d'un centre tel que l'utilisateur le LIT dans le switcher. Mesure
+// dans le DOM, pas via une fonction interne au module du menu : c'est la ligne
+// qui annoncait « 30 armes laser » a un centre qui n'en a aucune.
+async function centerMetaInPopover(page, centerId) {
+  await openCenterMenu(page);
+  const meta = await page.$eval(
+    `.fgx-menu-popover[data-popover-kind="center"] [data-fgx-center-option="${centerId}"] small`,
+    (node) => node.textContent.trim(),
+  ).catch(() => '');
+  await page.keyboard.press('Escape').catch(() => null);
+  return meta;
 }
 
 async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
@@ -281,6 +329,78 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
       record('les blocs affiches sont ceux du nouveau centre', after.blockReasons.includes('BLOC-N4-UN'), after.blockReasons.join(',') || 'aucun');
       record('AUCUNE donnee du centre quitte ne survit', !after.blockReasons.includes('BLOC-LIBRAMONT'), after.blockReasons.join(',') || 'aucun');
       record('la config d etablissement suit aussi le nouveau centre', !after.configCenters.includes(CENTER_A.id), after.configCenters.join(',') || 'vide');
+
+      section('[C] La console d un centre ne montre que CE QUE CE CENTRE A');
+      await page.evaluate(() => { if (typeof renderStaffMenu === 'function') renderStaffMenu(); });
+      const onB = await readState(page);
+      record(
+        'aucun planning Laser Game pour un centre sans arene',
+        !onB.menuKeys.includes('laser'),
+        onB.menuKeys.join(',') || 'menu vide',
+      );
+      record(
+        'aucun ecran de tarifs Laser Game non plus',
+        !onB.menuKeys.includes('laserGame'),
+        onB.menuKeys.filter(k => /laser/i.test(k)).join(',') || 'aucun',
+      );
+      record('le planning bowling reste, lui', onB.menuKeys.includes('bowling'));
+      const metaB = await centerMetaInPopover(page, CENTER_B.id);
+      record('le resume du centre n annonce aucune arme laser', Boolean(metaB) && !/laser/i.test(metaB), metaB || 'vide');
+      const tabsB = Object.fromEntries(onB.resourceTabs.map(t => [t.id, t]));
+      record(
+        'aucun onglet Planning Laser Game dans la page',
+        tabsB.staffTabLaser && tabsB.staffTabLaser.visible === false,
+        tabsB.staffTabLaser ? ('visible=' + tabsB.staffTabLaser.visible) : 'absent',
+      );
+      record(
+        'l onglet bowling reste et annonce SES pistes',
+        Boolean(tabsB.staffTabBowling && tabsB.staffTabBowling.visible && /piste/.test(tabsB.staffTabBowling.sub)),
+        tabsB.staffTabBowling ? tabsB.staffTabBowling.sub : 'absent',
+      );
+      record(
+        'les formules proposees sont CELLES DU CENTRE',
+        onB.formuleIds.length === 1 && onB.formuleIds[0] === 'n4-jeudi-fou',
+        onB.formuleIds.join(',') || 'aucune',
+      );
+      record(
+        'et aucune formule du socle Fun Galaxy ne traine',
+        !onB.formuleIds.includes('f1'),
+        onB.formuleIds.join(',') || 'aucune',
+      );
+
+      section('[D] Retour sur un centre qui a tout : le laser revient');
+      await openCenterMenu(page);
+      await page.click(`[data-fgx-center-option="${CENTER_A.id}"]`);
+      await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_A.id, { timeout: 10000 });
+      await page.waitForFunction(
+        () => typeof getEffectiveCatalogFormules === 'function'
+          && getEffectiveCatalogFormules().length === 1
+          && getEffectiveCatalogFormules()[0].id === 'f1',
+        null, { timeout: 15000 },
+      ).catch(() => null);
+      await page.evaluate(() => { if (typeof renderStaffMenu === 'function') renderStaffMenu(); });
+      const onA = await readState(page);
+      record('le planning Laser Game est de retour', onA.menuKeys.includes('laser'), onA.menuKeys.join(','));
+      record('les tarifs Laser Game aussi', onA.menuKeys.includes('laserGame'));
+      const metaA = await centerMetaInPopover(page, CENTER_A.id);
+      const tabsA = Object.fromEntries(onA.resourceTabs.map(t => [t.id, t]));
+      record(
+        'l onglet Planning Laser Game est de retour, avec SES armes',
+        Boolean(tabsA.staffTabLaser && tabsA.staffTabLaser.visible && /arme/.test(tabsA.staffTabLaser.sub)),
+        tabsA.staffTabLaser ? (tabsA.staffTabLaser.sub || 'sans sous-titre') : 'absent',
+      );
+      record('le resume annonce ses armes laser', /laser/i.test(metaA), metaA || 'vide');
+      record(
+        'et les formules sont redevenues les siennes, RELUES au serveur',
+        onA.formuleIds.length === 1 && onA.formuleIds[0] === 'f1',
+        onA.formuleIds.join(',') || 'aucune',
+      );
+      record(
+        'une requete de catalogue est partie pour chaque centre',
+        onA.calls.filter(c => c.path === '/api/public-booking-meta' && c.centerId === CENTER_A.id).length >= 1
+          && onA.calls.filter(c => c.path === '/api/public-booking-meta' && c.centerId === CENTER_B.id).length >= 1,
+        onA.calls.filter(c => c.path === '/api/public-booking-meta').map(c => c.centerId).join(',') || 'aucune',
+      );
       await context.close();
     }
 
@@ -311,6 +431,85 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
         'contre-preuve [B] : et aucun bloc du nouveau centre n arrive',
         !stuck.blockReasons.some(r => String(r).startsWith('BLOC-N4')),
         stuck.blockReasons.join(',') || 'aucun',
+      );
+      await context.close();
+    }
+    // ===================================================================== [E]
+    section('[E] Contre-preuves par MUTATION : sans ces deux gardes, le melange revient');
+    {
+      const MENU_SRC = path.join(ROOT, 'assets', 'staff-menu.js');
+      const APP_SRC = path.join(ROOT, 'assets', 'app-main.js');
+      const menuOriginal = fs.readFileSync(MENU_SRC, 'utf8');
+      const appOriginal = fs.readFileSync(APP_SRC, 'utf8');
+      // 1. le menu cesse de regarder ce que le centre possede
+      const menuMutated = menuOriginal.replace('return count > 0;', 'return true;');
+      // 2. le repli du socle redevient universel
+      const appMutated = appOriginal.replace(
+        'return FILE_SEED_CENTER_IDS.includes(centerId) ? FORMULES : [];',
+        'return FORMULES;',
+      );
+      record('les deux lignes de production sont bien celles que l on mute', menuMutated !== menuOriginal && appMutated !== appOriginal);
+      try {
+        fs.writeFileSync(MENU_SRC, menuMutated);
+        fs.writeFileSync(APP_SRC, appMutated);
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await installMock(page, { withSession: true, breakCatalog: true });
+        // Session ET ecran sur le centre SANS arene laser, des le premier rendu.
+        await page.addInitScript((B) => {
+          const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+          try {
+            localStorage.setItem('funGalaxy_auth_v1', JSON.stringify({
+              token: 'qa', cookieBacked: false, centerId: B, expiresAt,
+              member: { id: `${B}:platform-owner`, name: 'Movsar' },
+              role: { id: 'platform-owner', name: 'Proprietaire plateforme', locked: true },
+              permissions: ['dashboard.view', 'planning.view', 'direction.view', 'centers.switch', 'settings.manage', 'users.manage', 'platform.admin'],
+            }));
+            localStorage.setItem('funGalaxy_v4', JSON.stringify({ adminCenterId: B, view: 'client' }));
+          } catch (e) {}
+        }, CENTER_B.id);
+        await page.goto(`${BASE_URL}/?v=switch-e-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+        await bootStaff(page);
+        await page.waitForTimeout(1200);
+        const broken = await readState(page);
+        record(
+          'menu non filtre : le Laser Game revient chez un centre sans arene, ce gate ROUGIRAIT',
+          broken.menuKeys.includes('laser') || broken.menuKeys.includes('laserGame'),
+          broken.menuKeys.filter(k => /laser/i.test(k)).join(',') || 'aucun',
+        );
+        record(
+          'repli universel, catalogue serveur en panne : les formules de Fun Galaxy reviennent chez ce centre',
+          broken.formuleIds.includes('f1'),
+          broken.formuleIds.slice(0, 4).join(',') || 'aucune',
+        );
+        await context.close();
+      } finally {
+        fs.writeFileSync(MENU_SRC, menuOriginal);
+        fs.writeFileSync(APP_SRC, appOriginal);
+      }
+      record(
+        'les deux fichiers de production sont restaures a l identique',
+        fs.readFileSync(MENU_SRC, 'utf8') === menuOriginal && fs.readFileSync(APP_SRC, 'utf8') === appOriginal,
+      );
+
+      // Le pendant SAIN de la contre-preuve, dans la meme panne : ce qui compte
+      // n'est pas que le repli existe, c'est qu'il ne serve JAMAIS le catalogue
+      // d'un autre client. Une liste vide se corrige a la seconde suivante, un
+      // catalogue etranger se vend au telephone.
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await installMock(page, { withSession: true, breakCatalog: true });
+      await page.addInitScript((B) => {
+        try { localStorage.setItem('funGalaxy_v4', JSON.stringify({ adminCenterId: B, view: 'client' })); } catch (e) {}
+      }, CENTER_B.id);
+      await page.goto(`${BASE_URL}/?v=switch-e2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+      await bootStaff(page);
+      await page.waitForTimeout(1200);
+      const safe = await readState(page);
+      record(
+        'code sain, meme panne : AUCUNE formule Fun Galaxy chez ce centre',
+        !safe.formuleIds.includes('f1'),
+        safe.formuleIds.join(',') || 'aucune (attendu)',
       );
       await context.close();
     }

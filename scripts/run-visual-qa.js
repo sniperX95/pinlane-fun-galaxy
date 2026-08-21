@@ -555,7 +555,11 @@ async function installQaApi(page) {
           ok: true,
           today: new Date().toISOString().slice(0, 10),
           durationOptions: [],
-          formules: [],
+          // Le SOCLE, comme le fait la prod pour un centre du fichier. Depuis le
+          // 2026-08-21, un `formules: []` veut dire « ce centre ne vend aucune
+          // formule » et la console l'affiche tel quel : elle ne retombe plus
+          // sur le catalogue du premier client, qui n'appartient pas aux autres.
+          formules: (typeof FORMULES !== 'undefined' ? FORMULES : []),
           center: {
             id: 'libramont',
             status: 'active',

@@ -2093,6 +2093,12 @@ function resetCenterScopedCaches() {
   staffCenterConfigCache = { loaded: false, loading: false, error: '', centers: [], activities: [] };
   availabilityBlocksCache = { loaded: false, loading: false, error: '', blocks: [] };
   if (staffDaySeriesCache && typeof staffDaySeriesCache.clear === 'function') staffDaySeriesCache.clear();
+  // LE CATALOGUE EFFECTIF du centre : les formules et les activites servies par
+  // public-booking-meta. Sans cette remise a zero, le formulaire de reservation
+  // de la console proposait le catalogue du centre PRECEDENT, et le repli
+  // statique de booking-core (les 14 formules Fun Galaxy) reprenait la main.
+  if (typeof window !== 'undefined') window.__pinlaneDisplayFormules = null;
+  if (typeof setCenterActivities === 'function') setCenterActivities([]);
   // Les trois caches de la Direction vivent dans admin-console.js, chargé après
   // ce fichier : on passe par la fonction qu'il expose plutôt que d'y toucher.
   if (typeof window !== 'undefined' && typeof window.resetDirectionCaches === 'function') window.resetDirectionCaches();
@@ -2102,6 +2108,32 @@ if (typeof window !== 'undefined') window.resetCenterScopedCaches = resetCenterS
 function getScopedCenters() {
   return scopedCentersCache.loaded && scopedCentersCache.centers.length ? scopedCentersCache.centers : null;
 }
+
+// ---- LE CATALOGUE DU SOCLE N'APPARTIENT QU'AUX CENTRES DU SOCLE ------------
+//
+// booking-core.js porte les 14 formules de Fun Galaxy en dur (FORMULE 1,
+// MATIN MALIN, HAPPY LASER AND GAME...). C'etait le repli de TOUT centre tant
+// que le catalogue serveur n'avait pas repondu : la console de N4 proposait
+// donc les formules de Fun Galaxy a la reservation, alors que N4 en a quatre a
+// lui. Un repli qui montre le catalogue d'un autre client n'est pas un repli,
+// c'est une fuite d'affichage.
+//
+// Ce repli reste legitime pour les centres du FICHIER (libramont, gembloux,
+// ciney) : ces formules SONT les leurs. Pour tout autre centre, tant que le
+// serveur n'a pas repondu, la bonne reponse est « rien » : une liste vide se
+// corrige a la seconde suivante, un catalogue etranger se vend au telephone.
+const FILE_SEED_CENTER_IDS = ['libramont', 'gembloux', 'ciney'];
+
+function getEffectiveCatalogFormules() {
+  const served = Array.isArray(window.__pinlaneDisplayFormules) ? window.__pinlaneDisplayFormules : null;
+  if (served && served.length) return served;
+  if (served) return []; // le serveur a repondu « aucune formule » : on le dit
+  // getTunnelCenterId, pas le centre staff : dans le tunnel public l'adresse
+  // fait autorite, et c'est le seul endroit ou les deux peuvent diverger.
+  const centerId = typeof getTunnelCenterId === 'function' ? getTunnelCenterId() : getActiveOpsCenterId();
+  return FILE_SEED_CENTER_IDS.includes(centerId) ? FORMULES : [];
+}
+if (typeof window !== 'undefined') window.getEffectiveCatalogFormules = getEffectiveCatalogFormules;
 
 function isCenterScopeOwner() {
   return !!scopedCentersCache.owner;
@@ -2815,6 +2847,9 @@ async function submitLogin(ev) {
     // par le centre courant : pour un centre ne dans la console (n4-bowling,
     // mi12) ce repli est VIDE, et le menu s ouvrait sans aucun centre.
     loadMenuCenters(true);
+    // Et le catalogue du centre de la session : sans lui, le formulaire de
+    // reservation retomberait sur le socle fichier, qui est celui de Fun Galaxy.
+    loadCenterScheduleConfig();
     applyAuthState();
     if (state.view === 'staff') {
       guardStaffPage();
@@ -4681,7 +4716,7 @@ function renderFormulaPreferences() {
   const orderEl = document.getElementById('formulaOrderOptions');
   const noteEl = document.getElementById('formulaPreferenceNote');
   if (!box || !orderEl || !noteEl) return;
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   if (!formule) {
     box.classList.add('hidden');
     orderEl.innerHTML = '';
@@ -4722,7 +4757,7 @@ function selectFormule(id) {
   state.booking.startTime = '';
   state.booking.preference = createDefaultFormulaPreference();
   state.booking.opsPlan = null;
-  const formule = FORMULES.find(x => x.id === id);
+  const formule = resolveDisplayFormule(id);
   if (formule) {
     state.booking.duration = getFormuleLaneDuration(formule);
     state.booking.totalDuration = getFormuleTotalDuration(formule);
@@ -5148,7 +5183,7 @@ async function goStep2() {
     return;
   }
   if (state.booking.type === 'formule') {
-    const formule = FORMULES.find(x => x.id === state.booking.formuleId);
+    const formule = resolveDisplayFormule(state.booking.formuleId);
     if (!formule) { showAlert('Sélectionnez une formule.'); return; }
     const availability = getFormuleAvailability(formule, state.booking.date, pax);
     if (!availability.ok) { showAlert(availability.message); return; }
@@ -5163,7 +5198,7 @@ async function fetchSlots(options = {}) {
   // courante remettra le programme normalise si le type est bien une visite.
   state.booking.serverProgram = null;
   if (!options.keepAlternatives) clearBookingAlternatives();
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   if (options.showLoading !== false) {
     slotLoading = true;
     state.availableSlots = [];
@@ -5356,7 +5391,7 @@ function getCurrentFormulaAnchorSlotIndex() {
 // sont réécrits. Le rendu complet ne reste que pour un VRAI changement de
 // structure (ordre des activités, liste d'heures, panne).
 async function revalidateFormulaAnchors() {
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   formulaAnchorBusy = true;
   if (!syncFormulaAnchorUi(formule, { busy: true })) renderSlots(formule);
   await fetchSlots({ showLoading: false, render: false });
@@ -5931,7 +5966,7 @@ async function dismissFormulaAdvice(signature) {
     advice.classList.add('is-leaving');
     await new Promise((resolve) => setTimeout(resolve, 150)); // = --dur-exit
   }
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   if (!syncFormulaAnchorUi(formule, { busy: false })) renderSlots(formule);
 }
 
@@ -6244,7 +6279,7 @@ function renderFormulaArrivalPicker(formule) {
 
 function setFormulaArrivalChoice(time) {
   formulaArrivalChoice = time;
-  renderSlots(state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null);
+  renderSlots(state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null);
 }
 
 function renderFormulaEmptySlots(formule) {
@@ -6363,7 +6398,7 @@ function selectSlot(i) {
   state.booking.startTime = slot.time;
   state.booking.allocatedLanes = slot.lanes;
   state.booking.opsPlan = slot.opsPlan || null;
-  const formule = state.booking.type === 'formule' ? FORMULES.find(x => x.id === state.booking.formuleId) : null;
+  const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   if (formule && slot.opsPlan && formulaHasAnchorUi()) {
     // Fige les ancres du créneau retenu : le serveur revalide exactement
     // cette combinaison à la confirmation (POST refusé sinon).
@@ -6597,7 +6632,7 @@ function getFormulaRecapModel(booking) {
   const plan = booking.opsPlan || {};
   const blocks = Array.isArray(plan.resourceBlocks) ? plan.resourceBlocks : [];
   const preference = createDefaultFormulaPreference(booking.preference || {});
-  const formule = FORMULES.find(x => x.id === booking.formuleId) || null;
+  const formule = resolveDisplayFormule(booking.formuleId) || null;
   const appointments = [];
   const bowlingTime = blocks.find(block => block.resourceType === 'bowling_lane')?.startTime
     || preference.preferredTimes.bowling;
@@ -6621,7 +6656,7 @@ function getFormulaRecapModel(booking) {
 
 function renderRecap() {
   const b = state.booking;
-  const formule = b.type === 'formule' ? FORMULES.find(x => x.id === b.formuleId) : null;
+  const formule = b.type === 'formule' ? resolveDisplayFormule(b.formuleId) : null;
   const isLaser = b.type === 'laser';
   const isVisit = b.type === 'visite';
   const visitProgram = isVisit && b.serverProgram && Array.isArray(b.serverProgram.items)
@@ -6723,7 +6758,7 @@ async function confirmBooking() {
   setBookingSubmitBusy(true);
 
   const b = state.booking;
-  const formule = b.type === 'formule' ? FORMULES.find(x => x.id === b.formuleId) : null;
+  const formule = b.type === 'formule' ? resolveDisplayFormule(b.formuleId) : null;
   const duration = Number(b.duration);
   const totalDuration = getBookingTotalDuration(b);
   const needsLanes = reservationNeedsLanes(b.type, b.formuleId);
@@ -7460,7 +7495,7 @@ function renderDashSideChartBody(host, metrics) {
   });
   const list = [...counts.entries()]
     .map(([id, entry]) => {
-      const formule = FORMULES.find(item => item.id === id);
+      const formule = resolveDisplayFormule(id);
       return {
         label: formule ? formule.name : id,
         value: entry.count,
@@ -12167,7 +12202,7 @@ function availabilityActivityLabel(id) {
 }
 
 function availabilityFormulaLabel(id) {
-  const found = FORMULES.find(formule => formule.id === id);
+  const found = resolveDisplayFormule(id);
   return found ? found.name : String(id || '');
 }
 
@@ -12459,7 +12494,7 @@ function renderAvailabilityBlocksPanel() {
   const activitiesOptions = activities.length
     ? activities.map(activity => `<option value="${escapeHtml(activity.id)}">${escapeHtml(activity.label)}</option>`).join('')
     : '<option value="">Aucune activité disponible</option>';
-  const formulesOptions = FORMULES.map(formule => `<option value="${escapeHtml(formule.id)}">${escapeHtml(formule.name)}</option>`).join('');
+  const formulesOptions = getEffectiveCatalogFormules().map(formule => `<option value="${escapeHtml(formule.id)}">${escapeHtml(formule.name)}</option>`).join('');
   const dowOptions = [1, 2, 3, 4, 5, 6, 0]
     .map(day => `<option value="${day}">${escapeHtml(AVAILABILITY_DAY_NAMES[day].charAt(0).toUpperCase() + AVAILABILITY_DAY_NAMES[day].slice(1))}</option>`).join('');
   return `<section class="availability-blocks" aria-label="Blocages de disponibilite">
@@ -12970,7 +13005,7 @@ function getConsoleFormuleCatalog({ includeRemoved = false } = {}) {
   const live = typeof window !== 'undefined' && typeof window.pevLiveFormules === 'function'
     ? window.pevLiveFormules()
     : null;
-  if (!Array.isArray(live) || !live.length) return FORMULES;
+  if (!Array.isArray(live) || !live.length) return getEffectiveCatalogFormules();
   return includeRemoved ? live : live.filter(formule => !formule.removed);
 }
 
@@ -14880,8 +14915,8 @@ function buildStaffClientRowsFromReservations(reservations = []) {
       const leadTimeAvgDays = leadN ? Math.round(leadSum / leadN) : 0;
       const activityCompletionRate = activityTotal ? activityDone / activityTotal : 0;
       let favoriteLabel = '';
-      if (favoriteFormula && typeof FORMULES !== 'undefined') {
-        const f = FORMULES.find(item => item.id === favoriteFormula);
+      if (favoriteFormula) {
+        const f = resolveDisplayFormule(favoriteFormula);
         favoriteLabel = f ? f.name : 'Formule';
       } else if (favoriteType === 'laser') favoriteLabel = 'Laser Game';
       else if (favoriteType === 'bowling') favoriteLabel = 'Bowling';
@@ -16138,6 +16173,32 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   if (allCountEl) allCountEl.textContent = dayReservations.length;
   if (bowlingCountEl) bowlingCountEl.textContent = bowlingCount;
   if (laserCountEl) laserCountEl.textContent = laserCount;
+  // ---- UN ONGLET DE RESSOURCE QUE LE CENTRE N'A PAS EST UNE PROMESSE VIDE --
+  //
+  // Ces deux onglets etaient ecrits en dur dans index.html, sous-titres
+  // compris : « 8 pistes » et « 2 zones », c'est-a-dire l'installation de Fun
+  // Galaxy annoncee a tous les centres. N4 n'a AUCUNE arene laser
+  // (weaponCount 0) et voyait quand meme son planning laser.
+  const centerResources = (typeof getAdminCenter === 'function' ? (getAdminCenter() || {}).resources : null) || {};
+  const laneCount = Number(centerResources.bowling && centerResources.bowling.laneCount) || 0;
+  const weaponCount = Number(centerResources.laser && centerResources.laser.weaponCount) || 0;
+  // La CLE ABSENTE veut dire « on ne sait pas encore » : le repli neutre de
+  // getAdminCenter rend `resources: {}`, et le prendre pour « ce centre n'a
+  // rien » masquait les deux onglets d'un centre parfaitement equipe. La cle
+  // presente a null, elle, dit bien que la ressource n'existe pas.
+  const knows = (kind) => Object.prototype.hasOwnProperty.call(centerResources, kind);
+  const hasBowling = !knows('bowling') || laneCount > 0;
+  const hasLaser = !knows('laser') || weaponCount > 0;
+  document.getElementById('staffTabBowling')?.classList.toggle('hidden', hiddenByPage || !hasBowling);
+  document.getElementById('staffTabLaser')?.classList.toggle('hidden', hiddenByPage || !hasLaser);
+  const bowlingSub = document.getElementById('staffBowlingSub');
+  if (bowlingSub && knows('bowling')) bowlingSub.textContent = laneCount ? `${laneCount} piste${laneCount > 1 ? 's' : ''}` : '';
+  const laserSub = document.getElementById('staffLaserSub');
+  if (laserSub && knows('laser')) laserSub.textContent = weaponCount ? `${weaponCount} arme${weaponCount > 1 ? 's' : ''}` : '';
+  // Rester sur la vue d'une ressource absente afficherait une grille vide sans
+  // rien dire : on retombe sur la journee complete, qui existe toujours.
+  if (view === 'laser' && !hasLaser) view = 'all';
+  if (view === 'bowling' && !hasBowling) view = 'all';
   document.getElementById('planningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'bowling');
   document.getElementById('laserPlanningBox')?.classList.toggle('hidden', hiddenByPage || view !== 'laser');
   // LA LISTE DU JOUR SUIVAIT LE VISITEUR PARTOUT (2026-08-14). Movsar :
@@ -16181,14 +16242,14 @@ function getLaserGameCountForReservation(reservation) {
   if (reservation.type === 'laser') return getLaserGameCount(Number(reservation.duration) || 0.5);
   const programGames = getProgramLaserGameCount(reservation);
   if (programGames) return programGames;
-  const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
+  const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
   return getFormulaLaserGameCount(formule);
 }
 
 function getBowlingDurationForReservation(reservation) {
   const windows = getBowlingWindowsFromReservation(reservation);
   if (windows.length) return Number(windows[0].duration) || 0;
-  const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
+  const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
   if (formule) return formule.hasBowling ? Number(formule.bowlingDur || 1) : 0;
   if (reservation.type !== 'bowling') return 0;
   return Number(reservation.duration || 0);
@@ -16369,7 +16430,7 @@ const PLANNING_CARD_LABEL_MAX = 12;
 // n'ecrit rien.
 function getPlanningCardOfferLabel(reservation, view = 'bowling') {
   const morceaux = [];
-  const formule = reservation?.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
+  const formule = reservation?.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
   if (formule || reservation?.type === 'formule') {
     // « FORMULE 5 » tient, « CRAZY STUDENT STRIKE » non : on garde le nom quand
     // il est court, et on retombe sur la NATURE de l'offre, vraie et entiere.
@@ -16603,7 +16664,7 @@ function renderCardFlags(reservation) {
 function renderReservationTags(reservation, options = {}) {
   const tags = [];
   const contexteSeul = Boolean(options.contexteSeul);
-  const formule = reservation.formuleId ? FORMULES.find(x => x.id === reservation.formuleId) : null;
+  const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
   if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: formule?.name || 'Formule' });
   const bowlingDuration = getBowlingDurationForReservation(reservation);
   if (!contexteSeul && bowlingDuration && Math.abs(bowlingDuration - 1) > 0.01) {
@@ -17512,7 +17573,7 @@ function getStaffStatusCounts(reservations) {
 }
 
 function renderReservationRow(r) {
-  const formule = r.formuleId ? FORMULES.find(x => x.id === r.formuleId) : null;
+  const formule = r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
   const isFormule = !!formule;
   const view = getStaffResourceView();
   const isLaser = view === 'laser' || r.type === 'laser';
@@ -18856,8 +18917,8 @@ function renderPosEdit(r) {
   // qu'il n'a pas commande au lieu de la presence de ce qu'il a commande.
   // La description vient du catalogue, seule source de verite : la fiche
   // n'invente pas le contenu d'une formule, elle le RECOPIE.
-  const editFormule = String(r.type || '') === 'formule' && typeof FORMULES !== 'undefined'
-    ? FORMULES.find(f => f.id === r.formuleId) || null
+  const editFormule = String(r.type || '') === 'formule'
+    ? resolveDisplayFormule(r.formuleId)
     : null;
   const editFormuleLignes = editFormule && Array.isArray(editFormule.desc) ? editFormule.desc : [];
   return `<div class="edit-shell pos-sheet fade-in">
@@ -19258,7 +19319,7 @@ function closeQuickBook() {
 
 function syncQuickBookDuration() {
   if (!quickBookState) return;
-  const formule = FORMULES.find(x => x.id === quickBookState.formuleId);
+  const formule = resolveDisplayFormule(quickBookState.formuleId);
   if (quickBookState.type === 'formule' && formule) {
     quickBookState.duration = getFormuleLaneDuration(formule);
     quickBookState.totalDuration = getFormuleTotalDuration(formule);
@@ -19407,8 +19468,10 @@ function getQuickBookActivityChoices() {
     activity,
   }));
   // Sans catalogue charge (premier rendu, reseau lent), on garde les deux
-  // activites socle : un selecteur vide empecherait de reserver.
-  if (!choices.length) {
+  // activites socle : un selecteur vide empecherait de reserver. Mais SEULEMENT
+  // pour les centres du fichier : proposer « Laser » a un centre qui n'a pas
+  // d'arene, c'est lui faire vendre ce qu'il n'a pas.
+  if (!choices.length && FILE_SEED_CENTER_IDS.includes(getActiveOpsCenterId())) {
     choices.push({ id: 'bowling', label: 'Bowling', type: 'bowling', activity: null });
     choices.push({ id: 'laser_game', label: 'Laser', type: 'laser', activity: null });
   }
@@ -19495,7 +19558,9 @@ function onQuickPhoneBlur(elOrValue) {
 function getQuickBookFormulaChoices() {
   if (!quickBookState) return [];
   const pax = Number(quickBookState.pax) || 1;
-  return FORMULES.map(formule => {
+  // Le catalogue EFFECTIF du centre, jamais le socle fichier : la reservation
+  // rapide de la console proposait les 14 formules de Fun Galaxy chez N4.
+  return getEffectiveCatalogFormules().map(formule => {
     const availability = getFormuleAvailability(formule, quickBookState.date, pax, quickBookState.startTime);
     return {
       ...formule,
@@ -19554,7 +19619,7 @@ function getQuickBookAvailableSlots() {
   if (!quickBookState) return [];
   const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
   if (!schedule) return [];
-  const formule = quickBookState.type === 'formule' ? FORMULES.find(x => x.id === quickBookState.formuleId) : null;
+  const formule = quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
   if (quickBookState.type === 'formule' && !formule) return [];
   if (formule) {
     const baseAvailability = getFormuleAvailability(formule, quickBookState.date, quickBookState.pax);
@@ -19738,7 +19803,7 @@ function renderQuickBook() {
   if (!quickBookState) return;
   const overlay = document.getElementById('quickBookOverlay');
   const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
-  const formule = quickBookState.type === 'formule' ? FORMULES.find(x => x.id === quickBookState.formuleId) : null;
+  const formule = quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
   const formuleChoices = getQuickBookFormulaChoices();
   const availableSlots = getQuickBookAvailableSlots();
   const firstSlot = availableSlots[0] || null;
@@ -20149,7 +20214,7 @@ async function saveQuickBook() {
   // (on évite d'enregistrer une adresse cassée). Un email vide reste accepté.
   if (email && !isValidEmail(email)) { failQuickBook('Adresse email invalide. Format attendu : nom@domaine.com'); return; }
   if (!quickBookState.startTime) { failQuickBook('Choisissez une heure.'); return; }
-  const formule = quickBookState.type === 'formule' ? FORMULES.find(x => x.id === quickBookState.formuleId) : null;
+  const formule = quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
   if (quickBookState.type === 'formule' && !formule) { failQuickBook('Sélectionnez une formule.'); return; }
 
   // Pas d'aller-retour réseau superflu sur le chemin de création : le poll
@@ -20441,9 +20506,7 @@ function renderFormules() {
   // Les offres désactivées par le staff (Établissement) sont masquées côté client.
   // Catalogue override-aware poussé par loadCenterScheduleConfig (prix/nom édités,
   // formules retirées déjà exclues) ; fallback sur FORMULES statique si absent.
-  const catalogFormules = Array.isArray(window.__pinlaneDisplayFormules) && window.__pinlaneDisplayFormules.length
-    ? window.__pinlaneDisplayFormules
-    : FORMULES;
+  const catalogFormules = getEffectiveCatalogFormules();
   // Verdict serveur du jour (fermeture ponctuelle, activite bloquee). `day`
   // ci-dessus est le jour de SEMAINE : le verdict s'appelle donc dayStatus.
   const dayStatus = typeof getCenterDayStatusFor === 'function' ? getCenterDayStatusFor(state.booking.date) : null;

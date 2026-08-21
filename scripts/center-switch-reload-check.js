@@ -112,7 +112,9 @@ async function installMock(page, { withSession, breakCatalog = false }) {
         window.__calls.push({
           path: u.pathname,
           action: u.searchParams.get('action') || (init && init.body && String(init.body).includes('"action"') ? JSON.parse(init.body).action : ''),
-          centerId: u.searchParams.get('centerId') || '',
+          centerId: u.searchParams.get('centerId')
+            || (init && init.body && String(init.body).includes('"centerId"') ? JSON.parse(init.body).centerId : '')
+            || '',
           method: (init && init.method) || 'GET',
         });
       }
@@ -169,7 +171,13 @@ async function installMock(page, { withSession, breakCatalog = false }) {
         // lit le centre courant au moment de l'appel. Repondre a la place du
         // code (une liste figee) masquerait justement le bug recherche.
         if (action === 'clientCatalog') {
-          const active = (typeof state !== 'undefined' && state.adminCenterId) ? state.adminCenterId : A.id;
+          // LE DOUBLE OBEIT AU VRAI SERVEUR (api/ops.resolveEffectiveCenterId) :
+          // le centre vient du PARAMETRE de la requete, et seulement a defaut
+          // de celui de la SESSION. Ce double lisait state.adminCenterId, ce qui
+          // revenait a repondre a la place du code : il servait le centre
+          // affiche a l'ecran meme quand la requete n'en portait aucun, et
+          // masquait donc entierement le defaut mesure ici.
+          const active = centerId || loginCenterId;
           const entry = (id, name, family, price) => ({
             id, name, bookingFamily: family, desc: [], notes: [], priceType: 'per_pax', minPax: 6,
             source: 'custom', hasBowling: true, base: { priceValue: price, priceOld: null },
@@ -645,6 +653,42 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
         'son bowling est annonce EN PARTIES, son vrai mode de vente',
         onB.pricingCardTitles.some((title) => /partie/i.test(title) && !/laser/i.test(title)),
         onB.pricingCardTitles.join(' | ') || 'aucune carte',
+      );
+
+      // LA SOURCE, donc les DEUX ecrans d'un coup. pevLiveFormules alimente la
+      // page « Tarifs & formules » ET l'onglet « Offres & activites » de la
+      // page Etablissement (capture Movsar du 2026-08-21 : les quatre formules
+      // de N4 y etaient COCHEES sous le nom de Fun Galaxy). Verrouiller la
+      // fonction que les deux consomment vaut mieux que deux parcours d'ecran.
+      const source = await page.evaluate(() => (window.pevLiveFormules() || []).map((f) => f.id));
+      record(
+        'la source des offres (Tarifs ET Etablissement) ne porte que les formules de ce centre',
+        source.includes('n4-jeudi-fou') && !source.includes('f1'),
+        source.join(', ') || 'aucune',
+      );
+
+      // L'ECRITURE, pas seulement la lecture. C'est le cote grave du meme
+      // defaut : aucune requete de cet editeur ne portait de centre, donc un
+      // tarif « du centre » modifie depuis l'ecran d'un centre partait
+      // s'ecrire sur celui de la SESSION, c'est-a-dire sur la donnee d'un
+      // autre client.
+      const ecriture = await page.evaluate(async () => {
+        window.__calls.length = 0;
+        const centre = typeof getCurrentStaffCenterId === 'function' ? getCurrentStaffCenterId() : null;
+        // Le VRAI chemin du produit : on ouvre la modale de tarif du centre
+        // sur une formule de CE centre, on pose un prix, on enregistre.
+        // Rien n'est reformule ici, c'est le bouton « Tarif du centre ».
+        window.pevOpenEdit('n4-jeudi-fou');
+        window.pevSetNum('priceValue', '13');
+        window.pevSave();
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        const appel = (window.__calls || []).find((c) => c.action === 'saveClientFormuleOverride');
+        return { centreEcran: centre, centreEnvoye: appel ? appel.centerId : null, vue: Boolean(appel) };
+      });
+      record(
+        'une ecriture tarifaire part signee du centre AFFICHE, pas de celui du code',
+        ecriture.vue && ecriture.centreEnvoye === CENTER_B.id,
+        `ecran=${ecriture.centreEcran} envoye=${ecriture.centreEnvoye || (ecriture.vue ? 'AUCUN' : 'requete jamais partie')}`,
       );
 
       // Retour sur Fun Galaxy : ce qui est a lui revient INTACT. C'est la

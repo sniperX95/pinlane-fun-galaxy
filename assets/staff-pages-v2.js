@@ -6926,12 +6926,40 @@
     };
   }
 
+  // ---- LE CENTRE AFFICHE VOYAGE AVEC CHAQUE REQUETE ----------------------
+  //
+  // api/ops resout le centre ainsi (resolveEffectiveCenterId) : le PARAMETRE
+  // de la requete d'abord, et seulement a defaut celui de la SESSION. Or
+  // aucune requete de cet editeur n'en envoyait : le serveur retombait donc
+  // sur le centre du CODE de connexion, quel que soit le centre choisi dans
+  // le switcher.
+  //
+  // Mesure du 2026-08-21 (capture Movsar) : connecte avec le code N4, ecran
+  // sur Fun Galaxy Libramont, la page « Tarifs & formules » servait les
+  // formules de N4. Et le meme defaut portait sur les ECRITURES : un tarif
+  // « du centre » modifie depuis l'ecran de Libramont partait s'ecrire sur
+  // N4. C'est le cote grave, parce qu'il touche la donnee d'un autre client.
+  //
+  // Le serveur reste la seule autorite : requireStaffPermission valide l'acces
+  // au centre demande AVANT resolveEffectiveCenterId, et refuse (403) un
+  // centre hors perimetre. On ne fait ici que dire de QUEL centre on parle.
+  function pevCenterId() {
+    if (typeof getCurrentStaffCenterId === 'function') return getCurrentStaffCenterId();
+    return (typeof state !== 'undefined' && state.adminCenterId) ? state.adminCenterId : '';
+  }
+
+  // Le corps d'une ecriture catalogue, toujours signe du centre affiche.
+  function pevBody(payload) {
+    const centerId = pevCenterId();
+    return JSON.stringify(centerId ? { ...payload, centerId } : payload);
+  }
+
   async function pevLoad(force) {
     if (pricingEditor.loading || (pricingEditor.loaded && !force)) return;
     pricingEditor.loading = true;
     pricingEditor.error = '';
     try {
-      const payload = await apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}?action=clientCatalog`, { method: 'GET' });
+      const payload = await apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}?action=clientCatalog&centerId=${encodeURIComponent(pevCenterId())}`, { method: 'GET' });
       const list = payload && Array.isArray(payload.formulas) ? payload.formulas : [];
       pricingEditor.byId = new Map(list.map((f) => [String(f.id), f]));
       pricingEditor.activities = payload && Array.isArray(payload.activities) ? payload.activities : [];
@@ -7219,7 +7247,7 @@
     const formuleId = pricingEditor.modal.formuleId;
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveClientFormuleOverride', formuleId, patch }),
+      body: pevBody({ action: 'saveClientFormuleOverride', formuleId, patch }),
     }).then(() => {
       pevToast('Tarif mis à jour.');
       pevDismissModal();
@@ -7239,7 +7267,7 @@
     const formuleId = pricingEditor.modal.formuleId;
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
       method: 'POST',
-      body: JSON.stringify({ action: 'resetClientFormuleOverride', formuleId }),
+      body: pevBody({ action: 'resetClientFormuleOverride', formuleId }),
     }).then(() => {
       pevToast('Tarif réinitialisé.');
       pevDismissModal();
@@ -7685,7 +7713,7 @@
     if (!window.confirm(`Supprimer la formule "${name}" de ton catalogue ? Elle disparait de tous TES centres. Les autres clients ne sont pas touches.`)) return;
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
       method: 'POST',
-      body: JSON.stringify({ action: 'deleteFormula', id: String(formuleId) }),
+      body: pevBody({ action: 'deleteFormula', id: String(formuleId) }),
     }).then(() => {
       pevToast('Formule retiree du catalogue.');
       pevReload();
@@ -7953,7 +7981,7 @@
     const body = activityEditor.modal.mode === 'create'
       ? { action: 'createActivity', activity }
       : { action: 'updateActivity', id: activityEditor.modal.id, patch: activity };
-    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: JSON.stringify(body) })
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: pevBody(body) })
       .then(() => {
         pevToast(activityEditor.modal.mode === 'create' ? 'Activité ajoutée au catalogue.' : 'Activité mise à jour.');
         window.aevCloseModal();
@@ -7970,7 +7998,7 @@
     const entry = aevEntry(id);
     const name = entry && entry.name ? entry.name : id;
     if (!window.confirm(`Retirer « ${name} » du catalogue ? Les formules qui l utilisent garderont leur étape.`)) return;
-    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: JSON.stringify({ action: 'deleteActivity', id: String(id) }) })
+    apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, { method: 'POST', body: pevBody({ action: 'deleteActivity', id: String(id) }) })
       .then(() => { pevToast('Activité retirée du catalogue.'); pevReload(); })
       .catch((error) => pevToast((error && error.message) || 'Suppression refusée. Réessaie.'));
   };

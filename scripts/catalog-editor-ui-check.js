@@ -264,10 +264,14 @@ async function runSuite(browser, quiet) {
     // le texte, sinon elle certifierait une phrase devenue fausse.
     ok(/n'engage que ce centre/i.test(scopeText) && /TOUS TES centres/.test(scopeText), 'scope-distinction',
       `centre=${/n'engage que ce centre/i.test(scopeText)} entreprise=${/TOUS TES centres/.test(scopeText)}`);
-    ok(await page.$('#cevAddFormula') !== null, 'catalog-add-btn');
+    // La page a change de forme (2026-08-22) : le bouton du haut cree une
+    // CATEGORIE, et chaque section porte son propre « + Formule », pre-rempli
+    // de sa categorie. On verifie les deux portes d'entree.
+    ok(await page.$('#cevAddCategory') !== null, 'catalog-add-category-btn');
+    ok(await page.$('#staffPricingPage [data-add-formula]') !== null, 'catalog-add-formula-in-section');
 
     // ---- 1. "Ajouter une formule" -> modale -> createFormula avec steps ------
-    await page.click('#cevAddFormula');
+    await page.click('#staffPricingPage [data-add-formula]');
     await page.waitForSelector('#cevOverlay #cevName', { timeout: 10000 });
     ok(await page.$('#cevOverlay #cevStepsList') !== null, 'create-modal-open');
     await page.fill('#cevOverlay #cevName', 'Formule test QA');
@@ -279,8 +283,22 @@ async function runSuite(browser, quiet) {
     const create = posts1.find((p) => p.action === 'createFormula');
     const cStep = create && create.formula && Array.isArray(create.formula.steps) ? create.formula.steps[0] : null;
     ok(create && cStep && cStep.activityId === 'bowling' && cStep.count === 1, 'create-post-steps', JSON.stringify(create && create.formula && create.formula.steps));
-    ok(create && !('centerId' in create) && create.formula && !('centerId' in create.formula), 'create-no-centerid',
-      create ? `bodyKeys=${Object.keys(create).join(',')} formulaKeys=${Object.keys(create.formula || {}).join(',')}` : 'aucun POST');
+    // CETTE ASSERTION DISAIT L'INVERSE, et elle verrouillait un defaut.
+    // Elle exigeait qu'une creation de formule ne porte AUCUN centre, au motif
+    // qu'une edition de catalogue vaut pour toute l'entreprise. Sauf que le
+    // serveur deduit justement l'ENTREPRISE du centre effectif
+    // (requireOwnerClientId lit centers.client_id) : sans centre dans la
+    // requete, resolveEffectiveCenterId prend celui de la SESSION. Creer une
+    // formule depuis l'ecran d'un centre l'ecrivait donc dans le catalogue
+    // d'une AUTRE entreprise, en silence. Ne rien envoyer ne rendait pas
+    // l'action globale : ca la rattachait au mauvais proprietaire.
+    // Ce gate est le cas PARLANT : sa session est ouverte sur gembloux tandis
+    // que l'ecran est sur libramont. Exiger le centre de l'ECRAN prouve donc
+    // que la requete ne retombe pas sur celui de la session.
+    // Le centre reste absent de l'objet `formula` lui-meme : c'est une
+    // formule d'entreprise, pas une formule de centre.
+    ok(create && create.centerId === 'libramont' && create.formula && !('centerId' in create.formula), 'create-carries-displayed-center',
+      create ? `centerId=${create.centerId} formulaKeys=${Object.keys(create.formula || {}).join(',')}` : 'aucun POST');
     // Apparait apres re-fetch (mock stateful + pevReload).
     await page.waitForFunction(() => document.querySelector('#staffPricingPage [data-cev-formula="custom-4"]'), null, { timeout: 6000 }).catch(() => {});
     ok(await page.$('#staffPricingPage [data-cev-formula="custom-4"]') !== null, 'create-appears');
@@ -300,7 +318,7 @@ async function runSuite(browser, quiet) {
     const posts2 = await page.evaluate(() => window.__cevPosts.slice());
     const setF1 = posts2.filter((p) => p.action === 'setFormulaSteps' && p.id === 'f1').pop();
     const setIds = setF1 && Array.isArray(setF1.steps) ? setF1.steps.map((s) => s.activityId) : [];
-    ok(setF1 && setIds.indexOf('laser_game') !== -1 && setIds.length === 3 && !('centerId' in setF1), 'steps-post-set', JSON.stringify(setF1 && setF1.steps));
+    ok(setF1 && setIds.indexOf('laser_game') !== -1 && setIds.length === 3 && setF1.centerId === 'libramont', 'steps-post-set', JSON.stringify(setF1 && setF1.steps));
 
     // ---- 4. reorder (f2) : monter/descendre change l'ordre effectivement envoye
     await cevEnsureNoModal(page);
@@ -323,7 +341,7 @@ async function runSuite(browser, quiet) {
     await page.waitForFunction(() => window.__cevPosts.some((p) => p.action === 'deleteFormula' && p.id === 'f3'), null, { timeout: 5000 }).catch(() => {});
     const posts3 = await page.evaluate(() => window.__cevPosts.slice());
     const del = posts3.find((p) => p.action === 'deleteFormula' && p.id === 'f3');
-    ok(Boolean(del) && !('centerId' in (del || {})), 'delete-post', JSON.stringify(posts3[posts3.length - 1] || null));
+    ok(Boolean(del) && del.centerId === 'libramont', 'delete-post', JSON.stringify(posts3[posts3.length - 1] || null));
     await page.waitForFunction(() => !document.querySelector('#staffPricingPage [data-cev-formula="f3"]'), null, { timeout: 6000 }).catch(() => {});
     ok(await page.$('#staffPricingPage [data-cev-formula="f3"]') === null, 'delete-gone');
   } catch (error) {
@@ -381,7 +399,7 @@ async function runSuite(browser, quiet) {
       process.exitCode = 1;
       return;
     }
-    console.log('catalog-editor-ui-check: ALL OK (ajout formule + steps sans centerId, prefill steps, setFormulaSteps ordonne, deleteFormula + disparition, reorder change l ordre, distinction mon centre vs catalogue ; 2 contre-preuves par mutation)');
+    console.log('catalog-editor-ui-check: ALL OK (ajout formule depuis sa section, ecritures signees du centre affiche, prefill steps, setFormulaSteps ordonne, deleteFormula + disparition, reorder change l ordre, distinction mon centre vs catalogue ; 2 contre-preuves par mutation)');
   } finally {
     try {
       if (fs.readFileSync(SRC, 'utf8') !== original) fs.writeFileSync(SRC, original);

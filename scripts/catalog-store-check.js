@@ -347,6 +347,52 @@ function expectedBasePrice(fileFormule, pax, laneCount) {
     'derivation hasBowling depuis les steps cassee',
   );
 
+  // =====================================================================
+  // LA CATEGORIE SAISIE FAIT FOI JUSQU A L ECRAN (2026-08-22)
+  // =====================================================================
+  // Movsar veut creer ses propres categories (« une nouvelle grosse categorie
+  // avec des ajouts de formules dedans »). La colonne formulas.family existe,
+  // est libre et deja patchable : ce qui manquait, c est que
+  // buildCanonicalFormula l IGNORAIT pour le libelle booking, celui que lisent
+  // la console ET le tunnel. Mesure en base le 2026-08-22 : N4 portait deja
+  // « Bowling », « Groupes » et « Promotions », invisibles a l ecran.
+  //
+  // Non-regression aussi importante : les libelles historiques (« Anniversaire »,
+  // « Speciale ») doivent s afficher comme aujourd hui, sinon l ecran de Fun
+  // Galaxy change sans que personne l ait demande.
+  {
+    delete require.cache[require.resolve(storePath)];
+    const store = require(storePath);
+    const row = (id, name, family, birthday) => ({
+      id, name, family, min_pax: 6, price_type: 'per_pax', price_value: 20, price_old: null,
+      not_during_holidays: false, valid_days: null, time_limit_min_minutes: null,
+      time_limit_max_minutes: null, human_validation: null, order_policy: null,
+      is_birthday_formula: birthday, best: false, description_lines: null,
+      sort_index: null, source: 'custom', active: true, owner_client_id: 'all',
+    });
+    store.applyCatalogState({
+      formulas: [
+        row('cat-soiree', 'Soiree entreprise', 'Soirees entreprises', false),
+        row('cat-histo', 'Formule historique', 'Anniversaire', true),
+        row('cat-histo2', 'Autre historique', 'Speciale', false),
+        row('cat-vide', 'Sans categorie', '', false),
+      ],
+      steps: [], activities: [], centerClients: [],
+    });
+    const famille = (id) => {
+      const f = store.getBookingFormule(id, 'libramont');
+      return f ? f.family : null;
+    };
+    ok(famille('cat-soiree') === 'Soirees entreprises',
+      `une categorie CREEE arrive telle quelle jusqu au format booking (obtenu ${JSON.stringify(famille('cat-soiree'))})`);
+    ok(famille('cat-histo') === 'Formules anniversaires',
+      `le libelle historique « Anniversaire » s affiche comme avant (obtenu ${JSON.stringify(famille('cat-histo'))})`);
+    ok(famille('cat-histo2') === 'Formules speciales',
+      `le libelle historique « Speciale » s affiche comme avant (obtenu ${JSON.stringify(famille('cat-histo2'))})`);
+    ok(famille('cat-vide') === 'Formules speciales',
+      `sans categorie saisie, le repli ne bouge pas (obtenu ${JSON.stringify(famille('cat-vide'))})`);
+  }
+
   // Le socle non mute survit a tout : reload propre puis identite.
   delete require.cache[require.resolve(storePath)];
   const clean = require(storePath);

@@ -7576,14 +7576,24 @@
   }
 
   // ── Ouverture des modales ─────────────────────────────────────────────────
-  window.cevOpenCreate = function () {
+  // La CATEGORIE peut arriver pre-remplie : le bouton « + Formule » d'une
+  // section cree dans CETTE section, sans avoir a retaper son nom. Appele sans
+  // argument (bouton « + Categorie »), le champ reste vide et prend le focus :
+  // taper un nom qui n'existe pas encore CREE la categorie, il n'y a pas de
+  // liste fermee a maintenir quelque part.
+  window.cevOpenCreate = function (family) {
     if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
-    catalogEditor.fields = { name: '', family: '', priceType: 'per_pax', priceValue: null, priceOld: null, minPax: 6, isBirthdayFormula: false, validDays: [], timeLimitMin: null, timeLimitMax: null };
+    catalogEditor.fields = { name: '', family: String(family || ''), priceType: 'per_pax', priceValue: null, priceOld: null, minPax: 6, isBirthdayFormula: /anniversaire/i.test(String(family || '')), validDays: [], timeLimitMin: null, timeLimitMax: null };
     catalogEditor.steps = [{ activityId: '', count: 1, durationMinutes: null, label: null, critical: false, resourceType: null }];
     catalogEditor.error = '';
     catalogEditor.saving = false;
     catalogEditor.modal = { mode: 'create', formuleId: null };
     cevSyncModal();
+    // Categorie vide = le geste est « je cree une categorie » : c'est ce champ
+    // qu'on veut sous le curseur, pas le nom de la formule.
+    if (!String(family || '')) {
+      setTimeout(() => { const el = document.getElementById('cevFamily'); if (el) el.focus(); }, 60);
+    }
   };
   window.cevOpenSteps = function (formuleId) {
     if (!cevCanManage()) { pevToast('Edition du catalogue reservee a la direction.'); return; }
@@ -7681,13 +7691,22 @@
     cevSubmit({ action: 'updateFormula', id, patch }, 'Structure de la formule mise a jour.');
   }
 
+  // LE POINT DE PASSAGE UNIQUE des ecritures catalogue (createFormula,
+  // updateFormula, setFormulaSteps). Elles portent le centre AFFICHE, et ce
+  // n'est pas contradictoire avec leur portee : une edition de catalogue vaut
+  // pour toute l'ENTREPRISE, et le serveur deduit justement l'entreprise du
+  // centre (requireOwnerClientId lit centers.client_id). Sans centre dans la
+  // requete, il prend celui de la SESSION : creer une formule depuis l'ecran
+  // d'un centre l'ecrivait alors dans le catalogue d'une AUTRE entreprise.
+  // Ne rien envoyer ne rendait donc pas l'action globale, ca la rattachait en
+  // silence au mauvais proprietaire.
   function cevSubmit(body, successMessage) {
     catalogEditor.saving = true;
     catalogEditor.error = '';
     cevRefreshFoot();
     apiRequest(`${API_ENDPOINTS.ops || '/api/ops'}`, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: pevBody(body),
     }).then(() => {
       pevToast(successMessage);
       cevDismiss();
@@ -7852,8 +7871,53 @@
     </article>`;
   }
 
-  // Groupes d'affichage : pistes, laser, puis les formules PAR FAMILLE.
-  // En classement actif, l'ordre tri prime : une seule liste plate.
+  // ---- UNE SEULE PAGE, UNE SECTION PAR CATEGORIE -------------------------
+  //
+  // Movsar, 2026-08-22 : « j'aime pas cette section, ca vaut pas la peine de
+  // faire une toute autre section alors que tu peux directement le faire dans
+  // les cartes en haut ; chaque categorie met un ajout de formule ».
+  //
+  // Avant : les offres vendues en haut, puis un bloc de 15 cartes « Activites
+  // du catalogue » en bas, qui redisait le bowling et le laser deja affiches
+  // plus haut. Un seul bouton d'ajout dans toute la page, tout en bas.
+  //
+  // Maintenant : chaque activite rejoint la section qui la concerne, et CHAQUE
+  // section porte son bouton d'ajout, pre-remplie de sa categorie. Rien n'est
+  // perdu : les activites qui ne se vendent pas seules (boissons, table
+  // anniversaire) ont leur propre section au lieu d'etre noyees dans la liste.
+  const ACTIVITY_SECTION_LANES = 'Location de pistes';
+  const ACTIVITY_SECTION_LASER = 'Laser Game';
+  const ACTIVITY_SECTION_CARTE = 'Activités à la carte';
+  const ACTIVITY_SECTION_PARTS = 'Ingrédients de formules';
+  const ACTIVITY_SECTIONS = [
+    ACTIVITY_SECTION_LANES,
+    ACTIVITY_SECTION_LASER,
+    ACTIVITY_SECTION_CARTE,
+    ACTIVITY_SECTION_PARTS,
+  ];
+
+  // Ou tombe une activite du catalogue. Le type de RESSOURCE decide en premier
+  // (une piste est une piste, quel que soit son nom), puis le fait qu'elle se
+  // reserve seule ou non.
+  function activitySectionName(activity) {
+    const resource = String((activity && activity.resourceType) || '').toLowerCase();
+    if (resource === 'bowling_lane' || resource === 'duckpin_lane') return ACTIVITY_SECTION_LANES;
+    if (resource === 'laser_arena') return ACTIVITY_SECTION_LASER;
+    return activity && activity.bookable ? ACTIVITY_SECTION_CARTE : ACTIVITY_SECTION_PARTS;
+  }
+
+  // L'ordre de lecture de la page. Les categories de FORMULES creees par le
+  // gerant n'y figurent pas : elles se rangent apres, dans leur ordre
+  // d'apparition. Aucune liste a tenir a jour quelque part quand il en cree une.
+  const SECTION_ORDER = [
+    ACTIVITY_SECTION_LANES,
+    ACTIVITY_SECTION_LASER,
+    ACTIVITY_SECTION_CARTE,
+    'Formules anniversaires',
+    'Formules speciales',
+    'Formules spéciales',
+  ];
+
   function pricingSectionsHtml(rows, { selected, ranking, canManage }) {
     const card = (row, index) => pricingCardHtml(row, pevRowView(row), { selected: selected && row.id === selected.id, ranking, index, canManage });
     if (ranking !== 'default') {
@@ -7863,33 +7927,52 @@
       </section>`;
     }
     const groups = [];
+    const groupFor = (name) => {
+      let group = groups.find((g) => g.name === name);
+      if (!group) { group = { name, offers: [], activities: [] }; groups.push(group); }
+      return group;
+    };
     const groupOf = (row) => {
-      if (row.type === 'bowling') return 'Location de pistes';
-      if (row.type === 'laser') return 'Laser Game';
+      if (row.type === 'bowling') return ACTIVITY_SECTION_LANES;
+      if (row.type === 'laser') return ACTIVITY_SECTION_LASER;
       return row.family || (row.type === 'formula' ? 'Formules anniversaires' : 'Formules spéciales');
     };
-    rows.forEach((row) => {
-      const name = groupOf(row);
-      let group = groups.find((g) => g.name === name);
-      if (!group) { group = { name, items: [] }; groups.push(group); }
-      group.items.push(row);
-    });
-    const firstFormulaGroup = groups.find((g) => g.items.some((row) => row.sourceId));
+    rows.forEach((row) => { groupFor(groupOf(row)).offers.push(row); });
+    // Les activites du catalogue rejoignent le MEME flux. Quand un filtre ou une
+    // recherche est actif, il porte sur les offres vendues : reafficher le
+    // catalogue entier par-dessus reviendrait a ne plus filtrer du tout.
+    const filtreActif = (state.staffPricingFilter || 'all') !== 'all'
+      || Boolean(String(state.staffPricingSearch || '').trim());
+    if (!filtreActif) {
+      (pricingEditor.activities || []).forEach((activity) => {
+        groupFor(activitySectionName(activity)).activities.push(activity);
+      });
+    }
+    const rank = (name) => { const i = SECTION_ORDER.indexOf(name); return i === -1 ? SECTION_ORDER.length : i; };
+    groups.sort((a, b) => rank(a.name) - rank(b.name));
+    const firstFormulaGroup = groups.find((g) => g.offers.some((row) => row.sourceId));
     const sections = groups.map((group) => {
-      const isFormulaGroup = group.items.some((row) => row.sourceId);
-      // L'id du bloc formules + le bouton d'ajout vivent sur la PREMIERE
-      // famille de formules : une seule porte d'entree pour creer.
+      const estActivite = ACTIVITY_SECTIONS.includes(group.name);
       const hostId = group === firstFormulaGroup ? ' id="cevCatalogBlock"' : '';
       const legend = group === firstFormulaGroup
         ? `<span class="pv2-section-legend">« Tarif du centre » n'engage que ce centre &middot; Activités, Structure et Supprimer changent le catalogue de TOUS TES centres.</span>`
-        : '';
-      // L'ajout au catalogue vit dans la BARRE du haut (toujours visible, quel
-      // que soit le filtre) : ici il fallait defiler jusqu'aux formules pour le
-      // trouver. Un seul bouton dans la page, un seul id.
-      const addBtn = '';
+        : (group.name === ACTIVITY_SECTION_PARTS
+          ? `<span class="pv2-section-legend">Ce que vos formules peuvent contenir. Ces activités ne se réservent pas seules.</span>`
+          : '');
+      // LE BOUTON D'AJOUT DE CETTE SECTION-CI. Sur une section d'activités il
+      // ajoute une activité ; sur une catégorie de formules il ouvre la création
+      // DÉJÀ rangée dans cette catégorie, sans avoir à retaper son nom.
+      const addBtn = !canManage
+        ? ''
+        : estActivite
+          ? `<button type="button" class="pv2-btn sm" data-add-activity="${escJs(group.name)}" onclick="aevOpenCreate()">+ Activité</button>`
+          : `<button type="button" class="pv2-btn sm" data-add-formula="${escJs(group.name)}" onclick="cevOpenCreate('${escJs(group.name)}')">+ Formule</button>`;
+      const compte = group.offers.length + group.activities.length;
+      const cartes = group.offers.map(card).join('')
+        + group.activities.map((activity) => aevCardHtml(activity, canManage)).join('');
       return `<section class="pv2-catalog-section"${hostId}>
-        <div class="pv2-section-head"><h3>${esc(group.name)}</h3><span>${group.items.length} offre${group.items.length > 1 ? 's' : ''}</span>${addBtn}${legend}</div>
-        <div class="pv2-catalog">${group.items.map(card).join('')}</div>
+        <div class="pv2-section-head"><h3>${esc(group.name)}</h3><span>${compte} offre${compte > 1 ? 's' : ''}</span>${addBtn}${legend}</div>
+        <div class="pv2-catalog">${cartes}</div>
       </section>`;
     }).join('');
     return sections || '<div class="pv2-empty" id="cevCatalogBlock"><strong>Aucune offre</strong>Modifiez le filtre ou la recherche.</div>';
@@ -8080,49 +8163,39 @@
     });
   }
 
-  // Le rayon « Activités » de la page : une carte par activité du catalogue.
-  function aevSectionHtml(canManage) {
-    const list = pricingEditor.activities || [];
-    if (!list.length) return '';
-    const cards = list.map((activity) => {
-      // Le prix ne MENT pas : une grille (bowling, laser) annonce son point de
-      // depart, un tarif saisi son montant, et l'absence de tarif se dit en
-      // gris. « sur place » en accent sur du bowling a grille etait faux ET
-      // criait plus fort que les vrais prix.
-      const gridStart = activity.priceType === 'grid_bowling'
-        ? (typeof DURATION_OPTIONS !== 'undefined' ? Math.min(...DURATION_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
-        : activity.priceType === 'grid_laser'
-          ? (typeof LASER_GAME_OPTIONS !== 'undefined' ? Math.min(...LASER_GAME_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
-          : null;
-      const price = Number.isFinite(gridStart)
-        ? `<span class="pv2-price-amount"><small>dès </small>${money(gridStart)}</span>`
-        : activity.priceValue != null
-          ? `<span class="pv2-price-amount">${money(activity.priceValue)}</span>`
-          : '<span class="pv2-price-onsite">réglé sur place</span>';
-      const badges = [
-        activity.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
-        activity.bookable ? '<span class="pv2-chip">Réservable seule</span>' : '<span class="pv2-chip">Dans les formules</span>',
-      ].filter(Boolean).join('');
-      return `<article class="pv2-price-card pv2-activity-card" data-aev-activity="${escJs(activity.id)}">
-        <div class="pv2-price-head">
-          <div><strong>${esc(activity.name)}</strong><small>${esc(activity.priceUnit || '')}</small></div>
-          ${price}
-        </div>
-        <div class="pev-badges">${badges}</div>
-        ${canManage ? `<div class="pev-card-foot">
-          <button type="button" class="pv2-btn sm" data-aev-edit="${escJs(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button>
-          <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${escJs(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
-        </div>` : ''}
-      </article>`;
-    }).join('');
-    return `<section class="pv2-catalog-section" id="aevActivitiesBlock">
-      <div class="pv2-section-head">
-        <h3>Activités du catalogue</h3><span>${list.length} activité${list.length > 1 ? 's' : ''}</span>
-        ${canManage ? '<button type="button" class="pv2-btn" id="aevAddActivity" onclick="aevOpenCreate()">+ Activité</button>' : ''}
-        <span class="pv2-section-legend">Ce que vos formules peuvent contenir et ce que le client peut réserver à la carte. Partagé par tous les centres.</span>
+  // UNE carte d'activité du catalogue. Elle vivait dans un bloc à part, tout en
+  // bas de la page ; elle est maintenant posée dans la section qui la concerne
+  // (activitySectionName), au milieu des offres vendues.
+  function aevCardHtml(activity, canManage) {
+    // Le prix ne MENT pas : une grille (bowling, laser) annonce son point de
+    // depart, un tarif saisi son montant, et l'absence de tarif se dit en gris.
+    // « sur place » en accent sur du bowling a grille etait faux ET criait plus
+    // fort que les vrais prix.
+    const gridStart = activity.priceType === 'grid_bowling'
+      ? (typeof DURATION_OPTIONS !== 'undefined' ? Math.min(...DURATION_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
+      : activity.priceType === 'grid_laser'
+        ? (typeof LASER_GAME_OPTIONS !== 'undefined' ? Math.min(...LASER_GAME_OPTIONS.map((o) => Number(o.price) || Infinity)) : null)
+        : null;
+    const price = Number.isFinite(gridStart)
+      ? `<span class="pv2-price-amount"><small>dès </small>${money(gridStart)}</span>`
+      : activity.priceValue != null
+        ? `<span class="pv2-price-amount">${money(activity.priceValue)}</span>`
+        : '<span class="pv2-price-onsite">réglé sur place</span>';
+    const badges = [
+      activity.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
+      activity.bookable ? '<span class="pv2-chip">Réservable seule</span>' : '<span class="pv2-chip">Dans les formules</span>',
+    ].filter(Boolean).join('');
+    return `<article class="pv2-price-card pv2-activity-card" data-aev-activity="${escJs(activity.id)}">
+      <div class="pv2-price-head">
+        <div><strong>${esc(activity.name)}</strong><small>${esc(activity.priceUnit || '')}</small></div>
+        ${price}
       </div>
-      <div class="pv2-catalog">${cards}</div>
-    </section>`;
+      <div class="pev-badges">${badges}</div>
+      ${canManage ? `<div class="pev-card-foot">
+        <button type="button" class="pv2-btn sm" data-aev-edit="${escJs(activity.id)}" onclick="aevOpenEdit('${escJs(activity.id)}')">Modifier</button>
+        <button type="button" class="pv2-btn sm cev-danger pev-foot-danger" data-aev-delete="${escJs(activity.id)}" title="Retirer du catalogue" aria-label="Retirer ${esc(activity.name)} du catalogue" onclick="aevDelete('${escJs(activity.id)}')"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+      </div>` : ''}
+    </article>`;
   }
 
   window.renderStaffPricingPage = function () {
@@ -8155,7 +8228,7 @@
           <label class="pv2-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg><input value="${esc(state.staffPricingQuery || '')}" placeholder="Formule, activité, condition…" oninput="setStaffPricingQuery(this.value)"></label>
           <button type="button" class="pv2-btn" onclick="copyStaffPricingSummary()">Copier</button>
           <button type="button" class="pv2-btn" onclick="exportStaffPricingCsv()">Exporter</button>
-          ${canManage ? '<button type="button" class="pv2-btn" id="cevAddFormula" onclick="cevOpenCreate()">+ Formule</button>' : ''}
+          ${canManage ? '<button type="button" class="pv2-btn" id="cevAddCategory" title="Creer une categorie : donne-lui un nom, elle apparait partout" onclick="cevOpenCreate()">+ Categorie</button>' : ''}
           <button type="button" class="pv2-btn primary" onclick="openStaffPricingBooking('${escJs(selected?.id || '')}')">+ Réservation</button>`,
       })}
 
@@ -8186,7 +8259,6 @@
 
       ${catalogAlert}
       ${sections}
-      ${aevSectionHtml(canManage)}
     </div>`;
     mount(root, 'pricing');
     pevSyncModal();

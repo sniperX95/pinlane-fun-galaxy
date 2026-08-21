@@ -430,9 +430,17 @@ async function run() {
     `aucun des trois centres du gate n est dans ops-knowledge/centers.json (fichier : ${fileCenters.join(', ')})`);
   const start = { alphaUn: await tunnel(ALPHA_UN), betaUn: await tunnel(BETA_UN) };
   ok(start.alphaUn.status === 200 && start.betaUn.status === 200, 'les deux tunnels repondent 200 au depart');
-  ok(start.alphaUn.formuleIds.length > 0, `le catalogue de depart n est pas vide (${start.alphaUn.formuleIds.length} formules du socle)`);
-  ok(JSON.stringify(start.alphaUn.formuleIds) === JSON.stringify(start.betaUn.formuleIds),
-    'au depart les deux entreprises servent le meme socle plateforme (c est le point de comparaison, pas le defaut)');
+  // LE POINT DE COMPARAISON A CHANGE LE 2026-08-21. Avant, ces deux lignes
+  // exigeaient que les deux entreprises servent le MEME socle : c'etait la
+  // situation de depart, et le gate mesurait la divergence a partir de la.
+  // Depuis, le socle livre dans le code appartient au client qui l'a apporte :
+  // une entreprise neuve part de RIEN. Le point de comparaison devient donc le
+  // vide, ce qui est plus severe, pas moins : toute formule qui apparait chez
+  // l'un doit avoir ete creee par lui.
+  ok(start.alphaUn.formuleIds.length === 0,
+    `ALPHA part d un catalogue vide (${start.alphaUn.formuleIds.length} formules)`);
+  ok(start.betaUn.formuleIds.length === 0,
+    `BETA aussi (${start.betaUn.formuleIds.length} formules)`);
 
   section('[1] Une formule creee par ALPHA reste chez ALPHA');
   const created = await opsPost(TOKEN_ALPHA, { action: 'createFormula', formula: NEW_FORMULA });

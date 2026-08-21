@@ -7015,6 +7015,31 @@
   // la constante SANS RIEN DIRE et ne reessayait qu'au rechargement complet).
   window.pevRetryCatalog = pevReload;
 
+  // ---- LE CATALOGUE TARIFAIRE APPARTIENT AU CENTRE, PAS A L ONGLET --------
+  //
+  // Ce cache n'avait AUCUNE cle de centre et ne figurait pas dans
+  // resetCenterScopedCaches : il survivait donc a la bascule. Mesure du
+  // 2026-08-21 (capture Movsar) : apres etre passe sur N4 puis revenu sur Fun
+  // Galaxy Libramont, la page « Tarifs & formules » affichait les QUATRE
+  // formules de N4 sous le nom de Fun Galaxy, et Fun Galaxy ne voyait plus les
+  // siennes. La base, elle, etait intacte : c'etait l'ecran qui mentait.
+  //
+  // Vider suffit : le prochain rendu appelle pevEnsureLoaded, qui relance un
+  // vrai chargement pour le nouveau centre.
+  window.pevResetCatalogCache = function () {
+    pricingEditor.loaded = false;
+    pricingEditor.loading = false;
+    pricingEditor.error = '';
+    pricingEditor.byId = new Map();
+    pricingEditor.activities = [];
+    // Une modale ouverte sur une formule du centre QUITTE editerait une entree
+    // qui n'existe plus ici : on la ferme avec son brouillon.
+    pricingEditor.modal = null;
+    pricingEditor.original = null;
+    pricingEditor.draft = null;
+    pricingEditor.modalError = '';
+  };
+
   function pevModalBody() {
     if (!pricingEditor.modal || !pricingEditor.draft) return '';
     const d = pricingEditor.draft;
@@ -7789,7 +7814,7 @@
       ${isFormula ? `data-cev-formula="${escJs(view.sourceId)}"` : ''} onclick="pv2SelectPricing('${escJs(row.id)}')">
       <div class="pv2-price-head">
         <div>${ranking !== 'default' && index < 3 && (Number(row.count) || Number(row.revenue)) ? `<span class="pv2-rank">#${index + 1}</span>` : ''}<strong>${esc(view.title || 'Offre')}</strong><small>${esc(row.subtitle || '')}</small></div>
-        <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.type === 'bowling' ? '/piste' : row.priceType === 'per_lane' ? '/piste' : isFormula ? '/pers' : '')}</small></div>
+        <div class="pv2-price-amount">${money(view.price)}<small> ${esc(row.priceUnit || (row.type === 'bowling' ? '/piste' : row.priceType === 'per_lane' ? '/piste' : isFormula ? '/pers' : ''))}</small></div>
       </div>
       ${badges ? `<div class="pev-badges">${badges}</div>` : ''}
       <p class="pv2-price-desc">${esc(row.description || '')}</p>

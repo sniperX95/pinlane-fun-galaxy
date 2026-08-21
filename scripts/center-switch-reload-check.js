@@ -136,12 +136,47 @@ async function installMock(page, { withSession, breakCatalog = false }) {
             },
             {
               id: B.id, name: B.name, status: 'active', clientId: 'n4-bowling', clientName: 'N4',
-              resources: { bowling: { laneCount: 8 }, laser: { weaponCount: 0 } },
+              // Etat REEL de N4 en production : aucune arene laser, et un
+              // bowling vendu AUX PARTIES ET PAR PERSONNE, pas a la grille par
+              // piste. C'est ce qui rend visible une grille qui n'est pas la
+              // sienne.
+              resources: {
+                bowling: {
+                  laneCount: 8,
+                  pricing: {
+                    mode: 'per_game_per_person', minutesPerGame: 60, minutesPerPlayerPerGame: 10,
+                    tiers: [{ days: [3, 4], prices: [6, 11] }, { days: [0, 5, 6], prices: [7, 13] }],
+                  },
+                },
+                laser: { weaponCount: 0 },
+              },
             },
           ] });
         }
         if (action === 'listAvailabilityBlocks') return J({ ok: true, blocks: blocksFor(centerId) });
         if (action === 'centerConfig') return J(configFor(centerId));
+        // LE CATALOGUE TARIFAIRE DE LA CONSOLE. Le vrai serveur deduit le centre
+        // de la SESSION, pas d'un parametre d'URL : ce double fait pareil, il
+        // lit le centre courant au moment de l'appel. Repondre a la place du
+        // code (une liste figee) masquerait justement le bug recherche.
+        if (action === 'clientCatalog') {
+          const active = (typeof state !== 'undefined' && state.adminCenterId) ? state.adminCenterId : A.id;
+          const entry = (id, name, family, price) => ({
+            id, name, bookingFamily: family, desc: [], notes: [], priceType: 'per_pax', minPax: 6,
+            source: 'custom', hasBowling: true, base: { priceValue: price, priceOld: null },
+            effective: { name, priceValue: price, priceOld: null, removed: false, enabled: true },
+            centerOverride: null,
+          });
+          return J({
+            ok: true,
+            formulas: active === B.id
+              ? [entry('n4-jeudi-fou', 'JEUDI FOU N4', 'Formules speciales', 12)]
+              : [entry('f1', 'FORMULE 1', 'Formules anniversaires', 26)],
+            activities: active === B.id
+              ? [{ id: 'bowling', name: 'Bowling', resourceType: 'bowling_lane' }]
+              : [{ id: 'bowling', name: 'Bowling', resourceType: 'bowling_lane' }, { id: 'laser_game', name: 'Laser Game', resourceType: 'laser_arena' }],
+          });
+        }
         return J({ ok: true, communications: [], suggestions: [], events: [], samples: [] });
       }
       // Le CATALOGUE du centre : chacun a ses formules, aucune n'est partagee.
@@ -190,11 +225,46 @@ const READ_STATE = `(() => ({
     const sub = el.querySelector('.sub');
     return { id, present: true, visible: r.width > 0 && r.height > 0, sub: sub ? sub.textContent.trim() : '' };
   }),
+  // L'ECRAN Tarifs & formules, mesure sur les CARTES REELLEMENT PEINTES.
+  // Le gate lisait jusqu'ici les cles du MENU : « aucun ecran de tarifs laser »
+  // voulait dire « aucune entree de menu », pas « aucune carte laser dans la
+  // page ». Une entree de menu masquee ne prouve rien sur ce que la page
+  // affiche : c'est ce qui a laisse passer les deux defauts mesures ici.
+  pricingCardTitles: [...document.querySelectorAll('.pv2-price-card .pv2-price-head strong')]
+    .map(n => n.textContent.trim()),
+  pricingSectionTitles: [...document.querySelectorAll('.pv2-catalog-section .pv2-section-head h3')]
+    .map(n => n.textContent.trim()),
   calls: (window.__calls || []).slice(),
 }))()`;
 
 const readState = (page) => page.evaluate(READ_STATE);
 const blockCalls = (calls, centerId) => calls.filter(c => c.action === 'listAvailabilityBlocks' && c.centerId === centerId).length;
+
+// La page Tarifs & formules ouverte par le VRAI chemin : le clic du menu, pas
+// un appel de fonction interne. Le groupe parent est deplie d'abord, sinon le
+// sous-item existe dans le DOM sans etre atteignable.
+async function openPricingPage(page) {
+  await page.evaluate(() => {
+    if (typeof setMenuGroupOpen === 'function') setMenuGroupOpen('activities', true);
+    if (typeof renderStaffMenu === 'function') renderStaffMenu();
+  });
+  await page.waitForSelector('[data-fgx-menu-key="prices"]', { timeout: 10000 });
+  // Clic DOM sur le bouton exact : un clic par coordonnees atterrissait sur le
+  // voisin quand le groupe venait d'etre deplie (mesure : la page ouverte etait
+  // « users »). C'est le VRAI listener delegue du menu qui traite l'evenement,
+  // rien n'est court-circuite.
+  await page.$eval('[data-fgx-menu-key="prices"]', (node) => node.click());
+  await page.waitForFunction(
+    () => typeof getStaffMenuPage === 'function' && getStaffMenuPage() === 'prices',
+    null, { timeout: 10000 },
+  );
+  // La page se repeint quand le catalogue arrive : on attend une carte, pas un
+  // delai fixe.
+  await page.waitForFunction(
+    () => document.querySelectorAll('.pv2-price-card').length > 0,
+    null, { timeout: 15000 },
+  ).catch(() => null);
+}
 
 async function openCenterMenu(page) {
   await page.waitForSelector('[data-fgx-center-menu]', { state: 'visible', timeout: 10000 });
@@ -513,6 +583,144 @@ async function bootStaff(page, { page: staffPage = 'planning' } = {}) {
       );
       await context.close();
     }
+
+    // ===================================================================== [F]
+    // L'ECRAN, pas la cle de menu. Les sections precedentes prouvent que
+    // l'ENTREE de menu « Laser Game » disparait chez un centre sans arene.
+    // Elles ne disaient rien de ce que la PAGE Tarifs & formules peint, et
+    // c'est la que les deux defauts vivaient (captures Movsar, 2026-08-21) :
+    //   1. le catalogue tarifaire de la console SURVIVAIT a la bascule, donc
+    //      Fun Galaxy voyait les formules de N4 sous son propre nom ;
+    //   2. les cartes bowling et laser etaient construites depuis les
+    //      constantes du socle (grille par piste 20/39/59/78, laser 10/18/25),
+    //      quel que soit le centre : N4, qui n'a AUCUNE arene et vend aux
+    //      parties, se voyait proposer les deux.
+    section('[F] La page Tarifs & formules ne montre que le catalogue DE CE CENTRE');
+    {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await installMock(page, { withSession: true });
+      await page.goto(`${BASE_URL}/?v=switch-f-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+      await bootStaff(page);
+      await openPricingPage(page);
+
+      const onA = await readState(page);
+      record('sur Fun Galaxy : SA formule est affichee', onA.pricingCardTitles.includes('FORMULE 1'), onA.pricingCardTitles.join(' | ') || 'aucune carte');
+      record('sur Fun Galaxy : aucune formule de N4', !onA.pricingCardTitles.includes('JEUDI FOU N4'), onA.pricingCardTitles.join(' | ') || 'aucune carte');
+      record('sur Fun Galaxy : la section Laser Game est la (30 armes)', onA.pricingSectionTitles.includes('Laser Game'), onA.pricingSectionTitles.join(' | ') || 'aucune section');
+
+      await openCenterMenu(page);
+      await page.click(`[data-fgx-center-option="${CENTER_B.id}"]`);
+      await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_B.id, { timeout: 10000 });
+      await openPricingPage(page);
+      await page.waitForTimeout(600);
+
+      const onB = await readState(page);
+      record('sur N4 : SA formule est affichee', onB.pricingCardTitles.includes('JEUDI FOU N4'), onB.pricingCardTitles.join(' | ') || 'aucune carte');
+      record(
+        'AUCUNE formule de Fun Galaxy ne survit a la bascule',
+        !onB.pricingCardTitles.includes('FORMULE 1'),
+        onB.pricingCardTitles.join(' | ') || 'aucune carte',
+      );
+      record(
+        'AUCUNE section Laser Game chez un centre sans arene',
+        !onB.pricingSectionTitles.includes('Laser Game'),
+        onB.pricingSectionTitles.join(' | ') || 'aucune section',
+      );
+      record(
+        'AUCUNE offre de la grille par piste chez un centre qui vend aux parties',
+        !onB.pricingCardTitles.some((title) => /^Bowling (30 min|1 heure|1h30|2 heures)$/.test(title)),
+        onB.pricingCardTitles.join(' | ') || 'aucune carte',
+      );
+      record(
+        'son bowling est annonce EN PARTIES, son vrai mode de vente',
+        onB.pricingCardTitles.some((title) => /partie/i.test(title) && !/laser/i.test(title)),
+        onB.pricingCardTitles.join(' | ') || 'aucune carte',
+      );
+
+      // Retour sur Fun Galaxy : ce qui est a lui revient INTACT. C'est la
+      // moitie que Movsar a vue casser (« remets pour Fun Galaxy toutes les
+      // formules de Fun Galaxy »).
+      await openCenterMenu(page);
+      await page.click(`[data-fgx-center-option="${CENTER_A.id}"]`);
+      await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_A.id, { timeout: 10000 });
+      await openPricingPage(page);
+      await page.waitForTimeout(600);
+
+      const backOnA = await readState(page);
+      record('retour Fun Galaxy : SA formule est revenue', backOnA.pricingCardTitles.includes('FORMULE 1'), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
+      record('retour Fun Galaxy : sa section Laser Game est revenue', backOnA.pricingSectionTitles.includes('Laser Game'), backOnA.pricingSectionTitles.join(' | ') || 'aucune section');
+      record('retour Fun Galaxy : sa grille bowling par piste est revenue', backOnA.pricingCardTitles.some((title) => /^Bowling /.test(title)), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
+      record('retour Fun Galaxy : aucune formule de N4 ne traine', !backOnA.pricingCardTitles.includes('JEUDI FOU N4'), backOnA.pricingCardTitles.join(' | ') || 'aucune carte');
+      await context.close();
+    }
+
+    // ===================================================================== [G]
+    // LES DEUX CONTRE-PREUVES DE [F]. Un gate qui ne sait pas rougir ne prouve
+    // rien : on neutralise chaque ligne de production tour a tour et on exige
+    // que la mesure redevienne EXACTEMENT celle des captures de Movsar.
+    section('[G] Contre-preuves de [F] : chaque correctif retire ramene son bug');
+    {
+      const APP = path.join(ROOT, 'assets', 'app-main.js');
+      const appOriginal = fs.readFileSync(APP, 'utf8');
+      try {
+        // Mutation 1 : la purge du catalogue tarifaire ne part plus.
+        const purgeCall = "if (typeof window !== 'undefined' && typeof window.pevResetCatalogCache === 'function') window.pevResetCatalogCache();";
+        if (appOriginal.split(purgeCall).length - 1 !== 1) throw new Error('ancre de mutation (purge catalogue) introuvable ou ambigue');
+        fs.writeFileSync(APP, appOriginal.replace(purgeCall, "if (false) { /* mutation gate */ }"));
+        {
+          const context = await browser.newContext();
+          const page = await context.newPage();
+          await installMock(page, { withSession: true });
+          await page.goto(`${BASE_URL}/?v=switch-g1-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+          await bootStaff(page);
+          await openPricingPage(page);
+          await openCenterMenu(page);
+          await page.click(`[data-fgx-center-option="${CENTER_B.id}"]`);
+          await page.waitForFunction((id) => typeof state !== 'undefined' && state.adminCenterId === id, CENTER_B.id, { timeout: 10000 });
+          await openPricingPage(page);
+          await page.waitForTimeout(800);
+          const broken = await readState(page);
+          record(
+            'sans la purge : la formule de Fun Galaxy revient chez N4, ce gate ROUGIRAIT',
+            broken.pricingCardTitles.includes('FORMULE 1'),
+            broken.pricingCardTitles.join(' | ') || 'aucune carte',
+          );
+          await context.close();
+        }
+
+        // Mutation 2 : le filtre de ressource ne garde plus rien.
+        const laserGuard = 'const laser = !sellsLaser ? [] :';
+        if (appOriginal.split(laserGuard).length - 1 !== 1) throw new Error('ancre de mutation (filtre laser) introuvable ou ambigue');
+        fs.writeFileSync(APP, appOriginal.replace(laserGuard, 'const laser = false ? [] :'));
+        {
+          const context = await browser.newContext();
+          const page = await context.newPage();
+          await installMock(page, { withSession: true });
+          await page.addInitScript((B) => {
+            try { localStorage.setItem('funGalaxy_v4', JSON.stringify({ adminCenterId: B, view: 'client' })); } catch (e) {}
+          }, CENTER_B.id);
+          await page.goto(`${BASE_URL}/?v=switch-g2-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
+          await bootStaff(page);
+          await openPricingPage(page);
+          await page.waitForTimeout(800);
+          const broken = await readState(page);
+          record(
+            'sans le filtre de ressource : le Laser Game revient chez un centre sans arene, ce gate ROUGIRAIT',
+            broken.pricingSectionTitles.includes('Laser Game'),
+            broken.pricingSectionTitles.join(' | ') || 'aucune section',
+          );
+          await context.close();
+        }
+      } finally {
+        fs.writeFileSync(APP, appOriginal); // ECRITURE INVERSE exacte
+      }
+      record(
+        'app-main.js est restaure a l identique',
+        fs.readFileSync(APP, 'utf8') === appOriginal,
+      );
+    }
+
   } catch (error) {
     console.error('\nERREUR DU GATE:', error && (error.stack || error.message || error));
     failed = 1;

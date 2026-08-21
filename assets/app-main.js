@@ -2099,6 +2099,12 @@ function resetCenterScopedCaches() {
   // statique de booking-core (les 14 formules Fun Galaxy) reprenait la main.
   if (typeof window !== 'undefined') window.__pinlaneDisplayFormules = null;
   if (typeof setCenterActivities === 'function') setCenterActivities([]);
+  // Le CATALOGUE TARIFAIRE de la console (page Tarifs & formules, onglet
+  // Offres d'Etablissement) vit dans staff-pages-v2.js, charge apres ce
+  // fichier : meme passage par la fonction qu'il expose. Sans cette ligne il
+  // survivait a la bascule, et Fun Galaxy affichait les formules de N4 sous
+  // son propre nom (capture Movsar, 2026-08-21). La base, elle, etait intacte.
+  if (typeof window !== 'undefined' && typeof window.pevResetCatalogCache === 'function') window.pevResetCatalogCache();
   // Les trois caches de la Direction vivent dans admin-console.js, chargé après
   // ce fichier : on passe par la fonction qu'il expose plutôt que d'y toucher.
   if (typeof window !== 'undefined' && typeof window.resetDirectionCaches === 'function') window.resetDirectionCaches();
@@ -13009,6 +13015,28 @@ function getConsoleFormuleCatalog({ includeRemoved = false } = {}) {
   return includeRemoved ? live : live.filter(formule => !formule.removed);
 }
 
+// Les jours d'un palier de tarif, ecrits comme le gerant les lit. Une plage
+// continue se dit « Mercredi a jeudi » ; des jours epars se listent. La semaine
+// commence LUNDI ici (l'ordre du calendrier belge), pas dimanche comme dans
+// l'index JavaScript.
+const PRICING_DAY_NAMES = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+function describePricingDays(days) {
+  const list = Array.from(new Set((Array.isArray(days) ? days : [])
+    .map(value => Math.trunc(Number(value)))
+    .filter(value => Number.isFinite(value) && value >= 0 && value <= 6)));
+  if (!list.length) return 'Tous les jours';
+  if (list.length === 7) return 'Tous les jours';
+  const weekOrder = value => (value === 0 ? 6 : value - 1);
+  list.sort((a, b) => weekOrder(a) - weekOrder(b));
+  const contiguous = list.every((value, index) => index === 0 || weekOrder(value) === weekOrder(list[index - 1]) + 1);
+  if (list.length > 2 && contiguous) {
+    return `${PRICING_DAY_NAMES[list[0]]} a ${PRICING_DAY_NAMES[list[list.length - 1]].toLowerCase()}`;
+  }
+  const names = list.map(value => PRICING_DAY_NAMES[value]);
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(', ')} et ${names[names.length - 1].toLowerCase()}`;
+}
+
 function getPricingRows() {
   const usage = getPricingUsageMap();
   const decorate = row => ({
@@ -13017,20 +13045,81 @@ function getPricingRows() {
     tone: getPricingTone(row.type),
     ...(usage.get(row.id) || { count: 0, players: 0, revenue: 0 })
   });
-  const bowling = DURATION_OPTIONS.map(option => decorate({
+  // ---- CE CENTRE VEND-IL VRAIMENT CA, ET COMMENT ? ------------------------
+  //
+  // Ces deux blocs etaient construits depuis les constantes du SOCLE
+  // (DURATION_OPTIONS : 20/39/59/78 EUR la piste, LASER_GAME_OPTIONS :
+  // 10/18/25 EUR), quel que soit le centre. C'est la grille de Fun Galaxy.
+  // Mesure du 2026-08-21 (capture Movsar) : N4, qui n'a AUCUNE arene laser
+  // (weaponCount 0) et vend son bowling AUX PARTIES ET PAR PERSONNE, se
+  // voyait proposer les quatre durees par piste ET les trois offres laser.
+  //
+  // Meme regle que les onglets de la page Planning : la CLE ABSENTE veut dire
+  // « on ne sait pas encore » (le repli neutre de getAdminCenter rend
+  // `resources: {}`) et on n'enleve rien ; la cle PRESENTE a null ou a zero
+  // dit que la ressource n'existe pas.
+  const centerResources = (typeof getAdminCenter === 'function' ? (getAdminCenter() || {}).resources : null) || {};
+  const knowsResource = kind => Object.prototype.hasOwnProperty.call(centerResources, kind);
+  const centerLaneCount = Number(centerResources.bowling && centerResources.bowling.laneCount) || 0;
+  const centerWeaponCount = Number(centerResources.laser && centerResources.laser.weaponCount) || 0;
+  const sellsBowling = !knowsResource('bowling') || centerLaneCount > 0;
+  const sellsLaser = !knowsResource('laser') || centerWeaponCount > 0;
+  // Le tarif bowling DU CENTRE : present, il vend aux parties et par personne
+  // (N4) ; absent, il vend a la grille par piste et par duree (Fun Galaxy).
+  // Meme lecture que lib/booking-config.resolveBowlingPricing.
+  const bowlingPricing = centerResources.bowling && centerResources.bowling.pricing
+    && centerResources.bowling.pricing.mode === 'per_game_per_person'
+    && Array.isArray(centerResources.bowling.pricing.tiers)
+    && centerResources.bowling.pricing.tiers.length
+    ? centerResources.bowling.pricing
+    : null;
+  const maxPerLane = knowsResource('bowling') && Number(centerResources.bowling && centerResources.bowling.normalCapacityPerLane) > 0
+    ? Number(centerResources.bowling.normalCapacityPerLane)
+    : MAX_PER_LANE;
+  // Une carte par PALIER DE JOURS et par nombre de parties : c'est la forme
+  // exacte de la donnee (tiers[].prices[i] = i+1 parties). Afficher un seul
+  // prix moyen mentirait, et le gerant ne pourrait plus verifier son tarif.
+  const bowlingGameCards = () => {
+    const rows = [];
+    (bowlingPricing.tiers || []).forEach((tier, tierIndex) => {
+      const daysLabel = describePricingDays(tier.days);
+      (tier.prices || []).forEach((price, index) => {
+        const games = index + 1;
+        const gamesLabel = games === 1 ? '1 partie' : `${games} parties`;
+        rows.push(decorate({
+          id: `bowling-game-${tierIndex}-${games}`,
+          type: 'bowling',
+          title: `Bowling ${gamesLabel}`,
+          subtitle: daysLabel,
+          description: `${gamesLabel} par personne, ${daysLabel.toLowerCase()}.`,
+          price: Number(price),
+          priceUnit: '/pers',
+          durationLabel: gamesLabel,
+          capacity: `${maxPerLane} joueurs / piste`,
+          availability: daysLabel,
+          tags: ['Piste', gamesLabel, daysLabel],
+          activities: ['Bowling']
+        }));
+      });
+    });
+    return rows;
+  };
+  const bowlingGridCards = () => DURATION_OPTIONS.map(option => decorate({
     id: `bowling-${Number(option.value)}`,
     type: 'bowling',
     title: `Bowling ${option.label}`,
     subtitle: 'Location de piste',
-    description: `${option.label} de jeu, prix par piste, jusqu'à ${MAX_PER_LANE} joueurs confort.`,
+    description: `${option.label} de jeu, prix par piste, jusqu'à ${maxPerLane} joueurs confort.`,
     price: option.price,
+    priceUnit: '/piste',
     durationLabel: option.label,
-    capacity: `${MAX_PER_LANE} joueurs / piste`,
+    capacity: `${maxPerLane} joueurs / piste`,
     availability: 'Selon horaires du centre',
-    tags: ['Piste', option.label, `${MAX_PER_LANE} joueurs`],
+    tags: ['Piste', option.label, `${maxPerLane} joueurs`],
     activities: ['Bowling']
   }));
-  const laser = LASER_GAME_OPTIONS.map(option => decorate({
+  const bowling = !sellsBowling ? [] : (bowlingPricing ? bowlingGameCards() : bowlingGridCards());
+  const laser = !sellsLaser ? [] : LASER_GAME_OPTIONS.map(option => decorate({
     id: `laser-${option.games}`,
     type: 'laser',
     title: `${option.label} Laser Game`,

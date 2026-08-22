@@ -2539,7 +2539,9 @@ state.staffReservationsMonth = /^\d{4}-\d{2}$/.test(state.staffReservationsMonth
 state.staffReservationActivityFilter = ['all', 'bowling', 'laser', 'complete', 'event'].includes(state.staffReservationActivityFilter) ? state.staffReservationActivityFilter : 'all';
 state.staffReservationsSelectedDate = state.staffReservationsSelectedDate || state.currentDate || todayStr();
 state.staffReservationsPreset = ['today', 'month'].includes(state.staffReservationsPreset) ? state.staffReservationsPreset : 'month';
-state.staffPricingFilter = ['all', 'bowling', 'laser', 'formula', 'special'].includes(state.staffPricingFilter) ? state.staffPricingFilter : 'all';
+state.staffPricingFilter = (['all', 'bowling', 'laser', 'formula', 'special'].includes(state.staffPricingFilter)
+  || /^family:.+/.test(String(state.staffPricingFilter || '')))
+  ? state.staffPricingFilter : 'all';
 state.staffPricingQuery = state.staffPricingQuery || '';
 state.staffPricingSelectedId = state.staffPricingSelectedId || '';
 state.staffEmailFilter = ['all', 'queued', 'sent', 'failed', 'review'].includes(state.staffEmailFilter) ? state.staffEmailFilter : 'all';
@@ -13280,11 +13282,41 @@ function getFormulaAvailabilityLabel(formule) {
   return parts.length ? parts.join(' · ') : 'Tous horaires compatibles';
 }
 
+// Les deux familles du socle ont leur onglet cable (« Anniversaires » et
+// « Speciales ») ; toute autre categorie est une categorie CREEE, et elle a
+// droit au sien. La cle ignore accents et casse : le socle fichier ecrit
+// « Formules spéciales », le catalogue servi « Formules speciales ».
+const PRICING_BIRTHDAY_FAMILY = 'formules anniversaires';
+const PRICING_SPECIAL_FAMILY = 'formules speciales';
+function normalizePricingFamilyKey(family) {
+  return String(family == null ? '' : family)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim().toLowerCase();
+}
+// Les categories creees, dans l ordre d apparition du catalogue.
+function getPricingCustomFamilies(rows) {
+  const seen = new Map();
+  (rows || []).forEach(row => {
+    if (row.type !== 'formula' && row.type !== 'special') return;
+    const key = normalizePricingFamilyKey(row.family);
+    if (!key || key === PRICING_BIRTHDAY_FAMILY || key === PRICING_SPECIAL_FAMILY) return;
+    if (!seen.has(key)) seen.set(key, { key, label: row.family, count: 0 });
+    seen.get(key).count += 1;
+  });
+  return [...seen.values()];
+}
+
 function getPricingRowsFiltered() {
   const filter = state.staffPricingFilter || 'all';
   const query = String(state.staffPricingQuery || '').trim().toLowerCase();
   const filtered = getPricingRows().filter(row => {
-    if (filter !== 'all' && row.type !== filter) return false;
+    // Une categorie creee par le gerant se filtre par son NOM (« family:... »).
+    // Les quatre cles historiques restent des TYPES : sans cette branche, une
+    // categorie inedite n'avait aucun onglet et ses formules etaient comptees
+    // avec les speciales.
+    if (filter.startsWith('family:')) {
+      if (normalizePricingFamilyKey(row.family) !== filter.slice('family:'.length)) return false;
+    } else if (filter !== 'all' && row.type !== filter) return false;
     if (!query) return true;
     return `${row.title} ${row.subtitle} ${row.description} ${row.tags.join(' ')}`.toLowerCase().includes(query);
   });

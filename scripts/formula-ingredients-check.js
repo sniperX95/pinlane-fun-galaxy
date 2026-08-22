@@ -16,6 +16,14 @@
 // Le meme catalogue reste intact la ou le centre a les ingredients : c est la
 // contre-mesure qui empeche de « corriger » en cachant des offres vendables.
 //
+// MEME FAMILLE, section [E] : une offre publiee sur un JOUR DE FERMETURE.
+// La promo « Vendredi malin » de N4 rendait 0 creneau sur 360 combinaisons
+// (60 jours x 6 tailles de groupe) : le centre est ferme le vendredi hors
+// vacances, et la formule, « hors vacances », se bloque elle-meme pendant.
+// Rien n avertissait le gerant au moment de la publier. Les deux cas silencieux
+// (centre ouvert ce jour-la, ou formule qui accepte les vacances) sont mesures
+// aussi : sans eux, l alerte pourrait crier sur tout et rester verte.
+//
 // Sortie 0 quand tout est vert. Sortie 1 sinon.
 // Lancement : node scripts/formula-ingredients-check.js
 
@@ -120,9 +128,9 @@ async function installMock(page, { hasPlayground }) {
 
 // Le meme monde, vu depuis la CONSOLE : session ouverte, catalogue de la
 // societe, et la dotation du centre servie par le serveur (centerActivityIds).
-async function installConsoleMock(page, { hasPlayground }) {
+async function installConsoleMock(page, { hasPlayground, openDays = null }) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-  await page.addInitScript(({ hasPlayground, expiresAt, FORMULA_ID, FORMULA_PLAIN_ID }) => {
+  await page.addInitScript(({ hasPlayground, openDays, expiresAt, FORMULA_ID, FORMULA_PLAIN_ID }) => {
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'settings.manage', 'centers.switch', 'platform.admin', 'pricing.manage'];
     const session = {
       token: 'qa', cookieBacked: false, centerId: 'gate-centre', expiresAt,
@@ -158,19 +166,32 @@ async function installConsoleMock(page, { hasPlayground }) {
             formulas: [
               entry(FORMULA_ID, 'FORMULE PLAINE', ['1 entree a la plaine de jeu']),
               entry(FORMULA_PLAIN_ID, 'FORMULE BOWLING', ['Parties de bowling, chaussures comprises']),
+              ...(openDays
+                ? [Object.assign(
+                  entry('gate-vendredi', 'PROMO VENDREDI', ['Parties de bowling, chaussures comprises']),
+                  { validDays: [5], notDuringHolidays: openDays.notDuringHolidays === true },
+                )]
+                : []),
             ],
             activities: [
               { id: 'bowling', name: 'Bowling' },
               { id: 'playground', name: 'Plaine de jeux' },
             ],
             centerActivityIds: hasPlayground ? ['bowling', 'playground'] : ['bowling'],
+            centerOpenDays: openDays
+              ? {
+                // 5 = vendredi. Le centre ouvre tous les autres jours.
+                regular: openDays.closedFriday ? [0, 1, 2, 3, 4, 6] : [0, 1, 2, 3, 4, 5, 6],
+                holiday: [0, 1, 2, 3, 4, 5, 6],
+              }
+              : null,
           });
         }
         return J({ ok: true, items: [], rows: [], formulas: [], activities: [], blocks: [], entries: [] });
       }
       return J({ ok: true });
     };
-  }, { hasPlayground, expiresAt, FORMULA_ID, FORMULA_PLAIN_ID });
+  }, { hasPlayground, openDays, expiresAt, FORMULA_ID, FORMULA_PLAIN_ID });
 }
 
 async function readFormulaCards(page) {
@@ -271,6 +292,28 @@ async function readFormulaCards(page) {
           badge || seen.slice(0, 140),
         );
       }
+      await context.close();
+    }
+
+    section('[E] Une offre publiee sur un jour de fermeture est signalee');
+    for (const scenario of [
+      { label: 'promo du vendredi, centre ferme le vendredi hors vacances', closedFriday: true, notDuringHolidays: true, expectWarning: true },
+      { label: 'meme promo, mais le centre ouvre le vendredi', closedFriday: false, notDuringHolidays: true, expectWarning: false },
+      { label: 'promo du vendredi sans clause vacances, centre ouvert le vendredi en vacances', closedFriday: true, notDuringHolidays: false, expectWarning: false },
+    ]) {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await installConsoleMock(page, { hasPlayground: true, openDays: scenario });
+      await page.goto(`${BASE_URL}/?v=ing-e-${scenario.closedFriday}-${scenario.notDuringHolidays}-${Date.now()}#/staff/prices`, { waitUntil: 'networkidle', timeout: 45000 });
+      await page.waitForFunction(() => typeof state !== 'undefined' && state.staffMenuPage === 'prices', null, { timeout: 20000 });
+      await page.waitForTimeout(2000);
+      const seen = await page.evaluate(() => (document.querySelector('main') || document.body).innerText.replace(/\s+/g, ' '));
+      const badge = (seen.match(/Jamais vendable[^·|]{0,70}/) || [''])[0];
+      record(
+        `${scenario.label} -> ${scenario.expectWarning ? 'alerte' : 'silence'}`,
+        scenario.expectWarning ? /vendredi/i.test(badge) : badge === '',
+        badge || '(aucune alerte)',
+      );
       await context.close();
     }
 

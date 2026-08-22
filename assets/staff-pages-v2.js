@@ -6964,6 +6964,7 @@
       pricingEditor.byId = new Map(list.map((f) => [String(f.id), f]));
       pricingEditor.activities = payload && Array.isArray(payload.activities) ? payload.activities : [];
       pricingEditor.centerActivityIds = payload && Array.isArray(payload.centerActivityIds) ? payload.centerActivityIds : [];
+      pricingEditor.centerOpenDays = payload && payload.centerOpenDays ? payload.centerOpenDays : null;
       pricingEditor.loaded = true;
     } catch (error) {
       pricingEditor.error = (error && error.message) || 'Catalogue indisponible.';
@@ -7062,6 +7063,7 @@
     pricingEditor.byId = new Map();
     pricingEditor.activities = [];
     pricingEditor.centerActivityIds = [];
+    pricingEditor.centerOpenDays = null;
     // Une modale ouverte sur une formule du centre QUITTE editerait une entree
     // qui n'existe plus ici : on la ferme avec son brouillon.
     pricingEditor.modal = null;
@@ -7860,9 +7862,36 @@
       .map((id) => names.get(String(id)) || String(id));
   }
 
+  const DAY_NAMES_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+  // UNE OFFRE PUBLIEE SUR UN JOUR DE FERMETURE NE SE VEND JAMAIS.
+  // Rien ne le disait : la promo « Vendredi malin » de N4 rendait 0 creneau
+  // sur 360 combinaisons (60 jours x 6 tailles de groupe), parce que le centre
+  // est ferme le vendredi hors vacances et que la formule, « hors vacances »,
+  // se bloque elle-meme le reste du temps. Rien n avertissait le gerant.
+  // Retourne le libelle du probleme, ou une chaine vide.
+  function closedDayWarningFor(row) {
+    const open = pricingEditor.centerOpenDays;
+    if (!open || !Array.isArray(open.regular)) return '';
+    const days = row && Array.isArray(row.validDays) ? row.validDays.map(Number) : null;
+    if (!days || !days.length) return '';
+    // « Hors vacances » ne peut compter que sur les horaires reguliers.
+    const usable = row && row.notDuringHolidays === true
+      ? open.regular
+      : open.regular.concat(Array.isArray(open.holiday) ? open.holiday : []);
+    if (!usable.length) return '';
+    if (days.some((day) => usable.includes(day))) return '';
+    const named = days.map((day) => DAY_NAMES_FR[day] || `jour ${day}`).join(', ');
+    return row && row.notDuringHolidays === true
+      ? `Jamais vendable : le centre est fermé le ${named} hors vacances`
+      : `Jamais vendable : le centre est fermé le ${named}`;
+  }
+
   function pricingCardHtml(row, view, { selected, ranking, index, canManage }) {
     const isFormula = Boolean(view.sourceId);
-    const missingHere = isFormula ? missingIngredientsFor(pricingEditor.byId ? pricingEditor.byId.get(String(view.sourceId)) : null) : [];
+    const catalogRow = isFormula && pricingEditor.byId ? pricingEditor.byId.get(String(view.sourceId)) : null;
+    const missingHere = isFormula ? missingIngredientsFor(catalogRow) : [];
+    const closedDayWarning = isFormula ? closedDayWarningFor(catalogRow) : '';
     const badges = [
       row.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
       view.removed ? '<span class="pv2-chip red">Retirée de ce centre</span>' : '',
@@ -7871,6 +7900,7 @@
       missingHere.length
         ? `<span class="pv2-chip red">Pas réalisable ici : il manque ${missingHere.map((name) => esc(name)).join(', ')}</span>`
         : '',
+      closedDayWarning ? `<span class="pv2-chip red">${esc(closedDayWarning)}</span>` : '',
     ].filter(Boolean).join('');
     const usage = Number(row.count)
       ? `<div class="pv2-price-stats">
@@ -8243,6 +8273,12 @@
     const metrics = getPricingMetrics(allRows);
     const filter = state.staffPricingFilter || 'all';
     const countByType = (type) => allRows.filter((row) => row.type === type).length;
+    // « Speciales » ne compte QUE la categorie speciale du socle : les autres
+    // ont leur propre onglet, et la somme des onglets retombe juste.
+    const customFamilies = getPricingCustomFamilies(allRows);
+    const customKeys = new Set(customFamilies.map((family) => family.key));
+    const countSpecial = allRows.filter((row) => row.type === 'special'
+      && !customKeys.has(normalizePricingFamilyKey(row.family))).length;
 
     const ranking = state.staffPricingSort || 'default';
     const canManage = cevCanManage();
@@ -8281,7 +8317,17 @@
         // Les formules speciales (Kids Fun Day, Matin Malin...) etaient les
         // SEULES offres sans onglet : 6 cartes sur 22 injoignables au filtre,
         // et la somme des onglets ne tombait pas juste (Movsar 2026-08-17).
-        { key: 'special', label: 'Spéciales', count: countByType('special'), active: filter === 'special' },
+        { key: 'special', label: 'Spéciales', count: countSpecial, active: filter === 'special' },
+        // Une categorie creee par le gerant a SON onglet. Sans lui, ses
+        // formules etaient comptees avec les speciales et rien ne permettait
+        // de les isoler (mesure du 2026-08-22 : « Speciales » passait de 6 a 7
+        // apres la creation d'une categorie inedite).
+        ...customFamilies.map((family) => ({
+          key: `family:${family.key}`,
+          label: family.label,
+          count: family.count,
+          active: filter === `family:${family.key}`,
+        })),
       ], 'pv2PricingFilter')}
 
       <div class="pv2-quicksorts">

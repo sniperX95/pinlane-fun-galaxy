@@ -6963,6 +6963,7 @@
       const list = payload && Array.isArray(payload.formulas) ? payload.formulas : [];
       pricingEditor.byId = new Map(list.map((f) => [String(f.id), f]));
       pricingEditor.activities = payload && Array.isArray(payload.activities) ? payload.activities : [];
+      pricingEditor.centerActivityIds = payload && Array.isArray(payload.centerActivityIds) ? payload.centerActivityIds : [];
       pricingEditor.loaded = true;
     } catch (error) {
       pricingEditor.error = (error && error.message) || 'Catalogue indisponible.';
@@ -7060,6 +7061,7 @@
     pricingEditor.error = '';
     pricingEditor.byId = new Map();
     pricingEditor.activities = [];
+    pricingEditor.centerActivityIds = [];
     // Une modale ouverte sur une formule du centre QUITTE editerait une entree
     // qui n'existe plus ici : on la ferme avec son brouillon.
     pricingEditor.modal = null;
@@ -7352,7 +7354,17 @@
 
   function cevStepRowHtml(step, index, activities, total) {
     const known = activities.some((a) => a.id === step.activityId);
-    const options = activities.map((a) => `<option value="${escJs(a.id)}"${a.id === step.activityId ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+    // Le catalogue propose toutes les activites de la SOCIETE, y compris celles
+    // qu'un autre centre possede (Karting VR, Lancer de hache, Golf o'Clock).
+    // On ne les cache pas, le catalogue est partage, mais on dit lesquelles ce
+    // centre n'a pas : composer avec un ingredient absent rend la formule
+    // invendable, en silence, jusqu au client qui ne voit aucun creneau.
+    const ownedHere = Array.isArray(pricingEditor.centerActivityIds) ? pricingEditor.centerActivityIds : [];
+    const options = activities.map((a) => {
+      const absent = ownedHere.length && !ownedHere.includes(String(a.id));
+      const label = absent ? `${a.name} (absent de ce centre)` : a.name;
+      return `<option value="${escJs(a.id)}"${a.id === step.activityId ? ' selected' : ''}>${esc(label)}</option>`;
+    }).join('');
     // Activite absente de la liste (pseudo-activite typee a la main, ou activite
     // retiree) : on l'ajoute pour NE PAS perdre la valeur courante a l'enregistrement.
     const extra = (!known && step.activityId)
@@ -7830,13 +7842,35 @@
   // la constante) ET une ligne « Catalogue partage » (vive). Une seule carte
   // porte desormais tout : nom/prix effectifs du centre, contenu, usage, et
   // ses DEUX niveaux d'action (tarif du centre / structure partagee).
+  // Les ingredients qu une formule exige et que CE centre ne possede pas.
+  // Meme regle que le tunnel client (getFormulaActivityIds lit la description
+  // de l offre) : les deux ecrans doivent dire la meme chose, sinon le gerant
+  // voit « reservable » la ou le client voit « indisponible ».
+  // Liste vide quand la dotation du centre est inconnue : dans le doute, on ne
+  // signale rien.
+  function missingIngredientsFor(row) {
+    const owned = Array.isArray(pricingEditor.centerActivityIds) ? pricingEditor.centerActivityIds : [];
+    if (!owned.length) return [];
+    if (typeof getFormulaActivityIds !== 'function') return [];
+    const needed = getFormulaActivityIds({ desc: Array.isArray(row && row.desc) ? row.desc : [] }) || [];
+    if (!needed.length) return [];
+    const names = new Map((pricingEditor.activities || []).map((a) => [String(a.id), a.name || a.id]));
+    return needed
+      .filter((id) => !owned.includes(String(id)))
+      .map((id) => names.get(String(id)) || String(id));
+  }
+
   function pricingCardHtml(row, view, { selected, ranking, index, canManage }) {
     const isFormula = Boolean(view.sourceId);
+    const missingHere = isFormula ? missingIngredientsFor(pricingEditor.byId ? pricingEditor.byId.get(String(view.sourceId)) : null) : [];
     const badges = [
       row.source === 'custom' ? '<span class="pv2-chip amber">Ajoutée</span>' : '',
       view.removed ? '<span class="pv2-chip red">Retirée de ce centre</span>' : '',
       view.personnalise && !view.removed ? '<span class="pv2-chip amber">Tarif personnalisé</span>' : '',
       row.best ? '<span class="pv2-chip accent">Best deal</span>' : '',
+      missingHere.length
+        ? `<span class="pv2-chip red">Pas réalisable ici : il manque ${missingHere.map((name) => esc(name)).join(', ')}</span>`
+        : '',
     ].filter(Boolean).join('');
     const usage = Number(row.count)
       ? `<div class="pv2-price-stats">

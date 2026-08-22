@@ -114,6 +114,22 @@ function getCenterScheduleConfig() {
 // formulaire d'avant.
 let centerActivities = [];
 
+// Les ingredients d'une formule que CE centre ne possede pas.
+// Retourne toujours un tableau ; vide quand on ne sait pas (aucune table
+// d'activites servie) : dans le doute on ne retire jamais une offre.
+function centerMissingActivityIds(activityIds) {
+  const wanted = Array.isArray(activityIds) ? activityIds.filter(Boolean).map(String) : [];
+  if (!wanted.length) return [];
+  const config = getCenterScheduleConfig();
+  const map = config && config.activityAvailability && typeof config.activityAvailability === 'object'
+    ? config.activityAvailability
+    : null;
+  if (!map) return [];
+  const owned = Object.keys(map).filter((id) => map[id]);
+  if (!owned.length) return [];
+  return wanted.filter((id) => !owned.includes(id));
+}
+
 function setCenterActivities(list) {
   centerActivities = Array.isArray(list) ? list.filter((item) => item && item.id) : [];
 }

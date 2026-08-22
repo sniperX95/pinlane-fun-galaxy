@@ -471,6 +471,14 @@ module.exports = async (req, res) => {
           ? center.holidaySettings
           : { enabled: true, overrides: [], formulaBlockedPeriods: ['public', 'school_short', 'manual'] },
         offerAvailability: center.offerAvailability && typeof center.offerAvailability === 'object' ? center.offerAvailability : {},
+        // CE QUE LE CENTRE POSSEDE, ingredients compris (table anniversaire,
+        // plaine de jeux...), et pas seulement ce qu'il vend a la carte. Une
+        // formule qui exige un ingredient absent ne peut pas etre planifiee :
+        // le moteur rend zero creneau et le client se retrouve devant une liste
+        // vide APRES avoir choisi la carte. Mesure du 2026-08-22 : f6, f7 et f8
+        // a Gembloux (playground et party_table absents), sur toutes les dates
+        // testees et toutes les tailles de groupe.
+        activityAvailability: center.activityAvailability && typeof center.activityAvailability === 'object' ? center.activityAvailability : null,
         booking: {
           laneCount: bowlingCapacity.laneCount,
           normalCapacityPerLane: bowlingCapacity.normalCapacityPerLane,

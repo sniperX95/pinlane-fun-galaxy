@@ -30,7 +30,7 @@ const {
   getFormulaAnchorAvailability,
   getFormulaAnchorModel,
 } = require('../lib/ops-engine');
-const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog } = require('../lib/ops-knowledge');
+const { getCenter, getFormula, refreshCenterOverrides, refreshCatalog, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const {
   isCenterClosedAt,
   isActivityBlockedAt,
@@ -380,6 +380,13 @@ module.exports = async (req, res) => {
       return;
     }
     const centerId = String(url.searchParams.get('centerId') || 'libramont');
+    // Meme verdict que l ecriture : un centre pas encore ouvert ne propose
+    // aucun creneau, et il DIT pourquoi au lieu d inviter a changer de date.
+    const centerBlock = publicBookingBlockReason(centerId);
+    if (centerBlock) {
+      sendJson(res, 200, { ok: true, date, slots: [], message: centerBlock });
+      return;
+    }
     // Reflect the latest per-center config edits (cached ~30s). Fails soft on a
     // DB outage: the file baseline is used so availability never breaks.
     try {

@@ -20657,6 +20657,13 @@ function getFormuleAvailability(formule, dateStr, pax, startTime = '') {
   if (pax < formule.minPax) return { ok: false, message: `Min. ${formule.minPax} personnes` };
   if (formule.noHolidays && isFormulaBlockedDate(dateStr, state.isHolidayMode)) return { ok: false, message: 'Indisponible vacances/fériés' };
   if (formule.validDays && !formule.validDays.includes(day)) return { ok: false, message: 'Indisponible ce jour' };
+  // Un ingredient que ce centre ne possede pas rend la formule impossible a
+  // planifier : la carte etait cliquable, le prix se calculait, puis la liste
+  // de creneaux revenait VIDE. Mieux vaut une carte grisee qui dit pourquoi.
+  if (typeof centerMissingActivityIds === 'function' && typeof getFormulaActivityIds === 'function') {
+    const missing = centerMissingActivityIds(getFormulaActivityIds(formule));
+    if (missing.length) return { ok: false, message: 'Indisponible dans ce centre' };
+  }
   if (!schedule) return { ok: false, message: 'Centre fermé ce jour' };
   if (startTime && formule.timeLimit) {
     const start = timeToNum(startTime);

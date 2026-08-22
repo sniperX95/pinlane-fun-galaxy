@@ -5,7 +5,7 @@ const { findReservationAlternatives } = require('../lib/reservation-alternatives
 const { normalizeReservationRequest } = require('../lib/reservation-request');
 const { refreshFormuleOverrides, bookingDateOutOfRange, BOOKING_HORIZON_DAYS } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
-const { refreshCenterOverrides } = require('../lib/ops-knowledge');
+const { refreshCenterOverrides, publicBookingBlockReason } = require('../lib/ops-knowledge');
 const { enforceRateLimit } = require('../lib/rate-limit');
 
 module.exports = async (req, res) => {
@@ -35,6 +35,13 @@ module.exports = async (req, res) => {
     const dateVerdict = bookingDateOutOfRange(body && body.date);
     if (dateVerdict === 'past') {
       sendError(res, 422, 'Cette date est déjà passée. Choisissez une date à venir.');
+      return;
+    }
+    // Le statut du centre est lu APRES le rechauffage des overrides ci-dessus :
+    // un centre ne dans la console n'existe qu'en base, son statut avec lui.
+    const centerBlock = publicBookingBlockReason(body && body.centerId);
+    if (centerBlock) {
+      sendError(res, 422, centerBlock);
       return;
     }
     if (dateVerdict === 'far') {

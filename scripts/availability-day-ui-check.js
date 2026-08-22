@@ -49,9 +49,16 @@ const CORE = path.join(ROOT, 'assets', 'booking-core.js');
 // main ici perimerait le jour ou le contrat bouge, et c'est exactement ce qui
 // avait rendu ce gate aveugle a la refonte du selecteur.
 const { listSellableActivities } = require('../lib/activity-catalog.js');
+// Le centre mocke POSSEDE tout ce que son catalogue exige (bowling, laser,
+// arcades, minigolf, table anniversaire, plaine de jeux). Il n'en vendait que
+// deux, et servait pourtant les 14 formules : un etat que la production ne
+// peut pas avoir, et qui masquait le defaut mesure le 2026-08-22 (une formule
+// dont le centre n'a pas les ingredients ne se planifie jamais). Les
+// ingredients non vendables (table, plaine) ne rejoignent pas le selecteur :
+// listSellableActivities les ecarte.
 const SELLABLE_ACTIVITIES = listSellableActivities({
   centerId: 'libramont',
-  availability: { bowling: true, laser_game: true },
+  availability: { bowling: true, laser_game: true, arcade_time: true, minigolf_blacklight: true, party_table: true, playground: true },
 });
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -135,7 +142,7 @@ async function installMock(page) {
       },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] },
       offerAvailability: {},
-      activityAvailability: { bowling: true, laser_game: true },
+      activityAvailability: { bowling: true, laser_game: true, arcade_time: true, minigolf_blacklight: true, party_table: true, playground: true },
     };
     const SCHEDULE = { open: 10, close: 22, label: '10h - 22h' };
 

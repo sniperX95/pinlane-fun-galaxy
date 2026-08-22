@@ -459,6 +459,14 @@ async function handleGet(req, res, options = {}) {
     }
     // Catalogue unifie chaud a l'ouverture de l'editeur (fail-soft, TTL 30 s).
     try { await refreshCatalog(getPool()); } catch (error) { /* socle fichier */ }
+    // Overrides de CENTRE chauds aussi : un centre ne dans la console n'existe
+    // QU'en base. Sans cette ligne, getCenter leve « Centre inconnu » sur une
+    // instance fraiche, et les deux signaux que cet ecran sert (les activites
+    // que le centre possede, ses jours d'ouverture) repartent vides. Les
+    // alertes « il manque tel ingredient » et « jamais vendable » seraient
+    // alors muettes PILE sur les centres nes dans la console, ceux qui en ont
+    // le plus besoin.
+    try { await refreshCenterOverrides(getPool()); } catch (error) { /* socle fichier */ }
     sendJson(res, 200, await buildClientCatalog(getPool(), scoped));
     return;
   }

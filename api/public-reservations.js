@@ -3,7 +3,7 @@ const { readJson, sendError, sendJson, setCors } = require('../lib/http');
 const { afterReservationCreated, prepareReservationOps } = require('../lib/reservation-ops');
 const { findReservationAlternatives } = require('../lib/reservation-alternatives');
 const { normalizeReservationRequest } = require('../lib/reservation-request');
-const { refreshFormuleOverrides } = require('../lib/booking-config');
+const { refreshFormuleOverrides, bookingDateOutOfRange, BOOKING_HORIZON_DAYS } = require('../lib/booking-config');
 const { refreshCatalog } = require('../lib/catalog-store');
 const { refreshCenterOverrides } = require('../lib/ops-knowledge');
 const { enforceRateLimit } = require('../lib/rate-limit');
@@ -30,6 +30,17 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJson(req);
+    // La date est bornee AVANT tout le reste : ni le champ du tunnel ni le
+    // moteur n'avaient de limite haute, une reservation a deux ans passait.
+    const dateVerdict = bookingDateOutOfRange(body && body.date);
+    if (dateVerdict === 'past') {
+      sendError(res, 422, 'Cette date est déjà passée. Choisissez une date à venir.');
+      return;
+    }
+    if (dateVerdict === 'far') {
+      sendError(res, 422, `Les réservations sont ouvertes jusqu'à ${BOOKING_HORIZON_DAYS} jours à l'avance. Choisissez une date plus proche.`);
+      return;
+    }
     // Overrides de CENTRE chauds AVANT tout le reste (sync). Un centre cree
     // depuis la console n'existe QUE en base : sans cette ligne, une instance
     // serverless fraiche ne connait que les centres du FICHIER

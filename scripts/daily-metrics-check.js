@@ -13,6 +13,7 @@ const {
   makeIdeaSignature,
   computeInsightMeasurement,
 } = require('../lib/center-metrics');
+const { WALLONIA_SCHOOL_HOLIDAYS } = require('../lib/booking-config');
 
 let failures = 0;
 function ok(cond, label) { console.log(`${cond ? 'ok  ' : 'FAIL'}  ${label}`); if (!cond) failures += 1; return cond; }
@@ -32,7 +33,17 @@ ok(isSchoolHolidayFWB('2026-04-30').holiday, '30/04/2026 = printemps FWB');
 ok(!isSchoolHolidayFWB('2026-03-10').holiday, '10/03/2026 = période scolaire');
 ok(!isSchoolHolidayFWB('2026-05-11').holiday, '11/05/2026 = après le printemps FWB');
 const nextHol = nextSchoolHolidayFWB('2026-06-20');
-ok(nextHol && nextHol.from === '2026-07-03', `prochain congé après le 20/06/2026 = été 03/07 (obtenu ${nextHol?.from})`);
+// La date exacte n'est PAS ré-encodée ici. Elle vivait en double dans
+// lib/booking-config (moteur de réservation) et lib/center-metrics (métriques),
+// avec deux jours d'écart sur l'été 2026 : 04/07 contre 03/07 (mesuré le
+// 2026-08-22). Les métriques dérivent désormais de booking-config, seule source
+// d'autorité ; ce test vérifie donc le COMPORTEMENT (le prochain congé trouvé
+// après le 20/06/2026 est bien l'été 2026, aux dates de la source) au lieu de
+// devenir un troisième exemplaire qui divergera à son tour.
+const expectedSummer = WALLONIA_SCHOOL_HOLIDAYS.find(period => period.kind === 'summer' && period.start > '2026-06-20');
+ok(!!expectedSummer, 'la source d\'autorité connaît un été après le 20/06/2026');
+ok(nextHol && expectedSummer && nextHol.from === expectedSummer.start, `prochain congé après le 20/06/2026 = été ${expectedSummer && expectedSummer.start} (obtenu ${nextHol?.from})`);
+ok(nextHol && /été|ete/i.test(String(nextHol.label || '')), `le congé trouvé est bien l'été (obtenu ${nextHol?.label})`);
 
 // ── [METRICS] agrégation d'une journée ───────────────────────────────────────
 console.log('\n[METRICS] computeMetricsFromReservations');

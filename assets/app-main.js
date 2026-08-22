@@ -2417,7 +2417,37 @@ function loadState() {
   };
 }
 
+// LA DATE DE TRAVAIL N EST PAS UNE PREFERENCE. Une console laissee ouverte
+// un autre jour rouvrait sur SA date en l annoncant « Aujourd hui » : le
+// 2026-08-22, localStorage portait encore currentDate 2026-07-29, adminDate
+// 2026-07-21 et staffReservationsSelectedDate 2026-07-28. Dix ecrans
+// (dashboard, les trois plannings, formules, arrivees, sessions, evenements,
+// pistes, laser) affichaient le 29 juillet avec le badge « Aujourd hui », et
+// « + Reservation » ecrivait le client de passage a cette date la.
+//
+// On ramene donc a aujourd hui toute date de travail DEJA PASSEE, et elle
+// seule. Une date FUTURE est gardee : preparer le planning de la semaine
+// prochaine puis rafraichir sa page ne doit pas renvoyer le responsable a
+// aujourd hui.
+function reconcileWorkingDates(target) {
+  if (!target || typeof target !== 'object') return target;
+  const today = todayStr();
+  const stale = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && value < today;
+  if (stale(target.currentDate)) target.currentDate = today;
+  if (stale(target.adminDate)) target.adminDate = today;
+  if (stale(target.staffReservationsSelectedDate)) target.staffReservationsSelectedDate = today;
+  if (target.booking && stale(target.booking.date)) target.booking.date = today;
+  // Le mois du selecteur derive de la date de travail : il ne peut pas rester
+  // sur un mois que plus aucune date ne designe.
+  if (typeof target.staffReservationsMonth === 'string' && /^\d{4}-\d{2}$/.test(target.staffReservationsMonth)
+    && target.staffReservationsMonth < today.slice(0, 7)) {
+    target.staffReservationsMonth = today.slice(0, 7);
+  }
+  return target;
+}
+
 let state = loadState();
+reconcileWorkingDates(state);
 let quickBookState = null;
 let isAuthenticated = false;
 let slotFetchRequestId = 0;
@@ -3141,6 +3171,7 @@ function initClient() {
   syncBookingTypeUi();
   document.getElementById('fDate').value = state.booking.date;
   document.getElementById('fDate').min = todayStr();
+  applyBookingDateHorizon();
   document.getElementById('fPax').value = state.booking.pax;
   document.getElementById('fDate').addEventListener('change', e => {
     const nextDate = e.target.value;
@@ -8809,6 +8840,17 @@ function setStaffRouteHash(page = getStaffMenuPage(), resource = '') {
 //                                    Auth du middleware)
 //   direction -> /#/admin/<onglet>
 const CLIENT_ROUTE_PATH = '/reserver';
+
+// UNE SEULE REGLE POUR L ADRESSE CLIENT. detectCustomerMode acceptait deja
+// « /reserver » ET « /reserver/<centre> » ; applyInitialRouteFromHash, lui,
+// comparait par EGALITE stricte. Ouvrir /reserver/libramont avec une session
+// staff ouverte renvoyait donc sur la console, et le centre demande
+// disparaissait de l URL (reecrite en /#/staff/...). Deux endroits, deux
+// regles, pour la meme adresse : il n y en a plus qu une.
+function isClientRoutePath(rawPath) {
+  const path = String(rawPath == null ? '' : rawPath).toLowerCase().replace(/\/+$/, '') || '/';
+  return path === CLIENT_ROUTE_PATH || path.startsWith(CLIENT_ROUTE_PATH + '/');
+}
 const APP_ROUTE_PATH = '/';
 
 // LA DEMONSTRATION PUBLIQUE A SON CHEMIN, ET IL DOIT SURVIVRE (2026-08-08).
@@ -21127,6 +21169,18 @@ function applyCenterIdentity(center, centerId = '') {
 // offres activees) et la pousse dans booking-core pour que l'affichage client
 // (hint "Ouvert...", formules) reflete la meme verite que le serveur.
 // Fail-soft : sans reponse, la grille locale historique reste utilisee.
+// L'horizon de reservation vient du SERVEUR (public-booking-meta) : le champ
+// date n'avait aucune borne haute et acceptait 2028. 365 jours n'est qu'un
+// repli tant que la reponse n est pas arrivee.
+let bookingHorizonDays = 365;
+function applyBookingDateHorizon() {
+  const field = document.getElementById('fDate');
+  if (!field) return;
+  const [year, month, day] = todayStr().split('-').map(Number);
+  const limit = new Date(Date.UTC(year, month - 1, day + bookingHorizonDays));
+  field.max = limit.toISOString().slice(0, 10);
+}
+
 async function loadCenterScheduleConfig(dateOverride = '') {
   const wanted = String(dateOverride || state.booking.date || '');
   const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(wanted) ? `&date=${encodeURIComponent(wanted)}` : '';
@@ -21144,6 +21198,10 @@ async function loadCenterScheduleConfig(dateOverride = '') {
     // formules retirees exclues). On l'expose pour que renderFormules affiche au
     // tunnel de resa staff la MEME chose que le catalogue public (fix d'affichage).
     // Fallback sur la constante FORMULES statique si absent, pour ne rien casser.
+    if (Number.isFinite(Number(payload?.bookingHorizonDays)) && Number(payload.bookingHorizonDays) > 0) {
+      bookingHorizonDays = Number(payload.bookingHorizonDays);
+      applyBookingDateHorizon();
+    }
     if (Array.isArray(payload?.formules)) {
       window.__pinlaneDisplayFormules = payload.formules;
     }
@@ -21209,7 +21267,7 @@ function detectCustomerMode() {
     try { sessionStorage.removeItem('pinlane-customer-mode'); } catch (e) {}
     return false;
   }
-  if (path === '/reserver' || path.startsWith('/reserver/')) {
+  if (isClientRoutePath(path)) {
     try { sessionStorage.setItem('pinlane-customer-mode', '1'); } catch (e) {}
     return true;
   }
@@ -21324,7 +21382,7 @@ document.addEventListener('visibilitychange', () => {
 function applyInitialRouteFromHash() {
   // Le CHEMIN prime sur le hash : /reserver est l'adresse de la vue client, quel
   // que soit l'etat sauvegarde ou un hash staff herite d'une session precedente.
-  if (getCurrentPathname().toLowerCase() === CLIENT_ROUTE_PATH) {
+  if (isClientRoutePath(getCurrentPathname())) {
     state.view = 'client';
     return;
   }
@@ -21346,8 +21404,20 @@ function applyInitialRouteFromHash() {
     // cockpit-clients) y manquaient, donc un deep-link/bookmark vers
     // #/staff/cockpit-incidents retombait sur planning. On ne redonne jamais
     // deux listes a maintenir en parallele.
-    if (typeof STAFF_MENU_PAGES !== 'undefined' && STAFF_MENU_PAGES.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
-    if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
+    // Les cles bowling / laser / complete de la barre laterale sont des
+    // RESSOURCES du planning, pas des pages : STAFF_MENU_PAGES ne les contient
+    // pas. Sans cette table, un lien profond vers #/staff/bowling changeait la
+    // ressource mais laissait la page sur celle qui trainait dans l etat
+    // sauvegarde : mesure en production, il affichait le dashboard.
+    const resourceAliasPages = { bowling: 'bowling', laser: 'laser', complete: 'all' };
+    const aliasResource = resourceAliasPages[normalizedPage];
+    if (aliasResource) {
+      state.staffMenuPage = 'planning';
+      state.staffResourceView = aliasResource;
+    } else {
+      if (typeof STAFF_MENU_PAGES !== 'undefined' && STAFF_MENU_PAGES.includes(normalizedPage)) state.staffMenuPage = normalizedPage;
+      if (['all', 'bowling', 'laser'].includes(resource || normalizedPage)) state.staffResourceView = resource || normalizedPage;
+    }
   }
   if (view === 'admin') {
     // « clients » (onglet retiré : doublon du CRM v2) retombe sur la vue période.

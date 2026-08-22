@@ -8,6 +8,7 @@ const {
   refreshFormuleOverrides,
   resolveBowlingCapacity,
   todayStr,
+  BOOKING_HORIZON_DAYS,
 } = require('../lib/booking-config');
 const { getPool, createCustomRequest } = require('../lib/database');
 const { readJson, sendError, sendJson, setCors } = require('../lib/http');
@@ -433,6 +434,9 @@ module.exports = async (req, res) => {
   sendJson(res, 200, {
     ok: true,
     today: todayStr(),
+    // Le tunnel borne son champ date avec CE nombre : la limite n'est ecrite
+    // qu'ici, le navigateur ne la redevine pas.
+    bookingHorizonDays: BOOKING_HORIZON_DAYS,
     durationOptions: DURATION_OPTIONS,
     // Formules avec overrides catalogue appliques (prix/nom/retrait) pour ce
     // centre ; sans override, strictement identique a FORMULES.

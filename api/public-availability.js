@@ -17,6 +17,8 @@ const {
   timeToNum,
   todayStr,
   TOTAL_LANES,
+  bookingDateOutOfRange,
+  BOOKING_HORIZON_DAYS,
 } = require('../lib/booking-config');
 const { allocateLanes, getPool, readAvailabilitySnapshot, validateReservationResources } = require('../lib/database');
 const { sendError, sendJson, setCors } = require('../lib/http');
@@ -369,6 +371,14 @@ module.exports = async (req, res) => {
   try {
     const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
     const date = String(url.searchParams.get('date') || '');
+    // Meme horizon que l'ecriture : sans cette borne, l'ecran servait de vrais
+    // creneaux pour 2028, une date que le calendrier des conges ne couvre pas.
+    // Le passe n'est pas refuse ici : d'autres surfaces relisent des journees
+    // ecoulees, et les creneaux passes sont deja filtres a l affichage.
+    if (bookingDateOutOfRange(date) === 'far') {
+      sendJson(res, 200, { ok: true, date, slots: [], message: `Les réservations sont ouvertes jusqu'à ${BOOKING_HORIZON_DAYS} jours à l'avance. Choisissez une date plus proche.` });
+      return;
+    }
     const centerId = String(url.searchParams.get('centerId') || 'libramont');
     // Reflect the latest per-center config edits (cached ~30s). Fails soft on a
     // DB outage: the file baseline is used so availability never breaks.

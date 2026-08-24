@@ -163,6 +163,12 @@
         "accentContrast": "#ffffff",
         "glow": "#67baac",
         "buttons": "neon",
+        "activityImages": {
+          "bowling": "/assets/img/heroes/hero-bowling.jpg",
+          "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
+          "duckpin_bowling": "/assets/img/heroes/hero-duckpin.jpg",
+          "fun_run": "/assets/img/heroes/hero-fun-run.jpg"
+        },
         "dark": {
           "accent": "#944292",
           "accentStrong": "#e59ede",
@@ -289,6 +295,12 @@
         "accentContrast": "#ffffff",
         "glow": "#67baac",
         "buttons": "neon",
+        "activityImages": {
+          "bowling": "/assets/img/heroes/hero-bowling.jpg",
+          "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
+          "duckpin_bowling": "/assets/img/heroes/hero-duckpin.jpg",
+          "fun_run": "/assets/img/heroes/hero-fun-run.jpg"
+        },
         "dark": {
           "accent": "#944292",
           "accentStrong": "#e59ede",
@@ -329,6 +341,12 @@
         "accentContrast": "#ffffff",
         "glow": "#67baac",
         "buttons": "neon",
+        "activityImages": {
+          "bowling": "/assets/img/heroes/hero-bowling.jpg",
+          "laser_game": "/assets/img/heroes/hero-laser-game.jpg",
+          "duckpin_bowling": "/assets/img/heroes/hero-duckpin.jpg",
+          "fun_run": "/assets/img/heroes/hero-fun-run.jpg"
+        },
         "dark": {
           "accent": "#944292",
           "accentStrong": "#e59ede",

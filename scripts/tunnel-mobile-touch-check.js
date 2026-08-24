@@ -63,6 +63,7 @@ function metaPayload() {
     ok: true, today: DATE, durationOptions: [], formules: [], activities: ACTIVITIES,
     center: {
       id: 'libramont', status: 'active',
+      branding: { accent: '#944292', activityImages: { bowling: '/assets/img/heroes/hero-bowling.jpg', laser_game: '/assets/img/heroes/hero-laser-game.jpg' } },
       defaultSchedule: { regular: { 0: { open: '10:00', close: '22:00' }, 1: null, 2: { open: '14:00', close: '22:00' }, 3: { open: '12:00', close: '22:00' }, 4: { open: '14:00', close: '22:00' }, 5: { open: '14:00', close: '24:00' }, 6: { open: '10:00', close: '24:00' } }, holiday: {} },
       holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {},
       day: { date: DATE, open: true, schedule: { open: 10, close: 24, label: '10h - Minuit' }, closedLabel: '', closedWindows: [], unavailableFormulaIds: [], unavailableActivityIds: [], unavailableFormulaReason: {} },
@@ -308,6 +309,19 @@ async function main() {
       goStep(1, { animate: false, focus: false });
     }, DATE);
     await settle(page, 800);
+    // LA PAGE ACTIVITES REMPLIT SON ECRAN (2026-08-25, Movsar : « ya trop
+    // de vide quand meme ») : les cartes s etirent, le vide sous la grille
+    // ne depasse pas 32 px.
+    if (shape.height >= 640) {
+      const videActivites = await page.evaluate(() => {
+        const foot = document.querySelector('#step1 .step-foot');
+        const pick = document.getElementById('activityPicker');
+        if (!foot || !pick) return null;
+        return Math.round(foot.getBoundingClientRect().top - pick.getBoundingClientRect().bottom);
+      });
+      ok(videActivites !== null && videActivites <= 32,
+        `la page activites remplit l ecran (vide sous la grille : ${videActivites}px)`);
+    }
     await provenTap(page, '#btnStep1', 'Continuer (panier ancres, vers la page options)');
     await settle(page, 1200);
     if (await page.evaluate(() => Number(state.step) === 1 && document.getElementById('step1').classList.contains('is-options'))) {
@@ -331,12 +345,13 @@ async function main() {
         page: picker ? picker.getAttribute('data-mobile-page') : null,
         visibleSteps: visibles.length,
         fits: zone ? zone.scrollHeight <= zone.clientHeight + 2 : false,
+        fitsMesure: zone ? zone.scrollHeight + '/' + zone.clientHeight : 'n/a',
       };
     });
     ok(paging.multi && paging.visibleSteps === 1,
       `mobile : UNE grille d heures par page (${paging.visibleSteps} visible, page ${paging.page})`);
     if (shape.height >= 640) {
-      ok(paging.fits, `mobile : l etape creneau tient sans defiler (${shape.width}x${shape.height})`);
+      ok(paging.fits, `mobile : l etape creneau tient sans defiler (${shape.width}x${shape.height}, ${paging.fitsMesure})`);
     }
     const chips = await page.evaluate(() => document.querySelectorAll('.anchor-chip:not([disabled])').length);
     ok(chips > 0, `grille d ancres rendue (${chips} heures)`);
@@ -362,6 +377,51 @@ async function main() {
       return visible ? getComputedStyle(visible, '::before').content : '';
     });
     ok(filRail === 'none', `le fil vertical du rail est absent en mode pages (${filRail})`);
+    // LA PAGE CRENEAU EST HABILLEE (2026-08-25, Movsar : « super moche...
+    // juste texte », « une petite image prise de fungalaxy.be... belle,
+    // glassphorm ») : en-tete activite + position, image du centre en bas
+    // quand l ecran a la place, et le choix d ordre offert.
+    const habillage = await page.evaluate(() => {
+      const act = document.querySelector('[data-role="anchor-mobile-activity"]');
+      const count = document.querySelector('[data-role="anchor-mobile-count"]');
+      const hero = document.querySelector('[data-role="anchor-mobile-hero"]');
+      const alt = document.querySelector('.anchor-mobile-alt');
+      const heroVisible = hero && hero.offsetParent !== null && getComputedStyle(hero).backgroundImage.includes('hero-bowling');
+      return {
+        activite: act ? act.textContent.trim() : '',
+        position: count ? count.textContent.trim() : '',
+        heroVisible: Boolean(heroVisible),
+        altVisible: Boolean(alt && alt.offsetParent !== null),
+        altTexte: alt ? alt.textContent.trim() : '',
+      };
+    });
+    ok(/bowling/i.test(habillage.activite) && /1 sur 2/.test(habillage.position),
+      `l en-tete dit l activite et la position (« ${habillage.activite} » · « ${habillage.position} »)`);
+    if (shape.height >= 720) {
+      ok(habillage.heroVisible, 'l image bowling du centre habille le bas de la page');
+    } else {
+      ok(!habillage.heroVisible, 'sans place a l ecran, pas d image : rien ne pousse la grille');
+    }
+    ok(habillage.altVisible && /laser/i.test(habillage.altTexte),
+      `le choix d ordre est offert (« ${habillage.altTexte} »)`);
+    // Le geste echange les heures : le laser prend le DEPART, le bowling
+    // s enchaine apres. Puis retour a la page bowling pour la suite.
+    const avantAlt = await page.evaluate(() => ({ ...state.booking.preference.preferredTimes }));
+    await page.evaluate(() => document.querySelector('.anchor-mobile-alt button')?.scrollIntoView({ block: 'center' }));
+    await provenTap(page, '.anchor-mobile-alt button', 'Commencer par Laser Game');
+    await settle(page, 1600);
+    const apresAlt = await page.evaluate(() => ({
+      page: document.querySelector('.formula-anchor-picker')?.getAttribute('data-mobile-page'),
+      times: { ...state.booking.preference.preferredTimes },
+    }));
+    ok(apresAlt.page === '1', `« Commencer par » ouvre la page laser (page ${apresAlt.page})`);
+    ok(apresAlt.times.laser_game === avantAlt.bowling,
+      `le laser prend l heure de depart (${apresAlt.times.laser_game} = ${avantAlt.bowling})`);
+    ok(String(apresAlt.times.bowling) > String(apresAlt.times.laser_game),
+      `le bowling s enchaine apres (${apresAlt.times.bowling})`);
+    await page.evaluate(() => document.querySelector('.anchor-mobile-back')?.scrollIntoView({ block: 'center' }));
+    await provenTap(page, '.anchor-mobile-back', 'retour a la page bowling');
+    await settle(page, 600);
     const chipLabel = await markReachable(page, '.anchor-chip:not([disabled]):not(.active)');
     ok(!!chipLabel, `une heure atteignable (${chipLabel || 'aucune'})`);
     await provenTap(page, '[data-touch-target]', `heure ${chipLabel}`);

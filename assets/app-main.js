@@ -4378,7 +4378,7 @@ function renderProgramSummary() {
   // en ligne, et un total nu laissait croire le contraire.
   totalNote.textContent = complete
     ? 'pour cette sélection · à régler sur place'
-    : (roundedTotal > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
+    : (roundedTotal > 0 ? 'Tout se règle sur place, certaines activités y sont tarifées' : 'Montant confirmé à votre arrivée');
   if (totalEl.getAttribute('data-value') !== nextValue) {
     const previousTotal = totalEl.getAttribute('data-amount') || '';
     totalEl.setAttribute('data-value', nextValue);
@@ -5520,9 +5520,15 @@ function setFormulaAnchorMobilePage(next, options = {}) {
   picker.setAttribute('data-mobile-page', String(formulaAnchorMobilePage));
   if (formulaAnchorMobilePage >= count - 1) picker.setAttribute('data-mobile-last', '1');
   else picker.removeAttribute('data-mobile-last');
-  const title = picker.querySelector('[data-role="anchor-mobile-title"]');
-  if (title && pages[formulaAnchorMobilePage]) {
-    title.textContent = `Créneau ${formulaAnchorMobilePage + 1} sur ${count} · ${pages[formulaAnchorMobilePage].label || ''}`;
+  const titleActivity = picker.querySelector('[data-role="anchor-mobile-activity"]');
+  if (titleActivity && pages[formulaAnchorMobilePage]) titleActivity.textContent = pages[formulaAnchorMobilePage].label || '';
+  const titleCount = picker.querySelector('[data-role="anchor-mobile-count"]');
+  if (titleCount) titleCount.textContent = `Créneau ${formulaAnchorMobilePage + 1} sur ${count}`;
+  const heroBox = picker.querySelector('[data-role="anchor-mobile-hero"]');
+  if (heroBox) {
+    const heroUrl = getTenantActivityImage(pages[formulaAnchorMobilePage]?.activityId);
+    if (heroUrl) { heroBox.style.backgroundImage = `url('${heroUrl}')`; heroBox.removeAttribute('data-empty'); }
+    else { heroBox.style.backgroundImage = ''; heroBox.setAttribute('data-empty', '1'); }
   }
   // Le bouton d avance ANNONCE ou il mene : « Continuer · Laser Game ».
   const nextLabel = picker.querySelector('[data-role="anchor-mobile-next-label"]');
@@ -5545,6 +5551,43 @@ function setFormulaAnchorMobilePage(next, options = {}) {
 
 function formulaAnchorMobileBack() { setFormulaAnchorMobilePage(formulaAnchorMobilePage - 1, { direction: -1 }); }
 function formulaAnchorMobileNext() { setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1, { direction: 1 }); }
+
+// « Commencer par le Laser Game » (2026-08-25, Movsar) : l activite de la
+// 2e page prend l heure de DEPART de la visite, la 1re s enchaine juste
+// apres. Les heures disent l ordre reel ; le moteur revalide comme pour
+// n importe quel choix. Offert seulement quand la visite a DEUX ancres :
+// au-dela, l ordre se compose page par page.
+async function formulaAnchorStartWithNext() {
+  const acts = getMobileAnchorActivities();
+  if (acts.length !== 2) return;
+  const [first, second] = acts;
+  const preference = createDefaultFormulaPreference(state.booking.preference || {});
+  const startTime = preference.preferredTimes[first.activityId]
+    || formulaAnchorData?.defaultTimes?.[first.activityId]
+    || first.times[0]?.time || '';
+  const secondItem = startTime ? second.times.find((item) => item.time >= startTime) : second.times[0];
+  if (!secondItem) { setFormulaAnchorMobilePage(1, { direction: 1 }); return; }
+  preference.preferredTimes[second.activityId] = secondItem.time;
+  if (second.activityId === 'laser_game') {
+    preference.laserPlacement = 'scheduled';
+    setChosenLaserTimes(preference, [secondItem.time]);
+  }
+  const secondEnd = timeToNum(secondItem.time) * 60 + Number(second.durationMinutes || 60);
+  const firstItem = first.times.find((item) => timeToNum(item.time) * 60 >= secondEnd);
+  if (firstItem) {
+    preference.preferredTimes[first.activityId] = firstItem.time;
+    if (first.activityId === 'laser_game') {
+      preference.laserPlacement = 'scheduled';
+      setChosenLaserTimes(preference, [firstItem.time]);
+    }
+  }
+  state.booking.preference = preference;
+  state.booking.startTime = '';
+  state.booking.opsPlan = null;
+  save();
+  setFormulaAnchorMobilePage(1, { direction: 1 });
+  await revalidateFormulaAnchors();
+}
 
 async function revalidateFormulaAnchors() {
   const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
@@ -6309,8 +6352,12 @@ function renderFormulaAnchorPicker(formule) {
   const mobileNav = mobileCount > 1 ? `
       <div class="anchor-mobile-nav">
         <button type="button" class="anchor-mobile-back" aria-label="Créneau précédent" onclick="formulaAnchorMobileBack()">&lsaquo;</button>
-        <span class="anchor-mobile-title" data-role="anchor-mobile-title">Créneau ${formulaAnchorMobilePage + 1} sur ${mobileCount} · ${escapeHtml(mobilePages[formulaAnchorMobilePage]?.label || '')}</span>
+        <span class="anchor-mobile-title" data-role="anchor-mobile-title"><strong data-role="anchor-mobile-activity">${escapeHtml(mobilePages[formulaAnchorMobilePage]?.label || '')}</strong><small data-role="anchor-mobile-count">Créneau ${formulaAnchorMobilePage + 1} sur ${mobileCount}</small></span>
+        ${mobileCount === 2 ? `<div class="anchor-mobile-alt"><button type="button" onclick="formulaAnchorStartWithNext()">${escapeHtml(mobilePages[1]?.label || '')} d’abord&nbsp;?</button></div>` : ''}
       </div>` : '';
+  const mobileHeroUrl = mobileCount > 1 ? getTenantActivityImage(mobilePages[formulaAnchorMobilePage]?.activityId) : '';
+  const mobileHero = mobileCount > 1 ? `
+      <div class="anchor-mobile-hero" data-role="anchor-mobile-hero"${mobileHeroUrl ? ` style="background-image:url('${escapeHtml(mobileHeroUrl)}')"` : ' data-empty="1"'} aria-hidden="true"></div>` : '';
   const mobileNext = mobileCount > 1 ? `
       <div class="anchor-mobile-continue">
         <button type="button" class="anchor-mobile-next" onclick="formulaAnchorMobileNext()">Continuer · <span data-role="anchor-mobile-next-label">${escapeHtml(mobilePages[formulaAnchorMobilePage + 1]?.label || '')}</span></button>
@@ -6320,6 +6367,7 @@ function renderFormulaAnchorPicker(formule) {
       ${mobileNav}
       ${renderFormulaAnchorRows(formule)}
       ${mobileNext}
+      ${mobileHero}
       <div class="formula-anchor-status-zone" data-role="anchor-status-zone">${statusHtml}</div>
     </div>`;
 }
@@ -6911,9 +6959,12 @@ function renderRecap() {
   if (isVisit && visitProgram) {
     const complete = visitProgram.priceComplete === true;
     if (totalLabel) totalLabel.textContent = complete ? 'Total' : (total > 0 ? 'À partir de' : 'Tarif');
+    // RIEN ne s encaisse en ligne (2026-08-25, Movsar : « tout se regle
+    // sur place ») : l ancienne note laissait croire qu une partie se
+    // payait maintenant.
     if (totalNote) totalNote.textContent = complete
-      ? 'Pour cette sélection'
-      : (total > 0 ? 'Certaines activités se règlent sur place' : 'Montant confirmé à votre arrivée');
+      ? 'Tout se règle sur place'
+      : (total > 0 ? 'Tout se règle sur place, certaines activités y sont tarifées' : 'Montant confirmé à votre arrivée');
     if (totalAmount) totalAmount.textContent = total > 0 ? `${Math.round(total)}€` : 'Sur place';
   } else {
     if (totalLabel) totalLabel.textContent = 'Total estimé';
@@ -20793,6 +20844,12 @@ document.addEventListener('input', e => {
   if (e.target.id === 'searchInput') {
     applyStaffSearch(e.target.value);
   }
+  // Une erreur de champ s efface DES que le client corrige : la laisser
+  // accrochee sous un champ rempli l accuse a tort (2026-08-25, capture
+  // Movsar : trois champs remplis, trois erreurs encore affichees).
+  if (['fName', 'fPhone', 'fEmail'].includes(e.target.id) && e.target.getAttribute('aria-invalid') === 'true') {
+    clearFieldError(e.target.id);
+  }
 });
 
 // Vocabulaire FERME. Le code vient du serveur ('formula' | 'bowling' | 'laser_game').
@@ -21164,6 +21221,15 @@ const TENANT_BRANDING_PROPS = [
   ['glow', '--tenant-glow'],
 ];
 const TENANT_HEX = /^#[0-9a-f]{6}$/i;
+// L IMAGE PAR ACTIVITE du composeur telephone (2026-08-25) : une photo
+// par activite, donnee de centre servie avec la marque. Chemin d assets
+// du depot ou https, rien d autre.
+const TENANT_IMAGE_URL = /^(?:https:\/\/[^\s"'<>]+|\.?\/?assets\/[a-z0-9_/.-]+)$/i;
+let tenantActivityImages = {};
+
+function getTenantActivityImage(activityId) {
+  return tenantActivityImages[String(activityId || '').trim().toLowerCase()] || '';
+}
 const TENANT_BRAND_STORAGE_PREFIX = 'pinlane-brand:';
 // Les axes de STYLE du tunnel (miroir de lib/center-config.js, liste blanche
 // des deux cotes) : poses en data-attributs sur <html>, consommes par
@@ -21194,6 +21260,15 @@ function applyCenterBranding(branding, centerId = '') {
     const value = String(light[axis] || '').trim().toLowerCase();
     if (allowed.includes(value)) root.setAttribute(`data-tunnel-${axis}`, value);
     else root.removeAttribute(`data-tunnel-${axis}`);
+  });
+  // Les images d activite suivent la marque : elles habillent le bas des
+  // pages du composeur telephone.
+  tenantActivityImages = {};
+  const tenantImages = light.activityImages && typeof light.activityImages === 'object' ? light.activityImages : {};
+  Object.entries(tenantImages).forEach(([key, value]) => {
+    const id = String(key || '').trim().toLowerCase();
+    const url = String(value || '').trim();
+    if (/^[a-z0-9_-]{1,40}$/.test(id) && url.length <= 300 && TENANT_IMAGE_URL.test(url)) tenantActivityImages[id] = url;
   });
   // Le THEME force ne s'applique qu'au tunnel pur (client final / iframe) :
   // dans la console, le staff garde SON theme, l'apercu du sien ne se fait

@@ -266,7 +266,10 @@ async function main() {
       && validationRecap.activities.some(item => item.includes('Arcades')),
     `le recap final nomme les 3 activites (${validationRecap.activities.join(' | ') || 'aucune'})`);
     ok(validationRecap.total === '222€' && validationRecap.totalLabel === 'À partir de'
-      && validationRecap.totalNote.includes('se règlent sur place'),
+      // « TOUT se regle sur place » (2026-08-25, Movsar) : rien ne
+      // s encaisse en ligne, la note ne doit plus laisser croire qu une
+      // partie se paie maintenant.
+      && validationRecap.totalNote.includes('Tout se règle sur place'),
     `le recap final reprend le prix serveur honnete (${validationRecap.totalLabel} ${validationRecap.total}, ${validationRecap.totalNote})`);
     if (process.env.PINLANE_VISUAL_CAPTURE) {
       const captureDir = path.resolve(process.env.PINLANE_VISUAL_CAPTURE);

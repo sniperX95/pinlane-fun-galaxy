@@ -99,6 +99,23 @@ function testBrandingNeonAndGlow() {
   assert.strictEqual(junk, null, 'valeurs hors liste blanche : rien n est stocke');
 }
 
+function testBrandingActivityImages() {
+  // L IMAGE PAR ACTIVITE du composeur telephone est une DONNEE de centre
+  // (2026-08-25) : chemin /assets ou https seulement, tout le reste jete.
+  const kept = normalizeBranding({ accent: '#944292', activityImages: {
+    bowling: '/assets/img/heroes/hero-bowling.jpg',
+    laser_game: 'https://exemple.be/laser.jpg',
+    evil: 'javascript:alert(1)',
+    'ID INVALIDE !': '/assets/x.jpg',
+  } });
+  assert.strictEqual(kept.activityImages.bowling, '/assets/img/heroes/hero-bowling.jpg', 'chemin assets accepte');
+  assert.strictEqual(kept.activityImages.laser_game, 'https://exemple.be/laser.jpg', 'https accepte');
+  assert.strictEqual(kept.activityImages.evil, undefined, 'schema hors liste blanche jete');
+  assert.strictEqual(Object.keys(kept.activityImages).length, 2, 'les cles invalides sont jetees');
+  const only = normalizeBranding({ activityImages: { bowling: '/assets/img/heroes/hero-bowling.jpg' } });
+  assert.strictEqual(only && only.activityImages.bowling, '/assets/img/heroes/hero-bowling.jpg', 'des images seules suffisent a exister');
+}
+
 function main() {
   testNormalizationBounds();
   testMergeDoesNotMutate();
@@ -107,6 +124,7 @@ function main() {
   testPairsFollowLaneCount();
   testGetCenterMerge();
   testBrandingNeonAndGlow();
+  testBrandingActivityImages();
   // Sécurité : laisser le module dans son état baseline pour les tests suivants.
   applyCenterOverrides(new Map());
   console.log('center-config-tests-ok');

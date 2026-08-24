@@ -502,10 +502,9 @@ async function checkFluidity(page) {
     await bootTunnel(page, `perf-${width}`);
     console.log(`    ${width} px :`);
     results[`step-${width}`] = await measureInteraction(page, 'changement d etape 1 vers 2', () => page.evaluate(() => goStep2()));
-    results[`period-${width}`] = await measureInteraction(page, 'saut de moment de journee', () => page.evaluate(() => {
-      const tab = [...document.querySelectorAll('.anchor-period-tab')].find((item) => !item.classList.contains('active'));
-      if (tab) tab.click();
-    }));
+    // Le « saut de moment » n existe plus : les onglets ont ete retires le
+    // 2026-08-24 (la grille montre toute la journee). Mesurer un clic dans le
+    // vide serait un faux vert : la mesure est retiree avec la fonctionnalite.
     results[`pick-${width}`] = await measureInteraction(page, 'choix d une heure', () => page.evaluate(() => {
       const chip = [...document.querySelectorAll('.anchor-chip')].find((item) => !item.classList.contains('active') && !item.disabled);
       if (chip) chip.click();

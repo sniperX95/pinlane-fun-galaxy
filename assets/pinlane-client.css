@@ -270,6 +270,17 @@ html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice
   background: #ffffff;
   color: var(--accent);
 }
+/* La carte de refus (« se chevauchent ») parle la meme langue : ses
+   suggestions et son bouton de repli suivent la signature du centre
+   (Movsar 2026-08-24, capture : « le truc en rouge avec boutons comme ca,
+   ca va pas non plus »). */
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .anchor-suggestion,
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .formula-order-fallback-btn {
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
 
 /* --- LA COQUILLE : un ecran, pas une page -------------------------------- */
 /* Le mode client verrouille le defilement : la scene EST l'ecran. La hauteur
@@ -5152,6 +5163,11 @@ body.customer-mode .client-footer {
   color: var(--muted);
 }
 
+#clientView .anchor-suggestion:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 #clientView .anchor-suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -5162,8 +5178,8 @@ body.customer-mode .client-footer {
 }
 
 #clientView .anchor-suggestion {
-  min-height: 44px;
-  padding: var(--space-1) var(--space-3);
+  min-height: 40px;
+  padding: 4px var(--space-3);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-full);
   background: var(--surface);

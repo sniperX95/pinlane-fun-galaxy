@@ -5914,17 +5914,12 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   // HORIZONTAL : une seule piste par activité qui porte TOUTE la journée. Les
   // onglets de moment cessent d'être un filtre (26 heures sur 27 masquées) et
   // deviennent des points de saut dans la piste : rien n'est plus caché.
-  const tabs = groups.length > 1 ? `
-      <div class="anchor-period-tabs" role="group" aria-label="Moment de la journée pour ${escapeHtml(activity.label)}">
-        ${groups.map((group) => {
-    const first = group.items[0].time;
-    const last = group.items[group.items.length - 1].time;
-    const holdsSelection = multi
-      ? group.items.some(item => chosen.includes(item.time))
-      : Boolean(selected) && group.items.some(item => item.time === selected);
-    return `<button type="button" class="anchor-period-tab ${holdsSelection ? 'has-pick' : ''}" data-period="${escapeHtml(group.key)}" aria-pressed="false" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}')"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
-  }).join('')}
-      </div>` : '';
+  // PLUS D ONGLETS DE MOMENT (2026-08-24, Movsar : « ca s affiche par
+  // moment mais ca sert a rien »). Ils etaient des points de saut dans une
+  // piste qui defilait ; la grille montre desormais TOUTE la journee d un
+  // coup, il n y a plus rien ou sauter. groupAnchorTimes reste : il ordonne
+  // les heures, et data-period-start sert toujours d ancre interne.
+  const tabs = '';
   // Le SECONDAIRE identique sur toutes les cartes (« 2 pistes », « 23
   // places ») est du bruit multiplie par 27 : il se dit UNE fois au-dessus
   // de la grille, et chaque carte redevient une heure qui tient sur une

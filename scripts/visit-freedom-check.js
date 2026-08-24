@@ -418,10 +418,14 @@ async function checkBrowser(page) {
   ok(rail.railLinks === 1, `le lien entre les deux activites est represente (${rail.railLinks})`);
   ok(rail.picks.includes(GAP_BOWLING) && rail.picks.includes(GAP_LASER),
     `chaque etape affiche l heure retenue dans son titre (${rail.picks.join(', ')})`);
-  ok(rail.periodTabs.join('|') === 'Matin|Après-midi|Soir|Matin|Après-midi|Soir',
-    `les heures sont rangees par moment de journee (${rail.periodTabs.join(', ')})`);
-  ok(rail.periodCounts.every((count) => count > 0) && rail.periodCounts.reduce((sum, count) => sum + count, 0) >= 50,
-    `chaque moment annonce combien d heures il contient (${rail.periodCounts.join('+')})`);
+  // Les onglets de moment ont ete RETIRES (2026-08-24, verdict Movsar : ils
+  // ne servaient a rien depuis que la grille montre toute la journee d un
+  // coup). L invariant qui compte : aucune heure n est cachee derriere un
+  // filtre, et l ordre du jour reste celui des moments (data-period-start).
+  ok(rail.periodTabs.length === 0,
+    `plus aucun onglet de moment ne filtre les heures (${rail.periodTabs.length})`);
+  ok(rail.cardsTotal >= 50 && rail.visibleChips === rail.cardsTotal,
+    `toute la journee est sous les yeux, sans onglet (${rail.visibleChips}/${rail.cardsTotal})`);
   ok(rail.chipTimesValid, 'toutes les heures proposees restent des heures :00/:30');
   // Le format CARTE demande par Movsar : « les cartes [...] cest bcp plus pro
   // et beau ». Chaque creneau dit sa FIN, et l enchainement se lit en toutes

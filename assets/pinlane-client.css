@@ -244,6 +244,32 @@ html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-primary:hover
 html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-primary:active:not(:disabled) {
   transform: scale(0.99);
 }
+/* Les SECONDAIRES suivent la signature (2026-08-24, Movsar : « t as meme pas
+   adapte au style des boutons ») : Retour et les actions de conseil passent
+   en pilule, capitales, contour franc ; l action principale du conseil porte
+   l accent et le halo, la fantome reste fantome. */
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-secondary,
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice-action,
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice-ghost {
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .btn-secondary {
+  border-width: 2px;
+}
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice-action {
+  border: 2px solid #0a0a0a;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: -1px 1px 3px var(--tenant-glow, var(--accent));
+}
+html[data-tunnel-buttons='neon'] body.client-mode #clientView .visit-rail-advice-action:hover {
+  border-color: #0a0a0a;
+  background: #ffffff;
+  color: var(--accent);
+}
 
 /* --- LA COQUILLE : un ecran, pas une page -------------------------------- */
 /* Le mode client verrouille le defilement : la scene EST l'ecran. La hauteur
@@ -895,6 +921,26 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
     grid-row: 1;
     min-width: 0;
   }
+  /* LES ETAPES COTE A COTE (2026-08-24, Movsar : « on doit descendre de
+     fou »). Deux activites = deux colonnes sous les yeux ; le lien d ecart
+     et son conseil prennent la pleine largeur dessous (order). Le fil
+     vertical n a plus d objet en colonnes : les reperes numerotes suffisent. */
+  #clientView .formula-anchor-picker .visit-rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: var(--space-2) var(--space-4);
+    align-items: start;
+  }
+  #clientView .formula-anchor-picker .visit-rail-step { order: 1; padding-bottom: 0; }
+  #clientView .formula-anchor-picker .visit-rail-link {
+    order: 2;
+    grid-column: 1 / -1;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  #clientView .formula-anchor-picker .visit-rail-step::before,
+  #clientView .formula-anchor-picker .visit-rail-link::before { content: none; }
+  #clientView .formula-anchor-picker .visit-rail-link { padding-left: 0; }
   #clientView .formula-anchor-picker:has(.formula-anchor-status-zone:not(:empty)) > .formula-anchor-status-zone {
     grid-column: 2;
     grid-row: 1;
@@ -4615,15 +4661,19 @@ body.customer-mode .client-footer {
 }
 
 #clientView .visit-rail-advice {
+  /* DISCRET ET AUX COULEURS DU CENTRE (2026-08-24, Movsar : « un truc
+     completement moche en jaune »). Un conseil n est pas une alerte : carte
+     neutre, filet accent, tout sur une rangee quand la place existe. */
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
   width: 100%;
-  padding: var(--space-3);
-  border: 1px solid var(--warning);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
-  background: var(--warning-soft);
+  background: var(--surface);
   color: var(--text);
 }
 

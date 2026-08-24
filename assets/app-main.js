@@ -5931,8 +5931,24 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   // ligne (Movsar 2026-08-24 : « trop long, on doit descendre »). Une carte
   // ne garde son secondaire que s'il DIFFERE (places reduites, partagee).
   const allAnchorItems = groups.reduce((list, group) => list.concat(group.items), []);
-  const anchorMetas = [...new Set(allAnchorItems.map((item) => anchorSlotCardModel(activity, item, {}).meta))];
-  const sharedAnchorMeta = anchorMetas.length === 1 && anchorMetas[0] ? anchorMetas[0] : '';
+  // Le secondaire DOMINANT, pas seulement l'unanime (2026-08-24, Movsar,
+  // capture : « 23 places » repete sur 15 cartes parce que DEUX heures de
+  // fin de journee disaient « 6 places · session partagee »). La valeur
+  // majoritaire se dit UNE fois au-dessus ; une carte ne parle que si elle
+  // s'en ecarte. Sous la moitie des heures, pas de dominante : chacune garde
+  // la sienne.
+  const anchorMetaCounts = new Map();
+  allAnchorItems.forEach((item) => {
+    const meta = anchorSlotCardModel(activity, item, {}).meta;
+    if (meta) anchorMetaCounts.set(meta, (anchorMetaCounts.get(meta) || 0) + 1);
+  });
+  let sharedAnchorMeta = '';
+  let sharedAnchorCount = 0;
+  anchorMetaCounts.forEach((count, meta) => {
+    if (count > sharedAnchorCount) { sharedAnchorMeta = meta; sharedAnchorCount = count; }
+  });
+  if (sharedAnchorCount * 2 < allAnchorItems.length) sharedAnchorMeta = '';
+  const sharedAnchorUniform = sharedAnchorCount === allAnchorItems.length;
   const chips = groups.map(group => group.items.map((item, index) => {
     // Multi-choix : une heure retenue est active, et quand le compte est
     // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
@@ -5951,7 +5967,7 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
   return `
     <div class="anchor-periods">
       ${tabs}
-      ${sharedAnchorMeta ? `<p class="anchor-shared-meta">${escapeHtml(sharedAnchorMeta)} à chaque heure</p>` : ''}
+      ${sharedAnchorMeta ? `<p class="anchor-shared-meta">${escapeHtml(sharedAnchorMeta)}${sharedAnchorUniform ? ' à chaque heure' : ', sauf mention sur l’heure'}</p>` : ''}
       <div class="anchor-track-shell">
         ${nudge(-1, '&lsaquo;', `Heures précédentes pour ${activity.label}`)}
         <div class="anchor-track" data-anchor="${escapeHtml(activity.activityId)}" data-overflow="none">

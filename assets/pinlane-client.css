@@ -932,11 +932,17 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
     align-items: start;
   }
   #clientView .formula-anchor-picker .visit-rail-step { order: 1; padding-bottom: 0; }
+  /* Le conseil se pose AU-DESSUS des colonnes, pleine largeur : en dessous
+     il passait sous le verrou de scene (coupe, mesure en prod le 2026-08-24)
+     et un item de grille non etire retombait a sa largeur de contenu. */
   #clientView .formula-anchor-picker .visit-rail-link {
-    order: 2;
+    order: 0;
     grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
     min-height: 0;
     padding-bottom: 0;
+    margin-bottom: var(--space-1);
   }
   #clientView .formula-anchor-picker .visit-rail-step::before,
   #clientView .formula-anchor-picker .visit-rail-link::before { content: none; }

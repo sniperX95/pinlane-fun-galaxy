@@ -6058,10 +6058,14 @@ function renderVisitRailLink(previousStep, nextStep, notices) {
     && item.fromActivityId === previousStep.activity.activityId);
   if (!notice) {
     if (!formulaAnchorBusy) formulaAdviceSignature = '';
+    // Ecart NUL : rien a dire. La pastille « Enchaine » et les heures collees
+    // le montrent deja ; un mot « enchaine » orphelin sous les colonnes etait
+    // du bruit (capture Movsar, 2026-08-24).
+    if (gap === 0) return '';
     return `
       <li class="visit-rail-link">
         <span class="visit-rail-line" aria-hidden="true"></span>
-        <span class="visit-rail-gap">${gap === 0 ? 'enchaîné' : `${escapeHtml(formatGapText(gap))} entre les deux`}</span>
+        <span class="visit-rail-gap">${escapeHtml(formatGapText(gap))} entre les deux</span>
       </li>`;
   }
   const passLabels = (formulaAnchorData?.freePass || []).map(item => item.label);

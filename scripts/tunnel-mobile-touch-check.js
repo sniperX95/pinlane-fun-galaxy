@@ -122,7 +122,15 @@ async function provenTap(page, selector, label) {
 
 async function settle(page, ms = 900) {
   await page.waitForTimeout(ms);
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})))).catch(() => {});
+  // PLAFONNEE (2026-08-24). Cette attente etait infinie : une seule animation
+  // en boucle (spinner d attente, halo) suffisait a SUSPENDRE le gate au lieu
+  // de le faire rougir (mesure : 25 minutes sans une ligne, suite bloquee).
+  // Un gate doit echouer bruyamment, jamais pendre : 4 s couvrent toutes les
+  // animations finies du tunnel, le reste est un etat qui merite un rouge.
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))),
+    new Promise((resolve) => setTimeout(resolve, 4000)),
+  ])).catch(() => {});
   await page.waitForTimeout(120);
 }
 

@@ -157,15 +157,18 @@
         "note": "Aucune note publiee pour Libramont : ne jamais utiliser celle de Gembloux."
       },
       "branding": {
-        "accent": "#a1289a",
+        "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
         "accentContrast": "#ffffff",
+        "glow": "#67baac",
+        "buttons": "neon",
         "dark": {
-          "accent": "#c74fbf",
+          "accent": "#944292",
           "accentStrong": "#e59ede",
           "accentSoft": "#2a1228",
-          "accentContrast": "#ffffff"
+          "accentContrast": "#ffffff",
+          "glow": "#67baac"
         }
       },
       "identity": {
@@ -280,15 +283,18 @@
         "source": "widget Google Reviews du site (Gembloux)"
       },
       "branding": {
-        "accent": "#a1289a",
+        "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
         "accentContrast": "#ffffff",
+        "glow": "#67baac",
+        "buttons": "neon",
         "dark": {
-          "accent": "#c74fbf",
+          "accent": "#944292",
           "accentStrong": "#e59ede",
           "accentSoft": "#2a1228",
-          "accentContrast": "#ffffff"
+          "accentContrast": "#ffffff",
+          "glow": "#67baac"
         }
       },
       "identity": {
@@ -317,15 +323,18 @@
       },
       "activityAvailability": {},
       "branding": {
-        "accent": "#a1289a",
+        "accent": "#944292",
         "accentStrong": "#7d2478",
         "accentSoft": "#f7ebf6",
         "accentContrast": "#ffffff",
+        "glow": "#67baac",
+        "buttons": "neon",
         "dark": {
-          "accent": "#c74fbf",
+          "accent": "#944292",
           "accentStrong": "#e59ede",
           "accentSoft": "#2a1228",
-          "accentContrast": "#ffffff"
+          "accentContrast": "#ffffff",
+          "glow": "#67baac"
         }
       },
       "identity": {

@@ -1,7 +1,7 @@
 // Prouve que la config centre éditable est corrélée au moteur déterministe,
 // et que SANS override le comportement est byte-for-byte identique.
 const assert = require('assert');
-const { normalizeCenterConfig, mergeCenterConfig } = require('../lib/center-config');
+const { normalizeCenterConfig, mergeCenterConfig, normalizeBranding } = require('../lib/center-config');
 const { getRequiredLaneCount, pairsForLaneCount, PAIRS } = require('../lib/booking-config');
 const { getCenter, applyCenterOverrides } = require('../lib/ops-knowledge');
 
@@ -87,6 +87,18 @@ function testGetCenterMerge() {
   );
 }
 
+function testBrandingNeonAndGlow() {
+  // Le style « neon » et la couleur de halo (glow) sont des DONNEES de
+  // centre (parite avec le site du client Fun Galaxy, 2026-08-24) : la
+  // liste blanche les laisse passer, et jette tout le reste comme avant.
+  const kept = normalizeBranding({ accent: '#944292', glow: '#67baac', buttons: 'neon', dark: { glow: '#67baac' } });
+  assert.strictEqual(kept.glow, '#67baac', 'glow est une couleur de marque stockee');
+  assert.strictEqual(kept.buttons, 'neon', 'neon est un style de bouton valide');
+  assert.strictEqual(kept.dark.glow, '#67baac', 'glow existe aussi en theme sombre');
+  const junk = normalizeBranding({ glow: 'red', buttons: 'comic-sans' });
+  assert.strictEqual(junk, null, 'valeurs hors liste blanche : rien n est stocke');
+}
+
 function main() {
   testNormalizationBounds();
   testMergeDoesNotMutate();
@@ -94,6 +106,7 @@ function main() {
   testEngineOverrideCorrelates();
   testPairsFollowLaneCount();
   testGetCenterMerge();
+  testBrandingNeonAndGlow();
   // Sécurité : laisser le module dans son état baseline pour les tests suivants.
   applyCenterOverrides(new Map());
   console.log('center-config-tests-ok');

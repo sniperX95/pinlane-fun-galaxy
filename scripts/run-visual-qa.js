@@ -885,9 +885,22 @@ async function waitForApp(page) {
   await page.waitForFunction(() => typeof window.setView === 'function', null, { timeout: 15000 });
 }
 
+// UN JOUR OU LE CENTRE OUVRE (2026-08-24). « Aujourd hui » tombait un lundi
+// sur sept sur la fermeture de Libramont : le planning rendait son etat
+// « Ferme », zero carte, et l audit rougissait sans qu une ligne de code ait
+// change. Meme maladie que run-ops-tests et center-console-reservation-check,
+// corrigee le meme jour. Evalue DANS la page : getSchedule y vit.
 async function seedStressDay(page) {
   await page.evaluate(() => {
-    const d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+    let d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+    if (typeof getSchedule === 'function' && typeof parseLocalDate === 'function') {
+      for (let offset = 0; offset <= 13; offset += 1) {
+        const probe = parseLocalDate(d.slice(0, 10));
+        probe.setDate(probe.getDate() + offset);
+        const iso = `${probe.getFullYear()}-${String(probe.getMonth() + 1).padStart(2, '0')}-${String(probe.getDate()).padStart(2, '0')}`;
+        if (getSchedule(iso, state.isHolidayMode)) { d = iso; break; }
+      }
+    }
     const reservations = typeof window.__PINLANE_QA_RESERVATIONS__ === 'function'
       ? window.__PINLANE_QA_RESERVATIONS__(d)
       : [];
@@ -1336,7 +1349,15 @@ async function main() {
     // ---- Alertes dashboard ACTIONNABLES : chaque alerte mène à une résolution
     // réelle (bouton qui agit) et se résorbe automatiquement après action.
     await page.evaluate(() => {
-      const d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+      let d = typeof todayStr === 'function' ? todayStr() : new Date().toISOString().slice(0, 10);
+      if (typeof getSchedule === 'function' && typeof parseLocalDate === 'function') {
+        for (let offset = 0; offset <= 13; offset += 1) {
+          const probe = parseLocalDate(d.slice(0, 10));
+          probe.setDate(probe.getDate() + offset);
+          const iso = `${probe.getFullYear()}-${String(probe.getMonth() + 1).padStart(2, '0')}-${String(probe.getDate()).padStart(2, '0')}`;
+          if (getSchedule(iso, state.isHolidayMode)) { d = iso; break; }
+        }
+      }
       const reservations = [
         { id: 7101, name: 'Paiement Ouvert', phone: '+32470000001', email: 'pay@example.test', date: d, startTime: '14:00', duration: 1, lanes: [1], status: 'arrived', pax: 4, price: 60, type: 'bowling', validationStatus: 'confirmed' },
         { id: 7102, name: 'A Verifier', phone: '+32470000002', email: 'verif@example.test', date: d, startTime: '15:00', duration: 1, lanes: [2], status: 'pending', pax: 6, price: 90, type: 'bowling', validationStatus: 'staff_review', riskLevel: 'high' },

@@ -81,7 +81,7 @@ const ACTIVITIES = [
   { id: 'billards', name: 'Billards', planned: false, priceType: 'per_unit_hour', priceValue: 10, unitLabel: 'par table et par heure', order: 5, defaultMinutes: 60, minMinutes: 60, maxMinutes: 180, stepMinutes: 60 },
   { id: 'arcade_time', name: 'Arcades', planned: false, priceType: 'per_pax', priceValue: null, unitLabel: '', order: 6, defaultMinutes: 30 },
   { id: 'playground', name: 'Playground', planned: false, priceType: 'per_pax', priceValue: 12, unitLabel: 'par enfant', note: 'accès à la journée', order: 7, defaultMinutes: 60 },
-  { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 8, defaultMinutes: 60 },
+  { id: 'duckpin_bowling', name: 'Duckpin Bowling', planned: false, priceType: 'grid_bowling', priceValue: null, unitLabel: 'par piste', order: 8, defaultMinutes: 60, resourceType: 'duckpin_lane', units: 2, capacityPerUnit: 6 },
   { id: 'fun_run', name: 'Fun Run by PIXEL', planned: false, priceType: 'grid_fun_run', priceValue: null, unitLabel: 'par session', note: '5 joueurs max.', order: 9, defaultMinutes: 15 },
 ];
 
@@ -346,6 +346,47 @@ async function main() {
     });
     ok(/piste/i.test(messageBowlingSeul) && !/0 piste/i.test(messageBowlingSeul),
       `le bowling seul annonce toujours ses pistes : ${JSON.stringify(messageBowlingSeul.trim())}`);
+
+    // =====================================================================
+    console.log('\n[5c] La notif annonce duckpin et laser, pas seulement le bowling');
+    // =====================================================================
+    // Movsar, 2026-08-24 : « pour le duckpin ya pas de notif qui dit qu'au-delà
+    // de 6 joueurs il faut 2 pistes et qu'il n'y a que 2 pistes max ; et quand
+    // on prend toutes les activités la notif ne dit rien pour le laser game. »
+    const notifDuckpin = await page.evaluate(async () => {
+      state.booking.pax = 8;
+      state.booking.activities = {};
+      toggleBookingActivity('duckpin_bowling');
+      applyChosenActivitiesToBooking();
+      updatePaxAlert();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return (document.getElementById('paxAlert') || {}).textContent || '';
+    });
+    ok(/2\s*pistes/i.test(notifDuckpin) && /duckpin/i.test(notifDuckpin),
+      `8 joueurs au duckpin -> 2 pistes annoncees : ${JSON.stringify(notifDuckpin.trim())}`);
+    const notifDuckpinPlafond = await page.evaluate(async () => {
+      state.booking.pax = 15;
+      updatePaxAlert();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return (document.getElementById('paxAlert') || {}).textContent || '';
+    });
+    ok(/2\s*pistes/i.test(notifDuckpinPlafond) && !/3\s*pistes/i.test(notifDuckpinPlafond),
+      `15 joueurs -> jamais une 3e piste duckpin inventee : ${JSON.stringify(notifDuckpinPlafond.trim())}`);
+    ok(/tour de r|rotation|à la fois|a la fois/i.test(notifDuckpinPlafond),
+      'au-dela du plafond, la notif explique le passage par rotation');
+    const notifLaser = await page.evaluate(async () => {
+      state.booking.pax = 7;
+      state.booking.activities = {};
+      toggleBookingActivity('bowling');
+      toggleBookingActivity('laser_game');
+      toggleBookingActivity('arcade_time');
+      applyChosenActivitiesToBooking();
+      updatePaxAlert();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return (document.getElementById('paxAlert') || {}).textContent || '';
+    });
+    ok(/session/i.test(notifLaser) && /laser/i.test(notifLaser),
+      `toutes les activites cochees -> le laser est annonce : ${JSON.stringify(notifLaser.trim())}`);
 
     console.log('\n[6] Une activite fermee ce jour est desactivee ET decochee');
     // =====================================================================

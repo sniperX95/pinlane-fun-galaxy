@@ -1054,7 +1054,12 @@ async function run() {
     `sa variante sombre, derivee par l ecran, est servie telle quelle (obtenu ${brandingSecond?.dark?.accent || 'aucune'}, attendu ${consoleBranding?.dark?.accent || 'inconnue'})`);
   ok(brandingSecond?.accentContrast === consoleBranding?.accentContrast,
     `le jeton de texte sur bouton suit le meme chemin (obtenu ${brandingSecond?.accentContrast || 'aucun'})`);
-  ok(brandingFunGalaxy?.accent === '#a1289a',
+  // #944292 : le magenta REEL des boutons de fungalaxy.be (leur style.css),
+  // celui-la meme que la purge avait sorti du code. La donnee le reprend le
+  // 2026-08-24 (parite visuelle demandee par Movsar) ; l'intention du gate ne
+  // bouge pas : la couleur du client vit en DONNEE, jamais dans le code, et
+  // l'assertion au-dessus prouve toujours que le code n'en porte aucune.
+  ok(brandingFunGalaxy?.accent === '#944292',
     `contraste : Fun Galaxy garde son magenta, en DONNEE cette fois (obtenu ${brandingFunGalaxy?.accent || 'aucune'})`);
 
   section('[11] La ligne d installation selectionne le centre, prouve au navigateur (blocage B)');

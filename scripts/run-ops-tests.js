@@ -42,7 +42,18 @@ function findFutureFormulaDate({ formuleId = 'f4', pax = 17, startTime = '14:00'
   if (!formule) throw new Error(`Formule de test introuvable: ${formuleId}`);
   for (let offset = 1; offset <= 370; offset += 1) {
     const date = addDays(todayStr(), offset);
-    if (!getSchedule(date)) continue;
+    const schedule = getSchedule(date);
+    if (!schedule) continue;
+    // JOUR QUI OUVRE A 10H, ET RIEN D'AUTRE. Le moteur exige l'arrivee 10 min
+    // AVANT le depart (FORMULA_ARRIVAL_MINUTES), regle que getFormuleAvailability
+    // ne connait pas : un mardi qui ouvre a 14h faisait refuser le depart 14:00
+    // (arrivee 13:50 avant l'ouverture). Et plus bas, la suite ancre des
+    // creneaux a 12:00 (wideGap) : elle suppose une ouverture matinale.
+    // Mesure du 2026-08-24 : le 22/08 la date elue etait un dimanche d'ete
+    // (ouverture 10h, suite verte) ; deux jours plus tard, un mardi (14h,
+    // suite rouge), sans qu'une ligne de code ait change. Un gate qui depend
+    // du jour ou on le lance apprend a ignorer ses rouges.
+    if (Number(schedule.open) > 10) continue;
     if (getFormuleAvailability(formule, date, pax, startTime).ok) return date;
   }
   throw new Error(`Aucune date future compatible pour ${formuleId}.`);
@@ -132,6 +143,22 @@ function testFormulaPreferredTimes() {
     'flexible pass entries carry no dedicated schedule (whole visit window)',
   );
 
+  // ENCHAINEMENT COLLÉ (2026-08-24, Movsar : « on finit le bowling à 15h30
+  // et on est obligé d'attendre 30 minutes, c'est con »). La « transition »
+  // de 5 minutes, croisée à la grille de 30, transformait ce choix réalisable
+  // en refus anchor_overlap : marcher de la piste à l'arène ne prend pas une
+  // demi-heure. Seul le VRAI chevauchement reste interdit.
+  const chained = anchorRequest({ bowling: '15:00', laser_game: '16:00' });
+  assert.strictEqual(chained.ok, true, 'back-to-back anchors (gap 0) must be bookable');
+  assert.ok(
+    chained.plan.recommended.resourceBlocks.some((block) => block.resourceType === 'laser_arena' && block.startTime === '16:00'),
+    'the chained laser block starts exactly when bowling ends',
+  );
+  assert.strictEqual(
+    (chained.plan.recommended.comfortNotices || []).length, 0,
+    'chaining is the most comfortable choice: no notice',
+  );
+
   // Ordre inversé (laser avant bowling) : toujours un vrai choix par ancre.
   const reversed = anchorRequest({ bowling: '17:00', laser_game: '16:00' });
   assert.strictEqual(reversed.ok, true, 'anchors can be booked in any order');
@@ -159,7 +186,10 @@ function testFormulaPreferredTimes() {
   assert.ok(gapNotice, 'a wide gap must come back as a comfort notice');
   assert.strictEqual(gapNotice.gapMinutes, 360, 'the notice states the real waiting time');
   assert.strictEqual(gapNotice.gapLabel, '6 h', 'the notice is readable by a customer, not in raw minutes');
-  assert.strictEqual(gapNotice.tightenTime, '13:30', 'the notice offers the closest time that chains both activities');
+  // 13:00, pas 13:30 : « enchaîner » veut dire coller les deux activités.
+  // L'ancienne valeur portait la marge de 5 min arrondie a la grille, soit
+  // 30 minutes d'attente offertes a quelqu'un qui venait de demander zero.
+  assert.strictEqual(gapNotice.tightenTime, '13:00', 'the notice offers the closest time that chains both activities');
   assert.strictEqual(gapNotice.severity, 'advice', 'a comfort notice is an advice, never a blocker');
   // Le bloc laser est bien posé à l'heure demandée : prévenir n'est pas
   // corriger en douce le choix du client.
@@ -1435,6 +1465,12 @@ async function testPublicFormulaAvailabilityAnchorChoice() {
   });
   assert.ok(anchors.defaultTimes && anchors.defaultTimes.bowling && anchors.defaultTimes.laser_game,
     'a valid default combination must be preselected server-side');
+  // Le DEFAUT enchaine : le premier plan propose ne fait attendre personne.
+  {
+    const toMin = (t) => Number(String(t).slice(0, 2)) * 60 + Number(String(t).slice(3, 5));
+    const defaultGap = toMin(anchors.defaultTimes.laser_game) - (toMin(anchors.defaultTimes.bowling) + 60);
+    assert.strictEqual(defaultGap, 0, `the default combination chains bowling->laser (gap ${defaultGap} min)`);
+  }
   assert.ok((anchors.freePass || []).length >= 1, 'free-pass activities must be listed without any time');
   assert.ok((anchors.freePass || []).every((item) => !item.time && !item.startTime), 'free pass never carries a time');
 

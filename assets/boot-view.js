@@ -48,6 +48,7 @@
     accentStrong: '--tenant-accent-strong',
     accentSoft: '--tenant-accent-soft',
     accentContrast: '--tenant-accent-contrast',
+    glow: '--tenant-glow',
   };
   var HEX = /^#[0-9a-f]{6}$/i;
   var LOGO_URL = /^(?:https:\/\/[^\s"'<>]+|\.?\/?assets\/[a-z0-9_/.-]+)$/i;
@@ -78,7 +79,7 @@
       font: ['geist', 'humanist', 'serif', 'mono'],
       backdrop: ['plain', 'tint', 'aurora'],
       cards: ['line', 'flat', 'shadow'],
-      buttons: ['pill', 'rounded'],
+      buttons: ['pill', 'rounded', 'neon'],
     };
     Object.keys(STYLE_AXES).forEach(function (axis) {
       var value = String(brand[axis] || '').trim().toLowerCase();

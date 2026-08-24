@@ -287,7 +287,20 @@ function nextDate(offsetDays) {
   return cursor.toISOString().slice(0, 10);
 }
 
-const DATE = nextDate(7);
+// UN JOUR OU LIBRAMONT OUVRE. Le centre du gate est ouvert 7 j/7, mais le
+// cas [4] (non-regression) reserve chez LIBRAMONT : « aujourd hui + 7 »
+// tombait un lundi sur sept sur son jour de fermeture et le gate rougissait
+// tout seul (mesure le 2026-08-24, meme maladie que le selecteur de date de
+// run-ops-tests, corrigee le meme jour). Un gate qui depend du jour ou on le
+// lance apprend a ignorer ses rouges.
+const DATE = (() => {
+  const { getSchedule } = require(path.join(ROOT, 'lib', 'booking-config.js'));
+  for (let offset = 7; offset <= 20; offset += 1) {
+    const candidate = nextDate(offset);
+    if (getSchedule(candidate)) return candidate;
+  }
+  return nextDate(7);
+})();
 
 // Le corps EXACT que le tunnel envoie (assets/app-main.js) : il porte les
 // pistes du creneau que le client vient de choisir. Un POST sans `lanes` serait

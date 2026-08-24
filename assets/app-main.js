@@ -3722,7 +3722,26 @@ function renderPaxAlertContent() {
       const aLaser = choisies.find((a) => a.priceType === 'grid_laser');
       if (aLaser) {
         const vagues = getLaserWaveCount(pax);
-        if (vagues > 1) consequences.push(`<b>${vagues} sessions</b> de laser game`);
+        // TOUJOURS annonce (2026-08-24) : ne le dire qu a partir de deux
+        // sessions laissait le laser muet dans une visite qui le reserve.
+        consequences.push(vagues > 1
+          ? `<b>${vagues} sessions</b> de laser game`
+          : `<b>1 session</b> de laser game`);
+      }
+      // DUCKPIN (2026-08-24) : il a SES pistes (2 a Libramont, servies par le
+      // catalogue), sa regle de groupe, et un plafond que le bowling n a pas.
+      // La notif comptait les pistes du bowling et ignorait celles-ci.
+      const aDuckpin = choisies.find((a) => a.resourceType === 'duckpin_lane');
+      if (aDuckpin) {
+        const parPiste = Math.max(1, Math.trunc(Number(aDuckpin.capacityPerUnit) || 6));
+        const voulues = Math.max(1, Math.ceil(pax / parPiste));
+        const plafond = Number(aDuckpin.units) > 0 ? Math.trunc(Number(aDuckpin.units)) : null;
+        const nomDuckpin = escapeHtml(aDuckpin.name.toLowerCase());
+        if (plafond && voulues > plafond) {
+          consequences.push(`<b>${plafond} piste${plafond > 1 ? 's' : ''}</b> de ${nomDuckpin} (${plafond * parPiste} joueurs à la fois, le groupe joue par rotation)`);
+        } else if (voulues > 1) {
+          consequences.push(`<b>${voulues} pistes</b> de ${nomDuckpin}`);
+        }
       }
       // Une installation avec un plafond de joueurs impose ses passages.
       choisies.forEach((activite) => {
@@ -5684,7 +5703,10 @@ function getChainedAnchorTime(activityId) {
     if (other.activityId === activityId) return;
     const start = times[other.activityId];
     if (!start) return;
-    const end = timeToNum(start) * 60 + Number(other.durationMinutes || 60) + 5;
+    // Fin de l autre activite, SANS marge : la pastille « Enchaine » designe
+    // l heure collee. Le +5 d avant, croise a la grille de 30, la posait
+    // 30 minutes plus tard : une attente vendue comme un enchainement.
+    const end = timeToNum(start) * 60 + Number(other.durationMinutes || 60);
     if (earliest === null || end > earliest) earliest = end;
   });
   if (earliest === null) return '';
@@ -5903,6 +5925,14 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
     return `<button type="button" class="anchor-period-tab ${holdsSelection ? 'has-pick' : ''}" data-period="${escapeHtml(group.key)}" aria-pressed="false" aria-label="${escapeHtml(`${group.label}, ${group.items.length} heures de ${first} à ${last}`)}" ${disabled ? 'disabled' : ''} onclick="setFormulaAnchorPeriod('${escapeHtml(activity.activityId)}','${escapeHtml(group.key)}')"><span class="anchor-period-name">${escapeHtml(group.label)}</span><span class="anchor-period-count">${group.items.length}</span></button>`;
   }).join('')}
       </div>` : '';
+  // Le SECONDAIRE identique sur toutes les cartes (« 2 pistes », « 23
+  // places ») est du bruit multiplie par 27 : il se dit UNE fois au-dessus
+  // de la grille, et chaque carte redevient une heure qui tient sur une
+  // ligne (Movsar 2026-08-24 : « trop long, on doit descendre »). Une carte
+  // ne garde son secondaire que s'il DIFFERE (places reduites, partagee).
+  const allAnchorItems = groups.reduce((list, group) => list.concat(group.items), []);
+  const anchorMetas = [...new Set(allAnchorItems.map((item) => anchorSlotCardModel(activity, item, {}).meta))];
+  const sharedAnchorMeta = anchorMetas.length === 1 && anchorMetas[0] ? anchorMetas[0] : '';
   const chips = groups.map(group => group.items.map((item, index) => {
     // Multi-choix : une heure retenue est active, et quand le compte est
     // atteint les autres cessent d'etre cliquables (le compteur dit pourquoi).
@@ -5914,12 +5944,14 @@ function renderAnchorChipGroups(activity, { selected, disabled, chained, chosen 
       && formulaJustPicked.activityId === activity.activityId && formulaJustPicked.time === item.time;
     if (justPicked) formulaJustPicked = null;
     const model = anchorSlotCardModel(activity, item, { isChained });
+    if (sharedAnchorMeta && model.meta === sharedAnchorMeta) model.meta = '';
     return `<button type="button" class="anchor-chip slot-card ${isActive ? 'active' : ''} ${isChained ? 'is-chained' : ''} ${justPicked ? 'is-just-picked' : ''}"${marker} data-time="${escapeHtml(item.time)}" aria-pressed="${isActive ? 'true' : 'false'}" aria-label="${escapeHtml(model.label)}" ${chipDisabled ? 'disabled' : ''} onclick="setFormulaAnchorTime('${escapeHtml(activity.activityId)}','${escapeHtml(item.time)}')">${slotCardMarkup(model)}</button>`;
   }).join('')).join('');
   const nudge = (direction, glyph, text) => `<button type="button" class="anchor-track-nudge" data-direction="${direction}" aria-label="${escapeHtml(text)}" onclick="nudgeAnchorTrack('${escapeHtml(activity.activityId)}',${direction})">${glyph}</button>`;
   return `
     <div class="anchor-periods">
       ${tabs}
+      ${sharedAnchorMeta ? `<p class="anchor-shared-meta">${escapeHtml(sharedAnchorMeta)} à chaque heure</p>` : ''}
       <div class="anchor-track-shell">
         ${nudge(-1, '&lsaquo;', `Heures précédentes pour ${activity.label}`)}
         <div class="anchor-track" data-anchor="${escapeHtml(activity.activityId)}" data-overflow="none">
@@ -10708,7 +10740,7 @@ const ESTABLISHMENT_STYLE_AXES = [
   { key: 'font', label: 'Police', options: [['geist', 'Geist (défaut)'], ['humanist', 'Humaniste'], ['serif', 'Serif'], ['mono', 'Monospace']] },
   { key: 'backdrop', label: 'Fond de page', options: [['plain', 'Neutre (défaut)'], ['tint', 'Teinté à votre couleur'], ['aurora', 'Halo à votre couleur']] },
   { key: 'cards', label: 'Panneaux', options: [['line', 'Bordure fine (défaut)'], ['flat', 'Aplat sans bordure'], ['shadow', 'Ombre douce']] },
-  { key: 'buttons', label: 'Boutons', options: [['pill', 'Pilule (défaut)'], ['rounded', 'Rectangle arrondi']] },
+  { key: 'buttons', label: 'Boutons', options: [['pill', 'Pilule (défaut)'], ['rounded', 'Rectangle arrondi'], ['neon', 'Pilule néon (contour + halo)']] },
 ];
 
 function establishmentAccentFieldHtml(center) {
@@ -21028,6 +21060,9 @@ const TENANT_BRANDING_PROPS = [
   ['accentStrong', '--tenant-accent-strong'],
   ['accentSoft', '--tenant-accent-soft'],
   ['accentContrast', '--tenant-accent-contrast'],
+  // Halo des boutons « neon » : deuxieme couleur de marque (Fun Galaxy
+  // borde ses pilules d'un halo turquoise distinct du violet).
+  ['glow', '--tenant-glow'],
 ];
 const TENANT_HEX = /^#[0-9a-f]{6}$/i;
 const TENANT_BRAND_STORAGE_PREFIX = 'pinlane-brand:';
@@ -21039,7 +21074,7 @@ const TENANT_STYLE_AXES = {
   font: ['geist', 'humanist', 'serif', 'mono'],
   backdrop: ['plain', 'tint', 'aurora'],
   cards: ['line', 'flat', 'shadow'],
-  buttons: ['pill', 'rounded'],
+  buttons: ['pill', 'rounded', 'neon'],
 };
 
 function applyCenterBranding(branding, centerId = '') {

@@ -229,6 +229,7 @@
         "priceType": "grid_bowling",
         "unitLabel": "par piste",
         "units": 2,
+        "capacityPerUnit": 6,
         "unitIds": [
           "9",
           "10"

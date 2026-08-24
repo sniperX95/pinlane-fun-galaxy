@@ -7116,8 +7116,31 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .step1-body:not(.is-solo) > * { flex: none; }
   #clientView .step1-body:not(.is-solo) .s1-what { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
   #clientView #step1:not(.is-options) #activityPicker { flex: 1 0 auto; display: flex; flex-direction: column; }
-  #clientView #step1:not(.is-options) .activity-grid { flex: 1; }
+  /* Des cartes MODEREES, l espace rendu en bas (2026-08-25, Movsar :
+     « fait moins gros, un petit espace en haut et surtout en bas ») :
+     les rangees plafonnent a 84 px, le reste de la hauteur se depose
+     SOUS la grille, avant le bouton. */
+  #clientView #step1:not(.is-options) .activity-grid {
+    flex: 1;
+    align-content: start;
+    grid-auto-rows: minmax(44px, 84px);
+    padding-top: 6px;
+  }
   #clientView #step1:not(.is-options) .activity-toggle { height: 100%; align-items: center; }
+  /* ET LA PAGE TIENT MEME SI DES ACTIVITES S AJOUTENT : au-dela de 10
+     cartes, trois colonnes compactes (note repliee, tout reste lisible et
+     tapable a 44 px). Le gate injecte 6 cartes de plus et mesure : zero
+     defilement. */
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: minmax(44px, 60px);
+  }
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) .activity-toggle { padding: 4px 5px; gap: 4px; }
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) .activity-name { font-size: 11.5px; }
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) .activity-price,
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) .activity-price-compact { font-size: 10.5px; }
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) .activity-note { display: none; }
+  #clientView #step1:not(.is-options) .activity-grid:has(> .activity-card:nth-child(11)) .activity-icon { width: 14px; height: 14px; }
 
   /* --- b. en-tete de page creneau --------------------------------------- */
   #clientView .anchor-mobile-title { display: flex; flex-direction: column; gap: 1px; white-space: normal; overflow: visible; text-overflow: clip; }

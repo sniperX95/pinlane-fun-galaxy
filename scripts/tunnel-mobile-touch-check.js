@@ -321,6 +321,24 @@ async function main() {
       });
       ok(videActivites !== null && videActivites <= 32,
         `la page activites remplit l ecran (vide sous la grille : ${videActivites}px)`);
+      // ET ELLE TIENT MEME SI DES ACTIVITES S AJOUTENT (2026-08-25,
+      // Movsar : « si jamais on vient a rajouter des activites, il faut
+      // que ca tienne en une page ») : 6 cartes de plus injectees, la
+      // grille passe en 3 colonnes compactes et rien ne defile.
+      const surcharge = await page.evaluate(() => {
+        const grid = document.querySelector('#step1 .activity-grid');
+        const sc = document.querySelector('#step1 .s1-scroller');
+        if (!grid || !sc) return null;
+        const cards = grid.querySelectorAll('.activity-card');
+        const clones = [];
+        for (let i = 0; i < 6; i++) { const c = cards[i % cards.length].cloneNode(true); clones.push(c); grid.appendChild(c); }
+        const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+        const fits = sc.scrollHeight <= sc.clientHeight + 2;
+        clones.forEach((c) => c.remove());
+        return { cols, fits, total: cards.length + 6 };
+      });
+      ok(surcharge && surcharge.cols >= 3 && surcharge.fits,
+        `avec ${surcharge ? surcharge.total : 0} activites, la page tient toujours (${surcharge ? surcharge.cols : 0} colonnes, defilement : ${surcharge ? !surcharge.fits : true})`);
     }
     await provenTap(page, '#btnStep1', 'Continuer (panier ancres, vers la page options)');
     await settle(page, 1200);

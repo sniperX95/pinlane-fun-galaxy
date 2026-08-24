@@ -104,6 +104,9 @@ async function probeTappable(page, selector) {
       present: true,
       inViewport: r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight,
       hit: !!top && (el === top || el.contains(top)),
+      // Quand le doigt est intercepte, DIRE par quoi : un gate qui rougit
+      // sans nommer l obstacle fait perdre le diagnostic.
+      cover: top && !(el === top || el.contains(top)) ? (top.className || top.tagName || '').toString().slice(0, 80) : '',
       rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
     };
   }, selector);
@@ -114,7 +117,7 @@ async function provenTap(page, selector, label) {
   ok(probe.present, `${label} : present`);
   if (!probe.present) return false;
   ok(probe.inViewport, `${label} : entierement dans l ecran (${JSON.stringify(probe.rect)})`);
-  ok(probe.hit, `${label} : recoit le doigt (hit-test reel)`);
+  ok(probe.hit, `${label} : recoit le doigt (hit-test reel)${probe.hit ? '' : ' - intercepte par ' + (probe.cover || '?')}`);
   if (!probe.inViewport || !probe.hit) return false;
   await page.tap(selector, { timeout: 5000 });
   return true;
@@ -343,18 +346,97 @@ async function main() {
       return [...new Set(out)].slice(0, 6);
     });
     ok(hOverflow.length === 0, `zero debordement horizontal sur l etape creneau (${hOverflow.join(', ') || 'aucun'})`);
-    const chipLabel = await markReachable(page, '.anchor-chip:not([disabled])');
+    // L ORDRE DES PAGES EST L ORDRE CATALOGUE (2026-08-24, Movsar :
+    // « laser en 1er et pas bowling... on comprend pas, ca bouge d un
+    // coup ») : la page 1 est TOUJOURS la premiere activite du catalogue,
+    // quelle que soit l heure choisie.
+    const ordre = await page.evaluate(() => {
+      const premier = document.querySelector('.visit-rail-step[data-mobile-index="0"]');
+      return premier ? premier.textContent : '';
+    });
+    ok(/bowling/i.test(ordre), 'page 1 = premiere activite du catalogue (bowling)');
+    // Le FIL VERTICAL du rail flottait a travers les textes en mode pages
+    // (bug graphique, capture Movsar 2026-08-24) : absent, mesure.
+    const filRail = await page.evaluate(() => {
+      const visible = [...document.querySelectorAll('.visit-rail-step')].find((el) => el.offsetParent !== null);
+      return visible ? getComputedStyle(visible, '::before').content : '';
+    });
+    ok(filRail === 'none', `le fil vertical du rail est absent en mode pages (${filRail})`);
+    const chipLabel = await markReachable(page, '.anchor-chip:not([disabled]):not(.active)');
     ok(!!chipLabel, `une heure atteignable (${chipLabel || 'aucune'})`);
     await provenTap(page, '[data-touch-target]', `heure ${chipLabel}`);
     await settle(page, 1200);
-    // Le choix d une heure a choix unique avance TOUT SEUL vers le creneau
-    // suivant : zero friction, et le Valider vit sur la derniere page.
-    const pageApresChoix = await page.evaluate(() => document.querySelector('.formula-anchor-picker')?.getAttribute('data-mobile-page'));
-    ok(pageApresChoix === '1', `le choix avance de lui-meme a la page suivante (page ${pageApresChoix})`);
+    // TAPER UNE HEURE LA POSE, RIEN D AUTRE (2026-08-24, Movsar : « on
+    // doit confirmer l heure, pas rediriger direct »). L avance est un
+    // bouton explicite qui ANNONCE ou il mene (« Continuer · Laser Game »).
+    const apresChoix = await page.evaluate(() => {
+      const picker = document.querySelector('.formula-anchor-picker');
+      const btn = document.querySelector('.anchor-mobile-continue .anchor-mobile-next');
+      return {
+        page: picker ? picker.getAttribute('data-mobile-page') : null,
+        continuer: btn && btn.offsetParent !== null ? btn.textContent.trim() : '',
+      };
+    });
+    ok(apresChoix.page === '0', `le choix d une heure ne change PAS de page tout seul (page ${apresChoix.page})`);
+    ok(/Continuer/.test(apresChoix.continuer) && /laser/i.test(apresChoix.continuer),
+      `le bouton d avance annonce la suite (« ${apresChoix.continuer} »)`);
+    // Ecran court (<640) : la zone defile, on amene la cible sous le doigt.
+    await page.evaluate(() => document.querySelector('.anchor-mobile-continue .anchor-mobile-next')?.scrollIntoView({ block: 'center' }));
+    await provenTap(page, '.anchor-mobile-continue .anchor-mobile-next', 'Continuer vers le laser');
+    await settle(page, 900);
+    const pageApres = await page.evaluate(() => document.querySelector('.formula-anchor-picker')?.getAttribute('data-mobile-page'));
+    ok(pageApres === '1', `le Continuer explicite avance a la page suivante (page ${pageApres})`);
+    // Sur la page laser, poser une heure COMPATIBLE (apres la fin du
+    // bowling deplace) : c est le geste reel du client. L heure laser
+    // heritee du defaut peut chevaucher le nouveau bowling, et le refus
+    // est alors LEGITIME (pas un bug du gate).
+    const laserTime = await page.evaluate(() => {
+      const bowlingTime = state.booking.preference?.preferredTimes?.bowling || '';
+      const fin = (Number(bowlingTime.split(':')[0]) + 1) * 60 + Number(bowlingTime.split(':')[1] || 0);
+      const chips = [...document.querySelectorAll('.visit-rail-step[data-mobile-index="1"] .anchor-chip:not([disabled])')];
+      const chip = chips.find((el) => {
+        const [h, m] = String(el.dataset.time || '').split(':').map(Number);
+        return h * 60 + (m || 0) >= fin;
+      });
+      return chip ? chip.dataset.time : '';
+    });
+    ok(!!laserTime, `une heure laser compatible existe (${laserTime || 'aucune'})`);
+    await page.evaluate((t) => document.querySelector(`.visit-rail-step[data-mobile-index="1"] .anchor-chip[data-time="${t}"]`)?.scrollIntoView({ block: 'center' }), laserTime);
+    await markReachable(page, `.visit-rail-step[data-mobile-index="1"] .anchor-chip[data-time="${laserTime}"]`);
+    await provenTap(page, '[data-touch-target]', `heure laser ${laserTime}`);
     await settle(page, 1400);
+    await page.evaluate(() => document.querySelector('.formula-plan-confirm')?.scrollIntoView({ block: 'center' }));
     await provenTap(page, '.formula-plan-confirm', 'Valider ces horaires');
     await settle(page, 1500);
     ok(await step(page) === 3, `le Valider colle est tapable et mene au contact (${await step(page)})`);
+    // CONTACT PUIS RECAP SANS DEFILEMENT (2026-08-24, Movsar : « une toute
+    // petite zone... cheap et pathetique », « recap pas adapte du tout »).
+    if (shape.height >= 640) {
+      const contactFit = await page.evaluate(() => {
+        const body = document.querySelector('#step3 .step-body');
+        return body ? { fits: body.scrollHeight <= body.clientHeight + 2, sh: body.scrollHeight, ch: body.clientHeight } : null;
+      });
+      ok(contactFit && contactFit.fits,
+        `la page contact tient sans defiler (${contactFit ? contactFit.sh + '/' + contactFit.ch : 'n/a'})`);
+    }
+    await page.evaluate(() => {
+      const set = (id, value) => { const el = document.getElementById(id); el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
+      set('fName', 'Test Tactile');
+      set('fPhone', '+32 470 11 22 33');
+      set('fEmail', 'test@exemple.be');
+    });
+    await page.evaluate(() => document.querySelector('#step3 .step-foot-cta')?.scrollIntoView({ block: 'center' }));
+    await provenTap(page, '.step-foot-cta', 'Voir le recapitulatif');
+    await settle(page, 1200);
+    ok(await step(page) === 4, `le recapitulatif est atteint (${await step(page)})`);
+    if (shape.height >= 640) {
+      const recapFit = await page.evaluate(() => {
+        const body = document.querySelector('#step4 .step-body');
+        return body ? { fits: body.scrollHeight <= body.clientHeight + 2, sh: body.scrollHeight, ch: body.clientHeight } : null;
+      });
+      ok(recapFit && recapFit.fits,
+        `le recapitulatif tient sans defiler (${recapFit ? recapFit.sh + '/' + recapFit.ch : 'n/a'})`);
+    }
 
     ok(errors.length === 0, `zero erreur JS/console sur les deux parcours (${errors.length}${errors.length ? ' : ' + errors[0] : ''})`);
 

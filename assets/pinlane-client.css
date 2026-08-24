@@ -6575,8 +6575,13 @@ body.client-mode #clientView .btn-primary.is-sealed,
      heures. La grille et le selecteur s effacent, le configurateur prend
      tout ; la barre haute titre « Vos options » et son retour font le lien. */
   #clientView #step1.is-options .s1-what-head,
-  #clientView #step1.is-options .activity-grid,
-  #clientView #step1.is-options #programSummary { display: none; }
+  #clientView #step1.is-options .activity-grid { display: none; }
+  /* Le programme (activites + total) se lit sur la page OPTIONS, une fois
+     les reglages sous les yeux : sur la page activites il coupait la liste
+     en deux sans rien decider (2026-08-24, Movsar : « il faut que ce soit
+     apres, avec toutes les options choisies »). */
+  #clientView #step1:not(.is-options) #programSummary { display: none; }
+  #clientView #step1.is-options #programSummary { margin-top: var(--space-3); }
   /* Et sur la page activites, le configurateur n apparait plus : il A sa
      page, un bandeau coupe en bas d ecran ne ferait que du bruit. */
   #clientView #step1:not(.is-options) .activity-configurator { display: none; }
@@ -6985,4 +6990,107 @@ body.client-mode #clientView .btn-primary.is-sealed,
     letter-spacing: 0.03em;
     box-shadow: -1px 1px 3px var(--tenant-glow, var(--accent));
   }
+}
+
+/* ==========================================================================
+   COMPOSEUR TELEPHONE, 2e PASSE (2026-08-24, 4 captures Movsar).
+   a. Le fil vertical du rail flottait a travers les textes en mode pages
+      (bug graphique) : il n existe plus sous 640 px multi-pages.
+   b. L avance est un bouton pleine largeur qui ANNONCE ou il mene
+      (« Continuer · Laser Game ») ; la barre haute ne porte que retour et
+      position. La page qui arrive glisse au lieu de teleporter.
+   c. Le refus en rouge devient un constat compact : il ne gache plus la
+      vue.
+   d. Contact et recapitulatif tiennent d un bloc : fin de la petite zone
+      qui defile.
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* --- a. plus de fil de rail en mode pages ----------------------------- */
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-step,
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-link { padding-left: 0; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-step::before,
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-link::before { content: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-mark { display: none; }
+
+  /* --- b. l avance explicite, annoncee, sous la grille ------------------ */
+  #clientView .anchor-mobile-continue { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi]:not([data-mobile-last]) .anchor-mobile-continue {
+    display: block;
+    margin-top: var(--space-3);
+  }
+  #clientView .anchor-mobile-continue .anchor-mobile-next {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px var(--space-4);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  html[data-tunnel-buttons='neon'] body.client-mode #clientView .anchor-mobile-continue .anchor-mobile-next {
+    border: 2px solid #0a0a0a;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    box-shadow: -1px 1px 3px var(--tenant-glow, var(--accent));
+  }
+  #clientView .visit-rail-step.is-page-from-right { animation: anchorPageFromRight 0.3s ease; }
+  #clientView .visit-rail-step.is-page-from-left { animation: anchorPageFromLeft 0.3s ease; }
+
+  /* --- c. le refus : un constat compact, pas un panneau d autoroute ----- */
+  /* Et il ne se colle plus PAR-DESSUS la grille : la zone de statut est
+     collante (fond opaque) pour garder le Valider sous le pouce, mais en
+     etat d ERREUR elle recouvrait les heures et interceptait le doigt
+     (« bugge a mort », capture Movsar 2026-08-24, prouve par le hit-test
+     du gate a 320x520). Le refus redevient un bloc du flux. */
+  #clientView .formula-anchor-picker[data-mobile-multi] .formula-anchor-status-zone:has(.anchor-status-error) {
+    position: static;
+    box-shadow: none;
+    background: transparent;
+  }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-status-error { padding: 10px 12px; gap: 8px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-status-copy strong { font-size: 13px; line-height: 1.35; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-status-copy span { font-size: 12px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-suggestions { gap: 6px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-suggestions > span { font-size: 12px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-suggestion { min-height: 40px; padding: 4px 10px; font-size: 12.5px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .formula-order-fallback-btn { min-height: 40px; font-size: 12px; padding: 6px 10px; }
+
+  /* --- d1. CONTACT : la page EST le panneau, et elle tient -------------- */
+  #clientView .s3-side.panel { border: 0; background: transparent; box-shadow: none; padding: 0; }
+  #clientView #step3 .s3-side .panel-title { display: none; }
+  #clientView .contact-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  #clientView #step3 .lbl { font-size: 12px; margin-bottom: 0; }
+  #clientView .step3-info { padding: 5px 8px; font-size: 12px; gap: 6px; margin-top: 6px; }
+  #clientView .s3-extra { margin-top: var(--space-2); overflow: visible; min-height: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+  #clientView .step3-body .occasion-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 6px; }
+  #clientView .occasion-chip { min-height: 44px; font-size: 11.5px; padding: 4px 6px; line-height: 1.2; }
+  #clientView .occasion-chip svg { width: 13px; height: 13px; flex: none; }
+  #clientView .step3-body .request-field textarea.input { min-height: 48px; }
+  #clientView #step3 .field-honest-note { font-size: 11px; margin: 2px 0 0; }
+  #clientView #step3 .s3-side .panel-kicker { margin-bottom: 2px; }
+  #clientView #step3 .request-count { font-size: 10.5px; }
+
+  /* --- d2. RECAP : lignes compactes pleine largeur ---------------------- */
+  #clientView .recap-columns { display: flex; flex-direction: column; gap: var(--space-3); }
+  #clientView .recap-item { display: flex; flex-direction: row; justify-content: space-between; align-items: baseline; gap: var(--space-3); padding: 7px 0; }
+  #clientView .recap-label { font-size: 12px; flex: none; }
+  #clientView .recap-value { width: auto; text-align: right; font-size: 13px; min-width: 0; }
+  #clientView .recap-item.recap-program-row { flex-direction: column; align-items: stretch; }
+  #clientView .recap-item.recap-program-row .recap-value { text-align: left; width: 100%; }
+  #clientView .recap-note { font-size: 12px; padding: 8px 10px; }
+  #clientView .recap-decision.panel { border: 0; background: transparent; box-shadow: none; padding: 0; }
+  #clientView #step4 .recap-decision .panel-kicker { display: none; }
+  #clientView #step4 .recap-decision .panel-title { font-size: 15px; }
+}
+
+@keyframes anchorPageFromRight { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes anchorPageFromLeft { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .visit-rail-step.is-page-from-right,
+  #clientView .visit-rail-step.is-page-from-left { animation: none; }
 }

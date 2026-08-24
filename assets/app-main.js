@@ -5503,9 +5503,17 @@ function isMobileAnchorPaging() {
   try { return window.matchMedia('(max-width: 640px)').matches; } catch (error) { return false; }
 }
 
-function setFormulaAnchorMobilePage(next) {
-  const steps = getVisitRailSteps();
-  const count = steps.length;
+// L ordre des pages est l ordre CATALOGUE (bowling avant laser), jamais
+// l ordre des heures choisies : changer une heure ne rebat plus les pages
+// sous les doigts (2026-08-24, Movsar : « laser en 1er et pas bowling...
+// on comprend pas, ca bouge d un coup »).
+function getMobileAnchorActivities() {
+  return formulaAnchorData?.activities || [];
+}
+
+function setFormulaAnchorMobilePage(next, options = {}) {
+  const pages = getMobileAnchorActivities();
+  const count = pages.length;
   formulaAnchorMobilePage = Math.max(0, Math.min(Math.max(0, count - 1), Math.trunc(Number(next) || 0)));
   const picker = document.querySelector('#slotList .formula-anchor-picker');
   if (!picker) return;
@@ -5513,16 +5521,30 @@ function setFormulaAnchorMobilePage(next) {
   if (formulaAnchorMobilePage >= count - 1) picker.setAttribute('data-mobile-last', '1');
   else picker.removeAttribute('data-mobile-last');
   const title = picker.querySelector('[data-role="anchor-mobile-title"]');
-  if (title && steps[formulaAnchorMobilePage]) {
-    title.textContent = `Créneau ${formulaAnchorMobilePage + 1} sur ${count} · ${steps[formulaAnchorMobilePage].activity.label}`;
+  if (title && pages[formulaAnchorMobilePage]) {
+    title.textContent = `Créneau ${formulaAnchorMobilePage + 1} sur ${count} · ${pages[formulaAnchorMobilePage].label || ''}`;
+  }
+  // Le bouton d avance ANNONCE ou il mene : « Continuer · Laser Game ».
+  const nextLabel = picker.querySelector('[data-role="anchor-mobile-next-label"]');
+  if (nextLabel) nextLabel.textContent = pages[formulaAnchorMobilePage + 1]?.label || '';
+  // La page qui arrive GLISSE : le changement se voit, il ne teleporte
+  // pas (2026-08-24, Movsar : « ca bouge d un coup, on comprend pas »).
+  const direction = Number(options.direction) || 0;
+  if (direction && !prefersReducedMotion()) {
+    const incoming = picker.querySelector(`.visit-rail-step[data-mobile-index="${formulaAnchorMobilePage}"]`);
+    if (incoming) {
+      incoming.classList.remove('is-page-from-right', 'is-page-from-left');
+      void incoming.offsetWidth;
+      incoming.classList.add(direction > 0 ? 'is-page-from-right' : 'is-page-from-left');
+    }
   }
   // Le nouvel ecran demarre en haut de sa zone.
   const zone = document.querySelector('#clientView .s2-slots');
   if (zone) zone.scrollTop = 0;
 }
 
-function formulaAnchorMobileBack() { setFormulaAnchorMobilePage(formulaAnchorMobilePage - 1); }
-function formulaAnchorMobileNext() { setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1); }
+function formulaAnchorMobileBack() { setFormulaAnchorMobilePage(formulaAnchorMobilePage - 1, { direction: -1 }); }
+function formulaAnchorMobileNext() { setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1, { direction: 1 }); }
 
 async function revalidateFormulaAnchors() {
   const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
@@ -5564,17 +5586,10 @@ async function setFormulaAnchorTime(activityId, time) {
     formulaJustPicked = deja ? null : { activityId, time };
   } else {
     if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') {
-      // TELEPHONE : les defauts preselectionnent deja une heure. Taper cette
-      // heure-la, c est la CONFIRMER : on avance vers le creneau suivant au
-      // lieu de ne rien faire (sans reseau : rien n a change).
-      if (isMobileAnchorPaging()) {
-        const mobileSteps = getVisitRailSteps();
-        if (mobileSteps.length > 1
-          && mobileSteps[formulaAnchorMobilePage]?.activity?.activityId === activityId
-          && formulaAnchorMobilePage < mobileSteps.length - 1) {
-          setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1);
-        }
-      }
+      // Taper l heure deja retenue ne fait RIEN de plus : on n avance
+      // jamais de page tout seul (2026-08-24, Movsar : « on doit confirmer
+      // l heure, pas rediriger direct »). Le bouton Continuer annonce la
+      // suite et porte le geste.
       return;
     }
     // La pastille qui vient d'etre choisie ressort UNE fois, DES le clic : le
@@ -5591,17 +5606,9 @@ async function setFormulaAnchorTime(activityId, time) {
   state.booking.opsPlan = null;
   save();
   await revalidateFormulaAnchors();
-  // TELEPHONE : une heure posee sur un choix UNIQUE avance d elle-meme vers
-  // le creneau suivant (zero friction). Le multi-parties attend son bouton
-  // Continuer : il a plusieurs heures a poser.
-  if (isMobileAnchorPaging() && !(activityId === 'laser_game' && parties > 1)) {
-    const mobileSteps = getVisitRailSteps();
-    if (mobileSteps.length > 1
-      && mobileSteps[formulaAnchorMobilePage]?.activity?.activityId === activityId
-      && formulaAnchorMobilePage < mobileSteps.length - 1) {
-      setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1);
-    }
-  }
+  // Taper une heure la POSE, point. L avance vers le creneau suivant est
+  // un geste explicite (bouton « Continuer · <activite suivante> ») : un
+  // ecran qui bouge tout seul n explique jamais pourquoi (2026-08-24).
 }
 
 function getDefaultLaserTimeAfterBowling(preference) {
@@ -6082,7 +6089,7 @@ function renderVisitRailStep(step, position) {
       ? `<span class="anchor-row-pick">${escapeHtml(chosen.join(' · '))}</span>`
       : (selected ? `<span class="anchor-row-pick">${escapeHtml(selected)}</span>` : ''));
   return `
-    <li class="visit-rail-step" data-mobile-index="${position - 1}">
+    <li class="visit-rail-step" data-mobile-index="${Number.isInteger(step.index) ? step.index : position - 1}">
       <span class="visit-rail-mark" aria-hidden="true">${position}</span>
       <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}"${chosen ? ` data-multi="${partCount}"` : ''}>
         <div class="anchor-row-head">
@@ -6293,8 +6300,8 @@ function renderFormulaAnchorPicker(formule) {
   // résumé, à l'heure près.
   // La zone de statut est un conteneur STABLE : la revalidation d'un choix la
   // met à jour en place (syncFormulaAnchorUi), elle ne reconstruit pas le fil.
-  const mobileSteps = getVisitRailSteps();
-  const mobileCount = mobileSteps.length;
+  const mobilePages = getMobileAnchorActivities();
+  const mobileCount = mobilePages.length;
   if (formulaAnchorMobilePage > Math.max(0, mobileCount - 1)) formulaAnchorMobilePage = 0;
   const mobileAttrs = mobileCount > 1
     ? ` data-mobile-multi="1" data-mobile-page="${formulaAnchorMobilePage}"${formulaAnchorMobilePage >= mobileCount - 1 ? ' data-mobile-last="1"' : ''}`
@@ -6302,13 +6309,17 @@ function renderFormulaAnchorPicker(formule) {
   const mobileNav = mobileCount > 1 ? `
       <div class="anchor-mobile-nav">
         <button type="button" class="anchor-mobile-back" aria-label="Créneau précédent" onclick="formulaAnchorMobileBack()">&lsaquo;</button>
-        <span class="anchor-mobile-title" data-role="anchor-mobile-title">Créneau ${formulaAnchorMobilePage + 1} sur ${mobileCount} · ${escapeHtml(mobileSteps[formulaAnchorMobilePage]?.activity?.label || '')}</span>
-        <button type="button" class="anchor-mobile-next" onclick="formulaAnchorMobileNext()">Continuer</button>
+        <span class="anchor-mobile-title" data-role="anchor-mobile-title">Créneau ${formulaAnchorMobilePage + 1} sur ${mobileCount} · ${escapeHtml(mobilePages[formulaAnchorMobilePage]?.label || '')}</span>
+      </div>` : '';
+  const mobileNext = mobileCount > 1 ? `
+      <div class="anchor-mobile-continue">
+        <button type="button" class="anchor-mobile-next" onclick="formulaAnchorMobileNext()">Continuer · <span data-role="anchor-mobile-next-label">${escapeHtml(mobilePages[formulaAnchorMobilePage + 1]?.label || '')}</span></button>
       </div>` : '';
   return `
     <div class="formula-anchor-picker"${mobileAttrs}>
       ${mobileNav}
       ${renderFormulaAnchorRows(formule)}
+      ${mobileNext}
       <div class="formula-anchor-status-zone" data-role="anchor-status-zone">${statusHtml}</div>
     </div>`;
 }

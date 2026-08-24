@@ -6905,3 +6905,84 @@ body.client-mode #clientView .btn-primary.is-sealed,
   body.client-mode #clientView .success-wrap h2 { font-size: clamp(26px, 4vw, 34px); }
   #clientView .confetti-hint { padding: var(--space-3); }
 }
+
+/* ==========================================================================
+   COMPOSEUR TELEPHONE : UNE PAGE PAR CRENEAU (2026-08-24).
+   Movsar : « si sur mobile on doit swiper en haut ou en bas pour tout voir,
+   c est echoue ». Deux activites reservees = deux pages : une seule grille
+   d heures a l ecran, avance automatique au choix, et le conseil, le pass
+   liberte et VALIDER sur la DERNIERE page. Au-dela de 640 px, ces attributs
+   sont inertes : le bureau garde ses colonnes.
+   ========================================================================== */
+#clientView .anchor-mobile-nav { display: none; }
+
+@media (max-width: 640px) {
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-mobile-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+  #clientView .anchor-mobile-back {
+    min-width: 44px;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+  }
+  #clientView .formula-anchor-picker[data-mobile-page="0"] .anchor-mobile-back { visibility: hidden; }
+  #clientView .anchor-mobile-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  #clientView .anchor-mobile-next {
+    min-height: 44px;
+    padding: 4px var(--space-4);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  #clientView .formula-anchor-picker[data-mobile-last] .anchor-mobile-next { display: none; }
+
+  /* En pagine, la carte redevient l HEURE seule : l en-tete du creneau dit
+     deja la duree (« 1h de piste reservee »), et c est ce qui fait tenir la
+     journee entiere dans un ecran de 664 px sans defiler. */
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-chip-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-chip .slot-card-end { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .anchor-chip.slot-card { min-height: 40px; padding: 6px 4px; }
+
+  /* Une seule etape visible : celle de la page courante. */
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-step { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-page="0"] .visit-rail-step[data-mobile-index="0"],
+  #clientView .formula-anchor-picker[data-mobile-page="1"] .visit-rail-step[data-mobile-index="1"],
+  #clientView .formula-anchor-picker[data-mobile-page="2"] .visit-rail-step[data-mobile-index="2"],
+  #clientView .formula-anchor-picker[data-mobile-page="3"] .visit-rail-step[data-mobile-index="3"] { display: block; }
+
+  /* Le lien d ecart, son conseil et le pass liberte accompagnent la
+     DERNIERE page, la ou la decision se prend. */
+  #clientView .formula-anchor-picker[data-mobile-multi]:not([data-mobile-last]) .visit-rail-link { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi]:not([data-mobile-last]) .formula-anchor-status-zone { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi] .visit-rail-step-free { display: none; }
+  #clientView .formula-anchor-picker[data-mobile-multi][data-mobile-last] .visit-rail-step-free { display: block; }
+
+  /* Style neon : la barre suit la signature du centre. */
+  html[data-tunnel-buttons='neon'] body.client-mode #clientView .anchor-mobile-next {
+    border: 2px solid #0a0a0a;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    box-shadow: -1px 1px 3px var(--tenant-glow, var(--accent));
+  }
+}

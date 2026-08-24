@@ -5294,6 +5294,7 @@ async function fetchSlots(options = {}) {
     // Nouvelle recherche assumée (arrivée sur l'étape, autre date) : les pistes
     // repartiront centrées sur l'heure proposée, pas sur un vieux défilement.
     anchorTrackScrollMemory.clear();
+    formulaAnchorMobilePage = 0;
     renderSlots(formule);
   }
   setStep1Busy(true);
@@ -5490,6 +5491,39 @@ function getCurrentFormulaAnchorSlotIndex() {
 // vérification. Phase 2 (réponse serveur) : seuls les éléments qui ont changé
 // sont réécrits. Le rendu complet ne reste que pour un VRAI changement de
 // structure (ordre des activités, liste d'heures, panne).
+// COMPOSEUR TELEPHONE : UNE PAGE PAR CRENEAU (2026-08-24, Movsar : « si sur
+// mobile on doit swiper en haut ou en bas pour tout voir, c est echoue »).
+// Deux activites reservees = deux pages ; une heure posee sur un choix
+// unique avance d elle-meme ; le multi-parties garde son bouton Continuer ;
+// le conseil, le pass liberte et VALIDER vivent sur la DERNIERE page.
+// Au-dela de 640 px, rien ne change : ces attributs restent inertes.
+let formulaAnchorMobilePage = 0;
+
+function isMobileAnchorPaging() {
+  try { return window.matchMedia('(max-width: 640px)').matches; } catch (error) { return false; }
+}
+
+function setFormulaAnchorMobilePage(next) {
+  const steps = getVisitRailSteps();
+  const count = steps.length;
+  formulaAnchorMobilePage = Math.max(0, Math.min(Math.max(0, count - 1), Math.trunc(Number(next) || 0)));
+  const picker = document.querySelector('#slotList .formula-anchor-picker');
+  if (!picker) return;
+  picker.setAttribute('data-mobile-page', String(formulaAnchorMobilePage));
+  if (formulaAnchorMobilePage >= count - 1) picker.setAttribute('data-mobile-last', '1');
+  else picker.removeAttribute('data-mobile-last');
+  const title = picker.querySelector('[data-role="anchor-mobile-title"]');
+  if (title && steps[formulaAnchorMobilePage]) {
+    title.textContent = `Créneau ${formulaAnchorMobilePage + 1} sur ${count} · ${steps[formulaAnchorMobilePage].activity.label}`;
+  }
+  // Le nouvel ecran demarre en haut de sa zone.
+  const zone = document.querySelector('#clientView .s2-slots');
+  if (zone) zone.scrollTop = 0;
+}
+
+function formulaAnchorMobileBack() { setFormulaAnchorMobilePage(formulaAnchorMobilePage - 1); }
+function formulaAnchorMobileNext() { setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1); }
+
 async function revalidateFormulaAnchors() {
   const formule = state.booking.type === 'formule' ? resolveDisplayFormule(state.booking.formuleId) : null;
   formulaAnchorBusy = true;
@@ -5529,7 +5563,20 @@ async function setFormulaAnchorTime(activityId, time) {
     if (suivantes.length) preference.laserPlacement = 'scheduled';
     formulaJustPicked = deja ? null : { activityId, time };
   } else {
-    if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') return;
+    if (preference.preferredTimes[activityId] === time && preference.laserPlacement !== 'onsite') {
+      // TELEPHONE : les defauts preselectionnent deja une heure. Taper cette
+      // heure-la, c est la CONFIRMER : on avance vers le creneau suivant au
+      // lieu de ne rien faire (sans reseau : rien n a change).
+      if (isMobileAnchorPaging()) {
+        const mobileSteps = getVisitRailSteps();
+        if (mobileSteps.length > 1
+          && mobileSteps[formulaAnchorMobilePage]?.activity?.activityId === activityId
+          && formulaAnchorMobilePage < mobileSteps.length - 1) {
+          setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1);
+        }
+      }
+      return;
+    }
     // La pastille qui vient d'etre choisie ressort UNE fois, DES le clic : le
     // client voit ou son clic a atterri sans attendre le reseau (recette 6).
     formulaJustPicked = { activityId, time };
@@ -5544,6 +5591,17 @@ async function setFormulaAnchorTime(activityId, time) {
   state.booking.opsPlan = null;
   save();
   await revalidateFormulaAnchors();
+  // TELEPHONE : une heure posee sur un choix UNIQUE avance d elle-meme vers
+  // le creneau suivant (zero friction). Le multi-parties attend son bouton
+  // Continuer : il a plusieurs heures a poser.
+  if (isMobileAnchorPaging() && !(activityId === 'laser_game' && parties > 1)) {
+    const mobileSteps = getVisitRailSteps();
+    if (mobileSteps.length > 1
+      && mobileSteps[formulaAnchorMobilePage]?.activity?.activityId === activityId
+      && formulaAnchorMobilePage < mobileSteps.length - 1) {
+      setFormulaAnchorMobilePage(formulaAnchorMobilePage + 1);
+    }
+  }
 }
 
 function getDefaultLaserTimeAfterBowling(preference) {
@@ -5554,7 +5612,9 @@ function getDefaultLaserTimeAfterBowling(preference) {
   const bowling = (formulaAnchorData?.activities || []).find((activity) => activity.activityId === 'bowling');
   if (!bowlingTime || !bowling) return fallback;
   const bowlingEnd = timeToNum(bowlingTime) * 60 + Number(bowling.durationMinutes || 60);
-  const next = laser.times.find((item) => timeToNum(item.time) * 60 >= bowlingEnd + 5);
+  // >= la fin PILE : le defaut enchaine, il ne vend pas 30 minutes d attente
+  // (meme regle que le moteur depuis le 2026-08-24).
+  const next = laser.times.find((item) => timeToNum(item.time) * 60 >= bowlingEnd);
   return next?.time || fallback;
 }
 
@@ -6022,7 +6082,7 @@ function renderVisitRailStep(step, position) {
       ? `<span class="anchor-row-pick">${escapeHtml(chosen.join(' · '))}</span>`
       : (selected ? `<span class="anchor-row-pick">${escapeHtml(selected)}</span>` : ''));
   return `
-    <li class="visit-rail-step">
+    <li class="visit-rail-step" data-mobile-index="${position - 1}">
       <span class="visit-rail-mark" aria-hidden="true">${position}</span>
       <div class="anchor-row ${disabled ? 'anchor-row-onsite' : ''}" data-anchor="${escapeHtml(activity.activityId)}"${chosen ? ` data-multi="${partCount}"` : ''}>
         <div class="anchor-row-head">
@@ -6233,8 +6293,21 @@ function renderFormulaAnchorPicker(formule) {
   // résumé, à l'heure près.
   // La zone de statut est un conteneur STABLE : la revalidation d'un choix la
   // met à jour en place (syncFormulaAnchorUi), elle ne reconstruit pas le fil.
+  const mobileSteps = getVisitRailSteps();
+  const mobileCount = mobileSteps.length;
+  if (formulaAnchorMobilePage > Math.max(0, mobileCount - 1)) formulaAnchorMobilePage = 0;
+  const mobileAttrs = mobileCount > 1
+    ? ` data-mobile-multi="1" data-mobile-page="${formulaAnchorMobilePage}"${formulaAnchorMobilePage >= mobileCount - 1 ? ' data-mobile-last="1"' : ''}`
+    : '';
+  const mobileNav = mobileCount > 1 ? `
+      <div class="anchor-mobile-nav">
+        <button type="button" class="anchor-mobile-back" aria-label="Créneau précédent" onclick="formulaAnchorMobileBack()">&lsaquo;</button>
+        <span class="anchor-mobile-title" data-role="anchor-mobile-title">Créneau ${formulaAnchorMobilePage + 1} sur ${mobileCount} · ${escapeHtml(mobileSteps[formulaAnchorMobilePage]?.activity?.label || '')}</span>
+        <button type="button" class="anchor-mobile-next" onclick="formulaAnchorMobileNext()">Continuer</button>
+      </div>` : '';
   return `
-    <div class="formula-anchor-picker">
+    <div class="formula-anchor-picker"${mobileAttrs}>
+      ${mobileNav}
       ${renderFormulaAnchorRows(formule)}
       <div class="formula-anchor-status-zone" data-role="anchor-status-zone">${statusHtml}</div>
     </div>`;

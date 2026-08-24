@@ -312,6 +312,29 @@ async function main() {
     }
     await settle(page, 2400);
     ok(await step(page) === 2, `etape creneau atteinte (${await step(page)})`);
+    // UNE PAGE PAR CRENEAU (2026-08-24, Movsar : « si sur mobile on doit
+    // swiper en haut ou en bas pour tout voir, c est echoue »). Deux
+    // activites reservees = deux pages : une seule grille d heures a
+    // l ecran, et l etape TIENT dans sa zone sans defiler (mesure, pas
+    // promesse). Les ecrans tres courts (<640) gardent l echappatoire
+    // historique du defilement assume.
+    const paging = await page.evaluate(() => {
+      const picker = document.querySelector('.formula-anchor-picker');
+      const visibles = [...document.querySelectorAll('.visit-rail-step')]
+        .filter((el) => el.offsetParent !== null && !el.classList.contains('visit-rail-step-free'));
+      const zone = document.querySelector('#clientView .s2-slots');
+      return {
+        multi: Boolean(picker && picker.hasAttribute('data-mobile-multi')),
+        page: picker ? picker.getAttribute('data-mobile-page') : null,
+        visibleSteps: visibles.length,
+        fits: zone ? zone.scrollHeight <= zone.clientHeight + 2 : false,
+      };
+    });
+    ok(paging.multi && paging.visibleSteps === 1,
+      `mobile : UNE grille d heures par page (${paging.visibleSteps} visible, page ${paging.page})`);
+    if (shape.height >= 640) {
+      ok(paging.fits, `mobile : l etape creneau tient sans defiler (${shape.width}x${shape.height})`);
+    }
     const chips = await page.evaluate(() => document.querySelectorAll('.anchor-chip:not([disabled])').length);
     ok(chips > 0, `grille d ancres rendue (${chips} heures)`);
     const hOverflow = await page.evaluate(() => {
@@ -323,6 +346,11 @@ async function main() {
     const chipLabel = await markReachable(page, '.anchor-chip:not([disabled])');
     ok(!!chipLabel, `une heure atteignable (${chipLabel || 'aucune'})`);
     await provenTap(page, '[data-touch-target]', `heure ${chipLabel}`);
+    await settle(page, 1200);
+    // Le choix d une heure a choix unique avance TOUT SEUL vers le creneau
+    // suivant : zero friction, et le Valider vit sur la derniere page.
+    const pageApresChoix = await page.evaluate(() => document.querySelector('.formula-anchor-picker')?.getAttribute('data-mobile-page'));
+    ok(pageApresChoix === '1', `le choix avance de lui-meme a la page suivante (page ${pageApresChoix})`);
     await settle(page, 1400);
     await provenTap(page, '.formula-plan-confirm', 'Valider ces horaires');
     await settle(page, 1500);

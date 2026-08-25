@@ -515,7 +515,7 @@
     // Le compteur qui DESCEND pendant la frappe : c'est lui qui prouve a l'oeil
     // que la recherche est instantanee. Les deux nombres sont isoles pour etre
     // animes separement.
-    const count = active === 'avenir' ? '' : `<span class="crm-seg-count"><strong data-pl-num="crm.segment.filtres">${filteredCount}</strong>${active === 'tous' ? ` / <span data-pl-num="crm.segment.total">${totalCount}</span>` : ''} client${filteredCount > 1 ? 's' : ''}</span>`;
+    const count = active === 'avenir' ? '' : `<span class="crm-seg-count"><strong>${filteredCount}</strong>${active === 'tous' ? ` / <span>${totalCount}</span>` : ''} client${filteredCount > 1 ? 's' : ''}</span>`;
     // LA RECHERCHE EST ICI, pas dans la barre de titre : c'est au-dessus de la
     // liste qu'on cherche, et elle etait a l'autre bout de l'ecran.
     // `data-pl-focus` la fait survivre au re-rendu declenche par sa propre
@@ -649,11 +649,11 @@
         <div class="crm-table-wrap">
           <table class="crm-table crm-table-avenir">
             <thead><tr><th class="crm-th">Heure</th><th class="crm-th">Client</th><th class="crm-th">Réservation</th><th class="num crm-th">Joueurs</th><th class="crm-th"></th></tr></thead>
-            <tbody data-pl-stagger="crm.avenir">${rows || empty}</tbody>
+            <tbody>${rows || empty}</tbody>
           </table>
         </div>
         <div class="crm-list-foot">
-          <span><b data-pl-num="crm.avenir.affiches">${shown.length}</b> affichée${shown.length > 1 ? 's' : ''} sur <b data-pl-num="crm.avenir.total">${visits.length}</b></span>
+          <span><b>${shown.length}</b> affichée${shown.length > 1 ? 's' : ''} sur <b>${visits.length}</b></span>
           ${visits.length > shown.length ? '<button type="button" class="pv2-btn" onclick="showMoreStaffClients()">Afficher plus</button>' : ''}
         </div>
       </article>
@@ -723,7 +723,7 @@
         <span class="crm-pill tone-${TONE[c.status] || 'muted'}">${esc(STATUS_FR[c.status] || c.status || '')}</span>
         ${selected.email ? `<button type="button" class="crm-icon-btn" title="Renvoyer" aria-label="Renvoyer" onclick="pv2OpenComposer({to:'${escJs(selected.email)}',name:'${escJs(selected.name || '')}'})">${ci('refresh')}</button>` : ''}
       </div>`).join('');
-    return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count" data-pl-num="crm.messages">${comms.length}</span></h3>${compose}</div>
+    return `<section class="crm-sec"><div class="crm-sec-head"><h3>Messages & relances <span class="crm-count">${comms.length}</span></h3>${compose}</div>
       <div class="crm-comm-stats">${sent} envoyé${sent > 1 ? 's' : ''} · ${delivered} délivré${delivered > 1 ? 's' : ''} · ${failedCount} échec${failedCount > 1 ? 's' : ''}${last ? ` · dernier ${esc((typeof formatOpsTimestamp === 'function' && (last.sentAt || last.createdAt)) ? formatOpsTimestamp(last.sentAt || last.createdAt) : '')}` : ''}</div>
       <div class="crm-comm-list">${items}</div></section>`;
   }
@@ -897,7 +897,7 @@
     const badges = [crmStatusPill(selected)];
     if (ctx.vipThreshold > 0 && Number(selected.spent || 0) >= ctx.vipThreshold) badges.push(`<span class="crm-pill tone-accent" title="Plus de ${Math.round(ctx.vipThreshold)} € cumulés (seuil réglable dans Établissement)">Client clé</span>`);
     if (selected.hasBirthday) badges.push('<span class="crm-pill tone-info">Anniversaire</span>');
-    const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val" data-pl-num="crm.${String(label).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
+    const kpi = (label, value) => `<div class="crm-kpi"><div class="crm-kpi-val">${value}</div><div class="crm-kpi-label">${esc(label)}</div></div>`;
     const next = selected.nextBooking;
     const relance = getStaffClientRelance(selected);
     let nextBlock = '';
@@ -951,7 +951,7 @@
         </section>` : ''}
 
         <section class="crm-sec">
-          <div class="crm-sec-head"><h3>Réservations <span class="crm-count" data-pl-num="crm.historique">${(selected.history || []).length}</span></h3></div>
+          <div class="crm-sec-head"><h3>Réservations <span class="crm-count">${(selected.history || []).length}</span></h3></div>
           <div class="crm-history">${(selected.history || []).map(crmHistoryItem).join('') || '<div class="crm-muted">Aucune réservation.</div>'}</div>
         </section>
 
@@ -1041,11 +1041,11 @@
           <div class="crm-table-wrap">
             <table class="crm-table">
               <thead><tr>${th('name', 'Client') + th('lastDate', 'Venue') + th('reservations', 'Visites', true) + th('spent', 'Dépensé', true)}${lastTh}</tr></thead>
-              <tbody data-pl-stagger="crm.clients">${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment.' : 'Aucun résultat.'} <button type="button" class="pv2-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
+              <tbody>${tableRows || `<tr><td colspan="5"><div class="crm-empty"><strong>Aucun client</strong>${segment === 'relancer' ? 'Personne à relancer pour le moment.' : 'Aucun résultat.'} <button type="button" class="pv2-btn" onclick="setStaffClientSegment('tous')">Voir tous les clients</button></div></td></tr>`}</tbody>
             </table>
           </div>
           <div class="crm-list-foot">
-            <span><b data-pl-num="crm.affiches">${shown.length}</b> affiché${shown.length > 1 ? 's' : ''} sur <b data-pl-num="crm.total">${rows.length}</b></span>
+            <span><b>${shown.length}</b> affiché${shown.length > 1 ? 's' : ''} sur <b>${rows.length}</b></span>
             ${rows.length > shown.length ? `<button type="button" class="pv2-btn" onclick="showMoreStaffClients()">Afficher plus</button>` : ''}
           </div>
         </article>

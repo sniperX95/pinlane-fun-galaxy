@@ -15417,8 +15417,36 @@ function buildStaffClientRowsFromReservations(reservations = []) {
     });
 }
 
+// LA LISTE CLIENTS SE CALCULE UNE FOIS PAR DONNEE, PAS UNE FOIS PAR APPEL
+// (2026-08-25, Movsar : « ca lag et ram a mort sur les pc du centre »).
+// Mesure avant correctif (CPU bridee x6, 400 clients / 1600 resas) : 27
+// reconstructions au chargement de la page, 4 a 7 par CLIC, ~1,2 s chacune.
+// La cle du cache est l IDENTITE des trois sources : les chargeurs
+// REMPLACENT leurs tableaux (jamais de mutation en place, verifie sur les
+// 4 sites d ecriture de state.reservations et les reassignations des deux
+// caches staff), plus le centre, le jour (l age d une venue depend de la
+// date) et les seuils de classification (Etablissement).
+let staffClientRowsMemo = { key: '', rows: null, src0: null, src1: null, src2: null };
+
 function getStaffClientRows() {
-  return buildStaffClientRowsFromReservations(getStaffClientSourceReservations());
+  const key = [
+    getActiveOpsCenterId(),
+    todayStr(),
+    String(state.currentDate || ''),
+    staffClientDataCache.loaded ? 'c' : '-',
+    staffReservationsDataCache.loaded ? 'r' : '-',
+    JSON.stringify(getStaffClassification() || {}),
+  ].join('|');
+  const src0 = staffClientDataCache.reservations;
+  const src1 = staffReservationsDataCache.reservations;
+  const src2 = state.reservations;
+  if (staffClientRowsMemo.rows && staffClientRowsMemo.key === key
+    && staffClientRowsMemo.src0 === src0 && staffClientRowsMemo.src1 === src1 && staffClientRowsMemo.src2 === src2) {
+    return staffClientRowsMemo.rows;
+  }
+  const rows = buildStaffClientRowsFromReservations(getStaffClientSourceReservations());
+  staffClientRowsMemo = { key, rows, src0, src1, src2 };
+  return rows;
 }
 
 // Segments CRM v4 (KISS) : 4 vues simples, une seule active, re-clic = retour à

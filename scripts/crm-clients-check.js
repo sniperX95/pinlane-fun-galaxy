@@ -472,6 +472,78 @@ async function main() {
       await page.evaluate(() => { setStaffTheme('dark'); });
     }
 
+    // --- PERFORMANCE SOUS CHARGE (2026-08-25, Movsar : « ca lag et ram a
+    // mort sur les pc du centre ») -------------------------------------
+    // 400 clients / ~1600 resas, CPU bridee x6 (PC de comptoir). Mesure
+    // AVANT correctif : 4 a 13 s PAR CLIC (27 reconstructions au boot).
+    // Budgets : une interaction rend UNE fois, ne reconstruit RIEN (cache
+    // chaud) et repond en moins de 900 ms meme bridee.
+    console.log('\n[PERF] page Clients sous charge (400 clients, CPU x6)');
+    await page.evaluate(() => {
+      let seed = 42;
+      const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+      const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+      const R = [];
+      let id = 90000;
+      for (let c = 0; c < 400; c += 1) {
+        const visites = 1 + Math.floor(rnd() * 7);
+        for (let v = 0; v < visites; v += 1) {
+          const off = Math.floor(rnd() * 430) - 400;
+          R.push({ id: id++, name: `Perf Client ${c}`, phone: `+3247${String(2000000 + c).slice(-7)}`, email: `perf${c}@test.be`, date: dstr(off), startTime: '18:00', pax: 2 + Math.floor(rnd() * 10), price: 40 + Math.floor(rnd() * 400), type: 'bowling', label: 'Bowling', lanes: [], duration: 1, status: off > 0 ? 'pending' : 'paid', occasion: rnd() < 0.15 ? 'anniversaire' : '', centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString() });
+        }
+      }
+      state.reservations = R;
+      window.__PERF__ = { builds: 0, renders: 0 };
+      const build0 = window.buildStaffClientRowsFromReservations;
+      window.buildStaffClientRowsFromReservations = function () { __PERF__.builds += 1; return build0.apply(this, arguments); };
+      const render0 = window.renderStaffClientsPage;
+      window.renderStaffClientsPage = function () { __PERF__.renders += 1; return render0.apply(this, arguments); };
+      state.staffClientSegment = 'tous';
+      save(); renderStaffClientsPage();
+    });
+    await page.waitForTimeout(400);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    const mesurePerf = async (label, fn) => {
+      await page.evaluate(() => { __PERF__.builds = 0; __PERF__.renders = 0; });
+      const t = await page.evaluate(fn);
+      const p = await page.evaluate(() => __PERF__);
+      return { label, t: Math.round(t), builds: p.builds, renders: p.renders };
+    };
+    const perfSel = await mesurePerf('selection', () => {
+      const id = getStaffClientRows()[3].id;
+      const t0 = performance.now(); selectStaffClient(id); return performance.now() - t0;
+    });
+    const perfSeg = await mesurePerf('segment', () => {
+      const t0 = performance.now(); setStaffClientSegment('relancer'); return performance.now() - t0;
+    });
+    const perfTri = await mesurePerf('tri', () => {
+      setStaffClientSegment('tous');
+      const t0 = performance.now(); setStaffClientSort('spent'); return performance.now() - t0;
+    });
+    for (const m of [perfSel, perfSeg, perfTri]) {
+      ok(m.t < 2500, `perf ${m.label} : ${m.t} ms (budget 2500 ms, CPU x6, machine chargee)`);
+      ok(m.builds === 0, `perf ${m.label} : zero reconstruction de la liste (${m.builds})`);
+    }
+    ok(perfSel.renders === 1, `perf selection : UN rendu par clic (${perfSel.renders})`);
+    // Contre-preuve : sans le memo (l ancienne version exacte de
+    // getStaffClientRows), le budget doit exploser -> le gate sait rougir.
+    const sansMemo = await page.evaluate(() => {
+      const memo = window.getStaffClientRows;
+      window.getStaffClientRows = function () { return buildStaffClientRowsFromReservations(getStaffClientSourceReservations()); };
+      const id = memo()[5].id;
+      const t0 = performance.now(); selectStaffClient(id); const t = performance.now() - t0;
+      window.getStaffClientRows = memo;
+      return Math.round(t);
+    });
+    ok(sansMemo > 2500, `contre-preuve : sans le cache, le clic redevient lent (${sansMemo} ms > 2500) -> le gate rougirait`);
+    const apresRestore = await page.evaluate(() => {
+      const id = getStaffClientRows()[2].id;
+      const t0 = performance.now(); selectStaffClient(id); return Math.round(performance.now() - t0);
+    });
+    ok(apresRestore < 2500, `restauration : le clic est redevenu vif (${apresRestore} ms)`);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); }
   } catch (e) {
     console.error('\ncrm-clients-check FAIL:', e.stack || e.message);

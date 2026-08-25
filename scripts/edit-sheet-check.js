@@ -16,7 +16,7 @@ const fs = require('fs');
 const p = require('path');
 const ROOT = 'C:/Users/movsa/Documents/Codex/2026-04-24/doctype-html-html-lang-fr-head';
 const { chromium } = require(p.join(ROOT, 'node_modules', 'playwright-core'));
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const EDGE = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const PORT = PORT_ENV;
 // Le VRAI catalogue de formules : une fiche qui doit recopier le contenu d'une
 // formule ne prouve rien face a un catalogue vide invente pour le test.

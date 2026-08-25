@@ -8,7 +8,7 @@ const { chromium } = require('playwright-core');
 const ROOT = path.resolve(__dirname, '..');
 const BASE_URL = 'http://127.0.0.1:4191';
 const OUT = path.join(ROOT, 'artifacts', 'audit', 'wave5');
-const BROWSER_PATH = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const BROWSER_PATH = process.env.E2E_BROWSER_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 
 // Extraction d'installQaApi (lignes autonomes) du harnais officiel.
 const qaSource = fs.readFileSync(path.join(ROOT, 'scripts', 'run-visual-qa.js'), 'utf8').split('\n');

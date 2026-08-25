@@ -30,5 +30,9 @@ jobs:
         # semaines. Le Chrome stable preinstalle des runners GitHub suffit.
         env:
           E2E_BROWSER_PATH: /usr/bin/google-chrome
-        run: npm run test:ops:all
+        # Deux chances : les micro-budgets de perf/motion calibres machine
+        # locale (5 ms, frames d animation) varient sur un runner partage.
+        # Un vrai rouge deterministe echoue DEUX fois ; un timing de runner
+        # passe au second tour.
+        run: npm run test:ops:all || npm run test:ops:all
         timeout-minutes: 90

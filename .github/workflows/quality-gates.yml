@@ -24,4 +24,11 @@ jobs:
         run: npm ci
 
       - name: Run deterministic ops tests
+        # Les gates navigateur (79 scripts Playwright) lisent
+        # E2E_BROWSER_PATH ; sans elle ils cherchent Edge a un chemin
+        # Windows et le runner Ubuntu echouait au premier gate depuis des
+        # semaines. Le Chrome stable preinstalle des runners GitHub suffit.
+        env:
+          E2E_BROWSER_PATH: /usr/bin/google-chrome
         run: npm run test:ops:all
+        timeout-minutes: 90

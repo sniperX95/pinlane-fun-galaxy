@@ -70,7 +70,7 @@ async function installMock(page) {
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'Rachel', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
       if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: build(), laneStatuses: lanes(), laneMaintenance: laneMaintenance(), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: build(), emails: [], agentEvents: [], centerId: 'libramont' });
-      if (u.pathname === '/api/staff-lanes') { const b = JSON.parse(init.body || '{}'); return J({ ok: true, lane: { lane: b.lane, status: b.status } }); }
+      if (u.pathname === '/api/staff-lanes') { const b = JSON.parse(init.body || '{}'); return J({ ok: true, lane: { lane: b.lane, status: b.status, maintenanceFrom: b.maintenanceFrom || '', maintenanceUntil: b.maintenanceUntil || '', maintenanceNote: b.note || '' } }); }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, customRequests: [] });
       if (u.pathname === '/api/ops') return J({ ok: true, communications: [], samples: [], suggestions: [], events: [], ecosystem: null, agents: [], activations: [], orchestration: {} });
       if (u.pathname === '/api/public-booking-meta') return J({ ok: true, today: new Date().toISOString().slice(0, 10), durationOptions: [], formules: [], center: { id: 'libramont', status: 'active', defaultSchedule: { regular: { '0': { open: '10:00', close: '22:00' }, '1': { open: '10:00', close: '22:00' }, '2': { open: '10:00', close: '22:00' }, '3': { open: '10:00', close: '22:00' }, '4': { open: '10:00', close: '22:00' }, '5': { open: '10:00', close: '22:00' }, '6': { open: '10:00', close: '22:00' } }, holiday: {} }, holidaySettings: { enabled: true, overrides: [], formulaBlockedPeriods: [] }, offerAvailability: {} } });
@@ -90,6 +90,9 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const errs = [];
   page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));
+  // Aucun dialog NATIF (prompt/alert/confirm) n a sa place dans la console
+  // (verdict Movsar 2026-08-25) : s il s en ouvre un, le gate rougit.
+  page.on('dialog', (d) => { errs.push('DIALOG NATIF: ' + d.message().slice(0, 80)); d.dismiss().catch(() => {}); });
   try {
     await installMock(page);
     await page.goto(`${BASE_URL}/?v=lanes-${Date.now()}`, { waitUntil: 'networkidle', timeout: 45000 });
@@ -165,6 +168,43 @@ async function main() {
       return row ? row.classList.contains('is-maintenance') : false;
     });
     ok(fermee, '« Fermer » bascule la piste et la rangee le MONTRE sans quitter la page');
+
+    // « Entretien… » ouvre un FORMULAIRE dans la rangee (dates + motif),
+    // jamais un prompt navigateur. Planifier envoie le meme PATCH que
+    // toujours et la rangee montre la maintenance et son motif.
+    await page.evaluate(() => {
+      const row = document.querySelector('.lane-row[data-lane="5"]');
+      const btn = [...row.querySelectorAll('button')].find((b) => /Entretien/.test(b.textContent));
+      btn.click();
+    });
+    await page.waitForTimeout(400);
+    const form = await page.evaluate(() => {
+      const zone = document.querySelector('.lane-row[data-lane="5"] [data-role="lane-maint-form"]');
+      return {
+        present: !!zone,
+        dates: zone ? zone.querySelectorAll('input[type="date"]').length : 0,
+        motif: zone ? !!zone.querySelector('input[type="text"]') : false,
+      };
+    });
+    ok(form.present && form.dates === 2 && form.motif, `le formulaire d entretien vit DANS la rangee (2 dates + motif) et non dans un prompt (${JSON.stringify(form)})`);
+    await page.evaluate(() => {
+      const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+      document.getElementById('laneMaintFrom-5').value = dstr(0);
+      document.getElementById('laneMaintUntil-5').value = dstr(2);
+      document.getElementById('laneMaintNote-5').value = 'huilage';
+      const zone = document.querySelector('.lane-row[data-lane="5"] [data-role="lane-maint-form"]');
+      [...zone.querySelectorAll('button')].find((b) => /Planifier/.test(b.textContent)).click();
+    });
+    await page.waitForTimeout(600);
+    const planifie = await page.evaluate(() => {
+      const row = document.querySelector('.lane-row[data-lane="5"]');
+      return {
+        maintenance: row ? row.classList.contains('is-maintenance') : false,
+        texte: row ? row.textContent.replace(/\s+/g, ' ') : '',
+      };
+    });
+    ok(planifie.maintenance && /huilage/.test(planifie.texte),
+      `l entretien planifie se voit sur la rangee, motif compris (« ${planifie.texte.slice(0, 90)} »)`);
 
     console.log('\n[LASER : repondre, completer, decider]');
     await page.evaluate(() => { openStaffMenuPage('laserGame'); });

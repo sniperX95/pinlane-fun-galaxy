@@ -10315,13 +10315,14 @@ function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
     const relocate = item.toRelocate.length ? `<div class="lane-relocate" data-role="lane-replace"><span>À replacer :</span>${item.toRelocate.map((w) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(w.reservation.id)})">${escapeHtml(w.reservation.name || 'Client')} · ${numToTime(w.start)}</button>`).join('')}</div>` : '';
     const actions = item.maintenance
       ? `<button type="button" onclick="toggleMaint(${item.lane}, event)">Rouvrir</button>`
-      : `<button type="button" onclick="toggleMaint(${item.lane}, event)">Fermer</button><button type="button" onclick="toggleMaintDated(${item.lane}, event)">Entretien…</button>`;
+      : `<button type="button" onclick="toggleMaint(${item.lane}, event)">Fermer</button><button type="button" onclick="openLaneMaintForm(${item.lane}, event)">Entretien…</button>`;
     return `<div class="lane-row${item.maintenance ? ' is-maintenance' : ''}${item.current ? ' is-busy' : ''}" data-lane="${item.lane}">
       <div class="lane-row-id"><span class="lane-dot" aria-hidden="true"></span><strong>Piste ${item.lane}</strong></div>
       <div class="lane-row-main">
         <div class="lane-row-status">${statut}</div>
         ${strip}
         ${relocate}
+        ${laneMaintFormLane === item.lane ? renderLaneMaintForm(item.lane) : ''}
       </div>
       <div class="lane-row-side">
         <span class="lane-pct${item.weak ? ' is-weak' : ''}" data-role="lane-pct" data-pct="${item.pct30}" title="${formatDurationLabel(item.hours30)} réservées sur les 30 derniers jours">30 j · ${item.pct30}%${item.weak ? ' · sous-utilisée' : ''}</span>
@@ -18083,35 +18084,65 @@ function renderLaserPlanning() {
 // Maintenance datée : fenêtre [du, au], la piste reste réservable hors
 // fenêtre et se libère automatiquement après (résolution par date côté
 // serveur, y compris dans le chemin d'écriture des réservations).
-async function toggleMaintDated(i, ev) {
+// L ENTRETIEN SE PLANIFIE DANS LA RANGEE (2026-08-25, Movsar devant le
+// prompt() navigateur : « pas possible de faire un truc comme ca »). Un
+// petit formulaire produit (du/au + motif) s ouvre sous le statut de la
+// piste ; Planifier envoie le meme PATCH staff-lanes qu avant. Les champs
+// type=date garantissent le format, le serveur revalide de toute facon.
+let laneMaintFormLane = null;
+
+function openLaneMaintForm(lane, ev) {
   if (ev) ev.stopPropagation();
+  laneMaintFormLane = laneMaintFormLane === Number(lane) ? null : Number(lane);
+  renderStaffUtilityPage();
+}
+
+function closeLaneMaintForm() {
+  laneMaintFormLane = null;
+  renderStaffUtilityPage();
+}
+
+function renderLaneMaintForm(lane) {
   const today = todayStr();
-  const from = window.prompt(`Piste ${i} : début de maintenance (AAAA-MM-JJ, vide = dès maintenant) :`, today);
-  if (from === null) return;
-  const until = window.prompt(`Piste ${i} : fin de maintenance (AAAA-MM-JJ, vide = jusqu'à réactivation manuelle) :`, from || today);
-  if (until === null) return;
-  const DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
-  if ((from && !DATE_RX.test(from)) || (until && !DATE_RX.test(until))) { toast('Format de date invalide (AAAA-MM-JJ).'); return; }
+  return `<div class="lane-maint-form" data-role="lane-maint-form">
+    <div class="lane-maint-fields">
+      <label>Du <input type="date" id="laneMaintFrom-${lane}" value="${today}"></label>
+      <label>au <input type="date" id="laneMaintUntil-${lane}" value=""></label>
+      <input type="text" id="laneMaintNote-${lane}" maxlength="120" placeholder="Motif visible par l’équipe : huilage, pin-setter…">
+    </div>
+    <div class="lane-maint-actions">
+      <button type="button" class="is-primary" onclick="submitLaneMaintForm(${lane})">Planifier</button>
+      <button type="button" onclick="closeLaneMaintForm()">Annuler</button>
+      <small>Sans fin : jusqu’à réouverture manuelle. Début vidé : dès maintenant.</small>
+    </div>
+  </div>`;
+}
+
+async function submitLaneMaintForm(lane) {
+  const from = (document.getElementById(`laneMaintFrom-${lane}`)?.value || '').trim();
+  const until = (document.getElementById(`laneMaintUntil-${lane}`)?.value || '').trim();
+  const note = (document.getElementById(`laneMaintNote-${lane}`)?.value || '').trim();
   if (from && until && until < from) { toast('La fin précède le début.'); return; }
-  const note = window.prompt("Motif (optionnel, visible par l'équipe) :", '') || '';
+  const today = todayStr();
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffLanes, {
       method: 'PATCH',
-      body: JSON.stringify({ lane: i, status: 'maintenance', maintenanceFrom: from || '', maintenanceUntil: until || '', note }),
+      body: JSON.stringify({ lane, status: 'maintenance', maintenanceFrom: from || '', maintenanceUntil: until || '', note }),
     });
-    const lane = payload.lane || {};
+    const laneInfo = payload.lane || {};
     state.laneMaintenance = state.laneMaintenance || {};
-    state.laneMaintenance[i] = { from: lane.maintenanceFrom || '', until: lane.maintenanceUntil || '', note: lane.maintenanceNote || '' };
-    const applies = (!lane.maintenanceFrom || today >= lane.maintenanceFrom) && (!lane.maintenanceUntil || today <= lane.maintenanceUntil);
-    state.laneStatuses[i] = applies ? 'maintenance' : 'active';
+    state.laneMaintenance[lane] = { from: laneInfo.maintenanceFrom || '', until: laneInfo.maintenanceUntil || '', note: laneInfo.maintenanceNote || '' };
+    const applies = (!laneInfo.maintenanceFrom || today >= laneInfo.maintenanceFrom) && (!laneInfo.maintenanceUntil || today <= laneInfo.maintenanceUntil);
+    state.laneStatuses[lane] = applies ? 'maintenance' : 'active';
+    laneMaintFormLane = null;
     save();
     renderStaff();
-    toast(`Piste ${i} : maintenance ${lane.maintenanceFrom || 'immédiate'} → ${lane.maintenanceUntil || 'sans fin'}${applies ? '' : ' (programmée)'}`);
+    if (isStaffUtilityActive()) renderStaffUtilityPage();
+    toast(`Piste ${lane} : maintenance ${laneInfo.maintenanceFrom || 'immédiate'} → ${laneInfo.maintenanceUntil || 'sans fin'}${applies ? '' : ' (programmée)'}`);
   } catch (error) {
     toast(error.message || 'Impossible de programmer la maintenance.');
   }
 }
-
 async function toggleMaint(i, ev) {
   if (ev) ev.stopPropagation();
   const previousStatus = state.laneStatuses[i];

@@ -398,10 +398,13 @@
       const dateStr = `${range.monthKey}-${String(day).padStart(2, '0')}`;
       const agg = byDay.get(dateStr);
       const heat = !agg ? 0 : Math.ceil((agg.count / maxCount) * 3);
-      cells += `<div class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}" onclick="pv2SelectResDay('${dateStr}')">
+      // De VRAIS boutons (audit UX 2026-08-25) : focusables, nommes, le
+      // jour choisi porte aria-pressed, et les fleches naviguent (delegue
+      // clavier global d app-main sur data-cal-date).
+      cells += `<button type="button" class="pv2-cal-cell heat-${heat} ${dateStr === today ? 'today' : ''} ${dateStr === selectedDate ? 'selected' : ''}" data-cal-date="${dateStr}" aria-pressed="${dateStr === selectedDate ? 'true' : 'false'}" aria-label="${day} · ${agg ? `${agg.count} résa, ${agg.pax} joueurs` : 'aucune résa'}" onclick="pv2SelectResDay('${dateStr}')">
         <span class="pv2-cal-day">${day}</span>
         <span class="pv2-cal-meta">${agg ? `<strong>${agg.count}</strong> résa · ${agg.pax}p` : '-'}</span>
-      </div>`;
+      </button>`;
     }
 
     const dayRows = source

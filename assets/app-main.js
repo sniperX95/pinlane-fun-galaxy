@@ -8211,23 +8211,23 @@ function dashboardDetailReleaseLane(lane, ev) {
 }
 
 // Actions groupées (footer détail) : encaisse ou libère en un clic.
-function dashboardDetailPayAllUnpaid(ev) {
+async function dashboardDetailPayAllUnpaid(ev) {
   if (ev) ev.stopPropagation();
   const metrics = getStaffDashboardMetrics(todaysReservations());
   const rows = metrics.activeReservations.filter(r => r.status !== 'paid');
   if (!rows.length) { toast('Aucune réservation à encaisser.'); return; }
-  if (!confirm(`Marquer ${rows.length} réservation${rows.length > 1 ? 's' : ''} comme payée${rows.length > 1 ? 's' : ''} ?`)) return;
+  if (!(await staffConfirm({ title: `Marquer ${rows.length} réservation${rows.length > 1 ? 's' : ''} comme payée${rows.length > 1 ? 's' : ''} ?`, confirmLabel: 'Encaisser' }))) return;
   rows.forEach(r => setReservationStatusDirect(r.id, 'paid'));
   refreshStaffDashboardDetailSoon(240);
 }
 
-function dashboardDetailReleaseAllLanes(ev) {
+async function dashboardDetailReleaseAllLanes(ev) {
   if (ev) ev.stopPropagation();
   const lanes = Object.entries(state.laneStatuses || {})
     .filter(([, status]) => status === 'maintenance')
     .map(([l]) => Number(l));
   if (!lanes.length) { toast('Aucune piste en maintenance.'); return; }
-  if (!confirm(`Réactiver ${lanes.length} piste${lanes.length > 1 ? 's' : ''} ?`)) return;
+  if (!(await staffConfirm({ title: `Réactiver ${lanes.length} piste${lanes.length > 1 ? 's' : ''} ?`, confirmLabel: 'Réactiver' }))) return;
   lanes.forEach(lane => releaseMaintenanceLane(lane));
   refreshStaffDashboardDetailSoon(260);
 }
@@ -17725,7 +17725,7 @@ function renderPlanning() {
       const halfClass = slot % 2 === 1 ? ' half' : '';
       cells += maint
         ? `<div class="slot-cell${halfClass}"></div>`
-        : `<div class="slot-cell clickable${halfClass}" data-bowling-drop-lane="${i}" data-bowling-drop-start="${cellTime}" onclick="quickFromCell(${i},${cellTime})" title="Nouvelle réservation"></div>`;
+        : `<div class="slot-cell clickable${halfClass}" role="button" tabindex="0" aria-label="Réserver la piste ${i} à ${formatClockDisplay(cellTime)}" data-bowling-drop-lane="${i}" data-bowling-drop-start="${cellTime}" onclick="quickFromCell(${i},${cellTime})" title="Nouvelle réservation"></div>`;
     }
     cells += `<div class="slot-cell end"></div>`;
     let bkHtml = '';
@@ -17758,7 +17758,7 @@ function renderPlanning() {
       // prend : c'est la hauteur reelle qui decide, pas une preference.
       const offreHtml = renderCardActivityTag(r, 'bowling');
       const offreSurSaLigne = densClass === 'dens-lg';
-      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
+      bkHtml += `<div class="booking ${cls} ${densClass} ${getReservationHighlightClasses(r)}${delayedClass}${activitiesCompleteClass(r)}" data-booking-res-id="${r.id}" data-booking-lane="${i}" data-booking-start="${st}" data-range="${formatClockDisplay(st)} - ${end}" data-extra="${cls === 'paid' ? 'payé' : cls === 'arr' ? 'sur place' : 'confirmé'}" role="button" tabindex="0" aria-label="${escapeHtml(r.name || 'Client')} · ${formatClockDisplay(st)} - ${end}" style="top:${top}px;height:${height}px;--bk-order:${i};" onmousedown="startBowlingBookingPointerDrag(event, ${r.id}, ${i}, ${st})" onclick="if(shouldIgnoreBowlingDragClick(event)) return; event.stopPropagation();openPos(${r.id})">
         ${renderDelayIndicator(r)}
         <div class="booking-head">
           <span class="bk-time">${formatClockDisplay(st)}</span>
@@ -18553,7 +18553,7 @@ function toggleFormulaActivity(reservationId, key, ev) {
 
 async function cancelRes(id, ev) {
   if (ev) ev.stopPropagation();
-  if (!confirm('Annuler cette réservation ?')) return;
+  if (!(await staffConfirm({ title: 'Annuler cette réservation ?', body: 'Le dossier reste au journal, le créneau se libère.', confirmLabel: 'Annuler la résa', danger: true }))) return;
   const current = state.reservations.find(r => String(r.id) === String(id)) || findStaffReservationById(id);
   if (!current) {
     toast('Réservation introuvable.');
@@ -18582,7 +18582,7 @@ async function deleteRes(id, ev) {
   // ne dit pas laquelle : on clique dessus en pensant à une autre. Elle dit
   // aussi que c'est définitif, parce que ça l'est : il n'y a pas d'annulation.
   const quoi = `${current.name || 'Client'} · ${current.startTime || ''} · ${current.pax || 0} joueur${(current.pax || 0) > 1 ? 's' : ''}`;
-  if (!confirm(`Supprimer definitivement la reservation #${id} ?\n\n${quoi}\n\nCette action est irreversible. Pour garder la trace du dossier, utilisez plutot « Annuler reservation ».`)) return;
+  if (!(await staffConfirm({ title: `Supprimer définitivement la réservation #${id} ?`, body: `${quoi}\n\nCette action est irréversible. Pour garder la trace du dossier, utilisez plutôt « Annuler réservation ».`, confirmLabel: 'Supprimer', danger: true }))) return;
   removeOptimisticReservation(id);
   // La fiche se ferme : elle décrivait un dossier qui n'existe plus. Elle
   // restait ouverte, avec ses boutons « Enregistrer » et « Arrivé » actifs sur
@@ -21109,6 +21109,63 @@ function flushStaffActivity() {
     keepalive: true,
     body: JSON.stringify({ action: 'activityLog', events }),
   }).catch(() => { /* le parcours ne bloque ni ne derange jamais le travail */ });
+}
+
+// ── CLAVIER DE LA CONSOLE (audit UX 2026-08-25) ─────────────────────────────
+// Les surfaces cliquables du planning (creneaux, blocs de resa) s activent a
+// Entree/Espace, et le calendrier des Reservations se parcourt aux fleches.
+// UN delegue : les rendus se repeignent sans avoir a se rebrancher.
+document.addEventListener('keydown', (event) => {
+  const target = event.target;
+  if (!target || typeof target.matches !== 'function') return;
+  if ((event.key === 'Enter' || event.key === ' ') && target.matches('.slot-cell.clickable, .booking')) {
+    event.preventDefault();
+    target.click();
+    return;
+  }
+  const deltas = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+  if (deltas[event.key] && target.matches('.pv2-cal-cell[data-cal-date]')) {
+    event.preventDefault();
+    const d = parseLocalDate(target.dataset.calDate);
+    d.setDate(d.getDate() + deltas[event.key]);
+    // Format LOCAL : toISOString est en UTC et reculait d un jour le soir.
+    const pad = (n) => String(n).padStart(2, '0');
+    const cible = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const next = document.querySelector(`.pv2-cal-cell[data-cal-date="${cible}"]`);
+    if (next) next.focus();
+  }
+});
+
+// ── CONFIRMATION PRODUIT (audit UX 2026-08-25) ──────────────────────────────
+// La console parle la langue du produit, jamais celle du navigateur : les
+// actions destructives se confirment dans CE dialog (Echap ou clic hors
+// cadre = non, focus pose sur Annuler). Meme doctrine que le formulaire
+// d entretien des pistes, qui a tue le prompt() la veille.
+function staffConfirm({ title, body = '', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false }) {
+  return new Promise((resolve) => {
+    const host = document.createElement('div');
+    host.className = 'staff-confirm-overlay';
+    host.innerHTML = `<div class="staff-confirm" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <strong>${escapeHtml(title)}</strong>
+      ${body ? `<p>${escapeHtml(body)}</p>` : ''}
+      <div class="staff-confirm-actions">
+        <button type="button" data-role="confirm-cancel">${escapeHtml(cancelLabel)}</button>
+        <button type="button" class="${danger ? 'is-danger' : 'is-primary'}" data-role="confirm-ok">${escapeHtml(confirmLabel)}</button>
+      </div>
+    </div>`;
+    const done = (value) => {
+      host.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(value);
+    };
+    const onKey = (event) => { if (event.key === 'Escape') { event.stopPropagation(); done(false); } };
+    host.addEventListener('click', (event) => { if (event.target === host) done(false); });
+    host.querySelector('[data-role="confirm-ok"]').onclick = () => done(true);
+    host.querySelector('[data-role="confirm-cancel"]').onclick = () => done(false);
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(host);
+    host.querySelector('[data-role="confirm-cancel"]').focus();
+  });
 }
 
 document.addEventListener('click', (event) => {

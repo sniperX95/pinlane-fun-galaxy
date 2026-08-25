@@ -16044,3 +16044,53 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
 .pv2-trail-kind { flex: none; width: 42px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .pv2-trail-kind.is-page { color: var(--accent); }
 .pv2-trail-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* ACCESSIBILITE CONSOLE (audit UX 2026-08-25). Ce qui se clique se prend au
+   clavier et SE VOIT au focus ; les confirmations parlent la langue du
+   produit (staff-confirm), jamais celle du navigateur. */
+button.pv2-cal-cell { font: inherit; text-align: inherit; width: 100%; cursor: pointer; }
+.slot-cell.clickable:focus-visible,
+.booking:focus-visible,
+button.pv2-cal-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  z-index: 3;
+}
+
+.staff-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 480;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.staff-confirm {
+  width: min(430px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.staff-confirm strong { font-size: 15px; line-height: 1.35; }
+.staff-confirm p { font-size: 13px; color: var(--muted); white-space: pre-line; margin: 0; }
+.staff-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.staff-confirm-actions button {
+  min-height: 40px;
+  padding: 6px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.staff-confirm-actions button.is-primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.staff-confirm-actions button.is-danger { background: var(--danger); border-color: var(--danger); color: #ffffff; }
+.staff-confirm-actions button:hover { filter: brightness(1.08); }

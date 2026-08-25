@@ -7115,7 +7115,11 @@ body.client-mode #clientView .btn-primary.is-sealed,
   #clientView .step1-body:not(.is-solo) { display: flex; flex-direction: column; }
   #clientView .step1-body:not(.is-solo) > * { flex: none; }
   #clientView .step1-body:not(.is-solo) .s1-what { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  #clientView #step1:not(.is-options) #activityPicker { flex: 1 0 auto; display: flex; flex-direction: column; }
+  /* :not(.hidden) : cette regle etirait AUSSI le picker que le mode
+     « Nos Formules » venait de cacher (display:flex bat .hidden en fin de
+     feuille) : les activites restaient a l ecran sous les formules
+     (2026-08-25, capture Movsar). */
+  #clientView #step1:not(.is-options) #activityPicker:not(.hidden) { flex: 1 0 auto; display: flex; flex-direction: column; }
   /* Des cartes MODEREES, l espace rendu en bas (2026-08-25, Movsar :
      « fait moins gros, un petit espace en haut et surtout en bas ») :
      les rangees plafonnent a 84 px, le reste de la hauteur se depose

@@ -301,6 +301,22 @@ async function main() {
     // --- VARIANTE ANCRES (bowling + laser -> grille + Valider) -------------
     console.log(`\n[${shape.width}x${shape.height} ${shape.scheme} tactile : etape creneau, variante grille d ancres]`);
     await bootTunnel(page);
+    // NOS FORMULES NE MONTRE PAS LA CARTE (2026-08-25, Movsar : « quand on
+    // va dans formules ca continue d afficher les choix genre bowling »).
+    // La regle mobile qui etire la grille d activites ecrasait le .hidden
+    // pose par le bascule de mode : on VERIFIE l exclusivite des modes.
+    await page.evaluate(() => { setType('formule'); });
+    await page.waitForTimeout(500);
+    const modeFormule = await page.evaluate(() => ({
+      activitesVisibles: [...document.querySelectorAll('.activity-card')].filter((el) => el.offsetParent !== null).length,
+      pickerAffiche: (() => { const p = document.getElementById('activityPicker'); return p ? getComputedStyle(p).display !== 'none' : false; })(),
+      blocFormules: (() => { const b = document.getElementById('formuleBlock'); return b ? !b.classList.contains('hidden') : false; })(),
+    }));
+    ok(modeFormule.activitesVisibles === 0 && !modeFormule.pickerAffiche,
+      `mode Formules : AUCUNE carte d activite ne reste a l ecran (${modeFormule.activitesVisibles} visibles, picker affiche : ${modeFormule.pickerAffiche})`);
+    ok(modeFormule.blocFormules, 'mode Formules : le bloc des formules est celui qui s affiche');
+    await page.evaluate(() => { setType('carte'); });
+    await page.waitForTimeout(400);
     await page.evaluate((d) => {
       state.booking.date = d; state.booking.pax = 6; state.booking.mode = 'carte';
       state.booking.venueConfirmed = true;

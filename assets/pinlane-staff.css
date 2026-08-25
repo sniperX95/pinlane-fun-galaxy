@@ -5436,25 +5436,7 @@ body.dashboard-detail-open { overflow: hidden; }
 
 .utility-mini-empty { padding: var(--space-4); font-size: 12px; }
 .utility-empty strong { color: var(--text); font-size: 14px; font-weight: 500; }
-.utility-state-note { color: var(--faint); font-size: 12px; }
 
-.utility-inline-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease);
-}
-
-.utility-inline-action:hover { background: var(--accent-soft); }
 
 /* Cartes réservation utilitaires */
 .utility-res-stack { display: grid; gap: var(--space-2); }
@@ -5532,85 +5514,89 @@ body.dashboard-detail-open { overflow: hidden; }
 .utility-arrival-side ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; display: grid; gap: 4px; }
 
 /* Pistes bowling */
-.utility-lane-console { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--space-3); }
-
-.utility-lane {
+/* LE MUR DES PISTES et LE TABLEAU LASER (2026-08-25) : postes d action.
+   Une rangee par piste : etat vivant, reglette du jour cliquable (resa ->
+   detail, creux -> vente), resas a replacer quand la piste est fermee,
+   occupation 30 j discrete en bout de rangee. */
+.lane-board { display: grid; gap: 8px; }
+.lane-row {
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.utility-lane.maintenance { border-style: dashed; background: var(--page); }
-
-.utility-lane-head { display: grid; gap: 2px; }
-.utility-lane-head span { color: var(--muted); font-size: 12px; font-weight: 500; }
-.utility-lane-head strong { font-size: 14px; font-weight: 600; }
-.utility-lane-head small { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
-
-.utility-lane-meter { position: relative; height: 6px; border-radius: var(--radius-full); background: var(--subtle); overflow: hidden; }
-.utility-lane-meter i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: var(--radius-full); }
-.utility-lane.maintenance .utility-lane-meter i { background: var(--warning); }
-
-.utility-lane-next { font-size: 12px; color: var(--muted); min-height: 30px; }
-.utility-lane-next b { display: block; color: var(--text); font-weight: 600; }
-
-.utility-lane button {
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.utility-lane button:hover { background: var(--subtle); }
-
-/* Sessions laser (contrôle) */
-.utility-laser-control { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); }
-
-.utility-session {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.utility-session-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.utility-session-head strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
-.utility-session-head span { display: block; color: var(--faint); font-size: 11px; margin-top: 2px; }
-.utility-session-head b { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
-
-.utility-session-bar { position: relative; height: 6px; border-radius: var(--radius-full); background: var(--subtle); overflow: hidden; }
-.utility-session-bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: var(--radius-full); }
-
-.utility-session-groups { display: grid; gap: 4px; }
-
-.utility-session-groups button {
-  display: flex;
-  justify-content: space-between;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 4px 14px;
   align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 0 10px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease);
 }
+.lane-row.is-maintenance { border-left: 3px solid var(--warning); }
+.lane-row-id { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.lane-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--success); flex: none; }
+.lane-row.is-busy .lane-dot { background: var(--accent); }
+.lane-row.is-maintenance .lane-dot { background: var(--warning); }
+.lane-row-status { font-size: 12.5px; margin-bottom: 5px; }
+.lane-strip { position: relative; height: 16px; border-radius: 8px; background: var(--subtle); overflow: hidden; }
+.lane-row.is-maintenance .lane-strip { background: repeating-linear-gradient(45deg, var(--subtle), var(--subtle) 6px, transparent 6px, transparent 12px); }
+.lane-strip-open, .lane-strip-close {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-family: var(--font-data); font-size: 9.5px; color: var(--muted);
+  pointer-events: none; z-index: 1;
+}
+.lane-strip-open { left: 4px; }
+.lane-strip-close { right: 4px; }
+.lane-slot, .lane-gap { position: absolute; top: 0; bottom: 0; border: 0; padding: 0; cursor: pointer; }
+.lane-slot { background: var(--accent); border-radius: 4px; opacity: 0.85; min-width: 6px; z-index: 2; }
+.lane-slot:hover { opacity: 1; }
+.lane-gap { background: transparent; }
+.lane-gap:hover { background: color-mix(in srgb, var(--success) 24%, transparent); }
+.lane-relocate { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--danger); font-weight: 600; }
+.lane-relocate button {
+  border: 1px solid var(--danger); border-radius: 999px; background: transparent;
+  color: var(--danger); font-size: 12px; font-weight: 600; padding: 2px 10px; min-height: 28px; cursor: pointer;
+}
+.lane-relocate button:hover { background: var(--danger); color: #ffffff; }
+.lane-row-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.lane-pct { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--muted); }
+.lane-pct.is-weak { color: var(--warning); font-weight: 700; }
+.lane-row-actions { display: flex; gap: 6px; }
+.lane-row-actions button {
+  border: 1px solid var(--line-strong); border-radius: 8px; background: transparent;
+  color: var(--text); font-size: 12px; padding: 3px 10px; min-height: 28px; cursor: pointer;
+}
+.lane-row-actions button:hover { background: var(--subtle); }
 
-.utility-session-groups button:hover { background: var(--subtle); }
-.utility-session-groups em { font-style: normal; color: var(--faint); font-variant-numeric: tabular-nums; }
+.laser-board { display: grid; gap: 8px; }
+.laser-next {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 12px 14px; font-size: 14px;
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg); background: var(--surface);
+}
+.laser-next strong { font-family: var(--font-data); font-size: 18px; }
+.laser-next button {
+  border: 1px solid var(--accent); border-radius: 999px; background: var(--accent);
+  color: #ffffff; padding: 5px 14px; font-weight: 700; font-size: 12.5px; min-height: 32px; cursor: pointer;
+}
+.laser-session { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.laser-session-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; }
+.laser-session-head strong, .laser-session-head b { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.laser-fill { height: 8px; border-radius: 999px; background: var(--subtle); overflow: hidden; margin: 6px 0; }
+.laser-fill i { display: block; height: 100%; background: var(--accent); }
+.laser-fill.is-weak i { background: var(--warning); }
+.laser-session-groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.laser-session-groups button {
+  border: 1px solid var(--line-strong); border-radius: 999px; background: transparent;
+  color: var(--text); font-size: 12px; padding: 2px 10px; min-height: 28px; cursor: pointer;
+}
+.laser-session-groups button:hover { background: var(--subtle); }
+.laser-session-action { margin-top: 6px; }
+.laser-session-action button {
+  border: 1px solid var(--accent); border-radius: 999px; background: transparent;
+  color: var(--accent); font-weight: 700; font-size: 12px; padding: 3px 12px; min-height: 30px; cursor: pointer;
+}
+.laser-session-action button:hover { background: var(--accent); color: #ffffff; }
+.laser-session-action span { font-size: 12px; color: var(--muted); }
+.laser-30d { padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--subtle); border-radius: 8px; font-size: 12.5px; }
 
 /* --- Établissement : éditeur de configuration par centre --- */
 .establishment-page { display: grid; gap: var(--space-4); }
@@ -11170,7 +11156,6 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
   border-radius: var(--radius-full); background: var(--accent); color: var(--accent-contrast);
   font: 700 10.5px var(--font-data);
 }
-.utility-lane-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .groups-action-dismiss {
   flex: none; width: 24px; height: 24px; display: grid; place-items: center;
   border: 1px solid var(--line); border-radius: var(--radius-full); background: transparent;
@@ -16017,38 +16002,6 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
   .crm-segbar .crm-seg-count { order: 2; }
 }
 
-/* Performance 30 jours des ressources (pages Pistes bowling et Laser Game,
-   2026-08-25) : lignes label + jauge + valeurs, signal de sous-utilisation. */
-.utility-perf {
-  display: grid;
-  gap: 8px;
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-.utility-perf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.utility-perf-head h3 { margin: 0; font-size: 13.5px; }
-.utility-perf-head span { font-size: 12px; color: var(--muted); }
-.utility-perf-row { display: flex; align-items: center; gap: 10px; min-height: 24px; }
-.utility-perf-label { flex: none; width: 92px; font-size: 12.5px; font-weight: 600; }
-.utility-perf-meter { flex: 1; height: 8px; border-radius: 999px; background: var(--subtle); overflow: hidden; }
-.utility-perf-meter i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-.utility-perf-value { flex: none; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
-.utility-perf-row.is-weak .utility-perf-meter i { background: var(--warning); }
-.utility-perf-flag {
-  flex: none;
-  padding: 1px 8px;
-  border: 1px solid var(--warning);
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--warning);
-}
-.utility-perf-note { font-size: 12px; color: var(--text); padding: 6px 8px; border-left: 3px solid var(--accent); background: var(--subtle); border-radius: 6px; }
-.utility-perf-hours { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.utility-perf-chip { padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 999px; font-family: var(--font-data); font-size: 11.5px; }
 
 /* Vue « Parcours des equipes » du Journal (2026-08-25) : chronologie par
    personne, une ligne par page ouverte ou bouton touche. */

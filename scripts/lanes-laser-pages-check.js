@@ -1,11 +1,15 @@
-// Pages « Pistes bowling » et « Laser Game » de la console : des postes de
-// PILOTAGE, pas des listes du jour (verdict Movsar 2026-08-25 : « elles ne
-// servent a rien telles quelles, fais un truc super complet, vrm utile »).
-// Le gate verifie des CHIFFRES calcules a la main sur un dataset impose :
-// performance 30 jours par piste (heures, sous-utilisation), remplissage
-// laser 30 jours, et que la maintenance (comportement historique) marche
-// toujours. Presence sans comportement = faux vert : chaque assertion lit une
-// VALEUR, pas un selecteur.
+// Pages « Pistes bowling » et « Laser Game » : des POSTES D ACTION
+// (2e verdict Movsar 2026-08-25 : « jette tout, repense : une page ou on VA
+// pour REGLER des choses ou VOIR »). Ce qu on vient y faire :
+//   - fermer/rouvrir une piste, et REPLACER les resas d une piste en panne
+//     (le bouton ouvre LA resa, pas une liste) ;
+//   - voir l etat vivant par piste (occupee par qui jusqu a quand, creux) ;
+//   - vendre un creux : le clic ouvre la resa rapide PREREMPLIE ;
+//   - laser : repondre au comptoir (prochain lancement, places restantes),
+//     completer les sessions faibles du jour, decider sur 30 jours.
+// Chaque assertion exerce un GESTE (clic -> etat verifie) ou un chiffre
+// recalcule a la main sur le dataset impose. Presence sans comportement =
+// faux vert.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -34,7 +38,7 @@ function serveStatic() {
 async function installMock(page) {
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   await page.addInitScript(({ expiresAt }) => {
-    const perms = ['dashboard.view','planning.view','reservations.view','reservations.create','reservations.edit','reservations.status','clients.view','clients.edit','emails.view','emails.send','settings.manage','direction.view'];
+    const perms = ['dashboard.view','planning.view','reservations.view','reservations.create','reservations.quick','reservations.edit','reservations.status','clients.view','clients.edit','emails.view','emails.send','settings.manage','direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
     const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
     const R = [];
@@ -53,14 +57,18 @@ async function installMock(page) {
     add({ name: 'Jour P2', phone: '+32471009002', date: dstr(0), startTime: '15:00', duration: 1, pax: 3, price: 30, type: 'bowling', label: 'Bowling', lanes: [2] });
     add({ name: 'Jour Laser', phone: '+32471009003', date: dstr(0), startTime: '15:00', duration: 1, pax: 8, price: 80, type: 'laser', label: 'Laser' });
     const build = () => R.map((r) => ({ ...r }));
-    const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = 'active'; return a; }, {});
+    // Piste 2 en maintenance DATEE (panne pin-setter) : ses resas du jour
+    // sont A REPLACER. Le vrai serveur (api/staff-lanes + staff-state)
+    // porte laneStatuses ET laneMaintenance : le double fait pareil.
+    const lanes = () => Array.from({ length: 8 }).reduce((a, _, i) => { a[i + 1] = i + 1 === 2 ? 'maintenance' : 'active'; return a; }, {});
+    const laneMaintenance = () => ({ 2: { from: dstr(0), until: dstr(2), note: 'pin-setter' } });
     const J = (p) => new Response(JSON.stringify(p), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: `qa-${Date.now()}` } });
     const nf = window.fetch.bind(window);
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'Rachel', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
-      if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: build(), laneStatuses: lanes(), centerId: 'libramont' });
+      if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: build(), laneStatuses: lanes(), laneMaintenance: laneMaintenance(), centerId: 'libramont' });
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: build(), emails: [], agentEvents: [], centerId: 'libramont' });
       if (u.pathname === '/api/staff-lanes') { const b = JSON.parse(init.body || '{}'); return J({ ok: true, lane: { lane: b.lane, status: b.status } }); }
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'customRequests') return J({ ok: true, customRequests: [] });
@@ -93,64 +101,117 @@ async function main() {
     });
     await page.waitForTimeout(900);
 
-    console.log('\n[PISTES BOWLING : performance 30 jours]');
-    const perf = await page.evaluate(() => {
-      const bloc = document.querySelector('#staffUtilityPage .utility-perf');
-      const rows = bloc ? [...bloc.querySelectorAll('.utility-perf-row')] : [];
-      const lecture = (n) => {
-        const row = rows.find((r) => (r.textContent || '').includes(`Piste ${n}`));
-        return row ? row.textContent.replace(/\s+/g, ' ').trim() : '';
+    console.log('\n[PISTES : le mur des pistes, un geste par probleme]');
+    const mur = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#staffUtilityPage .lane-row')];
+      const lit = (n) => {
+        const row = rows.find((r) => r.dataset.lane === String(n));
+        if (!row) return null;
+        return {
+          texte: row.textContent.replace(/\s+/g, ' ').trim(),
+          maintenance: row.classList.contains('is-maintenance'),
+          slots: row.querySelectorAll('.lane-slot').length,
+          gaps: row.querySelectorAll('.lane-gap').length,
+          pct: Number((row.querySelector('[data-role="lane-pct"]') || {}).dataset?.pct),
+          replace: [...row.querySelectorAll('[data-role="lane-replace"] button')].map((b) => b.textContent.trim()),
+        };
       };
-      return { present: !!bloc, nb: rows.length, p1: lecture(1), p2: lecture(2), p3: lecture(3) };
+      return { nb: rows.length, p1: lit(1), p2: lit(2), p3: lit(3) };
     });
-    ok(perf.present, 'le bloc « Performance 30 jours » existe');
-    ok(perf.nb === 8, `une ligne par piste (${perf.nb})`);
-    ok(/36\s*h/.test(perf.p1), `piste 1 : 36 h reservees sur 30 j (« ${perf.p1} »)`);
-    ok(/18\s*h/.test(perf.p2), `piste 2 : 18 h reservees (« ${perf.p2} »)`);
-    ok(/sous-utilis/i.test(perf.p3), `piste 3 (0 h) est signalee sous-utilisee (« ${perf.p3} »)`);
-    ok(!/sous-utilis/i.test(perf.p1), 'piste 1 (la meilleure) n est PAS signalee');
+    ok(mur.nb === 8, `une rangee par piste (${mur.nb})`);
+    ok(mur.p1 && mur.p1.slots === 1, `piste 1 : sa resa du jour est posee sur la reglette (${mur.p1 && mur.p1.slots})`);
+    ok(mur.p1 && mur.p1.pct > 0 && mur.p2 && mur.p1.pct === mur.p2.pct * 2,
+      `l occupation 30 j est calculee (piste 1 ${mur.p1 && mur.p1.pct}% = 2x piste 2 ${mur.p2 && mur.p2.pct}%, 36 h vs 18 h)`);
+    ok(mur.p3 && mur.p3.slots === 0 && mur.p3.gaps >= 1, `piste 3 vide : son creux est offert a la vente (${mur.p3 && mur.p3.gaps} creux)`);
 
-    console.log('\n[PISTES BOWLING : le jour et la maintenance]');
-    const jour = await page.evaluate(() => {
-      const cartes = [...document.querySelectorAll('#staffUtilityPage .utility-lane')];
-      const p1 = cartes.find((c) => /Piste 1\b/.test(c.textContent));
-      return { cartes: cartes.length, p1: p1 ? p1.textContent.replace(/\s+/g, ' ') : '' };
-    });
-    ok(jour.cartes === 8, `8 cartes du jour (${jour.cartes})`);
-    ok(/2h/.test(jour.p1), `piste 1 : 2 h occupees aujourd hui (« ${jour.p1.slice(0, 80)} »)`);
-    // La maintenance MARCHE (comportement, pas presence) : basculer la piste 3.
+    console.log('\n[PISTES : la panne se REGLE d ici]');
+    ok(mur.p2.maintenance && /pin-setter/.test(mur.p2.texte), `piste 2 : la panne et sa note sont dites (« ${mur.p2.texte.slice(0, 90)} »)`);
+    ok(mur.p2.replace.length === 1 && /Jour P2/.test(mur.p2.replace[0]),
+      `la resa posee sur la piste en panne est A REPLACER (${mur.p2.replace.join(' | ') || 'aucune'})`);
+    // Le bouton ouvre LA resa (pas une liste) : c est le geste qui repare.
     await page.evaluate(() => {
-      const cartes = [...document.querySelectorAll('#staffUtilityPage .utility-lane')];
-      const p3 = cartes.find((c) => /Piste 3\b/.test(c.textContent));
-      const btn = [...p3.querySelectorAll('button')].find((b) => /Maintenance$/.test(b.textContent.trim()));
+      document.querySelector('.lane-row[data-lane="2"] [data-role="lane-replace"] button').click();
+    });
+    await page.waitForTimeout(500);
+    const ouverte = await page.evaluate(() => state.selectedRes && state.selectedRes.name);
+    ok(ouverte === 'Jour P2', `le bouton A REPLACER ouvre la resa touchee (${ouverte})`);
+    await page.evaluate(() => { state.selectedRes = null; save(); setView('staff'); openStaffMenuPage('lanes'); });
+    await page.waitForTimeout(600);
+
+    // Le creux de la piste 3 se VEND : clic -> resa rapide preremplie
+    // (meme geste que le planning : quickFromCell).
+    await page.evaluate(() => {
+      document.querySelector('.lane-row[data-lane="3"] .lane-gap').click();
+    });
+    await page.waitForTimeout(500);
+    // quickBookState est un let de module, pas une propriete de window :
+    // on le lit dans son scope global de script.
+    const creux = await page.evaluate(() => (typeof quickBookState !== 'undefined' && quickBookState
+      ? { lane: (quickBookState.lanes || [])[0], type: quickBookState.type }
+      : { lane: null, type: null }));
+    ok(creux.lane === 3 && creux.type === 'bowling', `le creux ouvre la resa rapide preremplie (piste ${creux.lane}, ${creux.type})`);
+    await page.evaluate(() => { if (typeof closeQuickBook === 'function') closeQuickBook(); });
+    await page.waitForTimeout(300);
+
+    // Fermer une piste marche toujours, et se voit ICI.
+    await page.evaluate(() => {
+      const row = document.querySelector('.lane-row[data-lane="4"]');
+      const btn = [...row.querySelectorAll('button')].find((b) => /Fermer/.test(b.textContent));
       btn.click();
     });
     await page.waitForTimeout(500);
-    const maint = await page.evaluate(() => {
-      const cartes = [...document.querySelectorAll('#staffUtilityPage .utility-lane')];
-      const p3 = cartes.find((c) => /Piste 3\b/.test(c.textContent));
-      return p3 ? p3.className : '';
+    const fermee = await page.evaluate(() => {
+      const row = document.querySelector('.lane-row[data-lane="4"]');
+      return row ? row.classList.contains('is-maintenance') : false;
     });
-    ok(/maintenance/.test(maint), `la bascule maintenance marche toujours (${maint})`);
+    ok(fermee, '« Fermer » bascule la piste et la rangee le MONTRE sans quitter la page');
 
-    console.log('\n[LASER GAME : remplissage et manque a gagner]');
+    console.log('\n[LASER : repondre, completer, decider]');
     await page.evaluate(() => { openStaffMenuPage('laserGame'); });
     await page.waitForTimeout(900);
     const laser = await page.evaluate(() => {
-      const bloc = document.querySelector('#staffUtilityPage .utility-perf');
-      const texte = bloc ? bloc.textContent.replace(/\s+/g, ' ').trim() : '';
-      const sessions = [...document.querySelectorAll('#staffUtilityPage .utility-session')];
-      const ajout = sessions.length ? (sessions[0].querySelector('.utility-inline-action') || {}).textContent || '' : '';
-      return { present: !!bloc, texte, sessions: sessions.length, ajout: ajout.trim() };
+      const head = document.querySelector('#staffUtilityPage .laser-next');
+      const sessions = [...document.querySelectorAll('#staffUtilityPage .laser-session')];
+      const s0 = sessions[0] || null;
+      return {
+        bandeau: head ? head.textContent.replace(/\s+/g, ' ').trim() : '',
+        sessions: sessions.length,
+        s0: s0 ? s0.textContent.replace(/\s+/g, ' ').trim() : '',
+        completer: s0 ? [...s0.querySelectorAll('button')].some((b) => /Compl[ée]ter|Ajouter/.test(b.textContent)) : false,
+        bilan: (document.querySelector('#staffUtilityPage .laser-30d') || {}).textContent || '',
+        heureNow: new Date().getHours() + new Date().getMinutes() / 60,
+      };
     });
-    ok(laser.present, 'le bloc « Performance 30 jours » laser existe');
-    ok(/10\b.*lancement/i.test(laser.texte), `10 lancements sur 30 j (« ${laser.texte.slice(0, 120)} »)`);
-    ok(/150\b/.test(laser.texte), '150 joueurs sur 30 j');
-    ok(/50\s*%/.test(laser.texte), 'remplissage moyen 50 % (15 joueurs / capacite 30)');
-    ok(/150\b.*(vide|restee|libre)|(vide|restee|libre).*150/i.test(laser.texte), `150 places restees vides sur 30 j dites (« ${laser.texte.slice(0, 160)} »)`);
-    ok(laser.sessions === 1, `le lancement du jour est liste (${laser.sessions})`);
-    ok(/22 places/.test(laser.ajout), `la session du jour peut accueillir 22 joueurs de plus (« ${laser.ajout} »)`);
-
+    // Le bandeau repond a LA question du comptoir, calculee comme le client :
+    // avant 15 h -> « Prochain lancement 15:00 · 22 places » ; apres -> il
+    // dit qu il n y a plus de lancement a venir.
+    // L heure du bandeau doit etre CELLE de la session rendue (le moteur
+    // pose la fenetre laser avec son briefing : 15:05, pas 15:00 brut),
+    // et le branchement futur/passe se fait sur CETTE heure-la, pas sur un
+    // 15:00 suppose (attrape par un run de suite a 15:0x pile).
+    const heureSession = (laser.s0.match(/^(\d{2}:\d{2})/) || [])[1] || '';
+    const heureSessionDec = heureSession ? Number(heureSession.split(':')[0]) + Number(heureSession.split(':')[1]) / 60 : 15;
+    if (laser.heureNow < heureSessionDec) {
+      ok(heureSession && laser.bandeau.includes(heureSession) && /22\s*places/.test(laser.bandeau),
+        `le bandeau repond au comptoir, coherent avec la session (« ${laser.bandeau.slice(0, 90)} » / session ${heureSession})`);
+    } else {
+      ok(/[Aa]ucun.*lancement/.test(laser.bandeau),
+        `plus de lancement a venir : le bandeau le dit (« ${laser.bandeau.slice(0, 90)} »)`);
+    }
+    ok(laser.sessions === 1 && /8\s*\/\s*30/.test(laser.s0), `la session du jour est la, avec son remplissage (« ${laser.s0.slice(0, 80)} »)`);
+    if (laser.heureNow < heureSessionDec) {
+      ok(laser.completer, 'une session future a 27 % porte son geste : Completer');
+    }
+    ok(/50\s*%/.test(laser.bilan) && /10\s*lancement/.test(laser.bilan) && /150/.test(laser.bilan),
+      `le bilan 30 j est chiffre juste : 50 %, 10 lancements, 150 places vides (« ${laser.bilan.replace(/\s+/g, ' ').trim().slice(0, 140)} »)`);
+    // Un groupe de la session s ouvre d un clic (repondre a « c est qui ? »).
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('#staffUtilityPage .laser-session button')].find((b) => /Jour Laser/.test(b.textContent));
+      if (btn) btn.click();
+    });
+    await page.waitForTimeout(500);
+    const groupe = await page.evaluate(() => state.selectedRes && state.selectedRes.name);
+    ok(groupe === 'Jour Laser', `un groupe s ouvre d un clic (${groupe})`);
     ok(errs.length === 0, `zero erreur JS (${errs.length}${errs.length ? ' : ' + errs[0] : ''})`);
   } catch (e) {
     console.error('\nlanes-laser-pages-check FAIL:', e.stack || e.message);

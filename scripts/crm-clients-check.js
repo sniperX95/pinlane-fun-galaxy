@@ -84,7 +84,16 @@ async function installMock(page) {
       const raw = typeof input === 'string' ? input : input?.url || '';
       const u = new URL(raw, window.location.origin);
       if (u.pathname === '/api/staff-auth') return J({ ok: true, authenticated: true, session: qaSession, accessControl: { selectedRoleId: 'direction', selectedMemberId: 'qa', roles: [{ id: 'direction', name: 'Direction', code: 'DI', tone: 'admin', accessCode: 'X', updatedAt: new Date().toISOString(), locked: true, permissions: perms }], members: [{ id: 'qa', name: 'Rachel', contact: 'q@x', roleId: 'direction', status: 'active', code: 'X', lastSeen: new Date().toISOString() }], events: [], permissions: perms } });
-      if (u.pathname === '/api/staff-state') return J({ ok: true, revision: 'qa', reservations: build(), laneStatuses: lanes(), centerId: 'libramont' });
+      if (u.pathname === '/api/staff-state') {
+        // FIDELITE AU VRAI SERVEUR (2026-08-25) : il repond 304 quand rien
+        // n a change (If-None-Match). L ancien mock renvoyait un etag NEUF
+        // a chaque poll : chaque poll passait pour de nouvelles donnees,
+        // invalidait le memo des lignes, et ce rebuild legitime tombait
+        // dans la fenetre des mesures perf sur machine lente (flaky).
+        const known = (init.headers && (init.headers['If-None-Match'] || init.headers['if-none-match'])) || '';
+        if (known === 'qa-stable') return new Response(null, { status: 304, headers: { etag: 'qa-stable' } });
+        return new Response(JSON.stringify({ ok: true, revision: 'qa-stable', reservations: build(), laneStatuses: lanes(), centerId: 'libramont' }), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', etag: 'qa-stable' } });
+      }
       if (u.pathname === '/api/admin-range') return J({ ok: true, reservations: build(), emails: [], agentEvents: [], centerId: 'libramont' });
       if (u.pathname === '/api/ops' && String(init.method || 'GET').toUpperCase() === 'POST') {
         const b = JSON.parse(init.body || '{}');

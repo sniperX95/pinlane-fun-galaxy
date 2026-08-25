@@ -10226,78 +10226,178 @@ function computeStaffLaserStats30() {
   return { sessions: list.length, players, fill, emptySeats, topHours, capacity };
 }
 
-function renderStaffLanePerf30() {
-  const stats = computeStaffLaneStats30();
-  if (!stats.totalHours) {
-    return `<section class="utility-perf"><div class="utility-perf-head"><h3>Performance 30 jours</h3><span>Aucune heure de bowling reservee sur les 30 derniers jours charges.</span></div></section>`;
+// ── LE MUR DES PISTES (2026-08-25, 2e verdict Movsar : « une page ou on VA
+// pour REGLER des choses ou VOIR »). Ce qu on vient y faire :
+//   1. REGLER une panne : fermer/rouvrir, et REPLACER les resas posees sur
+//      la piste fermee (chaque bouton ouvre LA resa) ;
+//   2. VOIR l etat vivant : occupee par qui jusqu a quand, les creux du
+//      jour piste par piste (reglette cliquable) ;
+//   3. VENDRE un creux : le clic ouvre la resa rapide preremplie (meme
+//      geste que le planning : quickFromCell) ;
+//   4. DECIDER : l occupation 30 j par piste, en bout de rangee, discrete.
+function buildStaffLaneBoardModel() {
+  const win = getPlanningWindow(state.currentDate);
+  const reservations = getStaffUtilityReservations();
+  const allWindows = reservations.flatMap((reservation) => getBowlingWindowsFromReservation(reservation).map((window) => ({ ...window, reservation })));
+  const isToday = state.currentDate === todayStr();
+  const now = isToday && !win.closed ? currentTimeDecimal() : null;
+  const stats30 = computeStaffLaneStats30();
+  const lanes = [];
+  for (let lane = 1; lane <= TOTAL_LANES; lane += 1) {
+    const laneWindows = allWindows.filter((w) => (w.lanes || []).includes(lane)).sort((a, b) => a.start - b.start);
+    const maintenance = state.laneStatuses?.[lane] === 'maintenance';
+    const maintInfo = maintenance ? (state.laneMaintenance?.[lane] || {}) : null;
+    const current = now != null ? laneWindows.find((w) => w.start <= now && w.end > now) : null;
+    const next = laneWindows.find((w) => (now == null ? true : w.start > now)) || null;
+    // Les creux du jour (>= 1 h) : chacun est un bouton de vente.
+    const gaps = [];
+    if (!win.closed) {
+      let cursor = win.open;
+      laneWindows.forEach((w) => {
+        if (w.start - cursor >= 1) gaps.push({ start: cursor, end: w.start });
+        cursor = Math.max(cursor, w.end);
+      });
+      if (win.close - cursor >= 1) gaps.push({ start: cursor, end: win.close });
+    }
+    const st = stats30.lanes[lane - 1] || { hours: 0, resas: 0 };
+    lanes.push({
+      lane, maintenance, maintInfo, laneWindows, current, next, gaps,
+      // Piste fermee = ses resas du jour sont un PROBLEME a regler ici.
+      toRelocate: maintenance ? laneWindows : [],
+      pct30: stats30.openHours ? Math.round((st.hours / stats30.openHours) * 100) : 0,
+      hours30: st.hours,
+      weak: stats30.average >= 2 && st.hours < stats30.average * 0.5,
+    });
   }
-  const max = Math.max(...stats.lanes.map((item) => item.hours), 1);
-  const rows = stats.lanes.map((item) => {
-    const pct = stats.openHours ? Math.round((item.hours / stats.openHours) * 100) : 0;
-    // Une piste nettement sous la moyenne merite un OEIL (machine capricieuse,
-    // fond de salle...) : signal, jamais verdict.
-    const weak = stats.average >= 2 && item.hours < stats.average * 0.5;
-    return `<div class="utility-perf-row${weak ? ' is-weak' : ''}">
-      <span class="utility-perf-label">Piste ${item.lane}</span>
-      <span class="utility-perf-meter"><i style="width:${Math.round((item.hours / max) * 100)}%"></i></span>
-      <span class="utility-perf-value">${formatDurationLabel(item.hours)} · ${item.resas} résa${item.resas > 1 ? 's' : ''} · ${pct}%</span>
-      ${weak ? '<span class="utility-perf-flag">Sous-utilisée</span>' : ''}
+  const active = lanes.filter((item) => !item.maintenance);
+  const busyNow = now == null ? 0 : active.filter((item) => item.current).length;
+  const busyEnds = active.map((item) => item.current).filter(Boolean).map((w) => w.end);
+  const nextFree = now != null && busyEnds.length ? numToTime(Math.min(...busyEnds)) : '';
+  let eveningSold = 0;
+  allWindows.forEach((w) => { eveningSold += Math.max(0, Math.min(w.end, 22) - Math.max(w.start, 19)); });
+  const eveningSpan = win.closed ? 0 : Math.max(0, Math.min(22, win.close) - 19);
+  const eveningPct = eveningSpan > 0 && active.length ? Math.min(100, Math.round((eveningSold / (eveningSpan * active.length)) * 100)) : 0;
+  const relocateCount = lanes.reduce((sum, item) => sum + item.toRelocate.length, 0);
+  const dayHours = allWindows.reduce((sum, w) => sum + Math.max(0, w.end - w.start), 0);
+  const kpis = now != null ? [
+    ['Maintenant', `${busyNow}/${active.length}`, 'pistes occupées'],
+    ['Se libère', nextFree || 'aucune', nextFree ? 'prochaine piste libre' : 'rien d’occupé'],
+    ['Soirée 19-22h', eveningSpan > 0 ? `${eveningPct}%` : 'fermé', 'des heures vendues'],
+    ['À replacer', relocateCount, relocateCount ? 'résas sur piste fermée' : 'rien en souffrance'],
+  ] : [
+    ['Résas bowling', allWindows.length, 'sur la date affichée'],
+    ['Heures vendues', formatDurationLabel(dayHours), 'toutes pistes'],
+    ['Fermées', lanes.length - active.length, 'pistes en maintenance'],
+    ['À replacer', relocateCount, 'résas sur piste fermée'],
+  ];
+  return { win, lanes, isToday, now, kpis };
+}
+
+function renderStaffLaneBoard(model = buildStaffLaneBoardModel()) {
+  const { win } = model;
+  const span = Math.max(1, win.closed ? 12 : win.close - win.open);
+  const pos = (value) => Math.max(0, Math.min(100, ((value - win.open) / span) * 100));
+  const rows = model.lanes.map((item) => {
+    const gapsHtml = item.gaps.map((gap) => `<button type="button" class="lane-gap" style="left:${pos(gap.start)}%;width:${Math.max(2, pos(gap.end) - pos(gap.start))}%" title="Réserver ${numToTime(gap.start)} - ${numToTime(gap.end)}" onclick="quickFromCell(${item.lane}, ${gap.start})" aria-label="Réserver la piste ${item.lane} de ${numToTime(gap.start)} à ${numToTime(gap.end)}"></button>`).join('');
+    const slotsHtml = item.laneWindows.map((w) => `<button type="button" class="lane-slot" style="left:${pos(w.start)}%;width:${Math.max(2, pos(w.end) - pos(w.start))}%" title="${escapeHtml(w.reservation.name || 'Client')} · ${numToTime(w.start)} - ${numToTime(w.end)}" onclick="openStaffReservationDetail(${staffClientJs(w.reservation.id)})"></button>`).join('');
+    const strip = win.closed ? '' : `<div class="lane-strip"><span class="lane-strip-open">${numToTime(win.open)}</span>${gapsHtml}${slotsHtml}<span class="lane-strip-close">${numToTime(win.close)}</span></div>`;
+    let statut;
+    if (item.maintenance) {
+      const info = item.maintInfo || {};
+      statut = `Fermée${info.note ? ` · ${escapeHtml(info.note)}` : ''}${info.until ? ` · jusqu’au ${escapeHtml(info.until)}` : ''}`;
+    } else if (item.current) {
+      statut = `Occupée · <b>${escapeHtml(item.current.reservation.name || 'Client')}</b> (${Number(item.current.reservation.pax || 0)} j.) jusqu’à ${numToTime(item.current.end)}${item.next ? `, puis ${numToTime(item.next.start)}` : ''}`;
+    } else if (model.now != null) {
+      statut = item.next ? `Libre jusqu’à ${numToTime(item.next.start)} · <b>${escapeHtml(item.next.reservation.name || 'Client')}</b> ensuite` : 'Libre jusqu’à la fermeture';
+    } else {
+      statut = item.laneWindows.length ? `${item.laneWindows.length} résa${item.laneWindows.length > 1 ? 's' : ''} sur la date` : 'Libre sur la date';
+    }
+    const relocate = item.toRelocate.length ? `<div class="lane-relocate" data-role="lane-replace"><span>À replacer :</span>${item.toRelocate.map((w) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(w.reservation.id)})">${escapeHtml(w.reservation.name || 'Client')} · ${numToTime(w.start)}</button>`).join('')}</div>` : '';
+    const actions = item.maintenance
+      ? `<button type="button" onclick="toggleMaint(${item.lane}, event)">Rouvrir</button>`
+      : `<button type="button" onclick="toggleMaint(${item.lane}, event)">Fermer</button><button type="button" onclick="toggleMaintDated(${item.lane}, event)">Entretien…</button>`;
+    return `<div class="lane-row${item.maintenance ? ' is-maintenance' : ''}${item.current ? ' is-busy' : ''}" data-lane="${item.lane}">
+      <div class="lane-row-id"><span class="lane-dot" aria-hidden="true"></span><strong>Piste ${item.lane}</strong></div>
+      <div class="lane-row-main">
+        <div class="lane-row-status">${statut}</div>
+        ${strip}
+        ${relocate}
+      </div>
+      <div class="lane-row-side">
+        <span class="lane-pct${item.weak ? ' is-weak' : ''}" data-role="lane-pct" data-pct="${item.pct30}" title="${formatDurationLabel(item.hours30)} réservées sur les 30 derniers jours">30 j · ${item.pct30}%${item.weak ? ' · sous-utilisée' : ''}</span>
+        <div class="lane-row-actions">${actions}</div>
+      </div>
     </div>`;
   }).join('');
-  return `<section class="utility-perf">
-    <div class="utility-perf-head"><h3>Performance 30 jours</h3><span>${formatDurationLabel(stats.totalHours)} réservées · ${formatDurationLabel(stats.openHours)} ouvrées par piste · % = occupation</span></div>
-    ${rows}
-  </section>`;
+  return `<div class="lane-board">${rows}</div>`;
 }
 
-function renderStaffLaserPerf30() {
-  const stats = computeStaffLaserStats30();
-  if (!stats.sessions) {
-    return `<section class="utility-perf"><div class="utility-perf-head"><h3>Performance 30 jours</h3><span>Aucun lancement laser sur les 30 derniers jours charges.</span></div></section>`;
+// ── LE TABLEAU LASER : repondre au comptoir (prochain lancement, places
+// restantes), COMPLETER les sessions faibles a venir, decider sur 30 jours.
+function buildStaffLaserBoardModel() {
+  const win = getPlanningWindow(state.currentDate);
+  const sessions = getStaffUtilityLaserSessions();
+  const isToday = state.currentDate === todayStr();
+  const now = isToday && !win.closed ? currentTimeDecimal() : null;
+  const upcoming = now == null ? sessions.slice() : sessions.filter((session) => session.start > now);
+  const next = upcoming[0] || null;
+  const weakUpcoming = upcoming.filter((session) => session.players / LASER_GAME_MAX_PLAYERS < 0.5);
+  const playersToday = sessions.reduce((sum, session) => sum + session.players, 0);
+  const stats30 = computeStaffLaserStats30();
+  const gaps = [];
+  if (!win.closed) {
+    let cursor = win.open;
+    sessions.forEach((session) => {
+      if (session.start - cursor >= 1.5) gaps.push({ start: cursor, end: session.start });
+      cursor = Math.max(cursor, session.end);
+    });
+    if (win.close - cursor >= 1.5) gaps.push({ start: cursor, end: win.close });
   }
-  const heures = stats.topHours.map(([hour, players]) => `<span class="utility-perf-chip">${String(hour).padStart(2, '0')}h · ${players} joueurs</span>`).join('');
-  return `<section class="utility-perf">
-    <div class="utility-perf-head"><h3>Performance 30 jours</h3><span>${stats.sessions} lancements · ${stats.players} joueurs · capacité ${stats.capacity} par lancement</span></div>
-    <div class="utility-perf-row">
-      <span class="utility-perf-label">Remplissage moyen</span>
-      <span class="utility-perf-meter"><i style="width:${stats.fill}%"></i></span>
-      <span class="utility-perf-value">${stats.fill}%</span>
-    </div>
-    <div class="utility-perf-note">${stats.emptySeats} places restées vides sur des lancements déjà lancés : chaque groupe ajouté sur un créneau existant est du chiffre sans coût.</div>
-    ${heures ? `<div class="utility-perf-hours"><span>Heures les plus fortes :</span>${heures}</div>` : ''}
-  </section>`;
+  const nextPlaces = next ? Math.max(0, LASER_GAME_MAX_PLAYERS - next.players) : 0;
+  const kpis = [
+    ['Prochain lancement', next ? numToTime(next.start) : 'aucun', next ? `${nextPlaces} places restantes` : (isToday ? 'plus rien aujourd’hui' : 'sur la date affichée')],
+    ['Sessions du jour', sessions.length, `${playersToday} joueur${playersToday > 1 ? 's' : ''}`],
+    ['À compléter', weakUpcoming.length, 'sessions faibles à venir'],
+    ['Remplissage 30 j', `${stats30.fill}%`, `${stats30.sessions} lancements`],
+  ];
+  return { win, sessions, next, nextPlaces, weakUpcoming, playersToday, stats30, gaps, isToday, now, kpis };
 }
 
-function renderStaffUtilityLaneGrid(reservations = getStaffUtilityReservations()) {
-  const bowlingWindows = reservations.flatMap(reservation => getBowlingWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
-  return `<div class="utility-lane-console">
-    ${Array.from({ length: TOTAL_LANES }, (_, index) => {
-      const lane = index + 1;
-      const status = state.laneStatuses?.[lane] === 'maintenance' ? 'maintenance' : 'active';
-      const windows = bowlingWindows.filter(window => (window.lanes || []).includes(lane));
-      const hours = windows.reduce((sum, window) => sum + Number(window.duration || 0), 0);
-      const next = windows.sort((left, right) => Number(left.start) - Number(right.start))[0];
-      const fill = Math.min(100, Math.round((hours / Math.max(1, getPlanningWindow(state.currentDate).close - getPlanningWindow(state.currentDate).open)) * 100));
-      return `<article class="utility-lane ${escapeHtml(status)}">
-        <div class="utility-lane-head">
-          <span>Piste ${lane}</span>
-          <strong>${status === 'maintenance' ? 'Maintenance' : `${windows.length} réservation${windows.length > 1 ? 's' : ''}`}</strong>
-          <small>${hours ? `${formatDurationLabel(hours)} occupées` : 'Libre sur la date'}${next ? ` · ${formatClockDisplay(next.start)}` : ''}</small>
-        </div>
-        <div class="utility-lane-meter"><i style="width:${fill}%"></i></div>
-        <div class="utility-lane-next">${next ? `<b>${escapeHtml(next.reservation.name || 'Client')}</b><span>${escapeHtml(getReservationLabel(next.reservation))}</span>` : '<span>Aucun bloc planifié</span>'}</div>
-        <div class="utility-lane-actions">
-          <button type="button" onclick="toggleMaint(${lane}, event)">${status === 'maintenance' ? 'Réactiver' : 'Maintenance'}</button>
-          ${status !== 'maintenance' ? `<button type="button" onclick="toggleMaintDated(${lane}, event)">Maintenance datée…</button>` : ''}
-        </div>
-        ${status === 'maintenance' && state.laneMaintenance?.[lane] && (state.laneMaintenance[lane].from || state.laneMaintenance[lane].until)
-          ? `<small class="utility-state-note">Du ${state.laneMaintenance[lane].from || '…'} au ${state.laneMaintenance[lane].until || '…'}${state.laneMaintenance[lane].note ? ` · ${escapeHtml(state.laneMaintenance[lane].note)}` : ''}</small>`
-          : ''}
-      </article>`;
-    }).join('')}
-  </div>`;
+function renderStaffLaserBoard(model = buildStaffLaserBoardModel()) {
+  const cap = LASER_GAME_MAX_PLAYERS;
+  const futureGap = model.now == null ? model.gaps[0] : model.gaps.find((gap) => gap.end > model.now);
+  let bandeau;
+  if (model.next) {
+    bandeau = `Prochain lancement <strong>${numToTime(model.next.start)}</strong> · ${model.nextPlaces} places restantes
+      ${model.nextPlaces > 0 ? `<button type="button" onclick="openQuickBookForLaserSession(${Number(model.next.start)}, ${model.nextPlaces})">Ajouter un groupe</button>` : '<span>complet</span>'}`;
+  } else if (model.isToday) {
+    bandeau = `Aucun autre lancement aujourd’hui.${futureGap ? ` <button type="button" onclick="openQuickBook({ date: state.currentDate, type: 'laser', startTime: numToTime(${Math.max(futureGap.start, model.now == null ? futureGap.start : model.now)}) })">Réserver un créneau</button>` : ''}`;
+  } else {
+    bandeau = `${model.sessions.length} lancement${model.sessions.length > 1 ? 's' : ''} sur la date affichée.`;
+  }
+  const sessionsHtml = model.sessions.map((session) => {
+    const remaining = Math.max(0, cap - session.players);
+    const fillPct = Math.min(100, Math.round((session.players / cap) * 100));
+    const weak = session.players / cap < 0.5;
+    const future = model.now == null || session.start > model.now;
+    const groups = session.reservations.map((item) => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(item.reservation.id)})">${escapeHtml(item.reservation.name || 'Client')} · ${Number(item.window.players || item.reservation.pax || 0)} j.</button>`).join('');
+    const action = future && remaining > 0
+      ? `<div class="laser-session-action"><button type="button" onclick="openQuickBookForLaserSession(${Number(session.start)}, ${remaining})">${weak ? 'Compléter' : 'Ajouter un groupe'} · ${remaining} places</button></div>`
+      : (remaining <= 0 ? '<div class="laser-session-action"><span>Session complète.</span></div>' : '');
+    return `<article class="laser-session">
+      <div class="laser-session-head"><strong>${numToTime(session.start)} - ${numToTime(session.end)}</strong><b>${session.players}/${cap}</b></div>
+      <div class="laser-fill${weak ? ' is-weak' : ''}"><i style="width:${fillPct}%"></i></div>
+      <div class="laser-session-groups">${groups}</div>
+      ${action}
+    </article>`;
+  }).join('');
+  const top = model.stats30.topHours.map(([hour, players]) => `${String(hour).padStart(2, '0')}h (${players} j.)`).join(', ');
+  const bilan = model.stats30.sessions
+    ? `<div class="laser-30d">30 jours : <b>${model.stats30.fill}%</b> de remplissage moyen · ${model.stats30.sessions} lancements · ${model.stats30.players} joueurs · <b>${model.stats30.emptySeats}</b> places restées vides sur des lancements lancés${top ? ` · heures fortes : ${top}` : ''}</div>`
+    : '';
+  const vide = model.sessions.length ? '' : `<div class="utility-empty"><strong>Aucun lancement sur la date</strong><span>Réservez un laser : le premier groupe crée la session.</span></div>`;
+  return `<div class="laser-board"><div class="laser-next">${bandeau}</div>${sessionsHtml}${vide}${bilan}</div>`;
 }
-
 function getStaffUtilityLaserSessions(reservations = getStaffUtilityReservations()) {
   const groups = new Map();
   reservations.forEach(reservation => {
@@ -10315,34 +10415,6 @@ function getStaffUtilityLaserSessions(reservations = getStaffUtilityReservations
     });
   });
   return [...groups.values()].sort((left, right) => left.start - right.start);
-}
-
-function renderStaffUtilityLaserSessions(reservations = getStaffUtilityReservations()) {
-  const sessions = getStaffUtilityLaserSessions(reservations);
-  if (!sessions.length) {
-    return `<div class="utility-empty"><strong>Aucun lancement Laser Game</strong><span>Créez une réservation laser ou ouvrez le planning Laser Game.</span></div>`;
-  }
-  return `<div class="utility-laser-control">
-    ${sessions.map(session => {
-      const remaining = Math.max(0, LASER_GAME_MAX_PLAYERS - session.players);
-      return `<article class="utility-session">
-        <div class="utility-session-head">
-          <div><strong>${escapeHtml(formatClockDisplay(session.start))} - ${escapeHtml(formatClockDisplay(session.end))}</strong><span>${session.reservations.length} groupe${session.reservations.length > 1 ? 's' : ''}</span></div>
-          <b>${session.players}/${LASER_GAME_MAX_PLAYERS}</b>
-        </div>
-        <div class="utility-session-bar"><i style="width:${Math.min(100, Math.round((session.players / LASER_GAME_MAX_PLAYERS) * 100))}%"></i></div>
-        <div class="utility-session-groups">
-          ${session.reservations.map(item => `<button type="button" onclick="openStaffReservationDetail(${staffClientJs(item.reservation.id)})">
-            <span>${escapeHtml(item.reservation.name || 'Client')}</span>
-            <em>${Number(item.window.players || item.reservation.pax || 0)} joueurs</em>
-          </button>`).join('')}
-        </div>
-        ${remaining > 0
-          ? `<button type="button" class="utility-inline-action" onclick="openQuickBookForLaserSession(${Number(session.start)}, ${remaining})">Ajouter un groupe · ${remaining} places</button>`
-          : `<span class="utility-state-note">Session complète, aucun ajout possible.</span>`}
-      </article>`;
-    }).join('')}
-  </div>`;
 }
 
 let staffCenterConfigCache = { loaded: false, loading: false, error: '', centers: [], activities: [] };
@@ -13144,44 +13216,34 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     // La fenetre 30 j vit dans le cache CRM : on le remplit des l arrivee
     // sur la page (le rechargement repeint via loadStaffClientData).
     if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
-    const bowlingRows = reservations.filter(r => getBowlingWindowsFromReservation(r).length);
+    const laneBoard = buildStaffLaneBoardModel();
     return {
       ...base,
       layout: 'lanes',
       eyebrow: 'Bowling',
       title: 'Pistes',
-      subtitle: 'État piste par piste, maintenance et occupation du jour.',
+      subtitle: 'Fermer, replacer, vendre un creux : l’état vivant de chaque piste.',
       primaryLabel: 'Créer bowling',
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'bowling' })",
-      kpis: [
-        ['Pistes', TOTAL_LANES, 'configuration centre'],
-        ['Actives', TOTAL_LANES - maintenanceCount, 'disponibles'],
-        ['Maintenance', maintenanceCount, 'bloquées'],
-        ['Réservations', bowlingRows.length, 'bowling sur la date']
-      ],
-      body: renderStaffLanePerf30() + renderStaffUtilityLaneGrid(reservations)
+      kpis: laneBoard.kpis,
+      body: renderStaffLaneBoard(laneBoard)
     };
   }
   if (page === 'laserGame') {
     if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
-    const laserRows = reservations.filter(r => getLaserWindowsFromReservation(r).length || r.type === 'laser');
+    const laserBoard = buildStaffLaserBoardModel();
     return {
       ...base,
       layout: 'laser',
       eyebrow: 'Laser Game',
       title: 'Laser Game',
-      subtitle: 'Lancements, groupes partagés, capacité armes et réservations laser.',
+      subtitle: 'Prochain lancement, sessions à compléter, bilan 30 jours.',
       primaryLabel: 'Réserver Laser',
       primaryAction: "openQuickBook({ date: state.currentDate, type: 'laser' })",
       secondaryLabel: 'Planning Laser',
       secondaryAction: "openStaffPlanningResource('laser')",
-      kpis: [
-        ['Lancements', laserSessions.length, 'créneaux planifiés'],
-        ['Passages', laserRows.reduce((sum, r) => sum + getLaserWindowsFromReservation(r).length, 0), 'fenêtres laser'],
-        ['Joueurs', laserRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'laser'],
-        ['Capacité', `${LASER_GAME_MAX_PLAYERS}`, 'armes par lancement']
-      ],
-      body: renderStaffLaserPerf30() + renderStaffUtilityLaserSessions(reservations)
+      kpis: laserBoard.kpis,
+      body: renderStaffLaserBoard(laserBoard)
     };
   }
   if (page === 'establishment') {

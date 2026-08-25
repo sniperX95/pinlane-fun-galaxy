@@ -16016,3 +16016,49 @@ details.mk-auto-preview { grid-area: voir; align-self: center; }
   .crm-search { flex-basis: 100%; max-width: none; order: 3; }
   .crm-segbar .crm-seg-count { order: 2; }
 }
+
+/* Performance 30 jours des ressources (pages Pistes bowling et Laser Game,
+   2026-08-25) : lignes label + jauge + valeurs, signal de sous-utilisation. */
+.utility-perf {
+  display: grid;
+  gap: 8px;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.utility-perf-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.utility-perf-head h3 { margin: 0; font-size: 13.5px; }
+.utility-perf-head span { font-size: 12px; color: var(--muted); }
+.utility-perf-row { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+.utility-perf-label { flex: none; width: 92px; font-size: 12.5px; font-weight: 600; }
+.utility-perf-meter { flex: 1; height: 8px; border-radius: 999px; background: var(--subtle); overflow: hidden; }
+.utility-perf-meter i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.utility-perf-value { flex: none; font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+.utility-perf-row.is-weak .utility-perf-meter i { background: var(--warning); }
+.utility-perf-flag {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--warning);
+}
+.utility-perf-note { font-size: 12px; color: var(--text); padding: 6px 8px; border-left: 3px solid var(--accent); background: var(--subtle); border-radius: 6px; }
+.utility-perf-hours { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.utility-perf-chip { padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 999px; font-family: var(--font-data); font-size: 11.5px; }
+
+/* Vue « Parcours des equipes » du Journal (2026-08-25) : chronologie par
+   personne, une ligne par page ouverte ou bouton touche. */
+.pv2-audit-views { display: flex; gap: 8px; margin-bottom: 12px; }
+.pv2-trail-group { margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.pv2-trail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 6px; }
+.pv2-trail-head strong { font-size: 13.5px; }
+.pv2-trail-head span { font-size: 12px; color: var(--muted); }
+.pv2-trail-line { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.pv2-trail-time { flex: none; width: 44px; font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
+.pv2-trail-kind { flex: none; width: 42px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.pv2-trail-kind.is-page { color: var(--accent); }
+.pv2-trail-label { min-width: 0; overflow-wrap: anywhere; }

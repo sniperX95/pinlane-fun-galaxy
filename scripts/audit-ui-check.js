@@ -121,6 +121,15 @@ async function installMock(page) {
       if (u.pathname === '/api/marketing-agents') return J({ ok: true, centers: [], updatedAt: new Date().toISOString() });
       if (u.pathname === '/api/ops' && u.searchParams.get('action') === 'auditLog') {
         window.__AUDIT_CALLS__.push(u.search);
+        if ((u.searchParams.get('auditAction') || '') === 'parcours') {
+          return J({ ok: true, centerId: 'libramont', entries: [
+            { id: 901, occurredAt: new Date().toISOString(), actorKind: 'staff', actorLabel: 'Sophie Direction', actorMemberId: 'libramont:dir', actorRoleId: 'direction', action: 'parcours', outcome: 'success', changes: {}, context: { events: [
+              { t: Date.now() - 3600000, k: 'page', v: 'planning' },
+              { t: Date.now() - 3500000, k: 'clic', v: 'Relancer par email' },
+              { t: Date.now() - 3400000, k: 'page', v: 'clients' },
+            ] } },
+          ], audit: { written: 1, failed: 0 } });
+        }
         const outcome = u.searchParams.get('outcome') || '';
         const kind = u.searchParams.get('actorKind') || '';
         let rows = auditEntries.slice();
@@ -233,6 +242,24 @@ async function main() {
     ok(dirOpen.text.includes('Cron Vercel'), 'l acteur automatique est affiche et nomme');
     ok(dirOpen.text.includes('Refuse'), 'un refus est affiche comme tel');
     ok(dirOpen.text.includes('Autre centre'), 'le motif du refus est traduit en francais lisible');
+
+    console.log('\n[3b] la vue « Parcours des equipes » : ou ils vont, ce qu ils touchent');
+    await page.evaluate(() => { pv2AuditSetView('parcours'); });
+    await page.waitForFunction(() => Boolean(document.querySelector('#staffCockpitPage .pv2-trail-line')), null, { timeout: 8000 });
+    const trail = await page.evaluate(() => ({
+      texte: (document.querySelector('#staffCockpitPage [data-pv2-mount="audit"]') || {}).innerText || '',
+      lignes: document.querySelectorAll('#staffCockpitPage .pv2-trail-line').length,
+      appels: window.__AUDIT_CALLS__.filter((c) => c.includes('auditAction=parcours')).length,
+      kinds: [...document.querySelectorAll('#staffCockpitPage .pv2-trail-kind')].map((k) => k.textContent.trim()),
+    }));
+    ok(trail.appels >= 1, `la vue parcours interroge le journal avec auditAction=parcours (${trail.appels})`);
+    ok(trail.lignes === 3, `les 3 evenements du lot sont deplies en lignes (${trail.lignes})`);
+    ok(trail.texte.includes('Sophie Direction'), 'le parcours dit QUI');
+    ok(/planning/.test(trail.texte) && /Relancer par email/.test(trail.texte), 'le parcours dit OU (page) et QUOI (bouton touche)');
+    ok(trail.kinds.join(',') === 'Page,Clic,Page', `chaque ligne dit son type (${trail.kinds.join(', ')})`);
+    await page.evaluate(() => { pv2AuditSetView('modifs'); });
+    await page.waitForFunction(() => Boolean(document.querySelector('#staffCockpitPage [data-pv2-mount="audit"] tbody tr')), null, { timeout: 8000 });
+    ok(true, 'retour a la vue Modifications');
     const deniedRow = await page.evaluate(() => Boolean(document.querySelector('#staffCockpitPage [data-pv2-mount="audit"] tr.is-denied')));
     ok(deniedRow, 'la ligne du refus est distinguee (classe is-denied, filet + chip rouge)');
 

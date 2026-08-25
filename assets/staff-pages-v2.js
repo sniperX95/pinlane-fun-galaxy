@@ -2779,6 +2779,10 @@
   const pv2Audit = {
     loaded: false, loading: false, error: '', entries: [],
     filterKind: '', filterOutcome: '', filterSince: '', expanded: '',
+    // Vue « Parcours des equipes » (2026-08-25) : les lots action='parcours'
+    // deplies en chronologie par personne. Le proprietaire n'y figure
+    // jamais : le serveur ne trace pas ses sessions.
+    view: 'modifs', trailEntries: [], trailLoading: false, trailLoaded: false,
   };
   window.pv2Audit = pv2Audit;
 
@@ -2832,6 +2836,87 @@
   }
   window.loadPv2Audit = loadPv2Audit;
 
+  async function loadPv2AuditTrail(force = false) {
+    if (pv2Audit.trailLoading || (pv2Audit.trailLoaded && !force)) return;
+    pv2Audit.trailLoading = true;
+    try {
+      const params = new URLSearchParams({
+        action: 'auditLog',
+        centerId: state.adminCenterId || 'libramont',
+        auditAction: 'parcours',
+        limit: '150',
+      });
+      const payload = await apiRequest(`/api/ops?${params.toString()}`);
+      pv2Audit.trailEntries = payload.entries || [];
+      pv2Audit.trailLoaded = true;
+    } catch (error) {
+      toast(error.message || 'Parcours indisponible.');
+    } finally {
+      pv2Audit.trailLoading = false;
+      pv2AuditRerenderHost();
+    }
+  }
+
+  window.pv2AuditSetView = function (view) {
+    pv2Audit.view = view === 'parcours' ? 'parcours' : 'modifs';
+    if (pv2Audit.view === 'parcours' && !pv2Audit.trailLoaded && !pv2Audit.trailLoading) loadPv2AuditTrail();
+    pv2AuditRerenderHost();
+  };
+
+  function pv2AuditViewBar() {
+    return `<div class="pv2-audit-views">
+      <button type="button" class="pv2-btn sm ${pv2Audit.view !== 'parcours' ? 'primary' : ''}" onclick="pv2AuditSetView('modifs')">Modifications</button>
+      <button type="button" class="pv2-btn sm ${pv2Audit.view === 'parcours' ? 'primary' : ''}" onclick="pv2AuditSetView('parcours')">Parcours des équipes</button>
+    </div>`;
+  }
+
+  function pv2AuditTrailPanel() {
+    let body;
+    if (pv2Audit.trailLoading) {
+      body = '<p class="pv2-panel-sub">Chargement du parcours…</p>';
+    } else {
+      const entries = pv2Audit.trailEntries || [];
+      if (!entries.length) {
+        body = '<div class="pv2-empty"><strong>Aucun parcours enregistré</strong>Les pages ouvertes et les boutons touchés par l\'équipe apparaîtront ici. Le propriétaire n\'est jamais tracé.</div>';
+      } else {
+        const groups = new Map();
+        entries.forEach((entry) => {
+          const day = String(entry.occurredAt || '').slice(0, 10);
+          const key = `${entry.actorLabel || entry.actorMemberId || '?'}|${day}`;
+          const group = groups.get(key) || { actor: entry.actorLabel || entry.actorMemberId || '?', role: entry.actorRoleId || '', day, events: [] };
+          const list = entry.context && Array.isArray(entry.context.events) ? entry.context.events : [];
+          group.events.push(...list);
+          groups.set(key, group);
+        });
+        const heure = (t) => { const d = new Date(Number(t)); return Number.isFinite(d.getTime()) ? d.toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }) : '--:--'; };
+        body = [...groups.values()].map((group) => {
+          const events = group.events.slice().sort((a, b) => Number(a.t) - Number(b.t));
+          const lines = events.map((ev) => `<div class="pv2-trail-line">
+            <span class="pv2-trail-time">${esc(heure(ev.t))}</span>
+            <span class="pv2-trail-kind${ev.k === 'page' ? ' is-page' : ''}">${ev.k === 'page' ? 'Page' : 'Clic'}</span>
+            <span class="pv2-trail-label">${esc(ev.v)}</span>
+          </div>`).join('');
+          return `<section class="pv2-trail-group">
+            <div class="pv2-trail-head"><strong>${esc(group.actor)}</strong>${group.role ? `<span>${esc(group.role)}</span>` : ''}<span>${esc(group.day)}</span><span>${events.length} action${events.length > 1 ? 's' : ''}</span></div>
+            ${lines}
+          </section>`;
+        }).join('');
+      }
+    }
+    return `<section class="pv2-panel pv2-audit-panel">
+      <div class="pv2-panel-head has-sub">
+        <div>
+          <h2>Journal des modifications</h2>
+          <p class="pv2-panel-sub">Le parcours de chaque personne : les pages ouvertes et les boutons touchés, dans l\'ordre. Les modifications elles-mêmes vivent dans l\'autre vue.</p>
+        </div>
+      </div>
+      <div class="pv2-panel-body" data-pv2-mount="audit">
+        ${pv2AuditViewBar()}
+        ${body}
+      </div>
+    </section>`;
+  }
+
   window.pv2AuditFilter = function (field, value) {
     if (field === 'kind') pv2Audit.filterKind = value;
     if (field === 'outcome') pv2Audit.filterOutcome = value;
@@ -2868,6 +2953,7 @@
   }
 
   function pv2AuditPanel() {
+    if (pv2Audit.view === 'parcours') return pv2AuditTrailPanel();
     const entries = pv2Audit.entries || [];
     const deniedCount = entries.filter((entry) => entry.outcome === 'denied').length;
     const errorCount = entries.filter((entry) => entry.outcome === 'error').length;
@@ -2922,6 +3008,7 @@
         ${metaLine ? `<span class="pv2-audit-meta">${esc(metaLine)}</span>` : ''}
       </div>
       <div class="pv2-panel-body" data-pv2-mount="audit">
+        ${pv2AuditViewBar()}
         <div class="pv2-audit-filters">
           <label class="pv2-panel-sub" for="pv2AuditKind">Auteur</label>
           <select id="pv2AuditKind" class="pv2-audit-select" onchange="pv2AuditFilter('kind', this.value)">

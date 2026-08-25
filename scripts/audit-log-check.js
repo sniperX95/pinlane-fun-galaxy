@@ -505,6 +505,29 @@ function reset() {
     delete require.cache[opsPath];
   }
 
+  // ── PARCOURS D EQUIPE : bornes DURES des lots d evenements ──────────────
+  // (2026-08-25). Un client compromis ne peut ni gonfler la table ni y
+  // injecter du bruit arbitraire : types fermes, libelles plafonnes, lot
+  // plafonne.
+  {
+    const { normalizeActivityEvents } = require('../lib/audit-log');
+    ok(typeof normalizeActivityEvents === 'function', 'normalizeActivityEvents est exportee');
+    const events = normalizeActivityEvents([
+      { t: 1000, k: 'page', v: '  planning  ' },
+      { t: 2000, k: 'clic', v: 'Relancer par email' },
+      { t: 3000, k: 'script', v: 'injection' },
+      { t: 'x', k: 'page', v: 'sans temps' },
+      { t: 4000, k: 'clic', v: '' },
+      { t: 5000, k: 'clic', v: 'A'.repeat(500) },
+    ]) || [];
+    ok(events.length === 3, `seuls les evenements valides passent (${events.length}/6)`);
+    ok(events[0] && events[0].v === 'planning', 'les libelles sont normalises (espaces)');
+    ok(events[2] && events[2].v.length === 90, `les libelles sont plafonnes a 90 caracteres (${events[2] ? events[2].v.length : 0})`);
+    const flood = normalizeActivityEvents(Array.from({ length: 200 }, (_, i) => ({ t: i + 1, k: 'clic', v: `b${i}` }))) || [];
+    ok(flood.length === 40, `un lot est plafonne a 40 evenements (${flood.length})`);
+    ok((normalizeActivityEvents('rien') || []).length === 0, 'une entree non-tableau rend un lot vide');
+  }
+
   if (failures) {
     console.error(`\naudit-log-check: ${failures} FAIL`);
     process.exit(1);

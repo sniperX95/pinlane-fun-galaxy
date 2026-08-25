@@ -47,6 +47,7 @@ const {
   isBlockingAction,
   getAuditHealth,
   newRequestId,
+  normalizeActivityEvents,
 } = require('../lib/audit-log');
 const { improveEmailDraft, buildEmailInsights } = require('../lib/email-studio');
 const { llmProvider, callLlm } = require('../lib/llm-client');
@@ -2234,6 +2235,35 @@ async function handlePost(req, res, providedBody = null, options = {}) {
     return;
   }
 
+  // Parcours d'equipe (2026-08-25, Movsar : « je dois voir exactement ce que
+  // font les autres : ou ils vont, sur quoi ils appuient »). Chaque lot de la
+  // console devient UNE ligne action='parcours' (evenements bornes dans le
+  // contexte). Le proprietaire plateforme n'est JAMAIS trace : c'est lui qui
+  // lit ce journal, pas un sujet du journal.
+  if (action === 'activityLog') {
+    const concreteCenterId = requireConcreteCenter('parcours équipe');
+    const activitySession = await requireStaffPermission(req, res, ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'], { centerId: concreteCenterId });
+    if (!activitySession) return;
+    const activityMemberId = String(activitySession.member?.id || '');
+    if (activityMemberId.endsWith(':platform-owner')) { sendJson(res, 200, { ok: true, saved: 0, skipped: true }); return; }
+    const activityEvents = normalizeActivityEvents(body.events);
+    if (activityEvents.length) {
+      await writeAuditLog({
+        centerId: concreteCenterId,
+        ...actorFromSession(activitySession),
+        surface: 'console',
+        action: 'parcours',
+        method: 'POST',
+        entityType: 'parcours',
+        entityId: activityMemberId,
+        outcome: 'success',
+        context: { events: activityEvents },
+      });
+    }
+    sendJson(res, 200, { ok: true, saved: activityEvents.length });
+    return;
+  }
+
   // Relance client 1-clic (CRM) : envoi réel via la queue, tracé payload.relance
   // → alimente relanceStats (ROI). Pas besoin de réservation existante.
   if (action === 'sendClientRelance') {
@@ -2743,6 +2773,9 @@ function getRequiredOpsPermission(method, action) {
   // reel porte au moins une permission de vue). Pas de permission dediee :
   // le rapport d'un bug ne doit jamais echouer pour cause de droits.
   if (action === 'logClientError') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
+  // Parcours d'equipe : meme esprit que logClientError, toute session staff
+  // legitime peut deposer son lot.
+  if (action === 'activityLog') return ['dashboard.view', 'planning.view', 'reservations.view', 'clients.view', 'emails.view'];
   if (action === 'automationSettings') return ['settings.manage', 'emails.send', 'direction.view'];
   // L'aperçu ne fait que rendre un gabarit : il suffit de savoir lire les mails.
   // L'envoi de test et le renvoi font partir un vrai mail : `emails.send`.
@@ -2810,6 +2843,12 @@ const NON_MUTATING_POST_ACTIONS = new Set([
   'directEmailPreview', // buildDirectEmailPreview : pur, ne touche ni base ni file
   'agentStackAudit',   // audit de lecture
   'logClientError',    // telemetrie plafonnee : le journal d'audit trace les
+  'activityLog',       // parcours d'equipe : n'ecrit AUCUNE donnee metier ;
+                       // sa seule ecriture est sa propre ligne d'audit
+                       // (action parcours, posee par le handler pour
+                       // embarquer les evenements que la liste blanche du
+                       // contexte PP1 ne laisse pas passer). Une ligne PP1
+                       // activityLog par lot doublerait chaque trace.
                        // actes de gestion, pas la meteo des consoles : le
                        // volume noierait la piste qui sert au controle.
 ]);

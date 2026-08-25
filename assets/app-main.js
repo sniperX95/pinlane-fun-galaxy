@@ -8959,6 +8959,7 @@ function setupRevenueChartInteraction(container) {
 }
 
 function openStaffMenuPage(page, resource = '') {
+  if (typeof recordStaffActivity === 'function') recordStaffActivity('page', page);
   const requestedPage = String(page || 'dashboard').trim();
   // Fusion Clients+Groupes : l'ancienne page « groups » vit dans Clients,
   // segment « À venir ». L'alias est résolu AVANT la normalisation, sinon la
@@ -10165,6 +10166,108 @@ function renderStaffUtilityEventsBoard(rows = []) {
     </div>
   </div>`;
 }
+// ── Performance 30 jours des ressources (2026-08-25, Movsar : « pistes
+// bowling et laser game ne servent a rien tels quels, fais un truc vrm
+// utile »). La fenetre = les 30 jours REVOLUS (hier inclus, jamais
+// aujourd hui : la journee en cours fausserait les moyennes). Source :
+// le cache fusionne du CRM (deja memoise), donc zero cout reseau.
+function getStaffResourceHistoryRows() {
+  const end = todayStr();
+  const from = (() => { const d = parseLocalDate(end); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
+  const source = typeof getStaffClientSourceReservations === 'function' ? getStaffClientSourceReservations() : (state.reservations || []);
+  return source.filter((r) => r && r.status !== 'cancelled' && String(r.date || '') >= from && String(r.date || '') < end);
+}
+
+function computeStaffLaneStats30() {
+  const rows = getStaffResourceHistoryRows();
+  const lanes = Array.from({ length: TOTAL_LANES }, (_, index) => ({ lane: index + 1, hours: 0, resas: 0 }));
+  rows.forEach((reservation) => {
+    getBowlingWindowsFromReservation(reservation).forEach((window) => {
+      (window.lanes || []).forEach((lane) => {
+        const slot = lanes[lane - 1];
+        if (slot) { slot.hours += Number(window.duration || 0); slot.resas += 1; }
+      });
+    });
+  });
+  // Heures ouvrees par piste sur la fenetre : le denominateur honnete de
+  // l occupation (un jour ferme ne compte pas comme du temps invendu).
+  let openHours = 0;
+  for (let i = 1; i <= 30; i += 1) {
+    const d = parseLocalDate(todayStr()); d.setDate(d.getDate() - i);
+    const win = getPlanningWindow(d.toISOString().slice(0, 10));
+    if (!win.closed) openHours += Math.max(0, Number(win.close) - Number(win.open));
+  }
+  const totalHours = lanes.reduce((sum, item) => sum + item.hours, 0);
+  const average = lanes.length ? totalHours / lanes.length : 0;
+  return { lanes, openHours, totalHours, average };
+}
+
+function computeStaffLaserStats30() {
+  const rows = getStaffResourceHistoryRows();
+  const sessions = new Map();
+  rows.forEach((reservation) => {
+    getLaserWindowsFromReservation(reservation).forEach((window) => {
+      const key = `${reservation.date}|${Number(window.start).toFixed(3)}`;
+      const group = sessions.get(key) || { players: 0, start: Number(window.start) };
+      group.players += Number(window.players || reservation.pax || 0);
+      sessions.set(key, group);
+    });
+  });
+  const list = [...sessions.values()];
+  const players = list.reduce((sum, group) => sum + group.players, 0);
+  const capacity = LASER_GAME_MAX_PLAYERS;
+  const fill = list.length ? Math.round((list.reduce((sum, group) => sum + Math.min(1, group.players / capacity), 0) / list.length) * 100) : 0;
+  // Places restees vides sur des lancements DEJA payes en energie et en
+  // staff : le manque a gagner le plus concret du laser.
+  const emptySeats = list.reduce((sum, group) => sum + Math.max(0, capacity - group.players), 0);
+  const hourCount = new Map();
+  list.forEach((group) => { const h = Math.floor(group.start); hourCount.set(h, (hourCount.get(h) || 0) + group.players); });
+  const topHours = [...hourCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  return { sessions: list.length, players, fill, emptySeats, topHours, capacity };
+}
+
+function renderStaffLanePerf30() {
+  const stats = computeStaffLaneStats30();
+  if (!stats.totalHours) {
+    return `<section class="utility-perf"><div class="utility-perf-head"><h3>Performance 30 jours</h3><span>Aucune heure de bowling reservee sur les 30 derniers jours charges.</span></div></section>`;
+  }
+  const max = Math.max(...stats.lanes.map((item) => item.hours), 1);
+  const rows = stats.lanes.map((item) => {
+    const pct = stats.openHours ? Math.round((item.hours / stats.openHours) * 100) : 0;
+    // Une piste nettement sous la moyenne merite un OEIL (machine capricieuse,
+    // fond de salle...) : signal, jamais verdict.
+    const weak = stats.average >= 2 && item.hours < stats.average * 0.5;
+    return `<div class="utility-perf-row${weak ? ' is-weak' : ''}">
+      <span class="utility-perf-label">Piste ${item.lane}</span>
+      <span class="utility-perf-meter"><i style="width:${Math.round((item.hours / max) * 100)}%"></i></span>
+      <span class="utility-perf-value">${formatDurationLabel(item.hours)} · ${item.resas} résa${item.resas > 1 ? 's' : ''} · ${pct}%</span>
+      ${weak ? '<span class="utility-perf-flag">Sous-utilisée</span>' : ''}
+    </div>`;
+  }).join('');
+  return `<section class="utility-perf">
+    <div class="utility-perf-head"><h3>Performance 30 jours</h3><span>${formatDurationLabel(stats.totalHours)} réservées · ${formatDurationLabel(stats.openHours)} ouvrées par piste · % = occupation</span></div>
+    ${rows}
+  </section>`;
+}
+
+function renderStaffLaserPerf30() {
+  const stats = computeStaffLaserStats30();
+  if (!stats.sessions) {
+    return `<section class="utility-perf"><div class="utility-perf-head"><h3>Performance 30 jours</h3><span>Aucun lancement laser sur les 30 derniers jours charges.</span></div></section>`;
+  }
+  const heures = stats.topHours.map(([hour, players]) => `<span class="utility-perf-chip">${String(hour).padStart(2, '0')}h · ${players} joueurs</span>`).join('');
+  return `<section class="utility-perf">
+    <div class="utility-perf-head"><h3>Performance 30 jours</h3><span>${stats.sessions} lancements · ${stats.players} joueurs · capacité ${stats.capacity} par lancement</span></div>
+    <div class="utility-perf-row">
+      <span class="utility-perf-label">Remplissage moyen</span>
+      <span class="utility-perf-meter"><i style="width:${stats.fill}%"></i></span>
+      <span class="utility-perf-value">${stats.fill}%</span>
+    </div>
+    <div class="utility-perf-note">${stats.emptySeats} places restées vides sur des lancements déjà lancés : chaque groupe ajouté sur un créneau existant est du chiffre sans coût.</div>
+    ${heures ? `<div class="utility-perf-hours"><span>Heures les plus fortes :</span>${heures}</div>` : ''}
+  </section>`;
+}
+
 function renderStaffUtilityLaneGrid(reservations = getStaffUtilityReservations()) {
   const bowlingWindows = reservations.flatMap(reservation => getBowlingWindowsFromReservation(reservation).map(window => ({ ...window, reservation })));
   return `<div class="utility-lane-console">
@@ -13038,6 +13141,9 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
     };
   }
   if (page === 'lanes') {
+    // La fenetre 30 j vit dans le cache CRM : on le remplit des l arrivee
+    // sur la page (le rechargement repeint via loadStaffClientData).
+    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
     const bowlingRows = reservations.filter(r => getBowlingWindowsFromReservation(r).length);
     return {
       ...base,
@@ -13053,10 +13159,11 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
         ['Maintenance', maintenanceCount, 'bloquées'],
         ['Réservations', bowlingRows.length, 'bowling sur la date']
       ],
-      body: renderStaffUtilityLaneGrid(reservations)
+      body: renderStaffLanePerf30() + renderStaffUtilityLaneGrid(reservations)
     };
   }
   if (page === 'laserGame') {
+    if (typeof ensureStaffClientData === 'function') ensureStaffClientData();
     const laserRows = reservations.filter(r => getLaserWindowsFromReservation(r).length || r.type === 'laser');
     return {
       ...base,
@@ -13074,7 +13181,7 @@ function getStaffUtilityPageModel(page = getStaffMenuPage()) {
         ['Joueurs', laserRows.reduce((sum, r) => sum + Number(r.pax || 0), 0), 'laser'],
         ['Capacité', `${LASER_GAME_MAX_PLAYERS}`, 'armes par lancement']
       ],
-      body: renderStaffUtilityLaserSessions(reservations)
+      body: renderStaffLaserPerf30() + renderStaffUtilityLaserSessions(reservations)
     };
   }
   if (page === 'establishment') {
@@ -17950,6 +18057,9 @@ async function toggleMaint(i, ev) {
   state.laneStatuses[i] = nextStatus;
   save();
   renderPlanning();
+  // La bascule se fait depuis la page Pistes aussi : elle doit SE VOIR la
+  // ou le doigt est (2026-08-25, atrape par lanes-laser-pages-check).
+  if (isStaffUtilityActive()) renderStaffUtilityPage();
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffLanes, {
       method: 'PATCH',
@@ -17969,6 +18079,7 @@ async function toggleMaint(i, ev) {
     state.laneStatuses[i] = previousStatus;
     save();
     renderPlanning();
+    if (isStaffUtilityActive()) renderStaffUtilityPage();
     toast(error.message || 'Impossible de mettre la piste a jour.');
   }
 }
@@ -20867,6 +20978,55 @@ function notifyNewReservation(reservation) {
   requestAnimationFrame(() => card.classList.add('nr-in'));
   setTimeout(() => dismissNewResNotif(id), 12000);
 }
+
+// ── PARCOURS D'EQUIPE (2026-08-25) ─────────────────────────────────────────
+// La console note les PAGES ouvertes et les BOUTONS touches, par lots, pour
+// le journal du proprietaire (Plateforme > Journal, vue « Parcours des
+// equipes »). Jamais le proprietaire lui-meme, jamais une frappe de texte :
+// des LIBELLES d'action, pas du contenu.
+const staffActivityTrail = { buffer: [], timer: 0 };
+
+function staffActivityEligible() {
+  if (state.view !== 'staff' && state.view !== 'admin') return false;
+  const member = state.staffAuthSession?.member;
+  if (!member || !member.id) return false;
+  return !String(member.id).endsWith(':platform-owner');
+}
+
+function recordStaffActivity(kind, label) {
+  if (!staffActivityEligible()) return;
+  const value = String(label || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+  if (!value) return;
+  const last = staffActivityTrail.buffer[staffActivityTrail.buffer.length - 1];
+  const now = Date.now();
+  // Anti-rafale : marteler le meme bouton ne fabrique pas dix lignes.
+  if (last && last.k === kind && last.v === value && now - last.t < 3000) return;
+  staffActivityTrail.buffer.push({ t: now, k: kind, v: value });
+  if (staffActivityTrail.buffer.length >= 40) { flushStaffActivity(); return; }
+  if (!staffActivityTrail.timer) staffActivityTrail.timer = setTimeout(flushStaffActivity, 20000);
+}
+
+function flushStaffActivity() {
+  if (staffActivityTrail.timer) { clearTimeout(staffActivityTrail.timer); staffActivityTrail.timer = 0; }
+  const events = staffActivityTrail.buffer.splice(0);
+  if (!events.length) return;
+  // keepalive : le lot de fin de session part meme pendant la fermeture.
+  apiRequest(API_ENDPOINTS.ops, {
+    method: 'POST',
+    keepalive: true,
+    body: JSON.stringify({ action: 'activityLog', events }),
+  }).catch(() => { /* le parcours ne bloque ni ne derange jamais le travail */ });
+}
+
+document.addEventListener('click', (event) => {
+  if (!staffActivityEligible()) return;
+  const target = event.target.closest('button, a, [role="button"]');
+  if (!target) return;
+  const label = (target.getAttribute('aria-label') || target.textContent || '').trim();
+  recordStaffActivity('clic', label);
+}, true);
+
+window.addEventListener('pagehide', () => { try { flushStaffActivity(); } catch (error) { /* fermeture */ } });
 
 document.addEventListener('input', e => {
   if (e.target.id === 'searchInput') {

@@ -1,6 +1,6 @@
 const assert = require('assert');
 const { communicationAgent, delayAgent, learningAgent, planningAgent } = require('../lib/ops-agents');
-const { computeDelayImpact, getRequiredLaneCount } = require('../lib/ops-engine');
+const { computeDelayImpact, getRequiredLaneCount, getFormulaAnchorAvailability } = require('../lib/ops-engine');
 const {
   buildClientMessage,
   buildDelayChangeMessage,
@@ -148,6 +148,26 @@ function testFormulaPreferredTimes() {
   // de 5 minutes, croisée à la grille de 30, transformait ce choix réalisable
   // en refus anchor_overlap : marcher de la piste à l'arène ne prend pas une
   // demi-heure. Seul le VRAI chevauchement reste interdit.
+  // L OUVERTURE EST OFFERTE (2026-08-25, Movsar : « des qu il y a du laser
+  // on ne peut plus prendre l heure d ouverture »). L accueil 10 min est
+  // un CONSEIL : la grille des ancres demarre a l ouverture, et composer
+  // cette heure-la passe. TEST_DATE ouvre a 10h pile (le selecteur exige
+  // open <= 10 et aucun centre Fun Galaxy n ouvre avant 10h).
+  {
+    const availability = getFormulaAnchorAvailability(
+      { centerId: 'libramont', formuleId: 'f1', date: TEST_DATE, pax: 10 },
+      { reservations: [], laneStatuses: {} },
+    );
+    assert.strictEqual(availability.ok, true, 'anchor availability must resolve on the test day');
+    const bowlingTimes = availability.activities.find((activity) => activity.activityId === 'bowling');
+    assert.strictEqual(bowlingTimes.times[0].time, '10:00',
+      `the first bowling anchor must be the OPENING hour, not opening+welcome (got ${bowlingTimes.times[0].time})`);
+    const laserTimes = availability.activities.find((activity) => activity.activityId === 'laser_game');
+    const laserAfterOpen = laserTimes.times.find((item) => item.time >= '11:00');
+    const atOpen = anchorRequest({ bowling: '10:00', laser_game: laserAfterOpen.time });
+    assert.strictEqual(atOpen.ok, true, 'booking the opening hour with a laser after must compose');
+  }
+
   const chained = anchorRequest({ bowling: '15:00', laser_game: '16:00' });
   assert.strictEqual(chained.ok, true, 'back-to-back anchors (gap 0) must be bookable');
   assert.ok(

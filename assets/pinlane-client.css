@@ -7108,7 +7108,10 @@ body.client-mode #clientView .btn-primary.is-sealed,
       centre, jamais une image codee pour un client.
    ========================================================================== */
 #clientView .anchor-mobile-hero,
-#clientView .anchor-mobile-alt { display: none; }
+#clientView .anchor-mobile-alt,
+/* Le Continuer du telephone n existe qu en pages : sans ce defaut il
+   trainait en bas du BUREAU (2026-08-25, capture Movsar). */
+#clientView .anchor-mobile-continue { display: none; }
 
 @media (max-width: 640px) {
   /* --- a. la page activites remplit son ecran --------------------------- */

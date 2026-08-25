@@ -15785,6 +15785,14 @@ function setStaffClientQuery(value) {
 }
 
 function selectStaffClient(id) {
+  const clientsRoot = document.getElementById('staffClientsPage');
+  if (clientsRoot) {
+    state.staffSelectedClientId = id;
+    state.staffClientHistoryExpanded = false;
+    save();
+    repaintKeepingScroll(clientsRoot, () => renderStaffClientsPage());
+    return;
+  }
   state.staffSelectedClientId = id;
   state.staffClientHistoryExpanded = false;
   save();
@@ -20438,6 +20446,15 @@ function getQuickBookHeader(formule) {
 }
 
 function renderQuickBook() {
+  const qbOverlay = document.getElementById('quickBookOverlay');
+  if (qbOverlay && !qbOverlay.classList.contains('hidden')) {
+    repaintKeepingScroll(qbOverlay, () => renderQuickBookInner());
+    return;
+  }
+  renderQuickBookInner();
+}
+
+function renderQuickBookInner() {
   if (!quickBookState) return;
   const overlay = document.getElementById('quickBookOverlay');
   const schedule = getSchedule(quickBookState.date, state.isHolidayMode);
@@ -21136,6 +21153,31 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+// ── LE REPAINT NE VOLE NI LE DEFILEMENT NI L OEIL (2026-08-25, Movsar :
+// « des qu on change une info ca nous remonte en haut... on voit un gros
+// refresh super desagreable »). Tout re-rendu interactif d une surface DEJA
+// ouverte passe ici : les positions de defilement survivent au innerHTML
+// (reperees par index DOM, la structure d un meme ecran est stable), et la
+// classe is-repaint coupe le rejeu des animations d entree pendant deux
+// frames. Le refresh reste reel a l interieur ; il devient invisible.
+function repaintKeepingScroll(root, render) {
+  if (!root) { render(); return; }
+  const scrolled = [];
+  root.querySelectorAll('*').forEach((el, index) => {
+    if (el.scrollTop || el.scrollLeft) scrolled.push([index, el.scrollTop, el.scrollLeft]);
+  });
+  root.classList.add('is-repaint');
+  render();
+  if (scrolled.length) {
+    const all = root.querySelectorAll('*');
+    scrolled.forEach(([index, top, left]) => {
+      const el = all[index];
+      if (el) { el.scrollTop = top; el.scrollLeft = left; }
+    });
+  }
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('is-repaint')));
+}
+
 // ── CONFIRMATION PRODUIT (audit UX 2026-08-25) ──────────────────────────────
 // La console parle la langue du produit, jamais celle du navigateur : les
 // actions destructives se confirment dans CE dialog (Echap ou clic hors
@@ -21414,7 +21456,9 @@ function getPosIdentityParts(r) {
     ? 'Laser Game'
     : (r.lanes || []).length ? `Piste${r.lanes.length > 1 ? 's' : ''} ${r.lanes.join(', ')}` : 'Hors piste';
   const parts = [
-    `<span class="pos-ref">#${escapeHtml(String(r.id))}</span>`,
+    // Le #id ne parle a personne au comptoir (Movsar 2026-08-25) : la
+    // reference technique vit dans le journal d audit et l export, pas
+    // dans l entete qu on lit au telephone.
     escapeHtml(getReservationLabel(r)),
     escapeHtml(horaire),
     escapeHtml(lieu),
@@ -21464,6 +21508,15 @@ function handlePosKeydown(ev) {
 }
 
 function renderPos() {
+  const posOverlayEl = document.getElementById('posOverlay');
+  if (posOverlayEl && !posOverlayEl.classList.contains('hidden')) {
+    repaintKeepingScroll(posOverlayEl, () => renderPosInner());
+    return;
+  }
+  renderPosInner();
+}
+
+function renderPosInner() {
   if (!state.selectedRes) return;
   const r = state.selectedRes;
   const overlay = document.getElementById('posOverlay');

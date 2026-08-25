@@ -16094,3 +16094,28 @@ button.pv2-cal-cell:focus-visible {
 .staff-confirm-actions button.is-primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
 .staff-confirm-actions button.is-danger { background: var(--danger); border-color: var(--danger); color: #ffffff; }
 .staff-confirm-actions button:hover { filter: brightness(1.08); }
+
+/* REPAINT INVISIBLE (2026-08-25) : pendant un re-rendu d une surface deja
+   ouverte, aucun rejeu d animation ou de transition : l oeil ne voit pas
+   le refresh, seul le contenu change. */
+.is-repaint, .is-repaint * { animation: none !important; transition: none !important; }
+
+/* Cartes 30 min du planning : l icone de note reste visible en badge de
+   coin (le texte n a pas la place, l alerte si). */
+.booking.dens-xs .res-note-line, .booking.dens-sm .res-note-line,
+.booking.dens-xs .res-special-request, .booking.dens-sm .res-special-request {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: flex;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+  z-index: 2;
+}
+.booking.dens-xs .res-note-line svg, .booking.dens-sm .res-note-line svg,
+.booking.dens-xs .res-special-request svg, .booking.dens-sm .res-special-request svg { margin: 0; }

@@ -195,7 +195,11 @@ async function main() {
     ok(/\d{1,2}:\d{2}/.test(edit.ident), `la ligne d identite dit QUAND (« ${edit.ident.trim()} »)`);
     ok(/Piste|Laser|Hors piste/.test(edit.ident), 'la ligne d identite dit OU');
     ok(/joueur/.test(edit.ident), 'la ligne d identite dit COMBIEN ILS SONT');
-    ok(/#\d+/.test(edit.ident), 'la ligne d identite porte la reference du dossier');
+    // DECISION INVERSEE (2026-08-25, Movsar : « ca montre un hashtag avec
+    // un numero, il est relie nulle part, il sert a rien ») : le #id ne
+    // parle a personne au comptoir. La reference technique vit au journal
+    // d audit et dans l export, plus dans l entete de fiche.
+    ok(!/#\d+/.test(edit.ident), 'la ligne d identite ne porte PLUS de reference technique #id');
     ok(edit.labels > 0 && edit.associes === edit.labels, `${edit.associes}/${edit.labels} libelles de champ associes a leur champ`);
     ok(edit.dangerGroupe && edit.primaryGroupe, 'Supprimer et Enregistrer sont dans deux groupes distincts');
     ok(edit.ecart > 200, `ecart MESURE entre Supprimer et Enregistrer : ${edit.ecart}px (minimum 200)`);

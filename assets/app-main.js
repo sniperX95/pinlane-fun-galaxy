@@ -1130,6 +1130,10 @@ function refreshEditPreview() {
   const assignEl = document.getElementById('editAssignmentValue');
   const laneInput = document.getElementById('editLanesInput');
   if (nameEl) nameEl.textContent = e.name || 'Réservation';
+  // Le prix du dossier adapte suit le nombre de joueurs et la duree, sans
+  // re-rendre : c est la meme regle que le conseil de pistes juste en
+  // dessous (Movsar : « le prix ne change pas quand on augmente de joueur »).
+  majEditPrixEstime();
   if (metaEl) metaEl.textContent = meta;
   // LE CONSEIL SUIT LA FRAPPE. Le formulaire n'est pas re-rendu pendant la
   // saisie (ça volerait le focus), donc tout texte DERIVE de l'etat doit etre
@@ -19869,6 +19873,84 @@ function buildEditProgramFromReservation(r) {
   return etat;
 }
 
+
+// LE PRIX D UN PROGRAMME, calcule au meme endroit pour tout le monde.
+// La reservation rapide (« Sur mesure ») et la fiche (« Adapter pour ce
+// dossier ») affichaient sinon deux montants qui auraient diverge des le
+// premier changement de grille tarifaire.
+//
+// `complet` dit si le total est FERME : une activite dont le centre n a pas
+// saisi le tarif vaut null (elle se regle sur place), et un total qui la
+// contient est un « a partir de », jamais un « total ». C est la meme regle
+// que le tunnel public (priceComplete de lib/visit-program).
+function estimerPrixProgramme(items, pax, dateStr, startTime) {
+  const joueurs = Math.max(1, Number(pax) || 1);
+  let total = 0;
+  let complet = true;
+  let chiffrees = 0;
+  const lignes = [];
+  (items || []).forEach((item) => {
+    const id = String(item.activityId || '');
+    if (id === 'bowling') {
+      const heures = Number(item.duration) || 1;
+      // LE BOWLING SE FACTURE A LA PISTE, et le nombre de pistes vient du
+      // nombre de joueurs : le prix monte donc PAR PALIERS (un cran tous les
+      // 6 joueurs a Libramont), jamais lineairement. Le comptoir doit voir
+      // les pistes pour comprendre le montant.
+      const pistes = Math.max(1, getRequiredLaneCount('bowling', joueurs));
+      const montant = Number(getBasePrice('bowling', heures, pistes, joueurs, '', dateStr)) || 0;
+      total += montant;
+      chiffrees += 1;
+      lignes.push({ nom: `Bowling ${formatDurationLabel(heures)}`, detail: `${pistes} piste${pistes > 1 ? 's' : ''}`, montant });
+      return;
+    }
+    if (id === 'laser_game') {
+      // Le laser est un FORFAIT par personne selon le nombre de parties
+      // (10 / 18 / 25 EUR), pas un prix unitaire multiplie.
+      const parties = Math.max(1, Number(item.games) || 1);
+      const option = getLaserOption(parties * 0.5);
+      const unitaire = Number(option?.price) || 0;
+      const montant = unitaire * joueurs;
+      total += montant;
+      chiffrees += 1;
+      lignes.push({ nom: `Laser ${parties} partie${parties > 1 ? 's' : ''}`, detail: `${unitaire} €/pers × ${joueurs}`, montant });
+      return;
+    }
+    const activite = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+    const nom = (activite && activite.name) || (typeof ACTIVITY_LABELS !== 'undefined' && ACTIVITY_LABELS[id]) || id;
+    const ligne = activite && typeof getFreeActivityPrice === 'function'
+      ? getFreeActivityPrice(activite, { pax: joueurs, dateStr, startTime })
+      : null;
+    if (ligne == null) {
+      complet = false;
+      lignes.push({ nom, detail: 'tarif non saisi', montant: null });
+      return;
+    }
+    total += Number(ligne) || 0;
+    chiffrees += 1;
+    lignes.push({ nom, detail: '', montant: Number(ligne) || 0 });
+  });
+  return {
+    total: Math.round(total),
+    complet,
+    // Au moins une ligne chiffree : le total veut dire quelque chose, meme
+    // partiel. Aucune : on ne remplace surtout pas le prix du dossier.
+    utilisable: chiffrees > 0,
+    lignes,
+    parPersonne: Math.round(total / joueurs),
+  };
+}
+
+// L estimation du dossier en cours d edition, telle qu elle s ecrit a l ecran.
+function getEditPrixEstime() {
+  const e = state.editState;
+  const r = state.selectedRes;
+  if (!e || !r) return null;
+  const items = getEditProgramItems();
+  if (!items.length) return null;
+  return estimerPrixProgramme(items, e.pax, r.date, e.startTime || r.startTime);
+}
+
 function ensureEditProgram(r) {
   if (!state.editState) return null;
   if (!state.editState.programmeEdite) {
@@ -19923,9 +20005,52 @@ function setEditLaserGames(nombre) {
 
 // Le prix de CE dossier. Saisi en place : un re-rendu pendant la frappe
 // detruirait le champ (meme lecon que le nombre de joueurs du quickbook).
+// Saisir un montant, c est le FIGER : a partir de la, le prix ne suit plus
+// les joueurs ni les activites (c est un prix d ami, il a ete decide). Le
+// bouton « Recalculer » rend la main a l estimation.
 function setEditPrice(valeur) {
   if (!state.editState) return;
   state.editState.price = valeur;
+  state.editState.prixFige = true;
+  majEditPrixEstime();
+}
+
+function recalculerEditPrix() {
+  if (!state.editState) return;
+  state.editState.prixFige = false;
+  const estime = getEditPrixEstime();
+  state.editState.price = estime ? String(estime.total) : '';
+  renderPos();
+}
+
+// Le montant et le « par personne » se reecrivent EN PLACE : re-rendre la
+// fiche pendant la frappe detruirait le champ et volerait le curseur.
+function majEditPrixEstime() {
+  const e = state.editState;
+  if (!e) return;
+  const estime = getEditPrixEstime();
+  const ligne = document.getElementById('editPrixEstime');
+  const champ = document.getElementById('editPriceInput');
+  if (!estime) { if (ligne) ligne.textContent = ""; return; }
+  // Tant que personne n a fige un montant, le champ SUIT ce qu on change,
+  // MAIS SEULEMENT SI L ESTIMATION EST FERME. Un centre qui n a pas saisi le
+  // tarif d une activite libre produit une estimation partielle : ecraser un
+  // prix reel de 252 EUR par un « 0 EUR » incomplet ferait facturer zero au
+  // client. Estimation partielle : le montant du dossier reste, et la ligne
+  // en dessous dit « a partir de ».
+  if (!e.prixFige && champ && estime.utilisable) {
+    champ.value = String(estime.total);
+    e.price = String(estime.total);
+  }
+  if (ligne) {
+    const facture = (e.prixFige || !estime.utilisable)
+      ? (getEditPriceValue() ?? estime.total)
+      : estime.total;
+    const joueurs = Math.max(1, Number(e.pax) || 1);
+    const parPersonne = Math.round(facture / joueurs);
+    ligne.textContent = `${estime.complet ? '' : 'À partir de '}${facture} € · ${parPersonne} €/personne (${joueurs} joueur${joueurs > 1 ? 's' : ''})`
+      + (estime.complet ? '' : ' · certaines activités se règlent sur place');
+  }
 }
 
 function getEditPriceValue() {
@@ -19992,6 +20117,30 @@ function renderEditFormuleBloc(r, formule, lignes) {
     </div>`;
   }).join('');
   const prixValeur = getEditPriceValue();
+  // Le montant ecrit sous le champ : ce qui sera facture, et ce que ca fait
+  // par personne. C est le chiffre que le comptoir annonce au telephone.
+  const estime = getEditPrixEstime();
+  const joueursActuels = Math.max(1, Number(state.editState.pax) || 1);
+  const factureAffichee = state.editState.prixFige || !estime || !estime.utilisable
+    ? (prixValeur ?? Math.round(Number(r.price) || 0))
+    : estime.total;
+  // Ce que porte le CHAMP : le montant fige s il y en a un, sinon l estimation
+  // des qu elle est ferme, sinon le prix actuel du dossier. Sans cette regle,
+  // cocher une activite laissait le champ sur la valeur d avant pendant que la
+  // ligne en dessous annoncait deja le nouveau total.
+  const valeurChamp = state.editState.prixFige
+    ? (state.editState.price ?? Math.round(Number(r.price) || 0))
+    : (estime && estime.utilisable ? estime.total : Math.round(Number(r.price) || 0));
+  if (!state.editState.prixFige) state.editState.price = String(valeurChamp);
+  // LE DETAIL, ligne par ligne : c est ce qui rend le total comprehensible.
+  // « Bowling 1h · 2 pistes · 78 € » explique pourquoi passer de 12 a 13
+  // joueurs ajoute 39 EUR ; sans lui, le montant a l air arbitraire.
+  const detailHtml = estime && estime.lignes.length
+    ? `<ul class="edit-prix-detail">${estime.lignes.map(l => `<li><span>${escapeHtml(l.nom)}${l.detail ? ` <em>${escapeHtml(l.detail)}</em>` : ''}</span><b>${l.montant == null ? 'sur place' : `${Math.round(l.montant)} €`}</b></li>`).join('')}</ul>`
+    : '';
+  const prixLigne = estime
+    ? `${estime.complet ? '' : 'À partir de '}${factureAffichee} € · ${Math.round(factureAffichee / joueursActuels)} €/personne (${joueursActuels} joueur${joueursActuels > 1 ? 's' : ''})${estime.complet ? '' : ' · certaines activités se règlent sur place'}`
+    : '';
   const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
   const modifie = editProgramAChange();
   return `<div class="pos-field" style="grid-column: 1 / -1;">
@@ -20001,10 +20150,13 @@ function renderEditFormuleBloc(r, formule, lignes) {
     <div class="qb-visit-grid">${rangees}</div>
     <div class="edit-price-row">
       <label for="editPriceInput">Prix facturé</label>
-      <input id="editPriceInput" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(state.editState.price ?? Math.round(Number(r.price) || 0)))}" oninput="setEditPrice(this.value)">
+      <input id="editPriceInput" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
       <span>€</span>
-      ${reference > 0 ? `<small>référence catalogue ${Math.round(reference)} €</small>` : ''}
+      ${state.editState.prixFige ? `<button type="button" class="edit-adapter-btn" onclick="recalculerEditPrix()">Recalculer</button>` : '<small class="edit-prix-auto">calculé automatiquement</small>'}
     </div>
+    <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
+    ${detailHtml}
+    ${reference > 0 ? `<div class="qb-field-note">Référence catalogue : ${Math.round(reference)} €</div>` : ''}
     <div class="qb-field-note">${modifie ? 'Les activités seront replanifiées à l\'enregistrement. ' : ''}Ne change QUE ce dossier : la formule du centre et le formulaire de réservation en ligne ne bougent pas.</div>
   </div>`;
 }
@@ -20228,9 +20380,18 @@ async function saveEdit(e) {
     const nomOrigine = (state.selectedRes.formuleId ? resolveDisplayFormule(state.selectedRes.formuleId)?.name : '') || state.selectedRes.label || '';
     updated.label = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (state.selectedRes.label || 'Sur mesure');
   }
-  // Prix saisi a la main : il fait foi pour CE dossier.
-  const prixSaisi = peutAdapterFormule() ? getEditPriceValue() : null;
-  if (prixSaisi !== null) updated.price = prixSaisi;
+  // CE QU ON AFFICHE EST CE QU ON ENVOIE.
+  // Sur un PATCH, le serveur ne recalcule PAS le prix : api/staff-reservations
+  // ne passe pas par normalizeReservationRequest (reserve au POST), et le
+  // montant ecrit est celui du corps. Ne pas envoyer de prix laisserait donc
+  // l ANCIEN montant en base pendant que l ecran en annonce un autre : la
+  // caisse et la fiche se contrediraient. Le comptoir est ici la seule
+  // autorite : il envoie exactement le montant qu il a sous les yeux, qu il
+  // l ait fige a la main ou laisse se calculer.
+  if (peutAdapterFormule()) {
+    const prixEcran = getEditPriceValue();
+    if (prixEcran !== null) updated.price = prixEcran;
+  }
   const previousReservation = state.selectedRes;
   applyOptimisticReservation(updated, { preserveEditState: true });
 

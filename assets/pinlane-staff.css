@@ -16174,11 +16174,30 @@ button.pv2-cal-cell:focus-visible {
    illisible (defaut paye, capture Movsar, cf. le commentaire de
    .res-col-head plus haut). Les en-tetes de SECTION sont collants et disent
    deja ou on se trouve dans la liste. */
-/* Le contenu reste DENSE et lisible au lieu de s etaler sur 1900 px : les
-   colonnes gardent leur largeur utile et la liste se centre. */
-.table-box.expanded:not(.hidden) .res-sections,
+/* LA LISTE OCCUPE TOUTE LA LARGEUR. Premiere version : max-width + margin
+   auto. Dans un conteneur flex, `margin: auto` sur l axe transversal ne
+   centre pas un bloc etire, il lui donne sa largeur INTRINSEQUE : mesure a
+   1700 px, les sections tombaient a 965 px, l en-tete de colonnes a 788 px
+   et les lignes a 943 px : trois largeurs differentes, donc des colonnes
+   qui ne se surmontent plus et un grand vide de chaque cote (« c est
+   retreci et tout », Movsar). On laisse donc tout s etirer, et c est la
+   GRILLE qui respire : plus d air pour le client et la reservation, une
+   colonne d etat qui ne grandit pas inutilement. */
 .table-box.expanded:not(.hidden) .res-col-head,
-.table-box.expanded:not(.hidden) .table-toolbar { max-width: 1600px; margin-left: auto; margin-right: auto; }
+.table-box.expanded:not(.hidden) .res-row {
+  grid-template-columns: 86px minmax(0, 1.25fr) minmax(0, 1.75fr) minmax(180px, 0.7fr) 330px;
+  padding-left: clamp(18px, 2.6vw, 46px);
+  padding-right: clamp(18px, 2.6vw, 46px);
+}
+.table-box.expanded:not(.hidden) .table-toolbar,
+.table-box.expanded:not(.hidden) .res-section-head {
+  padding-left: clamp(18px, 2.6vw, 46px);
+  padding-right: clamp(18px, 2.6vw, 46px);
+}
+/* Des lignes plus aerees : en plein ecran on lit une journee entiere, pas
+   une liste tassee dans une boite de 700 px. */
+.table-box.expanded:not(.hidden) .res-row { min-height: 62px; }
+.table-box.expanded:not(.hidden) .res-row-name { font-size: 15px; }
 /* La sortie se VOIT : meme traitement accentue que le bouton Reduire du
    planning en plein ecran, sinon on cherche comment revenir. */
 .table-box.expanded:not(.hidden) #tableToggle {
@@ -16289,36 +16308,53 @@ button.pv2-cal-cell:focus-visible {
    de planning sans sortir : les onglets, eux, sont recouverts par le
    panneau (mesure : .staff-resource-tabs inatteignable en plein ecran). */
 .fs-switch { display: none; }
+/* AU MILIEU DE L EN-TETE, pas coincee entre deux commandes : c est la
+   navigation principale du mode plein ecran, elle se prend en un coup
+   d oeil depuis n importe quelle position d ecran. Posee en absolu pour ne
+   pas dependre de la largeur du titre ni de celle des actions. */
+.planning-box.expanded:not(.hidden) .planning-head,
+.table-box.expanded:not(.hidden) .table-head { position: relative; }
 .planning-box.expanded:not(.hidden) .fs-switch,
 .table-box.expanded:not(.hidden) .fs-switch {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px;
+  gap: 2px;
+  padding: 4px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--subtle, rgba(255, 255, 255, 0.04));
-  margin-right: var(--space-3);
+  background: var(--subtle, rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  z-index: 2;
 }
 .fs-switch-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px;
+  gap: 7px;
+  height: 34px;
+  padding: 0 18px;
   border: 0;
   border-radius: 999px;
   background: none;
   color: var(--muted);
   font: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 .fs-switch-btn:hover { color: var(--text); background: var(--surface); }
-.fs-switch-btn.is-active { color: #fff; background: var(--accent); }
+.fs-switch-btn.is-active {
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 1px 10px -2px var(--accent);
+}
+.fs-switch-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .fs-switch-count {
   display: inline-flex;
   align-items: center;
@@ -16380,3 +16416,67 @@ button.pv2-cal-cell:focus-visible {
 }
 .edit-adapter-btn:hover { border-color: var(--accent); }
 .edit-formule-origine { opacity: 0.62; margin-bottom: 8px; }
+
+/* LA RECHERCHE SUR LE COTE. Au centre, elle prenait la place de la
+   navigation et coupait l en-tete en deux (« la barre de recherche sur le
+   cote c est plus logique », Movsar). Elle rejoint les commandes, a droite,
+   avec le bouton de sortie. */
+.table-box.expanded:not(.hidden) .table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 12px clamp(18px, 2.6vw, 46px);
+}
+.table-box.expanded:not(.hidden) .table-head > h2 { margin-right: auto; }
+.table-box.expanded:not(.hidden) .search-wrap { width: min(360px, 26vw); margin-left: auto; }
+.table-box.expanded:not(.hidden) .search-wrap input { width: 100%; }
+
+/* Ecran etroit : la barre reprend sa place dans le flux plutot que de
+   chevaucher le titre. */
+@media (max-width: 1180px) {
+  .planning-box.expanded:not(.hidden) .fs-switch,
+  .table-box.expanded:not(.hidden) .fs-switch {
+    position: static;
+    transform: none;
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    margin-top: 8px;
+  }
+  .table-box.expanded:not(.hidden) .table-head { flex-wrap: wrap; }
+}
+.edit-prix-estime {
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.edit-prix-estime:empty { display: none; }
+.edit-prix-auto { color: var(--text-3, var(--muted)); font-size: 11px; }
+
+/* LE DETAIL DU PRIX, ligne par ligne : le total devient comprehensible et le
+   comptoir peut l expliquer au telephone. Une activite sans tarif saisi est
+   NOMMEE (« sur place ») au lieu d etre passee sous silence. */
+.edit-prix-detail {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--subtle, rgba(255, 255, 255, 0.03));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.edit-prix-detail li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-2, var(--muted));
+}
+.edit-prix-detail li em { font-style: normal; color: var(--text-3, var(--muted)); font-size: 11px; }
+.edit-prix-detail li b { color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }

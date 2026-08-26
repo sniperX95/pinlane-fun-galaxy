@@ -21916,7 +21916,15 @@ function getPosIdentityParts(r) {
     escapeHtml(lieu),
     `${r.pax} joueur${r.pax > 1 ? 's' : ''}`,
   ];
-  if (Number(r.price) > 0) parts.push(`${Number(r.price)} €`);
+  // CE QU IL Y A A ENCAISSER, DES L OUVERTURE DE LA FICHE, et dit comme tel
+  // quand le prix a ete ajuste pour ce dossier (review manager 2026-08-26 :
+  // « quand on clique dessus on voit combien ils doivent payer... comme ca les
+  // etudiants qui bossent au comptoir peuvent le voir directement »). Sans la
+  // mention, un montant plus bas que la formule affichee passe pour une erreur.
+  if (Number(r.price) >= 0 && (Number(r.price) > 0 || getReservationPriceGap(r) !== 0)) {
+    const ajuste = getReservationPriceGap(r) !== 0;
+    parts.push(`${Number(r.price) || 0} €${ajuste ? ' (prix ajusté)' : ''}`);
+  }
   return parts;
 }
 

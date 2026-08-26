@@ -877,9 +877,9 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
      et par heure » se cassaient en trois lignes alors que l ecran etait a moitie
      vide (mesure sur capture : 4 colonnes de 270 px pour 1100 px disponibles,
      et 400 px de vide sous la grille). */
-  #clientView #step1:not(.is-options) .activity-grid {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  }
+  /* La largeur des colonnes se regle a LA SOURCE (regle desktop plus bas) : une
+     seconde regle ici etait purement ecrasee, meme specificite et declaree
+     avant. Corriger a la source plutot qu empiler une regle concurrente. */
   /* Le bloc de question se pose au premier tiers plutot que colle en haut : le
      vide se repartit au lieu de tomber entierement sous la grille. */
   #clientView .step1-body:not(.is-solo) { align-content: center; }
@@ -921,6 +921,103 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 #clientView .s1-placeholder[hidden] { display: none; }
 #clientView .s1-placeholder strong { font-size: 15px; font-weight: 600; color: var(--muted); }
 #clientView .s1-placeholder span { font-size: 12.5px; max-width: 42ch; line-height: 1.5; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   L ECRAN-QUESTION (2026-08-26). Movsar : « il faut de la motion design a
+   mort [...] que le texte apparaisse d une maniere trop stylee, que le texte
+   soit en question apres un onboarding [...] tout bien centre ».
+
+   Le premier jet avait deplie le parcours mais garde la mise en page d avant :
+   un petit titre de panneau colle a gauche, le selecteur de mode rejete a
+   droite, et le regard qui traverse l ecran de gauche a droite pour comprendre
+   ce qu on lui demande. Un onboarding ne se lit pas en travers : la question
+   se pose AU MILIEU, seule, et le reste vient dessous.
+   ═════════════════════════════════════════════════════════════════════════ */
+#clientView .s1-what-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  text-align: center;
+}
+#clientView .s1-what-head > * { width: 100%; }
+
+/* Le kicker devient une etiquette discrete AU-DESSUS de la question, centree :
+   il annonce l etape, il ne rivalise pas avec elle. */
+#clientView .s1-what-head .panel-kicker {
+  margin-bottom: var(--space-2);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+/* LA QUESTION. Elle porte l ecran : elle est grande, centree, et respire.
+   `text-wrap: balance` evite la ligne orpheline d un mot quand elle passe sur
+   deux lignes (support partiel : sans lui, le rendu reste correct). */
+#clientView .s1-what-head .panel-title {
+  font-size: clamp(23px, 3.4vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  text-wrap: balance;
+  max-width: 18ch;
+  margin-inline: auto;
+}
+
+/* LE TEXTE QUI ARRIVE, MOT A MOT. Chaque mot est enveloppe par le JS
+   (revelerQuestion) et monte derriere un masque, decale de son rang : la
+   phrase s ecrit au lieu d apparaitre d un bloc. Le masque est un simple
+   overflow sur un span en ligne - aucun filtre, rien qui floute une lettre. */
+#clientView .q-word {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+#clientView .q-word > span {
+  display: inline-block;
+  transform: translateY(115%);
+  opacity: 0;
+}
+#clientView .q-reveal .q-word > span {
+  animation: q-word-rise 0.62s var(--lq-spring) both;
+  animation-delay: calc(var(--i, 0) * 42ms);
+}
+@keyframes q-word-rise {
+  from { transform: translateY(115%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Le selecteur de mode passe SOUS la question et se centre : c est une
+   precision sur la reponse, pas une seconde question posee a cote. */
+#clientView .s1-what-head .segmented {
+  width: auto;
+  min-width: min(320px, 100%);
+  margin-inline: auto;
+}
+
+/* LES CARTES ENTRENT EN CASCADE. Le systeme de cascade existant ne portait que
+   les BLOCS d une etape (4 delais codes en dur) : les cartes, elles,
+   apparaissaient toutes ensemble. Chaque carte monte maintenant a son tour,
+   decalee de 34 ms, ce qui donne le sens de lecture au passage. Le rang est
+   pose par le JS (--i) ; sans lui, tout arrive a 0 ms, donc le pire cas est
+   l ancien comportement. */
+#clientView .step[data-arrived] .activity-card,
+#clientView .lq-revealable.is-revealed .activity-card {
+  animation: lq-pop 0.5s var(--lq-spring) both;
+  animation-delay: calc(90ms + var(--i, 0) * 34ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clientView .q-word > span,
+  #clientView .q-reveal .q-word > span {
+    animation: none;
+    transform: none;
+    opacity: 1;
+  }
+  #clientView .step[data-arrived] .activity-card,
+  #clientView .lq-revealable.is-revealed .activity-card { animation: none; }
+}
 
 #clientView .s1-what-head {
   flex: none;
@@ -6082,7 +6179,15 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Quand le configurateur est ouvert, la zone de choix passe en deux
      colonnes DANS son defilement interne : les cartes a gauche, les reglages
      a droite. #activityPicker contient les deux (renderActivityPicker). */
-  #clientView .activity-picker:has(.activity-configurator.is-visible) {
+  /* NEUTRALISEE LE 2026-08-26 : les cartes et les reglages ne partagent plus
+     jamais l ecran (les reglages ont le leur, a toutes les largeurs). La regle
+     continuait pourtant de s appliquer, parce que `:has(.is-visible)` matche
+     meme quand l element est en `display: none` : le picker restait en DEUX
+     colonnes avec la seconde vide, et la grille de cartes se retrouvait collee
+     a gauche sous une question centree (mesure : bloc de 765 px ancre a x=305
+     dans un conteneur centre de 1000 px). C est ce que Movsar voyait : « pq
+     rien n est au milieu sur pc, ca va de gauche droite ». */
+  #clientView #step1.is-options .activity-picker:has(.activity-configurator.is-visible) {
     display: grid;
     /* Colonne de reglages FLUIDE (Movsar 2026-08-24, « le menu va trop
        bas, c'est pas carre ») : dense sur grand ecran (jusqu'a 470 px),
@@ -6116,7 +6221,14 @@ body.client-mode #clientView .btn-primary.is-sealed,
      d etirer deux cartes. 190 px est le plancher mesure sous lequel « Minigolf
      Blacklight » et « 10 EUR par table et par heure » se coupent. */
   #clientView #step1 .activity-grid {
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    /* DEUX colonnes PLAFONNEES ET CENTREES sous la question (2026-08-26).
+       `auto-fill` + `1fr` etirait les colonnes sur toute la largeur disponible
+       et ancrait le bloc a GAUCHE : la question etait au milieu, les cartes a
+       cote. Movsar : « pq rien n est au milieu sur pc, ca va de gauche
+       droite ». Deux colonnes de 300 px au plus, centrees, donnent un bloc
+       d environ 610 px aligne sur l axe de la question. */
+    grid-template-columns: repeat(2, minmax(0, 300px));
+    justify-content: center;
     /* Les rangees se partagent la hauteur disponible : quand le panneau de
        reglages est plus haut que la grille, l espace va aux cartes (elles
        respirent) au lieu de rester un trou sous elles. Un ecran large mal

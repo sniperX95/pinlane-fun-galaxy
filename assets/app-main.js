@@ -3565,6 +3565,10 @@ function setRevealState(element, shouldShow) {
     // Reflow volontaire : l'animation d'ouverture rejoue a CHAQUE ouverture.
     void element.offsetWidth;
     element.classList.add('is-revealed');
+    // La question du bloc qui s ouvre s ecrit mot a mot, en meme temps que le
+    // bloc se deploie : les deux mouvements appartiennent au meme geste.
+    const question = element.querySelector('.s1-what-head .panel-title');
+    if (question) revelerQuestion(question);
   } else {
     element.classList.remove('is-revealed');
     element.classList.add('is-folded');
@@ -3614,6 +3618,31 @@ function confirmVenue() {
 // jouerait le repli de la venue au chargement, du theatre que personne n'a
 // demande).
 let revealBooted = false;
+
+// LA QUESTION S ECRIT, ELLE N APPARAIT PAS D UN BLOC. Chaque mot est enveloppe
+// dans un masque et monte a son tour (CSS : .q-word + q-word-rise, decalage
+// pose par --i). Movsar, 2026-08-26 : « il faut que le texte apparaisse d une
+// maniere trop stylee ».
+// Le texte lu reste EXACTEMENT le meme : les mots sont remis avec leurs
+// espaces, donc textContent, les lecteurs d ecran et les gates qui cherchent
+// « Que souhaitez-vous faire ? » voient la meme phrase qu avant.
+function revelerQuestion(element) {
+  if (!element) return;
+  const phrase = (element.dataset.questionSource || element.textContent || '').trim();
+  if (!phrase) return;
+  // La phrase d origine est gardee : sans elle, un second passage decouperait
+  // du markup deja decoupe et empilerait les spans a l infini.
+  element.dataset.questionSource = phrase;
+  const mots = phrase.split(/\s+/).filter(Boolean);
+  element.innerHTML = mots
+    .map((mot, index) => `<span class="q-word" style="--i:${index}"><span>${escapeHtml(mot)}</span></span>`)
+    .join(' ');
+  // Le redemarrage force : sans lui, revenir sur l ecran ne rejoue rien
+  // (l animation est deja consideree comme terminee sur ces noeuds).
+  element.classList.remove('q-reveal');
+  void element.offsetWidth;
+  element.classList.add('q-reveal');
+}
 
 function syncProgressiveReveal() {
   const what = document.getElementById('s1What');

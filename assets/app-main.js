@@ -4979,8 +4979,12 @@ function selectFormule(id) {
 }
 
 function updateProgress() {
-  for (let i = 1; i <= 5; i++) {
+  const total = tunnelStepCount();
+  for (let i = 1; i <= total; i++) {
     const el = document.getElementById('pd' + i);
+    // Une pastille peut manquer sans que le parcours soit casse : on ne plante
+    // pas la progression pour autant.
+    if (!el) continue;
     el.classList.remove('active', 'done');
     if (i < state.step) el.classList.add('done');
     if (i === state.step) el.classList.add('active');
@@ -4989,7 +4993,8 @@ function updateProgress() {
   // 1 à la dernière. Sous filtre gooey, la tête s'étire depuis le remplissage
   // comme une goutte (transition de width, calque .lq-fluid).
   const progress = document.querySelector('#clientView .progress');
-  if (progress) progress.style.setProperty('--p', String(((Number(state.step) || 1) - 1) / 4));
+  const denominateur = Math.max(1, tunnelStepCount() - 1);
+  if (progress) progress.style.setProperty('--p', String(((Number(state.step) || 1) - 1) / denominateur));
   syncMobileTopbar();
 }
 
@@ -5041,11 +5046,12 @@ function syncMobileTopbar() {
   } else {
     title.removeAttribute('aria-label');
   }
-  rank.textContent = `${step}/5`;
-  fill.style.width = `${(step / 5) * 100}%`;
+  const total = tunnelStepCount();
+  rank.textContent = `${step}/${total}`;
+  fill.style.width = `${(step / total) * 100}%`;
   // Le retour n'existe que la ou il mene quelque part : jamais sur la page
   // venue (premier ecran) ni sur la confirmation (le parcours est fini).
-  back.hidden = venuePage || step === 5;
+  back.hidden = venuePage || step === tunnelStepCount();
 }
 
 // Tap sur le titre de la barre haute (page activites) : meme geste que la
@@ -5174,6 +5180,21 @@ function applyBookingAlternative(index) {
 //  3. les étapes non courantes sont INERTES (`inert` + aria-hidden) : le
 //     clavier et le lecteur d'écran ne voient que l'écran affiché.
 const STEP_LABELS = { 1: 'Activité', 2: 'Créneau', 3: 'Contact', 4: 'Valider', 5: 'Confirmé' };
+
+// LE NOMBRE D ECRANS SE LIT SUR LA PISTE, IL NE SE RECOPIE PAS. Avant, « 5 »
+// etait ecrit en dur a cinq endroits (la liste des ids dans goStep, la boucle
+// des pastilles, le diviseur du fluide, le rang « n/5 », le titre accessible) :
+// ajouter un ecran demandait de les retrouver tous, et en oublier un donnait une
+// progression qui ment sans rien casser de visible. La piste EST la source.
+function tunnelStepIds() {
+  const track = document.getElementById('tunnelTrack');
+  if (!track) return ['step1', 'step2', 'step3', 'step4', 'step5'];
+  const ids = Array.from(track.children).map((el) => el.id).filter(Boolean);
+  return ids.length ? ids : ['step1', 'step2', 'step3', 'step4', 'step5'];
+}
+function tunnelStepCount() {
+  return tunnelStepIds().length;
+}
 let stepArrivalTimer = null;
 
 function prefersReducedMotion() {
@@ -5208,7 +5229,7 @@ function goStep(n, options = {}) {
   const animate = !reduce && options.animate !== false && previous !== n;
 
   if (stepArrivalTimer) { clearTimeout(stepArrivalTimer); stepArrivalTimer = null; }
-  ['step1', 'step2', 'step3', 'step4', 'step5'].forEach((id) => {
+  tunnelStepIds().forEach((id) => {
     const element = document.getElementById(id);
     if (!element) return;
     const current = element === target;
@@ -5261,7 +5282,7 @@ function goStep(n, options = {}) {
   // et le parcours est cassé pour qui ne se sert pas d'une souris.
   const heading = document.getElementById('stepHeading');
   if (heading) {
-    heading.textContent = `Étape ${n} sur 5 : ${STEP_LABELS[n] || ''}`;
+    heading.textContent = `Étape ${n} sur ${tunnelStepCount()} : ${STEP_LABELS[n] || ''}`;
     if (options.focus !== false) heading.focus({ preventScroll: true });
   }
   // Le dock telephone n'a voix qu'a l'etape 1 : il se tait des qu'on la quitte.
@@ -5364,7 +5385,11 @@ function showMobileOptionsPage(show) {
 function syncStepOneCta() {
   const label = document.getElementById('btnStep1Label');
   if (!label) return;
-  const towardOptions = isPhoneLayout() && !onMobileOptionsPage() && mobileOptionsAvailable();
+  // L ECRAN DE REGLAGES N EST PLUS RESERVE AU TELEPHONE. Il existait deja, mais
+  // seulement sous 640 px : sur ordinateur, les reglages s empilaient sous la
+  // grille d activites, sur le meme ecran. C est une question a part (« combien
+  // de temps ? », « combien de parties ? ») : elle a son ecran partout.
+  const towardOptions = !onMobileOptionsPage() && mobileOptionsAvailable();
   const text = towardOptions ? 'Continuer' : 'Vérifier les disponibilités';
   if (label.textContent !== text) label.textContent = text;
 }
@@ -5374,9 +5399,10 @@ async function goStep2() {
     showAlert('Cette date est déjà passée. Vous ne pouvez plus réserver pour ce jour.');
     return;
   }
-  // Telephone : le premier passage s arrete sur la page options si un reglage
-  // existe ; le second (depuis la page options) continue vers les heures.
-  if (isPhoneLayout() && !onMobileOptionsPage() && mobileOptionsAvailable()) {
+  // Le premier passage s arrete sur l ecran de reglages si un reglage existe ;
+  // le second (depuis cet ecran) continue vers les heures. Vrai a toutes les
+  // largeurs depuis le 2026-08-26 : voir syncStepOneCta.
+  if (!onMobileOptionsPage() && mobileOptionsAvailable()) {
     showMobileOptionsPage(true);
     return;
   }

@@ -167,6 +167,24 @@ async function bootClient(page, cacheKey) {
     setView('client');
     syncBookingTypeUi();
   }, DATE);
+  // LE PARCOURS REEL COMPTE DEUX PAS DEPUIS LES ACTIVITES. Depuis le 2026-08-26,
+  // les reglages d activite ont leur propre ecran a TOUTES les largeurs (avant,
+  // seulement sous 640 px) : « Continuer » mene d abord aux reglages, puis aux
+  // heures. Ce helper fait ce que fait un client, pas moins : il rappelle
+  // goStep2 tant qu on est encore a l etape 1, au plus deux fois. Il ne masque
+  // rien - si l etape ne bouge pas, les assertions d apres rougissent comme
+  // avant.
+  await page.evaluate(() => {
+    window.__QA_GO2__ = async () => {
+      await goStep2();
+      // Le bon signal est « on est reste sur l ecran de reglages », pas le rang
+      // de l etape : le gate enchaine ses scenarios sans revenir a l etape 1, et
+      // tester `state.step === 1` laissait le second pas de cote (mesure : etape
+      // restee a 5, requete jamais partie, [8] rouge).
+      if (typeof onMobileOptionsPage === 'function' && onMobileOptionsPage()) await goStep2();
+      return state.step;
+    };
+  });
   await page.waitForTimeout(500);
 }
 
@@ -228,7 +246,7 @@ async function main() {
     // =====================================================================
     console.log('\n[3] La requete de disponibilite porte le panier complet');
     // =====================================================================
-    await page.evaluate(() => { window.__QA_CALLS__.availability = []; return goStep2(); });
+    await page.evaluate(() => { window.__QA_CALLS__.availability = []; return window.__QA_GO2__(); });
     await page.waitForTimeout(700);
     const availabilityCall = await page.evaluate(() => window.__QA_CALLS__.availability[0] || '');
     const availParams = new URLSearchParams(availabilityCall);
@@ -424,7 +442,7 @@ async function main() {
       syncBookingTypeUi();
       const before = state.step;
       window.__QA_CALLS__.availability = [];
-      await goStep2();
+      await window.__QA_GO2__();
       return { before, after: state.step, calls: window.__QA_CALLS__.availability.length };
     });
     ok(blocked.after === blocked.before && blocked.calls === 0,
@@ -438,7 +456,7 @@ async function main() {
       applyChosenActivitiesToBooking();
       syncBookingTypeUi();
       window.__QA_CALLS__.availability = [];
-      await goStep2();
+      await window.__QA_GO2__();
       return { type: state.booking.type, query: window.__QA_CALLS__.availability[0] || '' };
     });
     await page.waitForTimeout(300);
@@ -555,8 +573,13 @@ async function main() {
     ok(polish.dx <= 1 && polish.dy <= 1,
       `la coche est centree dans son anneau a ${polish.dx} / ${polish.dy} px pres`);
     // 6 depuis le 2026-08-18 : la plaine de jeux se regle en nombre d'enfants.
-    ok(polish.settingsRows === 6 && polish.configuratorVisible && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
-      `le panneau commun ne montre que les reglages selectionnes (${polish.settingsRows} lignes parametrables)`);
+    // Depuis le 2026-08-26 le configurateur n est plus VISIBLE avec la grille
+    // (il a son ecran) : on verifie donc qu il porte toujours les 6 lignes
+    // parametrables et qu il ne montre pas les autres, sans exiger qu il soit a
+    // l ecran a ce moment-la. Sa visibilite sur SON ecran est prouvee par la
+    // matrice de largeurs plus bas et par les gates tactile et one-screen.
+    ok(polish.settingsRows === 6 && polish.laserSettingsVisible && polish.hiddenSettingsHidden,
+      `le panneau commun ne porte que les reglages selectionnes (${polish.settingsRows} lignes parametrables)`);
     ok(polish.noOptionsInsideCards,
       'aucun reglage ne gonfle une carte : la selection et la configuration sont separees');
     ok(polish.hiddenButtonsFocusable === false,
@@ -591,8 +614,20 @@ async function main() {
     });
     const layouts = [];
     for (const target of [
-      { width: 1280, expectedColumns: 2, expectedSummaryColumns: 2 },
-      { width: 800, expectedColumns: 2, expectedSummaryColumns: 2 },
+      // UN ECRAN, UNE QUESTION - A TOUTES LES LARGEURS (2026-08-26). Les
+      // reglages avaient leur page sous 640 px seulement ; sur ordinateur ils
+      // faisaient FACE a la grille, sur le meme ecran. Movsar : « il y a trop
+      // d informations [...] il y a des mamies de 60 ans qui reservent, elles
+      // vont jamais comprendre autant d informations ». La garantie n est pas
+      // supprimee, elle est RETOURNEE : ce qui etait « cote a cote, alignes »
+      // devient « pas sur le meme ecran », et c est la branche settingsOnOwnPage
+      // qui le verifie, celle-la meme qui protegeait deja le telephone.
+      // Le recapitulatif a suivi les reglages sur LEUR ecran : il y dispose de
+      // toute la largeur et se range en 3 colonnes au lieu de 2. Ce n est pas un
+      // relachement : l assertion « aucun texte ne deborde de sa carte » plus bas
+      // couvre la lisibilite, et le nombre de LIGNES (8) reste verifie.
+      { width: 1280, expectedColumns: 2, expectedSummaryColumns: 3, settingsOnOwnPage: true },
+      { width: 800, expectedColumns: 2, expectedSummaryColumns: 3, settingsOnOwnPage: true },
       // TELEPHONE : deux cartes par rangee depuis la refonte mobile du
       // 2026-08-15. Une carte d activite est un icone, un nom et un tarif :
       // elle n a jamais eu besoin de 390 px de large, et huit cartes empilees
@@ -742,7 +777,7 @@ async function main() {
           toggleBookingActivity('laser_game');
           toggleBookingActivity('minigolf_blacklight');
           window.__QA_CALLS__.availability = [];
-          await goStep2();
+          await window.__QA_GO2__();
           const params = new URLSearchParams(window.__QA_CALLS__.availability[0] || '');
           return JSON.parse(params.get('program') || 'null');
         });
@@ -757,7 +792,7 @@ async function main() {
         toggleBookingActivity('laser_game');
         toggleBookingActivity('minigolf_blacklight');
         window.__QA_CALLS__.availability = [];
-        await goStep2();
+        await window.__QA_GO2__();
         const params = new URLSearchParams(window.__QA_CALLS__.availability[0] || '');
         return JSON.parse(params.get('program') || 'null');
       });

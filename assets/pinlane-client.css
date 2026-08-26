@@ -119,9 +119,19 @@ body.client-mode #clientView .success-wrap h2 {
   font-weight: 800;
   letter-spacing: 0.015em;
   line-height: 1.05;
-  color: transparent;
-  -webkit-text-stroke: 1.8px var(--text);
+  /* Le titre est PLEIN par defaut et ne devient creux que la ou le contour
+     existe. `-webkit-text-stroke` n est pas standard : avec `color: transparent`
+     pose inconditionnellement, un moteur qui ignore le contour affichait un titre
+     INVISIBLE, sur l ecran qui annonce que la reservation est prise. Le rendu ne
+     change pas la ou l effet marche. */
+  color: var(--text);
   margin-top: var(--space-1);
+}
+@supports (-webkit-text-stroke: 1px black) {
+  body.client-mode #clientView .success-wrap h2 {
+    color: transparent;
+    -webkit-text-stroke: 1.8px var(--text);
+  }
 }
 body.client-mode #clientView .success-wrap .sub { font-size: 16px; }
 body.client-mode #clientView .success-wrap .btn-secondary {
@@ -803,9 +813,89 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
 
 #clientView .s1-field { display: flex; flex-direction: column; gap: var(--space-2); }
 
-/* Ligne de rappel de la venue (page par page telephone, 2026-08-18) :
-   cachee partout, le CSS <= 640 la revele quand le programme est ouvert. */
-#clientView .s1-venue-line { display: none; }
+/* UN ECRAN, UNE QUESTION - SUR TOUTES LES LARGEURS (2026-08-26).
+   Le telephone enchainait deja venue -> activites -> reglages. L ordinateur,
+   lui, gardait les trois blocs COTE A COTE : neuf zones de decision sur un seul
+   ecran (date, joueurs, encart pistes, bascule carte/formules, huit cartes
+   d activites, reglages, total, demande sur mesure, « une question ? »).
+   Movsar, 2026-08-26 : « il y a trop d informations [...] il y a des mamies de
+   60 ans qui reservent, elles vont jamais comprendre autant d informations ».
+   Une fois la venue confirmee, le panneau complet cede donc la place a une
+   ligne de rappel tapable, et l ecran entier revient a la question du moment.
+   Sous 640 px c est la BARRE HAUTE qui porte ce rappel : la ligne y reste
+   cachee (regle dans la media query telephone). */
+#clientView .s1-venue-line {
+  display: none;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+#clientView .s1-venue-line:hover { border-color: var(--accent); color: var(--text); }
+#clientView .s1-venue-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#clientView .s1-venue-line-text { flex: 1; font-weight: 600; color: var(--text); }
+#clientView .s1-venue-line-edit { color: var(--accent); font-weight: 600; }
+/* Le panneau complet s efface des que le programme est ouvert, et la ligne de
+   rappel prend le relais : c est LA bascule qui transforme l ecran empile en
+   parcours. */
+#clientView .step1-body:not(.is-solo) .s1-when { display: none; }
+#clientView .step1-body:not(.is-solo) .s1-venue-line:not([hidden]) {
+  display: flex;
+  /* La ligne ne s ETIRE pas : `.step-body` aligne ses enfants en `stretch`, ce
+     qui transformait ce simple rappel en une carte vide haute de tout l ecran
+     (mesure : une colonne blanche de 830 px pour une ligne de 48 px). */
+  align-self: start;
+}
+/* La colonne de gauche n a plus de contenu une fois la venue repliee : l ecran
+   revient a UNE colonne, et le rappel se pose au-dessus de la question. */
+#clientView .step1-body:not(.is-solo) {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
+/* UNE COLONNE DE LECTURE, PAS TOUTE LA LARGEUR DE L ECRAN. Une question posee
+   en travers de 1440 px se lit mal : l oeil doit balayer. La question du moment
+   vit dans une colonne centree, et l espace lateral devient de la respiration
+   au lieu d etre rempli de cartes etriquees. */
+@media (min-width: 900px) {
+  #clientView .step1-body:not(.is-solo) > * {
+    width: min(1000px, 100%);
+    margin-inline: auto;
+  }
+  /* Les cartes ont enfin la place de dire leur nom sur UNE ligne : le plancher
+     passe de 190 a 240 px. A 190, « Minigolf Blacklight » et « 10 EUR par table
+     et par heure » se cassaient en trois lignes alors que l ecran etait a moitie
+     vide (mesure sur capture : 4 colonnes de 270 px pour 1100 px disponibles,
+     et 400 px de vide sous la grille). */
+  #clientView #step1:not(.is-options) .activity-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  /* Le bloc de question se pose au premier tiers plutot que colle en haut : le
+     vide se repartit au lieu de tomber entierement sous la grille. */
+  #clientView .step1-body:not(.is-solo) { align-content: center; }
+}
+
+/* L ECRAN DE REGLAGES, PARTOUT. Les memes regles existaient sous 640 px
+   seulement : la grille et le selecteur s effacent, le configurateur prend
+   tout l ecran, et le programme (activites + total) se lit LA, une fois les
+   reglages sous les yeux. Sur ordinateur ces trois blocs cohabitaient sur
+   l ecran des activites ; ils s enchainent maintenant comme sur telephone. */
+#clientView #step1.is-options .s1-what-head,
+#clientView #step1.is-options .activity-grid { display: none; }
+#clientView #step1:not(.is-options) #programSummary { display: none; }
+#clientView #step1.is-options #programSummary { margin-top: var(--space-3); }
+#clientView #step1:not(.is-options) .activity-configurator { display: none; }
+#clientView #step1.is-options .activity-configurator { margin-top: 0; }
 
 #clientView .s1-what {
   min-height: 0;
@@ -1232,16 +1322,22 @@ body.client-mode.embed-mode #clientView { min-height: 560px; }
   color: var(--text);
 }
 
-/* 16px + 48px : confort mobile-first, évite le zoom iOS */
+/* AUCUN CHAMP DE SAISIE SOUS 16px. En dessous, iOS Safari ZOOME a la prise de
+   focus et ne dezoome jamais : le client se retrouve coince dans une page
+   agrandie, au milieu du formulaire. C est ca, « sur Safari ca bug a mort ».
+   La liste de types precedente laissait passer deux champs, et pas les moindres
+   (le NOM et le MESSAGE) : `input[type='text']` ne matche PAS un `<input>` ecrit
+   sans attribut `type` (c est le cas de #fName), et aucun selecteur `input[...]`
+   ne matche un `<textarea>` (c est le cas de #fSpecialRequest). On vise donc la
+   REGLE (tout ce qui recoit du texte) au lieu d une enumeration. */
 #clientView .input,
-#clientView input[type='date'],
-#clientView input[type='number'],
-#clientView input[type='tel'],
-#clientView input[type='email'],
-#clientView input[type='text'] {
+#clientView input,
+#clientView textarea,
+#clientView select {
   height: 48px;
   font-size: 16px;
 }
+#clientView textarea { height: auto; }
 
 #clientView .grid-2 {
   display: grid;
@@ -6358,7 +6454,13 @@ body.client-mode #clientView .btn-primary.is-sealed,
      natives du champ nombre font doublon minuscule. */
   #clientView input[type='number']::-webkit-inner-spin-button,
   #clientView input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  #clientView .input { height: 44px; font-size: 14px; }
+  /* Hauteur plus compacte sur telephone, mais JAMAIS moins de 16px : voir la
+     regle de base. Descendre a 14px ici annulait la protection anti-zoom iOS. */
+  #clientView .input,
+  #clientView input,
+  #clientView textarea,
+  #clientView select { height: 44px; font-size: 16px; }
+  #clientView textarea { height: auto; }
   #clientView .lbl { font-size: 12px; }
   #clientView .lbl-optional { font-size: 11.5px; }
   #clientView .seg-btn,
@@ -6512,6 +6614,16 @@ body.client-mode #clientView .btn-primary.is-sealed,
   /* Le geste vertical appartient au defilement : il commence souvent SUR un
      bouton (cartes, chips, champs), pan-y le dit explicitement au moteur
      (retour Movsar iPhone : « les boutons bloquent » le defilement). */
+  /* UN ECRAN DOIT TOUJOURS POUVOIR DEFILER CHEZ LUI QUAND SON CONTENU DEPASSE.
+     Cette securite n existait que sous `@media (max-width:640px) and
+     (max-height:620px)`, et cette condition ne se declenche JAMAIS sur iPhone au
+     moment ou elle sert : quand le clavier s ouvre, iOS retrecit le viewport
+     VISUEL mais pas le viewport de mise en page que lit le CSS. Resultat, clavier
+     ouvert, le bas du formulaire devenait inatteignable. La page, elle, ne defile
+     toujours pas : c est l ecran courant qui defile chez lui, ce qui est le
+     comportement voulu par le tunnel. */
+  #clientView .step-body { overflow: hidden auto; overscroll-behavior: contain; }
+
   #clientView .step-body,
   #clientView .s1-scroller,
   #clientView .s2-slots,

@@ -207,6 +207,12 @@ server.listen(PORT, '127.0.0.1', async () => {
     applyChosenActivitiesToBooking();
     window.__QA_CALLS__.availability = [];
     await goStep2();
+    // LE PARCOURS REEL COMPTE DEUX PAS. Depuis le 2026-08-26 les reglages
+    // d activite ont leur propre ecran a TOUTES les largeurs : « Continuer »
+    // mene d abord aux reglages, puis aux heures. On fait ce que fait un
+    // client, pas moins. Si l ecran ne bouge pas, les assertions d apres
+    // rougissent comme avant : rien n est masque ici.
+    if (typeof onMobileOptionsPage === 'function' && onMobileOptionsPage()) await goStep2();
     return { type: state.booking.type };
   }, DATE);
   await page.waitForTimeout(800);
@@ -325,6 +331,12 @@ server.listen(PORT, '127.0.0.1', async () => {
     applyChosenActivitiesToBooking();
     window.__QA_CALLS__.availability = [];
     await goStep2();
+    // LE PARCOURS REEL COMPTE DEUX PAS. Depuis le 2026-08-26 les reglages
+    // d activite ont leur propre ecran a TOUTES les largeurs : « Continuer »
+    // mene d abord aux reglages, puis aux heures. On fait ce que fait un
+    // client, pas moins. Si l ecran ne bouge pas, les assertions d apres
+    // rougissent comme avant : rien n est masque ici.
+    if (typeof onMobileOptionsPage === 'function' && onMobileOptionsPage()) await goStep2();
     return { type: state.booking.type, query: window.__QA_CALLS__.availability.slice(-1)[0] || '' };
   });
   await page.waitForTimeout(700);
@@ -350,6 +362,12 @@ server.listen(PORT, '127.0.0.1', async () => {
     setBookingActivityOption('laser_game', 'games', 3);
     applyChosenActivitiesToBooking();
     await goStep2();
+    // LE PARCOURS REEL COMPTE DEUX PAS. Depuis le 2026-08-26 les reglages
+    // d activite ont leur propre ecran a TOUTES les largeurs : « Continuer »
+    // mene d abord aux reglages, puis aux heures. On fait ce que fait un
+    // client, pas moins. Si l ecran ne bouge pas, les assertions d apres
+    // rougissent comme avant : rien n est masque ici.
+    if (typeof onMobileOptionsPage === 'function' && onMobileOptionsPage()) await goStep2();
   }, DATE);
   await page.waitForTimeout(900);
   const deuxAncres = await page.evaluate(() => {

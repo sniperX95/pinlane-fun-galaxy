@@ -138,6 +138,105 @@ async function main() {
     await page.mouse.up(); await page.waitForTimeout(150);
     ok(Math.abs(duringB - beforeB) <= 20, `page immobile malgré le bord haut (${beforeB} -> ${duringB})`);
 
+    // --- F : le toast de confirmation ne doit pas voler les clics ---
+    // Movsar, revue manager : « les reservations de 30 minutes dont le changement
+    // d heure ne s applique pas ». Le drag lui-meme fonctionne (A et B le
+    // prouvent) ; ce qui bloque, c est le toast affiche 2,5 s apres CHAQUE
+    // deplacement. Il est en position fixed au-dessus du planning, et une carte
+    // de 30 min ne fait que ~22 px de haut contre 40 px de toast : elle peut
+    // etre TOTALEMENT recouverte, et n a alors plus aucun point de prise. Une
+    // carte d 1 h ou 2 h en depasse toujours, d ou un defaut qui ne se voit que
+    // sur les demi-heures.
+    console.log('\n[F] Le toast de confirmation ne vole pas les clics du planning');
+    // Le toast ne fait que ~248 px de large, centre dans la fenetre : la carte
+    // doit tomber dans son rectangle en X ET en Y, sinon on ne teste rien. On
+    // cherche donc d abord la piste dont la colonne passe sous son centre, et on
+    // pose la reservation de 30 min sur CELLE-LA.
+    const pisteF = await page.evaluate(() => {
+      state.reservations = window.__QA_BUILD__(state.currentDate);
+      state.staffResourceView = 'bowling'; state.staffPlanningExpanded = false;
+      save(); renderStaff();
+      toast('Bowling deplace a 16:00 piste 5');
+      const tr = document.getElementById('toast').getBoundingClientRect();
+      const centreX = tr.left + tr.width / 2;
+      const cellule = [...document.querySelectorAll('.slot-cell[data-bowling-drop-lane]')]
+        .find((c) => { const b = c.getBoundingClientRect(); return b.left <= centreX && b.right >= centreX; });
+      return cellule ? Number(cellule.dataset.bowlingDropLane) : null;
+    });
+    if (ok(Number.isFinite(pisteF), `une piste passe sous le toast (piste ${pisteF})`)) {
+      await page.evaluate((piste) => {
+        state.reservations.push({ id: 9020, name: 'Demi heure #9020', phone: '+32470860020', email: 'f@x.test', date: state.currentDate, startTime: '20:00', duration: 0.5, lanes: [piste], status: 'confirmed', pax: 2, price: 12, type: 'bowling', label: 'Bowling 30 min' });
+        save(); renderStaff();
+      }, pisteF);
+      await page.waitForTimeout(350);
+      // On CONSTRUIT la situation au lieu de l esperer : le planning est fait
+      // defiler jusqu a ce que la carte tombe dans le rectangle du toast.
+      const posF = await page.evaluate((piste) => {
+        toast('Bowling deplace a 16:00 piste 5');
+        const toastEl = document.getElementById('toast');
+        const carte = document.querySelector('.booking[data-booking-res-id="9020"]');
+        if (!toastEl || !carte) return { erreur: 'carte ou toast absent' };
+        let scroller = carte.parentElement;
+        while (scroller && scroller.scrollHeight <= scroller.clientHeight + 4) scroller = scroller.parentElement;
+        const tr = toastEl.getBoundingClientRect();
+        const vise = tr.top + tr.height / 2;
+        for (let essai = 0; essai < 12; essai += 1) {
+          const cr = carte.getBoundingClientRect();
+          const ecart = (cr.top + cr.height / 2) - vise;
+          if (Math.abs(ecart) <= 2) break;
+          if (scroller) scroller.scrollTop += ecart;
+          else (document.scrollingElement || document.documentElement).scrollTop += ecart;
+        }
+        const cr = carte.getBoundingClientRect();
+        const point = { x: cr.x + cr.width / 2, y: cr.y + cr.height / 2 };
+        const dansLeToast = point.x >= tr.left && point.x <= tr.right && point.y >= tr.top && point.y <= tr.bottom;
+        const dessous = document.elementFromPoint(point.x, point.y);
+        const autrePiste = piste === 7 ? 5 : 7;
+        const cible = document.querySelector(`.slot-cell[data-bowling-drop-lane="${autrePiste}"][data-bowling-drop-start="16"]`)
+          || document.querySelector(`.slot-cell[data-bowling-drop-lane="${autrePiste}"]`);
+        const cb = cible ? cible.getBoundingClientRect() : null;
+        return {
+          hauteurCarte: Math.round(cr.height),
+          hauteurToast: Math.round(tr.height),
+          dansLeToast,
+          dessous: dessous ? `${dessous.tagName}#${dessous.id || 'sans-id'}` : 'rien',
+          cestLeToast: !!(dessous && (dessous.id === 'toast' || (dessous.closest && dessous.closest('#toast')))),
+          point,
+          cible: cb ? { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 } : null,
+          avant: (state.reservations.find((x) => x.id === 9020) || {}).startTime,
+        };
+      }, pisteF);
+      if (ok(posF && !posF.erreur && posF.cible, `situation construite (carte ${posF && posF.hauteurCarte}px, toast ${posF && posF.hauteurToast}px)`)) {
+        // Prerequis : sans lui, les assertions suivantes ne prouveraient rien.
+        ok(posF.dansLeToast, `le point de prise tombe DANS le rectangle du toast (${posF.dansLeToast})`);
+        ok(!posF.cestLeToast, `et atteint quand meme la carte, pas le toast (${posF.dessous})`);
+        await page.mouse.move(posF.point.x, posF.point.y); await page.mouse.down();
+        await page.mouse.move(posF.point.x + 8, posF.point.y - 8, { steps: 2 });
+        await page.mouse.move(posF.cible.x, posF.cible.y, { steps: 8 });
+        await page.mouse.up(); await page.waitForTimeout(400);
+        const apresF = await page.evaluate(() => (state.reservations.find((x) => x.id === 9020) || {}).startTime);
+        ok(apresF !== posF.avant, `la resa de 30 min a bien bouge malgre le toast (${posF.avant} -> ${apresF})`);
+        // CONTRE-EPREUVE : sans toast, le meme geste doit marcher. Si celle-ci
+        // echoue, l assertion precedente ne prouvait rien du tout.
+        const posG = await page.evaluate(() => {
+          document.getElementById('toast').classList.add('hidden');
+          const carte = document.querySelector('.booking[data-booking-res-id="9020"]');
+          const cible = document.querySelector('.slot-cell[data-bowling-drop-lane="1"][data-bowling-drop-start="12"]') || document.querySelector('.slot-cell[data-bowling-drop-lane="1"]');
+          if (!carte || !cible) return null;
+          const cr = carte.getBoundingClientRect(); const cb = cible.getBoundingClientRect();
+          return { src: { x: cr.x + cr.width / 2, y: cr.y + cr.height / 2 }, tgt: { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 }, avant: (state.reservations.find((x) => x.id === 9020) || {}).startTime };
+        });
+        if (ok(!!posG, 'contre-epreuve : carte et cible presentes')) {
+          await page.mouse.move(posG.src.x, posG.src.y); await page.mouse.down();
+          await page.mouse.move(posG.src.x + 8, posG.src.y - 8, { steps: 2 });
+          await page.mouse.move(posG.tgt.x, posG.tgt.y, { steps: 8 });
+          await page.mouse.up(); await page.waitForTimeout(400);
+          const apresG = await page.evaluate(() => (state.reservations.find((x) => x.id === 9020) || {}).startTime);
+          ok(apresG !== posG.avant, `sans toast, le meme geste deplace bien la carte (${posG.avant} -> ${apresG})`);
+        }
+      }
+    }
+
     // --- C/D/E : laser plein écran ---
     await page.evaluate(() => { state.reservations = window.__QA_BUILD__(state.currentDate); state.staffResourceView = 'laser'; state.staffLaserPlanningExpanded = true; save(); renderStaff(); });
     await page.waitForTimeout(400);

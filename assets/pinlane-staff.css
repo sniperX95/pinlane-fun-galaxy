@@ -9857,6 +9857,15 @@ body.staff-mode:not(.admin-mode) #newResNotifs { display: flex; }
 /* Toast */
 #toast:not(.hidden) {
   position: fixed;
+  /* LE TOAST NE PREND AUCUN CLIC. Il est plaque en bas-centre pendant 2,5 s
+     apres chaque action et ne porte aucune interaction (une coche et du texte).
+     Sans ceci il intercepte le mousedown de ce qu il recouvre : une carte de
+     planning de 30 min ne fait que 22 px de haut contre 40 px de toast, donc
+     elle disparait entierement dessous et devient impossible a saisir, sans le
+     moindre message. Movsar, 2026-08-26 : « les reservations de 30 minutes dont
+     le changement d heure ne s applique pas ». Une carte d 1 h ou 2 h depassait
+     toujours, d ou un defaut qui ne se voyait que sur les demi-heures. */
+  pointer-events: none;
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);

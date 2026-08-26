@@ -168,6 +168,33 @@ async function testFormuleDeplacee() {
   ok(lanesOf(block) === '1,2', `sur les pistes DEMANDEES (${lanesOf(block)})`);
 }
 
+// UNE VISITE QUI NE MOBILISE AUCUNE RESSOURCE (arcades seules, minigolf seul).
+// Elle ne passe PAS par le moteur : buildFreeVisitPlanResult lui construit son
+// plan a la main. Duree reelle du catalogue : 30 minutes.
+const VISITE_LIBRE = {
+  id: 4000, centerId: 'libramont', channel: 'staff', name: 'ARCADE', phone: '+32400000002',
+  email: 'a@x.be', date: DATE, startTime: '15:00', duration: 0.5, totalDuration: 0.5,
+  lanes: [], pax: 4, status: 'pending', basePrice: 0, price: 40, type: 'visite',
+  formuleId: '', label: 'Arcades', extras: [], laneCount: 0, requiresLanes: false,
+  program: {
+    items: [
+      { activityId: 'arcade_time', name: 'Arcades', planned: false, duration: 0.5, minutes: 30, price: 40, priceKnown: true },
+    ],
+    price: 40, priceComplete: true,
+  },
+  opsPlan: {
+    ok: true, startTime: '15:00', endTime: '15:30', totalMinutes: 30, assignedLanes: [], conflicts: [],
+    risk: { level: 'low', score: 10, reasons: [] }, timeline: [],
+    resourceBlocks: [
+      { activityId: 'arcade_time', resourceType: 'soft_capacity', start: 900, end: 930, startTime: '15:00', endTime: '15:30', countIndex: 1 },
+    ],
+  },
+};
+
+function softBlocks(ops) {
+  return ((ops.opsPlan && ops.opsPlan.resourceBlocks) || []).filter((block) => block.resourceType === 'soft_capacity');
+}
+
 async function testVisiteDeplacee() {
   console.log('\n[5] MODIFICATION visite : tout l enchainement suit le deplacement');
   const patch = { ...VISITE, startTime: '16:00', lanes: [5, 6], laneCount: 2, channel: 'staff', allowPastStart: true };
@@ -180,6 +207,29 @@ async function testVisiteDeplacee() {
   const pass = ops.opsPlan && ops.opsPlan.laserPassPlan;
   ok(pass && pass.totalGames === 3 && pass.remainingGames === 2,
     `les 3 parties vendues restent comptees, 2 a placer (${JSON.stringify(pass && { t: pass.totalGames, r: pass.remainingGames })})`);
+}
+
+// Movsar, revue manager du 2026-08-26 : « les reservations de 30 minutes dont le
+// changement d heure ne s applique pas ». Reproduit ici : une visite SANS
+// ressource planifiee voit son startTime bouger, mais les blocs de son plan
+// restent a l ancienne heure - donc le planning continue de la dessiner ou elle
+// etait. Meme defaut de fond que [5], sur l autre chemin de planification.
+async function testVisiteLibreDeplacee() {
+  console.log('\n[5 bis] MODIFICATION visite SANS ressource : les blocs suivent l heure');
+  const patch = { ...VISITE_LIBRE, startTime: '16:00', channel: 'staff', allowPastStart: true };
+  const ops = await prepareReservationOps(patch, 'staff', { ignoreReservationId: VISITE_LIBRE.id, readState: stateOf([VISITE_LIBRE]) });
+  const bloc = softBlocks(ops)[0];
+  ok(ops.opsPlan && ops.opsPlan.startTime === '16:00',
+    `le plan part a l heure demandee (${ops.opsPlan && ops.opsPlan.startTime})`);
+  ok(bloc && bloc.startTime === '16:00',
+    `le bloc de l activite suit l heure demandee (${bloc ? `${bloc.startTime}-${bloc.endTime}` : 'aucun bloc'})`);
+  ok(bloc && bloc.endTime === '16:30',
+    `et garde ses 30 minutes (${bloc ? `${bloc.startTime}-${bloc.endTime}` : 'aucun bloc'})`);
+  // CONTRE-EPREUVE : a la CREATION, rien n a bouge, le bloc reste ou il est.
+  const creation = await prepareReservationOps({ ...VISITE_LIBRE, channel: 'staff', allowPastStart: true }, 'staff', { readState: stateOf([]) });
+  const blocNeuf = softBlocks(creation)[0];
+  ok(blocNeuf && blocNeuf.startTime === '15:00',
+    `a la creation le bloc ne se decale pas tout seul (${blocNeuf ? blocNeuf.startTime : 'aucun bloc'})`);
 }
 
 function testEcritureCoherente() {
@@ -232,6 +282,7 @@ async function testDureeDeFormule() {
   await testPisteOccupeeNeBloquePas();
   await testFormuleDeplacee();
   await testVisiteDeplacee();
+  await testVisiteLibreDeplacee();
   await testDureeDeFormule();
   testEcritureCoherente();
 

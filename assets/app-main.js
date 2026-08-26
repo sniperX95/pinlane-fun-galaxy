@@ -16370,6 +16370,26 @@ function collapseStaffPlanningFullscreen() {
   return true;
 }
 
+// PASSER D UNE SURFACE PLEIN ECRAN A UNE AUTRE SANS EN SORTIR (2026-08-26).
+// Movsar : « ajoute une section en haut qu on puisse passer directement d un
+// planning a l autre... comme ca on peut pager pour chaque ». Les trois
+// surfaces sont exclusives : une seule porte .expanded a la fois, et la vue
+// de ressource suit, sinon la boite ouverte serait masquee par
+// syncStaffResourceTabs (qui cache planningBox des que la vue n est pas
+// 'bowling').
+function goFullscreenResource(cible) {
+  const surface = ['bowling', 'laser', 'all'].includes(cible) ? cible : 'bowling';
+  if (surface === 'bowling' && !canUseStaffPermission('planning.bowling')) { toast('Planning bowling non autorise.'); return; }
+  if (surface === 'laser' && !canUseStaffPermission('planning.laser')) { toast('Planning laser non autorise.'); return; }
+  state.staffResourceView = surface;
+  state.staffPlanningExpanded = surface === 'bowling';
+  state.staffLaserPlanningExpanded = surface === 'laser';
+  state.staffTableExpanded = surface === 'all';
+  state.staffStatusFilter = 'all';
+  save();
+  renderStaff();
+}
+
 // « Toutes les reservations » s agrandit comme les plannings : plein ecran,
 // liste seule, pour tout voir d un coup (review manager 2026-08-25).
 function toggleTableExpanded() {
@@ -16906,6 +16926,18 @@ function syncStaffResourceTabs(dayReservations = todaysReservations(), view = ge
   // decision. Un bloc qu'on oublie de rattacher a cette decision est visible
   // par defaut, et personne ne le voit en relisant le code.
   document.getElementById('staffTableBox')?.classList.toggle('hidden', hiddenByPage);
+  // La barre du plein ecran porte les MEMES compteurs que les onglets : en
+  // plein ecran, ils sont la seule facon de voir ce que contiennent les deux
+  // autres surfaces avant d y aller.
+  const comptes = {
+    bowling: document.getElementById('staffBowlingCount')?.textContent || '',
+    laser: document.getElementById('staffLaserCount')?.textContent || '',
+    all: document.getElementById('staffAllCount')?.textContent || '',
+  };
+  document.querySelectorAll('[data-fs-count]').forEach((el) => {
+    const valeur = comptes[el.dataset.fsCount];
+    el.textContent = valeur && valeur !== '0' ? valeur : '';
+  });
 }
 
 function getReservationFirstResourceStart(reservation, view = getStaffResourceView()) {
@@ -19781,6 +19813,202 @@ function editLaneAdvice(r, e) {
   return `${pistes(requis)} pour cet effectif. Ajoutez-en si vous voulez plus de place : votre choix est respecté.`;
 }
 
+
+// ── LA FORMULE ADAPTEE A UN SEUL DOSSIER ────────────────────────────────────
+// Le comptoir doit pouvoir dire « pour EUX, on retire le minigolf et on met
+// deux parties de laser, a 200 EUR ». Cela ecrit un PROGRAMME sur CETTE
+// reservation : le catalogue du centre et le tunnel public ne bougent pas
+// (c est le serveur qui replanifie, lib/visit-program). Le nom d origine
+// reste affiche, suivi de « adaptee », pour que personne ne confonde ce
+// dossier avec la formule vendue.
+// LE DROIT : reservations.edit, et surtout PAS pricing.manage.
+//   - pricing.manage est la permission du CATALOGUE : elle ouvre la page
+//     Tarifs, dont les ecritures (formule_overrides) sont relues par
+//     api/public-booking-meta et changent le prix de la formule POUR TOUT LE
+//     MONDE, formulaire public compris. C est exactement ce que Movsar
+//     interdit ici (« faut pas que ca modifie entierement la formule 8 »).
+//   - reservations.edit est le droit d ecrire SUR UN DOSSIER, et c est deja
+//     ce que le serveur exige pour ce PATCH (api/staff-reservations.js) : le
+//     gate client dit donc la meme chose que le gate serveur, ni plus ni
+//     moins. Le preset Manager le porte depuis toujours, le preset Staff bar
+//     ne le porte pas : « manager ou plus », sans rien a cocher a la main
+//     dans les centres deja installes.
+function peutAdapterFormule() {
+  return typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
+}
+
+// Ce que CE dossier contient aujourd hui, sous une forme editable. Source :
+// son programme s il en a un, sinon la definition de sa formule.
+function buildEditProgramFromReservation(r) {
+  const etat = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {} };
+  const items = r && r.program && Array.isArray(r.program.items) ? r.program.items : null;
+  if (items && items.length) {
+    items.forEach((item) => {
+      const id = String(item.activityId || '');
+      if (id === 'bowling') { etat.bowling.on = true; etat.bowling.duration = Number(item.duration) || 1; return; }
+      if (id === 'laser_game') { etat.laser_game.on = true; etat.laser_game.games = Math.max(1, Number(item.games) || 1); return; }
+      if (id) etat.others[id] = true;
+    });
+    return etat;
+  }
+  const formule = r && r.formuleId ? resolveDisplayFormule(r.formuleId) : null;
+  if (formule) {
+    if (formule.hasBowling) { etat.bowling.on = true; etat.bowling.duration = Number(formule.bowlingDur || 1); }
+    const parties = getFormulaLaserGameCount(formule);
+    if (parties > 0) { etat.laser_game.on = true; etat.laser_game.games = parties; }
+    getFormulaFreePassIds(formule).forEach((id) => { etat.others[id] = true; });
+    return etat;
+  }
+  if (String(r && r.type) === 'laser') {
+    etat.laser_game.on = true;
+    etat.laser_game.games = Math.max(1, getLaserGameCountForReservation(r));
+    return etat;
+  }
+  etat.bowling.on = true;
+  etat.bowling.duration = Number((r && r.duration) || 1);
+  return etat;
+}
+
+function ensureEditProgram(r) {
+  if (!state.editState) return null;
+  if (!state.editState.programmeEdite) {
+    state.editState.programmeEdite = buildEditProgramFromReservation(r);
+    state.editState.programmeEditeInitial = JSON.stringify(state.editState.programmeEdite);
+  }
+  return state.editState.programmeEdite;
+}
+
+function editProgramAChange() {
+  const e = state.editState;
+  if (!e || !e.programmeEdite || !e.programmeEditeInitial) return false;
+  return JSON.stringify(e.programmeEdite) !== e.programmeEditeInitial;
+}
+
+// Le programme au format que le serveur renormalise (lib/visit-program).
+function getEditProgramItems() {
+  const e = state.editState;
+  if (!e || !e.programmeEdite) return [];
+  const pax = Math.max(1, Number(e.pax) || 1);
+  const items = [];
+  if (e.programmeEdite.bowling?.on) items.push({ activityId: 'bowling', duration: Number(e.programmeEdite.bowling.duration) || 1, pax });
+  if (e.programmeEdite.laser_game?.on) items.push({ activityId: 'laser_game', games: Math.max(1, Number(e.programmeEdite.laser_game.games) || 1), pax });
+  Object.entries(e.programmeEdite.others || {}).forEach(([id, actif]) => { if (actif) items.push({ activityId: id, pax }); });
+  return items;
+}
+
+function toggleEditActivity(id) {
+  const programme = state.editState && state.editState.programmeEdite;
+  if (!programme) return;
+  if (id === 'bowling') programme.bowling.on = !programme.bowling.on;
+  else if (id === 'laser_game') programme.laser_game.on = !programme.laser_game.on;
+  else programme.others[id] = !programme.others[id];
+  renderPos();
+}
+
+function setEditBowlingDuration(valeur) {
+  const programme = state.editState && state.editState.programmeEdite;
+  if (!programme) return;
+  programme.bowling.on = true;
+  programme.bowling.duration = Number(valeur) || 1;
+  renderPos();
+}
+
+function setEditLaserGames(nombre) {
+  const programme = state.editState && state.editState.programmeEdite;
+  if (!programme) return;
+  programme.laser_game.on = true;
+  programme.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(nombre) || 1)));
+  renderPos();
+}
+
+// Le prix de CE dossier. Saisi en place : un re-rendu pendant la frappe
+// detruirait le champ (meme lecon que le nombre de joueurs du quickbook).
+function setEditPrice(valeur) {
+  if (!state.editState) return;
+  state.editState.price = valeur;
+}
+
+function getEditPriceValue() {
+  const brut = String((state.editState && state.editState.price) ?? '').trim().replace(',', '.');
+  if (brut === '') return null;
+  const valeur = Number(brut);
+  if (!Number.isFinite(valeur) || valeur < 0) return null;
+  return Math.round(valeur);
+}
+
+// Le bloc « contenu » de l onglet Modifier : lecture seule pour le comptoir,
+// editable pour un manager.
+function toggleEditProgrammeOuvert() {
+  if (!state.editState) return;
+  state.editState.programmeOuvert = !state.editState.programmeOuvert;
+  renderPos();
+}
+
+// Le contenu du dossier : LISTE par defaut (la fiche reste courte et se lit
+// d un coup), EDITABLE quand un manager le demande. Le cas par cas est une
+// exception : il ne doit pas allonger la fiche de tout le monde, tous les
+// jours (le gate de hauteur de la fiche le mesure).
+function renderEditFormuleBloc(r, formule, lignes) {
+  if (!peutAdapterFormule()) {
+    if (!lignes.length) return '';
+    return `<div class="pos-field" style="grid-column: 1 / -1;">
+      <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'la formule')}</span>
+      <ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>
+    </div>`;
+  }
+  const ouvert = !!(state.editState && state.editState.programmeOuvert);
+  const listeHtml = lignes.length
+    ? `<ul class="edit-formule-list">${lignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>`
+    : '';
+  if (!ouvert) {
+    return `<div class="pos-field" style="grid-column: 1 / -1;">
+      <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'ce dossier')}</span>
+      ${listeHtml}
+      <button type="button" class="edit-adapter-btn" onclick="toggleEditProgrammeOuvert()">Adapter pour ce dossier</button>
+    </div>`;
+  }
+  const programme = ensureEditProgram(r);
+  const choix = typeof getQuickBookActivityChoices === 'function' ? getQuickBookActivityChoices() : [];
+  const connus = new Set(choix.map((c) => c.id));
+  // Une activite deja au dossier mais absente du catalogue courant reste
+  // affichee : on ne fait pas disparaitre en silence ce que le client a paye.
+  const supplement = Object.keys(programme.others || {})
+    .filter((id) => !connus.has(id))
+    .map((id) => ({ id, label: (typeof getCenterActivity === 'function' && getCenterActivity(id)?.name) || ACTIVITY_LABELS[id] || (typeof FORMULA_ACTIVITY_LABELS !== 'undefined' && FORMULA_ACTIVITY_LABELS[id]) || id }));
+  const rangees = [...choix, ...supplement].map((choice) => {
+    const estBowling = choice.id === 'bowling';
+    const estLaser = choice.id === 'laser_game';
+    const actif = estBowling ? !!programme.bowling.on : estLaser ? !!programme.laser_game.on : !!(programme.others || {})[choice.id];
+    let options = '';
+    if (actif && estBowling) {
+      options = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(programme.bowling.duration) === Number(opt.value) ? 'active' : ''}" onclick="setEditBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
+    }
+    if (actif && estLaser) {
+      options = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(programme.laser_game.games) === games ? 'active' : ''}" onclick="setEditLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
+    }
+    return `<div class="qb-visit-row ${actif ? 'is-on' : ''}">
+      <button type="button" class="qb-visit-toggle" aria-pressed="${actif ? 'true' : 'false'}" onclick="toggleEditActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
+      ${options}
+    </div>`;
+  }).join('');
+  const prixValeur = getEditPriceValue();
+  const reference = Number(r.basePrice) || getBasePriceForReservation(r) || 0;
+  const modifie = editProgramAChange();
+  return `<div class="pos-field" style="grid-column: 1 / -1;">
+    <span class="lbl">Contenu de ${escapeHtml(formule?.name || 'ce dossier')} <em class="edit-cas-tag">cas par cas</em>
+      <button type="button" class="edit-adapter-btn is-open" onclick="toggleEditProgrammeOuvert()">Replier</button></span>
+    ${listeHtml ? `<div class="edit-formule-origine">${listeHtml}</div>` : ''}
+    <div class="qb-visit-grid">${rangees}</div>
+    <div class="edit-price-row">
+      <label for="editPriceInput">Prix facturé</label>
+      <input id="editPriceInput" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(state.editState.price ?? Math.round(Number(r.price) || 0)))}" oninput="setEditPrice(this.value)">
+      <span>€</span>
+      ${reference > 0 ? `<small>référence catalogue ${Math.round(reference)} €</small>` : ''}
+    </div>
+    <div class="qb-field-note">${modifie ? 'Les activités seront replanifiées à l\'enregistrement. ' : ''}Ne change QUE ce dossier : la formule du centre et le formulaire de réservation en ligne ne bougent pas.</div>
+  </div>`;
+}
+
 function renderPosEdit(r) {
   const e = state.editState;
   // Ce que CETTE reservation a reellement : une session laser n'occupe aucune
@@ -19868,11 +20096,7 @@ function renderPosEdit(r) {
                    Une piste est un objet fini et denombrable, donc elle se
                    presente comme telle : une case par piste, celles qui sont en
                    maintenance sont hors service et le disent. -->
-              ${editFormuleLignes.length ? `
-              <div class="pos-field pos-field-wide">
-                <span class="lbl">Contenu de ${escapeHtml(editFormule.name || 'la formule')}</span>
-                <ul class="edit-formule-list">${editFormuleLignes.map(ligne => `<li>${escapeHtml(String(ligne))}</li>`).join('')}</ul>
-              </div>` : ''}
+              ${renderEditFormuleBloc(r, editFormule, editFormuleLignes)}
               ${!editNeedsLanes ? (editFormuleLignes.length ? '' : `
               <div class="pos-field pos-field-wide">
                 <span class="lbl">${isLaserRes ? 'Sessions' : 'Ressources'}</span>
@@ -19988,6 +20212,25 @@ async function saveEdit(e) {
   const ecartPrix = getReservationPriceGap(state.selectedRes);
   updated.basePrice = getBasePrice(updated.type, updated.duration, updated.lanes.length, updated.pax, updated.formuleId, updated.date);
   updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
+
+  // FORMULE ADAPTEE A CE DOSSIER : on envoie un PROGRAMME. Le serveur le
+  // renormalise et replanifie (program est dans REPLAN_FIELDS) ; le catalogue
+  // n est pas touche. Le nom d origine est conserve, suivi de « adaptee ».
+  const programmeModifie = peutAdapterFormule() && editProgramAChange();
+  if (programmeModifie) {
+    const items = getEditProgramItems();
+    if (!items.length) { failEdit('Gardez au moins une activité dans ce dossier.'); return; }
+    // FORME CANONIQUE : { items }. Un tableau nu passe la planification mais
+    // est refuse par l ecriture en base (normalizeReservationProgram teste
+    // value.items) : le contenu edite serait ecrit NULL et la modification
+    // ne survivrait pas au premier rechargement.
+    updated.program = { items };
+    const nomOrigine = (state.selectedRes.formuleId ? resolveDisplayFormule(state.selectedRes.formuleId)?.name : '') || state.selectedRes.label || '';
+    updated.label = nomOrigine ? `${nomOrigine} (adaptée)`.slice(0, 160) : (state.selectedRes.label || 'Sur mesure');
+  }
+  // Prix saisi a la main : il fait foi pour CE dossier.
+  const prixSaisi = peutAdapterFormule() ? getEditPriceValue() : null;
+  if (prixSaisi !== null) updated.price = prixSaisi;
   const previousReservation = state.selectedRes;
   applyOptimisticReservation(updated, { preserveEditState: true });
 

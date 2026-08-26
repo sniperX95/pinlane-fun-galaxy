@@ -55,6 +55,9 @@ async function warmCenterKnowledge() {
 // son contenu. Voir buildReservationAuditChanges plus bas.
 const AUDITED_RESERVATION_FIELDS = [
   'price',
+  // Ce que le client a REELLEMENT achete : une formule adaptee au comptoir
+  // change le contenu vendu, pas seulement son prix.
+  'program',
   'basePrice',
   'date',
   'startTime',
@@ -88,6 +91,11 @@ function buildReservationAuditChanges(before, after) {
 }
 
 const REPLAN_FIELDS = [
+  // Changer les ACTIVITES d un dossier (formule adaptee au comptoir) doit
+  // replanifier : les horaires et les ressources en dependent. Sans `program`
+  // ici, un PATCH qui ne portait que le programme passait sans replan et les
+  // nouvelles activites n avaient ni creneau ni piste (2026-08-26).
+  'program',
   'date',
   'startTime',
   'duration',

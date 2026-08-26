@@ -2251,7 +2251,12 @@ async function main() {
     const qbGroup = await readQuickBook();
     assert(/groupe/i.test(qbGroup.title) && /anniversaire/i.test(qbGroup.title), `Groupes : titre orienté groupe/anniversaire attendu (reçu ${qbGroup.title}).`);
     assert(qbGroup.hasFormuleGrid && !qbGroup.hasTypeRow && !qbGroup.hasLaneGrid, 'Groupes : le choix de formule est central, pistes et type repliés.');
-    assert(qbGroup.interactive < 26, `Groupes : moins d éléments que l ancienne modale (reçu ${qbGroup.interactive}).`);
+    // Plafond releve de 26 a 27 le 2026-08-26 : la review manager a demande le
+    // prix ajustable cas par cas (« prix d ami ») : UN bouton « Modifier le
+    // prix » dans le resume, pour les roles porteurs de reservations.edit.
+    // Le plafond continue de proteger la simplicite de la modale : toute
+    // nouvelle capacite au-dela de ce bouton doit se justifier ici.
+    assert(qbGroup.interactive < 27, `Groupes : moins d éléments que l ancienne modale (reçu ${qbGroup.interactive}).`);
     await screenshot(page, 'quickbook-groupe');
     issues.push(...await collectIssues(page, 'quickbook-groupe'));
     await page.evaluate(() => closeQuickBook());

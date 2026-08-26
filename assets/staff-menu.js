@@ -1050,6 +1050,15 @@
   }
 
   function setMenuPage(key) {
+    // LE FILTRE D ETAT NE SE POSE QUE PAR UN CLIC SUR SA PUCE (2026-08-26).
+    // La barre laterale ecrivait state.staffStatusFilter en passant par
+    // « Sessions » (open) et « Arrivees » (arrived) ; ces deux pages calculent
+    // pourtant leurs propres listes et ne le lisent JAMAIS. Le filtre restait
+    // donc pose sur le PLANNING, qui affichait ensuite une journee amputee
+    // sans que personne n ait touche a une puce : « ca coche lui-meme le
+    // filtre... on peut croire qu il n y a que ca comme reservation »
+    // (Movsar). Toute navigation de la barre laterale repart de « Tout ».
+    if (typeof state !== 'undefined' && state.staffMenuPage !== key) state.staffStatusFilter = 'all';
     if (typeof state !== 'undefined') state.staffMenuPage = key;
     try {
       if (typeof setStaffRouteHash === 'function') setStaffRouteHash(key);
@@ -1189,14 +1198,12 @@
     if (key === 'sessions') {
       setMenuPage('sessions');
       if (typeof setView === 'function') setView('staff');
-      if (typeof state !== 'undefined') state.staffStatusFilter = 'open';
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }
     if (key === 'arrivals') {
       setMenuPage('arrivals');
       if (typeof setView === 'function') setView('staff');
-      if (typeof state !== 'undefined') state.staffStatusFilter = 'arrived';
       if (typeof renderStaff === 'function') renderStaff();
       return;
     }

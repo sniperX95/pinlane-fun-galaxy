@@ -39,7 +39,11 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view','planning.view','reservations.view','reservations.create','reservations.quick','reservations.edit','reservations.status','reservations.cancel','reservations.delete','clients.view','clients.edit','emails.view','emails.send','settings.manage','direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+    // Date LOCALE, jamais toISOString : l app compare a todayStr() (local) ;
+    // en zone UTC+2, entre minuit et 2 h, toISOString rend encore la veille
+    // et les resas « du jour » du mock tombaient hier (rouge nocturne local,
+    // 2026-08-26 ; un runner CI en UTC ne le voit jamais).
+    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
     const R = [
       { id: 81001, name: 'Clavier Un', phone: '+32471008101', date: dstr(0), startTime: '14:00', duration: 1, pax: 4, price: 60, type: 'bowling', label: 'Bowling', lanes: [1], status: 'paid', centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString() },
       { id: 81002, name: 'Clavier Deux', phone: '+32471008102', date: dstr(-1), startTime: '18:00', duration: 1, pax: 3, price: 45, type: 'bowling', label: 'Bowling', lanes: [2], status: 'paid', centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString() },
@@ -148,8 +152,10 @@ async function main() {
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(200);
     const apresFleche = await page.evaluate(() => {
+      // Meme regle que le mock : date LOCALE (toISOString = la veille avant 2 h).
       const d = new Date(); d.setDate(d.getDate() - 1);
-      const hier = d.toISOString().slice(0, 10);
+      const pad = (n) => String(n).padStart(2, '0');
+      const hier = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       return { attendu: hier, focus: document.activeElement ? document.activeElement.dataset.calDate || '' : '' };
     });
     ok(apresFleche.focus === apresFleche.attendu,

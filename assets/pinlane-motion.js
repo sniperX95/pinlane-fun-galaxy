@@ -181,6 +181,10 @@
       if (signatures[cle] === sig) continue;
       signatures[cle] = sig;
       if (reduit) continue;
+      // Repaint invisible (is-repaint sur un ancetre) : la cascade ne
+      // rejoue pas. La signature vient d etre memorisee ci-dessus, donc
+      // elle ne rejouera pas non plus au retrait de la classe.
+      if (liste.closest && liste.closest('.is-repaint')) continue;
       for (var j = 0; j < n && j < CASCADE_MAX; j += 1) {
         var e = enfants[j];
         e.classList.remove('pl-in');

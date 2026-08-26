@@ -746,7 +746,13 @@ function testDelayImpactFormulaProgramRecomputed() {
   assert.strictEqual(smallLaser.startTime, '16:30', 'the laser anchor stays: the gap absorbs the delay');
   assert.strictEqual(small.strategies[0].changes[0].update.startTime, '15:15');
 
-  // Retard long : l'ancre laser aval glisse du minimum nécessaire.
+  // Retard long : l'ancre laser aval glisse au PROCHAIN DEPART de la grille
+  // (:00/:30) apres la fin du bowling + transition. Avant le 2026-08-26 elle
+  // glissait « juste assez » (17:35) : c'est exactement ce que Movsar a rejete
+  // en review (« session de 13:45 a 14:10, pourquoi 13:45 ?? ») : un lancement
+  // laser a l'heure fine est illisible au planning (rangees de 30 min),
+  // impossible a rejoindre (cle de session exacte) et faux dans le compte
+  // d'armes par tranche.
   const large = computeDelayImpact(
     { centerId: 'libramont', date: TEST_DATE, delayMinutes: 90, reservationId: 30 },
     { reservations: [reservation], laneStatuses: {} },
@@ -755,7 +761,7 @@ function testDelayImpactFormulaProgramRecomputed() {
   const largeBowling = largePlan.resourceBlocks.find((block) => block.resourceType === 'bowling_lane');
   const largeLaser = largePlan.resourceBlocks.find((block) => block.resourceType === 'laser_arena');
   assert.strictEqual(largeBowling.startTime, '16:30');
-  assert.strictEqual(largeLaser.startTime, '17:35', 'the laser anchor slides just enough (bowling end + transition)');
+  assert.strictEqual(largeLaser.startTime, '18:00', 'the laser anchor slides to the NEXT grid launch after bowling end + transition (17:35 -> 18:00)');
 
   // Formule table (f7) : la table suit l'arrivée décalée.
   const tablePlanned = planningAgent({
@@ -818,11 +824,19 @@ function testDelayImpactLaserSharedSession() {
   );
 
   assert.ok(impact.warnings.some((warning) => /partagé/.test(warning)), 'the shared launch must be flagged: other groups stay on time');
-  assert.strictEqual(impact.recommendedStrategyId, 'relocate_delayed', 'joining the compatible next launch beats cascading everyone');
-  const relocation = impact.strategies.find((strategy) => strategy.id === 'relocate_delayed');
-  assert.strictEqual(relocation.feasible, true);
-  assert.strictEqual(relocation.changes.length, 1, 'nobody else moves');
-  assert.ok(/rejoint le lancement laser de 15:30/.test(relocation.changes[0].summary), 'the delayed group joins the 15:30 launch');
+  // Depuis la grille des departs laser (2026-08-26, review Movsar : plus
+  // jamais de lancement a 15:15), un retard de 15 min SNAPPE le groupe sur le
+  // prochain depart : le simple decalage atterrit DEJA sur le lancement de
+  // 15:30, donc la strategie recommandee peut etre « shift » comme
+  // « relocate_delayed » : ce qui compte est le COMPORTEMENT : le groupe part
+  // a 15:30, sur la grille, et personne d autre ne bouge.
+  const recommended = impact.strategies.find((strategy) => strategy.id === impact.recommendedStrategyId);
+  assert.ok(recommended, 'a strategy is recommended');
+  assert.strictEqual(recommended.feasible, true);
+  const delayedChanges = recommended.changes.filter((change) => change.reservationId === 50);
+  assert.strictEqual(delayedChanges.length, 1, 'the delayed group has exactly one change');
+  assert.strictEqual(recommended.changes.length, 1, 'nobody else moves');
+  assert.strictEqual(delayedChanges[0].newStartTime, '15:30', 'the delayed group lands on the 15:30 grid launch, never 15:15');
 }
 
 // Canal de notification : email actif, SMS prévu mais inactif, et le message

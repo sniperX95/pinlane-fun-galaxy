@@ -362,6 +362,144 @@
     if (typeof selectStaffReservationsDate === 'function') selectStaffReservationsDate(dateStr);
   };
 
+  /* Recherche GLOBALE par client (review manager 2026-08-25) : le staff
+     n a que Planning / Reservations / Formules / Terrain, et un client au
+     telephone ne sait pas toujours QUEL JOUR il a reserve. La barre
+     cherche donc dans une fenetre large (-60 j / +365 j, admin-range),
+     pas seulement dans le mois affiche. */
+  const pv2ResSearch = { open: false, query: '', loading: false, loaded: false, error: '', rows: [], loadedAt: 0, center: '' };
+
+  function pv2ResSearchNormalize(value) {
+    return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  }
+
+  async function pv2ResSearchEnsureData(force) {
+    const center = getActiveOpsCenterId();
+    // CHANGEMENT DE CENTRE = LES RESULTATS DE L AUTRE CENTRE MEURENT TOUT DE
+    // SUITE. Sans cette purge, le cache restait servi pendant que le libelle
+    // annoncait le nouveau centre : des noms et des telephones d un client
+    // s affichaient chez un autre (isolation multi-tenant).
+    if (pv2ResSearch.center && pv2ResSearch.center !== center) {
+      pv2ResSearch.rows = [];
+      pv2ResSearch.loaded = false;
+      pv2ResSearch.loadedAt = 0;
+      pv2ResSearch.error = '';
+    }
+    const fresh = pv2ResSearch.loaded && pv2ResSearch.center === center && (Date.now() - pv2ResSearch.loadedAt) < 60 * 1000;
+    if (!force && (pv2ResSearch.loading || fresh)) return;
+    pv2ResSearch.loading = true;
+    pv2ResSearch.error = '';
+    pv2ResSearch.center = center;
+    try {
+      const startDate = encodeURIComponent(addDays(todayStr(), -60));
+      const endDate = encodeURIComponent(addDays(todayStr(), 365));
+      const payload = await apiRequest(`${API_ENDPOINTS.adminRange}?startDate=${startDate}&endDate=${endDate}&centerId=${encodeURIComponent(center)}`);
+      pv2ResSearch.rows = payload.reservations || [];
+      pv2ResSearch.loaded = true;
+      pv2ResSearch.loadedAt = Date.now();
+    } catch (error) {
+      pv2ResSearch.error = error.message || 'Recherche indisponible.';
+    } finally {
+      pv2ResSearch.loading = false;
+      if (isStaffReservationsActive()) renderStaffReservationsPage();
+    }
+  }
+
+  function pv2ResSearchMatches() {
+    const q = pv2ResSearchNormalize(pv2ResSearch.query);
+    if (q.length < 2) return [];
+    const digits = q.replace(/[^0-9]/g, '');
+    const rows = (pv2ResSearch.rows || []).filter((r) => r && r.status !== 'cancelled');
+    const hit = rows.filter((r) => {
+      if (pv2ResSearchNormalize(r.name).includes(q)) return true;
+      const phone = String(r.phone || '').replace(/[^0-9]/g, '');
+      return digits.length >= 4 && phone.includes(digits);
+    });
+    // Les venues A VENIR d abord (le cas du telephone), puis les passees,
+    // les plus recentes en tete.
+    const today = todayStr();
+    const stamp = (r) => `${r.date || ''}T${String(r.startTime || '').slice(0, 5)}`;
+    const future = hit.filter((r) => (r.date || '') >= today).sort((a, b) => stamp(a).localeCompare(stamp(b)));
+    const past = hit.filter((r) => (r.date || '') < today).sort((a, b) => stamp(b).localeCompare(stamp(a)));
+    return [...future, ...past].slice(0, 30);
+  }
+
+  function pv2ResSearchBody(dayFlowHtml) {
+    if (!pv2ResSearch.open || pv2ResSearchNormalize(pv2ResSearch.query).length < 2) return dayFlowHtml;
+    if (pv2ResSearch.loading && !pv2ResSearch.loaded) {
+      return '<div class="pv2-empty"><strong>Recherche…</strong>Chargement des réservations de toutes les dates.</div>';
+    }
+    if (pv2ResSearch.error && !pv2ResSearch.loaded) {
+      return `<div class="pv2-empty"><strong>Recherche indisponible</strong>${esc(pv2ResSearch.error)}</div>`;
+    }
+    const rows = pv2ResSearchMatches();
+    if (!rows.length) {
+      return '<div class="pv2-empty"><strong>Aucun résultat</strong>Aucune réservation ne correspond à ce nom ou ce numéro (fenêtre : 2 mois passés à 12 mois à venir).</div>';
+    }
+    return rows.map(pv2ResSearchResultRow).join('');
+  }
+
+  // Une reservation prise il y a dix secondes doit se trouver : apres toute
+  // creation / modification, la fenetre est redemandee au prochain rendu.
+  window.pv2ResSearchInvalidate = function () {
+    pv2ResSearch.loadedAt = 0;
+  };
+
+  window.pv2ResSearchToggle = function () {
+    pv2ResSearch.open = !pv2ResSearch.open;
+    if (pv2ResSearch.open) pv2ResSearchEnsureData(false);
+    else pv2ResSearch.query = '';
+    // L animation d ouverture ne joue qu ICI : marquee pour un seul rendu,
+    // elle ne peut pas rejouer a chaque lettre tapee.
+    pv2ResSearch.animer = pv2ResSearch.open;
+    renderStaffReservationsPage();
+    pv2ResSearch.animer = false;
+    if (pv2ResSearch.open) {
+      const input = document.querySelector('[data-pl-focus="reservations.recherche"]');
+      if (input) input.focus();
+    }
+  };
+
+  // La frappe ne repeint pas la page a chaque touche : 120 ms de repos, comme
+  // la recherche clients. Sans ce delai, taper « Dupont » reconstruisait six
+  // fois un panneau qui porte un calendrier et quatre statistiques.
+  let pv2ResSearchTimer = null;
+  window.pv2ResSearchInput = function (value) {
+    pv2ResSearch.query = String(value || '');
+    clearTimeout(pv2ResSearchTimer);
+    const run = () => { if (isStaffReservationsActive()) renderStaffReservationsPage(); };
+    if (!pv2ResSearch.query.trim()) { run(); return; }
+    pv2ResSearchTimer = setTimeout(run, 120);
+  };
+
+  // OUVRIR UN RESULTAT MARCHE MEME HORS DU MOIS AFFICHE. openStaffReservationDetail
+  // resout l id dans les sources CHARGEES (etat du jour + cache du mois) : un
+  // resultat trouve en mars alors qu on affiche aout n y etait pas, et le clic
+  // repondait « Reservation introuvable ou non chargee » : la recherche
+  // trouvait le client mais refusait de l ouvrir. On injecte donc la ligne
+  // dans l etat avant d ouvrir.
+  window.pv2ResSearchOpen = function (id) {
+    const row = (pv2ResSearch.rows || []).find((r) => String(r.id) === String(id));
+    if (row && typeof upsertReservationInState === 'function') upsertReservationInState(row);
+    openStaffReservationDetail(id);
+  };
+
+  function pv2ResSearchResultRow(r) {
+    const when = typeof formatStaffClientDateText === 'function' ? formatStaffClientDateText(r.date) : (r.date || '');
+    const time = String(r.startTime || '').slice(0, 5);
+    const offer = typeof getStaffClientOfferLabel === 'function' ? getStaffClientOfferLabel(r) : typeLabel(r);
+    const paxN = Number(r.pax) || 0;
+    return `<div class="pv2-flow-item ${(STATUS_META[r.status] || STATUS_META.pending).tone}" onclick="pv2ResSearchOpen('${escJs(r.id)}')">
+      <div class="pv2-flow-time"><strong>${esc(time || '--:--')}</strong><small>${esc(when)}</small></div>
+      <div class="pv2-flow-rail"></div>
+      <div class="pv2-flow-body">
+        <strong>${esc(r.name || 'Sans nom')}</strong>
+        <span>${esc(offer)} · ${paxN} joueur${paxN > 1 ? 's' : ''}${r.phone ? ` · ${esc(r.phone)}` : ''}</span>
+      </div>
+      ${statusChip(r.status)}
+    </div>`;
+  }
+
   window.renderStaffReservationsPage = function () {
     const root = document.getElementById('staffReservationsPage');
     if (!root) return;
@@ -429,6 +567,7 @@
       }).join('')
       : `<div class="pv2-empty"><strong>Journée libre</strong>Aucune réservation active sur cette date.</div>`;
 
+    const paint = () => {
     root.innerHTML = `<div class="pv2-shell">
       ${bar({
         crumb: 'Opérations / Réservations',
@@ -462,16 +601,32 @@
           </div>
         </article>
         <article class="pv2-panel">
-          <div class="pv2-panel-head">
-            <h2>${esc(dayLabel)}</h2>
-            <small>${dayAgg.count} résa · ${dayAgg.pax} joueurs · ${money(dayAgg.revenue)}</small>
+          <div class="pv2-panel-head pv2-day-head${pv2ResSearch.open ? ' is-searching' : ''}">
+            ${pv2ResSearch.open ? `<div class="pv2-res-search${pv2ResSearch.animer ? ' is-opening' : ''}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+              <input data-pl-focus="reservations.recherche" value="${esc(pv2ResSearch.query)}" placeholder="Nom ou téléphone, toutes les dates…" aria-label="Rechercher une réservation par client, toutes dates confondues" oninput="pv2ResSearchInput(this.value)">
+            </div>` : `<div><h2>${esc(dayLabel)}</h2>
+            <small>${dayAgg.count} résa · ${dayAgg.pax} joueurs · ${money(dayAgg.revenue)}</small></div>`}
+            <button type="button" class="pv2-search-toggle${pv2ResSearch.open ? ' is-open' : ''}" onclick="pv2ResSearchToggle()" aria-label="${pv2ResSearch.open ? 'Fermer la recherche' : 'Rechercher un client sur toutes les dates'}" title="${pv2ResSearch.open ? 'Fermer la recherche' : 'Rechercher un client, toutes dates confondues'}">
+              ${pv2ResSearch.open
+                ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`
+                : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>`}
+            </button>
           </div>
-          <div class="pv2-panel-body pv2-flow">${flow}</div>
+          <div class="pv2-panel-body pv2-flow">${pv2ResSearchBody(flow)}</div>
         </article>
       </section>
     </div>`;
+    };
+    // La barre de recherche survit au re-rendu du poll : data-pl-focus.
+    if (typeof PinlaneMotion !== 'undefined' && PinlaneMotion.garderFocus) PinlaneMotion.garderFocus(paint);
+    else paint();
     mount(root, 'reservations');
     ensureStaffReservationsData();
+    // Panneau de recherche ouvert : la fenetre se rafraichit toute seule au
+    // poll (la garde de fraicheur limite a un appel par minute), donc une
+    // reservation prise a l instant finit par apparaitre sans rouvrir la page.
+    if (pv2ResSearch.open) pv2ResSearchEnsureData(false);
   };
 
   /* ==========================================================================

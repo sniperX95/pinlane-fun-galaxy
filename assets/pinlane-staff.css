@@ -16119,3 +16119,116 @@ button.pv2-cal-cell:focus-visible {
 }
 .booking.dens-xs .res-note-line svg, .booking.dens-sm .res-note-line svg,
 .booking.dens-xs .res-special-request svg, .booking.dens-sm .res-special-request svg { margin: 0; }
+
+/* « Toutes les reservations » en PLEIN ECRAN, comme les plannings : la liste
+   seule, bord a bord, pour tout voir d un coup (review manager 2026-08-25).
+   LA GARDE :not(.hidden) N EST PAS DECORATIVE : `position:fixed` bat
+   `display:none` pose par .hidden sur les surfaces du planning. Sans elle, un
+   staff qui agrandit la liste puis ouvre Clients garde la liste par-dessus
+   TOUTE la console, et l etat survit au rechargement : plus aucune sortie.
+   Meme garde que .planning-box.expanded:not(.hidden), pour la meme raison. */
+.table-box.expanded:not(.hidden) {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: none;
+  background: var(--surface);
+}
+.table-box.expanded:not(.hidden) .table-head { flex: 0 0 auto; }
+.table-box.expanded:not(.hidden) .res-list { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* RETARD LASER : une pastille rangee avec Formule/Partie/Vague, alignee et
+   de la meme taille, plus un badge flottant qui ecrasait l heure de la
+   session (2026-08-25, Movsar : « temps retard super moche »). */
+.laser-card-pills .delay-indicator { margin-left: 0; height: 16px; padding: 0 6px 0 4px; }
+
+/* Tranche laser entierement consommee par un lancement qui la chevauche :
+   elle se dit occupee au lieu d offrir des armes qu elle n a pas. */
+.laser-session-slot.is-busy { opacity: 0.75; cursor: default; }
+.laser-session-slot.is-busy .laser-empty-title { color: var(--warning); }
+
+/* RECHERCHE GLOBALE de la page Reservations (review manager 2026-08-25) :
+   la loupe vit a droite de l en-tete du jour ; ouverte, la barre REMPLACE
+   l en-tete et glisse depuis la droite. */
+.pv2-day-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pv2-search-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.pv2-search-toggle:hover { color: var(--accent); border-color: var(--accent); transform: scale(1.06); }
+.pv2-search-toggle.is-open { color: var(--accent); border-color: var(--accent); }
+.pv2-res-search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* L animation d ouverture ne joue QU A L OUVERTURE. Posee sur le conteneur
+   lui-meme, elle rejouait a chaque lettre tapee : le panneau se re-rend en
+   entier a chaque frappe, donc la barre etait detruite et recreee, et elle
+   re-glissait depuis la droite sous le curseur. C est le « refresh visible »
+   que cette review interdit, sur la fonction meme qu elle demandait. */
+.pv2-res-search.is-opening { animation: pv2-search-in 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes pv2-search-in {
+  from { opacity: 0; transform: translateX(14px) scaleX(0.92); }
+  to { opacity: 1; transform: translateX(0) scaleX(1); }
+}
+.pv2-res-search svg { flex: 0 0 auto; color: var(--muted); }
+.pv2-res-search input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.pv2-res-search input:focus { outline: none; border-color: var(--accent); }
+.pv2-flow-time small { display: block; white-space: nowrap; }
+
+/* SUR MESURE (reservation rapide) : les activites du catalogue en toggles,
+   bowling avec sa duree, laser avec ses parties. */
+.qb-visit-grid { display: flex; flex-direction: column; gap: 8px; }
+.qb-visit-row { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.qb-visit-row.is-on { border-color: var(--accent); background: var(--accent-soft, rgba(59, 130, 246, 0.06)); }
+.qb-visit-toggle { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+.qb-visit-check { width: 16px; height: 16px; border: 2px solid var(--border); border-radius: 5px; flex: 0 0 auto; position: relative; }
+.qb-visit-row.is-on .qb-visit-check { border-color: var(--accent); background: var(--accent); }
+.qb-visit-row.is-on .qb-visit-check::after { content: ''; position: absolute; inset: 2px 3px 4px 3px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.qb-visit-options { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* PRIX AJUSTE : quick book + fiche caisse + liste. */
+.qb-price-toggle { margin-top: 6px; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.qb-price-toggle:hover { text-decoration: underline; }
+.qb-price-edit { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.qb-price-edit input { width: 90px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.res-state-pill.custom-price { background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning); font-weight: 800; }
+.receipt-custom { font-style: normal; font-size: 10px; font-weight: 800; color: var(--warning); letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; }
+.receipt-ref { display: block; font-size: 10px; font-weight: 600; color: var(--text-3); text-decoration: line-through; }
+.pos-price-edit-btn { width: 100%; margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; background: none; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.pos-price-edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pos-price-edit { margin-top: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pos-price-edit label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 700; }
+.pos-price-edit input { width: 90px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.pos-price-edit-actions { display: flex; gap: 8px; }
+.pos-price-edit-actions button { flex: 1; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.pos-price-edit-actions button.is-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pos-price-edit small { color: var(--text-3); font-size: 11px; }

@@ -35,7 +35,7 @@ async function installMock(page) {
     // Fixtures RELATIVES À AUJOURD'HUI RÉEL (todayStr/staffGroupToday) → déterministes
     // quel que soit le jour d'exécution : dormance, fenêtre anniversaire 335-395 j,
     // dossiers « à venir » filtrés sur la date réelle.
-    const dstr = (offsetDays) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); return d.toISOString().slice(0, 10); };
+    const dstr = (offsetDays) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }; // date LOCALE (todayStr est local ; toISOString = la veille avant 2 h)
     const iso = (offsetDays) => { const d = new Date(); d.setDate(d.getDate() + offsetDays); return d.toISOString(); };
     const R = [];
     let id = 7000;
@@ -491,7 +491,7 @@ async function main() {
     await page.evaluate(() => {
       let seed = 42;
       const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
-      const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+      const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }; // date LOCALE (idem mock principal)
       const R = [];
       let id = 90000;
       for (let c = 0; c < 400; c += 1) {
@@ -513,13 +513,53 @@ async function main() {
     await page.waitForTimeout(400);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+    // ETALON DE CHARGE : un budget en millisecondes ABSOLUES ne mesure pas le
+    // code, il mesure l humeur de la machine. Preuve payee le 2026-08-26 : le
+    // meme clic memoise coutait 224 ms sur un poste au repos, 1783 ms sur un
+    // poste tiede et 2548 ms pendant la suite complete (une dizaine de
+    // navigateurs en parallele), pendant que le chemin SANS memo, mesure au
+    // repos, tombait a 2392 ms. Le seuil de 2500 ms declarait donc le code sain
+    // fautif et le code casse conforme : il ne discriminait plus rien.
+    // On mesure donc, dans CETTE page et a CET instant, le cout de construire
+    // et peindre 400 lignes de liste (meme nature de travail que la page
+    // Clients, sans toucher a son code), et on etire le budget dans la meme
+    // proportion, plafonne a x3. Reference : 85 ms sur poste au repos, CPU x6.
+    const etalonCharge = await page.evaluate(() => {
+      const mesures = [];
+      for (let passe = 0; passe < 3; passe += 1) {
+        const t0 = performance.now();
+        const host = document.createElement('div');
+        host.style.cssText = 'position:absolute;left:-9999px;top:0;width:900px';
+        document.body.appendChild(host);
+        let html = '';
+        for (let i = 0; i < 400; i += 1) {
+          html += '<div class="etalon-row" style="display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid #ddd">'
+            + '<span style="flex:1;font-weight:700">Client etalon ' + i + '</span>'
+            + '<span style="width:90px">+3247100' + (1000 + i) + '</span>'
+            + '<span style="width:70px">' + ((i * 37) % 900) + ' EUR</span>'
+            + '<span style="width:60px">' + (i % 12) + ' visites</span></div>';
+        }
+        host.innerHTML = html;
+        void host.offsetHeight;
+        host.remove();
+        mesures.push(performance.now() - t0);
+      }
+      return Math.round(Math.min.apply(null, mesures));
+    });
+    // Reference mesuree DANS CETTE PAGE, poste au repos, CPU x6 : 568 / 570 /
+    // 635 ms sur trois passes (le meme etalon coute 85 ms dans une page vide :
+    // c est la page chargee qu on veut etalonner, pas le navigateur).
+    const ETALON_REPOS = 590;
+    const facteurCharge = Math.min(3, Math.max(1, etalonCharge / ETALON_REPOS));
+    const BUDGET = Math.round(2500 * facteurCharge);
+    console.log(`\n[PERF] etalon machine ${etalonCharge} ms (repos ${ETALON_REPOS} ms) -> budget ${BUDGET} ms`);
     const mesurePerf = async (label, fn) => {
       // Le budget attrape un cout STRUCTUREL (memo casse : x10 a CHAQUE
       // run, voir la contre-preuve plus bas), pas un pic de la machine
       // partagee : une mesure qui depasse se rejoue (2 fois max) et on
       // garde la meilleure tentative. Chaque appel refait le travail
       // entier (re-tri inverse, re-bascule de segment, re-rendu) : aucun
-      // no-op ne peut faire un faux vert, et le seuil ne bouge pas.
+      // no-op ne peut faire un faux vert.
       let best = null;
       for (let tentative = 0; tentative < 3; tentative += 1) {
         await page.evaluate(() => { __PERF__.builds = 0; __PERF__.renders = 0; });
@@ -527,7 +567,7 @@ async function main() {
         const p = await page.evaluate(() => __PERF__);
         const mesure = { label, t: Math.round(t), builds: p.builds, renders: p.renders };
         if (!best || mesure.t < best.t) best = mesure;
-        if (best.t < 2500 && best.builds === 0) break;
+        if (best.t < BUDGET && best.builds === 0) break;
       }
       return best;
     };
@@ -543,7 +583,7 @@ async function main() {
       const t0 = performance.now(); setStaffClientSort('spent'); return performance.now() - t0;
     });
     for (const m of [perfSel, perfSeg, perfTri]) {
-      ok(m.t < 2500, `perf ${m.label} : ${m.t} ms (budget 2500 ms, CPU x6, machine chargee)`);
+      ok(m.t < BUDGET, `perf ${m.label} : ${m.t} ms (budget ${BUDGET} ms = 2500 x charge ${facteurCharge.toFixed(2)}, CPU x6)`);
       ok(m.builds === 0, `perf ${m.label} : zero reconstruction de la liste (${m.builds})`);
     }
     ok(perfSel.renders === 1, `perf selection : UN rendu par clic (${perfSel.renders})`);
@@ -557,12 +597,19 @@ async function main() {
       window.getStaffClientRows = memo;
       return Math.round(t);
     });
-    ok(sansMemo > 2500, `contre-preuve : sans le cache, le clic redevient lent (${sansMemo} ms > 2500) -> le gate rougirait`);
+    // Le verdict est RELATIF, jamais absolu : « > 2500 ms » dependait de la
+    // machine (a 01 h sur un poste vide, le chemin sans memo passait a
+    // 1990-2217 ms et la contre-preuve rougissait a tort, 2026-08-26). Ce que
+    // la contre-preuve doit prouver, c est le MECANISME : le meme clic sans le
+    // memo refait tout le travail, donc il coute un multiple du clic memoise :
+    // vrai sur un portable charge comme sur une tour vide.
+    const seuilSansMemo = Math.max(3 * perfSel.t, 600);
+    ok(sansMemo > seuilSansMemo, `contre-preuve : sans le cache, le meme clic est structurellement plus lent (${sansMemo} ms vs ${perfSel.t} ms memoise, seuil ${seuilSansMemo} ms) -> le gate rougirait`);
     const apresRestore = await page.evaluate(() => {
       const id = getStaffClientRows()[2].id;
       const t0 = performance.now(); selectStaffClient(id); return Math.round(performance.now() - t0);
     });
-    ok(apresRestore < 2500, `restauration : le clic est redevenu vif (${apresRestore} ms)`);
+    ok(apresRestore < BUDGET, `restauration : le clic est redevenu vif (${apresRestore} ms, budget ${BUDGET} ms)`);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
 
     if (errs.length) { console.log('\nConsole errors:\n' + errs.join('\n')); }

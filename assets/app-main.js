@@ -1514,7 +1514,36 @@ function getSelectedReservationSignature() {
   });
 }
 
+// ── LE RE-RENDU D UNE PAGE DEJA OUVERTE EST INVISIBLE (2026-08-25, Movsar :
+// « mets une condition generale : pour tout changement, pas de refresh
+// visible »). Tant que la surface affichee ne change pas (meme page, meme
+// vue, meme jour, meme centre), tout repaint (poll, clic d etat, coche
+// d activite) passe par repaintKeepingScroll : defilement conserve, zero
+// animation rejouee. Une NAVIGATION (autre page, autre jour) reste un rendu
+// frais, avec ses animations d arrivee.
+let staffRepaintLastKey = '';
+function staffRepaintKey() {
+  return [
+    getStaffMenuPage(),
+    getStaffResourceView(),
+    state.currentDate,
+    typeof getActiveOpsCenterId === 'function' ? getActiveOpsCenterId() : ''
+  ].join('|');
+}
+
 function renderStaffData() {
+  const staffRoot = document.getElementById('staffView');
+  const key = staffRepaintKey();
+  const isRepaint = staffRoot && !staffRoot.classList.contains('hidden') && staffRepaintLastKey === key;
+  staffRepaintLastKey = key;
+  if (isRepaint) {
+    repaintKeepingScroll(staffRoot, () => renderStaffDataInner());
+    return;
+  }
+  renderStaffDataInner();
+}
+
+function renderStaffDataInner() {
   // Fusion Clients+Groupes : « groups » n'est plus une page, tout état legacy
   // (onglet sauvegardé, hash) retombe sur Clients, segment « À venir ».
   if (getStaffMenuPage() === 'groups') {
@@ -2389,6 +2418,7 @@ function loadState() {
     availableSlots: [],
     staffPlanningExpanded: false,
     staffLaserPlanningExpanded: false,
+    staffTableExpanded: false,
     staffResourceView: 'bowling',
     staffStatusFilter: 'all',
     staffTheme: 'dark',
@@ -2506,7 +2536,15 @@ try {
     localStorage.setItem(staffViewMigrationKey, '1');
   }
 } catch (error) {}
-state.staffStatusFilter = state.staffStatusFilter || 'all';
+// Le filtre d etat ne survit JAMAIS a un rechargement : « Tout » d office.
+// Un filtre restaure en silence donnait des journees qui semblaient vides
+// (2026-08-25, Movsar : « ca coche lui-meme le filtre... on peut se dire
+// qu il n y a que ca comme reservation »).
+state.staffStatusFilter = 'all';
+// Le plein ecran de la liste ne survit pas non plus a un rechargement : c est
+// un MODE de consultation, pas une preference. Restaure, il aurait rouvert la
+// console sur une liste bord a bord posee par-dessus la page attendue.
+state.staffTableExpanded = false;
 state.staffTheme = state.staffTheme === 'light' ? 'light' : 'dark';
 state.opsPanelTab = state.opsPanelTab || 'activity';
 state.adminCenterId = state.adminCenterId || 'libramont';
@@ -7266,6 +7304,10 @@ function isStaffUtilityActive() {
 
 function setStaffToday() {
   state.currentDate = todayStr();
+  // Changer de jour repart de « Tout », par les fleches comme par le
+  // calendrier ou « Aujourd hui » : sinon le filtre de la veille vide la
+  // journee d aujourd hui sans que personne n ait touche a une puce.
+  state.staffStatusFilter = 'all';
   save();
   renderStaff();
   syncDateReservations(state.currentDate, { silent: true });
@@ -8983,6 +9025,14 @@ function openStaffMenuPage(page, resource = '') {
     toast('Accès non autorisé pour ce rôle.');
     return;
   }
+  // Revenir sur une page remet le filtre d etat sur « Tout » : un filtre
+  // pose plus tot ne doit jamais accueillir le staff en silence. Le plein
+  // ecran de la liste se referme aussi : il n appartient qu au planning, et
+  // le laisser vrai ailleurs collait une liste par-dessus la page ouverte.
+  if (state.staffMenuPage !== cleanPage) {
+    state.staffStatusFilter = 'all';
+    state.staffTableExpanded = false;
+  }
   state.staffMenuPage = cleanPage;
   if (resource) state.staffResourceView = resource;
   setStaffRouteHash(state.staffMenuPage, resource || state.staffResourceView);
@@ -8997,6 +9047,7 @@ function openStaffPlanningResource(resource = 'bowling') {
     return;
   }
   state.staffMenuPage = 'planning';
+  state.staffStatusFilter = 'all';
   state.staffResourceView = ['all', 'bowling', 'laser'].includes(resource) ? resource : 'bowling';
   setStaffRouteHash('planning', state.staffResourceView);
   save();
@@ -15468,7 +15519,10 @@ function buildStaffClientRowsFromReservations(reservations = []) {
         if ((reservation.type === 'laser' || reservation.formuleId || reservation.type === 'formule') && typeof getLaserGameCountForReservation === 'function') {
           laserGamesTotal += Number(getLaserGameCountForReservation(reservation)) || 0;
         }
-        if (typeof getBowlingDurationForReservation === 'function') bowlingHoursTotal += Number(getBowlingDurationForReservation(reservation)) || 0;
+        // Heures de bowling REELLEMENT vendues au client : la somme de ses
+        // blocs, pas le premier seul (une visite en deux temps en comptait la
+        // moitie dans les statistiques de la fiche client).
+        if (typeof getBowlingTotalHoursForReservation === 'function') bowlingHoursTotal += Number(getBowlingTotalHoursForReservation(reservation)) || 0;
         totalDurationBooked += Number(reservation.totalDuration || reservation.duration || 0);
         if (reservation.status === 'paid') paidCount += 1;
         if (reservation.paymentMethod) paymentCount[reservation.paymentMethod] = (paymentCount[reservation.paymentMethod] || 0) + 1;
@@ -16232,11 +16286,15 @@ function renderStaff() {
   const laserPlanningBox = document.getElementById('laserPlanningBox');
   if (planningBox) planningBox.classList.toggle('expanded', !!state.staffPlanningExpanded);
   if (laserPlanningBox) laserPlanningBox.classList.toggle('expanded', !!state.staffLaserPlanningExpanded);
+  const staffTableBox = document.getElementById('staffTableBox');
+  if (staffTableBox) staffTableBox.classList.toggle('expanded', !!state.staffTableExpanded);
   const planningToggle = document.getElementById('planningToggle');
   if (planningToggle) planningToggle.textContent = state.staffPlanningExpanded ? 'Réduire' : 'Agrandir';
   const laserPlanningToggle = document.getElementById('laserPlanningToggle');
   if (laserPlanningToggle) laserPlanningToggle.textContent = state.staffLaserPlanningExpanded ? 'Réduire' : 'Agrandir';
-  document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded) ? 'hidden' : '';
+  const tableToggle = document.getElementById('tableToggle');
+  if (tableToggle) tableToggle.textContent = state.staffTableExpanded ? 'Réduire' : 'Agrandir';
+  document.body.style.overflow = state.view === 'staff' && (state.staffPlanningExpanded || state.staffLaserPlanningExpanded || state.staffTableExpanded) ? 'hidden' : '';
   attachPlanningFullscreenResize();
   renderKpis();
   renderPlanning();
@@ -16278,6 +16336,10 @@ function togglePlanningExpanded() {
   const next = !state.staffPlanningExpanded;
   state.staffPlanningExpanded = next;
   state.staffLaserPlanningExpanded = false;
+  state.staffTableExpanded = false;
+  // « Des qu on repart sur le planning, on fait agrandir et ca revient
+  // directement » (Movsar 2026-08-25) : le filtre repart sur Tout.
+  state.staffStatusFilter = 'all';
   if (next) attachPlanningFullscreenResize();
   else detachPlanningFullscreenResize();
   save();
@@ -16288,6 +16350,8 @@ function toggleLaserPlanningExpanded() {
   const next = !state.staffLaserPlanningExpanded;
   state.staffLaserPlanningExpanded = next;
   state.staffPlanningExpanded = false;
+  state.staffTableExpanded = false;
+  state.staffStatusFilter = 'all';
   if (next) attachPlanningFullscreenResize();
   else detachPlanningFullscreenResize();
   save();
@@ -16295,21 +16359,37 @@ function toggleLaserPlanningExpanded() {
 }
 
 function collapseStaffPlanningFullscreen() {
-  if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded) return false;
+  if (!state.staffPlanningExpanded && !state.staffLaserPlanningExpanded && !state.staffTableExpanded) return false;
   state.staffPlanningExpanded = false;
   state.staffLaserPlanningExpanded = false;
+  state.staffTableExpanded = false;
+  state.staffStatusFilter = 'all';
   detachPlanningFullscreenResize();
   save();
   renderStaff();
   return true;
 }
 
+// « Toutes les reservations » s agrandit comme les plannings : plein ecran,
+// liste seule, pour tout voir d un coup (review manager 2026-08-25).
+function toggleTableExpanded() {
+  const next = !state.staffTableExpanded;
+  state.staffTableExpanded = next;
+  state.staffPlanningExpanded = false;
+  state.staffLaserPlanningExpanded = false;
+  state.staffStatusFilter = 'all';
+  save();
+  renderStaff();
+}
+
 function setStaffStatusFilter(filter) {
   state.staffStatusFilter = filter;
   save();
-  renderPlanning();
-  renderLaserPlanning();
-  renderTable();
+  repaintKeepingScroll(document.getElementById('staffView'), () => {
+    renderPlanning();
+    renderLaserPlanning();
+    renderTable();
+  });
 }
 
 function getPlanningVisibleReservations(view = getStaffResourceView()) {
@@ -16389,7 +16469,7 @@ function applyPlanningStatusFilter(filter) {
   state.staffStatusFilter = ['all', 'open', 'pending', 'arrived', 'paid'].includes(filter) ? filter : 'all';
   save();
   closeStaffFloatingMenus();
-  renderStaff();
+  repaintKeepingScroll(document.getElementById('staffView'), () => renderStaff());
 }
 
 // LE MÊME FILTRE, DONC LES MÊMES MOTS ET LE MÊME CLASSEMENT QUE LA LISTE.
@@ -16685,6 +16765,7 @@ if (typeof window !== 'undefined') window.openClientDateCalendar = openClientDat
 function setStaffDateFromPicker(value) {
   if (!value) return;
   state.currentDate = value;
+  state.staffStatusFilter = 'all';
   save();
   renderStaff();
   syncDateReservations(state.currentDate, { silent: true });
@@ -16693,6 +16774,9 @@ function setStaffDateFromPicker(value) {
 function shiftDate(delta) {
   const nextDate = addDays(state.currentDate, delta);
   state.currentDate = nextDate;
+  // Changer de jour = repartir sur « Tout » : le filtre d hier ne doit pas
+  // vider la journee d aujourd hui en silence.
+  state.staffStatusFilter = 'all';
   save();
   renderStaff();
   syncDateReservations(state.currentDate, { silent: true });
@@ -16858,6 +16942,10 @@ function getLaserGameCountForReservation(reservation) {
   return getFormulaLaserGameCount(formule);
 }
 
+// La duree d UN BLOC de bowling (le premier). C est ce que demandent les
+// chemins qui MANIPULENT un bloc : le glisser-deposer du planning replace un
+// bloc, pas la somme de la visite. Sa semantique n a jamais change ; la somme
+// vit dans getBowlingTotalHoursForReservation, juste en dessous.
 function getBowlingDurationForReservation(reservation) {
   const windows = getBowlingWindowsFromReservation(reservation);
   if (windows.length) return Number(windows[0].duration) || 0;
@@ -16865,6 +16953,24 @@ function getBowlingDurationForReservation(reservation) {
   if (formule) return formule.hasBowling ? Number(formule.bowlingDur || 1) : 0;
   if (reservation.type !== 'bowling') return 0;
   return Number(reservation.duration || 0);
+}
+
+// Le TEMPS DE JEU VENDU : la somme des fenetres DISTINCTES dans le temps (une
+// meme fenetre sur deux pistes reste un seul bloc). C est ce qu on ECRIT au
+// comptoir (Movsar 2026-08-26 : « ca met 1 heure alors que ca donne 2 heures
+// de bowling ») ; jamais ce qu on donne a un calcul de placement.
+function getBowlingTotalHoursForReservation(reservation) {
+  const windows = getBowlingWindowsFromReservation(reservation);
+  if (!windows.length) return getBowlingDurationForReservation(reservation);
+  const vues = new Set();
+  let total = 0;
+  windows.forEach(w => {
+    const cle = `${w.start}-${w.end}`;
+    if (vues.has(cle)) return;
+    vues.add(cle);
+    total += Number(w.duration) || 0;
+  });
+  return total;
 }
 
 // Palier d'emphase effectif selon la taille du groupe. Escalade en niveaux de
@@ -17278,7 +17384,9 @@ function renderReservationTags(reservation, options = {}) {
   const contexteSeul = Boolean(options.contexteSeul);
   const formule = reservation.formuleId ? resolveDisplayFormule(reservation.formuleId) : null;
   if (!contexteSeul && (reservation.type === 'formule' || formule)) tags.push({ cls: 'formula', label: formule?.name || 'Formule' });
-  const bowlingDuration = getBowlingDurationForReservation(reservation);
+  // L etiquette dit le temps de jeu VENDU (somme des blocs) : c est ce que le
+  // client a paye et ce que le comptoir doit lire.
+  const bowlingDuration = getBowlingTotalHoursForReservation(reservation);
   if (!contexteSeul && bowlingDuration && Math.abs(bowlingDuration - 1) > 0.01) {
     tags.push({ cls: 'duration', label: `Bowling ${formatDurationLabel(bowlingDuration)}` });
   }
@@ -17911,10 +18019,11 @@ function renderLaserPlanning() {
   const curH = currentTimeDecimal();
   const sessionsBySlot = new Map();
   sessions.forEach(session => {
-    // Arrondi (et non plancher) à la demi-heure la plus proche : une vague qui
-    // démarre à :55 (ex. vague 2 d'un groupe scindé) tombe sur la LIGNE suivante
-    // (11:00) au lieu d'être empilée avec la vague 1 dans la case 10:30.
-    const slotIndex = Math.max(0, Math.min(halfSlots - 1, Math.round((session.start - startHour) * 2)));
+    // La rangee = la demi-heure ou la session DEMARRE (plancher). Les plans
+    // neufs sont sur la grille (:00/:30) ; un vieux plan a l heure fine
+    // (12:12) reste dans SA tranche, avec son heure reelle affichee, au lieu
+    // de remonter dans une rangee anterieure a son depart.
+    const slotIndex = Math.max(0, Math.min(halfSlots - 1, Math.floor((session.start - startHour) * 2 + 0.001)));
     if (!sessionsBySlot.has(slotIndex)) sessionsBySlot.set(slotIndex, []);
     sessionsBySlot.get(slotIndex).push(session);
   });
@@ -17950,11 +18059,22 @@ function renderLaserPlanning() {
       </div>
     </div>` : '';
 
-  const renderLaserSession = (session, timeValue) => {
+  const renderLaserSession = (session, timeValue, slotRemaining = null) => {
     if (!session) {
+      // Les armes LIBRES de la tranche, pas la capacite theorique : une
+      // session qui chevauche la tranche (vieux plan a l heure fine) les
+      // consomme. « 17 pistes libres » puis « impossible » a l ajout, c est
+      // exactement ce mensonge (2026-08-25, capture Movsar).
+      const freeGuns = Number.isFinite(Number(slotRemaining)) ? Number(slotRemaining) : capacity;
+      if (freeGuns <= 0) {
+        return `<div class="laser-session-slot is-empty is-busy" data-laser-drop-start="${timeValue}" title="Un lancement en cours chevauche cette tranche">
+          <span class="laser-empty-title">Occupé</span>
+          <span class="laser-empty-sub">un lancement en cours chevauche cette tranche</span>
+        </div>`;
+      }
       return `<button type="button" class="laser-session-slot is-empty" data-laser-drop-start="${timeValue}" onclick="openQuickBook({ date: state.currentDate, startTime: '${numToTime(timeValue)}', type: 'laser' })" ondragenter="onLaserPassDragEnter(event)" ondragover="onLaserPassDragOver(event)" ondragleave="onLaserPassDragLeave(event)" ondrop="onLaserPassDrop(event, ${timeValue})">
         <span class="laser-empty-title">Disponible</span>
-        <span class="laser-empty-sub">${capacity} armes libres</span>
+        <span class="laser-empty-sub">${freeGuns} arme${freeGuns > 1 ? 's' : ''} libre${freeGuns > 1 ? 's' : ''}</span>
       </button>`;
     }
 
@@ -17992,6 +18112,7 @@ function renderLaserPlanning() {
         : laserGames > 1 ? `Laser • ${passLabel}` : 'Laser direct';
       const pillHtml = `
         <span class="laser-card-pills">
+          ${renderDelayIndicator(reservation)}
           ${isFormulaGroup ? '<span class="laser-card-pill formula">Formule</span>' : '<span class="laser-card-pill direct">Direct</span>'}
           ${laserGames > 1 ? `<span class="laser-card-pill pass">P${passIndex}/${laserGames}</span>` : ''}
           ${waveCount > 1 ? `<span class="laser-card-pill wave">V${waveIndex}/${waveCount}</span>` : ''}
@@ -18007,7 +18128,6 @@ function renderLaserPlanning() {
           <small>${escapeHtml(label)}${waveLabel ? ` • ${escapeHtml(waveLabel)}` : ''}</small>
           ${pillHtml}
         </span>
-        ${renderDelayIndicator(reservation)}
         <span class="booking-stats laser-group-stats">
           ${renderActivityProgressPill(reservation)}
           <span class="bk-pax laser-group-count ${getGroupSizeClass(players)}" title="${players} joueur${players > 1 ? 's' : ''}">${players}<span class="u">j</span></span>
@@ -18052,7 +18172,7 @@ function renderLaserPlanning() {
     const remaining = Math.max(0, capacity - sessionPlayers);
     const sessionHtml = slotSessions.length
       ? `<div class="laser-session-stack">${slotSessions.map(session => renderLaserSession(session, timeValue)).join('')}</div>`
-      : renderLaserSession(null, timeValue);
+      : renderLaserSession(null, timeValue, remaining);
     rowsHtml += `<div class="laser-agenda-row ${slotSessions.length ? 'has-session' : 'is-empty'} ${isHalf ? 'is-half' : 'is-hour'} ${current ? 'is-current' : ''}">
       <div class="laser-agenda-time">
         <strong>${formatClockDisplay(timeValue)}</strong>
@@ -18244,26 +18364,49 @@ function renderReservationRow(r) {
   // apporte, et elle reste.
   const stateText = r.status === 'paid' ? `${r.price}€ payé` : '';
   const timeLabel = resourceWindows.length ? formatClockDisplay(resourceWindows[0].start) : r.startTime;
-  const resourceDurationLabel = view === 'all'
-    ? (isFormule ? 'Formule' : r.type === 'laser' ? (getLaserGameCountForReservation(r) > 1 ? `Laser x${getLaserGameCountForReservation(r)}` : 'Laser') : formatDurationLabel(r.duration))
-    : view === 'laser'
-    ? (getLaserGameCountForReservation(r) > 1 ? `Laser x${getLaserGameCountForReservation(r)}` : 'Laser')
-    : formatDurationLabel(resourceWindows[0]?.duration || r.duration);
-
-  // CE QUE LE CLIENT A RESERVE, ECRIT UNE SEULE FOIS.
-  // Il l'etait TROIS fois par ligne : la pastille etoilee « FORMULE 1 » contre
-  // le nom, puis « FORMULE 1 » en etiquette grise juste en dessous, puis
-  // « Bowling 2h » alors que la duree est deja dans la colonne de gauche. Trois
-  // ecritures d'un meme fait, sur trois lignes, en trois styles.
   const parties = getLaserGameCountForReservation(r);
-  const offre = isFormule
-    ? [formule.name, parties > 1 ? `Laser x${parties}` : ''].filter(Boolean).join(' · ')
-    : typeLabel;
+  const totalBowlingHours = getBowlingTotalHoursForReservation(r);
+  // LA DUREE DIT DE QUOI ELLE PARLE. « 1h » tout seul obligeait a deviner,
+  // et une visite a 2h de bowling affichait la duree de sa premiere fenetre
+  // seulement (Movsar 2026-08-25 : « 1 heure de quoi... faut que ca dise
+  // 1 heure bowling... ca met 1 heure alors que ca donne 2 heures »).
+  // Le mot « bowling » n est accole QUE si la reservation en contient : une
+  // formule table + plaine de jeux (section « Hors planning ») affichait
+  // « 2h bowling » pour une visite sans la moindre piste.
+  const bowlingDurationLabel = totalBowlingHours
+    ? `${formatDurationLabel(totalBowlingHours)} bowling`
+    : formatDurationLabel(r.duration);
+  const resourceDurationLabel = view === 'all'
+    ? (isFormule ? 'Formule' : r.type === 'laser' ? (parties > 1 ? `Laser x${parties}` : 'Laser') : bowlingDurationLabel)
+    : view === 'laser'
+    ? (parties > 1 ? `Laser x${parties}` : 'Laser')
+    : bowlingDurationLabel;
 
+  // CE QUE LE CLIENT A RESERVE : la COMPOSITION reelle, une seule fois.
+  // « Formule 6 · Bowling 2h · Laser x2 » : ce que le comptoir doit voir
+  // d'un coup d'oeil, sans ouvrir le dossier.
+  const composition = [
+    totalBowlingHours ? `Bowling ${formatDurationLabel(totalBowlingHours)}` : '',
+    parties > 0 ? (parties > 1 ? `Laser x${parties}` : 'Laser') : ''
+  ].filter(Boolean).join(' · ');
+  const offre = isFormule
+    ? [formule.name, composition].filter(Boolean).join(' · ')
+    : composition || typeLabel;
+
+  // PRIX AJUSTE visible de la liste : le comptoir voit combien CE dossier
+  // paie sans ouvrir la fiche (prix d ami, offre sur mesure).
+  const rowExtrasSum = (r.extras || []).reduce((sum, extra) => sum + (Number(extra.price) || 0), 0);
+  const rowReference = (Number(r.basePrice) || 0) + rowExtrasSum;
+  const rowCustomPrice = r.status !== 'paid' && rowReference > 0 && Math.abs((Number(r.price) || 0) - rowReference) > 0.5;
+
+  // La ligne reste COMPACTE (Movsar 2026-08-25 : « pas des grosses cartes
+  // longues avec plein d informations ») : offre, etat, occasion, note.
+  // Les consignes d exploitation et le suivi d accueil (check-in, consignes
+  // laser, « surveiller le passage... ») vivent dans le dossier.
   return `<div class="res-row ${r.status} ${getReservationHighlightClasses(r)}" data-res-row-id="${r.id}" onclick="openPos(${r.id})">
     <div class="res-c-time">
       <strong>${timeLabel}</strong>
-      <span class="${isSpecialBowlingDuration(getBowlingDurationForReservation(r)) ? 'is-special' : ''}">${resourceDurationLabel}</span>
+      <span class="${isSpecialBowlingDuration(totalBowlingHours) ? 'is-special' : ''}">${resourceDurationLabel}</span>
     </div>
     <div class="res-c-client">
       <span class="res-row-name">${escapeHtml(r.name)}</span>
@@ -18272,10 +18415,9 @@ function renderReservationRow(r) {
     <div class="res-c-what">
       <span class="res-offer ${isFormule ? 'is-formule' : isLaser ? 'is-laser' : ''}">${escapeHtml(offre)}</span>
       ${stateText ? `<span class="res-state-pill ${r.status}">${stateText}</span>` : ''}
+      ${rowCustomPrice ? `<span class="res-state-pill custom-price" title="Prix ajusté par l'équipe (référence ${Math.round(rowReference)}€)">Prix ajusté ${Math.round(Number(r.price) || 0)}€</span>` : ''}
       ${renderReservationTags(r, { contexteSeul: true })}
       ${renderReservationNoteLine(r)}
-      ${renderStaffOpsMini(r)}
-      ${renderGuestOpsMini(r)}
     </div>
     <div class="res-c-where">
       ${lanesHtml}
@@ -18334,6 +18476,10 @@ function renderTable() {
   if (tableTitle) tableTitle.textContent = view === 'all' ? 'Toutes les réservations' : view === 'laser' ? 'Réservations Laser Game' : 'Réservations Bowling';
   document.getElementById('tableCount').textContent = res.length;
   const list = document.getElementById('resList');
+  // La liste garde SA position, comme les deux plannings le font depuis
+  // toujours : innerHTML la remet a zero, et un poll toutes les quelques
+  // secondes renverrait le comptoir en haut de liste au milieu d une lecture.
+  const listScrollTop = list ? list.scrollTop : 0;
   // Hors planning : calculé sur le JOUR (pas sur `filtered`) pour que le résumé
   // annonce le même nombre que l'onglet, quel que soit le filtre de statut actif.
   const offPlanningDay = view === 'all' ? res.filter(isOffPlanningReservation).length : 0;
@@ -18387,6 +18533,7 @@ function renderTable() {
       <div class="e-title">${state.searchTerm ? 'Aucun résultat' : `Aucune réservation ${resourceName}`}</div>
       <div class="e-sub">${state.searchTerm ? 'Essayez un autre mot-clé' : `Cliquez sur "Réservation rapide" ou ${planningName} pour en créer une`}</div>
     </div>`;
+    if (list) list.scrollTop = listScrollTop;
     return;
   }
   // Les réservations hors planning sortent des sections de statut et remontent en
@@ -18422,6 +18569,7 @@ function renderTable() {
   <div class="res-sections">
     ${sections.map(section => renderReservationSection(section.key, section.title, section.subtitle, section.rows)).join('')}
   </div>`;
+  if (list) list.scrollTop = listScrollTop;
 }
 
 function quickAction(id, status) {
@@ -18619,6 +18767,7 @@ function editRes(id, ev) {
 }
 
 function openPos(id) {
+  posPriceEditOpen = false;
   const reservation = findStaffReservationById(id);
   if (!reservation) {
     toast('Réservation introuvable ou non chargée.');
@@ -19449,10 +19598,62 @@ function renderCommCenter() {
   `;
 }
 
+// L editeur de prix de la fiche : ouvert/ferme par dossier, remis a zero a
+// chaque ouverture de fiche (openPos).
+let posPriceEditOpen = false;
+
+function togglePosPriceEdit() {
+  posPriceEditOpen = !posPriceEditOpen;
+  renderPos();
+}
+
+async function applyPosPrice() {
+  const input = document.getElementById('posPriceInput');
+  const value = Math.round(Number(input?.value));
+  if (!Number.isFinite(value) || value < 0) { toast('Prix invalide.'); return; }
+  const current = state.selectedRes;
+  if (!current) return;
+  const next = { ...current, price: value };
+  posPriceEditOpen = false;
+  applyOptimisticReservation(next, { preserveEditState: true });
+  try {
+    const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
+      method: 'PATCH',
+      body: JSON.stringify(buildReservationApiPayload(next))
+    });
+    applyOptimisticReservation(payload.reservation, { preserveEditState: true });
+    markReservationMutation(next.id, payload.reservation, ['price']);
+    toast('Prix mis à jour pour ce dossier.');
+  } catch (error) {
+    applyOptimisticReservation(current, { preserveEditState: true });
+    toast(error.message || 'Impossible de modifier le prix.');
+  }
+  renderPos();
+}
+
 function renderPosCaisse(r) {
   const extras = r.extras || [];
   const basePrice = r.basePrice || getBasePriceForReservation(r);
   const total = r.price;
+  const extrasSum = extras.reduce((sum, extra) => sum + (Number(extra.price) || 0), 0);
+  const referencePrice = (Number(basePrice) || 0) + extrasSum;
+  // Prix AJUSTE = un ecart entre le total facture et la reference catalogue
+  // (base + extras). C est ce que les etudiants du comptoir doivent voir
+  // d un clic : combien CE dossier paie (review manager 2026-08-25).
+  const hasCustomPrice = referencePrice > 0 && Math.abs((Number(total) || 0) - referencePrice) > 0.5;
+  const canEditPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
+  const priceEditorHtml = r.status !== 'paid' && canEditPrice
+    ? posPriceEditOpen
+      ? `<div class="pos-price-edit">
+          <label>Prix total facturé <input id="posPriceInput" type="number" min="0" step="1" inputmode="numeric" value="${Math.round(Number(total) || 0)}" aria-label="Nouveau prix total en euros"></label>
+          <div class="pos-price-edit-actions">
+            <button type="button" class="is-primary" onclick="applyPosPrice()">Appliquer</button>
+            <button type="button" onclick="togglePosPriceEdit()">Annuler</button>
+          </div>
+          <small>Ne change que ce dossier : la formule et la grille du centre restent intactes.</small>
+        </div>`
+      : `<button type="button" class="pos-price-edit-btn" onclick="togglePosPriceEdit()">Modifier le prix de ce dossier</button>`
+    : '';
   // L'en-tete du ticket porte le NOM DU CENTRE de la reservation, jamais une
   // marque ecrite en dur : le comptoir d'un autre client encaissait sous
   // « FUN GALAXY ».
@@ -19471,9 +19672,10 @@ function renderPosCaisse(r) {
         ${extras.map((ex, i) => `<div class="receipt-line" style="color:var(--text-2);"><div style="display:flex;align-items:center;gap:6px;flex:1;">${r.status !== 'paid' ? `<button class="extra-rm" onclick="removeExtra(${i})">&times;</button>` : ''}<span>${ex.name}</span></div><span>${ex.price}€</span></div>`).join('')}
       </div>
       <div class="receipt-total">
-        <span class="lbl">TOTAL</span>
-        <span class="amount">${total}€</span>
+        <span class="lbl">TOTAL${hasCustomPrice ? ' <em class="receipt-custom">prix ajusté</em>' : ''}</span>
+        <span class="amount">${total}€${hasCustomPrice ? `<small class="receipt-ref">réf. ${Math.round(referencePrice)}€</small>` : ''}</span>
       </div>
+      ${priceEditorHtml}
       ${r.status === 'paid' ? `<div class="paid-overlay">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <div class="paid-text">PAYÉ</div>
@@ -19749,8 +19951,12 @@ async function saveEdit(e) {
     allowPastStart: true,
     lanes: requiresLanes ? lanes : []
   };
+  // L ecart voulu par le comptoir (prix d ami) est repris tel quel : editer
+  // l heure ou les joueurs d un dossier offert ne doit pas le repasser au
+  // plein tarif en silence. La REFERENCE, elle, suit la nouvelle configuration.
+  const ecartPrix = getReservationPriceGap(state.selectedRes);
   updated.basePrice = getBasePrice(updated.type, updated.duration, updated.lanes.length, updated.pax, updated.formuleId, updated.date);
-  updated.price = updated.basePrice + sumExtras(updated.extras);
+  updated.price = updated.basePrice + sumExtras(updated.extras) + ecartPrix;
   const previousReservation = state.selectedRes;
   applyOptimisticReservation(updated, { preserveEditState: true });
 
@@ -19805,15 +20011,27 @@ function setStatus(id, st) {
   setReservationStatusDirect(id, st);
 }
 
+// L ECART DE PRIX D UN DOSSIER SURVIT A SES EXTRAS (2026-08-26).
+// Un prix ajuste (« prix d ami ») est la difference entre ce qu on facture et
+// la reference catalogue. Recalculer price = reference + extras l effacait au
+// premier cafe ajoute : le client se voyait rendre le plein tarif sans que
+// personne ne l ait decide. On repart donc de l ecart, jamais de zero.
+function getReservationPriceGap(reservation) {
+  if (!reservation) return 0;
+  const reference = (Number(reservation.basePrice) || getBasePriceForReservation(reservation) || 0) + sumExtras(reservation.extras);
+  return Math.round((Number(reservation.price) || 0) - reference);
+}
+
 async function addExtra(uid) {
   const u = UPSELL_CATALOG.find(x => x.id === uid);
   const r = state.selectedRes;
   if (!u || !r) return;
+  const ecart = getReservationPriceGap(r);
   const updated = {
     ...r,
     extras: [...(r.extras || []), u]
   };
-  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras);
+  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras) + ecart;
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
@@ -19830,11 +20048,12 @@ async function addExtra(uid) {
 async function removeExtra(i) {
   const r = state.selectedRes;
   if (!r) return;
+  const ecart = getReservationPriceGap(r);
   const updated = {
     ...r,
     extras: (r.extras || []).filter((_, index) => index !== i)
   };
-  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras);
+  updated.price = (updated.basePrice || getBasePriceForReservation(updated)) + sumExtras(updated.extras) + ecart;
   applyOptimisticReservation(updated, { preserveEditState: true });
   try {
     const payload = await apiRequest(API_ENDPOINTS.staffReservations, {
@@ -19974,6 +20193,12 @@ function syncQuickBookDuration() {
       quickBookState.duration = LASER_GAME_OPTIONS[0].value;
     }
     quickBookState.totalDuration = Number(quickBookState.duration) * getLaserWaveCount(quickBookState.pax);
+  } else if (quickBookState.type === 'visite') {
+    const visit = quickBookState.visit || {};
+    const bowlingDur = visit.bowling?.on ? Number(visit.bowling.duration || 1) : 0;
+    const laserGames = visit.laser_game?.on ? Math.max(1, Number(visit.laser_game.games || 1)) : 0;
+    quickBookState.duration = bowlingDur || 0.5;
+    quickBookState.totalDuration = Math.max(0.5, bowlingDur + laserGames * 0.5);
   } else {
     quickBookState.totalDuration = quickBookState.duration;
   }
@@ -19987,6 +20212,7 @@ function syncQuickBookDuration() {
 // manuelle déjà complète n'est jamais modifiée.
 function reconcileQuickLaneSelection() {
   if (!quickBookState || quickBookState.autoAssign) return;
+  if (quickBookState.type === 'visite') return;
   if (!reservationNeedsLanes(quickBookState.type, quickBookState.formuleId)) return;
   if (!quickBookState.startTime) return;
   const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
@@ -19995,6 +20221,79 @@ function reconcileQuickLaneSelection() {
   if (current.length === 0 || current.length >= requiredCount) return;
   const extended = allocateLanesIncludingSeed(requiredCount, current, quickBookState.date, quickBookState.startTime, quickBookState.duration);
   if (extended && extended.length >= requiredCount) quickBookState.lanes = extended;
+}
+
+function ensureQuickVisit() {
+  if (!quickBookState.visit) {
+    quickBookState.visit = { bowling: { on: false, duration: 1 }, laser_game: { on: false, games: 1 }, others: {} };
+  }
+  return quickBookState.visit;
+}
+
+function toggleQuickVisitActivity(id) {
+  if (!quickBookState) return;
+  const visit = ensureQuickVisit();
+  if (id === 'bowling') visit.bowling.on = !visit.bowling.on;
+  else if (id === 'laser_game') visit.laser_game.on = !visit.laser_game.on;
+  else visit.others[id] = !visit.others[id];
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+function setQuickVisitBowlingDuration(value) {
+  if (!quickBookState) return;
+  const visit = ensureQuickVisit();
+  visit.bowling.on = true;
+  visit.bowling.duration = Number(value) || 1;
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+function setQuickVisitLaserGames(games) {
+  if (!quickBookState) return;
+  const visit = ensureQuickVisit();
+  visit.laser_game.on = true;
+  visit.laser_game.games = Math.max(1, Math.min(3, Math.trunc(Number(games) || 1)));
+  syncQuickBookDuration();
+  renderQuickBook();
+}
+
+// Prix AJUSTE cas par cas (prix d ami, offre du proprietaire) : un montant
+// libre qui ne touche que CE dossier. basePrice garde la reference catalogue
+// et l ecart entre les deux affiche « Prix ajusté » partout au comptoir.
+// 0 € est un prix VALIDE (offert) : seul un champ vide ou negatif est ignore.
+function getQuickBookCustomPrice() {
+  if (!quickBookState) return null;
+  const raw = String(quickBookState.customPrice ?? '').trim().replace(',', '.');
+  if (raw === '') return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value);
+}
+
+function toggleQuickCustomPrice() {
+  if (!quickBookState) return;
+  quickBookState.priceOpen = true;
+  renderQuickBook();
+  const el = document.getElementById('qbCustomPrice');
+  if (el) el.focus();
+}
+
+function clearQuickCustomPrice() {
+  if (!quickBookState) return;
+  quickBookState.customPrice = '';
+  quickBookState.priceOpen = false;
+  renderQuickBook();
+}
+
+// Frappe du prix : etat + montant patches EN PLACE (un re-render pendant la
+// frappe detruirait le champ et volerait le focus, la meme lecon que pax).
+function onQuickCustomPriceInput(value) {
+  if (!quickBookState) return;
+  quickBookState.customPrice = value;
+  const amt = document.querySelector('#quickBookOverlay .qb-summary .amt');
+  const custom = getQuickBookCustomPrice();
+  if (amt) amt.textContent = `${custom != null ? custom : getQuickBookSummary().total}€`;
 }
 
 function setQuickPax(value) {
@@ -20019,7 +20318,8 @@ function patchQuickBookPaxDerived() {
   const summary = getQuickBookSummary();
   const amt = overlay.querySelector('.qb-summary .amt');
   const desc = overlay.querySelector('.qb-summary .desc');
-  if (amt) amt.textContent = `${summary.total}€`;
+  const customPriceValue = getQuickBookCustomPrice();
+  if (amt) amt.textContent = `${customPriceValue != null ? customPriceValue : summary.total}€`;
   if (desc) desc.textContent = `${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}`;
   patchQuickBookStatusLine(overlay);
 }
@@ -20032,8 +20332,8 @@ function patchQuickBookStatusLine(overlay) {
   const host = (overlay || document).querySelector('.qb-status-line');
   if (!host || !quickBookState) return;
   const schedule = typeof getSchedule === 'function' ? getSchedule(quickBookState.date, state.isHolidayMode) : null;
-  const needsLanes = reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
+  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
   const suggestedLanes = quickBookState.startTime && needsLanes
     ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
     : [];
@@ -20134,6 +20434,10 @@ function renderQuickBookTypeButtons() {
   });
   // Les formules restent un MODE de reservation, pas une activite du catalogue.
   buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'formule' ? 'active' : ''}" onclick="setQuickType('formule')">Formule</button>`);
+  // SUR MESURE (review manager 2026-08-25) : plusieurs activites dans UNE
+  // reservation, composees au comptoir : le meme contrat serveur que les
+  // visites du tunnel public (program renormalise par lib/visit-program).
+  buttons.push(`<button class="qb-type-btn ${quickBookState.type === 'visite' ? 'active' : ''}" onclick="setQuickType('visite')">Sur mesure</button>`);
   return buttons.join('');
 }
 
@@ -20151,6 +20455,15 @@ function setQuickType(type, activityId = '') {
     quickBookState.formuleId = '';
     quickBookState.lanes = [];
     quickBookState.autoAssign = false;
+  }
+  if (type === 'visite') {
+    // Sur mesure : pistes et lancements attribues par le SERVEUR a la
+    // creation ; le bowling est pre-coche (activite socle du centre).
+    quickBookState.formuleId = '';
+    quickBookState.lanes = [];
+    quickBookState.autoAssign = false;
+    const visit = ensureQuickVisit();
+    if (!visit.bowling.on && !visit.laser_game.on && !Object.values(visit.others || {}).some(Boolean)) visit.bowling.on = true;
   }
   syncQuickBookDuration();
   renderQuickBook();
@@ -20274,8 +20587,8 @@ function getQuickBookAvailableSlots() {
 
   const duration = Number(quickBookState.duration || 0);
   const totalDuration = Number(quickBookState.totalDuration || duration || 0);
-  const needsLanes = reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
+  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
   let minTime = schedule.open;
   let maxTime = schedule.close - totalDuration;
 
@@ -20377,6 +20690,51 @@ function setQuickAutoAssign() {
 
 function getQuickBookSummary() {
   if (!quickBookState) return { total: 0, detail: '' };
+  if (quickBookState.type === 'visite') {
+    const visit = quickBookState.visit || {};
+    const pax = Number(quickBookState.pax) || 1;
+    const parts = [];
+    let total = 0;
+    if (visit.bowling?.on) {
+      const dur = Number(visit.bowling.duration || 1);
+      const laneCount = getRequiredLaneCount('bowling', pax);
+      total += Number(getBasePrice('bowling', dur, laneCount, pax, '', quickBookState.date)) || 0;
+      parts.push(`Bowling ${formatDurationLabel(dur)}`);
+    }
+    if (visit.laser_game?.on) {
+      const games = Math.max(1, Number(visit.laser_game.games || 1));
+      const option = getLaserOption(games * 0.5);
+      total += (Number(option?.price) || 0) * pax;
+      parts.push(`Laser x${games}`);
+    }
+    // Les activites libres SONT facturees par le serveur : les compter ici,
+    // avec le meme calcul que le tunnel public. Une activite dont le centre
+    // n a pas encore saisi le tarif ne vaut pas zero : elle rend le total
+    // incomplet, et le resume le dit au lieu d annoncer un « Total » faux.
+    let incomplet = false;
+    Object.entries(visit.others || {}).forEach(([id, on]) => {
+      if (!on) return;
+      const activity = typeof getCenterActivity === 'function' ? getCenterActivity(id) : null;
+      const ligne = activity && typeof getFreeActivityPrice === 'function'
+        ? getFreeActivityPrice(activity, { pax, dateStr: quickBookState.date, startTime: quickBookState.startTime })
+        : null;
+      if (ligne == null) incomplet = true;
+      else total += Number(ligne) || 0;
+      parts.push(activity?.name || id);
+    });
+    if (incomplet) {
+      return {
+        total: Math.round(total),
+        detail: parts.length
+          ? `${parts.join(' · ')} - ${pax} joueur(s), a partir de (certaines activites se reglent sur place)`
+          : 'Choisissez les activités'
+      };
+    }
+    return {
+      total: Math.round(total),
+      detail: parts.length ? `${parts.join(' · ')} - ${pax} joueur(s), estimation` : 'Choisissez les activités'
+    };
+  }
   if (quickBookState.type === 'laser') {
     const option = getLaserOption(quickBookState.duration);
     return {
@@ -20442,6 +20800,9 @@ function getQuickBookHeader(formule) {
   if (src === 'activite') {
     return { eyebrow: 'Staff Booking', title: s.type === 'laser' ? 'Nouvelle session laser' : 'Nouvelle partie bowling', sub: 'Créée depuis la page en cours, sur la date affichée.' };
   }
+  if (s.type === 'visite') {
+    return { eyebrow: 'Sur mesure', title: 'Visite multi-activités', sub: 'Composez les activités et ajustez le prix si besoin : tout part dans une seule réservation.' };
+  }
   return { eyebrow: 'Staff Booking', title: 'Réservation rapide', sub: '' };
 }
 
@@ -20463,8 +20824,11 @@ function renderQuickBookInner() {
   const availableSlots = getQuickBookAvailableSlots();
   const firstSlot = availableSlots[0] || null;
   const selectedSlot = availableSlots.find(slot => slot.time === quickBookState.startTime) || null;
-  const needsLanes = reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  // Sur mesure : les pistes sont attribuees par le serveur, l UI n en
+  // demande aucune (reservationNeedsLanes('visite') lirait state.booking,
+  // l etat du TUNNEL, jamais celui du comptoir).
+  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
+  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
   const occupied = quickBookState.startTime ? getOccupiedLanes(quickBookState.date, quickBookState.startTime, quickBookState.duration) : new Set();
   const suggestedLanes = quickBookState.startTime && needsLanes
     ? allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, quickBookState.duration) || []
@@ -20499,7 +20863,9 @@ function renderQuickBookInner() {
     ? 'Bowling classique'
     : quickBookState.type === 'laser'
       ? `Laser Game - ${laserOption.label}`
-      : formule ? formule.name : 'Choisir une formule';
+      : quickBookState.type === 'visite'
+        ? 'Sur mesure'
+        : formule ? formule.name : 'Choisir une formule';
   const selectedSlotLabel = selectedSlot
     ? `${selectedSlot.time} - ${quickBookState.type === 'laser' ? getLaserSlotAfterText(selectedSlot, quickBookState.pax) : needsLanes ? `${selectedSlot.freeCount} piste(s) libre(s)` : 'disponible'}`
     : firstSlot
@@ -20521,6 +20887,8 @@ function renderQuickBookInner() {
         ? `Sélection manuelle - ${quickBookState.lanes.join(' - ')}`
         : 'Sélection manuelle en attente';
 
+  const customPriceValue = getQuickBookCustomPrice();
+  const canAdjustPrice = typeof canUseStaffPermission === 'function' && canUseStaffPermission('reservations.edit');
   const header = getQuickBookHeader(formule);
   const showClient = !quickFieldKnown('client');
   const showType = !quickFieldKnown('type');
@@ -20601,6 +20969,9 @@ function renderQuickBookInner() {
     statusParts.push(laneNeedLabel);
     statusParts.push(quickBookState.autoAssign ? `Attribution auto${suggestedLanes.length ? ` : pistes ${suggestedLanes.join(' · ')}` : ''}` : `Pistes ${quickBookState.lanes.join(' · ') || 'à choisir'}${manualLanesShort ? ` (${quickBookState.lanes.length}/${requiredCount})` : ''}`);
     if (quickBookState.startTime && selectedSlot) statusParts.push(`${Math.max(freeCount, 0)} piste(s) libre(s)`);
+  } else if (quickBookState.type === 'visite') {
+    const visit = quickBookState.visit || {};
+    statusParts.push(visit.bowling?.on ? 'Pistes attribuées automatiquement à la création' : 'Sans piste de bowling');
   } else if (quickBookState.type === 'formule' && formule) {
     statusParts.push('Sans piste de bowling');
   }
@@ -20656,6 +21027,35 @@ function renderQuickBookInner() {
           </div>
         </div>`
     : '';
+
+  // SUR MESURE : la grille des activites du catalogue en TOGGLES : bowling
+  // avec sa duree, laser avec ses parties, le reste en simple coche. Le
+  // serveur renormalise le programme et attribue les ressources.
+  const visitComposerHtml = quickBookState.type === 'visite' ? (() => {
+    const visit = quickBookState.visit || {};
+    const choices = getQuickBookActivityChoices();
+    const rows = choices.map(choice => {
+      const isBowling = choice.id === 'bowling';
+      const isLaser = choice.id === 'laser_game';
+      const on = isBowling ? !!visit.bowling?.on : isLaser ? !!visit.laser_game?.on : !!(visit.others || {})[choice.id];
+      let optionsHtml = '';
+      if (on && isBowling) {
+        optionsHtml = `<div class="qb-visit-options">${DURATION_OPTIONS.map(opt => `<button type="button" class="qb-dur-btn ${Number(visit.bowling?.duration) === Number(opt.value) ? 'active' : ''}" onclick="setQuickVisitBowlingDuration(${opt.value})">${opt.label}</button>`).join('')}</div>`;
+      }
+      if (on && isLaser) {
+        optionsHtml = `<div class="qb-visit-options">${[1, 2, 3].map(games => `<button type="button" class="qb-dur-btn ${Number(visit.laser_game?.games) === games ? 'active' : ''}" onclick="setQuickVisitLaserGames(${games})">${games} partie${games > 1 ? 's' : ''}</button>`).join('')}</div>`;
+      }
+      return `<div class="qb-visit-row ${on ? 'is-on' : ''}">
+        <button type="button" class="qb-visit-toggle" aria-pressed="${on ? 'true' : 'false'}" onclick="toggleQuickVisitActivity('${escapeHtml(choice.id)}')"><span class="qb-visit-check" aria-hidden="true"></span>${escapeHtml(choice.label)}</button>
+        ${optionsHtml}
+      </div>`;
+    }).join('');
+    return `<div style="margin-top:12px;">
+      <label class="qb-mini-label">Activités de la visite</label>
+      <div class="qb-visit-grid">${rows}</div>
+      <div class="qb-field-note">Autant d\'activités que le groupe en vit, dans UNE réservation : le serveur enchaîne le programme et attribue pistes et lancements.</div>
+    </div>`;
+  })() : '';
 
   // « Plus d'options » : toutes les capacités avancées restent là, repliées.
   const advancedHtml = quickBookState.moreOpen ? `
@@ -20808,6 +21208,7 @@ function renderQuickBookInner() {
             ${essentialCells.join('')}
           </div>
           ${durationEssentialHtml}
+          ${visitComposerHtml}
           ${formuleGridHtml}
           ${essentialActions.length ? `<div class="qb-inline-actions" style="margin-top:12px;">${essentialActions.join('')}</div>` : ''}
           ${statusParts.length ? `<div class="qb-status-line">${statusParts.map(part => `<span>${part}</span>`).join('')}</div>` : ''}
@@ -20824,10 +21225,18 @@ function renderQuickBookInner() {
 
         <div class="qb-summary">
           <div>
-            <div class="lbl">Total estimé</div>
-            <div class="desc">${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}</div>
+            <div class="lbl">${customPriceValue != null ? 'Prix ajusté' : 'Total estimé'}</div>
+            <div class="desc">${summary.detail} - durée estimée ${formatDurationLabel(quickBookState.totalDuration)}${customPriceValue != null ? ` - référence ${summary.total}€` : ''}</div>
+            ${canAdjustPrice ? (quickBookState.priceOpen ? `
+              <div class="qb-price-edit">
+                <input id="qbCustomPrice" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
+                <span>€</span>
+                <button type="button" class="qb-ghost-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button>
+              </div>
+              <div class="qb-field-note">Ne change que cette réservation : la formule et la grille du centre restent intactes.</div>
+            ` : `<button type="button" class="qb-price-toggle" onclick="toggleQuickCustomPrice()">Modifier le prix</button>`) : ''}
           </div>
-          <div class="amt">${summary.total}€</div>
+          <div class="amt">${customPriceValue != null ? customPriceValue : summary.total}€</div>
         </div>
       </div>
       <div class="qb-actions">
@@ -20871,6 +21280,17 @@ async function saveQuickBook() {
   if (!quickBookState.startTime) { failQuickBook('Choisissez une heure.'); return; }
   const formule = quickBookState.type === 'formule' ? resolveDisplayFormule(quickBookState.formuleId) : null;
   if (quickBookState.type === 'formule' && !formule) { failQuickBook('Sélectionnez une formule.'); return; }
+  let visitProgram = null;
+  if (quickBookState.type === 'visite') {
+    const visit = quickBookState.visit || {};
+    visitProgram = [];
+    if (visit.bowling?.on) visitProgram.push({ activityId: 'bowling', duration: Number(visit.bowling.duration || 1), pax: Number(quickBookState.pax) || 1 });
+    if (visit.laser_game?.on) visitProgram.push({ activityId: 'laser_game', games: Math.max(1, Math.trunc(Number(visit.laser_game.games || 1))), pax: Number(quickBookState.pax) || 1 });
+    Object.entries(visit.others || {}).forEach(([activityId, on]) => {
+      if (on) visitProgram.push({ activityId, pax: Number(quickBookState.pax) || 1 });
+    });
+    if (!visitProgram.length) { failQuickBook('Choisissez au moins une activité.'); return; }
+  }
 
   // Pas d'aller-retour réseau superflu sur le chemin de création : le poll
   // (4 s) garde la date courante fraîche. On ne re-synchronise ici que si la
@@ -20894,8 +21314,8 @@ async function saveQuickBook() {
     if (!laserAvailability.ok) { failQuickBook(laserAvailability.message); return; }
   }
 
-  const needsLanes = reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
-  const requiredCount = getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
+  const needsLanes = quickBookState.type === 'visite' ? false : reservationNeedsLanes(quickBookState.type, quickBookState.formuleId);
+  const requiredCount = quickBookState.type === 'visite' ? 0 : getRequiredLaneCount(quickBookState.type, quickBookState.pax, quickBookState.formuleId);
   let lanes = [];
   if (needsLanes) {
     if (quickBookState.autoAssign) lanes = allocateLanes(requiredCount, quickBookState.date, quickBookState.startTime, duration);
@@ -20905,7 +21325,16 @@ async function saveQuickBook() {
     if (lanesConflict(quickBookState.date, quickBookState.startTime, duration, lanes).length) { failQuickBook('Conflit détecté sur les pistes choisies.'); return; }
   }
 
-  const basePrice = getBasePrice(quickBookState.type, duration, lanes.length, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
+  const customPriceValue = getQuickBookCustomPrice();
+  const estVisite = quickBookState.type === 'visite';
+  // Une VISITE laisse le serveur tarifer son programme (lib/visit-program) :
+  // le navigateur ne connait pas les paliers d activites libres. On n envoie
+  // donc AUCUN prix, sauf si le comptoir en a saisi un : « pas de prix » et
+  // « prix a 0 EUR » sont deux intentions differentes, et le serveur les
+  // distingue depuis le 2026-08-26.
+  const basePrice = estVisite
+    ? undefined
+    : getBasePrice(quickBookState.type, duration, lanes.length, quickBookState.pax, quickBookState.formuleId, quickBookState.date);
   const reservation = {
     name,
     phone,
@@ -20919,7 +21348,10 @@ async function saveQuickBook() {
     pax: Number(quickBookState.pax),
     status: 'pending',
     basePrice,
-    price: basePrice,
+    // Prix AJUSTE cas par cas : ne touche que CE dossier (la formule et la
+    // grille du centre restent intactes). Une visite sans prix saisi part
+    // SANS prix : c est le serveur qui facture son programme.
+    price: customPriceValue != null ? customPriceValue : basePrice,
     type: quickBookState.type,
     formuleId: quickBookState.formuleId,
     // UNE ACTIVITE LIBRE PART EN PROGRAMME (2026-08-19), le meme contrat que
@@ -20927,16 +21359,20 @@ async function saveQuickBook() {
     // panier du navigateur n'est jamais lu tel quel) et en derive le type, le
     // libelle et le prix. Sans cette ligne, une activite choisie ici serait
     // partie en « bowling » et aurait consomme une piste pour rien.
-    program: quickBookState.type === 'activity' && quickBookState.activityId
-      ? [{ activityId: quickBookState.activityId, pax: Number(quickBookState.pax) || 1 }]
-      : undefined,
+    program: quickBookState.type === 'visite'
+      ? visitProgram
+      : quickBookState.type === 'activity' && quickBookState.activityId
+        ? [{ activityId: quickBookState.activityId, pax: Number(quickBookState.pax) || 1 }]
+        : undefined,
     label: formule
       ? formule.name
       : quickBookState.type === 'laser'
         ? 'Laser Game'
-        : quickBookState.type === 'activity'
-          ? ((typeof getCenterActivity === 'function' && getCenterActivity(quickBookState.activityId)?.name) || 'Activité')
-          : 'Bowling Classique',
+        : quickBookState.type === 'visite'
+          ? 'Sur mesure'
+          : quickBookState.type === 'activity'
+            ? ((typeof getCenterActivity === 'function' && getCenterActivity(quickBookState.activityId)?.name) || 'Activité')
+            : 'Bowling Classique',
     laserGames: quickBookState.type === 'laser' ? getLaserGameCount(quickBookState.duration) : 0,
     allowPastStart: quickBookAllowsPastSelectedTime(),
     extras: []
@@ -21156,26 +21592,42 @@ document.addEventListener('keydown', (event) => {
 // ── LE REPAINT NE VOLE NI LE DEFILEMENT NI L OEIL (2026-08-25, Movsar :
 // « des qu on change une info ca nous remonte en haut... on voit un gros
 // refresh super desagreable »). Tout re-rendu interactif d une surface DEJA
-// ouverte passe ici : les positions de defilement survivent au innerHTML
-// (reperees par index DOM, la structure d un meme ecran est stable), et la
-// classe is-repaint coupe le rejeu des animations d entree pendant deux
-// frames. Le refresh reste reel a l interieur ; il devient invisible.
+// ouverte passe ici : les positions de defilement survivent au innerHTML et la
+// classe is-repaint coupe les transitions pendant deux frames. Le refresh
+// reste reel a l interieur ; il devient invisible.
+//
+// LES POSITIONS SE REPERENT PAR IDENTITE, JAMAIS PAR RANG (corrige le
+// 2026-08-26). Premiere version : les scrollTop etaient releves sur
+// querySelectorAll('*') et restaures par INDEX. Or un rendu qui filtre change
+// le NOMBRE de noeuds : cliquer « Terminees » retire des dizaines de cartes du
+// planning, tout ce qui suit se decale, et la position de la liste du jour
+// etait alors ecrite sur un autre element pendant que la liste, elle,
+// remontait en haut : exactement le defaut qu on venait corriger. On ne retient
+// donc que les conteneurs porteurs d une cle stable (id ou data-scroll-key),
+// et on les retrouve par cette cle.
 function repaintKeepingScroll(root, render) {
   if (!root) { render(); return; }
   const scrolled = [];
-  root.querySelectorAll('*').forEach((el, index) => {
-    if (el.scrollTop || el.scrollLeft) scrolled.push([index, el.scrollTop, el.scrollLeft]);
+  root.querySelectorAll('[id], [data-scroll-key]').forEach((el) => {
+    if (!el.scrollTop && !el.scrollLeft) return;
+    const cle = el.dataset.scrollKey ? `[data-scroll-key="${el.dataset.scrollKey}"]` : `#${CSS.escape(el.id)}`;
+    scrolled.push([cle, el.scrollTop, el.scrollLeft]);
   });
   root.classList.add('is-repaint');
-  render();
-  if (scrolled.length) {
-    const all = root.querySelectorAll('*');
-    scrolled.forEach(([index, top, left]) => {
-      const el = all[index];
-      if (el) { el.scrollTop = top; el.scrollLeft = left; }
-    });
+  try {
+    render();
+  } finally {
+    // Le rendu peut lever : sans ce finally, is-repaint restait collee et
+    // TOUTES les animations et transitions de la console mouraient jusqu au
+    // rechargement.
+    if (scrolled.length) {
+      scrolled.forEach(([cle, top, left]) => {
+        const el = root.querySelector(cle);
+        if (el) { el.scrollTop = top; el.scrollLeft = left; }
+      });
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('is-repaint')));
   }
-  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('is-repaint')));
 }
 
 // ── CONFIRMATION PRODUIT (audit UX 2026-08-25) ──────────────────────────────
@@ -22095,9 +22547,18 @@ document.getElementById('crOverlay')?.addEventListener('click', e => {
 });
 
 setInterval(() => {
-  if (state.view === 'staff') {
-    renderPlanning();
-    renderLaserPlanning();
+  if (state.view !== 'staff') return;
+  // Tick d horloge (barre « maintenant ») : repaint invisible, et CHAQUE
+  // grille dans SA racine. Enveloppe sur #staffView entier, il parcourait
+  // toute la console et coupait les animations de la page reellement ouverte
+  // (Clients, Reservations) toutes les minutes, pour deux boites cachees.
+  const planningBox = document.getElementById('planningBox');
+  if (planningBox && !planningBox.classList.contains('hidden')) {
+    repaintKeepingScroll(planningBox, () => renderPlanning());
+  }
+  const laserBox = document.getElementById('laserPlanningBox');
+  if (laserBox && !laserBox.classList.contains('hidden')) {
+    repaintKeepingScroll(laserBox, () => renderLaserPlanning());
   }
 }, 60000);
 

@@ -40,7 +40,11 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view','planning.view','reservations.view','reservations.create','reservations.quick','reservations.edit','reservations.status','clients.view','clients.edit','emails.view','emails.send','settings.manage','direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+    // Date LOCALE, jamais toISOString : l app compare a todayStr() (local). En
+    // zone UTC+2, entre minuit et 2 h, toISOString rend ENCORE la veille : les
+    // resas « du jour » tombaient hier et le gate rougissait toutes les nuits
+    // en local (vu 2026-08-26 ~01 h ; un runner CI en UTC ne le voit jamais).
+    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
     const R = [];
     let id = 70000;
     const add = (o) => { R.push({ id: id++, lanes: [], status: 'paid', duration: 1, centerId: 'libramont', channel: 'public', paymentMethod: 'Comptoir', activityProgress: {}, createdAt: new Date().toISOString(), ...o }); };
@@ -188,7 +192,11 @@ async function main() {
     });
     ok(form.present && form.dates === 2 && form.motif, `le formulaire d entretien vit DANS la rangee (2 dates + motif) et non dans un prompt (${JSON.stringify(form)})`);
     await page.evaluate(() => {
-      const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0, 10); };
+      // Date LOCALE, jamais toISOString : l app compare a todayStr() (local). En
+    // zone UTC+2, entre minuit et 2 h, toISOString rend ENCORE la veille : les
+    // resas « du jour » tombaient hier et le gate rougissait toutes les nuits
+    // en local (vu 2026-08-26 ~01 h ; un runner CI en UTC ne le voit jamais).
+    const dstr = (off) => { const d = new Date(); d.setDate(d.getDate() + off); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
       document.getElementById('laneMaintFrom-5').value = dstr(0);
       document.getElementById('laneMaintUntil-5').value = dstr(2);
       document.getElementById('laneMaintNote-5').value = 'huilage';

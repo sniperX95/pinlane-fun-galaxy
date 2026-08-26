@@ -35,7 +35,11 @@ async function installMock(page) {
   await page.addInitScript(({ expiresAt }) => {
     const perms = ['dashboard.view', 'planning.view', 'reservations.view', 'reservations.create', 'reservations.edit', 'reservations.status', 'clients.view', 'clients.edit', 'emails.view', 'emails.send', 'settings.manage', 'direction.view'];
     const qaSession = { token: 'qa', cookieBacked: false, centerId: 'libramont', expiresAt, member: { id: 'qa', name: 'Rachel', roleId: 'direction' }, role: { id: 'direction', name: 'Direction', locked: true }, permissions: perms };
-    const dstr = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toISOString().slice(0, 10); };
+    // Date LOCALE, jamais toISOString : l app compare a todayStr() (local) ;
+    // en zone UTC+2, entre minuit et 2 h, toISOString rend encore la veille
+    // et les resas « du jour » du mock tombaient hier (rouge nocturne local,
+    // 2026-08-26 ; un runner CI en UTC ne le voit jamais).
+    const dstr = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
     // Deux demandes : une ACTIVE (celle que l'alerte annonce) et une DEJA
     // TRAITEE (la contre-epreuve du segment).
     const leads = [

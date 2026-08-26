@@ -609,11 +609,20 @@ function getBalancedLaserWaveSizes(pax) {
   return Array.from({ length: waveCount }, (_, index) => base + (index < extra ? 1 : 0));
 }
 
+// Un depart laser vit sur la grille :00/:30 (miroir du moteur serveur).
+// L accueil de 5/10 min est un CONSEIL d arrivee : l ajouter au DEBUT du
+// bloc arene creait des sessions a 12:05 que le planning (rangees de 30
+// min) et le partage de session (cle exacte) ne savaient pas lire
+// (2026-08-25, captures Movsar).
+function snapLaserLaunchHour(hour) {
+  return Math.ceil(Number(hour || 0) * 2) / 2;
+}
+
 function getLaserCandidateWindows(startTime, duration, pax) {
   const games = getLaserGameCount(duration);
   const players = Math.max(1, Number(pax) || 1);
   const waveSizes = getBalancedLaserWaveSizes(players);
-  let cursor = timeToNum(startTime) + ((players >= 12 ? 10 : 5) / 60);
+  let cursor = snapLaserLaunchHour(timeToNum(startTime));
   let laserBriefed = false;
   const windows = [];
 
@@ -635,10 +644,11 @@ function getLaserCandidateWindows(startTime, duration, pax) {
         resourceType: 'laser_arena',
         label: 'Laser Game'
       });
-      cursor = end;
+      // Vague et partie suivantes au prochain DEPART de la grille (le
+      // creux de 5 min entre 12:25 et 12:30 EST la transition).
+      cursor = snapLaserLaunchHour(end);
       laserBriefed = true;
     }
-    if (game < games - 1) cursor += 5 / 60;
   }
 
   return windows;
@@ -653,16 +663,17 @@ function getFormulaLaserFallbackWindows(reservation) {
   const games = getProgramLaserGameCount(reservation) || getFormulaLaserGameCount(formule);
   if (!games) return [];
   const players = Math.max(1, Number(reservation.pax) || 1);
-  const arrivalBuffer = (players >= 12 ? 10 : 5) / 60;
   const preferredLaserTime = reservation.preference?.preferredLaserTime || reservation.opsPlan?.laserPassPlan?.scheduledPasses?.[0]?.startTime || '';
   const bowlingWindows = getBowlingWindowsFromReservation(reservation).sort((a, b) => Number(a.start) - Number(b.start));
+  // Premiere partie estimee au prochain DEPART de la grille apres le
+  // bowling (+5 min de marche), jamais a l heure fine : le planning range
+  // ses rangees par demi-heure et une session a 13:45 y est illisible.
   const firstLaserStart = preferredLaserTime
     ? timeToNum(preferredLaserTime)
     : bowlingWindows.length
-      ? Math.max(...bowlingWindows.map(window => Number(window.end || window.start))) + (5 / 60)
-      : timeToNum(reservation.startTime) + arrivalBuffer;
-  const bookingStart = numToTime(Math.max(0, firstLaserStart - arrivalBuffer));
-  return getLaserCandidateWindows(bookingStart, games * 0.5, players).map(window => ({
+      ? snapLaserLaunchHour(Math.max(...bowlingWindows.map(window => Number(window.end || window.start))) + (5 / 60))
+      : snapLaserLaunchHour(timeToNum(reservation.startTime));
+  return getLaserCandidateWindows(numToTime(firstLaserStart), games * 0.5, players).map(window => ({
     ...window,
     reservation,
     resourceType: 'laser_arena',

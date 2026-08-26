@@ -350,6 +350,66 @@ srv.listen(PORT, '127.0.0.1', async () => {
   ok(regressed && regressed.name === 'TEST' && domKept === 'SAISIE HUMAINE',
     'defaut rejoue : ecran « ' + domKept + ' » mais envoi « ' + (regressed ? regressed.name : 'aucun') + ' » -> le gate ROUGIRAIT');
 
+  console.log('');
+  console.log('[PRIX PAR PERSONNE] Le comptoir negocie au joueur, pas seulement au total');
+  // Movsar, 2026-08-26 : « la aussi on doit pouvoir modifier par personne ». Le
+  // montant par personne etait AFFICHE (« 17 EUR/personne ») mais jamais
+  // saisissable : il fallait faire la multiplication de tete pour la reporter
+  // dans le total. Le total reste la valeur qui part au serveur ; le champ par
+  // personne est une autre facon de l ecrire.
+  await pg.evaluate((rid) => { if (typeof openPos === 'function') openPos(rid); }, 1334);
+  await pg.waitForTimeout(900);
+  await pg.evaluate(() => {
+    const tab = [...document.querySelectorAll('button, a, [role="tab"]')].find((t) => /^Modifier$/i.test((t.textContent || '').trim()));
+    if (tab) tab.click();
+  });
+  await pg.waitForTimeout(900);
+  // Le bloc « contenu du dossier » peut etre replie : on le deplie s il le faut.
+  await pg.evaluate(() => {
+    if (document.getElementById('editPricePerPerson')) return;
+    const btn = [...document.querySelectorAll('.edit-adapter-btn, button')]
+      .find((b) => /adapter|deplier|déplier|contenu/i.test((b.textContent || '').trim()));
+    if (btn) btn.click();
+  });
+  await pg.waitForTimeout(900);
+  const prix = await pg.evaluate(async () => {
+    const perso = document.getElementById('editPricePerPerson');
+    const total = document.getElementById('editPriceInput');
+    if (!perso || !total) return { erreur: 'champs absents', perso: !!perso, total: !!total };
+    const joueurs = Math.max(1, Number((state.editState || {}).pax) || 1);
+    perso.focus();
+    perso.value = '19';
+    perso.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 350));
+    const apresPerso = { total: document.getElementById('editPriceInput').value, ligne: (document.getElementById('editPrixEstime') || {}).textContent };
+    // Dans l autre sens : ecrire le total met a jour le par-personne.
+    const champTotal = document.getElementById('editPriceInput');
+    champTotal.focus();
+    champTotal.value = String(joueurs * 25);
+    champTotal.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 350));
+    return { joueurs, apresPerso, apresTotal: { perso: document.getElementById('editPricePerPerson').value } };
+  });
+  if (ok(prix && !prix.erreur, 'les deux champs de prix sont presents' + (prix && prix.erreur ? ' (' + prix.erreur + ')' : ''))) {
+    ok(Number(prix.apresPerso.total) === prix.joueurs * 19,
+      '19 EUR par personne x ' + prix.joueurs + ' joueurs = ' + prix.apresPerso.total + ' EUR au total');
+    ok(Number(prix.apresTotal.perso) === 25,
+      'et dans l autre sens : ' + (prix.joueurs * 25) + ' EUR au total = ' + prix.apresTotal.perso + ' EUR par personne');
+    // CONTRE-EPREUVE : un champ par personne vide ne met PAS le dossier a zero.
+    // Sans cette regle, effacer le champ pour le retaper facturerait 0 EUR.
+    const vide = await pg.evaluate(async () => {
+      const perso = document.getElementById('editPricePerPerson');
+      const avant = document.getElementById('editPriceInput').value;
+      perso.focus();
+      perso.value = '';
+      perso.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 350));
+      return { avant, apres: document.getElementById('editPriceInput').value };
+    });
+    ok(vide.apres === vide.avant && Number(vide.apres) > 0,
+      'effacer le champ par personne ne met pas le dossier a zero (' + vide.avant + ' -> ' + vide.apres + ')');
+  }
+
   await b.close();
   srv.close();
   if (failures) { console.error(''); console.error('edit-sheet-check: ' + failures + ' echec(s).'); process.exit(1); }

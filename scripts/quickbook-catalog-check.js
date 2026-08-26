@@ -211,6 +211,35 @@ async function main() {
     });
     ok(choisi.actif === 'Sur mesure', `choisi explicitement, il s allume (${choisi.actif || 'aucun'})`);
 
+    console.log('\n[6. Le prix se saisit au joueur autant qu au total]');
+    // Movsar, 2026-08-26 : « le sur mesure il peut modifier le prix par personne
+    // et complet ». Le total reste la valeur qui part au serveur ; le champ par
+    // personne est une autre facon de l ecrire, pas une seconde verite.
+    const prix = await page.evaluate(async () => {
+      const paxInput = [...document.querySelectorAll('#quickBookOverlay input[type="number"]')][0];
+      if (paxInput) { paxInput.value = '8'; paxInput.dispatchEvent(new Event('input', { bubbles: true })); }
+      await new Promise((r) => setTimeout(r, 500));
+      const bascule = document.querySelector('.qb-price-toggle');
+      if (bascule) bascule.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const perso = document.getElementById('qbCustomPricePerPerson');
+      const total = document.getElementById('qbCustomPrice');
+      if (!perso || !total) return { erreur: 'champs absents' };
+      const montant = () => ((document.querySelector('#quickBookOverlay .qb-summary .amt') || {}).textContent || '').trim();
+      perso.focus(); perso.value = '15'; perso.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+      const apresPerso = { total: document.getElementById('qbCustomPrice').value, affiche: montant() };
+      const champTotal = document.getElementById('qbCustomPrice');
+      champTotal.focus(); champTotal.value = '200'; champTotal.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+      return { apresPerso, apresTotal: { perso: document.getElementById('qbCustomPricePerPerson').value, affiche: montant() } };
+    });
+    if (ok(prix && !prix.erreur, `les deux champs de prix sont presents${prix && prix.erreur ? ` (${prix.erreur})` : ''}`)) {
+      ok(Number(prix.apresPerso.total) === 120, `15 EUR par personne x 8 joueurs = ${prix.apresPerso.total} EUR`);
+      ok(prix.apresPerso.affiche === '120€', `le montant annonce suit (${prix.apresPerso.affiche})`);
+      ok(Number(prix.apresTotal.perso) === 25, `et dans l autre sens : 200 EUR au total = ${prix.apresTotal.perso} EUR par personne`);
+    }
+
     if (process.env.QB_SHOT) {
       await page.evaluate(() => { const i = [...document.querySelectorAll('#quickBookOverlay input[type="number"]')].pop(); i.value = '9'; i.dispatchEvent(new Event('input', { bubbles: true })); });
       await page.waitForTimeout(500);

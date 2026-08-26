@@ -20109,6 +20109,29 @@ function setEditPrice(valeur) {
   majEditPrixEstime();
 }
 
+// LE PRIX PAR PERSONNE SE SAISIT AUSSI, PAS SEULEMENT SE LIT. Le comptoir
+// negocie souvent au joueur (« je te le fais a 15 par tete »), et devait faire
+// la multiplication de tete pour la reporter dans le total. Movsar,
+// 2026-08-26 : « la aussi on doit pouvoir modifier par personne ».
+// LE TOTAL RESTE LA VALEUR QUI FAIT FOI : c est lui qui part au serveur et qui
+// est facture. Le champ par personne est une autre facon de l ecrire, jamais
+// une deuxieme verite qu il faudrait ensuite reconcilier.
+function setEditPricePerPerson(valeur) {
+  if (!state.editState) return;
+  const brut = String(valeur ?? '').trim().replace(',', '.');
+  // Champ vide = on efface, on ne facture pas zero : le total ne bouge pas et
+  // l equipe garde le montant du dossier tant qu elle n a rien tape.
+  if (brut === '') return;
+  const parPersonne = Number(brut);
+  if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
+  const joueurs = Math.max(1, Number(state.editState.pax) || 1);
+  state.editState.price = String(Math.round(parPersonne * joueurs));
+  state.editState.prixFige = true;
+  const champTotal = document.getElementById('editPriceInput');
+  if (champTotal) champTotal.value = state.editState.price;
+  majEditPrixEstime();
+}
+
 function recalculerEditPrix() {
   if (!state.editState) return;
   state.editState.prixFige = false;
@@ -20142,6 +20165,11 @@ function majEditPrixEstime() {
       : estime.total;
     const joueurs = Math.max(1, Number(e.pax) || 1);
     const parPersonne = Math.round(facture / joueurs);
+    // Les deux champs se repondent, mais JAMAIS celui qu on est en train de
+    // taper : reecrire sous les doigts transforme un « 1 » en cours de frappe
+    // en « 17 » et rend le champ inutilisable.
+    const champPersonne = document.getElementById('editPricePerPerson');
+    if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(parPersonne);
     ligne.textContent = `${estime.complet ? '' : 'À partir de '}${facture} € · ${parPersonne} €/personne (${joueurs} joueur${joueurs > 1 ? 's' : ''})`
       + (estime.complet ? '' : ' · certaines activités se règlent sur place');
   }
@@ -20246,6 +20274,9 @@ function renderEditFormuleBloc(r, formule, lignes) {
       <label for="editPriceInput">Prix facturé</label>
       <input id="editPriceInput" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(valeurChamp))}" oninput="setEditPrice(this.value)">
       <span>€</span>
+      <label for="editPricePerPerson">ou par personne</label>
+      <input id="editPricePerPerson" class="input" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(Math.round(valeurChamp / joueursActuels)))}" oninput="setEditPricePerPerson(this.value)">
+      <span>€ / pers.</span>
       ${state.editState.prixFige ? `<button type="button" class="edit-adapter-btn" onclick="recalculerEditPrix()">Recalculer</button>` : '<small class="edit-prix-auto">calculé automatiquement</small>'}
     </div>
     <div class="edit-prix-estime" id="editPrixEstime">${escapeHtml(prixLigne)}</div>
@@ -20824,9 +20855,37 @@ function clearQuickCustomPrice() {
 function onQuickCustomPriceInput(value) {
   if (!quickBookState) return;
   quickBookState.customPrice = value;
+  majQuickPrixAffiche();
+}
+
+// Le montant affiche et le champ JUMEAU, apres chaque frappe. Le champ qu on
+// tape n est jamais reecrit : sinon un « 1 » en cours de saisie deviendrait
+// « 17 » sous les doigts.
+function majQuickPrixAffiche() {
+  if (!quickBookState) return;
   const amt = document.querySelector('#quickBookOverlay .qb-summary .amt');
   const custom = getQuickBookCustomPrice();
-  if (amt) amt.textContent = `${custom != null ? custom : getQuickBookSummary().total}€`;
+  const total = custom != null ? custom : getQuickBookSummary().total;
+  if (amt) amt.textContent = `${total}€`;
+  const joueurs = Math.max(1, Number(quickBookState.pax) || 1);
+  const champTotal = document.getElementById('qbCustomPrice');
+  const champPersonne = document.getElementById('qbCustomPricePerPerson');
+  if (champTotal && document.activeElement !== champTotal && custom != null) champTotal.value = String(custom);
+  if (champPersonne && document.activeElement !== champPersonne) champPersonne.value = String(Math.round(total / joueurs));
+}
+
+// MEME REGLE QUE DANS LA FICHE : le total reste la valeur qui part au serveur,
+// le par-personne est une autre facon de l ecrire. Movsar, 2026-08-26 : « le sur
+// mesure il peut modifier le prix par personne et complet ».
+function onQuickCustomPricePerPersonInput(value) {
+  if (!quickBookState) return;
+  const brut = String(value ?? '').trim().replace(',', '.');
+  if (brut === '') { quickBookState.customPrice = ''; majQuickPrixAffiche(); return; }
+  const parPersonne = Number(brut);
+  if (!Number.isFinite(parPersonne) || parPersonne < 0) return;
+  const joueurs = Math.max(1, Number(quickBookState.pax) || 1);
+  quickBookState.customPrice = String(Math.round(parPersonne * joueurs));
+  majQuickPrixAffiche();
 }
 
 function setQuickPax(value) {
@@ -21874,6 +21933,9 @@ function renderQuickBookInner() {
               <div class="qb-price-edit">
                 <input id="qbCustomPrice" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(quickBookState.customPrice ?? ''))}" placeholder="${summary.total}" aria-label="Prix ajusté en euros" oninput="onQuickCustomPriceInput(this.value)">
                 <span>€</span>
+                <label class="qb-price-sep" for="qbCustomPricePerPerson">ou par personne</label>
+                <input id="qbCustomPricePerPerson" type="number" min="0" step="1" inputmode="numeric" value="${escapeHtml(String(Math.round((customPriceValue != null ? customPriceValue : summary.total) / Math.max(1, Number(quickBookState.pax) || 1))))}" aria-label="Prix par personne en euros" oninput="onQuickCustomPricePerPersonInput(this.value)">
+                <span>€ / pers.</span>
                 <button type="button" class="qb-ghost-btn" onclick="clearQuickCustomPrice()">Prix catalogue</button>
               </div>
               <div class="qb-field-note">Ne change que cette réservation : la formule et la grille du centre restent intactes.</div>

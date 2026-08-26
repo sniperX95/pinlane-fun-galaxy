@@ -16310,7 +16310,10 @@ button.pv2-cal-cell:focus-visible {
 /* PRIX AJUSTE : quick book + fiche caisse + liste. */
 .qb-price-toggle { margin-top: 6px; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .qb-price-toggle:hover { text-decoration: underline; }
-.qb-price-edit { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+/* Deux facons d ecrire le MEME prix (complet, ou par personne) : la rangee
+   passe a la ligne au lieu de compresser les champs. */
+.qb-price-edit { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.qb-price-sep { font-size: 11px; font-weight: 600; color: var(--text-3, var(--muted)); margin-left: 4px; }
 .qb-price-edit input { width: 90px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
 .res-state-pill.custom-price { background: var(--warning-soft); color: var(--warning); border: 1px solid var(--warning); font-weight: 800; }
 .receipt-custom { font-style: normal; font-size: 10px; font-weight: 800; color: var(--warning); letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; }
